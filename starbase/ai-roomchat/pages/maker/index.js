@@ -18,7 +18,15 @@ export default function MakerList() {
   }, [router])
 
   async function refresh(uid) {
-    const { data } = await supabase.from('prompt_sets').select('*').eq('owner_id', uid).order('created_at')
+    // created_at 정렬(없어도 안전하게 name로 fallback 가능)
+    let { data, error } = await supabase
+      .from('prompt_sets').select('*').eq('owner_id', uid)
+      .order('created_at', { ascending: true })
+    if (error) {
+      // 컬럼이 없을 때 대비
+      const alt = await supabase.from('prompt_sets').select('*').eq('owner_id', uid).order('name', { ascending: true })
+      data = alt.data
+    }
     setRows(data || [])
   }
 
@@ -27,11 +35,13 @@ export default function MakerList() {
       .insert({ name: '새 세트', owner_id: userId })
       .select().single()
     if (!error && data) router.push(`/maker/${data.id}`)
+    if (error) alert(error.message)
   }
 
   async function removeSet(id) {
     if (!confirm('세트를 삭제할까요? (프롬프트/브릿지 포함)')) return
-    await supabase.from('prompt_sets').delete().eq('id', id)
+    const { error } = await supabase.from('prompt_sets').delete().eq('id', id)
+    if (error) { alert(error.message); return }
     setRows(rows => rows.filter(r => r.id !== id))
   }
 
@@ -41,6 +51,7 @@ export default function MakerList() {
       supabase.from('prompt_slots').select('*').eq('set_id', id),
       supabase.from('prompt_bridges').select('*').eq('from_set', id),
     ])
+    if (setRow.error) { alert(setRow.error.message); return }
     const payload = { set: setRow.data, slots: slots.data || [], bridges: bridges.data || [] }
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
@@ -52,22 +63,40 @@ export default function MakerList() {
 
   async function importSet(e) {
     const file = e.target.files?.[0]; if (!file) return
-    const json = JSON.parse(await file.text())
-    const { data: newSet } = await supabase.from('prompt_sets')
-      .insert({ name: json.set?.name || '가져온 세트', owner_id: userId }).select().single()
-    if (json.slots?.length) {
-      const rows = json.slots.map(s => ({ set_id: newSet.id, slot_type: s.slot_type ?? 'custom', slot_pick: s.slot_pick ?? '1', template: s.template ?? '' }))
-      await supabase.from('prompt_slots').insert(rows)
+    try {
+      const json = JSON.parse(await file.text())
+      const { data: newSet, error: setErr } = await supabase.from('prompt_sets')
+        .insert({ name: json.set?.name || '가져온 세트', owner_id: userId })
+        .select().single()
+      if (setErr) throw setErr
+
+      if (json.slots?.length) {
+        const rows = json.slots.map(s => ({
+          set_id: newSet.id,
+          slot_type: s.slot_type ?? 'custom',
+          slot_pick: s.slot_pick ?? '1',
+          template: s.template ?? ''
+        }))
+        const ins = await supabase.from('prompt_slots').insert(rows)
+        if (ins.error) throw ins.error
+      }
+      if (json.bridges?.length) {
+        const rows = json.bridges.map(b => ({
+          from_set: newSet.id,
+          from_slot_id: null,
+          to_slot_id: null,
+          trigger_words: b.trigger_words ?? [],
+          action: b.action ?? 'continue'
+        }))
+        const ins2 = await supabase.from('prompt_bridges').insert(rows)
+        if (ins2.error) throw ins2.error
+      }
+      await refresh(userId)
+    } catch (err) {
+      alert(err.message || String(err))
+    } finally {
+      e.target.value = ''
     }
-    if (json.bridges?.length) {
-      const rows = json.bridges.map(b => ({
-        from_set: newSet.id, from_slot_id: null, to_slot_id: null,
-        trigger_words: b.trigger_words ?? [], action: b.action ?? 'continue'
-      }))
-      await supabase.from('prompt_bridges').insert(rows)
-    }
-    e.target.value = ''
-    await refresh(userId)
   }
 
   return (

@@ -1,7 +1,10 @@
 // pages/maker/[id].js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
-import ReactFlow, { Background, Controls, MiniMap, addEdge, useEdgesState, useNodesState } from 'reactflow'
+import ReactFlow, {
+  Background, Controls, MiniMap, addEdge,
+  useEdgesState, useNodesState, Handle, Position
+} from 'reactflow'
 import 'reactflow/dist/style.css'
 import { supabase } from '../../lib/supabase'
 
@@ -46,20 +49,23 @@ function TokenPalette({ onInsert }) {
 }
 
 function PromptNode({ data }) {
-  const taRef = useRef(null)
   return (
     <div style={{ width:320, background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
+      {/* 타겟 핸들(왼쪽) */}
+      <Handle type="target" position={Position.Left} />
       <div style={{ padding:'8px 10px', borderBottom:'1px solid #e5e7eb', fontWeight:700, background:'#f9fafb' }}>
         프롬프트
       </div>
       <textarea
-        ref={taRef}
-        defaultValue={data.template || ''}
+        value={data.template || ''}
         placeholder="여기에 템플릿을 입력하세요"
-        onBlur={(e)=>data.onChange && data.onChange({ template: e.target.value })}
+        onChange={(e)=>data.onChange && data.onChange({ template: e.target.value })}
+        onBlur={(e)=>data.onBlur && data.onBlur()}
         rows={8}
         style={{ width:'100%', padding:10, border:'none', outline:'none', resize:'vertical', borderRadius:'0 0 12px 12px' }}
       />
+      {/* 소스 핸들(오른쪽) */}
+      <Handle type="source" position={Position.Right} />
     </div>
   )
 }
@@ -77,22 +83,23 @@ export default function MakerEditor() {
 
   const [selectedEdge, setSelectedEdge] = useState(null)
   const [edgeForm, setEdgeForm] = useState({ trigger_words:'', action:'continue' })
+  const [selectedNodeId, setSelectedNodeId] = useState(null)
 
-  // 에디터 내 임시 ID ↔ DB ID 매핑
-  const idMapRef = useRef(new Map()) // flowNodeId -> slotId(DB)
+  // flowNodeId -> slotId(DB) 매핑
+  const idMapRef = useRef(new Map())
 
   useEffect(() => {
     if (!setId) return
-    (async () => {
-      const { data: setRow } = await supabase.from('prompt_sets').select('*').eq('id', setId).single()
+    ;(async () => {
+      const { data: setRow, error: setErr } = await supabase.from('prompt_sets').select('*').eq('id', setId).single()
+      if (setErr) { alert(setErr.message); router.push('/maker'); return }
       setSetInfo(setRow)
 
-      const { data: slotRows } = await supabase.from('prompt_slots').select('*').eq('set_id', setId).order('id')
-      const { data: bridgeRows } = await supabase.from('prompt_bridges').select('*').eq('from_set', setId).order('id')
+      const { data: slotRows } = await supabase.from('prompt_slots').select('*').eq('set_id', setId).order('created_at', { ascending: true })
+      const { data: bridgeRows } = await supabase.from('prompt_bridges').select('*').eq('from_set', setId).order('created_at', { ascending: true })
 
-      // 노드 구성
       const initNodes = (slotRows || []).map((s, idx) => {
-        const nid = `n${s.id}` // flow node id
+        const nid = `n${s.id}`
         idMapRef.current.set(nid, s.id)
         return {
           id: nid,
@@ -102,15 +109,15 @@ export default function MakerEditor() {
             template: s.template || '',
             onChange: (partial) => {
               setNodes(nds => nds.map(n => n.id===nid ? { ...n, data: { ...n.data, ...partial } } : n))
-            }
+            },
+            onBlur: () => { /* 필요하면 포커스 아웃 시 추가 처리 */ }
           }
         }
       })
 
-      // 엣지 구성 (from_slot_id -> to_slot_id)
       const initEdges = (bridgeRows || [])
         .filter(b => b.from_slot_id && b.to_slot_id)
-        .map((b, i) => ({
+        .map((b) => ({
           id: `e${b.id}`,
           source: `n${b.from_slot_id}`,
           target: `n${b.to_slot_id}`,
@@ -122,10 +129,10 @@ export default function MakerEditor() {
       setEdges(initEdges)
       setLoading(false)
     })()
-  }, [setId])
+  }, [setId, router, setNodes, setEdges])
 
+  // 새 엣지 연결(화면에만 추가; 저장 시 DB 반영)
   const onConnect = useCallback((params) => {
-    // 일단 UI에만 edge 추가 (DB 저장은 Save 때)
     setEdges(eds => addEdge({ ...params, ...edgeDefault, data: { trigger_words: [], action:'continue' } }, eds))
   }, [setEdges])
 
@@ -137,14 +144,20 @@ export default function MakerEditor() {
     })
   }, [])
 
-  function insertTokenToFocused(token) {
-    // 현재 포커스된 textarea에 토큰 삽입 (간단 구현)
-    const ta = document.activeElement
-    if (!(ta && ta.tagName === 'TEXTAREA')) return
-    const start = ta.selectionStart ?? ta.value.length
-    const end = ta.selectionEnd ?? ta.value.length
-    ta.value = ta.value.slice(0, start) + token + ta.value.slice(end)
-    ta.dispatchEvent(new Event('blur')) // onBlur로 저장 트리거
+  // 노드 선택 → 토큰 삽입 대상 고정
+  const onNodeClick = useCallback((_, node) => {
+    setSelectedNodeId(node.id)
+    setSelectedEdge(null) // 엣지 선택 해제
+  }, [])
+
+  // 팔레트에서 “토큰 삽입” 누르면 → 선택 노드 템플릿에 append
+  function insertTokenToSelected(token) {
+    if (!selectedNodeId) return
+    setNodes(nds => nds.map(n => {
+      if (n.id !== selectedNodeId) return n
+      const prev = n.data?.template || ''
+      return { ...n, data: { ...n.data, template: prev + token } }
+    }))
   }
 
   async function addPromptNode() {
@@ -155,14 +168,15 @@ export default function MakerEditor() {
       position: { x: 80, y: 80 },
       data: {
         template: '',
-        onChange: (partial) => setNodes(nds => nds.map(n => n.id===nid ? { ...n, data:{ ...n.data, ...partial } } : n))
+        onChange: (partial) => setNodes(nds => nds.map(n => n.id===nid ? { ...n, data:{ ...n.data, ...partial } } : n)),
+        onBlur: () => {}
       }
     }])
+    setSelectedNodeId(nid)
   }
 
   async function deleteSelected() {
     if (selectedEdge) {
-      // 엣지 삭제 (DB까지)
       if (selectedEdge.data?.bridgeId) {
         await supabase.from('prompt_bridges').delete().eq('id', selectedEdge.data.bridgeId)
       }
@@ -170,28 +184,32 @@ export default function MakerEditor() {
       setSelectedEdge(null)
       return
     }
-    // 노드 선택 삭제는 React Flow 핸들러에서… (간단화를 위해 Save 전엔 화면에서만 제거)
+    // (선택된 노드 삭제까지 구현하려면 onSelectionChange 등으로 확장 가능)
   }
 
   async function saveAll() {
     if (!setInfo) return
-    // 1) 노드 저장/업서트 → prompt_slots
+
+    // 1) 노드 업서트
     for (const n of nodes) {
       let slotId = idMapRef.current.get(n.id)
       if (!slotId) {
         const ins = await supabase.from('prompt_slots')
           .insert({ set_id: setInfo.id, slot_type:'custom', slot_pick:'1', template: n.data.template || '' })
           .select().single()
+        if (ins.error) { alert(ins.error.message); return }
         slotId = ins.data.id
         idMapRef.current.set(n.id, slotId)
       } else {
-        await supabase.from('prompt_slots').update({ template: n.data.template || '' }).eq('id', slotId)
+        const up = await supabase.from('prompt_slots').update({ template: n.data.template || '' }).eq('id', slotId)
+        if (up.error) { alert(up.error.message); return }
       }
     }
 
-    // 2) 엣지 → prompt_bridges 업서트
-    // 기존 브릿지(이 세트의) 목록
-    const { data: oldBridges } = await supabase.from('prompt_bridges').select('id').eq('from_set', setInfo.id)
+    // 2) 엣지 업서트
+    const { data: oldBridges, error: oldErr } = await supabase
+      .from('prompt_bridges').select('id').eq('from_set', setInfo.id)
+    if (oldErr) { alert(oldErr.message); return }
     const keep = new Set()
 
     for (const e of edges) {
@@ -208,17 +226,22 @@ export default function MakerEditor() {
       }
       if (!bridgeId) {
         const ins = await supabase.from('prompt_bridges').insert(payload).select().single()
+        if (ins.error) { alert(ins.error.message); return }
         bridgeId = ins.data.id
         e.data = { ...(e.data||{}), bridgeId }
       } else {
-        await supabase.from('prompt_bridges').update(payload).eq('id', bridgeId)
+        const up = await supabase.from('prompt_bridges').update(payload).eq('id', bridgeId)
+        if (up.error) { alert(up.error.message); return }
       }
       keep.add(bridgeId)
     }
 
-    // 3) 화면에 없는 브릿지 정리(가비지)
+    // 3) 화면에 없는 브릿지 삭제
     for (const ob of (oldBridges || [])) {
-      if (!keep.has(ob.id)) await supabase.from('prompt_bridges').delete().eq('id', ob.id)
+      if (!keep.has(ob.id)) {
+        const del = await supabase.from('prompt_bridges').delete().eq('id', ob.id)
+        if (del.error) { alert(del.error.message); return }
+      }
     }
 
     alert('저장 완료')
@@ -229,7 +252,10 @@ export default function MakerEditor() {
     const trigger_words = edgeForm.trigger_words.split(',').map(s=>s.trim()).filter(Boolean)
     const action = edgeForm.action
     setEdges(eds => eds.map(e => e.id===selectedEdge.id
-      ? { ...e, label: (trigger_words.join(', ') + (action!=='continue' ? ` | ${action}` : '')), data:{ ...(e.data||{}), trigger_words, action } }
+      ? { ...e,
+          label: (trigger_words.join(', ') + (action!=='continue' ? ` | ${action}` : '')),
+          data:{ ...(e.data||{}), trigger_words, action }
+        }
       : e
     ))
   }
@@ -244,10 +270,12 @@ export default function MakerEditor() {
           <button onClick={()=>router.push('/maker')} style={{ padding:'6px 10px', borderRadius:8, background:'#e5e7eb' }}>← 목록</button>
           <div style={{ fontWeight:800 }}>{setInfo?.name}</div>
         </div>
-        <TokenPalette onInsert={insertTokenToFocused} />
+        <TokenPalette onInsert={insertTokenToSelected} />
         <div style={{ display:'flex', gap:8 }}>
           <button onClick={addPromptNode} style={{ padding:'6px 10px', borderRadius:8, background:'#2563eb', color:'#fff' }}>+ 프롬프트</button>
-          <button onClick={deleteSelected} disabled={!selectedEdge} style={{ padding:'6px 10px', borderRadius:8, background:'#ef4444', color:'#fff' }}>선택 삭제</button>
+          <button onClick={deleteSelected} disabled={!selectedEdge} style={{ padding:'6px 10px', borderRadius:8, background:'#ef4444', color:'#fff', opacity: selectedEdge?1:0.5 }}>
+            선택 삭제
+          </button>
           <button onClick={saveAll} style={{ padding:'6px 10px', borderRadius:8, background:'#111827', color:'#fff' }}>저장</button>
         </div>
       </div>
@@ -263,6 +291,7 @@ export default function MakerEditor() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onEdgeClick={onEdgeClick}
+            onNodeClick={onNodeClick}
             fitView
           >
             <MiniMap />
@@ -298,7 +327,11 @@ export default function MakerEditor() {
                 <option value="lose">패배</option>
                 <option value="goto_set">다른 세트로 이동(후속 확장)</option>
               </select>
-              <button onClick={applyEdgeForm} style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff', fontWeight:700 }}>
+              <button
+                onClick={applyEdgeForm}
+                disabled={!selectedEdge}
+                style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff', fontWeight:700, opacity: selectedEdge?1:0.5 }}
+              >
                 엣지 라벨 반영
               </button>
             </>
