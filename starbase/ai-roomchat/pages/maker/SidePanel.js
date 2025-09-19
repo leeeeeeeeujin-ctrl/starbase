@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
-export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setNodes }) {
+export default function SidePanel({ selectedNodeId, selectedEdge, setEdges }) {
   const [edgeForm, setEdgeForm] = useState({
     trigger_words: '',
     probability: 1.0,
@@ -20,17 +20,31 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
 
   function applyEdgeForm() {
     if (!selectedEdge) return
-    setEdges(eds =>
-      eds.map(e =>
+    setEdges((eds) =>
+      eds.map((e) =>
         e.id === selectedEdge.id
-          ? { ...e, data: { ...edgeForm, trigger_words: edgeForm.trigger_words.split(',') } }
+          ? {
+              ...e,
+              data: {
+                ...edgeForm,
+                trigger_words: edgeForm.trigger_words
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              }
+            }
           : e
       )
     )
   }
 
   if (selectedNodeId) {
-    return <div style={{ padding: 12 }}>노드 {selectedNodeId} 선택됨</div>
+    return (
+      <div style={{ padding: 12 }}>
+        <h3>노드 {selectedNodeId}</h3>
+        <p>노드 속성 편집은 추후 추가 예정</p>
+      </div>
+    )
   }
   if (selectedEdge) {
     return (
@@ -39,7 +53,9 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
         <label>트리거 단어</label>
         <input
           value={edgeForm.trigger_words}
-          onChange={e => setEdgeForm(f => ({ ...f, trigger_words: e.target.value }))}
+          onChange={(e) =>
+            setEdgeForm((f) => ({ ...f, trigger_words: e.target.value }))
+          }
         />
         <label>확률</label>
         <input
@@ -48,19 +64,25 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
           min="0"
           max="1"
           value={edgeForm.probability}
-          onChange={e => setEdgeForm(f => ({ ...f, probability: e.target.value }))}
+          onChange={(e) =>
+            setEdgeForm((f) => ({ ...f, probability: e.target.value }))
+          }
         />
         <label>
           <input
             type="checkbox"
             checked={edgeForm.fallback}
-            onChange={e => setEdgeForm(f => ({ ...f, fallback: e.target.checked }))}
+            onChange={(e) =>
+              setEdgeForm((f) => ({ ...f, fallback: e.target.checked }))
+            }
           />
           Fallback
         </label>
         <select
           value={edgeForm.action}
-          onChange={e => setEdgeForm(f => ({ ...f, action: e.target.value }))}
+          onChange={(e) =>
+            setEdgeForm((f) => ({ ...f, action: e.target.value }))
+          }
         >
           <option value="continue">진행</option>
           <option value="win">승리</option>
