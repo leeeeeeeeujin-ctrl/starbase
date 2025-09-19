@@ -18,30 +18,25 @@ export default function MakerList() {
   }, [router])
 
   async function refresh(uid) {
-    // created_at 정렬(없어도 안전하게 name로 fallback 가능)
-    let { data, error } = await supabase
-      .from('prompt_sets').select('*').eq('owner_id', uid)
-      .order('created_at', { ascending: true })
-    if (error) {
-      // 컬럼이 없을 때 대비
-      const alt = await supabase.from('prompt_sets').select('*').eq('owner_id', uid).order('name', { ascending: true })
-      data = alt.data
-    }
-    setRows(data || [])
+    const { data, error } = await supabase
+      .from('prompt_sets')
+      .select('*')
+      .eq('owner_id', uid)
+      .order('id', { ascending: true }) // created_at 없는 환경 대비
+    if (!error) setRows(data || [])
   }
 
   async function createSet() {
+    const { data: { user } } = await supabase.auth.getUser()
     const { data, error } = await supabase.from('prompt_sets')
-      .insert({ name: '새 세트', owner_id: userId })
+      .insert({ name: '새 세트', owner_id: user.id })
       .select().single()
     if (!error && data) router.push(`/maker/${data.id}`)
-    if (error) alert(error.message)
   }
 
   async function removeSet(id) {
     if (!confirm('세트를 삭제할까요? (프롬프트/브릿지 포함)')) return
-    const { error } = await supabase.from('prompt_sets').delete().eq('id', id)
-    if (error) { alert(error.message); return }
+    await supabase.from('prompt_sets').delete().eq('id', id)
     setRows(rows => rows.filter(r => r.id !== id))
   }
 
@@ -51,7 +46,6 @@ export default function MakerList() {
       supabase.from('prompt_slots').select('*').eq('set_id', id),
       supabase.from('prompt_bridges').select('*').eq('from_set', id),
     ])
-    if (setRow.error) { alert(setRow.error.message); return }
     const payload = { set: setRow.data, slots: slots.data || [], bridges: bridges.data || [] }
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
@@ -63,40 +57,41 @@ export default function MakerList() {
 
   async function importSet(e) {
     const file = e.target.files?.[0]; if (!file) return
-    try {
-      const json = JSON.parse(await file.text())
-      const { data: newSet, error: setErr } = await supabase.from('prompt_sets')
-        .insert({ name: json.set?.name || '가져온 세트', owner_id: userId })
-        .select().single()
-      if (setErr) throw setErr
+    const text = await file.text()
+    const json = JSON.parse(text)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: newSet } = await supabase.from('prompt_sets')
+      .insert({ name: json.set?.name || '가져온 세트', owner_id: user.id })
+      .select().single()
 
-      if (json.slots?.length) {
-        const rows = json.slots.map(s => ({
+    if (json.slots?.length) {
+      await supabase.from('prompt_slots').insert(
+        json.slots.map(s => ({
           set_id: newSet.id,
-          slot_type: s.slot_type ?? 'custom',
+          slot_type: s.slot_type ?? 'ai',
           slot_pick: s.slot_pick ?? '1',
           template: s.template ?? ''
         }))
-        const ins = await supabase.from('prompt_slots').insert(rows)
-        if (ins.error) throw ins.error
-      }
-      if (json.bridges?.length) {
-        const rows = json.bridges.map(b => ({
+      )
+    }
+    if (json.bridges?.length) {
+      await supabase.from('prompt_bridges').insert(
+        json.bridges.map(b => ({
           from_set: newSet.id,
           from_slot_id: null,
           to_slot_id: null,
           trigger_words: b.trigger_words ?? [],
-          action: b.action ?? 'continue'
+          action: b.action ?? 'continue',
+          // 새 확장 필드들(없으면 무시되어도 OK)
+          conditions: b.conditions ?? [],
+          priority: b.priority ?? 0,
+          probability: b.probability ?? 1.0,
+          fallback: b.fallback ?? false,
         }))
-        const ins2 = await supabase.from('prompt_bridges').insert(rows)
-        if (ins2.error) throw ins2.error
-      }
-      await refresh(userId)
-    } catch (err) {
-      alert(err.message || String(err))
-    } finally {
-      e.target.value = ''
+      )
     }
+    e.target.value = ''
+    await refresh(userId)
   }
 
   return (
