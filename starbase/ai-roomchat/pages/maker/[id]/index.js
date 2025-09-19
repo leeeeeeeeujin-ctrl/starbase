@@ -4,8 +4,8 @@ import { useRouter } from 'next/router'
 import ReactFlow, { Background, Controls, MiniMap, addEdge, useEdgesState, useNodesState } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { supabase } from '../../../lib/supabase'
-import PromptNode from '../PromptNode'
-import SidePanel from '../SidePanel'
+import PromptNode from '../../../components/maker/PromptNode.js'
+import SidePanel  from '../../../components/maker/SidePanel.js'
 
 const nodeTypes = { prompt: PromptNode }
 
