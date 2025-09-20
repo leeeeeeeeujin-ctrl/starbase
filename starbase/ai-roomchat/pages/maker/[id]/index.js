@@ -107,12 +107,19 @@ export default function MakerEditor() {
         template: '',
         slot_type: type,
         onChange: (partial) => setNodes(nds => nds.map(n => n.id===nid ? { ...n, data:{ ...n.data, ...partial } } : n)),
-        onDelete: handleDeletePrompt
+        onDelete: handleDeletePrompt,
+        isStart: setRow?.start_slot_id === s.id, // ← 시작 표시
+        onSetStart: () => markAsStart(nid)
       }
     }])
     setSelectedNodeId(nid)
   }
-
+function markAsStart(flowNodeId) {
+  setNodes(nds => nds.map(n => {
+    const isTarget = n.id === flowNodeId
+    return { ...n, data: { ...n.data, isStart: isTarget } }
+  }))
+}
   // 노드 삭제(+연결 브릿지 DB/화면 동시 삭제)
   async function handleDeletePrompt(flowNodeId) {
     setNodes(nds => nds.filter(n => n.id !== flowNodeId))
