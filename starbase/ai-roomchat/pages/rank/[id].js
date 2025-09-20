@@ -8,10 +8,10 @@ import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 function getSelectedHeroId(router) {
   // URL로 ?heroId= 넘겨줄 수도 있게
   const q = router?.query?.heroId
-  if (q) return Number(q)
+  if (q) return String(q)
   if (typeof window !== 'undefined') {
     const v = localStorage.getItem('selectedHeroId')
-    return v ? Number(v) : null
+    return v || null
   }
   return null
 }
