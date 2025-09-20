@@ -7,13 +7,22 @@ import SlotMatrix from '../../components/rank/SlotMatrix'
 import RolesEditor from '../../components/rank/RolesEditor'
 import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
 import { uploadGameImage } from '../../lib/rank/storage'
+import { supabase } from '../../lib/supabase'
 
 async function registerGame(payload) {
+  // 1. 현재 로그인 세션 가져오기
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) throw new Error('로그인이 필요합니다.')
+
+  // 2. Authorization 헤더에 토큰 추가
   const r = await fetch('/api/rank/register-game', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,   // ★ 핵심
+    },
     body: JSON.stringify(payload),
-    credentials: 'include',
   })
   return r.json()
 }
