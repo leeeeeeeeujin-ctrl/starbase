@@ -14,21 +14,18 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
       label: '확률로 진행',
       params: [{ key:'p', label:'확률(0~1)', type:'number', step:'0.05', min:'0', max:'1', defaultValue:'0.3' }],
       toJSON: v => ({ type:'random', p: Number(v.p ?? 0.3) }),
-      toSummary: v => `확률 ${Math.round((Number(v.p ?? 0.3))*100)}%`,
     },
     {
       type: 'turn_gte',
       label: '특정 턴 이상',
       params: [{ key:'value', label:'턴 ≥', type:'number', defaultValue:'3' }],
       toJSON: v => ({ type:'turn_gte', value: Number(v.value ?? 1) }),
-      toSummary: v => `턴 ≥ ${v.value ?? 1}`
     },
     {
       type: 'turn_lte',
       label: '특정 턴 이하',
       params: [{ key:'value', label:'턴 ≤', type:'number', defaultValue:'5' }],
       toJSON: v => ({ type:'turn_lte', value: Number(v.value ?? 1) }),
-      toSummary: v => `턴 ≤ ${v.value ?? 1}`
     },
     {
       type: 'prev_ai_contains',
@@ -43,7 +40,6 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
         ], defaultValue:'last2' }
       ],
       toJSON: v => ({ type:'prev_ai_contains', value:String(v.value||''), scope:v.scope||'last2' }),
-      toSummary: v => `이전응답 ( ${v.scope||'last2'} ) "${v.value||''}" 포함`
     },
     {
       type: 'prev_prompt_contains',
@@ -57,7 +53,6 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
         ], defaultValue:'last1' }
       ],
       toJSON: v => ({ type:'prev_prompt_contains', value:String(v.value||''), scope:v.scope||'last1' }),
-      toSummary: v => `이전프롬프트 ( ${v.scope||'last1'} ) "${v.value||''}" 포함`
     },
     {
       type: 'prev_ai_regex',
@@ -72,21 +67,18 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
         ], defaultValue:'last1' }
       ],
       toJSON: v => ({ type:'prev_ai_regex', pattern:String(v.pattern||''), flags:String(v.flags||''), scope:v.scope||'last1' }),
-      toSummary: v => `이전응답 ( ${v.scope||'last1'} ) /${v.pattern||''}/${v.flags||''}`
     },
     {
       type: 'visited_slot',
       label: '특정 프롬프트(슬롯) 경유',
       params: [{ key:'slot_id', label:'슬롯 ID', type:'text', placeholder:'예) 12' }],
       toJSON: v => ({ type:'visited_slot', slot_id: v.slot_id ? String(v.slot_id) : null }),
-      toSummary: v => `경유 슬롯 #${v.slot_id ?? '?'}`
     },
     {
       type: 'fallback',
       label: '모두 불일치 시 이 경로',
       params: [],
       toJSON: _ => ({ type:'fallback' }),
-      toSummary: _ => '기본 경로(Fallback)'
     },
   ]
 
