@@ -11,12 +11,12 @@ export default function GameRoom() {
 
   const [user, setUser] = useState(null)
   const [game, setGame] = useState(null)
-  const [roles, setRoles] = useState([])              // rank_games.roles(text[]) or fallback
+  const [roles, setRoles] = useState([])
   const [requiredSlots, setRequiredSlots] = useState(0)
-  const [participants, setParticipants] = useState([]) // [{id, hero_id, role, score, hero: {name,image_url,description}}]
-  const [myHero, setMyHero] = useState(null)          // 현재 접속중 캐릭터(로스터에서 고른 값/로컬 저장)
+  const [participants, setParticipants] = useState([])
+  const [myHero, setMyHero] = useState(null)
   const [myJoined, setMyJoined] = useState(false)
-  const [pickRole, setPickRole] = useState('')        // 참여 시 선택할 역할
+  const [pickRole, setPickRole] = useState('')
   const [showLB, setShowLB] = useState(false)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
@@ -32,14 +32,13 @@ export default function GameRoom() {
       if (!user) { router.replace('/'); return }
       setUser(user)
 
-      // 게임 기본 정보
-      const { data: g } = await supabase.from('rank_games')
-        .select('*').eq('id', id).single()
+      // 게임 정보
+      const { data: g } = await supabase.from('rank_games').select('*').eq('id', id).single()
       if (!g) { alert('게임을 찾을 수 없습니다.'); router.replace('/rank'); return }
       setGame(g)
       setRoles(Array.isArray(g.roles) && g.roles.length ? g.roles : ['공격','수비'])
 
-      // 활성 슬롯 수 (필요 최소 인원)
+      // 필요 슬롯 (활성화된 슬롯+역할)
       const { data: slots } = await supabase
         .from('rank_game_slots')
         .select('slot_index,active,role')
@@ -47,12 +46,12 @@ export default function GameRoom() {
       const req = (slots || []).filter(s => s.active && s.role).length || 0
       setRequiredSlots(req)
 
-      // 참여자 목록 + 캐릭터 요약 join
+      // 참여자 목록
       const { data: ps } = await supabase
         .from('rank_participants')
         .select(`
           id, game_id, hero_id, role, score, created_at,
-          heroes ( id, name, image_url, description )
+          heroes ( id, name, image_url, description, owner_id )
         `)
         .eq('game_id', id)
         .order('score', { ascending: false })
@@ -62,22 +61,29 @@ export default function GameRoom() {
           id: p.heroes.id,
           name: p.heroes.name,
           image_url: p.heroes.image_url,
-          description: p.heroes.description
+          description: p.heroes.description,
+          owner_id: p.heroes.owner_id
         } : null
       }))
       setParticipants(mapped)
 
-      // 현재 내 캐릭터(로컬 우선)
+      // 내 캐릭터 결정 (abilities 포함)
+      const baseSelect =
+        'id,name,image_url,description,owner_id,' +
+        Array.from({length:12},(_,i)=>`ability${i+1}`).join(',')
       const localHeroId = typeof window !== 'undefined' ? localStorage.getItem('selectedHeroId') : null
+
       if (localHeroId) {
-        const { data: h } = await supabase.from('heroes')
-          .select('id,name,image_url,description,owner_id')
-          .eq('id', Number(localHeroId)).single()
+        const { data: h } = await supabase
+          .from('heroes')
+          .select(baseSelect)
+          .eq('id', Number(localHeroId))
+          .single()
         if (h) setMyHero(h)
       } else {
-        // 없으면 내 소유 첫 캐릭터 사용
-        const { data: first } = await supabase.from('heroes')
-          .select('id,name,image_url,description,owner_id')
+        const { data: first } = await supabase
+          .from('heroes')
+          .select(baseSelect)
           .eq('owner_id', user.id)
           .order('created_at', { ascending: true })
           .limit(1)
@@ -89,15 +95,14 @@ export default function GameRoom() {
     return () => { alive = false }
   }, [id, router])
 
-  // 내가 이미 참여했는지
+  // 이미 참여했는지
   useEffect(() => {
     if (!user || !participants.length) { setMyJoined(false); return }
-    const mine = participants.some(p => p.hero && p.hero.owner_id === user.id) // 동일 소유자 기준
+    const mine = participants.some(p => p.hero && p.hero.owner_id === user.id)
     setMyJoined(mine)
   }, [participants, user])
 
   const canStart = useMemo(() => {
-    // 최소 인원 충족 여부
     return participants.length >= (requiredSlots || 0)
   }, [participants.length, requiredSlots])
 
@@ -107,10 +112,9 @@ export default function GameRoom() {
     if (!myHero) return alert('참여할 캐릭터가 없습니다. (로스터에서 선택 후 다시 시도)')
     if (!pickRole && roles.length) return alert('역할을 선택하세요.')
     const payload = { game_id: Number(id), hero_id: myHero.id, role: pickRole || roles[0], score: 1000 }
-    const { error } = await supabase.from('rank_participants')
-      .upsert(payload, { onConflict: 'game_id,hero_id' })
+    const { error } = await supabase.from('rank_participants').upsert(payload, { onConflict: 'game_id,hero_id' })
     if (error) return alert('참여 실패: ' + error.message)
-    // 갱신
+    // 리스트 갱신
     const { data: ps } = await supabase
       .from('rank_participants')
       .select(`
@@ -136,7 +140,6 @@ export default function GameRoom() {
     if (!canStart) return
     setStarting(true)
     try {
-      // 여기서는 “출발선만” 확인. 실제 매치/진행 로직은 이후 엔진과 연결.
       alert('게임을 시작합니다! (엔진 연결 전: 출발선 체크 통과)')
     } finally {
       setStarting(false)
@@ -148,7 +151,6 @@ export default function GameRoom() {
     if (!confirm('이 게임을 삭제하시겠습니까? (참여/로그 포함)')) return
     setDeleting(true)
     try {
-      // 순서: 참여/슬롯/로그 → 게임
       await supabase.from('battle_logs').delete().eq('game_id', id)
       await supabase.from('rank_participants').delete().eq('game_id', id)
       await supabase.from('rank_game_slots').delete().eq('game_id', id)
@@ -163,15 +165,19 @@ export default function GameRoom() {
   if (loading) return <div style={{ padding:20 }}>불러오는 중…</div>
 
   return (
-    <div style={{ maxWidth:1200, margin:'24px auto', padding:12, display:'grid', gridTemplateRows:'auto auto 1fr auto', gap:12 }}>
-      {/* 상단 바 */}
-      <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-        <button onClick={() => router.replace('/rank')} style={{ padding:'6px 10px' }}>← 목록</button>
-        <h2 style={{ margin:0 }}>{game?.name}</h2>
-        <span style={{ color:'#64748b' }}>{game?.description || ''}</span>
-        <span style={{ marginLeft:'auto', fontSize:12, color:'#94a3b8' }}>
-          필요 슬롯 {requiredSlots} · 참여 {participants.length}
-        </span>
+    <div style={{ maxWidth:1200, margin:'24px auto', padding:12, display:'grid', gridTemplateRows:'auto auto auto 1fr auto', gap:12 }}>
+      {/* 상단: 방 이름 + 설명 */}
+      <div style={{ display:'grid', gap:4 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+          <button onClick={() => router.replace('/rank')} style={{ padding:'6px 10px' }}>← 목록</button>
+          <h2 style={{ margin:0 }}>{game?.name}</h2>
+          <span style={{ marginLeft:'auto', fontSize:12, color:'#94a3b8' }}>
+            필요 슬롯 {requiredSlots} · 참여 {participants.length}
+          </span>
+        </div>
+        {game?.description && (
+          <div style={{ color:'#475569' }}>{game.description}</div>
+        )}
       </div>
 
       {/* 조작 바: 참여 / 시작 / 리더보드 / 방삭제(방장) */}
@@ -216,7 +222,10 @@ export default function GameRoom() {
         )}
       </div>
 
-      {/* 본문: 참여자 타일 + 미니 정보 */}
+      {/* 내 캐릭터(이미지 + 능력) */}
+      <MyHeroStrip hero={myHero} />
+
+      {/* 본문: 참여자 카드들 */}
       <div style={{ border:'1px solid #e5e7eb', borderRadius:12, background:'#fff', padding:12, minHeight:240 }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:10 }}>
           {participants.map(p => (
@@ -232,8 +241,49 @@ export default function GameRoom() {
       <SharedChatDock height={260} />
 
       {/* 리더보드 드로어 */}
-      {showLB && (
-        <LeaderboardDrawer gameId={id} onClose={()=>setShowLB(false)} />
+      {showLB && <LeaderboardDrawer gameId={id} onClose={()=>setShowLB(false)} />}
+    </div>
+  )
+}
+
+function MyHeroStrip({ hero }) {
+  if (!hero) {
+    return (
+      <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fafafa', color:'#64748b' }}>
+        내 캐릭터 정보를 불러오는 중이거나 선택되지 않았습니다.
+      </div>
+    )
+  }
+  const abilities = Array.from({length:12},(_,i)=>hero[`ability${i+1}`]).filter(Boolean)
+
+  return (
+    <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fff' }}>
+      <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+        <div style={{ width:72, height:72, borderRadius:12, overflow:'hidden', background:'#e5e7eb', flex:'0 0 auto' }}>
+          {hero.image_url && <img src={hero.image_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />}
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontWeight:800, fontSize:18, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {hero.name}
+          </div>
+          <div style={{ color:'#64748b', marginTop:4, whiteSpace:'pre-wrap' }}>
+            {hero.description || '설명 없음'}
+          </div>
+        </div>
+      </div>
+
+      {abilities.length > 0 && (
+        <div style={{ marginTop:10 }}>
+          <div style={{ fontWeight:700, marginBottom:6 }}>능력</div>
+          <ul style={{ margin:0, padding:0, listStyle:'none', display:'grid', gap:6, gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))' }}>
+            {abilities.map((a, idx) => (
+              <li key={idx} style={{ border:'1px solid #eef2f7', borderRadius:10, padding:'8px 10px', background:'#fafafa' }}>
+                <span style={{ fontWeight:700, marginRight:6 }}>#{idx+1}</span>
+                <span>{a}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )
