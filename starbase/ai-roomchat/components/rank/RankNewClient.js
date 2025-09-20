@@ -7,7 +7,6 @@ import SlotMatrix from '../../components/rank/SlotMatrix'
 import RolesEditor from '../../components/rank/RolesEditor'
 import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
 import { uploadGameImage } from '../../lib/rank/storage'
-import { supabase } from '../../lib/supabase'
 
 async function registerGame(payload) {
   // 1. 현재 로그인 세션 가져오기
