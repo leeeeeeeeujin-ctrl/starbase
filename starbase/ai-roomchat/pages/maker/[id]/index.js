@@ -15,6 +15,7 @@ export default function MakerEditor() {
 
   const [loading, setLoading] = useState(true)
   const [setInfo, setSetInfo] = useState(null)
+  const [setName, setSetName] = useState('')            // ← 세트명 상태 추가
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState(null)
@@ -28,6 +29,7 @@ export default function MakerEditor() {
       const { data: setRow, error: e1 } = await supabase.from('prompt_sets').select('*').eq('id', setId).single()
       if (e1) { alert('세트를 불러오지 못했습니다.'); router.replace('/maker'); return }
       setSetInfo(setRow)
+      setSetName(setRow?.name || '')                   // ← 세트명 초기값
 
       const { data: slotRows } = await supabase.from('prompt_slots').select('*').eq('set_id', setId).order('id')
       const { data: bridgeRows } = await supabase.from('prompt_bridges').select('*').eq('from_set', setId).order('id')
@@ -143,11 +145,22 @@ export default function MakerEditor() {
     }
   }
 
+  // 세트 이름 저장
+  async function saveSetName() {
+    if (!setInfo) return
+    const name = (setName || '').trim()
+    if (!name) return alert('이름을 비울 수 없습니다.')
+    const { error } = await supabase.from('prompt_sets').update({ name }).eq('id', setInfo.id)
+    if (error) return alert('이름 저장 실패: ' + error.message)
+    setSetInfo(s => ({ ...(s||{}), name }))
+    alert('세트 이름 저장 완료')
+  }
+
   // 저장(노드/엣지 upsert + 시작 지점 반영)
   async function saveAll() {
     if (!setInfo) return
 
-    // 화면 순서를 slot_no로 사용 (원하면 좌표 기반 정렬로 변경 가능)
+    // 화면 순서를 slot_no로 사용
     const slotNoMap = new Map()
     nodes.forEach((n, idx) => slotNoMap.set(n.id, idx + 1)) // 1..N
 
@@ -268,12 +281,23 @@ export default function MakerEditor() {
       <div style={{
         position:'sticky', top:0, zIndex:40, background:'#fff',
         padding:10, borderBottom:'1px solid #e5e7eb',
-        display:'grid', gridTemplateColumns:'1fr auto', gap:8, alignItems:'center'
+        display:'flex', alignItems:'center', justifyContent:'space-between', gap:8
       }}>
-        <div>
+        {/* 왼쪽: 목록 + 세트명 입력/저장 */}
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <button type="button" onClick={()=>router.push('/maker')} style={{ padding:'6px 10px' }}>← 목록</button>
-          <b style={{ marginLeft:10 }}>{setInfo?.name}</b>
+          <input
+            value={setName}
+            onChange={e=>setSetName(e.target.value)}
+            placeholder="세트 이름"
+            style={{ minWidth:220, maxWidth:360, padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:8 }}
+          />
+          <button onClick={saveSetName} style={{ padding:'6px 10px', background:'#f59e0b', color:'#fff', borderRadius:8 }}>
+            이름 저장
+          </button>
         </div>
+
+        {/* 오른쪽: 추가/저장 */}
         <div style={{ display:'flex', gap:8 }}>
           <button type="button" onClick={()=>addPromptNode('ai')} style={{ padding:'6px 10px', background:'#2563eb', color:'#fff', borderRadius:8 }}>+ 프롬프트</button>
           <button type="button" onClick={()=>addPromptNode('user_action')} style={{ padding:'6px 10px', background:'#0ea5e9', color:'#fff', borderRadius:8 }}>+ 유저 행동</button>
