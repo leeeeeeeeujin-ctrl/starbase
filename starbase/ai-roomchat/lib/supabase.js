@@ -1,41 +1,22 @@
-import { useEffect, useState } from 'react'
-import { supabase } from '@supabase/supabase-js'
+// lib/supabase.js
+import { createClient } from '@supabase/supabase-js'
 
-export default function PromptSetPicker({ value, onChange }) {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
+// ❗반드시 .env.local에 넣으세요
+// NEXT_PUBLIC_SUPABASE_URL=https://jvopmawzszamguydylwu.supabase.co
+// NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
-  useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data } = await supabase
-        .from('prompt_sets')
-        .select('id,name,owner_id')
-        .order('id', { ascending: false })
-      // 필요 시 공개 필터 추가 가능
-      setRows((data || []).filter(r => !user || r.owner_id === user.id))
-      setLoading(false)
-    })()
-  }, [])
+const url  = process.env.NEXT_PUBLIC_SUPABASE_URL
+const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  const stringValue = value == null ? '' : String(value)
-
-  if (loading) return <div>프롬프트 세트 로딩…</div>
-
-  return (
-    <label style={{ display:'grid', gap:6 }}>
-      <span>프롬프트 세트</span>
-      <select
-        value={stringValue}
-        onChange={e => onChange?.(e.target.value)}   // 문자열 유지
-      >
-        <option value="">선택</option>
-        {rows.map(r => (
-          <option key={r.id} value={String(r.id)}>
-            {r.name} ({r.owner_id?.slice(0,8)}…)
-          </option>
-        ))}
-      </select>
-    </label>
-  )
+if (!url || !anon) {
+  throw new Error('Missing Supabase env. Check NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY')
 }
+
+export const supabase = createClient(url, anon, {
+  auth: {
+    flowType: 'pkce',
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true, // 코드 교환은 콜백 페이지에서만
+  },
+})
