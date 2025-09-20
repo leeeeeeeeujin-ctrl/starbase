@@ -1,7 +1,7 @@
 // components/maker/SidePanel.js
 import { useEffect, useMemo, useState } from 'react'
 
-/* -------------------- 공용 버튼 -------------------- */
+/* ---------- 공용 ---------- */
 function Chip({ children, onClick, title }) {
   return (
     <button
@@ -18,7 +18,7 @@ function Chip({ children, onClick, title }) {
   )
 }
 
-/* -------------------- 프롬프트 토큰 팔레트 -------------------- */
+/* ---------- 프롬프트 토큰 팔레트 (그대로 유지) ---------- */
 function TokenPalette({ onInsert }) {
   const [slot, setSlot] = useState('1')
   const [prop, setProp] = useState('name')
@@ -63,36 +63,63 @@ function TokenPalette({ onInsert }) {
   )
 }
 
-/* -------------------- 엣지 라벨(턴 조건만 표시) -------------------- */
-function buildEdgeLabel(data){
-  const conds = data?.conditions || []
+/* ---------- 엣지 라벨 빌더: 확률/턴/이전응답/이전프롬프트/경유 ---------- */
+function buildEdgeLabel(data) {
   const parts = []
-  for(const c of conds){
+  const conds = data?.conditions || []
+
+  for (const c of conds) {
+    // 턴
     if (c?.type === 'turn_gte' && (c.value ?? c.gte) != null) parts.push(`T≥${c.value ?? c.gte}`)
     if (c?.type === 'turn_lte' && (c.value ?? c.lte) != null) parts.push(`T≤${c.value ?? c.lte}`)
+
+    // 이전 AI 응답/이전 프롬프트 (값은 플레이스홀더 허용)
+    if (c?.type === 'prev_ai_contains') {
+      const s = c.scope ? `(${c.scope})` : ''
+      parts.push(`prev:"${c.value ?? '<단어>'}"${s}`)
+    }
+    if (c?.type === 'prev_prompt_contains') {
+      const s = c.scope ? `(${c.scope})` : ''
+      parts.push(`pp:"${c.value ?? '<문구>'}"${s}`)
+    }
+    if (c?.type === 'prev_ai_regex') {
+      const s = c.scope ? `(${c.scope})` : ''
+      parts.push(`prev:/…/${c.flags||''}${s}`)
+    }
+
+    // 특정 프롬프트(슬롯) 경유 여부
+    if (c?.type === 'visited_slot') {
+      parts.push(`via:#${c.slot_id ?? '??'}`)
+    }
   }
-  return parts.join(' ')
+
+  // 확률
+  if ((data?.probability ?? 1) !== 1) parts.push(`p=${data.probability}`)
+
+  return parts.join(' | ')
 }
 
-/* -------------------- 조건 변수 팔레트(히스토리/턴 중심) -------------------- */
-function ConditionPalette({ selectedEdge, setEdges }) {
+/* ---------- 조건 프리셋: 4종만(확률/턴/이전응답/경유) ---------- */
+function ConditionPalette({ selectedEdge, setEdges, setEdgeForm }) {
   const PRESETS = [
-    // 히스토리 기반
-    { label: 'prev_ai "승리"(last2)',   json: { type:'prev_ai_contains', value:'승리', scope:'last2' } },
-    { label: 'prev_ai /^패배\\b/i',     json: { type:'prev_ai_regex', pattern:'^패배\\b', flags:'i', scope:'last1' } },
-    { label: 'prev_ai any(치유,버프)',  json: { type:'prev_ai_any_of', words:['치유','버프'], scope:'last3' } },
-    { label: 'prev_ai "피해"x2+',       json: { type:'prev_ai_count_gte', word:'피해', count:2, scope:'all' } },
-    { label: 'prev_prompt "탈출"',      json: { type:'prev_prompt_contains', value:'탈출', scope:'last1' } },
+    // 확률: 조건이 아니라 엣지 속성 → 바로 data.probability 수정
+    { label: 'p=0.3', onClick: () => setEdges(eds => eds.map(e => {
+      if (e.id !== selectedEdge.id) return e
+      const data = { ...(e.data||{}), probability: 0.3 }
+      return { ...e, data, label: buildEdgeLabel(data) }
+    })) },
 
-    // 턴 조건(라벨로도 노출됨)
+    // 턴 조건
     { label: 'T≥3', json: { type:'turn_gte', value:3 } },
     { label: 'T≤5', json: { type:'turn_lte', value:5 } },
 
-    // 기타 제어(라벨에는 표시 안 함)
-    { label: 'p=0.3',  json: { type:'random', p:0.3 } },
-    { label: 'once',   json: { type:'once' } },
-    { label: 'cooldown(2)', json: { type:'cooldown', turns:2 } },
-    { label: 'fallback', json: { type:'fallback' } },
+    // 이전 응답/프롬프트 (값은 플레이스홀더)
+    { label: 'prev:"<단어>"(last2)', json: { type:'prev_ai_contains', value:'<단어>', scope:'last2' } },
+    { label: 'pp:"<문구>"(last1)',   json: { type:'prev_prompt_contains', value:'<문구>', scope:'last1' } },
+    { label: 'prev:/…/i(last1)',     json: { type:'prev_ai_regex', pattern:'.+', flags:'i', scope:'last1' } },
+
+    // 특정 프롬프트(슬롯) 경유
+    { label: 'via:#<slot_id>', json: { type:'visited_slot', slot_id:null } },
   ]
 
   function addCond(obj) {
@@ -102,16 +129,27 @@ function ConditionPalette({ selectedEdge, setEdges }) {
       const prev = e.data?.conditions || []
       const conditions = [...prev, obj]
       const data = { ...(e.data || {}), conditions }
-      return { ...e, data, label: buildEdgeLabel(data) } // ← 턴 조건만 라벨 반영
+      return { ...e, data, label: buildEdgeLabel(data) }
     }))
+    // 텍스트 필드에도 반영(편집 편의)
+    setEdgeForm(f => {
+      let arr = []
+      try { arr = JSON.parse(f.conditions || '[]') } catch {}
+      arr.push(obj)
+      return { ...f, conditions: JSON.stringify(arr) }
+    })
   }
 
   return (
     <div style={{ display:'grid', gap:8, borderTop:'1px solid #e5e7eb', marginTop:12, paddingTop:12 }}>
       <div style={{ fontWeight:700 }}>조건 프리셋</div>
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-        {PRESETS.map(p => (
-          <Chip key={p.label} onClick={()=>addCond(p.json)} title={JSON.stringify(p.json)}>
+        {PRESETS.map((p, i) => (
+          <Chip
+            key={i}
+            onClick={() => p.json ? addCond(p.json) : p.onClick()}
+            title={p.json ? JSON.stringify(p.json) : '확률 설정'}
+          >
             {p.label}
           </Chip>
         ))}
@@ -120,7 +158,7 @@ function ConditionPalette({ selectedEdge, setEdges }) {
   )
 }
 
-/* -------------------- 사이드패널 본체 -------------------- */
+/* ---------- 사이드패널 본체 ---------- */
 export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onInsertToken }) {
   const [edgeForm, setEdgeForm] = useState({
     trigger_words: '',
@@ -157,11 +195,7 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
     setEdges(eds => eds.map(e => {
       if (e.id !== selectedEdge.id) return e
       const data = { ...(e.data||{}), trigger_words, conditions: cond, priority, probability, fallback, action }
-      return {
-        ...e,
-        data,
-        label: buildEdgeLabel(data) // ← 라벨은 턴 조건만
-      }
+      return { ...e, data, label: buildEdgeLabel(data) }
     }))
   }
 
@@ -184,7 +218,7 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
       <div style={{ padding:12 }}>
         <h3 style={{ marginTop:0 }}>브릿지 설정</h3>
 
-        {/* 트리거 단어 입력은 남겨두되, 라벨로는 사용하지 않음 */}
+        {/* 트리거 단어 입력은 남겨두되, 라벨에는 사용하지 않음 */}
         <label style={{ fontSize:12 }}>트리거 단어(쉼표로 구분)</label>
         <input
           value={edgeForm.trigger_words}
@@ -194,7 +228,7 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
 
         <label style={{ fontSize: 12 }}>
           조건(JSON 배열) 예:&nbsp;
-          <code>[{'{'}"type":"contains","value":"승리"{'}'}]</code>
+          <code>[{'{'}"type":"prev_ai_contains","value":"&lt;단어&gt;","scope":"last2"{'}'}]</code>
         </label>
         <textarea
           value={edgeForm.conditions}
@@ -253,7 +287,7 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
           폼 값 반영
         </button>
 
-        <ConditionPalette selectedEdge={selectedEdge} setEdges={setEdges} />
+        <ConditionPalette selectedEdge={selectedEdge} setEdges={setEdges} setEdgeForm={setEdgeForm} />
       </div>
     )
   }
