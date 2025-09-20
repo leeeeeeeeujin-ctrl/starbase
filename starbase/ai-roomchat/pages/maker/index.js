@@ -96,9 +96,26 @@ export default function MakerList() {
 
   return (
     <div style={{ padding:20, maxWidth:900, margin:'0 auto' }}>
-      <h2 style={{ marginBottom:12 }}>세트 목록</h2>
-      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
-        <button onClick={createSet} style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff', fontWeight:700 }}>+ 새 세트</button>
+      {/* 상단 툴바 */}
+      <div style={{
+        position:'sticky', top:0, zIndex:10, background:'#fff',
+        display:'flex', alignItems:'center', gap:8,
+        padding:'8px 0', borderBottom:'1px solid #e5e7eb'
+      }}>
+        <h2 style={{ margin:0 }}>세트 목록</h2>
+        <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+          <button
+            onClick={()=>router.push('/lobby')}
+            style={{ padding:'6px 10px', borderRadius:8, background:'#111827', color:'#fff' }}
+          >로비로</button>
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:8, margin:'12px 0' }}>
+        <button onClick={createSet}
+                style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff', fontWeight:700 }}>
+          + 새 세트
+        </button>
         <label style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #d1d5db', cursor:'pointer' }}>
           가져오기(JSON)
           <input type="file" accept="application/json" onChange={importSet} style={{ display:'none' }} />
@@ -107,11 +124,17 @@ export default function MakerList() {
 
       <ul style={{ listStyle:'none', padding:0, margin:0, display:'grid', gap:8 }}>
         {rows.map(r => (
-          <li key={r.id} style={{ border:'1px solid #e5e7eb', borderRadius:10, padding:12, display:'flex', gap:12, alignItems:'center' }}>
+          <li key={r.id} style={{
+            border:'1px solid #e5e7eb', borderRadius:10, padding:12,
+            display:'flex', gap:12, alignItems:'center'
+          }}>
             <div style={{ fontWeight:700, flex:1 }}>{r.name}</div>
-            <button onClick={()=>router.push(`/maker/${r.id}`)} style={{ padding:'6px 10px', borderRadius:8, background:'#111827', color:'#fff' }}>편집</button>
-            <button onClick={()=>exportSet(r.id)} style={{ padding:'6px 10px', borderRadius:8, background:'#0ea5e9', color:'#fff' }}>내보내기</button>
-            <button onClick={()=>removeSet(r.id)} style={{ padding:'6px 10px', borderRadius:8, background:'#ef4444', color:'#fff' }}>삭제</button>
+            <button onClick={()=>router.push(`/maker/${r.id}`)}
+                    style={{ padding:'6px 10px', borderRadius:8, background:'#111827', color:'#fff' }}>편집</button>
+            <button onClick={()=>exportSet(r.id)}
+                    style={{ padding:'6px 10px', borderRadius:8, background:'#0ea5e9', color:'#fff' }}>내보내기</button>
+            <button onClick={()=>removeSet(r.id)}
+                    style={{ padding:'6px 10px', borderRadius:8, background:'#ef4444', color:'#fff' }}>삭제</button>
           </li>
         ))}
       </ul>
