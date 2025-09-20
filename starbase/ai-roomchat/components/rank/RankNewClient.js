@@ -121,9 +121,6 @@ export default function RankNewClient() {
         <input placeholder="게임 이름" value={name} onChange={e => setName(e.target.value)} />
         <textarea placeholder="설명" rows={3} value={desc} onChange={e => setDesc(e.target.value)} />
         <PromptSetPicker value={setId} onChange={setSetId} />
-        <label>대표 이미지(선택)
-          <input type="file" accept="image/*" onChange={e => setImgFile(e.target.files?.[0] || null)} />
-        </label>
       </div>
 
       {/* 3) 슬롯 매핑 */}
