@@ -13,6 +13,7 @@ async function registerGame(payload) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    credentials: 'include',
   })
   return r.json()
 }
