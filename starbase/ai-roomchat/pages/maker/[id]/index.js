@@ -164,7 +164,8 @@ export default function MakerEditor() {
             slot_no,
             slot_type: n.data.slot_type || 'ai',
             slot_pick: n.data.slot_pick || '1',
-            template: n.data.template || ''
+            template: n.data.template || '',
+            transform_code: n.data.transform_code ?? ''
           })
           .select()
           .single()
@@ -184,7 +185,8 @@ export default function MakerEditor() {
             slot_no,
             slot_type: n.data.slot_type || 'ai',
             slot_pick: n.data.slot_pick || '1',
-            template: n.data.template || ''
+            template: n.data.template || '',
+            transform_code: n.data.transform_code ?? ''
           })
           .eq('id', slotId)
           .select()
