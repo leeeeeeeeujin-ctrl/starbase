@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { supabase } from '../lib/supabase'
+import { supabase } from '../../lib/supabase'
 
 async function registerGame(payload) {
   const r = await fetch('/api/rank/register-game', {
