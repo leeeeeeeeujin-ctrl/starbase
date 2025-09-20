@@ -12,7 +12,7 @@ export default function RulesChecklist({ value, onChange }) {
       <Toggle label="공정한 파워밸런스" checked={!!v.fair_power_balance} onChange={b=>set('fair_power_balance', b)} />
 
       <label style={{ display:'grid', gap:4, marginTop:6 }}>
-        <span>글자수 제한(0=제한 없음)</span>
+        <span>AI가 응답할 문장 길이(글자수 기준, 0=미지정)</span>
         <input type="number" min="0" value={v.char_limit ?? 0} onChange={e=>set('char_limit', Math.max(0, parseInt(e.target.value||'0',10)))} />
       </label>
     </div>
@@ -63,7 +63,8 @@ export function buildRulesPrefix(rules) {
       '- 전투 가능하면 우위 서술, 불가하면 격차를 서술하라. 언더도그 서사는 배제.',
       '- 전술은 허용하되 역량차이를 과도하게 상쇄하지 말라. 개연성 없는 강함은 너프.',
       "- 악인이 지는 클리셰 없이, 제3자 시점에서 두 인물의 전투를 관조하며 강약만으로 승패를 가려라.",
-      "- 아래 중 그 어떤 캐릭터도 주인공은 아니다. 주인공이 적을 이기는게 아닌, 적과 적이 싸워 강약을 가리는 글."
+      "- 아래 중 그 어떤 캐릭터도 주인공은 아니다. 주인공이 적을 이기는게 아닌, 적과 적이 싸워 강약을 가리는 글.",
+      "- 개연성을 무엇보다 중요시하라. 의지, 예측 불가능 등으로 억지로 한 쪽이 이기게 하지 마라."
     )
   }
   if ((rules.char_limit ?? 0) > 0) {

@@ -1,32 +1,60 @@
 // components/rank/RolesEditor.js
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
-export default function RolesEditor({ roles=[], onChange }) {
-  const [list, setList] = useState(roles)
+function mkId() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
 
-  useEffect(() => { setList(roles) }, [roles])
-  useEffect(() => { onChange?.(list) }, [list, onChange])
+export default function RolesEditor({ roles = [], onChange }) {
+  // roles: ["공격","수비"] 형태를 내부적으로 [{id,name}]로 관리
+  const [list, setList] = useState(() =>
+    roles.map(name => ({ id: mkId(), name }))
+  )
+
+  // 부모가 바꿨을 때만 로컬 업데이트 (왕복 금지)
+  useEffect(() => {
+    setList(roles.map(name => ({ id: mkId(), name })))
+  }, [roles])
+
+  function emit(next) {
+    // 사용자 액션 시에만 부모로 내보냄
+    onChange?.(next.map(r => r.name))
+  }
 
   function add() {
-    setList(arr => [...arr, `역할${arr.length+1}`])
+    setList(prev => {
+      const next = [...prev, { id: mkId(), name: `역할${prev.length + 1}` }]
+      emit(next)
+      return next
+    })
   }
-  function update(i, val) {
-    setList(arr => arr.map((r,idx)=> idx===i ? val : r))
+  function update(id, name) {
+    setList(prev => {
+      const next = prev.map(r => (r.id === id ? { ...r, name } : r))
+      emit(next)
+      return next
+    })
   }
-  function remove(i) {
-    setList(arr => arr.filter((_,idx)=> idx!==i))
+  function remove(id) {
+    setList(prev => {
+      const next = prev.filter(r => r.id !== id)
+      emit(next)
+      return next
+    })
   }
 
   return (
     <div style={{ display:'grid', gap:8 }}>
       {list.length === 0 && <div style={{ color:'#64748b' }}>역할이 없습니다. 아래 버튼으로 추가하세요.</div>}
-      {list.map((r,i)=>(
-        <div key={i} style={{ display:'flex', gap:8 }}>
-          <input value={r} onChange={e=>update(i, e.target.value)} style={{ flex:1 }} />
-          <button onClick={()=>remove(i)} style={{ padding:'6px 10px' }}>삭제</button>
+      {list.map(r => (
+        <div key={r.id} style={{ display:'flex', gap:8 }}>
+          <input value={r.name} onChange={e => update(r.id, e.target.value)} style={{ flex:1 }} />
+          <button onClick={() => remove(r.id)} style={{ padding:'6px 10px' }}>삭제</button>
         </div>
       ))}
-      <button onClick={add} style={{ padding:'6px 10px', borderRadius:8, background:'#2563eb', color:'#fff' }}>+ 역할 추가</button>
+      <button onClick={add} style={{ padding:'6px 10px', borderRadius:8, background:'#2563eb', color:'#fff' }}>
+        + 역할 추가
+      </button>
     </div>
   )
 }
