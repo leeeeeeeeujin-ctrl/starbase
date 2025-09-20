@@ -1,4 +1,6 @@
 // components/maker/PromptNode.js
+'use client'
+
 import { Handle, Position } from 'reactflow'
 
 export default function PromptNode({ id, data = {}, selected }) {
