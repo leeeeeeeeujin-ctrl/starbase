@@ -7,15 +7,6 @@ import SlotMatrix from '../../components/rank/SlotMatrix'
 import RolesEditor from '../../components/rank/RolesEditor'
 import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
 import { uploadGameImage } from '../../lib/rank/storage'
-import { useEffect, useState, useMemo } from 'react'
-
-export default function RankNew() {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
-  if (!mounted) return null
-  
-}
-
 
 async function registerGame(payload) {
   const r = await fetch('/api/rank/register-game', {
