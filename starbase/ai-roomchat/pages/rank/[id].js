@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import SharedChatDock from '../../components/common/SharedChatDock'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
+import HeroPicker from '../../components/common/HeroPicker'
 
 function getSelectedHeroId(router) {
   // URL로 ?heroId= 넘겨줄 수도 있게
@@ -25,6 +26,7 @@ export default function GameRoom() {
   const [roles, setRoles] = useState([])
   const [requiredSlots, setRequiredSlots] = useState(0)
   const [participants, setParticipants] = useState([])
+  const [myHero, setMyHero] = useState(null)
   const [myHero, setMyHero] = useState(null)
   const [pickRole, setPickRole] = useState('')
   const [showLB, setShowLB] = useState(false)
@@ -76,13 +78,9 @@ export default function GameRoom() {
       }))
       setParticipants(mapped)
 
-      // ✅ 내 캐릭터는 오직 로스터 선택값으로 결정
-      const heroId = getSelectedHeroId(router)
-      if (!heroId) {
-        setMyHero(null)
-        setLoading(false)
-        return
-      }
+ // ✅ 내 캐릭터는 선택 픽커/로컬스토리지 값으로만 결정
+ const heroId = (typeof window !== 'undefined' && localStorage.getItem('selectedHeroId')) || null
+ if (!heroId) { setMyHero(null); setLoading(false); return }
       const { data: h } = await supabase
         .from('heroes')
         .select('id,name,image_url,description,owner_id,ability1,ability2,ability3,ability4')
@@ -178,6 +176,9 @@ export default function GameRoom() {
 
       {/* 조작 바: 참여 / 시작 / 리더보드 / 방삭제(방장) */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+         <button onClick={() => setPickerOpen(true)} style={{ padding:'8px 12px', borderRadius:8 }}>
+     캐릭터 선택
+   </button>
         {!myJoined && (
           <>
             <select value={pickRole} onChange={e=>setPickRole(e.target.value)} style={{ padding:'8px 10px' }}>
@@ -234,7 +235,7 @@ export default function GameRoom() {
       </div>
 
       {/* 하단: 공용 채팅 */}
-      <SharedChatDock height={260} />
+      <SharedChatDock height={260} heroId={myHero?.id} />
 
       {/* 리더보드 드로어 */}
       {showLB && <LeaderboardDrawer gameId={id} onClose={()=>setShowLB(false)} />}
@@ -310,3 +311,9 @@ function ParticipantCard({ p }) {
     </div>
   )
 }
+ {/* 캐릭터 픽커 모달 */}
+ <HeroPicker
+   open={pickerOpen}
+   onClose={() => setPickerOpen(false)}
+   onPick={(hero) => setMyHero(hero)}
+ />
