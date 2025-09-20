@@ -7,5 +7,6 @@ const RankNewClient = dynamic(() => import('../../components/rank/RankNewClient'
 })
 
 export default function Page() {
-  return <RankNewClient />
+  //return <RankNewClient />
+  <div>ping</div>
 }
