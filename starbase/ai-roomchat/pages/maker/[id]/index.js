@@ -185,7 +185,9 @@ function markAsStart(flowNodeId) {
 
   return (
     <div style={{ height:'100vh', display:'grid', gridTemplateRows:'auto 1fr' }}>
-      <div style={{ padding:10, borderBottom:'1px solid #e5e7eb', display:'grid', gridTemplateColumns:'1fr auto auto', gap:8 }}>
+       <div style={{ position:'sticky', top:0, zIndex:40, background:'#fff',
+               padding:10, borderBottom:'1px solid #e5e7eb',
+               display:'grid', gridTemplateColumns:'1fr auto auto', gap:8 }}>
         <div>
           <button onClick={()=>router.push('/maker')} style={{ padding:'6px 10px' }}>← 목록</button>
           <b style={{ marginLeft:10 }}>{setInfo?.name}</b>
@@ -194,12 +196,12 @@ function markAsStart(flowNodeId) {
           <button onClick={()=>addPromptNode('ai')} style={{ padding:'6px 10px', background:'#2563eb', color:'#fff', borderRadius:8 }}>+ 프롬프트</button>
           <button onClick={()=>addPromptNode('user_action')} style={{ padding:'6px 10px', background:'#0ea5e9', color:'#fff', borderRadius:8 }}>+ 유저 행동</button>
           <button onClick={()=>addPromptNode('system')} style={{ padding:'6px 10px', background:'#6b7280', color:'#fff', borderRadius:8 }}>+ 시스템</button>
-          <button onClick={saveAll} style={{ padding:'6px 10px', background:'#111827', color:'#fff', borderRadius:8 }}>저장</button>
+          <button type="button" onClick={saveAll}style={{ padding:'6px 10px', background:'#111827', color:'#fff', borderRadius:8 }}>저장</button>
         </div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 320px' }}>
-        <div>
+        <div style={{ position:'relative', zIndex:0 }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
