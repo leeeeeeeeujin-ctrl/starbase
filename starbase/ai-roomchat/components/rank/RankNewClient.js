@@ -1,7 +1,7 @@
 // components/rank/RankNewClient.js
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/router'
-import { supabase } from '../../lib/supabase'
+//import { useEffect, useMemo, useState } from 'react'
+//import { useRouter } from 'next/router'
+//import { supabase } from '../../lib/supabase'
 import PromptSetPicker from '../../components/rank/PromptSetPicker'
 import SlotMatrix from '../../components/rank/SlotMatrix'
 import RolesEditor from '../../components/rank/RolesEditor'
