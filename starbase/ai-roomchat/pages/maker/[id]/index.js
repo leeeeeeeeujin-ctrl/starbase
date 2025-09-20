@@ -108,7 +108,7 @@ export default function MakerEditor() {
         slot_type: type,
         onChange: (partial) => setNodes(nds => nds.map(n => n.id===nid ? { ...n, data:{ ...n.data, ...partial } } : n)),
         onDelete: handleDeletePrompt,
-        isStart: setRow?.start_slot_id === s.id, // ← 시작 표시
+        isStart: false, // ← 시작 표시
         onSetStart: () => markAsStart(nid)
       }
     }])
