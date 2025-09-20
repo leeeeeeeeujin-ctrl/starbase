@@ -85,7 +85,7 @@ export default function RankNewClient() {
       name: name || '새 게임',
       description: desc || '',
       image_url,
-      prompt_set_id: Number(setId),
+      prompt_set_id: setId,
       roles: roles.map(r => ({ name: r, slot_count: 1 })),
       rules,
       rules_prefix: buildRulesPrefix(rules),
