@@ -76,7 +76,7 @@ export default function RankNewClient() {
       name: name || '새 게임',
       description: desc || '',
       image_url,
-      prompt_set_id: setId,
+      prompt_set_id: Number(setId),
       roles: roles.map(r => ({ name: r, slot_count: 1 })),
       rules,
       rules_prefix: buildRulesPrefix(rules),
@@ -111,7 +111,7 @@ export default function RankNewClient() {
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12, display: 'grid', gap: 8 }}>
         <input placeholder="게임 이름" value={name} onChange={e => setName(e.target.value)} />
         <textarea placeholder="설명" rows={3} value={desc} onChange={e => setDesc(e.target.value)} />
-        <PromptSetPicker value={setId} onChange={setId} />
+        <PromptSetPicker value={setId} onChange={setSetId} />
         <label>대표 이미지(선택)
           <input type="file" accept="image/*" onChange={e => setImgFile(e.target.files?.[0] || null)} />
         </label>
