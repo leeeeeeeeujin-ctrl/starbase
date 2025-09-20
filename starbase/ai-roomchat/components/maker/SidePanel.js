@@ -51,7 +51,6 @@ function TokenPalette({ onInsert }) {
         )}
       </div>
 
-      {/* 보기 쉬운 라벨을 클릭하면 실제 토큰 문자열이 삽입됨 */}
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
         <Chip onClick={()=>onInsert(token)}>선택 토큰 삽입</Chip>
         <Chip onClick={()=>onInsert('{{slot.random}}')}>랜덤 슬롯번호</Chip>
@@ -64,52 +63,36 @@ function TokenPalette({ onInsert }) {
   )
 }
 
-/* -------------------- 트리거 단어 팔레트(엣지용) -------------------- */
-function TriggerPalette({ selectedEdge, setEdges }) {
-  // 자주 쓰는 키워드 예시(원하면 확장/교체 가능)
-  const COMMON = ['승리', '패배', '도망', '무승부', '피해', '치유', '크리티컬', '스턴', '버프', '디버프']
-
-  function addWord(w) {
-    if (!selectedEdge) return
-    setEdges(eds => eds.map(e => {
-      if (e.id !== selectedEdge.id) return e
-      const prev = e.data?.trigger_words || []
-      if (prev.includes(w)) return e
-      const trigger_words = [...prev, w]
-      return {
-        ...e,
-        label: [
-          trigger_words.join(', '),
-          (e.data?.conditions?.length ? 'cond' : null),
-          (e.data?.probability !== 1 ? `p=${e.data?.probability}` : null),
-          (e.data?.fallback ? 'fallback' : null),
-          (e.data?.action && e.data?.action !== 'continue' ? e.data?.action : null)
-        ].filter(Boolean).join(' | '),
-        data: { ...(e.data || {}), trigger_words }
-      }
-    }))
+/* -------------------- 엣지 라벨(턴 조건만 표시) -------------------- */
+function buildEdgeLabel(data){
+  const conds = data?.conditions || []
+  const parts = []
+  for(const c of conds){
+    if (c?.type === 'turn_gte' && (c.value ?? c.gte) != null) parts.push(`T≥${c.value ?? c.gte}`)
+    if (c?.type === 'turn_lte' && (c.value ?? c.lte) != null) parts.push(`T≤${c.value ?? c.lte}`)
   }
-
-  return (
-    <div style={{ display:'grid', gap:8, borderTop:'1px solid #e5e7eb', marginTop:12, paddingTop:12 }}>
-      <div style={{ fontWeight:700 }}>트리거 단어 팔레트</div>
-      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-        {COMMON.map(w => <Chip key={w} onClick={()=>addWord(w)}>{w}</Chip>)}
-      </div>
-    </div>
-  )
+  return parts.join(' ')
 }
 
-/* -------------------- 조건 변수 팔레트(엣지용) -------------------- */
+/* -------------------- 조건 변수 팔레트(히스토리/턴 중심) -------------------- */
 function ConditionPalette({ selectedEdge, setEdges }) {
-  // 자주 쓰는 조건 템플릿 (라벨 클릭 → conditions JSON에 push)
   const PRESETS = [
-    { label: '확률 30%', json: { type:'random', p:0.3 } },
-    { label: '확률 50%', json: { type:'random', p:0.5 } },
-    { label: '우선순위 높음', json: { type:'priority', value: -10 } },
-    { label: '이전 브릿지 미발동', json: { type:'notTriggered', target:'<bridgeId>' } },
-    { label: '턴≥3', json: { type:'turn', gte:3 } },
-    { label: 'Fallback', json: { type:'fallback' } }
+    // 히스토리 기반
+    { label: 'prev_ai "승리"(last2)',   json: { type:'prev_ai_contains', value:'승리', scope:'last2' } },
+    { label: 'prev_ai /^패배\\b/i',     json: { type:'prev_ai_regex', pattern:'^패배\\b', flags:'i', scope:'last1' } },
+    { label: 'prev_ai any(치유,버프)',  json: { type:'prev_ai_any_of', words:['치유','버프'], scope:'last3' } },
+    { label: 'prev_ai "피해"x2+',       json: { type:'prev_ai_count_gte', word:'피해', count:2, scope:'all' } },
+    { label: 'prev_prompt "탈출"',      json: { type:'prev_prompt_contains', value:'탈출', scope:'last1' } },
+
+    // 턴 조건(라벨로도 노출됨)
+    { label: 'T≥3', json: { type:'turn_gte', value:3 } },
+    { label: 'T≤5', json: { type:'turn_lte', value:5 } },
+
+    // 기타 제어(라벨에는 표시 안 함)
+    { label: 'p=0.3',  json: { type:'random', p:0.3 } },
+    { label: 'once',   json: { type:'once' } },
+    { label: 'cooldown(2)', json: { type:'cooldown', turns:2 } },
+    { label: 'fallback', json: { type:'fallback' } },
   ]
 
   function addCond(obj) {
@@ -118,32 +101,20 @@ function ConditionPalette({ selectedEdge, setEdges }) {
       if (e.id !== selectedEdge.id) return e
       const prev = e.data?.conditions || []
       const conditions = [...prev, obj]
-      return {
-        ...e,
-        label: [
-          (e.data?.trigger_words || []).join(', '),
-          (conditions.length ? 'cond' : null),
-          (e.data?.probability !== 1 ? `p=${e.data?.probability}` : null),
-          (e.data?.fallback ? 'fallback' : null),
-          (e.data?.action && e.data?.action !== 'continue' ? e.data?.action : null)
-        ].filter(Boolean).join(' | '),
-        data: { ...(e.data || {}), conditions }
-      }
+      const data = { ...(e.data || {}), conditions }
+      return { ...e, data, label: buildEdgeLabel(data) } // ← 턴 조건만 라벨 반영
     }))
   }
 
   return (
     <div style={{ display:'grid', gap:8, borderTop:'1px solid #e5e7eb', marginTop:12, paddingTop:12 }}>
-      <div style={{ fontWeight:700 }}>조건 변수 팔레트</div>
+      <div style={{ fontWeight:700 }}>조건 프리셋</div>
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
         {PRESETS.map(p => (
           <Chip key={p.label} onClick={()=>addCond(p.json)} title={JSON.stringify(p.json)}>
             {p.label}
           </Chip>
         ))}
-      </div>
-      <div style={{ color:'#6b7280', fontSize:12 }}>
-        * &quot;이전 브릿지 미발동&quot;의 &lt;bridgeId&gt;는 저장 후 생성된 브릿지 ID로 교체하세요.
       </div>
     </div>
   )
@@ -176,45 +147,44 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
     if (!selectedEdge) return
     let cond = []
     try { cond = JSON.parse(edgeForm.conditions || '[]') } catch (_) { cond = [] }
+
     const trigger_words = edgeForm.trigger_words.split(',').map(s=>s.trim()).filter(Boolean)
     const priority = parseInt(edgeForm.priority) || 0
     const probability = Math.max(0, Math.min(1, parseFloat(edgeForm.probability) || 0))
     const fallback = !!edgeForm.fallback
     const action = edgeForm.action
 
-    setEdges(eds => eds.map(e => e.id === selectedEdge.id
-      ? {
-          ...e,
-          label: [
-            (trigger_words || []).join(', '),
-            (cond && cond.length ? 'cond' : null),
-            (probability !== 1 ? `p=${probability}` : null),
-            (fallback ? 'fallback' : null),
-            (action && action !== 'continue' ? action : null)
-          ].filter(Boolean).join(' | '),
-          data: { ...(e.data||{}), trigger_words, conditions: cond, priority, probability, fallback, action }
-        }
-      : e
-    ))
+    setEdges(eds => eds.map(e => {
+      if (e.id !== selectedEdge.id) return e
+      const data = { ...(e.data||{}), trigger_words, conditions: cond, priority, probability, fallback, action }
+      return {
+        ...e,
+        data,
+        label: buildEdgeLabel(data) // ← 라벨은 턴 조건만
+      }
+    }))
   }
 
-  // --- 노드 선택 시: 토큰 팔레트만 보여주기 ---
+  // 노드 선택 → 토큰 팔레트만
   if (selectedNodeId) {
     return (
       <div style={{ padding:12 }}>
         <div style={{ fontWeight:700, marginBottom:8 }}>노드 {selectedNodeId}</div>
-        <div style={{ color:'#64748b' }}>프롬프트 텍스트는 카드 안에서 직접 수정합니다. 아래에서 “이름/설명/능력/랜덤” 토큰을 클릭해 추가할 수 있어요.</div>
+        <div style={{ color:'#64748b' }}>
+          프롬프트 텍스트는 카드 안에서 직접 수정합니다. 아래에서 토큰을 클릭해 추가할 수 있어요.
+        </div>
         <TokenPalette onInsert={onInsertToken} />
       </div>
     )
   }
 
-  // --- 엣지 선택 시: 폼 + 팔레트 2종(트리거/조건) ---
+  // 엣지 선택 → 폼 + 조건 팔레트
   if (selectedEdge) {
     return (
       <div style={{ padding:12 }}>
         <h3 style={{ marginTop:0 }}>브릿지 설정</h3>
 
+        {/* 트리거 단어 입력은 남겨두되, 라벨로는 사용하지 않음 */}
         <label style={{ fontSize:12 }}>트리거 단어(쉼표로 구분)</label>
         <input
           value={edgeForm.trigger_words}
@@ -223,9 +193,9 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
         />
 
         <label style={{ fontSize: 12 }}>
-  조건(JSON 배열) 예:&nbsp;
-  <code>[{'{'}"type":"contains","value":"승리"{'}'}]</code>
-</label>
+          조건(JSON 배열) 예:&nbsp;
+          <code>[{'{'}"type":"contains","value":"승리"{'}'}]</code>
+        </label>
         <textarea
           value={edgeForm.conditions}
           onChange={e=>setEdgeForm(f=>({ ...f, conditions: e.target.value }))}
@@ -235,7 +205,7 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
 
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
           <div>
-            <label style={{ fontSize:12 }}>우선순위(작을수록 먼저)</label>
+            <label style={{ fontSize:12 }}>우선순위</label>
             <input
               type="number"
               value={edgeForm.priority}
@@ -283,8 +253,6 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
           폼 값 반영
         </button>
 
-        {/* 클릭-추가 팔레트들 */}
-        <TriggerPalette selectedEdge={selectedEdge} setEdges={setEdges} />
         <ConditionPalette selectedEdge={selectedEdge} setEdges={setEdges} />
       </div>
     )
