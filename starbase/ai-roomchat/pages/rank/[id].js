@@ -5,6 +5,17 @@ import { supabase } from '../../lib/supabase'
 import SharedChatDock from '../../components/common/SharedChatDock'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 
+function getSelectedHeroId(router) {
+  // URL로 ?heroId= 넘겨줄 수도 있게
+  const q = router?.query?.heroId
+  if (q) return Number(q)
+  if (typeof window !== 'undefined') {
+    const v = localStorage.getItem('selectedHeroId')
+    return v ? Number(v) : null
+  }
+  return null
+}
+
 export default function GameRoom() {
   const router = useRouter()
   const { id } = router.query
@@ -15,7 +26,6 @@ export default function GameRoom() {
   const [requiredSlots, setRequiredSlots] = useState(0)
   const [participants, setParticipants] = useState([])
   const [myHero, setMyHero] = useState(null)
-  const [myJoined, setMyJoined] = useState(false)
   const [pickRole, setPickRole] = useState('')
   const [showLB, setShowLB] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -33,12 +43,12 @@ export default function GameRoom() {
       setUser(user)
 
       // 게임 정보
-      const { data: g } = await supabase.from('rank_games').select('*').eq('id', id).single()
-      if (!g) { alert('게임을 찾을 수 없습니다.'); router.replace('/rank'); return }
+      const { data: g, error: gErr } = await supabase.from('rank_games').select('*').eq('id', id).single()
+      if (gErr || !g) { alert('게임을 찾을 수 없습니다.'); router.replace('/rank'); return }
       setGame(g)
       setRoles(Array.isArray(g.roles) && g.roles.length ? g.roles : ['공격','수비'])
 
-      // 필요 슬롯 (활성화된 슬롯+역할)
+      // 필요 슬롯 = 활성화된 슬롯 수(역할 지정 포함)
       const { data: slots } = await supabase
         .from('rank_game_slots')
         .select('slot_index,active,role')
@@ -46,12 +56,12 @@ export default function GameRoom() {
       const req = (slots || []).filter(s => s.active && s.role).length || 0
       setRequiredSlots(req)
 
-      // 참여자 목록
+      // 참여자 리스트(리더보드/정보용)
       const { data: ps } = await supabase
         .from('rank_participants')
         .select(`
           id, game_id, hero_id, role, score, created_at,
-          heroes ( id, name, image_url, description, owner_id )
+          heroes ( id, name, image_url, description )
         `)
         .eq('game_id', id)
         .order('score', { ascending: false })
@@ -61,65 +71,53 @@ export default function GameRoom() {
           id: p.heroes.id,
           name: p.heroes.name,
           image_url: p.heroes.image_url,
-          description: p.heroes.description,
-          owner_id: p.heroes.owner_id
+          description: p.heroes.description
         } : null
       }))
       setParticipants(mapped)
 
-      // 내 캐릭터 결정 (abilities 포함)
-      const baseSelect =
-        'id,name,image_url,description,owner_id,' +
-        Array.from({length:12},(_,i)=>`ability${i+1}`).join(',')
-      const localHeroId = typeof window !== 'undefined' ? localStorage.getItem('selectedHeroId') : null
-
-      if (localHeroId) {
-        const { data: h } = await supabase
-          .from('heroes')
-          .select(baseSelect)
-          .eq('id', Number(localHeroId))
-          .single()
-        if (h) setMyHero(h)
-      } else {
-        const { data: first } = await supabase
-          .from('heroes')
-          .select(baseSelect)
-          .eq('owner_id', user.id)
-          .order('created_at', { ascending: true })
-          .limit(1)
-        if (first && first.length) setMyHero(first[0])
+      // ✅ 내 캐릭터는 오직 로스터 선택값으로 결정
+      const heroId = getSelectedHeroId(router)
+      if (!heroId) {
+        setMyHero(null)
+        setLoading(false)
+        return
       }
+      const { data: h } = await supabase
+        .from('heroes')
+        .select('id,name,image_url,description,owner_id,ability1,ability2,ability3,ability4')
+        .eq('id', heroId)
+        .single()
+      setMyHero(h || null)
 
       setLoading(false)
     })()
     return () => { alive = false }
   }, [id, router])
 
-  // 이미 참여했는지
-  useEffect(() => {
-    if (!user || !participants.length) { setMyJoined(false); return }
-    const mine = participants.some(p => p.hero && p.hero.owner_id === user.id)
-    setMyJoined(mine)
-  }, [participants, user])
-
   const canStart = useMemo(() => {
     return participants.length >= (requiredSlots || 0)
   }, [participants.length, requiredSlots])
 
   const isOwner = user && game && user.id === game.owner_id
+  const myJoined = useMemo(() => {
+    if (!myHero) return false
+    return participants.some(p => p.hero_id === myHero.id)
+  }, [participants, myHero])
 
   async function joinGame() {
-    if (!myHero) return alert('참여할 캐릭터가 없습니다. (로스터에서 선택 후 다시 시도)')
+    if (!myHero) return alert('로스터에서 캐릭터를 선택하고 다시 시도하세요.')
     if (!pickRole && roles.length) return alert('역할을 선택하세요.')
     const payload = { game_id: Number(id), hero_id: myHero.id, role: pickRole || roles[0], score: 1000 }
     const { error } = await supabase.from('rank_participants').upsert(payload, { onConflict: 'game_id,hero_id' })
     if (error) return alert('참여 실패: ' + error.message)
-    // 리스트 갱신
+
+    // 갱신
     const { data: ps } = await supabase
       .from('rank_participants')
       .select(`
         id, game_id, hero_id, role, score, created_at,
-        heroes ( id, name, image_url, description, owner_id )
+        heroes ( id, name, image_url, description )
       `)
       .eq('game_id', id)
       .order('score', { ascending: false })
@@ -129,8 +127,7 @@ export default function GameRoom() {
         id: p.heroes.id,
         name: p.heroes.name,
         image_url: p.heroes.image_url,
-        description: p.heroes.description,
-        owner_id: p.heroes.owner_id
+        description: p.heroes.description
       } : null
     }))
     setParticipants(mapped)
@@ -138,6 +135,7 @@ export default function GameRoom() {
 
   async function startGame() {
     if (!canStart) return
+    if (!myHero) return alert('캐릭터가 선택되어야 합니다.')
     setStarting(true)
     try {
       alert('게임을 시작합니다! (엔진 연결 전: 출발선 체크 통과)')
@@ -175,9 +173,7 @@ export default function GameRoom() {
             필요 슬롯 {requiredSlots} · 참여 {participants.length}
           </span>
         </div>
-        {game?.description && (
-          <div style={{ color:'#475569' }}>{game.description}</div>
-        )}
+        {game?.description && <div style={{ color:'#475569' }}>{game.description}</div>}
       </div>
 
       {/* 조작 바: 참여 / 시작 / 리더보드 / 방삭제(방장) */}
@@ -188,7 +184,11 @@ export default function GameRoom() {
               <option value="">역할 선택</option>
               {roles.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
-            <button onClick={joinGame} style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff', fontWeight:700 }}>
+            <button
+              onClick={joinGame}
+              disabled={!myHero}
+              style={{ padding:'8px 12px', borderRadius:8, background: myHero ? '#2563eb' : '#cbd5e1', color:'#fff', fontWeight:700 }}
+            >
               참여하기
             </button>
           </>
@@ -196,11 +196,11 @@ export default function GameRoom() {
 
         <button
           onClick={startGame}
-          disabled={!canStart || starting}
-          title={!canStart ? '최소 인원이 모여야 시작할 수 있습니다.' : '게임 시작'}
+          disabled={!canStart || !myHero || starting}
+          title={!canStart ? '최소 인원이 모여야 시작할 수 있습니다.' : (!myHero ? '캐릭터가 필요합니다.' : '게임 시작')}
           style={{
             padding:'8px 12px', borderRadius:8,
-            background: canStart ? '#111827' : '#cbd5e1',
+            background: (canStart && myHero) ? '#111827' : '#cbd5e1',
             color:'#fff', fontWeight:700
           }}
         >
@@ -222,18 +222,14 @@ export default function GameRoom() {
         )}
       </div>
 
-      {/* 내 캐릭터(이미지 + 능력) */}
+      {/* 내 캐릭터(이미지 + 능력 1~4) */}
       <MyHeroStrip hero={myHero} />
 
       {/* 본문: 참여자 카드들 */}
       <div style={{ border:'1px solid #e5e7eb', borderRadius:12, background:'#fff', padding:12, minHeight:240 }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:10 }}>
-          {participants.map(p => (
-            <ParticipantCard key={p.id} p={p} />
-          ))}
-          {participants.length === 0 && (
-            <div style={{ color:'#64748b' }}>아직 참여자가 없습니다. 먼저 참여해보세요.</div>
-          )}
+          {participants.map(p => <ParticipantCard key={p.id} p={p} />)}
+          {participants.length === 0 && <div style={{ color:'#64748b' }}>아직 참여자가 없습니다. 먼저 참여해보세요.</div>}
         </div>
       </div>
 
@@ -250,11 +246,11 @@ function MyHeroStrip({ hero }) {
   if (!hero) {
     return (
       <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fafafa', color:'#64748b' }}>
-        내 캐릭터 정보를 불러오는 중이거나 선택되지 않았습니다.
+        로스터에서 캐릭터를 선택한 뒤 입장해야 합니다. (선택값이 없어요)
       </div>
     )
   }
-  const abilities = Array.from({length:12},(_,i)=>hero[`ability${i+1}`]).filter(Boolean)
+  const abilities = [hero.ability1, hero.ability2, hero.ability3, hero.ability4].filter(Boolean)
 
   return (
     <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fff' }}>
