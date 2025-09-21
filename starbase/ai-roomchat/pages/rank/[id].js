@@ -1,13 +1,19 @@
 // pages/rank/[id].js
 import { useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
-import SharedChatDock from '../../components/common/SharedChatDock'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import HeroPicker from '../../components/common/HeroPicker'
+import { useAiHistory } from '../../lib/aiHistory'
+import MyHeroStrip from '../../components/rank/MyHeroStrip'
+import ParticipantCard from '../../components/rank/ParticipantCard'
+import HistoryPanel from '../../components/rank/HistoryPanel'
+
+// SSR 안전: SharedChatDock은 브라우저 전용
+const SharedChatDock = dynamic(() => import('../../components/common/SharedChatDock'), { ssr:false })
 
 function getSelectedHeroId(router) {
-  // URL로 ?heroId= 넘겨줄 수도 있게
   const q = router?.query?.heroId
   if (q) return String(q)
   if (typeof window !== 'undefined') {
@@ -21,6 +27,10 @@ export default function GameRoom() {
   const router = useRouter()
   const { id } = router.query
 
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted || !id) return null
+
   const [user, setUser] = useState(null)
   const [game, setGame] = useState(null)
   const [roles, setRoles] = useState([])
@@ -33,6 +43,9 @@ export default function GameRoom() {
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
   const [starting, setStarting] = useState(false)
+
+  // 히스토리 훅(게임 아이디 연결)
+  const { beginSession, push, joinedText } = useAiHistory({ gameId: id })
 
   // 초기 로드
   useEffect(() => {
@@ -50,7 +63,7 @@ export default function GameRoom() {
       setGame(g)
       setRoles(Array.isArray(g.roles) && g.roles.length ? g.roles : ['공격','수비'])
 
-      // 필요 슬롯 = 활성화된 슬롯 수(역할 지정 포함)
+      // 필요 슬롯 (활성 + 역할 지정)
       const { data: slots } = await supabase
         .from('rank_game_slots')
         .select('slot_index,active,role')
@@ -58,8 +71,7 @@ export default function GameRoom() {
       const req = (slots || []).filter(s => s.active && s.role).length || 0
       setRequiredSlots(req)
 
-      // 참여자 리스트(리더보드/정보용)
-      // <-- 안전한 2단계 조회: participants 먼저, heroes는 in()으로 한 번에 조회하여 매핑
+      // 참여자 → 히어로 일괄 매핑
       const { data: ps, error: pErr } = await supabase
         .from('rank_participants')
         .select('id, game_id, hero_id, owner_id, role, score, created_at')
@@ -73,19 +85,16 @@ export default function GameRoom() {
         const { data: hs } = heroIds.length
           ? await supabase
               .from('heroes')
-              .select('id, name, image_url, description')
+              .select('id, name, image_url, description, ability1, ability2, ability3, ability4')
               .in('id', heroIds)
           : { data: [] }
         const hmap = new Map((hs || []).map(h => [h.id, h]))
-        const mapped = (ps || []).map(p => ({
-          ...p,
-          hero: hmap.get(p.hero_id) || null
-        }))
+        const mapped = (ps || []).map(p => ({ ...p, hero: hmap.get(p.hero_id) || null }))
         setParticipants(mapped)
       }
 
-      // ✅ 내 캐릭터는 선택 픽커/로컬스토리지 값으로만 결정
-      const heroId = (typeof window !== 'undefined' && localStorage.getItem('selectedHeroId')) || null
+      // 내 캐릭터(로컬 선택값)
+      const heroId = getSelectedHeroId(router)
       if (!heroId) { setMyHero(null); setLoading(false); return }
       const { data: h } = await supabase
         .from('heroes')
@@ -99,16 +108,10 @@ export default function GameRoom() {
     return () => { alive = false }
   }, [id, router])
 
-  const canStart = useMemo(() => {
-    return participants.length >= (requiredSlots || 0)
-  }, [participants.length, requiredSlots])
-
+  const canStart = useMemo(() => participants.length >= (requiredSlots || 0), [participants.length, requiredSlots])
   const isOwner = user && game && user.id === game.owner_id
- const myEntry = useMemo(() => {
-   if (!myHero) return null
-   return participants.find(p => p.hero_id === myHero.id) || null
- }, [participants, myHero])
- const alreadyJoined = !!myEntry
+  const myEntry = useMemo(() => (myHero ? participants.find(p => p.hero_id === myHero.id) || null : null), [participants, myHero])
+  const alreadyJoined = !!myEntry
 
   async function joinGame() {
     if (!myHero) return alert('로스터에서 캐릭터를 선택하고 다시 시도하세요.')
@@ -116,40 +119,25 @@ export default function GameRoom() {
     const payload = {
       game_id: id,
       hero_id: myHero.id,
-      owner_id: user.id,              // ★ 추가
+      owner_id: user.id,
       role: pickRole || roles[0],
       score: 1000
     }
-    // ★ onConflict 키를 (game_id, owner_id)로 변경하여 같은 유저의 캐릭터 변경이 업데이트로 동작하게 함
- const { error } = await supabase
-   .from('rank_participants')
-   .insert(payload, { ignoreDuplicates: true })
+    const { error } = await supabase.from('rank_participants').insert(payload, { ignoreDuplicates: true })
     if (error) return alert('참여 실패: ' + error.message)
 
-    // 1) 참가자(단일 테이블) — 서버에서 다시 불러와서 매핑
-    const { data: ps, error: pErr } = await supabase
+    // 리프레시
+    const { data: ps } = await supabase
       .from('rank_participants')
       .select('id, game_id, hero_id, owner_id, role, score, created_at')
       .eq('game_id', id)
       .order('score', { ascending: false })
-    if (pErr) { console.error('participants error', pErr); setParticipants([]); return }
-
-    // 2) 히어로들 벌크 조회
     const heroIds = (ps ?? []).map(p => p.hero_id).filter(Boolean)
     const { data: hs } = heroIds.length
-      ? await supabase
-          .from('heroes')
-          .select('id, name, image_url')  // 필요하면 ability/description 추가
-          .in('id', heroIds)
+      ? await supabase.from('heroes').select('id,name,image_url,description,ability1,ability2,ability3,ability4').in('id', heroIds)
       : { data: [] }
     const hmap = new Map((hs || []).map(h => [h.id, h]))
-
-    // 3) 매핑
-    const mapped = (ps || []).map(p => ({
-      ...p,
-      hero: hmap.get(p.hero_id) || null,
-    }))
-    setParticipants(mapped)
+    setParticipants((ps || []).map(p => ({ ...p, hero: hmap.get(p.hero_id) || null })))
   }
 
   async function startGame() {
@@ -157,7 +145,11 @@ export default function GameRoom() {
     if (!myHero) return alert('캐릭터가 선택되어야 합니다.')
     setStarting(true)
     try {
-      alert('게임을 시작합니다! (엔진 연결 전: 출발선 체크 통과)')
+      // 히스토리 세션 시작 + 시스템 지침 1회 주입(비공개)
+      await beginSession()
+      const sys = `게임 ${game?.name ?? ''} 시작. 제3자 관찰자 시점, 강약 중심, 규칙(체크리스트) 준수.`
+      await push({ role:'system', content: sys, public: false })
+      alert('게임을 시작합니다! (엔진 연결 준비 완료)')
     } finally {
       setStarting(false)
     }
@@ -195,64 +187,49 @@ export default function GameRoom() {
         {game?.description && <div style={{ color:'#475569' }}>{game.description}</div>}
       </div>
 
-      {/* 조작 바: 참여 / 시작 / 리더보드 / 방삭제(방장) */}
+      {/* 조작 바 */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-         <button onClick={() => setPickerOpen(true)} style={{ padding:'8px 12px', borderRadius:8 }}>
-     캐릭터 선택
-   </button>
+        <button onClick={() => setPickerOpen(true)} style={{ padding:'8px 12px', borderRadius:8 }}>캐릭터 선택</button>
+
         <>
-   <select
-     value={alreadyJoined ? (myEntry?.role || '') : (pickRole || '')}
-     onChange={e=>setPickRole(e.target.value)}
-     disabled={alreadyJoined}
-     style={{ padding:'8px 10px', opacity: alreadyJoined ? 0.6 : 1 }}
-   >
-     <option value="">{alreadyJoined ? '이미 참가됨' : '역할 선택'}</option>
-     {roles.map(r => <option key={r} value={r}>{r}</option>)}
-   </select>
-   <button
-     onClick={joinGame}
-     disabled={!myHero || alreadyJoined}
-     style={{
-       padding:'8px 12px', borderRadius:8,
-       background: (!myHero || alreadyJoined) ? '#cbd5e1' : '#2563eb',
-       color:'#fff', fontWeight:700
-     }}
-     title={alreadyJoined ? '이미 이 캐릭터로 참가했습니다' : '참여하기'}
-   >
-     {alreadyJoined ? '참여 완료' : '참여하기'}
-   </button>
- </>
+          <select
+            value={alreadyJoined ? (myEntry?.role || '') : (pickRole || '')}
+            onChange={e=>setPickRole(e.target.value)}
+            disabled={alreadyJoined}
+            style={{ padding:'8px 10px', opacity: alreadyJoined ? 0.6 : 1 }}
+          >
+            <option value="">{alreadyJoined ? '이미 참가됨' : '역할 선택'}</option>
+            {roles.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <button
+            onClick={joinGame}
+            disabled={!myHero || alreadyJoined}
+            style={{ padding:'8px 12px', borderRadius:8, background: (!myHero || alreadyJoined) ? '#cbd5e1' : '#2563eb', color:'#fff', fontWeight:700 }}
+            title={alreadyJoined ? '이미 이 캐릭터로 참가했습니다' : '참여하기'}
+          >
+            {alreadyJoined ? '참여 완료' : '참여하기'}
+          </button>
+        </>
 
         <button
           onClick={startGame}
           disabled={!canStart || !myHero || starting}
           title={!canStart ? '최소 인원이 모여야 시작할 수 있습니다.' : (!myHero ? '캐릭터가 필요합니다.' : '게임 시작')}
-          style={{
-            padding:'8px 12px', borderRadius:8,
-            background: (canStart && myHero) ? '#111827' : '#cbd5e1',
-            color:'#fff', fontWeight:700
-          }}
+          style={{ padding:'8px 12px', borderRadius:8, background: (canStart && myHero) ? '#111827' : '#cbd5e1', color:'#fff', fontWeight:700 }}
         >
           {starting ? '시작 중…' : '게임 시작'}
         </button>
 
-        <button onClick={() => setShowLB(true)} style={{ padding:'8px 12px', borderRadius:8 }}>
-          리더보드
-        </button>
+        <button onClick={() => setShowLB(true)} style={{ padding:'8px 12px', borderRadius:8 }}>리더보드</button>
 
         {isOwner && (
-          <button
-            onClick={deleteRoom}
-            disabled={deleting}
-            style={{ padding:'8px 12px', borderRadius:8, background:'#ef4444', color:'#fff', marginLeft:'auto' }}
-          >
+          <button onClick={deleteRoom} disabled={deleting} style={{ padding:'8px 12px', borderRadius:8, background:'#ef4444', color:'#fff', marginLeft:'auto' }}>
             {deleting ? '삭제 중…' : '방 삭제(방장)'}
           </button>
         )}
       </div>
 
-      {/* 내 캐릭터(이미지 + 능력 1~4) */}
+      {/* 내 캐릭터 */}
       <MyHeroStrip hero={myHero} roleLabel={myEntry?.role} />
 
       {/* 본문: 참여자 카드들 */}
@@ -263,94 +240,22 @@ export default function GameRoom() {
         </div>
       </div>
 
-      {/* 하단: 공용 채팅 */}
+      {/* 중앙 히스토리 + 하단 공용 채팅 */}
+      <HistoryPanel text={joinedText({ onlyPublic:true, last:20 })} />
       <SharedChatDock height={260} heroId={myHero?.id} />
 
       {/* 리더보드 드로어 */}
       {showLB && <LeaderboardDrawer gameId={id} onClose={()=>setShowLB(false)} />}
-        {/* 캐릭터 픽커 모달 */}
-  <HeroPicker
-    open={pickerOpen}
-    onClose={() => setPickerOpen(false)}
-    onPick={(hero) => {
-      try { localStorage.setItem('selectedHeroId', hero.id) } catch {}
-      setMyHero(hero)
-    }}
-  />
-    </div>
-  )
-}
 
-function MyHeroStrip({ hero, roleLabel }) {
-  if (!hero) {
-    return (
-      <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fafafa', color:'#64748b' }}>
-        로스터에서 캐릭터를 선택한 뒤 입장해야 합니다. (선택값이 없어요)
-      </div>
-    )
-  }
-  const abilities = [hero.ability1, hero.ability2, hero.ability3, hero.ability4].filter(Boolean)
-
-  return (
-    <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fff' }}>
-      <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-        <div style={{ width:72, height:72, borderRadius:12, overflow:'hidden', background:'#e5e7eb', flex:'0 0 auto' }}>
-          {hero.image_url && <img src={hero.image_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />}
-        </div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontWeight:800, fontSize:18, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-            {hero.name}
-          </div>
-                    {roleLabel && (
-            <div style={{ marginTop:2, fontSize:12, fontWeight:700, color:'#334155' }}>
-              내 역할: {roleLabel}
-            </div>
-          )}
-          <div style={{ color:'#64748b', marginTop:4, whiteSpace:'pre-wrap' }}>
-            {hero.description || '설명 없음'}
-          </div>
-        </div>
-      </div>
-
-      {abilities.length > 0 && (
-        <div style={{ marginTop:10 }}>
-          <div style={{ fontWeight:700, marginBottom:6 }}>능력</div>
-          <ul style={{ margin:0, padding:0, listStyle:'none', display:'grid', gap:6, gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))' }}>
-            {abilities.map((a, idx) => (
-              <li key={idx} style={{ border:'1px solid #eef2f7', borderRadius:10, padding:'8px 10px', background:'#fafafa' }}>
-                <span style={{ fontWeight:700, marginRight:6 }}>#{idx+1}</span>
-                <span>{a}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ParticipantCard({ p }) {
-  const [open, setOpen] = useState(false)
-  const hero = p.hero
-  return (
-    <div style={{ border:'1px solid #eef2f7', borderRadius:12, padding:10, background:'#fafafa' }}>
-      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-        <div style={{ width:44, height:44, borderRadius:10, overflow:'hidden', background:'#e5e7eb' }}>
-          {hero?.image_url && <img src={hero.image_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />}
-        </div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-            {hero?.name || `#${p.hero_id}`}
-          </div>
-          <div style={{ fontSize:12, color:'#64748b' }}>{p.role} · 점수 {p.score}</div>
-        </div>
-        <button onClick={()=>setOpen(o=>!o)} style={{ padding:'6px 10px' }}>{open ? '접기' : '보기'}</button>
-      </div>
-      {open && (
-        <div style={{ marginTop:8, fontSize:13, color:'#475569', whiteSpace:'pre-wrap' }}>
-          {hero?.description || '설명 없음'}
-        </div>
-      )}
+      {/* 캐릭터 픽커 */}
+      <HeroPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={(hero) => {
+          try { localStorage.setItem('selectedHeroId', hero.id) } catch {}
+          setMyHero(hero)
+        }}
+      />
     </div>
   )
 }
