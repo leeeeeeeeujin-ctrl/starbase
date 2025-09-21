@@ -26,7 +26,6 @@ export default function GameRoom() {
   const [roles, setRoles] = useState([])
   const [requiredSlots, setRequiredSlots] = useState(0)
   const [participants, setParticipants] = useState([])
-  const [myHero, setMyHero] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickRole, setPickRole] = useState('')
   const [showLB, setShowLB] = useState(false)
