@@ -62,7 +62,7 @@ export default function GameRoom() {
       // <-- 안전한 2단계 조회: participants 먼저, heroes는 in()으로 한 번에 조회하여 매핑
       const { data: ps, error: pErr } = await supabase
         .from('rank_participants')
-        .select('id, game_id, hero_id, role, score, created_at')
+        .select('id, game_id, hero_id, owner_id, role, score, created_at')
         .eq('game_id', id)
         .order('score', { ascending: false })
       if (pErr) {
@@ -104,10 +104,11 @@ export default function GameRoom() {
   }, [participants.length, requiredSlots])
 
   const isOwner = user && game && user.id === game.owner_id
-  const myJoined = useMemo(() => {
-    if (!myHero) return false
-    return participants.some(p => p.hero_id === myHero.id)
-  }, [participants, myHero])
+ const myEntry = useMemo(() => {
+   if (!myHero) return null
+   return participants.find(p => p.hero_id === myHero.id) || null
+ }, [participants, myHero])
+ const alreadyJoined = !!myEntry
 
   async function joinGame() {
     if (!myHero) return alert('로스터에서 캐릭터를 선택하고 다시 시도하세요.')
@@ -128,7 +129,7 @@ export default function GameRoom() {
     // 1) 참가자(단일 테이블) — 서버에서 다시 불러와서 매핑
     const { data: ps, error: pErr } = await supabase
       .from('rank_participants')
-      .select('id, game_id, hero_id, role, score, created_at')
+      .select('id, game_id, hero_id, owner_id, role, score, created_at')
       .eq('game_id', id)
       .order('score', { ascending: false })
     if (pErr) { console.error('participants error', pErr); setParticipants([]); return }
@@ -199,21 +200,29 @@ export default function GameRoom() {
          <button onClick={() => setPickerOpen(true)} style={{ padding:'8px 12px', borderRadius:8 }}>
      캐릭터 선택
    </button>
-        {!myJoined && (
-          <>
-            <select value={pickRole} onChange={e=>setPickRole(e.target.value)} style={{ padding:'8px 10px' }}>
-              <option value="">역할 선택</option>
-              {roles.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <button
-              onClick={joinGame}
-              disabled={!myHero}
-              style={{ padding:'8px 12px', borderRadius:8, background: myHero ? '#2563eb' : '#cbd5e1', color:'#fff', fontWeight:700 }}
-            >
-              참여하기
-            </button>
-          </>
-        )}
+        <>
+   <select
+     value={alreadyJoined ? (myEntry?.role || '') : (pickRole || '')}
+     onChange={e=>setPickRole(e.target.value)}
+     disabled={alreadyJoined}
+     style={{ padding:'8px 10px', opacity: alreadyJoined ? 0.6 : 1 }}
+   >
+     <option value="">{alreadyJoined ? '이미 참가됨' : '역할 선택'}</option>
+     {roles.map(r => <option key={r} value={r}>{r}</option>)}
+   </select>
+   <button
+     onClick={joinGame}
+     disabled={!myHero || alreadyJoined}
+     style={{
+       padding:'8px 12px', borderRadius:8,
+       background: (!myHero || alreadyJoined) ? '#cbd5e1' : '#2563eb',
+       color:'#fff', fontWeight:700
+     }}
+     title={alreadyJoined ? '이미 이 캐릭터로 참가했습니다' : '참여하기'}
+   >
+     {alreadyJoined ? '참여 완료' : '참여하기'}
+   </button>
+ </>
 
         <button
           onClick={startGame}
