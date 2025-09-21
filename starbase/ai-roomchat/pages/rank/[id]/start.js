@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../../lib/supabase'
 import { useAiHistory } from '../../../lib/aiHistory'
+import { pickOpponents } from '@/lib/matchmaking'
 
 // SSR에서 깨지는 걸 막기 위해 채팅은 CSR 전용
 const SharedChatDock = dynamic(() => import('../../../components/common/SharedChatDock'), { ssr: false })
+const [match, setMatch] = useState({}) // role -> participants[]
+const [myScore, setMyScore] = useState(1000) // 내 현재 점수(실제 필드로 대체)
 
 // 간단 요약 카드
 function MiniHero({ h }) {
@@ -100,6 +103,16 @@ export default function RankGameStart() {
     if (!participants.length) { alert('참여자가 없습니다.'); return }
     setStarting(true)
     try {
+      // 1) 활성 슬롯 구성 가져오기(예시)
+   const roles = Array.isArray(game?.roles) ? game.roles : []         // 예: ["공격","수비"]
+   const slotsPerRole = game?.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
+   // 2) 비슷한 점수대에서 역할별 랜덤 픽
+   const myHero = participants.find(p => p.owner_id === (await supabase.auth.getUser()).data?.user?.id)
+   const got = await pickOpponents({
+     gameId, myHeroId: myHero?.hero_id, myScore,
+     roles, slotsPerRole, step: 100, maxWindow: 1000
+   })
+   setMatch(got)
       await beginSession() // DB 세션 생성
       setPreflight(false)  // 레이아웃 전환
 
@@ -135,7 +148,11 @@ export default function RankGameStart() {
         }}>
           <div style={{ background:'#fff', borderRadius:12, padding:16, width:'min(920px, 92vw)', maxHeight:'80vh', overflow:'auto' }}>
             <h3 style={{ marginTop:0, marginBottom:12 }}>참여자 확인</h3>
-            <GroupedRoster grouped={grouped} />
+            <GroupedRoster grouped={
+   Object.entries(match).map(([role, members]) => ({ role, members: members.map(m => ({
+     ...m.heroes, role, hero_id: m.hero_id, id: m.id
+   })) }))
+ } />
             <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12 }}>
               <button onClick={()=>router.replace(`/rank/${gameId}`)} style={{ padding:'8px 12px' }}>← 돌아가기</button>
               <button onClick={handleStart} disabled={starting} style={{ padding:'8px 12px', background:'#111827', color:'#fff', borderRadius:8 }}>
