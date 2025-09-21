@@ -43,7 +43,6 @@ export default function GameRoom() {
 
   const { beginSession, push, joinedText, clear } = useAiHistory({ gameId })
   useEffect(() => { setMounted(true) }, [])
-  if (!mounted) return null
   // 초기 로드
   useEffect(() => {
     if (!id) return
