@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import SharedChatDock from '../../components/common/SharedChatDock'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import HeroPicker from '../../components/common/HeroPicker'
+import { useAiHistory } from '../../../lib/aiHistory'
 
 function getSelectedHeroId(router) {
   // URL로 ?heroId= 넘겨줄 수도 있게
@@ -33,6 +34,8 @@ export default function GameRoom() {
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
   const [starting, setStarting] = useState(false)
+
+  const { beginSession, push, joinedText, clear } = useAiHistory()
 
   // 초기 로드
   useEffect(() => {
@@ -152,16 +155,29 @@ export default function GameRoom() {
     setParticipants(mapped)
   }
 
-  async function startGame() {
-    if (!canStart) return
-    if (!myHero) return alert('캐릭터가 선택되어야 합니다.')
-    setStarting(true)
-    try {
-      alert('게임을 시작합니다! (엔진 연결 전: 출발선 체크 통과)')
-    } finally {
-      setStarting(false)
-    }
+async function startGame() {
+  if (!canStart) return
+  if (!myHero) return alert('캐릭터가 선택되어야 합니다.')
+  setStarting(true)
+  try {
+    // 0) 히스토리 세션 생성
+    await beginSession()
+
+    // 1) 시스템 프롬프트 구성 (예: 게임 규칙/체크리스트)
+    const systemPrompt = `게임 ${game?.name || ''}을 시작합니다.
+    규칙: 공정한 파워 밸런스, 약자 배려 금지, ... (필요한 룰 넣기)`
+
+    // 2) 시스템 프롬프트 push
+    await push({ role: 'system', content: systemPrompt })
+
+    // 3) 안내 메시지
+    alert('게임을 시작합니다! (히스토리 세션 연결 완료)')
+
+    // (이후 SharedChatDock 같은 채팅 컴포넌트에서 joinedText() 활용)
+  } finally {
+    setStarting(false)
   }
+}
 
   async function deleteRoom() {
     if (!isOwner) return
