@@ -27,7 +27,7 @@ export default function GameRoom() {
   const [requiredSlots, setRequiredSlots] = useState(0)
   const [participants, setParticipants] = useState([])
   const [myHero, setMyHero] = useState(null)
-  const [myHero, setMyHero] = useState(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [pickRole, setPickRole] = useState('')
   const [showLB, setShowLB] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -239,6 +239,15 @@ export default function GameRoom() {
 
       {/* 리더보드 드로어 */}
       {showLB && <LeaderboardDrawer gameId={id} onClose={()=>setShowLB(false)} />}
+        {/* 캐릭터 픽커 모달 */}
+  <HeroPicker
+    open={pickerOpen}
+    onClose={() => setPickerOpen(false)}
+    onPick={(hero) => {
+      try { localStorage.setItem('selectedHeroId', hero.id) } catch {}
+      setMyHero(hero)
+    }}
+  />
     </div>
   )
 }
@@ -311,9 +320,3 @@ function ParticipantCard({ p }) {
     </div>
   )
 }
- {/* 캐릭터 픽커 모달 */}
- <HeroPicker
-   open={pickerOpen}
-   onClose={() => setPickerOpen(false)}
-   onPick={(hero) => setMyHero(hero)}
- />
