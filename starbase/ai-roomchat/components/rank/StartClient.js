@@ -54,7 +54,8 @@ export default function StartClient() {
   const [myScore, setMyScore] = useState(1000)
   const [match, setMatch] = useState({})               // role -> participants[]
 
-  const { beginSession, push } = useAiHistory({ gameId })
+ const { beginSession, push } = useAiHistory({ gameId })
+ const [sessionReady, setSessionReady] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => { if (!mounted || !gameId) return; bootstrap() }, [mounted, gameId])
@@ -135,6 +136,7 @@ setMatch(got)
 
       // 세션 시작 + 오버레이 닫기 + 첫 공지
       await beginSession()
+      setSessionReady(true)
       setPreflight(false)
       await push({ role:'system', content:`게임 "${game?.name ?? ''}" 세션 시작. 관찰자 시점/강약 판정 중심.`, public:false, turnNo:0 })
       await push({ role:'assistant', content:'전투 세션이 시작되었습니다. 메시지를 입력하면 진행합니다.', public:true })
@@ -191,7 +193,11 @@ setMatch(got)
            <SharedChatDock
               height={480}
               onUserSend={async (text) => {
-                await push({ role:'user', content:text, public:true })
+              if (!sessionReady) {
+                await beginSession()
+                setSessionReady(true)
+              }
+              await push({ role:'user', content:text, public:true })
                 const ai = `(${new Date().toLocaleTimeString()}) [AI] “${text.slice(0,40)}…” 에 대한 응답 (스텁)`
                 await push({ role:'assistant', content:ai, public:true })
                 return true
