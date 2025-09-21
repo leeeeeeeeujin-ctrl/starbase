@@ -2,14 +2,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
-import SharedChatDock from '../../components/common/SharedChatDock'
+import dynamic from 'next/dynamic'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import HeroPicker from '../../components/common/HeroPicker'
 import { useAiHistory } from '../../lib/aiHistory'
-
+const SharedChatDock = dynamic(() => import('../../components/common/SharedChatDock'), { ssr: false })
 const router = useRouter()
 const { id: gameId } = router.query || {}
-
+const GroupedRoster = dynamic(() => import('../../components/rank/GroupedRoster'), { ssr: false })
+const ApiKeyBar = dynamic(() => import('../../components/common/ApiKeyBar'), { ssr: false })
+if (!gameId) return null
 function getSelectedHeroId(router) {
   // URL로 ?heroId= 넘겨줄 수도 있게
   const q = router?.query?.heroId
@@ -24,6 +26,7 @@ function getSelectedHeroId(router) {
 export default function GameRoom() {
   const router = useRouter()
   const { id } = router.query
+  const [mounted, setMounted] = useState(false)
 
   const [user, setUser] = useState(null)
   const [game, setGame] = useState(null)
@@ -38,8 +41,9 @@ export default function GameRoom() {
   const [deleting, setDeleting] = useState(false)
   const [starting, setStarting] = useState(false)
 
-  const { beginSession, push, joinedText, clear } = useAiHistory()
-
+  const { beginSession, push, joinedText, clear } = useAiHistory({ gameId })
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return null
   // 초기 로드
   useEffect(() => {
     if (!id) return
@@ -172,7 +176,8 @@ async function startGame() {
 
     // 2) 시스템 프롬프트 push
     await push({ role: 'system', content: systemPrompt })
-
+await beginSession()
++   await push({ role: 'system', content: `게임 ${game?.name ?? ''} 시작`, public: false })
     // 3) 안내 메시지
     alert('게임을 시작합니다! (히스토리 세션 연결 완료)')
 
