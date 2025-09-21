@@ -10,26 +10,16 @@ import MyHeroStrip from '../../components/rank/MyHeroStrip'
 import ParticipantCard from '../../components/rank/ParticipantCard'
 import HistoryPanel from '../../components/rank/HistoryPanel'
 
-// SSR 안전: SharedChatDock은 브라우저 전용
-const SharedChatDock = dynamic(() => import('../../components/common/SharedChatDock'), { ssr:false })
-
-function getSelectedHeroId(router) {
-  const q = router?.query?.heroId
-  if (q) return String(q)
-  if (typeof window !== 'undefined') {
-    const v = localStorage.getItem('selectedHeroId')
-    return v || null
-  }
-  return null
-}
+// 브라우저 전용
+const SharedChatDock = dynamic(() => import('../../components/common/SharedChatDock'), { ssr: false })
 
 export default function GameRoom() {
   const router = useRouter()
   const { id } = router.query
 
+  // ✅ 훅은 항상 같은 순서로!
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
-  if (!mounted || !id) return null
 
   const [user, setUser] = useState(null)
   const [game, setGame] = useState(null)
@@ -44,12 +34,15 @@ export default function GameRoom() {
   const [deleting, setDeleting] = useState(false)
   const [starting, setStarting] = useState(false)
 
-  // 히스토리 훅(게임 아이디 연결)
+  // 히스토리 훅(미리 호출해두고, 렌더에서만 가드)
   const { beginSession, push, joinedText } = useAiHistory({ gameId: id })
+
+  // 준비 플래그(렌더만 가드)
+  const ready = mounted && !!id
 
   // 초기 로드
   useEffect(() => {
-    if (!id) return
+    if (!ready) return
     let alive = true
     ;(async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -63,7 +56,7 @@ export default function GameRoom() {
       setGame(g)
       setRoles(Array.isArray(g.roles) && g.roles.length ? g.roles : ['공격','수비'])
 
-      // 필요 슬롯 (활성 + 역할 지정)
+      // 슬롯 요구 수
       const { data: slots } = await supabase
         .from('rank_game_slots')
         .select('slot_index,active,role')
@@ -71,42 +64,40 @@ export default function GameRoom() {
       const req = (slots || []).filter(s => s.active && s.role).length || 0
       setRequiredSlots(req)
 
-      // 참여자 → 히어로 일괄 매핑
-      const { data: ps, error: pErr } = await supabase
+      // 참가자 + 히어로 매핑
+      const { data: ps } = await supabase
         .from('rank_participants')
         .select('id, game_id, hero_id, owner_id, role, score, created_at')
         .eq('game_id', id)
         .order('score', { ascending: false })
-      if (pErr) {
-        console.error('participants error', pErr)
-        setParticipants([])
-      } else {
-        const heroIds = (ps ?? []).map(p => p.hero_id).filter(Boolean)
-        const { data: hs } = heroIds.length
-          ? await supabase
-              .from('heroes')
-              .select('id, name, image_url, description, ability1, ability2, ability3, ability4')
-              .in('id', heroIds)
-          : { data: [] }
-        const hmap = new Map((hs || []).map(h => [h.id, h]))
-        const mapped = (ps || []).map(p => ({ ...p, hero: hmap.get(p.hero_id) || null }))
-        setParticipants(mapped)
-      }
 
-      // 내 캐릭터(로컬 선택값)
-      const heroId = getSelectedHeroId(router)
-      if (!heroId) { setMyHero(null); setLoading(false); return }
-      const { data: h } = await supabase
-        .from('heroes')
-        .select('id,name,image_url,description,owner_id,ability1,ability2,ability3,ability4')
-        .eq('id', heroId)
-        .single()
-      setMyHero(h || null)
+      const heroIds = (ps ?? []).map(p => p.hero_id).filter(Boolean)
+      const { data: hs } = heroIds.length
+        ? await supabase
+            .from('heroes')
+            .select('id, name, image_url, description, ability1, ability2, ability3, ability4')
+            .in('id', heroIds)
+        : { data: [] }
+      const hmap = new Map((hs || []).map(h => [h.id, h]))
+      setParticipants((ps || []).map(p => ({ ...p, hero: hmap.get(p.hero_id) || null })))
+
+      // 내 캐릭터(로컬)
+      const heroId = (typeof window !== 'undefined' && localStorage.getItem('selectedHeroId')) || null
+      if (heroId) {
+        const { data: h } = await supabase
+          .from('heroes')
+          .select('id,name,image_url,description,owner_id,ability1,ability2,ability3,ability4')
+          .eq('id', heroId)
+          .single()
+        setMyHero(h || null)
+      } else {
+        setMyHero(null)
+      }
 
       setLoading(false)
     })()
     return () => { alive = false }
-  }, [id, router])
+  }, [ready, id, router])
 
   const canStart = useMemo(() => participants.length >= (requiredSlots || 0), [participants.length, requiredSlots])
   const isOwner = user && game && user.id === game.owner_id
@@ -134,7 +125,10 @@ export default function GameRoom() {
       .order('score', { ascending: false })
     const heroIds = (ps ?? []).map(p => p.hero_id).filter(Boolean)
     const { data: hs } = heroIds.length
-      ? await supabase.from('heroes').select('id,name,image_url,description,ability1,ability2,ability3,ability4').in('id', heroIds)
+      ? await supabase
+          .from('heroes')
+          .select('id,name,image_url,description,ability1,ability2,ability3,ability4')
+          .in('id', heroIds)
       : { data: [] }
     const hmap = new Map((hs || []).map(h => [h.id, h]))
     setParticipants((ps || []).map(p => ({ ...p, hero: hmap.get(p.hero_id) || null })))
@@ -147,8 +141,11 @@ export default function GameRoom() {
     try {
       // 히스토리 세션 시작 + 시스템 지침 1회 주입(비공개)
       await beginSession()
-      const sys = `게임 ${game?.name ?? ''} 시작. 제3자 관찰자 시점, 강약 중심, 규칙(체크리스트) 준수.`
-      await push({ role:'system', content: sys, public: false })
+      await push({
+        role: 'system',
+        content: `게임 ${game?.name ?? ''} 시작. 제3자 관찰자 시점, 강약 중심, 체크리스트 준수.`,
+        public: false
+      })
       alert('게임을 시작합니다! (엔진 연결 준비 완료)')
     } finally {
       setStarting(false)
@@ -171,7 +168,10 @@ export default function GameRoom() {
     }
   }
 
-  if (loading) return <div style={{ padding:20 }}>불러오는 중…</div>
+  // ✅ 훅은 이미 다 호출됨. 아래는 “렌더 가드”만.
+  if (!ready || loading) {
+    return <div style={{ padding:20 }}>불러오는 중…</div>
+  }
 
   return (
     <div style={{ maxWidth:1200, margin:'24px auto', padding:12, display:'grid', gridTemplateRows:'auto auto auto 1fr auto', gap:12 }}>
@@ -240,7 +240,7 @@ export default function GameRoom() {
         </div>
       </div>
 
-      {/* 중앙 히스토리 + 하단 공용 채팅 */}
+      {/* 히스토리(공개 로그만) + 하단 공용 채팅 */}
       <HistoryPanel text={joinedText({ onlyPublic:true, last:20 })} />
       <SharedChatDock height={260} heroId={myHero?.id} />
 
