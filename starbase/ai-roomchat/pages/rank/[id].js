@@ -134,23 +134,35 @@ export default function GameRoom() {
     setParticipants((ps || []).map(p => ({ ...p, hero: hmap.get(p.hero_id) || null })))
   }
 
-  async function startGame() {
-    if (!canStart) return
-    if (!myHero) return alert('캐릭터가 선택되어야 합니다.')
-    setStarting(true)
-    try {
-      // 히스토리 세션 시작 + 시스템 지침 1회 주입(비공개)
-      await beginSession()
-      await push({
-        role: 'system',
-        content: `게임 ${game?.name ?? ''} 시작. 제3자 관찰자 시점, 강약 중심, 체크리스트 준수.`,
-        public: false
-      })
-      alert('게임을 시작합니다! (엔진 연결 준비 완료)')
-    } finally {
-      setStarting(false)
-    }
+async function startGame() {
+  if (!canStart) return
+  if (!myHero) return alert('캐릭터가 선택되어야 합니다.')
+  setStarting(true)
+  try {
+    // 1) 세션 시작
+    await beginSession()
+
+    // 2) 프리플라이트 닫기(레이아웃 전환)
+    setPreflight(false)
+
+    // 3) 시스템 프롬프트(비공개) + 시작 알림(공개)
+    await push({
+      role: 'system',
+      content: `게임 ${game?.name ?? ''} 시작. 제3자 관찰자 시점, 강약 중심, 체크리스트 준수.`,
+      public: false,
+      turnNo: 0  // 시스템은 0으로 표기(선택)
+    })
+    await push({
+      role: 'assistant',
+      content: '전투 세션이 시작되었습니다. 준비가 되면 메시지를 입력하세요.',
+      public: true  // 중앙 채팅에 보이게
+      // turn_no는 자동 증가
+    })
+  } finally {
+    setStarting(false)
   }
+}
+
 
   async function deleteRoom() {
     if (!isOwner) return
@@ -242,7 +254,23 @@ export default function GameRoom() {
 
       {/* 히스토리(공개 로그만) + 하단 공용 채팅 */}
       <HistoryPanel text={joinedText({ onlyPublic:true, last:20 })} />
-      <SharedChatDock height={260} heroId={myHero?.id} />
+      <SharedChatDock
+  height={260}
+  heroId={myHero?.id}
+  onUserSend={async (text) => {
+    // 1) 유저 발화 → 공개 로그로 저장
+    await push({ role: 'user', content: text, public: true })
+
+    // 2) (선택) 프롬프트 세트 자동주입/브릿지 처리는 비공개 로그로 남길 수 있음
+    // await push({ role: 'engine', content: compiledPrompt, public: false })
+
+    // 3) 모델 응답(지금은 스텁)
+    const ai = `(${new Date().toLocaleTimeString()}) [AI] “${text.slice(0,40)}…” 에 대한 응답 (스텁)`
+    await push({ role: 'assistant', content: ai, public: true })
+    return true
+  }}
+/>
+
 
       {/* 리더보드 드로어 */}
       {showLB && <LeaderboardDrawer gameId={id} onClose={()=>setShowLB(false)} />}
