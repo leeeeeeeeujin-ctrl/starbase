@@ -1,213 +1,167 @@
 // components/rank/StartClient.js
-// 클라이언트 전용
 import { useEffect, useMemo, useState } from 'react'
-import dynamic from 'next/dynamic'
-import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabase'
-import { useAiHistory } from '@/lib/aiHistory'
 import { pickOpponents } from '@/lib/matchmaking'
+import StartScaffold from '@/components/rank/StartScaffold'
 
-// 공용 채팅: CSR만
-const SharedChatDock = dynamic(() => import('@/components/common/SharedChatDock'), { ssr: false })
-
-function MiniHero({ h }) {
-  return (
-    <div style={{ display:'grid', gridTemplateColumns:'48px 1fr', gap:8, padding:'6px 8px', border:'1px solid #e5e7eb', borderRadius:8 }}>
-      {h.image_url
-        ? <img src={h.image_url} alt="" style={{ width:48, height:48, objectFit:'cover', borderRadius:6 }} />
-        : <div style={{ width:48, height:48, background:'#eceff1', borderRadius:6 }} />}
-      <div>
-        <div style={{ fontWeight:700 }}>{h.name}</div>
-        <div style={{ fontSize:12, color:'#64748b' }}>{h.role || '역할 없음'}</div>
-      </div>
-    </div>
-  )
+function groupByRole(list) {
+  const map = new Map()
+  for (const p of list || []) {
+    if (!map.has(p.role)) map.set(p.role, [])
+    map.get(p.role).push(p)
+  }
+  return Array.from(map.entries()).map(([role, members]) => ({ role, members }))
 }
 
-function GroupedRoster({ grouped }) {
-  return (
-    <div style={{ display:'grid', gap:8 }}>
-      {grouped.map((g, i) => (
-        <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:10, background:'#fff' }}>
-          <div style={{ fontWeight:700, marginBottom:6 }}>{g.role || '역할'}</div>
-          <div style={{ display:'grid', gap:8 }}>
-            {g.members.map(m => <MiniHero key={m.id} h={m} />)}
-          </div>
-        </div>
-      ))}
-      {grouped.length===0 && <div style={{ color:'#94a3b8' }}>참여자가 없습니다.</div>}
-    </div>
-  )
-}
-
-export default function StartClient() {
-  const router = useRouter()
-  const { id: gameId } = router.query
-
+export default function StartClient({ gameId, onExit }) {
   const [mounted, setMounted] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [preflight, setPreflight] = useState(true)     // 시작 전 오버레이 표시
   const [starting, setStarting] = useState(false)
-  const [preflight, setPreflight] = useState(true)
-
   const [game, setGame] = useState(null)
-  const [participants, setParticipants] = useState([]) // 평탄화된 참여자
-  const [myScore, setMyScore] = useState(1000)
-  const [match, setMatch] = useState({})               // role -> participants[]
+  const [me, setMe] = useState(null)                   // 내 참가(내 캐릭)
+  const [participants, setParticipants] = useState([]) // 나 + 매칭된 상대
+  const grouped = useMemo(() => groupByRole(participants), [participants])
 
- const { beginSession, push } = useAiHistory({ gameId })
- const [sessionReady, setSessionReady] = useState(false)
-
+  // CSR 보장
   useEffect(() => { setMounted(true) }, [])
-  useEffect(() => { if (!mounted || !gameId) return; bootstrap() }, [mounted, gameId])
+
+  // 최초 로드
+  useEffect(() => {
+    if (!mounted || !gameId) return
+    bootstrap().catch(err => {
+      console.error(err)
+      alert(err.message || '초기화 실패')
+      onExit?.()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, gameId])
 
   async function bootstrap() {
-    setLoading(true)
-    try {
-      // 게임 정보
-      const g = await supabase.from('rank_games').select('*').eq('id', gameId).single()
-      setGame(g.data || null)
+    // 1) 게임/유저
+    const [{ data: g, error: gErr }, { data: uRes }] = await Promise.all([
+      supabase.from('rank_games').select('*').eq('id', gameId).single(),
+      supabase.auth.getUser()
+    ])
+    if (gErr || !g) throw new Error('게임을 찾을 수 없습니다.')
+    setGame(g)
+    const uid = uRes?.user?.id
+    if (!uid) throw new Error('로그인이 필요합니다.')
 
-      // 참여자(히어로 조인 + owner_id 포함)
-      const parts = await supabase
-        .from('rank_participants')
-        .select(`
-          id, role, hero_id, owner_id, score, created_at,
-          heroes:hero_id (id, name, image_url, description, ability1, ability2, ability3, ability4)
-        `)
-        .eq('game_id', gameId)
-        .order('created_at', { ascending: true })
+    // 2) 내 참가(이미 등록된 캐릭)
+    const { data: my, error: myErr } = await supabase
+      .from('rank_participants')
+      .select('id, hero_id, role, score, heroes ( name, image_url, description, ability1, ability2, ability3, ability4 )')
+      .eq('game_id', gameId)
+      .eq('owner_id', uid)
+      .limit(1)
+      .maybeSingle()
+    if (myErr || !my) throw new Error('참여자가 없습니다. 게임 상세에서 먼저 참여 등록하세요.')
+    setMe(my)
 
-      const rows = (parts.data || []).map(p => ({
-        id: p.id,
-        role: p.role,
-        owner_id: p.owner_id,
-        hero_id: p.hero_id,
-        score: p.score ?? 1000,
-        ...p.heroes
-      }))
-      setParticipants(rows)
+    // 3) 역할/슬롯 세팅
+    const roles = Array.isArray(g.roles) ? g.roles : []
+    const slotsPerRole = g.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
+    const myScore = my.score ?? 1000
 
-      // 내 점수(참여 등록된 경우)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user?.id) {
-        const me = rows.find(r => r.owner_id === user.id)
-        if (me?.score != null) setMyScore(Number(me.score))
-      }
-    } finally {
-      setLoading(false)
+    // 4) 매칭(가까운 점수대에서 역할별로 채움)
+    const picked = await pickOpponents({
+      gameId,
+      myHeroId: my.hero_id,
+      myScore,
+      roles,
+      slotsPerRole,
+      step: 100,
+      maxWindow: 800
+    })
+
+    // 5) 참여자 배열 확정(나 + 상대들)
+    const all = [{ ...my, role: my.role }, ...picked]
+    setParticipants(all)
+
+    // (선택) 여기서 세션 미리 만들려면 아래 주석 해제
+    // await ensureActiveSession()
+  }
+
+  // 필요 시 세션 미리 생성하는 보조 함수(지금은 미사용, 엔진 연결 때 쓰면 됨)
+  async function ensureActiveSession() {
+    const { data: existing } = await supabase
+      .from('rank_sessions')
+      .select('id, status')
+      .eq('game_id', gameId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    if (!existing || existing.length === 0 || existing[0].status !== 'active') {
+      const { error: sErr } = await supabase
+        .from('rank_sessions')
+        .insert({ game_id: gameId }) // owner_id는 트리거로 자동 주입
+      if (sErr) throw sErr
     }
   }
 
-  const groupedFromMatch = useMemo(() => {
-    const arr = []
-    for (const [role, members] of Object.entries(match)) {
-      arr.push({
-        role,
-        members: members.map(m => ({
-          id: m.id, role,
-          ...m.heroes, // id,name,image_url,description,ability1..4
-        }))
-      })
-    }
-    return arr
-  }, [match])
-
+  // “게임 시작” 버튼
   async function handleStart() {
     if (starting) return
     setStarting(true)
     try {
-   const roles = Array.isArray(game?.roles) ? game.roles : []
-const slotsPerRole = game?.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
-
-const { data: { user } } = await supabase.auth.getUser()
-const my = participants.find(p => p.owner_id === user?.id)
-if (!my) { alert('내 참가자를 찾을 수 없습니다.'); setStarting(false); return }
-
-const got = await pickOpponents({
-  gameId,
-  myHeroId: my.hero_id,
-  myScore,
-  roles,            // 비어 있어도 OK (함수 내에서 보완)
-  slotsPerRole,
-  step: 100,
-  maxWindow: 1000
-})
-setMatch(got)
-
-      // 세션 시작 + 오버레이 닫기 + 첫 공지
-      await beginSession()
-      setSessionReady(true)
+      // 최소 동작: 오버레이 닫고 본편 패널 보여주기
       setPreflight(false)
-      await push({ role:'system', content:`게임 "${game?.name ?? ''}" 세션 시작. 관찰자 시점/강약 판정 중심.`, public:false, turnNo:0 })
-      await push({ role:'assistant', content:'전투 세션이 시작되었습니다. 메시지를 입력하면 진행합니다.', public:true })
+
+      // (다음 단계)
+      // - aiHistory.beginSession()
+      // - 시스템 프롬프트 push
+      // - 중앙 영역에 엔진 UI 주입(유저 입력→스텁→모델 응답)
     } finally {
       setStarting(false)
     }
   }
 
   if (!mounted) return null
-  if (loading) return <div style={{ padding:20 }}>불러오는 중…</div>
 
   return (
-    <div style={{ maxWidth:1200, margin:'16px auto', padding:12, display:'grid', gridTemplateRows:'auto 1fr', gap:12 }}>
-      {/* 헤더 */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-        <div>
-          <div style={{ fontWeight:800, fontSize:18 }}>{game?.name || '게임'}</div>
-          <div style={{ color:'#64748b', marginTop:4 }}>{game?.description || '설명 없음'}</div>
+    <div style={{ maxWidth: 1200, margin: '16px auto', padding: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+          <h2 style={{ margin: 0 }}>{game?.name || '게임'}</h2>
+          <span style={{ color: '#64748b' }}>{game?.description}</span>
         </div>
-        <div style={{ display:'flex', gap:8 }}>
-          <button onClick={() => router.replace(`/rank/${gameId}`)} style={{ padding:'8px 12px' }}>← 돌아가기</button>
-        </div>
+        <button onClick={onExit} style={{ padding: '6px 10px' }}>← 나가기</button>
       </div>
 
-      {/* 프리플라이트 */}
-      {preflight && (
-        <div style={{
-          position:'fixed', inset:0, background:'rgba(0,0,0,0.5)',
-          display:'flex', alignItems:'center', justifyContent:'center', zIndex:50
-        }}>
-          <div style={{ background:'#fff', borderRadius:12, padding:16, width:'min(920px, 92vw)', maxHeight:'80vh', overflow:'auto' }}>
-            <h3 style={{ marginTop:0, marginBottom:12 }}>참여자 확인</h3>
-            <GroupedRoster grouped={groupedFromMatch} />
-            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12 }}>
-              <button onClick={()=>router.replace(`/rank/${gameId}`)} style={{ padding:'8px 12px' }}>← 돌아가기</button>
-              <button onClick={handleStart} disabled={starting} style={{ padding:'8px 12px', background:'#111827', color:'#fff', borderRadius:8 }}>
-                {starting ? '시작 중…' : '게임 시작'}
-              </button>
+      <StartScaffold
+        preflight={preflight}
+        grouped={grouped}
+        starting={starting}
+        onStart={handleStart}
+        onExit={onExit}
+        center={
+          <div style={{
+            border: '1px solid #e5e7eb',
+            borderRadius: 12, padding: 12, background: '#fff', minHeight: 320
+          }}>
+            <div style={{ color: '#64748b' }}>
+              게임 시작을 누르면 본편 UI가 펼쳐집니다.
+              {/* 다음 단계에서 여기 중앙에 엔진/히스토리 채팅 UI를 주입 */}
             </div>
+            {me && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>내 캐릭터</div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    {me.heroes?.image_url
+                      ? <img src={me.heroes.image_url} alt="" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover' }} />
+                      : <div style={{ width: 44, height: 44, borderRadius: 8, background: '#e5e7eb' }} />}
+                    <div style={{ fontWeight: 600 }}>{me.heroes?.name} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({me.role})</span></div>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: 13 }}>{me.heroes?.description}</div>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#334155' }}>
+                    {['ability1', 'ability2', 'ability3', 'ability4'].map(k => me.heroes?.[k] ? <li key={k}>{me.heroes[k]}</li> : null)}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* 본게임 레이아웃 */}
-      <div style={{
-        display:'grid',
-        gridTemplateColumns: preflight ? '1fr' : '1fr minmax(360px, 640px) 1fr',
-        gap:12, transition:'all .25s ease'
-      }}>
-        <div>{!preflight && <GroupedRoster grouped={groupedFromMatch.slice(0, Math.ceil(groupedFromMatch.length/2))} />}</div>
-
-     <div>
-          {!preflight && (
-           <SharedChatDock
-              height={480}
-              onUserSend={async (text) => {
-              if (!sessionReady) {
-                await beginSession()
-                setSessionReady(true)
-              }
-              await push({ role:'user', content:text, public:true })
-                const ai = `(${new Date().toLocaleTimeString()}) [AI] “${text.slice(0,40)}…” 에 대한 응답 (스텁)`
-                await push({ role:'assistant', content:ai, public:true })
-                return true
-              }}
-            />
-          )}
-        </div>
-
-        <div>{!preflight && <GroupedRoster grouped={groupedFromMatch.slice(Math.ceil(groupedFromMatch.length/2))} />}</div>
-      </div>
+        }
+      />
     </div>
   )
 }
