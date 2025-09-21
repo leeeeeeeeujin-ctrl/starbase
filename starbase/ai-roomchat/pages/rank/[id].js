@@ -61,10 +61,10 @@ export default function GameRoom() {
       // 참여자 리스트(리더보드/정보용)
       const { data: ps } = await supabase
         .from('rank_participants')
-        .select(`
-          id, game_id, hero_id, role, score, created_at,
-          heroes ( id, name, image_url, description )
-        `)
+ .select(`
+   id, game_id, hero_id, role, score, created_at,
+   heroes ( id, name, image_url )
+ `)
         .eq('game_id', id)
         .order('score', { ascending: false })
       const mapped = (ps || []).map(p => ({
@@ -106,17 +106,19 @@ export default function GameRoom() {
   async function joinGame() {
     if (!myHero) return alert('로스터에서 캐릭터를 선택하고 다시 시도하세요.')
     if (!pickRole && roles.length) return alert('역할을 선택하세요.')
-    const payload = { game_id: Number(id), hero_id: myHero.id, role: pickRole || roles[0], score: 1000 }
-    const { error } = await supabase.from('rank_participants').upsert(payload, { onConflict: 'game_id,hero_id' })
+    const payload = { game_id: id, hero_id: myHero.id, role: pickRole || roles[0], score: 1000 }
+     const { error } = await supabase
+   .from('rank_participants')
+   .upsert(payload, { onConflict: ['game_id','hero_id'], ignoreDuplicates: true })
     if (error) return alert('참여 실패: ' + error.message)
 
     // 갱신
     const { data: ps } = await supabase
       .from('rank_participants')
-      .select(`
-        id, game_id, hero_id, role, score, created_at,
-        heroes ( id, name, image_url, description )
-      `)
+       .select(`
+   id, game_id, hero_id, role, score, created_at,
+   heroes ( id, name, image_url )
+ `)
       .eq('game_id', id)
       .order('score', { ascending: false })
     const mapped = (ps || []).map(p => ({
