@@ -115,26 +115,23 @@ export default function StartClient() {
     if (starting) return
     setStarting(true)
     try {
-      // 역할/슬롯수
-      const roles = Array.isArray(game?.roles) ? game.roles : []
-      const slotsPerRole = game?.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
+   const roles = Array.isArray(game?.roles) ? game.roles : []
+const slotsPerRole = game?.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
 
-      // 내 참가자
-      const { data: { user } } = await supabase.auth.getUser()
-      const my = participants.find(p => p.owner_id === user?.id)
-      if (!my) { alert('내 참가자를 찾을 수 없습니다. 먼저 참여 등록을 완료하세요.'); setStarting(false); return }
+const { data: { user } } = await supabase.auth.getUser()
+const my = participants.find(p => p.owner_id === user?.id)
+if (!my) { alert('내 참가자를 찾을 수 없습니다.'); setStarting(false); return }
 
-      // 매칭 픽업
-      const got = await pickOpponents({
-        gameId,
-        myHeroId: my.hero_id,
-        myScore,
-        roles,
-        slotsPerRole,
-        step: 100,
-        maxWindow: 1000
-      })
-      setMatch(got)
+const got = await pickOpponents({
+  gameId,
+  myHeroId: my.hero_id,
+  myScore,
+  roles,            // 비어 있어도 OK (함수 내에서 보완)
+  slotsPerRole,
+  step: 100,
+  maxWindow: 1000
+})
+setMatch(got)
 
       // 세션 시작 + 오버레이 닫기 + 첫 공지
       await beginSession()
