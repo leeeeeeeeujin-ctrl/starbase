@@ -106,7 +106,13 @@ export default function GameRoom() {
   async function joinGame() {
     if (!myHero) return alert('로스터에서 캐릭터를 선택하고 다시 시도하세요.')
     if (!pickRole && roles.length) return alert('역할을 선택하세요.')
-    const payload = { game_id: id, hero_id: myHero.id, role: pickRole || roles[0], score: 1000 }
+    const payload = {
+   game_id: id,
+   hero_id: myHero.id,
+   owner_id: user.id,              // ★ 추가
+   role: pickRole || roles[0],
+   score: 1000
+ }
      const { error } = await supabase
    .from('rank_participants')
    .upsert(payload, { onConflict: ['game_id','hero_id'], ignoreDuplicates: true })
