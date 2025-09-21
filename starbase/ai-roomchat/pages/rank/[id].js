@@ -33,6 +33,7 @@ export default function GameRoom() {
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [preflight, setPreflight] = useState(true)
 
   // 히스토리 훅(미리 호출해두고, 렌더에서만 가드)
   const { beginSession, push, joinedText } = useAiHistory({ gameId: id })
