@@ -135,35 +135,11 @@ export default function GameRoom() {
     setParticipants((ps || []).map(p => ({ ...p, hero: hmap.get(p.hero_id) || null })))
   }
 
-async function startGame() {
-  if (!canStart) return
-  if (!myHero) return alert('캐릭터가 선택되어야 합니다.')
-  setStarting(true)
-  try {
-    // 1) 세션 시작
-    await beginSession()
-
-    // 2) 프리플라이트 닫기(레이아웃 전환)
-    setPreflight(false)
-
-    // 3) 시스템 프롬프트(비공개) + 시작 알림(공개)
-    await push({
-      role: 'system',
-      content: `게임 ${game?.name ?? ''} 시작. 제3자 관찰자 시점, 강약 중심, 체크리스트 준수.`,
-      public: false,
-      turnNo: 0  // 시스템은 0으로 표기(선택)
-    })
-    await push({
-      role: 'assistant',
-      content: '전투 세션이 시작되었습니다. 준비가 되면 메시지를 입력하세요.',
-      public: true  // 중앙 채팅에 보이게
-      // turn_no는 자동 증가
-    })
-  } finally {
-    setStarting(false)
-  }
-}
-
+function startGame() {
+   if (!canStart) return
+   if (!myHero) { alert('캐릭터가 선택되어야 합니다.'); return }
+   router.push(`/rank/${id}/start`)
+ }
 
   async function deleteRoom() {
     if (!isOwner) return
