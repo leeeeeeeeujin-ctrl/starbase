@@ -186,16 +186,18 @@ setMatch(got)
       }}>
         <div>{!preflight && <GroupedRoster grouped={groupedFromMatch.slice(0, Math.ceil(groupedFromMatch.length/2))} />}</div>
 
-        <div>
-          <SharedChatDock
-            height={preflight ? 320 : 480}
-            onUserSend={async (text) => {
-              await push({ role:'user', content:text, public:true })
-              const ai = `(${new Date().toLocaleTimeString()}) [AI] “${text.slice(0,40)}…” 에 대한 응답 (스텁)`
-              await push({ role:'assistant', content:ai, public:true })
-              return true
-            }}
-          />
+     <div>
+          {!preflight && (
+           <SharedChatDock
+              height={480}
+              onUserSend={async (text) => {
+                await push({ role:'user', content:text, public:true })
+                const ai = `(${new Date().toLocaleTimeString()}) [AI] “${text.slice(0,40)}…” 에 대한 응답 (스텁)`
+                await push({ role:'assistant', content:ai, public:true })
+                return true
+              }}
+            />
+          )}
         </div>
 
         <div>{!preflight && <GroupedRoster grouped={groupedFromMatch.slice(Math.ceil(groupedFromMatch.length/2))} />}</div>
