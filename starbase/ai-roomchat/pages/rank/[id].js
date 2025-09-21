@@ -7,6 +7,9 @@ import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import HeroPicker from '../../components/common/HeroPicker'
 import { useAiHistory } from '../../lib/aiHistory'
 
+const router = useRouter()
+const { id: gameId } = router.query || {}
+
 function getSelectedHeroId(router) {
   // URL로 ?heroId= 넘겨줄 수도 있게
   const q = router?.query?.heroId
