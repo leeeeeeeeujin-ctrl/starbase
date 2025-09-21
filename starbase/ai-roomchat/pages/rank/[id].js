@@ -253,7 +253,7 @@ export default function GameRoom() {
       </div>
 
       {/* 내 캐릭터(이미지 + 능력 1~4) */}
-      <MyHeroStrip hero={myHero} />
+      <MyHeroStrip hero={myHero} roleLabel={myEntry?.role} />
 
       {/* 본문: 참여자 카드들 */}
       <div style={{ border:'1px solid #e5e7eb', borderRadius:12, background:'#fff', padding:12, minHeight:240 }}>
@@ -281,7 +281,7 @@ export default function GameRoom() {
   )
 }
 
-function MyHeroStrip({ hero }) {
+function MyHeroStrip({ hero, roleLabel }) {
   if (!hero) {
     return (
       <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fafafa', color:'#64748b' }}>
@@ -301,6 +301,11 @@ function MyHeroStrip({ hero }) {
           <div style={{ fontWeight:800, fontSize:18, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
             {hero.name}
           </div>
+                    {roleLabel && (
+            <div style={{ marginTop:2, fontSize:12, fontWeight:700, color:'#334155' }}>
+              내 역할: {roleLabel}
+            </div>
+          )}
           <div style={{ color:'#64748b', marginTop:4, whiteSpace:'pre-wrap' }}>
             {hero.description || '설명 없음'}
           </div>
