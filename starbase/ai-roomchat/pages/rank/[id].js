@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase'
 import SharedChatDock from '../../components/common/SharedChatDock'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import HeroPicker from '../../components/common/HeroPicker'
-import { useAiHistory } from '../../../lib/aiHistory'
+import { useAiHistory } from '../../lib/aiHistory'
 
 function getSelectedHeroId(router) {
   // URL로 ?heroId= 넘겨줄 수도 있게
