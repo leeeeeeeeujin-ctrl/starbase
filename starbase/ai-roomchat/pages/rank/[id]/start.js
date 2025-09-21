@@ -69,11 +69,14 @@ export default function RankGameStart() {
       setGame(g.data || null)
 
       // 참여자 + 히어로 조인
-      const parts = await supabase
-        .from('rank_participants')
-        .select('id, role, hero_id, heroes:hero_id (id, name, image_url, description, ability1, ability2, ability3, ability4)')
-        .eq('game_id', gameId)
-        .order('created_at', { ascending: true })
+const parts = await supabase
+  .from('rank_participants')
+  .select(`
+    id, role, hero_id, owner_id, score,
+    heroes:hero_id (id, name, image_url, description, ability1, ability2, ability3, ability4)
+  `)
+  .eq('game_id', gameId)
+  .order('created_at', { ascending: true })
 
       const rows = (parts.data || []).map(p => ({
         id: p.id,
@@ -104,14 +107,31 @@ export default function RankGameStart() {
     setStarting(true)
     try {
       // 1) 활성 슬롯 구성 가져오기(예시)
-   const roles = Array.isArray(game?.roles) ? game.roles : []         // 예: ["공격","수비"]
-   const slotsPerRole = game?.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
-   // 2) 비슷한 점수대에서 역할별 랜덤 픽
-   const myHero = participants.find(p => p.owner_id === (await supabase.auth.getUser()).data?.user?.id)
-   const got = await pickOpponents({
-     gameId, myHeroId: myHero?.hero_id, myScore,
-     roles, slotsPerRole, step: 100, maxWindow: 1000
-   })
+  const roles = Array.isArray(game?.roles) ? game.roles : []
+const slotsPerRole = game?.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
+
+// 현재 로그인 유저 id를 먼저 비동기로 구하고
+const { data: { user } } = await supabase.auth.getUser()
+const myUserId = user?.id
+
+// 동기 find로 내 참가자 레코드를 찾는다
+const myHero = participants.find(p => p.owner_id === myUserId)
+if (!myHero) {
+  alert('내 참가자(캐릭터)를 찾을 수 없습니다. 먼저 참여 등록을 완료해주세요.')
+  setStarting(false)
+  return
+}
+
+const got = await pickOpponents({
+  gameId,
+  myHeroId: myHero.hero_id,
+  myScore,
+  roles,
+  slotsPerRole,
+  step: 100,
+  maxWindow: 1000
+})
+
    setMatch(got)
       await beginSession() // DB 세션 생성
       setPreflight(false)  // 레이아웃 전환
