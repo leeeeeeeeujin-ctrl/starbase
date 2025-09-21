@@ -118,25 +118,30 @@ export default function GameRoom() {
    .upsert(payload, { onConflict: ['game_id','hero_id'], ignoreDuplicates: true })
     if (error) return alert('참여 실패: ' + error.message)
 
-    // 갱신
-    const { data: ps } = await supabase
-      .from('rank_participants')
-       .select(`
-   id, game_id, hero_id, role, score, created_at,
-   heroes ( id, name, image_url )
- `)
-      .eq('game_id', id)
-      .order('score', { ascending: false })
-    const mapped = (ps || []).map(p => ({
-      ...p,
-      hero: p.heroes ? {
-        id: p.heroes.id,
-        name: p.heroes.name,
-        image_url: p.heroes.image_url,
-        description: p.heroes.description
-      } : null
-    }))
-    setParticipants(mapped)
+ // 1) 참가자(단일 테이블)
+ const { data: ps, error: pErr } = await supabase
+   .from('rank_participants')
+   .select('id, game_id, hero_id, role, score, created_at')
+   .eq('game_id', id)
+   .order('score', { ascending: false })
+ if (pErr) { console.error('participants error', pErr); setParticipants([]); return }
+
+ // 2) 히어로들 벌크 조회
+ const heroIds = (ps ?? []).map(p => p.hero_id).filter(Boolean)
+ const { data: hs } = heroIds.length
+   ? await supabase
+       .from('heroes')
+       .select('id, name, image_url')  // 필요하면 ability/description 추가
+       .in('id', heroIds)
+   : { data: [] }
+ const hmap = new Map((hs || []).map(h => [h.id, h]))
+
+ // 3) 매핑
+ const mapped = (ps || []).map(p => ({
+   ...p,
+   hero: hmap.get(p.hero_id) || null,
+ }))
+ setParticipants(mapped)
   }
 
   async function startGame() {
