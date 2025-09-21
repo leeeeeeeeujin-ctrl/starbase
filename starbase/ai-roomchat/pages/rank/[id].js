@@ -120,9 +120,9 @@ export default function GameRoom() {
       score: 1000
     }
     // ★ onConflict 키를 (game_id, owner_id)로 변경하여 같은 유저의 캐릭터 변경이 업데이트로 동작하게 함
-    const { error } = await supabase
-      .from('rank_participants')
-      .upsert(payload, { onConflict: ['game_id','owner_id'] })
+ const { error } = await supabase
+   .from('rank_participants')
+   .insert(payload, { ignoreDuplicates: true })
     if (error) return alert('참여 실패: ' + error.message)
 
     // 1) 참가자(단일 테이블) — 서버에서 다시 불러와서 매핑
