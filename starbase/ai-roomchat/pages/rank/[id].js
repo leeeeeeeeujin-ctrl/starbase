@@ -11,7 +11,7 @@ const router = useRouter()
 const { id: gameId } = router.query || {}
 const GroupedRoster = dynamic(() => import('../../components/rank/GroupedRoster'), { ssr: false })
 const ApiKeyBar = dynamic(() => import('../../components/common/ApiKeyBar'), { ssr: false })
-if (!gameId) return null
+
 function getSelectedHeroId(router) {
   // URL로 ?heroId= 넘겨줄 수도 있게
   const q = router?.query?.heroId
@@ -43,6 +43,7 @@ export default function GameRoom() {
 
   const { beginSession, push, joinedText, clear } = useAiHistory({ gameId })
   useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return null
   // 초기 로드
   useEffect(() => {
     if (!id) return
