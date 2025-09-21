@@ -37,8 +37,7 @@ for (let s = 1; s <= 12; s++) {
   out = out.replaceAll(`{{slot${s}.role}}`, hero.role ?? '')
 }
 
-// [추가] 히스토리 5줄
-const lines = (historyText || '').split(/\r?\n/)
+
 // 기존 last1/last2, all은 이미 있음. last5만 추가
 out = out.replaceAll('{{history.last5}}', lines.slice(-5).join('\n'))
 
