@@ -1,134 +1,110 @@
-'use client'
+// components/maker/PromptNode.js
+import React from 'react'
 
-import { Handle, Position } from 'reactflow'
-
-export default function PromptNode({ id, data = {}, selected }) {
-  const slot_type = data.slot_type || 'ai'
-  const template  = data.template  || ''
-  const isStart   = !!data.isStart
-
-  const textarea = (
-    <textarea
-      value={template}
-      onChange={(e) => data.onChange?.({ template: e.target.value })}
-      placeholder="여기에 템플릿을 입력하세요"
-      rows={8}
-      style={{
-        width: '100%',
-        border: 'none',
-        outline: 'none',
-        padding: 10,
-        resize: 'vertical'
-      }}
-    />
-  )
+export default function PromptNode({ id, data }) {
+  const d = data || {}
+  const update = (patch) => d.onChange?.(patch)
 
   return (
-    <div
-      style={{
-        width: 340,
-        background: '#fff',
-        border: isStart ? '2px solid #16a34a' : '1px solid #e5e7eb',
-        borderRadius: 12,
-        boxShadow: selected ? '0 0 0 2px #60a5fa' : '0 1px 2px rgba(0,0,0,0.04)',
-        position: 'relative'
-      }}
-    >
-      <Handle type="target" position={Position.Left} />
-
-      <div
-        className="node-drag-handle"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: 6,
-          background: '#f9fafb',
-          borderBottom: '1px solid #e5e7eb',
-          cursor: 'grab'
-        }}
-      >
+    <div style={{ width: 360, border:'1px solid #e5e7eb', borderRadius:12, background:'#fff', overflow:'hidden' }}>
+      {/* 헤더 */}
+      <div style={{ padding:'8px 10px', display:'flex', alignItems:'center', gap:8, background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
         <select
-          value={slot_type}
-          onChange={(e) => data.onChange?.({ slot_type: e.target.value })}
-          style={{
-            padding: '4px 6px',
-            border: '1px solid #e5e7eb',
-            borderRadius: 6,
-            fontWeight: 700
-          }}
+          value={d.slot_type || 'ai'}
+          onChange={e=>update({ slot_type: e.target.value })}
+          style={{ fontWeight:700 }}
         >
-          <option value="ai">AI 프롬프트</option>
-          <option value="user_action">유저 행동</option>
-          <option value="system">시스템 설명</option>
+          <option value="ai">AI</option>
+          <option value="user_action">유저행동</option>
+          <option value="system">시스템</option>
         </select>
+        <label style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:6 }}>
+          <input
+            type="checkbox"
+            checked={!!(d.options?.invisible)}
+            onChange={e=>update({ options: { ...(d.options||{}), invisible: e.target.checked } })}
+          />
+          인비저블
+        </label>
+      </div>
 
-        {isStart && (
-          <span
-            style={{
-              marginLeft: 8,
-              padding: '2px 6px',
-              borderRadius: 999,
-              background: '#dcfce7',
-              color: '#166534',
-              fontSize: 12,
-              fontWeight: 700
+      {/* 템플릿 */}
+      <div style={{ padding:10 }}>
+        <label style={{ fontSize:12, color:'#64748b' }}>템플릿</label>
+        <textarea
+          rows={6}
+          value={d.template || ''}
+          onChange={e=>update({ template: e.target.value })}
+          style={{ width:'100%', fontFamily:'monospace' }}
+        />
+      </div>
+
+      {/* 가시 슬롯 */}
+      {d.options?.invisible && (
+        <div style={{ padding:'0 10px 10px' }}>
+          <label style={{ fontSize:12, color:'#64748b' }}>보이는 슬롯(쉼표): 예) 1,3,5</label>
+          <input
+            value={Array.isArray(d.options?.visible_slots) ? d.options.visible_slots.join(',') : ''}
+            onChange={e=>{
+              const arr = e.target.value.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n))
+              update({ options: { ...(d.options||{}), visible_slots: arr } })
             }}
-          >
-            시작
-          </span>
-        )}
-
-        <button
-          onClick={() => data.onDelete?.(id)}
-          title="프롬프트와 연결된 브릿지 삭제"
-          style={{
-            marginLeft: 'auto',
-            border: 'none',
-            background: 'transparent',
-            color: '#ef4444',
-            fontWeight: 900,
-            fontSize: 16,
-            cursor: 'pointer'
-          }}
-        >
-          ✕
-        </button>
-      </div>
-
-      <div
-        style={{
-          display: 'flex',
-          gap: 8,
-          padding: '6px 10px',
-          borderBottom: '1px solid #f1f5f9'
-        }}
-      >
-        <button
-          onClick={() => data.onSetStart?.(id)}
-          title="이 노드를 시작 지점으로 지정"
-          style={{
-            padding: '4px 8px',
-            borderRadius: 8,
-            border: '1px solid #d1d5db',
-            background: '#fff',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          이 노드를 시작으로
-        </button>
-      </div>
-
-      {slot_type === 'user_action' ? (
-        <div style={{ padding: 10, color: '#6b7280', fontStyle: 'italic' }}>
-          유저 입력 단계입니다. (플레이 시 사용자가 직접 문장을 입력)
+            style={{ width:'100%' }}
+          />
         </div>
-      ) : (
-        textarea
       )}
 
-      <Handle type="source" position={Position.Right} />
+      {/* 변수(전역/로컬) – 수동/적극 */}
+      <div style={{ padding:'0 10px 10px', display:'grid', gap:8 }}>
+        <b style={{ fontSize:13 }}>변수 설정</b>
+        <VarArea
+          label="전역 수동변수(JSON 배열: {name,instruction})"
+          value={d.options?.manual_vars_global}
+          onChange={(v)=>update({ options: { ...(d.options||{}), manual_vars_global: v } })}
+        />
+        <VarArea
+          label="로컬 수동변수(JSON 배열: {name,instruction})"
+          value={d.options?.manual_vars_local}
+          onChange={(v)=>update({ options: { ...(d.options||{}), manual_vars_local: v } })}
+        />
+        <VarArea
+          label="전역 적극변수(JSON 배열: {name,ruleText})"
+          value={d.options?.active_vars_global}
+          onChange={(v)=>update({ options: { ...(d.options||{}), active_vars_global: v } })}
+        />
+        <VarArea
+          label="로컬 적극변수(JSON 배열: {name,ruleText})"
+          value={d.options?.active_vars_local}
+          onChange={(v)=>update({ options: { ...(d.options||{}), active_vars_local: v } })}
+        />
+      </div>
+
+      {/* 풋터 */}
+      <div style={{ padding:10, borderTop:'1px solid #e5e7eb', display:'flex', gap:8 }}>
+        <button onClick={()=>d.onSetStart?.()} style={{ padding:'6px 10px' }}>
+          {d.isStart ? '시작노드 ✔' : '시작지점 지정'}
+        </button>
+        <button onClick={()=>d.onDelete?.(id)} style={{ marginLeft:'auto', padding:'6px 10px', color:'#ef4444' }}>삭제</button>
+      </div>
+    </div>
+  )
+}
+
+function VarArea({ label, value, onChange }) {
+  let text = ''
+  try { text = JSON.stringify(value ?? [], null, 2) } catch { text = '[]' }
+  return (
+    <div>
+      <label style={{ fontSize:12, color:'#64748b' }}>{label}</label>
+      <textarea
+        rows={4}
+        value={text}
+        onChange={e=>{
+          try { onChange(JSON.parse(e.target.value || '[]')) }
+          catch { /* 무시 */ }
+        }}
+        style={{ width:'100%', fontFamily:'monospace' }}
+      />
     </div>
   )
 }
