@@ -481,12 +481,4 @@ export default function SidePanel({
   return <div style={{ padding:12, color:'#64748b' }}>노드/브릿지를 선택하세요</div>
   
 }
-  return (
-    <div style={{ padding:12 }}>
-      <VarRulesEditor
-        title="전역 변수 규칙(모든 노드에 적용)"
-        value={varRulesGlobal}
-        onChange={setVarRulesGlobal}
-      />
-    </div>
-  )
+  
