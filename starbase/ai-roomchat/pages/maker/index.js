@@ -7,8 +7,8 @@ import { useRouter } from 'next/router'
 import dynamic from 'next/dynamic'
 import { addEdge, useEdgesState, useNodesState } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { supabase } from '../../../lib/supabase'
-import SidePanel from '../../../components/maker/SidePanel'
+import { supabase } from '@/lib/supabase'
+import SidePanel from '@/components/maker/SidePanel'
 
 // ReactFlow SSR 회피
 const ReactFlow = dynamic(() => import('reactflow').then(m => m.default), { ssr: false })
