@@ -2,9 +2,16 @@
 import { useRef, useState } from 'react'
 import { supabase } from './supabase'
 // lib/aiHistory.js (핵심 부분 예시)
-export function useAiHistory({ gameId }) {
-  const [sessionId, setSessionId] = useState(null)
-  const [memory, setMemory] = useState([]) // 로컬 캐시
+import { useRouter } from 'next/router'
+import { useEffect, useState } from 'react'
+
+export default function SomeChild(props) {
+  const router = useRouter()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
+  const gameId = props?.gameId ?? router?.query?.id
+  if (!mounted || !gameId) return null
 
   async function beginSession() {
     const { data: { user } } = await supabase.auth.getUser()
