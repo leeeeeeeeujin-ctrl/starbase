@@ -1,4 +1,3 @@
-// components/maker/PromptNode.js
 'use client'
 
 import { Handle, Position } from 'reactflow'
@@ -8,7 +7,6 @@ export default function PromptNode({ id, data = {}, selected }) {
   const template  = data.template  || ''
   const isStart   = !!data.isStart
 
-  // 공통 textarea 스타일
   const textarea = (
     <textarea
       value={template}
@@ -36,11 +34,8 @@ export default function PromptNode({ id, data = {}, selected }) {
         position: 'relative'
       }}
     >
-      {/* 연결 핸들 */}
       <Handle type="target" position={Position.Left} />
 
-      {/* 헤더: 타입 선택 + 시작 배지 + 삭제
-          👉 드래그 핸들: .node-drag-handle */}
       <div
         className="node-drag-handle"
         style={{
@@ -101,7 +96,6 @@ export default function PromptNode({ id, data = {}, selected }) {
         </button>
       </div>
 
-      {/* 툴바: 시작 지정 버튼 */}
       <div
         style={{
           display: 'flex',
@@ -126,10 +120,9 @@ export default function PromptNode({ id, data = {}, selected }) {
         </button>
       </div>
 
-      {/* 본문: system/ai는 textarea 편집 가능, user_action은 안내만 */}
       {slot_type === 'user_action' ? (
         <div style={{ padding: 10, color: '#6b7280', fontStyle: 'italic' }}>
-          유저 입력 단계입니다. (플레이 시 사용자가 직접 문장을 입력하게 됩니다)
+          유저 입력 단계입니다. (플레이 시 사용자가 직접 문장을 입력)
         </div>
       ) : (
         textarea

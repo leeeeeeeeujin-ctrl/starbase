@@ -1,4 +1,3 @@
-// pages/maker/[id]/index.js
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import ReactFlow, { Background, Controls, MiniMap, addEdge, useEdgesState, useNodesState } from 'reactflow'
@@ -15,21 +14,16 @@ export default function MakerEditor() {
 
   const [loading, setLoading] = useState(true)
   const [setInfo, setSetInfo] = useState(null)
-  const [globalRules, setGlobalRules] = useState([])
+  const [globalRules, setGlobalRules] = useState([]) // ✅ 단일 선언
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState(null)
   const [selectedEdge, setSelectedEdge] = useState(null)
   const idMapRef = useRef(new Map()) // flowNodeId -> DB slot.id
 
-  // 전역 변수 규칙 (세트 단위)
-  const [globalRules, setGlobalRules] = useState([])
-
-  // 초기 로드
   useEffect(() => {
     if (!setId) return
     ;(async () => {
-      // 세트 정보
       const { data: setRow, error: e1 } = await supabase
         .from('prompt_sets')
         .select('*')
@@ -39,7 +33,6 @@ export default function MakerEditor() {
       setSetInfo(setRow)
       setGlobalRules(Array.isArray(setRow.var_rules_global) ? setRow.var_rules_global : [])
 
-      // 슬롯 / 브릿지
       const { data: slotRows } = await supabase
         .from('prompt_slots')
         .select('*')
@@ -71,27 +64,29 @@ export default function MakerEditor() {
         }
       })
 
-      const initEdges = (bridgeRows || []).filter(b => b.from_slot_id && b.to_slot_id).map(b => ({
-        id: `e${b.id}`,
-        source: `n${b.from_slot_id}`,
-        target: `n${b.to_slot_id}`,
-        label: [
-          (b.trigger_words || []).join(', '),
-          (b.conditions && b.conditions.length ? 'cond' : null),
-          (b.probability !== 1 ? `p=${b.probability}` : null),
-          (b.fallback ? 'fallback' : null),
-          (b.action && b.action !== 'continue' ? b.action : null)
-        ].filter(Boolean).join(' | '),
-        data: {
-          bridgeId: b.id,
-          trigger_words: b.trigger_words || [],
-          conditions: b.conditions || [],
-          priority: b.priority ?? 0,
-          probability: b.probability ?? 1.0,
-          fallback: !!b.fallback,
-          action: b.action || 'continue'
-        }
-      }))
+      const initEdges = (bridgeRows || [])
+        .filter(b => b.from_slot_id && b.to_slot_id)
+        .map(b => ({
+          id: `e${b.id}`,
+          source: `n${b.from_slot_id}`,
+          target: `n${b.to_slot_id}`,
+          label: [
+            (b.trigger_words || []).join(', '),
+            (b.conditions && b.conditions.length ? 'cond' : null),
+            (b.probability !== 1 ? `p=${b.probability}` : null),
+            (b.fallback ? 'fallback' : null),
+            (b.action && b.action !== 'continue' ? b.action : null)
+          ].filter(Boolean).join(' | '),
+          data: {
+            bridgeId: b.id,
+            trigger_words: b.trigger_words || [],
+            conditions: b.conditions || [],
+            priority: b.priority ?? 0,
+            probability: b.probability ?? 1.0,
+            fallback: !!b.fallback,
+            action: b.action || 'continue'
+          }
+        }))
 
       setNodes(initNodes)
       setEdges(initEdges)
@@ -108,11 +103,9 @@ export default function MakerEditor() {
     }, eds))
   }, [setEdges])
 
-  // 선택 이벤트
   const onNodeClick = useCallback((_, node) => { setSelectedNodeId(node.id); setSelectedEdge(null) }, [])
   const onEdgeClick = useCallback((_, edge) => { setSelectedEdge(edge); setSelectedNodeId(null) }, [])
 
-  // 시작 지정
   function markAsStart(flowNodeId) {
     setNodes(nds => nds.map(n => {
       const isTarget = n.id === flowNodeId
@@ -120,7 +113,6 @@ export default function MakerEditor() {
     }))
   }
 
-  // 노드 삭제(+연결 브릿지 DB/화면 동시 삭제)
   async function handleDeletePrompt(flowNodeId) {
     setNodes(nds => nds.filter(n => n.id !== flowNodeId))
     setEdges(eds => eds.filter(e => e.source !== flowNodeId && e.target !== flowNodeId))
@@ -133,14 +125,23 @@ export default function MakerEditor() {
     }
   }
 
-  // ===== 저장(전역/로컬 규칙 포함) =====
+  // 선택 노드 텍스트에 토큰 삽입
+  function insertTokenToSelected(token) {
+    if (!selectedNodeId) return
+    setNodes(nds => nds.map(n => n.id===selectedNodeId
+      ? { ...n, data:{ ...n.data, template:(n.data.template||'') + token } }
+      : n
+    ))
+  }
+
+  // 저장(세트 전역 규칙 + 슬롯 + 브릿지)
   async function saveAll() {
     if (!setInfo) return
 
-    // A) 전역 규칙: prompt_sets 업데이트
+    // A) 세트 전역 규칙
     const upSet = await supabase
       .from('prompt_sets')
-      .update({ var_rules_global: globalRules || [] })
+      .update({ var_rules_global: Array.isArray(globalRules) ? globalRules : [] })
       .eq('id', setInfo.id)
       .select()
       .single()
@@ -151,11 +152,11 @@ export default function MakerEditor() {
     }
     setSetInfo(upSet.data)
 
-    // B) 화면상의 노드 순서를 slot_no로 사용
+    // B) slot_no 부여
     const slotNoMap = new Map()
-    nodes.forEach((n, idx) => slotNoMap.set(n.id, idx + 1)) // 1..N
+    nodes.forEach((n, idx) => slotNoMap.set(n.id, idx + 1))
 
-    // C) 슬롯 업서트 (로컬 규칙 포함)
+    // C) 슬롯 upsert
     for (const n of nodes) {
       const slot_no = slotNoMap.get(n.id) || 1
       let slotId = idMapRef.current.get(n.id)
@@ -170,17 +171,9 @@ export default function MakerEditor() {
         var_rules_local: Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : [],
         transform_code: n.data.transform_code ?? ''
       }
-      // 세트 전역 규칙 저장
- await supabase.from('prompt_sets')
-   .update({ var_rules_global: Array.isArray(globalRules) ? globalRules : [] })
-   .eq('id', setInfo.id)
 
       if (!slotId) {
-        const ins = await supabase
-          .from('prompt_slots')
-          .insert(payload)
-          .select()
-          .single()
+        const ins = await supabase.from('prompt_slots').insert(payload).select().single()
         if (ins.error || !ins.data) {
           alert('슬롯 저장 실패: ' + (ins.error?.message ?? 'unknown'))
           console.error('prompt_slots insert error', ins.error)
@@ -189,12 +182,7 @@ export default function MakerEditor() {
         slotId = ins.data.id
         idMapRef.current.set(n.id, slotId)
       } else {
-        const upd = await supabase
-          .from('prompt_slots')
-          .update(payload)
-          .eq('id', slotId)
-          .select()
-          .single()
+        const upd = await supabase.from('prompt_slots').update(payload).eq('id', slotId).select().single()
         if (upd.error) {
           alert('슬롯 업데이트 실패: ' + upd.error.message)
           console.error('prompt_slots update error', upd.error)
@@ -202,7 +190,7 @@ export default function MakerEditor() {
       }
     }
 
-    // D) 브릿지 업서트(기존 로직 유지)
+    // D) 브릿지 upsert
     const { data: oldBridges } = await supabase
       .from('prompt_bridges')
       .select('id')
@@ -250,17 +238,17 @@ export default function MakerEditor() {
     }
 
     alert('저장 완료')
-    
   }
 
   if (loading) return <div style={{ padding:20 }}>불러오는 중…</div>
 
   return (
     <div style={{ height:'100vh', display:'grid', gridTemplateRows:'auto 1fr' }}>
-      {/* 상단 툴바 */}
-      <div style={{ position:'sticky', top:0, zIndex:40, background:'#fff',
-            padding:10, borderBottom:'1px solid #e5e7eb',
-            display:'grid', gridTemplateColumns:'1fr auto auto', gap:8 }}>
+      <div style={{
+        position:'sticky', top:0, zIndex:40, background:'#fff',
+        padding:10, borderBottom:'1px solid #e5e7eb',
+        display:'grid', gridTemplateColumns:'1fr auto', gap:8
+      }}>
         <div>
           <button onClick={()=>router.push('/maker')} style={{ padding:'6px 10px' }}>← 목록</button>
           <b style={{ marginLeft:10 }}>{setInfo?.name}</b>
@@ -273,7 +261,6 @@ export default function MakerEditor() {
         </div>
       </div>
 
-      {/* 본문 */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 320px' }}>
         <div style={{ position:'relative', zIndex:0 }}>
           <ReactFlow
@@ -292,16 +279,16 @@ export default function MakerEditor() {
           </ReactFlow>
         </div>
 
-<SidePanel
-  selectedNodeId={selectedNodeId}
-  selectedEdge={selectedEdge}
-  setEdges={setEdges}
-  setNodes={setNodes}
-  onInsertToken={insertTokenToSelected}
-  globalRules={globalRules}        // ★ 추가
-  setGlobalRules={setGlobalRules}  // ★ 추가
-  selectedNodeData={nodes.find(n => n.id===selectedNodeId)?.data}
-/>
+        <SidePanel
+          selectedNodeId={selectedNodeId}
+          selectedEdge={selectedEdge}
+          setEdges={setEdges}
+          setNodes={setNodes}
+          onInsertToken={insertTokenToSelected}
+          globalRules={globalRules}
+          setGlobalRules={setGlobalRules}
+          selectedNodeData={nodes.find(n => n.id===selectedNodeId)?.data}
+        />
       </div>
     </div>
   )
@@ -315,7 +302,7 @@ export default function MakerEditor() {
       data: {
         template: '',
         slot_type: type,
-        var_rules_local: [],            // ★ 새 노드 초기값
+        var_rules_local: [],
         onChange: (partial) => setNodes(nds => nds.map(n => n.id===nid ? { ...n, data:{ ...n.data, ...partial } } : n)),
         onDelete: handleDeletePrompt,
         isStart: false,
@@ -324,8 +311,4 @@ export default function MakerEditor() {
     }])
     setSelectedNodeId(nid)
   }
-  await supabase
-  .from('prompt_sets')
-  .update({ var_rules_global: globalRules })
-  .eq('id', setId)
 }

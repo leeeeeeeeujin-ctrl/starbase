@@ -1,68 +1,83 @@
-// components/maker/SidePanel.js
 import { useEffect, useState } from 'react'
 
-/* ===========================
-   조건 빌더(기존 유지)
-   =========================== */
 function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
   const [typeIdx, setTypeIdx] = useState(0)
   const [values, setValues] = useState({})
 
   const CONDITION_DEFS = [
-    { type: 'probability', label: '확률로 진행',
-      params: [{ key:'p', label:'확률(0~1)', type:'number', step:'0.05', min:'0', max:'1', defaultValue:'0.3' }],
-      toJSON: v => ({ type:'random', p: Number(v.p ?? 0.3) }),
+    {
+      type: 'turn_gte',
+      label: '턴 ≥',
+      params: [{ key:'value', label:'턴 ≥', type:'number', defaultValue:'1' }],
+      toJSON: v => ({ type:'turn_gte', value:Number(v.value ?? 1) }),
+      toSummary: v => `턴 ≥ ${v.value ?? 1}`
     },
-    { type: 'turn_gte', label: '특정 턴 이상',
-      params: [{ key:'value', label:'턴 ≥', type:'number', defaultValue:'3' }],
-      toJSON: v => ({ type:'turn_gte', value: Number(v.value ?? 1) }),
-    },
-    { type: 'turn_lte', label: '특정 턴 이하',
+    {
+      type: 'turn_lte',
+      label: '턴 ≤',
       params: [{ key:'value', label:'턴 ≤', type:'number', defaultValue:'5' }],
-      toJSON: v => ({ type:'turn_lte', value: Number(v.value ?? 1) }),
+      toJSON: v => ({ type:'turn_lte', value:Number(v.value ?? 1) }),
+      toSummary: v => `턴 ≤ ${v.value ?? 1}`
     },
-    { type: 'prev_ai_contains', label: '이전 AI 응답에 단어 포함',
+    {
+      type: 'prev_ai_contains',
+      label: '이전응답 포함',
       params: [
-        { key:'value', label:'단어', type:'text', placeholder:'예) 승리' },
-        { key:'scope', label:'대상 구간', type:'select', options:[
-          {value:'last1', label:'마지막 한 줄'},
-          {value:'last2', label:'마지막 두 줄'},
+        { key:'value', label:'문구', type:'text', placeholder:'예) 승리' },
+        { key:'scope', label:'구간', type:'select', options:[
+          {value:'last1', label:'마지막 1줄'},
+          {value:'last2', label:'마지막 2줄'},
           {value:'last5', label:'마지막 5줄'},
-          {value:'all',   label:'전체 응답'},
+          {value:'all',   label:'전체'},
         ], defaultValue:'last2' }
       ],
       toJSON: v => ({ type:'prev_ai_contains', value:String(v.value||''), scope:v.scope||'last2' }),
+      toSummary: v => `이전응답(${v.scope||'last2'}) "${v.value||''}"`
     },
-    { type: 'prev_prompt_contains', label: '이전 프롬프트에 문구 포함',
+    {
+      type: 'prev_prompt_contains',
+      label: '이전프롬프트 포함',
       params: [
         { key:'value', label:'문구', type:'text', placeholder:'예) 탈출' },
-        { key:'scope', label:'대상 구간', type:'select', options:[
-          {value:'last1', label:'마지막 한 줄'},
-          {value:'last2', label:'마지막 두 줄'},
-          {value:'all',   label:'전체 프롬프트'},
+        { key:'scope', label:'구간', type:'select', options:[
+          {value:'last1', label:'마지막 1줄'},
+          {value:'last2', label:'마지막 2줄'},
+          {value:'all',   label:'전체'},
         ], defaultValue:'last1' }
       ],
       toJSON: v => ({ type:'prev_prompt_contains', value:String(v.value||''), scope:v.scope||'last1' }),
+      toSummary: v => `이전프롬프트(${v.scope||'last1'}) "${v.value||''}"`
     },
-    { type: 'prev_ai_regex', label: '이전 AI 응답 정규식',
+    {
+      type: 'prev_ai_regex',
+      label: '이전응답 정규식',
       params: [
         { key:'pattern', label:'패턴', type:'text', placeholder:'예) ^패배\\b' },
         { key:'flags',   label:'플래그', type:'text', placeholder:'예) i' },
-        { key:'scope',   label:'대상 구간', type:'select', options:[
-          {value:'last1', label:'마지막 한 줄'},
-          {value:'last2', label:'마지막 두 줄'},
-          {value:'all',   label:'전체 응답'},
+        { key:'scope',   label:'구간', type:'select', options:[
+          {value:'last1', label:'마지막 1줄'},
+          {value:'last2', label:'마지막 2줄'},
+          {value:'all',   label:'전체'},
         ], defaultValue:'last1' }
       ],
       toJSON: v => ({ type:'prev_ai_regex', pattern:String(v.pattern||''), flags:String(v.flags||''), scope:v.scope||'last1' }),
+      toSummary: v => `이전응답/${v.pattern||''}/${v.flags||''}`
     },
-    { type: 'visited_slot', label: '특정 프롬프트(슬롯) 경유',
+    {
+      type: 'visited_slot',
+      label: '경유 슬롯',
       params: [{ key:'slot_id', label:'슬롯 ID', type:'text', placeholder:'예) 12' }],
       toJSON: v => ({ type:'visited_slot', slot_id: v.slot_id ? String(v.slot_id) : null }),
+      toSummary: v => `경유 #${v.slot_id ?? '?'}`
     },
-    { type: 'fallback', label: '모두 불일치 시 이 경로',
-      params: [], toJSON: _ => ({ type:'fallback' }),
+    {
+      type: 'random',
+      label: '확률',
+      params: [{ key:'p', label:'확률(0~1)', type:'number', step:'0.05', min:'0', max:'1', defaultValue:'0.3' }],
+      toJSON: v => ({ type:'random', p: Number(v.p ?? 0.3) }),
+      toSummary: v => `확률 ${Math.round((Number(v.p ?? 0.3))*100)}%`,
     },
+    { type: 'fallback', label: 'Fallback', params: [], toJSON: _ => ({ type:'fallback' }), toSummary: _ => 'Fallback' },
   ]
 
   const def = CONDITION_DEFS[typeIdx]
@@ -71,8 +86,8 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
     const parts = []
     const conds = data?.conditions || []
     conds.forEach(c => {
-      if (c?.type==='turn_gte' && (c.value ?? c.gte) != null) parts.push(`턴 ≥ ${c.value ?? c.gte}`)
-      if (c?.type==='turn_lte' && (c.value ?? c.lte) != null) parts.push(`턴 ≤ ${c.value ?? c.lte}`)
+      if (c?.type==='turn_gte') parts.push(`턴 ≥ ${c.value}`)
+      if (c?.type==='turn_lte') parts.push(`턴 ≤ ${c.value}`)
       if (c?.type==='prev_ai_contains') parts.push(`이전응답 "${c.value}"`)
       if (c?.type==='prev_prompt_contains') parts.push(`이전프롬프트 "${c.value}"`)
       if (c?.type==='prev_ai_regex') parts.push(`이전응답 /${c.pattern}/${c.flags||''}`)
@@ -100,8 +115,7 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
 
   return (
     <div style={{ display:'grid', gap:8 }}>
-      <div style={{ fontWeight:700 }}>조건 만들기</div>
-
+      <div style={{ fontWeight:700 }}>조건 추가</div>
       <select value={String(typeIdx)} onChange={e => { setTypeIdx(Number(e.target.value)); setValues({}); }}>
         {CONDITION_DEFS.map((d, i) => (
           <option key={d.type} value={i}>{d.label}</option>
@@ -116,11 +130,8 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
                 <span style={{ fontSize:12, color:'#555' }}>{p.label}</span>
                 <select
                   value={values[p.key] ?? p.defaultValue ?? ''}
-                  onChange={e=>setValues(v=>({ ...v, [p.key]: e.target.value }))}
-                >
-                  {(p.options||[]).map(opt=>(
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
+                  onChange={e=>setValues(v=>({ ...v, [p.key]: e.target.value }))}>
+                  {(p.options||[]).map(opt=>(<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                 </select>
               </label>
             )
@@ -135,128 +146,29 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
                 max={p.max}
                 placeholder={p.placeholder}
                 value={values[p.key] ?? p.defaultValue ?? ''}
-                onChange={e=>setValues(v=>({ ...v, [p.key]: e.target.value }))}
-              />
+                onChange={e=>setValues(v=>({ ...v, [p.key]: e.target.value }))} />
             </label>
           )
         })}
       </div>
 
-      <button type="button" onClick={addCondition}
-        style={{ padding:'8px 12px', borderRadius:8, background:'#111827', color:'#fff', fontWeight:700 }}>
-        조건 추가
+      <button onClick={addCondition} style={{ padding:'8px 12px', borderRadius:8, background:'#111827', color:'#fff', fontWeight:700 }}>
+        추가
       </button>
     </div>
   )
 }
 
-/* ===========================
-   전역/로컬 변수 규칙 에디터
-   =========================== */
-function VarsEditor({ title, value, onChange }) {
-  const [jsonText, setJsonText] = useState(() => JSON.stringify(value ?? [], null, 2))
-  const [draft, setDraft] = useState({ name:'', when:'prev_ai_contains', value:'', scope:'last2' })
-
-  useEffect(() => {
-    setJsonText(JSON.stringify(value ?? [], null, 2))
-  }, [value])
-
-  function addDraft() {
-    const next = [
-      ...(Array.isArray(value) ? value : []),
-      { name: draft.name.trim(), when: draft.when, value: draft.value.trim(), scope: draft.scope }
-    ]
-    setDraft({ name:'', when:'prev_ai_contains', value:'', scope:'last2' })
-    onChange?.(next)
-  }
-  function applyJson() {
-    try {
-      const arr = JSON.parse(jsonText || '[]')
-      if (!Array.isArray(arr)) throw new Error('array needed')
-      onChange?.(arr)
-    } catch {
-      alert('JSON 형식이 올바르지 않습니다.')
-    }
-  }
-
-  return (
-    <div style={{ display:'grid', gap:8 }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <b>{title}</b>
-      </div>
-
-      {/* 빠른 추가 */}
-      <div style={{ display:'grid', gap:6, gridTemplateColumns:'1fr 1fr' }}>
-        <input
-          placeholder="변수명 (예: resolved_escape)"
-          value={draft.name}
-          onChange={e=>setDraft(d=>({ ...d, name: e.target.value }))}
-        />
-        <select
-          value={draft.when}
-          onChange={e=>setDraft(d=>({ ...d, when: e.target.value }))}
-        >
-          <option value="prev_ai_contains">이전 AI 응답 포함</option>
-          <option value="prev_prompt_contains">이전 프롬프트 포함</option>
-          <option value="prev_ai_regex">이전 AI 응답 정규식</option>
-          <option value="visited_slot">특정 슬롯 경유</option>
-          <option value="turn_gte">턴 ≥</option>
-          <option value="turn_lte">턴 ≤</option>
-        </select>
-        <input
-          placeholder="값/패턴 (예: 탈출)"
-          value={draft.value}
-          onChange={e=>setDraft(d=>({ ...d, value: e.target.value }))}
-        />
-        <select
-          value={draft.scope}
-          onChange={e=>setDraft(d=>({ ...d, scope: e.target.value }))}
-        >
-          <option value="last1">마지막 1줄</option>
-          <option value="last2">마지막 2줄</option>
-          <option value="last5">마지막 5줄</option>
-          <option value="all">전체</option>
-        </select>
-      </div>
-      <div>
-        <button onClick={addDraft} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #d1d5db' }}>
-          + 규칙 추가
-        </button>
-      </div>
-
-      {/* 고급: JSON 편집 */}
-      <div>
-        <textarea
-          rows={6}
-          value={jsonText}
-          onChange={e=>setJsonText(e.target.value)}
-          style={{ width:'100%', fontFamily:'monospace' }}
-        />
-        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:6 }}>
-          <button onClick={applyJson} style={{ padding:'6px 10px', borderRadius:8, background:'#111827', color:'#fff' }}>
-            JSON 적용
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ===========================
-   토큰 팔레트(기존 유지)
-   =========================== */
 function TokenPalette({ onInsert }) {
   const [slot, setSlot] = useState('1')
   const [prop, setProp] = useState('name')
   const [ability, setAbility] = useState('1')
-
   const token = prop === 'ability'
     ? `{{slot${slot}.ability${ability}}}`
     : `{{slot${slot}.${prop}}}`
-
   return (
     <div style={{ display:'grid', gap:8, borderTop:'1px solid #e5e7eb', marginTop:12, paddingTop:12 }}>
-      <div style={{ fontWeight:700 }}>토큰 팔레트</div>
+      <div style={{ fontWeight:700 }}>토큰</div>
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
         <select value={slot} onChange={e=>setSlot(e.target.value)}>
           {Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>슬롯{i+1}</option>)}
@@ -264,6 +176,7 @@ function TokenPalette({ onInsert }) {
         <select value={prop} onChange={e=>setProp(e.target.value)}>
           <option value="name">이름</option>
           <option value="description">설명</option>
+          <option value="role">역할</option>
           <option value="ability">능력</option>
         </select>
         {prop==='ability' && (
@@ -273,31 +186,28 @@ function TokenPalette({ onInsert }) {
         )}
       </div>
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-        <button type="button" onClick={()=>onInsert(token)}>선택 토큰 삽입</button>
-        <button type="button" onClick={()=>onInsert('{{slot.random}}')}>랜덤 슬롯번호</button>
-        <button type="button" onClick={()=>onInsert('{{random.slot.name}}')}>랜덤 슬롯 이름</button>
-        <button type="button" onClick={()=>onInsert('{{random.choice:A|B|C}}')}>임의 선택</button>
-        <button type="button" onClick={()=>onInsert('{{history.last1}}')}>마지막 줄</button>
-        <button type="button" onClick={()=>onInsert('{{history.last2}}')}>마지막 2줄</button>
+        <button onClick={()=>onInsert(token)}>선택 토큰</button>
+        <button onClick={()=>onInsert('{{slot.random}}')}>랜덤 슬롯번호</button>
+        <button onClick={()=>onInsert('{{random.slot.name}}')}>랜덤 슬롯 이름</button>
+        <button onClick={()=>onInsert('{{random.choice:A|B|C}}')}>임의 선택</button>
+        <button onClick={()=>onInsert('{{history.last1}}')}>마지막 줄</button>
+        <button onClick={()=>onInsert('{{history.last2}}')}>마지막 2줄</button>
+        <button onClick={()=>onInsert('{{history.last5}}')}>마지막 5줄</button>
       </div>
     </div>
   )
 }
 
-/* -------------------- 사이드패널 본체 -------------------- */
 export default function SidePanel({
   selectedNodeId,
   selectedEdge,
   setEdges,
   setNodes,
   onInsertToken,
-  globalRules,     // 세트 전역 규칙 배열
-  setGlobalRules,  // 세트 전역 규칙 setter
-  selectedNodeData // 선택 노드 data (로컬 규칙 접근용)
+  globalRules,
+  setGlobalRules,
+  selectedNodeData
 }) {
-  const [showGlobal, setShowGlobal] = useState(false)
-
-  // ===== 엣지 폼(브릿지) =====
   const [edgeForm, setEdgeForm] = useState({
     trigger_words: '',
     conditions: '[]',
@@ -354,7 +264,6 @@ export default function SidePanel({
     }))
   }
 
-  // ConditionBuilder → 텍스트 JSON 즉시 반영
   function pushToForm(json) {
     setEdgeForm(f => {
       let arr = []
@@ -364,158 +273,170 @@ export default function SidePanel({
     })
   }
 
-  /* --- 상단: 전역 변수 버튼 --- */
-  const GlobalToolbar = (
-    <div style={{ padding:12, borderBottom:'1px solid #eee', display:'flex', gap:8, alignItems:'center' }}>
-      <button
-        onClick={()=>setShowGlobal(s=>!s)}
-        style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #d1d5db', background:'#fff' }}
-      >
-        {showGlobal ? '전역 변수 닫기' : '전역 변수 열기'}
-      </button>
-    </div>
-  )
+  // 전역 변수 규칙(세트 단위)
+  function addGlobalRule() {
+    setGlobalRules([...(globalRules || []), { name:'', when:'prev_ai_contains', value:'', scope:'last2' }])
+  }
+  function updateGlobalRule(i, patch){
+    setGlobalRules((arr)=>arr.map((r,idx)=>idx===i?{...r,...patch}:r))
+  }
+  function removeGlobalRule(i){
+    setGlobalRules((arr)=>arr.filter((_,idx)=>idx!==i))
+  }
 
-  // ====== 노드 선택: 토큰 팔레트 + 로컬 변수 ======
+  // 로컬 변수 규칙(노드 단위)
+  function addLocalRule() {
+    if (!selectedNodeData) return
+    setNodes(nds=>nds.map(n=>{
+      if (n.id!==selectedNodeId) return n
+      const prev = Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : []
+      return { ...n, data:{ ...n.data, var_rules_local:[...prev, { name:'', when:'prev_ai_contains', value:'', scope:'last2' }] } }
+    }))
+  }
+  function updateLocalRule(i, patch) {
+    setNodes(nds=>nds.map(n=>{
+      if (n.id!==selectedNodeId) return n
+      const prev = Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : []
+      const next = prev.map((r,idx)=>idx===i?{...r,...patch}:r)
+      return { ...n, data:{ ...n.data, var_rules_local:next } }
+    }))
+  }
+  function removeLocalRule(i) {
+    setNodes(nds=>nds.map(n=>{
+      if (n.id!==selectedNodeId) return n
+      const prev = Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : []
+      const next = prev.filter((_,idx)=>idx!==i)
+      return { ...n, data:{ ...n.data, var_rules_local:next } }
+    }))
+  }
+
+  // 사이드 패널 렌더
   if (selectedNodeId) {
+    const local = Array.isArray(selectedNodeData?.var_rules_local) ? selectedNodeData.var_rules_local : []
     return (
-      <div style={{ display:'grid', gridTemplateRows:'auto 1fr', height:'100%' }}>
-        {GlobalToolbar}
-        {showGlobal && (
-          <div style={{ padding:12, borderBottom:'1px solid #eee' }}>
-            <VarsEditor
-              title="전역 변수 규칙(세트 전체에 반복 적용)"
-              value={globalRules}
-              onChange={setGlobalRules}
-            />
-          </div>
-        )}
-
-        <div style={{ padding:12, overflow:'auto' }}>
-          <div style={{ fontWeight:700, marginBottom:8 }}>프롬프트 편집</div>
-          <div style={{ color:'#64748b' }}>
-            프롬프트 텍스트는 카드에서 수정하세요. 아래 버튼으로 토큰을 추가할 수 있어요.
-          </div>
+      <div style={{ padding:12, display:'grid', gap:12 }}>
+        <div>
+          <div style={{ fontWeight:700, marginBottom:8 }}>프롬프트 토큰</div>
           <TokenPalette onInsert={onInsertToken} />
+        </div>
 
-          <div style={{ marginTop:16 }}>
-            <VarsEditor
-              title="로컬 변수 규칙(이 노드에만 적용)"
-              value={Array.isArray(selectedNodeData?.var_rules_local) ? selectedNodeData.var_rules_local : []}
-              onChange={(arr)=>{
-                setNodes(nds => nds.map(n =>
-                  n.id===selectedNodeId
-                    ? { ...n, data:{ ...n.data, var_rules_local: arr } }
-                    : n
-                ))
-              }}
-            />
+        <div>
+          <div style={{ fontWeight:700, marginBottom:6 }}>로컬 변수 규칙(이 노드만)</div>
+          <div style={{ display:'grid', gap:8 }}>
+            {local.map((r, i)=>(
+              <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:8, display:'grid', gap:6 }}>
+                <input value={r.name} placeholder="변수명" onChange={e=>updateLocalRule(i,{name:e.target.value})} />
+                <select value={r.when} onChange={e=>updateLocalRule(i,{when:e.target.value})}>
+                  <option value="prev_ai_contains">이전응답 포함</option>
+                  <option value="prev_prompt_contains">이전프롬프트 포함</option>
+                  <option value="prev_ai_regex">이전응답 정규식</option>
+                  <option value="turn_gte">턴 ≥</option>
+                  <option value="turn_lte">턴 ≤</option>
+                </select>
+                <input value={r.value||''} placeholder="값/패턴" onChange={e=>updateLocalRule(i,{value:e.target.value})} />
+                <select value={r.scope||'last2'} onChange={e=>updateLocalRule(i,{scope:e.target.value})}>
+                  <option value="last1">마지막 1줄</option>
+                  <option value="last2">마지막 2줄</option>
+                  <option value="last5">마지막 5줄</option>
+                  <option value="all">전체</option>
+                </select>
+                <button onClick={()=>removeLocalRule(i)} style={{ alignSelf:'start' }}>삭제</button>
+              </div>
+            ))}
           </div>
+          <button onClick={addLocalRule} style={{ marginTop:8, padding:'6px 10px', borderRadius:8, background:'#0ea5e9', color:'#fff' }}>+ 로컬 규칙</button>
         </div>
       </div>
     )
   }
 
-  // ====== 엣지 선택: 브릿지 폼 ======
   if (selectedEdge) {
     return (
-      <div style={{ display:'grid', gridTemplateRows:'auto 1fr', height:'100%' }}>
-        {GlobalToolbar}
-        {showGlobal && (
-          <div style={{ padding:12, borderBottom:'1px solid #eee' }}>
-            <VarsEditor
-              title="전역 변수 규칙(세트 전체에 반복 적용)"
-              value={globalRules}
-              onChange={setGlobalRules}
-            />
-          </div>
-        )}
-
-        <div style={{ padding:12, overflow:'auto' }}>
-          <h3 style={{ marginTop:0 }}>브릿지 조건</h3>
-
+      <div style={{ padding:12, display:'grid', gap:12 }}>
+        <div>
+          <div style={{ fontWeight:700, marginBottom:6 }}>브릿지 조건</div>
           <ConditionBuilder selectedEdge={selectedEdge} setEdges={setEdges} pushToForm={pushToForm} />
+        </div>
 
-          {/* 고급: JSON 직접 편집 */}
-          <div style={{ marginTop:16, borderTop:'1px solid #eee', paddingTop:12 }}>
-            <label style={{ fontSize:12 }}>조건(JSON 배열) 고급 편집</label>
-            <textarea
-              value={edgeForm.conditions}
-              onChange={e=>setEdgeForm(f=>({ ...f, conditions: e.target.value }))}
-              rows={4}
-              style={{ width:'100%', marginBottom:8, fontFamily:'monospace' }}
-            />
-          </div>
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-            <div>
-              <label style={{ fontSize:12 }}>우선순위</label>
-              <input
-                type="number"
-                value={edgeForm.priority}
-                onChange={e=>setEdgeForm(f=>({ ...f, priority: e.target.value }))}
-                style={{ width:'100%' }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize:12 }}>확률(0~1)</label>
-              <input
-                type="number" step="0.05" min="0" max="1"
+        <div style={{ borderTop:'1px solid #eee', paddingTop:12 }}>
+          <label style={{ fontSize:12 }}>조건(JSON 배열)</label>
+          <textarea
+            value={edgeForm.conditions}
+            onChange={e=>setEdgeForm(f=>({ ...f, conditions: e.target.value }))}
+            rows={4}
+            style={{ width:'100%', marginBottom:8, fontFamily:'monospace' }}
+          />
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+            <label>
+              <div style={{ fontSize:12 }}>우선순위</div>
+              <input type="number" value={edgeForm.priority} onChange={e=>setEdgeForm(f=>({ ...f, priority: e.target.value }))} style={{ width:'100%' }} />
+            </label>
+            <label>
+              <div style={{ fontSize:12 }}>확률(0~1)</div>
+              <input type="number" step="0.05" min="0" max="1"
                 value={edgeForm.probability}
-                onChange={e=>setEdgeForm(f=>({ ...f, probability: e.target.value }))}
-                style={{ width:'100%' }}
-              />
-            </div>
+                onChange={e=>setEdgeForm(f=>({ ...f, probability: e.target.value }))} style={{ width:'100%' }} />
+            </label>
           </div>
-
-          <label style={{ display:'flex', alignItems:'center', gap:8, margin:'10px 0' }}>
-            <input
-              type="checkbox"
-              checked={edgeForm.fallback}
-              onChange={e=>setEdgeForm(f=>({ ...f, fallback: e.target.checked }))}
-            />
-            Fallback(어느 조건도 안 맞을 때 사용)
+          <label style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <input type="checkbox" checked={edgeForm.fallback} onChange={e=>setEdgeForm(f=>({ ...f, fallback: e.target.checked }))} />
+            Fallback
           </label>
-
-          <label style={{ fontSize:12 }}>액션</label>
-          <select
-            value={edgeForm.action}
-            onChange={e=>setEdgeForm(f=>({ ...f, action: e.target.value }))}
-            style={{ width:'100%', marginBottom:12 }}
-          >
+          <label style={{ fontSize:12, marginTop:8 }}>액션</label>
+          <select value={edgeForm.action} onChange={e=>setEdgeForm(f=>({ ...f, action: e.target.value }))} style={{ width:'100%', marginBottom:12 }}>
             <option value="continue">일반 진행</option>
             <option value="win">승리</option>
             <option value="lose">패배</option>
-            <option value="goto_set">다른 세트로 이동(확장)</option>
+            <option value="goto_set">다른 세트로 이동</option>
           </select>
+          <button onClick={()=>{
+            // edgeForm → 실제 엣지 데이터 반영
+            let cond=[]; try{cond=JSON.parse(edgeForm.conditions||'[]')}catch{}
+            const tw = edgeForm.trigger_words.split(',').map(s=>s.trim()).filter(Boolean)
+            const pr = parseInt(edgeForm.priority)||0
+            const pb = Math.max(0, Math.min(1, parseFloat(edgeForm.probability)||0))
+            const fb = !!edgeForm.fallback
+            const ac = edgeForm.action
 
-          <button
-            type="button"
-            onClick={applyEdgeForm}
-            style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff', fontWeight:700, width:'100%', marginTop:4 }}
-          >
-            폼 값 반영
+            setEdges(eds=>eds.map(e=>{
+              if(e.id!==selectedEdge.id) return e
+              const data = { ...(e.data||{}), trigger_words:tw, conditions:cond, priority:pr, probability:pb, fallback:fb, action:ac }
+              return { ...e, data }
+            }))
+          }} style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff', fontWeight:700 }}>
+            적용
           </button>
+        </div>
+
+        <div style={{ borderTop:'1px solid #eee', paddingTop:12 }}>
+          <div style={{ fontWeight:700, marginBottom:6 }}>전역 변수 규칙(세트 전체)</div>
+          <div style={{ display:'grid', gap:8 }}>
+            {(globalRules||[]).map((r,i)=>(
+              <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:8, display:'grid', gap:6 }}>
+                <input value={r.name} placeholder="변수명" onChange={e=>updateGlobalRule(i,{name:e.target.value})} />
+                <select value={r.when} onChange={e=>updateGlobalRule(i,{when:e.target.value})}>
+                  <option value="prev_ai_contains">이전응답 포함</option>
+                  <option value="prev_prompt_contains">이전프롬프트 포함</option>
+                  <option value="prev_ai_regex">이전응답 정규식</option>
+                  <option value="turn_gte">턴 ≥</option>
+                  <option value="turn_lte">턴 ≤</option>
+                </select>
+                <input value={r.value||''} placeholder="값/패턴" onChange={e=>updateGlobalRule(i,{value:e.target.value})} />
+                <select value={r.scope||'last2'} onChange={e=>updateGlobalRule(i,{scope:e.target.value})}>
+                  <option value="last1">마지막 1줄</option>
+                  <option value="last2">마지막 2줄</option>
+                  <option value="last5">마지막 5줄</option>
+                  <option value="all">전체</option>
+                </select>
+                <button onClick={()=>removeGlobalRule(i)} style={{ alignSelf:'start' }}>삭제</button>
+              </div>
+            ))}
+          </div>
+          <button onClick={addGlobalRule} style={{ marginTop:8, padding:'6px 10px', borderRadius:8, background:'#0ea5e9', color:'#fff' }}>+ 전역 규칙</button>
         </div>
       </div>
     )
   }
 
-  // ====== 기본(아무것도 선택 안 함) ======
-  return (
-    <div style={{ display:'grid', gridTemplateRows:'auto 1fr', height:'100%' }}>
-      {GlobalToolbar}
-      {showGlobal ? (
-        <div style={{ padding:12 }}>
-          <VarsEditor
-            title="전역 변수 규칙(세트 전체에 반복 적용)"
-            value={globalRules}
-            onChange={setGlobalRules}
-          />
-        </div>
-      ) : (
-        <div style={{ padding:12, color:'#64748b' }}>노드/브릿지를 선택하세요</div>
-      )}
-    </div>
-  )
+  return <div style={{ padding:12, color:'#64748b' }}>노드 또는 브릿지를 선택하세요</div>
 }
