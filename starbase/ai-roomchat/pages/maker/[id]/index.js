@@ -9,91 +9,47 @@ import SidePanel from '../../../components/maker/SidePanel'
 
 const nodeTypes = { prompt: PromptNode }
 
-// --- [추가] 세트 전역 변수 규칙 에디터(접이식) ---
-function GlobalVarRulesPanel({ value, onChange }) {
-  const [open, setOpen] = React.useState(false)
-  const [text, setText] = React.useState(() => JSON.stringify(value ?? [], null, 2))
-
-
-  React.useEffect(() => {
-    setText(JSON.stringify(value ?? [], null, 2))
-  }, [value])
-
-  const apply = () => {
-    try {
-      const arr = JSON.parse(text || '[]')
-      if (!Array.isArray(arr)) throw new Error()
-      onChange?.(arr)
-      alert('전역 변수 규칙 적용됨')
-    } catch {
-      alert('JSON 형식이 올바르지 않습니다.')
-    }
-  }
-
-  return (
-    <div style={{ position:'relative' }}>
-      <button
-        type="button"
-        onClick={()=>setOpen(o=>!o)}
-        style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #d1d5db', background:'#fff' }}
-        title="세트 전체에 반복 적용되는 변수 규칙"
-      >
-        전역 변수 규칙
-      </button>
-
-      {open && (
-        <div style={{
-          position:'absolute', right:0, top:'calc(100% + 8px)', zIndex:50,
-          width:420, background:'#fff', border:'1px solid #e5e7eb', borderRadius:10, padding:10,
-          boxShadow:'0 8px 24px rgba(0,0,0,.08)'
-        }}>
-          <div style={{ fontWeight:700, marginBottom:6 }}>전역 변수 규칙(JSON 배열)</div>
-          <textarea
-            rows={12}
-            style={{ width:'100%', fontFamily:'monospace' }}
-            value={text}
-            onChange={e=>setText(e.target.value)}
-          />
-          <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
-            <button onClick={()=>setOpen(false)} style={{ padding:'6px 10px' }}>닫기</button>
-            <button onClick={apply} style={{ padding:'6px 10px', background:'#111827', color:'#fff', borderRadius:8 }}>적용</button>
-          </div>
-          <div style={{ color:'#64748b', fontSize:12, marginTop:6 }}>
-            예시: [{"{"}"name":"강공","when":"prev_ai_contains","value":"강하게 공격","scope":"last2"{"}"}]
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-
 export default function MakerEditor() {
   const router = useRouter()
   const { id: setId } = router.query
 
   const [loading, setLoading] = useState(true)
   const [setInfo, setSetInfo] = useState(null)
-  const [setName, setSetName] = useState('')            // ← 세트명 상태 추가
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState(null)
   const [selectedEdge, setSelectedEdge] = useState(null)
   const idMapRef = useRef(new Map()) // flowNodeId -> DB slot.id
-  const [varRulesGlobal, setVarRulesGlobal] = useState([])
-  
+
+  // 전역 변수 규칙 (세트 단위)
+  const [globalRules, setGlobalRules] = useState([])
 
   // 초기 로드
   useEffect(() => {
     if (!setId) return
     ;(async () => {
-      const { data: setRow, error: e1 } = await supabase.from('prompt_sets').select('*').eq('id', setId).single()
+      // 세트 정보
+      const { data: setRow, error: e1 } = await supabase
+        .from('prompt_sets')
+        .select('*')
+        .eq('id', setId)
+        .single()
       if (e1) { alert('세트를 불러오지 못했습니다.'); router.replace('/maker'); return }
       setSetInfo(setRow)
-      setSetName(setRow?.name || '')                   // ← 세트명 초기값
+      setGlobalRules(Array.isArray(setRow?.var_rules_global) ? setRow.var_rules_global : [])
 
-      const { data: slotRows } = await supabase.from('prompt_slots').select('*').eq('set_id', setId).order('id')
-      const { data: bridgeRows } = await supabase.from('prompt_bridges').select('*').eq('from_set', setId).order('id')
+      // 슬롯 / 브릿지
+      const { data: slotRows } = await supabase
+        .from('prompt_slots')
+        .select('*')
+        .eq('set_id', setId)
+        .order('id')
+
+      const { data: bridgeRows } = await supabase
+        .from('prompt_bridges')
+        .select('*')
+        .eq('from_set', setId)
+        .order('id')
 
       const initNodes = (slotRows || []).map((s, idx) => {
         const nid = `n${s.id}`
@@ -105,37 +61,36 @@ export default function MakerEditor() {
           data: {
             template: s.template || '',
             slot_type: s.slot_type || 'ai',
-            isStart: setRow?.start_slot_id === s.id,
-            onSetStart: () => markAsStart(nid),
+            var_rules_local: Array.isArray(s.var_rules_local) ? s.var_rules_local : [], // ★ 로컬 규칙 주입
             onChange: (partial) => setNodes(nds => nds.map(n => n.id===nid ? { ...n, data:{ ...n.data, ...partial } } : n)),
-            onDelete: handleDeletePrompt
+            onDelete: handleDeletePrompt,
+            isStart: !!s.is_start,
+            onSetStart: () => markAsStart(nid)
           }
         }
       })
 
-      const initEdges = (bridgeRows || [])
-        .filter(b => b.from_slot_id && b.to_slot_id)
-        .map(b => ({
-          id: `e${b.id}`,
-          source: `n${b.from_slot_id}`,
-          target: `n${b.to_slot_id}`,
-          label: [
-            (b.trigger_words || []).join(', '),
-            (b.conditions && b.conditions.length ? 'cond' : null),
-            (b.probability !== 1 ? `p=${b.probability}` : null),
-            (b.fallback ? 'fallback' : null),
-            (b.action && b.action !== 'continue' ? b.action : null)
-          ].filter(Boolean).join(' | '),
-          data: {
-            bridgeId: b.id,
-            trigger_words: b.trigger_words || [],
-            conditions: b.conditions || [],
-            priority: b.priority ?? 0,
-            probability: b.probability ?? 1.0,
-            fallback: !!b.fallback,
-            action: b.action || 'continue'
-          }
-        }))
+      const initEdges = (bridgeRows || []).filter(b => b.from_slot_id && b.to_slot_id).map(b => ({
+        id: `e${b.id}`,
+        source: `n${b.from_slot_id}`,
+        target: `n${b.to_slot_id}`,
+        label: [
+          (b.trigger_words || []).join(', '),
+          (b.conditions && b.conditions.length ? 'cond' : null),
+          (b.probability !== 1 ? `p=${b.probability}` : null),
+          (b.fallback ? 'fallback' : null),
+          (b.action && b.action !== 'continue' ? b.action : null)
+        ].filter(Boolean).join(' | '),
+        data: {
+          bridgeId: b.id,
+          trigger_words: b.trigger_words || [],
+          conditions: b.conditions || [],
+          priority: b.priority ?? 0,
+          probability: b.probability ?? 1.0,
+          fallback: !!b.fallback,
+          action: b.action || 'continue'
+        }
+      }))
 
       setNodes(initNodes)
       setEdges(initEdges)
@@ -156,31 +111,6 @@ export default function MakerEditor() {
   const onNodeClick = useCallback((_, node) => { setSelectedNodeId(node.id); setSelectedEdge(null) }, [])
   const onEdgeClick = useCallback((_, edge) => { setSelectedEdge(edge); setSelectedNodeId(null) }, [])
 
-  // 토큰 → 선택 노드에 삽입(append)
-  function insertTokenToSelected(token) {
-    if (!selectedNodeId) return
-    setNodes(nds => nds.map(n => n.id===selectedNodeId ? { ...n, data:{ ...n.data, template:(n.data.template||'') + token } } : n))
-  }
-
-  // 노드 추가
-  function addPromptNode(type='ai') {
-    const nid = `tmp_${Date.now()}`
-    setNodes(nds => [...nds, {
-      id: nid,
-      type: 'prompt',
-      position: { x: 120, y: 80 },
-      data: {
-        template: '',
-        slot_type: type,
-        isStart: false,
-        onSetStart: () => markAsStart(nid),
-        onChange: (partial) => setNodes(nds => nds.map(n => n.id===nid ? { ...n, data:{ ...n.data, ...partial } } : n)),
-        onDelete: handleDeletePrompt
-      }
-    }])
-    setSelectedNodeId(nid)
-  }
-
   // 시작 지정
   function markAsStart(flowNodeId) {
     setNodes(nds => nds.map(n => {
@@ -191,13 +121,9 @@ export default function MakerEditor() {
 
   // 노드 삭제(+연결 브릿지 DB/화면 동시 삭제)
   async function handleDeletePrompt(flowNodeId) {
-    setNodes(nds => nds
-      .filter(n => n.id !== flowNodeId)
-      .map(n => ({ ...n, data: { ...n.data, isStart: n.id === flowNodeId ? false : n.data?.isStart }}))
-    )
+    setNodes(nds => nds.filter(n => n.id !== flowNodeId))
     setEdges(eds => eds.filter(e => e.source !== flowNodeId && e.target !== flowNodeId))
     setSelectedNodeId(null)
-
     const slotId = idMapRef.current.get(flowNodeId)
     if (slotId) {
       await supabase.from('prompt_bridges').delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
@@ -206,70 +132,63 @@ export default function MakerEditor() {
     }
   }
 
-  // 세트 이름 저장
-  async function saveSetName() {
-    if (!setInfo) return
-    const name = (setName || '').trim()
-    if (!name) return alert('이름을 비울 수 없습니다.')
-    const { error } = await supabase.from('prompt_sets').update({ name }).eq('id', setInfo.id)
-    if (error) return alert('이름 저장 실패: ' + error.message)
-    setSetInfo(s => ({ ...(s||{}), name }))
-    alert('세트 이름 저장 완료')
-  }
-
-  // 저장(노드/엣지 upsert + 시작 지점 반영)
+  // ===== 저장(전역/로컬 규칙 포함) =====
   async function saveAll() {
     if (!setInfo) return
 
-    // 화면 순서를 slot_no로 사용
+    // A) 전역 규칙: prompt_sets 업데이트
+    const upSet = await supabase
+      .from('prompt_sets')
+      .update({ var_rules_global: globalRules || [] })
+      .eq('id', setInfo.id)
+      .select()
+      .single()
+    if (upSet.error) {
+      alert('세트(전역 규칙) 저장 실패: ' + upSet.error.message)
+      console.error('prompt_sets update error', upSet.error)
+      return
+    }
+    setSetInfo(upSet.data)
+
+    // B) 화면상의 노드 순서를 slot_no로 사용
     const slotNoMap = new Map()
     nodes.forEach((n, idx) => slotNoMap.set(n.id, idx + 1)) // 1..N
 
-    // --- 노드 업서트 ---
+    // C) 슬롯 업서트 (로컬 규칙 포함)
     for (const n of nodes) {
       const slot_no = slotNoMap.get(n.id) || 1
       let slotId = idMapRef.current.get(n.id)
 
+      const payload = {
+        set_id: setInfo.id,
+        slot_no,
+        slot_type: n.data.slot_type || 'ai',
+        slot_pick: n.data.slot_pick || '1',
+        template: n.data.template || '',
+        is_start: !!n.data.isStart,
+        var_rules_local: Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : [], // ★ 저장
+      }
+
       if (!slotId) {
         const ins = await supabase
           .from('prompt_slots')
-          .insert({
-            set_id: setInfo.id,
-            slot_no,
-            slot_type: n.data.slot_type || 'ai',
-            slot_pick: n.data.slot_pick || '1',
-            template: n.data.template || '',
-            transform_code: n.data.transform_code ?? '',
-            var_rules_local: Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : [],
-            var_rules_global: n.data.var_rules_global ?? []
-          })
+          .insert(payload)
           .select()
           .single()
-
         if (ins.error || !ins.data) {
           alert('슬롯 저장 실패: ' + (ins.error?.message ?? 'unknown'))
           console.error('prompt_slots insert error', ins.error)
           continue
         }
-
         slotId = ins.data.id
         idMapRef.current.set(n.id, slotId)
       } else {
         const upd = await supabase
           .from('prompt_slots')
-          .update({
-            slot_no,
-            slot_type: n.data.slot_type || 'ai',
-            slot_pick: n.data.slot_pick || '1',
-            template: n.data.template || '',
-            transform_code: n.data.transform_code ?? '',
-            var_rules_local: Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : [],
-            var_rules_global: n.data.var_rules_global ?? []
-          })
+          .update(payload)
           .eq('id', slotId)
           .select()
           .single()
-
         if (upd.error) {
           alert('슬롯 업데이트 실패: ' + upd.error.message)
           console.error('prompt_slots update error', upd.error)
@@ -277,14 +196,13 @@ export default function MakerEditor() {
       }
     }
 
-    // --- 엣지 업서트 ---
+    // D) 브릿지 업서트(기존 로직 유지)
     const { data: oldBridges } = await supabase
       .from('prompt_bridges')
       .select('id')
       .eq('from_set', setInfo.id)
 
     const keep = new Set()
-
     for (const e of edges) {
       const fromId = idMapRef.current.get(e.source)
       const toId   = idMapRef.current.get(e.target)
@@ -300,7 +218,7 @@ export default function MakerEditor() {
         priority: e.data?.priority ?? 0,
         probability: e.data?.probability ?? 1.0,
         fallback: !!e.data?.fallback,
-        action: e.data?.action || 'continue',
+        action: e.data?.action || 'continue'
       }
 
       if (!bridgeId) {
@@ -321,28 +239,10 @@ export default function MakerEditor() {
       }
       keep.add(bridgeId)
     }
-
     for (const ob of (oldBridges || [])) {
       if (!keep.has(ob.id)) await supabase.from('prompt_bridges').delete().eq('id', ob.id)
     }
 
-    // --- 시작 지점 반영 ---
-    const startFlowNode = nodes.find(n => n.data?.isStart)
-    if (startFlowNode) {
-      const startSlotId = idMapRef.current.get(startFlowNode.id)
-      if (startSlotId) await supabase.from('prompt_sets').update({ start_slot_id: startSlotId }).eq('id', setInfo.id)
-    } else {
-      await supabase.from('prompt_sets').update({ start_slot_id: null }).eq('id', setInfo.id)
-    }
-    await supabase
-  .from('prompt_sets')
-  .update({ var_rules_global: varRulesGlobal })
-  .eq('id', setInfo.id)
-// --- 세트 전역 변수 규칙 반영 ---
- await supabase
-   .from('prompt_sets')
-   .update({ var_rules_global: setInfo?.var_rules_global ?? [] })
-   .eq('id', setInfo.id)
     alert('저장 완료')
   }
 
@@ -350,40 +250,23 @@ export default function MakerEditor() {
 
   return (
     <div style={{ height:'100vh', display:'grid', gridTemplateRows:'auto 1fr' }}>
-      {/* 상단 바 */}
-      <div style={{
-        position:'sticky', top:0, zIndex:40, background:'#fff',
-        padding:10, borderBottom:'1px solid #e5e7eb',
-        display:'flex', alignItems:'center', justifyContent:'space-between', gap:8
-      }}>
-        {/* 왼쪽: 목록 + 세트명 입력/저장 */}
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <button type="button" onClick={()=>router.push('/maker')} style={{ padding:'6px 10px' }}>← 목록</button>
-          <input
-            value={setName}
-            onChange={e=>setSetName(e.target.value)}
-            placeholder="세트 이름"
-            style={{ minWidth:220, maxWidth:360, padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:8 }}
-          />
-          <button onClick={saveSetName} style={{ padding:'6px 10px', background:'#f59e0b', color:'#fff', borderRadius:8 }}>
-            이름 저장
-          </button>
+      {/* 상단 툴바 */}
+      <div style={{ position:'sticky', top:0, zIndex:40, background:'#fff',
+            padding:10, borderBottom:'1px solid #e5e7eb',
+            display:'grid', gridTemplateColumns:'1fr auto auto', gap:8 }}>
+        <div>
+          <button onClick={()=>router.push('/maker')} style={{ padding:'6px 10px' }}>← 목록</button>
+          <b style={{ marginLeft:10 }}>{setInfo?.name}</b>
         </div>
-
-        {/* 오른쪽: 추가/저장 */}
         <div style={{ display:'flex', gap:8 }}>
-          <button type="button" onClick={()=>addPromptNode('ai')} style={{ padding:'6px 10px', background:'#2563eb', color:'#fff', borderRadius:8 }}>+ 프롬프트</button>
-          <button type="button" onClick={()=>addPromptNode('user_action')} style={{ padding:'6px 10px', background:'#0ea5e9', color:'#fff', borderRadius:8 }}>+ 유저 행동</button>
-          <button type="button" onClick={()=>addPromptNode('system')} style={{ padding:'6px 10px', background:'#6b7280', color:'#fff', borderRadius:8 }}>+ 시스템</button>
+          <button onClick={()=>addPromptNode('ai')} style={{ padding:'6px 10px', background:'#2563eb', color:'#fff', borderRadius:8 }}>+ 프롬프트</button>
+          <button onClick={()=>addPromptNode('user_action')} style={{ padding:'6px 10px', background:'#0ea5e9', color:'#fff', borderRadius:8 }}>+ 유저 행동</button>
+          <button onClick={()=>addPromptNode('system')} style={{ padding:'6px 10px', background:'#6b7280', color:'#fff', borderRadius:8 }}>+ 시스템</button>
           <button type="button" onClick={saveAll} style={{ padding:'6px 10px', background:'#111827', color:'#fff', borderRadius:8 }}>저장</button>
-            <GlobalVarRulesPanel
-    value={setInfo?.var_rules_global}
-    onChange={(arr)=> setSetInfo(prev => ({ ...(prev||{}), var_rules_global: arr }))}
-  />
         </div>
       </div>
 
-      {/* 에디터 + 우측 패널 */}
+      {/* 본문 */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 320px' }}>
         <div style={{ position:'relative', zIndex:0 }}>
           <ReactFlow
@@ -397,9 +280,7 @@ export default function MakerEditor() {
             onEdgeClick={onEdgeClick}
             fitView
           >
-            <MiniMap />
-            <Controls />
-            <Background />
+            <MiniMap /><Controls /><Background />
           </ReactFlow>
         </div>
 
@@ -408,20 +289,36 @@ export default function MakerEditor() {
           selectedEdge={selectedEdge}
           setEdges={setEdges}
           setNodes={setNodes}
-          onInsertToken={insertTokenToSelected}
-          selectedNodeData={
-    selectedNodeId
-      ? (nodes.find(n => n.id === selectedNodeId)?.data || {})
-      : null
-  }
-  onUpdateNode={(partial) => {
-    if (!selectedNodeId) return
-    setNodes(nds => nds.map(n =>
-      n.id === selectedNodeId ? { ...n, data: { ...n.data, ...partial } } : n
-    ))
-  }}
+          onInsertToken={(token)=>{
+            if (!selectedNodeId) return
+            setNodes(nds => nds.map(n => n.id===selectedNodeId
+              ? { ...n, data:{ ...n.data, template:(n.data.template||'') + token } }
+              : n
+            ))
+          }}
+          globalRules={globalRules}
+          setGlobalRules={setGlobalRules}
         />
       </div>
     </div>
   )
+
+  function addPromptNode(type='ai') {
+    const nid = `tmp_${Date.now()}`
+    setNodes(nds => [...nds, {
+      id: nid,
+      type: 'prompt',
+      position: { x: 120, y: 80 },
+      data: {
+        template: '',
+        slot_type: type,
+        var_rules_local: [],            // ★ 새 노드 초기값
+        onChange: (partial) => setNodes(nds => nds.map(n => n.id===nid ? { ...n, data:{ ...n.data, ...partial } } : n)),
+        onDelete: handleDeletePrompt,
+        isStart: false,
+        onSetStart: () => markAsStart(nid)
+      }
+    }])
+    setSelectedNodeId(nid)
+  }
 }

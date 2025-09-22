@@ -1,10 +1,8 @@
 // components/maker/SidePanel.js
-import { useEffect, useState } from 'react'
-import VarRulesEditor from './VarRulesEditor'
-
+import { useEffect, useMemo, useState } from 'react'
 
 /* ===========================
-   내장 ConditionBuilder 시작
+   내장 ConditionBuilder (기존)
    =========================== */
 function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
   const [typeIdx, setTypeIdx] = useState(0)
@@ -172,7 +170,7 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
    내장 ConditionBuilder 끝
    =========================== */
 
-/* 토큰 팔레트 (프롬프트 토큰 삽입) */
+/* 토큰 팔레트 (기존) */
 function TokenPalette({ onInsert }) {
   const [slot, setSlot] = useState('1')
   const [prop, setProp] = useState('name')
@@ -207,93 +205,80 @@ function TokenPalette({ onInsert }) {
         <button type="button" onClick={()=>onInsert('{{random.choice:A|B|C}}')}>임의 선택</button>
         <button type="button" onClick={()=>onInsert('{{history.last1}}')}>마지막 줄</button>
         <button type="button" onClick={()=>onInsert('{{history.last2}}')}>마지막 2줄</button>
+        <button type="button" onClick={()=>onInsert('{{history.last5}}')}>마지막 5줄</button>
       </div>
     </div>
   )
 }
-// components/maker/SidePanel.js (노드 선택 케이스 안)
-function LocalVarRulesEditor({ value, onChange }) {
-  // 내부는 텍스트 JSON + 빠른 추가 폼
-  const [jsonText, setJsonText] = useState(() => JSON.stringify(value ?? [], null, 2))
-  const [draft, setDraft] = useState({ name:'', when:'prev_ai_contains', value:'', scope:'last2' })
 
-  useEffect(() => {
-    setJsonText(JSON.stringify(value ?? [], null, 2))
-  }, [value])
+/* ===== 변수 규칙 에디터 (전역/로컬 공용) ===== */
+function VarRuleRow({ value, onChange, onRemove }) {
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr auto', gap:6, alignItems:'center' }}>
+      <input
+        placeholder="변수명 (예: WIN_TOKEN)"
+        value={value?.name ?? ''}
+        onChange={e=>onChange({ ...value, name: e.target.value })}
+      />
+      <input
+        placeholder="만족 조건 설명 (엔진에서 해석할 규칙/조건)"
+        value={value?.when ?? ''}
+        onChange={e=>onChange({ ...value, when: e.target.value })}
+      />
+      <button type="button" onClick={onRemove}>삭제</button>
+    </div>
+  )
+}
 
-  function tryApply() {
-    try {
-      const arr = JSON.parse(jsonText || '[]')
-      onChange?.(Array.isArray(arr) ? arr : [])
-      alert('변수 규칙(로컬) 적용됨')
-    } catch {
-      alert('JSON 형식이 올바르지 않습니다.')
-    }
+function VarRulesEditor({ title, value = [], onChange }) {
+  function add() {
+    onChange([...(value||[]), { name:'', when:'' }])
   }
-  function quickAdd() {
-    try {
-      const arr = JSON.parse(jsonText || '[]')
-      arr.push(draft)
-      const next = JSON.stringify(arr, null, 2)
-      setJsonText(next)
-      onChange?.(arr)
-    } catch {
-      // 초기엔 비어있을 수도
-      const arr = [draft]
-      const next = JSON.stringify(arr, null, 2)
-      setJsonText(next)
-      onChange?.(arr)
-    }
+  function updateAt(i, next) {
+    const arr = [...(value||[])]
+    arr[i] = next
+    onChange(arr)
+  }
+  function removeAt(i) {
+    const arr = [...(value||[])]
+    arr.splice(i,1)
+    onChange(arr)
   }
 
   return (
-    <div style={{ marginTop:12, borderTop:'1px solid #e5e7eb', paddingTop:12 }}>
-      <div style={{ fontWeight:700, marginBottom:6 }}>변수 규칙(이 프롬프트만)</div>
-      {/* 퀵 추가 */}
-      <div style={{ display:'grid', gap:6, gridTemplateColumns:'1fr 1fr', marginBottom:6 }}>
-   <input placeholder="변수명 (예: 강공)" value={draft.name}
-          onChange={e=>setDraft(d=>({ ...d, name:e.target.value }))}/>
-        <select value={draft.when} onChange={e=>setDraft(d=>({ ...d, when:e.target.value }))}>
-          <option value="prev_ai_contains">이전응답에 포함</option>
-          <option value="prev_prompt_contains">이전프롬프트에 포함</option>
-          <option value="prev_ai_regex">이전응답 정규식</option>
-          <option value="turn_gte">턴 ≥</option>
-          <option value="turn_lte">턴 ≤</option>
-        </select>
-        <input placeholder="값/패턴" value={draft.value}
-               onChange={e=>setDraft(d=>({...d, value:e.target.value}))}/>
-        <select value={draft.scope} onChange={e=>setDraft(d=>({...d, scope:e.target.value}))}>
-          <option value="last1">마지막1줄</option>
-          <option value="last2">마지막2줄</option>
-          <option value="last5">마지막5줄</option>
-          <option value="all">전체</option>
-        </select>
-        <button onClick={quickAdd} style={{ gridColumn:'1 / -1', padding:'6px 10px' }}>+ 규칙 추가</button>
-      </div>
-
-      {/* 고급: JSON 편집 */}
-      <textarea rows={8} style={{ width:'100%', fontFamily:'monospace' }}
-        value={jsonText} onChange={e=>setJsonText(e.target.value)} />
-      <div style={{ display:'flex', justifyContent:'flex-end', marginTop:6 }}>
-        <button onClick={tryApply} style={{ padding:'6px 10px', background:'#111827', color:'#fff', borderRadius:8 }}>
-          적용
+    <div style={{ borderTop:'1px solid #e5e7eb', marginTop:12, paddingTop:12 }}>
+      <div style={{ fontWeight:700, marginBottom:6 }}>{title}</div>
+      <div style={{ display:'grid', gap:6 }}>
+        {(value||[]).map((r, i) => (
+          <VarRuleRow
+            key={i}
+            value={r}
+            onChange={(next)=>updateAt(i, next)}
+            onRemove={()=>removeAt(i)}
+          />
+        ))}
+        <button type="button" onClick={add} style={{ padding:'6px 10px', borderRadius:8, background:'#2563eb', color:'#fff' }}>
+          + 규칙 추가
         </button>
       </div>
     </div>
   )
 }
 
-
+/* ===== 사이드패널 본체 =====
+   props 추가:
+   - globalRules: 전역 변수 규칙 배열 (set 단위)
+   - setGlobalRules: setter
+   - setNodes: 로컬 규칙을 노드 data에 반영할 때 필요
+*/
 export default function SidePanel({
   selectedNodeId,
   selectedEdge,
   setEdges,
+  setNodes,
   onInsertToken,
-  selectedNodeData,      // ← 추가
-  onUpdateNode,           // ← 추가
-  varRulesGlobal, 
-  setVarRulesGlobal, 
-  setNodes 
+  globalRules,
+  setGlobalRules,
 }) {
   const [edgeForm, setEdgeForm] = useState({
     trigger_words: '',
@@ -351,7 +336,7 @@ export default function SidePanel({
     }))
   }
 
-  // 텍스트 폼에도 ConditionBuilder에서 추가한 JSON을 즉시 반영
+  // ConditionBuilder에서 추가한 JSON을 즉시 텍스트폼에도 반영
   function pushToForm(json) {
     setEdgeForm(f => {
       let arr = []
@@ -361,51 +346,49 @@ export default function SidePanel({
     })
   }
 
- if (selectedNodeId) {
+  // 현재 선택 노드 데이터(로컬 변수 규칙 접근용)
+  const selectedNode = useMemo(()=>null, []) // 부모에서 주는 게 아니므로, 여기서는 편집만 담당
+  // 로컬 규칙 setter 헬퍼
+  function setLocalRulesForSelected(updater) {
+    if (!selectedNodeId) return
+    setNodes(nds => nds.map(n => {
+      if (n.id !== selectedNodeId) return n
+      const prev = n.data?.var_rules_local || []
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      return { ...n, data: { ...n.data, var_rules_local: next } }
+    }))
+  }
+
+  /* ====== 렌더링 분기 ====== */
+
+  // 노드 선택 시: 프롬프트 편집 + 로컬 변수 규칙
+  if (selectedNodeId) {
+    // 선택 노드의 현재 로컬 규칙 읽기
+    let localRules = []
+    setNodes(nds => {
+      const found = nds.find(n => n.id === selectedNodeId)
+      localRules = found?.data?.var_rules_local || []
+      return nds // no-op (값만 읽고 반환)
+    })
+
     return (
-      <div style={{ padding:12, display:'grid', gap:12 }}>
-        <div>
-          <div style={{ fontWeight:700, marginBottom:8 }}>프롬프트 편집</div>
-          <div style={{ color:'#64748b' }}>
-            프롬프트 텍스트는 카드에서 수정하세요. 아래 버튼으로 토큰을 추가할 수 있어요.
-          </div>
-          <TokenPalette onInsert={onInsertToken} />
+      <div style={{ padding:12 }}>
+        <div style={{ fontWeight:700, marginBottom:8 }}>프롬프트 편집</div>
+        <div style={{ color:'#64748b' }}>
+          프롬프트 텍스트는 카드에서 수정하세요. 아래 버튼으로 토큰을 추가할 수 있어요.
         </div>
+        <TokenPalette onInsert={onInsertToken} />
 
-        {/* 로컬 규칙 */}
         <VarRulesEditor
-          title="로컬 변수 규칙(이 노드에만 적용)"
-          value={
-            // 선택 노드의 data.var_rules_local 읽기
-            // (없으면 빈 배열)
-            (() => {
-              // setNodes를 쓰는 구조라면 별도 상태 없이 노드 데이터에서 직접 읽어온 값 전달
-              return undefined // ← parent에서 selectedNodeId로 현재 노드 찾아 값 전달해도 됨
-            })()
-          }
-          onChange={(arr)=>{
-            // 선택 노드 data에 반영
-            setNodes(nds => nds.map(n =>
-              n.id === selectedNodeId ? { ...n, data:{ ...n.data, var_rules_local: arr } } : n
-            ))
-          }}
+          title="로컬 변수 규칙 (이 노드에만 적용)"
+          value={localRules}
+          onChange={(arr)=>setLocalRulesForSelected(arr)}
         />
-
-        {/* 접이식 전역 규칙(선택사항) */}
-        <details>
-          <summary style={{ cursor:'pointer' }}>전역 변수 규칙(모든 노드에 적용)</summary>
-          <div style={{ marginTop:8 }}>
-            <VarRulesEditor
-              title="전역 변수 규칙"
-              value={varRulesGlobal}
-              onChange={setVarRulesGlobal}
-            />
-          </div>
-        </details>
       </div>
     )
   }
 
+  // 엣지 선택 시: 브릿지 조건
   if (selectedEdge) {
     return (
       <div style={{ padding:12 }}>
@@ -413,7 +396,7 @@ export default function SidePanel({
 
         <ConditionBuilder selectedEdge={selectedEdge} setEdges={setEdges} pushToForm={pushToForm} />
 
-        {/* 고급: 원하면 직접 JSON 수정 */}
+        {/* 고급: 직접 JSON 수정 */}
         <div style={{ marginTop:16, borderTop:'1px solid #eee', paddingTop:12 }}>
           <label style={{ fontSize:12 }}>조건(JSON 배열) 고급 편집</label>
           <textarea
@@ -451,7 +434,7 @@ export default function SidePanel({
             checked={edgeForm.fallback}
             onChange={e=>setEdgeForm(f=>({ ...f, fallback: e.target.checked }))}
           />
-          Fallback(어느 조건도 안 맞을 때 사용)
+          Fallback(어느 조건도 안 맞을 때)
         </label>
 
         <label style={{ fontSize:12 }}>액션</label>
@@ -463,7 +446,7 @@ export default function SidePanel({
           <option value="continue">일반 진행</option>
           <option value="win">승리</option>
           <option value="lose">패배</option>
-          <option value="goto_set">다른 세트로 이동(확장)</option>
+          <option value="goto_set">다른 세트로 이동</option>
         </select>
 
         <button
@@ -475,10 +458,23 @@ export default function SidePanel({
         </button>
       </div>
     )
-    
   }
 
-  return <div style={{ padding:12, color:'#64748b' }}>노드/브릿지를 선택하세요</div>
-  
+  // 아무것도 선택 안 됐을 때: 전역 변수 규칙
+  return (
+    <div style={{ padding:12 }}>
+      <div style={{ fontWeight:700, marginBottom:8 }}>전역 변수 규칙 (세트 전체에 반복 적용)</div>
+      <div style={{ color:'#64748b', marginBottom:8 }}>
+        어떤 프롬프트에서든 공통으로 “만족하면 변수명을 마지막-2번째 줄에 기재”하도록 강제하는 규칙입니다.
+      </div>
+      <VarRulesEditor
+        title="전역 변수 규칙"
+        value={globalRules || []}
+        onChange={setGlobalRules}
+      />
+      <div style={{ marginTop:10, color:'#6b7280', fontSize:12 }}>
+        * 저장 버튼은 상단 툴바에 있습니다. (세트 저장 시 전역/로컬 규칙이 함께 반영)
+      </div>
+    </div>
+  )
 }
-  
