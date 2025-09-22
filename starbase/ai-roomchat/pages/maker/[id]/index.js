@@ -258,7 +258,7 @@ export default function MakerEditor() {
           <button onClick={()=>router.push('/maker')} style={{ padding:'6px 10px' }}>← 목록</button>
           <b style={{ marginLeft:10 }}>{setInfo?.name}</b>
         </div>
-        <div style={{ display:'flex', gap:8 }}>
+        <div className="node-drag-handle" style={{ display:'flex', gap:8 }}>
           <button onClick={()=>addPromptNode('ai')} style={{ padding:'6px 10px', background:'#2563eb', color:'#fff', borderRadius:8 }}>+ 프롬프트</button>
           <button onClick={()=>addPromptNode('user_action')} style={{ padding:'6px 10px', background:'#0ea5e9', color:'#fff', borderRadius:8 }}>+ 유저 행동</button>
           <button onClick={()=>addPromptNode('system')} style={{ padding:'6px 10px', background:'#6b7280', color:'#fff', borderRadius:8 }}>+ 시스템</button>
