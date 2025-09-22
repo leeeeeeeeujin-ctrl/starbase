@@ -275,19 +275,51 @@ export default function MakerEditor() {
   )
 }
 
-/** 라벨 생성 유틸(로드 시 사용) */
-function labelFromEdgeData(b) {
-  const parts=[]
-  const c=b.conditions||[]
-  c.forEach(x=>{
-    if (x.type==='turn_gte') parts.push(`턴 ≥ ${x.value}`)
-    if (x.type==='turn_lte') parts.push(`턴 ≤ ${x.value}`)
-    if (x.type==='prev_ai_contains') parts.push(`이전응답 "${x.value}"`)
-    if (x.type==='prev_prompt_contains') parts.push(`이전프롬 "${x.value}"`)
-    if (x.type==='prev_ai_regex') parts.push(`정규식 /${x.pattern}/${x.flags||''}`)
-    if (x.type==='visited_slot') parts.push(`경유 #${x.slot_id}`)
-    if (x.type==='var_on') parts.push(`변수(${x.scope}) ${x.mode}: ${x.names?.join(' ')}`)
-    if (x.type==='count') parts.push(`카운트(${x.who}/${x.status}) ${x.cmp} ${x.value}${x.role?` @${x.role}`:''}`)
-    if (x.type==='fallback') parts.push('Fallback')
+// ★ 엣지 라벨 생성: 조건들을 사람이 읽기 쉽게 합쳐 표시
+function buildEdgeLabel(data) {
+  const parts = []
+  const conds = data?.conditions || []
+
+  conds.forEach(c => {
+    if (c?.type === 'turn_gte') {
+      parts.push(`턴 ≥ ${c.value}`)
+    } else if (c?.type === 'turn_lte') {
+      parts.push(`턴 ≤ ${c.value}`)
+    } else if (c?.type === 'prev_ai_contains') {
+      parts.push(`이전응답 "${c.value}"`)
+    } else if (c?.type === 'prev_prompt_contains') {
+      parts.push(`이전프롬프트 "${c.value}"`)
+    } else if (c?.type === 'prev_ai_regex') {
+      parts.push(`이전응답 /${c.pattern}/${c.flags || ''}`)
+    } else if (c?.type === 'visited_slot') {
+      parts.push(`경유 #${c.slot_id ?? '?'}`)
+    } else if (c?.type === 'var_on') {
+      const scope = c.scope || 'both'
+      const mode  = c.mode  || 'any'
+      const names = (c.names || []).join(' ')
+      parts.push(`변수(${scope}) ${mode}: ${names}`)
+    } else if (c?.type === 'count') {
+      const who    = c.who    || 'all'
+      const status = c.status || 'alive'
+      const cmp    = c.cmp    || 'gte'
+      const value  = c.value ?? 0
+      const role   = c.role ? ` @${c.role}` : ''
+      parts.push(`카운트(${who}/${status}) ${cmp} ${value}${role}`)
+    } else if (c?.type === 'fallback') {
+      parts.push('Fallback')
+    }
   })
- 
+
+  const p = data?.probability
+  if (p != null && p !== 1) {
+    parts.push(`확률 ${Math.round(Number(p) * 100)}%`)
+  }
+  if (data?.action && data.action !== 'continue') {
+    parts.push(data.action)
+  }
+  if (data?.fallback) {
+    parts.push('Fallback')
+  }
+
+  return parts.join(' | ')
+}
