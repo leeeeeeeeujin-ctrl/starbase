@@ -1,5 +1,6 @@
 // components/maker/SidePanel.js
 import { useEffect, useState } from 'react'
+import VarRulesEditorControlled from '../VarRulesEditorControlled'
 
 /* ===========================
    조건 빌더(기존 유지)

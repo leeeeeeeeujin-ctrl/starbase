@@ -286,22 +286,19 @@ export default function MakerEditor() {
           </ReactFlow>
         </div>
 
-   <SidePanel
+// pages/maker/[id]/index.js (일부)
+<SidePanel
   selectedNodeId={selectedNodeId}
   selectedEdge={selectedEdge}
   setEdges={setEdges}
   setNodes={setNodes}
-  onInsertToken={(token)=>{
-    if (!selectedNodeId) return
-            setNodes(nds => nds.map(n => n.id===selectedNodeId
-              ? { ...n, data:{ ...n.data, template:(n.data.template||'') + token } }
-              : n
-            ))
-    }}
- getGlobalVars={() => globalRules}
-  setGlobalVars={(next) => setGlobalRules(next)}
-   nodes={nodes} 
+  onInsertToken={insertTokenToSelected}
+  // 전역 규칙 (세트 단위)
+  getGlobalVars={() => globalRules}
+  setGlobalVars={(arr) => setGlobalRules(arr)}
+  nodes={nodes}
 />
+
       </div>
     </div>
   )
