@@ -8,7 +8,12 @@ import { parseOutcome } from '@/lib/outcome'
 import { pickSubstitute } from '@/lib/substitute'
 import { runOneTurn } from '@/lib/engineRunner'
 import { makeCallModel } from '@/lib/modelClient'
+import { ChevronUp, ChevronDown } from 'react-feather'
 import SharedChatDock from '@/components/common/SharedChatDock'
+
+const [histOpen, setHistOpen] = useState(false)
+const [userTurn, setUserTurn] = useState(false)
+const [dockOpen, setDockOpen] = useState(false)
 
 /** 상단: API Key 입력 */
 function ApiKeyBar({ storageKey }){
@@ -27,6 +32,56 @@ function ApiKeyBar({ storageKey }){
       />
     </div>
   )
+}
+// 역할별 풀 로드
+async function fetchRoleBuckets(gameId) {
+  const { data, error } = await supabase
+    .from('rank_participants')
+    .select(`
+      hero_id, role, score,
+      heroes:heroes ( id, name, image_url, ability1, ability2, ability3, ability4 )
+    `)
+    .eq('game_id', gameId)
+  if (error) throw error
+  const byRole = new Map()
+  ;(data || []).forEach(p => {
+    if (!byRole.has(p.role)) byRole.set(p.role, [])
+    byRole.get(p.role).push(p)
+  })
+  return byRole
+}
+
+// 점수창(±step → 최대 ±maxWindow) 넓혀가며 need명 뽑기
+function pickByScoreWindow(list = [], center = 1000, step = 100, maxWindow = 1000, need = 1) {
+  const pool = list.slice()
+  const picked = []
+  for (let w = step; w <= maxWindow && picked.length < need; w += step) {
+    const low = center - w, high = center + w
+    const cand = pool.filter(p => {
+      const s = p.score ?? 1000
+      return s >= low && s <= high
+    })
+    while (cand.length && picked.length < need) {
+      const idx = Math.floor(Math.random() * cand.length)
+      picked.push(cand.splice(idx, 1)[0])
+    }
+  }
+  // 그래도 부족하면 점수 무시하고 랜덤
+  while (pool.length && picked.length < need) {
+    const idx = Math.floor(Math.random() * pool.length)
+    picked.push(pool.splice(idx, 1)[0])
+  }
+  return picked
+}
+
+// 좌우 패널용 그룹 만들기
+function toGroupedByRole(rows = []) {
+  const m = new Map()
+  rows.forEach(p => {
+    if (!m.has(p.role)) m.set(p.role, [])
+    m.get(p.role).push(p)
+  })
+  return Array.from(m, ([role, members]) => ({ role, members }))
 }
 
 /** 좌/우 패널: 역할별 캐릭터 카드 */
@@ -118,112 +173,91 @@ export default function StartClient(){
   })() }, [gameId])
 
   // 체크리스트/규칙 기반 시스템 프롬프트
-  function buildSystemPromptFromChecklist(g){
-    const lines = []
-    if (g?.rules?.length) lines.push(g.rules)
-    lines.push('규칙: 결과는 마지막 한 줄에만 캐릭터명과 승/패/탈락 중 하나로 기입')
-    lines.push('이전 5줄은 공란 유지')
-    return lines.join('\n')
-  }
+function buildSystemPromptFromChecklist(game){
+  const lines = []
+  if (game?.rules?.length) lines.push(game.rules)
+
+  // 고정 규칙 (요약)
+  lines.push(
+    '규칙:',
+    '- 프롬프트 세트에 따른 진행. 전투불능은 패배가 아닌 탈락처리.',
+    '- 모델 응답의 마지막 한 줄에는 정확히 \"[캐릭터이름] (승|패|탈락)\" 만 기입.',
+    '- 마지막 줄을 제외한 직전 5줄은 공백 유지.',
+    '- 탈락 캐릭터 호출 시 동일 역할의 다른 캐릭터(무작위)로 대체.'
+  )
+  return lines.join('\n')
+}
+
 
   // 세션 시작
-  async function handleStart(){
-    if (starting) return
-    setStarting(true)
-    try {
-      let sid = sessionId
-      if (!sid) {
-        const { data: srow, error: sErr } = await supabase
-          .from('rank_sessions')
-          .insert({ game_id: gameId })
-          .select()
-          .single()
-        if (sErr) throw sErr
-        sid = srow.id
-        setSessionId(sid)
-      }
-      await history.beginSession({ sessionId: sid })
-      await history.push({
-        role:'system',
-        content: buildSystemPromptFromChecklist(game),
-        public: false
-      })
-      setPreflight(false)
-    } catch(e){
-      console.error(e)
-      alert(e.message || '시작 실패')
-    } finally {
-      setStarting(false)
+async function handleStart() {
+  if (starting) return
+  setStarting(true)
+  try {
+    // 1) 세션 준비
+    let sid = sessionId
+    if (!sid) {
+      const { data: srow, error: sErr } = await supabase
+        .from('rank_sessions')
+        .insert({ game_id: gameId })
+        .select()
+        .single()
+      if (sErr) throw sErr
+      sid = srow.id
+      setSessionId(sid)
     }
-  }
 
-  // 한 턴 진행
-  async function doNextTurn(){
-    // 슬롯 템플릿/브릿지: 추후 메이커 연결. 지금은 템플릿 비움.
-    const template = ''
-    const slotsPayload = buildSlotsFromParticipants(participants)
-
-    const res = await runOneTurn({
-      template,
-      slots: slotsPayload,
-      historyText: history.joinedText({ onlyPublic:false, last:50 }),
-      callModel
+    await history.beginSession({ sessionId: sid })
+    await history.push({
+      role: 'system',
+      content: buildSystemPromptFromChecklist(game),
+      public: false
     })
 
-    // 공개 로그(모델 응답)
-    await history.push({ role:'assistant', content: res.aiText, public:true })
+    // 2) ⬇︎ 여기서부터 역할군별 비슷한 점수 랜덤 매칭
+    const roles = Array.isArray(game?.roles) ? game.roles : []
+    const slotsPerRole = game?.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
 
-    // 승/패/탈락 판정
-    const judged = parseOutcome({ aiText: res.aiText, participants })
-    let endNow = false
+    // 내 점수(없으면 1000)
+    const { data: { user } } = await supabase.auth.getUser()
+    const myRow = (participants || []).find(p => p.owner_id === user?.id)
+    const myScore = myRow?.score ?? 1000
 
-    if (judged.length) {
-      const losers = judged.filter(j => j.result==='lose').map(j=>j.hero_id)
-      if (losers.length) {
-        setUsedHeroIds(prev => new Set([...prev, ...losers]))
-        // 간단 치환: 같은 역할 풀에서 아직 안 쓴 캐릭터 하나
-        const byRole = new Map()
-        participants.forEach(p => {
-          if (!byRole.has(p.role)) byRole.set(p.role, [])
-          byRole.get(p.role).push(p)
-        })
-        const replaced = participants.map(p => {
-          if (losers.includes(p.hero_id)) {
-            const sub = pickSubstitute({ pool: byRole.get(p.role)||[], usedHeroIds: new Set(losers) })
-            return sub || p
-          }
-          return p
-        })
-        setParticipants(replaced)
-      }
-      if (judged.some(j => j.result==='win' || j.result==='lose')) endNow = true
+    // 게임 전체 참가자에서 역할별 풀 구성
+    const buckets = await fetchRoleBuckets(gameId)
+
+    // 역할별로 필요한 슬롯 수만큼 뽑기
+    const chosen = []
+    for (const role of roles) {
+      const pool = (buckets.get(role) || []).slice()
+      const need = Math.max(1, Number(slotsPerRole[role] || 1))
+      const got = pickByScoreWindow(pool, myScore, 100, 1000, need)
+      chosen.push(...got.map(g => ({ ...g, role })))
     }
 
-    setTurnIndex(t=>t+1)
-
-    // 종료 처리 (브릿지/다음 슬롯 미연결 시에도 종료)
-    if (endNow || res.action==='win' || res.action==='lose' || !res.nextSlotId) {
-      try {
-        if (!sessionId) throw new Error('세션 없음')
-        const results = judged.length
-          ? { participants: judged }
-          : { participants: participants.map(p=>({ hero_id:p.hero_id, role:p.role, result:'draw' })) }
-
-        const { error: rpcErr } = await supabase.rpc('rank_apply_result_multi', {
-          p_session_id: sessionId,
-          p_results: results
-        })
-        if (rpcErr) throw rpcErr
-        alert('세션 종료 및 점수 반영 완료')
-      } catch(e){
-        console.error(e)
-        alert('결과 반영 실패: ' + (e.message || e))
-      }
-      return
+    // 같은 히어로 중복 제거
+    const uniq = []
+    const seen = new Set()
+    for (const p of chosen) {
+      if (seen.has(p.hero_id)) continue
+      seen.add(p.hero_id)
+      uniq.push(p)
     }
 
-    setCurrentSlotId(res.nextSlotId)
+    // 화면 상태 반영
+    setParticipants(uniq)                 // 중앙 엔진에서 참조
+    setGrouped(toGroupedByRole(uniq))     // 좌/우 패널에서 사용
+
+    // 3) 프리플라이트 닫기 → 본 화면 전개
+    setPreflight(false)
+  } catch (e) {
+    console.error(e)
+    alert(e.message || '시작 실패')
+  } finally {
+    setStarting(false)
   }
+}
+
 
   function buildSlotsFromParticipants(list){
     const out = {}
@@ -277,28 +311,66 @@ export default function StartClient(){
         <div>
           {!preflight && <GroupedRoster grouped={grouped.slice(0, Math.ceil(grouped.length/2))} compact />}
         </div>
-
-        <div>
-          {/* 중앙: 공용 채팅 (유저 입력=메인 턴 트리거) */}
-          <SharedChatDock
-            height={preflight ? 320 : 480}
-            onUserSend={async (text) => {
-              await history.push({ role:'user', content:text, public:true })
-              await doNextTurn()
-              return true
-            }}
-          />
-          {!preflight && (
-            <div style={{ marginTop:8, display:'flex', gap:8, justifyContent:'flex-end' }}>
-              <button
-                onClick={doNextTurn}
-                style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff' }}
-              >
-                다음
-              </button>
-            </div>
-          )}
+{/* === 상단 히스토리 바 === */}
+<div style={{ position:'sticky', top:0, zIndex:45 }}>
+  <div style={{ background:'#111827', color:'#fff', padding:'8px 12px',
+                display:'flex', alignItems:'center', justifyContent:'space-between', borderRadius:8 }}>
+    <b>세션 히스토리</b>
+    <button onClick={()=>setHistOpen(o=>!o)}
+            style={{ background:'transparent', color:'#fff', border:'0', fontWeight:700 }}>
+      {histOpen ? '접기' : '펼치기'}
+    </button>
+  </div>
+  {histOpen && (
+    <div style={{ background:'#0f172a', color:'#e2e8f0', padding:'10px 12px', borderRadius:8, marginTop:6, maxHeight:240, overflow:'auto' }}>
+      {(history.data || []).map((t,i)=>(
+        <div key={i} style={{ opacity: t.public ? 1 : .7 }}>
+          <span style={{ fontWeight:700 }}>{t.role.toUpperCase()}:</span> {t.content}
         </div>
+      ))}
+    </div>
+  )}
+</div>
+{/* 중앙: 게임세션 채팅(유저입력 비활성, '다음'으로만 진행) */}
+<div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fff' }}>
+  <div style={{ maxHeight: preflight ? 240 : 420, overflow:'auto' }}>
+    {(history.data || []).filter(r=>r.public).map((m, idx)=>(
+      <div key={idx} style={{ margin:'8px 0' }}>
+        <div style={{ fontSize:12, color:'#64748b' }}>{m.role.toUpperCase()}</div>
+        <div style={{ whiteSpace:'pre-wrap' }}>{m.content}</div>
+      </div>
+    ))}
+  </div>
+
+  {!preflight && (
+    <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
+      <button
+        onClick={doNextTurn}
+        style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff', fontWeight:700 }}
+        title="프롬프트 세트를 따라 다음 턴 진행"
+      >
+        다음
+      </button>
+    </div>
+  )}
+</div>
+{/* === 하단 공용채팅 도킹 === */}
+<div style={{
+  position:'fixed', left:0, right:0, bottom:0, zIndex:60,
+  transform: dockOpen ? 'translateY(0)' : 'translateY(calc(100% - 40px))',
+  transition:'transform .25s ease'
+}}>
+  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                background:'#111827', color:'#fff', padding:'8px 12px', cursor:'pointer' }}
+       onClick={()=>setDockOpen(o=>!o)}>
+    <b>공용 채팅</b>
+    {dockOpen ? <ChevronDown size={18}/> : <ChevronUp size={18}/>}
+  </div>
+  <div style={{ background:'#fff', borderTop:'1px solid #e5e7eb' }}>
+    <SharedChatDock height={dockOpen ? 280 : 0} />
+  </div>
+</div>
+
 
         <div>
           {!preflight && <GroupedRoster grouped={grouped.slice(Math.ceil(grouped.length/2))} compact />}
