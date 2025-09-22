@@ -3,9 +3,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import ReactFlow, { Background, Controls, MiniMap, addEdge, useEdgesState, useNodesState } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { supabase } from '../../lib/supabase'
-import PromptNode from '../../../components/maker/PromptNode'
-import SidePanel from '../../components/maker/SidePanel'
+import PromptNode from '@/components/maker/PromptNode'
+import { supabase } from '@/lib/supabase'
+import SidePanel from '@/components/maker/SidePanel'
 
 const nodeTypes = { prompt: PromptNode }
 const isGlobalOptionsRow = (row) => row?.options && row.options.kind === 'global_options'
