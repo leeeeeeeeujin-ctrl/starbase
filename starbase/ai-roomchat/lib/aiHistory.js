@@ -23,45 +23,43 @@ export function useAiHistory({ gameId }) {
     return ins.data
   }
 
-  async function push({ role, content, public: isPublic = true, turnNo }) {
-    if (!sessionId) throw new Error('세션이 없습니다. beginSession() 먼저 호출')
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('로그인 필요')
+  // push: turn_no → idx, is_public → public, game_id 제거
+async function push({ role, content, public: isPublic = true, turnNo }) {
+  if (!sessionId) throw new Error('세션이 없습니다. beginSession() 먼저 호출')
+  // 로그인 체크 유지 (원하면 beginSession에서만 확인하고 여기선 생략 가능)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('로그인 필요')
 
-    // turn_no가 명시되면 사용, 아니면 메모리 기반 auto-increment
-    const nextTurn = typeof turnNo === 'number'
-      ? turnNo
-      : Math.max(0, ...memory.map(m => m.turn_no ?? 0)) + 1
+  const nextIdx = typeof turnNo === 'number'
+    ? turnNo
+    : Math.max(-1, ...memory.map(m => (typeof m.idx === 'number' ? m.idx : -1))) + 1
 
-    // DB 기록
-    const ins = await supabase
-      .from('rank_turns')
-      .insert({
-        session_id: sessionId,
-        game_id: gameId,
-        role,
-        is_public: !!isPublic,
-        turn_no: nextTurn,
-        content
-      })
-      .select('*')
-      .single()
+  const ins = await supabase
+    .from('rank_turns')
+    .insert({
+      session_id: sessionId,
+      idx: nextIdx,
+      role,
+      public: !!isPublic,
+      content
+    })
+    .select('*')
+    .single()
 
-    if (ins.error) throw ins.error
+  if (ins.error) throw ins.error
+  setMemory(prev => [...prev, ins.data])
+  return ins.data
+}
 
-    // 로컬 캐시에도 반영
-    setMemory(prev => [...prev, ins.data])
-    return ins.data
-  }
+// joinedText: public 컬럼명에 맞춰 필터/정렬
+function joinedText({ onlyPublic = true, last = 20 } = {}) {
+  const rows = memory
+    .filter(m => (onlyPublic ? m.public : true))
+    .sort((a, b) => (a.idx - b.idx))
+    .slice(-last)
+  return rows.map(r => `[${r.role}] ${r.content}`).join('\n')
+}
 
-  // 공개 로그 조합(최근 N개)
-  function joinedText({ onlyPublic = true, last = 20 } = {}) {
-    const rows = memory
-      .filter(m => (onlyPublic ? m.is_public : true))
-      .sort((a, b) => (a.turn_no - b.turn_no))
-      .slice(-last)
-    return rows.map(r => `[${r.role}] ${r.content}`).join('\n')
-  }
 
   return { beginSession, push, joinedText, sessionId }
 }
