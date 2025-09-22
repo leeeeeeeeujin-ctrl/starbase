@@ -1,5 +1,4 @@
 // lib/aiHistory.js
-import { useRef, useState } from 'react'
 import { supabase } from './supabase'
 // lib/aiHistory.js (핵심 부분 예시)
 import { useRouter } from 'next/router'
