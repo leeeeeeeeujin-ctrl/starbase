@@ -1,6 +1,5 @@
 // components/maker/SidePanel.js
 import { useEffect, useState } from 'react'
-import VarRulesEditorControlled from '../VarRulesEditorControlled'
 
 /* ===========================
    조건 빌더(기존 유지)
@@ -10,27 +9,19 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
   const [values, setValues] = useState({})
 
   const CONDITION_DEFS = [
-    {
-      type: 'probability',
-      label: '확률로 진행',
+    { type: 'probability', label: '확률로 진행',
       params: [{ key:'p', label:'확률(0~1)', type:'number', step:'0.05', min:'0', max:'1', defaultValue:'0.3' }],
       toJSON: v => ({ type:'random', p: Number(v.p ?? 0.3) }),
     },
-    {
-      type: 'turn_gte',
-      label: '특정 턴 이상',
+    { type: 'turn_gte', label: '특정 턴 이상',
       params: [{ key:'value', label:'턴 ≥', type:'number', defaultValue:'3' }],
       toJSON: v => ({ type:'turn_gte', value: Number(v.value ?? 1) }),
     },
-    {
-      type: 'turn_lte',
-      label: '특정 턴 이하',
+    { type: 'turn_lte', label: '특정 턴 이하',
       params: [{ key:'value', label:'턴 ≤', type:'number', defaultValue:'5' }],
       toJSON: v => ({ type:'turn_lte', value: Number(v.value ?? 1) }),
     },
-    {
-      type: 'prev_ai_contains',
-      label: '이전 AI 응답에 단어 포함',
+    { type: 'prev_ai_contains', label: '이전 AI 응답에 단어 포함',
       params: [
         { key:'value', label:'단어', type:'text', placeholder:'예) 승리' },
         { key:'scope', label:'대상 구간', type:'select', options:[
@@ -42,9 +33,7 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
       ],
       toJSON: v => ({ type:'prev_ai_contains', value:String(v.value||''), scope:v.scope||'last2' }),
     },
-    {
-      type: 'prev_prompt_contains',
-      label: '이전 프롬프트에 문구 포함',
+    { type: 'prev_prompt_contains', label: '이전 프롬프트에 문구 포함',
       params: [
         { key:'value', label:'문구', type:'text', placeholder:'예) 탈출' },
         { key:'scope', label:'대상 구간', type:'select', options:[
@@ -55,9 +44,7 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
       ],
       toJSON: v => ({ type:'prev_prompt_contains', value:String(v.value||''), scope:v.scope||'last1' }),
     },
-    {
-      type: 'prev_ai_regex',
-      label: '이전 AI 응답 정규식',
+    { type: 'prev_ai_regex', label: '이전 AI 응답 정규식',
       params: [
         { key:'pattern', label:'패턴', type:'text', placeholder:'예) ^패배\\b' },
         { key:'flags',   label:'플래그', type:'text', placeholder:'예) i' },
@@ -69,17 +56,12 @@ function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
       ],
       toJSON: v => ({ type:'prev_ai_regex', pattern:String(v.pattern||''), flags:String(v.flags||''), scope:v.scope||'last1' }),
     },
-    {
-      type: 'visited_slot',
-      label: '특정 프롬프트(슬롯) 경유',
+    { type: 'visited_slot', label: '특정 프롬프트(슬롯) 경유',
       params: [{ key:'slot_id', label:'슬롯 ID', type:'text', placeholder:'예) 12' }],
       toJSON: v => ({ type:'visited_slot', slot_id: v.slot_id ? String(v.slot_id) : null }),
     },
-    {
-      type: 'fallback',
-      label: '모두 불일치 시 이 경로',
-      params: [],
-      toJSON: _ => ({ type:'fallback' }),
+    { type: 'fallback', label: '모두 불일치 시 이 경로',
+      params: [], toJSON: _ => ({ type:'fallback' }),
     },
   ]
 
@@ -309,13 +291,13 @@ export default function SidePanel({
   setEdges,
   setNodes,
   onInsertToken,
-  globalRules,
-  setGlobalRules,
-  selectedNodeData,   // ← 아래 2)에서 함께 씀
+  globalRules,     // 세트 전역 규칙 배열
+  setGlobalRules,  // 세트 전역 규칙 setter
+  selectedNodeData // 선택 노드 data (로컬 규칙 접근용)
 }) {
   const [showGlobal, setShowGlobal] = useState(false)
-  function saveGlobalRules(next) { setGlobalRules?.(next) }
-//엣지 폼(기존)
+
+  // ===== 엣지 폼(브릿지) =====
   const [edgeForm, setEdgeForm] = useState({
     trigger_words: '',
     conditions: '[]',
@@ -394,7 +376,7 @@ export default function SidePanel({
     </div>
   )
 
-  // 노드 선택 시: 토큰 팔레트 + 로컬 변수 규칙
+  // ====== 노드 선택: 토큰 팔레트 + 로컬 변수 ======
   if (selectedNodeId) {
     return (
       <div style={{ display:'grid', gridTemplateRows:'auto 1fr', height:'100%' }}>
@@ -404,7 +386,7 @@ export default function SidePanel({
             <VarsEditor
               title="전역 변수 규칙(세트 전체에 반복 적용)"
               value={globalRules}
-              onChange={saveGlobalRules}
+              onChange={setGlobalRules}
             />
           </div>
         )}
@@ -417,42 +399,35 @@ export default function SidePanel({
           <TokenPalette onInsert={onInsertToken} />
 
           <div style={{ marginTop:16 }}>
-         +<VarsEditor
-  title="로컬 변수 규칙(이 노드에만 적용)"
-  value={Array.isArray(selectedNodeData?.var_rules_local) ? selectedNodeData.var_rules_local : []}
-  onChange={(arr)=>{
-    setNodes(nds => nds.map(n =>
-      n.id===selectedNodeId
-        ? { ...n, data:{ ...n.data, var_rules_local: arr } }
-        : n
-    ))
-  }}
-/>
+            <VarsEditor
+              title="로컬 변수 규칙(이 노드에만 적용)"
+              value={Array.isArray(selectedNodeData?.var_rules_local) ? selectedNodeData.var_rules_local : []}
+              onChange={(arr)=>{
+                setNodes(nds => nds.map(n =>
+                  n.id===selectedNodeId
+                    ? { ...n, data:{ ...n.data, var_rules_local: arr } }
+                    : n
+                ))
+              }}
+            />
           </div>
         </div>
       </div>
     )
   }
 
-  // 엣지 선택 시: 기존 브릿지 폼 유지
+  // ====== 엣지 선택: 브릿지 폼 ======
   if (selectedEdge) {
     return (
       <div style={{ display:'grid', gridTemplateRows:'auto 1fr', height:'100%' }}>
         {GlobalToolbar}
         {showGlobal && (
           <div style={{ padding:12, borderBottom:'1px solid #eee' }}>
-           <VarsEditor
-  title="로컬 변수 규칙(이 노드에만 적용)"
-  value={
-    nodes.find(n => n.id === selectedNodeId)?.data.var_rules_local ?? []
-  }
-  onChange={(arr)=>{
-    setNodes(nds => nds.map(n =>
-      n.id===selectedNodeId ? { ...n, data:{ ...n.data, var_rules_local: arr }} : n
-    ))
-  }}
-/>
-
+            <VarsEditor
+              title="전역 변수 규칙(세트 전체에 반복 적용)"
+              value={globalRules}
+              onChange={setGlobalRules}
+            />
           </div>
         )}
 
@@ -526,19 +501,21 @@ export default function SidePanel({
     )
   }
 
+  // ====== 기본(아무것도 선택 안 함) ======
   return (
     <div style={{ display:'grid', gridTemplateRows:'auto 1fr', height:'100%' }}>
       {GlobalToolbar}
-      {showGlobal && (
+      {showGlobal ? (
         <div style={{ padding:12 }}>
           <VarsEditor
             title="전역 변수 규칙(세트 전체에 반복 적용)"
             value={globalRules}
-            onChange={saveGlobalRules}
+            onChange={setGlobalRules}
           />
         </div>
+      ) : (
+        <div style={{ padding:12, color:'#64748b' }}>노드/브릿지를 선택하세요</div>
       )}
-      {!showGlobal && <div style={{ padding:12, color:'#64748b' }}>노드/브릿지를 선택하세요</div>}
     </div>
   )
 }

@@ -15,6 +15,7 @@ export default function MakerEditor() {
 
   const [loading, setLoading] = useState(true)
   const [setInfo, setSetInfo] = useState(null)
+  const [globalRules, setGlobalRules] = useState([])
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState(null)
@@ -36,7 +37,7 @@ export default function MakerEditor() {
         .single()
       if (e1) { alert('세트를 불러오지 못했습니다.'); router.replace('/maker'); return }
       setSetInfo(setRow)
-      setGlobalRules(Array.isArray(setRow?.var_rules_global) ? setRow.var_rules_global : [])
+      setGlobalRules(Array.isArray(setRow.var_rules_global) ? setRow.var_rules_global : [])
 
       // 슬롯 / 브릿지
       const { data: slotRows } = await supabase
@@ -61,7 +62,7 @@ export default function MakerEditor() {
           data: {
             template: s.template || '',
             slot_type: s.slot_type || 'ai',
-            var_rules_local: Array.isArray(s.var_rules_local) ? s.var_rules_local : [], // ★ 로컬 규칙 주입
+            var_rules_local: Array.isArray(s.var_rules_local) ? s.var_rules_local : [],
             onChange: (partial) => setNodes(nds => nds.map(n => n.id===nid ? { ...n, data:{ ...n.data, ...partial } } : n)),
             onDelete: handleDeletePrompt,
             isStart: !!s.is_start,
@@ -166,9 +167,13 @@ export default function MakerEditor() {
         slot_pick: n.data.slot_pick || '1',
         template: n.data.template || '',
         is_start: !!n.data.isStart,
-        var_rules_local: Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : [], // ★ 저장
+        var_rules_local: Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : [],
         transform_code: n.data.transform_code ?? ''
       }
+      // 세트 전역 규칙 저장
+ await supabase.from('prompt_sets')
+   .update({ var_rules_global: Array.isArray(globalRules) ? globalRules : [] })
+   .eq('id', setInfo.id)
 
       if (!slotId) {
         const ins = await supabase
@@ -245,6 +250,7 @@ export default function MakerEditor() {
     }
 
     alert('저장 완료')
+    
   }
 
   if (loading) return <div style={{ padding:20 }}>불러오는 중…</div>
@@ -286,19 +292,16 @@ export default function MakerEditor() {
           </ReactFlow>
         </div>
 
-// pages/maker/[id]/index.js (일부)
 <SidePanel
   selectedNodeId={selectedNodeId}
   selectedEdge={selectedEdge}
   setEdges={setEdges}
   setNodes={setNodes}
   onInsertToken={insertTokenToSelected}
-  // 전역 규칙 (세트 단위)
-  getGlobalVars={() => globalRules}
-  setGlobalVars={(arr) => setGlobalRules(arr)}
-  nodes={nodes}
+  globalRules={globalRules}        // ★ 추가
+  setGlobalRules={setGlobalRules}  // ★ 추가
+  selectedNodeData={nodes.find(n => n.id===selectedNodeId)?.data}
 />
-
       </div>
     </div>
   )
@@ -321,4 +324,8 @@ export default function MakerEditor() {
     }])
     setSelectedNodeId(nid)
   }
+  await supabase
+  .from('prompt_sets')
+  .update({ var_rules_global: globalRules })
+  .eq('id', setId)
 }
