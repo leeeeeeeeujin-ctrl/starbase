@@ -1,371 +1,215 @@
-'use client'
-
-import { useEffect, useMemo, useState } from 'react'
+// components/rank/StartClient.jsx
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
-import { supabase } from '@/lib/supabase'
-import { useAiHistory } from '@/lib/aiHistory'
-import { parseOutcome } from '@/lib/outcome'
-import { pickSubstitute } from '@/lib/substitute'
-import { runOneTurn } from '@/lib/engineRunner'
-import { makeCallModel } from '@/lib/modelClient'
-import SharedChatDock from '@/components/common/SharedChatDock'
+import { supabase } from '../../lib/supabase'
+import SharedChatDock from '../common/SharedChatDock'
+import {
+  buildSystemPromptFromChecklist, buildSlotsFromParticipants,
+  createAiHistory, evaluateBridge, makeNodePrompt, parseOutcome, shouldShowToSlot
+} from '../../lib/promptEngine'
 
-
-/** 상단: API Key 입력 */
-function ApiKeyBar({ storageKey }){
-  const [val, setVal] = useState('')
-  useEffect(()=>{ setVal(localStorage.getItem(storageKey)||'') },[storageKey])
-  return (
-    <div style={{display:'flex',gap:8,alignItems:'center'}}>
-      <input
-        value={val}
-        onChange={e=>{
-          setVal(e.target.value)
-          localStorage.setItem(storageKey, e.target.value)
-        }}
-        placeholder="OpenAI API Key"
-        style={{flex:1, padding:'8px 10px', border:'1px solid #e5e7eb', borderRadius:8}}
-      />
-    </div>
-  )
-}
-// 역할별 풀 로드
-async function fetchRoleBuckets(gameId) {
-  const { data, error } = await supabase
-    .from('rank_participants')
-    .select(`
-      hero_id, role, score,
-      heroes:heroes ( id, name, image_url, ability1, ability2, ability3, ability4 )
-    `)
-    .eq('game_id', gameId)
-  if (error) throw error
-  const byRole = new Map()
-  ;(data || []).forEach(p => {
-    if (!byRole.has(p.role)) byRole.set(p.role, [])
-    byRole.get(p.role).push(p)
-  })
-  return byRole
-}
-
-// 점수창(±step → 최대 ±maxWindow) 넓혀가며 need명 뽑기
-function pickByScoreWindow(list = [], center = 1000, step = 100, maxWindow = 1000, need = 1) {
-  const pool = list.slice()
-  const picked = []
-  for (let w = step; w <= maxWindow && picked.length < need; w += step) {
-    const low = center - w, high = center + w
-    const cand = pool.filter(p => {
-      const s = p.score ?? 1000
-      return s >= low && s <= high
-    })
-    while (cand.length && picked.length < need) {
-      const idx = Math.floor(Math.random() * cand.length)
-      picked.push(cand.splice(idx, 1)[0])
-    }
-  }
-  // 그래도 부족하면 점수 무시하고 랜덤
-  while (pool.length && picked.length < need) {
-    const idx = Math.floor(Math.random() * pool.length)
-    picked.push(pool.splice(idx, 1)[0])
-  }
-  return picked
-}
-
-// 좌우 패널용 그룹 만들기
-function toGroupedByRole(rows = []) {
-  const m = new Map()
-  rows.forEach(p => {
-    if (!m.has(p.role)) m.set(p.role, [])
-    m.get(p.role).push(p)
-  })
-  return Array.from(m, ([role, members]) => ({ role, members }))
-}
-
-/** 좌/우 패널: 역할별 캐릭터 카드 */
-function GroupedRoster({ grouped = [], compact }){
-  return (
-    <div style={{ display:'grid', gap:8 }}>
-      {grouped.map(g => (
-        <div key={g.role} style={{ border:'1px solid #e5e7eb', borderRadius:10, padding:10 }}>
-          <div style={{ fontWeight:700, marginBottom:8 }}>{g.role}</div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:8 }}>
-            {g.members.map(m => (
-              <div key={m.hero_id} style={{ border:'1px solid #eee', borderRadius:8, padding:8 }}>
-                {m.heroes?.image_url
-                  ? <img src={m.heroes.image_url} alt=""
-                         style={{ width:'100%', aspectRatio:'1/1', objectFit:'cover', borderRadius:6 }} />
-                  : <div style={{ background:'#f1f5f9', height:120, borderRadius:6 }} />
-                }
-                <div style={{ fontWeight:600, marginTop:6 }}>{m.heroes?.name || '이름없음'}</div>
-                <ul style={{ paddingLeft:16, margin:0, color:'#64748b', fontSize:12 }}>
-                  {[1,2,3,4].map(i => m.heroes?.[`ability${i}`]
-                    ? <li key={i}>{m.heroes[`ability${i}`]}</li>
-                    : null)}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-export default function StartClient(){
+export default function StartClient() {
   const router = useRouter()
   const gameId = router.query.id
 
+  const [loading, setLoading] = useState(true)
   const [game, setGame] = useState(null)
-  const [participants, setParticipants] = useState([]) // [{hero_id, role, heroes:{...}}]
-  const [grouped, setGrouped] = useState([])
+  const [participants, setParticipants] = useState([]) // [{role, hero_id, hero:{...}, status}]
+  const [graph, setGraph] = useState({ nodes:[], edges:[] }) // 메이커 그래프(세트)
+  const history = useMemo(()=>createAiHistory(), [])
   const [preflight, setPreflight] = useState(true)
+  const [turn, setTurn] = useState(1)
+  const visitedSlotIds = useRef(new Set())
+  const [activeGlobal, setActiveGlobal] = useState([]) // 둘째 줄 변수(전역)
+  const [activeLocal, setActiveLocal] = useState([])  // 둘째 줄 변수(로컬)
+  const [currentNodeId, setCurrentNodeId] = useState(null) // 진행 중 노드 id
   const [starting, setStarting] = useState(false)
-  const [sessionId, setSessionId] = useState(null)
-  const [turnIndex, setTurnIndex] = useState(0)
-  const [currentSlotId, setCurrentSlotId] = useState(null)
-  const [usedHeroIds, setUsedHeroIds] = useState(new Set())
-  const [histOpen, setHistOpen] = useState(false)
-  const [userTurn, setUserTurn] = useState(false)
-  const [dockOpen, setDockOpen] = useState(false)
 
-  const history = useAiHistory()
-  const callModel = useMemo(
-    () => makeCallModel({ getKey: () => localStorage.getItem('OPENAI_API_KEY') }),
-    []
-  )
-
-  // 초기 로드: 게임/참가자/그룹 + 진행중 세션 이어붙이기
-  useEffect(() => { (async () => {
-    if (!gameId) return
+  // 초기 로드: 게임/참여자/세트
+  useEffect(()=>{ if (!gameId) return; (async ()=>{
     const { data: g } = await supabase.from('rank_games').select('*').eq('id', gameId).single()
     setGame(g || null)
 
-    const { data: rows } = await supabase
+    // 참여자 + 히어로 조인(간소화)
+    const { data: ps } = await supabase
       .from('rank_participants')
-      .select('hero_id, role, heroes:heroes(id,name,description,image_url,ability1,ability2,ability3,ability4)')
+      .select('id, role, hero_id, status, heroes:hero_id(id,name,description,image_url,ability1,ability2,ability3,ability4)')
       .eq('game_id', gameId)
-    setParticipants(rows || [])
+    const norm = (ps||[]).map(r=>({ role:r.role, hero_id:r.hero_id, status:r.status||'alive', hero:{
+      id:r.heroes?.id, name:r.heroes?.name, description:r.heroes?.description, image_url:r.heroes?.image_url,
+      ability1:r.heroes?.ability1, ability2:r.heroes?.ability2, ability3:r.heroes?.ability3, ability4:r.heroes?.ability4
+    }}))
+    setParticipants(norm)
 
-    const byRole = new Map()
-    ;(rows||[]).forEach(p => {
-      if (!byRole.has(p.role)) byRole.set(p.role, [])
-      byRole.get(p.role).push(p)
-    })
-    setGrouped(Array.from(byRole, ([role, members]) => ({ role, members })))
-
-    // 이어하기
-    const { data: sess } = await supabase
-      .from('rank_sessions').select('id,status')
-      .eq('game_id', gameId)
-      .order('created_at', { ascending:false })
-      .limit(1)
-    if (sess?.length && sess[0].status === 'active') {
-      setSessionId(sess[0].id)
-      setPreflight(false)
-      const { data: turns } = await supabase
-        .from('rank_turns')
-        .select('idx, role, content, public')
-        .eq('session_id', sess[0].id)
-        .order('idx', { ascending:true })
-      await history.beginSession({ sessionId: sess[0].id, seed: turns || [] })
-      setTurnIndex((turns||[]).length)
+    // 이 게임이 사용할 프롬프트 세트 id (rank_games.set_id 가정)
+    if (g?.set_id) {
+      const { data: slots } = await supabase.from('prompt_slots').select('*').eq('set_id', g.set_id).order('slot_no')
+      const { data: bridges } = await supabase.from('prompt_bridges').select('*').eq('from_set', g.set_id)
+      setGraph({
+        nodes: (slots||[]).map(s=>({ id:String(s.id), is_start: !!s.is_start, template:s.template||'', options:s.options||{}, slot_type:s.slot_type||'ai' })),
+        edges: (bridges||[]).map(b=>({ id:String(b.id), from:String(b.from_slot_id), to:String(b.to_slot_id), data:{
+          trigger_words:b.trigger_words||[], conditions:b.conditions||[], priority:b.priority??0, probability:b.probability??1, fallback:!!b.fallback, action:b.action||'continue'
+        }}))
+      })
+    } else {
+      setGraph({ nodes:[], edges:[] })
     }
+
+    setLoading(false)
   })() }, [gameId])
 
-  // 체크리스트/규칙 기반 시스템 프롬프트
-function buildSystemPromptFromChecklist(game){
-  const lines = []
-  if (game?.rules?.length) lines.push(game.rules)
+  // 현재 라운드용 슬롯/상태
+  const slots = useMemo(()=>buildSlotsFromParticipants(participants), [participants])
 
-  // 고정 규칙 (요약)
-  lines.push(
-    '규칙:',
-    '- 프롬프트 세트에 따른 진행. 전투불능은 패배가 아닌 탈락처리.',
-    '- 모델 응답의 마지막 한 줄에는 정확히 \"[캐릭터이름] (승|패|탈락)\" 만 기입.',
-    '- 마지막 줄, 마지막에서 두 번째 줄을 제외한 직전 5줄은 공백 유지.',
-    '- (마지막에서 두 번째 줄) 이번 턴에 만족한 변수명들을 쉼표로 구분하여 적는다. 없으면 빈 줄로 남긴다..'
-  )
-  return lines.join('\n')
-}
-
-
-  // 세션 시작
-async function handleStart() {
-  if (starting) return
-  setStarting(true)
-  try {
-    // 1) 세션 준비
-    let sid = sessionId
-    if (!sid) {
-      const { data: srow, error: sErr } = await supabase
-        .from('rank_sessions')
-        .insert({ game_id: gameId })
-        .select()
-        .single()
-      if (sErr) throw sErr
-      sid = srow.id
-      setSessionId(sid)
-    }
-
-    await history.beginSession({ sessionId: sid })
-    await history.push({
-      role: 'system',
-      content: buildSystemPromptFromChecklist(game),
-      public: false
-    })
-
-    // 2) ⬇︎ 여기서부터 역할군별 비슷한 점수 랜덤 매칭
-    const roles = Array.isArray(game?.roles) ? game.roles : []
-    const slotsPerRole = game?.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
-
-    // 내 점수(없으면 1000)
-    const { data: { user } } = await supabase.auth.getUser()
-    const myRow = (participants || []).find(p => p.owner_id === user?.id)
-    const myScore = myRow?.score ?? 1000
-
-    // 게임 전체 참가자에서 역할별 풀 구성
-    const buckets = await fetchRoleBuckets(gameId)
-
-    // 역할별로 필요한 슬롯 수만큼 뽑기
-    const chosen = []
-    for (const role of roles) {
-      const pool = (buckets.get(role) || []).slice()
-      const need = Math.max(1, Number(slotsPerRole[role] || 1))
-      const got = pickByScoreWindow(pool, myScore, 100, 1000, need)
-      chosen.push(...got.map(g => ({ ...g, role })))
-    }
-
-    // 같은 히어로 중복 제거
-    const uniq = []
-    const seen = new Set()
-    for (const p of chosen) {
-      if (seen.has(p.hero_id)) continue
-      seen.add(p.hero_id)
-      uniq.push(p)
-    }
-
-    // 화면 상태 반영
-    setParticipants(uniq)                 // 중앙 엔진에서 참조
-    setGrouped(toGroupedByRole(uniq))     // 좌/우 패널에서 사용
-
-    // 3) 프리플라이트 닫기 → 본 화면 전개
-    setPreflight(false)
-  } catch (e) {
-    console.error(e)
-    alert(e.message || '시작 실패')
-  } finally {
-    setStarting(false)
+  function findStartNodeId() {
+    const n = graph.nodes.find(n=>n.is_start) || graph.nodes[0]
+    return n ? n.id : null
   }
-}
 
-
-  function buildSlotsFromParticipants(list){
-    const out = {}
-    list.forEach((p, idx) => {
-      const s = idx + 1
-      out[`slot${s}`] = {
-        name: p.heroes?.name || '',
-        description: p.heroes?.description || '',
-        ...Object.fromEntries(
-          Array.from({length:12},(_,i)=>[`ability${i+1}`, p.heroes?.[`ability${i+1}`] || ''])
-        )
-      }
-    })
-    return out
+  function buildSystemPrompt() {
+    // 게임 체크리스트 필드 예: game.rules_json
+    let rules = {}
+    try { rules = JSON.parse(game?.rules_json || '{}') } catch {}
+    return buildSystemPromptFromChecklist(rules||{})
   }
+
+  async function startGame() {
+    if (starting) return
+    setStarting(true)
+    try {
+      history.beginSession()
+      await history.push({ role:'system', content: buildSystemPrompt(), public:false })
+      setCurrentNodeId(findStartNodeId())
+      setPreflight(false)
+      setTurn(1)
+    } finally { setStarting(false) }
+  }
+
+  async function nextStep() {
+    if (!currentNodeId) {
+      alert('진행할 노드가 없습니다. 시작을 눌러 주세요.')
+      return
+    }
+    const node = graph.nodes.find(n=>n.id===currentNodeId)
+    if (!node) return
+
+    // 노드 가시성(현재는 전체에 공용으로 보여주는 시나리오이므로 필터만 참고)
+    // 특정 슬롯 가시성으로 제한하고 싶으면 shouldShowToSlot(node.options, 현슬롯번호)로 분기
+
+    // 1) 프롬프트 컴파일
+    const compiled = makeNodePrompt({
+      node, slots,
+      historyText: history.joinedText({ onlyPublic:false, last:5 }),
+      activeGlobalNames: activeGlobal, activeLocalNames: activeLocal,
+      currentSlot: null
+    })
+    const promptText = compiled.text
+
+    // 2) 모델 호출(여긴 스텁). 실제론 Edge Function/직접호출
+    const aiText = [
+      '(샘플 응답) 내용 …',
+      'VAR_A VAR_B',   // ← 둘째 줄(변수)
+      '', '', '',      // ← 공백 줄들
+      '무승부'         // ← 마지막 줄(결론)
+    ].join('\n')
+
+    // 3) 히스토리 반영
+    await history.push({ role:'system', content:`[PROMPT]\n${promptText}`, public:false })
+    await history.push({ role:'assistant', content: aiText, public:true })
+
+    // 4) 변수/결론 파싱 → 활성 변수 업데이트
+    const { lastLine, variables } = parseOutcome(aiText)
+    setActiveGlobal(prev => Array.from(new Set([...prev, ...variables]))) // 간단히 전역으로 누적
+    setActiveLocal(variables) // 로컬은 직전 기준
+
+    // 5) 다음 엣지 선택
+    const outEdges = graph.edges
+      .filter(e => e.from === String(currentNodeId))
+      .sort((a,b)=> (b.data.priority||0) - (a.data.priority||0)) // 우선순위 높은 순
+    let chosen = null
+    for (const e of outEdges) {
+      const ok = evaluateBridge(e.data, {
+        turn,
+        historyUserText: history.joinedText({ onlyPublic:true, last:5 }),
+        historyAiText:   history.joinedText({ onlyPublic:false, last:5 }),
+        visitedSlotIds: visitedSlotIds.current,
+        myRole: null, // 필요 시 세팅
+        participantsStatus: participants.map(p=>({ role:p.role, status:p.status||'alive' })),
+        activeGlobalNames: activeGlobal,
+        activeLocalNames: activeLocal
+      })
+      if (ok) { chosen = e; break }
+    }
+    // fallback 없으면 종료
+    if (!chosen) { alert('진행 가능한 경로가 없습니다. 종료합니다.'); return }
+
+    // 6) 액션 처리
+    if (chosen.data.action === 'win') { alert('승리!'); return }
+    if (chosen.data.action === 'lose') { alert('패배…'); return }
+    // TODO: goto_set 등 확장
+
+    // 7) 다음 노드로
+    setCurrentNodeId(String(chosen.to))
+    setTurn(t => t+1)
+  }
+
+  if (loading) return <div style={{ padding:16 }}>불러오는 중…</div>
 
   return (
-    <div style={{ maxWidth:1280, margin:'16px auto', padding:12, display:'grid', gridTemplateRows:'auto 1fr auto', gap:12 }}>
-      {/* 상단: API Key 바 */}
-      <ApiKeyBar storageKey="OPENAI_API_KEY" />
-
-      {/* 시작 전 오버레이 */}
-      {preflight && (
-        <div style={{
-          position:'fixed', inset:0, background:'rgba(0,0,0,0.5)',
-          display:'flex', alignItems:'center', justifyContent:'center', zIndex:50
-        }}>
-          <div style={{ background:'#fff', borderRadius:12, padding:16, width:'min(920px,92vw)', maxHeight:'80vh', overflow:'auto' }}>
-            <h3 style={{ marginTop:0 }}>참여자 확인</h3>
-            <GroupedRoster grouped={grouped} />
-            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12 }}>
-              <button onClick={()=>router.replace(`/rank/${gameId}`)}>← 돌아가기</button>
-              <button
-                onClick={handleStart}
-                disabled={starting}
-                style={{ padding:'8px 12px', background:'#111827', color:'#fff', borderRadius:8 }}
-              >
-                {starting ? '시작 중…' : '게임 시작'}
-              </button>
-            </div>
-          </div>
+    <div style={{ maxWidth:1200, margin:'16px auto', padding:12, display:'grid', gridTemplateRows:'auto 1fr', gap:12 }}>
+      {/* 상단: 시작/다음 */}
+      <div style={{ display:'flex', gap:8 }}>
+        <button onClick={()=>router.replace(`/rank/${gameId}`)} style={{ padding:'8px 12px' }}>← 랭킹으로</button>
+        <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+          <button onClick={startGame} disabled={!preflight || starting}
+                  style={{ padding:'8px 12px', background:'#111827', color:'#fff', borderRadius:8 }}>
+            {preflight ? (starting ? '시작 중…' : '게임 시작') : '재시작'}
+          </button>
+          <button onClick={nextStep} disabled={preflight}
+                  style={{ padding:'8px 12px', background:'#2563eb', color:'#fff', borderRadius:8 }}>
+            다음
+          </button>
         </div>
-      )}
+      </div>
 
       {/* 본문: 좌/중앙/우 */}
-      <div style={{
-        display:'grid',
-        gridTemplateColumns: preflight ? '1fr' : '1fr minmax(360px, 640px) 1fr',
-        gap:12, transition:'all .25s ease'
-      }}>
+      <div style={{ display:'grid', gridTemplateColumns: preflight ? '1fr' : '1fr minmax(360px, 640px) 1fr', gap:12 }}>
         <div>
-          {!preflight && <GroupedRoster grouped={grouped.slice(0, Math.ceil(grouped.length/2))} compact />}
+          {!preflight && <SmallRoster title="왼쪽 진영" participants={participants.filter((_,i)=>i%2===0)} />}
         </div>
-{/* === 상단 히스토리 바 === */}
-<div style={{ position:'sticky', top:0, zIndex:45 }}>
-  <div style={{
-    background:'#111827', color:'#fff', padding:'8px 12px',
-    display:'flex', alignItems:'center', justifyContent:'space-between', borderRadius:8
-  }}>
-    <b>세션 히스토리</b>
-    <button
-      onClick={()=>setHistOpen(o=>!o)}
-      style={{ background:'transparent', color:'#fff', border:'0', fontWeight:700 }}
-    >
-      {histOpen ? '접기' : '펼치기'}
-    </button>
-  </div>
-
-  {histOpen && (
-    <div style={{
-      background:'#0f172a', color:'#e2e8f0', padding:'10px 12px',
-      borderRadius:8, marginTop:6, maxHeight:240, overflow:'auto'
-    }}>
-      {(history.data || []).map((t,i)=>(
-        <div key={i} style={{ opacity: t.public ? 1 : .7 }}>
-          <span style={{ fontWeight:700 }}>{t.role.toUpperCase()}:</span> {t.content}
+        <div>
+          {/* 중앙: 공유 채팅(게임 진행과 별개) */}
+          <SharedChatDock height={preflight ? 320 : 380} />
+          {/* 여기 위/아래로 히스토리/세션 로그 슬라이드 패널을 이후 붙이면 됨 */}
         </div>
-      ))}
-    </div>
-  )}
-</div>
-{/* 중앙: 게임세션 채팅(유저입력 비활성, '다음'으로만 진행) */}
-<div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fff' }}>
-  <div style={{ maxHeight: preflight ? 240 : 420, overflow:'auto' }}>
-    {(history.data || []).filter(r=>r.public).map((m, idx)=>(
-      <div key={idx} style={{ margin:'8px 0' }}>
-        <div style={{ fontSize:12, color:'#64748b' }}>{m.role.toUpperCase()}</div>
-        <div style={{ whiteSpace:'pre-wrap' }}>{m.content}</div>
+        <div>
+          {!preflight && <SmallRoster title="오른쪽 진영" participants={participants.filter((_,i)=>i%2===1)} />}
+        </div>
       </div>
-    ))}
-  </div>
-
-  {!preflight && (
-    <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
-      <button
-        onClick={doNextTurn}
-        style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff', fontWeight:700 }}
-        title="프롬프트 세트를 따라 다음 턴 진행"
-      >
-        다음
-      </button>
     </div>
-  )}
-</div>
+  )
+}
 
-
-        <div>
-          {!preflight && <GroupedRoster grouped={grouped.slice(Math.ceil(grouped.length/2))} compact />}
-        </div>
+function SmallRoster({ title, participants }) {
+  return (
+    <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fff' }}>
+      <div style={{ fontWeight:700, marginBottom:8 }}>{title}</div>
+      <div style={{ display:'grid', gap:8 }}>
+        {participants.map((p,idx)=>(
+          <div key={idx} style={{ display:'grid', gridTemplateColumns:'56px 1fr', gap:8, alignItems:'start' }}>
+            {p.hero?.image_url
+              ? <img src={p.hero.image_url} alt="" style={{ width:56, height:56, borderRadius:8, objectFit:'cover' }}/>
+              : <div style={{ width:56, height:56, borderRadius:8, background:'#e5e7eb' }}/>}
+            <div>
+              <div style={{ fontWeight:700 }}>{p.hero?.name || '이름없음'}</div>
+              <div style={{ fontSize:12, color:'#64748b' }}>{p.role || ''} · {p.status||'alive'}</div>
+              <ul style={{ margin:'6px 0 0', paddingLeft:16, fontSize:13 }}>
+                {['ability1','ability2','ability3','ability4'].map(k=>p.hero?.[k]).filter(Boolean).map((t,i)=><li key={i}>{t}</li>)}
+              </ul>
+            </div>
+          </div>
+        ))}
+        {participants.length===0 && <div style={{ color:'#94a3b8' }}>참여자 없음</div>}
       </div>
     </div>
   )
