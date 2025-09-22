@@ -167,6 +167,7 @@ export default function MakerEditor() {
         template: n.data.template || '',
         is_start: !!n.data.isStart,
         var_rules_local: Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : [], // ★ 저장
+        transform_code: n.data.transform_code ?? ''
       }
 
       if (!slotId) {

@@ -416,16 +416,17 @@ export default function SidePanel({
           <TokenPalette onInsert={onInsertToken} />
 
           <div style={{ marginTop:16 }}>
-            <VarsEditor
-              title="로컬 변수 규칙(이 노드에만 적용)"
-              value={/* 선택 노드의 현 상태를 읽어와야 함: 부모에서 내려주는 대신, setNodes만 있으므로 여기서는 안내만 */ []}
-              onChange={(arr)=>{
-                // 선택 노드 data에 반영
-                setNodes(nds => nds.map(n =>
-                  n.id===selectedNodeId ? { ...n, data:{ ...n.data, var_rules_local: arr }} : n
-                ))
-              }}
-            />
+         +<VarsEditor
+  title="로컬 변수 규칙(이 노드에만 적용)"
+  value={Array.isArray(selectedNodeData?.var_rules_local) ? selectedNodeData.var_rules_local : []}
+  onChange={(arr)=>{
+    setNodes(nds => nds.map(n =>
+      n.id===selectedNodeId
+        ? { ...n, data:{ ...n.data, var_rules_local: arr } }
+        : n
+    ))
+  }}
+/>
           </div>
         </div>
       </div>
