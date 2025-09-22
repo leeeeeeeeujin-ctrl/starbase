@@ -2,7 +2,27 @@
 import { supabase } from './supabase'
 // lib/aiHistory.js (핵심 부분 예시)
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+
+export function useAiHistory() {
+  const [log, setLog] = useState([])
+
+  const beginSession = useCallback(() => {
+    setLog([])
+  }, [])
+
+  const push = useCallback((entry) => {
+    setLog((prev) => [...prev, entry])
+  }, [])
+
+  const joinedText = useCallback(({ onlyPublic = true, last = 20 } = {}) => {
+    const filtered = onlyPublic ? log.filter(l => l.public) : log
+    const lines = filtered.slice(-last).map(l => l.content)
+    return lines.join('\n')
+  }, [log])
+
+  return { log, beginSession, push, joinedText }
+}
 
 export default function SomeChild(props) {
   const router = useRouter()
