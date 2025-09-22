@@ -8,7 +8,7 @@ import { parseOutcome } from '@/lib/outcome'
 import { pickSubstitute } from '@/lib/substitute'
 import { runOneTurn } from '@/lib/engineRunner'
 import { makeCallModel } from '@/lib/modelClient'
-import { ChevronUp, ChevronDown } from 'react-feather'
+import { ChevronUp, ChevronDown } from '@/components/common/SharedChatDock'
 import SharedChatDock from '@/components/common/SharedChatDock'
 
 const [histOpen, setHistOpen] = useState(false)
