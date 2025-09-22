@@ -376,6 +376,10 @@ export default function MakerEditor() {
           <button type="button" onClick={()=>addPromptNode('user_action')} style={{ padding:'6px 10px', background:'#0ea5e9', color:'#fff', borderRadius:8 }}>+ 유저 행동</button>
           <button type="button" onClick={()=>addPromptNode('system')} style={{ padding:'6px 10px', background:'#6b7280', color:'#fff', borderRadius:8 }}>+ 시스템</button>
           <button type="button" onClick={saveAll} style={{ padding:'6px 10px', background:'#111827', color:'#fff', borderRadius:8 }}>저장</button>
+            <GlobalVarRulesPanel
+    value={setInfo?.var_rules_global}
+    onChange={(arr)=> setSetInfo(prev => ({ ...(prev||{}), var_rules_global: arr }))}
+  />
         </div>
       </div>
 
@@ -417,14 +421,6 @@ export default function MakerEditor() {
     ))
   }}
         />
-        // 상단 바 버튼 묶음 안에 추가:
-<GlobalVarRulesPanel
-  value={setInfo?.var_rules_global}
-  onChange={(arr)=>{
-    setSetInfo(prev => ({ ...(prev||{}), var_rules_global: arr }))
-  }}
-/>
-
       </div>
     </div>
   )

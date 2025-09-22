@@ -251,9 +251,9 @@ function LocalVarRulesEditor({ value, onChange }) {
       <div style={{ fontWeight:700, marginBottom:6 }}>변수 규칙(이 프롬프트만)</div>
       {/* 퀵 추가 */}
       <div style={{ display:'grid', gap:6, gridTemplateColumns:'1fr 1fr', marginBottom:6 }}>
-        <input placeholder="변수명 (예: 강공)" value={draft.name}
-               onChange={e=>setDraft(d=>({...d, name:e.target.value}))}/>
-        <select value={draft.when} onChange={e=>setDraft(d=>({...d, when:e.target.value}))}>
+   <input placeholder="변수명 (예: 강공)" value={draft.name}
+          onChange={e=>setDraft(d=>({ ...d, name:e.target.value }))}/>
+        <select value={draft.when} onChange={e=>setDraft(d=>({ ...d, when:e.target.value }))}>
           <option value="prev_ai_contains">이전응답에 포함</option>
           <option value="prev_prompt_contains">이전프롬프트에 포함</option>
           <option value="prev_ai_regex">이전응답 정규식</option>
