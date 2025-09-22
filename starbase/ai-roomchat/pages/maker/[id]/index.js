@@ -297,8 +297,14 @@ export default function MakerEditor() {
               : n
             ))
     }}
-   getGlobalVars={() => globalRules}
-   setGlobalVars={setGlobalRules}
+ globalRules={globalRules}
+         setGlobalRules={setGlobalRules}
+         selectedNodeVarRules={selectedNode?.data?.var_rules_local ?? []}
+         setSelectedNodeVarRules={(arr) =>
+           setNodes(nds => nds.map(n =>
+             n.id === selectedNodeId ? { ...n, data:{ ...n.data, var_rules_local: arr } } : n
+           ))
+         }
 
         />
       </div>

@@ -306,29 +306,16 @@ export default function SidePanel({
   selectedNodeId,
   selectedEdge,
   setEdges,
-  setNodes,            // ← 선택 노드 data 반영 위해 필요
+  setNodes,
   onInsertToken,
-  getGlobalVars,       // (선택) 상위에서 읽기
-  setGlobalVars        // (선택) 상위에서 저장
+  globalRules,              // 부모 상태 그대로 사용
+  setGlobalRules,           // 부모 상태 갱신
+  selectedNodeVarRules,     // 선택 노드의 로컬 규칙
+  setSelectedNodeVarRules   // 선택 노드 로컬 규칙 갱신
 }) {
-  // 전역 변수 규칙: 상단 버튼 토글
   const [showGlobal, setShowGlobal] = useState(false)
-  const [globalRules, setGlobalRules] = useState([])
-
-  useEffect(() => {
-    // 상위에서 내려주면 반영
-    if (getGlobalVars) {
-      const v = getGlobalVars()
-      if (Array.isArray(v)) setGlobalRules(v)
-    }
-  }, [getGlobalVars])
-
-  function saveGlobalRules(next) {
-    setGlobalRules(next)
-    setGlobalVars?.(next) // 상위(page) 상태에도 저장(저장 버튼 누르면 DB 반영)
-  }
-
-  // 엣지 폼(기존)
+  function saveGlobalRules(next) { setGlobalRules?.(next) }
+//엣지 폼(기존)
   const [edgeForm, setEdgeForm] = useState({
     trigger_words: '',
     conditions: '[]',
