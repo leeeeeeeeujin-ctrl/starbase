@@ -440,11 +440,18 @@ export default function SidePanel({
         {GlobalToolbar}
         {showGlobal && (
           <div style={{ padding:12, borderBottom:'1px solid #eee' }}>
-            <VarsEditor
-              title="전역 변수 규칙(세트 전체에 반복 적용)"
-              value={globalRules}
-              onChange={saveGlobalRules}
-            />
+           <VarsEditor
+  title="로컬 변수 규칙(이 노드에만 적용)"
+  value={
+    nodes.find(n => n.id === selectedNodeId)?.data.var_rules_local ?? []
+  }
+  onChange={(arr)=>{
+    setNodes(nds => nds.map(n =>
+      n.id===selectedNodeId ? { ...n, data:{ ...n.data, var_rules_local: arr }} : n
+    ))
+  }}
+/>
+
           </div>
         )}
 

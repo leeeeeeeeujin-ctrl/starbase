@@ -300,6 +300,7 @@ export default function MakerEditor() {
     }}
  getGlobalVars={() => globalRules}
   setGlobalVars={(next) => setGlobalRules(next)}
+   nodes={nodes} 
 />
       </div>
     </div>
