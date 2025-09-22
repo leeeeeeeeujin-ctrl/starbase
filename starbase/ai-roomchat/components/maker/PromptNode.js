@@ -8,6 +8,23 @@ export default function PromptNode({ id, data = {}, selected }) {
   const template  = data.template  || ''
   const isStart   = !!data.isStart
 
+  // 공통 textarea 스타일
+  const textarea = (
+    <textarea
+      value={template}
+      onChange={(e) => data.onChange?.({ template: e.target.value })}
+      placeholder="여기에 템플릿을 입력하세요"
+      rows={8}
+      style={{
+        width: '100%',
+        border: 'none',
+        outline: 'none',
+        padding: 10,
+        resize: 'vertical'
+      }}
+    />
+  )
+
   return (
     <div
       style={{
@@ -22,15 +39,18 @@ export default function PromptNode({ id, data = {}, selected }) {
       {/* 연결 핸들 */}
       <Handle type="target" position={Position.Left} />
 
-      {/* 헤더: 타입 선택 + 시작 배지 + 삭제 */}
+      {/* 헤더: 타입 선택 + 시작 배지 + 삭제
+          👉 드래그 핸들: .node-drag-handle */}
       <div
+        className="node-drag-handle"
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           padding: 6,
           background: '#f9fafb',
-          borderBottom: '1px solid #e5e7eb'
+          borderBottom: '1px solid #e5e7eb',
+          cursor: 'grab'
         }}
       >
         <select
@@ -106,29 +126,13 @@ export default function PromptNode({ id, data = {}, selected }) {
         </button>
       </div>
 
-      {/* 본문 */}
+      {/* 본문: system/ai는 textarea 편집 가능, user_action은 안내만 */}
       {slot_type === 'user_action' ? (
         <div style={{ padding: 10, color: '#6b7280', fontStyle: 'italic' }}>
           유저 입력 단계입니다. (플레이 시 사용자가 직접 문장을 입력하게 됩니다)
         </div>
-      ) : slot_type === 'system' ? (
-        <div style={{ padding: 10, color: '#374151' }}>
-          {template || '시스템 설명을 입력하세요.'}
-        </div>
       ) : (
-        <textarea
-          value={template}
-          onChange={(e) => data.onChange?.({ template: e.target.value })}
-          placeholder="여기에 템플릿을 입력하세요"
-          rows={8}
-          style={{
-            width: '100%',
-            border: 'none',
-            outline: 'none',
-            padding: 10,
-            resize: 'vertical'
-          }}
-        />
+        textarea
       )}
 
       <Handle type="source" position={Position.Right} />

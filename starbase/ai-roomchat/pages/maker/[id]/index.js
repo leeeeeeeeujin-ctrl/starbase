@@ -279,6 +279,7 @@ export default function MakerEditor() {
             onNodeClick={onNodeClick}
             onEdgeClick={onEdgeClick}
             fitView
+            nodeDragHandle=".node-drag-handle"
           >
             <MiniMap /><Controls /><Background />
           </ReactFlow>
