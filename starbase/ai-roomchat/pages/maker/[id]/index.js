@@ -289,6 +289,7 @@ export default function MakerEditor() {
    selectedNodeId={selectedNodeId}
    selectedEdge={selectedEdge}
    setEdges={setEdges}
+   nodes={nodes}
    setNodes={setNodes}
    onInsertToken={(token)=>{ 
     if (!selectedNodeId) return
