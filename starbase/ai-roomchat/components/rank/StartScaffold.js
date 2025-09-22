@@ -1,44 +1,61 @@
-// /components/rank/StartScaffold.js
-import ParticipantsPanel from './ParticipantsPanel'
-import ResultSheet from './ResultSheet'
-import SharedChatDock from '@/components/common/SharedChatDock'
+// components/maker/VarRulesEditor.js
+import { useEffect, useMemo, useState } from 'react'
 
-export default function StartScaffold({
-  preflight, grouped, starting, onStart, onExit,
-  center,
-}) {
+export default function VarRulesEditor({ value = [], onChange, title = '변수 규칙' }) {
+  const [list, setList] = useState(() => Array.isArray(value) ? value : [])
+
+  // 1) 부모 value 변화 → 내부 list 동기화
+  //   - 얕은 비교(길이+각 항목의 name/condition)로 불필요한 reset 최소화
+  useEffect(() => {
+    const v = Array.isArray(value) ? value : []
+    const same =
+      v.length === list.length &&
+      v.every((r, i) => r?.name === list[i]?.name && r?.condition === list[i]?.condition)
+    if (!same) setList(v)
+  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function add() {
+    const next = [...list, { name: '', condition: '' }]
+    setList(next)
+    onChange?.(next)
+  }
+  function update(i, patch) {
+    const next = list.map((r, idx) => idx === i ? { ...r, ...patch } : r)
+    setList(next)
+    onChange?.(next)
+  }
+  function remove(i) {
+    const next = list.filter((_, idx) => idx !== i)
+    setList(next)
+    onChange?.(next)
+  }
+
   return (
-    <div style={{ display:'grid', gridTemplateRows:'auto 1fr auto', gap:12 }}>
-      {/* 중앙 영역을 주입(center)해서 엔진/채팅 교체 가능 */}
-      {preflight && (
-        <div style={{
-          position:'fixed', inset:0, background:'rgba(0,0,0,0.5)',
-          display:'flex', alignItems:'center', justifyContent:'center', zIndex:50
-        }}>
-          <div style={{ background:'#fff', borderRadius:12, padding:16, width:'min(920px, 92vw)', maxHeight:'80vh', overflow:'auto' }}>
-            <h3 style={{ marginTop:0, marginBottom:12 }}>참여자 확인</h3>
-            <ResultSheet grouped={grouped} />
-            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12 }}>
-              <button onClick={onExit} style={{ padding:'8px 12px' }}>← 돌아가기</button>
-              <button onClick={onStart} disabled={starting} style={{ padding:'8px 12px', background:'#111827', color:'#fff', borderRadius:8 }}>
-                {starting ? '시작 중…' : '게임 시작'}
-              </button>
-            </div>
+    <div style={{ display:'grid', gap:8 }}>
+      <div style={{ fontWeight:700 }}>{title}</div>
+      {list.length === 0 && <div style={{ color:'#64748b' }}>아직 규칙이 없습니다.</div>}
+      {list.map((r, i) => (
+        <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:8, display:'grid', gap:6 }}>
+          <div style={{ display:'grid', gap:4 }}>
+            <label style={{ fontSize:12 }}>변수명(두번째 줄에 기록될 토큰명)</label>
+            <input
+              value={r.name}
+              onChange={e=>update(i,{name:e.target.value})}
+              placeholder="예: critical_hit"
+            />
           </div>
+          <div style={{ display:'grid', gap:4 }}>
+            <label style={{ fontSize:12 }}>만족 조건(사람이 읽는 설명 또는 간단 규칙식)</label>
+            <input
+              value={r.condition}
+              onChange={e=>update(i,{condition:e.target.value})}
+              placeholder="예: 이전 응답 마지막 2줄에 '치명타' 포함"
+            />
+          </div>
+          <button onClick={()=>remove(i)} style={{ alignSelf:'start', padding:'6px 10px' }}>삭제</button>
         </div>
-      )}
-
-      <div style={{
-        display:'grid',
-        gridTemplateColumns: preflight ? '1fr' : '1fr minmax(360px, 640px) 1fr',
-        gap:12, transition:'all .25s ease'
-      }}>
-        <div>{!preflight && <ParticipantsPanel grouped={grouped.slice(0, Math.ceil(grouped.length/2))} />}</div>
-        <div>{center}</div>
-        <div>{!preflight && <ParticipantsPanel grouped={grouped.slice(Math.ceil(grouped.length/2))} />}</div>
-      </div>
-
-      <SharedChatDock height={preflight ? 240 : 320} />
+      ))}
+      <button onClick={add} style={{ padding:'6px 10px', borderRadius:8, background:'#2563eb', color:'#fff' }}>+ 규칙 추가</button>
     </div>
   )
 }
