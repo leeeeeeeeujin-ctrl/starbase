@@ -208,6 +208,78 @@ function TokenPalette({ onInsert }) {
       </div>
     </div>
   )
+  // components/maker/SidePanel.js (노드 선택 케이스 안)
+function LocalVarRulesEditor({ value, onChange }) {
+  // 내부는 텍스트 JSON + 빠른 추가 폼
+  const [jsonText, setJsonText] = useState(() => JSON.stringify(value ?? [], null, 2))
+  const [draft, setDraft] = useState({ name:'', when:'prev_ai_contains', value:'', scope:'last2' })
+
+  useEffect(() => {
+    setJsonText(JSON.stringify(value ?? [], null, 2))
+  }, [value])
+
+  function tryApply() {
+    try {
+      const arr = JSON.parse(jsonText || '[]')
+      onChange?.(Array.isArray(arr) ? arr : [])
+      alert('변수 규칙(로컬) 적용됨')
+    } catch {
+      alert('JSON 형식이 올바르지 않습니다.')
+    }
+  }
+  function quickAdd() {
+    try {
+      const arr = JSON.parse(jsonText || '[]')
+      arr.push(draft)
+      const next = JSON.stringify(arr, null, 2)
+      setJsonText(next)
+      onChange?.(arr)
+    } catch {
+      // 초기엔 비어있을 수도
+      const arr = [draft]
+      const next = JSON.stringify(arr, null, 2)
+      setJsonText(next)
+      onChange?.(arr)
+    }
+  }
+
+  return (
+    <div style={{ marginTop:12, borderTop:'1px solid #e5e7eb', paddingTop:12 }}>
+      <div style={{ fontWeight:700, marginBottom:6 }}>변수 규칙(이 프롬프트만)</div>
+      {/* 퀵 추가 */}
+      <div style={{ display:'grid', gap:6, gridTemplateColumns:'1fr 1fr', marginBottom:6 }}>
+        <input placeholder="변수명 (예: 강공)" value={draft.name}
+               onChange={e=>setDraft(d=>({...d, name:e.target.value}))}/>
+        <select value={draft.when} onChange={e=>setDraft(d=>({...d, when:e.target.value}))}>
+          <option value="prev_ai_contains">이전응답에 포함</option>
+          <option value="prev_prompt_contains">이전프롬프트에 포함</option>
+          <option value="prev_ai_regex">이전응답 정규식</option>
+          <option value="turn_gte">턴 ≥</option>
+          <option value="turn_lte">턴 ≤</option>
+        </select>
+        <input placeholder="값/패턴" value={draft.value}
+               onChange={e=>setDraft(d=>({...d, value:e.target.value}))}/>
+        <select value={draft.scope} onChange={e=>setDraft(d=>({...d, scope:e.target.value}))}>
+          <option value="last1">마지막1줄</option>
+          <option value="last2">마지막2줄</option>
+          <option value="last5">마지막5줄</option>
+          <option value="all">전체</option>
+        </select>
+        <button onClick={quickAdd} style={{ gridColumn:'1 / -1', padding:'6px 10px' }}>+ 규칙 추가</button>
+      </div>
+
+      {/* 고급: JSON 편집 */}
+      <textarea rows={8} style={{ width:'100%', fontFamily:'monospace' }}
+        value={jsonText} onChange={e=>setJsonText(e.target.value)} />
+      <div style={{ display:'flex', justifyContent:'flex-end', marginTop:6 }}>
+        <button onClick={tryApply} style={{ padding:'6px 10px', background:'#111827', color:'#fff', borderRadius:8 }}>
+          적용
+        </button>
+      </div>
+    </div>
+  )
+}
+
 }
 
 export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onInsertToken }) {

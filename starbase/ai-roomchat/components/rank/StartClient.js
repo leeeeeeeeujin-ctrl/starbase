@@ -8,7 +8,6 @@ import { parseOutcome } from '@/lib/outcome'
 import { pickSubstitute } from '@/lib/substitute'
 import { runOneTurn } from '@/lib/engineRunner'
 import { makeCallModel } from '@/lib/modelClient'
-import { ChevronUp, ChevronDown } from '@/components/common/SharedChatDock'
 import SharedChatDock from '@/components/common/SharedChatDock'
 
 const [histOpen, setHistOpen] = useState(false)
@@ -182,8 +181,8 @@ function buildSystemPromptFromChecklist(game){
     '규칙:',
     '- 프롬프트 세트에 따른 진행. 전투불능은 패배가 아닌 탈락처리.',
     '- 모델 응답의 마지막 한 줄에는 정확히 \"[캐릭터이름] (승|패|탈락)\" 만 기입.',
-    '- 마지막 줄을 제외한 직전 5줄은 공백 유지.',
-    '- 탈락 캐릭터 호출 시 동일 역할의 다른 캐릭터(무작위)로 대체.'
+    '- 마지막 줄, 마지막에서 두 번째 줄을 제외한 직전 5줄은 공백 유지.',
+    '- (마지막에서 두 번째 줄) 이번 턴에 만족한 변수명들을 쉼표로 구분하여 적는다. 없으면 빈 줄로 남긴다..'
   )
   return lines.join('\n')
 }
@@ -353,22 +352,6 @@ async function handleStart() {
       </button>
     </div>
   )}
-</div>
-{/* === 하단 공용채팅 도킹 === */}
-<div style={{
-  position:'fixed', left:0, right:0, bottom:0, zIndex:60,
-  transform: dockOpen ? 'translateY(0)' : 'translateY(calc(100% - 40px))',
-  transition:'transform .25s ease'
-}}>
-  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-                background:'#111827', color:'#fff', padding:'8px 12px', cursor:'pointer' }}
-       onClick={()=>setDockOpen(o=>!o)}>
-    <b>공용 채팅</b>
-    {dockOpen ? <ChevronDown size={18}/> : <ChevronUp size={18}/>}
-  </div>
-  <div style={{ background:'#fff', borderTop:'1px solid #e5e7eb' }}>
-    <SharedChatDock height={dockOpen ? 280 : 0} />
-  </div>
 </div>
 
 

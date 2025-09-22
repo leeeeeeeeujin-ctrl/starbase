@@ -163,7 +163,10 @@ export default function MakerEditor() {
     // 화면 순서를 slot_no로 사용
     const slotNoMap = new Map()
     nodes.forEach((n, idx) => slotNoMap.set(n.id, idx + 1)) // 1..N
-
+await supabase.from('prompt_slots').update({
+  slot_no, slot_type, slot_pick, template,
+  local_vars: n.data.local_vars ?? []
+}).eq('id', slotId)
     // --- 노드 업서트 ---
     for (const n of nodes) {
       const slot_no = slotNoMap.get(n.id) || 1
