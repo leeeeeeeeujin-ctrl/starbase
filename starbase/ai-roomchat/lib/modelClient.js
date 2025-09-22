@@ -1,35 +1,13 @@
 // lib/modelClient.js
-export function makeCallModel({ getApiKey, systemPrompt }) {
-  return async ({ user }) => {
-    const key = getApiKey()
-    if(!key) return { ok:false, error:'API 키가 없습니다.' }
+export function makeCallModel({ getKey }) {
+return async function callModel({ system, userText }) {
+const apiKey = getKey()
+if (!apiKey) throw new Error('API 키가 필요합니다')
 
-    try{
-      const rsp = await fetch('https://api.openai.com/v1/chat/completions',{
-        method:'POST',
-        headers:{
-          'Authorization': `Bearer ${key}`,
-          'Content-Type':'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            ...(systemPrompt ? [{ role:'system', content: systemPrompt }] : []),
-            { role:'user', content: user }
-          ],
-          temperature: 0.7,
-        })
-      })
-      if(!rsp.ok){
-        const t = await rsp.text()
-        return { ok:false, error:`API 오류(${rsp.status}) ${t}` }
-      }
-      const json = await rsp.json()
-      const text = json.choices?.[0]?.message?.content ?? ''
-      const usage = json.usage ?? {}
-      return { ok:true, text, tokenUsed:(usage.total_tokens||0), finishReason: json.choices?.[0]?.finish_reason }
-    }catch(e){
-      return { ok:false, error: e.message || '네트워크 오류' }
-    }
-  }
+
+// 실제 모델 호출 자리에 Edge Function/직접 호출을 배치
+// 여기서는 임시 스텁 응답
+const aiText = `AI 응답(스텁): ${userText.slice(0, 60)}...\n결과: (캐릭터명) 승/패/탈락 중 하나를 마지막 줄에만 기입`
+return { aiText }
+}
 }

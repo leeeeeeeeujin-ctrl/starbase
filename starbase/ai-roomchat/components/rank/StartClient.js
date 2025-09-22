@@ -1,150 +1,133 @@
-// components/rank/StartClient.js
-import { useEffect, useMemo, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
-import { pickOpponents } from '@/lib/matchmaking'
-import StartScaffold from '@/components/rank/StartScaffold'
-import SharedChatDock from '@/components/common/SharedChatDock'
+'use client'
 
-import { chooseNext } from '@/lib/bridgeEval'
-import { makeCallModel } from '@/lib/modelClient'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/router'
+import { supabase } from '@/lib/supabase'
 import { useAiHistory } from '@/lib/aiHistory'
 import { parseOutcome } from '@/lib/outcome'
 import { pickSubstitute } from '@/lib/substitute'
-// runOneTurn 를 쓰지 않고, 아래 doNextTurn 내에서 직접 model 호출/후처리
+import { runOneTurn } from '@/lib/engineRunner'
+import { makeCallModel } from '@/lib/modelClient'
+import SharedChatDock from '@/components/common/SharedChatDock'
 
-function groupByRole(list) {
-  const map = new Map()
-  for (const p of list || []) {
-    if (!map.has(p.role)) map.set(p.role, [])
-    map.get(p.role).push(p)
-  }
-  return Array.from(map.entries()).map(([role, members]) => ({ role, members }))
+/** 상단: API Key 입력 */
+function ApiKeyBar({ storageKey }){
+  const [val, setVal] = useState('')
+  useEffect(()=>{ setVal(localStorage.getItem(storageKey)||'') },[storageKey])
+  return (
+    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+      <input
+        value={val}
+        onChange={e=>{
+          setVal(e.target.value)
+          localStorage.setItem(storageKey, e.target.value)
+        }}
+        placeholder="OpenAI API Key"
+        style={{flex:1, padding:'8px 10px', border:'1px solid #e5e7eb', borderRadius:8}}
+      />
+    </div>
+  )
 }
 
-// 체크리스트 기반 시스템 프롬프트(간단 스텁)
-function buildSystemPromptFromChecklist(game) {
-  const rules = []
-  if (game?.rule_insight_nerf) rules.push('통찰/분석을 남용하지 말고, 근거 없는 통찰은 실패로 본다.')
-  if (game?.rule_anti_underdog) rules.push('약자배려/언더도그마 배제. 강약으로만 판정.')
-  if (game?.rule_peace_nerf) rules.push('평화/감정적 승리는 제한. 전투력 우위로 서술.')
-  if (game?.rule_injection_nerf) rules.push('인젝션/궁극승리 감지 시 결과만 선언하고 판정하지 않는다.')
-  if (game?.rule_fair_balance) rules.push('능력/존재성의 사용 조건을 개연적으로 적용하여 파워 밸런스를 공정하게 유지.')
-  const limit = game?.char_limit ? `글자수는 ${game.char_limit}자로 맞춘다.` : ''
-  return ['다음은 대전 시뮬레이션 규칙이다.', ...rules, limit].filter(Boolean).join('\n')
+/** 좌/우 패널: 역할별 캐릭터 카드 */
+function GroupedRoster({ grouped = [], compact }){
+  return (
+    <div style={{ display:'grid', gap:8 }}>
+      {grouped.map(g => (
+        <div key={g.role} style={{ border:'1px solid #e5e7eb', borderRadius:10, padding:10 }}>
+          <div style={{ fontWeight:700, marginBottom:8 }}>{g.role}</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:8 }}>
+            {g.members.map(m => (
+              <div key={m.hero_id} style={{ border:'1px solid #eee', borderRadius:8, padding:8 }}>
+                {m.heroes?.image_url
+                  ? <img src={m.heroes.image_url} alt=""
+                         style={{ width:'100%', aspectRatio:'1/1', objectFit:'cover', borderRadius:6 }} />
+                  : <div style={{ background:'#f1f5f9', height:120, borderRadius:6 }} />
+                }
+                <div style={{ fontWeight:600, marginTop:6 }}>{m.heroes?.name || '이름없음'}</div>
+                <ul style={{ paddingLeft:16, margin:0, color:'#64748b', fontSize:12 }}>
+                  {[1,2,3,4].map(i => m.heroes?.[`ability${i}`]
+                    ? <li key={i}>{m.heroes[`ability${i}`]}</li>
+                    : null)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
-export default function StartClient({ gameId, onExit }) {
-  // 기본 상태들
-  const [mounted, setMounted]   = useState(false)
-  const [loading, setLoading]   = useState(true)
-  const [preflight, setPreflight] = useState(true)
-  const [starting, setStarting] = useState(false)
+export default function StartClient(){
+  const router = useRouter()
+  const gameId = router.query.id
 
   const [game, setGame] = useState(null)
-  const [me, setMe] = useState(null)
-  const [participants, setParticipants] = useState([])
-  const grouped = useMemo(() => groupByRole(participants), [participants])
-
-  // 세션/턴/방문/탈락 상태
+  const [participants, setParticipants] = useState([]) // [{hero_id, role, heroes:{...}}]
+  const [grouped, setGrouped] = useState([])
+  const [preflight, setPreflight] = useState(true)
+  const [starting, setStarting] = useState(false)
   const [sessionId, setSessionId] = useState(null)
   const [turnIndex, setTurnIndex] = useState(0)
-  const [currentSlotId, setCurrentSlotId] = useState(null) // 선택된 프롬프트 슬롯(브릿지 평가용)
-  const [visited, setVisited] = useState([])               // 방문 슬롯 기록
-  const [usedHeroIds, setUsedHeroIds] = useState(new Set())// 탈락 영웅 관리
+  const [currentSlotId, setCurrentSlotId] = useState(null)
+  const [usedHeroIds, setUsedHeroIds] = useState(new Set())
 
-  // 히스토리 훅: push() 시 DB rank_turns 적재하도록 구현되어 있어야 함
   const history = useAiHistory()
+  const callModel = useMemo(
+    () => makeCallModel({ getKey: () => localStorage.getItem('OPENAI_API_KEY') }),
+    []
+  )
 
-  useEffect(() => { setMounted(true) }, [])
+  // 초기 로드: 게임/참가자/그룹 + 진행중 세션 이어붙이기
+  useEffect(() => { (async () => {
+    if (!gameId) return
+    const { data: g } = await supabase.from('rank_games').select('*').eq('id', gameId).single()
+    setGame(g || null)
 
-  useEffect(() => {
-    if (!mounted || !gameId) return
-    ;(async () => {
-      try {
-        setLoading(true)
-        await bootstrap()
-      } catch (e) {
-        console.error(e)
-        alert(e.message || '초기화 실패')
-        onExit?.()
-      } finally {
-        setLoading(false)
-      }
-    })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, gameId])
-
-  async function bootstrap() {
-    // 1) 게임/로그인
-    const [{ data: g, error: gErr }, { data: uRes }] = await Promise.all([
-      supabase.from('rank_games').select('*').eq('id', gameId).single(),
-      supabase.auth.getUser()
-    ])
-    if (gErr || !g) throw new Error('게임을 찾을 수 없습니다.')
-    setGame(g)
-    const uid = uRes?.user?.id
-    if (!uid) throw new Error('로그인이 필요합니다.')
-
-    // 2) 내 참가자
-    const { data: my, error: myErr } = await supabase
+    const { data: rows } = await supabase
       .from('rank_participants')
-      .select(`
-        id, game_id, owner_id, hero_id, role, score,
-        heroes ( id, name, image_url, description, ability1, ability2, ability3, ability4 )
-      `)
+      .select('hero_id, role, heroes:heroes(id,name,description,image_url,ability1,ability2,ability3,ability4)')
       .eq('game_id', gameId)
-      .eq('owner_id', uid)
-      .limit(1)
-      .maybeSingle()
-    if (myErr || !my) throw new Error('참여자가 없습니다. 게임 상세에서 먼저 참여 등록하세요.')
-    setMe(my)
+    setParticipants(rows || [])
 
-    // 3) 매칭
-    const roles = Array.isArray(g.roles) ? g.roles : []
-    const slotsPerRole = g.slots_per_role || Object.fromEntries(roles.map(r => [r, 1]))
-    const myScore = my.score ?? 1000
-    const picked = await pickOpponents({
-      gameId,
-      myHeroId: my.hero_id,
-      myScore,
-      roles,
-      slotsPerRole,
-      step: 100,
-      maxWindow: 800
+    const byRole = new Map()
+    ;(rows||[]).forEach(p => {
+      if (!byRole.has(p.role)) byRole.set(p.role, [])
+      byRole.get(p.role).push(p)
     })
-    const all = [{ ...my }, ...picked]
-    setParticipants(all)
+    setGrouped(Array.from(byRole, ([role, members]) => ({ role, members })))
 
-    // 4) 진행중 세션 이어보기
+    // 이어하기
     const { data: sess } = await supabase
-      .from('rank_sessions')
-      .select('id,status')
+      .from('rank_sessions').select('id,status')
       .eq('game_id', gameId)
       .order('created_at', { ascending:false })
       .limit(1)
-
-    if (sess && sess.length && sess[0].status === 'active') {
+    if (sess?.length && sess[0].status === 'active') {
       setSessionId(sess[0].id)
       setPreflight(false)
-      // 히스토리 복구
       const { data: turns } = await supabase
         .from('rank_turns')
         .select('idx, role, content, public')
         .eq('session_id', sess[0].id)
         .order('idx', { ascending:true })
-      if (turns?.length) {
-        await history.beginSession({ sessionId: sess[0].id, seed: turns })
-        setTurnIndex(turns.length)
-      } else {
-        await history.beginSession({ sessionId: sess[0].id })
-      }
-    } else {
-      setSessionId(null) // 없으면 시작 시 만들 것
+      await history.beginSession({ sessionId: sess[0].id, seed: turns || [] })
+      setTurnIndex((turns||[]).length)
     }
+  })() }, [gameId])
+
+  // 체크리스트/규칙 기반 시스템 프롬프트
+  function buildSystemPromptFromChecklist(g){
+    const lines = []
+    if (g?.rules?.length) lines.push(g.rules)
+    lines.push('규칙: 결과는 마지막 한 줄에만 캐릭터명과 승/패/탈락 중 하나로 기입')
+    lines.push('이전 5줄은 공란 유지')
+    return lines.join('\n')
   }
 
-  // 시작 버튼
-  async function handleStart() {
+  // 세션 시작
+  async function handleStart(){
     if (starting) return
     setStarting(true)
     try {
@@ -152,18 +135,21 @@ export default function StartClient({ gameId, onExit }) {
       if (!sid) {
         const { data: srow, error: sErr } = await supabase
           .from('rank_sessions')
-          .insert({ game_id: gameId }) // owner_id는 트리거로
+          .insert({ game_id: gameId })
           .select()
           .single()
         if (sErr) throw sErr
         sid = srow.id
         setSessionId(sid)
       }
-      const system = buildSystemPromptFromChecklist(game)
       await history.beginSession({ sessionId: sid })
-      await history.push({ role:'system', content: system, public:false })
+      await history.push({
+        role:'system',
+        content: buildSystemPromptFromChecklist(game),
+        public: false
+      })
       setPreflight(false)
-    } catch (e) {
+    } catch(e){
       console.error(e)
       alert(e.message || '시작 실패')
     } finally {
@@ -171,37 +157,31 @@ export default function StartClient({ gameId, onExit }) {
     }
   }
 
-  // ==========================
-  // E) 턴 진행 핸들러 (다음 버튼)
-  // ==========================
-  const doNextTurn = useCallback(async () => {
-    if (!sessionId) {
-      alert('세션이 없습니다. 먼저 게임을 시작하세요.')
-      return
-    }
-    // 0) 유저 입력이 필요한 턴이면, SharedChatDock 쪽 onUserSend 에서 history.push 하고 여기로 이어오도록 구성 가능
-    //    지금은 자동 턴 진행 스텁 흐름
+  // 한 턴 진행
+  async function doNextTurn(){
+    // 슬롯 템플릿/브릿지: 추후 메이커 연결. 지금은 템플릿 비움.
+    const template = ''
+    const slotsPayload = buildSlotsFromParticipants(participants)
 
-    // 1) (스텁) 다음 슬롯 결정 — 아직 maker 세트와 연결이 덜 되었다고 가정하고 임의 진행
-    //    추후 chooseNext(history, currentSlotId, visited, participants, game) 로 대체
-    const nextSlotId = currentSlotId ?? 'slot-start'
+    const res = await runOneTurn({
+      template,
+      slots: slotsPayload,
+      historyText: history.joinedText({ onlyPublic:false, last:50 }),
+      callModel
+    })
 
-    // 2) 모델 호출(스텁) — 실제로는 makeCallModel({ messages, apiKey }) 사용
-    const userVisiblePrompt = `턴 ${turnIndex + 1} 진행`
-    await history.push({ role:'user', content:userVisiblePrompt, public:true })
-    const resText = `...AI 응답...\n${participants[0]?.heroes?.name || '플레이어'} 승`
-    // const { aiText } = await makeCallModel({ history, system: null, prompt: compiledPrompt })
-    await history.push({ role:'assistant', content:resText, public:true })
+    // 공개 로그(모델 응답)
+    await history.push({ role:'assistant', content: res.aiText, public:true })
 
-    // 3) 판정 파싱
-    const judged = parseOutcome({ aiText: resText, participants })
+    // 승/패/탈락 판정
+    const judged = parseOutcome({ aiText: res.aiText, participants })
     let endNow = false
 
-    if (judged.length > 0) {
-      const losers = judged.filter(j => j.result === 'lose').map(j => j.hero_id).filter(Boolean)
+    if (judged.length) {
+      const losers = judged.filter(j => j.result==='lose').map(j=>j.hero_id)
       if (losers.length) {
-        setUsedHeroIds(prev => new Set([...Array.from(prev), ...losers]))
-        // 같은 역할 풀에서 대체 시도
+        setUsedHeroIds(prev => new Set([...prev, ...losers]))
+        // 간단 치환: 같은 역할 풀에서 아직 안 쓴 캐릭터 하나
         const byRole = new Map()
         participants.forEach(p => {
           if (!byRole.has(p.role)) byRole.set(p.role, [])
@@ -209,107 +189,121 @@ export default function StartClient({ gameId, onExit }) {
         })
         const replaced = participants.map(p => {
           if (losers.includes(p.hero_id)) {
-            const sub = pickSubstitute({ pool: byRole.get(p.role) || [], usedHeroIds: new Set(losers) })
+            const sub = pickSubstitute({ pool: byRole.get(p.role)||[], usedHeroIds: new Set(losers) })
             return sub || p
           }
           return p
         })
         setParticipants(replaced)
       }
-      if (judged.some(j => j.result === 'win' || j.result === 'lose')) endNow = true
+      if (judged.some(j => j.result==='win' || j.result==='lose')) endNow = true
     }
 
-    // 4) 다음/종료
-    setVisited(v => [...new Set([...v, nextSlotId])])
-    setTurnIndex(t => t + 1)
+    setTurnIndex(t=>t+1)
 
-    if (endNow /* || res.action === 'win' || res.action === 'lose' || !nextSlotId */) {
+    // 종료 처리 (브릿지/다음 슬롯 미연결 시에도 종료)
+    if (endNow || res.action==='win' || res.action==='lose' || !res.nextSlotId) {
       try {
+        if (!sessionId) throw new Error('세션 없음')
         const results = judged.length
           ? { participants: judged }
-          : { participants: participants.map(p => ({ hero_id: p.hero_id, role: p.role, result: 'draw' })) }
+          : { participants: participants.map(p=>({ hero_id:p.hero_id, role:p.role, result:'draw' })) }
+
         const { error: rpcErr } = await supabase.rpc('rank_apply_result_multi', {
           p_session_id: sessionId,
           p_results: results
         })
         if (rpcErr) throw rpcErr
         alert('세션 종료 및 점수 반영 완료')
-      } catch (e) {
+      } catch(e){
         console.error(e)
         alert('결과 반영 실패: ' + (e.message || e))
       }
       return
     }
 
-    setCurrentSlotId(nextSlotId) // 계속 진행
-  }, [sessionId, currentSlotId, turnIndex, participants])
-
-  if (!mounted) return null
-  if (loading) {
-    return <div style={{ maxWidth: 1200, margin: '16px auto', padding: 12 }}>불러오는 중…</div>
+    setCurrentSlotId(res.nextSlotId)
   }
 
-  // 중앙(임시): 안내 + 공용 채팅 + [다음] 버튼
-  const center = (
-    <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fff', minHeight:360 }}>
-      <div style={{ color:'#64748b', marginBottom:10 }}>
-        게임 시작을 누르면 본편 UI가 펼쳐집니다. (중앙은 이후 엔진/히스토리 연결 예정)
-      </div>
+  function buildSlotsFromParticipants(list){
+    const out = {}
+    list.forEach((p, idx) => {
+      const s = idx + 1
+      out[`slot${s}`] = {
+        name: p.heroes?.name || '',
+        description: p.heroes?.description || '',
+        ...Object.fromEntries(
+          Array.from({length:12},(_,i)=>[`ability${i+1}`, p.heroes?.[`ability${i+1}`] || ''])
+        )
+      }
+    })
+    return out
+  }
 
-      {me && (
-        <div style={{ marginBottom:12 }}>
-          <div style={{ fontWeight:700, marginBottom:6 }}>내 캐릭터</div>
-          <div style={{ display:'grid', gap:6 }}>
-            <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-              {me.heroes?.image_url
-                ? <img src={me.heroes.image_url} alt="" style={{ width:44, height:44, borderRadius:8, objectFit:'cover' }} />
-                : <div style={{ width:44, height:44, borderRadius:8, background:'#e5e7eb' }} />}
-              <div style={{ fontWeight:600 }}>
-                {me.heroes?.name} <span style={{ color:'#94a3b8', fontWeight:400 }}>({me.role})</span>
-              </div>
+  return (
+    <div style={{ maxWidth:1280, margin:'16px auto', padding:12, display:'grid', gridTemplateRows:'auto 1fr auto', gap:12 }}>
+      {/* 상단: API Key 바 */}
+      <ApiKeyBar storageKey="OPENAI_API_KEY" />
+
+      {/* 시작 전 오버레이 */}
+      {preflight && (
+        <div style={{
+          position:'fixed', inset:0, background:'rgba(0,0,0,0.5)',
+          display:'flex', alignItems:'center', justifyContent:'center', zIndex:50
+        }}>
+          <div style={{ background:'#fff', borderRadius:12, padding:16, width:'min(920px,92vw)', maxHeight:'80vh', overflow:'auto' }}>
+            <h3 style={{ marginTop:0 }}>참여자 확인</h3>
+            <GroupedRoster grouped={grouped} />
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12 }}>
+              <button onClick={()=>router.replace(`/rank/${gameId}`)}>← 돌아가기</button>
+              <button
+                onClick={handleStart}
+                disabled={starting}
+                style={{ padding:'8px 12px', background:'#111827', color:'#fff', borderRadius:8 }}
+              >
+                {starting ? '시작 중…' : '게임 시작'}
+              </button>
             </div>
-            <div style={{ color:'#64748b', fontSize:13 }}>{me.heroes?.description}</div>
-            <ul style={{ margin:0, paddingLeft:18, fontSize:13, color:'#334155' }}>
-              {['ability1','ability2','ability3','ability4'].map(k => me.heroes?.[k] ? <li key={k}>{me.heroes[k]}</li> : null)}
-            </ul>
           </div>
         </div>
       )}
 
-      {/* 임시: 다음 턴 버튼(엔진 연결 전) */}
-      {!preflight && (
-        <div style={{ display:'flex', gap:8, marginBottom:12 }}>
-          <button onClick={doNextTurn} style={{ padding:'8px 12px', borderRadius:8, background:'#111827', color:'#fff' }}>
-            다음
-          </button>
+      {/* 본문: 좌/중앙/우 */}
+      <div style={{
+        display:'grid',
+        gridTemplateColumns: preflight ? '1fr' : '1fr minmax(360px, 640px) 1fr',
+        gap:12, transition:'all .25s ease'
+      }}>
+        <div>
+          {!preflight && <GroupedRoster grouped={grouped.slice(0, Math.ceil(grouped.length/2))} compact />}
         </div>
-      )}
 
-      {/* 공용 채팅(로비와 공유) */}
-      <SharedChatDock height={320} />
-    </div>
-  )
-
-  return (
-    <div style={{ maxWidth: 1200, margin: '16px auto', padding: 12 }}>
-      {/* 헤더 */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-        <div style={{ display:'flex', gap:10, alignItems:'baseline' }}>
-          <h2 style={{ margin:0 }}>{game?.name || '게임'}</h2>
-          <span style={{ color:'#64748b' }}>{game?.description}</span>
+        <div>
+          {/* 중앙: 공용 채팅 (유저 입력=메인 턴 트리거) */}
+          <SharedChatDock
+            height={preflight ? 320 : 480}
+            onUserSend={async (text) => {
+              await history.push({ role:'user', content:text, public:true })
+              await doNextTurn()
+              return true
+            }}
+          />
+          {!preflight && (
+            <div style={{ marginTop:8, display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button
+                onClick={doNextTurn}
+                style={{ padding:'8px 12px', borderRadius:8, background:'#2563eb', color:'#fff' }}
+              >
+                다음
+              </button>
+            </div>
+          )}
         </div>
-        <button onClick={onExit} style={{ padding:'6px 10px' }}>← 나가기</button>
+
+        <div>
+          {!preflight && <GroupedRoster grouped={grouped.slice(Math.ceil(grouped.length/2))} compact />}
+        </div>
       </div>
-
-      {/* 레이아웃 + 오버레이 */}
-      <StartScaffold
-        preflight={preflight}
-        grouped={grouped}
-        starting={starting}
-        onStart={handleStart}
-        onExit={onExit}
-        center={center}
-      />
     </div>
   )
 }
