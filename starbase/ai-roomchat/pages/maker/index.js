@@ -1,95 +1,301 @@
-// pages/maker/index.js
-import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+// pages/maker/[id]/index.js
+'use client'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
-import { supabase } from '../../lib/supabase'
+import ReactFlow, { Background, Controls, MiniMap, addEdge, useEdgesState, useNodesState } from 'reactflow'
+import 'reactflow/dist/style.css'
+import { supabase } from '../../../lib/supabase'
 
-/**
- * 프롬프트 세트 목록 페이지
- * - 목록 조회 / 검색 / 정렬
- * - 세트 생성 / 삭제
- * - JSON 내보내기 / 가져오기
- * - 상단 네비(로비, 랭킹, 로스터)
- */
-export default function MakerList() {
+// 최신 컴포넌트 경로에 맞춰 조정하세요.
+import PromptNode from '../../../components/maker/PromptNode'
+import SidePanel from '../../../components/maker/SidePanel'
+
+const nodeTypes = { prompt: PromptNode }
+
+export default function MakerEditor() {
   const router = useRouter()
-  const [userId, setUserId] = useState(null)
-  const [rows, setRows] = useState([])
+  const { id: setId } = router.query
+
+  const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [setInfo, setSetInfo] = useState(null)
 
-  // 검색/정렬 UI
-  const [q, setQ] = useState('')
-  const [sort, setSort] = useState('created_desc') // created_desc | name_asc | name_desc
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
+  const [selectedNodeId, setSelectedNodeId] = useState(null)
+  const [selectedEdge, setSelectedEdge] = useState(null)
+
+  // flowNodeId(string) -> slot.id(uuid)
+  const idMapRef = useRef(new Map())
+
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return null
+
+  // ===== 초기 로드 =====
   useEffect(() => {
+    if (!setId) return
     ;(async () => {
-      // 로그인 확인
-      const { data: { user }, error } = await supabase.auth.getUser()
-      if (error || !user) { router.replace('/'); return }
-      setUserId(user.id)
-      await refresh(user.id)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.replace('/'); return }
+
+      // 세트
+      const { data: setRow, error: e1 } = await supabase.from('prompt_sets').select('*').eq('id', setId).single()
+      if (e1 || !setRow) { alert('세트를 불러오지 못했습니다.'); router.replace('/maker'); return }
+      setSetInfo(setRow)
+
+      // 슬롯
+      const { data: slotRows } = await supabase
+        .from('prompt_slots')
+        .select('*')
+        .eq('set_id', setId)
+        .order('slot_no', { ascending: true })
+
+      // 브릿지
+      const { data: bridgeRows } = await supabase
+        .from('prompt_bridges')
+        .select('*')
+        .eq('from_set', setId)
+        .order('priority', { ascending: false })
+
+      // 화면 노드 구성
+      const initNodes = (slotRows || []).map((s, idx) => {
+        const nid = `n${s.id}`
+        idMapRef.current.set(nid, s.id)
+        return {
+          id: nid,
+          type: 'prompt',
+          position: { x: 120 + (idx % 3) * 380, y: 120 + Math.floor(idx / 3) * 260 },
+          data: {
+            template: s.template || '',
+            slot_type: s.slot_type || 'ai',
+            slot_pick: s.slot_pick || '1',
+            isStart: !!s.is_start,
+            invisible: !!s.invisible,
+            var_rules_global: s.var_rules_global || [],
+            var_rules_local: s.var_rules_local || [],
+
+            // PromptNode가 호출할 핸들러들
+            onChange: (partial) => setNodes(nds => nds.map(n => n.id === nid ? { ...n, data: { ...n.data, ...partial } } : n)),
+            onDelete: handleDeletePrompt,
+            onSetStart: () => markAsStart(nid),
+          }
+        }
+      })
+
+      // 화면 간선 구성
+      const initEdges = (bridgeRows || [])
+        .filter(b => b.from_slot_id && b.to_slot_id)
+        .map(b => {
+          const labelParts = []
+          const conds = b.conditions || []
+          conds.forEach(c => {
+            if (c?.type === 'turn_gte' && (c.value ?? c.gte) != null) labelParts.push(`턴 ≥ ${c.value ?? c.gte}`)
+            if (c?.type === 'turn_lte' && (c.value ?? c.lte) != null) labelParts.push(`턴 ≤ ${c.value ?? c.lte}`)
+            if (c?.type === 'prev_ai_contains') labelParts.push(`이전응답 "${c.value}"`)
+            if (c?.type === 'prev_prompt_contains') labelParts.push(`이전프롬프트 "${c.value}"`)
+            if (c?.type === 'prev_ai_regex') labelParts.push(`이전응답 /${c.pattern}/${c.flags || ''}`)
+            if (c?.type === 'visited_slot') labelParts.push(`경유 #${c.slot_id ?? '?'}`)
+            if (c?.type === 'role_alive_gte') labelParts.push(`[${c.role}] 생존≥${c.count}`)
+            if (c?.type === 'role_dead_gte') labelParts.push(`[${c.role}] 탈락≥${c.count}`)
+            if (c?.type === 'custom_flag_on') labelParts.push(`변수:${c.name}=ON`)
+            if (c?.type === 'fallback') labelParts.push('Fallback')
+          })
+          if (b.probability != null && b.probability !== 1) labelParts.push(`확률 ${Math.round(Number(b.probability) * 100)}%`)
+          if (b.action && b.action !== 'continue') labelParts.push(`→ ${b.action}`)
+
+          return {
+            id: `e${b.id}`,
+            source: `n${b.from_slot_id}`,
+            target: `n${b.to_slot_id}`,
+            label: labelParts.join(' | '),
+            data: {
+              bridgeId: b.id,
+              trigger_words: b.trigger_words || [],
+              conditions: b.conditions || [],
+              priority: b.priority ?? 0,
+              probability: b.probability ?? 1.0,
+              fallback: !!b.fallback,
+              action: b.action || 'continue',
+            }
+          }
+        })
+
+      setNodes(initNodes)
+      setEdges(initEdges)
       setLoading(false)
     })()
-  }, [router])
+  }, [setId, router, setNodes, setEdges])
 
-  async function refresh(uid) {
-    // created_at 없을 수도 있어 id 기준 정렬 fallback
-    const { data, error } = await supabase
-      .from('prompt_sets')
-      .select('*')
-      .eq('owner_id', uid)
-      .order('created_at', { ascending: false })
-    if (!error) setRows(data || [])
+  // ===== 연결 생성 =====
+  const onConnect = useCallback((params) => {
+    setEdges(eds =>
+      addEdge({
+        ...params,
+        type: 'default',
+        animated: false,
+        data: { trigger_words: [], conditions: [], priority: 0, probability: 1.0, fallback: false, action: 'continue' }
+      }, eds)
+    )
+  }, [setEdges])
+
+  // ===== 선택 이벤트 =====
+  const onNodeClick = useCallback((_, node) => { setSelectedNodeId(node.id); setSelectedEdge(null) }, [])
+  const onEdgeClick = useCallback((_, edge) => { setSelectedEdge(edge); setSelectedNodeId(null) }, [])
+
+  // ===== 토큰 삽입(선택 노드 템플릿 뒤에 append) =====
+  function insertTokenToSelected(token) {
+    if (!selectedNodeId) return
+    setNodes(nds => nds.map(n =>
+      n.id === selectedNodeId ? { ...n, data: { ...n.data, template: (n.data.template || '') + token } } : n
+    ))
   }
 
-  // 클라이언트 정렬/검색
-  const filtered = useMemo(() => {
-    const key = (q || '').trim().toLowerCase()
-    let list = rows
-    if (key) {
-      list = list.filter(r =>
-        (r.name || '').toLowerCase().includes(key) ||
-        (r.description || '').toLowerCase().includes(key)
-      )
+  // ===== 노드 추가 =====
+  function addPromptNode(type = 'ai') {
+    const nid = `tmp_${Date.now()}`
+    setNodes(nds => [...nds, {
+      id: nid,
+      type: 'prompt',
+      position: { x: 160, y: 120 },
+      data: {
+        template: '',
+        slot_type: type,         // 'ai' | 'user_action' | 'system'
+        slot_pick: '1',
+        isStart: false,
+        invisible: false,
+        var_rules_global: [],
+        var_rules_local: [],
+        onChange: (partial) => setNodes(nds => nds.map(n => n.id === nid ? { ...n, data: { ...n.data, ...partial } } : n)),
+        onDelete: handleDeletePrompt,
+        onSetStart: () => markAsStart(nid),
+      }
+    }])
+    setSelectedNodeId(nid)
+  }
+
+  // 시작지점 지정(단 하나만 true)
+  function markAsStart(flowNodeId) {
+    setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, isStart: n.id === flowNodeId } })))
+  }
+
+  // 노드 삭제(+연결 브릿지 DB/화면 동시 삭제)
+  async function handleDeletePrompt(flowNodeId) {
+    setNodes(nds => nds.filter(n => n.id !== flowNodeId))
+    setEdges(eds => eds.filter(e => e.source !== flowNodeId && e.target !== flowNodeId))
+    setSelectedNodeId(null)
+    const slotId = idMapRef.current.get(flowNodeId)
+    if (slotId) {
+      await supabase.from('prompt_bridges').delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
+      await supabase.from('prompt_slots').delete().eq('id', slotId)
+      idMapRef.current.delete(flowNodeId)
     }
-    if (sort === 'name_asc') list = [...list].sort((a,b)=>(a.name||'').localeCompare(b.name||''))
-    else if (sort === 'name_desc') list = [...list].sort((a,b)=>(b.name||'').localeCompare(a.name||''))
-    else list = [...list].sort((a,b)=>(new Date(b.created_at||0))-(new Date(a.created_at||0)))
-    return list
-  }, [rows, q, sort])
-
-  async function createSet() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { alert('로그인이 필요합니다.'); return }
-    const { data, error } = await supabase
-      .from('prompt_sets')
-      .insert({ name: '새 세트', owner_id: user.id, description: '' })
-      .select()
-      .single()
-    if (error) { alert(error.message); return }
-    router.push(`/maker/${data.id}`)
   }
 
-  async function removeSet(id) {
-    if (!confirm('세트를 삭제할까요? (프롬프트/브릿지 포함)')) return
-    // bridges → slots → set 순서로 정리 (RLS 환경 고려)
-    await supabase.from('prompt_bridges').delete().eq('from_set', id)
-    await supabase.from('prompt_slots').delete().eq('set_id', id)
-    await supabase.from('prompt_sets').delete().eq('id', id)
-    setRows(list => list.filter(r => r.id !== id))
+  // ===== 저장(노드/엣지 upsert) =====
+  async function saveAll() {
+    if (!setInfo) return
+
+    // 1) 화면 노드 순서 → slot_no
+    const slotNoMap = new Map()
+    nodes.forEach((n, idx) => slotNoMap.set(n.id, idx + 1)) // 1..N
+
+    // 2) 노드 저장/업데이트
+    for (const n of nodes) {
+      const slot_no = slotNoMap.get(n.id) || 1
+      let slotId = idMapRef.current.get(n.id)
+
+      const payload = {
+        set_id: setInfo.id,
+        slot_no,
+        slot_type: n.data.slot_type || 'ai',
+        slot_pick: n.data.slot_pick || '1',
+        template: n.data.template || '',
+        is_start: !!n.data.isStart,
+        invisible: !!n.data.invisible,
+        var_rules_global: n.data.var_rules_global || [],
+        var_rules_local: n.data.var_rules_local || [],
+      }
+
+      if (!slotId) {
+        const ins = await supabase.from('prompt_slots').insert(payload).select().single()
+        if (ins.error || !ins.data) {
+          alert('슬롯 저장 실패: ' + (ins.error?.message ?? 'unknown'))
+          console.error('prompt_slots insert error', ins.error)
+          continue
+        }
+        slotId = ins.data.id
+        idMapRef.current.set(n.id, slotId)
+      } else {
+        const upd = await supabase.from('prompt_slots').update(payload).eq('id', slotId).select().single()
+        if (upd.error) {
+          alert('슬롯 업데이트 실패: ' + upd.error.message)
+          console.error('prompt_slots update error', upd.error)
+        }
+      }
+    }
+
+    // 3) 간선 저장/업데이트
+    const { data: oldBridges } = await supabase
+      .from('prompt_bridges')
+      .select('id')
+      .eq('from_set', setInfo.id)
+
+    const keep = new Set()
+
+    for (const e of edges) {
+      const fromId = idMapRef.current.get(e.source)
+      const toId = idMapRef.current.get(e.target)
+      if (!fromId || !toId) continue
+
+      let bridgeId = e.data?.bridgeId
+      const payload = {
+        from_set: setInfo.id,
+        from_slot_id: fromId,
+        to_slot_id: toId,
+        trigger_words: e.data?.trigger_words || [],
+        conditions: e.data?.conditions || [],
+        priority: e.data?.priority ?? 0,
+        probability: e.data?.probability ?? 1.0,
+        fallback: !!e.data?.fallback,
+        action: e.data?.action || 'continue',
+      }
+
+      if (!bridgeId) {
+        const ins = await supabase.from('prompt_bridges').insert(payload).select().single()
+        if (ins.error || !ins.data) {
+          alert('브릿지 저장 실패: ' + (ins.error?.message ?? 'unknown'))
+          console.error('prompt_bridges insert error', ins.error)
+          continue
+        }
+        bridgeId = ins.data.id
+        e.data = { ...(e.data || {}), bridgeId }
+      } else {
+        const upd = await supabase.from('prompt_bridges').update(payload).eq('id', bridgeId).select().single()
+        if (upd.error) {
+          alert('브릿지 업데이트 실패: ' + upd.error.message)
+          console.error('prompt_bridges update error', upd.error)
+        }
+      }
+      keep.add(bridgeId)
+    }
+
+    for (const ob of (oldBridges || [])) {
+      if (!keep.has(ob.id)) await supabase.from('prompt_bridges').delete().eq('id', ob.id)
+    }
+
+    alert('저장 완료')
   }
 
-  async function exportSet(id) {
+  // ===== 내보내기/가져오기 =====
+  async function exportSet() {
+    if (!setInfo) return
     const [setRow, slots, bridges] = await Promise.all([
-      supabase.from('prompt_sets').select('*').eq('id', id).single(),
-      supabase.from('prompt_slots').select('*').eq('set_id', id),
-      supabase.from('prompt_bridges').select('*').eq('from_set', id),
+      supabase.from('prompt_sets').select('*').eq('id', setInfo.id).single(),
+      supabase.from('prompt_slots').select('*').eq('set_id', setInfo.id).order('slot_no'),
+      supabase.from('prompt_bridges').select('*').eq('from_set', setInfo.id),
     ])
-    const payload = {
-      set: setRow.data,
-      slots: slots.data || [],
-      bridges: bridges.data || []
-    }
+    const payload = { set: setRow.data, slots: slots.data || [], bridges: bridges.data || [] }
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -100,167 +306,104 @@ export default function MakerList() {
 
   async function importSet(e) {
     const file = e.target.files?.[0]; if (!file) return
-    try {
-      const text = await file.text()
-      const json = JSON.parse(text)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { alert('로그인이 필요합니다.'); return }
-
-      // 1) 새 set 생성
-      const { data: newSet, error: eSet } = await supabase
-        .from('prompt_sets')
-        .insert({
-          name: json.set?.name || '가져온 세트',
-          description: json.set?.description || '',
-          owner_id: user.id
-        })
-        .select()
-        .single()
-      if (eSet) throw eSet
-
-      // 2) slots 복원 (필드 유실 대비 기본값)
-      if (Array.isArray(json.slots) && json.slots.length) {
-        const safeSlots = json.slots.map(s => ({
+    const text = await file.text()
+    const json = JSON.parse(text)
+    const { data: { user } } = await supabase.auth.getUser()
+    // 새 세트 생성
+    const { data: newSet } = await supabase.from('prompt_sets')
+      .insert({ name: json.set?.name || '가져온 세트', owner_id: user.id })
+      .select().single()
+    // 슬롯/브릿지 삽입
+    if (json.slots?.length) {
+      await supabase.from('prompt_slots').insert(
+        json.slots.map(s => ({
           set_id: newSet.id,
-          slot_no: s.slot_no ?? null,
+          slot_no: s.slot_no ?? 1,
           slot_type: s.slot_type ?? 'ai',
           slot_pick: s.slot_pick ?? '1',
           template: s.template ?? '',
-          transform_code: s.transform_code ?? '',
-          visible_roles: s.visible_roles ?? null,
-          is_global: !!s.is_global,
           is_start: !!s.is_start,
+          invisible: !!s.invisible,
+          var_rules_global: s.var_rules_global ?? [],
+          var_rules_local: s.var_rules_local ?? [],
         }))
-        await supabase.from('prompt_slots').insert(safeSlots)
-      }
-
-      // 3) bridges 복원 (연결 id는 새로 매핑해야 해서 from/to는 비워둠)
-      if (Array.isArray(json.bridges) && json.bridges.length) {
-        const safeBr = json.bridges.map(b => ({
+      )
+    }
+    if (json.bridges?.length) {
+      await supabase.from('prompt_bridges').insert(
+        json.bridges.map(b => ({
           from_set: newSet.id,
-          from_slot_id: null,
+          from_slot_id: null, // 연결은 가져온 뒤 수동 수정 필요
           to_slot_id: null,
           trigger_words: b.trigger_words ?? [],
-          action: b.action ?? 'continue',
           conditions: b.conditions ?? [],
           priority: b.priority ?? 0,
           probability: b.probability ?? 1.0,
-          fallback: !!b.fallback,
+          fallback: b.fallback ?? false,
+          action: b.action ?? 'continue',
         }))
-        await supabase.from('prompt_bridges').insert(safeBr)
-      }
-
-      e.target.value = ''
-      await refresh(userId)
-      alert('가져오기 완료. 연결은 편집 화면에서 다시 지정하세요.')
-    } catch (err) {
-      console.error(err)
-      alert('가져오기 실패: ' + (err?.message || err))
+      )
     }
+    e.target.value = ''
+    router.replace(`/maker/${newSet.id}`)
   }
 
-  if (loading) {
-    return <div style={{ padding:20 }}>불러오는 중…</div>
-  }
+  if (loading) return <div style={{ padding: 20 }}>불러오는 중…</div>
 
   return (
-    <div style={{ maxWidth:1100, margin:'20px auto', padding:'0 12px', display:'grid', gridTemplateRows:'auto auto 1fr', gap:12 }}>
-      {/* 상단 네비게이션 */}
-      <div style={{ display:'flex', gap:8, alignItems:'center', justifyContent:'space-between' }}>
-        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          <h2 style={{ margin:0 }}>프롬프트 세트</h2>
-          <span style={{ color:'#64748b' }}>만들고, 불러오고, 편집하세요</span>
+    <div style={{ height: '100vh', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
+      {/* 상단 바 */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 40, background: '#fff',
+        padding: 10, borderBottom: '1px solid #e5e7eb',
+        display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => router.push('/maker')} style={{ padding: '6px 10px' }}>← 목록</button>
+          <b style={{ marginLeft: 4 }}>{setInfo?.name}</b>
         </div>
-        <div style={{ display:'flex', gap:8 }}>
-          <Link href="/lobby"><a className="btn-secondary">로비</a></Link>
-          <Link href="/rank"><a className="btn-secondary">랭킹 허브</a></Link>
-          <Link href="/roster"><a className="btn-secondary">로스터</a></Link>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => addPromptNode('ai')} style={{ padding: '6px 10px', background: '#2563eb', color: '#fff', borderRadius: 8 }}>+ 프롬프트</button>
+          <button onClick={() => addPromptNode('user_action')} style={{ padding: '6px 10px', background: '#0ea5e9', color: '#fff', borderRadius: 8 }}>+ 유저 행동</button>
+          <button onClick={() => addPromptNode('system')} style={{ padding: '6px 10px', background: '#6b7280', color: '#fff', borderRadius: 8 }}>+ 시스템</button>
+          <button type="button" onClick={saveAll} style={{ padding: '6px 10px', background: '#111827', color: '#fff', borderRadius: 8 }}>저장</button>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={exportSet} style={{ padding: '6px 10px' }}>내보내기</button>
+          <label style={{ padding: '6px 10px', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>
+            가져오기
+            <input type="file" accept="application/json" onChange={importSet} style={{ display: 'none' }} />
+          </label>
+          <button onClick={() => router.push('/rank')} style={{ padding: '6px 10px' }}>로비로</button>
         </div>
       </div>
 
-      {/* 툴바 */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:8 }}>
-        <div style={{ display:'flex', gap:8 }}>
-          <input
-            value={q}
-            onChange={e=>setQ(e.target.value)}
-            placeholder="세트 이름/설명 검색…"
-            style={{ flex:1, padding:'8px 10px', border:'1px solid #e5e7eb', borderRadius:8 }}
-          />
-          <select
-            value={sort}
-            onChange={e=>setSort(e.target.value)}
-            style={{ padding:'8px 10px', border:'1px solid #e5e7eb', borderRadius:8 }}
+      {/* 본문: 캔버스 + 사이드 */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px' }}>
+        <div style={{ position: 'relative', zIndex: 0 }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            onEdgeClick={onEdgeClick}
+            fitView
           >
-            <option value="created_desc">최신 생성순</option>
-            <option value="name_asc">이름 오름차순</option>
-            <option value="name_desc">이름 내림차순</option>
-          </select>
+            <MiniMap /><Controls /><Background />
+          </ReactFlow>
         </div>
 
-        <button onClick={createSet} className="btn-primary">+ 새 세트</button>
-
-        <label className="btn-ghost" style={{ cursor:'pointer' }}>
-          가져오기(JSON)
-          <input type="file" accept="application/json" onChange={importSet} style={{ display:'none' }} />
-        </label>
-
-        <button onClick={()=>refresh(userId)} className="btn-ghost">↻ 새로고침</button>
+        <SidePanel
+          selectedNodeId={selectedNodeId}
+          selectedEdge={selectedEdge}
+          setEdges={setEdges}
+          setNodes={setNodes}
+          onInsertToken={insertTokenToSelected}
+        />
       </div>
-
-      {/* 목록 */}
-      <div style={{ display:'grid', gap:10 }}>
-        {filtered.map(r => (
-          <div key={r.id} style={{
-            border:'1px solid #e5e7eb', borderRadius:12, padding:12,
-            display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:8, alignItems:'center', background:'#fff'
-          }}>
-            <div>
-              <div style={{ fontWeight:700 }}>{r.name || '(이름 없음)'}</div>
-              <div style={{ color:'#64748b', fontSize:13, marginTop:4 }}>
-                {r.description || '설명 없음'}
-              </div>
-              <div style={{ color:'#94a3b8', fontSize:12, marginTop:4 }}>
-                {r.created_at ? new Date(r.created_at).toLocaleString() : ''}
-              </div>
-            </div>
-            <Link href={`/maker/${r.id}`}><a className="btn-dark">편집</a></Link>
-            <button onClick={()=>exportSet(r.id)} className="btn-info">내보내기</button>
-            <button onClick={()=>removeSet(r.id)} className="btn-danger">삭제</button>
-          </div>
-        ))}
-        {filtered.length === 0 && (
-          <div style={{ color:'#64748b', padding:'24px 0' }}>세트가 없습니다. “+ 새 세트”로 시작해 보세요.</div>
-        )}
-      </div>
-
-      {/* 간단 스타일 */}
-      <style jsx>{`
-        .btn-primary {
-          padding: 8px 12px; border-radius: 8px;
-          background:#2563eb; color:#fff; font-weight:700; border:none;
-        }
-        .btn-secondary {
-          padding: 8px 12px; border-radius: 8px;
-          background:#f3f4f6; color:#111827; font-weight:600; border:1px solid #e5e7eb;
-        }
-        .btn-ghost {
-          padding: 8px 12px; border-radius: 8px;
-          background:#fff; color:#111827; font-weight:600; border:1px solid #e5e7eb;
-        }
-        .btn-dark {
-          padding: 8px 12px; border-radius: 8px;
-          background:#111827; color:#fff; font-weight:700; border:none; text-align:center;
-        }
-        .btn-info {
-          padding: 8px 12px; border-radius: 8px;
-          background:#0ea5e9; color:#fff; font-weight:700; border:none;
-        }
-        .btn-danger {
-          padding: 8px 12px; border-radius: 8px;
-          background:#ef4444; color:#fff; font-weight:700; border:none;
-        }
-      `}</style>
     </div>
   )
 }
