@@ -1,5 +1,7 @@
 // components/maker/SidePanel.js
 import { useEffect, useState } from 'react'
+import VarRulesEditor from './VarRulesEditor'
+
 
 /* ===========================
    내장 ConditionBuilder 시작
@@ -208,7 +210,8 @@ function TokenPalette({ onInsert }) {
       </div>
     </div>
   )
-  // components/maker/SidePanel.js (노드 선택 케이스 안)
+}
+// components/maker/SidePanel.js (노드 선택 케이스 안)
 function LocalVarRulesEditor({ value, onChange }) {
   // 내부는 텍스트 JSON + 빠른 추가 폼
   const [jsonText, setJsonText] = useState(() => JSON.stringify(value ?? [], null, 2))
@@ -280,9 +283,18 @@ function LocalVarRulesEditor({ value, onChange }) {
   )
 }
 
-}
 
-export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onInsertToken }) {
+export default function SidePanel({
+  selectedNodeId,
+  selectedEdge,
+  setEdges,
+  onInsertToken,
+  selectedNodeData,      // ← 추가
+  onUpdateNode,           // ← 추가
+  varRulesGlobal, 
+  setVarRulesGlobal, 
+  setNodes 
+}) {
   const [edgeForm, setEdgeForm] = useState({
     trigger_words: '',
     conditions: '[]',
@@ -349,14 +361,47 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
     })
   }
 
-  if (selectedNodeId) {
+ if (selectedNodeId) {
     return (
-      <div style={{ padding:12 }}>
-        <div style={{ fontWeight:700, marginBottom:8 }}>프롬프트 편집</div>
-        <div style={{ color:'#64748b' }}>
-          프롬프트 텍스트는 카드에서 수정하세요. 아래 버튼으로 토큰을 추가할 수 있어요.
+      <div style={{ padding:12, display:'grid', gap:12 }}>
+        <div>
+          <div style={{ fontWeight:700, marginBottom:8 }}>프롬프트 편집</div>
+          <div style={{ color:'#64748b' }}>
+            프롬프트 텍스트는 카드에서 수정하세요. 아래 버튼으로 토큰을 추가할 수 있어요.
+          </div>
+          <TokenPalette onInsert={onInsertToken} />
         </div>
-        <TokenPalette onInsert={onInsertToken} />
+
+        {/* 로컬 규칙 */}
+        <VarRulesEditor
+          title="로컬 변수 규칙(이 노드에만 적용)"
+          value={
+            // 선택 노드의 data.var_rules_local 읽기
+            // (없으면 빈 배열)
+            (() => {
+              // setNodes를 쓰는 구조라면 별도 상태 없이 노드 데이터에서 직접 읽어온 값 전달
+              return undefined // ← parent에서 selectedNodeId로 현재 노드 찾아 값 전달해도 됨
+            })()
+          }
+          onChange={(arr)=>{
+            // 선택 노드 data에 반영
+            setNodes(nds => nds.map(n =>
+              n.id === selectedNodeId ? { ...n, data:{ ...n.data, var_rules_local: arr } } : n
+            ))
+          }}
+        />
+
+        {/* 접이식 전역 규칙(선택사항) */}
+        <details>
+          <summary style={{ cursor:'pointer' }}>전역 변수 규칙(모든 노드에 적용)</summary>
+          <div style={{ marginTop:8 }}>
+            <VarRulesEditor
+              title="전역 변수 규칙"
+              value={varRulesGlobal}
+              onChange={setVarRulesGlobal}
+            />
+          </div>
+        </details>
       </div>
     )
   }
@@ -430,7 +475,18 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, onIn
         </button>
       </div>
     )
+    
   }
 
   return <div style={{ padding:12, color:'#64748b' }}>노드/브릿지를 선택하세요</div>
+  
 }
+  return (
+    <div style={{ padding:12 }}>
+      <VarRulesEditor
+        title="전역 변수 규칙(모든 노드에 적용)"
+        value={varRulesGlobal}
+        onChange={setVarRulesGlobal}
+      />
+    </div>
+  )

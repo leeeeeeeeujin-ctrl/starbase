@@ -38,8 +38,6 @@ for (let s = 1; s <= 12; s++) {
 }
 
 
-// 기존 last1/last2, all은 이미 있음. last5만 추가
-out = out.replaceAll('{{history.last5}}', lines.slice(-5).join('\n'))
 
   // 랜덤 슬롯 번호
 out = out.replaceAll('{{slot.random}}', () => {
@@ -64,11 +62,11 @@ out = out.replaceAll('{{slot.random}}', () => {
   })
 
   // 히스토리 토큰
-  const lines = (historyText || '').split(/\r?\n/)
-  out = out.replaceAll('{{history.last1}}', lines.slice(-1).join('\n'))
-  out = out.replaceAll('{{history.last2}}', lines.slice(-2).join('\n'))
-  out = out.replaceAll('{{history.all}}', historyText)
-
+ const lines = (historyText || '').split(/\r?\n/)
+ out = out.replaceAll('{{history.last1}}', lines.slice(-1).join('\n'))
+ out = out.replaceAll('{{history.last2}}', lines.slice(-2).join('\n'))
+ out = out.replaceAll('{{history.last5}}', lines.slice(-5).join('\n'))
+ out = out.replaceAll('{{history.all}}', historyText)
   return { text: out, meta: { pickedSlot } }
 }
 
@@ -120,4 +118,39 @@ export function runBridges({ bridges = [], context }) {
   // 우선순위 내림차순, 동일 우선순위면 앞의 것을 우선(원하면 무작위 선택으로 바꿔도 됨)
   candidates.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
   return candidates[0] || null
+}
+// 규칙 텍스트 빌더 (전역/로컬 변수 규칙을 시스템 프롬프트 앞에 덧붙일 문자열로 변환)
+export function buildRulesText({ globalRules = [], localRules = [] }) {
+  const rules = [...(globalRules || []), ...(localRules || [])]
+  if (!rules.length) return ''
+
+  const out = [
+    '[규칙] 조건을 만족하면 "마지막에서 두 번째 줄"에 변수명만 적는다. 여러 개면 공백으로 나열.'
+  ]
+
+  for (const r of rules) {
+    if (!r?.name) continue
+    const scope = r.scope || 'last2'
+    switch (r.when) {
+      case 'prev_ai_contains':
+        out.push(`- 이전응답(${scope})에 "${r.value}" 포함 시 '${r.name}'`)
+        break
+      case 'prev_prompt_contains':
+        out.push(`- 이전프롬프트(${scope})에 "${r.value}" 포함 시 '${r.name}'`)
+        break
+      case 'prev_ai_regex':
+        out.push(`- 이전응답(${scope}) 정규식 /${r.pattern || r.value || ''}/${r.flags || ''} 일치 시 '${r.name}'`)
+        break
+      case 'turn_gte':
+        out.push(`- 턴 ≥ ${r.value} 이면 '${r.name}'`)
+        break
+      case 'turn_lte':
+        out.push(`- 턴 ≤ ${r.value} 이면 '${r.name}'`)
+        break
+      default:
+        out.push(`- 조건(${r.when}) 충족 시 '${r.name}'`)
+    }
+  }
+
+  return out.join('\n')
 }

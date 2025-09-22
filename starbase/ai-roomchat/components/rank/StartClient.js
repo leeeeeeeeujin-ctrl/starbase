@@ -10,9 +10,6 @@ import { runOneTurn } from '@/lib/engineRunner'
 import { makeCallModel } from '@/lib/modelClient'
 import SharedChatDock from '@/components/common/SharedChatDock'
 
-const [histOpen, setHistOpen] = useState(false)
-const [userTurn, setUserTurn] = useState(false)
-const [dockOpen, setDockOpen] = useState(false)
 
 /** 상단: API Key 입력 */
 function ApiKeyBar({ storageKey }){
@@ -126,6 +123,9 @@ export default function StartClient(){
   const [turnIndex, setTurnIndex] = useState(0)
   const [currentSlotId, setCurrentSlotId] = useState(null)
   const [usedHeroIds, setUsedHeroIds] = useState(new Set())
+  const [histOpen, setHistOpen] = useState(false)
+  const [userTurn, setUserTurn] = useState(false)
+  const [dockOpen, setDockOpen] = useState(false)
 
   const history = useAiHistory()
   const callModel = useMemo(
@@ -312,16 +312,24 @@ async function handleStart() {
         </div>
 {/* === 상단 히스토리 바 === */}
 <div style={{ position:'sticky', top:0, zIndex:45 }}>
-  <div style={{ background:'#111827', color:'#fff', padding:'8px 12px',
-                display:'flex', alignItems:'center', justifyContent:'space-between', borderRadius:8 }}>
+  <div style={{
+    background:'#111827', color:'#fff', padding:'8px 12px',
+    display:'flex', alignItems:'center', justifyContent:'space-between', borderRadius:8
+  }}>
     <b>세션 히스토리</b>
-    <button onClick={()=>setHistOpen(o=>!o)}
-            style={{ background:'transparent', color:'#fff', border:'0', fontWeight:700 }}>
+    <button
+      onClick={()=>setHistOpen(o=>!o)}
+      style={{ background:'transparent', color:'#fff', border:'0', fontWeight:700 }}
+    >
       {histOpen ? '접기' : '펼치기'}
     </button>
   </div>
+
   {histOpen && (
-    <div style={{ background:'#0f172a', color:'#e2e8f0', padding:'10px 12px', borderRadius:8, marginTop:6, maxHeight:240, overflow:'auto' }}>
+    <div style={{
+      background:'#0f172a', color:'#e2e8f0', padding:'10px 12px',
+      borderRadius:8, marginTop:6, maxHeight:240, overflow:'auto'
+    }}>
       {(history.data || []).map((t,i)=>(
         <div key={i} style={{ opacity: t.public ? 1 : .7 }}>
           <span style={{ fontWeight:700 }}>{t.role.toUpperCase()}:</span> {t.content}

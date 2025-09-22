@@ -9,6 +9,65 @@ import SidePanel from '../../../components/maker/SidePanel'
 
 const nodeTypes = { prompt: PromptNode }
 
+// --- [추가] 세트 전역 변수 규칙 에디터(접이식) ---
+function GlobalVarRulesPanel({ value, onChange }) {
+  const [open, setOpen] = React.useState(false)
+  const [text, setText] = React.useState(() => JSON.stringify(value ?? [], null, 2))
+
+
+  React.useEffect(() => {
+    setText(JSON.stringify(value ?? [], null, 2))
+  }, [value])
+
+  const apply = () => {
+    try {
+      const arr = JSON.parse(text || '[]')
+      if (!Array.isArray(arr)) throw new Error()
+      onChange?.(arr)
+      alert('전역 변수 규칙 적용됨')
+    } catch {
+      alert('JSON 형식이 올바르지 않습니다.')
+    }
+  }
+
+  return (
+    <div style={{ position:'relative' }}>
+      <button
+        type="button"
+        onClick={()=>setOpen(o=>!o)}
+        style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #d1d5db', background:'#fff' }}
+        title="세트 전체에 반복 적용되는 변수 규칙"
+      >
+        전역 변수 규칙
+      </button>
+
+      {open && (
+        <div style={{
+          position:'absolute', right:0, top:'calc(100% + 8px)', zIndex:50,
+          width:420, background:'#fff', border:'1px solid #e5e7eb', borderRadius:10, padding:10,
+          boxShadow:'0 8px 24px rgba(0,0,0,.08)'
+        }}>
+          <div style={{ fontWeight:700, marginBottom:6 }}>전역 변수 규칙(JSON 배열)</div>
+          <textarea
+            rows={12}
+            style={{ width:'100%', fontFamily:'monospace' }}
+            value={text}
+            onChange={e=>setText(e.target.value)}
+          />
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
+            <button onClick={()=>setOpen(false)} style={{ padding:'6px 10px' }}>닫기</button>
+            <button onClick={apply} style={{ padding:'6px 10px', background:'#111827', color:'#fff', borderRadius:8 }}>적용</button>
+          </div>
+          <div style={{ color:'#64748b', fontSize:12, marginTop:6 }}>
+            예시: [{"{"}"name":"강공","when":"prev_ai_contains","value":"강하게 공격","scope":"last2"{"}"}]
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export default function MakerEditor() {
   const router = useRouter()
   const { id: setId } = router.query
@@ -21,6 +80,8 @@ export default function MakerEditor() {
   const [selectedNodeId, setSelectedNodeId] = useState(null)
   const [selectedEdge, setSelectedEdge] = useState(null)
   const idMapRef = useRef(new Map()) // flowNodeId -> DB slot.id
+  const [varRulesGlobal, setVarRulesGlobal] = useState([])
+  
 
   // 초기 로드
   useEffect(() => {
@@ -163,10 +224,7 @@ export default function MakerEditor() {
     // 화면 순서를 slot_no로 사용
     const slotNoMap = new Map()
     nodes.forEach((n, idx) => slotNoMap.set(n.id, idx + 1)) // 1..N
-await supabase.from('prompt_slots').update({
-  slot_no, slot_type, slot_pick, template,
-  local_vars: n.data.local_vars ?? []
-}).eq('id', slotId)
+
     // --- 노드 업서트 ---
     for (const n of nodes) {
       const slot_no = slotNoMap.get(n.id) || 1
@@ -181,7 +239,9 @@ await supabase.from('prompt_slots').update({
             slot_type: n.data.slot_type || 'ai',
             slot_pick: n.data.slot_pick || '1',
             template: n.data.template || '',
-            transform_code: n.data.transform_code ?? ''
+            transform_code: n.data.transform_code ?? '',
+            var_rules_local: Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : [],
+            var_rules_global: n.data.var_rules_global ?? []
           })
           .select()
           .single()
@@ -202,7 +262,9 @@ await supabase.from('prompt_slots').update({
             slot_type: n.data.slot_type || 'ai',
             slot_pick: n.data.slot_pick || '1',
             template: n.data.template || '',
-            transform_code: n.data.transform_code ?? ''
+            transform_code: n.data.transform_code ?? '',
+            var_rules_local: Array.isArray(n.data.var_rules_local) ? n.data.var_rules_local : [],
+            var_rules_global: n.data.var_rules_global ?? []
           })
           .eq('id', slotId)
           .select()
@@ -238,7 +300,7 @@ await supabase.from('prompt_slots').update({
         priority: e.data?.priority ?? 0,
         probability: e.data?.probability ?? 1.0,
         fallback: !!e.data?.fallback,
-        action: e.data?.action || 'continue'
+        action: e.data?.action || 'continue',
       }
 
       if (!bridgeId) {
@@ -272,7 +334,15 @@ await supabase.from('prompt_slots').update({
     } else {
       await supabase.from('prompt_sets').update({ start_slot_id: null }).eq('id', setInfo.id)
     }
-
+    await supabase
+  .from('prompt_sets')
+  .update({ var_rules_global: varRulesGlobal })
+  .eq('id', setInfo.id)
+// --- 세트 전역 변수 규칙 반영 ---
+ await supabase
+   .from('prompt_sets')
+   .update({ var_rules_global: setInfo?.var_rules_global ?? [] })
+   .eq('id', setInfo.id)
     alert('저장 완료')
   }
 
@@ -335,7 +405,26 @@ await supabase.from('prompt_slots').update({
           setEdges={setEdges}
           setNodes={setNodes}
           onInsertToken={insertTokenToSelected}
+          selectedNodeData={
+    selectedNodeId
+      ? (nodes.find(n => n.id === selectedNodeId)?.data || {})
+      : null
+  }
+  onUpdateNode={(partial) => {
+    if (!selectedNodeId) return
+    setNodes(nds => nds.map(n =>
+      n.id === selectedNodeId ? { ...n, data: { ...n.data, ...partial } } : n
+    ))
+  }}
         />
+        // 상단 바 버튼 묶음 안에 추가:
+<GlobalVarRulesPanel
+  value={setInfo?.var_rules_global}
+  onChange={(arr)=>{
+    setSetInfo(prev => ({ ...(prev||{}), var_rules_global: arr }))
+  }}
+/>
+
       </div>
     </div>
   )
