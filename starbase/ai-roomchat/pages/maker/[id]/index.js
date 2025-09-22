@@ -285,29 +285,21 @@ export default function MakerEditor() {
           </ReactFlow>
         </div>
 
-          <SidePanel
-   selectedNodeId={selectedNodeId}
-   selectedEdge={selectedEdge}
-   setEdges={setEdges}
-   nodes={nodes}
-   setNodes={setNodes}
-   onInsertToken={(token)=>{ 
+   <SidePanel
+  selectedNodeId={selectedNodeId}
+  selectedEdge={selectedEdge}
+  setEdges={setEdges}
+  setNodes={setNodes}
+  onInsertToken={(token)=>{
     if (!selectedNodeId) return
             setNodes(nds => nds.map(n => n.id===selectedNodeId
               ? { ...n, data:{ ...n.data, template:(n.data.template||'') + token } }
               : n
             ))
     }}
- globalRules={globalRules}
-         setGlobalRules={setGlobalRules}
-         selectedNodeVarRules={selectedNode?.data?.var_rules_local ?? []}
-         setSelectedNodeVarRules={(arr) =>
-           setNodes(nds => nds.map(n =>
-             n.id === selectedNodeId ? { ...n, data:{ ...n.data, var_rules_local: arr } } : n
-           ))
-         }
-
-        />
+ getGlobalVars={() => globalRules}
+  setGlobalVars={(next) => setGlobalRules(next)}
+/>
       </div>
     </div>
   )

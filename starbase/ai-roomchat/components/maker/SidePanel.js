@@ -305,12 +305,12 @@ function TokenPalette({ onInsert }) {
 export default function SidePanel({
   selectedNodeId,
   selectedEdge,
-  nodes = [],         // ★ 추가
   setEdges,
   setNodes,
   onInsertToken,
-  globalRules = [],   // ★ Maker에서 직접 내려주는 형태에 맞춤
-  setGlobalRules      // ★ Maker에서 직접 내려주는 형태에 맞춤
+  globalRules,
+  setGlobalRules,
+  selectedNodeData,   // ← 아래 2)에서 함께 씀
 }) {
   const [showGlobal, setShowGlobal] = useState(false)
   function saveGlobalRules(next) { setGlobalRules?.(next) }
