@@ -1,5 +1,7 @@
 // pages/create.js
-import React, { useRef, useState } from 'react'
+'use client'
+
+import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import { supabase } from '../lib/supabase'
@@ -7,6 +9,7 @@ import { supabase } from '../lib/supabase'
 export default function Create() {
   const router = useRouter()
   const fileRef = useRef(null)
+  const [hydrated, setHydrated] = useState(false)
   const [preview, setPreview] = useState(null)
   const [blob, setBlob] = useState(null)
   const [name, setName] = useState('')
@@ -16,6 +19,10 @@ export default function Create() {
   const [ability3, setAbility3] = useState('')
   const [ability4, setAbility4] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
 
   async function handleFile(f) {
     const b = await f.arrayBuffer()
@@ -28,7 +35,7 @@ export default function Create() {
     setLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('로그인이 필요합니다.')
+      if (!user) { alert('로그인이 필요합니다.'); setLoading(false); return }
 
       let image_url = null
       if (blob) {
@@ -51,6 +58,10 @@ export default function Create() {
     } catch (e) {
       alert('저장 실패: ' + (e.message || e))
     } finally { setLoading(false) }
+  }
+
+  if (!hydrated) {
+    return null
   }
 
   return (
