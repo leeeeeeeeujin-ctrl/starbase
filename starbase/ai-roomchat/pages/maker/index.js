@@ -675,7 +675,7 @@ async function fetchPromptSets(ownerId) {
     .from('prompt_sets')
     .select('*')
     .eq('owner_id', ownerId)
-    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
 
   if (error) {
     throw new Error(error.message)
