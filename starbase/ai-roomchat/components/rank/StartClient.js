@@ -1,12 +1,823 @@
-// components/rank/StartClient.jsx
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+// components/rank/StartClient.js
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useRouter } from 'next/router'
+
 import { supabase } from '../../lib/supabase'
 import SharedChatDock from '../common/SharedChatDock'
 import {
-  buildSystemPromptFromChecklist, buildSlotsFromParticipants,
-  createAiHistory, evaluateBridge, makeNodePrompt, parseOutcome, shouldShowToSlot
+  buildSystemPromptFromChecklist,
+  buildSlotsFromParticipants,
+  createAiHistory,
+  evaluateBridge,
+  makeNodePrompt,
+  parseOutcome,
 } from '../../lib/promptEngine'
+import { sanitizeVariableRules } from '../../lib/variableRules'
+
+const COMPARATOR_LABEL = { gte: '이상', lte: '이하', eq: '정확히' }
+const OUTCOME_LABEL = { win: '승리', lose: '패배', draw: '무승부' }
+const STATUS_LABEL = { alive: '생존', dead: '탈락', won: '승리', lost: '패배' }
+const SCORE_WINDOWS = [100, 200, 300, 400, 500, 700, 900, 1200]
+
+function buildAutoInstruction(rule) {
+  const variable = String(rule?.variable || '').trim()
+  if (!variable) return ''
+
+  const comparatorKey = rule?.comparator && COMPARATOR_LABEL[rule.comparator]
+  const comparator = comparatorKey || COMPARATOR_LABEL.gte
+  const count = Number.isFinite(Number(rule?.count)) ? Number(rule.count) : 1
+
+  let condition = ''
+  if (rule?.status === 'flag_on') {
+    const flagName = String(rule?.flag || '').trim()
+    if (!flagName) return ''
+    condition = `변수 ${flagName}가 활성화되면`
+  } else {
+    const subject = rule?.subject
+    const subjectText =
+      subject === 'same'
+        ? '같은 편 역할'
+        : subject === 'other'
+        ? '상대편 역할'
+        : rule?.role
+        ? `${rule.role} 역할`
+        : '지정한 역할'
+    const statusKey = rule?.status && STATUS_LABEL[rule.status]
+    const status = statusKey || STATUS_LABEL.alive
+    condition = `${subjectText} 중 ${status} 상태인 인원이 ${count}명${comparator}`
+  }
+
+  const outcomeKey = rule?.outcome && OUTCOME_LABEL[rule.outcome]
+  const outcome = outcomeKey || OUTCOME_LABEL.win
+  return `${condition}이면 마지막 줄을 "${outcome}"로 선언하라.`
+}
+
+function convertScopeRules(rawRules) {
+  const normalized = sanitizeVariableRules(rawRules)
+  const manual = []
+  const active = []
+
+  for (const rule of normalized.manual || []) {
+    const name = String(rule?.variable || '').trim()
+    const condition = String(rule?.condition || '').trim()
+    if (!name) continue
+    manual.push({ name, instruction: condition })
+  }
+
+  for (const rule of normalized.auto || []) {
+    const name = String(rule?.variable || '').trim()
+    if (!name) continue
+    const instruction = buildAutoInstruction(rule)
+    if (instruction) {
+      manual.push({ name, instruction })
+    }
+  }
+
+  for (const rule of normalized.active || []) {
+    const directive = String(rule?.directive || '').trim()
+    const condition = String(rule?.condition || '').trim()
+    if (!directive) continue
+    active.push({ directive, condition })
+  }
+
+  return { manual, active }
+}
+
+function createNodeFromSlot(slot) {
+  const globalRules = convertScopeRules(slot?.var_rules_global)
+  const localRules = convertScopeRules(slot?.var_rules_local)
+
+  return {
+    id: String(slot.id),
+    slot_no: slot.slot_no ?? null,
+    template: slot.template || '',
+    slot_type: slot.slot_type || 'ai',
+    is_start: !!slot.is_start,
+    invisible: !!slot.invisible,
+    options: {
+      invisible: !!slot.invisible,
+      visible_slots: Array.isArray(slot.visible_slots) ? slot.visible_slots : [],
+      manual_vars_global: globalRules.manual,
+      manual_vars_local: localRules.manual,
+      active_vars_global: globalRules.active,
+      active_vars_local: localRules.active,
+    },
+  }
+}
+
+function pickNextEdge(edges, ctx) {
+  if (!edges || edges.length === 0) return null
+  const sorted = [...edges].sort(
+    (a, b) => (b.data?.priority ?? 0) - (a.data?.priority ?? 0),
+  )
+
+  let fallback = null
+  for (const edge of sorted) {
+    if (edge?.data?.fallback) {
+      if (!fallback || (edge.data?.priority ?? 0) > (fallback.data?.priority ?? 0)) {
+        fallback = edge
+      }
+      continue
+    }
+
+    if (evaluateBridge(edge.data, ctx)) {
+      return edge
+    }
+  }
+
+  if (fallback) {
+    return fallback
+  }
+
+  return null
+}
+
+function copyText(text, onSuccess) {
+  if (!text || typeof navigator === 'undefined' || !navigator.clipboard) return
+  navigator.clipboard.writeText(text).then(() => {
+    onSuccess?.()
+  }).catch(() => {})
+}
+
+function resolveRecipients(node, slotNumbers) {
+  const pool = Array.isArray(slotNumbers) && slotNumbers.length
+    ? slotNumbers.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+    : Array.from({ length: 12 }, (_, index) => index + 1)
+  const options = node?.options || {}
+  const invisible = !!options.invisible
+  const list = Array.isArray(options.visible_slots)
+    ? options.visible_slots.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+    : []
+  if (!invisible) {
+    return pool
+  }
+  if (list.length === 0) {
+    return []
+  }
+  return pool.filter((slot) => list.includes(slot))
+}
+
+const USER_ACTION_LIVE_STATUSES = new Set(['alive', 'won', 'draw'])
+
+function isActionableStatus(status) {
+  const key = typeof status === 'string' ? status.toLowerCase() : ''
+  if (!key) return true
+  return USER_ACTION_LIVE_STATUSES.has(key)
+}
+
+function followProxySlot(slots = {}, slotNo) {
+  const visited = new Set()
+  let current = Number(slotNo)
+  if (!Number.isFinite(current)) {
+    return { slot: null, meta: null }
+  }
+  let meta = slots?.[current] || null
+  while (meta && meta.proxy_slot != null) {
+    const next = Number(meta.proxy_slot)
+    if (!Number.isFinite(next) || visited.has(next) || next === current) {
+      break
+    }
+    visited.add(current)
+    current = next
+    meta = slots?.[current] || null
+  }
+  return { slot: current, meta: meta || null }
+}
+
+function buildUserActionTargets({ recipients = [], slots = {}, roster = [] } = {}) {
+  const rosterBySlot = new Map()
+  roster.forEach((entry) => {
+    if (entry?.slotNo == null) return
+    const num = Number(entry.slotNo)
+    if (!Number.isFinite(num)) return
+    rosterBySlot.set(num, entry)
+  })
+
+  const targets = []
+  recipients.forEach((value) => {
+    const original = Number(value)
+    if (!Number.isFinite(original)) return
+    const { slot: resolvedSlot, meta } = followProxySlot(slots, original)
+    if (!meta) return
+    const rosterEntry = rosterBySlot.get(resolvedSlot)
+    const status = rosterEntry?.status || meta.status
+    if (!isActionableStatus(status)) return
+    targets.push({ slot: original, resolvedSlot, meta })
+  })
+
+  return targets
+}
+
+function formatHeroSummary(meta = {}, originalSlot, resolvedSlot) {
+  const asText = (value, fallback) => {
+    const text = value == null ? '' : String(value).trim()
+    return text ? text : fallback
+  }
+
+  const slotLabel =
+    resolvedSlot && resolvedSlot !== originalSlot
+      ? `슬롯 ${originalSlot} (대리 슬롯 ${resolvedSlot})`
+      : `슬롯 ${originalSlot}`
+
+  const lines = [slotLabel]
+  lines.push(`이름: ${asText(meta.name, '(이름 없음)')}`)
+  lines.push(`설명: ${asText(meta.description, '(설명 없음)')}`)
+  for (let index = 1; index <= 4; index += 1) {
+    lines.push(`능력${index}: ${asText(meta[`ability${index}`], '(없음)')}`)
+  }
+  return lines.join('\n')
+}
+
+function augmentUserActionPrompt(promptText, targets = []) {
+  const base = promptText == null ? '' : String(promptText)
+  const summaries = targets.map((target) =>
+    formatHeroSummary(target.meta, target.slot, target.resolvedSlot),
+  )
+
+  const sections = []
+  if (summaries.length) {
+    sections.push(`[행동 대상]\n${summaries.join('\n\n')}`)
+  }
+  sections.push(
+    [
+      '[응답 지시]',
+      '- 응답의 마지막 줄에는 승패 또는 결론만 적어라.',
+      '- 응답의 마지막에서 두 번째 줄에는 만족한 변수명을 공백으로 구분해 적어라. 없으면 빈 줄을 남겨라.',
+      '- 마지막에서 다섯 번째 줄까지는 공백 줄로 유지하라.',
+    ].join('\n'),
+  )
+
+  const extra = sections.join('\n\n')
+  if (!base.trim()) {
+    return extra
+  }
+  return `${base}\n\n${extra}`
+}
+
+function buildRoleRoster(participants, roles) {
+  const effectiveRoles = Array.isArray(roles) && roles.length
+    ? roles
+    : [{ name: '공격', slot_count: Math.min(participants.length, 12) }]
+
+  const used = new Set()
+  const picks = []
+  let slotCounter = 1
+
+  const byRole = new Map()
+  participants.forEach((participant) => {
+    const roleName = participant.role || '기타'
+    if (!byRole.has(roleName)) {
+      byRole.set(roleName, [])
+    }
+    byRole.get(roleName).push(participant)
+  })
+
+  for (const [, list] of byRole.entries()) {
+    list.sort((a, b) => (b.score ?? 1000) - (a.score ?? 1000))
+  }
+
+  for (const role of effectiveRoles) {
+    const roleName = role?.name || role?.label || role || '역할'
+    const need = Math.max(1, Math.min(12, Number(role?.slot_count ?? 1)))
+    const candidates = byRole.get(roleName) || []
+    const taken = []
+
+    let windowIndex = 0
+    const baseScore = candidates[0]?.score ?? 1000
+    while (taken.length < need && windowIndex < SCORE_WINDOWS.length) {
+      const window = SCORE_WINDOWS[windowIndex]
+      for (const candidate of candidates) {
+        if (taken.length >= need) break
+        if (!candidate) continue
+        const key = candidate.hero_id || candidate.id
+        if (!key || used.has(key)) continue
+        const score = Number.isFinite(Number(candidate.score)) ? Number(candidate.score) : baseScore
+        if (Math.abs(score - baseScore) <= window) {
+          used.add(key)
+          taken.push({
+            ...candidate,
+            slotRole: roleName,
+            slotNo: slotCounter,
+            status: candidate.status || 'alive',
+            initialScore: Number.isFinite(Number(candidate.score)) ? Number(candidate.score) : null,
+            updated_at: candidate.updated_at || null,
+          })
+          slotCounter += 1
+        }
+      }
+      windowIndex += 1
+    }
+
+    if (taken.length < need) {
+      for (const candidate of candidates) {
+        if (taken.length >= need) break
+        if (!candidate) continue
+        const key = candidate.hero_id || candidate.id
+        if (!key || used.has(key)) continue
+        used.add(key)
+        taken.push({
+          ...candidate,
+          slotRole: roleName,
+          slotNo: slotCounter,
+          status: candidate.status || 'alive',
+          initialScore: Number.isFinite(Number(candidate.score)) ? Number(candidate.score) : null,
+          updated_at: candidate.updated_at || null,
+        })
+        slotCounter += 1
+      }
+    }
+
+    while (taken.length < need && slotCounter <= 12) {
+      taken.push({
+        slotRole: roleName,
+        slotNo: slotCounter,
+        hero_id: null,
+        hero: null,
+        role: roleName,
+        status: 'empty',
+        score: null,
+        initialScore: null,
+        updated_at: null,
+      })
+      slotCounter += 1
+    }
+
+    picks.push(...taken)
+    if (slotCounter > 12) break
+  }
+
+  const remainingSlots = 12 - picks.length
+  if (remainingSlots > 0) {
+    const leftovers = participants.filter((participant) => {
+      const key = participant.hero_id || participant.id
+      return key && !used.has(key)
+    })
+    for (let i = 0; i < remainingSlots && i < leftovers.length; i++) {
+      const extra = leftovers[i]
+      picks.push({
+        ...extra,
+        slotRole: extra.role || '추가',
+        slotNo: slotCounter,
+        status: extra.status || 'alive',
+        initialScore: Number.isFinite(Number(extra.score)) ? Number(extra.score) : null,
+        updated_at: extra.updated_at || null,
+      })
+      slotCounter += 1
+    }
+  }
+
+  return picks.slice(0, 12)
+}
+
+function formatRecipientsLabel(recipients, slotMap) {
+  if (!recipients || recipients.length === 0) {
+    return '비공개'
+  }
+  if (recipients.length === slotMap.size) {
+    return '모든 슬롯'
+  }
+  const labels = recipients
+    .map((slot) => {
+      const meta = slotMap.get(slot)
+      if (!meta) return `슬롯 ${slot}`
+      const name = meta.name || meta.role
+      return `${slot}번 ${name || '미지정'}`
+    })
+  return labels.join(', ')
+}
+
+const DEFAULT_SCORE_RANGE = { min: 20, max: 40 }
+
+function resolveStatusFromLine(line) {
+  const text = String(line || '').toLowerCase()
+  if (!text) return null
+  if (text.includes('탈락') || text.includes('eliminat') || text.includes('실격')) return 'eliminated'
+  if (text.includes('패배') || text.includes('lose')) return 'lost'
+  if (text.includes('승리') || text.includes('win')) return 'won'
+  if (text.includes('무승부') || text.includes('draw')) return 'draw'
+  return null
+}
+
+function applyStatusToRoster(roster, targetSlots, nextStatus) {
+  if (!Array.isArray(targetSlots) || targetSlots.length === 0 || !nextStatus) {
+    return roster
+  }
+  let changed = false
+  const slotSet = new Set(targetSlots.map((value) => Number(value)))
+  const updated = roster.map((entry) => {
+    if (!slotSet.has(Number(entry?.slotNo))) return entry
+    if (entry?.status === nextStatus) return entry
+    changed = true
+    return { ...entry, status: nextStatus }
+  })
+  return changed ? updated : roster
+}
+
+function computeRedirects(roster = []) {
+  const redirects = {}
+  const aliveByRole = new Map()
+  roster.forEach((entry) => {
+    if (!entry?.hero_id) return
+    const role = entry.slotRole || entry.role || '역할'
+    if (!aliveByRole.has(role)) aliveByRole.set(role, [])
+    if (entry.status === 'alive' || entry.status === 'won' || entry.status === 'draw') {
+      aliveByRole.get(role).push(entry)
+    }
+  })
+
+  roster.forEach((entry) => {
+    if (!entry?.hero_id) return
+    if (entry.status !== 'eliminated') return
+    const role = entry.slotRole || entry.role || '역할'
+    const pool = aliveByRole.get(role) || []
+    const replacement = pool.find((candidate) => candidate.slotNo !== entry.slotNo)
+    if (replacement) {
+      redirects[entry.slotNo] = replacement.slotNo
+    }
+  })
+
+  return redirects
+}
+
+function shallowEqualRedirects(prev = {}, next = {}) {
+  const prevKeys = Object.keys(prev)
+  const nextKeys = Object.keys(next)
+  if (prevKeys.length !== nextKeys.length) return false
+  for (const key of prevKeys) {
+    if (prev[key] !== next[key]) return false
+  }
+  return true
+}
+
+function collectRoleAverages(roster = []) {
+  const roleMap = new Map()
+  let totalScore = 0
+  let totalCount = 0
+  roster.forEach((entry) => {
+    if (!entry?.hero_id) return
+    const score = Number(entry.score)
+    if (!Number.isFinite(score)) return
+    const role = entry.slotRole || entry.role || '역할'
+    if (!roleMap.has(role)) {
+      roleMap.set(role, { sum: 0, count: 0 })
+    }
+    const bucket = roleMap.get(role)
+    bucket.sum += score
+    bucket.count += 1
+    totalScore += score
+    totalCount += 1
+  })
+
+  const averages = new Map()
+  roleMap.forEach((bucket, role) => {
+    averages.set(role, bucket.count > 0 ? bucket.sum / bucket.count : 0)
+  })
+
+  return {
+    roleAverages: averages,
+    gameAverage: totalCount > 0 ? totalScore / totalCount : 0,
+  }
+}
+
+function normalizeRange(range) {
+  const min = Number.isFinite(Number(range?.min)) ? Number(range.min) : DEFAULT_SCORE_RANGE.min
+  const max = Number.isFinite(Number(range?.max)) ? Number(range.max) : DEFAULT_SCORE_RANGE.max
+  return {
+    min: Math.max(0, min),
+    max: Math.max(Math.max(0, min), max),
+  }
+}
+
+function calculateScoreDeltas(roster = [], roles = []) {
+  const { roleAverages, gameAverage } = collectRoleAverages(roster)
+  const rangeMap = new Map()
+  roles.forEach((role) => {
+    const key = role?.name || role
+    const min = Number(role?.score_delta_min)
+    const max = Number(role?.score_delta_max)
+    rangeMap.set(key, normalizeRange({ min, max }))
+  })
+
+  return roster.map((entry) => {
+    if (!entry?.hero_id) {
+      return { entry, delta: 0, scoreAfter: entry?.score ?? null }
+    }
+    const role = entry.slotRole || entry.role || '역할'
+    const baseScore = Number(entry.score)
+    const { min, max } = rangeMap.get(role) || DEFAULT_SCORE_RANGE
+    const roleAvg = roleAverages.get(role) ?? gameAverage
+    const diff = roleAvg - gameAverage
+    const weight = gameAverage > 0 ? Math.min(1, Math.abs(diff) / gameAverage) : 1
+    const magnitude = min + (max - min) * weight
+    let direction = 0
+    const status = entry.status
+    if (status === 'won') direction = 1
+    else if (status === 'lost' || status === 'eliminated') direction = -1
+    else if (status === 'draw') direction = 0
+    else direction = diff >= 0 ? 1 : -1
+    const delta = Number.isFinite(baseScore) ? Math.round(direction * magnitude) : 0
+    const scoreAfter = Number.isFinite(baseScore) ? Math.round(baseScore + delta) : baseScore
+    return {
+      entry,
+      delta,
+      scoreAfter,
+    }
+  })
+}
+
+function rosterResolved(roster = []) {
+  const combatants = roster.filter((entry) => entry?.hero_id)
+  if (combatants.length === 0) return false
+  const remaining = combatants.filter((entry) => entry.status === 'alive')
+  if (remaining.length === 0) return true
+  const aliveRoles = new Set(remaining.map((entry) => entry.slotRole || entry.role).filter(Boolean))
+  return aliveRoles.size <= 1
+}
+
+function applyRedirectedSlots(slots = {}, redirects = {}, roster = []) {
+  const clone = { ...slots }
+  Object.entries(redirects).forEach(([fromKey, toKey]) => {
+    const from = Number(fromKey)
+    const to = Number(toKey)
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return
+    const destMeta = slots[to]
+    if (!destMeta) return
+    const original = slots[from] || {}
+    clone[from] = {
+      ...destMeta,
+      role: original.role || destMeta.role,
+      status: original.status || destMeta.status,
+      proxy_slot: to,
+    }
+  })
+  return clone
+}
+
+function ChatEntry({ entry, slotMap }) {
+  const meta = entry.slot ? slotMap.get(entry.slot) : null
+  const heroName = meta?.name || meta?.role || null
+  const headerColor =
+    entry.kind === 'assistant' ? '#0f172a'
+      : entry.kind === 'user' ? '#2563eb'
+      : entry.kind === 'prompt' ? '#475569'
+      : '#64748b'
+  const headerLabel =
+    entry.kind === 'assistant' ? 'AI 응답'
+      : entry.kind === 'user' ? `유저 행동${entry.slot ? ` · 슬롯 ${entry.slot}` : ''}`
+      : entry.kind === 'prompt' ? '프롬프트'
+      : '안내'
+  return (
+    <div
+      style={{
+        border: '1px solid #e2e8f0',
+        borderRadius: 12,
+        padding: 12,
+        background: '#fff',
+        display: 'grid',
+        gap: 8,
+      }}
+    >
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <span style={{ fontWeight: 700, color: headerColor }}>{headerLabel}</span>
+        {entry.turn != null && (
+          <span style={{ fontSize: 12, color: '#64748b' }}>턴 {entry.turn}</span>
+        )}
+        {entry.nodeId != null && (
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>노드 {entry.nodeId}</span>
+        )}
+        {entry.kind === 'user' && heroName && (
+          <span style={{ fontSize: 12, color: '#475569' }}>{heroName}</span>
+        )}
+        {entry.recipients && entry.recipients.length > 0 && (
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            {entry.kind === 'user' ? '응답 슬롯' : '공개 범위'}: {formatRecipientsLabel(entry.recipients, slotMap)}
+          </span>
+        )}
+      </div>
+      <div
+        style={{
+          fontSize: 13,
+          color: '#0f172a',
+          whiteSpace: 'pre-wrap',
+          lineHeight: 1.5,
+          background: entry.kind === 'assistant' ? '#f8fafc' : '#ffffff',
+          borderRadius: 8,
+          padding: 8,
+          border: entry.kind === 'assistant' ? '1px solid #e2e8f0' : '1px dashed #e2e8f0',
+        }}
+      >
+        {entry.content || '(내용 없음)'}
+      </div>
+    </div>
+  )
+}
+
+function statusTint(status) {
+  const key = String(status || 'alive').toLowerCase()
+  if (key === 'eliminated') return { filter: 'grayscale(0.9)', overlay: 'rgba(148, 163, 184, 0.55)', border: '#cbd5f5' }
+  if (key === 'lost') return { filter: 'grayscale(1)', overlay: 'rgba(15, 23, 42, 0.72)', border: '#0f172a' }
+  if (key === 'won') return { filter: 'none', overlay: 'rgba(250, 204, 21, 0.35)', border: '#facc15' }
+  if (key === 'draw') return { filter: 'none', overlay: 'rgba(14, 165, 233, 0.25)', border: '#38bdf8' }
+  return { filter: 'none', overlay: 'rgba(15, 118, 110, 0.0)', border: '#22c55e' }
+}
+
+function SlotRibbon({ side = 'left', roster, onSelect }) {
+  const order = side === 'left' ? 0 : 1
+  const items = roster
+    .filter((_, index) => index % 2 === order)
+    .map((entry) => ({ ...entry }))
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: 12,
+        justifyItems: 'center',
+      }}
+    >
+      {items.map((entry, index) => {
+        const hero = entry?.hero || {}
+        const { filter, overlay, border } = statusTint(entry?.status)
+        return (
+          <button
+            key={entry?.slotNo ?? entry?.hero_id ?? index}
+            onClick={() => onSelect?.(entry)}
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 16,
+              border: `2px solid ${border}`,
+              padding: 0,
+              overflow: 'hidden',
+              position: 'relative',
+              background: '#0f172a',
+              cursor: entry?.hero_id ? 'pointer' : 'default',
+              opacity: entry?.hero_id ? 1 : 0.6,
+            }}
+          >
+            {hero?.image_url ? (
+              <img
+                src={hero.image_url}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover', filter }}
+              />
+            ) : (
+              <div style={{ width: '100%', height: '100%', background: '#e2e8f0', filter }} />
+            )}
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: overlay,
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+                paddingBottom: 4,
+                color: '#fff',
+                fontSize: 11,
+                textShadow: '0 1px 2px rgba(15,23,42,0.6)',
+              }}
+            >
+              {hero?.name ? hero.name.slice(0, 6) : entry?.slotNo ? `#${entry.slotNo}` : '—'}
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function HeroDetailOverlay({ participant, onClose }) {
+  if (!participant) return null
+  const hero = participant.hero || {}
+  const statusLabel =
+    participant.status === 'eliminated'
+      ? '탈락'
+      : participant.status === 'lost'
+      ? '패배'
+      : participant.status === 'won'
+      ? '승리'
+      : participant.status === 'draw'
+      ? '무승부'
+      : '진행 중'
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.65)',
+        zIndex: 3000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: 'min(420px, 92vw)',
+          maxHeight: '80vh',
+          overflowY: 'auto',
+          borderRadius: 16,
+          background: '#fff',
+          padding: 20,
+          display: 'grid',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0 }}>{hero?.name || `슬롯 ${participant?.slotNo || ''}`}</h3>
+          <button onClick={onClose} style={{ padding: '6px 10px' }}>
+            닫기
+          </button>
+        </div>
+        {hero?.image_url && (
+          <img
+            src={hero.image_url}
+            alt=""
+            style={{ width: '100%', borderRadius: 12, objectFit: 'cover' }}
+          />
+        )}
+        <div style={{ fontSize: 13, color: '#475569' }}>{hero?.description || '설명 없음'}</div>
+        <div style={{ fontSize: 12, color: '#334155', display: 'grid', gap: 4 }}>
+          <div>역할: {participant?.slotRole || participant?.role || '미지정'}</div>
+          <div>현재 상태: {statusLabel}</div>
+          <div>점수: {participant?.score ?? '—'}{participant?.lastDelta ? ` (${participant.lastDelta >= 0 ? '+' : ''}${participant.lastDelta})` : ''}</div>
+        </div>
+        <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'grid', gap: 4 }}>
+          {[hero?.ability1, hero?.ability2, hero?.ability3, hero?.ability4]
+            .filter(Boolean)
+            .map((ability, index) => (
+              <div key={index} style={{ fontSize: 12, color: '#475569' }}>
+                • {ability}
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HistoryOverlay({ open, onClose, chatLog, slotMap }) {
+  if (!open) return null
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.6)',
+        zIndex: 2000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 16,
+          width: 'min(960px, 94vw)',
+          maxHeight: '80vh',
+          overflowY: 'auto',
+          display: 'grid',
+          gap: 16,
+          padding: 20,
+          boxShadow: '0 24px 80px -36px rgba(15, 23, 42, 0.6)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>세션 히스토리</h3>
+          <button
+            onClick={onClose}
+            style={{ marginLeft: 'auto', padding: '6px 12px', borderRadius: 999, border: '1px solid #cbd5f5' }}
+          >
+            닫기
+          </button>
+        </div>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {chatLog.length === 0 && <div style={{ color: '#94a3b8' }}>아직 기록된 히스토리가 없습니다.</div>}
+          {chatLog.map((entry) => (
+            <ChatEntry key={entry.id} entry={entry} slotMap={slotMap} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function appendChat(setter, entry) {
+  const uid = `log_${Date.now()}_${Math.random().toString(16).slice(2)}`
+  setter((prev) => [...prev, { id: uid, ...entry }])
+}
 
 export default function StartClient() {
   const router = useRouter()
@@ -14,203 +825,682 @@ export default function StartClient() {
 
   const [loading, setLoading] = useState(true)
   const [game, setGame] = useState(null)
-  const [participants, setParticipants] = useState([]) // [{role, hero_id, hero:{...}, status}]
-  const [graph, setGraph] = useState({ nodes:[], edges:[] }) // 메이커 그래프(세트)
-  const history = useMemo(()=>createAiHistory(), [])
+  const [roles, setRoles] = useState([])
+  const [participants, setParticipants] = useState([])
+  const [activeRoster, setActiveRoster] = useState([])
+  const [graph, setGraph] = useState({ nodes: [], edges: [] })
+  const [slotRedirects, setSlotRedirects] = useState({})
+
+  const history = useMemo(() => createAiHistory(), [])
+  const visitedSlotIds = useRef(new Set())
+  const systemPromptRef = useRef('')
+
   const [preflight, setPreflight] = useState(true)
   const [turn, setTurn] = useState(1)
-  const visitedSlotIds = useRef(new Set())
-  const [activeGlobal, setActiveGlobal] = useState([]) // 둘째 줄 변수(전역)
-  const [activeLocal, setActiveLocal] = useState([])  // 둘째 줄 변수(로컬)
-  const [currentNodeId, setCurrentNodeId] = useState(null) // 진행 중 노드 id
+  const [currentNodeId, setCurrentNodeId] = useState(null)
+  const [currentSlotNo, setCurrentSlotNo] = useState(null)
+
+  const [activeGlobal, setActiveGlobal] = useState([])
+  const [activeLocal, setActiveLocal] = useState([])
+
   const [starting, setStarting] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [awaitingManual, setAwaitingManual] = useState(false)
+  const [awaitingUserAction, setAwaitingUserAction] = useState(false)
 
-  // 초기 로드: 게임/참여자/세트
-  useEffect(()=>{ if (!gameId) return; (async ()=>{
-    const { data: g } = await supabase.from('rank_games').select('*').eq('id', gameId).single()
-    setGame(g || null)
+  const [currentPrompt, setCurrentPrompt] = useState('')
+  const [currentResponse, setCurrentResponse] = useState('')
+  const [currentOutcome, setCurrentOutcome] = useState('')
 
-    // 참여자 + 히어로 조인(간소화)
-    const { data: ps } = await supabase
-      .from('rank_participants')
-      .select('id, role, hero_id, status, heroes:hero_id(id,name,description,image_url,ability1,ability2,ability3,ability4)')
-      .eq('game_id', gameId)
-    const norm = (ps||[]).map(r=>({ role:r.role, hero_id:r.hero_id, status:r.status||'alive', hero:{
-      id:r.heroes?.id, name:r.heroes?.name, description:r.heroes?.description, image_url:r.heroes?.image_url,
-      ability1:r.heroes?.ability1, ability2:r.heroes?.ability2, ability3:r.heroes?.ability3, ability4:r.heroes?.ability4
-    }}))
-    setParticipants(norm)
+  const [logs, setLogs] = useState([])
+  const [chatLog, setChatLog] = useState([])
+  const [historyOpen, setHistoryOpen] = useState(false)
 
-    // 이 게임이 사용할 프롬프트 세트 id (rank_games.set_id 가정)
-    if (g?.set_id) {
-      const { data: slots } = await supabase.from('prompt_slots').select('*').eq('set_id', g.set_id).order('slot_no')
-      const { data: bridges } = await supabase.from('prompt_bridges').select('*').eq('from_set', g.set_id)
-      setGraph({
-        nodes: (slots||[]).map(s=>({ id:String(s.id), is_start: !!s.is_start, template:s.template||'', options:s.options||{}, slot_type:s.slot_type||'ai' })),
-        edges: (bridges||[]).map(b=>({ id:String(b.id), from:String(b.from_slot_id), to:String(b.to_slot_id), data:{
-          trigger_words:b.trigger_words||[], conditions:b.conditions||[], priority:b.priority??0, probability:b.probability??1, fallback:!!b.fallback, action:b.action||'continue'
-        }}))
-      })
+  const [statusMessage, setStatusMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+  const [resultBanner, setResultBanner] = useState('')
+
+  const [apiKey, setApiKey] = useState('')
+  const [manualResponse, setManualResponse] = useState('')
+  const [pendingTurn, setPendingTurn] = useState(null)
+  const [pendingUserAction, setPendingUserAction] = useState(null)
+  const [userActionSlot, setUserActionSlot] = useState('')
+  const [userActionText, setUserActionText] = useState('')
+  const [gameState, setGameState] = useState('idle')
+  const [focusedParticipant, setFocusedParticipant] = useState(null)
+  const [finalizing, setFinalizing] = useState(false)
+  const finalizeGuardRef = useRef(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const saved = window.localStorage.getItem('rank.openai_key')
+    if (saved) setApiKey(saved)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (apiKey) {
+      window.localStorage.setItem('rank.openai_key', apiKey)
     } else {
-      setGraph({ nodes:[], edges:[] })
+      window.localStorage.removeItem('rank.openai_key')
     }
+  }, [apiKey])
 
-    setLoading(false)
-  })() }, [gameId])
+  useEffect(() => {
+    if (!gameId) return
+    let alive = true
+    setLoading(true)
 
-  // 현재 라운드용 슬롯/상태
-  const slots = useMemo(()=>buildSlotsFromParticipants(participants), [participants])
+    ;(async () => {
+      const { data: gameRow } = await supabase
+        .from('rank_games')
+        .select('*')
+        .eq('id', gameId)
+        .single()
+
+      if (!alive) return
+      setGame(gameRow || null)
+
+      const { data: roleRows } = await supabase
+        .from('rank_game_roles')
+        .select('id,name,slot_count,active,score_delta_min,score_delta_max')
+        .eq('game_id', gameId)
+        .order('id')
+
+      if (!alive) return
+      setRoles(
+        (roleRows || [])
+          .filter((role) => role?.active !== false)
+          .map((role) => ({
+            ...role,
+            score_delta_min: Number.isFinite(Number(role?.score_delta_min)) ? Number(role.score_delta_min) : 20,
+            score_delta_max: Number.isFinite(Number(role?.score_delta_max)) ? Number(role.score_delta_max) : 40,
+          })),
+      )
+
+      const { data: participantRows } = await supabase
+        .from('rank_participants')
+        .select(
+          'id, owner_id, role, hero_id, status, score, updated_at, heroes:hero_id(id,name,description,image_url,ability1,ability2,ability3,ability4)'
+        )
+        .eq('game_id', gameId)
+
+      if (!alive) return
+
+      const normalizedParticipants = (participantRows || []).map((row) => ({
+        id: row.id,
+        owner_id: row.owner_id,
+        role: row.role,
+        hero_id: row.hero_id,
+        score: Number.isFinite(Number(row.score)) ? Number(row.score) : 1000,
+        status: row.status || 'alive',
+        hero: row.heroes
+          ? {
+              id: row.heroes.id,
+              name: row.heroes.name,
+              description: row.heroes.description,
+              image_url: row.heroes.image_url,
+              ability1: row.heroes.ability1,
+              ability2: row.heroes.ability2,
+              ability3: row.heroes.ability3,
+              ability4: row.heroes.ability4,
+            }
+          : null,
+        updated_at: row.updated_at || null,
+      }))
+
+      setParticipants(normalizedParticipants)
+
+      const promptSetId = gameRow?.prompt_set_id || gameRow?.set_id
+
+      if (promptSetId) {
+        const [{ data: slots }, { data: bridges }] = await Promise.all([
+          supabase
+            .from('prompt_slots')
+            .select('*')
+            .eq('set_id', promptSetId)
+            .order('slot_no', { ascending: true }),
+          supabase
+            .from('prompt_bridges')
+            .select('*')
+            .eq('from_set', promptSetId),
+        ])
+
+        if (!alive) return
+
+        const nodes = (slots || []).map((slot) => createNodeFromSlot(slot))
+        const edges = (bridges || [])
+          .filter((bridge) => bridge.from_slot_id && bridge.to_slot_id)
+          .map((bridge) => ({
+            id: String(bridge.id),
+            from: String(bridge.from_slot_id),
+            to: String(bridge.to_slot_id),
+            data: {
+              trigger_words: bridge.trigger_words || [],
+              conditions: bridge.conditions || [],
+              priority: bridge.priority ?? 0,
+              probability: bridge.probability ?? 1,
+              fallback: !!bridge.fallback,
+              action: bridge.action || 'continue',
+            },
+          }))
+
+        setGraph({ nodes, edges })
+      } else {
+        setGraph({ nodes: [], edges: [] })
+      }
+
+      setLoading(false)
+    })()
+
+    return () => {
+      alive = false
+    }
+  }, [gameId])
+
+  const activeParticipants = activeRoster.length ? activeRoster : participants
+
+  const baseSlots = useMemo(
+    () => buildSlotsFromParticipants(activeParticipants),
+    [activeParticipants],
+  )
+
+  const effectiveSlots = useMemo(
+    () => applyRedirectedSlots(baseSlots, slotRedirects, activeRoster),
+    [baseSlots, slotRedirects, activeRoster],
+  )
+
+  const slotNumbers = useMemo(
+    () =>
+      Object.keys(effectiveSlots)
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value))
+        .sort((a, b) => a - b),
+    [effectiveSlots],
+  )
+
+  const slotMetaMap = useMemo(() => {
+    const map = new Map()
+    slotNumbers.forEach((slot) => {
+      map.set(slot, effectiveSlots[slot] || {})
+    })
+    return map
+  }, [effectiveSlots, slotNumbers])
+
+  const participantsStatus = useMemo(
+    () => activeParticipants.map((p) => ({ role: p.role, status: p.status || 'alive' })),
+    [activeParticipants],
+  )
+
+  useEffect(() => {
+    const next = computeRedirects(activeRoster)
+    setSlotRedirects((prev) => (shallowEqualRedirects(prev, next) ? prev : next))
+  }, [activeRoster])
+
+  const nodeMap = useMemo(() => {
+    const map = new Map()
+    graph.nodes.forEach((node) => {
+      map.set(String(node.id), node)
+    })
+    return map
+  }, [graph.nodes])
+
+  const currentNode = useMemo(() => {
+    if (!currentNodeId) return null
+    return nodeMap.get(String(currentNodeId)) || null
+  }, [currentNodeId, nodeMap])
 
   function findStartNodeId() {
-    const n = graph.nodes.find(n=>n.is_start) || graph.nodes[0]
-    return n ? n.id : null
+    const start = graph.nodes.find((node) => node.is_start) || graph.nodes[0]
+    return start ? start.id : null
   }
 
   function buildSystemPrompt() {
-    // 게임 체크리스트 필드 예: game.rules_json
-    let rules = {}
-    try { rules = JSON.parse(game?.rules_json || '{}') } catch {}
-    return buildSystemPromptFromChecklist(rules||{})
+    const rawRules = game?.rules_json ?? game?.rules ?? null
+    let parsed = {}
+    if (typeof rawRules === 'string') {
+      try {
+        parsed = JSON.parse(rawRules || '{}')
+      } catch {
+        parsed = {}
+      }
+    } else if (rawRules && typeof rawRules === 'object') {
+      parsed = rawRules
+    }
+
+    const checklist = buildSystemPromptFromChecklist(parsed || {})
+    const prefix = game?.rules_prefix ? String(game.rules_prefix) : ''
+    if (prefix) {
+      return `${prefix}\n${checklist}`
+    }
+    return checklist
   }
 
-  async function startGame() {
-    if (starting) return
-    setStarting(true)
-    try {
-      history.beginSession()
-      await history.push({ role:'system', content: buildSystemPrompt(), public:false })
-      setCurrentNodeId(findStartNodeId())
-      setPreflight(false)
-      setTurn(1)
-    } finally { setStarting(false) }
-  }
-
-  async function nextStep() {
-    if (!currentNodeId) {
-      alert('진행할 노드가 없습니다. 시작을 눌러 주세요.')
+  const startGame = useCallback(async () => {
+    if (starting || loading) return
+    if (!graph.nodes.length) {
+      setErrorMessage('프롬프트 세트에 노드가 없습니다.')
       return
     }
-    const node = graph.nodes.find(n=>n.id===currentNodeId)
-    if (!node) return
 
-    // 노드 가시성(현재는 전체에 공용으로 보여주는 시나리오이므로 필터만 참고)
-    // 특정 슬롯 가시성으로 제한하고 싶으면 shouldShowToSlot(node.options, 현슬롯번호)로 분기
-
-    // 1) 프롬프트 컴파일
-    const compiled = makeNodePrompt({
-      node, slots,
-      historyText: history.joinedText({ onlyPublic:false, last:5 }),
-      activeGlobalNames: activeGlobal, activeLocalNames: activeLocal,
-      currentSlot: null
-    })
-    const promptText = compiled.text
-
-    // 2) 모델 호출(여긴 스텁). 실제론 Edge Function/직접호출
-    const aiText = [
-      '(샘플 응답) 내용 …',
-      'VAR_A VAR_B',   // ← 둘째 줄(변수)
-      '', '', '',      // ← 공백 줄들
-      '무승부'         // ← 마지막 줄(결론)
-    ].join('\n')
-
-    // 3) 히스토리 반영
-    await history.push({ role:'system', content:`[PROMPT]\n${promptText}`, public:false })
-    await history.push({ role:'assistant', content: aiText, public:true })
-
-    // 4) 변수/결론 파싱 → 활성 변수 업데이트
-    const { lastLine, variables } = parseOutcome(aiText)
-    setActiveGlobal(prev => Array.from(new Set([...prev, ...variables]))) // 간단히 전역으로 누적
-    setActiveLocal(variables) // 로컬은 직전 기준
-
-    // 5) 다음 엣지 선택
-    const outEdges = graph.edges
-      .filter(e => e.from === String(currentNodeId))
-      .sort((a,b)=> (b.data.priority||0) - (a.data.priority||0)) // 우선순위 높은 순
-    let chosen = null
-    for (const e of outEdges) {
-      const ok = evaluateBridge(e.data, {
-        turn,
-        historyUserText: history.joinedText({ onlyPublic:true, last:5 }),
-        historyAiText:   history.joinedText({ onlyPublic:false, last:5 }),
-        visitedSlotIds: visitedSlotIds.current,
-        myRole: null, // 필요 시 세팅
-        participantsStatus: participants.map(p=>({ role:p.role, status:p.status||'alive' })),
-        activeGlobalNames: activeGlobal,
-        activeLocalNames: activeLocal
+    setStarting(true)
+    try {
+      const roster = buildRoleRoster(participants, roles).map((entry) => {
+        if (!entry?.hero_id) return entry
+        const baseScore = Number.isFinite(Number(entry.score)) ? Number(entry.score) : Number(entry.initialScore)
+        return {
+          ...entry,
+          status: 'alive',
+          score: Number.isFinite(baseScore) ? baseScore : entry.score,
+          lastDelta: 0,
+        }
       })
-      if (ok) { chosen = e; break }
+      setActiveRoster(roster)
+      setSlotRedirects({})
+      finalizeGuardRef.current = false
+
+      setResultBanner('')
+      setErrorMessage('')
+      setStatusMessage('')
+      setLogs([])
+      setChatLog([])
+      setCurrentPrompt('')
+      setCurrentResponse('')
+      setCurrentOutcome('')
+      setManualResponse('')
+      setActiveGlobal([])
+      setActiveLocal([])
+      visitedSlotIds.current = new Set()
+      setTurn(1)
+      setCurrentSlotNo(null)
+      setPendingTurn(null)
+      setPendingUserAction(null)
+      setAwaitingManual(false)
+      setAwaitingUserAction(false)
+      setUserActionSlot('')
+      setUserActionText('')
+
+      history.beginSession()
+      const systemPrompt = buildSystemPrompt()
+      systemPromptRef.current = systemPrompt
+      history.push({ role: 'system', content: systemPrompt, public: false })
+
+      const startId = findStartNodeId()
+      setCurrentNodeId(startId)
+      setPreflight(false)
+      setGameState('running')
+    } finally {
+      setStarting(false)
     }
-    // fallback 없으면 종료
-    if (!chosen) { alert('진행 가능한 경로가 없습니다. 종료합니다.'); return }
+  }, [graph.nodes, history, loading, participants, roles, starting])
 
-    // 6) 액션 처리
-    if (chosen.data.action === 'win') { alert('승리!'); return }
-    if (chosen.data.action === 'lose') { alert('패배…'); return }
-    // TODO: goto_set 등 확장
+  const finalizeSession = useCallback(
+    async (reason, rosterOverride = activeRoster) => {
+      if (finalizeGuardRef.current) return
+      const combatants = (rosterOverride || []).filter((entry) => entry?.hero_id)
+      if (combatants.length === 0) return
 
-    // 7) 다음 노드로
-    setCurrentNodeId(String(chosen.to))
-    setTurn(t => t+1)
-  }
+      finalizeGuardRef.current = true
+      setFinalizing(true)
 
-  if (loading) return <div style={{ padding:16 }}>불러오는 중…</div>
+      const deltas = calculateScoreDeltas(rosterOverride, roles)
+      const payloadRoster = deltas
+        .map(({ entry, delta, scoreAfter }) => ({ entry, delta, scoreAfter }))
+        .filter(({ entry }) => entry?.id)
+        .map(({ entry, delta, scoreAfter }) => ({
+          participantId: entry.id,
+          heroId: entry.hero_id,
+          ownerId: entry.owner_id,
+          role: entry.slotRole || entry.role || '역할',
+          status: entry.status,
+          scoreBefore: entry.score,
+          scoreAfter,
+          scoreDelta: delta,
+          updatedAt: entry.updated_at || null,
+        }))
 
-  return (
-    <div style={{ maxWidth:1200, margin:'16px auto', padding:12, display:'grid', gridTemplateRows:'auto 1fr', gap:12 }}>
-      {/* 상단: 시작/다음 */}
-      <div style={{ display:'flex', gap:8 }}>
-        <button onClick={()=>router.replace(`/rank/${gameId}`)} style={{ padding:'8px 12px' }}>← 랭킹으로</button>
-        <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-          <button onClick={startGame} disabled={!preflight || starting}
-                  style={{ padding:'8px 12px', background:'#111827', color:'#fff', borderRadius:8 }}>
-            {preflight ? (starting ? '시작 중…' : '게임 시작') : '재시작'}
-          </button>
-          <button onClick={nextStep} disabled={preflight}
-                  style={{ padding:'8px 12px', background:'#2563eb', color:'#fff', borderRadius:8 }}>
-            다음
-          </button>
-        </div>
-      </div>
+      let success = false
+      try {
+        const { data } = await supabase.auth.getSession()
+        const token = data?.session?.access_token
+        if (!token) {
+          throw new Error('로그인 세션이 만료되었습니다. 다시 로그인하세요.')
+        }
 
-      {/* 본문: 좌/중앙/우 */}
-      <div style={{ display:'grid', gridTemplateColumns: preflight ? '1fr' : '1fr minmax(360px, 640px) 1fr', gap:12 }}>
-        <div>
-          {!preflight && <SmallRoster title="왼쪽 진영" participants={participants.filter((_,i)=>i%2===0)} />}
-        </div>
-        <div>
-          {/* 중앙: 공유 채팅(게임 진행과 별개) */}
-          <SharedChatDock height={preflight ? 320 : 380} />
-          {/* 여기 위/아래로 히스토리/세션 로그 슬라이드 패널을 이후 붙이면 됨 */}
-        </div>
-        <div>
-          {!preflight && <SmallRoster title="오른쪽 진영" participants={participants.filter((_,i)=>i%2===1)} />}
-        </div>
-      </div>
-    </div>
+        const resp = await fetch('/api/rank/finalize-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            gameId,
+            roster: payloadRoster,
+            summary: {
+              reason,
+              turn,
+              resultBanner,
+              finishedAt: new Date().toISOString(),
+            },
+            chatLog: chatLog.slice(-200),
+          }),
+        })
+
+        const json = await resp.json()
+        if (!resp.ok || json?.error) {
+          throw new Error(json?.error || 'finalize_failed')
+        }
+
+        const rosterWithDeltas = rosterOverride.map((entry) => {
+          if (!entry?.hero_id) return entry
+          const match = deltas.find((d) => d.entry === entry)
+          if (!match) return entry
+          return {
+            ...entry,
+            score: match.scoreAfter,
+            lastDelta: match.delta,
+            updated_at: now,
+          }
+        })
+        setActiveRoster(rosterWithDeltas)
+        setResultBanner((prev) => prev || '전투가 종료되었습니다.')
+        setStatusMessage('결과가 저장되었습니다.')
+        success = true
+      } catch (error) {
+        finalizeGuardRef.current = false
+        setErrorMessage(`결과 저장 실패: ${String(error?.message || error).slice(0, 160)}`)
+      } finally {
+        setFinalizing(false)
+        if (!success) {
+          // allow retry
+          finalizeGuardRef.current = false
+        }
+      }
+    },
+    [activeRoster, chatLog, gameId, resultBanner, roles, turn],
   )
-}
 
-function SmallRoster({ title, participants }) {
+  const applyTurnResult = useCallback(
+    async (assistantText) => {
+      if (!pendingTurn) {
+        setStatusMessage('진행할 턴이 없습니다. 먼저 "다음 턴"을 실행하세요.')
+        return
+      }
+
+      const { nodeId, promptText, pickedSlot, recipients } = pendingTurn
+      const node = nodeMap.get(String(nodeId))
+      if (!node) {
+        setErrorMessage('현재 노드를 찾을 수 없습니다.')
+        return
+      }
+
+      const cleanedAssistant = String(assistantText || '').replace(/\r/g, '')
+
+      history.push({ role: 'assistant', content: cleanedAssistant, public: true })
+      appendChat(setChatLog, {
+        turn,
+        nodeId,
+        kind: 'assistant',
+        content: cleanedAssistant,
+        recipients: recipients && recipients.length ? recipients : slotNumbers,
+        slot: null,
+      })
+
+      const outcome = parseOutcome(cleanedAssistant)
+      const mergedGlobal = Array.from(new Set([...activeGlobal, ...outcome.variables]))
+
+      setActiveGlobal(mergedGlobal)
+      setActiveLocal(outcome.variables)
+      setCurrentResponse(cleanedAssistant)
+      setCurrentOutcome(outcome.lastLine)
+      setManualResponse('')
+      setPendingTurn(null)
+      setAwaitingManual(false)
+      setStatusMessage('')
+      setErrorMessage('')
+
+      const affectedSlots = []
+      if (pickedSlot) affectedSlots.push(Number(pickedSlot))
+      if (!pickedSlot && Array.isArray(recipients) && recipients.length) {
+        recipients.forEach((slot) => {
+          if (Number.isFinite(Number(slot))) affectedSlots.push(Number(slot))
+        })
+      }
+
+      let rosterSnapshot = activeRoster
+      const statusFromLine = resolveStatusFromLine(outcome.lastLine)
+      if (statusFromLine && affectedSlots.length) {
+        const nextRoster = applyStatusToRoster(activeRoster, affectedSlots, statusFromLine)
+        if (nextRoster !== activeRoster) {
+          rosterSnapshot = nextRoster
+          setActiveRoster(nextRoster)
+        }
+      }
+
+      if (nodeId != null) {
+        visitedSlotIds.current.add(String(nodeId))
+      }
+
+      const context = {
+        turn,
+        historyUserText: history.joinedText({ onlyPublic: false, last: 6 }),
+        historyAiText: history.joinedText({ onlyPublic: true, last: 6 }),
+        visitedSlotIds: visitedSlotIds.current,
+        myRole: null,
+        participantsStatus,
+        activeGlobalNames: mergedGlobal,
+        activeLocalNames: outcome.variables,
+      }
+
+      const outgoing = graph.edges.filter((edge) => edge.from === String(nodeId))
+      const chosenEdge = pickNextEdge(outgoing, context)
+
+      setLogs((prev) => [
+        ...prev,
+        {
+          turn,
+          nodeId,
+          prompt: promptText,
+          response: cleanedAssistant,
+          outcome: outcome.lastLine,
+          variables: outcome.variables,
+          nextNodeId: chosenEdge ? chosenEdge.to : null,
+          action: chosenEdge?.data?.action || 'continue',
+        },
+      ])
+
+      setCurrentSlotNo(pickedSlot || null)
+
+      const advanceTurn = () => setTurn((prev) => prev + 1)
+
+      if (!chosenEdge) {
+        setResultBanner('다음으로 진행할 브릿지가 없어 전투를 종료합니다.')
+        setGameState('finished')
+        setPreflight(true)
+        setCurrentNodeId(null)
+        advanceTurn()
+        if (!finalizeGuardRef.current) {
+          finalizeSession('no_bridge', rosterSnapshot)
+        }
+        return
+      }
+
+      const action = chosenEdge.data?.action || 'continue'
+      if (action === 'continue') {
+        setCurrentNodeId(String(chosenEdge.to))
+        advanceTurn()
+        if (!finalizeGuardRef.current && rosterResolved(rosterSnapshot)) {
+          finalizeSession('auto_resolution', rosterSnapshot)
+        }
+        return
+      }
+
+      if (action === 'win') {
+        setResultBanner('🎉 승리!')
+      } else if (action === 'lose') {
+        setResultBanner('패배하였습니다…')
+      } else if (action === 'goto_set') {
+        setResultBanner('다른 세트로 이동하는 브릿지는 아직 지원되지 않습니다.')
+      } else {
+        setResultBanner(`전투가 종료되었습니다. (action: ${action})`)
+      }
+
+      setGameState('finished')
+      setPreflight(true)
+      setCurrentNodeId(null)
+      advanceTurn()
+      if (!finalizeGuardRef.current) {
+        finalizeSession(action, rosterSnapshot)
+      }
+    },
+    [
+      activeGlobal,
+      activeRoster,
+      graph.edges,
+      history,
+      nodeMap,
+      participantsStatus,
+      pendingTurn,
+      finalizeSession,
+      slotNumbers,
+      turn,
+    ],
+  )
+
+  const advanceFromUserAction = useCallback(() => {
+    if (!pendingUserAction) return
+    const node = nodeMap.get(String(pendingUserAction.nodeId))
+    if (!node) {
+      setErrorMessage('현재 노드를 찾을 수 없습니다.')
+      return
+    }
+
+    const slotValue = Number(userActionSlot)
+    if (!Number.isFinite(slotValue)) {
+      setStatusMessage('응답할 슬롯을 선택하세요.')
+      return
+    }
+    if (!pendingUserAction.recipients.includes(slotValue)) {
+      setStatusMessage('선택한 슬롯은 이 턴에 응답할 수 없습니다.')
+      return
+    }
+    const trimmed = userActionText.trim()
+    if (!trimmed) {
+      setStatusMessage('유저 행동 입력을 작성하세요.')
+      return
+    }
+
+    history.push({ role: 'user', content: `[슬롯 ${slotValue}] ${trimmed}`, public: true })
+    appendChat(setChatLog, {
+      turn,
+      nodeId: pendingUserAction.nodeId,
+      kind: 'user',
+      content: trimmed,
+      recipients: [slotValue],
+      slot: slotValue,
+    })
+
+    visitedSlotIds.current.add(String(pendingUserAction.nodeId))
+    setCurrentOutcome('')
+    setCurrentResponse('')
+    setPendingUserAction(null)
+    setAwaitingUserAction(false)
+
+    // 새 상태 저장
+    saveToLocal({
+      history: newHistory,
+      currentNodeId: newNodeId,
+      visitedSlotIds: Array.from(visitedSlotIds.current),
+      variables: {
+        global: globalVarsRef.current,
+        local: localVarsRef.current,
+      },
+    })
+  }, [pendingUserAction, edges, findNode, pushToHistory, saveToLocal])
+
+  // 유저 액션 대기 시 버튼 렌더링
+  const actionButtons = useMemo(() => {
+    if (!awaitingUserAction) return null
+    if (!pendingUserAction) return null
+    const choices = pendingUserAction.actions || []
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        {choices.map((choice, index) => (
+          <button
+            key={index}
+            type="button"
+            onClick={() => handleUserAction(choice)}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              background: '#2563eb',
+              color: '#fff',
+              fontWeight: 600,
+            }}
+          >
+            {choice.label || `선택 ${index + 1}`}
+          </button>
+        ))}
+      </div>
+    )
+  }, [awaitingUserAction, pendingUserAction, handleUserAction])
+
   return (
-    <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fff' }}>
-      <div style={{ fontWeight:700, marginBottom:8 }}>{title}</div>
-      <div style={{ display:'grid', gap:8 }}>
-        {participants.map((p,idx)=>(
-          <div key={idx} style={{ display:'grid', gridTemplateColumns:'56px 1fr', gap:8, alignItems:'start' }}>
-            {p.hero?.image_url
-              ? <img src={p.hero.image_url} alt="" style={{ width:56, height:56, borderRadius:8, objectFit:'cover' }}/>
-              : <div style={{ width:56, height:56, borderRadius:8, background:'#e5e7eb' }}/>}
-            <div>
-              <div style={{ fontWeight:700 }}>{p.hero?.name || '이름없음'}</div>
-              <div style={{ fontSize:12, color:'#64748b' }}>{p.role || ''} · {p.status||'alive'}</div>
-              <ul style={{ margin:'6px 0 0', paddingLeft:16, fontSize:13 }}>
-                {['ability1','ability2','ability3','ability4'].map(k=>p.hero?.[k]).filter(Boolean).map((t,i)=><li key={i}>{t}</li>)}
-              </ul>
-            </div>
+    <div style={{ padding: 16, display: 'grid', gap: 12 }}>
+      {/* 히스토리 */}
+      <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>
+        {history.map((h, i) => (
+          <div key={i}>
+            <b>{h.role === 'user' ? '👤' : '🤖'}</b> {h.text}
           </div>
         ))}
-        {participants.length===0 && <div style={{ color:'#94a3b8' }}>참여자 없음</div>}
       </div>
+
+      {/* 현재 응답 */}
+      {currentResponse && (
+        <div style={{ background: '#f1f5f9', padding: 12, borderRadius: 8 }}>
+          <b>🤖</b> {currentResponse}
+        </div>
+      )}
+
+      {/* 유저 액션 */}
+      {actionButtons}
+
+      {/* 직접 입력 */}
+      {!awaitingUserAction && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            const form = event.target
+            const input = form.elements.prompt
+            const value = input.value.trim()
+            if (!value) return
+            input.value = ''
+            handlePrompt(value)
+          }}
+          style={{ display: 'flex', gap: 8, marginTop: 12 }}
+        >
+          <input
+            type="text"
+            name="prompt"
+            placeholder="메시지를 입력하세요..."
+            style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 12px' }}
+          />
+          <button
+            type="submit"
+            style={{
+              padding: '8px 16px',
+              borderRadius: 8,
+              background: '#111827',
+              color: '#fff',
+              fontWeight: 600,
+            }}
+          >
+            보내기
+          </button>
+        </form>
+      )}
     </div>
   )
 }
+
