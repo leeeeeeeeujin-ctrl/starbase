@@ -1,6 +1,7 @@
 // pages/create.js
 import React, { useRef, useState } from 'react'
 import { useRouter } from 'next/router'
+
 import { supabase } from '../lib/supabase'
 
 export default function Create() {
@@ -27,7 +28,7 @@ export default function Create() {
     setLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { alert('로그인이 필요합니다.'); setLoading(false); return }
+      if (!user) throw new Error('로그인이 필요합니다.')
 
       let image_url = null
       if (blob) {
@@ -53,49 +54,249 @@ export default function Create() {
   }
 
   return (
-    <div style={{ padding:20, maxWidth:720, margin:'0 auto' }}>
-      {/* 상단 바: 뒤로가기 */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-        <button
-          onClick={() => router.back()}
-          style={{ padding:'8px 12px', borderRadius:8, background:'#e5e7eb', fontWeight:600 }}
-          title="로스터로 돌아가기"
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#0f172a',
+        backgroundImage: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
+        color: '#fff',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 720,
+          margin: '0 auto',
+          padding: '32px 16px 140px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 24,
+        }}
+      >
+        <header
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
         >
-          ← 로스터로
-        </button>
-        <div style={{ fontSize:18, fontWeight:700 }}>캐릭터 생성</div>
-        <div style={{ width:96 }} /> {/* 자리 맞춤 */}
-      </div>
+          <button
+            onClick={() => router.back()}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 999,
+              border: '1px solid rgba(255,255,255,0.2)',
+              background: 'rgba(15, 23, 42, 0.4)',
+              color: '#e2e8f0',
+              fontWeight: 600,
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            ← 로스터로
+          </button>
+          <h1 style={{ margin: 0, fontSize: 24 }}>새 캐릭터 만들기</h1>
+          <div style={{ width: 90 }} />
+        </header>
 
-      <div style={{ marginBottom:8 }}>
-        {preview ? <img src={preview} alt="" style={{ width:240, height:240, objectFit:'cover', borderRadius:12, border:'1px solid #e5e7eb' }} />
-                 : <div style={{ width:240, height:240, background:'#eee', borderRadius:12 }} />}
-      </div>
-      <input type="file" accept="image/*" ref={fileRef}
-             onChange={(e)=>{ const f=e.target.files?.[0]; if(f) handleFile(f) }}
-             style={{ display:'block', marginBottom:8 }} />
+        <section
+          style={{
+            background: 'rgba(15, 23, 42, 0.75)',
+            border: '1px solid rgba(148, 163, 184, 0.25)',
+            borderRadius: 24,
+            padding: '24px 20px 32px',
+            boxShadow: '0 24px 60px -36px rgba(15, 23, 42, 0.9)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 20,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+            <div
+              style={{
+                width: 260,
+                height: 260,
+                borderRadius: 32,
+                overflow: 'hidden',
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+                background: 'rgba(15, 23, 42, 0.55)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {preview ? (
+                <img
+                  src={preview}
+                  alt="미리보기"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <span style={{ color: '#94a3b8', fontSize: 13 }}>이미지를 선택하세요</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: 999,
+                  background: '#38bdf8',
+                  color: '#0f172a',
+                  fontWeight: 700,
+                }}
+              >
+                이미지 업로드
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) handleFile(file)
+                }}
+                style={{ display: 'none' }}
+              />
+              <span style={{ fontSize: 12, color: '#cbd5f5' }}>
+                정사각형 이미지가 가장 잘 어울려요.
+              </span>
+            </div>
+          </div>
 
-      <input placeholder="이름" value={name} onChange={e=>setName(e.target.value)}
-             style={{ display:'block', width:'100%', padding:10, marginBottom:8 }} />
-      <textarea placeholder="설명" value={desc} onChange={e=>setDesc(e.target.value)}
-                style={{ display:'block', width:'100%', padding:10, height:120, marginBottom:8 }} />
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-        <input placeholder="능력1" value={ability1} onChange={e=>setAbility1(e.target.value)} style={{ padding:10 }} />
-        <input placeholder="능력2" value={ability2} onChange={e=>setAbility2(e.target.value)} style={{ padding:10 }} />
-        <input placeholder="능력3" value={ability3} onChange={e=>setAbility3(e.target.value)} style={{ padding:10 }} />
-        <input placeholder="능력4" value={ability4} onChange={e=>setAbility4(e.target.value)} style={{ padding:10 }} />
-      </div>
+          <div style={{ display: 'grid', gap: 16 }}>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>이름</span>
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="캐릭터 이름을 입력하세요"
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 16,
+                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                  background: 'rgba(15, 23, 42, 0.55)',
+                  color: '#f8fafc',
+                }}
+              />
+            </label>
 
-      <div style={{ display:'flex', gap:8, marginTop:12 }}>
-        <button onClick={save} disabled={loading}
-                style={{ padding:'10px 16px', background:'#2563eb', color:'#fff', borderRadius:8, fontWeight:700 }}>
-          {loading ? '저장 중…' : '저장'}
-        </button>
-        <button onClick={() => router.back()}
-                style={{ padding:'10px 16px', background:'#e5e7eb', borderRadius:8, fontWeight:600 }}>
-          취소
-        </button>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>설명</span>
+              <textarea
+                value={desc}
+                onChange={(event) => setDesc(event.target.value)}
+                placeholder="캐릭터의 배경이나 특징을 적어 주세요"
+                rows={4}
+                style={{
+                  padding: '14px',
+                  borderRadius: 20,
+                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                  background: 'rgba(15, 23, 42, 0.55)',
+                  color: '#e2e8f0',
+                  resize: 'vertical',
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                display: 'grid',
+                gap: 12,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              }}
+            >
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>능력 1</span>
+                <input
+                  value={ability1}
+                  onChange={(event) => setAbility1(event.target.value)}
+                  placeholder="첫 번째 능력을 입력하세요"
+                  style={abilityInputStyle}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>능력 2</span>
+                <input
+                  value={ability2}
+                  onChange={(event) => setAbility2(event.target.value)}
+                  placeholder="두 번째 능력"
+                  style={abilityInputStyle}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>능력 3</span>
+                <input
+                  value={ability3}
+                  onChange={(event) => setAbility3(event.target.value)}
+                  placeholder="세 번째 능력"
+                  style={abilityInputStyle}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>능력 4</span>
+                <input
+                  value={ability4}
+                  onChange={(event) => setAbility4(event.target.value)}
+                  placeholder="네 번째 능력"
+                  style={abilityInputStyle}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              gap: 12,
+              marginTop: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <button
+              onClick={save}
+              disabled={loading}
+              style={{
+                padding: '12px 32px',
+                borderRadius: 999,
+                border: 'none',
+                background: loading ? 'rgba(148, 163, 184, 0.35)' : '#38bdf8',
+                color: '#0f172a',
+                fontWeight: 800,
+                fontSize: 16,
+                minWidth: 180,
+                transition: 'transform 0.2s ease',
+              }}
+            >
+              {loading ? '저장 중…' : '캐릭터 생성'}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.back()}
+              style={{
+                padding: '12px 28px',
+                borderRadius: 999,
+                border: '1px solid rgba(148, 163, 184, 0.4)',
+                background: 'transparent',
+                color: '#cbd5f5',
+                fontWeight: 600,
+                minWidth: 150,
+              }}
+            >
+              취소
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   )
+}
+
+const abilityInputStyle = {
+  padding: '12px 14px',
+  borderRadius: 16,
+  border: '1px solid rgba(148, 163, 184, 0.35)',
+  background: 'rgba(15, 23, 42, 0.55)',
+  color: '#f8fafc',
 }
