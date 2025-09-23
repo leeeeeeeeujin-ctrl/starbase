@@ -264,7 +264,7 @@ export default function MakerIndex() {
           .single()
 
         if (insertError || !insertedSet) {
-          throw new Error(insertError?.message || '세트를 생성하지 못했습니다')
+          throw new Error(insertError?.message || '세트를 생성하지 못했습니다.')
         }
 
         const slotIdMap = new Map()
@@ -301,7 +301,10 @@ export default function MakerIndex() {
             }
           })
 
-          const { data: insertedSlots, error: slotError } = await supabase.from('prompt_slots').insert(slotRows).select()
+          const { data: insertedSlots, error: slotError } = await supabase
+            .from('prompt_slots')
+            .insert(slotRows)
+            .select()
 
           if (slotError) {
             throw new Error(slotError.message)
@@ -460,7 +463,6 @@ export default function MakerIndex() {
             JSON 가져오기
             <input type="file" accept="application/json" onChange={importSet} style={{ display: 'none' }} />
           </label>
-
           <button
             onClick={() => router.push('/rank')}
             style={{
@@ -474,7 +476,6 @@ export default function MakerIndex() {
           >
             랭킹 허브로 이동
           </button>
-
           <button
             onClick={() => refreshList()}
             style={{
@@ -515,7 +516,6 @@ export default function MakerIndex() {
               <h2 style={{ margin: 0, color: '#0f172a' }}>내 프롬프트 세트</h2>
               <span style={{ color: '#64748b', fontSize: 14 }}>{listHeader}</span>
             </div>
-
             {errorMessage && (
               <span style={{ color: '#ef4444', fontSize: 13, fontWeight: 600 }}>{errorMessage}</span>
             )}
