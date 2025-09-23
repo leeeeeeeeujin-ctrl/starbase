@@ -50,7 +50,6 @@ export default function MakerEditor() {
   const [quickAbility, setQuickAbility] = useState('1')
 
   useEffect(() => setMounted(true), [])
-  if (!mounted) return null
 
   // ───────────────────────────────────────────────────────────
   // 초기 로드
@@ -399,7 +398,7 @@ export default function MakerEditor() {
     return `{{slot${quickSlot}.${quickProp}}}`
   }, [quickSlot, quickProp, quickAbility])
 
-  if (loading) return <div style={{ padding: 20 }}>불러오는 중…</div>
+  if (!mounted || loading) return <div style={{ padding: 20 }}>불러오는 중…</div>
 
   return (
     <div style={{ height: '100vh', display: 'grid', gridTemplateRows: 'auto auto 1fr' }}>
@@ -434,7 +433,7 @@ export default function MakerEditor() {
       {/* 상단 바 2: 선택 노드용 퀵 빌더(토큰/플래그/히스토리) */}
       <div style={{
         position: 'sticky', top: 52, zIndex: 45, background: '#f8fafc',
-        padding: 8, borderBottom: '1px solid #e5e7eb',
+        padding: 8, borderBottom: '1px solid '#e5e7eb',
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8
       }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
