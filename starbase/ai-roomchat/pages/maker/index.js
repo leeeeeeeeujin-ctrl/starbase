@@ -166,6 +166,7 @@ export default function MakerIndex() {
     },
     [editingId, editingName, cancelRename],
   )
+
   const createSet = useCallback(async () => {
     const { data } = await supabase.auth.getUser()
     const user = data?.user
@@ -263,7 +264,7 @@ export default function MakerIndex() {
           .single()
 
         if (insertError || !insertedSet) {
-          throw new Error(insertError?.message || '세트를 생성하지 못했습니다.')
+          throw new Error(insertError?.message || '세트를 생성하지 못했습니다')
         }
 
         const slotIdMap = new Map()
@@ -300,10 +301,7 @@ export default function MakerIndex() {
             }
           })
 
-          const { data: insertedSlots, error: slotError } = await supabase
-            .from('prompt_slots')
-            .insert(slotRows)
-            .select()
+          const { data: insertedSlots, error: slotError } = await supabase.from('prompt_slots').insert(slotRows).select()
 
           if (slotError) {
             throw new Error(slotError.message)
@@ -440,10 +438,280 @@ export default function MakerIndex() {
           </button>
         </header>
 
-        {/* JSON 가져오기 / 랭킹 / 새로고침 버튼 */}
-        {/* 세트 리스트 섹션 */}
-        {/* SharedChatDock 포함 */}
-        {/* (위 패치 내용 그대로 적용) */}
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+            alignItems: 'center',
+          }}
+        >
+          <label
+            style={{
+              padding: '9px 16px',
+              borderRadius: 999,
+              border: '1px dashed #94a3b8',
+              background: '#f8fafc',
+              cursor: 'pointer',
+              color: '#0f172a',
+              fontWeight: 600,
+            }}
+          >
+            JSON 가져오기
+            <input type="file" accept="application/json" onChange={importSet} style={{ display: 'none' }} />
+          </label>
+
+          <button
+            onClick={() => router.push('/rank')}
+            style={{
+              padding: '9px 16px',
+              borderRadius: 999,
+              border: '1px solid #0f172a',
+              background: '#0f172a',
+              color: '#fff',
+              fontWeight: 600,
+            }}
+          >
+            랭킹 허브로 이동
+          </button>
+
+          <button
+            onClick={() => refreshList()}
+            style={{
+              padding: '9px 16px',
+              borderRadius: 999,
+              border: '1px solid #cbd5f5',
+              background: '#fff',
+              color: '#1e293b',
+              fontWeight: 600,
+            }}
+          >
+            새로고침
+          </button>
+        </div>
+
+        <section
+          style={{
+            borderRadius: 20,
+            border: '1px solid #cbd5f5',
+            background: '#ffffff',
+            boxShadow: '0 24px 60px -40px rgba(15, 23, 42, 0.55)',
+            padding: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0, color: '#0f172a' }}>내 프롬프트 세트</h2>
+              <span style={{ color: '#64748b', fontSize: 14 }}>{listHeader}</span>
+            </div>
+
+            {errorMessage && (
+              <span style={{ color: '#ef4444', fontSize: 13, fontWeight: 600 }}>{errorMessage}</span>
+            )}
+          </div>
+
+          <div
+            style={{
+              minHeight: 360,
+              maxHeight: '60vh',
+              overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              paddingRight: 4,
+            }}
+          >
+            {loading && (
+              <div
+                style={{
+                  padding: '48px 24px',
+                  textAlign: 'center',
+                  color: '#64748b',
+                  fontWeight: 600,
+                }}
+              >
+                불러오는 중…
+              </div>
+            )}
+
+            {!loading && rows.length === 0 && !errorMessage && (
+              <div
+                style={{
+                  padding: '48px 24px',
+                  textAlign: 'center',
+                  color: '#94a3b8',
+                  fontWeight: 600,
+                }}
+              >
+                아직 세트가 없습니다. “+ 새 세트” 버튼으로 첫 프롬프트를 만들어 보세요.
+              </div>
+            )}
+
+            {!loading &&
+              rows.map((row, index) => {
+                const timestamp = formatTimestamp(row.updated_at || row.created_at)
+
+                return (
+                  <div
+                    key={row.id}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 16,
+                      padding: '18px 20px',
+                      display: 'grid',
+                      gridTemplateColumns: 'auto 1fr auto',
+                      gap: 16,
+                      alignItems: 'center',
+                      background: '#f8fafc',
+                      boxShadow: '0 12px 40px -32px rgba(15, 23, 42, 0.65)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        background: '#2563eb',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {index + 1}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {editingId === row.id ? (
+                        <form
+                          onSubmit={submitRename}
+                          style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}
+                        >
+                          <input
+                            value={editingName}
+                            onChange={(event) => setEditingName(event.target.value)}
+                            autoFocus
+                            style={{
+                              flex: '1 1 220px',
+                              border: '1px solid #94a3b8',
+                              borderRadius: 12,
+                              padding: '8px 12px',
+                            }}
+                          />
+                          <button
+                            type="submit"
+                            disabled={savingRename}
+                            style={{
+                              padding: '8px 14px',
+                              borderRadius: 12,
+                              background: '#2563eb',
+                              color: '#fff',
+                              fontWeight: 600,
+                              opacity: savingRename ? 0.6 : 1,
+                            }}
+                          >
+                            저장
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelRename}
+                            style={{
+                              padding: '8px 14px',
+                              borderRadius: 12,
+                              border: '1px solid #cbd5f5',
+                              background: '#fff',
+                              color: '#1e293b',
+                              fontWeight: 600,
+                            }}
+                          >
+                            취소
+                          </button>
+                        </form>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <h3 style={{ margin: 0, color: '#0f172a' }}>{row.name || '이름 없는 세트'}</h3>
+                          <button
+                            onClick={() => beginRename(row)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: 999,
+                              border: '1px solid #93c5fd',
+                              background: '#dbeafe',
+                              color: '#1d4ed8',
+                              fontWeight: 600,
+                            }}
+                          >
+                            세트 이름 편집
+                          </button>
+                        </div>
+                      )}
+
+                      <span style={{ color: '#64748b', fontSize: 13 }}>최근 업데이트: {timestamp}</span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        alignItems: 'stretch',
+                      }}
+                    >
+                      <button
+                        onClick={() => router.push(`/maker/${row.id}`)}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: 12,
+                          background: '#0f172a',
+                          color: '#fff',
+                          fontWeight: 700,
+                        }}
+                      >
+                        세트 열기
+                      </button>
+                      <button
+                        onClick={() => exportSet(row.id)}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: 12,
+                          background: '#0ea5e9',
+                          color: '#fff',
+                          fontWeight: 600,
+                        }}
+                      >
+                        JSON 내보내기
+                      </button>
+                      <button
+                        onClick={() => removeSet(row.id)}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: 12,
+                          background: '#ef4444',
+                          color: '#fff',
+                          fontWeight: 600,
+                        }}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        </section>
 
         <SharedChatDock height={280} />
       </div>
