@@ -1400,107 +1400,579 @@ export default function StartClient() {
       slot: slotValue,
     })
 
-    visitedSlotIds.current.add(String(pendingUserAction.nodeId))
+       visitedSlotIds.current.add(String(pendingUserAction.nodeId))
     setCurrentOutcome('')
     setCurrentResponse('')
     setPendingUserAction(null)
     setAwaitingUserAction(false)
+    setUserActionSlot('')
+    setUserActionText('')
+    setStatusMessage('')
+    setErrorMessage('')
 
-    // 새 상태 저장
-    saveToLocal({
-      history: newHistory,
-      currentNodeId: newNodeId,
-      visitedSlotIds: Array.from(visitedSlotIds.current),
-      variables: {
-        global: globalVarsRef.current,
-        local: localVarsRef.current,
+    // 유저 액션 후 브릿지 평가 → 다음 노드로 진행/종료 판단
+    const context = {
+      turn,
+      historyUserText: history.joinedText({ onlyPublic: false, last: 6 }),
+      historyAiText: history.joinedText({ onlyPublic: true, last: 6 }),
+      visitedSlotIds: visitedSlotIds.current,
+      myRole: null,
+      participantsStatus,
+      activeGlobalNames: activeGlobal,
+      activeLocalNames: activeLocal,
+    }
+
+    const outgoing = graph.edges.filter((edge) => edge.from === String(pendingUserAction.nodeId))
+    const chosenEdge = pickNextEdge(outgoing, context)
+
+    setLogs((prev) => [
+      ...prev,
+      {
+        turn,
+        nodeId: pendingUserAction.nodeId,
+        prompt: pendingUserAction.promptText,
+        response: trimmed,
+        outcome: 'user_action',
+        variables: [],
+        nextNodeId: chosenEdge ? chosenEdge.to : null,
+        action: chosenEdge?.data?.action || 'continue',
       },
-    })
-  }, [pendingUserAction, edges, findNode, pushToHistory, saveToLocal])
+    ])
 
-  // 유저 액션 대기 시 버튼 렌더링
-  const actionButtons = useMemo(() => {
-    if (!awaitingUserAction) return null
-    if (!pendingUserAction) return null
-    const choices = pendingUserAction.actions || []
-    return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-        {choices.map((choice, index) => (
+    const advanceTurn = () => setTurn((prev) => prev + 1)
+
+    if (!chosenEdge) {
+      setResultBanner('다음으로 진행할 브릿지가 없어 전투를 종료합니다.')
+      setGameState('finished')
+      setPreflight(true)
+      setCurrentNodeId(null)
+      advanceTurn()
+      if (!finalizeGuardRef.current) {
+        finalizeSession('no_bridge', activeRoster)
+      }
+      return
+    }
+
+    const action = chosenEdge.data?.action || 'continue'
+    if (action === 'continue') {
+      setCurrentNodeId(String(chosenEdge.to))
+      advanceTurn()
+      if (!finalizeGuardRef.current && rosterResolved(activeRoster)) {
+        finalizeSession('auto_resolution', activeRoster)
+      }
+      return
+    }
+
+    if (action === 'win') {
+      setResultBanner('🎉 승리!')
+    } else if (action === 'lose') {
+      setResultBanner('패배하였습니다…')
+    } else if (action === 'goto_set') {
+      setResultBanner('다른 세트로 이동하는 브릿지는 아직 지원되지 않습니다.')
+    } else {
+      setResultBanner(`전투가 종료되었습니다. (action: ${action})`)
+    }
+
+    setGameState('finished')
+    setPreflight(true)
+    setCurrentNodeId(null)
+    advanceTurn()
+    if (!finalizeGuardRef.current) {
+      finalizeSession(action, activeRoster)
+    }
+  }, [
+    activeGlobal,
+    activeLocal,
+    activeRoster,
+    finalizeSession,
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+    graph.edges,
+    history,
+    nodeMap,
+    participantsStatus,
+    pendingUserAction,
+    turn,
+    userActionSlot,
+    userActionText,
+  ])
+
+  const handleUserActionSkip = useCallback(
+    (node, promptText, message) => {
+      if (!node) return
+
+      const reasonText = (() => {
+        if (!message) return '이 유저 행동 노드는 대상이 없어 건너뜁니다.'
+        const trimmed = String(message).trim()
+        return trimmed || '이 유저 행동 노드는 대상이 없어 건너뜁니다.'
+      })()
+
+      visitedSlotIds.current.add(String(node.id))
+      setPendingTurn(null)
+      setPendingUserAction(null)
+      setAwaitingUserAction(false)
+      setUserActionSlot('')
+      setUserActionText('')
+      setStatusMessage(reasonText)
+      setErrorMessage('')
+
+      appendChat(setChatLog, {
+        turn,
+        nodeId: node.id,
+        kind: 'info',
+        content: reasonText,
+        recipients: [],
+        slot: null,
+      })
+
+      const context = {
+        turn,
+        historyUserText: history.joinedText({ onlyPublic: false, last: 6 }),
+        historyAiText: history.joinedText({ onlyPublic: true, last: 6 }),
+        visitedSlotIds: visitedSlotIds.current,
+        myRole: null,
+        participantsStatus,
+        activeGlobalNames: activeGlobal,
+        activeLocalNames: activeLocal,
+      }
+
+      const outgoing = graph.edges.filter((edge) => edge.from === String(node.id))
+      const chosenEdge = pickNextEdge(outgoing, context)
+
+      setLogs((prev) => [
+        ...prev,
+        {
+          turn,
+          nodeId: node.id,
+          prompt: promptText,
+          response: '',
+          outcome: 'user_action_skipped',
+          variables: [],
+          nextNodeId: chosenEdge ? chosenEdge.to : null,
+          action: chosenEdge?.data?.action || 'continue',
+        },
+      ])
+
+      const advanceTurnCounter = () => setTurn((prev) => prev + 1)
+
+      if (!chosenEdge) {
+        setResultBanner('다음으로 진행할 브릿지가 없어 전투를 종료합니다.')
+        setGameState('finished')
+        setPreflight(true)
+        setCurrentNodeId(null)
+        advanceTurnCounter()
+        if (!finalizeGuardRef.current) {
+          finalizeSession('no_bridge', activeRoster)
+        }
+        return
+      }
+
+      const action = chosenEdge.data?.action || 'continue'
+      if (action === 'continue') {
+        setCurrentNodeId(String(chosenEdge.to))
+        advanceTurnCounter()
+        if (!finalizeGuardRef.current && rosterResolved(activeRoster)) {
+          finalizeSession('auto_resolution', activeRoster)
+        }
+        return
+      }
+
+      if (action === 'win') {
+        setResultBanner('🎉 승리!')
+      } else if (action === 'lose') {
+        setResultBanner('패배하였습니다…')
+      } else {
+        setResultBanner(`전투가 종료되었습니다. (action: ${action})`)
+      }
+
+      setGameState('finished')
+      setPreflight(true)
+      setCurrentNodeId(null)
+      advanceTurnCounter()
+      if (!finalizeGuardRef.current) {
+        finalizeSession(action, activeRoster)
+      }
+    },
+    [
+      activeGlobal,
+      activeLocal,
+      activeRoster,
+      finalizeSession,
+      graph.edges,
+      history,
+      participantsStatus,
+      turn,
+    ],
+  )
+
+  const nextStep = useCallback(async () => {
+    if (preflight) {
+      setStatusMessage('게임을 먼저 시작하세요.')
+      return
+    }
+    if (!currentNode) {
+      setErrorMessage('현재 노드를 찾을 수 없습니다.')
+      return
+    }
+    if (awaitingManual) {
+      setStatusMessage('수동 응답을 적용한 후에 진행하세요.')
+      return
+    }
+    if (awaitingUserAction) {
+      setStatusMessage('유저 행동 입력을 먼저 마치세요.')
+      return
+    }
+    if (aiLoading) return
+
+    setStatusMessage('')
+    setErrorMessage('')
+
+    const historyText = history.joinedText({ onlyPublic: false, last: 5 })
+    const compiled = makeNodePrompt({
+      node: currentNode,
+      slots: effectiveSlots,
+      historyText,
+      activeGlobalNames: activeGlobal,
+      activeLocalNames: activeLocal,
+      currentSlot: currentSlotNo,
+    })
+
+    let promptText = compiled.text
+    let recipients = resolveRecipients(currentNode, slotNumbers) || []
+
+    if (currentNode.slot_type === 'user_action') {
+      if (!recipients.length) {
+        handleUserActionSkip(
+          currentNode,
+          promptText,
+          '이 유저 행동 노드는 비공개로 설정되어 있어 건너뜁니다.',
+        )
+        return
+      }
+
+      const targets = buildUserActionTargets({
+        recipients,
+        slots: effectiveSlots,
+        roster: activeParticipants,
+      })
+
+      if (targets.length === 0) {
+        handleUserActionSkip(
+          currentNode,
+          promptText,
+          '이 유저 행동 노드는 모든 대상이 탈락해 건너뜁니다.',
+        )
+        return
+      }
+
+      recipients = targets.map((target) => target.slot)
+      promptText = augmentUserActionPrompt(promptText, targets)
+    }
+
+    history.push({ role: 'system', content: `[PROMPT]\n${promptText}`, public: false })
+    appendChat(setChatLog, {
+      turn,
+      nodeId: currentNode.id,
+      kind: 'prompt',
+      content: promptText,
+      recipients,
+      slot: null,
+    })
+
+    setCurrentPrompt(promptText)
+    setPendingTurn({ nodeId: currentNode.id, promptText, pickedSlot: compiled.pickedSlot || null, recipients })
+
+    if (currentNode.slot_type === 'user_action') {
+      setAwaitingUserAction(true)
+      setPendingUserAction({
+        nodeId: currentNode.id,
+        promptText,
+        recipients,
+      })
+      setUserActionSlot(String(recipients[0]))
+      setStatusMessage('플레이어 입력을 기다리는 중입니다.')
+      return
+    }
+
+    if (!apiKey) {
+      setAwaitingManual(true)
+      setStatusMessage('OpenAI API 키가 없어 수동 응답이 필요합니다.')
+      return
+    }
+
+    setAiLoading(true)
+    try {
+      const resp = await fetch('/api/rank/run-turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey,
+          prompt: promptText,
+          system: systemPromptRef.current,
+        }),
+      })
+
+      const json = await resp.json()
+      if (json?.error || !json?.text) {
+        const detail = json?.detail ? ` (${json.detail})` : ''
+        setErrorMessage(
+          json?.error === 'missing_user_api_key'
+            ? 'OpenAI API 키가 필요합니다. 수동 응답을 입력해 주세요.'
+            : `AI 호출 실패: ${json?.error || 'unknown'}${detail}`,
+        )
+        setAwaitingManual(true)
+      } else {
+        await applyTurnResult(json.text)
+      }
+    } catch (error) {
+      setErrorMessage(`AI 호출 실패: ${String(error).slice(0, 160)}`)
+      setAwaitingManual(true)
+    } finally {
+      setAiLoading(false)
+    }
+  }, [
+    activeGlobal,
+    activeLocal,
+    activeParticipants,
+    aiLoading,
+    apiKey,
+    applyTurnResult,
+    awaitingManual,
+    awaitingUserAction,
+    currentNode,
+    currentSlotNo,
+    effectiveSlots,
+    handleUserActionSkip,
+    history,
+    preflight,
+    slotNumbers,
+    turn,
+  ])
+
+  const applyManual = useCallback(() => {
+    if (!pendingTurn) {
+      setStatusMessage('먼저 "다음 턴"을 눌러 프롬프트를 준비하세요.')
+      return
+    }
+    if (!manualResponse.trim()) {
+      setStatusMessage('AI 응답을 입력한 뒤 적용하세요.')
+      return
+    }
+    applyTurnResult(manualResponse)
+  }, [applyTurnResult, manualResponse, pendingTurn])
+
+  const canAdvance =
+    !preflight &&
+    !awaitingManual &&
+    !aiLoading &&
+    !awaitingUserAction &&
+    !!currentNode &&
+    gameState === 'running'
+
+  return (
+    <div style={{ maxWidth: 1280, margin: '16px auto', padding: 12, display: 'grid', gap: 12 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        <button onClick={() => router.replace(`/rank/${gameId}`)} style={{ padding: '6px 10px' }}>
+          ← 랭킹으로
+        </button>
+        <h2 style={{ margin: 0 }}>{game?.name || '랭킹 게임'}</h2>
+        <span style={{ fontSize: 12, color: '#64748b' }}>
+          턴 {turn}{currentNode ? ` · 노드 ${currentNode.id}` : ''}
+        </span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button
-            key={index}
-            type="button"
-            onClick={() => handleUserAction(choice)}
+            onClick={() => setHistoryOpen(true)}
+            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #cbd5f5', background: '#f8fafc' }}
+            disabled={chatLog.length === 0}
+          >
+            히스토리 보기
+          </button>
+          <input
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder="OpenAI API 키 (선택)"
+            style={{
+              minWidth: 240,
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid #e5e7eb',
+            }}
+          />
+          <button
+            onClick={startGame}
+            disabled={starting || loading}
+            style={{ padding: '8px 12px', borderRadius: 8, background: '#111827', color: '#fff', fontWeight: 700 }}
+          >
+            {preflight ? (starting ? '준비 중…' : '게임 시작') : '다시 시작'}
+          </button>
+          <button
+            onClick={nextStep}
+            disabled={!canAdvance}
             style={{
               padding: '8px 12px',
               borderRadius: 8,
-              background: '#2563eb',
+              background: canAdvance ? '#2563eb' : '#94a3b8',
               color: '#fff',
-              fontWeight: 600,
+              fontWeight: 700,
             }}
           >
-            {choice.label || `선택 ${index + 1}`}
+            {aiLoading ? 'AI 호출 중…' : '다음 턴 실행'}
           </button>
-        ))}
-      </div>
-    )
-  }, [awaitingUserAction, pendingUserAction, handleUserAction])
-
-  return (
-    <div style={{ padding: 16, display: 'grid', gap: 12 }}>
-      {/* 히스토리 */}
-      <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>
-        {history.map((h, i) => (
-          <div key={i}>
-            <b>{h.role === 'user' ? '👤' : '🤖'}</b> {h.text}
-          </div>
-        ))}
+        </div>
       </div>
 
-      {/* 현재 응답 */}
-      {currentResponse && (
-        <div style={{ background: '#f1f5f9', padding: 12, borderRadius: 8 }}>
-          <b>🤖</b> {currentResponse}
+      {(statusMessage || errorMessage || resultBanner || finalizing) && (
+        <div style={{ display: 'grid', gap: 6 }}>
+          {resultBanner && (
+            <div style={{ padding: '10px 12px', borderRadius: 8, background: '#dcfce7', color: '#166534', fontWeight: 700 }}>
+              {resultBanner}
+            </div>
+          )}
+          {finalizing && (
+            <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fef3c7', color: '#92400e' }}>결과 저장 중…</div>
+          )}
+          {statusMessage && (
+            <div style={{ padding: '8px 12px', borderRadius: 8, background: '#eff6ff', color: '#1d4ed8' }}>{statusMessage}</div>
+          )}
+          {errorMessage && (
+            <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#b91c1c' }}>{errorMessage}</div>
+          )}
         </div>
       )}
 
-      {/* 유저 액션 */}
-      {actionButtons}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(96px, 120px) minmax(420px, 560px) minmax(96px, 120px)', gap: 12, alignItems: 'start' }}>
+        <SlotRibbon
+          side="left"
+          roster={activeParticipants.length ? activeParticipants : participants}
+          onSelect={setFocusedParticipant}
+        />
 
-      {/* 직접 입력 */}
-      {!awaitingUserAction && (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            const form = event.target
-            const input = form.elements.prompt
-            const value = input.value.trim()
-            if (!value) return
-            input.value = ''
-            handlePrompt(value)
-          }}
-          style={{ display: 'flex', gap: 8, marginTop: 12 }}
-        >
-          <input
-            type="text"
-            name="prompt"
-            placeholder="메시지를 입력하세요..."
-            style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 12px' }}
-          />
-          <button
-            type="submit"
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#fff', display: 'grid', gap: 8 }}>
+            <div style={{ fontWeight: 700, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <span>진행 정보</span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>상태: {gameState === 'running' ? '진행 중' : preflight ? '대기' : '종료'}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 13, color: '#334155' }}>
+              <div>전역 변수: {activeGlobal.length ? activeGlobal.join(', ') : '없음'}</div>
+              <div>로컬 변수: {activeLocal.length ? activeLocal.join(', ') : '없음'}</div>
+              {currentSlotNo != null && <div>랜덤 슬롯 선택: #{currentSlotNo}</div>}
+              {currentOutcome && <div>최근 결론: {currentOutcome}</div>}
+            </div>
+          </div>
+
+          <div
             style={{
-              padding: '8px 16px',
-              borderRadius: 8,
-              background: '#111827',
-              color: '#fff',
-              fontWeight: 600,
+              border: '1px solid #e5e7eb',
+              borderRadius: 12,
+              background: '#fff',
+              padding: 12,
+              display: 'grid',
+              gap: 12,
+              maxHeight: '55vh',
+              overflowY: 'auto',
             }}
           >
-            보내기
-          </button>
-        </form>
-      )}
+            {chatLog.length === 0 && (
+              <div style={{ color: '#94a3b8', fontSize: 13 }}>아직 대화가 시작되지 않았습니다. "게임 시작" 후 턴을 진행해 보세요.</div>
+            )}
+            {chatLog.map((entry) => (
+              <ChatEntry key={entry.id} entry={entry} slotMap={slotMetaMap} />
+            ))}
+          </div>
+
+          {awaitingUserAction && pendingUserAction && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12, display: 'grid', gap: 8 }}>
+              <span style={{ fontWeight: 700 }}>유저 행동 입력</span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <select
+                  value={userActionSlot}
+                  onChange={(event) => setUserActionSlot(event.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5f5' }}
+                >
+                  {pendingUserAction.recipients.map((slot) => (
+                    <option key={slot} value={slot}>
+                      슬롯 {slot}
+                    </option>
+                  ))}
+                </select>
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                  응답 가능 슬롯: {formatRecipientsLabel(pendingUserAction.recipients, slotMetaMap)}
+                </span>
+              </div>
+              <textarea
+                value={userActionText}
+                onChange={(event) => setUserActionText(event.target.value)}
+                rows={5}
+                placeholder="플레이어가 수행할 행동을 입력하세요."
+                style={{ width: '100%', borderRadius: 8, border: '1px solid #e5e7eb', fontFamily: 'monospace' }}
+              />
+              <button
+                onClick={advanceFromUserAction}
+                style={{ padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: '#fff', fontWeight: 700 }}
+              >
+                유저 행동 적용
+              </button>
+            </div>
+          )}
+
+          {(awaitingManual || !apiKey) && pendingTurn && !awaitingUserAction && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12, display: 'grid', gap: 8 }}>
+              <span style={{ fontWeight: 700 }}>수동 응답 입력</span>
+              <textarea
+                value={manualResponse}
+                onChange={(event) => setManualResponse(event.target.value)}
+                rows={6}
+                placeholder="AI 응답을 직접 입력하거나 붙여넣으세요."
+                style={{ width: '100%', borderRadius: 8, border: '1px solid #e5e7eb', fontFamily: 'monospace' }}
+              />
+              <button
+                onClick={applyManual}
+                style={{ padding: '8px 12px', borderRadius: 8, background: '#0ea5e9', color: '#fff', fontWeight: 700 }}
+              >
+                수동 응답 적용
+              </button>
+            </div>
+          )}
+
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>턴 로그</div>
+            <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 8 }}>
+              {logs.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>아직 진행된 턴이 없습니다.</div>}
+              {logs.map((log) => (
+                <div key={`${log.turn}-${log.nodeId}-${log.action}`} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#f8fafc' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                    턴 {log.turn} · 노드 {log.nodeId}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>
+                    결과: {log.outcome || '미확인'} · 변수: {log.variables.length ? log.variables.join(', ') : '없음'}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#475569' }}>
+                    다음: {log.action === 'continue' ? (log.nextNodeId ? `노드 ${log.nextNodeId}` : '미정') : log.action}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <SharedChatDock height={300} />
+        </div>
+
+        <SlotRibbon
+          side="right"
+          roster={activeParticipants.length ? activeParticipants : participants}
+          onSelect={setFocusedParticipant}
+        />
+      </div>
+
+      <HistoryOverlay open={historyOpen} onClose={() => setHistoryOpen(false)} chatLog={chatLog} slotMap={slotMetaMap} />
+      <HeroDetailOverlay participant={focusedParticipant} onClose={() => setFocusedParticipant(null)} />
     </div>
   )
 }
-
