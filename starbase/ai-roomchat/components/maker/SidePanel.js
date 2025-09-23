@@ -33,26 +33,26 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
   }, [selectedEdge])
 
   function rebuildLabel(data) {
+    const conds = data?.conditions || []
     const parts = []
-    if (data.trigger_words?.length) {
-      parts.push(`단어: ${data.trigger_words.join(',')}`)
-    }
-    if (data.conditions?.length) {
-      parts.push(`조건 ${data.conditions.length}개`)
-    }
-    if (data.priority) {
-      parts.push(`우선순위 ${data.priority}`)
-    }
-    if (data.probability != null && data.probability !== 1) {
-      parts.push(`확률 ${Math.round(Number(data.probability) * 100)}%`)
-    }
-    if (data.fallback) {
-      parts.push('Fallback')
-    }
+    conds.forEach(c => {
+      if (c?.type === 'turn_gte') parts.push(`턴 ≥ ${c.value}`)
+      if (c?.type === 'turn_lte') parts.push(`턴 ≤ ${c.value}`)
+      if (c?.type === 'prev_ai_contains') parts.push(`이전응답 "${c.value}"`)
+      if (c?.type === 'prev_prompt_contains') parts.push(`이전프롬프트 "${c.value}"`)
+      if (c?.type === 'prev_ai_regex') parts.push(`이전응답 /${c.pattern}/${c.flags || ''}`)
+      if (c?.type === 'visited_slot') parts.push(`경유 #${c.slot_id ?? '?'}`)
+      if (c?.type === 'var_on') parts.push(`var_on(${c.scope || 'both'}:${(c.names || []).join('|')})`)
+      if (c?.type === 'count') parts.push(`count ${c.cmp} ${c.value}`)
+      if (c?.type === 'fallback') parts.push('Fallback')
+    })
+    const p = data?.probability
+    if (p != null && p !== 1) parts.push(`확률 ${Math.round(Number(p) * 100)}%`)
     return parts.join(' | ')
   }
 
-  function saveEdge() {
+  function applyEdgeForm() {
+    if (!selectedEdge) return
     let cond = []
     try { cond = JSON.parse(edgeForm.conditions || '[]') } catch (_) { cond = [] }
 
@@ -117,11 +117,12 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
         </div>
 
         <div style={{ display: 'grid', gap: 6 }}>
-          <label style={{ fontSize: 12 }}>트리거 단어(콤마 구분)</label>
+          <label style={{ fontSize: 12 }}>트리거 단어(콤마로 구분)</label>
           <input
             type="text"
             value={edgeForm.trigger_words}
             onChange={e => setEdgeForm(f => ({ ...f, trigger_words: e.target.value }))}
+            style={{ width: '100%' }}
           />
 
           <label style={{ fontSize: 12 }}>우선순위</label>
@@ -141,36 +142,34 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
             onChange={e => setEdgeForm(f => ({ ...f, probability: e.target.value }))}
           />
 
-          <label style={{ fontSize: 12 }}>
-            <input
-              type="checkbox"
-              checked={edgeForm.fallback}
-              onChange={e => setEdgeForm(f => ({ ...f, fallback: e.target.checked }))}
-            />
-            {' '}Fallback
-          </label>
+          <label style={{ fontSize: 12 }}>Fallback</label>
+          <input
+            type="checkbox"
+            checked={edgeForm.fallback}
+            onChange={e => setEdgeForm(f => ({ ...f, fallback: e.target.checked }))}
+          />
 
           <label style={{ fontSize: 12 }}>액션</label>
           <select
             value={edgeForm.action}
             onChange={e => setEdgeForm(f => ({ ...f, action: e.target.value }))}
           >
-            <option value="continue">continue</option>
-            <option value="end">end</option>
-            <option value="custom">custom</option>
+            <option value="continue">계속</option>
+            <option value="stop">중단</option>
+            <option value="jump">점프</option>
           </select>
-        </div>
 
-        <button
-          type="button"
-          onClick={saveEdge}
-          style={{ marginTop: 12, padding: '8px 12px', borderRadius: 8, background: '#111827', color: '#fff' }}
-        >
-          저장
-        </button>
+          <button
+            type="button"
+            onClick={applyEdgeForm}
+            style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: '#fff' }}
+          >
+            적용
+          </button>
+        </div>
       </div>
     )
   }
 
-  return <div style={{ padding: 12 }}>선택된 요소 없음</div>
+  return null
 }
