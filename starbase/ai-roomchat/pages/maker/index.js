@@ -597,17 +597,17 @@ export default function MakerIndex() {
                         style={{
                           padding: '8px 16px',
                           borderRadius: 12,
-                                                 background: '#ef4444',
-                        color: '#fff',
-                        fontWeight: 600,
-                      }}
-                    >
-                      삭제
-                    </button>
+                          background: '#ef4444',
+                          color: '#fff',
+                          fontWeight: 600,
+                        }}
+                      >
+                        삭제
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
           </div>
         </section>
 
@@ -643,4 +643,3 @@ function formatTimestamp(value) {
 
   return date.toLocaleString()
 }
-
