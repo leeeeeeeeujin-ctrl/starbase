@@ -19,7 +19,8 @@ export default function TokenPalette({ onInsert }) {
         <select value={slot} onChange={(event) => setSlot(event.target.value)}>
           {Array.from({ length: 12 }, (_, index) => (
             <option key={index + 1} value={index + 1}>
-              슬롯{index + 1}
+              슬롯
+              {index + 1}
             </option>
           ))}
         </select>
@@ -32,7 +33,8 @@ export default function TokenPalette({ onInsert }) {
           <select value={ability} onChange={(event) => setAbility(event.target.value)}>
             {Array.from({ length: 12 }, (_, index) => (
               <option key={index + 1} value={index + 1}>
-                능력{index + 1}
+                능력
+                {index + 1}
               </option>
             ))}
           </select>
