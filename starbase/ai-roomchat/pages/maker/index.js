@@ -1,87 +1,127 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
 import { supabase } from '../../lib/supabase'
 
-const SharedChatDock = dynamic(() => import('../../components/common/SharedChatDock'), { ssr: false })
+const SharedChatDock = dynamic(() => import('../../components/common/SharedChatDock'), {
+  ssr: false,
+})
 
-export default function MakerList() {
+export default function MakerIndex() {
   const router = useRouter()
-  const [mounted, setMounted] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [hydrated, setHydrated] = useState(false)
   const [userId, setUserId] = useState(null)
   const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editingName, setEditingName] = useState('')
-  const [savingName, setSavingName] = useState(false)
+  const [savingRename, setSavingRename] = useState(false)
 
-  useEffect(() => { setMounted(true) }, [])
   useEffect(() => {
-    if (!mounted) return
+    setHydrated(true)
+  }, [])
 
-    let alive = true
-    ;(async () => {
-      const { data } = await supabase.auth.getUser()
-      const user = data?.user
-      if (!alive) return
+  useEffect(() => {
+    if (!hydrated) return
 
+    let active = true
+
+    async function initialize() {
+      setLoading(true)
+      setErrorMessage('')
+
+      const { data: authData } = await supabase.auth.getUser()
+      if (!active) return
+
+      const user = authData?.user
       if (!user) {
         router.replace('/')
         return
       }
 
       setUserId(user.id)
-      await refresh(user.id)
-    })()
 
-    return () => { alive = false }
-  }, [mounted, router])
-
-  if (!mounted) return null
-
-  async function refresh(uid) {
-    const targetId = uid || userId
-    if (!targetId) return
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('prompt_sets')
-      .select('*')
-      .eq('owner_id', targetId)
-      .order('updated_at', { ascending: false })
-
-    if (!error) {
-      setRows(data || [])
+      try {
+        const list = await fetchPromptSets(user.id)
+        if (!active) return
+        setRows(list)
+      } catch (err) {
+        if (!active) return
+        setErrorMessage(err instanceof Error ? err.message : '세트를 불러오지 못했습니다.')
+        setRows([])
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
     }
-    setLoading(false)
+
+    initialize()
+
+    return () => {
+      active = false
+    }
+  }, [hydrated, router])
+
+  if (!hydrated) {
+    return null
+  }
+
+  async function refreshList(owner = userId) {
+    if (!owner) return
+
+    setLoading(true)
+    setErrorMessage('')
+
+    try {
+      const list = await fetchPromptSets(owner)
+      setRows(list)
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : '세트를 불러오지 못했습니다.')
+      setRows([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function createSet() {
     const { data } = await supabase.auth.getUser()
     const user = data?.user
-    if (!user) return
+    if (!user) {
+      alert('로그인이 필요합니다.')
+      return
+    }
 
-    const { data: newRow, error } = await supabase
+    const { data: inserted, error } = await supabase
       .from('prompt_sets')
       .insert({ name: '새 세트', owner_id: user.id })
       .select()
       .single()
 
-    if (!error && newRow) {
-      router.push(`/maker/${newRow.id}`)
+    if (error || !inserted) {
+      alert(error?.message || '세트를 생성하지 못했습니다.')
+      return
     }
+
+    router.push(`/maker/${inserted.id}`)
   }
 
   async function removeSet(id) {
-    if (!confirm('세트를 삭제할까요? (프롬프트/브릿지 포함)')) return
+    if (!confirm('세트를 삭제할까요? (프롬프트/브릿지 포함)')) {
+      return
+    }
+
     const { error } = await supabase.from('prompt_sets').delete().eq('id', id)
     if (error) {
       alert(error.message)
       return
     }
-    setRows((prev) => prev.filter((r) => r.id !== id))
+
+    setRows((prev) => prev.filter((row) => row.id !== id))
   }
 
   function beginRename(row) {
@@ -92,11 +132,11 @@ export default function MakerList() {
   function cancelRename() {
     setEditingId(null)
     setEditingName('')
-    setSavingName(false)
+    setSavingRename(false)
   }
 
-  async function submitRename(e) {
-    e.preventDefault()
+  async function submitRename(event) {
+    event.preventDefault()
     if (!editingId) return
 
     const nextName = editingName.trim()
@@ -105,96 +145,125 @@ export default function MakerList() {
       return
     }
 
-    setSavingName(true)
+    setSavingRename(true)
+
     const { error } = await supabase
       .from('prompt_sets')
       .update({ name: nextName })
       .eq('id', editingId)
 
-    setSavingName(false)
+    setSavingRename(false)
 
     if (error) {
       alert(error.message)
       return
     }
 
-    setRows((prev) => prev.map((r) => (r.id === editingId ? { ...r, name: nextName } : r)))
+    setRows((prev) => prev.map((row) => (row.id === editingId ? { ...row, name: nextName } : row)))
     cancelRename()
   }
 
   async function exportSet(id) {
-    const [setRow, slots, bridges] = await Promise.all([
+    const [setResult, slotsResult, bridgesResult] = await Promise.all([
       supabase.from('prompt_sets').select('*').eq('id', id).single(),
       supabase.from('prompt_slots').select('*').eq('set_id', id).order('slot_no'),
       supabase.from('prompt_bridges').select('*').eq('from_set', id),
     ])
 
+    if (setResult.error) {
+      alert(setResult.error.message)
+      return
+    }
+
+    if (!setResult.data) {
+      alert('세트를 찾지 못했습니다.')
+      return
+    }
+
     const payload = {
-      set: setRow.data,
-      slots: slots.data || [],
-      bridges: bridges.data || [],
+      set: setResult.data,
+      slots: slotsResult.data || [],
+      bridges: bridgesResult.data || [],
     }
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `promptset-${setRow.data?.name || 'export'}.json`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    const anchor = document.createElement('a')
+    anchor.href = URL.createObjectURL(blob)
+    anchor.download = `promptset-${setResult.data.name || 'export'}.json`
+    anchor.click()
+    URL.revokeObjectURL(anchor.href)
   }
 
-  async function importSet(e) {
-    const file = e.target.files?.[0]
+  async function importSet(event) {
+    const file = event.target.files?.[0]
     if (!file) return
 
-    const text = await file.text()
-    const json = JSON.parse(text)
-    const { data } = await supabase.auth.getUser()
-    const user = data?.user
-    if (!user) return
+    try {
+      const text = await file.text()
+      const payload = JSON.parse(text)
 
-    const { data: newSet } = await supabase
-      .from('prompt_sets')
-      .insert({ name: json.set?.name || '가져온 세트', owner_id: user.id })
-      .select()
-      .single()
+      const { data } = await supabase.auth.getUser()
+      const user = data?.user
+      if (!user) {
+        alert('로그인이 필요합니다.')
+        return
+      }
 
-    if (!newSet) return
+      const { data: insertedSet, error: insertError } = await supabase
+        .from('prompt_sets')
+        .insert({ name: payload?.set?.name || '가져온 세트', owner_id: user.id })
+        .select()
+        .single()
 
-    if (json.slots?.length) {
-      await supabase.from('prompt_slots').insert(
-        json.slots.map((s) => ({
-          set_id: newSet.id,
-          slot_no: s.slot_no ?? 1,
-          slot_type: s.slot_type ?? 'ai',
-          slot_pick: s.slot_pick ?? '1',
-          template: s.template ?? '',
-          is_start: !!s.is_start,
-          invisible: !!s.invisible,
-          var_rules_global: s.var_rules_global ?? [],
-          var_rules_local: s.var_rules_local ?? [],
+      if (insertError || !insertedSet) {
+        throw new Error(insertError?.message || '세트를 생성하지 못했습니다.')
+      }
+
+      if (Array.isArray(payload?.slots) && payload.slots.length) {
+        const slotRows = payload.slots.map((slot) => ({
+          set_id: insertedSet.id,
+          slot_no: slot.slot_no ?? 1,
+          slot_type: slot.slot_type ?? 'ai',
+          slot_pick: slot.slot_pick ?? '1',
+          template: slot.template ?? '',
+          is_start: !!slot.is_start,
+          invisible: !!slot.invisible,
+          var_rules_global: slot.var_rules_global ?? [],
+          var_rules_local: slot.var_rules_local ?? [],
         }))
-      )
-    }
 
-    if (json.bridges?.length) {
-      await supabase.from('prompt_bridges').insert(
-        json.bridges.map((b) => ({
-          from_set: newSet.id,
-          from_slot_id: null,
-          to_slot_id: null,
-          trigger_words: b.trigger_words ?? [],
-          conditions: b.conditions ?? [],
-          priority: b.priority ?? 0,
-          probability: b.probability ?? 1.0,
-          fallback: b.fallback ?? false,
-          action: b.action ?? 'continue',
+        const { error: slotError } = await supabase.from('prompt_slots').insert(slotRows)
+        if (slotError) {
+          throw new Error(slotError.message)
+        }
+      }
+
+      if (Array.isArray(payload?.bridges) && payload.bridges.length) {
+        const bridgeRows = payload.bridges.map((bridge) => ({
+          from_set: insertedSet.id,
+          from_slot_id: bridge.from_slot_id ?? null,
+          to_slot_id: bridge.to_slot_id ?? null,
+          trigger_words: bridge.trigger_words ?? [],
+          conditions: bridge.conditions ?? [],
+          priority: bridge.priority ?? 0,
+          probability: bridge.probability ?? 1,
+          fallback: !!bridge.fallback,
+          action: bridge.action ?? 'continue',
         }))
-      )
-    }
 
-    e.target.value = ''
-    await refresh(userId)
+        const { error: bridgeError } = await supabase.from('prompt_bridges').insert(bridgeRows)
+        if (bridgeError) {
+          throw new Error(bridgeError.message)
+        }
+      }
+
+      await refreshList(user.id)
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : 'JSON을 불러오지 못했습니다.')
+    } finally {
+      event.target.value = ''
+    }
   }
 
   function goBack() {
@@ -204,6 +273,16 @@ export default function MakerList() {
       router.push('/rank')
     }
   }
+
+  const listHeader = useMemo(() => {
+    if (loading) {
+      return '세트를 불러오는 중입니다.'
+    }
+    if (rows.length === 0) {
+      return '아직 등록된 프롬프트 세트가 없습니다.'
+    }
+    return `총 ${rows.length}개 세트`
+  }, [loading, rows])
 
   return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
@@ -296,7 +375,7 @@ export default function MakerList() {
             랭킹 허브로 이동
           </button>
           <button
-            onClick={() => refresh()}
+            onClick={() => refreshList()}
             style={{
               padding: '9px 16px',
               borderRadius: 999,
@@ -333,14 +412,10 @@ export default function MakerList() {
           >
             <div>
               <h2 style={{ margin: 0, color: '#0f172a' }}>내 프롬프트 세트</h2>
-              <span style={{ color: '#64748b', fontSize: 14 }}>
-                카드 하나를 탭하거나 클릭해 편집기로 이동하세요.
-              </span>
+              <span style={{ color: '#64748b', fontSize: 14 }}>{listHeader}</span>
             </div>
-            {!loading && rows.length > 0 && (
-              <span style={{ color: '#1d4ed8', fontWeight: 600 }}>
-                총 {rows.length}개 세트
-              </span>
+            {errorMessage && (
+              <span style={{ color: '#ef4444', fontSize: 13, fontWeight: 600 }}>{errorMessage}</span>
             )}
           </div>
 
@@ -369,7 +444,7 @@ export default function MakerList() {
               </div>
             )}
 
-            {!loading && rows.length === 0 && (
+            {!loading && rows.length === 0 && !errorMessage && (
               <div
                 style={{
                   padding: '48px 24px',
@@ -382,147 +457,147 @@ export default function MakerList() {
               </div>
             )}
 
-            {!loading && rows.map((row, index) => {
-              const updated = row.updated_at || row.created_at
-              const timestamp = updated ? new Date(updated).toLocaleString() : '기록 없음'
+            {!loading &&
+              rows.map((row, index) => {
+                const timestamp = formatTimestamp(row.updated_at || row.created_at)
 
-              return (
-                <div
-                  key={row.id}
-                  style={{
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 16,
-                    padding: '18px 20px',
-                    display: 'grid',
-                    gridTemplateColumns: 'auto 1fr auto',
-                    gap: 16,
-                    alignItems: 'center',
-                    background: '#f8fafc',
-                    boxShadow: '0 12px 40px -32px rgba(15, 23, 42, 0.65)',
-                  }}
-                >
+                return (
                   <div
+                    key={row.id}
                     style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: '50%',
-                      background: '#2563eb',
-                      color: '#fff',
-                      display: 'flex',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 16,
+                      padding: '18px 20px',
+                      display: 'grid',
+                      gridTemplateColumns: 'auto 1fr auto',
+                      gap: 16,
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 700,
+                      background: '#f8fafc',
+                      boxShadow: '0 12px 40px -32px rgba(15, 23, 42, 0.65)',
                     }}
                   >
-                    {index + 1}
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {editingId === row.id ? (
-                      <form
-                        onSubmit={submitRename}
-                        style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}
-                      >
-                        <input
-                          value={editingName}
-                          onChange={(event) => setEditingName(event.target.value)}
-                          autoFocus
-                          style={{
-                            flex: '1 1 220px',
-                            border: '1px solid #94a3b8',
-                            borderRadius: 12,
-                            padding: '8px 12px',
-                          }}
-                        />
-                        <button
-                          type="submit"
-                          disabled={savingName}
-                          style={{
-                            padding: '8px 14px',
-                            borderRadius: 12,
-                            background: '#2563eb',
-                            color: '#fff',
-                            fontWeight: 600,
-                            opacity: savingName ? 0.6 : 1,
-                          }}
-                        >
-                          저장
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelRename}
-                          style={{
-                            padding: '8px 14px',
-                            borderRadius: 12,
-                            border: '1px solid #cbd5f5',
-                            background: '#fff',
-                            color: '#1e293b',
-                            fontWeight: 600,
-                          }}
-                        >
-                          취소
-                        </button>
-                      </form>
-                    ) : (
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <h3 style={{ margin: 0, color: '#0f172a' }}>{row.name || '이름 없는 세트'}</h3>
-                        <button
-                          onClick={() => beginRename(row)}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: 999,
-                            border: '1px solid #93c5fd',
-                            background: '#dbeafe',
-                            color: '#1d4ed8',
-                            fontWeight: 600,
-                          }}
-                        >
-                          세트 이름 편집
-                        </button>
-                      </div>
-                    )}
-
-                    <span style={{ color: '#64748b', fontSize: 13 }}>최근 업데이트: {timestamp}</span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 8,
-                      alignItems: 'stretch',
-                    }}
-                  >
-                    <button
-                      onClick={() => router.push(`/maker/${row.id}`)}
+                    <div
                       style={{
-                        padding: '8px 16px',
-                        borderRadius: 12,
-                        background: '#0f172a',
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        background: '#2563eb',
                         color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         fontWeight: 700,
                       }}
                     >
-                      세트 열기
-                    </button>
-                    <button
-                      onClick={() => exportSet(row.id)}
+                      {index + 1}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {editingId === row.id ? (
+                        <form
+                          onSubmit={submitRename}
+                          style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}
+                        >
+                          <input
+                            value={editingName}
+                            onChange={(event) => setEditingName(event.target.value)}
+                            autoFocus
+                            style={{
+                              flex: '1 1 220px',
+                              border: '1px solid #94a3b8',
+                              borderRadius: 12,
+                              padding: '8px 12px',
+                            }}
+                          />
+                          <button
+                            type="submit"
+                            disabled={savingRename}
+                            style={{
+                              padding: '8px 14px',
+                              borderRadius: 12,
+                              background: '#2563eb',
+                              color: '#fff',
+                              fontWeight: 600,
+                              opacity: savingRename ? 0.6 : 1,
+                            }}
+                          >
+                            저장
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelRename}
+                            style={{
+                              padding: '8px 14px',
+                              borderRadius: 12,
+                              border: '1px solid #cbd5f5',
+                              background: '#fff',
+                              color: '#1e293b',
+                              fontWeight: 600,
+                            }}
+                          >
+                            취소
+                          </button>
+                        </form>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <h3 style={{ margin: 0, color: '#0f172a' }}>{row.name || '이름 없는 세트'}</h3>
+                          <button
+                            onClick={() => beginRename(row)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: 999,
+                              border: '1px solid #93c5fd',
+                              background: '#dbeafe',
+                              color: '#1d4ed8',
+                              fontWeight: 600,
+                            }}
+                          >
+                            세트 이름 편집
+                          </button>
+                        </div>
+                      )}
+
+                      <span style={{ color: '#64748b', fontSize: 13 }}>최근 업데이트: {timestamp}</span>
+                    </div>
+
+                    <div
                       style={{
-                        padding: '8px 16px',
-                        borderRadius: 12,
-                        background: '#0ea5e9',
-                        color: '#fff',
-                        fontWeight: 600,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        alignItems: 'stretch',
                       }}
                     >
-                      JSON 내보내기
-                    </button>
-                    <button
-                      onClick={() => removeSet(row.id)}
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: 12,
-                        background: '#ef4444',
+                      <button
+                        onClick={() => router.push(`/maker/${row.id}`)}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: 12,
+                          background: '#0f172a',
+                          color: '#fff',
+                          fontWeight: 700,
+                        }}
+                      >
+                        세트 열기
+                      </button>
+                      <button
+                        onClick={() => exportSet(row.id)}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: 12,
+                          background: '#0ea5e9',
+                          color: '#fff',
+                          fontWeight: 600,
+                        }}
+                      >
+                        JSON 내보내기
+                      </button>
+                      <button
+                        onClick={() => removeSet(row.id)}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: 12,
+                                                 background: '#ef4444',
                         color: '#fff',
                         fontWeight: 600,
                       }}
@@ -541,3 +616,31 @@ export default function MakerList() {
     </div>
   )
 }
+
+async function fetchPromptSets(ownerId) {
+  const { data, error } = await supabase
+    .from('prompt_sets')
+    .select('*')
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data || []
+}
+
+function formatTimestamp(value) {
+  if (!value) {
+    return '기록 없음'
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return '기록 없음'
+  }
+
+  return date.toLocaleString()
+}
+
