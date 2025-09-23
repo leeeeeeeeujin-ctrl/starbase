@@ -4,8 +4,8 @@
 // - 엣지: 조건 빌더, 트리거 단어, 우선순위/확률/fallback/액션
 
 import React, { useEffect, useState } from 'react'
-import ConditionBuilder from './ConditionBuilder'
-import TokenPalette from './TokenPalette'
+import ConditionBuilder from './compononts/maker/ConditionBuilder'
+import TokenPalette from './compononts/maker/TokenPalette'
 
 /* =========================
  *  사이드 패널 본체
