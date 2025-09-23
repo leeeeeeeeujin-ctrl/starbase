@@ -32,31 +32,11 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
     })
   }, [selectedEdge])
 
-  function rebuildLabel(data) {
-    const conds = data?.conditions || []
-    const parts = []
-    conds.forEach(c => {
-      if (c?.type === 'turn_gte') parts.push(`턴 ≥ ${c.value}`)
-      if (c?.type === 'turn_lte') parts.push(`턴 ≤ ${c.value}`)
-      if (c?.type === 'prev_ai_contains') parts.push(`이전응답 "${c.value}"`)
-      if (c?.type === 'prev_prompt_contains') parts.push(`이전프롬프트 "${c.value}"`)
-      if (c?.type === 'prev_ai_regex') parts.push(`이전응답 /${c.pattern}/${c.flags || ''}`)
-      if (c?.type === 'visited_slot') parts.push(`경유 #${c.slot_id ?? '?'}`)
-      if (c?.type === 'var_on') parts.push(`var_on(${c.scope || 'both'}:${(c.names || []).join('|')})`)
-      if (c?.type === 'count') parts.push(`count ${c.cmp} ${c.value}`)
-      if (c?.type === 'fallback') parts.push('Fallback')
-    })
-    const p = data?.probability
-    if (p != null && p !== 1) parts.push(`확률 ${Math.round(Number(p) * 100)}%`)
-    return parts.join(' | ')
-  }
-
-  function applyEdgeForm() {
-    if (!selectedEdge) return
+  function saveEdge() {
     let cond = []
     try { cond = JSON.parse(edgeForm.conditions || '[]') } catch (_) { cond = [] }
 
-    const trigger_words = edgeForm.trigger_words.split(',').map(s => s.trim()).filter(Boolean)
+    const trigger_words = edgeForm.trigger_words.split(',').map(s=>s.trim()).filter(Boolean)
     const priority = parseInt(edgeForm.priority) || 0
     const probability = Math.max(0, Math.min(1, parseFloat(edgeForm.probability) || 0))
     const fallback = !!edgeForm.fallback
@@ -64,7 +44,7 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
 
     setEdges(eds => eds.map(e => {
       if (e.id !== selectedEdge.id) return e
-      const data = { ...(e.data || {}), trigger_words, conditions: cond, priority, probability, fallback, action }
+      const data = { ...(e.data||{}), trigger_words, conditions: cond, priority, probability, fallback, action }
       return { ...e, data, label: rebuildLabel(data) }
     }))
   }
@@ -82,13 +62,13 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
   if (selectedNodeId) {
     // 노드 패널
     return (
-      <div style={{ padding: 12, display: 'grid', gap: 12 }}>
-        <div style={{ fontWeight: 700 }}>프롬프트 편집</div>
-        <div style={{ color: '#64748b' }}>
-          프롬프트 텍스트는 카드에서 직접 수정합니다. 아래에서 변수/가시성/토큰을 설정하세요.
+      <div style={{ padding:12, display:'grid', gap:12 }}>
+        <div style={{ fontWeight:700 }}>프롬프트 편집</div>
+        <div style={{ color:'#64748b', fontSize:12 }}>
+          카드에서 바로 텍스트를 수정하고, 아래에서 변수·토큰을 다듬어 보세요.
         </div>
 
-        <div style={{ borderTop: '1px solid #eee', paddingTop: 10, fontSize: 12, color: '#6b7280' }}>
+        <div style={{ borderTop:'1px solid #eee', paddingTop:10, fontSize:12, color:'#6b7280' }}>
           세부 전역/로컬 변수 규칙은 화면 우측의 <b>변수</b> 버튼을 눌러 전용 패널에서 편집하세요.
         </div>
 
@@ -101,71 +81,19 @@ export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setN
   if (selectedEdge) {
     // 엣지 패널
     return (
-      <div style={{ padding: 12, display: 'grid', gap: 12 }}>
-        <h3 style={{ marginTop: 0 }}>브릿지 조건</h3>
+      <div style={{ padding:12, display:'grid', gap:12 }}>
+        <h3 style={{ marginTop:0 }}>브릿지 조건</h3>
         <ConditionBuilder selectedEdge={selectedEdge} setEdges={setEdges} pushToForm={pushToForm} />
 
         {/* 원하면 직접 JSON 편집 */}
-        <div style={{ marginTop: 6, borderTop: '1px solid #eee', paddingTop: 10 }}>
-          <label style={{ fontSize: 12 }}>조건(JSON 배열) 고급 편집</label>
+        <div style={{ marginTop:6, borderTop:'1px solid #eee', paddingTop:10 }}>
+          <label style={{ fontSize:12 }}>조건(JSON 배열) 고급 편집</label>
           <textarea
             value={edgeForm.conditions}
-            onChange={e => setEdgeForm(f => ({ ...f, conditions: e.target.value }))}
+            onChange={e=>setEdgeForm(f=>({ ...f, conditions: e.target.value }))}
             rows={5}
-            style={{ width: '100%', fontFamily: 'monospace' }}
+            style={{ width:'100%', fontFamily:'monospace' }}
           />
-        </div>
-
-        <div style={{ display: 'grid', gap: 6 }}>
-          <label style={{ fontSize: 12 }}>트리거 단어(콤마로 구분)</label>
-          <input
-            type="text"
-            value={edgeForm.trigger_words}
-            onChange={e => setEdgeForm(f => ({ ...f, trigger_words: e.target.value }))}
-            style={{ width: '100%' }}
-          />
-
-          <label style={{ fontSize: 12 }}>우선순위</label>
-          <input
-            type="number"
-            value={edgeForm.priority}
-            onChange={e => setEdgeForm(f => ({ ...f, priority: e.target.value }))}
-          />
-
-          <label style={{ fontSize: 12 }}>확률(0~1)</label>
-          <input
-            type="number"
-            step="0.05"
-            min="0"
-            max="1"
-            value={edgeForm.probability}
-            onChange={e => setEdgeForm(f => ({ ...f, probability: e.target.value }))}
-          />
-
-          <label style={{ fontSize: 12 }}>Fallback</label>
-          <input
-            type="checkbox"
-            checked={edgeForm.fallback}
-            onChange={e => setEdgeForm(f => ({ ...f, fallback: e.target.checked }))}
-          />
-
-          <label style={{ fontSize: 12 }}>액션</label>
-          <select
-            value={edgeForm.action}
-            onChange={e => setEdgeForm(f => ({ ...f, action: e.target.value }))}
-          >
-            <option value="continue">계속</option>
-            <option value="stop">중단</option>
-            <option value="jump">점프</option>
-          </select>
-
-          <button
-            type="button"
-            onClick={applyEdgeForm}
-            style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: '#fff' }}
-          >
-            적용
-          </button>
         </div>
       </div>
     )
