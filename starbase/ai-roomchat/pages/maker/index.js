@@ -12,11 +12,13 @@ const SharedChatDock = dynamic(() => import('../../components/common/SharedChatD
 
 export default function MakerIndex() {
   const router = useRouter()
+
   const [hydrated, setHydrated] = useState(false)
   const [userId, setUserId] = useState(null)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+
   const [editingId, setEditingId] = useState(null)
   const [editingName, setEditingName] = useState('')
   const [savingRename, setSavingRename] = useState(false)
@@ -51,8 +53,8 @@ export default function MakerIndex() {
         setRows(list)
       } catch (err) {
         if (!active) return
-        setErrorMessage(err instanceof Error ? err.message : '세트를 불러오지 못했습니다.')
         setRows([])
+        setErrorMessage(err instanceof Error ? err.message : '세트를 불러오지 못했습니다.')
       } finally {
         if (active) {
           setLoading(false)
@@ -67,6 +69,16 @@ export default function MakerIndex() {
     }
   }, [hydrated, router])
 
+  const listHeader = useMemo(() => {
+    if (loading) return '세트를 불러오는 중입니다.'
+    if (rows.length === 0) return '아직 등록된 프롬프트 세트가 없습니다.'
+    return `총 ${rows.length}개 세트`
+  }, [loading, rows])
+
+  if (!hydrated) {
+    return null
+  }
+
   async function refreshList(owner = userId) {
     if (!owner) return
 
@@ -77,8 +89,8 @@ export default function MakerIndex() {
       const list = await fetchPromptSets(owner)
       setRows(list)
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : '세트를 불러오지 못했습니다.')
       setRows([])
+      setErrorMessage(err instanceof Error ? err.message : '세트를 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
@@ -215,6 +227,8 @@ export default function MakerIndex() {
         throw new Error(insertError?.message || '세트를 생성하지 못했습니다.')
       }
 
+      const slotIdMap = new Map()
+
       if (Array.isArray(payload?.slots) && payload.slots.length) {
         const slotRows = payload.slots.map((slot) => ({
           set_id: insertedSet.id,
@@ -228,17 +242,44 @@ export default function MakerIndex() {
           var_rules_local: slot.var_rules_local ?? [],
         }))
 
-        const { error: slotError } = await supabase.from('prompt_slots').insert(slotRows)
+        const { data: insertedSlots, error: slotError } = await supabase
+          .from('prompt_slots')
+          .insert(slotRows)
+          .select()
+
         if (slotError) {
           throw new Error(slotError.message)
         }
+
+        insertedSlots?.forEach((insertedSlot, index) => {
+          const original = payload.slots[index]
+          if (!original) return
+          if (original.id) {
+            slotIdMap.set(original.id, insertedSlot.id)
+          }
+          if (original.slot_no != null) {
+            slotIdMap.set(`slot_no:${original.slot_no}`, insertedSlot.id)
+          }
+        })
       }
 
       if (Array.isArray(payload?.bridges) && payload.bridges.length) {
+        const remapSlotId = (oldId) => {
+          if (!oldId) return null
+          if (slotIdMap.has(oldId)) {
+            return slotIdMap.get(oldId)
+          }
+          const fallbackSlot = payload.slots?.find((slot) => slot.id === oldId)
+          if (fallbackSlot?.slot_no != null) {
+            return slotIdMap.get(`slot_no:${fallbackSlot.slot_no}`) ?? null
+          }
+          return null
+        }
+
         const bridgeRows = payload.bridges.map((bridge) => ({
           from_set: insertedSet.id,
-          from_slot_id: bridge.from_slot_id ?? null,
-          to_slot_id: bridge.to_slot_id ?? null,
+          from_slot_id: remapSlotId(bridge.from_slot_id),
+          to_slot_id: remapSlotId(bridge.to_slot_id),
           trigger_words: bridge.trigger_words ?? [],
           conditions: bridge.conditions ?? [],
           priority: bridge.priority ?? 0,
@@ -247,9 +288,11 @@ export default function MakerIndex() {
           action: bridge.action ?? 'continue',
         }))
 
-        const { error: bridgeError } = await supabase.from('prompt_bridges').insert(bridgeRows)
-        if (bridgeError) {
-          throw new Error(bridgeError.message)
+        if (bridgeRows.length) {
+          const { error: bridgeError } = await supabase.from('prompt_bridges').insert(bridgeRows)
+          if (bridgeError) {
+            throw new Error(bridgeError.message)
+          }
         }
       }
 
@@ -268,20 +311,6 @@ export default function MakerIndex() {
     } else {
       router.push('/rank')
     }
-  }
-
-  const listHeader = useMemo(() => {
-    if (loading) {
-      return '세트를 불러오는 중입니다.'
-    }
-    if (rows.length === 0) {
-      return '아직 등록된 프롬프트 세트가 없습니다.'
-    }
-    return `총 ${rows.length}개 세트`
-  }, [loading, rows])
-
-  if (!hydrated) {
-    return null
   }
 
   return (
@@ -366,7 +395,7 @@ export default function MakerIndex() {
             style={{
               padding: '9px 16px',
               borderRadius: 999,
-              border: '1px solid '#0f172a',
+              border: '1px solid #0f172a',
               background: '#0f172a',
               color: '#fff',
               fontWeight: 600,
@@ -379,7 +408,7 @@ export default function MakerIndex() {
             style={{
               padding: '9px 16px',
               borderRadius: 999,
-              border: '1px solid '#cbd5f5',
+              border: '1px solid #cbd5f5',
               background: '#fff',
               color: '#1e293b',
               fontWeight: 600,
@@ -459,7 +488,7 @@ export default function MakerIndex() {
 
             {!loading &&
               rows.map((row, index) => {
-                const timestamp = formatTimestamp(row.updated_at || row.created_at)
+                const timestamp = formatTimestamp(row.updated_at ?? row.created_at)
 
                 return (
                   <div
