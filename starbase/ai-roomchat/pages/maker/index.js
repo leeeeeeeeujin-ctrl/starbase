@@ -67,10 +67,6 @@ export default function MakerIndex() {
     }
   }, [hydrated, router])
 
-  if (!hydrated) {
-    return null
-  }
-
   async function refreshList(owner = userId) {
     if (!owner) return
 
@@ -284,6 +280,10 @@ export default function MakerIndex() {
     return `총 ${rows.length}개 세트`
   }, [loading, rows])
 
+  if (!hydrated) {
+    return null
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
       <div
@@ -366,7 +366,7 @@ export default function MakerIndex() {
             style={{
               padding: '9px 16px',
               borderRadius: 999,
-              border: '1px solid #0f172a',
+              border: '1px solid '#0f172a',
               background: '#0f172a',
               color: '#fff',
               fontWeight: 600,
@@ -379,7 +379,7 @@ export default function MakerIndex() {
             style={{
               padding: '9px 16px',
               borderRadius: 999,
-              border: '1px solid #cbd5f5',
+              border: '1px solid '#cbd5f5',
               background: '#fff',
               color: '#1e293b',
               fontWeight: 600,
