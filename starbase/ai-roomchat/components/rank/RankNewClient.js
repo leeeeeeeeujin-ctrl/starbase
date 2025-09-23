@@ -1,17 +1,4 @@
-// components/rank/RankNewClient.js
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/router'
-import { supabase } from '../../lib/supabase'
-import PromptSetPicker from '../../components/rank/PromptSetPicker'
-import SlotMatrix from '../../components/rank/SlotMatrix'
-import RolesEditor from '../../components/rank/RolesEditor'
-import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
-import { uploadGameImage } from '../../lib/rank/storage'
-
 async function registerGame(payload) {
-  // 1. 현재 로그인 세션 가져오기
-  const { data: { session } } = await supabase.auth.getSession()
-  const token = session?.access_token
   if (!token) throw new Error('로그인이 필요합니다.')
 
   // 2. Authorization 헤더에 토큰 추가
@@ -37,7 +24,10 @@ export default function RankNewClient() {
   const [setId, setSetId] = useState('')
 
   // 역할/슬롯
-  const [roles, setRoles] = useState(['공격', '수비'])
+  const [roles, setRoles] = useState([
+    { name: '공격', score_delta_min: 20, score_delta_max: 40 },
+    { name: '수비', score_delta_min: 20, score_delta_max: 40 },
+  ])
   const [slotMap, setSlotMap] = useState([])
 
   // 규칙
@@ -86,7 +76,12 @@ export default function RankNewClient() {
       description: desc || '',
       image_url,
       prompt_set_id: setId,
-      roles: roles.map(r => ({ name: r, slot_count: 1 })),
+      roles: roles.map((role) => ({
+        name: role?.name || '역할',
+        slot_count: 1,
+        score_delta_min: Number.isFinite(Number(role?.score_delta_min)) ? Number(role.score_delta_min) : 20,
+        score_delta_max: Number.isFinite(Number(role?.score_delta_max)) ? Number(role.score_delta_max) : 40,
+      })),
       rules,
       rules_prefix: buildRulesPrefix(rules),
     })
@@ -126,7 +121,7 @@ export default function RankNewClient() {
       {/* 3) 슬롯 매핑 */}
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12 }}>
         <h3 style={{ marginTop: 0 }}>슬롯 매핑</h3>
-        <SlotMatrix value={slotMap} onChange={setSlotMap} roleOptions={roles} />
+        <SlotMatrix value={slotMap} onChange={setSlotMap} roleOptions={roles.map((role) => role.name)} />
       </div>
 
       {/* 4) 규칙 체크리스트 */}
