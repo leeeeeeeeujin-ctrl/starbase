@@ -20,7 +20,6 @@ import {
   createActiveRule,
   createAutoRule,
   createManualRule,
-  ensureVariableRules,
   makeEmptyVariableRules,
   sanitizeVariableRules,
   variableRulesEqual,
@@ -37,11 +36,9 @@ function isMac() {
   return typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform)
 }
 
-function hot(event, key, { meta = true, ctrl = true } = {}) {
-  if (key !== 's') return false
-  if (meta && (isMac() ? event.metaKey : event.ctrlKey)) return true
-  if (ctrl && event.ctrlKey) return true
-  return false
+function isSaveHotkey(event) {
+  if (event.key !== 's') return false
+  return isMac() ? event.metaKey : event.ctrlKey
 }
 
 export default function MakerEditor() {
@@ -51,7 +48,6 @@ export default function MakerEditor() {
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-
   const [setInfo, setSetInfo] = useState(null)
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
@@ -65,117 +61,6 @@ export default function MakerEditor() {
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  useEffect(() => {
-    if (!setId) return
-
-    let active = true
-
-    async function load() {
-      const { data: authData } = await supabase.auth.getUser()
-      if (!active) return
-
-      const user = authData?.user
-      if (!user) {
-        router.replace('/')
-        return
-      }
-
-      const { data: setRow, error: setError } = await supabase
-        .from('prompt_sets')
-        .select('*')
-        .eq('id', setId)
-        .single()
-
-      if (!active) return
-
-      if (setError || !setRow) {
-        alert('세트를 불러오지 못했습니다.')
-        router.replace('/maker')
-        return
-      }
-
-      setSetInfo(setRow)
-
-      const [{ data: slotRows }, { data: bridgeRows }] = await Promise.all([
-        supabase
-          .from('prompt_slots')
-          .select('*')
-          .eq('set_id', setId)
-          .order('slot_no', { ascending: true }),
-        supabase
-          .from('prompt_bridges')
-          .select('*')
-          .eq('from_set', setId)
-          .order('priority', { ascending: false }),
-      ])
-
-      if (!active) return
-
-      const slotMap = new Map()
-      const initialNodes = (slotRows || []).map((slot, index) => {
-        const flowId = `n${slot.id}`
-        slotMap.set(flowId, slot.id)
-        const fallbackX = 120 + (index % 3) * 380
-        const fallbackY = 120 + Math.floor(index / 3) * 260
-        const posX = typeof slot?.canvas_x === 'number' ? slot.canvas_x : fallbackX
-        const posY = typeof slot?.canvas_y === 'number' ? slot.canvas_y : fallbackY
-
-        return {
-          id: flowId,
-          type: 'prompt',
-          position: { x: posX, y: posY },
-          data: {
-            template: slot.template || '',
-            slot_type: slot.slot_type || 'ai',
-            slot_pick: slot.slot_pick || '1',
-            isStart: !!slot.is_start,
-            invisible: !!slot.invisible,
-            var_rules_global: sanitizeVariableRules(slot.var_rules_global),
-            var_rules_local: sanitizeVariableRules(slot.var_rules_local),
-            onChange: (partial) =>
-              setNodes((existing) =>
-                existing.map((node) =>
-                  node.id === flowId ? { ...node, data: { ...node.data, ...partial } } : node,
-                ),
-              ),
-            onDelete: handleDeletePrompt,
-            onSetStart: () => markAsStart(flowId),
-          },
-        }
-      })
-
-      mapFlowToSlot.current = slotMap
-
-      const initialEdges = (bridgeRows || [])
-        .filter((bridge) => bridge.from_slot_id && bridge.to_slot_id)
-        .map((bridge) => ({
-          id: `e${bridge.id}`,
-          source: `n${bridge.from_slot_id}`,
-          target: `n${bridge.to_slot_id}`,
-          label: buildEdgeLabel(bridge),
-          data: {
-            bridgeId: bridge.id,
-            trigger_words: bridge.trigger_words || [],
-            conditions: bridge.conditions || [],
-            priority: bridge.priority ?? 0,
-            probability: bridge.probability ?? 1,
-            fallback: !!bridge.fallback,
-            action: bridge.action || 'continue',
-          },
-        }))
-
-      setNodes(initialNodes)
-      setEdges(initialEdges)
-      setLoading(false)
-    }
-
-    load()
-
-    return () => {
-      active = false
-    }
-  }, [setId, router, setNodes, setEdges])
 
   const rebuildEdgeLabel = useCallback((data) => {
     const parts = []
@@ -224,9 +109,149 @@ export default function MakerEditor() {
     return parts.join(' | ')
   }, [])
 
-  function buildEdgeLabel(bridge) {
-    return rebuildEdgeLabel(bridge)
-  }
+  const buildEdgeLabel = useCallback((bridge) => rebuildEdgeLabel(bridge), [rebuildEdgeLabel])
+
+  const markAsStart = useCallback(
+    (flowNodeId) => {
+      setNodes((existing) =>
+        existing.map((node) => ({
+          ...node,
+          data: { ...node.data, isStart: node.id === flowNodeId },
+        })),
+      )
+    },
+    [setNodes],
+  )
+
+  const handleDeletePrompt = useCallback(
+    async (flowNodeId) => {
+      setNodes((existing) => existing.filter((node) => node.id !== flowNodeId))
+      setEdges((existing) => existing.filter((edge) => edge.source !== flowNodeId && edge.target !== flowNodeId))
+      setSelectedNodeId((current) => (current === flowNodeId ? null : current))
+      setSelectedEdge((current) => (current && (current.source === flowNodeId || current.target === flowNodeId) ? null : current))
+
+      const slotId = mapFlowToSlot.current.get(flowNodeId)
+      if (!slotId) return
+
+      await supabase.from('prompt_bridges').delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
+      await supabase.from('prompt_slots').delete().eq('id', slotId)
+      mapFlowToSlot.current.delete(flowNodeId)
+    },
+    [setNodes, setEdges],
+  )
+    useEffect(() => {
+    if (!setId || !mounted) return
+
+    let active = true
+
+    async function load() {
+      setLoading(true)
+
+      const { data: authData } = await supabase.auth.getUser()
+      if (!active) return
+
+      const user = authData?.user
+      if (!user) {
+        router.replace('/')
+        return
+      }
+
+      const { data: setRow, error: setError } = await supabase
+        .from('prompt_sets')
+        .select('*')
+        .eq('id', setId)
+        .single()
+
+      if (!active) return
+
+      if (setError || !setRow) {
+        alert('세트를 불러오지 못했습니다.')
+        router.replace('/maker')
+        return
+      }
+
+      setSetInfo(setRow)
+
+      const [{ data: slotRows }, { data: bridgeRows }] = await Promise.all([
+        supabase
+          .from('prompt_slots')
+          .select('*')
+          .eq('set_id', setId)
+          .order('slot_no', { ascending: true }),
+        supabase
+          .from('prompt_bridges')
+          .select('*')
+          .eq('from_set', setId)
+          .order('priority', { ascending: false }),
+      ])
+
+      if (!active) return
+
+      const slotMap = new Map()
+      const initialNodes = (slotRows || []).map((slot, index) => {
+        const flowId = `n${slot.id}`
+        slotMap.set(flowId, slot.id)
+
+        const fallbackX = 120 + (index % 3) * 380
+        const fallbackY = 120 + Math.floor(index / 3) * 260
+        const posX = typeof slot?.canvas_x === 'number' ? slot.canvas_x : fallbackX
+        const posY = typeof slot?.canvas_y === 'number' ? slot.canvas_y : fallbackY
+
+        return {
+          id: flowId,
+          type: 'prompt',
+          position: { x: posX, y: posY },
+          data: {
+            template: slot.template || '',
+            slot_type: slot.slot_type || 'ai',
+            slot_pick: slot.slot_pick || '1',
+            isStart: !!slot.is_start,
+            invisible: !!slot.invisible,
+            var_rules_global: sanitizeVariableRules(slot.var_rules_global),
+            var_rules_local: sanitizeVariableRules(slot.var_rules_local),
+            onChange: (partial) =>
+              setNodes((current) =>
+                current.map((node) =>
+                  node.id === flowId ? { ...node, data: { ...node.data, ...partial } } : node,
+                ),
+              ),
+            onDelete: handleDeletePrompt,
+            onSetStart: () => markAsStart(flowId),
+          },
+        }
+      })
+
+      mapFlowToSlot.current = slotMap
+
+      const initialEdges = (bridgeRows || [])
+        .filter((bridge) => bridge.from_slot_id && bridge.to_slot_id)
+        .map((bridge) => ({
+          id: `e${bridge.id}`,
+          source: `n${bridge.from_slot_id}`,
+          target: `n${bridge.to_slot_id}`,
+          label: buildEdgeLabel(bridge),
+          data: {
+            bridgeId: bridge.id,
+            trigger_words: bridge.trigger_words || [],
+            conditions: bridge.conditions || [],
+            priority: bridge.priority ?? 0,
+            probability: bridge.probability ?? 1,
+            fallback: !!bridge.fallback,
+            action: bridge.action || 'continue',
+          },
+        }))
+
+      setNodes(initialNodes)
+      setEdges(initialEdges)
+      setLoading(false)
+    }
+
+    load()
+
+    return () => {
+      active = false
+    }
+  }, [setId, mounted, router, buildEdgeLabel, handleDeletePrompt, markAsStart, setNodes, setEdges])
 
   const onConnect = useCallback(
     (params) => {
@@ -282,16 +307,19 @@ export default function MakerEditor() {
     setSelectedEdge(null)
   }, [])
 
-  const onNodesDelete = useCallback(async (deleted) => {
-    for (const node of deleted) {
-      const slotId = mapFlowToSlot.current.get(node.id)
-      if (!slotId) continue
+  const onNodesDelete = useCallback(
+    async (deleted) => {
+      for (const node of deleted) {
+        const slotId = mapFlowToSlot.current.get(node.id)
+        if (!slotId) continue
 
-      await supabase.from('prompt_bridges').delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
-      await supabase.from('prompt_slots').delete().eq('id', slotId)
-      mapFlowToSlot.current.delete(node.id)
-    }
-  }, [])
+        await supabase.from('prompt_bridges').delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
+        await supabase.from('prompt_slots').delete().eq('id', slotId)
+        mapFlowToSlot.current.delete(node.id)
+      }
+    },
+    [],
+  )
 
   const onEdgesDelete = useCallback(async (deleted) => {
     for (const edge of deleted) {
@@ -365,44 +393,8 @@ export default function MakerEditor() {
     [updateSelectedVarRules],
   )
 
-  useEffect(() => {
-    function handleKeyDown(event) {
-      if (hot(event, 's')) {
-        event.preventDefault()
-        saveAll()
-        return
-      }
-
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        if (selectedNodeId) {
-          handleDeletePrompt(selectedNodeId)
-        } else if (selectedEdge) {
-          setEdges((existing) => existing.filter((edge) => edge.id !== selectedEdge.id))
-          const bridgeId = selectedEdge?.data?.bridgeId
-          if (bridgeId) {
-            supabase.from('prompt_bridges').delete().eq('id', bridgeId)
-          }
-          setSelectedEdge(null)
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNodeId, selectedEdge, setEdges])
-
-  function markAsStart(flowNodeId) {
-    setNodes((existing) =>
-      existing.map((node) => ({
-        ...node,
-        data: { ...node.data, isStart: node.id === flowNodeId },
-      })),
-    )
-  }
-
-  function toggleInvisible() {
+  const toggleInvisible = useCallback(() => {
     if (!selectedNodeId) return
-
     setNodes((existing) =>
       existing.map((node) =>
         node.id === selectedNodeId
@@ -410,52 +402,44 @@ export default function MakerEditor() {
           : node,
       ),
     )
-  }
+  }, [selectedNodeId, setNodes])
 
-  function addPromptNode(type = 'ai') {
-    const flowId = `tmp_${Date.now()}`
+  const addPromptNode = useCallback(
+    (type = 'ai') => {
+      const flowId = `tmp_${Date.now()}`
 
-    setNodes((existing) => [
-      ...existing,
-      {
-        id: flowId,
-        type: 'prompt',
-        position: { x: 160, y: 120 },
-        data: {
-          template: '',
-          slot_type: type,
-          slot_pick: '1',
-          isStart: false,
-          invisible: false,
-          var_rules_global: makeEmptyVariableRules(),
-          var_rules_local: makeEmptyVariableRules(),
-          onChange: (partial) =>
-            setNodes((current) =>
-              current.map((node) => (node.id === flowId ? { ...node, data: { ...node.data, ...partial } } : node)),
-            ),
-          onDelete: handleDeletePrompt,
-          onSetStart: () => markAsStart(flowId),
+      setNodes((existing) => [
+        ...existing,
+        {
+          id: flowId,
+          type: 'prompt',
+          position: { x: 160, y: 120 },
+          data: {
+            template: '',
+            slot_type: type,
+            slot_pick: '1',
+            isStart: false,
+            invisible: false,
+            var_rules_global: makeEmptyVariableRules(),
+            var_rules_local: makeEmptyVariableRules(),
+            onChange: (partial) =>
+              setNodes((current) =>
+                current.map((node) =>
+                  node.id === flowId ? { ...node, data: { ...node.data, ...partial } } : node,
+                ),
+              ),
+            onDelete: handleDeletePrompt,
+            onSetStart: () => markAsStart(flowId),
+          },
         },
-      },
-    ])
+      ])
 
-    setSelectedNodeId(flowId)
-  }
+      setSelectedNodeId(flowId)
+    },
+    [handleDeletePrompt, markAsStart, setNodes],
+  )
 
-  async function handleDeletePrompt(flowNodeId) {
-    setNodes((existing) => existing.filter((node) => node.id !== flowNodeId))
-    setEdges((existing) => existing.filter((edge) => edge.source !== flowNodeId && edge.target !== flowNodeId))
-    setSelectedNodeId(null)
-
-    const slotId = mapFlowToSlot.current.get(flowNodeId)
-    if (!slotId) return
-
-    await supabase.from('prompt_bridges').delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
-    await supabase.from('prompt_slots').delete().eq('id', slotId)
-    mapFlowToSlot.current.delete(flowNodeId)
-  }
-
-  async function saveAll() {
+  const saveAll = useCallback(async () => {
     if (!setInfo || busy) return
 
     setBusy(true)
@@ -546,7 +530,33 @@ export default function MakerEditor() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [busy, edges, nodes, setInfo])
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (isSaveHotkey(event)) {
+        event.preventDefault()
+        saveAll()
+        return
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (selectedNodeId) {
+          handleDeletePrompt(selectedNodeId)
+        } else if (selectedEdge) {
+          setEdges((existing) => existing.filter((edge) => edge.id !== selectedEdge.id))
+          const bridgeId = selectedEdge?.data?.bridgeId
+          if (bridgeId) {
+            supabase.from('prompt_bridges').delete().eq('id', bridgeId)
+          }
+          setSelectedEdge(null)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedNodeId, selectedEdge, saveAll, handleDeletePrompt, setEdges])
 
   if (!mounted || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
@@ -1213,14 +1223,22 @@ async function importSet(event) {
         throw new Error(slotError.message)
       }
 
-      insertedSlots?.forEach((insertedSlot, index) => {
-        const original = payload.slots[index]
-        if (!original) return
+      const insertedBySlotNo = new Map()
+      insertedSlots?.forEach((row) => {
+        if (row?.slot_no != null) {
+          insertedBySlotNo.set(row.slot_no, row)
+        }
+      })
+
+      payload.slots.forEach((original) => {
+        const key = original.slot_no ?? 1
+        const inserted = insertedBySlotNo.get(key)
+        if (!inserted) return
         if (original.id) {
-          slotIdMap.set(original.id, insertedSlot.id)
+          slotIdMap.set(original.id, inserted.id)
         }
         if (original.slot_no != null) {
-          slotIdMap.set(`slot_no:${original.slot_no}`, insertedSlot.id)
+          slotIdMap.set(`slot_no:${original.slot_no}`, inserted.id)
         }
       })
     }
@@ -1266,3 +1284,4 @@ async function importSet(event) {
     event.target.value = ''
   }
 }
+
