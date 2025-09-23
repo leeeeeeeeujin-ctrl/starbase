@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
 import { supabase } from '../../lib/supabase'
+import { sanitizeVariableRules } from '../../lib/variableRules'
 
 const SharedChatDock = dynamic(() => import('../../components/common/SharedChatDock'), {
   ssr: false,
@@ -190,7 +191,11 @@ export default function MakerIndex() {
 
     const payload = {
       set: setResult.data,
-      slots: slotsResult.data || [],
+      slots: (slotsResult.data || []).map((slot) => ({
+        ...slot,
+        var_rules_global: sanitizeVariableRules(slot?.var_rules_global),
+        var_rules_local: sanitizeVariableRules(slot?.var_rules_local),
+      })),
       bridges: bridgesResult.data || [],
     }
 
@@ -230,17 +235,36 @@ export default function MakerIndex() {
       const slotIdMap = new Map()
 
       if (Array.isArray(payload?.slots) && payload.slots.length) {
-        const slotRows = payload.slots.map((slot) => ({
-          set_id: insertedSet.id,
-          slot_no: slot.slot_no ?? 1,
-          slot_type: slot.slot_type ?? 'ai',
-          slot_pick: slot.slot_pick ?? '1',
-          template: slot.template ?? '',
-          is_start: !!slot.is_start,
-          invisible: !!slot.invisible,
-          var_rules_global: slot.var_rules_global ?? [],
-          var_rules_local: slot.var_rules_local ?? [],
-        }))
+        const slotRows = payload.slots.map((slot) => {
+          const normalizedGlobal = sanitizeVariableRules(slot?.var_rules_global ?? slot?.varRulesGlobal)
+          const normalizedLocal = sanitizeVariableRules(slot?.var_rules_local ?? slot?.varRulesLocal)
+          const canvasX =
+            typeof slot?.canvas_x === 'number'
+              ? slot.canvas_x
+              : typeof slot?.position?.x === 'number'
+              ? slot.position.x
+              : null
+          const canvasY =
+            typeof slot?.canvas_y === 'number'
+              ? slot.canvas_y
+              : typeof slot?.position?.y === 'number'
+              ? slot.position.y
+              : null
+
+          return {
+            set_id: insertedSet.id,
+            slot_no: slot.slot_no ?? 1,
+            slot_type: slot.slot_type ?? 'ai',
+            slot_pick: slot.slot_pick ?? '1',
+            template: slot.template ?? '',
+            is_start: !!slot.is_start,
+            invisible: !!slot.invisible,
+            canvas_x: canvasX,
+            canvas_y: canvasY,
+            var_rules_global: normalizedGlobal,
+            var_rules_local: normalizedLocal,
+          }
+        })
 
         const { data: insertedSlots, error: slotError } = await supabase
           .from('prompt_slots')
