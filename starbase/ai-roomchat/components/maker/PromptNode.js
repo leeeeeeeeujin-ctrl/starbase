@@ -21,26 +21,13 @@ export default function PromptNode({ id, data }) {
       <Handle
         type="target"
         position={Position.Left}
-        style={{
-          width: 14,
-          height: 14,
-          borderRadius: '50%',
-          background: '#1d4ed8',
-          border: '2px solid #fff',
-        }}
+        style={{ width: 14, height: 14, borderRadius: '50%', background: '#1d4ed8', border: '2px solid #fff' }}
       />
       <Handle
         type="source"
         position={Position.Right}
-        style={{
-          width: 14,
-          height: 14,
-          borderRadius: '50%',
-          background: '#0ea5e9',
-          border: '2px solid #fff',
-        }}
+        style={{ width: 14, height: 14, borderRadius: '50%', background: '#0ea5e9', border: '2px solid #fff' }}
       />
-
       {/* 헤더 */}
       <div
         style={{
@@ -54,7 +41,7 @@ export default function PromptNode({ id, data }) {
       >
         <select
           value={d.slot_type || 'ai'}
-          onChange={(e) => update({ slot_type: e.target.value })}
+          onChange={e => update({ slot_type: e.target.value })}
           style={{ fontWeight: 700 }}
         >
           <option value="ai">AI</option>
@@ -64,18 +51,10 @@ export default function PromptNode({ id, data }) {
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#475569' }}>
           {d.invisible ? '숨김 노드' : '표시 노드'}
         </span>
-        <button
-          onClick={() => d.onSetStart?.()}
-          style={{ marginLeft: 8, padding: '4px 8px', borderRadius: 8 }}
-        >
+        <button onClick={() => d.onSetStart?.()} style={{ marginLeft: 8, padding: '4px 8px', borderRadius: 8 }}>
           {d.isStart ? '시작노드 ✔' : '시작지점 지정'}
         </button>
-        <button
-          onClick={() => d.onDelete?.(id)}
-          style={{ padding: '4px 8px', color: '#ef4444' }}
-        >
-          삭제
-        </button>
+        <button onClick={() => d.onDelete?.(id)} style={{ padding: '4px 8px', color: '#ef4444' }}>삭제</button>
       </div>
 
       {/* 템플릿 */}
@@ -84,7 +63,7 @@ export default function PromptNode({ id, data }) {
         <textarea
           rows={8}
           value={d.template || ''}
-          onChange={(e) => update({ template: e.target.value })}
+          onChange={e => update({ template: e.target.value })}
           style={{ width: '100%', fontFamily: 'monospace' }}
         />
       </div>
