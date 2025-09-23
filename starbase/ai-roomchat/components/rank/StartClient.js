@@ -1199,7 +1199,7 @@ export default function StartClient() {
             ...entry,
             score: match.scoreAfter,
             lastDelta: match.delta,
-            updated_at: now,
+            updated_at: new Date().toISOString(),
           }
         })
         setActiveRoster(rosterWithDeltas)
