@@ -15,6 +15,21 @@ import 'reactflow/dist/style.css'
 import { supabase } from '../../../lib/supabase'
 import PromptNode from '../../../components/maker/PromptNode'
 import SidePanel from '../../../components/maker/SidePanel'
+import {
+  collectVariableNames,
+  createActiveRule,
+  createAutoRule,
+  createManualRule,
+  ensureVariableRules,
+  makeEmptyVariableRules,
+  sanitizeVariableRules,
+  variableRulesEqual,
+  VARIABLE_RULE_COMPARATORS,
+  VARIABLE_RULE_MODES,
+  VARIABLE_RULE_OUTCOMES,
+  VARIABLE_RULE_STATUS,
+  VARIABLE_RULE_SUBJECTS,
+} from '../../../lib/variableRules'
 
 const nodeTypes = { prompt: PromptNode }
 
@@ -46,10 +61,6 @@ export default function MakerEditor() {
   const [selectedEdge, setSelectedEdge] = useState(null)
 
   const mapFlowToSlot = useRef(new Map())
-
-  const [quickSlot, setQuickSlot] = useState('1')
-  const [quickProp, setQuickProp] = useState('name')
-  const [quickAbility, setQuickAbility] = useState('1')
 
   useEffect(() => {
     setMounted(true)
@@ -105,21 +116,23 @@ export default function MakerEditor() {
       const initialNodes = (slotRows || []).map((slot, index) => {
         const flowId = `n${slot.id}`
         slotMap.set(flowId, slot.id)
+        const fallbackX = 120 + (index % 3) * 380
+        const fallbackY = 120 + Math.floor(index / 3) * 260
+        const posX = typeof slot?.canvas_x === 'number' ? slot.canvas_x : fallbackX
+        const posY = typeof slot?.canvas_y === 'number' ? slot.canvas_y : fallbackY
+
         return {
           id: flowId,
           type: 'prompt',
-          position: {
-            x: 120 + (index % 3) * 380,
-            y: 120 + Math.floor(index / 3) * 260,
-          },
+          position: { x: posX, y: posY },
           data: {
             template: slot.template || '',
             slot_type: slot.slot_type || 'ai',
             slot_pick: slot.slot_pick || '1',
             isStart: !!slot.is_start,
             invisible: !!slot.invisible,
-            var_rules_global: slot.var_rules_global || [],
-            var_rules_local: slot.var_rules_local || [],
+            var_rules_global: sanitizeVariableRules(slot.var_rules_global),
+            var_rules_local: sanitizeVariableRules(slot.var_rules_local),
             onChange: (partial) =>
               setNodes((existing) =>
                 existing.map((node) =>
@@ -289,6 +302,69 @@ export default function MakerEditor() {
     }
   }, [])
 
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) || null,
+    [nodes, selectedNodeId],
+  )
+
+  const updateSelectedVarRules = useCallback(
+    (key, builder) => {
+      if (!selectedNodeId) return
+      setNodes((existing) =>
+        existing.map((node) => {
+          if (node.id !== selectedNodeId) return node
+          const base = sanitizeVariableRules(node.data?.[key])
+          const draft = JSON.parse(JSON.stringify(base))
+          const built = builder(draft)
+          const next = sanitizeVariableRules(built)
+          if (variableRulesEqual(base, next)) {
+            return node
+          }
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              [key]: next,
+            },
+          }
+        }),
+      )
+    },
+    [selectedNodeId, setNodes],
+  )
+
+  const selectedGlobalRules = useMemo(
+    () => (selectedNode ? sanitizeVariableRules(selectedNode.data?.var_rules_global) : null),
+    [selectedNode],
+  )
+
+  const selectedLocalRules = useMemo(
+    () => (selectedNode ? sanitizeVariableRules(selectedNode.data?.var_rules_local) : null),
+    [selectedNode],
+  )
+
+  const availableVariableNames = useMemo(() => {
+    if (!selectedGlobalRules && !selectedLocalRules) return []
+    const names = new Set()
+    if (selectedGlobalRules) {
+      collectVariableNames(selectedGlobalRules).forEach((name) => names.add(name))
+    }
+    if (selectedLocalRules) {
+      collectVariableNames(selectedLocalRules).forEach((name) => names.add(name))
+    }
+    return Array.from(names)
+  }, [selectedGlobalRules, selectedLocalRules])
+
+  const commitGlobalRules = useCallback(
+    (builder) => updateSelectedVarRules('var_rules_global', builder),
+    [updateSelectedVarRules],
+  )
+
+  const commitLocalRules = useCallback(
+    (builder) => updateSelectedVarRules('var_rules_local', builder),
+    [updateSelectedVarRules],
+  )
+
   useEffect(() => {
     function handleKeyDown(event) {
       if (hot(event, 's')) {
@@ -336,38 +412,6 @@ export default function MakerEditor() {
     )
   }
 
-  function insertQuickToken() {
-    if (!selectedNodeId) return
-
-    const token =
-      quickProp === 'ability'
-        ? `{{slot${quickSlot}.ability${quickAbility}}}`
-        : `{{slot${quickSlot}.${quickProp}}}`
-
-    setNodes((existing) =>
-      existing.map((node) =>
-        node.id === selectedNodeId
-          ? { ...node, data: { ...node.data, template: `${node.data.template || ''}${token}` } }
-          : node,
-      ),
-    )
-  }
-
-  function insertHistoryToken(kind) {
-    if (!selectedNodeId) return
-
-    const token =
-      kind === 'last1' ? '{{history.last1}}' : kind === 'last2' ? '{{history.last2}}' : '{{history.last5}}'
-
-    setNodes((existing) =>
-      existing.map((node) =>
-        node.id === selectedNodeId
-          ? { ...node, data: { ...node.data, template: `${node.data.template || ''}${token}` } }
-          : node,
-      ),
-    )
-  }
-
   function addPromptNode(type = 'ai') {
     const flowId = `tmp_${Date.now()}`
 
@@ -383,8 +427,8 @@ export default function MakerEditor() {
           slot_pick: '1',
           isStart: false,
           invisible: false,
-          var_rules_global: [],
-          var_rules_local: [],
+          var_rules_global: makeEmptyVariableRules(),
+          var_rules_local: makeEmptyVariableRules(),
           onChange: (partial) =>
             setNodes((current) =>
               current.map((node) => (node.id === flowId ? { ...node, data: { ...node.data, ...partial } } : node)),
@@ -433,8 +477,10 @@ export default function MakerEditor() {
           template: node.data.template || '',
           is_start: !!node.data.isStart,
           invisible: !!node.data.invisible,
-          var_rules_global: node.data.var_rules_global || [],
-          var_rules_local: node.data.var_rules_local || [],
+          canvas_x: typeof node.position?.x === 'number' ? node.position.x : null,
+          canvas_y: typeof node.position?.y === 'number' ? node.position.y : null,
+          var_rules_global: sanitizeVariableRules(node.data.var_rules_global),
+          var_rules_local: sanitizeVariableRules(node.data.var_rules_local),
         }
 
         if (!slotId) {
@@ -501,13 +547,6 @@ export default function MakerEditor() {
       setBusy(false)
     }
   }
-
-  const quickTokenLabel = useMemo(() => {
-    if (quickProp === 'ability') {
-      return `{{slot${quickSlot}.ability${quickAbility}}}`
-    }
-    return `{{slot${quickSlot}.${quickProp}}}`
-  }, [quickSlot, quickProp, quickAbility])
 
   if (!mounted || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
@@ -582,71 +621,88 @@ export default function MakerEditor() {
           top: 52,
           zIndex: 45,
           background: '#f8fafc',
-          padding: 8,
+          padding: 12,
           borderBottom: '1px solid #e5e7eb',
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 8,
+          gap: 12,
         }}
       >
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 700 }}>퀵 토큰</span>
-          <select value={quickSlot} onChange={(event) => setQuickSlot(event.target.value)}>
-            {Array.from({ length: 12 }, (_, index) => (
-              <option key={index + 1} value={index + 1}>
-                슬롯
-                {index + 1}
-              </option>
-            ))}
-          </select>
-          <select value={quickProp} onChange={(event) => setQuickProp(event.target.value)}>
-            <option value="name">이름</option>
-            <option value="description">설명</option>
-            <option value="ability">능력</option>
-          </select>
-          {quickProp === 'ability' && (
-            <select value={quickAbility} onChange={(event) => setQuickAbility(event.target.value)}>
-              {Array.from({ length: 12 }, (_, index) => (
-                <option key={index + 1} value={index + 1}>
-                  능력
-                  {index + 1}
-                </option>
-              ))}
-            </select>
-          )}
-          <button onClick={insertQuickToken} disabled={!selectedNodeId} style={{ padding: '6px 10px' }}>
-            {quickTokenLabel} 삽입
-          </button>
-          <button onClick={() => insertHistoryToken('last1')} disabled={!selectedNodeId} style={{ padding: '6px 10px' }}>
-            history.last1 삽입
-          </button>
-          <button onClick={() => insertHistoryToken('last2')} disabled={!selectedNodeId} style={{ padding: '6px 10px' }}>
-            history.last2 삽입
-          </button>
-          <button onClick={() => insertHistoryToken('last5')} disabled={!selectedNodeId} style={{ padding: '6px 10px' }}>
-            history.last5 삽입
-          </button>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 700 }}>선택 노드</span>
-          <button
-            onClick={() => selectedNodeId && markAsStart(selectedNodeId)}
-            disabled={!selectedNodeId}
-            style={{ padding: '6px 10px' }}
+        {selectedNode && selectedGlobalRules && selectedLocalRules ? (
+          <>
+            <div
+              style={{
+                display: 'grid',
+                gap: 12,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              }}
+            >
+              <VariableScopeEditor
+                scopeKey="global"
+                label="전역 변수 규칙"
+                rules={selectedGlobalRules}
+                onCommit={commitGlobalRules}
+                availableNames={availableVariableNames}
+              />
+              <VariableScopeEditor
+                scopeKey="local"
+                label="로컬 변수 규칙"
+                rules={selectedLocalRules}
+                onCommit={commitLocalRules}
+                availableNames={availableVariableNames}
+              />
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ fontWeight: 700, color: '#0f172a' }}>선택 노드 도구</span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => selectedNodeId && markAsStart(selectedNodeId)}
+                  disabled={!selectedNodeId}
+                  style={{ padding: '6px 10px', borderRadius: 8, background: '#e2e8f0' }}
+                >
+                  시작 지정
+                </button>
+                <button
+                  onClick={toggleInvisible}
+                  disabled={!selectedNodeId}
+                  style={{ padding: '6px 10px', borderRadius: 8, background: '#f8fafc', border: '1px solid #cbd5f5' }}
+                >
+                  Invisible 토글
+                </button>
+                <button
+                  onClick={() => selectedNodeId && handleDeletePrompt(selectedNodeId)}
+                  disabled={!selectedNodeId}
+                  style={{ padding: '6px 10px', borderRadius: 8, background: '#fee2e2', color: '#b91c1c' }}
+                >
+                  삭제
+                </button>
+              </div>
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: '#475569' }}>
+              AI 응답 형식 가이드: 마지막 줄에는 승·패·탈락 결과를, 마지막에서 두 번째 줄에는 조건을 만족한 변수명만 기재하고,
+              필요한 경우 그 위의 줄들을 비워 둔 상태로 전송하세요.
+            </p>
+          </>
+        ) : (
+          <div
+            style={{
+              padding: 16,
+              background: '#fff',
+              borderRadius: 12,
+              border: '1px dashed #cbd5f5',
+              color: '#475569',
+            }}
           >
-            시작 지정
-          </button>
-          <button onClick={toggleInvisible} disabled={!selectedNodeId} style={{ padding: '6px 10px' }}>
-            Invisible 토글
-          </button>
-          <button
-            onClick={() => selectedNodeId && handleDeletePrompt(selectedNodeId)}
-            disabled={!selectedNodeId}
-            style={{ padding: '6px 10px', color: '#ef4444' }}
-          >
-            삭제
-          </button>
-        </div>
+            프롬프트 노드를 선택하면 전역/로컬 변수 규칙과 전환 모드를 편집할 수 있습니다.
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px' }}>
@@ -694,6 +750,369 @@ export default function MakerEditor() {
   )
 }
 
+function VariableScopeEditor({ scopeKey, label, rules, onCommit, availableNames = [] }) {
+  const safeRules = rules || makeEmptyVariableRules()
+  const mode = safeRules.mode || 'auto'
+
+  const datalistId = `${scopeKey}-variable-names`
+
+  const setMode = (nextMode) => {
+    if (nextMode === mode) return
+    onCommit((current) => ({ ...current, mode: nextMode }))
+  }
+
+  const addAutoRule = () => {
+    onCommit((current) => ({ ...current, auto: [...current.auto, createAutoRule()] }))
+  }
+
+  const updateAutoRule = (index, patch) => {
+    onCommit((current) => ({
+      ...current,
+      auto: current.auto.map((rule, idx) => (idx === index ? { ...rule, ...patch } : rule)),
+    }))
+  }
+
+  const removeAutoRule = (index) => {
+    onCommit((current) => ({
+      ...current,
+      auto: current.auto.filter((_, idx) => idx !== index),
+    }))
+  }
+
+  const addManualRule = () => {
+    onCommit((current) => ({ ...current, manual: [...current.manual, createManualRule()] }))
+  }
+
+  const updateManualRule = (index, patch) => {
+    onCommit((current) => ({
+      ...current,
+      manual: current.manual.map((rule, idx) => (idx === index ? { ...rule, ...patch } : rule)),
+    }))
+  }
+
+  const removeManualRule = (index) => {
+    onCommit((current) => ({
+      ...current,
+      manual: current.manual.filter((_, idx) => idx !== index),
+    }))
+  }
+
+  const addActiveRule = () => {
+    onCommit((current) => ({ ...current, active: [...current.active, createActiveRule()] }))
+  }
+
+  const updateActiveRule = (index, patch) => {
+    onCommit((current) => ({
+      ...current,
+      active: current.active.map((rule, idx) => (idx === index ? { ...rule, ...patch } : rule)),
+    }))
+  }
+
+  const removeActiveRule = (index) => {
+    onCommit((current) => ({
+      ...current,
+      active: current.active.filter((_, idx) => idx !== index),
+    }))
+  }
+
+  const renderModeSelector = () => (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {VARIABLE_RULE_MODES.map((candidate) => (
+        <button
+          key={candidate}
+          type="button"
+          onClick={() => setMode(candidate)}
+          style={{
+            padding: '6px 10px',
+            borderRadius: 999,
+            border: mode === candidate ? '1px solid #0ea5e9' : '1px solid #cbd5f5',
+            background: mode === candidate ? '#e0f2fe' : '#f8fafc',
+            fontWeight: 600,
+            color: mode === candidate ? '#0369a1' : '#475569',
+          }}
+        >
+          {candidate === 'auto' ? '자동 승패 변수' : candidate === 'manual' ? '수동 변수' : '적극 변수'}
+        </button>
+      ))}
+    </div>
+  )
+
+  const renderAutoMode = () => (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {safeRules.auto.length === 0 && (
+        <div style={{ fontSize: 13, color: '#64748b' }}>
+          역할/상태 조건을 기반으로 자동으로 변수명을 기록할 규칙을 추가하세요.
+        </div>
+      )}
+      {safeRules.auto.map((rule, index) => (
+        <div
+          key={rule.id || index}
+          style={{
+            border: '1px solid #e2e8f0',
+            borderRadius: 12,
+            padding: 12,
+            background: '#fff',
+            display: 'grid',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'grid', gap: 6 }}>
+            <label style={{ fontSize: 12, color: '#475569' }}>변수명 (AI가 마지막에서 두 번째 줄에 적어줄 이름)</label>
+            <input
+              value={rule.variable || ''}
+              onChange={(event) => updateAutoRule(index, { variable: event.target.value })}
+              placeholder="예: guardian_protect"
+            />
+          </div>
+          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 12, color: '#475569' }}>승패 처리</span>
+              <select
+                value={rule.outcome || 'win'}
+                onChange={(event) => updateAutoRule(index, { outcome: event.target.value })}
+              >
+                {VARIABLE_RULE_OUTCOMES.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'win' ? '승리 처리' : option === 'lose' ? '패배 처리' : '무승부 처리'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 12, color: '#475569' }}>대상</span>
+              <select
+                value={rule.subject || 'same'}
+                onChange={(event) => updateAutoRule(index, { subject: event.target.value })}
+              >
+                {VARIABLE_RULE_SUBJECTS.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'same' ? '같은 역할' : option === 'other' ? '상대 역할' : '특정 역할'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 12, color: '#475569' }}>비교</span>
+              <select
+                value={rule.comparator || 'gte'}
+                onChange={(event) => updateAutoRule(index, { comparator: event.target.value })}
+              >
+                {VARIABLE_RULE_COMPARATORS.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'gte' ? '이상' : option === 'lte' ? '이하' : '정확히'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 12, color: '#475569' }}>인원 수</span>
+              <input
+                type="number"
+                min="0"
+                value={Number.isFinite(Number(rule.count)) ? rule.count : ''}
+                onChange={(event) => updateAutoRule(index, { count: Number(event.target.value) })}
+              />
+            </label>
+          </div>
+          {rule.subject === 'specific' && (
+            <div style={{ display: 'grid', gap: 4 }}>
+              <label style={{ fontSize: 12, color: '#475569' }}>역할 이름</label>
+              <input
+                value={rule.role || ''}
+                onChange={(event) => updateAutoRule(index, { role: event.target.value })}
+                placeholder="예: 힐러"
+              />
+            </div>
+          )}
+          <div style={{ display: 'grid', gap: 4 }}>
+            <label style={{ fontSize: 12, color: '#475569' }}>조건</label>
+            <select
+              value={rule.status || 'alive'}
+              onChange={(event) => updateAutoRule(index, { status: event.target.value })}
+            >
+              {VARIABLE_RULE_STATUS.map((option) => (
+                <option key={option} value={option}>
+                  {option === 'alive'
+                    ? '생존 상태'
+                    : option === 'dead'
+                    ? '탈락 상태'
+                    : option === 'won'
+                    ? '승리 상태'
+                    : option === 'lost'
+                    ? '패배 상태'
+                    : '다른 변수 ON'}
+                </option>
+              ))}
+            </select>
+          </div>
+          {rule.status === 'flag_on' && (
+            <div style={{ display: 'grid', gap: 4 }}>
+              <label style={{ fontSize: 12, color: '#475569' }}>참조할 변수명</label>
+              <input
+                list={datalistId}
+                value={rule.flag || ''}
+                onChange={(event) => updateAutoRule(index, { flag: event.target.value })}
+                placeholder="예: guardian_protect"
+              />
+              <datalist id={datalistId}>
+                {availableNames.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => removeAutoRule(index)}
+            style={{ alignSelf: 'start', padding: '6px 10px', borderRadius: 8, background: '#fee2e2', color: '#b91c1c' }}
+          >
+            규칙 삭제
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addAutoRule}
+        style={{ padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: '#fff', fontWeight: 600 }}
+      >
+        + 자동 규칙 추가
+      </button>
+    </div>
+  )
+
+  const renderManualMode = () => (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {safeRules.manual.length === 0 && (
+        <div style={{ fontSize: 13, color: '#64748b' }}>
+          직접 조건을 설명하면 AI가 해당 변수명만 마지막에서 두 번째 줄에 출력하도록 안내할 수 있습니다.
+        </div>
+      )}
+      {safeRules.manual.map((rule, index) => (
+        <div
+          key={rule.id || index}
+          style={{
+            border: '1px solid #e2e8f0',
+            borderRadius: 12,
+            padding: 12,
+            background: '#fff',
+            display: 'grid',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'grid', gap: 6 }}>
+            <label style={{ fontSize: 12, color: '#475569' }}>변수명</label>
+            <input
+              value={rule.variable || ''}
+              onChange={(event) => updateManualRule(index, { variable: event.target.value })}
+              placeholder="예: custom_flag"
+            />
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <label style={{ fontSize: 12, color: '#475569' }}>조건 설명</label>
+            <textarea
+              rows={3}
+              value={rule.condition || ''}
+              onChange={(event) => updateManualRule(index, { condition: event.target.value })}
+              placeholder="예: 이전 턴 응답에 '회복'이 포함되면"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => removeManualRule(index)}
+            style={{ alignSelf: 'start', padding: '6px 10px', borderRadius: 8, background: '#fee2e2', color: '#b91c1c' }}
+          >
+            규칙 삭제
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addManualRule}
+        style={{ padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: '#fff', fontWeight: 600 }}
+      >
+        + 수동 변수 추가
+      </button>
+    </div>
+  )
+
+  const renderActiveMode = () => (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {safeRules.active.length === 0 && (
+        <div style={{ fontSize: 13, color: '#64748b' }}>
+          적극 변수는 AI에게 특정 지시를 직접 전달할 때 사용합니다. 조건을 만족하면 실행할 지시문을 작성하세요.
+        </div>
+      )}
+      {safeRules.active.map((rule, index) => (
+        <div
+          key={rule.id || index}
+          style={{
+            border: '1px solid #e2e8f0',
+            borderRadius: 12,
+            padding: 12,
+            background: '#fff',
+            display: 'grid',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'grid', gap: 6 }}>
+            <label style={{ fontSize: 12, color: '#475569' }}>조건 (자연어 또는 규칙 설명)</label>
+            <textarea
+              rows={3}
+              value={rule.condition || ''}
+              onChange={(event) => updateActiveRule(index, { condition: event.target.value })}
+              placeholder="예: 이번 턴에 방어 성공이라는 단어가 포함되면"
+            />
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <label style={{ fontSize: 12, color: '#475569' }}>AI에게 전달할 지시</label>
+            <textarea
+              rows={3}
+              value={rule.directive || ''}
+              onChange={(event) => updateActiveRule(index, { directive: event.target.value })}
+              placeholder="예: 다음 턴에는 적의 약점을 분석하라"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => removeActiveRule(index)}
+            style={{ alignSelf: 'start', padding: '6px 10px', borderRadius: 8, background: '#fee2e2', color: '#b91c1c' }}
+          >
+            지시 삭제
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addActiveRule}
+        style={{ padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: '#fff', fontWeight: 600 }}
+      >
+        + 적극 변수 추가
+      </button>
+    </div>
+  )
+
+  return (
+    <div
+      style={{
+        border: '1px solid #cbd5f5',
+        borderRadius: 16,
+        background: '#ffffff',
+        padding: 16,
+        display: 'grid',
+        gap: 12,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        <span style={{ fontWeight: 700, color: '#0f172a' }}>{label}</span>
+        {renderModeSelector()}
+      </div>
+      {mode === 'auto' && renderAutoMode()}
+      {mode === 'manual' && renderManualMode()}
+      {mode === 'active' && renderActiveMode()}
+    </div>
+  )
+}
+
 async function exportSet() {
   const match = (typeof window !== 'undefined' ? window.location.pathname : '').match(/\/maker\/([^/]+)/)
   const setId = match?.[1]
@@ -710,7 +1129,11 @@ async function exportSet() {
 
   const payload = {
     set: setRow.data,
-    slots: slots.data || [],
+    slots: (slots.data || []).map((slot) => ({
+      ...slot,
+      var_rules_global: sanitizeVariableRules(slot?.var_rules_global),
+      var_rules_local: sanitizeVariableRules(slot?.var_rules_local),
+    })),
     bridges: bridges.data || [],
   }
 
@@ -750,17 +1173,36 @@ async function importSet(event) {
     const slotIdMap = new Map()
 
     if (Array.isArray(payload?.slots) && payload.slots.length) {
-      const slotRows = payload.slots.map((slot) => ({
-        set_id: insertedSet.id,
-        slot_no: slot.slot_no ?? 1,
-        slot_type: slot.slot_type ?? 'ai',
-        slot_pick: slot.slot_pick ?? '1',
-        template: slot.template ?? '',
-        is_start: !!slot.is_start,
-        invisible: !!slot.invisible,
-        var_rules_global: slot.var_rules_global ?? [],
-        var_rules_local: slot.var_rules_local ?? [],
-      }))
+      const slotRows = payload.slots.map((slot) => {
+        const normalizedGlobal = sanitizeVariableRules(slot?.var_rules_global ?? slot?.varRulesGlobal)
+        const normalizedLocal = sanitizeVariableRules(slot?.var_rules_local ?? slot?.varRulesLocal)
+        const canvasX =
+          typeof slot?.canvas_x === 'number'
+            ? slot.canvas_x
+            : typeof slot?.position?.x === 'number'
+            ? slot.position.x
+            : null
+        const canvasY =
+          typeof slot?.canvas_y === 'number'
+            ? slot.canvas_y
+            : typeof slot?.position?.y === 'number'
+            ? slot.position.y
+            : null
+
+        return {
+          set_id: insertedSet.id,
+          slot_no: slot.slot_no ?? 1,
+          slot_type: slot.slot_type ?? 'ai',
+          slot_pick: slot.slot_pick ?? '1',
+          template: slot.template ?? '',
+          is_start: !!slot.is_start,
+          invisible: !!slot.invisible,
+          canvas_x: canvasX,
+          canvas_y: canvasY,
+          var_rules_global: normalizedGlobal,
+          var_rules_local: normalizedLocal,
+        }
+      })
 
       const { data: insertedSlots, error: slotError } = await supabase
         .from('prompt_slots')
