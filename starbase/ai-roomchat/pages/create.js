@@ -9,9 +9,17 @@ import { supabase } from '../lib/supabase'
 export default function Create() {
   const router = useRouter()
   const fileRef = useRef(null)
-  const [hydrated, setHydrated] = useState(false)
+  const backgroundRef = useRef(null)
+  const bgmRef = useRef(null)
   const [preview, setPreview] = useState(null)
   const [blob, setBlob] = useState(null)
+  const [backgroundPreview, setBackgroundPreview] = useState(null)
+  const [backgroundBlob, setBackgroundBlob] = useState(null)
+  const [backgroundError, setBackgroundError] = useState('')
+  const [bgmLabel, setBgmLabel] = useState('')
+  const [bgmBlob, setBgmBlob] = useState(null)
+  const [bgmDuration, setBgmDuration] = useState(null)
+  const [bgmError, setBgmError] = useState('')
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [ability1, setAbility1] = useState('')
@@ -21,14 +29,110 @@ export default function Create() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    setHydrated(true)
-  }, [])
+    return () => {
+      if (backgroundPreview) {
+        URL.revokeObjectURL(backgroundPreview)
+      }
+      if (preview) {
+        URL.revokeObjectURL(preview)
+      }
+    }
+  }, [backgroundPreview, preview])
+
+  function sanitizeFileName(base, fallback = 'asset') {
+    const safe = String(base || fallback)
+      .normalize('NFKD')
+      .replace(/[^\w\d-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    return safe || fallback
+  }
 
   async function handleFile(f) {
+    if (f.type === 'image/gif' || /\.gif$/i.test(f.name || '')) {
+      alert('움짤(GIF)은 사용할 수 없습니다.')
+      return
+    }
     const b = await f.arrayBuffer()
     const bb = new Blob([new Uint8Array(b)], { type: f.type })
     setBlob(bb)
+    if (preview) {
+      URL.revokeObjectURL(preview)
+    }
     setPreview(URL.createObjectURL(bb))
+  }
+
+  async function handleBackgroundFile(file) {
+    setBackgroundError('')
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setBackgroundError('이미지 파일만 사용할 수 있습니다.')
+      return
+    }
+    if (file.type === 'image/gif' || /\.gif$/i.test(file.name || '')) {
+      setBackgroundError('움짤(GIF)은 배경으로 사용할 수 없습니다.')
+      return
+    }
+    const buffer = await file.arrayBuffer()
+    const blobFile = new Blob([new Uint8Array(buffer)], { type: file.type })
+    if (backgroundPreview) {
+      URL.revokeObjectURL(backgroundPreview)
+    }
+    setBackgroundBlob(blobFile)
+    const url = URL.createObjectURL(blobFile)
+    setBackgroundPreview(url)
+  }
+
+  async function handleBgmFile(file) {
+    setBgmError('')
+    setBgmLabel('')
+    setBgmBlob(null)
+    setBgmDuration(null)
+    if (!file) return
+    if (!file.type.startsWith('audio/')) {
+      setBgmError('오디오 파일만 사용할 수 있습니다.')
+      return
+    }
+    if (/wav/i.test(file.type) || /\.wav$/i.test(file.name || '')) {
+      setBgmError('용량이 큰 WAV 형식은 지원되지 않습니다.')
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setBgmError('파일 크기가 너무 큽니다. 15MB 이하로 줄여주세요.')
+      return
+    }
+
+    const tempUrl = URL.createObjectURL(file)
+    try {
+      const duration = await new Promise((resolve, reject) => {
+        const audio = document.createElement('audio')
+        audio.preload = 'metadata'
+        audio.onloadedmetadata = () => {
+          if (!Number.isFinite(audio.duration)) {
+            reject(new Error('재생 시간을 확인할 수 없습니다.'))
+            return
+          }
+          resolve(audio.duration)
+        }
+        audio.onerror = () => {
+          reject(new Error('오디오 정보를 불러올 수 없습니다.'))
+        }
+        audio.src = tempUrl
+      })
+      if (duration > 240) {
+        setBgmError('BGM 길이는 4분(240초)을 넘을 수 없습니다.')
+        return
+      }
+      const buffer = await file.arrayBuffer()
+      const blobFile = new Blob([new Uint8Array(buffer)], { type: file.type })
+      setBgmBlob(blobFile)
+      setBgmDuration(Math.round(duration))
+      setBgmLabel(file.name || '배경 음악')
+    } catch (err) {
+      setBgmError(err.message || '오디오를 분석할 수 없습니다.')
+    } finally {
+      URL.revokeObjectURL(tempUrl)
+    }
   }
 
   async function save() {
@@ -38,18 +142,53 @@ export default function Create() {
       if (!user) { alert('로그인이 필요합니다.'); setLoading(false); return }
 
       let image_url = null
+      let background_url = null
+      let bgm_url = null
+      let bgm_duration_seconds = null
+      let bgm_mime = null
       if (blob) {
-        const path = `heroes/${Date.now()}-${name.replace(/\W+/g,'-')}.jpg`
-        const { error: upErr } = await supabase.storage.from('heroes').upload(path, blob, { upsert: true })
+        const path = `heroes/${Date.now()}-${sanitizeFileName(name)}.jpg`
+        const { error: upErr } = await supabase.storage
+          .from('heroes')
+          .upload(path, blob, { upsert: true, contentType: blob.type || 'image/jpeg' })
         if (upErr) throw upErr
         image_url = supabase.storage.from('heroes').getPublicUrl(path).data.publicUrl
+      }
+
+      if (backgroundBlob) {
+        const extension = (backgroundBlob.type && backgroundBlob.type.split('/')[1]) || 'jpg'
+        const path = `hero-backgrounds/${Date.now()}-${sanitizeFileName(name, 'background')}.${extension}`
+        const { error: bgErr } = await supabase.storage
+          .from('heroes')
+          .upload(path, backgroundBlob, {
+            upsert: true,
+            contentType: backgroundBlob.type || 'image/jpeg',
+          })
+        if (bgErr) throw bgErr
+        background_url = supabase.storage.from('heroes').getPublicUrl(path).data.publicUrl
+      }
+
+      if (bgmBlob) {
+        const extension = (bgmBlob.type && bgmBlob.type.split('/')[1]) || 'mp3'
+        const path = `hero-bgm/${Date.now()}-${sanitizeFileName(name, 'bgm')}.${extension}`
+        const { error: bgmErr } = await supabase.storage
+          .from('heroes')
+          .upload(path, bgmBlob, { upsert: true, contentType: bgmBlob.type || 'audio/mpeg' })
+        if (bgmErr) throw bgmErr
+        bgm_url = supabase.storage.from('heroes').getPublicUrl(path).data.publicUrl
+        bgm_duration_seconds = Number.isFinite(bgmDuration) ? bgmDuration : null
+        bgm_mime = bgmBlob.type || null
       }
 
       const { error: insErr } = await supabase.from('heroes').insert({
         owner_id: user.id,
         name, description: desc,
         ability1, ability2, ability3, ability4,
-        image_url
+        image_url,
+        background_url,
+        bgm_url,
+        bgm_duration_seconds,
+        bgm_mime,
       })
       if (insErr) throw insErr
 
@@ -58,10 +197,6 @@ export default function Create() {
     } catch (e) {
       alert('저장 실패: ' + (e.message || e))
     } finally { setLoading(false) }
-  }
-
-  if (!hydrated) {
-    return null
   }
 
   return (
@@ -172,6 +307,155 @@ export default function Create() {
               <span style={{ fontSize: 12, color: '#cbd5f5' }}>
                 정사각형 이미지가 가장 잘 어울려요.
               </span>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gap: 16,
+              padding: '20px 16px',
+              borderRadius: 24,
+              background: 'rgba(15, 23, 42, 0.55)',
+              border: '1px solid rgba(148, 163, 184, 0.25)',
+            }}
+          >
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>배경 이미지</div>
+              <div
+                style={{
+                  width: '100%',
+                  borderRadius: 18,
+                  border: '1px dashed rgba(148, 163, 184, 0.45)',
+                  background: 'rgba(15, 23, 42, 0.65)',
+                  minHeight: 140,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                }}
+              >
+                {backgroundPreview ? (
+                  <img
+                    src={backgroundPreview}
+                    alt="배경 미리보기"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <span style={{ color: '#94a3b8', fontSize: 13 }}>배경 이미지를 선택하세요 (움짤 제외)</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => backgroundRef.current?.click()}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 999,
+                    background: '#38bdf8',
+                    color: '#0f172a',
+                    fontWeight: 700,
+                  }}
+                >
+                  배경 업로드
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (backgroundPreview) {
+                      URL.revokeObjectURL(backgroundPreview)
+                    }
+                    setBackgroundBlob(null)
+                    setBackgroundPreview(null)
+                    setBackgroundError('')
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 999,
+                    background: 'rgba(148, 163, 184, 0.25)',
+                    color: '#e2e8f0',
+                    fontWeight: 600,
+                  }}
+                >
+                  초기화
+                </button>
+              </div>
+              <input
+                ref={backgroundRef}
+                type="file"
+                accept="image/*"
+                onChange={(event) => handleBackgroundFile(event.target.files?.[0] || null)}
+                style={{ display: 'none' }}
+              />
+              {backgroundError && (
+                <div style={{ color: '#fca5a5', fontSize: 12 }}>{backgroundError}</div>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>배경 음악</div>
+              <div
+                style={{
+                  borderRadius: 18,
+                  border: '1px dashed rgba(148, 163, 184, 0.45)',
+                  background: 'rgba(15, 23, 42, 0.65)',
+                  padding: '18px 16px',
+                  display: 'grid',
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>
+                  {bgmLabel || '선택된 파일이 없습니다.'}
+                </div>
+                <div style={{ fontSize: 12, color: '#cbd5f5' }}>
+                  MP3 등 스트리밍형 오디오만 지원하며 WAV 형식과 4분을 초과하는 곡은 사용할 수 없습니다.
+                </div>
+                {bgmDuration != null && (
+                  <div style={{ fontSize: 12, color: '#38bdf8' }}>재생 시간: {bgmDuration}초</div>
+                )}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => bgmRef.current?.click()}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 999,
+                      background: '#fb7185',
+                      color: '#0f172a',
+                      fontWeight: 700,
+                    }}
+                  >
+                    배경 음악 업로드
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBgmBlob(null)
+                      setBgmLabel('')
+                      setBgmDuration(null)
+                      setBgmError('')
+                      if (bgmRef.current) bgmRef.current.value = ''
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 999,
+                      background: 'rgba(148, 163, 184, 0.25)',
+                      color: '#e2e8f0',
+                      fontWeight: 600,
+                    }}
+                  >
+                    음악 제거
+                  </button>
+                </div>
+                <input
+                  ref={bgmRef}
+                  type="file"
+                  accept="audio/*"
+                  onChange={(event) => handleBgmFile(event.target.files?.[0] || null)}
+                  style={{ display: 'none' }}
+                />
+                {bgmError && <div style={{ color: '#fca5a5', fontSize: 12 }}>{bgmError}</div>}
+              </div>
             </div>
           </div>
 
