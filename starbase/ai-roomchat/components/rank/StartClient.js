@@ -651,7 +651,7 @@ export default function StartClient() {
                 style={{
                   padding: '6px 10px',
                   borderRadius: 8,
-                  border: '1px solid '#cbd5f5',
+                  border: '1px solid #cbd5f5',
                   background: '#fff',
                   fontWeight: 600,
                 }}
