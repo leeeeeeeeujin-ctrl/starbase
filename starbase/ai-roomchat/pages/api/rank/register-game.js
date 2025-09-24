@@ -1,10 +1,26 @@
 export default async function handler(req, res) {
-  let {
-    name,
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'method_not_allowed' })
+  }
+
+  // 1) 헤더에서 Bearer 토큰 추출
+  const auth = req.headers.authorization || ''
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
+  if (!token) return res.status(401).json({ error: 'unauthorized' })
+
+  // 2) 토큰으로 유저 검증
+  const { data: userData, error: userErr } = await anonSrv.auth.getUser(token)
+  const user = userData?.user
+  if (userErr || !user) return res.status(401).json({ error: 'unauthorized' })
+
+  // 3) 입력 파라미터
+  const {
+    name = '',
     description = '',
     image_url = '',
     prompt_set_id,
     roles = [], // [{name, slot_count}]
+    realtime_match = false,
   } = req.body || {}
   if (!prompt_set_id) return res.status(400).json({ error: 'prompt_set_id required' })
 
@@ -18,6 +34,7 @@ export default async function handler(req, res) {
         description,
         image_url,
         prompt_set_id,
+        realtime_match: !!realtime_match,
       })
       .select()
       .single()
