@@ -45,7 +45,6 @@ export default function MakerEditor() {
   const router = useRouter()
   const { id: setId } = router.query
 
-  const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [setInfo, setSetInfo] = useState(null)
@@ -59,10 +58,6 @@ export default function MakerEditor() {
   const [activePanelTab, setActivePanelTab] = useState('selection')
 
   const mapFlowToSlot = useRef(new Map())
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     if (selectedEdge) {
@@ -154,8 +149,10 @@ export default function MakerEditor() {
     [setNodes, setEdges],
   )
 
+  const isReady = router.isReady
+
   useEffect(() => {
-    if (!setId || !mounted) return
+    if (!setId || !isReady) return
 
     let active = true
 
@@ -205,45 +202,45 @@ export default function MakerEditor() {
 
         const slotMap = new Map()
         const initialNodes = (slotRows || []).map((slot, index) => {
-          const flowId = `n${slot.id}`
-          slotMap.set(flowId, slot.id)
+        const flowId = `n${slot.id}`
+        slotMap.set(flowId, slot.id)
 
-          const fallbackX = 120 + (index % 3) * 380
-          const fallbackY = 120 + Math.floor(index / 3) * 260
-          const posX = typeof slot?.canvas_x === 'number' ? slot.canvas_x : fallbackX
-          const posY = typeof slot?.canvas_y === 'number' ? slot.canvas_y : fallbackY
+        const fallbackX = 120 + (index % 3) * 380
+        const fallbackY = 120 + Math.floor(index / 3) * 260
+        const posX = typeof slot?.canvas_x === 'number' ? slot.canvas_x : fallbackX
+        const posY = typeof slot?.canvas_y === 'number' ? slot.canvas_y : fallbackY
 
-          const visibleList = Array.isArray(slot.visible_slots)
-            ? slot.visible_slots
-                .map((value) => Number(value))
-                .filter((value) => Number.isFinite(value))
-            : []
+        const visibleList = Array.isArray(slot.visible_slots)
+          ? slot.visible_slots
+              .map((value) => Number(value))
+              .filter((value) => Number.isFinite(value))
+          : []
 
-          return {
-            id: flowId,
-            type: 'prompt',
-            position: { x: posX, y: posY },
-            data: {
-              template: slot.template || '',
-              slot_type: slot.slot_type || 'ai',
-              slot_pick: slot.slot_pick || '1',
-              isStart: !!slot.is_start,
-              invisible: !!slot.invisible,
-              visible_slots: visibleList,
-              slotNo: Number.isFinite(Number(slot.slot_no)) ? Number(slot.slot_no) : index + 1,
-              var_rules_global: sanitizeVariableRules(slot.var_rules_global),
-              var_rules_local: sanitizeVariableRules(slot.var_rules_local),
-              onChange: (partial) =>
-                setNodes((current) =>
-                  current.map((node) =>
-                    node.id === flowId ? { ...node, data: { ...node.data, ...partial } } : node,
-                  ),
+        return {
+          id: flowId,
+          type: 'prompt',
+          position: { x: posX, y: posY },
+          data: {
+            template: slot.template || '',
+            slot_type: slot.slot_type || 'ai',
+            slot_pick: slot.slot_pick || '1',
+            isStart: !!slot.is_start,
+            invisible: !!slot.invisible,
+            visible_slots: visibleList,
+            slotNo: Number.isFinite(Number(slot.slot_no)) ? Number(slot.slot_no) : index + 1,
+            var_rules_global: sanitizeVariableRules(slot.var_rules_global),
+            var_rules_local: sanitizeVariableRules(slot.var_rules_local),
+            onChange: (partial) =>
+              setNodes((current) =>
+                current.map((node) =>
+                  node.id === flowId ? { ...node, data: { ...node.data, ...partial } } : node,
                 ),
-              onDelete: handleDeletePrompt,
-              onSetStart: () => markAsStart(flowId),
-            },
-          }
-        })
+              ),
+            onDelete: handleDeletePrompt,
+            onSetStart: () => markAsStart(flowId),
+          },
+        }
+      })
 
         mapFlowToSlot.current = slotMap
 
@@ -284,7 +281,7 @@ export default function MakerEditor() {
     return () => {
       active = false
     }
-  }, [setId, mounted, router, buildEdgeLabel, markAsStart, setNodes, setEdges])
+  }, [setId, isReady, router, buildEdgeLabel, markAsStart, setNodes, setEdges])
 
   const onConnect = useCallback(
     (params) => {
@@ -654,6 +651,7 @@ export default function MakerEditor() {
         .from('prompt_bridges')
         .select('id')
         .eq('from_set', setInfo.id)
+
       const keep = new Set()
 
       for (const edge of edges) {
@@ -685,6 +683,7 @@ export default function MakerEditor() {
         } else {
           await supabase.from('prompt_bridges').update(payload).eq('id', bridgeId)
         }
+
         keep.add(bridgeId)
       }
 
@@ -746,7 +745,7 @@ export default function MakerEditor() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedNodeId, selectedEdge, saveAll, handleDeletePrompt, setEdges])
 
-  if (!mounted || loading) {
+  if (!isReady || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
   }
 
