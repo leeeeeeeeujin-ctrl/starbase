@@ -522,6 +522,7 @@ export default function StartClient() {
     }
     advanceTurn(manualResponse.trim())
   }, [advanceTurn, manualResponse])
+
   if (loading) {
     return <div style={{ padding: 16 }}>불러오는 중…</div>
   }
