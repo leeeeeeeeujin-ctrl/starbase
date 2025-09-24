@@ -1,4 +1,19 @@
+// components/rank/RankNewClient.js
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/router'
+import { supabase } from '../../lib/supabase'
+import PromptSetPicker from '../../components/rank/PromptSetPicker'
+import SlotMatrix from '../../components/rank/SlotMatrix'
+import RolesEditor from '../../components/rank/RolesEditor'
+import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
+import { uploadGameImage } from '../../lib/rank/storage'
+
 async function registerGame(payload) {
+  // 1. 현재 로그인 세션 가져오기
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
   if (!token) throw new Error('로그인이 필요합니다.')
 
   // 2. Authorization 헤더에 토큰 추가
@@ -22,6 +37,7 @@ export default function RankNewClient() {
   const [desc, setDesc] = useState('')
   const [imgFile, setImgFile] = useState(null)
   const [setId, setSetId] = useState('')
+  const [realtime, setRealtime] = useState(false)
 
   // 역할/슬롯
   const [roles, setRoles] = useState([
@@ -84,6 +100,7 @@ export default function RankNewClient() {
       })),
       rules,
       rules_prefix: buildRulesPrefix(rules),
+      realtime_match: realtime,
     })
     if (!res.ok) return alert('게임 등록 실패: ' + (res.error || 'unknown'))
 
@@ -116,6 +133,14 @@ export default function RankNewClient() {
         <input placeholder="게임 이름" value={name} onChange={e => setName(e.target.value)} />
         <textarea placeholder="설명" rows={3} value={desc} onChange={e => setDesc(e.target.value)} />
         <PromptSetPicker value={setId} onChange={setSetId} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#0f172a' }}>
+          <input
+            type="checkbox"
+            checked={realtime}
+            onChange={(event) => setRealtime(event.target.checked)}
+          />
+          실시간 매칭 사용
+        </label>
       </div>
 
       {/* 3) 슬롯 매핑 */}
