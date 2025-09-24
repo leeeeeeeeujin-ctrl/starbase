@@ -39,6 +39,7 @@ export default function MakerIndex() {
       .from('prompt_sets')
       .select('*')
       .eq('owner_id', owner)
+      .order('created_at', { ascending: false })
 
     if (error) {
       throw new Error(error.message)
