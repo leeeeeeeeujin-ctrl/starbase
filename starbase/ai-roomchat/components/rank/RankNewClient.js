@@ -11,21 +11,60 @@ import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChe
 import { uploadGameImage } from '../../lib/rank/storage'
 
 async function registerGame(payload) {
-  // 1. 현재 로그인 세션 가져오기
-  const { data: { session } } = await supabase.auth.getSession()
-  const token = session?.access_token
-  if (!token) throw new Error('로그인이 필요합니다.')
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
 
-  // 2. Authorization 헤더에 토큰 추가
-  const r = await fetch('/api/rank/register-game', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,   // ★ 핵심
-    },
-    body: JSON.stringify(payload),
-  })
-  return r.json()
+  if (userError || !user) {
+    return { ok: false, error: '로그인이 필요합니다.' }
+  }
+
+  const gameInsert = {
+    owner_id: user.id,
+    name: payload?.name || '새 게임',
+    description: payload?.description || '',
+    image_url: payload?.image_url || '',
+    prompt_set_id: payload?.prompt_set_id,
+    realtime_match: !!payload?.realtime_match,
+    rules: payload?.rules ?? null,
+    rules_prefix: payload?.rules_prefix ?? null,
+  }
+
+  const { data: game, error: gameError } = await supabase
+    .from('rank_games')
+    .insert(gameInsert)
+    .select()
+    .single()
+
+  if (gameError || !game) {
+    return { ok: false, error: gameError?.message || '게임 등록에 실패했습니다.' }
+  }
+
+  if (Array.isArray(payload?.roles) && payload.roles.length) {
+    const rows = payload.roles.map((role) => {
+      const rawMin = Number(role?.score_delta_min)
+      const rawMax = Number(role?.score_delta_max)
+      const min = Number.isFinite(rawMin) ? rawMin : 20
+      const max = Number.isFinite(rawMax) ? rawMax : 40
+
+      return {
+        game_id: game.id,
+        name: role?.name ? String(role.name) : '역할',
+        slot_count: Number.isFinite(Number(role?.slot_count)) ? Number(role.slot_count) : 1,
+        active: true,
+        score_delta_min: Math.max(0, min),
+        score_delta_max: Math.max(Math.max(0, min), max),
+      }
+    })
+
+    const { error: roleError } = await supabase.from('rank_game_roles').insert(rows)
+    if (roleError) {
+      return { ok: false, error: roleError.message || '역할을 저장하지 못했습니다.' }
+    }
+  }
+
+  return { ok: true, gameId: game.id }
 }
 
 export default function RankNewClient() {
@@ -102,7 +141,10 @@ export default function RankNewClient() {
       rules_prefix: buildRulesPrefix(rules),
       realtime_match: realtime,
     })
-    if (!res.ok) return alert('게임 등록 실패: ' + (res.error || 'unknown'))
+
+    if (!res.ok) {
+      return alert('게임 등록 실패: ' + (res.error || 'unknown'))
+    }
 
     const gameId = res.gameId
     const payload = activeSlots.map(s => ({
