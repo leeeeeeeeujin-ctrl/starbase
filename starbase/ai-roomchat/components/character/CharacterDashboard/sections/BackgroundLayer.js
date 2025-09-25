@@ -5,15 +5,16 @@ export default function BackgroundLayer({ backgroundUrl }) {
   return (
     <div
       style={{
-        position: 'fixed',
+        position: 'absolute',
         inset: 0,
         backgroundImage: `url(${backgroundUrl})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         filter: 'blur(28px)',
         opacity: 0.5,
-        zIndex: 0,
+        zIndex: -1,
         pointerEvents: 'none',
+        transform: 'scale(1.05)',
       }}
     />
   )

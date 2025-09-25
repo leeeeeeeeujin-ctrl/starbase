@@ -150,6 +150,7 @@ const styles = {
     background: '#020617',
     color: '#e2e8f0',
     fontFamily: '"Noto Sans CJK KR", sans-serif',
+    overflow: 'hidden',
   },
   inner: {
     position: 'relative',
