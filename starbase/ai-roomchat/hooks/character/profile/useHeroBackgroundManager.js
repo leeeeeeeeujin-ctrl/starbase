@@ -4,18 +4,19 @@ const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024
 
 export function useHeroBackgroundManager({ setEdit }) {
   const backgroundInputRef = useRef(null)
+  const localPreviewUrlRef = useRef(null)
   const [backgroundBlob, setBackgroundBlob] = useState(null)
   const [backgroundPreview, setBackgroundPreview] = useState(null)
-  const [backgroundPreviewLocal, setBackgroundPreviewLocal] = useState(false)
   const [backgroundError, setBackgroundError] = useState('')
 
   const resetBackgroundPreview = useCallback(() => {
-    if (backgroundPreviewLocal && backgroundPreview) {
-      URL.revokeObjectURL(backgroundPreview)
+    const localUrl = localPreviewUrlRef.current
+    if (localUrl) {
+      URL.revokeObjectURL(localUrl)
+      localPreviewUrlRef.current = null
     }
-    setBackgroundPreview(null)
-    setBackgroundPreviewLocal(false)
-  }, [backgroundPreview, backgroundPreviewLocal])
+    setBackgroundPreview((prev) => (prev !== null ? null : prev))
+  }, [])
 
   useEffect(() => () => resetBackgroundPreview(), [resetBackgroundPreview])
 
@@ -28,11 +29,11 @@ export function useHeroBackgroundManager({ setEdit }) {
         backgroundInputRef.current.value = ''
       }
       if (hero?.background_url) {
+        localPreviewUrlRef.current = null
         setBackgroundPreview(hero.background_url)
-        setBackgroundPreviewLocal(false)
       }
     },
-    [resetBackgroundPreview]
+    [resetBackgroundPreview],
   )
 
   const handleBackgroundUpload = useCallback(
@@ -55,12 +56,12 @@ export function useHeroBackgroundManager({ setEdit }) {
       resetBackgroundPreview()
       const blobFile = file.slice(0, file.size, file.type)
       const objectUrl = URL.createObjectURL(blobFile)
+      localPreviewUrlRef.current = objectUrl
       setBackgroundBlob(blobFile)
       setBackgroundPreview(objectUrl)
-      setBackgroundPreviewLocal(true)
       setEdit((prev) => ({ ...prev, background_url: '' }))
     },
-    [resetBackgroundPreview, setEdit]
+    [resetBackgroundPreview, setEdit],
   )
 
   const handleClearBackground = useCallback(() => {
@@ -82,11 +83,11 @@ export function useHeroBackgroundManager({ setEdit }) {
       }
       resetBackgroundPreview()
       if (nextUrl) {
+        localPreviewUrlRef.current = null
         setBackgroundPreview(nextUrl)
-        setBackgroundPreviewLocal(false)
       }
     },
-    [resetBackgroundPreview]
+    [resetBackgroundPreview],
   )
 
   return {
