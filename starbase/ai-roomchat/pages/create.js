@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import { supabase } from '../lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
 
 export default function Create() {
   const router = useRouter()
@@ -180,16 +181,22 @@ export default function Create() {
         bgm_mime = bgmBlob.type || null
       }
 
-      const { error: insErr } = await supabase.from('heroes').insert({
-        owner_id: user.id,
-        name, description: desc,
-        ability1, ability2, ability3, ability4,
-        image_url,
-        background_url,
-        bgm_url,
-        bgm_duration_seconds,
-        bgm_mime,
-      })
+      const { error: insErr } = await withTable(supabase, 'heroes', (table) =>
+        supabase.from(table).insert({
+          owner_id: user.id,
+          name,
+          description: desc,
+          ability1,
+          ability2,
+          ability3,
+          ability4,
+          image_url,
+          background_url,
+          bgm_url,
+          bgm_duration_seconds,
+          bgm_mime,
+        }),
+      )
       if (insErr) throw insErr
 
       // ✅ 저장 완료 → 로스터로 이동
@@ -595,3 +602,5 @@ const abilityInputStyle = {
   background: 'rgba(15, 23, 42, 0.55)',
   color: '#f8fafc',
 }
+
+// 

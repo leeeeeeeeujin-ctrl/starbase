@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 
 import LogoutButton from '../components/LogoutButton'
 import { supabase } from '../lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
 
 export default function Roster() {
   const router = useRouter()
@@ -54,11 +55,13 @@ export default function Roster() {
       setDisplayName(derivedName)
       setAvatarUrl(derivedAvatar)
 
-      const { data, error: heroesError } = await supabase
-        .from('heroes')
-        .select('id,name,image_url,created_at')
-        .eq('owner_id', user.id)
-        .order('created_at', { ascending: false })
+      const { data, error: heroesError } = await withTable(supabase, 'heroes', (table) =>
+        supabase
+          .from(table)
+          .select('id,name,image_url,created_at')
+          .eq('owner_id', user.id)
+          .order('created_at', { ascending: false }),
+      )
 
       if (!active) return
 
@@ -582,7 +585,9 @@ export default function Roster() {
                 onClick={async () => {
                   if (!deleteTarget || deleting) return
                   setDeleting(true)
-                  const { error: deleteError } = await supabase.from('heroes').delete().eq('id', deleteTarget.id)
+                  const { error: deleteError } = await withTable(supabase, 'heroes', (table) =>
+                    supabase.from(table).delete().eq('id', deleteTarget.id),
+                  )
                   if (deleteError) {
                     alert(deleteError.message)
                     setDeleting(false)
@@ -627,3 +632,5 @@ function formatDate(value) {
     day: 'numeric',
   })
 }
+
+// 

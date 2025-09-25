@@ -9,15 +9,16 @@ import React, {
 import { useRouter } from 'next/router'
 
 import { supabase } from '../../lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
 import SharedChatDock from '../common/SharedChatDock'
 import {
   buildSystemPromptFromChecklist,
   buildSlotsFromParticipants,
-  createAiHistory,
+  compileTemplate,
   evaluateBridge,
-  makeNodePrompt,
   parseOutcome,
 } from '../../lib/promptEngine'
+import { createAiHistory } from '../../lib/history'
 import { sanitizeVariableRules } from '../../lib/variableRules'
 
 const COMPARATOR_LABEL = { gte: '이상', lte: '이하', eq: '정확히' }
@@ -180,9 +181,10 @@ function buildSystemMessage(game) {
   return [prefix, checklist].filter(Boolean).join('\n')
 }
 
-export default function StartClient() {
+export default function StartClient({ gameId: overrideGameId, onRequestClose }) {
   const router = useRouter()
-  const gameId = router.query.id
+  const routeGameId = router?.query?.id
+  const gameId = overrideGameId || routeGameId
 
   const history = useMemo(() => createAiHistory(), [])
 
@@ -225,12 +227,17 @@ export default function StartClient() {
         if (gameError) throw gameError
         setGame(gameRow)
 
-        const { data: participantRows, error: participantError } = await supabase
-          .from('rank_participants')
-          .select(
-            'id, role, status, hero_id, score, rating, heroes:hero_id(id,name,description,image_url,ability1,ability2,ability3,ability4)',
-          )
-          .eq('game_id', gameId)
+        const { data: participantRows, error: participantError } = await withTable(
+          supabase,
+          'rank_participants',
+          (table) =>
+            supabase
+              .from(table)
+              .select(
+                'id, role, status, hero_id, score, rating, heroes:hero_id(id,name,description,image_url,ability1,ability2,ability3,ability4)',
+              )
+              .eq('game_id', gameId),
+        )
 
         if (!alive) return
         if (participantError) throw participantError
@@ -349,18 +356,20 @@ export default function StartClient() {
       setStatusMessage('')
 
       try {
-        const compiled = makeNodePrompt({
-          node,
+        const compiled = compileTemplate({
+          template: node.template || '',
           slots,
           historyText: history.joinedText({ onlyPublic: false, last: 12 }),
+          options: node.options || {},
           activeGlobalNames: activeGlobal,
           activeLocalNames: activeLocal,
-          currentSlot: null,
+          currentSlot: node.slot_no ?? null,
         })
 
         const promptText = compiled.text
-        if (compiled.pickedSlot != null) {
-          visitedSlotIds.current.add(String(compiled.pickedSlot))
+        const pickedSlot = compiled.meta?.pickedSlot ?? node.slot_no ?? null
+        if (pickedSlot != null) {
+          visitedSlotIds.current.add(String(pickedSlot))
         }
 
         let responseText =
@@ -553,7 +562,13 @@ export default function StartClient() {
           flexWrap: 'wrap',
         }}
       >
-        <button onClick={() => router.back()} style={{ padding: '8px 12px' }}>
+        <button
+          onClick={() => {
+            if (onRequestClose) onRequestClose()
+            else router.back()
+          }}
+          style={{ padding: '8px 12px' }}
+        >
           ← 뒤로가기
         </button>
         <div style={{ flex: '1 1 240px' }}>
@@ -744,6 +759,8 @@ export default function StartClient() {
     </div>
   )
 }
+
+// 
 
 function RosterPanel({ participants }) {
   return (

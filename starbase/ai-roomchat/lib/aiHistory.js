@@ -1,5 +1,6 @@
 // lib/aiHistory.js
 import { supabase } from './supabase'
+import { withTable } from '@/lib/supabaseTables'
 // lib/aiHistory.js (핵심 부분 예시)
 import { useRouter } from 'next/router'
 import { useEffect, useState, useCallback } from 'react'
@@ -60,17 +61,19 @@ async function push({ role, content, public: isPublic = true, turnNo }) {
     ? turnNo
     : Math.max(-1, ...memory.map(m => (typeof m.idx === 'number' ? m.idx : -1))) + 1
 
-  const ins = await supabase
-    .from('rank_turns')
-    .insert({
-      session_id: sessionId,
-      idx: nextIdx,
-      role,
-      public: !!isPublic,
-      content
-    })
-    .select('*')
-    .single()
+  const ins = await withTable(supabase, 'rank_turns', (table) =>
+    supabase
+      .from(table)
+      .insert({
+        session_id: sessionId,
+        idx: nextIdx,
+        role,
+        public: !!isPublic,
+        content,
+      })
+      .select('*')
+      .single(),
+  )
 
   if (ins.error) throw ins.error
   setMemory(prev => [...prev, ins.data])
@@ -89,3 +92,5 @@ function joinedText({ onlyPublic = true, last = 20 } = {}) {
 
   return { beginSession, push, joinedText, sessionId }
 }
+
+// 

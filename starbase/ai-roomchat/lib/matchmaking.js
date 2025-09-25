@@ -1,14 +1,17 @@
 // /lib/matchmaking.js
 import { supabase } from '@/lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
 
 /** roles: ["공격","수비"...], slotsPerRole: {공격:2, 수비:1} */
 export async function pickOpponents({ gameId, myHeroId, myScore, roles, slotsPerRole, step=100, maxWindow=1000 }) {
   // 후보군 가져오기 (내 캐릭 제외)
-  const { data: rows, error } = await supabase
-    .from('rank_participants')
-    .select('hero_id, role, score, heroes ( name, image_url, description )')
-    .eq('game_id', gameId)
-    .neq('hero_id', myHeroId)
+  const { data: rows, error } = await withTable(supabase, 'rank_participants', (table) =>
+    supabase
+      .from(table)
+      .select('hero_id, role, score, heroes ( name, image_url, description )')
+      .eq('game_id', gameId)
+      .neq('hero_id', myHeroId),
+  )
   if (error) throw error
 
   // 역할별 버킷
@@ -40,3 +43,5 @@ export async function pickOpponents({ gameId, myHeroId, myScore, roles, slotsPer
   }
   return picked
 }
+
+// 

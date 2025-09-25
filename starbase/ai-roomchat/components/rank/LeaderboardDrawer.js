@@ -1,6 +1,7 @@
 // components/rank/LeaderboardDrawer.js
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
 
 export default function LeaderboardDrawer({ gameId, onClose }) {
   const [rows, setRows] = useState([])
@@ -9,15 +10,17 @@ export default function LeaderboardDrawer({ gameId, onClose }) {
     if (!gameId) return
     let alive = true
     ;(async()=>{
-      const { data } = await supabase
-        .from('rank_participants')
-        .select(`
+      const { data } = await withTable(supabase, 'rank_participants', (table) =>
+        supabase
+          .from(table)
+          .select(`
           id, game_id, hero_id, role, score,
           heroes ( id, name, image_url, description )
         `)
-        .eq('game_id', gameId)
-        .order('score', { ascending:false })
-        .limit(50)
+          .eq('game_id', gameId)
+          .order('score', { ascending:false })
+          .limit(50),
+      )
       if (!alive) return
       const mapped = (data || []).map(p => ({
         ...p,
@@ -74,3 +77,5 @@ export default function LeaderboardDrawer({ gameId, onClose }) {
     </div>
   )
 }
+
+// 
