@@ -18,14 +18,8 @@ const styles = {
   },
 }
 
-export default function JoinGamePanel({
-  games,
-  selGameId,
-  setSelGameId,
-  heroIdsCSV,
-  setHeroIdsCSV,
-  onJoin,
-}) {
+export default function JoinGamePanel({ games, form, onSubmit }) {
+  const { selGameId, setSelGameId, heroIdsCSV, setHeroIdsCSV } = form
   return (
     <section style={styles.root}>
       <h3 style={{ margin: '4px 0' }}>참가 등록(내 캐릭터 팩)</h3>
@@ -50,7 +44,7 @@ export default function JoinGamePanel({
             style={styles.input}
           />
         </label>
-        <button type="button" onClick={onJoin} style={styles.button}>
+        <button type="button" onClick={onSubmit} style={styles.button}>
           참가/팩 저장
         </button>
       </div>

@@ -25,17 +25,16 @@ const styles = {
   },
 }
 
-export default function PlayTestPanel({
-  games,
-  playGameId,
-  setPlayGameId,
-  playHeroIdsCSV,
-  setPlayHeroIdsCSV,
-  userApiKey,
-  setUserApiKey,
-  onPlay,
-  playResult,
-}) {
+export default function PlayTestPanel({ games, form, onSubmit }) {
+  const {
+    playGameId,
+    setPlayGameId,
+    playHeroIdsCSV,
+    setPlayHeroIdsCSV,
+    userApiKey,
+    setUserApiKey,
+    playResult,
+  } = form
   return (
     <section style={styles.root}>
       <h3 style={{ margin: '4px 0' }}>플레이(테스트 호출)</h3>
@@ -69,7 +68,7 @@ export default function PlayTestPanel({
             style={styles.input}
           />
         </label>
-        <button type="button" onClick={onPlay} style={styles.button}>
+        <button type="button" onClick={onSubmit} style={styles.button}>
           플레이
         </button>
         <pre style={styles.result}>{playResult}</pre>

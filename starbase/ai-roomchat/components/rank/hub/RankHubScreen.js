@@ -36,42 +36,15 @@ export default function RankHubScreen() {
     return <RankHubGuestNotice />
   }
 
+  const { createForm, joinForm, playForm } = hub.forms
+  const { onCreateGame, onJoin, onPlay } = hub.actions
+
   return (
     <div style={containerStyle}>
       <RankHubHeader />
-      <RegisterGamePanel
-        gName={hub.gName}
-        setGName={hub.setGName}
-        gDesc={hub.gDesc}
-        setGDesc={hub.setGDesc}
-        gImage={hub.gImage}
-        setGImage={hub.setGImage}
-        gPromptSetId={hub.gPromptSetId}
-        setGPromptSetId={hub.setGPromptSetId}
-        roles={hub.roles}
-        setRoles={hub.setRoles}
-        totalSlots={hub.totalSlots}
-        onCreateGame={hub.onCreateGame}
-      />
-      <JoinGamePanel
-        games={hub.games}
-        selGameId={hub.selGameId}
-        setSelGameId={hub.setSelGameId}
-        heroIdsCSV={hub.heroIdsCSV}
-        setHeroIdsCSV={hub.setHeroIdsCSV}
-        onJoin={hub.onJoin}
-      />
-      <PlayTestPanel
-        games={hub.games}
-        playGameId={hub.playGameId}
-        setPlayGameId={hub.setPlayGameId}
-        playHeroIdsCSV={hub.playHeroIdsCSV}
-        setPlayHeroIdsCSV={hub.setPlayHeroIdsCSV}
-        userApiKey={hub.userApiKey}
-        setUserApiKey={hub.setUserApiKey}
-        onPlay={hub.onPlay}
-        playResult={hub.playResult}
-      />
+      <RegisterGamePanel form={createForm} onSubmit={onCreateGame} />
+      <JoinGamePanel games={hub.games} form={joinForm} onSubmit={onJoin} />
+      <PlayTestPanel games={hub.games} form={playForm} onSubmit={onPlay} />
       <ParticipantLeaderboard participants={hub.participants} onRefresh={hub.refreshLists} />
     </div>
   )

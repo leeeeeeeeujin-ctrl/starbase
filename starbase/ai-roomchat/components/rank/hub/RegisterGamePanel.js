@@ -38,20 +38,20 @@ const panelStyles = {
   total: { color: '#64748b' },
 }
 
-export default function RegisterGamePanel({
-  gName,
-  setGName,
-  gDesc,
-  setGDesc,
-  gImage,
-  setGImage,
-  gPromptSetId,
-  setGPromptSetId,
-  roles,
-  setRoles,
-  totalSlots,
-  onCreateGame,
-}) {
+export default function RegisterGamePanel({ form, onSubmit }) {
+  const {
+    gName,
+    setGName,
+    gDesc,
+    setGDesc,
+    gImage,
+    setGImage,
+    gPromptSetId,
+    setGPromptSetId,
+    roles,
+    setRoles,
+    totalSlots,
+  } = form
   const handleRoleChange = (index, field, value) => {
     setRoles((current) => {
       const next = [...current]
@@ -136,7 +136,7 @@ export default function RegisterGamePanel({
       </div>
 
       <div style={panelStyles.actionRow}>
-        <button type="button" onClick={onCreateGame} style={panelStyles.submitButton}>
+        <button type="button" onClick={onSubmit} style={panelStyles.submitButton}>
           게임 등록
         </button>
       </div>
