@@ -44,32 +44,45 @@ export function useHeroEditState({ heroId, onRequireAuth, onMissingHero }) {
 
     setLoading(true)
 
-    const { data: auth } = await supabase.auth.getUser()
-    if (!auth?.user) {
-      onRequireAuth?.()
-      setLoading(false)
-      return
-    }
+    try {
+      const { data: auth, error: authError } = await supabase.auth.getUser()
+      if (authError) {
+        console.error('Failed to resolve auth session before loading hero:', authError)
+      }
 
-    const { data, error } = await withTable(supabase, 'heroes', (table) =>
-      supabase
-        .from(table)
-        .select(
-          'id,name,image_url,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_duration_seconds,bgm_mime,owner_id,created_at'
-        )
-        .eq('id', heroId)
-        .single()
-    )
+      if (authError || !auth?.user) {
+        onRequireAuth?.()
+        if (authError) {
+          alert('로그인 정보를 확인할 수 없습니다. 다시 시도해 주세요.')
+        }
+        return
+      }
 
-    if (error || !data) {
-      alert('캐릭터를 불러오지 못했습니다.')
+      const { data, error } = await withTable(supabase, 'heroes', (table) =>
+        supabase
+          .from(table)
+          .select(
+            'id,name,image_url,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_duration_seconds,bgm_mime,owner_id,created_at'
+          )
+          .eq('id', heroId)
+          .single()
+      )
+
+      if (error || !data) {
+        console.error('Failed to load hero details:', error)
+        alert('캐릭터를 불러오지 못했습니다.')
+        onMissingHero?.()
+        return
+      }
+
+      applyHero(data)
+    } catch (error) {
+      console.error('Unexpected error while loading hero details:', error)
+      alert('캐릭터 정보를 불러오는 중 문제가 발생했습니다.')
       onMissingHero?.()
+    } finally {
       setLoading(false)
-      return
     }
-
-    applyHero(data)
-    setLoading(false)
   }, [applyHero, heroId, onMissingHero, onRequireAuth])
 
   useEffect(() => {
