@@ -1,28 +1,21 @@
 import React from 'react'
-import { supabase } from '../lib/supabase'
+import { startGoogleOAuth } from '../lib/auth'
 
 export default function AuthButton() {
   async function signIn() {
     try {
       const origin = window.location.origin
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          // OAuth 콜백 라우트(`/auth-callback`)로 리디렉트해야 PKCE 교환이 정상 처리됩니다.
-          redirectTo: `${origin}/auth-callback`,
-        },
-      })
-      if (!error && data?.url) {
-        window.location.href = data.url
+      const result = await startGoogleOAuth({ origin })
+
+      if (result.status === 'redirect') {
+        window.location.href = result.url
         return
       }
-      if (error) {
-        console.error(error)
-        alert('로그인 실패: ' + error.message)
-      }
-    } catch (e) {
-      console.error(e)
-      alert('로그인 중 오류')
+
+      alert(`로그인 실패: ${result.message}`)
+    } catch (error) {
+      console.error(error)
+      alert('로그인 중 오류가 발생했습니다.')
     }
   }
 
