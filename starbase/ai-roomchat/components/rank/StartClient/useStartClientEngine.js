@@ -1,24 +1,15 @@
-// components/rank/StartClient.js
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
-import { useRouter } from 'next/router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { supabase } from '../../lib/supabase'
-import SharedChatDock from '../common/SharedChatDock'
+import { supabase } from '../../../lib/supabase'
 import {
-  buildSystemPromptFromChecklist,
   buildSlotsFromParticipants,
-  createAiHistory,
+  buildSystemPromptFromChecklist,
   evaluateBridge,
   makeNodePrompt,
   parseOutcome,
-} from '../../lib/promptEngine'
-import { sanitizeVariableRules } from '../../lib/variableRules'
+} from '../../../lib/promptEngine'
+import { createAiHistory } from '../../../lib/history'
+import { sanitizeVariableRules } from '../../../lib/variableRules'
 
 const COMPARATOR_LABEL = { gte: '이상', lte: '이하', eq: '정확히' }
 const OUTCOME_LABEL = { win: '승리', lose: '패배', draw: '무승부' }
@@ -180,10 +171,7 @@ function buildSystemMessage(game) {
   return [prefix, checklist].filter(Boolean).join('\n')
 }
 
-export default function StartClient() {
-  const router = useRouter()
-  const gameId = router.query.id
-
+export function useStartClientEngine(gameId) {
   const history = useMemo(() => createAiHistory(), [])
 
   const [loading, setLoading] = useState(true)
@@ -515,7 +503,7 @@ export default function StartClient() {
     ],
   )
 
-  const handleManualAdvance = useCallback(() => {
+  const advanceWithManual = useCallback(() => {
     if (!manualResponse.trim()) {
       alert('수동 응답을 입력하세요.')
       return
@@ -523,308 +511,33 @@ export default function StartClient() {
     advanceTurn(manualResponse.trim())
   }, [advanceTurn, manualResponse])
 
-  if (loading) {
-    return <div style={{ padding: 16 }}>불러오는 중…</div>
+  const advanceWithAi = useCallback(() => {
+    advanceTurn(null)
+  }, [advanceTurn])
+
+  return {
+    loading,
+    error,
+    game,
+    participants,
+    currentNode,
+    preflight,
+    turn,
+    activeGlobal,
+    activeLocal,
+    statusMessage,
+    logs,
+    apiKey,
+    setApiKey,
+    apiVersion,
+    setApiVersion,
+    manualResponse,
+    setManualResponse,
+    isAdvancing,
+    handleStart,
+    advanceWithAi,
+    advanceWithManual,
   }
-
-  if (error) {
-    return (
-      <div style={{ padding: 16, color: '#b91c1c' }}>
-        오류가 발생했습니다: {error}
-      </div>
-    )
-  }
-
-  return (
-    <div
-      style={{
-        maxWidth: 1200,
-        margin: '16px auto 80px',
-        padding: 12,
-        display: 'grid',
-        gap: 16,
-      }}
-    >
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          flexWrap: 'wrap',
-        }}
-      >
-        <button onClick={() => router.back()} style={{ padding: '8px 12px' }}>
-          ← 뒤로가기
-        </button>
-        <div style={{ flex: '1 1 240px' }}>
-          <h2 style={{ margin: 0 }}>{game?.name || '랭킹 게임'}</h2>
-          <div style={{ fontSize: 13, color: '#475569' }}>
-            {game?.description || '등록된 설명이 없습니다.'}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            onClick={handleStart}
-            style={{
-              padding: '8px 12px',
-              borderRadius: 8,
-              background: '#111827',
-              color: '#fff',
-              fontWeight: 700,
-            }}
-          >
-            {preflight ? '게임 시작' : '다시 시작'}
-          </button>
-          <button
-            onClick={() => advanceTurn(null)}
-            disabled={isAdvancing}
-            style={{
-              padding: '8px 12px',
-              borderRadius: 8,
-              background: isAdvancing ? '#94a3b8' : '#2563eb',
-              color: '#fff',
-              fontWeight: 700,
-            }}
-          >
-            {isAdvancing ? '진행 중…' : '다음 턴'}
-          </button>
-        </div>
-      </header>
-
-      {statusMessage && (
-        <div
-          style={{
-            padding: '10px 12px',
-            borderRadius: 10,
-            background: '#eff6ff',
-            color: '#1d4ed8',
-          }}
-        >
-          {statusMessage}
-        </div>
-      )}
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(220px, 1fr) minmax(420px, 2fr)',
-          gap: 16,
-        }}
-      >
-        <RosterPanel participants={participants} />
-
-        <div style={{ display: 'grid', gap: 16 }}>
-          <section
-            style={{
-              border: '1px solid #e5e7eb',
-              borderRadius: 12,
-              background: '#fff',
-              padding: 12,
-              display: 'grid',
-              gap: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700 }}>진행 정보</div>
-            <div style={{ fontSize: 13, color: '#475569', display: 'grid', gap: 4 }}>
-              <span>턴: {turn}</span>
-              <span>현재 노드: {currentNode ? `#${currentNode.slot_no ?? '?'} (${currentNode.id})` : '없음'}</span>
-              <span>
-                활성 전역 변수: {activeGlobal.length ? activeGlobal.join(', ') : '없음'}
-              </span>
-              <span>
-                최근 로컬 변수: {activeLocal.length ? activeLocal.join(', ') : '없음'}
-              </span>
-            </div>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: '#475569' }}>OpenAI API 키</span>
-              <input
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder="sk-…"
-                style={{ flex: 1, padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5f5' }}
-              />
-            </label>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, color: '#475569' }}>API 버전</span>
-              <select
-                value={apiVersion}
-                onChange={(event) => setApiVersion(event.target.value)}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 8,
-                  border: '1px solid #cbd5f5',
-                  background: '#fff',
-                  fontWeight: 600,
-                }}
-              >
-                <option value="chat_completions">Chat Completions v1</option>
-                <option value="responses">Responses API v2</option>
-              </select>
-            </label>
-            {game?.realtime_match && (
-              <p style={{ margin: 0, fontSize: 12, color: '#475569' }}>
-                실시간 매칭 중에는 세션을 시작한 뒤 API 버전을 변경할 수 없습니다.
-              </p>
-            )}
-          </section>
-
-          <section
-            style={{
-              border: '1px solid #e5e7eb',
-              borderRadius: 12,
-              background: '#fff',
-              padding: 12,
-              display: 'grid',
-              gap: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700 }}>수동 응답</div>
-            <textarea
-              value={manualResponse}
-              onChange={(event) => setManualResponse(event.target.value)}
-              rows={5}
-              placeholder="AI 대신 사용할 응답을 입력하세요. 마지막 줄에는 승패를 적어야 합니다."
-              style={{ width: '100%', borderRadius: 8, border: '1px solid #e2e8f0', fontFamily: 'monospace', fontSize: 13 }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={handleManualAdvance}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  background: '#0ea5e9',
-                  color: '#fff',
-                  fontWeight: 700,
-                }}
-              >
-                수동 응답으로 진행
-              </button>
-              <button
-                onClick={() => advanceTurn(null)}
-                disabled={isAdvancing}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  background: isAdvancing ? '#cbd5f5' : '#2563eb',
-                  color: '#fff',
-                  fontWeight: 700,
-                }}
-              >
-                AI 호출
-              </button>
-            </div>
-          </section>
-
-          <section
-            style={{
-              border: '1px solid #e5e7eb',
-              borderRadius: 12,
-              background: '#fff',
-              padding: 12,
-              display: 'grid',
-              gap: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700 }}>턴 로그</div>
-            <div style={{ maxHeight: 320, overflowY: 'auto', display: 'grid', gap: 8 }}>
-              {logs.length === 0 && (
-                <div style={{ color: '#94a3b8', fontSize: 13 }}>
-                  아직 진행된 턴이 없습니다.
-                </div>
-              )}
-              {logs.map((entry) => (
-                <LogCard key={`${entry.turn}-${entry.nodeId}`} entry={entry} />
-              ))}
-            </div>
-          </section>
-        </div>
-      </div>
-
-      <SharedChatDock height={260} />
-    </div>
-  )
 }
 
-function RosterPanel({ participants }) {
-  return (
-    <section
-      style={{
-        border: '1px solid #e5e7eb',
-        borderRadius: 12,
-        background: '#fff',
-        padding: 12,
-        display: 'grid',
-        gap: 12,
-      }}
-    >
-      <div style={{ fontWeight: 700 }}>참여자</div>
-      <div style={{ display: 'grid', gap: 10 }}>
-        {participants.map((participant) => (
-          <div
-            key={participant.id || participant.hero_id}
-            style={{ display: 'grid', gridTemplateColumns: '56px 1fr', gap: 10, alignItems: 'start' }}
-          >
-            {participant.hero?.image_url ? (
-              <img
-                src={participant.hero.image_url}
-                alt={participant.hero.name}
-                style={{ width: 56, height: 56, borderRadius: 10, objectFit: 'cover' }}
-              />
-            ) : (
-              <div style={{ width: 56, height: 56, borderRadius: 10, background: '#e2e8f0' }} />
-            )}
-            <div style={{ display: 'grid', gap: 4 }}>
-              <div style={{ fontWeight: 700 }}>{participant.hero?.name || '이름 없음'}</div>
-              <div style={{ fontSize: 12, color: '#475569' }}>
-                역할: {participant.role || '미지정'} · 상태: {participant.status}
-              </div>
-              <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: '#475569' }}>
-                {[1, 2, 3, 4]
-                  .map((index) => participant.hero?.[`ability${index}`])
-                  .filter(Boolean)
-                  .map((text, idx) => (
-                    <li key={idx}>{text}</li>
-                  ))}
-              </ul>
-            </div>
-          </div>
-        ))}
-        {participants.length === 0 && (
-          <div style={{ color: '#94a3b8', fontSize: 13 }}>등록된 참여자가 없습니다.</div>
-        )}
-      </div>
-    </section>
-  )
-}
-
-function LogCard({ entry }) {
-  return (
-    <div
-      style={{
-        border: '1px solid #e2e8f0',
-        borderRadius: 10,
-        padding: 10,
-        background: '#f8fafc',
-        display: 'grid',
-        gap: 6,
-        fontSize: 13,
-      }}
-    >
-      <div style={{ fontWeight: 700 }}>
-        턴 {entry.turn} · 노드 {entry.nodeId}
-      </div>
-      <div style={{ whiteSpace: 'pre-wrap', color: '#1e293b' }}>
-        {entry.response}
-      </div>
-      <div style={{ color: '#475569' }}>
-        결론: {entry.outcome || '미확인'}
-      </div>
-      <div style={{ color: '#475569' }}>
-        활성 변수: {entry.variables.length ? entry.variables.join(', ') : '없음'}
-      </div>
-      <div style={{ color: '#475569' }}>
-        다음 노드: {entry.next ? entry.next : '없음'} ({entry.action || 'continue'})
-      </div>
-    </div>
-  )
-}
+//

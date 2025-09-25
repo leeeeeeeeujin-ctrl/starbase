@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 2560" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0b1b3a" />
+      <stop offset="40%" stop-color="#132957" />
+      <stop offset="100%" stop-color="#1b2f4a" />
+    </linearGradient>
+    <radialGradient id="glow" cx="72%" cy="18%" r="45%">
+      <stop offset="0%" stop-color="#4b6cb7" stop-opacity="0.85" />
+      <stop offset="65%" stop-color="#1b2f4a" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="horizon" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1d2f52" stop-opacity="0" />
+      <stop offset="100%" stop-color="#06070a" stop-opacity="0.95" />
+    </linearGradient>
+    <linearGradient id="characterDress" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a2238" />
+      <stop offset="100%" stop-color="#0b0f1d" />
+    </linearGradient>
+  </defs>
+  <rect width="1440" height="2560" fill="url(#skyGradient)" />
+  <circle cx="900" cy="420" r="520" fill="url(#glow)" />
+  <g opacity="0.5">
+    <path d="M300 340 L340 360" stroke="#9ec9ff" stroke-width="3" stroke-linecap="round" />
+    <path d="M640 260 L700 280" stroke="#9ec9ff" stroke-width="3" stroke-linecap="round" />
+    <path d="M860 200 L930 225" stroke="#9ec9ff" stroke-width="3" stroke-linecap="round" />
+    <path d="M1120 310 L1180 340" stroke="#9ec9ff" stroke-width="3" stroke-linecap="round" />
+    <circle cx="520" cy="220" r="4" fill="#d6ecff" />
+    <circle cx="720" cy="180" r="3" fill="#d6ecff" />
+    <circle cx="980" cy="260" r="4" fill="#d6ecff" />
+    <circle cx="1180" cy="190" r="3" fill="#d6ecff" />
+  </g>
+  <rect y="1500" width="1440" height="1060" fill="url(#horizon)" />
+  <g transform="translate(360 780) scale(3.4)">
+    <path d="M80 180 Q60 120 90 40 Q120 -20 170 0 Q220 20 240 120 Q252 182 210 184" fill="url(#characterDress)" />
+    <path d="M150 10 Q140 40 150 70 Q160 100 198 112 Q214 70 210 34 Q200 -6 180 -10 Q160 -14 150 10" fill="#d8d6e3" />
+    <path d="M146 68 Q150 62 156 62 Q162 62 166 70 Q168 78 160 82 Q152 82 148 76" fill="#f4f3f8" />
+    <path d="M90 144 Q120 110 160 120 Q200 130 228 170 Q200 210 146 212 Q94 210 90 144" fill="#121624" />
+    <path d="M82 130 Q60 120 46 96 Q60 84 80 88 Q90 94 100 108" fill="#cfcde0" />
+    <path d="M236 130 Q260 120 274 96 Q260 84 240 88 Q230 94 220 108" fill="#cfcde0" />
+    <path d="M130 200 Q140 250 170 260 Q200 250 210 200" fill="#f4f3f8" />
+    <path d="M70 90 Q40 70 30 40 Q46 34 64 44 Q90 70 96 96" fill="#f4f3f8" />
+    <path d="M250 90 Q280 70 290 40 Q274 34 256 44 Q230 70 224 96" fill="#f4f3f8" />
+    <path d="M112 220 Q94 240 70 246 Q60 230 64 212 Q80 206 100 210" fill="#d8d6e3" />
+    <path d="M230 220 Q248 240 272 246 Q282 230 278 212 Q262 206 242 210" fill="#d8d6e3" />
+    <path d="M150 0 Q146 -40 160 -70 Q180 -40 176 0" fill="#f2f1f7" />
+  </g>
+  <g opacity="0.45" transform="translate(0 1420)">
+    <rect x="80" y="400" width="220" height="40" rx="8" fill="#152034" />
+    <rect x="380" y="360" width="280" height="36" rx="6" fill="#0d1528" />
+    <rect x="780" y="380" width="300" height="42" rx="7" fill="#0d1528" />
+    <rect x="1150" y="420" width="180" height="32" rx="6" fill="#0d1528" />
+  </g>
+</svg>
