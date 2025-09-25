@@ -8,7 +8,8 @@ export default function AuthButton() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${origin}/roster`,
+          // OAuth 콜백 라우트(`/auth-callback`)로 리디렉트해야 PKCE 교환이 정상 처리됩니다.
+          redirectTo: `${origin}/auth-callback`,
         },
       })
       if (error) {
