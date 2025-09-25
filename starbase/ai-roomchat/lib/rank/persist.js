@@ -23,6 +23,7 @@ export async function recordBattle({ game, userId, myHeroIds, oppOwnerIds, oppHe
 
   const logResult = await withTable(supabase, 'rank_battle_logs', (table) =>
     supabase.from(table).insert({
+      game_id: game.id,
       battle_id: battle.id,
       turn_no: 1,
       prompt,

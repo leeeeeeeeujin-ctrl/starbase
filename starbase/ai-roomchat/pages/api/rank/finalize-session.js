@@ -114,6 +114,7 @@ export default async function handler(req, res) {
       if (battleId) {
         await withTable(adminClient, 'rank_battle_logs', (table) =>
           adminClient.from(table).insert({
+            game_id: gameId,
             battle_id: battleId,
             turn_no: 0,
             prompt: '[interactive session]',
