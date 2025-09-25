@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 
-import BackgroundLayer from './sections/BackgroundLayer'
+import DashboardShell from './layout/DashboardShell'
 import FooterBar from './sections/FooterBar'
 import EditHeroModal from './sections/EditHeroModal'
 import { CharacterDashboardProvider } from './context'
@@ -20,12 +20,10 @@ export default function CharacterDashboard({
   const [showEditPanel, setShowEditPanel] = useState(false)
   const [activeSection, setActiveSection] = useState('overview')
 
-  const {
-    profile,
-    participation,
-    battles,
-    heroName: dashboardHeroName,
-  } = dashboard
+  const { profile, participation, battles, heroName: dashboardHeroName } = dashboard
+
+  const handleOpenEdit = useCallback(() => setShowEditPanel(true), [])
+  const handleCloseEdit = useCallback(() => setShowEditPanel(false), [])
 
   const contextValue = {
     hero: profile.hero,
@@ -69,129 +67,132 @@ export default function CharacterDashboard({
     battleLoading: battles.status.loading,
     battleError: battles.status.error,
     scoreboardRows: participation.scoreboard,
-    openEditPanel: () => setShowEditPanel(true),
-    closeEditPanel: () => setShowEditPanel(false),
+    openEditPanel: handleOpenEdit,
+    closeEditPanel: handleCloseEdit,
     onStartBattle,
   }
 
   const sections = useMemo(
     () => [
-      { id: 'overview', label: '개요', component: OverviewPanel },
-      { id: 'stats', label: '통계', component: StatsPanel },
-      { id: 'instant', label: '즉시 전투', component: InstantBattlePanel },
-      { id: 'ranking', label: '랭킹', component: RankingPanel },
-      { id: 'battle-log', label: '전투 기록', component: BattleLogPanel },
+      {
+        id: 'overview',
+        label: '개요',
+        description: '프로필과 소개 요약',
+        component: OverviewPanel,
+      },
+      {
+        id: 'stats',
+        label: '통계',
+        description: '랭크 참가 현황과 지표',
+        component: StatsPanel,
+      },
+      {
+        id: 'instant',
+        label: '즉시 전투',
+        description: '선택한 게임으로 바로 전투',
+        component: InstantBattlePanel,
+      },
+      {
+        id: 'ranking',
+        label: '랭킹',
+        description: '상세 랭킹과 점수판',
+        component: RankingPanel,
+      },
+      {
+        id: 'battle-log',
+        label: '전투 기록',
+        description: '최근 전투와 로그',
+        component: BattleLogPanel,
+      },
     ],
     [],
   )
 
-  const active =
-    sections.find((section) => section.id === activeSection) || sections[0]
-
+  const active = sections.find((section) => section.id === activeSection) || sections[0]
   const ActiveComponent = active.component
+
+  const heroSubtitle = participation.selectedGame?.name
+    ? `현재 선택한 게임 · ${participation.selectedGame.name}`
+    : '영웅 정보를 편집하여 자신만의 전장을 준비하세요.'
+
+  const heroMeta = useMemo(() => {
+    const items = []
+    const statSlides = participation.statSlides || []
+    if (statSlides.length) {
+      items.push({ id: 'games', label: '참여 게임', value: `${statSlides.length}개` })
+    }
+
+    const selectedEntry = participation.selectedEntry
+    const ratingValue =
+      selectedEntry?.rating ??
+      (typeof selectedEntry?.score === 'number' ? selectedEntry.score : selectedEntry?.score || null)
+    if (ratingValue != null && ratingValue !== '') {
+      const value =
+        typeof ratingValue === 'number' ? ratingValue.toLocaleString() : String(ratingValue)
+      items.push({ id: 'rating', label: '현재 점수', value })
+    }
+
+    const summary = battles.summary || {}
+    const battleCount = summary.total ?? selectedEntry?.battles
+    if (battleCount != null) {
+      const numeric = Number(battleCount)
+      const value = Number.isFinite(numeric) ? numeric.toLocaleString() : String(battleCount)
+      items.push({ id: 'battles', label: '전투 수', value: `${value}회` })
+    }
+
+    let winRate = summary.rate
+    if (winRate == null && typeof selectedEntry?.win_rate === 'number') {
+      winRate = selectedEntry.win_rate > 1 ? selectedEntry.win_rate : selectedEntry.win_rate * 100
+    }
+    if (typeof winRate === 'number' && Number.isFinite(winRate)) {
+      const safeRate = Math.max(0, Math.min(100, Math.round(winRate)))
+      items.push({ id: 'winRate', label: '승률', value: `${safeRate}%` })
+    }
+
+    return items
+  }, [participation.statSlides, participation.selectedEntry, battles.summary])
+
+  const quickActions = useMemo(
+    () => [
+      {
+        id: 'start-battle',
+        label: '선택한 게임으로 전투 시작',
+        description: '대시보드에서 선택한 게임과 규칙으로 세션을 생성합니다.',
+        onSelect: onStartBattle,
+        tone: 'primary',
+        disabled: !participation.selectedGameId,
+      },
+      {
+        id: 'edit-hero',
+        label: '영웅 프로필 편집',
+        description: '이미지, 배경, 능력치를 수정하고 저장합니다.',
+        onSelect: handleOpenEdit,
+        tone: 'muted',
+      },
+    ],
+    [onStartBattle, participation.selectedGameId, handleOpenEdit],
+  )
+
+  const handleSelectSection = useCallback((sectionId) => {
+    setActiveSection(sectionId)
+  }, [])
 
   return (
     <CharacterDashboardProvider value={contextValue}>
-      <div style={styles.root}>
-        <BackgroundLayer
-          backgroundUrl={
-            profile.background.preview || profile.hero?.background_url
-          }
-        />
-        <div style={styles.inner}>
-          <header style={styles.header}>
-            <div>
-              <span style={styles.headerLabel}>선택한 영웅</span>
-              <h1 style={styles.heroTitle}>{contextValue.heroName}</h1>
-            </div>
-            <div style={styles.tabBar}>
-              {sections.map((section) => {
-                const activeMatch = section.id === active.id
-                return (
-                  <button
-                    key={section.id}
-                    type="button"
-                    onClick={() => setActiveSection(section.id)}
-                    style={{
-                      ...styles.tabButton,
-                      background: activeMatch
-                        ? 'linear-gradient(90deg, rgba(56,189,248,0.45), rgba(59,130,246,0.65))'
-                        : 'rgba(15, 23, 42, 0.55)',
-                      border: activeMatch
-                        ? '1px solid rgba(59, 130, 246, 0.8)'
-                        : '1px solid rgba(148, 163, 184, 0.35)',
-                      color: activeMatch ? '#e0f2fe' : '#cbd5f5',
-                    }}
-                  >
-                    {section.label}
-                  </button>
-                )
-              })}
-            </div>
-          </header>
-          <div style={styles.panelArea}>
-            <ActiveComponent />
-          </div>
-        </div>
-        <FooterBar onBack={onBack} onGoLobby={onGoLobby} />
-        <EditHeroModal
-          open={showEditPanel}
-          onClose={() => setShowEditPanel(false)}
-        />
-      </div>
+      <DashboardShell
+        backgroundUrl={profile.background.preview || profile.hero?.background_url}
+        heroName={contextValue.heroName}
+        heroSubtitle={heroSubtitle}
+        heroMeta={heroMeta}
+        sections={sections}
+        activeSectionId={active.id}
+        onSelectSection={handleSelectSection}
+        quickActions={quickActions}
+      >
+        <ActiveComponent />
+      </DashboardShell>
+      <FooterBar onBack={onBack} onGoLobby={onGoLobby} />
+      <EditHeroModal open={showEditPanel} onClose={handleCloseEdit} />
     </CharacterDashboardProvider>
   )
-}
-
-const styles = {
-  root: {
-    position: 'relative',
-    minHeight: '100vh',
-    background: '#020617',
-    color: '#e2e8f0',
-    fontFamily: '"Noto Sans CJK KR", sans-serif',
-    overflow: 'hidden',
-  },
-  inner: {
-    position: 'relative',
-    zIndex: 1,
-    padding: '32px 24px 120px',
-    maxWidth: 960,
-    margin: '0 auto',
-  },
-  header: {
-    display: 'grid',
-    gap: 16,
-    marginBottom: 28,
-  },
-  headerLabel: {
-    fontSize: 13,
-    color: '#94a3b8',
-    letterSpacing: 0.6,
-  },
-  heroTitle: {
-    margin: 0,
-    fontSize: 36,
-    fontWeight: 800,
-    letterSpacing: -0.5,
-  },
-  tabBar: {
-    display: 'flex',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  tabButton: {
-    padding: '10px 18px',
-    borderRadius: 999,
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    background: 'rgba(15, 23, 42, 0.55)',
-    color: '#cbd5f5',
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'background 0.2s ease, border 0.2s ease, color 0.2s ease',
-  },
-  panelArea: {
-    display: 'grid',
-    gap: 24,
-  },
 }
