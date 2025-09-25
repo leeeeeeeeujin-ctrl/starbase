@@ -1,20 +1,40 @@
 import React from 'react'
-import Link from 'next/link'
 import AuthButton from '../components/AuthButton'
 
 export default function Home() {
   return (
-    <main style={{ padding:24 }}>
-      <h1>ai-roomchat (pages router)</h1>
-      <AuthButton />
-      <nav style={{ marginTop:12, display:'flex', gap:12 }}>
-        <Link href="/create"><a>Create</a></Link>
-        <Link href="/roster"><a>Roster</a></Link>
-        <Link href="/chat"><a>Chat</a></Link>
-      </nav>
-      <p style={{ marginTop:12, color:'#666' }}>
-        .env의 SUPABASE URL/ANON_KEY가 같은 프로젝트인지 꼭 확인.
-      </p>
+    <main
+      style={{
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        padding: '64px 24px 120px',
+        backgroundImage: 'url(/landing/fox-night.svg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        color: '#fff',
+        textAlign: 'center',
+        fontFamily: '"Noto Sans KR", sans-serif',
+      }}
+    >
+      <h1
+        style={{
+          fontSize: 'clamp(32px, 5vw, 56px)',
+          fontWeight: 700,
+          marginBottom: 32,
+          textShadow: '0 6px 18px rgba(0, 0, 0, 0.45)',
+          letterSpacing: '0.04em',
+        }}
+      >
+        그 때의 영광 속으로
+      </h1>
+      <div style={{ marginTop: 'auto' }}>
+        <AuthButton />
+      </div>
     </main>
   )
 }

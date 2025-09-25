@@ -13,11 +13,11 @@ import SharedChatDock from '../common/SharedChatDock'
 import {
   buildSystemPromptFromChecklist,
   buildSlotsFromParticipants,
-  createAiHistory,
   evaluateBridge,
   makeNodePrompt,
   parseOutcome,
 } from '../../lib/promptEngine'
+import { createAiHistory } from '../../lib/history'
 import { sanitizeVariableRules } from '../../lib/variableRules'
 
 const COMPARATOR_LABEL = { gte: '이상', lte: '이하', eq: '정확히' }

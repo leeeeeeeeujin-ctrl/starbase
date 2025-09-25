@@ -7,7 +7,7 @@ export default function AuthButton() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth-callback`, // auth-callback.js랑 일치
+          redirectTo: `${window.location.origin}/auth-callback`,
         },
       })
       if (error) {
@@ -20,33 +20,38 @@ export default function AuthButton() {
     }
   }
 
-  async function signOut() {
-    try {
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error(error)
-        alert('로그아웃 실패: ' + error.message)
-      }
-    } catch (e) {
-      console.error(e)
-      alert('로그아웃 중 오류')
-    }
+  function handleMouseEnter(event) {
+    event.currentTarget.style.transform = 'translateY(-2px)'
+    event.currentTarget.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.45)'
+  }
+
+  function handleMouseLeave(event) {
+    event.currentTarget.style.transform = 'translateY(0)'
+    event.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.35)'
   }
 
   return (
-    <div style={{ display: 'flex', gap: 8 }}>
-      <button
-        onClick={signIn}
-        style={{ padding: 6, borderRadius: 6, background: '#ef4444', color: '#fff' }}
-      >
-        Google 로그인
-      </button>
-      <button
-        onClick={signOut}
-        style={{ padding: 6, borderRadius: 6 }}
-      >
-        로그아웃
-      </button>
-    </div>
+    <button
+      onClick={signIn}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        padding: '14px 40px',
+        borderRadius: 999,
+        backgroundColor: '#040507',
+        color: '#ffffff',
+        fontSize: '18px',
+        fontWeight: 600,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        border: '1px solid rgba(255, 255, 255, 0.25)',
+        cursor: 'pointer',
+        transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+        fontFamily: '"Noto Sans KR", sans-serif',
+      }}
+    >
+      신경망 접속
+    </button>
   )
 }
