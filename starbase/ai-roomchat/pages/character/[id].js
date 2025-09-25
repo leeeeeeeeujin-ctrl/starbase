@@ -26,43 +26,8 @@ export default function CharacterDetailPage() {
   return (
     <>
       <CharacterDashboard
-        hero={dashboard.hero}
+        dashboard={dashboard}
         heroName={heroName}
-        edit={dashboard.edit}
-        onChangeEdit={dashboard.onChangeEdit}
-        saving={dashboard.saving}
-        onSave={dashboard.onSave}
-        onDelete={dashboard.onDelete}
-        backgroundPreview={dashboard.backgroundPreview}
-        backgroundError={dashboard.backgroundError}
-        onBackgroundUpload={dashboard.onBackgroundUpload}
-        onClearBackground={dashboard.onClearBackground}
-        backgroundInputRef={dashboard.backgroundInputRef}
-        bgmBlob={dashboard.bgmBlob}
-        bgmLabel={dashboard.bgmLabel}
-        bgmDuration={dashboard.bgmDuration}
-        bgmError={dashboard.bgmError}
-        onBgmUpload={dashboard.onBgmUpload}
-        onClearBgm={dashboard.onClearBgm}
-        bgmInputRef={dashboard.bgmInputRef}
-        abilityCards={dashboard.abilityCards}
-        onAddAbility={dashboard.onAddAbility}
-        onReverseAbilities={dashboard.onReverseAbilities}
-        onClearAbility={dashboard.onClearAbility}
-        statSlides={dashboard.statSlides}
-        selectedGameId={dashboard.selectedGameId}
-        onSelectGame={dashboard.onSelectGame}
-        participations={dashboard.participations}
-        selectedGame={dashboard.selectedGame}
-        selectedEntry={dashboard.selectedEntry}
-        selectedScoreboard={dashboard.selectedScoreboard}
-        heroLookup={dashboard.heroLookup}
-        battleSummary={dashboard.battleSummary}
-        battleDetails={dashboard.battleDetails}
-        visibleBattles={dashboard.visibleBattles}
-        onShowMoreBattles={dashboard.onShowMoreBattles}
-        battleLoading={dashboard.battleLoading}
-        battleError={dashboard.battleError}
         onStartBattle={() => {
           if (!dashboard.selectedGameId) {
             alert('먼저 게임을 선택하세요.')

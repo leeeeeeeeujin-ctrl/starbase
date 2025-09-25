@@ -1,27 +1,29 @@
 import React from 'react'
 
-export default function EditHeroModal({
-  open,
-  onClose,
-  hero,
-  edit,
-  onChangeEdit,
-  backgroundPreview,
-  onBackgroundUpload,
-  onClearBackground,
-  backgroundInputRef,
-  backgroundError,
-  bgmLabel,
-  bgmDuration,
-  onBgmUpload,
-  onClearBgm,
-  bgmInputRef,
-  bgmError,
-  abilityCards,
-  onAddAbility,
-  onReverseAbilities,
-  onClearAbility,
-}) {
+import { useCharacterDashboardContext } from '../context'
+
+export default function EditHeroModal({ open, onClose }) {
+  const {
+    hero,
+    edit,
+    onChangeEdit,
+    backgroundPreview,
+    onBackgroundUpload,
+    onClearBackground,
+    backgroundInputRef,
+    backgroundError,
+    bgmLabel,
+    bgmDuration,
+    onBgmUpload,
+    onClearBgm,
+    bgmInputRef,
+    bgmError,
+    abilityCards,
+    onAddAbility,
+    onReverseAbilities,
+    onClearAbility,
+  } = useCharacterDashboardContext()
+
   if (!open) return null
 
   const backgroundSource = backgroundPreview || edit.background_url || hero?.background_url

@@ -1,19 +1,23 @@
 import React from 'react'
 
-export default function RightColumn({
-  selectedGameId,
-  selectedEntry,
-  battleSummary,
-  onStartBattle,
-  scoreboardRows,
-  heroId,
-  heroLookup,
-  battleDetails,
-  visibleBattles,
-  onShowMoreBattles,
-  battleLoading,
-  battleError,
-}) {
+import { useCharacterDashboardContext } from '../context'
+
+export default function RightColumn() {
+  const {
+    selectedGameId,
+    selectedEntry,
+    battleSummary,
+    onStartBattle,
+    scoreboardRows,
+    hero,
+    heroLookup,
+    battleDetails,
+    visibleBattles,
+    onShowMoreBattles,
+    battleLoading,
+    battleError,
+  } = useCharacterDashboardContext()
+
   return (
     <main style={styles.column}>
       <InstantBattleSection
@@ -24,7 +28,7 @@ export default function RightColumn({
       />
       <RankingSection
         scoreboardRows={scoreboardRows}
-        heroId={heroId}
+        heroId={hero?.id}
         heroLookup={heroLookup}
         selectedEntry={selectedEntry}
       />

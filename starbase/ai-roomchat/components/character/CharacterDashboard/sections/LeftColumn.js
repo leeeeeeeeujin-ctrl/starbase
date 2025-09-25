@@ -1,29 +1,33 @@
 import React from 'react'
 
-export default function LeftColumn({
-  hero,
-  heroName,
-  onOpenEdit,
-  saving,
-  onSave,
-  onDelete,
-  audioSource,
-  bgmDuration,
-  statPages,
-  statPageIndex,
-  onChangeStatPage,
-  hasParticipations,
-  visibleStatSlides,
-  selectedGameId,
-  onSelectGame,
-  selectedEntry,
-}) {
+import { useCharacterDashboardContext } from '../context'
+
+export default function LeftColumn() {
+  const {
+    hero,
+    heroName,
+    saving,
+    onSave,
+    onDelete,
+    audioSource,
+    bgmDuration,
+    statPages,
+    statPageIndex,
+    setStatPageIndex,
+    hasParticipations,
+    visibleStatSlides,
+    selectedGameId,
+    onSelectGame,
+    selectedEntry,
+    openEditPanel,
+  } = useCharacterDashboardContext()
+
   return (
     <aside style={styles.column}>
       <HeroProfileSection
         hero={hero}
         heroName={heroName}
-        onOpenEdit={onOpenEdit}
+        onOpenEdit={openEditPanel}
         saving={saving}
         onSave={onSave}
         onDelete={onDelete}
@@ -33,7 +37,7 @@ export default function LeftColumn({
       <StatPageSelector
         statPages={statPages}
         statPageIndex={statPageIndex}
-        onChangeStatPage={onChangeStatPage}
+        onChangeStatPage={setStatPageIndex}
       />
       <GameStatCards
         hasParticipations={hasParticipations}

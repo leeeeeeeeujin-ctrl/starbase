@@ -5,11 +5,17 @@ import LeftColumn from './sections/LeftColumn'
 import RightColumn from './sections/RightColumn'
 import FooterBar from './sections/FooterBar'
 import EditHeroModal from './sections/EditHeroModal'
+import { CharacterDashboardProvider } from './context'
 
-export default function CharacterDashboard(props) {
+export default function CharacterDashboard({
+  dashboard,
+  heroName,
+  onStartBattle,
+  onBack,
+  onGoLobby,
+}) {
   const {
     hero,
-    heroName,
     edit,
     onChangeEdit,
     saving,
@@ -34,7 +40,6 @@ export default function CharacterDashboard(props) {
     statSlides,
     selectedGameId,
     onSelectGame,
-    participations,
     selectedGame,
     selectedEntry,
     selectedScoreboard,
@@ -45,10 +50,7 @@ export default function CharacterDashboard(props) {
     onShowMoreBattles,
     battleLoading,
     battleError,
-    onStartBattle,
-    onBack,
-    onGoLobby,
-  } = props
+  } = dashboard
 
   const [statPageIndex, setStatPageIndex] = useState(0)
   const [showEditPanel, setShowEditPanel] = useState(false)
@@ -107,71 +109,75 @@ export default function CharacterDashboard(props) {
   const hasParticipations = Boolean(statSlides?.length)
   const scoreboardRows = selectedScoreboard || []
 
+  const contextValue = {
+    ...dashboard,
+    hero,
+    heroName,
+    edit,
+    onChangeEdit,
+    saving,
+    onSave,
+    onDelete,
+    backgroundPreview,
+    backgroundError,
+    onBackgroundUpload,
+    onClearBackground,
+    backgroundInputRef,
+    bgmBlob,
+    bgmLabel,
+    bgmDuration,
+    bgmError,
+    onBgmUpload,
+    onClearBgm,
+    bgmInputRef,
+    abilityCards,
+    onAddAbility,
+    onReverseAbilities,
+    onClearAbility,
+    statSlides,
+    selectedGameId,
+    onSelectGame,
+    selectedGame,
+    selectedEntry,
+    selectedScoreboard,
+    heroLookup,
+    battleSummary,
+    battleDetails,
+    visibleBattles,
+    onShowMoreBattles,
+    battleLoading,
+    battleError,
+    audioSource,
+    hasParticipations,
+    statPages,
+    statPageIndex,
+    setStatPageIndex,
+    visibleStatSlides,
+    scoreboardRows,
+    openEditPanel: () => setShowEditPanel(true),
+    closeEditPanel: () => setShowEditPanel(false),
+    onStartBattle,
+  }
+
   return (
-    <div style={styles.root}>
-      <BackgroundLayer
-        backgroundUrl={backgroundPreview || hero?.background_url}
-      />
-      <div style={styles.inner}>
-        <div style={styles.grid}>
-          <LeftColumn
-            hero={hero}
-            heroName={heroName}
-            onOpenEdit={() => setShowEditPanel(true)}
-            saving={saving}
-            onSave={onSave}
-            onDelete={onDelete}
-            audioSource={audioSource}
-            bgmDuration={bgmDuration}
-            statPages={statPages}
-            statPageIndex={statPageIndex}
-            onChangeStatPage={setStatPageIndex}
-            hasParticipations={hasParticipations}
-            visibleStatSlides={visibleStatSlides}
-            selectedGameId={selectedGameId}
-            onSelectGame={onSelectGame}
-            selectedEntry={selectedEntry}
-          />
-          <RightColumn
-            selectedGameId={selectedGameId}
-            selectedEntry={selectedEntry}
-            battleSummary={battleSummary}
-            onStartBattle={onStartBattle}
-            scoreboardRows={scoreboardRows}
-            heroId={hero?.id}
-            heroLookup={heroLookup}
-            battleDetails={battleDetails}
-            visibleBattles={visibleBattles}
-            onShowMoreBattles={onShowMoreBattles}
-            battleLoading={battleLoading}
-            battleError={battleError}
-          />
+    <CharacterDashboardProvider value={contextValue}>
+      <div style={styles.root}>
+        <BackgroundLayer
+          backgroundUrl={backgroundPreview || hero?.background_url}
+        />
+        <div style={styles.inner}>
+          <div style={styles.grid}>
+            <LeftColumn />
+            <RightColumn />
+          </div>
         </div>
+        <FooterBar onBack={onBack} onGoLobby={onGoLobby} />
+        <EditHeroModal
+          open={showEditPanel}
+          onClose={() => setShowEditPanel(false)}
+        />
       </div>
-      <FooterBar onBack={onBack} onGoLobby={onGoLobby} />
-      <EditHeroModal
-        open={showEditPanel}
-        onClose={() => setShowEditPanel(false)}
-        hero={hero}
-        edit={edit}
-        onChangeEdit={onChangeEdit}
-        backgroundPreview={backgroundPreview}
-        onBackgroundUpload={onBackgroundUpload}
-        onClearBackground={onClearBackground}
-        backgroundInputRef={backgroundInputRef}
-        backgroundError={backgroundError}
-        bgmLabel={bgmLabel}
-        bgmDuration={bgmDuration}
-        onBgmUpload={onBgmUpload}
-        onClearBgm={onClearBgm}
-        bgmInputRef={bgmInputRef}
-        bgmError={bgmError}
-        abilityCards={abilityCards}
-        onAddAbility={onAddAbility}
-        onReverseAbilities={onReverseAbilities}
-        onClearAbility={onClearAbility}
-      />
-    </div>
+    </CharacterDashboardProvider>
   )
 }
 
