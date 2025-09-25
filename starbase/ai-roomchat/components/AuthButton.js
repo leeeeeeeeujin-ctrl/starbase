@@ -5,13 +5,17 @@ export default function AuthButton() {
   async function signIn() {
     try {
       const origin = window.location.origin
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           // OAuth 콜백 라우트(`/auth-callback`)로 리디렉트해야 PKCE 교환이 정상 처리됩니다.
           redirectTo: `${origin}/auth-callback`,
         },
       })
+      if (!error && data?.url) {
+        window.location.href = data.url
+        return
+      }
       if (error) {
         console.error(error)
         alert('로그인 실패: ' + error.message)
