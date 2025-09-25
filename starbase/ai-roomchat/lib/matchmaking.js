@@ -8,16 +8,22 @@ export async function pickOpponents({ gameId, myHeroId, myScore, roles, slotsPer
   const { data: rows, error } = await withTable(supabase, 'rank_participants', (table) =>
     supabase
       .from(table)
-      .select('hero_id, role, score, heroes ( name, image_url, description )')
-      .eq('game_id', gameId)
-      .neq('hero_id', myHeroId),
+      .select('hero_id, heroes_id, role, score')
+      .eq('game_id', gameId),
   )
   if (error) throw error
+
+  const candidates = (rows || [])
+    .map((row) => ({
+      ...row,
+      hero_id: row?.hero_id || row?.heroes_id || null,
+    }))
+    .filter((row) => row.hero_id && row.hero_id !== myHeroId)
 
   // 역할별 버킷
   const byRole = new Map()
   roles.forEach(r => byRole.set(r, []))
-  for (const r of rows || []) {
+  for (const r of candidates) {
     if (!byRole.has(r.role)) byRole.set(r.role, [])
     byRole.get(r.role).push(r)
   }

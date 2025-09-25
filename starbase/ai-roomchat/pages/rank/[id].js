@@ -73,12 +73,15 @@ export default function GameRoom() {
         (table) =>
           supabase
             .from(table)
-            .select('id, game_id, hero_id, owner_id, role, score, created_at')
+            .select('id, game_id, hero_id, heroes_id, owner_id, role, score, created_at')
             .eq('game_id', id)
             .order('score', { ascending: false }),
       )
 
-      const ps = participantResult.data || []
+      const ps = (participantResult.data || []).map((row) => ({
+        ...row,
+        hero_id: row?.hero_id || row?.heroes_id || null,
+      }))
       if (participantResult.error) {
         console.warn('participants fetch failed:', participantResult.error.message)
       }
@@ -159,11 +162,14 @@ export default function GameRoom() {
       (table) =>
         supabase
           .from(table)
-          .select('id, game_id, hero_id, owner_id, role, score, created_at')
+          .select('id, game_id, hero_id, heroes_id, owner_id, role, score, created_at')
           .eq('game_id', id)
           .order('score', { ascending: false }),
     )
-    const ps = refreshed.data || []
+    const ps = (refreshed.data || []).map((row) => ({
+      ...row,
+      hero_id: row?.hero_id || row?.heroes_id || null,
+    }))
     if (refreshed.error) {
       console.warn('participants refresh failed:', refreshed.error.message)
     }

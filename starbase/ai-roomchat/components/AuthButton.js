@@ -1,7 +1,7 @@
 import React from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function AuthButton({ variant = 'default', label = 'Google 로그인' }) {
+export default function AuthButton({ variant = 'default', label = 'Google 로그인', showGlyph = true }) {
   async function signIn() {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
@@ -36,9 +36,14 @@ export default function AuthButton({ variant = 'default', label = 'Google 로그
   if (variant === 'landing') {
     return (
       <>
-        <button className="landingButton" onClick={signIn}>
-          <span aria-hidden className="landingGlyph">G</span>
-          {label}
+        <button
+          className={`landingButton${showGlyph ? '' : ' noGlyph'}`}
+          onClick={signIn}
+        >
+          {showGlyph ? (
+            <span aria-hidden className="landingGlyph">G</span>
+          ) : null}
+          <span className="landingLabel">{label}</span>
         </button>
         <style jsx>{`
           .landingButton {
@@ -71,6 +76,9 @@ export default function AuthButton({ variant = 'default', label = 'Google 로그
             outline: 2px solid rgba(148, 197, 255, 0.9);
             outline-offset: 3px;
           }
+          .landingButton.noGlyph {
+            gap: 0;
+          }
           .landingGlyph {
             display: inline-flex;
             align-items: center;
@@ -84,6 +92,10 @@ export default function AuthButton({ variant = 'default', label = 'Google 로그
             font-size: 0.95rem;
             letter-spacing: 0;
             box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.08);
+          }
+          .landingLabel {
+            line-height: 1;
+            white-space: nowrap;
           }
         `}</style>
       </>

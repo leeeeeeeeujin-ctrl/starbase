@@ -10,6 +10,7 @@ import { useRouter } from 'next/router'
 
 import { supabase } from '../../lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
+import { loadHeroesMap } from '../../lib/rank/heroes'
 import SharedChatDock from '../common/SharedChatDock'
 import {
   buildSystemPromptFromChecklist,
@@ -136,18 +137,19 @@ function pickNextEdge(edges, context) {
   return fallback
 }
 
-function normalizeParticipants(rows = []) {
+function normalizeParticipants(rows = [], heroesMap = {}) {
   return rows.map((row) => {
-    const hero = row?.heroes || {}
+    const heroId = row?.hero_id || row?.heroes_id || null
+    const hero = (heroId && heroesMap[heroId]) || {}
     return {
       id: row?.id,
       role: row?.role || '',
       status: row?.status || 'alive',
       score: Number(row?.score) || 0,
       rating: Number(row?.rating) || 0,
-      hero_id: row?.hero_id || null,
+      hero_id: heroId,
       hero: {
-        id: hero?.id || row?.hero_id || null,
+        id: hero?.id || heroId,
         name: hero?.name || '이름 없는 영웅',
         description: hero?.description || '',
         image_url: hero?.image_url || '',
@@ -233,15 +235,23 @@ export default function StartClient({ gameId: overrideGameId, onRequestClose }) 
           (table) =>
             supabase
               .from(table)
-              .select(
-                'id, role, status, hero_id, score, rating, heroes:hero_id(id,name,description,image_url,ability1,ability2,ability3,ability4)',
-              )
+              .select('id, role, status, hero_id, heroes_id, score, rating')
               .eq('game_id', gameId),
         )
 
         if (!alive) return
         if (participantError) throw participantError
-        setParticipants(normalizeParticipants(participantRows || []))
+
+        const heroIds = Array.from(
+          new Set(
+            (participantRows || [])
+              .map((row) => row?.hero_id || row?.heroes_id || null)
+              .filter(Boolean),
+          ),
+        )
+        const heroesMap = heroIds.length ? await loadHeroesMap(heroIds) : {}
+        if (!alive) return
+        setParticipants(normalizeParticipants(participantRows || [], heroesMap))
 
         if (gameRow?.prompt_set_id) {
           const [{ data: slotRows, error: slotError }, { data: bridgeRows, error: bridgeError }] = await Promise.all([
@@ -845,3 +855,4 @@ function LogCard({ entry }) {
     </div>
   )
 }
+//

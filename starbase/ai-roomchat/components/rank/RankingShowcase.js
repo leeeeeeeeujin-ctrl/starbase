@@ -16,6 +16,7 @@ const baseCardStyle = {
 function safeFirstHeroId(row) {
   if (!row) return null
   if (row.hero_id) return row.hero_id
+  if (row.heroes_id) return row.heroes_id
   if (Array.isArray(row.hero_ids) && row.hero_ids.length > 0) return row.hero_ids[0]
   return null
 }
@@ -463,7 +464,7 @@ export default function RankingShowcase({ onInvite, onWhisper, maxGameSections =
         (table) =>
           supabase
             .from(table)
-            .select('id, game_id, hero_id, hero_ids, rating, score, battles, updated_at')
+            .select('id, game_id, hero_id, heroes_id, hero_ids, rating, score, battles, updated_at')
             .order('rating', { ascending: false })
             .limit(30),
       )
@@ -480,7 +481,11 @@ export default function RankingShowcase({ onInvite, onWhisper, maxGameSections =
         return
       }
 
-      const valid = (data || []).filter((item) => safeFirstHeroId(item))
+      const normalized = (data || []).map((item) => ({
+        ...item,
+        hero_id: item?.hero_id || item?.heroes_id || null,
+      }))
+      const valid = normalized.filter((item) => safeFirstHeroId(item))
       setRows(valid)
 
       const heroIds = Array.from(new Set(valid.map((item) => safeFirstHeroId(item)).filter(Boolean)))
@@ -671,3 +676,4 @@ export default function RankingShowcase({ onInvite, onWhisper, maxGameSections =
   )
 }
 
+//
