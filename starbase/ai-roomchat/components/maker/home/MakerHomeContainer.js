@@ -1,0 +1,168 @@
+'use client'
+
+import { useCallback, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
+import { useRouter } from 'next/router'
+
+import { useMakerHome } from '../../../hooks/maker/useMakerHome'
+import MakerHomeView from './MakerHomeView'
+
+const SharedChatDock = dynamic(() => import('../../common/SharedChatDock'), { ssr: false })
+
+export default function MakerHomeContainer() {
+  const router = useRouter()
+  const handleUnauthorized = useCallback(() => {
+    router.replace('/')
+  }, [router])
+
+  const {
+    hydrated,
+    loading,
+    errorMessage,
+    rows,
+    refresh,
+    renameSet,
+    deleteSet,
+    createSet,
+    exportSet,
+    importFromFile,
+    setErrorMessage,
+  } = useMakerHome({ onUnauthorized: handleUnauthorized })
+
+  const [editingId, setEditingId] = useState(null)
+  const [editingName, setEditingName] = useState('')
+  const [savingRename, setSavingRename] = useState(false)
+  const [actionSheetOpen, setActionSheetOpen] = useState(false)
+
+  const listHeader = useMemo(() => {
+    if (loading) return '세트를 불러오는 중입니다.'
+    if (rows.length === 0) return '아직 등록된 프롬프트 세트가 없습니다.'
+    return `총 ${rows.length}개 세트`
+  }, [loading, rows])
+
+  const handleBeginRename = useCallback((row) => {
+    setEditingId(row.id)
+    setEditingName(row.name ?? '')
+  }, [])
+
+  const handleCancelRename = useCallback(() => {
+    setEditingId(null)
+    setEditingName('')
+    setSavingRename(false)
+  }, [])
+
+  const handleSubmitRename = useCallback(
+    async (event) => {
+      event.preventDefault()
+      if (!editingId) return
+
+      try {
+        setSavingRename(true)
+        await renameSet(editingId, editingName)
+        handleCancelRename()
+      } catch (err) {
+        console.error(err)
+        alert(err instanceof Error ? err.message : '세트 이름을 변경하지 못했습니다.')
+      } finally {
+        setSavingRename(false)
+      }
+    },
+    [editingId, editingName, handleCancelRename, renameSet],
+  )
+
+  const handleDeleteSet = useCallback(
+    async (id) => {
+      if (!confirm('세트를 삭제할까요? (프롬프트/브릿지 포함)')) {
+        return
+      }
+
+      try {
+        await deleteSet(id)
+      } catch (err) {
+        console.error(err)
+        alert(err instanceof Error ? err.message : '세트를 삭제하지 못했습니다.')
+      }
+    },
+    [deleteSet],
+  )
+
+  const handleCreateSet = useCallback(async () => {
+    try {
+      const inserted = await createSet()
+      setActionSheetOpen(false)
+      if (inserted?.id) {
+        router.push(`/maker/${inserted.id}`)
+      }
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : '세트를 생성하지 못했습니다.')
+    }
+  }, [createSet, router])
+
+  const handleImportFile = useCallback(
+    async (file) => {
+      if (!file) return
+      try {
+        const inserted = await importFromFile(file)
+        setActionSheetOpen(false)
+        if (inserted?.id) {
+          router.push(`/maker/${inserted.id}`)
+        }
+      } catch (err) {
+        console.error(err)
+        alert(err instanceof Error ? err.message : 'JSON을 불러오지 못했습니다.')
+      }
+    },
+    [importFromFile, router],
+  )
+
+  const handleExportSet = useCallback(
+    async (id) => {
+      try {
+        await exportSet(id)
+      } catch (err) {
+        console.error(err)
+        alert(err instanceof Error ? err.message : '세트를 내보내지 못했습니다.')
+      }
+    },
+    [exportSet],
+  )
+
+  const handleRefresh = useCallback(() => {
+    setErrorMessage('')
+    refresh()
+  }, [refresh, setErrorMessage])
+
+  if (!hydrated) {
+    return null
+  }
+
+  return (
+    <MakerHomeView
+      listHeader={listHeader}
+      errorMessage={errorMessage}
+      loading={loading}
+      rows={rows}
+      editingId={editingId}
+      editingName={editingName}
+      savingRename={savingRename}
+      actionSheetOpen={actionSheetOpen}
+      onEditingNameChange={setEditingName}
+      onBeginRename={handleBeginRename}
+      onSubmitRename={handleSubmitRename}
+      onCancelRename={handleCancelRename}
+      onDeleteSet={handleDeleteSet}
+      onOpenSet={(id) => router.push(`/maker/${id}`)}
+      onExportSet={handleExportSet}
+      onImportFile={handleImportFile}
+      onCreateSet={handleCreateSet}
+      onRefresh={handleRefresh}
+      onToggleActionSheet={setActionSheetOpen}
+      onGoBack={() => router.push('/lobby')}
+      onOpenRanking={() => router.push('/rank')}
+      SharedChatDock={SharedChatDock}
+    />
+  )
+}
+
+//

@@ -1,5 +1,9 @@
+import { supabase as supabaseAnon } from '@/lib/rank/db'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST'])
     return res.status(405).json({ error: 'method_not_allowed' })
   }
 
@@ -9,7 +13,7 @@ export default async function handler(req, res) {
   if (!token) return res.status(401).json({ error: 'unauthorized' })
 
   // 2) 토큰으로 유저 검증
-  const { data: userData, error: userErr } = await anonSrv.auth.getUser(token)
+  const { data: userData, error: userErr } = await supabaseAnon.auth.getUser(token)
   const user = userData?.user
   if (userErr || !user) return res.status(401).json({ error: 'unauthorized' })
 
@@ -26,7 +30,7 @@ export default async function handler(req, res) {
 
   try {
     // 4) 게임 생성 (RLS 무시: service role)
-    const { data: game, error: e1 } = await admin
+    const { data: game, error: e1 } = await supabaseAdmin
       .from('rank_games')
       .insert({
         owner_id: user.id,
@@ -57,7 +61,7 @@ export default async function handler(req, res) {
           score_delta_max: Math.max(Math.max(0, min), max),
         }
       })
-      const { error: e2 } = await admin.from('rank_game_roles').insert(rows)
+      const { error: e2 } = await supabaseAdmin.from('rank_game_roles').insert(rows)
       if (e2) {
         // 필요시 롤백 처리 가능. 지금은 경고만.
         console.warn('rank_game_roles insert failed:', e2.message)
