@@ -181,8 +181,8 @@ export default function Create() {
         bgm_mime = bgmBlob.type || null
       }
 
-      const { error: insErr } = await withTable(supabase, 'heroes', (table) =>
-        supabase.from(table).insert({
+      const insertResult = await withTable(supabase, 'heroes', async (table) => {
+        return supabase.from(table).insert({
           owner_id: user.id,
           name,
           description: desc,
@@ -196,7 +196,8 @@ export default function Create() {
           bgm_duration_seconds,
           bgm_mime,
         })
-      )
+      })
+      const { error: insErr } = insertResult
       if (insErr) throw insErr
 
       // ✅ 저장 완료 → 로스터로 이동
