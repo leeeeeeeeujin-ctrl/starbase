@@ -12,7 +12,7 @@ export default function Home() {
         alignItems: 'center',
         minHeight: '100vh',
         padding: '64px 24px 120px',
-        backgroundImage: 'url(/landing/fox-night.svg)',
+        backgroundImage: 'url(/landing/celestial-frontline.svg)',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
@@ -30,7 +30,7 @@ export default function Home() {
           letterSpacing: '0.04em',
         }}
       >
-        그 때의 영광 속으로
+        천계전선
       </h1>
       <div style={{ marginTop: 'auto' }}>
         <AuthButton />
@@ -38,3 +38,5 @@ export default function Home() {
     </main>
   )
 }
+
+//
