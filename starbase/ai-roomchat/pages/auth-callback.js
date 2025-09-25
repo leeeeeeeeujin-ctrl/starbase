@@ -42,7 +42,7 @@ export default function AuthCallback() {
             return
           }
 
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession({ code })
           if (exchangeError) {
             console.error(exchangeError)
             setMsg(`로그인 실패: ${exchangeError.message}`)
