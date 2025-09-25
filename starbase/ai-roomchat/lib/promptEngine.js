@@ -234,6 +234,38 @@ export function compileTemplate({
   return { text: out, meta: { pickedSlot: currentSlot } }
 }
 
+export function makeNodePrompt({
+  node = null,
+  slots = [],
+  historyText = '',
+  activeGlobalNames = [],
+  activeLocalNames = [],
+  currentSlot = null,
+} = {}) {
+  if (!node) {
+    return { text: '', pickedSlot: null }
+  }
+
+  const slotHint =
+    currentSlot != null
+      ? String(currentSlot)
+      : node.id != null
+        ? String(node.id)
+        : null
+
+  const { text, meta } = compileTemplate({
+    template: node.template || '',
+    slots,
+    historyText,
+    options: node.options || {},
+    activeGlobalNames,
+    activeLocalNames,
+    currentSlot: slotHint,
+  })
+
+  return { text, pickedSlot: meta?.pickedSlot ?? slotHint }
+}
+
 /* =========================================================
    AI 응답 파서
    - lastLine: 승패/결론
