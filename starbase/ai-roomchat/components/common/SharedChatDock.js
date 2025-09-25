@@ -4,7 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
 
-export default function SharedChatDock({ height = 320, heroId, command, onRequestAddFriend }) {
+export default function SharedChatDock({
+  height = 320,
+  heroId,
+  command,
+  onRequestAddFriend,
+  onRequestProfile,
+}) {
   const [msgs, setMsgs] = useState([])
   const [me, setMe] = useState({ name: '익명', avatar_url: null, hero_id: null })
   const [input, setInput] = useState('')
@@ -226,7 +232,21 @@ export default function SharedChatDock({ height = 320, heroId, command, onReques
 
   function handlePortraitClick(message) {
     if (!message?.hero_id) return
-    if (viewerHeroId && message.hero_id === viewerHeroId) return
+    const heroName = heroDirectory.get(message.hero_id) || message.username || '익명'
+    const payload = {
+      heroId: message.hero_id,
+      heroName,
+      avatarUrl: message.avatar_url || null,
+      isSelf: Boolean(viewerHeroId && message.hero_id === viewerHeroId),
+    }
+
+    if (typeof onRequestProfile === 'function') {
+      onRequestProfile(payload)
+      return
+    }
+
+    if (payload.isSelf) return
+
     setScope('whisper')
     setWhisperTarget(message.hero_id)
     setTimeout(() => {
@@ -285,8 +305,8 @@ export default function SharedChatDock({ height = 320, heroId, command, onReques
               <button
                 type="button"
                 onClick={() => handlePortraitClick(message)}
-                disabled={!message?.hero_id || message.hero_id === viewerHeroId}
-                title={message?.hero_id && message.hero_id !== viewerHeroId ? `${senderName}에게 귓속말` : undefined}
+                disabled={!message?.hero_id}
+                title={message?.hero_id ? `${senderName} 프로필` : undefined}
                 style={{
                   width: 32,
                   height: 32,
@@ -295,8 +315,7 @@ export default function SharedChatDock({ height = 320, heroId, command, onReques
                   padding: 0,
                   overflow: 'hidden',
                   background: 'transparent',
-                  cursor:
-                    message?.hero_id && message.hero_id !== viewerHeroId ? 'pointer' : 'default',
+                  cursor: message?.hero_id ? 'pointer' : 'default',
                 }}
               >
                 {message.avatar_url ? (

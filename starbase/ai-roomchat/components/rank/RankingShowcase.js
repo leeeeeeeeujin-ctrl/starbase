@@ -34,7 +34,7 @@ function summarize(row, heroMap, gameMap) {
   }
 }
 
-function HighlightCard({ hero, stats, onInvite, onWhisper, gameId, heroId }) {
+function HighlightCard({ hero, stats, onInvite, onWhisper, onProfile, gameId, heroId }) {
   if (!hero) return null
 
   return (
@@ -89,7 +89,17 @@ function HighlightCard({ hero, stats, onInvite, onWhisper, gameId, heroId }) {
       </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 20, alignItems: 'center' }}>
-        <div
+        <button
+          type="button"
+          onClick={() =>
+            onProfile?.({
+              heroId,
+              heroName: hero.name,
+              avatarUrl: hero.image_url || null,
+              gameId,
+              isSelf: false,
+            })
+          }
           style={{
             width: 110,
             height: 110,
@@ -97,6 +107,8 @@ function HighlightCard({ hero, stats, onInvite, onWhisper, gameId, heroId }) {
             overflow: 'hidden',
             border: '2px solid rgba(244, 244, 245, 0.45)',
             background: 'rgba(15, 23, 42, 0.45)',
+            padding: 0,
+            cursor: heroId ? 'pointer' : 'default',
           }}
         >
           {hero.image_url ? (
@@ -119,7 +131,7 @@ function HighlightCard({ hero, stats, onInvite, onWhisper, gameId, heroId }) {
               🛡️
             </div>
           )}
-        </div>
+        </button>
 
         <ul
           style={{
@@ -175,7 +187,7 @@ function HighlightCard({ hero, stats, onInvite, onWhisper, gameId, heroId }) {
 
 // 
 
-function LeaderRow({ entry, rank, onWhisper }) {
+function LeaderRow({ entry, rank, onWhisper, onProfile }) {
   return (
     <li
       style={{
@@ -189,7 +201,17 @@ function LeaderRow({ entry, rank, onWhisper }) {
         border: '1px solid rgba(148, 163, 184, 0.25)',
       }}
     >
-      <div
+      <button
+        type="button"
+        onClick={() =>
+          onProfile?.({
+            heroId: entry.heroId,
+            heroName: entry.hero?.name,
+            avatarUrl: entry.hero?.image_url || null,
+            gameId: entry.game_id,
+            isSelf: false,
+          })
+        }
         style={{
           width: 48,
           height: 48,
@@ -197,6 +219,8 @@ function LeaderRow({ entry, rank, onWhisper }) {
           overflow: 'hidden',
           background: 'rgba(15, 23, 42, 0.45)',
           border: '1px solid rgba(148, 163, 184, 0.35)',
+          padding: 0,
+          cursor: entry.heroId ? 'pointer' : 'default',
         }}
       >
         {entry.hero?.image_url ? (
@@ -218,7 +242,7 @@ function LeaderRow({ entry, rank, onWhisper }) {
             #{rank}
           </div>
         )}
-      </div>
+      </button>
       <div style={{ display: 'grid', gap: 4 }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>
           #{rank} {entry.hero?.name || '미정'}
@@ -250,7 +274,7 @@ function LeaderRow({ entry, rank, onWhisper }) {
   )
 }
 
-function GameSection({ section, onInvite, onWhisper }) {
+function GameSection({ section, onInvite, onWhisper, onProfile }) {
   return (
     <li
       style={{
@@ -312,7 +336,17 @@ function GameSection({ section, onInvite, onWhisper }) {
               background: 'rgba(30, 41, 59, 0.55)',
             }}
           >
-            <div
+            <button
+              type="button"
+              onClick={() =>
+                onProfile?.({
+                  heroId: entry.heroId,
+                  heroName: entry.hero?.name,
+                  avatarUrl: entry.hero?.image_url || null,
+                  gameId: entry.game_id,
+                  isSelf: false,
+                })
+              }
               style={{
                 width: 40,
                 height: 40,
@@ -320,6 +354,8 @@ function GameSection({ section, onInvite, onWhisper }) {
                 overflow: 'hidden',
                 background: 'rgba(15, 23, 42, 0.45)',
                 border: '1px solid rgba(148, 163, 184, 0.3)',
+                padding: 0,
+                cursor: entry.heroId ? 'pointer' : 'default',
               }}
             >
               {entry.hero?.image_url ? (
@@ -342,7 +378,7 @@ function GameSection({ section, onInvite, onWhisper }) {
                   #{index + 1}
                 </div>
               )}
-            </div>
+            </button>
             <div style={{ display: 'grid', gap: 2 }}>
               <span style={{ fontWeight: 600, fontSize: 14 }}>
                 #{index + 1} {entry.hero?.name || '이름 없음'}
@@ -443,7 +479,12 @@ function aggregateHeroStats(heroId, attackRows, defendRows) {
   }
 }
 
-export default function RankingShowcase({ onInvite, onWhisper, maxGameSections = 3 }) {
+export default function RankingShowcase({
+  onInvite,
+  onWhisper,
+  onRequestProfile,
+  maxGameSections = 3,
+}) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [rows, setRows] = useState([])
@@ -642,6 +683,7 @@ export default function RankingShowcase({ onInvite, onWhisper, maxGameSections =
         }
         onInvite={onInvite}
         onWhisper={onWhisper}
+        onProfile={onRequestProfile}
         gameId={highlight?.game_id}
         heroId={highlight?.heroId}
       />
@@ -652,7 +694,13 @@ export default function RankingShowcase({ onInvite, onWhisper, maxGameSections =
         </header>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }}>
           {leaders.map((entry, index) => (
-            <LeaderRow key={entry.id || `${entry.heroId}-${index}`} entry={entry} rank={index + 1} onWhisper={onWhisper} />
+            <LeaderRow
+              key={entry.id || `${entry.heroId}-${index}`}
+              entry={entry}
+              rank={index + 1}
+              onWhisper={onWhisper}
+              onProfile={onRequestProfile}
+            />
           ))}
         </ul>
       </section>
@@ -667,6 +715,7 @@ export default function RankingShowcase({ onInvite, onWhisper, maxGameSections =
                 section={section}
                 onInvite={onInvite}
                 onWhisper={onWhisper}
+                onProfile={onRequestProfile}
               />
             ))}
           </ul>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
 import RankingShowcaseSkeleton from '../components/rank/RankingShowcaseSkeleton'
+import ProfileActionSheet from '../components/common/ProfileActionSheet'
 
 const SharedChatDock = dynamic(() => import('../components/common/SharedChatDock'), {
   ssr: false,
@@ -16,7 +17,7 @@ const RankingShowcase = dynamic(() => import('../components/rank/RankingShowcase
   loading: () => <RankingShowcaseSkeleton />,
 })
 
-function ChatOverlay({ open, onClose, heroId, command, onRequestAddFriend }) {
+function ChatOverlay({ open, onClose, heroId, command, onRequestAddFriend, onRequestProfile }) {
   if (!open) return null
 
   return (
@@ -65,6 +66,7 @@ function ChatOverlay({ open, onClose, heroId, command, onRequestAddFriend }) {
           heroId={heroId}
           command={command}
           onRequestAddFriend={onRequestAddFriend}
+          onRequestProfile={onRequestProfile}
         />
       </div>
     </div>
@@ -81,6 +83,7 @@ function FriendListModal({
   onRemoveFriend,
   onWhisperFriend,
   onInviteFriend,
+  myHero,
 }) {
   if (!open) return null
 
@@ -129,6 +132,18 @@ function FriendListModal({
         </div>
 
         <div style={{ display: 'grid', gap: 10 }}>
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: 12,
+              border: '1px solid rgba(148, 163, 184, 0.35)',
+              background: 'rgba(15, 23, 42, 0.55)',
+              fontSize: 12,
+              color: '#94a3b8',
+            }}
+          >
+            내 캐릭터 ID: {myHero?.id || '선택된 캐릭터 없음'}
+          </div>
           <input
             value={friendForm.heroId}
             onChange={(event) =>
@@ -557,10 +572,21 @@ export default function Lobby() {
     return list
   }, [friends])
 
+  const [profileSheet, setProfileSheet] = useState(null)
+
   function openChat(command = null) {
     setChatCommand(command)
     setChatOpen(true)
     setFriendOpen(false)
+  }
+
+  function openProfileSheet(profile) {
+    if (!profile?.heroId) return
+    setProfileSheet(profile)
+  }
+
+  function closeProfileSheet() {
+    setProfileSheet(null)
   }
 
   function handleWhisper({ heroId, heroName }) {
@@ -588,14 +614,37 @@ export default function Lobby() {
   }
 
   function handleChatAddFriend(friend) {
-    if (!friend?.heroId) return
+    if (!friend?.heroId) return false
+    let added = false
     setFriends((prev) => {
       if (prev.some((entry) => entry.heroId === friend.heroId)) return prev
+      added = true
       return [
         ...prev,
         { heroId: friend.heroId, heroName: friend.heroName || '이름 없는 영웅' },
       ]
     })
+    return added
+  }
+
+  function handleProfileAddFriend(profile) {
+    if (!profile?.heroId) return
+    const added = handleChatAddFriend(profile)
+    alert(
+      added
+        ? `${profile.heroName || '이름 없는 영웅'}을(를) 친구 목록에 추가했습니다.`
+        : '이미 친구 목록에 있는 캐릭터입니다.',
+    )
+  }
+
+  function handleProfileWhisper(profile) {
+    if (!profile?.heroId) return
+    handleWhisper({ heroId: profile.heroId, heroName: profile.heroName })
+  }
+
+  function handleProfileDetail(profile) {
+    if (!profile?.heroId) return
+    router.push(`/character/${profile.heroId}`)
   }
 
   function handleAddFriend() {
@@ -1051,6 +1100,7 @@ export default function Lobby() {
       <RankingShowcase
         onWhisper={({ heroId, heroName }) => handleWhisper({ heroId, heroName })}
         onInvite={handleInvite}
+        onRequestProfile={openProfileSheet}
       />
     )
   }
@@ -1203,6 +1253,7 @@ export default function Lobby() {
         heroId={myHero?.id || null}
         command={chatCommand}
         onRequestAddFriend={handleChatAddFriend}
+        onRequestProfile={openProfileSheet}
       />
 
       <FriendListModal
@@ -1215,6 +1266,16 @@ export default function Lobby() {
         onRemoveFriend={handleRemoveFriend}
         onWhisperFriend={handleFriendWhisper}
         onInviteFriend={handleFriendInvite}
+        myHero={myHero}
+      />
+
+      <ProfileActionSheet
+        open={Boolean(profileSheet)}
+        hero={profileSheet}
+        onClose={closeProfileSheet}
+        onAddFriend={handleProfileAddFriend}
+        onWhisper={handleProfileWhisper}
+        onViewDetail={handleProfileDetail}
       />
 
       <div
