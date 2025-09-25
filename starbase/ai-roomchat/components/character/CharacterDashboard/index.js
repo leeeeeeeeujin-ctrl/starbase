@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 import EditHeroModal from './sections/EditHeroModal'
 import { CharacterDashboardProvider, useCharacterDashboardContext } from './context'
@@ -14,9 +14,10 @@ export default function CharacterDashboard({
 }) {
   const { profile, participation, battles, heroName: fallbackName } = dashboard
 
-  const [activeSection, setActiveSection] = useState('overview')
-  const [rankingExpanded, setRankingExpanded] = useState(false)
+  const [panelIndex, setPanelIndex] = useState(0)
   const [editOpen, setEditOpen] = useState(false)
+  const swipeViewportRef = useRef(null)
+  const scrollFrame = useRef(0)
 
   const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
   const heroImage = profile.edit?.image_url || profile.hero?.image_url || ''
@@ -97,21 +98,61 @@ export default function CharacterDashboard({
     ],
   )
 
-  const sections = useMemo(
+  const panels = useMemo(
     () => [
-      { id: 'overview', label: '개요', render: () => <OverviewSection /> },
-      { id: 'stats', label: '통계', render: () => <StatsSection /> },
-      { id: 'instant', label: '즉시 전투', render: () => <InstantBattleSection /> },
-      { id: 'battles', label: '전투 로그', render: () => <BattleLogSection /> },
+      {
+        id: 'character',
+        label: '캐릭터',
+        render: () => <CharacterPanel />,
+      },
+      {
+        id: 'ranking',
+        label: '랭킹',
+        render: () => (
+          <div style={styles.panelStack}>
+            <RankingSection />
+          </div>
+        ),
+      },
     ],
     [],
   )
 
-  const active = sections.find((section) => section.id === activeSection) || sections[0]
+  useEffect(() => {
+    const node = swipeViewportRef.current
+    if (!node) return undefined
 
-  const closeRanking = () => setRankingExpanded(false)
-  const toggleRanking = () => {
-    setRankingExpanded((prev) => !prev)
+    const handleScroll = () => {
+      cancelAnimationFrame(scrollFrame.current)
+      scrollFrame.current = requestAnimationFrame(() => {
+        const width = node.clientWidth || 1
+        const next = Math.round(node.scrollLeft / width)
+        setPanelIndex((prev) => (prev === next ? prev : next))
+      })
+    }
+
+    node.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(scrollFrame.current)
+      node.removeEventListener('scroll', handleScroll)
+    }
+  }, [])
+
+  useEffect(() => {
+    const node = swipeViewportRef.current
+    if (!node) return
+
+    const width = node.clientWidth || 1
+    if (Math.round(node.scrollLeft / width) === panelIndex) {
+      return
+    }
+
+    node.scrollTo({ left: panelIndex * width, behavior: 'smooth' })
+  }, [panelIndex])
+
+  const handleTabClick = (index) => {
+    setPanelIndex(index)
   }
 
   return (
@@ -152,63 +193,29 @@ export default function CharacterDashboard({
             )}
           </div>
           <div style={styles.sectionSwitcher}>
-            <div style={styles.navRow}>
-              <nav
-                style={{
-                  ...styles.nav,
-                  ...(rankingExpanded ? styles.navCollapsed : null),
-                }}
-              >
-                {sections.map((section) => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveSection(section.id)
-                      closeRanking()
-                    }}
-                    style={{
-                      ...styles.navButton,
-                      ...(activeSection === section.id ? styles.navButtonActive : null),
-                    }}
-                  >
-                    {section.label}
-                  </button>
-                ))}
-              </nav>
-              <button
-                type="button"
-                onClick={toggleRanking}
-                style={{
-                  ...styles.rankingButton,
-                  ...(rankingExpanded ? styles.rankingButtonActive : null),
-                }}
-              >
-                랭킹
-              </button>
-            </div>
-            <div
-              style={{
-                ...styles.panel,
-                ...(rankingExpanded ? styles.panelHidden : null),
-              }}
-            >
-              {active.render()}
-            </div>
-            <div
-              style={{
-                ...styles.rankingOverlay,
-                ...(rankingExpanded ? styles.rankingOverlayActive : styles.rankingOverlayHidden),
-              }}
-            >
-              <div style={styles.rankingOverlayHeader}>
-                <h2 style={styles.sectionTitle}>랭킹</h2>
-                <button type="button" onClick={closeRanking} style={styles.overlayBackButton}>
-                  뒤로 가기
+            <div style={styles.tabBar}>
+              {panels.map((panel, index) => (
+                <button
+                  key={panel.id}
+                  type="button"
+                  onClick={() => handleTabClick(index)}
+                  style={{
+                    ...styles.tabButton,
+                    ...(panelIndex === index ? styles.tabButtonActive : null),
+                  }}
+                >
+                  {panel.label}
                 </button>
-              </div>
-              <div style={styles.rankingOverlayBody}>
-                <RankingSection />
+              ))}
+            </div>
+            <p style={styles.swipeHint}>캐릭터 화면을 옆으로 밀어 랭킹을 확인하세요.</p>
+            <div ref={swipeViewportRef} style={styles.swipeViewport}>
+              <div style={styles.swipeTrack}>
+                {panels.map((panel) => (
+                  <div key={panel.id} style={styles.swipePanel}>
+                    {panel.render()}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -277,40 +284,51 @@ function StatsSection() {
     useCharacterDashboardContext()
 
   if (!statSlides.length) {
-    return <p style={styles.bodyText}>참여한 게임이 없습니다.</p>
+    return (
+      <div style={styles.panelContent}>
+        <SectionCard title="참여 게임 통계">
+          <p style={styles.bodyText}>참여한 게임이 없습니다.</p>
+        </SectionCard>
+      </div>
+    )
   }
 
   return (
-    <div style={styles.statGrid}>
-      {statSlides.map((slide) => (
-        <button
-          key={slide.key}
-          type="button"
-          onClick={() => onSelectGame(slide.key)}
-          style={{
-            ...styles.statCard,
-            ...(selectedGameId === slide.key ? styles.statCardActive : null),
-          }}
-        >
-          <div style={styles.statHeader}>
-            <strong>{slide.name}</strong>
-            {slide.role ? <span style={styles.statRole}>{slide.role}</span> : null}
-          </div>
-          <ul style={styles.statList}>
-            {slide.stats.map((stat) => (
-              <li key={stat.key} style={styles.statItem}>
-                <span>{stat.label}</span>
-                <strong>{stat.value}</strong>
-              </li>
-            ))}
-          </ul>
-        </button>
-      ))}
-      {selectedEntry ? (
-        <div style={styles.statNote}>
-          마지막 업데이트: {new Date(selectedEntry.updated_at || selectedEntry.created_at || 0).toLocaleString()}
+    <div style={styles.panelContent}>
+      <SectionCard title="참여 게임 통계">
+        <div style={styles.statGrid}>
+          {statSlides.map((slide) => (
+            <button
+              key={slide.key}
+              type="button"
+              onClick={() => onSelectGame(slide.key)}
+              style={{
+                ...styles.statCard,
+                ...(selectedGameId === slide.key ? styles.statCardActive : null),
+              }}
+            >
+              <div style={styles.statHeader}>
+                <strong>{slide.name}</strong>
+                {slide.role ? <span style={styles.statRole}>{slide.role}</span> : null}
+              </div>
+              <ul style={styles.statList}>
+                {slide.stats.map((stat) => (
+                  <li key={stat.key} style={styles.statItem}>
+                    <span>{stat.label}</span>
+                    <strong>{stat.value}</strong>
+                  </li>
+                ))}
+              </ul>
+            </button>
+          ))}
+          {selectedEntry ? (
+            <div style={styles.statNote}>
+              마지막 업데이트:{' '}
+              {new Date(selectedEntry.updated_at || selectedEntry.created_at || 0).toLocaleString()}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </SectionCard>
     </div>
   )
 }
@@ -350,37 +368,44 @@ function InstantBattleSection() {
 function RankingSection() {
   const { selectedScoreboard = [], heroLookup = {}, hero } = useCharacterDashboardContext()
 
-  if (!selectedScoreboard.length) {
-    return <p style={styles.bodyText}>선택한 게임의 랭킹 정보가 없습니다.</p>
-  }
-
   return (
-    <div style={styles.rankingTableWrapper}>
-      <table style={styles.rankingTable}>
-        <thead>
-          <tr>
-            <th>순위</th>
-            <th>영웅</th>
-            <th>점수</th>
-            <th>전투 수</th>
-          </tr>
-        </thead>
-        <tbody>
-          {selectedScoreboard.map((row, index) => {
-            const lookup = (row.hero_id && heroLookup[row.hero_id]) || null
-            const name = lookup?.name || row.role || `참가자 ${index + 1}`
-            const isHero = hero?.id && row.hero_id === hero.id
-            return (
-              <tr key={row.id || `${row.hero_id}-${row.owner_id || index}`} style={isHero ? styles.highlightRow : null}>
-                <td>{index + 1}</td>
-                <td>{name}</td>
-                <td>{row.rating ?? row.score ?? '—'}</td>
-                <td>{row.battles ?? '—'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div style={styles.panelContent}>
+      <SectionCard title="랭킹">
+        {selectedScoreboard.length ? (
+          <div style={styles.rankingTableWrapper}>
+            <table style={styles.rankingTable}>
+              <thead>
+                <tr>
+                  <th>순위</th>
+                  <th>영웅</th>
+                  <th>점수</th>
+                  <th>전투 수</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedScoreboard.map((row, index) => {
+                  const lookup = (row.hero_id && heroLookup[row.hero_id]) || null
+                  const name = lookup?.name || row.role || `참가자 ${index + 1}`
+                  const isHero = hero?.id && row.hero_id === hero.id
+                  return (
+                    <tr
+                      key={row.id || `${row.hero_id}-${row.owner_id || index}`}
+                      style={isHero ? styles.highlightRow : null}
+                    >
+                      <td>{index + 1}</td>
+                      <td>{name}</td>
+                      <td>{row.rating ?? row.score ?? '—'}</td>
+                      <td>{row.battles ?? '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={styles.bodyText}>선택한 게임의 랭킹 정보가 없습니다.</p>
+        )}
+      </SectionCard>
     </div>
   )
 }
@@ -394,50 +419,61 @@ function BattleLogSection() {
     battleError,
   } = useCharacterDashboardContext()
 
-  if (battleLoading) {
-    return <p style={styles.bodyText}>전투 기록을 불러오는 중…</p>
-  }
-
-  if (battleError) {
-    return <p style={styles.bodyText}>{battleError}</p>
-  }
-
-  if (!battleDetails.length) {
-    return <p style={styles.bodyText}>표시할 전투 기록이 없습니다.</p>
-  }
-
-  const items = battleDetails.slice(0, visibleBattles || battleDetails.length)
-
   return (
-    <div style={styles.battleList}>
-      {items.map((battle) => (
-        <article key={battle.id} style={styles.battleCard}>
-          <header style={styles.battleHeader}>
-            <strong>{new Date(battle.created_at || 0).toLocaleString()}</strong>
-            <span>{battle.result ? battle.result.toUpperCase() : '결과 미정'}</span>
-          </header>
-          <p style={styles.bodyText}>점수 변화: {battle.score_delta ?? 0}</p>
-          {battle.logs?.length ? (
-            <details style={styles.logDetails}>
-              <summary>턴 로그 보기</summary>
-              <ul style={styles.logList}>
-                {battle.logs.map((log) => (
-                  <li key={`${battle.id}-${log.turn_no}`}>
-                    <strong>턴 {log.turn_no}</strong>
-                    <div>프롬프트: {log.prompt}</div>
-                    <div>응답: {log.ai_response}</div>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-        </article>
-      ))}
-      {visibleBattles && visibleBattles < battleDetails.length ? (
-        <button type="button" onClick={onShowMoreBattles} style={styles.secondaryButton}>
-          더 보기
-        </button>
-      ) : null}
+    <div style={styles.panelContent}>
+      <SectionCard title="전투 로그">
+        {battleLoading ? (
+          <p style={styles.bodyText}>전투 기록을 불러오는 중…</p>
+        ) : battleError ? (
+          <p style={styles.bodyText}>{battleError}</p>
+        ) : !battleDetails.length ? (
+          <p style={styles.bodyText}>표시할 전투 기록이 없습니다.</p>
+        ) : (
+          <div style={styles.battleList}>
+            {battleDetails
+              .slice(0, visibleBattles || battleDetails.length)
+              .map((battle) => (
+                <article key={battle.id} style={styles.battleCard}>
+                  <header style={styles.battleHeader}>
+                    <strong>{new Date(battle.created_at || 0).toLocaleString()}</strong>
+                    <span>{battle.result ? battle.result.toUpperCase() : '결과 미정'}</span>
+                  </header>
+                  <p style={styles.bodyText}>점수 변화: {battle.score_delta ?? 0}</p>
+                  {battle.logs?.length ? (
+                    <details style={styles.logDetails}>
+                      <summary>턴 로그 보기</summary>
+                      <ul style={styles.logList}>
+                        {battle.logs.map((log) => (
+                          <li key={`${battle.id}-${log.turn_no}`}>
+                            <strong>턴 {log.turn_no}</strong>
+                            <div>프롬프트: {log.prompt}</div>
+                            <div>응답: {log.ai_response}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </article>
+              ))}
+            {visibleBattles && visibleBattles < battleDetails.length ? (
+              <button type="button" onClick={onShowMoreBattles} style={styles.secondaryButton}>
+                더 보기
+              </button>
+            ) : null}
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  )
+}
+
+function CharacterPanel() {
+  return (
+    <div style={styles.panelStack}>
+      <OverviewSection />
+      <StatsSection />
+      <InstantBattleSection />
+      <BattleLogSection />
     </div>
   )
 }
@@ -515,107 +551,58 @@ const styles = {
     gap: 16,
     position: 'relative',
   },
-  navRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 12,
-  },
-  nav: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 12,
-    transition: 'transform 0.3s ease, opacity 0.3s ease',
-  },
-  navCollapsed: {
-    transform: 'translateX(-64px)',
-    opacity: 0,
-    pointerEvents: 'none',
-  },
-  navButton: {
-    background: 'rgba(15, 23, 42, 0.6)',
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    borderRadius: 999,
-    padding: '10px 18px',
-    color: '#e2e8f0',
-    cursor: 'pointer',
-    fontSize: 14,
-    transition: 'background 0.2s ease, color 0.2s ease',
-  },
-  navButtonActive: {
-    background: '#2563eb',
-    borderColor: '#3b82f6',
-    color: '#f8fafc',
-  },
-  rankingButton: {
-    background: 'rgba(59, 130, 246, 0.15)',
-    border: '1px solid rgba(59, 130, 246, 0.45)',
-    borderRadius: 999,
-    padding: '10px 20px',
-    color: '#bfdbfe',
-    cursor: 'pointer',
-    fontWeight: 600,
-    transition: 'transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease',
-    backdropFilter: 'blur(6px)',
-  },
-  rankingButtonActive: {
-    background: '#1d4ed8',
-    color: '#f8fafc',
-    boxShadow: '0 0 0 1px rgba(96, 165, 250, 0.6)',
-    transform: 'translateX(6px)',
-  },
-  panel: {
-    background: 'rgba(15, 23, 42, 0.72)',
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    borderRadius: 24,
-    padding: 24,
-  },
-  panelHidden: {
-    opacity: 0,
-    transform: 'translateY(20px)',
-    pointerEvents: 'none',
-  },
-  rankingOverlay: {
-    position: 'absolute',
-    inset: 0,
-    borderRadius: 24,
-    padding: 24,
-    background: 'rgba(15, 23, 42, 0.64)',
-    border: '1px solid rgba(148, 163, 184, 0.45)',
-    backdropFilter: 'blur(14px)',
+  tabBar: {
     display: 'grid',
-    gap: 16,
-    transition: 'opacity 0.3s ease, transform 0.3s ease',
-    zIndex: 2,
-  },
-  rankingOverlayHidden: {
-    opacity: 0,
-    transform: 'translateY(28px)',
-    pointerEvents: 'none',
-  },
-  rankingOverlayActive: {
-    opacity: 1,
-    transform: 'translateY(0)',
-    pointerEvents: 'auto',
-  },
-  rankingOverlayHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  rankingOverlayBody: {
-    overflow: 'auto',
-    maxHeight: '60vh',
-  },
-  overlayBackButton: {
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     background: 'rgba(15, 23, 42, 0.6)',
-    border: '1px solid rgba(148, 163, 184, 0.45)',
     borderRadius: 999,
-    padding: '8px 16px',
-    color: '#e2e8f0',
+    padding: 6,
+    gap: 6,
+    border: '1px solid rgba(148, 163, 184, 0.25)',
+  },
+  tabButton: {
+    border: 'none',
+    borderRadius: 999,
+    padding: '10px 16px',
+    background: 'transparent',
+    color: '#cbd5f5',
+    fontWeight: 600,
     cursor: 'pointer',
-    fontSize: 13,
+    transition: 'background 0.2s ease, color 0.2s ease, transform 0.2s ease',
+  },
+  tabButtonActive: {
+    background: '#2563eb',
+    color: '#f8fafc',
+    transform: 'translateY(-1px)',
+  },
+  swipeHint: {
+    margin: 0,
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  swipeViewport: {
+    overflowX: 'auto',
+    scrollSnapType: 'x mandatory',
+    WebkitOverflowScrolling: 'touch',
+    borderRadius: 24,
+    border: '1px solid rgba(148, 163, 184, 0.25)',
+    background: 'rgba(15, 23, 42, 0.45)',
+  },
+  swipeTrack: {
+    display: 'flex',
+    width: '100%',
+  },
+  swipePanel: {
+    flex: '0 0 100%',
+    scrollSnapAlign: 'start',
+    padding: 24,
+    display: 'flex',
+    justifyContent: 'stretch',
+  },
+  panelStack: {
+    display: 'grid',
+    gap: 24,
+    width: '100%',
   },
   sectionCard: {
     background: 'rgba(15, 23, 42, 0.6)',
