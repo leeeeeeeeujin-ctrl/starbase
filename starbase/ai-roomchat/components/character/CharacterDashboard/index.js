@@ -15,6 +15,7 @@ export default function CharacterDashboard({
   const { profile, participation, battles, heroName: fallbackName } = dashboard
 
   const [activeSection, setActiveSection] = useState('overview')
+  const [rankingExpanded, setRankingExpanded] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
 
   const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
@@ -101,13 +102,17 @@ export default function CharacterDashboard({
       { id: 'overview', label: '개요', render: () => <OverviewSection /> },
       { id: 'stats', label: '통계', render: () => <StatsSection /> },
       { id: 'instant', label: '즉시 전투', render: () => <InstantBattleSection /> },
-      { id: 'ranking', label: '랭킹', render: () => <RankingSection /> },
       { id: 'battles', label: '전투 로그', render: () => <BattleLogSection /> },
     ],
     [],
   )
 
   const active = sections.find((section) => section.id === activeSection) || sections[0]
+
+  const closeRanking = () => setRankingExpanded(false)
+  const toggleRanking = () => {
+    setRankingExpanded((prev) => !prev)
+  }
 
   return (
     <CharacterDashboardProvider value={contextValue}>
@@ -147,22 +152,65 @@ export default function CharacterDashboard({
             )}
           </div>
           <div style={styles.sectionSwitcher}>
-            <nav style={styles.nav}>
-              {sections.map((section) => (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => setActiveSection(section.id)}
-                  style={{
-                    ...styles.navButton,
-                    ...(activeSection === section.id ? styles.navButtonActive : null),
-                  }}
-                >
-                  {section.label}
+            <div style={styles.navRow}>
+              <nav
+                style={{
+                  ...styles.nav,
+                  ...(rankingExpanded ? styles.navCollapsed : null),
+                }}
+              >
+                {sections.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveSection(section.id)
+                      closeRanking()
+                    }}
+                    style={{
+                      ...styles.navButton,
+                      ...(activeSection === section.id ? styles.navButtonActive : null),
+                    }}
+                  >
+                    {section.label}
+                  </button>
+                ))}
+              </nav>
+              <button
+                type="button"
+                onClick={toggleRanking}
+                style={{
+                  ...styles.rankingButton,
+                  ...(rankingExpanded ? styles.rankingButtonActive : null),
+                }}
+              >
+                랭킹
+              </button>
+            </div>
+            <div
+              style={{
+                ...styles.panel,
+                ...(rankingExpanded ? styles.panelHidden : null),
+              }}
+            >
+              {active.render()}
+            </div>
+            <div
+              style={{
+                ...styles.rankingOverlay,
+                ...(rankingExpanded ? styles.rankingOverlayActive : styles.rankingOverlayHidden),
+              }}
+            >
+              <div style={styles.rankingOverlayHeader}>
+                <h2 style={styles.sectionTitle}>랭킹</h2>
+                <button type="button" onClick={closeRanking} style={styles.overlayBackButton}>
+                  뒤로 가기
                 </button>
-              ))}
-            </nav>
-            <div style={styles.panel}>{active.render()}</div>
+              </div>
+              <div style={styles.rankingOverlayBody}>
+                <RankingSection />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -465,11 +513,24 @@ const styles = {
   sectionSwitcher: {
     display: 'grid',
     gap: 16,
+    position: 'relative',
+  },
+  navRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
   },
   nav: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 12,
+    transition: 'transform 0.3s ease, opacity 0.3s ease',
+  },
+  navCollapsed: {
+    transform: 'translateX(-64px)',
+    opacity: 0,
+    pointerEvents: 'none',
   },
   navButton: {
     background: 'rgba(15, 23, 42, 0.6)',
@@ -486,11 +547,75 @@ const styles = {
     borderColor: '#3b82f6',
     color: '#f8fafc',
   },
+  rankingButton: {
+    background: 'rgba(59, 130, 246, 0.15)',
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    borderRadius: 999,
+    padding: '10px 20px',
+    color: '#bfdbfe',
+    cursor: 'pointer',
+    fontWeight: 600,
+    transition: 'transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease',
+    backdropFilter: 'blur(6px)',
+  },
+  rankingButtonActive: {
+    background: '#1d4ed8',
+    color: '#f8fafc',
+    boxShadow: '0 0 0 1px rgba(96, 165, 250, 0.6)',
+    transform: 'translateX(6px)',
+  },
   panel: {
     background: 'rgba(15, 23, 42, 0.72)',
     border: '1px solid rgba(148, 163, 184, 0.35)',
     borderRadius: 24,
     padding: 24,
+  },
+  panelHidden: {
+    opacity: 0,
+    transform: 'translateY(20px)',
+    pointerEvents: 'none',
+  },
+  rankingOverlay: {
+    position: 'absolute',
+    inset: 0,
+    borderRadius: 24,
+    padding: 24,
+    background: 'rgba(15, 23, 42, 0.64)',
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    backdropFilter: 'blur(14px)',
+    display: 'grid',
+    gap: 16,
+    transition: 'opacity 0.3s ease, transform 0.3s ease',
+    zIndex: 2,
+  },
+  rankingOverlayHidden: {
+    opacity: 0,
+    transform: 'translateY(28px)',
+    pointerEvents: 'none',
+  },
+  rankingOverlayActive: {
+    opacity: 1,
+    transform: 'translateY(0)',
+    pointerEvents: 'auto',
+  },
+  rankingOverlayHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  rankingOverlayBody: {
+    overflow: 'auto',
+    maxHeight: '60vh',
+  },
+  overlayBackButton: {
+    background: 'rgba(15, 23, 42, 0.6)',
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    borderRadius: 999,
+    padding: '8px 16px',
+    color: '#e2e8f0',
+    cursor: 'pointer',
+    fontSize: 13,
   },
   sectionCard: {
     background: 'rgba(15, 23, 42, 0.6)',
