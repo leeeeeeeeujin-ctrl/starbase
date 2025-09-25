@@ -1,13 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
-
 * { box-sizing: border-box; }
-body {
-  margin: 0;
-  font-family: 'Noto Sans CJK KR', 'Noto Sans KR', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #05070f;
-  color: #e5ecff;
-}
+body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
 a { color: #2563eb; text-decoration: none; }
 a:hover { text-decoration: underline; }
-
-/* */

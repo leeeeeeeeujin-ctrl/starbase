@@ -1,17 +1,14 @@
 // lib/rank/participants.js
 import { supabase } from './db'
-import { withTable } from '@/lib/supabaseTables'
 
 export async function getOpponentCandidates(gameId, myUserId, limit = 100) {
-  const { data, error } = await withTable(supabase, 'rank_participants', (table) =>
-    supabase
-      .from(table)
-      .select('owner_id, hero_ids, rating')
-      .eq('game_id', gameId)
-      .neq('owner_id', myUserId)
-      .order('rating', { ascending: false })
-      .limit(limit),
-  )
+  const { data, error } = await supabase
+    .from('rank_participants')
+    .select('owner_id, hero_ids, rating')
+    .eq('game_id', gameId)
+    .neq('owner_id', myUserId)
+    .order('rating', { ascending: false })
+    .limit(limit)
   if (error) throw error
   return data || []
 }
@@ -53,5 +50,3 @@ export function pickOpponentsPerSlots({ roles, candidates, myHeroIds }) {
   }
   return picked
 }
-
-// 

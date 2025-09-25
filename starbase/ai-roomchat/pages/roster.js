@@ -1,14 +1,11 @@
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 
 import LogoutButton from '../components/LogoutButton'
 import { supabase } from '../lib/supabase'
-import { withTable } from '@/lib/supabaseTables'
-
-const PAGE_SIZE = 12
 
 export default function Roster() {
   const router = useRouter()
@@ -19,75 +16,11 @@ export default function Roster() {
   const [deleting, setDeleting] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState(null)
-  const [userId, setUserId] = useState(null)
-  const [hasMore, setHasMore] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const offsetRef = useRef(0)
-  const loadMoreRef = useRef(null)
-
-  const loadHeroes = useCallback(
-    async ({ reset = false, targetUserId } = {}) => {
-      const owner = targetUserId || userId
-      if (!owner) return
-
-      const fromIndex = reset ? 0 : offsetRef.current
-      const toIndex = fromIndex + PAGE_SIZE - 1
-
-      if (reset) {
-        offsetRef.current = 0
-        setHasMore(true)
-        setError('')
-        setLoading(true)
-      } else {
-        setLoadingMore(true)
-      }
-
-      try {
-        const { data, error: heroesError } = await withTable(supabase, 'heroes', (table) =>
-          supabase
-            .from(table)
-            .select('id,name,image_url,created_at')
-            .eq('owner_id', owner)
-            .order('created_at', { ascending: false })
-            .range(fromIndex, toIndex),
-        )
-
-        if (heroesError) {
-          setError(heroesError.message)
-          if (reset) {
-            setRows([])
-          }
-          setHasMore(false)
-          return
-        }
-
-        const incoming = data || []
-        setError('')
-        setRows((prev) => {
-          if (reset) return incoming
-          const existing = new Set(prev.map((item) => item.id))
-          const additions = incoming.filter((item) => !existing.has(item.id))
-          return [...prev, ...additions]
-        })
-
-        const fetched = incoming.length
-        offsetRef.current = fromIndex + fetched
-        setHasMore(fetched === PAGE_SIZE)
-      } finally {
-        if (reset) {
-          setLoading(false)
-        } else {
-          setLoadingMore(false)
-        }
-      }
-    },
-    [userId],
-  )
 
   useEffect(() => {
     let active = true
 
-    async function bootstrap() {
+    async function load() {
       setLoading(true)
       setError('')
 
@@ -105,7 +38,6 @@ export default function Roster() {
       }
 
       if (!user) {
-        setLoading(false)
         router.replace('/')
         return
       }
@@ -121,35 +53,31 @@ export default function Roster() {
 
       setDisplayName(derivedName)
       setAvatarUrl(derivedAvatar)
-      setUserId(user.id)
 
-      await loadHeroes({ reset: true, targetUserId: user.id })
+      const { data, error: heroesError } = await supabase
+        .from('heroes')
+        .select('id,name,image_url,created_at')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (!active) return
+
+      if (heroesError) {
+        setError(heroesError.message)
+        setRows([])
+      } else {
+        setRows(data || [])
+      }
+
+      setLoading(false)
     }
 
-    bootstrap()
+    load()
 
     return () => {
       active = false
     }
-  }, [router, loadHeroes])
-
-  useEffect(() => {
-    if (loading || loadingMore || !hasMore) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          observer.disconnect()
-          loadHeroes({ reset: false })
-        }
-      },
-      { rootMargin: '240px 0px 240px' },
-    )
-
-    const node = loadMoreRef.current
-    if (node) observer.observe(node)
-
-    return () => observer.disconnect()
-  }, [hasMore, loading, loadingMore, loadHeroes])
+  }, [router])
 
   const renderBody = () => {
     const createCard = (
@@ -217,7 +145,7 @@ export default function Roster() {
       </Link>
     )
 
-    if (loading && rows.length === 0) {
+    if (loading) {
       return (
         <div
           style={{
@@ -233,7 +161,7 @@ export default function Roster() {
       )
     }
 
-    if (error && rows.length === 0) {
+    if (error) {
       return (
         <>
           <div
@@ -279,20 +207,6 @@ export default function Roster() {
 
     return (
       <>
-        {error ? (
-          <div
-            style={{
-              padding: '14px 16px',
-              borderRadius: 14,
-              border: '1px solid rgba(239,68,68,0.45)',
-              background: 'rgba(239,68,68,0.08)',
-              color: '#fee2e2',
-              fontWeight: 600,
-            }}
-          >
-            {error}
-          </div>
-        ) : null}
         {rows.map((row) => (
           <Link key={row.id} href={`/character/${row.id}`} passHref>
             <a
@@ -417,19 +331,6 @@ export default function Roster() {
           </Link>
         ))}
         {createCard}
-        {loadingMore ? (
-          <div
-            style={{
-              padding: '18px 0 28px',
-              textAlign: 'center',
-              color: '#cbd5f5',
-              fontWeight: 600,
-            }}
-          >
-            더 불러오는 중…
-          </div>
-        ) : null}
-        {hasMore ? <div ref={loadMoreRef} style={{ height: 2 }} /> : null}
       </>
     )
   }
@@ -484,7 +385,7 @@ export default function Roster() {
                   textTransform: 'uppercase',
                 }}
               >
-                Star of Heroes
+                Tale of Heroes
               </div>
               <h1
                 style={{
@@ -507,12 +408,8 @@ export default function Roster() {
             />
           </div>
 
-          <a
-            href="https://gall.dcinside.com/mini/board/lists/?id=gionkirr"
-            target="_blank"
-            rel="noreferrer"
+          <div
             style={{
-              display: 'block',
               borderRadius: 20,
               border: '1px solid rgba(96,165,250,0.25)',
               background: 'linear-gradient(135deg, rgba(30,64,175,0.32) 0%, rgba(15,23,42,0.78) 100%)',
@@ -521,15 +418,13 @@ export default function Roster() {
               display: 'flex',
               flexDirection: 'column',
               gap: 8,
-              color: '#bfdbfe',
-              textDecoration: 'none',
             }}
           >
             <span style={{ fontSize: 12, color: '#e0f2fe', fontWeight: 700 }}>공식 커뮤니티 오픈!</span>
-            <p style={{ margin: 0, lineHeight: 1.6, fontSize: 13 }}>
+            <p style={{ margin: 0, color: '#bfdbfe', lineHeight: 1.6, fontSize: 13 }}>
               캐릭터 자랑, 설정 공유, 팬아트까지 모두 환영합니다. 지금 바로 커뮤니티에서 첫 인사를 남겨보세요.
             </p>
-          </a>
+          </div>
 
           <div
             style={{
@@ -538,7 +433,7 @@ export default function Roster() {
               overflow: 'hidden',
               border: '1px solid rgba(59,130,246,0.28)',
               background: 'linear-gradient(135deg, rgba(30,64,175,0.6) 0%, rgba(12,74,110,0.65) 45%, rgba(15,23,42,0.9) 100%)',
-              padding: '20px 24px 26px',
+              padding: '28px 24px 36px',
               color: '#e0f2fe',
               boxShadow: '0 40px 95px -60px rgba(37, 99, 235, 0.8)',
             }}
@@ -572,13 +467,36 @@ export default function Roster() {
           </div>
         </header>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>내 영웅 목록</h2>
+        <section
+          style={{
+            borderRadius: 24,
+            border: '1px solid rgba(148,163,184,0.18)',
+            background: 'rgba(2,6,23,0.55)',
+            padding: '20px 18px 26px',
+            boxShadow: '0 26px 65px -48px rgba(15,23,42,0.9)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 18,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>내 영웅 목록</h2>
             <span style={{ fontSize: 13, color: '#94a3b8', fontWeight: 600 }}>{rows.length}명</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>{renderBody()}</div>
-        </div>
+          <div
+            style={{
+              maxHeight: '55vh',
+              overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 18,
+              paddingRight: 4,
+            }}
+          >
+            {renderBody()}
+          </div>
+        </section>
       </div>
 
       {deleteTarget ? (
@@ -664,9 +582,7 @@ export default function Roster() {
                 onClick={async () => {
                   if (!deleteTarget || deleting) return
                   setDeleting(true)
-                  const { error: deleteError } = await withTable(supabase, 'heroes', (table) =>
-                    supabase.from(table).delete().eq('id', deleteTarget.id),
-                  )
+                  const { error: deleteError } = await supabase.from('heroes').delete().eq('id', deleteTarget.id)
                   if (deleteError) {
                     alert(deleteError.message)
                     setDeleting(false)
@@ -711,5 +627,3 @@ function formatDate(value) {
     day: 'numeric',
   })
 }
-
-// 

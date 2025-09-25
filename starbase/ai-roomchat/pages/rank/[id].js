@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
-import { withTable } from '@/lib/supabaseTables'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import HeroPicker from '../../components/common/HeroPicker'
 import { useAiHistory } from '../../lib/aiHistory'
@@ -67,65 +66,31 @@ export default function GameRoom() {
       setRequiredSlots(req)
 
       // 참가자 + 히어로 매핑
-      const participantResult = await withTable(
-        supabase,
-        'rank_participants',
-        (table) =>
-          supabase
-            .from(table)
-            .select('id, game_id, hero_id, heroes_id, owner_id, role, score, created_at')
-            .eq('game_id', id)
-            .order('score', { ascending: false }),
-      )
+      const { data: ps } = await supabase
+        .from('rank_participants')
+        .select('id, game_id, hero_id, owner_id, role, score, created_at')
+        .eq('game_id', id)
+        .order('score', { ascending: false })
 
-      const ps = (participantResult.data || []).map((row) => ({
-        ...row,
-        hero_id: row?.hero_id || row?.heroes_id || null,
-      }))
-      if (participantResult.error) {
-        console.warn('participants fetch failed:', participantResult.error.message)
-      }
-
-      const heroIds = ps.map((p) => p.hero_id).filter(Boolean)
-      let heroRows = []
-      if (heroIds.length) {
-        const heroRes = await withTable(
-          supabase,
-          'heroes',
-          (table) =>
-            supabase
-              .from(table)
-              .select('id, name, image_url, description, ability1, ability2, ability3, ability4')
-              .in('id', heroIds),
-        )
-        if (heroRes.error) {
-          console.warn('hero fetch failed:', heroRes.error.message)
-        } else {
-          heroRows = heroRes.data || []
-        }
-      }
-      const hmap = new Map(heroRows.map((h) => [h.id, h]))
-      setParticipants(ps.map((p) => ({ ...p, hero: hmap.get(p.hero_id) || null })))
+      const heroIds = (ps ?? []).map(p => p.hero_id).filter(Boolean)
+      const { data: hs } = heroIds.length
+        ? await supabase
+            .from('heroes')
+            .select('id, name, image_url, description, ability1, ability2, ability3, ability4')
+            .in('id', heroIds)
+        : { data: [] }
+      const hmap = new Map((hs || []).map(h => [h.id, h]))
+      setParticipants((ps || []).map(p => ({ ...p, hero: hmap.get(p.hero_id) || null })))
 
       // 내 캐릭터(로컬)
       const heroId = (typeof window !== 'undefined' && localStorage.getItem('selectedHeroId')) || null
       if (heroId) {
-        const heroResult = await withTable(
-          supabase,
-          'heroes',
-          (table) =>
-            supabase
-              .from(table)
-              .select('id,name,image_url,description,owner_id,ability1,ability2,ability3,ability4')
-              .eq('id', heroId)
-              .single(),
-        )
-        if (heroResult.error) {
-          console.warn('my hero fetch failed:', heroResult.error.message)
-          setMyHero(null)
-        } else {
-          setMyHero(heroResult.data || null)
-        }
+        const { data: h } = await supabase
+          .from('heroes')
+          .select('id,name,image_url,description,owner_id,ability1,ability2,ability3,ability4')
+          .eq('id', heroId)
+          .single()
+        setMyHero(h || null)
       } else {
         setMyHero(null)
       }
@@ -150,49 +115,24 @@ export default function GameRoom() {
       role: pickRole || roles[0],
       score: 1000
     }
-    const { error } = await withTable(supabase, 'rank_participants', (table) =>
-      supabase.from(table).insert(payload, { ignoreDuplicates: true }),
-    )
+    const { error } = await supabase.from('rank_participants').insert(payload, { ignoreDuplicates: true })
     if (error) return alert('참여 실패: ' + error.message)
 
     // 리프레시
-    const refreshed = await withTable(
-      supabase,
-      'rank_participants',
-      (table) =>
-        supabase
-          .from(table)
-          .select('id, game_id, hero_id, heroes_id, owner_id, role, score, created_at')
-          .eq('game_id', id)
-          .order('score', { ascending: false }),
-    )
-    const ps = (refreshed.data || []).map((row) => ({
-      ...row,
-      hero_id: row?.hero_id || row?.heroes_id || null,
-    }))
-    if (refreshed.error) {
-      console.warn('participants refresh failed:', refreshed.error.message)
-    }
-    const heroIds = ps.map((p) => p.hero_id).filter(Boolean)
-    let heroRows = []
-    if (heroIds.length) {
-      const heroRes = await withTable(
-        supabase,
-        'heroes',
-        (table) =>
-          supabase
-            .from(table)
-            .select('id,name,image_url,description,ability1,ability2,ability3,ability4')
-            .in('id', heroIds),
-      )
-      if (heroRes.error) {
-        console.warn('hero refresh failed:', heroRes.error.message)
-      } else {
-        heroRows = heroRes.data || []
-      }
-    }
-    const hmap = new Map(heroRows.map((h) => [h.id, h]))
-    setParticipants(ps.map((p) => ({ ...p, hero: hmap.get(p.hero_id) || null })))
+    const { data: ps } = await supabase
+      .from('rank_participants')
+      .select('id, game_id, hero_id, owner_id, role, score, created_at')
+      .eq('game_id', id)
+      .order('score', { ascending: false })
+    const heroIds = (ps ?? []).map(p => p.hero_id).filter(Boolean)
+    const { data: hs } = heroIds.length
+      ? await supabase
+          .from('heroes')
+          .select('id,name,image_url,description,ability1,ability2,ability3,ability4')
+          .in('id', heroIds)
+      : { data: [] }
+    const hmap = new Map((hs || []).map(h => [h.id, h]))
+    setParticipants((ps || []).map(p => ({ ...p, hero: hmap.get(p.hero_id) || null })))
   }
 
 function startGame() {
@@ -206,12 +146,8 @@ function startGame() {
     if (!confirm('이 게임을 삭제하시겠습니까? (참여/로그 포함)')) return
     setDeleting(true)
     try {
-      await withTable(supabase, 'rank_battle_logs', (table) =>
-        supabase.from(table).delete().eq('game_id', id),
-      )
-      await withTable(supabase, 'rank_participants', (table) =>
-        supabase.from(table).delete().eq('game_id', id),
-      )
+      await supabase.from('battle_logs').delete().eq('game_id', id)
+      await supabase.from('rank_participants').delete().eq('game_id', id)
       await supabase.from('rank_game_slots').delete().eq('game_id', id)
       await supabase.from('rank_games').delete().eq('id', id)
       alert('삭제 완료')
@@ -328,5 +264,3 @@ function startGame() {
     </div>
   )
 }
-
-// 

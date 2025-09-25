@@ -2,7 +2,6 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { withTable } from '@/lib/supabaseTables'
 
 export default function HeroPicker({ open, onClose, onPick }) {
   const [loading, setLoading] = useState(true)
@@ -18,13 +17,11 @@ export default function HeroPicker({ open, onClose, onPick }) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { onClose?.(); return }
       // 내 캐릭터들 불러오기
-      const { data } = await withTable(supabase, 'heroes', (table) =>
-        supabase
-          .from(table)
-          .select('id,name,image_url,description,ability1,ability2,ability3,ability4,created_at')
-          .eq('owner_id', user.id)
-          .order('created_at', { ascending: false }),
-      )
+      const { data } = await supabase
+        .from('heroes')
+        .select('id,name,image_url,description,ability1,ability2,ability3,ability4,created_at')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false })
       if (!alive) return
       setRows(data || [])
       setLoading(false)
@@ -144,5 +141,3 @@ export default function HeroPicker({ open, onClose, onPick }) {
     </div>
   )
 }
-
-// 

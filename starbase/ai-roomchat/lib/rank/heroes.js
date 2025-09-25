@@ -1,13 +1,13 @@
 // lib/rank/heroes.js
 import { supabase } from './db'
-import { withTable } from '@/lib/supabaseTables'
 
 export async function loadHeroesMap(heroIds) {
   const uniq = Array.from(new Set(heroIds.filter(Boolean)))
   if (!uniq.length) return {}
-  const { data, error } = await withTable(supabase, 'heroes', (table) =>
-    supabase.from(table).select('*').in('id', uniq)
-  )
+  const { data, error } = await supabase
+    .from('heroes')
+    .select('*')
+    .in('id', uniq)
   if (error) throw error
   const map = {}
   for (const h of data || []) map[h.id] = h
@@ -40,5 +40,3 @@ function toPromptHero(hero = {}, sideLabel) {
   }
   return out
 }
-
-// 

@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
-import { withTable } from '@/lib/supabaseTables'
 
 async function registerGame(payload) {
   const r = await fetch('/api/rank/register-game', {
@@ -73,14 +72,12 @@ export default function RankHome() {
     // 간단 리더보드(최신 게임 기준)
     const gameId = gameRows?.[0]?.id
     if (gameId) {
-      const { data: partRows } = await withTable(supabase, 'rank_participants', (table) =>
-        supabase
-          .from(table)
-          .select('owner_id, rating, battles, likes')
-          .eq('game_id', gameId)
-          .order('rating', { ascending: false })
-          .limit(50),
-      )
+      const { data: partRows } = await supabase
+        .from('rank_participants')
+        .select('owner_id, rating, battles, likes')
+        .eq('game_id', gameId)
+        .order('rating', { ascending: false })
+        .limit(50)
       setParticipants(partRows || [])
       if (!selGameId) setSelGameId(gameId)
       if (!playGameId) setPlayGameId(gameId)
@@ -114,21 +111,11 @@ export default function RankHome() {
     if (!selGameId) return alert('게임을 선택하세요.')
     if (!heroIds.length) return alert('히어로 ID들을 입력하세요.')
     // upsert rank_participants (game_id,owner_id unique)
-    const { error } = await withTable(
-      supabase,
-      'rank_participants',
-      (table) =>
-        supabase
-          .from(table)
-          .upsert(
-            {
-              game_id: selGameId,
-              owner_id: user.id,
-              hero_ids: heroIds,
-            },
-            { onConflict: 'game_id,owner_id' },
-          ),
-    )
+    const { error } = await supabase.from('rank_participants').upsert({
+      game_id: selGameId,
+      owner_id: user.id,
+      hero_ids: heroIds
+    }, { onConflict: 'game_id,owner_id' })
     if (error) alert(error.message)
     else { alert('참가/팩 저장 완료'); await refreshLists() }
   }
@@ -289,5 +276,3 @@ export default function RankHome() {
     </div>
   )
 }
-
-// 
