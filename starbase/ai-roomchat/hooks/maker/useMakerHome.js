@@ -1,17 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { supabase } from '../../lib/supabase'
 import {
-  createPromptSet,
-  deletePromptSet,
-  fetchPromptSets,
   insertPromptSetBundle,
+  promptSetsRepository,
   readPromptSetBundle,
-  renamePromptSet,
   sortPromptSets,
-} from '../../lib/maker/promptSetsApi'
+} from '../../lib/maker/promptSets'
 
 function parseImportPayload(file) {
   return file.text().then((text) => {
@@ -23,21 +20,42 @@ function parseImportPayload(file) {
   })
 }
 
+function useResultMessage() {
+  const [message, setMessage] = useState('')
+  const setFromError = useCallback((error) => {
+    if (!error) {
+      setMessage('')
+      return
+    }
+    const next = error instanceof Error ? error.message : String(error)
+    setMessage(next || '')
+  }, [])
+  return useMemo(
+    () => ({
+      message,
+      setMessage,
+      setFromError,
+    }),
+    [message, setMessage, setFromError],
+  )
+}
+
 export function useMakerHome({ onUnauthorized } = {}) {
   const [hydrated, setHydrated] = useState(false)
   const [userId, setUserId] = useState(null)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
-  const [errorMessage, setErrorMessage] = useState('')
+  const { message: errorMessage, setMessage: setErrorMessage, setFromError } = useResultMessage()
 
-  const loadPromptSets = useCallback(
-    async (ownerId) => {
-      const list = await fetchPromptSets(ownerId)
-      setRows(list)
-      return list
-    },
-    [],
-  )
+  const loadPromptSets = useCallback(async (ownerId) => {
+    const result = await promptSetsRepository.list(ownerId)
+    if (result.error) {
+      setRows([])
+    } else {
+      setRows(result.data)
+    }
+    return result
+  }, [])
 
   useEffect(() => {
     setHydrated(true)
@@ -68,17 +86,12 @@ export function useMakerHome({ onUnauthorized } = {}) {
 
       setUserId(user.id)
 
-      try {
-        await loadPromptSets(user.id)
-      } catch (err) {
-        if (!cancelled) {
-          setRows([])
-          setErrorMessage(err instanceof Error ? err.message : '세트를 불러오지 못했습니다.')
+      const result = await loadPromptSets(user.id)
+      if (!cancelled) {
+        if (result.error) {
+          setFromError(result.error)
         }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+        setLoading(false)
       }
     }
 
@@ -87,43 +100,59 @@ export function useMakerHome({ onUnauthorized } = {}) {
     return () => {
       cancelled = true
     }
-  }, [hydrated, loadPromptSets, onUnauthorized])
+  }, [hydrated, loadPromptSets, onUnauthorized, setErrorMessage, setFromError])
 
   const refresh = useCallback(
     async (owner = userId) => {
       if (!owner) return
       setLoading(true)
       setErrorMessage('')
-      try {
-        await loadPromptSets(owner)
-      } catch (err) {
-        setRows([])
-        setErrorMessage(err instanceof Error ? err.message : '세트를 불러오지 못했습니다.')
-      } finally {
-        setLoading(false)
+      const result = await loadPromptSets(owner)
+      if (result.error) {
+        setFromError(result.error)
       }
+      setLoading(false)
     },
-    [loadPromptSets, userId],
+    [loadPromptSets, setErrorMessage, setFromError, userId],
   )
 
   const handleRename = useCallback(async (id, nextName) => {
-    const trimmed = await renamePromptSet(id, nextName)
-    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, name: trimmed } : row)))
-  }, [])
+    const result = await promptSetsRepository.rename(id, nextName)
+    if (result.error) {
+      setFromError(result.error)
+      throw result.error
+    }
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, name: result.data } : row)))
+    return result.data
+  }, [setFromError])
 
   const handleDelete = useCallback(async (id) => {
-    await deletePromptSet(id)
+    const result = await promptSetsRepository.remove(id)
+    if (result.error) {
+      setFromError(result.error)
+      throw result.error
+    }
     setRows((prev) => prev.filter((row) => row.id !== id))
-  }, [])
+    return true
+  }, [setFromError])
 
   const handleCreate = useCallback(async () => {
-    const inserted = await createPromptSet(userId)
-    setRows((prev) => sortPromptSets([inserted, ...prev]))
-    return inserted
-  }, [userId])
+    const result = await promptSetsRepository.create(userId)
+    if (result.error) {
+      setFromError(result.error)
+      throw result.error
+    }
+    setRows((prev) => sortPromptSets([result.data, ...prev]))
+    return result.data
+  }, [setFromError, userId])
 
   const exportSet = useCallback(async (id) => {
-    const payload = await readPromptSetBundle(id)
+    const result = await readPromptSetBundle(id)
+    if (result.error) {
+      throw result.error
+    }
+
+    const payload = result.data
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const anchor = document.createElement('a')
     anchor.href = URL.createObjectURL(blob)
@@ -136,15 +165,21 @@ export function useMakerHome({ onUnauthorized } = {}) {
     async (file) => {
       if (!file) return null
       if (!userId) {
-        throw new Error('로그인이 필요합니다.')
+        const error = new Error('로그인이 필요합니다.')
+        setFromError(error)
+        throw error
       }
 
       const payload = await parseImportPayload(file)
-      const insertedSet = await insertPromptSetBundle(userId, payload)
+      const result = await insertPromptSetBundle(userId, payload)
+      if (result.error) {
+        setFromError(result.error)
+        throw result.error
+      }
       await refresh(userId)
-      return insertedSet
+      return result.data
     },
-    [refresh, userId],
+    [refresh, setFromError, userId],
   )
 
   return {
