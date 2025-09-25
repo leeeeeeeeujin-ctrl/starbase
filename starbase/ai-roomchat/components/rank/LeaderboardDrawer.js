@@ -1,6 +1,8 @@
 // components/rank/LeaderboardDrawer.js
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
+import { loadHeroesMap } from '../../lib/rank/heroes'
 
 export default function LeaderboardDrawer({ gameId, onClose }) {
   const [rows, setRows] = useState([])
@@ -8,26 +10,44 @@ export default function LeaderboardDrawer({ gameId, onClose }) {
   useEffect(() => {
     if (!gameId) return
     let alive = true
-    ;(async()=>{
-      const { data } = await supabase
-        .from('rank_participants')
-        .select(`
-          id, game_id, hero_id, role, score,
-          heroes ( id, name, image_url, description )
-        `)
-        .eq('game_id', gameId)
-        .order('score', { ascending:false })
-        .limit(50)
+    ;(async () => {
+      const { data, error } = await withTable(supabase, 'rank_participants', (table) =>
+        supabase
+          .from(table)
+          .select('id, game_id, hero_id, heroes_id, role, score, rating')
+          .eq('game_id', gameId)
+          .order('score', { ascending: false })
+          .limit(50),
+      )
       if (!alive) return
-      const mapped = (data || []).map(p => ({
-        ...p,
-        hero: p.heroes ? {
-          id: p.heroes.id,
-          name: p.heroes.name,
-          image_url: p.heroes.image_url,
-          description: p.heroes.description
-        } : null
-      }))
+      if (error) {
+        console.warn('leaderboard fetch failed:', error.message)
+        setRows([])
+        return
+      }
+
+      const heroIds = Array.from(
+        new Set((data || []).map((row) => row?.hero_id || row?.heroes_id || null).filter(Boolean)),
+      )
+      const heroMap = heroIds.length ? await loadHeroesMap(heroIds) : {}
+      if (!alive) return
+
+      const mapped = (data || []).map((row) => {
+        const heroId = row?.hero_id || row?.heroes_id || null
+        const hero = heroId ? heroMap[heroId] || null : null
+        return {
+          ...row,
+          hero_id: heroId,
+          hero: hero
+            ? {
+                id: hero.id,
+                name: hero.name,
+                image_url: hero.image_url,
+                description: hero.description,
+              }
+            : null,
+        }
+      })
       setRows(mapped)
     })()
     return () => { alive = false }
@@ -74,3 +94,5 @@ export default function LeaderboardDrawer({ gameId, onClose }) {
     </div>
   )
 }
+
+// 

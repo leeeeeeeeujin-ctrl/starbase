@@ -9,15 +9,17 @@ import React, {
 import { useRouter } from 'next/router'
 
 import { supabase } from '../../lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
+import { loadHeroesMap } from '../../lib/rank/heroes'
 import SharedChatDock from '../common/SharedChatDock'
 import {
   buildSystemPromptFromChecklist,
   buildSlotsFromParticipants,
-  createAiHistory,
+  compileTemplate,
   evaluateBridge,
-  makeNodePrompt,
   parseOutcome,
 } from '../../lib/promptEngine'
+import { createAiHistory } from '../../lib/history'
 import { sanitizeVariableRules } from '../../lib/variableRules'
 
 const COMPARATOR_LABEL = { gte: '이상', lte: '이하', eq: '정확히' }
@@ -135,18 +137,19 @@ function pickNextEdge(edges, context) {
   return fallback
 }
 
-function normalizeParticipants(rows = []) {
+function normalizeParticipants(rows = [], heroesMap = {}) {
   return rows.map((row) => {
-    const hero = row?.heroes || {}
+    const heroId = row?.hero_id || row?.heroes_id || null
+    const hero = (heroId && heroesMap[heroId]) || {}
     return {
       id: row?.id,
       role: row?.role || '',
       status: row?.status || 'alive',
       score: Number(row?.score) || 0,
       rating: Number(row?.rating) || 0,
-      hero_id: row?.hero_id || null,
+      hero_id: heroId,
       hero: {
-        id: hero?.id || row?.hero_id || null,
+        id: hero?.id || heroId,
         name: hero?.name || '이름 없는 영웅',
         description: hero?.description || '',
         image_url: hero?.image_url || '',
@@ -180,9 +183,10 @@ function buildSystemMessage(game) {
   return [prefix, checklist].filter(Boolean).join('\n')
 }
 
-export default function StartClient() {
+export default function StartClient({ gameId: overrideGameId, onRequestClose }) {
   const router = useRouter()
-  const gameId = router.query.id
+  const routeGameId = router?.query?.id
+  const gameId = overrideGameId || routeGameId
 
   const history = useMemo(() => createAiHistory(), [])
 
@@ -225,16 +229,29 @@ export default function StartClient() {
         if (gameError) throw gameError
         setGame(gameRow)
 
-        const { data: participantRows, error: participantError } = await supabase
-          .from('rank_participants')
-          .select(
-            'id, role, status, hero_id, score, rating, heroes:hero_id(id,name,description,image_url,ability1,ability2,ability3,ability4)',
-          )
-          .eq('game_id', gameId)
+        const { data: participantRows, error: participantError } = await withTable(
+          supabase,
+          'rank_participants',
+          (table) =>
+            supabase
+              .from(table)
+              .select('id, role, status, hero_id, heroes_id, score, rating')
+              .eq('game_id', gameId),
+        )
 
         if (!alive) return
         if (participantError) throw participantError
-        setParticipants(normalizeParticipants(participantRows || []))
+
+        const heroIds = Array.from(
+          new Set(
+            (participantRows || [])
+              .map((row) => row?.hero_id || row?.heroes_id || null)
+              .filter(Boolean),
+          ),
+        )
+        const heroesMap = heroIds.length ? await loadHeroesMap(heroIds) : {}
+        if (!alive) return
+        setParticipants(normalizeParticipants(participantRows || [], heroesMap))
 
         if (gameRow?.prompt_set_id) {
           const [{ data: slotRows, error: slotError }, { data: bridgeRows, error: bridgeError }] = await Promise.all([
@@ -349,18 +366,20 @@ export default function StartClient() {
       setStatusMessage('')
 
       try {
-        const compiled = makeNodePrompt({
-          node,
+        const compiled = compileTemplate({
+          template: node.template || '',
           slots,
           historyText: history.joinedText({ onlyPublic: false, last: 12 }),
+          options: node.options || {},
           activeGlobalNames: activeGlobal,
           activeLocalNames: activeLocal,
-          currentSlot: null,
+          currentSlot: node.slot_no ?? null,
         })
 
         const promptText = compiled.text
-        if (compiled.pickedSlot != null) {
-          visitedSlotIds.current.add(String(compiled.pickedSlot))
+        const pickedSlot = compiled.meta?.pickedSlot ?? node.slot_no ?? null
+        if (pickedSlot != null) {
+          visitedSlotIds.current.add(String(pickedSlot))
         }
 
         let responseText =
@@ -553,7 +572,13 @@ export default function StartClient() {
           flexWrap: 'wrap',
         }}
       >
-        <button onClick={() => router.back()} style={{ padding: '8px 12px' }}>
+        <button
+          onClick={() => {
+            if (onRequestClose) onRequestClose()
+            else router.back()
+          }}
+          style={{ padding: '8px 12px' }}
+        >
           ← 뒤로가기
         </button>
         <div style={{ flex: '1 1 240px' }}>
@@ -745,6 +770,8 @@ export default function StartClient() {
   )
 }
 
+// 
+
 function RosterPanel({ participants }) {
   return (
     <section
@@ -828,3 +855,4 @@ function LogCard({ entry }) {
     </div>
   )
 }
+//

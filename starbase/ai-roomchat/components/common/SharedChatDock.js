@@ -2,8 +2,15 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
 
-export default function SharedChatDock({ height = 320, heroId }) {
+export default function SharedChatDock({
+  height = 320,
+  heroId,
+  command,
+  onRequestAddFriend,
+  onRequestProfile,
+}) {
   const [msgs, setMsgs] = useState([])
   const [me, setMe] = useState({ name: '익명', avatar_url: null, hero_id: null })
   const [input, setInput] = useState('')
@@ -21,6 +28,7 @@ export default function SharedChatDock({ height = 320, heroId }) {
     }
   })
   const listRef = useRef(null)
+  const inputRef = useRef(null)
   const blockedHeroSet = useMemo(() => new Set(blockedHeroes.filter(Boolean)), [blockedHeroes])
   const viewerHeroId = heroId || me.hero_id || null
   const heroDirectory = useMemo(() => {
@@ -66,6 +74,20 @@ export default function SharedChatDock({ height = 320, heroId }) {
     }
   }, [scope])
 
+  useEffect(() => {
+    if (!command) return
+    if (command.type === 'whisper' && command.heroId) {
+      setScope('whisper')
+      setWhisperTarget(command.heroId)
+      if (typeof command.prefill === 'string') {
+        setInput(command.prefill)
+      }
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 80)
+    }
+  }, [command])
+
   const canSend = useMemo(() => {
     if (!input.trim()) return false
     if (scope === 'whisper' && !whisperTarget) return false
@@ -86,21 +108,21 @@ export default function SharedChatDock({ height = 320, heroId }) {
 
       async function resolveProfile() {
         if (heroId) {
-          const { data: hero } = await supabase
-            .from('heroes')
-            .select('id,name,image_url,owner_id')
-            .eq('id', heroId)
-            .single()
+          const { data: hero } = await withTable(supabase, 'heroes', (table) =>
+            supabase.from(table).select('id,name,image_url,owner_id').eq('id', heroId).single(),
+          )
           if (hero) return { name: hero.name, avatar_url: hero.image_url || null, hero_id: hero.id }
         }
 
-        const { data: myHero } = await supabase
-          .from('heroes')
-          .select('id,name,image_url')
-          .eq('owner_id', user.id)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle()
+        const { data: myHero } = await withTable(supabase, 'heroes', (table) =>
+          supabase
+            .from(table)
+            .select('id,name,image_url')
+            .eq('owner_id', user.id)
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle(),
+        )
         if (myHero) return { name: myHero.name, avatar_url: myHero.image_url || null, hero_id: myHero.id }
 
         const meta = user?.user_metadata || {}
@@ -116,13 +138,26 @@ export default function SharedChatDock({ height = 320, heroId }) {
       setMe(profile)
 
       // 메시지 초기 로드 (오래된 → 최신, 아래가 최신)
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('messages')
         .select('*')
         .order('created_at', { ascending: true })
         .limit(200)
       if (!alive) return
-      setMsgs(data || [])
+
+      if (error) {
+        try {
+          const res = await fetch(`/api/messages/list?limit=200`)
+          if (!res.ok) throw new Error(await res.text())
+          const payload = await res.json()
+          setMsgs(Array.isArray(payload.data) ? payload.data : [])
+        } catch (fallbackError) {
+          console.warn('SharedChatDock: failed to load messages via fallback', fallbackError)
+          setMsgs([])
+        }
+      } else {
+        setMsgs(data || [])
+      }
       // 처음 로드되면 스크롤 맨 아래로
       setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
     })()
@@ -176,7 +211,47 @@ export default function SharedChatDock({ height = 320, heroId }) {
       text,
     }
     const { error } = await supabase.from('messages').insert(payload)
-    if (error) alert(error.message)
+    if (error) {
+      console.warn('SharedChatDock: primary send failed, attempting fallback', error.message)
+      try {
+        const res = await fetch('/api/messages/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) {
+          const text = await res.text()
+          throw new Error(text || 'fallback send failed')
+        }
+      } catch (fallbackErr) {
+        console.error('SharedChatDock: fallback send failed', fallbackErr)
+        alert(error.message)
+      }
+    }
+  }
+
+  function handlePortraitClick(message) {
+    if (!message?.hero_id) return
+    const heroName = heroDirectory.get(message.hero_id) || message.username || '익명'
+    const payload = {
+      heroId: message.hero_id,
+      heroName,
+      avatarUrl: message.avatar_url || null,
+      isSelf: Boolean(viewerHeroId && message.hero_id === viewerHeroId),
+    }
+
+    if (typeof onRequestProfile === 'function') {
+      onRequestProfile(payload)
+      return
+    }
+
+    if (payload.isSelf) return
+
+    setScope('whisper')
+    setWhisperTarget(message.hero_id)
+    setTimeout(() => {
+      inputRef.current?.focus()
+    }, 80)
   }
 
   return (
@@ -227,10 +302,39 @@ export default function SharedChatDock({ height = 320, heroId }) {
                 borderBottom: '1px solid #f3f4f6',
               }}
             >
-              {message.avatar_url
-                ? <img src={message.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
-                : <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#e5e7eb' }} />
-              }
+              <button
+                type="button"
+                onClick={() => handlePortraitClick(message)}
+                disabled={!message?.hero_id}
+                title={message?.hero_id ? `${senderName} 프로필` : undefined}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  border: 'none',
+                  padding: 0,
+                  overflow: 'hidden',
+                  background: 'transparent',
+                  cursor: message?.hero_id ? 'pointer' : 'default',
+                }}
+              >
+                {message.avatar_url ? (
+                  <img
+                    src={message.avatar_url}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      borderRadius: '50%',
+                      background: '#e5e7eb',
+                    }}
+                  />
+                )}
+              </button>
               <div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <b style={{ fontSize: 13 }}>{senderName}</b>
@@ -257,6 +361,27 @@ export default function SharedChatDock({ height = 320, heroId }) {
                 <div style={{ marginTop: 2, whiteSpace: 'pre-wrap' }}>{message.text}</div>
                 {message.hero_id && !isSelf && (
                   <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                    {onRequestAddFriend ? (
+                      <button
+                        onClick={() =>
+                          onRequestAddFriend({
+                            heroId: message.hero_id,
+                            heroName: senderName,
+                            avatarUrl: message.avatar_url || null,
+                          })
+                        }
+                        style={{
+                          fontSize: 11,
+                          padding: '4px 8px',
+                          borderRadius: 8,
+                          border: '1px solid #38bdf8',
+                          background: 'rgba(56, 189, 248, 0.12)',
+                          color: '#0284c7',
+                        }}
+                      >
+                        친구 추가
+                      </button>
+                    ) : null}
                     {blocked ? (
                       <button
                         onClick={() => setBlockedHeroes((prev) => prev.filter((id) => id !== message.hero_id))}
@@ -329,6 +454,7 @@ export default function SharedChatDock({ height = 320, heroId }) {
           )}
         </div>
         <input
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -357,3 +483,5 @@ export default function SharedChatDock({ height = 320, heroId }) {
     </div>
   )
 }
+
+// 

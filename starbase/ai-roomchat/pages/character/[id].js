@@ -1,8 +1,15 @@
 // pages/character/[id].js
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
 import { supabase } from '../../lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
+import CharacterDashboard from '@/components/character/CharacterDashboard'
+
+const InlineStartClient = dynamic(() => import('../../components/rank/StartClient'), {
+  ssr: false,
+})
 
 const LOGS_SLICE = 5
 const ABILITY_KEYS = ['ability1', 'ability2', 'ability3', 'ability4']
@@ -55,12 +62,9 @@ export default function CharacterDetail() {
   const [visibleBattles, setVisibleBattles] = useState(LOGS_SLICE)
   const [battleLoading, setBattleLoading] = useState(false)
   const [battleError, setBattleError] = useState('')
-  const [activeTab, setActiveTab] = useState('overview')
   const [heroLookup, setHeroLookup] = useState({})
 
-  const [startModalOpen, setStartModalOpen] = useState(false)
-  const [startStep, setStartStep] = useState('preview')
-  const [matchProgress, setMatchProgress] = useState(0)
+  const [activeBattleGameId, setActiveBattleGameId] = useState(null)
   const backgroundInputRef = useRef(null)
   const bgmInputRef = useRef(null)
   const [backgroundPreview, setBackgroundPreview] = useState(null)
@@ -93,11 +97,18 @@ export default function CharacterDetail() {
         return
       }
 
-      const { data, error } = await supabase
-        .from('heroes')
-        .select('id,name,image_url,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_duration_seconds,bgm_mime,owner_id,created_at')
-        .eq('id', id)
-        .single()
+      const { data, error } = await withTable(
+        supabase,
+        'heroes',
+        (table) =>
+          supabase
+            .from(table)
+            .select(
+              'id,name,image_url,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_duration_seconds,bgm_mime,owner_id,created_at',
+            )
+            .eq('id', id)
+            .single(),
+      )
 
       if (!mounted) return
 
@@ -179,13 +190,18 @@ export default function CharacterDetail() {
       ].join(', ')
 
       async function fetchByColumn(column) {
-        const { data, error } = await supabase
-          .from('rank_battles')
-          .select(fields)
-          .eq('game_id', selectedGameId)
-          .contains(column, [hero.id])
-          .order('created_at', { ascending: false })
-          .limit(40)
+        const { data, error } = await withTable(
+          supabase,
+          'rank_battles',
+          (table) =>
+            supabase
+              .from(table)
+              .select(fields)
+              .eq('game_id', selectedGameId)
+              .contains(column, [hero.id])
+              .order('created_at', { ascending: false })
+              .limit(40),
+        )
         if (error) {
           console.warn('rank_battles contains fetch failed:', error.message)
           return []
@@ -197,12 +213,17 @@ export default function CharacterDetail() {
       let defendRows = await fetchByColumn('defender_hero_ids')
 
       if (!attackRows.length && !defendRows.length) {
-        const { data, error } = await supabase
-          .from('rank_battles')
-          .select(fields)
-          .eq('game_id', selectedGameId)
-          .order('created_at', { ascending: false })
-          .limit(40)
+        const { data, error } = await withTable(
+          supabase,
+          'rank_battles',
+          (table) =>
+            supabase
+              .from(table)
+              .select(fields)
+              .eq('game_id', selectedGameId)
+              .order('created_at', { ascending: false })
+              .limit(40),
+        )
         if (error) {
           if (active) {
             setBattleError('전투 로그를 불러올 수 없습니다.')
@@ -227,10 +248,15 @@ export default function CharacterDetail() {
 
       const ids = battles.map((battle) => battle.id)
       const { data: logRows, error: logError } = ids.length
-        ? await supabase
-            .from('rank_battle_logs')
-            .select('battle_id, turn_no, prompt, ai_response, created_at')
-            .in('battle_id', ids)
+        ? await withTable(
+            supabase,
+            'rank_battle_logs',
+            (table) =>
+              supabase
+                .from(table)
+                .select('battle_id, turn_no, prompt, ai_response, created_at')
+                .in('battle_id', ids),
+          )
         : { data: [], error: null }
 
       if (logError) {
@@ -325,66 +351,24 @@ export default function CharacterDetail() {
 
   const scoreboardPreview = useMemo(() => selectedScoreboard.slice(0, 8), [selectedScoreboard])
 
-  const opponentCards = useMemo(() => {
-    if (!selectedGameId) return []
-    return selectedScoreboard
-      .filter((row) => {
-        if (heroId && row?.hero_id === heroId) return false
-        if (Array.isArray(row?.hero_ids) && heroId && row.hero_ids.includes(heroId)) return false
-        return true
-      })
-      .map((row) => {
-        const heroEntry = heroLookup[row.hero_id] || null
-        const name = heroEntry?.name || row.role || '참가자'
-        const portrait = heroEntry?.image_url || null
-        const abilities = heroEntry
-          ? ABILITY_KEYS.map((key) => heroEntry[key]).filter(Boolean).slice(0, 2)
-          : []
-        return {
-          id: row.id || `${row.hero_id}-${row.owner_id}`,
-          heroId: row.hero_id || null,
-          role: row.role || '',
-          name,
-          portrait,
-          abilities,
-        }
-      })
-  }, [selectedGameId, selectedScoreboard, heroLookup, heroId])
-
-  useEffect(() => {
-    if (!startModalOpen || startStep !== 'matching') return
-    setMatchProgress(0)
-    let cancelled = false
-    const timer = setInterval(() => {
-      setMatchProgress((prev) => {
-        if (cancelled) return prev
-        if (prev >= 100) return prev
-        const next = Math.min(100, prev + 8)
-        if (next === 100) {
-          setTimeout(() => {
-            if (!cancelled) setStartStep('ready')
-          }, 350)
-        }
-        return next
-      })
-    }, 280)
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [startModalOpen, startStep])
-
   async function loadParticipations(heroId) {
     const selectFields =
       'id, game_id, owner_id, hero_id, hero_ids, role, score, rating, battles, created_at, updated_at'
 
-    const [{ data: soloRows, error: soloErr }, { data: packRows, error: packErr }] = await Promise.all([
-      supabase.from('rank_participants').select(selectFields).eq('hero_id', heroId),
-      supabase.from('rank_participants').select(selectFields).contains('hero_ids', [heroId]),
+    const [soloRes, packRes] = await Promise.all([
+      withTable(supabase, 'rank_participants', (table) =>
+        supabase.from(table).select(selectFields).eq('hero_id', heroId),
+      ),
+      withTable(supabase, 'rank_participants', (table) =>
+        supabase.from(table).select(selectFields).contains('hero_ids', [heroId]),
+      ),
     ])
 
-    if (soloErr) console.warn('rank_participants hero_id fetch failed:', soloErr.message)
-    if (packErr) console.warn('rank_participants hero_ids fetch failed:', packErr.message)
+    const soloRows = soloRes.data || []
+    const packRows = packRes.data || []
+
+    if (soloRes.error) console.warn('rank_participants hero_id fetch failed:', soloRes.error.message)
+    if (packRes.error) console.warn('rank_participants hero_ids fetch failed:', packRes.error.message)
 
     const combined = [...(soloRows || []), ...(packRows || [])]
     const byGame = new Map()
@@ -412,10 +396,12 @@ export default function CharacterDetail() {
             .in('id', gameIds)
         : { data: [], error: null },
       gameIds.length
-        ? supabase
-            .from('rank_participants')
-            .select('id, game_id, owner_id, hero_id, role, rating, battles, score, updated_at')
-            .in('game_id', gameIds)
+        ? withTable(supabase, 'rank_participants', (table) =>
+            supabase
+              .from(table)
+              .select('id, game_id, owner_id, hero_id, role, rating, battles, score, updated_at')
+              .in('game_id', gameIds),
+          )
         : { data: [], error: null },
     ])
 
@@ -450,10 +436,15 @@ export default function CharacterDetail() {
     if (heroId) heroIds.add(heroId)
     const missingHeroIds = Array.from(heroIds).filter((hid) => hid && !heroLookup[hid])
     if (missingHeroIds.length) {
-      const { data: heroRows, error: heroErr } = await supabase
-        .from('heroes')
-        .select('id, name, image_url, description, ability1, ability2, ability3, ability4')
-        .in('id', missingHeroIds)
+      const { data: heroRows, error: heroErr } = await withTable(
+        supabase,
+        'heroes',
+        (table) =>
+          supabase
+            .from(table)
+            .select('id, name, image_url, description, ability1, ability2, ability3, ability4')
+            .in('id', missingHeroIds),
+      )
       if (heroErr) {
         console.warn('hero lookup fetch failed:', heroErr.message)
       } else {
@@ -619,7 +610,9 @@ export default function CharacterDetail() {
         bgm_duration_seconds: bgmDurationSeconds,
         bgm_mime: bgmMimeValue,
       }
-      const { error } = await supabase.from('heroes').update(payload).eq('id', id)
+      const { error } = await withTable(supabase, 'heroes', (table) =>
+        supabase.from(table).update(payload).eq('id', id),
+      )
       if (error) throw error
       setHero((prev) => (prev ? { ...prev, ...payload } : prev))
       setEdit((prev) => ({
@@ -655,7 +648,9 @@ export default function CharacterDetail() {
 
   async function remove() {
     if (!confirm('정말 삭제할까? 복구할 수 없습니다.')) return
-    const { error } = await supabase.from('heroes').delete().eq('id', id)
+    const { error } = await withTable(supabase, 'heroes', (table) =>
+      supabase.from(table).delete().eq('id', id),
+    )
     if (error) {
       alert(error.message)
       return
@@ -664,7 +659,6 @@ export default function CharacterDetail() {
   }
 
   function addAbilitySlot() {
-    setActiveTab('abilities')
     const nextKey = ABILITY_KEYS.find((key) => !(edit[key] && edit[key].trim()))
     if (!nextKey) {
       alert('추가할 수 있는 빈 능력이 없습니다.')
@@ -674,7 +668,6 @@ export default function CharacterDetail() {
   }
 
   function reverseAbilities() {
-    setActiveTab('abilities')
     setEdit((prev) => {
       const values = ABILITY_KEYS.map((key) => prev[key] || '')
       const reversed = [...values].reverse()
@@ -687,13 +680,13 @@ export default function CharacterDetail() {
   }
 
   function clearAbility(key) {
-    setActiveTab('abilities')
     setEdit((prev) => ({ ...prev, [key]: '' }))
   }
 
   function showMoreBattles() {
     setVisibleBattles((count) => Math.min(count + LOGS_SLICE, battleDetails.length))
   }
+
 
   if (loading) {
     return <div style={{ padding: 20, color: '#0f172a' }}>불러오는 중…</div>
@@ -703,831 +696,68 @@ export default function CharacterDetail() {
     return null
   }
 
-  const hasParticipations = statSlides.length > 0
+  const heroName = edit.name || '이름 없는 캐릭터'
+  const handleEditChange = useCallback((key, value) => {
+    setEdit((state) => ({ ...state, [key]: value }))
+  }, [])
+  const handleSelectGame = useCallback(
+    (gameId) => {
+      if (!gameId) return
+      setSelectedGameId(gameId)
+    },
+    [],
+  )
+  const startBattleFromDetail = useCallback(() => {
+    if (selectedGameId) {
+      setActiveBattleGameId(selectedGameId)
+    }
+  }, [selectedGameId])
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: 'radial-gradient(circle at top, rgba(15, 118, 110, 0.28), rgba(2, 6, 23, 0.95) 65%)',
-        color: '#e2e8f0',
-        position: 'relative',
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 1024,
-          margin: '0 auto',
-          padding: '32px 16px 160px',
-          display: 'grid',
-          gap: 24,
-        }}
-      >
-        <header
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap',
-          }}
-        >
-          <button
-            onClick={() => router.back()}
-            style={{
-              padding: '10px 16px',
-              borderRadius: 999,
-              border: '1px solid rgba(148, 163, 184, 0.35)',
-              background: 'rgba(15, 23, 42, 0.75)',
-              color: '#f1f5f9',
-              fontWeight: 600,
-            }}
-          >
-            ← 로스터로
-          </button>
-          <div style={{ flex: '1 1 220px', minWidth: 220 }}>
-            <span style={{ fontSize: 13, color: '#94a3b8' }}>캐릭터 프로필</span>
-            <h1 style={{ margin: '6px 0 0', fontSize: 30 }}>{edit.name || '이름 없는 캐릭터'}</h1>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              onClick={save}
-              disabled={saving}
-              style={{
-                padding: '10px 18px',
-                borderRadius: 999,
-                border: 'none',
-                background: saving ? 'rgba(56, 189, 248, 0.35)' : '#38bdf8',
-                color: '#020617',
-                fontWeight: 800,
-                minWidth: 120,
-              }}
-            >
-              {saving ? '저장 중…' : '저장'}
-            </button>
-            <button
-              onClick={remove}
-              style={{
-                padding: '10px 18px',
-                borderRadius: 999,
-                border: '1px solid rgba(248, 113, 113, 0.35)',
-                background: 'rgba(248, 113, 113, 0.15)',
-                color: '#fca5a5',
-                fontWeight: 700,
-              }}
-            >
-              삭제
-            </button>
-          </div>
-        </header>
-
-        <section style={{ display: 'grid', gap: 20 }}>
-          <div
-            style={{
-              borderRadius: 32,
-              border: '1px solid rgba(56, 189, 248, 0.4)',
-              background: 'linear-gradient(180deg, rgba(15, 118, 110, 0.4) 0%, rgba(15, 23, 42, 0.9) 100%)',
-              padding: 24,
-              boxShadow: '0 40px 80px -50px rgba(56, 189, 248, 0.6)',
-            }}
-          >
-            <div
-              style={{
-                width: '100%',
-                aspectRatio: '1 / 1',
-                borderRadius: 28,
-                overflow: 'hidden',
-                background: 'rgba(15, 23, 42, 0.9)',
-                border: '1px solid rgba(56, 189, 248, 0.35)',
-              }}
-            >
-              {hero.image_url ? (
-                <img
-                  src={hero.image_url}
-                  alt={hero.name}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#38bdf8',
-                    fontWeight: 700,
-                  }}
-                >
-                  이미지 없음
-                </div>
-              )}
-            </div>
-          </div>
-
-          {hasParticipations ? (
-            <div
-              style={{
-                display: 'flex',
-                gap: 18,
-                overflowX: 'auto',
-                paddingBottom: 4,
-                scrollSnapType: 'x mandatory',
-              }}
-            >
-              {statSlides.map((slide) => {
-                const active = slide.key === selectedGameId
-                return (
-                  <button
-                    key={slide.key}
-                    type="button"
-                    onClick={() => setSelectedGameId(slide.key)}
-                    style={{
-                      scrollSnapAlign: 'center',
-                      minWidth: '82%',
-                      maxWidth: '82%',
-                      borderRadius: 28,
-                      padding: 22,
-                      border: active ? '1px solid rgba(56, 189, 248, 0.65)' : '1px solid rgba(148, 163, 184, 0.25)',
-                      background: active
-                        ? 'linear-gradient(180deg, rgba(14, 165, 233, 0.45) 0%, rgba(15, 23, 42, 0.92) 100%)'
-                        : 'rgba(15, 23, 42, 0.72)',
-                      color: '#f1f5f9',
-                      textAlign: 'left',
-                      display: 'grid',
-                      gap: 16,
-                      boxShadow: active ? '0 30px 80px -40px rgba(56, 189, 248, 0.85)' : 'none',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <div
-                        style={{
-                          width: 56,
-                          height: 56,
-                          borderRadius: 18,
-                          overflow: 'hidden',
-                          border: '1px solid rgba(148, 163, 184, 0.35)',
-                          background: 'rgba(15, 23, 42, 0.75)',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {slide.image ? (
-                          <img
-                            src={slide.image}
-                            alt={slide.name}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: '#38bdf8',
-                              fontWeight: 700,
-                            }}
-                          >
-                            Game
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ display: 'grid', gap: 2 }}>
-                        <strong style={{ fontSize: 18, lineHeight: 1.3 }}>{slide.name}</strong>
-                        <span style={{ fontSize: 13, color: '#bae6fd' }}>
-                          {slide.role ? `${slide.role} 역할` : '참여 기록'}
-                        </span>
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(2, minmax(120px, 1fr))',
-                        gap: 12,
-                      }}
-                    >
-                      {slide.stats.map((stat) => (
-                        <div
-                          key={stat.key}
-                          style={{
-                            borderRadius: 20,
-                            padding: '16px 18px',
-                            background: active
-                              ? 'rgba(8, 47, 73, 0.9)'
-                              : 'linear-gradient(180deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.85) 100%)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            display: 'grid',
-                            gap: 6,
-                          }}
-                        >
-                          <span style={{ fontSize: 13, color: '#94a3b8' }}>{stat.label}</span>
-                          <strong style={{ fontSize: 22 }}>{stat.value}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <div
-              style={{
-                borderRadius: 24,
-                border: '1px dashed rgba(148, 163, 184, 0.35)',
-                padding: 24,
-                textAlign: 'center',
-                color: '#94a3b8',
-                background: 'rgba(15, 23, 42, 0.6)',
-              }}
-            >
-              아직 참여한 게임이 없습니다.
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              if (!selectedGameId && participations[0]) {
-                setSelectedGameId(participations[0].game_id)
-              }
-              if (!selectedGameId && !participations.length) {
-                alert('먼저 게임에 참여한 뒤 배틀을 시작할 수 있습니다.')
-                return
-              }
-              setStartStep('preview')
-              setMatchProgress(0)
-              setStartModalOpen(true)
-            }}
-            disabled={!participations.length}
-            style={{
-              marginTop: 16,
-              padding: '16px 24px',
-              borderRadius: 28,
-              border: '1px solid rgba(56, 189, 248, 0.65)',
-              background: participations.length ? 'rgba(14, 165, 233, 0.2)' : 'rgba(51, 65, 85, 0.65)',
-              color: participations.length ? '#e0f2fe' : '#94a3b8',
-              fontWeight: 800,
-              fontSize: 18,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 12,
-            }}
-          >
-            <span role="img" aria-label="battle">⚔️</span>
-            배틀 시작
-          </button>
-        </section>
-
-        <section
-          style={{
-            borderRadius: 28,
-            border: '1px solid rgba(148, 163, 184, 0.25)',
-            background: 'rgba(15, 23, 42, 0.72)',
-            padding: 24,
-            display: 'grid',
-            gap: 18,
-          }}
-        >
-          <div style={{ display: 'flex', gap: 12 }}>
-            {[
-              { key: 'overview', label: '소개' },
-              { key: 'abilities', label: '능력' },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                style={{
-                  padding: '10px 18px',
-                  borderRadius: 999,
-                  border: activeTab === tab.key ? 'none' : '1px solid rgba(148, 163, 184, 0.3)',
-                  background: activeTab === tab.key ? '#38bdf8' : 'rgba(15, 23, 42, 0.65)',
-                  color: activeTab === tab.key ? '#020617' : '#e2e8f0',
-                  fontWeight: 700,
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === 'overview' ? (
-            <div style={{ display: 'grid', gap: 16 }}>
-              <label style={{ display: 'grid', gap: 6 }}>
-                <span style={{ fontSize: 13, color: '#94a3b8' }}>캐릭터 이름</span>
-                <input
-                  value={edit.name}
-                  onChange={(event) => setEdit((state) => ({ ...state, name: event.target.value }))}
-                  style={inputStyle}
-                />
-              </label>
-              <label style={{ display: 'grid', gap: 6 }}>
-                <span style={{ fontSize: 13, color: '#94a3b8' }}>설명</span>
-                <textarea
-                  value={edit.description}
-                  onChange={(event) => setEdit((state) => ({ ...state, description: event.target.value }))}
-                  rows={6}
-                  style={{ ...inputStyle, resize: 'vertical', minHeight: 160 }}
-                  placeholder="캐릭터의 배경과 개성을 소개해 주세요."
-                />
-              </label>
-              <div
-                style={{
-                  display: 'grid',
-                  gap: 12,
-                  borderRadius: 24,
-                  padding: 18,
-                  border: '1px solid rgba(148, 163, 184, 0.35)',
-                  background: 'rgba(15, 23, 42, 0.6)',
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: 14 }}>배경 이미지</div>
-                <div
-                  style={{
-                    width: '100%',
-                    minHeight: 140,
-                    borderRadius: 16,
-                    border: '1px dashed rgba(148, 163, 184, 0.35)',
-                    background: 'rgba(15, 23, 42, 0.45)',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {backgroundPreview ? (
-                    <img
-                      src={backgroundPreview}
-                      alt="배경 미리보기"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <span style={{ color: '#94a3b8', fontSize: 12 }}>등록된 배경이 없습니다.</span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => backgroundInputRef.current?.click()}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: 999,
-                      background: '#38bdf8',
-                      color: '#0f172a',
-                      fontWeight: 700,
-                    }}
-                  >
-                    배경 업로드
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearBackgroundAsset}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: 999,
-                      background: 'rgba(148, 163, 184, 0.25)',
-                      color: '#e2e8f0',
-                      fontWeight: 600,
-                    }}
-                  >
-                    배경 제거
-                  </button>
-                </div>
-                <input
-                  ref={backgroundInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => handleBackgroundUpload(event.target.files?.[0] || null)}
-                  style={{ display: 'none' }}
-                />
-                {backgroundError && <div style={{ color: '#fca5a5', fontSize: 12 }}>{backgroundError}</div>}
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gap: 12,
-                  borderRadius: 24,
-                  padding: 18,
-                  border: '1px solid rgba(56, 189, 248, 0.25)',
-                  background: 'rgba(15, 23, 42, 0.6)',
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: 14 }}>배경 음악</div>
-                <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>
-                  {bgmLabel || (edit.bgm_url ? extractFileName(edit.bgm_url) : '등록된 BGM이 없습니다.')}
-                </div>
-                {bgmDuration != null && (
-                  <div style={{ fontSize: 12, color: '#38bdf8' }}>재생 시간: {bgmDuration}초</div>
-                )}
-                <div style={{ fontSize: 12, color: '#cbd5f5' }}>
-                  MP3 등 스트리밍형 오디오만 지원하며 WAV 형식과 4분을 초과하는 곡은 사용할 수 없습니다.
-                </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => bgmInputRef.current?.click()}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: 999,
-                      background: '#fb7185',
-                      color: '#0f172a',
-                      fontWeight: 700,
-                    }}
-                  >
-                    음악 업로드
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearBgmAsset}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: 999,
-                      background: 'rgba(148, 163, 184, 0.25)',
-                      color: '#e2e8f0',
-                      fontWeight: 600,
-                    }}
-                  >
-                    음악 제거
-                  </button>
-                </div>
-                <input
-                  ref={bgmInputRef}
-                  type="file"
-                  accept="audio/*"
-                  onChange={(event) => handleBgmUpload(event.target.files?.[0] || null)}
-                  style={{ display: 'none' }}
-                />
-                {bgmError && <div style={{ color: '#fca5a5', fontSize: 12 }}>{bgmError}</div>}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: 16 }}>
-              {abilityCards.map((ability, index) => (
-                <div
-                  key={ability.key}
-                  style={{
-                    borderRadius: 24,
-                    padding: 18,
-                    border: '1px solid rgba(148, 163, 184, 0.25)',
-                    background: 'linear-gradient(180deg, rgba(30, 64, 175, 0.28) 0%, rgba(15, 23, 42, 0.92) 100%)',
-                    display: 'grid',
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700 }}>능력 {index + 1}</span>
-                    {ability.value ? (
-                      <button
-                        type="button"
-                        onClick={() => clearAbility(ability.key)}
-                        style={{
-                          padding: '6px 12px',
-                          borderRadius: 999,
-                          border: '1px solid rgba(248, 113, 113, 0.4)',
-                          background: 'rgba(248, 113, 113, 0.16)',
-                          color: '#fecaca',
-                          fontWeight: 600,
-                        }}
-                      >
-                        삭제
-                      </button>
-                    ) : null}
-                  </div>
-                  <textarea
-                    value={ability.value}
-                    onChange={(event) =>
-                      setEdit((state) => ({ ...state, [ability.key]: event.target.value }))
-                    }
-                    rows={4}
-                    style={{ ...inputStyle, resize: 'vertical', minHeight: 140 }}
-                    placeholder="능력 설명을 입력하세요."
-                  />
-                </div>
-              ))}
-
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={addAbilitySlot}
-                  style={{
-                    padding: '10px 18px',
-                    borderRadius: 999,
-                    border: '1px solid rgba(56, 189, 248, 0.55)',
-                    background: 'rgba(56, 189, 248, 0.18)',
-                    color: '#38bdf8',
-                    fontWeight: 700,
-                  }}
-                >
-                  능력 생성
-                </button>
-                <button
-                  type="button"
-                  onClick={reverseAbilities}
-                  style={{
-                    padding: '10px 18px',
-                    borderRadius: 999,
-                    border: '1px solid rgba(148, 163, 184, 0.4)',
-                    background: 'rgba(15, 23, 42, 0.65)',
-                    color: '#e2e8f0',
-                    fontWeight: 700,
-                  }}
-                >
-                  능력 순서 수정
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-        {hasParticipations ? (
-          <section
-            style={{
-              borderRadius: 28,
-              border: '1px solid rgba(148, 163, 184, 0.25)',
-              background: 'rgba(15, 23, 42, 0.72)',
-              padding: 24,
-              display: 'grid',
-              gap: 18,
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <h2 style={{ margin: 0, fontSize: 22 }}>점수판</h2>
-              {selectedGame ? (
-                <span style={{ fontSize: 13, color: '#94a3b8' }}>{selectedGame.name}</span>
-              ) : null}
-            </div>
-            {scoreboardPreview.length ? (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {scoreboardPreview.map((row, index) => {
-                  const highlight = row.hero_id === heroId
-                  const displayName = heroLookup[row.hero_id]?.name || row.role || `참가자 ${index + 1}`
-                  return (
-                    <div
-                      key={row.id || `${row.hero_id}-${index}`}
-                      style={{
-                        borderRadius: 18,
-                        padding: '12px 16px',
-                        background: highlight ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.65)',
-                        border: highlight ? '1px solid rgba(56, 189, 248, 0.55)' : '1px solid rgba(148, 163, 184, 0.2)',
-                        display: 'grid',
-                        gridTemplateColumns: 'auto 1fr auto',
-                        gap: 14,
-                        alignItems: 'center',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: '50%',
-                          background: 'rgba(8, 47, 73, 0.8)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#38bdf8',
-                          fontWeight: 700,
-                        }}
-                      >
-                        #{index + 1}
-                      </div>
-                      <div style={{ display: 'grid', gap: 4 }}>
-                        <span style={{ fontWeight: 700 }}>{displayName}</span>
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{row.role || '—'}</span>
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>참여 {row.battles ?? 0}회</span>
-                      </div>
-                      <div style={{ fontWeight: 700, fontSize: 18 }}>
-                        {row.rating ?? row.score ?? '—'}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div
-                style={{
-                  padding: 20,
-                  textAlign: 'center',
-                  color: '#94a3b8',
-                  borderRadius: 18,
-                  border: '1px dashed rgba(148, 163, 184, 0.35)',
-                }}
-              >
-                선택한 게임의 점수판이 없습니다.
-              </div>
-            )}
-          </section>
-        ) : null}
-
-        <section
-          style={{
-            borderRadius: 28,
-            border: '1px solid rgba(148, 163, 184, 0.25)',
-            background: 'rgba(15, 23, 42, 0.78)',
-            padding: 24,
-            display: 'grid',
-            gap: 20,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <h2 style={{ margin: 0, fontSize: 22 }}>게임별 베틀로그</h2>
-            {battleSummary.total ? (
-              <span style={{ fontSize: 13, color: '#94a3b8' }}>
-                {battleSummary.wins}승 {battleSummary.draws}무 {battleSummary.losses}패
-              </span>
-            ) : null}
-          </div>
-
-          {hasParticipations && statSlides.length > 1 ? (
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                overflowX: 'auto',
-                paddingBottom: 4,
-              }}
-            >
-              {statSlides.map((slide) => {
-                const active = slide.key === selectedGameId
-                return (
-                  <button
-                    key={`${slide.key}-selector`}
-                    type="button"
-                    onClick={() => setSelectedGameId(slide.key)}
-                    style={{
-                      padding: '10px 16px',
-                      borderRadius: 16,
-                      border: active ? '1px solid rgba(56, 189, 248, 0.6)' : '1px solid rgba(148, 163, 184, 0.25)',
-                      background: active ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.65)',
-                      color: '#f1f5f9',
-                      fontWeight: 600,
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {slide.name}
-                  </button>
-                )
-              })}
-            </div>
-          ) : null}
-
-          {battleLoading ? (
-            <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>불러오는 중…</div>
-          ) : battleDetails.length === 0 ? (
-            <div
-              style={{
-                padding: 24,
-                textAlign: 'center',
-                color: '#94a3b8',
-                borderRadius: 20,
-                border: '1px dashed rgba(148, 163, 184, 0.3)',
-              }}
-            >
-              {selectedGame ? `${selectedGame.name}에서의 전투 기록이 없습니다.` : '전투 기록이 없습니다.'}
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: 16 }}>
-              {battleDetails.slice(0, visibleBattles).map((battle) => {
-                const resultStyle = getResultStyles(battle.result)
-                const latestResponse = [...(battle.logs || [])]
-                  .reverse()
-                  .find((log) => log.ai_response)?.ai_response
-                const summary = latestResponse || battle.logs?.[0]?.prompt || ''
-
-                return (
-                  <article
-                    key={battle.id}
-                    style={{
-                      borderRadius: 24,
-                      padding: 18,
-                      background: resultStyle.background,
-                      border: resultStyle.border,
-                      display: 'grid',
-                      gap: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 12,
-                      }}
-                    >
-                      <div style={{ display: 'grid', gap: 4 }}>
-                        <span style={{ fontSize: 13, color: '#cbd5f5' }}>{formatDate(battle.created_at)}</span>
-                        {selectedGame ? (
-                          <span style={{ fontSize: 12, color: '#94a3b8' }}>{selectedGame.name}</span>
-                        ) : null}
-                      </div>
-                      <span
-                        style={{
-                          fontWeight: 800,
-                          color: resultStyle.color,
-                          fontSize: 16,
-                        }}
-                      >
-                        {resultStyle.label}
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        borderRadius: 18,
-                        padding: '14px 16px',
-                        background: 'rgba(15, 23, 42, 0.85)',
-                        color: '#e2e8f0',
-                        fontSize: 14,
-                        lineHeight: 1.6,
-                        whiteSpace: 'pre-wrap',
-                      }}
-                    >
-                      {summary ? truncateText(summary, 320) : '대화 로그가 없습니다.'}
-                    </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        fontSize: 13,
-                        color: '#cbd5f5',
-                      }}
-                    >
-                      <span>점수 변화 {battle.score_delta ?? 0}</span>
-                      <span>턴 {battle.logs?.length ?? 0}</span>
-                    </div>
-                  </article>
-                )
-              })}
-
-              {battleDetails.length > visibleBattles ? (
-                <button
-                  type="button"
-                  onClick={showMoreBattles}
-                  style={{
-                    justifySelf: 'center',
-                    padding: '10px 20px',
-                    borderRadius: 999,
-                    border: '1px solid rgba(56, 189, 248, 0.55)',
-                    background: 'rgba(56, 189, 248, 0.18)',
-                    color: '#38bdf8',
-                    fontWeight: 700,
-                  }}
-                >
-                  더 보기
-                </button>
-              ) : null}
-            </div>
-          )}
-
-          {battleError && <div style={{ color: '#f87171', fontSize: 12 }}>{battleError}</div>}
-        </section>
-      </div>
-
-      <footer
-        style={{
-          position: 'fixed',
-          left: 0,
-          bottom: 0,
-          width: '100%',
-          background: 'rgba(2, 6, 23, 0.95)',
-          borderTop: '1px solid rgba(148, 163, 184, 0.2)',
-          padding: '12px 20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12,
-          backdropFilter: 'blur(6px)',
-        }}
-      >
-        <button
-          onClick={() => router.back()}
-          style={{
-            padding: '10px 18px',
-            borderRadius: 999,
-            border: '1px solid rgba(148, 163, 184, 0.3)',
-            background: 'rgba(15, 23, 42, 0.8)',
-            color: '#e2e8f0',
-            fontWeight: 600,
-          }}
-        >
-          ← 뒤로가기
-        </button>
-        <button
-          onClick={() => router.push(`/lobby?heroId=${hero.id}`)}
-          style={{
-            padding: '10px 24px',
-            borderRadius: 999,
-            border: 'none',
-            background: '#38bdf8',
-            color: '#020617',
-            fontWeight: 800,
-          }}
-        >
-          로비로 이동
-        </button>
-      </footer>
-
-      {startModalOpen ? (
+    <>
+      <CharacterDashboard
+        hero={hero}
+        heroName={heroName}
+        edit={edit}
+        onChangeEdit={handleEditChange}
+        saving={saving}
+        onSave={save}
+        onDelete={remove}
+        backgroundPreview={backgroundPreview}
+        backgroundError={backgroundError}
+        onBackgroundUpload={handleBackgroundUpload}
+        onClearBackground={clearBackgroundAsset}
+        backgroundInputRef={backgroundInputRef}
+        bgmBlob={bgmBlob}
+        bgmLabel={bgmLabel}
+        bgmDuration={bgmDuration}
+        bgmError={bgmError}
+        onBgmUpload={handleBgmUpload}
+        onClearBgm={clearBgmAsset}
+        bgmInputRef={bgmInputRef}
+        abilityCards={abilityCards}
+        onAddAbility={addAbilitySlot}
+        onReverseAbilities={reverseAbilities}
+        onClearAbility={clearAbility}
+        statSlides={statSlides}
+        selectedGameId={selectedGameId}
+        onSelectGame={handleSelectGame}
+        participations={participations}
+        selectedGame={selectedGame}
+        selectedEntry={selectedEntry}
+        selectedScoreboard={selectedScoreboard}
+        heroLookup={heroLookup}
+        battleSummary={battleSummary}
+        battleDetails={battleDetails}
+        visibleBattles={visibleBattles}
+        onShowMoreBattles={showMoreBattles}
+        battleLoading={battleLoading}
+        battleError={battleError}
+        onStartBattle={startBattleFromDetail}
+        onBack={() => router.back()}
+        onGoLobby={() => router.push(`/lobby?heroId=${hero.id}`)}
+      />
+      {activeBattleGameId ? (
         <div
           style={{
             position: 'fixed',
@@ -1543,441 +773,49 @@ export default function CharacterDetail() {
         >
           <div
             style={{
+              position: 'relative',
               width: '100%',
-              maxWidth: 640,
+              maxWidth: 960,
+              height: '90vh',
               borderRadius: 28,
+              overflow: 'hidden',
               border: '1px solid rgba(56, 189, 248, 0.45)',
-              background: 'linear-gradient(180deg, rgba(15, 118, 110, 0.38) 0%, rgba(2, 6, 23, 0.94) 100%)',
-              color: '#e2e8f0',
-              padding: '28px 24px',
-              display: 'grid',
-              gap: 20,
+              background: 'rgba(2, 6, 23, 0.96)',
               boxShadow: '0 50px 120px -60px rgba(56, 189, 248, 0.85)',
+              display: 'flex',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 24 }}>
-                  {startStep === 'preview'
-                    ? '매칭 준비'
-                    : startStep === 'matching'
-                    ? '참가자 매칭 중'
-                    : '모두 준비 완료'}
-                </h2>
-                {selectedGame ? (
-                  <p style={{ margin: '6px 0 0', fontSize: 13, color: '#bae6fd' }}>{selectedGame.name}</p>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setStartModalOpen(false)
-                  setStartStep('preview')
-                  setMatchProgress(0)
-                }}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: 999,
-                  border: '1px solid rgba(148, 163, 184, 0.35)',
-                  background: 'rgba(15, 23, 42, 0.75)',
-                  color: '#e2e8f0',
-                  fontWeight: 600,
-                }}
-              >
-                닫기
-              </button>
+            <button
+              type="button"
+              onClick={() => setActiveBattleGameId(null)}
+              style={{
+                position: 'absolute',
+                top: 18,
+                right: 18,
+                zIndex: 10,
+                padding: '10px 16px',
+                borderRadius: 999,
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+                background: 'rgba(15, 23, 42, 0.75)',
+                color: '#e2e8f0',
+                fontWeight: 600,
+              }}
+            >
+              닫기
+            </button>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <InlineStartClient
+                gameId={activeBattleGameId}
+                onRequestClose={() => setActiveBattleGameId(null)}
+              />
             </div>
-
-            {startStep === 'preview' ? (
-              <>
-                <div
-                  style={{
-                    borderRadius: 22,
-                    border: '1px solid rgba(148, 163, 184, 0.35)',
-                    background: 'rgba(15, 23, 42, 0.75)',
-                    padding: 18,
-                    display: 'grid',
-                    gap: 12,
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div
-                      style={{
-                        width: 72,
-                        height: 72,
-                        borderRadius: 24,
-                        overflow: 'hidden',
-                        border: '1px solid rgba(56, 189, 248, 0.45)',
-                        background: 'rgba(2, 6, 23, 0.9)',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {hero.image_url ? (
-                        <img
-                          src={hero.image_url}
-                          alt={hero.name}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: '#38bdf8',
-                            fontWeight: 700,
-                          }}
-                        >
-                          YOU
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      <strong style={{ fontSize: 20 }}>{hero.name || '이름 없는 캐릭터'}</strong>
-                      <span style={{ fontSize: 13, color: '#94a3b8' }}>
-                        {selectedEntry?.role ? `${selectedEntry.role} 역할` : '참여자'}
-                      </span>
-                    </div>
-                  </div>
-                  <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
-                    선택한 게임에서 함께 싸울 다른 참가자들을 확인하세요. 능력과 역할을 검토한 뒤 다시 한번
-                    &ldquo;게임 시작&rdquo;을 눌러 매칭을 진행합니다.
-                  </p>
-                </div>
-
-                <div style={{ display: 'grid', gap: 14 }}>
-                  {opponentCards.length ? (
-                    opponentCards.map((opponent) => (
-                      <div
-                        key={opponent.id}
-                        style={{
-                          borderRadius: 20,
-                          border: '1px solid rgba(148, 163, 184, 0.25)',
-                          background: 'rgba(15, 23, 42, 0.7)',
-                          padding: 16,
-                          display: 'grid',
-                          gap: 10,
-                        }}
-                      >
-                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                          <div
-                            style={{
-                              width: 60,
-                              height: 60,
-                              borderRadius: 18,
-                              overflow: 'hidden',
-                              border: '1px solid rgba(56, 189, 248, 0.25)',
-                              background: 'rgba(15, 23, 42, 0.9)',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {opponent.portrait ? (
-                              <img
-                                src={opponent.portrait}
-                                alt={opponent.name}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                              />
-                            ) : (
-                              <div
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  color: '#38bdf8',
-                                  fontWeight: 700,
-                                }}
-                              >
-                                VS
-                              </div>
-                            )}
-                          </div>
-                          <div style={{ display: 'grid', gap: 4 }}>
-                            <strong style={{ fontSize: 18 }}>{opponent.name}</strong>
-                            <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                              {opponent.role ? `${opponent.role} 역할` : '참가자'}
-                            </span>
-                          </div>
-                        </div>
-                        {opponent.abilities.length ? (
-                          <div style={{ display: 'grid', gap: 6 }}>
-                            {opponent.abilities.map((ability, index) => (
-                              <div
-                                key={`${opponent.id}-ability-${index}`}
-                                style={{
-                                  borderRadius: 14,
-                                  border: '1px solid rgba(56, 189, 248, 0.25)',
-                                  background: 'rgba(8, 47, 73, 0.65)',
-                                  padding: '10px 12px',
-                                  fontSize: 13,
-                                  color: '#e0f2fe',
-                                  lineHeight: 1.6,
-                                }}
-                              >
-                                {ability}
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    ))
-                  ) : (
-                    <div
-                      style={{
-                        borderRadius: 20,
-                        border: '1px dashed rgba(148, 163, 184, 0.3)',
-                        background: 'rgba(15, 23, 42, 0.65)',
-                        padding: 20,
-                        textAlign: 'center',
-                        color: '#94a3b8',
-                      }}
-                    >
-                      아직 다른 참가자가 없습니다. 잠시 후 다시 시도하거나 게임 로비에서 새 전투를 만들어 보세요.
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStartModalOpen(false)
-                      setStartStep('preview')
-                      setMatchProgress(0)
-                    }}
-                    style={{
-                      padding: '12px 18px',
-                      borderRadius: 999,
-                      border: '1px solid rgba(148, 163, 184, 0.4)',
-                      background: 'rgba(15, 23, 42, 0.7)',
-                      color: '#e2e8f0',
-                      fontWeight: 600,
-                    }}
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!selectedGameId) {
-                        alert('먼저 게임을 선택하세요.')
-                        return
-                      }
-                      setStartStep('matching')
-                    }}
-                    style={{
-                      padding: '12px 22px',
-                      borderRadius: 999,
-                      border: 'none',
-                      background: '#38bdf8',
-                      color: '#020617',
-                      fontWeight: 800,
-                    }}
-                  >
-                    게임 시작
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            {startStep === 'matching' ? (
-              <div style={{ display: 'grid', gap: 18 }}>
-                <div
-                  style={{
-                    borderRadius: 20,
-                    padding: 18,
-                    border: '1px solid rgba(56, 189, 248, 0.35)',
-                    background: 'rgba(8, 47, 73, 0.7)',
-                    display: 'grid',
-                    gap: 12,
-                  }}
-                >
-                  <strong style={{ fontSize: 18 }}>상대 준비 중…</strong>
-                  <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
-                    참가자들의 전투 준비 상태를 확인하는 중입니다. 모두 준비되면 자동으로 전투 대기 화면으로
-                    이동합니다.
-                  </p>
-                  <div
-                    style={{
-                      height: 12,
-                      borderRadius: 999,
-                      border: '1px solid rgba(148, 163, 184, 0.35)',
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${matchProgress}%`,
-                        background: 'linear-gradient(90deg, rgba(14, 165, 233, 0.9), rgba(59, 130, 246, 0.9))',
-                        transition: 'width 0.28s ease',
-                      }}
-                    />
-                  </div>
-                  <span style={{ fontSize: 12, color: '#bae6fd', textAlign: 'right' }}>{matchProgress}%</span>
-                </div>
-
-                <div style={{ display: 'grid', gap: 12 }}>
-                  {[hero, ...opponentCards].map((entry, index) => {
-                    const isSelf = index === 0
-                    const readyThreshold = isSelf ? 20 : 60 + index * 10
-                    const ready = matchProgress >= Math.min(readyThreshold, 95)
-                    const portrait = isSelf ? hero.image_url : entry?.portrait
-                    const displayName = isSelf
-                      ? hero.name || '이름 없는 캐릭터'
-                      : entry?.name || `참가자 ${index}`
-                    return (
-                      <div
-                        key={isSelf ? hero.id : entry?.id || index}
-                        style={{
-                          borderRadius: 18,
-                          border: '1px solid rgba(148, 163, 184, 0.25)',
-                          background: 'rgba(15, 23, 42, 0.7)',
-                          padding: 14,
-                          display: 'flex',
-                          gap: 12,
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                        }}
-                      >
-                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                          <div
-                            style={{
-                              width: 54,
-                              height: 54,
-                              borderRadius: 16,
-                              overflow: 'hidden',
-                              border: '1px solid rgba(56, 189, 248, 0.3)',
-                              background: 'rgba(2, 6, 23, 0.9)',
-                            }}
-                          >
-                            {portrait ? (
-                              <img
-                                src={portrait}
-                                alt={displayName}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                              />
-                            ) : (
-                              <div
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  color: '#38bdf8',
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {isSelf ? 'YOU' : 'VS'}
-                              </div>
-                            )}
-                          </div>
-                          <div style={{ display: 'grid', gap: 2 }}>
-                            <strong style={{ fontSize: 16 }}>{displayName}</strong>
-                            <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                              {isSelf ? '내 캐릭터' : entry?.role ? `${entry.role} 역할` : '상대방'}
-                            </span>
-                          </div>
-                        </div>
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: ready ? '#4ade80' : '#94a3b8',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {ready ? '준비 완료' : '대기 중…'}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            {startStep === 'ready' ? (
-              <div style={{ display: 'grid', gap: 18 }}>
-                <div
-                  style={{
-                    borderRadius: 22,
-                    border: '1px solid rgba(56, 189, 248, 0.45)',
-                    background: 'rgba(8, 47, 73, 0.75)',
-                    padding: 20,
-                    display: 'grid',
-                    gap: 12,
-                  }}
-                >
-                  <strong style={{ fontSize: 20 }}>모든 참가자가 준비되었습니다!</strong>
-                  <p style={{ margin: 0, fontSize: 13, color: '#bae6fd', lineHeight: 1.6 }}>
-                    전투 준비가 끝났습니다. 아래 버튼을 눌러 게임 방으로 이동하세요. 로딩 화면에서는 각 참가자의
-                    초상화가 표시되며 게임이 곧 시작됩니다.
-                  </p>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStartModalOpen(false)
-                      setStartStep('preview')
-                      setMatchProgress(0)
-                    }}
-                    style={{
-                      padding: '12px 18px',
-                      borderRadius: 999,
-                      border: '1px solid rgba(148, 163, 184, 0.4)',
-                      background: 'rgba(15, 23, 42, 0.7)',
-                      color: '#e2e8f0',
-                      fontWeight: 600,
-                    }}
-                  >
-                    뒤로
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selectedGameId) {
-                        router.push(`/rank/${selectedGameId}`)
-                      }
-                      setStartModalOpen(false)
-                      setStartStep('preview')
-                      setMatchProgress(0)
-                    }}
-                    style={{
-                      padding: '12px 22px',
-                      borderRadius: 999,
-                      border: 'none',
-                      background: '#38bdf8',
-                      color: '#020617',
-                      fontWeight: 800,
-                    }}
-                  >
-                    전투 대기실로 이동
-                  </button>
-                </div>
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   )
-}
 
-const inputStyle = {
-  width: '100%',
-  padding: '14px 16px',
-  borderRadius: 18,
-  border: '1px solid rgba(148, 163, 184, 0.35)',
-  background: 'rgba(15, 23, 42, 0.72)',
-  color: '#e2e8f0',
-  fontSize: 15,
-  lineHeight: 1.6,
-}
+  }
 
 function includesHero(value, heroId) {
   if (!value) return false
@@ -1985,50 +823,5 @@ function includesHero(value, heroId) {
   return false
 }
 
-function formatDate(value) {
-  if (!value) return '기록 없음'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '기록 없음'
-  return date.toLocaleString()
-}
 
-function truncateText(value, maxLength) {
-  if (!value) return ''
-  if (value.length <= maxLength) return value
-  return `${value.slice(0, maxLength - 1)}…`
-}
-
-function getResultStyles(result) {
-  const normalized = (result || '').toLowerCase()
-  if (normalized === 'win') {
-    return {
-      label: 'WIN',
-      color: '#4ade80',
-      background: 'rgba(22, 101, 52, 0.65)',
-      border: '1px solid rgba(74, 222, 128, 0.45)',
-    }
-  }
-  if (normalized === 'lose' || normalized === 'loss') {
-    return {
-      label: 'LOSE',
-      color: '#f87171',
-      background: 'rgba(127, 29, 29, 0.65)',
-      border: '1px solid rgba(248, 113, 113, 0.45)',
-    }
-  }
-  if (normalized === 'draw' || normalized === 'tie') {
-    return {
-      label: 'DRAW',
-      color: '#fbbf24',
-      background: 'rgba(161, 98, 7, 0.65)',
-      border: '1px solid rgba(251, 191, 36, 0.45)',
-    }
-  }
-  return {
-    label: 'PENDING',
-    color: '#38bdf8',
-    background: 'rgba(30, 58, 138, 0.65)',
-    border: '1px solid rgba(59, 130, 246, 0.45)',
-  }
-}
-
+// 

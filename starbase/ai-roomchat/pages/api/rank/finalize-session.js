@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { withTable } from '@/lib/supabaseTables'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE
@@ -57,14 +58,17 @@ export default async function handler(req, res) {
         score: Number.isFinite(Number(entry.scoreAfter)) ? Number(entry.scoreAfter) : entry.scoreBefore,
         updated_at: now,
       }
-      const query = adminClient
-        .from('rank_participants')
-        .update(payload)
-        .eq('id', entry.participantId)
-      if (entry.updatedAt) {
-        query.eq('updated_at', entry.updatedAt)
-      }
-      const { data: updatedRows, error: updateError } = await query.select('id')
+      const { data: updatedRows, error: updateError } = await withTable(
+        adminClient,
+        'rank_participants',
+        (table) => {
+          let query = adminClient.from(table).update(payload).eq('id', entry.participantId)
+          if (entry.updatedAt) {
+            query = query.eq('updated_at', entry.updatedAt)
+          }
+          return query.select('id')
+        },
+      )
       if (updateError) {
         return res.status(400).json({ error: updateError.message })
       }
@@ -88,35 +92,40 @@ export default async function handler(req, res) {
         .map((entry) => entry.heroId)
         .filter(Boolean)
 
-      const { data: battle } = await adminClient
-        .from('rank_battles')
-        .insert({
-          game_id: gameId,
-          attacker_owner_id: user.id,
-          attacker_hero_ids: winners,
-          defender_owner_id: null,
-          defender_hero_ids: losers,
-          result: summary?.reason || 'completed',
-          score_delta: 0,
-          hidden: false,
-        })
-        .select()
-        .single()
+      const { data: battle } = await withTable(adminClient, 'rank_battles', (table) =>
+        adminClient
+          .from(table)
+          .insert({
+            game_id: gameId,
+            attacker_owner_id: user.id,
+            attacker_hero_ids: winners,
+            defender_owner_id: null,
+            defender_hero_ids: losers,
+            result: summary?.reason || 'completed',
+            score_delta: 0,
+            hidden: false,
+          })
+          .select()
+          .single(),
+      )
 
       battleId = battle?.id || null
 
       if (battleId) {
-        await adminClient.from('rank_battle_logs').insert({
-          battle_id: battleId,
-          turn_no: 0,
-          prompt: '[interactive session]',
-          ai_response: summary?.resultBanner || '',
-          meta: {
-            summary,
-            roster,
-            chatLog: Array.isArray(chatLog) ? chatLog.slice(-200) : [],
-          },
-        })
+        await withTable(adminClient, 'rank_battle_logs', (table) =>
+          adminClient.from(table).insert({
+            game_id: gameId,
+            battle_id: battleId,
+            turn_no: 0,
+            prompt: '[interactive session]',
+            ai_response: summary?.resultBanner || '',
+            meta: {
+              summary,
+              roster,
+              chatLog: Array.isArray(chatLog) ? chatLog.slice(-200) : [],
+            },
+          }),
+        )
       }
     } catch (logError) {
       console.warn('finalize-session: log insert failed', logError?.message || logError)
@@ -127,3 +136,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'server_error', detail: String(error).slice(0, 300) })
   }
 }
+
+// 
