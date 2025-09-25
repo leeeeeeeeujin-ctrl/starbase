@@ -24,52 +24,77 @@ export default function Roster() {
       setLoading(true)
       setError('')
 
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser()
+      try {
+        const href = typeof window !== 'undefined' ? window.location.href : ''
 
-      if (!active) return
+        if (href.includes('code=')) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(href)
 
-      if (authError) {
-        setError(authError.message)
+          if (exchangeError) {
+            console.error(exchangeError)
+            setError('로그인 세션을 복구하지 못했습니다. 다시 시도해 주세요.')
+            setLoading(false)
+            return
+          }
+
+          if (typeof window !== 'undefined') {
+            const cleanUrl = href.split('?')[0]
+            window.history.replaceState({}, document.title, cleanUrl)
+          }
+        }
+
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser()
+
+        if (!active) return
+
+        if (authError) {
+          setError(authError.message)
+          setLoading(false)
+          return
+        }
+
+        if (!user) {
+          router.replace('/')
+          return
+        }
+
+        const metadata = user.user_metadata || {}
+        const derivedName =
+          metadata.full_name ||
+          metadata.name ||
+          metadata.nickname ||
+          (typeof user.email === 'string' ? user.email.split('@')[0] : '') ||
+          '사용자'
+        const derivedAvatar = metadata.avatar_url || metadata.picture || metadata.avatar || null
+
+        setDisplayName(derivedName)
+        setAvatarUrl(derivedAvatar)
+
+        const { data, error: heroesError } = await supabase
+          .from('heroes')
+          .select('id,name,image_url,created_at')
+          .eq('owner_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (!active) return
+
+        if (heroesError) {
+          setError(heroesError.message)
+          setRows([])
+        } else {
+          setRows(data || [])
+        }
+
         setLoading(false)
-        return
+      } catch (err) {
+        console.error(err)
+        if (!active) return
+        setError('로스터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        setLoading(false)
       }
-
-      if (!user) {
-        router.replace('/')
-        return
-      }
-
-      const metadata = user.user_metadata || {}
-      const derivedName =
-        metadata.full_name ||
-        metadata.name ||
-        metadata.nickname ||
-        (typeof user.email === 'string' ? user.email.split('@')[0] : '') ||
-        '사용자'
-      const derivedAvatar = metadata.avatar_url || metadata.picture || metadata.avatar || null
-
-      setDisplayName(derivedName)
-      setAvatarUrl(derivedAvatar)
-
-      const { data, error: heroesError } = await supabase
-        .from('heroes')
-        .select('id,name,image_url,created_at')
-        .eq('owner_id', user.id)
-        .order('created_at', { ascending: false })
-
-      if (!active) return
-
-      if (heroesError) {
-        setError(heroesError.message)
-        setRows([])
-      } else {
-        setRows(data || [])
-      }
-
-      setLoading(false)
     }
 
     load()

@@ -4,10 +4,11 @@ import { supabase } from '../lib/supabase'
 export default function AuthButton() {
   async function signIn() {
     try {
+      const origin = window.location.origin
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth-callback`,
+          redirectTo: `${origin}/roster`,
         },
       })
       if (error) {
