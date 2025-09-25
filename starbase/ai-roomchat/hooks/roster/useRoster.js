@@ -54,7 +54,18 @@ export function useRoster({ onUnauthorized } = {}) {
       const href = typeof window !== 'undefined' ? window.location.href : ''
 
       if (href.includes('code=')) {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(href)
+        let exchangeError = null
+        try {
+          const currentUrl = new URL(href)
+          const authCode = currentUrl.searchParams.get('code')
+          if (authCode) {
+            const result = await supabase.auth.exchangeCodeForSession({ authCode })
+            exchangeError = result?.error || null
+          }
+        } catch (parseError) {
+          console.error('Failed to parse auth callback URL for roster hydration:', parseError)
+          exchangeError = parseError
+        }
 
         if (exchangeError) {
           console.error(exchangeError)
@@ -70,20 +81,37 @@ export function useRoster({ onUnauthorized } = {}) {
         }
       }
 
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser()
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
 
       if (!isMounted.current) return
 
-      if (authError) {
-        setError(authError.message)
+      if (sessionError) {
+        setError(sessionError.message)
         setLoading(false)
         return
       }
 
+      let user = sessionData?.session?.user || null
+
       if (!user) {
+        const {
+          data: { user: fetchedUser },
+          error: authError,
+        } = await supabase.auth.getUser()
+
+        if (!isMounted.current) return
+
+        if (authError) {
+          setError(authError.message)
+          setLoading(false)
+          return
+        }
+
+        user = fetchedUser || null
+      }
+
+      if (!user) {
+        setLoading(false)
         if (typeof onUnauthorized === 'function') {
           onUnauthorized()
         } else {
