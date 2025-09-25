@@ -78,7 +78,9 @@ export async function handleOAuthCallback({ href }) {
         }
       }
 
-      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession({ code })
+      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession({
+        authCode: code,
+      })
       if (exchangeError) {
         console.error(exchangeError)
         return {
