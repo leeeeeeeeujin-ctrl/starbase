@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/router'
 
 import CharacterDashboard from '../../components/character/CharacterDashboard'
@@ -13,10 +13,6 @@ export default function CharacterDetailPage() {
   const [startOpen, setStartOpen] = useState(false)
   const [clientOpen, setClientOpen] = useState(false)
 
-  const heroName = useMemo(() => {
-    return dashboard.edit?.name || dashboard.hero?.name || '이름 없는 캐릭터'
-  }, [dashboard.edit?.name, dashboard.hero?.name])
-
   if (dashboard.loading) {
     return <div style={{ padding: 20, color: '#0f172a' }}>불러오는 중…</div>
   }
@@ -29,7 +25,7 @@ export default function CharacterDetailPage() {
     <>
       <CharacterDashboard
         dashboard={dashboard}
-        heroName={heroName}
+        heroName={dashboard.heroName}
         onStartBattle={() => {
           setClientOpen(false)
           if (!dashboard.selectedGameId) {

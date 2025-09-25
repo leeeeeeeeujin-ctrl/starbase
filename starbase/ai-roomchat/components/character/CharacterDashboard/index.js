@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useState } from 'react'
 
 import BackgroundLayer from './sections/BackgroundLayer'
 import LeftColumn from './sections/LeftColumn'
@@ -14,146 +14,57 @@ export default function CharacterDashboard({
   onBack,
   onGoLobby,
 }) {
+  const [showEditPanel, setShowEditPanel] = useState(false)
+
   const {
-    hero,
-    edit,
-    onChangeEdit,
-    saving,
-    onSave,
-    onDelete,
-    backgroundPreview,
-    backgroundError,
-    onBackgroundUpload,
-    onClearBackground,
-    backgroundInputRef,
-    bgmBlob,
-    bgmLabel,
-    bgmDuration,
-    bgmError,
-    onBgmUpload,
-    onClearBgm,
-    bgmInputRef,
-    abilityCards,
-    onAddAbility,
-    onReverseAbilities,
-    onClearAbility,
-    statSlides,
-    selectedGameId,
-    onSelectGame,
-    selectedGame,
-    selectedEntry,
-    selectedScoreboard,
-    heroLookup,
-    battleSummary,
-    battleDetails,
-    visibleBattles,
-    onShowMoreBattles,
-    battleLoading,
-    battleError,
+    profile,
+    participation,
+    battles,
+    heroName: dashboardHeroName,
   } = dashboard
 
-  const [statPageIndex, setStatPageIndex] = useState(0)
-  const [showEditPanel, setShowEditPanel] = useState(false)
-  const [audioPreviewUrl, setAudioPreviewUrl] = useState('')
-
-  useEffect(() => {
-    if (!bgmBlob) {
-      setAudioPreviewUrl('')
-      return
-    }
-    const nextUrl = URL.createObjectURL(bgmBlob)
-    setAudioPreviewUrl(nextUrl)
-    return () => {
-      URL.revokeObjectURL(nextUrl)
-    }
-  }, [bgmBlob])
-
-  const statPages = useMemo(() => {
-    if (!statSlides?.length) return []
-    const chunked = []
-    for (let index = 0; index < statSlides.length; index += 6) {
-      chunked.push(statSlides.slice(index, index + 6))
-    }
-    return chunked
-  }, [statSlides])
-
-  useEffect(() => {
-    if (!statPages.length) {
-      if (statPageIndex !== 0) setStatPageIndex(0)
-      return
-    }
-    if (statPageIndex >= statPages.length) {
-      setStatPageIndex(statPages.length - 1)
-    }
-  }, [statPageIndex, statPages])
-
-  useEffect(() => {
-    if (!statSlides?.length) return
-    if (!selectedGameId) {
-      onSelectGame(statSlides[0].key)
-      return
-    }
-    const targetIndex = statPages.findIndex((page) =>
-      page.some((slide) => slide.key === selectedGameId)
-    )
-    if (targetIndex >= 0 && targetIndex !== statPageIndex) {
-      setStatPageIndex(targetIndex)
-    }
-  }, [statSlides, statPages, selectedGameId, statPageIndex, onSelectGame])
-
-  const visibleStatSlides = statPages.length
-    ? statPages[Math.min(statPageIndex, statPages.length - 1)]
-    : statSlides
-
-  const audioSource = audioPreviewUrl || edit.bgm_url || ''
-  const hasParticipations = Boolean(statSlides?.length)
-  const scoreboardRows = selectedScoreboard || []
-
   const contextValue = {
-    ...dashboard,
-    hero,
-    heroName,
-    edit,
-    onChangeEdit,
-    saving,
-    onSave,
-    onDelete,
-    backgroundPreview,
-    backgroundError,
-    onBackgroundUpload,
-    onClearBackground,
-    backgroundInputRef,
-    bgmBlob,
-    bgmLabel,
-    bgmDuration,
-    bgmError,
-    onBgmUpload,
-    onClearBgm,
-    bgmInputRef,
-    abilityCards,
-    onAddAbility,
-    onReverseAbilities,
-    onClearAbility,
-    statSlides,
-    selectedGameId,
-    onSelectGame,
-    selectedGame,
-    selectedEntry,
-    selectedScoreboard,
-    heroLookup,
-    battleSummary,
-    battleDetails,
-    visibleBattles,
-    onShowMoreBattles,
-    battleLoading,
-    battleError,
-    audioSource,
-    hasParticipations,
-    statPages,
-    statPageIndex,
-    setStatPageIndex,
-    visibleStatSlides,
-    scoreboardRows,
+    hero: profile.hero,
+    heroName: heroName || dashboardHeroName,
+    edit: profile.edit,
+    onChangeEdit: profile.actions.changeEdit,
+    saving: profile.saving,
+    onSave: profile.actions.save,
+    onDelete: profile.actions.remove,
+    backgroundPreview: profile.background.preview,
+    backgroundError: profile.background.error,
+    onBackgroundUpload: profile.actions.backgroundUpload,
+    onClearBackground: profile.actions.backgroundClear,
+    backgroundInputRef: profile.background.inputRef,
+    bgmLabel: profile.bgm.label,
+    bgmDuration: profile.audio.duration,
+    onBgmUpload: profile.actions.bgmUpload,
+    onClearBgm: profile.actions.bgmClear,
+    bgmInputRef: profile.bgm.inputRef,
+    bgmError: profile.bgm.error,
+    abilityCards: profile.abilityCards,
+    onAddAbility: profile.actions.addAbility,
+    onReverseAbilities: profile.actions.reverseAbilities,
+    onClearAbility: profile.actions.clearAbility,
+    audioSource: profile.audio.source,
+    statPages: participation.statsView.pages,
+    statPageIndex: participation.statsView.pageIndex,
+    setStatPageIndex: participation.statsView.setPageIndex,
+    hasParticipations: participation.statsView.hasParticipations,
+    visibleStatSlides: participation.statsView.visibleSlides,
+    selectedGameId: participation.selectedGameId,
+    onSelectGame: participation.actions.selectGame,
+    selectedEntry: participation.selectedEntry,
+    selectedGame: participation.selectedGame,
+    selectedScoreboard: participation.scoreboard,
+    heroLookup: participation.heroLookup,
+    battleSummary: battles.summary,
+    battleDetails: battles.details,
+    visibleBattles: battles.visibleCount,
+    onShowMoreBattles: battles.actions.showMore,
+    battleLoading: battles.status.loading,
+    battleError: battles.status.error,
+    scoreboardRows: participation.scoreboard,
     openEditPanel: () => setShowEditPanel(true),
     closeEditPanel: () => setShowEditPanel(false),
     onStartBattle,
@@ -163,7 +74,9 @@ export default function CharacterDashboard({
     <CharacterDashboardProvider value={contextValue}>
       <div style={styles.root}>
         <BackgroundLayer
-          backgroundUrl={backgroundPreview || hero?.background_url}
+          backgroundUrl={
+            profile.background.preview || profile.hero?.background_url
+          }
         />
         <div style={styles.inner}>
           <div style={styles.grid}>
