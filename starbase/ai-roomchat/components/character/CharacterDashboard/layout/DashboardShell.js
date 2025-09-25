@@ -13,6 +13,7 @@ export default function DashboardShell({
   onSelectSection,
   quickActions = [],
   children,
+  footer,
 }) {
   return (
     <div style={shellStyles.root}>
@@ -32,6 +33,7 @@ export default function DashboardShell({
             <div style={shellStyles.panelBody}>{children}</div>
           </section>
         </div>
+        {footer ? <div style={shellStyles.footer}>{footer}</div> : null}
       </div>
     </div>
   )

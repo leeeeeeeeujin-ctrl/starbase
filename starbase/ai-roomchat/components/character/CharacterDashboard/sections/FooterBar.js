@@ -15,19 +15,16 @@ export default function FooterBar({ onBack, onGoLobby }) {
 
 const styles = {
   footer: {
-    position: 'fixed',
-    left: 0,
-    bottom: 0,
-    width: '100%',
-    background: 'rgba(2, 6, 23, 0.92)',
-    borderTop: '1px solid rgba(148, 163, 184, 0.25)',
-    padding: '12px 20px',
     display: 'flex',
+    width: '100%',
+    background: 'rgba(2, 6, 23, 0.82)',
+    border: '1px solid rgba(148, 163, 184, 0.25)',
+    borderRadius: 999,
+    padding: '12px 20px',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
     backdropFilter: 'blur(6px)',
-    zIndex: 5,
   },
   backButton: {
     padding: '10px 18px',

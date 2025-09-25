@@ -188,10 +188,10 @@ export default function CharacterDashboard({
         activeSectionId={active.id}
         onSelectSection={handleSelectSection}
         quickActions={quickActions}
+        footer={<FooterBar onBack={onBack} onGoLobby={onGoLobby} />}
       >
         <ActiveComponent />
       </DashboardShell>
-      <FooterBar onBack={onBack} onGoLobby={onGoLobby} />
       <EditHeroModal open={showEditPanel} onClose={handleCloseEdit} />
     </CharacterDashboardProvider>
   )

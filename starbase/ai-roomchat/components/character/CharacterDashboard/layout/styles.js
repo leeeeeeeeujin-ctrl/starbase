@@ -10,9 +10,12 @@ export const shellStyles = {
   inner: {
     position: 'relative',
     zIndex: 1,
-    padding: '48px 24px 168px',
+    padding: '48px 24px 80px',
     maxWidth: 1180,
     margin: '0 auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 36,
   },
   surface: {
     display: 'grid',
@@ -92,6 +95,10 @@ export const shellStyles = {
     flexDirection: 'column',
     gap: 32,
     minHeight: '60vh',
+  },
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
   },
 }
 
