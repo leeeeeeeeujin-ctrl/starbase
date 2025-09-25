@@ -182,6 +182,8 @@ const styles = {
     gap: 10,
     background:
       'radial-gradient(circle at top, rgba(96,165,250,0.18) 0%, rgba(15,23,42,0.96) 65%)',
+    pointerEvents: 'none',
+    zIndex: 0,
   },
   createCardIconWrapper: {
     width: 52,
@@ -193,12 +195,16 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     color: '#60a5fa',
+    position: 'relative',
+    zIndex: 1,
   },
   createCardTextGroup: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 4,
+    position: 'relative',
+    zIndex: 1,
   },
   createCardTitle: {
     fontSize: 18,

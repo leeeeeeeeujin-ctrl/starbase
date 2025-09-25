@@ -13,6 +13,7 @@ export default function BackgroundLayer({ backgroundUrl }) {
         filter: 'blur(28px)',
         opacity: 0.5,
         zIndex: 0,
+        pointerEvents: 'none',
       }}
     />
   )
