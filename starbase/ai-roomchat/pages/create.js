@@ -195,7 +195,7 @@ export default function Create() {
           bgm_url,
           bgm_duration_seconds,
           bgm_mime,
-        }),
+        })
       )
       if (insErr) throw insErr
 
