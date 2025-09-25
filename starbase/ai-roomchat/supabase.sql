@@ -36,6 +36,13 @@ on public.heroes for update using (auth.uid() = owner_id);
 create policy if not exists heroes_delete_owner
 on public.heroes for delete using (auth.uid() = owner_id);
 
+drop view if exists public.rank_heroes;
+create view public.rank_heroes as
+select * from public.heroes;
+
+grant select on public.rank_heroes to authenticated;
+grant select on public.rank_heroes to anon;
+
 -- 스토리지 버킷 'heroes' 접근 정책
 create policy if not exists storage_heroes_select
 on storage.objects for select

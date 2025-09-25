@@ -48,6 +48,9 @@ export async function withTable(supabaseClient, logicalName, executor) {
     const wrapped = wrapResult(result, tableName, logicalName)
     if (!wrapped.error) return wrapped
     if (isMissingTableError(wrapped.error, tableName)) {
+      if (resolvedTableCache[logicalName] === tableName) {
+        delete resolvedTableCache[logicalName]
+      }
       lastMissing = wrapped
       continue
     }
