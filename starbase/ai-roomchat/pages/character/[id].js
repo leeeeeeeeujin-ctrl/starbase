@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import CharacterDashboard from '@/components/character/CharacterDashboard'
@@ -57,6 +57,7 @@ export default function CharacterDetailPage() {
   }, [id])
 
   const [battleOverlayOpen, setBattleOverlayOpen] = useState(false)
+  const [initialized, setInitialized] = useState(false)
   const dashboard = useCharacterDashboard(heroId)
   const profileSection = dashboard.profile || { hero: null }
   const participationSection =
@@ -68,10 +69,21 @@ export default function CharacterDetailPage() {
       heroLookup: {},
     }
 
-  const loading = !router.isReady || dashboard.status.loading
+  useEffect(() => {
+    setInitialized(false)
+  }, [heroId])
+
+  useEffect(() => {
+    if (!router.isReady) return
+    if (!dashboard.status.loading) {
+      setInitialized(true)
+    }
+  }, [router.isReady, dashboard.status.loading])
+
+  const showInitialLoading = !router.isReady || (!initialized && dashboard.status.loading)
   const hero = profileSection.hero
 
-  if (loading) {
+  if (showInitialLoading) {
     return <FullScreenState title="캐릭터 정보를 불러오는 중" message="잠시만 기다려 주세요." />
   }
 
