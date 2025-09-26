@@ -193,9 +193,17 @@ export function useRoster({ onUnauthorized } = {}) {
       setProfile(deriveProfile(user))
       setProfileResolved(true)
 
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem('selectedHeroOwnerId', user.id)
+        } catch (storageError) {
+          console.error('Failed to persist roster owner metadata:', storageError)
+        }
+      }
+
       const { data, error: heroesError } = await supabase
         .from('heroes')
-        .select('id,name,image_url,created_at')
+        .select('id,name,image_url,created_at,owner_id')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -206,6 +214,16 @@ export function useRoster({ onUnauthorized } = {}) {
         setHeroes([])
       } else {
         setHeroes(data || [])
+        if (typeof window !== 'undefined') {
+          const storedHeroId = window.localStorage.getItem('selectedHeroId')
+          if (storedHeroId && !((data || []).some((hero) => hero.id === storedHeroId))) {
+            try {
+              window.localStorage.removeItem('selectedHeroId')
+            } catch (storageError) {
+              console.error('Failed to clear missing hero selection:', storageError)
+            }
+          }
+        }
       }
 
       setLoading(false)

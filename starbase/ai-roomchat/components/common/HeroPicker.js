@@ -21,7 +21,7 @@ export default function HeroPicker({ open, onClose, onPick }) {
       const { data } = await withTable(supabase, 'heroes', (table) =>
         supabase
           .from(table)
-          .select('id,name,image_url,description,ability1,ability2,ability3,ability4,created_at')
+          .select('id,name,image_url,description,ability1,ability2,ability3,ability4,created_at,owner_id')
           .eq('owner_id', user.id)
           .order('created_at', { ascending: false })
       )
@@ -43,7 +43,12 @@ export default function HeroPicker({ open, onClose, onPick }) {
     const hero = rows.find(r => r.id === selectedId)
     if (!hero) return
     // 로컬 저장(문자열 UUID 그대로!)
-    try { localStorage.setItem('selectedHeroId', hero.id) } catch {}
+    try {
+      localStorage.setItem('selectedHeroId', hero.id)
+      if (hero.owner_id) {
+        localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
+      }
+    } catch {}
     onPick?.(hero)
     onClose?.()
   }

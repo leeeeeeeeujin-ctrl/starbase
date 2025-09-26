@@ -16,11 +16,11 @@ export function InputBar({
       style={{
         display: 'flex',
         gap: 8,
-        padding: 12,
+        padding: '16px 12px',
         borderTop: '1px solid #e5e7eb',
         background: '#fafafa',
         flexWrap: 'wrap',
-        alignItems: 'center',
+        alignItems: 'flex-end',
       }}
     >
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -47,27 +47,38 @@ export function InputBar({
           </select>
         )}
       </div>
-      <input
+      <textarea
         value={input}
         onChange={(event) => setInput(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') {
+          if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault()
             send()
           }
         }}
         placeholder="메시지를 입력…"
-        style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px' }}
+        rows={2}
+        style={{
+          flex: 1,
+          minHeight: 56,
+          maxHeight: 140,
+          border: '1px solid #e5e7eb',
+          borderRadius: 10,
+          padding: '10px 12px',
+          lineHeight: 1.5,
+          resize: 'vertical',
+        }}
       />
       <button
         onClick={send}
         disabled={!canSend}
         style={{
-          padding: '8px 12px',
-          borderRadius: 8,
+          padding: '10px 16px',
+          borderRadius: 10,
           background: canSend ? '#2563eb' : '#93c5fd',
           color: '#fff',
           cursor: canSend ? 'pointer' : 'not-allowed',
+          minHeight: 44,
         }}
       >
         보내기

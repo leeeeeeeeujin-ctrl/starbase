@@ -88,6 +88,23 @@ export default function CharacterDetailPage() {
   const hero = profileSection.hero
 
   useEffect(() => {
+    if (!hero?.id) {
+      return
+    }
+    if (typeof window === 'undefined') {
+      return
+    }
+    try {
+      window.localStorage.setItem('selectedHeroId', hero.id)
+      if (hero.owner_id) {
+        window.localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
+      }
+    } catch (storageError) {
+      console.error('Failed to persist selected hero metadata:', storageError)
+    }
+  }, [hero?.id, hero?.owner_id])
+
+  useEffect(() => {
     return () => {
       if (reloadTimerRef.current) {
         clearTimeout(reloadTimerRef.current)

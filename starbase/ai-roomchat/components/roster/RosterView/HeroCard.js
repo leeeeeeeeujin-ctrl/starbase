@@ -15,9 +15,22 @@ function formatDate(value) {
 }
 
 export default function HeroCard({ hero, onDelete }) {
+  const handleNavigate = () => {
+    if (typeof window === 'undefined') return
+    if (!hero?.id) return
+    try {
+      window.localStorage.setItem('selectedHeroId', hero.id)
+      if (hero.owner_id) {
+        window.localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
+      }
+    } catch (error) {
+      console.error('Failed to persist selected hero before navigation:', error)
+    }
+  }
+
   return (
     <Link href={`/character/${hero.id}`} passHref>
-      <a style={styles.heroCardLink}>
+      <a style={styles.heroCardLink} onClick={handleNavigate}>
         <div style={styles.heroCardCover}>
           <button
             type="button"

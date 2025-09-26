@@ -12,7 +12,10 @@ export function MessageList({
   onSelectHero,
 }) {
   return (
-    <div ref={listRef} style={{ padding: 12, overflow: 'auto' }}>
+    <div
+      ref={listRef}
+      style={{ padding: '12px 12px 20px', overflow: 'auto' }}
+    >
       {messages.map((message) => (
         <MessageItem
           key={message.id}

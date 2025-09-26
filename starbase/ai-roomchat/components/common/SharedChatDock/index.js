@@ -8,7 +8,7 @@ import { MessageList } from './MessageList'
 import { useSharedChatDock } from './useSharedChatDock'
 
 export default function SharedChatDock({
-  height = 320,
+  height = 'min(70vh, 520px)',
   heroId,
   extraWhisperTargets = [],
   onSelectHero,
