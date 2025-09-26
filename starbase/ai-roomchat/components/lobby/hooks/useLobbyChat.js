@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   fetchRecentMessages,
-  getCurrentUser,
   insertMessage,
   subscribeToMessages,
 } from '../../../lib/chat/messages'
@@ -11,6 +10,8 @@ import {
   hydrateMessageList,
 } from '../../../lib/chat/hydrateMessages'
 import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
+import { AUTH_STATUS_VALUES, useAuth } from '../../../features/auth'
+import { readJsonStorage, writeJsonStorage } from '../../../utils/browserStorage'
 
 const DEFAULT_VIEWER = {
   name: '익명',
@@ -23,49 +24,36 @@ const DEFAULT_VIEWER = {
 const VIEWER_STORAGE_KEY = 'ai-roomchat:lobbyChatViewer'
 
 function readStoredViewer() {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.localStorage.getItem(VIEWER_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return null
-    if (!parsed.user_id) return null
-    return {
-      name: parsed.name ?? DEFAULT_VIEWER.name,
-      avatar_url: parsed.avatar_url ?? DEFAULT_VIEWER.avatar_url,
-      hero_id: parsed.hero_id ?? null,
-      owner_id: parsed.owner_id ?? null,
-      user_id: parsed.user_id,
-    }
-  } catch (error) {
-    console.error('로비 채팅 로컬 프로필을 불러오지 못했습니다.', error)
+  const parsed = readJsonStorage(VIEWER_STORAGE_KEY)
+  if (!parsed || typeof parsed !== 'object' || !parsed.user_id) {
     return null
+  }
+
+  return {
+    name: parsed.name ?? DEFAULT_VIEWER.name,
+    avatar_url: parsed.avatar_url ?? DEFAULT_VIEWER.avatar_url,
+    hero_id: parsed.hero_id ?? null,
+    owner_id: parsed.owner_id ?? null,
+    user_id: parsed.user_id,
   }
 }
 
 function persistStoredViewer(viewer) {
-  if (typeof window === 'undefined') return
-  try {
-    if (viewer?.user_id) {
-      window.localStorage.setItem(
-        VIEWER_STORAGE_KEY,
-        JSON.stringify({
-          name: viewer.name ?? DEFAULT_VIEWER.name,
-          avatar_url: viewer.avatar_url ?? null,
-          hero_id: viewer.hero_id ?? null,
-          owner_id: viewer.owner_id ?? null,
-          user_id: viewer.user_id,
-        }),
-      )
-    } else {
-      window.localStorage.removeItem(VIEWER_STORAGE_KEY)
-    }
-  } catch (error) {
-    console.error('로비 채팅 로컬 프로필을 저장하지 못했습니다.', error)
+  if (viewer?.user_id) {
+    writeJsonStorage(VIEWER_STORAGE_KEY, {
+      name: viewer.name ?? DEFAULT_VIEWER.name,
+      avatar_url: viewer.avatar_url ?? null,
+      hero_id: viewer.hero_id ?? null,
+      owner_id: viewer.owner_id ?? null,
+      user_id: viewer.user_id,
+    })
+  } else {
+    writeJsonStorage(VIEWER_STORAGE_KEY, undefined)
   }
 }
 
 export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
+  const { status: authStatus, user } = useAuth()
   const initialViewer = readStoredViewer() ?? DEFAULT_VIEWER
   const [viewer, setViewerState] = useState(initialViewer)
   const [messages, setMessages] = useState([])
@@ -155,19 +143,26 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
   }, [])
 
   useEffect(() => {
+    if (authStatus === AUTH_STATUS_VALUES.LOADING) {
+      return
+    }
+
+    if (authStatus === AUTH_STATUS_VALUES.ERROR) {
+      updateViewer(DEFAULT_VIEWER)
+      onRequireAuth?.()
+      return
+    }
+
     let alive = true
 
     const resolveProfile = async () => {
+      if (!user) {
+        updateViewer(DEFAULT_VIEWER)
+        onRequireAuth?.()
+        return
+      }
+
       try {
-        const user = await getCurrentUser()
-        if (!alive) return
-
-        if (!user) {
-          updateViewer(DEFAULT_VIEWER)
-          onRequireAuth?.()
-          return
-        }
-
         const profile = await resolveViewerProfile(user, heroId)
         if (!alive) return
         updateViewer(profile)
@@ -181,7 +176,7 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
     return () => {
       alive = false
     }
-  }, [heroId, onRequireAuth, updateViewer])
+  }, [authStatus, heroId, onRequireAuth, updateViewer, user])
 
   useEffect(() => {
     let alive = true
@@ -234,23 +229,21 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
       return cached
     }
 
-    const user = await getCurrentUser()
-    if (!user) {
+    if (authStatus !== AUTH_STATUS_VALUES.READY || !user) {
       return null
     }
 
     const profile = await resolveViewerProfile(user, heroId)
     updateViewer(profile)
     return profile
-  }, [heroId, updateViewer])
+  }, [authStatus, heroId, updateViewer, user])
 
   const sendMessage = useCallback(async () => {
     const text = input.trim()
     if (!text) return
 
     try {
-      const user = await getCurrentUser()
-      if (!user) {
+      if (authStatus !== AUTH_STATUS_VALUES.READY || !user) {
         onRequireAuth?.()
         alert('로그인이 필요합니다.')
         return
@@ -282,7 +275,7 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
       console.error('메시지를 보내지 못했습니다.', error)
       alert(error?.message || '메시지를 보내지 못했습니다.')
     }
-  }, [ensureViewer, input, onRequireAuth])
+  }, [authStatus, ensureViewer, input, onRequireAuth, user])
 
   return {
     displayName: viewer?.name || '익명',

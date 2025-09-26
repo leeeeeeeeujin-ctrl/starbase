@@ -1,0 +1,28 @@
+.root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 64px 24px 120px;
+  background-image: url('/landing/celestial-frontline.svg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  color: #fff;
+  text-align: center;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+.title {
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 700;
+  margin-bottom: 32px;
+  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  letter-spacing: 0.04em;
+}
+
+.cta {
+  margin-top: auto;
+}
