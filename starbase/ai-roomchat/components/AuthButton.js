@@ -1,17 +1,23 @@
 "use client"
 
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 
+import { useAuth } from '../hooks/useAuth'
 import { startGoogleOAuth } from '../lib/auth'
+import styles from './AuthButton.module.css'
 
 export default function AuthButton() {
+  const { status } = useAuth()
   const [pending, setPending] = useState(false)
 
-  async function signIn() {
+  const disabled = useMemo(() => status === 'loading' || pending, [status, pending])
+
+  const signIn = useCallback(async () => {
     if (pending) return
+
     setPending(true)
     try {
-      const origin = window.location.origin
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
       const result = await startGoogleOAuth({ origin })
 
       if (result.status === 'redirect') {
@@ -26,48 +32,26 @@ export default function AuthButton() {
     } finally {
       setPending(false)
     }
-  }
-
-  const handleClick = useCallback(() => {
-    if (!pending) {
-      signIn()
-    }
   }, [pending])
 
-  function handleMouseEnter(event) {
-    event.currentTarget.style.transform = 'translateY(-2px)'
-    event.currentTarget.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.45)'
-  }
-
-  function handleMouseLeave(event) {
-    event.currentTarget.style.transform = 'translateY(0)'
-    event.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.35)'
-  }
+  const handleClick = useCallback(() => {
+    if (!disabled) {
+      void signIn()
+    }
+  }, [disabled, signIn])
 
   return (
     <button
+      type="button"
       onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      style={{
-        padding: '14px 40px',
-        borderRadius: 999,
-        backgroundColor: '#040507',
-        color: '#ffffff',
-        fontSize: '18px',
-        fontWeight: 600,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        border: '1px solid rgba(255, 255, 255, 0.25)',
-        cursor: 'pointer',
-        transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-        fontFamily: '"Noto Sans KR", sans-serif',
-        opacity: pending ? 0.65 : 1,
-        pointerEvents: pending ? 'none' : 'auto',
-      }}
+      className={styles.button}
+      disabled={disabled}
+      aria-busy={pending}
     >
-      신경망 접속
+      <span className={styles.label}>
+        {pending ? <span className={styles.pendingIcon} aria-hidden="true" /> : null}
+        {pending ? '접속 중…' : '신경망 접속'}
+      </span>
     </button>
   )
 }

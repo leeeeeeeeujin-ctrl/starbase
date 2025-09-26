@@ -1,0 +1,43 @@
+.landing {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 64px 24px 120px;
+  background-image: url('/landing/celestial-frontline.svg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  color: #ffffff;
+  text-align: center;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+.title {
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 700;
+  margin-bottom: 32px;
+  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  letter-spacing: 0.04em;
+}
+
+.cta {
+  margin-top: auto;
+}
+
+.statusMessage {
+  margin-top: 28px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.65));
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #cbd5f5;
+  font-size: 14px;
+  max-width: 360px;
+}
+
+.statusMessageError {
+  color: #fca5a5;
+}

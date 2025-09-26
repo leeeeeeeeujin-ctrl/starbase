@@ -1,80 +1,43 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/router'
 
 import AuthButton from '../components/AuthButton'
-import { supabase } from '../lib/supabase'
+import { useAuth } from '../hooks/useAuth'
+import styles from '../styles/LandingPage.module.css'
 
 export default function Home() {
   const router = useRouter()
+  const { status, user, error } = useAuth()
 
   useEffect(() => {
-    let cancelled = false
+    if (status === 'ready' && user) {
+      router.replace('/roster')
+    }
+  }, [router, status, user])
 
-    async function ensureSession() {
-      try {
-        const { data } = await supabase.auth.getSession()
-        if (cancelled) return
-        if (data?.session?.user) {
-          router.replace('/roster')
-        }
-      } catch (error) {
-        console.error('Failed to resolve auth session on landing:', error)
-      }
+  const statusBlock = useMemo(() => {
+    if (status === 'error') {
+      return (
+        <p className={`${styles.statusMessage} ${styles.statusMessageError}`}>
+          {error || '로그인 상태를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.'}
+        </p>
+      )
     }
 
-    ensureSession()
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (cancelled) return
-      if (session?.user) {
-        router.replace('/roster')
-      }
-      if (event === 'SIGNED_OUT') {
-        router.replace('/')
-      }
-    })
-
-    return () => {
-      cancelled = true
-      subscription?.subscription?.unsubscribe?.()
+    if (status === 'loading') {
+      return <p className={styles.statusMessage}>접속 상태를 확인하고 있습니다…</p>
     }
-  }, [router])
+
+    return null
+  }, [error, status])
 
   return (
-    <main
-      style={{
-        position: 'relative',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100vh',
-        padding: '64px 24px 120px',
-        backgroundImage: 'url(/landing/celestial-frontline.svg)',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        color: '#fff',
-        textAlign: 'center',
-        fontFamily: '"Noto Sans KR", sans-serif',
-      }}
-    >
-      <h1
-        style={{
-          fontSize: 'clamp(32px, 5vw, 56px)',
-          fontWeight: 700,
-          marginBottom: 32,
-          textShadow: '0 6px 18px rgba(0, 0, 0, 0.45)',
-          letterSpacing: '0.04em',
-        }}
-      >
-        천계전선
-      </h1>
-      <div style={{ marginTop: 'auto' }}>
+    <main className={styles.landing}>
+      <h1 className={styles.title}>천계전선</h1>
+      <div className={styles.cta}>
         <AuthButton />
       </div>
+      {statusBlock}
     </main>
   )
 }
-
-//
