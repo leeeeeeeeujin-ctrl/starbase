@@ -168,36 +168,56 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
     [router],
   )
 
+  const handleTabClick = useCallback((index) => {
+    setPanelIndex(index)
+  }, [])
+
+  const navControls = useMemo(
+    () => (
+      <>
+        <div style={styles.tabBar}>
+          {NAV_ITEMS.map((panel, index) => (
+            <button
+              key={panel.id}
+              type="button"
+              onClick={() => handleTabClick(index)}
+              style={{
+                ...styles.tabButton,
+                ...(panelIndex === index ? styles.tabButtonActive : null),
+              }}
+            >
+              {panel.label}
+            </button>
+          ))}
+        </div>
+        <p style={styles.swipeHint}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
+      </>
+    ),
+    [handleTabClick, panelIndex],
+  )
+
   const panels = useMemo(
     () => [
       {
         id: 'game',
         label: '게임 찾기',
         render: () => (
-          <GameSearchSwipePanel browser={gameBrowser} onEnterGame={handleEnterGame} />
+          <GamePanel nav={navControls} browser={gameBrowser} onEnterGame={handleEnterGame} />
         ),
       },
       {
         id: 'character',
         label: '캐릭터',
-        render: () => <CharacterPanel />,
+        render: () => <CharacterPanel nav={navControls} />,
       },
       {
         id: 'ranking',
         label: '랭킹',
-        render: () => (
-          <div style={styles.panelStack}>
-            <RankingSection />
-          </div>
-        ),
+        render: () => <RankingPanel nav={navControls} />, 
       },
     ],
-    [gameBrowser, handleEnterGame],
+    [gameBrowser, handleEnterGame, navControls],
   )
-
-  const handleTabClick = useCallback((index) => {
-    setPanelIndex(index)
-  }, [])
 
   const handleNavClick = useCallback((targetId) => {
     const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
@@ -267,40 +287,13 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
             </div>
           </header>
 
-          <div style={styles.heroSection}>
-            <div style={styles.heroPortrait}>
-              {heroImage ? (
-                <img src={heroImage} alt={`${displayName} 이미지`} style={styles.heroImage} />
-              ) : (
-                <div style={styles.heroPlaceholder}>이미지 없음</div>
-              )}
-            </div>
-            <div style={styles.sectionSwitcher}>
-              <div style={styles.tabBar}>
-                {NAV_ITEMS.map((panel, index) => (
-                  <button
-                    key={panel.id}
-                    type="button"
-                    onClick={() => handleTabClick(index)}
-                    style={{
-                      ...styles.tabButton,
-                      ...(panelIndex === index ? styles.tabButtonActive : null),
-                    }}
-                  >
-                    {panel.label}
-                  </button>
-                ))}
-              </div>
-              <p style={styles.swipeHint}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
-              <div ref={swipeViewportRef} style={styles.swipeViewport}>
-                <div style={styles.swipeTrack}>
-                  {panels.map((panel) => (
-                    <div key={panel.id} style={styles.swipePanel}>
-                      {panel.render()}
-                    </div>
-                  ))}
+          <div ref={swipeViewportRef} style={styles.swipeViewport}>
+            <div style={styles.swipeTrack}>
+              {panels.map((panel) => (
+                <div key={panel.id} style={styles.swipePanel}>
+                  {panel.render()}
                 </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
@@ -335,14 +328,56 @@ function SectionCard({ title, children }) {
   )
 }
 
-function CharacterPanel() {
+function PanelLayout({ heroImage, heroName, nav, children }) {
   return (
-    <div style={styles.panelStack}>
-      <OverviewSection />
-      <StatsSection />
-      <InstantBattleSection />
-      <BattleLogSection />
+    <div style={styles.heroSection}>
+      <div style={styles.heroPortrait}>
+        {heroImage ? (
+          <img src={heroImage} alt={`${heroName} 이미지`} style={styles.heroImage} />
+        ) : (
+          <div style={styles.heroPlaceholder}>이미지 없음</div>
+        )}
+      </div>
+      <div style={styles.sectionSwitcher}>
+        {nav || null}
+        {children}
+      </div>
     </div>
+  )
+}
+
+function CharacterPanel({ nav }) {
+  const { heroName, heroImage } = useCharacterDashboardContext()
+
+  return (
+    <PanelLayout heroImage={heroImage} heroName={heroName} nav={nav}>
+      <div style={styles.panelStack}>
+        <OverviewSection />
+        <StatsSection />
+        <InstantBattleSection />
+        <BattleLogSection />
+      </div>
+    </PanelLayout>
+  )
+}
+
+function GamePanel({ nav, browser, onEnterGame }) {
+  const { heroName, heroImage } = useCharacterDashboardContext()
+  return (
+    <PanelLayout heroImage={heroImage} heroName={heroName} nav={nav}>
+      <GameSearchSwipePanel browser={browser} onEnterGame={onEnterGame} />
+    </PanelLayout>
+  )
+}
+
+function RankingPanel({ nav }) {
+  const { heroName, heroImage } = useCharacterDashboardContext()
+  return (
+    <PanelLayout heroImage={heroImage} heroName={heroName} nav={nav}>
+      <div style={styles.panelStack}>
+        <RankingSection />
+      </div>
+    </PanelLayout>
   )
 }
 
