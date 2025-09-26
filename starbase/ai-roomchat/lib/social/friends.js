@@ -18,6 +18,94 @@ function isMissingColumnError(error) {
   return false
 }
 
+function isLegacyFilterError(error) {
+  if (!error) return false
+  if (error.status && error.status !== 400) return false
+
+  const message = `${error.message || ''} ${error.details || ''}`.toLowerCase()
+  if (!message.trim()) return error.status === 400
+
+  if (message.includes('or (') || message.includes('or=')) return true
+  if (message.includes('syntax error')) return true
+  if (message.includes('unexpected token')) return true
+  if (message.includes('failed to parse')) return true
+  if (message.includes('operator is not unique')) return true
+
+  return error.status === 400
+}
+
+function dedupeFriendships(rows) {
+  const unique = new Map()
+
+  for (const row of rows || []) {
+    if (!row) continue
+    const key =
+      row.id !== undefined && row.id !== null
+        ? `id:${row.id}`
+        : `pair:${row.user_id_a || ''}:${row.user_id_b || ''}`
+    if (!unique.has(key)) {
+      unique.set(key, row)
+    }
+  }
+
+  return Array.from(unique.values())
+}
+
+async function fallbackFriendshipQuery({ table, columns, viewerId }) {
+  const [asUserA, asUserB] = await Promise.all([
+    supabase.from(table).select(columns).eq('user_id_a', viewerId),
+    supabase.from(table).select(columns).eq('user_id_b', viewerId),
+  ])
+
+  if (asUserA.error) {
+    return { data: null, error: asUserA.error }
+  }
+  if (asUserB.error) {
+    return { data: null, error: asUserB.error }
+  }
+
+  const combined = [...(asUserA.data || []), ...(asUserB.data || [])]
+  return { data: dedupeFriendships(combined), error: null }
+}
+
+function dedupeFriendRequests(rows) {
+  const unique = new Map()
+
+  for (const row of rows || []) {
+    if (!row) continue
+    const key = row.id !== undefined && row.id !== null ? `id:${row.id}` : null
+    if (key) {
+      if (!unique.has(key)) {
+        unique.set(key, row)
+      }
+      continue
+    }
+    const fallbackKey = `pair:${row.requester_id || ''}:${row.addressee_id || ''}:${row.status || ''}`
+    if (!unique.has(fallbackKey)) {
+      unique.set(fallbackKey, row)
+    }
+  }
+
+  return Array.from(unique.values())
+}
+
+async function fallbackFriendRequestQuery({ table, columns, viewerId }) {
+  const [asRequester, asAddressee] = await Promise.all([
+    supabase.from(table).select(columns).eq('status', 'pending').eq('requester_id', viewerId),
+    supabase.from(table).select(columns).eq('status', 'pending').eq('addressee_id', viewerId),
+  ])
+
+  if (asRequester.error) {
+    return { data: null, error: asRequester.error }
+  }
+  if (asAddressee.error) {
+    return { data: null, error: asAddressee.error }
+  }
+
+  const combined = [...(asRequester.data || []), ...(asAddressee.data || [])]
+  return { data: dedupeFriendRequests(combined), error: null }
+}
+
 export const EMPTY_REQUESTS = { incoming: [], outgoing: [] }
 
 async function queryFriendships(viewerId) {
@@ -33,27 +121,50 @@ async function queryFriendships(viewerId) {
   let lastMissingColumnError = null
 
   for (const columns of columnVariants) {
-    const { data, error } = await withTable(supabase, 'friendships', (table) =>
+    const attempt = await withTable(supabase, 'friendships', (table) =>
       supabase
         .from(table)
         .select(columns)
         .or(`user_id_a.eq.${viewerId},user_id_b.eq.${viewerId}`),
     )
 
-    if (!error) {
-      return Array.isArray(data) ? data : []
+    if (!attempt.error) {
+      return Array.isArray(attempt.data) ? attempt.data : []
     }
 
-    if (isMissingColumnError(error)) {
-      lastMissingColumnError = error
+    if (isMissingColumnError(attempt.error)) {
+      lastMissingColumnError = attempt.error
       console.warn(
         'friendships 조회 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
-        error,
+        attempt.error,
       )
       continue
     }
 
-    throw error
+    if (isLegacyFilterError(attempt.error)) {
+      const fallback = await fallbackFriendshipQuery({
+        table: attempt.table || 'friendships',
+        columns,
+        viewerId,
+      })
+
+      if (!fallback.error) {
+        return Array.isArray(fallback.data) ? fallback.data : []
+      }
+
+      if (isMissingColumnError(fallback.error)) {
+        lastMissingColumnError = fallback.error
+        console.warn(
+          'friendships 조회 폴백 중 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
+          fallback.error,
+        )
+        continue
+      }
+
+      throw fallback.error
+    }
+
+    throw attempt.error
   }
 
   if (lastMissingColumnError) {
@@ -78,7 +189,7 @@ async function queryPendingRequests(viewerId) {
   let lastMissingColumnError = null
 
   for (const columns of columnVariants) {
-    const { data, error } = await withTable(supabase, 'friend_requests', (table) =>
+    const attempt = await withTable(supabase, 'friend_requests', (table) =>
       supabase
         .from(table)
         .select(columns)
@@ -86,20 +197,43 @@ async function queryPendingRequests(viewerId) {
         .or(`requester_id.eq.${viewerId},addressee_id.eq.${viewerId}`),
     )
 
-    if (!error) {
-      return Array.isArray(data) ? data : []
+    if (!attempt.error) {
+      return Array.isArray(attempt.data) ? attempt.data : []
     }
 
-    if (isMissingColumnError(error)) {
-      lastMissingColumnError = error
+    if (isMissingColumnError(attempt.error)) {
+      lastMissingColumnError = attempt.error
       console.warn(
         'friend_requests 조회 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
-        error,
+        attempt.error,
       )
       continue
     }
 
-    throw error
+    if (isLegacyFilterError(attempt.error)) {
+      const fallback = await fallbackFriendRequestQuery({
+        table: attempt.table || 'friend_requests',
+        columns,
+        viewerId,
+      })
+
+      if (!fallback.error) {
+        return Array.isArray(fallback.data) ? fallback.data : []
+      }
+
+      if (isMissingColumnError(fallback.error)) {
+        lastMissingColumnError = fallback.error
+        console.warn(
+          'friend_requests 조회 폴백 중 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
+          fallback.error,
+        )
+        continue
+      }
+
+      throw fallback.error
+    }
+
+    throw attempt.error
   }
 
   if (lastMissingColumnError) {
@@ -139,7 +273,7 @@ async function fetchFriendRequestById(requestId) {
   let lastMissingColumnError = null
 
   for (const columns of columnVariants) {
-    const { data, error } = await withTable(supabase, 'friend_requests', (table) =>
+    const attempt = await withTable(supabase, 'friend_requests', (table) =>
       supabase
         .from(table)
         .select(columns)
@@ -147,20 +281,20 @@ async function fetchFriendRequestById(requestId) {
         .maybeSingle(),
     )
 
-    if (!error) {
-      return data || null
+    if (!attempt.error) {
+      return attempt.data || null
     }
 
-    if (isMissingColumnError(error)) {
-      lastMissingColumnError = error
+    if (isMissingColumnError(attempt.error)) {
+      lastMissingColumnError = attempt.error
       console.warn(
         'friend_requests 단건 조회 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
-        error,
+        attempt.error,
       )
       continue
     }
 
-    throw error
+    throw attempt.error
   }
 
   if (lastMissingColumnError) {
