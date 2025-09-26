@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/router'
 
 import { SORT_OPTIONS } from '@/components/lobby/constants'
@@ -30,6 +31,7 @@ export default function CharacterDashboard({
 
   const [panelIndex, setPanelIndex] = useState(1)
   const [editOpen, setEditOpen] = useState(false)
+  const [overviewOpen, setOverviewOpen] = useState(false)
   const [gameSearchEnabled, setGameSearchEnabled] = useState(false)
   const swipeViewportRef = useRef(null)
   const animatingRef = useRef(false)
@@ -37,6 +39,7 @@ export default function CharacterDashboard({
   const settleTimeoutRef = useRef(null)
   const panelIndexRef = useRef(panelIndex)
   const isProgrammaticRef = useRef(false)
+  const pinchStateRef = useRef(null)
 
   useEffect(() => {
     panelIndexRef.current = panelIndex
@@ -205,6 +208,102 @@ export default function CharacterDashboard({
     const node = swipeViewportRef.current
     if (!node) return undefined
 
+    const getDistance = (touches) => {
+      if (touches.length < 2) return 0
+      const [first, second] = touches
+      const dx = first.clientX - second.clientX
+      const dy = first.clientY - second.clientY
+      return Math.sqrt(dx * dx + dy * dy)
+    }
+
+    const handleTouchStart = (event) => {
+      if (event.touches.length === 2) {
+        pinchStateRef.current = {
+          startDistance: getDistance(event.touches),
+          triggered: false,
+        }
+      }
+    }
+
+    const handleTouchMove = (event) => {
+      const state = pinchStateRef.current
+      if (!state || event.touches.length !== 2) return
+
+      const distance = getDistance(event.touches)
+      if (!distance || !state.startDistance) return
+
+      const ratio = distance / state.startDistance
+      if (!state.triggered && ratio < 0.9) {
+        state.triggered = true
+        openOverview()
+      }
+    }
+
+    const clearPinch = () => {
+      pinchStateRef.current = null
+    }
+
+    const handleWheel = (event) => {
+      if (!event.ctrlKey) return
+      if (event.deltaY <= 0) return
+      openOverview()
+    }
+
+    node.addEventListener('touchstart', handleTouchStart, { passive: true })
+    node.addEventListener('touchmove', handleTouchMove, { passive: true })
+    node.addEventListener('touchend', clearPinch)
+    node.addEventListener('touchcancel', clearPinch)
+    node.addEventListener('wheel', handleWheel, { passive: true })
+
+    return () => {
+      node.removeEventListener('touchstart', handleTouchStart)
+      node.removeEventListener('touchmove', handleTouchMove)
+      node.removeEventListener('touchend', clearPinch)
+      node.removeEventListener('touchcancel', clearPinch)
+      node.removeEventListener('wheel', handleWheel)
+    }
+  }, [openOverview])
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeOverview()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [closeOverview])
+
+  useEffect(() => {
+    if (!overviewOpen) return undefined
+
+    const routerEvents = router.events
+    if (!routerEvents) return undefined
+
+    const handleRouteStart = () => {
+      setOverviewOpen(false)
+    }
+
+    routerEvents.on('routeChangeStart', handleRouteStart)
+
+    return () => {
+      routerEvents.off('routeChangeStart', handleRouteStart)
+    }
+  }, [overviewOpen, router])
+
+  useEffect(() => {
+    if (!overviewOpen) return
+    router.prefetch('/maker').catch(() => {})
+    router.prefetch('/rank/new').catch(() => {})
+  }, [overviewOpen, router])
+
+  useEffect(() => {
+    const node = swipeViewportRef.current
+    if (!node) return undefined
+
     const width = node.clientWidth || 1
     node.scrollLeft = width * panelIndex
 
@@ -261,8 +360,17 @@ export default function CharacterDashboard({
     const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
     if (targetIndex >= 0) {
       snapToPanel(targetIndex)
+      setOverviewOpen(false)
     }
   }, [snapToPanel])
+
+  const openOverview = useCallback(() => {
+    setOverviewOpen((current) => (current ? current : true))
+  }, [])
+
+  const closeOverview = useCallback(() => {
+    setOverviewOpen(false)
+  }, [])
 
   return (
     <CharacterDashboardProvider value={contextValue}>
@@ -307,6 +415,19 @@ export default function CharacterDashboard({
         </button>
       ) : null}
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
+      <OverviewSheet
+        open={overviewOpen}
+        onClose={closeOverview}
+        navItems={NAV_ITEMS}
+        activeIndex={panelIndex}
+        onNavigate={handleNavClick}
+        heroName={displayName}
+        heroImage={heroImage}
+        participations={participation.participations || []}
+        selectedGameId={participation.selectedGameId}
+        onSelectGame={participation.actions.selectGame}
+        onOpenGame={handleEnterGame}
+      />
       </CharacterDashboardProvider>
   )
 }
@@ -1559,4 +1680,285 @@ const styles = {
     color: '#f8fafc',
     boxShadow: '0 6px 24px rgba(59, 130, 246, 0.35)',
   },
+  overviewBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 20,
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    background: 'rgba(2, 6, 23, 0.55)',
+    backdropFilter: 'blur(6px)',
+  },
+  overviewSheet: {
+    width: '100%',
+    maxWidth: 520,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    background: 'rgba(10, 17, 36, 0.88)',
+    border: '1px solid rgba(148, 163, 184, 0.22)',
+    boxShadow: '0 -24px 48px rgba(2, 6, 23, 0.55)',
+    padding: '18px 20px 28px',
+    display: 'grid',
+    gap: 20,
+  },
+  overviewHandle: {
+    width: 64,
+    height: 4,
+    borderRadius: 999,
+    background: 'rgba(148, 163, 184, 0.35)',
+    justifySelf: 'center',
+  },
+  overviewHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  overviewLinkButton: {
+    flex: 1,
+    textAlign: 'center',
+    padding: '10px 12px',
+    borderRadius: 14,
+    border: '1px solid rgba(56, 189, 248, 0.35)',
+    color: '#e0f2fe',
+    background: 'rgba(8, 47, 73, 0.55)',
+    fontWeight: 600,
+    fontSize: 14,
+    textDecoration: 'none',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  overviewSection: {
+    display: 'grid',
+    gap: 12,
+  },
+  overviewSectionTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#bfdbfe',
+    letterSpacing: 0.2,
+  },
+  overviewGameCarousel: {
+    display: 'flex',
+    gap: 12,
+    overflowX: 'auto',
+    paddingBottom: 4,
+  },
+  overviewGameCard: {
+    flex: '0 0 140px',
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.65)',
+    color: '#f8fafc',
+    display: 'grid',
+    gridTemplateRows: '96px auto',
+    overflow: 'hidden',
+    cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  overviewGameCardActive: {
+    borderColor: '#38bdf8',
+    boxShadow: '0 0 0 1px rgba(56, 189, 248, 0.4)',
+  },
+  overviewGameImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    background: 'rgba(15, 23, 42, 0.6)',
+  },
+  overviewGameFallback: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  overviewGameName: {
+    padding: '8px 10px',
+    fontSize: 13,
+    fontWeight: 600,
+    lineHeight: 1.35,
+  },
+  overviewEmpty: {
+    margin: 0,
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  overviewMiniCharacter: {
+    borderRadius: 22,
+    border: '1px solid rgba(148, 163, 184, 0.3)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    padding: 16,
+    display: 'grid',
+    gap: 12,
+  },
+  overviewMiniBody: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  overviewMiniPortrait: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    overflow: 'hidden',
+    border: '1px solid rgba(148, 163, 184, 0.28)',
+    background: 'rgba(15, 23, 42, 0.55)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+  overviewMiniImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  overviewMiniName: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#f8fafc',
+  },
+  overviewMiniNav: {
+    display: 'flex',
+    gap: 8,
+  },
+  overviewMiniNavButton: {
+    flex: 1,
+    borderRadius: 999,
+    border: '1px solid rgba(148, 163, 184, 0.3)',
+    background: 'rgba(30, 41, 59, 0.7)',
+    color: '#e2e8f0',
+    fontSize: 12,
+    padding: '6px 10px',
+    cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  overviewMiniNavActive: {
+    borderColor: '#38bdf8',
+    background: 'rgba(56, 189, 248, 0.18)',
+    color: '#f0f9ff',
+  },
+  overviewCloseButton: {
+    marginTop: 4,
+    justifySelf: 'end',
+    borderRadius: 999,
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.55)',
+    color: '#cbd5f5',
+    fontSize: 13,
+    padding: '6px 14px',
+    cursor: 'pointer',
+  },
+}
+
+function OverviewSheet({
+  open,
+  onClose,
+  navItems,
+  activeIndex,
+  onNavigate,
+  heroName,
+  heroImage,
+  participations,
+  selectedGameId,
+  onSelectGame,
+  onOpenGame,
+}) {
+  if (!open) return null
+
+  const navigateToGame = onOpenGame || (() => {})
+  const selectGame = onSelectGame || (() => {})
+
+  return (
+    <div style={styles.overviewBackdrop} role="dialog" aria-modal="true">
+      <div style={styles.overviewSheet}>
+        <div style={styles.overviewHandle} aria-hidden />
+
+        <div style={styles.overviewHeader}>
+          <Link href="/maker" style={styles.overviewLinkButton} onClick={onClose}>
+            게임 제작
+          </Link>
+          <Link href="/rank/new" style={styles.overviewLinkButton} onClick={onClose}>
+            게임 등록
+          </Link>
+        </div>
+
+        <section style={styles.overviewSection}>
+          <h3 style={styles.overviewSectionTitle}>참여한 게임</h3>
+          {participations?.length ? (
+            <div style={styles.overviewGameCarousel}>
+              {participations.map((entry) => {
+                const isActive = selectedGameId === entry.game_id
+                const game = entry.game || {}
+                const label = game.name || '이름 없는 게임'
+                const image = game.image_url
+                return (
+                  <button
+                    key={`${entry.game_id}:${entry.owner_id}`}
+                    type="button"
+                    onClick={() => {
+                      selectGame(entry.game_id)
+                      navigateToGame(game, entry.role)
+                      onClose()
+                    }}
+                    style={{
+                      ...styles.overviewGameCard,
+                      ...(isActive ? styles.overviewGameCardActive : null),
+                    }}
+                  >
+                    {image ? (
+                      <img src={image} alt={label} style={styles.overviewGameImage} />
+                    ) : (
+                      <div style={styles.overviewGameFallback}>이미지 없음</div>
+                    )}
+                    <div style={styles.overviewGameName}>{label}</div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <p style={styles.overviewEmpty}>참여한 게임이 아직 없습니다.</p>
+          )}
+        </section>
+
+        <section style={styles.overviewMiniCharacter}>
+          <div style={styles.overviewMiniBody}>
+            <div style={styles.overviewMiniPortrait}>
+              {heroImage ? (
+                <img src={heroImage} alt="캐릭터" style={styles.overviewMiniImage} />
+              ) : (
+                '이미지 없음'
+              )}
+            </div>
+            <div>
+              <p style={styles.overviewMiniName}>{heroName}</p>
+              <p style={styles.overviewEmpty}>원하는 탭을 선택해 이동하세요.</p>
+            </div>
+          </div>
+          <div style={styles.overviewMiniNav}>
+            {navItems.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onNavigate(item.id)}
+                style={{
+                  ...styles.overviewMiniNavButton,
+                  ...(index === activeIndex ? styles.overviewMiniNavActive : null),
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <button type="button" onClick={onClose} style={styles.overviewCloseButton}>
+          닫기
+        </button>
+      </div>
+    </div>
+  )
 }
