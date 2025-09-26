@@ -221,7 +221,9 @@ export default function CharacterDashboard({
       }
 
       swipeGestureRef.current.active = false
-      node.scrollTo({ left: targetIndex * width, behavior: 'smooth' })
+      if (targetIndex !== Math.round(node.scrollLeft / width)) {
+        node.scrollTo({ left: targetIndex * width, behavior: 'smooth' })
+      }
       activePanelRef.current = targetIndex
       setPanelIndex(targetIndex)
     }
@@ -1175,15 +1177,14 @@ const styles = {
   },
   swipeViewport: {
     overflowX: 'auto',
-    scrollSnapType: 'x mandatory',
     WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorX: 'contain',
   },
   swipeTrack: {
     display: 'flex',
   },
   swipePanel: {
     minWidth: '100%',
-    scrollSnapAlign: 'center',
     padding: '4px 0',
   },
   panelContent: {
