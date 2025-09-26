@@ -1,26 +1,39 @@
 'use client'
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/router'
+
+import { SORT_OPTIONS } from '@/components/lobby/constants'
+import useGameBrowser from '@/components/lobby/hooks/useGameBrowser'
 
 import EditHeroModal from './sections/EditHeroModal'
 import { CharacterDashboardProvider, useCharacterDashboardContext } from './context'
 
-export default function CharacterDashboard({
-  dashboard,
-  heroName,
-  onStartBattle,
-  onBack,
-  onGoLobby,
-}) {
+const NAV_ITEMS = [
+  { id: 'game', label: '게임 찾기' },
+  { id: 'character', label: '캐릭터' },
+  { id: 'ranking', label: '랭킹' },
+]
+
+export default function CharacterDashboard({ dashboard, heroName, onStartBattle, onBack }) {
+  const router = useRouter()
   const { profile, participation, battles, heroName: fallbackName } = dashboard
 
-  const [panelIndex, setPanelIndex] = useState(0)
+  const [panelIndex, setPanelIndex] = useState(1)
   const [editOpen, setEditOpen] = useState(false)
+  const [gameSearchEnabled, setGameSearchEnabled] = useState(false)
   const swipeViewportRef = useRef(null)
   const scrollFrame = useRef(0)
 
   const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
   const heroImage = profile.edit?.image_url || profile.hero?.image_url || ''
+  const backgroundImage =
+    profile.background?.preview || profile.hero?.background_url || profile.edit?.background_url || ''
+  const audioSource = profile.audio?.source || ''
+
+  const backgroundStyle = backgroundImage
+    ? { ...styles.backgroundLayer, backgroundImage: `url(${backgroundImage})` }
+    : styles.backgroundFallback
 
   const contextValue = useMemo(
     () => ({
@@ -98,26 +111,7 @@ export default function CharacterDashboard({
     ],
   )
 
-  const panels = useMemo(
-    () => [
-      {
-        id: 'character',
-        label: '캐릭터',
-        render: () => <CharacterPanel />,
-      },
-      {
-        id: 'ranking',
-        label: '랭킹',
-        render: () => (
-          <div style={styles.panelStack}>
-            <RankingSection />
-          </div>
-        ),
-      },
-    ],
-    [],
-  )
-
+  const gameBrowser = useGameBrowser({ enabled: gameSearchEnabled })
   useEffect(() => {
     const node = swipeViewportRef.current
     if (!node) return undefined
@@ -126,8 +120,8 @@ export default function CharacterDashboard({
       cancelAnimationFrame(scrollFrame.current)
       scrollFrame.current = requestAnimationFrame(() => {
         const width = node.clientWidth || 1
-        const next = Math.round(node.scrollLeft / width)
-        setPanelIndex((prev) => (prev === next ? prev : next))
+        const nextIndex = Math.round(node.scrollLeft / width)
+        setPanelIndex((prev) => (prev === nextIndex ? prev : nextIndex))
       })
     }
 
@@ -151,75 +145,181 @@ export default function CharacterDashboard({
     node.scrollTo({ left: panelIndex * width, behavior: 'smooth' })
   }, [panelIndex])
 
-  const handleTabClick = (index) => {
+  useEffect(() => {
+    if (panelIndex === 0 && !gameSearchEnabled) {
+      setGameSearchEnabled(true)
+    }
+  }, [panelIndex, gameSearchEnabled])
+
+  useEffect(() => {
+    const node = swipeViewportRef.current
+    if (!node) return
+    const width = node.clientWidth || 1
+    node.scrollLeft = width * panelIndex
+  }, [])
+
+  const handleEnterGame = useCallback(
+    (game, role) => {
+      if (!game) return
+      const base = `/rank/${game.id}`
+      const target = role ? `${base}?role=${encodeURIComponent(role)}` : base
+      router.push(target)
+    },
+    [router],
+  )
+
+  const panels = useMemo(
+    () => [
+      {
+        id: 'game',
+        label: '게임 찾기',
+        render: () => (
+          <GameSearchSwipePanel browser={gameBrowser} onEnterGame={handleEnterGame} />
+        ),
+      },
+      {
+        id: 'character',
+        label: '캐릭터',
+        render: () => <CharacterPanel />,
+      },
+      {
+        id: 'ranking',
+        label: '랭킹',
+        render: () => (
+          <div style={styles.panelStack}>
+            <RankingSection />
+          </div>
+        ),
+      },
+    ],
+    [gameBrowser, handleEnterGame],
+  )
+
+  const handleTabClick = useCallback((index) => {
     setPanelIndex(index)
-  }
+  }, [])
+
+  const handleNavClick = useCallback((targetId) => {
+    const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
+    if (targetIndex >= 0) {
+      setPanelIndex(targetIndex)
+    }
+  }, [])
 
   return (
     <CharacterDashboardProvider value={contextValue}>
       <div style={styles.page}>
-        <header style={styles.header}>
-          <div>
-            <h1 style={styles.title}>{displayName}</h1>
-            <p style={styles.subtitle}>
-              {participation.selectedGame?.name
-                ? `현재 선택한 게임 · ${participation.selectedGame.name}`
-                : '영웅과 관련된 정보와 전투 기록을 한 화면에서 확인하세요.'}
-            </p>
-          </div>
-          <div style={styles.headerActions}>
-            {onBack ? (
-              <button type="button" onClick={onBack} style={styles.secondaryButton}>
-                뒤로 가기
-              </button>
-            ) : null}
-            {onGoLobby ? (
-              <button type="button" onClick={onGoLobby} style={styles.secondaryButton}>
-                로비 이동
-              </button>
-            ) : null}
-            <button type="button" onClick={() => setEditOpen(true)} style={styles.primaryButton}>
-              프로필 편집
-            </button>
-          </div>
-        </header>
+        <div style={backgroundStyle} aria-hidden />
+        <div style={styles.backgroundTint} aria-hidden />
 
-        <div style={styles.heroSection}>
-          <div style={styles.heroPortrait}>
-            {heroImage ? (
-              <img src={heroImage} alt={`${displayName} 이미지`} style={styles.heroImage} />
-            ) : (
-              <div style={styles.heroPlaceholder}>이미지 없음</div>
-            )}
-          </div>
-          <div style={styles.sectionSwitcher}>
-            <div style={styles.tabBar}>
-              {panels.map((panel, index) => (
-                <button
-                  key={panel.id}
-                  type="button"
-                  onClick={() => handleTabClick(index)}
-                  style={{
-                    ...styles.tabButton,
-                    ...(panelIndex === index ? styles.tabButtonActive : null),
-                  }}
-                >
-                  {panel.label}
-                </button>
-              ))}
+        <div style={styles.cornerIcons}>
+          <button
+            type="button"
+            onClick={() => router.push('/lobby')}
+            style={styles.cornerButton}
+            title="공용 채팅"
+          >
+            💬
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/roster')}
+            style={styles.cornerButton}
+            title="친구 / 영웅 목록"
+          >
+            👥
+          </button>
+        </div>
+
+        <div style={styles.content}>
+          <header style={styles.header}>
+            <div style={styles.headerText}>
+              <h1 style={styles.title}>{displayName}</h1>
+              <p style={styles.subtitle}>
+                {participation.selectedGame?.name
+                  ? `현재 선택한 게임 · ${participation.selectedGame.name}`
+                  : '영웅과 관련된 정보와 전투 기록을 한 화면에서 확인하세요.'}
+              </p>
+              {audioSource ? (
+                <div style={styles.bgmWrapper}>
+                  <span style={styles.bgmLabel}>{profile.bgm?.label || '배경 음악'}</span>
+                  <audio
+                    key={audioSource}
+                    controls
+                    loop
+                    src={audioSource}
+                    style={styles.bgmPlayer}
+                  >
+                    {profile.bgm?.label || '배경 음악'}
+                  </audio>
+                </div>
+              ) : null}
             </div>
-            <p style={styles.swipeHint}>캐릭터 화면을 옆으로 밀어 랭킹을 확인하세요.</p>
-            <div ref={swipeViewportRef} style={styles.swipeViewport}>
-              <div style={styles.swipeTrack}>
-                {panels.map((panel) => (
-                  <div key={panel.id} style={styles.swipePanel}>
-                    {panel.render()}
-                  </div>
+            <div style={styles.headerActions}>
+              {onBack ? (
+                <button type="button" onClick={onBack} style={styles.secondaryButton}>
+                  뒤로 가기
+                </button>
+              ) : null}
+              <button type="button" onClick={() => setEditOpen(true)} style={styles.primaryButton}>
+                프로필 편집
+              </button>
+            </div>
+          </header>
+
+          <div style={styles.heroSection}>
+            <div style={styles.heroPortrait}>
+              {heroImage ? (
+                <img src={heroImage} alt={`${displayName} 이미지`} style={styles.heroImage} />
+              ) : (
+                <div style={styles.heroPlaceholder}>이미지 없음</div>
+              )}
+            </div>
+            <div style={styles.sectionSwitcher}>
+              <div style={styles.tabBar}>
+                {NAV_ITEMS.map((panel, index) => (
+                  <button
+                    key={panel.id}
+                    type="button"
+                    onClick={() => handleTabClick(index)}
+                    style={{
+                      ...styles.tabButton,
+                      ...(panelIndex === index ? styles.tabButtonActive : null),
+                    }}
+                  >
+                    {panel.label}
+                  </button>
                 ))}
+              </div>
+              <p style={styles.swipeHint}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
+              <div ref={swipeViewportRef} style={styles.swipeViewport}>
+                <div style={styles.swipeTrack}>
+                  {panels.map((panel) => (
+                    <div key={panel.id} style={styles.swipePanel}>
+                      {panel.render()}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
         </div>
+
+        <nav style={styles.bottomNav}>
+          {NAV_ITEMS.map((item, index) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleNavClick(item.id)}
+              style={{
+                ...styles.navButton,
+                ...(panelIndex === index ? styles.navButtonActive : null),
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
       </div>
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
     </CharacterDashboardProvider>
@@ -232,6 +332,17 @@ function SectionCard({ title, children }) {
       <h2 style={styles.sectionTitle}>{title}</h2>
       <div>{children}</div>
     </section>
+  )
+}
+
+function CharacterPanel() {
+  return (
+    <div style={styles.panelStack}>
+      <OverviewSection />
+      <StatsSection />
+      <InstantBattleSection />
+      <BattleLogSection />
+    </div>
   )
 }
 
@@ -257,7 +368,7 @@ function OverviewSection() {
           <strong>{heroName}</strong>
         </div>
         {audioSource ? (
-          <audio controls src={audioSource} style={{ width: '100%' }}>
+          <audio controls src={audioSource} style={styles.bgmPlayer}>
             {bgmDuration ? `배경 음악 (길이: ${Math.round(bgmDuration)}초)` : '배경 음악'}
           </audio>
         ) : null}
@@ -467,44 +578,300 @@ function BattleLogSection() {
   )
 }
 
-function CharacterPanel() {
+function GameSearchSwipePanel({ browser, onEnterGame }) {
+  const {
+    gameQuery,
+    setGameQuery,
+    gameSort,
+    setGameSort,
+    gameRows,
+    gameLoading,
+    selectedGame,
+    setSelectedGame,
+    detailLoading,
+    gameRoles,
+    participants,
+    roleChoice,
+    setRoleChoice,
+    roleSlots,
+  } = browser
+
+  const handleSelectRole = useCallback(
+    (role) => {
+      if (!role) {
+        setRoleChoice('')
+        return
+      }
+      setRoleChoice(role)
+    },
+    [setRoleChoice],
+  )
+
+  const handleSubmit = useCallback(() => {
+    if (!selectedGame) return
+    onEnterGame(selectedGame, roleChoice)
+  }, [onEnterGame, roleChoice, selectedGame])
+
   return (
-    <div style={styles.panelStack}>
-      <OverviewSection />
-      <StatsSection />
-      <InstantBattleSection />
-      <BattleLogSection />
+    <div style={styles.panelContent}>
+      <SectionCard title="게임 찾기">
+        <div style={styles.gameSearchLayout}>
+          <div style={styles.gameSearchColumn}>
+            <div style={styles.gameSearchControls}>
+              <input
+                type="search"
+                placeholder="게임 제목이나 설명을 검색"
+                value={gameQuery}
+                onChange={(event) => setGameQuery(event.target.value)}
+                style={styles.gameSearchInput}
+              />
+              <select
+                value={gameSort}
+                onChange={(event) => setGameSort(event.target.value)}
+                style={styles.gameSortSelect}
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={styles.gameList}>
+              {gameLoading ? (
+                <p style={styles.loadingText}>게임 목록을 불러오는 중…</p>
+              ) : !gameRows.length ? (
+                <p style={styles.emptyState}>검색 결과가 없습니다.</p>
+              ) : (
+                gameRows.map((row) => {
+                  const isActive = selectedGame?.id === row.id
+                  return (
+                    <button
+                      key={row.id}
+                      type="button"
+                      onClick={() => setSelectedGame(row)}
+                      style={{
+                        ...styles.gameListItem,
+                        ...(isActive ? styles.gameListItemActive : styles.gameListItemInactive),
+                      }}
+                    >
+                      <div>
+                        <div style={styles.gameListTitle}>{row.name}</div>
+                        <div style={styles.gameListDescription}>
+                          {row.description || '설명이 없습니다.'}
+                        </div>
+                      </div>
+                      <div style={styles.gameListMeta}>
+                        <span>👍 {row.likes_count ?? 0}</span>
+                        <span>🎮 {row.play_count ?? 0}</span>
+                      </div>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>
+
+          <div style={styles.gameDetail}>
+            {detailLoading ? (
+              <p style={styles.loadingText}>게임 정보를 불러오는 중…</p>
+            ) : !selectedGame ? (
+              <p style={styles.emptyState}>왼쪽에서 게임을 선택하면 상세 정보가 표시됩니다.</p>
+            ) : (
+              <div style={styles.gameDetailBody}>
+                <header style={styles.gameDetailHeader}>
+                  <h3 style={styles.gameDetailTitle}>{selectedGame.name}</h3>
+                  <p style={styles.gameDetailDescription}>
+                    {selectedGame.description || '설명이 없습니다.'}
+                  </p>
+                  <div style={styles.gameDetailMeta}>
+                    <span>등록 {formatDate(selectedGame.created_at)}</span>
+                    <span>플레이 {selectedGame.play_count ?? 0}</span>
+                  </div>
+                </header>
+
+                <section>
+                  <h4 style={styles.sectionSubTitle}>역할 선택</h4>
+                  <div style={styles.roleGrid}>
+                    {gameRoles.length ? (
+                      gameRoles.map((role) => {
+                        const slot = roleSlots.get(role.name) || { capacity: 1, occupied: 0 }
+                        const full = slot.occupied >= slot.capacity
+                        const isActive = roleChoice === role.name
+                        return (
+                          <button
+                            key={role.id || role.name}
+                            type="button"
+                            onClick={() => (full ? null : handleSelectRole(role.name))}
+                            style={{
+                              ...styles.roleButton,
+                              ...(isActive ? styles.roleButtonActive : null),
+                              ...(full ? styles.roleButtonDisabled : null),
+                            }}
+                            disabled={full}
+                          >
+                            <span>{role.name}</span>
+                            <span style={styles.roleSlotMeta}>
+                              {slot.occupied}/{slot.capacity} 참여 중
+                            </span>
+                          </button>
+                        )
+                      })
+                    ) : (
+                      <p style={styles.emptyState}>등록된 역할이 없습니다.</p>
+                    )}
+                  </div>
+                </section>
+
+                <section>
+                  <h4 style={styles.sectionSubTitle}>현재 참가자</h4>
+                  <div style={styles.participantList}>
+                    {participants.length ? (
+                      participants.map((participant) => (
+                        <div key={participant.id} style={styles.participantRow}>
+                          <span style={styles.participantName}>
+                            {participant.hero_name || participant.hero_id || '알 수 없음'}
+                          </span>
+                          <span style={styles.participantRole}>{participant.role || '역할 미정'}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p style={styles.emptyState}>아직 참가자가 없습니다.</p>
+                    )}
+                  </div>
+                </section>
+
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={!selectedGame}
+                  style={{
+                    ...styles.enterButton,
+                    ...(selectedGame ? null : styles.primaryButtonDisabled),
+                  }}
+                >
+                  선택한 역할로 입장하기
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
     </div>
   )
+}
+
+function formatDate(value) {
+  if (!value) return '날짜 미상'
+  try {
+    return new Date(value).toLocaleDateString()
+  } catch (error) {
+    return '날짜 미상'
+  }
 }
 
 const styles = {
   page: {
     minHeight: '100vh',
-    background: '#0b1120',
+    position: 'relative',
+    overflowX: 'hidden',
     color: '#e2e8f0',
-    padding: '32px 16px 48px',
+    fontFamily: 'inherit',
+  },
+  backgroundLayer: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+    transform: 'translateZ(0)',
+    zIndex: 0,
+  },
+  backgroundFallback: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    background: 'radial-gradient(circle at 20% 20%, #1e293b, #020617)',
+    zIndex: 0,
+  },
+  backgroundTint: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    background: 'linear-gradient(180deg, rgba(2, 6, 23, 0.4) 0%, rgba(2, 6, 23, 0.85) 100%)',
+    zIndex: 0,
+  },
+  content: {
+    position: 'relative',
+    zIndex: 1,
+    padding: '32px 16px 120px',
+    display: 'grid',
+    gap: 32,
+  },
+  cornerIcons: {
+    position: 'fixed',
+    top: 16,
+    left: 16,
+    zIndex: 2,
+    display: 'flex',
+    gap: 8,
+  },
+  cornerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(15, 23, 42, 0.65)',
+    color: '#f8fafc',
+    fontSize: 20,
+    cursor: 'pointer',
   },
   header: {
     display: 'flex',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 16,
+    alignItems: 'flex-end',
+    gap: 24,
     maxWidth: 1200,
-    margin: '0 auto 32px',
+    margin: '0 auto',
+    paddingTop: 32,
+  },
+  headerText: {
+    display: 'grid',
+    gap: 12,
+    maxWidth: 720,
   },
   title: {
     margin: 0,
-    fontSize: 32,
-    lineHeight: 1.2,
+    fontSize: 36,
+    lineHeight: 1.1,
     color: '#f8fafc',
   },
   subtitle: {
-    margin: '8px 0 0',
-    color: '#94a3b8',
-    maxWidth: 640,
+    margin: 0,
+    color: '#cbd5f5',
     lineHeight: 1.5,
+  },
+  bgmWrapper: {
+    display: 'grid',
+    gap: 8,
+  },
+  bgmLabel: {
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  bgmPlayer: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 12,
+    background: 'rgba(15, 23, 42, 0.7)',
   },
   headerActions: {
     display: 'flex',
@@ -520,106 +887,96 @@ const styles = {
   },
   heroPortrait: {
     width: '100%',
-    borderRadius: 24,
-    background: 'rgba(15, 23, 42, 0.65)',
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    padding: 24,
+    borderRadius: 32,
+    overflow: 'hidden',
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.55)',
+    minHeight: 320,
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'center',
   },
   heroImage: {
     width: '100%',
-    maxWidth: 320,
-    borderRadius: 16,
+    height: '100%',
     objectFit: 'cover',
-    border: '1px solid rgba(148, 163, 184, 0.4)',
   },
   heroPlaceholder: {
-    width: '100%',
-    maxWidth: 320,
-    height: 320,
-    borderRadius: 16,
-    border: '1px dashed rgba(148, 163, 184, 0.4)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     color: '#94a3b8',
     fontSize: 18,
   },
   sectionSwitcher: {
+    background: 'rgba(2, 6, 23, 0.65)',
+    borderRadius: 32,
+    border: '1px solid rgba(148, 163, 184, 0.25)',
+    padding: 24,
     display: 'grid',
-    gap: 16,
-    position: 'relative',
+    gap: 24,
   },
   tabBar: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-    background: 'rgba(15, 23, 42, 0.6)',
-    borderRadius: 999,
-    padding: 6,
-    gap: 6,
-    border: '1px solid rgba(148, 163, 184, 0.25)',
+    display: 'flex',
+    gap: 12,
+    justifyContent: 'center',
+    flexWrap: 'wrap',
   },
   tabButton: {
-    border: 'none',
+    background: 'rgba(15, 23, 42, 0.6)',
+    border: '1px solid rgba(148, 163, 184, 0.35)',
     borderRadius: 999,
-    padding: '10px 16px',
-    background: 'transparent',
-    color: '#cbd5f5',
-    fontWeight: 600,
+    padding: '10px 18px',
+    color: '#e2e8f0',
     cursor: 'pointer',
-    transition: 'background 0.2s ease, color 0.2s ease, transform 0.2s ease',
+    fontWeight: 600,
   },
   tabButtonActive: {
-    background: '#2563eb',
-    color: '#f8fafc',
-    transform: 'translateY(-1px)',
+    background: 'rgba(59, 130, 246, 0.75)',
+    borderColor: 'rgba(96, 165, 250, 0.9)',
+    boxShadow: '0 6px 24px rgba(59, 130, 246, 0.35)',
   },
   swipeHint: {
     margin: 0,
-    fontSize: 12,
-    color: '#94a3b8',
+    textAlign: 'center',
+    color: '#cbd5f5',
+    fontSize: 13,
   },
   swipeViewport: {
     overflowX: 'auto',
     scrollSnapType: 'x mandatory',
     WebkitOverflowScrolling: 'touch',
-    borderRadius: 24,
-    border: '1px solid rgba(148, 163, 184, 0.25)',
-    background: 'rgba(15, 23, 42, 0.45)',
   },
   swipeTrack: {
     display: 'flex',
-    width: '100%',
   },
   swipePanel: {
-    flex: '0 0 100%',
-    scrollSnapAlign: 'start',
-    padding: 24,
-    display: 'flex',
-    justifyContent: 'stretch',
+    minWidth: '100%',
+    scrollSnapAlign: 'center',
+    padding: '4px 0',
   },
   panelStack: {
     display: 'grid',
     gap: 24,
-    width: '100%',
-  },
-  sectionCard: {
-    background: 'rgba(15, 23, 42, 0.6)',
-    borderRadius: 20,
-    border: '1px solid rgba(148, 163, 184, 0.3)',
-    padding: 20,
-    display: 'grid',
-    gap: 16,
-  },
-  sectionTitle: {
-    margin: 0,
-    fontSize: 20,
-    color: '#f8fafc',
   },
   panelContent: {
     display: 'grid',
-    gap: 20,
+    gap: 24,
+  },
+  sectionCard: {
+    borderRadius: 28,
+    border: '1px solid rgba(148, 163, 184, 0.3)',
+    background: 'rgba(15, 23, 42, 0.82)',
+    padding: 24,
+    display: 'grid',
+    gap: 18,
+  },
+  sectionTitle: {
+    margin: 0,
+    fontSize: 22,
+    color: '#f8fafc',
+  },
+  sectionSubTitle: {
+    margin: '0 0 12px',
+    fontSize: 16,
+    color: '#f8fafc',
   },
   bodyText: {
     margin: 0,
@@ -631,8 +988,8 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '12px 16px',
-    borderRadius: 14,
-    background: 'rgba(30, 41, 59, 0.6)',
+    borderRadius: 18,
+    background: 'rgba(30, 41, 59, 0.7)',
     border: '1px solid rgba(148, 163, 184, 0.25)',
   },
   abilityList: {
@@ -764,5 +1121,203 @@ const styles = {
     padding: '10px 18px',
     color: '#e2e8f0',
     cursor: 'pointer',
+  },
+  gameSearchLayout: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)',
+    gap: 20,
+  },
+  gameSearchColumn: {
+    display: 'grid',
+    gap: 14,
+  },
+  gameSearchControls: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 140px',
+    gap: 12,
+  },
+  gameSearchInput: {
+    padding: '12px 14px',
+    borderRadius: 14,
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#f8fafc',
+  },
+  gameSortSelect: {
+    padding: '12px 14px',
+    borderRadius: 14,
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#f8fafc',
+  },
+  gameList: {
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    borderRadius: 20,
+    padding: 12,
+    maxHeight: '50vh',
+    overflowY: 'auto',
+    display: 'grid',
+    gap: 10,
+    background: 'rgba(2, 6, 23, 0.6)',
+  },
+  loadingText: {
+    margin: 0,
+    textAlign: 'center',
+    color: '#cbd5f5',
+  },
+  emptyState: {
+    margin: 0,
+    textAlign: 'center',
+    color: '#94a3b8',
+  },
+  gameListItem: {
+    textAlign: 'left',
+    display: 'grid',
+    gap: 10,
+    padding: '12px 14px',
+    borderRadius: 18,
+    cursor: 'pointer',
+  },
+  gameListItemActive: {
+    border: '2px solid rgba(96, 165, 250, 0.9)',
+    background: 'rgba(37, 99, 235, 0.25)',
+  },
+  gameListItemInactive: {
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.45)',
+  },
+  gameListTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#f8fafc',
+  },
+  gameListDescription: {
+    fontSize: 12,
+    color: '#cbd5f5',
+    lineHeight: 1.4,
+  },
+  gameListMeta: {
+    display: 'flex',
+    gap: 12,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  gameDetail: {
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    borderRadius: 24,
+    padding: 18,
+    background: 'rgba(2, 6, 23, 0.6)',
+    minHeight: 320,
+    display: 'grid',
+  },
+  gameDetailBody: {
+    display: 'grid',
+    gap: 18,
+  },
+  gameDetailHeader: {
+    display: 'grid',
+    gap: 8,
+  },
+  gameDetailTitle: {
+    margin: 0,
+    fontSize: 20,
+    color: '#f8fafc',
+  },
+  gameDetailDescription: {
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#cbd5f5',
+    whiteSpace: 'pre-line',
+  },
+  gameDetailMeta: {
+    display: 'flex',
+    gap: 12,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  roleGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+    gap: 12,
+  },
+  roleButton: {
+    borderRadius: 18,
+    padding: '12px 14px',
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: 'rgba(15, 23, 42, 0.55)',
+    display: 'grid',
+    gap: 6,
+    color: '#f8fafc',
+    cursor: 'pointer',
+  },
+  roleButtonActive: {
+    borderColor: 'rgba(96, 165, 250, 0.9)',
+    background: 'rgba(37, 99, 235, 0.3)',
+  },
+  roleButtonDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+  },
+  roleSlotMeta: {
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  participantList: {
+    border: '1px solid rgba(148, 163, 184, 0.3)',
+    borderRadius: 18,
+    padding: 12,
+    display: 'grid',
+    gap: 10,
+    background: 'rgba(15, 23, 42, 0.55)',
+  },
+  participantRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: 13,
+    color: '#f8fafc',
+  },
+  participantName: {
+    fontWeight: 600,
+  },
+  participantRole: {
+    color: '#cbd5f5',
+  },
+  enterButton: {
+    marginTop: 4,
+    padding: '12px 16px',
+    borderRadius: 16,
+    background: '#2563eb',
+    color: '#fff',
+    fontWeight: 700,
+    border: 'none',
+    cursor: 'pointer',
+  },
+  bottomNav: {
+    position: 'fixed',
+    bottom: 24,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    gap: 12,
+    padding: '10px 18px',
+    borderRadius: 999,
+    background: 'rgba(2, 6, 23, 0.7)',
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    zIndex: 2,
+  },
+  navButton: {
+    background: 'transparent',
+    border: 'none',
+    color: '#cbd5f5',
+    padding: '6px 14px',
+    borderRadius: 999,
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  navButtonActive: {
+    background: 'rgba(59, 130, 246, 0.75)',
+    color: '#f8fafc',
+    boxShadow: '0 6px 24px rgba(59, 130, 246, 0.35)',
   },
 }

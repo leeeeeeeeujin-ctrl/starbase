@@ -122,7 +122,6 @@ export default function CharacterDetailPage() {
         dashboard={dashboard}
         heroName={dashboard.heroName}
         onBack={() => router.push('/roster')}
-        onGoLobby={() => router.push('/lobby')}
         onStartBattle={handleStartBattle}
       />
       <StartBattleOverlay
