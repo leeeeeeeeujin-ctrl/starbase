@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { resolveViewerProfile } from '../../lib/heroes/resolveViewerProfile'
 import { supabase } from '../../lib/supabase'
-import { EMPTY_REQUESTS, fetchSocialSnapshot } from '../../lib/social/friends'
+import { EMPTY_REQUESTS, loadFriendSnapshot } from '../../lib/social/friends'
 
 export function useHeroSocialBootstrap(heroId) {
   const [viewer, setViewer] = useState(null)
@@ -21,7 +21,7 @@ export function useHeroSocialBootstrap(heroId) {
     setLoading(true)
     setError('')
     try {
-      const snapshot = await fetchSocialSnapshot(viewer.user_id)
+      const snapshot = await loadFriendSnapshot(viewer.user_id)
       setFriends(snapshot.friends)
       setFriendRequests(snapshot.requests)
       setLoading(false)
@@ -65,7 +65,7 @@ export function useHeroSocialBootstrap(heroId) {
         setViewer(viewerProfile)
 
         try {
-          const snapshot = await fetchSocialSnapshot(user.id)
+          const snapshot = await loadFriendSnapshot(user.id)
           if (!alive) return
 
           setFriends(snapshot.friends)

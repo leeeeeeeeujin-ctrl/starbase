@@ -2,8 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import {
+  fetchRecentMessages,
+  getCurrentUser,
+  insertMessage,
+  subscribeToMessages,
+} from '../../../lib/chat/messages'
 import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
-import { supabase } from '../../../lib/supabase'
 
 const BLOCKED_STORAGE_KEY = 'starbase_blocked_heroes'
 
@@ -222,41 +227,38 @@ export function useSharedChatDock({
     }
 
     const bootstrap = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!alive || !user) return
+      try {
+        const user = await getCurrentUser()
+        if (!alive || !user) return
 
-      const profile = await resolveViewerProfile(user, heroId)
-      if (!alive) return
-      setMe(profile)
+        const profile = await resolveViewerProfile(user, heroId)
+        if (!alive) return
+        setMe(profile)
 
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .order('created_at', { ascending: true })
-        .limit(200)
-      if (!alive) return
-      setMessages(data || [])
-      scrollToBottom()
+        const data = await fetchRecentMessages({ limit: 200 })
+        if (!alive) return
+        setMessages(data)
+        scrollToBottom()
+      } catch (error) {
+        console.error('채팅 데이터를 불러오지 못했습니다.', error)
+      }
     }
 
     bootstrap()
 
-    const channel = supabase
-      .channel('messages-shared-dock')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+    const unsubscribe = subscribeToMessages({
+      channelName: 'messages-shared-dock',
+      onInsert: (message) => {
         setMessages((prev) => {
-          const next = [...prev, payload.new]
+          const next = [...prev, message]
           return next.length > 200 ? next.slice(next.length - 200) : next
         })
 
         const viewerId = viewerHeroRef.current
-        if (payload.new?.scope === 'whisper' && viewerId) {
-          const isParticipant =
-            payload.new.hero_id === viewerId || payload.new.target_hero_id === viewerId
-          const isSelf = payload.new.hero_id === viewerId
-          const threadId = payload.new.hero_id === viewerId ? payload.new.target_hero_id : payload.new.hero_id
+        if (message?.scope === 'whisper' && viewerId) {
+          const isParticipant = message.hero_id === viewerId || message.target_hero_id === viewerId
+          const isSelf = message.hero_id === viewerId
+          const threadId = message.hero_id === viewerId ? message.target_hero_id : message.hero_id
           if (isParticipant && !isSelf && threadId && threadId !== activeThreadRef.current) {
             setUnreadThreads((prev) => ({
               ...prev,
@@ -266,12 +268,12 @@ export function useSharedChatDock({
         }
 
         scrollToBottom()
-      })
-      .subscribe()
+      },
+    })
 
     return () => {
       alive = false
-      supabase.removeChannel(channel)
+      unsubscribe()
     }
   }, [heroId])
 
@@ -310,42 +312,44 @@ export function useSharedChatDock({
     const text = input.trim()
     if (!text) return
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      alert('로그인 필요')
-      return
-    }
-
-    const activeHeroId = viewerHeroRef.current
-
-    if (scope === 'whisper') {
-      if (!activeHeroId) {
-        alert('귓속말을 보내려면 사용할 캐릭터를 선택하세요.')
+    try {
+      const user = await getCurrentUser()
+      if (!user) {
+        alert('로그인 필요')
         return
       }
-      if (!whisperTarget) {
-        alert('귓속말 대상 캐릭터를 선택하세요.')
-        return
+
+      const activeHeroId = viewerHeroRef.current
+
+      if (scope === 'whisper') {
+        if (!activeHeroId) {
+          alert('귓속말을 보내려면 사용할 캐릭터를 선택하세요.')
+          return
+        }
+        if (!whisperTarget) {
+          alert('귓속말 대상 캐릭터를 선택하세요.')
+          return
+        }
       }
+
+      setInput('')
+
+      const payload = {
+        user_id: user.id,
+        owner_id: user.id,
+        username: me.name,
+        avatar_url: me.avatar_url,
+        hero_id: activeHeroId,
+        scope,
+        target_hero_id: scope === 'whisper' ? whisperTarget : null,
+        text,
+      }
+
+      await insertMessage(payload)
+    } catch (error) {
+      console.error('메시지를 보내지 못했습니다.', error)
+      alert(error?.message || '메시지를 보내지 못했습니다.')
     }
-
-    setInput('')
-
-    const payload = {
-      user_id: user.id,
-      owner_id: user.id,
-      username: me.name,
-      avatar_url: me.avatar_url,
-      hero_id: activeHeroId,
-      scope,
-      target_hero_id: scope === 'whisper' ? whisperTarget : null,
-      text,
-    }
-
-    const { error } = await supabase.from('messages').insert(payload)
-    if (error) alert(error.message)
   }
 
   const totalUnread = useMemo(() => {
