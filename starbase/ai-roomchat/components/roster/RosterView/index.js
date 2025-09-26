@@ -20,9 +20,6 @@ export default function RosterView({
   onConfirmDelete,
   onLogoutComplete,
   onResetError,
-  onOpenChat,
-  onOpenFriends,
-  chatUnreadCount,
 }) {
   return (
     <div style={styles.page}>
@@ -80,16 +77,6 @@ export default function RosterView({
         onCancel={onCancelDelete}
         onConfirm={onConfirmDelete}
       />
-
-      <div style={styles.overlayButtons}>
-        <button type="button" onClick={onOpenChat} style={styles.overlayButton}>
-          💬
-          {chatUnreadCount ? <span style={styles.overlayBadge}>{chatUnreadCount}</span> : null}
-        </button>
-        <button type="button" onClick={onOpenFriends} style={styles.overlayButton}>
-          👥
-        </button>
-      </div>
     </div>
   )
 }
