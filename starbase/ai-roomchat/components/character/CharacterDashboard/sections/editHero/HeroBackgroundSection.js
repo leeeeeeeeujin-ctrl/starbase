@@ -34,14 +34,7 @@ export default function HeroBackgroundSection({
         ref={inputRef}
         type="file"
         accept="image/*"
-        onChange={(event) => {
-          const node = event.target
-          const file = node.files?.[0]
-          if (file) {
-            onUpload(file)
-            node.value = ''
-          }
-        }}
+        onChange={(event) => onUpload(event.target.files?.[0] || null)}
         style={{ display: 'none' }}
       />
       {error ? <div style={modalStyles.errorText}>{error}</div> : null}

@@ -21,7 +21,7 @@ export default function HeroAbilitiesSection({
               ) : null}
             </div>
             <textarea
-              value={ability.value || ''}
+              value={ability.value}
               onChange={(event) => onChangeEdit(ability.key, event.target.value)}
               rows={4}
               style={{ ...modalStyles.textInput, resize: 'vertical', minHeight: 140 }}

@@ -76,12 +76,12 @@ export default function RankingSection({ scoreboardRows, heroId, heroLookup, sel
                     : styles.row.border,
                 }}
               >
-                <div data-numeric style={styles.badge}>#{index + 1}</div>
+                <div style={styles.badge}>#{index + 1}</div>
                 <div style={styles.info}>
                   <strong>{displayName}</strong>
                   <span style={styles.role}>{row.role || '—'}</span>
                 </div>
-                <div data-numeric style={styles.score}>{row.rating ?? row.score ?? '—'}</div>
+                <div style={styles.score}>{row.rating ?? row.score ?? '—'}</div>
               </div>
             )
           })}

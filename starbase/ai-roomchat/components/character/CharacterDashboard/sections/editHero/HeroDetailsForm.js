@@ -7,7 +7,7 @@ export default function HeroDetailsForm({ name, description, onChange }) {
         <label style={modalStyles.label}>이름</label>
         <input
           type="text"
-          value={name ?? ''}
+          value={name}
           onChange={(event) => onChange('name', event.target.value)}
           style={modalStyles.textInput}
           placeholder="영웅 이름을 입력하세요"
@@ -16,7 +16,7 @@ export default function HeroDetailsForm({ name, description, onChange }) {
       <div style={modalStyles.inputGroup}>
         <label style={modalStyles.label}>소개</label>
         <textarea
-          value={description ?? ''}
+          value={description}
           onChange={(event) => onChange('description', event.target.value)}
           rows={4}
           style={{ ...modalStyles.textInput, resize: 'vertical', minHeight: 160 }}
