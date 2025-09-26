@@ -115,7 +115,7 @@ export function HighlightCard({ hero, stats, onInvite, onWhisper, onProfile, gam
             }}
           >
             <span style={{ fontSize: 12, opacity: 0.75 }}>최근 Elo</span>
-            <strong style={{ fontSize: 22 }}>{stats?.rating ?? '—'}</strong>
+            <strong data-numeric style={{ fontSize: 22 }}>{stats?.rating ?? '—'}</strong>
           </li>
           <li
             style={{
@@ -127,7 +127,7 @@ export function HighlightCard({ hero, stats, onInvite, onWhisper, onProfile, gam
             }}
           >
             <span style={{ fontSize: 12, opacity: 0.75 }}>승률</span>
-            <strong style={{ fontSize: 22 }}>{stats?.winRate ?? '—'}%</strong>
+            <strong data-numeric style={{ fontSize: 22 }}>{stats?.winRate ?? '—'}%</strong>
           </li>
           <li
             style={{
@@ -139,7 +139,7 @@ export function HighlightCard({ hero, stats, onInvite, onWhisper, onProfile, gam
             }}
           >
             <span style={{ fontSize: 12, opacity: 0.75 }}>전투수</span>
-            <strong style={{ fontSize: 22 }}>{stats?.total ?? 0}</strong>
+            <strong data-numeric style={{ fontSize: 22 }}>{stats?.total ?? 0}</strong>
           </li>
         </ul>
       </div>

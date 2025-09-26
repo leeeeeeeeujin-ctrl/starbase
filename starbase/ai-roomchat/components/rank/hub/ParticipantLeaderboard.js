@@ -33,21 +33,21 @@ export default function ParticipantLeaderboard({ participants, onRefresh }) {
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={styles.th}>순위</th>
+              <th data-numeric style={styles.th}>순위</th>
               <th style={styles.th}>Owner</th>
-              <th style={styles.th}>Rating</th>
-              <th style={styles.th}>Battles</th>
-              <th style={styles.th}>Likes</th>
+              <th data-numeric style={styles.th}>Rating</th>
+              <th data-numeric style={styles.th}>Battles</th>
+              <th data-numeric style={styles.th}>Likes</th>
             </tr>
           </thead>
           <tbody>
             {participants.map((participant, index) => (
               <tr key={participant.owner_id}>
-                <td style={styles.td}>{index + 1}</td>
+                <td data-numeric style={styles.td}>{index + 1}</td>
                 <td style={styles.td}>{participant.owner_id?.slice(0, 8)}…</td>
-                <td style={styles.td}>{participant.rating}</td>
-                <td style={styles.td}>{participant.battles}</td>
-                <td style={styles.td}>{participant.likes}</td>
+                <td data-numeric style={styles.td}>{participant.rating}</td>
+                <td data-numeric style={styles.td}>{participant.battles}</td>
+                <td data-numeric style={styles.td}>{participant.likes}</td>
               </tr>
             ))}
           </tbody>

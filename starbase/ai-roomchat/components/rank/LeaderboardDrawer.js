@@ -55,7 +55,7 @@ export default function LeaderboardDrawer({ gameId, onClose }) {
         <ul style={{ listStyle:'none', margin:0, padding:0, display:'grid', gap:8 }}>
           {rows.map((p, idx) => (
             <li key={p.id} style={{ border:'1px solid #eef2f7', borderRadius:12, padding:10, background:'#fafafa', display:'grid', gridTemplateColumns:'32px 44px 1fr auto', gap:8, alignItems:'center' }}>
-              <div style={{ textAlign:'center', fontWeight:700 }}>{idx+1}</div>
+              <div data-numeric style={{ textAlign:'center', fontWeight:700 }}>{idx+1}</div>
               <div style={{ width:44, height:44, borderRadius:10, overflow:'hidden', background:'#e5e7eb' }}>
                 {p.hero?.image_url && <img src={p.hero.image_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />}
               </div>
@@ -65,7 +65,7 @@ export default function LeaderboardDrawer({ gameId, onClose }) {
                 </div>
                 <div style={{ fontSize:12, color:'#64748b' }}>{p.role}</div>
               </div>
-              <div style={{ fontWeight:700 }}>점수 {p.score}</div>
+              <div data-numeric style={{ fontWeight:700 }}>점수 {p.score}</div>
             </li>
           ))}
           {rows.length===0 && <li style={{ color:'#64748b' }}>참여자가 없습니다.</li>}

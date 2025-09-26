@@ -10,6 +10,7 @@ const FALLBACK_TABLES = {
   prompt_sets: ['prompt_sets', 'maker_prompt_sets'],
   prompt_slots: ['prompt_slots', 'maker_prompt_slots'],
   prompt_bridges: ['prompt_bridges', 'maker_prompt_bridges'],
+  ui_configs: ['ui_configs', 'app_configs', 'site_configs', 'global_ui_configs', 'public_configs'],
 }
 
 const resolvedTableCache = {}

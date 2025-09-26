@@ -14,7 +14,7 @@ export default function ParticipantCard({ p }) {
           <div style={{ fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
             {hero?.name || `#${p.hero_id}`}
           </div>
-          <div style={{ fontSize:12, color:'#64748b' }}>{p.role} · 점수 {p.score}</div>
+          <div data-numeric style={{ fontSize:12, color:'#64748b' }}>{p.role} · 점수 {p.score}</div>
         </div>
         <button onClick={()=>setOpen(o=>!o)} style={{ padding:'6px 10px' }}>{open ? '접기' : '보기'}</button>
       </div>

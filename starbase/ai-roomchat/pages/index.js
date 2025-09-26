@@ -72,6 +72,12 @@ export default function Home() {
       <section style={styles.content}>
         <h1 style={styles.title}>{titleText}</h1>
         {subtitleText ? <p style={styles.subtitle}>{subtitleText}</p> : null}
+        {theme.announcement ? (
+          <div style={styles.announcement}>
+            <strong style={{ display: 'block', fontSize: 14, marginBottom: 6 }}>공지</strong>
+            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{theme.announcement}</p>
+          </div>
+        ) : null}
         <div style={styles.actionRow}>
           <AuthButton />
         </div>
@@ -129,6 +135,15 @@ const styles = {
     marginTop: 12,
     display: 'flex',
     justifyContent: 'center',
+  },
+  announcement: {
+    background: 'rgba(15, 23, 42, 0.65)',
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    borderRadius: 16,
+    padding: '14px 18px',
+    textAlign: 'left',
+    color: '#f8fafc',
+    boxShadow: '0 18px 36px rgba(15, 23, 42, 0.35)',
   },
 }
 

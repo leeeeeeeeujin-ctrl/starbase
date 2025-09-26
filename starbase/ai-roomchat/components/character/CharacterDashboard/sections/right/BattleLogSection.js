@@ -67,7 +67,7 @@ export default function BattleLogSection({
       <div style={styles.header}>
         <h2 style={styles.title}>베틀로그</h2>
         {battleDetails.length ? (
-          <span style={styles.subtitle}>{battleDetails.length}회 기록</span>
+          <span data-numeric style={styles.subtitle}>{battleDetails.length}회 기록</span>
         ) : null}
       </div>
       {battleLoading ? (
@@ -80,12 +80,12 @@ export default function BattleLogSection({
                 <strong>{new Date(battle.created_at || 0).toLocaleString()}</strong>
                 <span style={styles.result}>{(battle.result || '').toUpperCase()}</span>
               </div>
-              <div style={styles.score}>점수 변화: {battle.score_delta ?? 0}</div>
+              <div data-numeric style={styles.score}>점수 변화: {battle.score_delta ?? 0}</div>
               {battle.logs?.length ? (
                 <div style={styles.logs}>
                   {battle.logs.map((log) => (
                     <div key={`${log.battle_id}-${log.turn_no}`} style={styles.logRow}>
-                      <strong style={styles.turn}>턴 {log.turn_no}</strong>
+                      <strong data-numeric style={styles.turn}>턴 {log.turn_no}</strong>
                       <div>프롬프트: {log.prompt}</div>
                       <div>응답: {log.ai_response}</div>
                     </div>

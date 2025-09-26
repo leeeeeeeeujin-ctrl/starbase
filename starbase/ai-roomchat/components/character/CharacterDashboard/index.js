@@ -516,7 +516,7 @@ export default function CharacterDashboard({
                     }}
                   >
                     <span style={styles.overviewMiniLabel}>{item.label}</span>
-                    <span style={styles.overviewMiniSummary}>{summaryText}</span>
+                    <span data-numeric style={styles.overviewMiniSummary}>{summaryText}</span>
                   </button>
                 )
               })}
@@ -739,10 +739,10 @@ function RankingSection() {
             <table style={styles.rankingTable}>
               <thead>
                 <tr>
-                  <th>순위</th>
+                  <th data-numeric>순위</th>
                   <th>영웅</th>
-                  <th>점수</th>
-                  <th>전투 수</th>
+                  <th data-numeric>점수</th>
+                  <th data-numeric>전투 수</th>
                 </tr>
               </thead>
               <tbody>
@@ -755,10 +755,10 @@ function RankingSection() {
                       key={row.id || `${row.hero_id}-${row.owner_id || index}`}
                       style={isHero ? styles.highlightRow : null}
                     >
-                      <td>{index + 1}</td>
+                      <td data-numeric>{index + 1}</td>
                       <td>{name}</td>
-                      <td>{row.rating ?? row.score ?? '—'}</td>
-                      <td>{row.battles ?? '—'}</td>
+                      <td data-numeric>{row.rating ?? row.score ?? '—'}</td>
+                      <td data-numeric>{row.battles ?? '—'}</td>
                     </tr>
                   )
                 })}
@@ -801,14 +801,14 @@ function BattleLogSection() {
                     <strong>{new Date(battle.created_at || 0).toLocaleString()}</strong>
                     <span>{battle.result ? battle.result.toUpperCase() : '결과 미정'}</span>
                   </header>
-                  <p style={styles.bodyText}>점수 변화: {battle.score_delta ?? 0}</p>
+                  <p data-numeric style={styles.bodyText}>점수 변화: {battle.score_delta ?? 0}</p>
                   {battle.logs?.length ? (
                     <details style={styles.logDetails}>
                       <summary>턴 로그 보기</summary>
                       <ul style={styles.logList}>
                         {battle.logs.map((log) => (
                           <li key={`${battle.id}-${log.turn_no}`}>
-                            <strong>턴 {log.turn_no}</strong>
+                            <strong data-numeric>턴 {log.turn_no}</strong>
                             <div>프롬프트: {log.prompt}</div>
                             <div>응답: {log.ai_response}</div>
                           </li>

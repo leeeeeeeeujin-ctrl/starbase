@@ -46,20 +46,22 @@ export function LeaderRow({ entry, rank, onWhisper, onProfile }) {
               justifyContent: 'center',
             }}
           >
-            #{rank}
+            <span data-numeric>#{rank}</span>
           </div>
         )}
       </button>
       <div style={{ display: 'grid', gap: 4 }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>
-          #{rank} {entry.hero?.name || '미정'}
+          <span data-numeric style={{ marginRight: 4 }}>#{rank}</span>
+          {entry.hero?.name || '미정'}
         </span>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>
-          {entry.game?.name || '등록된 게임 없음'} · {entry.battles ?? 0}회 참여
+          {entry.game?.name || '등록된 게임 없음'} ·{' '}
+          <span data-numeric>{entry.battles ?? 0}</span>회 참여
         </span>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <strong style={{ fontSize: 18 }}>{Math.round(entry.rating ?? entry.score ?? 0)}</strong>
+        <strong data-numeric style={{ fontSize: 18 }}>{Math.round(entry.rating ?? entry.score ?? 0)}</strong>
         {onWhisper ? (
           <button
             type="button"
