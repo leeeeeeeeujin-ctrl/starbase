@@ -38,11 +38,9 @@ export default function CharacterDashboard({
   const pageRef = useRef(null)
   const swipeViewportRef = useRef(null)
   const scrollFrame = useRef(0)
-  const scrollIdleTimeoutRef = useRef(0)
   const activePanelRef = useRef(1)
   const programmaticScrollRef = useRef(false)
   const programmaticReleaseRef = useRef(0)
-  const swipeGestureRef = useRef({ startX: 0, lastX: 0, startIndex: 1, active: false })
   const pinchTrackerRef = useRef({ active: false, initialDistance: 0 })
 
   const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
@@ -219,23 +217,6 @@ export default function CharacterDashboard({
         }
       })
 
-      if (programmaticScrollRef.current) {
-        return
-      }
-
-      if (typeof window !== 'undefined') {
-        window.clearTimeout(scrollIdleTimeoutRef.current)
-        scrollIdleTimeoutRef.current = window.setTimeout(() => {
-          const width = node.clientWidth || 1
-          const ratio = node.scrollLeft / width
-          const targetIndex = clampPanelIndex(Math.round(ratio))
-          const targetLeft = targetIndex * width
-
-          if (Math.abs(node.scrollLeft - targetLeft) > 1) {
-            scrollToPanel(targetIndex)
-          }
-        }, 120)
-      }
     }
 
     node.addEventListener('scroll', handleScroll, { passive: true })
@@ -243,62 +224,6 @@ export default function CharacterDashboard({
     return () => {
       cancelAnimationFrame(scrollFrame.current)
       node.removeEventListener('scroll', handleScroll)
-      if (typeof window !== 'undefined') {
-        window.clearTimeout(scrollIdleTimeoutRef.current)
-      }
-    }
-  }, [scrollToPanel])
-
-  useEffect(() => {
-    const node = swipeViewportRef.current
-    if (!node) return undefined
-
-    const handleTouchStart = (event) => {
-      if (event.touches.length === 1) {
-        const point = event.touches[0]
-        swipeGestureRef.current = {
-          startX: point.clientX,
-          lastX: point.clientX,
-          startIndex: activePanelRef.current,
-          active: true,
-        }
-      } else {
-        swipeGestureRef.current.active = false
-      }
-    }
-
-    const handleTouchMove = (event) => {
-      if (!swipeGestureRef.current.active || event.touches.length !== 1) return
-      swipeGestureRef.current.lastX = event.touches[0].clientX
-    }
-
-    const handleTouchEnd = () => {
-      if (!swipeGestureRef.current.active) return
-      const width = node.clientWidth || 1
-      const { startX, lastX, startIndex } = swipeGestureRef.current
-      const delta = lastX - startX
-      const threshold = width * 0.2
-      let targetIndex = startIndex
-      if (Math.abs(delta) > threshold) {
-        targetIndex = clampPanelIndex(startIndex + (delta < 0 ? 1 : -1))
-      } else {
-        targetIndex = clampPanelIndex(Math.round(node.scrollLeft / width))
-      }
-
-      swipeGestureRef.current.active = false
-      scrollToPanel(targetIndex)
-    }
-
-    node.addEventListener('touchstart', handleTouchStart, { passive: true })
-    node.addEventListener('touchmove', handleTouchMove, { passive: true })
-    node.addEventListener('touchend', handleTouchEnd)
-    node.addEventListener('touchcancel', handleTouchEnd)
-
-    return () => {
-      node.removeEventListener('touchstart', handleTouchStart)
-      node.removeEventListener('touchmove', handleTouchMove)
-      node.removeEventListener('touchend', handleTouchEnd)
-      node.removeEventListener('touchcancel', handleTouchEnd)
     }
   }, [scrollToPanel])
 
@@ -309,14 +234,13 @@ export default function CharacterDashboard({
   }, [panelIndex, overviewMode, gameSearchEnabled])
 
   useEffect(() => {
-    scrollToPanel(panelIndex, 'auto')
-  }, [panelIndex, scrollToPanel])
+    scrollToPanel(1, 'auto')
+  }, [scrollToPanel])
 
   useEffect(() => {
     return () => {
       if (typeof window !== 'undefined') {
         window.clearTimeout(programmaticReleaseRef.current)
-        window.clearTimeout(scrollIdleTimeoutRef.current)
       }
     }
   }, [])
