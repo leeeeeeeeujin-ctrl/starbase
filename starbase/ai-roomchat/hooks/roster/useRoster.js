@@ -37,84 +37,18 @@ export function useRoster({ onUnauthorized } = {}) {
     displayName: DEFAULT_PROFILE_NAME,
     avatarUrl: null,
   })
-  const [profileResolved, setProfileResolved] = useState(false)
-  const profileResolvedRef = useRef(profileResolved)
-  const reloadTimerRef = useRef(null)
-  const reloadAttemptedRef = useRef(
-    typeof window !== 'undefined' && window.sessionStorage.getItem('rosterReloadAttempted') === '1'
-  )
 
   useEffect(() => {
     return () => {
       isMounted.current = false
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current)
-      }
     }
   }, [])
-
-  useEffect(() => {
-    profileResolvedRef.current = profileResolved
-  }, [profileResolved])
-
-  useEffect(() => {
-    if (profileResolved) {
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.removeItem('rosterReloadAttempted')
-      }
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current)
-        reloadTimerRef.current = null
-      }
-      return
-    }
-
-    if (!loading) {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current)
-        reloadTimerRef.current = null
-      }
-      return
-    }
-
-    if (reloadAttemptedRef.current) {
-      return
-    }
-
-    if (reloadTimerRef.current) {
-      clearTimeout(reloadTimerRef.current)
-    }
-
-    reloadTimerRef.current = setTimeout(() => {
-      if (reloadAttemptedRef.current) {
-        return
-      }
-
-      if (!profileResolvedRef.current && typeof window !== 'undefined') {
-        reloadAttemptedRef.current = true
-        try {
-          window.sessionStorage.setItem('rosterReloadAttempted', '1')
-        } catch (storageError) {
-          console.error('Failed to record roster reload attempt:', storageError)
-        }
-        window.location.reload()
-      }
-    }, 1000)
-
-    return () => {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current)
-        reloadTimerRef.current = null
-      }
-    }
-  }, [loading, profileResolved])
 
   const loadRoster = useCallback(async () => {
     if (!isMounted.current) return
 
     setLoading(true)
     setError('')
-    setProfileResolved(false)
 
     try {
       const href = typeof window !== 'undefined' ? window.location.href : ''
@@ -138,7 +72,6 @@ export function useRoster({ onUnauthorized } = {}) {
           if (!isMounted.current) return
           setError('로그인 세션을 복구하지 못했습니다. 다시 시도해 주세요.')
           setLoading(false)
-          setProfileResolved(true)
           return
         }
 
@@ -155,7 +88,6 @@ export function useRoster({ onUnauthorized } = {}) {
       if (sessionError) {
         setError(sessionError.message)
         setLoading(false)
-        setProfileResolved(true)
         return
       }
 
@@ -172,7 +104,6 @@ export function useRoster({ onUnauthorized } = {}) {
         if (authError) {
           setError(authError.message)
           setLoading(false)
-          setProfileResolved(true)
           return
         }
 
@@ -181,7 +112,6 @@ export function useRoster({ onUnauthorized } = {}) {
 
       if (!user) {
         setLoading(false)
-        setProfileResolved(true)
         if (typeof onUnauthorized === 'function') {
           onUnauthorized()
         } else {
@@ -191,7 +121,6 @@ export function useRoster({ onUnauthorized } = {}) {
       }
 
       setProfile(deriveProfile(user))
-      setProfileResolved(true)
 
       if (typeof window !== 'undefined') {
         try {
@@ -232,7 +161,6 @@ export function useRoster({ onUnauthorized } = {}) {
       if (!isMounted.current) return
       setError('로스터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
       setLoading(false)
-      setProfileResolved(true)
     }
   }, [onUnauthorized, router])
 
