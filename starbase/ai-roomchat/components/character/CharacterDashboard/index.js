@@ -7,6 +7,7 @@ import { SORT_OPTIONS } from '@/components/lobby/constants'
 import useGameBrowser from '@/components/lobby/hooks/useGameBrowser'
 import ChatOverlay from '@/components/social/ChatOverlay'
 import FriendOverlay from '@/components/social/FriendOverlay'
+import { SharedChatDockProvider } from '@/components/common/SharedChatDock'
 import { useHeroSocial } from '@/hooks/social/useHeroSocial'
 
 import EditHeroModal from './sections/EditHeroModal'
@@ -398,8 +399,14 @@ export default function CharacterDashboard({
   }, [])
 
   return (
-    <CharacterDashboardProvider value={contextValue}>
-      <div style={styles.page}>
+    <SharedChatDockProvider
+      heroId={profile.hero?.id || explicitHeroId || null}
+      viewerHero={viewerHeroHint}
+      extraWhisperTargets={extraWhisperTargets}
+      blockedHeroes={blockedHeroes}
+    >
+      <CharacterDashboardProvider value={contextValue}>
+        <div style={styles.page}>
         <div style={backgroundStyle} aria-hidden />
         <div style={styles.backgroundTint} aria-hidden />
 
@@ -505,37 +512,38 @@ export default function CharacterDashboard({
       </div>
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
       <ChatOverlay
-        ref={chatOverlayRef}
-        open={chatOpen}
-        onClose={handleCloseChat}
-        heroId={profile.hero?.id}
-        viewerHero={viewerHeroHint}
-        extraWhisperTargets={extraWhisperTargets}
-        blockedHeroes={blockedHeroes}
-        onUnreadChange={setChatUnread}
-        onBlockedHeroesChange={updateBlockedHeroes}
-        onRequestAddFriend={handleAddFriendFromChat}
-        onRequestRemoveFriend={handleRemoveFriendFromChat}
-        isFriend={isFriendHero}
-      />
-      <FriendOverlay
-        open={friendsOpen}
-        onClose={() => setFriendsOpen(false)}
-        viewer={social.viewer}
-        friends={social.friends}
-        friendRequests={social.friendRequests}
-        loading={social.loading}
-        error={social.error}
-        onAddFriend={handleFriendOverlayAdd}
-        onRemoveFriend={social.removeFriend}
-        onAcceptRequest={social.acceptFriendRequest}
-        onDeclineRequest={social.declineFriendRequest}
-        onCancelRequest={social.cancelFriendRequest}
-        onOpenWhisper={handleOpenWhisper}
-        blockedHeroes={blockedHeroes}
-        onToggleBlockedHero={handleToggleBlockedHero}
-      />
-    </CharacterDashboardProvider>
+          ref={chatOverlayRef}
+          open={chatOpen}
+          onClose={handleCloseChat}
+          heroId={profile.hero?.id}
+          viewerHero={viewerHeroHint}
+          extraWhisperTargets={extraWhisperTargets}
+          blockedHeroes={blockedHeroes}
+          onUnreadChange={setChatUnread}
+          onBlockedHeroesChange={updateBlockedHeroes}
+          onRequestAddFriend={handleAddFriendFromChat}
+          onRequestRemoveFriend={handleRemoveFriendFromChat}
+          isFriend={isFriendHero}
+        />
+        <FriendOverlay
+          open={friendsOpen}
+          onClose={() => setFriendsOpen(false)}
+          viewer={social.viewer}
+          friends={social.friends}
+          friendRequests={social.friendRequests}
+          loading={social.loading}
+          error={social.error}
+          onAddFriend={handleFriendOverlayAdd}
+          onRemoveFriend={social.removeFriend}
+          onAcceptRequest={social.acceptFriendRequest}
+          onDeclineRequest={social.declineFriendRequest}
+          onCancelRequest={social.cancelFriendRequest}
+          onOpenWhisper={handleOpenWhisper}
+          blockedHeroes={blockedHeroes}
+          onToggleBlockedHero={handleToggleBlockedHero}
+        />
+      </CharacterDashboardProvider>
+    </SharedChatDockProvider>
   )
 }
 
