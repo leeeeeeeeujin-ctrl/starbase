@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { supabase } from '../../lib/supabase'
+import { withTable } from '../../lib/supabaseTables'
 
 function revokeUrl(url) {
   if (url) {
@@ -194,20 +195,22 @@ export function useHeroCreator({ onSaved } = {}) {
         bgmMime = bgmBlob.type || null
       }
 
-      const { error: insertError } = await supabase.from('heroes').insert({
-        owner_id: user.id,
-        name,
-        description,
-        ability1,
-        ability2,
-        ability3,
-        ability4,
-        image_url: imageUrl,
-        background_url: backgroundUrl,
-        bgm_url: bgmUrl,
-        bgm_duration_seconds: bgmDurationSeconds,
-        bgm_mime: bgmMime,
-      })
+      const { error: insertError } = await withTable(supabase, 'heroes', (table) =>
+        supabase.from(table).insert({
+          owner_id: user.id,
+          name,
+          description,
+          ability1,
+          ability2,
+          ability3,
+          ability4,
+          image_url: imageUrl,
+          background_url: backgroundUrl,
+          bgm_url: bgmUrl,
+          bgm_duration_seconds: bgmDurationSeconds,
+          bgm_mime: bgmMime,
+        })
+      )
       if (insertError) throw insertError
 
       if (onSaved) {

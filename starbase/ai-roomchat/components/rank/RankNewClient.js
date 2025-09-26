@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
+import { withTable } from '../../lib/supabaseTables'
 import PromptSetPicker from '../../components/rank/PromptSetPicker'
 import SlotMatrix from '../../components/rank/SlotMatrix'
 import RolesEditor from '../../components/rank/RolesEditor'
@@ -31,11 +32,16 @@ async function registerGame(payload) {
     rules_prefix: payload?.rules_prefix ?? null,
   }
 
-  const { data: game, error: gameError } = await supabase
-    .from('rank_games')
-    .insert(gameInsert)
-    .select()
-    .single()
+  const { data: game, error: gameError } = await withTable(
+    supabase,
+    'rank_games',
+    (table) =>
+      supabase
+        .from(table)
+        .insert(gameInsert)
+        .select()
+        .single()
+  )
 
   if (gameError || !game) {
     return { ok: false, error: gameError?.message || '게임 등록에 실패했습니다.' }
@@ -58,7 +64,9 @@ async function registerGame(payload) {
       }
     })
 
-    const { error: roleError } = await supabase.from('rank_game_roles').insert(rows)
+    const { error: roleError } = await withTable(supabase, 'rank_game_roles', (table) =>
+      supabase.from(table).insert(rows)
+    )
     if (roleError) {
       return { ok: false, error: roleError.message || '역할을 저장하지 못했습니다.' }
     }
@@ -150,7 +158,13 @@ export default function RankNewClient() {
     const payload = activeSlots.map(s => ({
       game_id: gameId, slot_index: s.slot_index, role: s.role, active: true,
     }))
-    await supabase.from('rank_game_slots').upsert(payload, { onConflict: 'game_id,slot_index' })
+    const { error: slotError } = await withTable(supabase, 'rank_game_slots', (table) =>
+      supabase.from(table).upsert(payload, { onConflict: 'game_id,slot_index' })
+    )
+
+    if (slotError) {
+      return alert('슬롯 저장 실패: ' + (slotError.message || slotError))
+    }
 
     alert('등록 완료')
     router.replace(`/rank/${gameId}`)

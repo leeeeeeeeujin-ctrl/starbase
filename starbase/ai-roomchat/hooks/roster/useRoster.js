@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import { supabase } from '../../lib/supabase'
+import { withTable } from '../../lib/supabaseTables'
 
 const DEFAULT_PROFILE_NAME = '사용자'
 
@@ -124,11 +125,16 @@ export function useRoster({ onUnauthorized } = {}) {
         }
       }
 
-      const { data, error: heroesError } = await supabase
-        .from('heroes')
-        .select('id,name,image_url,created_at,owner_id')
-        .eq('owner_id', user.id)
-        .order('created_at', { ascending: false })
+      const { data, error: heroesError } = await withTable(
+        supabase,
+        'heroes',
+        (table) =>
+          supabase
+            .from(table)
+            .select('id,name,image_url,created_at,owner_id')
+            .eq('owner_id', user.id)
+            .order('created_at', { ascending: false })
+      )
 
       if (!isMounted.current) return
 
@@ -163,7 +169,9 @@ export function useRoster({ onUnauthorized } = {}) {
   }, [loadRoster])
 
   const deleteHero = useCallback(async (heroId) => {
-    const { error: deleteError } = await supabase.from('heroes').delete().eq('id', heroId)
+    const { error: deleteError } = await withTable(supabase, 'heroes', (table) =>
+      supabase.from(table).delete().eq('id', heroId)
+    )
 
     if (deleteError) {
       throw deleteError
