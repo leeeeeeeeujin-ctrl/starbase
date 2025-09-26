@@ -312,7 +312,7 @@ export default function CharacterDashboard({
       {
         id: 'game',
         label: '게임 찾기',
-        render: () => <GamePanel browser={gameBrowser} />,
+        render: () => <GamePanel browser={gameBrowser} onEnterGame={onStartBattle} />,
       },
       {
         id: 'character',
@@ -322,10 +322,10 @@ export default function CharacterDashboard({
       {
         id: 'ranking',
         label: '랭킹',
-        render: () => <RankingPanel />, 
+        render: () => <RankingPanel />,
       },
     ],
-    [gameBrowser],
+    [gameBrowser, onStartBattle],
   )
 
   const handleNavClick = useCallback((targetId) => {

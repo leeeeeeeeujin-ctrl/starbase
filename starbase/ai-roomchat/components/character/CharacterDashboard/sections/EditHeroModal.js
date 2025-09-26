@@ -27,6 +27,9 @@ export default function EditHeroModal({ open, onClose }) {
     onAddAbility,
     onReverseAbilities,
     onClearAbility,
+    saving,
+    onSave,
+    onDelete,
   } = useCharacterDashboardContext()
 
   if (!open) return null
@@ -68,6 +71,27 @@ export default function EditHeroModal({ open, onClose }) {
             onClearAbility={onClearAbility}
           />
         </div>
+        <footer style={modalStyles.footerActions}>
+          <button type="button" onClick={onClose} style={modalStyles.footerCloseButton}>
+            닫기
+          </button>
+          <div style={modalStyles.footerButtonRow}>
+            <button type="button" onClick={onDelete} style={modalStyles.footerDangerButton}>
+              삭제
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              style={{
+                ...modalStyles.footerPrimaryButton,
+                ...(saving ? modalStyles.footerPrimaryButtonDisabled : null),
+              }}
+            >
+              {saving ? '저장 중…' : '저장하기'}
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
   )
