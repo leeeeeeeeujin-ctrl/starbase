@@ -16,6 +16,7 @@ const NAV_ITEMS = [
 ]
 
 const PANEL_COUNT = NAV_ITEMS.length
+const SWIPE_THRESHOLD = 0.28
 
 export default function CharacterDashboard({
   dashboard,
@@ -159,7 +160,21 @@ export default function CharacterDashboard({
       scrollEndTimeoutRef.current = setTimeout(() => {
         const width = node.clientWidth || 1
         const ratio = node.scrollLeft / width
-        const target = Math.round(ratio)
+        const current = panelIndexRef.current
+        const delta = ratio - current
+
+        let target = current
+        if (delta > SWIPE_THRESHOLD) {
+          target = Math.min(PANEL_COUNT - 1, Math.ceil(ratio))
+        } else if (delta < -SWIPE_THRESHOLD) {
+          target = Math.max(0, Math.floor(ratio))
+        }
+
+        if (target === current) {
+          const nearest = Math.round(ratio)
+          target = Math.max(0, Math.min(PANEL_COUNT - 1, nearest))
+        }
+
         snapToPanel(target)
       }, 120)
     }
