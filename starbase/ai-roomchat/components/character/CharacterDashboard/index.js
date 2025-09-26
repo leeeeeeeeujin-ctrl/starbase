@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/router'
 
 import { SORT_OPTIONS } from '@/components/lobby/constants'
@@ -248,6 +249,11 @@ export default function CharacterDashboard({
   }, [])
 
   useEffect(() => {
+    router.prefetch('/maker')
+    router.prefetch('/rank/new')
+  }, [router])
+
+  useEffect(() => {
     const node = pageRef.current
     if (!node) return undefined
 
@@ -355,15 +361,9 @@ export default function CharacterDashboard({
     setOverviewMode(false)
   }, [])
 
-  const handleOpenMaker = useCallback(() => {
-    router.push('/maker')
+  const handleOverlayNavigate = useCallback(() => {
     setOverviewMode(false)
-  }, [router])
-
-  const handleOpenRegister = useCallback(() => {
-    router.push('/rank/new')
-    setOverviewMode(false)
-  }, [router])
+  }, [])
 
   return (
     <CharacterDashboardProvider value={contextValue}>
@@ -427,12 +427,12 @@ export default function CharacterDashboard({
         <div style={styles.overviewOverlay} role="dialog" aria-modal="true">
           <div style={styles.overviewTopBar}>
             <div style={styles.overviewTopTabs}>
-              <button type="button" style={styles.overviewTopButton} onClick={handleOpenMaker}>
+              <Link href="/maker" style={styles.overviewTopButton} onClick={handleOverlayNavigate}>
                 게임 제작
-              </button>
-              <button type="button" style={styles.overviewTopButton} onClick={handleOpenRegister}>
+              </Link>
+              <Link href="/rank/new" style={styles.overviewTopButton} onClick={handleOverlayNavigate}>
                 게임 등록
-              </button>
+              </Link>
             </div>
             <button type="button" onClick={handleCloseOverview} style={styles.overviewCloseButton}>
               닫기
