@@ -44,6 +44,7 @@ export default function CharacterDashboard({
   const animatingRef = useRef(false)
   const animationTimeoutRef = useRef(null)
   const settleTimeoutRef = useRef(null)
+  const settleFrameRef = useRef(null)
   const panelIndexRef = useRef(panelIndex)
   const isProgrammaticRef = useRef(false)
   const pinchStateRef = useRef(null)
@@ -178,30 +179,34 @@ export default function CharacterDashboard({
 
     const handleScroll = () => {
       const width = node.clientWidth || 1
-      const ratio = node.scrollLeft / width
-      const target = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
-
-      if (!isProgrammaticRef.current && panelIndexRef.current !== target) {
-        setPanelIndex(target)
+      if (settleFrameRef.current) {
+        cancelAnimationFrame(settleFrameRef.current)
       }
+
+      settleFrameRef.current = requestAnimationFrame(() => {
+        const ratio = node.scrollLeft / width
+        const nearestIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
+
+        if (!isProgrammaticRef.current && panelIndexRef.current !== nearestIndex) {
+          setPanelIndex(nearestIndex)
+        }
+      })
 
       clearTimeout(settleTimeoutRef.current)
       settleTimeoutRef.current = setTimeout(() => {
-        if (animatingRef.current) return
+        if (animatingRef.current || isProgrammaticRef.current) return
 
-        const updatedRatio = node.scrollLeft / width
-        const updatedTarget = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(updatedRatio)))
-
-        if (!isProgrammaticRef.current) {
-          if (panelIndexRef.current !== updatedTarget) {
-            setPanelIndex(updatedTarget)
-          }
-
-          if (Math.abs(updatedRatio - updatedTarget) > 0.02) {
-            snapToPanel(updatedTarget)
-          }
+        const ratio = node.scrollLeft / width
+        const nearestIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
+        if (Math.abs(ratio - nearestIndex) > 0.08) {
+          snapToPanel(nearestIndex)
+          return
         }
-      }, 110)
+
+        if (panelIndexRef.current !== nearestIndex) {
+          setPanelIndex(nearestIndex)
+        }
+      }, 140)
     }
 
     node.addEventListener('scroll', handleScroll, { passive: true })
@@ -209,6 +214,10 @@ export default function CharacterDashboard({
     return () => {
       node.removeEventListener('scroll', handleScroll)
       clearTimeout(settleTimeoutRef.current)
+      if (settleFrameRef.current) {
+        cancelAnimationFrame(settleFrameRef.current)
+        settleFrameRef.current = null
+      }
     }
   }, [snapToPanel])
 
@@ -216,8 +225,23 @@ export default function CharacterDashboard({
     return () => {
       clearTimeout(animationTimeoutRef.current)
       clearTimeout(settleTimeoutRef.current)
+      if (settleFrameRef.current) {
+        cancelAnimationFrame(settleFrameRef.current)
+        settleFrameRef.current = null
+      }
     }
   }, [])
+
+  const previousPanelRef = useRef(panelIndex)
+  useEffect(() => {
+    const previous = previousPanelRef.current
+    if (previous !== panelIndex) {
+      previousPanelRef.current = panelIndex
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      })
+    }
+  }, [panelIndex])
 
   useEffect(() => {
     const node = swipeViewportRef.current
@@ -975,34 +999,37 @@ const styles = {
     fontFamily: 'inherit',
   },
   backgroundLayer: {
-    position: 'fixed',
+    position: 'absolute',
     top: 0,
     left: 0,
-    width: '100%',
-    height: '100%',
+    right: 0,
+    bottom: 0,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',
     transform: 'translateZ(0)',
     zIndex: 0,
+    pointerEvents: 'none',
   },
   backgroundFallback: {
-    position: 'fixed',
+    position: 'absolute',
     top: 0,
     left: 0,
-    width: '100%',
-    height: '100%',
+    right: 0,
+    bottom: 0,
     background: 'radial-gradient(circle at 20% 20%, #1e293b, #020617)',
     zIndex: 0,
+    pointerEvents: 'none',
   },
   backgroundTint: {
-    position: 'fixed',
+    position: 'absolute',
     top: 0,
     left: 0,
-    width: '100%',
-    height: '100%',
+    right: 0,
+    bottom: 0,
     background: 'linear-gradient(180deg, rgba(2, 6, 23, 0.4) 0%, rgba(2, 6, 23, 0.85) 100%)',
     zIndex: 0,
+    pointerEvents: 'none',
   },
   content: {
     position: 'relative',
