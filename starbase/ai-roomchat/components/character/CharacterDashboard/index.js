@@ -136,7 +136,8 @@ export default function CharacterDashboard({
       scrollFrame.current = requestAnimationFrame(() => {
         const width = node.clientWidth || 1
         const ratio = node.scrollLeft / width
-        setScrollProgress(ratio)
+        const clampedRatio = Math.max(0, Math.min(PANEL_COUNT - 1, ratio))
+        setScrollProgress(clampedRatio)
         const baseIndex = Math.floor(ratio)
         const offset = ratio - baseIndex
         const maxIndex = PANEL_COUNT - 1
@@ -296,11 +297,6 @@ export default function CharacterDashboard({
               </div>
             </div>
             <div style={styles.headerActions}>
-              {onBack ? (
-                <button type="button" onClick={onBack} style={styles.secondaryButton}>
-                  뒤로 가기
-                </button>
-              ) : null}
               {showHeroHeader ? (
                 <button type="button" onClick={() => setEditOpen(true)} style={styles.primaryButton}>
                   프로필 편집
@@ -338,6 +334,11 @@ export default function CharacterDashboard({
           ))}
         </nav>
       </div>
+      {onBack ? (
+        <button type="button" onClick={onBack} style={styles.backOverlayButton}>
+          ← 뒤로가기
+        </button>
+      ) : null}
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
       </CharacterDashboardProvider>
   )
@@ -907,7 +908,8 @@ const styles = {
   },
   headerTrack: {
     display: 'flex',
-    transition: 'transform 220ms ease',
+    transition: 'transform 140ms ease-out',
+    willChange: 'transform',
   },
   headerSlide: {
     boxSizing: 'border-box',
@@ -1352,6 +1354,23 @@ const styles = {
     background: 'rgba(2, 6, 23, 0.7)',
     border: '1px solid rgba(148, 163, 184, 0.35)',
     zIndex: 2,
+  },
+  backOverlayButton: {
+    position: 'fixed',
+    right: 24,
+    bottom: 24,
+    zIndex: 3,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    borderRadius: 999,
+    padding: '12px 20px',
+    background: 'rgba(2, 6, 23, 0.85)',
+    color: '#e2e8f0',
+    fontWeight: 600,
+    letterSpacing: '-0.01em',
+    backdropFilter: 'blur(10px)',
+    boxShadow: '0 18px 36px rgba(2, 6, 23, 0.45)',
+    cursor: 'pointer',
+    transition: 'transform 140ms ease, box-shadow 140ms ease, background 140ms ease',
   },
   navButton: {
     background: 'transparent',
