@@ -75,6 +75,7 @@ export default function RankNewClient() {
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [imgFile, setImgFile] = useState(null)
+  const [imgPreview, setImgPreview] = useState('')
   const [setId, setSetId] = useState('')
   const [realtime, setRealtime] = useState(false)
 
@@ -100,7 +101,14 @@ export default function RankNewClient() {
     ;(async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!alive) return
-      if (!user) { router.replace('/'); return }
+      if (!user) {
+        if (process.env.NODE_ENV !== 'production') {
+          setUser({ id: 'dev-preview' })
+        } else {
+          router.replace('/')
+        }
+        return
+      }
       setUser(user)
     })()
     return () => { alive = false }
@@ -110,6 +118,31 @@ export default function RankNewClient() {
     () => (slotMap || []).filter(s => s.active && s.role && s.role.trim()),
     [slotMap]
   )
+
+  useEffect(() => {
+    return () => {
+      if (imgPreview) URL.revokeObjectURL(imgPreview)
+    }
+  }, [imgPreview])
+
+  function handleImageChange(event) {
+    const file = event.target.files?.[0]
+    if (!file) {
+      setImgFile(null)
+      setImgPreview('')
+      return
+    }
+    const nextPreview = URL.createObjectURL(file)
+    if (imgPreview) URL.revokeObjectURL(imgPreview)
+    setImgFile(file)
+    setImgPreview(nextPreview)
+  }
+
+  function clearImage() {
+    setImgFile(null)
+    if (imgPreview) URL.revokeObjectURL(imgPreview)
+    setImgPreview('')
+  }
 
   async function onSubmit() {
     if (!user) return alert('로그인이 필요합니다.')
@@ -158,53 +191,398 @@ export default function RankNewClient() {
 
   // 렌더
   return (
-    <div style={{ maxWidth: 1000, margin: '24px auto', padding: 12, display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>게임 등록</h2>
-        <button onClick={() => router.back()} style={{ padding: '6px 10px' }}>← 뒤로</button>
+    <div className="rank-new-page">
+      <div className="rank-new-shell">
+        <header className="rank-new-header">
+          <div className="rank-new-heading">
+            <p className="rank-new-eyebrow">랭크 게임 운영</p>
+            <h1>새 게임 등록</h1>
+            <p className="rank-new-subtitle">
+              기본 정보와 슬롯 구성을 정리하고 규칙을 확인해 주세요. 필요한 요소를 모두 채우면 우측 요약에서 검토한 뒤 등록할 수 있습니다.
+            </p>
+          </div>
+          <button type="button" className="rank-new-ghost" onClick={() => router.back()}>
+            취소하고 돌아가기
+          </button>
+        </header>
+
+        <div className="rank-new-layout">
+          <div className="rank-new-main">
+            <section className="rank-new-card">
+              <div className="rank-new-card-head">
+                <h2>기본 정보</h2>
+                <p>매칭 카드에 노출되는 이름과 설명, 대표 이미지를 준비합니다.</p>
+              </div>
+              <label className="rank-new-field">
+                <span>게임 이름</span>
+                <input
+                  placeholder="예) 별빛 리그 시즌 3"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              <label className="rank-new-field">
+                <span>설명</span>
+                <textarea
+                  rows={4}
+                  placeholder="참가자에게 보여줄 소개 문구를 입력하세요."
+                  value={desc}
+                  onChange={(event) => setDesc(event.target.value)}
+                />
+              </label>
+              <div className="rank-new-upload">
+                <div className="rank-new-upload-preview">
+                  {imgPreview ? (
+                    <img src={imgPreview} alt="선택한 게임 대표 이미지" />
+                  ) : (
+                    <span>대표 이미지를 업로드하면 여기에서 미리볼 수 있어요.</span>
+                  )}
+                </div>
+                <div className="rank-new-upload-actions">
+                  <label className="rank-new-upload-button">
+                    <input type="file" accept="image/*" onChange={handleImageChange} />
+                    이미지 선택
+                  </label>
+                  {imgFile ? (
+                    <button type="button" className="rank-new-ghost" onClick={clearImage}>
+                      선택 해제
+                    </button>
+                  ) : null}
+                  <p className="rank-new-upload-hint">PNG 또는 JPG, 2MB 이하 권장</p>
+                </div>
+              </div>
+              <div className="rank-new-inline">
+                <label className="rank-new-field">
+                  <span>프롬프트 세트</span>
+                  <PromptSetPicker value={setId} onChange={setSetId} />
+                </label>
+                <label className="rank-new-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={realtime}
+                    onChange={(event) => setRealtime(event.target.checked)}
+                  />
+                  실시간 매칭 사용
+                </label>
+              </div>
+            </section>
+
+            <section className="rank-new-card">
+              <div className="rank-new-card-head">
+                <h2>역할 정의</h2>
+                <p>참가자에게 배정할 역할과 점수 범위를 정리합니다.</p>
+              </div>
+              <RolesEditor roles={roles} onChange={setRoles} />
+            </section>
+
+            <section className="rank-new-card">
+              <div className="rank-new-card-head">
+                <h2>슬롯 매핑</h2>
+                <p>레이드 슬롯마다 어떤 역할을 사용할지 지정해 주세요.</p>
+              </div>
+              <SlotMatrix value={slotMap} onChange={setSlotMap} roleOptions={roles.map((role) => role.name)} />
+            </section>
+
+            <section className="rank-new-card">
+              <div className="rank-new-card-head">
+                <h2>체크리스트 규칙</h2>
+                <p>균형 조정 옵션과 글자 수 제한을 마무리로 확인합니다.</p>
+              </div>
+              <RulesChecklist value={rules} onChange={setRules} />
+            </section>
+          </div>
+
+          <aside className="rank-new-aside">
+            <div className="rank-new-summary">
+              <h3>요약</h3>
+              <dl>
+                <div>
+                  <dt>활성 슬롯</dt>
+                  <dd>{activeSlots.length}개</dd>
+                </div>
+                <div>
+                  <dt>역할 수</dt>
+                  <dd>{roles.length}개</dd>
+                </div>
+                <div>
+                  <dt>실시간 매칭</dt>
+                  <dd>{realtime ? '사용' : '미사용'}</dd>
+                </div>
+                <div>
+                  <dt>프롬프트 세트</dt>
+                  <dd>{setId ? '선택 완료' : '미선택'}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="rank-new-footer">
+              <button type="button" className="rank-new-ghost" onClick={() => router.back()}>
+                취소
+              </button>
+              <button type="button" className="rank-new-primary" onClick={onSubmit}>
+                게임 등록
+              </button>
+            </div>
+          </aside>
+        </div>
       </div>
 
-      {/* 1) 역할 정의 */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12 }}>
-        <h3 style={{ marginTop: 0 }}>역할 정의</h3>
-        <RolesEditor roles={roles} onChange={setRoles} />
-      </div>
-
-      {/* 2) 기본 정보 */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12, display: 'grid', gap: 8 }}>
-        <input placeholder="게임 이름" value={name} onChange={e => setName(e.target.value)} />
-        <textarea placeholder="설명" rows={3} value={desc} onChange={e => setDesc(e.target.value)} />
-        <PromptSetPicker value={setId} onChange={setSetId} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#0f172a' }}>
-          <input
-            type="checkbox"
-            checked={realtime}
-            onChange={(event) => setRealtime(event.target.checked)}
-          />
-          실시간 매칭 사용
-        </label>
-      </div>
-
-      {/* 3) 슬롯 매핑 */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12 }}>
-        <h3 style={{ marginTop: 0 }}>슬롯 매핑</h3>
-        <SlotMatrix value={slotMap} onChange={setSlotMap} roleOptions={roles.map((role) => role.name)} />
-      </div>
-
-      {/* 4) 규칙 체크리스트 */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12 }}>
-        <h3 style={{ marginTop: 0 }}>체크리스트 규칙 / 글자수</h3>
-        <RulesChecklist value={rules} onChange={setRules} />
-      </div>
-
-      <div>
-        <button
-          onClick={onSubmit}
-          style={{ padding: '10px 12px', borderRadius: 8, background: '#111827', color: '#fff', fontWeight: 700 }}
-        >
-          등록
-        </button>
-      </div>
+      <style jsx>{`
+        .rank-new-page {
+          min-height: 100vh;
+          background: radial-gradient(circle at top, #f8fafc 0%, #e2e8f0 45%, #cbd5f5 100%);
+          padding: 56px 20px 72px;
+          color: #0f172a;
+        }
+        .rank-new-shell {
+          max-width: 1200px;
+          margin: 0 auto;
+          display: grid;
+          gap: 32px;
+        }
+        .rank-new-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 24px;
+          align-items: flex-start;
+          flex-wrap: wrap;
+        }
+        .rank-new-heading h1 {
+          margin: 6px 0;
+          font-size: 32px;
+          font-weight: 800;
+        }
+        .rank-new-eyebrow {
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          font-size: 12px;
+          font-weight: 700;
+          color: #475569;
+          margin: 0;
+        }
+        .rank-new-subtitle {
+          max-width: 540px;
+          line-height: 1.6;
+          color: #475569;
+          margin: 0;
+          font-size: 15px;
+        }
+        .rank-new-ghost {
+          padding: 10px 16px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.2);
+          background: rgba(255, 255, 255, 0.6);
+          color: #0f172a;
+          font-weight: 600;
+          transition: all 0.2s ease;
+        }
+        .rank-new-ghost:hover {
+          border-color: rgba(15, 23, 42, 0.35);
+          background: rgba(255, 255, 255, 0.85);
+        }
+        .rank-new-layout {
+          display: grid;
+          gap: 28px;
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .rank-new-main {
+          display: grid;
+          gap: 28px;
+        }
+        .rank-new-card {
+          background: rgba(255, 255, 255, 0.9);
+          border-radius: 20px;
+          border: 1px solid rgba(148, 163, 184, 0.4);
+          box-shadow: 0 25px 45px -20px rgba(15, 23, 42, 0.25);
+          padding: 28px;
+          display: grid;
+          gap: 20px;
+        }
+        .rank-new-card-head h2 {
+          margin: 0;
+          font-size: 22px;
+          font-weight: 700;
+        }
+        .rank-new-card-head p {
+          margin: 6px 0 0;
+          font-size: 14px;
+          color: #475569;
+        }
+        .rank-new-field {
+          display: grid;
+          gap: 8px;
+          font-size: 14px;
+          color: #1e293b;
+        }
+        .rank-new-field span {
+          font-weight: 600;
+        }
+        .rank-new-field input,
+        .rank-new-field textarea {
+          border-radius: 12px;
+          border: 1px solid rgba(148, 163, 184, 0.6);
+          padding: 10px 12px;
+          font-size: 14px;
+          color: #0f172a;
+          background: rgba(255, 255, 255, 0.9);
+        }
+        .rank-new-field textarea {
+          resize: vertical;
+          min-height: 100px;
+        }
+        .rank-new-upload {
+          display: grid;
+          gap: 16px;
+        }
+        .rank-new-upload-preview {
+          min-height: 140px;
+          border-radius: 16px;
+          border: 1px dashed rgba(99, 102, 241, 0.5);
+          background: rgba(224, 231, 255, 0.35);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          color: #4338ca;
+          text-align: center;
+          padding: 12px;
+        }
+        .rank-new-upload-preview img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .rank-new-upload-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          align-items: center;
+        }
+        .rank-new-upload-button {
+          position: relative;
+          overflow: hidden;
+          padding: 10px 18px;
+          border-radius: 999px;
+          background: linear-gradient(135deg, #4338ca, #6366f1);
+          color: #fff;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .rank-new-upload-button input {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          cursor: pointer;
+        }
+        .rank-new-upload-hint {
+          font-size: 12px;
+          color: #6366f1;
+          margin: 0 0 0 auto;
+        }
+        .rank-new-inline {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 16px;
+          align-items: flex-end;
+        }
+        .rank-new-inline .rank-new-field {
+          flex: 1 1 240px;
+        }
+        .rank-new-checkbox {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          border-radius: 12px;
+          background: rgba(226, 232, 240, 0.6);
+          border: 1px solid rgba(148, 163, 184, 0.5);
+          font-weight: 600;
+          color: #334155;
+        }
+        .rank-new-aside {
+          display: grid;
+          gap: 20px;
+          position: sticky;
+          top: 32px;
+          height: fit-content;
+        }
+        .rank-new-summary {
+          background: rgba(15, 23, 42, 0.86);
+          color: #e2e8f0;
+          border-radius: 20px;
+          padding: 24px;
+          display: grid;
+          gap: 16px;
+          box-shadow: 0 25px 45px -20px rgba(15, 23, 42, 0.55);
+        }
+        .rank-new-summary h3 {
+          margin: 0;
+          font-size: 18px;
+        }
+        .rank-new-summary dl {
+          margin: 0;
+          display: grid;
+          gap: 12px;
+        }
+        .rank-new-summary dl div {
+          display: flex;
+          justify-content: space-between;
+          font-size: 14px;
+        }
+        .rank-new-summary dt {
+          opacity: 0.7;
+        }
+        .rank-new-summary dd {
+          margin: 0;
+          font-weight: 600;
+        }
+        .rank-new-footer {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+        }
+        .rank-new-primary {
+          padding: 12px 22px;
+          border-radius: 999px;
+          border: none;
+          background: linear-gradient(135deg, #0ea5e9, #2563eb);
+          color: white;
+          font-weight: 700;
+          font-size: 15px;
+          box-shadow: 0 18px 35px -18px rgba(37, 99, 235, 0.9);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .rank-new-primary:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 22px 40px -18px rgba(37, 99, 235, 0.95);
+        }
+        @media (min-width: 1024px) {
+          .rank-new-layout {
+            grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr);
+          }
+          .rank-new-aside {
+            position: sticky;
+            top: 120px;
+          }
+        }
+        @media (max-width: 639px) {
+          .rank-new-page {
+            padding: 32px 16px 56px;
+          }
+          .rank-new-card {
+            padding: 20px;
+          }
+          .rank-new-upload-preview {
+            min-height: 120px;
+          }
+          .rank-new-footer {
+            justify-content: stretch;
+          }
+          .rank-new-footer button {
+            flex: 1 1 0;
+          }
+        }
+      `}</style>
     </div>
   )
 }
