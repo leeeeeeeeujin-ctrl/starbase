@@ -46,6 +46,7 @@ export function MessageItem({
         padding: '6px 0',
         borderBottom: '1px solid #f3f4f6',
         cursor: heroPayload ? 'pointer' : 'default',
+        color: '#0f172a',
       }}
       role={heroPayload ? 'button' : undefined}
       tabIndex={heroPayload ? 0 : -1}
@@ -69,8 +70,8 @@ export function MessageItem({
       )}
       <div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 13 }}>{senderName}</b>
-          <span style={{ fontSize: 12, color: '#6b7280' }}>{timestamp}</span>
+          <b style={{ fontSize: 13, color: '#0f172a' }}>{senderName}</b>
+          <span style={{ fontSize: 12, color: '#64748b' }}>{timestamp}</span>
           {message.scope === 'whisper' && (
             <span
               style={{
@@ -88,7 +89,7 @@ export function MessageItem({
             <span style={{ fontSize: 11, color: '#ef4444' }}>차단됨</span>
           )}
         </div>
-        <div style={{ marginTop: 2, whiteSpace: 'pre-wrap' }}>{message.text}</div>
+        <div style={{ marginTop: 2, whiteSpace: 'pre-wrap', color: '#1f2937' }}>{message.text}</div>
         {message.hero_id && !isSelf && (
           <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
             {blocked ? (

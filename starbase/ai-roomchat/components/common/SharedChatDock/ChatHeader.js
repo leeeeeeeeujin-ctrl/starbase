@@ -14,6 +14,7 @@ export function ChatHeader({ me, viewerHeroId }) {
         alignItems: 'center',
         gap: 12,
         justifyContent: 'space-between',
+        color: '#0f172a',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -23,11 +24,11 @@ export function ChatHeader({ me, viewerHeroId }) {
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#e5e7eb' }} />
         )}
         <div style={{ display: 'grid', gap: 2 }}>
-          <strong style={{ fontSize: 14 }}>{me?.name || '익명'}</strong>
-          <span style={{ fontSize: 11, color: '#64748b' }}>{heroLabel}</span>
+          <strong style={{ fontSize: 14, color: '#0f172a' }}>{me?.name || '익명'}</strong>
+          <span style={{ fontSize: 11, color: '#475569' }}>{heroLabel}</span>
         </div>
       </div>
-      <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>공용 채널</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a8a' }}>공용 채널</span>
     </div>
   )
 }

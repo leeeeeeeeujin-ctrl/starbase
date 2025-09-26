@@ -107,6 +107,7 @@ export default function SharedChatDock({
         borderRadius: 12,
         overflow: 'hidden',
         background: '#fff',
+        color: '#0f172a',
         height,
       }}
     >

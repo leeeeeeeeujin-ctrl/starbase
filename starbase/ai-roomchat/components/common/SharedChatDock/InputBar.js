@@ -21,13 +21,20 @@ export function InputBar({
         background: '#fafafa',
         flexWrap: 'wrap',
         alignItems: 'flex-end',
+        color: '#0f172a',
       }}
     >
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <select
           value={scope}
           onChange={(event) => setScope(event.target.value)}
-          style={{ borderRadius: 8, padding: '8px 10px', border: '1px solid #d1d5db' }}
+          style={{
+            borderRadius: 8,
+            padding: '8px 10px',
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            color: '#0f172a',
+          }}
         >
           <option value="global">전체 공개</option>
           <option value="whisper">귓속말</option>
@@ -36,7 +43,14 @@ export function InputBar({
           <select
             value={whisperTarget || ''}
             onChange={(event) => setWhisperTarget(event.target.value || null)}
-            style={{ borderRadius: 8, padding: '8px 10px', border: '1px solid #d1d5db', minWidth: 160 }}
+            style={{
+              borderRadius: 8,
+              padding: '8px 10px',
+              border: '1px solid #d1d5db',
+              minWidth: 160,
+              background: '#fff',
+              color: '#0f172a',
+            }}
           >
             <option value="">대상 선택</option>
             {availableTargets.map((target) => (
@@ -67,6 +81,8 @@ export function InputBar({
           padding: '10px 12px',
           lineHeight: 1.5,
           resize: 'vertical',
+          color: '#0f172a',
+          background: '#fff',
         }}
       />
       <button
