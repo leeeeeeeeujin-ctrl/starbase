@@ -5,10 +5,6 @@ import { useRouter } from 'next/router'
 
 import { SORT_OPTIONS } from '@/components/lobby/constants'
 import useGameBrowser from '@/components/lobby/hooks/useGameBrowser'
-import ChatOverlay from '@/components/social/ChatOverlay'
-import FriendOverlay from '@/components/social/FriendOverlay'
-import { SharedChatDockProvider } from '@/components/common/SharedChatDock'
-import { useHeroSocial } from '@/hooks/social/useHeroSocial'
 
 import EditHeroModal from './sections/EditHeroModal'
 import { CharacterDashboardProvider, useCharacterDashboardContext } from './context'
@@ -41,13 +37,8 @@ export default function CharacterDashboard({
   const [scrollProgress, setScrollProgress] = useState(1)
   const [editOpen, setEditOpen] = useState(false)
   const [gameSearchEnabled, setGameSearchEnabled] = useState(false)
-  const [chatOpen, setChatOpen] = useState(false)
-  const [friendsOpen, setFriendsOpen] = useState(false)
-  const [chatUnread, setChatUnread] = useState(0)
-  const [blockedHeroes, setBlockedHeroes] = useState([])
   const swipeViewportRef = useRef(null)
   const scrollFrame = useRef(0)
-  const chatOverlayRef = useRef(null)
 
   const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
   const heroImage = profile.edit?.image_url || profile.hero?.image_url || ''
@@ -246,39 +237,6 @@ export default function CharacterDashboard({
     ? `현재 선택한 게임 · ${participation.selectedGame.name}`
     : PANEL_DESCRIPTIONS.character
   const activePanel = panels[panelIndex] || panels[1]
-  const social = useHeroSocial({
-    heroId: profile.hero?.id || explicitHeroId || null,
-    heroName: displayName,
-    viewerHero: profile.hero
-      ? {
-          heroId: profile.hero.id,
-          heroName: profile.hero.name || displayName,
-          avatarUrl: profile.hero.image_url || null,
-          ownerId: profile.hero.owner_id || null,
-        }
-      : null,
-    page: activePanel?.id ? `character:${activePanel.id}` : 'character',
-  })
-  const viewerHeroHint = useMemo(() => {
-    if (profile.hero?.id) {
-      return {
-        heroId: profile.hero.id,
-        heroName: profile.hero.name || displayName,
-        avatarUrl: profile.hero.image_url || null,
-        ownerId: profile.hero.owner_id || null,
-      }
-    }
-    if (social.viewer) {
-      return {
-        heroId: social.viewer.hero_id,
-        heroName: social.viewer.name,
-        avatarUrl: social.viewer.avatar_url,
-        ownerId: social.viewer.owner_id,
-        userId: social.viewer.user_id,
-      }
-    }
-    return null
-  }, [displayName, profile.hero, social.viewer])
   const showHeroHeader = activePanel?.id === 'character'
   const headerSlides = useMemo(
     () =>
@@ -293,119 +251,8 @@ export default function CharacterDashboard({
       })),
     [characterDescription, displayName, panels],
   )
-  const friendByOwner = social.friendByOwner ?? new Map()
-  const friendByHero = social.friendByHero ?? new Map()
-  const blockedHeroSet = useMemo(() => new Set(blockedHeroes || []), [blockedHeroes])
-
-  const updateBlockedHeroes = useCallback((next) => {
-    setBlockedHeroes((prev) => {
-      const computed = typeof next === 'function' ? next(prev) : next
-      const normalized = Array.from(new Set((computed || []).filter(Boolean)))
-      if (prev.length === normalized.length && prev.every((id, index) => id === normalized[index])) {
-        return prev
-      }
-      return normalized
-    })
-  }, [])
-
-  const handleToggleBlockedHero = useCallback(
-    (heroId) => {
-      if (!heroId) return
-      updateBlockedHeroes((prev) => {
-        if (prev.includes(heroId)) {
-          return prev.filter((id) => id !== heroId)
-        }
-        return [...prev, heroId]
-      })
-    },
-    [updateBlockedHeroes],
-  )
-
-  const extraWhisperTargets = useMemo(() => {
-    if (!social.friends?.length) return []
-    const seen = new Set()
-    const entries = []
-    for (const friend of social.friends) {
-      if (friend.currentHeroId && !seen.has(friend.currentHeroId)) {
-        entries.push({
-          heroId: friend.currentHeroId,
-          username: friend.currentHeroName || `${friend.friendHeroName || '친구'} (현재)`,
-        })
-        seen.add(friend.currentHeroId)
-      }
-      if (friend.friendHeroId && !seen.has(friend.friendHeroId)) {
-        entries.push({
-          heroId: friend.friendHeroId,
-          username: friend.friendHeroName || '친구',
-        })
-        seen.add(friend.friendHeroId)
-      }
-    }
-    return entries
-  }, [social.friends])
-
-  const isFriendHero = useCallback(
-    (hero) => {
-      if (!hero) return false
-      if (hero.ownerId && friendByOwner.get(hero.ownerId)) return true
-      if (hero.heroId && friendByHero.get(hero.heroId)) return true
-      return false
-    },
-    [friendByHero, friendByOwner],
-  )
-
-  const handleAddFriendFromChat = useCallback(
-    async (hero) => {
-      const targetId = hero?.heroId
-      if (!targetId) return { ok: false, error: '캐릭터 ID를 확인할 수 없습니다.' }
-      if (blockedHeroSet.has(targetId)) {
-        return { ok: false, error: '차단한 캐릭터입니다.' }
-      }
-      return social.addFriend({ heroId: targetId })
-    },
-    [blockedHeroSet, social],
-  )
-
-  const handleRemoveFriendFromChat = useCallback(
-    async (hero) => {
-      const friend =
-        (hero?.ownerId && friendByOwner.get(hero.ownerId)) ||
-        (hero?.heroId && friendByHero.get(hero.heroId))
-      if (!friend) {
-        return { ok: false, error: '친구 목록에서 찾을 수 없습니다.' }
-      }
-      return social.removeFriend(friend)
-    },
-    [friendByHero, friendByOwner, social],
-  )
-
-  const handleFriendOverlayAdd = useCallback(
-    async ({ heroId: targetHeroId }) => social.addFriend({ heroId: targetHeroId }),
-    [social],
-  )
-
-  const handleOpenWhisper = useCallback(
-    (targetHeroId) => {
-      if (!targetHeroId) return
-      setChatOpen(true)
-      chatOverlayRef.current?.openThread(targetHeroId)
-    },
-    [],
-  )
-
-  const handleCloseChat = useCallback(() => {
-    setChatOpen(false)
-    chatOverlayRef.current?.resetThread?.()
-  }, [])
-
   return (
-    <SharedChatDockProvider
-      heroId={profile.hero?.id || explicitHeroId || null}
-      viewerHero={viewerHeroHint}
-      extraWhisperTargets={extraWhisperTargets}
-      blockedHeroes={blockedHeroes}
-    >
-      <CharacterDashboardProvider value={contextValue}>
+    <CharacterDashboardProvider value={contextValue}>
         <div style={styles.page}>
         <div style={backgroundStyle} aria-hidden />
         <div style={styles.backgroundTint} aria-hidden />
@@ -490,60 +337,9 @@ export default function CharacterDashboard({
           </button>
           ))}
         </nav>
-        <div style={styles.overlayButtons}>
-          <button
-            type="button"
-            onClick={() => setChatOpen(true)}
-            style={styles.overlayButton}
-            title="공용 채팅"
-          >
-            💬
-            {chatUnread ? <span style={styles.overlayBadge}>{chatUnread}</span> : null}
-          </button>
-          <button
-            type="button"
-            onClick={() => setFriendsOpen(true)}
-            style={styles.overlayButton}
-            title="친구 관리"
-          >
-            👥
-          </button>
-        </div>
       </div>
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
-      <ChatOverlay
-          ref={chatOverlayRef}
-          open={chatOpen}
-          onClose={handleCloseChat}
-          heroId={profile.hero?.id}
-          viewerHero={viewerHeroHint}
-          extraWhisperTargets={extraWhisperTargets}
-          blockedHeroes={blockedHeroes}
-          onUnreadChange={setChatUnread}
-          onBlockedHeroesChange={updateBlockedHeroes}
-          onRequestAddFriend={handleAddFriendFromChat}
-          onRequestRemoveFriend={handleRemoveFriendFromChat}
-          isFriend={isFriendHero}
-        />
-        <FriendOverlay
-          open={friendsOpen}
-          onClose={() => setFriendsOpen(false)}
-          viewer={social.viewer}
-          friends={social.friends}
-          friendRequests={social.friendRequests}
-          loading={social.loading}
-          error={social.error}
-          onAddFriend={handleFriendOverlayAdd}
-          onRemoveFriend={social.removeFriend}
-          onAcceptRequest={social.acceptFriendRequest}
-          onDeclineRequest={social.declineFriendRequest}
-          onCancelRequest={social.cancelFriendRequest}
-          onOpenWhisper={handleOpenWhisper}
-          blockedHeroes={blockedHeroes}
-          onToggleBlockedHero={handleToggleBlockedHero}
-        />
       </CharacterDashboardProvider>
-    </SharedChatDockProvider>
   )
 }
 
