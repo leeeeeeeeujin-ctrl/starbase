@@ -1,8 +1,13 @@
-import React from 'react'
+import React, { useCallback, useState } from 'react'
+
 import { startGoogleOAuth } from '../lib/auth'
 
 export default function AuthButton() {
+  const [pending, setPending] = useState(false)
+
   async function signIn() {
+    if (pending) return
+    setPending(true)
     try {
       const origin = window.location.origin
       const result = await startGoogleOAuth({ origin })
@@ -16,8 +21,16 @@ export default function AuthButton() {
     } catch (error) {
       console.error(error)
       alert('로그인 중 오류가 발생했습니다.')
+    } finally {
+      setPending(false)
     }
   }
+
+  const handleClick = useCallback(() => {
+    if (!pending) {
+      signIn()
+    }
+  }, [pending])
 
   function handleMouseEnter(event) {
     event.currentTarget.style.transform = 'translateY(-2px)'
@@ -31,7 +44,7 @@ export default function AuthButton() {
 
   return (
     <button
-      onClick={signIn}
+      onClick={handleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       style={{
@@ -48,6 +61,8 @@ export default function AuthButton() {
         transition: 'transform 0.2s ease, box-shadow 0.2s ease',
         boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
         fontFamily: '"Noto Sans KR", sans-serif',
+        opacity: pending ? 0.65 : 1,
+        pointerEvents: pending ? 'none' : 'auto',
       }}
     >
       신경망 접속

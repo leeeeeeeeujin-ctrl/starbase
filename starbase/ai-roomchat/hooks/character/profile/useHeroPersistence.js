@@ -19,13 +19,15 @@ export function useHeroPersistence({
   const { backgroundBlob, onSaveComplete: completeBackgroundSave } = background
   const { bgmBlob, bgmDuration, bgmMime, onSaveComplete: completeBgmSave } = bgm
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (nextEdit) => {
     setSaving(true)
     try {
-      let backgroundUrl = edit.background_url || null
+      const source = nextEdit || edit
+
+      let backgroundUrl = source.background_url || null
       if (backgroundBlob) {
         const extension = (backgroundBlob.type && backgroundBlob.type.split('/')[1]) || 'jpg'
-        const path = `hero-background/${Date.now()}-${sanitizeFileName(edit.name || hero?.name || 'background')}.${extension}`
+        const path = `hero-background/${Date.now()}-${sanitizeFileName(source.name || hero?.name || 'background')}.${extension}`
         const { error: bgUploadError } = await supabase.storage
           .from('heroes')
           .upload(path, backgroundBlob, {
@@ -36,12 +38,12 @@ export function useHeroPersistence({
         backgroundUrl = supabase.storage.from('heroes').getPublicUrl(path).data.publicUrl
       }
 
-      let bgmUrl = edit.bgm_url || null
+      let bgmUrl = source.bgm_url || null
       let bgmDurationSeconds = bgmDuration != null ? bgmDuration : hero?.bgm_duration_seconds || null
       let bgmMimeValue = bgmMime || hero?.bgm_mime || null
       if (bgmBlob) {
         const extension = (bgmBlob.type && bgmBlob.type.split('/')[1]) || 'mp3'
-        const path = `hero-bgm/${Date.now()}-${sanitizeFileName(edit.name || hero?.name || 'bgm')}.${extension}`
+        const path = `hero-bgm/${Date.now()}-${sanitizeFileName(source.name || hero?.name || 'bgm')}.${extension}`
         const { error: bgmUploadError } = await supabase.storage
           .from('heroes')
           .upload(path, bgmBlob, { upsert: true, contentType: bgmBlob.type || 'audio/mpeg' })
@@ -56,12 +58,12 @@ export function useHeroPersistence({
       }
 
       const payload = {
-        name: edit.name,
-        description: edit.description,
-        ability1: edit.ability1,
-        ability2: edit.ability2,
-        ability3: edit.ability3,
-        ability4: edit.ability4,
+        name: source.name,
+        description: source.description,
+        ability1: source.ability1,
+        ability2: source.ability2,
+        ability3: source.ability3,
+        ability4: source.ability4,
         background_url: backgroundUrl,
         bgm_url: bgmUrl,
         bgm_duration_seconds: bgmDurationSeconds,
@@ -75,7 +77,13 @@ export function useHeroPersistence({
 
       setHero((prev) => (prev ? { ...prev, ...payload } : prev))
       setEdit((prev) => ({
-        ...prev,
+        ...(prev || {}),
+        name: payload.name,
+        description: payload.description,
+        ability1: payload.ability1,
+        ability2: payload.ability2,
+        ability3: payload.ability3,
+        ability4: payload.ability4,
         background_url: backgroundUrl || '',
         bgm_url: bgmUrl || '',
       }))
