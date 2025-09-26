@@ -169,6 +169,40 @@ export default function CharacterDashboard({
     }
     return items
   }, [overviewGameItems])
+  const overviewNavSummary = useMemo(() => {
+    const firstGame =
+      participation?.selectedGame?.name || overviewGameItems[0]?.name || '게임을 선택하세요'
+    const heroSummary = displayName
+    const topRank = participation?.scoreboard?.[0] || null
+    if (!topRank) {
+      return {
+        game: firstGame,
+        character: heroSummary,
+        ranking: '랭킹이 아직 준비되지 않았어요',
+      }
+    }
+    const lookup = topRank.hero_id ? participation?.heroLookup?.[topRank.hero_id] : null
+    const name = lookup?.name || topRank.role || '랭커'
+    const score = topRank.rating ?? topRank.score
+    const battles = topRank.battles ?? topRank.play_count
+    const ranking =
+      score != null && battles != null
+        ? `${name} · ${score}점 · ${battles}전`
+        : score != null
+        ? `${name} · ${score}점`
+        : `${name}`
+    return {
+      game: firstGame,
+      character: heroSummary,
+      ranking,
+    }
+  }, [
+    displayName,
+    overviewGameItems,
+    participation?.heroLookup,
+    participation?.scoreboard,
+    participation?.selectedGame?.name,
+  ])
   const scrollToPanel = useCallback((targetIndex, behavior = 'smooth') => {
     const node = swipeViewportRef.current
     if (!node) return
@@ -425,63 +459,70 @@ export default function CharacterDashboard({
       ) : null}
       {overviewMode ? (
         <div style={styles.overviewOverlay} role="dialog" aria-modal="true">
-          <div style={styles.overviewTopBar}>
-            <div style={styles.overviewTopTabs}>
-              <Link href="/maker" style={styles.overviewTopButton} onClick={handleOverlayNavigate}>
-                게임 제작
-              </Link>
-              <Link href="/rank/new" style={styles.overviewTopButton} onClick={handleOverlayNavigate}>
-                게임 등록
-              </Link>
-            </div>
-            <button type="button" onClick={handleCloseOverview} style={styles.overviewCloseButton}>
-              닫기
-            </button>
-          </div>
-          <div style={styles.overviewCarousel}>
-            {overviewCarouselItems.length ? (
-              <div style={styles.overviewCarouselTrack}>
-                {overviewCarouselItems.map((item) => (
-                  <button
-                    key={item.repeatKey}
-                    type="button"
-                    onClick={() => handleSelectOverviewGame(item)}
-                    style={styles.overviewGameCard}
-                  >
-                    {item.image ? (
-                      <img src={item.image} alt={`${item.name} 이미지`} style={styles.overviewGameImage} />
-                    ) : (
-                      <div style={styles.overviewGameImageFallback}>이미지 없음</div>
-                    )}
-                    <div>
-                      <p style={styles.overviewGameName}>{item.name}</p>
-                      {item.description ? (
-                        <p style={styles.overviewGameMeta}>{item.description}</p>
-                      ) : null}
-                    </div>
-                  </button>
-                ))}
+          <div style={styles.overviewBackdrop} aria-hidden />
+          <div style={styles.overviewSheet}>
+            <div style={styles.overviewSheetHeader}>
+              <div style={styles.overviewTopTabs}>
+                <Link href="/maker" style={styles.overviewTopButton} onClick={handleOverlayNavigate}>
+                  게임 제작
+                </Link>
+                <Link href="/rank/new" style={styles.overviewTopButton} onClick={handleOverlayNavigate}>
+                  게임 등록
+                </Link>
               </div>
-            ) : (
-              <p style={styles.overviewEmpty}>표시할 게임이 없습니다.</p>
-            )}
-          </div>
-          <div style={styles.overviewBottomTabs}>
-            {NAV_ITEMS.map((item, index) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleOverviewNav(item.id)}
-                style={{
-                  ...styles.overviewBottomButton,
-                  ...(panelIndex === index ? styles.overviewBottomButtonActive : null),
-                }}
-              >
-                {item.label}
+              <button type="button" onClick={handleCloseOverview} style={styles.overviewCloseButton}>
+                닫기
               </button>
-            ))}
+            </div>
+            <div style={styles.overviewCarousel}>
+              {overviewCarouselItems.length ? (
+                <div style={styles.overviewCarouselTrack}>
+                  {overviewCarouselItems.map((item) => (
+                    <button
+                      key={item.repeatKey}
+                      type="button"
+                      onClick={() => handleSelectOverviewGame(item)}
+                      style={styles.overviewGameCard}
+                    >
+                      {item.image ? (
+                        <img src={item.image} alt={`${item.name} 이미지`} style={styles.overviewGameImage} />
+                      ) : (
+                        <div style={styles.overviewGameImageFallback}>이미지 없음</div>
+                      )}
+                      <div>
+                        <p style={styles.overviewGameName}>{item.name}</p>
+                        {item.description ? (
+                          <p style={styles.overviewGameMeta}>{item.description}</p>
+                        ) : null}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p style={styles.overviewEmpty}>표시할 게임이 없습니다.</p>
+              )}
+            </div>
+            <div style={styles.overviewMiniTabs}>
+              {NAV_ITEMS.map((item, index) => {
+                const summaryText = overviewNavSummary[item.id] || item.label
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleOverviewNav(item.id)}
+                    style={{
+                      ...styles.overviewMiniCard,
+                      ...(panelIndex === index ? styles.overviewMiniCardActive : null),
+                    }}
+                  >
+                    <span style={styles.overviewMiniLabel}>{item.label}</span>
+                    <span style={styles.overviewMiniSummary}>{summaryText}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <p style={styles.overviewHint}>손가락을 벌리거나 닫기 버튼을 누르면 원래 화면으로 돌아갑니다.</p>
           </div>
-          <p style={styles.overviewHint}>손가락을 벌리거나 닫기 버튼을 누르면 원래 화면으로 돌아갑니다.</p>
         </div>
       ) : null}
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
@@ -1542,14 +1583,32 @@ const styles = {
     position: 'fixed',
     inset: 0,
     zIndex: 5,
-    display: 'grid',
-    gridTemplateRows: 'auto 1fr auto',
-    gap: 24,
-    padding: '32px 20px 28px',
-    background: 'rgba(2, 6, 23, 0.92)',
-    backdropFilter: 'blur(16px)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    padding: '48px 20px 32px',
+    pointerEvents: 'auto',
   },
-  overviewTopBar: {
+  overviewBackdrop: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(180deg, rgba(2, 6, 23, 0.1) 10%, rgba(2, 6, 23, 0.7) 65%, rgba(2, 6, 23, 0.88) 100%)',
+    backdropFilter: 'blur(12px)',
+    pointerEvents: 'none',
+  },
+  overviewSheet: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: 960,
+    display: 'grid',
+    gap: 24,
+    padding: '24px 24px 20px',
+    borderRadius: '28px 28px 18px 18px',
+    background: 'rgba(15, 23, 42, 0.86)',
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    boxShadow: '0 20px 48px rgba(2, 6, 23, 0.65)',
+  },
+  overviewSheetHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1632,24 +1691,39 @@ const styles = {
     color: '#cbd5f5',
     lineHeight: 1.5,
   },
-  overviewBottomTabs: {
-    display: 'flex',
-    justifyContent: 'center',
+  overviewMiniTabs: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
     gap: 12,
   },
-  overviewBottomButton: {
-    padding: '6px 14px',
-    borderRadius: 999,
+  overviewMiniCard: {
+    display: 'grid',
+    gap: 6,
+    padding: '12px 14px',
+    borderRadius: 18,
     border: '1px solid rgba(148, 163, 184, 0.35)',
     background: 'rgba(15, 23, 42, 0.65)',
     color: '#e2e8f0',
-    fontWeight: 600,
     cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'border-color 160ms ease, box-shadow 160ms ease, background 160ms ease',
   },
-  overviewBottomButtonActive: {
-    background: 'rgba(59, 130, 246, 0.78)',
+  overviewMiniCardActive: {
+    borderColor: 'rgba(96, 165, 250, 0.9)',
+    background: 'rgba(59, 130, 246, 0.3)',
+    boxShadow: '0 10px 32px rgba(59, 130, 246, 0.35)',
+  },
+  overviewMiniLabel: {
+    fontSize: 13,
+    fontWeight: 700,
     color: '#f8fafc',
-    boxShadow: '0 6px 24px rgba(59, 130, 246, 0.35)',
+  },
+  overviewMiniSummary: {
+    fontSize: 12,
+    color: '#cbd5f5',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   overviewEmpty: {
     margin: 0,
