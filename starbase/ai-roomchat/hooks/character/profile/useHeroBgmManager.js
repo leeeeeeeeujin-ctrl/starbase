@@ -12,8 +12,17 @@ export function useHeroBgmManager({ setEdit }) {
   const [bgmDuration, setBgmDuration] = useState(null)
   const [bgmMime, setBgmMime] = useState(null)
   const [bgmError, setBgmError] = useState('')
+  const isDirtyRef = useRef(false)
+  const lastHeroIdRef = useRef(null)
 
   const syncFromHero = useCallback((hero) => {
+    const heroId = hero?.id ?? null
+    if (heroId !== lastHeroIdRef.current) {
+      lastHeroIdRef.current = heroId
+      isDirtyRef.current = false
+    } else if (isDirtyRef.current) {
+      return
+    }
     setBgmBlob(null)
     setBgmLabel(hero?.bgm_url ? extractFileName(hero.bgm_url) : '')
     setBgmDuration(hero?.bgm_duration_seconds || null)
@@ -28,6 +37,7 @@ export function useHeroBgmManager({ setEdit }) {
     (file) => {
       setBgmError('')
       if (!file) {
+        isDirtyRef.current = true
         setBgmBlob(null)
         setBgmDuration(null)
         setBgmMime(null)
@@ -70,6 +80,7 @@ export function useHeroBgmManager({ setEdit }) {
           setBgmMime(file.type || null)
           setBgmLabel(file.name || '배경 음악')
           setEdit((prev) => ({ ...prev, bgm_url: '' }))
+          isDirtyRef.current = true
         } catch (error) {
           setBgmError(error.message || '오디오를 분석할 수 없습니다.')
         } finally {
@@ -81,6 +92,7 @@ export function useHeroBgmManager({ setEdit }) {
   )
 
   const handleClearBgm = useCallback(() => {
+    isDirtyRef.current = true
     setBgmBlob(null)
     setBgmDuration(null)
     setBgmMime(null)
@@ -93,6 +105,7 @@ export function useHeroBgmManager({ setEdit }) {
   }, [setEdit])
 
   const handleSaveComplete = useCallback(({ url, duration, mime }) => {
+    isDirtyRef.current = false
     setBgmBlob(null)
     setBgmError('')
     if (bgmInputRef.current) {

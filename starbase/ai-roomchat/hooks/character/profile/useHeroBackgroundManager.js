@@ -5,9 +5,11 @@ const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024
 export function useHeroBackgroundManager({ setEdit }) {
   const backgroundInputRef = useRef(null)
   const localPreviewUrlRef = useRef(null)
+  const lastHeroIdRef = useRef(null)
   const [backgroundBlob, setBackgroundBlob] = useState(null)
   const [backgroundPreview, setBackgroundPreview] = useState(null)
   const [backgroundError, setBackgroundError] = useState('')
+  const isDirtyRef = useRef(false)
 
   const resetBackgroundPreview = useCallback(() => {
     const localUrl = localPreviewUrlRef.current
@@ -22,6 +24,13 @@ export function useHeroBackgroundManager({ setEdit }) {
 
   const syncFromHero = useCallback(
     (hero) => {
+      const heroId = hero?.id ?? null
+      if (heroId !== lastHeroIdRef.current) {
+        lastHeroIdRef.current = heroId
+        isDirtyRef.current = false
+      } else if (isDirtyRef.current) {
+        return
+      }
       resetBackgroundPreview()
       setBackgroundBlob(null)
       setBackgroundError('')
@@ -31,6 +40,8 @@ export function useHeroBackgroundManager({ setEdit }) {
       if (hero?.background_url) {
         localPreviewUrlRef.current = null
         setBackgroundPreview(hero.background_url)
+      } else {
+        setBackgroundPreview((prev) => (prev !== null ? null : prev))
       }
     },
     [resetBackgroundPreview],
@@ -40,6 +51,7 @@ export function useHeroBackgroundManager({ setEdit }) {
     (file) => {
       setBackgroundError('')
       if (!file) {
+        isDirtyRef.current = true
         setBackgroundBlob(null)
         resetBackgroundPreview()
         setEdit((prev) => ({ ...prev, background_url: '' }))
@@ -60,11 +72,13 @@ export function useHeroBackgroundManager({ setEdit }) {
       setBackgroundBlob(blobFile)
       setBackgroundPreview(objectUrl)
       setEdit((prev) => ({ ...prev, background_url: '' }))
+      isDirtyRef.current = true
     },
     [resetBackgroundPreview, setEdit],
   )
 
   const handleClearBackground = useCallback(() => {
+    isDirtyRef.current = true
     resetBackgroundPreview()
     setBackgroundBlob(null)
     setBackgroundError('')
@@ -76,6 +90,7 @@ export function useHeroBackgroundManager({ setEdit }) {
 
   const handleSaveComplete = useCallback(
     (nextUrl) => {
+      isDirtyRef.current = false
       setBackgroundBlob(null)
       setBackgroundError('')
       if (backgroundInputRef.current) {

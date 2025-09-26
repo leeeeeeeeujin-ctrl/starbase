@@ -49,7 +49,14 @@ export default function HeroBgmSection({
         ref={inputRef}
         type="file"
         accept="audio/*"
-        onChange={(event) => onUpload(event.target.files?.[0] || null)}
+        onChange={(event) => {
+          const node = event.target
+          const file = node.files?.[0]
+          if (file) {
+            onUpload(file)
+            node.value = ''
+          }
+        }}
         style={{ display: 'none' }}
       />
       {error ? <div style={modalStyles.errorText}>{error}</div> : null}

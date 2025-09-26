@@ -606,7 +606,8 @@ function CharacterPanel() {
         .map((line) => line.trim())
         .filter(Boolean)
       return {
-        title: '캐릭터 설명',
+        title: null,
+        variant: 'plain',
         lines: lines.length ? lines : ['설명이 입력되지 않았습니다.'],
       }
     }
@@ -620,13 +621,15 @@ function CharacterPanel() {
         })
       return {
         title: '능력 정보',
+        variant: 'card',
         lines: abilityLines.length ? abilityLines : ['등록된 능력이 없습니다.'],
       }
     }
 
     const statLines = statsOverlayLines.length ? statsOverlayLines : ['표시할 통계가 없습니다.']
     return {
-      title: '통계 정보',
+      title: null,
+      variant: 'plain',
       lines: statLines,
     }
   }, [overlayStep, description, abilityCards, statsOverlayLines])
@@ -637,6 +640,7 @@ function CharacterPanel() {
     : undefined
   const overlayLines = overlayData?.lines || []
   const overlayTitle = overlayData?.title || ''
+  const overlayVariant = overlayData?.variant || 'plain'
 
   const handleToggleOverlay = useCallback(() => {
     setOverlayStep((prev) => (prev + 1) % 4)
@@ -683,14 +687,24 @@ function CharacterPanel() {
             <div
               key={overlayStep}
               style={{
-                ...styles.heroOverlayPanel,
+                ...(overlayVariant === 'card'
+                  ? styles.heroOverlayPanel
+                  : styles.heroOverlayPlain),
                 fontSize: overlayFontSize,
                 opacity: overlayActive ? 1 : 0,
                 transform: overlayActive ? 'translateY(0)' : 'translateY(12px)',
               }}
             >
-              <strong style={styles.heroOverlayTitle}>{overlayTitle}</strong>
-              <div style={styles.heroOverlayBody}>
+              {overlayTitle ? (
+                <strong style={styles.heroOverlayTitle}>{overlayTitle}</strong>
+              ) : null}
+              <div
+                style={
+                  overlayVariant === 'card'
+                    ? styles.heroOverlayBody
+                    : styles.heroOverlayPlainBody
+                }
+              >
                 {overlayLines.map((line, index) => (
                   <span key={index} style={styles.heroOverlayLine}>
                     {line}
@@ -1207,6 +1221,18 @@ const styles = {
     transform: 'translateY(12px)',
     transition: 'opacity 220ms ease, transform 260ms ease',
   },
+  heroOverlayPlain: {
+    width: '100%',
+    display: 'grid',
+    gap: 10,
+    lineHeight: 1.6,
+    color: '#f8fafc',
+    textAlign: 'center',
+    textShadow: '0 2px 12px rgba(2, 6, 23, 0.85)',
+    opacity: 0,
+    transform: 'translateY(12px)',
+    transition: 'opacity 220ms ease, transform 260ms ease',
+  },
   heroOverlayTitle: {
     fontSize: 'inherit',
     fontWeight: 700,
@@ -1217,6 +1243,13 @@ const styles = {
     fontSize: 'inherit',
     wordBreak: 'break-word',
     textAlign: 'left',
+  },
+  heroOverlayPlainBody: {
+    display: 'grid',
+    gap: 8,
+    fontSize: 'inherit',
+    wordBreak: 'break-word',
+    textAlign: 'center',
   },
   heroOverlayLine: {
     fontSize: 'inherit',
