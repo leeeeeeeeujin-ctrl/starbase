@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import CharacterDashboard from '@/components/character/CharacterDashboard'
@@ -58,6 +58,10 @@ export default function CharacterDetailPage() {
 
   const [battleOverlayOpen, setBattleOverlayOpen] = useState(false)
   const [initialized, setInitialized] = useState(false)
+  const reloadTimerRef = useRef(null)
+  const reloadAttemptedRef = useRef(
+    typeof window !== 'undefined' && window.sessionStorage.getItem('characterReloadAttempted') === '1'
+  )
   const dashboard = useCharacterDashboard(heroId)
   const profileSection = dashboard.profile || { hero: null }
   const participationSection =
@@ -82,6 +86,77 @@ export default function CharacterDetailPage() {
 
   const showInitialLoading = !router.isReady || (!initialized && dashboard.status.loading)
   const hero = profileSection.hero
+
+  useEffect(() => {
+    return () => {
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current)
+        reloadTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!router.isReady) {
+      return
+    }
+
+    if (!showInitialLoading) {
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current)
+        reloadTimerRef.current = null
+      }
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('characterReloadAttempted')
+      }
+      reloadAttemptedRef.current = false
+      return
+    }
+
+    if (reloadAttemptedRef.current) {
+      return
+    }
+
+    if (reloadTimerRef.current) {
+      clearTimeout(reloadTimerRef.current)
+    }
+
+    reloadTimerRef.current = setTimeout(() => {
+      if (reloadAttemptedRef.current) {
+        return
+      }
+
+      reloadAttemptedRef.current = true
+      if (typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.setItem('characterReloadAttempted', '1')
+        } catch (storageError) {
+          console.error('Failed to record character reload attempt:', storageError)
+        }
+      }
+
+      const navigateAndReload = async () => {
+        try {
+          await router.replace('/roster')
+        } catch (navigationError) {
+          console.error('Failed to navigate to roster before reload:', navigationError)
+        } finally {
+          if (typeof window !== 'undefined') {
+            window.location.reload()
+          }
+        }
+      }
+
+      navigateAndReload()
+    }, 2000)
+
+    return () => {
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current)
+        reloadTimerRef.current = null
+      }
+    }
+  }, [router, router.isReady, showInitialLoading])
 
   if (showInitialLoading) {
     return <FullScreenState title="캐릭터 정보를 불러오는 중" message="잠시만 기다려 주세요." />
