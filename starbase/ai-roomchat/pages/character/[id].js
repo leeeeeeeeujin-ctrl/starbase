@@ -212,6 +212,7 @@ export default function CharacterDetailPage() {
     <>
       <CharacterDashboard
         dashboard={dashboard}
+        heroId={heroId}
         heroName={dashboard.heroName}
         onBack={() => router.push('/roster')}
         onStartBattle={handleStartBattle}

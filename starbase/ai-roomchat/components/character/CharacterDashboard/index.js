@@ -26,7 +26,13 @@ const PANEL_DESCRIPTIONS = {
   ranking: '참여 중인 게임의 순위를 확인해 보세요.',
 }
 
-export default function CharacterDashboard({ dashboard, heroName, onStartBattle, onBack }) {
+export default function CharacterDashboard({
+  dashboard,
+  heroId: explicitHeroId,
+  heroName,
+  onStartBattle,
+  onBack,
+}) {
   const router = useRouter()
   const { profile, participation, battles, heroName: fallbackName } = dashboard
 
@@ -240,7 +246,7 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
     : PANEL_DESCRIPTIONS.character
   const activePanel = panels[panelIndex] || panels[1]
   const social = useHeroSocial({
-    heroId: profile.hero?.id,
+    heroId: profile.hero?.id || explicitHeroId || null,
     heroName: displayName,
     page: activePanel?.id ? `character:${activePanel.id}` : 'character',
   })
