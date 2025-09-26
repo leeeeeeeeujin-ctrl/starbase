@@ -5,6 +5,9 @@ import { useRouter } from 'next/router'
 
 import { SORT_OPTIONS } from '@/components/lobby/constants'
 import useGameBrowser from '@/components/lobby/hooks/useGameBrowser'
+import ChatOverlay from '@/components/social/ChatOverlay'
+import FriendOverlay from '@/components/social/FriendOverlay'
+import { useHeroSocial } from '@/hooks/social/useHeroSocial'
 
 import EditHeroModal from './sections/EditHeroModal'
 import { CharacterDashboardProvider, useCharacterDashboardContext } from './context'
@@ -14,6 +17,8 @@ const NAV_ITEMS = [
   { id: 'character', label: '캐릭터' },
   { id: 'ranking', label: '랭킹' },
 ]
+
+const PANEL_COUNT = NAV_ITEMS.length
 
 const PANEL_DESCRIPTIONS = {
   game: '참여할 게임을 살펴보고 즉시 입장할 수 있어요.',
@@ -26,10 +31,16 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
   const { profile, participation, battles, heroName: fallbackName } = dashboard
 
   const [panelIndex, setPanelIndex] = useState(1)
+  const [scrollProgress, setScrollProgress] = useState(1)
   const [editOpen, setEditOpen] = useState(false)
   const [gameSearchEnabled, setGameSearchEnabled] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [friendsOpen, setFriendsOpen] = useState(false)
+  const [chatUnread, setChatUnread] = useState(0)
+  const [blockedHeroes, setBlockedHeroes] = useState([])
   const swipeViewportRef = useRef(null)
   const scrollFrame = useRef(0)
+  const chatOverlayRef = useRef(null)
 
   const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
   const heroImage = profile.edit?.image_url || profile.hero?.image_url || ''
@@ -126,14 +137,23 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
       cancelAnimationFrame(scrollFrame.current)
       scrollFrame.current = requestAnimationFrame(() => {
         const width = node.clientWidth || 1
-        const nextIndex = Math.round(node.scrollLeft / width)
-        const maxIndex = NAV_ITEMS.length - 1
-        const clamped = Math.max(0, Math.min(maxIndex, nextIndex))
+        const ratio = node.scrollLeft / width
+        setScrollProgress(ratio)
+        const baseIndex = Math.floor(ratio)
+        const offset = ratio - baseIndex
+        const maxIndex = PANEL_COUNT - 1
+        const clampedBase = Math.max(0, Math.min(maxIndex, baseIndex))
+
         setPanelIndex((prev) => {
-          if (clamped === prev) return prev
-          if (clamped > prev + 1) return prev + 1
-          if (clamped < prev - 1) return prev - 1
-          return clamped
+          let target = prev
+          if (offset >= 0.66) {
+            target = Math.min(maxIndex, clampedBase + 1)
+          } else if (offset <= 0.34) {
+            target = clampedBase
+          }
+          if (target > prev + 1) target = prev + 1
+          if (target < prev - 1) target = prev - 1
+          return target
         })
       })
     }
@@ -159,6 +179,10 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
   }, [panelIndex])
 
   useEffect(() => {
+    setScrollProgress(panelIndex)
+  }, [panelIndex])
+
+  useEffect(() => {
     if (panelIndex === 0 && !gameSearchEnabled) {
       setGameSearchEnabled(true)
     }
@@ -169,6 +193,7 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
     if (!node) return
     const width = node.clientWidth || 1
     node.scrollLeft = width * panelIndex
+    setScrollProgress(panelIndex)
   }, [])
 
   const handleEnterGame = useCallback(
@@ -206,6 +231,7 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
     const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
     if (targetIndex >= 0) {
       setPanelIndex(targetIndex)
+      setScrollProgress(targetIndex)
     }
   }, [])
 
@@ -213,11 +239,105 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
     ? `현재 선택한 게임 · ${participation.selectedGame.name}`
     : PANEL_DESCRIPTIONS.character
   const activePanel = panels[panelIndex] || panels[1]
+  const social = useHeroSocial({
+    heroId: profile.hero?.id,
+    heroName: displayName,
+    page: activePanel?.id ? `character:${activePanel.id}` : 'character',
+  })
   const showHeroHeader = activePanel?.id === 'character'
-  const headerTitle = showHeroHeader ? displayName : activePanel?.label || ''
-  const headerDescription = showHeroHeader
-    ? characterDescription
-    : PANEL_DESCRIPTIONS[activePanel?.id] || ''
+  const headerSlides = useMemo(
+    () =>
+      panels.map((panel) => ({
+        id: panel.id,
+        title: panel.id === 'character' ? displayName : panel.label,
+        description:
+          panel.id === 'character'
+            ? characterDescription
+            : PANEL_DESCRIPTIONS[panel.id] || '',
+        showBgm: panel.id === 'character',
+      })),
+    [characterDescription, displayName, panels],
+  )
+  const friendByOwner = social.friendByOwner ?? new Map()
+  const friendByHero = social.friendByHero ?? new Map()
+  const blockedHeroSet = useMemo(() => new Set(blockedHeroes || []), [blockedHeroes])
+
+  const extraWhisperTargets = useMemo(() => {
+    if (!social.friends?.length) return []
+    const seen = new Set()
+    const entries = []
+    for (const friend of social.friends) {
+      if (friend.currentHeroId && !seen.has(friend.currentHeroId)) {
+        entries.push({
+          heroId: friend.currentHeroId,
+          username: friend.currentHeroName || `${friend.friendHeroName || '친구'} (현재)`,
+        })
+        seen.add(friend.currentHeroId)
+      }
+      if (friend.friendHeroId && !seen.has(friend.friendHeroId)) {
+        entries.push({
+          heroId: friend.friendHeroId,
+          username: friend.friendHeroName || '친구',
+        })
+        seen.add(friend.friendHeroId)
+      }
+    }
+    return entries
+  }, [social.friends])
+
+  const isFriendHero = useCallback(
+    (hero) => {
+      if (!hero) return false
+      if (hero.ownerId && friendByOwner.get(hero.ownerId)) return true
+      if (hero.heroId && friendByHero.get(hero.heroId)) return true
+      return false
+    },
+    [friendByHero, friendByOwner],
+  )
+
+  const handleAddFriendFromChat = useCallback(
+    async (hero) => {
+      const targetId = hero?.heroId
+      if (!targetId) return { ok: false, error: '캐릭터 ID를 확인할 수 없습니다.' }
+      if (blockedHeroSet.has(targetId)) {
+        return { ok: false, error: '차단한 캐릭터입니다.' }
+      }
+      return social.addFriend({ heroId: targetId })
+    },
+    [blockedHeroSet, social],
+  )
+
+  const handleRemoveFriendFromChat = useCallback(
+    async (hero) => {
+      const friend =
+        (hero?.ownerId && friendByOwner.get(hero.ownerId)) ||
+        (hero?.heroId && friendByHero.get(hero.heroId))
+      if (!friend) {
+        return { ok: false, error: '친구 목록에서 찾을 수 없습니다.' }
+      }
+      return social.removeFriend(friend)
+    },
+    [friendByHero, friendByOwner, social],
+  )
+
+  const handleFriendOverlayAdd = useCallback(
+    async ({ heroId: targetHeroId }) => social.addFriend({ heroId: targetHeroId }),
+    [social],
+  )
+
+  const handleOpenWhisper = useCallback(
+    (targetHeroId) => {
+      if (!targetHeroId) return
+      setChatOpen(true)
+      chatOverlayRef.current?.openThread(targetHeroId)
+    },
+    [],
+  )
+
+  const handleCloseChat = useCallback(() => {
+    setChatOpen(false)
+    chatOverlayRef.current?.resetThread?.()
+  }, [])
 
   return (
     <CharacterDashboardProvider value={contextValue}>
@@ -228,17 +348,18 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
         <div style={styles.cornerIcons}>
           <button
             type="button"
-            onClick={() => router.push('/lobby')}
+            onClick={() => setChatOpen(true)}
             style={styles.cornerButton}
             title="공용 채팅"
           >
             💬
+            {chatUnread ? <span style={styles.cornerBadge}>{chatUnread}</span> : null}
           </button>
           <button
             type="button"
-            onClick={() => router.push('/roster')}
+            onClick={() => setFriendsOpen(true)}
             style={styles.cornerButton}
-            title="친구 / 영웅 목록"
+            title="친구 관리"
           >
             👥
           </button>
@@ -246,23 +367,41 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
 
         <div style={styles.content}>
           <header style={styles.header}>
-            <div style={styles.headerText}>
-              <h1 style={styles.title}>{headerTitle}</h1>
-              {headerDescription ? <p style={styles.subtitle}>{headerDescription}</p> : null}
-              {showHeroHeader && audioSource ? (
-                <div style={styles.bgmWrapper}>
-                  <span style={styles.bgmLabel}>{profile.bgm?.label || '배경 음악'}</span>
-                  <audio
-                    key={audioSource}
-                    controls
-                    loop
-                    src={audioSource}
-                    style={styles.bgmPlayer}
+            <div style={styles.headerCarousel}>
+              <div
+                style={{
+                  ...styles.headerTrack,
+                  width: `${headerSlides.length * 100}%`,
+                  transform: `translateX(-${(scrollProgress * 100) / headerSlides.length}%)`,
+                }}
+              >
+                {headerSlides.map((slide) => (
+                  <div
+                    key={slide.id}
+                    style={{
+                      ...styles.headerSlide,
+                      width: `${100 / headerSlides.length}%`,
+                    }}
                   >
-                    {profile.bgm?.label || '배경 음악'}
-                  </audio>
-                </div>
-              ) : null}
+                    <h1 style={styles.title}>{slide.title}</h1>
+                    {slide.description ? <p style={styles.subtitle}>{slide.description}</p> : null}
+                    {slide.showBgm && audioSource ? (
+                      <div style={styles.bgmWrapper}>
+                        <span style={styles.bgmLabel}>{profile.bgm?.label || '배경 음악'}</span>
+                        <audio
+                          key={audioSource}
+                          controls
+                          loop
+                          src={audioSource}
+                          style={styles.bgmPlayer}
+                        >
+                          {profile.bgm?.label || '배경 음악'}
+                        </audio>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             </div>
             <div style={styles.headerActions}>
               {onBack ? (
@@ -308,6 +447,29 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
         </nav>
       </div>
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
+      <ChatOverlay
+        ref={chatOverlayRef}
+        open={chatOpen}
+        onClose={handleCloseChat}
+        heroId={profile.hero?.id}
+        extraWhisperTargets={extraWhisperTargets}
+        onUnreadChange={setChatUnread}
+        onBlockedHeroesChange={setBlockedHeroes}
+        onRequestAddFriend={handleAddFriendFromChat}
+        onRequestRemoveFriend={handleRemoveFriendFromChat}
+        isFriend={isFriendHero}
+      />
+      <FriendOverlay
+        open={friendsOpen}
+        onClose={() => setFriendsOpen(false)}
+        viewer={social.viewer}
+        friends={social.friends}
+        loading={social.loading}
+        error={social.error}
+        onAddFriend={handleFriendOverlayAdd}
+        onRemoveFriend={social.removeFriend}
+        onOpenWhisper={handleOpenWhisper}
+      />
     </CharacterDashboardProvider>
   )
 }
@@ -839,6 +1001,23 @@ const styles = {
     color: '#f8fafc',
     fontSize: 20,
     cursor: 'pointer',
+    position: 'relative',
+  },
+  cornerBadge: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    background: '#ef4444',
+    color: '#fff',
+    fontSize: 11,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 6px',
+    fontWeight: 700,
   },
   header: {
     display: 'flex',
@@ -850,10 +1029,21 @@ const styles = {
     margin: '0 auto',
     paddingTop: 32,
   },
-  headerText: {
+  headerCarousel: {
+    flex: 1,
+    maxWidth: 720,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  headerTrack: {
+    display: 'flex',
+    transition: 'transform 220ms ease',
+  },
+  headerSlide: {
+    boxSizing: 'border-box',
+    paddingRight: 24,
     display: 'grid',
     gap: 12,
-    maxWidth: 720,
   },
   title: {
     margin: 0,

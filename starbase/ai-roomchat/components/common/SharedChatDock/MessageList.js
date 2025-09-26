@@ -9,6 +9,7 @@ export function MessageList({
   blockedHeroSet,
   onBlock,
   onUnblock,
+  onSelectHero,
 }) {
   return (
     <div ref={listRef} style={{ padding: 12, overflow: 'auto' }}>
@@ -21,6 +22,7 @@ export function MessageList({
           blockedHeroSet={blockedHeroSet}
           onBlock={onBlock}
           onUnblock={onUnblock}
+          onSelectHero={onSelectHero}
         />
       ))}
     </div>

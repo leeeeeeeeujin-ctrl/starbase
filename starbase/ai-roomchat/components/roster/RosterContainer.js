@@ -1,9 +1,12 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import { useRoster } from '../../hooks/roster/useRoster'
+import { useHeroSocial } from '../../hooks/social/useHeroSocial'
+import ChatOverlay from '../social/ChatOverlay'
+import FriendOverlay from '../social/FriendOverlay'
 import RosterView from './RosterView'
 
 export default function RosterContainer() {
@@ -18,6 +21,89 @@ export default function RosterContainer() {
 
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const social = useHeroSocial({ heroId: null, heroName: null, page: 'roster' })
+  const [chatOpen, setChatOpen] = useState(false)
+  const [friendsOpen, setFriendsOpen] = useState(false)
+  const [chatUnread, setChatUnread] = useState(0)
+  const [blockedHeroes, setBlockedHeroes] = useState([])
+  const chatOverlayRef = useRef(null)
+
+  const friendByOwner = social.friendByOwner ?? new Map()
+  const friendByHero = social.friendByHero ?? new Map()
+  const blockedHeroSet = useMemo(() => new Set(blockedHeroes || []), [blockedHeroes])
+  const extraWhisperTargets = useMemo(() => {
+    if (!social.friends?.length) return []
+    const seen = new Set()
+    const entries = []
+    for (const friend of social.friends) {
+      if (friend.currentHeroId && !seen.has(friend.currentHeroId)) {
+        entries.push({
+          heroId: friend.currentHeroId,
+          username: friend.currentHeroName || `${friend.friendHeroName || '친구'} (현재)`,
+        })
+        seen.add(friend.currentHeroId)
+      }
+      if (friend.friendHeroId && !seen.has(friend.friendHeroId)) {
+        entries.push({ heroId: friend.friendHeroId, username: friend.friendHeroName || '친구' })
+        seen.add(friend.friendHeroId)
+      }
+    }
+    return entries
+  }, [social.friends])
+
+  const isFriendHero = useCallback(
+    (hero) => {
+      if (!hero) return false
+      if (hero.ownerId && friendByOwner.get(hero.ownerId)) return true
+      if (hero.heroId && friendByHero.get(hero.heroId)) return true
+      return false
+    },
+    [friendByHero, friendByOwner],
+  )
+
+  const handleAddFriendFromChat = useCallback(
+    async (hero) => {
+      const targetId = hero?.heroId
+      if (!targetId) return { ok: false, error: '캐릭터 ID를 확인할 수 없습니다.' }
+      if (blockedHeroSet.has(targetId)) {
+        return { ok: false, error: '차단한 캐릭터입니다.' }
+      }
+      return social.addFriend({ heroId: targetId })
+    },
+    [blockedHeroSet, social],
+  )
+
+  const handleRemoveFriendFromChat = useCallback(
+    async (hero) => {
+      const friend =
+        (hero?.ownerId && friendByOwner.get(hero.ownerId)) ||
+        (hero?.heroId && friendByHero.get(hero.heroId))
+      if (!friend) {
+        return { ok: false, error: '친구 목록에서 찾을 수 없습니다.' }
+      }
+      return social.removeFriend(friend)
+    },
+    [friendByHero, friendByOwner, social],
+  )
+
+  const handleFriendOverlayAdd = useCallback(
+    async ({ heroId: targetHeroId }) => social.addFriend({ heroId: targetHeroId }),
+    [social],
+  )
+
+  const handleOpenWhisper = useCallback(
+    (heroId) => {
+      if (!heroId) return
+      setChatOpen(true)
+      chatOverlayRef.current?.openThread(heroId)
+    },
+    [],
+  )
+
+  const handleCloseChat = useCallback(() => {
+    setChatOpen(false)
+    chatOverlayRef.current?.resetThread?.()
+  }, [])
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget || deleting) return
@@ -40,19 +126,47 @@ export default function RosterContainer() {
   }, [reload, setError])
 
   return (
-    <RosterView
-      loading={loading}
-      error={error}
-      heroes={heroes}
-      displayName={displayName}
-      avatarUrl={avatarUrl}
-      deleteTarget={deleteTarget}
-      deleting={deleting}
-      onRequestDelete={setDeleteTarget}
-      onCancelDelete={() => setDeleteTarget(null)}
-      onConfirmDelete={handleConfirmDelete}
-      onLogoutComplete={() => router.replace('/')}
-      onResetError={handleResetError}
-    />
+    <>
+      <RosterView
+        loading={loading}
+        error={error}
+        heroes={heroes}
+        displayName={displayName}
+        avatarUrl={avatarUrl}
+        deleteTarget={deleteTarget}
+        deleting={deleting}
+        onRequestDelete={setDeleteTarget}
+        onCancelDelete={() => setDeleteTarget(null)}
+        onConfirmDelete={handleConfirmDelete}
+        onLogoutComplete={() => router.replace('/')}
+        onResetError={handleResetError}
+        onOpenChat={() => setChatOpen(true)}
+        onOpenFriends={() => setFriendsOpen(true)}
+        chatUnreadCount={chatUnread}
+      />
+      <ChatOverlay
+        ref={chatOverlayRef}
+        open={chatOpen}
+        onClose={handleCloseChat}
+        heroId={null}
+        extraWhisperTargets={extraWhisperTargets}
+        onUnreadChange={setChatUnread}
+        onBlockedHeroesChange={setBlockedHeroes}
+        onRequestAddFriend={handleAddFriendFromChat}
+        onRequestRemoveFriend={handleRemoveFriendFromChat}
+        isFriend={isFriendHero}
+      />
+      <FriendOverlay
+        open={friendsOpen}
+        onClose={() => setFriendsOpen(false)}
+        viewer={social.viewer}
+        friends={social.friends}
+        loading={social.loading}
+        error={social.error}
+        onAddFriend={handleFriendOverlayAdd}
+        onRemoveFriend={social.removeFriend}
+        onOpenWhisper={handleOpenWhisper}
+      />
+    </>
   )
 }

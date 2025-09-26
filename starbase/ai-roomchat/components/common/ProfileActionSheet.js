@@ -8,6 +8,10 @@ export default function ProfileActionSheet({
   onAddFriend,
   onWhisper,
   onViewDetail,
+  isFriend,
+  onRemoveFriend,
+  blocked,
+  onToggleBlock,
 }) {
   if (!open || !hero) return null
 
@@ -97,22 +101,41 @@ export default function ProfileActionSheet({
         ) : null}
 
         <div style={{ display: 'grid', gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => handleAction(onAddFriend)}
-            disabled={isSelf || typeof onAddFriend !== 'function'}
-            style={{
-              padding: '10px 14px',
-              borderRadius: 12,
-              border: '1px solid rgba(56, 189, 248, 0.45)',
-              background: isSelf ? 'rgba(15, 23, 42, 0.4)' : 'rgba(56, 189, 248, 0.18)',
-              color: '#bae6fd',
-              fontWeight: 600,
-              cursor: isSelf ? 'not-allowed' : 'pointer',
-            }}
-          >
-            친구 추가
-          </button>
+          {isFriend ? (
+            <button
+              type="button"
+              onClick={() => handleAction(onRemoveFriend)}
+              disabled={isSelf || typeof onRemoveFriend !== 'function'}
+              style={{
+                padding: '10px 14px',
+                borderRadius: 12,
+                border: '1px solid rgba(248, 113, 113, 0.55)',
+                background: isSelf ? 'rgba(15, 23, 42, 0.4)' : 'rgba(248, 113, 113, 0.18)',
+                color: '#fecaca',
+                fontWeight: 600,
+                cursor: isSelf ? 'not-allowed' : 'pointer',
+              }}
+            >
+              친구 삭제
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleAction(onAddFriend)}
+              disabled={isSelf || typeof onAddFriend !== 'function'}
+              style={{
+                padding: '10px 14px',
+                borderRadius: 12,
+                border: '1px solid rgba(56, 189, 248, 0.45)',
+                background: isSelf ? 'rgba(15, 23, 42, 0.4)' : 'rgba(56, 189, 248, 0.18)',
+                color: '#bae6fd',
+                fontWeight: 600,
+                cursor: isSelf ? 'not-allowed' : 'pointer',
+              }}
+            >
+              친구 추가
+            </button>
+          )}
 
           <button
             type="button"
@@ -145,6 +168,23 @@ export default function ProfileActionSheet({
           >
             세부 정보 보기
           </button>
+
+          {!isSelf && typeof onToggleBlock === 'function' ? (
+            <button
+              type="button"
+              onClick={() => handleAction(onToggleBlock)}
+              style={{
+                padding: '10px 14px',
+                borderRadius: 12,
+                border: '1px solid rgba(239, 68, 68, 0.45)',
+                background: blocked ? 'rgba(239,68,68,0.2)' : 'rgba(15,23,42,0.45)',
+                color: blocked ? '#fecaca' : '#ef4444',
+                fontWeight: 600,
+              }}
+            >
+              {blocked ? '차단 해제' : '차단하기'}
+            </button>
+          ) : null}
         </div>
 
         <button

@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+
+import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
 import { supabase } from '../../../lib/supabase'
-import { withTable } from '../../../lib/supabaseTables'
 
 const BLOCKED_STORAGE_KEY = 'starbase_blocked_heroes'
 
@@ -23,64 +24,29 @@ function persistBlockedHeroes(list) {
   try {
     window.localStorage.setItem(BLOCKED_STORAGE_KEY, JSON.stringify(list))
   } catch (error) {
-    // ignore
+    // ignore storage errors silently
   }
 }
 
-async function resolveViewerProfile(user, explicitHeroId) {
-  if (!user) return { name: '익명', avatar_url: null, hero_id: null }
-
-  if (explicitHeroId) {
-    const { data: hero } = await withTable(supabase, 'heroes', (table) =>
-      supabase
-        .from(table)
-        .select('id,name,image_url,owner_id')
-        .eq('id', explicitHeroId)
-        .single()
-    )
-    if (hero) {
-      return {
-        name: hero.name,
-        avatar_url: hero.image_url || null,
-        hero_id: hero.id,
-      }
-    }
-  }
-
-  const { data: myHero } = await withTable(supabase, 'heroes', (table) =>
-    supabase
-      .from(table)
-      .select('id,name,image_url')
-      .eq('owner_id', user.id)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-  )
-
-  if (myHero) {
-    return {
-      name: myHero.name,
-      avatar_url: myHero.image_url || null,
-      hero_id: myHero.id,
-    }
-  }
-
-  const meta = user?.user_metadata || {}
-  return {
-    name: meta.full_name || meta.name || (user.email?.split('@')[0] ?? '익명'),
-    avatar_url: meta.avatar_url || null,
-    hero_id: null,
-  }
-}
-
-export function useSharedChatDock({ heroId }) {
+export function useSharedChatDock({ heroId, extraWhisperTargets = [] }) {
   const listRef = useRef(null)
+  const activeThreadRef = useRef('global')
+  const viewerHeroRef = useRef(null)
+
   const [messages, setMessages] = useState([])
-  const [me, setMe] = useState({ name: '익명', avatar_url: null, hero_id: null })
+  const [me, setMe] = useState({
+    name: '익명',
+    avatar_url: null,
+    hero_id: null,
+    owner_id: null,
+    user_id: null,
+  })
   const [input, setInput] = useState('')
-  const [scope, setScope] = useState('global')
-  const [whisperTarget, setWhisperTarget] = useState(null)
+  const [scope, setScopeInternal] = useState('global')
+  const [whisperTarget, setWhisperTargetInternal] = useState(null)
   const [blockedHeroes, setBlockedHeroes] = useState(() => loadBlockedHeroes())
+  const [activeThread, setActiveThreadState] = useState('global')
+  const [unreadThreads, setUnreadThreads] = useState({})
 
   const blockedHeroSet = useMemo(
     () => new Set(blockedHeroes.filter(Boolean)),
@@ -88,45 +54,107 @@ export function useSharedChatDock({ heroId }) {
   )
 
   const viewerHeroId = heroId || me.hero_id || null
+  useEffect(() => {
+    viewerHeroRef.current = viewerHeroId
+  }, [viewerHeroId])
 
   const heroDirectory = useMemo(() => {
     const directory = new Map()
     for (const message of messages) {
-      if (message?.hero_id && message?.username && !directory.has(message.hero_id)) {
-        directory.set(message.hero_id, message.username)
+      if (message?.hero_id && message?.username) {
+        directory.set(message.hero_id, {
+          username: message.username,
+          avatarUrl: message.avatar_url || null,
+          ownerId: message.owner_id || message.user_id || null,
+        })
       }
     }
-    if (viewerHeroId && me?.name && !directory.has(viewerHeroId)) {
-      directory.set(viewerHeroId, me.name)
+    if (viewerHeroId && me?.name) {
+      if (!directory.has(viewerHeroId)) {
+        directory.set(viewerHeroId, {
+          username: me.name,
+          avatarUrl: me.avatar_url || null,
+          ownerId: me.owner_id || me.user_id || null,
+        })
+      }
     }
     return directory
-  }, [me.name, messages, viewerHeroId])
+  }, [messages, viewerHeroId, me.avatar_url, me.name, me.owner_id, me.user_id])
+
+  const whisperThreads = useMemo(() => {
+    if (!viewerHeroId) return []
+    const map = new Map()
+    for (const message of messages) {
+      if (message?.scope !== 'whisper') continue
+      if (message.hero_id !== viewerHeroId && message.target_hero_id !== viewerHeroId) continue
+      const counterpart = message.hero_id === viewerHeroId ? message.target_hero_id : message.hero_id
+      if (!counterpart) continue
+      const meta = heroDirectory.get(counterpart)
+      const existing = map.get(counterpart) || {
+        heroId: counterpart,
+        heroName: meta?.username || '알 수 없는 영웅',
+        ownerId: meta?.ownerId || null,
+        lastMessageAt: message.created_at,
+      }
+      if (existing.lastMessageAt < message.created_at) {
+        existing.lastMessageAt = message.created_at
+      }
+      if (meta?.username) {
+        existing.heroName = meta.username
+      }
+      if (meta?.ownerId) {
+        existing.ownerId = meta.ownerId
+      }
+      map.set(counterpart, existing)
+    }
+    const list = Array.from(map.values())
+    list.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+    return list
+  }, [heroDirectory, messages, viewerHeroId])
 
   const availableTargets = useMemo(() => {
+    const seen = new Map()
     const list = []
-    heroDirectory.forEach((username, id) => {
+
+    heroDirectory.forEach((meta, id) => {
       if (!id || id === viewerHeroId) return
+      const username = meta?.username || '알 수 없는 영웅'
       list.push({ heroId: id, username })
+      seen.set(id, true)
     })
+
+    for (const target of extraWhisperTargets || []) {
+      if (!target?.heroId) continue
+      if (target.heroId === viewerHeroId) continue
+      if (seen.has(target.heroId)) continue
+      list.push({ heroId: target.heroId, username: target.username || '알 수 없는 영웅' })
+      seen.set(target.heroId, true)
+    }
+
     list.sort((a, b) => a.username.localeCompare(b.username, 'ko'))
     return list
-  }, [heroDirectory, viewerHeroId])
+  }, [extraWhisperTargets, heroDirectory, viewerHeroId])
 
   const visibleMessages = useMemo(() => {
     return messages.filter((message) => {
       if (message?.hero_id && blockedHeroSet.has(message.hero_id) && message.hero_id !== viewerHeroId) {
         return false
       }
-      if (message?.scope === 'whisper') {
-        if (!viewerHeroId) return false
-        return message.hero_id === viewerHeroId || message.target_hero_id === viewerHeroId
-      }
       if (message?.scope === 'blocked') {
         return false
       }
-      return true
+      if (activeThread === 'global') {
+        return message?.scope !== 'whisper'
+      }
+      if (message?.scope !== 'whisper') return false
+      if (!viewerHeroId) return false
+      if (message.hero_id !== viewerHeroId && message.target_hero_id !== viewerHeroId) {
+        return false
+      }
+      const counterpart = message.hero_id === viewerHeroId ? message.target_hero_id : message.hero_id
+      return counterpart === activeThread
     })
-  }, [blockedHeroSet, messages, viewerHeroId])
+  }, [activeThread, blockedHeroSet, messages, viewerHeroId])
 
   const canSend = useMemo(() => {
     if (!input.trim()) return false
@@ -139,10 +167,20 @@ export function useSharedChatDock({ heroId }) {
   }, [blockedHeroes])
 
   useEffect(() => {
-    if (scope !== 'whisper') {
-      setWhisperTarget(null)
-    }
-  }, [scope])
+    setActiveThread('global')
+    setUnreadThreads({})
+  }, [viewerHeroId])
+
+  useEffect(() => {
+    activeThreadRef.current = activeThread
+    if (activeThread === 'global') return
+    setUnreadThreads((prev) => {
+      if (!prev[activeThread]) return prev
+      const next = { ...prev }
+      delete next[activeThread]
+      return next
+    })
+  }, [activeThread])
 
   useEffect(() => {
     let alive = true
@@ -152,7 +190,9 @@ export function useSharedChatDock({ heroId }) {
     }
 
     const bootstrap = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
       if (!alive || !user) return
 
       const profile = await resolveViewerProfile(user, heroId)
@@ -178,6 +218,21 @@ export function useSharedChatDock({ heroId }) {
           const next = [...prev, payload.new]
           return next.length > 200 ? next.slice(next.length - 200) : next
         })
+
+        const viewerId = viewerHeroRef.current
+        if (payload.new?.scope === 'whisper' && viewerId) {
+          const isParticipant =
+            payload.new.hero_id === viewerId || payload.new.target_hero_id === viewerId
+          const isSelf = payload.new.hero_id === viewerId
+          const threadId = payload.new.hero_id === viewerId ? payload.new.target_hero_id : payload.new.hero_id
+          if (isParticipant && !isSelf && threadId && threadId !== activeThreadRef.current) {
+            setUnreadThreads((prev) => ({
+              ...prev,
+              [threadId]: (prev[threadId] || 0) + 1,
+            }))
+          }
+        }
+
         scrollToBottom()
       })
       .subscribe()
@@ -188,17 +243,50 @@ export function useSharedChatDock({ heroId }) {
     }
   }, [heroId])
 
+  const setActiveThread = (thread) => {
+    const normalized = thread || 'global'
+    setActiveThreadState(normalized)
+    if (normalized === 'global') {
+      setScopeInternal('global')
+      setWhisperTargetInternal(null)
+    } else {
+      setScopeInternal('whisper')
+      setWhisperTargetInternal(normalized)
+    }
+  }
+
+  const handleSetScope = (nextScope) => {
+    if (nextScope === 'global') {
+      setActiveThread('global')
+    } else {
+      setScopeInternal('whisper')
+      if (whisperTarget) {
+        setActiveThreadState(whisperTarget)
+      }
+    }
+  }
+
+  const handleSetWhisperTarget = (target) => {
+    if (target) {
+      setActiveThread(target)
+    } else {
+      setActiveThread('global')
+    }
+  }
+
   const send = async () => {
     const text = input.trim()
     if (!text) return
 
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
     if (!user) {
       alert('로그인 필요')
       return
     }
 
-    const activeHeroId = viewerHeroId
+    const activeHeroId = viewerHeroRef.current
 
     if (scope === 'whisper') {
       if (!activeHeroId) {
@@ -228,7 +316,12 @@ export function useSharedChatDock({ heroId }) {
     if (error) alert(error.message)
   }
 
+  const totalUnread = useMemo(() => {
+    return Object.values(unreadThreads).reduce((sum, count) => sum + count, 0)
+  }, [unreadThreads])
+
   return {
+    activeThread,
     availableTargets,
     blockedHeroSet,
     blockedHeroes,
@@ -237,16 +330,19 @@ export function useSharedChatDock({ heroId }) {
     input,
     listRef,
     me,
+    messages,
     scope,
     send,
+    setActiveThread,
     setBlockedHeroes,
     setInput,
-    setScope,
-    setWhisperTarget,
-    visibleMessages,
+    setScope: handleSetScope,
+    setWhisperTarget: handleSetWhisperTarget,
+    threadList: whisperThreads,
+    totalUnread,
+    unreadThreads,
     viewerHeroId,
+    visibleMessages,
     whisperTarget,
   }
 }
-
-//
