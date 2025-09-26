@@ -61,6 +61,30 @@ export default function RosterContainer() {
     [friendByHero, friendByOwner],
   )
 
+  const updateBlockedHeroes = useCallback((next) => {
+    setBlockedHeroes((prev) => {
+      const computed = typeof next === 'function' ? next(prev) : next
+      const normalized = Array.from(new Set((computed || []).filter(Boolean)))
+      if (prev.length === normalized.length && prev.every((id, index) => id === normalized[index])) {
+        return prev
+      }
+      return normalized
+    })
+  }, [])
+
+  const handleToggleBlockedHero = useCallback(
+    (heroId) => {
+      if (!heroId) return
+      updateBlockedHeroes((prev) => {
+        if (prev.includes(heroId)) {
+          return prev.filter((id) => id !== heroId)
+        }
+        return [...prev, heroId]
+      })
+    },
+    [updateBlockedHeroes],
+  )
+
   const handleAddFriendFromChat = useCallback(
     async (hero) => {
       const targetId = hero?.heroId
@@ -150,8 +174,9 @@ export default function RosterContainer() {
         onClose={handleCloseChat}
         heroId={null}
         extraWhisperTargets={extraWhisperTargets}
+        blockedHeroes={blockedHeroes}
         onUnreadChange={setChatUnread}
-        onBlockedHeroesChange={setBlockedHeroes}
+        onBlockedHeroesChange={updateBlockedHeroes}
         onRequestAddFriend={handleAddFriendFromChat}
         onRequestRemoveFriend={handleRemoveFriendFromChat}
         isFriend={isFriendHero}
@@ -170,6 +195,8 @@ export default function RosterContainer() {
         onDeclineRequest={social.declineFriendRequest}
         onCancelRequest={social.cancelFriendRequest}
         onOpenWhisper={handleOpenWhisper}
+        blockedHeroes={blockedHeroes}
+        onToggleBlockedHero={handleToggleBlockedHero}
       />
     </>
   )

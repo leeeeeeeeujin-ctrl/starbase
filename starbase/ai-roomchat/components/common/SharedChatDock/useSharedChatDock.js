@@ -7,6 +7,21 @@ import { supabase } from '../../../lib/supabase'
 
 const BLOCKED_STORAGE_KEY = 'starbase_blocked_heroes'
 
+function normalizeBlockedHeroes(list) {
+  if (!Array.isArray(list)) return []
+  return Array.from(new Set(list.filter(Boolean)))
+}
+
+function areListsEqual(a, b) {
+  if (a === b) return true
+  if (!Array.isArray(a) || !Array.isArray(b)) return false
+  if (a.length !== b.length) return false
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return false
+  }
+  return true
+}
+
 function loadBlockedHeroes() {
   if (typeof window === 'undefined') return []
   try {
@@ -28,7 +43,11 @@ function persistBlockedHeroes(list) {
   }
 }
 
-export function useSharedChatDock({ heroId, extraWhisperTargets = [] }) {
+export function useSharedChatDock({
+  heroId,
+  extraWhisperTargets = [],
+  blockedHeroes: externalBlockedHeroes,
+}) {
   const listRef = useRef(null)
   const activeThreadRef = useRef('global')
   const viewerHeroRef = useRef(null)
@@ -44,14 +63,27 @@ export function useSharedChatDock({ heroId, extraWhisperTargets = [] }) {
   const [input, setInput] = useState('')
   const [scope, setScopeInternal] = useState('global')
   const [whisperTarget, setWhisperTargetInternal] = useState(null)
-  const [blockedHeroes, setBlockedHeroes] = useState(() => loadBlockedHeroes())
+  const [blockedHeroes, setBlockedHeroes] = useState(() => {
+    if (Array.isArray(externalBlockedHeroes)) {
+      return normalizeBlockedHeroes(externalBlockedHeroes)
+    }
+    return loadBlockedHeroes()
+  })
   const [activeThread, setActiveThreadState] = useState('global')
   const [unreadThreads, setUnreadThreads] = useState({})
 
-  const blockedHeroSet = useMemo(
-    () => new Set(blockedHeroes.filter(Boolean)),
-    [blockedHeroes],
-  )
+  const blockedHeroSet = useMemo(() => new Set(blockedHeroes), [blockedHeroes])
+
+  useEffect(() => {
+    if (!Array.isArray(externalBlockedHeroes)) return
+    const normalized = normalizeBlockedHeroes(externalBlockedHeroes)
+    setBlockedHeroes((prev) => {
+      if (areListsEqual(prev, normalized)) {
+        return prev
+      }
+      return normalized
+    })
+  }, [externalBlockedHeroes])
 
   const viewerHeroId = heroId || me.hero_id || null
   useEffect(() => {

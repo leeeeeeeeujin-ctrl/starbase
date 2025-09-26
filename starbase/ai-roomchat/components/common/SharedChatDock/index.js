@@ -11,6 +11,7 @@ export default function SharedChatDock({
   height = 'min(70vh, 520px)',
   heroId,
   extraWhisperTargets = [],
+  blockedHeroes: externalBlockedHeroes,
   onSelectHero,
   onUnreadChange,
   onBlockedHeroesChange,
@@ -40,7 +41,7 @@ export default function SharedChatDock({
     viewerHeroId,
     visibleMessages,
     whisperTarget,
-  } = useSharedChatDock({ heroId, extraWhisperTargets })
+  } = useSharedChatDock({ heroId, extraWhisperTargets, blockedHeroes: externalBlockedHeroes })
 
   useEffect(() => {
     onUnreadChange?.(totalUnread)
@@ -54,6 +55,7 @@ export default function SharedChatDock({
     if (!hero) return
     const extended = {
       ...hero,
+      blocked: hero.heroId ? blockedHeroSet.has(hero.heroId) : false,
       onToggleBlock: () => {
         if (!hero.heroId) return
         setBlockedHeroes((prev) => {

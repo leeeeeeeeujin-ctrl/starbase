@@ -262,6 +262,30 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
   const friendByHero = social.friendByHero ?? new Map()
   const blockedHeroSet = useMemo(() => new Set(blockedHeroes || []), [blockedHeroes])
 
+  const updateBlockedHeroes = useCallback((next) => {
+    setBlockedHeroes((prev) => {
+      const computed = typeof next === 'function' ? next(prev) : next
+      const normalized = Array.from(new Set((computed || []).filter(Boolean)))
+      if (prev.length === normalized.length && prev.every((id, index) => id === normalized[index])) {
+        return prev
+      }
+      return normalized
+    })
+  }, [])
+
+  const handleToggleBlockedHero = useCallback(
+    (heroId) => {
+      if (!heroId) return
+      updateBlockedHeroes((prev) => {
+        if (prev.includes(heroId)) {
+          return prev.filter((id) => id !== heroId)
+        }
+        return [...prev, heroId]
+      })
+    },
+    [updateBlockedHeroes],
+  )
+
   const extraWhisperTargets = useMemo(() => {
     if (!social.friends?.length) return []
     const seen = new Set()
@@ -345,26 +369,6 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
         <div style={backgroundStyle} aria-hidden />
         <div style={styles.backgroundTint} aria-hidden />
 
-        <div style={styles.cornerIcons}>
-          <button
-            type="button"
-            onClick={() => setChatOpen(true)}
-            style={styles.cornerButton}
-            title="공용 채팅"
-          >
-            💬
-            {chatUnread ? <span style={styles.cornerBadge}>{chatUnread}</span> : null}
-          </button>
-          <button
-            type="button"
-            onClick={() => setFriendsOpen(true)}
-            style={styles.cornerButton}
-            title="친구 관리"
-          >
-            👥
-          </button>
-        </div>
-
         <div style={styles.content}>
           <header style={styles.header}>
             <div style={styles.headerCarousel}>
@@ -441,10 +445,29 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
                 ...(panelIndex === index ? styles.navButtonActive : null),
               }}
             >
-              {item.label}
-            </button>
+            {item.label}
+          </button>
           ))}
         </nav>
+        <div style={styles.overlayButtons}>
+          <button
+            type="button"
+            onClick={() => setChatOpen(true)}
+            style={styles.overlayButton}
+            title="공용 채팅"
+          >
+            💬
+            {chatUnread ? <span style={styles.overlayBadge}>{chatUnread}</span> : null}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFriendsOpen(true)}
+            style={styles.overlayButton}
+            title="친구 관리"
+          >
+            👥
+          </button>
+        </div>
       </div>
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
       <ChatOverlay
@@ -453,8 +476,9 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
         onClose={handleCloseChat}
         heroId={profile.hero?.id}
         extraWhisperTargets={extraWhisperTargets}
+        blockedHeroes={blockedHeroes}
         onUnreadChange={setChatUnread}
-        onBlockedHeroesChange={setBlockedHeroes}
+        onBlockedHeroesChange={updateBlockedHeroes}
         onRequestAddFriend={handleAddFriendFromChat}
         onRequestRemoveFriend={handleRemoveFriendFromChat}
         isFriend={isFriendHero}
@@ -473,6 +497,8 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
         onDeclineRequest={social.declineFriendRequest}
         onCancelRequest={social.cancelFriendRequest}
         onOpenWhisper={handleOpenWhisper}
+        blockedHeroes={blockedHeroes}
+        onToggleBlockedHero={handleToggleBlockedHero}
       />
     </CharacterDashboardProvider>
   )
@@ -988,32 +1014,33 @@ const styles = {
     display: 'grid',
     gap: 32,
   },
-  cornerIcons: {
+  overlayButtons: {
     position: 'fixed',
-    top: 16,
-    left: 16,
-    zIndex: 2,
+    right: 20,
+    bottom: 24,
     display: 'flex',
-    gap: 8,
+    flexDirection: 'column',
+    gap: 12,
+    zIndex: 3,
   },
-  cornerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    border: '1px solid rgba(148, 163, 184, 0.45)',
-    background: 'rgba(15, 23, 42, 0.65)',
+  overlayButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.65)',
     color: '#f8fafc',
     fontSize: 20,
     cursor: 'pointer',
     position: 'relative',
   },
-  cornerBadge: {
+  overlayBadge: {
     position: 'absolute',
     right: -4,
     bottom: -4,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     background: '#ef4444',
     color: '#fff',
     fontSize: 11,

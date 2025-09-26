@@ -19,6 +19,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
     onClose,
     heroId,
     extraWhisperTargets = [],
+    blockedHeroes,
     onUnreadChange,
     onBlockedHeroesChange,
     onRequestAddFriend,
@@ -57,6 +58,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
       setSelectedHero({
         ...hero,
         isFriend: friend,
+        blocked: hero.blocked,
       })
       setSheetOpen(true)
     },
@@ -123,6 +125,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
         height="min(75vh, 560px)"
         heroId={heroId}
         extraWhisperTargets={extraWhisperTargets}
+        blockedHeroes={blockedHeroes}
         onSelectHero={handleSelectHero}
         onUnreadChange={onUnreadChange}
         onBlockedHeroesChange={onBlockedHeroesChange}

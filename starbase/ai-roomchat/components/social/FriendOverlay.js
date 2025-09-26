@@ -33,6 +33,8 @@ export default function FriendOverlay({
   onDeclineRequest,
   onCancelRequest,
   onOpenWhisper,
+  blockedHeroes = [],
+  onToggleBlockedHero,
 }) {
   const [input, setInput] = useState('')
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -41,6 +43,59 @@ export default function FriendOverlay({
 
   const incomingRequests = friendRequests?.incoming ?? []
   const outgoingRequests = friendRequests?.outgoing ?? []
+  const blockedHeroSet = useMemo(
+    () => new Set((blockedHeroes || []).filter(Boolean)),
+    [blockedHeroes],
+  )
+
+  const heroMetaMap = useMemo(() => {
+    const map = new Map()
+    for (const friend of friends) {
+      if (friend.currentHeroId) {
+        map.set(friend.currentHeroId, {
+          name: friend.currentHeroName || friend.friendHeroName || '이름 미확인',
+          avatar: friend.currentHeroAvatar || friend.friendHeroAvatar || null,
+        })
+      }
+      if (friend.friendHeroId) {
+        map.set(friend.friendHeroId, {
+          name: friend.friendHeroName || friend.currentHeroName || '이름 미확인',
+          avatar: friend.friendHeroAvatar || friend.currentHeroAvatar || null,
+        })
+      }
+    }
+    for (const request of incomingRequests) {
+      if (request.partnerHeroId) {
+        map.set(request.partnerHeroId, {
+          name: request.partnerHeroName || '이름 미확인',
+          avatar: request.partnerHeroAvatar || null,
+        })
+      }
+    }
+    for (const request of outgoingRequests) {
+      if (request.partnerHeroId) {
+        map.set(request.partnerHeroId, {
+          name: request.partnerHeroName || '이름 미확인',
+          avatar: request.partnerHeroAvatar || null,
+        })
+      }
+    }
+    return map
+  }, [friends, incomingRequests, outgoingRequests])
+
+  const blockedEntries = useMemo(() => {
+    if (!blockedHeroes?.length) return []
+    return blockedHeroes
+      .filter(Boolean)
+      .map((heroId) => {
+        const meta = heroMetaMap.get(heroId) || {}
+        return {
+          heroId,
+          heroName: meta.name || '이름 미확인',
+          avatarUrl: meta.avatar || null,
+        }
+      })
+  }, [blockedHeroes, heroMetaMap])
 
   const handleSubmit = useCallback(
     async (event) => {
@@ -100,6 +155,17 @@ export default function FriendOverlay({
     [onCancelRequest],
   )
 
+  const handleToggleBlockedHero = useCallback(
+    async (heroId) => {
+      if (!heroId || typeof onToggleBlockedHero !== 'function') return
+      const result = await onToggleBlockedHero(heroId)
+      if (result?.error) {
+        alert(result.error)
+      }
+    },
+    [onToggleBlockedHero],
+  )
+
   const sheetHero = useMemo(() => {
     if (!selectedFriend) return null
     const heroId = selectedFriend.currentHeroId || selectedFriend.friendHeroId
@@ -114,13 +180,15 @@ export default function FriendOverlay({
         setSheetOpen(false)
       },
       onRemoveFriend: () => handleRemove(selectedFriend),
+      blocked: heroId ? blockedHeroSet.has(heroId) : false,
+      onToggleBlock: heroId ? () => handleToggleBlockedHero(heroId) : undefined,
       onViewDetail: () => {
         if (!heroId) return
         window.open(`/character/${heroId}`, '_blank', 'noopener')
         setSheetOpen(false)
       },
     }
-  }, [handleRemove, onOpenWhisper, selectedFriend])
+  }, [blockedHeroSet, handleRemove, handleToggleBlockedHero, onOpenWhisper, selectedFriend])
 
   const sortedFriends = useMemo(() => {
     const copy = [...friends]
@@ -244,6 +312,23 @@ export default function FriendOverlay({
           >
             친구 요청
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('blocked')}
+            style={{
+              flex: 1,
+              borderRadius: 999,
+              border: '1px solid rgba(148,163,184,0.4)',
+              padding: '10px 12px',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: activeTab === 'blocked' ? 'rgba(248,113,113,0.18)' : 'rgba(15,23,42,0.7)',
+              color: activeTab === 'blocked' ? '#fecaca' : '#fca5a5',
+            }}
+          >
+            차단 목록
+          </button>
         </div>
 
         {loading ? <p style={{ color: '#cbd5f5', fontSize: 13 }}>친구 정보를 불러오는 중…</p> : null}
@@ -254,6 +339,7 @@ export default function FriendOverlay({
             {sortedFriends.map((friend) => {
               const heroId = friend.currentHeroId || friend.friendHeroId
               const heroName = friend.currentHeroName || friend.friendHeroName
+              const heroBlocked = heroId ? blockedHeroSet.has(heroId) : false
               return (
                 <div
                   key={friend.friendOwnerId || heroId}
@@ -269,7 +355,23 @@ export default function FriendOverlay({
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'grid', gap: 4 }}>
-                      <strong style={{ fontSize: 15 }}>{heroName}</strong>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <strong style={{ fontSize: 15 }}>{heroName}</strong>
+                        {heroBlocked ? (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: '#fecaca',
+                              background: 'rgba(248,113,113,0.25)',
+                              borderRadius: 999,
+                              padding: '2px 8px',
+                              fontWeight: 600,
+                            }}
+                          >
+                            차단됨
+                          </span>
+                        ) : null}
+                      </div>
                       <span style={{ fontSize: 12, color: '#94a3b8' }}>{heroId || 'ID 미확인'}</span>
                     </div>
                     <span style={{ fontSize: 12, color: friend.online ? '#22d3ee' : '#94a3b8' }}>
@@ -338,7 +440,7 @@ export default function FriendOverlay({
               <p style={{ color: '#cbd5f5', fontSize: 13 }}>등록된 친구가 없습니다.</p>
             ) : null}
           </div>
-        ) : (
+        ) : activeTab === 'requests' ? (
           <div style={{ display: 'grid', gap: 16 }}>
             <section
               style={{
@@ -477,6 +579,52 @@ export default function FriendOverlay({
               </div>
             </section>
           </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {blockedEntries.map((entry) => (
+              <div
+                key={entry.heroId}
+                style={{
+                  border: '1px solid rgba(148,163,184,0.35)',
+                  borderRadius: 18,
+                  padding: '14px 16px',
+                  background: 'rgba(15, 23, 42, 0.7)',
+                  color: '#e2e8f0',
+                  display: 'grid',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <strong style={{ fontSize: 15 }}>{entry.heroName}</strong>
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{entry.heroId}</span>
+                  </div>
+                  <span style={{ fontSize: 12, color: '#fca5a5' }}>차단됨</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleBlockedHero(entry.heroId)}
+                    style={{
+                      borderRadius: 10,
+                      border: 'none',
+                      padding: '8px 12px',
+                      background: '#fca5a5',
+                      color: '#021626',
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    차단 해제
+                  </button>
+                </div>
+              </div>
+            ))}
+            {!blockedEntries.length ? (
+              <p style={{ color: '#fca5a5', fontSize: 13 }}>차단한 캐릭터가 없습니다.</p>
+            ) : null}
+          </div>
         )}
       </div>
 
@@ -489,6 +637,8 @@ export default function FriendOverlay({
         onViewDetail={sheetHero?.onViewDetail}
         isFriend={sheetHero?.isFriend}
         onRemoveFriend={sheetHero?.onRemoveFriend}
+        blocked={sheetHero?.blocked}
+        onToggleBlock={sheetHero?.onToggleBlock}
       />
     </SurfaceOverlay>
   )
