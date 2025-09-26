@@ -157,6 +157,14 @@ export default function CharacterDashboard({
     [],
   )
 
+  const openOverview = useCallback(() => {
+    setOverviewOpen((current) => (current ? current : true))
+  }, [])
+
+  const closeOverview = useCallback(() => {
+    setOverviewOpen(false)
+  }, [])
+
   useEffect(() => {
     const node = swipeViewportRef.current
     if (!node) return undefined
@@ -360,17 +368,9 @@ export default function CharacterDashboard({
     const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
     if (targetIndex >= 0) {
       snapToPanel(targetIndex)
-      setOverviewOpen(false)
+      closeOverview()
     }
-  }, [snapToPanel])
-
-  const openOverview = useCallback(() => {
-    setOverviewOpen((current) => (current ? current : true))
-  }, [])
-
-  const closeOverview = useCallback(() => {
-    setOverviewOpen(false)
-  }, [])
+  }, [closeOverview, snapToPanel])
 
   return (
     <CharacterDashboardProvider value={contextValue}>
