@@ -269,6 +269,10 @@ export default function EditHeroModal({ open, onClose }) {
 
   const disabledSave = saving || localSaving
 
+  if (!open) {
+    return null
+  }
+
   return (
     <div style={modalStyles.overlay}>
       <div style={modalStyles.modal}>
