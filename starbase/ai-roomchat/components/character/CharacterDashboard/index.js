@@ -464,10 +464,14 @@ export default function CharacterDashboard({ dashboard, heroName, onStartBattle,
         onClose={() => setFriendsOpen(false)}
         viewer={social.viewer}
         friends={social.friends}
+        friendRequests={social.friendRequests}
         loading={social.loading}
         error={social.error}
         onAddFriend={handleFriendOverlayAdd}
         onRemoveFriend={social.removeFriend}
+        onAcceptRequest={social.acceptFriendRequest}
+        onDeclineRequest={social.declineFriendRequest}
+        onCancelRequest={social.cancelFriendRequest}
         onOpenWhisper={handleOpenWhisper}
       />
     </CharacterDashboardProvider>

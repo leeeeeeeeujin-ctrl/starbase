@@ -24,15 +24,23 @@ export default function FriendOverlay({
   onClose,
   viewer,
   friends = [],
+  friendRequests = { incoming: [], outgoing: [] },
   loading,
   error,
   onAddFriend,
   onRemoveFriend,
+  onAcceptRequest,
+  onDeclineRequest,
+  onCancelRequest,
   onOpenWhisper,
 }) {
   const [input, setInput] = useState('')
   const [sheetOpen, setSheetOpen] = useState(false)
   const [selectedFriend, setSelectedFriend] = useState(null)
+  const [activeTab, setActiveTab] = useState('friends')
+
+  const incomingRequests = friendRequests?.incoming ?? []
+  const outgoingRequests = friendRequests?.outgoing ?? []
 
   const handleSubmit = useCallback(
     async (event) => {
@@ -57,6 +65,39 @@ export default function FriendOverlay({
       }
     },
     [onRemoveFriend],
+  )
+
+  const handleAcceptRequest = useCallback(
+    async (request) => {
+      if (!request?.id) return
+      const result = await onAcceptRequest?.(request.id)
+      if (result?.error) {
+        alert(result.error)
+      }
+    },
+    [onAcceptRequest],
+  )
+
+  const handleDeclineRequest = useCallback(
+    async (request) => {
+      if (!request?.id) return
+      const result = await onDeclineRequest?.(request.id)
+      if (result?.error) {
+        alert(result.error)
+      }
+    },
+    [onDeclineRequest],
+  )
+
+  const handleCancelRequest = useCallback(
+    async (request) => {
+      if (!request?.id) return
+      const result = await onCancelRequest?.(request.id)
+      if (result?.error) {
+        alert(result.error)
+      }
+    },
+    [onCancelRequest],
   )
 
   const sheetHero = useMemo(() => {
@@ -92,7 +133,13 @@ export default function FriendOverlay({
   }, [friends])
 
   return (
-    <SurfaceOverlay open={open} onClose={onClose} title="친구 관리" width={420} contentStyle={{ background: 'transparent', padding: 0 }}>
+    <SurfaceOverlay
+      open={open}
+      onClose={onClose}
+      title="친구 관리"
+      width={420}
+      contentStyle={{ background: 'transparent', padding: 0 }}
+    >
       <div style={{ display: 'grid', gap: 16 }}>
         <section
           style={{
@@ -156,101 +203,281 @@ export default function FriendOverlay({
           </button>
         </form>
 
-        {loading ? (
-          <p style={{ color: '#cbd5f5', fontSize: 13 }}>친구 목록을 불러오는 중…</p>
-        ) : null}
-        {error ? (
-          <p style={{ color: '#fca5a5', fontSize: 13 }}>{error}</p>
-        ) : null}
-
-        <div style={{ display: 'grid', gap: 12 }}>
-          {sortedFriends.map((friend) => {
-            const heroId = friend.currentHeroId || friend.friendHeroId
-            const heroName = friend.currentHeroName || friend.friendHeroName
-            return (
-              <div
-                key={friend.friendOwnerId || heroId}
-                style={{
-                  border: '1px solid rgba(148,163,184,0.35)',
-                  borderRadius: 18,
-                  padding: '14px 16px',
-                  background: 'rgba(15, 23, 42, 0.7)',
-                  color: '#e2e8f0',
-                  display: 'grid',
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'grid', gap: 4 }}>
-                    <strong style={{ fontSize: 15 }}>{heroName}</strong>
-                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{heroId || 'ID 미확인'}</span>
-                  </div>
-                  <span style={{ fontSize: 12, color: friend.online ? '#22d3ee' : '#94a3b8' }}>
-                    {friend.online ? '온라인' : '오프라인'}
-                  </span>
-                </div>
-                <span style={{ fontSize: 12, color: '#cbd5f5' }}>{formatPageLabel(friend.currentPage)}</span>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => heroId && onOpenWhisper?.(heroId)}
-                    style={{
-                      borderRadius: 10,
-                      border: 'none',
-                      padding: '8px 12px',
-                      background: '#38bdf8',
-                      color: '#020617',
-                      fontWeight: 700,
-                      fontSize: 12,
-                      cursor: heroId ? 'pointer' : 'not-allowed',
-                      opacity: heroId ? 1 : 0.4,
-                    }}
-                  >
-                    귓속말
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(friend)}
-                    style={{
-                      borderRadius: 10,
-                      border: '1px solid rgba(248, 113, 113, 0.6)',
-                      padding: '8px 12px',
-                      background: 'rgba(248, 113, 113, 0.15)',
-                      color: '#fca5a5',
-                      fontWeight: 700,
-                      fontSize: 12,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    친구 삭제
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFriend(friend)
-                      setSheetOpen(true)
-                    }}
-                    style={{
-                      borderRadius: 10,
-                      border: '1px solid rgba(148,163,184,0.45)',
-                      padding: '8px 12px',
-                      background: 'rgba(15,23,42,0.55)',
-                      color: '#cbd5f5',
-                      fontWeight: 600,
-                      fontSize: 12,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    상세
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-          {!sortedFriends.length && !loading ? (
-            <p style={{ color: '#cbd5f5', fontSize: 13 }}>등록된 친구가 없습니다.</p>
-          ) : null}
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            padding: '0 4px',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveTab('friends')}
+            style={{
+              flex: 1,
+              borderRadius: 999,
+              border: '1px solid rgba(148,163,184,0.4)',
+              padding: '10px 12px',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: activeTab === 'friends' ? 'rgba(56,189,248,0.16)' : 'rgba(15,23,42,0.7)',
+              color: activeTab === 'friends' ? '#e0f2fe' : '#cbd5f5',
+            }}
+          >
+            친구 목록
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('requests')}
+            style={{
+              flex: 1,
+              borderRadius: 999,
+              border: '1px solid rgba(148,163,184,0.4)',
+              padding: '10px 12px',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: activeTab === 'requests' ? 'rgba(56,189,248,0.16)' : 'rgba(15,23,42,0.7)',
+              color: activeTab === 'requests' ? '#e0f2fe' : '#cbd5f5',
+            }}
+          >
+            친구 요청
+          </button>
         </div>
+
+        {loading ? <p style={{ color: '#cbd5f5', fontSize: 13 }}>친구 정보를 불러오는 중…</p> : null}
+        {error ? <p style={{ color: '#fca5a5', fontSize: 13 }}>{error}</p> : null}
+
+        {activeTab === 'friends' ? (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {sortedFriends.map((friend) => {
+              const heroId = friend.currentHeroId || friend.friendHeroId
+              const heroName = friend.currentHeroName || friend.friendHeroName
+              return (
+                <div
+                  key={friend.friendOwnerId || heroId}
+                  style={{
+                    border: '1px solid rgba(148,163,184,0.35)',
+                    borderRadius: 18,
+                    padding: '14px 16px',
+                    background: 'rgba(15, 23, 42, 0.7)',
+                    color: '#e2e8f0',
+                    display: 'grid',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <strong style={{ fontSize: 15 }}>{heroName}</strong>
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>{heroId || 'ID 미확인'}</span>
+                    </div>
+                    <span style={{ fontSize: 12, color: friend.online ? '#22d3ee' : '#94a3b8' }}>
+                      {friend.online ? '온라인' : '오프라인'}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 12, color: '#cbd5f5' }}>{formatPageLabel(friend.currentPage)}</span>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => heroId && onOpenWhisper?.(heroId)}
+                      style={{
+                        borderRadius: 10,
+                        border: 'none',
+                        padding: '8px 12px',
+                        background: '#38bdf8',
+                        color: '#020617',
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: heroId ? 'pointer' : 'not-allowed',
+                        opacity: heroId ? 1 : 0.4,
+                      }}
+                    >
+                      귓속말
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(friend)}
+                      style={{
+                        borderRadius: 10,
+                        border: '1px solid rgba(248, 113, 113, 0.6)',
+                        padding: '8px 12px',
+                        background: 'rgba(248, 113, 113, 0.15)',
+                        color: '#fca5a5',
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      친구 삭제
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFriend(friend)
+                        setSheetOpen(true)
+                      }}
+                      style={{
+                        borderRadius: 10,
+                        border: '1px solid rgba(148,163,184,0.45)',
+                        padding: '8px 12px',
+                        background: 'rgba(15,23,42,0.55)',
+                        color: '#cbd5f5',
+                        fontWeight: 600,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      상세
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+            {!sortedFriends.length && !loading ? (
+              <p style={{ color: '#cbd5f5', fontSize: 13 }}>등록된 친구가 없습니다.</p>
+            ) : null}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <section
+              style={{
+                display: 'grid',
+                gap: 12,
+                border: '1px solid rgba(148,163,184,0.35)',
+                borderRadius: 18,
+                padding: '14px 16px',
+                background: 'rgba(15, 23, 42, 0.7)',
+                color: '#e2e8f0',
+              }}
+            >
+              <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: 14 }}>받은 친구 요청</strong>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>{incomingRequests.length}건</span>
+              </header>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {incomingRequests.map((request) => (
+                  <article
+                    key={request.id}
+                    style={{
+                      border: '1px solid rgba(148,163,184,0.35)',
+                      borderRadius: 16,
+                      padding: '12px 14px',
+                      background: 'rgba(15,23,42,0.6)',
+                      display: 'grid',
+                      gap: 6,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'grid', gap: 2 }}>
+                        <strong style={{ fontSize: 14 }}>{request.partnerHeroName}</strong>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{request.partnerHeroId || 'ID 미확인'}</span>
+                      </div>
+                      <span style={{ fontSize: 12, color: '#f8fafc' }}>대기 중</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptRequest(request)}
+                        style={{
+                          borderRadius: 10,
+                          border: 'none',
+                          padding: '8px 12px',
+                          background: '#4ade80',
+                          color: '#022c22',
+                          fontWeight: 600,
+                          fontSize: 13,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        수락
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeclineRequest(request)}
+                        style={{
+                          borderRadius: 10,
+                          border: '1px solid rgba(248,113,113,0.6)',
+                          padding: '8px 12px',
+                          background: 'transparent',
+                          color: '#fca5a5',
+                          fontWeight: 600,
+                          fontSize: 13,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        거절
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {incomingRequests.length === 0 ? (
+                  <p style={{ color: '#cbd5f5', fontSize: 13 }}>받은 친구 요청이 없습니다.</p>
+                ) : null}
+              </div>
+            </section>
+
+            <section
+              style={{
+                display: 'grid',
+                gap: 12,
+                border: '1px solid rgba(148,163,184,0.35)',
+                borderRadius: 18,
+                padding: '14px 16px',
+                background: 'rgba(15, 23, 42, 0.7)',
+                color: '#e2e8f0',
+              }}
+            >
+              <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: 14 }}>보낸 친구 요청</strong>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>{outgoingRequests.length}건</span>
+              </header>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {outgoingRequests.map((request) => (
+                  <article
+                    key={request.id}
+                    style={{
+                      border: '1px solid rgba(148,163,184,0.35)',
+                      borderRadius: 16,
+                      padding: '12px 14px',
+                      background: 'rgba(15,23,42,0.6)',
+                      display: 'grid',
+                      gap: 6,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'grid', gap: 2 }}>
+                        <strong style={{ fontSize: 14 }}>{request.partnerHeroName}</strong>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{request.partnerHeroId || 'ID 미확인'}</span>
+                      </div>
+                      <span style={{ fontSize: 12, color: '#f8fafc' }}>대기 중</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCancelRequest(request)}
+                      style={{
+                        borderRadius: 10,
+                        border: '1px solid rgba(148,163,184,0.6)',
+                        padding: '8px 12px',
+                        background: 'transparent',
+                        color: '#cbd5f5',
+                        fontWeight: 600,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        justifySelf: 'flex-start',
+                      }}
+                    >
+                      요청 취소
+                    </button>
+                  </article>
+                ))}
+                {outgoingRequests.length === 0 ? (
+                  <p style={{ color: '#cbd5f5', fontSize: 13 }}>보낸 친구 요청이 없습니다.</p>
+                ) : null}
+              </div>
+            </section>
+          </div>
+        )}
       </div>
 
       <ProfileActionSheet

@@ -1,5 +1,7 @@
 const FALLBACK_TABLES = {
   heroes: ['heroes', 'rank_heroes', 'games'],
+  friend_requests: ['friend_requests'],
+  friendships: ['friendships'],
   rank_participants: ['rank_participants', 'rank_players', 'rank_session_players'],
   rank_game_roles: ['rank_game_roles', 'rank_games_roles'],
   rank_battles: ['rank_battles', 'rank_sessions', 'session_logs'],
