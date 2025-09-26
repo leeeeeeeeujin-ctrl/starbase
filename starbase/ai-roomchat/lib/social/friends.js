@@ -25,6 +25,9 @@ async function queryFriendships(viewerId) {
     'id,user_id_a,user_id_b,since,created_at',
     'id,user_id_a,user_id_b,created_at',
     'id,user_id_a,user_id_b',
+    'user_id_a,user_id_b,since,created_at',
+    'user_id_a,user_id_b,created_at',
+    'user_id_a,user_id_b',
   ]
 
   let lastMissingColumnError = null
@@ -352,6 +355,18 @@ async function fetchHeroesByOwner(ownerIds) {
   return directory
 }
 
+function deriveFriendshipId(row) {
+  if (row?.id) return row.id
+
+  const a = row?.user_id_a
+  const b = row?.user_id_b
+  if (!a || !b) {
+    return `missing-id:${row?.user_id_a || 'unknown'}:${row?.user_id_b || 'unknown'}`
+  }
+
+  return a < b ? `${a}:${b}` : `${b}:${a}`
+}
+
 function mapFriendships(rows, heroDirectory, viewerId) {
   return rows.map((row) => {
     const partnerOwnerId = row.user_id_a === viewerId ? row.user_id_b : row.user_id_a
@@ -359,7 +374,7 @@ function mapFriendships(rows, heroDirectory, viewerId) {
     const createdAt = row.since || row.created_at || new Date().toISOString()
 
     return {
-      friendshipId: row.id,
+      friendshipId: deriveFriendshipId(row),
       friendOwnerId: partnerOwnerId,
       friendHeroId: hero?.id || null,
       friendHeroName: hero?.name || '이름 미확인',
