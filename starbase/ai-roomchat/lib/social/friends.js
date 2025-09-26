@@ -32,11 +32,17 @@ async function queryPendingRequests(viewerId) {
 
 function isMissingRpc(error) {
   if (!error) return false
-  if (error.code === 'PGRST302') return true
+  if (error.code === 'PGRST302' || error.code === 'PGRST301') return true
   const text = `${error.message || ''} ${error.details || ''}`.toLowerCase()
   if (!text.trim()) return false
-  return text.includes('function') &&
-    (text.includes('not exist') || text.includes('undefined'))
+  const missingFunction =
+    text.includes('function') &&
+    (text.includes('not exist') || text.includes('undefined') || text.includes('not defined'))
+  if (missingFunction) return true
+  if (error.status === 400) {
+    return text.includes('rpc') || text.includes('procedure') || text.includes('function')
+  }
+  return false
 }
 
 async function fetchFriendRequestById(requestId) {

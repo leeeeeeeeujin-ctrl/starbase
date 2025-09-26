@@ -6,7 +6,7 @@ import { useFriendActions } from './useFriendActions'
 import { useHeroPresence } from './useHeroPresence'
 import { useHeroSocialBootstrap } from './useHeroSocialBootstrap'
 
-export function useHeroSocial({ heroId, heroName, page }) {
+export function useHeroSocial({ heroId, heroName, page, viewerHero = null }) {
   const {
     viewer,
     friends,
@@ -15,7 +15,7 @@ export function useHeroSocial({ heroId, heroName, page }) {
     error,
     setFriends,
     refreshSocial,
-  } = useHeroSocialBootstrap(heroId)
+  } = useHeroSocialBootstrap(heroId, viewerHero)
 
   const friendActions = useFriendActions(viewer, refreshSocial)
 
@@ -23,10 +23,10 @@ export function useHeroSocial({ heroId, heroName, page }) {
     viewer
       ? {
           presenceKey: viewer.user_id,
-          ownerId: viewer.user_id,
-          heroId: heroId || viewer.hero_id || null,
-          heroName: heroName || viewer.name,
-          avatarUrl: viewer.avatar_url,
+          ownerId: viewer.owner_id || viewer.user_id,
+          heroId: heroId || viewer.hero_id || viewerHero?.heroId || null,
+          heroName: heroName || viewerHero?.heroName || viewer.name,
+          avatarUrl: viewer.avatar_url || viewerHero?.avatarUrl || null,
           page: page || 'character',
         }
       : null,

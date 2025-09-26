@@ -18,6 +18,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
     open,
     onClose,
     heroId,
+    viewerHero = null,
     extraWhisperTargets = [],
     blockedHeroes,
     onUnreadChange,
@@ -124,6 +125,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
       <SharedChatDock
         height="min(75vh, 560px)"
         heroId={heroId}
+        viewerHero={viewerHero}
         extraWhisperTargets={extraWhisperTargets}
         blockedHeroes={blockedHeroes}
         onSelectHero={handleSelectHero}

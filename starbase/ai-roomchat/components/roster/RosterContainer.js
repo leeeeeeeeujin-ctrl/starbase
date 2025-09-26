@@ -28,6 +28,17 @@ export default function RosterContainer() {
   const [blockedHeroes, setBlockedHeroes] = useState([])
   const chatOverlayRef = useRef(null)
 
+  const viewerHeroHint = useMemo(() => {
+    if (!social.viewer) return null
+    return {
+      heroId: social.viewer.hero_id,
+      heroName: social.viewer.name,
+      avatarUrl: social.viewer.avatar_url,
+      ownerId: social.viewer.owner_id,
+      userId: social.viewer.user_id,
+    }
+  }, [social.viewer])
+
   const friendByOwner = social.friendByOwner ?? new Map()
   const friendByHero = social.friendByHero ?? new Map()
   const blockedHeroSet = useMemo(() => new Set(blockedHeroes || []), [blockedHeroes])
@@ -173,6 +184,7 @@ export default function RosterContainer() {
         open={chatOpen}
         onClose={handleCloseChat}
         heroId={null}
+        viewerHero={viewerHeroHint}
         extraWhisperTargets={extraWhisperTargets}
         blockedHeroes={blockedHeroes}
         onUnreadChange={setChatUnread}

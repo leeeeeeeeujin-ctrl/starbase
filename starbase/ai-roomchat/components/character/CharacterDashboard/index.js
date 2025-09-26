@@ -248,8 +248,36 @@ export default function CharacterDashboard({
   const social = useHeroSocial({
     heroId: profile.hero?.id || explicitHeroId || null,
     heroName: displayName,
+    viewerHero: profile.hero
+      ? {
+          heroId: profile.hero.id,
+          heroName: profile.hero.name || displayName,
+          avatarUrl: profile.hero.image_url || null,
+          ownerId: profile.hero.owner_id || null,
+        }
+      : null,
     page: activePanel?.id ? `character:${activePanel.id}` : 'character',
   })
+  const viewerHeroHint = useMemo(() => {
+    if (profile.hero?.id) {
+      return {
+        heroId: profile.hero.id,
+        heroName: profile.hero.name || displayName,
+        avatarUrl: profile.hero.image_url || null,
+        ownerId: profile.hero.owner_id || null,
+      }
+    }
+    if (social.viewer) {
+      return {
+        heroId: social.viewer.hero_id,
+        heroName: social.viewer.name,
+        avatarUrl: social.viewer.avatar_url,
+        ownerId: social.viewer.owner_id,
+        userId: social.viewer.user_id,
+      }
+    }
+    return null
+  }, [displayName, profile.hero, social.viewer])
   const showHeroHeader = activePanel?.id === 'character'
   const headerSlides = useMemo(
     () =>
@@ -481,6 +509,7 @@ export default function CharacterDashboard({
         open={chatOpen}
         onClose={handleCloseChat}
         heroId={profile.hero?.id}
+        viewerHero={viewerHeroHint}
         extraWhisperTargets={extraWhisperTargets}
         blockedHeroes={blockedHeroes}
         onUnreadChange={setChatUnread}

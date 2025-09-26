@@ -1,13 +1,56 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { resolveViewerProfile } from '../../lib/heroes/resolveViewerProfile'
 import { supabase } from '../../lib/supabase'
 import { EMPTY_REQUESTS, loadFriendSnapshot } from '../../lib/social/friends'
 
-export function useHeroSocialBootstrap(heroId) {
-  const [viewer, setViewer] = useState(null)
+function normaliseViewerHint(hint) {
+  if (!hint) return null
+  const heroId = hint.heroId || hint.hero_id || hint.id || null
+  const ownerId = hint.ownerId || hint.owner_id || hint.userId || hint.user_id || null
+  const name = hint.heroName || hint.name || hint.displayName || null
+  const avatar = hint.avatarUrl ?? hint.avatar_url ?? hint.image_url ?? null
+  const userId = hint.userId || hint.user_id || ownerId || null
+
+  if (!heroId && !ownerId && !userId && !name && !avatar) {
+    return null
+  }
+
+  return {
+    name: name || '익명',
+    avatar_url: avatar ?? null,
+    hero_id: heroId || null,
+    owner_id: ownerId || userId || null,
+    user_id: userId || ownerId || null,
+  }
+}
+
+function mergeViewerProfile(base, hint) {
+  if (!hint) return base
+  const merged = { ...base }
+  if (hint.hero_id && hint.hero_id !== merged.hero_id) {
+    merged.hero_id = hint.hero_id
+  }
+  if (hint.owner_id && hint.owner_id !== merged.owner_id) {
+    merged.owner_id = hint.owner_id
+  }
+  if (hint.avatar_url && hint.avatar_url !== merged.avatar_url) {
+    merged.avatar_url = hint.avatar_url
+  }
+  if (hint.name && (merged.name === '익명' || merged.name !== hint.name)) {
+    merged.name = hint.name
+  }
+  if (hint.user_id && hint.user_id !== merged.user_id) {
+    merged.user_id = hint.user_id
+  }
+  return merged
+}
+
+export function useHeroSocialBootstrap(heroId, viewerHeroHint = null) {
+  const hintProfile = useMemo(() => normaliseViewerHint(viewerHeroHint), [viewerHeroHint])
+  const [viewer, setViewer] = useState(hintProfile)
   const [friends, setFriends] = useState([])
   const [friendRequests, setFriendRequests] = useState(EMPTY_REQUESTS)
   const [loading, setLoading] = useState(true)
@@ -38,6 +81,11 @@ export function useHeroSocialBootstrap(heroId) {
   }, [viewer?.user_id])
 
   useEffect(() => {
+    if (!hintProfile) return
+    setViewer((prev) => mergeViewerProfile(prev || hintProfile, hintProfile))
+  }, [hintProfile])
+
+  useEffect(() => {
     let alive = true
 
     const bootstrap = async () => {
@@ -58,10 +106,12 @@ export function useHeroSocialBootstrap(heroId) {
       }
 
       try {
-        const profile = await resolveViewerProfile(user, heroId)
+        const profile = await resolveViewerProfile(user, heroId, {
+          fallbackHero: viewerHeroHint,
+        })
         if (!alive) return
 
-        const viewerProfile = { ...profile, user_id: user.id }
+        const viewerProfile = mergeViewerProfile({ ...profile, user_id: user.id }, hintProfile)
         setViewer(viewerProfile)
 
         try {
@@ -95,7 +145,7 @@ export function useHeroSocialBootstrap(heroId) {
     return () => {
       alive = false
     }
-  }, [heroId])
+  }, [heroId, hintProfile, viewerHeroHint])
 
   return {
     viewer,

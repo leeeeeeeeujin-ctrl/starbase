@@ -143,6 +143,7 @@ export default function GameRoomView({
       <SharedChatDock
         height={260}
         heroId={chatHeroId}
+        viewerHero={myHero ? { heroId: myHero.id, heroName: myHero.name, avatarUrl: myHero.image_url, ownerId: myHero.owner_id } : null}
         onUserSend={onChatSend}
       />
     </div>

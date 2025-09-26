@@ -12,6 +12,64 @@ import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
 
 const BLOCKED_STORAGE_KEY = 'starbase_blocked_heroes'
 
+const DEFAULT_VIEWER = {
+  name: '익명',
+  avatar_url: null,
+  hero_id: null,
+  owner_id: null,
+  user_id: null,
+}
+
+function deriveViewerFromHint(hint) {
+  if (!hint) return null
+  const heroId = hint.heroId || hint.hero_id || hint.id || null
+  const ownerId = hint.ownerId || hint.owner_id || hint.userId || hint.user_id || null
+  const userId = hint.userId || hint.user_id || ownerId || null
+  const avatar = hint.avatarUrl ?? hint.avatar_url ?? hint.image_url ?? null
+  const name = hint.heroName || hint.name || hint.displayName || null
+
+  if (!heroId && !ownerId && !userId && !avatar && !name) {
+    return null
+  }
+
+  return {
+    name: name || DEFAULT_VIEWER.name,
+    avatar_url: avatar ?? DEFAULT_VIEWER.avatar_url,
+    hero_id: heroId || DEFAULT_VIEWER.hero_id,
+    owner_id: ownerId || userId || DEFAULT_VIEWER.owner_id,
+    user_id: userId || ownerId || DEFAULT_VIEWER.user_id,
+  }
+}
+
+function mergeViewerState(current, hint) {
+  if (!hint) return current
+
+  const merged = { ...current }
+  const heroId = hint.hero_id
+
+  if (heroId && heroId !== merged.hero_id) {
+    merged.hero_id = heroId
+  }
+
+  if (hint.owner_id && hint.owner_id !== merged.owner_id) {
+    merged.owner_id = hint.owner_id
+  }
+
+  if (hint.user_id && hint.user_id !== merged.user_id) {
+    merged.user_id = hint.user_id
+  }
+
+  if (hint.avatar_url && hint.avatar_url !== merged.avatar_url) {
+    merged.avatar_url = hint.avatar_url
+  }
+
+  if (hint.name && (merged.name === DEFAULT_VIEWER.name || merged.name !== hint.name)) {
+    merged.name = hint.name
+  }
+
+  return merged
+}
+
 function normalizeBlockedHeroes(list) {
   if (!Array.isArray(list)) return []
   return Array.from(new Set(list.filter(Boolean)))
@@ -52,19 +110,17 @@ export function useSharedChatDock({
   heroId,
   extraWhisperTargets = [],
   blockedHeroes: externalBlockedHeroes,
+  viewerHero = null,
+  onSend,
 }) {
   const listRef = useRef(null)
   const activeThreadRef = useRef('global')
   const viewerHeroRef = useRef(null)
 
+  const hintProfile = useMemo(() => deriveViewerFromHint(viewerHero), [viewerHero])
+
   const [messages, setMessages] = useState([])
-  const [me, setMe] = useState({
-    name: '익명',
-    avatar_url: null,
-    hero_id: null,
-    owner_id: null,
-    user_id: null,
-  })
+  const [me, setMe] = useState(() => mergeViewerState(DEFAULT_VIEWER, hintProfile))
   const [input, setInput] = useState('')
   const [scope, setScopeInternal] = useState('global')
   const [whisperTarget, setWhisperTargetInternal] = useState(null)
@@ -94,6 +150,11 @@ export function useSharedChatDock({
   useEffect(() => {
     viewerHeroRef.current = viewerHeroId
   }, [viewerHeroId])
+
+  useEffect(() => {
+    if (!hintProfile) return
+    setMe((prev) => mergeViewerState(prev, hintProfile))
+  }, [hintProfile])
 
   const heroDirectory = useMemo(() => {
     const directory = new Map()
@@ -231,9 +292,12 @@ export function useSharedChatDock({
         const user = await getCurrentUser()
         if (!alive || !user) return
 
-        const profile = await resolveViewerProfile(user, heroId)
+        const profile = await resolveViewerProfile(user, heroId, {
+          fallbackHero: viewerHero,
+        })
         if (!alive) return
-        setMe(profile)
+        const mergedProfile = mergeViewerState(profile, hintProfile)
+        setMe(mergedProfile)
 
         const data = await fetchRecentMessages({ limit: 200 })
         if (!alive) return
@@ -275,7 +339,7 @@ export function useSharedChatDock({
       alive = false
       unsubscribe()
     }
-  }, [heroId])
+  }, [heroId, viewerHero, hintProfile])
 
   const setActiveThread = (thread) => {
     const normalized = thread || 'global'
@@ -346,6 +410,14 @@ export function useSharedChatDock({
       }
 
       await insertMessage(payload)
+
+      if (typeof onSend === 'function') {
+        try {
+          await onSend(text, payload)
+        } catch (hookError) {
+          console.error('외부 채팅 후크 실행 중 오류가 발생했습니다.', hookError)
+        }
+      }
     } catch (error) {
       console.error('메시지를 보내지 못했습니다.', error)
       alert(error?.message || '메시지를 보내지 못했습니다.')

@@ -12,11 +12,13 @@ export default function SharedChatDock({
   heroId,
   extraWhisperTargets = [],
   blockedHeroes: externalBlockedHeroes,
+  viewerHero = null,
   onSelectHero,
   onUnreadChange,
   onBlockedHeroesChange,
   activeThreadId,
   onThreadChange,
+  onUserSend,
 }) {
   const {
     activeThread,
@@ -41,7 +43,13 @@ export default function SharedChatDock({
     viewerHeroId,
     visibleMessages,
     whisperTarget,
-  } = useSharedChatDock({ heroId, extraWhisperTargets, blockedHeroes: externalBlockedHeroes })
+  } = useSharedChatDock({
+    heroId,
+    extraWhisperTargets,
+    blockedHeroes: externalBlockedHeroes,
+    viewerHero,
+    onSend: onUserSend,
+  })
 
   useEffect(() => {
     onUnreadChange?.(totalUnread)
