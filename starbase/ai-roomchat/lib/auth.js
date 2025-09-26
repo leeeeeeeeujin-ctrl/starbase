@@ -7,9 +7,19 @@ import { supabase } from './supabase'
  * @param {string} [options.redirectPath='/auth-callback'] - Relative callback path.
  * @returns {Promise<{status:'redirect', url:string} | {status:'error', message:string}>}
  */
+function sanitiseRedirectPath(path) {
+  if (!path) return '/auth-callback'
+  const trimmed = path.trim()
+  const withoutTrailing = trimmed.replace(/[)]+$/g, '') || '/auth-callback'
+  const normalised = withoutTrailing.startsWith('/') ? withoutTrailing : `/${withoutTrailing}`
+  return normalised
+}
+
 export async function startGoogleOAuth({ origin, redirectPath = '/auth-callback' }) {
   try {
-    const redirectTo = `${origin}${redirectPath.startsWith('/') ? '' : '/'}${redirectPath}`
+    const safePath = sanitiseRedirectPath(redirectPath)
+    const safeOrigin = (origin || '').trim().replace(/[)]+$/g, '').replace(/[/]+$/, '')
+    const redirectTo = `${safeOrigin}${safePath}`
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

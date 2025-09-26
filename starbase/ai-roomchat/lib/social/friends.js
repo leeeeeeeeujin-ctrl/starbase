@@ -68,6 +68,44 @@ async function fallbackFriendshipQuery({ table, columns, viewerId }) {
   return { data: dedupeFriendships(combined), error: null }
 }
 
+async function wildcardFriendshipQuery(viewerId) {
+  const wildcardColumns = '*'
+  const attempt = await withTable(supabase, 'friendships', (table) =>
+    supabase
+      .from(table)
+      .select(wildcardColumns)
+      .or(`user_id_a.eq.${viewerId},user_id_b.eq.${viewerId}`),
+  )
+
+  if (!attempt.error) {
+    return Array.isArray(attempt.data) ? dedupeFriendships(attempt.data) : []
+  }
+
+  if (isLegacyFilterError(attempt.error)) {
+    const fallback = await fallbackFriendshipQuery({
+      table: attempt.table || 'friendships',
+      columns: wildcardColumns,
+      viewerId,
+    })
+
+    if (!fallback.error) {
+      return Array.isArray(fallback.data) ? fallback.data : []
+    }
+
+    if (isMissingColumnError(fallback.error)) {
+      return []
+    }
+
+    throw fallback.error
+  }
+
+  if (isMissingColumnError(attempt.error)) {
+    return []
+  }
+
+  throw attempt.error
+}
+
 function dedupeFriendRequests(rows) {
   const unique = new Map()
 
@@ -106,6 +144,61 @@ async function fallbackFriendRequestQuery({ table, columns, viewerId }) {
   return { data: dedupeFriendRequests(combined), error: null }
 }
 
+async function wildcardPendingRequestQuery(viewerId) {
+  const wildcardColumns = '*'
+  const attempt = await withTable(supabase, 'friend_requests', (table) =>
+    supabase
+      .from(table)
+      .select(wildcardColumns)
+      .eq('status', 'pending')
+      .or(`requester_id.eq.${viewerId},addressee_id.eq.${viewerId}`),
+  )
+
+  if (!attempt.error) {
+    return Array.isArray(attempt.data) ? attempt.data : []
+  }
+
+  if (isLegacyFilterError(attempt.error)) {
+    const fallback = await fallbackFriendRequestQuery({
+      table: attempt.table || 'friend_requests',
+      columns: wildcardColumns,
+      viewerId,
+    })
+
+    if (!fallback.error) {
+      return Array.isArray(fallback.data) ? fallback.data : []
+    }
+
+    if (isMissingColumnError(fallback.error)) {
+      return []
+    }
+
+    throw fallback.error
+  }
+
+  if (isMissingColumnError(attempt.error)) {
+    return []
+  }
+
+  throw attempt.error
+}
+
+async function wildcardFriendRequestById(requestId) {
+  const attempt = await withTable(supabase, 'friend_requests', (table) =>
+    supabase.from(table).select('*').eq('id', requestId).maybeSingle(),
+  )
+
+  if (!attempt.error) {
+    return attempt.data || null
+  }
+
+  if (isMissingColumnError(attempt.error)) {
+    return null
+  }
+
+  throw attempt.error
+}
+
 export const EMPTY_REQUESTS = { incoming: [], outgoing: [] }
 
 async function queryFriendships(viewerId) {
@@ -138,6 +231,10 @@ async function queryFriendships(viewerId) {
         'friendships 조회 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
         attempt.error,
       )
+      const wildcard = await wildcardFriendshipQuery(viewerId)
+      if (wildcard.length) {
+        return wildcard
+      }
       continue
     }
 
@@ -158,6 +255,10 @@ async function queryFriendships(viewerId) {
           'friendships 조회 폴백 중 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
           fallback.error,
         )
+        const wildcard = await wildcardFriendshipQuery(viewerId)
+        if (wildcard.length) {
+          return wildcard
+        }
         continue
       }
 
@@ -207,6 +308,10 @@ async function queryPendingRequests(viewerId) {
         'friend_requests 조회 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
         attempt.error,
       )
+      const wildcard = await wildcardPendingRequestQuery(viewerId)
+      if (wildcard.length) {
+        return wildcard
+      }
       continue
     }
 
@@ -227,6 +332,10 @@ async function queryPendingRequests(viewerId) {
           'friend_requests 조회 폴백 중 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
           fallback.error,
         )
+        const wildcard = await wildcardPendingRequestQuery(viewerId)
+        if (wildcard.length) {
+          return wildcard
+        }
         continue
       }
 
@@ -291,6 +400,10 @@ async function fetchFriendRequestById(requestId) {
         'friend_requests 단건 조회 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
         attempt.error,
       )
+      const wildcard = await wildcardFriendRequestById(requestId)
+      if (wildcard) {
+        return wildcard
+      }
       continue
     }
 
