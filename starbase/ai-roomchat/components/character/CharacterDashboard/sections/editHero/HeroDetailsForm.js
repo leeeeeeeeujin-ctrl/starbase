@@ -2,7 +2,11 @@ import { modalStyles } from './styles'
 
 export default function HeroDetailsForm({ name, description, onChange }) {
   return (
-    <>
+    <div style={{ ...modalStyles.sectionBox, gap: 16 }}>
+      <div>
+        <div style={modalStyles.sectionTitle}>기본 정보</div>
+        <div style={modalStyles.sectionHelp}>화면에 노출될 이름과 짧은 소개를 입력하세요.</div>
+      </div>
       <div style={modalStyles.inputGroup}>
         <label style={modalStyles.label}>이름</label>
         <input
@@ -23,6 +27,6 @@ export default function HeroDetailsForm({ name, description, onChange }) {
           placeholder="영웅 소개를 입력하세요"
         />
       </div>
-    </>
+    </div>
   )
 }
