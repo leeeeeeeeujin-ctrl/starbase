@@ -91,6 +91,12 @@ function readStoredSelection(userId) {
 
 async function fetchHeroById(heroId) {
   if (!heroId) return null
+  // NOTE: we always request the logical table name `heroes` here. The
+  // `withTable` helper resolves it to the actual physical table (commonly also
+  // `heroes`) so there is no separate `hero` table involved—the singular
+  // "hero" references in the UI are just JavaScript objects hydrated from this
+  // row. This nuance helps when debugging environments where the table might be
+  // exposed under a different alias such as `rank_heroes`.
   const { data: hero, error } = await withTable(supabase, 'heroes', (table) =>
     supabase
       .from(table)
