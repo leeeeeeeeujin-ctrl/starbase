@@ -1,137 +1,153 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { supabase } from '../../../lib/supabase'
+import {
+  fetchRecentMessages,
+  getCurrentUser,
+  insertMessage,
+  subscribeToMessages,
+} from '../../../lib/chat/messages'
+import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
+
+const DEFAULT_VIEWER = {
+  name: '익명',
+  avatar_url: null,
+  hero_id: null,
+  owner_id: null,
+  user_id: null,
+}
 
 export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
-  const [displayName, setDisplayName] = useState('익명')
-  const [avatarUrl, setAvatarUrl] = useState(null)
+  const [viewer, setViewer] = useState(DEFAULT_VIEWER)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const listRef = useRef(null)
+  const viewerRef = useRef(DEFAULT_VIEWER)
 
   useEffect(() => {
-    let mounted = true
+    viewerRef.current = viewer
+  }, [viewer])
 
-    async function resolveProfile() {
-      const { data } = await supabase.auth.getUser()
-      if (!mounted) return
+  useEffect(() => {
+    let alive = true
 
-      const user = data?.user
-      if (!user) {
-        onRequireAuth?.()
-        return
-      }
+    const resolveProfile = async () => {
+      try {
+        const user = await getCurrentUser()
+        if (!alive) return
 
-      let name = null
-      let avatar = null
-
-      if (heroId) {
-        const { data: hero } = await supabase
-          .from('heroes')
-          .select('name,image_url')
-          .eq('id', heroId)
-          .single()
-        if (hero) {
-          name = hero.name
-          avatar = hero.image_url || null
+        if (!user) {
+          setViewer(DEFAULT_VIEWER)
+          onRequireAuth?.()
+          return
         }
-      }
 
-      if (!name) {
-        const { data: heroes } = await supabase
-          .from('heroes')
-          .select('name,image_url')
-          .order('created_at', { ascending: true })
-          .limit(1)
-        if (heroes && heroes.length > 0) {
-          name = heroes[0].name
-          avatar = heroes[0].image_url || null
-        }
+        const profile = await resolveViewerProfile(user, heroId)
+        if (!alive) return
+        setViewer(profile)
+      } catch (error) {
+        console.error('로비 채팅 프로필을 불러오지 못했습니다.', error)
       }
-
-      if (!name) {
-        const meta = user?.user_metadata || {}
-        name = meta.full_name || meta.name || (user?.email ? user.email.split('@')[0] : '익명')
-        avatar = meta.avatar_url || null
-      }
-
-      if (!mounted) return
-      setDisplayName(name)
-      setAvatarUrl(avatar)
     }
 
     resolveProfile()
 
     return () => {
-      mounted = false
+      alive = false
     }
   }, [heroId, onRequireAuth])
 
   useEffect(() => {
-    let mounted = true
+    let alive = true
 
-    async function bootstrapMessages() {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .order('created_at', { ascending: true })
-        .limit(100)
-
-      if (!mounted) return
-      if (error) {
-        console.error(error)
-        return
+    const bootstrapMessages = async () => {
+      try {
+        const data = await fetchRecentMessages({ limit: 100 })
+        if (!alive) return
+        setMessages(data)
+        setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
+      } catch (error) {
+        console.error('로비 채팅 메시지를 불러오지 못했습니다.', error)
       }
-
-      setMessages(data || [])
-      setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
     }
 
     bootstrapMessages()
 
-    const channel = supabase
-      .channel('messages-changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-        setMessages((prev) => [...prev, payload.new])
+    const unsubscribe = subscribeToMessages({
+      channelName: 'lobby-chat-stream',
+      onInsert: (message) => {
+        setMessages((prev) => {
+          const next = [...prev, message]
+          return next.length > 200 ? next.slice(next.length - 200) : next
+        })
         setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
-      })
-      .subscribe()
+      },
+    })
 
     return () => {
-      supabase.removeChannel(channel)
-      mounted = false
+      alive = false
+      unsubscribe?.()
     }
   }, [])
 
-  async function sendMessage() {
-    if (!input.trim()) return
+  const ensureViewer = useCallback(async () => {
+    const cached = viewerRef.current
+    if (cached?.user_id && cached?.hero_id) {
+      return cached
+    }
 
-    const { data } = await supabase.auth.getUser()
-    const user = data?.user
+    const user = await getCurrentUser()
     if (!user) {
-      alert('로그인이 필요합니다.')
-      return
+      return null
     }
 
+    const profile = await resolveViewerProfile(user, heroId)
+    setViewer(profile)
+    return profile
+  }, [heroId])
+
+  const sendMessage = useCallback(async () => {
     const text = input.trim()
-    setInput('')
+    if (!text) return
 
-    const { error } = await supabase.from('messages').insert({
-      owner_id: user.id,
-      username: displayName,
-      avatar_url: avatarUrl,
-      text,
-    })
+    try {
+      const user = await getCurrentUser()
+      if (!user) {
+        onRequireAuth?.()
+        alert('로그인이 필요합니다.')
+        return
+      }
 
-    if (error) {
-      console.error(error)
-      alert(error.message)
+      let profile = viewerRef.current
+      if (!profile?.hero_id || !profile?.user_id) {
+        profile = await ensureViewer()
+      }
+
+      if (!profile?.hero_id) {
+        alert('채팅에 사용할 캐릭터를 먼저 선택하세요.')
+        return
+      }
+
+      setInput('')
+
+      await insertMessage({
+        user_id: profile.user_id || user.id,
+        owner_id: profile.owner_id || user.id,
+        username: profile.name,
+        avatar_url: profile.avatar_url,
+        hero_id: profile.hero_id,
+        scope: 'global',
+        target_hero_id: null,
+        text,
+      })
+    } catch (error) {
+      console.error('메시지를 보내지 못했습니다.', error)
+      alert(error?.message || '메시지를 보내지 못했습니다.')
     }
-  }
+  }, [ensureViewer, input, onRequireAuth])
 
   return {
-    displayName,
-    avatarUrl,
+    displayName: viewer?.name || '익명',
+    avatarUrl: viewer?.avatar_url || null,
     messages,
     input,
     setInput,
