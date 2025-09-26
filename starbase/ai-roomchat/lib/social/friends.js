@@ -30,6 +30,138 @@ async function queryPendingRequests(viewerId) {
   return Array.isArray(data) ? data : []
 }
 
+function isMissingRpc(error) {
+  if (!error) return false
+  if (error.code === 'PGRST302') return true
+  const text = `${error.message || ''} ${error.details || ''}`.toLowerCase()
+  if (!text.trim()) return false
+  return text.includes('function') &&
+    (text.includes('not exist') || text.includes('undefined'))
+}
+
+async function fetchFriendRequestById(requestId) {
+  const { data, error } = await withTable(supabase, 'friend_requests', (table) =>
+    supabase
+      .from(table)
+      .select('id,requester_id,addressee_id,status,message,created_at,updated_at')
+      .eq('id', requestId)
+      .maybeSingle(),
+  )
+
+  if (error) throw error
+  return data || null
+}
+
+function normaliseFriendPair(a, b) {
+  if (!a || !b) {
+    throw new Error('친구 정보를 찾을 수 없습니다.')
+  }
+
+  return a < b
+    ? { first: a, second: b }
+    : { first: b, second: a }
+}
+
+async function ensureFriendshipExists({ requesterId, addresseeId }) {
+  const { first, second } = normaliseFriendPair(requesterId, addresseeId)
+
+  const { error } = await withTable(supabase, 'friendships', (table) =>
+    supabase
+      .from(table)
+      .upsert(
+        {
+          user_id_a: first,
+          user_id_b: second,
+          since: new Date().toISOString(),
+        },
+        { onConflict: 'user_id_a,user_id_b', ignoreDuplicates: true },
+      ),
+  )
+
+  if (error) throw error
+}
+
+async function updateRequestStatus(requestId, status) {
+  const { error } = await withTable(supabase, 'friend_requests', (table) =>
+    supabase
+      .from(table)
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', requestId),
+  )
+
+  if (error) throw error
+}
+
+async function fallbackAcceptFriendRequest({ requestId, actorId }) {
+  const request = await fetchFriendRequestById(requestId)
+  if (!request) {
+    throw new Error('친구 요청을 찾을 수 없습니다.')
+  }
+  if (request.status !== 'pending') {
+    throw new Error('이미 처리된 친구 요청입니다.')
+  }
+  if (request.addressee_id !== actorId) {
+    throw new Error('친구 요청을 수락할 권한이 없습니다.')
+  }
+
+  try {
+    await ensureFriendshipExists({
+      requesterId: request.requester_id,
+      addresseeId: request.addressee_id,
+    })
+  } catch (error) {
+    console.error('친구 관계를 생성하지 못했습니다.', error)
+    throw new Error(error?.message || '친구 관계를 생성하지 못했습니다.')
+  }
+
+  try {
+    await updateRequestStatus(requestId, 'accepted')
+  } catch (error) {
+    console.error('친구 요청 상태를 갱신하지 못했습니다.', error)
+    throw new Error(error?.message || '친구 요청 상태를 갱신하지 못했습니다.')
+  }
+}
+
+async function fallbackDeclineFriendRequest({ requestId, actorId }) {
+  const request = await fetchFriendRequestById(requestId)
+  if (!request) {
+    throw new Error('친구 요청을 찾을 수 없습니다.')
+  }
+  if (request.status !== 'pending') {
+    throw new Error('이미 처리된 친구 요청입니다.')
+  }
+  if (request.addressee_id !== actorId) {
+    throw new Error('친구 요청을 거절할 권한이 없습니다.')
+  }
+
+  try {
+    await updateRequestStatus(requestId, 'declined')
+  } catch (error) {
+    console.error('친구 요청 상태를 갱신하지 못했습니다.', error)
+    throw new Error(error?.message || '친구 요청을 거절하지 못했습니다.')
+  }
+}
+
+async function fallbackCancelFriendRequest({ requestId, actorId }) {
+  const request = await fetchFriendRequestById(requestId)
+  if (!request) {
+    throw new Error('친구 요청을 찾을 수 없습니다.')
+  }
+  if (request.status !== 'pending') {
+    throw new Error('이미 처리된 친구 요청입니다.')
+  }
+  if (request.requester_id !== actorId) {
+    throw new Error('친구 요청을 취소할 권한이 없습니다.')
+  }
+
+  try {
+    await updateRequestStatus(requestId, 'cancelled')
+  } catch (error) {
+    console.error('친구 요청 상태를 갱신하지 못했습니다.', error)
+    throw new Error(error?.message || '친구 요청을 취소하지 못했습니다.')
+  }
+}
+
 async function fetchHeroesByOwner(ownerIds) {
   if (!ownerIds?.length) return new Map()
   const unique = Array.from(new Set(ownerIds.filter(Boolean)))
@@ -211,40 +343,50 @@ export async function deleteFriendshipByOwner({ viewerId, friendOwnerId }) {
   }
 }
 
-async function callRequestRpc(fn, { requestId, actorId, failureMessage }) {
-  const { error } = await supabase.rpc(fn, {
+export async function acceptFriendRequest({ requestId, actorId }) {
+  if (!requestId) throw new Error('요청 정보를 찾을 수 없습니다.')
+  const { error } = await supabase.rpc('accept_friend_request', {
     p_request_id: requestId,
     p_actor: actorId,
   })
 
-  if (error) {
-    throw new Error(error.message || failureMessage)
-  }
-}
+  if (!error) return
 
-export async function acceptFriendRequest({ requestId, actorId }) {
-  if (!requestId) throw new Error('요청 정보를 찾을 수 없습니다.')
-  await callRequestRpc('accept_friend_request', {
-    requestId,
-    actorId,
-    failureMessage: '친구 요청을 수락하지 못했습니다.',
-  })
+  if (!isMissingRpc(error)) {
+    throw new Error(error.message || '친구 요청을 수락하지 못했습니다.')
+  }
+
+  await fallbackAcceptFriendRequest({ requestId, actorId })
 }
 
 export async function declineFriendRequest({ requestId, actorId }) {
   if (!requestId) throw new Error('요청 정보를 찾을 수 없습니다.')
-  await callRequestRpc('decline_friend_request', {
-    requestId,
-    actorId,
-    failureMessage: '친구 요청을 거절하지 못했습니다.',
+  const { error } = await supabase.rpc('decline_friend_request', {
+    p_request_id: requestId,
+    p_actor: actorId,
   })
+
+  if (!error) return
+
+  if (!isMissingRpc(error)) {
+    throw new Error(error.message || '친구 요청을 거절하지 못했습니다.')
+  }
+
+  await fallbackDeclineFriendRequest({ requestId, actorId })
 }
 
 export async function cancelFriendRequest({ requestId, actorId }) {
   if (!requestId) throw new Error('요청 정보를 찾을 수 없습니다.')
-  await callRequestRpc('cancel_friend_request', {
-    requestId,
-    actorId,
-    failureMessage: '친구 요청을 취소하지 못했습니다.',
+  const { error } = await supabase.rpc('cancel_friend_request', {
+    p_request_id: requestId,
+    p_actor: actorId,
   })
+
+  if (!error) return
+
+  if (!isMissingRpc(error)) {
+    throw new Error(error.message || '친구 요청을 취소하지 못했습니다.')
+  }
+
+  await fallbackCancelFriendRequest({ requestId, actorId })
 }
