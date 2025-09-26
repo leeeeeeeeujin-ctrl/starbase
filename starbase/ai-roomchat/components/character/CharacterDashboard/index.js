@@ -17,9 +17,6 @@ const NAV_ITEMS = [
 
 const PANEL_COUNT = NAV_ITEMS.length
 
-const SWIPE_ADVANCE_THRESHOLD = 0.78
-const SWIPE_RETURN_THRESHOLD = 0.22
-
 export default function CharacterDashboard({
   dashboard,
   heroId: explicitHeroId,
@@ -35,6 +32,14 @@ export default function CharacterDashboard({
   const [gameSearchEnabled, setGameSearchEnabled] = useState(false)
   const swipeViewportRef = useRef(null)
   const scrollFrame = useRef(0)
+  const scrollEndTimeoutRef = useRef(null)
+  const syncingRef = useRef(false)
+  const releaseSyncRef = useRef(null)
+  const panelIndexRef = useRef(panelIndex)
+
+  useEffect(() => {
+    panelIndexRef.current = panelIndex
+  }, [panelIndex])
 
   const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
   const heroImage = profile.edit?.image_url || profile.hero?.image_url || ''
@@ -123,60 +128,57 @@ export default function CharacterDashboard({
   )
 
   const gameBrowser = useGameBrowser({ enabled: gameSearchEnabled })
+  const snapToPanel = useCallback((targetIndex, behavior = 'smooth') => {
+    const node = swipeViewportRef.current
+    if (!node) return
+
+    const clampedIndex = Math.max(0, Math.min(PANEL_COUNT - 1, targetIndex))
+    const width = node.clientWidth || 1
+
+    syncingRef.current = true
+    cancelAnimationFrame(scrollFrame.current)
+    scrollFrame.current = requestAnimationFrame(() => {
+      node.scrollTo({ left: clampedIndex * width, behavior })
+    })
+    clearTimeout(releaseSyncRef.current)
+    releaseSyncRef.current = setTimeout(() => {
+      syncingRef.current = false
+    }, behavior === 'auto' ? 0 : 220)
+
+    setPanelIndex(clampedIndex)
+  }, [])
+
   useEffect(() => {
     const node = swipeViewportRef.current
     if (!node) return undefined
 
     const handleScroll = () => {
-      cancelAnimationFrame(scrollFrame.current)
-      scrollFrame.current = requestAnimationFrame(() => {
+      if (syncingRef.current) return
+
+      clearTimeout(scrollEndTimeoutRef.current)
+      scrollEndTimeoutRef.current = setTimeout(() => {
         const width = node.clientWidth || 1
         const ratio = node.scrollLeft / width
-        const clampedRatio = Math.max(0, Math.min(PANEL_COUNT - 1, ratio))
-        const baseIndex = Math.floor(ratio)
-        const offset = ratio - baseIndex
-        const maxIndex = PANEL_COUNT - 1
-        const clampedBase = Math.max(0, Math.min(maxIndex, baseIndex))
-
-        setPanelIndex((prev) => {
-          let target = prev
-          if (offset >= SWIPE_ADVANCE_THRESHOLD) {
-            target = Math.min(maxIndex, clampedBase + 1)
-          } else if (offset <= SWIPE_RETURN_THRESHOLD) {
-            target = clampedBase
-          }
-          if (target > prev + 1) target = prev + 1
-          if (target < prev - 1) target = prev - 1
-          return target
-        })
-      })
+        const target = Math.round(ratio)
+        snapToPanel(target)
+      }, 120)
     }
 
     node.addEventListener('scroll', handleScroll, { passive: true })
 
     return () => {
-      cancelAnimationFrame(scrollFrame.current)
       node.removeEventListener('scroll', handleScroll)
+      clearTimeout(scrollEndTimeoutRef.current)
+    }
+  }, [snapToPanel])
+
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(scrollFrame.current)
+      clearTimeout(scrollEndTimeoutRef.current)
+      clearTimeout(releaseSyncRef.current)
     }
   }, [])
-
-  useEffect(() => {
-    const node = swipeViewportRef.current
-    if (!node) return
-
-    const width = node.clientWidth || 1
-    if (Math.round(node.scrollLeft / width) === panelIndex) {
-      return
-    }
-
-    node.scrollTo({ left: panelIndex * width, behavior: 'smooth' })
-  }, [panelIndex])
-
-  useEffect(() => {
-    if (panelIndex === 0 && !gameSearchEnabled) {
-      setGameSearchEnabled(true)
-    }
-  }, [panelIndex, gameSearchEnabled])
 
   useEffect(() => {
     const node = swipeViewportRef.current
@@ -184,6 +186,28 @@ export default function CharacterDashboard({
     const width = node.clientWidth || 1
     node.scrollLeft = width * panelIndex
   }, [])
+
+  useEffect(() => {
+    const node = swipeViewportRef.current
+    if (!node) return undefined
+
+    const handleResize = () => {
+      const width = node.clientWidth || 1
+      node.scrollLeft = width * panelIndexRef.current
+    }
+
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (panelIndex === 0 && !gameSearchEnabled) {
+      setGameSearchEnabled(true)
+    }
+  }, [panelIndex, gameSearchEnabled])
 
   const handleEnterGame = useCallback(
     (game, role) => {
@@ -219,9 +243,9 @@ export default function CharacterDashboard({
   const handleNavClick = useCallback((targetId) => {
     const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
     if (targetIndex >= 0) {
-      setPanelIndex(targetIndex)
+      snapToPanel(targetIndex)
     }
-  }, [])
+  }, [snapToPanel])
 
   return (
     <CharacterDashboardProvider value={contextValue}>
@@ -230,7 +254,24 @@ export default function CharacterDashboard({
         <div style={styles.backgroundTint} aria-hidden />
 
         <div style={styles.content}>
-          <div ref={swipeViewportRef} style={styles.swipeViewport}>
+          <div
+            ref={swipeViewportRef}
+            style={styles.swipeViewport}
+            onTouchEnd={() => {
+              const node = swipeViewportRef.current
+              if (!node || syncingRef.current) return
+              const width = node.clientWidth || 1
+              const target = Math.round(node.scrollLeft / width)
+              snapToPanel(target)
+            }}
+            onMouseUp={() => {
+              const node = swipeViewportRef.current
+              if (!node || syncingRef.current) return
+              const width = node.clientWidth || 1
+              const target = Math.round(node.scrollLeft / width)
+              snapToPanel(target)
+            }}
+          >
             <div style={styles.swipeTrack}>
               {panels.map((panel) => (
                 <div key={panel.id} style={styles.swipePanel}>
@@ -277,23 +318,140 @@ function SectionCard({ title, children }) {
 }
 
 function CharacterPanel() {
-  const { heroName, heroImage, openEditPanel } = useCharacterDashboardContext()
+  const {
+    heroName,
+    heroImage,
+    hero,
+    edit,
+    abilityCards = [],
+    statSlides = [],
+    selectedGameId,
+    openEditPanel,
+  } = useCharacterDashboardContext()
+
+  const description = (edit?.description || hero?.description || '').trim()
+  const abilityTexts = useMemo(
+    () => abilityCards.map((card) => (card.value || '').trim()).filter(Boolean),
+    [abilityCards],
+  )
+
+  const statSlide = useMemo(() => {
+    if (!statSlides.length) return null
+    if (selectedGameId) {
+      const match = statSlides.find((slide) => slide.key === selectedGameId)
+      if (match) return match
+    }
+    return statSlides[0]
+  }, [statSlides, selectedGameId])
+
+  const statLines = useMemo(() => {
+    if (!statSlide?.stats?.length) return []
+    return statSlide.stats
+      .filter((entry) => entry?.label && entry?.value)
+      .map((entry) => ({ label: entry.label, value: entry.value }))
+  }, [statSlide])
+
+  const overlaySteps = useMemo(() => {
+    const steps = ['name']
+    if (description) steps.push('description')
+    if (abilityTexts.length) steps.push('abilities')
+    if (statLines.length) steps.push('stats')
+    return steps
+  }, [description, abilityTexts.length, statLines.length])
+
+  const [overlayIndex, setOverlayIndex] = useState(0)
+
+  useEffect(() => {
+    if (!overlaySteps.length) return
+    if (overlayIndex >= overlaySteps.length) {
+      setOverlayIndex(0)
+    }
+  }, [overlayIndex, overlaySteps])
+
+  const currentOverlay = overlaySteps[overlayIndex] || 'name'
+  const isOverlayActive = currentOverlay !== 'name'
+
+  const handleHeroTap = useCallback(() => {
+    if (!overlaySteps.length) return
+    setOverlayIndex((prev) => ((prev + 1) % overlaySteps.length))
+  }, [overlaySteps])
+
+  let overlayTitle = ''
+  let overlayBody = null
+  if (currentOverlay === 'description') {
+    overlayTitle = '설명'
+    overlayBody = <p style={styles.heroOverlayText}>{description}</p>
+  } else if (currentOverlay === 'abilities') {
+    overlayTitle = '능력'
+    overlayBody = (
+      <ul style={styles.heroOverlayList}>
+        {abilityTexts.map((text, index) => (
+          <li key={index} style={styles.heroOverlayText}>
+            {text}
+          </li>
+        ))}
+      </ul>
+    )
+  } else if (currentOverlay === 'stats') {
+    overlayTitle = statSlide?.name ? `${statSlide.name} 기록` : '통계'
+    overlayBody = (
+      <ul style={styles.heroOverlayList}>
+        {statLines.map((entry) => (
+          <li key={entry.label} style={styles.heroOverlayStat}>
+            <span>{entry.label}</span>
+            <strong>{entry.value}</strong>
+          </li>
+        ))}
+      </ul>
+    )
+  }
 
   return (
     <div style={styles.heroSection}>
       <p style={styles.swipeHint}>좌우로 화면을 밀어 메뉴를 넘어갈 수 있어요.</p>
       <div style={styles.heroPortraitFrame}>
-        <div style={styles.heroPortrait}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={handleHeroTap}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              handleHeroTap()
+            }
+          }}
+          style={{
+            ...styles.heroPortrait,
+            ...(isOverlayActive ? styles.heroPortraitActive : null),
+          }}
+        >
           {heroImage ? (
             <img src={heroImage} alt={`${heroName} 이미지`} style={styles.heroImage} />
           ) : (
             <div style={styles.heroPlaceholder}>이미지 없음</div>
           )}
-          <div style={styles.heroNameplate}>
-            <span style={styles.heroNameText}>{heroName}</span>
-          </div>
+          {isOverlayActive ? <div style={styles.heroShade} aria-hidden /> : null}
+          {isOverlayActive && overlayBody ? (
+            <div style={styles.heroOverlay}>
+              <p style={styles.heroOverlayTitle}>{overlayTitle}</p>
+              {overlayBody}
+            </div>
+          ) : null}
+          {!isOverlayActive ? (
+            <div style={styles.heroNameplate}>
+              <span style={styles.heroNameText}>{heroName}</span>
+            </div>
+          ) : null}
         </div>
-        <button type="button" onClick={openEditPanel} style={styles.heroEditButton} aria-label="프로필 편집">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            openEditPanel()
+          }}
+          style={styles.heroEditButton}
+          aria-label="프로필 편집"
+        >
           <span aria-hidden style={styles.heroEditIcon}>
             {Array.from({ length: 9 }).map((_, index) => (
               <span key={index} style={styles.heroEditDot} />
@@ -804,6 +962,12 @@ const styles = {
     justifyContent: 'center',
     position: 'relative',
     WebkitTapHighlightColor: 'transparent',
+    cursor: 'pointer',
+    transition: 'transform 0.18s ease, box-shadow 0.18s ease',
+  },
+  heroPortraitActive: {
+    boxShadow: '0 18px 42px rgba(15, 23, 42, 0.55)',
+    transform: 'scale(0.99)',
   },
   heroImage: {
     width: '100%',
@@ -836,6 +1000,50 @@ const styles = {
     color: '#f8fafc',
     lineHeight: 1.2,
     display: 'block',
+  },
+  heroShade: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(180deg, rgba(2,6,23,0.1) 0%, rgba(2,6,23,0.6) 100%)',
+    pointerEvents: 'none',
+  },
+  heroOverlay: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+    gap: 8,
+    padding: '24px 22px 26px',
+    pointerEvents: 'none',
+    color: '#f8fafc',
+    textShadow: '0 2px 12px rgba(2, 6, 23, 0.9)',
+  },
+  heroOverlayTitle: {
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 700,
+    letterSpacing: -0.2,
+  },
+  heroOverlayText: {
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: '#e2e8f0',
+  },
+  heroOverlayList: {
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    display: 'grid',
+    gap: 6,
+  },
+  heroOverlayStat: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    fontSize: 14,
+    lineHeight: 1.5,
   },
   heroEditButton: {
     position: 'absolute',
