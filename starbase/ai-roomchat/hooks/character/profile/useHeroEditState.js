@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
 import { withTable } from '../../../lib/supabaseTables'
@@ -15,29 +15,39 @@ const EMPTY_EDIT_STATE = {
   bgm_url: '',
 }
 
+function toEditState(source) {
+  if (!source) return { ...EMPTY_EDIT_STATE }
+  return {
+    name: source.name || '',
+    description: source.description || '',
+    ability1: source.ability1 || '',
+    ability2: source.ability2 || '',
+    ability3: source.ability3 || '',
+    ability4: source.ability4 || '',
+    background_url: source.background_url || '',
+    bgm_url: source.bgm_url || '',
+  }
+}
+
 export function useHeroEditState({ heroId, onRequireAuth, onMissingHero }) {
   const [loading, setLoading] = useState(true)
   const [hero, setHero] = useState(null)
   const [edit, setEdit] = useState(EMPTY_EDIT_STATE)
+  const draftRef = useRef(edit)
 
   const applyHero = useCallback((data) => {
     setHero(data)
-    setEdit({
-      name: data?.name || '',
-      description: data?.description || '',
-      ability1: data?.ability1 || '',
-      ability2: data?.ability2 || '',
-      ability3: data?.ability3 || '',
-      ability4: data?.ability4 || '',
-      background_url: data?.background_url || '',
-      bgm_url: data?.bgm_url || '',
-    })
+    const nextEdit = toEditState(data)
+    setEdit(nextEdit)
+    draftRef.current = nextEdit
   }, [])
 
   const loadHero = useCallback(async () => {
     if (!heroId) {
       setHero(null)
-      setEdit({ ...EMPTY_EDIT_STATE })
+      const reset = { ...EMPTY_EDIT_STATE }
+      setEdit(reset)
+      draftRef.current = reset
       setLoading(false)
       return
     }
@@ -109,6 +119,10 @@ export function useHeroEditState({ heroId, onRequireAuth, onMissingHero }) {
     loadHero()
   }, [loadHero])
 
+  useEffect(() => {
+    draftRef.current = edit
+  }, [edit])
+
   const handleChangeEdit = useCallback((key, value) => {
     setEdit((prev) => ({ ...prev, [key]: value }))
   }, [])
@@ -152,6 +166,11 @@ export function useHeroEditState({ heroId, onRequireAuth, onMissingHero }) {
     setEdit,
     applyHero,
     loadHero,
+    getDraftSnapshot: useCallback(() => draftRef.current, []),
+    resetDraft: useCallback(() => {
+      const reset = draftRef.current || { ...EMPTY_EDIT_STATE }
+      setEdit({ ...reset })
+    }, []),
     onChangeEdit: handleChangeEdit,
     onAddAbility: handleAddAbility,
     onReverseAbilities: handleReverseAbilities,
