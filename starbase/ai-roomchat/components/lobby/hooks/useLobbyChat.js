@@ -6,6 +6,10 @@ import {
   insertMessage,
   subscribeToMessages,
 } from '../../../lib/chat/messages'
+import {
+  hydrateIncomingMessage,
+  hydrateMessageList,
+} from '../../../lib/chat/hydrateMessages'
 import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
 
 const DEFAULT_VIEWER = {
@@ -68,6 +72,52 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
   const [input, setInput] = useState('')
   const listRef = useRef(null)
   const viewerRef = useRef(initialViewer)
+  const heroCacheRef = useRef(new Map())
+  const ownerCacheRef = useRef(new Map())
+
+  const buildHydrationHints = useCallback(() => {
+    const hints = []
+    const currentViewer = viewerRef.current
+    if (currentViewer?.hero_id) {
+      hints.push({
+        heroId: currentViewer.hero_id,
+        heroName: currentViewer.name,
+        avatarUrl: currentViewer.avatar_url,
+        ownerId: currentViewer.owner_id,
+        userId: currentViewer.user_id,
+      })
+    }
+    if (heroId && (!currentViewer || currentViewer.hero_id !== heroId)) {
+      hints.push({ heroId })
+    }
+    return hints
+  }, [heroId])
+
+  const hydrateBatch = useCallback(
+    async (rawMessages) => {
+      const { messages: hydrated } = await hydrateMessageList(rawMessages, {
+        viewer: viewerRef.current,
+        hints: buildHydrationHints(),
+        heroCache: heroCacheRef.current,
+        ownerCache: ownerCacheRef.current,
+      })
+      return hydrated
+    },
+    [buildHydrationHints],
+  )
+
+  const hydrateSingle = useCallback(
+    async (rawMessage) => {
+      const { message: hydrated } = await hydrateIncomingMessage(rawMessage, {
+        viewer: viewerRef.current,
+        hints: buildHydrationHints(),
+        heroCache: heroCacheRef.current,
+        ownerCache: ownerCacheRef.current,
+      })
+      return hydrated
+    },
+    [buildHydrationHints],
+  )
 
   const updateViewer = useCallback((nextViewer) => {
     if (!nextViewer) {
@@ -140,10 +190,26 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
       try {
         const data = await fetchRecentMessages({ limit: 100 })
         if (!alive) return
-        setMessages(data)
+        const hydrated = await hydrateBatch(data)
+        if (!alive) return
+        setMessages(hydrated)
         setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
       } catch (error) {
         console.error('로비 채팅 메시지를 불러오지 못했습니다.', error)
+      }
+    }
+
+    const handleInsert = async (incoming) => {
+      try {
+        const hydrated = await hydrateSingle(incoming)
+        if (!alive || !hydrated) return
+        setMessages((prev) => {
+          const next = [...prev, hydrated]
+          return next.length > 200 ? next.slice(next.length - 200) : next
+        })
+        setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
+      } catch (error) {
+        console.error('실시간 로비 채팅 메시지를 처리하지 못했습니다.', error)
       }
     }
 
@@ -152,11 +218,7 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
     const unsubscribe = subscribeToMessages({
       channelName: 'lobby-chat-stream',
       onInsert: (message) => {
-        setMessages((prev) => {
-          const next = [...prev, message]
-          return next.length > 200 ? next.slice(next.length - 200) : next
-        })
-        setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
+        handleInsert(message)
       },
     })
 
@@ -164,7 +226,7 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
       alive = false
       unsubscribe?.()
     }
-  }, [])
+  }, [hydrateBatch, hydrateSingle])
 
   const ensureViewer = useCallback(async () => {
     const cached = viewerRef.current

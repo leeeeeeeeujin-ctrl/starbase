@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   fetchRecentMessages,
@@ -8,6 +8,10 @@ import {
   insertMessage,
   subscribeToMessages,
 } from '../../../lib/chat/messages'
+import {
+  hydrateIncomingMessage,
+  hydrateMessageList,
+} from '../../../lib/chat/hydrateMessages'
 import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
 
 const BLOCKED_STORAGE_KEY = 'starbase_blocked_heroes'
@@ -120,9 +124,15 @@ function useSharedChatDockInternal({
   const viewerHeroRef = useRef(null)
 
   const hintProfile = useMemo(() => deriveViewerFromHint(viewerHero), [viewerHero])
+  const initialViewerState = useMemo(
+    () => mergeViewerState(DEFAULT_VIEWER, hintProfile),
+    [hintProfile],
+  )
 
+  const heroCacheRef = useRef(new Map())
+  const ownerCacheRef = useRef(new Map())
   const [messages, setMessages] = useState([])
-  const [me, setMe] = useState(() => mergeViewerState(DEFAULT_VIEWER, hintProfile))
+  const [me, setMe] = useState(initialViewerState)
   const [input, setInput] = useState('')
   const [scope, setScopeInternal] = useState('global')
   const [whisperTarget, setWhisperTargetInternal] = useState(null)
@@ -134,6 +144,8 @@ function useSharedChatDockInternal({
   })
   const [activeThread, setActiveThreadState] = useState('global')
   const [unreadThreads, setUnreadThreads] = useState({})
+
+  const viewerProfileRef = useRef(initialViewerState)
 
   const blockedHeroSet = useMemo(() => new Set(blockedHeroes), [blockedHeroes])
 
@@ -154,9 +166,78 @@ function useSharedChatDockInternal({
   }, [viewerHeroId])
 
   useEffect(() => {
+    viewerProfileRef.current = me
+  }, [me])
+
+  useEffect(() => {
     if (!hintProfile) return
     setMe((prev) => mergeViewerState(prev, hintProfile))
   }, [hintProfile])
+
+  const buildHydrationHints = useCallback(() => {
+    const hints = []
+
+    const currentViewer = viewerProfileRef.current
+    if (currentViewer?.hero_id) {
+      hints.push({
+        heroId: currentViewer.hero_id,
+        heroName: currentViewer.name,
+        avatarUrl: currentViewer.avatar_url,
+        ownerId: currentViewer.owner_id,
+        userId: currentViewer.user_id,
+      })
+    }
+
+    if (hintProfile?.hero_id) {
+      hints.push({
+        heroId: hintProfile.hero_id,
+        heroName: hintProfile.name,
+        avatarUrl: hintProfile.avatar_url,
+        ownerId: hintProfile.owner_id,
+        userId: hintProfile.user_id,
+      })
+    }
+
+    if (viewerHero) {
+      hints.push(viewerHero)
+    }
+
+    if (Array.isArray(extraWhisperTargets)) {
+      for (const target of extraWhisperTargets) {
+        hints.push(target)
+      }
+    }
+
+    return hints
+  }, [extraWhisperTargets, hintProfile, viewerHero])
+
+  const hydrateBatch = useCallback(
+    async (rawMessages) => {
+      const { messages: hydrated } = await hydrateMessageList(rawMessages, {
+        viewer: viewerProfileRef.current,
+        viewerHint: hintProfile,
+        hints: buildHydrationHints(),
+        heroCache: heroCacheRef.current,
+        ownerCache: ownerCacheRef.current,
+      })
+      return hydrated
+    },
+    [buildHydrationHints, hintProfile],
+  )
+
+  const hydrateSingle = useCallback(
+    async (rawMessage) => {
+      const { message: hydrated } = await hydrateIncomingMessage(rawMessage, {
+        viewer: viewerProfileRef.current,
+        viewerHint: hintProfile,
+        hints: buildHydrationHints(),
+        heroCache: heroCacheRef.current,
+        ownerCache: ownerCacheRef.current,
+      })
+      return hydrated
+    },
+    [buildHydrationHints, hintProfile],
+  )
 
   const heroDirectory = useMemo(() => {
     const directory = new Map()
@@ -299,11 +380,14 @@ function useSharedChatDockInternal({
         })
         if (!alive) return
         const mergedProfile = mergeViewerState(profile, hintProfile)
+        viewerProfileRef.current = mergedProfile
         setMe(mergedProfile)
 
         const data = await fetchRecentMessages({ limit: 200 })
         if (!alive) return
-        setMessages(data)
+        const hydrated = await hydrateBatch(data)
+        if (!alive) return
+        setMessages(hydrated)
         scrollToBottom()
       } catch (error) {
         console.error('채팅 데이터를 불러오지 못했습니다.', error)
@@ -312,19 +396,23 @@ function useSharedChatDockInternal({
 
     bootstrap()
 
-    const unsubscribe = subscribeToMessages({
-      channelName: 'messages-shared-dock',
-      onInsert: (message) => {
+    const handleInsert = async (incoming) => {
+      try {
+        const hydrated = await hydrateSingle(incoming)
+        if (!alive || !hydrated) return
+
         setMessages((prev) => {
-          const next = [...prev, message]
+          const next = [...prev, hydrated]
           return next.length > 200 ? next.slice(next.length - 200) : next
         })
 
         const viewerId = viewerHeroRef.current
-        if (message?.scope === 'whisper' && viewerId) {
-          const isParticipant = message.hero_id === viewerId || message.target_hero_id === viewerId
-          const isSelf = message.hero_id === viewerId
-          const threadId = message.hero_id === viewerId ? message.target_hero_id : message.hero_id
+        if (hydrated?.scope === 'whisper' && viewerId) {
+          const isParticipant =
+            hydrated.hero_id === viewerId || hydrated.target_hero_id === viewerId
+          const isSelf = hydrated.hero_id === viewerId
+          const threadId =
+            hydrated.hero_id === viewerId ? hydrated.target_hero_id : hydrated.hero_id
           if (isParticipant && !isSelf && threadId && threadId !== activeThreadRef.current) {
             setUnreadThreads((prev) => ({
               ...prev,
@@ -334,6 +422,15 @@ function useSharedChatDockInternal({
         }
 
         scrollToBottom()
+      } catch (error) {
+        console.error('실시간 메시지를 처리하지 못했습니다.', error)
+      }
+    }
+
+    const unsubscribe = subscribeToMessages({
+      channelName: 'messages-shared-dock',
+      onInsert: (message) => {
+        handleInsert(message)
       },
     })
 
@@ -341,7 +438,7 @@ function useSharedChatDockInternal({
       alive = false
       unsubscribe()
     }
-  }, [heroId, viewerHero, hintProfile])
+  }, [heroId, hydrateBatch, hydrateSingle, viewerHero, hintProfile])
 
   const setActiveThread = (thread) => {
     const normalized = thread || 'global'
