@@ -16,7 +16,9 @@ const NAV_ITEMS = [
 ]
 
 const PANEL_COUNT = NAV_ITEMS.length
-const SWIPE_THRESHOLD = 0.28
+const DRAG_SLOP = 0.18
+const FLICK_VELOCITY = 0.45
+const RELEASE_DELAY = 320
 
 export default function CharacterDashboard({
   dashboard,
@@ -32,10 +34,18 @@ export default function CharacterDashboard({
   const [editOpen, setEditOpen] = useState(false)
   const [gameSearchEnabled, setGameSearchEnabled] = useState(false)
   const swipeViewportRef = useRef(null)
-  const scrollFrame = useRef(0)
-  const scrollEndTimeoutRef = useRef(null)
-  const syncingRef = useRef(false)
-  const releaseSyncRef = useRef(null)
+  const pointerStateRef = useRef({
+    active: false,
+    pointerId: null,
+    startX: 0,
+    startScroll: 0,
+    lastX: 0,
+    lastTime: 0,
+    velocity: 0,
+  })
+  const animatingRef = useRef(false)
+  const animationTimeoutRef = useRef(null)
+  const settleTimeoutRef = useRef(null)
   const panelIndexRef = useRef(panelIndex)
 
   useEffect(() => {
@@ -129,69 +139,64 @@ export default function CharacterDashboard({
   )
 
   const gameBrowser = useGameBrowser({ enabled: gameSearchEnabled })
-  const snapToPanel = useCallback((targetIndex, behavior = 'smooth') => {
-    const node = swipeViewportRef.current
-    if (!node) return
+  const snapToPanel = useCallback(
+    (targetIndex, behavior = 'smooth') => {
+      const node = swipeViewportRef.current
+      if (!node) return
 
-    const clampedIndex = Math.max(0, Math.min(PANEL_COUNT - 1, targetIndex))
-    const width = node.clientWidth || 1
+      const clampedIndex = Math.max(0, Math.min(PANEL_COUNT - 1, targetIndex))
+      const width = node.clientWidth || 1
 
-    syncingRef.current = true
-    cancelAnimationFrame(scrollFrame.current)
-    scrollFrame.current = requestAnimationFrame(() => {
+      animatingRef.current = true
       node.scrollTo({ left: clampedIndex * width, behavior })
-    })
-    clearTimeout(releaseSyncRef.current)
-    releaseSyncRef.current = setTimeout(() => {
-      syncingRef.current = false
-    }, behavior === 'auto' ? 0 : 220)
 
-    setPanelIndex(clampedIndex)
-  }, [])
+      clearTimeout(animationTimeoutRef.current)
+      animationTimeoutRef.current = setTimeout(() => {
+        animatingRef.current = false
+      }, behavior === 'auto' ? 0 : RELEASE_DELAY)
+
+      if (panelIndexRef.current !== clampedIndex) {
+        setPanelIndex(clampedIndex)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
     const node = swipeViewportRef.current
     if (!node) return undefined
 
     const handleScroll = () => {
-      if (syncingRef.current) return
+      if (pointerStateRef.current.active) return
 
-      clearTimeout(scrollEndTimeoutRef.current)
-      scrollEndTimeoutRef.current = setTimeout(() => {
+      clearTimeout(settleTimeoutRef.current)
+      settleTimeoutRef.current = setTimeout(() => {
         const width = node.clientWidth || 1
         const ratio = node.scrollLeft / width
-        const current = panelIndexRef.current
-        const delta = ratio - current
+        const target = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
 
-        let target = current
-        if (delta > SWIPE_THRESHOLD) {
-          target = Math.min(PANEL_COUNT - 1, Math.ceil(ratio))
-        } else if (delta < -SWIPE_THRESHOLD) {
-          target = Math.max(0, Math.floor(ratio))
+        if (panelIndexRef.current !== target) {
+          setPanelIndex(target)
         }
 
-        if (target === current) {
-          const nearest = Math.round(ratio)
-          target = Math.max(0, Math.min(PANEL_COUNT - 1, nearest))
+        if (!animatingRef.current && Math.abs(ratio - target) > 0.01) {
+          snapToPanel(target)
         }
-
-        snapToPanel(target)
-      }, 120)
+      }, 140)
     }
 
     node.addEventListener('scroll', handleScroll, { passive: true })
 
     return () => {
       node.removeEventListener('scroll', handleScroll)
-      clearTimeout(scrollEndTimeoutRef.current)
+      clearTimeout(settleTimeoutRef.current)
     }
   }, [snapToPanel])
 
   useEffect(() => {
     return () => {
-      cancelAnimationFrame(scrollFrame.current)
-      clearTimeout(scrollEndTimeoutRef.current)
-      clearTimeout(releaseSyncRef.current)
+      clearTimeout(animationTimeoutRef.current)
+      clearTimeout(settleTimeoutRef.current)
     }
   }, [])
 
@@ -206,6 +211,92 @@ export default function CharacterDashboard({
     const node = swipeViewportRef.current
     if (!node) return undefined
 
+    const pointerState = pointerStateRef.current
+    const snapType = styles.swipeViewport.scrollSnapType || ''
+
+    const handlePointerDown = (event) => {
+      if (!event.isPrimary) return
+      if (event.pointerType === 'mouse' && event.button !== 0) return
+
+      pointerState.active = true
+      pointerState.pointerId = event.pointerId
+      pointerState.startX = event.clientX
+      pointerState.startScroll = node.scrollLeft
+      pointerState.lastX = event.clientX
+      pointerState.lastTime = performance.now()
+      pointerState.velocity = 0
+
+      clearTimeout(animationTimeoutRef.current)
+      animatingRef.current = false
+      clearTimeout(settleTimeoutRef.current)
+      node.style.scrollSnapType = 'none'
+
+      try {
+        node.setPointerCapture(event.pointerId)
+      } catch (error) {
+        // ignore capture errors on unsupported browsers
+      }
+    }
+
+    const handlePointerMove = (event) => {
+      if (!pointerState.active || event.pointerId !== pointerState.pointerId) return
+
+      const now = performance.now()
+      const delta = event.clientX - pointerState.lastX
+      const elapsed = now - pointerState.lastTime || 1
+      pointerState.velocity = delta / Math.max(16, elapsed)
+      pointerState.lastX = event.clientX
+      pointerState.lastTime = now
+
+      const distance = event.clientX - pointerState.startX
+      node.scrollLeft = pointerState.startScroll - distance
+    }
+
+    const releasePointer = (event, cancelled) => {
+      if (!pointerState.active || event.pointerId !== pointerState.pointerId) return
+
+      pointerState.active = false
+      pointerState.pointerId = null
+
+      try {
+        node.releasePointerCapture(event.pointerId)
+      } catch (error) {
+        // ignore release errors on unsupported browsers
+      }
+
+      node.style.scrollSnapType = snapType
+      clearTimeout(settleTimeoutRef.current)
+
+      const width = node.clientWidth || 1
+      const ratio = node.scrollLeft / width
+      const startIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(pointerState.startScroll / width)))
+      let target = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
+
+      if (!cancelled) {
+        const travelled = node.scrollLeft - pointerState.startScroll
+        const dragRatio = travelled / width
+
+        if (Math.abs(dragRatio) > DRAG_SLOP) {
+          target = dragRatio > 0 ? Math.min(PANEL_COUNT - 1, startIndex + 1) : Math.max(0, startIndex - 1)
+        } else if (Math.abs(pointerState.velocity) > FLICK_VELOCITY) {
+          target = pointerState.velocity < 0
+            ? Math.min(PANEL_COUNT - 1, startIndex + 1)
+            : Math.max(0, startIndex - 1)
+        }
+      }
+
+      pointerState.velocity = 0
+      snapToPanel(target)
+    }
+
+    const handlePointerUp = (event) => releasePointer(event, false)
+    const handlePointerCancel = (event) => releasePointer(event, true)
+
+    node.addEventListener('pointerdown', handlePointerDown)
+    node.addEventListener('pointermove', handlePointerMove)
+    node.addEventListener('pointerup', handlePointerUp)
+    node.addEventListener('pointercancel', handlePointerCancel)
+
     const handleResize = () => {
       const width = node.clientWidth || 1
       node.scrollLeft = width * panelIndexRef.current
@@ -214,9 +305,16 @@ export default function CharacterDashboard({
     window.addEventListener('resize', handleResize)
 
     return () => {
+      node.removeEventListener('pointerdown', handlePointerDown)
+      node.removeEventListener('pointermove', handlePointerMove)
+      node.removeEventListener('pointerup', handlePointerUp)
+      node.removeEventListener('pointercancel', handlePointerCancel)
+      pointerState.active = false
+      pointerState.pointerId = null
+      node.style.scrollSnapType = snapType
       window.removeEventListener('resize', handleResize)
     }
-  }, [])
+  }, [snapToPanel])
 
   useEffect(() => {
     if (panelIndex === 0 && !gameSearchEnabled) {
@@ -272,20 +370,6 @@ export default function CharacterDashboard({
           <div
             ref={swipeViewportRef}
             style={styles.swipeViewport}
-            onTouchEnd={() => {
-              const node = swipeViewportRef.current
-              if (!node || syncingRef.current) return
-              const width = node.clientWidth || 1
-              const target = Math.round(node.scrollLeft / width)
-              snapToPanel(target)
-            }}
-            onMouseUp={() => {
-              const node = swipeViewportRef.current
-              if (!node || syncingRef.current) return
-              const width = node.clientWidth || 1
-              const target = Math.round(node.scrollLeft / width)
-              snapToPanel(target)
-            }}
           >
             <div style={styles.swipeTrack}>
               {panels.map((panel) => (
@@ -1116,6 +1200,7 @@ const styles = {
     overflowX: 'auto',
     scrollSnapType: 'x mandatory',
     WebkitOverflowScrolling: 'touch',
+    touchAction: 'pan-y',
   },
   swipeTrack: {
     display: 'flex',
@@ -1123,6 +1208,7 @@ const styles = {
   swipePanel: {
     minWidth: '100%',
     scrollSnapAlign: 'center',
+    scrollSnapStop: 'always',
     padding: '4px 0',
   },
   panelStack: {
