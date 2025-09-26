@@ -17,11 +17,8 @@ const NAV_ITEMS = [
 
 const PANEL_COUNT = NAV_ITEMS.length
 
-const PANEL_DESCRIPTIONS = {
-  game: '참여할 게임을 살펴보고 즉시 입장할 수 있어요.',
-  character: '영웅과 관련된 정보와 전투 기록을 한 화면에서 확인하세요.',
-  ranking: '참여 중인 게임의 순위를 확인해 보세요.',
-}
+const SWIPE_ADVANCE_THRESHOLD = 0.78
+const SWIPE_RETURN_THRESHOLD = 0.22
 
 export default function CharacterDashboard({
   dashboard,
@@ -143,9 +140,9 @@ export default function CharacterDashboard({
 
         setPanelIndex((prev) => {
           let target = prev
-          if (offset >= 0.66) {
+          if (offset >= SWIPE_ADVANCE_THRESHOLD) {
             target = Math.min(maxIndex, clampedBase + 1)
-          } else if (offset <= 0.34) {
+          } else if (offset <= SWIPE_RETURN_THRESHOLD) {
             target = clampedBase
           }
           if (target > prev + 1) target = prev + 1
@@ -203,17 +200,17 @@ export default function CharacterDashboard({
       {
         id: 'game',
         label: '게임 찾기',
-        render: () => <GamePanel browser={gameBrowser} onEnterGame={handleEnterGame} />, 
+        render: () => <GamePanel browser={gameBrowser} onEnterGame={handleEnterGame} />,
       },
       {
         id: 'character',
         label: '캐릭터',
-        render: () => <CharacterPanel />, 
+        render: () => <CharacterPanel />,
       },
       {
         id: 'ranking',
         label: '랭킹',
-        render: () => <RankingPanel />, 
+        render: () => <RankingPanel />,
       },
     ],
     [gameBrowser, handleEnterGame],
@@ -223,19 +220,9 @@ export default function CharacterDashboard({
     const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
     if (targetIndex >= 0) {
       setPanelIndex(targetIndex)
-      setScrollProgress(targetIndex)
     }
   }, [])
 
-  const characterDescription = participation.selectedGame?.name
-    ? `현재 선택한 게임 · ${participation.selectedGame.name}`
-    : PANEL_DESCRIPTIONS.character
-  const activePanel = panels[panelIndex] || panels[1]
-  const activePanelMeta = NAV_ITEMS[panelIndex] || NAV_ITEMS[1]
-  const activePanelDescription =
-    activePanelMeta?.id === 'character'
-      ? characterDescription
-      : PANEL_DESCRIPTIONS[activePanelMeta?.id] || ''
   return (
     <CharacterDashboardProvider value={contextValue}>
       <div style={styles.page}>
@@ -243,11 +230,6 @@ export default function CharacterDashboard({
         <div style={styles.backgroundTint} aria-hidden />
 
         <div style={styles.content}>
-          <div style={styles.panelIntro}>
-            <h1 style={styles.introTitle}>{activePanelMeta?.label || '캐릭터'}</h1>
-            {activePanelDescription ? <p style={styles.introSubtitle}>{activePanelDescription}</p> : null}
-          </div>
-
           <div ref={swipeViewportRef} style={styles.swipeViewport}>
             <div style={styles.swipeTrack}>
               {panels.map((panel) => (
@@ -295,136 +277,23 @@ function SectionCard({ title, children }) {
 }
 
 function CharacterPanel() {
-  const {
-    hero,
-    heroName,
-    heroImage,
-    abilityCards,
-    audioSource,
-    bgmDuration,
-    bgmLabel,
-    statSlides = [],
-    openEditPanel,
-  } = useCharacterDashboardContext()
-
-  const [overlayState, setOverlayState] = useState('name')
-
-  const hasDescription = Boolean((hero?.description || '').trim())
-  const hasAbilities = useMemo(
-    () => abilityCards.some((ability) => (ability.value || '').trim()),
-    [abilityCards],
-  )
-  const hasStats = useMemo(
-    () =>
-      statSlides.some(
-        (slide) => Array.isArray(slide?.stats) && slide.stats.some((stat) => (stat?.value || '').toString().trim()),
-      ),
-    [statSlides],
-  )
-
-  const overlaySequence = useMemo(() => {
-    const steps = []
-    if (hasDescription) steps.push('description')
-    if (hasAbilities) steps.push('abilities')
-    if (hasStats) steps.push('stats')
-    return steps
-  }, [hasAbilities, hasDescription, hasStats])
-
-  const overlayText = useMemo(() => {
-    switch (overlayState) {
-      case 'description':
-        return (hero?.description || '').trim() || '설명이 입력되지 않았습니다.'
-      case 'abilities': {
-        const entries = abilityCards
-          .map((ability, index) => ({ index: index + 1, value: (ability.value || '').trim() }))
-          .filter((entry) => entry.value)
-        if (!entries.length) {
-          return '등록된 능력이 없습니다.'
-        }
-        return entries.map((entry) => `${entry.index}. ${entry.value}`).join('\n\n')
-      }
-      case 'stats': {
-        const primary = statSlides.find((slide) => Array.isArray(slide?.stats) && slide.stats.length)
-        if (!primary) {
-          return '참여한 전투 기록이 없습니다.'
-        }
-        const headline = primary.name ? `${primary.name}` : '참여 게임 통계'
-        const statLines = (primary.stats || [])
-          .slice(0, 3)
-          .map((stat) => `${stat.label}: ${stat.value}`)
-          .join('\n')
-        return statLines ? `${headline}\n${statLines}` : headline
-      }
-      default:
-        return ''
-    }
-  }, [abilityCards, hero?.description, overlayState, statSlides])
-
-  const handleToggleOverlay = useCallback(() => {
-    setOverlayState((prev) => {
-      if (!overlaySequence.length) {
-        return 'name'
-      }
-      if (prev === 'name') {
-        return overlaySequence[0]
-      }
-      const currentIndex = overlaySequence.indexOf(prev)
-      if (currentIndex === -1 || currentIndex === overlaySequence.length - 1) {
-        return 'name'
-      }
-      return overlaySequence[currentIndex + 1]
-    })
-  }, [overlaySequence])
-
-  const handlePortraitKeyDown = useCallback(
-    (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        handleToggleOverlay()
-      }
-    },
-    [handleToggleOverlay],
-  )
-
-  const overlayActive = overlayState !== 'name'
+  const { heroName, heroImage, openEditPanel } = useCharacterDashboardContext()
 
   return (
     <div style={styles.heroSection}>
+      <p style={styles.swipeHint}>좌우로 화면을 밀어 메뉴를 넘어갈 수 있어요.</p>
       <div style={styles.heroPortraitFrame}>
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={handleToggleOverlay}
-          onKeyDown={handlePortraitKeyDown}
-          style={{
-            ...styles.heroPortrait,
-            ...(overlayActive ? styles.heroPortraitActive : null),
-          }}
-        >
+        <div style={styles.heroPortrait}>
           {heroImage ? (
             <img src={heroImage} alt={`${heroName} 이미지`} style={styles.heroImage} />
           ) : (
             <div style={styles.heroPlaceholder}>이미지 없음</div>
           )}
-          {overlayActive ? (
-            <div style={styles.heroOverlay}>
-              <p style={styles.heroOverlayText}>{overlayText}</p>
-            </div>
-          ) : (
-            <div style={styles.heroNameplate}>
-              <span style={styles.heroNameText}>{heroName}</span>
-            </div>
-          )}
+          <div style={styles.heroNameplate}>
+            <span style={styles.heroNameText}>{heroName}</span>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            openEditPanel()
-          }}
-          style={styles.heroEditButton}
-          aria-label="프로필 편집"
-        >
+        <button type="button" onClick={openEditPanel} style={styles.heroEditButton} aria-label="프로필 편집">
           <span aria-hidden style={styles.heroEditIcon}>
             {Array.from({ length: 9 }).map((_, index) => (
               <span key={index} style={styles.heroEditDot} />
@@ -432,21 +301,9 @@ function CharacterPanel() {
           </span>
         </button>
       </div>
-      {audioSource ? (
-        <div style={styles.heroAudioBar}>
-          <span style={styles.heroAudioLabel}>{bgmLabel || '배경 음악'}</span>
-          <audio key={audioSource} controls loop src={audioSource} style={styles.heroAudioPlayer}>
-            {bgmDuration ? `배경 음악 (길이: ${Math.round(bgmDuration)}초)` : '배경 음악'}
-          </audio>
-        </div>
-      ) : null}
-      <div style={styles.panelContainer}>
-        <div style={styles.panelStack}>
-          <OverviewSection />
-          <StatsSection />
-          <InstantBattleSection />
-          <BattleLogSection />
-        </div>
+      <div style={styles.panelStack}>
+        <InstantBattleSection />
+        <BattleLogSection />
       </div>
     </div>
   )
@@ -460,137 +317,55 @@ function RankingPanel() {
   return <RankingSection />
 }
 
-function OverviewSection() {
-  const {
-    hero,
-    heroName,
-    edit,
-    abilityCards,
-    audioSource,
-    bgmDuration,
-    openEditPanel,
-  } = useCharacterDashboardContext()
-
-  const description = hero?.description || edit?.description || '설명이 입력되지 않았습니다.'
-  const displayAbilities = abilityCards.map((ability) => ({
-    ...ability,
-    value: hero?.[ability.key] || ability.value,
-  }))
-
-  return (
-    <div style={styles.panelContent}>
-      <SectionCard title="프로필 요약">
-        <p style={styles.bodyText}>{description}</p>
-        <div style={styles.profileMeta}>
-          <span>이름</span>
-          <strong>{heroName}</strong>
-        </div>
-        {audioSource ? (
-          <audio controls src={audioSource} style={styles.bgmPlayer}>
-            {bgmDuration ? `배경 음악 (길이: ${Math.round(bgmDuration)}초)` : '배경 음악'}
-          </audio>
-        ) : null}
-        <button type="button" onClick={openEditPanel} style={styles.primaryButton}>
-          세부 정보 수정
-        </button>
-      </SectionCard>
-      <SectionCard title="능력">
-        <ul style={styles.abilityList}>
-          {displayAbilities.map((ability) => (
-            <li key={ability.key} style={styles.abilityItem}>
-              <span style={styles.abilityLabel}>{ability.label}</span>
-              <strong style={styles.abilityValue}>{ability.value || '미입력'}</strong>
-            </li>
-          ))}
-        </ul>
-      </SectionCard>
-    </div>
-  )
-}
-
-function StatsSection() {
-  const { statSlides = [], selectedGameId, onSelectGame, selectedEntry } =
+function InstantBattleSection() {
+  const { statSlides = [], selectedGameId, onSelectGame, selectedGame, onStartBattle } =
     useCharacterDashboardContext()
 
-  if (!statSlides.length) {
-    return (
-      <div style={styles.panelContent}>
-        <SectionCard title="참여 게임 통계">
-          <p style={styles.bodyText}>참여한 게임이 없습니다.</p>
-        </SectionCard>
-      </div>
-    )
-  }
-
   return (
-    <div style={styles.panelContent}>
-      <SectionCard title="참여 게임 통계">
-        <div style={styles.statGrid}>
-          {statSlides.map((slide) => (
-            <button
-              key={slide.key}
-              type="button"
-              onClick={() => onSelectGame(slide.key)}
-              style={{
-                ...styles.statCard,
-                ...(selectedGameId === slide.key ? styles.statCardActive : null),
-              }}
-            >
-              <div style={styles.statHeader}>
-                <strong>{slide.name}</strong>
-                {slide.role ? <span style={styles.statRole}>{slide.role}</span> : null}
-              </div>
-              <ul style={styles.statList}>
-                {slide.stats.map((stat) => (
-                  <li key={stat.key} style={styles.statItem}>
-                    <span>{stat.label}</span>
-                    <strong>{stat.value}</strong>
-                  </li>
-                ))}
-              </ul>
-            </button>
-          ))}
-          {selectedEntry ? (
-            <div style={styles.statNote}>
-              마지막 업데이트:{' '}
-              {new Date(selectedEntry.updated_at || selectedEntry.created_at || 0).toLocaleString()}
-            </div>
-          ) : null}
-        </div>
-      </SectionCard>
-    </div>
-  )
-}
-
-function InstantBattleSection() {
-  const { selectedGame, selectedGameId, onStartBattle } = useCharacterDashboardContext()
-
-  return (
-    <div style={styles.panelContent}>
-      <SectionCard title="즉시 전투">
-        {selectedGame ? (
-          <div style={styles.bodyStack}>
-            <div>
-              <strong>{selectedGame.name}</strong>
-              <p style={styles.bodyText}>{selectedGame.description || '설명이 없습니다.'}</p>
-            </div>
-            <button
-              type="button"
-              onClick={onStartBattle}
-              disabled={!selectedGameId}
-              style={{
-                ...styles.primaryButton,
-                ...(selectedGameId ? null : styles.primaryButtonDisabled),
-              }}
-            >
-              전투 시작
-            </button>
+    <section style={styles.sectionCard}>
+      <header style={styles.sectionHeader}>
+        <h2 style={styles.sectionTitle}>전투</h2>
+        {statSlides.length ? (
+          <div style={styles.gameChipRow}>
+            {statSlides.map((slide) => (
+              <button
+                key={slide.key}
+                type="button"
+                onClick={() => onSelectGame(slide.key)}
+                style={{
+                  ...styles.gameChip,
+                  ...(selectedGameId === slide.key ? styles.gameChipActive : null),
+                }}
+              >
+                <span style={styles.gameChipName}>{slide.name}</span>
+                {slide.role ? <span style={styles.gameChipRole}>{slide.role}</span> : null}
+              </button>
+            ))}
           </div>
         ) : (
-          <p style={styles.bodyText}>전투를 시작하려면 먼저 참여 게임을 선택하세요.</p>
+          <p style={styles.bodyText}>참여한 게임이 없습니다.</p>
         )}
-      </SectionCard>
-    </div>
+      </header>
+      {selectedGame ? (
+        <div style={styles.battleBody}>
+          <strong style={styles.battleGameName}>{selectedGame.name}</strong>
+          <p style={styles.battleDescription}>{selectedGame.description || '설명이 없습니다.'}</p>
+          <button
+            type="button"
+            onClick={onStartBattle}
+            disabled={!selectedGameId}
+            style={{
+              ...styles.primaryButton,
+              ...(selectedGameId ? null : styles.primaryButtonDisabled),
+            }}
+          >
+            전투 시작
+          </button>
+        </div>
+      ) : statSlides.length ? (
+        <p style={styles.bodyText}>전투를 시작할 게임을 위에서 선택해 주세요.</p>
+      ) : null}
+    </section>
   )
 }
 
@@ -646,53 +421,62 @@ function BattleLogSection() {
     onShowMoreBattles,
     battleLoading,
     battleError,
+    selectedGame,
+    statSlides = [],
   } = useCharacterDashboardContext()
 
+  const hasSelection = Boolean(selectedGame)
+  const hasParticipations = statSlides.length > 0
+
   return (
-    <div style={styles.panelContent}>
-      <SectionCard title="전투 로그">
-        {battleLoading ? (
-          <p style={styles.bodyText}>전투 기록을 불러오는 중…</p>
-        ) : battleError ? (
-          <p style={styles.bodyText}>{battleError}</p>
-        ) : !battleDetails.length ? (
-          <p style={styles.bodyText}>표시할 전투 기록이 없습니다.</p>
-        ) : (
-          <div style={styles.battleList}>
-            {battleDetails
-              .slice(0, visibleBattles || battleDetails.length)
-              .map((battle) => (
-                <article key={battle.id} style={styles.battleCard}>
-                  <header style={styles.battleHeader}>
-                    <strong>{new Date(battle.created_at || 0).toLocaleString()}</strong>
-                    <span>{battle.result ? battle.result.toUpperCase() : '결과 미정'}</span>
-                  </header>
-                  <p style={styles.bodyText}>점수 변화: {battle.score_delta ?? 0}</p>
-                  {battle.logs?.length ? (
-                    <details style={styles.logDetails}>
-                      <summary>턴 로그 보기</summary>
-                      <ul style={styles.logList}>
-                        {battle.logs.map((log) => (
-                          <li key={`${battle.id}-${log.turn_no}`}>
-                            <strong>턴 {log.turn_no}</strong>
-                            <div>프롬프트: {log.prompt}</div>
-                            <div>응답: {log.ai_response}</div>
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  ) : null}
-                </article>
-              ))}
-            {visibleBattles && visibleBattles < battleDetails.length ? (
-              <button type="button" onClick={onShowMoreBattles} style={styles.secondaryButton}>
-                더 보기
-              </button>
-            ) : null}
-          </div>
-        )}
-      </SectionCard>
-    </div>
+    <section style={styles.sectionCard}>
+      <header style={styles.sectionHeader}>
+        <h2 style={styles.sectionTitle}>베틀로그</h2>
+        {selectedGame ? <span style={styles.sectionSubLabel}>{selectedGame.name}</span> : null}
+      </header>
+      {battleLoading ? (
+        <p style={styles.bodyText}>전투 기록을 불러오는 중…</p>
+      ) : battleError ? (
+        <p style={styles.bodyText}>{battleError}</p>
+      ) : !hasSelection && hasParticipations ? (
+        <p style={styles.bodyText}>위에서 게임을 선택하면 전투 기록이 표시됩니다.</p>
+      ) : !battleDetails.length ? (
+        <p style={styles.bodyText}>표시할 전투 기록이 없습니다.</p>
+      ) : (
+        <div style={styles.battleList}>
+          {battleDetails
+            .slice(0, visibleBattles || battleDetails.length)
+            .map((battle) => (
+              <article key={battle.id} style={styles.battleCard}>
+                <header style={styles.battleHeader}>
+                  <strong>{new Date(battle.created_at || 0).toLocaleString()}</strong>
+                  <span>{battle.result ? battle.result.toUpperCase() : '결과 미정'}</span>
+                </header>
+                <p style={styles.bodyText}>점수 변화: {battle.score_delta ?? 0}</p>
+                {battle.logs?.length ? (
+                  <details style={styles.logDetails}>
+                    <summary>턴 로그 보기</summary>
+                    <ul style={styles.logList}>
+                      {battle.logs.map((log) => (
+                        <li key={`${battle.id}-${log.turn_no}`}>
+                          <strong>턴 {log.turn_no}</strong>
+                          <div>프롬프트: {log.prompt}</div>
+                          <div>응답: {log.ai_response}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
+              </article>
+            ))}
+          {visibleBattles && visibleBattles < battleDetails.length ? (
+            <button type="button" onClick={onShowMoreBattles} style={styles.secondaryButton}>
+              더 보기
+            </button>
+          ) : null}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -929,9 +713,7 @@ const styles = {
   content: {
     position: 'relative',
     zIndex: 1,
-    padding: '32px 16px 120px',
-    display: 'grid',
-    gap: 32,
+    padding: '24px 16px 112px',
   },
   overlayButtons: {
     position: 'fixed',
@@ -994,8 +776,14 @@ const styles = {
     borderRadius: 12,
     background: 'rgba(15, 23, 42, 0.7)',
   },
+  swipeHint: {
+    margin: '0 0 16px',
+    fontSize: 14,
+    color: '#cbd5f5',
+    textAlign: 'center',
+  },
   heroSection: {
-    maxWidth: 1200,
+    maxWidth: 520,
     margin: '0 auto',
     display: 'grid',
     gap: 24,
@@ -1007,71 +795,61 @@ const styles = {
     width: '100%',
     borderRadius: 32,
     overflow: 'hidden',
-    border: '1px solid rgba(148, 163, 184, 0.4)',
+    border: '1px solid rgba(148, 163, 184, 0.45)',
     background: 'rgba(15, 23, 42, 0.55)',
-    minHeight: 320,
+    minHeight: 360,
+    aspectRatio: '3 / 4',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    cursor: 'pointer',
     position: 'relative',
-  },
-  heroPortraitActive: {
-    boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.45)',
+    WebkitTapHighlightColor: 'transparent',
   },
   heroImage: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
+    display: 'block',
   },
   heroPlaceholder: {
-    color: '#94a3b8',
-    fontSize: 18,
-  },
-  heroOverlay: {
-    position: 'absolute',
-    inset: 0,
-    background: 'linear-gradient(180deg, rgba(2,6,23,0.55) 0%, rgba(2,6,23,0.8) 100%)',
+    width: '100%',
+    height: '100%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '24px 28px',
-  },
-  heroOverlayText: {
-    margin: 0,
-    whiteSpace: 'pre-line',
-    color: '#e2e8f0',
-    fontSize: 15,
-    lineHeight: 1.7,
-    textAlign: 'center',
+    color: '#94a3b8',
+    fontSize: 16,
   },
   heroNameplate: {
     position: 'absolute',
-    left: 20,
-    bottom: 20,
-    padding: '10px 16px',
-    borderRadius: 18,
-    background: 'rgba(2, 6, 23, 0.65)',
+    left: 18,
+    bottom: 18,
+    padding: '10px 18px',
+    borderRadius: 999,
+    background: 'rgba(2, 6, 23, 0.7)',
     border: '1px solid rgba(148, 163, 184, 0.35)',
+    maxWidth: '80%',
   },
   heroNameText: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 700,
-    letterSpacing: -0.2,
     color: '#f8fafc',
+    lineHeight: 1.2,
+    display: 'block',
   },
   heroEditButton: {
     position: 'absolute',
     top: 16,
     right: 16,
-    width: 46,
-    height: 46,
+    width: 48,
+    height: 48,
     borderRadius: 16,
     border: '1px solid rgba(148, 163, 184, 0.45)',
     background: 'rgba(2, 6, 23, 0.65)',
     display: 'grid',
     placeItems: 'center',
     cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
   },
   heroEditIcon: {
     display: 'grid',
@@ -1126,24 +904,35 @@ const styles = {
   },
   panelStack: {
     display: 'grid',
-    gap: 24,
+    gap: 20,
   },
   panelContent: {
     display: 'grid',
     gap: 24,
   },
   sectionCard: {
-    borderRadius: 28,
+    borderRadius: 24,
     border: '1px solid rgba(148, 163, 184, 0.3)',
     background: 'rgba(15, 23, 42, 0.82)',
-    padding: 24,
+    padding: 20,
     display: 'grid',
-    gap: 18,
+    gap: 16,
+  },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
   },
   sectionTitle: {
     margin: 0,
-    fontSize: 22,
+    fontSize: 20,
     color: '#f8fafc',
+  },
+  sectionSubLabel: {
+    fontSize: 13,
+    color: '#94a3b8',
+    whiteSpace: 'nowrap',
   },
   sectionSubTitle: {
     margin: '0 0 12px',
@@ -1154,6 +943,51 @@ const styles = {
     margin: 0,
     lineHeight: 1.6,
     color: '#cbd5f5',
+  },
+  gameChipRow: {
+    display: 'flex',
+    gap: 8,
+    overflowX: 'auto',
+    padding: '4px 0',
+  },
+  gameChip: {
+    flex: '0 0 auto',
+    borderRadius: 999,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#e2e8f0',
+    padding: '8px 14px',
+    fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  gameChipActive: {
+    borderColor: '#38bdf8',
+    background: 'rgba(56, 189, 248, 0.18)',
+  },
+  gameChipName: {
+    fontWeight: 600,
+  },
+  gameChipRole: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  battleBody: {
+    display: 'grid',
+    gap: 12,
+  },
+  battleGameName: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#f8fafc',
+  },
+  battleDescription: {
+    margin: 0,
+    color: '#cbd5f5',
+    lineHeight: 1.6,
   },
   profileMeta: {
     display: 'flex',
