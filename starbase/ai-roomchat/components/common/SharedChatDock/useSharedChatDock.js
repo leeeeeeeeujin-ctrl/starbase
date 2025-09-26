@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  MESSAGE_LIMIT,
   fetchRecentMessages,
   getCurrentUser,
   insertMessage,
@@ -122,6 +123,7 @@ function useSharedChatDockInternal({
   const listRef = useRef(null)
   const activeThreadRef = useRef('global')
   const viewerHeroRef = useRef(null)
+  const messageIdSetRef = useRef(new Set())
 
   const hintProfile = useMemo(() => deriveViewerFromHint(viewerHero), [viewerHero])
   const initialViewerState = useMemo(
@@ -148,6 +150,24 @@ function useSharedChatDockInternal({
   const viewerProfileRef = useRef(initialViewerState)
 
   const blockedHeroSet = useMemo(() => new Set(blockedHeroes), [blockedHeroes])
+
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
+  }, [])
+
+  const replaceMessages = useCallback((nextMessages) => {
+    const limited = Array.isArray(nextMessages)
+      ? nextMessages.slice(Math.max(0, nextMessages.length - MESSAGE_LIMIT))
+      : []
+    const idSet = new Set()
+    for (const message of limited) {
+      if (message?.id !== undefined && message?.id !== null) {
+        idSet.add(message.id)
+      }
+    }
+    messageIdSetRef.current = idSet
+    setMessages(limited)
+  }, [])
 
   useEffect(() => {
     if (!Array.isArray(externalBlockedHeroes)) return
@@ -224,6 +244,11 @@ function useSharedChatDockInternal({
     },
     [buildHydrationHints, hintProfile],
   )
+
+  const fetchAndHydrateMessages = useCallback(async () => {
+    const data = await fetchRecentMessages({ limit: MESSAGE_LIMIT })
+    return hydrateBatch(data)
+  }, [hydrateBatch])
 
   const hydrateSingle = useCallback(
     async (rawMessage) => {
@@ -366,10 +391,6 @@ function useSharedChatDockInternal({
   useEffect(() => {
     let alive = true
 
-    const scrollToBottom = () => {
-      setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
-    }
-
     const bootstrap = async () => {
       try {
         const user = await getCurrentUser()
@@ -383,11 +404,9 @@ function useSharedChatDockInternal({
         viewerProfileRef.current = mergedProfile
         setMe(mergedProfile)
 
-        const data = await fetchRecentMessages({ limit: 200 })
+        const hydrated = await fetchAndHydrateMessages()
         if (!alive) return
-        const hydrated = await hydrateBatch(data)
-        if (!alive) return
-        setMessages(hydrated)
+        replaceMessages(hydrated)
         scrollToBottom()
       } catch (error) {
         console.error('채팅 데이터를 불러오지 못했습니다.', error)
@@ -402,8 +421,20 @@ function useSharedChatDockInternal({
         if (!alive || !hydrated) return
 
         setMessages((prev) => {
+          if (hydrated?.id && messageIdSetRef.current.has(hydrated.id)) {
+            return prev
+          }
           const next = [...prev, hydrated]
-          return next.length > 200 ? next.slice(next.length - 200) : next
+          const limited =
+            next.length > MESSAGE_LIMIT ? next.slice(next.length - MESSAGE_LIMIT) : next
+          const idSet = new Set()
+          for (const message of limited) {
+            if (message?.id !== undefined && message?.id !== null) {
+              idSet.add(message.id)
+            }
+          }
+          messageIdSetRef.current = idSet
+          return limited
         })
 
         const viewerId = viewerHeroRef.current
@@ -438,7 +469,7 @@ function useSharedChatDockInternal({
       alive = false
       unsubscribe()
     }
-  }, [heroId, hydrateBatch, hydrateSingle, viewerHero, hintProfile])
+  }, [fetchAndHydrateMessages, heroId, hydrateSingle, viewerHero, hintProfile, replaceMessages, scrollToBottom])
 
   const setActiveThread = (thread) => {
     const normalized = thread || 'global'
@@ -497,18 +528,32 @@ function useSharedChatDockInternal({
 
       setInput('')
 
+      const fallbackOwnerId = hintProfile?.owner_id || hintProfile?.user_id || user.id
+      const fallbackHeroId = hintProfile?.hero_id || null
+      const fallbackName = hintProfile?.name || DEFAULT_VIEWER.name
+      const fallbackAvatar = hintProfile?.avatar_url ?? null
+
       const payload = {
         user_id: user.id,
-        owner_id: user.id,
-        username: me.name,
-        avatar_url: me.avatar_url,
-        hero_id: activeHeroId,
+        owner_id: me.owner_id || fallbackOwnerId,
+        username:
+          me.name && me.name !== DEFAULT_VIEWER.name ? me.name : fallbackName,
+        avatar_url: me.avatar_url ?? fallbackAvatar,
+        hero_id: activeHeroId || fallbackHeroId,
         scope,
         target_hero_id: scope === 'whisper' ? whisperTarget : null,
         text,
       }
 
       await insertMessage(payload)
+
+      try {
+        const hydrated = await fetchAndHydrateMessages()
+        replaceMessages(hydrated)
+        scrollToBottom()
+      } catch (refreshError) {
+        console.error('메시지를 새로고침하지 못했습니다.', refreshError)
+      }
 
       if (typeof onSend === 'function') {
         try {
@@ -551,6 +596,15 @@ function useSharedChatDockInternal({
     viewerHeroId,
     visibleMessages,
     whisperTarget,
+    refreshMessages: async () => {
+      try {
+        const hydrated = await fetchAndHydrateMessages()
+        replaceMessages(hydrated)
+        scrollToBottom()
+      } catch (error) {
+        console.error('채팅을 새로고침하지 못했습니다.', error)
+      }
+    },
   }
 }
 
