@@ -45,16 +45,36 @@ export function useHeroEditState({ heroId, onRequireAuth, onMissingHero }) {
     setLoading(true)
 
     try {
-      const { data: auth, error: authError } = await supabase.auth.getUser()
-      if (authError) {
-        console.error('Failed to resolve auth session before loading hero:', authError)
+      let user = null
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        console.error('Failed to resolve cached Supabase session before loading hero:', sessionError)
       }
 
-      if (authError || !auth?.user) {
-        onRequireAuth?.()
-        if (authError) {
+      if (sessionData?.session?.user) {
+        user = sessionData.session.user
+      }
+
+      if (!user) {
+        const {
+          data: userData,
+          error: userError,
+        } = await supabase.auth.getUser()
+
+        if (userError) {
+          console.error('Failed to resolve auth session before loading hero:', userError)
+        }
+
+        user = userData?.user || null
+
+        if (userError && !user) {
           alert('로그인 정보를 확인할 수 없습니다. 다시 시도해 주세요.')
         }
+      }
+
+      if (!user) {
+        onRequireAuth?.()
         return
       }
 
