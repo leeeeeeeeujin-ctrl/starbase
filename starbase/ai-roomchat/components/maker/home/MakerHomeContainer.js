@@ -1,13 +1,10 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
 import { useMakerHome } from '../../../hooks/maker/useMakerHome'
 import MakerHomeView from './MakerHomeView'
-
-const SharedChatDock = dynamic(() => import('../../common/SharedChatDock'), { ssr: false })
 
 export default function MakerHomeContainer() {
   const router = useRouter()
@@ -160,7 +157,6 @@ export default function MakerHomeContainer() {
       onToggleActionSheet={setActionSheetOpen}
       onGoBack={() => router.push('/lobby')}
       onOpenRanking={() => router.push('/rank')}
-      SharedChatDock={SharedChatDock}
     />
   )
 }

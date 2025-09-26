@@ -1,4 +1,5 @@
 import { supabase } from '../../supabase'
+import { withTable } from '../../supabaseTables'
 import { sanitizeVariableRules } from '../../variableRules'
 import { asError, failure, success } from './result'
 
@@ -60,9 +61,15 @@ function remapSlotIdFactory(payload, slotIdMap) {
 
 export async function readPromptSetBundle(id) {
   const [setResult, slotsResult, bridgesResult] = await Promise.all([
-    supabase.from('prompt_sets').select('*').eq('id', id).single(),
-    supabase.from('prompt_slots').select('*').eq('set_id', id).order('slot_no'),
-    supabase.from('prompt_bridges').select('*').eq('from_set', id),
+    withTable(supabase, 'prompt_sets', (table) =>
+      supabase.from(table).select('*').eq('id', id).single(),
+    ),
+    withTable(supabase, 'prompt_slots', (table) =>
+      supabase.from(table).select('*').eq('set_id', id).order('slot_no'),
+    ),
+    withTable(supabase, 'prompt_bridges', (table) =>
+      supabase.from(table).select('*').eq('from_set', id),
+    ),
   ])
 
   if (setResult.error) {
@@ -90,11 +97,9 @@ export async function insertPromptSetBundle(userId, payload) {
     return failure(new Error('로그인이 필요합니다.'))
   }
 
-  const { data: insertedSet, error: setError } = await supabase
-    .from('prompt_sets')
-    .insert({ name: payload?.set?.name || '가져온 세트', owner_id: userId })
-    .select()
-    .single()
+  const { data: insertedSet, error: setError } = await withTable(supabase, 'prompt_sets', (table) =>
+    supabase.from(table).insert({ name: payload?.set?.name || '가져온 세트', owner_id: userId }).select().single(),
+  )
 
   if (setError || !insertedSet) {
     return failure(asError(setError, '세트를 생성하지 못했습니다.'))
@@ -108,10 +113,9 @@ export async function insertPromptSetBundle(userId, payload) {
       return { row: { ...row, set_id: insertedSet.id }, identifier }
     })
 
-    const { data: insertedSlots, error: slotError } = await supabase
-      .from('prompt_slots')
-      .insert(slotRows.map(({ row }) => row))
-      .select()
+    const { data: insertedSlots, error: slotError } = await withTable(supabase, 'prompt_slots', (table) =>
+      supabase.from(table).insert(slotRows.map(({ row }) => row)).select(),
+    )
 
     if (slotError) {
       return failure(asError(slotError, '슬롯을 저장하지 못했습니다.'))
@@ -144,7 +148,9 @@ export async function insertPromptSetBundle(userId, payload) {
       .filter((row) => row.from_slot_id && row.to_slot_id)
 
     if (bridgeRows.length) {
-      const { error: bridgeError } = await supabase.from('prompt_bridges').insert(bridgeRows)
+      const { error: bridgeError } = await withTable(supabase, 'prompt_bridges', (table) =>
+        supabase.from(table).insert(bridgeRows),
+      )
       if (bridgeError) {
         return failure(asError(bridgeError, '브리지를 저장하지 못했습니다.'))
       }
