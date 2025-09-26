@@ -1,6 +1,13 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 
@@ -309,11 +316,16 @@ export default function CharacterDashboard({
   }, [overviewOpen, router])
 
   useEffect(() => {
+    router.prefetch('/roster').catch(() => {})
+  }, [router])
+
+  useLayoutEffect(() => {
     const node = swipeViewportRef.current
     if (!node) return undefined
 
     const width = node.clientWidth || 1
-    node.scrollLeft = width * panelIndex
+    const initialIndex = panelIndexRef.current
+    node.scrollTo({ left: width * initialIndex, behavior: 'auto' })
 
     const handleResize = () => {
       const nextWidth = node.clientWidth || 1
@@ -1225,7 +1237,7 @@ const styles = {
     overflowX: 'auto',
     scrollSnapType: 'x mandatory',
     WebkitOverflowScrolling: 'touch',
-    scrollBehavior: 'smooth',
+    scrollBehavior: 'auto',
   },
   swipeTrack: {
     display: 'flex',

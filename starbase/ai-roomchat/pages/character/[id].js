@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import CharacterDashboard from '@/components/character/CharacterDashboard'
@@ -208,13 +208,31 @@ export default function CharacterDetailPage() {
     router.push(`/rank/${gameId}/start`)
   }
 
+  const handleBackNavigation = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+      return
+    }
+
+    router.push('/roster').catch((error) => {
+      console.error('Failed to navigate back to roster via router:', error)
+      if (typeof window !== 'undefined') {
+        window.location.href = '/roster'
+      }
+    })
+  }, [router])
+
+  useEffect(() => {
+    router.prefetch('/roster').catch(() => {})
+  }, [router])
+
   return (
     <>
       <CharacterDashboard
         dashboard={dashboard}
         heroId={heroId}
         heroName={dashboard.heroName}
-        onBack={() => router.push('/roster')}
+        onBack={handleBackNavigation}
         onStartBattle={handleStartBattle}
       />
       <StartBattleOverlay
