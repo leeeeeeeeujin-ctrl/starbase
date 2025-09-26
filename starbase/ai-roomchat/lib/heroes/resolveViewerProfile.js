@@ -1,5 +1,6 @@
 import { supabase } from '../supabase'
 import { withTable } from '../supabaseTables'
+import { readStorage, removeStorage, writeStorage } from '../../utils/browserStorage'
 
 function extractFallbackHero(hint, user) {
   if (!hint) return null
@@ -51,42 +52,26 @@ function mergeProfileWithFallback(profile, fallback) {
 }
 
 function persistSelectedHero(hero) {
-  if (typeof window === 'undefined') return
   if (!hero?.id) return
-  try {
-    window.localStorage.setItem('selectedHeroId', hero.id)
-    if (hero.owner_id) {
-      window.localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
-    }
-  } catch (error) {
-    console.error('Failed to persist selected hero metadata:', error)
+  writeStorage('selectedHeroId', hero.id)
+  if (hero.owner_id) {
+    writeStorage('selectedHeroOwnerId', hero.owner_id)
   }
 }
 
 function clearSelectedHero() {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.removeItem('selectedHeroId')
-    window.localStorage.removeItem('selectedHeroOwnerId')
-  } catch (error) {
-    console.error('Failed to clear selected hero metadata:', error)
-  }
+  removeStorage('selectedHeroId')
+  removeStorage('selectedHeroOwnerId')
 }
 
 function readStoredSelection(userId) {
-  if (typeof window === 'undefined') return null
-  try {
-    const heroId = window.localStorage.getItem('selectedHeroId')
-    const ownerId = window.localStorage.getItem('selectedHeroOwnerId')
-    if (!heroId) return null
-    if (ownerId && userId && ownerId !== userId) {
-      return null
-    }
-    return { heroId, ownerId }
-  } catch (error) {
-    console.error('Failed to read stored hero metadata:', error)
+  const heroId = readStorage('selectedHeroId')
+  const ownerId = readStorage('selectedHeroOwnerId')
+  if (!heroId) return null
+  if (ownerId && userId && ownerId !== userId) {
     return null
   }
+  return { heroId, ownerId }
 }
 
 async function fetchHeroById(heroId) {

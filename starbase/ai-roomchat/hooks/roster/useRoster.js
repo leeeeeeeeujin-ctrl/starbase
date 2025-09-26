@@ -3,191 +3,127 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
-import { supabase } from '../../lib/supabase'
-import { withTable } from '../../lib/supabaseTables'
+import { useAuth } from '../../features/auth'
+import { deleteHeroById, fetchHeroesForOwner } from '../../services/heroes'
+import { readStorage, removeStorage, writeStorage } from '../../utils/browserStorage'
 
-const DEFAULT_PROFILE_NAME = '사용자'
-
-function deriveProfile(user) {
-  if (!user) {
-    return {
-      displayName: DEFAULT_PROFILE_NAME,
-      avatarUrl: null,
-    }
-  }
-
-  const metadata = user.user_metadata || {}
-  const displayName =
-    metadata.full_name ||
-    metadata.name ||
-    metadata.nickname ||
-    (typeof user.email === 'string' ? user.email.split('@')[0] : '') ||
-    DEFAULT_PROFILE_NAME
-  const avatarUrl = metadata.avatar_url || metadata.picture || metadata.avatar || null
-
-  return { displayName, avatarUrl }
-}
+const HERO_STORAGE_KEY = 'selectedHeroId'
+const OWNER_STORAGE_KEY = 'selectedHeroOwnerId'
 
 export function useRoster({ onUnauthorized } = {}) {
   const router = useRouter()
-  const isMounted = useRef(true)
-  const [loading, setLoading] = useState(true)
+  const { status: authStatus, user, profile } = useAuth()
+  const ownerId = user?.id ?? null
+
+  const [loading, setLoading] = useState(authStatus === 'loading')
   const [error, setError] = useState('')
   const [heroes, setHeroes] = useState([])
-  const [{ displayName, avatarUrl }, setProfile] = useState({
-    displayName: DEFAULT_PROFILE_NAME,
-    avatarUrl: null,
-  })
+  const unauthorizedNotifiedRef = useRef(false)
+  const mountedRef = useRef(false)
+  const latestRequestRef = useRef(0)
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
-      isMounted.current = false
+      mountedRef.current = false
     }
   }, [])
 
   const loadRoster = useCallback(async () => {
-    if (!isMounted.current) return
+    if (!ownerId) {
+      return []
+    }
 
-    setLoading(true)
-    setError('')
+    const requestId = latestRequestRef.current + 1
+    latestRequestRef.current = requestId
+
+    if (mountedRef.current) {
+      setLoading(true)
+      setError('')
+    }
 
     try {
-      const href = typeof window !== 'undefined' ? window.location.href : ''
+      const data = await fetchHeroesForOwner(ownerId)
 
-      if (href.includes('code=')) {
-        try {
-          const currentUrl = new URL(href)
-          const authCode = currentUrl.searchParams.get('code')
-          if (authCode) {
-            const result = await supabase.auth.exchangeCodeForSession({ authCode })
-            if (result?.error) {
-              throw result.error
-            }
-          }
-          if (typeof window !== 'undefined') {
-            const cleanUrl = href.split('?')[0]
-            window.history.replaceState({}, document.title, cleanUrl)
-          }
-        } catch (exchangeError) {
-          console.error('Failed to process auth callback for roster:', exchangeError)
-          if (!isMounted.current) return
-          setError('로그인 세션을 복구하지 못했습니다. 다시 시도해 주세요.')
-          setLoading(false)
-          return
-        }
+      if (!mountedRef.current || latestRequestRef.current !== requestId) {
+        return data
       }
 
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-      if (!isMounted.current) return
+      setHeroes(data)
+      writeStorage(OWNER_STORAGE_KEY, ownerId)
 
-      if (sessionError) {
-        setError(sessionError.message)
+      const storedHeroId = readStorage(HERO_STORAGE_KEY)
+      if (storedHeroId && !data.some((hero) => hero.id === storedHeroId)) {
+        removeStorage(HERO_STORAGE_KEY)
+      }
+
+      return data
+    } catch (err) {
+      console.error(err)
+      if (mountedRef.current && latestRequestRef.current === requestId) {
+        setError('로스터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      }
+      throw err
+    } finally {
+      if (mountedRef.current && latestRequestRef.current === requestId) {
         setLoading(false)
-        return
       }
+    }
+  }, [ownerId, fetchHeroesForOwner, writeStorage, readStorage, removeStorage])
 
-      let user = sessionData?.session?.user || null
+  useEffect(() => {
+    if (authStatus === 'loading') {
+      setLoading(true)
+      return
+    }
 
-      if (!user) {
-        const {
-          data: { user: fetchedUser },
-          error: authError,
-        } = await supabase.auth.getUser()
-
-        if (!isMounted.current) return
-
-        if (authError) {
-          setError(authError.message)
-          setLoading(false)
-          return
-        }
-
-        user = fetchedUser || null
-      }
-
-      if (!user) {
-        setLoading(false)
+    if (!ownerId) {
+      setLoading(false)
+      setHeroes([])
+      if (!unauthorizedNotifiedRef.current) {
+        unauthorizedNotifiedRef.current = true
         if (typeof onUnauthorized === 'function') {
           onUnauthorized()
         } else {
           router.replace('/')
         }
-        return
       }
-
-      setProfile(deriveProfile(user))
-
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem('selectedHeroOwnerId', user.id)
-        } catch (storageError) {
-          console.error('Failed to persist roster owner metadata:', storageError)
-        }
-      }
-
-      const { data, error: heroesError } = await withTable(
-        supabase,
-        'heroes',
-        (table) =>
-          supabase
-            .from(table)
-            .select('id,name,image_url,created_at,owner_id')
-            .eq('owner_id', user.id)
-            .order('created_at', { ascending: false })
-      )
-
-      if (!isMounted.current) return
-
-      if (heroesError) {
-        setError(heroesError.message)
-        setHeroes([])
-      } else {
-        setHeroes(data || [])
-        if (typeof window !== 'undefined') {
-          const storedHeroId = window.localStorage.getItem('selectedHeroId')
-          if (storedHeroId && !(data || []).some((hero) => hero.id === storedHeroId)) {
-            try {
-              window.localStorage.removeItem('selectedHeroId')
-            } catch (storageError) {
-              console.error('Failed to clear missing hero selection:', storageError)
-            }
-          }
-        }
-      }
-
-      setLoading(false)
-    } catch (err) {
-      console.error(err)
-      if (!isMounted.current) return
-      setError('로스터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
-      setLoading(false)
-    }
-  }, [onUnauthorized, router])
-
-  useEffect(() => {
-    loadRoster()
-  }, [loadRoster])
-
-  const deleteHero = useCallback(async (heroId) => {
-    const { error: deleteError } = await withTable(supabase, 'heroes', (table) =>
-      supabase.from(table).delete().eq('id', heroId)
-    )
-
-    if (deleteError) {
-      throw deleteError
+      return
     }
 
-    if (!isMounted.current) return
+    unauthorizedNotifiedRef.current = false
+    loadRoster().catch(() => {})
+  }, [authStatus, ownerId, loadRoster, onUnauthorized, router])
 
-    setHeroes((previous) => previous.filter((hero) => hero.id !== heroId))
-  }, [])
+  const deleteHero = useCallback(
+    async (heroId) => {
+      try {
+        await deleteHeroById(heroId)
+        if (!mountedRef.current) {
+          return
+        }
+        setHeroes((previous) => previous.filter((hero) => hero.id !== heroId))
+        const storedHeroId = readStorage(HERO_STORAGE_KEY)
+        if (storedHeroId && storedHeroId === heroId) {
+          removeStorage(HERO_STORAGE_KEY)
+        }
+      } catch (err) {
+        console.error(err)
+        if (mountedRef.current) {
+          setError('영웅을 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        }
+        throw err
+      }
+    },
+    [deleteHeroById, readStorage, removeStorage],
+  )
 
   return {
     loading,
     error,
     heroes,
-    displayName,
-    avatarUrl,
+    displayName: profile.displayName,
+    avatarUrl: profile.avatarUrl,
     setError,
     deleteHero,
     reload: loadRoster,
