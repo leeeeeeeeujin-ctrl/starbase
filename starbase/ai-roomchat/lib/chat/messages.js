@@ -18,22 +18,43 @@ export async function getCurrentUser() {
   return user || null
 }
 
+const MESSAGE_COLUMN_CANDIDATES = [
+  '*',
+  'id,created_at,text,scope,target_hero_id,hero_id,owner_id,user_id,username,avatar_url',
+  'id,created_at,text,scope,hero_id,owner_id,username,avatar_url',
+  'id,created_at,text,hero_id,owner_id,username',
+  'id,created_at,text,username',
+  'id,created_at,text',
+]
+
 export async function fetchRecentMessages({ limit = MESSAGE_LIMIT } = {}) {
   const cappedLimit = Math.max(1, Math.min(limit, MESSAGE_LIMIT))
+  let lastError = null
 
-  const { data, error } = await withTable(supabase, 'messages', (table) =>
-    supabase
-      .from(table)
-      .select('*')
-      .order('created_at', { ascending: true })
-      .limit(cappedLimit),
-  )
+  for (const columnSet of MESSAGE_COLUMN_CANDIDATES) {
+    const { data, error } = await withTable(supabase, 'messages', (table) =>
+      supabase
+        .from(table)
+        .select(columnSet)
+        .order('created_at', { ascending: true })
+        .limit(cappedLimit),
+    )
 
-  if (error) {
-    throw error
+    if (!error) {
+      return Array.isArray(data) ? data : []
+    }
+
+    lastError = error
+    if (!isMissingColumnError(error)) {
+      break
+    }
   }
 
-  return Array.isArray(data) ? data : []
+  if (lastError) {
+    throw lastError
+  }
+
+  return []
 }
 
 function isMissingColumnError(error) {
