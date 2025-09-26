@@ -3,31 +3,111 @@
 import { supabase } from '../supabase'
 import { withTable } from '../supabaseTables'
 
+function isMissingColumnError(error) {
+  if (!error) return false
+  if (error.code === '42703') return true
+
+  const message = `${error.message || ''} ${error.details || ''}`.toLowerCase()
+  if (!message.trim()) return false
+
+  if (message.includes('column') && message.includes('does not exist')) return true
+  if (message.includes('unknown column')) return true
+  if (message.includes('does not exist in the target relation')) return true
+  if (message.includes('missing column')) return true
+
+  return false
+}
+
 export const EMPTY_REQUESTS = { incoming: [], outgoing: [] }
 
 async function queryFriendships(viewerId) {
-  const { data, error } = await withTable(supabase, 'friendships', (table) =>
-    supabase
-      .from(table)
-      .select('id,user_id_a,user_id_b,since,created_at')
-      .or(`user_id_a.eq.${viewerId},user_id_b.eq.${viewerId}`),
-  )
+  const columnVariants = [
+    'id,user_id_a,user_id_b,since,created_at',
+    'id,user_id_a,user_id_b,created_at',
+    'id,user_id_a,user_id_b',
+  ]
 
-  if (error) throw error
-  return Array.isArray(data) ? data : []
+  let lastMissingColumnError = null
+
+  for (const columns of columnVariants) {
+    const { data, error } = await withTable(supabase, 'friendships', (table) =>
+      supabase
+        .from(table)
+        .select(columns)
+        .or(`user_id_a.eq.${viewerId},user_id_b.eq.${viewerId}`),
+    )
+
+    if (!error) {
+      return Array.isArray(data) ? data : []
+    }
+
+    if (isMissingColumnError(error)) {
+      lastMissingColumnError = error
+      console.warn(
+        'friendships 조회 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
+        error,
+      )
+      continue
+    }
+
+    throw error
+  }
+
+  if (lastMissingColumnError) {
+    console.warn(
+      'friendships 테이블이 예상과 다른 스키마를 사용하고 있어 빈 목록을 반환합니다.',
+      lastMissingColumnError,
+    )
+    return []
+  }
+
+  return []
 }
 
 async function queryPendingRequests(viewerId) {
-  const { data, error } = await withTable(supabase, 'friend_requests', (table) =>
-    supabase
-      .from(table)
-      .select('id,requester_id,addressee_id,status,message,created_at,updated_at')
-      .eq('status', 'pending')
-      .or(`requester_id.eq.${viewerId},addressee_id.eq.${viewerId}`),
-  )
+  const columnVariants = [
+    'id,requester_id,addressee_id,status,message,created_at,updated_at',
+    'id,requester_id,addressee_id,status,created_at,updated_at',
+    'id,requester_id,addressee_id,status,created_at',
+    'id,requester_id,addressee_id,status',
+  ]
 
-  if (error) throw error
-  return Array.isArray(data) ? data : []
+  let lastMissingColumnError = null
+
+  for (const columns of columnVariants) {
+    const { data, error } = await withTable(supabase, 'friend_requests', (table) =>
+      supabase
+        .from(table)
+        .select(columns)
+        .eq('status', 'pending')
+        .or(`requester_id.eq.${viewerId},addressee_id.eq.${viewerId}`),
+    )
+
+    if (!error) {
+      return Array.isArray(data) ? data : []
+    }
+
+    if (isMissingColumnError(error)) {
+      lastMissingColumnError = error
+      console.warn(
+        'friend_requests 조회 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
+        error,
+      )
+      continue
+    }
+
+    throw error
+  }
+
+  if (lastMissingColumnError) {
+    console.warn(
+      'friend_requests 테이블이 예상과 다른 스키마를 사용하고 있어 빈 목록을 반환합니다.',
+      lastMissingColumnError,
+    )
+    return []
+  }
+
+  return []
 }
 
 function isMissingRpc(error) {
@@ -46,16 +126,49 @@ function isMissingRpc(error) {
 }
 
 async function fetchFriendRequestById(requestId) {
-  const { data, error } = await withTable(supabase, 'friend_requests', (table) =>
-    supabase
-      .from(table)
-      .select('id,requester_id,addressee_id,status,message,created_at,updated_at')
-      .eq('id', requestId)
-      .maybeSingle(),
-  )
+  const columnVariants = [
+    'id,requester_id,addressee_id,status,message,created_at,updated_at',
+    'id,requester_id,addressee_id,status,created_at,updated_at',
+    'id,requester_id,addressee_id,status,created_at',
+    'id,requester_id,addressee_id,status',
+  ]
 
-  if (error) throw error
-  return data || null
+  let lastMissingColumnError = null
+
+  for (const columns of columnVariants) {
+    const { data, error } = await withTable(supabase, 'friend_requests', (table) =>
+      supabase
+        .from(table)
+        .select(columns)
+        .eq('id', requestId)
+        .maybeSingle(),
+    )
+
+    if (!error) {
+      return data || null
+    }
+
+    if (isMissingColumnError(error)) {
+      lastMissingColumnError = error
+      console.warn(
+        'friend_requests 단건 조회 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
+        error,
+      )
+      continue
+    }
+
+    throw error
+  }
+
+  if (lastMissingColumnError) {
+    console.warn(
+      'friend_requests 스키마가 예상과 달라 요청 세부 정보를 불러오지 못했습니다.',
+      lastMissingColumnError,
+    )
+    return null
+  }
+
+  return null
 }
 
 function normaliseFriendPair(a, b) {
@@ -71,31 +184,76 @@ function normaliseFriendPair(a, b) {
 async function ensureFriendshipExists({ requesterId, addresseeId }) {
   const { first, second } = normaliseFriendPair(requesterId, addresseeId)
 
-  const { error } = await withTable(supabase, 'friendships', (table) =>
-    supabase
-      .from(table)
-      .upsert(
-        {
-          user_id_a: first,
-          user_id_b: second,
-          since: new Date().toISOString(),
-        },
-        { onConflict: 'user_id_a,user_id_b', ignoreDuplicates: true },
-      ),
-  )
+  const payloadVariants = [
+    {
+      user_id_a: first,
+      user_id_b: second,
+      since: new Date().toISOString(),
+    },
+    {
+      user_id_a: first,
+      user_id_b: second,
+    },
+  ]
 
-  if (error) throw error
+  let lastMissingColumnError = null
+
+  for (const payload of payloadVariants) {
+    const { error } = await withTable(supabase, 'friendships', (table) =>
+      supabase
+        .from(table)
+        .upsert(payload, { onConflict: 'user_id_a,user_id_b', ignoreDuplicates: true }),
+    )
+
+    if (!error) return
+
+    if (isMissingColumnError(error)) {
+      lastMissingColumnError = error
+      console.warn(
+        'friendships 업서트 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
+        error,
+      )
+      continue
+    }
+
+    throw error
+  }
+
+  if (lastMissingColumnError) {
+    throw new Error('friendships 테이블 구조가 예상과 달라 친구 관계를 갱신하지 못했습니다.')
+  }
 }
 
 async function updateRequestStatus(requestId, status) {
-  const { error } = await withTable(supabase, 'friend_requests', (table) =>
-    supabase
-      .from(table)
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', requestId),
-  )
+  const payloadVariants = [
+    { status, updated_at: new Date().toISOString() },
+    { status },
+  ]
 
-  if (error) throw error
+  let lastMissingColumnError = null
+
+  for (const payload of payloadVariants) {
+    const { error } = await withTable(supabase, 'friend_requests', (table) =>
+      supabase.from(table).update(payload).eq('id', requestId),
+    )
+
+    if (!error) return
+
+    if (isMissingColumnError(error)) {
+      lastMissingColumnError = error
+      console.warn(
+        'friend_requests 업데이트 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
+        error,
+      )
+      continue
+    }
+
+    throw error
+  }
+
+  if (lastMissingColumnError) {
+    throw new Error('friend_requests 테이블 구조가 예상과 달라 상태를 갱신하지 못했습니다.')
+  }
 }
 
 async function fallbackAcceptFriendRequest({ requestId, actorId }) {
@@ -309,24 +467,47 @@ export async function requestFriendshipByHero({ viewerId, heroId }) {
     throw new Error('자신의 캐릭터는 친구로 추가할 수 없습니다.')
   }
 
-  const { error } = await withTable(supabase, 'friend_requests', (table) =>
-    supabase
-      .from(table)
-      .insert({
-        requester_id: viewerId,
-        addressee_id: hero.owner_id,
-        status: 'pending',
-        message: null,
-      })
-      .select('id')
-      .single(),
-  )
+  const payloadVariants = [
+    {
+      requester_id: viewerId,
+      addressee_id: hero.owner_id,
+      status: 'pending',
+      message: null,
+    },
+    {
+      requester_id: viewerId,
+      addressee_id: hero.owner_id,
+      status: 'pending',
+    },
+  ]
 
-  if (error) {
+  let lastMissingColumnError = null
+
+  for (const payload of payloadVariants) {
+    const { error } = await withTable(supabase, 'friend_requests', (table) =>
+      supabase.from(table).insert(payload).select('id').single(),
+    )
+
+    if (!error) return
+
     if (error.code === '23505') {
       throw new Error('이미 대기 중인 친구 요청이 있습니다.')
     }
+
+    if (isMissingColumnError(error)) {
+      lastMissingColumnError = error
+      console.warn(
+        'friend_requests 삽입 시 누락된 컬럼이 감지되어 간소화된 스키마로 재시도합니다.',
+        error,
+      )
+      continue
+    }
+
     throw new Error(error.message || '친구 요청을 보내지 못했습니다.')
+  }
+
+  if (lastMissingColumnError) {
+    throw new Error('friend_requests 테이블 구조가 예상과 달라 친구 요청을 생성하지 못했습니다.')
   }
 }
 
