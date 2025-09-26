@@ -28,3 +28,19 @@
 이 구조 덕분에 "hero"라는 용어는 전부 `heroes` 테이블의 행을 의미한다고
 이해하면 되고, 별도의 스키마를 걱정할 필요가 없습니다.
 
+## 공용 채팅 독을 그대로 복붙하고 싶다면?
+
+- `SharedChatDockProvider`로 원하는 레이아웃을 감싸면 로스터/랭킹/캐릭터
+  등 어느 페이지에서도 **같은 메시지 스트림·차단 목록·귓속말 스레드**를
+  공유할 수 있습니다.
+- 내부에서 `useSharedChatDock()`을 호출하면 `totalUnread`,
+  `blockedHeroes`, `setBlockedHeroes`, `viewerHeroId` 등을 꺼내어 상단
+  배지나 친구 오버레이와 연결할 수 있습니다.
+- 예시: 로스터 화면은 전체 트리를
+  `SharedChatDockProvider`로 감싸고, `RosterView`는
+  `useSharedChatDock()`이 돌려주는 `totalUnread`를 그대로 배지로 렌더링해
+  새로고침/탭 전환과 관계없이 동일한 채팅 상태를 유지합니다.
+- 별다른 설정이 없어도 `SharedChatDock` 컴포넌트는 같은 컨텍스트를 읽어
+  즉시 메시지 리스트·입력창을 재사용하므로 원하는 위치에 복사해 붙여
+  넣기만 하면 됩니다.
+

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   fetchRecentMessages,
@@ -11,6 +11,8 @@ import {
 import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
 
 const BLOCKED_STORAGE_KEY = 'starbase_blocked_heroes'
+
+const SharedChatDockContext = createContext(null)
 
 const DEFAULT_VIEWER = {
   name: '익명',
@@ -106,7 +108,7 @@ function persistBlockedHeroes(list) {
   }
 }
 
-export function useSharedChatDock({
+function useSharedChatDockInternal({
   heroId,
   extraWhisperTargets = [],
   blockedHeroes: externalBlockedHeroes,
@@ -453,4 +455,23 @@ export function useSharedChatDock({
     visibleMessages,
     whisperTarget,
   }
+}
+
+export function useSharedChatDock(options = {}) {
+  const contextValue = useContext(SharedChatDockContext)
+  if (contextValue) {
+    return contextValue
+  }
+  return useSharedChatDockInternal(options)
+}
+
+export function SharedChatDockProvider({ children, ...options }) {
+  const controller = useSharedChatDockInternal(options)
+  return (
+    <SharedChatDockContext.Provider value={controller}>{children}</SharedChatDockContext.Provider>
+  )
+}
+
+export function useSharedChatDockContext() {
+  return useContext(SharedChatDockContext)
 }

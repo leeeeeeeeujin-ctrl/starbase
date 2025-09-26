@@ -150,6 +150,12 @@ export default function SharedChatDock({
   )
 }
 
+export {
+  SharedChatDockProvider,
+  useSharedChatDock,
+  useSharedChatDockContext,
+} from './useSharedChatDock'
+
 function ThreadTabList({ items, activeId, onSelect }) {
   if (!items?.length) return null
   return (

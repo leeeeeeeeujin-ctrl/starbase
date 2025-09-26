@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 
 import { useRoster } from '../../hooks/roster/useRoster'
 import { useHeroSocial } from '../../hooks/social/useHeroSocial'
+import { SharedChatDockProvider, useSharedChatDock } from '../common/SharedChatDock'
 import ChatOverlay from '../social/ChatOverlay'
 import FriendOverlay from '../social/FriendOverlay'
 import RosterView from './RosterView'
@@ -15,18 +16,22 @@ export default function RosterContainer() {
     router.replace('/')
   }, [router])
 
-  const { loading, error, heroes, displayName, avatarUrl, setError, deleteHero, reload } = useRoster({
+  const {
+    loading,
+    error,
+    heroes,
+    displayName,
+    avatarUrl,
+    setError,
+    deleteHero,
+    reload,
+  } = useRoster({
     onUnauthorized: handleUnauthorized,
   })
 
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const social = useHeroSocial({ heroId: null, heroName: null, page: 'roster' })
-  const [chatOpen, setChatOpen] = useState(false)
-  const [friendsOpen, setFriendsOpen] = useState(false)
-  const [chatUnread, setChatUnread] = useState(0)
-  const [blockedHeroes, setBlockedHeroes] = useState([])
-  const chatOverlayRef = useRef(null)
 
   const viewerHeroHint = useMemo(() => {
     if (!social.viewer) return null
@@ -39,9 +44,9 @@ export default function RosterContainer() {
     }
   }, [social.viewer])
 
-  const friendByOwner = social.friendByOwner ?? new Map()
-  const friendByHero = social.friendByHero ?? new Map()
-  const blockedHeroSet = useMemo(() => new Set(blockedHeroes || []), [blockedHeroes])
+  const friendByOwner = useMemo(() => social.friendByOwner ?? new Map(), [social.friendByOwner])
+  const friendByHero = useMemo(() => social.friendByHero ?? new Map(), [social.friendByHero])
+
   const extraWhisperTargets = useMemo(() => {
     if (!social.friends?.length) return []
     const seen = new Set()
@@ -62,6 +67,79 @@ export default function RosterContainer() {
     return entries
   }, [social.friends])
 
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget || deleting) return
+
+    try {
+      setDeleting(true)
+      await deleteHero(deleteTarget.id)
+      setDeleteTarget(null)
+    } catch (err) {
+      console.error(err)
+      alert(err?.message || '영웅을 삭제하지 못했습니다. 다시 시도해 주세요.')
+    } finally {
+      setDeleting(false)
+    }
+  }, [deleteHero, deleteTarget, deleting, setDeleteTarget, setDeleting])
+
+  const handleResetError = useCallback(() => {
+    setError('')
+    reload()
+  }, [reload, setError])
+
+  return (
+    <SharedChatDockProvider
+      heroId={null}
+      viewerHero={viewerHeroHint}
+      extraWhisperTargets={extraWhisperTargets}
+    >
+      <RosterContent
+        loading={loading}
+        error={error}
+        heroes={heroes}
+        displayName={displayName}
+        avatarUrl={avatarUrl}
+        deleteTarget={deleteTarget}
+        setDeleteTarget={setDeleteTarget}
+        deleting={deleting}
+        onConfirmDelete={handleConfirmDelete}
+        onResetError={handleResetError}
+        onLogout={() => router.replace('/')}
+        social={social}
+        friendByOwner={friendByOwner}
+        friendByHero={friendByHero}
+        viewerHeroHint={viewerHeroHint}
+        extraWhisperTargets={extraWhisperTargets}
+      />
+    </SharedChatDockProvider>
+  )
+}
+
+function RosterContent({
+  loading,
+  error,
+  heroes,
+  displayName,
+  avatarUrl,
+  deleteTarget,
+  setDeleteTarget,
+  deleting,
+  onConfirmDelete,
+  onResetError,
+  onLogout,
+  social,
+  friendByOwner,
+  friendByHero,
+  viewerHeroHint,
+  extraWhisperTargets,
+}) {
+  const [chatOpen, setChatOpen] = useState(false)
+  const [friendsOpen, setFriendsOpen] = useState(false)
+  const chatOverlayRef = useRef(null)
+
+  const { blockedHeroes, setBlockedHeroes, totalUnread } = useSharedChatDock()
+  const blockedHeroSet = useMemo(() => new Set(blockedHeroes || []), [blockedHeroes])
+
   const isFriendHero = useCallback(
     (hero) => {
       if (!hero) return false
@@ -70,30 +148,6 @@ export default function RosterContainer() {
       return false
     },
     [friendByHero, friendByOwner],
-  )
-
-  const updateBlockedHeroes = useCallback((next) => {
-    setBlockedHeroes((prev) => {
-      const computed = typeof next === 'function' ? next(prev) : next
-      const normalized = Array.from(new Set((computed || []).filter(Boolean)))
-      if (prev.length === normalized.length && prev.every((id, index) => id === normalized[index])) {
-        return prev
-      }
-      return normalized
-    })
-  }, [])
-
-  const handleToggleBlockedHero = useCallback(
-    (heroId) => {
-      if (!heroId) return
-      updateBlockedHeroes((prev) => {
-        if (prev.includes(heroId)) {
-          return prev.filter((id) => id !== heroId)
-        }
-        return [...prev, heroId]
-      })
-    },
-    [updateBlockedHeroes],
   )
 
   const handleAddFriendFromChat = useCallback(
@@ -126,39 +180,30 @@ export default function RosterContainer() {
     [social],
   )
 
-  const handleOpenWhisper = useCallback(
-    (heroId) => {
-      if (!heroId) return
-      setChatOpen(true)
-      chatOverlayRef.current?.openThread(heroId)
-    },
-    [],
-  )
+  const handleOpenWhisper = useCallback((heroId) => {
+    if (!heroId) return
+    setChatOpen(true)
+    chatOverlayRef.current?.openThread(heroId)
+  }, [])
 
   const handleCloseChat = useCallback(() => {
     setChatOpen(false)
     chatOverlayRef.current?.resetThread?.()
   }, [])
 
-  const handleConfirmDelete = useCallback(async () => {
-    if (!deleteTarget || deleting) return
-
-    try {
-      setDeleting(true)
-      await deleteHero(deleteTarget.id)
-      setDeleteTarget(null)
-    } catch (err) {
-      console.error(err)
-      alert(err?.message || '영웅을 삭제하지 못했습니다. 다시 시도해 주세요.')
-    } finally {
-      setDeleting(false)
-    }
-  }, [deleteTarget, deleteHero, deleting])
-
-  const handleResetError = useCallback(() => {
-    setError('')
-    reload()
-  }, [reload, setError])
+  const handleToggleBlockedHero = useCallback(
+    (heroId) => {
+      if (!heroId) return
+      setBlockedHeroes((prev) => {
+        const prevList = Array.isArray(prev) ? prev : []
+        if (prevList.includes(heroId)) {
+          return prevList.filter((id) => id !== heroId)
+        }
+        return [...prevList, heroId]
+      })
+    },
+    [setBlockedHeroes],
+  )
 
   return (
     <>
@@ -172,12 +217,12 @@ export default function RosterContainer() {
         deleting={deleting}
         onRequestDelete={setDeleteTarget}
         onCancelDelete={() => setDeleteTarget(null)}
-        onConfirmDelete={handleConfirmDelete}
-        onLogoutComplete={() => router.replace('/')}
-        onResetError={handleResetError}
+        onConfirmDelete={onConfirmDelete}
+        onLogoutComplete={onLogout}
+        onResetError={onResetError}
         onOpenChat={() => setChatOpen(true)}
         onOpenFriends={() => setFriendsOpen(true)}
-        chatUnreadCount={chatUnread}
+        chatUnreadCount={totalUnread}
       />
       <ChatOverlay
         ref={chatOverlayRef}
@@ -187,8 +232,7 @@ export default function RosterContainer() {
         viewerHero={viewerHeroHint}
         extraWhisperTargets={extraWhisperTargets}
         blockedHeroes={blockedHeroes}
-        onUnreadChange={setChatUnread}
-        onBlockedHeroesChange={updateBlockedHeroes}
+        onBlockedHeroesChange={setBlockedHeroes}
         onRequestAddFriend={handleAddFriendFromChat}
         onRequestRemoveFriend={handleRemoveFriendFromChat}
         isFriend={isFriendHero}
@@ -213,3 +257,4 @@ export default function RosterContainer() {
     </>
   )
 }
+
