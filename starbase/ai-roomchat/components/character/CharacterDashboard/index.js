@@ -16,6 +16,12 @@ const NAV_ITEMS = [
 
 const PANEL_COUNT = NAV_ITEMS.length
 
+function clampPanelIndex(index) {
+  if (index < 0) return 0
+  if (index >= PANEL_COUNT) return PANEL_COUNT - 1
+  return index
+}
+
 export default function CharacterDashboard({
   dashboard,
   heroId: explicitHeroId,
@@ -32,7 +38,10 @@ export default function CharacterDashboard({
   const pageRef = useRef(null)
   const swipeViewportRef = useRef(null)
   const scrollFrame = useRef(0)
+  const scrollIdleTimeoutRef = useRef(0)
   const activePanelRef = useRef(1)
+  const programmaticScrollRef = useRef(false)
+  const programmaticReleaseRef = useRef(0)
   const swipeGestureRef = useRef({ startX: 0, lastX: 0, startIndex: 1, active: false })
   const pinchTrackerRef = useRef({ active: false, initialDistance: 0 })
 
@@ -159,6 +168,41 @@ export default function CharacterDashboard({
     }
     return items
   }, [overviewGameItems])
+  const scrollToPanel = useCallback((targetIndex, behavior = 'smooth') => {
+    const node = swipeViewportRef.current
+    if (!node) return
+
+    const clampedIndex = clampPanelIndex(targetIndex)
+    const width = node.clientWidth || 1
+    const targetLeft = clampedIndex * width
+
+    if (
+      Math.abs(node.scrollLeft - targetLeft) < 1 &&
+      activePanelRef.current === clampedIndex
+    ) {
+      return
+    }
+
+    programmaticScrollRef.current = true
+
+    if (typeof window !== 'undefined') {
+      window.clearTimeout(programmaticReleaseRef.current)
+    }
+
+    node.scrollTo({ left: targetLeft, behavior })
+    activePanelRef.current = clampedIndex
+    setPanelIndex(clampedIndex)
+
+    if (typeof window !== 'undefined') {
+      const delay = behavior === 'smooth' ? 420 : 0
+      programmaticReleaseRef.current = window.setTimeout(() => {
+        programmaticScrollRef.current = false
+      }, delay)
+    } else {
+      programmaticScrollRef.current = false
+    }
+  }, [])
+
   useEffect(() => {
     const node = swipeViewportRef.current
     if (!node) return undefined
@@ -168,12 +212,30 @@ export default function CharacterDashboard({
       scrollFrame.current = requestAnimationFrame(() => {
         const width = node.clientWidth || 1
         const ratio = node.scrollLeft / width
-        const nextIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
+        const nextIndex = clampPanelIndex(Math.round(ratio))
         if (nextIndex !== activePanelRef.current) {
           activePanelRef.current = nextIndex
           setPanelIndex(nextIndex)
         }
       })
+
+      if (programmaticScrollRef.current) {
+        return
+      }
+
+      if (typeof window !== 'undefined') {
+        window.clearTimeout(scrollIdleTimeoutRef.current)
+        scrollIdleTimeoutRef.current = window.setTimeout(() => {
+          const width = node.clientWidth || 1
+          const ratio = node.scrollLeft / width
+          const targetIndex = clampPanelIndex(Math.round(ratio))
+          const targetLeft = targetIndex * width
+
+          if (Math.abs(node.scrollLeft - targetLeft) > 1) {
+            scrollToPanel(targetIndex)
+          }
+        }, 120)
+      }
     }
 
     node.addEventListener('scroll', handleScroll, { passive: true })
@@ -181,8 +243,11 @@ export default function CharacterDashboard({
     return () => {
       cancelAnimationFrame(scrollFrame.current)
       node.removeEventListener('scroll', handleScroll)
+      if (typeof window !== 'undefined') {
+        window.clearTimeout(scrollIdleTimeoutRef.current)
+      }
     }
-  }, [])
+  }, [scrollToPanel])
 
   useEffect(() => {
     const node = swipeViewportRef.current
@@ -215,17 +280,13 @@ export default function CharacterDashboard({
       const threshold = width * 0.2
       let targetIndex = startIndex
       if (Math.abs(delta) > threshold) {
-        targetIndex = Math.max(0, Math.min(PANEL_COUNT - 1, startIndex + (delta < 0 ? 1 : -1)))
+        targetIndex = clampPanelIndex(startIndex + (delta < 0 ? 1 : -1))
       } else {
-        targetIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(node.scrollLeft / width)))
+        targetIndex = clampPanelIndex(Math.round(node.scrollLeft / width))
       }
 
       swipeGestureRef.current.active = false
-      if (targetIndex !== Math.round(node.scrollLeft / width)) {
-        node.scrollTo({ left: targetIndex * width, behavior: 'smooth' })
-      }
-      activePanelRef.current = targetIndex
-      setPanelIndex(targetIndex)
+      scrollToPanel(targetIndex)
     }
 
     node.addEventListener('touchstart', handleTouchStart, { passive: true })
@@ -239,7 +300,7 @@ export default function CharacterDashboard({
       node.removeEventListener('touchend', handleTouchEnd)
       node.removeEventListener('touchcancel', handleTouchEnd)
     }
-  }, [])
+  }, [scrollToPanel])
 
   useEffect(() => {
     if ((panelIndex === 0 || overviewMode) && !gameSearchEnabled) {
@@ -248,11 +309,16 @@ export default function CharacterDashboard({
   }, [panelIndex, overviewMode, gameSearchEnabled])
 
   useEffect(() => {
-    const node = swipeViewportRef.current
-    if (!node) return
-    const width = node.clientWidth || 1
-    node.scrollLeft = width * panelIndex
-    activePanelRef.current = panelIndex
+    scrollToPanel(panelIndex, 'auto')
+  }, [panelIndex, scrollToPanel])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.clearTimeout(programmaticReleaseRef.current)
+        window.clearTimeout(scrollIdleTimeoutRef.current)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -330,18 +396,15 @@ export default function CharacterDashboard({
     [gameBrowser, onStartBattle],
   )
 
-  const handleNavClick = useCallback((targetId) => {
-    const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
-    if (targetIndex >= 0) {
-      const node = swipeViewportRef.current
-      if (node) {
-        const width = node.clientWidth || 1
-        node.scrollTo({ left: targetIndex * width, behavior: 'smooth' })
+  const handleNavClick = useCallback(
+    (targetId) => {
+      const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
+      if (targetIndex >= 0) {
+        scrollToPanel(targetIndex)
       }
-      activePanelRef.current = targetIndex
-      setPanelIndex(targetIndex)
-    }
-  }, [])
+    },
+    [scrollToPanel],
+  )
 
   const handleOverviewNav = useCallback(
     (targetId) => {
@@ -610,29 +673,41 @@ function CharacterPanel() {
               opacity: overlayActive ? 1 : 0,
             }}
           />
-          {overlayActive ? (
-            <div style={styles.heroOverlayContentWrap}>
-              <div
-                style={{
-                  ...styles.heroOverlayPanel,
-                  fontSize: overlayFontSize,
-                }}
-              >
-                <strong style={styles.heroOverlayTitle}>{overlayTitle}</strong>
-                <div style={styles.heroOverlayBody}>
-                  {overlayLines.map((line, index) => (
-                    <span key={index} style={styles.heroOverlayLine}>
-                      {line}
-                    </span>
-                  ))}
-                </div>
+          <div
+            style={{
+              ...styles.heroOverlayContentWrap,
+              opacity: overlayActive ? 1 : 0,
+              transform: overlayActive ? 'translateY(0)' : 'translateY(18px)',
+            }}
+          >
+            <div
+              key={overlayStep}
+              style={{
+                ...styles.heroOverlayPanel,
+                fontSize: overlayFontSize,
+                opacity: overlayActive ? 1 : 0,
+                transform: overlayActive ? 'translateY(0)' : 'translateY(12px)',
+              }}
+            >
+              <strong style={styles.heroOverlayTitle}>{overlayTitle}</strong>
+              <div style={styles.heroOverlayBody}>
+                {overlayLines.map((line, index) => (
+                  <span key={index} style={styles.heroOverlayLine}>
+                    {line}
+                  </span>
+                ))}
               </div>
             </div>
-          ) : (
-            <div style={styles.heroNameTag}>
-              <span style={styles.heroNameText}>{heroName}</span>
-            </div>
-          )}
+          </div>
+          <div
+            style={{
+              ...styles.heroNameTag,
+              opacity: overlayActive ? 0 : 1,
+              transform: overlayActive ? 'translateY(12px)' : 'translateY(0)',
+            }}
+          >
+            <span style={styles.heroNameText}>{heroName}</span>
+          </div>
         </button>
         <button
           type="button"
@@ -1096,6 +1171,9 @@ const styles = {
     background: 'rgba(15, 23, 42, 0.78)',
     border: '1px solid rgba(255, 255, 255, 0.35)',
     pointerEvents: 'none',
+    opacity: 1,
+    transform: 'translateY(0)',
+    transition: 'opacity 220ms ease, transform 260ms ease',
   },
   heroNameText: {
     fontSize: 20,
@@ -1111,6 +1189,9 @@ const styles = {
     justifyContent: 'center',
     padding: 24,
     pointerEvents: 'none',
+    opacity: 0,
+    transform: 'translateY(18px)',
+    transition: 'opacity 220ms ease, transform 260ms ease',
   },
   heroOverlayPanel: {
     width: '100%',
@@ -1122,6 +1203,9 @@ const styles = {
     display: 'grid',
     gap: 12,
     color: '#f8fafc',
+    opacity: 0,
+    transform: 'translateY(12px)',
+    transition: 'opacity 220ms ease, transform 260ms ease',
   },
   heroOverlayTitle: {
     fontSize: 'inherit',
@@ -1177,6 +1261,8 @@ const styles = {
   },
   swipeViewport: {
     overflowX: 'auto',
+    scrollSnapType: 'x mandatory',
+    scrollSnapStop: 'always',
     WebkitOverflowScrolling: 'touch',
     overscrollBehaviorX: 'contain',
   },
@@ -1185,6 +1271,8 @@ const styles = {
   },
   swipePanel: {
     minWidth: '100%',
+    scrollSnapAlign: 'start',
+    scrollSnapStop: 'always',
     padding: '4px 0',
   },
   panelContent: {
