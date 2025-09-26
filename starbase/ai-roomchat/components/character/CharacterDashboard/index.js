@@ -267,23 +267,76 @@ function CharacterPanel() {
     edit,
     abilityCards = [],
     openEditPanel,
+    statSlides = [],
+    selectedGameId,
   } = useCharacterDashboardContext()
 
   const [overlayStep, setOverlayStep] = useState(0)
 
   const description = edit?.description || hero?.description || '설명이 입력되지 않았습니다.'
-  const abilityOverlayText = abilityCards.length
-    ? abilityCards.map((ability) => `${ability.label}: ${ability.value || '미입력'}`).join('\n')
-    : '등록된 능력이 없습니다.'
 
-  const overlayActive = overlayStep !== 0
-  const overlayTitle = overlayStep === 1 ? '캐릭터 설명' : '능력 정보'
-  const overlayText = overlayStep === 1 ? description : abilityOverlayText
-  const overlayFontSize = overlayActive ? computeOverlayFontSize(overlayText) : undefined
-  const overlayLines = useMemo(() => overlayText.split('\n'), [overlayText])
+  const prioritizedStatSlide = useMemo(() => {
+    if (!statSlides.length) return null
+    return statSlides.find((slide) => slide.key === selectedGameId) || statSlides[0]
+  }, [statSlides, selectedGameId])
+
+  const statsOverlayLines = useMemo(() => {
+    if (!prioritizedStatSlide) return ['표시할 통계가 없습니다.']
+    const label = prioritizedStatSlide.name
+      ? `${prioritizedStatSlide.name}${
+          prioritizedStatSlide.role ? ` (${prioritizedStatSlide.role})` : ''
+        }`
+      : null
+    const statLines = (prioritizedStatSlide.stats || [])
+      .slice(0, 4)
+      .map((stat) => `${stat.label}: ${stat.value ?? '—'}`)
+
+    return [label, ...statLines].filter(Boolean)
+  }, [prioritizedStatSlide])
+
+  const overlayData = useMemo(() => {
+    if (overlayStep === 0) return null
+
+    if (overlayStep === 1) {
+      const lines = description
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+      return {
+        title: '캐릭터 설명',
+        lines: lines.length ? lines : ['설명이 입력되지 않았습니다.'],
+      }
+    }
+
+    if (overlayStep === 2) {
+      const abilityLines = abilityCards
+        .slice(0, 4)
+        .map((ability, index) => {
+          const label = ability.label || `능력 ${index + 1}`
+          return `${label}: ${ability.value || '미입력'}`
+        })
+      return {
+        title: '능력 정보',
+        lines: abilityLines.length ? abilityLines : ['등록된 능력이 없습니다.'],
+      }
+    }
+
+    const statLines = statsOverlayLines.length ? statsOverlayLines : ['표시할 통계가 없습니다.']
+    return {
+      title: '통계 정보',
+      lines: statLines,
+    }
+  }, [overlayStep, description, abilityCards, statsOverlayLines])
+
+  const overlayActive = Boolean(overlayData)
+  const overlayFontSize = overlayActive
+    ? computeOverlayFontSize(overlayData.lines.join(' '))
+    : undefined
+  const overlayLines = overlayData?.lines || []
+  const overlayTitle = overlayData?.title || ''
 
   const handleToggleOverlay = useCallback(() => {
-    setOverlayStep((prev) => (prev + 1) % 3)
+    setOverlayStep((prev) => (prev + 1) % 4)
   }, [])
 
   const handleOpenEdit = useCallback(
@@ -294,7 +347,6 @@ function CharacterPanel() {
     },
     [openEditPanel],
   )
-
   return (
     <div style={styles.heroSection}>
       <div style={styles.heroPortraitWrapper}>
@@ -355,13 +407,8 @@ function CharacterPanel() {
           </span>
         </button>
       </div>
-      <div style={styles.panelContainer}>
-        <div style={styles.panelStack}>
-          <OverviewSection />
-          <StatsSection />
-          <InstantBattleSection />
-          <BattleLogSection />
-        </div>
+      <div style={styles.battleLogWrapper}>
+        <BattleLogSection />
       </div>
     </div>
   )
@@ -373,132 +420,6 @@ function GamePanel({ browser, onEnterGame }) {
 
 function RankingPanel() {
   return <RankingSection />
-}
-
-function OverviewSection() {
-  const {
-    hero,
-    heroName,
-    edit,
-    abilityCards,
-    audioSource,
-    bgmDuration,
-  } = useCharacterDashboardContext()
-
-  const description = edit?.description || hero?.description || '설명이 입력되지 않았습니다.'
-
-  return (
-    <div style={styles.panelContent}>
-      <SectionCard title="프로필 요약">
-        <p style={styles.bodyText}>{description}</p>
-        <div style={styles.profileMeta}>
-          <span>이름</span>
-          <strong>{heroName}</strong>
-        </div>
-        {audioSource ? (
-          <audio controls src={audioSource} style={styles.bgmPlayer}>
-            {bgmDuration ? `배경 음악 (길이: ${Math.round(bgmDuration)}초)` : '배경 음악'}
-          </audio>
-        ) : null}
-      </SectionCard>
-      <SectionCard title="능력">
-        <ul style={styles.abilityList}>
-          {abilityCards.map((ability) => (
-            <li key={ability.key} style={styles.abilityItem}>
-              <span style={styles.abilityLabel}>{ability.label}</span>
-              <strong style={styles.abilityValue}>{ability.value || '미입력'}</strong>
-            </li>
-          ))}
-        </ul>
-      </SectionCard>
-    </div>
-  )
-}
-
-function StatsSection() {
-  const { statSlides = [], selectedGameId, onSelectGame, selectedEntry } =
-    useCharacterDashboardContext()
-
-  if (!statSlides.length) {
-    return (
-      <div style={styles.panelContent}>
-        <SectionCard title="참여 게임 통계">
-          <p style={styles.bodyText}>참여한 게임이 없습니다.</p>
-        </SectionCard>
-      </div>
-    )
-  }
-
-  return (
-    <div style={styles.panelContent}>
-      <SectionCard title="참여 게임 통계">
-        <div style={styles.statGrid}>
-          {statSlides.map((slide) => (
-            <button
-              key={slide.key}
-              type="button"
-              onClick={() => onSelectGame(slide.key)}
-              style={{
-                ...styles.statCard,
-                ...(selectedGameId === slide.key ? styles.statCardActive : null),
-              }}
-            >
-              <div style={styles.statHeader}>
-                <strong>{slide.name}</strong>
-                {slide.role ? <span style={styles.statRole}>{slide.role}</span> : null}
-              </div>
-              <ul style={styles.statList}>
-                {slide.stats.map((stat) => (
-                  <li key={stat.key} style={styles.statItem}>
-                    <span>{stat.label}</span>
-                    <strong>{stat.value}</strong>
-                  </li>
-                ))}
-              </ul>
-            </button>
-          ))}
-          {selectedEntry ? (
-            <div style={styles.statNote}>
-              마지막 업데이트:{' '}
-              {new Date(selectedEntry.updated_at || selectedEntry.created_at || 0).toLocaleString()}
-            </div>
-          ) : null}
-        </div>
-      </SectionCard>
-    </div>
-  )
-}
-
-function InstantBattleSection() {
-  const { selectedGame, selectedGameId, onStartBattle } = useCharacterDashboardContext()
-
-  return (
-    <div style={styles.panelContent}>
-      <SectionCard title="즉시 전투">
-        {selectedGame ? (
-          <div style={styles.bodyStack}>
-            <div>
-              <strong>{selectedGame.name}</strong>
-              <p style={styles.bodyText}>{selectedGame.description || '설명이 없습니다.'}</p>
-            </div>
-            <button
-              type="button"
-              onClick={onStartBattle}
-              disabled={!selectedGameId}
-              style={{
-                ...styles.primaryButton,
-                ...(selectedGameId ? null : styles.primaryButtonDisabled),
-              }}
-            >
-              전투 시작
-            </button>
-          </div>
-        ) : (
-          <p style={styles.bodyText}>전투를 시작하려면 먼저 참여 게임을 선택하세요.</p>
-        )}
-      </SectionCard>
-    </div>
-  )
 }
 
 function RankingSection() {
@@ -858,12 +779,12 @@ const styles = {
     background: 'rgba(15, 23, 42, 0.7)',
   },
   heroSection: {
-    maxWidth: 1200,
+    maxWidth: 960,
     margin: '0 auto',
     display: 'grid',
-    gap: 24,
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-    alignItems: 'start',
+    gap: 32,
+    justifyItems: 'center',
+    width: '100%',
   },
   heroPortraitWrapper: {
     position: 'relative',
@@ -873,7 +794,7 @@ const styles = {
     overflow: 'hidden',
     border: '1px solid rgba(148, 163, 184, 0.35)',
     background: 'rgba(15, 23, 42, 0.55)',
-    maxWidth: 360,
+    maxWidth: 520,
     margin: '0 auto',
   },
   heroPortraitButton: {
@@ -931,7 +852,7 @@ const styles = {
     position: 'absolute',
     inset: 0,
     display: 'flex',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
     pointerEvents: 'none',
@@ -964,7 +885,7 @@ const styles = {
   heroEditButton: {
     position: 'absolute',
     top: 14,
-    left: 14,
+    right: 14,
     width: 42,
     height: 42,
     borderRadius: 16,
@@ -989,13 +910,9 @@ const styles = {
     borderRadius: '50%',
     background: '#f8fafc',
   },
-  panelContainer: {
-    background: 'rgba(2, 6, 23, 0.65)',
-    borderRadius: 32,
-    border: '1px solid rgba(148, 163, 184, 0.25)',
-    padding: 24,
-    display: 'grid',
-    gap: 24,
+  battleLogWrapper: {
+    width: '100%',
+    maxWidth: 960,
   },
   swipeHint: {
     margin: 0,
@@ -1015,10 +932,6 @@ const styles = {
     minWidth: '100%',
     scrollSnapAlign: 'center',
     padding: '4px 0',
-  },
-  panelStack: {
-    display: 'grid',
-    gap: 24,
   },
   panelContent: {
     display: 'grid',
@@ -1046,85 +959,6 @@ const styles = {
     margin: 0,
     lineHeight: 1.6,
     color: '#cbd5f5',
-  },
-  profileMeta: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '12px 16px',
-    borderRadius: 18,
-    background: 'rgba(30, 41, 59, 0.7)',
-    border: '1px solid rgba(148, 163, 184, 0.25)',
-  },
-  abilityList: {
-    listStyle: 'none',
-    margin: 0,
-    padding: 0,
-    display: 'grid',
-    gap: 12,
-  },
-  abilityItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    padding: '12px 16px',
-    borderRadius: 14,
-    background: 'rgba(30, 41, 59, 0.6)',
-    border: '1px solid rgba(148, 163, 184, 0.25)',
-  },
-  abilityLabel: {
-    color: '#94a3b8',
-  },
-  abilityValue: {
-    color: '#f8fafc',
-  },
-  statGrid: {
-    display: 'grid',
-    gap: 16,
-  },
-  statCard: {
-    textAlign: 'left',
-    width: '100%',
-    background: 'rgba(15, 23, 42, 0.58)',
-    borderRadius: 18,
-    border: '1px solid rgba(148, 163, 184, 0.28)',
-    padding: 18,
-    display: 'grid',
-    gap: 12,
-    cursor: 'pointer',
-    color: '#e2e8f0',
-  },
-  statCardActive: {
-    borderColor: '#3b82f6',
-    boxShadow: '0 0 0 1px rgba(59, 130, 246, 0.4)',
-  },
-  statHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statRole: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  statList: {
-    listStyle: 'none',
-    margin: 0,
-    padding: 0,
-    display: 'grid',
-    gap: 8,
-  },
-  statItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    color: '#cbd5f5',
-  },
-  statNote: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  bodyStack: {
-    display: 'grid',
-    gap: 16,
   },
   rankingTableWrapper: {
     overflowX: 'auto',
