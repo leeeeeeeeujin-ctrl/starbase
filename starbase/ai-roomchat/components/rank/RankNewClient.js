@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
-import PromptSetPicker from '../../components/rank/PromptSetPicker'
+import PromptSetSelectorPanel from '../../components/rank/PromptSetSelectorPanel'
 import SlotMatrix from '../../components/rank/SlotMatrix'
 import RolesEditor from '../../components/rank/RolesEditor'
 import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
@@ -77,7 +77,9 @@ export default function RankNewClient() {
   const [imgFile, setImgFile] = useState(null)
   const [imgPreview, setImgPreview] = useState('')
   const [setId, setSetId] = useState('')
+  const [setMeta, setSetMeta] = useState(null)
   const [realtime, setRealtime] = useState(false)
+  const [setPanelOpen, setSetPanelOpen] = useState(true)
 
   // 역할/슬롯
   const [roles, setRoles] = useState([
@@ -186,6 +188,40 @@ export default function RankNewClient() {
     }
   }, [imgPreview])
 
+  useEffect(() => {
+    let alive = true
+    const normalizedId = setId ? String(setId) : ''
+
+    if (!normalizedId) {
+      setSetMeta(null)
+      return () => {
+        alive = false
+      }
+    }
+
+    if (setMeta?.id === normalizedId) {
+      return () => {
+        alive = false
+      }
+    }
+
+    ;(async () => {
+      const { data, error } = await supabase
+        .from('prompt_sets')
+        .select('id,name')
+        .eq('id', normalizedId)
+        .maybeSingle()
+      if (!alive) return
+      if (!error && data) {
+        setSetMeta({ id: String(data.id), name: data.name || '' })
+      }
+    })()
+
+    return () => {
+      alive = false
+    }
+  }, [setId, setMeta?.id])
+
   function handleImageChange(event) {
     const file = event.target.files?.[0]
     if (!file) {
@@ -250,6 +286,18 @@ export default function RankNewClient() {
     router.replace(`/rank/${gameId}`)
   }
 
+  const handleOpenMaker = () => {
+    router.push('/maker')
+  }
+
+  const handleOpenSetPanel = () => {
+    setSetPanelOpen(true)
+  }
+
+  const handleCloseSetPanel = () => {
+    setSetPanelOpen(false)
+  }
+
   // 렌더
   return (
     <div className="rank-new-page">
@@ -257,7 +305,7 @@ export default function RankNewClient() {
         <header className="rank-new-header">
           <div className="rank-new-header-text">
             <nav className="rank-new-tabs" aria-label="게임 제작 탭">
-              <button type="button" className="rank-new-tab" onClick={() => router.push('/maker')}>
+              <button type="button" className="rank-new-tab" onClick={handleOpenMaker}>
                 게임 제작
               </button>
               <button type="button" className="rank-new-tab is-active">
@@ -375,11 +423,35 @@ export default function RankNewClient() {
                   <p className="rank-new-upload-hint">PNG 또는 JPG, 2MB 이하 권장</p>
                 </div>
               </div>
+              <div className={`rank-new-set-panel ${setPanelOpen ? 'is-open' : 'is-collapsed'}`}>
+                {setPanelOpen ? (
+                  <PromptSetSelectorPanel
+                    value={setId}
+                    onChange={(nextId) => {
+                      setSetId(nextId)
+                      handleCloseSetPanel()
+                    }}
+                    onSelectRow={setSetMeta}
+                    onManageSets={handleOpenMaker}
+                    manageLabel="세트 전체 관리"
+                    height="320px"
+                  />
+                ) : (
+                  <div className="rank-new-set-summary">
+                    <p className="rank-new-set-summary-title">선택한 프롬프트 세트</p>
+                    <p className="rank-new-set-summary-name">{setMeta?.name || '미선택'}</p>
+                    <div className="rank-new-set-summary-actions">
+                      <button type="button" className="rank-new-ghost" onClick={handleOpenSetPanel}>
+                        프롬프트 세트 다시 고르기
+                      </button>
+                      <button type="button" className="rank-new-link" onClick={handleOpenMaker}>
+                        세트 전체 관리
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="rank-new-inline">
-                <label className="rank-new-field">
-                  <span>프롬프트 세트</span>
-                  <PromptSetPicker value={setId} onChange={setSetId} />
-                </label>
                 <label className="rank-new-checkbox">
                   <input
                     type="checkbox"
@@ -388,6 +460,11 @@ export default function RankNewClient() {
                   />
                   실시간 매칭 사용
                 </label>
+                {setPanelOpen ? (
+                  <button type="button" className="rank-new-ghost" onClick={handleCloseSetPanel}>
+                    세트 목록 접기
+                  </button>
+                ) : null}
               </div>
             </section>
 
@@ -503,7 +580,7 @@ export default function RankNewClient() {
         .rank-new-body {
           display: grid;
           gap: 28px;
-          grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+          grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
           align-items: flex-start;
         }
         .rank-new-sidebar {
@@ -709,7 +786,8 @@ export default function RankNewClient() {
           display: flex;
           flex-wrap: wrap;
           gap: 16px;
-          align-items: flex-end;
+          align-items: center;
+          margin-top: 18px;
         }
         .rank-new-inline .rank-new-field {
           flex: 1 1 220px;
@@ -724,6 +802,54 @@ export default function RankNewClient() {
           border: 1px solid rgba(148, 163, 184, 0.5);
           font-weight: 600;
           color: #334155;
+        }
+        .rank-new-set-panel {
+          margin-top: 20px;
+          transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .rank-new-set-panel.is-open {
+          background: rgba(226, 232, 240, 0.7);
+          border-radius: 24px;
+          padding: 20px;
+        }
+        .rank-new-set-panel.is-collapsed {
+          padding: 0;
+        }
+        .rank-new-set-summary {
+          display: grid;
+          gap: 10px;
+          padding: 22px;
+          border-radius: 20px;
+          border: 1px solid rgba(148, 163, 184, 0.45);
+          background: rgba(255, 255, 255, 0.96);
+          box-shadow: 0 18px 40px -32px rgba(15, 23, 42, 0.65);
+        }
+        .rank-new-set-summary-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          align-items: center;
+        }
+        .rank-new-set-summary-title {
+          margin: 0;
+          font-size: 13px;
+          color: #475569;
+          letter-spacing: 0.02em;
+        }
+        .rank-new-set-summary-name {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+        .rank-new-link {
+          padding: 0;
+          background: none;
+          border: none;
+          color: #2563eb;
+          font-weight: 700;
+          cursor: pointer;
+          text-decoration: underline;
         }
         .rank-new-actions {
           display: flex;

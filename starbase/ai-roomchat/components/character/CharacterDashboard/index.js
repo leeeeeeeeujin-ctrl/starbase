@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/router'
 
 import { SORT_OPTIONS } from '@/components/lobby/constants'
 import useGameBrowser from '@/components/lobby/hooks/useGameBrowser'
@@ -30,6 +31,7 @@ export default function CharacterDashboard({
   onBack,
 }) {
   const { profile, participation, battles, heroName: fallbackName } = dashboard
+  const router = useRouter()
 
   const [panelIndex, setPanelIndex] = useState(1)
   const [editOpen, setEditOpen] = useState(false)
@@ -353,6 +355,16 @@ export default function CharacterDashboard({
     setOverviewMode(false)
   }, [])
 
+  const handleOpenMaker = useCallback(() => {
+    router.push('/maker')
+    setOverviewMode(false)
+  }, [router])
+
+  const handleOpenRegister = useCallback(() => {
+    router.push('/rank/new')
+    setOverviewMode(false)
+  }, [router])
+
   return (
     <CharacterDashboardProvider value={contextValue}>
       <div ref={pageRef} style={styles.page}>
@@ -415,10 +427,10 @@ export default function CharacterDashboard({
         <div style={styles.overviewOverlay} role="dialog" aria-modal="true">
           <div style={styles.overviewTopBar}>
             <div style={styles.overviewTopTabs}>
-              <button type="button" style={styles.overviewTopButton}>
+              <button type="button" style={styles.overviewTopButton} onClick={handleOpenMaker}>
                 게임 제작
               </button>
-              <button type="button" style={styles.overviewTopButton}>
+              <button type="button" style={styles.overviewTopButton} onClick={handleOpenRegister}>
                 게임 등록
               </button>
             </div>
