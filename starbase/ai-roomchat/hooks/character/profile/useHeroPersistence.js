@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { withTable } from '../../../lib/supabaseTables'
 import { sanitizeFileName } from '../../../utils/characterAssets'
+import { clearHeroCache, writeHeroCache } from '../../../utils/heroCache'
 
 export function useHeroPersistence({
   heroId,
@@ -75,7 +76,17 @@ export function useHeroPersistence({
       )
       if (error) throw error
 
-      setHero((prev) => (prev ? { ...prev, ...payload } : prev))
+      const nextHero = {
+        ...(hero || { id: heroId }),
+        ...payload,
+        id: heroId,
+        background_url: backgroundUrl || '',
+        bgm_url: bgmUrl || '',
+        bgm_duration_seconds: bgmDurationSeconds || null,
+        bgm_mime: bgmMimeValue || null,
+      }
+
+      setHero((prev) => (prev ? { ...prev, ...nextHero } : nextHero))
       setEdit((prev) => ({
         ...(prev || {}),
         name: payload.name,
@@ -87,6 +98,8 @@ export function useHeroPersistence({
         background_url: backgroundUrl || '',
         bgm_url: bgmUrl || '',
       }))
+
+      writeHeroCache(nextHero)
 
       completeBackgroundSave(backgroundUrl)
       completeBgmSave({ url: bgmUrl, duration: bgmDurationSeconds, mime: bgmMimeValue })
@@ -102,9 +115,7 @@ export function useHeroPersistence({
     completeBackgroundSave,
     completeBgmSave,
     edit,
-    hero?.bgm_duration_seconds,
-    hero?.bgm_mime,
-    hero?.name,
+    hero,
     heroId,
     setEdit,
     setHero,
@@ -120,6 +131,7 @@ export function useHeroPersistence({
       alert(error.message)
       return
     }
+    clearHeroCache(heroId)
     onDeleted?.()
     router.replace('/roster')
   }, [heroId, onDeleted, router])
