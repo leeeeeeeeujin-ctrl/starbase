@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
 import { withTable } from '../../../lib/supabaseTables'
 import { ABILITY_KEYS } from '../../../utils/characterStats'
+import { clearHeroCache, readHeroCache, writeHeroCache } from '../../../utils/heroCache'
 
 const EMPTY_EDIT_STATE = {
   name: '',
@@ -19,6 +20,7 @@ export function useHeroEditState({ heroId, onRequireAuth, onMissingHero }) {
   const [loading, setLoading] = useState(true)
   const [hero, setHero] = useState(null)
   const [edit, setEdit] = useState(EMPTY_EDIT_STATE)
+  const cachedHeroRef = useRef(false)
 
   const applyHero = useCallback((data) => {
     setHero(data)
@@ -34,27 +36,38 @@ export function useHeroEditState({ heroId, onRequireAuth, onMissingHero }) {
     })
   }, [])
 
-  const loadHero = useCallback(async () => {
+  const loadHero = useCallback(async ({ silent } = {}) => {
     if (!heroId) {
       setHero(null)
       setEdit({ ...EMPTY_EDIT_STATE })
       setLoading(false)
+      cachedHeroRef.current = false
       return
     }
 
-    setLoading(true)
+    const suppressSpinner = silent ?? cachedHeroRef.current
+    if (!suppressSpinner) {
+      setLoading(true)
+    }
 
     try {
-      const { data: auth, error: authError } = await supabase.auth.getUser()
-      if (authError) {
-        console.error('Failed to resolve auth session before loading hero:', authError)
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        console.error('Failed to resolve auth session before loading hero:', sessionError)
       }
 
-      if (authError || !auth?.user) {
-        onRequireAuth?.()
+      let user = sessionData?.session?.user || null
+
+      if (!user) {
+        const { data: auth, error: authError } = await supabase.auth.getUser()
         if (authError) {
-          alert('로그인 정보를 확인할 수 없습니다. 다시 시도해 주세요.')
+          console.error('Failed to resolve auth user before loading hero:', authError)
         }
+        user = auth?.user || null
+      }
+
+      if (!user) {
+        onRequireAuth?.()
         return
       }
 
@@ -71,23 +84,47 @@ export function useHeroEditState({ heroId, onRequireAuth, onMissingHero }) {
       if (error || !data) {
         console.error('Failed to load hero details:', error)
         alert('캐릭터를 불러오지 못했습니다.')
+        clearHeroCache(heroId)
         onMissingHero?.()
         return
       }
 
       applyHero(data)
+      writeHeroCache(data)
     } catch (error) {
       console.error('Unexpected error while loading hero details:', error)
       alert('캐릭터 정보를 불러오는 중 문제가 발생했습니다.')
+      clearHeroCache(heroId)
       onMissingHero?.()
     } finally {
       setLoading(false)
+      cachedHeroRef.current = false
     }
   }, [applyHero, heroId, onMissingHero, onRequireAuth])
 
   useEffect(() => {
-    loadHero()
-  }, [loadHero])
+    if (!heroId) {
+      cachedHeroRef.current = false
+      setHero(null)
+      setEdit({ ...EMPTY_EDIT_STATE })
+      setLoading(false)
+      return
+    }
+
+    const cached = readHeroCache(heroId)
+    cachedHeroRef.current = Boolean(cached)
+
+    if (cached) {
+      applyHero(cached)
+      setLoading(false)
+    } else {
+      setHero(null)
+      setEdit({ ...EMPTY_EDIT_STATE })
+      setLoading(true)
+    }
+
+    loadHero({ silent: cachedHeroRef.current })
+  }, [applyHero, heroId, loadHero])
 
   const handleChangeEdit = useCallback((key, value) => {
     setEdit((prev) => ({ ...prev, [key]: value }))
