@@ -126,11 +126,15 @@ export default function EditHeroModal({ open, onClose }) {
     }
   }, [open, draft, hero?.bgm_url])
 
-  if (!open) return null
+  const draftState = useMemo(() => {
+    if (draft) return draft
+    const snapshot = createDraftFromProfile(hero, edit)
+    return snapshot || EMPTY_DRAFT
+  }, [draft, hero, edit])
 
-  const draftState = draft || createDraftFromProfile(hero, edit) || EMPTY_DRAFT
   const abilityCards = useMemo(() => buildAbilityCards(draftState), [draftState])
-  const backgroundSource = backgroundPreview || draftState.background_url || hero?.background_url || ''
+  const heroBackgroundUrl = hero?.background_url || ''
+  const backgroundSource = backgroundPreview || draftState.background_url || heroBackgroundUrl
 
   const bodyStyle = useMemo(() => {
     if (!isCompact) return modalStyles.body
