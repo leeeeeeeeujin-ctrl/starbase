@@ -17,12 +17,6 @@ const NAV_ITEMS = [
 
 const PANEL_COUNT = NAV_ITEMS.length
 
-const PANEL_DESCRIPTIONS = {
-  game: '참여할 게임을 살펴보고 즉시 입장할 수 있어요.',
-  character: '영웅과 관련된 정보와 전투 기록을 한 화면에서 확인하세요.',
-  ranking: '참여 중인 게임의 순위를 확인해 보세요.',
-}
-
 export default function CharacterDashboard({
   dashboard,
   heroId: explicitHeroId,
@@ -34,11 +28,11 @@ export default function CharacterDashboard({
   const { profile, participation, battles, heroName: fallbackName } = dashboard
 
   const [panelIndex, setPanelIndex] = useState(1)
-  const [scrollProgress, setScrollProgress] = useState(1)
   const [editOpen, setEditOpen] = useState(false)
   const [gameSearchEnabled, setGameSearchEnabled] = useState(false)
   const swipeViewportRef = useRef(null)
   const scrollFrame = useRef(0)
+  const activePanelRef = useRef(1)
 
   const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
   const heroImage = profile.edit?.image_url || profile.hero?.image_url || ''
@@ -136,24 +130,11 @@ export default function CharacterDashboard({
       scrollFrame.current = requestAnimationFrame(() => {
         const width = node.clientWidth || 1
         const ratio = node.scrollLeft / width
-        const clampedRatio = Math.max(0, Math.min(PANEL_COUNT - 1, ratio))
-        setScrollProgress(clampedRatio)
-        const baseIndex = Math.floor(ratio)
-        const offset = ratio - baseIndex
-        const maxIndex = PANEL_COUNT - 1
-        const clampedBase = Math.max(0, Math.min(maxIndex, baseIndex))
-
-        setPanelIndex((prev) => {
-          let target = prev
-          if (offset >= 0.66) {
-            target = Math.min(maxIndex, clampedBase + 1)
-          } else if (offset <= 0.34) {
-            target = clampedBase
-          }
-          if (target > prev + 1) target = prev + 1
-          if (target < prev - 1) target = prev - 1
-          return target
-        })
+        const nextIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
+        if (nextIndex !== activePanelRef.current) {
+          activePanelRef.current = nextIndex
+          setPanelIndex(nextIndex)
+        }
       })
     }
 
@@ -166,22 +147,6 @@ export default function CharacterDashboard({
   }, [])
 
   useEffect(() => {
-    const node = swipeViewportRef.current
-    if (!node) return
-
-    const width = node.clientWidth || 1
-    if (Math.round(node.scrollLeft / width) === panelIndex) {
-      return
-    }
-
-    node.scrollTo({ left: panelIndex * width, behavior: 'smooth' })
-  }, [panelIndex])
-
-  useEffect(() => {
-    setScrollProgress(panelIndex)
-  }, [panelIndex])
-
-  useEffect(() => {
     if (panelIndex === 0 && !gameSearchEnabled) {
       setGameSearchEnabled(true)
     }
@@ -192,7 +157,7 @@ export default function CharacterDashboard({
     if (!node) return
     const width = node.clientWidth || 1
     node.scrollLeft = width * panelIndex
-    setScrollProgress(panelIndex)
+    activePanelRef.current = panelIndex
   }, [])
 
   const handleEnterGame = useCallback(
@@ -229,82 +194,23 @@ export default function CharacterDashboard({
   const handleNavClick = useCallback((targetId) => {
     const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
     if (targetIndex >= 0) {
+      const node = swipeViewportRef.current
+      if (node) {
+        const width = node.clientWidth || 1
+        node.scrollTo({ left: targetIndex * width, behavior: 'smooth' })
+      }
+      activePanelRef.current = targetIndex
       setPanelIndex(targetIndex)
-      setScrollProgress(targetIndex)
     }
   }, [])
 
-  const characterDescription = participation.selectedGame?.name
-    ? `현재 선택한 게임 · ${participation.selectedGame.name}`
-    : PANEL_DESCRIPTIONS.character
-  const activePanel = panels[panelIndex] || panels[1]
-  const showHeroHeader = activePanel?.id === 'character'
-  const headerSlides = useMemo(
-    () =>
-      panels.map((panel) => ({
-        id: panel.id,
-        title: panel.id === 'character' ? displayName : panel.label,
-        description:
-          panel.id === 'character'
-            ? characterDescription
-            : PANEL_DESCRIPTIONS[panel.id] || '',
-        showBgm: panel.id === 'character',
-      })),
-    [characterDescription, displayName, panels],
-  )
   return (
     <CharacterDashboardProvider value={contextValue}>
-        <div style={styles.page}>
+      <div style={styles.page}>
         <div style={backgroundStyle} aria-hidden />
         <div style={styles.backgroundTint} aria-hidden />
 
         <div style={styles.content}>
-          <header style={styles.header}>
-            <div style={styles.headerCarousel}>
-              <div
-                style={{
-                  ...styles.headerTrack,
-                  width: `${headerSlides.length * 100}%`,
-                  transform: `translateX(-${(scrollProgress * 100) / headerSlides.length}%)`,
-                }}
-              >
-                {headerSlides.map((slide) => (
-                  <div
-                    key={slide.id}
-                    style={{
-                      ...styles.headerSlide,
-                      width: `${100 / headerSlides.length}%`,
-                    }}
-                  >
-                    <h1 style={styles.title}>{slide.title}</h1>
-                    {slide.description ? <p style={styles.subtitle}>{slide.description}</p> : null}
-                    {slide.showBgm && audioSource ? (
-                      <div style={styles.bgmWrapper}>
-                        <span style={styles.bgmLabel}>{profile.bgm?.label || '배경 음악'}</span>
-                        <audio
-                          key={audioSource}
-                          controls
-                          loop
-                          src={audioSource}
-                          style={styles.bgmPlayer}
-                        >
-                          {profile.bgm?.label || '배경 음악'}
-                        </audio>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={styles.headerActions}>
-              {showHeroHeader ? (
-                <button type="button" onClick={() => setEditOpen(true)} style={styles.primaryButton}>
-                  프로필 편집
-                </button>
-              ) : null}
-            </div>
-          </header>
-
           <p style={styles.swipeHint}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
 
           <div ref={swipeViewportRef} style={styles.swipeViewport}>
@@ -354,16 +260,100 @@ function SectionCard({ title, children }) {
 }
 
 function CharacterPanel() {
-  const { heroName, heroImage } = useCharacterDashboardContext()
+  const {
+    hero,
+    heroName,
+    heroImage,
+    edit,
+    abilityCards = [],
+    openEditPanel,
+  } = useCharacterDashboardContext()
+
+  const [overlayStep, setOverlayStep] = useState(0)
+
+  const description = edit?.description || hero?.description || '설명이 입력되지 않았습니다.'
+  const abilityOverlayText = abilityCards.length
+    ? abilityCards.map((ability) => `${ability.label}: ${ability.value || '미입력'}`).join('\n')
+    : '등록된 능력이 없습니다.'
+
+  const overlayActive = overlayStep !== 0
+  const overlayTitle = overlayStep === 1 ? '캐릭터 설명' : '능력 정보'
+  const overlayText = overlayStep === 1 ? description : abilityOverlayText
+  const overlayFontSize = overlayActive ? computeOverlayFontSize(overlayText) : undefined
+  const overlayLines = useMemo(() => overlayText.split('\n'), [overlayText])
+
+  const handleToggleOverlay = useCallback(() => {
+    setOverlayStep((prev) => (prev + 1) % 3)
+  }, [])
+
+  const handleOpenEdit = useCallback(
+    (event) => {
+      event.stopPropagation()
+      event.preventDefault()
+      openEditPanel()
+    },
+    [openEditPanel],
+  )
 
   return (
     <div style={styles.heroSection}>
-      <div style={styles.heroPortrait}>
-        {heroImage ? (
-          <img src={heroImage} alt={`${heroName} 이미지`} style={styles.heroImage} />
-        ) : (
-          <div style={styles.heroPlaceholder}>이미지 없음</div>
-        )}
+      <div style={styles.heroPortraitWrapper}>
+        <button type="button" onClick={handleToggleOverlay} style={styles.heroPortraitButton}>
+          {heroImage ? (
+            <img
+              src={heroImage}
+              alt={`${heroName} 이미지`}
+              style={{
+                ...styles.heroImage,
+                ...(overlayActive ? styles.heroImageDimmed : null),
+              }}
+            />
+          ) : (
+            <div style={styles.heroPlaceholder}>이미지 없음</div>
+          )}
+          <div
+            aria-hidden
+            style={{
+              ...styles.heroOverlayTint,
+              opacity: overlayActive ? 1 : 0,
+            }}
+          />
+          {overlayActive ? (
+            <div style={styles.heroOverlayContentWrap}>
+              <div
+                style={{
+                  ...styles.heroOverlayPanel,
+                  fontSize: overlayFontSize,
+                }}
+              >
+                <strong style={styles.heroOverlayTitle}>{overlayTitle}</strong>
+                <div style={styles.heroOverlayBody}>
+                  {overlayLines.map((line, index) => (
+                    <span key={index} style={styles.heroOverlayLine}>
+                      {line}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={styles.heroNameTag}>
+              <span style={styles.heroNameText}>{heroName}</span>
+            </div>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={handleOpenEdit}
+          style={styles.heroEditButton}
+          aria-label="프로필 편집"
+        >
+          <span aria-hidden="true" style={styles.heroEditGrid}>
+            {Array.from({ length: 9 }).map((_, index) => (
+              <span key={index} style={styles.heroEditDot} />
+            ))}
+          </span>
+        </button>
       </div>
       <div style={styles.panelContainer}>
         <div style={styles.panelStack}>
@@ -393,7 +383,6 @@ function OverviewSection() {
     abilityCards,
     audioSource,
     bgmDuration,
-    openEditPanel,
   } = useCharacterDashboardContext()
 
   const description = edit?.description || hero?.description || '설명이 입력되지 않았습니다.'
@@ -411,9 +400,6 @@ function OverviewSection() {
             {bgmDuration ? `배경 음악 (길이: ${Math.round(bgmDuration)}초)` : '배경 음악'}
           </audio>
         ) : null}
-        <button type="button" onClick={openEditPanel} style={styles.primaryButton}>
-          세부 정보 수정
-        </button>
       </SectionCard>
       <SectionCard title="능력">
         <ul style={styles.abilityList}>
@@ -809,6 +795,17 @@ function formatDate(value) {
   }
 }
 
+function computeOverlayFontSize(text) {
+  const length = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim().length : 0
+  if (length > 400) return 11
+  if (length > 320) return 12
+  if (length > 240) return 14
+  if (length > 180) return 15
+  if (length > 120) return 16
+  if (length > 80) return 18
+  return 20
+}
+
 const styles = {
   page: {
     minHeight: '100vh',
@@ -854,125 +851,143 @@ const styles = {
     display: 'grid',
     gap: 32,
   },
-  overlayButtons: {
-    position: 'fixed',
-    right: 20,
-    bottom: 24,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    zIndex: 3,
-  },
-  overlayButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    border: '1px solid rgba(148,163,184,0.45)',
-    background: 'rgba(15,23,42,0.65)',
-    color: '#f8fafc',
-    fontSize: 20,
-    cursor: 'pointer',
-    position: 'relative',
-  },
-  overlayBadge: {
-    position: 'absolute',
-    right: -4,
-    bottom: -4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    background: '#ef4444',
-    color: '#fff',
-    fontSize: 11,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '0 6px',
-    fontWeight: 700,
-  },
-  header: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    gap: 24,
-    maxWidth: 1200,
-    margin: '0 auto',
-    paddingTop: 32,
-  },
-  headerCarousel: {
-    flex: 1,
-    maxWidth: 720,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  headerTrack: {
-    display: 'flex',
-    transition: 'transform 140ms ease-out',
-    willChange: 'transform',
-  },
-  headerSlide: {
-    boxSizing: 'border-box',
-    paddingRight: 24,
-    display: 'grid',
-    gap: 12,
-  },
-  title: {
-    margin: 0,
-    fontSize: 36,
-    lineHeight: 1.1,
-    color: '#f8fafc',
-  },
-  subtitle: {
-    margin: 0,
-    color: '#cbd5f5',
-    lineHeight: 1.5,
-  },
-  bgmWrapper: {
-    display: 'grid',
-    gap: 8,
-  },
-  bgmLabel: {
-    fontSize: 13,
-    color: '#cbd5f5',
-  },
   bgmPlayer: {
     width: '100%',
     maxWidth: 320,
     borderRadius: 12,
     background: 'rgba(15, 23, 42, 0.7)',
   },
-  headerActions: {
-    display: 'flex',
-    gap: 12,
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-  },
   heroSection: {
     maxWidth: 1200,
     margin: '0 auto',
     display: 'grid',
     gap: 24,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    alignItems: 'start',
   },
-  heroPortrait: {
+  heroPortraitWrapper: {
+    position: 'relative',
     width: '100%',
+    aspectRatio: '3 / 4',
     borderRadius: 32,
     overflow: 'hidden',
-    border: '1px solid rgba(148, 163, 184, 0.4)',
+    border: '1px solid rgba(148, 163, 184, 0.35)',
     background: 'rgba(15, 23, 42, 0.55)',
-    minHeight: 320,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    maxWidth: 360,
+    margin: '0 auto',
+  },
+  heroPortraitButton: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    padding: 0,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    display: 'block',
   },
   heroImage: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
+    transition: 'transform 200ms ease, filter 200ms ease',
+  },
+  heroImageDimmed: {
+    filter: 'brightness(0.6)',
+    transform: 'scale(1.01)',
   },
   heroPlaceholder: {
     color: '#94a3b8',
     fontSize: 18,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+  },
+  heroOverlayTint: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(180deg, rgba(2,6,23,0.35) 0%, rgba(2,6,23,0.8) 100%)',
+    transition: 'opacity 200ms ease',
+    pointerEvents: 'none',
+  },
+  heroNameTag: {
+    position: 'absolute',
+    left: 18,
+    bottom: 18,
+    padding: '10px 16px',
+    borderRadius: 20,
+    background: 'rgba(15, 23, 42, 0.78)',
+    border: '1px solid rgba(255, 255, 255, 0.35)',
+    pointerEvents: 'none',
+  },
+  heroNameText: {
+    fontSize: 20,
+    color: '#f8fafc',
+    fontWeight: 600,
+    textShadow: '0 2px 8px rgba(2, 6, 23, 0.85)',
+  },
+  heroOverlayContentWrap: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    padding: 24,
+    pointerEvents: 'none',
+  },
+  heroOverlayPanel: {
+    width: '100%',
+    background: 'rgba(15, 23, 42, 0.88)',
+    borderRadius: 22,
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    padding: '18px 20px',
+    lineHeight: 1.4,
+    display: 'grid',
+    gap: 12,
+    color: '#f8fafc',
+  },
+  heroOverlayTitle: {
+    fontSize: 'inherit',
+    fontWeight: 700,
+  },
+  heroOverlayBody: {
+    display: 'grid',
+    gap: 6,
+    fontSize: 'inherit',
+    wordBreak: 'break-word',
+    textAlign: 'left',
+  },
+  heroOverlayLine: {
+    fontSize: 'inherit',
+  },
+  heroEditButton: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    border: '1px solid rgba(148, 163, 184, 0.5)',
+    background: 'rgba(2, 6, 23, 0.75)',
+    color: '#f8fafc',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroEditGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: 3,
+    width: 18,
+    height: 18,
+  },
+  heroEditDot: {
+    width: 4,
+    height: 4,
+    borderRadius: '50%',
+    background: '#f8fafc',
   },
   panelContainer: {
     background: 'rgba(2, 6, 23, 0.65)',
