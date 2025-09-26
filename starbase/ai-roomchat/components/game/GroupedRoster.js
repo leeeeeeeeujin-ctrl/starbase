@@ -21,7 +21,7 @@ export default function GroupedRoster({ grouped = [], compact = false }) {
                     <div style={{ fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                       {r.hero?.name || `#${r.hero_id}`}
                     </div>
-                    <div data-numeric style={{ fontSize:12, color:'#64748b' }}>점수 {r.score}</div>
+                    <div style={{ fontSize:12, color:'#64748b' }}>점수 {r.score}</div>
                   </div>
                 </div>
                 {!compact && r.hero?.abilities?.length > 0 && (

@@ -39,9 +39,7 @@ export function GameSection({ section, onInvite, onWhisper, onProfile }) {
         </div>
         <div style={{ display: 'grid', gap: 2 }}>
           <strong style={{ fontSize: 15 }}>{section.game?.name || '이름 없는 게임'}</strong>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>
-            상위 <span data-numeric>{section.rows.length}</span>명
-          </span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>상위 {section.rows.length}명</span>
         </div>
       </div>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 10 }}>
@@ -99,12 +97,10 @@ export function GameSection({ section, onInvite, onWhisper, onProfile }) {
             </button>
             <div style={{ display: 'grid', gap: 2 }}>
               <span style={{ fontWeight: 600, fontSize: 14 }}>
-                <span data-numeric style={{ marginRight: 4 }}>#{index + 1}</span>
-                {entry.hero?.name || '이름 없음'}
+                #{index + 1} {entry.hero?.name || '이름 없음'}
               </span>
               <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                Elo <span data-numeric>{Math.round(entry.rating ?? entry.score ?? 0)}</span> ·{' '}
-                <span data-numeric>{entry.battles ?? 0}</span>전
+                Elo {Math.round(entry.rating ?? entry.score ?? 0)} · {entry.battles ?? 0}전
               </span>
             </div>
             {onInvite || onWhisper ? (

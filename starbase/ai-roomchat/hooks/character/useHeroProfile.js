@@ -12,10 +12,9 @@ export default function useHeroProfile({ heroId, onRequireAuth, onMissingHero, o
     loading,
     hero,
     edit,
+    setHero,
     setEdit,
-    applyHero,
     loadHero,
-    getDraftSnapshot,
     onChangeEdit,
     onAddAbility,
     onReverseAbilities,
@@ -54,8 +53,9 @@ export default function useHeroProfile({ heroId, onRequireAuth, onMissingHero, o
   const { saving, onSave, onDelete } = useHeroPersistence({
     heroId,
     hero,
-    getDraftSnapshot,
-    applyHero,
+    edit,
+    setHero,
+    setEdit,
     background: {
       backgroundBlob,
       onSaveComplete: completeBackgroundSave,

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/router'
 
 import { SORT_OPTIONS } from '@/components/lobby/constants'
 import useGameBrowser from '@/components/lobby/hooks/useGameBrowser'
@@ -16,6 +17,12 @@ const NAV_ITEMS = [
 
 const PANEL_COUNT = NAV_ITEMS.length
 
+const PANEL_DESCRIPTIONS = {
+  game: '참여할 게임을 살펴보고 즉시 입장할 수 있어요.',
+  character: '영웅과 관련된 정보와 전투 기록을 한 화면에서 확인하세요.',
+  ranking: '참여 중인 게임의 순위를 확인해 보세요.',
+}
+
 export default function CharacterDashboard({
   dashboard,
   heroId: explicitHeroId,
@@ -23,18 +30,15 @@ export default function CharacterDashboard({
   onStartBattle,
   onBack,
 }) {
+  const router = useRouter()
   const { profile, participation, battles, heroName: fallbackName } = dashboard
 
   const [panelIndex, setPanelIndex] = useState(1)
+  const [scrollProgress, setScrollProgress] = useState(1)
   const [editOpen, setEditOpen] = useState(false)
   const [gameSearchEnabled, setGameSearchEnabled] = useState(false)
-  const [overviewMode, setOverviewMode] = useState(false)
-  const pageRef = useRef(null)
   const swipeViewportRef = useRef(null)
   const scrollFrame = useRef(0)
-  const activePanelRef = useRef(1)
-  const swipeGestureRef = useRef({ startX: 0, lastX: 0, startIndex: 1, active: false })
-  const pinchTrackerRef = useRef({ active: false, initialDistance: 0 })
 
   const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
   const heroImage = profile.edit?.image_url || profile.hero?.image_url || ''
@@ -123,42 +127,6 @@ export default function CharacterDashboard({
   )
 
   const gameBrowser = useGameBrowser({ enabled: gameSearchEnabled })
-
-  const overviewGameItems = useMemo(() => {
-    if (Array.isArray(gameBrowser?.gameRows) && gameBrowser.gameRows.length) {
-      return gameBrowser.gameRows.map((row, index) => ({
-        key: row.id || row.slug || `game-${index}`,
-        name: row.name || '이름 없는 게임',
-        description: row.description || '',
-        image: row.image_url || '',
-        source: row,
-      }))
-    }
-
-    if (Array.isArray(participation?.statSlides) && participation.statSlides.length) {
-      return participation.statSlides.map((slide, index) => ({
-        key: slide.key || `stat-${index}`,
-        name: slide.name || '이름 없는 게임',
-        description: slide.role || '',
-        image: slide.image || '',
-        source: slide.game || null,
-      }))
-    }
-
-    return []
-  }, [gameBrowser?.gameRows, participation?.statSlides])
-
-  const overviewCarouselItems = useMemo(() => {
-    if (!overviewGameItems.length) return []
-    const cycles = overviewGameItems.length > 4 ? 2 : 3
-    const items = []
-    for (let cycle = 0; cycle < cycles; cycle += 1) {
-      overviewGameItems.forEach((item, index) => {
-        items.push({ ...item, repeatKey: `${item.key}-repeat-${cycle}-${index}` })
-      })
-    }
-    return items
-  }, [overviewGameItems])
   useEffect(() => {
     const node = swipeViewportRef.current
     if (!node) return undefined
@@ -168,11 +136,24 @@ export default function CharacterDashboard({
       scrollFrame.current = requestAnimationFrame(() => {
         const width = node.clientWidth || 1
         const ratio = node.scrollLeft / width
-        const nextIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
-        if (nextIndex !== activePanelRef.current) {
-          activePanelRef.current = nextIndex
-          setPanelIndex(nextIndex)
-        }
+        const clampedRatio = Math.max(0, Math.min(PANEL_COUNT - 1, ratio))
+        setScrollProgress(clampedRatio)
+        const baseIndex = Math.floor(ratio)
+        const offset = ratio - baseIndex
+        const maxIndex = PANEL_COUNT - 1
+        const clampedBase = Math.max(0, Math.min(maxIndex, baseIndex))
+
+        setPanelIndex((prev) => {
+          let target = prev
+          if (offset >= 0.66) {
+            target = Math.min(maxIndex, clampedBase + 1)
+          } else if (offset <= 0.34) {
+            target = clampedBase
+          }
+          if (target > prev + 1) target = prev + 1
+          if (target < prev - 1) target = prev - 1
+          return target
+        })
       })
     }
 
@@ -186,138 +167,55 @@ export default function CharacterDashboard({
 
   useEffect(() => {
     const node = swipeViewportRef.current
-    if (!node) return undefined
+    if (!node) return
 
-    const handleTouchStart = (event) => {
-      if (event.touches.length === 1) {
-        const point = event.touches[0]
-        swipeGestureRef.current = {
-          startX: point.clientX,
-          lastX: point.clientX,
-          startIndex: activePanelRef.current,
-          active: true,
-        }
-      } else {
-        swipeGestureRef.current.active = false
-      }
+    const width = node.clientWidth || 1
+    if (Math.round(node.scrollLeft / width) === panelIndex) {
+      return
     }
 
-    const handleTouchMove = (event) => {
-      if (!swipeGestureRef.current.active || event.touches.length !== 1) return
-      swipeGestureRef.current.lastX = event.touches[0].clientX
-    }
-
-    const handleTouchEnd = () => {
-      if (!swipeGestureRef.current.active) return
-      const width = node.clientWidth || 1
-      const { startX, lastX, startIndex } = swipeGestureRef.current
-      const delta = lastX - startX
-      const threshold = width * 0.2
-      let targetIndex = startIndex
-      if (Math.abs(delta) > threshold) {
-        targetIndex = Math.max(0, Math.min(PANEL_COUNT - 1, startIndex + (delta < 0 ? 1 : -1)))
-      } else {
-        targetIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(node.scrollLeft / width)))
-      }
-
-      swipeGestureRef.current.active = false
-      node.scrollTo({ left: targetIndex * width, behavior: 'smooth' })
-      activePanelRef.current = targetIndex
-      setPanelIndex(targetIndex)
-    }
-
-    node.addEventListener('touchstart', handleTouchStart, { passive: true })
-    node.addEventListener('touchmove', handleTouchMove, { passive: true })
-    node.addEventListener('touchend', handleTouchEnd)
-    node.addEventListener('touchcancel', handleTouchEnd)
-
-    return () => {
-      node.removeEventListener('touchstart', handleTouchStart)
-      node.removeEventListener('touchmove', handleTouchMove)
-      node.removeEventListener('touchend', handleTouchEnd)
-      node.removeEventListener('touchcancel', handleTouchEnd)
-    }
-  }, [])
+    node.scrollTo({ left: panelIndex * width, behavior: 'smooth' })
+  }, [panelIndex])
 
   useEffect(() => {
-    if ((panelIndex === 0 || overviewMode) && !gameSearchEnabled) {
+    setScrollProgress(panelIndex)
+  }, [panelIndex])
+
+  useEffect(() => {
+    if (panelIndex === 0 && !gameSearchEnabled) {
       setGameSearchEnabled(true)
     }
-  }, [panelIndex, overviewMode, gameSearchEnabled])
+  }, [panelIndex, gameSearchEnabled])
 
   useEffect(() => {
     const node = swipeViewportRef.current
     if (!node) return
     const width = node.clientWidth || 1
     node.scrollLeft = width * panelIndex
-    activePanelRef.current = panelIndex
+    setScrollProgress(panelIndex)
   }, [])
 
-  useEffect(() => {
-    const node = pageRef.current
-    if (!node) return undefined
-
-    const distance = (touches) => {
-      if (!touches || touches.length < 2) return 0
-      const [a, b] = touches
-      if (!a || !b) return 0
-      const dx = a.clientX - b.clientX
-      const dy = a.clientY - b.clientY
-      return Math.sqrt(dx * dx + dy * dy)
-    }
-
-    const handleTouchStart = (event) => {
-      if (event.touches.length === 2) {
-        pinchTrackerRef.current = {
-          active: true,
-          initialDistance: distance(event.touches),
-        }
-      }
-    }
-
-    const handleTouchMove = (event) => {
-      if (!pinchTrackerRef.current.active || event.touches.length !== 2) return
-      const currentDistance = distance(event.touches)
-      const initial = pinchTrackerRef.current.initialDistance || currentDistance
-      if (!overviewMode && currentDistance < initial * 0.82) {
-        pinchTrackerRef.current.active = false
-        setOverviewMode(true)
-      } else if (overviewMode && currentDistance > initial * 1.15) {
-        pinchTrackerRef.current.active = false
-        setOverviewMode(false)
-      }
-    }
-
-    const handleTouchEnd = (event) => {
-      if (event.touches.length < 2) {
-        pinchTrackerRef.current = { active: false, initialDistance: 0 }
-      }
-    }
-
-    node.addEventListener('touchstart', handleTouchStart, { passive: true })
-    node.addEventListener('touchmove', handleTouchMove, { passive: true })
-    node.addEventListener('touchend', handleTouchEnd, { passive: true })
-    node.addEventListener('touchcancel', handleTouchEnd, { passive: true })
-
-    return () => {
-      node.removeEventListener('touchstart', handleTouchStart)
-      node.removeEventListener('touchmove', handleTouchMove)
-      node.removeEventListener('touchend', handleTouchEnd)
-      node.removeEventListener('touchcancel', handleTouchEnd)
-    }
-  }, [overviewMode])
+  const handleEnterGame = useCallback(
+    (game, role) => {
+      if (!game) return
+      const base = `/rank/${game.id}`
+      const target = role ? `${base}?role=${encodeURIComponent(role)}` : base
+      router.push(target)
+    },
+    [router],
+  )
 
   const panels = useMemo(
     () => [
       {
         id: 'game',
         label: '게임 찾기',
-        render: () => <GamePanel browser={gameBrowser} />,
+        render: () => <GamePanel browser={gameBrowser} onEnterGame={handleEnterGame} />, 
       },
       {
         id: 'character',
         label: '캐릭터',
-        render: () => <CharacterPanel />,
+        render: () => <CharacterPanel />, 
       },
       {
         id: 'ranking',
@@ -325,70 +223,91 @@ export default function CharacterDashboard({
         render: () => <RankingPanel />, 
       },
     ],
-    [gameBrowser],
+    [gameBrowser, handleEnterGame],
   )
 
   const handleNavClick = useCallback((targetId) => {
     const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
     if (targetIndex >= 0) {
-      const node = swipeViewportRef.current
-      if (node) {
-        const width = node.clientWidth || 1
-        node.scrollTo({ left: targetIndex * width, behavior: 'smooth' })
-      }
-      activePanelRef.current = targetIndex
       setPanelIndex(targetIndex)
+      setScrollProgress(targetIndex)
     }
   }, [])
 
-  const handleOverviewNav = useCallback(
-    (targetId) => {
-      handleNavClick(targetId)
-      setOverviewMode(false)
-    },
-    [handleNavClick],
+  const characterDescription = participation.selectedGame?.name
+    ? `현재 선택한 게임 · ${participation.selectedGame.name}`
+    : PANEL_DESCRIPTIONS.character
+  const activePanel = panels[panelIndex] || panels[1]
+  const showHeroHeader = activePanel?.id === 'character'
+  const headerSlides = useMemo(
+    () =>
+      panels.map((panel) => ({
+        id: panel.id,
+        title: panel.id === 'character' ? displayName : panel.label,
+        description:
+          panel.id === 'character'
+            ? characterDescription
+            : PANEL_DESCRIPTIONS[panel.id] || '',
+        showBgm: panel.id === 'character',
+      })),
+    [characterDescription, displayName, panels],
   )
-
-  const handleSelectOverviewGame = useCallback(
-    (item) => {
-      if (item?.source && typeof gameBrowser?.setSelectedGame === 'function') {
-        gameBrowser.setSelectedGame(item.source)
-      }
-      handleNavClick('game')
-      setOverviewMode(false)
-    },
-    [gameBrowser, handleNavClick],
-  )
-
-  const handleCloseOverview = useCallback(() => {
-    setOverviewMode(false)
-  }, [])
-
   return (
     <CharacterDashboardProvider value={contextValue}>
-      <div ref={pageRef} style={styles.page}>
+        <div style={styles.page}>
         <div style={backgroundStyle} aria-hidden />
         <div style={styles.backgroundTint} aria-hidden />
 
-        <div
-          style={{
-            ...styles.content,
-            pointerEvents: overviewMode ? 'none' : 'auto',
-            filter: overviewMode ? 'blur(2px)' : 'none',
-          }}
-          aria-hidden={overviewMode}
-        >
-          {!overviewMode ? (
-            <p style={styles.swipeHint}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
-          ) : null}
+        <div style={styles.content}>
+          <header style={styles.header}>
+            <div style={styles.headerCarousel}>
+              <div
+                style={{
+                  ...styles.headerTrack,
+                  width: `${headerSlides.length * 100}%`,
+                  transform: `translateX(-${(scrollProgress * 100) / headerSlides.length}%)`,
+                }}
+              >
+                {headerSlides.map((slide) => (
+                  <div
+                    key={slide.id}
+                    style={{
+                      ...styles.headerSlide,
+                      width: `${100 / headerSlides.length}%`,
+                    }}
+                  >
+                    <h1 style={styles.title}>{slide.title}</h1>
+                    {slide.description ? <p style={styles.subtitle}>{slide.description}</p> : null}
+                    {slide.showBgm && audioSource ? (
+                      <div style={styles.bgmWrapper}>
+                        <span style={styles.bgmLabel}>{profile.bgm?.label || '배경 음악'}</span>
+                        <audio
+                          key={audioSource}
+                          controls
+                          loop
+                          src={audioSource}
+                          style={styles.bgmPlayer}
+                        >
+                          {profile.bgm?.label || '배경 음악'}
+                        </audio>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={styles.headerActions}>
+              {showHeroHeader ? (
+                <button type="button" onClick={() => setEditOpen(true)} style={styles.primaryButton}>
+                  프로필 편집
+                </button>
+              ) : null}
+            </div>
+          </header>
 
-          <div
-            ref={swipeViewportRef}
-            style={{
-              ...styles.swipeViewport,
-              pointerEvents: overviewMode ? 'none' : 'auto',
-            }}
-          >
+          <p style={styles.swipeHint}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
+
+          <div ref={swipeViewportRef} style={styles.swipeViewport}>
             <div style={styles.swipeTrack}>
               {panels.map((panel) => (
                 <div key={panel.id} style={styles.swipePanel}>
@@ -399,92 +318,29 @@ export default function CharacterDashboard({
           </div>
         </div>
 
-        {!overviewMode ? (
-          <nav style={styles.bottomNav}>
-            {NAV_ITEMS.map((item, index) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleNavClick(item.id)}
-                style={{
-                  ...styles.navButton,
-                  ...(panelIndex === index ? styles.navButtonActive : null),
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        ) : null}
+        <nav style={styles.bottomNav}>
+          {NAV_ITEMS.map((item, index) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleNavClick(item.id)}
+              style={{
+                ...styles.navButton,
+                ...(panelIndex === index ? styles.navButtonActive : null),
+              }}
+            >
+            {item.label}
+          </button>
+          ))}
+        </nav>
       </div>
       {onBack ? (
         <button type="button" onClick={onBack} style={styles.backOverlayButton}>
           ← 뒤로가기
         </button>
       ) : null}
-      {overviewMode ? (
-        <div style={styles.overviewOverlay} role="dialog" aria-modal="true">
-          <div style={styles.overviewTopBar}>
-            <div style={styles.overviewTopTabs}>
-              <button type="button" style={styles.overviewTopButton}>
-                게임 제작
-              </button>
-              <button type="button" style={styles.overviewTopButton}>
-                게임 등록
-              </button>
-            </div>
-            <button type="button" onClick={handleCloseOverview} style={styles.overviewCloseButton}>
-              닫기
-            </button>
-          </div>
-          <div style={styles.overviewCarousel}>
-            {overviewCarouselItems.length ? (
-              <div style={styles.overviewCarouselTrack}>
-                {overviewCarouselItems.map((item) => (
-                  <button
-                    key={item.repeatKey}
-                    type="button"
-                    onClick={() => handleSelectOverviewGame(item)}
-                    style={styles.overviewGameCard}
-                  >
-                    {item.image ? (
-                      <img src={item.image} alt={`${item.name} 이미지`} style={styles.overviewGameImage} />
-                    ) : (
-                      <div style={styles.overviewGameImageFallback}>이미지 없음</div>
-                    )}
-                    <div>
-                      <p style={styles.overviewGameName}>{item.name}</p>
-                      {item.description ? (
-                        <p style={styles.overviewGameMeta}>{item.description}</p>
-                      ) : null}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p style={styles.overviewEmpty}>표시할 게임이 없습니다.</p>
-            )}
-          </div>
-          <div style={styles.overviewBottomTabs}>
-            {NAV_ITEMS.map((item, index) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleOverviewNav(item.id)}
-                style={{
-                  ...styles.overviewBottomButton,
-                  ...(panelIndex === index ? styles.overviewBottomButtonActive : null),
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <p style={styles.overviewHint}>손가락을 벌리거나 닫기 버튼을 누르면 원래 화면으로 돌아갑니다.</p>
-        </div>
-      ) : null}
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
-    </CharacterDashboardProvider>
+      </CharacterDashboardProvider>
   )
 }
 
@@ -498,155 +354,24 @@ function SectionCard({ title, children }) {
 }
 
 function CharacterPanel() {
-  const {
-    hero,
-    heroName,
-    heroImage,
-    edit,
-    abilityCards = [],
-    openEditPanel,
-    statSlides = [],
-    selectedGameId,
-  } = useCharacterDashboardContext()
+  const { heroName, heroImage } = useCharacterDashboardContext()
 
-  const [overlayStep, setOverlayStep] = useState(0)
-
-  const description = edit?.description || hero?.description || '설명이 입력되지 않았습니다.'
-
-  const prioritizedStatSlide = useMemo(() => {
-    if (!statSlides.length) return null
-    return statSlides.find((slide) => slide.key === selectedGameId) || statSlides[0]
-  }, [statSlides, selectedGameId])
-
-  const statsOverlayLines = useMemo(() => {
-    if (!prioritizedStatSlide) return ['표시할 통계가 없습니다.']
-    const label = prioritizedStatSlide.name
-      ? `${prioritizedStatSlide.name}${
-          prioritizedStatSlide.role ? ` (${prioritizedStatSlide.role})` : ''
-        }`
-      : null
-    const statLines = (prioritizedStatSlide.stats || [])
-      .slice(0, 4)
-      .map((stat) => `${stat.label}: ${stat.value ?? '—'}`)
-
-    return [label, ...statLines].filter(Boolean)
-  }, [prioritizedStatSlide])
-
-  const overlayData = useMemo(() => {
-    if (overlayStep === 0) return null
-
-    if (overlayStep === 1) {
-      const lines = description
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
-      return {
-        title: '캐릭터 설명',
-        lines: lines.length ? lines : ['설명이 입력되지 않았습니다.'],
-      }
-    }
-
-    if (overlayStep === 2) {
-      const abilityLines = abilityCards
-        .slice(0, 4)
-        .map((ability, index) => {
-          const label = ability.label || `능력 ${index + 1}`
-          return `${label}: ${ability.value || '미입력'}`
-        })
-      return {
-        title: '능력 정보',
-        lines: abilityLines.length ? abilityLines : ['등록된 능력이 없습니다.'],
-      }
-    }
-
-    const statLines = statsOverlayLines.length ? statsOverlayLines : ['표시할 통계가 없습니다.']
-    return {
-      title: '통계 정보',
-      lines: statLines,
-    }
-  }, [overlayStep, description, abilityCards, statsOverlayLines])
-
-  const overlayActive = Boolean(overlayData)
-  const overlayFontSize = overlayActive
-    ? computeOverlayFontSize(overlayData.lines.join(' '))
-    : undefined
-  const overlayLines = overlayData?.lines || []
-  const overlayTitle = overlayData?.title || ''
-
-  const handleToggleOverlay = useCallback(() => {
-    setOverlayStep((prev) => (prev + 1) % 4)
-  }, [])
-
-  const handleOpenEdit = useCallback(
-    (event) => {
-      event.stopPropagation()
-      event.preventDefault()
-      openEditPanel()
-    },
-    [openEditPanel],
-  )
   return (
     <div style={styles.heroSection}>
-      <div style={styles.heroPortraitWrapper}>
-        <button type="button" onClick={handleToggleOverlay} style={styles.heroPortraitButton}>
-          {heroImage ? (
-            <img
-              src={heroImage}
-              alt={`${heroName} 이미지`}
-              style={{
-                ...styles.heroImage,
-                ...(overlayActive ? styles.heroImageDimmed : null),
-              }}
-            />
-          ) : (
-            <div style={styles.heroPlaceholder}>이미지 없음</div>
-          )}
-          <div
-            aria-hidden
-            style={{
-              ...styles.heroOverlayTint,
-              opacity: overlayActive ? 1 : 0,
-            }}
-          />
-          {overlayActive ? (
-            <div style={styles.heroOverlayContentWrap}>
-              <div
-                style={{
-                  ...styles.heroOverlayPanel,
-                  fontSize: overlayFontSize,
-                }}
-              >
-                <strong style={styles.heroOverlayTitle}>{overlayTitle}</strong>
-                <div style={styles.heroOverlayBody}>
-                  {overlayLines.map((line, index) => (
-                    <span key={index} style={styles.heroOverlayLine}>
-                      {line}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={styles.heroNameTag}>
-              <span style={styles.heroNameText}>{heroName}</span>
-            </div>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={handleOpenEdit}
-          style={styles.heroEditButton}
-          aria-label="프로필 편집"
-        >
-          <span aria-hidden="true" style={styles.heroEditGrid}>
-            {Array.from({ length: 9 }).map((_, index) => (
-              <span key={index} style={styles.heroEditDot} />
-            ))}
-          </span>
-        </button>
+      <div style={styles.heroPortrait}>
+        {heroImage ? (
+          <img src={heroImage} alt={`${heroName} 이미지`} style={styles.heroImage} />
+        ) : (
+          <div style={styles.heroPlaceholder}>이미지 없음</div>
+        )}
       </div>
-      <div style={styles.battleLogWrapper}>
-        <BattleLogSection />
+      <div style={styles.panelContainer}>
+        <div style={styles.panelStack}>
+          <OverviewSection />
+          <StatsSection />
+          <InstantBattleSection />
+          <BattleLogSection />
+        </div>
       </div>
     </div>
   )
@@ -658,6 +383,136 @@ function GamePanel({ browser, onEnterGame }) {
 
 function RankingPanel() {
   return <RankingSection />
+}
+
+function OverviewSection() {
+  const {
+    hero,
+    heroName,
+    edit,
+    abilityCards,
+    audioSource,
+    bgmDuration,
+    openEditPanel,
+  } = useCharacterDashboardContext()
+
+  const description = edit?.description || hero?.description || '설명이 입력되지 않았습니다.'
+
+  return (
+    <div style={styles.panelContent}>
+      <SectionCard title="프로필 요약">
+        <p style={styles.bodyText}>{description}</p>
+        <div style={styles.profileMeta}>
+          <span>이름</span>
+          <strong>{heroName}</strong>
+        </div>
+        {audioSource ? (
+          <audio controls src={audioSource} style={styles.bgmPlayer}>
+            {bgmDuration ? `배경 음악 (길이: ${Math.round(bgmDuration)}초)` : '배경 음악'}
+          </audio>
+        ) : null}
+        <button type="button" onClick={openEditPanel} style={styles.primaryButton}>
+          세부 정보 수정
+        </button>
+      </SectionCard>
+      <SectionCard title="능력">
+        <ul style={styles.abilityList}>
+          {abilityCards.map((ability) => (
+            <li key={ability.key} style={styles.abilityItem}>
+              <span style={styles.abilityLabel}>{ability.label}</span>
+              <strong style={styles.abilityValue}>{ability.value || '미입력'}</strong>
+            </li>
+          ))}
+        </ul>
+      </SectionCard>
+    </div>
+  )
+}
+
+function StatsSection() {
+  const { statSlides = [], selectedGameId, onSelectGame, selectedEntry } =
+    useCharacterDashboardContext()
+
+  if (!statSlides.length) {
+    return (
+      <div style={styles.panelContent}>
+        <SectionCard title="참여 게임 통계">
+          <p style={styles.bodyText}>참여한 게임이 없습니다.</p>
+        </SectionCard>
+      </div>
+    )
+  }
+
+  return (
+    <div style={styles.panelContent}>
+      <SectionCard title="참여 게임 통계">
+        <div style={styles.statGrid}>
+          {statSlides.map((slide) => (
+            <button
+              key={slide.key}
+              type="button"
+              onClick={() => onSelectGame(slide.key)}
+              style={{
+                ...styles.statCard,
+                ...(selectedGameId === slide.key ? styles.statCardActive : null),
+              }}
+            >
+              <div style={styles.statHeader}>
+                <strong>{slide.name}</strong>
+                {slide.role ? <span style={styles.statRole}>{slide.role}</span> : null}
+              </div>
+              <ul style={styles.statList}>
+                {slide.stats.map((stat) => (
+                  <li key={stat.key} style={styles.statItem}>
+                    <span>{stat.label}</span>
+                    <strong>{stat.value}</strong>
+                  </li>
+                ))}
+              </ul>
+            </button>
+          ))}
+          {selectedEntry ? (
+            <div style={styles.statNote}>
+              마지막 업데이트:{' '}
+              {new Date(selectedEntry.updated_at || selectedEntry.created_at || 0).toLocaleString()}
+            </div>
+          ) : null}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
+
+function InstantBattleSection() {
+  const { selectedGame, selectedGameId, onStartBattle } = useCharacterDashboardContext()
+
+  return (
+    <div style={styles.panelContent}>
+      <SectionCard title="즉시 전투">
+        {selectedGame ? (
+          <div style={styles.bodyStack}>
+            <div>
+              <strong>{selectedGame.name}</strong>
+              <p style={styles.bodyText}>{selectedGame.description || '설명이 없습니다.'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onStartBattle}
+              disabled={!selectedGameId}
+              style={{
+                ...styles.primaryButton,
+                ...(selectedGameId ? null : styles.primaryButtonDisabled),
+              }}
+            >
+              전투 시작
+            </button>
+          </div>
+        ) : (
+          <p style={styles.bodyText}>전투를 시작하려면 먼저 참여 게임을 선택하세요.</p>
+        )}
+      </SectionCard>
+    </div>
+  )
 }
 
 function RankingSection() {
@@ -780,8 +635,6 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
     roleSlots,
   } = browser
 
-  const [submitHint, setSubmitHint] = useState('')
-
   const handleSelectRole = useCallback(
     (role) => {
       if (!role) {
@@ -795,18 +648,8 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
 
   const handleSubmit = useCallback(() => {
     if (!selectedGame) return
-    if (onEnterGame) {
-      onEnterGame(selectedGame, roleChoice)
-      return
-    }
-    setSubmitHint('자동 입장은 비활성화되었습니다. 선택한 게임 정보를 확인하세요.')
+    onEnterGame(selectedGame, roleChoice)
   }, [onEnterGame, roleChoice, selectedGame])
-
-  useEffect(() => {
-    if (!selectedGame) {
-      setSubmitHint('')
-    }
-  }, [selectedGame])
 
   return (
     <div style={styles.panelContent}>
@@ -872,7 +715,7 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
             {detailLoading ? (
               <p style={styles.loadingText}>게임 정보를 불러오는 중…</p>
             ) : !selectedGame ? (
-              <p style={styles.emptyState}>게임을 선택하면 상세 정보가 표시됩니다.</p>
+              <p style={styles.emptyState}>왼쪽에서 게임을 선택하면 상세 정보가 표시됩니다.</p>
             ) : (
               <div style={styles.gameDetailBody}>
                 <header style={styles.gameDetailHeader}>
@@ -948,7 +791,6 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
                 >
                   선택한 역할로 입장하기
                 </button>
-                {submitHint ? <p style={styles.submitHint}>{submitHint}</p> : null}
               </div>
             )}
           </div>
@@ -965,17 +807,6 @@ function formatDate(value) {
   } catch (error) {
     return '날짜 미상'
   }
-}
-
-function computeOverlayFontSize(text) {
-  const length = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim().length : 0
-  if (length > 400) return 11
-  if (length > 320) return 12
-  if (length > 240) return 14
-  if (length > 180) return 15
-  if (length > 120) return 16
-  if (length > 80) return 18
-  return 20
 }
 
 const styles = {
@@ -1023,149 +854,133 @@ const styles = {
     display: 'grid',
     gap: 32,
   },
+  overlayButtons: {
+    position: 'fixed',
+    right: 20,
+    bottom: 24,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    zIndex: 3,
+  },
+  overlayButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.65)',
+    color: '#f8fafc',
+    fontSize: 20,
+    cursor: 'pointer',
+    position: 'relative',
+  },
+  overlayBadge: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    background: '#ef4444',
+    color: '#fff',
+    fontSize: 11,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 6px',
+    fontWeight: 700,
+  },
+  header: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: 24,
+    maxWidth: 1200,
+    margin: '0 auto',
+    paddingTop: 32,
+  },
+  headerCarousel: {
+    flex: 1,
+    maxWidth: 720,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  headerTrack: {
+    display: 'flex',
+    transition: 'transform 140ms ease-out',
+    willChange: 'transform',
+  },
+  headerSlide: {
+    boxSizing: 'border-box',
+    paddingRight: 24,
+    display: 'grid',
+    gap: 12,
+  },
+  title: {
+    margin: 0,
+    fontSize: 36,
+    lineHeight: 1.1,
+    color: '#f8fafc',
+  },
+  subtitle: {
+    margin: 0,
+    color: '#cbd5f5',
+    lineHeight: 1.5,
+  },
+  bgmWrapper: {
+    display: 'grid',
+    gap: 8,
+  },
+  bgmLabel: {
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
   bgmPlayer: {
     width: '100%',
     maxWidth: 320,
     borderRadius: 12,
     background: 'rgba(15, 23, 42, 0.7)',
   },
+  headerActions: {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
   heroSection: {
-    maxWidth: 960,
+    maxWidth: 1200,
     margin: '0 auto',
     display: 'grid',
-    gap: 32,
-    justifyItems: 'center',
-    width: '100%',
+    gap: 24,
   },
-  heroPortraitWrapper: {
-    position: 'relative',
+  heroPortrait: {
     width: '100%',
-    aspectRatio: '3 / 4',
     borderRadius: 32,
     overflow: 'hidden',
-    border: '1px solid rgba(148, 163, 184, 0.35)',
+    border: '1px solid rgba(148, 163, 184, 0.4)',
     background: 'rgba(15, 23, 42, 0.55)',
-    maxWidth: 520,
-    margin: '0 auto',
-  },
-  heroPortraitButton: {
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-    padding: 0,
-    border: 'none',
-    background: 'transparent',
-    cursor: 'pointer',
-    display: 'block',
-    outline: 'none',
-    WebkitTapHighlightColor: 'transparent',
+    minHeight: 320,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heroImage: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    transition: 'filter 220ms ease, opacity 220ms ease',
-    willChange: 'filter',
-  },
-  heroImageDimmed: {
-    filter: 'brightness(0.72)',
   },
   heroPlaceholder: {
     color: '#94a3b8',
     fontSize: 18,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
   },
-  heroOverlayTint: {
-    position: 'absolute',
-    inset: 0,
-    background: 'linear-gradient(180deg, rgba(2,6,23,0.35) 0%, rgba(2,6,23,0.8) 100%)',
-    transition: 'opacity 200ms ease',
-    pointerEvents: 'none',
-  },
-  heroNameTag: {
-    position: 'absolute',
-    left: 18,
-    bottom: 18,
-    padding: '10px 16px',
-    borderRadius: 20,
-    background: 'rgba(15, 23, 42, 0.78)',
-    border: '1px solid rgba(255, 255, 255, 0.35)',
-    pointerEvents: 'none',
-  },
-  heroNameText: {
-    fontSize: 20,
-    color: '#f8fafc',
-    fontWeight: 600,
-    textShadow: '0 2px 8px rgba(2, 6, 23, 0.85)',
-  },
-  heroOverlayContentWrap: {
-    position: 'absolute',
-    inset: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+  panelContainer: {
+    background: 'rgba(2, 6, 23, 0.65)',
+    borderRadius: 32,
+    border: '1px solid rgba(148, 163, 184, 0.25)',
     padding: 24,
-    pointerEvents: 'none',
-  },
-  heroOverlayPanel: {
-    width: '100%',
-    background: 'rgba(15, 23, 42, 0.88)',
-    borderRadius: 22,
-    border: '1px solid rgba(148, 163, 184, 0.4)',
-    padding: '18px 20px',
-    lineHeight: 1.4,
     display: 'grid',
-    gap: 12,
-    color: '#f8fafc',
-  },
-  heroOverlayTitle: {
-    fontSize: 'inherit',
-    fontWeight: 700,
-  },
-  heroOverlayBody: {
-    display: 'grid',
-    gap: 6,
-    fontSize: 'inherit',
-    wordBreak: 'break-word',
-    textAlign: 'left',
-  },
-  heroOverlayLine: {
-    fontSize: 'inherit',
-  },
-  heroEditButton: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    width: 42,
-    height: 42,
-    borderRadius: 16,
-    border: '1px solid rgba(148, 163, 184, 0.5)',
-    background: 'rgba(2, 6, 23, 0.75)',
-    color: '#f8fafc',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroEditGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: 3,
-    width: 18,
-    height: 18,
-  },
-  heroEditDot: {
-    width: 4,
-    height: 4,
-    borderRadius: '50%',
-    background: '#f8fafc',
-  },
-  battleLogWrapper: {
-    width: '100%',
-    maxWidth: 960,
+    gap: 24,
   },
   swipeHint: {
     margin: 0,
@@ -1185,6 +1000,10 @@ const styles = {
     minWidth: '100%',
     scrollSnapAlign: 'center',
     padding: '4px 0',
+  },
+  panelStack: {
+    display: 'grid',
+    gap: 24,
   },
   panelContent: {
     display: 'grid',
@@ -1212,6 +1031,85 @@ const styles = {
     margin: 0,
     lineHeight: 1.6,
     color: '#cbd5f5',
+  },
+  profileMeta: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 16px',
+    borderRadius: 18,
+    background: 'rgba(30, 41, 59, 0.7)',
+    border: '1px solid rgba(148, 163, 184, 0.25)',
+  },
+  abilityList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'grid',
+    gap: 12,
+  },
+  abilityItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '12px 16px',
+    borderRadius: 14,
+    background: 'rgba(30, 41, 59, 0.6)',
+    border: '1px solid rgba(148, 163, 184, 0.25)',
+  },
+  abilityLabel: {
+    color: '#94a3b8',
+  },
+  abilityValue: {
+    color: '#f8fafc',
+  },
+  statGrid: {
+    display: 'grid',
+    gap: 16,
+  },
+  statCard: {
+    textAlign: 'left',
+    width: '100%',
+    background: 'rgba(15, 23, 42, 0.58)',
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.28)',
+    padding: 18,
+    display: 'grid',
+    gap: 12,
+    cursor: 'pointer',
+    color: '#e2e8f0',
+  },
+  statCardActive: {
+    borderColor: '#3b82f6',
+    boxShadow: '0 0 0 1px rgba(59, 130, 246, 0.4)',
+  },
+  statHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statRole: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  statList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'grid',
+    gap: 8,
+  },
+  statItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    color: '#cbd5f5',
+  },
+  statNote: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  bodyStack: {
+    display: 'grid',
+    gap: 16,
   },
   rankingTableWrapper: {
     overflowX: 'auto',
@@ -1444,11 +1342,6 @@ const styles = {
     border: 'none',
     cursor: 'pointer',
   },
-  submitHint: {
-    margin: '8px 0 0',
-    fontSize: 13,
-    color: '#94a3b8',
-  },
   bottomNav: {
     position: 'fixed',
     bottom: 24,
@@ -1464,145 +1357,20 @@ const styles = {
   },
   backOverlayButton: {
     position: 'fixed',
-    right: 16,
-    bottom: 28,
+    right: 24,
+    bottom: 24,
     zIndex: 3,
     border: '1px solid rgba(148, 163, 184, 0.35)',
     borderRadius: 999,
-    padding: '10px 16px',
+    padding: '12px 20px',
     background: 'rgba(2, 6, 23, 0.85)',
     color: '#e2e8f0',
     fontWeight: 600,
-    fontSize: 14,
     letterSpacing: '-0.01em',
     backdropFilter: 'blur(10px)',
-    boxShadow: '0 12px 28px rgba(2, 6, 23, 0.4)',
+    boxShadow: '0 18px 36px rgba(2, 6, 23, 0.45)',
     cursor: 'pointer',
     transition: 'transform 140ms ease, box-shadow 140ms ease, background 140ms ease',
-  },
-  overviewOverlay: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 5,
-    display: 'grid',
-    gridTemplateRows: 'auto 1fr auto',
-    gap: 24,
-    padding: '32px 20px 28px',
-    background: 'rgba(2, 6, 23, 0.92)',
-    backdropFilter: 'blur(16px)',
-  },
-  overviewTopBar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  overviewTopTabs: {
-    display: 'flex',
-    gap: 12,
-  },
-  overviewTopButton: {
-    padding: '10px 18px',
-    borderRadius: 999,
-    border: '1px solid rgba(148, 163, 184, 0.4)',
-    background: 'rgba(15, 23, 42, 0.7)',
-    color: '#e2e8f0',
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  overviewCloseButton: {
-    padding: '8px 18px',
-    borderRadius: 999,
-    border: 'none',
-    background: 'rgba(148, 163, 184, 0.25)',
-    color: '#f8fafc',
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  overviewCarousel: {
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  overviewCarouselTrack: {
-    display: 'flex',
-    gap: 18,
-    overflowX: 'auto',
-    padding: '12px 8px',
-    scrollSnapType: 'x mandatory',
-    WebkitOverflowScrolling: 'touch',
-  },
-  overviewGameCard: {
-    minWidth: 220,
-    maxWidth: 260,
-    borderRadius: 24,
-    padding: 16,
-    background: 'rgba(15, 23, 42, 0.82)',
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    display: 'grid',
-    gap: 12,
-    scrollSnapAlign: 'center',
-    cursor: 'pointer',
-    textAlign: 'left',
-  },
-  overviewGameImage: {
-    width: '100%',
-    height: 140,
-    borderRadius: 18,
-    objectFit: 'cover',
-    background: 'rgba(15, 23, 42, 0.6)',
-  },
-  overviewGameImageFallback: {
-    width: '100%',
-    height: 140,
-    borderRadius: 18,
-    background: 'rgba(15, 23, 42, 0.55)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#94a3b8',
-    fontSize: 13,
-  },
-  overviewGameName: {
-    margin: 0,
-    fontSize: 16,
-    fontWeight: 700,
-    color: '#f8fafc',
-  },
-  overviewGameMeta: {
-    margin: 0,
-    fontSize: 13,
-    color: '#cbd5f5',
-    lineHeight: 1.5,
-  },
-  overviewBottomTabs: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  overviewBottomButton: {
-    padding: '6px 14px',
-    borderRadius: 999,
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    background: 'rgba(15, 23, 42, 0.65)',
-    color: '#e2e8f0',
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  overviewBottomButtonActive: {
-    background: 'rgba(59, 130, 246, 0.78)',
-    color: '#f8fafc',
-    boxShadow: '0 6px 24px rgba(59, 130, 246, 0.35)',
-  },
-  overviewEmpty: {
-    margin: 0,
-    textAlign: 'center',
-    color: '#94a3b8',
-  },
-  overviewHint: {
-    margin: 0,
-    textAlign: 'center',
-    color: '#64748b',
-    fontSize: 13,
   },
   navButton: {
     background: 'transparent',

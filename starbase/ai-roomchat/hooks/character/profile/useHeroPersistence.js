@@ -7,8 +7,9 @@ import { sanitizeFileName } from '../../../utils/characterAssets'
 export function useHeroPersistence({
   heroId,
   hero,
-  getDraftSnapshot,
-  applyHero,
+  edit,
+  setHero,
+  setEdit,
   background,
   bgm,
   onDeleted,
@@ -21,12 +22,6 @@ export function useHeroPersistence({
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
-      const edit = getDraftSnapshot()
-      const baseHeroId = hero?.id || heroId
-      if (!edit || !baseHeroId) {
-        throw new Error('저장할 캐릭터 정보를 찾지 못했습니다.')
-      }
-
       let backgroundUrl = edit.background_url || null
       if (backgroundBlob) {
         const extension = (backgroundBlob.type && backgroundBlob.type.split('/')[1]) || 'jpg'
@@ -73,39 +68,17 @@ export function useHeroPersistence({
         bgm_mime: bgmMimeValue,
       }
 
-      const { error: clearError } = await withTable(supabase, 'heroes', (table) =>
-        supabase
-          .from(table)
-          .update({
-            name: '',
-            description: '',
-            ability1: '',
-            ability2: '',
-            ability3: '',
-            ability4: '',
-            background_url: null,
-            bgm_url: null,
-            bgm_duration_seconds: null,
-            bgm_mime: null,
-          })
-          .eq('id', baseHeroId)
-      )
-      if (clearError) throw clearError
-
-      const { data: updatedHero, error } = await withTable(supabase, 'heroes', (table) =>
-        supabase
-          .from(table)
-          .update(payload)
-          .eq('id', baseHeroId)
-          .select(
-            'id,name,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_duration_seconds,bgm_mime,owner_id,created_at'
-          )
-          .single()
+      const { error } = await withTable(supabase, 'heroes', (table) =>
+        supabase.from(table).update(payload).eq('id', heroId)
       )
       if (error) throw error
 
-      const nextHero = updatedHero || { ...hero, ...payload, id: baseHeroId }
-      applyHero(nextHero)
+      setHero((prev) => (prev ? { ...prev, ...payload } : prev))
+      setEdit((prev) => ({
+        ...prev,
+        background_url: backgroundUrl || '',
+        bgm_url: bgmUrl || '',
+      }))
 
       completeBackgroundSave(backgroundUrl)
       completeBgmSave({ url: bgmUrl, duration: bgmDurationSeconds, mime: bgmMimeValue })
@@ -120,12 +93,13 @@ export function useHeroPersistence({
     backgroundBlob,
     completeBackgroundSave,
     completeBgmSave,
-    getDraftSnapshot,
-    applyHero,
+    edit,
     hero?.bgm_duration_seconds,
     hero?.bgm_mime,
     hero?.name,
     heroId,
+    setEdit,
+    setHero,
     bgmBlob,
     bgmDuration,
     bgmMime,

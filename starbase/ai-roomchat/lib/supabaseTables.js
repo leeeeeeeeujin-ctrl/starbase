@@ -7,10 +7,6 @@ const FALLBACK_TABLES = {
   rank_battles: ['rank_battles', 'rank_sessions', 'session_logs'],
   rank_battle_logs: ['rank_battle_logs', 'rank_session_logs', 'session_logs'],
   rank_turns: ['rank_turns', 'rank_session_turns', 'session_turns', 'rank_session_logs'],
-  prompt_sets: ['prompt_sets', 'maker_prompt_sets'],
-  prompt_slots: ['prompt_slots', 'maker_prompt_slots'],
-  prompt_bridges: ['prompt_bridges', 'maker_prompt_bridges'],
-  ui_configs: ['ui_configs', 'app_configs', 'site_configs', 'global_ui_configs', 'public_configs'],
 }
 
 const resolvedTableCache = {}

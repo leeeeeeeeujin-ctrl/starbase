@@ -26,6 +26,7 @@ export default function MakerHomeView({
   onToggleActionSheet,
   onGoBack,
   onOpenRanking,
+  SharedChatDock,
 }) {
   return (
     <div
@@ -36,59 +37,39 @@ export default function MakerHomeView({
         flexDirection: 'column',
       }}
     >
-      <main
+      <div
         style={{
           flex: '1 1 auto',
           width: '100%',
-          padding: '32px 16px 140px',
-          boxSizing: 'border-box',
-          maxWidth: 1120,
-          margin: '0 auto',
           display: 'flex',
-          flexDirection: 'column',
-          gap: 24,
+          justifyContent: 'center',
+          padding: '24px 16px 140px',
+          boxSizing: 'border-box',
         }}
       >
-        <MakerHomeHeader listHeader={listHeader} errorMessage={errorMessage} onGoBack={onGoBack} />
-
         <div
           style={{
+            width: '100%',
+            maxWidth: 520,
             display: 'flex',
-            flexWrap: 'wrap',
-            gap: 24,
-            alignItems: 'stretch',
+            flexDirection: 'column',
+            gap: 18,
           }}
         >
+          <MakerHomeHeader listHeader={listHeader} errorMessage={errorMessage} onGoBack={onGoBack} />
+
           <section
             style={{
-              flex: '1 1 520px',
-              minWidth: 0,
               background: '#ffffff',
               borderRadius: 24,
               boxShadow: '0 28px 62px -48px rgba(15, 23, 42, 0.55)',
-              padding: 20,
-              display: 'grid',
-              gap: 16,
+              padding: 18,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+              minHeight: 420,
             }}
           >
-            <header
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-                flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ display: 'grid', gap: 4 }}>
-                <strong style={{ fontSize: 18, color: '#0f172a' }}>프롬프트 세트</strong>
-                <span style={{ fontSize: 13, color: '#64748b' }}>{listHeader}</span>
-              </div>
-              {errorMessage && (
-                <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 600 }}>{errorMessage}</span>
-              )}
-            </header>
-
             <div
               style={{
                 flex: '1 1 auto',
@@ -145,59 +126,15 @@ export default function MakerHomeView({
                   />
                 ))}
             </div>
-          </section>
-
-          <aside
-            style={{
-              flex: '1 1 260px',
-              maxWidth: 340,
-              minWidth: 240,
-              display: 'grid',
-              gap: 16,
-            }}
-          >
-            <div
-              style={{
-                background: 'rgba(15, 23, 42, 0.92)',
-                color: '#f8fafc',
-                borderRadius: 24,
-                padding: 20,
-                boxShadow: '0 24px 56px -40px rgba(15, 23, 42, 0.9)',
-                display: 'grid',
-                gap: 12,
-              }}
-            >
-              <div style={{ display: 'grid', gap: 6 }}>
-                <strong style={{ fontSize: 17 }}>작업 요약</strong>
-                <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5', lineHeight: 1.5 }}>
-                  빠른 작업으로 새 세트를 만들거나 JSON을 가져와서 협업 흐름을 이어갈 수 있어요.
-                </p>
-              </div>
-              <dl style={{ margin: 0, display: 'grid', gap: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <dt style={{ fontSize: 13, color: 'rgba(248, 250, 252, 0.75)' }}>현재 세트 수</dt>
-                  <dd style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>{rows.length}</dd>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <dt style={{ fontSize: 13, color: 'rgba(248, 250, 252, 0.75)' }}>상태</dt>
-                  <dd style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
-                    {loading ? '동기화 중' : errorMessage ? '확인이 필요해요' : '정상'}
-                  </dd>
-                </div>
-              </dl>
-            </div>
 
             <div
               style={{
-                background: '#ffffff',
-                borderRadius: 24,
-                padding: 20,
-                boxShadow: '0 24px 56px -48px rgba(15, 23, 42, 0.45)',
+                borderTop: '1px solid #e2e8f0',
+                paddingTop: 14,
                 display: 'grid',
-                gap: 12,
+                gap: 10,
               }}
             >
-              <strong style={{ fontSize: 15, color: '#0f172a' }}>빠른 실행</strong>
               <button
                 type="button"
                 onClick={onRefresh}
@@ -207,7 +144,6 @@ export default function MakerHomeView({
                   border: '1px solid #cbd5f5',
                   background: '#f8fafc',
                   fontWeight: 600,
-                  color: '#0f172a',
                 }}
               >
                 목록 새로고침
@@ -227,9 +163,9 @@ export default function MakerHomeView({
                 랭킹 허브로 이동
               </button>
             </div>
-          </aside>
+          </section>
         </div>
-      </main>
+      </div>
 
       <button
         type="button"
@@ -253,6 +189,11 @@ export default function MakerHomeView({
       >
         ＋
       </button>
+
+      <div style={{ position: 'fixed', left: 16, bottom: 24, width: 360, maxWidth: 'calc(100% - 32px)' }}>
+        <SharedChatDock height={260} />
+      </div>
+
       <QuickActionsSheet
         open={actionSheetOpen}
         onClose={() => onToggleActionSheet(false)}

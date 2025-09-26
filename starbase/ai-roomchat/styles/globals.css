@@ -7,12 +7,5 @@ body {
   background-color: #040507;
   color: #ffffff;
 }
-:root {
-  --starbase-number-font: 'Noto Sans KR', sans-serif;
-}
-[data-numeric] {
-  font-family: var(--starbase-number-font, 'Noto Sans KR', sans-serif);
-  letter-spacing: 0.02em;
-}
 a { color: #2563eb; text-decoration: none; }
 a:hover { text-decoration: underline; }
