@@ -631,28 +631,31 @@ const styles = {
     outline: "none",
     boxShadow: "0 16px 42px -38px rgba(14,165,233,0.9)",
   },
-  overlayButtonsFloating: {
-    position: "absolute",
-    top: 18,
-    right: 20,
+  overlayHeaderRow: {
     display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-    gap: 10,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
   },
   overlayButtonGroup: {
     display: "flex",
     gap: 8,
     flexWrap: "nowrap",
-    justifyContent: "flex-end",
-  },
-  characterFooterRow: {
-    display: "flex",
-    alignItems: "center",
     justifyContent: "flex-start",
+  },
+  quickLauncherOpen: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
     gap: 10,
-    flexWrap: "wrap",
-    marginTop: 4,
+  },
+  quickLauncherCollapsed: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 8,
+    alignSelf: "flex-end",
+    marginRight: 6,
   },
   chatLauncherButton: {
     display: "inline-flex",
@@ -2403,19 +2406,44 @@ export default function CharacterBasicView({ hero }) {
   const overlayPanelStyle = useMemo(() => {
     const base = { ...styles.overlayPanel };
     if (isMobile) {
-      base.padding = "56px 16px 18px";
+      base.padding = "48px 16px 18px";
       base.gap = 8;
       base.borderRadius = 18;
     }
     return base;
   }, [isMobile]);
 
-  const overlayButtonsFloatingStyle = useMemo(() => {
-    const base = { ...styles.overlayButtonsFloating };
+  const overlayHeaderRowStyle = useMemo(() => {
+    const base = { ...styles.overlayHeaderRow };
     if (isMobile) {
-      base.top = 12;
-      base.right = 14;
-      base.gap = 8;
+      base.flexDirection = "column";
+      base.alignItems = "stretch";
+      base.gap = 10;
+    }
+    return base;
+  }, [isMobile]);
+
+  const quickLauncherOpenStyle = useMemo(() => {
+    const base = { ...styles.quickLauncherOpen };
+    if (isMobile) {
+      base.flexDirection = "row";
+      base.flexWrap = "wrap";
+      base.alignItems = "center";
+      base.justifyContent = "flex-end";
+      base.gap = 6;
+    }
+    return base;
+  }, [isMobile]);
+
+  const quickLauncherCollapsedStyle = useMemo(() => {
+    const base = { ...styles.quickLauncherCollapsed };
+    if (isMobile) {
+      base.flexDirection = "row";
+      base.flexWrap = "wrap";
+      base.alignItems = "center";
+      base.justifyContent = "flex-end";
+      base.gap = 6;
+      base.marginRight = 0;
     }
     return base;
   }, [isMobile]);
@@ -2490,9 +2518,97 @@ export default function CharacterBasicView({ hero }) {
   }, [friendRequests]);
 
   const showChatLauncher = activeOverlay === "character";
+  const hasQuickLaunchers = showChatLauncher || overlayActions.length > 0;
   const chatBadgeLabel = chatUnread > 99 ? "99+" : chatUnread;
   const requestBadgeLabel =
-    incomingRequestCount > 99 ? "99+" : incomingRequestCount;
+    incomingRequestCount > 0
+      ? incomingRequestCount > 99
+        ? "99+"
+        : incomingRequestCount
+      : null;
+
+  const renderQuickLaunchers = useCallback(
+    (variant) => {
+      if (!hasQuickLaunchers) {
+        return null;
+      }
+
+      const elements = [];
+
+      if (showChatLauncher) {
+        elements.push(
+          <button
+            key={`chat-${variant}`}
+            type="button"
+            style={{
+              ...styles.chatLauncherButton,
+              opacity: chatOpen ? 0.78 : 1,
+              cursor: chatOpen ? "default" : "pointer",
+            }}
+            onClick={handleOpenChat}
+          >
+            <span>💬 공용 채팅</span>
+            {chatBadgeLabel ? (
+              <span style={styles.chatLauncherBadge}>{chatBadgeLabel}</span>
+            ) : null}
+          </button>,
+        );
+
+        elements.push(
+          <button
+            key={`friend-${variant}`}
+            type="button"
+            style={{
+              ...styles.friendLauncherButton,
+              opacity: friendsLoading ? 0.65 : 1,
+              cursor: friendsLoading ? "wait" : "pointer",
+            }}
+            onClick={() => {
+              if (friendsLoading) return;
+              handleOpenFriendOverlay();
+            }}
+            aria-disabled={friendsLoading}
+          >
+            <span>🤝 친구</span>
+            {requestBadgeLabel ? (
+              <span style={styles.friendLauncherBadge}>{requestBadgeLabel}</span>
+            ) : null}
+          </button>,
+        );
+      }
+
+      overlayActions.forEach((item) => {
+        elements.push(
+          <button
+            key={`${item.key}-${variant}`}
+            type="button"
+            style={styles.overlayActionButton}
+            onClick={() => handleDockAction(item.key)}
+          >
+            {item.label}
+          </button>,
+        );
+      });
+
+      return elements;
+    },
+    [
+      chatBadgeLabel,
+      chatOpen,
+      friendsLoading,
+      handleDockAction,
+      handleOpenChat,
+      handleOpenFriendOverlay,
+      hasQuickLaunchers,
+      overlayActions,
+      requestBadgeLabel,
+      showChatLauncher,
+      styles.chatLauncherButton,
+      styles.friendLauncherButton,
+      styles.friendLauncherBadge,
+      styles.overlayActionButton,
+    ],
+  );
 
   const handleTap = useCallback(() => {
     if (activeOverlay !== "character") return;
@@ -4374,7 +4490,7 @@ export default function CharacterBasicView({ hero }) {
 
         {!overlayCollapsed ? (
           <div style={overlayPanelStyle}>
-            <div style={overlayButtonsFloatingStyle}>
+            <div style={overlayHeaderRowStyle}>
               <div style={overlayButtonGroupStyle}>
                 {overlayTabs.map((item) => (
                   <button
@@ -4387,16 +4503,12 @@ export default function CharacterBasicView({ hero }) {
                   </button>
                 ))}
               </div>
-              {overlayActions.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  style={styles.overlayActionButton}
-                  onClick={() => handleDockAction(item.key)}
-                >
-                  {item.label}
-                </button>
-              ))}
+              {(() => {
+                const quickLaunchers = renderQuickLaunchers("open");
+                return quickLaunchers ? (
+                  <div style={quickLauncherOpenStyle}>{quickLaunchers}</div>
+                ) : null;
+              })()}
             </div>
 
             {showBgmBar ? (
@@ -4530,43 +4642,6 @@ export default function CharacterBasicView({ hero }) {
               </div>
             ) : null}
 
-            {showChatLauncher ? (
-              <div style={styles.characterFooterRow}>
-                <button
-                  type="button"
-                  style={{
-                    ...styles.chatLauncherButton,
-                    opacity: chatOpen ? 0.78 : 1,
-                    cursor: chatOpen ? "default" : "pointer",
-                  }}
-                  onClick={handleOpenChat}
-                >
-                  <span>💬 공용 채팅</span>
-                  {chatUnread ? (
-                    <span style={styles.chatLauncherBadge}>{chatBadgeLabel}</span>
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  style={{
-                    ...styles.friendLauncherButton,
-                    opacity: friendsLoading ? 0.65 : 1,
-                    cursor: friendsLoading ? "wait" : "pointer",
-                  }}
-                  onClick={() => {
-                    if (friendsLoading) return;
-                    handleOpenFriendOverlay();
-                  }}
-                  aria-disabled={friendsLoading}
-                >
-                  <span>🤝 친구</span>
-                  {requestBadgeLabel ? (
-                    <span style={styles.friendLauncherBadge}>{requestBadgeLabel}</span>
-                  ) : null}
-                </button>
-              </div>
-            ) : null}
-
             {overlayDescription ? (
               <p style={styles.overlayCopy}>{overlayDescription}</p>
             ) : null}
@@ -4574,6 +4649,14 @@ export default function CharacterBasicView({ hero }) {
             {overlayBody}
           </div>
         ) : null}
+        {overlayCollapsed
+          ? (() => {
+              const quickLaunchers = renderQuickLaunchers("collapsed");
+              return quickLaunchers ? (
+                <div style={quickLauncherCollapsedStyle}>{quickLaunchers}</div>
+              ) : null;
+            })()
+          : null}
       </div>
       <ChatOverlay
         ref={chatOverlayRef}
