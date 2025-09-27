@@ -18,22 +18,22 @@ const EQ_FREQUENCIES = [80, 750, 3500]
 
 const pageStyles = {
   base: {
-    minHeight: '100vh',
+    minHeight: '100dvh',
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '32px 16px 220px',
+    padding: '20px 12px 168px',
     boxSizing: 'border-box',
     background:
       'linear-gradient(180deg, rgba(15,23,42,0.72) 0%, rgba(15,23,42,0.82) 45%, rgba(15,23,42,0.92) 100%)',
     color: '#f8fafc',
   },
   withBackground: (imageUrl) => ({
-    minHeight: '100vh',
+    minHeight: '100dvh',
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '32px 16px 220px',
+    padding: '20px 12px 168px',
     boxSizing: 'border-box',
     color: '#f8fafc',
     backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(15,23,42,0.78) 60%, rgba(15,23,42,0.9) 100%), url(${imageUrl})`,
@@ -57,7 +57,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 20,
+    gap: 16,
   },
   heroCardShell: {
     width: '100%',
@@ -75,6 +75,7 @@ const styles = {
     boxShadow: '0 46px 120px -60px rgba(37,99,235,0.4)',
     cursor: 'pointer',
     outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
   },
   heroImage: {
     position: 'absolute',
@@ -168,14 +169,16 @@ const styles = {
     width: '100%',
     maxWidth: 560,
     borderRadius: 28,
-    padding: '24px 20px 24px',
+    padding: '18px 18px 20px',
     boxSizing: 'border-box',
     background: 'rgba(15,23,42,0.82)',
     border: '1px solid rgba(96,165,250,0.28)',
     boxShadow: '0 44px 120px -70px rgba(37,99,235,0.55)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 20,
+    gap: 16,
+    maxHeight: 'min(58dvh, 460px)',
+    overflowY: 'auto',
   },
   dockHeader: {
     display: 'flex',
@@ -289,7 +292,7 @@ const styles = {
   playerShell: {
     background: 'rgba(8,47,73,0.68)',
     borderRadius: 20,
-    padding: '14px 16px',
+    padding: '12px 14px',
     border: '1px solid rgba(56,189,248,0.32)',
     display: 'flex',
     flexDirection: 'column',
@@ -367,14 +370,16 @@ const styles = {
   hudContainer: {
     position: 'fixed',
     left: '50%',
-    bottom: 18,
+    bottom: 12,
     transform: 'translateX(-50%)',
     width: 'min(560px, calc(100% - 24px))',
     display: 'flex',
     flexDirection: 'column',
-    gap: 18,
+    gap: 14,
     zIndex: 40,
     pointerEvents: 'none',
+    maxHeight: 'calc(100dvh - 24px)',
+    justifyContent: 'flex-end',
   },
   hudSection: {
     pointerEvents: 'auto',
@@ -984,6 +989,7 @@ export default function CharacterBasicView({ hero }) {
     }
 
     const audio = new Audio(activeBgmUrl)
+    audio.crossOrigin = 'anonymous'
     audioRef.current = audio
 
     const handleLoaded = () => {
@@ -2057,7 +2063,9 @@ export default function CharacterBasicView({ hero }) {
     </div>
   )
 
-  const bgmBar = (
+  const showBgmBar = bgmEnabled
+
+  const bgmBar = !showBgmBar ? null : (
     <div style={{ ...styles.hudSection }}>
       <div style={styles.playerShell}>
         <div style={styles.playerHeader}>
@@ -2072,7 +2080,7 @@ export default function CharacterBasicView({ hero }) {
             </button>
             <span style={styles.playerTitle}>캐릭터 브금</span>
           </div>
-          {!playerCollapsed && bgmEnabled && activeBgmUrl ? (
+          {!playerCollapsed && activeBgmUrl ? (
             <>
               <div
                 style={styles.progressBar}
@@ -2089,7 +2097,7 @@ export default function CharacterBasicView({ hero }) {
         </div>
 
         {!playerCollapsed ? (
-          bgmEnabled && activeBgmUrl ? (
+          activeBgmUrl ? (
             <div style={styles.playerControls}>
               <button type="button" style={styles.playerButton} onClick={togglePlayback}>
                 {isPlaying ? '일시정지' : '재생'}
@@ -2099,7 +2107,7 @@ export default function CharacterBasicView({ hero }) {
               </button>
             </div>
           ) : (
-            <p style={styles.playerMessage}>브금이 비활성화되었습니다. 설정 탭에서 켜 보세요.</p>
+            <p style={styles.playerMessage}>등록된 브금이 없습니다.</p>
           )
         ) : null}
       </div>
