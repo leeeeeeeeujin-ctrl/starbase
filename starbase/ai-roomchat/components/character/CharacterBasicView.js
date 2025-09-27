@@ -12,7 +12,7 @@ const pageStyles = {
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '40px 18px 60px',
+    padding: '40px 18px 260px',
     boxSizing: 'border-box',
     background:
       'linear-gradient(180deg, rgba(15,23,42,0.72) 0%, rgba(15,23,42,0.82) 45%, rgba(15,23,42,0.92) 100%)',
@@ -23,7 +23,7 @@ const pageStyles = {
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '40px 18px 60px',
+    padding: '40px 18px 260px',
     boxSizing: 'border-box',
     color: '#f8fafc',
     backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(15,23,42,0.78) 60%, rgba(15,23,42,0.9) 100%), url(${imageUrl})`,
@@ -257,11 +257,19 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: 14,
+    pointerEvents: 'auto',
   },
   playerHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
+  playerHeaderLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
   },
   collapseButton: {
     appearance: 'none',
@@ -274,6 +282,11 @@ const styles = {
     cursor: 'pointer',
     fontSize: 16,
     fontWeight: 700,
+  },
+  playerTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#e0f2fe',
   },
   progressBar: {
     position: 'relative',
@@ -308,6 +321,47 @@ const styles = {
     fontSize: 13,
     fontWeight: 600,
     cursor: 'pointer',
+  },
+  playerMessage: {
+    margin: 0,
+    fontSize: 13,
+    color: '#e2e8f0',
+  },
+  hudContainer: {
+    position: 'fixed',
+    left: '50%',
+    bottom: 18,
+    transform: 'translateX(-50%)',
+    width: 'min(560px, calc(100% - 24px))',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 18,
+    zIndex: 40,
+    pointerEvents: 'none',
+  },
+  hudSection: {
+    pointerEvents: 'auto',
+  },
+  dockContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  dockToggleRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
+  dockToggleButton: {
+    appearance: 'none',
+    border: 'none',
+    borderRadius: 14,
+    padding: '6px 12px',
+    background: 'rgba(15,23,42,0.65)',
+    color: '#bae6fd',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    boxShadow: '0 10px 26px -20px rgba(14,116,144,0.75)',
   },
   sliderRow: {
     display: 'flex',
@@ -462,6 +516,7 @@ export default function CharacterBasicView({ hero }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [repeatEnabled, setRepeatEnabled] = useState(true)
   const [playerCollapsed, setPlayerCollapsed] = useState(false)
+  const [dockCollapsed, setDockCollapsed] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
   const [selectedBgmName, setSelectedBgmName] = useState('')
@@ -1078,57 +1133,6 @@ export default function CharacterBasicView({ hero }) {
             <p style={styles.listMeta}>등록된 능력이 없습니다.</p>
           ) : null}
         </div>
-
-        {bgmEnabled && activeBgmUrl ? (
-          <div style={styles.playerShell}>
-            <div style={styles.playerHeader}>
-              <button
-                type="button"
-                style={styles.collapseButton}
-                onClick={() => setPlayerCollapsed((prev) => !prev)}
-                aria-label={playerCollapsed ? '재생바 펼치기' : '재생바 접기'}
-              >
-                {playerCollapsed ? '▶' : '◀'}
-              </button>
-              {!playerCollapsed ? (
-                <>
-                  <div
-                    style={styles.progressBar}
-                    role="presentation"
-                    onClick={handleSeek}
-                  >
-                    <div style={styles.progressFill(progressRatio)} />
-                  </div>
-                  <span style={styles.listMeta}>
-                    {formatTime(progress)} / {formatTime(duration)}
-                  </span>
-                </>
-              ) : null}
-            </div>
-
-            {!playerCollapsed ? (
-              <div style={styles.playerControls}>
-                <button type="button" style={styles.playerButton} onClick={togglePlayback}>
-                  {isPlaying ? '일시정지' : '재생'}
-                </button>
-                <button type="button" style={styles.playerButton} onClick={stopPlayback}>
-                  처음으로
-                </button>
-                <button type="button" style={styles.playerButton} onClick={handleRepeatToggle}>
-                  {repeatEnabled ? '반복 켜짐' : '반복 끔'}
-                </button>
-                <button type="button" style={styles.playerButton} onClick={handleBgmFileButton}>
-                  브금 교체·저장
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div style={styles.infoBlock}>
-            <p style={styles.infoTitle}>브금이 비활성화되었습니다.</p>
-            <p style={styles.listMeta}>설정 탭에서 브금을 켜고 파일을 선택해 보세요.</p>
-          </div>
-        )}
       </div>
     )
   })()
@@ -1202,43 +1206,115 @@ export default function CharacterBasicView({ hero }) {
     </div>
   )
 
-  return (
-    <div style={backgroundStyle}>
-      <div style={styles.stage}>
-        {heroSlide}
-
-        <div style={styles.dock}>
-          <div style={styles.dockHeader}>
-            <div style={styles.dockTabs}>
-              {overlayTabs.map((tab, index) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  style={styles.dockTabButton(index === activeTab)}
-                  onClick={() => setActiveTab(index)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            {activeTabKey === 'character' ? (
-              <button type="button" style={styles.battleButton}>
-                전투 시작
-              </button>
-            ) : null}
+  const bgmBar = (
+    <div style={{ ...styles.hudSection }}>
+      <div style={styles.playerShell}>
+        <div style={styles.playerHeader}>
+          <div style={styles.playerHeaderLeft}>
+            <button
+              type="button"
+              style={styles.collapseButton}
+              onClick={() => setPlayerCollapsed((prev) => !prev)}
+              aria-label={playerCollapsed ? '재생바 펼치기' : '재생바 접기'}
+            >
+              {playerCollapsed ? '▲' : '▼'}
+            </button>
+            <span style={styles.playerTitle}>캐릭터 브금</span>
           </div>
-
-          {overlayBody}
+          {!playerCollapsed && bgmEnabled && activeBgmUrl ? (
+            <>
+              <div
+                style={styles.progressBar}
+                role="presentation"
+                onClick={handleSeek}
+              >
+                <div style={styles.progressFill(progressRatio)} />
+              </div>
+              <span style={styles.listMeta}>
+                {formatTime(progress)} / {formatTime(duration)}
+              </span>
+            </>
+          ) : null}
         </div>
 
-        <input
-          type="file"
-          accept="audio/*"
-          ref={fileInputRef}
-          style={{ display: 'none' }}
-          onChange={handleBgmFileChange}
-        />
+        {!playerCollapsed ? (
+          bgmEnabled && activeBgmUrl ? (
+            <div style={styles.playerControls}>
+              <button type="button" style={styles.playerButton} onClick={togglePlayback}>
+                {isPlaying ? '일시정지' : '재생'}
+              </button>
+              <button type="button" style={styles.playerButton} onClick={stopPlayback}>
+                처음으로
+              </button>
+              <button type="button" style={styles.playerButton} onClick={handleRepeatToggle}>
+                {repeatEnabled ? '반복 켜짐' : '반복 끔'}
+              </button>
+              <button type="button" style={styles.playerButton} onClick={handleBgmFileButton}>
+                브금 교체·저장
+              </button>
+            </div>
+          ) : (
+            <p style={styles.playerMessage}>브금이 비활성화되었습니다. 설정 탭에서 켜 보세요.</p>
+          )
+        ) : null}
       </div>
+    </div>
+  )
+
+  return (
+    <div style={backgroundStyle}>
+      <div style={styles.stage}>{heroSlide}</div>
+
+      <div style={styles.hudContainer}>
+        {bgmBar}
+        <div style={{ ...styles.hudSection }}>
+          <div style={styles.dockContainer}>
+            <div style={styles.dockToggleRow}>
+              <button
+                type="button"
+                style={styles.dockToggleButton}
+                onClick={() => setDockCollapsed((prev) => !prev)}
+                aria-label={dockCollapsed ? '오버레이 펼치기' : '오버레이 접기'}
+              >
+                {dockCollapsed ? '▲ 패널 펼치기' : '▼ 패널 접기'}
+              </button>
+            </div>
+            {!dockCollapsed ? (
+              <div style={styles.dock}>
+                <div style={styles.dockHeader}>
+                  <div style={styles.dockTabs}>
+                    {overlayTabs.map((tab, index) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        style={styles.dockTabButton(index === activeTab)}
+                        onClick={() => setActiveTab(index)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  {activeTabKey === 'character' ? (
+                    <button type="button" style={styles.battleButton}>
+                      전투 시작
+                    </button>
+                  ) : null}
+                </div>
+
+                {overlayBody}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <input
+        type="file"
+        accept="audio/*"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        onChange={handleBgmFileChange}
+      />
     </div>
   )
 }
