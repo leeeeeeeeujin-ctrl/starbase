@@ -38,7 +38,7 @@ export default function HeroList({
   }
 
   return (
-    <div style={styles.heroGrid}>
+    <div style={styles.heroList}>
       {heroes.map((hero) => (
         <HeroCard key={hero.id} hero={hero} onSelect={onSelectHero} />
       ))}

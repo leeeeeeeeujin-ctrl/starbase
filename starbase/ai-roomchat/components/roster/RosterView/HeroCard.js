@@ -11,6 +11,22 @@ export default function HeroCard({ hero, onSelect }) {
     return name || '이름 없는 영웅'
   }, [hero])
 
+  const createdAtText = useMemo(() => {
+    if (!hero?.created_at) return '생성일 정보 없음'
+    try {
+      const date = new Date(hero.created_at)
+      if (Number.isNaN(date.getTime())) return '생성일 정보 없음'
+      return `${new Intl.DateTimeFormat('ko-KR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }).format(date)} 생성`
+    } catch (error) {
+      console.error('Failed to format hero created_at', error)
+      return '생성일 정보 없음'
+    }
+  }, [hero?.created_at])
+
   const handleClick = () => {
     if (typeof onSelect === 'function') {
       onSelect(hero)
@@ -19,9 +35,9 @@ export default function HeroCard({ hero, onSelect }) {
 
   const cardStyle = {
     ...styles.heroButton,
-    transform: active ? 'scale(0.97)' : 'scale(1)',
+    transform: active ? 'scale(0.98)' : 'scale(1)',
     boxShadow: active
-      ? '0 14px 44px -34px rgba(56,189,248,0.6)'
+      ? '0 18px 54px -32px rgba(56,189,248,0.55)'
       : styles.heroButton.boxShadow,
   }
 
@@ -44,7 +60,10 @@ export default function HeroCard({ hero, onSelect }) {
           ) : (
             <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
           )}
-          <div style={styles.heroNameBar}>{heroName}</div>
+        </div>
+        <div style={styles.heroMetaColumn}>
+          <p style={styles.heroName}>{heroName}</p>
+          <p style={styles.heroCreatedAt}>{createdAtText}</p>
         </div>
       </div>
     </button>
