@@ -37,7 +37,7 @@ const EQ_BAND_MAX = 12;
 const EQ_BAND_STEP = 0.5;
 
 const HERO_STORAGE_BUCKET = "heroes";
-const MAX_BGM_TRACKS = 8;
+const MAX_BGM_TRACKS = 1;
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -650,6 +650,34 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 8,
+  },
+  bgmQuickActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  bgmQuickButton: {
+    border: "1px solid rgba(125,211,252,0.85)",
+    background: "rgba(30,64,175,0.45)",
+    color: "#e0f2fe",
+    borderRadius: 999,
+    padding: "8px 16px",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "background 0.2s ease",
+  },
+  bgmQuickDanger: {
+    border: "1px solid rgba(248,113,113,0.75)",
+    background: "rgba(127,29,29,0.5)",
+    color: "#fee2e2",
+    borderRadius: 999,
+    padding: "8px 16px",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "background 0.2s ease",
   },
   bgmControlButton: (active = false, disabled = false) => ({
     border: "1px solid",
@@ -1285,12 +1313,6 @@ const styles = {
     fontWeight: 700,
     color: "rgba(226,232,240,0.92)",
   },
-  bgmTrackBadges: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 6,
-  },
   bgmTrackBadge: {
     padding: "2px 8px",
     borderRadius: 9999,
@@ -1298,10 +1320,6 @@ const styles = {
     fontWeight: 700,
     color: "rgba(191,219,254,0.9)",
     background: "rgba(37,99,235,0.28)",
-  },
-  bgmTrackPrimaryBadge: {
-    color: "#0f172a",
-    background: "#bfdbfe",
   },
   bgmTrackField: {
     display: "flex",
@@ -1434,13 +1452,13 @@ export default function CharacterBasicView({ hero }) {
     preview: null,
   });
   const [bgmTracks, setBgmTracks] = useState(() => createBgmStateFromHero(hero));
+  const [previewBgmList, setPreviewBgmList] = useState([]);
   const [removedBgmIds, setRemovedBgmIds] = useState([]);
   const [activeBgmIndex, setActiveBgmIndex] = useState(0);
   const [isBgmPlaying, setIsBgmPlaying] = useState(false);
   const [trackTime, setTrackTime] = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
   const [trackProgress, setTrackProgress] = useState(0);
-  const [repeatCurrent, setRepeatCurrent] = useState(false);
   const [rosterOwnerId, setRosterOwnerId] = useState(null);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterHeroes, setRosterHeroes] = useState([]);
@@ -1607,6 +1625,9 @@ export default function CharacterBasicView({ hero }) {
   const infoCount = infoSequence.length;
 
   const heroBgmList = useMemo(() => {
+    if (previewBgmList.length) {
+      return previewBgmList;
+    }
     if (Array.isArray(currentHero?.bgms) && currentHero.bgms.length) {
       return currentHero.bgms;
     }
@@ -1631,6 +1652,7 @@ export default function CharacterBasicView({ hero }) {
     currentHero?.bgm_mime,
     currentHero?.bgm_url,
     currentHero?.id,
+    previewBgmList,
   ]);
 
   const heroBgmCount = heroBgmList.length;
@@ -1698,17 +1720,18 @@ export default function CharacterBasicView({ hero }) {
   const audioContextRef = useRef(null);
   const audioRef = useRef(null);
   const audioGraphRef = useRef(null);
-  const heroBgmsRef = useRef(heroBgmList);
   const bgmAutoplayRef = useRef(true);
   const progressBarRef = useRef(null);
   const imageInputRef = useRef(null);
   const backgroundInputRef = useRef(null);
   const bgmInputRefs = useRef({});
+  const quickBgmInputRef = useRef(null);
 
   useEffect(() => {
     setImageAsset({ file: null, preview: null });
     setBackgroundAsset({ file: null, preview: null });
     setBgmTracks(createBgmStateFromHero(currentHero));
+    setPreviewBgmList([]);
     setRemovedBgmIds([]);
     setActiveBgmIndex(0);
     setTrackTime(0);
@@ -1731,8 +1754,45 @@ export default function CharacterBasicView({ hero }) {
   }, [currentHero?.id]);
 
   useEffect(() => {
-    heroBgmsRef.current = heroBgmList;
-  }, [heroBgmList, heroBgmsRef]);
+    const playable = reindexBgmTracks([...bgmTracks])
+      .map((track, index) => {
+        const source = track.objectUrl || track.url;
+        if (!source) return null;
+        return {
+          id: track.id || null,
+          hero_id: currentHero?.id || null,
+          label: normaliseBgmLabel(track.label, index),
+          url: source,
+          storage_path: track.storage_path || null,
+          duration_seconds: Number.isFinite(track.duration)
+            ? Math.max(0, Math.round(track.duration))
+            : null,
+          mime: track.mime || null,
+          sort_order: index,
+        };
+      })
+      .filter(Boolean);
+
+    setPreviewBgmList((prev) => {
+      if (
+        prev.length === playable.length &&
+        prev.every((entry, index) => {
+          const next = playable[index];
+          if (!entry && !next) return true;
+          if (!entry || !next) return false;
+          return (
+            entry.url === next.url &&
+            entry.label === next.label &&
+            entry.mime === next.mime &&
+            entry.duration_seconds === next.duration_seconds
+          );
+        })
+      ) {
+        return prev;
+      }
+      return playable;
+    });
+  }, [bgmTracks, currentHero?.id]);
 
   useEffect(() => {
     if (heroBgmCount === 0) {
@@ -1810,7 +1870,7 @@ export default function CharacterBasicView({ hero }) {
     }
 
     const audio = new Audio(trackUrl);
-    audio.loop = repeatCurrent;
+    audio.loop = false;
     audio.volume = volume;
     audio.crossOrigin = "anonymous";
     audioRef.current = audio;
@@ -1852,20 +1912,6 @@ export default function CharacterBasicView({ hero }) {
       setIsBgmPlaying(false);
       setTrackTime(0);
       setTrackProgress(0);
-      if (audio.loop) {
-        return;
-      }
-      const list = heroBgmsRef.current;
-      if (!Array.isArray(list) || list.length === 0) {
-        return;
-      }
-      bgmAutoplayRef.current = true;
-      setActiveBgmIndex((index) => {
-        if (!Array.isArray(list) || list.length === 0) {
-          return 0;
-        }
-        return (index + 1) % list.length;
-      });
     };
 
     audio.addEventListener("play", handlePlay);
@@ -1979,11 +2025,6 @@ export default function CharacterBasicView({ hero }) {
   }, [volume]);
 
   useEffect(() => {
-    if (!audioRef.current) return;
-    audioRef.current.loop = repeatCurrent;
-  }, [repeatCurrent]);
-
-  useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     if (bgmEnabled) {
@@ -2018,18 +2059,20 @@ export default function CharacterBasicView({ hero }) {
     }
   }, [bgmEnabled]);
 
-  const showBgmBar = bgmEnabled && heroBgmCount > 0;
+  const showBgmBar = bgmEnabled;
+  const hasActiveTrack = heroBgmCount > 0 && Boolean(activeBgm?.url);
   useEffect(() => {
     if (!showBgmBar) {
       setBgmBarCollapsed(false);
     }
   }, [showBgmBar]);
-  const trackCounterLabel = showBgmBar ? `${activeBgmIndex + 1} / ${heroBgmCount}` : "";
   const formattedCurrentTime = formatPlaybackTime(trackTime);
   const hasKnownDuration = Number.isFinite(trackDuration) && trackDuration > 0;
   const formattedDuration = hasKnownDuration
     ? formatPlaybackTime(trackDuration)
-    : "??:??";
+    : hasActiveTrack
+      ? "??:??"
+      : "0:00";
   const trackProgressPercent = `${Math.min(100, Math.max(0, trackProgress * 100))}%`;
 
   const backgroundStyle = useMemo(() => {
@@ -2277,38 +2320,6 @@ export default function CharacterBasicView({ hero }) {
         .play()
         .catch((error) => console.warn("Failed to restart BGM", error));
     }
-  }, []);
-
-  const handleBgmPrevious = useCallback(() => {
-    const list = heroBgmsRef.current;
-    if (!Array.isArray(list) || list.length === 0) {
-      return;
-    }
-    bgmAutoplayRef.current = isBgmPlaying;
-    setActiveBgmIndex((index) => {
-      if (!Array.isArray(list) || list.length === 0) {
-        return 0;
-      }
-      return (index - 1 + list.length) % list.length;
-    });
-  }, [isBgmPlaying]);
-
-  const handleBgmNext = useCallback(() => {
-    const list = heroBgmsRef.current;
-    if (!Array.isArray(list) || list.length === 0) {
-      return;
-    }
-    bgmAutoplayRef.current = isBgmPlaying;
-    setActiveBgmIndex((index) => {
-      if (!Array.isArray(list) || list.length === 0) {
-        return 0;
-      }
-      return (index + 1) % list.length;
-    });
-  }, [isBgmPlaying]);
-
-  const handleRepeatToggle = useCallback(() => {
-    setRepeatCurrent((prev) => !prev);
   }, []);
 
   const handleToggleBgmBar = useCallback(() => {
@@ -2579,30 +2590,48 @@ export default function CharacterBasicView({ hero }) {
     );
   }, []);
 
-  const handleBgmFileSelect = useCallback(
-    (trackId) => (event) => {
-      const file = event.target.files?.[0];
+  const applyBgmFileToTrack = useCallback(
+    (trackId, file) => {
       if (!file) return;
 
       const objectUrl = URL.createObjectURL(file);
-      setBgmTracks((prev) =>
-        prev.map((track) => {
-          if (track.id !== trackId) return track;
-          if (track.objectUrl) {
-            URL.revokeObjectURL(track.objectUrl);
-          }
-          return {
-            ...track,
-            file,
-            objectUrl,
-            duration: null,
-            mime: file.type || track.mime || null,
-            storage_path: null,
-            error: null,
-          };
-        }),
-      );
+      setBgmTracks((prev) => {
+        const next = prev.length ? [...prev] : [];
+        let index = next.findIndex((track) => track.id === trackId);
+        if (index === -1) {
+          next.push(createBgmDraftFromRecord(null, next.length));
+          index = next.length - 1;
+        }
+
+        const target = next[index];
+        if (target.objectUrl) {
+          URL.revokeObjectURL(target.objectUrl);
+        }
+
+        const updated = {
+          ...target,
+          id: target.id || trackId,
+          label: normaliseBgmLabel(target.label, index),
+          file,
+          objectUrl,
+          url: objectUrl,
+          duration: null,
+          mime: file.type || target.mime || null,
+          storage_path: null,
+          error: null,
+        };
+
+        next[index] = updated;
+        return reindexBgmTracks(next);
+      });
       setStatusMessage(null);
+      setBgmEnabled(true);
+      setBgmBarCollapsed(false);
+      bgmAutoplayRef.current = true;
+      setActiveBgmIndex(0);
+      setTrackTime(0);
+      setTrackDuration(0);
+      setTrackProgress(0);
 
       const audioEl = document.createElement("audio");
       audioEl.preload = "metadata";
@@ -2642,7 +2671,17 @@ export default function CharacterBasicView({ hero }) {
       audioEl.addEventListener("loadedmetadata", handleLoaded);
       audioEl.addEventListener("error", handleError);
     },
-    [],
+    [setStatusMessage, setBgmEnabled, setBgmBarCollapsed],
+  );
+
+  const handleBgmFileSelect = useCallback(
+    (trackId) => (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      applyBgmFileToTrack(trackId, file);
+    },
+    [applyBgmFileToTrack],
   );
 
   const handleClearBgmFile = useCallback((trackId) => {
@@ -2671,23 +2710,13 @@ export default function CharacterBasicView({ hero }) {
     setStatusMessage(null);
   }, []);
 
-  const handleMakePrimaryBgm = useCallback((trackId) => {
-    setBgmTracks((prev) => {
-      const index = prev.findIndex((track) => track.id === trackId);
-      if (index <= 0) return prev;
-      const next = [...prev];
-      const [selected] = next.splice(index, 1);
-      next.unshift(selected);
-      return reindexBgmTracks(next);
-    });
-  }, []);
-
   const handleRemoveBgmTrack = useCallback(
-    (trackId) => {
+    (trackId, { skipConfirm = false } = {}) => {
       const target = bgmTracks.find((track) => track.id === trackId);
       if (!target) return;
-      const confirmed =
-        typeof window !== "undefined"
+      const confirmed = skipConfirm
+        ? true
+        : typeof window !== "undefined"
           ? window.confirm("이 브금을 목록에서 삭제할까요?")
           : true;
       if (!confirmed) return;
@@ -2716,6 +2745,34 @@ export default function CharacterBasicView({ hero }) {
     },
     [bgmTracks],
   );
+
+  const handleQuickBgmUploadClick = useCallback(() => {
+    if (!quickBgmInputRef.current) return;
+    quickBgmInputRef.current.value = "";
+    quickBgmInputRef.current.click();
+  }, []);
+
+  const handleQuickBgmFileInput = useCallback(
+    (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const baseId = bgmTracks[0]?.id || makeBgmId();
+      applyBgmFileToTrack(baseId, file);
+    },
+    [applyBgmFileToTrack, bgmTracks],
+  );
+
+  const handleQuickBgmClear = useCallback(() => {
+    if (!bgmTracks.length) return;
+    const [track] = bgmTracks;
+    if (!track) return;
+    handleRemoveBgmTrack(track.id, { skipConfirm: true });
+    handleBgmStop();
+    setPreviewBgmList([]);
+    if (quickBgmInputRef.current) {
+      quickBgmInputRef.current.value = "";
+    }
+  }, [bgmTracks, handleRemoveBgmTrack, handleBgmStop]);
 
   const handleDraftChange = useCallback((field, value) => {
     setEditDraft((prev) => ({ ...prev, [field]: value }));
@@ -2761,20 +2818,14 @@ export default function CharacterBasicView({ hero }) {
       );
 
       const orderedTracks = reindexBgmTracks([...bgmTracks]);
-      const emptyTrack = orderedTracks.find((track) => !track.url && !track.file);
-      if (emptyTrack) {
-        setStatusMessage({
-          type: "error",
-          text: "비어 있는 브금 슬롯이 있습니다. 파일을 선택하거나 삭제해 주세요.",
-        });
-        setSavingHero(false);
-        return;
-      }
+      const preparedTracks = orderedTracks.filter(
+        (track) => track.file || track.url,
+      );
 
       const processedTracks = [];
 
-      for (let index = 0; index < orderedTracks.length; index += 1) {
-        const track = orderedTracks[index];
+      for (let index = 0; index < preparedTracks.length; index += 1) {
+        const track = preparedTracks[index];
         const label = normaliseBgmLabel(track.label, index);
         let finalUrl = track.url;
         let finalMime = track.mime || null;
@@ -3317,7 +3368,7 @@ export default function CharacterBasicView({ hero }) {
                       </div>
                     </div>
                     <div style={styles.assetCard}>
-                      <h4 style={styles.assetTitle}>브금 목록</h4>
+                      <h4 style={styles.assetTitle}>캐릭터 브금</h4>
                       <div style={styles.bgmList}>
                         {bgmTracks.length ? (
                           bgmTracks.map((track, index) => (
@@ -3326,30 +3377,18 @@ export default function CharacterBasicView({ hero }) {
                                 <h5 style={styles.bgmTrackHeaderTitle}>
                                   {track.label || `브금 ${index + 1}`}
                                 </h5>
-                                <div style={styles.bgmTrackBadges}>
-                                  <span
-                                    style={{
-                                      ...styles.bgmTrackBadge,
-                                      ...(index === 0
-                                        ? styles.bgmTrackPrimaryBadge
-                                        : {}),
-                                    }}
-                                  >
-                                    {index === 0 ? "대표" : `#${index + 1}`}
+                                {track.file ? (
+                                  <span style={styles.bgmTrackBadge}>
+                                    업로드 예정
                                   </span>
-                                  {track.file ? (
-                                    <span style={styles.bgmTrackBadge}>
-                                      업로드 예정
-                                    </span>
-                                  ) : null}
-                                </div>
+                                ) : null}
                               </div>
                               <div style={styles.bgmTrackField}>
                                 <label
                                   style={styles.bgmTrackLabel}
                                   htmlFor={`hero-bgm-label-${track.id}`}
                                 >
-                                  종류
+                                  제목
                                 </label>
                                 <input
                                   id={`hero-bgm-label-${track.id}`}
@@ -3432,28 +3471,20 @@ export default function CharacterBasicView({ hero }) {
                                     파일 비우기
                                   </button>
                                 ) : null}
-                                {index > 0 ? (
-                                  <button
-                                    type="button"
-                                    style={styles.assetActionButton}
-                                    onClick={() => handleMakePrimaryBgm(track.id)}
-                                  >
-                                    대표로 올리기
-                                  </button>
-                                ) : null}
                                 <button
                                   type="button"
                                   style={styles.assetDangerButton}
                                   onClick={() => handleRemoveBgmTrack(track.id)}
                                 >
-                                  트랙 삭제
+                                  브금 삭제
                                 </button>
                               </div>
                             </div>
                           ))
                         ) : (
                           <p style={styles.bgmEmpty}>
-                            등록된 브금이 없습니다. 아래 버튼으로 추가해 보세요.
+                            등록된 브금이 없습니다. 아래 버튼이나 브금바에서
+                            곡을 불러올 수 있어요.
                           </p>
                         )}
                       </div>
@@ -3472,8 +3503,8 @@ export default function CharacterBasicView({ hero }) {
                           disabled={bgmTracks.length >= MAX_BGM_TRACKS}
                         >
                           {bgmTracks.length >= MAX_BGM_TRACKS
-                            ? "최대 8개까지 등록할 수 있어요"
-                            : "브금 추가"}
+                            ? "브금은 하나만 등록할 수 있어요"
+                            : "빈 브금 슬롯 추가"}
                         </button>
                       </div>
                     </div>
@@ -3845,14 +3876,17 @@ export default function CharacterBasicView({ hero }) {
           <div style={styles.bgmBar}>
             <div style={styles.bgmMetaRow}>
               <div style={styles.bgmMetaInfo}>
-                <p style={styles.bgmTrackTitle}>{activeBgm?.label || "브금"}</p>
+                <p style={styles.bgmTrackTitle}>
+                  {hasActiveTrack ? activeBgm?.label || "브금" : "브금 없음"}
+                </p>
                 <div style={styles.bgmMetaSub}>
-                  {trackCounterLabel ? (
-                    <span style={styles.bgmTrackIndex}>{trackCounterLabel}</span>
-                  ) : null}
-                  <span style={styles.bgmMetaTimes}>
-                    {formattedCurrentTime} / {formattedDuration}
-                  </span>
+                  {hasActiveTrack ? (
+                    <span style={styles.bgmMetaTimes}>
+                      {formattedCurrentTime} / {formattedDuration}
+                    </span>
+                  ) : (
+                    <span style={styles.bgmMetaTimes}>브금을 선택해 주세요</span>
+                  )}
                 </div>
               </div>
               <button
@@ -3871,59 +3905,61 @@ export default function CharacterBasicView({ hero }) {
                   <div style={styles.bgmControlsGroup}>
                     <button
                       type="button"
-                      style={styles.bgmControlButton(false, heroBgmCount <= 1)}
-                      onClick={handleBgmPrevious}
-                      disabled={heroBgmCount <= 1}
-                      aria-label="이전 곡"
-                    >
-                      ⏮
-                    </button>
-                    <button
-                      type="button"
-                      style={styles.bgmControlButton(isBgmPlaying)}
+                      style={styles.bgmControlButton(
+                        isBgmPlaying && hasActiveTrack,
+                        !hasActiveTrack,
+                      )}
                       onClick={handleBgmPlayPause}
                       aria-label={isBgmPlaying ? "일시정지" : "재생"}
+                      disabled={!hasActiveTrack}
                     >
                       {isBgmPlaying ? "⏸" : "▶"}
                     </button>
                     <button
                       type="button"
-                      style={styles.bgmControlButton(false, heroBgmCount <= 1)}
-                      onClick={handleBgmNext}
-                      disabled={heroBgmCount <= 1}
-                      aria-label="다음 곡"
-                    >
-                      ⏭
-                    </button>
-                  </div>
-                  <div style={styles.bgmControlsGroup}>
-                    <button
-                      type="button"
-                      style={styles.bgmControlButton(false)}
+                      style={styles.bgmControlButton(false, !hasActiveTrack)}
                       onClick={handleBgmStop}
                       aria-label="정지"
+                      disabled={!hasActiveTrack}
                     >
                       ⏹
                     </button>
                     <button
                       type="button"
-                      style={styles.bgmControlButton(false)}
+                      style={styles.bgmControlButton(false, !hasActiveTrack)}
                       onClick={handleBgmRestart}
                       aria-label="처음부터 재생"
+                      disabled={!hasActiveTrack}
                     >
                       ↺
                     </button>
+                  </div>
+                  <div style={styles.bgmQuickActions}>
                     <button
                       type="button"
-                      style={styles.bgmControlButton(repeatCurrent)}
-                      onClick={handleRepeatToggle}
-                      aria-pressed={repeatCurrent}
-                      aria-label="반복 재생"
+                      style={styles.bgmQuickButton}
+                      onClick={handleQuickBgmUploadClick}
                     >
-                      🔁
+                      📁 기기에서 불러오기
                     </button>
+                    {heroBgmCount > 0 ? (
+                      <button
+                        type="button"
+                        style={styles.bgmQuickDanger}
+                        onClick={handleQuickBgmClear}
+                      >
+                        🗑 브금 삭제
+                      </button>
+                    ) : null}
                   </div>
                 </div>
+                <input
+                  ref={quickBgmInputRef}
+                  type="file"
+                  accept="audio/*"
+                  style={styles.hiddenInput}
+                  onChange={handleQuickBgmFileInput}
+                />
                 <div style={styles.bgmProgressRow}>
                   <span style={styles.bgmTime}>{formattedCurrentTime}</span>
                   <div
@@ -3933,7 +3969,7 @@ export default function CharacterBasicView({ hero }) {
                     onTouchStart={handleProgressTouchStart}
                     onKeyDown={handleProgressKeyDown}
                     role="slider"
-                    tabIndex={0}
+                    tabIndex={hasActiveTrack ? 0 : -1}
                     aria-label="브금 재생 위치"
                     aria-valuemin={0}
                     aria-valuemax={hasKnownDuration ? trackDuration : 1}
@@ -3947,7 +3983,7 @@ export default function CharacterBasicView({ hero }) {
                         ? `${formattedCurrentTime} / ${formattedDuration}`
                         : formattedCurrentTime
                     }
-                    aria-disabled={!hasKnownDuration}
+                    aria-disabled={!hasKnownDuration || !hasActiveTrack}
                   >
                     <div
                       style={{
