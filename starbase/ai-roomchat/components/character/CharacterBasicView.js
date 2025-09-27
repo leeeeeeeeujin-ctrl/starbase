@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
-const DEFAULT_DESCRIPTION = '소개가 아직 준비되지 않았습니다. 이미지를 한 번 더 탭하면 능력을 볼 수 있어요.'
+const DEFAULT_DESCRIPTION =
+  '소개가 아직 준비되지 않았습니다. 이미지를 한 번 더 탭하면 능력을 볼 수 있어요.'
 
 const pageStyles = {
   base: {
@@ -11,10 +12,10 @@ const pageStyles = {
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '48px 18px 60px',
+    padding: '40px 18px 60px',
     boxSizing: 'border-box',
     background:
-      'linear-gradient(180deg, rgba(2,6,23,0.82) 0%, rgba(2,6,23,0.94) 55%, rgba(2,6,23,0.98) 100%)',
+      'linear-gradient(180deg, rgba(2,6,23,0.84) 0%, rgba(2,6,23,0.93) 55%, rgba(2,6,23,0.98) 100%)',
     color: '#e2e8f0',
   },
   withBackground: (imageUrl) => ({
@@ -22,104 +23,76 @@ const pageStyles = {
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '48px 18px 60px',
+    padding: '40px 18px 60px',
     boxSizing: 'border-box',
     color: '#e2e8f0',
-    backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.72) 0%, rgba(2,6,23,0.9) 60%, rgba(2,6,23,0.97) 100%), url(${imageUrl})`,
+    backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.72) 0%, rgba(2,6,23,0.88) 60%, rgba(2,6,23,0.96) 100%), url(${imageUrl})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundAttachment: 'fixed',
   }),
 }
 
-const menuOrder = ['캐릭터', '랭킹', '게임 검색', '친구', '길드', '설정']
+const slideConfigs = [
+  { key: 'character', label: '캐릭터' },
+  { key: 'ranking', label: '랭킹', description: '랭킹 기능이 준비되는 대로 이곳에서 확인할 수 있어요.' },
+  { key: 'search', label: '게임 검색', description: '게임 검색과 추천이 곧 추가됩니다.' },
+  { key: 'friends', label: '친구', description: '친구와 길드를 관리할 수 있는 메뉴가 준비 중이에요.' },
+  { key: 'guild', label: '길드', description: '길드 관리 기능이 곧 찾아옵니다.' },
+  { key: 'settings', label: '설정', description: '환경 설정과 맞춤 기능이 준비되고 있어요.' },
+]
 
 const styles = {
-  sliderViewport: {
+  stage: {
     width: '100%',
-    maxWidth: 540,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  sliderTrack: (index) => ({
-    display: 'flex',
-    width: '100%',
-    transform: `translateX(-${index * 100}%)`,
-    transition: 'transform 0.4s ease',
-  }),
-  slide: {
-    flex: '0 0 100%',
-    width: '100%',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-    padding: '42px 20px 56px',
-    boxSizing: 'border-box',
-  },
-  layout: {
-    width: '100%',
-    maxWidth: 520,
+    maxWidth: 560,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 28,
-  },
-  placeholderLayout: {
-    width: '100%',
-    maxWidth: 520,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: 18,
-    padding: '36px 30px',
-    boxSizing: 'border-box',
-    background: 'rgba(15,23,42,0.72)',
-    borderRadius: 28,
-    border: '1px solid rgba(96,165,250,0.25)',
-    boxShadow: '0 42px 110px -58px rgba(37,99,235,0.55)',
-  },
-  placeholderBadge: {
-    alignSelf: 'flex-start',
-    padding: '8px 16px',
-    borderRadius: 999,
-    background: 'rgba(30,64,175,0.4)',
-    color: '#bfdbfe',
-    fontSize: 12,
-    fontWeight: 700,
-    letterSpacing: 0.5,
-  },
-  placeholderTitle: {
-    margin: 0,
-    fontSize: 24,
-    fontWeight: 800,
-    color: '#e2e8f0',
-  },
-  placeholderCopy: {
-    margin: 0,
-    fontSize: 15,
-    lineHeight: 1.7,
-    color: '#cbd5f5',
+    gap: 24,
   },
   topMessage: {
     margin: 0,
     fontSize: 15,
     fontWeight: 600,
-    color: 'rgba(190, 227, 248, 0.88)',
+    color: 'rgba(190, 227, 248, 0.9)',
     textAlign: 'center',
+    letterSpacing: 0.2,
+  },
+  sliderViewport: {
+    width: '100%',
+    overflow: 'hidden',
+    position: 'relative',
+    borderRadius: 40,
+  },
+  sliderTrack: (index) => ({
+    display: 'flex',
+    width: `${slideConfigs.length * 100}%`,
+    transform: `translateX(-${index * (100 / slideConfigs.length)}%)`,
+    transition: 'transform 0.45s ease',
+  }),
+  slide: {
+    flex: `0 0 ${100 / slideConfigs.length}%`,
+    width: `${100 / slideConfigs.length}%`,
+    display: 'flex',
+    justifyContent: 'center',
+    padding: '32px 14px 46px',
+    boxSizing: 'border-box',
   },
   heroCardShell: {
     width: '100%',
+    maxWidth: 520,
     position: 'relative',
   },
   heroCard: {
     position: 'relative',
     width: '100%',
-    paddingTop: '140%',
+    paddingTop: '160%',
     borderRadius: 36,
     overflow: 'hidden',
-    border: '1px solid rgba(96,165,250,0.28)',
-    background: 'rgba(15,23,42,0.65)',
-    boxShadow: '0 42px 110px -58px rgba(37,99,235,0.65)',
+    border: '1px solid rgba(96,165,250,0.32)',
+    background: 'rgba(15,23,42,0.72)',
+    boxShadow: '0 46px 120px -60px rgba(37,99,235,0.6)',
     cursor: 'pointer',
   },
   heroImage: {
@@ -138,18 +111,18 @@ const styles = {
     justifyContent: 'center',
     fontSize: 72,
     fontWeight: 800,
-    background: 'linear-gradient(135deg, rgba(30,64,175,0.45) 0%, rgba(30,41,59,0.9) 100%)',
+    background: 'linear-gradient(135deg, rgba(30,64,175,0.45) 0%, rgba(30,41,59,0.92) 100%)',
   },
   heroNameOverlay: {
     position: 'absolute',
     left: 0,
     bottom: 0,
     width: '100%',
-    padding: '28px 30px 34px',
-    background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.9) 74%, rgba(2,6,23,0.98) 100%)',
+    padding: '30px 32px 36px',
+    background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.88) 72%, rgba(2,6,23,0.97) 100%)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
+    gap: 10,
   },
   heroNameBadge: {
     margin: 0,
@@ -163,7 +136,7 @@ const styles = {
     right: 18,
     padding: '10px 16px',
     borderRadius: 999,
-    background: 'rgba(15,23,42,0.75)',
+    background: 'rgba(15,23,42,0.72)',
     color: '#bae6fd',
     fontSize: 12,
     fontWeight: 600,
@@ -172,13 +145,13 @@ const styles = {
   },
   overlaySurface: {
     position: 'absolute',
-    inset: '12% 10% 18%',
+    inset: '14% 11% 18%',
     background: 'rgba(2,6,23,0.78)',
     borderRadius: 28,
-    padding: '28px 26px',
+    padding: '26px 24px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 18,
+    gap: 16,
     overflowY: 'auto',
   },
   overlayTitle: {
@@ -200,14 +173,14 @@ const styles = {
     padding: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: 14,
+    gap: 12,
   },
   abilityItem: {
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
     padding: '14px 16px',
-    borderRadius: 16,
+    borderRadius: 18,
     background: 'rgba(15,23,42,0.55)',
   },
   abilityLabel: {
@@ -217,31 +190,63 @@ const styles = {
     color: '#93c5fd',
     letterSpacing: 0.4,
   },
-  menuTabs: {
-    marginTop: 28,
+  cornerIcon: {
+    position: 'absolute',
+    top: 18,
+    left: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 14,
+    background: 'rgba(15,23,42,0.58)',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gridTemplateRows: 'repeat(3, 1fr)',
+    gap: 3,
+    padding: 6,
+    boxShadow: '0 14px 30px -22px rgba(15,23,42,0.8)',
+  },
+  cornerDot: {
+    width: 4,
+    height: 4,
+    borderRadius: '50%',
+    background: 'rgba(226,232,240,0.78)',
+  },
+  placeholderCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 36,
+    padding: '40px 36px',
+    background: 'rgba(15,23,42,0.72)',
+    border: '1px solid rgba(96,165,250,0.24)',
     display: 'flex',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 10,
+    flexDirection: 'column',
+    gap: 18,
+    boxShadow: '0 44px 120px -60px rgba(37,99,235,0.5)',
   },
-  menuTab: {
-    padding: '8px 14px',
+  placeholderLabel: {
+    margin: 0,
+    fontSize: 26,
+    fontWeight: 800,
+    color: '#e2e8f0',
+    letterSpacing: '-0.02em',
+  },
+  placeholderCopy: {
+    margin: 0,
+    fontSize: 15,
+    lineHeight: 1.7,
+    color: '#cbd5f5',
+  },
+  pagination: {
+    display: 'flex',
+    gap: 8,
+  },
+  paginationDot: (active) => ({
+    width: active ? 14 : 8,
+    height: 8,
     borderRadius: 999,
-    border: '1px solid rgba(148,163,184,0.25)',
-    background: 'rgba(15,23,42,0.55)',
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: 0.4,
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-  },
-  activeMenuTab: {
-    borderColor: 'rgba(96,165,250,0.65)',
-    background: 'rgba(30,64,175,0.5)',
-    color: '#e0f2fe',
-    boxShadow: '0 12px 32px -24px rgba(59,130,246,0.85)',
-  },
+    background: active ? '#38bdf8' : 'rgba(148,163,184,0.45)',
+    transition: 'all 0.25s ease',
+  }),
 }
 
 export default function CharacterBasicView({ hero }) {
@@ -264,17 +269,23 @@ export default function CharacterBasicView({ hero }) {
       .filter(Boolean)
   }, [hero])
 
-  const [mode, setMode] = useState(0)
-  const [activeMenu, setActiveMenu] = useState(0)
+  const [viewMode, setViewMode] = useState(0)
+  const [activeSlide, setActiveSlide] = useState(0)
 
   useEffect(() => {
-    setMode(0)
-    setActiveMenu(0)
+    setViewMode(0)
+    setActiveSlide(0)
   }, [hero?.id])
 
-  const handleTap = () => {
-    setMode((prev) => (prev + 1) % 3)
-  }
+  useEffect(() => {
+    if (activeSlide !== 0) {
+      setViewMode(0)
+    }
+  }, [activeSlide])
+
+  const handleTap = useCallback(() => {
+    setViewMode((prev) => (prev + 1) % 3)
+  }, [])
 
   const audioRef = useRef(null)
   useEffect(() => {
@@ -314,173 +325,233 @@ export default function CharacterBasicView({ hero }) {
 
   const imageStyle = {
     ...styles.heroImage,
-    filter: mode === 0 ? 'none' : 'brightness(0.52)',
+    filter: viewMode === 0 ? 'none' : 'brightness(0.52)',
   }
 
-  const touchStartX = useRef(null)
-  const lastTouchX = useRef(null)
-
-  const clampMenu = useCallback((value) => {
+  const clampIndex = useCallback((value) => {
     if (value < 0) return 0
-    if (value > menuOrder.length - 1) return menuOrder.length - 1
+    if (value > slideConfigs.length - 1) return slideConfigs.length - 1
     return value
   }, [])
 
-  const goToMenu = useCallback(
+  const goToSlide = useCallback(
     (index) => {
-      setActiveMenu(clampMenu(index))
+      setActiveSlide(clampIndex(index))
     },
-    [clampMenu],
+    [clampIndex],
   )
 
-  const handleSwipe = useCallback(
+  const pointerStartX = useRef(null)
+  const pointerLastX = useRef(null)
+  const pointerIdRef = useRef(null)
+
+  const finishSwipe = useCallback(
     (deltaX) => {
-      if (Math.abs(deltaX) < 45) return
+      if (Math.abs(deltaX) < 55) return
       if (deltaX > 0) {
-        goToMenu(activeMenu + 1)
+        goToSlide(activeSlide + 1)
       } else {
-        goToMenu(activeMenu - 1)
+        goToSlide(activeSlide - 1)
       }
     },
-    [activeMenu, goToMenu],
+    [activeSlide, goToSlide],
   )
 
-  const handleTouchStart = useCallback((event) => {
-    if (event.touches.length !== 1) return
-    const x = event.touches[0].clientX
-    touchStartX.current = x
-    lastTouchX.current = x
-  }, [])
+  const clearPointer = useCallback((event, shouldComplete = false) => {
+    const pointerId = pointerIdRef.current
+    if (pointerId == null) return
 
-  const handleTouchMove = useCallback((event) => {
-    if (!touchStartX.current) return
-    if (event.touches.length !== 1) return
-    lastTouchX.current = event.touches[0].clientX
-  }, [])
-
-  const handleTouchEnd = useCallback(() => {
-    if (touchStartX.current == null || lastTouchX.current == null) {
-      touchStartX.current = null
-      lastTouchX.current = null
-      return
+    if (shouldComplete && pointerStartX.current != null) {
+      const lastX = pointerLastX.current ?? pointerStartX.current
+      const delta = pointerStartX.current - lastX
+      finishSwipe(delta)
     }
 
-    const deltaX = touchStartX.current - lastTouchX.current
-    touchStartX.current = null
-    lastTouchX.current = null
-    handleSwipe(deltaX)
-  }, [handleSwipe])
+    if (pointerId != null && event?.currentTarget?.releasePointerCapture) {
+      try {
+        event.currentTarget.releasePointerCapture(pointerId)
+      } catch (error) {
+        // ignore
+      }
+    }
+
+    pointerIdRef.current = null
+    pointerStartX.current = null
+    pointerLastX.current = null
+  }, [finishSwipe])
+
+  const shouldIgnoreSwipe = useCallback((target, container) => {
+    if (!target || !container) return false
+    let node = target
+    while (node && node !== container) {
+      if (node.dataset?.swipeIgnore === 'true') {
+        return true
+      }
+      node = node.parentElement
+    }
+    return false
+  }, [])
+
+  const handlePointerDown = useCallback(
+    (event) => {
+      if (shouldIgnoreSwipe(event.target, event.currentTarget)) return
+      pointerIdRef.current = event.pointerId
+      pointerStartX.current = event.clientX
+      pointerLastX.current = event.clientX
+      if (event.currentTarget.setPointerCapture) {
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId)
+        } catch (error) {
+          // ignore capture errors
+        }
+      }
+    },
+    [shouldIgnoreSwipe],
+  )
+
+  const handlePointerMove = useCallback((event) => {
+    if (pointerIdRef.current !== event.pointerId) return
+    pointerLastX.current = event.clientX
+  }, [])
+
+  const handlePointerUp = useCallback(
+    (event) => {
+      if (pointerIdRef.current !== event.pointerId) return
+      clearPointer(event, true)
+    },
+    [clearPointer],
+  )
+
+  const handlePointerCancel = useCallback(
+    (event) => {
+      if (pointerIdRef.current !== event.pointerId) return
+      clearPointer(event, false)
+    },
+    [clearPointer],
+  )
+
+  const handleKeyDown = useCallback(
+    (event) => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        goToSlide(activeSlide - 1)
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        goToSlide(activeSlide + 1)
+      }
+    },
+    [activeSlide, goToSlide],
+  )
 
   const heroSlide = (
-    <div style={styles.layout}>
-      <p style={styles.topMessage}>이미지를 탭하면 소개와 능력을 순서대로 볼 수 있어요.</p>
+    <div style={styles.heroCardShell}>
+      <div
+        role="button"
+        tabIndex={0}
+        style={styles.heroCard}
+        onClick={handleTap}
+        onKeyUp={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            handleTap()
+          }
+        }}
+        data-swipe-ignore="true"
+      >
+        <div style={styles.cornerIcon} aria-hidden="true">
+          {Array.from({ length: 9 }).map((_, index) => (
+            <span key={`dot-${index}`} style={styles.cornerDot} />
+          ))}
+        </div>
 
-      <div style={styles.heroCardShell}>
-        <div
-          role="button"
-          tabIndex={0}
-          style={styles.heroCard}
-          onClick={handleTap}
-          onKeyUp={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              handleTap()
-            }
-          }}
-        >
-          {hero?.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={hero.image_url} alt={heroName} style={imageStyle} />
-          ) : (
-            <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
-          )}
+        {hero?.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={hero.image_url} alt={heroName} style={imageStyle} />
+        ) : (
+          <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
+        )}
 
-          {mode === 0 ? (
-            <div style={styles.heroNameOverlay}>
-              <p style={styles.heroNameBadge}>{heroName}</p>
-            </div>
-          ) : null}
-
-          {mode === 1 ? (
-            <div style={styles.overlaySurface}>
-              <p style={styles.overlayTitle}>소개</p>
-              <p style={styles.overlayText}>{description}</p>
-            </div>
-          ) : null}
-
-          {mode === 2 ? (
-            <div style={styles.overlaySurface}>
-              <p style={styles.overlayTitle}>능력</p>
-              {abilityTexts.length ? (
-                <ul style={styles.abilityList}>
-                  {abilityTexts.map((text, index) => (
-                    <li key={`ability-${index}`} style={styles.abilityItem}>
-                      <p style={styles.abilityLabel}>능력 {index + 1}</p>
-                      <p style={styles.overlayText}>{text}</p>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p style={styles.overlayText}>등록된 능력이 없습니다.</p>
-              )}
-            </div>
-          ) : null}
-
-          <div style={styles.tapHint} aria-hidden="true">
-            탭해서 정보 보기
+        {viewMode === 0 ? (
+          <div style={styles.heroNameOverlay}>
+            <p style={styles.heroNameBadge}>{heroName}</p>
           </div>
+        ) : null}
+
+        {viewMode === 1 ? (
+          <div style={styles.overlaySurface}>
+            <p style={styles.overlayTitle}>소개</p>
+            <p style={styles.overlayText}>{description}</p>
+          </div>
+        ) : null}
+
+        {viewMode === 2 ? (
+          <div style={styles.overlaySurface}>
+            <p style={styles.overlayTitle}>능력</p>
+            {abilityTexts.length ? (
+              <ul style={styles.abilityList}>
+                {abilityTexts.map((text, index) => (
+                  <li key={`ability-${index}`} style={styles.abilityItem}>
+                    <p style={styles.abilityLabel}>능력 {index + 1}</p>
+                    <p style={styles.overlayText}>{text}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p style={styles.overlayText}>등록된 능력이 없습니다.</p>
+            )}
+          </div>
+        ) : null}
+
+        <div style={styles.tapHint} aria-hidden="true">
+          탭해서 정보 보기
         </div>
       </div>
     </div>
   )
 
   const placeholderSlides = useMemo(
-    () =>
-      menuOrder.slice(1).map((label) => ({
-        label,
-        description: `${label} 메뉴는 곧 추가될 예정입니다.`,
-      })),
+    () => slideConfigs.slice(1),
     [],
   )
 
   return (
     <div style={backgroundStyle}>
-      <div
-        style={styles.sliderViewport}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        <div style={styles.sliderTrack(activeMenu)}>
-          <div style={styles.slide}>{heroSlide}</div>
-          {placeholderSlides.map((slide) => (
-            <div key={slide.label} style={styles.slide}>
-              <div style={styles.placeholderLayout}>
-                <span style={styles.placeholderBadge}>준비중</span>
-                <p style={styles.placeholderTitle}>{slide.label}</p>
-                <p style={styles.placeholderCopy}>{slide.description}</p>
+      <div style={styles.stage}>
+        <p style={styles.topMessage}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
+
+        <div
+          role="region"
+          aria-label="캐릭터 상세 슬라이더"
+          style={styles.sliderViewport}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onPointerLeave={(event) => {
+            if (pointerIdRef.current != null) {
+              clearPointer(event, false)
+            }
+          }}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+        >
+          <div style={styles.sliderTrack(activeSlide)}>
+            <div style={styles.slide}>{heroSlide}</div>
+            {placeholderSlides.map((slide) => (
+              <div key={slide.key} style={styles.slide}>
+                <div style={styles.placeholderCard}>
+                  <p style={styles.placeholderLabel}>{slide.label}</p>
+                  <p style={styles.placeholderCopy}>{slide.description}</p>
+                </div>
               </div>
-            </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={styles.pagination} aria-hidden="true">
+          {slideConfigs.map((slide, index) => (
+            <span key={slide.key} style={styles.paginationDot(index === activeSlide)} />
           ))}
         </div>
-      </div>
-
-      <div style={styles.menuTabs}>
-        {menuOrder.map((label, index) => {
-          const isActive = index === activeMenu
-          return (
-            <button
-              key={label}
-              type="button"
-              onClick={() => goToMenu(index)}
-              style={{
-                ...styles.menuTab,
-                ...(isActive ? styles.activeMenuTab : null),
-              }}
-            >
-              {label}
-            </button>
-          )
-        })}
       </div>
     </div>
   )
