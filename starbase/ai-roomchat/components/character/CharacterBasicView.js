@@ -159,6 +159,15 @@ function formatBgmDuration(seconds) {
   return `${minutes}:${String(Math.max(0, remaining)).padStart(2, "0")}`;
 }
 
+function formatPlaybackTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "0:00";
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.floor(seconds % 60);
+  return `${minutes}:${String(Math.max(0, remaining)).padStart(2, "0")}`;
+}
+
 function reindexBgmTracks(list) {
   return list.map((track, index) => ({ ...track, sort_order: index }));
 }
@@ -543,6 +552,84 @@ const styles = {
     flexDirection: "column",
     gap: 12,
     WebkitOverflowScrolling: "touch",
+  },
+  bgmBar: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: "10px 12px",
+    borderRadius: 18,
+    border: "1px solid rgba(96,165,250,0.28)",
+    background: "rgba(30,41,59,0.72)",
+  },
+  bgmMetaRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  bgmTrackTitle: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#e0f2fe",
+  },
+  bgmTrackIndex: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: "rgba(191,219,254,0.8)",
+  },
+  bgmControlsRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  bgmControlButton: (active = false) => ({
+    border: "1px solid",
+    borderColor: active ? "rgba(125,211,252,0.95)" : "rgba(148,163,184,0.36)",
+    background: active
+      ? "linear-gradient(135deg, rgba(56,189,248,0.42) 0%, rgba(14,165,233,0.32) 100%)"
+      : "rgba(15,23,42,0.58)",
+    color: "#f1f5f9",
+    borderRadius: 999,
+    padding: "6px 12px",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+  }),
+  bgmProgressRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  bgmTime: {
+    fontSize: 11,
+    fontWeight: 500,
+    color: "rgba(226,232,240,0.72)",
+    minWidth: 40,
+    textAlign: "center",
+  },
+  bgmProgressTrack: {
+    flexGrow: 1,
+    position: "relative",
+    height: 8,
+    borderRadius: 999,
+    background: "rgba(71,85,105,0.6)",
+    overflow: "hidden",
+    cursor: "pointer",
+    touchAction: "none",
+  },
+  bgmProgressFill: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: "0%",
+    borderRadius: 999,
+    background:
+      "linear-gradient(135deg, rgba(59,130,246,0.92) 0%, rgba(20,184,166,0.88) 100%)",
   },
   rosterPanel: {
     display: "flex",
@@ -1031,6 +1118,12 @@ export default function CharacterBasicView({ hero }) {
   });
   const [bgmTracks, setBgmTracks] = useState(() => createBgmStateFromHero(hero));
   const [removedBgmIds, setRemovedBgmIds] = useState([]);
+  const [activeBgmIndex, setActiveBgmIndex] = useState(0);
+  const [isBgmPlaying, setIsBgmPlaying] = useState(false);
+  const [trackTime, setTrackTime] = useState(0);
+  const [trackDuration, setTrackDuration] = useState(0);
+  const [trackProgress, setTrackProgress] = useState(0);
+  const [repeatCurrent, setRepeatCurrent] = useState(false);
   const [rosterOwnerId, setRosterOwnerId] = useState(null);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterHeroes, setRosterHeroes] = useState([]);
@@ -1196,6 +1289,39 @@ export default function CharacterBasicView({ hero }) {
 
   const infoCount = infoSequence.length;
 
+  const heroBgmList = useMemo(() => {
+    if (Array.isArray(currentHero?.bgms) && currentHero.bgms.length) {
+      return currentHero.bgms;
+    }
+    if (currentHero?.bgm_url) {
+      return [
+        {
+          id: null,
+          hero_id: currentHero.id || null,
+          label: "기본",
+          url: currentHero.bgm_url,
+          storage_path: null,
+          duration_seconds: currentHero.bgm_duration_seconds ?? null,
+          mime: currentHero.bgm_mime || null,
+          sort_order: 0,
+        },
+      ];
+    }
+    return [];
+  }, [
+    currentHero?.bgms,
+    currentHero?.bgm_duration_seconds,
+    currentHero?.bgm_mime,
+    currentHero?.bgm_url,
+    currentHero?.id,
+  ]);
+
+  const heroBgmCount = heroBgmList.length;
+  const activeBgm =
+    heroBgmCount > 0
+      ? heroBgmList[Math.min(activeBgmIndex, heroBgmCount - 1)]
+      : null;
+
   const currentEqPresetLabel = useMemo(() => {
     const found = eqPresets.find((preset) => preset.key === eqPreset);
     return found ? found.label : "플랫";
@@ -1233,6 +1359,9 @@ export default function CharacterBasicView({ hero }) {
   const audioContextRef = useRef(null);
   const audioRef = useRef(null);
   const audioGraphRef = useRef(null);
+  const heroBgmsRef = useRef(heroBgmList);
+  const bgmAutoplayRef = useRef(true);
+  const progressBarRef = useRef(null);
   const imageInputRef = useRef(null);
   const backgroundInputRef = useRef(null);
   const bgmInputRefs = useRef({});
@@ -1242,6 +1371,10 @@ export default function CharacterBasicView({ hero }) {
     setBackgroundAsset({ file: null, preview: null });
     setBgmTracks(createBgmStateFromHero(currentHero));
     setRemovedBgmIds([]);
+    setActiveBgmIndex(0);
+    setTrackTime(0);
+    setTrackDuration(0);
+    setTrackProgress(0);
 
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
@@ -1257,6 +1390,22 @@ export default function CharacterBasicView({ hero }) {
       }
     });
   }, [currentHero?.id]);
+
+  useEffect(() => {
+    heroBgmsRef.current = heroBgmList;
+  }, [heroBgmList, heroBgmsRef]);
+
+  useEffect(() => {
+    if (heroBgmCount === 0) {
+      if (activeBgmIndex !== 0) {
+        setActiveBgmIndex(0);
+      }
+      return;
+    }
+    if (activeBgmIndex >= heroBgmCount) {
+      setActiveBgmIndex(heroBgmCount - 1);
+    }
+  }, [activeBgmIndex, heroBgmCount]);
 
   useEffect(
     () => () => {
@@ -1287,7 +1436,13 @@ export default function CharacterBasicView({ hero }) {
     [bgmTracks],
   );
   useEffect(() => {
-    if (!currentHero?.bgm_url) {
+    const trackUrl = activeBgm?.url;
+    const fallbackDuration =
+      Number.isFinite(activeBgm?.duration_seconds) && activeBgm.duration_seconds > 0
+        ? activeBgm.duration_seconds
+        : 0;
+
+    if (!trackUrl) {
       if (audioGraphRef.current) {
         disconnectAudioGraph(audioGraphRef.current);
         audioGraphRef.current = null;
@@ -1297,6 +1452,10 @@ export default function CharacterBasicView({ hero }) {
         audioRef.current.currentTime = 0;
         audioRef.current = null;
       }
+      setIsBgmPlaying(false);
+      setTrackTime(0);
+      setTrackDuration(0);
+      setTrackProgress(0);
       return;
     }
 
@@ -1311,11 +1470,70 @@ export default function CharacterBasicView({ hero }) {
       audioRef.current = null;
     }
 
-    const audio = new Audio(currentHero.bgm_url);
-    audio.loop = true;
+    const audio = new Audio(trackUrl);
+    audio.loop = repeatCurrent;
     audio.volume = volume;
     audio.crossOrigin = "anonymous";
     audioRef.current = audio;
+
+    setTrackTime(0);
+    setTrackDuration(fallbackDuration || 0);
+    setTrackProgress(0);
+
+    const handlePlay = () => {
+      setIsBgmPlaying(true);
+    };
+
+    const handlePause = () => {
+      setIsBgmPlaying(false);
+    };
+
+    const handleLoadedMetadata = () => {
+      const duration =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : fallbackDuration;
+      setTrackDuration(duration || 0);
+    };
+
+    const handleTimeUpdate = () => {
+      const duration =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : fallbackDuration;
+      setTrackTime(audio.currentTime);
+      if (duration > 0) {
+        setTrackProgress(Math.min(1, audio.currentTime / duration));
+      } else {
+        setTrackProgress(0);
+      }
+    };
+
+    const handleEnded = () => {
+      setIsBgmPlaying(false);
+      setTrackTime(0);
+      setTrackProgress(0);
+      if (audio.loop) {
+        return;
+      }
+      const list = heroBgmsRef.current;
+      if (!Array.isArray(list) || list.length === 0) {
+        return;
+      }
+      bgmAutoplayRef.current = true;
+      setActiveBgmIndex((index) => {
+        if (!Array.isArray(list) || list.length === 0) {
+          return 0;
+        }
+        return (index + 1) % list.length;
+      });
+    };
+
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("ended", handleEnded);
 
     if (typeof window !== "undefined") {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -1350,22 +1568,29 @@ export default function CharacterBasicView({ hero }) {
       }
     }
 
-    const tryPlay = async () => {
+    const startPlayback = async () => {
+      if (!bgmEnabled || !bgmAutoplayRef.current) {
+        return;
+      }
       try {
-        if (bgmEnabled) {
-          if (audioContextRef.current?.state === "suspended") {
-            await audioContextRef.current.resume().catch(() => {});
-          }
-          await audio.play();
+        if (audioContextRef.current?.state === "suspended") {
+          await audioContextRef.current.resume().catch(() => {});
         }
+        await audio.play();
       } catch (error) {
         console.warn("Failed to autoplay character BGM", error);
       }
     };
 
-    tryPlay();
+    startPlayback();
 
     return () => {
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("ended", handleEnded);
+
       if (audioGraphRef.current?.element === audio) {
         disconnectAudioGraph(audioGraphRef.current);
         audioGraphRef.current = null;
@@ -1376,7 +1601,7 @@ export default function CharacterBasicView({ hero }) {
         audioRef.current = null;
       }
     };
-  }, [currentHero?.bgm_url]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeBgm?.duration_seconds, activeBgm?.url]); // eslint-disable-line react-hooks-exhaustive-deps
 
   useEffect(() => {
     const graph = audioGraphRef.current;
@@ -1416,26 +1641,52 @@ export default function CharacterBasicView({ hero }) {
 
   useEffect(() => {
     if (!audioRef.current) return;
+    audioRef.current.loop = repeatCurrent;
+  }, [repeatCurrent]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
     if (bgmEnabled) {
-      const resumeContext = async () => {
-        try {
-          if (audioContextRef.current?.state === "suspended") {
-            await audioContextRef.current.resume();
-          }
-        } catch (error) {
-          console.warn("Failed to resume audio context", error);
+      if (!bgmAutoplayRef.current) {
+        return;
+      }
+
+      const resumeContext = () => {
+        if (audioContextRef.current?.state === "suspended") {
+          return audioContextRef.current.resume();
         }
+        return Promise.resolve();
       };
 
-      resumeContext().finally(() => {
-        audioRef.current
-          .play()
-          .catch((error) => console.warn("Failed to resume BGM playback", error));
-      });
+      resumeContext()
+        .catch((error) => {
+          console.warn("Failed to resume audio context", error);
+        })
+        .finally(() => {
+          if (!bgmAutoplayRef.current || audioRef.current !== audio) {
+            return;
+          }
+          audio
+            .play()
+            .catch((error) =>
+              console.warn("Failed to resume BGM playback", error),
+            );
+        });
     } else {
-      audioRef.current.pause();
+      bgmAutoplayRef.current = false;
+      audio.pause();
     }
   }, [bgmEnabled]);
+
+  const showBgmBar = bgmEnabled && heroBgmCount > 0;
+  const trackCounterLabel = showBgmBar ? `${activeBgmIndex + 1} / ${heroBgmCount}` : "";
+  const formattedCurrentTime = formatPlaybackTime(trackTime);
+  const hasKnownDuration = Number.isFinite(trackDuration) && trackDuration > 0;
+  const formattedDuration = hasKnownDuration
+    ? formatPlaybackTime(trackDuration)
+    : "??:??";
+  const trackProgressPercent = `${Math.min(100, Math.max(0, trackProgress * 100))}%`;
 
   const backgroundStyle = useMemo(() => {
     const baseStyle = currentHero?.background_url
@@ -1609,9 +1860,181 @@ export default function CharacterBasicView({ hero }) {
     setBgmEnabled((prev) => {
       const next = !prev;
       writeCookie(BGM_ENABLED_COOKIE, next ? "1" : "0");
+      if (!next) {
+        bgmAutoplayRef.current = false;
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+      } else {
+        bgmAutoplayRef.current = true;
+      }
       return next;
     });
   }, []);
+
+  const handleBgmPlayPause = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      bgmAutoplayRef.current = true;
+      audio
+        .play()
+        .catch((error) => console.warn("Failed to resume BGM playback", error));
+    } else {
+      bgmAutoplayRef.current = false;
+      audio.pause();
+    }
+  }, []);
+
+  const handleBgmStop = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    bgmAutoplayRef.current = false;
+    audio.pause();
+    audio.currentTime = 0;
+    setTrackTime(0);
+    setTrackProgress(0);
+  }, []);
+
+  const handleBgmRestart = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = 0;
+    setTrackTime(0);
+    setTrackProgress(0);
+    if (!audio.paused) {
+      audio
+        .play()
+        .catch((error) => console.warn("Failed to restart BGM", error));
+    }
+  }, []);
+
+  const handleBgmNext = useCallback(() => {
+    const list = heroBgmsRef.current;
+    if (!Array.isArray(list) || list.length === 0) {
+      return;
+    }
+    bgmAutoplayRef.current = isBgmPlaying;
+    setActiveBgmIndex((index) => {
+      if (!Array.isArray(list) || list.length === 0) {
+        return 0;
+      }
+      return (index + 1) % list.length;
+    });
+  }, [isBgmPlaying]);
+
+  const handleRepeatToggle = useCallback(() => {
+    setRepeatCurrent((prev) => !prev);
+  }, []);
+
+  const seekToClientX = useCallback(
+    (clientX) => {
+      if (!progressBarRef.current || !audioRef.current) return;
+      if (typeof clientX !== "number" || Number.isNaN(clientX)) return;
+      const rect = progressBarRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const ratio = clamp01((clientX - rect.left) / rect.width);
+      const audio = audioRef.current;
+      const duration =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : trackDuration;
+      if (duration > 0) {
+        audio.currentTime = ratio * duration;
+        setTrackProgress(ratio);
+      }
+      setTrackTime(audio.currentTime);
+    },
+    [trackDuration],
+  );
+
+  const handleProgressMouseDown = useCallback(
+    (event) => {
+      if (!progressBarRef.current) return;
+      if (typeof event.button === "number" && event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      seekToClientX(event.clientX);
+
+      const handleMove = (moveEvent) => {
+        moveEvent.preventDefault();
+        seekToClientX(moveEvent.clientX);
+      };
+
+      const handleUp = () => {
+        window.removeEventListener("mousemove", handleMove);
+        window.removeEventListener("mouseup", handleUp);
+      };
+
+      window.addEventListener("mousemove", handleMove);
+      window.addEventListener("mouseup", handleUp, { once: true });
+    },
+    [seekToClientX],
+  );
+
+  const handleProgressTouchStart = useCallback(
+    (event) => {
+      if (!progressBarRef.current) return;
+      if (!event.touches || event.touches.length === 0) return;
+      event.preventDefault();
+
+      const applyFromTouch = (touchEvent) => {
+        const touch = touchEvent.touches?.[0] || touchEvent.changedTouches?.[0];
+        if (!touch) return;
+        seekToClientX(touch.clientX);
+      };
+
+      const handleMove = (moveEvent) => {
+        moveEvent.preventDefault();
+        applyFromTouch(moveEvent);
+      };
+
+      const handleEnd = () => {
+        window.removeEventListener("touchmove", handleMove);
+        window.removeEventListener("touchend", handleEnd);
+        window.removeEventListener("touchcancel", handleEnd);
+      };
+
+      applyFromTouch(event);
+      window.addEventListener("touchmove", handleMove, { passive: false });
+      window.addEventListener("touchend", handleEnd, { once: true });
+      window.addEventListener("touchcancel", handleEnd, { once: true });
+    },
+    [seekToClientX],
+  );
+
+  const handleProgressKeyDown = useCallback(
+    (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+      }
+      const audio = audioRef.current;
+      if (!audio) return;
+      const duration =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : trackDuration;
+      if (!Number.isFinite(duration) || duration <= 0) {
+        return;
+      }
+
+      event.preventDefault();
+      const step = Math.max(1, duration * 0.02);
+      if (event.key === "ArrowLeft") {
+        const nextTime = Math.max(0, audio.currentTime - step);
+        audio.currentTime = nextTime;
+        setTrackTime(nextTime);
+        setTrackProgress(Math.min(1, nextTime / duration));
+      } else if (event.key === "ArrowRight") {
+        const nextTime = Math.min(duration, audio.currentTime + step);
+        audio.currentTime = nextTime;
+        setTrackTime(nextTime);
+        setTrackProgress(Math.min(1, nextTime / duration));
+      }
+    },
+    [trackDuration],
+  );
 
   const handleVolumeChange = useCallback((event) => {
     const nextValue = Number.parseFloat(event.target.value);
@@ -2854,6 +3277,94 @@ export default function CharacterBasicView({ hero }) {
             );
           })}
         </div>
+
+        {showBgmBar ? (
+          <div style={styles.bgmBar}>
+            <div style={styles.bgmMetaRow}>
+              <p style={styles.bgmTrackTitle}>{activeBgm?.label || "브금"}</p>
+              {trackCounterLabel ? (
+                <span style={styles.bgmTrackIndex}>{trackCounterLabel}</span>
+              ) : null}
+            </div>
+            <div style={styles.bgmControlsRow}>
+              <button
+                type="button"
+                style={styles.bgmControlButton(isBgmPlaying)}
+                onClick={handleBgmPlayPause}
+              >
+                {isBgmPlaying ? "⏸ 일시정지" : "▶ 재생"}
+              </button>
+              <button
+                type="button"
+                style={styles.bgmControlButton(false)}
+                onClick={handleBgmStop}
+              >
+                ⏹ 정지
+              </button>
+              <button
+                type="button"
+                style={styles.bgmControlButton(false)}
+                onClick={handleBgmRestart}
+              >
+                ↺ 처음으로
+              </button>
+              <button
+                type="button"
+                style={{
+                  ...styles.bgmControlButton(false),
+                  opacity: heroBgmCount <= 1 ? 0.6 : 1,
+                  cursor: heroBgmCount <= 1 ? "not-allowed" : "pointer",
+                }}
+                onClick={handleBgmNext}
+                disabled={heroBgmCount <= 1}
+              >
+                ⏭ 다음 곡
+              </button>
+              <button
+                type="button"
+                style={styles.bgmControlButton(repeatCurrent)}
+                onClick={handleRepeatToggle}
+                aria-pressed={repeatCurrent}
+              >
+                🔁 반복
+              </button>
+            </div>
+            <div style={styles.bgmProgressRow}>
+              <span style={styles.bgmTime}>{formattedCurrentTime}</span>
+              <div
+                ref={progressBarRef}
+                style={styles.bgmProgressTrack}
+                onMouseDown={handleProgressMouseDown}
+                onTouchStart={handleProgressTouchStart}
+                onKeyDown={handleProgressKeyDown}
+                role="slider"
+                tabIndex={0}
+                aria-label="브금 재생 위치"
+                aria-valuemin={0}
+                aria-valuemax={hasKnownDuration ? trackDuration : 1}
+                aria-valuenow={
+                  hasKnownDuration
+                    ? Math.min(trackDuration, Math.max(0, trackTime))
+                    : 0
+                }
+                aria-valuetext={
+                  hasKnownDuration
+                    ? `${formattedCurrentTime} / ${formattedDuration}`
+                    : formattedCurrentTime
+                }
+                aria-disabled={!hasKnownDuration}
+              >
+                <div
+                  style={{
+                    ...styles.bgmProgressFill,
+                    width: trackProgressPercent,
+                  }}
+                />
+              </div>
+              <span style={styles.bgmTime}>{formattedDuration}</span>
+            </div>
+          </div>
+        ) : null}
 
         {overlayDescription ? (
           <p style={styles.overlayCopy}>{overlayDescription}</p>
