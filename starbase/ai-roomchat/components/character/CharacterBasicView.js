@@ -19,22 +19,6 @@ const overlayCopy = {
   settings: '사운드, 그래픽, 단축키 등을 한자리에서 조정할 수 있도록 준비하고 있어요.',
 }
 
-const tabTitles = {
-  character: '캐릭터 정보',
-  search: '방 검색',
-  ranking: '랭킹',
-  settings: '설정',
-}
-
-const tabPanelCopy = {
-  search:
-    '빠른 매칭, 추천 큐, 커스텀 방 검색이 한 화면에서 이뤄질 예정입니다.\n친구와 함께할 방을 저장하고 공유하는 기능도 준비 중이에요.',
-  ranking:
-    '시즌별 팀/개인 순위를 기록하고 전투 통계를 시각화하는 랭킹 허브가 곧 열립니다.\n친구의 전적과 비교하는 기능도 함께 제공될 예정이에요.',
-  settings:
-    '사운드, 그래픽, 단축키, 접근성 옵션을 한자리에서 조정할 수 있도록 준비하고 있어요.\n프로필 꾸미기와 통지 설정도 이 화면에서 관리하게 될 거예요.',
-}
-
 const pageStyles = {
   base: {
     minHeight: '100vh',
@@ -179,10 +163,11 @@ const styles = {
     background: 'rgba(226,232,240,0.78)',
   },
   overlayPanel: {
-    position: 'absolute',
-    left: '6%',
-    right: '6%',
-    bottom: '5%',
+    position: 'fixed',
+    left: '50%',
+    bottom: 28,
+    transform: 'translateX(-50%)',
+    width: 'min(92vw, 720px)',
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
@@ -234,50 +219,6 @@ const styles = {
     fontSize: 13,
     lineHeight: 1.6,
     color: 'rgba(226,232,240,0.9)',
-  },
-  tabPanel: {
-    width: '100%',
-    maxWidth: 720,
-    borderRadius: 32,
-    padding: '36px 30px',
-    background: 'rgba(15,23,42,0.65)',
-    border: '1px solid rgba(96,165,250,0.2)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 18,
-    boxShadow: '0 40px 120px -80px rgba(15,23,42,0.9)',
-  },
-  tabPanelTitle: {
-    margin: 0,
-    fontSize: 24,
-    fontWeight: 800,
-    color: '#e2e8f0',
-    letterSpacing: '-0.03em',
-  },
-  tabPanelParagraph: {
-    margin: 0,
-    fontSize: 15,
-    lineHeight: 1.8,
-    color: 'rgba(226,232,240,0.9)',
-    whiteSpace: 'pre-line',
-  },
-  abilityGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-  },
-  abilityLabel: {
-    margin: 0,
-    fontSize: 16,
-    fontWeight: 700,
-    color: '#bae6fd',
-  },
-  abilityEntry: {
-    margin: 0,
-    fontSize: 14,
-    lineHeight: 1.7,
-    color: 'rgba(226,232,240,0.92)',
-    whiteSpace: 'pre-line',
   },
 }
 
@@ -410,111 +351,73 @@ export default function CharacterBasicView({ hero }) {
 
   const overlayDescription = overlayCopy[activeOverlay] ?? ''
 
-  const renderTabPanelContent = () => {
-    if (activeOverlay === 'character') {
-      return (
-        <>
-          <p style={styles.tabPanelParagraph}>{description}</p>
-          {abilityGroups.length ? (
-            abilityGroups.map((group) => (
-              <div key={group.label} style={styles.abilityGroup}>
-                <p style={styles.abilityLabel}>{group.label}</p>
-                {group.entries.map((entry, index) => (
-                  <p key={`${group.label}-${index}`} style={styles.abilityEntry}>
-                    {entry}
-                  </p>
-                ))}
-              </div>
-            ))
-          ) : (
-            <p style={styles.tabPanelParagraph}>등록된 능력이 없습니다.</p>
-          )}
-        </>
-      )
-    }
-
-    const copy = tabPanelCopy[activeOverlay]
-    if (!copy) return null
-
-    return <p style={styles.tabPanelParagraph}>{copy}</p>
-  }
-
   return (
-    <div style={backgroundStyle}>
-      <div style={styles.stage}>
-        <div style={styles.heroSection}>
-          <div style={styles.heroCardShell}>
-            <div
-              role="button"
-              tabIndex={0}
-              style={styles.heroCard}
-              onClick={handleTap}
-              onKeyUp={handleKeyUp}
-            >
-              <div style={styles.cornerIcon} aria-hidden="true">
-                {Array.from({ length: 9 }).map((_, index) => (
-                  <span key={`dot-${index}`} style={styles.cornerDot} />
-                ))}
-              </div>
-
-              {hero?.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={hero.image_url} alt={heroName} style={imageStyle} />
-              ) : (
-                <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
-              )}
-
-              {viewMode === 0 ? (
-                <div style={styles.heroNameOverlay}>
-                  <p style={styles.heroNameBadge}>{heroName}</p>
-                </div>
-              ) : null}
-
-              {currentInfo ? (
-                <div style={styles.heroInfoOverlay}>
-                  <p style={styles.heroInfoTitle}>{currentInfo.title}</p>
-                  <p style={styles.heroInfoText}>{currentInfo.lines.join('\n')}</p>
-                </div>
-              ) : null}
-
+    <>
+      <div style={backgroundStyle}>
+        <div style={styles.stage}>
+          <div style={styles.heroSection}>
+            <div style={styles.heroCardShell}>
               <div
-                style={styles.overlayPanel}
-                onClick={(event) => {
-                  event.stopPropagation()
-                }}
+                role="button"
+                tabIndex={0}
+                style={styles.heroCard}
+                onClick={handleTap}
+                onKeyUp={handleKeyUp}
               >
-                {activeOverlay === 'character' ? (
-                  <div style={styles.overlayHeaderRow}>
-                    <button type="button" style={styles.battleButton}>
-                      전투 시작
-                    </button>
-                  </div>
-                ) : null}
-
-                <div style={styles.overlayButtonsRow}>
-                  {overlayButtons.map((button) => (
-                    <button
-                      key={button.key}
-                      type="button"
-                      style={styles.overlayButton(activeOverlay === button.key)}
-                      onClick={() => handleOverlayButton(button.key)}
-                    >
-                      {button.label}
-                    </button>
+                <div style={styles.cornerIcon} aria-hidden="true">
+                  {Array.from({ length: 9 }).map((_, index) => (
+                    <span key={`dot-${index}`} style={styles.cornerDot} />
                   ))}
                 </div>
 
-                <p style={styles.overlayCopy}>{overlayDescription}</p>
+                {hero?.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={hero.image_url} alt={heroName} style={imageStyle} />
+                ) : (
+                  <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
+                )}
+
+                {viewMode === 0 ? (
+                  <div style={styles.heroNameOverlay}>
+                    <p style={styles.heroNameBadge}>{heroName}</p>
+                  </div>
+                ) : null}
+
+                {currentInfo ? (
+                  <div style={styles.heroInfoOverlay}>
+                    <p style={styles.heroInfoTitle}>{currentInfo.title}</p>
+                    <p style={styles.heroInfoText}>{currentInfo.lines.join('\n')}</p>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
         </div>
-
-        <div style={styles.tabPanel}>
-          <h2 style={styles.tabPanelTitle}>{tabTitles[activeOverlay]}</h2>
-          {renderTabPanelContent()}
-        </div>
       </div>
-    </div>
+      <div style={styles.overlayPanel}>
+        {activeOverlay === 'character' ? (
+          <div style={styles.overlayHeaderRow}>
+            <button type="button" style={styles.battleButton}>
+              전투 시작
+            </button>
+          </div>
+        ) : null}
+
+        <div style={styles.overlayButtonsRow}>
+          {overlayButtons.map((button) => (
+            <button
+              key={button.key}
+              type="button"
+              style={styles.overlayButton(activeOverlay === button.key)}
+              onClick={() => handleOverlayButton(button.key)}
+            >
+              {button.label}
+            </button>
+          ))}
+        </div>
+
+        <p style={styles.overlayCopy}>{overlayDescription}</p>
+      </div>
+    </>
   )
 }
