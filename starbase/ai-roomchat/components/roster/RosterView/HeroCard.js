@@ -19,10 +19,15 @@ export default function HeroCard({ hero, onSelect }) {
 
   const cardStyle = {
     ...styles.heroButton,
-    transform: active ? 'scale(0.98)' : 'scale(1)',
+    transform: active ? 'scale(0.97)' : 'scale(1)',
     boxShadow: active
-      ? '0 18px 54px -32px rgba(56,189,248,0.55)'
+      ? '0 32px 75px -56px rgba(59,130,246,0.85)'
       : styles.heroButton.boxShadow,
+  }
+
+  const imageStyle = {
+    ...styles.heroImage,
+    transform: active ? 'scale(1)' : styles.heroImage.transform,
   }
 
   return (
@@ -39,13 +44,14 @@ export default function HeroCard({ hero, onSelect }) {
       <div style={styles.heroButtonContent}>
         {hero?.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={hero.image_url} alt={heroName} style={styles.heroImage} />
+          <img src={hero.image_url} alt={heroName} style={imageStyle} />
         ) : (
           <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
         )}
 
         <div style={styles.heroNameOverlay}>
           <p style={styles.heroName}>{heroName}</p>
+          <p style={styles.heroCaption}>탭하여 캐릭터 화면으로 이동</p>
         </div>
       </div>
     </button>

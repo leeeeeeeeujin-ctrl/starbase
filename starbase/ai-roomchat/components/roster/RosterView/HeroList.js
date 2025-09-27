@@ -43,7 +43,7 @@ export default function HeroList({
         <HeroCard key={hero.id} hero={hero} onSelect={onSelectHero} />
       ))}
       <button type="button" onClick={onCreateHero} style={styles.createCard}>
-        + 영웅 만들기
+        + 새 영웅 만들기
       </button>
     </div>
   )

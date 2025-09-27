@@ -12,9 +12,10 @@ const pageStyles = {
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '32px 16px',
+    padding: '36px 18px 48px',
     boxSizing: 'border-box',
-    background: 'radial-gradient(circle at top, rgba(30,64,175,0.35) 0%, rgba(2,6,23,0.92) 65%)',
+    background:
+      'radial-gradient(circle at top, rgba(59,130,246,0.28) 0%, rgba(15,23,42,0.78) 45%, rgba(2,6,23,0.94) 100%)',
     color: '#e2e8f0',
   },
   withBackground: (imageUrl) => ({
@@ -22,49 +23,66 @@ const pageStyles = {
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '32px 16px',
+    padding: '36px 18px 48px',
     boxSizing: 'border-box',
     color: '#e2e8f0',
-    backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.62) 0%, rgba(2,6,23,0.78) 55%, rgba(2,6,23,0.92) 100%), url(${imageUrl})`,
+    backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.75) 0%, rgba(2,6,23,0.88) 55%, rgba(2,6,23,0.96) 100%), url(${imageUrl})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
+    backgroundAttachment: 'fixed',
   }),
 }
 
 const styles = {
   layout: {
     width: '100%',
-    maxWidth: 960,
+    maxWidth: 920,
     display: 'flex',
     flexDirection: 'column',
-    gap: 24,
+    gap: 28,
   },
-  sliderRow: {
-    position: 'relative',
+  topBar: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 16,
   },
-  navButton: {
-    border: 'none',
-    borderRadius: 18,
-    padding: '14px 18px',
-    background: 'rgba(15,23,42,0.72)',
+  topMessage: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#cbd5f5',
+  },
+  backChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 42,
+    height: 42,
+    borderRadius: '50%',
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'linear-gradient(135deg, rgba(30,64,175,0.35) 0%, rgba(30,41,59,0.85) 100%)',
     color: '#e2e8f0',
+    textDecoration: 'none',
+    fontSize: 20,
     fontWeight: 700,
-    cursor: 'pointer',
-    boxShadow: '0 18px 52px -40px rgba(15,23,42,0.9)',
+    boxShadow: '0 18px 42px -32px rgba(15,23,42,0.85)',
+  },
+  carouselShell: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 18,
   },
   sliderViewport: {
     position: 'relative',
-    flex: '1 1 auto',
+    width: '100%',
     overflow: 'hidden',
-    borderRadius: 28,
-    border: '1px solid rgba(59,130,246,0.35)',
-    background: 'rgba(15,23,42,0.55)',
-    boxShadow: '0 32px 110px -60px rgba(56,189,248,0.45)',
+    borderRadius: 32,
+    border: '1px solid rgba(96,165,250,0.25)',
+    background: 'rgba(15,23,42,0.65)',
+    boxShadow: '0 44px 110px -58px rgba(37,99,235,0.65)',
     minHeight: '72vh',
-    maxHeight: '82vh',
     display: 'flex',
   },
   sliderTrack: {
@@ -75,46 +93,49 @@ const styles = {
   },
   slide: {
     position: 'relative',
-    height: '100%',
+    minWidth: '100%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(2,6,23,0.82) 100%)',
   },
-  placeholderInner: {
-    maxWidth: 320,
-    padding: '0 28px',
-    textAlign: 'center',
+  placeholderCard: {
+    width: '100%',
+    height: '100%',
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: '48px 36px',
+    boxSizing: 'border-box',
+    textAlign: 'center',
+    background: 'linear-gradient(180deg, rgba(15,23,42,0.75) 0%, rgba(2,6,23,0.92) 100%)',
   },
   placeholderTitle: {
     margin: 0,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 700,
   },
   placeholderSubtitle: {
     margin: 0,
     fontSize: 14,
+    lineHeight: 1.7,
     color: '#94a3b8',
-    lineHeight: 1.6,
   },
   heroFrame: {
     position: 'relative',
     width: '100%',
     height: '100%',
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'center',
-    overflow: 'hidden',
     cursor: 'pointer',
   },
   heroImage: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    transition: 'filter 0.3s ease',
+    transition: 'transform 0.4s ease, filter 0.3s ease',
   },
   heroFallback: {
     width: '100%',
@@ -124,94 +145,112 @@ const styles = {
     justifyContent: 'center',
     fontSize: 72,
     fontWeight: 800,
-    background: 'rgba(30,64,175,0.45)',
+    background: 'linear-gradient(135deg, rgba(30,64,175,0.45) 0%, rgba(30,41,59,0.9) 100%)',
   },
-  infoOverlay: {
+  heroNameOverlay: {
     position: 'absolute',
     left: 0,
     bottom: 0,
-    padding: '20px 24px',
     display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.85) 100%)',
+    alignItems: 'center',
+    gap: 12,
+    padding: '22px 26px',
+    background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.92) 100%)',
   },
-  heroName: {
+  heroNameBadge: {
     margin: 0,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 800,
-    letterSpacing: '-0.02em',
-  },
-  descriptionOverlay: {
-    position: 'absolute',
-    inset: '12% 10% 18%',
-    background: 'rgba(15,23,42,0.7)',
-    borderRadius: 24,
-    padding: '28px 24px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-    overflowY: 'auto',
-  },
-  overlayTitle: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 700,
-  },
-  overlayText: {
-    margin: 0,
-    fontSize: 14,
-    lineHeight: 1.7,
-    color: '#e2e8f0',
-  },
-  abilityList: {
-    listStyle: 'none',
-    padding: 0,
-    margin: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-  },
-  abilityItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    background: 'rgba(15,23,42,0.4)',
-    borderRadius: 16,
-    padding: '16px 18px',
-  },
-  abilityLabel: {
-    margin: 0,
-    fontSize: 13,
-    fontWeight: 700,
-    color: '#93c5fd',
+    letterSpacing: '-0.03em',
   },
   tapHint: {
     position: 'absolute',
     top: 20,
     right: 20,
+    padding: '10px 16px',
+    borderRadius: 999,
+    background: 'rgba(15,23,42,0.72)',
+    color: '#bae6fd',
     fontSize: 12,
     fontWeight: 600,
-    padding: '8px 14px',
-    borderRadius: 999,
-    background: 'rgba(15,23,42,0.65)',
-    color: '#bae6fd',
+    letterSpacing: 0.4,
   },
-  backOverlay: {
+  overlaySurface: {
     position: 'absolute',
-    right: 20,
-    bottom: 20,
-    padding: '12px 18px',
-    borderRadius: 999,
-    background: 'rgba(15,23,42,0.78)',
-    color: '#e2e8f0',
-    fontWeight: 700,
-    textDecoration: 'none',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    boxShadow: '0 18px 52px -40px rgba(15,23,42,0.95)',
+    inset: '10% 9% 16%',
+    background: 'rgba(2,6,23,0.78)',
+    borderRadius: 28,
+    padding: '28px 26px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 18,
+    overflowY: 'auto',
   },
+  overlayTitle: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 700,
+    color: '#cbd5f5',
+  },
+  overlayText: {
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 1.8,
+    color: '#e2e8f0',
+    whiteSpace: 'pre-line',
+  },
+  abilityList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+  },
+  abilityItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    padding: '14px 16px',
+    borderRadius: 16,
+    background: 'rgba(15,23,42,0.55)',
+  },
+  abilityLabel: {
+    margin: 0,
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#93c5fd',
+    letterSpacing: 0.4,
+  },
+  controlsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  circleButton: {
+    width: 48,
+    height: 48,
+    borderRadius: '50%',
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.7)',
+    color: '#e2e8f0',
+    cursor: 'pointer',
+    fontSize: 18,
+    boxShadow: '0 20px 50px -36px rgba(15,23,42,0.95)',
+  },
+  indicatorDots: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  indicatorDot: (active) => ({
+    width: active ? 18 : 10,
+    height: 10,
+    borderRadius: 999,
+    background: active ? '#38bdf8' : 'rgba(148,163,184,0.45)',
+    transition: 'all 0.25s ease',
+  }),
 }
 
 export default function CharacterBasicView({ hero }) {
@@ -244,9 +283,17 @@ export default function CharacterBasicView({ hero }) {
 
   const slides = useMemo(
     () => [
-      { key: 'ranking', title: '커뮤니티 랭킹', subtitle: '다른 플레이어들이 주목하는 영웅 소식을 준비 중입니다.' },
+      {
+        key: 'ranking',
+        title: '커뮤니티 랭킹을 준비 중이에요',
+        subtitle: '다른 플레이어들이 사랑하는 영웅을 곧 한눈에 살펴볼 수 있어요.',
+      },
       { key: 'hero' },
-      { key: 'search', title: '게임 검색', subtitle: '진행 중인 게임을 빠르게 찾아볼 수 있도록 곧 연결할 예정입니다.' },
+      {
+        key: 'search',
+        title: '게임 찾기 기능이 곧 열립니다',
+        subtitle: '함께할 세션을 빠르게 탐색할 수 있도록 편리한 검색을 붙일 예정이에요.',
+      },
     ],
     [],
   )
@@ -306,16 +353,20 @@ export default function CharacterBasicView({ hero }) {
   const imageStyle = {
     ...styles.heroImage,
     filter: mode === 0 ? 'none' : 'brightness(0.55)',
+    transform: mode === 0 ? 'scale(1.02)' : 'scale(1)',
   }
 
   return (
     <div style={backgroundStyle}>
       <div style={styles.layout}>
-        <div style={styles.sliderRow}>
-          <button type="button" onClick={handlePrev} style={styles.navButton}>
-            ←
-          </button>
+        <div style={styles.topBar}>
+          <p style={styles.topMessage}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
+          <Link href="/roster" style={styles.backChip} aria-label="로스터로 돌아가기">
+            ☰
+          </Link>
+        </div>
 
+        <div style={styles.carouselShell}>
           <div style={styles.sliderViewport}>
             <div
               style={{
@@ -325,14 +376,7 @@ export default function CharacterBasicView({ hero }) {
               }}
             >
               {slides.map((slide) => (
-                <div
-                  key={slide.key}
-                  style={{
-                    ...styles.slide,
-                    width: slideWidth,
-                    minWidth: slideWidth,
-                  }}
-                >
+                <div key={slide.key} style={{ ...styles.slide, width: slideWidth }}>
                   {slide.key === 'hero' ? (
                     <div
                       role="button"
@@ -352,19 +396,19 @@ export default function CharacterBasicView({ hero }) {
                         <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
                       )}
 
-                      <div style={styles.infoOverlay}>
-                        <p style={styles.heroName}>{heroName}</p>
+                      <div style={styles.heroNameOverlay}>
+                        <p style={styles.heroNameBadge}>{heroName}</p>
                       </div>
 
                       {mode === 1 ? (
-                        <div style={styles.descriptionOverlay}>
+                        <div style={styles.overlaySurface}>
                           <p style={styles.overlayTitle}>소개</p>
                           <p style={styles.overlayText}>{description}</p>
                         </div>
                       ) : null}
 
                       {mode === 2 ? (
-                        <div style={styles.descriptionOverlay}>
+                        <div style={styles.overlaySurface}>
                           <p style={styles.overlayTitle}>능력</p>
                           {abilityTexts.length ? (
                             <ul style={styles.abilityList}>
@@ -381,14 +425,10 @@ export default function CharacterBasicView({ hero }) {
                         </div>
                       ) : null}
 
-                      <div style={styles.tapHint}>탭하여 정보 확인</div>
-
-                      <Link href="/roster" style={styles.backOverlay}>
-                        로스터로
-                      </Link>
+                      <div style={styles.tapHint}>이미지를 탭하면 정보가 바뀌어요</div>
                     </div>
                   ) : (
-                    <div style={styles.placeholderInner}>
+                    <div style={styles.placeholderCard}>
                       <p style={styles.placeholderTitle}>{slide.title}</p>
                       <p style={styles.placeholderSubtitle}>{slide.subtitle}</p>
                     </div>
@@ -398,9 +438,23 @@ export default function CharacterBasicView({ hero }) {
             </div>
           </div>
 
-          <button type="button" onClick={handleNext} style={styles.navButton}>
-            →
-          </button>
+          <div style={styles.controlsRow}>
+            <button type="button" onClick={handlePrev} style={styles.circleButton} aria-label="이전">
+              ←
+            </button>
+            <div style={styles.indicatorDots}>
+              {slides.map((slide, index) => (
+                <span
+                  // eslint-disable-next-line react/no-array-index-key
+                  key={`${slide.key}-${index}`}
+                  style={styles.indicatorDot(activeSlide === index)}
+                />
+              ))}
+            </div>
+            <button type="button" onClick={handleNext} style={styles.circleButton} aria-label="다음">
+              →
+            </button>
+          </div>
         </div>
       </div>
     </div>
