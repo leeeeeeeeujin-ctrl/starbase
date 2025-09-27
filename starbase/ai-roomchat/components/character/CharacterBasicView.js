@@ -2517,16 +2517,6 @@ export default function CharacterBasicView({ hero }) {
     return friendRequests.incoming.length;
   }, [friendRequests]);
 
-  const showChatLauncher = activeOverlay === "character";
-  const hasQuickLaunchers = showChatLauncher || overlayActions.length > 0;
-  const chatBadgeLabel = chatUnread > 99 ? "99+" : chatUnread;
-  const requestBadgeLabel =
-    incomingRequestCount > 0
-      ? incomingRequestCount > 99
-        ? "99+"
-        : incomingRequestCount
-      : null;
-
   const overlayTabs = useMemo(
     () => dockItems.filter((item) => item.type === "overlay"),
     [],
@@ -2536,6 +2526,16 @@ export default function CharacterBasicView({ hero }) {
     () => dockItems.filter((item) => item.type === "action"),
     [],
   );
+
+  const showChatLauncher = activeOverlay === "character";
+  const hasQuickLaunchers = showChatLauncher || overlayActions.length > 0;
+  const chatBadgeLabel = chatUnread > 99 ? "99+" : chatUnread;
+  const requestBadgeLabel =
+    incomingRequestCount > 0
+      ? incomingRequestCount > 99
+        ? "99+"
+        : incomingRequestCount
+      : null;
 
   const renderQuickLaunchers = useCallback(
     (variant) => {
