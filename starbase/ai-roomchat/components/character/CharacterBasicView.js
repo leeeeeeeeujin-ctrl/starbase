@@ -11,13 +11,15 @@ import {
 } from "../../services/heroes";
 import { supabase } from "../../lib/supabase";
 import { extractFileName, sanitizeFileName } from "../../utils/characterAssets";
+import useGameBrowser from "../lobby/hooks/useGameBrowser";
+import { SORT_OPTIONS } from "../lobby/constants";
 
 const DEFAULT_HERO_NAME = "이름 없는 영웅";
 const DEFAULT_DESCRIPTION =
   "소개가 아직 준비되지 않았습니다. 이미지를 한 번 더 탭하면 능력을 볼 수 있어요.";
 
 const dockItems = [
-  { key: "search", label: "방 검색", type: "overlay" },
+  { key: "search", label: "게임 검색", type: "overlay" },
   { key: "ranking", label: "랭킹", type: "overlay" },
   { key: "settings", label: "설정", type: "overlay" },
   { key: "battle", label: "전투 시작", type: "action" },
@@ -53,7 +55,8 @@ const rosterNotices = [
 
 const overlayCopy = {
   character: "이미지를 터치하면 설명과 능력이 순서대로 나타납니다.",
-  search: "빠른 매칭과 커스텀 방 탐색 기능이 곧 추가됩니다.",
+  search:
+    "신작과 인기 게임을 살펴보고 바로 제작·등록 메뉴로 이동할 수 있습니다.",
   ranking: "시즌별 팀 랭킹과 개인 순위를 준비 중이에요.",
   roster: "로스터에서 영웅을 선택하면 바로 해당 캐릭터 화면으로 이동합니다.",
 };
@@ -326,6 +329,15 @@ function formatRosterTimestamp(value) {
   }
 }
 
+function formatGameDate(value) {
+  if (!value) return "날짜 미상";
+  try {
+    return new Date(value).toLocaleDateString("ko-KR");
+  } catch (error) {
+    return "날짜 미상";
+  }
+}
+
 function createDraftFromHero(hero) {
   return {
     name: hero?.name || "",
@@ -556,11 +568,12 @@ const styles = {
   bgmBar: {
     display: "flex",
     flexDirection: "column",
-    gap: 10,
-    padding: "10px 12px",
+    gap: 12,
+    padding: "12px 14px",
     borderRadius: 18,
     border: "1px solid rgba(96,165,250,0.28)",
-    background: "rgba(30,41,59,0.72)",
+    background: "rgba(15,23,42,0.78)",
+    boxShadow: "0 18px 40px -30px rgba(14,165,233,0.65)",
   },
   bgmMetaRow: {
     display: "flex",
@@ -568,24 +581,71 @@ const styles = {
     justifyContent: "space-between",
     gap: 12,
   },
+  bgmMetaInfo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    minWidth: 0,
+  },
   bgmTrackTitle: {
     margin: 0,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 700,
     color: "#e0f2fe",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  bgmMetaSub: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 11,
+    fontWeight: 500,
+    color: "rgba(191,219,254,0.82)",
   },
   bgmTrackIndex: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 48,
+    padding: "2px 10px",
+    borderRadius: 999,
+    background: "rgba(56,189,248,0.2)",
+    color: "#bae6fd",
     fontSize: 11,
     fontWeight: 600,
-    color: "rgba(191,219,254,0.8)",
+  },
+  bgmMetaTimes: {
+    fontVariantNumeric: "tabular-nums",
+  },
+  bgmCollapseButton: {
+    border: "none",
+    background: "rgba(15,23,42,0.65)",
+    color: "#cbd5f5",
+    borderRadius: 999,
+    width: 32,
+    height: 32,
+    fontSize: 14,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 10px 24px -18px rgba(56,189,248,0.9)",
   },
   bgmControlsRow: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "space-between",
+    gap: 12,
     flexWrap: "wrap",
   },
-  bgmControlButton: (active = false) => ({
+  bgmControlsGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  bgmControlButton: (active = false, disabled = false) => ({
     border: "1px solid",
     borderColor: active ? "rgba(125,211,252,0.95)" : "rgba(148,163,184,0.36)",
     background: active
@@ -593,11 +653,16 @@ const styles = {
       : "rgba(15,23,42,0.58)",
     color: "#f1f5f9",
     borderRadius: 999,
-    padding: "6px 12px",
-    fontSize: 12,
+    padding: "8px 12px",
+    fontSize: 14,
     fontWeight: 600,
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.4 : 1,
     transition: "all 0.2s ease",
+    minWidth: 40,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   }),
   bgmProgressRow: {
     display: "flex",
@@ -608,8 +673,9 @@ const styles = {
     fontSize: 11,
     fontWeight: 500,
     color: "rgba(226,232,240,0.72)",
-    minWidth: 40,
+    minWidth: 44,
     textAlign: "center",
+    fontVariantNumeric: "tabular-nums",
   },
   bgmProgressTrack: {
     flexGrow: 1,
@@ -630,6 +696,250 @@ const styles = {
     borderRadius: 999,
     background:
       "linear-gradient(135deg, rgba(59,130,246,0.92) 0%, rgba(20,184,166,0.88) 100%)",
+  },
+  bgmProgressHandle: {
+    position: "absolute",
+    top: "50%",
+    width: 14,
+    height: 14,
+    borderRadius: "50%",
+    background: "#e0f2fe",
+    boxShadow: "0 0 12px rgba(56,189,248,0.65)",
+    transform: "translate(-50%, -50%)",
+    pointerEvents: "none",
+  },
+  gameSearchPanel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+  },
+  gameSearchControls: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+  gameSearchInput: {
+    flexGrow: 1,
+    minWidth: 0,
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "1px solid rgba(96,165,250,0.35)",
+    background: "rgba(15,23,42,0.65)",
+    color: "#e2e8f0",
+    fontSize: 13,
+    outline: "none",
+  },
+  gameSearchSelect: {
+    minWidth: 140,
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(148,163,184,0.45)",
+    background: "rgba(15,23,42,0.7)",
+    color: "#cbd5f5",
+    fontSize: 13,
+    outline: "none",
+  },
+  gameSearchLayout: {
+    display: "flex",
+    gap: 14,
+  },
+  gameSearchListSection: {
+    flex: "0 0 42%",
+    display: "flex",
+    flexDirection: "column",
+    background: "rgba(15,23,42,0.58)",
+    borderRadius: 16,
+    border: "1px solid rgba(96,165,250,0.25)",
+    padding: 12,
+    overflow: "hidden",
+  },
+  gameSearchStatus: {
+    margin: 0,
+    fontSize: 12,
+    color: "rgba(191,219,254,0.8)",
+  },
+  gameSearchList: {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    overflowY: "auto",
+  },
+  gameSearchListItemWrapper: {
+    margin: 0,
+    padding: 0,
+  },
+  gameSearchListItem: (active) => ({
+    width: "100%",
+    textAlign: "left",
+    borderRadius: 12,
+    border: "1px solid",
+    borderColor: active ? "rgba(56,189,248,0.9)" : "rgba(148,163,184,0.28)",
+    background: active ? "rgba(56,189,248,0.16)" : "rgba(15,23,42,0.6)",
+    color: "#e2e8f0",
+    padding: "12px 14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    cursor: "pointer",
+  }),
+  gameSearchListHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  gameSearchListTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#f0f9ff",
+    margin: 0,
+  },
+  gameSearchListMetric: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: "rgba(148,163,184,0.85)",
+  },
+  gameSearchListDescription: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 1.4,
+    color: "rgba(203,213,225,0.85)",
+  },
+  gameSearchListMetaRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: 11,
+    color: "rgba(148,163,184,0.75)",
+  },
+  gameSearchDetailSection: {
+    flex: 1,
+    display: "flex",
+    background: "rgba(15,23,42,0.7)",
+    borderRadius: 16,
+    border: "1px solid rgba(96,165,250,0.25)",
+    padding: 14,
+    overflow: "hidden",
+  },
+  gameSearchDetailCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    width: "100%",
+    overflowY: "auto",
+  },
+  gameSearchDetailHeader: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  gameSearchDetailTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#f8fafc",
+  },
+  gameSearchDetailDescription: {
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.5,
+    color: "rgba(203,213,225,0.9)",
+  },
+  gameSearchDetailMeta: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    fontSize: 11,
+    color: "rgba(148,163,184,0.78)",
+  },
+  gameSearchRolesSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  gameSearchSectionTitle: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#e0f2fe",
+  },
+  gameSearchRoleGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+    gap: 10,
+  },
+  gameSearchRoleButton: (active, disabled) => ({
+    borderRadius: 12,
+    border: "1px solid",
+    borderColor: active
+      ? "rgba(56,189,248,0.9)"
+      : disabled
+        ? "rgba(148,163,184,0.3)"
+        : "rgba(148,163,184,0.4)",
+    background: active
+      ? "linear-gradient(135deg, rgba(56,189,248,0.25) 0%, rgba(14,165,233,0.18) 100%)"
+      : "rgba(15,23,42,0.65)",
+    color: disabled ? "rgba(148,163,184,0.6)" : "#e2e8f0",
+    padding: "10px 12px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    alignItems: "flex-start",
+    cursor: disabled ? "not-allowed" : "pointer",
+  }),
+  gameSearchRoleName: {
+    fontSize: 13,
+    fontWeight: 700,
+  },
+  gameSearchRoleCapacity: {
+    fontSize: 11,
+    color: "rgba(148,163,184,0.75)",
+  },
+  gameSearchParticipantsSummary: {
+    margin: 0,
+    fontSize: 12,
+    color: "rgba(191,219,254,0.8)",
+  },
+  gameSearchEnterButton: (highlight) => ({
+    border: "none",
+    borderRadius: 999,
+    padding: "12px 18px",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+    color: "#0f172a",
+    background: highlight
+      ? "linear-gradient(135deg, rgba(59,130,246,0.9) 0%, rgba(96,165,250,0.85) 100%)"
+      : "linear-gradient(135deg, rgba(148,163,184,0.65) 0%, rgba(203,213,225,0.65) 100%)",
+  }),
+  gameSearchActionRow: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  gamePrimaryAction: {
+    border: "none",
+    borderRadius: 12,
+    padding: "10px 16px",
+    background: "linear-gradient(135deg, rgba(34,197,94,0.9) 0%, rgba(22,163,74,0.85) 100%)",
+    color: "#ecfeff",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  gameSecondaryAction: {
+    border: "1px solid rgba(148,163,184,0.4)",
+    borderRadius: 12,
+    padding: "10px 16px",
+    background: "rgba(15,23,42,0.65)",
+    color: "#cbd5f5",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
   },
   rosterPanel: {
     display: "flex",
@@ -1101,6 +1411,7 @@ export default function CharacterBasicView({ hero }) {
   const router = useRouter();
   const [currentHero, setCurrentHero] = useState(hero ?? null);
   const [bgmEnabled, setBgmEnabled] = useState(true);
+  const [bgmBarCollapsed, setBgmBarCollapsed] = useState(false);
   const [volume, setVolume] = useState(0.75);
   const [eqPreset, setEqPreset] = useState("flat");
   const [effectsEnabled, setEffectsEnabled] = useState(true);
@@ -1329,6 +1640,24 @@ export default function CharacterBasicView({ hero }) {
 
   const [viewMode, setViewMode] = useState(0);
   const [activeOverlay, setActiveOverlay] = useState("character");
+  const [gameBrowserEnabled, setGameBrowserEnabled] = useState(false);
+
+  const {
+    gameQuery,
+    setGameQuery,
+    gameSort,
+    setGameSort,
+    gameRows,
+    gameLoading,
+    selectedGame,
+    setSelectedGame,
+    detailLoading,
+    gameRoles,
+    participants,
+    roleChoice,
+    setRoleChoice,
+    roleSlots,
+  } = useGameBrowser({ enabled: gameBrowserEnabled });
 
   const isMobile = viewportWidth != null ? viewportWidth < 640 : false;
 
@@ -1348,6 +1677,10 @@ export default function CharacterBasicView({ hero }) {
     if (activeOverlay !== "character") {
       setViewMode(0);
     }
+  }, [activeOverlay]);
+
+  useEffect(() => {
+    setGameBrowserEnabled(activeOverlay === "search");
   }, [activeOverlay]);
 
   useEffect(() => {
@@ -1680,6 +2013,11 @@ export default function CharacterBasicView({ hero }) {
   }, [bgmEnabled]);
 
   const showBgmBar = bgmEnabled && heroBgmCount > 0;
+  useEffect(() => {
+    if (!showBgmBar) {
+      setBgmBarCollapsed(false);
+    }
+  }, [showBgmBar]);
   const trackCounterLabel = showBgmBar ? `${activeBgmIndex + 1} / ${heroBgmCount}` : "";
   const formattedCurrentTime = formatPlaybackTime(trackTime);
   const hasKnownDuration = Number.isFinite(trackDuration) && trackDuration > 0;
@@ -1780,6 +2118,32 @@ export default function CharacterBasicView({ hero }) {
     () => ({
       ...styles.settingsSection,
       ...(isMobile ? { padding: "10px 12px", gap: 8 } : {}),
+    }),
+    [isMobile],
+  );
+
+  const gameSearchLayoutStyle = useMemo(
+    () => ({
+      ...styles.gameSearchLayout,
+      flexDirection: isMobile ? "column" : "row",
+    }),
+    [isMobile],
+  );
+
+  const gameListSectionStyle = useMemo(
+    () => ({
+      ...styles.gameSearchListSection,
+      maxHeight: isMobile ? 260 : 320,
+      flex: isMobile ? "1 1 auto" : "0 0 42%",
+    }),
+    [isMobile],
+  );
+
+  const gameDetailSectionStyle = useMemo(
+    () => ({
+      ...styles.gameSearchDetailSection,
+      minHeight: isMobile ? 220 : 280,
+      padding: isMobile ? 12 : 14,
     }),
     [isMobile],
   );
@@ -1909,6 +2273,20 @@ export default function CharacterBasicView({ hero }) {
     }
   }, []);
 
+  const handleBgmPrevious = useCallback(() => {
+    const list = heroBgmsRef.current;
+    if (!Array.isArray(list) || list.length === 0) {
+      return;
+    }
+    bgmAutoplayRef.current = isBgmPlaying;
+    setActiveBgmIndex((index) => {
+      if (!Array.isArray(list) || list.length === 0) {
+        return 0;
+      }
+      return (index - 1 + list.length) % list.length;
+    });
+  }, [isBgmPlaying]);
+
   const handleBgmNext = useCallback(() => {
     const list = heroBgmsRef.current;
     if (!Array.isArray(list) || list.length === 0) {
@@ -1926,6 +2304,33 @@ export default function CharacterBasicView({ hero }) {
   const handleRepeatToggle = useCallback(() => {
     setRepeatCurrent((prev) => !prev);
   }, []);
+
+  const handleToggleBgmBar = useCallback(() => {
+    setBgmBarCollapsed((prev) => !prev);
+  }, []);
+
+  const handleRoleSelect = useCallback(
+    (roleName) => {
+      if (!roleName) {
+        setRoleChoice("");
+        return;
+      }
+      setRoleChoice((prev) => (prev === roleName ? "" : roleName));
+    },
+    [setRoleChoice],
+  );
+
+  const handleEnterGame = useCallback(
+    (game, roleName) => {
+      if (!game) return;
+      const base = `/rank/${game.id}`;
+      const target = roleName
+        ? `${base}?role=${encodeURIComponent(roleName)}`
+        : base;
+      router.push(target);
+    },
+    [router],
+  );
 
   const seekToClientX = useCallback(
     (clientX) => {
@@ -3122,6 +3527,158 @@ export default function CharacterBasicView({ hero }) {
         </div>
       </div>
     );
+  } else if (activeOverlay === "search") {
+    overlayBody = (
+      <div style={overlayContentStyle}>
+        <div style={styles.gameSearchPanel}>
+          <div style={styles.gameSearchControls}>
+            <input
+              type="search"
+              placeholder="게임 이름 또는 설명 검색"
+              value={gameQuery}
+              onChange={(event) => setGameQuery(event.target.value)}
+              style={styles.gameSearchInput}
+            />
+            <select
+              value={gameSort}
+              onChange={(event) => setGameSort(event.target.value)}
+              style={styles.gameSearchSelect}
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={gameSearchLayoutStyle}>
+            <div style={gameListSectionStyle}>
+              {gameLoading ? (
+                <p style={styles.gameSearchStatus}>게임 목록을 불러오는 중입니다…</p>
+              ) : !gameRows.length ? (
+                <p style={styles.gameSearchStatus}>조건에 맞는 게임이 없습니다.</p>
+              ) : (
+                <ul style={styles.gameSearchList}>
+                  {gameRows.map((row) => {
+                    const isActive = selectedGame?.id === row.id;
+                    return (
+                      <li key={row.id} style={styles.gameSearchListItemWrapper}>
+                        <button
+                          type="button"
+                          style={styles.gameSearchListItem(isActive)}
+                          onClick={() => setSelectedGame(row)}
+                        >
+                          <div style={styles.gameSearchListHeader}>
+                            <span style={styles.gameSearchListTitle}>{row.name}</span>
+                            <span style={styles.gameSearchListMetric}>
+                              👍 {row.likes_count ?? 0}
+                            </span>
+                          </div>
+                          <p style={styles.gameSearchListDescription}>
+                            {row.description || "설명이 없습니다."}
+                          </p>
+                          <div style={styles.gameSearchListMetaRow}>
+                            <span>플레이 {row.play_count ?? 0}</span>
+                            <span>등록 {formatGameDate(row.created_at)}</span>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div style={gameDetailSectionStyle}>
+              {detailLoading ? (
+                <p style={styles.gameSearchStatus}>선택한 게임을 불러오는 중입니다…</p>
+              ) : !selectedGame ? (
+                <p style={styles.gameSearchStatus}>왼쪽 목록에서 게임을 선택해 주세요.</p>
+              ) : (
+                <div style={styles.gameSearchDetailCard}>
+                  <header style={styles.gameSearchDetailHeader}>
+                    <h3 style={styles.gameSearchDetailTitle}>{selectedGame.name}</h3>
+                    <p style={styles.gameSearchDetailDescription}>
+                      {selectedGame.description || "설명이 없습니다."}
+                    </p>
+                    <div style={styles.gameSearchDetailMeta}>
+                      <span>등록 {formatGameDate(selectedGame.created_at)}</span>
+                      <span>좋아요 {selectedGame.likes_count ?? 0}</span>
+                      <span>플레이 {selectedGame.play_count ?? 0}</span>
+                    </div>
+                  </header>
+
+                  <section style={styles.gameSearchRolesSection}>
+                    <h4 style={styles.gameSearchSectionTitle}>역할 선택</h4>
+                    {gameRoles.length ? (
+                      <div style={styles.gameSearchRoleGrid}>
+                        {gameRoles.map((role) => {
+                          const slot =
+                            roleSlots.get(role.name) || {
+                              capacity: role.slot_count ?? 1,
+                              occupied: 0,
+                            };
+                          const full = slot.occupied >= slot.capacity;
+                          const isActive = roleChoice === role.name;
+                          return (
+                            <button
+                              key={role.id || role.name}
+                              type="button"
+                              style={styles.gameSearchRoleButton(isActive, full && !isActive)}
+                              onClick={() => handleRoleSelect(role.name)}
+                              disabled={full && !isActive}
+                            >
+                              <span style={styles.gameSearchRoleName}>{role.name}</span>
+                              <span style={styles.gameSearchRoleCapacity}>
+                                {slot.occupied} / {slot.capacity}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p style={styles.gameSearchStatus}>등록된 역할 정보가 없습니다.</p>
+                    )}
+                  </section>
+
+                  <p style={styles.gameSearchParticipantsSummary}>
+                    {participants.length
+                      ? `최근 ${participants.length}명 참가`
+                      : "참가 기록이 아직 없습니다."}
+                  </p>
+
+                  <button
+                    type="button"
+                    style={styles.gameSearchEnterButton(Boolean(roleChoice))}
+                    onClick={() => handleEnterGame(selectedGame, roleChoice)}
+                  >
+                    {roleChoice ? `${roleChoice}로 입장하기` : "게임 상세 보기"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.gameSearchActionRow}>
+            <button
+              type="button"
+              style={styles.gamePrimaryAction}
+              onClick={() => router.push("/maker")}
+            >
+              게임 제작
+            </button>
+            <button
+              type="button"
+              style={styles.gameSecondaryAction}
+              onClick={() => router.push("/rank/new")}
+            >
+              게임 등록
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   } else if (activeOverlay === "roster") {
     overlayBody = (
       <div style={overlayContentStyle}>
@@ -3281,88 +3838,128 @@ export default function CharacterBasicView({ hero }) {
         {showBgmBar ? (
           <div style={styles.bgmBar}>
             <div style={styles.bgmMetaRow}>
-              <p style={styles.bgmTrackTitle}>{activeBgm?.label || "브금"}</p>
-              {trackCounterLabel ? (
-                <span style={styles.bgmTrackIndex}>{trackCounterLabel}</span>
-              ) : null}
-            </div>
-            <div style={styles.bgmControlsRow}>
-              <button
-                type="button"
-                style={styles.bgmControlButton(isBgmPlaying)}
-                onClick={handleBgmPlayPause}
-              >
-                {isBgmPlaying ? "⏸ 일시정지" : "▶ 재생"}
-              </button>
-              <button
-                type="button"
-                style={styles.bgmControlButton(false)}
-                onClick={handleBgmStop}
-              >
-                ⏹ 정지
-              </button>
-              <button
-                type="button"
-                style={styles.bgmControlButton(false)}
-                onClick={handleBgmRestart}
-              >
-                ↺ 처음으로
-              </button>
-              <button
-                type="button"
-                style={{
-                  ...styles.bgmControlButton(false),
-                  opacity: heroBgmCount <= 1 ? 0.6 : 1,
-                  cursor: heroBgmCount <= 1 ? "not-allowed" : "pointer",
-                }}
-                onClick={handleBgmNext}
-                disabled={heroBgmCount <= 1}
-              >
-                ⏭ 다음 곡
-              </button>
-              <button
-                type="button"
-                style={styles.bgmControlButton(repeatCurrent)}
-                onClick={handleRepeatToggle}
-                aria-pressed={repeatCurrent}
-              >
-                🔁 반복
-              </button>
-            </div>
-            <div style={styles.bgmProgressRow}>
-              <span style={styles.bgmTime}>{formattedCurrentTime}</span>
-              <div
-                ref={progressBarRef}
-                style={styles.bgmProgressTrack}
-                onMouseDown={handleProgressMouseDown}
-                onTouchStart={handleProgressTouchStart}
-                onKeyDown={handleProgressKeyDown}
-                role="slider"
-                tabIndex={0}
-                aria-label="브금 재생 위치"
-                aria-valuemin={0}
-                aria-valuemax={hasKnownDuration ? trackDuration : 1}
-                aria-valuenow={
-                  hasKnownDuration
-                    ? Math.min(trackDuration, Math.max(0, trackTime))
-                    : 0
-                }
-                aria-valuetext={
-                  hasKnownDuration
-                    ? `${formattedCurrentTime} / ${formattedDuration}`
-                    : formattedCurrentTime
-                }
-                aria-disabled={!hasKnownDuration}
-              >
-                <div
-                  style={{
-                    ...styles.bgmProgressFill,
-                    width: trackProgressPercent,
-                  }}
-                />
+              <div style={styles.bgmMetaInfo}>
+                <p style={styles.bgmTrackTitle}>{activeBgm?.label || "브금"}</p>
+                <div style={styles.bgmMetaSub}>
+                  {trackCounterLabel ? (
+                    <span style={styles.bgmTrackIndex}>{trackCounterLabel}</span>
+                  ) : null}
+                  <span style={styles.bgmMetaTimes}>
+                    {formattedCurrentTime} / {formattedDuration}
+                  </span>
+                </div>
               </div>
-              <span style={styles.bgmTime}>{formattedDuration}</span>
+              <button
+                type="button"
+                style={styles.bgmCollapseButton}
+                onClick={handleToggleBgmBar}
+                aria-expanded={!bgmBarCollapsed}
+                aria-label={bgmBarCollapsed ? "브금 컨트롤 펼치기" : "브금 컨트롤 접기"}
+              >
+                {bgmBarCollapsed ? "▾" : "▴"}
+              </button>
             </div>
+            {!bgmBarCollapsed ? (
+              <>
+                <div style={styles.bgmControlsRow}>
+                  <div style={styles.bgmControlsGroup}>
+                    <button
+                      type="button"
+                      style={styles.bgmControlButton(false, heroBgmCount <= 1)}
+                      onClick={handleBgmPrevious}
+                      disabled={heroBgmCount <= 1}
+                      aria-label="이전 곡"
+                    >
+                      ⏮
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.bgmControlButton(isBgmPlaying)}
+                      onClick={handleBgmPlayPause}
+                      aria-label={isBgmPlaying ? "일시정지" : "재생"}
+                    >
+                      {isBgmPlaying ? "⏸" : "▶"}
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.bgmControlButton(false, heroBgmCount <= 1)}
+                      onClick={handleBgmNext}
+                      disabled={heroBgmCount <= 1}
+                      aria-label="다음 곡"
+                    >
+                      ⏭
+                    </button>
+                  </div>
+                  <div style={styles.bgmControlsGroup}>
+                    <button
+                      type="button"
+                      style={styles.bgmControlButton(false)}
+                      onClick={handleBgmStop}
+                      aria-label="정지"
+                    >
+                      ⏹
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.bgmControlButton(false)}
+                      onClick={handleBgmRestart}
+                      aria-label="처음부터 재생"
+                    >
+                      ↺
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.bgmControlButton(repeatCurrent)}
+                      onClick={handleRepeatToggle}
+                      aria-pressed={repeatCurrent}
+                      aria-label="반복 재생"
+                    >
+                      🔁
+                    </button>
+                  </div>
+                </div>
+                <div style={styles.bgmProgressRow}>
+                  <span style={styles.bgmTime}>{formattedCurrentTime}</span>
+                  <div
+                    ref={progressBarRef}
+                    style={styles.bgmProgressTrack}
+                    onMouseDown={handleProgressMouseDown}
+                    onTouchStart={handleProgressTouchStart}
+                    onKeyDown={handleProgressKeyDown}
+                    role="slider"
+                    tabIndex={0}
+                    aria-label="브금 재생 위치"
+                    aria-valuemin={0}
+                    aria-valuemax={hasKnownDuration ? trackDuration : 1}
+                    aria-valuenow={
+                      hasKnownDuration
+                        ? Math.min(trackDuration, Math.max(0, trackTime))
+                        : 0
+                    }
+                    aria-valuetext={
+                      hasKnownDuration
+                        ? `${formattedCurrentTime} / ${formattedDuration}`
+                        : formattedCurrentTime
+                    }
+                    aria-disabled={!hasKnownDuration}
+                  >
+                    <div
+                      style={{
+                        ...styles.bgmProgressFill,
+                        width: trackProgressPercent,
+                      }}
+                    />
+                    <div
+                      style={{
+                        ...styles.bgmProgressHandle,
+                        left: trackProgressPercent,
+                      }}
+                    />
+                  </div>
+                  <span style={styles.bgmTime}>{formattedDuration}</span>
+                </div>
+              </>
+            ) : null}
           </div>
         ) : null}
 
