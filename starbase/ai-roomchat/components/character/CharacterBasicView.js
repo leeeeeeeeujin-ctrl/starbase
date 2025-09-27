@@ -13,6 +13,9 @@ import { supabase } from "../../lib/supabase";
 import { extractFileName, sanitizeFileName } from "../../utils/characterAssets";
 import useGameBrowser from "../lobby/hooks/useGameBrowser";
 import { SORT_OPTIONS } from "../lobby/constants";
+import ChatOverlay from "../social/ChatOverlay";
+import FriendOverlay from "../social/FriendOverlay";
+import { useHeroSocial } from "../../hooks/social/useHeroSocial";
 
 const DEFAULT_HERO_NAME = "이름 없는 영웅";
 const DEFAULT_DESCRIPTION =
@@ -226,6 +229,38 @@ function readAudioDurationFromFile(file) {
 
 function reindexBgmTracks(list) {
   return list.map((track, index) => ({ ...track, sort_order: index }));
+}
+
+const BLOCKED_STORAGE_KEY = "starbase_blocked_heroes";
+
+function normaliseBlockedHeroes(list) {
+  if (!Array.isArray(list)) return [];
+  return Array.from(new Set(list.filter(Boolean)));
+}
+
+function readBlockedHeroes() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(BLOCKED_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return normaliseBlockedHeroes(parsed);
+  } catch (error) {
+    console.warn("Failed to read blocked heroes", error);
+    return [];
+  }
+}
+
+function persistBlockedHeroes(list) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      BLOCKED_STORAGE_KEY,
+      JSON.stringify(normaliseBlockedHeroes(list)),
+    );
+  } catch (error) {
+    console.warn("Failed to persist blocked heroes", error);
+  }
 }
 
 function readCookie(name) {
@@ -599,6 +634,72 @@ const styles = {
     display: "flex",
     gap: 8,
     flexWrap: "wrap",
+  },
+  characterFooterRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 10,
+    flexWrap: "wrap",
+    marginTop: 4,
+  },
+  chatLauncherButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "8px 14px",
+    borderRadius: 999,
+    border: "1px solid rgba(96,165,250,0.45)",
+    background: "rgba(15,23,42,0.55)",
+    color: "#e0f2fe",
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 0.3,
+    cursor: "pointer",
+    outline: "none",
+    boxShadow: "0 12px 32px -28px rgba(56,189,248,0.8)",
+  },
+  chatLauncherBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    background: "#f97316",
+    color: "#0f172a",
+    fontSize: 11,
+    fontWeight: 800,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 6px",
+  },
+  friendLauncherButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "8px 14px",
+    borderRadius: 999,
+    border: "1px solid rgba(94,234,212,0.42)",
+    background: "rgba(20,83,45,0.45)",
+    color: "#bbf7d0",
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 0.3,
+    cursor: "pointer",
+    outline: "none",
+    boxShadow: "0 12px 30px -28px rgba(16,185,129,0.65)",
+  },
+  friendLauncherBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    background: "rgba(59,130,246,0.9)",
+    color: "#f8fafc",
+    fontSize: 11,
+    fontWeight: 700,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 6px",
   },
   overlayButton: (active) => ({
     padding: "8px 14px",
@@ -1527,6 +1628,10 @@ export default function CharacterBasicView({ hero }) {
   const [rosterError, setRosterError] = useState(null);
   const [rosterLoaded, setRosterLoaded] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(null);
+  const [blockedHeroes, setBlockedHeroes] = useState(() => readBlockedHeroes());
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
+  const [friendOverlayOpen, setFriendOverlayOpen] = useState(false);
 
   useEffect(() => {
     setCurrentHero(hero ?? null);
@@ -1618,6 +1723,10 @@ export default function CharacterBasicView({ hero }) {
     window.addEventListener("resize", updateViewport);
     return () => window.removeEventListener("resize", updateViewport);
   }, []);
+
+  useEffect(() => {
+    persistBlockedHeroes(blockedHeroes);
+  }, [blockedHeroes]);
 
   const heroName = useMemo(() => {
     if (!currentHero) return DEFAULT_HERO_NAME;
@@ -1732,6 +1841,72 @@ export default function CharacterBasicView({ hero }) {
   const [activeOverlay, setActiveOverlay] = useState("character");
   const [gameBrowserEnabled, setGameBrowserEnabled] = useState(false);
 
+  const presencePage = useMemo(() => {
+    if (activeOverlay === "search") return "character:game";
+    if (activeOverlay === "ranking") return "character:ranking";
+    if (activeOverlay === "settings") return "character:settings";
+    if (activeOverlay === "roster") return "character:roster";
+    return "character";
+  }, [activeOverlay]);
+
+  const viewerHeroHint = useMemo(
+    () =>
+      currentHero?.id
+        ? {
+            heroId: currentHero.id,
+            heroName,
+            avatarUrl: currentHero.image_url || null,
+            ownerId: currentHero.owner_id || null,
+          }
+        : null,
+    [currentHero?.id, currentHero?.image_url, currentHero?.owner_id, heroName],
+  );
+
+  const {
+    viewer,
+    friends,
+    friendRequests,
+    loading: friendsLoading,
+    error: friendError,
+    addFriend,
+    removeFriend,
+    acceptFriendRequest,
+    declineFriendRequest,
+    cancelFriendRequest,
+    refreshSocial,
+    friendByHero,
+  } = useHeroSocial({
+    heroId: currentHero?.id || null,
+    heroName,
+    page: presencePage,
+    viewerHero: viewerHeroHint,
+  });
+
+  const whisperTargets = useMemo(
+    () =>
+      Array.isArray(friends)
+        ? friends
+            .map((friend) => {
+              const heroId = friend.currentHeroId || friend.friendHeroId;
+              if (!heroId) return null;
+              const name =
+                friend.currentHeroName ||
+                friend.friendHeroName ||
+                "이름 미확인";
+              return {
+                heroId,
+                heroName: name,
+                username: name,
+                avatarUrl:
+                  friend.currentHeroAvatar || friend.friendHeroAvatar || null,
+                ownerId: friend.friendOwnerId || null,
+              };
+            })
+            .filter(Boolean)
+        : [],
+    [friends],
+  );
+
   const {
     gameQuery,
     setGameQuery,
@@ -1774,6 +1949,11 @@ export default function CharacterBasicView({ hero }) {
   }, [activeOverlay]);
 
   useEffect(() => {
+    if (!friendOverlayOpen) return;
+    refreshSocial();
+  }, [friendOverlayOpen, refreshSocial]);
+
+  useEffect(() => {
     setRosterHeroes([]);
     setRosterLoaded(false);
     setRosterError(null);
@@ -1788,6 +1968,7 @@ export default function CharacterBasicView({ hero }) {
   const backgroundInputRef = useRef(null);
   const bgmInputRefs = useRef({});
   const quickBgmInputRef = useRef(null);
+  const chatOverlayRef = useRef(null);
 
   useEffect(() => {
     setImageAsset({ file: null, preview: null });
@@ -2269,6 +2450,18 @@ export default function CharacterBasicView({ hero }) {
 
   const currentInfo = viewMode > 0 ? infoSequence[viewMode - 1] : null;
 
+  const incomingRequestCount = useMemo(() => {
+    if (!friendRequests || !Array.isArray(friendRequests.incoming)) {
+      return 0;
+    }
+    return friendRequests.incoming.length;
+  }, [friendRequests]);
+
+  const showChatLauncher = activeOverlay === "character";
+  const chatBadgeLabel = chatUnread > 99 ? "99+" : chatUnread;
+  const requestBadgeLabel =
+    incomingRequestCount > 99 ? "99+" : incomingRequestCount;
+
   const handleTap = useCallback(() => {
     if (activeOverlay !== "character") return;
     if (infoCount === 0) return;
@@ -2338,6 +2531,95 @@ export default function CharacterBasicView({ hero }) {
       }
     }
   }, []);
+
+  const handleChatUnreadChange = useCallback((count) => {
+    if (typeof count !== "number" || Number.isNaN(count)) {
+      setChatUnread(0);
+      return;
+    }
+    setChatUnread(Math.max(0, Math.floor(count)));
+  }, []);
+
+  const handleBlockedHeroesChange = useCallback((list) => {
+    setBlockedHeroes(normaliseBlockedHeroes(list));
+  }, []);
+
+  const handleToggleBlockedHero = useCallback((heroId) => {
+    if (!heroId) {
+      return { ok: false, error: "영웅 정보를 찾을 수 없습니다." };
+    }
+    setBlockedHeroes((prev) => {
+      const next = new Set(prev);
+      if (next.has(heroId)) {
+        next.delete(heroId);
+      } else {
+        next.add(heroId);
+      }
+      return Array.from(next);
+    });
+    return { ok: true };
+  }, []);
+
+  const handleOpenChat = useCallback(() => {
+    chatOverlayRef.current?.resetThread?.();
+    setChatOpen(true);
+  }, []);
+
+  const handleCloseChat = useCallback(() => {
+    setChatOpen(false);
+    chatOverlayRef.current?.resetThread?.();
+  }, []);
+
+  const handleOpenWhisper = useCallback((heroId) => {
+    if (!heroId) return;
+    setChatOpen(true);
+    setTimeout(() => {
+      chatOverlayRef.current?.openThread?.(heroId);
+    }, 0);
+  }, []);
+
+  const handleOpenFriendOverlay = useCallback(() => {
+    setFriendOverlayOpen(true);
+  }, []);
+
+  const handleCloseFriendOverlay = useCallback(() => {
+    setFriendOverlayOpen(false);
+  }, []);
+
+  const handleRequestAddFriend = useCallback(
+    (heroMeta) => {
+      const heroId = heroMeta?.heroId || heroMeta?.id || null;
+      if (!heroId) {
+        return Promise.resolve({
+          ok: false,
+          error: "영웅 정보를 찾을 수 없습니다.",
+        });
+      }
+      return addFriend({ heroId });
+    },
+    [addFriend],
+  );
+
+  const handleRequestRemoveFriend = useCallback(
+    (heroMeta) => {
+      const heroId = heroMeta?.heroId || heroMeta?.id || null;
+      if (!heroId) {
+        return Promise.resolve({
+          ok: false,
+          error: "영웅 정보를 찾을 수 없습니다.",
+        });
+      }
+      const friend = friendByHero?.get?.(heroId);
+      if (!friend) {
+        return Promise.resolve({
+          ok: false,
+          error: "이미 친구가 아닙니다.",
+        });
+      }
+      return removeFriend(friend);
+    },
+    [friendByHero, removeFriend],
+  );
 
   const handleBgmToggle = useCallback(() => {
     setBgmEnabled((prev) => {
@@ -4209,6 +4491,43 @@ export default function CharacterBasicView({ hero }) {
               </div>
             ) : null}
 
+            {showChatLauncher ? (
+              <div style={styles.characterFooterRow}>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.chatLauncherButton,
+                    opacity: chatOpen ? 0.78 : 1,
+                    cursor: chatOpen ? "default" : "pointer",
+                  }}
+                  onClick={handleOpenChat}
+                >
+                  <span>💬 공용 채팅</span>
+                  {chatUnread ? (
+                    <span style={styles.chatLauncherBadge}>{chatBadgeLabel}</span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.friendLauncherButton,
+                    opacity: friendsLoading ? 0.65 : 1,
+                    cursor: friendsLoading ? "wait" : "pointer",
+                  }}
+                  onClick={() => {
+                    if (friendsLoading) return;
+                    handleOpenFriendOverlay();
+                  }}
+                  aria-disabled={friendsLoading}
+                >
+                  <span>🤝 친구</span>
+                  {requestBadgeLabel ? (
+                    <span style={styles.friendLauncherBadge}>{requestBadgeLabel}</span>
+                  ) : null}
+                </button>
+              </div>
+            ) : null}
+
             {overlayDescription ? (
               <p style={styles.overlayCopy}>{overlayDescription}</p>
             ) : null}
@@ -4217,6 +4536,41 @@ export default function CharacterBasicView({ hero }) {
           </div>
         ) : null}
       </div>
+      <ChatOverlay
+        ref={chatOverlayRef}
+        open={chatOpen}
+        onClose={handleCloseChat}
+        heroId={currentHero?.id || null}
+        viewerHero={viewerHeroHint}
+        extraWhisperTargets={whisperTargets}
+        blockedHeroes={blockedHeroes}
+        onUnreadChange={handleChatUnreadChange}
+        onBlockedHeroesChange={handleBlockedHeroesChange}
+        onRequestAddFriend={handleRequestAddFriend}
+        onRequestRemoveFriend={handleRequestRemoveFriend}
+        isFriend={(heroMeta) => {
+          const heroId = heroMeta?.heroId || heroMeta?.id;
+          if (!heroId) return false;
+          return Boolean(friendByHero?.get?.(heroId));
+        }}
+      />
+      <FriendOverlay
+        open={friendOverlayOpen}
+        onClose={handleCloseFriendOverlay}
+        viewer={viewer}
+        friends={friends}
+        friendRequests={friendRequests}
+        loading={friendsLoading}
+        error={friendError}
+        onAddFriend={addFriend}
+        onRemoveFriend={removeFriend}
+        onAcceptRequest={acceptFriendRequest}
+        onDeclineRequest={declineFriendRequest}
+        onCancelRequest={cancelFriendRequest}
+        onOpenWhisper={handleOpenWhisper}
+        blockedHeroes={blockedHeroes}
+        onToggleBlockedHero={handleToggleBlockedHero}
+      />
     </>
   );
 }
