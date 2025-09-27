@@ -263,10 +263,6 @@ export default function CharacterBasicView({ hero }) {
     }
   }, [activeSlide])
 
-  const handleTap = useCallback(() => {
-    setViewMode((prev) => (prev + 1) % 3)
-  }, [])
-
   const audioRef = useRef(null)
   useEffect(() => {
     if (!hero?.bgm_url) {
@@ -324,10 +320,11 @@ export default function CharacterBasicView({ hero }) {
   const pointerStartX = useRef(null)
   const pointerLastX = useRef(null)
   const pointerIdRef = useRef(null)
+  const pointerSwipePreventTapRef = useRef(false)
 
   const finishSwipe = useCallback(
     (deltaX) => {
-      if (Math.abs(deltaX) < 55) return
+      if (Math.abs(deltaX) < 40) return
       if (deltaX > 0) {
         goToSlide(activeSlide + 1)
       } else {
@@ -358,6 +355,9 @@ export default function CharacterBasicView({ hero }) {
     pointerIdRef.current = null
     pointerStartX.current = null
     pointerLastX.current = null
+    if (!shouldComplete) {
+      pointerSwipePreventTapRef.current = false
+    }
   }, [finishSwipe])
 
   const shouldIgnoreSwipe = useCallback((target, container) => {
@@ -376,6 +376,7 @@ export default function CharacterBasicView({ hero }) {
     (event) => {
       if (shouldIgnoreSwipe(event.target, event.currentTarget)) return
       pointerIdRef.current = event.pointerId
+      pointerSwipePreventTapRef.current = false
       pointerStartX.current = event.clientX
       pointerLastX.current = event.clientX
       if (event.currentTarget.setPointerCapture) {
@@ -389,10 +390,19 @@ export default function CharacterBasicView({ hero }) {
     [shouldIgnoreSwipe],
   )
 
-  const handlePointerMove = useCallback((event) => {
-    if (pointerIdRef.current !== event.pointerId) return
-    pointerLastX.current = event.clientX
-  }, [])
+  const handlePointerMove = useCallback(
+    (event) => {
+      if (pointerIdRef.current !== event.pointerId) return
+      pointerLastX.current = event.clientX
+      if (
+        pointerStartX.current != null &&
+        Math.abs(pointerStartX.current - event.clientX) > 24
+      ) {
+        pointerSwipePreventTapRef.current = true
+      }
+    },
+    [],
+  )
 
   const handlePointerUp = useCallback(
     (event) => {
@@ -408,6 +418,24 @@ export default function CharacterBasicView({ hero }) {
       clearPointer(event, false)
     },
     [clearPointer],
+  )
+
+  const cycleViewMode = useCallback(() => {
+    setViewMode((prev) => (prev + 1) % 3)
+  }, [])
+
+  const handleTap = useCallback(
+    (options = {}) => {
+      const skipSwipeCheck = options.skipSwipeCheck === true
+      if (!skipSwipeCheck && pointerSwipePreventTapRef.current) {
+        pointerSwipePreventTapRef.current = false
+        return
+      }
+
+      pointerSwipePreventTapRef.current = false
+      cycleViewMode()
+    },
+    [cycleViewMode],
   )
 
   const handleKeyDown = useCallback(
@@ -429,10 +457,10 @@ export default function CharacterBasicView({ hero }) {
         role="button"
         tabIndex={0}
         style={styles.heroCard}
-        onClick={handleTap}
+        onClick={() => handleTap()}
         onKeyUp={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
-            handleTap()
+            handleTap({ skipSwipeCheck: true })
           }
         }}
       >
