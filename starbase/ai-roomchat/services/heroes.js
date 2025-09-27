@@ -38,6 +38,11 @@ const HERO_LIST_COLUMNS = 'id,name,image_url,owner_id,created_at,updated_at'
 const HERO_BGM_COLUMNS =
   'id,hero_id,label,url,storage_path,duration_seconds,mime,sort_order,created_at,updated_at'
 const FALLBACK_NAME = '이름 없는 영웅'
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isValidUuid(value) {
+  return typeof value === 'string' && UUID_REGEX.test(value)
+}
 
 function normaliseHeroBgm(record, index = 0) {
   if (!record || typeof record !== 'object') {
@@ -219,7 +224,7 @@ export async function syncHeroBgms(
               : `브금 ${sortOrder + 1}`
 
           return {
-            id: row.id || undefined,
+            id: isValidUuid(row.id) ? row.id : undefined,
             hero_id: heroId,
             label,
             url: row.url || null,
@@ -249,7 +254,7 @@ export async function syncHeroBgms(
   }
 
   const removalIds = Array.isArray(removals)
-    ? removals.map((value) => value).filter(Boolean)
+    ? removals.map((value) => value).filter(isValidUuid)
     : []
 
   if (removalIds.length) {

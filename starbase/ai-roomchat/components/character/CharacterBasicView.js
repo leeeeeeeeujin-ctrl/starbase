@@ -38,6 +38,12 @@ const EQ_BAND_STEP = 0.5;
 
 const HERO_STORAGE_BUCKET = "heroes";
 const MAX_BGM_TRACKS = 8;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUuid(value) {
+  return typeof value === "string" && UUID_REGEX.test(value);
+}
 
 const rosterNotices = [
   {
@@ -2806,7 +2812,7 @@ export default function CharacterBasicView({ hero }) {
         }
 
         processedTracks.push({
-          id: track.id,
+          id: isValidUuid(track.id) ? track.id : undefined,
           label,
           url: finalUrl,
           storage_path: storagePath,
