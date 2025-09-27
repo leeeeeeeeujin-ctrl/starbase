@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
+import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 import { sanitizeFileName } from '@/utils/characterAssets'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
@@ -16,7 +17,6 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024
 const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024
 const MAX_AUDIO_SIZE = 12 * 1024 * 1024
 const MAX_AUDIO_DURATION = 5 * 60
-const EQ_FREQUENCIES = [80, 750, 3500]
 const AUDIO_SETTINGS_COOKIE = 'hero-audio-settings'
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 
@@ -879,21 +879,10 @@ export default function CharacterBasicView({ hero }) {
 
   const [viewMode, setViewMode] = useState(0)
   const [activeTab, setActiveTab] = useState(0)
-  const [bgmEnabled, setBgmEnabled] = useState(Boolean(hero?.bgm_url))
-  const [isPlaying, setIsPlaying] = useState(false)
   const [playerCollapsed, setPlayerCollapsed] = useState(true)
   const [dockCollapsed, setDockCollapsed] = useState(true)
-  const [progress, setProgress] = useState(0)
-  const [duration, setDuration] = useState(0)
   const [selectedBgmName, setSelectedBgmName] = useState('')
   const [customBgmUrl, setCustomBgmUrl] = useState(null)
-  const [bgmVolume, setBgmVolume] = useState(0.8)
-  const [eqEnabled, setEqEnabled] = useState(false)
-  const [equalizer, setEqualizer] = useState({ low: 0, mid: 0, high: 0 })
-  const [reverbEnabled, setReverbEnabled] = useState(false)
-  const [reverbDetail, setReverbDetail] = useState({ mix: 0.3, decay: 1.8 })
-  const [compressorEnabled, setCompressorEnabled] = useState(false)
-  const [compressorDetail, setCompressorDetail] = useState({ threshold: -28, ratio: 2.5, release: 0.25 })
   const [isEditing, setIsEditing] = useState(false)
   const [draftHero, setDraftHero] = useState(null)
   const [imagePreview, setImagePreview] = useState(hero?.image_url || '')
@@ -909,243 +898,105 @@ export default function CharacterBasicView({ hero }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchSort, setSearchSort] = useState('latest')
 
+  const audioManager = useMemo(() => getHeroAudioManager(), [])
+  const [audioState, setAudioState] = useState(() => audioManager.getState())
+  const {
+    enabled: bgmEnabled,
+    isPlaying,
+    progress,
+    duration,
+    volume: bgmVolume,
+    eqEnabled,
+    equalizer,
+    reverbEnabled,
+    reverbDetail,
+    compressorEnabled,
+    compressorDetail,
+  } = audioState
+
   const imageInputRef = useRef(null)
   const backgroundInputRef = useRef(null)
   const bgmInputRef = useRef(null)
-  const audioRef = useRef(null)
-  const audioContextRef = useRef(null)
-  const sourceNodeRef = useRef(null)
-  const gainNodeRef = useRef(null)
-  const eqNodesRef = useRef([])
-  const reverbNodeRef = useRef(null)
-  const reverbWetGainRef = useRef(null)
-  const reverbDryGainRef = useRef(null)
-  const reverbMergeRef = useRef(null)
-  const compressorNodeRef = useRef(null)
   const previousCustomUrl = useRef(null)
-  const eqEnabledRef = useRef(eqEnabled)
-  const reverbEnabledRef = useRef(reverbEnabled)
-  const reverbMixRef = useRef(reverbDetail.mix)
-  const compressorEnabledRef = useRef(compressorEnabled)
-  const compressorDetailRef = useRef(compressorDetail)
-  const bgmVolumeRef = useRef(bgmVolume)
   const imageObjectUrlRef = useRef(null)
   const backgroundObjectUrlRef = useRef(null)
+  const lastLoadedHeroIdRef = useRef(null)
+
+  useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
 
   useEffect(() => {
     const raw = readCookie(AUDIO_SETTINGS_COOKIE)
     if (!raw) return
     try {
       const parsed = JSON.parse(raw)
-      if (typeof parsed.eqEnabled === 'boolean') setEqEnabled(parsed.eqEnabled)
+      if (typeof parsed.eqEnabled === 'boolean') {
+        audioManager.setEqEnabled(parsed.eqEnabled)
+      }
       if (parsed.equalizer) {
-        setEqualizer((prev) => ({
-          low: Number.isFinite(parsed.equalizer.low) ? parsed.equalizer.low : prev.low,
-          mid: Number.isFinite(parsed.equalizer.mid) ? parsed.equalizer.mid : prev.mid,
-          high: Number.isFinite(parsed.equalizer.high) ? parsed.equalizer.high : prev.high,
-        }))
+        audioManager.setEqualizer({
+          low: Number.isFinite(parsed.equalizer.low) ? parsed.equalizer.low : undefined,
+          mid: Number.isFinite(parsed.equalizer.mid) ? parsed.equalizer.mid : undefined,
+          high: Number.isFinite(parsed.equalizer.high) ? parsed.equalizer.high : undefined,
+        })
       }
-      if (typeof parsed.reverbEnabled === 'boolean') setReverbEnabled(parsed.reverbEnabled)
+      if (typeof parsed.reverbEnabled === 'boolean') {
+        audioManager.setReverbEnabled(parsed.reverbEnabled)
+      }
       if (parsed.reverbDetail) {
-        setReverbDetail((prev) => ({
-          mix: Number.isFinite(parsed.reverbDetail.mix) ? parsed.reverbDetail.mix : prev.mix,
-          decay: Number.isFinite(parsed.reverbDetail.decay) ? parsed.reverbDetail.decay : prev.decay,
-        }))
+        audioManager.setReverbDetail({
+          mix: Number.isFinite(parsed.reverbDetail.mix) ? parsed.reverbDetail.mix : undefined,
+          decay: Number.isFinite(parsed.reverbDetail.decay) ? parsed.reverbDetail.decay : undefined,
+        })
       }
-      if (typeof parsed.compressorEnabled === 'boolean') setCompressorEnabled(parsed.compressorEnabled)
+      if (typeof parsed.compressorEnabled === 'boolean') {
+        audioManager.setCompressorEnabled(parsed.compressorEnabled)
+      }
       if (parsed.compressorDetail) {
-        setCompressorDetail((prev) => ({
+        audioManager.setCompressorDetail({
           threshold: Number.isFinite(parsed.compressorDetail.threshold)
             ? parsed.compressorDetail.threshold
-            : prev.threshold,
-          ratio: Number.isFinite(parsed.compressorDetail.ratio) ? parsed.compressorDetail.ratio : prev.ratio,
+            : undefined,
+          ratio: Number.isFinite(parsed.compressorDetail.ratio) ? parsed.compressorDetail.ratio : undefined,
           release: Number.isFinite(parsed.compressorDetail.release)
             ? parsed.compressorDetail.release
-            : prev.release,
-        }))
+            : undefined,
+        })
       }
     } catch (error) {
       console.error(error)
     }
-  }, [])
+  }, [audioManager])
 
   useEffect(() => {
     const payload = {
-      eqEnabled,
-      equalizer,
-      reverbEnabled,
-      reverbDetail,
-      compressorEnabled,
-      compressorDetail,
+      eqEnabled: audioState.eqEnabled,
+      equalizer: audioState.equalizer,
+      reverbEnabled: audioState.reverbEnabled,
+      reverbDetail: audioState.reverbDetail,
+      compressorEnabled: audioState.compressorEnabled,
+      compressorDetail: audioState.compressorDetail,
     }
     writeCookie(AUDIO_SETTINGS_COOKIE, JSON.stringify(payload))
   }, [
-    eqEnabled,
-    equalizer.low,
-    equalizer.mid,
-    equalizer.high,
-    reverbEnabled,
-    reverbDetail.mix,
-    reverbDetail.decay,
-    compressorEnabled,
-    compressorDetail.threshold,
-    compressorDetail.ratio,
-    compressorDetail.release,
+    audioState.eqEnabled,
+    audioState.equalizer.low,
+    audioState.equalizer.mid,
+    audioState.equalizer.high,
+    audioState.reverbEnabled,
+    audioState.reverbDetail.mix,
+    audioState.reverbDetail.decay,
+    audioState.compressorEnabled,
+    audioState.compressorDetail.threshold,
+    audioState.compressorDetail.ratio,
+    audioState.compressorDetail.release,
   ])
-
-  const ensureAudioContext = useCallback(() => {
-    if (typeof window === 'undefined') return null
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext
-    if (!AudioContextClass) return null
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContextClass()
-    }
-    return audioContextRef.current
-  }, [])
-
-  const refreshReverbBuffer = useCallback(() => {
-    const context = audioContextRef.current
-    if (!context || !reverbNodeRef.current) return
-    const decaySeconds = Math.min(Math.max(reverbDetail.decay, 0.1), 6)
-    const length = Math.floor(context.sampleRate * decaySeconds)
-    const impulse = context.createBuffer(2, length, context.sampleRate)
-    for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
-      const channelData = impulse.getChannelData(channel)
-      for (let i = 0; i < length; i += 1) {
-        const random = Math.random() * 2 - 1
-        channelData[i] = random * (1 - i / length)
-      }
-    }
-    reverbNodeRef.current.buffer = impulse
-  }, [reverbDetail.decay])
-
-  const connectAudioGraph = useCallback(() => {
-    const context = audioContextRef.current
-    const source = sourceNodeRef.current
-    const gainNode = gainNodeRef.current
-    if (!context || !source || !gainNode) return
-
-    try {
-      source.disconnect()
-    } catch (error) {}
-    eqNodesRef.current.forEach((node) => {
-      try {
-        node.disconnect()
-      } catch (error) {}
-    })
-    if (reverbNodeRef.current) {
-      try {
-        reverbNodeRef.current.disconnect()
-      } catch (error) {}
-    }
-    if (reverbWetGainRef.current) {
-      try {
-        reverbWetGainRef.current.disconnect()
-      } catch (error) {}
-    }
-    if (reverbDryGainRef.current) {
-      try {
-        reverbDryGainRef.current.disconnect()
-      } catch (error) {}
-    }
-    if (reverbMergeRef.current) {
-      try {
-        reverbMergeRef.current.disconnect()
-      } catch (error) {}
-    }
-    if (compressorNodeRef.current) {
-      try {
-        compressorNodeRef.current.disconnect()
-      } catch (error) {}
-    }
-    try {
-      gainNode.disconnect()
-    } catch (error) {}
-
-    gainNode.gain.value = bgmVolumeRef.current
-
-    let cursor = source
-    if (eqEnabledRef.current && eqNodesRef.current.length) {
-      eqNodesRef.current.forEach((node) => {
-        cursor.connect(node)
-        cursor = node
-      })
-    }
-
-    const dryGain = reverbDryGainRef.current || ensureAudioContext()?.createGain()
-    const wetGain = reverbWetGainRef.current || ensureAudioContext()?.createGain()
-    const mergeGain = reverbMergeRef.current || ensureAudioContext()?.createGain()
-
-    if (dryGain) reverbDryGainRef.current = dryGain
-    if (wetGain) reverbWetGainRef.current = wetGain
-    if (mergeGain) reverbMergeRef.current = mergeGain
-
-    if (dryGain) {
-      try {
-        dryGain.disconnect()
-      } catch (error) {}
-    }
-    if (wetGain) {
-      try {
-        wetGain.disconnect()
-      } catch (error) {}
-    }
-    if (mergeGain) {
-      try {
-        mergeGain.disconnect()
-      } catch (error) {}
-    }
-
-    let postEffectNode = cursor
-
-    if (reverbEnabledRef.current && wetGain && dryGain && mergeGain && reverbNodeRef.current) {
-      const mix = Math.min(Math.max(reverbMixRef.current, 0), 1)
-      dryGain.gain.value = Math.max(0, 1 - mix)
-      wetGain.gain.value = mix
-
-      cursor.connect(dryGain)
-      cursor.connect(wetGain)
-      dryGain.connect(mergeGain)
-      wetGain.connect(reverbNodeRef.current)
-      reverbNodeRef.current.connect(mergeGain)
-      postEffectNode = mergeGain
-    } else if (dryGain) {
-      dryGain.gain.value = 1
-      cursor.connect(dryGain)
-      postEffectNode = dryGain
-    }
-
-    let dynamicsInput = postEffectNode
-    if (compressorEnabledRef.current && compressorNodeRef.current) {
-      const detail = compressorDetailRef.current
-      compressorNodeRef.current.threshold.value = detail.threshold
-      compressorNodeRef.current.ratio.value = detail.ratio
-      compressorNodeRef.current.release.value = detail.release
-      compressorNodeRef.current.attack.value = 0.003
-      dynamicsInput.connect(compressorNodeRef.current)
-      dynamicsInput = compressorNodeRef.current
-    }
-
-    dynamicsInput.connect(gainNode)
-    gainNode.connect(context.destination)
-  }, [ensureAudioContext])
 
   useEffect(() => {
     setViewMode(0)
     setActiveTab(0)
-    setBgmEnabled(Boolean(hero?.bgm_url))
-    setIsPlaying(false)
     setPlayerCollapsed(false)
-    setProgress(0)
-    setDuration(0)
     setSelectedBgmName('')
     setCustomBgmUrl(null)
-    setEqEnabled(false)
-    setEqualizer({ low: 0, mid: 0, high: 0 })
-    setReverbEnabled(false)
-    setReverbDetail({ mix: 0.3, decay: 1.8 })
-    setCompressorEnabled(false)
-    setCompressorDetail({ threshold: -28, ratio: 2.5, release: 0.25 })
     setIsEditing(false)
     setDraftHero(
       hero
@@ -1205,271 +1056,30 @@ export default function CharacterBasicView({ hero }) {
   const activeBgmUrl = customBgmUrl || currentHero?.bgm_url || null
 
   useEffect(() => {
-    if (!activeBgmUrl || !bgmEnabled) {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.currentTime = 0
-        audioRef.current = null
-      }
-      if (sourceNodeRef.current) {
-        try {
-          sourceNodeRef.current.disconnect()
-        } catch (error) {}
-        sourceNodeRef.current = null
-      }
-      eqNodesRef.current.forEach((node) => {
-        try {
-          node.disconnect()
-        } catch (error) {}
-      })
-      eqNodesRef.current = []
-      if (reverbNodeRef.current) {
-        try {
-          reverbNodeRef.current.disconnect()
-        } catch (error) {}
-        reverbNodeRef.current = null
-      }
-      if (reverbWetGainRef.current) {
-        try {
-          reverbWetGainRef.current.disconnect()
-        } catch (error) {}
-        reverbWetGainRef.current = null
-      }
-      if (reverbDryGainRef.current) {
-        try {
-          reverbDryGainRef.current.disconnect()
-        } catch (error) {}
-        reverbDryGainRef.current = null
-      }
-      if (reverbMergeRef.current) {
-        try {
-          reverbMergeRef.current.disconnect()
-        } catch (error) {}
-        reverbMergeRef.current = null
-      }
-      if (compressorNodeRef.current) {
-        try {
-          compressorNodeRef.current.disconnect()
-        } catch (error) {}
-        compressorNodeRef.current = null
-      }
-      if (gainNodeRef.current) {
-        try {
-          gainNodeRef.current.disconnect()
-        } catch (error) {}
-        gainNodeRef.current = null
-      }
-      setIsPlaying(false)
-      setProgress(0)
-      setDuration(0)
-      return
-    }
-
-    const audio = new Audio(activeBgmUrl)
-    audio.crossOrigin = 'anonymous'
-    audioRef.current = audio
-
-    const handleLoaded = () => {
-      const metaDuration = Number.isFinite(audio.duration) ? audio.duration : 0
-      setDuration(metaDuration)
-    }
-
-    const handleTime = () => {
-      setProgress(audio.currentTime)
-    }
-
-    const handleEnded = () => {
-      setProgress(audio.duration || 0)
-      setIsPlaying(false)
-    }
-
-    audio.addEventListener('loadedmetadata', handleLoaded)
-    audio.addEventListener('timeupdate', handleTime)
-    audio.addEventListener('ended', handleEnded)
-
-    const context = ensureAudioContext()
-    if (context) {
-      try {
-        if (context.state === 'suspended') {
-          context.resume().catch(() => {})
-        }
-      } catch (error) {}
-      const source = context.createMediaElementSource(audio)
-      sourceNodeRef.current = source
-
-      const gain = context.createGain()
-      gain.gain.value = bgmVolumeRef.current
-      gainNodeRef.current = gain
-
-      eqNodesRef.current = EQ_FREQUENCIES.map((frequency, index) => {
-        const node = context.createBiquadFilter()
-        node.type = 'peaking'
-        node.frequency.value = frequency
-        node.Q.value = index === 1 ? 0.9 : 1.1
-        node.gain.value = 0
-        return node
-      })
-
-      reverbNodeRef.current = context.createConvolver()
-      reverbNodeRef.current.normalize = true
-
-      compressorNodeRef.current = context.createDynamicsCompressor()
-      compressorNodeRef.current.threshold.value = compressorDetailRef.current.threshold
-      compressorNodeRef.current.ratio.value = compressorDetailRef.current.ratio
-      compressorNodeRef.current.release.value = compressorDetailRef.current.release
-      compressorNodeRef.current.attack.value = 0.003
-
-      refreshReverbBuffer()
-      connectAudioGraph()
-    }
-
-    const startPlayback = async () => {
-      try {
-        await audio.play()
-        setIsPlaying(true)
-      } catch (error) {
-        setIsPlaying(false)
-      }
-    }
-
-    startPlayback()
-
-    return () => {
-      audio.pause()
-      audio.currentTime = 0
-      audio.removeEventListener('loadedmetadata', handleLoaded)
-      audio.removeEventListener('timeupdate', handleTime)
-      audio.removeEventListener('ended', handleEnded)
-      if (audioRef.current === audio) {
-        audioRef.current = null
-      }
-      if (sourceNodeRef.current) {
-        try {
-          sourceNodeRef.current.disconnect()
-        } catch (error) {}
-        sourceNodeRef.current = null
-      }
-      eqNodesRef.current.forEach((node) => {
-        try {
-          node.disconnect()
-        } catch (error) {}
-      })
-      eqNodesRef.current = []
-      if (reverbNodeRef.current) {
-        try {
-          reverbNodeRef.current.disconnect()
-        } catch (error) {}
-        reverbNodeRef.current = null
-      }
-      if (reverbWetGainRef.current) {
-        try {
-          reverbWetGainRef.current.disconnect()
-        } catch (error) {}
-        reverbWetGainRef.current = null
-      }
-      if (reverbDryGainRef.current) {
-        try {
-          reverbDryGainRef.current.disconnect()
-        } catch (error) {}
-        reverbDryGainRef.current = null
-      }
-      if (reverbMergeRef.current) {
-        try {
-          reverbMergeRef.current.disconnect()
-        } catch (error) {}
-        reverbMergeRef.current = null
-      }
-      if (compressorNodeRef.current) {
-        try {
-          compressorNodeRef.current.disconnect()
-        } catch (error) {}
-        compressorNodeRef.current = null
-      }
-      if (gainNodeRef.current) {
-        try {
-          gainNodeRef.current.disconnect()
-        } catch (error) {}
-        gainNodeRef.current = null
-      }
-    }
-  }, [activeBgmUrl, bgmEnabled, connectAudioGraph, ensureAudioContext, refreshReverbBuffer])
-
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    if (isPlaying) {
-      audio.play().catch(() => {
-        setIsPlaying(false)
-      })
-    } else {
-      audio.pause()
-    }
-  }, [isPlaying])
-
-  useEffect(() => {
-    eqEnabledRef.current = eqEnabled
-    if (gainNodeRef.current) {
-      connectAudioGraph()
-    }
-  }, [eqEnabled, connectAudioGraph])
-
-  useEffect(() => {
-    bgmVolumeRef.current = bgmVolume
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = bgmVolume
-    }
-  }, [bgmVolume])
-
-  useEffect(() => {
-    reverbEnabledRef.current = reverbEnabled
-    if (gainNodeRef.current) {
-      connectAudioGraph()
-    }
-  }, [reverbEnabled, connectAudioGraph])
-
-  useEffect(() => {
-    reverbMixRef.current = reverbDetail.mix
-    if (gainNodeRef.current) {
-      connectAudioGraph()
-    }
-  }, [reverbDetail.mix, connectAudioGraph])
-
-  useEffect(() => {
-    compressorEnabledRef.current = compressorEnabled
-    if (gainNodeRef.current) {
-      connectAudioGraph()
-    }
-  }, [compressorEnabled, connectAudioGraph])
-
-  useEffect(() => {
-    compressorDetailRef.current = compressorDetail
-    if (compressorNodeRef.current) {
-      compressorNodeRef.current.threshold.value = compressorDetail.threshold
-      compressorNodeRef.current.ratio.value = compressorDetail.ratio
-      compressorNodeRef.current.release.value = compressorDetail.release
-    }
-    if (gainNodeRef.current) {
-      connectAudioGraph()
-    }
-  }, [compressorDetail, connectAudioGraph])
-
-  useEffect(() => {
-    if (!eqNodesRef.current.length) return
-    const values = [equalizer.low, equalizer.mid, equalizer.high]
-    eqNodesRef.current.forEach((node, index) => {
-      node.frequency.value = EQ_FREQUENCIES[index]
-      node.Q.value = index === 1 ? 0.9 : 1.1
-      node.gain.value = eqEnabledRef.current ? values[index] ?? 0 : 0
+    const heroId = currentHero?.id || null
+    const durationHint = customBgmUrl ? bgmDurationSeconds || 0 : currentHero?.bgm_duration_seconds || 0
+    audioManager.loadHeroTrack({
+      heroId,
+      heroName,
+      trackUrl: activeBgmUrl,
+      duration: durationHint,
+      autoPlay: true,
+      loop: true,
     })
-    if (gainNodeRef.current) {
-      connectAudioGraph()
-    }
-  }, [equalizer, connectAudioGraph])
 
-  useEffect(() => {
-    refreshReverbBuffer()
-  }, [refreshReverbBuffer, reverbDetail.decay])
+    if (lastLoadedHeroIdRef.current !== heroId) {
+      lastLoadedHeroIdRef.current = heroId
+      audioManager.setEnabled(Boolean(activeBgmUrl))
+      audioManager.setLoop(true)
+    }
+  }, [
+    audioManager,
+    activeBgmUrl,
+    currentHero?.id,
+    heroName,
+    bgmDurationSeconds,
+    customBgmUrl,
+  ])
 
   const backgroundStyle = currentHero?.background_url
     ? pageStyles.withBackground(currentHero.background_url)
@@ -1524,31 +1134,21 @@ export default function CharacterBasicView({ hero }) {
     const rect = event.currentTarget.getBoundingClientRect()
     const ratio = (event.clientX - rect.left) / rect.width
     const clamped = Math.min(Math.max(ratio, 0), 1)
-    const audio = audioRef.current
-    if (audio) {
-      const nextTime = clamped * duration
-      audio.currentTime = nextTime
-      setProgress(nextTime)
-    }
+    const nextTime = clamped * duration
+    audioManager.seek(nextTime)
   }
 
   const togglePlayback = () => {
     if (!activeBgmUrl) return
-    setIsPlaying((prev) => !prev)
+    audioManager.toggle()
   }
 
   const stopPlayback = () => {
-    const audio = audioRef.current
-    if (audio) {
-      audio.pause()
-      audio.currentTime = 0
-    }
-    setProgress(0)
-    setIsPlaying(false)
+    audioManager.stop()
   }
 
   const handleBgmToggle = () => {
-    setBgmEnabled((prev) => !prev)
+    audioManager.setEnabled(!bgmEnabled)
   }
 
   const handleImageChange = (event) => {
@@ -1625,10 +1225,7 @@ export default function CharacterBasicView({ hero }) {
     const tempUrl = URL.createObjectURL(file)
     setCustomBgmUrl(tempUrl)
     setSelectedBgmName(file.name || '선택한 오디오')
-    setBgmEnabled(true)
-    setProgress(0)
-    setDuration(0)
-    setIsPlaying(false)
+    audioManager.setEnabled(true)
     setBgmCleared(false)
 
     try {
@@ -1654,9 +1251,11 @@ export default function CharacterBasicView({ hero }) {
         setBgmFile(null)
         setBgmDurationSeconds(currentHero?.bgm_duration_seconds || null)
         setBgmMime(currentHero?.bgm_mime || null)
+        audioManager.setEnabled(Boolean(currentHero?.bgm_url))
       } else {
         setBgmFile(file)
-        setBgmDurationSeconds(Math.round(durationValue))
+        const roundedDuration = Math.round(durationValue)
+        setBgmDurationSeconds(roundedDuration)
         setBgmMime(file.type || null)
       }
     } catch (error) {
@@ -1667,6 +1266,7 @@ export default function CharacterBasicView({ hero }) {
       setBgmFile(null)
       setBgmDurationSeconds(currentHero?.bgm_duration_seconds || null)
       setBgmMime(currentHero?.bgm_mime || null)
+      audioManager.setEnabled(Boolean(currentHero?.bgm_url))
     }
 
     // eslint-disable-next-line no-param-reassign
@@ -1803,16 +1403,21 @@ export default function CharacterBasicView({ hero }) {
       setBgmDurationSeconds(nextDuration)
       setBgmMime(nextMime)
       setSelectedBgmName('')
-      setBgmEnabled(Boolean(bgmUrl))
       setBgmCleared(false)
-      setIsPlaying(false)
-      setProgress(0)
-      setDuration(nextDuration || 0)
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('hero-overlay:refresh'))
       }
       alert('저장 완료')
       setIsEditing(false)
+      audioManager.loadHeroTrack({
+        heroId: nextHero.id,
+        heroName: fullPayload.name,
+        trackUrl: bgmUrl,
+        duration: nextDuration || 0,
+        autoPlay: Boolean(bgmUrl),
+        loop: true,
+      })
+      audioManager.setEnabled(Boolean(bgmUrl))
     } catch (error) {
       console.error(error)
       alert(error.message || '저장에 실패했습니다.')
@@ -1829,11 +1434,8 @@ export default function CharacterBasicView({ hero }) {
     setBgmFile(null)
     setBgmDurationSeconds(currentHero?.bgm_duration_seconds || null)
     setBgmMime(currentHero?.bgm_mime || null)
-    setBgmEnabled(Boolean(currentHero?.bgm_url))
     setBgmCleared(false)
-    setProgress(0)
-    setDuration(currentHero?.bgm_duration_seconds || 0)
-    setIsPlaying(false)
+    audioManager.setEnabled(Boolean(currentHero?.bgm_url))
     setImagePreview(currentHero?.image_url || '')
     setBackgroundPreview(currentHero?.background_url || '')
     if (imageObjectUrlRef.current) {
@@ -2202,7 +1804,7 @@ export default function CharacterBasicView({ hero }) {
                 min={0}
                 max={100}
                 value={Math.round(bgmVolume * 100)}
-                onChange={(event) => setBgmVolume(Number(event.target.value) / 100)}
+                onChange={(event) => audioManager.setVolume(Number(event.target.value) / 100)}
                 style={styles.rangeInput}
               />
             </div>
@@ -2210,7 +1812,11 @@ export default function CharacterBasicView({ hero }) {
             <div style={styles.settingsGroup}>
               <div style={styles.effectToggleRow}>
                 <p style={styles.effectTitle}>이퀄라이저</p>
-                <button type="button" style={styles.togglePill(eqEnabled)} onClick={() => setEqEnabled((prev) => !prev)}>
+                <button
+                  type="button"
+                  style={styles.togglePill(eqEnabled)}
+                  onClick={() => audioManager.setEqEnabled(!eqEnabled)}
+                >
                   {eqEnabled ? '켜짐' : '꺼짐'}
                 </button>
               </div>
@@ -2229,7 +1835,10 @@ export default function CharacterBasicView({ hero }) {
                       max={12}
                       value={equalizer[band.key]}
                       onChange={(event) =>
-                        setEqualizer((prev) => ({ ...prev, [band.key]: Number(event.target.value) }))
+                        audioManager.setEqualizer({
+                          ...equalizer,
+                          [band.key]: Number(event.target.value),
+                        })
                       }
                       style={styles.smallRange}
                       disabled={!eqEnabled}
@@ -2246,7 +1855,7 @@ export default function CharacterBasicView({ hero }) {
                 <button
                   type="button"
                   style={styles.togglePill(reverbEnabled)}
-                  onClick={() => setReverbEnabled((prev) => !prev)}
+                  onClick={() => audioManager.setReverbEnabled(!reverbEnabled)}
                 >
                   {reverbEnabled ? '켜짐' : '꺼짐'}
                 </button>
@@ -2263,7 +1872,10 @@ export default function CharacterBasicView({ hero }) {
                   max={100}
                   value={Math.round(reverbDetail.mix * 100)}
                   onChange={(event) =>
-                    setReverbDetail((prev) => ({ ...prev, mix: Number(event.target.value) / 100 }))
+                    audioManager.setReverbDetail({
+                      ...reverbDetail,
+                      mix: Number(event.target.value) / 100,
+                    })
                   }
                   style={styles.rangeInput}
                   disabled={!reverbEnabled}
@@ -2280,7 +1892,10 @@ export default function CharacterBasicView({ hero }) {
                   max={500}
                   value={Math.round(reverbDetail.decay * 100)}
                   onChange={(event) =>
-                    setReverbDetail((prev) => ({ ...prev, decay: Number(event.target.value) / 100 }))
+                    audioManager.setReverbDetail({
+                      ...reverbDetail,
+                      decay: Number(event.target.value) / 100,
+                    })
                   }
                   style={styles.rangeInput}
                   disabled={!reverbEnabled}
@@ -2294,7 +1909,7 @@ export default function CharacterBasicView({ hero }) {
                 <button
                   type="button"
                   style={styles.togglePill(compressorEnabled)}
-                  onClick={() => setCompressorEnabled((prev) => !prev)}
+                  onClick={() => audioManager.setCompressorEnabled(!compressorEnabled)}
                 >
                   {compressorEnabled ? '켜짐' : '꺼짐'}
                 </button>
@@ -2311,7 +1926,10 @@ export default function CharacterBasicView({ hero }) {
                   max={0}
                   value={compressorDetail.threshold}
                   onChange={(event) =>
-                    setCompressorDetail((prev) => ({ ...prev, threshold: Number(event.target.value) }))
+                    audioManager.setCompressorDetail({
+                      ...compressorDetail,
+                      threshold: Number(event.target.value),
+                    })
                   }
                   style={styles.rangeInput}
                   disabled={!compressorEnabled}
@@ -2328,7 +1946,10 @@ export default function CharacterBasicView({ hero }) {
                   max={60}
                   value={Math.round(compressorDetail.ratio * 10)}
                   onChange={(event) =>
-                    setCompressorDetail((prev) => ({ ...prev, ratio: Number(event.target.value) / 10 }))
+                    audioManager.setCompressorDetail({
+                      ...compressorDetail,
+                      ratio: Number(event.target.value) / 10,
+                    })
                   }
                   style={styles.rangeInput}
                   disabled={!compressorEnabled}
@@ -2345,7 +1966,10 @@ export default function CharacterBasicView({ hero }) {
                   max={1000}
                   value={Math.round(compressorDetail.release * 1000)}
                   onChange={(event) =>
-                    setCompressorDetail((prev) => ({ ...prev, release: Number(event.target.value) / 1000 }))
+                    audioManager.setCompressorDetail({
+                      ...compressorDetail,
+                      release: Number(event.target.value) / 1000,
+                    })
                   }
                   style={styles.rangeInput}
                   disabled={!compressorEnabled}
@@ -2460,13 +2084,11 @@ export default function CharacterBasicView({ hero }) {
                         setSelectedBgmName('')
                         setBgmDurationSeconds(null)
                         setBgmMime(null)
-                        setBgmEnabled(false)
                         setBgmError('')
                         if (bgmInputRef.current) bgmInputRef.current.value = ''
-                        setProgress(0)
-                        setDuration(0)
-                        setIsPlaying(false)
                         setBgmCleared(true)
+                        audioManager.setEnabled(false)
+                        audioManager.stop()
                       }}
                     >
                       브금 제거

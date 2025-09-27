@@ -3,6 +3,7 @@
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 import { fetchHeroById } from '@/services/heroes'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
@@ -308,18 +309,15 @@ function formatTime(seconds) {
 
 export default function SharedHeroOverlay() {
   const router = useRouter()
+  const audioManager = useMemo(() => getHeroAudioManager(), [])
+  const [audioState, setAudioState] = useState(() => audioManager.getState())
+  const { enabled: bgmEnabled, isPlaying, progress, duration, volume: bgmVolume } = audioState
   const [currentHero, setCurrentHero] = useState(null)
   const [activeTab, setActiveTab] = useState(0)
   const [dockCollapsed, setDockCollapsed] = useState(true)
   const [playerCollapsed, setPlayerCollapsed] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [searchSort, setSearchSort] = useState('latest')
-  const [bgmEnabled, setBgmEnabled] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [bgmVolume, setBgmVolume] = useState(0.8)
-  const audioRef = useRef(null)
 
   const heroName = useMemo(() => {
     if (!currentHero) return DEFAULT_HERO_NAME
@@ -345,6 +343,10 @@ export default function SharedHeroOverlay() {
   }, [currentHero])
 
   const activeBgmUrl = currentHero?.bgm_url || null
+
+  const lastHeroIdRef = useRef(null)
+
+  useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
 
   const filteredGames = useMemo(() => {
     const trimmed = searchTerm.trim().toLowerCase()
@@ -379,17 +381,29 @@ export default function SharedHeroOverlay() {
       const heroRow = await fetchHeroById(storedId)
       if (heroRow) {
         setCurrentHero(heroRow)
-        setBgmEnabled(Boolean(heroRow.bgm_url))
-        setProgress(0)
-        setDuration(heroRow.bgm_duration_seconds || 0)
+        const heroTrackKey = `${heroRow.id}:${heroRow.bgm_url || ''}`
+        if (lastHeroIdRef.current !== heroTrackKey) {
+          lastHeroIdRef.current = heroTrackKey
+          audioManager.loadHeroTrack({
+            heroId: heroRow.id,
+            heroName: heroRow.name,
+            trackUrl: heroRow.bgm_url || null,
+            duration: heroRow.bgm_duration_seconds || 0,
+            autoPlay: Boolean(heroRow.bgm_url),
+            loop: true,
+          })
+          audioManager.setEnabled(Boolean(heroRow.bgm_url))
+        }
       } else {
         setCurrentHero(null)
+        audioManager.setEnabled(false)
       }
     } catch (error) {
       console.error('공유 오버레이용 캐릭터 불러오기 실패:', error)
       setCurrentHero(null)
+      audioManager.setEnabled(false)
     }
-  }, [])
+  }, [audioManager])
 
   useEffect(() => {
     loadHero()
@@ -405,101 +419,25 @@ export default function SharedHeroOverlay() {
     }
   }, [loadHero])
 
-  useEffect(() => {
-    if (!bgmEnabled || !activeBgmUrl) {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
-      setIsPlaying(false)
-      setProgress(0)
-      return
-    }
-
-    const audio = new Audio(activeBgmUrl)
-    audio.crossOrigin = 'anonymous'
-    audio.volume = bgmVolume
-
-    const handleLoaded = () => {
-      if (Number.isFinite(audio.duration)) {
-        setDuration(audio.duration)
-      }
-    }
-
-    const handleTime = () => {
-      setProgress(audio.currentTime)
-    }
-
-    const handleEnded = () => {
-      setProgress(audio.duration || 0)
-      setIsPlaying(false)
-    }
-
-    audio.addEventListener('loadedmetadata', handleLoaded)
-    audio.addEventListener('timeupdate', handleTime)
-    audio.addEventListener('ended', handleEnded)
-
-    const playAudio = async () => {
-      try {
-        await audio.play()
-        setIsPlaying(true)
-      } catch (error) {
-        console.warn('브금 자동 재생 실패:', error)
-        setIsPlaying(false)
-      }
-    }
-
-    playAudio()
-    audioRef.current = audio
-
-    return () => {
-      audio.removeEventListener('loadedmetadata', handleLoaded)
-      audio.removeEventListener('timeupdate', handleTime)
-      audio.removeEventListener('ended', handleEnded)
-      audio.pause()
-      audioRef.current = null
-    }
-  }, [activeBgmUrl, bgmEnabled])
-
-  useEffect(() => {
-    if (!audioRef.current) return
-    audioRef.current.volume = bgmVolume
-  }, [bgmVolume])
-
   const handleSeek = useCallback(
     (event) => {
-      if (!audioRef.current || !duration) return
+      if (!duration) return
       const rect = event.currentTarget.getBoundingClientRect()
       const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
       const next = ratio * duration
-      audioRef.current.currentTime = next
-      setProgress(next)
+      audioManager.seek(next)
     },
-    [duration],
+    [audioManager, duration],
   )
 
   const togglePlayback = useCallback(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    if (audio.paused) {
-      audio
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false))
-    } else {
-      audio.pause()
-      setIsPlaying(false)
-    }
-  }, [])
+    if (!activeBgmUrl) return
+    audioManager.toggle()
+  }, [audioManager, activeBgmUrl])
 
   const stopPlayback = useCallback(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.pause()
-    audio.currentTime = 0
-    setIsPlaying(false)
-    setProgress(0)
-  }, [])
+    audioManager.stop()
+  }, [audioManager])
 
   const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
 
@@ -619,7 +557,11 @@ export default function SharedHeroOverlay() {
       return (
         <div style={styles.tabContent}>
           <div style={styles.buttonRow}>
-            <button type="button" style={styles.ghostButton} onClick={() => setBgmEnabled((prev) => !prev)}>
+            <button
+              type="button"
+              style={styles.ghostButton}
+              onClick={() => audioManager.setEnabled(!bgmEnabled)}
+            >
               {bgmEnabled ? '브금 끄기' : '브금 켜기'}
             </button>
           </div>
@@ -633,7 +575,7 @@ export default function SharedHeroOverlay() {
               min={0}
               max={100}
               value={Math.round(bgmVolume * 100)}
-              onChange={(event) => setBgmVolume(Number(event.target.value) / 100)}
+              onChange={(event) => audioManager.setVolume(Number(event.target.value) / 100)}
             />
           </div>
         </div>
@@ -644,6 +586,7 @@ export default function SharedHeroOverlay() {
   }, [
     activeTabKey,
     abilityPairs,
+    audioManager,
     bgmEnabled,
     bgmVolume,
     description,
