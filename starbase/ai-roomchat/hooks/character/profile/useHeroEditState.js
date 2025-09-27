@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
-import { withTable } from '../../../lib/supabaseTables'
 import { ABILITY_KEYS } from '../../../utils/characterStats'
 import { clearHeroCache, readHeroCache, writeHeroCache } from '../../../utils/heroCache'
+import { fetchHeroById } from '../../../services/heroes'
 
 const EMPTY_EDIT_STATE = {
   name: '',
@@ -71,26 +71,18 @@ export function useHeroEditState({ heroId, onRequireAuth, onMissingHero }) {
         return
       }
 
-      const { data, error } = await withTable(supabase, 'heroes', (table) =>
-        supabase
-          .from(table)
-          .select(
-            'id,name,image_url,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_duration_seconds,bgm_mime,owner_id,created_at'
-          )
-          .eq('id', heroId)
-          .single()
-      )
+      const heroRow = await fetchHeroById(heroId)
 
-      if (error || !data) {
-        console.error('Failed to load hero details:', error)
+      if (!heroRow) {
+        console.error('Failed to load hero details: missing hero')
         alert('캐릭터를 불러오지 못했습니다.')
         clearHeroCache(heroId)
         onMissingHero?.()
         return
       }
 
-      applyHero(data)
-      writeHeroCache(data)
+      applyHero(heroRow)
+      writeHeroCache(heroRow)
     } catch (error) {
       console.error('Unexpected error while loading hero details:', error)
       alert('캐릭터 정보를 불러오는 중 문제가 발생했습니다.')

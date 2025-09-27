@@ -1,62 +1,58 @@
-import Link from 'next/link'
+import { useMemo, useState } from 'react'
 
 import styles from './styles'
 
-function formatDate(value) {
-  if (!value) return '—'
+export default function HeroCard({ hero, onSelect }) {
+  const [active, setActive] = useState(false)
 
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
+  const heroName = useMemo(() => {
+    if (!hero) return '이름 없는 영웅'
+    const name = typeof hero.name === 'string' ? hero.name.trim() : ''
+    return name || '이름 없는 영웅'
+  }, [hero])
 
-  return date.toLocaleDateString('ko-KR', {
-    month: 'short',
-    day: 'numeric',
-  })
-}
-
-export default function HeroCard({ hero, onDelete }) {
-  const handleNavigate = () => {
-    if (typeof window === 'undefined') return
-    if (!hero?.id) return
-    try {
-      window.localStorage.setItem('selectedHeroId', hero.id)
-      if (hero.owner_id) {
-        window.localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
-      }
-    } catch (error) {
-      console.error('Failed to persist selected hero before navigation:', error)
+  const handleClick = () => {
+    if (typeof onSelect === 'function') {
+      onSelect(hero)
     }
   }
 
+  const cardStyle = {
+    ...styles.heroButton,
+    transform: active ? 'scale(0.97)' : 'scale(1)',
+    boxShadow: active
+      ? '0 32px 75px -56px rgba(59,130,246,0.85)'
+      : styles.heroButton.boxShadow,
+  }
+
+  const imageStyle = {
+    ...styles.heroImage,
+    transform: active ? 'scale(1)' : styles.heroImage.transform,
+  }
+
   return (
-    <Link href={`/character/${hero.id}`} style={styles.heroCardLink} onClick={handleNavigate}>
-      <div style={styles.heroCardCover}>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            onDelete(hero)
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-          style={styles.heroDeleteButton}
-          aria-label={`${hero.name} 삭제`}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 6h2v8h-2V9Zm4 0h2v8h-2V9Z" fill="currentColor" />
-          </svg>
-        </button>
-        {hero.image_url ? (
+    <button
+      type="button"
+      style={cardStyle}
+      onClick={handleClick}
+      onMouseDown={() => setActive(true)}
+      onMouseUp={() => setActive(false)}
+      onMouseLeave={() => setActive(false)}
+      onTouchStart={() => setActive(true)}
+      onTouchEnd={() => setActive(false)}
+    >
+      <div style={styles.heroButtonContent}>
+        {hero?.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={hero.image_url} alt={hero.name} style={styles.heroImage} />
+          <img src={hero.image_url} alt={heroName} style={imageStyle} />
         ) : (
-          <div style={styles.heroImageFallback}>{hero.name?.slice(0, 2) ?? '??'}</div>
+          <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
         )}
-        <div style={styles.heroCardFooter}>
-          <div style={styles.heroName}>{hero.name}</div>
-          <span style={styles.heroCreatedAt}>{formatDate(hero.created_at)}</span>
+
+        <div style={styles.heroNameOverlay}>
+          <p style={styles.heroName}>{heroName}</p>
         </div>
       </div>
-    </Link>
+    </button>
   )
 }

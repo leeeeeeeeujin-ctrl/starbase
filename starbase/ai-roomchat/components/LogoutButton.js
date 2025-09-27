@@ -36,6 +36,7 @@ export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
   async function signOut() {
     const { error } = await supabase.auth.signOut()
     if (error) {
+      console.error('로그아웃에 실패했습니다:', error)
       alert(error.message)
       return
     }

@@ -1,192 +1,163 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { supabase } from '../../lib/supabase'
-import { withTable } from '../../lib/supabaseTables'
+import { fetchHeroParticipationBundle } from '../../modules/character/participation'
 import { buildStatSlides } from '../../utils/characterStats'
+import { formatKoreanDate } from '../../utils/dateFormatting'
+
+const INITIAL_STATE = {
+  loading: false,
+  error: null,
+  participations: [],
+  scoreboardMap: {},
+  heroLookup: {},
+  selectedGameId: null,
+}
 
 export default function useHeroParticipations({ hero }) {
-  const [participations, setParticipations] = useState([])
-  const [gameDetails, setGameDetails] = useState({})
-  const [scoreboards, setScoreboards] = useState({})
-  const [heroLookup, setHeroLookup] = useState({})
-  const [selectedGameId, setSelectedGameId] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [state, setState] = useState(INITIAL_STATE)
+  const requestRef = useRef(0)
 
   const heroId = hero?.id || null
 
-  const loadParticipations = useCallback(async () => {
-    if (!heroId) {
-      setParticipations([])
-      setGameDetails({})
-      setScoreboards({})
-      setHeroLookup(hero ? { [hero.id]: hero } : {})
-      setSelectedGameId(null)
-      setLoading(false)
-      return
+  const heroSeed = useMemo(() => {
+    if (!heroId) return null
+    return {
+      id: heroId,
+      name: hero?.name ?? null,
+      image_url: hero?.image_url ?? null,
+      ability1: hero?.ability1 ?? null,
+      ability2: hero?.ability2 ?? null,
+      ability3: hero?.ability3 ?? null,
+      ability4: hero?.ability4 ?? null,
+      owner_id: hero?.owner_id ?? null,
     }
+  }, [hero?.ability1, hero?.ability2, hero?.ability3, hero?.ability4, hero?.image_url, hero?.name, hero?.owner_id, heroId])
 
-    setLoading(true)
+  const resetState = useCallback(() => {
+    setState({
+      ...INITIAL_STATE,
+      heroLookup: heroSeed?.id ? { [heroSeed.id]: heroSeed } : {},
+    })
+  }, [heroSeed])
 
-    try {
-      const selectFields =
-        'id, game_id, owner_id, hero_id, hero_ids, role, score, rating, battles, win_rate, created_at, updated_at'
+  const loadParticipations = useCallback(
+    async ({ silent } = {}) => {
+      const requestId = ++requestRef.current
 
-      const [{ data: soloRows, error: soloErr }, { data: packRows, error: packErr }] = await Promise.all([
-        withTable(supabase, 'rank_participants', (table) =>
-          supabase.from(table).select(selectFields).eq('hero_id', heroId)
-        ),
-        withTable(supabase, 'rank_participants', (table) =>
-          supabase.from(table).select(selectFields).contains('hero_ids', [heroId])
-        ),
-      ])
+      if (!heroId) {
+        resetState()
+        return
+      }
 
-      if (soloErr) console.warn('rank_participants hero_id fetch failed:', soloErr.message)
-      if (packErr) console.warn('rank_participants hero_ids fetch failed:', packErr.message)
+      if (!silent) {
+        setState((prev) => ({
+          ...prev,
+          loading: true,
+          error: null,
+        }))
+      }
 
-      const combined = [...(soloRows || []), ...(packRows || [])]
-      const byGame = new Map()
-      combined.forEach((row) => {
-        if (!row?.game_id) return
-        const key = `${row.game_id}:${row.owner_id}`
-        if (!byGame.has(key)) {
-          byGame.set(key, row)
+      try {
+        const bundle = await fetchHeroParticipationBundle(heroId, { heroSeed })
+
+        const participations = bundle.participations.map((row) => ({
+          ...row,
+          latestSessionAt: row.latestSessionAt ? formatKoreanDate(row.latestSessionAt) : null,
+          firstSessionAt: row.firstSessionAt ? formatKoreanDate(row.firstSessionAt) : null,
+        }))
+
+        const scoreboardMap = bundle.scoreboardMap || {}
+        const heroLookup = bundle.heroLookup || {}
+
+        if (requestId !== requestRef.current) {
+          return
         }
-      })
 
-      const rows = Array.from(byGame.values()).sort((a, b) => {
-        const left = new Date(a.updated_at || a.created_at || 0)
-        const right = new Date(b.updated_at || b.created_at || 0)
-        return right - left
-      })
+        setState((prev) => {
+          const previousSelection = prev.selectedGameId
+          const nextSelection =
+            previousSelection && participations.some((row) => row.game_id === previousSelection)
+              ? previousSelection
+              : participations[0]?.game_id || null
 
-      const gameIds = Array.from(new Set(rows.map((row) => row.game_id).filter(Boolean)))
-
-      const [{ data: games, error: gameErr }, { data: boardRows, error: boardErr }] = await Promise.all([
-        gameIds.length
-          ? withTable(supabase, 'rank_games', (table) =>
-              supabase
-                .from(table)
-                .select('id, name, image_url, description, created_at')
-                .in('id', gameIds)
-            )
-          : { data: [], error: null },
-        gameIds.length
-          ? withTable(supabase, 'rank_participants', (table) =>
-              supabase
-                .from(table)
-                .select('id, game_id, owner_id, hero_id, hero_ids, role, rating, battles, score, updated_at')
-                .in('game_id', gameIds)
-            )
-          : { data: [], error: null },
-      ])
-
-      if (gameErr) console.warn('rank_games fetch failed:', gameErr.message)
-      if (boardErr) console.warn('scoreboard fetch failed:', boardErr.message)
-
-      const gameMap = {}
-      ;(games || []).forEach((game) => {
-        if (game?.id) gameMap[game.id] = game
-      })
-
-      const scoreboardMap = {}
-      ;(boardRows || []).forEach((row) => {
-        if (!row?.game_id) return
-        if (!scoreboardMap[row.game_id]) scoreboardMap[row.game_id] = []
-        scoreboardMap[row.game_id].push(row)
-      })
-
-      setParticipations(rows.map((row) => ({ ...row, game: gameMap[row.game_id] || null })))
-      setGameDetails(gameMap)
-      setScoreboards(scoreboardMap)
-
-      const heroIds = new Set()
-      Object.values(scoreboardMap).forEach((list) => {
-        list.forEach((row) => {
-          if (row?.hero_id) heroIds.add(row.hero_id)
-          if (Array.isArray(row?.hero_ids)) {
-            row.hero_ids.forEach((value) => heroIds.add(value))
+          return {
+            loading: false,
+            error: null,
+            participations,
+            scoreboardMap,
+            heroLookup,
+            selectedGameId: nextSelection,
           }
         })
-      })
-      if (heroId) heroIds.add(heroId)
-
-      const { data: heroRows, error: heroErr } = heroIds.size
-        ? await withTable(supabase, 'heroes', (table) =>
-            supabase
-              .from(table)
-              .select('id, name, image_url, ability1, ability2, ability3, ability4')
-              .in('id', Array.from(heroIds))
-          )
-        : { data: [], error: null }
-
-      if (heroErr) console.warn('heroes lookup fetch failed:', heroErr.message)
-
-      const lookup = {}
-      ;(heroRows || []).forEach((row) => {
-        if (row?.id) lookup[row.id] = row
-      })
-      if (hero?.id) {
-        lookup[hero.id] = {
-          id: hero.id,
-          name: hero.name,
-          image_url: hero.image_url,
-          ability1: hero.ability1,
-          ability2: hero.ability2,
-          ability3: hero.ability3,
-          ability4: hero.ability4,
+      } catch (error) {
+        console.error('Failed to load hero participations:', error)
+        if (requestId !== requestRef.current) {
+          return
         }
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: error?.message || '참가 기록을 불러오지 못했습니다.',
+        }))
       }
-      setHeroLookup(lookup)
-
-      setSelectedGameId((current) => {
-        if (current && rows.some((row) => row.game_id === current)) {
-          return current
-        }
-        return rows[0]?.game_id || null
-      })
-    } catch (error) {
-      console.error('Failed to load hero participations:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [hero, heroId])
+    },
+    [heroId, heroSeed, resetState],
+  )
 
   useEffect(() => {
-    loadParticipations()
+    loadParticipations({ silent: false })
+    return () => {
+      requestRef.current += 1
+    }
   }, [loadParticipations])
 
+  const refresh = useCallback(() => {
+    loadParticipations({ silent: false })
+  }, [loadParticipations])
+
+  const setSelectedGameId = useCallback((gameId) => {
+    setState((prev) => ({
+      ...prev,
+      selectedGameId: gameId,
+    }))
+  }, [])
+
   const selectedEntry = useMemo(
-    () => participations.find((row) => row.game_id === selectedGameId) || null,
-    [participations, selectedGameId],
+    () => state.participations.find((row) => row.game_id === state.selectedGameId) || null,
+    [state.participations, state.selectedGameId],
   )
 
   const selectedScoreboard = useMemo(() => {
-    if (!selectedGameId) return []
-    const rows = scoreboards[selectedGameId] || []
-    return [...rows].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
-  }, [scoreboards, selectedGameId])
+    if (!state.selectedGameId) return []
+    const rows = state.scoreboardMap[state.selectedGameId] || []
+    return [...rows].sort((a, b) => {
+      const left = a.slot_no ?? Number.MAX_SAFE_INTEGER
+      const right = b.slot_no ?? Number.MAX_SAFE_INTEGER
+      return left - right
+    })
+  }, [state.scoreboardMap, state.selectedGameId])
 
   const selectedGame = useMemo(() => {
-    if (!selectedGameId) return null
-    const match = participations.find((row) => row.game_id === selectedGameId)
-    if (match?.game) return match.game
-    return gameDetails[selectedGameId] || null
-  }, [gameDetails, participations, selectedGameId])
+    if (!state.selectedGameId) return null
+    return state.participations.find((row) => row.game_id === state.selectedGameId)?.game || null
+  }, [state.participations, state.selectedGameId])
 
-  const statSlides = useMemo(() => buildStatSlides(participations, scoreboards, heroId), [participations, scoreboards, heroId])
+  const statSlides = useMemo(
+    () => buildStatSlides(state.participations, state.scoreboardMap, heroId),
+    [state.participations, state.scoreboardMap, heroId],
+  )
 
   return {
-    loading,
-    participations,
+    loading: state.loading,
+    error: state.error,
+    participations: state.participations,
     selectedEntry,
     selectedGame,
-    selectedGameId,
+    selectedGameId: state.selectedGameId,
     selectedScoreboard,
     statSlides,
-    heroLookup,
+    heroLookup: state.heroLookup,
     setSelectedGameId,
-    refresh: loadParticipations,
+    refresh,
   }
 }
-
-//
