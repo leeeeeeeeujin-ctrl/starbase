@@ -2527,6 +2527,16 @@ export default function CharacterBasicView({ hero }) {
         : incomingRequestCount
       : null;
 
+  const overlayTabs = useMemo(
+    () => dockItems.filter((item) => item.type === "overlay"),
+    [],
+  );
+
+  const overlayActions = useMemo(
+    () => dockItems.filter((item) => item.type === "action"),
+    [],
+  );
+
   const renderQuickLaunchers = useCallback(
     (variant) => {
       if (!hasQuickLaunchers) {
@@ -3649,16 +3659,6 @@ export default function CharacterBasicView({ hero }) {
       setSavingHero(false);
     }
   }, [currentHero, loadRoster, router]);
-
-  const overlayTabs = useMemo(
-    () => dockItems.filter((item) => item.type === "overlay"),
-    [],
-  );
-
-  const overlayActions = useMemo(
-    () => dockItems.filter((item) => item.type === "action"),
-    [],
-  );
 
   const overlayDescription = overlayCopy[activeOverlay] ?? "";
 
