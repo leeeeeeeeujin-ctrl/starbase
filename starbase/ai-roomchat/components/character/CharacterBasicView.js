@@ -919,6 +919,105 @@ const styles = {
     transform: "translate(-50%, -50%)",
     pointerEvents: "none",
   },
+  gameMakerHub: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 18,
+  },
+  gameMakerHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  gameMakerHeading: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  gameMakerTitle: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+    color: "#f1f5f9",
+  },
+  gameMakerSubtitle: {
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.5,
+    color: "rgba(191,219,254,0.82)",
+  },
+  gameMakerBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "4px 10px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    background: "rgba(56,189,248,0.18)",
+    color: "#bae6fd",
+  },
+  gameMakerQuickRow: {
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  gameMakerQuickAction: {
+    flex: "1 1 220px",
+    borderRadius: 16,
+    border: "1px solid rgba(59,130,246,0.35)",
+    background: "rgba(15,23,42,0.6)",
+    color: "#e2e8f0",
+    padding: "16px 18px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    textAlign: "left",
+    cursor: "pointer",
+    transition: "border-color 150ms ease, background 150ms ease",
+  },
+  gameMakerQuickActionPrimary: {
+    background:
+      "linear-gradient(135deg, rgba(14,165,233,0.35) 0%, rgba(59,130,246,0.25) 100%)",
+    borderColor: "rgba(59,130,246,0.55)",
+  },
+  gameMakerQuickActionSecondary: {
+    borderColor: "rgba(148,163,184,0.35)",
+    background: "rgba(15,23,42,0.68)",
+  },
+  gameMakerQuickLabel: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#f8fafc",
+  },
+  gameMakerQuickHint: {
+    fontSize: 12,
+    color: "rgba(203,213,225,0.85)",
+  },
+  gameMakerSearchSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+  },
+  gameMakerSectionHeader: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  gameMakerSectionTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#e0f2fe",
+  },
+  gameMakerSectionDescription: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "rgba(148,163,184,0.85)",
+  },
   gameSearchPanel: {
     display: "flex",
     flexDirection: "column",
@@ -1042,6 +1141,28 @@ const styles = {
     width: "100%",
     overflowY: "auto",
   },
+  gameSearchDetailTopBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  gameSearchDetailTag: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "rgba(148,163,184,0.85)",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  gameSearchDetailBackButton: {
+    border: "1px solid rgba(148,163,184,0.35)",
+    borderRadius: 999,
+    padding: "6px 12px",
+    fontSize: 12,
+    fontWeight: 600,
+    background: "rgba(15,23,42,0.65)",
+    color: "#bfdbfe",
+    cursor: "pointer",
+  },
   gameSearchDetailHeader: {
     display: "flex",
     flexDirection: "column",
@@ -1126,32 +1247,6 @@ const styles = {
       ? "linear-gradient(135deg, rgba(59,130,246,0.9) 0%, rgba(96,165,250,0.85) 100%)"
       : "linear-gradient(135deg, rgba(148,163,184,0.65) 0%, rgba(203,213,225,0.65) 100%)",
   }),
-  gameSearchActionRow: {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
-  gamePrimaryAction: {
-    border: "none",
-    borderRadius: 12,
-    padding: "10px 16px",
-    background: "linear-gradient(135deg, rgba(34,197,94,0.9) 0%, rgba(22,163,74,0.85) 100%)",
-    color: "#ecfeff",
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  gameSecondaryAction: {
-    border: "1px solid rgba(148,163,184,0.4)",
-    borderRadius: 12,
-    padding: "10px 16px",
-    background: "rgba(15,23,42,0.65)",
-    color: "#cbd5f5",
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
   rosterPanel: {
     display: "flex",
     flexDirection: "column",
@@ -4201,152 +4296,190 @@ export default function CharacterBasicView({ hero }) {
   } else if (activeOverlay === "search") {
     overlayBody = (
       <div style={overlayContentStyle}>
-        <div style={styles.gameSearchPanel}>
-          <div style={styles.gameSearchControls}>
-            <input
-              type="search"
-              placeholder="게임 이름 또는 설명 검색"
-              value={gameQuery}
-              onChange={(event) => setGameQuery(event.target.value)}
-              style={styles.gameSearchInput}
-            />
-            <select
-              value={gameSort}
-              onChange={(event) => setGameSort(event.target.value)}
-              style={styles.gameSearchSelect}
-            >
-              {SORT_OPTIONS.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={gameSearchLayoutStyle}>
-            <div style={gameListSectionStyle}>
-              {gameLoading ? (
-                <p style={styles.gameSearchStatus}>게임 목록을 불러오는 중입니다…</p>
-              ) : !gameRows.length ? (
-                <p style={styles.gameSearchStatus}>조건에 맞는 게임이 없습니다.</p>
-              ) : (
-                <ul style={styles.gameSearchList}>
-                  {gameRows.map((row) => {
-                    const isActive = selectedGame?.id === row.id;
-                    return (
-                      <li key={row.id} style={styles.gameSearchListItemWrapper}>
-                        <button
-                          type="button"
-                          style={styles.gameSearchListItem(isActive)}
-                          onClick={() => setSelectedGame(row)}
-                        >
-                          <div style={styles.gameSearchListHeader}>
-                            <span style={styles.gameSearchListTitle}>{row.name}</span>
-                            <span style={styles.gameSearchListMetric}>
-                              👍 {row.likes_count ?? 0}
-                            </span>
-                          </div>
-                          <p style={styles.gameSearchListDescription}>
-                            {row.description || "설명이 없습니다."}
-                          </p>
-                          <div style={styles.gameSearchListMetaRow}>
-                            <span>플레이 {row.play_count ?? 0}</span>
-                            <span>등록 {formatGameDate(row.created_at)}</span>
-                          </div>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+        <div style={styles.gameMakerHub}>
+          <header style={styles.gameMakerHeader}>
+            <div style={styles.gameMakerHeading}>
+              <h3 style={styles.gameMakerTitle}>게임 제작 허브</h3>
+              <p style={styles.gameMakerSubtitle}>
+                새로운 프로젝트를 만들고, 다른 제작자들의 작품을 살펴보며 아이디어를 얻어보세요.
+              </p>
             </div>
+            <span style={styles.gameMakerBadge}>BETA</span>
+          </header>
 
-            <div style={gameDetailSectionStyle}>
-              {detailLoading ? (
-                <p style={styles.gameSearchStatus}>선택한 게임을 불러오는 중입니다…</p>
-              ) : !selectedGame ? (
-                <p style={styles.gameSearchStatus}>왼쪽 목록에서 게임을 선택해 주세요.</p>
-              ) : (
-                <div style={styles.gameSearchDetailCard}>
-                  <header style={styles.gameSearchDetailHeader}>
-                    <h3 style={styles.gameSearchDetailTitle}>{selectedGame.name}</h3>
-                    <p style={styles.gameSearchDetailDescription}>
-                      {selectedGame.description || "설명이 없습니다."}
-                    </p>
-                    <div style={styles.gameSearchDetailMeta}>
-                      <span>등록 {formatGameDate(selectedGame.created_at)}</span>
-                      <span>좋아요 {selectedGame.likes_count ?? 0}</span>
-                      <span>플레이 {selectedGame.play_count ?? 0}</span>
-                    </div>
-                  </header>
-
-                  <section style={styles.gameSearchRolesSection}>
-                    <h4 style={styles.gameSearchSectionTitle}>역할 선택</h4>
-                    {gameRoles.length ? (
-                      <div style={styles.gameSearchRoleGrid}>
-                        {gameRoles.map((role) => {
-                          const slot =
-                            roleSlots.get(role.name) || {
-                              capacity: role.slot_count ?? 1,
-                              occupied: 0,
-                            };
-                          const full = slot.occupied >= slot.capacity;
-                          const isActive = roleChoice === role.name;
-                          return (
-                            <button
-                              key={role.id || role.name}
-                              type="button"
-                              style={styles.gameSearchRoleButton(isActive, full && !isActive)}
-                              onClick={() => handleRoleSelect(role.name)}
-                              disabled={full && !isActive}
-                            >
-                              <span style={styles.gameSearchRoleName}>{role.name}</span>
-                              <span style={styles.gameSearchRoleCapacity}>
-                                {slot.occupied} / {slot.capacity}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p style={styles.gameSearchStatus}>등록된 역할 정보가 없습니다.</p>
-                    )}
-                  </section>
-
-                  <p style={styles.gameSearchParticipantsSummary}>
-                    {participants.length
-                      ? `최근 ${participants.length}명 참가`
-                      : "참가 기록이 아직 없습니다."}
-                  </p>
-
-                  <button
-                    type="button"
-                    style={styles.gameSearchEnterButton(Boolean(roleChoice))}
-                    onClick={() => handleEnterGame(selectedGame, roleChoice)}
-                  >
-                    {roleChoice ? `${roleChoice}로 입장하기` : "게임 상세 보기"}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={styles.gameSearchActionRow}>
+          <div style={styles.gameMakerQuickRow}>
             <button
               type="button"
-              style={styles.gamePrimaryAction}
+              style={{
+                ...styles.gameMakerQuickAction,
+                ...styles.gameMakerQuickActionPrimary,
+              }}
               onClick={() => router.push("/maker")}
             >
-              게임 제작
+              <span style={styles.gameMakerQuickLabel}>새 프로젝트 만들기</span>
+              <span style={styles.gameMakerQuickHint}>제작 홈에서 이어서 편집할 수 있어요.</span>
             </button>
             <button
               type="button"
-              style={styles.gameSecondaryAction}
+              style={{
+                ...styles.gameMakerQuickAction,
+                ...styles.gameMakerQuickActionSecondary,
+              }}
               onClick={() => router.push("/rank/new")}
             >
-              게임 등록
+              <span style={styles.gameMakerQuickLabel}>게임 등록 열기</span>
+              <span style={styles.gameMakerQuickHint}>완성한 게임을 한 번에 공개해 보세요.</span>
             </button>
           </div>
+
+          <section style={styles.gameMakerSearchSection}>
+            <div style={styles.gameMakerSectionHeader}>
+              <h4 style={styles.gameMakerSectionTitle}>참고할 게임 탐색</h4>
+              <p style={styles.gameMakerSectionDescription}>
+                검색과 정렬을 활용해 원하는 프로젝트를 빠르게 찾아보세요.
+              </p>
+            </div>
+
+            <div style={styles.gameSearchControls}>
+              <input
+                type="search"
+                placeholder="게임 이름 또는 설명 검색"
+                value={gameQuery}
+                onChange={(event) => setGameQuery(event.target.value)}
+                style={styles.gameSearchInput}
+              />
+              <select
+                value={gameSort}
+                onChange={(event) => setGameSort(event.target.value)}
+                style={styles.gameSearchSelect}
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={gameSearchLayoutStyle}>
+              <div style={gameListSectionStyle}>
+                {gameLoading ? (
+                  <p style={styles.gameSearchStatus}>게임 목록을 불러오는 중입니다…</p>
+                ) : !gameRows.length ? (
+                  <p style={styles.gameSearchStatus}>조건에 맞는 게임이 없습니다.</p>
+                ) : (
+                  <ul style={styles.gameSearchList}>
+                    {gameRows.map((row) => {
+                      const isActive = selectedGame?.id === row.id;
+                      return (
+                        <li key={row.id} style={styles.gameSearchListItemWrapper}>
+                          <button
+                            type="button"
+                            style={styles.gameSearchListItem(isActive)}
+                            onClick={() => setSelectedGame(row)}
+                          >
+                            <div style={styles.gameSearchListHeader}>
+                              <span style={styles.gameSearchListTitle}>{row.name}</span>
+                              <span style={styles.gameSearchListMetric}>
+                                👍 {row.likes_count ?? 0}
+                              </span>
+                            </div>
+                            <p style={styles.gameSearchListDescription}>
+                              {row.description || "설명이 없습니다."}
+                            </p>
+                            <div style={styles.gameSearchListMetaRow}>
+                              <span>플레이 {row.play_count ?? 0}</span>
+                              <span>등록 {formatGameDate(row.created_at)}</span>
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div style={gameDetailSectionStyle}>
+                {detailLoading ? (
+                  <p style={styles.gameSearchStatus}>선택한 게임을 불러오는 중입니다…</p>
+                ) : !selectedGame ? (
+                  <p style={styles.gameSearchStatus}>왼쪽 목록에서 게임을 선택해 주세요.</p>
+                ) : (
+                  <div style={styles.gameSearchDetailCard}>
+                    <div style={styles.gameSearchDetailTopBar}>
+                      <span style={styles.gameSearchDetailTag}>게임 상세</span>
+                      <button
+                        type="button"
+                        style={styles.gameSearchDetailBackButton}
+                        onClick={() => setSelectedGame(null)}
+                      >
+                        목록으로 돌아가기
+                      </button>
+                    </div>
+
+                    <header style={styles.gameSearchDetailHeader}>
+                      <h3 style={styles.gameSearchDetailTitle}>{selectedGame.name}</h3>
+                      <p style={styles.gameSearchDetailDescription}>
+                        {selectedGame.description || "설명이 없습니다."}
+                      </p>
+                      <div style={styles.gameSearchDetailMeta}>
+                        <span>등록 {formatGameDate(selectedGame.created_at)}</span>
+                        <span>좋아요 {selectedGame.likes_count ?? 0}</span>
+                        <span>플레이 {selectedGame.play_count ?? 0}</span>
+                      </div>
+                    </header>
+
+                    <section style={styles.gameSearchRolesSection}>
+                      <h4 style={styles.gameSearchSectionTitle}>역할 선택</h4>
+                      {gameRoles.length ? (
+                        <div style={styles.gameSearchRoleGrid}>
+                          {gameRoles.map((role) => {
+                            const slot =
+                              roleSlots.get(role.name) || {
+                                capacity: role.slot_count ?? 1,
+                                occupied: 0,
+                              };
+                            const full = slot.occupied >= slot.capacity;
+                            const isActive = roleChoice === role.name;
+                            return (
+                              <button
+                                key={role.id || role.name}
+                                type="button"
+                                style={styles.gameSearchRoleButton(isActive, full && !isActive)}
+                                onClick={() => handleRoleSelect(role.name)}
+                                disabled={full && !isActive}
+                              >
+                                <span style={styles.gameSearchRoleName}>{role.name}</span>
+                                <span style={styles.gameSearchRoleCapacity}>
+                                  {slot.occupied} / {slot.capacity}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p style={styles.gameSearchStatus}>등록된 역할 정보가 없습니다.</p>
+                      )}
+                    </section>
+
+                    <p style={styles.gameSearchParticipantsSummary}>
+                      {participants.length
+                        ? `최근 ${participants.length}명 참가`
+                        : "참가 기록이 아직 없습니다."}
+                    </p>
+
+                    <button
+                      type="button"
+                      style={styles.gameSearchEnterButton(Boolean(roleChoice))}
+                      onClick={() => handleEnterGame(selectedGame, roleChoice)}
+                    >
+                      {roleChoice ? `${roleChoice}로 입장하기` : "게임 상세 보기"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     );
