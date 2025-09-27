@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { persistSelectedHero } from '../../../utils/browserStorage'
 import styles from './styles'
 
 function formatDate(value) {
@@ -16,16 +17,8 @@ function formatDate(value) {
 
 export default function HeroCard({ hero, onDelete }) {
   const handleNavigate = () => {
-    if (typeof window === 'undefined') return
     if (!hero?.id) return
-    try {
-      window.localStorage.setItem('selectedHeroId', hero.id)
-      if (hero.owner_id) {
-        window.localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
-      }
-    } catch (error) {
-      console.error('Failed to persist selected hero before navigation:', error)
-    }
+    persistSelectedHero(hero.id, hero.owner_id)
   }
 
   return (
