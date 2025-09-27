@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 
-import { useAuth } from '../features/auth'
+import { supabase } from '../lib/supabase'
 
 function getInitials(name) {
   if (!name) return '유'
@@ -15,7 +15,6 @@ function getInitials(name) {
 export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef(null)
-  const { signOut } = useAuth()
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -34,15 +33,15 @@ export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
     }
   }, [open])
 
-  async function handleSignOut() {
-    try {
-      await signOut()
-      setOpen(false)
-      if (onAfter) onAfter()
-    } catch (error) {
+  async function signOut() {
+    const { error } = await supabase.auth.signOut()
+    if (error) {
       console.error('로그아웃에 실패했습니다:', error)
-      alert(error?.message || '로그아웃에 실패했습니다.')
+      alert(error.message)
+      return
     }
+    setOpen(false)
+    if (onAfter) onAfter()
   }
 
   const initials = getInitials(displayName)
@@ -109,7 +108,7 @@ export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
           </div>
           <button
             type="button"
-            onClick={handleSignOut}
+            onClick={signOut}
             style={{
               padding: '10px 12px',
               borderRadius: 10,
