@@ -121,17 +121,9 @@ const ChatOverlay = forwardRef(function ChatOverlay(
   }, [handleAddFriend, handleRemoveFriend, handleWhisper, selectedHero])
 
   return (
-    <SurfaceOverlay
-      open={open}
-      onClose={onClose}
-      title="신경망 채널"
-      width={420}
-      contentStyle={{ padding: 0 }}
-      placement="bottom-right"
-      withBackdrop={false}
-    >
+    <SurfaceOverlay open={open} onClose={onClose} title="신경망 채널" width={460} contentStyle={{ background: 'transparent', padding: 0 }}>
       <SharedChatDock
-        height="min(80vh, 600px)"
+        height="min(75vh, 560px)"
         heroId={heroId}
         viewerHero={viewerHero}
         extraWhisperTargets={extraWhisperTargets}

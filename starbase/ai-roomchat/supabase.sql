@@ -22,56 +22,6 @@ create table if not exists public.heroes (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.hero_bgms (
-  id uuid primary key default gen_random_uuid(),
-  hero_id uuid not null references public.heroes(id) on delete cascade,
-  label text not null default '기본',
-  url text,
-  storage_path text,
-  duration_seconds integer,
-  mime text,
-  sort_order integer not null default 0,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-alter table public.hero_bgms enable row level security;
-
-create policy if not exists hero_bgms_select
-on public.hero_bgms for select using (
-  exists (
-    select 1 from public.heroes h
-    where h.id = hero_bgms.hero_id and h.owner_id = auth.uid()
-  )
-);
-
-create policy if not exists hero_bgms_insert
-on public.hero_bgms for insert with check (
-  exists (
-    select 1 from public.heroes h
-    where h.id = hero_bgms.hero_id and h.owner_id = auth.uid()
-  )
-);
-
-create policy if not exists hero_bgms_update
-on public.hero_bgms for update using (
-  exists (
-    select 1 from public.heroes h
-    where h.id = hero_bgms.hero_id and h.owner_id = auth.uid()
-  )
-);
-
-create policy if not exists hero_bgms_delete
-on public.hero_bgms for delete using (
-  exists (
-    select 1 from public.heroes h
-    where h.id = hero_bgms.hero_id and h.owner_id = auth.uid()
-  )
-);
-
-create index if not exists hero_bgms_hero_id_sort_idx
-on public.hero_bgms (hero_id, sort_order, created_at);
-
 alter table public.heroes enable row level security;
 
 create policy if not exists heroes_select_owner

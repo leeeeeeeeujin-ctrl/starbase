@@ -22,6 +22,7 @@ export default function SharedChatDock({
 }) {
   const {
     activeThread,
+    availableTargets,
     blockedHeroSet,
     blockedHeroes,
     canSend,
@@ -34,12 +35,14 @@ export default function SharedChatDock({
     setActiveThread: setActiveThreadInternal,
     setBlockedHeroes,
     setInput,
+    setScope,
+    setWhisperTarget,
     threadList,
     totalUnread,
     unreadThreads,
     viewerHeroId,
     visibleMessages,
-    activeThreadMeta,
+    whisperTarget,
   } = useSharedChatDock({
     heroId,
     extraWhisperTargets,
@@ -134,8 +137,10 @@ export default function SharedChatDock({
       />
       <InputBar
         scope={scope}
-        activeThreadMeta={activeThreadMeta}
-        onResetThread={() => setActiveThread('global')}
+        setScope={setScope}
+        whisperTarget={whisperTarget}
+        setWhisperTarget={setWhisperTarget}
+        availableTargets={availableTargets}
         input={input}
         setInput={setInput}
         send={send}

@@ -8,8 +8,7 @@ create table if not exists public.friend_requests (
   status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'cancelled')),
   message text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  responded_at timestamptz
+  updated_at timestamptz not null default now()
 );
 
 create index if not exists friend_requests_addressee_status on public.friend_requests (addressee_id, status);
@@ -80,26 +79,7 @@ begin
 end;
 $$ language plpgsql;
 
-create or replace function public.friend_requests_touch()
-returns trigger as $$
-begin
-  new.updated_at := now();
-
-  if tg_op = 'UPDATE' and new.status is distinct from old.status then
-    if new.status <> 'pending' and new.responded_at is null then
-      new.responded_at := now();
-    elsif new.status = 'pending' then
-      new.responded_at := null;
-    end if;
-  end if;
-
-  return new;
-end;
-$$ language plpgsql;
-
-drop trigger if exists friend_requests_set_updated_at on public.friend_requests;
-
-create trigger friend_requests_touch
+create trigger friend_requests_set_updated_at
 before update on public.friend_requests
 for each row
-execute function public.friend_requests_touch();
+execute function public.set_updated_at();
