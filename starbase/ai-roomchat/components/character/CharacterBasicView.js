@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
 const DEFAULT_DESCRIPTION = '소개가 아직 준비되지 않았습니다. 이미지를 한 번 더 탭하면 능력을 볼 수 있어요.'
@@ -32,7 +32,30 @@ const pageStyles = {
   }),
 }
 
+const menuOrder = ['캐릭터', '랭킹', '게임 검색', '친구', '길드', '설정']
+
 const styles = {
+  sliderViewport: {
+    width: '100%',
+    maxWidth: 540,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  sliderTrack: (index) => ({
+    display: 'flex',
+    width: '100%',
+    transform: `translateX(-${index * 100}%)`,
+    transition: 'transform 0.4s ease',
+  }),
+  slide: {
+    flex: '0 0 100%',
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    padding: '42px 20px 56px',
+    boxSizing: 'border-box',
+  },
   layout: {
     width: '100%',
     maxWidth: 520,
@@ -40,6 +63,42 @@ const styles = {
     flexDirection: 'column',
     alignItems: 'center',
     gap: 28,
+  },
+  placeholderLayout: {
+    width: '100%',
+    maxWidth: 520,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 18,
+    padding: '36px 30px',
+    boxSizing: 'border-box',
+    background: 'rgba(15,23,42,0.72)',
+    borderRadius: 28,
+    border: '1px solid rgba(96,165,250,0.25)',
+    boxShadow: '0 42px 110px -58px rgba(37,99,235,0.55)',
+  },
+  placeholderBadge: {
+    alignSelf: 'flex-start',
+    padding: '8px 16px',
+    borderRadius: 999,
+    background: 'rgba(30,64,175,0.4)',
+    color: '#bfdbfe',
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 0.5,
+  },
+  placeholderTitle: {
+    margin: 0,
+    fontSize: 24,
+    fontWeight: 800,
+    color: '#e2e8f0',
+  },
+  placeholderCopy: {
+    margin: 0,
+    fontSize: 15,
+    lineHeight: 1.7,
+    color: '#cbd5f5',
   },
   topMessage: {
     margin: 0,
@@ -158,6 +217,31 @@ const styles = {
     color: '#93c5fd',
     letterSpacing: 0.4,
   },
+  menuTabs: {
+    marginTop: 28,
+    display: 'flex',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  menuTab: {
+    padding: '8px 14px',
+    borderRadius: 999,
+    border: '1px solid rgba(148,163,184,0.25)',
+    background: 'rgba(15,23,42,0.55)',
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: 0.4,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  activeMenuTab: {
+    borderColor: 'rgba(96,165,250,0.65)',
+    background: 'rgba(30,64,175,0.5)',
+    color: '#e0f2fe',
+    boxShadow: '0 12px 32px -24px rgba(59,130,246,0.85)',
+  },
 }
 
 export default function CharacterBasicView({ hero }) {
@@ -181,9 +265,11 @@ export default function CharacterBasicView({ hero }) {
   }, [hero])
 
   const [mode, setMode] = useState(0)
+  const [activeMenu, setActiveMenu] = useState(0)
 
   useEffect(() => {
     setMode(0)
+    setActiveMenu(0)
   }, [hero?.id])
 
   const handleTap = () => {
@@ -231,66 +317,170 @@ export default function CharacterBasicView({ hero }) {
     filter: mode === 0 ? 'none' : 'brightness(0.52)',
   }
 
-  return (
-    <div style={backgroundStyle}>
-      <div style={styles.layout}>
-        <p style={styles.topMessage}>이미지를 탭하면 소개와 능력을 순서대로 볼 수 있어요.</p>
+  const touchStartX = useRef(null)
+  const lastTouchX = useRef(null)
 
-        <div style={styles.heroCardShell}>
-          <div
-            role="button"
-            tabIndex={0}
-            style={styles.heroCard}
-            onClick={handleTap}
-            onKeyUp={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                handleTap()
-              }
-            }}
-          >
-            {hero?.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={hero.image_url} alt={heroName} style={imageStyle} />
-            ) : (
-              <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
-            )}
+  const clampMenu = useCallback((value) => {
+    if (value < 0) return 0
+    if (value > menuOrder.length - 1) return menuOrder.length - 1
+    return value
+  }, [])
 
-            {mode === 0 ? (
-              <div style={styles.heroNameOverlay}>
-                <p style={styles.heroNameBadge}>{heroName}</p>
-              </div>
-            ) : null}
+  const goToMenu = useCallback(
+    (index) => {
+      setActiveMenu(clampMenu(index))
+    },
+    [clampMenu],
+  )
 
-            {mode === 1 ? (
-              <div style={styles.overlaySurface}>
-                <p style={styles.overlayTitle}>소개</p>
-                <p style={styles.overlayText}>{description}</p>
-              </div>
-            ) : null}
+  const handleSwipe = useCallback(
+    (deltaX) => {
+      if (Math.abs(deltaX) < 45) return
+      if (deltaX > 0) {
+        goToMenu(activeMenu + 1)
+      } else {
+        goToMenu(activeMenu - 1)
+      }
+    },
+    [activeMenu, goToMenu],
+  )
 
-            {mode === 2 ? (
-              <div style={styles.overlaySurface}>
-                <p style={styles.overlayTitle}>능력</p>
-                {abilityTexts.length ? (
-                  <ul style={styles.abilityList}>
-                    {abilityTexts.map((text, index) => (
-                      <li key={`ability-${index}`} style={styles.abilityItem}>
-                        <p style={styles.abilityLabel}>능력 {index + 1}</p>
-                        <p style={styles.overlayText}>{text}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p style={styles.overlayText}>등록된 능력이 없습니다.</p>
-                )}
-              </div>
-            ) : null}
+  const handleTouchStart = useCallback((event) => {
+    if (event.touches.length !== 1) return
+    const x = event.touches[0].clientX
+    touchStartX.current = x
+    lastTouchX.current = x
+  }, [])
 
-            <div style={styles.tapHint} aria-hidden="true">
-              탭해서 정보 보기
+  const handleTouchMove = useCallback((event) => {
+    if (!touchStartX.current) return
+    if (event.touches.length !== 1) return
+    lastTouchX.current = event.touches[0].clientX
+  }, [])
+
+  const handleTouchEnd = useCallback(() => {
+    if (touchStartX.current == null || lastTouchX.current == null) {
+      touchStartX.current = null
+      lastTouchX.current = null
+      return
+    }
+
+    const deltaX = touchStartX.current - lastTouchX.current
+    touchStartX.current = null
+    lastTouchX.current = null
+    handleSwipe(deltaX)
+  }, [handleSwipe])
+
+  const heroSlide = (
+    <div style={styles.layout}>
+      <p style={styles.topMessage}>이미지를 탭하면 소개와 능력을 순서대로 볼 수 있어요.</p>
+
+      <div style={styles.heroCardShell}>
+        <div
+          role="button"
+          tabIndex={0}
+          style={styles.heroCard}
+          onClick={handleTap}
+          onKeyUp={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              handleTap()
+            }
+          }}
+        >
+          {hero?.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={hero.image_url} alt={heroName} style={imageStyle} />
+          ) : (
+            <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
+          )}
+
+          {mode === 0 ? (
+            <div style={styles.heroNameOverlay}>
+              <p style={styles.heroNameBadge}>{heroName}</p>
             </div>
+          ) : null}
+
+          {mode === 1 ? (
+            <div style={styles.overlaySurface}>
+              <p style={styles.overlayTitle}>소개</p>
+              <p style={styles.overlayText}>{description}</p>
+            </div>
+          ) : null}
+
+          {mode === 2 ? (
+            <div style={styles.overlaySurface}>
+              <p style={styles.overlayTitle}>능력</p>
+              {abilityTexts.length ? (
+                <ul style={styles.abilityList}>
+                  {abilityTexts.map((text, index) => (
+                    <li key={`ability-${index}`} style={styles.abilityItem}>
+                      <p style={styles.abilityLabel}>능력 {index + 1}</p>
+                      <p style={styles.overlayText}>{text}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={styles.overlayText}>등록된 능력이 없습니다.</p>
+              )}
+            </div>
+          ) : null}
+
+          <div style={styles.tapHint} aria-hidden="true">
+            탭해서 정보 보기
           </div>
         </div>
+      </div>
+    </div>
+  )
+
+  const placeholderSlides = useMemo(
+    () =>
+      menuOrder.slice(1).map((label) => ({
+        label,
+        description: `${label} 메뉴는 곧 추가될 예정입니다.`,
+      })),
+    [],
+  )
+
+  return (
+    <div style={backgroundStyle}>
+      <div
+        style={styles.sliderViewport}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div style={styles.sliderTrack(activeMenu)}>
+          <div style={styles.slide}>{heroSlide}</div>
+          {placeholderSlides.map((slide) => (
+            <div key={slide.label} style={styles.slide}>
+              <div style={styles.placeholderLayout}>
+                <span style={styles.placeholderBadge}>준비중</span>
+                <p style={styles.placeholderTitle}>{slide.label}</p>
+                <p style={styles.placeholderCopy}>{slide.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={styles.menuTabs}>
+        {menuOrder.map((label, index) => {
+          const isActive = index === activeMenu
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => goToMenu(index)}
+              style={{
+                ...styles.menuTab,
+                ...(isActive ? styles.activeMenuTab : null),
+              }}
+            >
+              {label}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
