@@ -1,6 +1,6 @@
 'use client'
 
-import ReactFlow, { Background, Controls, MiniMap } from 'reactflow'
+import ReactFlow from 'reactflow'
 import 'reactflow/dist/style.css'
 
 import PromptNode from '../PromptNode'
@@ -19,16 +19,21 @@ export default function MakerEditorCanvas({
   onSelectionChange,
   onNodesDelete,
   onEdgesDelete,
+  allowNodeDrag,
 }) {
   return (
     <div
       style={{
         flex: '1 1 auto',
         minHeight: 420,
-        background: '#ffffff',
-        borderRadius: 18,
-        boxShadow: '0 20px 45px -36px rgba(15, 23, 42, 0.5)',
+        position: 'relative',
+        borderRadius: 28,
         overflow: 'hidden',
+        backgroundColor: '#04070f',
+        backgroundImage:
+          'linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)',
+        backgroundSize: '84px 84px',
+        boxShadow: '0 60px 120px -80px rgba(37, 99, 235, 0.6)',
       }}
     >
       <ReactFlow
@@ -51,12 +56,30 @@ export default function MakerEditorCanvas({
         zoomOnScroll
         panOnScroll
         panOnDrag
+        nodesDraggable={!!allowNodeDrag}
+        selectionOnDrag
+        style={{ width: '100%', height: '100%', touchAction: 'none', background: 'transparent' }}
+        connectionLineStyle={{ stroke: 'rgba(96, 165, 250, 0.8)', strokeWidth: 2 }}
+        defaultEdgeOptions={{
+          type: 'default',
+          style: { stroke: 'rgba(148, 163, 184, 0.5)', strokeWidth: 2 },
+          markerEnd: {
+            type: 'arrowclosed',
+            color: 'rgba(148, 163, 184, 0.6)',
+            width: 18,
+            height: 18,
+          },
+        }}
         fitViewOptions={{ padding: 0.24, duration: 400 }}
-        style={{ width: '100%', height: '100%', touchAction: 'none' }}
       >
-        <MiniMap />
-        <Controls />
-        <Background />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            boxShadow: 'inset 0 0 0 1px rgba(148, 163, 184, 0.08)',
+          }}
+        />
       </ReactFlow>
     </div>
   )

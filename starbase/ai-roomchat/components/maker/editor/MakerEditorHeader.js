@@ -1,110 +1,81 @@
 'use client'
 
-export default function MakerEditorHeader({
-  setName,
-  busy,
-  onBack,
-  onAddPrompt,
-  onAddUserAction,
-  onAddSystem,
-  onSave,
-  onExport,
-  onImport,
-  onGoLobby,
-}) {
+import { useMemo } from 'react'
+
+export default function MakerEditorHeader({ setName, busy, onBack, onSave, onExport, onImport, onGoLobby }) {
+  const title = useMemo(() => setName || '이름 없는 세트', [setName])
+
   return (
     <header
       style={{
-        background: '#ffffff',
-        borderRadius: 16,
-        padding: '14px 16px',
-        boxShadow: '0 16px 40px -34px rgba(15, 23, 42, 0.45)',
-        display: 'grid',
-        gap: 12,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 16,
+        padding: '18px 28px 14px',
+        color: '#f8fafc',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <button
           onClick={onBack}
           style={{
-            padding: '6px 12px',
-            borderRadius: 10,
-            border: '1px solid #cbd5f5',
-            background: '#f1f5f9',
-            color: '#0f172a',
+            padding: '8px 14px',
+            borderRadius: 999,
+            border: '1px solid rgba(148, 163, 184, 0.45)',
+            background: 'rgba(15, 23, 42, 0.65)',
+            color: '#e2e8f0',
             fontWeight: 600,
+            backdropFilter: 'blur(6px)',
           }}
         >
           ← 목록
         </button>
-        <strong style={{ fontSize: 16, color: '#0f172a' }}>{setName || '이름 없는 세트'}</strong>
+        <div style={{ display: 'grid' }}>
+          <strong style={{ fontSize: 18, letterSpacing: '-0.01em' }}>{title}</strong>
+          <span style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>프롬프트 세트를 구성하고 저장하세요.</span>
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button
-          onClick={onAddPrompt}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 12,
-            background: '#2563eb',
-            color: '#fff',
-            fontWeight: 600,
-          }}
-        >
-          + 프롬프트
-        </button>
-        <button
-          onClick={onAddUserAction}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 12,
-            background: '#0ea5e9',
-            color: '#fff',
-            fontWeight: 600,
-          }}
-        >
-          + 유저 행동
-        </button>
-        <button
-          onClick={onAddSystem}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 12,
-            background: '#6b7280',
-            color: '#fff',
-            fontWeight: 600,
-          }}
-        >
-          + 시스템
-        </button>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <button
           type="button"
           onClick={onSave}
           disabled={busy}
           style={{
-            padding: '8px 14px',
-            borderRadius: 12,
-            background: '#111827',
+            padding: '10px 18px',
+            borderRadius: 999,
+            background: busy ? 'rgba(59, 130, 246, 0.4)' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
             color: '#fff',
-            fontWeight: 600,
-            opacity: busy ? 0.65 : 1,
+            fontWeight: 700,
+            border: 'none',
+            boxShadow: '0 12px 30px -18px rgba(37, 99, 235, 0.9)',
+            transition: 'transform 0.2s ease',
+            cursor: busy ? 'wait' : 'pointer',
           }}
         >
           {busy ? '저장 중…' : '저장 (⌘/Ctrl+S)'}
         </button>
-      </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button
           onClick={onExport}
-          style={{ padding: '8px 14px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1', fontWeight: 600 }}
+          style={{
+            padding: '9px 16px',
+            borderRadius: 999,
+            background: 'rgba(148, 163, 184, 0.16)',
+            color: '#e2e8f0',
+            fontWeight: 600,
+            border: '1px solid rgba(148, 163, 184, 0.35)',
+          }}
         >
           내보내기
         </button>
         <label
           style={{
-            padding: '8px 14px',
-            borderRadius: 12,
-            border: '1px dashed #94a3b8',
-            background: '#f8fafc',
+            padding: '9px 16px',
+            borderRadius: 999,
+            border: '1px dashed rgba(148, 163, 184, 0.35)',
+            background: 'rgba(15, 23, 42, 0.6)',
+            color: '#e2e8f0',
             fontWeight: 600,
             cursor: 'pointer',
           }}
@@ -114,7 +85,14 @@ export default function MakerEditorHeader({
         </label>
         <button
           onClick={onGoLobby}
-          style={{ padding: '8px 14px', borderRadius: 12, background: '#0f172a', color: '#fff', fontWeight: 600 }}
+          style={{
+            padding: '9px 16px',
+            borderRadius: 999,
+            background: 'rgba(15, 23, 42, 0.85)',
+            color: '#f8fafc',
+            fontWeight: 600,
+            border: '1px solid rgba(148, 163, 184, 0.35)',
+          }}
         >
           로비로
         </button>
