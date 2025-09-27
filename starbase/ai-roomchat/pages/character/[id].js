@@ -74,6 +74,20 @@ export default function CharacterDetailPage() {
     }
 
   useEffect(() => {
+    if (!router.isReady) return
+    if (dashboard.status?.unauthorized) {
+      router.replace('/')
+    }
+  }, [dashboard.status?.unauthorized, router])
+
+  useEffect(() => {
+    if (!router.isReady) return
+    if (dashboard.status?.missingHero) {
+      router.replace('/roster')
+    }
+  }, [dashboard.status?.missingHero, router])
+
+  useEffect(() => {
     setInitialized(false)
   }, [heroId])
 
@@ -177,6 +191,39 @@ export default function CharacterDetailPage() {
 
   if (showInitialLoading) {
     return <FullScreenState title="캐릭터 정보를 불러오는 중" message="잠시만 기다려 주세요." />
+  }
+
+  if (dashboard.status?.unauthorized) {
+    return (
+      <FullScreenState
+        title="로그인이 필요합니다."
+        message="이 캐릭터 정보를 보려면 먼저 로그인해 주세요."
+        actionLabel="홈으로 이동"
+        onAction={() => router.replace('/')}
+      />
+    )
+  }
+
+  if (dashboard.status?.missingHero) {
+    return (
+      <FullScreenState
+        title="캐릭터를 찾을 수 없습니다."
+        message="연결된 영웅 정보를 확인할 수 없어요. 목록으로 돌아가 다시 선택해 주세요."
+        actionLabel="로스터로 이동"
+        onAction={() => router.replace('/roster')}
+      />
+    )
+  }
+
+  if (dashboard.status?.error) {
+    return (
+      <FullScreenState
+        title="캐릭터 정보를 불러오지 못했습니다."
+        message={dashboard.status.error}
+        actionLabel="다시 시도"
+        onAction={() => dashboard.reload?.()}
+      />
+    )
   }
 
   if (!hero) {
