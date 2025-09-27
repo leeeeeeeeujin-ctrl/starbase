@@ -9,6 +9,11 @@ import {
   readPromptSetBundle,
   sortPromptSets,
 } from '../../lib/maker/promptSets'
+import {
+  importPromptLibraryEntry,
+  listPromptLibraryEntries,
+  publishPromptSetToLibrary,
+} from '../../lib/maker/promptLibrary'
 
 function parseImportPayload(file) {
   return file.text().then((text) => {
@@ -46,6 +51,13 @@ export function useMakerHome({ onUnauthorized } = {}) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const { message: errorMessage, setMessage: setErrorMessage, setFromError } = useResultMessage()
+  const [libraryRows, setLibraryRows] = useState([])
+  const [libraryLoading, setLibraryLoading] = useState(true)
+  const {
+    message: libraryError,
+    setMessage: setLibraryError,
+    setFromError: setLibraryErrorFromError,
+  } = useResultMessage()
 
   const loadPromptSets = useCallback(async (ownerId) => {
     const result = await promptSetsRepository.list(ownerId)
@@ -56,6 +68,20 @@ export function useMakerHome({ onUnauthorized } = {}) {
     }
     return result
   }, [])
+
+  const refreshLibraryEntries = useCallback(async () => {
+    setLibraryLoading(true)
+    setLibraryError('')
+    const result = await listPromptLibraryEntries({ limit: 12 })
+    if (result.error) {
+      setLibraryRows([])
+      setLibraryErrorFromError(result.error)
+    } else {
+      setLibraryRows(result.data)
+    }
+    setLibraryLoading(false)
+    return result
+  }, [setLibraryError, setLibraryErrorFromError])
 
   useEffect(() => {
     setHydrated(true)
@@ -69,6 +95,7 @@ export function useMakerHome({ onUnauthorized } = {}) {
     async function bootstrap() {
       setLoading(true)
       setErrorMessage('')
+      refreshLibraryEntries()
 
       const { data: authData } = await supabase.auth.getUser()
       if (cancelled) return
@@ -100,7 +127,14 @@ export function useMakerHome({ onUnauthorized } = {}) {
     return () => {
       cancelled = true
     }
-  }, [hydrated, loadPromptSets, onUnauthorized, setErrorMessage, setFromError])
+  }, [
+    hydrated,
+    loadPromptSets,
+    onUnauthorized,
+    refreshLibraryEntries,
+    setErrorMessage,
+    setFromError,
+  ])
 
   const refresh = useCallback(
     async (owner = userId) => {
@@ -146,6 +180,32 @@ export function useMakerHome({ onUnauthorized } = {}) {
     return result.data
   }, [setFromError, userId])
 
+  const handlePublish = useCallback(
+    async (setId) => {
+      const result = await publishPromptSetToLibrary(userId, setId)
+      if (result.error) {
+        setLibraryErrorFromError(result.error)
+        throw result.error
+      }
+      await refreshLibraryEntries()
+      return result.data
+    },
+    [refreshLibraryEntries, setLibraryErrorFromError, userId],
+  )
+
+  const handleImportFromLibrary = useCallback(
+    async (entryId) => {
+      const result = await importPromptLibraryEntry(userId, entryId)
+      if (result.error) {
+        setLibraryErrorFromError(result.error)
+        throw result.error
+      }
+      await refresh(userId)
+      return result.data
+    },
+    [refresh, setLibraryErrorFromError, userId],
+  )
+
   const exportSet = useCallback(async (id) => {
     const result = await readPromptSetBundle(id)
     if (result.error) {
@@ -187,12 +247,18 @@ export function useMakerHome({ onUnauthorized } = {}) {
     loading,
     errorMessage,
     rows,
+    libraryRows,
+    libraryLoading,
+    libraryError,
     refresh,
+    refreshLibraryEntries,
     renameSet: handleRename,
     deleteSet: handleDelete,
     createSet: handleCreate,
     exportSet,
     importFromFile,
+    publishToLibrary: handlePublish,
+    importLibraryEntry: handleImportFromLibrary,
     setErrorMessage,
   }
 }

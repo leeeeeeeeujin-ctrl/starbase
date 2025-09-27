@@ -20,12 +20,18 @@ export default function MakerHomeContainer() {
     loading,
     errorMessage,
     rows,
+    libraryRows,
+    libraryLoading,
+    libraryError,
     refresh,
     renameSet,
     deleteSet,
     createSet,
     exportSet,
     importFromFile,
+    publishToLibrary,
+    importLibraryEntry,
+    refreshLibraryEntries,
     setErrorMessage,
   } = useMakerHome({ onUnauthorized: handleUnauthorized })
 
@@ -33,6 +39,8 @@ export default function MakerHomeContainer() {
   const [editingName, setEditingName] = useState('')
   const [savingRename, setSavingRename] = useState(false)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
+  const [publishingSetId, setPublishingSetId] = useState('')
+  const [importingEntryId, setImportingEntryId] = useState('')
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -96,6 +104,44 @@ export default function MakerHomeContainer() {
       }
     },
     [deleteSet],
+  )
+
+  const handlePublishSet = useCallback(
+    async (id) => {
+      if (!id) return
+      try {
+        setPublishingSetId(id)
+        await publishToLibrary(id)
+        alert('서버에 업로드했습니다. 다른 메이커에서 다운로드할 수 있어요!')
+      } catch (err) {
+        console.error(err)
+        alert(err instanceof Error ? err.message : '서버에 업로드하지 못했습니다.')
+      } finally {
+        setPublishingSetId('')
+      }
+    },
+    [publishToLibrary],
+  )
+
+  const handleImportLibraryEntry = useCallback(
+    async (entryId) => {
+      if (!entryId) return
+      try {
+        setImportingEntryId(entryId)
+        const result = await importLibraryEntry(entryId)
+        const inserted = result?.createdSet
+        if (inserted?.id) {
+          alert('내 메이커로 가져왔어요! 지금 바로 편집할 수 있습니다.')
+          router.push(`/maker/${inserted.id}`)
+        }
+      } catch (err) {
+        console.error(err)
+        alert(err instanceof Error ? err.message : '가져오지 못했습니다.')
+      } finally {
+        setImportingEntryId('')
+      }
+    },
+    [importLibraryEntry, router],
   )
 
   const handleCreateSet = useCallback(async () => {
@@ -164,6 +210,11 @@ export default function MakerHomeContainer() {
       errorMessage={errorMessage}
       loading={loading}
       rows={rows}
+      libraryRows={libraryRows}
+      libraryLoading={libraryLoading}
+      libraryError={libraryError}
+      libraryImportingId={importingEntryId}
+      publishingSetId={publishingSetId}
       editingId={editingId}
       editingName={editingName}
       savingRename={savingRename}
@@ -178,9 +229,11 @@ export default function MakerHomeContainer() {
       onImportFile={handleImportFile}
       onCreateSet={handleCreateSet}
       onRefresh={handleRefresh}
+      onRefreshLibrary={refreshLibraryEntries}
       onToggleActionSheet={setActionSheetOpen}
       onGoBack={handleGoBack}
-      onOpenRanking={() => router.push('/rank')}
+      onPublishSet={handlePublishSet}
+      onImportLibraryEntry={handleImportLibraryEntry}
     />
   )
 }

@@ -177,6 +177,66 @@ using (exists (
   where s.id = prompt_bridges.from_set and s.owner_id = auth.uid()
 ));
 
+create table if not exists public.prompt_library_entries (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id) on delete set null,
+  set_id uuid unique references public.prompt_sets(id) on delete set null,
+  title text not null,
+  summary text not null default '',
+  payload jsonb not null default '{}'::jsonb,
+  download_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.prompt_library_entries enable row level security;
+
+create policy if not exists prompt_library_entries_select
+on public.prompt_library_entries for select
+using (true);
+
+create policy if not exists prompt_library_entries_insert
+on public.prompt_library_entries for insert
+with check (auth.uid() = owner_id);
+
+create policy if not exists prompt_library_entries_update
+on public.prompt_library_entries for update
+using (auth.uid() = owner_id)
+with check (auth.uid() = owner_id);
+
+create or replace function public.increment_prompt_library_downloads(entry_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.prompt_library_entries
+  set download_count = download_count + 1,
+      updated_at = now()
+  where id = entry_id;
+end;
+$$;
+
+grant execute on function public.increment_prompt_library_downloads to anon;
+grant execute on function public.increment_prompt_library_downloads to authenticated;
+
+create or replace function public.touch_prompt_library_entries_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_prompt_library_entries_updated on public.prompt_library_entries;
+create trigger trg_prompt_library_entries_updated
+before update on public.prompt_library_entries
+for each row
+execute function public.touch_prompt_library_entries_updated_at();
+
 -- =========================================
 --  랭킹 게임 핵심 테이블
 -- =========================================

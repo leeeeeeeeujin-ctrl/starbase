@@ -1,6 +1,7 @@
 'use client'
 
 import MakerHomeHeader from './MakerHomeHeader'
+import PromptLibraryList from './PromptLibraryList'
 import PromptSetCard from './PromptSetCard'
 import QuickActionsSheet from './QuickActionsSheet'
 
@@ -10,6 +11,11 @@ export default function MakerHomeView({
   errorMessage,
   loading,
   rows,
+  libraryRows,
+  libraryLoading,
+  libraryError,
+  libraryImportingId,
+  publishingSetId,
   editingId,
   editingName,
   savingRename,
@@ -24,9 +30,11 @@ export default function MakerHomeView({
   onImportFile,
   onCreateSet,
   onRefresh,
+  onRefreshLibrary,
   onToggleActionSheet,
   onGoBack,
-  onOpenRanking,
+  onPublishSet,
+  onImportLibraryEntry,
 }) {
   const pageBackground = backgroundImage
     ? {
@@ -69,6 +77,15 @@ export default function MakerHomeView({
           }}
         >
           <MakerHomeHeader listHeader={listHeader} errorMessage={errorMessage} onGoBack={onGoBack} />
+
+          <PromptLibraryList
+            entries={libraryRows}
+            loading={libraryLoading}
+            errorMessage={libraryError}
+            importingId={libraryImportingId}
+            onImport={onImportLibraryEntry}
+            onRefresh={onRefreshLibrary}
+          />
 
           <section
             style={{
@@ -135,6 +152,8 @@ export default function MakerHomeView({
                     onOpenSet={onOpenSet}
                     onExportSet={onExportSet}
                     onDeleteSet={onDeleteSet}
+                    onPublishSet={onPublishSet}
+                    publishing={publishingSetId === row.id}
                     savingRename={savingRename}
                   />
                 ))}
@@ -165,17 +184,17 @@ export default function MakerHomeView({
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  onClick={onOpenRanking}
+                  onClick={onCreateSet}
                   style={{
                     padding: '12px 16px',
                     borderRadius: 14,
-                    border: '1px solid rgba(96,165,250,0.6)',
-                    background: 'linear-gradient(135deg, rgba(59,130,246,0.9) 0%, rgba(96,165,250,0.92) 100%)',
+                    border: '1px solid rgba(125,211,252,0.6)',
+                    background: 'linear-gradient(135deg, rgba(45,212,191,0.9) 0%, rgba(14,165,233,0.92) 100%)',
                     color: '#0f172a',
                     fontWeight: 700,
                   }}
                 >
-                  랭킹 허브로 이동
+                  새 세트 만들기
                 </button>
               </div>
             </div>
@@ -212,7 +231,6 @@ export default function MakerHomeView({
         onCreateSet={onCreateSet}
         onImportFile={onImportFile}
         onRefresh={onRefresh}
-        onOpenRanking={onOpenRanking}
       />
     </div>
   )

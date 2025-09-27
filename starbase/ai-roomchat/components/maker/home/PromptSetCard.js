@@ -18,6 +18,8 @@ export default function PromptSetCard({
   onOpenSet,
   onExportSet,
   onDeleteSet,
+  onPublishSet,
+  publishing,
   savingRename,
 }) {
   const timestamp = formatTimestamp(row.updated_at ?? row.created_at)
@@ -147,6 +149,23 @@ export default function PromptSetCard({
           }}
         >
           JSON 내보내기
+        </button>
+        <button
+          type="button"
+          onClick={() => onPublishSet(row.id)}
+          disabled={publishing}
+          style={{
+            flex: '1 1 120px',
+            padding: '10px 12px',
+            borderRadius: 12,
+            border: '1px solid rgba(45,212,191,0.45)',
+            background: 'linear-gradient(135deg, rgba(45,212,191,0.15) 0%, rgba(14,165,233,0.12) 100%)',
+            fontWeight: 600,
+            color: '#0f766e',
+            opacity: publishing ? 0.65 : 1,
+          }}
+        >
+          {publishing ? '업로드 중…' : '서버에 업로드'}
         </button>
         <button
           type="button"

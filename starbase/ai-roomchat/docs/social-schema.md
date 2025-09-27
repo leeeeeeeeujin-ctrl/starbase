@@ -51,5 +51,11 @@
 - **prompt_bridges**: 프롬프트 슬롯 간 연결 규칙과 조건을 정의합니다. `trigger_words`, `priority`, `probability`, `fallback` 등 고급 제어를 지원합니다.
 - **prompt_histories**: 세션 중 발생한 입력/출력 기록을 보관합니다.
 
+### prompt_library_entries
+- 사용자들이 공개로 공유한 프롬프트 세트 번들을 저장합니다.
+- `payload` 컬럼에는 `prompt_sets`, `prompt_slots`, `prompt_bridges` 데이터를 번들 형태(JSON)로 보관합니다.
+- `download_count`는 Supabase RPC(`increment_prompt_library_downloads`)를 통해 증가하며, 목록 정렬에도 활용됩니다.
+- `set_id`는 원본 세트와의 매핑을 유지하기 위한 `unique` 키로, 업로드 후 수정 시 기존 레코드가 갱신됩니다.
+
 ---
 최근 스키마 상태는 Supabase 대시보드 `Table editor`에서 확인하고, 변경 사항은 `supabase_social.sql`에 반영하세요.
