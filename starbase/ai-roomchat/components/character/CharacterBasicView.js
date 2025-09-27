@@ -17,6 +17,27 @@ const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024
 const MAX_AUDIO_SIZE = 12 * 1024 * 1024
 const MAX_AUDIO_DURATION = 5 * 60
 const EQ_FREQUENCIES = [80, 750, 3500]
+const AUDIO_SETTINGS_COOKIE = 'hero-audio-settings'
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 30
+
+const readCookie = (name) => {
+  if (typeof document === 'undefined') return null
+  const cookies = document.cookie.split(';').map((entry) => entry.trim())
+  const target = cookies.find((entry) => entry.startsWith(`${name}=`))
+  if (!target) return null
+  try {
+    return decodeURIComponent(target.split('=').slice(1).join('='))
+  } catch (error) {
+    console.error(error)
+    return null
+  }
+}
+
+const writeCookie = (name, value) => {
+  if (typeof document === 'undefined') return
+  const expires = `max-age=${COOKIE_MAX_AGE}`
+  document.cookie = `${name}=${encodeURIComponent(value)}; ${expires}; path=/`
+}
 
 const pageStyles = {
   base: {
@@ -52,6 +73,12 @@ const overlayTabs = [
   { key: 'register', label: '게임 등록' },
   { key: 'ranking', label: '랭킹' },
   { key: 'settings', label: '설정' },
+]
+
+const searchSortOptions = [
+  { key: 'latest', label: '최신순' },
+  { key: 'likes', label: '좋아요' },
+  { key: 'plays', label: '게임횟수' },
 ]
 
 const styles = {
@@ -445,6 +472,24 @@ const styles = {
     display: 'grid',
     gap: 16,
   },
+  sortRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  sortButton: (active) => ({
+    appearance: 'none',
+    border: 'none',
+    borderRadius: 999,
+    padding: '8px 14px',
+    background: active ? 'rgba(59,130,246,0.5)' : 'rgba(15,23,42,0.6)',
+    color: active ? '#0f172a' : '#e0f2fe',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: active ? '0 14px 32px -24px rgba(59,130,246,0.9)' : 'none',
+  }),
   searchActions: {
     display: 'flex',
     gap: 12,
@@ -816,8 +861,8 @@ export default function CharacterBasicView({ hero }) {
   const [activeTab, setActiveTab] = useState(0)
   const [bgmEnabled, setBgmEnabled] = useState(Boolean(hero?.bgm_url))
   const [isPlaying, setIsPlaying] = useState(false)
-  const [playerCollapsed, setPlayerCollapsed] = useState(false)
-  const [dockCollapsed, setDockCollapsed] = useState(false)
+  const [playerCollapsed, setPlayerCollapsed] = useState(true)
+  const [dockCollapsed, setDockCollapsed] = useState(true)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
   const [selectedBgmName, setSelectedBgmName] = useState('')
@@ -842,6 +887,7 @@ export default function CharacterBasicView({ hero }) {
   const [bgmCleared, setBgmCleared] = useState(false)
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [searchSort, setSearchSort] = useState('latest')
 
   const imageInputRef = useRef(null)
   const backgroundInputRef = useRef(null)
@@ -865,6 +911,67 @@ export default function CharacterBasicView({ hero }) {
   const bgmVolumeRef = useRef(bgmVolume)
   const imageObjectUrlRef = useRef(null)
   const backgroundObjectUrlRef = useRef(null)
+
+  useEffect(() => {
+    const raw = readCookie(AUDIO_SETTINGS_COOKIE)
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw)
+      if (typeof parsed.eqEnabled === 'boolean') setEqEnabled(parsed.eqEnabled)
+      if (parsed.equalizer) {
+        setEqualizer((prev) => ({
+          low: Number.isFinite(parsed.equalizer.low) ? parsed.equalizer.low : prev.low,
+          mid: Number.isFinite(parsed.equalizer.mid) ? parsed.equalizer.mid : prev.mid,
+          high: Number.isFinite(parsed.equalizer.high) ? parsed.equalizer.high : prev.high,
+        }))
+      }
+      if (typeof parsed.reverbEnabled === 'boolean') setReverbEnabled(parsed.reverbEnabled)
+      if (parsed.reverbDetail) {
+        setReverbDetail((prev) => ({
+          mix: Number.isFinite(parsed.reverbDetail.mix) ? parsed.reverbDetail.mix : prev.mix,
+          decay: Number.isFinite(parsed.reverbDetail.decay) ? parsed.reverbDetail.decay : prev.decay,
+        }))
+      }
+      if (typeof parsed.compressorEnabled === 'boolean') setCompressorEnabled(parsed.compressorEnabled)
+      if (parsed.compressorDetail) {
+        setCompressorDetail((prev) => ({
+          threshold: Number.isFinite(parsed.compressorDetail.threshold)
+            ? parsed.compressorDetail.threshold
+            : prev.threshold,
+          ratio: Number.isFinite(parsed.compressorDetail.ratio) ? parsed.compressorDetail.ratio : prev.ratio,
+          release: Number.isFinite(parsed.compressorDetail.release)
+            ? parsed.compressorDetail.release
+            : prev.release,
+        }))
+      }
+    } catch (error) {
+      console.error(error)
+    }
+  }, [])
+
+  useEffect(() => {
+    const payload = {
+      eqEnabled,
+      equalizer,
+      reverbEnabled,
+      reverbDetail,
+      compressorEnabled,
+      compressorDetail,
+    }
+    writeCookie(AUDIO_SETTINGS_COOKIE, JSON.stringify(payload))
+  }, [
+    eqEnabled,
+    equalizer.low,
+    equalizer.mid,
+    equalizer.high,
+    reverbEnabled,
+    reverbDetail.mix,
+    reverbDetail.decay,
+    compressorEnabled,
+    compressorDetail.threshold,
+    compressorDetail.ratio,
+    compressorDetail.release,
+  ])
 
   const ensureAudioContext = useCallback(() => {
     if (typeof window === 'undefined') return null
@@ -1735,22 +1842,65 @@ export default function CharacterBasicView({ hero }) {
 
   const sampleGames = useMemo(
     () => [
-      { id: 'g-1', title: '시간의 미궁', tags: ['추리', '협동'], players: 6, likes: 128 },
-      { id: 'g-2', title: '하늘섬 레이드', tags: ['레이드', '전략'], players: 8, likes: 256 },
-      { id: 'g-3', title: '은하 결투장', tags: ['PvP', '실시간'], players: 10, likes: 92 },
-      { id: 'g-4', title: '꿈의 정원', tags: ['힐링', '건설'], players: 4, likes: 64 },
+      {
+        id: 'g-1',
+        title: '시간의 미궁',
+        tags: ['추리', '협동'],
+        players: 6,
+        likes: 128,
+        plays: 412,
+        createdAt: new Date('2024-04-12').getTime(),
+      },
+      {
+        id: 'g-2',
+        title: '하늘섬 레이드',
+        tags: ['레이드', '전략'],
+        players: 8,
+        likes: 256,
+        plays: 689,
+        createdAt: new Date('2024-05-08').getTime(),
+      },
+      {
+        id: 'g-3',
+        title: '은하 결투장',
+        tags: ['PvP', '실시간'],
+        players: 10,
+        likes: 92,
+        plays: 533,
+        createdAt: new Date('2024-03-30').getTime(),
+      },
+      {
+        id: 'g-4',
+        title: '꿈의 정원',
+        tags: ['힐링', '건설'],
+        players: 4,
+        likes: 64,
+        plays: 188,
+        createdAt: new Date('2024-05-20').getTime(),
+      },
     ],
     [],
   )
 
   const filteredGames = useMemo(() => {
-    if (!searchTerm.trim()) return sampleGames
-    const term = searchTerm.trim().toLowerCase()
-    return sampleGames.filter((game) => {
-      const target = `${game.title} ${game.tags.join(' ')}`.toLowerCase()
-      return target.includes(term)
-    })
-  }, [sampleGames, searchTerm])
+    const trimmed = searchTerm.trim().toLowerCase()
+    const base = !trimmed
+      ? sampleGames
+      : sampleGames.filter((game) => {
+          const target = `${game.title} ${game.tags.join(' ')}`.toLowerCase()
+          return target.includes(trimmed)
+        })
+
+    const sorted = [...base]
+    if (searchSort === 'latest') {
+      sorted.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    } else if (searchSort === 'likes') {
+      sorted.sort((a, b) => (b.likes || 0) - (a.likes || 0))
+    } else if (searchSort === 'plays') {
+      sorted.sort((a, b) => (b.plays || 0) - (a.plays || 0))
+    }
+    return sorted
+  }, [sampleGames, searchTerm, searchSort])
 
   const rankingEntries = useMemo(
     () => [
@@ -1825,6 +1975,18 @@ export default function CharacterBasicView({ hero }) {
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
+            <div style={styles.sortRow}>
+              {searchSortOptions.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  style={styles.sortButton(searchSort === option.key)}
+                  onClick={() => setSearchSort(option.key)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <div style={styles.searchActions}>
               <button
                 type="button"
