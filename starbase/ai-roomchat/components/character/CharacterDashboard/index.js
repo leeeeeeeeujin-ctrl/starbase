@@ -711,7 +711,7 @@ function RankingSection() {
                   const isHero = hero?.id && row.hero_id === hero.id
                   return (
                     <tr
-                      key={row.id || `${row.hero_id}-${row.owner_id || index}`}
+                      key={row.id || `${row.hero_id}-${row.slot_no ?? index}`}
                       style={isHero ? styles.highlightRow : null}
                     >
                       <td>{index + 1}</td>
@@ -1933,10 +1933,10 @@ function OverviewSheet({
                 const isActive = selectedGameId === entry.game_id
                 const game = entry.game || {}
                 const label = game.name || '이름 없는 게임'
-                const image = game.image_url
+                const image = game.image_url || game.cover_path
                 return (
                   <button
-                    key={`${entry.game_id}:${entry.owner_id}`}
+                    key={`${entry.game_id}:${entry.slot_no ?? 'slot'}`}
                     type="button"
                     onClick={() => {
                       selectGame(entry.game_id)

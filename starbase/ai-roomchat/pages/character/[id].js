@@ -1,11 +1,10 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/router'
 
-import CharacterDashboard from '@/components/character/CharacterDashboard'
-import StartBattleOverlay from '@/components/character/CharacterDashboard/StartBattleOverlay'
-import useCharacterDashboard from '@/hooks/useCharacterDashboard'
+import CharacterBasicView from '@/components/character/CharacterBasicView'
+import { useCharacterDetail } from '@/hooks/character/useCharacterDetail'
 
 function FullScreenState({ title, message, actionLabel, onAction }) {
   return (
@@ -56,44 +55,16 @@ export default function CharacterDetailPage() {
     return id || ''
   }, [id])
 
-  const [battleOverlayOpen, setBattleOverlayOpen] = useState(false)
-  const [initialized, setInitialized] = useState(false)
-  const reloadTimerRef = useRef(null)
-  const reloadAttemptedRef = useRef(
-    typeof window !== 'undefined' && window.sessionStorage.getItem('characterReloadAttempted') === '1'
-  )
-  const dashboard = useCharacterDashboard(heroId)
-  const profileSection = dashboard.profile || { hero: null }
-  const participationSection =
-    dashboard.participation || {
-      selectedEntry: null,
-      selectedGame: null,
-      selectedGameId: null,
-      scoreboard: [],
-      heroLookup: {},
-    }
-
-  useEffect(() => {
-    setInitialized(false)
-  }, [heroId])
+  const { loading, error, unauthorized, missingHero, hero, reload } = useCharacterDetail(heroId)
 
   useEffect(() => {
     if (!router.isReady) return
-    if (!dashboard.status.loading) {
-      setInitialized(true)
-    }
-  }, [router.isReady, dashboard.status.loading])
-
-  const showInitialLoading = !router.isReady || (!initialized && dashboard.status.loading)
-  const hero = profileSection.hero
+    router.prefetch('/roster').catch(() => {})
+  }, [router])
 
   useEffect(() => {
-    if (!hero?.id) {
-      return
-    }
-    if (typeof window === 'undefined') {
-      return
-    }
+    if (!hero?.id) return
+    if (typeof window === 'undefined') return
     try {
       window.localStorage.setItem('selectedHeroId', hero.id)
       if (hero.owner_id) {
@@ -104,79 +75,41 @@ export default function CharacterDetailPage() {
     }
   }, [hero?.id, hero?.owner_id])
 
-  useEffect(() => {
-    return () => {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current)
-        reloadTimerRef.current = null
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!router.isReady) {
-      return
-    }
-
-    if (!showInitialLoading) {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current)
-        reloadTimerRef.current = null
-      }
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.removeItem('characterReloadAttempted')
-      }
-      reloadAttemptedRef.current = false
-      return
-    }
-
-    if (reloadAttemptedRef.current) {
-      return
-    }
-
-    if (reloadTimerRef.current) {
-      clearTimeout(reloadTimerRef.current)
-    }
-
-    reloadTimerRef.current = setTimeout(() => {
-      if (reloadAttemptedRef.current) {
-        return
-      }
-
-      reloadAttemptedRef.current = true
-      if (typeof window !== 'undefined') {
-        try {
-          window.sessionStorage.setItem('characterReloadAttempted', '1')
-        } catch (storageError) {
-          console.error('Failed to record character reload attempt:', storageError)
-        }
-      }
-
-      const navigateAndReload = async () => {
-        try {
-          await router.replace('/roster')
-        } catch (navigationError) {
-          console.error('Failed to navigate to roster before reload:', navigationError)
-        } finally {
-          if (typeof window !== 'undefined') {
-            window.location.reload()
-          }
-        }
-      }
-
-      navigateAndReload()
-    }, 2000)
-
-    return () => {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current)
-        reloadTimerRef.current = null
-      }
-    }
-  }, [router, router.isReady, showInitialLoading])
-
-  if (showInitialLoading) {
+  if (loading) {
     return <FullScreenState title="캐릭터 정보를 불러오는 중" message="잠시만 기다려 주세요." />
+  }
+
+  if (unauthorized) {
+    return (
+      <FullScreenState
+        title="로그인이 필요합니다."
+        message="이 캐릭터 정보를 보려면 먼저 로그인해 주세요."
+        actionLabel="홈으로 이동"
+        onAction={() => router.replace('/')}
+      />
+    )
+  }
+
+  if (missingHero) {
+    return (
+      <FullScreenState
+        title="캐릭터를 찾을 수 없습니다."
+        message="연결된 영웅 정보를 확인할 수 없어요. 목록으로 돌아가 다시 선택해 주세요."
+        actionLabel="로스터로 이동"
+        onAction={() => router.replace('/roster')}
+      />
+    )
+  }
+
+  if (error) {
+    return (
+      <FullScreenState
+        title="캐릭터 정보를 불러오지 못했습니다."
+        message={error}
+        actionLabel="다시 시도"
+        onAction={reload}
+      />
+    )
   }
 
   if (!hero) {
@@ -190,62 +123,5 @@ export default function CharacterDetailPage() {
     )
   }
 
-  const handleStartBattle = () => {
-    if (!participationSection.selectedGameId) {
-      alert('먼저 게임을 선택하세요.')
-      return
-    }
-    setBattleOverlayOpen(true)
-  }
-
-  const handleBeginSession = () => {
-    const gameId = participationSection.selectedGameId
-    if (!gameId) {
-      setBattleOverlayOpen(false)
-      return
-    }
-    setBattleOverlayOpen(false)
-    router.push(`/rank/${gameId}/start`)
-  }
-
-  const handleBackNavigation = useCallback(() => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
-      router.back()
-      return
-    }
-
-    router.push('/roster').catch((error) => {
-      console.error('Failed to navigate back to roster via router:', error)
-      if (typeof window !== 'undefined') {
-        window.location.href = '/roster'
-      }
-    })
-  }, [router])
-
-  useEffect(() => {
-    router.prefetch('/roster').catch(() => {})
-  }, [router])
-
-  return (
-    <>
-      <CharacterDashboard
-        dashboard={dashboard}
-        heroId={heroId}
-        heroName={dashboard.heroName}
-        onBack={handleBackNavigation}
-        onStartBattle={handleStartBattle}
-      />
-      <StartBattleOverlay
-        open={battleOverlayOpen}
-        hero={profileSection.hero}
-        selectedEntry={participationSection.selectedEntry}
-        selectedGame={participationSection.selectedGame}
-        selectedGameId={participationSection.selectedGameId}
-        scoreboardRows={participationSection.scoreboard}
-        heroLookup={participationSection.heroLookup}
-        onClose={() => setBattleOverlayOpen(false)}
-        onBeginSession={handleBeginSession}
-      />
-    </>
-  )
+  return <CharacterBasicView hero={hero} onHeroUpdated={reload} />
 }

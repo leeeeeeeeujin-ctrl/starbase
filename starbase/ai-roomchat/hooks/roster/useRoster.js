@@ -7,6 +7,30 @@ import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 
 const DEFAULT_PROFILE_NAME = '사용자'
+const DEFAULT_HERO_NAME = '이름 없는 영웅'
+
+function normalizeHero(row) {
+  if (!row || typeof row !== 'object') {
+    return {
+      id: '',
+      name: DEFAULT_HERO_NAME,
+      image_url: null,
+      created_at: null,
+      owner_id: null,
+    }
+  }
+
+  const rawName = typeof row.name === 'string' ? row.name.trim() : ''
+
+  return {
+    ...row,
+    id: row.id || '',
+    name: rawName || DEFAULT_HERO_NAME,
+    image_url: row.image_url || null,
+    created_at: row.created_at || null,
+    owner_id: row.owner_id || null,
+  }
+}
 
 function deriveProfile(user) {
   if (!user) {
@@ -25,7 +49,12 @@ function deriveProfile(user) {
     DEFAULT_PROFILE_NAME
   const avatarUrl = metadata.avatar_url || metadata.picture || metadata.avatar || null
 
-  return { displayName, avatarUrl }
+  const trimmed = typeof displayName === 'string' ? displayName.trim() : ''
+
+  return {
+    displayName: trimmed || DEFAULT_PROFILE_NAME,
+    avatarUrl,
+  }
 }
 
 export function useRoster({ onUnauthorized } = {}) {
@@ -142,10 +171,11 @@ export function useRoster({ onUnauthorized } = {}) {
         setError(heroesError.message)
         setHeroes([])
       } else {
-        setHeroes(data || [])
+        const normalizedHeroes = (data || []).map(normalizeHero)
+        setHeroes(normalizedHeroes)
         if (typeof window !== 'undefined') {
           const storedHeroId = window.localStorage.getItem('selectedHeroId')
-          if (storedHeroId && !(data || []).some((hero) => hero.id === storedHeroId)) {
+          if (storedHeroId && !normalizedHeroes.some((hero) => hero.id === storedHeroId)) {
             try {
               window.localStorage.removeItem('selectedHeroId')
             } catch (storageError) {
@@ -168,18 +198,9 @@ export function useRoster({ onUnauthorized } = {}) {
     loadRoster()
   }, [loadRoster])
 
-  const deleteHero = useCallback(async (heroId) => {
-    const { error: deleteError } = await withTable(supabase, 'heroes', (table) =>
-      supabase.from(table).delete().eq('id', heroId)
-    )
-
-    if (deleteError) {
-      throw deleteError
-    }
-
+  const resetError = useCallback(() => {
     if (!isMounted.current) return
-
-    setHeroes((previous) => previous.filter((hero) => hero.id !== heroId))
+    setError('')
   }, [])
 
   return {
@@ -188,8 +209,7 @@ export function useRoster({ onUnauthorized } = {}) {
     heroes,
     displayName,
     avatarUrl,
-    setError,
-    deleteHero,
+    resetError,
     reload: loadRoster,
   }
 }

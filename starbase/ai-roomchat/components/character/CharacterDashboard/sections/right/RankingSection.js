@@ -65,7 +65,7 @@ export default function RankingSection({ scoreboardRows, heroId, heroLookup, sel
             const displayName = heroLookup[row.hero_id]?.name || row.role || `참가자 ${index + 1}`
             return (
               <div
-                key={row.id || `${row.hero_id}-${index}`}
+                key={row.id || `${row.hero_id}-${row.slot_no ?? index}`}
                 style={{
                   ...styles.row,
                   background: highlight
