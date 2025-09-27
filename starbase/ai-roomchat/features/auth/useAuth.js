@@ -1,11 +1,9 @@
-'use client'
-
-import { useEffect, useSyncExternalStore } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '../../lib/supabase'
 import { deriveProfileFromUser, EMPTY_PROFILE } from './profile'
 
-const AUTH_STATUS_VALUES = {
+export const AUTH_STATUS_VALUES = {
   LOADING: 'loading',
   READY: 'ready',
   ERROR: 'error',
@@ -19,55 +17,15 @@ const INITIAL_STATE = {
   error: null,
 }
 
-const listeners = new Set()
-let state = { ...INITIAL_STATE }
-let bootstrapPromise = null
-let initialised = false
-let authSubscription = null
-let lastResetKey = null
+const AuthContext = createContext({
+  ...INITIAL_STATE,
+  refresh: async () => {},
+  signOut: async () => {},
+})
 
-function notify() {
-  listeners.forEach((listener) => {
-    try {
-      listener()
-    } catch (error) {
-      console.error('Auth listener threw an error:', error)
-    }
-  })
-}
-
-function setState(patch) {
-  state = { ...state, ...patch }
-  notify()
-}
-
-function cloneProfile(profile) {
-  if (!profile) return { ...EMPTY_PROFILE }
-  return {
-    displayName: profile.displayName ?? EMPTY_PROFILE.displayName,
-    avatarUrl: profile.avatarUrl ?? null,
-  }
-}
-
-function applySnapshot({ session, user }) {
-  const resolvedUser = user ?? session?.user ?? null
-  setState({
-    status: AUTH_STATUS_VALUES.READY,
-    session: session ?? null,
-    user: resolvedUser,
-    profile: cloneProfile(deriveProfileFromUser(resolvedUser)),
-    error: null,
-  })
-}
-
-function resetToAnonymous(error = null) {
-  setState({
-    status: error ? AUTH_STATUS_VALUES.ERROR : AUTH_STATUS_VALUES.READY,
-    session: null,
-    user: null,
-    profile: cloneProfile(null),
-    error,
-  })
+function cloneProfile(user) {
+  const derived = deriveProfileFromUser(user)
+  return { ...EMPTY_PROFILE, ...derived }
 }
 
 function sanitiseErrorKey(error) {
@@ -75,6 +33,19 @@ function sanitiseErrorKey(error) {
   const status = typeof error.status === 'number' ? String(error.status) : ''
   const message = String(error.message ?? error.msg ?? '').trim().toLowerCase()
   return `${status}:${message}`
+}
+
+function shouldInvalidateSession(error) {
+  if (!error) return false
+  const status = Number(error.status ?? 0)
+  const message = String(error.message ?? '').toLowerCase()
+  return (
+    status === 401 ||
+    status === 403 ||
+    message.includes('refresh token') ||
+    message.includes('session not found') ||
+    message.includes('invalid grant')
+  )
 }
 
 async function exchangeCodeIfPresent() {
@@ -126,156 +97,146 @@ async function resolveSessionSnapshot() {
   return { session, user }
 }
 
-async function handleBootstrapError(error) {
-  console.error('Failed to resolve Supabase session:', error)
+export function AuthProvider({ children }) {
+  const [state, setState] = useState(INITIAL_STATE)
+  const mountedRef = useRef(true)
+  const resetKeyRef = useRef('')
+  const bootstrapPromiseRef = useRef(null)
 
-  const status = Number(error?.status ?? 0)
-  const message = String(error?.message ?? '').toLowerCase()
-  const shouldInvalidate =
-    status === 401 ||
-    status === 403 ||
-    message.includes('refresh token') ||
-    message.includes('session not found') ||
-    message.includes('invalid grant')
+  useEffect(() => () => {
+    mountedRef.current = false
+  }, [])
 
-  const key = sanitiseErrorKey(error)
-  if (shouldInvalidate && key && key !== lastResetKey) {
-    lastResetKey = key
-    try {
-      await supabase.auth.signOut()
-    } catch (signOutError) {
-      console.error('Failed to sign out after auth bootstrap error:', signOutError)
-    }
-  }
-
-  resetToAnonymous(error)
-  return null
-}
-
-async function bootstrap({ force = false } = {}) {
-  if (bootstrapPromise && !force) {
-    return bootstrapPromise
-  }
-
-  const task = (async () => {
-    setState((prev) => ({
-      ...prev,
-      status: AUTH_STATUS_VALUES.LOADING,
+  const applySnapshot = useCallback((session, user) => {
+    if (!mountedRef.current) return
+    const nextUser = user ?? session?.user ?? null
+    setState({
+      status: AUTH_STATUS_VALUES.READY,
+      session: session ?? null,
+      user: nextUser,
+      profile: cloneProfile(nextUser),
       error: null,
-    }))
+    })
+    resetKeyRef.current = ''
+  }, [])
 
-    try {
-      await exchangeCodeIfPresent()
-      const snapshot = await resolveSessionSnapshot()
-      applySnapshot(snapshot)
-      lastResetKey = null
-      return snapshot.user ?? null
-    } catch (error) {
-      return handleBootstrapError(error)
+  const resetToAnonymous = useCallback((status, error = null) => {
+    if (!mountedRef.current) return
+    setState({
+      status,
+      session: null,
+      user: null,
+      profile: cloneProfile(null),
+      error,
+    })
+  }, [])
+
+  const runBootstrap = useCallback(
+    async ({ markLoading = true } = {}) => {
+      if (!mountedRef.current) return null
+
+      if (bootstrapPromiseRef.current) {
+        return bootstrapPromiseRef.current
+      }
+
+      if (markLoading) {
+        setState((prev) => ({ ...prev, status: AUTH_STATUS_VALUES.LOADING, error: null }))
+      }
+
+      const task = (async () => {
+        try {
+          await exchangeCodeIfPresent()
+          const snapshot = await resolveSessionSnapshot()
+          if (!mountedRef.current) return null
+          applySnapshot(snapshot.session, snapshot.user)
+          return snapshot.user ?? null
+        } catch (error) {
+          console.error('Failed to resolve Supabase session:', error)
+          const shouldReset = shouldInvalidateSession(error)
+          const key = sanitiseErrorKey(error)
+          if (shouldReset && key && key !== resetKeyRef.current) {
+            resetKeyRef.current = key
+            try {
+              await supabase.auth.signOut()
+            } catch (signOutError) {
+              console.error('Failed to sign out after auth bootstrap error:', signOutError)
+            }
+          }
+          resetToAnonymous(AUTH_STATUS_VALUES.ERROR, error)
+          return null
+        } finally {
+          bootstrapPromiseRef.current = null
+        }
+      })()
+
+      bootstrapPromiseRef.current = task
+      return task
+    },
+    [applySnapshot, resetToAnonymous],
+  )
+
+  useEffect(() => {
+    runBootstrap({ markLoading: true })
+  }, [runBootstrap])
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mountedRef.current) return
+
+      if (session?.user) {
+        applySnapshot(session, session.user)
+        return
+      }
+
+      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+        resetToAnonymous(AUTH_STATUS_VALUES.READY)
+        return
+      }
+
+      if (event === 'TOKEN_REFRESHED') {
+        applySnapshot(session, session?.user ?? state.user)
+        return
+      }
+
+      if (event === 'INITIAL_SESSION' && session === null) {
+        resetToAnonymous(AUTH_STATUS_VALUES.READY)
+      }
+    })
+
+    return () => {
+      data?.subscription?.unsubscribe()
     }
-  })()
+  }, [applySnapshot, resetToAnonymous, state.user])
 
-  bootstrapPromise = task
+  const refresh = useCallback(async () => {
+    await runBootstrap({ markLoading: true })
+  }, [runBootstrap])
 
-  try {
-    return await task
-  } finally {
-    if (bootstrapPromise === task) {
-      bootstrapPromise = null
+  const signOut = useCallback(async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      console.error('Failed to sign out from Supabase:', error)
+      throw error
     }
-  }
-}
+    resetToAnonymous(AUTH_STATUS_VALUES.READY)
+  }, [resetToAnonymous])
 
-function ensureInitialised() {
-  if (initialised) return
-  if (typeof window === 'undefined') return
+  const value = useMemo(
+    () => ({
+      status: state.status,
+      session: state.session,
+      user: state.user,
+      profile: state.profile,
+      error: state.error,
+      refresh,
+      signOut,
+    }),
+    [state, refresh, signOut],
+  )
 
-  initialised = true
-
-  bootstrap()
-
-  const { data } = supabase.auth.onAuthStateChange((event, session) => {
-    if (session?.user) {
-      applySnapshot({ session, user: session.user })
-      return
-    }
-
-    if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
-      lastResetKey = null
-      resetToAnonymous()
-      return
-    }
-
-    if (event === 'TOKEN_REFRESHED') {
-      applySnapshot({ session, user: session?.user ?? state.user })
-      return
-    }
-
-    if (event === 'INITIAL_SESSION' && session === null) {
-      resetToAnonymous()
-    }
-  })
-
-  authSubscription = data?.subscription ?? null
-}
-
-function subscribe(listener) {
-  listeners.add(listener)
-
-  ensureInitialised()
-
-  return () => {
-    listeners.delete(listener)
-    if (listeners.size === 0 && authSubscription) {
-      authSubscription.unsubscribe()
-      authSubscription = null
-      initialised = false
-      state = { ...INITIAL_STATE }
-      bootstrapPromise = null
-      lastResetKey = null
-    }
-  }
-}
-
-function getSnapshot() {
-  return state
-}
-
-function getServerSnapshot() {
-  return state
-}
-
-async function refresh() {
-  return bootstrap({ force: true })
-}
-
-async function signOut() {
-  const { error } = await supabase.auth.signOut()
-  if (error) {
-    console.error('Failed to sign out from Supabase:', error)
-    throw error
-  }
-  lastResetKey = null
-  resetToAnonymous()
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
-
-  useEffect(() => {
-    ensureInitialised()
-    return () => {}
-  }, [])
-
-  return {
-    status: snapshot.status,
-    session: snapshot.session,
-    user: snapshot.user,
-    profile: snapshot.profile,
-    error: snapshot.error,
-    refresh,
-    signOut,
-  }
+  return useContext(AuthContext)
 }
-
-export { AUTH_STATUS_VALUES }
