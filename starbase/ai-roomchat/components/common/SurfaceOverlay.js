@@ -65,9 +65,11 @@ export default function SurfaceOverlay({
       ? 'auto'
       : 'none'
     : 'none'
+  const visibilityDelay = open ? '0ms' : '200ms'
 
   return (
     <div
+      aria-hidden={!open}
       style={{
         position: 'fixed',
         inset: 0,
@@ -77,7 +79,8 @@ export default function SurfaceOverlay({
         justifyContent: config.justifyContent,
         padding: config.padding,
         pointerEvents,
-        transition: 'pointer-events 0s linear 150ms',
+        transition: `pointer-events 0s linear 150ms, visibility 0s linear ${visibilityDelay}`,
+        visibility: open ? 'visible' : 'hidden',
       }}
     >
       {withBackdrop ? (
