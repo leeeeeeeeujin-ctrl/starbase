@@ -11,7 +11,7 @@ export default function HeroList({ loading, error, heroes, onRequestDelete, onRe
 
   if (error) {
     return (
-      <>
+      <div style={styles.heroList}>
         <div style={styles.errorBox} role="alert">
           {error}
           <button type="button" onClick={onResetError} style={styles.errorResetButton}>
@@ -19,29 +19,29 @@ export default function HeroList({ loading, error, heroes, onRequestDelete, onRe
           </button>
         </div>
         {createCard}
-      </>
+      </div>
     )
   }
 
   if (!heroes.length) {
     return (
-      <>
-        <div style={styles.emptyState}>
+      <div style={styles.heroList}>
+        <div style={styles.heroListEmpty}>
           아직 등록된 영웅이 없습니다.
           <br />
           아래의 <span style={{ color: '#38bdf8' }}>영웅 생성</span> 카드를 눌러 첫 캐릭터를 만들어보세요.
         </div>
         {createCard}
-      </>
+      </div>
     )
   }
 
   return (
-    <>
+    <div style={styles.heroList}>
       {heroes.map((hero) => (
         <HeroCard key={hero.id} hero={hero} onDelete={onRequestDelete} />
       ))}
       {createCard}
-    </>
+    </div>
   )
 }
