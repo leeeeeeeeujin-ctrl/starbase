@@ -131,7 +131,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
       withBackdrop={false}
     >
       <SharedChatDock
-        height="min(75vh, 560px)"
+        height="min(80vh, 600px)"
         heroId={heroId}
         viewerHero={viewerHero}
         extraWhisperTargets={extraWhisperTargets}

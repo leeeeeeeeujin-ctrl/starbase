@@ -42,7 +42,7 @@ const PLACEMENTS = {
         color: '#1f2937',
       },
       contentBackground: '#fff',
-      maxHeight: '70vh',
+      maxHeight: '80vh',
     },
   },
 }

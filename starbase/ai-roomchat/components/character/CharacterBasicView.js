@@ -608,10 +608,11 @@ const styles = {
     gap: 10,
     background: "rgba(15,23,42,0.78)",
     borderRadius: 24,
-    padding: "16px 18px 18px",
+    padding: "64px 22px 22px 20px",
     boxShadow: "0 28px 80px -54px rgba(15,23,42,0.95)",
     border: "1px solid rgba(96,165,250,0.3)",
     backdropFilter: "blur(12px)",
+    position: "relative",
   },
   overlayToggleButton: {
     alignSelf: "center",
@@ -630,10 +631,20 @@ const styles = {
     outline: "none",
     boxShadow: "0 16px 42px -38px rgba(14,165,233,0.9)",
   },
-  overlayButtonsRow: {
+  overlayButtonsFloating: {
+    position: "absolute",
+    top: 18,
+    right: 20,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 10,
+  },
+  overlayButtonGroup: {
     display: "flex",
     gap: 8,
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
+    justifyContent: "flex-end",
   },
   characterFooterRow: {
     display: "flex",
@@ -728,6 +739,7 @@ const styles = {
     cursor: "pointer",
     boxShadow: "0 18px 42px -26px rgba(14,165,233,0.8)",
     outline: "none",
+    alignSelf: "flex-end",
   },
   overlayCopy: {
     margin: 0,
@@ -2391,9 +2403,29 @@ export default function CharacterBasicView({ hero }) {
   const overlayPanelStyle = useMemo(() => {
     const base = { ...styles.overlayPanel };
     if (isMobile) {
-      base.padding = "12px 14px 16px";
+      base.padding = "56px 16px 18px";
       base.gap = 8;
       base.borderRadius = 18;
+    }
+    return base;
+  }, [isMobile]);
+
+  const overlayButtonsFloatingStyle = useMemo(() => {
+    const base = { ...styles.overlayButtonsFloating };
+    if (isMobile) {
+      base.top = 12;
+      base.right = 14;
+      base.gap = 8;
+    }
+    return base;
+  }, [isMobile]);
+
+  const overlayButtonGroupStyle = useMemo(() => {
+    const base = { ...styles.overlayButtonGroup };
+    if (isMobile) {
+      base.flexWrap = "wrap";
+      base.rowGap = 6;
+      base.columnGap = 6;
     }
     return base;
   }, [isMobile]);
@@ -3502,6 +3534,16 @@ export default function CharacterBasicView({ hero }) {
     }
   }, [currentHero, loadRoster, router]);
 
+  const overlayTabs = useMemo(
+    () => dockItems.filter((item) => item.type === "overlay"),
+    [],
+  );
+
+  const overlayActions = useMemo(
+    () => dockItems.filter((item) => item.type === "action"),
+    [],
+  );
+
   const overlayDescription = overlayCopy[activeOverlay] ?? "";
 
   let overlayBody = null;
@@ -4332,22 +4374,9 @@ export default function CharacterBasicView({ hero }) {
 
         {!overlayCollapsed ? (
           <div style={overlayPanelStyle}>
-            <div style={styles.overlayButtonsRow}>
-              {dockItems.map((item) => {
-                if (item.type === "action") {
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      style={styles.overlayActionButton}
-                      onClick={() => handleDockAction(item.key)}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                }
-
-                return (
+            <div style={overlayButtonsFloatingStyle}>
+              <div style={overlayButtonGroupStyle}>
+                {overlayTabs.map((item) => (
                   <button
                     key={item.key}
                     type="button"
@@ -4356,8 +4385,18 @@ export default function CharacterBasicView({ hero }) {
                   >
                     {item.label}
                   </button>
-                );
-              })}
+                ))}
+              </div>
+              {overlayActions.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  style={styles.overlayActionButton}
+                  onClick={() => handleDockAction(item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
 
             {showBgmBar ? (
