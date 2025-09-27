@@ -3,7 +3,7 @@
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { deleteHeroById, updateHeroById } from '../../services/heroes'
+import { deleteHeroById, fetchHeroesByOwner, updateHeroById } from '../../services/heroes'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
 const DEFAULT_DESCRIPTION =
@@ -23,11 +23,28 @@ const eqPresets = [
   { key: 'clarity', label: '명료도 향상' },
 ]
 
+const EQ_BAND_MIN = -12
+const EQ_BAND_MAX = 12
+const EQ_BAND_STEP = 0.5
+
+const rosterNotices = [
+  {
+    id: 'notice-community',
+    title: '공식 커뮤니티 오픈!',
+    message: '로비에서 가장 뜨거운 영웅들을 만나보세요. 새로운 모험이 기다리고 있어요.',
+  },
+  {
+    id: 'notice-update',
+    title: '시즌 프리시즌 이벤트 준비 중',
+    message: '다가오는 시즌을 맞아 전투 준비 이벤트가 곧 열릴 예정이에요.',
+  },
+]
+
 const overlayCopy = {
   character: '이미지를 터치하면 설명과 능력이 순서대로 나타납니다.',
   search: '빠른 매칭과 커스텀 방 탐색 기능이 곧 추가됩니다.',
   ranking: '시즌별 팀 랭킹과 개인 순위를 준비 중이에요.',
-  roster: '전투 준비 중인 동료들을 한눈에 확인할 수 있도록 로스터 구성을 준비하고 있어요.',
+  roster: '로스터에서 영웅을 선택하면 바로 해당 캐릭터 화면으로 이동합니다.',
 }
 
 const COOKIE_PREFIX = 'starbase_character_'
@@ -35,6 +52,9 @@ const BGM_ENABLED_COOKIE = `${COOKIE_PREFIX}bgm_enabled`
 const BGM_VOLUME_COOKIE = `${COOKIE_PREFIX}bgm_volume`
 const EQ_PRESET_COOKIE = `${COOKIE_PREFIX}eq_preset`
 const EFFECTS_COOKIE = `${COOKIE_PREFIX}sfx_enabled`
+const REVERB_COOKIE = `${COOKIE_PREFIX}reverb_level`
+const COMPRESSOR_COOKIE = `${COOKIE_PREFIX}compressor_level`
+const EQ_BANDS_COOKIE = `${COOKIE_PREFIX}eq_bands`
 
 function readCookie(name) {
   if (typeof document === 'undefined') return null
@@ -52,6 +72,29 @@ function writeCookie(name, value, days = 365) {
   if (typeof document === 'undefined') return
   const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString()
   document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`
+}
+
+function clamp01(value) {
+  if (Number.isNaN(value)) return 0
+  return Math.min(Math.max(value, 0), 1)
+}
+
+function clamp(value, min, max) {
+  if (Number.isNaN(value)) return min
+  return Math.min(Math.max(value, min), max)
+}
+
+function formatRosterTimestamp(value) {
+  if (!value) return '갱신 정보 없음'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '갱신 정보 없음'
+  try {
+    const datePart = date.toLocaleDateString('ko-KR')
+    const timePart = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+    return `갱신: ${datePart} ${timePart}`
+  } catch (error) {
+    return `갱신: ${date.toISOString().slice(0, 16).replace('T', ' ')}`
+  }
 }
 
 function createDraftFromHero(hero) {
@@ -264,6 +307,134 @@ const styles = {
     lineHeight: 1.6,
     color: 'rgba(226,232,240,0.9)',
   },
+  rosterPanel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    maxHeight: 360,
+    overflow: 'auto',
+    paddingRight: 6,
+  },
+  noticeList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  noticeCard: {
+    padding: '14px 16px',
+    borderRadius: 16,
+    border: '1px solid rgba(96,165,250,0.28)',
+    background: 'rgba(15,23,42,0.55)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  noticeBadge: {
+    alignSelf: 'flex-start',
+    padding: '2px 10px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    background: 'rgba(59,130,246,0.25)',
+    color: '#bfdbfe',
+  },
+  noticeTitle: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#f1f5f9',
+  },
+  noticeCopy: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: 'rgba(148,163,184,0.92)',
+  },
+  rosterList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  rosterHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  rosterTitle: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 800,
+    color: '#bae6fd',
+  },
+  rosterRefresh: {
+    border: 'none',
+    background: 'rgba(59,130,246,0.18)',
+    color: '#e0f2fe',
+    borderRadius: 999,
+    padding: '6px 12px',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  rosterButton: (active) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '10px 12px',
+    borderRadius: 14,
+    border: '1px solid',
+    borderColor: active ? 'rgba(56,189,248,0.9)' : 'rgba(148,163,184,0.28)',
+    background: active ? 'rgba(56,189,248,0.18)' : 'rgba(15,23,42,0.55)',
+    color: '#f8fafc',
+    cursor: 'pointer',
+    textAlign: 'left',
+  }),
+  rosterAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    objectFit: 'cover',
+    background: 'rgba(51,65,85,0.72)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 700,
+    fontSize: 16,
+    color: '#cbd5f5',
+  },
+  rosterAvatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    objectFit: 'cover',
+    border: '1px solid rgba(30,64,175,0.45)',
+  },
+  rosterMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  rosterName: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  rosterTimestamp: {
+    margin: 0,
+    fontSize: 11,
+    color: 'rgba(148,163,184,0.9)',
+  },
+  rosterEmpty: {
+    margin: 0,
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.9)',
+  },
+  rosterError: {
+    margin: 0,
+    fontSize: 12,
+    color: '#fca5a5',
+  },
   settingsPanel: {
     display: 'flex',
     flexDirection: 'column',
@@ -326,6 +497,17 @@ const styles = {
     lineHeight: 1.5,
     color: 'rgba(148,163,184,0.92)',
     margin: 0,
+  },
+  settingsSubheading: {
+    margin: 0,
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#bae6fd',
+  },
+  settingsSliderRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
   },
   settingsButtonRow: {
     display: 'flex',
@@ -427,15 +609,37 @@ export default function CharacterBasicView({ hero }) {
   const [volume, setVolume] = useState(0.75)
   const [eqPreset, setEqPreset] = useState('flat')
   const [effectsEnabled, setEffectsEnabled] = useState(true)
+  const [reverbLevel, setReverbLevel] = useState(0.25)
+  const [compressorLevel, setCompressorLevel] = useState(0.4)
+  const [eqBands, setEqBands] = useState({ low: 0, mid: 0, high: 0 })
   const [showEditForm, setShowEditForm] = useState(false)
   const [editDraft, setEditDraft] = useState(() => createDraftFromHero(hero))
   const [savingHero, setSavingHero] = useState(false)
   const [statusMessage, setStatusMessage] = useState(null)
+  const [rosterOwnerId, setRosterOwnerId] = useState(null)
+  const [rosterLoading, setRosterLoading] = useState(false)
+  const [rosterHeroes, setRosterHeroes] = useState([])
+  const [rosterError, setRosterError] = useState(null)
+  const [rosterLoaded, setRosterLoaded] = useState(false)
 
   useEffect(() => {
     setCurrentHero(hero ?? null)
     setEditDraft(createDraftFromHero(hero))
   }, [hero])
+
+  useEffect(() => {
+    if (currentHero?.owner_id) {
+      setRosterOwnerId(currentHero.owner_id)
+      return
+    }
+
+    if (typeof window !== 'undefined') {
+      const storedOwner = window.localStorage.getItem('selectedHeroOwnerId')
+      if (storedOwner) {
+        setRosterOwnerId(storedOwner)
+      }
+    }
+  }, [currentHero?.owner_id])
 
   useEffect(() => {
     const storedEnabled = readCookie(BGM_ENABLED_COOKIE)
@@ -460,6 +664,32 @@ export default function CharacterBasicView({ hero }) {
     const storedEffects = readCookie(EFFECTS_COOKIE)
     if (storedEffects != null) {
       setEffectsEnabled(storedEffects !== '0')
+    }
+
+    const storedReverb = readCookie(REVERB_COOKIE)
+    if (storedReverb != null) {
+      const parsed = Number.parseFloat(storedReverb)
+      setReverbLevel(clamp01(parsed))
+    }
+
+    const storedCompressor = readCookie(COMPRESSOR_COOKIE)
+    if (storedCompressor != null) {
+      const parsed = Number.parseFloat(storedCompressor)
+      setCompressorLevel(clamp01(parsed))
+    }
+
+    const storedBands = readCookie(EQ_BANDS_COOKIE)
+    if (storedBands) {
+      try {
+        const parsed = JSON.parse(storedBands)
+        setEqBands((prev) => ({
+          low: clamp(Number.parseFloat(parsed.low ?? prev.low), EQ_BAND_MIN, EQ_BAND_MAX),
+          mid: clamp(Number.parseFloat(parsed.mid ?? prev.mid), EQ_BAND_MIN, EQ_BAND_MAX),
+          high: clamp(Number.parseFloat(parsed.high ?? prev.high), EQ_BAND_MIN, EQ_BAND_MAX),
+        }))
+      } catch (error) {
+        console.warn('Failed to parse EQ band cookie', error)
+      }
     }
   }, [])
 
@@ -536,6 +766,12 @@ export default function CharacterBasicView({ hero }) {
       setViewMode(0)
     }
   }, [activeOverlay])
+
+  useEffect(() => {
+    setRosterHeroes([])
+    setRosterLoaded(false)
+    setRosterError(null)
+  }, [rosterOwnerId])
 
   const audioRef = useRef(null)
   useEffect(() => {
@@ -616,6 +852,47 @@ export default function CharacterBasicView({ hero }) {
     [handleTap],
   )
 
+  const loadRoster = useCallback(
+    async ({ silent = false, force = false } = {}) => {
+      if (!force && rosterLoading) {
+        return null
+      }
+
+      if (!rosterOwnerId) {
+        setRosterHeroes([])
+        setRosterLoaded(true)
+        setRosterError(null)
+        return []
+      }
+
+      if (!silent) {
+        setRosterLoading(true)
+      }
+      setRosterError(null)
+
+      try {
+        const heroesList = await fetchHeroesByOwner(rosterOwnerId)
+        setRosterHeroes(heroesList)
+        setRosterLoaded(true)
+        setRosterError(null)
+        return heroesList
+      } catch (error) {
+        console.error('Failed to load roster heroes', error)
+        setRosterError('로스터를 불러오지 못했습니다. 다시 시도해 주세요.')
+        return null
+      } finally {
+        setRosterLoading(false)
+      }
+    },
+    [rosterLoading, rosterOwnerId],
+  )
+
+  useEffect(() => {
+    if (activeOverlay !== 'roster') return
+    if (rosterLoaded) return
+    loadRoster()
+  }, [activeOverlay, rosterLoaded, loadRoster])
+
   const handleOverlayButton = useCallback((key) => {
     setActiveOverlay((prev) => (prev === key ? 'character' : key))
   }, [])
@@ -657,6 +934,56 @@ export default function CharacterBasicView({ hero }) {
     })
   }, [])
 
+  const handleReverbChange = useCallback((event) => {
+    const nextValue = Number.parseFloat(event.target.value)
+    const clamped = clamp01(nextValue)
+    setReverbLevel(clamped)
+    writeCookie(REVERB_COOKIE, String(clamped))
+  }, [])
+
+  const handleCompressorChange = useCallback((event) => {
+    const nextValue = Number.parseFloat(event.target.value)
+    const clamped = clamp01(nextValue)
+    setCompressorLevel(clamped)
+    writeCookie(COMPRESSOR_COOKIE, String(clamped))
+  }, [])
+
+  const handleEqBandChange = useCallback((band, value) => {
+    const numeric = Number.parseFloat(value)
+    const clamped = clamp(numeric, EQ_BAND_MIN, EQ_BAND_MAX)
+    setEqBands((prev) => {
+      const nextBands = { ...prev, [band]: clamped }
+      writeCookie(EQ_BANDS_COOKIE, JSON.stringify(nextBands))
+      return nextBands
+    })
+  }, [])
+
+  const handleRosterRefresh = useCallback(() => {
+    loadRoster({ force: true })
+  }, [loadRoster])
+
+  const handleRosterHeroSelect = useCallback(
+    (heroId) => {
+      if (!heroId) return
+      if (heroId === currentHero?.id) {
+        setActiveOverlay('character')
+        return
+      }
+
+      const navigate = async () => {
+        try {
+          await router.push(`/character/${heroId}`)
+          setActiveOverlay('character')
+        } catch (error) {
+          console.error('Failed to open roster hero', error)
+        }
+      }
+
+      navigate()
+    },
+    [currentHero?.id, router],
+  )
+
   const handleDraftChange = useCallback((field, value) => {
     setEditDraft((prev) => ({ ...prev, [field]: value }))
   }, [])
@@ -679,6 +1006,7 @@ export default function CharacterBasicView({ hero }) {
       const updatedHero = await updateHeroById(currentHero.id, payload)
       setCurrentHero(updatedHero)
       setEditDraft(createDraftFromHero(updatedHero))
+      await loadRoster({ silent: true, force: true })
       setStatusMessage({ type: 'success', text: '캐릭터 정보를 저장했습니다.' })
       router.replace(router.asPath)
     } catch (error) {
@@ -687,7 +1015,7 @@ export default function CharacterBasicView({ hero }) {
     } finally {
       setSavingHero(false)
     }
-  }, [currentHero, editDraft, router])
+  }, [currentHero, editDraft, loadRoster, router])
 
   const handleDeleteHero = useCallback(async () => {
     if (!currentHero?.id) {
@@ -704,6 +1032,7 @@ export default function CharacterBasicView({ hero }) {
     setStatusMessage(null)
     try {
       await deleteHeroById(currentHero.id)
+      await loadRoster({ force: true })
       setStatusMessage({ type: 'success', text: '캐릭터를 삭제했습니다.' })
       setCurrentHero(null)
       setEditDraft(createDraftFromHero(null))
@@ -715,7 +1044,7 @@ export default function CharacterBasicView({ hero }) {
     } finally {
       setSavingHero(false)
     }
-  }, [currentHero, router])
+  }, [currentHero, loadRoster, router])
 
   const overlayDescription = overlayCopy[activeOverlay] ?? ''
 
@@ -852,7 +1181,7 @@ export default function CharacterBasicView({ hero }) {
                     )
                   })}
                 </div>
-                <p style={styles.settingsHelper}>프리셋은 현재 기기에만 적용되며 곧 세부 조정 기능이 추가될 예정입니다.</p>
+                <p style={styles.settingsHelper}>프리셋은 현재 기기에 저장되며 아래에서 직접 세부값을 조절할 수 있습니다.</p>
               </div>
               <div style={styles.settingsRow}>
                 <p style={styles.settingsLabel}>효과음 및 공간감</p>
@@ -869,6 +1198,72 @@ export default function CharacterBasicView({ hero }) {
                     ? '적당한 공간감과 충돌 효과가 적용됩니다.'
                     : '효과음을 최소화하여 조용한 분위기로 플레이합니다.'}
                 </p>
+              </div>
+              <div style={styles.settingsRow}>
+                <p style={styles.settingsLabel}>리버브 믹스 {Math.round(reverbLevel * 100)}%</p>
+                <div style={styles.settingsSliderRow}>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={reverbLevel}
+                    onChange={handleReverbChange}
+                    style={styles.slider}
+                  />
+                  <p style={styles.settingsHelper}>공간감과 잔향을 조절해 분위기를 세밀하게 맞춰보세요.</p>
+                </div>
+              </div>
+              <div style={styles.settingsRow}>
+                <p style={styles.settingsLabel}>컴프레서 강도 {Math.round(compressorLevel * 100)}%</p>
+                <div style={styles.settingsSliderRow}>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={compressorLevel}
+                    onChange={handleCompressorChange}
+                    style={styles.slider}
+                  />
+                  <p style={styles.settingsHelper}>급격한 음량 변화를 눌러 보다 안정적인 청취감을 제공합니다.</p>
+                </div>
+              </div>
+              <div style={styles.settingsRow}>
+                <p style={styles.settingsLabel}>이퀄라이저 세부 조정 (단위: dB)</p>
+                <p style={styles.settingsSubheading}>저음</p>
+                <input
+                  type="range"
+                  min={EQ_BAND_MIN}
+                  max={EQ_BAND_MAX}
+                  step={EQ_BAND_STEP}
+                  value={eqBands.low}
+                  onChange={(event) => handleEqBandChange('low', event.target.value)}
+                  style={styles.slider}
+                />
+                <p style={styles.settingsHelper}>{`${eqBands.low.toFixed(1)} dB`}</p>
+                <p style={styles.settingsSubheading}>중음</p>
+                <input
+                  type="range"
+                  min={EQ_BAND_MIN}
+                  max={EQ_BAND_MAX}
+                  step={EQ_BAND_STEP}
+                  value={eqBands.mid}
+                  onChange={(event) => handleEqBandChange('mid', event.target.value)}
+                  style={styles.slider}
+                />
+                <p style={styles.settingsHelper}>{`${eqBands.mid.toFixed(1)} dB`}</p>
+                <p style={styles.settingsSubheading}>고음</p>
+                <input
+                  type="range"
+                  min={EQ_BAND_MIN}
+                  max={EQ_BAND_MAX}
+                  step={EQ_BAND_STEP}
+                  value={eqBands.high}
+                  onChange={(event) => handleEqBandChange('high', event.target.value)}
+                  style={styles.slider}
+                />
+                <p style={styles.settingsHelper}>{`${eqBands.high.toFixed(1)} dB`}</p>
               </div>
             </div>
 
@@ -1005,6 +1400,65 @@ export default function CharacterBasicView({ hero }) {
               {statusMessage ? (
                 <p style={styles.statusText(statusMessage.type)}>{statusMessage.text}</p>
               ) : null}
+            </div>
+          </div>
+        ) : activeOverlay === 'roster' ? (
+          <div style={styles.rosterPanel}>
+            <div style={styles.noticeList}>
+              {rosterNotices.map((notice) => (
+                <article key={notice.id} style={styles.noticeCard}>
+                  <span style={styles.noticeBadge}>공지</span>
+                  <h3 style={styles.noticeTitle}>{notice.title}</h3>
+                  <p style={styles.noticeCopy}>{notice.message}</p>
+                </article>
+              ))}
+            </div>
+            <div style={styles.rosterList}>
+              <div style={styles.rosterHeader}>
+                <h3 style={styles.rosterTitle}>내 영웅 목록</h3>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.rosterRefresh,
+                    opacity: rosterLoading ? 0.6 : 1,
+                    cursor: rosterLoading ? 'wait' : 'pointer',
+                  }}
+                  onClick={handleRosterRefresh}
+                  disabled={rosterLoading}
+                >
+                  {rosterLoading ? '새로고치는 중…' : '새로고침'}
+                </button>
+              </div>
+              {rosterError ? <p style={styles.rosterError}>{rosterError}</p> : null}
+              {rosterLoading && rosterHeroes.length === 0 ? (
+                <p style={styles.rosterEmpty}>로스터를 불러오는 중입니다…</p>
+              ) : null}
+              {!rosterLoading && !rosterError && rosterHeroes.length === 0 ? (
+                <p style={styles.rosterEmpty}>등록된 영웅이 없습니다. 로스터에서 새 영웅을 만들어보세요.</p>
+              ) : null}
+              {rosterHeroes.map((entry) => {
+                const isActiveHero = entry.id === currentHero?.id
+                const timestamp = entry.updated_at || entry.created_at
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    style={styles.rosterButton(isActiveHero)}
+                    onClick={() => handleRosterHeroSelect(entry.id)}
+                  >
+                    {entry.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={entry.image_url} alt={entry.name} style={styles.rosterAvatarImage} />
+                    ) : (
+                      <div style={styles.rosterAvatar}>{entry.name.slice(0, 2)}</div>
+                    )}
+                    <div style={styles.rosterMeta}>
+                      <p style={styles.rosterName}>{entry.name}</p>
+                      <p style={styles.rosterTimestamp}>{formatRosterTimestamp(timestamp)}</p>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           </div>
         ) : (
