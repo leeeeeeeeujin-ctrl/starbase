@@ -55,8 +55,7 @@ export default function CharacterDetailPage() {
     return id || ''
   }, [id])
 
-  const { loading, error, unauthorized, missingHero, hero, appearances, reload } =
-    useCharacterDetail(heroId)
+  const { loading, error, unauthorized, missingHero, hero, reload } = useCharacterDetail(heroId)
 
   useEffect(() => {
     if (!router.isReady) return
@@ -124,5 +123,5 @@ export default function CharacterDetailPage() {
     )
   }
 
-  return <CharacterBasicView hero={hero} appearances={appearances} />
+  return <CharacterBasicView hero={hero} />
 }
