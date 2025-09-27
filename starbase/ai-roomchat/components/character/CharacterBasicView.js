@@ -4,6 +4,8 @@ import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { deleteHeroById, fetchHeroesByOwner, updateHeroById } from '../../services/heroes'
+import { supabase } from '../../lib/supabase'
+import { extractFileName, sanitizeFileName } from '../../utils/characterAssets'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
 const DEFAULT_DESCRIPTION =
@@ -26,6 +28,8 @@ const eqPresets = [
 const EQ_BAND_MIN = -12
 const EQ_BAND_MAX = 12
 const EQ_BAND_STEP = 0.5
+
+const HERO_STORAGE_BUCKET = 'heroes'
 
 const rosterNotices = [
   {
@@ -108,6 +112,8 @@ function createDraftFromHero(hero) {
     image_url: hero?.image_url || '',
     background_url: hero?.background_url || '',
     bgm_url: hero?.bgm_url || '',
+    bgm_duration_seconds: hero?.bgm_duration_seconds || null,
+    bgm_mime: hero?.bgm_mime || null,
   }
 }
 
@@ -117,7 +123,7 @@ const pageStyles = {
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '40px 18px 120px',
+    padding: '28px 16px 200px',
     boxSizing: 'border-box',
     background:
       'linear-gradient(180deg, rgba(15,23,42,0.72) 0%, rgba(15,23,42,0.82) 45%, rgba(15,23,42,0.92) 100%)',
@@ -128,7 +134,7 @@ const pageStyles = {
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '40px 18px 120px',
+    padding: '28px 16px 200px',
     boxSizing: 'border-box',
     color: '#f8fafc',
     backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(15,23,42,0.78) 60%, rgba(15,23,42,0.9) 100%), url(${imageUrl})`,
@@ -169,6 +175,8 @@ const styles = {
     boxShadow: '0 46px 120px -60px rgba(37,99,235,0.4)',
     cursor: 'pointer',
     outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
   },
   heroImage: {
     position: 'absolute',
@@ -177,6 +185,7 @@ const styles = {
     height: '100%',
     objectFit: 'cover',
     transition: 'filter 0.3s ease',
+    WebkitTapHighlightColor: 'transparent',
   },
   heroFallback: {
     position: 'absolute',
@@ -190,34 +199,37 @@ const styles = {
   },
   heroNameOverlay: {
     position: 'absolute',
-    left: 0,
-    bottom: 0,
-    width: '100%',
-    padding: '30px 32px 36px',
-    background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.65) 68%, rgba(15,23,42,0.82) 100%)',
+    inset: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-start',
+    padding: '0 32px 52px',
+    background:
+      'linear-gradient(0deg, rgba(15,23,42,0.85) 0%, rgba(15,23,42,0.6) 35%, rgba(15,23,42,0.35) 60%, rgba(15,23,42,0) 100%)',
+    pointerEvents: 'none',
+    gap: 12,
   },
   heroNameBadge: {
     margin: 0,
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 800,
     letterSpacing: '-0.03em',
   },
   heroInfoOverlay: {
     position: 'absolute',
-    left: '8%',
-    right: '8%',
-    top: '12%',
-    padding: '18px 22px',
-    borderRadius: 28,
-    background: 'rgba(15,23,42,0.78)',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: '24px 32px 48px',
+    background:
+      'linear-gradient(0deg, rgba(15,23,42,0.88) 0%, rgba(15,23,42,0.72) 45%, rgba(15,23,42,0.4) 70%, rgba(15,23,42,0) 100%)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
+    gap: 12,
     pointerEvents: 'none',
-    boxShadow: '0 24px 60px -42px rgba(15,23,42,0.88)',
+    justifyContent: 'flex-end',
+    maxHeight: '72%',
   },
   heroInfoTitle: {
     margin: 0,
@@ -229,7 +241,7 @@ const styles = {
   heroInfoText: {
     margin: 0,
     fontSize: 14,
-    lineHeight: 1.8,
+    lineHeight: 1.7,
     color: 'rgba(226,232,240,0.94)',
     whiteSpace: 'pre-line',
   },
@@ -257,31 +269,32 @@ const styles = {
   overlayPanel: {
     position: 'fixed',
     left: '50%',
-    bottom: 28,
+    bottom: 18,
     transform: 'translateX(-50%)',
-    width: 'min(92vw, 720px)',
+    width: 'min(88vw, 720px)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
-    background: 'rgba(15,23,42,0.72)',
-    borderRadius: 26,
-    padding: '20px 22px',
-    boxShadow: '0 24px 60px -40px rgba(15,23,42,0.9)',
-    border: '1px solid rgba(96,165,250,0.35)',
+    gap: 10,
+    background: 'rgba(15,23,42,0.78)',
+    borderRadius: 24,
+    padding: '16px 18px 18px',
+    boxShadow: '0 28px 80px -54px rgba(15,23,42,0.95)',
+    border: '1px solid rgba(96,165,250,0.3)',
+    backdropFilter: 'blur(12px)',
   },
   overlayButtonsRow: {
     display: 'flex',
-    gap: 12,
+    gap: 8,
     flexWrap: 'wrap',
   },
   overlayButton: (active) => ({
-    padding: '10px 18px',
+    padding: '8px 14px',
     borderRadius: 999,
     border: '1px solid',
     borderColor: active ? 'rgba(125,211,252,0.9)' : 'rgba(148,163,184,0.4)',
     background: active ? 'rgba(56,189,248,0.22)' : 'rgba(15,23,42,0.42)',
     color: '#e0f2fe',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     letterSpacing: 0.4,
     cursor: 'pointer',
@@ -289,7 +302,7 @@ const styles = {
     outline: 'none',
   }),
   overlayActionButton: {
-    padding: '10px 22px',
+    padding: '10px 18px',
     borderRadius: 999,
     border: 'none',
     background: 'linear-gradient(135deg, rgba(59,130,246,0.95) 0%, rgba(14,165,233,0.92) 100%)',
@@ -303,17 +316,23 @@ const styles = {
   },
   overlayCopy: {
     margin: 0,
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 1.6,
-    color: 'rgba(226,232,240,0.9)',
+    color: 'rgba(226,232,240,0.86)',
+  },
+  overlayContent: {
+    maxHeight: '46vh',
+    overflowY: 'auto',
+    paddingRight: 4,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    WebkitOverflowScrolling: 'touch',
   },
   rosterPanel: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
-    maxHeight: 360,
-    overflow: 'auto',
-    paddingRight: 6,
+    gap: 12,
   },
   noticeList: {
     display: 'flex',
@@ -438,14 +457,14 @@ const styles = {
   settingsPanel: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 18,
+    gap: 14,
   },
   settingsSection: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
-    padding: '14px 16px',
-    borderRadius: 18,
+    gap: 10,
+    padding: '12px 14px',
+    borderRadius: 16,
     background: 'rgba(15,23,42,0.55)',
     border: '1px solid rgba(94, 234, 212, 0.15)',
   },
@@ -459,7 +478,7 @@ const styles = {
   settingsRow: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
+    gap: 8,
   },
   slider: {
     width: '100%',
@@ -512,26 +531,26 @@ const styles = {
   settingsButtonRow: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
   settingsButton: {
-    padding: '10px 16px',
-    borderRadius: 12,
+    padding: '8px 12px',
+    borderRadius: 10,
     border: '1px solid rgba(148,163,184,0.45)',
     background: 'rgba(15,23,42,0.55)',
     color: '#e2e8f0',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 600,
     cursor: 'pointer',
     outline: 'none',
   },
   dangerButton: {
-    padding: '10px 16px',
-    borderRadius: 12,
+    padding: '8px 12px',
+    borderRadius: 10,
     border: '1px solid rgba(239,68,68,0.55)',
     background: 'rgba(127,29,29,0.45)',
     color: '#fecaca',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     cursor: 'pointer',
     outline: 'none',
@@ -540,6 +559,98 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: 12,
+  },
+  assetGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: 12,
+  },
+  assetCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    padding: '12px 14px',
+    borderRadius: 16,
+    border: '1px solid rgba(148,163,184,0.32)',
+    background: 'rgba(15,23,42,0.55)',
+  },
+  assetTitle: {
+    margin: 0,
+    fontSize: 12,
+    fontWeight: 700,
+    color: 'rgba(226,232,240,0.88)',
+    letterSpacing: 0.2,
+  },
+  assetPreviewFrame: {
+    position: 'relative',
+    width: '100%',
+    paddingTop: '58%',
+    borderRadius: 12,
+    overflow: 'hidden',
+    background: 'rgba(30,41,59,0.7)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assetPreviewImage: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  assetPlaceholder: {
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.82)',
+    textAlign: 'center',
+    padding: '12px 16px',
+  },
+  assetButtonRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  assetActionButton: {
+    padding: '8px 12px',
+    borderRadius: 10,
+    border: '1px solid rgba(148,163,184,0.38)',
+    background: 'rgba(15,23,42,0.62)',
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    outline: 'none',
+  },
+  assetDangerButton: {
+    padding: '8px 12px',
+    borderRadius: 10,
+    border: '1px solid rgba(248,113,113,0.5)',
+    background: 'rgba(127,29,29,0.4)',
+    color: '#fecaca',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    outline: 'none',
+  },
+  assetMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  assetMetaRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    justifyContent: 'space-between',
+    fontSize: 12,
+    color: 'rgba(226,232,240,0.86)',
+  },
+  assetMetaLabel: {
+    fontWeight: 700,
+    color: 'rgba(148,163,184,0.85)',
+  },
+  assetMetaValue: {
+    fontWeight: 600,
   },
   editField: {
     display: 'flex',
@@ -600,6 +711,13 @@ const styles = {
     color: variant === 'error' ? '#fca5a5' : '#bbf7d0',
     margin: 0,
   }),
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    pointerEvents: 'none',
+    width: 0,
+    height: 0,
+  },
 }
 
 export default function CharacterBasicView({ hero }) {
@@ -616,11 +734,15 @@ export default function CharacterBasicView({ hero }) {
   const [editDraft, setEditDraft] = useState(() => createDraftFromHero(hero))
   const [savingHero, setSavingHero] = useState(false)
   const [statusMessage, setStatusMessage] = useState(null)
+  const [imageAsset, setImageAsset] = useState({ file: null, preview: null })
+  const [backgroundAsset, setBackgroundAsset] = useState({ file: null, preview: null })
+  const [bgmAsset, setBgmAsset] = useState({ file: null, objectUrl: null, duration: null, label: '', mime: null, error: null })
   const [rosterOwnerId, setRosterOwnerId] = useState(null)
   const [rosterLoading, setRosterLoading] = useState(false)
   const [rosterHeroes, setRosterHeroes] = useState([])
   const [rosterError, setRosterError] = useState(null)
   const [rosterLoaded, setRosterLoaded] = useState(false)
+  const [viewportWidth, setViewportWidth] = useState(null)
 
   useEffect(() => {
     setCurrentHero(hero ?? null)
@@ -693,6 +815,14 @@ export default function CharacterBasicView({ hero }) {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const updateViewport = () => setViewportWidth(window.innerWidth)
+    updateViewport()
+    window.addEventListener('resize', updateViewport)
+    return () => window.removeEventListener('resize', updateViewport)
+  }, [])
+
   const heroName = useMemo(() => {
     if (!currentHero) return DEFAULT_HERO_NAME
     const trimmed = typeof currentHero.name === 'string' ? currentHero.name.trim() : ''
@@ -749,6 +879,8 @@ export default function CharacterBasicView({ hero }) {
   const [viewMode, setViewMode] = useState(0)
   const [activeOverlay, setActiveOverlay] = useState('character')
 
+  const isMobile = viewportWidth != null ? viewportWidth < 640 : false
+
   useEffect(() => {
     setViewMode(0)
     setActiveOverlay('character')
@@ -774,6 +906,43 @@ export default function CharacterBasicView({ hero }) {
   }, [rosterOwnerId])
 
   const audioRef = useRef(null)
+  const imageInputRef = useRef(null)
+  const backgroundInputRef = useRef(null)
+  const bgmInputRef = useRef(null)
+
+  useEffect(() => {
+    setImageAsset({ file: null, preview: null })
+    setBackgroundAsset({ file: null, preview: null })
+    setBgmAsset({ file: null, objectUrl: null, duration: null, label: '', mime: null, error: null })
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
+    if (backgroundInputRef.current) {
+      backgroundInputRef.current.value = ''
+    }
+    if (bgmInputRef.current) {
+      bgmInputRef.current.value = ''
+    }
+  }, [currentHero?.id])
+
+  useEffect(() => () => {
+    if (imageAsset.preview) {
+      URL.revokeObjectURL(imageAsset.preview)
+    }
+  }, [imageAsset.preview])
+
+  useEffect(() => () => {
+    if (backgroundAsset.preview) {
+      URL.revokeObjectURL(backgroundAsset.preview)
+    }
+  }, [backgroundAsset.preview])
+
+  useEffect(() => () => {
+    if (bgmAsset.objectUrl) {
+      URL.revokeObjectURL(bgmAsset.objectUrl)
+    }
+  }, [bgmAsset.objectUrl])
   useEffect(() => {
     if (!currentHero?.bgm_url) {
       if (audioRef.current) {
@@ -824,14 +993,117 @@ export default function CharacterBasicView({ hero }) {
     }
   }, [bgmEnabled])
 
-  const backgroundStyle = currentHero?.background_url
-    ? pageStyles.withBackground(currentHero.background_url)
-    : pageStyles.base
+  const backgroundStyle = useMemo(() => {
+    const baseStyle = currentHero?.background_url
+      ? pageStyles.withBackground(currentHero.background_url)
+      : pageStyles.base
+    if (!isMobile) {
+      return baseStyle
+    }
+    return { ...baseStyle, padding: '20px 14px 220px' }
+  }, [currentHero?.background_url, isMobile])
 
-  const imageStyle = {
-    ...styles.heroImage,
-    filter: viewMode === 0 ? 'none' : 'brightness(0.72)',
-  }
+  const stageStyle = useMemo(
+    () => ({
+      ...styles.stage,
+      gap: isMobile ? 32 : 48,
+    }),
+    [isMobile],
+  )
+
+  const heroCardStyle = useMemo(
+    () => ({
+      ...styles.heroCard,
+      paddingTop: isMobile ? '140%' : '160%',
+      borderRadius: isMobile ? 28 : 36,
+    }),
+    [isMobile],
+  )
+
+  const heroImageStyle = useMemo(
+    () => ({
+      ...styles.heroImage,
+      filter: viewMode === 0 ? 'none' : 'brightness(0.6)',
+    }),
+    [viewMode],
+  )
+
+  const heroNameOverlayStyle = useMemo(
+    () => ({
+      ...styles.heroNameOverlay,
+      padding: isMobile ? '0 22px 40px' : '0 32px 52px',
+    }),
+    [isMobile],
+  )
+
+  const heroNameBadgeStyle = useMemo(
+    () => ({
+      ...styles.heroNameBadge,
+      fontSize: isMobile ? 28 : 32,
+    }),
+    [isMobile],
+  )
+
+  const heroInfoOverlayStyle = useMemo(
+    () => ({
+      ...styles.heroInfoOverlay,
+      padding: isMobile ? '20px 22px 36px' : '24px 32px 48px',
+      maxHeight: isMobile ? '68%' : '72%',
+    }),
+    [isMobile],
+  )
+
+  const overlayPanelStyle = useMemo(() => {
+    const base = { ...styles.overlayPanel }
+    if (isMobile) {
+      base.width = 'calc(100vw - 24px)'
+      base.padding = '12px 14px 16px'
+      base.gap = 8
+      base.bottom = 10
+      base.borderRadius = 18
+    }
+    return base
+  }, [isMobile])
+
+  const overlayContentStyle = useMemo(
+    () => ({
+      ...styles.overlayContent,
+      maxHeight: isMobile ? '52vh' : '46vh',
+    }),
+    [isMobile],
+  )
+
+  const settingsPanelStyle = useMemo(
+    () => ({
+      ...styles.settingsPanel,
+      gap: isMobile ? 12 : 14,
+    }),
+    [isMobile],
+  )
+
+  const settingsSectionStyle = useMemo(
+    () => ({
+      ...styles.settingsSection,
+      ...(isMobile ? { padding: '10px 12px', gap: 8 } : {}),
+    }),
+    [isMobile],
+  )
+
+  const bgmDurationLabel = useMemo(() => {
+    const seconds =
+      bgmAsset.duration != null
+        ? bgmAsset.duration
+        : editDraft.bgm_duration_seconds != null
+        ? editDraft.bgm_duration_seconds
+        : null
+    if (seconds == null || Number.isNaN(seconds)) {
+      return '정보 없음'
+    }
+    const total = Math.max(0, Math.round(seconds))
+    const minutes = Math.floor(total / 60)
+    const remain = total % 60
+    return `${minutes}:${String(remain).padStart(2, '0')}`
+  }, [bgmAsset.duration, editDraft.bgm_duration_seconds])
 
   const currentInfo = viewMode > 0 ? infoSequence[viewMode - 1] : null
 
@@ -984,6 +1256,91 @@ export default function CharacterBasicView({ hero }) {
     [currentHero?.id, router],
   )
 
+  const handleImageFileSelect = useCallback((event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const previewUrl = URL.createObjectURL(file)
+    setImageAsset({ file, preview: previewUrl })
+    setStatusMessage(null)
+  }, [setStatusMessage])
+
+  const handleClearImage = useCallback(() => {
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
+    setImageAsset({ file: null, preview: null })
+    setEditDraft((prev) => ({ ...prev, image_url: '' }))
+    setStatusMessage(null)
+  }, [setEditDraft, setStatusMessage])
+
+  const handleBackgroundFileSelect = useCallback((event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const previewUrl = URL.createObjectURL(file)
+    setBackgroundAsset({ file, preview: previewUrl })
+    setStatusMessage(null)
+  }, [setStatusMessage])
+
+  const handleClearBackground = useCallback(() => {
+    if (backgroundInputRef.current) {
+      backgroundInputRef.current.value = ''
+    }
+    setBackgroundAsset({ file: null, preview: null })
+    setEditDraft((prev) => ({ ...prev, background_url: '' }))
+    setStatusMessage(null)
+  }, [setEditDraft, setStatusMessage])
+
+  const handleBgmFileSelect = useCallback((event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const objectUrl = URL.createObjectURL(file)
+    setBgmAsset({ file, objectUrl, duration: null, label: file.name, mime: file.type || null, error: null })
+    setEditDraft((prev) => ({ ...prev, bgm_mime: file.type || prev.bgm_mime || null }))
+    setStatusMessage(null)
+
+    const audioEl = document.createElement('audio')
+    audioEl.preload = 'metadata'
+    audioEl.src = objectUrl
+
+    function cleanup() {
+      audioEl.removeEventListener('loadedmetadata', handleLoaded)
+      audioEl.removeEventListener('error', handleError)
+    }
+
+    function handleLoaded() {
+      const durationSeconds = Number.isFinite(audioEl.duration) ? Math.round(audioEl.duration) : null
+      setBgmAsset((prev) => {
+        if (prev.file !== file) return prev
+        return { ...prev, duration: durationSeconds, error: null }
+      })
+      setEditDraft((prev) => ({ ...prev, bgm_duration_seconds: durationSeconds }))
+      cleanup()
+    }
+
+    function handleError() {
+      setBgmAsset((prev) => {
+        if (prev.file !== file) return prev
+        return { ...prev, error: '오디오 파일을 불러올 수 없습니다.' }
+      })
+      cleanup()
+    }
+
+    audioEl.addEventListener('loadedmetadata', handleLoaded)
+    audioEl.addEventListener('error', handleError)
+  }, [setEditDraft, setStatusMessage])
+
+  const handleClearBgm = useCallback(() => {
+    if (bgmInputRef.current) {
+      bgmInputRef.current.value = ''
+    }
+    setBgmAsset({ file: null, objectUrl: null, duration: null, label: '', mime: null, error: null })
+    setEditDraft((prev) => ({ ...prev, bgm_url: '', bgm_duration_seconds: null, bgm_mime: null }))
+    setStatusMessage(null)
+  }, [setEditDraft, setStatusMessage])
+
   const handleDraftChange = useCallback((field, value) => {
     setEditDraft((prev) => ({ ...prev, [field]: value }))
   }, [])
@@ -991,6 +1348,18 @@ export default function CharacterBasicView({ hero }) {
   const handleResetDraft = useCallback(() => {
     setEditDraft(createDraftFromHero(currentHero))
     setStatusMessage(null)
+    setImageAsset({ file: null, preview: null })
+    setBackgroundAsset({ file: null, preview: null })
+    setBgmAsset({ file: null, objectUrl: null, duration: null, label: '', mime: null, error: null })
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
+    if (backgroundInputRef.current) {
+      backgroundInputRef.current.value = ''
+    }
+    if (bgmInputRef.current) {
+      bgmInputRef.current.value = ''
+    }
   }, [currentHero])
 
   const handleSaveDraft = useCallback(async () => {
@@ -1003,19 +1372,104 @@ export default function CharacterBasicView({ hero }) {
     setStatusMessage(null)
     try {
       const payload = { ...editDraft }
+      const baseName = sanitizeFileName(editDraft.name || currentHero.name || DEFAULT_HERO_NAME)
+
+      if (imageAsset.file) {
+        const extension = (imageAsset.file.type && imageAsset.file.type.split('/')[1]) || imageAsset.file.name?.split('.').pop() || 'jpg'
+        const path = `hero-image/${Date.now()}-${baseName}.${extension}`
+        const { error: imageError } = await supabase.storage
+          .from(HERO_STORAGE_BUCKET)
+          .upload(path, imageAsset.file, {
+            upsert: true,
+            contentType: imageAsset.file.type || 'image/jpeg',
+          })
+        if (imageError) throw imageError
+        payload.image_url = supabase.storage.from(HERO_STORAGE_BUCKET).getPublicUrl(path).data.publicUrl
+      }
+
+      if (backgroundAsset.file) {
+        const extension =
+          (backgroundAsset.file.type && backgroundAsset.file.type.split('/')[1]) ||
+          backgroundAsset.file.name?.split('.').pop() ||
+          'jpg'
+        const path = `hero-background/${Date.now()}-${baseName}.${extension}`
+        const { error: backgroundError } = await supabase.storage
+          .from(HERO_STORAGE_BUCKET)
+          .upload(path, backgroundAsset.file, {
+            upsert: true,
+            contentType: backgroundAsset.file.type || 'image/jpeg',
+          })
+        if (backgroundError) throw backgroundError
+        payload.background_url = supabase.storage.from(HERO_STORAGE_BUCKET).getPublicUrl(path).data.publicUrl
+      }
+
+      if (bgmAsset.file) {
+        const extension = (bgmAsset.file.type && bgmAsset.file.type.split('/')[1]) || bgmAsset.file.name?.split('.').pop() || 'mp3'
+        const path = `hero-bgm/${Date.now()}-${baseName}.${extension}`
+        const { error: bgmError } = await supabase.storage
+          .from(HERO_STORAGE_BUCKET)
+          .upload(path, bgmAsset.file, {
+            upsert: true,
+            contentType: bgmAsset.file.type || 'audio/mpeg',
+          })
+        if (bgmError) throw bgmError
+        payload.bgm_url = supabase.storage.from(HERO_STORAGE_BUCKET).getPublicUrl(path).data.publicUrl
+        payload.bgm_duration_seconds =
+          bgmAsset.duration != null ? bgmAsset.duration : editDraft.bgm_duration_seconds ?? null
+        payload.bgm_mime = bgmAsset.mime || editDraft.bgm_mime || bgmAsset.file.type || null
+      } else {
+        payload.bgm_duration_seconds = editDraft.bgm_duration_seconds ?? null
+        payload.bgm_mime = editDraft.bgm_mime ?? null
+      }
+
+      if (!payload.image_url) {
+        payload.image_url = null
+      }
+      if (!payload.background_url) {
+        payload.background_url = null
+      }
+      if (!payload.bgm_url) {
+        payload.bgm_url = null
+        payload.bgm_duration_seconds = null
+        payload.bgm_mime = null
+      }
+
       const updatedHero = await updateHeroById(currentHero.id, payload)
       setCurrentHero(updatedHero)
       setEditDraft(createDraftFromHero(updatedHero))
       await loadRoster({ silent: true, force: true })
       setStatusMessage({ type: 'success', text: '캐릭터 정보를 저장했습니다.' })
       router.replace(router.asPath)
+      setImageAsset({ file: null, preview: null })
+      setBackgroundAsset({ file: null, preview: null })
+      setBgmAsset({ file: null, objectUrl: null, duration: null, label: '', mime: null, error: null })
+      if (imageInputRef.current) {
+        imageInputRef.current.value = ''
+      }
+      if (backgroundInputRef.current) {
+        backgroundInputRef.current.value = ''
+      }
+      if (bgmInputRef.current) {
+        bgmInputRef.current.value = ''
+      }
     } catch (error) {
       console.error('Failed to update hero', error)
-      setStatusMessage({ type: 'error', text: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.' })
+      const message = error?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.'
+      setStatusMessage({ type: 'error', text: message })
     } finally {
       setSavingHero(false)
     }
-  }, [currentHero, editDraft, loadRoster, router])
+  }, [
+    backgroundAsset.file,
+    bgmAsset.duration,
+    bgmAsset.file,
+    bgmAsset.mime,
+    currentHero,
+    editDraft,
+    imageAsset.file,
+    loadRoster,
+    router,
+  ])
 
   const handleDeleteHero = useCallback(async () => {
     if (!currentHero?.id) {
@@ -1051,13 +1505,13 @@ export default function CharacterBasicView({ hero }) {
   return (
     <>
       <div style={backgroundStyle}>
-        <div style={styles.stage}>
+        <div style={stageStyle}>
           <div style={styles.heroSection}>
             <div style={styles.heroCardShell}>
               <div
                 role="button"
                 tabIndex={0}
-                style={styles.heroCard}
+                style={heroCardStyle}
                 onClick={handleTap}
                 onKeyUp={handleKeyUp}
                 data-swipe-ignore="true"
@@ -1070,19 +1524,19 @@ export default function CharacterBasicView({ hero }) {
 
                 {currentHero?.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={currentHero.image_url} alt={heroName} style={imageStyle} />
+                  <img src={currentHero.image_url} alt={heroName} style={heroImageStyle} />
                 ) : (
                   <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
                 )}
 
                 {viewMode === 0 ? (
-                  <div style={styles.heroNameOverlay}>
-                    <p style={styles.heroNameBadge}>{heroName}</p>
+                  <div style={heroNameOverlayStyle}>
+                    <p style={heroNameBadgeStyle}>{heroName}</p>
                   </div>
                 ) : null}
 
                 {currentInfo ? (
-                  <div style={styles.heroInfoOverlay}>
+                  <div style={heroInfoOverlayStyle}>
                     <p style={styles.heroInfoTitle}>{currentInfo.title}</p>
                     <p style={styles.heroInfoText}>{currentInfo.lines.join('\n')}</p>
                   </div>
@@ -1092,7 +1546,7 @@ export default function CharacterBasicView({ hero }) {
           </div>
         </div>
       </div>
-      <div style={styles.overlayPanel}>
+      <div style={overlayPanelStyle}>
         <div style={styles.overlayButtonsRow}>
           {dockItems.map((item) => {
             if (item.type === 'action') {
@@ -1121,14 +1575,17 @@ export default function CharacterBasicView({ hero }) {
           })}
         </div>
 
+        {overlayDescription ? <p style={styles.overlayCopy}>{overlayDescription}</p> : null}
+
         {activeOverlay === 'settings' ? (
-          <div style={styles.settingsPanel}>
-            <div style={styles.settingsSection}>
-              <h3 style={styles.settingsHeading}>브금 제어</h3>
-              <div style={styles.settingsRow}>
-                <p style={styles.settingsLabel}>캐릭터 브금</p>
-                <button
-                  type="button"
+          <div style={overlayContentStyle}>
+            <div style={settingsPanelStyle}>
+              <div style={settingsSectionStyle}>
+                <h3 style={styles.settingsHeading}>브금 제어</h3>
+                <div style={styles.settingsRow}>
+                  <p style={styles.settingsLabel}>캐릭터 브금</p>
+                  <button
+                    type="button"
                   style={styles.toggleButton(bgmEnabled)}
                   onClick={handleBgmToggle}
                   aria-pressed={bgmEnabled}
@@ -1154,7 +1611,7 @@ export default function CharacterBasicView({ hero }) {
               </div>
             </div>
 
-            <div style={styles.settingsSection}>
+            <div style={settingsSectionStyle}>
               <h3 style={styles.settingsHeading}>음향 효과</h3>
               <div style={styles.settingsRow}>
                 <p style={styles.settingsLabel}>이퀄라이저 ({currentEqPresetLabel})</p>
@@ -1267,7 +1724,7 @@ export default function CharacterBasicView({ hero }) {
               </div>
             </div>
 
-            <div style={styles.settingsSection}>
+            <div style={settingsSectionStyle}>
               <h3 style={styles.settingsHeading}>캐릭터 관리</h3>
               <div style={styles.settingsButtonRow}>
                 <button
@@ -1319,38 +1776,119 @@ export default function CharacterBasicView({ hero }) {
                         />
                       </div>
                     ))}
-                    <div style={styles.editField}>
-                      <label style={styles.editLabel} htmlFor="hero-image">
-                        캐릭터 이미지 URL
-                      </label>
-                      <input
-                        id="hero-image"
-                        style={styles.editInput}
-                        value={editDraft.image_url}
-                        onChange={(event) => handleDraftChange('image_url', event.target.value)}
-                      />
-                    </div>
-                    <div style={styles.editField}>
-                      <label style={styles.editLabel} htmlFor="hero-background">
-                        배경 이미지 URL
-                      </label>
-                      <input
-                        id="hero-background"
-                        style={styles.editInput}
-                        value={editDraft.background_url}
-                        onChange={(event) => handleDraftChange('background_url', event.target.value)}
-                      />
-                    </div>
-                    <div style={styles.editField}>
-                      <label style={styles.editLabel} htmlFor="hero-bgm">
-                        브금 URL
-                      </label>
-                      <input
-                        id="hero-bgm"
-                        style={styles.editInput}
-                        value={editDraft.bgm_url}
-                        onChange={(event) => handleDraftChange('bgm_url', event.target.value)}
-                      />
+                    <div style={styles.assetGrid}>
+                      <div style={styles.assetCard}>
+                        <h4 style={styles.assetTitle}>캐릭터 이미지</h4>
+                        <div style={styles.assetPreviewFrame}>
+                          {imageAsset.preview || editDraft.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={imageAsset.preview || editDraft.image_url}
+                              alt={`${editDraft.name || heroName} 이미지 미리보기`}
+                              style={styles.assetPreviewImage}
+                            />
+                          ) : (
+                            <p style={styles.assetPlaceholder}>등록된 이미지가 없습니다.</p>
+                          )}
+                        </div>
+                        <div style={styles.assetButtonRow}>
+                          <label htmlFor="hero-image-upload" style={styles.assetActionButton}>
+                            {imageAsset.file ? '다른 이미지 선택' : '이미지 선택'}
+                          </label>
+                          <input
+                            id="hero-image-upload"
+                            ref={imageInputRef}
+                            type="file"
+                            accept="image/*"
+                            style={styles.hiddenInput}
+                            onChange={handleImageFileSelect}
+                          />
+                          {imageAsset.file || editDraft.image_url ? (
+                            <button type="button" style={styles.assetDangerButton} onClick={handleClearImage}>
+                              이미지 비우기
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div style={styles.assetCard}>
+                        <h4 style={styles.assetTitle}>배경 이미지</h4>
+                        <div style={styles.assetPreviewFrame}>
+                          {backgroundAsset.preview || editDraft.background_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={backgroundAsset.preview || editDraft.background_url}
+                              alt={`${editDraft.name || heroName} 배경 미리보기`}
+                              style={styles.assetPreviewImage}
+                            />
+                          ) : (
+                            <p style={styles.assetPlaceholder}>배경 이미지가 지정되지 않았습니다.</p>
+                          )}
+                        </div>
+                        <div style={styles.assetButtonRow}>
+                          <label htmlFor="hero-background-upload" style={styles.assetActionButton}>
+                            {backgroundAsset.file ? '다른 배경 선택' : '배경 선택'}
+                          </label>
+                          <input
+                            id="hero-background-upload"
+                            ref={backgroundInputRef}
+                            type="file"
+                            accept="image/*"
+                            style={styles.hiddenInput}
+                            onChange={handleBackgroundFileSelect}
+                          />
+                          {backgroundAsset.file || editDraft.background_url ? (
+                            <button type="button" style={styles.assetDangerButton} onClick={handleClearBackground}>
+                              배경 비우기
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div style={styles.assetCard}>
+                        <h4 style={styles.assetTitle}>브금 파일</h4>
+                        <div style={styles.assetMeta}>
+                          <div style={styles.assetMetaRow}>
+                            <span style={styles.assetMetaLabel}>파일</span>
+                            <span style={styles.assetMetaValue}>
+                              {bgmAsset.file
+                                ? bgmAsset.file.name
+                                : editDraft.bgm_url
+                                ? extractFileName(editDraft.bgm_url)
+                                : '선택된 파일 없음'}
+                            </span>
+                          </div>
+                          <div style={styles.assetMetaRow}>
+                            <span style={styles.assetMetaLabel}>길이</span>
+                            <span style={styles.assetMetaValue}>{bgmDurationLabel}</span>
+                          </div>
+                          <div style={styles.assetMetaRow}>
+                            <span style={styles.assetMetaLabel}>형식</span>
+                            <span style={styles.assetMetaValue}>
+                              {bgmAsset.mime || editDraft.bgm_mime || (editDraft.bgm_url ? '미확인' : '없음')}
+                            </span>
+                          </div>
+                          {bgmAsset.error ? (
+                            <p style={styles.rosterError}>{bgmAsset.error}</p>
+                          ) : null}
+                        </div>
+                        <div style={styles.assetButtonRow}>
+                          <label htmlFor="hero-bgm-upload" style={styles.assetActionButton}>
+                            {bgmAsset.file ? '다른 브금 선택' : '브금 선택'}
+                          </label>
+                          <input
+                            id="hero-bgm-upload"
+                            ref={bgmInputRef}
+                            type="file"
+                            accept="audio/*"
+                            style={styles.hiddenInput}
+                            onChange={handleBgmFileSelect}
+                          />
+                          {bgmAsset.file || editDraft.bgm_url ? (
+                            <button type="button" style={styles.assetDangerButton} onClick={handleClearBgm}>
+                              브금 비우기
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div style={styles.formActions}>
@@ -1403,67 +1941,67 @@ export default function CharacterBasicView({ hero }) {
             </div>
           </div>
         ) : activeOverlay === 'roster' ? (
-          <div style={styles.rosterPanel}>
-            <div style={styles.noticeList}>
-              {rosterNotices.map((notice) => (
-                <article key={notice.id} style={styles.noticeCard}>
-                  <span style={styles.noticeBadge}>공지</span>
-                  <h3 style={styles.noticeTitle}>{notice.title}</h3>
-                  <p style={styles.noticeCopy}>{notice.message}</p>
-                </article>
-              ))}
-            </div>
-            <div style={styles.rosterList}>
-              <div style={styles.rosterHeader}>
-                <h3 style={styles.rosterTitle}>내 영웅 목록</h3>
-                <button
-                  type="button"
-                  style={{
-                    ...styles.rosterRefresh,
-                    opacity: rosterLoading ? 0.6 : 1,
-                    cursor: rosterLoading ? 'wait' : 'pointer',
-                  }}
-                  onClick={handleRosterRefresh}
-                  disabled={rosterLoading}
-                >
-                  {rosterLoading ? '새로고치는 중…' : '새로고침'}
-                </button>
+          <div style={overlayContentStyle}>
+            <div style={styles.rosterPanel}>
+              <div style={styles.noticeList}>
+                {rosterNotices.map((notice) => (
+                  <article key={notice.id} style={styles.noticeCard}>
+                    <span style={styles.noticeBadge}>공지</span>
+                    <h3 style={styles.noticeTitle}>{notice.title}</h3>
+                    <p style={styles.noticeCopy}>{notice.message}</p>
+                  </article>
+                ))}
               </div>
-              {rosterError ? <p style={styles.rosterError}>{rosterError}</p> : null}
-              {rosterLoading && rosterHeroes.length === 0 ? (
-                <p style={styles.rosterEmpty}>로스터를 불러오는 중입니다…</p>
-              ) : null}
-              {!rosterLoading && !rosterError && rosterHeroes.length === 0 ? (
-                <p style={styles.rosterEmpty}>등록된 영웅이 없습니다. 로스터에서 새 영웅을 만들어보세요.</p>
-              ) : null}
-              {rosterHeroes.map((entry) => {
-                const isActiveHero = entry.id === currentHero?.id
-                const timestamp = entry.updated_at || entry.created_at
-                return (
+              <div style={styles.rosterList}>
+                <div style={styles.rosterHeader}>
+                  <h3 style={styles.rosterTitle}>내 영웅 목록</h3>
                   <button
-                    key={entry.id}
                     type="button"
-                    style={styles.rosterButton(isActiveHero)}
-                    onClick={() => handleRosterHeroSelect(entry.id)}
+                    style={{
+                      ...styles.rosterRefresh,
+                      opacity: rosterLoading ? 0.6 : 1,
+                      cursor: rosterLoading ? 'wait' : 'pointer',
+                    }}
+                    onClick={handleRosterRefresh}
+                    disabled={rosterLoading}
                   >
-                    {entry.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={entry.image_url} alt={entry.name} style={styles.rosterAvatarImage} />
-                    ) : (
-                      <div style={styles.rosterAvatar}>{entry.name.slice(0, 2)}</div>
-                    )}
-                    <div style={styles.rosterMeta}>
-                      <p style={styles.rosterName}>{entry.name}</p>
-                      <p style={styles.rosterTimestamp}>{formatRosterTimestamp(timestamp)}</p>
-                    </div>
+                    {rosterLoading ? '새로고치는 중…' : '새로고침'}
                   </button>
-                )
-              })}
+                </div>
+                {rosterError ? <p style={styles.rosterError}>{rosterError}</p> : null}
+                {rosterLoading && rosterHeroes.length === 0 ? (
+                  <p style={styles.rosterEmpty}>로스터를 불러오는 중입니다…</p>
+                ) : null}
+                {!rosterLoading && !rosterError && rosterHeroes.length === 0 ? (
+                  <p style={styles.rosterEmpty}>등록된 영웅이 없습니다. 로스터에서 새 영웅을 만들어보세요.</p>
+                ) : null}
+                {rosterHeroes.map((entry) => {
+                  const isActiveHero = entry.id === currentHero?.id
+                  const timestamp = entry.updated_at || entry.created_at
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      style={styles.rosterButton(isActiveHero)}
+                      onClick={() => handleRosterHeroSelect(entry.id)}
+                    >
+                      {entry.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={entry.image_url} alt={entry.name} style={styles.rosterAvatarImage} />
+                      ) : (
+                        <div style={styles.rosterAvatar}>{entry.name.slice(0, 2)}</div>
+                      )}
+                      <div style={styles.rosterMeta}>
+                        <p style={styles.rosterName}>{entry.name}</p>
+                        <p style={styles.rosterTimestamp}>{formatRosterTimestamp(timestamp)}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
-        ) : (
-          <p style={styles.overlayCopy}>{overlayDescription}</p>
-        )}
+        ) : null}
       </div>
     </>
   )

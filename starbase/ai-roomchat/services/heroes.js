@@ -30,6 +30,8 @@ const HERO_MUTABLE_FIELDS = [
   'image_url',
   'background_url',
   'bgm_url',
+  'bgm_duration_seconds',
+  'bgm_mime',
 ]
 
 const HERO_LIST_COLUMNS = 'id,name,image_url,owner_id,created_at,updated_at'
