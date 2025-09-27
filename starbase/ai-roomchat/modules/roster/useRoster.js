@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useReducer } from 'react'
 
-import { deleteHeroById, fetchHeroesByOwner } from '../../services/heroes'
+import { deleteHeroById } from '../../services/heroes'
+import { loadRosterBundle } from './data'
 import {
   clearSelectedHero,
   clearSelectedHeroIfMatches,
@@ -25,6 +26,7 @@ const ACTIONS = {
 const initialState = {
   status: ACTIONS.RESET,
   heroes: [],
+  profile: DEFAULT_PROFILE,
   error: '',
 }
 
@@ -38,6 +40,7 @@ function reducer(state, action) {
       return {
         status: ACTIONS.SUCCESS,
         heroes: action.heroes,
+        profile: action.profile || DEFAULT_PROFILE,
         error: '',
       }
     case ACTIONS.ERROR:
@@ -59,20 +62,27 @@ function reducer(state, action) {
 }
 
 export function useRoster({ onUnauthorized } = {}) {
-  const { status: authStatus, user, profile, error: authError, retry } = useAuth()
+  const { status: authStatus, user, profile: authProfile, error: authError, retry } = useAuth()
   const [state, dispatch] = useReducer(reducer, initialState)
 
   const userId = user?.id || null
 
   const loadHeroes = useCallback(async () => {
-    if (!userId) return
+    if (!userId) {
+      dispatch({
+        type: ACTIONS.SUCCESS,
+        heroes: [],
+        profile: DEFAULT_PROFILE,
+      })
+      return
+    }
 
     dispatch({ type: ACTIONS.LOADING })
     try {
+      const bundle = await loadRosterBundle({ userId, authProfile, user })
       persistRosterOwner(userId)
-      const heroes = await fetchHeroesByOwner(userId)
-      pruneMissingHeroSelection(heroes)
-      dispatch({ type: ACTIONS.SUCCESS, heroes })
+      pruneMissingHeroSelection(bundle.heroes)
+      dispatch({ type: ACTIONS.SUCCESS, heroes: bundle.heroes, profile: bundle.profile })
     } catch (error) {
       console.error('Failed to load roster heroes', error)
       dispatch({
@@ -80,7 +90,7 @@ export function useRoster({ onUnauthorized } = {}) {
         error: error?.message || DEFAULT_ERROR_MESSAGE,
       })
     }
-  }, [userId])
+  }, [authProfile, user, userId])
 
   useEffect(() => {
     if (authStatus === 'ready' && userId) {
@@ -127,13 +137,14 @@ export function useRoster({ onUnauthorized } = {}) {
     await loadHeroes()
   }, [authStatus, loadHeroes, retry])
 
-  const loading =
-    authStatus === 'idle' ||
-    authStatus === 'loading' ||
-    state.status === ACTIONS.LOADING ||
-    (state.status === ACTIONS.RESET && authStatus !== 'signed-out')
-
-  const effectiveProfile = profile || DEFAULT_PROFILE
+  const loading = useMemo(
+    () =>
+      authStatus === 'idle' ||
+      authStatus === 'loading' ||
+      state.status === ACTIONS.LOADING ||
+      (state.status === ACTIONS.RESET && authStatus !== 'signed-out'),
+    [authStatus, state.status],
+  )
 
   const errorMessage = useMemo(() => {
     if (state.error) return state.error
@@ -147,8 +158,8 @@ export function useRoster({ onUnauthorized } = {}) {
     loading,
     error: errorMessage,
     heroes: state.heroes,
-    displayName: effectiveProfile.displayName,
-    avatarUrl: effectiveProfile.avatarUrl,
+    displayName: state.profile.displayName,
+    avatarUrl: state.profile.avatarUrl,
     setError,
     deleteHero,
     reload,
