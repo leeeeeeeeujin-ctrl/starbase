@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
@@ -46,6 +48,8 @@ const pageStyles = {
 const overlayTabs = [
   { key: 'character', label: '캐릭터' },
   { key: 'search', label: '방 검색' },
+  { key: 'create', label: '게임 제작' },
+  { key: 'register', label: '게임 등록' },
   { key: 'ranking', label: '랭킹' },
   { key: 'settings', label: '설정' },
 ]
@@ -457,6 +461,151 @@ const styles = {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  quickLinkRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  quickLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '9px 14px',
+    borderRadius: 999,
+    background: 'rgba(56,189,248,0.16)',
+    color: '#e0f2fe',
+    fontSize: 12,
+    fontWeight: 700,
+    textDecoration: 'none',
+    cursor: 'pointer',
+  },
+  primaryLinkButton: {
+    appearance: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: '10px 18px',
+    borderRadius: 16,
+    background: 'linear-gradient(135deg, #38bdf8 0%, #22d3ee 100%)',
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: 800,
+    textDecoration: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    boxShadow: '0 16px 40px -28px rgba(14,116,144,0.9)',
+  },
+  secondaryButton: {
+    appearance: 'none',
+    border: '1px solid rgba(148,163,184,0.35)',
+    borderRadius: 16,
+    padding: '9px 16px',
+    background: 'rgba(30,41,59,0.65)',
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  creationGrid: {
+    display: 'grid',
+    gap: 12,
+  },
+  creationCard: {
+    borderRadius: 18,
+    padding: '16px 18px',
+    background: 'rgba(30,41,59,0.72)',
+    border: '1px solid rgba(96,165,250,0.25)',
+    display: 'grid',
+    gap: 10,
+  },
+  creationBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '4px 10px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    background: 'rgba(56,189,248,0.2)',
+    color: '#f0f9ff',
+    width: 'fit-content',
+  },
+  creationCardTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#e2e8f0',
+  },
+  creationCardText: {
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#cbd5f5',
+    whiteSpace: 'pre-line',
+  },
+  registerGrid: {
+    display: 'grid',
+    gap: 14,
+  },
+  registerCard: {
+    borderRadius: 20,
+    padding: '16px 18px',
+    background: 'rgba(15,23,42,0.66)',
+    border: '1px solid rgba(148,163,184,0.3)',
+    display: 'grid',
+    gap: 12,
+  },
+  registerHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  registerBadge: {
+    padding: '4px 10px',
+    borderRadius: 999,
+    background: 'rgba(96,165,250,0.25)',
+    color: '#bfdbfe',
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+  },
+  registerList: {
+    margin: 0,
+    paddingLeft: 18,
+    display: 'grid',
+    gap: 6,
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  registerGameList: {
+    display: 'grid',
+    gap: 10,
+  },
+  registerGameItem: {
+    borderRadius: 16,
+    border: '1px solid rgba(148,163,184,0.35)',
+    padding: '12px 14px',
+    background: 'rgba(30,41,59,0.6)',
+  },
+  registerGameTitle: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#e2e8f0',
+  },
+  registerGameMeta: {
+    margin: '6px 0 0',
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.8)',
+  },
+  registerActionRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
   searchInput: {
     width: '100%',
     padding: '12px 16px',
@@ -629,6 +778,7 @@ const styles = {
 }
 
 export default function CharacterBasicView({ hero }) {
+  const router = useRouter()
   const [currentHero, setCurrentHero] = useState(hero || null)
 
   useEffect(() => {
@@ -1612,6 +1762,54 @@ export default function CharacterBasicView({ hero }) {
     [],
   )
 
+  const creationHighlights = useMemo(
+    () => [
+      {
+        id: 'prompt',
+        badge: 'STEP 1',
+        title: '프롬프트 세트 준비',
+        description:
+          '게임 세계관과 상황별 응답을 한곳에 정리하세요. Maker 홈에서 새 세트를 만들고 카드·브릿지를 편집할 수 있습니다.',
+      },
+      {
+        id: 'rules',
+        badge: 'STEP 2',
+        title: '룰 & 슬롯 구성',
+        description:
+          '역할에 맞는 슬롯 수와 밸런스 규칙을 구상해 두면 등록 단계에서 바로 적용할 수 있습니다. 팀원과 함께 협업할 수 있도록 메모를 남겨 두세요.',
+      },
+      {
+        id: 'playtest',
+        badge: 'STEP 3',
+        title: '플레이 테스트',
+        description:
+          '제작한 세트를 기반으로 시범 게임을 돌려 보며 서사를 다듬고 버그를 잡습니다. 완료 후 등록 탭에서 정식으로 공개하세요.',
+      },
+    ],
+    [],
+  )
+
+  const registerChecklist = useMemo(
+    () => [
+      '대표 이미지와 설명 문구를 준비했나요?',
+      '역할별 슬롯 수와 점수 범위를 정했나요?',
+      '프롬프트 세트 ID를 확인했나요?',
+      '테스트 플레이 로그로 문제를 점검했나요?',
+    ],
+    [],
+  )
+
+  const registerGuides = useMemo(
+    () => [
+      { key: 'maker', label: '프롬프트 세트 관리', href: '/maker' },
+      { key: 'register', label: '게임 등록 화면 열기', href: '/rank/new' },
+    ],
+    [],
+  )
+
+  const createTabIndex = overlayTabs.findIndex((tab) => tab.key === 'create')
+  const registerTabIndex = overlayTabs.findIndex((tab) => tab.key === 'register')
+
   const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
   const progressRatio = duration ? progress / duration : 0
 
@@ -1628,10 +1826,22 @@ export default function CharacterBasicView({ hero }) {
               onChange={(event) => setSearchTerm(event.target.value)}
             />
             <div style={styles.searchActions}>
-              <button type="button" style={styles.searchButton}>
+              <button
+                type="button"
+                style={styles.searchButton}
+                onClick={() => {
+                  if (createTabIndex >= 0) setActiveTab(createTabIndex)
+                }}
+              >
                 게임 제작
               </button>
-              <button type="button" style={styles.searchButton}>
+              <button
+                type="button"
+                style={styles.searchButton}
+                onClick={() => {
+                  if (registerTabIndex >= 0) setActiveTab(registerTabIndex)
+                }}
+              >
                 게임 등록
               </button>
             </div>
@@ -1644,6 +1854,112 @@ export default function CharacterBasicView({ hero }) {
                 <p style={styles.listMeta}>{game.tags.join(' / ')}</p>
               </div>
             ))}
+          </div>
+        </div>
+      )
+    }
+
+    if (activeTabKey === 'create') {
+      return (
+        <div style={styles.tabContent}>
+          <div style={styles.infoBlock}>
+            <p style={styles.infoTitle}>게임 제작 허브</p>
+            <p style={styles.infoText}>
+              프롬프트 세트부터 플레이 테스트까지, 제작 과정 전반을 한눈에 살펴볼 수 있습니다. 아래 단계를 확인하고 Maker로
+              이동해 세트를 정비하세요.
+            </p>
+            <div style={styles.quickLinkRow}>
+              <Link href="/maker" style={styles.primaryLinkButton}>
+                Maker 열기
+              </Link>
+              <button
+                type="button"
+                style={styles.secondaryButton}
+                onClick={() => {
+                  if (registerTabIndex >= 0) setActiveTab(registerTabIndex)
+                }}
+              >
+                등록 탭 바로가기
+              </button>
+            </div>
+          </div>
+
+          <div style={styles.creationGrid}>
+            {creationHighlights.map((item) => (
+              <div key={item.id} style={styles.creationCard}>
+                <span style={styles.creationBadge}>{item.badge}</span>
+                <p style={styles.creationCardTitle}>{item.title}</p>
+                <p style={styles.creationCardText}>{item.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    if (activeTabKey === 'register') {
+      return (
+        <div style={styles.tabContent}>
+          <div style={styles.infoBlock}>
+            <p style={styles.infoTitle}>게임 등록 준비</p>
+            <p style={styles.infoText}>
+              공개 전 확인해야 할 항목을 정리했습니다. 등록 버튼을 누르기 전에 아래 체크리스트를 훑어보고 필요한 자료를
+              모두 모았는지 확인하세요.
+            </p>
+            <div style={styles.quickLinkRow}>
+              {registerGuides.map((guide) => (
+                <Link key={guide.key} href={guide.href} style={styles.quickLink}>
+                  {guide.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.registerGrid}>
+            <div style={styles.registerCard}>
+              <div style={styles.registerHeader}>
+                <p style={styles.infoTitle}>체크리스트</p>
+                <span style={styles.registerBadge}>필수</span>
+              </div>
+              <ul style={styles.registerList}>
+                {registerChecklist.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div style={styles.registerCard}>
+              <div style={styles.registerHeader}>
+                <p style={styles.infoTitle}>등록 대기 중인 게임</p>
+                <span style={styles.registerBadge}>샘플</span>
+              </div>
+              <div style={styles.registerGameList}>
+                {sampleGames.slice(0, 3).map((game) => (
+                  <div key={game.id} style={styles.registerGameItem}>
+                    <p style={styles.registerGameTitle}>{game.title}</p>
+                    <p style={styles.registerGameMeta}>{`${game.players}인 · ${game.tags.join(' / ')}`}</p>
+                  </div>
+                ))}
+              </div>
+              <div style={styles.registerActionRow}>
+                <button
+                  type="button"
+                  style={styles.primaryLinkButton}
+                  onClick={() => router.push('/rank/new')}
+                >
+                  등록 화면 열기
+                </button>
+                <button
+                  type="button"
+                  style={styles.secondaryButton}
+                  onClick={() => {
+                    if (createTabIndex >= 0) setActiveTab(createTabIndex)
+                  }}
+                >
+                  제작 탭으로 이동
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )
