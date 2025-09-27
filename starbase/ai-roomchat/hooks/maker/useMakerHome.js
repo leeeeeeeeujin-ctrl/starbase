@@ -12,7 +12,6 @@ import {
 import {
   importPromptLibraryEntry,
   listPromptLibraryEntries,
-  publishPromptSetToLibrary,
 } from '../../lib/maker/promptLibrary'
 
 function parseImportPayload(file) {
@@ -180,19 +179,6 @@ export function useMakerHome({ onUnauthorized } = {}) {
     return result.data
   }, [setFromError, userId])
 
-  const handlePublish = useCallback(
-    async (setId) => {
-      const result = await publishPromptSetToLibrary(userId, setId)
-      if (result.error) {
-        setLibraryErrorFromError(result.error)
-        throw result.error
-      }
-      await refreshLibraryEntries()
-      return result.data
-    },
-    [refreshLibraryEntries, setLibraryErrorFromError, userId],
-  )
-
   const handleImportFromLibrary = useCallback(
     async (entryId) => {
       const result = await importPromptLibraryEntry(userId, entryId)
@@ -257,7 +243,6 @@ export function useMakerHome({ onUnauthorized } = {}) {
     createSet: handleCreate,
     exportSet,
     importFromFile,
-    publishToLibrary: handlePublish,
     importLibraryEntry: handleImportFromLibrary,
     setErrorMessage,
   }

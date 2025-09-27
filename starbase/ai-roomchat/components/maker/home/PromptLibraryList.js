@@ -32,7 +32,7 @@ export default function PromptLibraryList({
         <div style={{ display: 'grid', gap: 4 }}>
           <strong style={{ fontSize: 18 }}>공유 프롬프트</strong>
           <span style={{ fontSize: 12, color: '#cbd5f5' }}>
-            다른 제작자들이 올린 세트를 내려받아 바로 편집할 수 있습니다.
+            다른 제작자들이 공유한 세트를 내려받아 바로 편집할 수 있습니다.
           </span>
         </div>
         <button
@@ -88,7 +88,7 @@ export default function PromptLibraryList({
             lineHeight: 1.6,
           }}
         >
-          아직 업로드된 프롬프트가 없어요. 내 세트를 공유해 첫 기여자가 되어 보세요!
+          아직 공유된 프롬프트가 없어요. 잠시 후 다시 확인해 주세요.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>

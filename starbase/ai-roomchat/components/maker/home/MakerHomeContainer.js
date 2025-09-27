@@ -29,7 +29,6 @@ export default function MakerHomeContainer() {
     createSet,
     exportSet,
     importFromFile,
-    publishToLibrary,
     importLibraryEntry,
     refreshLibraryEntries,
     setErrorMessage,
@@ -39,7 +38,6 @@ export default function MakerHomeContainer() {
   const [editingName, setEditingName] = useState('')
   const [savingRename, setSavingRename] = useState(false)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
-  const [publishingSetId, setPublishingSetId] = useState('')
   const [importingEntryId, setImportingEntryId] = useState('')
 
   useEffect(() => {
@@ -104,23 +102,6 @@ export default function MakerHomeContainer() {
       }
     },
     [deleteSet],
-  )
-
-  const handlePublishSet = useCallback(
-    async (id) => {
-      if (!id) return
-      try {
-        setPublishingSetId(id)
-        await publishToLibrary(id)
-        alert('서버에 업로드했습니다. 다른 메이커에서 다운로드할 수 있어요!')
-      } catch (err) {
-        console.error(err)
-        alert(err instanceof Error ? err.message : '서버에 업로드하지 못했습니다.')
-      } finally {
-        setPublishingSetId('')
-      }
-    },
-    [publishToLibrary],
   )
 
   const handleImportLibraryEntry = useCallback(
@@ -214,7 +195,6 @@ export default function MakerHomeContainer() {
       libraryLoading={libraryLoading}
       libraryError={libraryError}
       libraryImportingId={importingEntryId}
-      publishingSetId={publishingSetId}
       editingId={editingId}
       editingName={editingName}
       savingRename={savingRename}
@@ -232,7 +212,6 @@ export default function MakerHomeContainer() {
       onRefreshLibrary={refreshLibraryEntries}
       onToggleActionSheet={setActionSheetOpen}
       onGoBack={handleGoBack}
-      onPublishSet={handlePublishSet}
       onImportLibraryEntry={handleImportLibraryEntry}
     />
   )

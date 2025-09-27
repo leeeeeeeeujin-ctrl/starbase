@@ -15,7 +15,6 @@ export default function MakerHomeView({
   libraryLoading,
   libraryError,
   libraryImportingId,
-  publishingSetId,
   editingId,
   editingName,
   savingRename,
@@ -33,7 +32,6 @@ export default function MakerHomeView({
   onRefreshLibrary,
   onToggleActionSheet,
   onGoBack,
-  onPublishSet,
   onImportLibraryEntry,
 }) {
   const pageBackground = backgroundImage
@@ -152,8 +150,6 @@ export default function MakerHomeView({
                     onOpenSet={onOpenSet}
                     onExportSet={onExportSet}
                     onDeleteSet={onDeleteSet}
-                    onPublishSet={onPublishSet}
-                    publishing={publishingSetId === row.id}
                     savingRename={savingRename}
                   />
                 ))}
@@ -181,22 +177,6 @@ export default function MakerHomeView({
               >
                 목록 새로고침
               </button>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={onCreateSet}
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: 14,
-                    border: '1px solid rgba(125,211,252,0.6)',
-                    background: 'linear-gradient(135deg, rgba(45,212,191,0.9) 0%, rgba(14,165,233,0.92) 100%)',
-                    color: '#0f172a',
-                    fontWeight: 700,
-                  }}
-                >
-                  새 세트 만들기
-                </button>
-              </div>
             </div>
           </section>
         </div>
