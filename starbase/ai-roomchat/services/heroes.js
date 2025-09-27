@@ -20,6 +20,18 @@ const HERO_DETAIL_COLUMNS = [
 ]
   .join(',')
 
+const HERO_MUTABLE_FIELDS = [
+  'name',
+  'description',
+  'ability1',
+  'ability2',
+  'ability3',
+  'ability4',
+  'image_url',
+  'background_url',
+  'bgm_url',
+]
+
 const HERO_LIST_COLUMNS = 'id,name,image_url,owner_id,created_at,updated_at'
 const FALLBACK_NAME = '이름 없는 영웅'
 
@@ -116,6 +128,31 @@ export async function fetchHeroesByOwner(ownerIdOrList) {
   }
 
   return (Array.isArray(data) ? data : []).map(normaliseListHero).filter(Boolean)
+}
+
+export async function updateHeroById(heroId, payload) {
+  if (!heroId) {
+    throw new Error('heroId is required to update a hero')
+  }
+
+  const updates = {}
+  HERO_MUTABLE_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      const value = payload[field]
+      updates[field] = value === '' ? '' : value ?? null
+    }
+  })
+  updates.updated_at = new Date().toISOString()
+
+  const { data, error } = await withTable(supabase, 'heroes', (table) =>
+    supabase.from(table).update(updates).eq('id', heroId).select(HERO_DETAIL_COLUMNS).maybeSingle(),
+  )
+
+  if (error) {
+    throw error
+  }
+
+  return normaliseHero(data)
 }
 
 export async function deleteHeroById(heroId) {
