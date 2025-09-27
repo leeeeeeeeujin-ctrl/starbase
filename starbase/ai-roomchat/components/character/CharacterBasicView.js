@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
 const DEFAULT_DESCRIPTION =
@@ -33,13 +33,11 @@ const pageStyles = {
   }),
 }
 
-const slideConfigs = [
-  { key: 'character', label: '캐릭터' },
-  { key: 'ranking', label: '랭킹', description: '랭킹 기능이 준비되는 대로 이곳에서 확인할 수 있어요.' },
-  { key: 'search', label: '게임 검색', description: '게임 검색과 추천이 곧 추가됩니다.' },
+const overlayTabs = [
+  { key: 'search', label: '게임 검색', description: '빠르게 즐길 방을 찾을 수 있는 기능이 준비되고 있어요.' },
+  { key: 'ranking', label: '랭킹', description: '랭킹과 시즌 기록이 곧 추가됩니다.' },
+  { key: 'settings', label: '설정', description: '환경 설정과 맞춤 기능을 곧 만나볼 수 있어요.' },
   { key: 'friends', label: '친구', description: '친구와 길드를 관리할 수 있는 메뉴가 준비 중이에요.' },
-  { key: 'guild', label: '길드', description: '길드 관리 기능이 곧 찾아옵니다.' },
-  { key: 'settings', label: '설정', description: '환경 설정과 맞춤 기능이 준비되고 있어요.' },
 ]
 
 const styles = {
@@ -58,26 +56,6 @@ const styles = {
     color: 'rgba(190, 227, 248, 0.9)',
     textAlign: 'center',
     letterSpacing: 0.2,
-  },
-  sliderViewport: {
-    width: '100%',
-    overflow: 'hidden',
-    position: 'relative',
-    borderRadius: 40,
-  },
-  sliderTrack: (index) => ({
-    display: 'flex',
-    width: `${slideConfigs.length * 100}%`,
-    transform: `translateX(-${index * (100 / slideConfigs.length)}%)`,
-    transition: 'transform 0.45s ease',
-  }),
-  slide: {
-    flex: `0 0 ${100 / slideConfigs.length}%`,
-    width: `${100 / slideConfigs.length}%`,
-    display: 'flex',
-    justifyContent: 'center',
-    padding: '32px 14px 46px',
-    boxSizing: 'border-box',
   },
   heroCardShell: {
     width: '100%',
@@ -183,34 +161,78 @@ const styles = {
     borderRadius: '50%',
     background: 'rgba(226,232,240,0.78)',
   },
-  placeholderCard: {
+  dock: {
     width: '100%',
     maxWidth: 520,
     borderRadius: 36,
-    padding: '40px 36px',
-    background: 'rgba(15,23,42,0.72)',
-    border: '1px solid rgba(96,165,250,0.24)',
+    padding: '32px 26px 28px',
+    boxSizing: 'border-box',
+    background: 'rgba(15,23,42,0.75)',
+    border: '1px solid rgba(96,165,250,0.28)',
+    boxShadow: '0 44px 120px -70px rgba(37,99,235,0.55)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 18,
-    boxShadow: '0 44px 120px -60px rgba(37,99,235,0.5)',
+    gap: 22,
   },
-  placeholderLabel: {
+  dockTabs: {
+    display: 'flex',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  dockTabButton: (active) => ({
+    appearance: 'none',
+    border: 'none',
+    borderRadius: 999,
+    padding: '10px 18px',
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    color: active ? '#0f172a' : '#e2e8f0',
+    background: active ? '#38bdf8' : 'rgba(51,65,85,0.62)',
+    cursor: 'pointer',
+    transition: 'all 0.24s ease',
+  }),
+  dockViewport: {
+    width: '100%',
+    overflow: 'hidden',
+  },
+  dockTrack: (index) => ({
+    display: 'flex',
+    width: `${overlayTabs.length * 100}%`,
+    transform: `translateX(-${index * (100 / overlayTabs.length)}%)`,
+    transition: 'transform 0.45s ease',
+  }),
+  dockSlide: {
+    flex: `0 0 ${100 / overlayTabs.length}%`,
+    width: `${100 / overlayTabs.length}%`,
+    padding: '4px 4px 0',
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dockSlideTitle: {
     margin: 0,
-    fontSize: 26,
+    fontSize: 18,
     fontWeight: 800,
-    color: '#e2e8f0',
     letterSpacing: '-0.02em',
+    color: '#e2e8f0',
+    textAlign: 'center',
   },
-  placeholderCopy: {
+  dockSlideCopy: {
     margin: 0,
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 1.7,
     color: '#cbd5f5',
+    textAlign: 'center',
+    maxWidth: 360,
   },
-  pagination: {
+  dockPagination: {
     display: 'flex',
     gap: 8,
+    justifyContent: 'center',
   },
   paginationDot: (active) => ({
     width: active ? 14 : 8,
@@ -250,18 +272,12 @@ export default function CharacterBasicView({ hero }) {
   }, [hero])
 
   const [viewMode, setViewMode] = useState(0)
-  const [activeSlide, setActiveSlide] = useState(0)
+  const [activeTab, setActiveTab] = useState(0)
 
   useEffect(() => {
     setViewMode(0)
-    setActiveSlide(0)
+    setActiveTab(0)
   }, [hero?.id])
-
-  useEffect(() => {
-    if (activeSlide !== 0) {
-      setViewMode(0)
-    }
-  }, [activeSlide])
 
   const audioRef = useRef(null)
   useEffect(() => {
@@ -304,152 +320,9 @@ export default function CharacterBasicView({ hero }) {
     filter: viewMode === 0 ? 'none' : 'brightness(0.82)',
   }
 
-  const clampIndex = useCallback((value) => {
-    if (value < 0) return 0
-    if (value > slideConfigs.length - 1) return slideConfigs.length - 1
-    return value
-  }, [])
-
-  const goToSlide = useCallback(
-    (index) => {
-      setActiveSlide(clampIndex(index))
-    },
-    [clampIndex],
-  )
-
-  const pointerStartX = useRef(null)
-  const pointerLastX = useRef(null)
-  const pointerIdRef = useRef(null)
-  const pointerSwipePreventTapRef = useRef(false)
-
-  const finishSwipe = useCallback(
-    (deltaX) => {
-      if (Math.abs(deltaX) < 40) return
-      if (deltaX > 0) {
-        goToSlide(activeSlide + 1)
-      } else {
-        goToSlide(activeSlide - 1)
-      }
-    },
-    [activeSlide, goToSlide],
-  )
-
-  const clearPointer = useCallback((event, shouldComplete = false) => {
-    const pointerId = pointerIdRef.current
-    if (pointerId == null) return
-
-    if (shouldComplete && pointerStartX.current != null) {
-      const lastX = pointerLastX.current ?? pointerStartX.current
-      const delta = pointerStartX.current - lastX
-      finishSwipe(delta)
-    }
-
-    if (pointerId != null && event?.currentTarget?.releasePointerCapture) {
-      try {
-        event.currentTarget.releasePointerCapture(pointerId)
-      } catch (error) {
-        // ignore
-      }
-    }
-
-    pointerIdRef.current = null
-    pointerStartX.current = null
-    pointerLastX.current = null
-    if (!shouldComplete) {
-      pointerSwipePreventTapRef.current = false
-    }
-  }, [finishSwipe])
-
-  const shouldIgnoreSwipe = useCallback((target, container) => {
-    if (!target || !container) return false
-    let node = target
-    while (node && node !== container) {
-      if (node.dataset?.swipeIgnore === 'true') {
-        return true
-      }
-      node = node.parentElement
-    }
-    return false
-  }, [])
-
-  const handlePointerDown = useCallback(
-    (event) => {
-      if (shouldIgnoreSwipe(event.target, event.currentTarget)) return
-      pointerIdRef.current = event.pointerId
-      pointerSwipePreventTapRef.current = false
-      pointerStartX.current = event.clientX
-      pointerLastX.current = event.clientX
-      if (event.currentTarget.setPointerCapture) {
-        try {
-          event.currentTarget.setPointerCapture(event.pointerId)
-        } catch (error) {
-          // ignore capture errors
-        }
-      }
-    },
-    [shouldIgnoreSwipe],
-  )
-
-  const handlePointerMove = useCallback(
-    (event) => {
-      if (pointerIdRef.current !== event.pointerId) return
-      pointerLastX.current = event.clientX
-      if (
-        pointerStartX.current != null &&
-        Math.abs(pointerStartX.current - event.clientX) > 24
-      ) {
-        pointerSwipePreventTapRef.current = true
-      }
-    },
-    [],
-  )
-
-  const handlePointerUp = useCallback(
-    (event) => {
-      if (pointerIdRef.current !== event.pointerId) return
-      clearPointer(event, true)
-    },
-    [clearPointer],
-  )
-
-  const handlePointerCancel = useCallback(
-    (event) => {
-      if (pointerIdRef.current !== event.pointerId) return
-      clearPointer(event, false)
-    },
-    [clearPointer],
-  )
-
-  const cycleViewMode = useCallback(() => {
+  const handleTap = () => {
     setViewMode((prev) => (prev + 1) % 3)
-  }, [])
-
-  const handleTap = useCallback(
-    (options = {}) => {
-      const skipSwipeCheck = options.skipSwipeCheck === true
-      if (!skipSwipeCheck && pointerSwipePreventTapRef.current) {
-        pointerSwipePreventTapRef.current = false
-        return
-      }
-
-      pointerSwipePreventTapRef.current = false
-      cycleViewMode()
-    },
-    [cycleViewMode],
-  )
-
-  const handleKeyDown = useCallback(
-    (event) => {
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault()
-        goToSlide(activeSlide - 1)
-      } else if (event.key === 'ArrowRight') {
-        event.preventDefault()
-        goToSlide(activeSlide + 1)
-      }
-    },
-    [activeSlide, goToSlide],
-  )
+  }
 
   const heroSlide = (
     <div style={styles.heroCardShell}>
@@ -457,10 +330,11 @@ export default function CharacterBasicView({ hero }) {
         role="button"
         tabIndex={0}
         style={styles.heroCard}
-        onClick={() => handleTap()}
+        onClick={handleTap}
         onKeyUp={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
-            handleTap({ skipSwipeCheck: true })
+            event.preventDefault()
+            handleTap()
           }
         }}
       >
@@ -510,49 +384,43 @@ export default function CharacterBasicView({ hero }) {
     </div>
   )
 
-  const placeholderSlides = useMemo(
-    () => slideConfigs.slice(1),
-    [],
-  )
-
   return (
     <div style={backgroundStyle}>
       <div style={styles.stage}>
-        <p style={styles.topMessage}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
+        <p style={styles.topMessage}>하단 오버레이를 좌우로 넘기며 다른 메뉴를 살펴보세요.</p>
 
-        <div
-          role="region"
-          aria-label="캐릭터 상세 슬라이더"
-          style={styles.sliderViewport}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-          onPointerLeave={(event) => {
-            if (pointerIdRef.current != null) {
-              clearPointer(event, false)
-            }
-          }}
-          tabIndex={0}
-          onKeyDown={handleKeyDown}
-        >
-          <div style={styles.sliderTrack(activeSlide)}>
-            <div style={styles.slide}>{heroSlide}</div>
-            {placeholderSlides.map((slide) => (
-              <div key={slide.key} style={styles.slide}>
-                <div style={styles.placeholderCard}>
-                  <p style={styles.placeholderLabel}>{slide.label}</p>
-                  <p style={styles.placeholderCopy}>{slide.description}</p>
-                </div>
-              </div>
+        {heroSlide}
+
+        <div style={styles.dock}>
+          <div style={styles.dockTabs}>
+            {overlayTabs.map((tab, index) => (
+              <button
+                key={tab.key}
+                type="button"
+                style={styles.dockTabButton(index === activeTab)}
+                onClick={() => setActiveTab(index)}
+              >
+                {tab.label}
+              </button>
             ))}
           </div>
-        </div>
 
-        <div style={styles.pagination} aria-hidden="true">
-          {slideConfigs.map((slide, index) => (
-            <span key={slide.key} style={styles.paginationDot(index === activeSlide)} />
-          ))}
+          <div style={styles.dockViewport}>
+            <div style={styles.dockTrack(activeTab)}>
+              {overlayTabs.map((tab) => (
+                <div key={tab.key} style={styles.dockSlide}>
+                  <p style={styles.dockSlideTitle}>{tab.label}</p>
+                  <p style={styles.dockSlideCopy}>{tab.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.dockPagination} aria-hidden="true">
+            {overlayTabs.map((tab, index) => (
+              <span key={tab.key} style={styles.paginationDot(index === activeTab)} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
