@@ -177,6 +177,53 @@ function formatPlaybackTime(seconds) {
   return `${minutes}:${String(Math.max(0, remaining)).padStart(2, "0")}`;
 }
 
+function readAudioDurationFromFile(file) {
+  if (!file) return Promise.resolve(null);
+  if (typeof window === "undefined") {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    let objectUrl = null;
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch (error) {
+      console.warn("Failed to create object URL for audio duration", error);
+      resolve(null);
+      return;
+    }
+
+    const audioEl = document.createElement("audio");
+    const cleanup = () => {
+      audioEl.removeAttribute("src");
+      audioEl.load();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+
+    const handleLoaded = () => {
+      const duration = Number.isFinite(audioEl.duration)
+        ? Math.max(0, Math.round(audioEl.duration))
+        : null;
+      cleanup();
+      resolve(duration);
+    };
+
+    const handleError = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    audioEl.addEventListener("loadedmetadata", handleLoaded, { once: true });
+    audioEl.addEventListener("error", handleError, { once: true });
+
+    audioEl.preload = "metadata";
+    audioEl.src = objectUrl;
+    audioEl.load();
+  });
+}
+
 function reindexBgmTracks(list) {
   return list.map((track, index) => ({ ...track, sort_order: index }));
 }
@@ -686,17 +733,6 @@ const styles = {
     border: "1px solid rgba(125,211,252,0.85)",
     background: "rgba(30,64,175,0.45)",
     color: "#e0f2fe",
-    borderRadius: 999,
-    padding: "8px 16px",
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: "pointer",
-    transition: "background 0.2s ease",
-  },
-  bgmQuickDanger: {
-    border: "1px solid rgba(248,113,113,0.75)",
-    background: "rgba(127,29,29,0.5)",
-    color: "#fee2e2",
     borderRadius: 999,
     padding: "8px 16px",
     fontSize: 12,
@@ -2784,33 +2820,153 @@ export default function CharacterBasicView({ hero }) {
     [bgmTracks],
   );
 
-  const handleQuickBgmUploadClick = useCallback(() => {
+  const handleQuickBgmButtonClick = useCallback(() => {
+    if (!currentHero?.id) {
+      setStatusMessage({
+        type: "error",
+        text: "브금을 교체할 캐릭터를 찾을 수 없습니다.",
+      });
+      return;
+    }
     if (!quickBgmInputRef.current) return;
     quickBgmInputRef.current.value = "";
     quickBgmInputRef.current.click();
-  }, []);
+  }, [currentHero?.id, setStatusMessage]);
 
   const handleQuickBgmFileInput = useCallback(
-    (event) => {
+    async (event) => {
       const file = event.target.files?.[0];
       if (!file) return;
-      const baseId = bgmTracks[0]?.id || makeBgmId();
-      applyBgmFileToTrack(baseId, file);
-    },
-    [applyBgmFileToTrack, bgmTracks],
-  );
 
-  const handleQuickBgmClear = useCallback(() => {
-    if (!bgmTracks.length) return;
-    const [track] = bgmTracks;
-    if (!track) return;
-    handleRemoveBgmTrack(track.id, { skipConfirm: true });
-    handleBgmStop();
-    setPreviewBgmList([]);
-    if (quickBgmInputRef.current) {
-      quickBgmInputRef.current.value = "";
-    }
-  }, [bgmTracks, handleRemoveBgmTrack, handleBgmStop]);
+      if (!currentHero?.id) {
+        setStatusMessage({
+          type: "error",
+          text: "브금을 교체할 캐릭터를 찾을 수 없습니다.",
+        });
+        if (quickBgmInputRef.current) {
+          quickBgmInputRef.current.value = "";
+        }
+        return;
+      }
+
+      setSavingHero(true);
+      setStatusMessage(null);
+
+      try {
+        const durationSeconds = await readAudioDurationFromFile(file);
+        const existingLabel = heroBgmList[0]?.label;
+        const label = normaliseBgmLabel(existingLabel, 0);
+        const baseName = sanitizeFileName(
+          editDraft.name || currentHero.name || DEFAULT_HERO_NAME,
+        );
+        const extension =
+          (file.type && file.type.split("/")[1]) ||
+          file.name?.split(".").pop() ||
+          "mp3";
+        const safeLabel = sanitizeFileName(label) || "bgm-1";
+        const path = `hero-bgm/${Date.now()}-${currentHero.id}-${baseName}-${safeLabel}.${extension}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(HERO_STORAGE_BUCKET)
+          .upload(path, file, {
+            upsert: true,
+            contentType: file.type || "audio/mpeg",
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const publicUrl = supabase.storage
+          .from(HERO_STORAGE_BUCKET)
+          .getPublicUrl(path).data.publicUrl;
+        const mime = file.type || "audio/mpeg";
+
+        const keepId = isValidUuid(heroBgmList[0]?.id)
+          ? heroBgmList[0].id
+          : undefined;
+
+        const processedTrack = {
+          id: keepId,
+          label,
+          url: publicUrl,
+          storage_path: path,
+          duration_seconds: Number.isFinite(durationSeconds)
+            ? durationSeconds
+            : null,
+          mime,
+          sort_order: 0,
+        };
+
+        await updateHeroById(currentHero.id, {
+          bgm_url: processedTrack.url,
+          bgm_duration_seconds: processedTrack.duration_seconds,
+          bgm_mime: processedTrack.mime,
+        });
+
+        const removalIds = heroBgmList
+          .map((track) => track?.id)
+          .filter(isValidUuid)
+          .filter((id) => id !== processedTrack.id);
+
+        const freshBgms = await syncHeroBgms(currentHero.id, {
+          upserts: [processedTrack],
+          removals: removalIds,
+        });
+
+        const heroWithBgm = {
+          ...currentHero,
+          bgms: freshBgms,
+          bgm_url: processedTrack.url,
+          bgm_duration_seconds:
+            processedTrack.duration_seconds ?? null,
+          bgm_mime: processedTrack.mime,
+        };
+
+        setCurrentHero(heroWithBgm);
+        setEditDraft(createDraftFromHero(heroWithBgm));
+        setBgmTracks(createBgmStateFromHero(heroWithBgm));
+        setRemovedBgmIds([]);
+        setPreviewBgmList(freshBgms);
+        setActiveBgmIndex(0);
+        setTrackTime(0);
+        setTrackDuration(Number.isFinite(durationSeconds) ? durationSeconds : 0);
+        setTrackProgress(0);
+        setIsBgmPlaying(false);
+        bgmAutoplayRef.current = true;
+        setBgmEnabled(true);
+        setBgmBarCollapsed(false);
+        handleBgmStop();
+        await loadRoster({ silent: true, force: true });
+
+        setStatusMessage({
+          type: "success",
+          text: "브금을 교체하고 저장했습니다.",
+        });
+      } catch (error) {
+        console.error("Failed to replace BGM", error);
+        const message =
+          error?.message || "브금을 교체하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+        setStatusMessage({ type: "error", text: message });
+      } finally {
+        setSavingHero(false);
+        if (quickBgmInputRef.current) {
+          quickBgmInputRef.current.value = "";
+        }
+      }
+    },
+    [
+      currentHero,
+      editDraft.name,
+      heroBgmList,
+      handleBgmStop,
+      loadRoster,
+      setBgmBarCollapsed,
+      setBgmEnabled,
+      setStatusMessage,
+      setTrackDuration,
+    ],
+  );
 
   const handleDraftChange = useCallback((field, value) => {
     setEditDraft((prev) => ({ ...prev, [field]: value }));
@@ -3989,20 +4145,16 @@ export default function CharacterBasicView({ hero }) {
                       <div style={styles.bgmQuickActions}>
                         <button
                           type="button"
-                          style={styles.bgmQuickButton}
-                          onClick={handleQuickBgmUploadClick}
+                          style={{
+                            ...styles.bgmQuickButton,
+                            opacity: savingHero ? 0.5 : 1,
+                            cursor: savingHero ? "not-allowed" : "pointer",
+                          }}
+                          onClick={handleQuickBgmButtonClick}
+                          disabled={savingHero}
                         >
-                          📁 기기에서 불러오기
+                          🎵 브금 교체·저장
                         </button>
-                        {heroBgmCount > 0 ? (
-                          <button
-                            type="button"
-                            style={styles.bgmQuickDanger}
-                            onClick={handleQuickBgmClear}
-                          >
-                            🗑 브금 삭제
-                          </button>
-                        ) : null}
                       </div>
                     </div>
                     <input
