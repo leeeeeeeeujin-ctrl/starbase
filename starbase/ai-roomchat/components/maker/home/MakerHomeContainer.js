@@ -1,16 +1,16 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
-import dynamic from 'next/dynamic'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import { useMakerHome } from '../../../hooks/maker/useMakerHome'
 import MakerHomeView from './MakerHomeView'
 
-const SharedChatDock = dynamic(() => import('../../common/SharedChatDock'), { ssr: false })
-
 export default function MakerHomeContainer() {
   const router = useRouter()
+  const [returnHeroId, setReturnHeroId] = useState('')
+  const [backgroundImage, setBackgroundImage] = useState('')
+
   const handleUnauthorized = useCallback(() => {
     router.replace('/')
   }, [router])
@@ -33,6 +33,18 @@ export default function MakerHomeContainer() {
   const [editingName, setEditingName] = useState('')
   const [savingRename, setSavingRename] = useState(false)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const storedHeroId = window.localStorage.getItem('selectedHeroId') || ''
+      const storedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
+      setReturnHeroId(storedHeroId)
+      setBackgroundImage(storedBackground)
+    } catch (error) {
+      console.error('Failed to hydrate Maker background context:', error)
+    }
+  }, [])
 
   const listHeader = useMemo(() => {
     if (loading) return '세트를 불러오는 중입니다.'
@@ -133,12 +145,21 @@ export default function MakerHomeContainer() {
     refresh()
   }, [refresh, setErrorMessage])
 
+  const handleGoBack = useCallback(() => {
+    if (returnHeroId) {
+      router.push(`/character/${returnHeroId}`)
+    } else {
+      router.push('/roster')
+    }
+  }, [returnHeroId, router])
+
   if (!hydrated) {
     return null
   }
 
   return (
     <MakerHomeView
+      backgroundImage={backgroundImage}
       listHeader={listHeader}
       errorMessage={errorMessage}
       loading={loading}
@@ -158,9 +179,8 @@ export default function MakerHomeContainer() {
       onCreateSet={handleCreateSet}
       onRefresh={handleRefresh}
       onToggleActionSheet={setActionSheetOpen}
-      onGoBack={() => router.push('/lobby')}
+      onGoBack={handleGoBack}
       onOpenRanking={() => router.push('/rank')}
-      SharedChatDock={SharedChatDock}
     />
   )
 }

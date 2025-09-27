@@ -20,13 +20,13 @@ export default function MakerHomeHeader({ listHeader, errorMessage, onGoBack }) 
           style={{
             padding: '8px 14px',
             borderRadius: 999,
-            background: 'rgba(15, 23, 42, 0.55)',
-            border: '1px solid rgba(148, 163, 184, 0.4)',
+            background: 'rgba(30, 41, 59, 0.72)',
+            border: '1px solid rgba(148, 163, 184, 0.5)',
             color: '#f8fafc',
             fontWeight: 600,
           }}
         >
-          ← 로비로
+          ← 캐릭터로
         </button>
         <div style={{ display: 'grid', gap: 4 }}>
           <h1 style={{ margin: 0, fontSize: 24 }}>프롬프트 메이커</h1>

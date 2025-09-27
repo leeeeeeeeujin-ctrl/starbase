@@ -218,6 +218,11 @@ const styles = {
     flexWrap: 'wrap',
     gap: 10,
   },
+  dockActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
   battleButton: {
     appearance: 'none',
     border: 'none',
@@ -230,6 +235,21 @@ const styles = {
     color: '#0f172a',
     cursor: 'pointer',
     boxShadow: '0 18px 42px -24px rgba(250,204,21,0.7)',
+  },
+  rosterButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    padding: '9px 16px',
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    color: '#e2e8f0',
+    background: 'rgba(30,64,175,0.32)',
+    border: '1px solid rgba(148,163,184,0.45)',
+    textDecoration: 'none',
+    transition: 'background 0.24s ease, color 0.24s ease',
   },
   dockTabs: {
     display: 'flex',
@@ -1455,6 +1475,19 @@ export default function CharacterBasicView({ hero }) {
     ? pageStyles.withBackground(currentHero.background_url)
     : pageStyles.base
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      if (currentHero?.background_url) {
+        window.localStorage.setItem('selectedHeroBackgroundUrl', currentHero.background_url)
+      } else {
+        window.localStorage.removeItem('selectedHeroBackgroundUrl')
+      }
+    } catch (storageError) {
+      console.error('Failed to persist hero background:', storageError)
+    }
+  }, [currentHero?.background_url])
+
   const overlayModes = useMemo(() => {
     const modes = ['name', 'description']
     if (!abilityPairs.length) {
@@ -2625,11 +2658,16 @@ export default function CharacterBasicView({ hero }) {
                       </button>
                     ))}
                   </div>
-                  {activeTabKey === 'character' ? (
-                    <button type="button" style={styles.battleButton}>
-                      전투 시작
-                    </button>
-                  ) : null}
+                  <div style={styles.dockActions}>
+                    <Link href="/roster" style={styles.rosterButton}>
+                      로스터로
+                    </Link>
+                    {activeTabKey === 'character' ? (
+                      <button type="button" style={styles.battleButton}>
+                        전투 시작
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
                 {overlayBody}
