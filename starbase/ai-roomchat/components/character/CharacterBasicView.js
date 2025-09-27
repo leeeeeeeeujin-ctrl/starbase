@@ -65,6 +65,8 @@ const REVERB_COOKIE = `${COOKIE_PREFIX}reverb_level`;
 const COMPRESSOR_COOKIE = `${COOKIE_PREFIX}compressor_level`;
 const EQ_BANDS_COOKIE = `${COOKIE_PREFIX}eq_bands`;
 
+let cachedImpulseBuffer = null;
+
 function readCookie(name) {
   if (typeof document === "undefined") return null;
   const cookies = document.cookie ? document.cookie.split("; ") : [];
@@ -93,6 +95,114 @@ function clamp01(value) {
 function clamp(value, min, max) {
   if (Number.isNaN(value)) return min;
   return Math.min(Math.max(value, min), max);
+}
+
+function createImpulseResponse(context, seconds = 2.3, decay = 2.8) {
+  const rate = context.sampleRate;
+  const length = Math.max(1, Math.floor(rate * seconds));
+  const impulse = context.createBuffer(2, length, rate);
+
+  for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+    const buffer = impulse.getChannelData(channel);
+    for (let i = 0; i < length; i += 1) {
+      const attenuation = Math.pow(1 - i / length, decay);
+      buffer[i] = (Math.random() * 2 - 1) * attenuation;
+    }
+  }
+
+  return impulse;
+}
+
+function getImpulseBuffer(context) {
+  if (cachedImpulseBuffer && cachedImpulseBuffer.sampleRate === context.sampleRate) {
+    return cachedImpulseBuffer;
+  }
+
+  cachedImpulseBuffer = createImpulseResponse(context);
+  return cachedImpulseBuffer;
+}
+
+function createAudioProcessingGraph(context, audioElement) {
+  const source = context.createMediaElementSource(audioElement);
+
+  const low = context.createBiquadFilter();
+  low.type = "lowshelf";
+  low.frequency.value = 320;
+
+  const mid = context.createBiquadFilter();
+  mid.type = "peaking";
+  mid.frequency.value = 1200;
+  mid.Q.value = 1.1;
+
+  const high = context.createBiquadFilter();
+  high.type = "highshelf";
+  high.frequency.value = 3200;
+
+  const dryGain = context.createGain();
+  dryGain.gain.value = 1;
+
+  const wetGain = context.createGain();
+  wetGain.gain.value = 0;
+
+  const reverb = context.createConvolver();
+  reverb.buffer = getImpulseBuffer(context);
+
+  const compressor = context.createDynamicsCompressor();
+  const masterGain = context.createGain();
+  masterGain.gain.value = 1;
+
+  source.connect(low);
+  low.connect(mid);
+  mid.connect(high);
+  high.connect(dryGain);
+  high.connect(reverb);
+
+  reverb.connect(wetGain);
+  dryGain.connect(compressor);
+  wetGain.connect(compressor);
+  compressor.connect(masterGain);
+  masterGain.connect(context.destination);
+
+  return {
+    element: audioElement,
+    source,
+    low,
+    mid,
+    high,
+    dryGain,
+    wetGain,
+    reverb,
+    compressor,
+    masterGain,
+  };
+}
+
+function disconnectAudioGraph(graph) {
+  if (!graph) return;
+  try {
+    graph.source.disconnect();
+  } catch (error) {
+    console.warn("Failed to disconnect audio source", error);
+  }
+
+  [
+    graph.low,
+    graph.mid,
+    graph.high,
+    graph.dryGain,
+    graph.wetGain,
+    graph.reverb,
+    graph.compressor,
+    graph.masterGain,
+  ].forEach((node) => {
+    if (!node) return;
+    try {
+      node.disconnect();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn("Failed to disconnect audio node", error);
+    }
+  });
 }
 
 function formatRosterTimestamp(value) {
@@ -963,7 +1073,9 @@ export default function CharacterBasicView({ hero }) {
     setRosterError(null);
   }, [rosterOwnerId]);
 
+  const audioContextRef = useRef(null);
   const audioRef = useRef(null);
+  const audioGraphRef = useRef(null);
   const imageInputRef = useRef(null);
   const backgroundInputRef = useRef(null);
   const bgmInputRef = useRef(null);
@@ -1019,6 +1131,10 @@ export default function CharacterBasicView({ hero }) {
   );
   useEffect(() => {
     if (!currentHero?.bgm_url) {
+      if (audioGraphRef.current) {
+        disconnectAudioGraph(audioGraphRef.current);
+        audioGraphRef.current = null;
+      }
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -1027,14 +1143,62 @@ export default function CharacterBasicView({ hero }) {
       return;
     }
 
+    if (audioGraphRef.current) {
+      disconnectAudioGraph(audioGraphRef.current);
+      audioGraphRef.current = null;
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+
     const audio = new Audio(currentHero.bgm_url);
     audio.loop = true;
     audio.volume = volume;
+    audio.crossOrigin = "anonymous";
     audioRef.current = audio;
+
+    if (typeof window !== "undefined") {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new AudioContextClass();
+        }
+
+        try {
+          const context = audioContextRef.current;
+          const graph = createAudioProcessingGraph(context, audio);
+          audioGraphRef.current = graph;
+
+          const applyEq = effectsEnabled ? eqBands : { low: 0, mid: 0, high: 0 };
+          graph.low.gain.value = applyEq.low;
+          graph.mid.gain.value = applyEq.mid;
+          graph.high.gain.value = applyEq.high;
+
+          const mix = effectsEnabled ? clamp01(reverbLevel) : 0;
+          graph.wetGain.gain.value = mix;
+          graph.dryGain.gain.value = 1 - mix * 0.55;
+
+          const intensity = effectsEnabled ? clamp01(compressorLevel) : 0;
+          graph.compressor.threshold.value = -12 - intensity * 24;
+          graph.compressor.knee.value = 30 - intensity * 15;
+          graph.compressor.ratio.value = 1 + intensity * 19;
+          graph.compressor.attack.value = 0.003 + intensity * 0.047;
+          graph.compressor.release.value = 0.25 + intensity * 0.45;
+        } catch (error) {
+          console.warn("Failed to initialize character audio graph", error);
+        }
+      }
+    }
 
     const tryPlay = async () => {
       try {
         if (bgmEnabled) {
+          if (audioContextRef.current?.state === "suspended") {
+            await audioContextRef.current.resume().catch(() => {});
+          }
           await audio.play();
         }
       } catch (error) {
@@ -1045,11 +1209,48 @@ export default function CharacterBasicView({ hero }) {
     tryPlay();
 
     return () => {
+      if (audioGraphRef.current?.element === audio) {
+        disconnectAudioGraph(audioGraphRef.current);
+        audioGraphRef.current = null;
+      }
       audio.pause();
       audio.currentTime = 0;
-      audioRef.current = null;
+      if (audioRef.current === audio) {
+        audioRef.current = null;
+      }
     };
-  }, [currentHero?.bgm_url, bgmEnabled]);
+  }, [currentHero?.bgm_url]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const graph = audioGraphRef.current;
+    if (!graph) return;
+
+    const applyEq = effectsEnabled ? eqBands : { low: 0, mid: 0, high: 0 };
+    graph.low.gain.value = applyEq.low;
+    graph.mid.gain.value = applyEq.mid;
+    graph.high.gain.value = applyEq.high;
+  }, [eqBands.low, eqBands.mid, eqBands.high, effectsEnabled]);
+
+  useEffect(() => {
+    const graph = audioGraphRef.current;
+    if (!graph) return;
+
+    const mix = effectsEnabled ? clamp01(reverbLevel) : 0;
+    graph.wetGain.gain.value = mix;
+    graph.dryGain.gain.value = 1 - mix * 0.55;
+  }, [reverbLevel, effectsEnabled]);
+
+  useEffect(() => {
+    const graph = audioGraphRef.current;
+    if (!graph) return;
+
+    const intensity = effectsEnabled ? clamp01(compressorLevel) : 0;
+    graph.compressor.threshold.value = -12 - intensity * 24;
+    graph.compressor.knee.value = 30 - intensity * 15;
+    graph.compressor.ratio.value = 1 + intensity * 19;
+    graph.compressor.attack.value = 0.003 + intensity * 0.047;
+    graph.compressor.release.value = 0.25 + intensity * 0.45;
+  }, [compressorLevel, effectsEnabled]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -1059,9 +1260,21 @@ export default function CharacterBasicView({ hero }) {
   useEffect(() => {
     if (!audioRef.current) return;
     if (bgmEnabled) {
-      audioRef.current
-        .play()
-        .catch((error) => console.warn("Failed to resume BGM playback", error));
+      const resumeContext = async () => {
+        try {
+          if (audioContextRef.current?.state === "suspended") {
+            await audioContextRef.current.resume();
+          }
+        } catch (error) {
+          console.warn("Failed to resume audio context", error);
+        }
+      };
+
+      resumeContext().finally(() => {
+        audioRef.current
+          .play()
+          .catch((error) => console.warn("Failed to resume BGM playback", error));
+      });
     } else {
       audioRef.current.pause();
     }
