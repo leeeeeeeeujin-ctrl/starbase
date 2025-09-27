@@ -6,13 +6,42 @@ const DEFAULT_HERO_NAME = '이름 없는 영웅'
 const DEFAULT_DESCRIPTION =
   '소개가 아직 준비되지 않았습니다. 이미지를 한 번 더 탭하면 능력을 볼 수 있어요.'
 
+const overlayButtons = [
+  { key: 'search', label: '방 검색' },
+  { key: 'ranking', label: '랭킹' },
+  { key: 'settings', label: '설정' },
+]
+
+const overlayCopy = {
+  character: '이미지를 터치하면 설명과 능력이 순서대로 나타납니다.',
+  search: '빠른 매칭과 커스텀 방 탐색 기능이 곧 추가됩니다.',
+  ranking: '시즌별 팀 랭킹과 개인 순위를 준비 중이에요.',
+  settings: '사운드, 그래픽, 단축키 등을 한자리에서 조정할 수 있도록 준비하고 있어요.',
+}
+
+const tabTitles = {
+  character: '캐릭터 정보',
+  search: '방 검색',
+  ranking: '랭킹',
+  settings: '설정',
+}
+
+const tabPanelCopy = {
+  search:
+    '빠른 매칭, 추천 큐, 커스텀 방 검색이 한 화면에서 이뤄질 예정입니다.\n친구와 함께할 방을 저장하고 공유하는 기능도 준비 중이에요.',
+  ranking:
+    '시즌별 팀/개인 순위를 기록하고 전투 통계를 시각화하는 랭킹 허브가 곧 열립니다.\n친구의 전적과 비교하는 기능도 함께 제공될 예정이에요.',
+  settings:
+    '사운드, 그래픽, 단축키, 접근성 옵션을 한자리에서 조정할 수 있도록 준비하고 있어요.\n프로필 꾸미기와 통지 설정도 이 화면에서 관리하게 될 거예요.',
+}
+
 const pageStyles = {
   base: {
     minHeight: '100vh',
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '40px 18px 60px',
+    padding: '40px 18px 120px',
     boxSizing: 'border-box',
     background:
       'linear-gradient(180deg, rgba(15,23,42,0.72) 0%, rgba(15,23,42,0.82) 45%, rgba(15,23,42,0.92) 100%)',
@@ -23,7 +52,7 @@ const pageStyles = {
     width: '100%',
     display: 'flex',
     justifyContent: 'center',
-    padding: '40px 18px 60px',
+    padding: '40px 18px 120px',
     boxSizing: 'border-box',
     color: '#f8fafc',
     backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(15,23,42,0.78) 60%, rgba(15,23,42,0.9) 100%), url(${imageUrl})`,
@@ -33,25 +62,6 @@ const pageStyles = {
   }),
 }
 
-const slideConfigs = [
-  { key: 'character', label: '캐릭터' },
-  {
-    key: 'ranking',
-    label: '랭킹',
-    description: '팀과 개인 랭킹이 준비되는 대로 이곳에서 확인할 수 있어요.',
-  },
-  {
-    key: 'search',
-    label: '게임 찾기',
-    description: '빠른 매칭과 커스텀 방 탐색 기능이 곧 추가됩니다.',
-  },
-  {
-    key: 'settings',
-    label: '설정',
-    description: '환경 설정과 맞춤 기능이 준비되고 있어요.',
-  },
-]
-
 const styles = {
   stage: {
     width: '100%',
@@ -59,83 +69,18 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
+    gap: 48,
+  },
+  heroSection: {
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
     gap: 24,
   },
-  topMessage: {
-    margin: 0,
-    fontSize: 15,
-    fontWeight: 600,
-    color: 'rgba(190, 227, 248, 0.9)',
-    textAlign: 'center',
-    letterSpacing: 0.2,
-  },
-  sliderViewport: {
-    width: '100%',
-    overflow: 'hidden',
-    position: 'relative',
-    borderRadius: 40,
-  },
-  sliderTrack: (index) => ({
-    display: 'flex',
-    width: `${slideConfigs.length * 100}%`,
-    transform: `translateX(-${index * (100 / slideConfigs.length)}%)`,
-    transition: 'transform 0.45s ease',
-  }),
-  slide: {
-    flex: `0 0 ${100 / slideConfigs.length}%`,
-    width: `${100 / slideConfigs.length}%`,
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    padding: '32px 14px 46px',
-    boxSizing: 'border-box',
-  },
-  heroSlideLayout: {
-    width: '100%',
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 22,
-    justifyContent: 'center',
-    alignItems: 'stretch',
-  },
-  edgePanel: {
-    flex: '1 1 160px',
-    minWidth: 160,
-    padding: '26px 22px',
-    borderRadius: 28,
-    background:
-      'linear-gradient(135deg, rgba(30,64,175,0.28) 0%, rgba(15,23,42,0.72) 48%, rgba(30,41,59,0.92) 100%)',
-    border: '1px solid rgba(96,165,250,0.22)',
-    boxShadow: 'inset 0 0 0 1px rgba(148,163,184,0.08)',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-    gap: 14,
-    color: '#e2e8f0',
-  },
-  edgePanelStack: {
-    flex: '1 1 160px',
-    minWidth: 160,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 22,
-  },
-  edgePanelTitle: {
-    margin: 0,
-    fontSize: 20,
-    fontWeight: 800,
-    letterSpacing: '-0.02em',
-  },
-  edgePanelCopy: {
-    margin: 0,
-    fontSize: 14,
-    lineHeight: 1.6,
-    color: 'rgba(226,232,240,0.82)',
-  },
   heroCardShell: {
-    flex: '0 1 520px',
-    minWidth: 280,
-    position: 'relative',
+    width: '100%',
+    maxWidth: 520,
   },
   heroCard: {
     position: 'relative',
@@ -147,6 +92,7 @@ const styles = {
     background: 'rgba(15,23,42,0.62)',
     boxShadow: '0 46px 120px -60px rgba(37,99,235,0.4)',
     cursor: 'pointer',
+    outline: 'none',
   },
   heroImage: {
     position: 'absolute',
@@ -183,36 +129,32 @@ const styles = {
     fontWeight: 800,
     letterSpacing: '-0.03em',
   },
-  tapHint: {
-    position: 'absolute',
-    top: 18,
-    right: 18,
-    padding: '10px 16px',
-    borderRadius: 999,
-    background: 'rgba(15,23,42,0.72)',
-    color: '#bae6fd',
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: 0.4,
-    boxShadow: '0 18px 40px -32px rgba(15,23,42,0.9)',
-  },
-  overlaySurface: {
+  heroInfoOverlay: {
     position: 'absolute',
     left: '8%',
     right: '8%',
-    bottom: '10%',
+    top: '12%',
+    padding: '18px 22px',
+    borderRadius: 28,
+    background: 'rgba(15,23,42,0.78)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 14,
+    gap: 10,
     pointerEvents: 'none',
+    boxShadow: '0 24px 60px -42px rgba(15,23,42,0.88)',
   },
-  overlayTextBlock: {
+  heroInfoTitle: {
     margin: 0,
     fontSize: 16,
-    fontWeight: 700,
-    lineHeight: 1.7,
-    color: '#f8fafc',
-    textShadow: '0 2px 12px rgba(15,23,42,0.72)',
+    fontWeight: 800,
+    color: '#e0f2fe',
+    letterSpacing: 0.2,
+  },
+  heroInfoText: {
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 1.8,
+    color: 'rgba(226,232,240,0.94)',
     whiteSpace: 'pre-line',
   },
   cornerIcon: {
@@ -236,42 +178,107 @@ const styles = {
     borderRadius: '50%',
     background: 'rgba(226,232,240,0.78)',
   },
-  placeholderCard: {
-    width: '100%',
-    maxWidth: 520,
-    borderRadius: 36,
-    padding: '40px 36px',
+  overlayPanel: {
+    position: 'absolute',
+    left: '6%',
+    right: '6%',
+    bottom: '5%',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
     background: 'rgba(15,23,42,0.72)',
-    border: '1px solid rgba(96,165,250,0.24)',
+    borderRadius: 26,
+    padding: '20px 22px',
+    boxShadow: '0 24px 60px -40px rgba(15,23,42,0.9)',
+    border: '1px solid rgba(96,165,250,0.35)',
+  },
+  overlayHeaderRow: {
+    display: 'flex',
+    justifyContent: 'flex-start',
+  },
+  battleButton: {
+    padding: '12px 20px',
+    borderRadius: 999,
+    border: 'none',
+    background:
+      'linear-gradient(135deg, rgba(37,99,235,0.92) 0%, rgba(56,189,248,0.88) 100%)',
+    color: '#f8fafc',
+    fontSize: 14,
+    fontWeight: 800,
+    letterSpacing: 0.5,
+    cursor: 'pointer',
+    boxShadow: '0 18px 40px -28px rgba(37,99,235,0.8)',
+    outline: 'none',
+  },
+  overlayButtonsRow: {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  overlayButton: (active) => ({
+    padding: '10px 18px',
+    borderRadius: 999,
+    border: '1px solid',
+    borderColor: active ? 'rgba(125,211,252,0.9)' : 'rgba(148,163,184,0.4)',
+    background: active ? 'rgba(56,189,248,0.22)' : 'rgba(15,23,42,0.42)',
+    color: '#e0f2fe',
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    outline: 'none',
+  }),
+  overlayCopy: {
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: 'rgba(226,232,240,0.9)',
+  },
+  tabPanel: {
+    width: '100%',
+    maxWidth: 720,
+    borderRadius: 32,
+    padding: '36px 30px',
+    background: 'rgba(15,23,42,0.65)',
+    border: '1px solid rgba(96,165,250,0.2)',
     display: 'flex',
     flexDirection: 'column',
     gap: 18,
-    boxShadow: '0 44px 120px -60px rgba(37,99,235,0.5)',
+    boxShadow: '0 40px 120px -80px rgba(15,23,42,0.9)',
   },
-  placeholderLabel: {
+  tabPanelTitle: {
     margin: 0,
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: 800,
     color: '#e2e8f0',
-    letterSpacing: '-0.02em',
+    letterSpacing: '-0.03em',
   },
-  placeholderCopy: {
+  tabPanelParagraph: {
     margin: 0,
     fontSize: 15,
-    lineHeight: 1.7,
-    color: '#cbd5f5',
+    lineHeight: 1.8,
+    color: 'rgba(226,232,240,0.9)',
+    whiteSpace: 'pre-line',
   },
-  pagination: {
+  abilityGroup: {
     display: 'flex',
-    gap: 8,
+    flexDirection: 'column',
+    gap: 6,
   },
-  paginationDot: (active) => ({
-    width: active ? 14 : 8,
-    height: 8,
-    borderRadius: 999,
-    background: active ? '#38bdf8' : 'rgba(148,163,184,0.45)',
-    transition: 'all 0.25s ease',
-  }),
+  abilityLabel: {
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#bae6fd',
+  },
+  abilityEntry: {
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 1.7,
+    color: 'rgba(226,232,240,0.92)',
+    whiteSpace: 'pre-line',
+  },
 }
 
 export default function CharacterBasicView({ hero }) {
@@ -287,7 +294,7 @@ export default function CharacterBasicView({ hero }) {
     return text || DEFAULT_DESCRIPTION
   }, [hero])
 
-  const abilityPairs = useMemo(() => {
+  const abilityGroups = useMemo(() => {
     if (!hero) {
       return []
     }
@@ -296,25 +303,46 @@ export default function CharacterBasicView({ hero }) {
     const firstPair = [normalize(hero.ability1), normalize(hero.ability2)].filter(Boolean)
     const secondPair = [normalize(hero.ability3), normalize(hero.ability4)].filter(Boolean)
 
-    return [
-      { label: '능력 1 & 2', entries: firstPair },
-      { label: '능력 3 & 4', entries: secondPair },
-    ].filter((pair) => pair.entries.length > 0)
+    const groups = []
+    if (firstPair.length) {
+      groups.push({ label: '능력 1 & 2', entries: firstPair })
+    }
+    if (secondPair.length) {
+      groups.push({ label: '능력 3 & 4', entries: secondPair })
+    }
+
+    return groups
   }, [hero])
 
+  const infoSequence = useMemo(() => {
+    const sequence = []
+
+    if (description) {
+      sequence.push({ key: 'description', title: '설명', lines: [description] })
+    }
+
+    abilityGroups.forEach((group) => {
+      sequence.push({ key: group.label, title: group.label, lines: group.entries })
+    })
+
+    return sequence
+  }, [abilityGroups, description])
+
+  const infoCount = infoSequence.length
+
   const [viewMode, setViewMode] = useState(0)
-  const [activeSlide, setActiveSlide] = useState(0)
+  const [activeOverlay, setActiveOverlay] = useState('character')
 
   useEffect(() => {
     setViewMode(0)
-    setActiveSlide(0)
+    setActiveOverlay('character')
   }, [hero?.id])
 
   useEffect(() => {
-    if (activeSlide !== 0) {
+    if (activeOverlay !== 'character') {
       setViewMode(0)
     }
-  }, [activeSlide])
+  }, [activeOverlay])
 
   const audioRef = useRef(null)
   useEffect(() => {
@@ -354,292 +382,137 @@ export default function CharacterBasicView({ hero }) {
 
   const imageStyle = {
     ...styles.heroImage,
-    filter: viewMode === 0 ? 'none' : 'brightness(0.82)',
+    filter: viewMode === 0 ? 'none' : 'brightness(0.72)',
   }
 
-  const clampIndex = useCallback((value) => {
-    if (value < 0) return 0
-    if (value > slideConfigs.length - 1) return slideConfigs.length - 1
-    return value
-  }, [])
+  const currentInfo = viewMode > 0 ? infoSequence[viewMode - 1] : null
 
-  const goToSlide = useCallback(
-    (index) => {
-      setActiveSlide(clampIndex(index))
-    },
-    [clampIndex],
-  )
+  const handleTap = useCallback(() => {
+    if (activeOverlay !== 'character') return
+    if (infoCount === 0) return
 
-  const pointerStartX = useRef(null)
-  const pointerLastX = useRef(null)
-  const pointerIdRef = useRef(null)
-  const pointerSwipePreventTapRef = useRef(false)
+    setViewMode((prev) => (prev + 1) % (infoCount + 1))
+  }, [activeOverlay, infoCount])
 
-  const finishSwipe = useCallback(
-    (deltaX) => {
-      if (Math.abs(deltaX) < 40) return
-      if (deltaX > 0) {
-        goToSlide(activeSlide + 1)
-      } else {
-        goToSlide(activeSlide - 1)
-      }
-    },
-    [activeSlide, goToSlide],
-  )
-
-  const clearPointer = useCallback((event, shouldComplete = false) => {
-    const pointerId = pointerIdRef.current
-    if (pointerId == null) return
-
-    if (shouldComplete && pointerStartX.current != null) {
-      const lastX = pointerLastX.current ?? pointerStartX.current
-      const delta = pointerStartX.current - lastX
-      finishSwipe(delta)
-    }
-
-    if (pointerId != null && event?.currentTarget?.releasePointerCapture) {
-      try {
-        event.currentTarget.releasePointerCapture(pointerId)
-      } catch (error) {
-        // ignore
-      }
-    }
-
-    pointerIdRef.current = null
-    pointerStartX.current = null
-    pointerLastX.current = null
-    if (!shouldComplete) {
-      pointerSwipePreventTapRef.current = false
-    }
-  }, [finishSwipe])
-
-  const shouldIgnoreSwipe = useCallback((target, container) => {
-    if (!target || !container) return false
-    let node = target
-    while (node && node !== container) {
-      if (node.dataset?.swipeIgnore === 'true') {
-        return true
-      }
-      node = node.parentElement
-    }
-    return false
-  }, [])
-
-  const handlePointerDown = useCallback(
+  const handleKeyUp = useCallback(
     (event) => {
-      if (shouldIgnoreSwipe(event.target, event.currentTarget)) return
-      pointerIdRef.current = event.pointerId
-      pointerSwipePreventTapRef.current = false
-      pointerStartX.current = event.clientX
-      pointerLastX.current = event.clientX
-      if (event.currentTarget.setPointerCapture) {
-        try {
-          event.currentTarget.setPointerCapture(event.pointerId)
-        } catch (error) {
-          // ignore capture errors
-        }
-      }
-    },
-    [shouldIgnoreSwipe],
-  )
-
-  const handlePointerMove = useCallback(
-    (event) => {
-      if (pointerIdRef.current !== event.pointerId) return
-      pointerLastX.current = event.clientX
-      if (
-        pointerStartX.current != null &&
-        Math.abs(pointerStartX.current - event.clientX) > 24
-      ) {
-        pointerSwipePreventTapRef.current = true
-      }
-    },
-    [],
-  )
-
-  const handlePointerUp = useCallback(
-    (event) => {
-      if (pointerIdRef.current !== event.pointerId) return
-      clearPointer(event, true)
-    },
-    [clearPointer],
-  )
-
-  const handlePointerCancel = useCallback(
-    (event) => {
-      if (pointerIdRef.current !== event.pointerId) return
-      clearPointer(event, false)
-    },
-    [clearPointer],
-  )
-
-  const cycleViewMode = useCallback(() => {
-    setViewMode((prev) => (prev + 1) % 3)
-  }, [])
-
-  const handleTap = useCallback(
-    (options = {}) => {
-      const skipSwipeCheck = options.skipSwipeCheck === true
-      if (!skipSwipeCheck && pointerSwipePreventTapRef.current) {
-        pointerSwipePreventTapRef.current = false
-        return
-      }
-
-      pointerSwipePreventTapRef.current = false
-      cycleViewMode()
-    },
-    [cycleViewMode],
-  )
-
-  const handleKeyDown = useCallback(
-    (event) => {
-      if (event.key === 'ArrowLeft') {
+      if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
-        goToSlide(activeSlide - 1)
-      } else if (event.key === 'ArrowRight') {
-        event.preventDefault()
-        goToSlide(activeSlide + 1)
+        handleTap()
       }
     },
-    [activeSlide, goToSlide],
+    [handleTap],
   )
 
-  const heroSlide = (
-    <div style={styles.heroSlideLayout}>
-      <div style={styles.edgePanel}>
-        <div>
-          <p style={styles.edgePanelTitle}>랭킹</p>
-          <p style={styles.edgePanelCopy}>
-            시즌별 팀 랭킹과 개인 순위를 준비 중이에요.
-          </p>
-        </div>
-        <p style={styles.edgePanelCopy}>곧 전투 통계도 제공할 예정입니다.</p>
-      </div>
+  const handleOverlayButton = useCallback((key) => {
+    setActiveOverlay((prev) => (prev === key ? 'character' : key))
+  }, [])
 
-      <div style={styles.heroCardShell}>
-        <div
-          role="button"
-          tabIndex={0}
-          style={styles.heroCard}
-          data-swipe-ignore="true"
-          onClick={() => handleTap()}
-          onKeyUp={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              handleTap({ skipSwipeCheck: true })
-            }
-          }}
-        >
-          <div style={styles.cornerIcon} aria-hidden="true">
-            {Array.from({ length: 9 }).map((_, index) => (
-              <span key={`dot-${index}`} style={styles.cornerDot} />
-            ))}
-          </div>
+  const overlayDescription = overlayCopy[activeOverlay] ?? ''
 
-          {hero?.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={hero.image_url} alt={heroName} style={imageStyle} />
-          ) : (
-            <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
-          )}
-
-          {viewMode === 0 ? (
-            <div style={styles.heroNameOverlay}>
-              <p style={styles.heroNameBadge}>{heroName}</p>
-            </div>
-          ) : null}
-
-          {viewMode === 1 ? (
-            <div style={styles.overlaySurface}>
-              <p style={styles.overlayTextBlock}>{description}</p>
-            </div>
-          ) : null}
-
-          {viewMode === 2 ? (
-            <div style={styles.overlaySurface}>
-              {abilityPairs.length ? (
-                abilityPairs.map((pair) => (
-                  <p key={pair.label} style={styles.overlayTextBlock}>
-                    {`${pair.label}:\n${pair.entries.join('\n')}`}
+  const renderTabPanelContent = () => {
+    if (activeOverlay === 'character') {
+      return (
+        <>
+          <p style={styles.tabPanelParagraph}>{description}</p>
+          {abilityGroups.length ? (
+            abilityGroups.map((group) => (
+              <div key={group.label} style={styles.abilityGroup}>
+                <p style={styles.abilityLabel}>{group.label}</p>
+                {group.entries.map((entry, index) => (
+                  <p key={`${group.label}-${index}`} style={styles.abilityEntry}>
+                    {entry}
                   </p>
-                ))
-              ) : (
-                <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
-              )}
-            </div>
-          ) : null}
+                ))}
+              </div>
+            ))
+          ) : (
+            <p style={styles.tabPanelParagraph}>등록된 능력이 없습니다.</p>
+          )}
+        </>
+      )
+    }
 
-          <div style={styles.tapHint} aria-hidden="true">
-            탭해서 정보 보기
-          </div>
-        </div>
-      </div>
+    const copy = tabPanelCopy[activeOverlay]
+    if (!copy) return null
 
-      <div style={styles.edgePanelStack}>
-        <div style={styles.edgePanel}>
-          <div>
-            <p style={styles.edgePanelTitle}>게임 찾기</p>
-            <p style={styles.edgePanelCopy}>
-              빠른 매칭과 추천 큐가 추가되면 이곳에서 바로 시작할 수 있어요.
-            </p>
-          </div>
-          <p style={styles.edgePanelCopy}>커스텀 방 검색도 지원될 예정입니다.</p>
-        </div>
-        <div style={styles.edgePanel}>
-          <div>
-            <p style={styles.edgePanelTitle}>설정</p>
-            <p style={styles.edgePanelCopy}>
-              사운드, 그래픽, 단축키 등을 한자리에서 조정할 수 있도록 준비하고 있어요.
-            </p>
-          </div>
-          <p style={styles.edgePanelCopy}>접근성 옵션도 함께 제공될 예정입니다.</p>
-        </div>
-      </div>
-    </div>
-  )
-
-  const placeholderSlides = useMemo(
-    () => slideConfigs.slice(1),
-    [],
-  )
+    return <p style={styles.tabPanelParagraph}>{copy}</p>
+  }
 
   return (
     <div style={backgroundStyle}>
       <div style={styles.stage}>
-        <p style={styles.topMessage}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기, 설정 공간을 오갈 수 있어요.</p>
-
-        <div
-          role="region"
-          aria-label="캐릭터 상세 슬라이더"
-          style={styles.sliderViewport}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-          onPointerLeave={(event) => {
-            if (pointerIdRef.current != null) {
-              clearPointer(event, false)
-            }
-          }}
-          tabIndex={0}
-          onKeyDown={handleKeyDown}
-        >
-          <div style={styles.sliderTrack(activeSlide)}>
-            <div style={styles.slide}>{heroSlide}</div>
-            {placeholderSlides.map((slide) => (
-              <div key={slide.key} style={styles.slide}>
-                <div style={styles.placeholderCard}>
-                  <p style={styles.placeholderLabel}>{slide.label}</p>
-                  <p style={styles.placeholderCopy}>{slide.description}</p>
-                </div>
+        <div style={styles.heroSection}>
+          <div style={styles.heroCardShell}>
+            <div
+              role="button"
+              tabIndex={0}
+              style={styles.heroCard}
+              onClick={handleTap}
+              onKeyUp={handleKeyUp}
+            >
+              <div style={styles.cornerIcon} aria-hidden="true">
+                {Array.from({ length: 9 }).map((_, index) => (
+                  <span key={`dot-${index}`} style={styles.cornerDot} />
+                ))}
               </div>
-            ))}
+
+              {hero?.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={hero.image_url} alt={heroName} style={imageStyle} />
+              ) : (
+                <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
+              )}
+
+              {viewMode === 0 ? (
+                <div style={styles.heroNameOverlay}>
+                  <p style={styles.heroNameBadge}>{heroName}</p>
+                </div>
+              ) : null}
+
+              {currentInfo ? (
+                <div style={styles.heroInfoOverlay}>
+                  <p style={styles.heroInfoTitle}>{currentInfo.title}</p>
+                  <p style={styles.heroInfoText}>{currentInfo.lines.join('\n')}</p>
+                </div>
+              ) : null}
+
+              <div
+                style={styles.overlayPanel}
+                onClick={(event) => {
+                  event.stopPropagation()
+                }}
+              >
+                {activeOverlay === 'character' ? (
+                  <div style={styles.overlayHeaderRow}>
+                    <button type="button" style={styles.battleButton}>
+                      전투 시작
+                    </button>
+                  </div>
+                ) : null}
+
+                <div style={styles.overlayButtonsRow}>
+                  {overlayButtons.map((button) => (
+                    <button
+                      key={button.key}
+                      type="button"
+                      style={styles.overlayButton(activeOverlay === button.key)}
+                      onClick={() => handleOverlayButton(button.key)}
+                    >
+                      {button.label}
+                    </button>
+                  ))}
+                </div>
+
+                <p style={styles.overlayCopy}>{overlayDescription}</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div style={styles.pagination} aria-hidden="true">
-          {slideConfigs.map((slide, index) => (
-            <span key={slide.key} style={styles.paginationDot(index === activeSlide)} />
-          ))}
+        <div style={styles.tabPanel}>
+          <h2 style={styles.tabPanelTitle}>{tabTitles[activeOverlay]}</h2>
+          {renderTabPanelContent()}
         </div>
       </div>
     </div>
