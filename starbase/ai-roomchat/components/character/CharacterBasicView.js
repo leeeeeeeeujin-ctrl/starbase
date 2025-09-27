@@ -15,8 +15,8 @@ const pageStyles = {
     padding: '40px 18px 60px',
     boxSizing: 'border-box',
     background:
-      'linear-gradient(180deg, rgba(2,6,23,0.84) 0%, rgba(2,6,23,0.93) 55%, rgba(2,6,23,0.98) 100%)',
-    color: '#e2e8f0',
+      'linear-gradient(180deg, rgba(15,23,42,0.72) 0%, rgba(15,23,42,0.82) 45%, rgba(15,23,42,0.92) 100%)',
+    color: '#f8fafc',
   },
   withBackground: (imageUrl) => ({
     minHeight: '100vh',
@@ -25,8 +25,8 @@ const pageStyles = {
     justifyContent: 'center',
     padding: '40px 18px 60px',
     boxSizing: 'border-box',
-    color: '#e2e8f0',
-    backgroundImage: `linear-gradient(180deg, rgba(2,6,23,0.72) 0%, rgba(2,6,23,0.88) 60%, rgba(2,6,23,0.96) 100%), url(${imageUrl})`,
+    color: '#f8fafc',
+    backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(15,23,42,0.78) 60%, rgba(15,23,42,0.9) 100%), url(${imageUrl})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundAttachment: 'fixed',
@@ -91,8 +91,8 @@ const styles = {
     borderRadius: 36,
     overflow: 'hidden',
     border: '1px solid rgba(96,165,250,0.32)',
-    background: 'rgba(15,23,42,0.72)',
-    boxShadow: '0 46px 120px -60px rgba(37,99,235,0.6)',
+    background: 'rgba(15,23,42,0.62)',
+    boxShadow: '0 46px 120px -60px rgba(37,99,235,0.4)',
     cursor: 'pointer',
   },
   heroImage: {
@@ -119,7 +119,7 @@ const styles = {
     bottom: 0,
     width: '100%',
     padding: '30px 32px 36px',
-    background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.88) 72%, rgba(2,6,23,0.97) 100%)',
+    background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.65) 68%, rgba(15,23,42,0.82) 100%)',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
@@ -145,50 +145,22 @@ const styles = {
   },
   overlaySurface: {
     position: 'absolute',
-    inset: '14% 11% 18%',
-    background: 'rgba(2,6,23,0.78)',
-    borderRadius: 28,
-    padding: '26px 24px',
+    left: '8%',
+    right: '8%',
+    bottom: '10%',
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
-    overflowY: 'auto',
+    gap: 14,
+    pointerEvents: 'none',
   },
-  overlayTitle: {
+  overlayTextBlock: {
     margin: 0,
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 700,
-    color: '#cbd5f5',
-  },
-  overlayText: {
-    margin: 0,
-    fontSize: 14,
-    lineHeight: 1.8,
-    color: '#e2e8f0',
+    lineHeight: 1.7,
+    color: '#f8fafc',
+    textShadow: '0 2px 12px rgba(15,23,42,0.72)',
     whiteSpace: 'pre-line',
-  },
-  abilityList: {
-    listStyle: 'none',
-    margin: 0,
-    padding: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-  abilityItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    padding: '14px 16px',
-    borderRadius: 18,
-    background: 'rgba(15,23,42,0.55)',
-  },
-  abilityLabel: {
-    margin: 0,
-    fontSize: 12,
-    fontWeight: 700,
-    color: '#93c5fd',
-    letterSpacing: 0.4,
   },
   cornerIcon: {
     position: 'absolute',
@@ -262,11 +234,19 @@ export default function CharacterBasicView({ hero }) {
     return text || DEFAULT_DESCRIPTION
   }, [hero])
 
-  const abilityTexts = useMemo(() => {
-    if (!hero) return []
-    return [hero.ability1, hero.ability2, hero.ability3, hero.ability4]
-      .map((value) => (typeof value === 'string' ? value.trim() : ''))
-      .filter(Boolean)
+  const abilityPairs = useMemo(() => {
+    if (!hero) {
+      return []
+    }
+
+    const normalize = (value) => (typeof value === 'string' ? value.trim() : '')
+    const firstPair = [normalize(hero.ability1), normalize(hero.ability2)].filter(Boolean)
+    const secondPair = [normalize(hero.ability3), normalize(hero.ability4)].filter(Boolean)
+
+    return [
+      { label: '능력 1 & 2', entries: firstPair },
+      { label: '능력 3 & 4', entries: secondPair },
+    ].filter((pair) => pair.entries.length > 0)
   }, [hero])
 
   const [viewMode, setViewMode] = useState(0)
@@ -325,7 +305,7 @@ export default function CharacterBasicView({ hero }) {
 
   const imageStyle = {
     ...styles.heroImage,
-    filter: viewMode === 0 ? 'none' : 'brightness(0.52)',
+    filter: viewMode === 0 ? 'none' : 'brightness(0.82)',
   }
 
   const clampIndex = useCallback((value) => {
@@ -455,7 +435,6 @@ export default function CharacterBasicView({ hero }) {
             handleTap()
           }
         }}
-        data-swipe-ignore="true"
       >
         <div style={styles.cornerIcon} aria-hidden="true">
           {Array.from({ length: 9 }).map((_, index) => (
@@ -478,25 +457,20 @@ export default function CharacterBasicView({ hero }) {
 
         {viewMode === 1 ? (
           <div style={styles.overlaySurface}>
-            <p style={styles.overlayTitle}>소개</p>
-            <p style={styles.overlayText}>{description}</p>
+            <p style={styles.overlayTextBlock}>{description}</p>
           </div>
         ) : null}
 
         {viewMode === 2 ? (
           <div style={styles.overlaySurface}>
-            <p style={styles.overlayTitle}>능력</p>
-            {abilityTexts.length ? (
-              <ul style={styles.abilityList}>
-                {abilityTexts.map((text, index) => (
-                  <li key={`ability-${index}`} style={styles.abilityItem}>
-                    <p style={styles.abilityLabel}>능력 {index + 1}</p>
-                    <p style={styles.overlayText}>{text}</p>
-                  </li>
-                ))}
-              </ul>
+            {abilityPairs.length ? (
+              abilityPairs.map((pair) => (
+                <p key={pair.label} style={styles.overlayTextBlock}>
+                  {`${pair.label}:\n${pair.entries.join('\n')}`}
+                </p>
+              ))
             ) : (
-              <p style={styles.overlayText}>등록된 능력이 없습니다.</p>
+              <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
             )}
           </div>
         ) : null}
