@@ -206,7 +206,9 @@ export default function FriendOverlay({
       onClose={onClose}
       title="친구 관리"
       width={420}
-      contentStyle={{ background: 'transparent', padding: 0 }}
+      contentStyle={{ padding: 0 }}
+      placement="bottom-right"
+      withBackdrop={false}
     >
       <div style={{ display: 'grid', gap: 16 }}>
         <section
