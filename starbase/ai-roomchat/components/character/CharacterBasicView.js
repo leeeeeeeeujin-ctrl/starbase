@@ -507,12 +507,20 @@ const styles = {
     borderRadius: "50%",
     background: "rgba(226,232,240,0.78)",
   },
-  overlayPanel: {
+  overlayContainer: {
     position: "fixed",
     left: "50%",
     bottom: 18,
     transform: "translateX(-50%)",
     width: "min(88vw, 720px)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 8,
+    zIndex: 60,
+  },
+  overlayPanel: {
+    width: "100%",
     display: "flex",
     flexDirection: "column",
     gap: 10,
@@ -522,6 +530,23 @@ const styles = {
     boxShadow: "0 28px 80px -54px rgba(15,23,42,0.95)",
     border: "1px solid rgba(96,165,250,0.3)",
     backdropFilter: "blur(12px)",
+  },
+  overlayToggleButton: {
+    alignSelf: "center",
+    width: 44,
+    height: 32,
+    borderRadius: 999,
+    border: "1px solid rgba(148,163,184,0.45)",
+    background: "rgba(15,23,42,0.72)",
+    color: "#e0f2fe",
+    fontSize: 16,
+    fontWeight: 700,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    outline: "none",
+    boxShadow: "0 16px 42px -38px rgba(14,165,233,0.9)",
   },
   overlayButtonsRow: {
     display: "flex",
@@ -1435,6 +1460,7 @@ export default function CharacterBasicView({ hero }) {
   const router = useRouter();
   const [currentHero, setCurrentHero] = useState(hero ?? null);
   const [bgmEnabled, setBgmEnabled] = useState(true);
+  const [overlayCollapsed, setOverlayCollapsed] = useState(false);
   const [bgmBarCollapsed, setBgmBarCollapsed] = useState(false);
   const [volume, setVolume] = useState(0.75);
   const [eqPreset, setEqPreset] = useState("flat");
@@ -2135,13 +2161,21 @@ export default function CharacterBasicView({ hero }) {
     [isMobile],
   );
 
+  const overlayContainerStyle = useMemo(() => {
+    const base = { ...styles.overlayContainer };
+    if (isMobile) {
+      base.bottom = 10;
+      base.width = "calc(100vw - 24px)";
+      base.gap = 6;
+    }
+    return base;
+  }, [isMobile]);
+
   const overlayPanelStyle = useMemo(() => {
     const base = { ...styles.overlayPanel };
     if (isMobile) {
-      base.width = "calc(100vw - 24px)";
       base.padding = "12px 14px 16px";
       base.gap = 8;
-      base.bottom = 10;
       base.borderRadius = 18;
     }
     return base;
@@ -2320,6 +2354,10 @@ export default function CharacterBasicView({ hero }) {
         .play()
         .catch((error) => console.warn("Failed to restart BGM", error));
     }
+  }, []);
+
+  const handleOverlayToggle = useCallback(() => {
+    setOverlayCollapsed((prev) => !prev);
   }, []);
 
   const handleToggleBgmBar = useCallback(() => {
@@ -3843,173 +3881,189 @@ export default function CharacterBasicView({ hero }) {
           </div>
         </div>
       </div>
-      <div style={overlayPanelStyle}>
-        <div style={styles.overlayButtonsRow}>
-          {dockItems.map((item) => {
-            if (item.type === "action") {
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  style={styles.overlayActionButton}
-                  onClick={() => handleDockAction(item.key)}
-                >
-                  {item.label}
-                </button>
-              );
-            }
+      <div style={overlayContainerStyle}>
+        <button
+          type="button"
+          style={styles.overlayToggleButton}
+          onClick={handleOverlayToggle}
+          aria-expanded={!overlayCollapsed}
+          aria-label={overlayCollapsed ? "하단 패널 펼치기" : "하단 패널 접기"}
+        >
+          {overlayCollapsed ? "▴" : "▾"}
+        </button>
 
-            return (
-              <button
-                key={item.key}
-                type="button"
-                style={styles.overlayButton(activeOverlay === item.key)}
-                onClick={() => handleOverlayButton(item.key)}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
+        {!overlayCollapsed ? (
+          <div style={overlayPanelStyle}>
+            <div style={styles.overlayButtonsRow}>
+              {dockItems.map((item) => {
+                if (item.type === "action") {
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      style={styles.overlayActionButton}
+                      onClick={() => handleDockAction(item.key)}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                }
 
-        {showBgmBar ? (
-          <div style={styles.bgmBar}>
-            <div style={styles.bgmMetaRow}>
-              <div style={styles.bgmMetaInfo}>
-                <p style={styles.bgmTrackTitle}>
-                  {hasActiveTrack ? activeBgm?.label || "브금" : "브금 없음"}
-                </p>
-                <div style={styles.bgmMetaSub}>
-                  {hasActiveTrack ? (
-                    <span style={styles.bgmMetaTimes}>
-                      {formattedCurrentTime} / {formattedDuration}
-                    </span>
-                  ) : (
-                    <span style={styles.bgmMetaTimes}>브금을 선택해 주세요</span>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                style={styles.bgmCollapseButton}
-                onClick={handleToggleBgmBar}
-                aria-expanded={!bgmBarCollapsed}
-                aria-label={bgmBarCollapsed ? "브금 컨트롤 펼치기" : "브금 컨트롤 접기"}
-              >
-                {bgmBarCollapsed ? "▾" : "▴"}
-              </button>
-            </div>
-            {!bgmBarCollapsed ? (
-              <>
-                <div style={styles.bgmControlsRow}>
-                  <div style={styles.bgmControlsGroup}>
-                    <button
-                      type="button"
-                      style={styles.bgmControlButton(
-                        isBgmPlaying && hasActiveTrack,
-                        !hasActiveTrack,
-                      )}
-                      onClick={handleBgmPlayPause}
-                      aria-label={isBgmPlaying ? "일시정지" : "재생"}
-                      disabled={!hasActiveTrack}
-                    >
-                      {isBgmPlaying ? "⏸" : "▶"}
-                    </button>
-                    <button
-                      type="button"
-                      style={styles.bgmControlButton(false, !hasActiveTrack)}
-                      onClick={handleBgmStop}
-                      aria-label="정지"
-                      disabled={!hasActiveTrack}
-                    >
-                      ⏹
-                    </button>
-                    <button
-                      type="button"
-                      style={styles.bgmControlButton(false, !hasActiveTrack)}
-                      onClick={handleBgmRestart}
-                      aria-label="처음부터 재생"
-                      disabled={!hasActiveTrack}
-                    >
-                      ↺
-                    </button>
-                  </div>
-                  <div style={styles.bgmQuickActions}>
-                    <button
-                      type="button"
-                      style={styles.bgmQuickButton}
-                      onClick={handleQuickBgmUploadClick}
-                    >
-                      📁 기기에서 불러오기
-                    </button>
-                    {heroBgmCount > 0 ? (
-                      <button
-                        type="button"
-                        style={styles.bgmQuickDanger}
-                        onClick={handleQuickBgmClear}
-                      >
-                        🗑 브금 삭제
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                <input
-                  ref={quickBgmInputRef}
-                  type="file"
-                  accept="audio/*"
-                  style={styles.hiddenInput}
-                  onChange={handleQuickBgmFileInput}
-                />
-                <div style={styles.bgmProgressRow}>
-                  <span style={styles.bgmTime}>{formattedCurrentTime}</span>
-                  <div
-                    ref={progressBarRef}
-                    style={styles.bgmProgressTrack}
-                    onMouseDown={handleProgressMouseDown}
-                    onTouchStart={handleProgressTouchStart}
-                    onKeyDown={handleProgressKeyDown}
-                    role="slider"
-                    tabIndex={hasActiveTrack ? 0 : -1}
-                    aria-label="브금 재생 위치"
-                    aria-valuemin={0}
-                    aria-valuemax={hasKnownDuration ? trackDuration : 1}
-                    aria-valuenow={
-                      hasKnownDuration
-                        ? Math.min(trackDuration, Math.max(0, trackTime))
-                        : 0
-                    }
-                    aria-valuetext={
-                      hasKnownDuration
-                        ? `${formattedCurrentTime} / ${formattedDuration}`
-                        : formattedCurrentTime
-                    }
-                    aria-disabled={!hasKnownDuration || !hasActiveTrack}
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    style={styles.overlayButton(activeOverlay === item.key)}
+                    onClick={() => handleOverlayButton(item.key)}
                   >
-                    <div
-                      style={{
-                        ...styles.bgmProgressFill,
-                        width: trackProgressPercent,
-                      }}
-                    />
-                    <div
-                      style={{
-                        ...styles.bgmProgressHandle,
-                        left: trackProgressPercent,
-                      }}
-                    />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {showBgmBar ? (
+              <div style={styles.bgmBar}>
+                <div style={styles.bgmMetaRow}>
+                  <div style={styles.bgmMetaInfo}>
+                    <p style={styles.bgmTrackTitle}>
+                      {hasActiveTrack ? activeBgm?.label || "브금" : "브금 없음"}
+                    </p>
+                    <div style={styles.bgmMetaSub}>
+                      {hasActiveTrack ? (
+                        <span style={styles.bgmMetaTimes}>
+                          {formattedCurrentTime} / {formattedDuration}
+                        </span>
+                      ) : (
+                        <span style={styles.bgmMetaTimes}>브금을 선택해 주세요</span>
+                      )}
+                    </div>
                   </div>
-                  <span style={styles.bgmTime}>{formattedDuration}</span>
+                  <button
+                    type="button"
+                    style={styles.bgmCollapseButton}
+                    onClick={handleToggleBgmBar}
+                    aria-expanded={!bgmBarCollapsed}
+                    aria-label={
+                      bgmBarCollapsed ? "브금 컨트롤 펼치기" : "브금 컨트롤 접기"
+                    }
+                  >
+                    {bgmBarCollapsed ? "▾" : "▴"}
+                  </button>
                 </div>
-              </>
+                {!bgmBarCollapsed ? (
+                  <>
+                    <div style={styles.bgmControlsRow}>
+                      <div style={styles.bgmControlsGroup}>
+                        <button
+                          type="button"
+                          style={styles.bgmControlButton(
+                            isBgmPlaying && hasActiveTrack,
+                            !hasActiveTrack,
+                          )}
+                          onClick={handleBgmPlayPause}
+                          aria-label={isBgmPlaying ? "일시정지" : "재생"}
+                          disabled={!hasActiveTrack}
+                        >
+                          {isBgmPlaying ? "⏸" : "▶"}
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.bgmControlButton(false, !hasActiveTrack)}
+                          onClick={handleBgmStop}
+                          aria-label="정지"
+                          disabled={!hasActiveTrack}
+                        >
+                          ⏹
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.bgmControlButton(false, !hasActiveTrack)}
+                          onClick={handleBgmRestart}
+                          aria-label="처음부터 재생"
+                          disabled={!hasActiveTrack}
+                        >
+                          ↺
+                        </button>
+                      </div>
+                      <div style={styles.bgmQuickActions}>
+                        <button
+                          type="button"
+                          style={styles.bgmQuickButton}
+                          onClick={handleQuickBgmUploadClick}
+                        >
+                          📁 기기에서 불러오기
+                        </button>
+                        {heroBgmCount > 0 ? (
+                          <button
+                            type="button"
+                            style={styles.bgmQuickDanger}
+                            onClick={handleQuickBgmClear}
+                          >
+                            🗑 브금 삭제
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <input
+                      ref={quickBgmInputRef}
+                      type="file"
+                      accept="audio/*"
+                      style={styles.hiddenInput}
+                      onChange={handleQuickBgmFileInput}
+                    />
+                    <div style={styles.bgmProgressRow}>
+                      <span style={styles.bgmTime}>{formattedCurrentTime}</span>
+                      <div
+                        ref={progressBarRef}
+                        style={styles.bgmProgressTrack}
+                        onMouseDown={handleProgressMouseDown}
+                        onTouchStart={handleProgressTouchStart}
+                        onKeyDown={handleProgressKeyDown}
+                        role="slider"
+                        tabIndex={hasActiveTrack ? 0 : -1}
+                        aria-label="브금 재생 위치"
+                        aria-valuemin={0}
+                        aria-valuemax={hasKnownDuration ? trackDuration : 1}
+                        aria-valuenow={
+                          hasKnownDuration
+                            ? Math.min(trackDuration, Math.max(0, trackTime))
+                            : 0
+                        }
+                        aria-valuetext={
+                          hasKnownDuration
+                            ? `${formattedCurrentTime} / ${formattedDuration}`
+                            : formattedCurrentTime
+                        }
+                        aria-disabled={!hasKnownDuration || !hasActiveTrack}
+                      >
+                        <div
+                          style={{
+                            ...styles.bgmProgressFill,
+                            width: trackProgressPercent,
+                          }}
+                        />
+                        <div
+                          style={{
+                            ...styles.bgmProgressHandle,
+                            left: trackProgressPercent,
+                          }}
+                        />
+                      </div>
+                      <span style={styles.bgmTime}>{formattedDuration}</span>
+                    </div>
+                  </>
+                ) : null}
+              </div>
             ) : null}
+
+            {overlayDescription ? (
+              <p style={styles.overlayCopy}>{overlayDescription}</p>
+            ) : null}
+
+            {overlayBody}
           </div>
         ) : null}
-
-        {overlayDescription ? (
-          <p style={styles.overlayCopy}>{overlayDescription}</p>
-        ) : null}
-
-        {overlayBody}
       </div>
     </>
   );
