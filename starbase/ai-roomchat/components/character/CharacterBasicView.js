@@ -457,6 +457,7 @@ export default function CharacterBasicView({ hero }) {
         role="button"
         tabIndex={0}
         style={styles.heroCard}
+        data-swipe-ignore="true"
         onClick={() => handleTap()}
         onKeyUp={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
