@@ -1,5 +1,11 @@
 export const ABILITY_KEYS = ['ability1', 'ability2', 'ability3', 'ability4']
 
+const MODE_LABELS = {
+  casual: '캐주얼',
+  ranked: '랭크',
+  practice: '연습',
+}
+
 export function buildAbilityCards(edit) {
   return ABILITY_KEYS.map((key, index) => ({
     key,
@@ -13,37 +19,28 @@ export function buildStatSlides(participations, scoreboards, heroId) {
 
   return participations.map((row) => {
     const board = scoreboards?.[row.game_id] || []
-    const sortedBoard = board.length ? [...board].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)) : []
-    const heroIndex = heroId ? sortedBoard.findIndex((item) => item.hero_id === heroId) : -1
+    const heroIndex = heroId ? board.findIndex((item) => item.hero_id === heroId) : -1
+    const slotText = row.slot_no != null ? `슬롯 ${row.slot_no}` : '미배정'
     const rankText = heroIndex >= 0 ? `#${heroIndex + 1}` : '—'
-    const ratingValue = row.rating ?? row.score
-    const ratingText =
-      typeof ratingValue === 'number' ? ratingValue.toLocaleString() : ratingValue || '—'
-    const totalBattles = row.battles ?? 0
-
-    let winRateText = '—'
-    if (row.win_rate != null) {
-      const rate = Math.round(row.win_rate)
-      winRateText = `${Math.max(0, Math.min(100, rate))}%`
-    } else if (totalBattles && typeof row.score === 'number') {
-      const computed = Math.round((row.score / totalBattles) * 100)
-      if (Number.isFinite(computed)) {
-        winRateText = `${Math.max(0, Math.min(100, computed))}%`
-      }
-    }
-
-    const battlesText = totalBattles ? totalBattles.toLocaleString() : '0'
+    const sessionValue = row.sessionCount ?? 0
+    const recentText = row.latestSessionAt || '기록 없음'
+    const modeKey = typeof row.primaryMode === 'string' ? row.primaryMode.toLowerCase() : ''
+    const modeText = MODE_LABELS[modeKey] || row.primaryMode || '기록 없음'
 
     return {
       key: row.game_id,
       name: row.game?.name || '이름 없는 게임',
-      image: row.game?.image_url || null,
-      role: row.role || '',
+      image: row.game?.cover_path || null,
+      role: slotText,
       stats: [
-        { key: 'rank', label: '전체 랭킹', value: rankText },
-        { key: 'rating', label: 'Elo Score', value: ratingText },
-        { key: 'winRate', label: '승률', value: winRateText },
-        { key: 'battles', label: '전체 전투수', value: battlesText },
+        { key: 'rank', label: '현재 순번', value: rankText },
+        {
+          key: 'sessions',
+          label: '플레이 세션',
+          value: sessionValue ? sessionValue.toLocaleString('ko-KR') : '0',
+        },
+        { key: 'recent', label: '최근 플레이', value: recentText },
+        { key: 'mode', label: '주요 모드', value: modeText },
       ],
     }
   })
@@ -72,11 +69,7 @@ export function createOpponentCards(scoreboardRows, heroLookup, heroId) {
   if (!Array.isArray(scoreboardRows)) return []
 
   return scoreboardRows
-    .filter((row) => {
-      if (heroId && row?.hero_id === heroId) return false
-      if (Array.isArray(row?.hero_ids) && heroId && row.hero_ids.includes(heroId)) return false
-      return true
-    })
+    .filter((row) => row?.hero_id && row.hero_id !== heroId)
     .map((row, index) => {
       const heroEntry = heroLookup?.[row.hero_id] || null
       const name = heroEntry?.name || row.role || `참가자 ${index + 1}`
@@ -85,8 +78,8 @@ export function createOpponentCards(scoreboardRows, heroLookup, heroId) {
         ? ABILITY_KEYS.map((key) => heroEntry[key]).filter(Boolean).slice(0, 2)
         : []
       return {
-        id: row.id || `${row.hero_id}-${row.owner_id || index}`,
-        heroId: row.hero_id || null,
+        id: row.id || `${row.hero_id}-${row.slot_no ?? index}`,
+        heroId: row.hero_id,
         role: row.role || '',
         name,
         portrait,

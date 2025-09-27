@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 import { buildStatSlides } from '../../utils/characterStats'
+import { formatKoreanDate } from '../../utils/dateFormatting'
 
 export default function useHeroParticipations({ hero }) {
   const [participations, setParticipations] = useState([])
@@ -28,87 +29,141 @@ export default function useHeroParticipations({ hero }) {
     setLoading(true)
 
     try {
-      const selectFields =
-        'id, game_id, owner_id, hero_id, hero_ids, role, score, rating, battles, win_rate, created_at, updated_at'
+      const { data: heroSlots, error: heroSlotsError } = await withTable(
+        supabase,
+        'game_slots',
+        (table) =>
+          supabase
+            .from(table)
+            .select('id, game_id, hero_id, slot_no')
+            .eq('hero_id', heroId),
+      )
 
-      const [{ data: soloRows, error: soloErr }, { data: packRows, error: packErr }] = await Promise.all([
-        withTable(supabase, 'rank_participants', (table) =>
-          supabase.from(table).select(selectFields).eq('hero_id', heroId)
+      if (heroSlotsError) {
+        console.warn('game_slots hero lookup failed:', heroSlotsError.message)
+      }
+
+      const filteredSlots = Array.isArray(heroSlots) ? heroSlots.filter((row) => row?.game_id) : []
+      const gameIds = Array.from(new Set(filteredSlots.map((row) => row.game_id)))
+
+      if (gameIds.length === 0) {
+        setParticipations([])
+        setGameDetails({})
+        setScoreboards({})
+        setHeroLookup(hero ? { [hero.id]: hero } : {})
+        setSelectedGameId(null)
+        return
+      }
+
+      const [allSlotsResult, gamesResult, sessionsResult] = await Promise.all([
+        withTable(supabase, 'game_slots', (table) =>
+          supabase
+            .from(table)
+            .select('id, game_id, hero_id, slot_no')
+            .in('game_id', gameIds),
         ),
-        withTable(supabase, 'rank_participants', (table) =>
-          supabase.from(table).select(selectFields).contains('hero_ids', [heroId])
+        withTable(supabase, 'games', (table) =>
+          supabase
+            .from(table)
+            .select('id, name, cover_path, description, owner_id, created_at')
+            .in('id', gameIds),
+        ),
+        withTable(supabase, 'game_sessions', (table) =>
+          supabase
+            .from(table)
+            .select('id, game_id, created_at, mode, started_by')
+            .in('game_id', gameIds)
+            .order('created_at', { ascending: false }),
         ),
       ])
 
-      if (soloErr) console.warn('rank_participants hero_id fetch failed:', soloErr.message)
-      if (packErr) console.warn('rank_participants hero_ids fetch failed:', packErr.message)
+      const { data: allSlots, error: allSlotsError } = allSlotsResult
+      if (allSlotsError) {
+        console.warn('game_slots peers lookup failed:', allSlotsError.message)
+      }
 
-      const combined = [...(soloRows || []), ...(packRows || [])]
-      const byGame = new Map()
-      combined.forEach((row) => {
-        if (!row?.game_id) return
-        const key = `${row.game_id}:${row.owner_id}`
-        if (!byGame.has(key)) {
-          byGame.set(key, row)
+      const { data: games, error: gamesError } = gamesResult
+      if (gamesError) {
+        console.warn('games lookup failed:', gamesError.message)
+      }
+
+      const { data: sessions, error: sessionsError } = sessionsResult
+      if (sessionsError) {
+        console.warn('game_sessions lookup failed:', sessionsError.message)
+      }
+
+      const gameMap = {}
+      ;(Array.isArray(games) ? games : []).forEach((game) => {
+        if (game?.id) {
+          gameMap[game.id] = {
+            ...game,
+            image_url: game.cover_path || game.image_url || null,
+          }
         }
       })
 
-      const rows = Array.from(byGame.values()).sort((a, b) => {
-        const left = new Date(a.updated_at || a.created_at || 0)
-        const right = new Date(b.updated_at || b.created_at || 0)
-        return right - left
-      })
-
-      const gameIds = Array.from(new Set(rows.map((row) => row.game_id).filter(Boolean)))
-
-      const [{ data: games, error: gameErr }, { data: boardRows, error: boardErr }] = await Promise.all([
-        gameIds.length
-          ? withTable(supabase, 'rank_games', (table) =>
-              supabase
-                .from(table)
-                .select('id, name, image_url, description, created_at')
-                .in('id', gameIds)
-            )
-          : { data: [], error: null },
-        gameIds.length
-          ? withTable(supabase, 'rank_participants', (table) =>
-              supabase
-                .from(table)
-                .select('id, game_id, owner_id, hero_id, hero_ids, role, rating, battles, score, updated_at')
-                .in('game_id', gameIds)
-            )
-          : { data: [], error: null },
-      ])
-
-      if (gameErr) console.warn('rank_games fetch failed:', gameErr.message)
-      if (boardErr) console.warn('scoreboard fetch failed:', boardErr.message)
-
-      const gameMap = {}
-      ;(games || []).forEach((game) => {
-        if (game?.id) gameMap[game.id] = game
+      const sessionsByGame = new Map()
+      ;(Array.isArray(sessions) ? sessions : []).forEach((session) => {
+        if (!session?.game_id) return
+        if (!sessionsByGame.has(session.game_id)) {
+          sessionsByGame.set(session.game_id, [])
+        }
+        sessionsByGame.get(session.game_id).push(session)
       })
 
       const scoreboardMap = {}
-      ;(boardRows || []).forEach((row) => {
-        if (!row?.game_id) return
-        if (!scoreboardMap[row.game_id]) scoreboardMap[row.game_id] = []
-        scoreboardMap[row.game_id].push(row)
+      const heroIds = new Set(heroId ? [heroId] : [])
+
+      ;(Array.isArray(allSlots) ? allSlots : []).forEach((slot) => {
+        if (!slot?.game_id) return
+        if (!scoreboardMap[slot.game_id]) {
+          scoreboardMap[slot.game_id] = []
+        }
+        scoreboardMap[slot.game_id].push({
+          id: slot.id,
+          game_id: slot.game_id,
+          hero_id: slot.hero_id,
+          slot_no: slot.slot_no,
+          role: slot.slot_no != null ? `슬롯 ${slot.slot_no}` : '',
+          rating: slot.slot_no != null ? slot.slot_no + 1 : null,
+          battles: (sessionsByGame.get(slot.game_id) || []).length || null,
+        })
+        if (slot.hero_id) {
+          heroIds.add(slot.hero_id)
+        }
       })
 
-      setParticipations(rows.map((row) => ({ ...row, game: gameMap[row.game_id] || null })))
+      const participationRows = filteredSlots.map((slot) => {
+        const sessionList = sessionsByGame.get(slot.game_id) || []
+        const sessionCount = sessionList.length
+        const latestSession = sessionList[0]?.created_at || null
+        const oldestSession = sessionList.length ? sessionList[sessionList.length - 1]?.created_at : null
+        const modeFrequency = sessionList.reduce((acc, session) => {
+          const modeKey = session?.mode || '기록 없음'
+          acc[modeKey] = (acc[modeKey] || 0) + 1
+          return acc
+        }, {})
+        const primaryMode = Object.keys(modeFrequency).sort(
+          (left, right) => (modeFrequency[right] || 0) - (modeFrequency[left] || 0),
+        )[0]
+
+        return {
+          id: slot.id,
+          game_id: slot.game_id,
+          hero_id: slot.hero_id,
+          slot_no: slot.slot_no,
+          role: slot.slot_no != null ? `슬롯 ${slot.slot_no}` : '',
+          sessionCount,
+          latestSessionAt: latestSession ? formatKoreanDate(latestSession) : null,
+          firstSessionAt: oldestSession ? formatKoreanDate(oldestSession) : null,
+          primaryMode: primaryMode || null,
+          game: gameMap[slot.game_id] || null,
+        }
+      })
+
+      setParticipations(participationRows)
       setGameDetails(gameMap)
       setScoreboards(scoreboardMap)
-
-      const heroIds = new Set()
-      Object.values(scoreboardMap).forEach((list) => {
-        list.forEach((row) => {
-          if (row?.hero_id) heroIds.add(row.hero_id)
-          if (Array.isArray(row?.hero_ids)) {
-            row.hero_ids.forEach((value) => heroIds.add(value))
-          }
-        })
-      })
-      if (heroId) heroIds.add(heroId)
 
       const { data: heroRows, error: heroErr } = heroIds.size
         ? await withTable(supabase, 'heroes', (table) =>
@@ -119,10 +174,10 @@ export default function useHeroParticipations({ hero }) {
           )
         : { data: [], error: null }
 
-      if (heroErr) console.warn('heroes lookup fetch failed:', heroErr.message)
+      if (heroErr) console.warn('heroes lookup failed:', heroErr.message)
 
       const lookup = {}
-      ;(heroRows || []).forEach((row) => {
+      ;(Array.isArray(heroRows) ? heroRows : []).forEach((row) => {
         if (row?.id) lookup[row.id] = row
       })
       if (hero?.id) {
@@ -139,10 +194,10 @@ export default function useHeroParticipations({ hero }) {
       setHeroLookup(lookup)
 
       setSelectedGameId((current) => {
-        if (current && rows.some((row) => row.game_id === current)) {
+        if (current && participationRows.some((row) => row.game_id === current)) {
           return current
         }
-        return rows[0]?.game_id || null
+        return participationRows[0]?.game_id || null
       })
     } catch (error) {
       console.error('Failed to load hero participations:', error)
@@ -163,7 +218,11 @@ export default function useHeroParticipations({ hero }) {
   const selectedScoreboard = useMemo(() => {
     if (!selectedGameId) return []
     const rows = scoreboards[selectedGameId] || []
-    return [...rows].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    return [...rows].sort((a, b) => {
+      const left = a.slot_no ?? Number.MAX_SAFE_INTEGER
+      const right = b.slot_no ?? Number.MAX_SAFE_INTEGER
+      return left - right
+    })
   }, [scoreboards, selectedGameId])
 
   const selectedGame = useMemo(() => {
@@ -173,7 +232,10 @@ export default function useHeroParticipations({ hero }) {
     return gameDetails[selectedGameId] || null
   }, [gameDetails, participations, selectedGameId])
 
-  const statSlides = useMemo(() => buildStatSlides(participations, scoreboards, heroId), [participations, scoreboards, heroId])
+  const statSlides = useMemo(
+    () => buildStatSlides(participations, scoreboards, heroId),
+    [participations, scoreboards, heroId],
+  )
 
   return {
     loading,
