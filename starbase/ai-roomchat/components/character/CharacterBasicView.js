@@ -34,10 +34,10 @@ const pageStyles = {
 }
 
 const overlayTabs = [
-  { key: 'search', label: '게임 검색', description: '빠르게 즐길 방을 찾을 수 있는 기능이 준비되고 있어요.' },
-  { key: 'ranking', label: '랭킹', description: '랭킹과 시즌 기록이 곧 추가됩니다.' },
-  { key: 'settings', label: '설정', description: '환경 설정과 맞춤 기능을 곧 만나볼 수 있어요.' },
-  { key: 'friends', label: '친구', description: '친구와 길드를 관리할 수 있는 메뉴가 준비 중이에요.' },
+  { key: 'character', label: '캐릭터' },
+  { key: 'search', label: '방 검색' },
+  { key: 'ranking', label: '랭킹' },
+  { key: 'settings', label: '설정' },
 ]
 
 const styles = {
@@ -48,14 +48,6 @@ const styles = {
     flexDirection: 'column',
     alignItems: 'center',
     gap: 24,
-  },
-  topMessage: {
-    margin: 0,
-    fontSize: 15,
-    fontWeight: 600,
-    color: 'rgba(190, 227, 248, 0.9)',
-    textAlign: 'center',
-    letterSpacing: 0.2,
   },
   heroCardShell: {
     width: '100%',
@@ -72,6 +64,7 @@ const styles = {
     background: 'rgba(15,23,42,0.62)',
     boxShadow: '0 46px 120px -60px rgba(37,99,235,0.4)',
     cursor: 'pointer',
+    outline: 'none',
   },
   heroImage: {
     position: 'absolute',
@@ -163,28 +156,47 @@ const styles = {
   },
   dock: {
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 560,
     borderRadius: 36,
-    padding: '32px 26px 28px',
+    padding: '32px 26px 32px',
     boxSizing: 'border-box',
-    background: 'rgba(15,23,42,0.75)',
+    background: 'rgba(15,23,42,0.82)',
     border: '1px solid rgba(96,165,250,0.28)',
     boxShadow: '0 44px 120px -70px rgba(37,99,235,0.55)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 22,
+    gap: 24,
+  },
+  dockHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  battleButton: {
+    appearance: 'none',
+    border: 'none',
+    borderRadius: 18,
+    padding: '12px 20px',
+    fontSize: 14,
+    fontWeight: 800,
+    letterSpacing: 0.6,
+    background: 'linear-gradient(135deg, #f97316 0%, #facc15 100%)',
+    color: '#0f172a',
+    cursor: 'pointer',
+    boxShadow: '0 18px 42px -24px rgba(250,204,21,0.7)',
   },
   dockTabs: {
     display: 'flex',
-    justifyContent: 'center',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   dockTabButton: (active) => ({
     appearance: 'none',
     border: 'none',
     borderRadius: 999,
-    padding: '10px 18px',
+    padding: '9px 16px',
     fontSize: 13,
     fontWeight: 700,
     letterSpacing: 0.4,
@@ -193,54 +205,227 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.24s ease',
   }),
-  dockViewport: {
+  tabContent: {
     width: '100%',
-    overflow: 'hidden',
-  },
-  dockTrack: (index) => ({
-    display: 'flex',
-    width: `${overlayTabs.length * 100}%`,
-    transform: `translateX(-${index * (100 / overlayTabs.length)}%)`,
-    transition: 'transform 0.45s ease',
-  }),
-  dockSlide: {
-    flex: `0 0 ${100 / overlayTabs.length}%`,
-    width: `${100 / overlayTabs.length}%`,
-    padding: '4px 4px 0',
-    boxSizing: 'border-box',
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
+    gap: 24,
+  },
+  infoBlock: {
+    background: 'rgba(15,23,42,0.62)',
+    borderRadius: 24,
+    padding: '20px 22px',
+    border: '1px solid rgba(94, 234, 212, 0.2)',
+    display: 'flex',
+    flexDirection: 'column',
     gap: 12,
   },
-  dockSlideTitle: {
+  infoTitle: {
     margin: 0,
-    fontSize: 18,
-    fontWeight: 800,
-    letterSpacing: '-0.02em',
-    color: '#e2e8f0',
-    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#bae6fd',
   },
-  dockSlideCopy: {
+  infoText: {
     margin: 0,
     fontSize: 14,
     lineHeight: 1.7,
-    color: '#cbd5f5',
-    textAlign: 'center',
-    maxWidth: 360,
+    color: '#e2e8f0',
+    whiteSpace: 'pre-line',
   },
-  dockPagination: {
+  buttonRow: {
     display: 'flex',
-    gap: 8,
-    justifyContent: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
   },
-  paginationDot: (active) => ({
-    width: active ? 14 : 8,
+  ghostButton: {
+    appearance: 'none',
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.45)',
+    color: '#e2e8f0',
+    borderRadius: 16,
+    padding: '10px 18px',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  playerShell: {
+    background: 'rgba(8,47,73,0.68)',
+    borderRadius: 22,
+    padding: '16px 18px',
+    border: '1px solid rgba(56,189,248,0.32)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+  },
+  playerHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  collapseButton: {
+    appearance: 'none',
+    border: 'none',
+    background: 'rgba(15,23,42,0.65)',
+    color: '#bae6fd',
+    borderRadius: 14,
+    width: 32,
+    height: 32,
+    cursor: 'pointer',
+    fontSize: 16,
+    fontWeight: 700,
+  },
+  progressBar: {
+    position: 'relative',
+    flex: 1,
     height: 8,
     borderRadius: 999,
-    background: active ? '#38bdf8' : 'rgba(148,163,184,0.45)',
-    transition: 'all 0.25s ease',
+    background: 'rgba(148,163,184,0.35)',
+    overflow: 'hidden',
+    cursor: 'pointer',
+  },
+  progressFill: (ratio) => ({
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: `${Math.min(Math.max(ratio * 100, 0), 100)}%`,
+    background: 'linear-gradient(135deg, #38bdf8 0%, #22d3ee 100%)',
   }),
+  playerControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  playerButton: {
+    appearance: 'none',
+    border: 'none',
+    borderRadius: 999,
+    padding: '8px 16px',
+    background: 'rgba(15,23,42,0.68)',
+    color: '#e2e8f0',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  sliderRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  sliderLabel: {
+    fontSize: 13,
+    color: '#cbd5f5',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rangeInput: {
+    width: '100%',
+  },
+  advancedPanel: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 20,
+    marginTop: 8,
+  },
+  eqColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+  },
+  eqSlider: {
+    writingMode: 'bt-lr',
+    WebkitAppearance: 'slider-vertical',
+    height: 120,
+  },
+  searchGrid: {
+    display: 'grid',
+    gap: 16,
+  },
+  searchActions: {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  searchButton: {
+    appearance: 'none',
+    border: 'none',
+    borderRadius: 16,
+    padding: '10px 16px',
+    background: 'rgba(59,130,246,0.3)',
+    color: '#e0f2fe',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  searchInput: {
+    width: '100%',
+    padding: '12px 16px',
+    borderRadius: 16,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.6)',
+    color: '#e2e8f0',
+    fontSize: 14,
+  },
+  listItem: {
+    padding: '12px 16px',
+    borderRadius: 16,
+    background: 'rgba(30,41,59,0.76)',
+    border: '1px solid rgba(71,85,105,0.6)',
+  },
+  listTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#e2e8f0',
+  },
+  listMeta: {
+    margin: '6px 0 0',
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.85)',
+  },
+  rankingList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  settingsForm: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  formRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  textField: {
+    width: '100%',
+    padding: '10px 14px',
+    borderRadius: 14,
+    border: '1px solid rgba(148,163,184,0.4)',
+    background: 'rgba(15,23,42,0.6)',
+    color: '#e2e8f0',
+    fontSize: 14,
+  },
+  textareaField: {
+    width: '100%',
+    minHeight: 120,
+    padding: '12px 14px',
+    borderRadius: 14,
+    border: '1px solid rgba(148,163,184,0.4)',
+    background: 'rgba(15,23,42,0.6)',
+    color: '#e2e8f0',
+    fontSize: 14,
+  },
+  formActions: {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
 }
 
 export default function CharacterBasicView({ hero }) {
@@ -273,56 +458,680 @@ export default function CharacterBasicView({ hero }) {
 
   const [viewMode, setViewMode] = useState(0)
   const [activeTab, setActiveTab] = useState(0)
+  const [bgmEnabled, setBgmEnabled] = useState(Boolean(hero?.bgm_url))
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [repeatEnabled, setRepeatEnabled] = useState(true)
+  const [playerCollapsed, setPlayerCollapsed] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [selectedBgmName, setSelectedBgmName] = useState('')
+  const [customBgmUrl, setCustomBgmUrl] = useState(null)
+  const [bassBoost, setBassBoost] = useState(0)
+  const [trebleBoost, setTrebleBoost] = useState(0)
+  const [clarityBoost, setClarityBoost] = useState(0)
+  const [advancedMixing, setAdvancedMixing] = useState(false)
+  const [eqBands, setEqBands] = useState([0, 0, 0, 0, 0])
+  const [reverbDetail, setReverbDetail] = useState({ roomSize: 35, damping: 40 })
+  const [compressorDetail, setCompressorDetail] = useState({ threshold: -24, release: 250 })
+  const [isEditing, setIsEditing] = useState(false)
+  const [draftHero, setDraftHero] = useState(null)
+  const [searchTerm, setSearchTerm] = useState('')
+
+  const fileInputRef = useRef(null)
+  const audioRef = useRef(null)
+  const repeatEnabledRef = useRef(repeatEnabled)
+  const previousCustomUrl = useRef(null)
 
   useEffect(() => {
     setViewMode(0)
     setActiveTab(0)
+    setBgmEnabled(Boolean(hero?.bgm_url))
+    setIsPlaying(false)
+    setRepeatEnabled(true)
+    setPlayerCollapsed(false)
+    setProgress(0)
+    setDuration(0)
+    setSelectedBgmName('')
+    setCustomBgmUrl(null)
+    setBassBoost(0)
+    setTrebleBoost(0)
+    setClarityBoost(0)
+    setAdvancedMixing(false)
+    setEqBands([0, 0, 0, 0, 0])
+    setReverbDetail({ roomSize: 35, damping: 40 })
+    setCompressorDetail({ threshold: -24, release: 250 })
+    setIsEditing(false)
+    setDraftHero(
+      hero
+        ? {
+            name: hero.name || '',
+            description: hero.description || '',
+            ability1: hero.ability1 || '',
+            ability2: hero.ability2 || '',
+            ability3: hero.ability3 || '',
+            ability4: hero.ability4 || '',
+            background: hero.background_url || '',
+            bgm: hero.bgm_url || '',
+          }
+        : null,
+    )
+    setSearchTerm('')
   }, [hero?.id])
 
-  const audioRef = useRef(null)
   useEffect(() => {
-    if (!hero?.bgm_url) {
+    repeatEnabledRef.current = repeatEnabled
+    if (audioRef.current) {
+      audioRef.current.loop = repeatEnabled
+    }
+  }, [repeatEnabled])
+
+  useEffect(() => {
+    if (previousCustomUrl.current && previousCustomUrl.current !== customBgmUrl) {
+      URL.revokeObjectURL(previousCustomUrl.current)
+    }
+    previousCustomUrl.current = customBgmUrl
+    return () => {
+      if (previousCustomUrl.current) {
+        URL.revokeObjectURL(previousCustomUrl.current)
+      }
+    }
+  }, [customBgmUrl])
+
+  const activeBgmUrl = customBgmUrl || hero?.bgm_url || null
+
+  useEffect(() => {
+    if (!activeBgmUrl || !bgmEnabled) {
       if (audioRef.current) {
         audioRef.current.pause()
         audioRef.current.currentTime = 0
         audioRef.current = null
       }
+      setIsPlaying(false)
+      setProgress(0)
+      setDuration(0)
       return
     }
 
-    const audio = new Audio(hero.bgm_url)
-    audio.loop = true
+    const audio = new Audio(activeBgmUrl)
+    audio.loop = repeatEnabledRef.current
     audioRef.current = audio
 
-    const tryPlay = async () => {
-      try {
-        await audio.play()
-      } catch (error) {
-        console.warn('Failed to autoplay character BGM', error)
+    const handleLoaded = () => {
+      const metaDuration = Number.isFinite(audio.duration) ? audio.duration : 0
+      setDuration(metaDuration)
+    }
+
+    const handleTime = () => {
+      setProgress(audio.currentTime)
+    }
+
+    const handleEnded = () => {
+      setProgress(audio.duration || 0)
+      if (!repeatEnabledRef.current) {
+        setIsPlaying(false)
       }
     }
 
-    tryPlay()
+    audio.addEventListener('loadedmetadata', handleLoaded)
+    audio.addEventListener('timeupdate', handleTime)
+    audio.addEventListener('ended', handleEnded)
+
+    const startPlayback = async () => {
+      try {
+        await audio.play()
+        setIsPlaying(true)
+      } catch (error) {
+        setIsPlaying(false)
+      }
+    }
+
+    startPlayback()
 
     return () => {
       audio.pause()
       audio.currentTime = 0
-      audioRef.current = null
+      audio.removeEventListener('loadedmetadata', handleLoaded)
+      audio.removeEventListener('timeupdate', handleTime)
+      audio.removeEventListener('ended', handleEnded)
+      if (audioRef.current === audio) {
+        audioRef.current = null
+      }
     }
-  }, [hero?.bgm_url])
+  }, [activeBgmUrl, bgmEnabled])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    if (isPlaying) {
+      audio.play().catch(() => {
+        setIsPlaying(false)
+      })
+    } else {
+      audio.pause()
+    }
+  }, [isPlaying])
 
   const backgroundStyle = hero?.background_url
     ? pageStyles.withBackground(hero.background_url)
     : pageStyles.base
 
+  const overlayModes = useMemo(() => {
+    const modes = ['name', 'description']
+    if (!abilityPairs.length) {
+      modes.push('ability-empty')
+    } else {
+      abilityPairs.forEach((_, index) => {
+        modes.push(`ability-${index}`)
+      })
+    }
+    return modes
+  }, [abilityPairs])
+
+  const currentOverlayMode = overlayModes[viewMode] || 'name'
+
   const imageStyle = {
     ...styles.heroImage,
-    filter: viewMode === 0 ? 'none' : 'brightness(0.82)',
+    filter: currentOverlayMode === 'name' ? 'none' : 'brightness(0.72)',
   }
 
   const handleTap = () => {
-    setViewMode((prev) => (prev + 1) % 3)
+    if (!overlayModes.length) return
+    setViewMode((prev) => (prev + 1) % overlayModes.length)
   }
+
+  const formatTime = (value) => {
+    if (!value || Number.isNaN(value)) return '0:00'
+    const minutes = Math.floor(value / 60)
+    const seconds = Math.floor(value % 60)
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+
+  const handleSeek = (event) => {
+    if (!duration) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const ratio = (event.clientX - rect.left) / rect.width
+    const clamped = Math.min(Math.max(ratio, 0), 1)
+    const audio = audioRef.current
+    if (audio) {
+      const nextTime = clamped * duration
+      audio.currentTime = nextTime
+      setProgress(nextTime)
+    }
+  }
+
+  const togglePlayback = () => {
+    if (!activeBgmUrl) return
+    setIsPlaying((prev) => !prev)
+  }
+
+  const stopPlayback = () => {
+    const audio = audioRef.current
+    if (audio) {
+      audio.pause()
+      audio.currentTime = 0
+    }
+    setProgress(0)
+    setIsPlaying(false)
+  }
+
+  const handleBgmToggle = () => {
+    setBgmEnabled((prev) => !prev)
+  }
+
+  const handleRepeatToggle = () => {
+    setRepeatEnabled((prev) => !prev)
+  }
+
+  const handleBgmFileButton = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
+    }
+  }
+
+  const handleBgmFileChange = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const nextUrl = URL.createObjectURL(file)
+    setCustomBgmUrl(nextUrl)
+    setSelectedBgmName(file.name)
+    setBgmEnabled(true)
+    setProgress(0)
+    setDuration(0)
+    setIsPlaying(true)
+    // reset input so same file can be chosen again
+    // eslint-disable-next-line no-param-reassign
+    event.target.value = ''
+  }
+
+  const handleDraftChange = (field, value) => {
+    setDraftHero((prev) =>
+      prev
+        ? {
+            ...prev,
+            [field]: value,
+          }
+        : prev,
+    )
+  }
+
+  const resetDraftToHero = () => {
+    setDraftHero(
+      hero
+        ? {
+            name: hero.name || '',
+            description: hero.description || '',
+            ability1: hero.ability1 || '',
+            ability2: hero.ability2 || '',
+            ability3: hero.ability3 || '',
+            ability4: hero.ability4 || '',
+            background: hero.background_url || '',
+            bgm: hero.bgm_url || '',
+          }
+        : null,
+    )
+  }
+
+  const handleSaveDraft = () => {
+    setIsEditing(false)
+  }
+
+  const handleCancelEdit = () => {
+    resetDraftToHero()
+    setIsEditing(false)
+  }
+
+  const sampleGames = useMemo(
+    () => [
+      { id: 'g-1', title: '시간의 미궁', tags: ['추리', '협동'], players: 6, likes: 128 },
+      { id: 'g-2', title: '하늘섬 레이드', tags: ['레이드', '전략'], players: 8, likes: 256 },
+      { id: 'g-3', title: '은하 결투장', tags: ['PvP', '실시간'], players: 10, likes: 92 },
+      { id: 'g-4', title: '꿈의 정원', tags: ['힐링', '건설'], players: 4, likes: 64 },
+    ],
+    [],
+  )
+
+  const filteredGames = useMemo(() => {
+    if (!searchTerm.trim()) return sampleGames
+    const term = searchTerm.trim().toLowerCase()
+    return sampleGames.filter((game) => {
+      const target = `${game.title} ${game.tags.join(' ')}`.toLowerCase()
+      return target.includes(term)
+    })
+  }, [sampleGames, searchTerm])
+
+  const rankingEntries = useMemo(
+    () => [
+      { id: 'r-1', name: '아크메이지', score: 9820 },
+      { id: 'r-2', name: '용맹한 기사', score: 9350 },
+      { id: 'r-3', name: '그림자 추적자', score: 8890 },
+      { id: 'r-4', name: '별빛 수호자', score: 8520 },
+    ],
+    [],
+  )
+
+  const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
+  const progressRatio = duration ? progress / duration : 0
+  const eqLabels = ['32Hz', '125Hz', '500Hz', '2kHz', '8kHz']
+
+  const overlayBody = (() => {
+    if (activeTabKey === 'search') {
+      return (
+        <div style={styles.tabContent}>
+          <div style={styles.infoBlock}>
+            <p style={styles.infoTitle}>방 검색</p>
+            <input
+              style={styles.searchInput}
+              placeholder="찾고 싶은 게임 이름이나 태그를 입력해 보세요."
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+            <div style={styles.searchActions}>
+              <button type="button" style={styles.searchButton}>
+                게임 제작
+              </button>
+              <button type="button" style={styles.searchButton}>
+                게임 등록
+              </button>
+            </div>
+          </div>
+          <div style={styles.searchGrid}>
+            {filteredGames.map((game) => (
+              <div key={game.id} style={styles.listItem}>
+                <p style={styles.listTitle}>{game.title}</p>
+                <p style={styles.listMeta}>{`${game.players}인 · 좋아요 ${game.likes}개`}</p>
+                <p style={styles.listMeta}>{game.tags.join(' / ')}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    if (activeTabKey === 'ranking') {
+      return (
+        <div style={styles.tabContent}>
+          <div style={styles.infoBlock}>
+            <p style={styles.infoTitle}>시즌 랭킹</p>
+            <div style={styles.rankingList}>
+              {rankingEntries.map((entry, index) => (
+                <div key={entry.id} style={styles.listItem}>
+                  <p style={styles.listTitle}>{`${index + 1}위 · ${entry.name}`}</p>
+                  <p style={styles.listMeta}>{`점수 ${entry.score.toLocaleString()}점`}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    if (activeTabKey === 'settings') {
+      return (
+        <div style={styles.tabContent}>
+          <div style={styles.infoBlock}>
+            <p style={styles.infoTitle}>브금 제어</p>
+            <div style={styles.buttonRow}>
+              <button type="button" style={styles.ghostButton} onClick={handleBgmToggle}>
+                {bgmEnabled ? '브금 끄기' : '브금 켜기'}
+              </button>
+              <button type="button" style={styles.ghostButton} onClick={handleRepeatToggle}>
+                {repeatEnabled ? '반복 해제' : '반복 재생'}
+              </button>
+              <button type="button" style={styles.ghostButton} onClick={handleBgmFileButton}>
+                브금 교체·저장
+              </button>
+            </div>
+            {selectedBgmName ? (
+              <p style={styles.listMeta}>{`선택한 파일: ${selectedBgmName}`}</p>
+            ) : null}
+            <div style={styles.sliderRow}>
+              <label style={styles.sliderLabel}>
+                저음 버퍼
+                <span>{bassBoost}</span>
+              </label>
+              <input
+                type="range"
+                min={-12}
+                max={12}
+                value={bassBoost}
+                onChange={(event) => setBassBoost(Number(event.target.value))}
+                style={styles.rangeInput}
+              />
+            </div>
+            <div style={styles.sliderRow}>
+              <label style={styles.sliderLabel}>
+                고음 버퍼
+                <span>{trebleBoost}</span>
+              </label>
+              <input
+                type="range"
+                min={-12}
+                max={12}
+                value={trebleBoost}
+                onChange={(event) => setTrebleBoost(Number(event.target.value))}
+                style={styles.rangeInput}
+              />
+            </div>
+            <div style={styles.sliderRow}>
+              <label style={styles.sliderLabel}>
+                선명도 증가
+                <span>{clarityBoost}</span>
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={clarityBoost}
+                onChange={(event) => setClarityBoost(Number(event.target.value))}
+                style={styles.rangeInput}
+              />
+            </div>
+            <button
+              type="button"
+              style={{ ...styles.ghostButton, marginTop: 12 }}
+              onClick={() => setAdvancedMixing((prev) => !prev)}
+            >
+              {advancedMixing ? '세부 믹싱 닫기' : '세부 믹싱 열기'}
+            </button>
+
+            {advancedMixing ? (
+              <div style={styles.advancedPanel}>
+                <div style={styles.eqColumn}>
+                  <p style={styles.listMeta}>이퀄라이저</p>
+                  <div style={{ display: 'flex', gap: 14 }}>
+                    {eqBands.map((band, index) => (
+                      <label key={eqLabels[index]} style={styles.eqColumn}>
+                        <input
+                          type="range"
+                          min={-12}
+                          max={12}
+                          value={band}
+                          onChange={(event) => {
+                            const next = [...eqBands]
+                            next[index] = Number(event.target.value)
+                            setEqBands(next)
+                          }}
+                          style={styles.eqSlider}
+                        />
+                        <span style={styles.listMeta}>{eqLabels[index]}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div style={styles.eqColumn}>
+                  <p style={styles.listMeta}>리버브 옵션</p>
+                  <label style={styles.sliderLabel}>
+                    잔향 길이
+                    <span>{reverbDetail.roomSize}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={reverbDetail.roomSize}
+                    onChange={(event) =>
+                      setReverbDetail((prev) => ({ ...prev, roomSize: Number(event.target.value) }))
+                    }
+                    style={styles.rangeInput}
+                  />
+                  <label style={styles.sliderLabel}>
+                    감쇠
+                    <span>{reverbDetail.damping}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={reverbDetail.damping}
+                    onChange={(event) =>
+                      setReverbDetail((prev) => ({ ...prev, damping: Number(event.target.value) }))
+                    }
+                    style={styles.rangeInput}
+                  />
+                </div>
+                <div style={styles.eqColumn}>
+                  <p style={styles.listMeta}>컴프레서 옵션</p>
+                  <label style={styles.sliderLabel}>
+                    임계값 (dB)
+                    <span>{compressorDetail.threshold}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={-60}
+                    max={0}
+                    value={compressorDetail.threshold}
+                    onChange={(event) =>
+                      setCompressorDetail((prev) => ({ ...prev, threshold: Number(event.target.value) }))
+                    }
+                    style={styles.rangeInput}
+                  />
+                  <label style={styles.sliderLabel}>
+                    릴리즈 (ms)
+                    <span>{compressorDetail.release}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={10}
+                    max={1000}
+                    value={compressorDetail.release}
+                    onChange={(event) =>
+                      setCompressorDetail((prev) => ({ ...prev, release: Number(event.target.value) }))
+                    }
+                    style={styles.rangeInput}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div style={styles.infoBlock}>
+            <p style={styles.infoTitle}>캐릭터 편집</p>
+            <div style={styles.buttonRow}>
+              <button type="button" style={styles.ghostButton} onClick={() => setIsEditing(true)}>
+                편집 시작
+              </button>
+              <button type="button" style={styles.ghostButton}>
+                캐릭터 삭제
+              </button>
+            </div>
+            {isEditing && draftHero ? (
+              <form
+                style={styles.settingsForm}
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  handleSaveDraft()
+                }}
+              >
+                <div style={styles.formRow}>
+                  <label style={styles.sliderLabel}>
+                    이름
+                  </label>
+                  <input
+                    style={styles.textField}
+                    value={draftHero.name}
+                    onChange={(event) => handleDraftChange('name', event.target.value)}
+                  />
+                </div>
+                <div style={styles.formRow}>
+                  <label style={styles.sliderLabel}>설명</label>
+                  <textarea
+                    style={styles.textareaField}
+                    value={draftHero.description}
+                    onChange={(event) => handleDraftChange('description', event.target.value)}
+                  />
+                </div>
+                {['ability1', 'ability2', 'ability3', 'ability4'].map((field, index) => (
+                  <div key={field} style={styles.formRow}>
+                    <label style={styles.sliderLabel}>{`능력 ${index + 1}`}</label>
+                    <textarea
+                      style={styles.textareaField}
+                      value={draftHero[field]}
+                      onChange={(event) => handleDraftChange(field, event.target.value)}
+                    />
+                  </div>
+                ))}
+                <div style={styles.formRow}>
+                  <label style={styles.sliderLabel}>배경 이미지 URL</label>
+                  <input
+                    style={styles.textField}
+                    value={draftHero.background}
+                    onChange={(event) => handleDraftChange('background', event.target.value)}
+                  />
+                </div>
+                <div style={styles.formRow}>
+                  <label style={styles.sliderLabel}>브금 URL</label>
+                  <input
+                    style={styles.textField}
+                    value={draftHero.bgm}
+                    onChange={(event) => handleDraftChange('bgm', event.target.value)}
+                  />
+                </div>
+                <div style={styles.formActions}>
+                  <button type="submit" style={styles.searchButton}>
+                    저장
+                  </button>
+                  <button type="button" style={styles.searchButton} onClick={handleCancelEdit}>
+                    취소
+                  </button>
+                </div>
+              </form>
+            ) : null}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div style={styles.tabContent}>
+        <div style={styles.infoBlock}>
+          <p style={styles.infoTitle}>{heroName}</p>
+          <p style={styles.infoText}>{description}</p>
+          {abilityPairs.map((pair) => (
+            <div key={pair.label}>
+              <p style={{ ...styles.infoTitle, marginTop: 12 }}>{pair.label}</p>
+              <p style={styles.infoText}>{pair.entries.join('\n')}</p>
+            </div>
+          ))}
+          {!abilityPairs.length ? (
+            <p style={styles.listMeta}>등록된 능력이 없습니다.</p>
+          ) : null}
+        </div>
+
+        {bgmEnabled && activeBgmUrl ? (
+          <div style={styles.playerShell}>
+            <div style={styles.playerHeader}>
+              <button
+                type="button"
+                style={styles.collapseButton}
+                onClick={() => setPlayerCollapsed((prev) => !prev)}
+                aria-label={playerCollapsed ? '재생바 펼치기' : '재생바 접기'}
+              >
+                {playerCollapsed ? '▶' : '◀'}
+              </button>
+              {!playerCollapsed ? (
+                <>
+                  <div
+                    style={styles.progressBar}
+                    role="presentation"
+                    onClick={handleSeek}
+                  >
+                    <div style={styles.progressFill(progressRatio)} />
+                  </div>
+                  <span style={styles.listMeta}>
+                    {formatTime(progress)} / {formatTime(duration)}
+                  </span>
+                </>
+              ) : null}
+            </div>
+
+            {!playerCollapsed ? (
+              <div style={styles.playerControls}>
+                <button type="button" style={styles.playerButton} onClick={togglePlayback}>
+                  {isPlaying ? '일시정지' : '재생'}
+                </button>
+                <button type="button" style={styles.playerButton} onClick={stopPlayback}>
+                  처음으로
+                </button>
+                <button type="button" style={styles.playerButton} onClick={handleRepeatToggle}>
+                  {repeatEnabled ? '반복 켜짐' : '반복 끔'}
+                </button>
+                <button type="button" style={styles.playerButton} onClick={handleBgmFileButton}>
+                  브금 교체·저장
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div style={styles.infoBlock}>
+            <p style={styles.infoTitle}>브금이 비활성화되었습니다.</p>
+            <p style={styles.listMeta}>설정 탭에서 브금을 켜고 파일을 선택해 보세요.</p>
+          </div>
+        )}
+      </div>
+    )
+  })()
 
   const heroSlide = (
     <div style={styles.heroCardShell}>
@@ -351,29 +1160,38 @@ export default function CharacterBasicView({ hero }) {
           <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
         )}
 
-        {viewMode === 0 ? (
+        {currentOverlayMode === 'name' ? (
           <div style={styles.heroNameOverlay}>
             <p style={styles.heroNameBadge}>{heroName}</p>
           </div>
         ) : null}
 
-        {viewMode === 1 ? (
+        {currentOverlayMode === 'description' ? (
           <div style={styles.overlaySurface}>
             <p style={styles.overlayTextBlock}>{description}</p>
           </div>
         ) : null}
 
-        {viewMode === 2 ? (
+        {currentOverlayMode.startsWith('ability-') ? (
           <div style={styles.overlaySurface}>
-            {abilityPairs.length ? (
-              abilityPairs.map((pair) => (
+            {(() => {
+              const index = Number.parseInt(currentOverlayMode.split('-')[1] || '0', 10)
+              const pair = abilityPairs[index]
+              if (!pair) {
+                return <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
+              }
+              return (
                 <p key={pair.label} style={styles.overlayTextBlock}>
                   {`${pair.label}:\n${pair.entries.join('\n')}`}
                 </p>
-              ))
-            ) : (
-              <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
-            )}
+              )
+            })()}
+          </div>
+        ) : null}
+
+        {currentOverlayMode === 'ability-empty' ? (
+          <div style={styles.overlaySurface}>
+            <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
           </div>
         ) : null}
 
@@ -387,41 +1205,39 @@ export default function CharacterBasicView({ hero }) {
   return (
     <div style={backgroundStyle}>
       <div style={styles.stage}>
-        <p style={styles.topMessage}>하단 오버레이를 좌우로 넘기며 다른 메뉴를 살펴보세요.</p>
-
         {heroSlide}
 
         <div style={styles.dock}>
-          <div style={styles.dockTabs}>
-            {overlayTabs.map((tab, index) => (
-              <button
-                key={tab.key}
-                type="button"
-                style={styles.dockTabButton(index === activeTab)}
-                onClick={() => setActiveTab(index)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={styles.dockViewport}>
-            <div style={styles.dockTrack(activeTab)}>
-              {overlayTabs.map((tab) => (
-                <div key={tab.key} style={styles.dockSlide}>
-                  <p style={styles.dockSlideTitle}>{tab.label}</p>
-                  <p style={styles.dockSlideCopy}>{tab.description}</p>
-                </div>
+          <div style={styles.dockHeader}>
+            <div style={styles.dockTabs}>
+              {overlayTabs.map((tab, index) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  style={styles.dockTabButton(index === activeTab)}
+                  onClick={() => setActiveTab(index)}
+                >
+                  {tab.label}
+                </button>
               ))}
             </div>
+            {activeTabKey === 'character' ? (
+              <button type="button" style={styles.battleButton}>
+                전투 시작
+              </button>
+            ) : null}
           </div>
 
-          <div style={styles.dockPagination} aria-hidden="true">
-            {overlayTabs.map((tab, index) => (
-              <span key={tab.key} style={styles.paginationDot(index === activeTab)} />
-            ))}
-          </div>
+          {overlayBody}
         </div>
+
+        <input
+          type="file"
+          accept="audio/*"
+          ref={fileInputRef}
+          style={{ display: 'none' }}
+          onChange={handleBgmFileChange}
+        />
       </div>
     </div>
   )
