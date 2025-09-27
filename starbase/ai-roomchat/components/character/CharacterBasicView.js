@@ -35,17 +35,27 @@ const pageStyles = {
 
 const slideConfigs = [
   { key: 'character', label: '캐릭터' },
-  { key: 'ranking', label: '랭킹', description: '랭킹 기능이 준비되는 대로 이곳에서 확인할 수 있어요.' },
-  { key: 'search', label: '게임 검색', description: '게임 검색과 추천이 곧 추가됩니다.' },
-  { key: 'friends', label: '친구', description: '친구와 길드를 관리할 수 있는 메뉴가 준비 중이에요.' },
-  { key: 'guild', label: '길드', description: '길드 관리 기능이 곧 찾아옵니다.' },
-  { key: 'settings', label: '설정', description: '환경 설정과 맞춤 기능이 준비되고 있어요.' },
+  {
+    key: 'ranking',
+    label: '랭킹',
+    description: '팀과 개인 랭킹이 준비되는 대로 이곳에서 확인할 수 있어요.',
+  },
+  {
+    key: 'search',
+    label: '게임 찾기',
+    description: '빠른 매칭과 커스텀 방 탐색 기능이 곧 추가됩니다.',
+  },
+  {
+    key: 'settings',
+    label: '설정',
+    description: '환경 설정과 맞춤 기능이 준비되고 있어요.',
+  },
 ]
 
 const styles = {
   stage: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 960,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -76,12 +86,55 @@ const styles = {
     width: `${100 / slideConfigs.length}%`,
     display: 'flex',
     justifyContent: 'center',
+    alignItems: 'stretch',
     padding: '32px 14px 46px',
     boxSizing: 'border-box',
   },
-  heroCardShell: {
+  heroSlideLayout: {
     width: '100%',
-    maxWidth: 520,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 22,
+    justifyContent: 'center',
+    alignItems: 'stretch',
+  },
+  edgePanel: {
+    flex: '1 1 160px',
+    minWidth: 160,
+    padding: '26px 22px',
+    borderRadius: 28,
+    background:
+      'linear-gradient(135deg, rgba(30,64,175,0.28) 0%, rgba(15,23,42,0.72) 48%, rgba(30,41,59,0.92) 100%)',
+    border: '1px solid rgba(96,165,250,0.22)',
+    boxShadow: 'inset 0 0 0 1px rgba(148,163,184,0.08)',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    gap: 14,
+    color: '#e2e8f0',
+  },
+  edgePanelStack: {
+    flex: '1 1 160px',
+    minWidth: 160,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 22,
+  },
+  edgePanelTitle: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: '-0.02em',
+  },
+  edgePanelCopy: {
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: 'rgba(226,232,240,0.82)',
+  },
+  heroCardShell: {
+    flex: '0 1 520px',
+    minWidth: 280,
     position: 'relative',
   },
   heroCard: {
@@ -452,60 +505,93 @@ export default function CharacterBasicView({ hero }) {
   )
 
   const heroSlide = (
-    <div style={styles.heroCardShell}>
-      <div
-        role="button"
-        tabIndex={0}
-        style={styles.heroCard}
-        data-swipe-ignore="true"
-        onClick={() => handleTap()}
-        onKeyUp={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            handleTap({ skipSwipeCheck: true })
-          }
-        }}
-      >
-        <div style={styles.cornerIcon} aria-hidden="true">
-          {Array.from({ length: 9 }).map((_, index) => (
-            <span key={`dot-${index}`} style={styles.cornerDot} />
-          ))}
+    <div style={styles.heroSlideLayout}>
+      <div style={styles.edgePanel}>
+        <div>
+          <p style={styles.edgePanelTitle}>랭킹</p>
+          <p style={styles.edgePanelCopy}>
+            시즌별 팀 랭킹과 개인 순위를 준비 중이에요.
+          </p>
         </div>
+        <p style={styles.edgePanelCopy}>곧 전투 통계도 제공할 예정입니다.</p>
+      </div>
 
-        {hero?.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={hero.image_url} alt={heroName} style={imageStyle} />
-        ) : (
-          <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
-        )}
-
-        {viewMode === 0 ? (
-          <div style={styles.heroNameOverlay}>
-            <p style={styles.heroNameBadge}>{heroName}</p>
+      <div style={styles.heroCardShell}>
+        <div
+          role="button"
+          tabIndex={0}
+          style={styles.heroCard}
+          data-swipe-ignore="true"
+          onClick={() => handleTap()}
+          onKeyUp={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              handleTap({ skipSwipeCheck: true })
+            }
+          }}
+        >
+          <div style={styles.cornerIcon} aria-hidden="true">
+            {Array.from({ length: 9 }).map((_, index) => (
+              <span key={`dot-${index}`} style={styles.cornerDot} />
+            ))}
           </div>
-        ) : null}
 
-        {viewMode === 1 ? (
-          <div style={styles.overlaySurface}>
-            <p style={styles.overlayTextBlock}>{description}</p>
+          {hero?.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={hero.image_url} alt={heroName} style={imageStyle} />
+          ) : (
+            <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
+          )}
+
+          {viewMode === 0 ? (
+            <div style={styles.heroNameOverlay}>
+              <p style={styles.heroNameBadge}>{heroName}</p>
+            </div>
+          ) : null}
+
+          {viewMode === 1 ? (
+            <div style={styles.overlaySurface}>
+              <p style={styles.overlayTextBlock}>{description}</p>
+            </div>
+          ) : null}
+
+          {viewMode === 2 ? (
+            <div style={styles.overlaySurface}>
+              {abilityPairs.length ? (
+                abilityPairs.map((pair) => (
+                  <p key={pair.label} style={styles.overlayTextBlock}>
+                    {`${pair.label}:\n${pair.entries.join('\n')}`}
+                  </p>
+                ))
+              ) : (
+                <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
+              )}
+            </div>
+          ) : null}
+
+          <div style={styles.tapHint} aria-hidden="true">
+            탭해서 정보 보기
           </div>
-        ) : null}
+        </div>
+      </div>
 
-        {viewMode === 2 ? (
-          <div style={styles.overlaySurface}>
-            {abilityPairs.length ? (
-              abilityPairs.map((pair) => (
-                <p key={pair.label} style={styles.overlayTextBlock}>
-                  {`${pair.label}:\n${pair.entries.join('\n')}`}
-                </p>
-              ))
-            ) : (
-              <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
-            )}
+      <div style={styles.edgePanelStack}>
+        <div style={styles.edgePanel}>
+          <div>
+            <p style={styles.edgePanelTitle}>게임 찾기</p>
+            <p style={styles.edgePanelCopy}>
+              빠른 매칭과 추천 큐가 추가되면 이곳에서 바로 시작할 수 있어요.
+            </p>
           </div>
-        ) : null}
-
-        <div style={styles.tapHint} aria-hidden="true">
-          탭해서 정보 보기
+          <p style={styles.edgePanelCopy}>커스텀 방 검색도 지원될 예정입니다.</p>
+        </div>
+        <div style={styles.edgePanel}>
+          <div>
+            <p style={styles.edgePanelTitle}>설정</p>
+            <p style={styles.edgePanelCopy}>
+              사운드, 그래픽, 단축키 등을 한자리에서 조정할 수 있도록 준비하고 있어요.
+            </p>
+          </div>
+          <p style={styles.edgePanelCopy}>접근성 옵션도 함께 제공될 예정입니다.</p>
         </div>
       </div>
     </div>
@@ -519,7 +605,7 @@ export default function CharacterBasicView({ hero }) {
   return (
     <div style={backgroundStyle}>
       <div style={styles.stage}>
-        <p style={styles.topMessage}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기를 오갈 수 있어요.</p>
+        <p style={styles.topMessage}>좌우로 밀어 캐릭터, 랭킹, 게임 찾기, 설정 공간을 오갈 수 있어요.</p>
 
         <div
           role="region"
