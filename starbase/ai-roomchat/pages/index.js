@@ -2,43 +2,17 @@ import React, { useEffect } from 'react'
 import { useRouter } from 'next/router'
 
 import AuthButton from '../components/AuthButton'
-import { supabase } from '../lib/supabase'
+import { useAuth } from '../modules/auth'
 
 export default function Home() {
   const router = useRouter()
+  const { status, user } = useAuth()
 
   useEffect(() => {
-    let cancelled = false
-
-    async function ensureSession() {
-      try {
-        const { data } = await supabase.auth.getSession()
-        if (cancelled) return
-        if (data?.session?.user) {
-          router.replace('/roster')
-        }
-      } catch (error) {
-        console.error('Failed to resolve auth session on landing:', error)
-      }
+    if (status === 'ready' && user) {
+      router.replace('/roster')
     }
-
-    ensureSession()
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (cancelled) return
-      if (session?.user) {
-        router.replace('/roster')
-      }
-      if (event === 'SIGNED_OUT') {
-        router.replace('/')
-      }
-    })
-
-    return () => {
-      cancelled = true
-      subscription?.subscription?.unsubscribe?.()
-    }
-  }, [router])
+  }, [router, status, user])
 
   return (
     <main

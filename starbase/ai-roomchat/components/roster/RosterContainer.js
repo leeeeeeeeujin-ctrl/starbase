@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/router'
 
-import { useRoster } from '../../hooks/roster/useRoster'
+import { useRoster } from '../../modules/roster/useRoster'
 import RosterView from './RosterView'
 
 export default function RosterContainer() {
