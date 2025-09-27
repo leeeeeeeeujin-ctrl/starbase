@@ -2,14 +2,14 @@ import React, { useEffect } from 'react'
 import { useRouter } from 'next/router'
 
 import AuthButton from '../components/AuthButton'
-import { useAuth } from '../modules/auth'
+import { AUTH_STATUS, useAuth } from '../modules/auth'
 
 export default function Home() {
   const router = useRouter()
   const { status, user } = useAuth()
 
   useEffect(() => {
-    if (status === 'ready' && user) {
+    if (status === AUTH_STATUS.READY && user) {
       router.replace('/roster')
     }
   }, [router, status, user])

@@ -10,7 +10,7 @@ import {
   persistRosterOwner,
   pruneMissingHeroSelection,
 } from '../../utils/browserStorage'
-import { DEFAULT_PROFILE, useAuth } from '../auth'
+import { AUTH_STATUS, DEFAULT_PROFILE, useAuth } from '../auth'
 
 const DEFAULT_ERROR_MESSAGE = '로스터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'
 
@@ -93,13 +93,13 @@ export function useRoster({ onUnauthorized } = {}) {
   }, [authProfile, user, userId])
 
   useEffect(() => {
-    if (authStatus === 'ready' && userId) {
+    if (authStatus === AUTH_STATUS.READY && userId) {
       loadHeroes()
     }
   }, [authStatus, userId, loadHeroes])
 
   useEffect(() => {
-    if (authStatus === 'signed-out') {
+    if (authStatus === AUTH_STATUS.SIGNED_OUT) {
       dispatch({ type: ACTIONS.RESET })
       persistRosterOwner(null)
       clearSelectedHero()
@@ -110,7 +110,7 @@ export function useRoster({ onUnauthorized } = {}) {
   }, [authStatus, onUnauthorized])
 
   useEffect(() => {
-    if (authStatus === 'error') {
+    if (authStatus === AUTH_STATUS.ERROR) {
       dispatch({ type: ACTIONS.ERROR, error: authError?.message || DEFAULT_ERROR_MESSAGE })
     }
   }, [authStatus, authError])
@@ -127,7 +127,7 @@ export function useRoster({ onUnauthorized } = {}) {
   }, [])
 
   const reload = useCallback(async () => {
-    if (authStatus === 'error') {
+    if (authStatus === AUTH_STATUS.ERROR) {
       try {
         await retry()
       } catch (error) {
@@ -139,16 +139,16 @@ export function useRoster({ onUnauthorized } = {}) {
 
   const loading = useMemo(
     () =>
-      authStatus === 'idle' ||
-      authStatus === 'loading' ||
+      authStatus === AUTH_STATUS.IDLE ||
+      authStatus === AUTH_STATUS.LOADING ||
       state.status === ACTIONS.LOADING ||
-      (state.status === ACTIONS.RESET && authStatus !== 'signed-out'),
+      (state.status === ACTIONS.RESET && authStatus !== AUTH_STATUS.SIGNED_OUT),
     [authStatus, state.status],
   )
 
   const errorMessage = useMemo(() => {
     if (state.error) return state.error
-    if (authStatus === 'error') {
+    if (authStatus === AUTH_STATUS.ERROR) {
       return authError?.message || DEFAULT_ERROR_MESSAGE
     }
     return ''
