@@ -11,22 +11,6 @@ export default function HeroCard({ hero, onSelect }) {
     return name || '이름 없는 영웅'
   }, [hero])
 
-  const createdAtText = useMemo(() => {
-    if (!hero?.created_at) return '생성일 정보 없음'
-    try {
-      const date = new Date(hero.created_at)
-      if (Number.isNaN(date.getTime())) return '생성일 정보 없음'
-      return `${new Intl.DateTimeFormat('ko-KR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      }).format(date)} 생성`
-    } catch (error) {
-      console.error('Failed to format hero created_at', error)
-      return '생성일 정보 없음'
-    }
-  }, [hero?.created_at])
-
   const handleClick = () => {
     if (typeof onSelect === 'function') {
       onSelect(hero)
@@ -53,17 +37,15 @@ export default function HeroCard({ hero, onSelect }) {
       onTouchEnd={() => setActive(false)}
     >
       <div style={styles.heroButtonContent}>
-        <div style={styles.heroImageWrap}>
-          {hero?.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={hero.image_url} alt={heroName} style={styles.heroImage} />
-          ) : (
-            <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
-          )}
-        </div>
-        <div style={styles.heroMetaColumn}>
+        {hero?.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={hero.image_url} alt={heroName} style={styles.heroImage} />
+        ) : (
+          <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
+        )}
+
+        <div style={styles.heroNameOverlay}>
           <p style={styles.heroName}>{heroName}</p>
-          <p style={styles.heroCreatedAt}>{createdAtText}</p>
         </div>
       </div>
     </button>

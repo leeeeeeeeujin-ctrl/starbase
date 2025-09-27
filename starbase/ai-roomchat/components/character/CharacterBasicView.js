@@ -142,11 +142,6 @@ const styles = {
     fontWeight: 800,
     letterSpacing: '-0.02em',
   },
-  heroMeta: {
-    margin: 0,
-    fontSize: 13,
-    color: '#cbd5f5',
-  },
   descriptionOverlay: {
     position: 'absolute',
     inset: '12% 10% 18%',
@@ -219,30 +214,12 @@ const styles = {
   },
 }
 
-function formatCreatedAt(value) {
-  if (!value) return '생성일 정보 없음'
-  try {
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return '생성일 정보 없음'
-    return `${new Intl.DateTimeFormat('ko-KR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    }).format(date)} 생성`
-  } catch (error) {
-    console.error('Failed to format created_at', error)
-    return '생성일 정보 없음'
-  }
-}
-
 export default function CharacterBasicView({ hero }) {
   const heroName = useMemo(() => {
     if (!hero) return DEFAULT_HERO_NAME
     const trimmed = typeof hero.name === 'string' ? hero.name.trim() : ''
     return trimmed || DEFAULT_HERO_NAME
   }, [hero])
-
-  const createdAtText = useMemo(() => formatCreatedAt(hero?.created_at), [hero?.created_at])
 
   const description = useMemo(() => {
     if (!hero) return DEFAULT_DESCRIPTION
@@ -377,7 +354,6 @@ export default function CharacterBasicView({ hero }) {
 
                       <div style={styles.infoOverlay}>
                         <p style={styles.heroName}>{heroName}</p>
-                        <p style={styles.heroMeta}>{createdAtText}</p>
                       </div>
 
                       {mode === 1 ? (
