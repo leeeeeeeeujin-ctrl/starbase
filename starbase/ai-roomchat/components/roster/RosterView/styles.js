@@ -13,7 +13,7 @@ const styles = {
   },
   wrapper: {
     width: '100%',
-    maxWidth: 960,
+    maxWidth: 480,
     display: 'flex',
     flexDirection: 'column',
     gap: 24,
@@ -46,9 +46,9 @@ const styles = {
   notice: {
     borderRadius: 24,
     border: '1px solid rgba(148,163,184,0.25)',
-    background: 'rgba(15,23,42,0.68)',
-    boxShadow: '0 32px 80px -60px rgba(56,189,248,0.45)',
-    padding: '24px 20px',
+    background: 'linear-gradient(135deg, rgba(15,23,42,0.85) 0%, rgba(2,6,23,0.92) 100%)',
+    boxShadow: '0 32px 88px -60px rgba(56,189,248,0.45)',
+    padding: '24px 22px',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
@@ -75,8 +75,8 @@ const styles = {
   heroSection: {
     borderRadius: 24,
     border: '1px solid rgba(51,65,85,0.6)',
-    background: 'rgba(2,6,23,0.72)',
-    padding: '20px 16px 24px',
+    background: 'rgba(2,6,23,0.78)',
+    padding: '20px 18px 26px',
     display: 'flex',
     flexDirection: 'column',
     gap: 20,
@@ -101,7 +101,7 @@ const styles = {
   },
   heroGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
     gap: 16,
   },
   heroButton: {
@@ -154,12 +154,13 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    padding: '12px 14px',
-    background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.88) 100%)',
+    padding: '14px 16px',
+    background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.92) 100%)',
     fontSize: 15,
     fontWeight: 700,
     color: '#f8fafc',
     textShadow: '0 4px 18px rgba(2,6,23,0.75)',
+    textAlign: 'left',
   },
   createCard: {
     border: '1px dashed rgba(148,163,184,0.5)',

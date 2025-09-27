@@ -4,7 +4,7 @@ import { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/router'
 
 import CharacterBasicView from '@/components/character/CharacterBasicView'
-import { useCharacterProfile } from '@/hooks/character/useCharacterProfile'
+import { useCharacterDetail } from '@/hooks/character/useCharacterDetail'
 
 function FullScreenState({ title, message, actionLabel, onAction }) {
   return (
@@ -56,12 +56,16 @@ export default function CharacterDetailPage() {
   }, [id])
 
   const { loading, error, unauthorized, missingHero, hero, appearances, reload } =
-    useCharacterProfile(heroId)
+    useCharacterDetail(heroId)
+
+  useEffect(() => {
+    if (!router.isReady) return
+    router.prefetch('/roster').catch(() => {})
+  }, [router])
 
   useEffect(() => {
     if (!hero?.id) return
     if (typeof window === 'undefined') return
-
     try {
       window.localStorage.setItem('selectedHeroId', hero.id)
       if (hero.owner_id) {
@@ -71,11 +75,6 @@ export default function CharacterDetailPage() {
       console.error('Failed to persist selected hero metadata:', storageError)
     }
   }, [hero?.id, hero?.owner_id])
-
-  useEffect(() => {
-    if (!router.isReady) return
-    router.prefetch('/roster').catch(() => {})
-  }, [router])
 
   if (loading) {
     return <FullScreenState title="캐릭터 정보를 불러오는 중" message="잠시만 기다려 주세요." />
