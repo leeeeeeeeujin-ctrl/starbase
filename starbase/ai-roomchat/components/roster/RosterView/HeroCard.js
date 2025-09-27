@@ -15,7 +15,17 @@ function formatDate(value) {
   })
 }
 
+const FALLBACK_HERO_NAME = '이름 없는 영웅'
+
+function getHeroName(hero) {
+  if (!hero) return FALLBACK_HERO_NAME
+  const name = typeof hero.name === 'string' ? hero.name.trim() : ''
+  return name || FALLBACK_HERO_NAME
+}
+
 export default function HeroCard({ hero, onDelete }) {
+  const heroName = getHeroName(hero)
+
   const handleNavigate = () => {
     if (!hero?.id) return
     persistSelectedHero(hero.id, hero.owner_id)
@@ -33,7 +43,7 @@ export default function HeroCard({ hero, onDelete }) {
           }}
           onMouseDown={(event) => event.stopPropagation()}
           style={styles.heroDeleteButton}
-          aria-label={`${hero.name} 삭제`}
+          aria-label={`${heroName} 삭제`}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 6h2v8h-2V9Zm4 0h2v8h-2V9Z" fill="currentColor" />
@@ -41,12 +51,12 @@ export default function HeroCard({ hero, onDelete }) {
         </button>
         {hero.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={hero.image_url} alt={hero.name} style={styles.heroImage} />
+          <img src={hero.image_url} alt={heroName} style={styles.heroImage} />
         ) : (
-          <div style={styles.heroImageFallback}>{hero.name?.slice(0, 2) ?? '??'}</div>
+          <div style={styles.heroImageFallback}>{heroName.slice(0, 2)}</div>
         )}
         <div style={styles.heroCardFooter}>
-          <div style={styles.heroName}>{hero.name}</div>
+          <div style={styles.heroName}>{heroName}</div>
           <span style={styles.heroCreatedAt}>{formatDate(hero.created_at)}</span>
         </div>
       </div>
