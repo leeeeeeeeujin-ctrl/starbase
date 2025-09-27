@@ -51,7 +51,6 @@ export default function HeroCard({ hero, onSelect }) {
 
         <div style={styles.heroNameOverlay}>
           <p style={styles.heroName}>{heroName}</p>
-          <p style={styles.heroCaption}>탭하여 캐릭터 화면으로 이동</p>
         </div>
       </div>
     </button>
