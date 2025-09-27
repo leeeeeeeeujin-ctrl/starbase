@@ -1,36 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
-import { deriveProfileFromUser, EMPTY_PROFILE } from '../../features/auth/profile'
+import { AUTH_STATUS_VALUES, EMPTY_PROFILE, useAuth } from '../../features/auth'
 import { deleteHeroById, fetchHeroesForOwner } from '../../services/heroes'
-import { supabase } from '../../lib/supabase'
 import { readStorage, removeStorage, writeStorage } from '../../utils/browserStorage'
 
 const HERO_STORAGE_KEY = 'selectedHeroId'
 const OWNER_STORAGE_KEY = 'selectedHeroOwnerId'
-
-async function exchangeAuthCodeIfPresent() {
-  if (typeof window === 'undefined') return
-
-  const currentUrl = new URL(window.location.href)
-  const authCode = currentUrl.searchParams.get('code')
-  if (!authCode) return
-
-  try {
-    const result = await supabase.auth.exchangeCodeForSession({ authCode })
-    if (result?.error) {
-      throw result.error
-    }
-  } finally {
-    currentUrl.searchParams.delete('code')
-    currentUrl.searchParams.delete('state')
-    const query = currentUrl.searchParams.toString()
-    const cleaned = `${currentUrl.pathname}${query ? `?${query}` : ''}${currentUrl.hash}`
-    window.history.replaceState({}, document.title, cleaned)
-  }
-}
 
 function formatAuthError(error) {
   if (!error) return '로스터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'
@@ -51,11 +29,15 @@ export function useRoster({ onUnauthorized } = {}) {
   const router = useRouter()
   const mountedRef = useRef(true)
   const unauthorizedRef = useRef(false)
+  const latestRequestRef = useRef(0)
+  const silentReloadRef = useRef(false)
+
+  const { status: authStatus, user, profile, error: authError, refresh } = useAuth()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [heroes, setHeroes] = useState([])
-  const [profile, setProfile] = useState(EMPTY_PROFILE)
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     mountedRef.current = true
@@ -64,12 +46,21 @@ export function useRoster({ onUnauthorized } = {}) {
     }
   }, [])
 
+  const displayProfile = useMemo(() => {
+    return {
+      displayName: profile?.displayName ?? EMPTY_PROFILE.displayName,
+      avatarUrl: profile?.avatarUrl ?? null,
+    }
+  }, [profile])
+
   const handleUnauthorized = useCallback(() => {
     if (unauthorizedRef.current) return
     unauthorizedRef.current = true
-    setProfile(EMPTY_PROFILE)
+    silentReloadRef.current = false
     setHeroes([])
     setLoading(false)
+    removeStorage(HERO_STORAGE_KEY)
+    removeStorage(OWNER_STORAGE_KEY)
     if (typeof onUnauthorized === 'function') {
       onUnauthorized()
     } else {
@@ -77,47 +68,11 @@ export function useRoster({ onUnauthorized } = {}) {
     }
   }, [onUnauthorized, router])
 
-  const loadRoster = useCallback(
-    async ({ silent } = {}) => {
-      if (!mountedRef.current) return
-
-      if (!silent) {
-        setLoading(true)
-      }
-      setError('')
-
+  const runFetch = useCallback(
+    async (ownerId, requestId) => {
       try {
-        await exchangeAuthCodeIfPresent()
-
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-        if (sessionError) {
-          throw sessionError
-        }
-
-        let user = sessionData?.session?.user ?? null
-
-        if (!user) {
-          const { data: userData, error: userError } = await supabase.auth.getUser()
-          if (userError) {
-            throw userError
-          }
-          user = userData?.user ?? null
-        }
-
-        if (!user) {
-          handleUnauthorized()
-          return
-        }
-
-        unauthorizedRef.current = false
-        const derivedProfile = deriveProfileFromUser(user)
-        if (mountedRef.current) {
-          setProfile(derivedProfile)
-          writeStorage(OWNER_STORAGE_KEY, user.id)
-        }
-
-        const data = await fetchHeroesForOwner(user.id)
-        if (!mountedRef.current) return
+        const data = await fetchHeroesForOwner(ownerId)
+        if (!mountedRef.current || latestRequestRef.current !== requestId) return
 
         setHeroes(data)
 
@@ -128,8 +83,8 @@ export function useRoster({ onUnauthorized } = {}) {
 
         setLoading(false)
       } catch (caughtError) {
+        if (!mountedRef.current || latestRequestRef.current !== requestId) return
         console.error('Failed to load roster:', caughtError)
-        if (!mountedRef.current) return
 
         if (caughtError?.status === 401 || caughtError?.status === 403) {
           handleUnauthorized()
@@ -144,32 +99,93 @@ export function useRoster({ onUnauthorized } = {}) {
   )
 
   useEffect(() => {
-    loadRoster()
-  }, [loadRoster])
+    if (!mountedRef.current) return undefined
 
-  const deleteHero = useCallback(
-    async (heroId) => {
-      await deleteHeroById(heroId)
-      if (!mountedRef.current) return
-
-      setHeroes((previous) => previous.filter((hero) => hero.id !== heroId))
-
-      const storedHeroId = readStorage(HERO_STORAGE_KEY)
-      if (storedHeroId && storedHeroId === heroId) {
-        removeStorage(HERO_STORAGE_KEY)
+    if (authStatus === AUTH_STATUS_VALUES.LOADING) {
+      if (!silentReloadRef.current) {
+        setLoading(true)
       }
+      return undefined
+    }
+
+    if (authStatus === AUTH_STATUS_VALUES.ERROR) {
+      silentReloadRef.current = false
+      setHeroes([])
+      setLoading(false)
+      if (authError) {
+        setError(formatAuthError(authError))
+      }
+      return undefined
+    }
+
+    if (authStatus !== AUTH_STATUS_VALUES.READY) {
+      return undefined
+    }
+
+    if (!user?.id) {
+      silentReloadRef.current = false
+      handleUnauthorized()
+      return undefined
+    }
+
+    unauthorizedRef.current = false
+    writeStorage(OWNER_STORAGE_KEY, user.id)
+
+    const requestId = Date.now()
+    latestRequestRef.current = requestId
+
+    setError('')
+    if (silentReloadRef.current) {
+      silentReloadRef.current = false
+    } else {
+      setLoading(true)
+    }
+
+    runFetch(user.id, requestId)
+
+    return () => {
+      if (latestRequestRef.current === requestId) {
+        latestRequestRef.current = 0
+      }
+    }
+  }, [authStatus, authError, user, reloadToken, handleUnauthorized, runFetch])
+
+  const reload = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) {
+        setLoading(true)
+      } else {
+        silentReloadRef.current = true
+      }
+      setError('')
+      if (authStatus === AUTH_STATUS_VALUES.ERROR) {
+        await refresh()
+      }
+      setReloadToken((token) => token + 1)
     },
-    [],
+    [authStatus, refresh],
   )
+
+  const deleteHero = useCallback(async (heroId) => {
+    await deleteHeroById(heroId)
+    if (!mountedRef.current) return
+
+    setHeroes((previous) => previous.filter((hero) => hero.id !== heroId))
+
+    const storedHeroId = readStorage(HERO_STORAGE_KEY)
+    if (storedHeroId && storedHeroId === heroId) {
+      removeStorage(HERO_STORAGE_KEY)
+    }
+  }, [])
 
   return {
     loading,
     error,
     heroes,
-    displayName: profile.displayName,
-    avatarUrl: profile.avatarUrl,
+    displayName: displayProfile.displayName,
+    avatarUrl: displayProfile.avatarUrl,
     setError,
     deleteHero,
-    reload: loadRoster,
+    reload,
   }
 }

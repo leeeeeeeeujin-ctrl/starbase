@@ -1,6 +1,2 @@
-export {
-  AuthProvider,
-  useAuthContext as useAuth,
-  AUTH_STATUS_VALUES,
-} from './AuthProvider'
+export { useAuth, AUTH_STATUS_VALUES } from './useAuth'
 export { deriveProfileFromUser, EMPTY_PROFILE } from './profile'
