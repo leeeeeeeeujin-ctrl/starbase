@@ -70,6 +70,7 @@ export default function CharacterDetailPage() {
       if (hero.owner_id) {
         window.localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
       }
+      window.dispatchEvent(new Event('hero-overlay:refresh'))
     } catch (storageError) {
       console.error('Failed to persist selected hero metadata:', storageError)
     }

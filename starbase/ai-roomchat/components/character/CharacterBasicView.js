@@ -1808,6 +1808,9 @@ export default function CharacterBasicView({ hero }) {
       setIsPlaying(false)
       setProgress(0)
       setDuration(nextDuration || 0)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('hero-overlay:refresh'))
+      }
       alert('저장 완료')
       setIsEditing(false)
     } catch (error) {
@@ -1863,6 +1866,7 @@ export default function CharacterBasicView({ hero }) {
       if (error) throw error
       alert('캐릭터가 삭제되었습니다.')
       if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('hero-overlay:refresh'))
         window.location.href = '/roster'
       }
     } catch (error) {
