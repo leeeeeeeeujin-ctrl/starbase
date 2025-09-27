@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteHeroById,
   fetchHeroesByOwner,
+  syncHeroBgms,
   updateHeroById,
 } from "../../services/heroes";
 import { supabase } from "../../lib/supabase";
@@ -34,6 +35,7 @@ const EQ_BAND_MAX = 12;
 const EQ_BAND_STEP = 0.5;
 
 const HERO_STORAGE_BUCKET = "heroes";
+const MAX_BGM_TRACKS = 8;
 
 const rosterNotices = [
   {
@@ -66,6 +68,100 @@ const COMPRESSOR_COOKIE = `${COOKIE_PREFIX}compressor_level`;
 const EQ_BANDS_COOKIE = `${COOKIE_PREFIX}eq_bands`;
 
 let cachedImpulseBuffer = null;
+
+function makeBgmId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `bgm_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+}
+
+function normaliseBgmLabel(label, index = 0) {
+  if (typeof label === "string" && label.trim()) {
+    return label.trim();
+  }
+  return `브금 ${index + 1}`;
+}
+
+function createBgmDraftFromRecord(record, index = 0) {
+  if (!record) {
+    return {
+      id: makeBgmId(),
+      label: normaliseBgmLabel(null, index),
+      url: "",
+      storage_path: null,
+      duration: null,
+      mime: null,
+      sort_order: index,
+      file: null,
+      objectUrl: null,
+      error: null,
+      isNew: true,
+    };
+  }
+
+  const sortOrder = Number.isFinite(record.sort_order) ? record.sort_order : index;
+
+  return {
+    id: record.id || makeBgmId(),
+    label: normaliseBgmLabel(record.label, sortOrder),
+    url: record.url || record.bgm_url || "",
+    storage_path: record.storage_path || null,
+    duration:
+      typeof record.duration_seconds === "number"
+        ? record.duration_seconds
+        : typeof record.bgm_duration_seconds === "number"
+          ? record.bgm_duration_seconds
+          : null,
+    mime: record.mime || record.bgm_mime || null,
+    sort_order: sortOrder,
+    file: null,
+    objectUrl: null,
+    error: null,
+    isNew: !record.id,
+  };
+}
+
+function createBgmStateFromHero(hero) {
+  if (!hero) return [];
+  const records = Array.isArray(hero.bgms) && hero.bgms.length
+    ? hero.bgms
+    : hero.bgm_url
+      ? [
+          {
+            id: null,
+            label: "기본",
+            url: hero.bgm_url,
+            duration_seconds: hero.bgm_duration_seconds ?? null,
+            mime: hero.bgm_mime ?? null,
+            sort_order: 0,
+          },
+        ]
+      : [];
+
+  const limited = records.slice(0, MAX_BGM_TRACKS);
+  const sorted = limited
+    .map((record, index) => createBgmDraftFromRecord(record, index))
+    .sort((a, b) => {
+      if (a.sort_order !== b.sort_order) {
+        return a.sort_order - b.sort_order;
+      }
+      return a.label.localeCompare(b.label);
+    });
+
+  return reindexBgmTracks(sorted);
+}
+
+function formatBgmDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "길이 미확인";
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.floor(seconds % 60);
+  return `${minutes}:${String(Math.max(0, remaining)).padStart(2, "0")}`;
+}
+
+function reindexBgmTracks(list) {
+  return list.map((track, index) => ({ ...track, sort_order: index }));
+}
 
 function readCookie(name) {
   if (typeof document === "undefined") return null;
@@ -231,9 +327,6 @@ function createDraftFromHero(hero) {
     ability4: hero?.ability4 || "",
     image_url: hero?.image_url || "",
     background_url: hero?.background_url || "",
-    bgm_url: hero?.bgm_url || "",
-    bgm_duration_seconds: hero?.bgm_duration_seconds || null,
-    bgm_mime: hero?.bgm_mime || null,
   };
 }
 
@@ -758,6 +851,76 @@ const styles = {
     cursor: "pointer",
     outline: "none",
   },
+  bgmList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  bgmEmpty: {
+    margin: 0,
+    fontSize: 12,
+    color: "rgba(148,163,184,0.8)",
+  },
+  bgmTrackCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(96,165,250,0.28)",
+    background: "rgba(15,23,42,0.58)",
+  },
+  bgmTrackHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  bgmTrackHeaderTitle: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 700,
+    color: "rgba(226,232,240,0.92)",
+  },
+  bgmTrackBadges: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+  },
+  bgmTrackBadge: {
+    padding: "2px 8px",
+    borderRadius: 9999,
+    fontSize: 11,
+    fontWeight: 700,
+    color: "rgba(191,219,254,0.9)",
+    background: "rgba(37,99,235,0.28)",
+  },
+  bgmTrackPrimaryBadge: {
+    color: "#0f172a",
+    background: "#bfdbfe",
+  },
+  bgmTrackField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  bgmTrackLabel: {
+    margin: 0,
+    fontSize: 11,
+    fontWeight: 700,
+    color: "rgba(148,163,184,0.85)",
+  },
+  bgmTrackMeta: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  bgmTrackButtons: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+  },
   assetMeta: {
     display: "flex",
     flexDirection: "column",
@@ -866,14 +1029,8 @@ export default function CharacterBasicView({ hero }) {
     file: null,
     preview: null,
   });
-  const [bgmAsset, setBgmAsset] = useState({
-    file: null,
-    objectUrl: null,
-    duration: null,
-    label: "",
-    mime: null,
-    error: null,
-  });
+  const [bgmTracks, setBgmTracks] = useState(() => createBgmStateFromHero(hero));
+  const [removedBgmIds, setRemovedBgmIds] = useState([]);
   const [rosterOwnerId, setRosterOwnerId] = useState(null);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterHeroes, setRosterHeroes] = useState([]);
@@ -1078,19 +1235,13 @@ export default function CharacterBasicView({ hero }) {
   const audioGraphRef = useRef(null);
   const imageInputRef = useRef(null);
   const backgroundInputRef = useRef(null);
-  const bgmInputRef = useRef(null);
+  const bgmInputRefs = useRef({});
 
   useEffect(() => {
     setImageAsset({ file: null, preview: null });
     setBackgroundAsset({ file: null, preview: null });
-    setBgmAsset({
-      file: null,
-      objectUrl: null,
-      duration: null,
-      label: "",
-      mime: null,
-      error: null,
-    });
+    setBgmTracks(createBgmStateFromHero(currentHero));
+    setRemovedBgmIds([]);
 
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
@@ -1098,9 +1249,13 @@ export default function CharacterBasicView({ hero }) {
     if (backgroundInputRef.current) {
       backgroundInputRef.current.value = "";
     }
-    if (bgmInputRef.current) {
-      bgmInputRef.current.value = "";
-    }
+    const inputMap = bgmInputRefs.current || {};
+    Object.values(inputMap).forEach((input) => {
+      if (input) {
+        // eslint-disable-next-line no-param-reassign
+        input.value = "";
+      }
+    });
   }, [currentHero?.id]);
 
   useEffect(
@@ -1123,11 +1278,13 @@ export default function CharacterBasicView({ hero }) {
 
   useEffect(
     () => () => {
-      if (bgmAsset.objectUrl) {
-        URL.revokeObjectURL(bgmAsset.objectUrl);
-      }
+      bgmTracks.forEach((track) => {
+        if (track.objectUrl) {
+          URL.revokeObjectURL(track.objectUrl);
+        }
+      });
     },
-    [bgmAsset.objectUrl],
+    [bgmTracks],
   );
   useEffect(() => {
     if (!currentHero?.bgm_url) {
@@ -1376,22 +1533,6 @@ export default function CharacterBasicView({ hero }) {
     [isMobile],
   );
 
-  const bgmDurationLabel = useMemo(() => {
-    const seconds =
-      bgmAsset.duration != null
-        ? bgmAsset.duration
-        : editDraft.bgm_duration_seconds != null
-          ? editDraft.bgm_duration_seconds
-          : null;
-    if (seconds == null || Number.isNaN(seconds)) {
-      return "정보 없음";
-    }
-    const total = Math.max(0, Math.round(seconds));
-    const minutes = Math.floor(total / 60);
-    const remain = total % 60;
-    return `${minutes}:${String(remain).padStart(2, "0")}`;
-  }, [bgmAsset.duration, editDraft.bgm_duration_seconds]);
-
   const currentInfo = viewMode > 0 ? infoSequence[viewMode - 1] : null;
 
   const handleTap = useCallback(() => {
@@ -1585,84 +1726,162 @@ export default function CharacterBasicView({ hero }) {
     setStatusMessage(null);
   }, [setEditDraft, setStatusMessage]);
 
+  const handleAddBgmTrack = useCallback(() => {
+    setBgmTracks((prev) => {
+      if (prev.length >= MAX_BGM_TRACKS) {
+        return prev;
+      }
+      const next = [...prev, createBgmDraftFromRecord(null, prev.length)];
+      return reindexBgmTracks(next);
+    });
+    setStatusMessage(null);
+  }, []);
+
+  const handleBgmLabelChange = useCallback((trackId, value) => {
+    setBgmTracks((prev) =>
+      prev.map((track) =>
+        track.id === trackId ? { ...track, label: value } : track,
+      ),
+    );
+  }, []);
+
   const handleBgmFileSelect = useCallback(
-    (event) => {
+    (trackId) => (event) => {
       const file = event.target.files?.[0];
       if (!file) return;
 
       const objectUrl = URL.createObjectURL(file);
-      setBgmAsset({
-        file,
-        objectUrl,
-        duration: null,
-        label: file.name,
-        mime: file.type || null,
-        error: null,
-      });
-      setEditDraft((prev) => ({
-        ...prev,
-        bgm_mime: file.type || prev.bgm_mime || null,
-      }));
+      setBgmTracks((prev) =>
+        prev.map((track) => {
+          if (track.id !== trackId) return track;
+          if (track.objectUrl) {
+            URL.revokeObjectURL(track.objectUrl);
+          }
+          return {
+            ...track,
+            file,
+            objectUrl,
+            duration: null,
+            mime: file.type || track.mime || null,
+            storage_path: null,
+            error: null,
+          };
+        }),
+      );
       setStatusMessage(null);
 
       const audioEl = document.createElement("audio");
       audioEl.preload = "metadata";
       audioEl.src = objectUrl;
 
-      function cleanup() {
+      const cleanup = () => {
         audioEl.removeEventListener("loadedmetadata", handleLoaded);
         audioEl.removeEventListener("error", handleError);
-      }
+      };
 
-      function handleLoaded() {
+      const handleLoaded = () => {
         const durationSeconds = Number.isFinite(audioEl.duration)
-          ? Math.round(audioEl.duration)
+          ? Math.max(0, Math.round(audioEl.duration))
           : null;
-        setBgmAsset((prev) => {
-          if (prev.file !== file) return prev;
-          return { ...prev, duration: durationSeconds, error: null };
-        });
-        setEditDraft((prev) => ({
-          ...prev,
-          bgm_duration_seconds: durationSeconds,
-        }));
+        setBgmTracks((prev) =>
+          prev.map((track) => {
+            if (track.id !== trackId || track.file !== file) return track;
+            return { ...track, duration: durationSeconds, error: null };
+          }),
+        );
         cleanup();
-      }
+      };
 
-      function handleError() {
-        setBgmAsset((prev) => {
-          if (prev.file !== file) return prev;
-          return { ...prev, error: "오디오 파일을 불러올 수 없습니다." };
-        });
+      const handleError = () => {
+        setBgmTracks((prev) =>
+          prev.map((track) => {
+            if (track.id !== trackId || track.file !== file) return track;
+            return {
+              ...track,
+              error: "오디오 파일을 불러올 수 없습니다.",
+            };
+          }),
+        );
         cleanup();
-      }
+      };
 
       audioEl.addEventListener("loadedmetadata", handleLoaded);
       audioEl.addEventListener("error", handleError);
     },
-    [setEditDraft, setStatusMessage],
+    [],
   );
 
-  const handleClearBgm = useCallback(() => {
-    if (bgmInputRef.current) {
-      bgmInputRef.current.value = "";
+  const handleClearBgmFile = useCallback((trackId) => {
+    setBgmTracks((prev) =>
+      prev.map((track) => {
+        if (track.id !== trackId) return track;
+        if (track.objectUrl) {
+          URL.revokeObjectURL(track.objectUrl);
+        }
+        return {
+          ...track,
+          file: null,
+          objectUrl: null,
+          duration: track.url ? track.duration : null,
+          url: "",
+          mime: track.mime,
+          storage_path: null,
+          error: null,
+        };
+      }),
+    );
+    const inputNode = bgmInputRefs.current?.[trackId];
+    if (inputNode) {
+      inputNode.value = "";
     }
-    setBgmAsset({
-      file: null,
-      objectUrl: null,
-      duration: null,
-      label: "",
-      mime: null,
-      error: null,
-    });
-    setEditDraft((prev) => ({
-      ...prev,
-      bgm_url: "",
-      bgm_duration_seconds: null,
-      bgm_mime: null,
-    }));
     setStatusMessage(null);
-  }, [setEditDraft, setStatusMessage]);
+  }, []);
+
+  const handleMakePrimaryBgm = useCallback((trackId) => {
+    setBgmTracks((prev) => {
+      const index = prev.findIndex((track) => track.id === trackId);
+      if (index <= 0) return prev;
+      const next = [...prev];
+      const [selected] = next.splice(index, 1);
+      next.unshift(selected);
+      return reindexBgmTracks(next);
+    });
+  }, []);
+
+  const handleRemoveBgmTrack = useCallback(
+    (trackId) => {
+      const target = bgmTracks.find((track) => track.id === trackId);
+      if (!target) return;
+      const confirmed =
+        typeof window !== "undefined"
+          ? window.confirm("이 브금을 목록에서 삭제할까요?")
+          : true;
+      if (!confirmed) return;
+
+      if (target.objectUrl) {
+        URL.revokeObjectURL(target.objectUrl);
+      }
+
+      setBgmTracks((prev) => {
+        const filtered = prev.filter((track) => track.id !== trackId);
+        return reindexBgmTracks(filtered);
+      });
+
+      if (!target.isNew && target.id) {
+        setRemovedBgmIds((prev) => {
+          if (prev.includes(target.id)) return prev;
+          return [...prev, target.id];
+        });
+      }
+
+      if (bgmInputRefs.current?.[trackId]) {
+        bgmInputRefs.current[trackId].value = "";
+      }
+      delete bgmInputRefs.current?.[trackId];
+      setStatusMessage(null);
+    },
+    [bgmTracks],
+  );
 
   const handleDraftChange = useCallback((field, value) => {
     setEditDraft((prev) => ({ ...prev, [field]: value }));
@@ -1673,23 +1892,21 @@ export default function CharacterBasicView({ hero }) {
     setStatusMessage(null);
     setImageAsset({ file: null, preview: null });
     setBackgroundAsset({ file: null, preview: null });
-    setBgmAsset({
-      file: null,
-      objectUrl: null,
-      duration: null,
-      label: "",
-      mime: null,
-      error: null,
-    });
+    setBgmTracks(createBgmStateFromHero(currentHero));
+    setRemovedBgmIds([]);
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
     }
     if (backgroundInputRef.current) {
       backgroundInputRef.current.value = "";
     }
-    if (bgmInputRef.current) {
-      bgmInputRef.current.value = "";
-    }
+    const inputMap = bgmInputRefs.current || {};
+    Object.values(inputMap).forEach((input) => {
+      if (input) {
+        // eslint-disable-next-line no-param-reassign
+        input.value = "";
+      }
+    });
   }, [currentHero]);
 
   const handleSaveDraft = useCallback(async () => {
@@ -1708,6 +1925,68 @@ export default function CharacterBasicView({ hero }) {
       const baseName = sanitizeFileName(
         editDraft.name || currentHero.name || DEFAULT_HERO_NAME,
       );
+
+      const orderedTracks = reindexBgmTracks([...bgmTracks]);
+      const emptyTrack = orderedTracks.find((track) => !track.url && !track.file);
+      if (emptyTrack) {
+        setStatusMessage({
+          type: "error",
+          text: "비어 있는 브금 슬롯이 있습니다. 파일을 선택하거나 삭제해 주세요.",
+        });
+        setSavingHero(false);
+        return;
+      }
+
+      const processedTracks = [];
+
+      for (let index = 0; index < orderedTracks.length; index += 1) {
+        const track = orderedTracks[index];
+        const label = normaliseBgmLabel(track.label, index);
+        let finalUrl = track.url;
+        let finalMime = track.mime || null;
+        let finalDuration = Number.isFinite(track.duration)
+          ? Math.max(0, Math.round(track.duration))
+          : null;
+        let storagePath = track.storage_path || null;
+
+        if (track.file) {
+          const extension =
+            (track.file.type && track.file.type.split("/")[1]) ||
+            track.file.name?.split(".").pop() ||
+            "mp3";
+          const safeLabel = sanitizeFileName(label) || `bgm-${index + 1}`;
+          const path = `hero-bgm/${Date.now()}-${track.id}-${baseName}-${safeLabel}.${extension}`;
+          const { error: bgmError } = await supabase.storage
+            .from(HERO_STORAGE_BUCKET)
+            .upload(path, track.file, {
+              upsert: true,
+              contentType: track.file.type || "audio/mpeg",
+            });
+          if (bgmError) throw bgmError;
+          finalUrl = supabase.storage
+            .from(HERO_STORAGE_BUCKET)
+            .getPublicUrl(path).data.publicUrl;
+          finalMime = track.file.type || finalMime || "audio/mpeg";
+          if (track.duration == null || Number.isNaN(track.duration)) {
+            finalDuration = null;
+          }
+          storagePath = path;
+        }
+
+        if (!finalUrl) {
+          throw new Error("브금 파일을 준비하지 못했습니다. 다시 시도해 주세요.");
+        }
+
+        processedTracks.push({
+          id: track.id,
+          label,
+          url: finalUrl,
+          storage_path: storagePath,
+          duration_seconds: finalDuration,
+          mime: finalMime,
+          sort_order: index,
+        });
+      }
 
       if (imageAsset.file) {
         const extension =
@@ -1746,31 +2025,15 @@ export default function CharacterBasicView({ hero }) {
           .getPublicUrl(path).data.publicUrl;
       }
 
-      if (bgmAsset.file) {
-        const extension =
-          (bgmAsset.file.type && bgmAsset.file.type.split("/")[1]) ||
-          bgmAsset.file.name?.split(".").pop() ||
-          "mp3";
-        const path = `hero-bgm/${Date.now()}-${baseName}.${extension}`;
-        const { error: bgmError } = await supabase.storage
-          .from(HERO_STORAGE_BUCKET)
-          .upload(path, bgmAsset.file, {
-            upsert: true,
-            contentType: bgmAsset.file.type || "audio/mpeg",
-          });
-        if (bgmError) throw bgmError;
-        payload.bgm_url = supabase.storage
-          .from(HERO_STORAGE_BUCKET)
-          .getPublicUrl(path).data.publicUrl;
-        payload.bgm_duration_seconds =
-          bgmAsset.duration != null
-            ? bgmAsset.duration
-            : (editDraft.bgm_duration_seconds ?? null);
-        payload.bgm_mime =
-          bgmAsset.mime || editDraft.bgm_mime || bgmAsset.file.type || null;
+      if (processedTracks.length) {
+        const primary = processedTracks[0];
+        payload.bgm_url = primary.url || null;
+        payload.bgm_duration_seconds = primary.duration_seconds ?? null;
+        payload.bgm_mime = primary.mime || null;
       } else {
-        payload.bgm_duration_seconds = editDraft.bgm_duration_seconds ?? null;
-        payload.bgm_mime = editDraft.bgm_mime ?? null;
+        payload.bgm_url = null;
+        payload.bgm_duration_seconds = null;
+        payload.bgm_mime = null;
       }
 
       if (!payload.image_url) {
@@ -1779,15 +2042,31 @@ export default function CharacterBasicView({ hero }) {
       if (!payload.background_url) {
         payload.background_url = null;
       }
-      if (!payload.bgm_url) {
-        payload.bgm_url = null;
-        payload.bgm_duration_seconds = null;
-        payload.bgm_mime = null;
-      }
 
       const updatedHero = await updateHeroById(currentHero.id, payload);
-      setCurrentHero(updatedHero);
-      setEditDraft(createDraftFromHero(updatedHero));
+      const freshBgms = await syncHeroBgms(currentHero.id, {
+        upserts: processedTracks,
+        removals: removedBgmIds,
+      });
+
+      const heroWithBgm = { ...updatedHero, bgms: freshBgms };
+      if (freshBgms.length) {
+        const [primary] = freshBgms;
+        heroWithBgm.bgm_url = primary?.url || heroWithBgm.bgm_url || null;
+        heroWithBgm.bgm_duration_seconds =
+          primary?.duration_seconds ?? heroWithBgm.bgm_duration_seconds ?? null;
+        heroWithBgm.bgm_mime = primary?.mime || heroWithBgm.bgm_mime || null;
+      } else {
+        heroWithBgm.bgm_url = null;
+        heroWithBgm.bgm_duration_seconds = null;
+        heroWithBgm.bgm_mime = null;
+      }
+
+      setCurrentHero(heroWithBgm);
+      setEditDraft(createDraftFromHero(heroWithBgm));
+      setBgmTracks(createBgmStateFromHero(heroWithBgm));
+      setRemovedBgmIds([]);
+
       await loadRoster({ silent: true, force: true });
       setStatusMessage({
         type: "success",
@@ -1796,23 +2075,13 @@ export default function CharacterBasicView({ hero }) {
       router.replace(router.asPath);
       setImageAsset({ file: null, preview: null });
       setBackgroundAsset({ file: null, preview: null });
-      setBgmAsset({
-        file: null,
-        objectUrl: null,
-        duration: null,
-        label: "",
-        mime: null,
-        error: null,
+      const inputMap = bgmInputRefs.current || {};
+      Object.values(inputMap).forEach((input) => {
+        if (input) {
+          // eslint-disable-next-line no-param-reassign
+          input.value = "";
+        }
       });
-      if (imageInputRef.current) {
-        imageInputRef.current.value = "";
-      }
-      if (backgroundInputRef.current) {
-        backgroundInputRef.current.value = "";
-      }
-      if (bgmInputRef.current) {
-        bgmInputRef.current.value = "";
-      }
     } catch (error) {
       console.error("Failed to update hero", error);
       const message =
@@ -1823,13 +2092,12 @@ export default function CharacterBasicView({ hero }) {
     }
   }, [
     backgroundAsset.file,
-    bgmAsset.duration,
-    bgmAsset.file,
-    bgmAsset.mime,
+    bgmTracks,
     currentHero,
     editDraft,
     imageAsset.file,
     loadRoster,
+    removedBgmIds,
     router,
   ]);
 
@@ -2215,60 +2483,164 @@ export default function CharacterBasicView({ hero }) {
                       </div>
                     </div>
                     <div style={styles.assetCard}>
-                      <h4 style={styles.assetTitle}>브금 파일</h4>
-                      <div style={styles.assetMeta}>
-                        <div style={styles.assetMetaRow}>
-                          <span style={styles.assetMetaLabel}>파일</span>
-                          <span style={styles.assetMetaValue}>
-                            {bgmAsset.file
-                              ? bgmAsset.file.name
-                              : editDraft.bgm_url
-                                ? extractFileName(editDraft.bgm_url)
-                                : "선택된 파일 없음"}
-                          </span>
-                        </div>
-                        <div style={styles.assetMetaRow}>
-                          <span style={styles.assetMetaLabel}>길이</span>
-                          <span style={styles.assetMetaValue}>
-                            {bgmDurationLabel}
-                          </span>
-                        </div>
-                        <div style={styles.assetMetaRow}>
-                          <span style={styles.assetMetaLabel}>형식</span>
-                          <span style={styles.assetMetaValue}>
-                            {bgmAsset.mime ||
-                              editDraft.bgm_mime ||
-                              (editDraft.bgm_url ? "미확인" : "없음")}
-                          </span>
-                        </div>
-                        {bgmAsset.error ? (
-                          <p style={styles.rosterError}>{bgmAsset.error}</p>
-                        ) : null}
+                      <h4 style={styles.assetTitle}>브금 목록</h4>
+                      <div style={styles.bgmList}>
+                        {bgmTracks.length ? (
+                          bgmTracks.map((track, index) => (
+                            <div key={track.id} style={styles.bgmTrackCard}>
+                              <div style={styles.bgmTrackHeader}>
+                                <h5 style={styles.bgmTrackHeaderTitle}>
+                                  {track.label || `브금 ${index + 1}`}
+                                </h5>
+                                <div style={styles.bgmTrackBadges}>
+                                  <span
+                                    style={{
+                                      ...styles.bgmTrackBadge,
+                                      ...(index === 0
+                                        ? styles.bgmTrackPrimaryBadge
+                                        : {}),
+                                    }}
+                                  >
+                                    {index === 0 ? "대표" : `#${index + 1}`}
+                                  </span>
+                                  {track.file ? (
+                                    <span style={styles.bgmTrackBadge}>
+                                      업로드 예정
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                              <div style={styles.bgmTrackField}>
+                                <label
+                                  style={styles.bgmTrackLabel}
+                                  htmlFor={`hero-bgm-label-${track.id}`}
+                                >
+                                  종류
+                                </label>
+                                <input
+                                  id={`hero-bgm-label-${track.id}`}
+                                  style={styles.editInput}
+                                  value={track.label}
+                                  onChange={(event) =>
+                                    handleBgmLabelChange(
+                                      track.id,
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div style={styles.bgmTrackMeta}>
+                                <div style={styles.assetMetaRow}>
+                                  <span style={styles.assetMetaLabel}>파일</span>
+                                  <span style={styles.assetMetaValue}>
+                                    {track.file
+                                      ? track.file.name
+                                      : track.url
+                                        ? extractFileName(track.url)
+                                        : "선택된 파일 없음"}
+                                  </span>
+                                </div>
+                                <div style={styles.assetMetaRow}>
+                                  <span style={styles.assetMetaLabel}>길이</span>
+                                  <span style={styles.assetMetaValue}>
+                                    {formatBgmDuration(track.duration)}
+                                  </span>
+                                </div>
+                                <div style={styles.assetMetaRow}>
+                                  <span style={styles.assetMetaLabel}>형식</span>
+                                  <span style={styles.assetMetaValue}>
+                                    {track.mime ||
+                                      (track.url ? "미확인" : "없음")}
+                                  </span>
+                                </div>
+                                {track.error ? (
+                                  <p style={styles.rosterError}>{track.error}</p>
+                                ) : null}
+                              </div>
+                              <div style={styles.bgmTrackButtons}>
+                                <label
+                                  htmlFor={`hero-bgm-upload-${track.id}`}
+                                  style={styles.assetActionButton}
+                                >
+                                  {track.file
+                                    ? "다른 브금 선택"
+                                    : track.url
+                                      ? "브금 교체"
+                                      : "브금 선택"}
+                                </label>
+                                <input
+                                  id={`hero-bgm-upload-${track.id}`}
+                                  ref={(node) => {
+                                    if (!bgmInputRefs.current) {
+                                      bgmInputRefs.current = {};
+                                    }
+                                    if (node) {
+                                      bgmInputRefs.current[track.id] = node;
+                                    } else if (
+                                      bgmInputRefs.current[
+                                        track.id
+                                      ]
+                                    ) {
+                                      delete bgmInputRefs.current[track.id];
+                                    }
+                                  }}
+                                  type="file"
+                                  accept="audio/*"
+                                  style={styles.hiddenInput}
+                                  onChange={handleBgmFileSelect(track.id)}
+                                />
+                                {track.url || track.file ? (
+                                  <button
+                                    type="button"
+                                    style={styles.assetDangerButton}
+                                    onClick={() => handleClearBgmFile(track.id)}
+                                  >
+                                    파일 비우기
+                                  </button>
+                                ) : null}
+                                {index > 0 ? (
+                                  <button
+                                    type="button"
+                                    style={styles.assetActionButton}
+                                    onClick={() => handleMakePrimaryBgm(track.id)}
+                                  >
+                                    대표로 올리기
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  style={styles.assetDangerButton}
+                                  onClick={() => handleRemoveBgmTrack(track.id)}
+                                >
+                                  트랙 삭제
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p style={styles.bgmEmpty}>
+                            등록된 브금이 없습니다. 아래 버튼으로 추가해 보세요.
+                          </p>
+                        )}
                       </div>
                       <div style={styles.assetButtonRow}>
-                        <label
-                          htmlFor="hero-bgm-upload"
-                          style={styles.assetActionButton}
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.assetActionButton,
+                            opacity: bgmTracks.length >= MAX_BGM_TRACKS ? 0.65 : 1,
+                            cursor:
+                              bgmTracks.length >= MAX_BGM_TRACKS
+                                ? "not-allowed"
+                                : "pointer",
+                          }}
+                          onClick={handleAddBgmTrack}
+                          disabled={bgmTracks.length >= MAX_BGM_TRACKS}
                         >
-                          {bgmAsset.file ? "다른 브금 선택" : "브금 선택"}
-                        </label>
-                        <input
-                          id="hero-bgm-upload"
-                          ref={bgmInputRef}
-                          type="file"
-                          accept="audio/*"
-                          style={styles.hiddenInput}
-                          onChange={handleBgmFileSelect}
-                        />
-                        {bgmAsset.file || editDraft.bgm_url ? (
-                          <button
-                            type="button"
-                            style={styles.assetDangerButton}
-                            onClick={handleClearBgm}
-                          >
-                            브금 비우기
-                          </button>
-                        ) : null}
+                          {bgmTracks.length >= MAX_BGM_TRACKS
+                            ? "최대 8개까지 등록할 수 있어요"
+                            : "브금 추가"}
+                        </button>
                       </div>
                     </div>
                   </div>

@@ -30,6 +30,15 @@
 - **주요 역할**: 사용자 생성 영웅의 프로필과 능력치를 저장합니다.
 - **중요 컬럼**: 이름, 설명, 4개 능력(`ability1`~`ability4`), 이미지/배경/BGM 관련 메타데이터 등.
 
+## hero_bgms
+- **주요 역할**: 각 영웅이 보유한 브금(최대 8개)의 종류·경로·메타데이터를 관리합니다.
+- **중요 컬럼**
+  - `hero_id`: 소유 영웅(`heroes.id` 참조).
+  - `label`: 브금 종류(예: 기본, 전투 등) 라벨.
+  - `url` / `storage_path`: 공개 URL과 스토리지 상 경로.
+  - `duration_seconds`, `mime`: 길이와 파일 형식 정보를 저장합니다.
+  - `sort_order`: 대표 순서를 관리하며 0번이 재생 기본값입니다.
+
 ## global_chat_messages & messages
 - **global_chat_messages**: 실시간 글로벌 채팅 메시지를 저장하는 간단한 로그 테이블입니다.
 - **messages**: 범용 메시지 로그로, `scope` 기본값이 `global`이며, 귓속말(`target_hero_id`)이나 메타데이터(JSONB)를 지원합니다.
