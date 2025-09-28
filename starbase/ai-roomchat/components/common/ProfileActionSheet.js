@@ -137,22 +137,24 @@ export default function ProfileActionSheet({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => handleAction(onWhisper)}
-            disabled={isSelf || typeof onWhisper !== 'function'}
-            style={{
-              padding: '10px 14px',
-              borderRadius: 12,
-              border: 'none',
-              background: isSelf ? 'rgba(15, 23, 42, 0.4)' : '#38bdf8',
-              color: '#020617',
-              fontWeight: 700,
-              cursor: isSelf ? 'not-allowed' : 'pointer',
-            }}
-          >
-            귓속말 보내기
-          </button>
+          {typeof onWhisper === 'function' ? (
+            <button
+              type="button"
+              onClick={() => handleAction(onWhisper)}
+              disabled={isSelf}
+              style={{
+                padding: '10px 14px',
+                borderRadius: 12,
+                border: 'none',
+                background: isSelf ? 'rgba(15, 23, 42, 0.4)' : '#38bdf8',
+                color: '#020617',
+                fontWeight: 700,
+                cursor: isSelf ? 'not-allowed' : 'pointer',
+              }}
+            >
+              귓속말 보내기
+            </button>
+          ) : null}
 
           <button
             type="button"

@@ -5,18 +5,22 @@ import React, { useCallback, useMemo, useState } from 'react'
 import ProfileActionSheet from '../common/ProfileActionSheet'
 import SurfaceOverlay from '../common/SurfaceOverlay'
 
-function formatPageLabel(page) {
-  if (!page) return '현재 위치 미확인'
-  if (page.startsWith('character:')) {
-    const section = page.split(':')[1]
-    if (section === 'game') return '캐릭터 화면 · 게임 찾기'
-    if (section === 'ranking') return '캐릭터 화면 · 랭킹'
-    return '캐릭터 화면'
-  }
-  if (page === 'roster') return '로스터'
-  if (page === 'maker') return '메이커'
-  if (page === 'rank') return '랭킹 허브'
-  return page
+function friendDisplayName(friend) {
+  return (
+    friend?.friendHeroName ||
+    friend?.currentHeroName ||
+    friend?.displayName ||
+    friend?.username ||
+    '이름 미확인'
+  )
+}
+
+function friendKey(friend) {
+  return friend?.friendOwnerId || friend?.ownerId || friend?.friendHeroId || friend?.currentHeroId || friendDisplayName(friend)
+}
+
+function requestDisplayName(request) {
+  return request?.partnerHeroName || request?.partnerName || '이름 미확인'
 }
 
 export default function FriendOverlay({
@@ -32,91 +36,31 @@ export default function FriendOverlay({
   onAcceptRequest,
   onDeclineRequest,
   onCancelRequest,
-  onOpenWhisper,
-  blockedHeroes = [],
-  onToggleBlockedHero,
 }) {
   const [input, setInput] = useState('')
+  const [activeTab, setActiveTab] = useState('friends')
   const [sheetOpen, setSheetOpen] = useState(false)
   const [selectedFriend, setSelectedFriend] = useState(null)
-  const [activeTab, setActiveTab] = useState('friends')
 
   const incomingRequests = friendRequests?.incoming ?? []
   const outgoingRequests = friendRequests?.outgoing ?? []
-  const blockedHeroSet = useMemo(() => {
-    const ids = []
-    for (const entry of blockedHeroes || []) {
-      if (!entry) continue
-      if (typeof entry === 'string') {
-        ids.push(entry)
-        continue
-      }
-      if (entry.heroId) {
-        ids.push(entry.heroId)
-      }
-    }
-    return new Set(ids)
-  }, [blockedHeroes])
 
-  const heroMetaMap = useMemo(() => {
-    const map = new Map()
-    for (const friend of friends) {
-      if (friend.currentHeroId) {
-        map.set(friend.currentHeroId, {
-          name: friend.currentHeroName || friend.friendHeroName || '이름 미확인',
-          avatar: friend.currentHeroAvatar || friend.friendHeroAvatar || null,
-        })
-      }
-      if (friend.friendHeroId) {
-        map.set(friend.friendHeroId, {
-          name: friend.friendHeroName || friend.currentHeroName || '이름 미확인',
-          avatar: friend.friendHeroAvatar || friend.currentHeroAvatar || null,
-        })
-      }
-    }
-    for (const request of incomingRequests) {
-      if (request.partnerHeroId) {
-        map.set(request.partnerHeroId, {
-          name: request.partnerHeroName || '이름 미확인',
-          avatar: request.partnerHeroAvatar || null,
-        })
-      }
-    }
-    for (const request of outgoingRequests) {
-      if (request.partnerHeroId) {
-        map.set(request.partnerHeroId, {
-          name: request.partnerHeroName || '이름 미확인',
-          avatar: request.partnerHeroAvatar || null,
-        })
-      }
-    }
-    return map
-  }, [friends, incomingRequests, outgoingRequests])
-
-  const blockedEntries = useMemo(() => {
-    if (!blockedHeroes?.length) return []
-    return blockedHeroes
-      .filter(Boolean)
-      .map((entry) => {
-        const heroId = typeof entry === 'string' ? entry : entry.heroId
-        if (!heroId) return null
-        const baseMeta = typeof entry === 'object' ? entry : {}
-        const meta = heroMetaMap.get(heroId) || {}
-        return {
-          heroId,
-          heroName: baseMeta.heroName || meta.name || '이름 미확인',
-          avatarUrl: baseMeta.avatarUrl || meta.avatar || null,
-        }
-      })
-      .filter(Boolean)
-  }, [blockedHeroes, heroMetaMap])
+  const sortedFriends = useMemo(() => {
+    if (!Array.isArray(friends)) return []
+    return [...friends].sort((a, b) => {
+      const aOnline = a?.online ? 1 : 0
+      const bOnline = b?.online ? 1 : 0
+      if (aOnline !== bOnline) return bOnline - aOnline
+      return friendDisplayName(a).localeCompare(friendDisplayName(b))
+    })
+  }, [friends])
 
   const handleSubmit = useCallback(
     async (event) => {
       event.preventDefault()
       const trimmed = input.trim()
-      if (!trimmed) return
-      const result = await onAddFriend?.({ heroId: trimmed })
+      if (!trimmed || typeof onAddFriend !== 'function') return
+      const result = await onAddFriend({ heroId: trimmed })
       if (result?.ok) {
         setInput('')
       } else if (result?.error) {
@@ -126,9 +70,10 @@ export default function FriendOverlay({
     [input, onAddFriend],
   )
 
-  const handleRemove = useCallback(
+  const handleRemoveFriend = useCallback(
     async (friend) => {
-      const result = await onRemoveFriend?.(friend)
+      if (typeof onRemoveFriend !== 'function') return
+      const result = await onRemoveFriend(friend)
       if (result?.error) {
         alert(result.error)
       }
@@ -138,8 +83,8 @@ export default function FriendOverlay({
 
   const handleAcceptRequest = useCallback(
     async (request) => {
-      if (!request?.id) return
-      const result = await onAcceptRequest?.(request.id)
+      if (typeof onAcceptRequest !== 'function') return
+      const result = await onAcceptRequest(request?.id)
       if (result?.error) {
         alert(result.error)
       }
@@ -149,8 +94,8 @@ export default function FriendOverlay({
 
   const handleDeclineRequest = useCallback(
     async (request) => {
-      if (!request?.id) return
-      const result = await onDeclineRequest?.(request.id)
+      if (typeof onDeclineRequest !== 'function') return
+      const result = await onDeclineRequest(request?.id)
       if (result?.error) {
         alert(result.error)
       }
@@ -160,8 +105,8 @@ export default function FriendOverlay({
 
   const handleCancelRequest = useCallback(
     async (request) => {
-      if (!request?.id) return
-      const result = await onCancelRequest?.(request.id)
+      if (typeof onCancelRequest !== 'function') return
+      const result = await onCancelRequest(request?.id)
       if (result?.error) {
         alert(result.error)
       }
@@ -169,499 +114,271 @@ export default function FriendOverlay({
     [onCancelRequest],
   )
 
-  const handleToggleBlockedHero = useCallback(
-    async (heroId) => {
-      if (!heroId || typeof onToggleBlockedHero !== 'function') return
-      const meta =
-        heroMetaMap.get(heroId) ||
-        blockedEntries.find((entry) => entry.heroId === heroId) ||
-        {}
-      const result = await onToggleBlockedHero({
-        heroId,
-        heroName: meta.name || meta.heroName || '이름 미확인',
-        avatarUrl: meta.avatar || meta.avatarUrl || null,
-      })
-      if (result?.error) {
-        alert(result.error)
-      }
-    },
-    [blockedEntries, heroMetaMap, onToggleBlockedHero],
-  )
+  const openFriendSheet = useCallback((friend) => {
+    setSelectedFriend(friend || null)
+    setSheetOpen(Boolean(friend))
+  }, [])
+
+  const closeFriendSheet = useCallback(() => {
+    setSheetOpen(false)
+    setSelectedFriend(null)
+  }, [])
 
   const sheetHero = useMemo(() => {
     if (!selectedFriend) return null
     const heroId = selectedFriend.currentHeroId || selectedFriend.friendHeroId
     return {
       heroId,
-      heroName: selectedFriend.currentHeroName || selectedFriend.friendHeroName,
+      heroName: friendDisplayName(selectedFriend),
       avatarUrl: selectedFriend.currentHeroAvatar || selectedFriend.friendHeroAvatar,
-      isSelf: false,
+      isSelf: viewer?.hero_id === heroId,
       isFriend: true,
-      onWhisper: () => {
-        if (heroId) onOpenWhisper?.(heroId)
-        setSheetOpen(false)
-      },
-      onRemoveFriend: () => handleRemove(selectedFriend),
-      blocked: heroId ? blockedHeroSet.has(heroId) : false,
-      onToggleBlock: heroId ? () => handleToggleBlockedHero(heroId) : undefined,
+      onRemoveFriend: () => handleRemoveFriend(selectedFriend),
       onViewDetail: () => {
         if (!heroId) return
         window.open(`/character/${heroId}`, '_blank', 'noopener')
-        setSheetOpen(false)
       },
     }
-  }, [blockedHeroSet, handleRemove, handleToggleBlockedHero, onOpenWhisper, selectedFriend])
+  }, [handleRemoveFriend, selectedFriend, viewer?.hero_id])
 
-  const sortedFriends = useMemo(() => {
-    const copy = [...friends]
-    copy.sort((a, b) => {
-      if (a.online && !b.online) return -1
-      if (!a.online && b.online) return 1
-      return (b.lastSeenAt || '').localeCompare(a.lastSeenAt || '')
-    })
-    return copy
-  }, [friends])
+  const friendSection = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {!sortedFriends.length ? <p style={styles.hint}>친구 목록이 비어 있습니다.</p> : null}
+      {sortedFriends.map((friend) => {
+        const heroName = friendDisplayName(friend)
+        const status = friend.online ? '온라인' : '오프라인'
+        return (
+          <div key={friendKey(friend)} style={styles.listItem}>
+            <div>
+              <p style={styles.listTitle}>{heroName}</p>
+              <p style={styles.listMeta}>{status}</p>
+            </div>
+            <div style={styles.itemActions}>
+              <button type="button" style={styles.ghostButton} onClick={() => openFriendSheet(friend)}>
+                보기
+              </button>
+              <button type="button" style={styles.dangerButton} onClick={() => handleRemoveFriend(friend)}>
+                삭제
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  const incomingSection = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {!incomingRequests.length ? <p style={styles.hint}>받은 친구 요청이 없습니다.</p> : null}
+      {incomingRequests.map((request) => (
+        <div key={request?.id || requestDisplayName(request)} style={styles.listItem}>
+          <div>
+            <p style={styles.listTitle}>{requestDisplayName(request)}</p>
+            <p style={styles.listMeta}>요청 수신</p>
+          </div>
+          <div style={styles.itemActions}>
+            <button type="button" style={styles.primaryButton} onClick={() => handleAcceptRequest(request)}>
+              수락
+            </button>
+            <button type="button" style={styles.dangerButton} onClick={() => handleDeclineRequest(request)}>
+              거절
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
+  const outgoingSection = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {!outgoingRequests.length ? <p style={styles.hint}>보낸 친구 요청이 없습니다.</p> : null}
+      {outgoingRequests.map((request) => (
+        <div key={request?.id || requestDisplayName(request)} style={styles.listItem}>
+          <div>
+            <p style={styles.listTitle}>{requestDisplayName(request)}</p>
+            <p style={styles.listMeta}>요청 보냄</p>
+          </div>
+          <button type="button" style={styles.ghostButton} onClick={() => handleCancelRequest(request)}>
+            취소
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+
+  let body = friendSection
+  if (activeTab === 'incoming') {
+    body = incomingSection
+  } else if (activeTab === 'outgoing') {
+    body = outgoingSection
+  }
 
   return (
     <SurfaceOverlay
       open={open}
       onClose={onClose}
       title="친구 관리"
-      width={420}
+      width={460}
       contentStyle={{ background: 'transparent', padding: 0 }}
     >
-      <div style={{ display: 'grid', gap: 16 }}>
-        <section
-          style={{
-            background: 'rgba(15, 23, 42, 0.85)',
-            borderRadius: 18,
-            border: '1px solid rgba(148,163,184,0.35)',
-            padding: '16px 18px',
-            color: '#e2e8f0',
-            display: 'grid',
-            gap: 6,
-          }}
-        >
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>내 캐릭터 ID</span>
-          <code style={{ fontSize: 16, fontWeight: 600 }}>{viewer?.hero_id || '선택된 캐릭터 없음'}</code>
-        </section>
-
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            display: 'grid',
-            gap: 10,
-            padding: '16px 18px',
-            borderRadius: 18,
-            border: '1px solid rgba(148,163,184,0.35)',
-            background: 'rgba(15, 23, 42, 0.78)',
-            color: '#e2e8f0',
-          }}
-        >
-          <label style={{ fontSize: 13, color: '#cbd5f5' }}>
-            친구로 추가할 캐릭터 ID
-            <input
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="예: 00000000-0000-0000-0000-000000000000"
-              style={{
-                marginTop: 6,
-                width: '100%',
-                borderRadius: 12,
-                border: '1px solid rgba(148,163,184,0.45)',
-                background: 'rgba(15,23,42,0.6)',
-                color: '#e2e8f0',
-                padding: '10px 12px',
-                fontSize: 13,
-              }}
-            />
-          </label>
-          <button
-            type="submit"
-            style={{
-              borderRadius: 12,
-              border: 'none',
-              padding: '10px 14px',
-              background: '#38bdf8',
-              color: '#020617',
-              fontWeight: 700,
-              fontSize: 14,
-              cursor: 'pointer',
-            }}
-          >
+      <div style={styles.container}>
+        <form style={styles.addRow} onSubmit={handleSubmit}>
+          <input
+            type="text"
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="추가할 캐릭터 ID 입력"
+            style={styles.input}
+          />
+          <button type="submit" style={styles.primaryButton} disabled={!input.trim()}>
             친구 추가
           </button>
         </form>
 
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            padding: '0 4px',
-          }}
-        >
+        <div style={styles.tabRow}>
           <button
             type="button"
+            style={styles.tabButton(activeTab === 'friends')}
             onClick={() => setActiveTab('friends')}
-            style={{
-              flex: 1,
-              borderRadius: 999,
-              border: '1px solid rgba(148,163,184,0.4)',
-              padding: '10px 12px',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              background: activeTab === 'friends' ? 'rgba(56,189,248,0.16)' : 'rgba(15,23,42,0.7)',
-              color: activeTab === 'friends' ? '#e0f2fe' : '#cbd5f5',
-            }}
           >
             친구 목록
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('requests')}
-            style={{
-              flex: 1,
-              borderRadius: 999,
-              border: '1px solid rgba(148,163,184,0.4)',
-              padding: '10px 12px',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              background: activeTab === 'requests' ? 'rgba(56,189,248,0.16)' : 'rgba(15,23,42,0.7)',
-              color: activeTab === 'requests' ? '#e0f2fe' : '#cbd5f5',
-            }}
+            style={styles.tabButton(activeTab === 'incoming')}
+            onClick={() => setActiveTab('incoming')}
           >
-            친구 요청
+            받은 요청
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('blocked')}
-            style={{
-              flex: 1,
-              borderRadius: 999,
-              border: '1px solid rgba(148,163,184,0.4)',
-              padding: '10px 12px',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              background: activeTab === 'blocked' ? 'rgba(248,113,113,0.18)' : 'rgba(15,23,42,0.7)',
-              color: activeTab === 'blocked' ? '#fecaca' : '#fca5a5',
-            }}
+            style={styles.tabButton(activeTab === 'outgoing')}
+            onClick={() => setActiveTab('outgoing')}
           >
-            차단 목록
+            보낸 요청
           </button>
         </div>
 
-        {loading ? <p style={{ color: '#cbd5f5', fontSize: 13 }}>친구 정보를 불러오는 중…</p> : null}
-        {error ? <p style={{ color: '#fca5a5', fontSize: 13 }}>{error}</p> : null}
+        {loading ? <p style={styles.hint}>친구 정보를 불러오는 중입니다…</p> : null}
+        {error ? (
+          <p style={{ ...styles.hint, color: '#fca5a5' }} role="alert">
+            {error}
+          </p>
+        ) : null}
 
-        {activeTab === 'friends' ? (
-          <div style={{ display: 'grid', gap: 12 }}>
-            {sortedFriends.map((friend) => {
-              const heroId = friend.currentHeroId || friend.friendHeroId
-              const heroName = friend.currentHeroName || friend.friendHeroName
-              const heroBlocked = heroId ? blockedHeroSet.has(heroId) : false
-              return (
-                <div
-                  key={friend.friendOwnerId || heroId}
-                  style={{
-                    border: '1px solid rgba(148,163,184,0.35)',
-                    borderRadius: 18,
-                    padding: '14px 16px',
-                    background: 'rgba(15, 23, 42, 0.7)',
-                    color: '#e2e8f0',
-                    display: 'grid',
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'grid', gap: 4 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <strong style={{ fontSize: 15 }}>{heroName}</strong>
-                        {heroBlocked ? (
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color: '#fecaca',
-                              background: 'rgba(248,113,113,0.25)',
-                              borderRadius: 999,
-                              padding: '2px 8px',
-                              fontWeight: 600,
-                            }}
-                          >
-                            차단됨
-                          </span>
-                        ) : null}
-                      </div>
-                      <span style={{ fontSize: 12, color: '#94a3b8' }}>{heroId || 'ID 미확인'}</span>
-                    </div>
-                    <span style={{ fontSize: 12, color: friend.online ? '#22d3ee' : '#94a3b8' }}>
-                      {friend.online ? '온라인' : '오프라인'}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: 12, color: '#cbd5f5' }}>{formatPageLabel(friend.currentPage)}</span>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      onClick={() => heroId && onOpenWhisper?.(heroId)}
-                      style={{
-                        borderRadius: 10,
-                        border: 'none',
-                        padding: '8px 12px',
-                        background: '#38bdf8',
-                        color: '#020617',
-                        fontWeight: 700,
-                        fontSize: 12,
-                        cursor: heroId ? 'pointer' : 'not-allowed',
-                        opacity: heroId ? 1 : 0.4,
-                      }}
-                    >
-                      귓속말
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRemove(friend)}
-                      style={{
-                        borderRadius: 10,
-                        border: '1px solid rgba(248, 113, 113, 0.6)',
-                        padding: '8px 12px',
-                        background: 'rgba(248, 113, 113, 0.15)',
-                        color: '#fca5a5',
-                        fontWeight: 700,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      친구 삭제
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFriend(friend)
-                        setSheetOpen(true)
-                      }}
-                      style={{
-                        borderRadius: 10,
-                        border: '1px solid rgba(148,163,184,0.45)',
-                        padding: '8px 12px',
-                        background: 'rgba(15,23,42,0.55)',
-                        color: '#cbd5f5',
-                        fontWeight: 600,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      상세
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-            {!sortedFriends.length && !loading ? (
-              <p style={{ color: '#cbd5f5', fontSize: 13 }}>등록된 친구가 없습니다.</p>
-            ) : null}
-          </div>
-        ) : activeTab === 'requests' ? (
-          <div style={{ display: 'grid', gap: 16 }}>
-            <section
-              style={{
-                display: 'grid',
-                gap: 12,
-                border: '1px solid rgba(148,163,184,0.35)',
-                borderRadius: 18,
-                padding: '14px 16px',
-                background: 'rgba(15, 23, 42, 0.7)',
-                color: '#e2e8f0',
-              }}
-            >
-              <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontSize: 14 }}>받은 친구 요청</strong>
-                <span style={{ fontSize: 12, color: '#94a3b8' }}>{incomingRequests.length}건</span>
-              </header>
-              <div style={{ display: 'grid', gap: 12 }}>
-                {incomingRequests.map((request) => (
-                  <article
-                    key={request.id}
-                    style={{
-                      border: '1px solid rgba(148,163,184,0.35)',
-                      borderRadius: 16,
-                      padding: '12px 14px',
-                      background: 'rgba(15,23,42,0.6)',
-                      display: 'grid',
-                      gap: 6,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'grid', gap: 2 }}>
-                        <strong style={{ fontSize: 14 }}>{request.partnerHeroName}</strong>
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{request.partnerHeroId || 'ID 미확인'}</span>
-                      </div>
-                      <span style={{ fontSize: 12, color: '#f8fafc' }}>대기 중</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleAcceptRequest(request)}
-                        style={{
-                          borderRadius: 10,
-                          border: 'none',
-                          padding: '8px 12px',
-                          background: '#4ade80',
-                          color: '#022c22',
-                          fontWeight: 600,
-                          fontSize: 13,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        수락
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeclineRequest(request)}
-                        style={{
-                          borderRadius: 10,
-                          border: '1px solid rgba(248,113,113,0.6)',
-                          padding: '8px 12px',
-                          background: 'transparent',
-                          color: '#fca5a5',
-                          fontWeight: 600,
-                          fontSize: 13,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        거절
-                      </button>
-                    </div>
-                  </article>
-                ))}
-                {incomingRequests.length === 0 ? (
-                  <p style={{ color: '#cbd5f5', fontSize: 13 }}>받은 친구 요청이 없습니다.</p>
-                ) : null}
-              </div>
-            </section>
-
-            <section
-              style={{
-                display: 'grid',
-                gap: 12,
-                border: '1px solid rgba(148,163,184,0.35)',
-                borderRadius: 18,
-                padding: '14px 16px',
-                background: 'rgba(15, 23, 42, 0.7)',
-                color: '#e2e8f0',
-              }}
-            >
-              <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontSize: 14 }}>보낸 친구 요청</strong>
-                <span style={{ fontSize: 12, color: '#94a3b8' }}>{outgoingRequests.length}건</span>
-              </header>
-              <div style={{ display: 'grid', gap: 12 }}>
-                {outgoingRequests.map((request) => (
-                  <article
-                    key={request.id}
-                    style={{
-                      border: '1px solid rgba(148,163,184,0.35)',
-                      borderRadius: 16,
-                      padding: '12px 14px',
-                      background: 'rgba(15,23,42,0.6)',
-                      display: 'grid',
-                      gap: 6,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'grid', gap: 2 }}>
-                        <strong style={{ fontSize: 14 }}>{request.partnerHeroName}</strong>
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{request.partnerHeroId || 'ID 미확인'}</span>
-                      </div>
-                      <span style={{ fontSize: 12, color: '#f8fafc' }}>대기 중</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCancelRequest(request)}
-                      style={{
-                        borderRadius: 10,
-                        border: '1px solid rgba(148,163,184,0.6)',
-                        padding: '8px 12px',
-                        background: 'transparent',
-                        color: '#cbd5f5',
-                        fontWeight: 600,
-                        fontSize: 13,
-                        cursor: 'pointer',
-                        justifySelf: 'flex-start',
-                      }}
-                    >
-                      요청 취소
-                    </button>
-                  </article>
-                ))}
-                {outgoingRequests.length === 0 ? (
-                  <p style={{ color: '#cbd5f5', fontSize: 13 }}>보낸 친구 요청이 없습니다.</p>
-                ) : null}
-              </div>
-            </section>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gap: 12 }}>
-            {blockedEntries.map((entry) => (
-              <div
-                key={entry.heroId}
-                style={{
-                  border: '1px solid rgba(148,163,184,0.35)',
-                  borderRadius: 18,
-                  padding: '14px 16px',
-                  background: 'rgba(15, 23, 42, 0.7)',
-                  color: '#e2e8f0',
-                  display: 'grid',
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'grid', gap: 4 }}>
-                    <strong style={{ fontSize: 15 }}>{entry.heroName}</strong>
-                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{entry.heroId}</span>
-                  </div>
-                  <span style={{ fontSize: 12, color: '#fca5a5' }}>차단됨</span>
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleBlockedHero(entry.heroId)}
-                    style={{
-                      borderRadius: 10,
-                      border: 'none',
-                      padding: '8px 12px',
-                      background: '#fca5a5',
-                      color: '#021626',
-                      fontWeight: 700,
-                      fontSize: 12,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    차단 해제
-                  </button>
-                </div>
-              </div>
-            ))}
-            {!blockedEntries.length ? (
-              <p style={{ color: '#fca5a5', fontSize: 13 }}>차단한 캐릭터가 없습니다.</p>
-            ) : null}
-          </div>
-        )}
+        {body}
       </div>
 
       <ProfileActionSheet
         open={sheetOpen}
         hero={sheetHero}
-        onClose={() => setSheetOpen(false)}
-        onAddFriend={sheetHero?.onAddFriend}
-        onWhisper={sheetHero?.onWhisper}
-        onViewDetail={sheetHero?.onViewDetail}
-        isFriend={sheetHero?.isFriend}
+        onClose={closeFriendSheet}
         onRemoveFriend={sheetHero?.onRemoveFriend}
-        blocked={sheetHero?.blocked}
-        onToggleBlock={sheetHero?.onToggleBlock}
+        onViewDetail={sheetHero?.onViewDetail}
       />
     </SurfaceOverlay>
   )
 }
+
+const styles = {
+  container: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    padding: 20,
+    background: 'rgba(15,23,42,0.92)',
+    borderRadius: 24,
+    border: '1px solid rgba(148,163,184,0.2)',
+    color: '#e2e8f0',
+  },
+  addRow: {
+    display: 'flex',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  input: {
+    flex: 1,
+    minWidth: 180,
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.6)',
+    color: '#f8fafc',
+    fontSize: 14,
+  },
+  tabRow: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  tabButton: (active) => ({
+    padding: '8px 16px',
+    borderRadius: 999,
+    border: active ? '1px solid rgba(96,165,250,0.6)' : '1px solid rgba(148,163,184,0.35)',
+    background: active ? 'rgba(30,64,175,0.55)' : 'rgba(15,23,42,0.55)',
+    color: active ? '#dbeafe' : '#e2e8f0',
+    fontWeight: 600,
+    cursor: 'pointer',
+  }),
+  listItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    padding: '12px 14px',
+    borderRadius: 16,
+    background: 'rgba(15,23,42,0.65)',
+    border: '1px solid rgba(148,163,184,0.25)',
+  },
+  listTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#f8fafc',
+  },
+  listMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  itemActions: {
+    display: 'flex',
+    gap: 8,
+  },
+  primaryButton: {
+    appearance: 'none',
+    border: 'none',
+    borderRadius: 12,
+    padding: '8px 14px',
+    background: 'linear-gradient(135deg, #38bdf8 0%, #22d3ee 100%)',
+    color: '#0f172a',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  ghostButton: {
+    appearance: 'none',
+    border: '1px solid rgba(148,163,184,0.4)',
+    borderRadius: 12,
+    padding: '8px 14px',
+    background: 'rgba(15,23,42,0.55)',
+    color: '#e2e8f0',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  dangerButton: {
+    appearance: 'none',
+    border: '1px solid rgba(248,113,113,0.5)',
+    borderRadius: 12,
+    padding: '8px 14px',
+    background: 'rgba(127,29,29,0.4)',
+    color: '#fecaca',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  hint: {
+    margin: 0,
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+}
+

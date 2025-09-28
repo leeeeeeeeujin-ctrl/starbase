@@ -3,7 +3,6 @@
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import ChatOverlay from '@/components/social/ChatOverlay'
 import FriendOverlay from '@/components/social/FriendOverlay'
 import { supabase } from '@/lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
@@ -17,11 +16,11 @@ const DEFAULT_DESCRIPTION =
 
 const overlayTabs = [
   { key: 'character', label: '캐릭터' },
-  { key: 'search', label: '게임 검색' },
-  { key: 'create', label: '게임 제작' },
-  { key: 'register', label: '게임 등록' },
+  { key: 'abilities', label: '능력' },
+  { key: 'stats', label: '통계' },
   { key: 'ranking', label: '랭킹' },
-  { key: 'settings', label: '설정' },
+  { key: 'friends', label: '친구' },
+  { key: 'search', label: '방 검색' },
 ]
 
 const searchSortOptions = [
@@ -788,16 +787,7 @@ export default function SharedHeroOverlay() {
   const [friendStatus, setFriendStatus] = useState(null)
   const [friendBusy, setFriendBusy] = useState(false)
 
-  const [chatOpen, setChatOpen] = useState(false)
   const [friendOpen, setFriendOpen] = useState(false)
-  const [chatUnread, setChatUnread] = useState(0)
-  const [blockedState, setBlockedState] = useState({ ids: [], entries: [] })
-  const chatOverlayRef = useRef(null)
-
-  const [registeredGames, setRegisteredGames] = useState([])
-  const [registerLoading, setRegisterLoading] = useState(false)
-  const [registerError, setRegisterError] = useState('')
-  const [registerHydrated, setRegisterHydrated] = useState(false)
 
   const profileOffsetRef = useRef(0)
   const previousAudioRef = useRef(null)
@@ -848,8 +838,6 @@ export default function SharedHeroOverlay() {
     acceptFriendRequest,
     declineFriendRequest,
     cancelFriendRequest,
-    refreshSocial,
-    friendByHero,
   } = useHeroSocial({
     heroId: currentHero?.id || null,
     heroName,
@@ -857,173 +845,14 @@ export default function SharedHeroOverlay() {
     viewerHero: viewerHeroHint,
   })
 
-  const extraWhisperTargets = useMemo(() => {
-    if (!friends?.length) return []
-    const map = new Map()
-    for (const friend of friends) {
-      if (!friend) continue
-      const heroId = friend.friendHeroId || friend.currentHeroId
-      if (!heroId || map.has(heroId)) continue
-      const heroLabel =
-        friend.friendHeroName || friend.currentHeroName || friend.displayName || friend.username || '친구'
-      const avatar = friend.friendHeroAvatar || friend.currentHeroAvatar || null
-      map.set(heroId, { heroId, heroName: heroLabel, avatarUrl: avatar })
-    }
-    return Array.from(map.values())
-  }, [friends])
-
-  const isFriendHero = useCallback(
-    (hero) => {
-      if (!hero) return false
-      const heroId = hero.heroId || hero.id
-      if (!heroId) return false
-      return friendByHero.has(heroId)
-    },
-    [friendByHero],
-  )
-
-  const handleAddFriendFromChat = useCallback(
-    (hero) => {
-      if (!hero?.heroId) {
-        return Promise.resolve({ ok: false, error: '캐릭터 정보를 찾을 수 없습니다.' })
-      }
-      return addFriend({ heroId: hero.heroId })
-    },
-    [addFriend],
-  )
-
-  const handleRemoveFriendFromChat = useCallback(
-    (hero) => {
-      if (!hero?.heroId) {
-        return Promise.resolve({ ok: false, error: '캐릭터 정보를 찾을 수 없습니다.' })
-      }
-      const friend = friendByHero.get(hero.heroId)
-      if (!friend) {
-        return Promise.resolve({ ok: false, error: '친구 정보를 찾을 수 없습니다.' })
-      }
-      return removeFriend(friend)
-    },
-    [friendByHero, removeFriend],
-  )
-
-  const handleOpenWhisper = useCallback((heroId) => {
-    if (!heroId) return
-    setChatOpen(true)
-    requestAnimationFrame(() => {
-      chatOverlayRef.current?.openThread?.(heroId)
-    })
-  }, [])
-
-  const handleBlockedHeroesChange = useCallback((next) => {
-    if (!next) {
-      setBlockedState({ ids: [], entries: [] })
-      return
-    }
-    const ids = Array.isArray(next.ids) ? next.ids : []
-    const entries = Array.isArray(next.entries) ? next.entries : []
-    setBlockedState({ ids, entries })
-  }, [])
-
-  const handleToggleBlockedHero = useCallback(async ({ heroId, heroName: name, avatarUrl }) => {
-    if (!heroId) {
-      return { ok: false, error: '캐릭터 정보를 찾을 수 없습니다.' }
-    }
-    setBlockedState((prev) => {
-      const nextIds = new Set(prev.ids || [])
-      const entryMap = new Map((prev.entries || []).map((entry) => [entry.heroId, entry]))
-      if (nextIds.has(heroId)) {
-        nextIds.delete(heroId)
-        entryMap.delete(heroId)
-      } else {
-        nextIds.add(heroId)
-        entryMap.set(heroId, {
-          heroId,
-          heroName: name || '이름 미확인',
-          avatarUrl: avatarUrl || null,
-        })
-      }
-      return { ids: Array.from(nextIds), entries: Array.from(entryMap.values()) }
-    })
-    return { ok: true }
-  }, [])
-
-  const handleUnreadChange = useCallback((count) => {
-    setChatUnread(count)
-  }, [])
-
-  const handleMessageAlert = useCallback(() => {
-    if (!chatOpen) {
-      setChatUnread((prev) => prev + 1)
-    }
-  }, [chatOpen])
-
-  const handleCloseChat = useCallback(() => {
-    setChatOpen(false)
-    chatOverlayRef.current?.resetThread?.()
-  }, [])
+  const [friendSummary, setFriendSummary] = useState({ total: 0, pending: 0 })
 
   useEffect(() => {
-    if (chatOpen) {
-      setChatUnread(0)
-    }
-  }, [chatOpen])
-
-  const loadRegisteredGames = useCallback(async () => {
-    if (!viewer?.user_id) {
-      setRegisterError('로그인 후 이용할 수 있습니다.')
-      setRegisteredGames([])
-      setRegisterHydrated(true)
-      return
-    }
-
-    setRegisterLoading(true)
-    setRegisterError('')
-    try {
-      const { data, error } = await withTable(supabase, 'rank_games', (table) =>
-        supabase
-          .from(table)
-          .select('id,name,description,created_at,likes_count,play_count')
-          .eq('owner_id', viewer.user_id)
-          .order('created_at', { ascending: false })
-          .limit(40),
-      )
-
-      if (error) {
-        throw error
-      }
-
-      const rows = (data || []).map((row) => ({
-        id: row.id,
-        name: row.name || '이름 미확인',
-        description: row.description || '',
-        createdAt: row.created_at || null,
-        likes: row.likes_count ?? 0,
-        plays: row.play_count ?? 0,
-      }))
-
-      setRegisteredGames(rows)
-      setRegisterHydrated(true)
-    } catch (error) {
-      console.error('등록된 게임을 불러오지 못했습니다:', error)
-      setRegisteredGames([])
-      setRegisterError(error?.message || '등록된 게임을 불러오지 못했습니다.')
-      setRegisterHydrated(true)
-    } finally {
-      setRegisterLoading(false)
-    }
-  }, [viewer?.user_id])
-
-  useEffect(() => {
-    if (activeTabKey !== 'register') return
-    if (registerHydrated) return
-    loadRegisteredGames()
-  }, [activeTabKey, loadRegisteredGames, registerHydrated])
-
-  useEffect(() => {
-    setRegisterHydrated(false)
-    setRegisteredGames([])
-    setRegisterError('')
-  }, [viewer?.user_id])
+    const total = Array.isArray(friends) ? friends.length : 0
+    const incomingCount = Array.isArray(friendRequests?.incoming) ? friendRequests.incoming.length : 0
+    const outgoingCount = Array.isArray(friendRequests?.outgoing) ? friendRequests.outgoing.length : 0
+    setFriendSummary({ total, pending: incomingCount + outgoingCount })
+  }, [friendRequests, friends])
 
   const loadOtherHeroes = useCallback(async (excludeId) => {
     try {
@@ -1243,6 +1072,23 @@ export default function SharedHeroOverlay() {
             <p style={styles.infoTitle}>{heroName}</p>
             <p style={styles.infoText}>{description}</p>
           </div>
+          <div style={styles.buttonRow}>
+            <button
+              type="button"
+              style={styles.primaryButton}
+              onClick={() => currentHero?.id && router.push(`/character/${currentHero.id}`)}
+            >
+              캐릭터 창으로 이동
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    if (activeTabKey === 'abilities') {
+      return (
+        <div style={styles.tabContent}>
+          <p style={styles.infoTitle}>능력 정보</p>
           {abilityPairs.length ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {abilityPairs.map((pair) => (
@@ -1255,6 +1101,89 @@ export default function SharedHeroOverlay() {
           ) : (
             <p style={styles.listMeta}>등록된 능력이 없습니다.</p>
           )}
+        </div>
+      )
+    }
+
+    if (activeTabKey === 'stats') {
+      return (
+        <div style={styles.tabContent}>
+          <p style={styles.infoTitle}>통계 요약</p>
+          <p style={styles.infoText}>
+            전체 승률과 평균 점수는 추후 랭킹 게임 데이터와 함께 제공될 예정입니다. 캐릭터 화면에서 자세한 전투 기록을 확인해
+            주세요.
+          </p>
+          <div style={styles.listItem}>
+            <p style={styles.listTitle}>참여 중인 게임</p>
+            <p style={styles.listMeta}>
+              {Array.isArray(currentHero?.tags) && currentHero.tags.length
+                ? currentHero.tags.join(' / ')
+                : '등록된 게임 태그가 없습니다.'}
+            </p>
+          </div>
+        </div>
+      )
+    }
+
+    if (activeTabKey === 'ranking') {
+      return (
+        <div style={styles.tabContent}>
+          <p style={styles.infoTitle}>다른 영웅 살펴보기</p>
+          <p style={styles.infoText}>프로필을 열어 친구 추가와 전적을 확인해 보세요.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {otherHeroes.length ? (
+              otherHeroes.map((hero) => (
+                <div key={hero.id} style={styles.rankingHeroRow}>
+                  <div style={styles.rankingHeroMeta}>
+                    {hero.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={hero.image_url} alt={hero.name} style={styles.rankingAvatar} />
+                    ) : (
+                      <div style={styles.rankingFallback}>{hero.name.slice(0, 2)}</div>
+                    )}
+                    <span>{hero.name}</span>
+                  </div>
+                  <button type="button" style={styles.rankingButton} onClick={() => openProfile(hero.id)}>
+                    프로필 보기
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p style={styles.listMeta}>아직 불러온 영웅이 없습니다.</p>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    if (activeTabKey === 'friends') {
+      const previewFriends = Array.isArray(friends) ? friends.slice(0, 3) : []
+      const pendingText =
+        friendSummary.pending > 0 ? `대기 중인 요청 ${friendSummary.pending}건` : '대기 중인 요청 없음'
+
+      return (
+        <div style={styles.tabContent}>
+          <p style={styles.infoTitle}>친구 현황</p>
+          <p style={styles.listMeta}>{`등록된 친구 ${friendSummary.total}명 · ${pendingText}`}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {previewFriends.map((friend) => {
+              const heroName =
+                friend.friendHeroName || friend.currentHeroName || friend.displayName || friend.username || '친구'
+              const status = friend.online ? '온라인' : '오프라인'
+              return (
+                <div key={`${friend.friendOwnerId || friend.ownerId || heroName}`} style={styles.listItem}>
+                  <p style={styles.listTitle}>{heroName}</p>
+                  <p style={styles.listMeta}>{status}</p>
+                </div>
+              )
+            })}
+            {!previewFriends.length ? <p style={styles.listMeta}>친구가 아직 없습니다.</p> : null}
+          </div>
+          <div style={styles.buttonRow}>
+            <button type="button" style={styles.primaryButton} onClick={() => setFriendOpen(true)}>
+              친구창 열기
+            </button>
+          </div>
         </div>
       )
     }
@@ -1292,139 +1221,24 @@ export default function SharedHeroOverlay() {
       )
     }
 
-    if (activeTabKey === 'create') {
-      return (
-        <div style={styles.tabContent}>
-          <p style={styles.infoTitle}>게임 제작 흐름</p>
-          <p style={styles.infoText}>
-            랭킹 허브에서 슬롯과 규칙을 설정하고, 메이커에서 프롬프트 세트를 다듬은 뒤 등록 화면으로 이동해 세부 정보를
-            완성할 수 있습니다.
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            <button type="button" style={styles.rankingButton} onClick={() => router.push('/rank')}>
-              게임 제작 허브 열기
-            </button>
-            <button type="button" style={styles.subtleButton} onClick={() => router.push('/maker')}>
-              프롬프트 메이커로 이동
-            </button>
-          </div>
-          <p style={styles.listMeta}>제작 중인 게임은 허브에서 언제든지 이어서 수정할 수 있어요.</p>
-        </div>
-      )
-    }
-
-    if (activeTabKey === 'register') {
-      return (
-        <div style={styles.tabContent}>
-          <p style={styles.infoTitle}>등록된 게임 목록</p>
-          <p style={styles.infoText}>
-            이미 등록한 게임을 확인하고 시즌이나 태그를 관리하려면 아래 목록에서 선택해 랭킹 허브로 이동해 주세요.
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            <button type="button" style={styles.rankingButton} onClick={() => router.push('/rank')}>
-              게임 등록 화면 열기
-            </button>
-            <button type="button" style={styles.subtleButton} onClick={loadRegisteredGames} disabled={registerLoading}>
-              {registerLoading ? '불러오는 중…' : '목록 새로고침'}
-            </button>
-          </div>
-          {registerError ? <p style={styles.statusText}>{registerError}</p> : null}
-          {registerLoading && !registerError ? <p style={styles.listMeta}>등록된 게임을 불러오는 중입니다…</p> : null}
-          {!registerLoading && !registerError && !registeredGames.length ? (
-            <p style={styles.listMeta}>아직 등록된 게임이 없습니다.</p>
-          ) : null}
-          <div style={styles.gameList}>
-            {registeredGames.map((game) => (
-              <div key={game.id} style={styles.listItem}>
-                <p style={styles.listTitle}>{game.name}</p>
-                <p style={styles.listMeta}>{game.description || '설명 미등록'}</p>
-                <p style={styles.listMeta}>{`등록일: ${formatDate(game.createdAt)}`}</p>
-                <p style={styles.listMeta}>{`플레이 ${game.plays} · 좋아요 ${game.likes}`}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )
-    }
-
-    if (activeTabKey === 'ranking') {
-      return (
-        <div style={styles.tabContent}>
-          <p style={styles.infoTitle}>다른 영웅 살펴보기</p>
-          <p style={styles.infoText}>프로필을 열어 친구 추가와 전적을 확인해 보세요.</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {otherHeroes.length ? (
-              otherHeroes.map((hero) => (
-                <div key={hero.id} style={styles.rankingHeroRow}>
-                  <div style={styles.rankingHeroMeta}>
-                    {hero.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={hero.image_url} alt={hero.name} style={styles.rankingAvatar} />
-                    ) : (
-                      <div style={styles.rankingFallback}>{hero.name.slice(0, 2)}</div>
-                    )}
-                    <span>{hero.name}</span>
-                  </div>
-                  <button type="button" style={styles.rankingButton} onClick={() => openProfile(hero.id)}>
-                    프로필 보기
-                  </button>
-                </div>
-              ))
-            ) : (
-              <p style={styles.listMeta}>아직 불러온 영웅이 없습니다.</p>
-            )}
-          </div>
-        </div>
-      )
-    }
-
-    if (activeTabKey === 'settings') {
-      return (
-        <div style={styles.tabContent}>
-          <div style={styles.settingsRow}>
-            <button
-              type="button"
-              style={styles.toggleButton}
-              onClick={() => audioManager.setEnabled(!bgmEnabled)}
-            >
-              {bgmEnabled ? '브금 끄기' : '브금 켜기'}
-            </button>
-          </div>
-          <div style={styles.sliderRow}>
-            <label style={styles.sliderLabel}>
-              볼륨
-              <span>{`${Math.round(bgmVolume * 100)}%`}</span>
-            </label>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(bgmVolume * 100)}
-              onChange={(event) => audioManager.setVolume(Number(event.target.value) / 100)}
-            />
-          </div>
-        </div>
-      )
-    }
-
     return null
   }, [
     activeTabKey,
     abilityPairs,
-    audioManager,
-    bgmEnabled,
-    bgmVolume,
     description,
     filteredGames,
+    friendSummary.pending,
+    friendSummary.total,
+    friends,
     heroName,
-    loadRegisteredGames,
     openProfile,
     otherHeroes,
-    registerError,
-    registerLoading,
-    registeredGames,
     searchSort,
     searchTerm,
+    setFriendOpen,
+    currentHero?.id,
+    currentHero?.tags,
+    router,
   ])
 
   const activeBgmUrl = currentHero?.bgm_url || null
@@ -1540,15 +1354,15 @@ export default function SharedHeroOverlay() {
                     ))}
                   </div>
                   <div style={styles.headerActions}>
-                    <button type="button" style={styles.headerActionButton} onClick={() => setChatOpen(true)}>
-                      공용 채팅
-                      {chatUnread > 0 ? <span style={styles.badge}>{`+${chatUnread}`}</span> : null}
-                    </button>
                     <button type="button" style={styles.headerActionButton} onClick={() => setFriendOpen(true)}>
-                      친구
+                      친구창 열기
                     </button>
-                    <button type="button" style={styles.headerActionButton} onClick={() => router.push('/lobby')}>
-                      로비로 이동
+                    <button
+                      type="button"
+                      style={styles.headerActionButton}
+                      onClick={() => currentHero?.id && router.push(`/character/${currentHero.id}`)}
+                    >
+                      캐릭터 화면
                     </button>
                   </div>
                 </div>
@@ -1576,22 +1390,6 @@ export default function SharedHeroOverlay() {
         />
       ) : null}
 
-      <ChatOverlay
-        ref={chatOverlayRef}
-        open={chatOpen}
-        onClose={handleCloseChat}
-        heroId={currentHero?.id || null}
-        viewerHero={viewerHeroHint}
-        extraWhisperTargets={extraWhisperTargets}
-        blockedHeroes={blockedState.ids}
-        onUnreadChange={handleUnreadChange}
-        onBlockedHeroesChange={handleBlockedHeroesChange}
-        onRequestAddFriend={handleAddFriendFromChat}
-        onRequestRemoveFriend={handleRemoveFriendFromChat}
-        isFriend={isFriendHero}
-        onMessageAlert={handleMessageAlert}
-      />
-
       <FriendOverlay
         open={friendOpen}
         onClose={() => setFriendOpen(false)}
@@ -1605,9 +1403,6 @@ export default function SharedHeroOverlay() {
         onAcceptRequest={acceptFriendRequest}
         onDeclineRequest={declineFriendRequest}
         onCancelRequest={cancelFriendRequest}
-        onOpenWhisper={handleOpenWhisper}
-        blockedHeroes={blockedState.entries}
-        onToggleBlockedHero={handleToggleBlockedHero}
       />
     </>
   )
