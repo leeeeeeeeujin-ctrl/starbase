@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor'
 import { exportSet, importSet } from './importExport'
@@ -54,24 +54,35 @@ export default function MakerEditor() {
     setEdges,
   } = useMakerEditor()
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
+  const [controlsCollapsed, setControlsCollapsed] = useState(false)
+
+  const collapsedQuickActions = useMemo(
+    () => [
+      { label: '+AI', onClick: () => addPromptNode('ai') },
+      { label: '+유저', onClick: () => addPromptNode('user_action') },
+      { label: '+시스템', onClick: () => addPromptNode('system') },
+      { label: busy ? '저장 중…' : '저장', onClick: saveAll, disabled: busy },
+    ],
+    [addPromptNode, busy, saveAll],
+  )
 
   if (!isReady || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
   }
 
   return (
-    <div style={{ height: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column' }}>
       <div
         style={{
           flex: '1 1 auto',
           display: 'flex',
           flexDirection: 'column',
-          maxWidth: 720,
+          maxWidth: 900,
           width: '100%',
           margin: '0 auto',
-          padding: '12px 16px 96px',
+          padding: '12px 16px 110px',
           boxSizing: 'border-box',
-          gap: 12,
+          gap: 10,
         }}
       >
         <MakerEditorHeader
@@ -85,24 +96,33 @@ export default function MakerEditor() {
           onExport={exportSet}
           onImport={importSet}
           onGoLobby={goToLobby}
+          collapsed={controlsCollapsed}
+          onToggleCollapse={() => setControlsCollapsed((prev) => !prev)}
+          onOpenVariables={() => setVariableDrawerOpen(true)}
+          quickActions={collapsedQuickActions}
         />
 
-        <MakerEditorPanel
-          tabs={panelTabs}
-          activeTab={activePanelTab}
-          onTabChange={setActivePanelTab}
-          onOpenVariables={() => setVariableDrawerOpen(true)}
-          selectedNode={selectedNode}
-          selectedNodeId={selectedNodeId}
-          selectedEdge={selectedEdge}
-          onMarkAsStart={markAsStart}
-          onToggleInvisible={toggleInvisible}
-          onDeleteSelected={() => selectedNodeId && handleDeletePrompt(selectedNodeId)}
-          onInsertToken={appendTokenToSelected}
-          rebuildEdgeLabel={rebuildEdgeLabel}
-          setNodes={setNodes}
-          setEdges={setEdges}
-        />
+        {!controlsCollapsed && (
+          <MakerEditorPanel
+            tabs={panelTabs}
+            activeTab={activePanelTab}
+            onTabChange={setActivePanelTab}
+            onOpenVariables={() => setVariableDrawerOpen(true)}
+            selectedNode={selectedNode}
+            selectedNodeId={selectedNodeId}
+            selectedEdge={selectedEdge}
+            onMarkAsStart={markAsStart}
+            onToggleInvisible={toggleInvisible}
+            onDeleteSelected={() => selectedNodeId && handleDeletePrompt(selectedNodeId)}
+            onInsertToken={appendTokenToSelected}
+            rebuildEdgeLabel={rebuildEdgeLabel}
+            setNodes={setNodes}
+            setEdges={setEdges}
+            slotSuggestions={slotSuggestions}
+            selectedVisibility={selectedVisibility}
+            onVisibilityChange={updateVisibility}
+          />
+        )}
 
         <MakerEditorCanvas
           nodes={nodes}
@@ -158,5 +178,3 @@ export default function MakerEditor() {
     </div>
   )
 }
-
-//

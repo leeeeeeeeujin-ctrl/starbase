@@ -2,43 +2,35 @@
 import React, { useMemo } from 'react'
 import { Handle, Position } from 'reactflow'
 
-function formatVisibilityLabel(data) {
-  if (!data?.invisible) {
-    return '표시 노드'
-  }
-
-  const list = Array.isArray(data?.visible_slots) ? data.visible_slots : []
-  if (list.length === 0) {
-    return '숨김: 전체 비공개'
-  }
-
-  if (list.length === 1) {
-    return `숨김: 슬롯 ${list[0]}만 볼 수 있음`
-  }
-
-  return `숨김: ${list.length}개 슬롯 공개`
-}
-
 export default function PromptNode({ id, data }) {
   const d = data || {}
-  const update = (patch) => d.onChange?.(patch)
 
-  const visibilityLabel = useMemo(() => formatVisibilityLabel(d), [d])
   const slotLabel = useMemo(() => {
     if (!d.slotNo) return null
     return `#${d.slotNo}`
   }, [d.slotNo])
 
+  const typeLabel = useMemo(() => {
+    if (!d.slot_type) return 'AI'
+    if (d.slot_type === 'user_action') return '유저'
+    if (d.slot_type === 'system') return '시스템'
+    return 'AI'
+  }, [d.slot_type])
+
+  const isInvisible = !!d.invisible
+  const isStart = !!d.isStart
+
   return (
     <div
       style={{
-        width: 'min(320px, 82vw)',
-        border: '1px solid #e5e7eb',
-        borderRadius: 16,
-        background: '#fff',
-        overflow: 'hidden',
-        position: 'relative',
-        boxShadow: '0 20px 48px -32px rgba(15, 23, 42, 0.5)',
+        minWidth: 140,
+        maxWidth: 180,
+        padding: '12px 8px',
+        display: 'grid',
+        justifyItems: 'center',
+        alignItems: 'center',
+        gap: 8,
+        background: 'transparent',
         touchAction: 'none',
       }}
     >
@@ -46,113 +38,60 @@ export default function PromptNode({ id, data }) {
         type="target"
         position={Position.Left}
         style={{
-          width: 18,
-          height: 18,
+          width: 14,
+          height: 14,
           borderRadius: '50%',
-          background: '#1d4ed8',
-          border: '3px solid #fff',
+          background: '#38bdf8',
+          border: '3px solid #0f172a',
         }}
       />
       <Handle
         type="source"
         position={Position.Right}
         style={{
-          width: 18,
-          height: 18,
+          width: 14,
+          height: 14,
           borderRadius: '50%',
-          background: '#0ea5e9',
-          border: '3px solid #fff',
+          background: '#f97316',
+          border: '3px solid #0f172a',
         }}
       />
       <div
         style={{
-          padding: '10px 12px',
-          display: 'grid',
-          gap: 8,
-          background: d.isStart ? '#dbeafe' : '#f9fafb',
-          borderBottom: '1px solid #e5e7eb',
+          width: 86,
+          height: 86,
+          borderRadius: '50%',
+          background: isStart ? '#0f172a' : '#111827',
+          boxShadow: isInvisible
+            ? '0 0 0 4px rgba(248, 250, 252, 0.55), 0 12px 26px -18px rgba(15, 23, 42, 0.8)'
+            : '0 16px 36px -24px rgba(15, 23, 42, 0.65)',
+          border: isInvisible ? '2px dashed #fbbf24' : '2px solid rgba(148, 163, 184, 0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'transform 120ms ease',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {slotLabel && (
-            <span
-              style={{
-                padding: '2px 8px',
-                borderRadius: 999,
-                background: '#1d4ed8',
-                color: '#fff',
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              {slotLabel}
-            </span>
-          )}
-          <select
-            value={d.slot_type || 'ai'}
-            onChange={(event) => update({ slot_type: event.target.value })}
-            style={{
-              fontWeight: 700,
-              borderRadius: 8,
-              border: '1px solid #cbd5f5',
-              padding: '4px 10px',
-              background: '#fff',
-            }}
-          >
-            <option value="ai">AI</option>
-            <option value="user_action">유저행동</option>
-            <option value="system">시스템</option>
-          </select>
-          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#475569' }}>{visibilityLabel}</span>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => d.onSetStart?.()}
-            style={{
-              padding: '4px 10px',
-              borderRadius: 10,
-              background: d.isStart ? '#1d4ed8' : '#e2e8f0',
-              color: d.isStart ? '#fff' : '#1f2937',
-              fontWeight: 600,
-            }}
-          >
-            {d.isStart ? '시작 노드' : '시작 지정'}
-          </button>
-          <button
-            type="button"
-            onClick={() => d.onDelete?.(id)}
-            style={{
-              padding: '4px 10px',
-              borderRadius: 10,
-              background: '#fee2e2',
-              color: '#b91c1c',
-              fontWeight: 600,
-            }}
-          >
-            삭제
-          </button>
-        </div>
+        <span style={{ fontSize: 38, color: '#f8fafc', lineHeight: 1 }}>★</span>
       </div>
 
-      <div style={{ padding: 12, display: 'grid', gap: 6 }}>
-        <label style={{ fontSize: 12, color: '#64748b' }}>템플릿</label>
-        <textarea
-          rows={8}
-          value={d.template || ''}
-          onChange={(event) => update({ template: event.target.value })}
-          style={{
-            width: '100%',
-            borderRadius: 12,
-            border: '1px solid #e2e8f0',
-            padding: '10px 12px',
-            fontFamily: 'inherit',
-            fontSize: 13,
-            lineHeight: 1.5,
-            resize: 'vertical',
-            minHeight: 160,
-          }}
-        />
+      <div style={{ display: 'grid', gap: 4, textAlign: 'center' }}>
+        {slotLabel && (
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: 999,
+              background: '#1d4ed8',
+              color: '#fff',
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            {slotLabel}
+          </span>
+        )}
+        <span style={{ fontSize: 12, color: '#cbd5f5', fontWeight: 600 }}>{typeLabel}</span>
+        {isInvisible && <span style={{ fontSize: 11, color: '#fbbf24', fontWeight: 600 }}>숨김</span>}
       </div>
     </div>
   )
