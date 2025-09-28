@@ -156,6 +156,22 @@ const styles = {
     letterSpacing: 0.4,
     boxShadow: '0 18px 40px -32px rgba(15,23,42,0.9)',
   },
+  heroIdBadge: (copied) => ({
+    position: 'absolute',
+    top: 58,
+    right: 18,
+    padding: '6px 12px',
+    borderRadius: 999,
+    border: '1px solid rgba(96,165,250,0.45)',
+    background: copied ? 'rgba(59,130,246,0.32)' : 'rgba(15,23,42,0.68)',
+    color: copied ? '#f8fafc' : '#cbd5f5',
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: 0.2,
+    cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+    transition: 'background 0.2s ease, color 0.2s ease',
+  }),
   overlaySurface: {
     position: 'absolute',
     left: '8%',
@@ -813,6 +829,32 @@ export default function CharacterBasicView({ hero }) {
     }
   }, [currentHeroId, router])
 
+  useEffect(() => {
+    setHeroIdCopied(false)
+  }, [currentHeroId])
+
+  useEffect(() => {
+    if (!heroIdCopied) return undefined
+    const timer = setTimeout(() => setHeroIdCopied(false), 1600)
+    return () => clearTimeout(timer)
+  }, [heroIdCopied])
+
+  const handleCopyHeroId = useCallback(async () => {
+    if (!currentHeroId) return
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(currentHeroId)
+        setHeroIdCopied(true)
+        return
+      }
+    } catch (error) {
+      console.error('캐릭터 ID 복사 실패:', error)
+    }
+    if (typeof window !== 'undefined') {
+      window.prompt('아래 캐릭터 ID를 복사해 주세요.', currentHeroId)
+    }
+  }, [currentHeroId])
+
   const [viewMode, setViewMode] = useState(0)
   const [activeTab, setActiveTab] = useState(0)
   const [playerCollapsed, setPlayerCollapsed] = useState(true)
@@ -833,6 +875,7 @@ export default function CharacterBasicView({ hero }) {
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [searchSort, setSearchSort] = useState('latest')
+  const [heroIdCopied, setHeroIdCopied] = useState(false)
 
   const audioManager = useMemo(() => getHeroAudioManager(), [])
   const [audioState, setAudioState] = useState(() => audioManager.getState())
@@ -2047,6 +2090,25 @@ export default function CharacterBasicView({ hero }) {
         <div style={styles.tapHint} aria-hidden="true">
           탭해서 정보 보기
         </div>
+        {currentHeroId ? (
+          <button
+            type="button"
+            style={styles.heroIdBadge(heroIdCopied)}
+            onClick={(event) => {
+              event.stopPropagation()
+              event.preventDefault()
+              handleCopyHeroId()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === ' ' || event.key === 'Enter') {
+                event.stopPropagation()
+              }
+            }}
+            aria-label="캐릭터 ID 복사"
+          >
+            {heroIdCopied ? 'ID 복사됨!' : `ID: ${currentHeroId}`}
+          </button>
+        ) : null}
       </div>
     </div>
   )

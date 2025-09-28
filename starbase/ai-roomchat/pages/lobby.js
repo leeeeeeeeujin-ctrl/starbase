@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import LobbyLayout from '../components/lobby/LobbyLayout'
@@ -12,11 +12,40 @@ import useLobbyStats from '../components/lobby/hooks/useLobbyStats'
 
 export default function Lobby() {
   const router = useRouter()
-  const { heroId } = router.query
+  const { heroId: heroIdParam } = router.query
   const [activeTab, setActiveTab] = useState('games')
+  const [storedHeroId, setStoredHeroId] = useState('')
+  const [backgroundUrl, setBackgroundUrl] = useState('')
+
+  const heroId = useMemo(() => {
+    if (Array.isArray(heroIdParam)) return heroIdParam[0] || ''
+    return heroIdParam || ''
+  }, [heroIdParam])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const savedHeroId = window.localStorage.getItem('selectedHeroId') || ''
+      const savedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
+      setStoredHeroId(savedHeroId)
+      setBackgroundUrl(savedBackground)
+    } catch (error) {
+      console.error('로비 배경 정보를 불러오지 못했습니다:', error)
+    }
+  }, [])
+
+  const returnHeroId = heroId || storedHeroId
 
   const gameBrowser = useGameBrowser({ enabled: activeTab === 'games' })
   const stats = useLobbyStats({ heroId, enabled: activeTab === 'stats' })
+
+  const handleBack = useCallback(() => {
+    if (returnHeroId) {
+      router.replace(`/character/${returnHeroId}`)
+    } else {
+      router.replace('/roster')
+    }
+  }, [returnHeroId, router])
 
   const handleEnterGame = useCallback(
     (game, role) => {
@@ -29,8 +58,9 @@ export default function Lobby() {
 
   return (
     <LobbyLayout
-      header={<LobbyHeader onBack={() => router.replace('/roster')} navLinks={NAV_LINKS} />}
+      header={<LobbyHeader onBack={handleBack} navLinks={NAV_LINKS} />}
       tabs={<TabBar tabs={LOBBY_TABS} activeTab={activeTab} onChange={setActiveTab} />}
+      backgroundUrl={backgroundUrl}
     >
       {activeTab === 'games' && (
         <GameSearchPanel

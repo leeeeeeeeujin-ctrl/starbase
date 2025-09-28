@@ -6,7 +6,7 @@ export default function LobbyHeader({ onBack, navLinks = [] }) {
     <header style={styles.root}>
       <div style={styles.titleRow}>
         <button onClick={onBack} style={styles.backButton}>
-          ← 로스터
+          ← 캐릭터로
         </button>
         <div style={styles.headingGroup}>
           <h1 style={styles.heading}>로비</h1>

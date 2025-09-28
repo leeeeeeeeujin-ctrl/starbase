@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
 import ProfileActionSheet from '../common/ProfileActionSheet'
 import SurfaceOverlay from '../common/SurfaceOverlay'
@@ -41,9 +41,17 @@ export default function FriendOverlay({
   const [activeTab, setActiveTab] = useState('friends')
   const [sheetOpen, setSheetOpen] = useState(false)
   const [selectedFriend, setSelectedFriend] = useState(null)
+  const [copied, setCopied] = useState(false)
 
   const incomingRequests = friendRequests?.incoming ?? []
   const outgoingRequests = friendRequests?.outgoing ?? []
+  const viewerHeroId = viewer?.hero_id || viewer?.heroId || ''
+
+  useEffect(() => {
+    if (!copied) return undefined
+    const timer = setTimeout(() => setCopied(false), 1600)
+    return () => clearTimeout(timer)
+  }, [copied])
 
   const sortedFriends = useMemo(() => {
     if (!Array.isArray(friends)) return []
@@ -118,6 +126,22 @@ export default function FriendOverlay({
     setSelectedFriend(friend || null)
     setSheetOpen(Boolean(friend))
   }, [])
+
+  const handleCopyViewerHeroId = useCallback(async () => {
+    if (!viewerHeroId) return
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(viewerHeroId)
+        setCopied(true)
+        return
+      }
+    } catch (error) {
+      console.error('친구창 캐릭터 ID 복사 실패:', error)
+    }
+    if (typeof window !== 'undefined') {
+      window.prompt('아래 캐릭터 ID를 복사해 주세요.', viewerHeroId)
+    }
+  }, [viewerHeroId])
 
   const closeFriendSheet = useCallback(() => {
     setSheetOpen(false)
@@ -222,6 +246,12 @@ export default function FriendOverlay({
       contentStyle={{ background: 'transparent', padding: 0 }}
     >
       <div style={styles.container}>
+        {viewerHeroId ? (
+          <button type="button" style={styles.viewerIdBadge(copied)} onClick={handleCopyViewerHeroId}>
+            {copied ? '내 캐릭터 ID 복사됨!' : `내 캐릭터 ID: ${viewerHeroId}`}
+          </button>
+        ) : null}
+
         <form style={styles.addRow} onSubmit={handleSubmit}>
           <input
             type="text"
@@ -291,6 +321,19 @@ const styles = {
     border: '1px solid rgba(148,163,184,0.2)',
     color: '#e2e8f0',
   },
+  viewerIdBadge: (copied) => ({
+    alignSelf: 'flex-start',
+    appearance: 'none',
+    borderRadius: 999,
+    border: '1px solid rgba(96,165,250,0.5)',
+    padding: '6px 14px',
+    background: copied ? 'rgba(59,130,246,0.35)' : 'rgba(30,58,138,0.35)',
+    color: copied ? '#f8fafc' : '#bfdbfe',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'background 0.2s ease, color 0.2s ease',
+  }),
   addRow: {
     display: 'flex',
     gap: 10,
