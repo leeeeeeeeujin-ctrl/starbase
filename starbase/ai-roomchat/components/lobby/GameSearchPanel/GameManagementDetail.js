@@ -21,16 +21,6 @@ function formatDate(value) {
   }
 }
 
-function resolveMinimumRequired(role = {}) {
-  const candidates = [role.minimum_required, role.min_players, role.min_required, role.required]
-  const firstValid = candidates.find((value) => Number.isFinite(Number(value)))
-  if (Number.isFinite(Number(firstValid))) {
-    const parsed = Number(firstValid)
-    return parsed > 0 ? parsed : 1
-  }
-  return 1
-}
-
 export default function GameManagementDetail({
   game,
   detailLoading,
@@ -70,10 +60,10 @@ export default function GameManagementDetail({
     () =>
       roles.map((role) => {
         const slot = roleSlots.get(role.name) || { capacity: role.slot_count ?? 1, occupied: 0 }
-        const capacity = slot.capacity ?? 0
+        const capacity = Number.isFinite(Number(slot.capacity)) ? Number(slot.capacity) : 0
         const occupied = slot.occupied ?? 0
         const remaining = Math.max(0, capacity - occupied)
-        const minimum = resolveMinimumRequired(role)
+        const minimum = Math.max(0, capacity)
         return {
           ...role,
           capacity,

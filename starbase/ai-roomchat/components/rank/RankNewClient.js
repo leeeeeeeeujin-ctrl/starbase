@@ -21,6 +21,17 @@ async function registerGame(payload) {
     return { ok: false, error: '로그인이 필요합니다.' }
   }
 
+  const roleNames = Array.from(
+    new Set(
+      (payload?.roles || [])
+        .map((role) => {
+          if (!role?.name) return ''
+          return String(role.name).trim()
+        })
+        .filter(Boolean),
+    ),
+  )
+
   const gameInsert = {
     owner_id: user.id,
     name: payload?.name || '새 게임',
@@ -32,16 +43,17 @@ async function registerGame(payload) {
     rules_prefix: payload?.rules_prefix ?? null,
   }
 
-  const { data: game, error: gameError } = await withTable(
-    supabase,
-    'rank_games',
-    (table) =>
-      supabase
-        .from(table)
-        .insert(gameInsert)
-        .select()
-        .single()
-  )
+  if (roleNames.length > 0) {
+    gameInsert.roles = roleNames
+  }
+
+  const { data: game, error: gameError } = await withTable(supabase, 'rank_games', (table) => {
+    const insertPayload = { ...gameInsert }
+    if (table !== 'rank_games') {
+      delete insertPayload.roles
+    }
+    return supabase.from(table).insert(insertPayload).select().single()
+  })
 
   if (gameError || !game) {
     return { ok: false, error: gameError?.message || '게임 등록에 실패했습니다.' }
@@ -54,10 +66,11 @@ async function registerGame(payload) {
       const min = Number.isFinite(rawMin) ? rawMin : 20
       const max = Number.isFinite(rawMax) ? rawMax : 40
 
+      const slotCount = Number.isFinite(Number(role?.slot_count)) ? Number(role.slot_count) : 0
       return {
         game_id: game.id,
         name: role?.name ? String(role.name) : '역할',
-        slot_count: Number.isFinite(Number(role?.slot_count)) ? Number(role.slot_count) : 1,
+        slot_count: Math.max(0, slotCount),
         active: true,
         score_delta_min: Math.max(0, min),
         score_delta_max: Math.max(Math.max(0, min), max),
@@ -179,17 +192,34 @@ export default function RankNewClient() {
       compiledRules.end_condition_variable = endCondition.trim() || null
     }
 
+    const slotCountMap = activeSlots.reduce((acc, slot) => {
+      const key = slot.role ? String(slot.role).trim() : ''
+      if (!key) return acc
+      acc[key] = (acc[key] || 0) + 1
+      return acc
+    }, {})
+
+    const rolePayload = roles.map((role) => {
+      const name = role?.name ? String(role.name).trim() : '역할'
+      const rawMin = Number(role?.score_delta_min)
+      const rawMax = Number(role?.score_delta_max)
+      const min = Number.isFinite(rawMin) ? rawMin : 20
+      const max = Number.isFinite(rawMax) ? rawMax : 40
+      const slotCount = Number.isFinite(Number(slotCountMap[name])) ? Number(slotCountMap[name]) : 0
+      return {
+        name,
+        slot_count: Math.max(0, slotCount),
+        score_delta_min: min,
+        score_delta_max: max,
+      }
+    })
+
     const res = await registerGame({
       name: name || '새 게임',
       description: desc || '',
       image_url,
       prompt_set_id: setId,
-      roles: roles.map((role) => ({
-        name: role?.name || '역할',
-        slot_count: 1,
-        score_delta_min: Number.isFinite(Number(role?.score_delta_min)) ? Number(role.score_delta_min) : 20,
-        score_delta_max: Number.isFinite(Number(role?.score_delta_max)) ? Number(role.score_delta_max) : 40,
-      })),
+      roles: rolePayload,
       rules: compiledRules,
       rules_prefix: buildRulesPrefix(compiledRules),
       realtime_match: realtime,
