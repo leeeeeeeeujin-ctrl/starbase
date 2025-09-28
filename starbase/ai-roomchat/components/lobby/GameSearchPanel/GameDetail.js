@@ -22,6 +22,16 @@ function getParticipantLabel(row) {
   return '알 수 없음'
 }
 
+function resolveMinimumRequired(role = {}) {
+  const candidates = [role.minimum_required, role.min_players, role.min_required, role.required]
+  const firstValid = candidates.find((value) => Number.isFinite(Number(value)))
+  if (Number.isFinite(Number(firstValid))) {
+    const parsed = Number(firstValid)
+    return parsed > 0 ? parsed : 1
+  }
+  return 1
+}
+
 export default function GameDetail({
   game,
   detailLoading,
@@ -32,6 +42,8 @@ export default function GameDetail({
   roleSlots = new Map(),
   onEnterGame,
   viewerParticipant,
+  onJoinGame,
+  joinLoading = false,
 }) {
   const hasGame = Boolean(game)
 
@@ -61,12 +73,16 @@ export default function GameDetail({
     () =>
       roles.map((role) => {
         const slot = roleSlots.get(role.name) || { capacity: role.slot_count ?? 1, occupied: 0 }
-        const remaining = Math.max(0, (slot.capacity ?? 0) - (slot.occupied ?? 0))
+        const capacity = slot.capacity ?? 0
+        const occupied = slot.occupied ?? 0
+        const remaining = Math.max(0, capacity - occupied)
+        const minimum = resolveMinimumRequired(role)
         return {
           name: role.name,
-          capacity: slot.capacity ?? 0,
-          occupied: slot.occupied ?? 0,
+          capacity,
+          occupied,
           remaining,
+          minimum,
           disabled: remaining <= 0,
         }
       }),
@@ -75,10 +91,19 @@ export default function GameDetail({
 
   const allSlotsFilled = roleSummaries.length > 0 && roleSummaries.every((role) => role.remaining === 0)
 
-  const joinDisabled = detailLoading || allSlotsFilled || !roleChoice
+  const joinDisabled = detailLoading || joinLoading || allSlotsFilled || !roleChoice
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     if (!game || joinDisabled) return
+    if (onJoinGame) {
+      const result = await onJoinGame(roleChoice)
+      if (!result?.ok) {
+        if (result?.error) {
+          alert(result.error)
+        }
+        return
+      }
+    }
     onEnterGame(game, roleChoice)
   }
 
@@ -130,7 +155,7 @@ export default function GameDetail({
               >
                 <span>{role.name}</span>
                 <span style={styles.roleSlotMeta}>
-                  {role.occupied} / {role.capacity} 슬롯 사용 중
+                  최소 {role.minimum}명 필요 · 현재 {role.occupied}명 참가
                 </span>
                 {role.disabled ? <span style={styles.roleBadgeFull}>모집 완료</span> : null}
               </button>
@@ -149,7 +174,7 @@ export default function GameDetail({
           onClick={handleJoin}
           disabled={joinDisabled}
         >
-          참여하기
+          {joinLoading ? '참여 처리 중…' : '참여하기'}
         </button>
         {allSlotsFilled ? (
           <p style={styles.joinNotice}>모든 슬롯이 가득 찼습니다. 빈자리가 생길 때까지 기다려주세요.</p>

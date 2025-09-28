@@ -21,6 +21,16 @@ function formatDate(value) {
   }
 }
 
+function resolveMinimumRequired(role = {}) {
+  const candidates = [role.minimum_required, role.min_players, role.min_required, role.required]
+  const firstValid = candidates.find((value) => Number.isFinite(Number(value)))
+  if (Number.isFinite(Number(firstValid))) {
+    const parsed = Number(firstValid)
+    return parsed > 0 ? parsed : 1
+  }
+  return 1
+}
+
 export default function GameManagementDetail({
   game,
   detailLoading,
@@ -55,6 +65,25 @@ export default function GameManagementDetail({
   )
 
   const hasGame = Boolean(game)
+
+  const roleSummaries = useMemo(
+    () =>
+      roles.map((role) => {
+        const slot = roleSlots.get(role.name) || { capacity: role.slot_count ?? 1, occupied: 0 }
+        const capacity = slot.capacity ?? 0
+        const occupied = slot.occupied ?? 0
+        const remaining = Math.max(0, capacity - occupied)
+        const minimum = resolveMinimumRequired(role)
+        return {
+          ...role,
+          capacity,
+          occupied,
+          remaining,
+          minimum,
+        }
+      }),
+    [roles, roleSlots],
+  )
 
   if (!hasGame) {
     return <div style={styles.detailPlaceholder}>게임을 선택하면 상세 정보가 표시됩니다.</div>
@@ -249,13 +278,12 @@ export default function GameManagementDetail({
       <div style={styles.roleSection}>
         <span style={styles.roleLabel}>역할 선택</span>
         <div style={styles.roleGrid}>
-          {roles.map((role) => {
-            const slot = roleSlots.get(role.name) || { capacity: role.slot_count ?? 1, occupied: 0 }
-            const disabled = slot.occupied >= (slot.capacity ?? 1)
+          {roleSummaries.map((role) => {
+            const disabled = role.remaining <= 0
             const active = roleChoice === role.name
             return (
               <button
-                key={role.id}
+                key={role.id || role.name}
                 onClick={() => onRoleChange(role.name)}
                 disabled={disabled}
                 style={{
@@ -266,7 +294,7 @@ export default function GameManagementDetail({
               >
                 <strong>{role.name}</strong>
                 <span style={styles.roleSlotMeta}>
-                  {slot.occupied}/{slot.capacity ?? 1}
+                  최소 {role.minimum}명 필요 · 현재 {role.occupied}명 참가
                 </span>
               </button>
             )

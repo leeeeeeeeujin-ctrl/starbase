@@ -22,6 +22,8 @@ export default function GameSearchPanel({
   roleSlots,
   onEnterGame,
   viewerParticipant,
+  onJoinGame,
+  joinLoading,
 }) {
   return (
     <div style={styles.root}>
@@ -51,6 +53,8 @@ export default function GameSearchPanel({
         roleSlots={roleSlots}
         onEnterGame={onEnterGame}
         viewerParticipant={viewerParticipant}
+        onJoinGame={onJoinGame}
+        joinLoading={joinLoading}
       />
     </div>
   )

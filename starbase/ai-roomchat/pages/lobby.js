@@ -83,6 +83,8 @@ export default function Lobby() {
           roleSlots={gameBrowser.roleSlots}
           onEnterGame={handleEnterGame}
           viewerParticipant={gameBrowser.viewerParticipant}
+          onJoinGame={gameBrowser.joinSelectedGame}
+          joinLoading={gameBrowser.joinLoading}
         />
       )}
 

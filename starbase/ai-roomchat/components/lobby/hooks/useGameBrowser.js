@@ -92,6 +92,7 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
   const [gameSourceTable, setGameSourceTable] = useState('')
   const [supportsGameMetrics, setSupportsGameMetrics] = useState(true)
   const [availableSortOptions, setAvailableSortOptions] = useState(() => getSortOptions({ includeMetrics: true }))
+  const [joinLoading, setJoinLoading] = useState(false)
 
   useEffect(() => {
     const nextOptions = getSortOptions({ includeMetrics: supportsGameMetrics })
@@ -233,6 +234,30 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
 
       let rows = (data || []).map((row) => normaliseGameRow(row, table))
 
+      if (!cancelled && table === 'rank_games' && rows.length && mode !== 'owned') {
+        const ids = rows.map((row) => row.id)
+        const { data: seasonRows, error: seasonError } = await withTable(
+          supabase,
+          'rank_game_seasons',
+          (tableName) =>
+            supabase
+              .from(tableName)
+              .select('game_id, status')
+              .in('game_id', ids),
+        )
+
+        if (seasonError) {
+          console.error(seasonError)
+        } else {
+          const activeIds = new Set(
+            (seasonRows || [])
+              .filter((season) => (season.status || '').toLowerCase() === 'active')
+              .map((season) => season.game_id),
+          )
+          rows = rows.filter((row) => activeIds.has(row.id))
+        }
+      }
+
       if (table !== 'games' && rows.length) {
         const ids = rows.map((row) => row.id)
         const { data: tagRows, error: tagError } = await withTable(
@@ -287,6 +312,8 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
         const match = rows.find((row) => row.id === selectedGame.id)
         if (match) {
           setSelectedGame((prev) => (prev ? { ...prev, ...match } : prev))
+        } else {
+          setSelectedGame(null)
         }
       }
       setGameLoading(false)
@@ -467,6 +494,64 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
   const refreshSelectedGame = useCallback(() => {
     setDetailRevision((value) => value + 1)
   }, [])
+
+  const joinSelectedGame = useCallback(
+    async (roleName) => {
+      if (!selectedGame) {
+        return { ok: false, error: '게임을 먼저 선택해 주세요.' }
+      }
+      if (!viewerId) {
+        return { ok: false, error: '로그인이 필요합니다.' }
+      }
+      if (!roleName) {
+        return { ok: false, error: '참여할 역할을 선택해 주세요.' }
+      }
+      if (joinLoading) {
+        return { ok: false, error: '이미 참여 절차를 진행 중입니다.' }
+      }
+
+      let storedHeroId = null
+      if (typeof window !== 'undefined') {
+        try {
+          storedHeroId = window.localStorage.getItem('selectedHeroId')
+        } catch (error) {
+          console.warn('선택한 캐릭터 정보를 불러오지 못했습니다:', error)
+        }
+      }
+
+      if (!storedHeroId) {
+        return { ok: false, error: '참여 전에 사용할 캐릭터를 선택해 주세요.' }
+      }
+
+      setJoinLoading(true)
+      try {
+        const payload = {
+          game_id: selectedGame.id,
+          hero_id: storedHeroId,
+          owner_id: viewerId,
+          role: roleName,
+          score: 1000,
+        }
+
+        const { error } = await withTable(supabase, 'rank_participants', (tableName) =>
+          supabase.from(tableName).insert(payload, { ignoreDuplicates: true }),
+        )
+
+        if (error) {
+          throw error
+        }
+
+        refreshSelectedGame()
+        return { ok: true }
+      } catch (error) {
+        console.error('게임 참여 실패:', error)
+        return { ok: false, error: error.message || '게임에 참여하지 못했습니다.' }
+      } finally {
+        setJoinLoading(false)
+      }
+    },
+    [joinLoading, refreshSelectedGame, selectedGame, viewerId],
+  )
 
   const addGameTag = useCallback(
     async (label) => {
@@ -662,6 +747,8 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
     gameStats,
     gameBattleLogs,
     refreshSelectedGame,
+    joinSelectedGame,
+    joinLoading,
     deleteGame,
     sortOptions: availableSortOptions,
     supportsGameMetrics,
