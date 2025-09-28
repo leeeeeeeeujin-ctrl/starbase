@@ -72,7 +72,7 @@ function normaliseGameRow(raw = {}, sourceTable) {
   return base
 }
 
-export default function useGameBrowser({ enabled } = {}) {
+export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
   const [gameQuery, setGameQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [gameSort, setGameSort] = useState('latest')
@@ -128,6 +128,19 @@ export default function useGameBrowser({ enabled } = {}) {
 
   useEffect(() => {
     if (!enabled) return
+
+    if (mode === 'owned' && !viewerId) {
+      setGameRows([])
+      setGameLoading(false)
+      setSelectedGame(null)
+      setGameRoles([])
+      setParticipants([])
+      setGameTags([])
+      setGameSeasons([])
+      setGameBattleLogs([])
+      setGameStats(null)
+      return
+    }
     let cancelled = false
 
     async function loadGames() {
@@ -150,6 +163,10 @@ export default function useGameBrowser({ enabled } = {}) {
           query = supabase.from(table).select(selectColumns)
         }
 
+        if (mode === 'owned' && viewerId) {
+          query = query.eq('owner_id', viewerId)
+        }
+
         if (debouncedQuery.trim()) {
           const value = `%${debouncedQuery.trim()}%`
           query = query.or(`name.ilike.${value},description.ilike.${value}`)
@@ -166,6 +183,9 @@ export default function useGameBrowser({ enabled } = {}) {
           })
         } else {
           query = query.order('created_at', { ascending: false })
+          if (mode === 'owned' && viewerId) {
+            query = query.eq('owner_id', viewerId)
+          }
         }
 
         return query.limit(MAX_GAME_ROWS)
@@ -177,21 +197,25 @@ export default function useGameBrowser({ enabled } = {}) {
         setGameSourceTable(table || '')
       }
 
-      if (cancelled) return
+        if (cancelled) return
 
-      if (error && table !== 'games' && supportsGameMetrics && isMissingColumnError(error, ['likes_count', 'play_count'])) {
-        if (!cancelled) {
-          setSupportsGameMetrics(false)
-        }
+        if (error && table !== 'games' && supportsGameMetrics && isMissingColumnError(error, ['likes_count', 'play_count'])) {
+          if (!cancelled) {
+            setSupportsGameMetrics(false)
+          }
 
-        const fallbackQuery = supabase
-          .from(table)
-          .select('id,name,description,image_url,created_at,owner_id')
+          const fallbackQuery = supabase
+            .from(table)
+            .select('id,name,description,image_url,created_at,owner_id')
 
-        if (debouncedQuery.trim()) {
-          const value = `%${debouncedQuery.trim()}%`
-          fallbackQuery.or(`name.ilike.${value},description.ilike.${value}`)
-        }
+          if (mode === 'owned' && viewerId) {
+            fallbackQuery.eq('owner_id', viewerId)
+          }
+
+          if (debouncedQuery.trim()) {
+            const value = `%${debouncedQuery.trim()}%`
+            fallbackQuery.or(`name.ilike.${value},description.ilike.${value}`)
+          }
 
         fallbackQuery.order('created_at', { ascending: false })
 
@@ -273,7 +297,7 @@ export default function useGameBrowser({ enabled } = {}) {
     return () => {
       cancelled = true
     }
-  }, [enabled, debouncedQuery, gameSort, selectedGame?.id, supportsGameMetrics])
+  }, [enabled, debouncedQuery, gameSort, selectedGame?.id, supportsGameMetrics, viewerId, mode])
 
   useEffect(() => {
     if (!selectedGame) {
@@ -303,14 +327,17 @@ export default function useGameBrowser({ enabled } = {}) {
       setDetailLoading(true)
       setRoleChoice('')
 
-      const [rolesResult, participantsResult, tagsResult, seasonsResult, battlesResult, logsResult] =
-        await Promise.all([
-          withTable(supabase, 'rank_game_roles', (table) =>
-            supabase.from(table).select('*').eq('game_id', selectedGame.id),
-          ),
-          withTable(supabase, 'rank_participants', (table) =>
-            supabase.from(table).select('*').eq('game_id', selectedGame.id),
-          ),
+      const promises = [
+        withTable(supabase, 'rank_game_roles', (table) =>
+          supabase.from(table).select('*').eq('game_id', selectedGame.id),
+        ),
+        withTable(supabase, 'rank_participants', (table) =>
+          supabase.from(table).select('*').eq('game_id', selectedGame.id),
+        ),
+      ]
+
+      if (mode === 'owned') {
+        promises.push(
           withTable(supabase, 'rank_game_tags', (table) =>
             supabase
               .from(table)
@@ -341,9 +368,21 @@ export default function useGameBrowser({ enabled } = {}) {
               .order('created_at', { ascending: false })
               .limit(60),
           ),
-        ])
+        )
+      }
+
+      const results = await Promise.all(promises)
 
       if (cancelled) return
+
+      const [rolesResult, participantsResult, ...extraResults] = results
+
+      const [
+        tagsResult = { data: [], error: null },
+        seasonsResult = { data: [], error: null },
+        battlesResult = { data: [], error: null },
+        logsResult = { data: [], error: null },
+      ] = mode === 'owned' ? extraResults : []
 
       const participantRows = participantsResult.data || []
       const battleRows = battlesResult.data || []
@@ -363,36 +402,44 @@ export default function useGameBrowser({ enabled } = {}) {
         setParticipants(participantRows)
       }
 
-      if (tagsResult.error) {
-        console.error(tagsResult.error)
+      if (mode === 'owned') {
+        if (tagsResult.error) {
+          console.error(tagsResult.error)
+          setGameTags([])
+        } else {
+          setGameTags(tagsResult.data || [])
+        }
+
+        if (seasonsResult.error) {
+          console.error(seasonsResult.error)
+          setGameSeasons([])
+        } else {
+          setGameSeasons(seasonsResult.data || [])
+        }
+
+        if (battlesResult.error) {
+          console.error(battlesResult.error)
+        }
+
+        if (logsResult.error) {
+          console.error(logsResult.error)
+        }
+
+        const battleMap = new Map(battleRows.map((row) => [row.id, row]))
+        const decoratedLogs = logRows.map((log) => ({
+          ...log,
+          battle: battleMap.get(log.battle_id) || null,
+        }))
+
+        setGameBattleLogs(decoratedLogs)
+        setGameStats(computeGameStats(participantRows, battleRows, selectedGame))
+      } else {
         setGameTags([])
-      } else {
-        setGameTags(tagsResult.data || [])
-      }
-
-      if (seasonsResult.error) {
-        console.error(seasonsResult.error)
         setGameSeasons([])
-      } else {
-        setGameSeasons(seasonsResult.data || [])
+        setGameBattleLogs([])
+        setGameStats(null)
       }
 
-      if (battlesResult.error) {
-        console.error(battlesResult.error)
-      }
-
-      if (logsResult.error) {
-        console.error(logsResult.error)
-      }
-
-      const battleMap = new Map(battleRows.map((row) => [row.id, row]))
-      const decoratedLogs = logRows.map((log) => ({
-        ...log,
-        battle: battleMap.get(log.battle_id) || null,
-      }))
-
-      setGameBattleLogs(decoratedLogs)
-      setGameStats(computeGameStats(participantRows, battleRows, selectedGame))
       setDetailLoading(false)
     }
 
@@ -401,7 +448,7 @@ export default function useGameBrowser({ enabled } = {}) {
     return () => {
       cancelled = true
     }
-  }, [selectedGame, detailRevision, gameSourceTable])
+  }, [selectedGame, detailRevision, gameSourceTable, mode])
 
   const roleSlots = useMemo(() => {
     const map = new Map()
@@ -411,6 +458,11 @@ export default function useGameBrowser({ enabled } = {}) {
     })
     return map
   }, [gameRoles, participants])
+
+  const viewerParticipant = useMemo(() => {
+    if (!viewerId) return null
+    return participants.find((participant) => participant.owner_id === viewerId) || null
+  }, [participants, viewerId])
 
   const refreshSelectedGame = useCallback(() => {
     setDetailRevision((value) => value + 1)
@@ -599,6 +651,7 @@ export default function useGameBrowser({ enabled } = {}) {
     roleChoice,
     setRoleChoice,
     roleSlots,
+    viewerParticipant,
     viewerId,
     gameTags,
     addGameTag,
