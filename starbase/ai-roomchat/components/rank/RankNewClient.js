@@ -2,7 +2,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
@@ -140,14 +139,6 @@ export default function RankNewClient() {
       '실시간, 혹은 싱글 플레이 여부를 생각했나요?',
       '프롬프트 세트를 충분히 준비했나요?',
       '역할 이름을 헷갈리진 않았나요?',
-    ],
-    [],
-  )
-
-  const registerGuides = useMemo(
-    () => [
-      { key: 'maker', label: '프롬프트 세트 관리', href: '/maker' },
-      { key: 'character', label: '캐릭터 페이지로 이동', href: '/roster' },
     ],
     [],
   )
@@ -345,23 +336,10 @@ export default function RankNewClient() {
               </div>
               <div style={{ display: 'grid', gap: 10, background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '16px 18px' }}>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>등록 가이드</p>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {registerGuides.map((guide) => (
-                    <Link
-                      key={guide.key}
-                      href={guide.href}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: 999,
-                        border: '1px solid rgba(148,163,184,0.45)',
-                        color: '#e2e8f0',
-                        fontSize: 13,
-                      }}
-                    >
-                      {guide.label}
-                    </Link>
-                  ))}
-                </div>
+                <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
+                  게임 소개 자료와 룰 구성을 마쳤다면 하단 카드에서 역할·슬롯·모드를 채운 뒤 등록 버튼을 눌러 주세요. 제작 중인 세트는 Maker에서,
+                  캐릭터 정보는 로스터에서 언제든 보완할 수 있습니다.
+                </p>
               </div>
             </div>
           </section>

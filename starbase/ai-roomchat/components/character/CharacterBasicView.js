@@ -510,39 +510,10 @@ const styles = {
     cursor: 'pointer',
     boxShadow: active ? '0 14px 32px -24px rgba(59,130,246,0.9)' : 'none',
   }),
-  searchActions: {
-    display: 'flex',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  searchButton: {
-    appearance: 'none',
-    border: 'none',
-    borderRadius: 16,
-    padding: '10px 16px',
-    background: 'rgba(59,130,246,0.3)',
-    color: '#e0f2fe',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
   quickLinkRow: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 10,
-  },
-  quickLink: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '9px 14px',
-    borderRadius: 999,
-    background: 'rgba(56,189,248,0.16)',
-    color: '#e0f2fe',
-    fontSize: 12,
-    fontWeight: 700,
-    textDecoration: 'none',
-    cursor: 'pointer',
   },
   primaryLinkButton: {
     appearance: 'none',
@@ -560,17 +531,6 @@ const styles = {
     border: 'none',
     cursor: 'pointer',
     boxShadow: '0 16px 40px -28px rgba(14,116,144,0.9)',
-  },
-  secondaryButton: {
-    appearance: 'none',
-    border: '1px solid rgba(148,163,184,0.35)',
-    borderRadius: 16,
-    padding: '9px 16px',
-    background: 'rgba(30,41,59,0.65)',
-    color: '#e2e8f0',
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: 'pointer',
   },
   creationGrid: {
     display: 'grid',
@@ -1552,8 +1512,6 @@ export default function CharacterBasicView({ hero }) {
     [],
   )
 
-  const createTabIndex = overlayTabs.findIndex((tab) => tab.key === 'create')
-
   const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
   const progressRatio = duration ? progress / duration : 0
 
@@ -1581,20 +1539,6 @@ export default function CharacterBasicView({ hero }) {
                 </button>
               ))}
             </div>
-            <div style={styles.searchActions}>
-              <button
-                type="button"
-                style={styles.searchButton}
-                onClick={() => {
-                  if (createTabIndex >= 0) setActiveTab(createTabIndex)
-                }}
-              >
-                게임 제작
-              </button>
-              <Link href="/roster" style={styles.searchButton}>
-                캐릭터 페이지
-              </Link>
-            </div>
           </div>
           <div style={styles.searchGrid}>
             {filteredGames.map((game) => (
@@ -1621,9 +1565,6 @@ export default function CharacterBasicView({ hero }) {
             <div style={styles.quickLinkRow}>
               <Link href="/maker" style={styles.primaryLinkButton}>
                 Maker 열기
-              </Link>
-              <Link href="/create" style={styles.secondaryButton}>
-                캐릭터 제작 열기
               </Link>
             </div>
           </div>
@@ -1657,11 +1598,8 @@ export default function CharacterBasicView({ hero }) {
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <Link href="/maker" style={styles.primaryLinkButton}>
-                  Maker로 이동
-                </Link>
-                <Link href="/roster" style={styles.secondaryButton}>
-                  캐릭터 페이지로 이동
+                <Link href="/rank/new" style={styles.primaryLinkButton}>
+                  게임 등록 화면 열기
                 </Link>
               </div>
             </div>
