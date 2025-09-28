@@ -25,5 +25,13 @@ export const SORT_OPTIONS = [
   },
 ]
 
+export const DEFAULT_SORT_KEY = 'latest'
+export const METRIC_SORT_KEYS = new Set(['likes', 'plays'])
+
+export function getSortOptions({ includeMetrics = true } = {}) {
+  if (includeMetrics) return SORT_OPTIONS
+  return SORT_OPTIONS.filter((option) => !METRIC_SORT_KEYS.has(option.key))
+}
+
 export const MAX_GAME_ROWS = 40
 //

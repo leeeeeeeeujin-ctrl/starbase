@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
 import { withTable } from '../../../lib/supabaseTables'
-import { MAX_GAME_ROWS, SORT_OPTIONS } from '../constants'
+import { MAX_GAME_ROWS, SORT_OPTIONS, DEFAULT_SORT_KEY, METRIC_SORT_KEYS, getSortOptions } from '../constants'
+import { isMissingColumnError } from '../../../lib/supabaseErrors'
 
 function computeGameStats(participants = [], battles = [], game = {}) {
   const totalPlayers = participants.length
@@ -89,6 +90,19 @@ export default function useGameBrowser({ enabled } = {}) {
   const [gameStats, setGameStats] = useState(null)
   const [viewerId, setViewerId] = useState(null)
   const [gameSourceTable, setGameSourceTable] = useState('')
+  const [supportsGameMetrics, setSupportsGameMetrics] = useState(true)
+  const [availableSortOptions, setAvailableSortOptions] = useState(() => getSortOptions({ includeMetrics: true }))
+
+  useEffect(() => {
+    const nextOptions = getSortOptions({ includeMetrics: supportsGameMetrics })
+    setAvailableSortOptions(nextOptions)
+    setGameSort((current) => {
+      if (nextOptions.some((option) => option.key === current)) {
+        return current
+      }
+      return nextOptions[0]?.key || DEFAULT_SORT_KEY
+    })
+  }, [supportsGameMetrics])
 
   useEffect(() => {
     let cancelled = false
@@ -129,9 +143,11 @@ export default function useGameBrowser({ enabled } = {}) {
               'id,name,description,cover_path,created_at,owner_id,game_likes(count),game_sessions(count)',
             )
         } else {
-          query = supabase
-            .from(table)
-            .select('id,name,description,image_url,created_at,likes_count,play_count,owner_id')
+          const includeMetrics = supportsGameMetrics
+          const selectColumns = includeMetrics
+            ? 'id,name,description,image_url,created_at,likes_count,play_count,owner_id'
+            : 'id,name,description,image_url,created_at,owner_id'
+          query = supabase.from(table).select(selectColumns)
         }
 
         if (debouncedQuery.trim()) {
@@ -141,7 +157,11 @@ export default function useGameBrowser({ enabled } = {}) {
 
         if (table !== 'games') {
           const plan = SORT_OPTIONS.find((item) => item.key === gameSort) || SORT_OPTIONS[0]
-          plan.orders.forEach((order) => {
+          const orders =
+            supportsGameMetrics || !METRIC_SORT_KEYS.has(gameSort)
+              ? plan.orders
+              : SORT_OPTIONS[0].orders
+          orders.forEach((order) => {
             query = query.order(order.column, { ascending: order.asc })
           })
         } else {
@@ -151,13 +171,34 @@ export default function useGameBrowser({ enabled } = {}) {
         return query.limit(MAX_GAME_ROWS)
       })
 
-      const { data, error, table } = result || {}
+      let { data, error, table } = result || {}
 
       if (!cancelled) {
         setGameSourceTable(table || '')
       }
 
       if (cancelled) return
+
+      if (error && table !== 'games' && supportsGameMetrics && isMissingColumnError(error, ['likes_count', 'play_count'])) {
+        if (!cancelled) {
+          setSupportsGameMetrics(false)
+        }
+
+        const fallbackQuery = supabase
+          .from(table)
+          .select('id,name,description,image_url,created_at,owner_id')
+
+        if (debouncedQuery.trim()) {
+          const value = `%${debouncedQuery.trim()}%`
+          fallbackQuery.or(`name.ilike.${value},description.ilike.${value}`)
+        }
+
+        fallbackQuery.order('created_at', { ascending: false })
+
+        const fallbackResult = await fallbackQuery.limit(MAX_GAME_ROWS)
+        data = fallbackResult.data
+        error = fallbackResult.error
+      }
 
       if (error) {
         console.error(error)
@@ -232,7 +273,7 @@ export default function useGameBrowser({ enabled } = {}) {
     return () => {
       cancelled = true
     }
-  }, [enabled, debouncedQuery, gameSort, selectedGame?.id])
+  }, [enabled, debouncedQuery, gameSort, selectedGame?.id, supportsGameMetrics])
 
   useEffect(() => {
     if (!selectedGame) {
@@ -569,5 +610,7 @@ export default function useGameBrowser({ enabled } = {}) {
     gameBattleLogs,
     refreshSelectedGame,
     deleteGame,
+    sortOptions: availableSortOptions,
+    supportsGameMetrics,
   }
 }

@@ -7,7 +7,7 @@ import TabBar from '../components/lobby/TabBar'
 import GameSearchPanel from '../components/lobby/GameSearchPanel'
 import CharacterStatsPanel from '../components/lobby/CharacterStatsPanel'
 import useGameBrowser from '../components/lobby/hooks/useGameBrowser'
-import { LOBBY_TABS, NAV_LINKS, SORT_OPTIONS } from '../components/lobby/constants'
+import { LOBBY_TABS, NAV_LINKS } from '../components/lobby/constants'
 import useLobbyStats from '../components/lobby/hooks/useLobbyStats'
 
 export default function Lobby() {
@@ -68,7 +68,7 @@ export default function Lobby() {
           onQueryChange={gameBrowser.setGameQuery}
           sort={gameBrowser.gameSort}
           onSortChange={gameBrowser.setGameSort}
-          sortOptions={SORT_OPTIONS}
+          sortOptions={gameBrowser.sortOptions}
           rows={gameBrowser.gameRows}
           loading={gameBrowser.gameLoading}
           selectedGame={gameBrowser.selectedGame}
