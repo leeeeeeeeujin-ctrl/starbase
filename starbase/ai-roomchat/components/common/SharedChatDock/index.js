@@ -20,12 +20,14 @@ export default function SharedChatDock({
   onThreadChange,
   onUserSend,
   onMessageAlert,
+  pollingEnabled = false,
 }) {
   const {
     activeThread,
     availableTargets,
     blockedHeroSet,
     blockedHeroes,
+    blockedHeroEntries,
     canSend,
     heroDirectory,
     input,
@@ -44,6 +46,7 @@ export default function SharedChatDock({
     viewerHeroId,
     visibleMessages,
     whisperTarget,
+    clearThread,
   } = useSharedChatDock({
     heroId,
     extraWhisperTargets,
@@ -51,6 +54,7 @@ export default function SharedChatDock({
     viewerHero,
     onSend: onUserSend,
     onNotify: onMessageAlert,
+    pollingEnabled,
   })
 
   useEffect(() => {
@@ -58,8 +62,8 @@ export default function SharedChatDock({
   }, [onUnreadChange, totalUnread])
 
   useEffect(() => {
-    onBlockedHeroesChange?.(blockedHeroes)
-  }, [blockedHeroes, onBlockedHeroesChange])
+    onBlockedHeroesChange?.({ ids: blockedHeroes, entries: blockedHeroEntries })
+  }, [blockedHeroEntries, blockedHeroes, onBlockedHeroesChange])
 
   const handleSelectHero = (hero) => {
     if (!hero) return
@@ -81,11 +85,12 @@ export default function SharedChatDock({
 
   const threadTabs = React.useMemo(() => {
     const items = [
-      { id: 'global', label: '전체', unread: 0 },
+      { id: 'global', label: '전체', unread: 0, closable: false },
       ...threadList.map((thread) => ({
         id: thread.heroId,
         label: thread.heroName,
         unread: unreadThreads[thread.heroId] || 0,
+        closable: true,
       })),
     ]
     return items
@@ -126,6 +131,7 @@ export default function SharedChatDock({
         items={threadTabs}
         activeId={activeThread}
         onSelect={setActiveThread}
+        onClear={clearThread}
       />
       <MessageList
         listRef={listRef}
@@ -133,8 +139,6 @@ export default function SharedChatDock({
         heroDirectory={heroDirectory}
         viewerHeroId={viewerHeroId}
         blockedHeroSet={blockedHeroSet}
-        onBlock={(id) => setBlockedHeroes((prev) => [...new Set([...prev, id])])}
-        onUnblock={(id) => setBlockedHeroes((prev) => prev.filter((heroId) => heroId !== id))}
         onSelectHero={handleSelectHero}
       />
       <InputBar
@@ -158,7 +162,7 @@ export {
   useSharedChatDockContext,
 } from './useSharedChatDock'
 
-function ThreadTabList({ items, activeId, onSelect }) {
+function ThreadTabList({ items, activeId, onSelect, onClear }) {
   if (!items?.length) return null
   return (
     <div
@@ -174,45 +178,76 @@ function ThreadTabList({ items, activeId, onSelect }) {
       {items.map((item) => {
         const active = item.id === activeId
         return (
-          <button
+          <div
             key={item.id}
-            type="button"
-            onClick={() => onSelect?.(item.id)}
             style={{
               flexShrink: 0,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              borderRadius: 999,
-              border: '1px solid',
-              borderColor: active ? '#2563eb' : 'rgba(148,163,184,0.45)',
-              background: active ? 'rgba(37, 99, 235, 0.12)' : '#fff',
-              color: active ? '#1e3a8a' : '#334155',
-              fontWeight: 600,
-              fontSize: 12,
+              gap: 4,
             }}
           >
-            <span>{item.label}</span>
-            {item.unread ? (
-              <span
+            <button
+              type="button"
+              onClick={() => onSelect?.(item.id)}
+              style={{
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 999,
+                border: '1px solid',
+                borderColor: active ? '#2563eb' : 'rgba(148,163,184,0.45)',
+                background: active ? 'rgba(37, 99, 235, 0.12)' : '#fff',
+                color: active ? '#1e3a8a' : '#334155',
+                fontWeight: 600,
+                fontSize: 12,
+              }}
+            >
+              <span>{item.label}</span>
+              {item.unread ? (
+                <span
+                  style={{
+                    minWidth: 18,
+                    height: 18,
+                    borderRadius: 9,
+                    background: '#ef4444',
+                    color: '#fff',
+                    fontSize: 11,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 6px',
+                  }}
+                >
+                  {item.unread}
+                </span>
+              ) : null}
+            </button>
+            {item.closable ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onClear?.(item.id)
+                }}
+                aria-label={`${item.label} 대화 기록 지우기`}
                 style={{
-                  minWidth: 18,
-                  height: 18,
-                  borderRadius: 9,
-                  background: '#ef4444',
-                  color: '#fff',
-                  fontSize: 11,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '0 6px',
+                  width: 22,
+                  height: 22,
+                  borderRadius: '50%',
+                  border: '1px solid rgba(148,163,184,0.45)',
+                  background: '#fff',
+                  color: '#64748b',
+                  fontSize: 12,
+                  lineHeight: 1,
                 }}
               >
-                {item.unread}
-              </span>
+                ×
+              </button>
             ) : null}
-          </button>
+          </div>
         )
       })}
     </div>

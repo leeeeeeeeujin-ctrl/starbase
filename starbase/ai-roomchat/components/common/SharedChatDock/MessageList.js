@@ -7,8 +7,6 @@ export function MessageList({
   heroDirectory,
   viewerHeroId,
   blockedHeroSet,
-  onBlock,
-  onUnblock,
   onSelectHero,
 }) {
   return (
@@ -23,8 +21,6 @@ export function MessageList({
           heroDirectory={heroDirectory}
           viewerHeroId={viewerHeroId}
           blockedHeroSet={blockedHeroSet}
-          onBlock={onBlock}
-          onUnblock={onUnblock}
           onSelectHero={onSelectHero}
         />
       ))}

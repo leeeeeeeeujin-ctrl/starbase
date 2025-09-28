@@ -360,7 +360,7 @@ export default function SharedHeroOverlay() {
   const [searchSort, setSearchSort] = useState('latest')
   const [chatOpen, setChatOpen] = useState(false)
   const [chatUnread, setChatUnread] = useState(0)
-  const [blockedHeroes, setBlockedHeroes] = useState()
+  const [blockedState, setBlockedState] = useState({ ids: [], entries: [] })
   const [friendOpen, setFriendOpen] = useState(false)
   const [friendBadge, setFriendBadge] = useState(0)
   const [chatNotice, setChatNotice] = useState(null)
@@ -567,25 +567,87 @@ export default function SharedHeroOverlay() {
     setChatUnread(Number.isFinite(count) ? Math.max(0, count) : 0)
   }, [])
 
-  const handleBlockedHeroesChange = useCallback((list) => {
-    if (!Array.isArray(list)) {
-      setBlockedHeroes([])
+  const handleBlockedHeroesChange = useCallback((payload) => {
+    if (!payload) {
+      setBlockedState({ ids: [], entries: [] })
       return
     }
-    setBlockedHeroes([...list])
+
+    if (Array.isArray(payload)) {
+      const ids = payload.filter(Boolean)
+      const entries = ids.map((heroId) => ({
+        heroId,
+        heroName: '이름 미확인',
+        avatarUrl: null,
+      }))
+      setBlockedState({ ids, entries })
+      return
+    }
+
+    const ids = Array.isArray(payload.ids) ? payload.ids.filter(Boolean) : []
+    const entryMap = new Map()
+
+    if (Array.isArray(payload.entries)) {
+      payload.entries.forEach((entry) => {
+        if (!entry || !entry.heroId) return
+        entryMap.set(entry.heroId, {
+          heroId: entry.heroId,
+          heroName: entry.heroName || '이름 미확인',
+          avatarUrl: entry.avatarUrl || null,
+        })
+      })
+    }
+
+    const entries = ids.map((heroId) =>
+      entryMap.get(heroId) || { heroId, heroName: '이름 미확인', avatarUrl: null },
+    )
+
+    setBlockedState({ ids, entries })
   }, [])
 
-  const handleToggleBlockedHero = useCallback(async (heroId) => {
+  const handleToggleBlockedHero = useCallback(async (hero) => {
+    const heroId =
+      typeof hero === 'string'
+        ? hero
+        : hero?.heroId || hero?.id || hero?.targetHeroId || hero?.hero_id || null
+
     if (!heroId) {
       return { ok: false, error: '캐릭터 정보를 찾을 수 없습니다.' }
     }
-    setBlockedHeroes((prev) => {
-      const base = Array.isArray(prev) ? prev : []
-      if (base.includes(heroId)) {
-        return base.filter((id) => id !== heroId)
+
+    const heroName =
+      typeof hero === 'object'
+        ? hero.heroName || hero.name || hero.displayName || null
+        : null
+    const avatarUrl =
+      typeof hero === 'object'
+        ? hero.avatarUrl || hero.avatar || hero.image_url || null
+        : null
+
+    setBlockedState((prev) => {
+      const ids = prev.ids.includes(heroId)
+        ? prev.ids.filter((id) => id !== heroId)
+        : [...prev.ids, heroId]
+
+      const entryMap = new Map(prev.entries.map((entry) => [entry.heroId, entry]))
+
+      if (entryMap.has(heroId)) {
+        entryMap.delete(heroId)
+      } else {
+        entryMap.set(heroId, {
+          heroId,
+          heroName: heroName || entryMap.get(heroId)?.heroName || '이름 미확인',
+          avatarUrl: avatarUrl ?? entryMap.get(heroId)?.avatarUrl ?? null,
+        })
       }
-      return [...base, heroId]
+
+      const entries = ids.map((id) =>
+        entryMap.get(id) || { heroId: id, heroName: '이름 미확인', avatarUrl: null },
+      )
+
+      return { ids, entries }
     })
+
     return { ok: true }
   }, [])
 
@@ -960,7 +1022,7 @@ export default function SharedHeroOverlay() {
         heroId={currentHeroId}
         viewerHero={viewerHeroHint}
         extraWhisperTargets={extraWhisperTargets}
-        blockedHeroes={blockedHeroes}
+        blockedHeroes={blockedState.ids}
         onUnreadChange={handleChatUnreadChange}
         onBlockedHeroesChange={handleBlockedHeroesChange}
         onRequestAddFriend={handleRequestAddFriend}
@@ -983,7 +1045,7 @@ export default function SharedHeroOverlay() {
         onDeclineRequest={declineFriendRequest}
         onCancelRequest={cancelFriendRequest}
         onOpenWhisper={handleOpenWhisper}
-        blockedHeroes={blockedHeroes || []}
+        blockedHeroes={blockedState.entries}
         onToggleBlockedHero={handleToggleBlockedHero}
       />
 

@@ -135,6 +135,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
         activeThreadId={externalThread}
         onThreadChange={setExternalThread}
         onMessageAlert={onMessageAlert}
+        pollingEnabled={open}
       />
       <ProfileActionSheet
         open={sheetOpen}

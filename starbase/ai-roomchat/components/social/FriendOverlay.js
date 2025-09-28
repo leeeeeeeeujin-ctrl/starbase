@@ -43,10 +43,20 @@ export default function FriendOverlay({
 
   const incomingRequests = friendRequests?.incoming ?? []
   const outgoingRequests = friendRequests?.outgoing ?? []
-  const blockedHeroSet = useMemo(
-    () => new Set((blockedHeroes || []).filter(Boolean)),
-    [blockedHeroes],
-  )
+  const blockedHeroSet = useMemo(() => {
+    const ids = []
+    for (const entry of blockedHeroes || []) {
+      if (!entry) continue
+      if (typeof entry === 'string') {
+        ids.push(entry)
+        continue
+      }
+      if (entry.heroId) {
+        ids.push(entry.heroId)
+      }
+    }
+    return new Set(ids)
+  }, [blockedHeroes])
 
   const heroMetaMap = useMemo(() => {
     const map = new Map()
@@ -87,14 +97,18 @@ export default function FriendOverlay({
     if (!blockedHeroes?.length) return []
     return blockedHeroes
       .filter(Boolean)
-      .map((heroId) => {
+      .map((entry) => {
+        const heroId = typeof entry === 'string' ? entry : entry.heroId
+        if (!heroId) return null
+        const baseMeta = typeof entry === 'object' ? entry : {}
         const meta = heroMetaMap.get(heroId) || {}
         return {
           heroId,
-          heroName: meta.name || '이름 미확인',
-          avatarUrl: meta.avatar || null,
+          heroName: baseMeta.heroName || meta.name || '이름 미확인',
+          avatarUrl: baseMeta.avatarUrl || meta.avatar || null,
         }
       })
+      .filter(Boolean)
   }, [blockedHeroes, heroMetaMap])
 
   const handleSubmit = useCallback(
@@ -158,12 +172,20 @@ export default function FriendOverlay({
   const handleToggleBlockedHero = useCallback(
     async (heroId) => {
       if (!heroId || typeof onToggleBlockedHero !== 'function') return
-      const result = await onToggleBlockedHero(heroId)
+      const meta =
+        heroMetaMap.get(heroId) ||
+        blockedEntries.find((entry) => entry.heroId === heroId) ||
+        {}
+      const result = await onToggleBlockedHero({
+        heroId,
+        heroName: meta.name || meta.heroName || '이름 미확인',
+        avatarUrl: meta.avatar || meta.avatarUrl || null,
+      })
       if (result?.error) {
         alert(result.error)
       }
     },
-    [onToggleBlockedHero],
+    [blockedEntries, heroMetaMap, onToggleBlockedHero],
   )
 
   const sheetHero = useMemo(() => {
