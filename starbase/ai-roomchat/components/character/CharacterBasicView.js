@@ -1594,7 +1594,7 @@ export default function CharacterBasicView({ hero }) {
               <div style={{ display: 'grid', gap: 6 }}>
                 <p style={styles.registerIntroTitle}>게임 등록 허브</p>
                 <p style={styles.registerIntroText}>
-                  캐릭터 탭과 동일한 배경 위에서 제작 흐름을 정리했어요. 세트를 다듬은 뒤 등록 화면으로 이동하면 난투 옵션과 체크리스트를 한 번에 확인할 수 있습니다.
+                  다양한 제작 흐름을 정리했어요. 세트를 다듬은 뒤 등록 화면으로 이동하면 난투 옵션과 체크리스트를 한 번에 확인할 수 있습니다.
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>

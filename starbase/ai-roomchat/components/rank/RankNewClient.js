@@ -278,7 +278,7 @@ export default function RankNewClient() {
           width: '100%',
           display: 'flex',
           justifyContent: 'center',
-          padding: '32px 16px 120px',
+          padding: '32px 16px 180px',
           boxSizing: 'border-box',
         }}
       >
