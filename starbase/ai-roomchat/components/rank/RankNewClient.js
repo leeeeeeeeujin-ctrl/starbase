@@ -137,10 +137,10 @@ export default function RankNewClient() {
 
   const registerChecklist = useMemo(
     () => [
-      '대표 이미지와 설명 문구를 준비했나요?',
-      '역할별 슬롯 수와 점수 범위를 정했나요?',
-      '프롬프트 세트 ID를 확인했나요?',
-      '테스트 플레이 로그로 문제를 점검했나요?',
+      '대표 이미지와 설명을 준비했나요?',
+      '실시간, 혹은 싱글 플레이 여부를 생각했나요?',
+      '프롬프트 세트를 충분히 준비했나요?',
+      '역할 이름을 헷갈리진 않았나요?',
     ],
     [],
   )
@@ -149,15 +149,6 @@ export default function RankNewClient() {
     () => [
       { key: 'maker', label: '프롬프트 세트 관리', href: '/maker' },
       { key: 'register', label: '게임 등록 화면 열기', href: '/rank/new' },
-    ],
-    [],
-  )
-
-  const sampleGames = useMemo(
-    () => [
-      { id: 'sample-1', title: '별빛 난투 시즌1', players: 8, tags: ['랭킹', '8인', '팀전'] },
-      { id: 'sample-2', title: '연합 토너먼트', players: 6, tags: ['토너먼트', '협력'] },
-      { id: 'sample-3', title: '보스 레이드 프리셋', players: 5, tags: ['PvE', '레이드'] },
     ],
     [],
   )
@@ -349,7 +340,7 @@ export default function RankNewClient() {
               <div style={{ display: 'grid', gap: 6 }}>
                 <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>등록 개요</p>
                 <p style={infoTextStyle}>
-                  난투 규칙과 체크리스트를 먼저 정리한 뒤 아래 카드에서 역할과 슬롯, 규칙을 채워 넣으세요. 모든 항목은 언제든지 수정할 수 있습니다.
+                  아래 카드에서 슬롯, 규칙, 모드를 채워 넣으세요. 모든 항목은 언제든지 수정할 수 있습니다.
                 </p>
               </div>
             </div>
@@ -363,15 +354,7 @@ export default function RankNewClient() {
                 </ul>
               </div>
               <div style={{ display: 'grid', gap: 10, background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '16px 18px' }}>
-                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>샘플 대기열</p>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {sampleGames.map((game) => (
-                    <div key={game.id} style={{ borderRadius: 12, border: '1px solid rgba(148,163,184,0.35)', padding: '10px 12px' }}>
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#f8fafc' }}>{game.title}</p>
-                      <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94a3b8' }}>{`${game.players}인 · ${game.tags.join(' / ')}`}</p>
-                    </div>
-                  ))}
-                </div>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>등록 가이드</p>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {registerGuides.map((guide) => (
                     <Link
@@ -476,7 +459,7 @@ export default function RankNewClient() {
                   <div style={{ display: 'grid', gap: 4, minWidth: 240 }}>
                     <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>난투 옵션</p>
                     <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>
-                      옵션을 끄면 기본 규칙인 <strong>패배시 추방</strong>이 적용됩니다. 이미 진행 중인 세션 합류 흐름을 조정하려면 옵션을 켜세요.
+                      해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
                     </p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -511,8 +494,7 @@ export default function RankNewClient() {
                       color: '#e2e8f0',
                     }}
                   >
-                    난투 옵션은 이미 진행 중인 세션에 새 영웅이 합류했을 때의 판정을 결정합니다. <strong>탈락자 즉시패배</strong>는 패배한 순간 해당 영웅의 기록이 종료되고,
-                    <strong>패배시 추방</strong>은 빈 슬롯이 생기면 새 역할 세트가 투입됩니다.
+                    해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
                   </div>
                 ) : null}
                 {brawlEnabled ? (
@@ -549,7 +531,7 @@ export default function RankNewClient() {
                   </div>
                 ) : (
                   <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>
-                    세부 난투 옵션을 사용하지 않을 때는 빈 자리에 새 역할 세트가 합류하는 <strong>패배시 추방</strong> 규칙이 기본으로 적용됩니다.
+                    해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
                   </p>
                 )}
               </div>
