@@ -35,46 +35,59 @@
   position: relative;
   width: 100%;
   max-width: 1080px;
-  padding: 72px 20px 120px;
+  padding: 96px 20px 120px;
   display: flex;
   flex-direction: column;
   gap: 32px;
 }
 
-.topBar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.backButton {
-  border: none;
-  background: rgba(148, 163, 184, 0.18);
-  color: inherit;
+.backLink {
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  z-index: 10;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.75);
+  color: #e2e8f0;
   padding: 10px 18px;
   border-radius: 999px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.backButton:hover,
-.backButton:focus {
-  background: rgba(148, 163, 184, 0.32);
+.backLink:hover,
+.backLink:focus {
+  background: rgba(30, 41, 59, 0.9);
+  transform: translateY(-1px);
 }
 
-.capacity {
+.capacityBar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  color: rgba(226, 232, 240, 0.85);
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(11, 16, 31, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 24px;
+  padding: 18px 24px;
+  backdrop-filter: blur(14px);
+  font-size: 15px;
+  color: rgba(226, 232, 240, 0.86);
 }
 
-.ready {
-  color: #34d399;
+.capacityCount {
   font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.capacityStatus {
+  font-weight: 600;
+  color: rgba(148, 163, 184, 0.88);
+}
+
+.capacityReady {
+  color: #34d399;
 }
 
 .heroSection {
@@ -590,8 +603,20 @@
 
 @media (max-width: 720px) {
   .content {
-    padding: 60px 16px 96px;
+    padding: 80px 16px 96px;
     gap: 28px;
+  }
+
+  .backLink {
+    top: 16px;
+    left: 16px;
+    padding: 8px 14px;
+  }
+
+  .capacityBar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
 
   .heroSection {
@@ -612,15 +637,6 @@
   .joinActions {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .topBar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .capacity {
-    justify-content: space-between;
   }
 }
 

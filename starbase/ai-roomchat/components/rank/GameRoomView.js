@@ -1,6 +1,5 @@
 // components/rank/GameRoomView.js
 import { useEffect, useMemo, useState } from 'react'
-import Image from 'next/image'
 
 import ParticipantCard from './ParticipantCard'
 import styles from './GameRoomView.module.css'
@@ -25,6 +24,35 @@ const RULE_OPTION_METADATA = {
   fair_power_balance: {
     label: '공정한 파워 밸런스',
     description: '능력 사용과 서사를 균형 있게 유지해 과도한 역전이 일어나지 않도록 합니다.',
+  },
+  brawl_rule: {
+    getEntry(value) {
+      if (!value) return null
+      if (value === 'allow-brawl') {
+        return {
+          label: '난입 허용',
+          description: '전투 중 같은 역할 슬롯에 탈락자가 생기면 새로운 참가자가 곧바로 합류할 수 있습니다.',
+        }
+      }
+      if (value === 'banish-on-loss') {
+        return {
+          label: '패배 시 추방',
+          description: '패배한 참가자는 경기가 끝날 때까지 재난입할 수 없으며, 슬롯이 비면 인원이 줄어듭니다.',
+        }
+      }
+      const hint = typeof value === 'string' ? value : JSON.stringify(value)
+      return {
+        label: '난입 규칙',
+        description: hint,
+      }
+    },
+  },
+  end_condition_variable: {
+    label: '게임 종료 조건 변수',
+    description(value) {
+      if (!value) return '게임 종료 조건이 아직 지정되지 않았습니다.'
+      return `조건: ${value}`
+    },
   },
 }
 
@@ -57,10 +85,21 @@ function buildRuleEntries(ruleObject) {
 
   Object.entries(RULE_OPTION_METADATA).forEach(([key, meta]) => {
     if (!ruleObject[key]) return
+    if (typeof meta.getEntry === 'function') {
+      const entry = meta.getEntry(ruleObject[key], ruleObject)
+      if (entry) {
+        entries.push({ key, ...entry })
+      }
+      return
+    }
+
+    const resolvedDescription =
+      typeof meta.description === 'function' ? meta.description(ruleObject[key], ruleObject) : meta.description
+
     entries.push({
       key,
       label: meta.label,
-      description: meta.description,
+      description: resolvedDescription,
     })
   })
 
@@ -279,18 +318,19 @@ export default function GameRoomView({
       )}
       <div className={styles.overlay} />
 
+      {onBack && (
+        <button type="button" className={styles.backLink} onClick={onBack}>
+          ← 로비로
+        </button>
+      )}
+
       <div className={styles.content}>
-        <header className={styles.topBar}>
-          <button type="button" className={styles.backButton} onClick={onBack}>
-            ← 로비로
-          </button>
-          <div className={styles.capacity}>
-            <span>참여 {readyCount}명</span>
-            <span className={canStart ? styles.ready : ''}>
-              {canStart ? '매칭 준비 완료' : '함께할 참가자를 기다리는 중'}
-            </span>
+        <div className={styles.capacityBar}>
+          <div className={styles.capacityCount}>참여 {readyCount}명</div>
+          <div className={`${styles.capacityStatus} ${canStart ? styles.capacityReady : ''}`}>
+            {canStart ? '매칭 준비 완료' : '함께할 참가자를 기다리는 중'}
           </div>
-        </header>
+        </div>
 
         <section className={styles.heroSection}>
           <div className={styles.heroMeta}>
@@ -311,12 +351,11 @@ export default function GameRoomView({
 
           <div className={styles.coverFrame}>
             {coverImage ? (
-              <Image
+              <img
                 src={coverImage}
                 alt={game.name || '게임 대표 이미지'}
-                width={640}
-                height={360}
                 className={styles.cover}
+                loading="lazy"
               />
             ) : (
               <div className={styles.coverPlaceholder}>대표 이미지가 등록되지 않았습니다.</div>
@@ -337,11 +376,10 @@ export default function GameRoomView({
               <div className={styles.heroBody}>
                 <div className={styles.heroPortrait}>
                   {myHero.image_url ? (
-                    <Image
+                    <img
                       src={myHero.image_url}
                       alt={myHero.name || '선택한 캐릭터'}
-                      width={128}
-                      height={128}
+                      loading="lazy"
                     />
                   ) : (
                     <div className={styles.heroPortraitFallback}>이미지 없음</div>

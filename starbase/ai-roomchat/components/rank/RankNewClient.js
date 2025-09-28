@@ -182,14 +182,11 @@ export default function RankNewClient() {
       }
     }
 
+    const trimmedEndCondition = endCondition.trim()
     const compiledRules = {
       ...rules,
-      brawl_rule: 'banish-on-loss',
-      end_condition_variable: null,
-    }
-
-    if (brawlEnabled) {
-      compiledRules.end_condition_variable = endCondition.trim() || null
+      brawl_rule: brawlEnabled ? 'allow-brawl' : 'banish-on-loss',
+      end_condition_variable: brawlEnabled ? trimmedEndCondition || null : null,
     }
 
     const slotCountMap = activeSlots.reduce((acc, slot) => {
@@ -455,9 +452,9 @@ export default function RankNewClient() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ display: 'grid', gap: 4, minWidth: 240 }}>
-                    <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>난투 옵션</p>
+                    <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>난입 허용</p>
                     <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>
-                      해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
+                      해당 옵션에 체크하면 전투 중 패배한 인원을 대체해 같은 역할군의 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
                     </p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -492,7 +489,7 @@ export default function RankNewClient() {
                       color: '#e2e8f0',
                     }}
                   >
-                    해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
+                    해당 옵션에 체크하면 전투 중 패배한 인원을 대체해 같은 역할군의 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
                   </div>
                 ) : null}
                 {brawlEnabled ? (
@@ -513,7 +510,7 @@ export default function RankNewClient() {
                   </div>
                 ) : (
                   <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>
-                    난투 토글을 끄면 패배 시 추방이 기본 규칙으로 적용됩니다.
+                    난입 허용을 끄면 패배한 참가자는 해당 경기 동안 재참여할 수 없습니다.
                   </p>
                 )}
               </div>
