@@ -1,5 +1,5 @@
 // pages/rank/[id].js
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import HeroPicker from '../../components/common/HeroPicker'
@@ -20,17 +20,27 @@ export default function GameRoomPage() {
 
   const { push, joinedText } = useAiHistory({ gameId: id })
 
+  const handleRequireLogin = useCallback(() => {
+    router.replace('/')
+  }, [router])
+
+  const handleGameMissing = useCallback(() => {
+    alert('게임을 찾을 수 없습니다.')
+    router.replace('/rank')
+  }, [router])
+
+  const handleDeleted = useCallback(() => {
+    router.replace('/rank')
+  }, [router])
+
   const {
     state: { loading, game, roles, requiredSlots, participants, myHero, deleting },
     derived: { canStart, isOwner, alreadyJoined, myEntry },
     actions: { selectHero, joinGame, deleteRoom },
   } = useGameRoom(id, {
-    onRequireLogin: () => router.replace('/'),
-    onGameMissing: () => {
-      alert('게임을 찾을 수 없습니다.')
-      router.replace('/rank')
-    },
-    onDeleted: () => router.replace('/rank'),
+    onRequireLogin: handleRequireLogin,
+    onGameMissing: handleGameMissing,
+    onDeleted: handleDeleted,
   })
 
   useEffect(() => {
