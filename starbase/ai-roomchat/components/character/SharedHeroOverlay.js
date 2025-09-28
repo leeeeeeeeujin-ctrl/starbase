@@ -3,7 +3,10 @@
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import ChatOverlay from '@/components/social/ChatOverlay'
+import FriendOverlay from '@/components/social/FriendOverlay'
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
+import { useHeroSocial } from '@/hooks/social/useHeroSocial'
 import { fetchHeroById } from '@/services/heroes'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
@@ -12,7 +15,7 @@ const DEFAULT_DESCRIPTION =
 
 const overlayTabs = [
   { key: 'character', label: '캐릭터' },
-  { key: 'search', label: '방 검색' },
+  { key: 'search', label: '게임 검색' },
   { key: 'create', label: '게임 제작' },
   { key: 'register', label: '게임 등록' },
   { key: 'ranking', label: '랭킹' },
@@ -155,6 +158,7 @@ const styles = {
   dockActions: {
     display: 'flex',
     gap: 8,
+    flexWrap: 'wrap',
   },
   rosterButton: {
     padding: '10px 16px',
@@ -163,6 +167,32 @@ const styles = {
     background: 'rgba(15,23,42,0.6)',
     color: '#e2e8f0',
     fontWeight: 600,
+  },
+  actionButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '9px 16px',
+    borderRadius: 18,
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.55)',
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  actionBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 999,
+    background: '#ef4444',
+    color: '#f8fafc',
+    fontSize: 11,
+    fontWeight: 700,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 6px',
   },
   battleButton: {
     padding: '10px 18px',
@@ -328,6 +358,10 @@ export default function SharedHeroOverlay() {
   const [playerCollapsed, setPlayerCollapsed] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [searchSort, setSearchSort] = useState('latest')
+  const [chatOpen, setChatOpen] = useState(false)
+  const [friendOpen, setFriendOpen] = useState(false)
+  const [chatUnread, setChatUnread] = useState(0)
+  const [blockedHeroes, setBlockedHeroes] = useState()
 
   const heroName = useMemo(() => {
     if (!currentHero) return DEFAULT_HERO_NAME
@@ -352,9 +386,85 @@ export default function SharedHeroOverlay() {
     ].filter((pair) => pair.entries.length > 0)
   }, [currentHero])
 
+  const currentHeroId = currentHero?.id || null
+
+  const viewerHeroHint = useMemo(() => {
+    if (!currentHero) return null
+    return {
+      heroId: currentHero.id,
+      heroName,
+      avatarUrl: currentHero.image_url || null,
+      ownerId: currentHero.owner_id || null,
+      userId: currentHero.owner_id || null,
+    }
+  }, [currentHero, heroName])
+
+  const pageContext = useMemo(() => {
+    const path = router.pathname || ''
+    if (path.startsWith('/lobby')) return 'lobby:overlay'
+    if (path.startsWith('/rank')) return 'rank:overlay'
+    if (path.startsWith('/play')) return 'play:overlay'
+    if (path.startsWith('/create')) return 'create:overlay'
+    return 'overlay'
+  }, [router.pathname])
+
+  const {
+    viewer: socialViewer,
+    friends: socialFriends = [],
+    friendRequests: socialFriendRequests = { incoming: [], outgoing: [] },
+    loading: socialLoading,
+    error: socialError,
+    addFriend,
+    removeFriend,
+    acceptFriendRequest,
+    declineFriendRequest,
+    cancelFriendRequest,
+    friendByHero: socialFriendByHero,
+  } = useHeroSocial({
+    heroId: currentHeroId,
+    heroName,
+    page: pageContext,
+    viewerHero: viewerHeroHint,
+  })
+
+  const friendByHeroMap = useMemo(
+    () => (socialFriendByHero instanceof Map ? socialFriendByHero : new Map()),
+    [socialFriendByHero],
+  )
+
+  const extraWhisperTargets = useMemo(() => {
+    if (!socialFriends?.length) return []
+    const entries = new Map()
+    for (const friend of socialFriends) {
+      const candidateIds = [friend.friendHeroId, friend.currentHeroId].filter(Boolean)
+      for (const heroId of candidateIds) {
+        if (!heroId || heroId === currentHeroId) continue
+        if (entries.has(heroId)) continue
+        const nameSource =
+          heroId === friend.friendHeroId
+            ? friend.friendHeroName || friend.currentHeroName
+            : friend.currentHeroName || friend.friendHeroName
+        entries.set(heroId, {
+          heroId,
+          username: nameSource || '알 수 없는 영웅',
+        })
+      }
+    }
+    return Array.from(entries.values())
+  }, [currentHeroId, socialFriends])
+
+  const friendRequestsData = useMemo(() => {
+    const incoming = socialFriendRequests?.incoming || []
+    const outgoing = socialFriendRequests?.outgoing || []
+    return { incoming, outgoing }
+  }, [socialFriendRequests])
+
+  const pendingFriendCount = friendRequestsData.incoming.length
+
   const activeBgmUrl = currentHero?.bgm_url || null
 
   const lastHeroKeyRef = useRef(null)
+  const chatOverlayRef = useRef(null)
 
   useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
 
@@ -435,6 +545,95 @@ export default function SharedHeroOverlay() {
       window.removeEventListener('hero-overlay:refresh', handleRefresh)
     }
   }, [loadHero])
+
+  useEffect(() => {
+    if (chatOpen) {
+      setChatUnread(0)
+    }
+  }, [chatOpen])
+
+  const handleChatUnreadChange = useCallback((count) => {
+    setChatUnread(Number.isFinite(count) ? Math.max(0, count) : 0)
+  }, [])
+
+  const handleBlockedHeroesChange = useCallback((list) => {
+    if (!Array.isArray(list)) {
+      setBlockedHeroes([])
+      return
+    }
+    setBlockedHeroes([...list])
+  }, [])
+
+  const handleToggleBlockedHero = useCallback((heroId) => {
+    if (!heroId) {
+      return { ok: false, error: '대상 캐릭터를 찾을 수 없습니다.' }
+    }
+    setBlockedHeroes((prev) => {
+      const base = Array.isArray(prev) ? prev : []
+      if (base.includes(heroId)) {
+        return base.filter((id) => id !== heroId)
+      }
+      return [...base, heroId]
+    })
+    return { ok: true }
+  }, [])
+
+  const handleOpenLobby = useCallback(() => {
+    if (currentHeroId) {
+      router.push(`/lobby?heroId=${currentHeroId}`)
+    } else {
+      router.push('/lobby')
+    }
+  }, [currentHeroId, router])
+
+  const handleRequestAddFriend = useCallback(
+    (heroMeta) => {
+      const heroId = heroMeta?.heroId
+      if (!heroId) {
+        return Promise.resolve({ ok: false, error: '캐릭터 정보를 찾을 수 없습니다.' })
+      }
+      return addFriend({ heroId })
+    },
+    [addFriend],
+  )
+
+  const handleRequestRemoveFriend = useCallback(
+    (heroMeta) => {
+      const heroId = heroMeta?.heroId
+      if (!heroId) {
+        return Promise.resolve({ ok: false, error: '캐릭터 정보를 찾을 수 없습니다.' })
+      }
+      const friendEntry = friendByHeroMap.get(heroId)
+      if (!friendEntry) {
+        return Promise.resolve({ ok: false, error: '친구 목록에서 찾을 수 없습니다.' })
+      }
+      return removeFriend(friendEntry)
+    },
+    [friendByHeroMap, removeFriend],
+  )
+
+  const handleOpenWhisper = useCallback((heroId) => {
+    if (!heroId) return
+    setChatOpen(true)
+    setTimeout(() => {
+      chatOverlayRef.current?.openThread?.(heroId)
+    }, 0)
+  }, [])
+
+  const handleCloseChat = useCallback(() => {
+    setChatOpen(false)
+    chatOverlayRef.current?.resetThread?.()
+  }, [])
+
+  const handleCloseFriend = useCallback(() => {
+    setFriendOpen(false)
+  }, [])
+
+  const isFriend = useCallback((heroMeta) => {
+    const heroId = heroMeta?.heroId
+    if (!heroId) return false
+    return friendByHeroMap.has(heroId)
+  }, [friendByHeroMap])
 
   const handleSeek = useCallback(
     (event) => {
@@ -620,85 +819,134 @@ export default function SharedHeroOverlay() {
     return null
   }
 
+  const blockedList = Array.isArray(blockedHeroes) ? blockedHeroes : []
+
   return (
-    <div style={styles.container}>
-      <div style={styles.surface}>
-        {bgmEnabled && activeBgmUrl ? (
-          <div style={styles.hudSection}>
-            <div style={styles.playerShell}>
-              <div style={styles.playerHeader}>
-                <div style={styles.playerHeaderLeft}>
-                  <button
-                    type="button"
-                    style={styles.collapseButton}
-                    onClick={() => setPlayerCollapsed((prev) => !prev)}
-                  >
-                    {playerCollapsed ? '▲' : '▼'}
-                  </button>
-                  <span style={styles.playerTitle}>캐릭터 브금</span>
-                </div>
-                {!playerCollapsed ? (
-                  <>
-                    <div style={styles.progressBar} role="presentation" onClick={handleSeek}>
-                      <div style={styles.progressFill(duration ? progress / duration : 0)} />
-                    </div>
-                    <span style={styles.listMeta}>{`${formatTime(progress)} / ${formatTime(duration)}`}</span>
-                  </>
-                ) : null}
-              </div>
-              {!playerCollapsed ? (
-                <div style={styles.playerControls}>
-                  <button type="button" style={styles.playerButton} onClick={togglePlayback}>
-                    {isPlaying ? '일시정지' : '재생'}
-                  </button>
-                  <button type="button" style={styles.playerButton} onClick={stopPlayback}>
-                    처음으로
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        <div style={styles.hudSection}>
-          <div style={styles.dockToggleRow}>
-            <button type="button" style={styles.dockToggleButton} onClick={() => setDockCollapsed((prev) => !prev)}>
-              {dockCollapsed ? '▲ 패널 펼치기' : '▼ 패널 접기'}
-            </button>
-          </div>
-
-          {!dockCollapsed ? (
-            <div style={styles.dock}>
-              <div style={styles.dockHeader}>
-                <div style={styles.dockTabs}>
-                  {overlayTabs.map((tab, index) => (
+    <>
+      <div style={styles.container}>
+        <div style={styles.surface}>
+          {bgmEnabled && activeBgmUrl ? (
+            <div style={styles.hudSection}>
+              <div style={styles.playerShell}>
+                <div style={styles.playerHeader}>
+                  <div style={styles.playerHeaderLeft}>
                     <button
-                      key={tab.key}
                       type="button"
-                      style={styles.dockTabButton(index === activeTab)}
-                      onClick={() => setActiveTab(index)}
+                      style={styles.collapseButton}
+                      onClick={() => setPlayerCollapsed((prev) => !prev)}
                     >
-                      {tab.label}
+                      {playerCollapsed ? '▲' : '▼'}
                     </button>
-                  ))}
-                </div>
-                <div style={styles.dockActions}>
-                  <button type="button" style={styles.rosterButton} onClick={() => router.push('/roster')}>
-                    로스터로
-                  </button>
-                  {activeTabKey === 'character' ? (
-                    <button type="button" style={styles.battleButton}>
-                      전투 시작
-                    </button>
+                    <span style={styles.playerTitle}>캐릭터 브금</span>
+                  </div>
+                  {!playerCollapsed ? (
+                    <>
+                      <div style={styles.progressBar} role="presentation" onClick={handleSeek}>
+                        <div style={styles.progressFill(duration ? progress / duration : 0)} />
+                      </div>
+                      <span style={styles.listMeta}>{`${formatTime(progress)} / ${formatTime(duration)}`}</span>
+                    </>
                   ) : null}
                 </div>
+                {!playerCollapsed ? (
+                  <div style={styles.playerControls}>
+                    <button type="button" style={styles.playerButton} onClick={togglePlayback}>
+                      {isPlaying ? '일시정지' : '재생'}
+                    </button>
+                    <button type="button" style={styles.playerButton} onClick={stopPlayback}>
+                      처음으로
+                    </button>
+                  </div>
+                ) : null}
               </div>
-
-              {overlayBody}
             </div>
           ) : null}
+
+          <div style={styles.hudSection}>
+            <div style={styles.dockToggleRow}>
+              <button type="button" style={styles.dockToggleButton} onClick={() => setDockCollapsed((prev) => !prev)}>
+                {dockCollapsed ? '▲ 패널 펼치기' : '▼ 패널 접기'}
+              </button>
+            </div>
+
+            {!dockCollapsed ? (
+              <div style={styles.dock}>
+                <div style={styles.dockHeader}>
+                  <div style={styles.dockTabs}>
+                    {overlayTabs.map((tab, index) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        style={styles.dockTabButton(index === activeTab)}
+                        onClick={() => setActiveTab(index)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={styles.dockActions}>
+                    <button type="button" style={styles.actionButton} onClick={() => setChatOpen(true)}>
+                      공용 채팅
+                      {chatUnread > 0 ? (
+                        <span style={styles.actionBadge}>{Math.min(chatUnread, 99)}</span>
+                      ) : null}
+                    </button>
+                    <button type="button" style={styles.actionButton} onClick={() => setFriendOpen(true)}>
+                      친구
+                      {pendingFriendCount > 0 ? (
+                        <span style={styles.actionBadge}>{Math.min(pendingFriendCount, 99)}</span>
+                      ) : null}
+                    </button>
+                    <button type="button" style={styles.rosterButton} onClick={() => router.push('/roster')}>
+                      로스터로
+                    </button>
+                    {activeTabKey === 'character' ? (
+                      <button type="button" style={styles.battleButton} onClick={handleOpenLobby}>
+                        게임 시작
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {overlayBody}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
-    </div>
+
+      <ChatOverlay
+        ref={chatOverlayRef}
+        open={chatOpen}
+        onClose={handleCloseChat}
+        heroId={currentHeroId}
+        viewerHero={viewerHeroHint}
+        extraWhisperTargets={extraWhisperTargets}
+        blockedHeroes={blockedHeroes}
+        onUnreadChange={handleChatUnreadChange}
+        onBlockedHeroesChange={handleBlockedHeroesChange}
+        onRequestAddFriend={handleRequestAddFriend}
+        onRequestRemoveFriend={handleRequestRemoveFriend}
+        isFriend={isFriend}
+      />
+
+      <FriendOverlay
+        open={friendOpen}
+        onClose={handleCloseFriend}
+        viewer={socialViewer}
+        friends={socialFriends}
+        friendRequests={friendRequestsData}
+        loading={socialLoading}
+        error={socialError}
+        onAddFriend={addFriend}
+        onRemoveFriend={removeFriend}
+        onAcceptRequest={acceptFriendRequest}
+        onDeclineRequest={declineFriendRequest}
+        onCancelRequest={cancelFriendRequest}
+        onOpenWhisper={handleOpenWhisper}
+        blockedHeroes={blockedList}
+        onToggleBlockedHero={handleToggleBlockedHero}
+      />
+    </>
   )
 }
