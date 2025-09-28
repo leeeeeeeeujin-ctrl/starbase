@@ -11,14 +11,7 @@ import TokenPalette from './TokenPalette'
 /* =========================
  *  사이드 패널 본체
  * ========================= */
-export default function SidePanel({
-  selectedNodeId,
-  selectedEdge,
-  setEdges,
-  setNodes,
-  onInsertToken,
-  showTokenPalette = true,
-}) {
+export default function SidePanel({ selectedNodeId, selectedEdge, setEdges, setNodes, onInsertToken }) {
   const [edgeForm, setEdgeForm] = useState({
     trigger_words: '',
     conditions: '[]',
@@ -101,17 +94,17 @@ export default function SidePanel({
     // 노드 패널
     return (
       <div style={{ padding: 12, display: 'grid', gap: 12 }}>
-        <div style={{ fontWeight: 700, color: '#0f172a' }}>프롬프트 편집</div>
-        <div style={{ color: '#475569', fontSize: 12 }}>
+        <div style={{ fontWeight: 700 }}>프롬프트 편집</div>
+        <div style={{ color: '#64748b', fontSize: 12 }}>
           카드에서 바로 텍스트를 수정하고, 아래에서 변수·토큰을 다듬어 보세요.
         </div>
 
-        <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 10, fontSize: 12, color: '#64748b' }}>
+        <div style={{ borderTop: '1px solid #eee', paddingTop: 10, fontSize: 12, color: '#6b7280' }}>
           세부 전역/로컬 변수 규칙은 화면 우측의 <b>변수</b> 버튼을 눌러 전용 패널에서 편집하세요.
         </div>
 
         {/* 토큰 팔레트 */}
-        {showTokenPalette && <TokenPalette onInsert={onInsertToken} />}
+        <TokenPalette onInsert={onInsertToken} />
       </div>
     )
   }
@@ -119,64 +112,44 @@ export default function SidePanel({
   if (selectedEdge) {
     // 엣지 패널
     return (
-      <div style={{ padding: 12, display: 'grid', gap: 12, color: '#0f172a' }}>
-        <h3 style={{ marginTop: 0, color: '#0f172a' }}>브릿지 조건</h3>
+      <div style={{ padding: 12, display: 'grid', gap: 12 }}>
+        <h3 style={{ marginTop: 0 }}>브릿지 조건</h3>
         <ConditionBuilder selectedEdge={selectedEdge} setEdges={setEdges} pushToForm={pushToForm} />
 
         {/* JSON 직접 편집 */}
-        <div style={{ marginTop: 6, borderTop: '1px solid #e2e8f0', paddingTop: 10 }}>
-          <label style={{ fontSize: 12, color: '#475569' }}>조건(JSON 배열) 고급 편집</label>
+        <div style={{ marginTop: 6, borderTop: '1px solid #eee', paddingTop: 10 }}>
+          <label style={{ fontSize: 12 }}>조건(JSON 배열) 고급 편집</label>
           <textarea
             value={edgeForm.conditions}
             onChange={(e) => setEdgeForm((f) => ({ ...f, conditions: e.target.value }))}
             rows={5}
-            style={{
-              width: '100%',
-              fontFamily: 'monospace',
-              borderRadius: 10,
-              border: '1px solid rgba(148, 163, 184, 0.35)',
-              padding: 10,
-              background: '#fff',
-              color: '#0f172a',
-            }}
+            style={{ width: '100%', fontFamily: 'monospace' }}
           />
         </div>
 
         {/* 기타 속성 */}
         <div style={{ display: 'grid', gap: 8 }}>
-          <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+          <label style={{ fontSize: 12 }}>
             트리거 단어(콤마)
             <input
               value={edgeForm.trigger_words}
               onChange={(e) => setEdgeForm((f) => ({ ...f, trigger_words: e.target.value }))}
-              style={{
-                width: '100%',
-                marginTop: 4,
-                borderRadius: 10,
-                border: '1px solid rgba(148, 163, 184, 0.35)',
-                padding: 8,
-              }}
+              style={{ width: '100%', marginTop: 4 }}
               placeholder="예) 시작, 출발"
             />
           </label>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+            <label style={{ fontSize: 12 }}>
               우선순위
               <input
                 type="number"
                 value={edgeForm.priority}
                 onChange={(e) => setEdgeForm((f) => ({ ...f, priority: e.target.value }))}
-                style={{
-                  width: '100%',
-                  marginTop: 4,
-                  borderRadius: 10,
-                  border: '1px solid rgba(148, 163, 184, 0.35)',
-                  padding: 8,
-                }}
+                style={{ width: '100%', marginTop: 4 }}
               />
             </label>
-            <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+            <label style={{ fontSize: 12 }}>
               확률(0~1)
               <input
                 type="number"
@@ -185,18 +158,12 @@ export default function SidePanel({
                 max="1"
                 value={edgeForm.probability}
                 onChange={(e) => setEdgeForm((f) => ({ ...f, probability: e.target.value }))}
-                style={{
-                  width: '100%',
-                  marginTop: 4,
-                  borderRadius: 10,
-                  border: '1px solid rgba(148, 163, 184, 0.35)',
-                  padding: 8,
-                }}
+                style={{ width: '100%', marginTop: 4 }}
               />
             </label>
           </div>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#475569' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
             <input
               type="checkbox"
               checked={edgeForm.fallback}
@@ -205,20 +172,12 @@ export default function SidePanel({
             Fallback (다른 조건이 모두 불일치 시 사용)
           </label>
 
-          <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+          <label style={{ fontSize: 12 }}>
             액션
             <select
               value={edgeForm.action}
               onChange={(e) => setEdgeForm((f) => ({ ...f, action: e.target.value }))}
-              style={{
-                width: '100%',
-                marginTop: 4,
-                borderRadius: 10,
-                border: '1px solid rgba(148, 163, 184, 0.35)',
-                padding: 8,
-                background: '#fff',
-                color: '#0f172a',
-              }}
+              style={{ width: '100%', marginTop: 4 }}
             >
               <option value="continue">continue</option>
               <option value="stop">stop</option>
@@ -228,15 +187,7 @@ export default function SidePanel({
           <button
             type="button"
             onClick={applyEdge}
-            style={{
-              padding: '10px 16px',
-              borderRadius: 999,
-              background: 'linear-gradient(135deg, rgba(191, 219, 254, 0.9), rgba(96, 165, 250, 0.85))',
-              color: '#0f172a',
-              fontWeight: 700,
-              border: '1px solid rgba(96, 165, 250, 0.45)',
-              boxShadow: '0 10px 24px -20px rgba(59, 130, 246, 0.5)',
-            }}
+            style={{ padding: '8px 12px', borderRadius: 8, background: '#111827', color: '#fff', fontWeight: 700 }}
           >
             브릿지 적용
           </button>
