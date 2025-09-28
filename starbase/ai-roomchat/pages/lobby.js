@@ -68,9 +68,10 @@ export default function Lobby() {
         <CharacterStatsPanel
           loading={stats.loading}
           error={stats.error}
-          participations={stats.participations}
+          summary={stats.summary}
+          games={stats.games}
           seasons={stats.seasons}
-          logs={stats.logs}
+          battles={stats.battles}
           onLeaveGame={stats.leaveGame}
           onRefresh={stats.refresh}
         />

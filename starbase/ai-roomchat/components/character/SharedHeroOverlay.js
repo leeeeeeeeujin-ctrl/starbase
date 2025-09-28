@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import ChatOverlay from '@/components/social/ChatOverlay'
+import FriendOverlay from '@/components/social/FriendOverlay'
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 import { useHeroSocial } from '@/hooks/social/useHeroSocial'
 import { fetchHeroById } from '@/services/heroes'
@@ -360,6 +361,9 @@ export default function SharedHeroOverlay() {
   const [chatOpen, setChatOpen] = useState(false)
   const [chatUnread, setChatUnread] = useState(0)
   const [blockedHeroes, setBlockedHeroes] = useState()
+  const [friendOpen, setFriendOpen] = useState(false)
+  const [friendBadge, setFriendBadge] = useState(0)
+  const [chatNotice, setChatNotice] = useState(null)
 
   const heroName = useMemo(() => {
     if (!currentHero) return DEFAULT_HERO_NAME
@@ -407,9 +411,17 @@ export default function SharedHeroOverlay() {
   }, [router.pathname])
 
   const {
+    viewer: socialViewer,
     friends: socialFriends = [],
+    friendRequests = { incoming: [], outgoing: [] },
+    loading: socialLoading,
+    error: socialError,
     addFriend,
     removeFriend,
+    acceptFriendRequest,
+    declineFriendRequest,
+    cancelFriendRequest,
+    refreshSocial,
     friendByHero: socialFriendByHero,
   } = useHeroSocial({
     heroId: currentHeroId,
@@ -532,8 +544,24 @@ export default function SharedHeroOverlay() {
   useEffect(() => {
     if (chatOpen) {
       setChatUnread(0)
+      setChatNotice(null)
     }
   }, [chatOpen])
+
+  useEffect(() => {
+    const incoming = friendRequests?.incoming?.length || 0
+    if (friendOpen) {
+      setFriendBadge(0)
+    } else {
+      setFriendBadge(incoming)
+    }
+  }, [friendRequests, friendOpen])
+
+  useEffect(() => {
+    if (friendOpen && typeof refreshSocial === 'function') {
+      refreshSocial()
+    }
+  }, [friendOpen, refreshSocial])
 
   const handleChatUnreadChange = useCallback((count) => {
     setChatUnread(Number.isFinite(count) ? Math.max(0, count) : 0)
@@ -545,6 +573,20 @@ export default function SharedHeroOverlay() {
       return
     }
     setBlockedHeroes([...list])
+  }, [])
+
+  const handleToggleBlockedHero = useCallback(async (heroId) => {
+    if (!heroId) {
+      return { ok: false, error: '캐릭터 정보를 찾을 수 없습니다.' }
+    }
+    setBlockedHeroes((prev) => {
+      const base = Array.isArray(prev) ? prev : []
+      if (base.includes(heroId)) {
+        return base.filter((id) => id !== heroId)
+      }
+      return [...base, heroId]
+    })
+    return { ok: true }
   }, [])
 
 
@@ -588,11 +630,43 @@ export default function SharedHeroOverlay() {
     chatOverlayRef.current?.resetThread?.()
   }, [])
 
+  const handleOpenWhisper = useCallback((heroId) => {
+    if (!heroId) return
+    setChatOpen(true)
+    setDockCollapsed(false)
+    setFriendOpen(false)
+    chatOverlayRef.current?.openThread?.(heroId)
+  }, [])
+
   const isFriend = useCallback((heroMeta) => {
     const heroId = heroMeta?.heroId
     if (!heroId) return false
     return friendByHeroMap.has(heroId)
   }, [friendByHeroMap])
+
+  const handleChatAlert = useCallback(
+    (notice) => {
+      if (!notice?.message) return
+      const message = notice.message
+      if (message.hero_id && currentHeroId && message.hero_id === currentHeroId) return
+      const scope = notice.scope || 'global'
+      const preview = (message.text || '').trim().slice(0, 48)
+      setChatNotice({
+        scope,
+        preview,
+        threadId: notice.threadId || 'global',
+        createdAt: message.created_at || null,
+      })
+      if (typeof window !== 'undefined') {
+        try {
+          window.dispatchEvent(new CustomEvent('shared-chat:notice', { detail: notice }))
+        } catch (eventError) {
+          console.error('새 채팅 알림 브로드캐스트 실패:', eventError)
+        }
+      }
+    },
+    [currentHeroId],
+  )
 
   const handleSeek = useCallback(
     (event) => {
@@ -848,6 +922,12 @@ export default function SharedHeroOverlay() {
                         <span style={styles.actionBadge}>{Math.min(chatUnread, 99)}</span>
                       ) : null}
                     </button>
+                    <button type="button" style={styles.actionButton} onClick={() => setFriendOpen(true)}>
+                      친구
+                      {friendBadge > 0 ? (
+                        <span style={styles.actionBadge}>{Math.min(friendBadge, 99)}</span>
+                      ) : null}
+                    </button>
                     <button type="button" style={styles.rosterButton} onClick={() => router.push('/roster')}>
                       로스터로
                     </button>
@@ -858,6 +938,13 @@ export default function SharedHeroOverlay() {
                     ) : null}
                   </div>
                 </div>
+
+                {chatNotice && !chatOpen ? (
+                  <div style={{ fontSize: 12, color: '#cbd5f5' }}>
+                    {chatNotice.scope === 'whisper' ? '귓속말' : '전체'} 새 메시지 ·{' '}
+                    {chatNotice.preview || '내용 없음'}
+                  </div>
+                ) : null}
 
                 {overlayBody}
               </div>
@@ -879,6 +966,25 @@ export default function SharedHeroOverlay() {
         onRequestAddFriend={handleRequestAddFriend}
         onRequestRemoveFriend={handleRequestRemoveFriend}
         isFriend={isFriend}
+        onMessageAlert={handleChatAlert}
+      />
+
+      <FriendOverlay
+        open={friendOpen}
+        onClose={() => setFriendOpen(false)}
+        viewer={socialViewer}
+        friends={socialFriends}
+        friendRequests={friendRequests}
+        loading={socialLoading}
+        error={socialError}
+        onAddFriend={handleRequestAddFriend}
+        onRemoveFriend={handleRequestRemoveFriend}
+        onAcceptRequest={acceptFriendRequest}
+        onDeclineRequest={declineFriendRequest}
+        onCancelRequest={cancelFriendRequest}
+        onOpenWhisper={handleOpenWhisper}
+        blockedHeroes={blockedHeroes || []}
+        onToggleBlockedHero={handleToggleBlockedHero}
       />
 
     </>

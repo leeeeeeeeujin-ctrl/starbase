@@ -3,7 +3,7 @@
 import { supabase } from '../supabase'
 import { withTable } from '../supabaseTables'
 
-export const MESSAGE_LIMIT = 200
+export const MESSAGE_LIMIT = 120
 
 export async function getCurrentUser() {
   const {

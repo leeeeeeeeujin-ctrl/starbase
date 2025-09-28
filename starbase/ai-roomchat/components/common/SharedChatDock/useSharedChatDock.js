@@ -16,6 +16,7 @@ import {
 import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
 
 const BLOCKED_STORAGE_KEY = 'starbase_blocked_heroes'
+const CHAT_CACHE_KEY = 'starbase_shared_chat_cache_v1'
 
 const SharedChatDockContext = createContext(null)
 
@@ -113,12 +114,35 @@ function persistBlockedHeroes(list) {
   }
 }
 
+function loadMessageCache() {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(CHAT_CACHE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (error) {
+    return []
+  }
+}
+
+function persistMessageCache(list) {
+  if (typeof window === 'undefined') return
+  try {
+    const payload = Array.isArray(list) ? list.slice(-MESSAGE_LIMIT) : []
+    window.localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(payload))
+  } catch (error) {
+    // ignore storage issues silently
+  }
+}
+
 function useSharedChatDockInternal({
   heroId,
   extraWhisperTargets = [],
   blockedHeroes: externalBlockedHeroes,
   viewerHero = null,
   onSend,
+  onNotify,
 }) {
   const listRef = useRef(null)
   const activeThreadRef = useRef('global')
@@ -166,8 +190,16 @@ function useSharedChatDockInternal({
       }
     }
     messageIdSetRef.current = idSet
+    persistMessageCache(limited)
     setMessages(limited)
   }, [])
+
+  useEffect(() => {
+    const cached = loadMessageCache()
+    if (cached.length) {
+      replaceMessages(cached)
+    }
+  }, [replaceMessages])
 
   useEffect(() => {
     if (!Array.isArray(externalBlockedHeroes)) return
@@ -434,6 +466,7 @@ function useSharedChatDockInternal({
             }
           }
           messageIdSetRef.current = idSet
+          persistMessageCache(limited)
           return limited
         })
 
@@ -453,6 +486,19 @@ function useSharedChatDockInternal({
         }
 
         scrollToBottom()
+
+        if (typeof onNotify === 'function') {
+          const scope = hydrated?.scope || 'global'
+          let threadId = 'global'
+          if (scope === 'whisper' && viewerId) {
+            if (hydrated.hero_id === viewerId) {
+              threadId = hydrated.target_hero_id || 'global'
+            } else {
+              threadId = hydrated.hero_id || 'global'
+            }
+          }
+          onNotify({ message: hydrated, scope, threadId })
+        }
       } catch (error) {
         console.error('실시간 메시지를 처리하지 못했습니다.', error)
       }
@@ -469,7 +515,7 @@ function useSharedChatDockInternal({
       alive = false
       unsubscribe()
     }
-  }, [fetchAndHydrateMessages, heroId, hydrateSingle, viewerHero, hintProfile, replaceMessages, scrollToBottom])
+  }, [fetchAndHydrateMessages, heroId, hydrateSingle, viewerHero, hintProfile, replaceMessages, scrollToBottom, onNotify])
 
   const setActiveThread = (thread) => {
     const normalized = thread || 'global'

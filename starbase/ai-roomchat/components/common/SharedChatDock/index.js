@@ -19,6 +19,7 @@ export default function SharedChatDock({
   activeThreadId,
   onThreadChange,
   onUserSend,
+  onMessageAlert,
 }) {
   const {
     activeThread,
@@ -49,6 +50,7 @@ export default function SharedChatDock({
     blockedHeroes: externalBlockedHeroes,
     viewerHero,
     onSend: onUserSend,
+    onNotify: onMessageAlert,
   })
 
   useEffect(() => {

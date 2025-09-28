@@ -1,9 +1,4 @@
-export const NAV_LINKS = [
-  { label: '게임 제작', href: '/maker' },
-  { label: '플레이', href: '/play' },
-  { label: '사설', href: '/private' },
-  { label: '랭킹', href: '/rank' },
-]
+export const NAV_LINKS = []
 
 export const LOBBY_TABS = [
   { key: 'games', label: '게임 검색' },
