@@ -103,7 +103,8 @@ export default function RankNewClient() {
     fair_power_balance: true,
     char_limit: 0,
   })
-  const [brawlRule, setBrawlRule] = useState('instant-elimination')
+  const [brawlEnabled, setBrawlEnabled] = useState(false)
+  const [brawlRule, setBrawlRule] = useState('banish-on-loss')
   const [endCondition, setEndCondition] = useState('')
   const [showBrawlHelp, setShowBrawlHelp] = useState(false)
   const [backgroundImage, setBackgroundImage] = useState('')
@@ -161,6 +162,16 @@ export default function RankNewClient() {
     [],
   )
 
+  const handleToggleBrawl = () => {
+    setBrawlEnabled((prev) => {
+      const next = !prev
+      if (!next) {
+        setShowBrawlHelp(false)
+      }
+      return next
+    })
+  }
+
   async function onSubmit() {
     if (!user) return alert('로그인이 필요합니다.')
     if (!setId) return alert('프롬프트 세트를 선택하세요.')
@@ -178,8 +189,13 @@ export default function RankNewClient() {
 
     const compiledRules = {
       ...rules,
-      brawl_rule: brawlRule,
-      end_condition_variable: endCondition.trim(),
+      brawl_rule: 'banish-on-loss',
+      end_condition_variable: null,
+    }
+
+    if (brawlEnabled) {
+      compiledRules.brawl_rule = brawlRule
+      compiledRules.end_condition_variable = endCondition.trim() || null
     }
 
     const res = await registerGame({
@@ -244,6 +260,17 @@ export default function RankNewClient() {
     display: 'grid',
     gap: 18,
   }
+
+  const togglePillStyle = (active) => ({
+    padding: '8px 18px',
+    borderRadius: 999,
+    border: active ? '1px solid #60a5fa' : '1px solid rgba(148,163,184,0.45)',
+    background: active ? 'rgba(96,165,250,0.25)' : 'rgba(15,23,42,0.55)',
+    color: active ? '#0f172a' : '#f8fafc',
+    fontWeight: 700,
+    letterSpacing: 0.5,
+    cursor: 'pointer',
+  })
 
   const optionButtonStyle = (active) => ({
     padding: '8px 14px',
@@ -325,21 +352,46 @@ export default function RankNewClient() {
                   난투 규칙과 체크리스트를 먼저 정리한 뒤 아래 카드에서 역할과 슬롯, 규칙을 채워 넣으세요. 모든 항목은 언제든지 수정할 수 있습니다.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowBrawlHelp((prev) => !prev)}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  border: '1px solid rgba(148,163,184,0.4)',
-                  background: 'rgba(15,23,42,0.55)',
-                  color: '#f8fafc',
-                  fontWeight: 700,
-                }}
-              >
-                ?
-              </button>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 12,
+                flexWrap: 'wrap',
+                padding: '12px 16px',
+                borderRadius: 16,
+                border: '1px solid rgba(148,163,184,0.35)',
+                background: 'rgba(15,23,42,0.55)',
+              }}
+            >
+              <div style={{ display: 'grid', gap: 4 }}>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>난투 옵션</p>
+                <p style={{ margin: 0, fontSize: 12, lineHeight: 1.6, color: '#94a3b8' }}>
+                  옵션을 끄면 기본 규칙인 <strong>패배시 추방</strong>이 적용됩니다. 이미 진행 중인 세션 합류 흐름을 조정하려면 옵션을 켜세요.
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowBrawlHelp((prev) => !prev)}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    border: '1px solid rgba(148,163,184,0.4)',
+                    background: 'rgba(15,23,42,0.6)',
+                    color: '#f8fafc',
+                    fontWeight: 700,
+                  }}
+                >
+                  ?
+                </button>
+                <button type="button" style={togglePillStyle(brawlEnabled)} onClick={handleToggleBrawl}>
+                  {brawlEnabled ? 'ON' : 'OFF'}
+                </button>
+              </div>
             </div>
             {showBrawlHelp ? (
               <div
@@ -356,35 +408,43 @@ export default function RankNewClient() {
                 <strong>패배시 추방</strong>은 빈 슬롯이 생기면 새 역할 세트가 투입됩니다.
               </div>
             ) : null}
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                style={optionButtonStyle(brawlRule === 'instant-elimination')}
-                onClick={() => setBrawlRule('instant-elimination')}
-              >
-                탈락자 즉시패배
-              </button>
-              <button
-                type="button"
-                style={optionButtonStyle(brawlRule === 'banish-on-loss')}
-                onClick={() => setBrawlRule('banish-on-loss')}
-              >
-                패배시 추방
-              </button>
-            </div>
-            <label style={labelStyle}>
-              <span style={{ color: '#cbd5f5' }}>게임 종료 조건 변수</span>
-              <input
-                type="text"
-                value={endCondition}
-                onChange={(event) => setEndCondition(event.target.value)}
-                placeholder="예: remainingTeams <= 1"
-                style={inputStyle}
-              />
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                등록 폼의 끝에서 두 번째 줄에 위치한 변수 칸과 연결됩니다. 조건을 만족할 때까지 게임은 종료되지 않으며, 종료 시 승리 횟수에 따라 점수가 정산됩니다.
-              </span>
-            </label>
+            {brawlEnabled ? (
+              <>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    style={optionButtonStyle(brawlRule === 'instant-elimination')}
+                    onClick={() => setBrawlRule('instant-elimination')}
+                  >
+                    탈락자 즉시패배
+                  </button>
+                  <button
+                    type="button"
+                    style={optionButtonStyle(brawlRule === 'banish-on-loss')}
+                    onClick={() => setBrawlRule('banish-on-loss')}
+                  >
+                    패배시 추방
+                  </button>
+                </div>
+                <label style={labelStyle}>
+                  <span style={{ color: '#cbd5f5' }}>게임 종료 조건 변수</span>
+                  <input
+                    type="text"
+                    value={endCondition}
+                    onChange={(event) => setEndCondition(event.target.value)}
+                    placeholder="예: remainingTeams <= 1"
+                    style={inputStyle}
+                  />
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                    등록 폼의 끝에서 두 번째 줄에 위치한 변수 칸과 연결됩니다. 조건을 만족할 때까지 게임은 종료되지 않으며, 종료 시 승리 횟수에 따라 점수가 정산됩니다.
+                  </span>
+                </label>
+              </>
+            ) : (
+              <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>
+                세부 난투 옵션을 사용하지 않을 때는 빈 자리에 새 역할 세트가 합류하는 <strong>패배시 추방</strong> 규칙이 기본으로 적용됩니다.
+              </p>
+            )}
             <div style={overviewColumns}>
               <div style={{ display: 'grid', gap: 8, background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '16px 18px' }}>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>등록 체크리스트</p>
