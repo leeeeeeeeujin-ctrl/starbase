@@ -344,7 +344,7 @@ export default function SharedHeroOverlay() {
 
   const activeBgmUrl = currentHero?.bgm_url || null
 
-  const lastHeroIdRef = useRef(null)
+  const lastHeroKeyRef = useRef(null)
 
   useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
 
@@ -381,18 +381,25 @@ export default function SharedHeroOverlay() {
       const heroRow = await fetchHeroById(storedId)
       if (heroRow) {
         setCurrentHero(heroRow)
-        const heroTrackKey = `${heroRow.id}:${heroRow.bgm_url || ''}`
-        if (lastHeroIdRef.current !== heroTrackKey) {
-          lastHeroIdRef.current = heroTrackKey
+        const trackUrl = heroRow.bgm_url || null
+        const heroTrackKey = `${heroRow.id}:${trackUrl || 'none'}`
+        const snapshot = audioManager.getState()
+        const sameTrack = snapshot.heroId === heroRow.id && snapshot.trackUrl === trackUrl
+        const shouldResume = snapshot.isPlaying || !sameTrack
+        if (lastHeroKeyRef.current !== heroTrackKey) {
+          lastHeroKeyRef.current = heroTrackKey
           audioManager.loadHeroTrack({
             heroId: heroRow.id,
             heroName: heroRow.name,
-            trackUrl: heroRow.bgm_url || null,
+            trackUrl,
             duration: heroRow.bgm_duration_seconds || 0,
-            autoPlay: Boolean(heroRow.bgm_url),
+            autoPlay: shouldResume,
             loop: true,
           })
-          audioManager.setEnabled(Boolean(heroRow.bgm_url))
+          const desiredEnabled = Boolean(trackUrl)
+          if (desiredEnabled !== snapshot.enabled) {
+            audioManager.setEnabled(desiredEnabled, { resume: shouldResume && desiredEnabled })
+          }
         }
       } else {
         setCurrentHero(null)

@@ -2,83 +2,6 @@
 
 import SidePanel from '../SidePanel'
 
-function SlotVisibilityControl({ suggestions, visibility, onVisibilityChange, onToggleInvisible }) {
-  const visibleSet = new Set(visibility?.visible_slots || [])
-
-  const toggleSlot = (slotNo) => {
-    onVisibilityChange((current) => {
-      const base = new Set(current.visible_slots || [])
-      if (base.has(slotNo)) {
-        base.delete(slotNo)
-      } else {
-        base.add(slotNo)
-      }
-      return {
-        invisible: current.invisible,
-        visible_slots: Array.from(base).sort((a, b) => a - b),
-      }
-    })
-  }
-
-  return (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontWeight: 600, fontSize: 13 }}>노출 범위</span>
-        <button
-          type="button"
-          onClick={onToggleInvisible}
-          style={{
-            padding: '4px 10px',
-            borderRadius: 8,
-            border: '1px solid #dbeafe',
-            background: visibility?.invisible ? '#fee2e2' : '#f1f5f9',
-            color: visibility?.invisible ? '#b91c1c' : '#1e293b',
-            fontSize: 12,
-            fontWeight: 600,
-          }}
-        >
-          {visibility?.invisible ? '숨김 해제' : '숨김 전환'}
-        </button>
-      </div>
-      <p style={{ margin: 0, fontSize: 11, color: '#475569', lineHeight: 1.5 }}>
-        숨김 모드일 때 공개할 슬롯을 선택하세요. 선택하지 않으면 누구에게도 노출되지 않습니다.
-      </p>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {suggestions.length === 0 && (
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>아직 등록된 슬롯이 없습니다.</span>
-        )}
-        {suggestions.map((option) => {
-          const checked = visibleSet.has(option.value)
-          return (
-            <label
-              key={option.value}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
-                borderRadius: 8,
-                border: checked ? '1px solid #1d4ed8' : '1px solid #e2e8f0',
-                background: checked ? 'rgba(37,99,235,0.08)' : '#fff',
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => toggleSlot(option.value)}
-                style={{ width: 14, height: 14 }}
-              />
-              {option.label}
-            </label>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 export default function MakerEditorPanel({
   tabs,
   activeTab,
@@ -88,15 +11,10 @@ export default function MakerEditorPanel({
   selectedNodeId,
   selectedEdge,
   onMarkAsStart,
-  onToggleInvisible,
   onDeleteSelected,
   onInsertToken,
-  rebuildEdgeLabel,
   setNodes,
   setEdges,
-  slotSuggestions,
-  selectedVisibility,
-  onVisibilityChange,
 }) {
   const nodeData = selectedNode?.data || null
 
@@ -176,6 +94,22 @@ export default function MakerEditorPanel({
       >
         {activeTab === 'selection' && (
           <div style={{ display: 'grid', gap: 12 }}>
+            <div
+              style={{
+                border: '1px solid #e2e8f0',
+                borderRadius: 12,
+                background: '#f8fafc',
+                padding: 12,
+              }}
+            >
+              <SidePanel
+                selectedNodeId={selectedNodeId}
+                selectedEdge={selectedEdge}
+                setEdges={setEdges}
+                setNodes={setNodes}
+                onInsertToken={onInsertToken}
+              />
+            </div>
             <span style={{ fontWeight: 700, color: '#0f172a' }}>
               {selectedNode
                 ? '선택한 프롬프트를 편집 중입니다.'
@@ -257,32 +191,8 @@ export default function MakerEditorPanel({
                     placeholder="프롬프트 텍스트를 입력하세요"
                   />
                 </div>
-
-                <SlotVisibilityControl
-                  suggestions={slotSuggestions}
-                  visibility={selectedVisibility}
-                  onVisibilityChange={onVisibilityChange}
-                  onToggleInvisible={onToggleInvisible}
-                />
               </div>
             )}
-
-            <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.6 }}>
-              토큰 팔레트는 도구 탭에서 확인할 수 있고, Invisible 설정은 위 노출 범위 컨트롤로 관리하세요.
-            </p>
-          </div>
-        )}
-
-        {activeTab === 'tools' && (
-          <div style={{ minHeight: 160 }}>
-            <SidePanel
-              selectedNodeId={selectedNodeId}
-              selectedEdge={selectedEdge}
-              setEdges={setEdges}
-              setNodes={setNodes}
-              onInsertToken={onInsertToken}
-              rebuildEdgeLabel={rebuildEdgeLabel}
-            />
           </div>
         )}
 

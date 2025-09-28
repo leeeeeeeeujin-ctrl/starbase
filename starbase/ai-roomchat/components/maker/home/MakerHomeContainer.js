@@ -20,17 +20,12 @@ export default function MakerHomeContainer() {
     loading,
     errorMessage,
     rows,
-    libraryRows,
-    libraryLoading,
-    libraryError,
     refresh,
     renameSet,
     deleteSet,
     createSet,
     exportSet,
     importFromFile,
-    importLibraryEntry,
-    refreshLibraryEntries,
     setErrorMessage,
   } = useMakerHome({ onUnauthorized: handleUnauthorized })
 
@@ -38,8 +33,6 @@ export default function MakerHomeContainer() {
   const [editingName, setEditingName] = useState('')
   const [savingRename, setSavingRename] = useState(false)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
-  const [importingEntryId, setImportingEntryId] = useState('')
-
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
@@ -102,27 +95,6 @@ export default function MakerHomeContainer() {
       }
     },
     [deleteSet],
-  )
-
-  const handleImportLibraryEntry = useCallback(
-    async (entryId) => {
-      if (!entryId) return
-      try {
-        setImportingEntryId(entryId)
-        const result = await importLibraryEntry(entryId)
-        const inserted = result?.createdSet
-        if (inserted?.id) {
-          alert('내 메이커로 가져왔어요! 지금 바로 편집할 수 있습니다.')
-          router.push(`/maker/${inserted.id}`)
-        }
-      } catch (err) {
-        console.error(err)
-        alert(err instanceof Error ? err.message : '가져오지 못했습니다.')
-      } finally {
-        setImportingEntryId('')
-      }
-    },
-    [importLibraryEntry, router],
   )
 
   const handleCreateSet = useCallback(async () => {
@@ -191,10 +163,6 @@ export default function MakerHomeContainer() {
       errorMessage={errorMessage}
       loading={loading}
       rows={rows}
-      libraryRows={libraryRows}
-      libraryLoading={libraryLoading}
-      libraryError={libraryError}
-      libraryImportingId={importingEntryId}
       editingId={editingId}
       editingName={editingName}
       savingRename={savingRename}
@@ -209,10 +177,8 @@ export default function MakerHomeContainer() {
       onImportFile={handleImportFile}
       onCreateSet={handleCreateSet}
       onRefresh={handleRefresh}
-      onRefreshLibrary={refreshLibraryEntries}
       onToggleActionSheet={setActionSheetOpen}
       onGoBack={handleGoBack}
-      onImportLibraryEntry={handleImportLibraryEntry}
     />
   )
 }

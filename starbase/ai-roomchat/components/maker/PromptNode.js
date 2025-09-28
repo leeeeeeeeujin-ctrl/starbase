@@ -29,7 +29,7 @@ export default function PromptNode({ id, data }) {
         display: 'grid',
         justifyItems: 'center',
         alignItems: 'center',
-        gap: 8,
+        gap: 10,
         background: 'transparent',
         touchAction: 'none',
       }}
@@ -58,21 +58,33 @@ export default function PromptNode({ id, data }) {
       />
       <div
         style={{
-          width: 86,
-          height: 86,
+          width: 92,
+          height: 92,
           borderRadius: '50%',
-          background: isStart ? '#0f172a' : '#111827',
+          background: isStart
+            ? 'radial-gradient(circle at 30% 25%, rgba(96,165,250,0.9) 0%, rgba(59,130,246,0.4) 35%, rgba(15,23,42,0.95) 100%)'
+            : 'radial-gradient(circle at 30% 25%, rgba(248,250,252,0.8) 0%, rgba(148,163,184,0.3) 40%, rgba(15,23,42,0.92) 100%)',
           boxShadow: isInvisible
-            ? '0 0 0 4px rgba(248, 250, 252, 0.55), 0 12px 26px -18px rgba(15, 23, 42, 0.8)'
-            : '0 16px 36px -24px rgba(15, 23, 42, 0.65)',
-          border: isInvisible ? '2px dashed #fbbf24' : '2px solid rgba(148, 163, 184, 0.35)',
+            ? '0 0 0 4px rgba(248, 250, 252, 0.55), 0 18px 40px -26px rgba(15, 23, 42, 0.8)'
+            : '0 22px 46px -28px rgba(15, 23, 42, 0.75)',
+          border: isInvisible ? '2px dashed rgba(251, 191, 36, 0.85)' : '1px solid rgba(148, 163, 184, 0.45)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          position: 'relative',
           transition: 'transform 120ms ease',
         }}
       >
-        <span style={{ fontSize: 38, color: '#f8fafc', lineHeight: 1 }}>★</span>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 8,
+            borderRadius: '50%',
+            background: isStart ? 'rgba(30,64,175,0.28)' : 'rgba(15,23,42,0.38)',
+            filter: 'blur(0.5px)',
+          }}
+        />
+        <span style={{ fontSize: 34, color: '#f8fafc', lineHeight: 1, textShadow: '0 4px 12px rgba(15,23,42,0.85)' }}>★</span>
       </div>
 
       <div style={{ display: 'grid', gap: 4, textAlign: 'center' }}>

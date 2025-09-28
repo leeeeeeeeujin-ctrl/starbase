@@ -47,7 +47,6 @@ export default function MakerEditor() {
     slotSuggestions,
     characterSuggestions,
     appendTokenToSelected,
-    rebuildEdgeLabel,
     goToSetList,
     goToLobby,
     setNodes,
@@ -256,15 +255,10 @@ export default function MakerEditor() {
               selectedNodeId={selectedNodeId}
               selectedEdge={selectedEdge}
               onMarkAsStart={markAsStart}
-              onToggleInvisible={toggleInvisible}
               onDeleteSelected={() => selectedNodeId && handleDeletePrompt(selectedNodeId)}
               onInsertToken={appendTokenToSelected}
-              rebuildEdgeLabel={rebuildEdgeLabel}
               setNodes={setNodes}
               setEdges={setEdges}
-              slotSuggestions={slotSuggestions}
-              selectedVisibility={selectedVisibility}
-              onVisibilityChange={updateVisibility}
             />
           </div>
         </div>

@@ -1,7 +1,6 @@
 'use client'
 
 import MakerHomeHeader from './MakerHomeHeader'
-import PromptLibraryList from './PromptLibraryList'
 import PromptSetCard from './PromptSetCard'
 import QuickActionsSheet from './QuickActionsSheet'
 
@@ -11,10 +10,6 @@ export default function MakerHomeView({
   errorMessage,
   loading,
   rows,
-  libraryRows,
-  libraryLoading,
-  libraryError,
-  libraryImportingId,
   editingId,
   editingName,
   savingRename,
@@ -29,10 +24,8 @@ export default function MakerHomeView({
   onImportFile,
   onCreateSet,
   onRefresh,
-  onRefreshLibrary,
   onToggleActionSheet,
   onGoBack,
-  onImportLibraryEntry,
 }) {
   const pageBackground = backgroundImage
     ? {
@@ -76,15 +69,6 @@ export default function MakerHomeView({
         >
           <MakerHomeHeader listHeader={listHeader} errorMessage={errorMessage} onGoBack={onGoBack} />
 
-          <PromptLibraryList
-            entries={libraryRows}
-            loading={libraryLoading}
-            errorMessage={libraryError}
-            importingId={libraryImportingId}
-            onImport={onImportLibraryEntry}
-            onRefresh={onRefreshLibrary}
-          />
-
           <section
             style={{
               background: 'rgba(15,23,42,0.78)',
@@ -93,11 +77,44 @@ export default function MakerHomeView({
               padding: 20,
               display: 'flex',
               flexDirection: 'column',
-              gap: 14,
+              gap: 18,
               minHeight: 420,
               color: '#e2e8f0',
             }}
           >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                flexWrap: 'wrap',
+                borderBottom: '1px solid rgba(148,163,184,0.25)',
+                paddingBottom: 12,
+              }}
+            >
+              <div style={{ display: 'grid', gap: 6 }}>
+                <p style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>내 프롬프트 세트</p>
+                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#cbd5f5' }}>
+                  캐릭터 화면과 동일한 배경 위에서 세트를 정리할 수 있도록 레이아웃을 간결하게 정리했습니다. 아래 목록에서 편집할 세트를 골라보세요.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onRefresh}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(148,163,184,0.45)',
+                  background: 'rgba(15,23,42,0.55)',
+                  color: '#e2e8f0',
+                  fontWeight: 600,
+                  flexShrink: 0,
+                }}
+              >
+                목록 새로고침
+              </button>
+            </div>
             <div
               style={{
                 flex: '1 1 auto',
@@ -153,30 +170,6 @@ export default function MakerHomeView({
                     savingRename={savingRename}
                   />
                 ))}
-            </div>
-
-            <div
-              style={{
-                borderTop: '1px solid #e2e8f0',
-                paddingTop: 14,
-                display: 'grid',
-                gap: 10,
-              }}
-            >
-              <button
-                type="button"
-                onClick={onRefresh}
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 14,
-                  border: '1px solid rgba(148,163,184,0.45)',
-                  background: 'rgba(15,23,42,0.55)',
-                  color: '#e2e8f0',
-                  fontWeight: 600,
-                }}
-              >
-                목록 새로고침
-              </button>
             </div>
           </section>
         </div>

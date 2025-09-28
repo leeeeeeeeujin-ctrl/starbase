@@ -369,8 +369,9 @@ class HeroAudioManager {
     }
   }
 
-  setEnabled(flag) {
+  setEnabled(flag, options = {}) {
     const enabled = Boolean(flag)
+    const { resume = true } = options
     if (enabled === this.state.enabled) return
     if (!enabled) {
       this.stop()
@@ -381,7 +382,11 @@ class HeroAudioManager {
     this.ensureNodes()
     this.refreshReverbBuffer()
     this.connectGraph()
-    this.play().catch(() => {})
+    if (resume) {
+      this.play().catch(() => {})
+    } else {
+      this.setState({ isPlaying: false })
+    }
   }
 
   setVolume(value) {
