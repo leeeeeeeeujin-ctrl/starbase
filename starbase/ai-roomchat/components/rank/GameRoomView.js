@@ -36,12 +36,16 @@ export default function GameRoomView({
 }) {
   const backgroundImage = myHero?.image_url || game?.image_url || ''
   const rootStyle = backgroundImage ? { '--room-bg-image': `url(${backgroundImage})` } : undefined
+
   const hasRules = (() => {
     if (!game) return false
     if (typeof game.rules === 'string') {
       return game.rules.trim().length > 0
     }
-    return Boolean(game.rules)
+    if (game.rules && typeof game.rules === 'object') {
+      return Object.keys(game.rules).length > 0
+    }
+    return false
   })()
 
   const rawRoles = Array.isArray(roles) ? roles : []
@@ -119,125 +123,166 @@ export default function GameRoomView({
     onStart?.()
   }
 
+  const renderRules = () => {
+    if (!hasRules) return null
+    if (typeof game.rules === 'string') {
+      return <p className={styles.rulesText}>{game.rules}</p>
+    }
+    try {
+      return <pre className={styles.rulesCode}>{JSON.stringify(game.rules, null, 2)}</pre>
+    } catch (error) {
+      return null
+    }
+  }
+
   return (
     <div className={styles.room} style={rootStyle}>
-      <div className={styles.overlay} />
-      <div className={styles.inner}>
-        <section className={cx(styles.panel, styles.headerPanel)}>
-          <div className={styles.headerRow}>
-            <button type="button" onClick={onBack} className={styles.backButton}>
+      <div className={styles.backdrop} />
+      <div className={styles.scrollArea}>
+        <header className={styles.heroHeader}>
+          <div className={styles.topRow}>
+            <button type="button" onClick={onBack} className={cx(styles.pillButton, styles.backButton)}>
               ← 목록으로
             </button>
-            <div className={styles.headerGrow}>
-              <span className={styles.tagline}>Ranked Mission</span>
-              <h1 className={styles.gameName}>{game?.name || '이름 없는 게임'}</h1>
-            </div>
-            <button type="button" onClick={onOpenLeaderboard} className={styles.leaderboardButton}>
+            <button
+              type="button"
+              onClick={onOpenLeaderboard}
+              className={cx(styles.pillButton, styles.leaderboardButton)}
+            >
               리더보드
             </button>
           </div>
-
+          <span className={styles.tagline}>Ranked Mission</span>
+          <h1 className={styles.gameTitle}>{game?.name || '이름 없는 게임'}</h1>
           {game?.description && <p className={styles.description}>{game.description}</p>}
-
-          <div className={styles.metaRow}>
-            <span className={styles.metaPill}>필요 슬롯 {requiredSlots}</span>
-            <span className={styles.metaPill}>참여 인원 {participants.length}</span>
-            {hasRules && <span className={styles.metaPill}>룰 안내 있음</span>}
-            {game?.realtime_match && <span className={styles.metaPill}>실시간 매치</span>}
+          <div className={styles.metaBadges}>
+            <span className={styles.badge}>필요 슬롯 {requiredSlots}</span>
+            <span className={styles.badge}>참여 인원 {participants.length}</span>
+            {hasRules && <span className={styles.badge}>룰 안내 있음</span>}
+            {game?.realtime_match && <span className={styles.badge}>실시간 매치</span>}
           </div>
+        </header>
 
-          {roleStatus.length > 0 && (
-            <div className={styles.roleChips}>
-              {roleStatus.map((role) => (
-                <div
-                  key={role.key}
-                  className={cx(styles.roleChip, role.locked && styles.roleChipFull)}
-                >
-                  <span className={styles.roleName}>{role.name}</span>
-                  <span className={styles.roleStatus}>
-                    {typeof role.capacity === 'number'
-                      ? `${role.filled}/${role.capacity} 슬롯 채움`
-                      : `${role.filled}명 참여 중`}
-                  </span>
-                </div>
-              ))}
+        {roleStatus.length > 0 && (
+          <section className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2 className={styles.cardTitle}>역할 배치</h2>
+              <span className={styles.cardHint}>정원 상황을 확인하고 역할을 골라보세요.</span>
             </div>
-          )}
+            <ul className={styles.roleList}>
+              {roleStatus.map((role) => {
+                const { filled, capacity } = role
+                const limit = typeof capacity === 'number' ? capacity : Math.max(filled, 1)
+                const percent = Math.min(100, Math.round((filled / limit) * 100))
+                const counterLabel =
+                  typeof capacity === 'number'
+                    ? `${filled}/${capacity}`
+                    : filled > 0
+                    ? `${filled}명`
+                    : '비어 있음'
+                return (
+                  <li key={role.key} className={cx(styles.roleItem, role.locked && styles.roleItemFull)}>
+                    <div className={styles.roleRow}>
+                      <span className={styles.roleName}>{role.name}</span>
+                      <span className={styles.roleCount}>{counterLabel}</span>
+                    </div>
+                    <div className={styles.roleMeter}>
+                      <div className={styles.roleMeterFill} style={{ width: `${percent}%` }} />
+                    </div>
+                    {role.locked && <div className={styles.roleLockLabel}>정원이 가득 찼어요</div>}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )}
+
+        <section className={cx(styles.card, styles.prepCard)}>
+          <div className={styles.cardHeader}>
+            <h2 className={styles.cardTitle}>내 준비</h2>
+            <span className={styles.cardHint}>참여할 캐릭터와 역할을 정해주세요.</span>
+          </div>
+          <div className={styles.heroStripWrapper}>
+            <MyHeroStrip hero={myHero} roleLabel={myEntry?.role} />
+          </div>
+          <div className={styles.fieldGroup}>
+            <label className={styles.label} htmlFor="rank-role-select">
+              역할 선택
+            </label>
+            <select
+              id="rank-role-select"
+              value={selectValue}
+              onChange={(event) => onChangeRole?.(event.target.value)}
+              disabled={alreadyJoined}
+              className={styles.select}
+            >
+              <option value="">{alreadyJoined ? '이미 참가했습니다' : '역할을 골라주세요'}</option>
+              {roleStatus.map((role) => (
+                <option key={role.key} value={role.name} disabled={!alreadyJoined && role.locked}>
+                  {typeof role.capacity === 'number'
+                    ? `${role.name} · ${role.filled}/${role.capacity}`
+                    : `${role.name} · ${role.filled}명`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.ctaStack}>
+            <button type="button" onClick={onOpenHeroPicker} className={styles.secondaryButton}>
+              캐릭터 선택
+            </button>
+            <button
+              type="button"
+              onClick={handleJoinClick}
+              disabled={joinDisabled}
+              className={styles.primaryButton}
+              title={joinTitle}
+            >
+              {joinLabel}
+            </button>
+            <button
+              type="button"
+              onClick={handleStartClick}
+              disabled={startButtonDisabled}
+              className={styles.ghostButton}
+            >
+              {startLabel}
+            </button>
+          </div>
+          {startHelper && <div className={styles.helperText}>{startHelper}</div>}
         </section>
 
-        <div className={styles.twoColumn}>
-          <section className={cx(styles.panel, styles.actionPanel)}>
-            <div className={styles.heroStripWrapper}>
-              <MyHeroStrip hero={myHero} roleLabel={myEntry?.role} />
-            </div>
+        <section className={styles.card}>
+          <div className={styles.cardHeader}>
+            <h2 className={styles.cardTitle}>참여 중 파티</h2>
+            <span className={styles.cardHint}>현재 로비에 모인 플레이어입니다.</span>
+          </div>
+          <div className={styles.rosterGrid}>
+            {participants.map((participant) => (
+              <ParticipantCard key={participant.id} p={participant} />
+            ))}
+            {participants.length === 0 && (
+              <div className={styles.emptyState}>아직 참여자가 없습니다. 먼저 참여해보세요.</div>
+            )}
+          </div>
+        </section>
 
-            <div className={styles.roleSelectBlock}>
-              <label className={styles.label} htmlFor="rank-role-select">
-                역할 선택
-              </label>
-              <select
-                id="rank-role-select"
-                value={selectValue}
-                onChange={(event) => onChangeRole?.(event.target.value)}
-                disabled={alreadyJoined}
-                className={styles.select}
-              >
-                <option value="">{alreadyJoined ? '이미 참가했습니다' : '역할을 골라주세요'}</option>
-                {roleStatus.map((role) => (
-                  <option key={role.key} value={role.name} disabled={!alreadyJoined && role.locked}>
-                    {typeof role.capacity === 'number'
-                      ? `${role.name} · ${role.filled}/${role.capacity}`
-                      : `${role.name} · ${role.filled}명`}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className={styles.ctaButtons}>
-              <button type="button" onClick={onOpenHeroPicker} className={styles.secondaryButton}>
-                캐릭터 선택
-              </button>
-
-              <button
-                type="button"
-                onClick={handleJoinClick}
-                disabled={joinDisabled}
-                className={styles.primaryButton}
-                title={joinTitle}
-              >
-                {joinLabel}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleStartClick}
-                disabled={startButtonDisabled}
-                className={styles.ghostButton}
-              >
-                {startLabel}
-              </button>
-            </div>
-
-            {startHelper && <div className={styles.helperText}>{startHelper}</div>}
-          </section>
-
-          <section className={cx(styles.panel, styles.rosterPanel)}>
-            <div className={styles.label}>참여 중 파티</div>
-            <div className={styles.rosterList}>
-              {participants.map((participant) => (
-                <ParticipantCard key={participant.id} p={participant} />
-              ))}
-              {participants.length === 0 && (
-                <div className={styles.emptyState}>아직 참여자가 없습니다. 먼저 참여해보세요.</div>
-              )}
-            </div>
-          </section>
-        </div>
-
-        <section className={cx(styles.panel, styles.historyPanel)}>
-          <div className={styles.label}>최근 히스토리</div>
+        <section className={styles.card}>
+          <div className={styles.cardHeader}>
+            <h2 className={styles.cardTitle}>최근 히스토리</h2>
+            <span className={styles.cardHint}>지난 턴 기록과 AI 응답을 확인하세요.</span>
+          </div>
           <HistoryPanel text={historyText} />
         </section>
+
+        {hasRules && (
+          <section className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2 className={styles.cardTitle}>룰 안내</h2>
+              {game?.rules_prefix && <span className={styles.cardHint}>{game.rules_prefix}</span>}
+            </div>
+            {renderRules()}
+          </section>
+        )}
 
         {isOwner && (
           <button
@@ -273,5 +318,3 @@ export default function GameRoomView({
     </div>
   )
 }
-
-//

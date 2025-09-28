@@ -2,138 +2,193 @@
   position: relative;
   min-height: 100vh;
   width: 100%;
-  display: flex;
-  justify-content: center;
-  padding: 32px 18px 280px;
+  padding: 28px 16px 220px;
   background-color: #0f172a;
   background-image: var(--room-bg-image);
   background-size: cover;
   background-position: center;
+  display: flex;
+  justify-content: center;
 }
 
-.overlay {
+.backdrop {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(9, 14, 29, 0.86) 0%, rgba(9, 14, 29, 0.92) 35%, rgba(9, 14, 29, 0.97) 100%);
-  backdrop-filter: blur(4px);
+  background: linear-gradient(180deg, rgba(8, 12, 25, 0.86) 0%, rgba(8, 12, 25, 0.94) 40%, rgba(8, 12, 25, 0.98) 100%);
+  backdrop-filter: blur(6px);
 }
 
-.inner {
+.scrollArea {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 560px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.twoColumn {
-  display: grid;
-  gap: 20px;
-}
-
-.panel {
-  background: rgba(15, 23, 42, 0.82);
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 24px;
-  padding: 24px;
-  color: #e2e8f0;
-  backdrop-filter: blur(22px);
-  box-shadow: 0 26px 60px rgba(8, 15, 33, 0.45);
-}
-
-.headerPanel {
+  max-width: 720px;
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
-.headerRow {
+.heroHeader {
+  background: rgba(15, 23, 42, 0.82);
+  border-radius: 26px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  box-shadow: 0 26px 60px rgba(8, 15, 33, 0.45);
+  padding: 26px 24px 24px;
+  display: grid;
+  gap: 12px;
+  color: #f8fafc;
+}
+
+.topRow {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 12px;
 }
 
-.headerGrow {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 4px;
+.pillButton {
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(148, 163, 184, 0.18);
+  color: #f8fafc;
 }
 
-.gameName {
-  margin: 0;
-  font-size: 22px;
-  line-height: 1.28;
-  font-weight: 700;
+.backButton {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.leaderboardButton {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.46);
+  color: #bfdbfe;
 }
 
 .tagline {
   font-size: 12px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #cbd5f5;
 }
 
-.metaRow {
+.gameTitle {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.28;
+  font-weight: 700;
+}
+
+.description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.64;
+  color: #d6e0f5;
+}
+
+.metaBadges {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 12px;
+  gap: 8px;
   font-size: 12px;
   color: #9aa6c2;
 }
 
-.metaPill {
-  padding: 6px 10px;
+.badge {
+  padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.18);
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.26);
 }
 
-.description {
-  font-size: 14px;
-  line-height: 1.6;
-  color: #d6e0f5;
-  margin: 0;
+.card {
+  background: rgba(15, 23, 42, 0.82);
+  border-radius: 26px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 22px 52px rgba(8, 15, 33, 0.42);
+  padding: 22px 22px 24px;
+  color: #e2e8f0;
+  display: grid;
+  gap: 16px;
 }
 
-.roleChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.roleChip {
-  display: flex;
-  flex-direction: column;
+.cardHeader {
+  display: grid;
   gap: 4px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: rgba(15, 23, 42, 0.66);
-  min-width: 132px;
 }
 
-.roleName {
-  font-size: 13px;
-  font-weight: 600;
+.cardTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
   color: #f1f5f9;
 }
 
-.roleStatus {
-  font-size: 11px;
+.cardHint {
+  font-size: 13px;
   color: #9aa6c2;
 }
 
-.roleChipFull {
-  border-color: rgba(248, 113, 113, 0.6);
-  background: rgba(248, 113, 113, 0.16);
+.roleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
 }
 
-.actionPanel {
+.roleItem {
+  background: rgba(15, 23, 42, 0.72);
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  padding: 14px 16px;
   display: grid;
-  gap: 20px;
+  gap: 10px;
+}
+
+.roleItemFull {
+  border-color: rgba(248, 113, 113, 0.46);
+  background: rgba(248, 113, 113, 0.14);
+}
+
+.roleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.roleName {
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.roleCount {
+  color: #cbd5f5;
+}
+
+.roleMeter {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+}
+
+.roleMeterFill {
+  height: 100%;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9) 0%, rgba(37, 99, 235, 0.9) 100%);
+}
+
+.roleLockLabel {
+  font-size: 12px;
+  color: #fca5a5;
+}
+
+.prepCard {
+  gap: 18px;
 }
 
 .heroStripWrapper {
@@ -141,20 +196,20 @@
   overflow: hidden;
 }
 
-.roleSelectBlock {
+.fieldGroup {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .label {
   font-size: 12px;
-  color: #9aa6c2;
+  color: #94a3b8;
 }
 
 .select {
   width: 100%;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: 16px;
   background: rgba(15, 23, 42, 0.62);
   border: 1px solid rgba(148, 163, 184, 0.32);
   color: #f8fafc;
@@ -162,7 +217,7 @@
   appearance: none;
 }
 
-.ctaButtons {
+.ctaStack {
   display: grid;
   gap: 12px;
 }
@@ -206,9 +261,12 @@
 }
 
 .dangerButton {
-  background: rgba(248, 113, 113, 0.16);
+  background: rgba(248, 113, 113, 0.18);
   color: #fecaca;
   border: 1px solid rgba(248, 113, 113, 0.42);
+  border-radius: 18px;
+  padding: 16px;
+  font-weight: 600;
 }
 
 .dangerButton:disabled {
@@ -221,12 +279,7 @@
   text-align: center;
 }
 
-.rosterPanel {
-  display: grid;
-  gap: 14px;
-}
-
-.rosterList {
+.rosterGrid {
   display: grid;
   gap: 12px;
 }
@@ -236,9 +289,22 @@
   color: #94a3b8;
 }
 
-.historyPanel {
-  display: grid;
-  gap: 10px;
+.rulesText {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #d6e0f5;
+  white-space: pre-wrap;
+}
+
+.rulesCode {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.66);
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  font-size: 12px;
+  line-height: 1.6;
+  color: #cbd5f5;
+  overflow-x: auto;
 }
 
 .chatDock {
@@ -254,39 +320,34 @@
   box-shadow: 0 18px 42px rgba(8, 15, 33, 0.45);
 }
 
-.backButton,
-.leaderboardButton {
-  padding: 10px 14px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 600;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: rgba(148, 163, 184, 0.18);
-  color: #f8fafc;
-}
-
-.leaderboardButton {
-  background: rgba(59, 130, 246, 0.18);
-  border-color: rgba(59, 130, 246, 0.46);
-  color: #bfdbfe;
-}
-
-@media (min-width: 720px) {
-  .inner {
-    max-width: 920px;
+@media (min-width: 768px) {
+  .scrollArea {
+    max-width: 960px;
   }
 
-  .twoColumn {
+  .heroHeader {
     grid-template-columns: minmax(0, 1fr);
   }
-}
 
-@media (min-width: 960px) {
-  .twoColumn {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  .card {
+    padding: 24px 26px 26px;
   }
 
-  .chatDock {
-    margin-top: 12px;
+  .rosterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .scrollArea {
+    gap: 20px;
+  }
+
+  .prepCard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rosterGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
