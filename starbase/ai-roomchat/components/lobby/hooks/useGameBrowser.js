@@ -35,6 +35,42 @@ function computeGameStats(participants = [], battles = [], game = {}) {
   }
 }
 
+function extractRelationCount(relationValue) {
+  if (!relationValue) return 0
+  if (Array.isArray(relationValue)) {
+    if (relationValue.length === 0) return 0
+    const first = relationValue[0]
+    if (first && typeof first.count === 'number') return first.count
+    if (typeof first === 'number') return first
+  }
+  if (typeof relationValue === 'number') return relationValue
+  return 0
+}
+
+function normaliseGameRow(raw = {}, sourceTable) {
+  const base = {
+    id: raw.id,
+    owner_id: raw.owner_id,
+    name: raw.name || '이름 없는 게임',
+    description: raw.description || '',
+    created_at: raw.created_at || null,
+    image_url: raw.image_url ?? raw.cover_path ?? null,
+    cover_path: raw.cover_path ?? null,
+    likes_count: raw.likes_count ?? 0,
+    play_count: raw.play_count ?? 0,
+    tags: raw.tags || [],
+  }
+
+  if (sourceTable === 'games') {
+    base.likes_count = extractRelationCount(raw.game_likes)
+    base.play_count = extractRelationCount(raw.game_sessions)
+    base.image_url = raw.cover_path ?? raw.image_url ?? null
+    base.cover_path = raw.cover_path ?? null
+  }
+
+  return base
+}
+
 export default function useGameBrowser({ enabled } = {}) {
   const [gameQuery, setGameQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -52,6 +88,7 @@ export default function useGameBrowser({ enabled } = {}) {
   const [gameBattleLogs, setGameBattleLogs] = useState([])
   const [gameStats, setGameStats] = useState(null)
   const [viewerId, setViewerId] = useState(null)
+  const [gameSourceTable, setGameSourceTable] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -82,23 +119,43 @@ export default function useGameBrowser({ enabled } = {}) {
     async function loadGames() {
       setGameLoading(true)
 
-      const { data, error } = await withTable(supabase, 'rank_games', (table) => {
-        let query = supabase
-          .from(table)
-          .select('id,name,description,image_url,created_at,likes_count,play_count,owner_id')
+      const result = await withTable(supabase, 'rank_games', (table) => {
+        let query
+
+        if (table === 'games') {
+          query = supabase
+            .from(table)
+            .select(
+              'id,name,description,cover_path,created_at,owner_id,game_likes(count),game_sessions(count)',
+            )
+        } else {
+          query = supabase
+            .from(table)
+            .select('id,name,description,image_url,created_at,likes_count,play_count,owner_id')
+        }
 
         if (debouncedQuery.trim()) {
           const value = `%${debouncedQuery.trim()}%`
           query = query.or(`name.ilike.${value},description.ilike.${value}`)
         }
 
-        const plan = SORT_OPTIONS.find((item) => item.key === gameSort) || SORT_OPTIONS[0]
-        plan.orders.forEach((order) => {
-          query = query.order(order.column, { ascending: order.asc })
-        })
+        if (table !== 'games') {
+          const plan = SORT_OPTIONS.find((item) => item.key === gameSort) || SORT_OPTIONS[0]
+          plan.orders.forEach((order) => {
+            query = query.order(order.column, { ascending: order.asc })
+          })
+        } else {
+          query = query.order('created_at', { ascending: false })
+        }
 
         return query.limit(MAX_GAME_ROWS)
       })
+
+      const { data, error, table } = result || {}
+
+      if (!cancelled) {
+        setGameSourceTable(table || '')
+      }
 
       if (cancelled) return
 
@@ -109,8 +166,9 @@ export default function useGameBrowser({ enabled } = {}) {
         return
       }
 
-      let rows = data || []
-      if (rows.length) {
+      let rows = (data || []).map((row) => normaliseGameRow(row, table))
+
+      if (table !== 'games' && rows.length) {
         const ids = rows.map((row) => row.id)
         const { data: tagRows, error: tagError } = await withTable(
           supabase,
@@ -137,6 +195,28 @@ export default function useGameBrowser({ enabled } = {}) {
         }))
       }
 
+      if (table === 'games') {
+        const sorted = [...rows]
+        if (gameSort === 'likes') {
+          sorted.sort((a, b) => {
+            if ((b.likes_count ?? 0) !== (a.likes_count ?? 0)) {
+              return (b.likes_count ?? 0) - (a.likes_count ?? 0)
+            }
+            return new Date(b.created_at || 0) - new Date(a.created_at || 0)
+          })
+        } else if (gameSort === 'plays') {
+          sorted.sort((a, b) => {
+            if ((b.play_count ?? 0) !== (a.play_count ?? 0)) {
+              return (b.play_count ?? 0) - (a.play_count ?? 0)
+            }
+            return new Date(b.created_at || 0) - new Date(a.created_at || 0)
+          })
+        } else {
+          sorted.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+        }
+        rows = sorted
+      }
+
       setGameRows(rows)
       if (selectedGame) {
         const match = rows.find((row) => row.id === selectedGame.id)
@@ -156,6 +236,17 @@ export default function useGameBrowser({ enabled } = {}) {
 
   useEffect(() => {
     if (!selectedGame) {
+      setGameRoles([])
+      setParticipants([])
+      setGameTags([])
+      setGameSeasons([])
+      setGameBattleLogs([])
+      setGameStats(null)
+      return
+    }
+
+    if (gameSourceTable && gameSourceTable !== 'rank_games') {
+      setDetailLoading(false)
       setGameRoles([])
       setParticipants([])
       setGameTags([])
@@ -269,7 +360,7 @@ export default function useGameBrowser({ enabled } = {}) {
     return () => {
       cancelled = true
     }
-  }, [selectedGame, detailRevision])
+  }, [selectedGame, detailRevision, gameSourceTable])
 
   const roleSlots = useMemo(() => {
     const map = new Map()
@@ -286,6 +377,9 @@ export default function useGameBrowser({ enabled } = {}) {
 
   const addGameTag = useCallback(
     async (label) => {
+      if (gameSourceTable && gameSourceTable !== 'rank_games') {
+        return { ok: false, error: '이 게임은 태그 편집을 지원하지 않습니다.' }
+      }
       if (!selectedGame) {
         return { ok: false, error: '게임을 먼저 선택해 주세요.' }
       }
@@ -315,11 +409,14 @@ export default function useGameBrowser({ enabled } = {}) {
       )
       return { ok: true }
     },
-    [gameTags, selectedGame],
+    [gameTags, selectedGame, gameSourceTable],
   )
 
   const removeGameTag = useCallback(
     async (tagId) => {
+      if (gameSourceTable && gameSourceTable !== 'rank_games') {
+        return { ok: false, error: '이 게임은 태그 편집을 지원하지 않습니다.' }
+      }
       if (!selectedGame) {
         return { ok: false, error: '게임을 먼저 선택해 주세요.' }
       }
@@ -344,10 +441,13 @@ export default function useGameBrowser({ enabled } = {}) {
       )
       return { ok: true }
     },
-    [gameTags, selectedGame],
+    [gameTags, selectedGame, gameSourceTable],
   )
 
   const startSeason = useCallback(async () => {
+    if (gameSourceTable && gameSourceTable !== 'rank_games') {
+      return { ok: false, error: '시즌 기능은 아직 지원되지 않습니다.' }
+    }
     if (!selectedGame) {
       return { ok: false, error: '게임을 먼저 선택해 주세요.' }
     }
@@ -370,10 +470,13 @@ export default function useGameBrowser({ enabled } = {}) {
     }
     setGameSeasons((prev) => [data, ...prev])
     return { ok: true }
-  }, [gameSeasons, selectedGame])
+  }, [gameSeasons, selectedGame, gameSourceTable])
 
   const finishSeason = useCallback(
     async (seasonId) => {
+      if (gameSourceTable && gameSourceTable !== 'rank_games') {
+        return { ok: false, error: '시즌 기능은 아직 지원되지 않습니다.' }
+      }
       if (!selectedGame) {
         return { ok: false, error: '게임을 먼저 선택해 주세요.' }
       }
@@ -414,7 +517,7 @@ export default function useGameBrowser({ enabled } = {}) {
       setGameSeasons((prev) => prev.map((season) => (season.id === target.id ? data : season)))
       return { ok: true }
     },
-    [gameSeasons, participants, selectedGame],
+    [gameSeasons, participants, selectedGame, gameSourceTable],
   )
 
   const deleteGame = useCallback(async () => {
