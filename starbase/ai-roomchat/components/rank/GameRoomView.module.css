@@ -1,0 +1,292 @@
+.room {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 32px 18px 280px;
+  background-color: #0f172a;
+  background-image: var(--room-bg-image);
+  background-size: cover;
+  background-position: center;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(9, 14, 29, 0.86) 0%, rgba(9, 14, 29, 0.92) 35%, rgba(9, 14, 29, 0.97) 100%);
+  backdrop-filter: blur(4px);
+}
+
+.inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.twoColumn {
+  display: grid;
+  gap: 20px;
+}
+
+.panel {
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 24px;
+  padding: 24px;
+  color: #e2e8f0;
+  backdrop-filter: blur(22px);
+  box-shadow: 0 26px 60px rgba(8, 15, 33, 0.45);
+}
+
+.headerPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerGrow {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.gameName {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.28;
+  font-weight: 700;
+}
+
+.tagline {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #cbd5f5;
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 12px;
+  color: #9aa6c2;
+}
+
+.metaPill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.description {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #d6e0f5;
+  margin: 0;
+}
+
+.roleChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.roleChip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.66);
+  min-width: 132px;
+}
+
+.roleName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.roleStatus {
+  font-size: 11px;
+  color: #9aa6c2;
+}
+
+.roleChipFull {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(248, 113, 113, 0.16);
+}
+
+.actionPanel {
+  display: grid;
+  gap: 20px;
+}
+
+.heroStripWrapper {
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.roleSelectBlock {
+  display: grid;
+  gap: 10px;
+}
+
+.label {
+  font-size: 12px;
+  color: #9aa6c2;
+}
+
+.select {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  color: #f8fafc;
+  font-size: 15px;
+  appearance: none;
+}
+
+.ctaButtons {
+  display: grid;
+  gap: 12px;
+}
+
+.primaryButton,
+.secondaryButton,
+.ghostButton,
+.dangerButton {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 16px;
+  font-weight: 700;
+  font-size: 15px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #f8fafc;
+  border: none;
+  box-shadow: 0 14px 24px rgba(37, 99, 235, 0.28);
+}
+
+.primaryButton:disabled {
+  background: rgba(148, 163, 184, 0.32);
+  color: rgba(226, 232, 240, 0.66);
+  box-shadow: none;
+}
+
+.secondaryButton {
+  background: rgba(148, 163, 184, 0.18);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+}
+
+.ghostButton {
+  background: rgba(59, 130, 246, 0.16);
+  color: #bfdbfe;
+  border: 1px solid rgba(59, 130, 246, 0.42);
+  font-weight: 600;
+}
+
+.dangerButton {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.42);
+}
+
+.dangerButton:disabled {
+  opacity: 0.7;
+}
+
+.helperText {
+  font-size: 12px;
+  color: #9aa6c2;
+  text-align: center;
+}
+
+.rosterPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.rosterList {
+  display: grid;
+  gap: 12px;
+}
+
+.emptyState {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.historyPanel {
+  display: grid;
+  gap: 10px;
+}
+
+.chatDock {
+  position: relative;
+  z-index: 1;
+}
+
+.chatDockInner {
+  border-radius: 24px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 18px 42px rgba(8, 15, 33, 0.45);
+}
+
+.backButton,
+.leaderboardButton {
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(148, 163, 184, 0.18);
+  color: #f8fafc;
+}
+
+.leaderboardButton {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.46);
+  color: #bfdbfe;
+}
+
+@media (min-width: 720px) {
+  .inner {
+    max-width: 920px;
+  }
+
+  .twoColumn {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 960px) {
+  .twoColumn {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .chatDock {
+    margin-top: 12px;
+  }
+}

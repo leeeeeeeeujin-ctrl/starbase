@@ -3,8 +3,11 @@ import dynamic from 'next/dynamic'
 import MyHeroStrip from './MyHeroStrip'
 import ParticipantCard from './ParticipantCard'
 import HistoryPanel from './HistoryPanel'
+import styles from './GameRoomView.module.css'
 
 const SharedChatDock = dynamic(() => import('../common/SharedChatDock'), { ssr: false })
+
+const cx = (...classNames) => classNames.filter(Boolean).join(' ')
 
 export default function GameRoomView({
   game,
@@ -32,263 +35,243 @@ export default function GameRoomView({
   chatHeroId,
 }) {
   const backgroundImage = myHero?.image_url || game?.image_url || ''
+  const rootStyle = backgroundImage ? { '--room-bg-image': `url(${backgroundImage})` } : undefined
+  const hasRules = (() => {
+    if (!game) return false
+    if (typeof game.rules === 'string') {
+      return game.rules.trim().length > 0
+    }
+    return Boolean(game.rules)
+  })()
+
+  const rawRoles = Array.isArray(roles) ? roles : []
+  const normalizedRoles = rawRoles.map((role, index) => {
+    if (typeof role === 'string') {
+      return { key: role || `role-${index}`, name: role, capacity: null }
+    }
+    if (role && typeof role === 'object') {
+      const name = role.name || `역할 ${index + 1}`
+      const capacityValue =
+        typeof role.slot_count === 'number'
+          ? role.slot_count
+          : typeof role.capacity === 'number'
+          ? role.capacity
+          : null
+      return {
+        key: role.id || name || `role-${index}`,
+        name,
+        capacity: capacityValue,
+      }
+    }
+    return { key: `role-${index}`, name: `역할 ${index + 1}`, capacity: null }
+  })
+
+  const roleCounts = participants.reduce((acc, participant) => {
+    const roleName = participant.role
+    if (!roleName) return acc
+    acc[roleName] = (acc[roleName] || 0) + 1
+    return acc
+  }, {})
+
+  const roleStatus = normalizedRoles.map((role) => {
+    const filled = roleCounts[role.name] || 0
+    const locked = typeof role.capacity === 'number' ? filled >= role.capacity : false
+    return { ...role, filled, locked }
+  })
+
+  const selectValue = alreadyJoined ? myEntry?.role || '' : pickRole || ''
+  const selectedRole = roleStatus.find((role) => role.name === (alreadyJoined ? myEntry?.role : pickRole))
+  const fallbackRole = roleStatus[0] || null
+  const effectiveRole = alreadyJoined ? selectedRole : pickRole ? selectedRole : fallbackRole
+  const joinLocked = !alreadyJoined && Boolean(effectiveRole?.locked)
+  const noRoleAvailable = !alreadyJoined && !effectiveRole
+  const joinDisabled = alreadyJoined || !myHero || joinLocked || noRoleAvailable
+  const joinLabel = alreadyJoined
+    ? '참여 완료'
+    : joinLocked
+    ? '정원 초과'
+    : noRoleAvailable
+    ? '참여 불가'
+    : '참여하기'
+  const joinTitle = (() => {
+    if (alreadyJoined) return '이미 이 게임에 참가했습니다.'
+    if (!myHero) return '캐릭터를 선택한 뒤 참여할 수 있습니다.'
+    if (joinLocked) return '선택한 역할의 정원이 가득 찼습니다.'
+    if (noRoleAvailable) return '참여 가능한 역할이 없습니다.'
+    return undefined
+  })()
+
+  const startButtonDisabled = Boolean(startDisabled)
+  let startHelper = ''
+  if (!canStart) {
+    startHelper = '최소 인원이 모여야 게임을 시작할 수 있어요.'
+  } else if (!myHero) {
+    startHelper = '캐릭터를 선택하면 시작할 수 있어요.'
+  }
+
+  const handleJoinClick = () => {
+    if (joinDisabled) return
+    onJoin?.()
+  }
+
+  const handleStartClick = () => {
+    if (startButtonDisabled) return
+    onStart?.()
+  }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: backgroundImage ? `url(${backgroundImage}) center/cover no-repeat` : '#0f172a',
-        display: 'flex',
-        justifyContent: 'center',
-        padding: '24px 16px',
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 480,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-          position: 'relative',
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.78)',
-            filter: 'blur(0px)',
-            borderRadius: 24,
-          }}
-        />
-
-        <div
-          style={{
-            position: 'relative',
-            padding: 20,
-            borderRadius: 24,
-            backdropFilter: 'blur(10px)',
-            background: 'rgba(15, 23, 42, 0.78)',
-            color: '#e2e8f0',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 20,
-            boxShadow: '0 18px 40px rgba(15, 23, 42, 0.45)',
-          }}
-        >
-          <header style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              onClick={onBack}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 999,
-                background: 'rgba(148, 163, 184, 0.18)',
-                border: '1px solid rgba(148, 163, 184, 0.4)',
-                color: '#e2e8f0',
-              }}
-            >
-              ← 목록
+    <div className={styles.room} style={rootStyle}>
+      <div className={styles.overlay} />
+      <div className={styles.inner}>
+        <section className={cx(styles.panel, styles.headerPanel)}>
+          <div className={styles.headerRow}>
+            <button type="button" onClick={onBack} className={styles.backButton}>
+              ← 목록으로
             </button>
-            <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-              <span style={{ fontSize: 12, color: '#cbd5f5', textTransform: 'uppercase', letterSpacing: 1 }}>
-                Rank Game
-              </span>
-              <h1 style={{ margin: 0, fontSize: 22, lineHeight: 1.3 }}>{game?.name}</h1>
+            <div className={styles.headerGrow}>
+              <span className={styles.tagline}>Ranked Mission</span>
+              <h1 className={styles.gameName}>{game?.name || '이름 없는 게임'}</h1>
             </div>
-            <button
-              onClick={onOpenLeaderboard}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 999,
-                background: 'rgba(59, 130, 246, 0.2)',
-                border: '1px solid rgba(59, 130, 246, 0.4)',
-                color: '#bfdbfe',
-                fontWeight: 600,
-                fontSize: 13,
-              }}
-            >
+            <button type="button" onClick={onOpenLeaderboard} className={styles.leaderboardButton}>
               리더보드
             </button>
-          </header>
+          </div>
 
-          <section style={{ display: 'grid', gap: 10 }}>
-            <p style={{ margin: 0, fontSize: 14, color: '#cbd5f5' }}>{game?.description}</p>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: 12,
-                color: '#94a3b8',
-                flexWrap: 'wrap',
-                gap: 6,
-              }}
-            >
-              <span>필요 슬롯 {requiredSlots}</span>
-              <span>참여 인원 {participants.length}</span>
+          {game?.description && <p className={styles.description}>{game.description}</p>}
+
+          <div className={styles.metaRow}>
+            <span className={styles.metaPill}>필요 슬롯 {requiredSlots}</span>
+            <span className={styles.metaPill}>참여 인원 {participants.length}</span>
+            {hasRules && <span className={styles.metaPill}>룰 안내 있음</span>}
+            {game?.realtime_match && <span className={styles.metaPill}>실시간 매치</span>}
+          </div>
+
+          {roleStatus.length > 0 && (
+            <div className={styles.roleChips}>
+              {roleStatus.map((role) => (
+                <div
+                  key={role.key}
+                  className={cx(styles.roleChip, role.locked && styles.roleChipFull)}
+                >
+                  <span className={styles.roleName}>{role.name}</span>
+                  <span className={styles.roleStatus}>
+                    {typeof role.capacity === 'number'
+                      ? `${role.filled}/${role.capacity} 슬롯 채움`
+                      : `${role.filled}명 참여 중`}
+                  </span>
+                </div>
+              ))}
             </div>
-          </section>
+          )}
+        </section>
 
-          <section style={{ display: 'grid', gap: 12 }}>
-            <MyHeroStrip hero={myHero} roleLabel={myEntry?.role} />
+        <div className={styles.twoColumn}>
+          <section className={cx(styles.panel, styles.actionPanel)}>
+            <div className={styles.heroStripWrapper}>
+              <MyHeroStrip hero={myHero} roleLabel={myEntry?.role} />
+            </div>
 
-            <div style={{ display: 'grid', gap: 8 }}>
-              <label style={{ fontSize: 12, color: '#94a3b8' }}>역할 선택</label>
+            <div className={styles.roleSelectBlock}>
+              <label className={styles.label} htmlFor="rank-role-select">
+                역할 선택
+              </label>
               <select
-                value={alreadyJoined ? myEntry?.role || '' : pickRole || ''}
+                id="rank-role-select"
+                value={selectValue}
                 onChange={(event) => onChangeRole?.(event.target.value)}
                 disabled={alreadyJoined}
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 12,
-                  border: '1px solid rgba(148, 163, 184, 0.35)',
-                  background: 'rgba(15, 23, 42, 0.6)',
-                  color: '#e2e8f0',
-                  fontSize: 15,
-                  appearance: 'none',
-                }}
+                className={styles.select}
               >
-                <option value="">{alreadyJoined ? '이미 참가했습니다' : '역할을 고르세요'}</option>
-                {roles.map((role) => (
-                  <option key={role} value={role}>
-                    {role}
+                <option value="">{alreadyJoined ? '이미 참가했습니다' : '역할을 골라주세요'}</option>
+                {roleStatus.map((role) => (
+                  <option key={role.key} value={role.name} disabled={!alreadyJoined && role.locked}>
+                    {typeof role.capacity === 'number'
+                      ? `${role.name} · ${role.filled}/${role.capacity}`
+                      : `${role.name} · ${role.filled}명`}
                   </option>
                 ))}
               </select>
             </div>
 
-            <div style={{ display: 'grid', gap: 10 }}>
-              <button
-                onClick={onOpenHeroPicker}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 14,
-                  background: 'rgba(148, 163, 184, 0.16)',
-                  border: '1px solid rgba(148, 163, 184, 0.35)',
-                  color: '#f8fafc',
-                  fontWeight: 600,
-                  fontSize: 15,
-                }}
-              >
+            <div className={styles.ctaButtons}>
+              <button type="button" onClick={onOpenHeroPicker} className={styles.secondaryButton}>
                 캐릭터 선택
               </button>
 
               <button
-                onClick={onJoin}
-                disabled={!myHero || alreadyJoined}
-                style={{
-                  padding: '14px 16px',
-                  borderRadius: 14,
-                  background: !myHero || alreadyJoined ? 'rgba(148, 163, 184, 0.24)' : '#2563eb',
-                  color: '#f8fafc',
-                  fontWeight: 700,
-                  fontSize: 16,
-                  border: 'none',
-                  transition: 'transform 0.2s ease',
-                }}
-                title={alreadyJoined ? '이미 이 캐릭터로 참가했습니다' : '참여하기'}
+                type="button"
+                onClick={handleJoinClick}
+                disabled={joinDisabled}
+                className={styles.primaryButton}
+                title={joinTitle}
               >
-                {alreadyJoined ? '참여 완료' : '참여하기'}
+                {joinLabel}
               </button>
 
               <button
-                onClick={onStart}
-                disabled={startDisabled}
-                title={
-                  !canStart
-                    ? '최소 인원이 모여야 시작할 수 있습니다.'
-                    : !myHero
-                    ? '캐릭터가 필요합니다.'
-                    : '게임 시작'
-                }
-                style={{
-                  padding: '14px 16px',
-                  borderRadius: 14,
-                  background: startDisabled ? 'rgba(148, 163, 184, 0.24)' : '#0f172a',
-                  color: '#f8fafc',
-                  fontWeight: 700,
-                  fontSize: 16,
-                  border: startDisabled ? 'none' : '1px solid rgba(148, 163, 184, 0.4)',
-                }}
+                type="button"
+                onClick={handleStartClick}
+                disabled={startButtonDisabled}
+                className={styles.ghostButton}
               >
                 {startLabel}
               </button>
             </div>
+
+            {startHelper && <div className={styles.helperText}>{startHelper}</div>}
           </section>
 
-          <section
-            style={{
-              borderRadius: 18,
-              border: '1px solid rgba(148, 163, 184, 0.25)',
-              background: 'rgba(15, 23, 42, 0.6)',
-              padding: 16,
-              display: 'grid',
-              gap: 12,
-            }}
-          >
-            <span style={{ fontSize: 13, color: '#94a3b8' }}>참여 중 파티</span>
-            <div style={{ display: 'grid', gap: 12 }}>
+          <section className={cx(styles.panel, styles.rosterPanel)}>
+            <div className={styles.label}>참여 중 파티</div>
+            <div className={styles.rosterList}>
               {participants.map((participant) => (
                 <ParticipantCard key={participant.id} p={participant} />
               ))}
               {participants.length === 0 && (
-                <div style={{ color: '#94a3b8', fontSize: 14 }}>
-                  아직 참여자가 없습니다. 먼저 참여해보세요.
-                </div>
+                <div className={styles.emptyState}>아직 참여자가 없습니다. 먼저 참여해보세요.</div>
               )}
             </div>
           </section>
-
-          <section
-            style={{
-              borderRadius: 18,
-              border: '1px solid rgba(148, 163, 184, 0.25)',
-              background: 'rgba(15, 23, 42, 0.6)',
-              padding: 16,
-            }}
-          >
-            <HistoryPanel text={historyText} />
-          </section>
-
-          {isOwner && (
-            <button
-              onClick={onDelete}
-              disabled={deleting}
-              style={{
-                padding: '12px 16px',
-                borderRadius: 14,
-                background: '#ef4444',
-                color: '#fff',
-                fontWeight: 600,
-                border: 'none',
-              }}
-            >
-              {deleting ? '삭제 중…' : '방 삭제 (방장 전용)'}
-            </button>
-          )}
         </div>
 
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <SharedChatDock
-            height={240}
-            heroId={chatHeroId}
-            viewerHero={
-              myHero
-                ? {
-                    heroId: myHero.id,
-                    heroName: myHero.name,
-                    avatarUrl: myHero.image_url,
-                    ownerId: myHero.owner_id,
-                  }
-                : null
-            }
-            onUserSend={onChatSend}
-          />
+        <section className={cx(styles.panel, styles.historyPanel)}>
+          <div className={styles.label}>최근 히스토리</div>
+          <HistoryPanel text={historyText} />
+        </section>
+
+        {isOwner && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            className={styles.dangerButton}
+          >
+            {deleting ? '삭제 중…' : '방 삭제 (방장 전용)'}
+          </button>
+        )}
+
+        <div className={styles.chatDock}>
+          <div className={styles.chatDockInner}>
+            <SharedChatDock
+              height={240}
+              heroId={chatHeroId}
+              viewerHero={
+                myHero
+                  ? {
+                      heroId: myHero.id,
+                      heroName: myHero.name,
+                      avatarUrl: myHero.image_url,
+                      ownerId: myHero.owner_id,
+                    }
+                  : null
+              }
+              onUserSend={onChatSend}
+            />
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-// 
+//
