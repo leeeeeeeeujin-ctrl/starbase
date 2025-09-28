@@ -44,19 +44,23 @@ export default function GameDetail({
 }) {
   const [tagInput, setTagInput] = useState('')
 
-  if (!game) {
-    return <div style={styles.detailPlaceholder}>게임을 선택하면 상세 정보가 표시됩니다.</div>
-  }
-
-  const isOwner = Boolean(viewerId && game?.owner_id && viewerId === game.owner_id)
   const activeSeason = useMemo(
     () => seasons.find((season) => (season.status || '').toLowerCase() === 'active'),
     [seasons],
   )
+
   const archivedSeasons = useMemo(
     () => seasons.filter((season) => (season.status || '').toLowerCase() !== 'active'),
     [seasons],
   )
+
+  const hasGame = Boolean(game)
+
+  if (!hasGame) {
+    return <div style={styles.detailPlaceholder}>게임을 선택하면 상세 정보가 표시됩니다.</div>
+  }
+
+  const isOwner = Boolean(viewerId && game?.owner_id && viewerId === game.owner_id)
 
   const handleEnter = () => {
     onEnterGame(game, roleChoice)
