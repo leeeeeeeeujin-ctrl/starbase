@@ -645,6 +645,33 @@ const styles = {
     fontSize: 13,
     color: '#cbd5f5',
   },
+  registerBackdrop: (imageUrl) => ({
+    borderRadius: 24,
+    padding: '18px 20px 22px',
+    background: imageUrl
+      ? `linear-gradient(180deg, rgba(15,23,42,0.78) 0%, rgba(15,23,42,0.9) 72%, rgba(15,23,42,0.94) 100%), url(${imageUrl})`
+      : 'rgba(15,23,42,0.72)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    border: '1px solid rgba(96,165,250,0.3)',
+    boxShadow: '0 38px 120px -70px rgba(14,116,144,0.55)',
+    display: 'grid',
+    gap: 18,
+  }),
+  registerIntroTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+    letterSpacing: '-0.02em',
+    color: '#e0f2fe',
+    textShadow: '0 10px 32px rgba(8,47,73,0.8)',
+  },
+  registerIntroText: {
+    margin: '6px 0 0',
+    fontSize: 13,
+    lineHeight: 1.7,
+    color: 'rgba(224,242,254,0.84)',
+  },
   registerGameList: {
     display: 'grid',
     gap: 10,
@@ -670,6 +697,86 @@ const styles = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 10,
+  },
+  registerOptionGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  registerOptionRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  optionToggle: (active) => ({
+    appearance: 'none',
+    border: active ? '1px solid rgba(56,189,248,0.9)' : '1px solid rgba(148,163,184,0.35)',
+    borderRadius: 14,
+    padding: '8px 14px',
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 0.3,
+    background: active ? 'rgba(56,189,248,0.28)' : 'rgba(15,23,42,0.6)',
+    color: active ? '#0f172a' : '#e2e8f0',
+    cursor: 'pointer',
+    transition: 'transform 0.2s ease, background 0.2s ease',
+  }),
+  optionDescription: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 1.6,
+    color: 'rgba(226,232,240,0.82)',
+  },
+  helpButton: {
+    appearance: 'none',
+    border: 'none',
+    borderRadius: 999,
+    width: 30,
+    height: 30,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'rgba(56,189,248,0.18)',
+    color: '#e0f2fe',
+    fontSize: 16,
+    cursor: 'pointer',
+    boxShadow: '0 18px 38px -26px rgba(8,145,178,0.8)',
+  },
+  helpTooltip: {
+    marginTop: 10,
+    borderRadius: 14,
+    padding: '12px 14px',
+    background: 'rgba(15,23,42,0.82)',
+    border: '1px solid rgba(94,234,212,0.25)',
+    color: '#ccfbf1',
+    fontSize: 12,
+    lineHeight: 1.6,
+  },
+  registerVariableField: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  registerVariableLabel: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#e2e8f0',
+  },
+  registerVariableInput: {
+    appearance: 'none',
+    width: '100%',
+    borderRadius: 12,
+    border: '1px solid rgba(148,163,184,0.4)',
+    background: 'rgba(15,23,42,0.72)',
+    padding: '10px 14px',
+    color: '#e2e8f0',
+    fontSize: 13,
+  },
+  registerVariableHint: {
+    margin: 0,
+    fontSize: 11,
+    color: 'rgba(226,232,240,0.7)',
   },
   searchInput: {
     width: '100%',
@@ -897,6 +1004,9 @@ export default function CharacterBasicView({ hero }) {
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [searchSort, setSearchSort] = useState('latest')
+  const [brawlRule, setBrawlRule] = useState('instant-elimination')
+  const [showBrawlHelp, setShowBrawlHelp] = useState(false)
+  const [endConditionVariable, setEndConditionVariable] = useState('')
 
   const audioManager = useMemo(() => getHeroAudioManager(), [])
   const [audioState, setAudioState] = useState(() => audioManager.getState())
@@ -1031,6 +1141,9 @@ export default function CharacterBasicView({ hero }) {
     if (backgroundInputRef.current) backgroundInputRef.current.value = ''
     if (bgmInputRef.current) bgmInputRef.current.value = ''
     setSearchTerm('')
+    setBrawlRule('instant-elimination')
+    setShowBrawlHelp(false)
+    setEndConditionVariable('')
   }, [hero?.id])
 
   useEffect(() => {
@@ -1699,66 +1812,132 @@ export default function CharacterBasicView({ hero }) {
     }
 
     if (activeTabKey === 'register') {
+      const registerBackdropStyle = styles.registerBackdrop(
+        backgroundPreview || currentHero?.background_url || ''
+      )
+
       return (
         <div style={styles.tabContent}>
-          <div style={styles.infoBlock}>
-            <p style={styles.infoTitle}>게임 등록 준비</p>
-            <p style={styles.infoText}>
-              공개 전 확인해야 할 항목을 정리했습니다. 등록 버튼을 누르기 전에 아래 체크리스트를 훑어보고 필요한 자료를
-              모두 모았는지 확인하세요.
-            </p>
-            <div style={styles.quickLinkRow}>
-              {registerGuides.map((guide) => (
-                <Link key={guide.key} href={guide.href} style={styles.quickLink}>
-                  {guide.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div style={styles.registerGrid}>
-            <div style={styles.registerCard}>
-              <div style={styles.registerHeader}>
-                <p style={styles.infoTitle}>체크리스트</p>
-                <span style={styles.registerBadge}>필수</span>
+          <div style={registerBackdropStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <p style={styles.registerIntroTitle}>게임 등록 · 난투 제어</p>
+                <p style={styles.registerIntroText}>
+                  진행 중인 세션을 리셋하지 않고 규칙을 손볼 수 있어요. 체크리스트를 확인하고, 난투 흐름과 종료 조건을
+                  영웅의 배경과 어울리는 공간에서 바로 설정해 보세요.
+                </p>
               </div>
-              <ul style={styles.registerList}>
-                {registerChecklist.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
+              <button
+                type="button"
+                style={styles.helpButton}
+                aria-label="난투 옵션 도움말"
+                onClick={() => setShowBrawlHelp((prev) => !prev)}
+              >
+                ?
+              </button>
             </div>
-
-            <div style={styles.registerCard}>
-              <div style={styles.registerHeader}>
-                <p style={styles.infoTitle}>등록 대기 중인 게임</p>
-                <span style={styles.registerBadge}>샘플</span>
+            {showBrawlHelp ? (
+              <div style={styles.helpTooltip}>
+                난투 옵션은 이미 진행 중인 세션에 새 영웅이 합류했을 때의 판정을 결정합니다. <strong>탈락자 즉시패배</strong>는
+                패배한 순간 해당 영웅의 기록이 종료되고, <strong>패배시 추방</strong>은 빈 슬롯이 생기면 새 역할 세트가
+                투입됩니다. 종료 변수에는 세션이 완전히 끝나는 조건을 적어 두세요.
               </div>
-              <div style={styles.registerGameList}>
-                {sampleGames.slice(0, 3).map((game) => (
-                  <div key={game.id} style={styles.registerGameItem}>
-                    <p style={styles.registerGameTitle}>{game.title}</p>
-                    <p style={styles.registerGameMeta}>{`${game.players}인 · ${game.tags.join(' / ')}`}</p>
+            ) : null}
+
+            <div style={styles.registerGrid}>
+              <div style={styles.registerCard}>
+                <div style={styles.registerHeader}>
+                  <p style={styles.infoTitle}>난투 옵션</p>
+                  <span style={styles.registerBadge}>실시간</span>
+                </div>
+                <div style={styles.registerOptionGroup}>
+                  <div style={styles.registerOptionRow}>
+                    <button
+                      type="button"
+                      style={styles.optionToggle(brawlRule === 'instant-elimination')}
+                      onClick={() => setBrawlRule('instant-elimination')}
+                    >
+                      탈락자 즉시패배
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.optionToggle(brawlRule === 'banish-on-loss')}
+                      onClick={() => setBrawlRule('banish-on-loss')}
+                    >
+                      패배시 추방
+                    </button>
                   </div>
-                ))}
+                  <p style={styles.optionDescription}>
+                    선택한 규칙은 난투 중 패배자의 처리 방식과 새 슬롯 충원 흐름에 즉시 반영됩니다. 빈 자리가 생기면 같은
+                    역할 세트가 재배치되어 전투를 이어갑니다.
+                  </p>
+                  <div style={styles.registerVariableField}>
+                    <p style={styles.registerVariableLabel}>게임 종료 조건 변수</p>
+                    <input
+                      type="text"
+                      style={styles.registerVariableInput}
+                      placeholder="예: remainingTeams <= 1"
+                      value={endConditionVariable}
+                      onChange={(event) => setEndConditionVariable(event.target.value)}
+                    />
+                    <p style={styles.registerVariableHint}>
+                      등록 폼의 끝에서 두 번째 줄에 위치한 변수 칸과 연결됩니다. 조건을 만족할 때까지 게임은 종료되지 않으며,
+                      종료 시 승리 횟수에 따라 점수가 정산됩니다.
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div style={styles.registerActionRow}>
-                <button
-                  type="button"
-                  style={styles.primaryLinkButton}
-                  onClick={() => router.push('/rank/new')}
-                >
-                  등록 화면 열기
-                </button>
-                <button
-                  type="button"
-                  style={styles.secondaryButton}
-                  onClick={() => {
-                    if (createTabIndex >= 0) setActiveTab(createTabIndex)
-                  }}
-                >
-                  제작 탭으로 이동
-                </button>
+
+              <div style={styles.registerCard}>
+                <div style={styles.registerHeader}>
+                  <p style={styles.infoTitle}>등록 체크리스트</p>
+                  <span style={styles.registerBadge}>필수</span>
+                </div>
+                <ul style={styles.registerList}>
+                  {registerChecklist.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div style={styles.registerCard}>
+                <div style={styles.registerHeader}>
+                  <p style={styles.infoTitle}>등록 대기 중인 게임</p>
+                  <span style={styles.registerBadge}>샘플</span>
+                </div>
+                <div style={styles.registerGameList}>
+                  {sampleGames.slice(0, 3).map((game) => (
+                    <div key={game.id} style={styles.registerGameItem}>
+                      <p style={styles.registerGameTitle}>{game.title}</p>
+                      <p style={styles.registerGameMeta}>{`${game.players}인 · ${game.tags.join(' / ')}`}</p>
+                    </div>
+                  ))}
+                </div>
+                <div style={styles.registerActionRow}>
+                  <button
+                    type="button"
+                    style={styles.primaryLinkButton}
+                    onClick={() => router.push('/rank/new')}
+                  >
+                    등록 화면 열기
+                  </button>
+                  <button
+                    type="button"
+                    style={styles.secondaryButton}
+                    onClick={() => {
+                      if (createTabIndex >= 0) setActiveTab(createTabIndex)
+                    }}
+                  >
+                    제작 탭으로 이동
+                  </button>
+                </div>
+                <div style={styles.quickLinkRow}>
+                  {registerGuides.map((guide) => (
+                    <Link key={guide.key} href={guide.href} style={styles.quickLink}>
+                      {guide.label}
+                    </Link>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
