@@ -509,6 +509,19 @@ export default function RankNewClient() {
               등록
             </button>
           </div>
+          <div
+            aria-hidden="true"
+            style={{
+              marginTop: 20,
+              width: '100%',
+              height: 56,
+              borderRadius: 18,
+              border: '1px solid rgba(148, 163, 184, 0.12)',
+              background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.2), rgba(30, 64, 175, 0.08))',
+              backdropFilter: 'blur(6px)',
+              pointerEvents: 'none',
+            }}
+          />
         </div>
       </div>
     </div>
