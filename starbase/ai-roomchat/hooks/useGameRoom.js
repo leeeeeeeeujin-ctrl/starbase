@@ -230,7 +230,9 @@ export function useGameRoom(
 
     setDeleting(true)
     try {
-      await supabase.from('battle_logs').delete().eq('game_id', gameId)
+      await withTable(supabase, 'rank_battle_logs', (table) =>
+        supabase.from(table).delete().eq('game_id', gameId)
+      )
       await withTable(supabase, 'rank_participants', (table) =>
         supabase.from(table).delete().eq('game_id', gameId)
       )
