@@ -8,6 +8,7 @@ import MakerEditorCanvas from './MakerEditorCanvas'
 import MakerEditorHeader from './MakerEditorHeader'
 import MakerEditorPanel from './MakerEditorPanel'
 import VariableDrawer from './VariableDrawer'
+import TutorialHint from './TutorialHint'
 
 const NODE_TYPES = [
   { id: 'ai', label: 'AI 프롬프트' },
@@ -107,7 +108,7 @@ export default function MakerEditor() {
   return (
     <div
       style={{
-        height: '100vh',
+        minHeight: '100vh',
         background: 'radial-gradient(circle at top, rgba(30, 64, 175, 0.25), transparent 55%) #020617',
         color: '#f8fafc',
         display: 'flex',
@@ -144,10 +145,11 @@ export default function MakerEditor() {
           style={{
             position: 'absolute',
             top: 32,
-            left: 48,
+            left: 32,
             display: 'flex',
             flexDirection: 'column',
-            gap: 12,
+            gap: 10,
+            alignItems: 'center',
           }}
         >
           <button
@@ -157,13 +159,14 @@ export default function MakerEditor() {
               width: 54,
               height: 54,
               borderRadius: '50%',
-              border: '1px solid rgba(148, 163, 184, 0.35)',
+              border: '1px solid rgba(148, 163, 184, 0.45)',
               background: spawnMenuOpen
-                ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.85))'
-                : 'rgba(15, 23, 42, 0.75)',
-              color: '#f8fafc',
+                ? 'linear-gradient(135deg, rgba(191, 219, 254, 0.95), rgba(96, 165, 250, 0.9))'
+                : 'linear-gradient(135deg, rgba(248, 250, 252, 0.95), rgba(226, 232, 240, 0.9))',
+              color: spawnMenuOpen ? '#0f172a' : '#1e293b',
               fontWeight: 700,
-              boxShadow: '0 22px 48px -28px rgba(37, 99, 235, 0.7)',
+              boxShadow: '0 20px 48px -24px rgba(37, 99, 235, 0.35)',
+              transition: 'transform 0.2s ease',
             }}
           >
             +
@@ -171,14 +174,14 @@ export default function MakerEditor() {
           {spawnMenuOpen && (
             <div
               style={{
-                background: 'rgba(15, 23, 42, 0.92)',
+                background: 'rgba(248, 250, 252, 0.96)',
                 borderRadius: 16,
-                border: '1px solid rgba(148, 163, 184, 0.25)',
-                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+                boxShadow: '0 28px 64px -32px rgba(15, 23, 42, 0.55)',
                 padding: 12,
                 display: 'grid',
                 gap: 8,
-                minWidth: 180,
+                minWidth: 188,
               }}
             >
               {NODE_TYPES.map((item) => (
@@ -189,11 +192,12 @@ export default function MakerEditor() {
                   style={{
                     padding: '10px 12px',
                     borderRadius: 12,
-                    background: 'rgba(30, 41, 59, 0.65)',
-                    color: '#f8fafc',
-                    border: '1px solid rgba(148, 163, 184, 0.18)',
+                    background: 'linear-gradient(135deg, rgba(226, 232, 240, 0.85), rgba(203, 213, 225, 0.8))',
+                    color: '#0f172a',
+                    border: '1px solid rgba(148, 163, 184, 0.45)',
                     textAlign: 'left',
                     fontWeight: 600,
+                    boxShadow: '0 10px 24px -18px rgba(15, 23, 42, 0.5)',
                   }}
                 >
                   {item.label}
@@ -201,26 +205,10 @@ export default function MakerEditor() {
               ))}
             </div>
           )}
+          <TutorialHint
+            description="노드를 추가해 프롬프트 흐름을 설계하고, 서로 연결해 다음 단계로 이어주세요."
+          />
         </div>
-
-        <button
-          type="button"
-          onClick={() => setVariableDrawerOpen(true)}
-          style={{
-            position: 'absolute',
-            right: 42,
-            bottom: 120,
-            padding: '12px 18px',
-            borderRadius: 999,
-            background: 'rgba(167, 139, 250, 0.3)',
-            color: '#f5f3ff',
-            border: '1px solid rgba(167, 139, 250, 0.5)',
-            fontWeight: 600,
-            boxShadow: '0 20px 48px -26px rgba(167, 139, 250, 0.6)',
-          }}
-        >
-          변수 패널
-        </button>
 
         <button
           type="button"
@@ -232,13 +220,16 @@ export default function MakerEditor() {
             transform: 'translateX(-50%)',
             padding: '12px 18px',
             borderRadius: 999,
-            background: moveMode ? 'rgba(37, 99, 235, 0.45)' : 'rgba(148, 163, 184, 0.18)',
-            color: '#f8fafc',
-            border: '1px solid rgba(148, 163, 184, 0.28)',
+            background: moveMode
+              ? 'linear-gradient(135deg, rgba(191, 219, 254, 0.9), rgba(59, 130, 246, 0.85))'
+              : 'linear-gradient(135deg, rgba(248, 250, 252, 0.9), rgba(226, 232, 240, 0.88))',
+            color: moveMode ? '#0f172a' : '#1e293b',
+            border: '1px solid rgba(148, 163, 184, 0.45)',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
+            boxShadow: '0 18px 48px -26px rgba(37, 99, 235, 0.45)',
           }}
         >
           <span role="img" aria-hidden="true">
