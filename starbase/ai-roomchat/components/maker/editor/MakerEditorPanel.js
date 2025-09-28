@@ -109,6 +109,7 @@ export default function MakerEditorPanel({
         boxShadow: '0 14px 34px -30px rgba(15, 23, 42, 0.4)',
         display: 'grid',
         gap: 10,
+        width: '100%',
       }}
     >
       <div

@@ -15,6 +15,8 @@ export default function MakerEditorCanvas({
   onConnect,
   onNodeClick,
   onEdgeClick,
+  onNodeDoubleClick,
+  onEdgeDoubleClick,
   onPaneClick,
   onSelectionChange,
   onNodesDelete,
@@ -41,6 +43,8 @@ export default function MakerEditorCanvas({
         onConnect={onConnect}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
+        onEdgeDoubleClick={onEdgeDoubleClick}
         onPaneClick={onPaneClick}
         onSelectionChange={onSelectionChange}
         onNodesDelete={onNodesDelete}

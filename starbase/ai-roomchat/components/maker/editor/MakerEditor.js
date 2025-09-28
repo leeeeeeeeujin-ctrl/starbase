@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor'
 import { exportSet, importSet } from './importExport'
@@ -54,7 +54,8 @@ export default function MakerEditor() {
     setEdges,
   } = useMakerEditor()
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
-  const [controlsCollapsed, setControlsCollapsed] = useState(false)
+  const [headerCollapsed, setHeaderCollapsed] = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
 
   const collapsedQuickActions = useMemo(
     () => [
@@ -64,6 +65,44 @@ export default function MakerEditor() {
       { label: busy ? '저장 중…' : '저장', onClick: saveAll, disabled: busy },
     ],
     [addPromptNode, busy, saveAll],
+  )
+
+  const openInspector = useCallback(
+    (tabId) => {
+      if (tabId) {
+        const hasTab = panelTabs?.some((tab) => tab.id === tabId)
+        if (hasTab) {
+          setActivePanelTab(tabId)
+        } else if (panelTabs?.length) {
+          setActivePanelTab(panelTabs[0].id)
+        }
+      } else if (panelTabs?.length) {
+        setActivePanelTab(panelTabs[0].id)
+      }
+
+      setInspectorOpen(true)
+    },
+    [panelTabs, setActivePanelTab],
+  )
+
+  const handleNodeDoubleClick = useCallback(
+    (event, node) => {
+      if (typeof onNodeClick === 'function') {
+        onNodeClick(event, node)
+      }
+      openInspector('selection')
+    },
+    [onNodeClick, openInspector],
+  )
+
+  const handleEdgeDoubleClick = useCallback(
+    (event, edge) => {
+      if (typeof onEdgeClick === 'function') {
+        onEdgeClick(event, edge)
+      }
+      openInspector('selection')
+    },
+    [onEdgeClick, openInspector],
   )
 
   if (!isReady || loading) {
@@ -96,33 +135,11 @@ export default function MakerEditor() {
           onExport={exportSet}
           onImport={importSet}
           onGoLobby={goToLobby}
-          collapsed={controlsCollapsed}
-          onToggleCollapse={() => setControlsCollapsed((prev) => !prev)}
+          collapsed={headerCollapsed}
+          onToggleCollapse={() => setHeaderCollapsed((prev) => !prev)}
           onOpenVariables={() => setVariableDrawerOpen(true)}
           quickActions={collapsedQuickActions}
         />
-
-        {!controlsCollapsed && (
-          <MakerEditorPanel
-            tabs={panelTabs}
-            activeTab={activePanelTab}
-            onTabChange={setActivePanelTab}
-            onOpenVariables={() => setVariableDrawerOpen(true)}
-            selectedNode={selectedNode}
-            selectedNodeId={selectedNodeId}
-            selectedEdge={selectedEdge}
-            onMarkAsStart={markAsStart}
-            onToggleInvisible={toggleInvisible}
-            onDeleteSelected={() => selectedNodeId && handleDeletePrompt(selectedNodeId)}
-            onInsertToken={appendTokenToSelected}
-            rebuildEdgeLabel={rebuildEdgeLabel}
-            setNodes={setNodes}
-            setEdges={setEdges}
-            slotSuggestions={slotSuggestions}
-            selectedVisibility={selectedVisibility}
-            onVisibilityChange={updateVisibility}
-          />
-        )}
 
         <MakerEditorCanvas
           nodes={nodes}
@@ -132,12 +149,126 @@ export default function MakerEditor() {
           onConnect={onConnect}
           onNodeClick={onNodeClick}
           onEdgeClick={onEdgeClick}
+          onNodeDoubleClick={handleNodeDoubleClick}
+          onEdgeDoubleClick={handleEdgeDoubleClick}
           onPaneClick={onPaneClick}
           onSelectionChange={onSelectionChange}
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
         />
       </div>
+
+      <button
+        type="button"
+        onClick={() => (inspectorOpen ? setInspectorOpen(false) : openInspector())}
+        style={{
+          position: 'fixed',
+          left: 16,
+          bottom: 28,
+          padding: '10px 18px',
+          borderRadius: 999,
+          background: inspectorOpen ? '#1d4ed8' : '#111827',
+          color: '#fff',
+          fontWeight: 700,
+          border: 'none',
+          boxShadow: '0 18px 42px -18px rgba(17, 24, 39, 0.7)',
+          zIndex: 56,
+        }}
+        aria-expanded={inspectorOpen}
+        aria-controls="maker-editor-inspector"
+      >
+        {inspectorOpen ? '패널 닫기' : '패널 열기'}
+      </button>
+
+      {inspectorOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            right: 16,
+            bottom: 110,
+            width: 'min(420px, calc(100vw - 32px))',
+            maxHeight: 'min(70vh, 600px)',
+            zIndex: 90,
+            display: 'grid',
+            gap: 8,
+          }}
+          id="maker-editor-inspector"
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 16px',
+              borderRadius: 16,
+              background: '#111827',
+              color: '#f8fafc',
+              boxShadow: '0 18px 45px -26px rgba(15, 23, 42, 0.75)',
+            }}
+          >
+            <strong style={{ fontSize: 14 }}>프롬프트 편집</strong>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => openInspector('guide')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 10,
+                  background: '#1d4ed8',
+                  color: '#fff',
+                  fontWeight: 600,
+                  border: 'none',
+                }}
+              >
+                가이드
+              </button>
+              <button
+                type="button"
+                onClick={() => setInspectorOpen(false)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 10,
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  color: '#e2e8f0',
+                  fontWeight: 600,
+                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                }}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: 18,
+              padding: '8px 10px',
+              boxShadow: '0 22px 50px -36px rgba(15, 23, 42, 0.6)',
+              overflow: 'hidden',
+            }}
+          >
+            <MakerEditorPanel
+              tabs={panelTabs}
+              activeTab={activePanelTab}
+              onTabChange={setActivePanelTab}
+              onOpenVariables={() => setVariableDrawerOpen(true)}
+              selectedNode={selectedNode}
+              selectedNodeId={selectedNodeId}
+              selectedEdge={selectedEdge}
+              onMarkAsStart={markAsStart}
+              onToggleInvisible={toggleInvisible}
+              onDeleteSelected={() => selectedNodeId && handleDeletePrompt(selectedNodeId)}
+              onInsertToken={appendTokenToSelected}
+              rebuildEdgeLabel={rebuildEdgeLabel}
+              setNodes={setNodes}
+              setEdges={setEdges}
+              slotSuggestions={slotSuggestions}
+              selectedVisibility={selectedVisibility}
+              onVisibilityChange={updateVisibility}
+            />
+          </div>
+        </div>
+      )}
 
       <button
         type="button"
