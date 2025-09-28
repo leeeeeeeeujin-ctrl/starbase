@@ -36,6 +36,52 @@ export default function RolesEditor({ roles = [], onChange }) {
   const [list, setList] = useState(initial)
   const lastEmittedRef = useRef(roles)
 
+  const roleCardStyle = {
+    display: 'grid',
+    gap: 12,
+    borderRadius: 16,
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.65)',
+    padding: '16px 18px',
+    boxShadow: '0 18px 44px -36px rgba(15,23,42,0.85)',
+    color: '#f8fafc',
+  }
+
+  const labelStyle = {
+    display: 'grid',
+    gap: 6,
+    fontSize: 12,
+    color: '#cbd5f5',
+  }
+
+  const inputStyle = {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.55)',
+    color: '#f8fafc',
+  }
+
+  const deleteButtonStyle = {
+    padding: '8px 12px',
+    borderRadius: 999,
+    border: '1px solid rgba(248,113,113,0.5)',
+    background: 'rgba(248,113,113,0.12)',
+    color: '#fecaca',
+    fontWeight: 600,
+  }
+
+  const addButtonStyle = {
+    padding: '10px 16px',
+    borderRadius: 12,
+    border: 'none',
+    background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)',
+    color: '#0f172a',
+    fontWeight: 700,
+    justifySelf: 'start',
+  }
+
   useEffect(() => {
     if (shallowEqRoles(roles, lastEmittedRef.current)) return
     setList((prev) => {
@@ -89,35 +135,32 @@ export default function RolesEditor({ roles = [], onChange }) {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
-      {list.length === 0 && <div style={{ color: '#64748b' }}>역할이 없습니다. 아래 버튼으로 추가하세요.</div>}
+    <div style={{ display: 'grid', gap: 14 }}>
+      {list.length === 0 && (
+        <div style={{ color: '#cbd5f5', fontSize: 13 }}>
+          역할이 없습니다. 아래 버튼을 눌러 첫 번째 역할을 추가해 주세요.
+        </div>
+      )}
 
       {list.map((role) => (
-        <div
-          key={role.id}
-          style={{
-            display: 'grid',
-            gap: 8,
-            border: '1px solid #e2e8f0',
-            borderRadius: 12,
-            padding: 12,
-            background: '#fff',
-          }}
-        >
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              value={role.name}
-              onChange={(event) => updateRole(role.id, { name: event.target.value })}
-              placeholder="역할 이름"
-              style={{ flex: 1 }}
-            />
-            <button onClick={() => removeRole(role.id)} style={{ padding: '6px 10px' }}>
-              삭제
+        <div key={role.id} style={roleCardStyle}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <label style={{ ...labelStyle, flex: '1 1 200px' }}>
+              역할 이름
+              <input
+                value={role.name}
+                onChange={(event) => updateRole(role.id, { name: event.target.value })}
+                placeholder="역할 이름"
+                style={inputStyle}
+              />
+            </label>
+            <button type="button" onClick={() => removeRole(role.id)} style={deleteButtonStyle}>
+              역할 삭제
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: '#475569' }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <label style={{ ...labelStyle, flex: '1 1 160px' }}>
               점수 변화 최소값
               <input
                 type="number"
@@ -128,10 +171,10 @@ export default function RolesEditor({ roles = [], onChange }) {
                   const maxValue = Math.max(minValue, role.score_delta_max)
                   updateRole(role.id, { score_delta_min: minValue, score_delta_max: maxValue })
                 }}
-                style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5f5' }}
+                style={inputStyle}
               />
             </label>
-            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: '#475569' }}>
+            <label style={{ ...labelStyle, flex: '1 1 160px' }}>
               점수 변화 최대값
               <input
                 type="number"
@@ -142,17 +185,14 @@ export default function RolesEditor({ roles = [], onChange }) {
                   const minValue = Math.min(role.score_delta_min, maxValue)
                   updateRole(role.id, { score_delta_max: maxValue, score_delta_min: minValue })
                 }}
-                style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5f5' }}
+                style={inputStyle}
               />
             </label>
           </div>
         </div>
       ))}
 
-      <button
-        onClick={addRole}
-        style={{ padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: '#fff', fontWeight: 600 }}
-      >
+      <button type="button" onClick={addRole} style={addButtonStyle}>
         + 역할 추가
       </button>
     </div>
