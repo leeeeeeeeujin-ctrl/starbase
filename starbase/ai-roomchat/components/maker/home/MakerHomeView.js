@@ -5,6 +5,7 @@ import PromptSetCard from './PromptSetCard'
 import QuickActionsSheet from './QuickActionsSheet'
 
 export default function MakerHomeView({
+  backgroundImage,
   listHeader,
   errorMessage,
   loading,
@@ -25,17 +26,27 @@ export default function MakerHomeView({
   onRefresh,
   onToggleActionSheet,
   onGoBack,
-  onOpenRanking,
-  SharedChatDock,
 }) {
-  return (
-    <div
-      style={{
+  const pageBackground = backgroundImage
+    ? {
         minHeight: '100vh',
-        background: 'linear-gradient(180deg, #0f172a 0%, #1f2937 28%, #f8fafc 100%)',
+        backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.86) 0%, rgba(15,23,42,0.92) 38%, rgba(15,23,42,0.96) 100%), url(${backgroundImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
         display: 'flex',
         flexDirection: 'column',
-      }}
+      }
+    : {
+        minHeight: '100vh',
+        background: 'linear-gradient(180deg, #0f172a 0%, #1f2937 28%, #0f172a 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+      }
+
+  return (
+    <div
+      style={pageBackground}
     >
       <div
         style={{
@@ -60,16 +71,50 @@ export default function MakerHomeView({
 
           <section
             style={{
-              background: '#ffffff',
+              background: 'rgba(15,23,42,0.78)',
               borderRadius: 24,
-              boxShadow: '0 28px 62px -48px rgba(15, 23, 42, 0.55)',
-              padding: 18,
+              boxShadow: '0 28px 62px -48px rgba(15, 23, 42, 0.7)',
+              padding: 20,
               display: 'flex',
               flexDirection: 'column',
-              gap: 14,
+              gap: 18,
               minHeight: 420,
+              color: '#e2e8f0',
             }}
           >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                flexWrap: 'wrap',
+                borderBottom: '1px solid rgba(148,163,184,0.25)',
+                paddingBottom: 12,
+              }}
+            >
+              <div style={{ display: 'grid', gap: 6 }}>
+                <p style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>내 프롬프트 세트</p>
+                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#cbd5f5' }}>
+                  캐릭터 화면과 동일한 배경 위에서 세트를 정리할 수 있도록 레이아웃을 간결하게 정리했습니다. 아래 목록에서 편집할 세트를 골라보세요.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onRefresh}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(148,163,184,0.45)',
+                  background: 'rgba(15,23,42,0.55)',
+                  color: '#e2e8f0',
+                  fontWeight: 600,
+                  flexShrink: 0,
+                }}
+              >
+                목록 새로고침
+              </button>
+            </div>
             <div
               style={{
                 flex: '1 1 auto',
@@ -86,7 +131,7 @@ export default function MakerHomeView({
                   style={{
                     padding: '48px 24px',
                     textAlign: 'center',
-                    color: '#64748b',
+                    color: '#cbd5f5',
                     fontWeight: 600,
                   }}
                 >
@@ -99,7 +144,7 @@ export default function MakerHomeView({
                   style={{
                     padding: '48px 24px',
                     textAlign: 'center',
-                    color: '#94a3b8',
+                    color: '#cbd5f5',
                     fontWeight: 600,
                     lineHeight: 1.6,
                   }}
@@ -125,43 +170,6 @@ export default function MakerHomeView({
                     savingRename={savingRename}
                   />
                 ))}
-            </div>
-
-            <div
-              style={{
-                borderTop: '1px solid #e2e8f0',
-                paddingTop: 14,
-                display: 'grid',
-                gap: 10,
-              }}
-            >
-              <button
-                type="button"
-                onClick={onRefresh}
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 14,
-                  border: '1px solid #cbd5f5',
-                  background: '#f8fafc',
-                  fontWeight: 600,
-                }}
-              >
-                목록 새로고침
-              </button>
-              <button
-                type="button"
-                onClick={onOpenRanking}
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 14,
-                  border: '1px solid #0f172a',
-                  background: '#0f172a',
-                  color: '#fff',
-                  fontWeight: 600,
-                }}
-              >
-                랭킹 허브로 이동
-              </button>
             </div>
           </section>
         </div>
@@ -190,17 +198,12 @@ export default function MakerHomeView({
         ＋
       </button>
 
-      <div style={{ position: 'fixed', left: 16, bottom: 24, width: 360, maxWidth: 'calc(100% - 32px)' }}>
-        <SharedChatDock height={260} />
-      </div>
-
       <QuickActionsSheet
         open={actionSheetOpen}
         onClose={() => onToggleActionSheet(false)}
         onCreateSet={onCreateSet}
         onImportFile={onImportFile}
         onRefresh={onRefresh}
-        onOpenRanking={onOpenRanking}
       />
     </div>
   )

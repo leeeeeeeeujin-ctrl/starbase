@@ -9,26 +9,14 @@ import {
 } from '../../../lib/variableRules'
 import { normalizeVisibleList } from './graphTransforms'
 
-const TAB_LABELS = { selection: '선택', tools: '도구', guide: '가이드' }
+const TAB_LABELS = { selection: '선택', guide: '가이드' }
 
-export const variablePanelTabs = ['selection', 'tools', 'guide']
+export const variablePanelTabs = ['selection', 'guide']
 
 export function useGraphSelection(nodes, setNodes) {
   const [selectedNodeId, setSelectedNodeId] = useState(null)
   const [selectedEdge, setSelectedEdge] = useState(null)
   const [activePanelTab, setActivePanelTab] = useState('selection')
-
-  useEffect(() => {
-    if (selectedEdge) {
-      setActivePanelTab('tools')
-    }
-  }, [selectedEdge])
-
-  useEffect(() => {
-    if (!selectedNodeId && !selectedEdge && activePanelTab === 'tools') {
-      setActivePanelTab('selection')
-    }
-  }, [selectedNodeId, selectedEdge, activePanelTab])
 
   const onNodeClick = useCallback((_, node) => {
     setSelectedNodeId(node.id)

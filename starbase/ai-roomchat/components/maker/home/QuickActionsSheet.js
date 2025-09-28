@@ -1,13 +1,6 @@
 'use client'
 
-export default function QuickActionsSheet({
-  open,
-  onClose,
-  onCreateSet,
-  onImportFile,
-  onRefresh,
-  onOpenRanking,
-}) {
+export default function QuickActionsSheet({ open, onClose, onCreateSet, onImportFile, onRefresh }) {
   if (!open) {
     return null
   }
@@ -121,23 +114,6 @@ export default function QuickActionsSheet({
           목록 새로고침
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            onClose()
-            onOpenRanking()
-          }}
-          style={{
-            padding: '12px 14px',
-            borderRadius: 16,
-            background: '#0f172a',
-            color: '#fff',
-            fontWeight: 600,
-            border: 'none',
-          }}
-        >
-          랭킹 허브로 이동
-        </button>
       </div>
     </div>
   )

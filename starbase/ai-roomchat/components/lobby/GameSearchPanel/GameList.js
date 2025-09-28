@@ -28,6 +28,15 @@ export default function GameList({ rows, loading, selectedGameId, onSelectGame }
                 <span>좋아요 {game.likes_count ?? 0}</span>
                 <span>게임횟수 {game.play_count ?? 0}</span>
               </div>
+              {Array.isArray(game.tags) && game.tags.length ? (
+                <div style={styles.gameTags}>
+                  {game.tags.map((tag) => (
+                    <span key={tag} style={styles.gameTagChip}>
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <span style={styles.gameDate}>{new Date(game.created_at).toLocaleDateString()}</span>
           </button>

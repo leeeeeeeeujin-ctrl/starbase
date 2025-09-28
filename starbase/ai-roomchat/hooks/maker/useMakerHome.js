@@ -9,7 +9,6 @@ import {
   readPromptSetBundle,
   sortPromptSets,
 } from '../../lib/maker/promptSets'
-
 function parseImportPayload(file) {
   return file.text().then((text) => {
     try {
@@ -100,7 +99,13 @@ export function useMakerHome({ onUnauthorized } = {}) {
     return () => {
       cancelled = true
     }
-  }, [hydrated, loadPromptSets, onUnauthorized, setErrorMessage, setFromError])
+  }, [
+    hydrated,
+    loadPromptSets,
+    onUnauthorized,
+    setErrorMessage,
+    setFromError,
+  ])
 
   const refresh = useCallback(
     async (owner = userId) => {

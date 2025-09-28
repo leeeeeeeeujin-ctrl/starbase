@@ -2,43 +2,84 @@
 import React, { useMemo } from 'react'
 import { Handle, Position } from 'reactflow'
 
-function formatVisibilityLabel(data) {
-  if (!data?.invisible) {
-    return '표시 노드'
-  }
-
-  const list = Array.isArray(data?.visible_slots) ? data.visible_slots : []
-  if (list.length === 0) {
-    return '숨김: 전체 비공개'
-  }
-
-  if (list.length === 1) {
-    return `숨김: 슬롯 ${list[0]}만 볼 수 있음`
-  }
-
-  return `숨김: ${list.length}개 슬롯 공개`
-}
-
-export default function PromptNode({ id, data }) {
+export default function PromptNode({ id, data, selected }) {
   const d = data || {}
-  const update = (patch) => d.onChange?.(patch)
 
-  const visibilityLabel = useMemo(() => formatVisibilityLabel(d), [d])
   const slotLabel = useMemo(() => {
     if (!d.slotNo) return null
     return `#${d.slotNo}`
   }, [d.slotNo])
 
+  const typeLabel = useMemo(() => {
+    if (!d.slot_type) return 'AI'
+    if (d.slot_type === 'user_action') return '유저'
+    if (d.slot_type === 'system') return '시스템'
+    return 'AI'
+  }, [d.slot_type])
+
+  const isInvisible = !!d.invisible
+  const isStart = !!d.isStart
+
+  const sphereStyle = useMemo(() => {
+    const baseGlow = isStart
+      ? 'radial-gradient(circle at 48% 42%, rgba(224,231,255,0.96) 0%, rgba(196,181,253,0.82) 32%, rgba(109,40,217,0.62) 68%, rgba(15,23,42,0.92) 100%)'
+      : 'radial-gradient(circle at 50% 44%, rgba(248,250,252,0.96) 0%, rgba(236,233,254,0.74) 30%, rgba(148,163,184,0.38) 66%, rgba(15,23,42,0.92) 100%)'
+
+    const highlightShadow = selected
+      ? '0 0 0 6px rgba(253, 224, 71, 0.45), 0 28px 60px -24px rgba(15, 23, 42, 0.82)'
+      : isInvisible
+      ? '0 0 0 4px rgba(248, 250, 252, 0.55), 0 20px 48px -30px rgba(15, 23, 42, 0.78)'
+      : '0 24px 52px -32px rgba(15, 23, 42, 0.75)'
+
+    const borderColor = selected
+      ? '1px solid rgba(252, 211, 77, 0.75)'
+      : isInvisible
+      ? '2px dashed rgba(251, 191, 36, 0.85)'
+      : '1px solid rgba(148, 163, 184, 0.45)'
+
+    return {
+      width: 92,
+      height: 92,
+      borderRadius: '50%',
+      background: baseGlow,
+      boxShadow: highlightShadow,
+      border: borderColor,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+      transition: 'transform 140ms ease, box-shadow 140ms ease, border 140ms ease',
+      transform: selected ? 'scale(1.06)' : 'scale(1)',
+    }
+  }, [isInvisible, isStart, selected])
+
+  const coreGlowStyle = useMemo(
+    () => ({
+      position: 'absolute',
+      inset: selected ? 6 : 8,
+      borderRadius: '50%',
+      background: isStart
+        ? 'rgba(129, 140, 248, 0.42)'
+        : 'rgba(148, 163, 184, 0.32)',
+      filter: 'blur(0.75px)',
+      transition: 'inset 140ms ease, background 140ms ease',
+    }),
+    [isStart, selected]
+  )
+
+  const starColor = selected ? '#fef08a' : '#f8fafc'
+
   return (
     <div
       style={{
-        width: 'min(320px, 82vw)',
-        border: '1px solid #e5e7eb',
-        borderRadius: 16,
-        background: '#fff',
-        overflow: 'hidden',
-        position: 'relative',
-        boxShadow: '0 20px 48px -32px rgba(15, 23, 42, 0.5)',
+        minWidth: 140,
+        maxWidth: 180,
+        padding: '12px 8px',
+        display: 'grid',
+        justifyItems: 'center',
+        alignItems: 'center',
+        gap: 10,
+        background: 'transparent',
         touchAction: 'none',
       }}
     >
@@ -46,113 +87,58 @@ export default function PromptNode({ id, data }) {
         type="target"
         position={Position.Left}
         style={{
-          width: 18,
-          height: 18,
+          width: 14,
+          height: 14,
           borderRadius: '50%',
-          background: '#1d4ed8',
-          border: '3px solid #fff',
+          background: '#38bdf8',
+          border: '3px solid #0f172a',
         }}
       />
       <Handle
         type="source"
         position={Position.Right}
         style={{
-          width: 18,
-          height: 18,
+          width: 14,
+          height: 14,
           borderRadius: '50%',
-          background: '#0ea5e9',
-          border: '3px solid #fff',
+          background: '#f97316',
+          border: '3px solid #0f172a',
         }}
       />
-      <div
-        style={{
-          padding: '10px 12px',
-          display: 'grid',
-          gap: 8,
-          background: d.isStart ? '#dbeafe' : '#f9fafb',
-          borderBottom: '1px solid #e5e7eb',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {slotLabel && (
-            <span
-              style={{
-                padding: '2px 8px',
-                borderRadius: 999,
-                background: '#1d4ed8',
-                color: '#fff',
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              {slotLabel}
-            </span>
-          )}
-          <select
-            value={d.slot_type || 'ai'}
-            onChange={(event) => update({ slot_type: event.target.value })}
-            style={{
-              fontWeight: 700,
-              borderRadius: 8,
-              border: '1px solid #cbd5f5',
-              padding: '4px 10px',
-              background: '#fff',
-            }}
-          >
-            <option value="ai">AI</option>
-            <option value="user_action">유저행동</option>
-            <option value="system">시스템</option>
-          </select>
-          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#475569' }}>{visibilityLabel}</span>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => d.onSetStart?.()}
-            style={{
-              padding: '4px 10px',
-              borderRadius: 10,
-              background: d.isStart ? '#1d4ed8' : '#e2e8f0',
-              color: d.isStart ? '#fff' : '#1f2937',
-              fontWeight: 600,
-            }}
-          >
-            {d.isStart ? '시작 노드' : '시작 지정'}
-          </button>
-          <button
-            type="button"
-            onClick={() => d.onDelete?.(id)}
-            style={{
-              padding: '4px 10px',
-              borderRadius: 10,
-              background: '#fee2e2',
-              color: '#b91c1c',
-              fontWeight: 600,
-            }}
-          >
-            삭제
-          </button>
-        </div>
+      <div style={sphereStyle}>
+        <div style={coreGlowStyle} />
+        <span
+          style={{
+            fontSize: 34,
+            color: starColor,
+            lineHeight: 1,
+            textShadow: selected
+              ? '0 0 14px rgba(253,224,71,0.6), 0 6px 18px rgba(15,23,42,0.85)'
+              : '0 4px 12px rgba(15,23,42,0.85)',
+            transition: 'color 120ms ease, text-shadow 140ms ease',
+          }}
+        >
+          ★
+        </span>
       </div>
 
-      <div style={{ padding: 12, display: 'grid', gap: 6 }}>
-        <label style={{ fontSize: 12, color: '#64748b' }}>템플릿</label>
-        <textarea
-          rows={8}
-          value={d.template || ''}
-          onChange={(event) => update({ template: event.target.value })}
-          style={{
-            width: '100%',
-            borderRadius: 12,
-            border: '1px solid #e2e8f0',
-            padding: '10px 12px',
-            fontFamily: 'inherit',
-            fontSize: 13,
-            lineHeight: 1.5,
-            resize: 'vertical',
-            minHeight: 160,
-          }}
-        />
+      <div style={{ display: 'grid', gap: 4, textAlign: 'center' }}>
+        {slotLabel && (
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: 999,
+              background: '#1d4ed8',
+              color: '#fff',
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            {slotLabel}
+          </span>
+        )}
+        <span style={{ fontSize: 12, color: '#cbd5f5', fontWeight: 600 }}>{typeLabel}</span>
+        {isInvisible && <span style={{ fontSize: 11, color: '#fbbf24', fontWeight: 600 }}>숨김</span>}
       </div>
     </div>
   )

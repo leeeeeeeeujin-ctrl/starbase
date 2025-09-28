@@ -8,7 +8,7 @@ const styles = {
     justifyContent: 'space-between',
   },
   title: { margin: 0 },
-  links: { display: 'flex', gap: 8 },
+  links: { display: 'flex', gap: 8, flexWrap: 'wrap' },
   linkButton: {
     padding: '6px 10px',
     border: '1px solid #d1d5db',
@@ -28,6 +28,9 @@ export default function RankHubHeader() {
         </Link>
         <Link href="/maker">
           <a style={styles.linkButton}>게임 제작</a>
+        </Link>
+        <Link href="/rank/new">
+          <a style={styles.linkButton}>게임 등록</a>
         </Link>
       </div>
     </header>

@@ -1,14 +1,8 @@
-export const NAV_LINKS = [
-  { label: '게임 제작', href: '/maker' },
-  { label: '플레이', href: '/play' },
-  { label: '사설', href: '/private' },
-  { label: '랭킹', href: '/rank' },
-]
+export const NAV_LINKS = []
 
 export const LOBBY_TABS = [
-  { key: 'chat', label: '공용 채팅' },
-  { key: 'games', label: '게임 찾기' },
-  { key: 'alerts', label: '알림' },
+  { key: 'games', label: '게임 검색' },
+  { key: 'stats', label: '캐릭터 통계' },
 ]
 
 export const SORT_OPTIONS = [

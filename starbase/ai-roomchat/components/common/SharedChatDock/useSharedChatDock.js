@@ -16,6 +16,7 @@ import {
 import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
 
 const BLOCKED_STORAGE_KEY = 'starbase_blocked_heroes'
+const CHAT_CACHE_KEY = 'starbase_shared_chat_cache_v1'
 
 const SharedChatDockContext = createContext(null)
 
@@ -113,12 +114,36 @@ function persistBlockedHeroes(list) {
   }
 }
 
+function loadMessageCache() {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(CHAT_CACHE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (error) {
+    return []
+  }
+}
+
+function persistMessageCache(list) {
+  if (typeof window === 'undefined') return
+  try {
+    const payload = Array.isArray(list) ? list.slice(-MESSAGE_LIMIT) : []
+    window.localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(payload))
+  } catch (error) {
+    // ignore storage issues silently
+  }
+}
+
 function useSharedChatDockInternal({
   heroId,
   extraWhisperTargets = [],
   blockedHeroes: externalBlockedHeroes,
   viewerHero = null,
   onSend,
+  onNotify,
+  pollingEnabled = false,
 }) {
   const listRef = useRef(null)
   const activeThreadRef = useRef('global')
@@ -155,7 +180,7 @@ function useSharedChatDockInternal({
     setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
   }, [])
 
-  const replaceMessages = useCallback((nextMessages) => {
+  const limitMessages = useCallback((nextMessages) => {
     const limited = Array.isArray(nextMessages)
       ? nextMessages.slice(Math.max(0, nextMessages.length - MESSAGE_LIMIT))
       : []
@@ -166,8 +191,24 @@ function useSharedChatDockInternal({
       }
     }
     messageIdSetRef.current = idSet
-    setMessages(limited)
+    persistMessageCache(limited)
+    return limited
   }, [])
+
+  const replaceMessages = useCallback(
+    (nextMessages) => {
+      const limited = limitMessages(nextMessages)
+      setMessages(limited)
+    },
+    [limitMessages],
+  )
+
+  useEffect(() => {
+    const cached = loadMessageCache()
+    if (cached.length) {
+      replaceMessages(cached)
+    }
+  }, [replaceMessages])
 
   useEffect(() => {
     if (!Array.isArray(externalBlockedHeroes)) return
@@ -287,6 +328,20 @@ function useSharedChatDockInternal({
     return directory
   }, [messages, viewerHeroId, me.avatar_url, me.name, me.owner_id, me.user_id])
 
+  const blockedHeroEntries = useMemo(() => {
+    if (!blockedHeroes?.length) return []
+    return blockedHeroes
+      .filter(Boolean)
+      .map((heroId) => {
+        const meta = heroDirectory.get(heroId) || {}
+        return {
+          heroId,
+          heroName: meta.username || '이름 미확인',
+          avatarUrl: meta.avatarUrl || null,
+        }
+      })
+  }, [blockedHeroes, heroDirectory])
+
   const whisperThreads = useMemo(() => {
     if (!viewerHeroId) return []
     const map = new Map()
@@ -375,7 +430,7 @@ function useSharedChatDockInternal({
   useEffect(() => {
     setActiveThread('global')
     setUnreadThreads({})
-  }, [viewerHeroId])
+  }, [setActiveThread, viewerHeroId])
 
   useEffect(() => {
     activeThreadRef.current = activeThread
@@ -387,6 +442,36 @@ function useSharedChatDockInternal({
       return next
     })
   }, [activeThread])
+
+  useEffect(() => {
+    if (!pollingEnabled) return undefined
+
+    let cancelled = false
+    let running = false
+
+    const tick = async () => {
+      if (cancelled || running) return
+      running = true
+      try {
+        const hydrated = await fetchAndHydrateMessages()
+        if (!cancelled) {
+          replaceMessages(hydrated)
+        }
+      } catch (error) {
+        console.error('채팅을 새로고침하지 못했습니다.', error)
+      } finally {
+        running = false
+      }
+    }
+
+    tick()
+    const intervalId = setInterval(tick, 1000)
+
+    return () => {
+      cancelled = true
+      clearInterval(intervalId)
+    }
+  }, [pollingEnabled, fetchAndHydrateMessages, replaceMessages])
 
   useEffect(() => {
     let alive = true
@@ -434,6 +519,7 @@ function useSharedChatDockInternal({
             }
           }
           messageIdSetRef.current = idSet
+          persistMessageCache(limited)
           return limited
         })
 
@@ -453,6 +539,19 @@ function useSharedChatDockInternal({
         }
 
         scrollToBottom()
+
+        if (typeof onNotify === 'function') {
+          const scope = hydrated?.scope || 'global'
+          let threadId = 'global'
+          if (scope === 'whisper' && viewerId) {
+            if (hydrated.hero_id === viewerId) {
+              threadId = hydrated.target_hero_id || 'global'
+            } else {
+              threadId = hydrated.hero_id || 'global'
+            }
+          }
+          onNotify({ message: hydrated, scope, threadId })
+        }
       } catch (error) {
         console.error('실시간 메시지를 처리하지 못했습니다.', error)
       }
@@ -469,38 +568,80 @@ function useSharedChatDockInternal({
       alive = false
       unsubscribe()
     }
-  }, [fetchAndHydrateMessages, heroId, hydrateSingle, viewerHero, hintProfile, replaceMessages, scrollToBottom])
+  }, [fetchAndHydrateMessages, heroId, hydrateSingle, viewerHero, hintProfile, replaceMessages, scrollToBottom, onNotify])
 
-  const setActiveThread = (thread) => {
-    const normalized = thread || 'global'
-    setActiveThreadState(normalized)
-    if (normalized === 'global') {
-      setScopeInternal('global')
-      setWhisperTargetInternal(null)
-    } else {
-      setScopeInternal('whisper')
-      setWhisperTargetInternal(normalized)
-    }
-  }
-
-  const handleSetScope = (nextScope) => {
-    if (nextScope === 'global') {
-      setActiveThread('global')
-    } else {
-      setScopeInternal('whisper')
-      if (whisperTarget) {
-        setActiveThreadState(whisperTarget)
+  const setActiveThread = useCallback(
+    (thread) => {
+      const normalized = thread || 'global'
+      setActiveThreadState(normalized)
+      if (normalized === 'global') {
+        setScopeInternal('global')
+        setWhisperTargetInternal(null)
+      } else {
+        setScopeInternal('whisper')
+        setWhisperTargetInternal(normalized)
       }
-    }
-  }
+    },
+    [],
+  )
 
-  const handleSetWhisperTarget = (target) => {
-    if (target) {
-      setActiveThread(target)
-    } else {
-      setActiveThread('global')
-    }
-  }
+  const handleSetScope = useCallback(
+    (nextScope) => {
+      if (nextScope === 'global') {
+        setActiveThread('global')
+      } else {
+        setScopeInternal('whisper')
+        if (whisperTarget) {
+          setActiveThreadState(whisperTarget)
+        }
+      }
+    },
+    [setActiveThread, whisperTarget],
+  )
+
+  const handleSetWhisperTarget = useCallback(
+    (target) => {
+      if (target) {
+        setActiveThread(target)
+      } else {
+        setActiveThread('global')
+      }
+    },
+    [setActiveThread],
+  )
+
+  const clearThread = useCallback(
+    (threadId) => {
+      if (!threadId || threadId === 'global') return
+
+      setMessages((prev) => {
+        const filtered = prev.filter((message) => {
+          if (message?.scope !== 'whisper') return true
+          if (message.hero_id === threadId) return false
+          if (message.target_hero_id === threadId) return false
+          return true
+        })
+        return limitMessages(filtered)
+      })
+
+      setUnreadThreads((prev) => {
+        if (!prev[threadId]) return prev
+        const next = { ...prev }
+        delete next[threadId]
+        return next
+      })
+
+      if (activeThreadRef.current === threadId) {
+        activeThreadRef.current = 'global'
+        setActiveThreadState('global')
+        setScopeInternal('global')
+        setWhisperTargetInternal(null)
+      } else {
+        setWhisperTargetInternal((prev) => (prev === threadId ? null : prev))
+      }
+    },
+    [limitMessages, setActiveThreadState, setScopeInternal, setWhisperTargetInternal],
+  )
 
   const send = async () => {
     const text = input.trim()
@@ -577,6 +718,7 @@ function useSharedChatDockInternal({
     availableTargets,
     blockedHeroSet,
     blockedHeroes,
+    blockedHeroEntries,
     canSend,
     heroDirectory,
     input,
@@ -596,6 +738,7 @@ function useSharedChatDockInternal({
     viewerHeroId,
     visibleMessages,
     whisperTarget,
+    clearThread,
     refreshMessages: async () => {
       try {
         const hydrated = await fetchAndHydrateMessages()

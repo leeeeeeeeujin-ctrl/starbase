@@ -26,6 +26,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
     onRequestAddFriend,
     onRequestRemoveFriend,
     isFriend,
+    onMessageAlert,
   },
   ref,
 ) {
@@ -133,6 +134,8 @@ const ChatOverlay = forwardRef(function ChatOverlay(
         onBlockedHeroesChange={onBlockedHeroesChange}
         activeThreadId={externalThread}
         onThreadChange={setExternalThread}
+        onMessageAlert={onMessageAlert}
+        pollingEnabled={open}
       />
       <ProfileActionSheet
         open={sheetOpen}

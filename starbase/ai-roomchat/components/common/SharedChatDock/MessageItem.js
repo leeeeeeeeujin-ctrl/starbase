@@ -5,8 +5,6 @@ export function MessageItem({
   heroDirectory,
   viewerHeroId,
   blockedHeroSet,
-  onBlock,
-  onUnblock,
   onSelectHero,
 }) {
   const senderMeta = heroDirectory.get(message.hero_id) || {}
@@ -90,44 +88,6 @@ export function MessageItem({
           )}
         </div>
         <div style={{ marginTop: 2, whiteSpace: 'pre-wrap', color: '#1f2937' }}>{message.text}</div>
-        {message.hero_id && !isSelf && (
-          <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
-            {blocked ? (
-              <button
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onUnblock(message.hero_id)
-                }}
-                style={{
-                  fontSize: 11,
-                  padding: '4px 8px',
-                  borderRadius: 8,
-                  border: '1px solid #ef4444',
-                  background: '#fff',
-                  color: '#ef4444',
-                }}
-              >
-                차단 해제
-              </button>
-            ) : (
-              <button
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onBlock(message.hero_id)
-                }}
-                style={{
-                  fontSize: 11,
-                  padding: '4px 8px',
-                  borderRadius: 8,
-                  border: '1px solid #cbd5f5',
-                  background: '#f8fafc',
-                }}
-              >
-                차단하기
-              </button>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )

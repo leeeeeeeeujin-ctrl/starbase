@@ -11,22 +11,23 @@ export default function MakerEditorPanel({
   selectedNodeId,
   selectedEdge,
   onMarkAsStart,
-  onToggleInvisible,
   onDeleteSelected,
   onInsertToken,
-  rebuildEdgeLabel,
   setNodes,
   setEdges,
 }) {
+  const nodeData = selectedNode?.data || null
+
   return (
     <section
       style={{
         background: '#ffffff',
         borderRadius: 18,
-        padding: '12px 16px',
-        boxShadow: '0 16px 36px -32px rgba(15, 23, 42, 0.45)',
+        padding: '10px 14px',
+        boxShadow: '0 14px 34px -30px rgba(15, 23, 42, 0.4)',
         display: 'grid',
-        gap: 12,
+        gap: 10,
+        width: '100%',
       }}
     >
       <div
@@ -34,7 +35,7 @@ export default function MakerEditorPanel({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 12,
+          gap: 10,
           flexWrap: 'wrap',
         }}
       >
@@ -46,12 +47,13 @@ export default function MakerEditorPanel({
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
                 style={{
-                  padding: '6px 12px',
+                  padding: '5px 12px',
                   borderRadius: 999,
                   border: active ? '1px solid #2563eb' : '1px solid #e2e8f0',
-                  background: active ? '#e0f2fe' : '#f8fafc',
+                  background: active ? '#dbeafe' : '#f8fafc',
                   color: active ? '#1d4ed8' : '#475569',
                   fontWeight: 600,
+                  fontSize: 13,
                 }}
               >
                 {tab.label}
@@ -63,11 +65,12 @@ export default function MakerEditorPanel({
           type="button"
           onClick={onOpenVariables}
           style={{
-            padding: '6px 14px',
+            padding: '5px 12px',
             borderRadius: 999,
             background: '#0ea5e9',
             color: '#fff',
             fontWeight: 600,
+            fontSize: 13,
             flexShrink: 0,
           }}
         >
@@ -77,18 +80,36 @@ export default function MakerEditorPanel({
 
       <div
         style={{
-          border: '1px solid #eef2f6',
+          border: '1px solid #e2e8f0',
           borderRadius: 14,
           padding: '12px 14px',
-          minHeight: 140,
-          maxHeight: '40vh',
+          minHeight: 160,
+          maxHeight: '45vh',
           overflowY: 'auto',
           WebkitOverflowScrolling: 'touch',
           background: '#fdfdff',
+          display: 'grid',
+          gap: 12,
         }}
       >
         {activeTab === 'selection' && (
-          <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div
+              style={{
+                border: '1px solid #e2e8f0',
+                borderRadius: 12,
+                background: '#f8fafc',
+                padding: 12,
+              }}
+            >
+              <SidePanel
+                selectedNodeId={selectedNodeId}
+                selectedEdge={selectedEdge}
+                setEdges={setEdges}
+                setNodes={setNodes}
+                onInsertToken={onInsertToken}
+              />
+            </div>
             <span style={{ fontWeight: 700, color: '#0f172a' }}>
               {selectedNode
                 ? '선택한 프롬프트를 편집 중입니다.'
@@ -96,67 +117,82 @@ export default function MakerEditorPanel({
                 ? '선택한 브릿지를 편집 중입니다.'
                 : '편집할 프롬프트 또는 브릿지를 선택하세요.'}
             </span>
+
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button
                 onClick={() => selectedNodeId && onMarkAsStart(selectedNodeId)}
                 disabled={!selectedNodeId}
                 style={{
-                  padding: '6px 10px',
+                  padding: '5px 10px',
                   borderRadius: 10,
                   background: selectedNode?.data?.isStart ? '#dbeafe' : '#e2e8f0',
                   color: '#0f172a',
                   fontWeight: 600,
+                  fontSize: 13,
                   opacity: selectedNodeId ? 1 : 0.6,
                 }}
               >
                 시작 지정
               </button>
               <button
-                onClick={onToggleInvisible}
-                disabled={!selectedNodeId}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 10,
-                  background: '#f8fafc',
-                  border: '1px solid #cbd5f5',
-                  color: '#0f172a',
-                  fontWeight: 600,
-                  opacity: selectedNodeId ? 1 : 0.6,
-                }}
-              >
-                {selectedNode?.data?.invisible ? '숨김 해제' : '숨김 모드'}
-              </button>
-              <button
                 onClick={onDeleteSelected}
                 disabled={!selectedNodeId}
                 style={{
-                  padding: '6px 10px',
+                  padding: '5px 10px',
                   borderRadius: 10,
                   background: '#fee2e2',
                   color: '#b91c1c',
                   fontWeight: 600,
+                  fontSize: 13,
                   opacity: selectedNodeId ? 1 : 0.6,
                 }}
               >
                 삭제
               </button>
             </div>
-            <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.6 }}>
-              AI 응답 가이드: 마지막 줄에는 승·패·탈락 결과를, 마지막에서 두 번째 줄에는 조건을 만족한 변수명만 기재하고 필요할 때만 위 줄을 채워 주세요.
-            </p>
-          </div>
-        )}
 
-        {activeTab === 'tools' && (
-          <div style={{ minHeight: 160 }}>
-            <SidePanel
-              selectedNodeId={selectedNodeId}
-              selectedEdge={selectedEdge}
-              setEdges={setEdges}
-              setNodes={setNodes}
-              onInsertToken={onInsertToken}
-              rebuildEdgeLabel={rebuildEdgeLabel}
-            />
+            {nodeData && (
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>슬롯 타입</label>
+                  <select
+                    value={nodeData.slot_type || 'ai'}
+                    onChange={(event) => nodeData.onChange?.({ slot_type: event.target.value })}
+                    style={{
+                      borderRadius: 10,
+                      border: '1px solid #cbd5f5',
+                      padding: '6px 10px',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      background: '#fff',
+                    }}
+                  >
+                    <option value="ai">AI</option>
+                    <option value="user_action">유저 행동</option>
+                    <option value="system">시스템</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>프롬프트 내용</label>
+                  <textarea
+                    rows={7}
+                    value={nodeData.template || ''}
+                    onChange={(event) => nodeData.onChange?.({ template: event.target.value })}
+                    style={{
+                      width: '100%',
+                      borderRadius: 12,
+                      border: '1px solid #e2e8f0',
+                      padding: '10px 12px',
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      resize: 'vertical',
+                    }}
+                    placeholder="프롬프트 텍스트를 입력하세요"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -171,5 +207,3 @@ export default function MakerEditorPanel({
     </section>
   )
 }
-
-//

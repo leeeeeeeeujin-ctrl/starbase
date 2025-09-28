@@ -102,6 +102,10 @@ export default function RankNewClient() {
     fair_power_balance: true,
     char_limit: 0,
   })
+  const [brawlEnabled, setBrawlEnabled] = useState(false)
+  const [endCondition, setEndCondition] = useState('')
+  const [showBrawlHelp, setShowBrawlHelp] = useState(false)
+  const [backgroundImage, setBackgroundImage] = useState('')
 
   useEffect(() => {
     let alive = true
@@ -114,10 +118,41 @@ export default function RankNewClient() {
     return () => { alive = false }
   }, [router])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const storedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
+      setBackgroundImage(storedBackground)
+    } catch (error) {
+      console.error('Failed to hydrate register background:', error)
+    }
+  }, [])
+
   const activeSlots = useMemo(
     () => (slotMap || []).filter(s => s.active && s.role && s.role.trim()),
     [slotMap]
   )
+
+  const registerChecklist = useMemo(
+    () => [
+      '대표 이미지와 설명을 준비했나요?',
+      '실시간, 혹은 싱글 플레이 여부를 생각했나요?',
+      '프롬프트 세트를 충분히 준비했나요?',
+      '역할 이름을 헷갈리진 않았나요?',
+    ],
+    [],
+  )
+
+  const handleToggleBrawl = () => {
+    setBrawlEnabled((prev) => {
+      const next = !prev
+      if (!next) {
+        setShowBrawlHelp(false)
+        setEndCondition('')
+      }
+      return next
+    })
+  }
 
   async function onSubmit() {
     if (!user) return alert('로그인이 필요합니다.')
@@ -134,6 +169,16 @@ export default function RankNewClient() {
       }
     }
 
+    const compiledRules = {
+      ...rules,
+      brawl_rule: 'banish-on-loss',
+      end_condition_variable: null,
+    }
+
+    if (brawlEnabled) {
+      compiledRules.end_condition_variable = endCondition.trim() || null
+    }
+
     const res = await registerGame({
       name: name || '새 게임',
       description: desc || '',
@@ -145,8 +190,8 @@ export default function RankNewClient() {
         score_delta_min: Number.isFinite(Number(role?.score_delta_min)) ? Number(role.score_delta_min) : 20,
         score_delta_max: Number.isFinite(Number(role?.score_delta_max)) ? Number(role.score_delta_max) : 40,
       })),
-      rules,
-      rules_prefix: buildRulesPrefix(rules),
+      rules: compiledRules,
+      rules_prefix: buildRulesPrefix(compiledRules),
       realtime_match: realtime,
     })
 
@@ -170,54 +215,314 @@ export default function RankNewClient() {
     router.replace(`/rank/${gameId}`)
   }
 
-  // 렌더
+  const pageStyle = backgroundImage
+    ? {
+        minHeight: '100vh',
+        backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.96) 100%), url(${backgroundImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+        display: 'flex',
+        flexDirection: 'column',
+      }
+    : {
+        minHeight: '100vh',
+        background: 'linear-gradient(180deg, #0f172a 0%, #1f2937 28%, #0f172a 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+      }
+
+  const cardStyle = {
+    background: 'rgba(15,23,42,0.78)',
+    borderRadius: 24,
+    padding: '24px 28px',
+    boxShadow: '0 32px 68px -48px rgba(15, 23, 42, 0.8)',
+    color: '#e2e8f0',
+    display: 'grid',
+    gap: 18,
+  }
+
+  const togglePillStyle = (active) => ({
+    padding: '8px 18px',
+    borderRadius: 999,
+    border: active ? '1px solid #60a5fa' : '1px solid rgba(148,163,184,0.45)',
+    background: active ? 'rgba(96,165,250,0.25)' : 'rgba(15,23,42,0.55)',
+    color: active ? '#0f172a' : '#f8fafc',
+    fontWeight: 700,
+    letterSpacing: 0.5,
+    cursor: 'pointer',
+  })
+
+  const inputStyle = {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.55)',
+    color: '#f8fafc',
+  }
+
+  const labelStyle = { display: 'grid', gap: 6, fontSize: 13 }
+  const infoTextStyle = { margin: 0, fontSize: 14, lineHeight: 1.6, color: '#cbd5f5' }
+  const overviewColumns = {
+    display: 'grid',
+    gap: 16,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+  }
+
   return (
-    <div style={{ maxWidth: 1000, margin: '24px auto', padding: 12, display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>게임 등록</h2>
-        <button onClick={() => router.back()} style={{ padding: '6px 10px' }}>← 뒤로</button>
-      </div>
-
-      {/* 1) 역할 정의 */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12 }}>
-        <h3 style={{ marginTop: 0 }}>역할 정의</h3>
-        <RolesEditor roles={roles} onChange={setRoles} />
-      </div>
-
-      {/* 2) 기본 정보 */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12, display: 'grid', gap: 8 }}>
-        <input placeholder="게임 이름" value={name} onChange={e => setName(e.target.value)} />
-        <textarea placeholder="설명" rows={3} value={desc} onChange={e => setDesc(e.target.value)} />
-        <PromptSetPicker value={setId} onChange={setSetId} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#0f172a' }}>
-          <input
-            type="checkbox"
-            checked={realtime}
-            onChange={(event) => setRealtime(event.target.checked)}
-          />
-          실시간 매칭 사용
-        </label>
-      </div>
-
-      {/* 3) 슬롯 매핑 */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12 }}>
-        <h3 style={{ marginTop: 0 }}>슬롯 매핑</h3>
-        <SlotMatrix value={slotMap} onChange={setSlotMap} roleOptions={roles.map((role) => role.name)} />
-      </div>
-
-      {/* 4) 규칙 체크리스트 */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12 }}>
-        <h3 style={{ marginTop: 0 }}>체크리스트 규칙 / 글자수</h3>
-        <RulesChecklist value={rules} onChange={setRules} />
-      </div>
-
-      <div>
-        <button
-          onClick={onSubmit}
-          style={{ padding: '10px 12px', borderRadius: 8, background: '#111827', color: '#fff', fontWeight: 700 }}
+    <div style={pageStyle}>
+      <div
+        style={{
+          flex: '1 1 auto',
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'center',
+          padding: '32px 16px 180px',
+          boxSizing: 'border-box',
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            maxWidth: 1040,
+            display: 'grid',
+            gap: 20,
+          }}
         >
-          등록
-        </button>
+          <header
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+              color: '#f8fafc',
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: 28 }}>게임 등록</h2>
+            <button
+              onClick={() => router.back()}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 999,
+                border: '1px solid rgba(148,163,184,0.45)',
+                background: 'rgba(15,23,42,0.55)',
+                color: '#e2e8f0',
+                fontWeight: 600,
+              }}
+            >
+              ← 뒤로
+            </button>
+          </header>
+
+          <section style={cardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'grid', gap: 6 }}>
+                <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>등록 개요</p>
+                <p style={infoTextStyle}>
+                  아래 카드에서 슬롯, 규칙, 모드를 채워 넣으세요. 모든 항목은 언제든지 수정할 수 있습니다.
+                </p>
+              </div>
+            </div>
+            <div style={overviewColumns}>
+              <div style={{ display: 'grid', gap: 8, background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '16px 18px' }}>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>등록 체크리스트</p>
+                <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, fontSize: 13, color: '#cbd5f5' }}>
+                  {registerChecklist.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div style={{ display: 'grid', gap: 10, background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '16px 18px' }}>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>등록 가이드</p>
+                <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
+                  게임 소개 자료와 룰 구성을 마쳤다면 하단 카드에서 역할·슬롯·모드를 채운 뒤 등록 버튼을 눌러 주세요. 제작 중인 세트는 Maker에서,
+                  캐릭터 정보는 로스터에서 언제든 보완할 수 있습니다.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section style={cardStyle}>
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>역할 정의</p>
+            <p style={infoTextStyle}>게임에서 사용할 역할과 기본 점수 범위를 정리하세요.</p>
+            <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
+              <RolesEditor roles={roles} onChange={setRoles} />
+            </div>
+          </section>
+
+          <section style={cardStyle}>
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>기본 정보</p>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <label style={labelStyle}>
+                <span style={{ color: '#cbd5f5' }}>게임 이름</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 별빛 난투 시즌1" style={inputStyle} />
+              </label>
+              <label style={labelStyle}>
+                <span style={{ color: '#cbd5f5' }}>설명</span>
+                <textarea
+                  placeholder="게임 소개와 매칭 규칙을 간단히 적어 주세요."
+                  rows={3}
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  style={{ ...inputStyle, resize: 'vertical' }}
+                />
+              </label>
+              <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
+                <PromptSetPicker value={setId} onChange={setSetId} />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#cbd5f5' }}>
+                <input
+                  type="checkbox"
+                  checked={realtime}
+                  onChange={(event) => setRealtime(event.target.checked)}
+                  style={{ width: 16, height: 16 }}
+                />
+                실시간 매칭 사용
+              </label>
+              <label style={labelStyle}>
+                <span style={{ color: '#cbd5f5' }}>표지 이미지</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => setImgFile(event.target.files?.[0] || null)}
+                  style={{
+                    padding: '8px 0',
+                    color: '#f8fafc',
+                  }}
+                />
+                {imgFile ? (
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{imgFile.name}</span>
+                ) : (
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>이미지를 선택하지 않으면 기본 배경이 사용됩니다.</span>
+                )}
+              </label>
+            </div>
+          </section>
+
+          <section style={cardStyle}>
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>슬롯 매핑</p>
+            <p style={infoTextStyle}>역할과 슬롯을 연결해 실제 매칭 시 사용할 구성을 지정하세요.</p>
+            <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
+              <SlotMatrix value={slotMap} onChange={setSlotMap} roleOptions={roles.map((role) => role.name)} />
+            </div>
+          </section>
+
+          <section style={cardStyle}>
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>체크리스트 · 세부 규칙</p>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 10,
+                  padding: '16px 18px',
+                  borderRadius: 18,
+                  border: '1px solid rgba(96,165,250,0.35)',
+                  background: 'rgba(30,64,175,0.28)',
+                  boxShadow: '0 16px 36px -28px rgba(37, 99, 235, 0.65)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'grid', gap: 4, minWidth: 240 }}>
+                    <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>난투 옵션</p>
+                    <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>
+                      해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowBrawlHelp((prev) => !prev)}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        border: '1px solid rgba(148,163,184,0.45)',
+                        background: 'rgba(15,23,42,0.55)',
+                        color: '#f8fafc',
+                        fontWeight: 700,
+                      }}
+                    >
+                      ?
+                    </button>
+                    <button type="button" style={togglePillStyle(brawlEnabled)} onClick={handleToggleBrawl}>
+                      {brawlEnabled ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+                </div>
+                {showBrawlHelp ? (
+                  <div
+                    style={{
+                      background: 'rgba(15,23,42,0.55)',
+                      borderRadius: 14,
+                      padding: '12px 14px',
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      color: '#e2e8f0',
+                    }}
+                  >
+                    해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
+                  </div>
+                ) : null}
+                {brawlEnabled ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <label style={labelStyle}>
+                      <span style={{ color: '#dbeafe' }}>게임 종료 조건 변수</span>
+                      <input
+                        type="text"
+                        value={endCondition}
+                        onChange={(event) => setEndCondition(event.target.value)}
+                        placeholder="예: remainingTeams <= 1"
+                        style={inputStyle}
+                      />
+                      <span style={{ fontSize: 12, color: '#bfdbfe' }}>
+                        등록 폼의 끝에서 두 번째 줄에 위치한 변수 칸과 연결됩니다. 조건을 만족할 때까지 게임은 종료되지 않으며, 종료 시 승리 횟수에 따라 점수가 정산됩니다.
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>
+                    난투 토글을 끄면 패배 시 추방이 기본 규칙으로 적용됩니다.
+                  </p>
+                )}
+              </div>
+              <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
+                <RulesChecklist value={rules} onChange={setRules} />
+              </div>
+            </div>
+          </section>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={onSubmit}
+              style={{
+                padding: '12px 20px',
+                borderRadius: 999,
+                border: 'none',
+                background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
+                color: '#fff',
+                fontWeight: 700,
+                boxShadow: '0 24px 60px -32px rgba(37, 99, 235, 0.65)',
+              }}
+            >
+              등록
+            </button>
+          </div>
+          <div
+            aria-hidden="true"
+            style={{
+              marginTop: 20,
+              width: '100%',
+              height: 56,
+              borderRadius: 18,
+              border: '1px solid rgba(148, 163, 184, 0.12)',
+              background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.2), rgba(30, 64, 175, 0.08))',
+              backdropFilter: 'blur(6px)',
+              pointerEvents: 'none',
+            }}
+          />
+        </div>
       </div>
     </div>
   )
