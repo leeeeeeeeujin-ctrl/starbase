@@ -448,6 +448,8 @@ export default function SharedHeroOverlay() {
 
   const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
 
+  const createTabIndex = overlayTabs.findIndex((tab) => tab.key === 'create')
+
   const overlayBody = useMemo(() => {
     if (activeTabKey === 'character') {
       return (
@@ -493,6 +495,24 @@ export default function SharedHeroOverlay() {
               </button>
             ))}
           </div>
+          <div style={styles.buttonRow}>
+            <button
+              type="button"
+              style={styles.ghostButton}
+              onClick={() => {
+                if (createTabIndex >= 0) setActiveTab(createTabIndex)
+              }}
+            >
+              게임 제작
+            </button>
+            <button
+              type="button"
+              style={styles.ghostButton}
+              onClick={() => router.push('/roster')}
+            >
+              캐릭터 페이지
+            </button>
+          </div>
           <div style={styles.gameList}>
             {filteredGames.map((game) => (
               <div key={game.id} style={styles.listItem}>
@@ -515,11 +535,11 @@ export default function SharedHeroOverlay() {
             </p>
           </div>
           <div style={styles.buttonRow}>
-            <button type="button" style={styles.ghostButton} onClick={() => router.push('/create')}>
-              제작 화면 열기
+            <button type="button" style={styles.ghostButton} onClick={() => router.push('/maker')}>
+              Maker 열기
             </button>
-            <button type="button" style={styles.ghostButton} onClick={() => router.push('/rank/new')}>
-              등록 화면 이동
+            <button type="button" style={styles.ghostButton} onClick={() => router.push('/create')}>
+              캐릭터 제작 열기
             </button>
           </div>
         </div>
@@ -530,6 +550,14 @@ export default function SharedHeroOverlay() {
       return (
         <div style={styles.tabContent}>
           <p style={styles.infoTitle}>등록 체크리스트</p>
+          <div style={styles.buttonRow}>
+            <button type="button" style={styles.ghostButton} onClick={() => router.push('/maker')}>
+              Maker로 이동
+            </button>
+            <button type="button" style={styles.ghostButton} onClick={() => router.push('/roster')}>
+              캐릭터 페이지로 이동
+            </button>
+          </div>
           <div style={styles.gameList}>
             <div style={styles.listItem}>
               <p style={styles.listTitle}>필수 자료</p>
@@ -596,6 +624,7 @@ export default function SharedHeroOverlay() {
     audioManager,
     bgmEnabled,
     bgmVolume,
+    createTabIndex,
     description,
     filteredGames,
     heroName,

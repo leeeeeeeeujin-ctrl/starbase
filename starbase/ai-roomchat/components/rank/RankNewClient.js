@@ -104,7 +104,6 @@ export default function RankNewClient() {
     char_limit: 0,
   })
   const [brawlEnabled, setBrawlEnabled] = useState(false)
-  const [brawlRule, setBrawlRule] = useState('banish-on-loss')
   const [endCondition, setEndCondition] = useState('')
   const [showBrawlHelp, setShowBrawlHelp] = useState(false)
   const [backgroundImage, setBackgroundImage] = useState('')
@@ -148,7 +147,7 @@ export default function RankNewClient() {
   const registerGuides = useMemo(
     () => [
       { key: 'maker', label: '프롬프트 세트 관리', href: '/maker' },
-      { key: 'register', label: '게임 등록 화면 열기', href: '/rank/new' },
+      { key: 'character', label: '캐릭터 페이지로 이동', href: '/roster' },
     ],
     [],
   )
@@ -158,6 +157,7 @@ export default function RankNewClient() {
       const next = !prev
       if (!next) {
         setShowBrawlHelp(false)
+        setEndCondition('')
       }
       return next
     })
@@ -185,7 +185,6 @@ export default function RankNewClient() {
     }
 
     if (brawlEnabled) {
-      compiledRules.brawl_rule = brawlRule
       compiledRules.end_condition_variable = endCondition.trim() || null
     }
 
@@ -261,15 +260,6 @@ export default function RankNewClient() {
     fontWeight: 700,
     letterSpacing: 0.5,
     cursor: 'pointer',
-  })
-
-  const optionButtonStyle = (active) => ({
-    padding: '8px 14px',
-    borderRadius: 999,
-    border: active ? '1px solid #60a5fa' : '1px solid rgba(148,163,184,0.45)',
-    background: active ? 'rgba(96,165,250,0.25)' : 'rgba(15,23,42,0.55)',
-    color: '#f8fafc',
-    fontWeight: 600,
   })
 
   const inputStyle = {
@@ -499,22 +489,6 @@ export default function RankNewClient() {
                 ) : null}
                 {brawlEnabled ? (
                   <div style={{ display: 'grid', gap: 12 }}>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        style={optionButtonStyle(brawlRule === 'instant-elimination')}
-                        onClick={() => setBrawlRule('instant-elimination')}
-                      >
-                        탈락자 즉시패배
-                      </button>
-                      <button
-                        type="button"
-                        style={optionButtonStyle(brawlRule === 'banish-on-loss')}
-                        onClick={() => setBrawlRule('banish-on-loss')}
-                      >
-                        패배시 추방
-                      </button>
-                    </div>
                     <label style={labelStyle}>
                       <span style={{ color: '#dbeafe' }}>게임 종료 조건 변수</span>
                       <input
@@ -531,7 +505,7 @@ export default function RankNewClient() {
                   </div>
                 ) : (
                   <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>
-                    해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
+                    난투 토글을 끄면 패배 시 추방이 기본 규칙으로 적용됩니다.
                   </p>
                 )}
               </div>

@@ -1553,7 +1553,6 @@ export default function CharacterBasicView({ hero }) {
   )
 
   const createTabIndex = overlayTabs.findIndex((tab) => tab.key === 'create')
-  const registerTabIndex = overlayTabs.findIndex((tab) => tab.key === 'register')
 
   const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
   const progressRatio = duration ? progress / duration : 0
@@ -1592,15 +1591,9 @@ export default function CharacterBasicView({ hero }) {
               >
                 게임 제작
               </button>
-              <button
-                type="button"
-                style={styles.searchButton}
-                onClick={() => {
-                  if (registerTabIndex >= 0) setActiveTab(registerTabIndex)
-                }}
-              >
-                게임 등록
-              </button>
+              <Link href="/roster" style={styles.searchButton}>
+                캐릭터 페이지
+              </Link>
             </div>
           </div>
           <div style={styles.searchGrid}>
@@ -1629,15 +1622,9 @@ export default function CharacterBasicView({ hero }) {
               <Link href="/maker" style={styles.primaryLinkButton}>
                 Maker 열기
               </Link>
-              <button
-                type="button"
-                style={styles.secondaryButton}
-                onClick={() => {
-                  if (registerTabIndex >= 0) setActiveTab(registerTabIndex)
-                }}
-              >
-                등록 탭 바로가기
-              </button>
+              <Link href="/create" style={styles.secondaryButton}>
+                캐릭터 제작 열기
+              </Link>
             </div>
           </div>
 
@@ -1670,11 +1657,11 @@ export default function CharacterBasicView({ hero }) {
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <Link href="/rank/new" style={styles.primaryLinkButton}>
-                  등록 화면 열기
-                </Link>
-                <Link href="/maker" style={styles.secondaryButton}>
+                <Link href="/maker" style={styles.primaryLinkButton}>
                   Maker로 이동
+                </Link>
+                <Link href="/roster" style={styles.secondaryButton}>
+                  캐릭터 페이지로 이동
                 </Link>
               </div>
             </div>
