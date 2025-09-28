@@ -5,17 +5,136 @@ import Image from 'next/image'
 import ParticipantCard from './ParticipantCard'
 import styles from './GameRoomView.module.css'
 
-function renderRules(rules) {
-  if (!rules) return null
+const RULE_OPTION_METADATA = {
+  nerf_insight: {
+    label: '통찰 너프',
+    description: '분석으로 상황을 뒤집는 선택지를 약화시켜 전투를 더욱 직관적으로 만듭니다.',
+  },
+  ban_kindness: {
+    label: '약자 배려 금지',
+    description: '도덕적인 배려나 선행으로 승패가 바뀌지 않도록 막습니다.',
+  },
+  nerf_peace: {
+    label: '평화 너프',
+    description: '감정적 타협보다는 실제 전투력을 기준으로 판정하도록 유도합니다.',
+  },
+  nerf_ultimate_injection: {
+    label: '궁극적 승리/인젝션 감지',
+    description: '승패 조건을 뒤흔드는 인젝션이 감지되면 즉시 차단합니다.',
+  },
+  fair_power_balance: {
+    label: '공정한 파워 밸런스',
+    description: '능력 사용과 서사를 균형 있게 유지해 과도한 역전이 일어나지 않도록 합니다.',
+  },
+}
 
-  if (typeof rules === 'string') {
-    const trimmed = rules.trim()
-    if (!trimmed) return null
-    return <p className={styles.rulesText}>{trimmed}</p>
+function interpretRulesShape(value) {
+  if (!value) return { type: 'empty' }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return { type: 'empty' }
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { type: 'object', value: parsed }
+      }
+    } catch (error) {
+      // not JSON, fall through to plain text rendering
+    }
+    return { type: 'text', value: trimmed }
+  }
+
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return { type: 'object', value }
+  }
+
+  return { type: 'unknown', value }
+}
+
+function buildRuleEntries(ruleObject) {
+  const entries = []
+
+  Object.entries(RULE_OPTION_METADATA).forEach(([key, meta]) => {
+    if (!ruleObject[key]) return
+    entries.push({
+      key,
+      label: meta.label,
+      description: meta.description,
+    })
+  })
+
+  const limitValue = Number(ruleObject.char_limit)
+  const limit = Number.isFinite(limitValue) ? limitValue : 0
+  if (limit > 0) {
+    entries.push({
+      key: 'char_limit',
+      label: '응답 길이 제한',
+      description: `${limit.toLocaleString()}자 이내로 답변하도록 제한합니다.`,
+    })
+  }
+
+  Object.keys(ruleObject).forEach((key) => {
+    if (key in RULE_OPTION_METADATA) return
+    if (key === 'char_limit') return
+    const raw = ruleObject[key]
+    if (!raw) return
+    const hint = typeof raw === 'string' ? raw : JSON.stringify(raw)
+    entries.push({
+      key,
+      label: key,
+      description: hint,
+    })
+  })
+
+  return entries
+}
+
+function renderRules(rules) {
+  const interpreted = interpretRulesShape(rules)
+
+  if (interpreted.type === 'empty') {
+    return null
+  }
+
+  if (interpreted.type === 'object') {
+    const entries = buildRuleEntries(interpreted.value)
+    if (!entries.length) {
+      try {
+        const pretty = JSON.stringify(interpreted.value, null, 2)
+        return <pre className={styles.rulesCode}>{pretty}</pre>
+      } catch (error) {
+        return null
+      }
+    }
+
+    return (
+      <ul className={styles.rulesList}>
+        {entries.map(({ key, label, description }) => (
+          <li key={key} className={styles.rulesItem}>
+            <span className={styles.rulesItemLabel}>{label}</span>
+            {description && <p className={styles.rulesItemDescription}>{description}</p>}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  if (interpreted.type === 'text') {
+    const lines = interpreted.value.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+    return (
+      <div className={styles.rulesTextBlock}>
+        {lines.map((line, index) => (
+          <p key={`${line}-${index}`} className={styles.rulesText}>
+            {line}
+          </p>
+        ))}
+      </div>
+    )
   }
 
   try {
-    const pretty = JSON.stringify(rules, null, 2)
+    const pretty = JSON.stringify(interpreted.value, null, 2)
     if (!pretty) return null
     return <pre className={styles.rulesCode}>{pretty}</pre>
   } catch (error) {
@@ -36,7 +155,6 @@ function formatDate(value) {
 
 export default function GameRoomView({
   game,
-  requiredSlots = 0,
   participants = [],
   roles = [],
   pickRole,
@@ -46,7 +164,6 @@ export default function GameRoomView({
   myHero = null,
   myEntry = null,
   onBack,
-  onOpenHeroPicker,
   onJoin,
   onStart,
   onOpenLeaderboard,
@@ -54,7 +171,6 @@ export default function GameRoomView({
   isOwner = false,
   deleting = false,
   startDisabled = false,
-  historyText = '',
   onChatSend,
 }) {
   const [joinLoading, setJoinLoading] = useState(false)
@@ -101,9 +217,6 @@ export default function GameRoomView({
 
   const roster = Array.isArray(participants) ? participants : []
   const readyCount = roster.length
-  const needsCount = requiredSlots || 0
-  const hasCapacityGoal = needsCount > 0
-  const readyForStart = hasCapacityGoal ? readyCount >= needsCount : readyCount > 0
 
   const backgroundImage = myHero?.background_url || game?.image_url || null
   const coverImage = game?.image_url || null
@@ -173,11 +286,9 @@ export default function GameRoomView({
           </button>
           <div className={styles.capacity}>
             <span>참여 {readyCount}명</span>
-            {hasCapacityGoal && (
-              <span className={readyForStart ? styles.ready : ''}>
-                필요 {needsCount}명
-              </span>
-            )}
+            <span className={canStart ? styles.ready : ''}>
+              {canStart ? '매칭 준비 완료' : '함께할 참가자를 기다리는 중'}
+            </span>
           </div>
         </header>
 
@@ -218,11 +329,8 @@ export default function GameRoomView({
             <header className={styles.cardHeader}>
               <div>
                 <h2 className={styles.cardTitle}>내 캐릭터</h2>
-                <p className={styles.cardHint}>참여 전에 캐릭터를 골라주세요.</p>
+                <p className={styles.cardHint}>캐릭터 배경이 방 분위기를 꾸며줍니다.</p>
               </div>
-              <button type="button" className={styles.secondaryButton} onClick={onOpenHeroPicker}>
-                캐릭터 선택
-              </button>
             </header>
 
             {myHero ? (
@@ -268,7 +376,7 @@ export default function GameRoomView({
             <header className={styles.cardHeader}>
               <div>
                 <h2 className={styles.cardTitle}>역할 선택</h2>
-                <p className={styles.cardHint}>참여할 역할을 고르고 팀에 합류하세요.</p>
+                <p className={styles.cardHint}>참여 후에는 비슷한 점수대끼리 자동으로 팀이 구성됩니다.</p>
               </div>
             </header>
 
@@ -325,11 +433,9 @@ export default function GameRoomView({
             </div>
 
             <p className={styles.capacityHint}>
-              {hasCapacityGoal
-                ? readyForStart
-                  ? '시작 조건을 만족했습니다. 게임을 시작할 수 있어요.'
-                  : `게임 시작까지 ${needsCount - readyCount}명 더 필요합니다.`
-                : '정원 정보가 없어 현재 참여 인원으로 즉시 시작할 수 있습니다.'}
+              {canStart
+                ? '게임을 시작하면 비슷한 점수의 참가자들이 자동으로 선발됩니다.'
+                : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
             </p>
 
             {isOwner && (
@@ -370,17 +476,6 @@ export default function GameRoomView({
           </div>
           {renderRules(game.rules) || (
             <div className={styles.emptyCard}>룰 정보가 준비 중입니다.</div>
-          )}
-        </section>
-
-        <section className={styles.historySection}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>최근 기록</h2>
-          </div>
-          {historyText ? (
-            <pre className={styles.historyLog}>{historyText}</pre>
-          ) : (
-            <div className={styles.emptyCard}>아직 공유된 히스토리가 없습니다.</div>
           )}
         </section>
 

@@ -79,7 +79,6 @@ export function useGameRoom(
   const [user, setUser] = useState(null)
   const [game, setGame] = useState(null)
   const [roles, setRoles] = useState([])
-  const [requiredSlots, setRequiredSlots] = useState(0)
   const [participants, setParticipants] = useState([])
   const [myHero, setMyHero] = useState(null)
   const [deleting, setDeleting] = useState(false)
@@ -126,21 +125,6 @@ export function useGameRoom(
             ? gameData.roles
             : ['공격', '수비']
         )
-
-        const { data: slotData, error: slotError } = await withTable(
-          supabase,
-          'rank_game_slots',
-          (table) =>
-            supabase
-              .from(table)
-              .select('slot_index, active, role')
-              .eq('game_id', gameId)
-        )
-
-        if (slotError) throw slotError
-
-        const needed = (slotData || []).filter((slot) => slot.active && slot.role).length || 0
-        setRequiredSlots(needed)
 
         const mappedParticipants = await fetchParticipantsWithHeroes(gameId)
         if (!alive) return
@@ -258,10 +242,7 @@ export function useGameRoom(
     return participants.find((participant) => participant.hero_id === myHero.id) || null
   }, [participants, myHero])
 
-  const canStart = useMemo(() => {
-    if (!requiredSlots) return false
-    return participants.length >= requiredSlots
-  }, [participants.length, requiredSlots])
+  const canStart = useMemo(() => participants.length > 1, [participants.length])
 
   const isOwner = useMemo(() => {
     if (!user || !game) return false
@@ -276,7 +257,6 @@ export function useGameRoom(
       user,
       game,
       roles,
-      requiredSlots,
       participants,
       myHero,
       deleting,

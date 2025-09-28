@@ -212,22 +212,6 @@
   color: rgba(226, 232, 240, 0.7);
 }
 
-.secondaryButton {
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: transparent;
-  color: inherit;
-  padding: 8px 16px;
-  border-radius: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.secondaryButton:hover,
-.secondaryButton:focus {
-  background: rgba(148, 163, 184, 0.2);
-}
-
 .heroBody {
   display: flex;
   gap: 20px;
@@ -456,7 +440,6 @@
 
 .rosterSection,
 .rulesSection,
-.historySection,
 .chatSection {
   background: rgba(9, 13, 24, 0.78);
   border: 1px solid rgba(148, 163, 184, 0.22);
@@ -509,12 +492,6 @@
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
-.rulesText {
-  margin: 0;
-  line-height: 1.7;
-  color: rgba(226, 232, 240, 0.88);
-}
-
 .rulesCode {
   margin: 0;
   padding: 18px;
@@ -529,18 +506,44 @@
   color: rgba(226, 232, 240, 0.92);
 }
 
-.historyLog {
+.rulesList {
+  list-style: none;
   margin: 0;
-  padding: 18px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.72);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  font-size: 13px;
-  line-height: 1.65;
-  color: rgba(226, 232, 240, 0.9);
-  white-space: pre-wrap;
-  max-height: 240px;
-  overflow-y: auto;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.rulesItem {
+  border-radius: 18px;
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  background: rgba(15, 23, 42, 0.68);
+  padding: 18px 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.rulesItemLabel {
+  font-weight: 700;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.rulesItemDescription {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.rulesTextBlock {
+  display: grid;
+  gap: 10px;
+}
+
+.rulesText {
+  margin: 0;
+  line-height: 1.7;
+  color: rgba(226, 232, 240, 0.88);
 }
 
 .chatForm {
