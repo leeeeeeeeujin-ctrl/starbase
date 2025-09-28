@@ -33,7 +33,7 @@ async function fetchParticipantsWithHeroes(gameId) {
       supabase
         .from(table)
         .select(
-          'id, name, image_url, description, owner_id, ability1, ability2, ability3, ability4'
+          'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4'
         )
         .in('id', heroIds)
   )
@@ -57,7 +57,7 @@ async function resolveStoredHero() {
     supabase
       .from(table)
       .select(
-        'id, name, image_url, description, owner_id, ability1, ability2, ability3, ability4'
+        'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4'
       )
       .eq('id', heroId)
       .maybeSingle()
