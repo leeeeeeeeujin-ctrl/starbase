@@ -298,6 +298,58 @@ with check (exists (
   where g.id = rank_game_roles.game_id and g.owner_id = auth.uid()
 ));
 
+create table if not exists public.rank_game_tags (
+  id uuid primary key default gen_random_uuid(),
+  game_id uuid not null references public.rank_games(id) on delete cascade,
+  tag text not null,
+  created_at timestamptz not null default now(),
+  unique (game_id, tag)
+);
+
+alter table public.rank_game_tags enable row level security;
+
+create policy if not exists rank_game_tags_select
+on public.rank_game_tags for select using (true);
+
+create policy if not exists rank_game_tags_mutate
+on public.rank_game_tags for all
+using (exists (
+  select 1 from public.rank_games g
+  where g.id = rank_game_tags.game_id and g.owner_id = auth.uid()
+))
+with check (exists (
+  select 1 from public.rank_games g
+  where g.id = rank_game_tags.game_id and g.owner_id = auth.uid()
+));
+
+create table if not exists public.rank_game_seasons (
+  id uuid primary key default gen_random_uuid(),
+  game_id uuid not null references public.rank_games(id) on delete cascade,
+  name text not null,
+  status text not null default 'active',
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  leaderboard jsonb default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.rank_game_seasons enable row level security;
+
+create policy if not exists rank_game_seasons_select
+on public.rank_game_seasons for select using (true);
+
+create policy if not exists rank_game_seasons_mutate
+on public.rank_game_seasons for all
+using (exists (
+  select 1 from public.rank_games g
+  where g.id = rank_game_seasons.game_id and g.owner_id = auth.uid()
+))
+with check (exists (
+  select 1 from public.rank_games g
+  where g.id = rank_game_seasons.game_id and g.owner_id = auth.uid()
+));
+
 create table if not exists public.rank_game_slots (
   id uuid primary key default gen_random_uuid(),
   game_id uuid not null references public.rank_games(id) on delete cascade,

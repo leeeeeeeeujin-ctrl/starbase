@@ -4,7 +4,6 @@ import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import ChatOverlay from '@/components/social/ChatOverlay'
-import FriendOverlay from '@/components/social/FriendOverlay'
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 import { useHeroSocial } from '@/hooks/social/useHeroSocial'
 import { fetchHeroById } from '@/services/heroes'
@@ -359,7 +358,6 @@ export default function SharedHeroOverlay() {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchSort, setSearchSort] = useState('latest')
   const [chatOpen, setChatOpen] = useState(false)
-  const [friendOpen, setFriendOpen] = useState(false)
   const [chatUnread, setChatUnread] = useState(0)
   const [blockedHeroes, setBlockedHeroes] = useState()
 
@@ -409,16 +407,9 @@ export default function SharedHeroOverlay() {
   }, [router.pathname])
 
   const {
-    viewer: socialViewer,
     friends: socialFriends = [],
-    friendRequests: socialFriendRequests = { incoming: [], outgoing: [] },
-    loading: socialLoading,
-    error: socialError,
     addFriend,
     removeFriend,
-    acceptFriendRequest,
-    declineFriendRequest,
-    cancelFriendRequest,
     friendByHero: socialFriendByHero,
   } = useHeroSocial({
     heroId: currentHeroId,
@@ -452,14 +443,6 @@ export default function SharedHeroOverlay() {
     }
     return Array.from(entries.values())
   }, [currentHeroId, socialFriends])
-
-  const friendRequestsData = useMemo(() => {
-    const incoming = socialFriendRequests?.incoming || []
-    const outgoing = socialFriendRequests?.outgoing || []
-    return { incoming, outgoing }
-  }, [socialFriendRequests])
-
-  const pendingFriendCount = friendRequestsData.incoming.length
 
   const activeBgmUrl = currentHero?.bgm_url || null
 
@@ -564,19 +547,6 @@ export default function SharedHeroOverlay() {
     setBlockedHeroes([...list])
   }, [])
 
-  const handleToggleBlockedHero = useCallback((heroId) => {
-    if (!heroId) {
-      return { ok: false, error: '대상 캐릭터를 찾을 수 없습니다.' }
-    }
-    setBlockedHeroes((prev) => {
-      const base = Array.isArray(prev) ? prev : []
-      if (base.includes(heroId)) {
-        return base.filter((id) => id !== heroId)
-      }
-      return [...base, heroId]
-    })
-    return { ok: true }
-  }, [])
 
   const handleOpenLobby = useCallback(() => {
     if (currentHeroId) {
@@ -612,21 +582,10 @@ export default function SharedHeroOverlay() {
     [friendByHeroMap, removeFriend],
   )
 
-  const handleOpenWhisper = useCallback((heroId) => {
-    if (!heroId) return
-    setChatOpen(true)
-    setTimeout(() => {
-      chatOverlayRef.current?.openThread?.(heroId)
-    }, 0)
-  }, [])
 
   const handleCloseChat = useCallback(() => {
     setChatOpen(false)
     chatOverlayRef.current?.resetThread?.()
-  }, [])
-
-  const handleCloseFriend = useCallback(() => {
-    setFriendOpen(false)
   }, [])
 
   const isFriend = useCallback((heroMeta) => {
@@ -819,8 +778,6 @@ export default function SharedHeroOverlay() {
     return null
   }
 
-  const blockedList = Array.isArray(blockedHeroes) ? blockedHeroes : []
-
   return (
     <>
       <div style={styles.container}>
@@ -891,12 +848,6 @@ export default function SharedHeroOverlay() {
                         <span style={styles.actionBadge}>{Math.min(chatUnread, 99)}</span>
                       ) : null}
                     </button>
-                    <button type="button" style={styles.actionButton} onClick={() => setFriendOpen(true)}>
-                      친구
-                      {pendingFriendCount > 0 ? (
-                        <span style={styles.actionBadge}>{Math.min(pendingFriendCount, 99)}</span>
-                      ) : null}
-                    </button>
                     <button type="button" style={styles.rosterButton} onClick={() => router.push('/roster')}>
                       로스터로
                     </button>
@@ -930,23 +881,6 @@ export default function SharedHeroOverlay() {
         isFriend={isFriend}
       />
 
-      <FriendOverlay
-        open={friendOpen}
-        onClose={handleCloseFriend}
-        viewer={socialViewer}
-        friends={socialFriends}
-        friendRequests={friendRequestsData}
-        loading={socialLoading}
-        error={socialError}
-        onAddFriend={addFriend}
-        onRemoveFriend={removeFriend}
-        onAcceptRequest={acceptFriendRequest}
-        onDeclineRequest={declineFriendRequest}
-        onCancelRequest={cancelFriendRequest}
-        onOpenWhisper={handleOpenWhisper}
-        blockedHeroes={blockedList}
-        onToggleBlockedHero={handleToggleBlockedHero}
-      />
     </>
   )
 }

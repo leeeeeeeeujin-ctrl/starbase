@@ -6,9 +6,8 @@ export const NAV_LINKS = [
 ]
 
 export const LOBBY_TABS = [
-  { key: 'chat', label: '공용 채팅' },
-  { key: 'games', label: '게임 찾기' },
-  { key: 'alerts', label: '알림' },
+  { key: 'games', label: '게임 검색' },
+  { key: 'stats', label: '캐릭터 통계' },
 ]
 
 export const SORT_OPTIONS = [
