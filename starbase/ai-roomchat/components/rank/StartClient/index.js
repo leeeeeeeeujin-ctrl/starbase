@@ -1,13 +1,75 @@
+'use client'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
-import SharedChatDock from '../../common/SharedChatDock'
 import HeaderControls from './HeaderControls'
 import LogsPanel from './LogsPanel'
 import ManualResponsePanel from './ManualResponsePanel'
-import RosterPanel from './RosterPanel'
 import StatusBanner from './StatusBanner'
 import TurnInfoPanel from './TurnInfoPanel'
 import { useStartClientEngine } from './useStartClientEngine'
+import styles from './StartClient.module.css'
+
+function buildBackgroundStyle(urls) {
+  if (!Array.isArray(urls) || urls.length === 0) {
+    return { backgroundColor: '#0f172a' }
+  }
+
+  const safeUrls = urls.map((url) => `url(${url})`)
+  if (safeUrls.length === 1) {
+    return {
+      backgroundImage: safeUrls[0],
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+    }
+  }
+
+  const count = safeUrls.length
+  const size = safeUrls.map(() => `${(100 / count).toFixed(2)}% 100%`).join(', ')
+  const position = safeUrls
+    .map((_, index) => {
+      if (count === 1) return '50% 50%'
+      const x = Math.round((index / (count - 1)) * 100)
+      return `${x}% 50%`
+    })
+    .join(', ')
+
+  return {
+    backgroundImage: safeUrls.join(', '),
+    backgroundSize: size,
+    backgroundPosition: position,
+    backgroundRepeat: 'no-repeat',
+  }
+}
+
+function ParticipantTile({ participant }) {
+  if (!participant) {
+    return null
+  }
+
+  const hero = participant.hero || {}
+  const image = hero.image_url
+  const name = hero.name || '이름 없음'
+  const role = participant.role || '미지정'
+  const status = participant.status || '대기'
+
+  return (
+    <li className={styles.rosterCard}>
+      {image ? (
+        <img className={styles.rosterAvatar} src={image} alt={name} />
+      ) : (
+        <div className={styles.rosterAvatarPlaceholder} />
+      )}
+      <div className={styles.rosterMeta}>
+        <span className={styles.rosterName}>{name}</span>
+        <span className={styles.rosterRole}>{role}</span>
+        <span className={styles.rosterStatus}>{status}</span>
+      </div>
+    </li>
+  )
+}
 
 export default function StartClient({ gameId: overrideGameId, onExit }) {
   const router = useRouter()
@@ -25,6 +87,8 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     activeLocal,
     statusMessage,
     logs,
+    aiMemory,
+    playerHistories,
     apiKey,
     setApiKey,
     apiVersion,
@@ -35,7 +99,125 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     handleStart,
     advanceWithAi,
     advanceWithManual,
+    turnTimerSeconds,
+    timeRemaining,
+    currentActor,
+    canSubmitAction,
+    activeBackdropUrls,
+    activeBgmUrl,
   } = useStartClientEngine(resolvedGameId)
+
+  const [timeoutNotice, setTimeoutNotice] = useState('')
+  const autoStartedRef = useRef(false)
+  const timeoutTrackerRef = useRef({ lastProcessed: null, misses: 0 })
+  const autoAdvanceRemainingRef = useRef(0)
+  const autoAdvanceRunningRef = useRef(false)
+
+  const backgroundUrls = useMemo(() => {
+    if (activeBackdropUrls && activeBackdropUrls.length) return activeBackdropUrls
+    if (game?.image_url) return [game.image_url]
+    return []
+  }, [activeBackdropUrls, game?.image_url])
+
+  const rootStyle = useMemo(() => buildBackgroundStyle(backgroundUrls), [backgroundUrls])
+  const audioRef = useRef(null)
+
+  const splitParticipants = useMemo(() => {
+    const left = []
+    const right = []
+    participants.forEach((participant, index) => {
+      if (index % 2 === 0) {
+        left.push(participant)
+      } else {
+        right.push(participant)
+      }
+    })
+    return { left, right }
+  }, [participants])
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    if (!activeBgmUrl) return
+
+    const element = new Audio(activeBgmUrl)
+    element.loop = true
+    element.volume = 0.6
+    element.play().catch(() => {})
+    audioRef.current = element
+
+    return () => {
+      element.pause()
+      audioRef.current = null
+    }
+  }, [activeBgmUrl])
+
+  useEffect(() => {
+    if (preflight) {
+      timeoutTrackerRef.current = { lastProcessed: null, misses: 0 }
+      autoAdvanceRemainingRef.current = 0
+      autoAdvanceRunningRef.current = false
+      setTimeoutNotice('')
+      autoStartedRef.current = false
+    }
+  }, [preflight])
+
+  useEffect(() => {
+    if (loading || !preflight || autoStartedRef.current || !game) {
+      return
+    }
+    autoStartedRef.current = true
+    handleStart()
+  }, [loading, preflight, game, handleStart])
+
+  useEffect(() => {
+    if (preflight) return
+    if (turn == null || timeRemaining == null) return
+
+    if (timeRemaining > 0) {
+      if (timeoutNotice) {
+        setTimeoutNotice('')
+      }
+      return
+    }
+
+    if (timeoutTrackerRef.current.lastProcessed === turn) {
+      return
+    }
+
+    timeoutTrackerRef.current.lastProcessed = turn
+    timeoutTrackerRef.current.misses += 1
+
+    if (timeoutTrackerRef.current.misses === 1) {
+      setTimeoutNotice('시간 제한을 초과했습니다. 다음 턴부터 서둘러 주세요!')
+      return
+    }
+
+    setTimeoutNotice('시간 초과가 반복돼 다음 두 턴은 자동으로 진행됩니다.')
+    timeoutTrackerRef.current.misses = 0
+    autoAdvanceRemainingRef.current = 2
+    if (!autoAdvanceRunningRef.current) {
+      autoAdvanceRunningRef.current = true
+      Promise.resolve(advanceWithAi()).finally(() => {
+        autoAdvanceRunningRef.current = false
+      })
+    }
+  }, [preflight, turn, timeRemaining, advanceWithAi, timeoutNotice])
+
+  useEffect(() => {
+    if (preflight) return
+    if (autoAdvanceRemainingRef.current <= 0) return
+    if (!canSubmitAction) return
+    if (autoAdvanceRunningRef.current) return
+
+    autoAdvanceRunningRef.current = true
+    Promise.resolve(advanceWithAi()).finally(() => {
+      autoAdvanceRemainingRef.current = Math.max(0, autoAdvanceRemainingRef.current - 1)
+      autoAdvanceRunningRef.current = false
+    })
+  }, [preflight, canSubmitAction, advanceWithAi])
 
   if (!resolvedGameId) {
     return <div style={{ padding: 16 }}>게임 정보가 없습니다.</div>
@@ -62,68 +244,97 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
   }
 
   return (
-    <div
-      style={{
-        maxWidth: 1200,
-        margin: '16px auto 80px',
-        padding: 12,
-        display: 'grid',
-        gap: 16,
-      }}
-    >
-      <HeaderControls
-        onBack={handleBack}
-        title={game?.name}
-        description={game?.description}
-        preflight={preflight}
-        onStart={handleStart}
-        onAdvance={advanceWithAi}
-        isAdvancing={isAdvancing}
-      />
+    <div className={styles.root} style={rootStyle}>
+      <div className={styles.content}>
+        <HeaderControls
+          onBack={handleBack}
+          title={game?.name}
+          description={game?.description}
+          preflight={preflight}
+          onStart={handleStart}
+          onAdvance={advanceWithAi}
+          isAdvancing={isAdvancing}
+          canAdvance={canSubmitAction}
+        />
 
-      <StatusBanner message={statusMessage} />
+        <StatusBanner message={statusMessage} />
+        {timeoutNotice ? <div className={styles.timeoutNotice}>{timeoutNotice}</div> : null}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(220px, 1fr) minmax(420px, 2fr)',
-          gap: 16,
-        }}
-      >
-        <RosterPanel participants={participants} />
+        <div className={styles.mainLayout}>
+          <aside className={styles.rosterColumn}>
+            <h2 className={styles.rosterTitle}>왼쪽 슬롯</h2>
+            <ul className={styles.rosterList}>
+              {splitParticipants.left.length ? (
+                splitParticipants.left.map((participant) => (
+                  <ParticipantTile
+                    key={participant.id || participant.hero_id}
+                    participant={participant}
+                  />
+                ))
+              ) : (
+                <li className={styles.rosterEmpty}>참여자가 없습니다.</li>
+              )}
+            </ul>
+          </aside>
 
-        <div style={{ display: 'grid', gap: 16 }}>
-          <TurnInfoPanel
-            turn={turn}
-            currentNode={currentNode}
-            activeGlobal={activeGlobal}
-            activeLocal={activeLocal}
-            apiKey={apiKey}
-            onApiKeyChange={setApiKey}
-            apiVersion={apiVersion}
-            onApiVersionChange={setApiVersion}
-            realtimeLockNotice={
-              game?.realtime_match
-                ? '실시간 매칭 중에는 세션을 시작한 뒤 API 버전을 변경할 수 없습니다.'
-                : ''
-            }
-          />
+          <main className={styles.playColumn}>
+            <TurnInfoPanel
+              turn={turn}
+              currentNode={currentNode}
+              activeGlobal={activeGlobal}
+              activeLocal={activeLocal}
+              apiKey={apiKey}
+              onApiKeyChange={setApiKey}
+              apiVersion={apiVersion}
+              onApiVersionChange={setApiVersion}
+              realtimeLockNotice={
+                game?.realtime_match
+                  ? '실시간 매칭 중에는 세션을 시작한 뒤 API 버전을 변경할 수 없습니다.'
+                  : ''
+              }
+              currentActor={currentActor}
+              timeRemaining={timeRemaining}
+              turnTimerSeconds={turnTimerSeconds}
+            />
 
-          <ManualResponsePanel
-            manualResponse={manualResponse}
-            onChange={setManualResponse}
-            onManualAdvance={advanceWithManual}
-            onAiAdvance={advanceWithAi}
-            isAdvancing={isAdvancing}
-          />
+            <div className={styles.playStack}>
+              <ManualResponsePanel
+                manualResponse={manualResponse}
+                onChange={setManualResponse}
+                onManualAdvance={advanceWithManual}
+                onAiAdvance={advanceWithAi}
+                isAdvancing={isAdvancing}
+                disabled={!canSubmitAction}
+                disabledReason={
+                  canSubmitAction ? '' : '현재 차례의 플레이어만 응답을 제출할 수 있습니다.'
+                }
+                timeRemaining={timeRemaining}
+                turnTimerSeconds={turnTimerSeconds}
+              />
 
-          <LogsPanel logs={logs} />
+              <LogsPanel logs={logs} aiMemory={aiMemory} playerHistories={playerHistories} />
+            </div>
+          </main>
+
+          <aside className={styles.rosterColumn}>
+            <h2 className={styles.rosterTitle}>오른쪽 슬롯</h2>
+            <ul className={styles.rosterList}>
+              {splitParticipants.right.length ? (
+                splitParticipants.right.map((participant) => (
+                  <ParticipantTile
+                    key={participant.id || participant.hero_id}
+                    participant={participant}
+                  />
+                ))
+              ) : (
+                <li className={styles.rosterEmpty}>참여자가 없습니다.</li>
+              )}
+            </ul>
+          </aside>
         </div>
       </div>
-
-      <SharedChatDock height={260} />
     </div>
   )
 }
 
-// Start client entry point that orchestrates the in-battle panels and shared chat dock.
+// Start client entry point that orchestrates the in-battle panels.
