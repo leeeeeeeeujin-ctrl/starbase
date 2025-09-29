@@ -11,7 +11,6 @@ import React, {
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 
-import { SORT_OPTIONS } from '@/components/lobby/constants'
 import useGameBrowser from '@/components/lobby/hooks/useGameBrowser'
 
 import EditHeroModal from './sections/EditHeroModal'
@@ -814,6 +813,7 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
     roleChoice,
     setRoleChoice,
     roleSlots,
+    sortOptions,
   } = browser
 
   const handleSelectRole = useCallback(
@@ -850,7 +850,7 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
                 onChange={(event) => setGameSort(event.target.value)}
                 style={styles.gameSortSelect}
               >
-                {SORT_OPTIONS.map((option) => (
+                {sortOptions.map((option) => (
                   <option key={option.key} value={option.key}>
                     {option.label}
                   </option>

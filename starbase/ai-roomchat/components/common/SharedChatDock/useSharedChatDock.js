@@ -427,6 +427,21 @@ function useSharedChatDockInternal({
     persistBlockedHeroes(blockedHeroes)
   }, [blockedHeroes])
 
+  const setActiveThread = useCallback(
+    (thread) => {
+      const normalized = thread || 'global'
+      setActiveThreadState(normalized)
+      if (normalized === 'global') {
+        setScopeInternal('global')
+        setWhisperTargetInternal(null)
+      } else {
+        setScopeInternal('whisper')
+        setWhisperTargetInternal(normalized)
+      }
+    },
+    [setActiveThreadState, setScopeInternal, setWhisperTargetInternal],
+  )
+
   useEffect(() => {
     setActiveThread('global')
     setUnreadThreads({})
@@ -569,21 +584,6 @@ function useSharedChatDockInternal({
       unsubscribe()
     }
   }, [fetchAndHydrateMessages, heroId, hydrateSingle, viewerHero, hintProfile, replaceMessages, scrollToBottom, onNotify])
-
-  const setActiveThread = useCallback(
-    (thread) => {
-      const normalized = thread || 'global'
-      setActiveThreadState(normalized)
-      if (normalized === 'global') {
-        setScopeInternal('global')
-        setWhisperTargetInternal(null)
-      } else {
-        setScopeInternal('whisper')
-        setWhisperTargetInternal(normalized)
-      }
-    },
-    [],
-  )
 
   const handleSetScope = useCallback(
     (nextScope) => {
