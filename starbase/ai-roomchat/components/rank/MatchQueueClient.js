@@ -158,6 +158,7 @@ export default function MatchQueueClient({
   description,
   emptyHint,
   autoJoin = false,
+  showManualControls = true,
 }) {
   const router = useRouter()
   const [selectedRole, setSelectedRole] = useState('')
@@ -461,7 +462,7 @@ export default function MatchQueueClient({
               대기열 나가고 메인 룸으로 돌아가기
             </button>
           </div>
-        ) : (
+        ) : showManualControls ? (
           <>
             {state.lockedRole ? (
               <div className={styles.lockedRole}>
@@ -510,7 +511,7 @@ export default function MatchQueueClient({
               </button>
             </div>
           </>
-        )}
+        ) : null}
 
         {state.error || autoJoinError ? (
           <p className={styles.errorText}>{state.error || autoJoinError}</p>
