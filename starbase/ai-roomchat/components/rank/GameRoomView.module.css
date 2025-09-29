@@ -316,6 +316,34 @@
   gap: 10px;
 }
 
+.matchingLinkRow {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.matchingLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.6);
+  color: rgba(226, 232, 240, 0.86);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.matchingLink:hover,
+.matchingLink:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.22);
+}
+
 .primaryButton {
   flex: 1 1 200px;
   border: none;
