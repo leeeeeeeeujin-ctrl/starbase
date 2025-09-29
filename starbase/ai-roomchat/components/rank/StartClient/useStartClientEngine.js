@@ -1,3 +1,5 @@
+'use client'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
@@ -9,7 +11,68 @@ import {
 import { createAiHistory } from '../../../lib/history'
 import { loadGameBundle } from './engine/loadGameBundle'
 import { pickNextEdge } from './engine/graph'
-import { buildSystemMessage } from './engine/systemPrompt'
+import { buildSystemMessage, parseRules } from './engine/systemPrompt'
+
+function resolveActorContext({ node, slots, participants }) {
+  if (!node) {
+    return { slotIndex: -1, heroSlot: null, participant: null }
+  }
+
+  const visibleSlots = Array.isArray(node?.options?.visible_slots)
+    ? node.options.visible_slots
+    : []
+
+  const normalizedVisible = visibleSlots
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .map((value) => value - 1)
+
+  let slotIndex = -1
+  const rawSlotNo = Number(node?.slot_no)
+  if (Number.isFinite(rawSlotNo) && rawSlotNo > 0) {
+    slotIndex = rawSlotNo - 1
+  }
+  if (slotIndex < 0 && normalizedVisible.length > 0) {
+    slotIndex = normalizedVisible[0]
+  }
+  if (slotIndex < 0 && slots.length > 0) {
+    slotIndex = 0
+  }
+
+  const heroSlot = slotIndex >= 0 && slotIndex < slots.length ? slots[slotIndex] : null
+  const participant =
+    slotIndex >= 0 && slotIndex < participants.length ? participants[slotIndex] : null
+
+  return { slotIndex, heroSlot, participant }
+}
+
+function buildUserActionPersona({ heroSlot, participant }) {
+  const name = heroSlot?.name || participant?.hero?.name || '플레이어 캐릭터'
+  const role = participant?.role || heroSlot?.role || ''
+  const description = heroSlot?.description || participant?.hero?.description || ''
+
+  const abilities = []
+  for (let index = 1; index <= 4; index += 1) {
+    const ability = heroSlot?.[`ability${index}`] || participant?.hero?.[`ability${index}`]
+    if (ability) abilities.push(ability)
+  }
+
+  const header = role ? `${name} (${role})` : name
+
+  const systemLines = [
+    `${header}의 1인칭 시점으로 대사와 행동을 작성하세요.`,
+    description ? `캐릭터 설명: ${description}` : null,
+    abilities.length ? `주요 능력: ${abilities.join(', ')}` : null,
+    '상황을 충분히 묘사하고 캐릭터의 말투를 유지하세요.',
+  ].filter(Boolean)
+
+  const promptIntro = `상황을 참고해 ${header}가 어떤 행동을 취할지 서술하세요.`
+
+  return {
+    system: systemLines.join('\n'),
+    prompt: promptIntro,
+  }
+}
 
 export function useStartClientEngine(gameId) {
   const history = useMemo(() => createAiHistory(), [])
@@ -26,10 +89,39 @@ export function useStartClientEngine(gameId) {
   const [activeLocal, setActiveLocal] = useState([])
   const [logs, setLogs] = useState([])
   const [statusMessage, setStatusMessage] = useState('')
-  const [apiKey, setApiKey] = useState('')
-  const [apiVersion, setApiVersion] = useState('chat_completions')
+  const [apiKey, setApiKeyState] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return window.sessionStorage.getItem('rank.start.apiKey') || ''
+  })
+  const [apiVersion, setApiVersionState] = useState(() => {
+    if (typeof window === 'undefined') return 'gemini'
+    return window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
+  })
   const [manualResponse, setManualResponse] = useState('')
   const [isAdvancing, setIsAdvancing] = useState(false)
+  const [winCount, setWinCount] = useState(0)
+
+  const setApiKey = useCallback((value) => {
+    setApiKeyState(value)
+    if (typeof window !== 'undefined') {
+      if (value) {
+        window.sessionStorage.setItem('rank.start.apiKey', value)
+      } else {
+        window.sessionStorage.removeItem('rank.start.apiKey')
+      }
+    }
+  }, [])
+
+  const setApiVersion = useCallback((value) => {
+    setApiVersionState(value)
+    if (typeof window !== 'undefined') {
+      if (value) {
+        window.sessionStorage.setItem('rank.start.apiVersion', value)
+      } else {
+        window.sessionStorage.removeItem('rank.start.apiVersion')
+      }
+    }
+  }, [])
 
   const visitedSlotIds = useRef(new Set())
   const apiVersionLock = useRef(null)
@@ -65,6 +157,16 @@ export function useStartClientEngine(gameId) {
   }, [gameId])
 
   const systemPrompt = useMemo(() => buildSystemMessage(game || {}), [game])
+  const parsedRules = useMemo(() => parseRules(game || {}), [game])
+  const brawlEnabled = parsedRules?.brawl_rule === 'allow-brawl'
+  const endConditionVariable = useMemo(() => {
+    const raw = parsedRules?.end_condition_variable
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim()
+      return trimmed || null
+    }
+    return null
+  }, [parsedRules])
   const slots = useMemo(() => buildSlotsFromParticipants(participants), [participants])
   const participantsStatus = useMemo(
     () =>
@@ -96,6 +198,7 @@ export function useStartClientEngine(gameId) {
     setPreflight(false)
     setTurn(1)
     setLogs([])
+    setWinCount(0)
     setActiveGlobal([])
     setActiveLocal([])
     setStatusMessage('게임이 시작되었습니다.')
@@ -142,6 +245,22 @@ export function useStartClientEngine(gameId) {
             ? overrideResponse.trim()
             : manualResponse.trim()
 
+        const slotType = node.slot_type || 'ai'
+        const isUserAction = slotType === 'user_action' || slotType === 'manual'
+
+        const actorContext = resolveActorContext({ node, slots, participants })
+
+        let effectiveSystemPrompt = systemPrompt
+        let effectivePrompt = promptText
+
+        if (!game?.realtime_match && isUserAction) {
+          const persona = buildUserActionPersona(actorContext)
+          effectiveSystemPrompt = [systemPrompt, persona.system]
+            .filter(Boolean)
+            .join('\n\n')
+          effectivePrompt = persona.prompt ? `${persona.prompt}\n\n${promptText}` : promptText
+        }
+
         if (!responseText) {
           if (apiKey) {
             if (game?.realtime_match) {
@@ -160,8 +279,8 @@ export function useStartClientEngine(gameId) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 apiKey,
-                system: systemPrompt,
-                prompt: promptText,
+                system: effectiveSystemPrompt,
+                prompt: effectivePrompt,
                 apiVersion,
               }),
             })
@@ -194,7 +313,7 @@ export function useStartClientEngine(gameId) {
 
         history.push({
           role: 'system',
-          content: `[PROMPT]\n${promptText}`,
+          content: `[PROMPT]\n${effectivePrompt}`,
           public: false,
         })
         history.push({ role: 'assistant', content: responseText, public: true })
@@ -245,23 +364,50 @@ export function useStartClientEngine(gameId) {
         }
 
         const action = chosenEdge.data?.action || 'continue'
+        const nextNodeId = chosenEdge.to != null ? String(chosenEdge.to) : null
+
+        const outcomeVariables = outcome.variables || []
+        const triggeredEnd = endConditionVariable
+          ? outcomeVariables.includes(endConditionVariable)
+          : false
+
         if (action === 'win') {
+          const upcomingWin = winCount + 1
+          if (brawlEnabled && !triggeredEnd) {
+            setWinCount((prev) => prev + 1)
+            setStatusMessage(`승리 ${upcomingWin}회 달성! 난입 허용 규칙으로 전투가 계속됩니다.`)
+          } else {
+            if (brawlEnabled) {
+              setWinCount(() => upcomingWin)
+            }
+            setCurrentNodeId(null)
+            const suffix = brawlEnabled
+              ? ` 누적 승리 ${upcomingWin}회를 기록했습니다.`
+              : ''
+            setStatusMessage(`승리 조건이 충족되었습니다!${suffix}`)
+            return
+          }
+        } else if (action === 'lose') {
           setCurrentNodeId(null)
-          setStatusMessage('승리 조건이 충족되었습니다!')
+          setStatusMessage(
+            brawlEnabled
+              ? '패배로 해당 역할군이 전장에서 추방되었습니다.'
+              : '패배 조건이 충족되었습니다.',
+          )
           return
-        }
-        if (action === 'lose') {
-          setCurrentNodeId(null)
-          setStatusMessage('패배 조건이 충족되었습니다.')
-          return
-        }
-        if (action === 'draw') {
+        } else if (action === 'draw') {
           setCurrentNodeId(null)
           setStatusMessage('무승부로 종료되었습니다.')
           return
         }
 
-        setCurrentNodeId(String(chosenEdge.to))
+        if (!nextNodeId) {
+          setCurrentNodeId(null)
+          setStatusMessage('다음에 진행할 노드를 찾을 수 없습니다.')
+          return
+        }
+
+        setCurrentNodeId(nextNodeId)
         setTurn((prev) => prev + 1)
       } catch (err) {
         console.error(err)
@@ -284,8 +430,12 @@ export function useStartClientEngine(gameId) {
       apiVersion,
       systemPrompt,
       turn,
+      participants,
       participantsStatus,
       game?.realtime_match,
+      brawlEnabled,
+      endConditionVariable,
+      winCount,
     ],
   )
 
@@ -325,5 +475,3 @@ export function useStartClientEngine(gameId) {
     advanceWithManual,
   }
 }
-
-//
