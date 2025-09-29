@@ -121,7 +121,16 @@
   padding: 24px 18px 32px;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 28px;
+}
+
+.mainSlide > *,
+.heroSlide > * {
+  width: 100%;
+  max-width: min(320px, 100%);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .mainSlide {
@@ -695,6 +704,10 @@
   display: flex;
   flex-direction: column;
   gap: 26px;
+  width: 100%;
+  max-width: min(320px, 100%);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .rankingHeader {
