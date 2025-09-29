@@ -62,13 +62,11 @@ export default function GameManagementDetail({
         const slot = roleSlots.get(role.name) || { capacity: role.slot_count ?? 1, occupied: 0 }
         const capacity = Number.isFinite(Number(slot.capacity)) ? Number(slot.capacity) : 0
         const occupied = slot.occupied ?? 0
-        const remaining = Math.max(0, capacity - occupied)
         const minimum = Math.max(0, capacity)
         return {
           ...role,
           capacity,
           occupied,
-          remaining,
           minimum,
         }
       }),
@@ -269,17 +267,14 @@ export default function GameManagementDetail({
         <span style={styles.roleLabel}>역할 선택</span>
         <div style={styles.roleGrid}>
           {roleSummaries.map((role) => {
-            const disabled = role.remaining <= 0
             const active = roleChoice === role.name
             return (
               <button
                 key={role.id || role.name}
                 onClick={() => onRoleChange(role.name)}
-                disabled={disabled}
                 style={{
                   ...styles.roleButton,
                   ...(active ? styles.roleButtonActive : styles.roleButtonInactive),
-                  ...(disabled ? styles.roleButtonDisabled : null),
                 }}
               >
                 <strong>{role.name}</strong>

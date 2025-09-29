@@ -47,13 +47,17 @@ export default function GameDetail({
     if (!hasGame || detailLoading) return
     if (viewerParticipant) return
     if (roleChoice) return
-    const fallbackRole = roles.find((role) => {
-      const slot = roleSlots.get(role.name)
-      if (!slot) return true
-      return slot.occupied < slot.capacity
-    }) || roles[0]
-    if (fallbackRole) {
-      onRoleChange(fallbackRole.name)
+
+    const fallbackRole = [...roles]
+      .map((role) => ({
+        role,
+        weight: roleSlots.get(role.name)?.occupied ?? 0,
+      }))
+      .sort((a, b) => a.weight - b.weight)[0]?.role
+
+    const roleToApply = fallbackRole || roles[0]
+    if (roleToApply) {
+      onRoleChange(roleToApply.name)
     }
   }, [hasGame, detailLoading, viewerParticipant, roleChoice, roles, roleSlots, onRoleChange])
 
@@ -65,23 +69,18 @@ export default function GameDetail({
         const slot = roleSlots.get(role.name) || { capacity: role.slot_count ?? 1, occupied: 0 }
         const capacity = Number.isFinite(Number(slot.capacity)) ? Number(slot.capacity) : 0
         const occupied = slot.occupied ?? 0
-        const remaining = Math.max(0, capacity - occupied)
         const minimum = Math.max(0, capacity)
         return {
           name: role.name,
           capacity,
           occupied,
-          remaining,
           minimum,
-          disabled: remaining <= 0,
         }
       }),
     [roles, roleSlots],
   )
 
-  const allSlotsFilled = roleSummaries.length > 0 && roleSummaries.every((role) => role.remaining === 0)
-
-  const joinDisabled = detailLoading || joinLoading || allSlotsFilled || !roleChoice
+  const joinDisabled = detailLoading || joinLoading || !roleChoice
 
   const handleJoin = async () => {
     if (!game || joinDisabled) return
@@ -133,21 +132,18 @@ export default function GameDetail({
             const buttonStyle = {
               ...styles.roleButton,
               ...(isActive ? styles.roleButtonActive : styles.roleButtonInactive),
-              ...(role.disabled ? styles.roleButtonDisabled : null),
             }
             return (
               <button
                 key={role.name}
                 type="button"
                 style={buttonStyle}
-                onClick={() => !role.disabled && onRoleChange(role.name)}
-                disabled={role.disabled}
+                onClick={() => onRoleChange(role.name)}
               >
                 <span>{role.name}</span>
                 <span style={styles.roleSlotMeta}>
                   최소 {role.minimum}명 필요 · 현재 {role.occupied}명 참가
                 </span>
-                {role.disabled ? <span style={styles.roleBadgeFull}>모집 완료</span> : null}
               </button>
             )
           })}
@@ -166,9 +162,6 @@ export default function GameDetail({
         >
           {joinLoading ? '참여 처리 중…' : '참여하기'}
         </button>
-        {allSlotsFilled ? (
-          <p style={styles.joinNotice}>모든 슬롯이 가득 찼습니다. 빈자리가 생길 때까지 기다려주세요.</p>
-        ) : null}
       </div>
 
       <div style={styles.participantSection}>
