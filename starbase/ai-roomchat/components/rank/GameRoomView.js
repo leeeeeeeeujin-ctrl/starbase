@@ -277,7 +277,10 @@ export default function GameRoomView({
   const [joinLoading, setJoinLoading] = useState(false)
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
   const [activeSlide, setActiveSlide] = useState(0)
+  const [pendingSlide, setPendingSlide] = useState(null)
+  const [pageLoading, setPageLoading] = useState(false)
   const touchStartRef = useRef(null)
+  const loadingTimerRef = useRef(null)
 
   const normalizedRoles = useMemo(() => {
     if (!Array.isArray(roles)) return []
@@ -421,11 +424,38 @@ export default function GameRoomView({
   const updatedAt = formatDate(game?.updated_at)
 
   const goToSlide = (index) => {
-    setActiveSlide(Math.max(0, Math.min(SLIDES.length - 1, index)))
+    if (pageLoading) return
+    const clamped = Math.max(0, Math.min(SLIDES.length - 1, index))
+    if (clamped === activeSlide) return
+    setPendingSlide(clamped)
+    setPageLoading(true)
   }
 
   const goNext = () => goToSlide(activeSlide + 1)
   const goPrev = () => goToSlide(activeSlide - 1)
+
+  useEffect(() => {
+    if (!pageLoading || pendingSlide === null) return
+
+    loadingTimerRef.current = setTimeout(() => {
+      setActiveSlide(pendingSlide)
+      setPendingSlide(null)
+      setPageLoading(false)
+    }, 180)
+
+    return () => {
+      if (loadingTimerRef.current) {
+        clearTimeout(loadingTimerRef.current)
+        loadingTimerRef.current = null
+      }
+    }
+  }, [pageLoading, pendingSlide])
+
+  useEffect(() => () => {
+    if (loadingTimerRef.current) {
+      clearTimeout(loadingTimerRef.current)
+    }
+  }, [])
 
   const handleTouchStart = (event) => {
     if (event.touches?.length !== 1) return
@@ -437,6 +467,10 @@ export default function GameRoomView({
     if (event.touches?.length !== 1) return
     const delta = event.touches[0].clientX - touchStartRef.current
     if (Math.abs(delta) < 48) return
+    if (pageLoading) {
+      touchStartRef.current = null
+      return
+    }
     if (delta < 0) {
       goNext()
     } else {
@@ -509,12 +543,20 @@ export default function GameRoomView({
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
+          aria-busy={pageLoading}
         >
+          {pageLoading && (
+            <div className={styles.pageLoading} role="status" aria-live="polite">
+              <span className={styles.pageLoadingSpinner} aria-hidden />
+              <span className={styles.pageLoadingText}>다음 화면을 불러오는 중…</span>
+            </div>
+          )}
           <div
             className={styles.track}
             style={{
               width: `${SLIDES.length * 100}%`,
               transform: `translateX(-${(activeSlide * 100) / SLIDES.length}%)`,
+              transitionDuration: pageLoading ? '0s' : undefined,
             }}
           >
             <section className={`${styles.slide} ${styles.mainSlide}`}>
