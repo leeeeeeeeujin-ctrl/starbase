@@ -7,11 +7,9 @@ import TabBar from '../components/lobby/TabBar'
 import GameSearchPanel from '../components/lobby/GameSearchPanel'
 import MyGamesPanel from '../components/lobby/MyGamesPanel'
 import CharacterStatsPanel from '../components/lobby/CharacterStatsPanel'
-import RoomBrowserPanel from '../components/lobby/RoomBrowser'
 import useGameBrowser from '../components/lobby/hooks/useGameBrowser'
 import { LOBBY_TABS, NAV_LINKS } from '../components/lobby/constants'
 import useLobbyStats from '../components/lobby/hooks/useLobbyStats'
-import useRoomLobby from '../components/lobby/hooks/useRoomLobby'
 
 export default function Lobby() {
   const router = useRouter()
@@ -42,19 +40,14 @@ export default function Lobby() {
   const gameBrowser = useGameBrowser({ enabled: activeTab === 'games', mode: 'public' })
   const myGamesBrowser = useGameBrowser({ enabled: activeTab === 'my-games', mode: 'owned' })
   const stats = useLobbyStats({ heroId, enabled: activeTab === 'stats' })
-  const roomLobby = useRoomLobby({ enabled: activeTab === 'rooms' })
-
   useEffect(() => {
-    const { tab, mode: queryMode } = router.query || {}
+    const { tab } = router.query || {}
     if (typeof tab === 'string') {
-      if (tab === 'rooms' || tab === 'games' || tab === 'my-games' || tab === 'stats') {
+      if (tab === 'games' || tab === 'my-games' || tab === 'stats') {
         setActiveTab(tab)
       }
     }
-    if (typeof queryMode === 'string' && activeTab === 'rooms') {
-      roomLobby.setMode(queryMode)
-    }
-  }, [router.query?.tab, router.query?.mode, activeTab, roomLobby.setMode])
+  }, [router.query?.tab])
 
   const handleBack = useCallback(() => {
     if (returnHeroId) {
@@ -72,18 +65,6 @@ export default function Lobby() {
     },
     [router],
   )
-
-  const handleStartRoom = useCallback(async () => {
-    const result = await roomLobby.startRoom()
-    if (!result?.ok) {
-      if (result?.error) alert(result.error)
-      return
-    }
-    const room = result.room
-    if (!room?.gameId) return
-    const params = new URLSearchParams({ room: room.id })
-    router.push(`/rank/${room.gameId}?${params.toString()}`)
-  }, [roomLobby, router])
 
   return (
     <LobbyLayout
@@ -112,37 +93,6 @@ export default function Lobby() {
           viewerParticipant={gameBrowser.viewerParticipant}
           onJoinGame={gameBrowser.joinSelectedGame}
           joinLoading={gameBrowser.joinLoading}
-        />
-      )}
-
-      {activeTab === 'rooms' && (
-        <RoomBrowserPanel
-          mode={roomLobby.mode}
-          setMode={roomLobby.setMode}
-          rooms={roomLobby.rooms}
-          roomLoading={roomLobby.roomLoading}
-          roomError={roomLobby.error}
-          selectedRoom={roomLobby.selectedRoom}
-          selectRoom={roomLobby.selectRoomById}
-          slots={roomLobby.slots}
-          viewerId={roomLobby.viewerId}
-          viewerSlot={roomLobby.viewerSlot}
-          hostInactive={roomLobby.hostInactive}
-          availableGames={roomLobby.availableGames}
-          createRoom={roomLobby.createRoom}
-          loadRoleOptions={roomLobby.loadRoleOptions}
-          joinSlot={roomLobby.joinSlot}
-          leaveSlot={roomLobby.leaveSlot}
-          toggleReady={roomLobby.toggleReady}
-          kickSlot={roomLobby.kickSlot}
-          startRoom={handleStartRoom}
-          claimHost={roomLobby.claimHost}
-          joinByCode={roomLobby.joinByCode}
-          createLoading={roomLobby.createLoading}
-          joinLoading={roomLobby.joinLoading}
-          readyLoading={roomLobby.readyLoading}
-          startLoading={roomLobby.startLoading}
-          joinCodeLoading={roomLobby.joinCodeLoading}
         />
       )}
 

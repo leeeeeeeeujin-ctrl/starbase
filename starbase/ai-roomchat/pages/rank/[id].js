@@ -108,8 +108,8 @@ export default function GameRoomPage() {
     if (config.mode === MATCH_MODE_KEYS.RANK_DUO) {
       const action = config.duoOption || 'search'
       router.push({
-        pathname: '/lobby',
-        query: { tab: 'rooms', mode: MATCH_MODE_KEYS.RANK_DUO, action, game: id },
+        pathname: `/rank/${id}/duo`,
+        query: { action },
       })
       return
     }

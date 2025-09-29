@@ -14,11 +14,6 @@ const API_VERSION_OPTIONS = [
 
 const DUO_JOIN_OPTIONS = [
   {
-    value: 'code',
-    title: '방 코드로 합류',
-    description: '친구가 공유한 6자리 방 코드를 입력해 같은 팀으로 빠르게 합류합니다.',
-  },
-  {
     value: 'search',
     title: '방 검색',
     description: '현재 열린 듀오 방을 찾아 팀 평균 점수와 역할 구성을 확인한 뒤 들어갑니다.',
@@ -27,6 +22,11 @@ const DUO_JOIN_OPTIONS = [
     value: 'create',
     title: '방 만들기',
     description: '팀 평균 점수와 필요한 역할을 입력해 새 방을 개설합니다. 200점 이내의 팀만 참가할 수 있습니다.',
+  },
+  {
+    value: 'code',
+    title: '방 코드로 합류',
+    description: '친구가 공유한 6자리 방 코드를 입력해 같은 팀으로 빠르게 합류합니다.',
   },
 ]
 
@@ -64,7 +64,7 @@ function resolveInitialState(initialConfig) {
   const resolvedMode = normaliseMode(initialConfig?.mode)
   return {
     mode: resolvedMode,
-    duoOption: getInitialValue(initialConfig?.duoOption, 'code'),
+    duoOption: getInitialValue(initialConfig?.duoOption, 'search'),
     casualOption: initialCasualOption(resolvedMode, initialConfig?.casualOption),
     apiVersion: getInitialValue(initialConfig?.apiVersion, 'gemini'),
     apiKey: getInitialValue(initialConfig?.apiKey, ''),
