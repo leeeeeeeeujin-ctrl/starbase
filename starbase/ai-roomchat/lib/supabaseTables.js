@@ -8,6 +8,10 @@ const FALLBACK_TABLES = {
   rank_battles: ['rank_battles', 'rank_sessions', 'session_logs'],
   rank_battle_logs: ['rank_battle_logs', 'rank_session_logs', 'session_logs'],
   rank_turns: ['rank_turns', 'rank_session_turns', 'session_turns', 'rank_session_logs'],
+  rank_rooms: ['rank_rooms'],
+  rank_room_slots: ['rank_room_slots'],
+  rank_room_participants: ['rank_room_participants'],
+  rank_match_queue: ['rank_match_queue'],
 }
 
 const resolvedTableCache = {}
@@ -23,13 +27,25 @@ function normaliseCandidates(logical) {
 function isMissingTableError(error, tableName) {
   if (!error) return false
   if (error.code === '42P01') return true
+
   const merged = `${error.message || ''} ${error.details || ''}`.toLowerCase()
   if (!merged.trim()) return false
-  if (merged.includes('does not exist')) return true
-  if (merged.includes('not exist')) return true
-  if (merged.includes('undefined table')) return true
+
+  const mentionsColumn = merged.includes('column') || merged.includes('attribute')
+  if (mentionsColumn) return false
+
+  const mentionsRelation =
+    merged.includes('relation') ||
+    merged.includes('table') ||
+    merged.includes('missing from-clause entry for table')
+
   if (merged.includes(`relation "${tableName.toLowerCase()}"`)) return true
   if (merged.includes(`table "${tableName.toLowerCase()}"`)) return true
+
+  if (mentionsRelation && merged.includes('does not exist')) return true
+  if (mentionsRelation && merged.includes('not exist')) return true
+  if (merged.includes('undefined table')) return true
+
   return false
 }
 

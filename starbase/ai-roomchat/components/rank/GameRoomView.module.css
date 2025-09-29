@@ -1,0 +1,1228 @@
+.room {
+  position: relative;
+  min-height: 100vh;
+  background: #050712;
+  color: #f8fafc;
+  overflow: hidden;
+}
+
+.backdrop,
+.backdropFallback {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(36px);
+  transform: scale(1.08);
+  opacity: 0.64;
+  pointer-events: none;
+}
+
+.backdropFallback {
+  background-image: radial-gradient(circle at top, #1d2754, #050712 70%);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5, 7, 18, 0.18) 0%, rgba(5, 7, 18, 0.86) 65%, rgba(5, 7, 18, 0.94) 100%);
+  pointer-events: none;
+}
+
+.shell {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 64px 16px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.loadingCard {
+  margin: 160px auto 0;
+  padding: 28px 32px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  backdrop-filter: blur(14px);
+  font-size: 16px;
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.backButton {
+  align-self: flex-start;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.55);
+  color: #e2e8f0;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.backButton:hover,
+.backButton:focus-visible {
+  background: rgba(30, 41, 59, 0.55);
+  transform: translateY(-1px);
+}
+
+.tabBar {
+  display: flex;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 8px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  backdrop-filter: blur(14px);
+}
+
+.tabButton {
+  flex: 1 1 0;
+  border: none;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.7);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabButtonActive {
+  background: rgba(59, 130, 246, 0.24);
+  color: #f8fafc;
+}
+
+.summaryCard {
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(8, 12, 24, 0.65);
+  backdrop-filter: blur(16px);
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.panels {
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(8, 12, 24, 0.65);
+  backdrop-filter: blur(16px);
+  overflow: hidden;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.panel {
+  display: none;
+  padding: 28px 20px 36px;
+}
+
+.panelActive {
+  display: block;
+}
+
+.panelInner {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.gameHeader {
+  display: grid;
+  gap: 20px;
+  align-items: start;
+}
+
+.gameText {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gameBadge {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.2);
+  color: #bfdbfe;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gameTitle {
+  margin: 0;
+  font-size: clamp(26px, 6vw, 36px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.gameDescription {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.7;
+  color: rgba(226, 232, 240, 0.86);
+  white-space: pre-wrap;
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.metaChip {
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(30, 41, 59, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  font-size: 13px;
+}
+
+.linkButton {
+  border: 1px solid rgba(96, 165, 250, 0.55);
+  color: #bfdbfe;
+  background: rgba(30, 41, 59, 0.45);
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.linkButton:hover,
+.linkButton:focus-visible {
+  background: rgba(59, 130, 246, 0.38);
+  transform: translateY(-1px);
+}
+
+.coverFrame {
+  position: relative;
+  border-radius: 24px;
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  overflow: hidden;
+  width: min(520px, 100%);
+  aspect-ratio: 16 / 9;
+  background: rgba(15, 23, 42, 0.4);
+  margin: 0 auto;
+}
+
+.coverFrame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.coverPlaceholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  font-size: 15px;
+  color: rgba(226, 232, 240, 0.78);
+  text-align: center;
+}
+
+.joinCard {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border-radius: 24px;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(10, 15, 28, 0.6);
+}
+
+.capacityRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  font-size: 15px;
+}
+
+.capacityCount {
+  font-weight: 700;
+}
+
+.capacityStatus {
+  font-weight: 600;
+  color: rgba(148, 163, 184, 0.86);
+}
+
+.capacityReady {
+  color: #34d399;
+}
+
+.roleList {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+}
+
+.roleChip {
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  background: rgba(15, 23, 42, 0.45);
+  color: #e2e8f0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease, border 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.roleChipActive {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(59, 130, 246, 0.6);
+}
+
+.roleChipDisabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.roleName {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.roleCount {
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.joinActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primaryButton {
+  flex: 1 1 200px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.85), rgba(14, 165, 233, 0.85));
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.primaryButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.primaryButton:not(:disabled):hover,
+.primaryButton:not(:disabled):focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 30px rgba(59, 130, 246, 0.28);
+}
+
+.ownerStartButton {
+  border: 1px solid rgba(251, 191, 36, 0.65);
+  background: rgba(120, 53, 15, 0.55);
+  color: #fde68a;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.ownerStartButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ownerStartButton:not(:disabled):hover,
+.ownerStartButton:not(:disabled):focus-visible {
+  background: rgba(217, 119, 6, 0.4);
+  transform: translateY(-1px);
+}
+
+.capacityHint {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.74);
+}
+
+.capacitySubHint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.ownerActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.subtleButton {
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: rgba(76, 29, 29, 0.5);
+  color: rgba(254, 202, 202, 0.9);
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.subtleButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.subtleButton:not(:disabled):hover,
+.subtleButton:not(:disabled):focus-visible {
+  background: rgba(220, 38, 38, 0.42);
+  transform: translateY(-1px);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.sectionBadge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  font-size: 13px;
+}
+
+.emptyCard {
+  border-radius: 18px;
+  padding: 22px 24px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: rgba(226, 232, 240, 0.82);
+  text-align: center;
+}
+
+.rosterGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+.rulesList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rulesItem {
+  border-radius: 16px;
+  padding: 18px 20px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.rulesItemLabel {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.rulesItemDescription {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.78);
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.rulesTextBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rulesText {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  line-height: 1.6;
+  color: rgba(226, 232, 240, 0.86);
+}
+
+.rulesCode {
+  margin: 0;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(226, 232, 240, 0.9);
+  overflow-x: auto;
+}
+
+.heroLayout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.heroVisual {
+  display: flex;
+  justify-content: center;
+}
+
+.heroImageButton {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  max-width: min(360px, 100%);
+  aspect-ratio: 3 / 4;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
+  background: transparent;
+  border: none;
+  padding: 0;
+  width: 100%;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.heroImageButton img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+
+.heroImageFallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.6);
+  color: rgba(226, 232, 240, 0.75);
+  font-size: 14px;
+}
+
+.heroInfo {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 18px;
+  padding: 24px 22px;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.25) 0%,
+    rgba(15, 23, 42, 0.45) 40%,
+    rgba(15, 23, 42, 0.78) 100%
+  );
+  color: #f8fafc;
+  text-align: left;
+}
+
+.heroInfoTop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heroInfoBody {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.heroInfoBody:empty {
+  display: none;
+}
+
+.heroHintRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.heroHint {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.7);
+  background: rgba(15, 23, 42, 0.45);
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+
+.heroImageButton:focus-visible {
+  outline: 2px solid rgba(148, 163, 184, 0.7);
+  outline-offset: 4px;
+}
+
+.heroDescription,
+.heroAbility,
+.heroStatLabel,
+.heroStatValue,
+.heroSectionTitle {
+  user-select: text;
+}
+
+.heroLabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.heroName {
+  margin: 0;
+  font-size: clamp(24px, 6vw, 34px);
+  font-weight: 800;
+  text-shadow: 0 2px 10px rgba(15, 23, 42, 0.4);
+}
+
+.heroDescription {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.7;
+  color: rgba(248, 250, 252, 0.88);
+}
+
+.heroAbilities,
+.heroStats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.heroSectionTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(15, 23, 42, 0.5);
+}
+
+.heroAbilityList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.heroStatsList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.heroAbility {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: rgba(248, 250, 252, 0.92);
+  line-height: 1.6;
+}
+
+.heroStatsList li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.heroStatLabel {
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.82);
+}
+
+.heroStatValue {
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.logList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.logItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.logText {
+  flex: 1;
+  color: rgba(226, 232, 240, 0.86);
+  line-height: 1.6;
+}
+
+.logTag {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.28);
+  color: #bfdbfe;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.moreButton {
+  align-self: center;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  background: rgba(30, 41, 59, 0.55);
+  color: #bfdbfe;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.moreButton:hover,
+.moreButton:focus-visible {
+  background: rgba(59, 130, 246, 0.35);
+  transform: translateY(-1px);
+}
+
+.rankingPanel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  min-height: 100%;
+}
+
+.rankingBackdrop,
+.rankingBackdropFallback {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.45;
+  filter: blur(18px);
+}
+
+.rankingBackdropFallback {
+  background-image: radial-gradient(circle at top, rgba(30, 41, 59, 0.65), rgba(15, 23, 42, 0.9));
+}
+
+.rankingOverlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(7, 11, 22, 0.82) 0%, rgba(7, 11, 22, 0.92) 100%);
+}
+
+.rankingContent {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 28px 20px 36px;
+}
+
+.rankingHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  text-align: center;
+}
+
+.rankingLabel {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.88);
+}
+
+.rankingHeroName {
+  margin: 0;
+  font-size: clamp(26px, 7vw, 38px);
+  font-weight: 800;
+}
+
+.rankingHeroVisual {
+  width: min(220px, 65vw);
+  aspect-ratio: 3 / 4;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 18px 45px rgba(5, 10, 22, 0.55);
+}
+
+.rankingHeroVisual img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rankingHeroMeta {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.rankingGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.rankingSection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rankingSectionTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.rankingList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rankingRow {
+  display: flex;
+  border-radius: 14px;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.rankingControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.rankingModeButton {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(12, 18, 34, 0.35);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.rankingModeButton:hover,
+.rankingModeButton:focus-visible {
+  background: rgba(30, 42, 68, 0.6);
+  border-color: rgba(255, 255, 255, 0.35);
+  outline: none;
+}
+
+.rankingModeButtonActive {
+  background: rgba(64, 110, 255, 0.85);
+  border-color: rgba(136, 176, 255, 0.8);
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(136, 176, 255, 0.2);
+}
+
+.rankingModeButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.roleSelectGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.roleSelectLabel {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+.roleSelect {
+  appearance: none;
+  background: rgba(12, 18, 34, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: #fff;
+  padding: 9px 32px 9px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.roleSelect:focus-visible {
+  outline: none;
+  border-color: rgba(136, 176, 255, 0.8);
+  background: rgba(40, 60, 96, 0.6);
+}
+
+.roleSelect:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.rankingRowButton {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.rankingRowButton:hover,
+.rankingRowButton:focus-visible {
+  background: rgba(12, 18, 34, 0.35);
+  outline: none;
+}
+
+.rankingRowButtonDisabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.rankingRowButtonDisabled:hover,
+.rankingRowButtonDisabled:focus-visible {
+  background: transparent;
+}
+
+.profileOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 16, 0.75);
+  backdrop-filter: blur(6px);
+  padding: 24px;
+}
+
+.profileCard {
+  position: relative;
+  width: min(520px, 100%);
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  background: rgba(8, 12, 24, 0.9);
+  border: 1px solid rgba(136, 176, 255, 0.25);
+  border-radius: 24px;
+  padding: 28px 24px;
+  color: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.profileCloseButton {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.profileCloseButton:hover,
+.profileCloseButton:focus-visible {
+  background: rgba(255, 255, 255, 0.24);
+  outline: none;
+}
+
+.profileHeroHeader {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.profileHeroImage {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.profileHeroImageFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 20px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.profileHeroSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profileHeroName {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.profileHeroDescription {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.profileBody {
+  margin-top: 24px;
+  display: grid;
+  gap: 24px;
+}
+
+.profileStats {
+  background: rgba(20, 28, 46, 0.6);
+  border: 1px solid rgba(136, 176, 255, 0.25);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.profileSectionTitle {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.profileStatList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.profileStatItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.profileStatLabel {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.profileStatValue {
+  font-weight: 700;
+}
+
+.profileAbilities {
+  background: rgba(20, 28, 46, 0.6);
+  border: 1px solid rgba(136, 176, 255, 0.25);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.profileAbilityList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.profileAbilityItem {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.rankingIndex {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.28);
+  color: #bfdbfe;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.rankingRowName {
+  display: block;
+  font-weight: 700;
+}
+
+.rankingRowMeta {
+  display: block;
+  color: rgba(226, 232, 240, 0.78);
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.roleRankingGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.roleRankingGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.roleRankingTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(226, 232, 240, 0.9);
+}
+
+@media (min-width: 560px) {
+  .roleList {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+
+  .rosterGrid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+@media (min-width: 720px) {
+  .gameHeader {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
+  }
+
+  .gameText {
+    padding-right: 16px;
+  }
+
+  .coverFrame {
+    margin: 0;
+    justify-self: end;
+  }
+
+  .heroVisual {
+    justify-content: center;
+  }
+
+  .rankingGrid {
+    flex-direction: row;
+  }
+
+  .rankingSection {
+    flex: 1 1 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .coverFrame {
+    width: 520px;
+  }
+
+  .heroVisual {
+    justify-content: flex-start;
+  }
+}
