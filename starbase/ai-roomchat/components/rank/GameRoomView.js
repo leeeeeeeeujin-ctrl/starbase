@@ -510,7 +510,13 @@ export default function GameRoomView({
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          <div className={styles.track} style={{ transform: `translateX(-${activeSlide * 100}%)` }}>
+          <div
+            className={styles.track}
+            style={{
+              width: `${SLIDES.length * 100}%`,
+              transform: `translateX(-${(activeSlide * 100) / SLIDES.length}%)`,
+            }}
+          >
             <section className={`${styles.slide} ${styles.mainSlide}`}>
               <header className={styles.gameHeader}>
                 <div className={styles.gameText}>
