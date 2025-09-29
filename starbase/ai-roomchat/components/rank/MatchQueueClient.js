@@ -120,8 +120,35 @@ function describeStatus(status) {
     case 'matched':
       return '매칭 완료'
     default:
-      return '대기열 준비'
+      return '자동 참가 준비 중'
   }
+}
+
+function resolveFlowSteps(status) {
+  const steps = [
+    { key: 'prepare', label: '참가 정보 확인', state: 'pending' },
+    { key: 'queue', label: '대기열 합류', state: 'pending' },
+    { key: 'match', label: '매칭 완료 대기', state: 'pending' },
+  ]
+
+  if (status === 'matched') {
+    steps[0].state = 'done'
+    steps[1].state = 'done'
+    steps[2].state = 'active'
+    return steps
+  }
+
+  if (status === 'queued') {
+    steps[0].state = 'done'
+    steps[1].state = 'active'
+    steps[2].state = 'pending'
+    return steps
+  }
+
+  steps[0].state = 'active'
+  steps[1].state = 'pending'
+  steps[2].state = 'pending'
+  return steps
 }
 
 export default function MatchQueueClient({
@@ -369,6 +396,7 @@ export default function MatchQueueClient({
   }
 
   const statusLabel = describeStatus(state.status)
+  const flowSteps = useMemo(() => resolveFlowSteps(state.status), [state.status])
 
   const heroLabel = useMemo(() => {
     if (!state.heroId) return '선택된 캐릭터 없음'
@@ -393,10 +421,45 @@ export default function MatchQueueClient({
         </div>
 
         {autoJoin ? (
-          <div className={styles.autoJoinNotice}>
-            <p className={styles.sectionHint}>
-              페이지에 들어오면 자동으로 대기열에 합류합니다. 필요하면 언제든지 취소할 수 있어요.
-            </p>
+          <div className={styles.autoFlow}>
+            <div className={styles.autoJoinNotice}>
+              <p className={styles.sectionHint}>
+                매칭 화면에 진입하는 즉시 대기열에 합류합니다. 필요한 경우 언제든지 취소할 수
+                있어요.
+              </p>
+              {state.lockedRole ? (
+                <p className={styles.sectionHint}>
+                  현재 역할은 <strong>{state.lockedRole}</strong>로 고정되어 있습니다.
+                </p>
+              ) : null}
+            </div>
+
+            <ol className={styles.autoSteps}>
+              {flowSteps.map((step) => (
+                <li
+                  key={step.key}
+                  className={`${styles.autoStep} ${
+                    step.state === 'done'
+                      ? styles.autoStepDone
+                      : step.state === 'active'
+                      ? styles.autoStepActive
+                      : styles.autoStepPending
+                  }`}
+                >
+                  <span className={styles.autoStepIndicator} />
+                  <span className={styles.autoStepLabel}>{step.label}</span>
+                </li>
+              ))}
+            </ol>
+
+            <button
+              type="button"
+              className={styles.cancelLink}
+              onClick={handleCancel}
+              disabled={state.loading || state.status !== 'queued'}
+            >
+              대기열 나가고 메인 룸으로 돌아가기
+            </button>
           </div>
         ) : (
           <>
@@ -448,19 +511,6 @@ export default function MatchQueueClient({
             </div>
           </>
         )}
-
-        {autoJoin ? (
-          <div className={styles.actionRow}>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={handleCancel}
-              disabled={state.loading || state.status !== 'queued'}
-            >
-              대기열 나가기
-            </button>
-          </div>
-        ) : null}
 
         {state.error || autoJoinError ? (
           <p className={styles.errorText}>{state.error || autoJoinError}</p>

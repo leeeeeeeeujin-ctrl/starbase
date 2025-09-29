@@ -101,6 +101,104 @@
   margin-bottom: 10px;
 }
 
+.autoFlow {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.autoSteps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.autoStep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(71, 85, 105, 0.28);
+  transition: background 0.2s ease, border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.autoStepIndicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.55);
+  flex-shrink: 0;
+}
+
+.autoStepLabel {
+  font-size: 14px;
+  color: rgba(226, 232, 240, 0.85);
+  font-weight: 500;
+}
+
+.autoStepActive {
+  border-color: rgba(96, 165, 250, 0.65);
+  background: rgba(59, 130, 246, 0.25);
+  box-shadow: 0 14px 30px rgba(59, 130, 246, 0.25);
+}
+
+.autoStepActive .autoStepIndicator {
+  background: rgba(96, 165, 250, 0.95);
+}
+
+.autoStepActive .autoStepLabel {
+  color: #bfdbfe;
+}
+
+.autoStepDone {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(16, 185, 129, 0.18);
+}
+
+.autoStepDone .autoStepIndicator {
+  background: rgba(74, 222, 128, 0.9);
+}
+
+.autoStepDone .autoStepLabel {
+  color: #bbf7d0;
+}
+
+.autoStepPending {
+  opacity: 0.75;
+}
+
+.autoStepPending .autoStepIndicator {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.cancelLink {
+  align-self: flex-start;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.4);
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, color 0.2s ease;
+}
+
+.cancelLink:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.65);
+  color: #f8fafc;
+}
+
+.cancelLink:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .lockedRole {
   display: flex;
   flex-direction: column;
