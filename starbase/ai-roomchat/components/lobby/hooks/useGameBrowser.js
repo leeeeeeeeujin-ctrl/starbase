@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
 import { withTable } from '../../../lib/supabaseTables'
-import { MAX_GAME_ROWS, SORT_OPTIONS } from '../constants'
+import { MAX_GAME_ROWS, SORT_OPTIONS, DEFAULT_SORT_KEY, METRIC_SORT_KEYS, getSortOptions } from '../constants'
+import { isMissingColumnError } from '../../../lib/supabaseErrors'
 
 function computeGameStats(participants = [], battles = [], game = {}) {
   const totalPlayers = participants.length
@@ -71,7 +72,7 @@ function normaliseGameRow(raw = {}, sourceTable) {
   return base
 }
 
-export default function useGameBrowser({ enabled } = {}) {
+export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
   const [gameQuery, setGameQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [gameSort, setGameSort] = useState('latest')
@@ -89,6 +90,20 @@ export default function useGameBrowser({ enabled } = {}) {
   const [gameStats, setGameStats] = useState(null)
   const [viewerId, setViewerId] = useState(null)
   const [gameSourceTable, setGameSourceTable] = useState('')
+  const [supportsGameMetrics, setSupportsGameMetrics] = useState(true)
+  const [availableSortOptions, setAvailableSortOptions] = useState(() => getSortOptions({ includeMetrics: true }))
+  const [joinLoading, setJoinLoading] = useState(false)
+
+  useEffect(() => {
+    const nextOptions = getSortOptions({ includeMetrics: supportsGameMetrics })
+    setAvailableSortOptions(nextOptions)
+    setGameSort((current) => {
+      if (nextOptions.some((option) => option.key === current)) {
+        return current
+      }
+      return nextOptions[0]?.key || DEFAULT_SORT_KEY
+    })
+  }, [supportsGameMetrics])
 
   useEffect(() => {
     let cancelled = false
@@ -114,6 +129,19 @@ export default function useGameBrowser({ enabled } = {}) {
 
   useEffect(() => {
     if (!enabled) return
+
+    if (mode === 'owned' && !viewerId) {
+      setGameRows([])
+      setGameLoading(false)
+      setSelectedGame(null)
+      setGameRoles([])
+      setParticipants([])
+      setGameTags([])
+      setGameSeasons([])
+      setGameBattleLogs([])
+      setGameStats(null)
+      return
+    }
     let cancelled = false
 
     async function loadGames() {
@@ -129,9 +157,15 @@ export default function useGameBrowser({ enabled } = {}) {
               'id,name,description,cover_path,created_at,owner_id,game_likes(count),game_sessions(count)',
             )
         } else {
-          query = supabase
-            .from(table)
-            .select('id,name,description,image_url,created_at,likes_count,play_count,owner_id')
+          const includeMetrics = supportsGameMetrics
+          const selectColumns = includeMetrics
+            ? 'id,name,description,image_url,created_at,likes_count,play_count,owner_id'
+            : 'id,name,description,image_url,created_at,owner_id'
+          query = supabase.from(table).select(selectColumns)
+        }
+
+        if (mode === 'owned' && viewerId) {
+          query = query.eq('owner_id', viewerId)
         }
 
         if (debouncedQuery.trim()) {
@@ -141,23 +175,55 @@ export default function useGameBrowser({ enabled } = {}) {
 
         if (table !== 'games') {
           const plan = SORT_OPTIONS.find((item) => item.key === gameSort) || SORT_OPTIONS[0]
-          plan.orders.forEach((order) => {
+          const orders =
+            supportsGameMetrics || !METRIC_SORT_KEYS.has(gameSort)
+              ? plan.orders
+              : SORT_OPTIONS[0].orders
+          orders.forEach((order) => {
             query = query.order(order.column, { ascending: order.asc })
           })
         } else {
           query = query.order('created_at', { ascending: false })
+          if (mode === 'owned' && viewerId) {
+            query = query.eq('owner_id', viewerId)
+          }
         }
 
         return query.limit(MAX_GAME_ROWS)
       })
 
-      const { data, error, table } = result || {}
+      let { data, error, table } = result || {}
 
       if (!cancelled) {
         setGameSourceTable(table || '')
       }
 
-      if (cancelled) return
+        if (cancelled) return
+
+        if (error && table !== 'games' && supportsGameMetrics && isMissingColumnError(error, ['likes_count', 'play_count'])) {
+          if (!cancelled) {
+            setSupportsGameMetrics(false)
+          }
+
+          const fallbackQuery = supabase
+            .from(table)
+            .select('id,name,description,image_url,created_at,owner_id')
+
+          if (mode === 'owned' && viewerId) {
+            fallbackQuery.eq('owner_id', viewerId)
+          }
+
+          if (debouncedQuery.trim()) {
+            const value = `%${debouncedQuery.trim()}%`
+            fallbackQuery.or(`name.ilike.${value},description.ilike.${value}`)
+          }
+
+        fallbackQuery.order('created_at', { ascending: false })
+
+        const fallbackResult = await fallbackQuery.limit(MAX_GAME_ROWS)
+        data = fallbackResult.data
+        error = fallbackResult.error
+      }
 
       if (error) {
         console.error(error)
@@ -167,6 +233,30 @@ export default function useGameBrowser({ enabled } = {}) {
       }
 
       let rows = (data || []).map((row) => normaliseGameRow(row, table))
+
+      if (!cancelled && table === 'rank_games' && rows.length && mode !== 'owned') {
+        const ids = rows.map((row) => row.id)
+        const { data: seasonRows, error: seasonError } = await withTable(
+          supabase,
+          'rank_game_seasons',
+          (tableName) =>
+            supabase
+              .from(tableName)
+              .select('game_id, status')
+              .in('game_id', ids),
+        )
+
+        if (seasonError) {
+          console.error(seasonError)
+        } else {
+          const activeIds = new Set(
+            (seasonRows || [])
+              .filter((season) => (season.status || '').toLowerCase() === 'active')
+              .map((season) => season.game_id),
+          )
+          rows = rows.filter((row) => activeIds.has(row.id))
+        }
+      }
 
       if (table !== 'games' && rows.length) {
         const ids = rows.map((row) => row.id)
@@ -222,6 +312,8 @@ export default function useGameBrowser({ enabled } = {}) {
         const match = rows.find((row) => row.id === selectedGame.id)
         if (match) {
           setSelectedGame((prev) => (prev ? { ...prev, ...match } : prev))
+        } else {
+          setSelectedGame(null)
         }
       }
       setGameLoading(false)
@@ -232,7 +324,7 @@ export default function useGameBrowser({ enabled } = {}) {
     return () => {
       cancelled = true
     }
-  }, [enabled, debouncedQuery, gameSort, selectedGame?.id])
+  }, [enabled, debouncedQuery, gameSort, selectedGame?.id, supportsGameMetrics, viewerId, mode])
 
   useEffect(() => {
     if (!selectedGame) {
@@ -262,14 +354,17 @@ export default function useGameBrowser({ enabled } = {}) {
       setDetailLoading(true)
       setRoleChoice('')
 
-      const [rolesResult, participantsResult, tagsResult, seasonsResult, battlesResult, logsResult] =
-        await Promise.all([
-          withTable(supabase, 'rank_game_roles', (table) =>
-            supabase.from(table).select('*').eq('game_id', selectedGame.id),
-          ),
-          withTable(supabase, 'rank_participants', (table) =>
-            supabase.from(table).select('*').eq('game_id', selectedGame.id),
-          ),
+      const promises = [
+        withTable(supabase, 'rank_game_roles', (table) =>
+          supabase.from(table).select('*').eq('game_id', selectedGame.id),
+        ),
+        withTable(supabase, 'rank_participants', (table) =>
+          supabase.from(table).select('*').eq('game_id', selectedGame.id),
+        ),
+      ]
+
+      if (mode === 'owned') {
+        promises.push(
           withTable(supabase, 'rank_game_tags', (table) =>
             supabase
               .from(table)
@@ -300,9 +395,21 @@ export default function useGameBrowser({ enabled } = {}) {
               .order('created_at', { ascending: false })
               .limit(60),
           ),
-        ])
+        )
+      }
+
+      const results = await Promise.all(promises)
 
       if (cancelled) return
+
+      const [rolesResult, participantsResult, ...extraResults] = results
+
+      const [
+        tagsResult = { data: [], error: null },
+        seasonsResult = { data: [], error: null },
+        battlesResult = { data: [], error: null },
+        logsResult = { data: [], error: null },
+      ] = mode === 'owned' ? extraResults : []
 
       const participantRows = participantsResult.data || []
       const battleRows = battlesResult.data || []
@@ -322,36 +429,44 @@ export default function useGameBrowser({ enabled } = {}) {
         setParticipants(participantRows)
       }
 
-      if (tagsResult.error) {
-        console.error(tagsResult.error)
+      if (mode === 'owned') {
+        if (tagsResult.error) {
+          console.error(tagsResult.error)
+          setGameTags([])
+        } else {
+          setGameTags(tagsResult.data || [])
+        }
+
+        if (seasonsResult.error) {
+          console.error(seasonsResult.error)
+          setGameSeasons([])
+        } else {
+          setGameSeasons(seasonsResult.data || [])
+        }
+
+        if (battlesResult.error) {
+          console.error(battlesResult.error)
+        }
+
+        if (logsResult.error) {
+          console.error(logsResult.error)
+        }
+
+        const battleMap = new Map(battleRows.map((row) => [row.id, row]))
+        const decoratedLogs = logRows.map((log) => ({
+          ...log,
+          battle: battleMap.get(log.battle_id) || null,
+        }))
+
+        setGameBattleLogs(decoratedLogs)
+        setGameStats(computeGameStats(participantRows, battleRows, selectedGame))
+      } else {
         setGameTags([])
-      } else {
-        setGameTags(tagsResult.data || [])
-      }
-
-      if (seasonsResult.error) {
-        console.error(seasonsResult.error)
         setGameSeasons([])
-      } else {
-        setGameSeasons(seasonsResult.data || [])
+        setGameBattleLogs([])
+        setGameStats(null)
       }
 
-      if (battlesResult.error) {
-        console.error(battlesResult.error)
-      }
-
-      if (logsResult.error) {
-        console.error(logsResult.error)
-      }
-
-      const battleMap = new Map(battleRows.map((row) => [row.id, row]))
-      const decoratedLogs = logRows.map((log) => ({
-        ...log,
-        battle: battleMap.get(log.battle_id) || null,
-      }))
-
-      setGameBattleLogs(decoratedLogs)
-      setGameStats(computeGameStats(participantRows, battleRows, selectedGame))
       setDetailLoading(false)
     }
 
@@ -360,7 +475,7 @@ export default function useGameBrowser({ enabled } = {}) {
     return () => {
       cancelled = true
     }
-  }, [selectedGame, detailRevision, gameSourceTable])
+  }, [selectedGame, detailRevision, gameSourceTable, mode])
 
   const roleSlots = useMemo(() => {
     const map = new Map()
@@ -371,9 +486,72 @@ export default function useGameBrowser({ enabled } = {}) {
     return map
   }, [gameRoles, participants])
 
+  const viewerParticipant = useMemo(() => {
+    if (!viewerId) return null
+    return participants.find((participant) => participant.owner_id === viewerId) || null
+  }, [participants, viewerId])
+
   const refreshSelectedGame = useCallback(() => {
     setDetailRevision((value) => value + 1)
   }, [])
+
+  const joinSelectedGame = useCallback(
+    async (roleName) => {
+      if (!selectedGame) {
+        return { ok: false, error: '게임을 먼저 선택해 주세요.' }
+      }
+      if (!viewerId) {
+        return { ok: false, error: '로그인이 필요합니다.' }
+      }
+      if (!roleName) {
+        return { ok: false, error: '참여할 역할을 선택해 주세요.' }
+      }
+      if (joinLoading) {
+        return { ok: false, error: '이미 참여 절차를 진행 중입니다.' }
+      }
+
+      let storedHeroId = null
+      if (typeof window !== 'undefined') {
+        try {
+          storedHeroId = window.localStorage.getItem('selectedHeroId')
+        } catch (error) {
+          console.warn('선택한 캐릭터 정보를 불러오지 못했습니다:', error)
+        }
+      }
+
+      if (!storedHeroId) {
+        return { ok: false, error: '참여 전에 사용할 캐릭터를 선택해 주세요.' }
+      }
+
+      setJoinLoading(true)
+      try {
+        const payload = {
+          game_id: selectedGame.id,
+          hero_id: storedHeroId,
+          owner_id: viewerId,
+          role: roleName,
+          score: 1000,
+        }
+
+        const { error } = await withTable(supabase, 'rank_participants', (tableName) =>
+          supabase.from(tableName).insert(payload, { ignoreDuplicates: true }),
+        )
+
+        if (error) {
+          throw error
+        }
+
+        refreshSelectedGame()
+        return { ok: true }
+      } catch (error) {
+        console.error('게임 참여 실패:', error)
+        return { ok: false, error: error.message || '게임에 참여하지 못했습니다.' }
+      } finally {
+        setJoinLoading(false)
+      }
+    },
+    [joinLoading, refreshSelectedGame, selectedGame, viewerId],
+  )
 
   const addGameTag = useCallback(
     async (label) => {
@@ -558,6 +736,7 @@ export default function useGameBrowser({ enabled } = {}) {
     roleChoice,
     setRoleChoice,
     roleSlots,
+    viewerParticipant,
     viewerId,
     gameTags,
     addGameTag,
@@ -568,6 +747,10 @@ export default function useGameBrowser({ enabled } = {}) {
     gameStats,
     gameBattleLogs,
     refreshSelectedGame,
+    joinSelectedGame,
+    joinLoading,
     deleteGame,
+    sortOptions: availableSortOptions,
+    supportsGameMetrics,
   }
 }

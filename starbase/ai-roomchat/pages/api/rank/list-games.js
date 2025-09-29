@@ -1,18 +1,11 @@
 import { supabase } from '@/lib/rank/db'
+import { DEFAULT_SORT_KEY, METRIC_SORT_KEYS, SORT_OPTIONS } from '@/components/lobby/constants'
+import { isMissingColumnError } from '@/lib/supabaseErrors'
 
-const SORT_PLANS = {
-  latest: [
-    { column: 'created_at', ascending: false },
-  ],
-  likes: [
-    { column: 'likes_count', ascending: false },
-    { column: 'created_at', ascending: false },
-  ],
-  plays: [
-    { column: 'play_count', ascending: false },
-    { column: 'created_at', ascending: false },
-  ],
-}
+const SORT_PLANS = SORT_OPTIONS.reduce((acc, option) => {
+  acc[option.key] = option.orders.map((order) => ({ column: order.column, ascending: order.asc }))
+  return acc
+}, {})
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -48,6 +41,35 @@ export default async function handler(req, res) {
   const { data, error } = await query
 
   if (error) {
+    if (isMissingColumnError(error, ['likes_count', 'play_count'])) {
+      const fallbackSortKey = METRIC_SORT_KEYS.has(sortKey) ? DEFAULT_SORT_KEY : sortKey
+      const fallbackPlan = SORT_PLANS[fallbackSortKey] || SORT_PLANS[DEFAULT_SORT_KEY]
+
+      let fallbackQuery = supabase
+        .from('rank_games')
+        .select('id,name,description,image_url,created_at')
+
+      if (q) {
+        const value = `%${q}%`
+        fallbackQuery = fallbackQuery.or(`name.ilike.${value},description.ilike.${value}`)
+      }
+
+      for (const order of fallbackPlan) {
+        fallbackQuery = fallbackQuery.order(order.column, { ascending: order.ascending })
+      }
+
+      fallbackQuery = fallbackQuery.limit(limit)
+
+      const { data: fallbackData, error: fallbackError } = await fallbackQuery
+      if (fallbackError) {
+        res.status(500).json({ error: fallbackError.message })
+        return
+      }
+
+      res.status(200).json({ data: fallbackData ?? [] })
+      return
+    }
+
     res.status(500).json({ error: error.message })
     return
   }
