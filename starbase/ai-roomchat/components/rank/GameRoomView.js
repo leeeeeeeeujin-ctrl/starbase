@@ -1,5 +1,4 @@
 // components/rank/GameRoomView.js
-import Link from 'next/link'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import ParticipantCard from './ParticipantCard'
@@ -698,12 +697,6 @@ export default function GameRoomView({
               게임 시작
             </button>
           )}
-        </div>
-
-        <div className={styles.matchingLinkRow}>
-          <Link href={`/rank/${game.id}/solo`} className={styles.matchingLink}>
-            솔로 랭크 매칭 시작하기
-          </Link>
         </div>
 
         <p className={styles.capacityHint}>
