@@ -1,5 +1,5 @@
 // components/rank/GameRoomView.js
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import ParticipantCard from './ParticipantCard'
 import styles from './GameRoomView.module.css'
@@ -349,6 +349,54 @@ export default function GameRoomView({
     return [myHero.ability1, myHero.ability2, myHero.ability3, myHero.ability4].filter(Boolean)
   }, [myHero])
 
+  const hasHeroEntry = Boolean(myEntry)
+
+  const heroInfoStages = useMemo(() => {
+    const stages = ['profile']
+    if (hasHeroEntry) {
+      stages.push('stats')
+    }
+    if (heroAbilities.length > 0) {
+      stages.push('abilities')
+    }
+    return stages
+  }, [hasHeroEntry, heroAbilities.length])
+
+  const [heroStageIndex, setHeroStageIndex] = useState(0)
+
+  useEffect(() => {
+    setHeroStageIndex(0)
+  }, [myHero?.id])
+
+  useEffect(() => {
+    if (!heroInfoStages.length) return
+    if (heroStageIndex >= heroInfoStages.length) {
+      setHeroStageIndex(0)
+    }
+  }, [heroInfoStages, heroStageIndex])
+
+  const currentHeroStage = heroInfoStages[heroStageIndex] || 'profile'
+
+  const handleAdvanceHeroStage = useCallback(() => {
+    if (heroInfoStages.length <= 1) return
+    setHeroStageIndex((prev) => {
+      if (heroInfoStages.length === 0) return 0
+      return (prev + 1) % heroInfoStages.length
+    })
+  }, [heroInfoStages])
+
+  const handleHeroKeyDown = useCallback(
+    (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        handleAdvanceHeroStage()
+      }
+    },
+    [handleAdvanceHeroStage],
+  )
+
+  const heroStageHasMultipleViews = heroInfoStages.length > 1
+
   const heroNameMap = useMemo(() => {
     const map = new Map()
     participants.forEach((participant) => {
@@ -591,35 +639,31 @@ export default function GameRoomView({
     <div className={styles.panelInner}>
       <div className={styles.heroLayout}>
         <div className={styles.heroVisual}>
-          <div className={styles.heroImageButton}>
+          <button
+            type="button"
+            className={styles.heroImageButton}
+            onClick={handleAdvanceHeroStage}
+            onKeyDown={handleHeroKeyDown}
+            aria-label={heroStageHasMultipleViews ? '캐릭터 정보 전환' : '캐릭터 정보'}
+            data-stage={currentHeroStage}
+          >
             {myHero?.image_url ? (
               <img src={myHero.image_url} alt={myHero?.name || '선택한 캐릭터'} loading="lazy" />
             ) : (
               <div className={styles.heroImageFallback}>캐릭터 이미지를 선택해 주세요.</div>
             )}
 
-            <div className={styles.heroInfo}>
+            <div className={styles.heroInfo} data-stage={currentHeroStage}>
               <div className={styles.heroInfoTop}>
                 <span className={styles.heroLabel}>내 캐릭터</span>
                 <h2 className={styles.heroName}>{myHero?.name || '캐릭터가 선택되지 않았습니다.'}</h2>
-                {myHero?.description && <p className={styles.heroDescription}>{myHero.description}</p>}
+                {currentHeroStage === 'profile' && myHero?.description && (
+                  <p className={styles.heroDescription}>{myHero.description}</p>
+                )}
               </div>
 
-              <div className={styles.heroInfoBottom}>
-                {heroAbilities.length > 0 && (
-                  <div className={styles.heroAbilities}>
-                    <h3 className={styles.heroSectionTitle}>능력</h3>
-                    <ul className={styles.heroAbilityList}>
-                      {heroAbilities.map((ability, index) => (
-                        <li key={`${ability}-${index}`} className={styles.heroAbility}>
-                          {ability}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {myEntry && (
+              <div className={styles.heroInfoBody}>
+                {currentHeroStage === 'stats' && myEntry && (
                   <div className={styles.heroStats}>
                     <h3 className={styles.heroSectionTitle}>전적</h3>
                     <ul className={styles.heroStatsList}>
@@ -632,9 +676,28 @@ export default function GameRoomView({
                     </ul>
                   </div>
                 )}
+
+                {currentHeroStage === 'abilities' && heroAbilities.length > 0 && (
+                  <div className={styles.heroAbilities}>
+                    <h3 className={styles.heroSectionTitle}>능력</h3>
+                    <ul className={styles.heroAbilityList}>
+                      {heroAbilities.map((ability, index) => (
+                        <li key={`${ability}-${index}`} className={styles.heroAbility}>
+                          {ability}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
+
+              {heroStageHasMultipleViews && (
+                <div className={styles.heroHintRow}>
+                  <span className={styles.heroHint}>탭하면 정보가 전환됩니다</span>
+                </div>
+              )}
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
