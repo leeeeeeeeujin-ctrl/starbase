@@ -1,3 +1,5 @@
+'use client'
+
 // hooks/useGameRoom.js
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
