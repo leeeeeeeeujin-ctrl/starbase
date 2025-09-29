@@ -692,17 +692,25 @@ export default function GameRoomView({
           >
             {alreadyJoined ? '참여 완료됨' : joinLoading ? '참여 중…' : `${currentRole || '역할'}로 참여하기`}
           </button>
-          {isOwner && (
-            <button type="button" className={styles.ownerStartButton} onClick={onStart} disabled={startDisabled}>
-              게임 시작
-            </button>
-          )}
+          <button
+            type="button"
+            className={`${styles.ownerStartButton} ${!isOwner ? styles.ownerStartButtonLocked : ''}`}
+            onClick={isOwner ? onStart : undefined}
+            disabled={!isOwner || startDisabled}
+          >
+            게임 시작
+          </button>
         </div>
 
         <p className={styles.capacityHint}>
           {canStart
             ? '게임을 시작하면 비슷한 점수의 참가자들이 자동으로 선발됩니다.'
             : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
+        </p>
+        <p className={styles.capacitySubHint}>
+          {isOwner
+            ? '모든 준비가 끝났다면 게임 시작을 눌러 매칭을 진행하세요.'
+            : '게임 시작은 방장만 누를 수 있습니다. 준비가 완료되면 방장에게 알려 주세요.'}
         </p>
 
         {isOwner && (
