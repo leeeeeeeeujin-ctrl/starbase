@@ -597,39 +597,44 @@ export default function GameRoomView({
             ) : (
               <div className={styles.heroImageFallback}>캐릭터 이미지를 선택해 주세요.</div>
             )}
+
+            <div className={styles.heroInfo}>
+              <div className={styles.heroInfoTop}>
+                <span className={styles.heroLabel}>내 캐릭터</span>
+                <h2 className={styles.heroName}>{myHero?.name || '캐릭터가 선택되지 않았습니다.'}</h2>
+                {myHero?.description && <p className={styles.heroDescription}>{myHero.description}</p>}
+              </div>
+
+              <div className={styles.heroInfoBottom}>
+                {heroAbilities.length > 0 && (
+                  <div className={styles.heroAbilities}>
+                    <h3 className={styles.heroSectionTitle}>능력</h3>
+                    <ul className={styles.heroAbilityList}>
+                      {heroAbilities.map((ability, index) => (
+                        <li key={`${ability}-${index}`} className={styles.heroAbility}>
+                          {ability}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {myEntry && (
+                  <div className={styles.heroStats}>
+                    <h3 className={styles.heroSectionTitle}>전적</h3>
+                    <ul className={styles.heroStatsList}>
+                      {heroStats.map((stat) => (
+                        <li key={stat.label}>
+                          <span className={styles.heroStatLabel}>{stat.label}</span>
+                          <span className={styles.heroStatValue}>{stat.value}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className={styles.heroInfo}>
-          <span className={styles.heroLabel}>내 캐릭터</span>
-          <h2 className={styles.heroName}>{myHero?.name || '캐릭터가 선택되지 않았습니다.'}</h2>
-          {myHero?.description && <p className={styles.heroDescription}>{myHero.description}</p>}
-
-          {heroAbilities.length > 0 && (
-            <div className={styles.heroAbilities}>
-              <h3 className={styles.heroSectionTitle}>능력</h3>
-              <ul className={styles.heroAbilityList}>
-                {heroAbilities.map((ability, index) => (
-                  <li key={`${ability}-${index}`} className={styles.heroAbility}>
-                    {ability}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {myEntry && (
-            <div className={styles.heroStats}>
-              <h3 className={styles.heroSectionTitle}>전적</h3>
-              <ul className={styles.heroStatsList}>
-                {heroStats.map((stat) => (
-                  <li key={stat.label}>
-                    <span className={styles.heroStatLabel}>{stat.label}</span>
-                    <span className={styles.heroStatValue}>{stat.value}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       </div>
 

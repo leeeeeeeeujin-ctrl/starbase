@@ -499,6 +499,7 @@
 .heroLayout {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 20px;
 }
 
@@ -508,12 +509,14 @@
 }
 
 .heroImageButton {
+  position: relative;
   border-radius: 24px;
   overflow: hidden;
   max-width: min(360px, 100%);
   aspect-ratio: 3 / 4;
   box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
   background: transparent;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .heroImageButton img {
@@ -534,30 +537,53 @@
 }
 
 .heroInfo {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  justify-content: space-between;
+  padding: 24px 22px;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.25) 0%,
+    rgba(15, 23, 42, 0.45) 40%,
+    rgba(15, 23, 42, 0.78) 100%
+  );
+  color: #f8fafc;
+}
+
+.heroInfoTop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.heroInfoBottom {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .heroLabel {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(148, 163, 184, 0.85);
+  color: rgba(226, 232, 240, 0.8);
 }
 
 .heroName {
   margin: 0;
   font-size: clamp(24px, 6vw, 34px);
   font-weight: 800;
+  text-shadow: 0 2px 10px rgba(15, 23, 42, 0.4);
 }
 
 .heroDescription {
   margin: 0;
   font-size: 15px;
   line-height: 1.7;
-  color: rgba(226, 232, 240, 0.82);
+  color: rgba(248, 250, 252, 0.88);
 }
 
 .heroAbilities,
@@ -565,16 +591,24 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 12px;
 }
 
 .heroSectionTitle {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
+  text-shadow: 0 2px 8px rgba(15, 23, 42, 0.5);
 }
 
-.heroAbilityList,
+.heroAbilityList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
 .heroStatsList {
   margin: 0;
   padding: 0;
@@ -587,9 +621,9 @@
 .heroAbility {
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: rgba(226, 232, 240, 0.86);
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: rgba(248, 250, 252, 0.92);
   line-height: 1.6;
 }
 
@@ -599,13 +633,13 @@
   gap: 12px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 .heroStatLabel {
   font-weight: 600;
-  color: rgba(226, 232, 240, 0.75);
+  color: rgba(226, 232, 240, 0.82);
 }
 
 .heroStatValue {
@@ -853,18 +887,8 @@
     justify-self: end;
   }
 
-  .heroLayout {
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 32px;
-  }
-
   .heroVisual {
-    flex: 0 0 320px;
-  }
-
-  .heroInfo {
-    flex: 1 1 auto;
+    justify-content: center;
   }
 
   .rankingGrid {
@@ -882,6 +906,6 @@
   }
 
   .heroVisual {
-    flex-basis: 360px;
+    justify-content: flex-start;
   }
 }
