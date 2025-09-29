@@ -694,9 +694,9 @@ export default function GameRoomView({
           </button>
           <button
             type="button"
-            className={`${styles.ownerStartButton} ${!isOwner ? styles.ownerStartButtonLocked : ''}`}
-            onClick={isOwner ? onStart : undefined}
-            disabled={!isOwner || startDisabled}
+            className={styles.ownerStartButton}
+            onClick={onStart}
+            disabled={startDisabled}
           >
             게임 시작
           </button>
@@ -708,9 +708,7 @@ export default function GameRoomView({
             : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
         </p>
         <p className={styles.capacitySubHint}>
-          {isOwner
-            ? '모든 준비가 끝났다면 게임 시작을 눌러 매칭을 진행하세요.'
-            : '게임 시작은 방장만 누를 수 있습니다. 준비가 완료되면 방장에게 알려 주세요.'}
+          준비가 완료되면 누구나 게임을 시작해 매칭을 진행할 수 있습니다.
         </p>
 
         {isOwner && (
