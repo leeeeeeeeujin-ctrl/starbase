@@ -370,7 +370,11 @@ export default function MatchQueueClient({
 
   const statusLabel = describeStatus(state.status)
 
-  const heroLabel = state.heroId ? state.heroId : '선택된 캐릭터 없음'
+  const heroLabel = useMemo(() => {
+    if (!state.heroId) return '선택된 캐릭터 없음'
+    if (state.heroMeta?.name) return state.heroMeta.name
+    return state.heroId
+  }, [state.heroId, state.heroMeta?.name])
 
   return (
     <div className={styles.page}>
@@ -460,6 +464,12 @@ export default function MatchQueueClient({
 
         {state.error || autoJoinError ? (
           <p className={styles.errorText}>{state.error || autoJoinError}</p>
+        ) : null}
+        {autoJoin &&
+        (state.error?.includes('캐릭터') || autoJoinError?.includes('캐릭터')) ? (
+          <p className={styles.sectionHint}>
+            메인 룸에서 사용할 캐릭터를 선택하면 자동으로 다시 대기열에 합류합니다.
+          </p>
         ) : null}
       </section>
 
