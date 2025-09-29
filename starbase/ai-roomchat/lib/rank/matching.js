@@ -1,8 +1,11 @@
-// lib/rank/matching.js
-// Rebuilt role-based match helpers for duo, solo, and casual queues.
-// These utilities keep pure data transforms up front so they can be
-// consumed from any environment without triggering TDZ or circular
-// import issues.
+// Core rank matching helpers.
+//
+// This module intentionally keeps the matching algorithm in the middle of the
+// pipeline: it expects the caller to hand us role capacity information and the
+// current matching queue, and it produces a plan that tells the caller which
+// queued entries should fill each role. Wiring this output back into Supabase
+// (updating slots, marking queue entries, etc.) is left for the layer that
+// invokes these helpers.
 
 const DEFAULT_SCORE_WINDOWS = Object.freeze([100, 200, 300])
 const FALLBACK_SCORE = 1000
@@ -21,356 +24,463 @@ export function matchRankParticipants({
   scoreWindows = DEFAULT_SCORE_WINDOWS,
   partySize = 1,
 } = {}) {
-  const normalizedWindows = normalizeWindows(scoreWindows)
   const normalizedRoles = normalizeRoles(roles)
-  const slots = enumerateSlots(normalizedRoles)
-  if (slots.length === 0) {
-    return buildResult({ ready: false, error: { type: 'no_active_slots' }, totalSlots: 0 })
+  const totalSlots = countTotalSlots(normalizedRoles)
+  if (totalSlots === 0) {
+    return buildResult({
+      ready: false,
+      totalSlots,
+      error: { type: 'no_active_slots' },
+    })
   }
 
-  const roleCounts = countSlotsByRole(slots)
-  const candidateBuckets = buildRoleBuckets(queue, partySize)
-  const usedCandidates = new Set()
-  const usedGroups = new Set()
+  const buckets = buildRoleBuckets(queue, partySize)
+  const usedGroupKeys = new Set()
   const assignments = []
   let maxWindow = 0
 
-  for (const [roleName, requiredSlots] of roleCounts.entries()) {
-    const bucket = candidateBuckets.get(roleName)
-    const resolution = pickRankGroups({
-      bucket,
-      requiredSlots,
+  for (const role of normalizedRoles) {
+    const resolution = resolveRankRole({
+      role,
+      buckets,
       partySize,
-      scoreWindows: normalizedWindows,
-      usedCandidates,
-      usedGroups,
+      scoreWindows,
+      usedGroupKeys,
     })
 
     if (!resolution.ok) {
       return buildResult({
         ready: false,
-        assignments,
-        maxWindow,
+        assignments: assignments.concat(resolution.partialAssignments ?? []),
+        totalSlots,
         error: {
           type: resolution.reason,
-          role: roleName,
+          role: role.name,
           missing: resolution.missing,
-          anchorScore: resolution.anchorScore,
         },
-        totalSlots: slots.length,
+        maxWindow,
       })
     }
 
-    const appliedWindow = resolution.window ?? 0
-    if (appliedWindow > maxWindow) {
-      maxWindow = appliedWindow
+    if (resolution.window > maxWindow) {
+      maxWindow = resolution.window
     }
 
-    const roleAssignments = formatAssignments({
-      groups: resolution.groups,
-      roleName,
-      requiredSlots,
-      partySize,
-      usedCandidates,
-      usedGroups,
-    })
-
-    assignments.push(...roleAssignments)
+    for (const assignment of resolution.assignments) {
+      assignments.push(assignment)
+      usedGroupKeys.add(assignment.groupKey)
+    }
   }
 
-  assignments.sort(compareAssignments)
+  const assignedSlots = assignments.reduce((acc, item) => acc + item.slots, 0)
   return buildResult({
-    ready: assignments.length === slots.length,
+    ready: assignedSlots >= totalSlots,
     assignments,
+    totalSlots,
     maxWindow,
-    totalSlots: slots.length,
   })
 }
 
 export function matchCasualParticipants({ roles = [], queue = [], partySize = 1 } = {}) {
   const normalizedRoles = normalizeRoles(roles)
-  const slots = enumerateSlots(normalizedRoles)
-  if (slots.length === 0) {
-    return buildResult({ ready: false, error: { type: 'no_active_slots' }, totalSlots: 0 })
+  const totalSlots = countTotalSlots(normalizedRoles)
+  if (totalSlots === 0) {
+    return buildResult({
+      ready: false,
+      totalSlots,
+      error: { type: 'no_active_slots' },
+    })
   }
 
-  const roleCounts = countSlotsByRole(slots)
-  const candidateBuckets = buildRoleBuckets(queue, partySize)
-  const usedCandidates = new Set()
-  const usedGroups = new Set()
+  const buckets = buildRoleBuckets(queue, partySize)
+  const usedGroupKeys = new Set()
   const assignments = []
 
-  for (const [roleName, requiredSlots] of roleCounts.entries()) {
-    const bucket = candidateBuckets.get(roleName)
-    const resolution = pickCasualGroups({
-      bucket,
-      requiredSlots,
+  for (const role of normalizedRoles) {
+    const resolution = resolveCasualRole({
+      role,
+      buckets,
       partySize,
-      usedCandidates,
-      usedGroups,
+      usedGroupKeys,
     })
 
     if (!resolution.ok) {
       return buildResult({
         ready: false,
-        assignments,
+        assignments: assignments.concat(resolution.partialAssignments ?? []),
+        totalSlots,
         error: {
           type: resolution.reason,
-          role: roleName,
+          role: role.name,
           missing: resolution.missing,
         },
-        totalSlots: slots.length,
       })
     }
 
-    const roleAssignments = formatAssignments({
-      groups: resolution.groups,
-      roleName,
-      requiredSlots,
-      partySize,
-      usedCandidates,
-      usedGroups,
-    })
-
-    assignments.push(...roleAssignments)
+    for (const assignment of resolution.assignments) {
+      assignments.push(assignment)
+      usedGroupKeys.add(assignment.groupKey)
+    }
   }
 
-  assignments.sort(compareAssignments)
+  const assignedSlots = assignments.reduce((acc, item) => acc + item.slots, 0)
   return buildResult({
-    ready: assignments.length === slots.length,
+    ready: assignedSlots >= totalSlots,
     assignments,
+    totalSlots,
     maxWindow: 0,
-    totalSlots: slots.length,
   })
+}
+
+// ---------------------------------------------------------------------------
+// Core role resolution
+// ---------------------------------------------------------------------------
+
+function resolveRankRole({ role, buckets, partySize, scoreWindows, usedGroupKeys }) {
+  const available = getAvailableGroupsForRole({ role, buckets, usedGroupKeys })
+  if (available.length === 0) {
+    return { ok: false, reason: 'no_candidates', missing: role.slotCount }
+  }
+
+  const groupsNeeded = Math.ceil(role.slotCount / partySize)
+  const windows = normalizeWindows(scoreWindows)
+
+  for (let anchorIndex = 0; anchorIndex < available.length; anchorIndex += 1) {
+    const anchor = available[anchorIndex]
+    const attempt = tryPickRankGroups({
+      anchor,
+      anchorIndex,
+      available,
+      groupsNeeded,
+      role,
+      windows,
+    })
+
+    if (attempt.ok) {
+      return {
+        ok: true,
+        assignments: materializeAssignments({
+          role,
+          picks: attempt.groups,
+        }),
+        window: attempt.window,
+      }
+    }
+  }
+
+  return {
+    ok: false,
+    reason: 'insufficient_candidates',
+    missing: role.slotCount,
+  }
+}
+
+function resolveCasualRole({ role, buckets, partySize, usedGroupKeys }) {
+  const available = getAvailableGroupsForRole({ role, buckets, usedGroupKeys })
+  if (available.length === 0) {
+    return { ok: false, reason: 'no_candidates', missing: role.slotCount }
+  }
+
+  const picks = []
+  let slotsRemaining = role.slotCount
+
+  for (const group of available) {
+    if (slotsRemaining < group.members.length) {
+      continue
+    }
+
+    picks.push(group)
+    slotsRemaining -= group.members.length
+
+    if (slotsRemaining === 0) {
+        return {
+          ok: true,
+          assignments: materializeAssignments({ role, picks }),
+        }
+    }
+  }
+
+  return {
+    ok: false,
+    reason: 'insufficient_candidates',
+    missing: slotsRemaining,
+    partialAssignments: materializeAssignments({ role, picks }),
+  }
+}
+
+function tryPickRankGroups({ anchor, anchorIndex, available, groupsNeeded, role, windows }) {
+  const picks = [anchor]
+  let slotsRemaining = role.slotCount - anchor.members.length
+  if (slotsRemaining < 0) {
+    return { ok: false }
+  }
+
+  if (slotsRemaining === 0) {
+    return { ok: true, groups: picks, window: 0 }
+  }
+
+  const pool = available.filter((_, index) => index !== anchorIndex)
+
+  const pickedKeys = new Set([anchor.groupKey])
+  let bestWindow = 0
+
+  for (const window of windows) {
+    for (const group of pool) {
+      if (pickedKeys.has(group.groupKey)) continue
+      if (Math.abs(group.score - anchor.score) > window) continue
+      if (slotsRemaining < group.members.length) continue
+
+      picks.push(group)
+      pickedKeys.add(group.groupKey)
+      slotsRemaining -= group.members.length
+      if (window > bestWindow) bestWindow = window
+
+      if (slotsRemaining === 0) {
+        return { ok: true, groups: picks, window: bestWindow }
+      }
+
+      if (picks.length === groupsNeeded) {
+        if (slotsRemaining === 0) {
+          return { ok: true, groups: picks, window: bestWindow }
+        }
+      }
+    }
+  }
+
+  return { ok: false }
+}
+
+function materializeAssignments({ role, picks }) {
+  const assignments = []
+  let slotCursor = 0
+
+  for (const group of picks) {
+    assignments.push({
+      role: role.name,
+      slots: group.members.length,
+      roleSlots: buildRoleSlotRange(role.slotCount, slotCursor, group.members.length),
+      members: group.members.map((candidate) => candidate.entry),
+      groupKey: group.groupKey,
+      partyKey: group.partyKey ?? null,
+      anchorScore: group.score,
+      joinedAt: group.joinedAt,
+    })
+    slotCursor += group.members.length
+  }
+
+  return assignments
+}
+
+function buildRoleSlotRange(totalSlots, start, count) {
+  const indices = []
+  for (let index = 0; index < count; index += 1) {
+    if (start + index >= totalSlots) break
+    indices.push(start + index)
+  }
+  return indices
+}
+
+function getAvailableGroupsForRole({ role, buckets, usedGroupKeys }) {
+  const bucket = buckets.get(role.name)
+  if (!bucket) return []
+  return bucket.filter((group) => !usedGroupKeys.has(group.groupKey))
 }
 
 // ---------------------------------------------------------------------------
 // Normalization helpers
 // ---------------------------------------------------------------------------
 
-function normalizeWindows(value) {
-  if (!Array.isArray(value) || value.length === 0) {
-    return DEFAULT_SCORE_WINDOWS
+function normalizeRoles(rawRoles) {
+  if (!Array.isArray(rawRoles)) return []
+  const result = []
+
+  for (const raw of rawRoles) {
+    if (!raw) continue
+    const name = typeof raw === 'string' ? raw : raw.name ?? raw.role
+    const slotCount = coerceInteger(
+      typeof raw === 'number' ? raw : raw.slot_count ?? raw.slotCount ?? raw.slots,
+      0
+    )
+
+    if (!name || slotCount <= 0) continue
+    result.push({ name, slotCount })
   }
 
-  return value
-    .map((raw) => {
-      const parsed = Number(raw)
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        return 0
-      }
+  return result
+}
+
+function normalizeWindows(windows) {
+  if (!Array.isArray(windows) || windows.length === 0) {
+    return DEFAULT_SCORE_WINDOWS
+  }
+  return windows
+    .map((value) => {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed) || parsed < 0) return 0
       return parsed
     })
     .sort((a, b) => a - b)
 }
 
-function normalizeRoles(roles) {
-  if (!Array.isArray(roles)) return []
-
-  const normalized = []
-  for (const entry of roles) {
-    if (entry == null) continue
-    const name = typeof entry === 'string' ? entry : entry.name ?? entry.role
-    if (!name) continue
-    const slotCount = coerceInteger(
-      typeof entry === 'number' ? entry : entry.slot_count ?? entry.slots ?? entry.count,
-      0
-    )
-    if (slotCount <= 0) continue
-    normalized.push({
-      id: typeof entry === 'object' ? entry.id ?? entry.role_id ?? null : null,
-      name,
-      slotCount,
-    })
-  }
-  return normalized
-}
-
-function enumerateSlots(roles) {
-  const slots = []
-  for (const role of roles) {
-    for (let index = 0; index < role.slotCount; index += 1) {
-      slots.push({ role: role.name, roleId: role.id, slotIndex: index })
-    }
-  }
-  return slots
-}
-
-function countSlotsByRole(slots) {
-  const map = new Map()
-  for (const slot of slots) {
-    map.set(slot.role, (map.get(slot.role) ?? 0) + 1)
-  }
-  return map
+function countTotalSlots(roles) {
+  return roles.reduce((acc, role) => acc + role.slotCount, 0)
 }
 
 function buildRoleBuckets(queue, partySize) {
+  const normalizedQueue = normalizeQueue(queue)
   const perRole = new Map()
-  if (!Array.isArray(queue) || queue.length === 0) return perRole
-
-  const normalizedQueue = []
-  for (const entry of queue) {
-    const normalized = normalizeQueueEntry(entry)
-    if (!normalized) continue
-    normalizedQueue.push(normalized)
-  }
 
   if (partySize > 1) {
     appendPartyBuckets(perRole, normalizedQueue, partySize)
   } else {
-    appendSoloBuckets(perRole, normalizedQueue)
+    for (const candidate of normalizedQueue) {
+      if (!candidate.role) continue
+      const key = candidate.groupKey
+      const group = {
+        role: candidate.role,
+        score: candidate.score,
+        joinedAt: candidate.joinedAt,
+        members: [candidate],
+        groupKey: key,
+        partyKey: candidate.partyKey ?? null,
+      }
+      pushGroup(perRole, candidate.role, group)
+    }
+  }
+
+  for (const [, groups] of perRole) {
+    groups.sort((a, b) => a.joinedAt - b.joinedAt)
   }
 
   return perRole
 }
 
-function appendSoloBuckets(perRole, candidates) {
+function appendPartyBuckets(perRole, candidates, partySize) {
+  const byParty = new Map()
+
   for (const candidate of candidates) {
-    if (!perRole.has(candidate.role)) {
-      perRole.set(candidate.role, [])
+    if (!candidate.role) continue
+    if (!candidate.partyKey) continue
+
+    const composite = `${candidate.role}::${candidate.partyKey}`
+    if (!byParty.has(composite)) {
+      byParty.set(composite, [])
     }
-    perRole.get(candidate.role).push({
-      key: candidate.key,
-      joinedAt: candidate.joinedAt,
-      score: candidate.score,
-      members: [candidate],
+    byParty.get(composite).push(candidate)
+  }
+
+  for (const [composite, members] of byParty.entries()) {
+    const [roleName, partyKey] = composite.split('::')
+    if (!roleName) continue
+
+    members.sort((a, b) => a.joinedAt - b.joinedAt)
+
+    for (let index = 0; index + partySize <= members.length; index += partySize) {
+      const slice = members.slice(index, index + partySize)
+      const joinedAt = slice[0].joinedAt
+      const averageScore = Math.round(
+        slice.reduce((acc, candidate) => acc + candidate.score, 0) / slice.length
+      )
+
+      const group = {
+        role: roleName,
+        score: averageScore,
+        joinedAt,
+        members: slice,
+        groupKey: `${partyKey}#${index}`,
+        partyKey,
+      }
+
+      pushGroup(perRole, roleName, group)
+    }
+  }
+}
+
+function pushGroup(map, roleName, group) {
+  if (!map.has(roleName)) {
+    map.set(roleName, [])
+  }
+  map.get(roleName).push(group)
+}
+
+function normalizeQueue(queue) {
+  if (!Array.isArray(queue)) return []
+  const result = []
+
+  for (const entry of queue) {
+    if (!entry) continue
+
+    const role = entry.role ?? entry.role_name ?? entry.roleName
+    if (!role) continue
+
+    const score = deriveScore(entry)
+    const joinedAt = deriveTimestamp(entry)
+    const partyKey = derivePartyKey(entry)
+    const groupKey = deriveGroupKey(entry)
+
+    result.push({
+      role,
+      score,
+      joinedAt,
+      partyKey,
+      groupKey,
+      entry,
     })
   }
 
-  for (const [, list] of perRole.entries()) {
-    list.sort(compareGroups)
-  }
+  result.sort((a, b) => a.joinedAt - b.joinedAt)
+  return result
 }
 
-function appendPartyBuckets(perRole, candidates, partySize) {
-  const grouped = new Map()
-  for (const candidate of candidates) {
-    if (!candidate.partyKey) continue
-    const key = `${candidate.role}::${candidate.partyKey}`
-    if (!grouped.has(key)) {
-      grouped.set(key, [])
+function deriveScore(entry) {
+  const keys = ['score', 'rating', 'mmr']
+  for (const key of keys) {
+    const value = Number(entry[key])
+    if (Number.isFinite(value)) {
+      return value
     }
-    grouped.get(key).push(candidate)
   }
+  return FALLBACK_SCORE
+}
 
-  for (const [composite, members] of grouped.entries()) {
-    const [roleName, partyKey] = composite.split('::')
-    const sortedMembers = members.slice().sort(compareCandidates)
-    const chunks = chunkMembers(sortedMembers, partySize)
-    if (chunks.length === 0) continue
+function deriveTimestamp(entry) {
+  const keys = [
+    'queue_joined_at',
+    'joined_at',
+    'queued_at',
+    'created_at',
+    'updated_at',
+  ]
 
-    if (!perRole.has(roleName)) {
-      perRole.set(roleName, [])
-    }
-
-    const targetList = perRole.get(roleName)
-    for (const chunk of chunks) {
-      targetList.push({
-        key: `${partyKey}:${chunk[0].joinedAt}`,
-        partyKey,
-        joinedAt: chunk[0].joinedAt,
-        score: averageScore(chunk),
-        members: chunk,
-      })
+  for (const key of keys) {
+    const raw = entry[key]
+    if (!raw) continue
+    const parsed = Date.parse(raw)
+    if (Number.isFinite(parsed)) {
+      return parsed
     }
   }
 
-  for (const [, list] of perRole.entries()) {
-    list.sort(compareGroups)
-  }
-}
-
-function chunkMembers(members, size) {
-  if (size <= 0) return []
-  const chunks = []
-  for (let index = 0; index + size <= members.length; index += size) {
-    const slice = members.slice(index, index + size)
-    if (slice.length === size) {
-      chunks.push(slice)
-    }
-  }
-  return chunks
-}
-
-function averageScore(members) {
-  if (!members || members.length === 0) return FALLBACK_SCORE
-  let total = 0
-  for (const member of members) {
-    total += member.score
-  }
-  return total / members.length
-}
-
-function normalizeQueueEntry(entry) {
-  if (!entry) return null
-  const role = entry.role ?? entry.role_name ?? entry.roleName
-  if (!role) return null
-
-  const key = deriveParticipantKey(entry)
-  if (!key) return null
-
-  const joinedAt = deriveTimestamp(entry)
-  const score = deriveScore(entry)
-  const partyKey = derivePartyKey(entry)
-
-  return { role, key, joinedAt, score, partyKey, entry }
-}
-
-function deriveParticipantKey(entry) {
-  const preferred =
-    entry.queue_id ??
-    entry.match_id ??
-    entry.participant_id ??
-    entry.id ??
-    entry.hero_id ??
-    null
-  if (preferred != null) return String(preferred)
-
-  const owner = entry.owner_id ?? entry.user_id ?? 'owner'
-  const hero = entry.hero_id ?? entry.hero ?? 'hero'
-  return `${owner}:${hero}`
+  return Number.MAX_SAFE_INTEGER
 }
 
 function derivePartyKey(entry) {
-  const keys = [
-    'party_id',
-    'partyId',
-    'duo_party_id',
-    'duoPartyId',
-    'group_id',
-    'groupId',
-    'team_id',
-    'teamId',
-  ]
+  const keys = ['party_id', 'partyId', 'party_key', 'partyKey', 'duo_party_id']
   for (const key of keys) {
     const value = entry[key]
-    if (value != null) return String(value)
+    if (value != null) {
+      return String(value)
+    }
   }
   return null
 }
 
-function deriveTimestamp(entry) {
-  const keys = ['queue_joined_at', 'joined_at', 'queued_at', 'created_at', 'updated_at']
-  for (const key of keys) {
-    const value = entry[key]
-    if (value == null) continue
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value
-    }
-    if (typeof value === 'string' && value.trim()) {
-      const parsed = Date.parse(value)
-      if (!Number.isNaN(parsed)) return parsed
-    }
-  }
-  return 0
-}
-
-function deriveScore(entry) {
-  if (typeof entry.score === 'number') return entry.score
-  if (typeof entry.rating === 'number') return entry.rating
-  if (typeof entry.mmr === 'number') return entry.mmr
-  return FALLBACK_SCORE
+function deriveGroupKey(entry) {
+  if (entry.id != null) return `id:${entry.id}`
+  if (entry.owner_id != null) return `owner:${entry.owner_id}`
+  if (entry.ownerId != null) return `owner:${entry.ownerId}`
+  const fallback = Math.random().toString(36).slice(2)
+  return `rand:${fallback}`
 }
 
 function coerceInteger(value, fallback) {
@@ -379,151 +489,13 @@ function coerceInteger(value, fallback) {
   return Math.max(0, Math.trunc(parsed))
 }
 
-function compareGroups(a, b) {
-  if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt
-  if (a.score !== b.score) return a.score - b.score
-  return String(a.key).localeCompare(String(b.key))
-}
-
-function compareCandidates(a, b) {
-  if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt
-  if (a.score !== b.score) return a.score - b.score
-  return String(a.key).localeCompare(String(b.key))
-}
-
-function compareAssignments(a, b) {
-  if (a.role === b.role) return a.slotIndex - b.slotIndex
-  return a.role.localeCompare(b.role)
-}
-
-// ---------------------------------------------------------------------------
-// Matching routines
-// ---------------------------------------------------------------------------
-
-function pickRankGroups({ bucket, requiredSlots, partySize, scoreWindows, usedCandidates, usedGroups }) {
-  if (!bucket || bucket.length === 0) {
-    return { ok: false, reason: 'no_candidates', missing: requiredSlots }
-  }
-
-  const groupsNeeded = Math.ceil(requiredSlots / partySize)
-  const available = filterAvailableGroups(bucket, usedCandidates, usedGroups)
-  if (available.length === 0) {
-    return { ok: false, reason: 'no_candidates', missing: requiredSlots }
-  }
-
-  const anchor = available[0]
-  const anchorScore = anchor.score ?? FALLBACK_SCORE
-  const picked = []
-  let appliedWindow = 0
-
-  for (const window of scoreWindows) {
-    for (const group of available) {
-      if (picked.includes(group)) continue
-      if (!groupWithinWindow(group, anchorScore, window)) continue
-      picked.push(group)
-      if (picked.length >= groupsNeeded) {
-        appliedWindow = window
-        break
-      }
-    }
-    if (picked.length >= groupsNeeded) break
-  }
-
-  if (picked.length < groupsNeeded) {
-    return {
-      ok: false,
-      reason: 'score_window_exhausted',
-      missing: requiredSlots - picked.length * partySize,
-      anchorScore,
-    }
-  }
-
-  for (const group of picked) {
-    group.window = appliedWindow
-  }
-
-  return { ok: true, groups: picked, window: appliedWindow, anchorScore }
-}
-
-function pickCasualGroups({ bucket, requiredSlots, partySize, usedCandidates, usedGroups }) {
-  if (!bucket || bucket.length === 0) {
-    return { ok: false, reason: 'no_candidates', missing: requiredSlots }
-  }
-
-  const groupsNeeded = Math.ceil(requiredSlots / partySize)
-  const available = filterAvailableGroups(bucket, usedCandidates, usedGroups)
-  if (available.length === 0) {
-    return { ok: false, reason: 'no_candidates', missing: requiredSlots }
-  }
-
-  const picked = available.slice(0, groupsNeeded)
-  for (const group of picked) {
-    group.window = 0
-  }
-  return { ok: true, groups: picked }
-}
-
-function filterAvailableGroups(bucket, usedCandidates, usedGroups) {
-  const filtered = []
-  for (const group of bucket) {
-    if (usedGroups.has(group.key)) continue
-    if (group.members.some((member) => usedCandidates.has(member.key))) continue
-    filtered.push(group)
-  }
-  return filtered
-}
-
-function groupWithinWindow(group, anchorScore, window) {
-  const score = group.score ?? FALLBACK_SCORE
-  return Math.abs(score - anchorScore) <= window
-}
-
-function formatAssignments({ groups, roleName, requiredSlots, partySize, usedCandidates, usedGroups }) {
-  const assignments = []
-  let slotIndex = 0
-
-  for (const group of groups) {
-    usedGroups.add(group.key)
-    for (const member of group.members) {
-      if (slotIndex >= requiredSlots) break
-      usedCandidates.add(member.key)
-      assignments.push({
-        role: roleName,
-        roleId: member.entry?.role_id ?? member.entry?.roleId ?? null,
-        slotIndex,
-        participant: member.entry,
-        participantKey: member.key,
-        window: group.window ?? 0,
-        partyKey: group.partyKey ?? null,
-      })
-      slotIndex += 1
-    }
-  }
-
-  return assignments
-}
-
-function buildResult({ ready, assignments = [], maxWindow = 0, error = null, totalSlots = 0 }) {
+function buildResult({ ready, assignments = [], totalSlots = 0, maxWindow = 0, error = null }) {
   return {
-    ready,
+    ready: Boolean(ready),
     assignments,
-    stats: {
-      totalSlots: totalSlots || assignments.reduce((acc, assignment) => Math.max(acc, assignment.slotIndex + 1), 0),
-      filledSlots: assignments.length,
-      maxWindow,
-    },
+    totalSlots,
+    maxWindow,
     error,
   }
 }
 
-export const __internals = {
-  DEFAULT_SCORE_WINDOWS,
-  FALLBACK_SCORE,
-  normalizeRoles,
-  enumerateSlots,
-  countSlotsByRole,
-  buildRoleBuckets,
-  pickRankGroups,
-  pickCasualGroups,
-  formatAssignments,
-}
