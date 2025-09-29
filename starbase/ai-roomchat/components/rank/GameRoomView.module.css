@@ -98,85 +98,45 @@
   color: #f8fafc;
 }
 
-.carousel {
-  position: relative;
-  overflow: hidden;
+.summaryCard {
   border-radius: 24px;
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(8, 12, 24, 0.65);
   backdrop-filter: blur(16px);
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
   max-width: 520px;
   margin: 0 auto;
 }
 
-.pageLoading {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
+.panels {
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(8, 12, 24, 0.65);
+  backdrop-filter: blur(16px);
+  overflow: hidden;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.panel {
+  display: none;
+  padding: 28px 20px 36px;
+}
+
+.panelActive {
+  display: block;
+}
+
+.panelInner {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: rgba(8, 12, 24, 0.74);
-  backdrop-filter: blur(18px);
-  color: rgba(226, 232, 240, 0.92);
-  font-size: 15px;
-  text-align: center;
-}
-
-.pageLoadingSpinner {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 3px solid rgba(148, 163, 184, 0.35);
-  border-top-color: rgba(96, 165, 250, 0.8);
-  animation: spin 0.8s linear infinite;
-}
-
-.pageLoadingText {
-  font-weight: 600;
-}
-
-.pageLoadingSpinner::before {
-  content: '';
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.track {
-  display: flex;
-  width: 300%;
-  transition: transform 0.35s ease;
-}
-
-.slide {
+  gap: 32px;
   width: 100%;
-  flex: 0 0 100%;
-  padding: 24px 18px 32px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 28px;
-}
-
-.mainSlide > *,
-.heroSlide > * {
-  width: 100%;
-  max-width: min(320px, 100%);
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.mainSlide {
-  gap: 36px;
+  max-width: 520px;
+  margin: 0 auto;
 }
 
 .gameHeader {
@@ -536,10 +496,6 @@
   overflow-x: auto;
 }
 
-.heroSlide {
-  gap: 24px;
-}
-
 .heroLayout {
   display: flex;
   flex-direction: column;
@@ -552,16 +508,12 @@
 }
 
 .heroImageButton {
-  border: none;
-  padding: 0;
-  background: transparent;
   border-radius: 24px;
   overflow: hidden;
   max-width: min(360px, 100%);
   aspect-ratio: 3 / 4;
   box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
+  background: transparent;
 }
 
 .heroImageButton img {
@@ -715,10 +667,11 @@
   transform: translateY(-1px);
 }
 
-.rankingSlide {
+.rankingPanel {
   position: relative;
   overflow: hidden;
-  gap: 32px;
+  border-radius: 20px;
+  min-height: 100%;
 }
 
 .rankingBackdrop,
@@ -747,9 +700,9 @@
   flex-direction: column;
   gap: 26px;
   width: 100%;
-  max-width: min(320px, 100%);
-  margin-left: auto;
-  margin-right: auto;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 28px 20px 36px;
 }
 
 .rankingHeader {
@@ -876,28 +829,6 @@
   color: rgba(226, 232, 240, 0.9);
 }
 
-.tabDots {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  border: none;
-  background: rgba(148, 163, 184, 0.4);
-  cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.dotActive {
-  background: rgba(59, 130, 246, 0.8);
-  transform: scale(1.15);
-}
-
 @media (min-width: 560px) {
   .roleList {
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -952,9 +883,5 @@
 
   .heroVisual {
     flex-basis: 360px;
-  }
-
-  .track {
-    width: 300%;
   }
 }
