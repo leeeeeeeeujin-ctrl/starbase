@@ -227,8 +227,9 @@
 
 .heroBody {
   display: flex;
+  flex-direction: column;
   gap: 20px;
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .heroPortrait {
@@ -601,6 +602,415 @@
   border: 1px solid rgba(148, 163, 184, 0.22);
   text-align: center;
   color: rgba(226, 232, 240, 0.88);
+}
+
+
+.portrait {
+  min-height: 100vh;
+}
+
+.landscape {
+  min-height: 100vh;
+}
+
+.landscape .content {
+  max-width: 1280px;
+  padding: 120px 28px 140px;
+}
+
+.heroPortraitButton {
+  position: relative;
+  display: block;
+  border: none;
+  padding: 0;
+  border-radius: 24px;
+  overflow: hidden;
+  cursor: pointer;
+  background: transparent;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.45);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.heroPortraitButton img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.heroPortraitFallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 220px;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 14px;
+  background: rgba(30, 41, 59, 0.42);
+}
+
+.heroPortraitButton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5, 7, 18, 0) 0%, rgba(5, 7, 18, 0.55) 100%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.heroPortraitDimmed::after {
+  opacity: 1;
+}
+
+.heroOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 24px;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.heroOverlayName {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heroNameBadge {
+  align-self: flex-start;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(30, 64, 175, 0.72);
+  color: #e0f2fe;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+}
+
+.heroOverlayDescription {
+  margin: 0;
+  background: rgba(15, 23, 42, 0.68);
+  border-radius: 18px;
+  padding: 18px 20px;
+  line-height: 1.7;
+  color: rgba(226, 232, 240, 0.88);
+}
+
+.heroAbilityList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.heroAbilityItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.72);
+  border-radius: 16px;
+  padding: 14px 16px;
+  color: rgba(226, 232, 240, 0.88);
+}
+
+.abilityLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: #60a5fa;
+  letter-spacing: 0.03em;
+}
+
+.heroStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.heroStatTile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.86);
+  border: 1px solid rgba(15, 15, 15, 0.65);
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.heroStatLabel {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.heroStatValue {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.heroLogSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionHeaderSmall {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sectionHintSmall {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.logList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.logItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.logText {
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(226, 232, 240, 0.88);
+}
+
+.logTag {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.25);
+  color: #bfdbfe;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.moreButton {
+  align-self: center;
+  padding: 10px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.45);
+  color: rgba(226, 232, 240, 0.85);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.moreButton:hover,
+.moreButton:focus {
+  background: rgba(30, 41, 59, 0.65);
+  transform: translateY(-1px);
+}
+
+.rankingPane {
+  position: relative;
+  border-radius: 32px;
+  overflow: hidden;
+  min-height: 70vh;
+}
+
+.rankingBackdrop,
+.rankingBackdropFallback {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(26px);
+  transform: scale(1.12);
+  opacity: 0.7;
+}
+
+.rankingBackdropFallback {
+  background: radial-gradient(circle at top, rgba(59, 130, 246, 0.35), rgba(15, 23, 42, 0.92));
+}
+
+.rankingOverlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.76) 0%, rgba(2, 6, 23, 0.92) 100%);
+}
+
+.rankingContent {
+  position: relative;
+  z-index: 1;
+  padding: 40px 44px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.rankingHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rankingTitle {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.rankingSubtitle {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.rankingChampion {
+  display: flex;
+  justify-content: center;
+}
+
+.rankingChampionCard {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: 20px;
+  padding: 24px;
+  border-radius: 24px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  max-width: 600px;
+  width: 100%;
+}
+
+.rankingChampionCard img,
+.rankingChampionFallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 18px;
+  object-fit: cover;
+}
+
+.rankingChampionFallback {
+  display: grid;
+  place-items: center;
+  color: rgba(226, 232, 240, 0.7);
+  background: rgba(30, 41, 59, 0.6);
+}
+
+.rankingChampionMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+}
+
+.rankingChampionBadge {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.35);
+  color: #fef3c7;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.rankingChampionName {
+  font-size: 26px;
+  margin: 0;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.rankingChampionRole {
+  font-size: 14px;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.rankingChampionScore {
+  font-size: 14px;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.rankingBody {
+  display: grid;
+  gap: 28px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.rankingSectionTitle {
+  margin: 0 0 14px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.rankingList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rankingRow {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.68);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.rankingIndex {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.35);
+  color: #dbeafe;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.rankingRowBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rankingRowName {
+  font-size: 16px;
+  margin: 0;
+  color: #f8fafc;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rankingRowMeta {
+  font-size: 13px;
+  color: rgba(148, 163, 184, 0.85);
 }
 
 @media (max-width: 720px) {

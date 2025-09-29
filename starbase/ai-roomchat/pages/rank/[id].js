@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
-import { useAiHistory } from '../../lib/aiHistory'
 import GameRoomView from '../../components/rank/GameRoomView'
 import { useGameRoom } from '../../hooks/useGameRoom'
 
@@ -15,8 +14,6 @@ export default function GameRoomPage() {
 
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [pickRole, setPickRole] = useState('')
-
-  const { push } = useAiHistory({ gameId: id })
 
   const handleRequireLogin = useCallback(() => {
     router.replace('/')
@@ -32,7 +29,7 @@ export default function GameRoomPage() {
   }, [router])
 
   const {
-    state: { loading, game, roles, participants, myHero, deleting },
+    state: { loading, game, roles, participants, myHero, deleting, recentBattles },
     derived: { canStart, isOwner, alreadyJoined, myEntry },
     actions: { joinGame, deleteRoom },
   } = useGameRoom(id, {
@@ -82,17 +79,12 @@ export default function GameRoomPage() {
         onJoin={handleJoin}
         onStart={handleStart}
         onOpenLeaderboard={() => setShowLeaderboard(true)}
-        onDelete={deleteRoom}
-        isOwner={isOwner}
-        deleting={deleting}
-        startDisabled={!canStart || !myHero}
-        onChatSend={async (text) => {
-          await push({ role: 'user', content: text, public: true })
-          const response = `(${new Date().toLocaleTimeString()}) [AI] “${text.slice(0, 40)}…” 에 대한 응답 (스텁)`
-          await push({ role: 'assistant', content: response, public: true })
-          return true
-        }}
-      />
+      onDelete={deleteRoom}
+      isOwner={isOwner}
+      deleting={deleting}
+      startDisabled={!canStart || !myHero}
+      recentBattles={recentBattles}
+    />
 
       {showLeaderboard && (
         <LeaderboardDrawer gameId={id} onClose={() => setShowLeaderboard(false)} />

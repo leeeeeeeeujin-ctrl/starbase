@@ -12,7 +12,9 @@ async function fetchParticipantsWithHeroes(gameId) {
   } = await withTable(supabase, 'rank_participants', (table) =>
     supabase
       .from(table)
-      .select('id, game_id, hero_id, owner_id, role, score, created_at')
+      .select(
+        'id, game_id, hero_id, owner_id, role, score, rating, battles, win_rate, created_at'
+      )
       .eq('game_id', gameId)
       .order('score', { ascending: false })
   )
@@ -33,7 +35,7 @@ async function fetchParticipantsWithHeroes(gameId) {
       supabase
         .from(table)
         .select(
-          'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4'
+          'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4, bgm_url, bgm_duration_seconds'
         )
         .in('id', heroIds)
   )
@@ -57,7 +59,7 @@ async function resolveStoredHero() {
     supabase
       .from(table)
       .select(
-        'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4'
+        'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4, bgm_url, bgm_duration_seconds'
       )
       .eq('id', heroId)
       .maybeSingle()
@@ -65,6 +67,22 @@ async function resolveStoredHero() {
 
   if (error) return null
   return data || null
+}
+
+async function fetchRecentBattles(gameId) {
+  const { data, error } = await withTable(supabase, 'rank_battles', (table) =>
+    supabase
+      .from(table)
+      .select(
+        'id, game_id, attacker_owner_id, attacker_hero_ids, defender_owner_id, defender_hero_ids, result, score_delta, created_at'
+      )
+      .eq('game_id', gameId)
+      .order('created_at', { ascending: false })
+      .limit(40)
+  )
+
+  if (error) throw error
+  return data || []
 }
 
 export function useGameRoom(
@@ -81,6 +99,7 @@ export function useGameRoom(
   const [roles, setRoles] = useState([])
   const [participants, setParticipants] = useState([])
   const [myHero, setMyHero] = useState(null)
+  const [recentBattles, setRecentBattles] = useState([])
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
@@ -130,6 +149,14 @@ export function useGameRoom(
         if (!alive) return
         setParticipants(mappedParticipants)
 
+        try {
+          const battles = await fetchRecentBattles(gameId)
+          if (!alive) return
+          setRecentBattles(battles)
+        } catch (battleError) {
+          console.warn('최근 전투 기록을 불러오지 못했습니다:', battleError)
+        }
+
         const storedHero = await resolveStoredHero()
         if (!alive) return
         setMyHero(storedHero)
@@ -153,6 +180,16 @@ export function useGameRoom(
       setParticipants(mapped)
     } catch (err) {
       console.error('참가자 갱신 실패:', err)
+    }
+  }, [gameId])
+
+  const refreshBattles = useCallback(async () => {
+    if (!gameId) return
+    try {
+      const battles = await fetchRecentBattles(gameId)
+      setRecentBattles(battles)
+    } catch (err) {
+      console.error('전투 기록 갱신 실패:', err)
     }
   }, [gameId])
 
@@ -203,9 +240,10 @@ export function useGameRoom(
       }
 
       await refreshParticipants()
+      await refreshBattles()
       return { ok: true }
     },
-    [gameId, myHero, refreshParticipants, roles, user]
+    [gameId, myHero, refreshBattles, refreshParticipants, roles, user]
   )
 
   const deleteRoom = useCallback(async () => {
@@ -259,6 +297,7 @@ export function useGameRoom(
       roles,
       participants,
       myHero,
+      recentBattles,
       deleting,
     },
     derived: {
@@ -272,6 +311,7 @@ export function useGameRoom(
       joinGame,
       deleteRoom,
       refreshParticipants,
+      refreshBattles,
     },
   }
 }
