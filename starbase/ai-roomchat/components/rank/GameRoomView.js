@@ -257,7 +257,18 @@ export default function GameRoomView({
   const roster = Array.isArray(participants) ? participants : []
   const readyCount = roster.length
 
-  const backgroundImage = myHero?.background_url || game?.image_url || null
+  const entryBackdrop = myEntry?.hero?.background_url || null
+
+  const heroBackdrop = useMemo(() => {
+    if (myHero?.background_url) return myHero.background_url
+    if (entryBackdrop) return entryBackdrop
+    const participantBackdrop = participants.find(
+      (participant) => participant?.hero?.background_url
+    )
+    return participantBackdrop?.hero?.background_url || null
+  }, [entryBackdrop, myHero?.background_url, participants])
+
+  const backgroundImage = heroBackdrop || game?.image_url || null
   const coverImage = game?.image_url || null
 
   const heroAbilities = useMemo(() => {

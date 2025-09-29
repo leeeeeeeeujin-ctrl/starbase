@@ -16,7 +16,7 @@
   background-position: center;
   filter: blur(36px);
   transform: scale(1.08);
-  opacity: 0.5;
+  opacity: 0.62;
   pointer-events: none;
 }
 
@@ -27,7 +27,7 @@
 .overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(5, 7, 18, 0.45) 0%, rgba(5, 7, 18, 0.92) 65%, #050712 100%);
+  background: linear-gradient(180deg, rgba(5, 7, 18, 0.38) 0%, rgba(5, 7, 18, 0.82) 65%, rgba(5, 7, 18, 0.92) 100%);
   pointer-events: none;
 }
 
@@ -47,7 +47,7 @@
   left: 24px;
   z-index: 10;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(15, 23, 42, 0.45);
   color: #e2e8f0;
   padding: 10px 18px;
   border-radius: 999px;
@@ -58,7 +58,7 @@
 
 .backLink:hover,
 .backLink:focus {
-  background: rgba(30, 41, 59, 0.9);
+  background: rgba(30, 41, 59, 0.55);
   transform: translateY(-1px);
 }
 
@@ -67,8 +67,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: rgba(11, 16, 31, 0.72);
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(11, 16, 31, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 24px;
   padding: 18px 24px;
   backdrop-filter: blur(14px);
@@ -93,8 +93,8 @@
 .heroSection {
   display: grid;
   gap: 28px;
-  background: rgba(9, 13, 24, 0.72);
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(9, 13, 24, 0.52);
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 28px;
   padding: 32px;
   backdrop-filter: blur(18px);
@@ -152,7 +152,7 @@
 .linkButton {
   border: 1px solid rgba(96, 165, 250, 0.55);
   color: #bfdbfe;
-  background: rgba(30, 41, 59, 0.6);
+  background: rgba(30, 41, 59, 0.45);
   padding: 8px 14px;
   border-radius: 10px;
   cursor: pointer;
@@ -161,7 +161,7 @@
 
 .linkButton:hover,
 .linkButton:focus {
-  background: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.38);
   transform: translateY(-1px);
 }
 
@@ -171,7 +171,7 @@
   overflow: hidden;
   border: 1px solid rgba(96, 165, 250, 0.2);
   min-height: 220px;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(15, 23, 42, 0.4);
 }
 
 .cover {
@@ -199,8 +199,8 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  background: rgba(11, 16, 31, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(11, 16, 31, 0.48);
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 24px;
   padding: 26px;
   backdrop-filter: blur(16px);
@@ -236,7 +236,7 @@
   height: 136px;
   border-radius: 20px;
   overflow: hidden;
-  background: rgba(148, 163, 184, 0.22);
+  background: rgba(148, 163, 184, 0.16);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -295,8 +295,8 @@
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  background: rgba(30, 41, 59, 0.65);
-  border: 1px solid rgba(59, 130, 246, 0.25);
+  background: rgba(30, 41, 59, 0.42);
+  border: 1px solid rgba(59, 130, 246, 0.28);
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 13px;
@@ -314,7 +314,7 @@
   padding: 24px;
   text-align: center;
   color: rgba(226, 232, 240, 0.75);
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(15, 23, 42, 0.38);
 }
 
 .roleGrid {
@@ -326,7 +326,7 @@
 .roleChip {
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 16px;
-  background: rgba(30, 41, 59, 0.55);
+  background: rgba(30, 41, 59, 0.38);
   color: inherit;
   padding: 14px 16px;
   text-align: left;
@@ -339,15 +339,15 @@
 
 .roleChip:hover,
 .roleChip:focus {
-  border-color: rgba(96, 165, 250, 0.75);
-  background: rgba(37, 99, 235, 0.24);
+  border-color: rgba(96, 165, 250, 0.72);
+  background: rgba(37, 99, 235, 0.28);
   transform: translateY(-1px);
 }
 
 .roleChipActive {
-  border-color: rgba(96, 165, 250, 0.95);
-  background: rgba(37, 99, 235, 0.32);
-  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.25);
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(37, 99, 235, 0.24);
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.18);
 }
 
 .roleChipDisabled {
@@ -373,9 +373,9 @@
 }
 
 .primaryButton {
-  border: none;
-  background: linear-gradient(135deg, #2563eb, #3b82f6);
-  color: #fff;
+  border: 1px solid rgba(59, 130, 246, 0.65);
+  background: rgba(37, 99, 235, 0.28);
+  color: #f8fafc;
   padding: 12px 22px;
   border-radius: 14px;
   font-weight: 700;
@@ -386,7 +386,8 @@
 .primaryButton:hover,
 .primaryButton:focus {
   transform: translateY(-1px);
-  box-shadow: 0 16px 36px rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.38);
+  box-shadow: 0 16px 36px rgba(37, 99, 235, 0.22);
 }
 
 .primaryButton:disabled {
@@ -396,9 +397,9 @@
 }
 
 .ownerStartButton {
-  border: none;
-  background: linear-gradient(135deg, #10b981, #34d399);
-  color: #022c22;
+  border: 1px solid rgba(16, 185, 129, 0.62);
+  background: rgba(16, 185, 129, 0.24);
+  color: #ecfdf5;
   padding: 12px 22px;
   border-radius: 14px;
   font-weight: 700;
@@ -409,7 +410,8 @@
 .ownerStartButton:hover,
 .ownerStartButton:focus {
   transform: translateY(-1px);
-  box-shadow: 0 16px 36px rgba(16, 185, 129, 0.32);
+  background: rgba(16, 185, 129, 0.32);
+  box-shadow: 0 16px 36px rgba(16, 185, 129, 0.18);
 }
 
 .ownerStartButton:disabled {
@@ -430,8 +432,8 @@
 }
 
 .subtleButton {
-  border: 1px solid rgba(248, 250, 252, 0.28);
-  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(248, 250, 252, 0.24);
+  background: rgba(15, 23, 42, 0.32);
   color: rgba(248, 250, 252, 0.9);
   padding: 10px 16px;
   border-radius: 12px;
@@ -441,7 +443,7 @@
 
 .subtleButton:hover,
 .subtleButton:focus {
-  background: rgba(248, 250, 252, 0.16);
+  background: rgba(248, 250, 252, 0.22);
   transform: translateY(-1px);
 }
 
@@ -454,8 +456,8 @@
 .rosterSection,
 .rulesSection,
 .chatSection {
-  background: rgba(9, 13, 24, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(9, 13, 24, 0.52);
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 26px;
   padding: 28px;
   backdrop-filter: blur(16px);
@@ -496,7 +498,7 @@
   padding: 22px;
   text-align: center;
   color: rgba(226, 232, 240, 0.72);
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(15, 23, 42, 0.36);
 }
 
 .rosterGrid {
@@ -509,8 +511,8 @@
   margin: 0;
   padding: 18px;
   border-radius: 16px;
-  background: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(96, 165, 250, 0.22);
+  background: rgba(15, 23, 42, 0.48);
+  border: 1px solid rgba(96, 165, 250, 0.24);
   font-family: 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 13px;
   line-height: 1.6;
@@ -530,7 +532,7 @@
 .rulesItem {
   border-radius: 18px;
   border: 1px solid rgba(96, 165, 250, 0.24);
-  background: rgba(15, 23, 42, 0.68);
+  background: rgba(15, 23, 42, 0.44);
   padding: 18px 20px;
   display: grid;
   gap: 6px;
@@ -571,7 +573,7 @@
   padding: 14px;
   border-radius: 16px;
   border: 1px solid rgba(148, 163, 184, 0.32);
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(15, 23, 42, 0.48);
   color: rgba(226, 232, 240, 0.92);
   resize: vertical;
   font-size: 14px;
@@ -595,8 +597,8 @@
 .loadingCard {
   padding: 28px;
   border-radius: 20px;
-  background: rgba(9, 13, 24, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(9, 13, 24, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.22);
   text-align: center;
   color: rgba(226, 232, 240, 0.88);
 }

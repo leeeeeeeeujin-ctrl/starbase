@@ -7,11 +7,12 @@ export default function ParticipantCard({ p }) {
   return (
     <div
       style={{
-        border: '1px solid rgba(148, 163, 184, 0.35)',
+        border: '1px solid rgba(148, 163, 184, 0.28)',
         borderRadius: 14,
         padding: 14,
-        background: 'rgba(15, 23, 42, 0.72)',
+        background: 'rgba(15, 23, 42, 0.48)',
         color: '#e2e8f0',
+        backdropFilter: 'blur(10px)',
       }}
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -21,7 +22,7 @@ export default function ParticipantCard({ p }) {
             height: 48,
             borderRadius: 12,
             overflow: 'hidden',
-            background: 'rgba(148, 163, 184, 0.25)',
+            background: 'rgba(148, 163, 184, 0.18)',
             flexShrink: 0,
           }}
         >
@@ -54,10 +55,11 @@ export default function ParticipantCard({ p }) {
           style={{
             padding: '6px 12px',
             borderRadius: 999,
-            border: '1px solid rgba(148, 163, 184, 0.4)',
-            background: 'rgba(30, 41, 59, 0.7)',
+            border: '1px solid rgba(148, 163, 184, 0.32)',
+            background: 'rgba(30, 41, 59, 0.38)',
             color: '#e2e8f0',
             cursor: 'pointer',
+            backdropFilter: 'blur(8px)',
           }}
           type="button"
         >
