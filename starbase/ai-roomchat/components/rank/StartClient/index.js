@@ -1,6 +1,7 @@
+'use client'
+
 import { useRouter } from 'next/router'
 
-import SharedChatDock from '../../common/SharedChatDock'
 import HeaderControls from './HeaderControls'
 import LogsPanel from './LogsPanel'
 import ManualResponsePanel from './ManualResponsePanel'
@@ -121,9 +122,8 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
         </div>
       </div>
 
-      <SharedChatDock height={260} />
     </div>
   )
 }
 
-// Start client entry point that orchestrates the in-battle panels and shared chat dock.
+// Start client entry point that orchestrates the in-battle panels.

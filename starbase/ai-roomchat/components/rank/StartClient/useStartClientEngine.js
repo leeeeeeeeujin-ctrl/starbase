@@ -1,3 +1,5 @@
+'use client'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
@@ -26,10 +28,38 @@ export function useStartClientEngine(gameId) {
   const [activeLocal, setActiveLocal] = useState([])
   const [logs, setLogs] = useState([])
   const [statusMessage, setStatusMessage] = useState('')
-  const [apiKey, setApiKey] = useState('')
-  const [apiVersion, setApiVersion] = useState('chat_completions')
+  const [apiKey, setApiKeyState] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return window.sessionStorage.getItem('rank.start.apiKey') || ''
+  })
+  const [apiVersion, setApiVersionState] = useState(() => {
+    if (typeof window === 'undefined') return 'gemini'
+    return window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
+  })
   const [manualResponse, setManualResponse] = useState('')
   const [isAdvancing, setIsAdvancing] = useState(false)
+
+  const setApiKey = useCallback((value) => {
+    setApiKeyState(value)
+    if (typeof window !== 'undefined') {
+      if (value) {
+        window.sessionStorage.setItem('rank.start.apiKey', value)
+      } else {
+        window.sessionStorage.removeItem('rank.start.apiKey')
+      }
+    }
+  }, [])
+
+  const setApiVersion = useCallback((value) => {
+    setApiVersionState(value)
+    if (typeof window !== 'undefined') {
+      if (value) {
+        window.sessionStorage.setItem('rank.start.apiVersion', value)
+      } else {
+        window.sessionStorage.removeItem('rank.start.apiVersion')
+      }
+    }
+  }, [])
 
   const visitedSlotIds = useRef(new Set())
   const apiVersionLock = useRef(null)
@@ -325,5 +355,3 @@ export function useStartClientEngine(gameId) {
     advanceWithManual,
   }
 }
-
-//
