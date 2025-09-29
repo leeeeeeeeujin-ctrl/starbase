@@ -21,6 +21,17 @@ async function registerGame(payload) {
     return { ok: false, error: '로그인이 필요합니다.' }
   }
 
+  const roleNames = Array.from(
+    new Set(
+      (payload?.roles || [])
+        .map((role) => {
+          if (!role?.name) return ''
+          return String(role.name).trim()
+        })
+        .filter(Boolean),
+    ),
+  )
+
   const gameInsert = {
     owner_id: user.id,
     name: payload?.name || '새 게임',
@@ -32,16 +43,17 @@ async function registerGame(payload) {
     rules_prefix: payload?.rules_prefix ?? null,
   }
 
-  const { data: game, error: gameError } = await withTable(
-    supabase,
-    'rank_games',
-    (table) =>
-      supabase
-        .from(table)
-        .insert(gameInsert)
-        .select()
-        .single()
-  )
+  if (roleNames.length > 0) {
+    gameInsert.roles = roleNames
+  }
+
+  const { data: game, error: gameError } = await withTable(supabase, 'rank_games', (table) => {
+    const insertPayload = { ...gameInsert }
+    if (table !== 'rank_games') {
+      delete insertPayload.roles
+    }
+    return supabase.from(table).insert(insertPayload).select().single()
+  })
 
   if (gameError || !game) {
     return { ok: false, error: gameError?.message || '게임 등록에 실패했습니다.' }
@@ -54,10 +66,11 @@ async function registerGame(payload) {
       const min = Number.isFinite(rawMin) ? rawMin : 20
       const max = Number.isFinite(rawMax) ? rawMax : 40
 
+      const slotCount = Number.isFinite(Number(role?.slot_count)) ? Number(role.slot_count) : 0
       return {
         game_id: game.id,
         name: role?.name ? String(role.name) : '역할',
-        slot_count: Number.isFinite(Number(role?.slot_count)) ? Number(role.slot_count) : 1,
+        slot_count: Math.max(0, slotCount),
         active: true,
         score_delta_min: Math.max(0, min),
         score_delta_max: Math.max(Math.max(0, min), max),
@@ -169,27 +182,41 @@ export default function RankNewClient() {
       }
     }
 
+    const trimmedEndCondition = endCondition.trim()
     const compiledRules = {
       ...rules,
-      brawl_rule: 'banish-on-loss',
-      end_condition_variable: null,
+      brawl_rule: brawlEnabled ? 'allow-brawl' : 'banish-on-loss',
+      end_condition_variable: brawlEnabled ? trimmedEndCondition || null : null,
     }
 
-    if (brawlEnabled) {
-      compiledRules.end_condition_variable = endCondition.trim() || null
-    }
+    const slotCountMap = activeSlots.reduce((acc, slot) => {
+      const key = slot.role ? String(slot.role).trim() : ''
+      if (!key) return acc
+      acc[key] = (acc[key] || 0) + 1
+      return acc
+    }, {})
+
+    const rolePayload = roles.map((role) => {
+      const name = role?.name ? String(role.name).trim() : '역할'
+      const rawMin = Number(role?.score_delta_min)
+      const rawMax = Number(role?.score_delta_max)
+      const min = Number.isFinite(rawMin) ? rawMin : 20
+      const max = Number.isFinite(rawMax) ? rawMax : 40
+      const slotCount = Number.isFinite(Number(slotCountMap[name])) ? Number(slotCountMap[name]) : 0
+      return {
+        name,
+        slot_count: Math.max(0, slotCount),
+        score_delta_min: min,
+        score_delta_max: max,
+      }
+    })
 
     const res = await registerGame({
       name: name || '새 게임',
       description: desc || '',
       image_url,
       prompt_set_id: setId,
-      roles: roles.map((role) => ({
-        name: role?.name || '역할',
-        slot_count: 1,
-        score_delta_min: Number.isFinite(Number(role?.score_delta_min)) ? Number(role.score_delta_min) : 20,
-        score_delta_max: Number.isFinite(Number(role?.score_delta_max)) ? Number(role.score_delta_max) : 40,
-      })),
+      roles: rolePayload,
       rules: compiledRules,
       rules_prefix: buildRulesPrefix(compiledRules),
       realtime_match: realtime,
@@ -425,9 +452,9 @@ export default function RankNewClient() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ display: 'grid', gap: 4, minWidth: 240 }}>
-                    <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>난투 옵션</p>
+                    <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>난입 허용</p>
                     <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>
-                      해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
+                      해당 옵션에 체크하면 전투 중 패배한 인원을 대체해 같은 역할군의 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
                     </p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -462,7 +489,7 @@ export default function RankNewClient() {
                       color: '#e2e8f0',
                     }}
                   >
-                    해당 옵션에 체크하면 전투중 패배한 인원을 대체해 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
+                    해당 옵션에 체크하면 전투 중 패배한 인원을 대체해 같은 역할군의 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
                   </div>
                 ) : null}
                 {brawlEnabled ? (
@@ -483,7 +510,7 @@ export default function RankNewClient() {
                   </div>
                 ) : (
                   <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>
-                    난투 토글을 끄면 패배 시 추방이 기본 규칙으로 적용됩니다.
+                    난입 허용을 끄면 패배한 참가자는 해당 경기 동안 재참여할 수 없습니다.
                   </p>
                 )}
               </div>
