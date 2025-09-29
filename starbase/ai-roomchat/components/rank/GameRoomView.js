@@ -1,5 +1,5 @@
 // components/rank/GameRoomView.js
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import ParticipantCard from './ParticipantCard'
 import styles from './GameRoomView.module.css'
@@ -278,6 +278,9 @@ export default function GameRoomView({
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
   const [activeTab, setActiveTab] = useState(TABS[0].key)
   const touchStartRef = useRef(null)
+  const profileCloseRef = useRef(null)
+  const profileTitleId = useId()
+  const profileDescriptionId = useId()
 
   const resolvedActiveIndex = useMemo(() => {
     const index = TABS.findIndex((tab) => tab.key === activeTab)
@@ -465,6 +468,107 @@ export default function GameRoomView({
       }),
     }))
   }, [participants])
+
+  const [rankingMode, setRankingMode] = useState('overall')
+  const [selectedRole, setSelectedRole] = useState('')
+  const [activeProfileEntry, setActiveProfileEntry] = useState(null)
+
+  useEffect(() => {
+    if (!roleRankings.length) {
+      setSelectedRole('')
+      if (rankingMode === 'role') {
+        setRankingMode('overall')
+      }
+      return
+    }
+
+    setSelectedRole((current) => {
+      if (current) return current
+      return roleRankings[0]?.role || ''
+    })
+  }, [rankingMode, roleRankings])
+
+  const selectedRoleGroup = useMemo(() => {
+    if (!selectedRole) return null
+    return roleRankings.find((group) => group.role === selectedRole) || null
+  }, [roleRankings, selectedRole])
+
+  const handleRankingModeChange = useCallback((mode) => {
+    setRankingMode(mode)
+  }, [])
+
+  const handleRoleModeClick = useCallback(() => {
+    if (!roleRankings.length) return
+    setRankingMode('role')
+    setSelectedRole((current) => current || roleRankings[0]?.role || '')
+  }, [roleRankings])
+
+  const handleRoleSelectChange = useCallback((event) => {
+    const value = event?.target?.value || ''
+    setSelectedRole(value)
+    if (value) {
+      setRankingMode('role')
+    }
+  }, [])
+
+  const handleOpenProfile = useCallback((entry, rankPosition) => {
+    if (!entry?.hero) return
+    setActiveProfileEntry({ entry, hero: entry.hero, rankPosition })
+  }, [])
+
+  const handleCloseProfile = useCallback(() => {
+    setActiveProfileEntry(null)
+  }, [])
+
+  useEffect(() => {
+    if (!activeProfileEntry) return
+
+    if (profileCloseRef.current) {
+      profileCloseRef.current.focus()
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        handleCloseProfile()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [activeProfileEntry, handleCloseProfile])
+
+  const profileHero = activeProfileEntry?.hero || null
+
+  const profileStats = useMemo(() => {
+    if (!activeProfileEntry) return []
+    const { entry, rankPosition } = activeProfileEntry
+    const stats = [
+      { label: '역할', value: entry.role || '미정' },
+      { label: '점수', value: formatNumber(entry.score ?? entry.rating ?? 0) },
+      { label: '랭킹', value: rankPosition ? `${rankPosition}위` : '순위 정보 없음' },
+      { label: '게임 수', value: formatNumber(entry.battles ?? 0) },
+      { label: '승률', value: formatWinRate(entry.win_rate) },
+    ]
+    return stats
+  }, [activeProfileEntry])
+
+  const profileAbilities = useMemo(() => {
+    if (!profileHero) return []
+    return [profileHero.ability1, profileHero.ability2, profileHero.ability3, profileHero.ability4].filter(Boolean)
+  }, [profileHero])
+
+  const handleProfileBackdropClick = useCallback(
+    (event) => {
+      if (event.target === event.currentTarget) {
+        handleCloseProfile()
+      }
+    },
+    [handleCloseProfile]
+  )
+
+  const profileDialogDescribedBy = profileHero?.description ? profileDescriptionId : undefined
 
   const rankingBattleLogs = useMemo(
     () =>
@@ -758,60 +862,127 @@ export default function GameRoomView({
             )}
           </header>
 
-          <div className={styles.rankingGrid}>
-            <section className={styles.rankingSection}>
-              <h3 className={styles.rankingSectionTitle}>종합 랭킹</h3>
-              {overallRanking.length === 0 ? (
+          <div className={styles.rankingControls} role="group" aria-label="랭킹 보기 전환">
+            <button
+              type="button"
+              className={`${styles.rankingModeButton} ${
+                rankingMode === 'overall' ? styles.rankingModeButtonActive : ''
+              }`}
+              onClick={() => handleRankingModeChange('overall')}
+            >
+              전체 랭킹
+            </button>
+
+            <div className={styles.roleSelectGroup}>
+              <button
+                type="button"
+                className={`${styles.rankingModeButton} ${
+                  rankingMode === 'role' ? styles.rankingModeButtonActive : ''
+                }`}
+                onClick={handleRoleModeClick}
+                disabled={!roleRankings.length}
+              >
+                역할군별 랭킹
+              </button>
+              <label className={styles.roleSelectLabel}>
+                <span className={styles.visuallyHidden}>역할 선택</span>
+                <select
+                  className={styles.roleSelect}
+                  value={selectedRole}
+                  onChange={handleRoleSelectChange}
+                  disabled={!roleRankings.length}
+                  aria-label="역할군 선택"
+                >
+                  {roleRankings.length === 0 ? (
+                    <option value="">역할 없음</option>
+                  ) : (
+                    roleRankings.map(({ role }) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <section className={styles.rankingSection}>
+            <h3 className={styles.rankingSectionTitle}>
+              {rankingMode === 'overall'
+                ? '종합 랭킹 상위 10명'
+                : `${selectedRole || '역할군'} 상위 10명`}
+            </h3>
+            {rankingMode === 'overall' && (
+              overallRanking.length === 0 ? (
                 <div className={styles.emptyCard}>참가자가 없습니다.</div>
               ) : (
                 <ol className={styles.rankingList}>
-                  {overallRanking.slice(0, 10).map((entry, index) => (
-                    <li key={entry.id || `${entry.owner_id}-${index}`} className={styles.rankingRow}>
-                      <span className={styles.rankingIndex}>{index + 1}</span>
-                      <div>
-                        <strong className={styles.rankingRowName}>
-                          {entry.hero?.name || entry.owner_id?.slice(0, 8) || '알 수 없음'}
-                        </strong>
-                        <span className={styles.rankingRowMeta}>
-                          역할 {entry.role || '미정'} · 점수 {formatNumber(entry.score ?? 0)} · {entry.battles ?? 0}전
-                        </span>
-                      </div>
-                    </li>
-                  ))}
+                  {overallRanking.slice(0, 10).map((entry, index) => {
+                    const rankPosition = index + 1
+                    const isClickable = Boolean(entry.hero)
+                    return (
+                      <li key={entry.id || `${entry.owner_id}-${index}`} className={styles.rankingRow}>
+                        <button
+                          type="button"
+                          className={`${styles.rankingRowButton} ${
+                            isClickable ? '' : styles.rankingRowButtonDisabled
+                          }`}
+                          onClick={() => handleOpenProfile(entry, rankPosition)}
+                          disabled={!isClickable}
+                        >
+                          <span className={styles.rankingIndex}>{rankPosition}</span>
+                          <div>
+                            <strong className={styles.rankingRowName}>
+                              {entry.hero?.name || entry.owner_id?.slice(0, 8) || '알 수 없음'}
+                            </strong>
+                            <span className={styles.rankingRowMeta}>
+                              역할 {entry.role || '미정'} · 점수 {formatNumber(entry.score ?? 0)} · {entry.battles ?? 0}전
+                            </span>
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
                 </ol>
-              )}
-            </section>
+              )
+            )}
 
-            <section className={styles.rankingSection}>
-              <h3 className={styles.rankingSectionTitle}>역할군별 랭킹</h3>
-              {roleRankings.length === 0 ? (
-                <div className={styles.emptyCard}>참가자 없습니다.</div>
+            {rankingMode === 'role' && (
+              !selectedRoleGroup || selectedRoleGroup.members.length === 0 ? (
+                <div className={styles.emptyCard}>해당 역할군 참가자가 없습니다.</div>
               ) : (
-                <div className={styles.roleRankingGroups}>
-                  {roleRankings.map(({ role, members }) => (
-                    <div key={role} className={styles.roleRankingGroup}>
-                      <h4 className={styles.roleRankingTitle}>{role}</h4>
-                      <ol className={styles.rankingList}>
-                        {members.slice(0, 10).map((entry, index) => (
-                          <li key={entry.id || `${entry.owner_id}-${index}`} className={styles.rankingRow}>
-                            <span className={styles.rankingIndex}>{index + 1}</span>
-                            <div>
-                              <strong className={styles.rankingRowName}>
-                                {entry.hero?.name || entry.owner_id?.slice(0, 8) || '알 수 없음'}
-                              </strong>
-                              <span className={styles.rankingRowMeta}>
-                                점수 {formatNumber(entry.score ?? 0)} · {entry.battles ?? 0}전
-                              </span>
-                            </div>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
+                <ol className={styles.rankingList}>
+                  {selectedRoleGroup.members.slice(0, 10).map((entry, index) => {
+                    const rankPosition = index + 1
+                    const isClickable = Boolean(entry.hero)
+                    return (
+                      <li key={entry.id || `${entry.owner_id}-${index}`} className={styles.rankingRow}>
+                        <button
+                          type="button"
+                          className={`${styles.rankingRowButton} ${
+                            isClickable ? '' : styles.rankingRowButtonDisabled
+                          }`}
+                          onClick={() => handleOpenProfile(entry, rankPosition)}
+                          disabled={!isClickable}
+                        >
+                          <span className={styles.rankingIndex}>{rankPosition}</span>
+                          <div>
+                            <strong className={styles.rankingRowName}>
+                              {entry.hero?.name || entry.owner_id?.slice(0, 8) || '알 수 없음'}
+                            </strong>
+                            <span className={styles.rankingRowMeta}>
+                              점수 {formatNumber(entry.score ?? 0)} · {entry.battles ?? 0}전
+                            </span>
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ol>
+              )
+            )}
+          </section>
 
           <section className={styles.section}>
             <h3 className={styles.rankingSectionTitle}>최근 10게임 로그</h3>
@@ -926,6 +1097,79 @@ export default function GameRoomView({
           })}
         </div>
       </div>
+
+      {activeProfileEntry && (
+        <div
+          className={styles.profileOverlay}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={profileTitleId}
+          aria-describedby={profileDialogDescribedBy}
+          onClick={handleProfileBackdropClick}
+        >
+          <div className={styles.profileCard} role="document">
+            <button
+              type="button"
+              ref={profileCloseRef}
+              className={styles.profileCloseButton}
+              onClick={handleCloseProfile}
+            >
+              닫기
+            </button>
+
+            <div className={styles.profileHeroHeader}>
+              {profileHero?.image_url ? (
+                <img
+                  className={styles.profileHeroImage}
+                  src={profileHero.image_url}
+                  alt={profileHero?.name || '캐릭터 이미지'}
+                  loading="lazy"
+                />
+              ) : (
+                <div className={styles.profileHeroImageFallback}>이미지가 없습니다.</div>
+              )}
+
+              <div className={styles.profileHeroSummary}>
+                <h3 id={profileTitleId} className={styles.profileHeroName}>
+                  {profileHero?.name || '알 수 없는 캐릭터'}
+                </h3>
+                {profileHero?.description && (
+                  <p id={profileDescriptionId} className={styles.profileHeroDescription}>
+                    {profileHero.description}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className={styles.profileBody}>
+              <div className={styles.profileStats}>
+                <h4 className={styles.profileSectionTitle}>전적</h4>
+                <ul className={styles.profileStatList}>
+                  {profileStats.map((stat) => (
+                    <li key={stat.label} className={styles.profileStatItem}>
+                      <span className={styles.profileStatLabel}>{stat.label}</span>
+                      <span className={styles.profileStatValue}>{stat.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {profileAbilities.length > 0 && (
+                <div className={styles.profileAbilities}>
+                  <h4 className={styles.profileSectionTitle}>능력</h4>
+                  <ul className={styles.profileAbilityList}>
+                    {profileAbilities.map((ability, index) => (
+                      <li key={`${ability}-${index}`} className={styles.profileAbilityItem}>
+                        {ability}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

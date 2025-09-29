@@ -851,12 +851,283 @@
 
 .rankingRow {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
   border-radius: 14px;
-  padding: 12px 14px;
+  padding: 0;
   background: rgba(15, 23, 42, 0.55);
   border: 1px solid rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.rankingControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.rankingModeButton {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(12, 18, 34, 0.35);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.rankingModeButton:hover,
+.rankingModeButton:focus-visible {
+  background: rgba(30, 42, 68, 0.6);
+  border-color: rgba(255, 255, 255, 0.35);
+  outline: none;
+}
+
+.rankingModeButtonActive {
+  background: rgba(64, 110, 255, 0.85);
+  border-color: rgba(136, 176, 255, 0.8);
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(136, 176, 255, 0.2);
+}
+
+.rankingModeButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.roleSelectGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.roleSelectLabel {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+.roleSelect {
+  appearance: none;
+  background: rgba(12, 18, 34, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: #fff;
+  padding: 9px 32px 9px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.roleSelect:focus-visible {
+  outline: none;
+  border-color: rgba(136, 176, 255, 0.8);
+  background: rgba(40, 60, 96, 0.6);
+}
+
+.roleSelect:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.rankingRowButton {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.rankingRowButton:hover,
+.rankingRowButton:focus-visible {
+  background: rgba(12, 18, 34, 0.35);
+  outline: none;
+}
+
+.rankingRowButtonDisabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.rankingRowButtonDisabled:hover,
+.rankingRowButtonDisabled:focus-visible {
+  background: transparent;
+}
+
+.profileOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 16, 0.75);
+  backdrop-filter: blur(6px);
+  padding: 24px;
+}
+
+.profileCard {
+  position: relative;
+  width: min(520px, 100%);
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  background: rgba(8, 12, 24, 0.9);
+  border: 1px solid rgba(136, 176, 255, 0.25);
+  border-radius: 24px;
+  padding: 28px 24px;
+  color: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.profileCloseButton {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.profileCloseButton:hover,
+.profileCloseButton:focus-visible {
+  background: rgba(255, 255, 255, 0.24);
+  outline: none;
+}
+
+.profileHeroHeader {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.profileHeroImage {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.profileHeroImageFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 20px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.profileHeroSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profileHeroName {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.profileHeroDescription {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.profileBody {
+  margin-top: 24px;
+  display: grid;
+  gap: 24px;
+}
+
+.profileStats {
+  background: rgba(20, 28, 46, 0.6);
+  border: 1px solid rgba(136, 176, 255, 0.25);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.profileSectionTitle {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.profileStatList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.profileStatItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.profileStatLabel {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.profileStatValue {
+  font-weight: 700;
+}
+
+.profileAbilities {
+  background: rgba(20, 28, 46, 0.6);
+  border: 1px solid rgba(136, 176, 255, 0.25);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.profileAbilityList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.profileAbilityItem {
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .rankingIndex {
