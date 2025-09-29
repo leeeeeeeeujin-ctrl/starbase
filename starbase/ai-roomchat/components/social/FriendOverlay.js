@@ -150,18 +150,24 @@ export default function FriendOverlay({
 
   const sheetHero = useMemo(() => {
     if (!selectedFriend) return null
+
     const heroId = selectedFriend.currentHeroId || selectedFriend.friendHeroId
+    const heroName = friendDisplayName(selectedFriend)
+    const avatarUrl = selectedFriend.currentHeroAvatar || selectedFriend.friendHeroAvatar || null
+
+    const viewDetail = () => {
+      if (!heroId) return
+      window.open(`/character/${heroId}`, '_blank', 'noopener')
+    }
+
     return {
       heroId,
-      heroName: friendDisplayName(selectedFriend),
-      avatarUrl: selectedFriend.currentHeroAvatar || selectedFriend.friendHeroAvatar,
+      heroName,
+      avatarUrl,
       isSelf: viewer?.hero_id === heroId,
       isFriend: true,
       onRemoveFriend: () => handleRemoveFriend(selectedFriend),
-      onViewDetail: () => {
-        if (!heroId) return
-        window.open(`/character/${heroId}`, '_blank', 'noopener')
-      },
+      onViewDetail: viewDetail,
     }
   }, [handleRemoveFriend, selectedFriend, viewer?.hero_id])
 
@@ -237,6 +243,9 @@ export default function FriendOverlay({
     body = outgoingSection
   }
 
+  const sheetHeroRemove = sheetHero ? sheetHero.onRemoveFriend : undefined
+  const sheetHeroView = sheetHero ? sheetHero.onViewDetail : undefined
+
   return (
     <SurfaceOverlay
       open={open}
@@ -303,8 +312,8 @@ export default function FriendOverlay({
         open={sheetOpen}
         hero={sheetHero}
         onClose={closeFriendSheet}
-        onRemoveFriend={sheetHero?.onRemoveFriend}
-        onViewDetail={sheetHero?.onViewDetail}
+        onRemoveFriend={sheetHeroRemove}
+        onViewDetail={sheetHeroView}
       />
     </SurfaceOverlay>
   )
