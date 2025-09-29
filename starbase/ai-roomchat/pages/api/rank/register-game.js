@@ -30,6 +30,17 @@ export default async function handler(req, res) {
 
   try {
     // 4) 게임 생성 (RLS 무시: service role)
+    const roleNames = Array.from(
+      new Set(
+        (roles || [])
+          .map((role) => {
+            if (!role?.name) return ''
+            return String(role.name).trim()
+          })
+          .filter(Boolean),
+      ),
+    )
+
     const { data: game, error: e1 } = await supabaseAdmin
       .from('rank_games')
       .insert({
@@ -39,6 +50,7 @@ export default async function handler(req, res) {
         image_url,
         prompt_set_id,
         realtime_match: !!realtime_match,
+        roles: roleNames.length ? roleNames : null,
       })
       .select()
       .single()
@@ -52,10 +64,11 @@ export default async function handler(req, res) {
         const rawMax = Number(r?.score_delta_max)
         const min = Number.isFinite(rawMin) ? rawMin : 20
         const max = Number.isFinite(rawMax) ? rawMax : 40
+        const slotCount = Number.isFinite(Number(r?.slot_count)) ? Number(r.slot_count) : 0
         return {
           game_id: game.id,
           name: String(r?.name ?? '').trim() || '역할',
-          slot_count: Number(r?.slot_count ?? 3),
+          slot_count: Math.max(0, slotCount),
           active: true,
           score_delta_min: Math.max(0, min),
           score_delta_max: Math.max(Math.max(0, min), max),

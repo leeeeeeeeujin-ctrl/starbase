@@ -5,9 +5,10 @@ import LobbyLayout from '../components/lobby/LobbyLayout'
 import LobbyHeader from '../components/lobby/LobbyHeader'
 import TabBar from '../components/lobby/TabBar'
 import GameSearchPanel from '../components/lobby/GameSearchPanel'
+import MyGamesPanel from '../components/lobby/MyGamesPanel'
 import CharacterStatsPanel from '../components/lobby/CharacterStatsPanel'
 import useGameBrowser from '../components/lobby/hooks/useGameBrowser'
-import { LOBBY_TABS, NAV_LINKS, SORT_OPTIONS } from '../components/lobby/constants'
+import { LOBBY_TABS, NAV_LINKS } from '../components/lobby/constants'
 import useLobbyStats from '../components/lobby/hooks/useLobbyStats'
 
 export default function Lobby() {
@@ -36,8 +37,17 @@ export default function Lobby() {
 
   const returnHeroId = heroId || storedHeroId
 
-  const gameBrowser = useGameBrowser({ enabled: activeTab === 'games' })
+  const gameBrowser = useGameBrowser({ enabled: activeTab === 'games', mode: 'public' })
+  const myGamesBrowser = useGameBrowser({ enabled: activeTab === 'my-games', mode: 'owned' })
   const stats = useLobbyStats({ heroId, enabled: activeTab === 'stats' })
+  useEffect(() => {
+    const { tab } = router.query || {}
+    if (typeof tab === 'string') {
+      if (tab === 'games' || tab === 'my-games' || tab === 'stats') {
+        setActiveTab(tab)
+      }
+    }
+  }, [router.query?.tab])
 
   const handleBack = useCallback(() => {
     if (returnHeroId) {
@@ -68,7 +78,7 @@ export default function Lobby() {
           onQueryChange={gameBrowser.setGameQuery}
           sort={gameBrowser.gameSort}
           onSortChange={gameBrowser.setGameSort}
-          sortOptions={SORT_OPTIONS}
+          sortOptions={gameBrowser.sortOptions}
           rows={gameBrowser.gameRows}
           loading={gameBrowser.gameLoading}
           selectedGame={gameBrowser.selectedGame}
@@ -80,17 +90,41 @@ export default function Lobby() {
           onRoleChange={gameBrowser.setRoleChoice}
           roleSlots={gameBrowser.roleSlots}
           onEnterGame={handleEnterGame}
-          viewerId={gameBrowser.viewerId}
-          tags={gameBrowser.gameTags}
-          onAddTag={gameBrowser.addGameTag}
-          onRemoveTag={gameBrowser.removeGameTag}
-          seasons={gameBrowser.gameSeasons}
-          onFinishSeason={gameBrowser.finishSeason}
-          onStartSeason={gameBrowser.startSeason}
-          stats={gameBrowser.gameStats}
-          battleLogs={gameBrowser.gameBattleLogs}
-          onRefreshDetail={gameBrowser.refreshSelectedGame}
-          onDeleteGame={gameBrowser.deleteGame}
+          viewerParticipant={gameBrowser.viewerParticipant}
+          onJoinGame={gameBrowser.joinSelectedGame}
+          joinLoading={gameBrowser.joinLoading}
+        />
+      )}
+
+      {activeTab === 'my-games' && (
+        <MyGamesPanel
+          query={myGamesBrowser.gameQuery}
+          onQueryChange={myGamesBrowser.setGameQuery}
+          sort={myGamesBrowser.gameSort}
+          onSortChange={myGamesBrowser.setGameSort}
+          sortOptions={myGamesBrowser.sortOptions}
+          rows={myGamesBrowser.gameRows}
+          loading={myGamesBrowser.gameLoading}
+          selectedGame={myGamesBrowser.selectedGame}
+          onSelectGame={myGamesBrowser.setSelectedGame}
+          detailLoading={myGamesBrowser.detailLoading}
+          roles={myGamesBrowser.gameRoles}
+          participants={myGamesBrowser.participants}
+          roleChoice={myGamesBrowser.roleChoice}
+          onRoleChange={myGamesBrowser.setRoleChoice}
+          roleSlots={myGamesBrowser.roleSlots}
+          onEnterGame={handleEnterGame}
+          viewerId={myGamesBrowser.viewerId}
+          tags={myGamesBrowser.gameTags}
+          onAddTag={myGamesBrowser.addGameTag}
+          onRemoveTag={myGamesBrowser.removeGameTag}
+          seasons={myGamesBrowser.gameSeasons}
+          onFinishSeason={myGamesBrowser.finishSeason}
+          onStartSeason={myGamesBrowser.startSeason}
+          stats={myGamesBrowser.gameStats}
+          battleLogs={myGamesBrowser.gameBattleLogs}
+          onRefreshDetail={myGamesBrowser.refreshSelectedGame}
+          onDeleteGame={myGamesBrowser.deleteGame}
         />
       )}
 

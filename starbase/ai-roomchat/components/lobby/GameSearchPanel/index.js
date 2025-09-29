@@ -21,17 +21,9 @@ export default function GameSearchPanel({
   onRoleChange,
   roleSlots,
   onEnterGame,
-  viewerId,
-  tags,
-  onAddTag,
-  onRemoveTag,
-  seasons,
-  onFinishSeason,
-  onStartSeason,
-  stats,
-  battleLogs,
-  onRefreshDetail,
-  onDeleteGame,
+  viewerParticipant,
+  onJoinGame,
+  joinLoading,
 }) {
   return (
     <div style={styles.root}>
@@ -60,17 +52,9 @@ export default function GameSearchPanel({
         onRoleChange={onRoleChange}
         roleSlots={roleSlots}
         onEnterGame={onEnterGame}
-        viewerId={viewerId}
-        tags={tags}
-        onAddTag={onAddTag}
-        onRemoveTag={onRemoveTag}
-        seasons={seasons}
-        onFinishSeason={onFinishSeason}
-        onStartSeason={onStartSeason}
-        stats={stats}
-        battleLogs={battleLogs}
-        onRefreshDetail={onRefreshDetail}
-        onDeleteGame={onDeleteGame}
+        viewerParticipant={viewerParticipant}
+        onJoinGame={onJoinGame}
+        joinLoading={joinLoading}
       />
     </div>
   )

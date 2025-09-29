@@ -21,7 +21,7 @@ export default function HeroPicker({ open, onClose, onPick }) {
       const { data } = await withTable(supabase, 'heroes', (table) =>
         supabase
           .from(table)
-          .select('id,name,image_url,description,ability1,ability2,ability3,ability4,created_at,owner_id')
+          .select('id,name,image_url,background_url,description,ability1,ability2,ability3,ability4,created_at,owner_id')
           .eq('owner_id', user.id)
           .order('created_at', { ascending: false })
       )
