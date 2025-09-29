@@ -1,0 +1,247 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 11, 20, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 4000;
+}
+
+.modal {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 20px;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.45);
+  color: #f8fafc;
+  padding: 28px 28px 24px;
+  backdrop-filter: blur(18px);
+  display: grid;
+  gap: 24px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(203, 213, 225, 0.85);
+}
+
+.closeButton {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: rgba(226, 232, 240, 0.85);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.closeButton:hover {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+.section {
+  display: grid;
+  gap: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.select,
+.input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.65);
+  color: #f8fafc;
+  font-size: 14px;
+  padding: 10px 12px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.select:focus,
+.input:focus {
+  outline: none;
+  border-color: rgba(94, 234, 212, 0.7);
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.helperText {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.modeGroup {
+  display: grid;
+  gap: 16px;
+}
+
+.modeOption {
+  display: block;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.55);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.modeOption input {
+  display: none;
+}
+
+.modeOptionActive {
+  border-color: rgba(94, 234, 212, 0.7);
+  background: rgba(20, 31, 52, 0.85);
+}
+
+.modeBody {
+  padding: 16px 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.modeHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modeName {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modeBadge {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(45, 212, 191, 0.12);
+  color: rgba(45, 212, 191, 0.88);
+}
+
+.modeDescription {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(203, 213, 225, 0.8);
+  line-height: 1.5;
+}
+
+.subOptions {
+  display: grid;
+  gap: 10px;
+}
+
+.subOption {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.6);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  color: inherit;
+}
+
+.subOptionActive {
+  border-color: rgba(94, 234, 212, 0.75);
+  background: rgba(15, 118, 110, 0.22);
+}
+
+.subOptionTitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.subOptionDescription {
+  font-size: 12px;
+  color: rgba(203, 213, 225, 0.75);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.secondaryButton,
+.primaryButton {
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.2s ease;
+}
+
+.secondaryButton {
+  background: rgba(15, 23, 42, 0.65);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.secondaryButton:hover {
+  background: rgba(30, 41, 59, 0.85);
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(14, 165, 233, 0.85));
+  color: white;
+  box-shadow: 0 10px 30px rgba(59, 130, 246, 0.35);
+}
+
+.primaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 36px rgba(59, 130, 246, 0.45);
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+@media (max-width: 520px) {
+  .modal {
+    padding: 24px 20px 20px;
+  }
+
+  .modeBody {
+    padding: 14px;
+  }
+}

@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
+import { DEFAULT_SORT_KEY, METRIC_SORT_KEYS } from '../lobby/constants'
+import { isMissingColumnError } from '../../lib/supabaseErrors'
 
 const SORTS = [
   { key:'latest',   label:'최신순',     order:[{col:'created_at', asc:false}] },
@@ -18,10 +20,23 @@ export default function GameListPanel(){
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [page, setPage] = useState(0)
+  const [supportsMetrics, setSupportsMetrics] = useState(true)
+  const [sortOptions, setSortOptions] = useState(() => SORTS)
   const LIMIT = 30
   const sentinelRef = useRef(null)
 
-  const sortPlan = useMemo(() => SORTS.find(s=>s.key===sortKey) || SORTS[0], [sortKey])
+  const sortPlan = useMemo(() => (SORTS.find((s) => s.key === sortKey) || SORTS[0]), [sortKey])
+
+  useEffect(() => {
+    const nextOptions = supportsMetrics ? SORTS : SORTS.filter((option) => !METRIC_SORT_KEYS.has(option.key))
+    setSortOptions(nextOptions)
+    setSortKey((current) => {
+      if (nextOptions.some((option) => option.key === current)) {
+        return current
+      }
+      return nextOptions[0]?.key || DEFAULT_SORT_KEY
+    })
+  }, [supportsMetrics])
 
   // 검색어 디바운스
   const [debouncedQ, setDebouncedQ] = useState(q)
@@ -40,8 +55,11 @@ export default function GameListPanel(){
     if (!hasMore || loading) return
     ;(async()=>{
       setLoading(true)
+      const selectColumns = supportsMetrics
+        ? 'id,name,description,image_url,created_at,likes_count,play_count'
+        : 'id,name,description,image_url,created_at'
       let sel = supabase.from('rank_games')
-        .select('id,name,description,image_url,created_at,likes_count,play_count', { count:'exact' })
+        .select(selectColumns, { count:'exact' })
 
       if (debouncedQ.trim()){
         const qq = `%${debouncedQ.trim()}%`
@@ -53,14 +71,40 @@ export default function GameListPanel(){
       const from = page * LIMIT, to = from + LIMIT - 1
       sel = sel.range(from, to)
 
-      const { data, error, count } = await sel
+      let { data, error, count } = await sel
+
+      if (error && supportsMetrics && isMissingColumnError(error, ['likes_count', 'play_count'])) {
+        setSupportsMetrics(false)
+
+        const fallback = supabase
+          .from('rank_games')
+          .select('id,name,description,image_url,created_at', { count: 'exact' })
+
+        if (debouncedQ.trim()) {
+          const qq = `%${debouncedQ.trim()}%`
+          fallback.or(`name.ilike.${qq},description.ilike.${qq}`)
+        }
+
+        fallback.order('created_at', { ascending: false })
+
+        fallback.range(from, to)
+        const fallbackResult = await fallback
+        data = fallbackResult.data
+        error = fallbackResult.error
+        count = fallbackResult.count
+
+        if (METRIC_SORT_KEYS.has(sortKey)) {
+          setSortKey(DEFAULT_SORT_KEY)
+        }
+      }
+
       if (error) { console.error(error); setLoading(false); return }
       setRows(prev => [...prev, ...(data||[])])
       const total = count ?? 0
       setHasMore((from + (data?.length||0)) < total)
       setLoading(false)
     })()
-  }, [page, debouncedQ, sortPlan, hasMore, loading])
+  }, [page, debouncedQ, sortPlan, hasMore, loading, supportsMetrics, sortKey])
 
   // 인피니트 스크롤
   useEffect(()=>{
@@ -94,7 +138,7 @@ export default function GameListPanel(){
           onChange={e=>setSortKey(e.target.value)}
           style={{ padding:'10px 12px', border:'1px solid #e5e7eb', borderRadius:10 }}
         >
-          {SORTS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+          {sortOptions.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
       </div>
 
