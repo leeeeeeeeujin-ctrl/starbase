@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import GameRoomView from '../../components/rank/GameRoomView'
+import GameStartModeModal from '../../components/rank/GameStartModeModal'
 import { useGameRoom } from '../../hooks/useGameRoom'
 
 export default function GameRoomPage() {
@@ -14,6 +15,14 @@ export default function GameRoomPage() {
 
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [pickRole, setPickRole] = useState('')
+  const [showStartModal, setShowStartModal] = useState(false)
+  const [startPreset, setStartPreset] = useState({
+    mode: 'solo',
+    duoOption: 'code',
+    casualOption: 'matchmaking',
+    apiVersion: 'chat_completions',
+    apiKey: '',
+  })
 
   const handleRequireLogin = useCallback(() => {
     router.replace('/')
@@ -50,13 +59,59 @@ export default function GameRoomPage() {
     await joinGame(pickRole)
   }
 
+  useEffect(() => {
+    if (!mounted) return
+    if (typeof window === 'undefined') return
+    setStartPreset((prev) => ({
+      ...prev,
+      mode: window.sessionStorage.getItem('rank.start.mode') || prev.mode,
+      duoOption: window.sessionStorage.getItem('rank.start.duoOption') || prev.duoOption,
+      casualOption:
+        window.sessionStorage.getItem('rank.start.casualOption') || prev.casualOption,
+      apiVersion:
+        window.sessionStorage.getItem('rank.start.apiVersion') || prev.apiVersion,
+      apiKey: window.sessionStorage.getItem('rank.start.apiKey') || prev.apiKey,
+    }))
+  }, [mounted])
+
   const handleStart = () => {
     if (!canStart) return
     if (!myHero) {
       alert('캐릭터가 필요합니다.')
       return
     }
-    router.push(`/rank/${id}/start`)
+    setShowStartModal(true)
+  }
+
+  const handleConfirmStart = (config) => {
+    setShowStartModal(false)
+    setStartPreset(config)
+
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('rank.start.mode', config.mode)
+      window.sessionStorage.setItem('rank.start.duoOption', config.duoOption)
+      window.sessionStorage.setItem('rank.start.casualOption', config.casualOption)
+      window.sessionStorage.setItem('rank.start.apiVersion', config.apiVersion)
+      if (config.apiKey) {
+        window.sessionStorage.setItem('rank.start.apiKey', config.apiKey)
+      } else {
+        window.sessionStorage.removeItem('rank.start.apiKey')
+      }
+    }
+
+    const query = { mode: config.mode, apiVersion: config.apiVersion }
+    if (config.mode === 'duo') {
+      query.duo = config.duoOption
+    }
+    if (config.mode === 'casual') {
+      query.casual = config.casualOption
+    }
+
+    router.push({ pathname: `/rank/${id}/start`, query })
+  }
+
+  const handleCloseStartModal = () => {
+    setShowStartModal(false)
   }
 
   if (!ready || loading) {
@@ -79,16 +134,22 @@ export default function GameRoomPage() {
         onJoin={handleJoin}
         onStart={handleStart}
         onOpenLeaderboard={() => setShowLeaderboard(true)}
-      onDelete={deleteRoom}
-      isOwner={isOwner}
-      deleting={deleting}
-      startDisabled={!canStart || !myHero}
-      recentBattles={recentBattles}
-    />
+        onDelete={deleteRoom}
+        isOwner={isOwner}
+        deleting={deleting}
+        startDisabled={!canStart || !myHero}
+        recentBattles={recentBattles}
+      />
 
       {showLeaderboard && (
         <LeaderboardDrawer gameId={id} onClose={() => setShowLeaderboard(false)} />
       )}
+      <GameStartModeModal
+        open={showStartModal}
+        onClose={handleCloseStartModal}
+        onConfirm={handleConfirmStart}
+        initialConfig={startPreset}
+      />
     </>
   )
 }
