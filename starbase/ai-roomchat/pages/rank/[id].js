@@ -75,7 +75,7 @@ export default function GameRoomPage() {
         canStart={canStart}
         myHero={myHero}
         myEntry={myEntry}
-        onBack={() => router.replace('/rank')}
+        onBack={() => router.replace('/lobby')}
         onJoin={handleJoin}
         onStart={handleStart}
         onOpenLeaderboard={() => setShowLeaderboard(true)}
