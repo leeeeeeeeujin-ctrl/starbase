@@ -4,10 +4,11 @@ export default function StatusBanner({ message }) {
   return (
     <div
       style={{
-        padding: '10px 12px',
-        borderRadius: 10,
-        background: '#eff6ff',
-        color: '#1d4ed8',
+        padding: '12px 16px',
+        borderRadius: 14,
+        background: 'rgba(56, 189, 248, 0.15)',
+        border: '1px solid rgba(56, 189, 248, 0.35)',
+        color: '#bae6fd',
       }}
     >
       {message}
