@@ -44,6 +44,18 @@ export default function Lobby() {
   const stats = useLobbyStats({ heroId, enabled: activeTab === 'stats' })
   const roomLobby = useRoomLobby({ enabled: activeTab === 'rooms' })
 
+  useEffect(() => {
+    const { tab, mode: queryMode } = router.query || {}
+    if (typeof tab === 'string') {
+      if (tab === 'rooms' || tab === 'games' || tab === 'my-games' || tab === 'stats') {
+        setActiveTab(tab)
+      }
+    }
+    if (typeof queryMode === 'string' && activeTab === 'rooms') {
+      roomLobby.setMode(queryMode)
+    }
+  }, [router.query?.tab, router.query?.mode, activeTab, roomLobby.setMode])
+
   const handleBack = useCallback(() => {
     if (returnHeroId) {
       router.replace(`/character/${returnHeroId}`)

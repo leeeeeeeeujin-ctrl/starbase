@@ -99,15 +99,33 @@ export default function GameRoomPage() {
       }
     }
 
-    const query = { mode: config.mode, apiVersion: config.apiVersion }
-    if (config.mode === 'duo') {
-      query.duo = config.duoOption
-    }
-    if (config.mode === 'casual') {
-      query.casual = config.casualOption
+    if (config.mode === 'solo') {
+      router.push({ pathname: `/rank/${id}/solo` })
+      return
     }
 
-    router.push({ pathname: `/rank/${id}/start`, query })
+    if (config.mode === 'duo') {
+      const action = config.duoOption || 'search'
+      router.push({
+        pathname: '/lobby',
+        query: { tab: 'rooms', mode: 'duo', action, game: id },
+      })
+      return
+    }
+
+    if (config.mode === 'casual') {
+      if (config.casualOption === 'private') {
+        router.push({
+          pathname: '/lobby',
+          query: { tab: 'rooms', mode: 'private', action: 'search', game: id },
+        })
+      } else {
+        router.push({ pathname: `/rank/${id}/casual` })
+      }
+      return
+    }
+
+    router.push({ pathname: `/rank/${id}/start`, query: { mode: config.mode, apiVersion: config.apiVersion } })
   }
 
   const handleCloseStartModal = () => {

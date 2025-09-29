@@ -473,6 +473,27 @@ create table if not exists public.rank_room_slots (
   unique(room_id, slot_index)
 );
 
+create table if not exists public.rank_match_queue (
+  id uuid primary key default gen_random_uuid(),
+  game_id uuid not null references public.rank_games(id) on delete cascade,
+  mode text not null default 'solo',
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  hero_id uuid references public.heroes(id) on delete set null,
+  role text not null,
+  score integer not null default 1000,
+  party_key text,
+  status text not null default 'waiting',
+  joined_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  match_code text
+);
+
+create index if not exists rank_match_queue_lookup
+on public.rank_match_queue (game_id, mode, role, status, joined_at);
+
+create index if not exists rank_match_queue_owner_lookup
+on public.rank_match_queue (game_id, mode, owner_id, status);
+
 alter table public.rank_rooms enable row level security;
 
 create policy if not exists rank_rooms_select
@@ -535,6 +556,28 @@ with check (
       and public.rank_rooms.owner_id = auth.uid()
   )
 );
+
+alter table public.rank_match_queue enable row level security;
+
+create policy if not exists rank_match_queue_select
+on public.rank_match_queue for select
+using (
+  status = 'waiting'
+  or owner_id = auth.uid()
+);
+
+create policy if not exists rank_match_queue_insert
+on public.rank_match_queue for insert to authenticated
+with check (auth.uid() = owner_id);
+
+create policy if not exists rank_match_queue_update
+on public.rank_match_queue for update to authenticated
+using (auth.uid() = owner_id)
+with check (auth.uid() = owner_id);
+
+create policy if not exists rank_match_queue_delete
+on public.rank_match_queue for delete to authenticated
+using (auth.uid() = owner_id);
 
 alter table public.rank_battle_logs enable row level security;
 

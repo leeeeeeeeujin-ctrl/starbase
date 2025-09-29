@@ -57,17 +57,19 @@ create table if not exists public.rank_game_role_caps (
 create table if not exists public.rank_match_queue (
   id          uuid        not null default gen_random_uuid(),
   game_id     uuid        not null,
+  mode        text        not null default 'solo',
   owner_id    uuid        not null,
   hero_id     uuid        null,
   role        text        not null,
   score       int         not null default 1000,
   joined_at   timestamptz not null default now(),
   status      text        not null default 'waiting',
+  match_code  text        null,
   primary key (id)
 );
 
 create index if not exists rank_match_queue_game_idx
-  on public.rank_match_queue (game_id, role, status, joined_at);
+  on public.rank_match_queue (game_id, mode, role, status, joined_at);
 ```
 
 어댑터는 이 테이블에서 `status = 'waiting'` 상태만 읽어 `matchRankParticipants({ roles, queue })`에 전달하면 됩니다. `matching.js`는 점수 필드가 없으면 `rating` 또는 `mmr`을 자동으로 찾고, 그마저 없으면 1000을 기본값으로 사용하므로 다른 스코어 컬럼을 쓰고 싶다면 SELECT 시 별칭만 맞춰 주면 됩니다.
