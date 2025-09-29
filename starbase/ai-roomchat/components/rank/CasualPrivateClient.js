@@ -163,6 +163,15 @@ function saveRooms(gameId, rooms) {
   }
 }
 
+function clearRooms(gameId) {
+  if (!gameId || typeof window === 'undefined') return
+  try {
+    window.sessionStorage.removeItem(`${STORAGE_PREFIX}${gameId}`)
+  } catch (error) {
+    console.warn('사설 방 정보를 초기화하지 못했습니다:', error)
+  }
+}
+
 function makeOccupant({ user, hero, isHost = false }) {
   return {
     userId: user?.id || '',
@@ -237,6 +246,13 @@ export default function CasualPrivateClient({
     const initial = loadRooms(gameId, slotTemplates)
     setRooms(initial)
   }, [gameId, templateKey, slotTemplates])
+
+  useEffect(() => {
+    if (!gameId) return () => {}
+    return () => {
+      clearRooms(gameId)
+    }
+  }, [gameId])
 
   const updateRooms = useCallback(
     (mutator) => {
@@ -383,7 +399,13 @@ export default function CasualPrivateClient({
     if (!viewerRoom || !canStart) return
     onLaunch?.({ room: viewerRoom })
     updateRooms((prev) => prev.filter((room) => room.id !== viewerRoom.id))
-  }, [canStart, onLaunch, updateRooms, viewerRoom])
+    clearRooms(gameId)
+  }, [canStart, gameId, onLaunch, updateRooms, viewerRoom])
+
+  const handleExitClick = useCallback(() => {
+    clearRooms(gameId)
+    onExit?.()
+  }, [gameId, onExit])
 
   const handleSelectSlot = useCallback(
     (slotId) => {
@@ -493,7 +515,7 @@ export default function CasualPrivateClient({
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <button type="button" className={styles.backButton} onClick={onExit}>
+        <button type="button" className={styles.backButton} onClick={handleExitClick}>
           ← 메인 룸으로 돌아가기
         </button>
         <div>
