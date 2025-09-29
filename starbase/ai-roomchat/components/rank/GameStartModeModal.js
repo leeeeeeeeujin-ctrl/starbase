@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 
+import {
+  MATCH_MODE_KEYS,
+  getMatchModeConfig,
+} from '../../lib/rank/matchModes'
 import styles from './GameStartModeModal.module.css'
 
 const API_VERSION_OPTIONS = [
@@ -44,24 +48,45 @@ function getInitialValue(initial, fallback) {
   return initial
 }
 
+const CASUAL_MODE_SET = new Set([MATCH_MODE_KEYS.CASUAL_MATCH, MATCH_MODE_KEYS.CASUAL_PRIVATE])
+
+function normaliseMode(mode) {
+  const config = getMatchModeConfig(mode)
+  return config?.key ?? MATCH_MODE_KEYS.RANK_SOLO
+}
+
+function initialCasualOption(mode, provided) {
+  if (provided) return provided
+  return mode === MATCH_MODE_KEYS.CASUAL_PRIVATE ? 'private' : 'matchmaking'
+}
+
+function resolveInitialState(initialConfig) {
+  const resolvedMode = normaliseMode(initialConfig?.mode)
+  return {
+    mode: resolvedMode,
+    duoOption: getInitialValue(initialConfig?.duoOption, 'code'),
+    casualOption: initialCasualOption(resolvedMode, initialConfig?.casualOption),
+    apiVersion: getInitialValue(initialConfig?.apiVersion, 'gemini'),
+    apiKey: getInitialValue(initialConfig?.apiKey, ''),
+  }
+}
+
 export default function GameStartModeModal({ open, initialConfig, onClose, onConfirm }) {
-  const [mode, setMode] = useState(getInitialValue(initialConfig?.mode, 'solo'))
-  const [duoOption, setDuoOption] = useState(getInitialValue(initialConfig?.duoOption, 'code'))
-  const [casualOption, setCasualOption] = useState(
-    getInitialValue(initialConfig?.casualOption, 'matchmaking'),
-  )
-  const [apiVersion, setApiVersion] = useState(
-    getInitialValue(initialConfig?.apiVersion, 'gemini'),
-  )
-  const [apiKey, setApiKey] = useState(getInitialValue(initialConfig?.apiKey, ''))
+  const initialState = resolveInitialState(initialConfig)
+  const [mode, setMode] = useState(initialState.mode)
+  const [duoOption, setDuoOption] = useState(initialState.duoOption)
+  const [casualOption, setCasualOption] = useState(initialState.casualOption)
+  const [apiVersion, setApiVersion] = useState(initialState.apiVersion)
+  const [apiKey, setApiKey] = useState(initialState.apiKey)
 
   useEffect(() => {
     if (!open) return
-    setMode(getInitialValue(initialConfig?.mode, 'solo'))
-    setDuoOption(getInitialValue(initialConfig?.duoOption, 'code'))
-    setCasualOption(getInitialValue(initialConfig?.casualOption, 'matchmaking'))
-    setApiVersion(getInitialValue(initialConfig?.apiVersion, 'gemini'))
-    setApiKey(getInitialValue(initialConfig?.apiKey, ''))
+    const nextState = resolveInitialState(initialConfig)
+    setMode(nextState.mode)
+    setDuoOption(nextState.duoOption)
+    setCasualOption(nextState.casualOption)
+    setApiVersion(nextState.apiVersion)
+    setApiKey(nextState.apiKey)
   }, [open, initialConfig?.mode, initialConfig?.duoOption, initialConfig?.casualOption, initialConfig?.apiVersion, initialConfig?.apiKey])
 
   useEffect(() => {
@@ -85,11 +110,11 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
       return false
     }
 
-    if (mode === 'duo' && !duoOption) {
+    if (mode === MATCH_MODE_KEYS.RANK_DUO && !duoOption) {
       return false
     }
 
-    if (mode === 'casual' && !casualOption) {
+    if (CASUAL_MODE_SET.has(mode) && !casualOption) {
       return false
     }
 
@@ -162,13 +187,17 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>모드 선택</h3>
           <div className={styles.modeGroup}>
-            <label className={`${styles.modeOption} ${mode === 'duo' ? styles.modeOptionActive : ''}`}>
+            <label
+              className={`${styles.modeOption} ${
+                mode === MATCH_MODE_KEYS.RANK_DUO ? styles.modeOptionActive : ''
+              }`}
+            >
               <input
                 type="radio"
                 name="start-mode"
                 value="duo"
-                checked={mode === 'duo'}
-                onChange={() => setMode('duo')}
+                checked={mode === MATCH_MODE_KEYS.RANK_DUO}
+                onChange={() => setMode(MATCH_MODE_KEYS.RANK_DUO)}
               />
               <div className={styles.modeBody}>
                 <div className={styles.modeHeader}>
@@ -178,7 +207,7 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
                 <p className={styles.modeDescription}>
                   팀 평균 점수와 역할을 맞춰 친구와 함께 경쟁합니다. 200점 이내의 팀만 매칭됩니다.
                 </p>
-                {mode === 'duo' && (
+                {mode === MATCH_MODE_KEYS.RANK_DUO && (
                   <div className={styles.subOptions}>
                     {DUO_JOIN_OPTIONS.map((option) => (
                       <button
@@ -198,13 +227,17 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
               </div>
             </label>
 
-            <label className={`${styles.modeOption} ${mode === 'solo' ? styles.modeOptionActive : ''}`}>
+            <label
+              className={`${styles.modeOption} ${
+                mode === MATCH_MODE_KEYS.RANK_SOLO ? styles.modeOptionActive : ''
+              }`}
+            >
               <input
                 type="radio"
                 name="start-mode"
                 value="solo"
-                checked={mode === 'solo'}
-                onChange={() => setMode('solo')}
+                checked={mode === MATCH_MODE_KEYS.RANK_SOLO}
+                onChange={() => setMode(MATCH_MODE_KEYS.RANK_SOLO)}
               />
               <div className={styles.modeBody}>
                 <div className={styles.modeHeader}>
@@ -217,13 +250,20 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
               </div>
             </label>
 
-            <label className={`${styles.modeOption} ${mode === 'casual' ? styles.modeOptionActive : ''}`}>
+            <label
+              className={`${styles.modeOption} ${
+                CASUAL_MODE_SET.has(mode) ? styles.modeOptionActive : ''
+              }`}
+            >
               <input
                 type="radio"
                 name="start-mode"
                 value="casual"
-                checked={mode === 'casual'}
-                onChange={() => setMode('casual')}
+                checked={CASUAL_MODE_SET.has(mode)}
+                onChange={() => {
+                  setMode(MATCH_MODE_KEYS.CASUAL_MATCH)
+                  setCasualOption('matchmaking')
+                }}
               />
               <div className={styles.modeBody}>
                 <div className={styles.modeHeader}>
@@ -233,7 +273,7 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
                 <p className={styles.modeDescription}>
                   누구나 자유롭게 즐길 수 있는 모드입니다. 원하는 방식으로 게임을 시작하세요.
                 </p>
-                {mode === 'casual' && (
+                {CASUAL_MODE_SET.has(mode) && (
                   <div className={styles.subOptions}>
                     {CASUAL_OPTIONS.map((option) => (
                       <button
@@ -242,7 +282,14 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
                         className={`${styles.subOption} ${
                           casualOption === option.value ? styles.subOptionActive : ''
                         }`}
-                        onClick={() => setCasualOption(option.value)}
+                        onClick={() => {
+                          setCasualOption(option.value)
+                          setMode(
+                            option.value === 'private'
+                              ? MATCH_MODE_KEYS.CASUAL_PRIVATE
+                              : MATCH_MODE_KEYS.CASUAL_MATCH,
+                          )
+                        }}
                       >
                         <span className={styles.subOptionTitle}>{option.title}</span>
                         <span className={styles.subOptionDescription}>{option.description}</span>

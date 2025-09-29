@@ -1,11 +1,21 @@
 // lib/rank/matchmakingService.js
 // Utilities that bridge the generic matching helpers with Supabase storage.
 
-import { matchCasualParticipants, matchSoloRankParticipants } from './matching'
+import {
+  matchCasualParticipants,
+  matchRankParticipants,
+  matchSoloRankParticipants,
+} from './matching'
+import {
+  getDefaultPartySize,
+  getMatcherKey,
+  getQueueModes,
+} from './matchModes'
 import { withTable } from '../supabaseTables'
 
-const MODE_TO_MATCHER = {
-  solo: matchSoloRankParticipants,
+const MATCHER_BY_KEY = {
+  rank: matchRankParticipants,
+  rank_solo: matchSoloRankParticipants,
   casual: matchCasualParticipants,
 }
 
@@ -35,15 +45,22 @@ export async function loadActiveRoles(supabaseClient, gameId) {
 
 export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
   if (!gameId) return []
-  const result = await withTable(supabaseClient, 'rank_match_queue', (table) =>
-    supabaseClient
+  const queueModes = getQueueModes(mode)
+  const filters = queueModes.length ? queueModes : [mode].filter(Boolean)
+  const result = await withTable(supabaseClient, 'rank_match_queue', (table) => {
+    let query = supabaseClient
       .from(table)
       .select('id, game_id, mode, owner_id, hero_id, role, score, joined_at, status, party_key')
       .eq('game_id', gameId)
-      .eq('mode', mode)
       .neq('status', 'cancelled')
-      .order('joined_at', { ascending: true }),
-  )
+      .order('joined_at', { ascending: true })
+    if (filters.length > 1) {
+      query = query.in('mode', filters)
+    } else if (filters.length === 1) {
+      query = query.eq('mode', filters[0])
+    }
+    return query
+  })
   if (result?.error) throw result.error
   return Array.isArray(result?.data) ? result.data : []
 }
@@ -108,11 +125,13 @@ export async function enqueueParticipant(
 }
 
 export function runMatching({ mode, roles, queue }) {
-  const matcher = MODE_TO_MATCHER[mode]
+  const matcherKey = getMatcherKey(mode)
+  const matcher = MATCHER_BY_KEY[matcherKey] || MATCHER_BY_KEY[mode]
   if (!matcher) {
     return { ready: false, assignments: [], totalSlots: 0, error: { type: 'unsupported_mode' } }
   }
-  return matcher({ roles, queue })
+  const partySize = getDefaultPartySize(mode)
+  return matcher({ roles, queue, partySize })
 }
 
 export function extractViewerAssignment({ assignments = [], viewerId }) {

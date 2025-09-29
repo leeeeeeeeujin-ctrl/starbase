@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
 import { withTable } from '../../../lib/supabaseTables'
+import {
+  MATCH_MODE_KEYS,
+  getMatchModeConfig,
+} from '../../../lib/rank/matchModes'
 
 const HOST_IDLE_TIMEOUT_MS = 1000 * 60 * 3 // 3 minutes
 
@@ -21,11 +25,13 @@ function generateRoomCode() {
 
 function normaliseRoom(row) {
   if (!row) return null
+  const modeConfig = getMatchModeConfig(row.mode)
   return {
     id: row.id,
     gameId: row.game_id,
     code: row.code,
-    mode: row.mode,
+    mode: modeConfig?.key ?? row.mode,
+    modeRaw: row.mode,
     status: row.status,
     ownerId: row.owner_id,
     slotCount: row.slot_count ?? 0,
@@ -175,7 +181,7 @@ function useRevision() {
 
 export default function useRoomLobby({ enabled } = {}) {
   const [viewerId, setViewerId] = useState(null)
-  const [mode, setModeState] = useState('duo')
+  const [mode, setModeState] = useState(MATCH_MODE_KEYS.RANK_DUO)
   const [rooms, setRooms] = useState([])
   const [roomLoading, setRoomLoading] = useState(false)
   const [selectedRoom, setSelectedRoom] = useState(null)
@@ -228,7 +234,8 @@ export default function useRoomLobby({ enabled } = {}) {
   }, [enabled])
 
   const changeMode = useCallback((nextMode) => {
-    setModeState(nextMode)
+    const resolved = getMatchModeConfig(nextMode)?.key ?? nextMode
+    setModeState(resolved)
     setSelectedRoom(null)
     setSlots([])
   }, [])
@@ -249,7 +256,17 @@ export default function useRoomLobby({ enabled } = {}) {
             .order('created_at', { ascending: false })
             .limit(40)
           if (mode !== 'all') {
-            query = query.eq('mode', mode)
+            const config = getMatchModeConfig(mode)
+            if (config) {
+              const filters = Array.from(new Set(config.queueModes || [config.key]))
+              if (filters.length > 1) {
+                query = query.in('mode', filters)
+              } else if (filters.length === 1) {
+                query = query.eq('mode', filters[0])
+              }
+            } else if (mode) {
+              query = query.eq('mode', mode)
+            }
           }
           return query
         })
@@ -365,7 +382,8 @@ export default function useRoomLobby({ enabled } = {}) {
       if (!gameId) {
         return { ok: false, error: '게임을 선택해 주세요.' }
       }
-      const targetMode = roomMode || mode
+      const targetConfig = getMatchModeConfig(roomMode || mode)
+      const targetMode = targetConfig?.key ?? roomMode ?? mode
       setCreateLoading(true)
       try {
         const slotsForGame = await fetchActiveSlots(gameId)
@@ -373,7 +391,7 @@ export default function useRoomLobby({ enabled } = {}) {
           return { ok: false, error: '활성화된 슬롯이 없는 게임입니다.' }
         }
         let selectedSlots = slotsForGame
-        if (targetMode === 'duo') {
+        if (targetMode === MATCH_MODE_KEYS.RANK_DUO) {
           const filtered = slotsForGame.filter((slot) => slot.role === duoRole)
           if (filtered.length < 2) {
             return { ok: false, error: '해당 역할군으로 듀오 방을 만들 수 없습니다.' }

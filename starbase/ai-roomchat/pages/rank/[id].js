@@ -5,6 +5,7 @@ import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import GameRoomView from '../../components/rank/GameRoomView'
 import GameStartModeModal from '../../components/rank/GameStartModeModal'
 import { useGameRoom } from '../../hooks/useGameRoom'
+import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes'
 
 export default function GameRoomPage() {
   const router = useRouter()
@@ -17,7 +18,7 @@ export default function GameRoomPage() {
   const [pickRole, setPickRole] = useState('')
   const [showStartModal, setShowStartModal] = useState(false)
   const [startPreset, setStartPreset] = useState({
-    mode: 'solo',
+    mode: MATCH_MODE_KEYS.RANK_SOLO,
     duoOption: 'code',
     casualOption: 'matchmaking',
     apiVersion: 'gemini',
@@ -99,29 +100,30 @@ export default function GameRoomPage() {
       }
     }
 
-    if (config.mode === 'solo') {
+    if (config.mode === MATCH_MODE_KEYS.RANK_SOLO) {
       router.push({ pathname: `/rank/${id}/solo` })
       return
     }
 
-    if (config.mode === 'duo') {
+    if (config.mode === MATCH_MODE_KEYS.RANK_DUO) {
       const action = config.duoOption || 'search'
       router.push({
         pathname: '/lobby',
-        query: { tab: 'rooms', mode: 'duo', action, game: id },
+        query: { tab: 'rooms', mode: MATCH_MODE_KEYS.RANK_DUO, action, game: id },
       })
       return
     }
 
-    if (config.mode === 'casual') {
-      if (config.casualOption === 'private') {
-        router.push({
-          pathname: '/lobby',
-          query: { tab: 'rooms', mode: 'private', action: 'search', game: id },
-        })
-      } else {
-        router.push({ pathname: `/rank/${id}/casual` })
-      }
+    if (config.mode === MATCH_MODE_KEYS.CASUAL_PRIVATE) {
+      router.push({
+        pathname: '/lobby',
+        query: { tab: 'rooms', mode: MATCH_MODE_KEYS.CASUAL_PRIVATE, action: 'search', game: id },
+      })
+      return
+    }
+
+    if (config.mode === MATCH_MODE_KEYS.CASUAL_MATCH) {
+      router.push({ pathname: `/rank/${id}/casual` })
       return
     }
 

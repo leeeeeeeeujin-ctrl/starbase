@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 
+import { MATCH_MODE_KEYS, getMatchModeConfig } from '../../../lib/rank/matchModes'
 import { styles } from './styles'
 
 function mergeStyle(...layers) {
@@ -8,9 +9,9 @@ function mergeStyle(...layers) {
 
 function ModeSelector({ mode, onChange, loading }) {
   const modes = [
-    { key: 'duo', label: '듀오 랭크' },
-    { key: 'casual', label: '캐주얼' },
-    { key: 'private', label: '사설' },
+    { key: MATCH_MODE_KEYS.RANK_DUO, label: '듀오 랭크' },
+    { key: MATCH_MODE_KEYS.CASUAL_MATCH, label: '캐주얼 매칭' },
+    { key: MATCH_MODE_KEYS.CASUAL_PRIVATE, label: '사설 방' },
   ]
   return (
     <div style={styles.modeTabs}>
@@ -197,7 +198,14 @@ function RoomDetail({
   const startDisabled = !isHost || startLoading || !allReady
   const badges = []
   if (room?.code) badges.push(`코드 ${room.code}`)
-  badges.push(room?.mode === 'duo' ? '듀오' : room?.mode === 'casual' ? '캐주얼' : '사설')
+  const modeConfig = getMatchModeConfig(room?.mode)
+  if (modeConfig?.key === MATCH_MODE_KEYS.RANK_DUO) {
+    badges.push('듀오')
+  } else if (modeConfig?.key === MATCH_MODE_KEYS.CASUAL_MATCH) {
+    badges.push('캐주얼')
+  } else {
+    badges.push('사설')
+  }
   if (hasSlots) {
     badges.push(allFilled ? '모든 슬롯 채움' : '빈 슬롯 있음')
     if (allReady) badges.push('전원 준비 완료')
@@ -319,7 +327,7 @@ function RoomCreateCard({ mode, availableGames, loadRoleOptions, onCreate, creat
       setError('게임을 선택해 주세요.')
       return
     }
-    if (mode === 'duo' && !duoRole) {
+    if (mode === MATCH_MODE_KEYS.RANK_DUO && !duoRole) {
       setError('듀오 방은 역할군을 선택해야 합니다.')
       return
     }
@@ -332,7 +340,7 @@ function RoomCreateCard({ mode, availableGames, loadRoleOptions, onCreate, creat
   }
 
   const duoHint = useMemo(() => {
-    if (mode !== 'duo') return null
+    if (mode !== MATCH_MODE_KEYS.RANK_DUO) return null
     if (!duoRole) return '듀오 랭크는 같은 역할군 두 슬롯으로 구성됩니다.'
     const option = roleOptions.find((role) => role.name === duoRole)
     if (!option) return '듀오 랭크는 같은 역할군 두 슬롯으로 구성됩니다.'
@@ -361,7 +369,7 @@ function RoomCreateCard({ mode, availableGames, loadRoleOptions, onCreate, creat
             ))}
           </select>
         </div>
-        {mode === 'duo' ? (
+        {mode === MATCH_MODE_KEYS.RANK_DUO ? (
           <div style={styles.formRow}>
             <label style={styles.label} htmlFor="room-duo-role">
               역할군 선택
