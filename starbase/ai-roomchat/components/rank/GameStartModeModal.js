@@ -3,8 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 import styles from './GameStartModeModal.module.css'
 
 const API_VERSION_OPTIONS = [
-  { value: 'chat_completions', label: 'Chat Completions API' },
-  { value: 'responses', label: 'Responses API v2' },
+  { value: 'gemini', label: 'Google Gemini (기본)' },
+  { value: 'chat_completions', label: 'OpenAI Chat Completions' },
+  { value: 'responses', label: 'OpenAI Responses API v2' },
 ]
 
 const DUO_JOIN_OPTIONS = [
@@ -50,7 +51,7 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
     getInitialValue(initialConfig?.casualOption, 'matchmaking'),
   )
   const [apiVersion, setApiVersion] = useState(
-    getInitialValue(initialConfig?.apiVersion, 'chat_completions'),
+    getInitialValue(initialConfig?.apiVersion, 'gemini'),
   )
   const [apiKey, setApiKey] = useState(getInitialValue(initialConfig?.apiKey, ''))
 
@@ -59,7 +60,7 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
     setMode(getInitialValue(initialConfig?.mode, 'solo'))
     setDuoOption(getInitialValue(initialConfig?.duoOption, 'code'))
     setCasualOption(getInitialValue(initialConfig?.casualOption, 'matchmaking'))
-    setApiVersion(getInitialValue(initialConfig?.apiVersion, 'chat_completions'))
+    setApiVersion(getInitialValue(initialConfig?.apiVersion, 'gemini'))
     setApiKey(getInitialValue(initialConfig?.apiKey, ''))
   }, [open, initialConfig?.mode, initialConfig?.duoOption, initialConfig?.casualOption, initialConfig?.apiVersion, initialConfig?.apiKey])
 
@@ -125,7 +126,7 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
         </header>
 
         <section className={styles.section}>
-          <h3 className={styles.sectionTitle}>OpenAI API 연결</h3>
+          <h3 className={styles.sectionTitle}>AI API 연결</h3>
           <label className={styles.label} htmlFor="start-config-api-version">
             API 종류
           </label>
@@ -149,11 +150,13 @@ export default function GameStartModeModal({ open, initialConfig, onClose, onCon
             id="start-config-api-key"
             className={styles.input}
             type="password"
-            placeholder="sk-로 시작하는 키를 입력하세요"
+            placeholder="AI API 키를 입력하세요"
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
           />
-          <p className={styles.helperText}>API 키가 없으면 게임을 시작할 수 없습니다.</p>
+          <p className={styles.helperText}>
+            Google Gemini 또는 OpenAI API 키가 필요합니다.
+          </p>
         </section>
 
         <section className={styles.section}>

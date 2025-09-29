@@ -20,7 +20,7 @@ export default function GameRoomPage() {
     mode: 'solo',
     duoOption: 'code',
     casualOption: 'matchmaking',
-    apiVersion: 'chat_completions',
+    apiVersion: 'gemini',
     apiKey: '',
   })
 

@@ -31,8 +31,8 @@ export function useStartClientEngine(gameId) {
     return window.sessionStorage.getItem('rank.start.apiKey') || ''
   })
   const [apiVersion, setApiVersionState] = useState(() => {
-    if (typeof window === 'undefined') return 'chat_completions'
-    return window.sessionStorage.getItem('rank.start.apiVersion') || 'chat_completions'
+    if (typeof window === 'undefined') return 'gemini'
+    return window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
   })
   const [manualResponse, setManualResponse] = useState('')
   const [isAdvancing, setIsAdvancing] = useState(false)

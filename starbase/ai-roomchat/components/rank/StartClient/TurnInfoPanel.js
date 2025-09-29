@@ -39,11 +39,11 @@ export default function TurnInfoPanel({
         </span>
       </div>
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ fontSize: 13, color: '#475569' }}>OpenAI API 키</span>
+        <span style={{ fontSize: 13, color: '#475569' }}>AI API 키</span>
         <input
           value={apiKey}
           onChange={(event) => onApiKeyChange(event.target.value)}
-          placeholder="sk-…"
+          placeholder="API 키를 입력하세요"
           style={{
             flex: 1,
             padding: '6px 10px',
@@ -67,6 +67,7 @@ export default function TurnInfoPanel({
             fontWeight: 600,
           }}
         >
+          <option value="gemini">Google Gemini</option>
           <option value="chat_completions">Chat Completions v1</option>
           <option value="responses">Responses API v2</option>
         </select>
