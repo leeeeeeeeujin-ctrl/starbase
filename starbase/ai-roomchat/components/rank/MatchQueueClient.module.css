@@ -92,6 +92,28 @@
   margin-bottom: 16px;
 }
 
+.lockedRole {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(71, 85, 105, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  margin-bottom: 16px;
+}
+
+.lockedRoleLabel {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.lockedRoleName {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
 .roleButton {
   flex: 1 1 45%;
   min-width: 120px;

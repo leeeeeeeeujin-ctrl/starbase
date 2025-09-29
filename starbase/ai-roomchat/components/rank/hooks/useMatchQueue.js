@@ -32,24 +32,30 @@ async function loadViewer() {
   return data.user.id
 }
 
-async function loadViewerScore(gameId, ownerId) {
-  if (!gameId || !ownerId) return 1000
+async function loadViewerParticipation(gameId, ownerId) {
+  if (!gameId || !ownerId) {
+    return { score: 1000, role: '' }
+  }
   const result = await withTable(supabase, 'rank_participants', (table) =>
     supabase
       .from(table)
-      .select('score, rating')
+      .select('score, rating, role')
       .eq('game_id', gameId)
       .eq('owner_id', ownerId)
       .maybeSingle(),
   )
-  if (result?.error) return 1000
+  if (result?.error) return { score: 1000, role: '' }
   const row = result?.data
-  if (!row) return 1000
+  if (!row) return { score: 1000, role: '' }
   const score = Number(row.score)
-  if (Number.isFinite(score) && score > 0) return score
+  if (Number.isFinite(score) && score > 0) {
+    return { score, role: row.role || '' }
+  }
   const rating = Number(row.rating)
-  if (Number.isFinite(rating) && rating > 0) return rating
-  return 1000
+  if (Number.isFinite(rating) && rating > 0) {
+    return { score: rating, role: row.role || '' }
+  }
+  return { score: 1000, role: row?.role || '' }
 }
 
 export default function useMatchQueue({ gameId, mode, enabled }) {
@@ -61,6 +67,7 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [score, setScore] = useState(1000)
+  const [lockedRole, setLockedRole] = useState('')
   const [match, setMatch] = useState(null)
   const pollRef = useRef(null)
 
@@ -99,9 +106,11 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
   useEffect(() => {
     if (!enabled || !gameId || !viewerId) return
     let cancelled = false
-    loadViewerScore(gameId, viewerId)
+    loadViewerParticipation(gameId, viewerId)
       .then((value) => {
-        if (!cancelled) setScore(value)
+        if (cancelled || !value) return
+        setScore(value.score)
+        setLockedRole(value.role || '')
       })
       .catch((cause) => console.warn('점수를 불러오지 못했습니다:', cause))
     return () => {
@@ -165,7 +174,8 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
       if (!viewerId) return { ok: false, error: '로그인이 필요합니다.' }
       const activeHero = readStoredHeroId() || heroId
       if (!activeHero) return { ok: false, error: '먼저 사용할 캐릭터를 선택해 주세요.' }
-      if (!role) return { ok: false, error: '역할을 선택해 주세요.' }
+      const finalRole = lockedRole || role
+      if (!finalRole) return { ok: false, error: '역할을 선택해 주세요.' }
 
       setLoading(true)
       setError('')
@@ -175,7 +185,7 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
           mode,
           ownerId: viewerId,
           heroId: activeHero,
-          role,
+          role: finalRole,
           score,
         })
         if (!response.ok) {
@@ -185,12 +195,15 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
         setStatus('queued')
         setMatch(null)
         setHeroId(activeHero)
+        if (!lockedRole && finalRole) {
+          setLockedRole(finalRole)
+        }
         return { ok: true }
       } finally {
         setLoading(false)
       }
     },
-    [enabled, gameId, mode, viewerId, heroId, score],
+    [enabled, gameId, mode, viewerId, heroId, score, lockedRole],
   )
 
   const cancelQueue = useCallback(async () => {
@@ -223,8 +236,9 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
       loading,
       score,
       match,
+      lockedRole,
     }),
-    [viewerId, heroId, roles, queue, status, error, loading, score, match],
+    [viewerId, heroId, roles, queue, status, error, loading, score, match, lockedRole],
   )
 
   return {

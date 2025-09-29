@@ -48,13 +48,20 @@ export default function MatchQueueClient({ gameId, mode, title, description, emp
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
 
   useEffect(() => {
+    if (state.lockedRole) {
+      if (selectedRole !== state.lockedRole) {
+        setSelectedRole(state.lockedRole)
+      }
+      return
+    }
     if (selectedRole) return
     if (!state.roles?.length) return
     setSelectedRole(state.roles[0].name)
-  }, [state.roles, selectedRole])
+  }, [state.lockedRole, state.roles, selectedRole])
 
   const handleJoin = async () => {
-    const result = await actions.joinQueue(selectedRole)
+    const role = state.lockedRole || selectedRole
+    const result = await actions.joinQueue(role)
     if (!result?.ok && result?.error) {
       alert(result.error)
     }
@@ -95,28 +102,37 @@ export default function MatchQueueClient({ gameId, mode, title, description, emp
             새로고침
           </button>
         </div>
-        <div className={styles.roleGroup}>
-          {state.roles.map((role) => {
-            const active = selectedRole === role.name
-            return (
-              <button
-                key={role.name}
-                type="button"
-                className={`${styles.roleButton} ${active ? styles.roleButtonActive : ''}`}
-                onClick={() => setSelectedRole(role.name)}
-              >
-                <span className={styles.roleName}>{role.name}</span>
-                <span className={styles.roleSlots}>활성 슬롯 {role.slot_count ?? role.slotCount ?? '?'}개</span>
-              </button>
-            )
-          })}
-        </div>
+        {state.lockedRole ? (
+          <div className={styles.lockedRole}>
+            <span className={styles.lockedRoleLabel}>고정된 역할</span>
+            <strong className={styles.lockedRoleName}>{state.lockedRole}</strong>
+          </div>
+        ) : (
+          <div className={styles.roleGroup}>
+            {state.roles.map((role) => {
+              const active = selectedRole === role.name
+              return (
+                <button
+                  key={role.name}
+                  type="button"
+                  className={`${styles.roleButton} ${active ? styles.roleButtonActive : ''}`}
+                  onClick={() => setSelectedRole(role.name)}
+                >
+                  <span className={styles.roleName}>{role.name}</span>
+                  <span className={styles.roleSlots}>활성 슬롯 {role.slot_count ?? role.slotCount ?? '?'}개</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
         <div className={styles.actionRow}>
           <button
             type="button"
             className={styles.primaryButton}
             onClick={handleJoin}
-            disabled={state.loading || !selectedRole || state.status === 'queued'}
+            disabled={
+              state.loading || (!state.lockedRole && !selectedRole) || state.status === 'queued'
+            }
           >
             {state.status === 'queued' ? '대기 중…' : '대기열 참가'}
           </button>
