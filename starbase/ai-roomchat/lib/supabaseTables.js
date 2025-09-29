@@ -8,6 +8,9 @@ const FALLBACK_TABLES = {
   rank_battles: ['rank_battles', 'rank_sessions', 'session_logs'],
   rank_battle_logs: ['rank_battle_logs', 'rank_session_logs', 'session_logs'],
   rank_turns: ['rank_turns', 'rank_session_turns', 'session_turns', 'rank_session_logs'],
+  rank_rooms: ['rank_rooms'],
+  rank_room_slots: ['rank_room_slots'],
+  rank_room_participants: ['rank_room_participants'],
 }
 
 const resolvedTableCache = {}

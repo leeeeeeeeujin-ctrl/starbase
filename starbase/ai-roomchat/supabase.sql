@@ -445,6 +445,97 @@ create table if not exists public.rank_battle_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.rank_rooms (
+  id uuid primary key default gen_random_uuid(),
+  game_id uuid not null references public.rank_games(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  code text not null unique,
+  mode text not null default 'casual',
+  status text not null default 'open',
+  slot_count integer not null default 0,
+  filled_count integer not null default 0,
+  ready_count integer not null default 0,
+  host_last_active_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.rank_room_slots (
+  id uuid primary key default gen_random_uuid(),
+  room_id uuid not null references public.rank_rooms(id) on delete cascade,
+  slot_index integer not null,
+  role text not null,
+  occupant_owner_id uuid references auth.users(id) on delete set null,
+  occupant_hero_id uuid references public.heroes(id) on delete set null,
+  occupant_ready boolean not null default false,
+  joined_at timestamptz,
+  updated_at timestamptz not null default now(),
+  unique(room_id, slot_index)
+);
+
+alter table public.rank_rooms enable row level security;
+
+create policy if not exists rank_rooms_select
+on public.rank_rooms for select using (true);
+
+create policy if not exists rank_rooms_insert
+on public.rank_rooms for insert to authenticated with check (auth.uid() = owner_id);
+
+create policy if not exists rank_rooms_update
+on public.rank_rooms for update
+using (
+  auth.uid() = owner_id
+  or exists (
+    select 1 from public.rank_room_slots
+    where public.rank_room_slots.room_id = id
+      and public.rank_room_slots.occupant_owner_id = auth.uid()
+  )
+)
+with check (
+  auth.uid() = owner_id
+  or exists (
+    select 1 from public.rank_room_slots
+    where public.rank_room_slots.room_id = id
+      and public.rank_room_slots.occupant_owner_id = auth.uid()
+  )
+);
+
+alter table public.rank_room_slots enable row level security;
+
+create policy if not exists rank_room_slots_select
+on public.rank_room_slots for select using (true);
+
+create policy if not exists rank_room_slots_insert
+on public.rank_room_slots for insert to authenticated
+with check (
+  exists (
+    select 1 from public.rank_rooms
+    where public.rank_rooms.id = room_id
+      and public.rank_rooms.owner_id = auth.uid()
+  )
+);
+
+create policy if not exists rank_room_slots_update
+on public.rank_room_slots for update
+using (
+  occupant_owner_id is null
+  or occupant_owner_id = auth.uid()
+  or exists (
+    select 1 from public.rank_rooms
+    where public.rank_rooms.id = room_id
+      and public.rank_rooms.owner_id = auth.uid()
+  )
+)
+with check (
+  occupant_owner_id is null
+  or occupant_owner_id = auth.uid()
+  or exists (
+    select 1 from public.rank_rooms
+    where public.rank_rooms.id = room_id
+      and public.rank_rooms.owner_id = auth.uid()
+  )
+);
+
 alter table public.rank_battle_logs enable row level security;
 
 create policy if not exists rank_battle_logs_select

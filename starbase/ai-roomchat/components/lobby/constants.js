@@ -2,6 +2,7 @@ export const NAV_LINKS = []
 
 export const LOBBY_TABS = [
   { key: 'games', label: '게임 검색' },
+  { key: 'rooms', label: '방 찾기' },
   { key: 'my-games', label: '내 게임' },
   { key: 'stats', label: '캐릭터 통계' },
 ]
