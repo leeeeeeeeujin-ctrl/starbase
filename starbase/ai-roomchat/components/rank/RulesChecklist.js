@@ -57,6 +57,14 @@ export function buildRulesPrefix(rules) {
       '- 본 요소 반영 외 규칙은 무효. 이름/능력명 외 영어 사용 금지.'
     )
   }
+  if (rules.brawl_rule === 'allow-brawl') {
+    lines.push(
+      '- 전투 중 같은 역할군 슬롯에서 탈락자가 발생하면 대기 중인 참가자가 즉시 난입한다.',
+      '- 난입을 고려해 매 턴 현재 역할군의 남은 인원과 전황을 명확히 정리하라.'
+    )
+  } else if (rules.brawl_rule === 'banish-on-loss') {
+    lines.push('- 패배한 참가자는 경기 종료 시까지 재난입할 수 없다. 빈 슬롯은 그대로 유지된다.')
+  }
   if (rules.fair_power_balance) {
     lines.push(
       '- 능력은 여건이 될 때만 사용하되, 존재성/상시발동 능력은 제약 없이 가능.',

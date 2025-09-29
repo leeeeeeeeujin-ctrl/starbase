@@ -1,7 +1,8 @@
 // lib/rank/ai.js
 
-export async function callChat({ userApiKey, system, user, apiVersion = 'chat_completions' }) {
-  if (!userApiKey) {
+export async function callChat({ userApiKey, system, user, apiVersion = 'gemini' }) {
+  const trimmedKey = typeof userApiKey === 'string' ? userApiKey.trim() : ''
+  if (!trimmedKey) {
     return { error: 'missing_user_api_key' }
   }
 
@@ -10,18 +11,67 @@ export async function callChat({ userApiKey, system, user, apiVersion = 'chat_co
     return { error: 'missing_prompt' }
   }
 
-  const headers = {
-    Authorization: `Bearer ${userApiKey}`,
-    'Content-Type': 'application/json',
-  }
+  const trimmedSystem = typeof system === 'string' ? system.trim() : ''
 
   try {
+    if (apiVersion === 'gemini') {
+      const body = {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: trimmedPrompt }],
+          },
+        ],
+      }
+
+      if (trimmedSystem) {
+        body.systemInstruction = {
+          parts: [{ text: trimmedSystem }],
+        }
+      }
+
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${encodeURIComponent(
+          trimmedKey,
+        )}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+      )
+
+      if (resp.status === 401 || resp.status === 403 || resp.status === 429) {
+        return { error: 'quota_exhausted' }
+      }
+      if (!resp.ok) {
+        return { error: 'ai_failed', detail: (await resp.text()).slice(0, 500) }
+      }
+
+      const json = await resp.json()
+      const parts = json?.candidates?.[0]?.content?.parts
+      const text = Array.isArray(parts)
+        ? parts
+            .filter((part) => typeof part?.text === 'string')
+            .map((part) => part.text)
+            .join('\n')
+        : ''
+      return { text: typeof text === 'string' ? text : '' }
+    }
+
+    const headers = {
+      Authorization: `Bearer ${trimmedKey}`,
+      'Content-Type': 'application/json',
+    }
+
     if (apiVersion === 'responses') {
       const input = []
-      if (system && typeof system === 'string' && system.trim()) {
+      if (trimmedSystem) {
         input.push({
           role: 'system',
-          content: [{ type: 'text', text: system }],
+          content: [{ type: 'text', text: trimmedSystem }],
         })
       }
       input.push({
@@ -68,8 +118,8 @@ export async function callChat({ userApiKey, system, user, apiVersion = 'chat_co
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          ...(system && typeof system === 'string' && system.trim()
-            ? [{ role: 'system', content: system }]
+          ...(trimmedSystem
+            ? [{ role: 'system', content: trimmedSystem }]
             : []),
           { role: 'user', content: trimmedPrompt },
         ],
