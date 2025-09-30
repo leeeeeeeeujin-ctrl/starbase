@@ -2,9 +2,109 @@ import { withTable } from '@/lib/supabaseTables'
 
 import { createNodeFromSlot } from './rules'
 
+function toNumber(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+function normalizeHeroAudioProfile(raw) {
+  if (!raw) return null
+
+  let payload = raw
+  if (typeof raw === 'string') {
+    try {
+      payload = JSON.parse(raw)
+    } catch (error) {
+      console.warn('Failed to parse hero audio profile JSON:', error)
+      return null
+    }
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const profile = {}
+
+  if (typeof payload.eqEnabled === 'boolean') {
+    profile.eqEnabled = payload.eqEnabled
+  }
+
+  if (payload.equalizer && typeof payload.equalizer === 'object') {
+    const eq = {}
+    const low = toNumber(payload.equalizer.low)
+    const mid = toNumber(payload.equalizer.mid)
+    const high = toNumber(payload.equalizer.high)
+    if (low != null) eq.low = low
+    if (mid != null) eq.mid = mid
+    if (high != null) eq.high = high
+    if (Object.keys(eq).length) {
+      profile.equalizer = eq
+    }
+  }
+
+  if (typeof payload.reverbEnabled === 'boolean') {
+    profile.reverbEnabled = payload.reverbEnabled
+  }
+
+  if (payload.reverbDetail && typeof payload.reverbDetail === 'object') {
+    const mix = toNumber(payload.reverbDetail.mix)
+    const decay = toNumber(payload.reverbDetail.decay)
+    const detail = {}
+    if (mix != null) detail.mix = mix
+    if (decay != null) detail.decay = decay
+    if (Object.keys(detail).length) {
+      profile.reverbDetail = detail
+    }
+  }
+
+  if (typeof payload.compressorEnabled === 'boolean') {
+    profile.compressorEnabled = payload.compressorEnabled
+  }
+
+  if (payload.compressorDetail && typeof payload.compressorDetail === 'object') {
+    const threshold = toNumber(payload.compressorDetail.threshold)
+    const ratio = toNumber(payload.compressorDetail.ratio)
+    const release = toNumber(payload.compressorDetail.release)
+    const detail = {}
+    if (threshold != null) detail.threshold = threshold
+    if (ratio != null) detail.ratio = ratio
+    if (release != null) detail.release = release
+    if (Object.keys(detail).length) {
+      profile.compressorDetail = detail
+    }
+  }
+
+  return Object.keys(profile).length ? profile : null
+}
+
+function mapHeroRow(row, fallbackId) {
+  const id = row?.id || fallbackId || null
+  const audioProfile =
+    normalizeHeroAudioProfile(
+      row?.audio_settings ?? row?.audio_profile ?? row?.audioProfile ?? row?.bgm_settings ?? null,
+    ) || null
+
+  return {
+    id,
+    name: row?.name || '이름 없는 영웅',
+    description: row?.description || '',
+    ability1: row?.ability1 || '',
+    ability2: row?.ability2 || '',
+    ability3: row?.ability3 || '',
+    ability4: row?.ability4 || '',
+    image_url: row?.image_url || '',
+    background_url: row?.background_url || '',
+    bgm_url: row?.bgm_url || '',
+    bgm_duration_seconds: row?.bgm_duration_seconds || null,
+    bgm_mime: row?.bgm_mime || null,
+    audioProfile,
+  }
+}
+
 function normalizeParticipants(rows = []) {
   return rows.map((row) => {
-    const hero = row?.heroes || {}
+    const hero = mapHeroRow(row?.heroes, row?.hero_id)
     return {
       id: row?.id,
       role: row?.role || '',
@@ -12,16 +112,7 @@ function normalizeParticipants(rows = []) {
       score: Number(row?.score) || 0,
       rating: Number(row?.rating) || 0,
       hero_id: row?.hero_id || null,
-      hero: {
-        id: hero?.id || row?.hero_id || null,
-        name: hero?.name || '이름 없는 영웅',
-        description: hero?.description || '',
-        image_url: hero?.image_url || '',
-        ability1: hero?.ability1 || '',
-        ability2: hero?.ability2 || '',
-        ability3: hero?.ability3 || '',
-        ability4: hero?.ability4 || '',
-      },
+      hero,
     }
   })
 }
@@ -58,9 +149,7 @@ export async function loadGameBundle(supabaseClient, gameId) {
   } = await withTable(supabaseClient, 'rank_participants', (table) =>
     supabaseClient
       .from(table)
-      .select(
-        'id, role, status, hero_id, score, rating, heroes:hero_id(id,name,description,image_url,ability1,ability2,ability3,ability4)'
-      )
+      .select('id, role, status, hero_id, score, rating, heroes:hero_id(*)')
       .eq('game_id', gameId)
   )
 
