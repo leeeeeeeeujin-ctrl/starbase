@@ -18,6 +18,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const confirmIntervalRef = useRef(null)
   const searchTimeoutRef = useRef(null)
   const redirectTimeoutRef = useRef(null)
+  const missingHeroTimeoutRef = useRef(null)
   const lastStatusLogRef = useRef('')
 
   useEffect(() => {
@@ -165,6 +166,13 @@ export default function AutoMatchProgress({ gameId, mode }) {
     }
   }, [])
 
+  const clearMissingHeroTimeout = useCallback(() => {
+    if (missingHeroTimeoutRef.current) {
+      clearTimeout(missingHeroTimeoutRef.current)
+      missingHeroTimeoutRef.current = null
+    }
+  }, [])
+
   const handleReturnToRoom = useCallback(
     (message) => {
       setNotice(message)
@@ -172,12 +180,21 @@ export default function AutoMatchProgress({ gameId, mode }) {
       clearConfirmTimers()
       clearSearchTimeout()
       clearRedirectTimeout()
+      clearMissingHeroTimeout()
       actions.cancelQueue().catch(() => {})
       redirectTimeoutRef.current = setTimeout(() => {
         router.replace(`/rank/${gameId}`)
       }, 2500)
     },
-    [actions, clearConfirmTimers, clearRedirectTimeout, clearSearchTimeout, gameId, router],
+    [
+      actions,
+      clearConfirmTimers,
+      clearMissingHeroTimeout,
+      clearRedirectTimeout,
+      clearSearchTimeout,
+      gameId,
+      router,
+    ],
   )
 
   const handleConfirmTimeout = useCallback(() => {
@@ -232,7 +249,33 @@ export default function AutoMatchProgress({ gameId, mode }) {
     clearConfirmTimers()
     clearSearchTimeout()
     clearRedirectTimeout()
-  }, [clearConfirmTimers, clearRedirectTimeout, clearSearchTimeout])
+    clearMissingHeroTimeout()
+  }, [clearConfirmTimers, clearMissingHeroTimeout, clearRedirectTimeout, clearSearchTimeout])
+
+  useEffect(() => {
+    if (!gameId) return
+    if (phase === 'notice') return
+    if (state.heroId) {
+      clearMissingHeroTimeout()
+      return
+    }
+
+    const reason = autoJoinStatus.reason || ''
+    if (!reason || !/캐릭터|영웅/.test(reason)) {
+      clearMissingHeroTimeout()
+      return
+    }
+
+    if (!missingHeroTimeoutRef.current) {
+      missingHeroTimeoutRef.current = setTimeout(() => {
+        handleReturnToRoom('선택된 캐릭터가 없어 메인 룸으로 돌아갑니다.')
+      }, 1500)
+    }
+
+    return () => {
+      clearMissingHeroTimeout()
+    }
+  }, [autoJoinStatus.reason, clearMissingHeroTimeout, gameId, handleReturnToRoom, phase, state.heroId])
 
   const handleConfirmBattle = useCallback(() => {
     if (!state.match || navigationLockRef.current) return
