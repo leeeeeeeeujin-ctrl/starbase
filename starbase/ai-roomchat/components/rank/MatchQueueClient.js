@@ -209,6 +209,32 @@ export default function MatchQueueClient({
 
   const targetRoleName = state.lockedRole || defaultRoleName
 
+  const autoJoinBlockers = useMemo(() => {
+    if (!autoJoin) return []
+    if (state.status === 'queued' || state.status === 'matched') return []
+
+    const blockers = []
+    if (!state.viewerId) {
+      blockers.push('로그인 세션을 확인하는 중입니다.')
+    }
+    if (!targetRoleName) {
+      blockers.push('참가할 역할 정보를 불러오고 있습니다.')
+    }
+    if (!state.heroId) {
+      blockers.push('사용할 캐릭터를 선택해 주세요.')
+    }
+    return blockers
+  }, [autoJoin, state.status, state.viewerId, targetRoleName, state.heroId])
+
+  useEffect(() => {
+    if (!autoJoin) return
+    if (!autoJoinBlockers.length) {
+      console.debug('[MatchQueueClient] 자동 참가 준비 완료')
+      return
+    }
+    console.debug('[MatchQueueClient] 자동 참가 대기 사유:', autoJoinBlockers)
+  }, [autoJoin, autoJoinBlockers])
+
   useEffect(() => {
     if (!autoJoin) return
     if (state.status === 'queued' || state.status === 'matched') return
@@ -472,6 +498,18 @@ export default function MatchQueueClient({
                 <p className={styles.sectionHint}>
                   현재 역할은 <strong>{state.lockedRole}</strong>로 고정되어 있습니다.
                 </p>
+              ) : null}
+              {autoJoinBlockers.length ? (
+                <div className={styles.autoJoinDebug}>
+                  <p className={styles.autoJoinDebugTitle}>아직 대기 중인 조건</p>
+                  <ul className={styles.autoJoinDebugList}>
+                    {autoJoinBlockers.map((message, index) => (
+                      <li key={`${message}-${index}`} className={styles.autoJoinDebugItem}>
+                        {message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
             </div>
 
