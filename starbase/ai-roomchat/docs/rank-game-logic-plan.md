@@ -54,7 +54,14 @@
 5. `recordBattle` → `game_id` 포함 및 점수/상태 업데이트 보강.
 6. 최근 전투 목록 UI를 실제 응답 구조에 맞춰 갱신.
 
+## 6. 진행 현황 (2025-09-30 기준)
+- **1단계 – 역할/슬롯 모델링**: `useGameRoom`이 `rank_game_roles`·`rank_game_slots`를 모두 불러와 정규화한 역할 배열과 필요 슬롯 수를 계산하도록 확장된 상태다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L200-L318】【F:starbase/ai-roomchat/hooks/useGameRoom.js†L488-L499】
+- **1단계 – 슬롯 점유/해제 로직**: 여전히 `joinGame`이 `rank_participants`에만 insert하고 슬롯 테이블은 건드리지 않아 다중 점유 위험이 남아 있다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L360-L435】
+- **2단계 – 메인룸 시작 트리거**: 시작 버튼은 모달을 띄운 뒤 라우팅만 수행하고 `/api/rank/play` 호출이나 세션 생성은 구현되지 않았다.【F:starbase/ai-roomchat/pages/rank/[id].js†L165-L216】
+- **3단계 – 서버 전투 기록**: `recordBattle`이 `rank_battle_logs`에 `game_id`를 아직 포함하지 않아 스키마 요구사항을 충족하지 못한다.【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L32】
+- **4단계 – UI/히스토리 연동**: 메인 룸 UI는 참가자 수만 비교해 시작 가능 여부를 판단하며, 세션 히스토리나 난입 로직 반영은 미구현 상태다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L488-L520】【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L760-L819】
+
 ---
-느낀 점: 기존 코드에 매칭을 위한 초석이 꽤 깔려 있어서 흐름을 정리하기가 수월했습니다.  
-추가로 필요한 점: 슬롯 점유/난입 로직을 설계할 때 경쟁 상태를 방지할 수 있는 트랜잭션 전략을 정해야 합니다.  
+느낀 점: 기존 코드에 매칭을 위한 초석이 꽤 깔려 있어서 흐름을 정리하기가 수월했습니다.
+추가로 필요한 점: 슬롯 점유/난입 로직을 설계할 때 경쟁 상태를 방지할 수 있는 트랜잭션 전략을 정해야 합니다.
 진행사항: 메인룸 전투 로직 구현을 위한 현재 구조 분석과 단계별 설계안을 문서로 정리했습니다.
