@@ -18,6 +18,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const confirmIntervalRef = useRef(null)
   const searchTimeoutRef = useRef(null)
   const redirectTimeoutRef = useRef(null)
+  const lastStatusLogRef = useRef('')
 
   useEffect(() => {
     statusRef.current = state.status
@@ -41,6 +42,53 @@ export default function AutoMatchProgress({ gameId, mode }) {
     }
     return ''
   }, [state.lockedRole, state.roles])
+
+  const autoJoinStatus = useMemo(() => {
+    if (!gameId) {
+      return { ready: false, reason: '게임 정보를 불러오는 중…' }
+    }
+    if (!mode) {
+      return { ready: false, reason: '매칭 모드를 확인하는 중…' }
+    }
+    if (phase === 'notice') {
+      return { ready: false, reason: '안내 메시지를 처리하는 중…' }
+    }
+    if (!state.viewerId) {
+      return { ready: false, reason: '참가자 정보를 확인하는 중…' }
+    }
+    if (!state.heroId) {
+      return { ready: false, reason: '선택된 캐릭터를 확인하는 중…' }
+    }
+    if (!preferredRole) {
+      return { ready: false, reason: '사용 가능한 역할을 불러오는 중…' }
+    }
+    if (state.status === 'queued' || state.status === 'matched') {
+      return { ready: true, reason: '' }
+    }
+    return { ready: true, reason: '' }
+  }, [gameId, mode, phase, preferredRole, state.heroId, state.status, state.viewerId])
+
+  useEffect(() => {
+    const label = `${autoJoinStatus.ready ? 'ready' : 'blocked'}:${autoJoinStatus.reason || ''}:${state.status}`
+    if (lastStatusLogRef.current === label) return
+    lastStatusLogRef.current = label
+    if (autoJoinStatus.ready) {
+      console.debug('[AutoMatchProgress] 자동 매칭 준비 완료', {
+        gameId,
+        mode,
+        status: state.status,
+        role: preferredRole,
+        heroId: state.heroId,
+      })
+    } else if (autoJoinStatus.reason) {
+      console.debug('[AutoMatchProgress] 자동 매칭 대기 사유', {
+        gameId,
+        mode,
+        status: state.status,
+        reason: autoJoinStatus.reason,
+      })
+    }
+  }, [autoJoinStatus.ready, autoJoinStatus.reason, gameId, mode, preferredRole, state.heroId, state.status])
 
   useEffect(() => {
     if (!gameId || !mode) return
@@ -82,7 +130,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
     return () => {
       cancelled = true
     }
-  }, [actions, gameId, phase, preferredRole, state.heroId, state.status, state.viewerId])
+  }, [actions, autoJoinStatus.ready, gameId, phase, preferredRole, state.heroId, state.status, state.viewerId])
 
   useEffect(() => {
     const message = state.error || localError
@@ -204,6 +252,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
   )
 
   const errorMessage = state.error || localError
+  const loaderHint = notice || (autoJoinStatus.ready ? '' : autoJoinStatus.reason)
 
   return (
     <div className={styles.wrapper}>
@@ -226,7 +275,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
         <div className={styles.loader}>
           <div className={styles.spinner} aria-hidden />
           <p className={styles.primaryText}>매칭 중…</p>
-          {notice ? <p className={styles.secondaryText}>{notice}</p> : null}
+          {loaderHint ? <p className={styles.secondaryText}>{loaderHint}</p> : null}
         </div>
       )}
       <div aria-live="assertive" className={styles.srOnly}>
