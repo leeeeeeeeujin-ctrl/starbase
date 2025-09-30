@@ -103,6 +103,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const previousStatusRef = useRef(state.status)
   const blockersRef = useRef([])
   const previousConfirmationRef = useRef('idle')
+  const latestConfirmationRef = useRef('idle')
   const joinErrorRef = useRef('')
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
@@ -170,6 +171,10 @@ export default function AutoMatchProgress({ gameId, mode }) {
     })
     previousConfirmationRef.current = confirmationState
   }, [confirmationState, confirmationRemaining])
+
+  useEffect(() => {
+    latestConfirmationRef.current = confirmationState
+  }, [confirmationState])
 
   const clearConfirmationTimers = useCallback(() => {
     if (confirmationTimerRef.current) {
@@ -424,7 +429,11 @@ export default function AutoMatchProgress({ gameId, mode }) {
         clearTimeout(penaltyRedirectRef.current)
         penaltyRedirectRef.current = null
       }
-      if (latestStatusRef.current === 'queued') {
+      const latestConfirmation = latestConfirmationRef.current
+      if (
+        (latestStatusRef.current === 'queued' || latestStatusRef.current === 'matched') &&
+        latestConfirmation !== 'confirmed'
+      ) {
         actions.cancelQueue()
       }
     }
