@@ -411,16 +411,34 @@ export function useGameRoom(
         return { ok: false }
       }
 
+      const existingEntry =
+        participants.find((participant) => participant?.owner_id === user.id) || null
+
+      const nextScore = (() => {
+        const rawScore = Number(existingEntry?.score)
+        if (Number.isFinite(rawScore) && rawScore > 0) {
+          return rawScore
+        }
+        const rawRating = Number(existingEntry?.rating)
+        if (Number.isFinite(rawRating) && rawRating > 0) {
+          return rawRating
+        }
+        return 1000
+      })()
+
       const payload = {
         game_id: gameId,
         hero_id: myHero.id,
         owner_id: user.id,
         role: roleName,
-        score: 1000,
+        score: nextScore,
+        updated_at: new Date().toISOString(),
       }
 
       const { error } = await withTable(supabase, 'rank_participants', (table) =>
-        supabase.from(table).insert(payload, { ignoreDuplicates: true })
+        supabase
+          .from(table)
+          .upsert(payload, { onConflict: 'game_id,owner_id', ignoreDuplicates: false })
       )
 
       if (error) {
