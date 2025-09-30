@@ -115,7 +115,12 @@ export function useStartClientEngine(gameId) {
   const [viewerId, setViewerId] = useState(null)
   const [turnDeadline, setTurnDeadline] = useState(null)
   const [timeRemaining, setTimeRemaining] = useState(null)
-  const [activeHeroAssets, setActiveHeroAssets] = useState({ backgrounds: [], bgmUrl: null })
+  const [activeHeroAssets, setActiveHeroAssets] = useState({
+    backgrounds: [],
+    bgmUrl: null,
+    bgmDuration: null,
+    audioProfile: null,
+  })
   const [activeActorNames, setActiveActorNames] = useState([])
   const [turnTimerSeconds] = useState(() => {
     if (typeof window === 'undefined') return 60
@@ -343,10 +348,24 @@ export function useStartClientEngine(gameId) {
         .filter(Boolean)
       const bgmSource = matchedEntries.find((entry) => entry.hero?.bgm_url)
 
+      const audioProfile = bgmSource
+        ? {
+            heroId: bgmSource.hero?.id || null,
+            heroName: bgmSource.hero?.name || '',
+            bgmUrl: bgmSource.hero?.bgm_url || null,
+            bgmDuration: Number(bgmSource.hero?.bgm_duration_seconds) || null,
+            equalizer: null,
+            reverb: null,
+            compressor: null,
+          }
+        : null
+
       return {
         backgrounds,
-        bgmUrl: bgmSource?.hero?.bgm_url || null,
+        bgmUrl: audioProfile?.bgmUrl || null,
+        bgmDuration: audioProfile?.bgmDuration || null,
         actorNames: resolvedNames,
+        audioProfile,
       }
     },
     [heroLookup],
@@ -354,10 +373,13 @@ export function useStartClientEngine(gameId) {
 
   const updateHeroAssets = useCallback(
     (names, fallbackContext) => {
-      const { backgrounds, bgmUrl, actorNames } = resolveHeroAssets(names, fallbackContext)
+      const { backgrounds, bgmUrl, bgmDuration, actorNames, audioProfile } =
+        resolveHeroAssets(names, fallbackContext)
       setActiveHeroAssets({
         backgrounds,
         bgmUrl,
+        bgmDuration,
+        audioProfile,
       })
       setActiveActorNames(actorNames)
     },
@@ -806,5 +828,7 @@ export function useStartClientEngine(gameId) {
     activeBackdropUrls: activeHeroAssets.backgrounds,
     activeActorNames,
     activeBgmUrl: activeHeroAssets.bgmUrl,
+    activeBgmDuration: activeHeroAssets.bgmDuration,
+    activeAudioProfile: activeHeroAssets.audioProfile,
   }
 }

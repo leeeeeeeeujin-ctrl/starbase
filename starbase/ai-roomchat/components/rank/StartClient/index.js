@@ -10,6 +10,7 @@ import StatusBanner from './StatusBanner'
 import TurnInfoPanel from './TurnInfoPanel'
 import { useStartClientEngine } from './useStartClientEngine'
 import styles from './StartClient.module.css'
+import { getHeroAudioManager } from '../../../lib/audio/heroAudioManager'
 
 function buildBackgroundStyle(urls) {
   if (!Array.isArray(urls) || urls.length === 0) {
@@ -105,6 +106,8 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     canSubmitAction,
     activeBackdropUrls,
     activeBgmUrl,
+    activeBgmDuration,
+    activeAudioProfile,
   } = useStartClientEngine(resolvedGameId)
 
   const [timeoutNotice, setTimeoutNotice] = useState('')
@@ -120,7 +123,11 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
   }, [activeBackdropUrls, game?.image_url])
 
   const rootStyle = useMemo(() => buildBackgroundStyle(backgroundUrls), [backgroundUrls])
-  const audioRef = useRef(null)
+  const audioManager = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    return getHeroAudioManager()
+  }, [])
+  const audioBaselineRef = useRef(null)
 
   const splitParticipants = useMemo(() => {
     const left = []
@@ -136,23 +143,113 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
   }, [participants])
 
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
-    }
-    if (!activeBgmUrl) return
-
-    const element = new Audio(activeBgmUrl)
-    element.loop = true
-    element.volume = 0.6
-    element.play().catch(() => {})
-    audioRef.current = element
+    if (!audioManager) return undefined
+    audioBaselineRef.current = audioManager.getState()
 
     return () => {
-      element.pause()
-      audioRef.current = null
+      const baseline = audioBaselineRef.current
+      if (!baseline) {
+        audioManager.setEqEnabled(false)
+        audioManager.setReverbEnabled(false)
+        audioManager.setCompressorEnabled(false)
+        audioManager.setEnabled(false, { resume: false })
+        audioManager.stop()
+        return
+      }
+
+      audioManager.setLoop(baseline.loop)
+      audioManager.setVolume(baseline.volume)
+      audioManager.setEqEnabled(baseline.eqEnabled)
+      audioManager.setEqualizer(baseline.equalizer)
+      audioManager.setReverbEnabled(baseline.reverbEnabled)
+      audioManager.setReverbDetail(baseline.reverbDetail)
+      audioManager.setCompressorEnabled(baseline.compressorEnabled)
+      audioManager.setCompressorDetail(baseline.compressorDetail)
+      audioManager.loadHeroTrack({
+        heroId: baseline.heroId,
+        heroName: baseline.heroName,
+        trackUrl: baseline.trackUrl,
+        duration: baseline.duration || 0,
+        autoPlay: false,
+        loop: baseline.loop,
+      })
+      if (baseline.enabled) {
+        audioManager.setEnabled(true, { resume: false })
+        if (baseline.isPlaying) {
+          audioManager.play().catch(() => {})
+        }
+      } else {
+        audioManager.setEnabled(false, { resume: false })
+        audioManager.stop()
+      }
     }
-  }, [activeBgmUrl])
+  }, [audioManager])
+
+  useEffect(() => {
+    if (!audioManager) return
+
+    const profile = activeAudioProfile || null
+    const trackUrl = activeBgmUrl || profile?.bgmUrl || null
+
+    if (!trackUrl) {
+      audioManager.setEqEnabled(false)
+      audioManager.setReverbEnabled(false)
+      audioManager.setCompressorEnabled(false)
+      audioManager.setEnabled(false, { resume: false })
+      audioManager.stop()
+      return
+    }
+
+    audioManager.setLoop(true)
+    audioManager.setEnabled(true, { resume: false })
+    if (profile?.equalizer) {
+      audioManager.setEqEnabled(true)
+      audioManager.setEqualizer({
+        low: Number(profile.equalizer.low) || 0,
+        mid: Number(profile.equalizer.mid) || 0,
+        high: Number(profile.equalizer.high) || 0,
+      })
+    } else {
+      audioManager.setEqEnabled(false)
+      audioManager.setEqualizer({ low: 0, mid: 0, high: 0 })
+    }
+
+    if (profile?.reverb) {
+      const mix = Number.isFinite(Number(profile.reverb.mix)) ? Number(profile.reverb.mix) : 0.3
+      const decay = Number.isFinite(Number(profile.reverb.decay)) ? Number(profile.reverb.decay) : 1.8
+      audioManager.setReverbEnabled(true)
+      audioManager.setReverbDetail({ mix, decay })
+    } else {
+      audioManager.setReverbEnabled(false)
+      audioManager.setReverbDetail({ mix: 0.3, decay: 1.8 })
+    }
+
+    if (profile?.compressor) {
+      const threshold = Number.isFinite(Number(profile.compressor.threshold))
+        ? Number(profile.compressor.threshold)
+        : -28
+      const ratio = Number.isFinite(Number(profile.compressor.ratio))
+        ? Number(profile.compressor.ratio)
+        : 2.5
+      const release = Number.isFinite(Number(profile.compressor.release))
+        ? Number(profile.compressor.release)
+        : 0.25
+      audioManager.setCompressorEnabled(true)
+      audioManager.setCompressorDetail({ threshold, ratio, release })
+    } else {
+      audioManager.setCompressorEnabled(false)
+      audioManager.setCompressorDetail({ threshold: -28, ratio: 2.5, release: 0.25 })
+    }
+
+    audioManager.loadHeroTrack({
+      heroId: profile?.heroId || null,
+      heroName: profile?.heroName || '',
+      trackUrl,
+      duration: Number(profile?.bgmDuration ?? activeBgmDuration ?? 0) || 0,
+      autoPlay: true,
+      loop: true,
+    })
+  }, [audioManager, activeAudioProfile, activeBgmUrl, activeBgmDuration])
 
   useEffect(() => {
     if (preflight) {
