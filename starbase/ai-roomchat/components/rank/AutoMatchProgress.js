@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import useMatchQueue from './hooks/useMatchQueue'
@@ -13,6 +13,10 @@ const VIEWER_BLOCKER_MESSAGE = '로그인 상태를 확인하는 중입니다.'
 const HERO_REDIRECT_DELAY_MS = 3000
 const MATCH_TRANSITION_DELAY_MS = 1200
 const QUEUE_TIMEOUT_MS = 60000
+const CONFIRMATION_WINDOW_SECONDS = 10
+const FAILURE_REDIRECT_DELAY_MS = 2400
+const PENALTY_NOTICE =
+  '확인 시간이 지나 매칭이 취소되었습니다. 게임에 참여하지 않으면 불이익이 있을 수 있습니다.'
 
 function resolveRoleName(lockedRole, roles) {
   if (lockedRole && typeof lockedRole === 'string' && lockedRole.trim().length) {
@@ -43,6 +47,13 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const heroRedirectTimerRef = useRef(null)
   const queueTimeoutRef = useRef(null)
   const latestStatusRef = useRef('idle')
+  const confirmationTimerRef = useRef(null)
+  const confirmationIntervalRef = useRef(null)
+  const penaltyRedirectRef = useRef(null)
+  const [confirmationState, setConfirmationState] = useState('idle')
+  const [confirmationRemaining, setConfirmationRemaining] = useState(
+    CONFIRMATION_WINDOW_SECONDS,
+  )
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
     state.lockedRole,
@@ -65,6 +76,58 @@ export default function AutoMatchProgress({ gameId, mode }) {
     }
     return list
   }, [state.status, state.viewerId, state.roleReady, roleName, state.heroId])
+
+  const clearConfirmationTimers = useCallback(() => {
+    if (confirmationTimerRef.current) {
+      clearTimeout(confirmationTimerRef.current)
+      confirmationTimerRef.current = null
+    }
+    if (confirmationIntervalRef.current) {
+      clearInterval(confirmationIntervalRef.current)
+      confirmationIntervalRef.current = null
+    }
+  }, [])
+
+  const handleConfirmationTimeout = useCallback(() => {
+    clearConfirmationTimers()
+    setConfirmationState('failed')
+    setJoinError(PENALTY_NOTICE)
+    joinSignatureRef.current = ''
+    actions.cancelQueue()
+    if (penaltyRedirectRef.current) {
+      clearTimeout(penaltyRedirectRef.current)
+      penaltyRedirectRef.current = null
+    }
+    if (navigationLockedRef.current) return
+    penaltyRedirectRef.current = setTimeout(() => {
+      if (navigationLockedRef.current) return
+      navigationLockedRef.current = true
+      router.replace(`/rank/${gameId}`)
+    }, FAILURE_REDIRECT_DELAY_MS)
+  }, [actions, clearConfirmationTimers, gameId, router])
+
+  const startConfirmationCountdown = useCallback(() => {
+    clearConfirmationTimers()
+    setConfirmationState('counting')
+    setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
+    confirmationTimerRef.current = setTimeout(
+      handleConfirmationTimeout,
+      CONFIRMATION_WINDOW_SECONDS * 1000,
+    )
+    confirmationIntervalRef.current = setInterval(() => {
+      setConfirmationRemaining((prev) => {
+        const next = prev > 0 ? prev - 1 : 0
+        return next
+      })
+    }, 1000)
+  }, [clearConfirmationTimers, handleConfirmationTimeout])
+
+  const handleConfirmMatch = useCallback(() => {
+    if (confirmationState !== 'counting') return
+    clearConfirmationTimers()
+    setConfirmationState('confirmed')
+    setJoinError('')
+  }, [clearConfirmationTimers, confirmationState])
 
   useEffect(() => {
     latestStatusRef.current = state.status
@@ -146,12 +209,37 @@ export default function AutoMatchProgress({ gameId, mode }) {
   }, [actions, gameId, router, state.status])
 
   useEffect(() => {
-    if (state.status !== 'matched' || !state.match) return undefined
+    if (state.status !== 'matched') {
+      clearConfirmationTimers()
+      setConfirmationState('idle')
+      setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
+      return
+    }
 
     if (queueTimeoutRef.current) {
       clearTimeout(queueTimeoutRef.current)
       queueTimeoutRef.current = null
     }
+
+    if (confirmationState === 'idle') {
+      startConfirmationCountdown()
+    }
+  }, [
+    clearConfirmationTimers,
+    confirmationState,
+    startConfirmationCountdown,
+    state.status,
+  ])
+
+  useEffect(() => {
+    if (confirmationState === 'counting' && confirmationRemaining <= 0) {
+      handleConfirmationTimeout()
+    }
+  }, [confirmationRemaining, confirmationState, handleConfirmationTimeout])
+
+  useEffect(() => {
+    if (state.status !== 'matched') return undefined
+    if (confirmationState !== 'confirmed') return undefined
 
     const timer = setTimeout(() => {
       if (navigationLockedRef.current) return
@@ -162,7 +250,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
     return () => {
       clearTimeout(timer)
     }
-  }, [gameId, mode, router, state.match, state.status])
+  }, [confirmationState, gameId, mode, router, state.status])
 
   useEffect(() => {
     return () => {
@@ -174,6 +262,18 @@ export default function AutoMatchProgress({ gameId, mode }) {
         clearTimeout(queueTimeoutRef.current)
         queueTimeoutRef.current = null
       }
+      if (confirmationTimerRef.current) {
+        clearTimeout(confirmationTimerRef.current)
+        confirmationTimerRef.current = null
+      }
+      if (confirmationIntervalRef.current) {
+        clearInterval(confirmationIntervalRef.current)
+        confirmationIntervalRef.current = null
+      }
+      if (penaltyRedirectRef.current) {
+        clearTimeout(penaltyRedirectRef.current)
+        penaltyRedirectRef.current = null
+      }
       if (latestStatusRef.current === 'queued') {
         actions.cancelQueue()
       }
@@ -182,24 +282,47 @@ export default function AutoMatchProgress({ gameId, mode }) {
 
   useEffect(() => {
     if (state.status === 'queued' || state.status === 'matched') {
-      setJoinError('')
+      if (confirmationState !== 'failed') {
+        setJoinError('')
+      }
     }
-  }, [state.status])
+  }, [confirmationState, state.status])
 
-  const extraBlockers = blockers.slice(1)
+  const extraBlockers = confirmationState === 'counting' ? [] : blockers.slice(1)
 
   const display = useMemo(() => {
+    if (confirmationState === 'confirmed') {
+      return {
+        title: '전투 화면으로 이동 중…',
+        detail: '매칭이 확정되었습니다. 전투를 불러오고 있습니다.',
+      }
+    }
+
+    if (confirmationState === 'counting') {
+      return {
+        title: '매칭이 잡혔습니다~',
+        detail: `${confirmationRemaining}초 안에 버튼을 눌러 전투를 시작해 주세요.`,
+      }
+    }
+
+    if (confirmationState === 'failed') {
+      return {
+        title: '매칭이 취소되었습니다.',
+        detail: joinError || PENALTY_NOTICE,
+      }
+    }
+
     if (state.status === 'matched') {
       return {
         title: '매칭이 잡혔습니다~',
-        detail: '전투 화면으로 이동합니다. 잠시만 기다려 주세요.',
+        detail: '확인 절차를 준비하고 있습니다.',
       }
     }
 
     if (state.status === 'queued') {
       return {
         title: '매칭 중…',
-        detail: joinError || '대기열에 합류했습니다. 다른 참가자를 기다리고 있습니다.',
+        detail: '대기열에 합류했습니다. 다른 참가자를 기다리고 있습니다.',
       }
     }
 
@@ -221,7 +344,13 @@ export default function AutoMatchProgress({ gameId, mode }) {
       title: '매칭 중…',
       detail: '대기열에 합류하고 있습니다.',
     }
-  }, [blockers, joinError, state.status])
+  }, [
+    blockers,
+    confirmationRemaining,
+    confirmationState,
+    joinError,
+    state.status,
+  ])
 
   return (
     <div className={styles.root} aria-live="polite" aria-busy={state.status !== 'matched'}>
@@ -229,6 +358,15 @@ export default function AutoMatchProgress({ gameId, mode }) {
       <div className={styles.status} role="status">
         <p className={styles.message}>{display.title}</p>
         <p className={styles.detail}>{display.detail}</p>
+        {confirmationState === 'counting' ? (
+          <div className={styles.confirmArea}>
+            <button type="button" className={styles.confirmButton} onClick={handleConfirmMatch}>
+              전투 시작하기
+              <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
+            </button>
+            <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
+          </div>
+        ) : null}
         {extraBlockers.length ? (
           <ul className={styles.blockerList}>
             {extraBlockers.map((message) => (
@@ -239,6 +377,9 @@ export default function AutoMatchProgress({ gameId, mode }) {
           </ul>
         ) : null}
       </div>
+      {joinError && state.status === 'queued' ? (
+        <p className={styles.srOnly} role="alert">{joinError}</p>
+      ) : null}
     </div>
   )
 }
