@@ -46,6 +46,33 @@
 4. 듀오 큐가 솔로 큐와 함께 매칭되도록 `matchRankParticipants`를 파티 크기 가변 구조로 보강.
 5. 캐주얼 사설 방 전용 어댑터(슬롯 점유·관전 입장)를 작성.
 
+## 매칭 화면 청사진
+아래 섹션은 `/rank/[id]`에서 모드를 선택했을 때 어떤 화면과 상태 흐름이 이어지는지, 현재 코드가 암시하는 의도를 정리한 것입니다.
+
+### 스타트 모달 → 모드별 경로
+`GameStartModeModal`에서 모드를 고른 뒤에는 `/rank/[id].js`가 세션 프리셋(`rank.start.*`)을 저장하고 솔로·듀오·캐주얼 매칭/사설 방 화면으로 이동하도록 라우팅합니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L174-L215】 솔로/듀오/캐주얼 매칭 페이지는 아직 비어 있지만, 이미 존재하는 클라이언트 컴포넌트를 붙여 완성할 수 있도록 설계돼 있습니다.
+
+### 솔로 랭크 매칭 흐름
+- `/rank/[id]/solo`에는 `SoloMatchClient`를 붙이는 것이 전제되어 있으며, 이 컴포넌트는 랭크 솔로 모드로 `MatchQueueClient`를 그대로 사용합니다.【F:starbase/ai-roomchat/components/rank/SoloMatchClient.js†L3-L12】
+- `MatchQueueClient`는 진입 즉시 `useMatchQueue` 훅을 활성화하고, 잠금된 역할 또는 첫 번째 역할 정보를 사용해 자동 참가를 시도합니다. 대기열 상태, 타이머 투표, 매치 확정 시 전투 화면으로 이동하는 로직이 한 곳에 모여 있습니다.【F:starbase/ai-roomchat/components/rank/MatchQueueClient.js†L154-L235】
+- `useMatchQueue`는 Supabase에서 사용자·역할 정보를 읽어오고, `/api/rank/match`를 주기적으로 호출해 매치 배정과 히어로 메타를 동기화합니다. 참가/취소 시에는 `enqueueParticipant`, `removeQueueEntry` 등 서비스 계층을 통해 큐 테이블을 직접 조작하도록 의도돼 있습니다.【F:starbase/ai-roomchat/components/rank/hooks/useMatchQueue.js†L1-L355】
+
+### 듀오 랭크 팀 편성 흐름
+- 듀오 모드 진입 시에는 `DuoRoomClient`가 로컬 세션 스토리지(`duoRooms:*`)에 저장된 파티 목록을 불러오고, 선택한 역할에 맞춘 방을 만들거나 참여하도록 합니다.【F:starbase/ai-roomchat/components/rank/DuoRoomClient.js†L6-L120】【F:starbase/ai-roomchat/components/rank/DuoRoomClient.js†L200-L382】
+- 각 방은 2~3인 정원을 가지며(역할 정원 기반), 호스트만 시작 버튼을 눌러 `onLaunch` 콜백을 호출할 수 있습니다. 모든 멤버가 `ready` 상태여야 출발하며, 출발 시 방은 세션 스토리지에서 제거돼 큐와의 중복을 피합니다.【F:starbase/ai-roomchat/components/rank/DuoRoomClient.js†L221-L382】
+- 듀오 방은 결국 솔로와 동일한 랭크 큐 그룹으로 흘러가도록 `MATCH_MODE_CONFIGS`가 queueModes를 공유하고 있어, 듀오 파티가 만들어지면 곧바로 동일한 매칭 풀로 이어붙일 수 있게 설계돼 있습니다.【F:starbase/ai-roomchat/lib/rank/matchModes.js†L29-L56】
+
+### 캐주얼 매칭 흐름
+- 캐주얼 매칭 페이지는 `CasualMatchClient`를 통해 `MatchQueueClient`를 `casual_match` 모드로 감싸는 형태입니다. 솔로 랭크와 동일한 구조지만, 매칭 키만 캐주얼 전용으로 바꿉니다.【F:starbase/ai-roomchat/components/rank/CasualMatchClient.js†L3-L12】
+- 매칭 설정은 `MATCH_MODE_CONFIGS`에서 별도의 큐 그룹(`casual`)과 파티 사이즈(최대 4인)를 갖도록 정의돼 있어, 솔로/듀오 랭크와 격리된 풀에서 빠르게 큐를 돌리는 것이 기본 의도입니다.【F:starbase/ai-roomchat/lib/rank/matchModes.js†L59-L70】
+
+### 캐주얼 사설 방 흐름
+- `/rank/[id]/casual-private`는 이미 구현된 페이지로, `CasualPrivateClient`가 역할 슬롯 템플릿을 기반으로 세션 스토리지에 사설 방을 구성합니다.【F:starbase/ai-roomchat/pages/rank/[id]/casual-private.js†L1-L62】【F:starbase/ai-roomchat/components/rank/CasualPrivateClient.js†L234-L420】
+- 호스트는 슬롯별로 참가자를 배치하고 준비 상태를 확인한 뒤, 모든 슬롯이 `ready`면 `onLaunch`를 통해 `/rank/[id]/start?mode=casual_private`로 이동합니다. 이동 시 방 데이터는 세션에서 지워져 재입장을 방지합니다.【F:starbase/ai-roomchat/pages/rank/[id]/casual-private.js†L63-L96】【F:starbase/ai-roomchat/components/rank/CasualPrivateClient.js†L293-L410】
+
+### 큐 설계에 드러난 의도
+`MATCH_MODE_CONFIGS`는 각 모드가 어떤 큐 그룹을 공유하는지, 기본·최대 파티 크기, 관전자 허용 여부 등을 한눈에 정리하고 있어 프론트/백엔드가 동일한 룰셋을 참조할 수 있게 합니다.【F:starbase/ai-roomchat/lib/rank/matchModes.js†L29-L85】 솔로·듀오 랭크가 같은 큐 모드 배열을 공유하고, 캐주얼 매칭/사설 방이 각각 별도 그룹으로 분리된 점에서 “같은 풀에서 역할 슬롯을 채우되 입장 방식만 다르다”는 청사진을 확인할 수 있습니다.
+
 ## 참조
 - `lib/rank/matchModes.js`: 위 표를 코드로 직렬화한 설정 모듈입니다.
 - `lib/rank/matchmakingService.js`: 큐를 조회하고 매칭 헬퍼를 호출하는 서비스.
