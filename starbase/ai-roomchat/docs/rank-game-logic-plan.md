@@ -108,3 +108,12 @@
 느낀 점: 클라이언트가 세션 생성까지 확인한 뒤 전투를 시작하니 서버 상태와 UI가 한 박자 맞아 들어가는 느낌이라 진척도를 실감할 수 있었습니다.
 추가로 필요한 점: 세션 생성 이후 턴 실행(`/api/rank/run-turn`)을 같은 토큰 흐름에 묶어 Supabase 히스토리와 동기화하는 후속 작업이 필요합니다.
 진행사항: StartClient에 세션 선행 호출과 시작 버튼 로딩 UI를 더해 2단계 자동화 흐름을 한층 다듬었습니다.
+
+### 진행 현황 메모 (2025-10-07 추가)
+
+- `useGameRoom`이 `rank_sessions`와 `rank_turns`를 조회해 뷰어의 최근 세션 로그를 로드하고 새로고침 액션으로 노출합니다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L318-L356】【F:starbase/ai-roomchat/hooks/useGameRoom.js†L370-L413】
+- `GameRoomView` 메인 패널에 “내 세션 히스토리” 섹션을 추가해 공개 턴 요약, 비공개 라인 안내, 이전 기록 여부를 모바일 레이아웃에 맞춰 보여줍니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L512-L610】【F:starbase/ai-roomchat/components/rank/GameRoomView.module.css†L1-L240】
+
+느낀 점: 메인 룸에서 바로 세션 로그를 확인할 수 있게 되니 전투 흐름이 실제 데이터와 연결된다는 감각이 살아나 차기 구현을 구상하기 쉬워졌습니다.
+추가로 필요한 점: 다중 참가자의 세션을 공유하려면 `rank_sessions` RLS 완화를 위한 뷰 또는 서버 프록시가 필요해 공용 히스토리 API 설계를 이어가야 합니다.
+진행사항: `useGameRoom`과 메인 룸 UI를 확장해 뷰어 전용 세션 히스토리를 표면화했고, 4단계 진행률을 0.25→0.4 수준으로 끌어올렸습니다.

@@ -57,7 +57,16 @@ export default function GameRoomPage() {
   }, [router])
 
   const {
-    state: { loading, game, roles, participants, myHero, deleting, recentBattles },
+    state: {
+      loading,
+      game,
+      roles,
+      participants,
+      myHero,
+      deleting,
+      recentBattles,
+      sessionHistory,
+    },
     derived: { canStart, isOwner, alreadyJoined, myEntry, minimumParticipants },
     actions: { joinGame, deleteRoom },
   } = useGameRoom(id, {
@@ -236,6 +245,7 @@ export default function GameRoomPage() {
         minimumParticipants={minimumParticipants}
         myHero={myHero}
         myEntry={myEntry}
+        sessionHistory={sessionHistory}
         onBack={() => router.replace('/lobby')}
         onJoin={handleJoin}
         onStart={handleStart}

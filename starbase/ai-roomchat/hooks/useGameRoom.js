@@ -209,6 +209,106 @@ async function fetchRecentBattles(gameId) {
   return data || []
 }
 
+async function fetchOwnSessionHistory(
+  gameId,
+  ownerId,
+  { sessionLimit = 3, turnLimit = 40 } = {},
+) {
+  if (!gameId || !ownerId) {
+    return []
+  }
+
+  const { data: sessionRows, error: sessionError } = await withTable(
+    supabase,
+    'rank_sessions',
+    (table) =>
+      supabase
+        .from(table)
+        .select('id, status, turn, created_at, updated_at')
+        .eq('game_id', gameId)
+        .eq('owner_id', ownerId)
+        .order('created_at', { ascending: false })
+        .limit(sessionLimit),
+  )
+
+  if (sessionError) throw sessionError
+
+  const sessions = Array.isArray(sessionRows) ? sessionRows : []
+  if (!sessions.length) {
+    return []
+  }
+
+  const sessionIds = sessions.map((row) => row?.id).filter(Boolean)
+  if (!sessionIds.length) {
+    return sessions.map((session) => ({
+      sessionId: session.id,
+      sessionStatus: session.status || 'active',
+      sessionCreatedAt: session.created_at || null,
+      sessionUpdatedAt: session.updated_at || null,
+      turnCount: 0,
+      displayedTurnCount: 0,
+      publicTurns: [],
+      hiddenCount: 0,
+      hasMore: false,
+    }))
+  }
+
+  const { data: turnRows, error: turnError } = await withTable(
+    supabase,
+    'rank_turns',
+    (table) =>
+      supabase
+        .from(table)
+        .select('id, session_id, idx, role, public, content, created_at')
+        .in('session_id', sessionIds)
+        .order('session_id', { ascending: false })
+        .order('idx', { ascending: true }),
+  )
+
+  if (turnError) throw turnError
+
+  const grouped = new Map()
+  ;(Array.isArray(turnRows) ? turnRows : []).forEach((turn) => {
+    if (!turn?.session_id) return
+    const key = turn.session_id
+    if (!grouped.has(key)) {
+      grouped.set(key, [])
+    }
+    grouped.get(key).push(turn)
+  })
+
+  const perSessionLimit = Number.isFinite(Number(turnLimit)) && Number(turnLimit) > 0
+    ? Number(turnLimit)
+    : 40
+
+  return sessions.map((session) => {
+    const allTurns = grouped.get(session.id) || []
+    const sorted = [...allTurns].sort((a, b) => {
+      const left = Number(a?.idx)
+      const right = Number(b?.idx)
+      if (Number.isFinite(left) && Number.isFinite(right)) {
+        return left - right
+      }
+      return 0
+    })
+    const limited = perSessionLimit > 0 ? sorted.slice(-perSessionLimit) : sorted
+    const publicTurns = limited.filter((turn) => turn?.public !== false)
+    const hiddenTurns = limited.filter((turn) => turn?.public === false)
+
+    return {
+      sessionId: session.id,
+      sessionStatus: session.status || 'active',
+      sessionCreatedAt: session.created_at || null,
+      sessionUpdatedAt: session.updated_at || null,
+      turnCount: sorted.length,
+      displayedTurnCount: limited.length,
+      publicTurns,
+      hiddenCount: hiddenTurns.length,
+      hasMore: sorted.length > limited.length,
+    }
+  })
+}
+
 export function useGameRoom(
   gameId,
   {
@@ -227,6 +327,7 @@ export function useGameRoom(
   const [recentBattles, setRecentBattles] = useState([])
   const [deleting, setDeleting] = useState(false)
   const [requiredSlots, setRequiredSlots] = useState(0)
+  const [sessionHistory, setSessionHistory] = useState([])
 
   useEffect(() => {
     if (!gameId) return
@@ -339,6 +440,14 @@ export function useGameRoom(
         const storedHero = await resolveStoredHero()
         if (!alive) return
         setMyHero(storedHero)
+
+        try {
+          const historyGroups = await fetchOwnSessionHistory(gameId, currentUser.id)
+          if (!alive) return
+          setSessionHistory(historyGroups)
+        } catch (historyError) {
+          console.warn('세션 히스토리를 불러오지 못했습니다:', historyError)
+        }
       } catch (err) {
         console.error('게임 방 초기화 실패:', err)
       } finally {
@@ -381,6 +490,20 @@ export function useGameRoom(
       console.error('슬롯 정보 갱신 실패:', err)
     }
   }, [gameId])
+
+  const refreshSessionHistory = useCallback(async () => {
+    if (!gameId || !user?.id) {
+      setSessionHistory([])
+      return
+    }
+
+    try {
+      const groups = await fetchOwnSessionHistory(gameId, user.id)
+      setSessionHistory(groups)
+    } catch (err) {
+      console.error('세션 히스토리 갱신 실패:', err)
+    }
+  }, [gameId, user?.id])
 
   const selectHero = useCallback((hero) => {
     try {
@@ -518,6 +641,7 @@ export function useGameRoom(
       await refreshParticipants()
       await refreshSlots()
       await refreshBattles()
+      await refreshSessionHistory()
       return { ok: true, slot: result.slot }
     },
     [
@@ -527,6 +651,7 @@ export function useGameRoom(
       participants,
       refreshBattles,
       refreshParticipants,
+      refreshSessionHistory,
       refreshSlots,
       roles,
       slots,
@@ -628,6 +753,7 @@ export function useGameRoom(
       myHero,
       recentBattles,
       deleting,
+      sessionHistory,
     },
     derived: {
       canStart,
@@ -643,6 +769,7 @@ export function useGameRoom(
       refreshParticipants,
       refreshBattles,
       refreshSlots,
+      refreshSessionHistory,
     },
   }
 }
