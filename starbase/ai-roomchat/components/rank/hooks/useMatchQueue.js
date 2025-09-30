@@ -90,6 +90,7 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
   const [loading, setLoading] = useState(false)
   const [score, setScore] = useState(1000)
   const [lockedRole, setLockedRole] = useState('')
+  const [roleReady, setRoleReady] = useState(false)
   const [match, setMatch] = useState(null)
   const [heroMeta, setHeroMeta] = useState(null)
   const pollRef = useRef(null)
@@ -127,8 +128,12 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
   }, [enabled, gameId])
 
   useEffect(() => {
-    if (!enabled || !gameId || !viewerId) return
+    if (!enabled || !gameId || !viewerId) {
+      setRoleReady(false)
+      return
+    }
     let cancelled = false
+    setRoleReady(false)
     loadViewerParticipation(gameId, viewerId)
       .then((value) => {
         if (cancelled || !value) return
@@ -146,6 +151,11 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
         }
       })
       .catch((cause) => console.warn('점수를 불러오지 못했습니다:', cause))
+      .finally(() => {
+        if (!cancelled) {
+          setRoleReady(true)
+        }
+      })
     return () => {
       cancelled = true
     }
@@ -296,6 +306,9 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
         setStatus('queued')
         setMatch(null)
         setHeroId(activeHero)
+        if (!roleReady) {
+          setRoleReady(true)
+        }
         if (!lockedRole && finalRole) {
           setLockedRole(finalRole)
         }
@@ -304,7 +317,7 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
         setLoading(false)
       }
     },
-    [enabled, gameId, mode, viewerId, heroId, score, lockedRole],
+    [enabled, gameId, mode, viewerId, heroId, score, lockedRole, roleReady],
   )
 
   const cancelQueue = useCallback(async () => {
@@ -338,9 +351,23 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
       score,
       match,
       lockedRole,
+      roleReady,
       heroMeta,
     }),
-    [viewerId, heroId, roles, queue, status, error, loading, score, match, lockedRole, heroMeta],
+    [
+      viewerId,
+      heroId,
+      roles,
+      queue,
+      status,
+      error,
+      loading,
+      score,
+      match,
+      lockedRole,
+      roleReady,
+      heroMeta,
+    ],
   )
 
   return {

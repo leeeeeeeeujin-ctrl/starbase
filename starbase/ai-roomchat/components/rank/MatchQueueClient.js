@@ -202,12 +202,11 @@ export default function MatchQueueClient({
     latestStatusRef.current = state.status
   }, [state.status])
 
-  const defaultRoleName = useMemo(
-    () => resolveDefaultRoleName(state.roles),
-    [state.roles],
-  )
-
-  const targetRoleName = state.lockedRole || defaultRoleName
+  const targetRoleName = useMemo(() => {
+    if (state.lockedRole) return state.lockedRole
+    if (!state.roleReady) return ''
+    return resolveDefaultRoleName(state.roles)
+  }, [state.lockedRole, state.roleReady, state.roles])
 
   const autoJoinBlockers = useMemo(() => {
     if (!autoJoin) return []
@@ -217,14 +216,24 @@ export default function MatchQueueClient({
     if (!state.viewerId) {
       blockers.push('로그인 세션을 확인하는 중입니다.')
     }
-    if (!targetRoleName) {
+    if (!state.lockedRole && !state.roleReady) {
+      blockers.push('참가할 역할 정보를 불러오고 있습니다.')
+    } else if (!targetRoleName) {
       blockers.push('참가할 역할 정보를 불러오고 있습니다.')
     }
     if (!state.heroId) {
       blockers.push('사용할 캐릭터를 선택해 주세요.')
     }
     return blockers
-  }, [autoJoin, state.status, state.viewerId, targetRoleName, state.heroId])
+  }, [
+    autoJoin,
+    state.status,
+    state.viewerId,
+    state.lockedRole,
+    state.roleReady,
+    targetRoleName,
+    state.heroId,
+  ])
 
   useEffect(() => {
     if (!autoJoin) return
