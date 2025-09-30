@@ -151,6 +151,23 @@ function resolveFlowSteps(status) {
   return steps
 }
 
+function resolveDefaultRoleName(roles) {
+  if (!Array.isArray(roles)) return ''
+  for (const role of roles) {
+    if (!role) continue
+    if (typeof role === 'string') {
+      const trimmed = role.trim()
+      if (trimmed) return trimmed
+      continue
+    }
+    if (typeof role === 'object' && typeof role.name === 'string') {
+      const trimmed = role.name.trim()
+      if (trimmed) return trimmed
+    }
+  }
+  return ''
+}
+
 export default function MatchQueueClient({
   gameId,
   mode,
@@ -167,8 +184,10 @@ export default function MatchQueueClient({
   const latestStatusRef = useRef('idle')
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
   const [autoJoinError, setAutoJoinError] = useState('')
-  const autoJoinAttemptedRef = useRef(false)
-  const lastHeroAttemptRef = useRef('')
+  const autoJoinSignatureRef = useRef('')
+  const autoJoinRetryTimerRef = useRef(null)
+  const heroMissingRedirectRef = useRef(false)
+  const heroMissingTimerRef = useRef(null)
 
   const [voteRemaining, setVoteRemaining] = useState(null)
   const voteTimerRef = useRef(null)
@@ -179,40 +198,121 @@ export default function MatchQueueClient({
   })
   const [finalTimer, setFinalTimer] = useState(null)
   const finalTimerResolvedRef = useRef(null)
+  const matchType = state.match?.matchType || 'standard'
+  const isBrawlMatch = matchType === 'brawl'
+  const brawlSummary = useMemo(() => {
+    if (!isBrawlMatch) return ''
+    const vacancies = Array.isArray(state.match?.brawlVacancies)
+      ? state.match.brawlVacancies
+      : []
+    if (!vacancies.length) return ''
+    return vacancies
+      .map((entry) => {
+        const role = entry?.name || entry?.role || '역할'
+        const count = Number(entry?.slot_count || entry?.slots || 0)
+        if (!Number.isFinite(count) || count <= 0) return role
+        return `${role} ${count}명`
+      })
+      .filter(Boolean)
+      .join(', ')
+  }, [isBrawlMatch, state.match])
 
   useEffect(() => {
+    const previous = latestStatusRef.current
     latestStatusRef.current = state.status
+    if ((previous === 'queued' || previous === 'matched') && state.status === 'idle') {
+      autoJoinSignatureRef.current = ''
+    }
   }, [state.status])
+
+  const targetRoleName = useMemo(() => {
+    if (state.lockedRole) return state.lockedRole
+    if (!state.roleReady) return ''
+    return resolveDefaultRoleName(state.roles)
+  }, [state.lockedRole, state.roleReady, state.roles])
+
+  const autoJoinBlockers = useMemo(() => {
+    if (!autoJoin) return []
+    if (state.status === 'queued' || state.status === 'matched') return []
+
+    const blockers = []
+    if (!state.viewerId) {
+      blockers.push('로그인 세션을 확인하는 중입니다.')
+    }
+    if (!state.lockedRole && !state.roleReady) {
+      blockers.push('참가할 역할 정보를 불러오고 있습니다.')
+    } else if (!targetRoleName) {
+      blockers.push('참가할 역할 정보를 불러오고 있습니다.')
+    }
+    if (!state.heroId) {
+      blockers.push('사용할 캐릭터를 선택해 주세요.')
+    }
+    return blockers
+  }, [
+    autoJoin,
+    state.status,
+    state.viewerId,
+    state.lockedRole,
+    state.roleReady,
+    targetRoleName,
+    state.heroId,
+  ])
+
+  useEffect(() => {
+    if (!autoJoin) return
+    if (!autoJoinBlockers.length) {
+      console.debug('[MatchQueueClient] 자동 참가 준비 완료')
+      return
+    }
+    console.debug('[MatchQueueClient] 자동 참가 대기 사유:', autoJoinBlockers)
+  }, [autoJoin, autoJoinBlockers])
 
   useEffect(() => {
     if (!autoJoin) return
     if (state.status === 'queued' || state.status === 'matched') return
-    if (autoJoinAttemptedRef.current) return
-    const role = state.lockedRole || state.roles?.[0]?.name
-    if (!role) return
-    autoJoinAttemptedRef.current = true
-    lastHeroAttemptRef.current = state.heroId || ''
-    actions.joinQueue(role).then((result) => {
+    if (!state.viewerId) return
+    if (!targetRoleName) return
+    const activeHeroId = state.heroId || ''
+    if (!activeHeroId) return
+
+    const signature = `${state.viewerId}::${targetRoleName}::${activeHeroId}`
+    if (autoJoinSignatureRef.current === signature) return
+
+    autoJoinSignatureRef.current = signature
+    actions.joinQueue(targetRoleName).then((result) => {
       if (!result?.ok && result?.error) {
         setAutoJoinError(result.error)
+        if (autoJoinRetryTimerRef.current) {
+          clearTimeout(autoJoinRetryTimerRef.current)
+        }
+        autoJoinRetryTimerRef.current = setTimeout(() => {
+          autoJoinSignatureRef.current = ''
+          autoJoinRetryTimerRef.current = null
+        }, 1500)
       } else {
         setAutoJoinError('')
+        if (autoJoinRetryTimerRef.current) {
+          clearTimeout(autoJoinRetryTimerRef.current)
+          autoJoinRetryTimerRef.current = null
+        }
       }
     })
-  }, [autoJoin, state.status, state.lockedRole, state.roles, state.heroId, actions])
-
-  useEffect(() => {
-    if (!autoJoin) return
-    if (state.status !== 'idle') return
-    const currentHero = state.heroId || ''
-    if (currentHero && currentHero !== lastHeroAttemptRef.current) {
-      autoJoinAttemptedRef.current = false
-    }
-  }, [autoJoin, state.heroId, state.status])
+  }, [
+    autoJoin,
+    state.status,
+    state.viewerId,
+    targetRoleName,
+    state.heroId,
+    actions,
+  ])
 
   useEffect(() => {
     if (state.status === 'queued' || state.status === 'matched') {
       setAutoJoinError('')
+      if (autoJoinRetryTimerRef.current) {
+        clearTimeout(autoJoinRetryTimerRef.current)
+        autoJoinRetryTimerRef.current = null
+      }
     }
   }, [state.status])
 
@@ -237,6 +337,45 @@ export default function MatchQueueClient({
   const handleBackToRoom = () => {
     router.push(`/rank/${gameId}`)
   }
+
+  useEffect(() => {
+    return () => {
+      if (heroMissingTimerRef.current) {
+        clearTimeout(heroMissingTimerRef.current)
+        heroMissingTimerRef.current = null
+      }
+      if (autoJoinRetryTimerRef.current) {
+        clearTimeout(autoJoinRetryTimerRef.current)
+        autoJoinRetryTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!autoJoin) return
+    if (state.status !== 'idle') return
+
+    if (state.heroId) {
+      if (heroMissingTimerRef.current) {
+        clearTimeout(heroMissingTimerRef.current)
+        heroMissingTimerRef.current = null
+      }
+      heroMissingRedirectRef.current = false
+      if (autoJoinError?.includes('캐릭터를 선택')) {
+        setAutoJoinError('')
+      }
+      return
+    }
+
+    if (heroMissingRedirectRef.current) return
+
+    heroMissingRedirectRef.current = true
+    setAutoJoinError('자동 참가를 위해 사용할 캐릭터가 필요합니다. 메인 룸으로 돌아갑니다.')
+    heroMissingTimerRef.current = setTimeout(() => {
+      navigationLockRef.current = true
+      router.replace(`/rank/${gameId}`)
+    }, 4000)
+  }, [autoJoin, state.status, state.heroId, router, gameId, autoJoinError])
 
   useEffect(() => {
     if (state.status === 'matched' && state.match) {
@@ -411,6 +550,18 @@ export default function MatchQueueClient({
                   현재 역할은 <strong>{state.lockedRole}</strong>로 고정되어 있습니다.
                 </p>
               ) : null}
+              {autoJoinBlockers.length ? (
+                <div className={styles.autoJoinDebug}>
+                  <p className={styles.autoJoinDebugTitle}>아직 대기 중인 조건</p>
+                  <ul className={styles.autoJoinDebugList}>
+                    {autoJoinBlockers.map((message, index) => (
+                      <li key={`${message}-${index}`} className={styles.autoJoinDebugItem}>
+                        {message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
 
             <ol className={styles.autoSteps}>
@@ -471,10 +622,21 @@ export default function MatchQueueClient({
 
       {state.status === 'matched' && state.match ? (
         <section className={styles.card}>
-          <h2 className={styles.sectionTitle}>매칭 완료</h2>
+          <h2 className={styles.sectionTitle}>
+            {isBrawlMatch ? '난입 슬롯 충원 완료' : '매칭 완료'}
+          </h2>
           <p className={styles.sectionHint}>
-            허용 점수 폭 ±{state.match.maxWindow || 0} 내에서 팀이 구성되었습니다.
+            {isBrawlMatch
+              ? brawlSummary
+                ? `탈락한 역할군을 대신할 ${brawlSummary}이(가) 합류합니다.`
+                : '탈락한 역할군을 대신할 참가자가 합류합니다.'
+              : `허용 점수 폭 ±${state.match.maxWindow || 0} 내에서 팀이 구성되었습니다.`}
           </p>
+          {isBrawlMatch ? (
+            <p className={styles.sectionHint}>
+              허용 점수 폭 ±{state.match.maxWindow || 0}을 유지한 채 난입이 진행됩니다.
+            </p>
+          ) : null}
           <div className={styles.matchGrid}>
             {state.match.assignments.map((assignment, index) => (
               <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>

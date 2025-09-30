@@ -57,3 +57,18 @@ The lobby and registration flows are functional, but everything after joining a 
    - Introduce audit logs or moderation tools on `rank_battle_logs` for replays.
 
 Following this roadmap will close the scaffolding gap between “game registered” and “AI-driven matches with persistent history,” giving us a clear checklist for incremental PRs.
+
+## Progress Update — 2025-10-07
+- **Session history wiring**: `useGameRoom` now retrieves the viewer’s latest `rank_sessions` and `rank_turns`, exposing a refresh helper so the room can show personal logs without a full reload.【F:hooks/useGameRoom.js†L244-L323】
+- **Game room UI**: The lobby displays a “내 세션 히스토리” panel summarizing recent public turns, hidden entries, and truncation counts to validate the new data flow.【F:components/rank/GameRoomView.js†L134-L210】
+- **Next steps**: Extend the same Supabase-backed history to shared room chat, hook the session starter into `/api/rank/start-session`, and resume the battle/score synchronization work outlined in Phases 2–3.
+
+## Progress Update — 2025-10-12
+- **Auto-match verification**: Confirmed that the solo, duo, and casual matchmaking routes now mount `AutoMatchProgress` directly, so players enter the queue immediately without manual buttons while preserving hero/role readiness gates.【F:starbase/ai-roomchat/pages/rank/[id]/solo.js†L1-L42】【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L120】
+- **Start flow status**: The game room keeps the start controls disabled until slots are filled and sessions initialize successfully, reducing duplicate launches across modes.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L1-L120】【F:starbase/ai-roomchat/hooks/useGameRoom.js†L1-L200】
+- **Overall progress**: Phase 2 remains partially complete and Phase 3 still requires scoring sync, so the cumulative rollout estimate holds at **63%** pending battle finalization and shared history UI polish.
+
+## Progress Update — 2025-10-13
+- **Authenticated run-turn**: `/api/rank/run-turn` now requires a Supabase bearer token and session ID, validates ownership, and appends prompt/response pairs to `rank_turns` while bumping the session timestamp.【F:starbase/ai-roomchat/pages/api/rank/run-turn.js†L1-L176】
+- **Client logging trim**: `StartClient` reuses the viewer token for run-turn calls and skips the fallback `log-turn` API when the server already stored the entries, preventing duplicate rows.【F:starbase/ai-roomchat/components/rank/StartClient/useStartClientEngine.js†L780-L1059】
+- **Progress update**: With session turns now recorded server-side, Phase 2 advances to roughly 0.95 completion and overall rollout climbs to about **69%** ((2×1.0 + 0.95 + 0.8 + 0.4) / 6). Remaining focus areas are score/status sync and the shared history surface.
