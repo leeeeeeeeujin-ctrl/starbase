@@ -146,6 +146,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     manualResponse,
     setManualResponse,
     isAdvancing,
+    isStarting,
     handleStart,
     advanceWithAi,
     advanceWithManual,
@@ -317,7 +318,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
       return
     }
     autoStartedRef.current = true
-    handleStart()
+    Promise.resolve(handleStart())
   }, [loading, preflight, game, handleStart])
 
   useEffect(() => {
@@ -424,6 +425,8 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
           advanceDisabled={advanceDisabled}
           advanceLabel={advanceLabel}
           consensus={consensus}
+          isStarting={isStarting}
+          startDisabled={loading}
         />
 
         <StatusBanner message={statusMessage} />

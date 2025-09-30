@@ -129,6 +129,7 @@ export function useStartClientEngine(gameId) {
     return 60
   })
   const [consentedOwners, setConsentedOwners] = useState([])
+  const [startingSession, setStartingSession] = useState(false)
 
   const rememberActiveSession = useCallback(
     (payload = {}) => {
@@ -471,7 +472,22 @@ export function useStartClientEngine(gameId) {
     [currentActorContext, isUserActionSlot],
   )
 
-  const handleStart = useCallback(() => {
+  const viewerParticipant = useMemo(() => {
+    if (!viewerId) return null
+    return (
+      participants.find((participant) => {
+        const ownerId =
+          participant?.owner_id ||
+          participant?.ownerId ||
+          participant?.ownerID ||
+          participant?.owner?.id ||
+          null
+        return ownerId === viewerId
+      }) || null
+    )
+  }, [participants, viewerId])
+
+  const bootLocalSession = useCallback(() => {
     if (graph.nodes.length === 0) {
       setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
       return
@@ -518,6 +534,91 @@ export function useStartClientEngine(gameId) {
     updateHeroAssets,
     rememberActiveSession,
     turnTimerSeconds,
+  ])
+
+  const handleStart = useCallback(async () => {
+    if (graph.nodes.length === 0) {
+      setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
+      return
+    }
+
+    if (startingSession) {
+      return
+    }
+
+    if (!gameId) {
+      setStatusMessage('게임 정보를 찾을 수 없습니다.')
+      return
+    }
+
+    setStartingSession(true)
+    setStatusMessage('세션을 준비하는 중입니다…')
+
+    let sessionReady = false
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        throw sessionError
+      }
+
+      const token = sessionData?.session?.access_token
+      if (!token) {
+        throw new Error('세션 정보가 만료되었습니다. 다시 로그인해 주세요.')
+      }
+
+      const response = await fetch('/api/rank/start-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          game_id: gameId,
+          mode: game?.realtime_match ? 'realtime' : 'manual',
+          role: viewerParticipant?.role || null,
+          match_code: null,
+        }),
+      })
+
+      let payload = {}
+      try {
+        payload = await response.json()
+      } catch (error) {
+        payload = {}
+      }
+
+      if (!response.ok) {
+        const message = payload?.error || payload?.detail || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        throw new Error(message)
+      }
+
+      if (!payload?.ok) {
+        const message = payload?.error || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        throw new Error(message)
+      }
+      sessionReady = true
+    } catch (error) {
+      console.error('세션 준비 실패:', error)
+      const message =
+        error?.message || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+      setStatusMessage(message)
+    } finally {
+      setStartingSession(false)
+    }
+
+    if (!sessionReady) {
+      return
+    }
+
+    bootLocalSession()
+  }, [
+    bootLocalSession,
+    game?.realtime_match,
+    gameId,
+    graph.nodes,
+    startingSession,
+    viewerParticipant?.role,
   ])
 
   const advanceTurn = useCallback(
@@ -909,6 +1010,7 @@ export function useStartClientEngine(gameId) {
     manualResponse,
     setManualResponse,
     isAdvancing,
+    isStarting: startingSession,
     handleStart,
     advanceWithAi,
     advanceWithManual,

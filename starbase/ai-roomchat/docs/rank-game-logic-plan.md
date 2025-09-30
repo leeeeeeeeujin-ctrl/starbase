@@ -67,7 +67,7 @@
 | --- | --- | --- |
 | 1단계 – 역할/슬롯 모델링 | ✅ 완료 | `useGameRoom`이 `rank_game_roles`·`rank_game_slots`를 동시 로딩해 정규화된 역할 배열과 활성 슬롯 집계를 제공합니다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L200-L318】【F:starbase/ai-roomchat/hooks/useGameRoom.js†L488-L520】 |
 | 1단계 – 슬롯 점유/해제 로직 | ✅ 완료 | `/api/rank/join-game`이 빈 슬롯을 검색·점유하고 기존 소유 슬롯을 해제한 뒤 `rank_participants`에 upsert합니다.【F:starbase/ai-roomchat/pages/api/rank/join-game.js†L1-L162】 |
-| 2단계 – 메인룸 시작 트리거 | ⚠️ 부분 구현 | `AutoMatchProgress`가 확인 단계에서 `/api/rank/start-session`을 호출해 `rank_sessions`·`rank_turns`를 시드하지만, 전투 실행(`run-turn`/`play`) 연결은 아직 남았습니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L260】【F:starbase/ai-roomchat/pages/api/rank/start-session.js†L1-L158】 |
+| 2단계 – 메인룸 시작 트리거 | ⚠️ 진행 중 | `AutoMatchProgress` 확인 단계에서 `/api/rank/start-session`을 호출하고, `/rank/[id]/start`의 `StartClient`도 세션 토큰을 받아 같은 엔드포인트를 선행 호출한 뒤 로컬 그래프를 기동합니다. 다만 `run-turn`/`play` 연계는 아직 남았습니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L200-L316】【F:starbase/ai-roomchat/components/rank/StartClient/useStartClientEngine.js†L120-L227】【F:starbase/ai-roomchat/pages/api/rank/start-session.js†L1-L158】 |
 | 3단계 – 서버 전투 기록 | ⚠️ 진행 중 | `recordBattle`이 다중 턴 로그를 저장하고 공격자 점수·상태를 갱신하지만, 다중 방어자 처리와 정교한 점수 반영은 추가 구현이 필요합니다.【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L189】 |
 | 4단계 – UI/히스토리 연동 | ⚠️ 진행 중 | 세션 시작 시 `rank_turns`에 시스템 로그를 기록해 히스토리 데이터는 쌓이기 시작했지만, `GameRoomView`와 도크 UI는 여전히 로컬 상태를 사용합니다.【F:starbase/ai-roomchat/pages/api/rank/start-session.js†L1-L158】【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L720-L819】 |
 | 5단계 – 후속 개선 | ⏳ 미착수 | 큐 실시간화, 프롬프트 세션 훅 등은 계획만 문서화된 상태입니다. |
@@ -99,3 +99,12 @@
 느낀 점: 전투 기록 파이프라인을 다시 손보니 로그와 참가자 상태가 한 흐름으로 이어지기 시작해 다음 단계 설계가 훨씬 편해질 것 같았습니다.
 추가로 필요한 점: 방어자 점수/상태 반영과 난입/재참전 규칙을 계산해줄 서비스 롤 API를 별도로 마련해야 완성도를 높일 수 있습니다.
 진행사항: `recordBattle`이 턴 배열 저장과 공격자 점수·상태 업데이트까지 처리하도록 확장했습니다.
+
+### 진행 현황 메모 (2025-10-06 추가)
+
+- `/rank/[id]/start`에서 `StartClient`가 세션 토큰을 받아 `/api/rank/start-session`을 먼저 호출하고, 응답이 성공한 뒤에만 프롬프트 그래프를 시작하도록 조정했습니다.【F:starbase/ai-roomchat/components/rank/StartClient/useStartClientEngine.js†L120-L227】
+- 헤더의 “게임 시작” 버튼은 세션 준비 중 비활성화되고 로딩 레이블을 노출해 자동/수동 진입이 중복 호출되지 않도록 정리했습니다.【F:starbase/ai-roomchat/components/rank/StartClient/HeaderControls.js†L1-L83】【F:starbase/ai-roomchat/components/rank/StartClient/index.js†L400-L436】
+
+느낀 점: 클라이언트가 세션 생성까지 확인한 뒤 전투를 시작하니 서버 상태와 UI가 한 박자 맞아 들어가는 느낌이라 진척도를 실감할 수 있었습니다.
+추가로 필요한 점: 세션 생성 이후 턴 실행(`/api/rank/run-turn`)을 같은 토큰 흐름에 묶어 Supabase 히스토리와 동기화하는 후속 작업이 필요합니다.
+진행사항: StartClient에 세션 선행 호출과 시작 버튼 로딩 UI를 더해 2단계 자동화 흐름을 한층 다듬었습니다.

@@ -9,8 +9,12 @@ export default function HeaderControls({
   advanceDisabled = false,
   advanceLabel,
   consensus,
+  startDisabled = false,
+  isStarting = false,
 }) {
   const nextLabel = advanceLabel || (isAdvancing ? '진행 중…' : '다음 턴')
+  const startLabel = isStarting ? '준비 중…' : preflight ? '게임 시작' : '다시 시작'
+  const startButtonDisabled = isStarting || startDisabled
   return (
     <header
       style={{
@@ -49,16 +53,18 @@ export default function HeaderControls({
         <button
           type="button"
           onClick={onStart}
+          disabled={startButtonDisabled}
           style={{
             padding: '10px 16px',
             borderRadius: 999,
-            background: '#111827',
-            color: '#f8fafc',
+            background: startButtonDisabled ? 'rgba(17, 24, 39, 0.55)' : '#111827',
+            color: startButtonDisabled ? 'rgba(248, 250, 252, 0.6)' : '#f8fafc',
             fontWeight: 700,
             border: 'none',
+            cursor: startButtonDisabled ? 'not-allowed' : 'pointer',
           }}
         >
-          {preflight ? '게임 시작' : '다시 시작'}
+          {startLabel}
         </button>
         <button
           type="button"
