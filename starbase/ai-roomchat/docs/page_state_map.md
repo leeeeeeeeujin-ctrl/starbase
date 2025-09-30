@@ -42,7 +42,11 @@
 | --- | --- | --- |
 | `/rank` (`pages/rank/index.js`) | `count` 상태로 전체 게임 수 표시. `GameListPanel`이 실제 목록 렌더링. | 세션 스토리지/로컬 스토리지 접근 없음. |
 | `/rank/[id]` (`pages/rank/[id].js`) | 페이지 로컬 상태: `showLeaderboard`, `pickRole`, `showStartModal`, `startPreset`, `turnTimerVote(s)` 등. `useGameRoom`에서 `game`, `roles`, `participants`, `myHero`, `recentBattles`, `canStart`, `isOwner` 등 수신. | `useGameRoom`이 로컬 스토리지 `selectedHeroId`를 읽어 참여자와 매칭. 페이지는 `rank.start.*` 키를 세션 스토리지에 저장/복원(모드, 듀오 옵션, 캐주얼 옵션, API 버전/키, 턴 타이머, 투표 현황). |
-| `/rank/[id]/solo`, `/rank/[id]/duo`, `/rank/[id]/casual-*` 등 | 각 모드는 `components/rank`의 클라이언트(예: `RankNewClient`, `MatchQueueClient`, `CasualMatchClient`)를 사용해 대기열 및 준비 UI를 구성. | 공통으로 `rank.start.*` 세션 스토리지 값을 읽어 초기 설정을 유지. |
+| `/rank/[id]/solo` | `RankSoloMatchPage`가 `useGameRoom`으로 접근 권한을 확인한 뒤 `SoloMatchClient`(→ `MatchQueueClient`)를 띄워 진입 즉시 자동 참가를 시도. | `rank.start.mode`를 `rank_solo`로 유지하고, `selectedHeroId`가 없으면 대기열 합류에 실패하도록 에러 배너를 노출. |
+| `/rank/[id]/duo` | `DuoRoomPage`가 `useGameRoom` + `loadActiveRoles`로 역할 템플릿을 동기화하고, `DuoRoomClient`로 로컬 세션 저장소(`duoRooms:*`) 기반의 방 편성을 진행. | 방 생성/참여 시 세션에 저장한 뒤 호스트가 시작을 누르면 `rank.start.mode`/`rank.start.duoOption`을 `rank_duo`로 갱신하고 큐 페이지로 이동. |
+| `/rank/[id]/duo/queue` | `DuoMatchQueuePage`가 `useGameRoom`으로 게임 유효성을 확인하고 `DuoMatchClient`(`MatchQueueClient` 래퍼)를 호출해 듀오 큐에 자동 합류. | 입장 시 `rank.start.mode=rank_duo`를 보존하고, 대기열 이탈 시 `removeQueueEntry`를 호출해 세션 종료 시 자동 정리. |
+| `/rank/[id]/casual` | `CasualMatchPage`가 `useGameRoom`을 통해 게임 존재 여부를 검증한 뒤 `CasualMatchClient`를 랜더링, 캐주얼 큐에 자동 합류. | 세션에 저장된 `rank.start.turnTimer`/`rank.start.apiVersion` 등을 유지하면서 `casual_match` 모드로 큐를 조회. |
+| `/rank/[id]/casual-private` | `CasualPrivateRoomPage`가 `CasualPrivateClient`를 호출해 사설 방 슬롯 배치를 관리. | 세션 스토리지 `casualPrivateRooms:*`에 방 상태를 유지하고, 시작 시 `rank.start.mode=casual_private`로 세팅 후 `/start`로 이동. |
 | `/rank/new` | 새 게임 생성 폼 컴포넌트. 생성 후 `/rank/[id]`로 이동. | 로그인 정보는 Supabase 세션 기반. |
 
 ## 6. 메이커(프롬프트 세트)
