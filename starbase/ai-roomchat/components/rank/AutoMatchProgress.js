@@ -100,6 +100,10 @@ export default function AutoMatchProgress({ gameId, mode }) {
     CONFIRMATION_WINDOW_SECONDS,
   )
   const [confirming, setConfirming] = useState(false)
+  const previousStatusRef = useRef(state.status)
+  const blockersRef = useRef([])
+  const previousConfirmationRef = useRef('idle')
+  const joinErrorRef = useRef('')
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
     state.lockedRole,
@@ -122,6 +126,50 @@ export default function AutoMatchProgress({ gameId, mode }) {
     }
     return list
   }, [state.status, state.viewerId, state.roleReady, roleName, state.heroId])
+
+  useEffect(() => {
+    if (previousStatusRef.current === state.status) return
+    console.debug('[AutoMatchProgress] 상태 변경', {
+      previous: previousStatusRef.current,
+      next: state.status,
+      matchCode: state.match?.matchCode ?? null,
+    })
+    previousStatusRef.current = state.status
+  }, [state.status, state.match])
+
+  useEffect(() => {
+    const previous = blockersRef.current || []
+    const added = blockers.filter((message) => !previous.includes(message))
+    const cleared = previous.filter((message) => !blockers.includes(message))
+    if (added.length || cleared.length) {
+      console.debug('[AutoMatchProgress] 참가 차단 요인 업데이트', {
+        added,
+        cleared,
+        next: blockers,
+      })
+    }
+    blockersRef.current = blockers
+  }, [blockers])
+
+  useEffect(() => {
+    if (joinErrorRef.current === joinError) return
+    if (joinError) {
+      console.warn('[AutoMatchProgress] 자동 참가 오류', joinError)
+    } else if (joinErrorRef.current) {
+      console.debug('[AutoMatchProgress] 자동 참가 오류 해소')
+    }
+    joinErrorRef.current = joinError
+  }, [joinError])
+
+  useEffect(() => {
+    if (previousConfirmationRef.current === confirmationState) return
+    console.debug('[AutoMatchProgress] 확인 단계 변경', {
+      previous: previousConfirmationRef.current,
+      next: confirmationState,
+      remaining: confirmationRemaining,
+    })
+    previousConfirmationRef.current = confirmationState
+  }, [confirmationState, confirmationRemaining])
 
   const clearConfirmationTimers = useCallback(() => {
     if (confirmationTimerRef.current) {
