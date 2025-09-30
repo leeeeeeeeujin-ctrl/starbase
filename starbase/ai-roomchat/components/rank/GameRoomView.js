@@ -290,6 +290,27 @@ function formatWinRate(value) {
   return `${rounded}%`
 }
 
+function describeSessionStatus(status) {
+  const raw = typeof status === 'string' ? status.trim().toLowerCase() : ''
+  if (!raw) {
+    return { label: '진행 중', tone: 'active' }
+  }
+
+  if (['completed', 'done', 'finished', 'closed', 'victory', 'won'].includes(raw)) {
+    return { label: '종료', tone: 'completed' }
+  }
+
+  if (['failed', 'error', 'aborted', 'cancelled', 'canceled', 'defeat', 'lost'].includes(raw)) {
+    return { label: '중단', tone: 'failed' }
+  }
+
+  if (['active', 'running', 'pending', 'open', 'in_progress'].includes(raw)) {
+    return { label: '진행 중', tone: 'active' }
+  }
+
+  return { label: status || '진행 중', tone: 'active' }
+}
+
 function groupByRole(participants = []) {
   const map = new Map()
   participants.forEach((participant) => {
@@ -313,14 +334,18 @@ export default function GameRoomView({
   canStart = false,
   myHero = null,
   myEntry = null,
+  sessionHistory = [],
   onBack,
   onJoin,
-  onStart,
+  onOpenModeSettings,
   onOpenLeaderboard,
   onDelete,
   isOwner = false,
   deleting = false,
   startDisabled = false,
+  startLoading = false,
+  startNotice = '',
+  startError = '',
   recentBattles = [],
   turnTimerVote = null,
   turnTimerVotes = {},
@@ -445,6 +470,9 @@ export default function GameRoomView({
 
   const hasHeroEntry = Boolean(myEntry)
 
+  const resolvedStartNotice = typeof startNotice === 'string' ? startNotice.trim() : ''
+  const resolvedStartError = typeof startError === 'string' ? startError.trim() : ''
+
   const voteSummary = useMemo(
     () => summarizeTurnTimerVotes(turnTimerVotes || {}),
     [turnTimerVotes],
@@ -531,6 +559,40 @@ export default function GameRoomView({
       : source
     return filtered.map((battle) => buildBattleLine(battle, heroNameMap))
   }, [heroNameMap, myEntry?.hero_id, myHero?.id, recentBattles])
+
+  const normalizedSessionHistory = useMemo(() => {
+    if (!Array.isArray(sessionHistory)) return []
+    return sessionHistory
+      .map((entry) => {
+        if (!entry || !entry.sessionId) return null
+        const statusInfo = describeSessionStatus(entry.sessionStatus)
+        const createdAt = formatDate(entry.sessionCreatedAt)
+        const publicTurns = Array.isArray(entry.publicTurns) ? entry.publicTurns : []
+        const displayTurns = publicTurns.slice(-5)
+        const extraPublicWithinLimited = Math.max(publicTurns.length - displayTurns.length, 0)
+        const hiddenCount = Number(entry.hiddenCount) || 0
+        const trimmedTotal = Math.max(
+          Number(entry.turnCount || 0) - Number(entry.displayedTurnCount || 0),
+          0,
+        )
+
+        return {
+          id: entry.sessionId,
+          createdAt,
+          statusLabel: statusInfo.label,
+          tone: statusInfo.tone,
+          turns: displayTurns.map((turn, index) => ({
+            id: turn?.id || `${entry.sessionId}-${turn?.idx ?? index}`,
+            role: turn?.role || 'system',
+            content: turn?.content || '',
+          })),
+          hiddenCount,
+          extraPublicWithinLimited,
+          trimmedTotal,
+        }
+      })
+      .filter(Boolean)
+  }, [sessionHistory])
 
   const displayedHeroLogs = useMemo(
     () => heroBattleLogs.slice(0, visibleHeroLogs),
@@ -798,15 +860,24 @@ export default function GameRoomView({
           >
             {alreadyJoined ? '참여 완료됨' : joinLoading ? '참여 중…' : `${currentRole || '역할'}로 참여하기`}
           </button>
-          <button
-            type="button"
-            className={styles.ownerStartButton}
-            onClick={onStart}
-            disabled={startDisabled}
-          >
-            게임 시작
-          </button>
+          {onOpenModeSettings ? (
+            <button
+              type="button"
+              className={styles.modeButton}
+              onClick={onOpenModeSettings}
+              disabled={startDisabled || startLoading}
+            >
+              {startLoading ? '매칭 준비 중…' : '모드 선택 열기'}
+            </button>
+          ) : null}
         </div>
+
+        {resolvedStartNotice ? (
+          <p className={styles.startNotice}>{resolvedStartNotice}</p>
+        ) : null}
+        {resolvedStartError ? (
+          <p className={styles.startError}>{resolvedStartError}</p>
+        ) : null}
 
         <p className={styles.capacityHint}>
           {canStart
@@ -814,7 +885,7 @@ export default function GameRoomView({
             : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
         </p>
         <p className={styles.capacitySubHint}>
-          준비가 완료되면 누구나 게임을 시작해 매칭을 진행할 수 있습니다.
+          준비가 완료되면 모드 선택 창이 열리며 매칭이 자동으로 진행됩니다.
         </p>
 
         <TurnTimerVotePanel
@@ -845,6 +916,68 @@ export default function GameRoomView({
               <ParticipantCard key={participant.id || participant.hero_id} p={participant} />
             ))}
           </div>
+        )}
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <h2 className={styles.sectionTitle}>내 세션 히스토리</h2>
+          {normalizedSessionHistory.length ? (
+            <span className={styles.sectionBadge}>{normalizedSessionHistory.length}</span>
+          ) : null}
+        </div>
+        {normalizedSessionHistory.length ? (
+          <ul className={styles.sessionHistoryList}>
+            {normalizedSessionHistory.map((entry) => {
+              const statusClass =
+                entry.tone === 'completed'
+                  ? styles.sessionHistoryStatusCompleted
+                  : entry.tone === 'failed'
+                    ? styles.sessionHistoryStatusFailed
+                    : styles.sessionHistoryStatusActive
+              return (
+                <li key={entry.id} className={styles.sessionHistoryItem}>
+                  <div className={styles.sessionHistoryHeader}>
+                    <span className={`${styles.sessionHistoryStatus} ${statusClass}`}>
+                      {entry.statusLabel}
+                    </span>
+                    {entry.createdAt ? (
+                      <span className={styles.sessionHistoryTimestamp}>{entry.createdAt}</span>
+                    ) : null}
+                  </div>
+                  <ul className={styles.sessionHistoryTurns}>
+                    {entry.turns.length ? (
+                      entry.turns.map((turn) => (
+                        <li key={turn.id} className={styles.sessionHistoryTurn}>
+                          <span className={styles.sessionHistoryTurnRole}>{turn.role}</span>
+                          <p className={styles.sessionHistoryTurnContent}>{turn.content}</p>
+                        </li>
+                      ))
+                    ) : (
+                      <li className={styles.sessionHistoryNotice}>공개된 기록이 아직 없습니다.</li>
+                    )}
+                    {entry.hiddenCount > 0 ? (
+                      <li className={styles.sessionHistoryNotice}>
+                        비공개 턴 {entry.hiddenCount}개가 숨겨져 있습니다.
+                      </li>
+                    ) : null}
+                    {entry.extraPublicWithinLimited > 0 ? (
+                      <li className={styles.sessionHistoryNotice}>
+                        이전 공개 기록 {entry.extraPublicWithinLimited}개가 더 있습니다.
+                      </li>
+                    ) : null}
+                    {entry.trimmedTotal > 0 ? (
+                      <li className={styles.sessionHistoryNotice}>
+                        이전 턴 기록 {entry.trimmedTotal}개가 보관되어 있습니다.
+                      </li>
+                    ) : null}
+                  </ul>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <div className={styles.emptyCard}>매칭을 시작하면 최근 세션 기록이 이곳에 표시됩니다.</div>
         )}
       </section>
 

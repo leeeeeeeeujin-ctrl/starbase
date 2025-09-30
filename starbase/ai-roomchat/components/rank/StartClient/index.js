@@ -10,6 +10,7 @@ import StatusBanner from './StatusBanner'
 import TurnInfoPanel from './TurnInfoPanel'
 import { useStartClientEngine } from './useStartClientEngine'
 import styles from './StartClient.module.css'
+import { getHeroAudioManager } from '../../../lib/audio/heroAudioManager'
 
 function buildBackgroundStyle(urls) {
   if (!Array.isArray(urls) || urls.length === 0) {
@@ -44,7 +45,36 @@ function buildBackgroundStyle(urls) {
   }
 }
 
-function ParticipantTile({ participant }) {
+function normalizeStatus(status) {
+  const raw = typeof status === 'string' ? status.trim().toLowerCase() : ''
+  if (!raw) {
+    return { label: '진행 중', tone: 'neutral' }
+  }
+
+  if (['victory', 'won', 'winner', 'champion'].includes(raw)) {
+    return { label: '승리', tone: 'victory' }
+  }
+
+  if (['defeated', 'lost', 'dead', 'eliminated', 'out'].includes(raw)) {
+    return { label: '패배', tone: 'defeated' }
+  }
+
+  if (['retired', 'retreat', 'retreated', 'withdrawn'].includes(raw)) {
+    return { label: '탈락', tone: 'retired' }
+  }
+
+  if (['waiting', 'queued', 'standby', 'pending'].includes(raw)) {
+    return { label: '대기 중', tone: 'neutral' }
+  }
+
+  if (['active', 'alive', 'playing', 'in_progress'].includes(raw)) {
+    return { label: '진행 중', tone: 'neutral' }
+  }
+
+  return { label: status || '진행 중', tone: 'neutral' }
+}
+
+function ParticipantTile({ participant, isActive, isUserAction }) {
   if (!participant) {
     return null
   }
@@ -53,10 +83,30 @@ function ParticipantTile({ participant }) {
   const image = hero.image_url
   const name = hero.name || '이름 없음'
   const role = participant.role || '미지정'
-  const status = participant.status || '대기'
+  const { label: statusLabel, tone } = normalizeStatus(participant.status)
+
+  const cardClassNames = [styles.rosterCard]
+  if (isActive) {
+    cardClassNames.push(styles.rosterCardActive)
+    if (isUserAction) {
+      cardClassNames.push(styles.rosterCardUserAction)
+    }
+  }
+
+  const statusClassNames = [styles.rosterStatus]
+  if (tone === 'victory') {
+    statusClassNames.push(styles.rosterStatusVictory)
+  } else if (tone === 'defeated') {
+    statusClassNames.push(styles.rosterStatusDefeated)
+  } else if (tone === 'retired') {
+    statusClassNames.push(styles.rosterStatusRetired)
+  }
 
   return (
-    <li className={styles.rosterCard}>
+    <li className={cardClassNames.join(' ')}>
+      {isActive ? (
+        <span className={styles.rosterBadge}>{isUserAction ? '플레이어 턴' : 'AI 턴'}</span>
+      ) : null}
       {image ? (
         <img className={styles.rosterAvatar} src={image} alt={name} />
       ) : (
@@ -65,7 +115,7 @@ function ParticipantTile({ participant }) {
       <div className={styles.rosterMeta}>
         <span className={styles.rosterName}>{name}</span>
         <span className={styles.rosterRole}>{role}</span>
-        <span className={styles.rosterStatus}>{status}</span>
+        <span className={statusClassNames.join(' ')}>{statusLabel}</span>
       </div>
     </li>
   )
@@ -96,6 +146,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     manualResponse,
     setManualResponse,
     isAdvancing,
+    isStarting,
     handleStart,
     advanceWithAi,
     advanceWithManual,
@@ -105,6 +156,9 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     canSubmitAction,
     activeBackdropUrls,
     activeBgmUrl,
+    activeBgmDuration,
+    activeAudioProfile,
+    consensus,
   } = useStartClientEngine(resolvedGameId)
 
   const [timeoutNotice, setTimeoutNotice] = useState('')
@@ -120,39 +174,134 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
   }, [activeBackdropUrls, game?.image_url])
 
   const rootStyle = useMemo(() => buildBackgroundStyle(backgroundUrls), [backgroundUrls])
-  const audioRef = useRef(null)
+  const audioManager = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    return getHeroAudioManager()
+  }, [])
+  const audioBaselineRef = useRef(null)
 
   const splitParticipants = useMemo(() => {
     const left = []
     const right = []
     participants.forEach((participant, index) => {
+      const entry = { participant, index }
       if (index % 2 === 0) {
-        left.push(participant)
+        left.push(entry)
       } else {
-        right.push(participant)
+        right.push(entry)
       }
     })
     return { left, right }
   }, [participants])
 
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
-    }
-    if (!activeBgmUrl) return
-
-    const element = new Audio(activeBgmUrl)
-    element.loop = true
-    element.volume = 0.6
-    element.play().catch(() => {})
-    audioRef.current = element
+    if (!audioManager) return undefined
+    audioBaselineRef.current = audioManager.getState()
 
     return () => {
-      element.pause()
-      audioRef.current = null
+      const baseline = audioBaselineRef.current
+      if (!baseline) {
+        audioManager.setEqEnabled(false)
+        audioManager.setReverbEnabled(false)
+        audioManager.setCompressorEnabled(false)
+        audioManager.setEnabled(false, { resume: false })
+        audioManager.stop()
+        return
+      }
+
+      audioManager.setLoop(baseline.loop)
+      audioManager.setVolume(baseline.volume)
+      audioManager.setEqEnabled(baseline.eqEnabled)
+      audioManager.setEqualizer(baseline.equalizer)
+      audioManager.setReverbEnabled(baseline.reverbEnabled)
+      audioManager.setReverbDetail(baseline.reverbDetail)
+      audioManager.setCompressorEnabled(baseline.compressorEnabled)
+      audioManager.setCompressorDetail(baseline.compressorDetail)
+      audioManager.loadHeroTrack({
+        heroId: baseline.heroId,
+        heroName: baseline.heroName,
+        trackUrl: baseline.trackUrl,
+        duration: baseline.duration || 0,
+        autoPlay: false,
+        loop: baseline.loop,
+      })
+      if (baseline.enabled) {
+        audioManager.setEnabled(true, { resume: false })
+        if (baseline.isPlaying) {
+          audioManager.play().catch(() => {})
+        }
+      } else {
+        audioManager.setEnabled(false, { resume: false })
+        audioManager.stop()
+      }
     }
-  }, [activeBgmUrl])
+  }, [audioManager])
+
+  useEffect(() => {
+    if (!audioManager) return
+
+    const profile = activeAudioProfile || null
+    const trackUrl = activeBgmUrl || profile?.bgmUrl || null
+
+    if (!trackUrl) {
+      audioManager.setEqEnabled(false)
+      audioManager.setReverbEnabled(false)
+      audioManager.setCompressorEnabled(false)
+      audioManager.setEnabled(false, { resume: false })
+      audioManager.stop()
+      return
+    }
+
+    audioManager.setLoop(true)
+    audioManager.setEnabled(true, { resume: false })
+    if (profile?.equalizer) {
+      audioManager.setEqEnabled(true)
+      audioManager.setEqualizer({
+        low: Number(profile.equalizer.low) || 0,
+        mid: Number(profile.equalizer.mid) || 0,
+        high: Number(profile.equalizer.high) || 0,
+      })
+    } else {
+      audioManager.setEqEnabled(false)
+      audioManager.setEqualizer({ low: 0, mid: 0, high: 0 })
+    }
+
+    if (profile?.reverb) {
+      const mix = Number.isFinite(Number(profile.reverb.mix)) ? Number(profile.reverb.mix) : 0.3
+      const decay = Number.isFinite(Number(profile.reverb.decay)) ? Number(profile.reverb.decay) : 1.8
+      audioManager.setReverbEnabled(true)
+      audioManager.setReverbDetail({ mix, decay })
+    } else {
+      audioManager.setReverbEnabled(false)
+      audioManager.setReverbDetail({ mix: 0.3, decay: 1.8 })
+    }
+
+    if (profile?.compressor) {
+      const threshold = Number.isFinite(Number(profile.compressor.threshold))
+        ? Number(profile.compressor.threshold)
+        : -28
+      const ratio = Number.isFinite(Number(profile.compressor.ratio))
+        ? Number(profile.compressor.ratio)
+        : 2.5
+      const release = Number.isFinite(Number(profile.compressor.release))
+        ? Number(profile.compressor.release)
+        : 0.25
+      audioManager.setCompressorEnabled(true)
+      audioManager.setCompressorDetail({ threshold, ratio, release })
+    } else {
+      audioManager.setCompressorEnabled(false)
+      audioManager.setCompressorDetail({ threshold: -28, ratio: 2.5, release: 0.25 })
+    }
+
+    audioManager.loadHeroTrack({
+      heroId: profile?.heroId || null,
+      heroName: profile?.heroName || '',
+      trackUrl,
+      duration: Number(profile?.bgmDuration ?? activeBgmDuration ?? 0) || 0,
+      autoPlay: true,
+      loop: true,
+    })
+  }, [audioManager, activeAudioProfile, activeBgmUrl, activeBgmDuration])
 
   useEffect(() => {
     if (preflight) {
@@ -169,7 +318,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
       return
     }
     autoStartedRef.current = true
-    handleStart()
+    Promise.resolve(handleStart())
   }, [loading, preflight, game, handleStart])
 
   useEffect(() => {
@@ -243,6 +392,25 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     }
   }
 
+  const consensusActive = Boolean(consensus?.active)
+  const consensusRequired = consensusActive ? consensus?.required ?? 0 : 0
+  const consensusApproved = consensusActive
+    ? Math.min(consensus?.count ?? 0, consensusRequired)
+    : 0
+  const advanceDisabled = preflight
+    ? false
+    : consensusActive
+    ? !consensus?.viewerEligible
+    : !canSubmitAction
+  const advanceLabel = consensusActive
+    ? `동의 ${consensusApproved}/${consensusRequired}`
+    : undefined
+  const consensusStatusText = consensusActive
+    ? `동의 현황 ${consensusApproved}/${consensusRequired}명 · ${
+        consensus?.viewerHasConsented ? '내 동의 완료' : '내 동의 필요'
+      }`
+    : ''
+
   return (
     <div className={styles.root} style={rootStyle}>
       <div className={styles.content}>
@@ -254,10 +422,17 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
           onStart={handleStart}
           onAdvance={advanceWithAi}
           isAdvancing={isAdvancing}
-          canAdvance={canSubmitAction}
+          advanceDisabled={advanceDisabled}
+          advanceLabel={advanceLabel}
+          consensus={consensus}
+          isStarting={isStarting}
+          startDisabled={loading}
         />
 
         <StatusBanner message={statusMessage} />
+        {consensusStatusText ? (
+          <div className={styles.consensusNotice}>{consensusStatusText}</div>
+        ) : null}
         {timeoutNotice ? <div className={styles.timeoutNotice}>{timeoutNotice}</div> : null}
 
         <div className={styles.mainLayout}>
@@ -265,10 +440,14 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
             <h2 className={styles.rosterTitle}>왼쪽 슬롯</h2>
             <ul className={styles.rosterList}>
               {splitParticipants.left.length ? (
-                splitParticipants.left.map((participant) => (
+                splitParticipants.left.map(({ participant, index }) => (
                   <ParticipantTile
-                    key={participant.id || participant.hero_id}
+                    key={participant?.id || participant?.hero_id || index}
                     participant={participant}
+                    isActive={currentActor?.slotIndex === index}
+                    isUserAction={
+                      currentActor?.slotIndex === index && !!currentActor?.isUserAction
+                    }
                   />
                 ))
               ) : (
@@ -320,10 +499,14 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
             <h2 className={styles.rosterTitle}>오른쪽 슬롯</h2>
             <ul className={styles.rosterList}>
               {splitParticipants.right.length ? (
-                splitParticipants.right.map((participant) => (
+                splitParticipants.right.map(({ participant, index }) => (
                   <ParticipantTile
-                    key={participant.id || participant.hero_id}
+                    key={participant?.id || participant?.hero_id || `r-${index}`}
                     participant={participant}
+                    isActive={currentActor?.slotIndex === index}
+                    isUserAction={
+                      currentActor?.slotIndex === index && !!currentActor?.isUserAction
+                    }
                   />
                 ))
               ) : (

@@ -15,6 +15,23 @@ export function compileTemplate({ template, slotsMap, historyText = '' }) {
     for (let a = 1; a <= 12; a++) {
       out = out.replaceAll(`{{slot${s}.ability${a}}}`, hero[`ability${a}`] ?? '')
     }
+    out = out.replaceAll(`{{slot${s}.role}}`, hero.role ?? '')
+    out = out.replaceAll(`{{slot${s}.side}}`, hero.side ?? '')
+    out = out.replaceAll(`{{slot${s}.status}}`, hero.status ?? '')
+    out = out.replaceAll(`{{slot${s}.owner_id}}`, hero.owner_id ?? '')
+    out = out.replaceAll(`{{slot${s}.ownerId}}`, hero.ownerId ?? '')
+    out = out.replaceAll(`{{slot${s}.slotNo}}`, hero.slotNo ?? hero.slot_no ?? '')
+    out = out.replaceAll(`{{slot${s}.slot_no}}`, hero.slot_no ?? hero.slotNo ?? '')
+    out = out.replaceAll(`{{slot${s}.name_or_role}}`, hero.name_or_role ?? hero.name ?? hero.role ?? '')
+    out = out.replaceAll(`{{slot${s}.display_name}}`, hero.display_name ?? hero.name ?? '')
+
+    const keys = Object.keys(hero)
+    keys.forEach((key) => {
+      const placeholder = `{{slot${s}.${key}}}`
+      if (out.includes(placeholder)) {
+        out = out.replaceAll(placeholder, stringifyValue(hero[key]))
+      }
+    })
   }
 
   out = out.replaceAll('{{history.last1}}', last1)
@@ -33,4 +50,24 @@ export function compileTemplate({ template, slotsMap, historyText = '' }) {
   })())
 
   return { text: out, meta: {} }
+}
+
+function stringifyValue(value) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  if (Array.isArray(value) || typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch (error) {
+      return ''
+    }
+  }
+  return ''
 }
