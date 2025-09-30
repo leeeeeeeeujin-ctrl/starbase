@@ -52,6 +52,13 @@
 ### 스타트 모달 → 모드별 경로
 `GameStartModeModal`에서 모드를 고른 뒤에는 `/rank/[id].js`가 세션 프리셋(`rank.start.*`)을 저장하고 솔로·듀오·캐주얼 매칭/사설 방/전투 실행 화면으로 이동하도록 라우팅합니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L174-L215】 각 경로는 전용 페이지와 클라이언트를 갖추어 진입과 동시에 자동 참가 시퀀스를 시작합니다.
 
+### 로비 → 게임 선택 → 매칭 페이지 연결 상태
+1. **로비에서 게임 선택**: `/lobby`는 `GameSearchPanel`과 `useGameBrowser`를 통해 게임을 고른 뒤 `handleEnterGame`으로 `/rank/[id]`로 이동합니다.【F:starbase/ai-roomchat/pages/lobby.js†L40-L143】
+2. **메인 룸에서 시작 선택**: `/rank/[id]`는 `GameRoomView`가 `onStart`를 호출하면 `GameStartModeModal`을 열고, 사용자가 API 키와 모드를 확정하면 위에서 저장한 프리셋을 기반으로 모드별 경로(`/solo`, `/duo`, `/casual`, `/casual-private`, `/start`)로 라우팅합니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L167-L215】
+3. **솔로 랭크**: `/rank/[id]/solo`는 `useGameRoom`으로 접근 권한을 다시 확인한 뒤 `SoloMatchClient`를 렌더링합니다. 클라이언트는 “비슷한 점수대의 참가자들이 역할별로 매칭될 때까지 잠시만 기다려 주세요.” 문구와 함께 자동 대기열 합류를 수행합니다.【F:starbase/ai-roomchat/pages/rank/[id]/solo.js†L1-L55】【F:starbase/ai-roomchat/components/rank/SoloMatchClient.js†L3-L12】
+4. **듀오 랭크**: `/rank/[id]/duo`는 듀오 방을 구성하고, 호스트가 시작을 누르면 세션 프리셋을 `rank_duo`로 고정한 뒤 `/rank/[id]/duo/queue`로 이동해 `DuoMatchClient`를 통해 같은 랭크 큐에 자동 합류시킵니다.【F:starbase/ai-roomchat/pages/rank/[id]/duo.js†L55-L116】【F:starbase/ai-roomchat/pages/rank/[id]/duo/queue.js†L1-L60】【F:starbase/ai-roomchat/components/rank/DuoMatchClient.js†L1-L17】
+5. **캐주얼 매칭/사설 방**: 캐주얼 모드는 `casualOption` 값에 따라 `/rank/[id]/casual`(매칭) 또는 `/rank/[id]/casual-private`(사설)로 이동합니다. 매칭 페이지는 `CasualMatchClient`로 자동 큐를 돌리고, 사설 방은 슬롯 채우기 후 `/rank/[id]/start?mode=casual_private`로 연결됩니다.【F:starbase/ai-roomchat/pages/rank/[id]/casual.js†L1-L55】【F:starbase/ai-roomchat/components/rank/CasualMatchClient.js†L3-L12】【F:starbase/ai-roomchat/pages/rank/[id]/casual-private.js†L1-L96】
+
 ### 솔로 랭크 매칭 흐름
 - `/rank/[id]/solo` 페이지는 `useGameRoom`으로 게임 유효성을 검증한 뒤 `SoloMatchClient`를 호출해 랭크 솔로 큐에 자동 합류합니다.【F:starbase/ai-roomchat/pages/rank/[id]/solo.js†L1-L55】【F:starbase/ai-roomchat/components/rank/SoloMatchClient.js†L3-L12】
 - `MatchQueueClient`는 진입 즉시 `useMatchQueue` 훅을 활성화하고, 잠금된 역할 또는 첫 번째 역할 정보를 사용해 자동 참가를 시도합니다. 대기열 상태, 타이머 투표, 매치 확정 시 전투 화면으로 이동하는 로직이 한 곳에 모여 있습니다.【F:starbase/ai-roomchat/components/rank/MatchQueueClient.js†L154-L355】
