@@ -23,6 +23,20 @@
 | --- | --- | --- |
 | `/lobby` (`pages/lobby.js`) | `activeTab`, `storedHeroId`, `backgroundUrl` 상태. `useGameBrowser` 두 번(공개/내 게임), `useLobbyStats` 한 번 사용. 탭·쿼리·정렬·선택 게임·참여 등 모든 조작을 훅이 제공. | 로컬 스토리지에서 `selectedHeroId`, `selectedHeroBackgroundUrl`을 읽어 배경과 복귀 경로를 맞춤. 게임 입장 시 `/rank/[id]`로 이동. |
 
+### 4.1 로스터 → 오버레이 → 로비 → 메인룸 → 모드 선택 흐름
+1. **로스터에서 캐릭터 선택**: `/roster`는 `RosterContainer`가 `useRoster`로 불러온 영웅 목록을 `RosterView`에 넘기고, 카드 터치 시 `selectedHeroId`·`selectedHeroOwnerId`를 로컬 스토리지에 저장한 뒤 `/character/[id]`로 이동합니다.【F:starbase/ai-roomchat/components/roster/RosterContainer.js†L16-L63】
+2. **캐릭터 상세 진입**: `/character/[id]`는 `useCharacterDetail`로 영웅을 로드하고, 성공 시 동일한 스토리지 키를 갱신하며 `hero-overlay:refresh` 이벤트를 쏴서 글로벌 오버레이를 새로고침합니다.【F:starbase/ai-roomchat/pages/character/[id].js†L58-L128】
+3. **공유 오버레이 활성화**: `_app.js`의 `OverlayAwareShell`이 캐릭터/로스터를 벗어난 경로에서 `SharedHeroOverlay`를 노출하고 항상 `ActiveMatchOverlay`를 덧붙여, 이후 화면에서도 하단 HUD가 따라다니게 합니다.【F:starbase/ai-roomchat/pages/_app.js†L1-L29】
+4. **하단 오버레이에서 탐색**: `SharedHeroOverlay`는 선택된 영웅 정보를 상태로 들고 있으며 `overlayTabs`에 `search` 탭을 포함합니다. 검색 탭에서는 입력·정렬 상태(`searchTerm`, `searchSort`)를 이용해 필터링된 게임 목록을 보여 주어 로비로 넘어가기 전에 관심 있는 게임을 훑어볼 수 있습니다.【F:starbase/ai-roomchat/components/character/SharedHeroOverlay.js†L765-L876】【F:starbase/ai-roomchat/components/character/SharedHeroOverlay.js†L1191-L1219】
+5. **로비에서 게임 고르기**: `/lobby`는 `useGameBrowser`가 제공하는 목록/참여 정보를 `GameSearchPanel`에 전달하고, `handleEnterGame`으로 선택된 게임(및 역할)을 `/rank/[id]` 경로로 푸시합니다.【F:starbase/ai-roomchat/pages/lobby.js†L40-L143】
+6. **게임 검색 패널 구성**: `GameSearchPanel`은 좌측 검색/정렬 컬럼과 우측 상세 패널로 나뉘어 `GameDetail`에 참가자·역할 데이터를 전달합니다.【F:starbase/ai-roomchat/components/lobby/GameSearchPanel/index.js†L1-L58】
+7. **참여 & 역할 지정**: `GameDetail`은 이미 참여 중이면 즉시 입장시키고, 아니라면 가장 여유 있는 역할을 기본 선택한 뒤 `참여하기` 버튼으로 `onJoinGame` 실행 후 `/rank/[id]` 이동을 트리거합니다.【F:starbase/ai-roomchat/components/lobby/GameSearchPanel/GameDetail.js†L38-L182】
+8. **메인룸 진입**: `/rank/[id]`는 `useGameRoom`으로 게임/참여자/역할을 불러와 `GameRoomView`에 넘기고, 스타트 버튼을 누르면 `GameStartModeModal`을 띄웁니다. 모달에서 저장한 프리셋은 `rank.start.*` 세션 스토리지 키로 보존합니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L22-L263】
+9. **메인룸 탭과 준비 UI**: `GameRoomView`는 `메인 룸`·`캐릭터 정보`·`랭킹` 탭과 턴 제한 투표, 시작 버튼 등을 렌더링해 방장을 위한 준비 화면을 구성합니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L55-L152】
+10. **모드/키/타이머 설정**: `GameStartModeModal`은 API 버전·API 키 입력 필드와 턴 제한 투표, 솔로·듀오·캐주얼 옵션을 한 번에 선택할 수 있도록 하고, 확인 시 어떤 모드를 택했는지 콜백으로 돌려줍니다.【F:starbase/ai-roomchat/components/rank/GameStartModeModal.js†L1-L205】【F:starbase/ai-roomchat/components/rank/GameStartModeModal.js†L200-L399】
+11. **매칭 페이지 라우팅**: 모달 확인을 받으면 `/rank/[id]` 페이지가 솔로·듀오·캐주얼(매칭/사설)·시나리오 실행(`/start`) 경로 중 하나로 이동시켜 각 모드 전용 클라이언트를 띄울 준비를 합니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L191-L215】
+12. **본 게임 실행**: `/rank/[id]/start`는 동적 로딩된 `StartClient`를 불러와 게임 번들을 실행하며, `useStartClientEngine`이 API 키/버전 상태를 유지하고 로딩 완료 시 `handleStart()`로 전투를 자동 개시합니다.【F:starbase/ai-roomchat/pages/rank/[id]/start.js†L1-L4】【F:starbase/ai-roomchat/components/rank/StartClient/index.js†L74-L174】
+
 ## 5. 랭크 허브 & 게임룸
 | 경로 | 주요 상태 / 훅 | 공용 스토리지 & 일관성 포인트 |
 | --- | --- | --- |
