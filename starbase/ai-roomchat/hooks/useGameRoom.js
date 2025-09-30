@@ -64,23 +64,113 @@ async function fetchRoleMetadata(gameId) {
   return Array.isArray(data) ? data : []
 }
 
-async function fetchActiveSlotCounts(gameId) {
-  if (!gameId) return new Map()
+async function fetchSlotGrid(gameId) {
+  if (!gameId) {
+    return { slots: [], counts: new Map() }
+  }
+
   const { data, error } = await withTable(supabase, 'rank_game_slots', (table) =>
     supabase
       .from(table)
-      .select('role, active')
-      .eq('game_id', gameId),
+      .select('id, slot_index, role, active, hero_id, hero_owner_id, updated_at')
+      .eq('game_id', gameId)
+      .order('slot_index', { ascending: true }),
   )
+
   if (error) throw error
-  const map = new Map()
-  ;(Array.isArray(data) ? data : []).forEach((slot) => {
-    if (slot?.active === false) return
-    const name = typeof slot?.role === 'string' ? slot.role.trim() : ''
-    if (!name) return
-    map.set(name, (map.get(name) || 0) + 1)
+
+  const slots = (Array.isArray(data) ? data : []).map((slot) => ({
+    id: slot.id,
+    slot_index: slot.slot_index,
+    role: typeof slot.role === 'string' ? slot.role.trim() : '',
+    active: slot.active !== false,
+    hero_id: slot.hero_id || null,
+    hero_owner_id: slot.hero_owner_id || null,
+    updated_at: slot.updated_at || null,
+  }))
+
+  const counts = new Map()
+  slots.forEach((slot) => {
+    if (!slot.role || slot.active === false) return
+    counts.set(slot.role, (counts.get(slot.role) || 0) + 1)
   })
+
+  return { slots, counts }
+}
+
+function summariseSlotOccupancy(slots, { heroId, ownerId } = {}) {
+  const myHeroId = heroId ? String(heroId) : ''
+  const myOwnerId = ownerId ? String(ownerId) : ''
+  const map = new Map()
+
+  slots.forEach((slot) => {
+    if (!slot || slot.active === false) return
+    const role = typeof slot.role === 'string' ? slot.role.trim() : ''
+    if (!role) return
+
+    const entry = map.get(role) || { active: 0, occupied: 0, mine: 0 }
+    entry.active += 1
+
+    if (slot.hero_id || slot.hero_owner_id) {
+      entry.occupied += 1
+      const slotHeroId = slot.hero_id ? String(slot.hero_id) : ''
+      const slotOwnerId = slot.hero_owner_id ? String(slot.hero_owner_id) : ''
+      if ((myHeroId && slotHeroId && slotHeroId === myHeroId) || (myOwnerId && slotOwnerId && slotOwnerId === myOwnerId)) {
+        entry.mine += 1
+      }
+    }
+
+    map.set(role, entry)
+  })
+
   return map
+}
+
+async function claimSlotForParticipant({ gameId, slot, heroId, ownerId }) {
+  if (!gameId || !slot?.id) {
+    return { ok: false, error: 'slot_missing' }
+  }
+
+  const payload = {
+    hero_id: heroId ?? null,
+    hero_owner_id: ownerId ?? null,
+    updated_at: new Date().toISOString(),
+  }
+
+  const result = await withTable(supabase, 'rank_game_slots', (table) => {
+    let query = supabase
+      .from(table)
+      .update(payload)
+      .eq('game_id', gameId)
+      .eq('id', slot.id)
+
+    if (slot.active === false) {
+      query = query.eq('active', false)
+    } else {
+      query = query.eq('active', true)
+    }
+
+    if (slot.hero_id) {
+      query = query.eq('hero_id', slot.hero_id)
+    } else {
+      query = query.is('hero_id', null)
+    }
+
+    if (slot.hero_owner_id) {
+      query = query.eq('hero_owner_id', slot.hero_owner_id)
+    } else {
+      query = query.is('hero_owner_id', null)
+    }
+
+    return query
+  })
+
+  if (result?.error) {
+    console.warn('슬롯 점유 실패:', result.error)
+    return { ok: false, error: result.error.message || '슬롯을 점유하지 못했습니다.' }
+  }
+
+  return { ok: true }
 }
 
 function normalizeRoles({ gameRoles, roleRows, slotCounts }) {
@@ -209,6 +299,7 @@ export function useGameRoom(
   const [game, setGame] = useState(null)
   const [roles, setRoles] = useState([])
   const [participants, setParticipants] = useState([])
+  const [slots, setSlots] = useState([])
   const [myHero, setMyHero] = useState(null)
   const [recentBattles, setRecentBattles] = useState([])
   const [deleting, setDeleting] = useState(false)
@@ -253,11 +344,15 @@ export function useGameRoom(
         setGame(gameData)
 
         let slotCounts = new Map()
+        let slotRows = []
         try {
-          slotCounts = await fetchActiveSlotCounts(gameId)
+          const grid = await fetchSlotGrid(gameId)
+          slotCounts = grid.counts
+          slotRows = grid.slots
         } catch (slotError) {
           console.warn('슬롯 정보를 불러오지 못했습니다:', slotError)
           slotCounts = new Map()
+          slotRows = []
         }
 
         let roleRows = []
@@ -293,6 +388,9 @@ export function useGameRoom(
           ]
         }
 
+        if (!alive) return
+
+        setSlots(slotRows)
         setRoles(resolvedRoles)
         setRequiredSlots(computeRequiredSlots(resolvedRoles, slotCounts))
 
@@ -323,6 +421,18 @@ export function useGameRoom(
       alive = false
     }
   }, [gameId, onGameMissing, onRequireLogin])
+
+  const refreshSlots = useCallback(async () => {
+    if (!gameId) return []
+    try {
+      const grid = await fetchSlotGrid(gameId)
+      setSlots(grid.slots)
+      return grid.slots
+    } catch (err) {
+      console.error('슬롯 갱신 실패:', err)
+      return []
+    }
+  }, [gameId])
 
   const refreshParticipants = useCallback(async () => {
     if (!gameId) return
@@ -356,6 +466,21 @@ export function useGameRoom(
     }
     setMyHero(hero || null)
   }, [])
+
+  const slotSummary = useMemo(
+    () => summariseSlotOccupancy(slots, { heroId: myHero?.id, ownerId: user?.id }),
+    [slots, myHero?.id, user?.id],
+  )
+
+  const participantsByRole = useMemo(() => {
+    const map = new Map()
+    participants.forEach((participant) => {
+      const role = typeof participant?.role === 'string' ? participant.role.trim() : ''
+      if (!role) return
+      map.set(role, (map.get(role) || 0) + 1)
+    })
+    return map
+  }, [participants])
 
   const joinGame = useCallback(
     async (roleOverride) => {
@@ -411,6 +536,60 @@ export function useGameRoom(
         return { ok: false }
       }
 
+      const slotSnapshot = await refreshSlots()
+      const slotList = slotSnapshot.length ? slotSnapshot : slots
+      const heroId = myHero.id
+      const ownerId = user.id
+      const occupancySnapshot = summariseSlotOccupancy(slotList, { heroId, ownerId })
+      const roleSummarySnapshot = roleName ? occupancySnapshot.get(roleName) : null
+      const activeSlots = roleSummarySnapshot?.active ?? null
+      const occupiedSlots = roleSummarySnapshot?.occupied ?? 0
+      const alreadyOccupyingSlot = roleSummarySnapshot?.mine > 0
+
+      if (
+        activeSlots != null &&
+        activeSlots > 0 &&
+        occupiedSlots >= activeSlots &&
+        !alreadyOccupyingSlot &&
+        !alreadyInRole
+      ) {
+        alert('이미 정원이 가득 찬 역할입니다.')
+        return { ok: false }
+      }
+
+      let roleSlots = []
+      if (roleName) {
+        roleSlots = slotList.filter((slot) => slot.role === roleName && slot.active)
+      }
+
+      const normalizedHeroId = heroId ? String(heroId) : ''
+      const normalizedOwnerId = ownerId ? String(ownerId) : ''
+
+      let targetSlot = roleSlots.find((slot) => {
+        const slotHeroId = slot.hero_id ? String(slot.hero_id) : ''
+        const slotOwnerId = slot.hero_owner_id ? String(slot.hero_owner_id) : ''
+        return (
+          (normalizedHeroId && slotHeroId && slotHeroId === normalizedHeroId) ||
+          (normalizedOwnerId && slotOwnerId && slotOwnerId === normalizedOwnerId)
+        )
+      })
+
+      if (!targetSlot) {
+        targetSlot = roleSlots.find((slot) => !slot.hero_id && !slot.hero_owner_id)
+      }
+
+      if (
+        !targetSlot &&
+        roleSlots.length > 0 &&
+        activeSlots != null &&
+        activeSlots > 0 &&
+        !alreadyOccupyingSlot &&
+        !alreadyInRole
+      ) {
+        alert('사용 가능한 슬롯을 찾지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        return { ok: false }
+      }
+
       const payload = {
         game_id: gameId,
         hero_id: myHero.id,
@@ -428,11 +607,39 @@ export function useGameRoom(
         return { ok: false, error }
       }
 
+      if (targetSlot) {
+        const claimResult = await claimSlotForParticipant({
+          gameId,
+          slot: targetSlot,
+          heroId: myHero.id,
+          ownerId: user.id,
+        })
+
+        if (claimResult.ok) {
+          setSlots((prev) =>
+            prev.map((slot) => {
+              if (slot.id !== targetSlot.id) return slot
+              return {
+                ...slot,
+                hero_id: myHero.id,
+                hero_owner_id: user.id,
+                updated_at: new Date().toISOString(),
+              }
+            }),
+          )
+        } else {
+          console.warn('슬롯 점유 실패:', claimResult.error)
+          await refreshSlots()
+        }
+      } else {
+        await refreshSlots()
+      }
+
       await refreshParticipants()
       await refreshBattles()
       return { ok: true }
     },
-    [gameId, myHero, participants, refreshBattles, refreshParticipants, roles, user]
+    [gameId, myHero, participants, refreshBattles, refreshParticipants, refreshSlots, roles, slots, user]
   )
 
   const deleteRoom = useCallback(async () => {
@@ -492,10 +699,55 @@ export function useGameRoom(
     return fallbackMinimum
   }, [fallbackMinimum, requiredSlots])
 
-  const canStart = useMemo(
-    () => participants.length >= minimumParticipants,
-    [minimumParticipants, participants.length],
-  )
+  const canStart = useMemo(() => {
+    if (participants.length < minimumParticipants) {
+      return false
+    }
+
+    const roleList = Array.isArray(roles) ? roles : []
+    if (!roleList.length) {
+      return participants.length >= minimumParticipants
+    }
+
+    const hasSlotSummary = slotSummary && slotSummary.size > 0
+
+    for (const roleMeta of roleList) {
+      const roleName =
+        typeof roleMeta === 'string'
+          ? roleMeta.trim()
+          : typeof roleMeta?.name === 'string'
+            ? roleMeta.name.trim()
+            : ''
+
+      if (!roleName) {
+        continue
+      }
+
+      const rawCapacity = Number(roleMeta?.slot_count ?? roleMeta?.slotCount ?? roleMeta?.capacity)
+      const requiredCount = Number.isFinite(rawCapacity) && rawCapacity > 0 ? rawCapacity : null
+      const participantCount = participantsByRole.get(roleName) || 0
+      const summaryEntry = slotSummary?.get(roleName) || null
+      const occupiedCount = summaryEntry ? Math.max(summaryEntry.occupied, participantCount) : participantCount
+
+      if (requiredCount != null) {
+        if (occupiedCount < requiredCount) {
+          return false
+        }
+        continue
+      }
+
+      if (hasSlotSummary) {
+        const activeCount = summaryEntry?.active ?? 0
+        if (activeCount > 0 && occupiedCount < activeCount) {
+          return false
+        }
+      } else if (participantCount === 0) {
+        return false
+      }
+    }
+
+    return true
+  }, [minimumParticipants, participants.length, participantsByRole, roles, slotSummary])
 
   const isOwner = useMemo(() => {
     if (!user || !game) return false
@@ -511,6 +763,7 @@ export function useGameRoom(
       game,
       roles,
       participants,
+      slots,
       myHero,
       recentBattles,
       deleting,
@@ -526,6 +779,7 @@ export function useGameRoom(
       selectHero,
       joinGame,
       deleteRoom,
+      refreshSlots,
       refreshParticipants,
       refreshBattles,
     },
