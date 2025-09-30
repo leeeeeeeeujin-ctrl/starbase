@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 
 import useMatchQueue from './hooks/useMatchQueue'
 import styles from './AutoMatchProgress.module.css'
+import { supabase } from '../../lib/supabase'
 
 const HERO_BLOCKER_MESSAGE = '사용할 캐릭터를 선택해 주세요.'
 const ROLE_BLOCKER_MESSAGE = '참가할 역할 정보를 불러오고 있습니다.'
@@ -98,6 +99,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const [confirmationRemaining, setConfirmationRemaining] = useState(
     CONFIRMATION_WINDOW_SECONDS,
   )
+  const [confirming, setConfirming] = useState(false)
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
     state.lockedRole,
@@ -166,12 +168,68 @@ export default function AutoMatchProgress({ gameId, mode }) {
     }, 1000)
   }, [clearConfirmationTimers, handleConfirmationTimeout])
 
-  const handleConfirmMatch = useCallback(() => {
-    if (confirmationState !== 'counting') return
-    clearConfirmationTimers()
-    setConfirmationState('confirmed')
-    setJoinError('')
-  }, [clearConfirmationTimers, confirmationState])
+  const handleConfirmMatch = useCallback(async () => {
+    if (confirmationState !== 'counting' || confirming) return
+
+    setConfirming(true)
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        throw sessionError
+      }
+      const token = sessionData?.session?.access_token
+      if (!token) {
+        throw new Error('세션 정보를 확인하지 못했습니다.')
+      }
+
+      const response = await fetch('/api/rank/start-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          game_id: gameId,
+          mode,
+          role: roleName,
+          match_code: state.match?.matchCode || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        const message =
+          payload?.error || payload?.detail || '전투를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        setJoinError(message)
+        return
+      }
+
+      const payload = await response.json().catch(() => ({}))
+      if (!payload?.ok) {
+        const message =
+          payload?.error || '전투를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        setJoinError(message)
+        return
+      }
+
+      clearConfirmationTimers()
+      setConfirmationState('confirmed')
+      setJoinError('')
+    } catch (error) {
+      console.error('세션 시작 실패:', error)
+      setJoinError('전투를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setConfirming(false)
+    }
+  }, [
+    clearConfirmationTimers,
+    confirmationState,
+    confirming,
+    gameId,
+    mode,
+    roleName,
+    state.match?.matchCode,
+  ])
 
   useEffect(() => {
     latestStatusRef.current = state.status
@@ -510,8 +568,13 @@ export default function AutoMatchProgress({ gameId, mode }) {
         ) : null}
         {confirmationState === 'counting' ? (
           <div className={styles.confirmArea}>
-            <button type="button" className={styles.confirmButton} onClick={handleConfirmMatch}>
-              전투 시작하기
+            <button
+              type="button"
+              className={styles.confirmButton}
+              onClick={handleConfirmMatch}
+              disabled={confirming}
+            >
+              {confirming ? '준비 중…' : '전투 시작하기'}
               <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
             </button>
             <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>

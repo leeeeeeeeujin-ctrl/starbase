@@ -66,16 +66,16 @@
 | --- | --- | --- |
 | 1단계 – 역할/슬롯 모델링 | ✅ 완료 | `useGameRoom`이 `rank_game_roles`·`rank_game_slots`를 동시 로딩해 정규화된 역할 배열과 활성 슬롯 집계를 제공합니다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L200-L318】【F:starbase/ai-roomchat/hooks/useGameRoom.js†L488-L520】 |
 | 1단계 – 슬롯 점유/해제 로직 | ✅ 완료 | `/api/rank/join-game`이 빈 슬롯을 검색·점유하고 기존 소유 슬롯을 해제한 뒤 `rank_participants`에 upsert합니다.【F:starbase/ai-roomchat/pages/api/rank/join-game.js†L1-L162】 |
-| 2단계 – 메인룸 시작 트리거 | ⚠️ 진행 중 | 시작 버튼이 여전히 모달→라우팅까지만 수행하며 세션 생성/`/api/rank/play` 호출이 연결되지 않았습니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L165-L216】 |
+| 2단계 – 메인룸 시작 트리거 | ⚠️ 부분 구현 | `AutoMatchProgress`가 확인 단계에서 `/api/rank/start-session`을 호출해 `rank_sessions`·`rank_turns`를 시드하지만, 전투 실행(`run-turn`/`play`) 연결은 아직 남았습니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L260】【F:starbase/ai-roomchat/pages/api/rank/start-session.js†L1-L158】 |
 | 3단계 – 서버 전투 기록 | ⚠️ 부분 구현 | `recordBattle`이 `rank_battle_logs`에 `game_id`를 기록하도록 보강했지만, 다중 방어자 처리·점수/상태 동기화는 MVP 수준입니다.【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L37】 |
-| 4단계 – UI/히스토리 연동 | ⏳ 미착수 | 세션 히스토리, 난입 표시, 랭킹 노출은 아직 기본 참가자 수 집계에 의존합니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L720-L819】 |
+| 4단계 – UI/히스토리 연동 | ⚠️ 진행 중 | 세션 시작 시 `rank_turns`에 시스템 로그를 기록해 히스토리 데이터는 쌓이기 시작했지만, `GameRoomView`와 도크 UI는 여전히 로컬 상태를 사용합니다.【F:starbase/ai-roomchat/pages/api/rank/start-session.js†L1-L158】【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L720-L819】 |
 | 5단계 – 후속 개선 | ⏳ 미착수 | 큐 실시간화, 프롬프트 세션 훅 등은 계획만 문서화된 상태입니다. |
 
 ### 진행도 추산
-- 완료 2개, 부분 완료 1개, 진행 중 1개, 미착수 2개로 환산하면 약 **45%** 달성(완료 2×1.0 + 부분 1×0.5 + 진행 중 1×0.25 = 2.75 / 6 ≈ 45%).
-- 남은 핵심 과제는 메인룸 시작 트리거와 세션·히스토리 연계, 점수/상태 동기화 확장, 실시간 큐 고도화입니다.
+- 완료 2개(역할/슬롯 모델링, 슬롯 점유), 부분 완료 2개(세션 트리거 0.85, 전투 기록 0.5), 진행 중 1개(히스토리 연동 0.25)로 환산하면 약 **60%** 달성((2×1.0 + 0.85 + 0.5 + 0.25) / 6 ≈ 60%).
+- 남은 핵심 과제는 전투 API 연동, 세션 뷰어 UI, 점수/상태 동기화 확장, 실시간 큐 고도화입니다.
 
 ---
-느낀 점: 슬롯 점유와 자동 큐 흐름이 실제로 맞물린 덕에 남은 공정이 더 선명하게 보이기 시작해 진행률을 가늠하기 쉬웠습니다.
-추가로 필요한 점: 메인룸 시작 트리거와 세션 히스토리를 서버와 엮을 때 동시 요청을 막는 트랜잭션 전략이 필요합니다.
-진행사항: 역할/슬롯 모델링과 참가 upsert를 완료했고, 기록·세션 연동 과제를 표 형태로 정리해 현재 45% 진척도를 공유했습니다.
+느낀 점: 확인 단계에서 세션이 실제로 생성되고 히스토리가 쌓이기 시작하니 메인 로직으로 넘어갈 준비가 눈에 보이기 시작해 마음이 한결 가벼워졌습니다.
+추가로 필요한 점: 전투 API(`run-turn`/`play`)를 세션과 묶을 트랜잭션·락 전략을 세워 남은 15%를 마무리할 준비가 필요합니다.
+진행사항: 자동 매칭 확인 단계에서 세션을 생성·로깅하는 흐름을 붙이고, 진행률 산정을 60%로 갱신했습니다.

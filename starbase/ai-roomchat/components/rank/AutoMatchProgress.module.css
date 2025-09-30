@@ -91,6 +91,14 @@
   box-shadow: 0 10px 24px rgba(56, 189, 248, 0.45);
 }
 
+.confirmButton:disabled,
+.confirmButton[aria-disabled='true'] {
+  cursor: default;
+  opacity: 0.65;
+  transform: none;
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
+}
+
 .confirmCountdown {
   display: inline-flex;
   align-items: center;
