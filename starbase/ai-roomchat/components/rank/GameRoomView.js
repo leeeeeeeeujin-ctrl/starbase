@@ -74,7 +74,7 @@ function TurnTimerVotePanel({ value, onChange, voteSummary }) {
   return (
     <div className={styles.timerVoteCard}>
       <div className={styles.timerVoteHeader}>
-        <h3 className={styles.timerVoteTitle}>턴 제한 투표</h3>
+        <h3 className={styles.timerVoteTitle}>다음 프롬프트까지 대기 시간 투표</h3>
         <span className={styles.timerVoteTag}>
           {currentValue ? `${currentValue}초 선택됨` : '선택 대기 중'}
         </span>
@@ -100,7 +100,9 @@ function TurnTimerVotePanel({ value, onChange, voteSummary }) {
         })}
       </div>
       <p className={styles.timerVoteSummaryText}>{summaryText}</p>
-      <p className={styles.timerVoteHint}>동률이 나오면 무작위로 결정됩니다.</p>
+      <p className={styles.timerVoteHint}>
+        동률이 되면 최다 득표 조합 중 무작위로 선택되며, 결정된 시간이 턴마다 적용됩니다.
+      </p>
     </div>
   )
 }

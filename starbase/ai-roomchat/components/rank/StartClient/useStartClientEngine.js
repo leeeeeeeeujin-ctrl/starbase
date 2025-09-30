@@ -508,6 +508,7 @@ export function useStartClientEngine(gameId) {
         })
 
         const promptText = compiled.text
+        const variableRulesText = compiled.variableRules || ''
         if (compiled.pickedSlot != null) {
           visitedSlotIds.current.add(String(compiled.pickedSlot))
         }
@@ -596,7 +597,7 @@ export function useStartClientEngine(gameId) {
           public: false,
           includeInAi: true,
           ...audiencePayload,
-          meta: { slotIndex },
+          meta: { slotIndex, variableRules: variableRulesText },
         })
         const responseEntry = history.push({
           role: historyRole,
@@ -652,6 +653,7 @@ export function useStartClientEngine(gameId) {
             next: chosenEdge?.to || null,
             action: chosenEdge?.data?.action || 'continue',
             actors: resolvedActorNames,
+            variableRules: variableRulesText,
           },
         ])
 

@@ -32,10 +32,10 @@
 6. **게임 검색 패널 구성**: `GameSearchPanel`은 좌측 검색/정렬 컬럼과 우측 상세 패널로 나뉘어 `GameDetail`에 참가자·역할 데이터를 전달합니다.【F:starbase/ai-roomchat/components/lobby/GameSearchPanel/index.js†L1-L58】
 7. **참여 & 역할 지정**: `GameDetail`은 이미 참여 중이면 즉시 입장시키고, 아니라면 가장 여유 있는 역할을 기본 선택한 뒤 `참여하기` 버튼으로 `onJoinGame` 실행 후 `/rank/[id]` 이동을 트리거합니다.【F:starbase/ai-roomchat/components/lobby/GameSearchPanel/GameDetail.js†L38-L182】
 8. **메인룸 진입**: `/rank/[id]`는 `useGameRoom`으로 게임/참여자/역할을 불러와 `GameRoomView`에 넘기고, 스타트 버튼을 누르면 `GameStartModeModal`을 띄웁니다. 모달에서 저장한 프리셋은 `rank.start.*` 세션 스토리지 키로 보존합니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L22-L263】
-9. **메인룸 탭과 준비 UI**: `GameRoomView`는 `메인 룸`·`캐릭터 정보`·`랭킹` 탭과 턴 제한 투표, 시작 버튼 등을 렌더링해 방장을 위한 준비 화면을 구성합니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L55-L152】
-10. **모드/키/타이머 설정**: `GameStartModeModal`은 API 버전·API 키 입력 필드와 턴 제한 투표, 솔로·듀오·캐주얼 옵션을 한 번에 선택할 수 있도록 하고, 확인 시 어떤 모드를 택했는지 콜백으로 돌려줍니다.【F:starbase/ai-roomchat/components/rank/GameStartModeModal.js†L1-L205】【F:starbase/ai-roomchat/components/rank/GameStartModeModal.js†L200-L399】
+9. **메인룸 탭과 준비 UI**: `GameRoomView`는 `메인 룸`·`캐릭터 정보`·`랭킹` 탭과 “다음 프롬프트까지 대기 시간” 투표, 시작 버튼 등을 렌더링해 방장을 위한 준비 화면을 구성합니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L55-L165】
+10. **모드/키/타이머 설정**: `GameStartModeModal`은 API 버전·API 키 입력 필드와 대기 시간 투표, 솔로·듀오·캐주얼 옵션을 한 번에 선택할 수 있도록 하고, 확인 시 어떤 모드를 택했는지 콜백으로 돌려줍니다.【F:starbase/ai-roomchat/components/rank/GameStartModeModal.js†L1-L318】【F:starbase/ai-roomchat/components/rank/GameStartModeModal.js†L200-L399】
 11. **매칭 페이지 라우팅**: 모달 확인을 받으면 `/rank/[id]` 페이지가 솔로·듀오·캐주얼(매칭/사설)·시나리오 실행(`/start`) 경로 중 하나로 이동시켜 각 모드 전용 클라이언트를 띄울 준비를 합니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L191-L215】
-12. **본 게임 실행**: `/rank/[id]/start`는 동적 로딩된 `StartClient`를 불러와 게임 번들을 실행하며, `useStartClientEngine`이 API 키/버전 상태를 유지하고 로딩 완료 시 `handleStart()`로 전투를 자동 개시합니다.【F:starbase/ai-roomchat/pages/rank/[id]/start.js†L1-L4】【F:starbase/ai-roomchat/components/rank/StartClient/index.js†L74-L174】
+12. **본 게임 실행**: `/rank/[id]/start`는 동적 로딩된 `StartClient`를 불러와 게임 번들을 실행하며, `useStartClientEngine`이 API 키/버전 상태를 유지하고 로딩 완료 시 `handleStart()`로 전투를 자동 개시합니다. 노드 템플릿에서 추출한 변수 규칙은 매 턴 로그와 시스템 프롬프트 메타에 함께 기록되어 프롬프트 제작기에서 정의한 지시 사항을 그대로 AI 호출에 반영합니다.【F:starbase/ai-roomchat/pages/rank/[id]/start.js†L1-L4】【F:starbase/ai-roomchat/components/rank/StartClient/index.js†L74-L174】【F:starbase/ai-roomchat/components/rank/StartClient/useStartClientEngine.js†L400-L690】
 
 ## 5. 랭크 허브 & 게임룸
 | 경로 | 주요 상태 / 훅 | 공용 스토리지 & 일관성 포인트 |

@@ -50,7 +50,7 @@
 아래 섹션은 `/rank/[id]`에서 모드를 선택했을 때 어떤 화면과 상태 흐름이 이어지는지, 현재 코드가 암시하는 의도를 정리한 것입니다.
 
 ### 스타트 모달 → 모드별 경로
-`GameStartModeModal`에서 모드를 고른 뒤에는 `/rank/[id].js`가 세션 프리셋(`rank.start.*`)을 저장하고 솔로·듀오·캐주얼 매칭/사설 방/전투 실행 화면으로 이동하도록 라우팅합니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L174-L215】 각 경로는 전용 페이지와 클라이언트를 갖추어 진입과 동시에 자동 참가 시퀀스를 시작합니다.
+`GameStartModeModal`에서 모드를 고른 뒤에는 `/rank/[id].js`가 세션 프리셋(`rank.start.*`)을 저장하고 솔로·듀오·캐주얼 매칭/사설 방/전투 실행 화면으로 이동하도록 라우팅합니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L174-L215】 각 경로는 전용 페이지와 클라이언트를 갖추어 진입과 동시에 자동 참가 시퀀스를 시작합니다. 모달 내 “다음 프롬프트까지 대기 시간” 투표는 15·30·60·120·240초 옵션을 공유 세션 키(`rank.start.turnTimer`)에 저장하고, 동률이면 해당 옵션들 중 무작위로 선정해 전투 화면 전체가 같은 간격으로 턴을 넘기도록 만듭니다.【F:starbase/ai-roomchat/components/rank/GameStartModeModal.js†L1-L318】【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L55-L165】
 
 ### 로비 → 게임 선택 → 매칭 페이지 연결 상태
 1. **로비에서 게임 선택**: `/lobby`는 `GameSearchPanel`과 `useGameBrowser`를 통해 게임을 고른 뒤 `handleEnterGame`으로 `/rank/[id]`로 이동합니다.【F:starbase/ai-roomchat/pages/lobby.js†L40-L143】

@@ -1,4 +1,4 @@
-const TURN_TIMER_VALUES = [15, 30, 60, 120, 180]
+const TURN_TIMER_VALUES = [15, 30, 60, 120, 240]
 
 export const TURN_TIMER_OPTIONS = TURN_TIMER_VALUES.map((value) => ({
   value,

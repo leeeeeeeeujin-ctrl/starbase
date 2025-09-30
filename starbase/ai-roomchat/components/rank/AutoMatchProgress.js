@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
-const BROKEN_BUILD_SENTINEL = ;
-
 import useMatchQueue from './hooks/useMatchQueue'
 import styles from './AutoMatchProgress.module.css'
 
