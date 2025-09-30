@@ -4,6 +4,7 @@ import {
   loadHeroesByIds,
   loadParticipantPool,
   loadQueueEntries,
+  loadRoleStatusCounts,
   markAssignmentsMatched,
   runMatching,
   flattenAssignmentMembers,
@@ -20,6 +21,68 @@ function mapToPlain(map) {
   const plain = {}
   if (!map || typeof map.forEach !== 'function') return plain
   map.forEach((value, key) => {
+    plain[key] = value
+  })
+  return plain
+}
+
+function shuffle(entries) {
+  for (let index = entries.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    const tmp = entries[index]
+    entries[index] = entries[swapIndex]
+    entries[swapIndex] = tmp
+  }
+  return entries
+}
+
+function parseRules(raw) {
+  if (!raw) return {}
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed
+      }
+    } catch (err) {
+      console.warn('rules parse failed:', err)
+      return {}
+    }
+    return {}
+  }
+  if (typeof raw === 'object') {
+    return raw
+  }
+  return {}
+}
+
+function determineBrawlVacancies(roles, statusMap) {
+  const vacancies = []
+  if (!Array.isArray(roles) || !(statusMap instanceof Map)) {
+    return vacancies
+  }
+  roles.forEach((role) => {
+    if (!role) return
+    const name = typeof role.name === 'string' ? role.name.trim() : ''
+    if (!name) return
+    const slotCountRaw = role.slot_count ?? role.slotCount ?? role.capacity
+    const slotCount = Number(slotCountRaw)
+    if (!Number.isFinite(slotCount) || slotCount <= 0) return
+    const bucket = statusMap.get(name) || { active: 0, defeated: 0 }
+    const activeCount = Number(bucket.active) || 0
+    const defeatedCount = Number(bucket.defeated) || 0
+    const vacancy = slotCount - activeCount
+    if (vacancy > 0 && defeatedCount > 0) {
+      vacancies.push({ name, slot_count: vacancy, defeated: defeatedCount })
+    }
+  })
+  return vacancies
+}
+
+function mapCountsToPlain(statusMap) {
+  const plain = {}
+  if (!(statusMap instanceof Map)) return plain
+  statusMap.forEach((value, key) => {
     plain[key] = value
   })
   return plain
@@ -44,13 +107,65 @@ export default async function handler(req, res) {
     )
     if (gameError) throw gameError
 
-    const [roles, queueResult, participantPool] = await Promise.all([
+    const rules = parseRules(gameRow?.rules)
+    const brawlEnabled = rules?.brawl_rule === 'allow-brawl'
+
+    const [roles, queueResult, participantPool, roleStatusMap] = await Promise.all([
       loadActiveRoles(supabase, gameId),
       loadQueueEntries(supabase, { gameId, mode }),
       gameRow?.realtime_match ? Promise.resolve([]) : loadParticipantPool(supabase, gameId),
+      brawlEnabled ? loadRoleStatusCounts(supabase, gameId) : Promise.resolve(new Map()),
     ])
 
-    const queue = gameRow?.realtime_match ? queueResult : queueResult.concat(participantPool)
+    let queue = queueResult
+
+    if (brawlEnabled) {
+      const brawlVacancies = determineBrawlVacancies(roles, roleStatusMap)
+      if (brawlVacancies.length) {
+        const brawlResult = runMatching({ mode, roles: brawlVacancies, queue: queueResult })
+        if (brawlResult.ready) {
+          const matchCode = generateMatchCode()
+          await markAssignmentsMatched(supabase, {
+            assignments: brawlResult.assignments,
+            gameId,
+            mode,
+            matchCode,
+          })
+
+          const members = flattenAssignmentMembers(brawlResult.assignments)
+          const heroIds = members.map((member) => member.hero_id || member.heroId)
+          const heroMap = await loadHeroesByIds(supabase, heroIds)
+
+          return res.status(200).json({
+            ready: true,
+            assignments: brawlResult.assignments,
+            totalSlots: brawlResult.totalSlots,
+            maxWindow: brawlResult.maxWindow || 0,
+            matchCode,
+            heroMap: mapToPlain(heroMap),
+            matchType: 'brawl',
+            brawlVacancies,
+            roleStatus: mapCountsToPlain(roleStatusMap),
+          })
+        }
+      }
+    }
+
+    if (!gameRow?.realtime_match) {
+      const ownersInQueue = new Set(
+        queueResult.map((row) => row?.owner_id || row?.ownerId).filter(Boolean),
+      )
+      const filteredPool = participantPool.filter((row) => {
+        const ownerId = row?.owner_id || row?.ownerId
+        if (!ownerId) return false
+        if (ownersInQueue.has(ownerId)) {
+          return false
+        }
+        return true
+      })
+
+      queue = queueResult.concat(shuffle(filteredPool.slice()))
+    }
 
     const result = runMatching({ mode, roles, queue })
 
@@ -82,6 +197,7 @@ export default async function handler(req, res) {
       totalSlots: result.totalSlots,
       maxWindow: result.maxWindow || 0,
       matchCode,
+      matchType: 'standard',
       heroMap: mapToPlain(heroMap),
     })
   } catch (error) {

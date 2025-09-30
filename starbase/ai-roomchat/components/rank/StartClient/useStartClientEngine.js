@@ -115,7 +115,12 @@ export function useStartClientEngine(gameId) {
   const [viewerId, setViewerId] = useState(null)
   const [turnDeadline, setTurnDeadline] = useState(null)
   const [timeRemaining, setTimeRemaining] = useState(null)
-  const [activeHeroAssets, setActiveHeroAssets] = useState({ backgrounds: [], bgmUrl: null })
+  const [activeHeroAssets, setActiveHeroAssets] = useState({
+    backgrounds: [],
+    bgmUrl: null,
+    bgmDuration: null,
+    audioProfile: null,
+  })
   const [activeActorNames, setActiveActorNames] = useState([])
   const [turnTimerSeconds] = useState(() => {
     if (typeof window === 'undefined') return 60
@@ -123,6 +128,8 @@ export function useStartClientEngine(gameId) {
     if (Number.isFinite(stored) && stored > 0) return stored
     return 60
   })
+  const [consentedOwners, setConsentedOwners] = useState([])
+  const [startingSession, setStartingSession] = useState(false)
 
   const rememberActiveSession = useCallback(
     (payload = {}) => {
@@ -190,6 +197,7 @@ export function useStartClientEngine(gameId) {
 
   const visitedSlotIds = useRef(new Set())
   const apiVersionLock = useRef(null)
+  const advanceIntentRef = useRef(null)
 
   useEffect(() => {
     if (!gameId) return
@@ -343,10 +351,24 @@ export function useStartClientEngine(gameId) {
         .filter(Boolean)
       const bgmSource = matchedEntries.find((entry) => entry.hero?.bgm_url)
 
+      const audioProfile = bgmSource
+        ? {
+            heroId: bgmSource.hero?.id || null,
+            heroName: bgmSource.hero?.name || '',
+            bgmUrl: bgmSource.hero?.bgm_url || null,
+            bgmDuration: Number(bgmSource.hero?.bgm_duration_seconds) || null,
+            equalizer: null,
+            reverb: null,
+            compressor: null,
+          }
+        : null
+
       return {
         backgrounds,
-        bgmUrl: bgmSource?.hero?.bgm_url || null,
+        bgmUrl: audioProfile?.bgmUrl || null,
+        bgmDuration: audioProfile?.bgmDuration || null,
         actorNames: resolvedNames,
+        audioProfile,
       }
     },
     [heroLookup],
@@ -354,10 +376,13 @@ export function useStartClientEngine(gameId) {
 
   const updateHeroAssets = useCallback(
     (names, fallbackContext) => {
-      const { backgrounds, bgmUrl, actorNames } = resolveHeroAssets(names, fallbackContext)
+      const { backgrounds, bgmUrl, bgmDuration, actorNames, audioProfile } =
+        resolveHeroAssets(names, fallbackContext)
       setActiveHeroAssets({
         backgrounds,
         bgmUrl,
+        bgmDuration,
+        audioProfile,
       })
       setActiveActorNames(actorNames)
     },
@@ -371,6 +396,35 @@ export function useStartClientEngine(gameId) {
       })),
     [participants],
   )
+  const eligibleOwnerIds = useMemo(() => {
+    if (preflight) return []
+    if (!game?.realtime_match) return []
+    if (!Array.isArray(participants) || participants.length === 0) return []
+    const defeated = new Set(['defeated', 'lost', 'dead', 'eliminated', 'retired', 'out'])
+    const owners = []
+    participants.forEach((participant) => {
+      const ownerId = participant?.owner_id || participant?.ownerId || null
+      if (!ownerId) return
+      const status = String(participant?.status || '').toLowerCase()
+      if (defeated.has(status)) return
+      owners.push(ownerId)
+    })
+    return Array.from(new Set(owners))
+  }, [game?.realtime_match, participants, preflight])
+  const consensusCount = useMemo(() => {
+    if (!eligibleOwnerIds.length) return 0
+    const eligibleSet = new Set(eligibleOwnerIds)
+    const agreed = new Set()
+    consentedOwners.forEach((ownerId) => {
+      if (eligibleSet.has(ownerId)) {
+        agreed.add(ownerId)
+      }
+    })
+    return agreed.size
+  }, [consentedOwners, eligibleOwnerIds])
+  const needsConsensus = !preflight && eligibleOwnerIds.length > 0
+  const viewerCanConsent = needsConsensus && viewerId ? eligibleOwnerIds.includes(viewerId) : false
+  const viewerHasConsented = viewerCanConsent && consentedOwners.includes(viewerId)
   const currentNode = useMemo(
     () => graph.nodes.find((node) => node.id === currentNodeId) || null,
     [graph.nodes, currentNodeId],
@@ -418,7 +472,22 @@ export function useStartClientEngine(gameId) {
     [currentActorContext, isUserActionSlot],
   )
 
-  const handleStart = useCallback(() => {
+  const viewerParticipant = useMemo(() => {
+    if (!viewerId) return null
+    return (
+      participants.find((participant) => {
+        const ownerId =
+          participant?.owner_id ||
+          participant?.ownerId ||
+          participant?.ownerID ||
+          participant?.owner?.id ||
+          null
+        return ownerId === viewerId
+      }) || null
+    )
+  }, [participants, viewerId])
+
+  const bootLocalSession = useCallback(() => {
     if (graph.nodes.length === 0) {
       setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
       return
@@ -465,6 +534,91 @@ export function useStartClientEngine(gameId) {
     updateHeroAssets,
     rememberActiveSession,
     turnTimerSeconds,
+  ])
+
+  const handleStart = useCallback(async () => {
+    if (graph.nodes.length === 0) {
+      setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
+      return
+    }
+
+    if (startingSession) {
+      return
+    }
+
+    if (!gameId) {
+      setStatusMessage('게임 정보를 찾을 수 없습니다.')
+      return
+    }
+
+    setStartingSession(true)
+    setStatusMessage('세션을 준비하는 중입니다…')
+
+    let sessionReady = false
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        throw sessionError
+      }
+
+      const token = sessionData?.session?.access_token
+      if (!token) {
+        throw new Error('세션 정보가 만료되었습니다. 다시 로그인해 주세요.')
+      }
+
+      const response = await fetch('/api/rank/start-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          game_id: gameId,
+          mode: game?.realtime_match ? 'realtime' : 'manual',
+          role: viewerParticipant?.role || null,
+          match_code: null,
+        }),
+      })
+
+      let payload = {}
+      try {
+        payload = await response.json()
+      } catch (error) {
+        payload = {}
+      }
+
+      if (!response.ok) {
+        const message = payload?.error || payload?.detail || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        throw new Error(message)
+      }
+
+      if (!payload?.ok) {
+        const message = payload?.error || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        throw new Error(message)
+      }
+      sessionReady = true
+    } catch (error) {
+      console.error('세션 준비 실패:', error)
+      const message =
+        error?.message || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+      setStatusMessage(message)
+    } finally {
+      setStartingSession(false)
+    }
+
+    if (!sessionReady) {
+      return
+    }
+
+    bootLocalSession()
+  }, [
+    bootLocalSession,
+    game?.realtime_match,
+    gameId,
+    graph.nodes,
+    startingSession,
+    viewerParticipant?.role,
   ])
 
   const advanceTurn = useCallback(
@@ -768,12 +922,72 @@ export function useStartClientEngine(gameId) {
       alert('수동 응답을 입력하세요.')
       return
     }
+    advanceIntentRef.current = null
+    setConsentedOwners([])
     advanceTurn(manualResponse.trim())
   }, [advanceTurn, manualResponse])
 
   const advanceWithAi = useCallback(() => {
-    advanceTurn(null)
-  }, [advanceTurn])
+    if (!needsConsensus) {
+      advanceIntentRef.current = null
+      setConsentedOwners([])
+      advanceTurn(null)
+      return
+    }
+    if (!viewerCanConsent) {
+      setStatusMessage('동의 대상인 참가자만 다음 턴 진행을 제안할 수 있습니다.')
+      return
+    }
+    const already = consentedOwners.includes(viewerId)
+    advanceIntentRef.current = { override: null }
+    if (!already) {
+      setConsentedOwners((prev) => [...prev, viewerId])
+    }
+    const futureCount = already
+      ? consensusCount
+      : Math.min(consensusCount + 1, eligibleOwnerIds.length)
+    setStatusMessage(`다음 턴 동의 ${futureCount}/${eligibleOwnerIds.length}명`)
+  }, [
+    advanceTurn,
+    consentedOwners,
+    consensusCount,
+    eligibleOwnerIds.length,
+    needsConsensus,
+    setStatusMessage,
+    viewerCanConsent,
+    viewerId,
+  ])
+
+  useEffect(() => {
+    if (!needsConsensus) return undefined
+    if (!advanceIntentRef.current) return undefined
+    if (!eligibleOwnerIds.length) return undefined
+    const eligibleSet = new Set(eligibleOwnerIds)
+    const agreed = new Set()
+    consentedOwners.forEach((ownerId) => {
+      if (eligibleSet.has(ownerId)) {
+        agreed.add(ownerId)
+      }
+    })
+    if (agreed.size >= eligibleSet.size) {
+      const intent = advanceIntentRef.current
+      advanceIntentRef.current = null
+      advanceTurn(intent?.override ?? null)
+    }
+    return undefined
+  }, [advanceTurn, consentedOwners, eligibleOwnerIds, needsConsensus])
+
+  useEffect(() => {
+    setConsentedOwners([])
+    advanceIntentRef.current = null
+  }, [turn])
+
+  useEffect(() => {
+    if (preflight) {
+      setConsentedOwners([])
+      advanceIntentRef.current = null
+    }
+  }, [preflight])
 
   return {
     loading,
@@ -796,6 +1010,7 @@ export function useStartClientEngine(gameId) {
     manualResponse,
     setManualResponse,
     isAdvancing,
+    isStarting: startingSession,
     handleStart,
     advanceWithAi,
     advanceWithManual,
@@ -806,5 +1021,14 @@ export function useStartClientEngine(gameId) {
     activeBackdropUrls: activeHeroAssets.backgrounds,
     activeActorNames,
     activeBgmUrl: activeHeroAssets.bgmUrl,
+    activeBgmDuration: activeHeroAssets.bgmDuration,
+    activeAudioProfile: activeHeroAssets.audioProfile,
+    consensus: {
+      required: eligibleOwnerIds.length,
+      count: consensusCount,
+      viewerEligible: viewerCanConsent,
+      viewerHasConsented,
+      active: needsConsensus,
+    },
   }
 }
