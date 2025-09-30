@@ -40,13 +40,7 @@ export function compileTemplate({
     out = `${out}\n\n[변수/규칙]\n${variableRules}`
   }
 
-  return {
-    text: out,
-    meta: {
-      pickedSlot: currentSlot,
-      variableRules,
-    },
-  }
+  return { text: out, meta: { pickedSlot: currentSlot } }
 }
 
 export function makeNodePrompt({
@@ -78,9 +72,5 @@ export function makeNodePrompt({
     currentSlot: slotHint,
   })
 
-  return {
-    text,
-    pickedSlot: meta?.pickedSlot ?? slotHint,
-    variableRules: meta?.variableRules || '',
-  }
+  return { text, pickedSlot: meta?.pickedSlot ?? slotHint }
 }

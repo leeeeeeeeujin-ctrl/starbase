@@ -1,9 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
-
-import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 
 import HeaderControls from './HeaderControls'
 import LogsPanel from './LogsPanel'
@@ -107,8 +105,6 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     canSubmitAction,
     activeBackdropUrls,
     activeBgmUrl,
-    activeAudioProfile,
-    activeHero,
   } = useStartClientEngine(resolvedGameId)
 
   const [timeoutNotice, setTimeoutNotice] = useState('')
@@ -124,8 +120,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
   }, [activeBackdropUrls, game?.image_url])
 
   const rootStyle = useMemo(() => buildBackgroundStyle(backgroundUrls), [backgroundUrls])
-  const audioManager = useMemo(() => getHeroAudioManager(), [])
-  const baselineAudioProfileRef = useRef(null)
+  const audioRef = useRef(null)
 
   const splitParticipants = useMemo(() => {
     const left = []
@@ -140,104 +135,24 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     return { left, right }
   }, [participants])
 
-  const applyAudioProfile = useCallback(
-    (profile) => {
-      if (!audioManager || !profile) return
-      if (Object.prototype.hasOwnProperty.call(profile, 'eqEnabled')) {
-        audioManager.setEqEnabled(profile.eqEnabled)
-      }
-      if (profile.equalizer) {
-        audioManager.setEqualizer(profile.equalizer)
-      }
-      if (Object.prototype.hasOwnProperty.call(profile, 'reverbEnabled')) {
-        audioManager.setReverbEnabled(profile.reverbEnabled)
-      }
-      if (profile.reverbDetail) {
-        audioManager.setReverbDetail(profile.reverbDetail)
-      }
-      if (Object.prototype.hasOwnProperty.call(profile, 'compressorEnabled')) {
-        audioManager.setCompressorEnabled(profile.compressorEnabled)
-      }
-      if (profile.compressorDetail) {
-        audioManager.setCompressorDetail(profile.compressorDetail)
-      }
-    },
-    [audioManager],
-  )
-
   useEffect(() => {
-    if (!audioManager) return undefined
-    if (!baselineAudioProfileRef.current) {
-      const snapshot = audioManager.getState()
-      baselineAudioProfileRef.current = {
-        eqEnabled: snapshot.eqEnabled,
-        equalizer: { ...snapshot.equalizer },
-        reverbEnabled: snapshot.reverbEnabled,
-        reverbDetail: { ...snapshot.reverbDetail },
-        compressorEnabled: snapshot.compressorEnabled,
-        compressorDetail: { ...snapshot.compressorDetail },
-      }
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
     }
+    if (!activeBgmUrl) return
+
+    const element = new Audio(activeBgmUrl)
+    element.loop = true
+    element.volume = 0.6
+    element.play().catch(() => {})
+    audioRef.current = element
 
     return () => {
-      audioManager.setEnabled(false, { resume: false })
-      audioManager.stop()
-      const baseline = baselineAudioProfileRef.current
-      if (baseline) {
-        applyAudioProfile(baseline)
-      }
+      element.pause()
+      audioRef.current = null
     }
-  }, [audioManager, applyAudioProfile])
-
-  useEffect(() => {
-    if (!audioManager) return
-    if (activeAudioProfile) {
-      applyAudioProfile(activeAudioProfile)
-    } else if (baselineAudioProfileRef.current) {
-      applyAudioProfile(baselineAudioProfileRef.current)
-    }
-  }, [audioManager, activeAudioProfile, applyAudioProfile])
-
-  useEffect(() => {
-    if (!audioManager) return undefined
-
-    if (!activeBgmUrl) {
-      audioManager.setEnabled(false, { resume: false })
-      audioManager.stop()
-      return undefined
-    }
-
-    const durationHint = Number.isFinite(activeHero?.bgm_duration_seconds)
-      ? activeHero.bgm_duration_seconds
-      : 0
-    let cancelled = false
-
-    audioManager
-      .loadHeroTrack({
-        heroId: activeHero?.id || null,
-        heroName: activeHero?.name || '',
-        trackUrl: activeBgmUrl,
-        duration: durationHint || 0,
-        autoPlay: true,
-        loop: true,
-      })
-      .then(() => {
-        if (cancelled) return
-        audioManager.setLoop(true)
-        audioManager.setEnabled(true)
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-    }
-  }, [
-    audioManager,
-    activeBgmUrl,
-    activeHero?.id,
-    activeHero?.name,
-    activeHero?.bgm_duration_seconds,
-  ])
+  }, [activeBgmUrl])
 
   useEffect(() => {
     if (preflight) {

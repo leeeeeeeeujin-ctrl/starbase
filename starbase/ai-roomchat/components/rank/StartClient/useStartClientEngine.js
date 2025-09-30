@@ -85,94 +85,6 @@ function buildUserActionPersona({ heroSlot, participant }) {
   }
 }
 
-function toNumber(value) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : null
-}
-
-function parseHeroAudioProfile(raw) {
-  if (!raw) return null
-
-  let payload = raw
-  if (typeof raw === 'string') {
-    try {
-      payload = JSON.parse(raw)
-    } catch (error) {
-      console.warn('Failed to parse hero audio profile:', error)
-      return null
-    }
-  }
-
-  if (!payload || typeof payload !== 'object') {
-    return null
-  }
-
-  const profile = {}
-
-  if (typeof payload.eqEnabled === 'boolean') {
-    profile.eqEnabled = payload.eqEnabled
-  }
-
-  if (payload.equalizer && typeof payload.equalizer === 'object') {
-    const eq = {}
-    const low = toNumber(payload.equalizer.low)
-    const mid = toNumber(payload.equalizer.mid)
-    const high = toNumber(payload.equalizer.high)
-    if (low != null) eq.low = low
-    if (mid != null) eq.mid = mid
-    if (high != null) eq.high = high
-    if (Object.keys(eq).length) {
-      profile.equalizer = eq
-    }
-  }
-
-  if (typeof payload.reverbEnabled === 'boolean') {
-    profile.reverbEnabled = payload.reverbEnabled
-  }
-
-  if (payload.reverbDetail && typeof payload.reverbDetail === 'object') {
-    const mix = toNumber(payload.reverbDetail.mix)
-    const decay = toNumber(payload.reverbDetail.decay)
-    const detail = {}
-    if (mix != null) detail.mix = mix
-    if (decay != null) detail.decay = decay
-    if (Object.keys(detail).length) {
-      profile.reverbDetail = detail
-    }
-  }
-
-  if (typeof payload.compressorEnabled === 'boolean') {
-    profile.compressorEnabled = payload.compressorEnabled
-  }
-
-  if (payload.compressorDetail && typeof payload.compressorDetail === 'object') {
-    const threshold = toNumber(payload.compressorDetail.threshold)
-    const ratio = toNumber(payload.compressorDetail.ratio)
-    const release = toNumber(payload.compressorDetail.release)
-    const detail = {}
-    if (threshold != null) detail.threshold = threshold
-    if (ratio != null) detail.ratio = ratio
-    if (release != null) detail.release = release
-    if (Object.keys(detail).length) {
-      profile.compressorDetail = detail
-    }
-  }
-
-  return Object.keys(profile).length ? profile : null
-}
-
-function extractHeroAudioProfile(hero) {
-  if (!hero) return null
-  if (hero.audioProfile && typeof hero.audioProfile === 'object') {
-    return hero.audioProfile
-  }
-  return (
-    parseHeroAudioProfile(
-      hero.audio_settings ?? hero.audio_profile ?? hero.audioProfile ?? hero.bgm_settings ?? null,
-    ) || null
-  )
-}
-
 export function useStartClientEngine(gameId) {
   const history = useMemo(() => createAiHistory(), [])
 
@@ -203,12 +115,7 @@ export function useStartClientEngine(gameId) {
   const [viewerId, setViewerId] = useState(null)
   const [turnDeadline, setTurnDeadline] = useState(null)
   const [timeRemaining, setTimeRemaining] = useState(null)
-  const [activeHeroAssets, setActiveHeroAssets] = useState({
-    backgrounds: [],
-    bgmUrl: null,
-    audioProfile: null,
-    primaryHero: null,
-  })
+  const [activeHeroAssets, setActiveHeroAssets] = useState({ backgrounds: [], bgmUrl: null })
   const [activeActorNames, setActiveActorNames] = useState([])
   const [turnTimerSeconds] = useState(() => {
     if (typeof window === 'undefined') return 60
@@ -415,9 +322,8 @@ export function useStartClientEngine(gameId) {
         }
       }
 
-      const fallbackHero = fallbackContext?.participant?.hero || null
-
       if (!matchedEntries.length) {
+        const fallbackHero = fallbackContext?.participant?.hero || null
         if (fallbackHero) {
           matchedEntries.push({
             hero: fallbackHero,
@@ -435,27 +341,11 @@ export function useStartClientEngine(gameId) {
       const backgrounds = matchedEntries
         .map((entry) => entry.hero?.background_url || entry.hero?.image_url || '')
         .filter(Boolean)
-      if (!backgrounds.length && fallbackHero) {
-        const fallbackBackground = fallbackHero.background_url || fallbackHero.image_url || ''
-        if (fallbackBackground) {
-          backgrounds.push(fallbackBackground)
-        }
-      }
-
       const bgmSource = matchedEntries.find((entry) => entry.hero?.bgm_url)
-      const fallbackBgmHero = fallbackHero?.bgm_url ? fallbackHero : null
-      const primaryHero =
-        bgmSource?.hero || matchedEntries[0]?.hero || fallbackBgmHero || fallbackHero || null
-
-      const audioProfileSource = matchedEntries.find((entry) => extractHeroAudioProfile(entry.hero))
-      const resolvedAudioProfile =
-        extractHeroAudioProfile(audioProfileSource?.hero) || extractHeroAudioProfile(fallbackHero)
 
       return {
         backgrounds,
-        bgmUrl: bgmSource?.hero?.bgm_url || fallbackBgmHero?.bgm_url || null,
-        audioProfile: resolvedAudioProfile,
-        primaryHero,
+        bgmUrl: bgmSource?.hero?.bgm_url || null,
         actorNames: resolvedNames,
       }
     },
@@ -464,13 +354,10 @@ export function useStartClientEngine(gameId) {
 
   const updateHeroAssets = useCallback(
     (names, fallbackContext) => {
-      const { backgrounds, bgmUrl, actorNames, audioProfile, primaryHero } =
-        resolveHeroAssets(names, fallbackContext)
+      const { backgrounds, bgmUrl, actorNames } = resolveHeroAssets(names, fallbackContext)
       setActiveHeroAssets({
         backgrounds,
         bgmUrl,
-        audioProfile,
-        primaryHero,
       })
       setActiveActorNames(actorNames)
     },
@@ -621,7 +508,6 @@ export function useStartClientEngine(gameId) {
         })
 
         const promptText = compiled.text
-        const variableRulesText = compiled.variableRules || ''
         if (compiled.pickedSlot != null) {
           visitedSlotIds.current.add(String(compiled.pickedSlot))
         }
@@ -710,7 +596,7 @@ export function useStartClientEngine(gameId) {
           public: false,
           includeInAi: true,
           ...audiencePayload,
-          meta: { slotIndex, variableRules: variableRulesText },
+          meta: { slotIndex },
         })
         const responseEntry = history.push({
           role: historyRole,
@@ -766,7 +652,6 @@ export function useStartClientEngine(gameId) {
             next: chosenEdge?.to || null,
             action: chosenEdge?.data?.action || 'continue',
             actors: resolvedActorNames,
-            variableRules: variableRulesText,
           },
         ])
 
@@ -919,8 +804,6 @@ export function useStartClientEngine(gameId) {
     currentActor: currentActorInfo,
     canSubmitAction,
     activeBackdropUrls: activeHeroAssets.backgrounds,
-    activeAudioProfile: activeHeroAssets.audioProfile,
-    activeHero: activeHeroAssets.primaryHero,
     activeActorNames,
     activeBgmUrl: activeHeroAssets.bgmUrl,
   }

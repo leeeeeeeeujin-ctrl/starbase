@@ -239,9 +239,9 @@ export default function GameStartModeModal({
         </section>
 
         <section className={styles.section}>
-          <h3 className={styles.sectionTitle}>다음 프롬프트까지 대기 시간</h3>
+          <h3 className={styles.sectionTitle}>턴 제한</h3>
           <p className={styles.timerHint}>
-            참가자 전원의 선택을 수집해 가장 많은 시간을 적용하며, 동률일 경우 최다 득표안 중 무작위로 결정합니다.
+            참가자 전원의 선택을 수집해 가장 많은 시간을 사용하며, 동률일 경우 무작위로 결정합니다.
           </p>
           <div className={styles.timerOptions}>
             {TURN_TIMER_OPTIONS.map((option) => {

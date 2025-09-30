@@ -27,19 +27,6 @@ function LogCard({ entry }) {
       <div style={{ color: 'rgba(226, 232, 240, 0.7)' }}>
         활성 변수: {entry.variables.length ? entry.variables.join(', ') : '없음'}
       </div>
-      {entry.variableRules ? (
-        <div
-          style={{
-            borderTop: '1px solid rgba(148, 163, 184, 0.25)',
-            paddingTop: 8,
-            fontSize: 12,
-            color: 'rgba(226, 232, 240, 0.75)',
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          변수 규칙 안내{':\n'}{entry.variableRules}
-        </div>
-      ) : null}
       <div style={{ color: 'rgba(226, 232, 240, 0.7)' }}>
         다음 노드: {entry.next ? entry.next : '없음'} ({entry.action || 'continue'})
       </div>

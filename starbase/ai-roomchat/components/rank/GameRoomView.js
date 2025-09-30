@@ -74,7 +74,7 @@ function TurnTimerVotePanel({ value, onChange, voteSummary }) {
   return (
     <div className={styles.timerVoteCard}>
       <div className={styles.timerVoteHeader}>
-        <h3 className={styles.timerVoteTitle}>다음 프롬프트까지 대기 시간 투표</h3>
+        <h3 className={styles.timerVoteTitle}>턴 제한 투표</h3>
         <span className={styles.timerVoteTag}>
           {currentValue ? `${currentValue}초 선택됨` : '선택 대기 중'}
         </span>
@@ -100,9 +100,7 @@ function TurnTimerVotePanel({ value, onChange, voteSummary }) {
         })}
       </div>
       <p className={styles.timerVoteSummaryText}>{summaryText}</p>
-      <p className={styles.timerVoteHint}>
-        동률이 되면 최다 득표 조합 중 무작위로 선택되며, 결정된 시간이 턴마다 적용됩니다.
-      </p>
+      <p className={styles.timerVoteHint}>동률이 나오면 무작위로 결정됩니다.</p>
     </div>
   )
 }
@@ -322,14 +320,13 @@ export default function GameRoomView({
   onDelete,
   isOwner = false,
   deleting = false,
+  startDisabled = false,
   recentBattles = [],
   turnTimerVote = null,
   turnTimerVotes = {},
   onVoteTurnTimer,
-  startDisabled = false,
 }) {
   const [joinLoading, setJoinLoading] = useState(false)
-  const [startLoading, setStartLoading] = useState(false)
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
   const [activeTab, setActiveTab] = useState(TABS[0].key)
   const touchStartRef = useRef(null)
@@ -726,16 +723,6 @@ export default function GameRoomView({
     }
   }
 
-  const handleStartClick = async () => {
-    if (!onStart || startDisabled || startLoading) return
-    setStartLoading(true)
-    try {
-      await onStart()
-    } finally {
-      setStartLoading(false)
-    }
-  }
-
   const handleShowMoreLogs = () => {
     setVisibleHeroLogs((prev) => prev + 10)
   }
@@ -811,26 +798,23 @@ export default function GameRoomView({
           >
             {alreadyJoined ? '참여 완료됨' : joinLoading ? '참여 중…' : `${currentRole || '역할'}로 참여하기`}
           </button>
-
-          {onStart ? (
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={handleStartClick}
-              disabled={startDisabled || startLoading}
-            >
-              {startLoading ? '시작 준비 중…' : '게임 시작'}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className={styles.ownerStartButton}
+            onClick={onStart}
+            disabled={startDisabled}
+          >
+            게임 시작
+          </button>
         </div>
 
         <p className={styles.capacityHint}>
           {canStart
-            ? '참가 조건이 충족되면 비슷한 점수의 참가자들로 자동 매칭이 진행됩니다.'
+            ? '게임을 시작하면 비슷한 점수의 참가자들이 자동으로 선발됩니다.'
             : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
         </p>
         <p className={styles.capacitySubHint}>
-          준비가 완료되면 자동으로 매칭이 이어집니다.
+          준비가 완료되면 누구나 게임을 시작해 매칭을 진행할 수 있습니다.
         </p>
 
         <TurnTimerVotePanel

@@ -55,8 +55,7 @@ export default function MakerEditorCanvas({
         zoomOnPinch
         zoomOnScroll
         panOnScroll
-        panOnDrag={[0, 1, 2]}
-        selectionOnDrag={false}
+        panOnDrag
         fitViewOptions={{ padding: 0.24, duration: 400 }}
         style={{ width: '100%', height: '100%', touchAction: 'none' }}
       >
