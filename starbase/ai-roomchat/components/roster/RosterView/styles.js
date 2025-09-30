@@ -19,12 +19,6 @@ const styles = {
     flexDirection: 'column',
     gap: 24,
   },
-  pageTopMarker: {
-    alignSelf: 'flex-start',
-    fontSize: 18,
-    fontWeight: 800,
-    color: '#f8fafc',
-  },
   header: {
     display: 'flex',
     flexDirection: 'column',

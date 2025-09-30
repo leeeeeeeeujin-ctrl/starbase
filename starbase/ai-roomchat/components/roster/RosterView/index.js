@@ -18,7 +18,6 @@ export default function RosterView({
   return (
     <div style={styles.page}>
       <div style={styles.wrapper}>
-        <div style={styles.pageTopMarker}>1</div>
         <header style={styles.header}>
           <div style={styles.topBanner}>
             <div style={styles.bannerRow}>
