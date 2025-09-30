@@ -56,6 +56,7 @@
 - [ ] 메인룸 `onStart` → `/api/rank/play` 호출, 성공 응답 UI 반영.
 - [ ] `/api/rank/play` → 슬롯 검증, 상대 매칭 개선, 난입 규칙 반영.
 - [ ] `recordBattle` → `game_id` 포함 및 점수/상태 업데이트 보강.
+  - `rank_battle_logs` 적재 시 `game_id`를 함께 저장하도록 수정했습니다. 점수/상태 동기화는 후속 단계에서 진행합니다.【F:starbase/ai-roomchat/lib/rank/persist.js†L4-L38】
 - [ ] 최근 전투 목록 UI를 실제 응답 구조에 맞춰 갱신.
 
 ## 6. 메인 게임 청사진 (UI, 프롬프트, 상태 흐름)
