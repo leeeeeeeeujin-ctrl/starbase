@@ -95,6 +95,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const confirmationTimerRef = useRef(null)
   const confirmationIntervalRef = useRef(null)
   const penaltyRedirectRef = useRef(null)
+  const joinRetryTimerRef = useRef(null)
   const [confirmationState, setConfirmationState] = useState('idle')
   const [confirmationRemaining, setConfirmationRemaining] = useState(
     CONFIRMATION_WINDOW_SECONDS,
@@ -301,8 +302,19 @@ export default function AutoMatchProgress({ gameId, mode }) {
     actions.joinQueue(roleName).then((result) => {
       if (!result?.ok) {
         setJoinError(result?.error || '대기열에 참가하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        if (joinRetryTimerRef.current) {
+          clearTimeout(joinRetryTimerRef.current)
+        }
+        joinRetryTimerRef.current = setTimeout(() => {
+          joinSignatureRef.current = ''
+          joinRetryTimerRef.current = null
+        }, 1500)
       } else {
         setJoinError('')
+        if (joinRetryTimerRef.current) {
+          clearTimeout(joinRetryTimerRef.current)
+          joinRetryTimerRef.current = null
+        }
       }
     })
   }, [actions, blockers, gameId, mode, roleName, state.heroId, state.status, state.viewerId])
@@ -428,6 +440,10 @@ export default function AutoMatchProgress({ gameId, mode }) {
       if (penaltyRedirectRef.current) {
         clearTimeout(penaltyRedirectRef.current)
         penaltyRedirectRef.current = null
+      }
+      if (joinRetryTimerRef.current) {
+        clearTimeout(joinRetryTimerRef.current)
+        joinRetryTimerRef.current = null
       }
       const latestConfirmation = latestConfirmationRef.current
       if (
