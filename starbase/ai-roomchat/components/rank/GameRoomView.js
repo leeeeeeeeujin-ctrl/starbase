@@ -315,12 +315,10 @@ export default function GameRoomView({
   myEntry = null,
   onBack,
   onJoin,
-  onStart,
   onOpenLeaderboard,
   onDelete,
   isOwner = false,
   deleting = false,
-  startDisabled = false,
   recentBattles = [],
   turnTimerVote = null,
   turnTimerVotes = {},
@@ -798,23 +796,15 @@ export default function GameRoomView({
           >
             {alreadyJoined ? '참여 완료됨' : joinLoading ? '참여 중…' : `${currentRole || '역할'}로 참여하기`}
           </button>
-          <button
-            type="button"
-            className={styles.ownerStartButton}
-            onClick={onStart}
-            disabled={startDisabled}
-          >
-            게임 시작
-          </button>
         </div>
 
         <p className={styles.capacityHint}>
           {canStart
-            ? '게임을 시작하면 비슷한 점수의 참가자들이 자동으로 선발됩니다.'
+            ? '참가 조건이 충족되면 비슷한 점수의 참가자들로 자동 매칭이 진행됩니다.'
             : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
         </p>
         <p className={styles.capacitySubHint}>
-          준비가 완료되면 누구나 게임을 시작해 매칭을 진행할 수 있습니다.
+          준비가 완료되면 자동으로 매칭이 이어집니다.
         </p>
 
         <TurnTimerVotePanel
