@@ -78,6 +78,7 @@
 }
 
 .rosterCard {
+  position: relative;
   display: grid;
   grid-template-columns: 72px 1fr;
   gap: 12px;
@@ -86,6 +87,23 @@
   border-radius: 18px;
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(148, 163, 184, 0.35);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease,
+    background 0.25s ease;
+}
+
+.rosterCardActive {
+  border-color: rgba(96, 165, 250, 0.85);
+  box-shadow: 0 10px 30px rgba(30, 64, 175, 0.35);
+  transform: translateY(-2px);
+}
+
+.rosterCardUserAction {
+  background: linear-gradient(
+    120deg,
+    rgba(30, 64, 175, 0.65) 0%,
+    rgba(15, 23, 42, 0.85) 45%,
+    rgba(30, 64, 175, 0.55) 100%
+  );
 }
 
 .rosterAvatar {
@@ -124,6 +142,32 @@
 .rosterStatus {
   font-size: 12px;
   color: rgba(226, 232, 240, 0.6);
+}
+
+.rosterStatusVictory {
+  color: rgba(52, 211, 153, 0.9);
+}
+
+.rosterStatusDefeated {
+  color: rgba(248, 113, 113, 0.85);
+}
+
+.rosterStatusRetired {
+  color: rgba(250, 204, 21, 0.85);
+}
+
+.rosterBadge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f8fafc;
+  background: rgba(59, 130, 246, 0.85);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
 }
 
 .rosterEmpty {

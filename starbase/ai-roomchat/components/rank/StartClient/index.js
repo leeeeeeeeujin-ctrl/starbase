@@ -45,7 +45,36 @@ function buildBackgroundStyle(urls) {
   }
 }
 
-function ParticipantTile({ participant }) {
+function normalizeStatus(status) {
+  const raw = typeof status === 'string' ? status.trim().toLowerCase() : ''
+  if (!raw) {
+    return { label: '진행 중', tone: 'neutral' }
+  }
+
+  if (['victory', 'won', 'winner', 'champion'].includes(raw)) {
+    return { label: '승리', tone: 'victory' }
+  }
+
+  if (['defeated', 'lost', 'dead', 'eliminated', 'out'].includes(raw)) {
+    return { label: '패배', tone: 'defeated' }
+  }
+
+  if (['retired', 'retreat', 'retreated', 'withdrawn'].includes(raw)) {
+    return { label: '탈락', tone: 'retired' }
+  }
+
+  if (['waiting', 'queued', 'standby', 'pending'].includes(raw)) {
+    return { label: '대기 중', tone: 'neutral' }
+  }
+
+  if (['active', 'alive', 'playing', 'in_progress'].includes(raw)) {
+    return { label: '진행 중', tone: 'neutral' }
+  }
+
+  return { label: status || '진행 중', tone: 'neutral' }
+}
+
+function ParticipantTile({ participant, isActive, isUserAction }) {
   if (!participant) {
     return null
   }
@@ -54,10 +83,30 @@ function ParticipantTile({ participant }) {
   const image = hero.image_url
   const name = hero.name || '이름 없음'
   const role = participant.role || '미지정'
-  const status = participant.status || '대기'
+  const { label: statusLabel, tone } = normalizeStatus(participant.status)
+
+  const cardClassNames = [styles.rosterCard]
+  if (isActive) {
+    cardClassNames.push(styles.rosterCardActive)
+    if (isUserAction) {
+      cardClassNames.push(styles.rosterCardUserAction)
+    }
+  }
+
+  const statusClassNames = [styles.rosterStatus]
+  if (tone === 'victory') {
+    statusClassNames.push(styles.rosterStatusVictory)
+  } else if (tone === 'defeated') {
+    statusClassNames.push(styles.rosterStatusDefeated)
+  } else if (tone === 'retired') {
+    statusClassNames.push(styles.rosterStatusRetired)
+  }
 
   return (
-    <li className={styles.rosterCard}>
+    <li className={cardClassNames.join(' ')}>
+      {isActive ? (
+        <span className={styles.rosterBadge}>{isUserAction ? '플레이어 턴' : 'AI 턴'}</span>
+      ) : null}
       {image ? (
         <img className={styles.rosterAvatar} src={image} alt={name} />
       ) : (
@@ -66,7 +115,7 @@ function ParticipantTile({ participant }) {
       <div className={styles.rosterMeta}>
         <span className={styles.rosterName}>{name}</span>
         <span className={styles.rosterRole}>{role}</span>
-        <span className={styles.rosterStatus}>{status}</span>
+        <span className={statusClassNames.join(' ')}>{statusLabel}</span>
       </div>
     </li>
   )
@@ -134,10 +183,11 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     const left = []
     const right = []
     participants.forEach((participant, index) => {
+      const entry = { participant, index }
       if (index % 2 === 0) {
-        left.push(participant)
+        left.push(entry)
       } else {
-        right.push(participant)
+        right.push(entry)
       }
     })
     return { left, right }
@@ -387,10 +437,14 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
             <h2 className={styles.rosterTitle}>왼쪽 슬롯</h2>
             <ul className={styles.rosterList}>
               {splitParticipants.left.length ? (
-                splitParticipants.left.map((participant) => (
+                splitParticipants.left.map(({ participant, index }) => (
                   <ParticipantTile
-                    key={participant.id || participant.hero_id}
+                    key={participant?.id || participant?.hero_id || index}
                     participant={participant}
+                    isActive={currentActor?.slotIndex === index}
+                    isUserAction={
+                      currentActor?.slotIndex === index && !!currentActor?.isUserAction
+                    }
                   />
                 ))
               ) : (
@@ -442,10 +496,14 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
             <h2 className={styles.rosterTitle}>오른쪽 슬롯</h2>
             <ul className={styles.rosterList}>
               {splitParticipants.right.length ? (
-                splitParticipants.right.map((participant) => (
+                splitParticipants.right.map(({ participant, index }) => (
                   <ParticipantTile
-                    key={participant.id || participant.hero_id}
+                    key={participant?.id || participant?.hero_id || `r-${index}`}
                     participant={participant}
+                    isActive={currentActor?.slotIndex === index}
+                    isUserAction={
+                      currentActor?.slotIndex === index && !!currentActor?.isUserAction
+                    }
                   />
                 ))
               ) : (
