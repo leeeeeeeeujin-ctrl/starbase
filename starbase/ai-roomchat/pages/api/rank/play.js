@@ -65,13 +65,38 @@ export default async function handler(req, res) {
                 : game.score_draw
 
     // 기록 및 점수 반영
-    const battleId = await recordBattle({
-      game, userId: user.id, myHeroIds: heroIds,
-      oppOwnerIds, oppHeroIds,
-      outcome, delta, prompt, aiText: ai.text
+    const record = await recordBattle({
+      game,
+      userId: user.id,
+      myHeroIds: heroIds,
+      oppOwnerIds,
+      oppHeroIds,
+      outcome,
+      delta,
+      prompt,
+      aiText: ai.text,
+      turnLogs: [
+        {
+          turn_no: 1,
+          prompt,
+          ai_response: ai.text,
+          meta: { outcome, mode: 'auto' },
+        },
+      ],
     })
 
-    return res.status(200).json({ ok: true, outcome, delta, battleId, text: ai.text })
+    return res.status(200).json({
+      ok: true,
+      outcome,
+      delta,
+      battleId: record.battleId,
+      text: ai.text,
+      participantStatus: {
+        attacker: record.attackerStatus,
+        defender: record.defenderStatus,
+        defenderOwners: record.defenderOwners,
+      },
+    })
   } catch (e) {
     return res.status(500).json({ error: 'server_error', detail: String(e).slice(0, 300) })
   }

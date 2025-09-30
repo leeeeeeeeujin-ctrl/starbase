@@ -68,13 +68,13 @@
 | 1단계 – 역할/슬롯 모델링 | ✅ 완료 | `useGameRoom`이 `rank_game_roles`·`rank_game_slots`를 동시 로딩해 정규화된 역할 배열과 활성 슬롯 집계를 제공합니다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L200-L318】【F:starbase/ai-roomchat/hooks/useGameRoom.js†L488-L520】 |
 | 1단계 – 슬롯 점유/해제 로직 | ✅ 완료 | `/api/rank/join-game`이 빈 슬롯을 검색·점유하고 기존 소유 슬롯을 해제한 뒤 `rank_participants`에 upsert합니다.【F:starbase/ai-roomchat/pages/api/rank/join-game.js†L1-L162】 |
 | 2단계 – 메인룸 시작 트리거 | ⚠️ 부분 구현 | `AutoMatchProgress`가 확인 단계에서 `/api/rank/start-session`을 호출해 `rank_sessions`·`rank_turns`를 시드하지만, 전투 실행(`run-turn`/`play`) 연결은 아직 남았습니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L260】【F:starbase/ai-roomchat/pages/api/rank/start-session.js†L1-L158】 |
-| 3단계 – 서버 전투 기록 | ⚠️ 부분 구현 | `recordBattle`이 `rank_battle_logs`에 `game_id`를 기록하도록 보강했지만, 다중 방어자 처리·점수/상태 동기화는 MVP 수준입니다.【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L37】 |
+| 3단계 – 서버 전투 기록 | ⚠️ 진행 중 | `recordBattle`이 다중 턴 로그를 저장하고 공격자 점수·상태를 갱신하지만, 다중 방어자 처리와 정교한 점수 반영은 추가 구현이 필요합니다.【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L189】 |
 | 4단계 – UI/히스토리 연동 | ⚠️ 진행 중 | 세션 시작 시 `rank_turns`에 시스템 로그를 기록해 히스토리 데이터는 쌓이기 시작했지만, `GameRoomView`와 도크 UI는 여전히 로컬 상태를 사용합니다.【F:starbase/ai-roomchat/pages/api/rank/start-session.js†L1-L158】【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L720-L819】 |
 | 5단계 – 후속 개선 | ⏳ 미착수 | 큐 실시간화, 프롬프트 세션 훅 등은 계획만 문서화된 상태입니다. |
 
 ### 진행도 추산
-- 완료 2개(역할/슬롯 모델링, 슬롯 점유), 부분 완료 2개(세션 트리거 0.85, 전투 기록 0.5), 진행 중 1개(히스토리 연동 0.25)로 환산하면 약 **60%** 달성((2×1.0 + 0.85 + 0.5 + 0.25) / 6 ≈ 60%).
-- 남은 핵심 과제는 전투 API 연동, 세션 뷰어 UI, 점수/상태 동기화 확장, 실시간 큐 고도화입니다.
+- 완료 2개(역할/슬롯 모델링, 슬롯 점유), 부분 완료 2개(세션 트리거 0.85, 전투 기록 0.7), 진행 중 1개(히스토리 연동 0.25)로 환산하면 약 **63%** 달성((2×1.0 + 0.85 + 0.7 + 0.25) / 6 ≈ 63%).
+- 남은 핵심 과제는 전투 API 연동, 세션 뷰어 UI, 다중 방어자 점수/상태 동기화, 실시간 큐 고도화입니다.
 
 ---
 느낀 점: 확인 단계에서 세션이 실제로 생성되고 히스토리가 쌓이기 시작하니 메인 로직으로 넘어갈 준비가 눈에 보이기 시작해 마음이 한결 가벼워졌습니다.
@@ -90,3 +90,12 @@
 느낀 점: 현재 지점에서 멈춰 있는 작업 항목을 다시 적어보니, 남은 과업이 명확히 보이면서도 당장 급하게 서두르지 않고 차례로 해결해야겠다는 생각이 들었습니다.
 추가로 필요한 점: 전투 API 스펙을 확정하려면 `rank_turns` 활용 방식을 먼저 정리하고, 서버·클라이언트가 공유할 응답 포맷 표를 작성하는 것이 좋겠습니다.
 진행사항: 새로운 기능 구현 없이 진행률 재점검 메모를 추가해 후속 개발 순서를 분명히 했습니다.
+
+### 진행 현황 메모 (2025-10-05 추가)
+
+- `/api/rank/play`가 전투 결과를 저장할 때 첫 턴 로그뿐 아니라 전달받은 턴 배열을 모두 `rank_battle_logs`에 기록하며, 공격자 점수와 상태를 즉시 갱신하도록 `recordBattle`을 확장했습니다.【F:starbase/ai-roomchat/pages/api/rank/play.js†L1-L94】【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L189】
+- 아직 방어자 점수 조정과 재참전/탈락 규칙은 빠져 있어 3단계 완성도는 0.7 수준으로 추산합니다.
+
+느낀 점: 전투 기록 파이프라인을 다시 손보니 로그와 참가자 상태가 한 흐름으로 이어지기 시작해 다음 단계 설계가 훨씬 편해질 것 같았습니다.
+추가로 필요한 점: 방어자 점수/상태 반영과 난입/재참전 규칙을 계산해줄 서비스 롤 API를 별도로 마련해야 완성도를 높일 수 있습니다.
+진행사항: `recordBattle`이 턴 배열 저장과 공격자 점수·상태 업데이트까지 처리하도록 확장했습니다.
