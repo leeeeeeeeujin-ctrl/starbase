@@ -151,6 +151,23 @@ function resolveFlowSteps(status) {
   return steps
 }
 
+function resolveDefaultRoleName(roles) {
+  if (!Array.isArray(roles)) return ''
+  for (const role of roles) {
+    if (!role) continue
+    if (typeof role === 'string') {
+      const trimmed = role.trim()
+      if (trimmed) return trimmed
+      continue
+    }
+    if (typeof role === 'object' && typeof role.name === 'string') {
+      const trimmed = role.name.trim()
+      if (trimmed) return trimmed
+    }
+  }
+  return ''
+}
+
 export default function MatchQueueClient({
   gameId,
   mode,
@@ -167,8 +184,7 @@ export default function MatchQueueClient({
   const latestStatusRef = useRef('idle')
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
   const [autoJoinError, setAutoJoinError] = useState('')
-  const autoJoinAttemptedRef = useRef(false)
-  const lastHeroAttemptRef = useRef('')
+  const autoJoinSignatureRef = useRef('')
   const heroMissingRedirectRef = useRef(false)
   const heroMissingTimerRef = useRef(null)
 
@@ -186,31 +202,40 @@ export default function MatchQueueClient({
     latestStatusRef.current = state.status
   }, [state.status])
 
+  const defaultRoleName = useMemo(
+    () => resolveDefaultRoleName(state.roles),
+    [state.roles],
+  )
+
+  const targetRoleName = state.lockedRole || defaultRoleName
+
   useEffect(() => {
     if (!autoJoin) return
     if (state.status === 'queued' || state.status === 'matched') return
-    if (autoJoinAttemptedRef.current) return
-    const role = state.lockedRole || state.roles?.[0]?.name
-    if (!role) return
-    autoJoinAttemptedRef.current = true
-    lastHeroAttemptRef.current = state.heroId || ''
-    actions.joinQueue(role).then((result) => {
+    if (!state.viewerId) return
+    if (!targetRoleName) return
+    const activeHeroId = state.heroId || ''
+    if (!activeHeroId) return
+
+    const signature = `${state.viewerId}::${targetRoleName}::${activeHeroId}`
+    if (autoJoinSignatureRef.current === signature) return
+
+    autoJoinSignatureRef.current = signature
+    actions.joinQueue(targetRoleName).then((result) => {
       if (!result?.ok && result?.error) {
         setAutoJoinError(result.error)
       } else {
         setAutoJoinError('')
       }
     })
-  }, [autoJoin, state.status, state.lockedRole, state.roles, state.heroId, actions])
-
-  useEffect(() => {
-    if (!autoJoin) return
-    if (state.status !== 'idle') return
-    const currentHero = state.heroId || ''
-    if (currentHero && currentHero !== lastHeroAttemptRef.current) {
-      autoJoinAttemptedRef.current = false
-    }
-  }, [autoJoin, state.heroId, state.status])
+  }, [
+    autoJoin,
+    state.status,
+    state.viewerId,
+    targetRoleName,
+    state.heroId,
+    actions,
+  ])
 
   useEffect(() => {
     if (state.status === 'queued' || state.status === 'matched') {
