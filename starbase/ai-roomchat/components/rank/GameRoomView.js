@@ -317,6 +317,7 @@ export default function GameRoomView({
   myEntry = null,
   onBack,
   onJoin,
+  onStart,
   onOpenLeaderboard,
   onDelete,
   isOwner = false,
@@ -325,8 +326,10 @@ export default function GameRoomView({
   turnTimerVote = null,
   turnTimerVotes = {},
   onVoteTurnTimer,
+  startDisabled = false,
 }) {
   const [joinLoading, setJoinLoading] = useState(false)
+  const [startLoading, setStartLoading] = useState(false)
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
   const [activeTab, setActiveTab] = useState(TABS[0].key)
   const touchStartRef = useRef(null)
@@ -723,6 +726,16 @@ export default function GameRoomView({
     }
   }
 
+  const handleStartClick = async () => {
+    if (!onStart || startDisabled || startLoading) return
+    setStartLoading(true)
+    try {
+      await onStart()
+    } finally {
+      setStartLoading(false)
+    }
+  }
+
   const handleShowMoreLogs = () => {
     setVisibleHeroLogs((prev) => prev + 10)
   }
@@ -798,6 +811,17 @@ export default function GameRoomView({
           >
             {alreadyJoined ? '참여 완료됨' : joinLoading ? '참여 중…' : `${currentRole || '역할'}로 참여하기`}
           </button>
+
+          {onStart ? (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={handleStartClick}
+              disabled={startDisabled || startLoading}
+            >
+              {startLoading ? '시작 준비 중…' : '게임 시작'}
+            </button>
+          ) : null}
         </div>
 
         <p className={styles.capacityHint}>

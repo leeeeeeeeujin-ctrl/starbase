@@ -366,6 +366,32 @@
   box-shadow: 0 10px 30px rgba(59, 130, 246, 0.28);
 }
 
+.secondaryButton {
+  flex: 1 1 160px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.secondaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryButton:not(:disabled):hover,
+.secondaryButton:not(:disabled):focus-visible {
+  background: rgba(30, 41, 59, 0.72);
+  color: #f8fafc;
+  transform: translateY(-1px);
+}
+
 .capacityHint {
   margin: 0;
   font-size: 13px;
