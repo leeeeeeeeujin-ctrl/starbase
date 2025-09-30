@@ -252,13 +252,21 @@ export default function AutoMatchProgress({ gameId, mode }) {
   )
 
   const errorMessage = state.error || localError
-  const loaderHint = notice || (autoJoinStatus.ready ? '' : autoJoinStatus.reason)
+  const liveRegionMessage = useMemo(() => {
+    if (errorMessage) return errorMessage
+    if (phase === 'notice' && notice) return notice
+    if (!autoJoinStatus.ready && autoJoinStatus.reason) return autoJoinStatus.reason
+    if (phase === 'confirm') {
+      return `매칭이 잡혔습니다. 남은 시간 ${confirmCountdown}초`
+    }
+    return '매칭을 준비하는 중입니다.'
+  }, [autoJoinStatus.ready, autoJoinStatus.reason, confirmCountdown, errorMessage, notice, phase])
 
   return (
     <div className={styles.wrapper}>
       {phase === 'confirm' ? (
         <div className={styles.confirmCard}>
-          <p className={styles.primaryText}>매칭이 잡혔습니다!</p>
+          <p className={styles.primaryText}>매칭이 잡혔습니다~</p>
           <p className={styles.secondaryText}>
             10초 안에 <strong>배틀</strong> 버튼을 눌러 주세요. 남은 시간 {confirmCountdown}초
           </p>
@@ -275,11 +283,10 @@ export default function AutoMatchProgress({ gameId, mode }) {
         <div className={styles.loader}>
           <div className={styles.spinner} aria-hidden />
           <p className={styles.primaryText}>매칭 중…</p>
-          {loaderHint ? <p className={styles.secondaryText}>{loaderHint}</p> : null}
         </div>
       )}
       <div aria-live="assertive" className={styles.srOnly}>
-        {errorMessage}
+        {liveRegionMessage}
       </div>
     </div>
   )
