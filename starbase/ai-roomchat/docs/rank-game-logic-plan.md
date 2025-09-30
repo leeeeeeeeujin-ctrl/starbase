@@ -60,16 +60,22 @@
 5. `recordBattle` → `game_id` 포함 및 점수/상태 업데이트 보강.
 6. 최근 전투 목록 UI를 실제 응답 구조에 맞춰 갱신.
 
-## 6. 진행 현황 (2025-09-30 기준)
-- **1단계 – 역할/슬롯 모델링**: `useGameRoom`이 `rank_game_roles`·`rank_game_slots`를 모두 불러와 정규화한 역할 배열과 필요 슬롯 수를 계산하도록 확장된 상태다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L200-L318】【F:starbase/ai-roomchat/hooks/useGameRoom.js†L488-L499】
-- **1단계 – 슬롯 점유/해제 로직**: 여전히 `joinGame`이 `rank_participants`에만 insert하고 슬롯 테이블은 건드리지 않아 다중 점유 위험이 남아 있다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L360-L435】
-- **2단계 – 메인룸 시작 트리거**: 시작 버튼은 모달을 띄운 뒤 라우팅만 수행하고 `/api/rank/play` 호출이나 세션 생성은 구현되지 않았다.【F:starbase/ai-roomchat/pages/rank/[id].js†L165-L216】
-- **3단계 – 서버 전투 기록**: `recordBattle`이 `rank_battle_logs`에 `game_id`를 아직 포함하지 않아 스키마 요구사항을 충족하지 못한다.【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L32】
-- **4단계 – UI/히스토리 연동**: 메인 룸 UI는 참가자 수만 비교해 시작 가능 여부를 판단하며, 세션 히스토리나 난입 로직 반영은 미구현 상태다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L488-L520】【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L760-L819】
-- **매칭 자동화 안정화**: `AutoMatchProgress`가 뷰어 ID·역할·히어로 정보를 모두 확보한 뒤 자동 참가를 시도하고, 조건이 맞지 않으면 안내 문구와 함께 재시도를 대기합니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L212】
-- **난입 슬롯 충원**: `loadRoleStatusCounts`와 `/api/rank/match`의 `brawl` 경로가 패배한 역할군을 감지해 큐에서 대체 인원을 모집합니다. 현재 오버레이는 간단한 상태만 노출하므로, 난입 세부 정보를 보여 주는 전용 UI는 후속 작업으로 남아 있습니다.【F:starbase/ai-roomchat/lib/rank/matchmakingService.js†L88-L129】【F:starbase/ai-roomchat/pages/api/rank/match.js†L17-L142】
+## 6. 진행 현황 (2025-10-02 갱신)
+
+| 구분 | 상태 | 비고 |
+| --- | --- | --- |
+| 1단계 – 역할/슬롯 모델링 | ✅ 완료 | `useGameRoom`이 `rank_game_roles`·`rank_game_slots`를 동시 로딩해 정규화된 역할 배열과 활성 슬롯 집계를 제공합니다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L200-L318】【F:starbase/ai-roomchat/hooks/useGameRoom.js†L488-L520】 |
+| 1단계 – 슬롯 점유/해제 로직 | ✅ 완료 | `/api/rank/join-game`이 빈 슬롯을 검색·점유하고 기존 소유 슬롯을 해제한 뒤 `rank_participants`에 upsert합니다.【F:starbase/ai-roomchat/pages/api/rank/join-game.js†L1-L162】 |
+| 2단계 – 메인룸 시작 트리거 | ⚠️ 진행 중 | 시작 버튼이 여전히 모달→라우팅까지만 수행하며 세션 생성/`/api/rank/play` 호출이 연결되지 않았습니다.【F:starbase/ai-roomchat/pages/rank/[id].js†L165-L216】 |
+| 3단계 – 서버 전투 기록 | ⚠️ 부분 구현 | `recordBattle`이 `rank_battle_logs`에 `game_id`를 기록하도록 보강했지만, 다중 방어자 처리·점수/상태 동기화는 MVP 수준입니다.【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L37】 |
+| 4단계 – UI/히스토리 연동 | ⏳ 미착수 | 세션 히스토리, 난입 표시, 랭킹 노출은 아직 기본 참가자 수 집계에 의존합니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L720-L819】 |
+| 5단계 – 후속 개선 | ⏳ 미착수 | 큐 실시간화, 프롬프트 세션 훅 등은 계획만 문서화된 상태입니다. |
+
+### 진행도 추산
+- 완료 2개, 부분 완료 1개, 진행 중 1개, 미착수 2개로 환산하면 약 **45%** 달성(완료 2×1.0 + 부분 1×0.5 + 진행 중 1×0.25 = 2.75 / 6 ≈ 45%).
+- 남은 핵심 과제는 메인룸 시작 트리거와 세션·히스토리 연계, 점수/상태 동기화 확장, 실시간 큐 고도화입니다.
 
 ---
-느낀 점: 기존 코드에 매칭을 위한 초석이 꽤 깔려 있어서 흐름을 정리하기가 수월했습니다.
-추가로 필요한 점: 슬롯 점유/난입 로직을 설계할 때 경쟁 상태를 방지할 수 있는 트랜잭션 전략을 정해야 합니다.
-진행사항: 메인룸 전투 로직 구현을 위한 현재 구조 분석과 단계별 설계안을 문서로 정리했습니다.
+느낀 점: 슬롯 점유와 자동 큐 흐름이 실제로 맞물린 덕에 남은 공정이 더 선명하게 보이기 시작해 진행률을 가늠하기 쉬웠습니다.
+추가로 필요한 점: 메인룸 시작 트리거와 세션 히스토리를 서버와 엮을 때 동시 요청을 막는 트랜잭션 전략이 필요합니다.
+진행사항: 역할/슬롯 모델링과 참가 upsert를 완료했고, 기록·세션 연동 과제를 표 형태로 정리해 현재 45% 진척도를 공유했습니다.
