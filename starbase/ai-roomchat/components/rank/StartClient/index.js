@@ -108,6 +108,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     activeBgmUrl,
     activeBgmDuration,
     activeAudioProfile,
+    consensus,
   } = useStartClientEngine(resolvedGameId)
 
   const [timeoutNotice, setTimeoutNotice] = useState('')
@@ -340,6 +341,25 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     }
   }
 
+  const consensusActive = Boolean(consensus?.active)
+  const consensusRequired = consensusActive ? consensus?.required ?? 0 : 0
+  const consensusApproved = consensusActive
+    ? Math.min(consensus?.count ?? 0, consensusRequired)
+    : 0
+  const advanceDisabled = preflight
+    ? false
+    : consensusActive
+    ? !consensus?.viewerEligible
+    : !canSubmitAction
+  const advanceLabel = consensusActive
+    ? `동의 ${consensusApproved}/${consensusRequired}`
+    : undefined
+  const consensusStatusText = consensusActive
+    ? `동의 현황 ${consensusApproved}/${consensusRequired}명 · ${
+        consensus?.viewerHasConsented ? '내 동의 완료' : '내 동의 필요'
+      }`
+    : ''
+
   return (
     <div className={styles.root} style={rootStyle}>
       <div className={styles.content}>
@@ -351,10 +371,15 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
           onStart={handleStart}
           onAdvance={advanceWithAi}
           isAdvancing={isAdvancing}
-          canAdvance={canSubmitAction}
+          advanceDisabled={advanceDisabled}
+          advanceLabel={advanceLabel}
+          consensus={consensus}
         />
 
         <StatusBanner message={statusMessage} />
+        {consensusStatusText ? (
+          <div className={styles.consensusNotice}>{consensusStatusText}</div>
+        ) : null}
         {timeoutNotice ? <div className={styles.timeoutNotice}>{timeoutNotice}</div> : null}
 
         <div className={styles.mainLayout}>

@@ -128,6 +128,7 @@ export function useStartClientEngine(gameId) {
     if (Number.isFinite(stored) && stored > 0) return stored
     return 60
   })
+  const [consentedOwners, setConsentedOwners] = useState([])
 
   const rememberActiveSession = useCallback(
     (payload = {}) => {
@@ -195,6 +196,7 @@ export function useStartClientEngine(gameId) {
 
   const visitedSlotIds = useRef(new Set())
   const apiVersionLock = useRef(null)
+  const advanceIntentRef = useRef(null)
 
   useEffect(() => {
     if (!gameId) return
@@ -393,6 +395,35 @@ export function useStartClientEngine(gameId) {
       })),
     [participants],
   )
+  const eligibleOwnerIds = useMemo(() => {
+    if (preflight) return []
+    if (!game?.realtime_match) return []
+    if (!Array.isArray(participants) || participants.length === 0) return []
+    const defeated = new Set(['defeated', 'lost', 'dead', 'eliminated', 'retired', 'out'])
+    const owners = []
+    participants.forEach((participant) => {
+      const ownerId = participant?.owner_id || participant?.ownerId || null
+      if (!ownerId) return
+      const status = String(participant?.status || '').toLowerCase()
+      if (defeated.has(status)) return
+      owners.push(ownerId)
+    })
+    return Array.from(new Set(owners))
+  }, [game?.realtime_match, participants, preflight])
+  const consensusCount = useMemo(() => {
+    if (!eligibleOwnerIds.length) return 0
+    const eligibleSet = new Set(eligibleOwnerIds)
+    const agreed = new Set()
+    consentedOwners.forEach((ownerId) => {
+      if (eligibleSet.has(ownerId)) {
+        agreed.add(ownerId)
+      }
+    })
+    return agreed.size
+  }, [consentedOwners, eligibleOwnerIds])
+  const needsConsensus = !preflight && eligibleOwnerIds.length > 0
+  const viewerCanConsent = needsConsensus && viewerId ? eligibleOwnerIds.includes(viewerId) : false
+  const viewerHasConsented = viewerCanConsent && consentedOwners.includes(viewerId)
   const currentNode = useMemo(
     () => graph.nodes.find((node) => node.id === currentNodeId) || null,
     [graph.nodes, currentNodeId],
@@ -790,12 +821,72 @@ export function useStartClientEngine(gameId) {
       alert('수동 응답을 입력하세요.')
       return
     }
+    advanceIntentRef.current = null
+    setConsentedOwners([])
     advanceTurn(manualResponse.trim())
   }, [advanceTurn, manualResponse])
 
   const advanceWithAi = useCallback(() => {
-    advanceTurn(null)
-  }, [advanceTurn])
+    if (!needsConsensus) {
+      advanceIntentRef.current = null
+      setConsentedOwners([])
+      advanceTurn(null)
+      return
+    }
+    if (!viewerCanConsent) {
+      setStatusMessage('동의 대상인 참가자만 다음 턴 진행을 제안할 수 있습니다.')
+      return
+    }
+    const already = consentedOwners.includes(viewerId)
+    advanceIntentRef.current = { override: null }
+    if (!already) {
+      setConsentedOwners((prev) => [...prev, viewerId])
+    }
+    const futureCount = already
+      ? consensusCount
+      : Math.min(consensusCount + 1, eligibleOwnerIds.length)
+    setStatusMessage(`다음 턴 동의 ${futureCount}/${eligibleOwnerIds.length}명`)
+  }, [
+    advanceTurn,
+    consentedOwners,
+    consensusCount,
+    eligibleOwnerIds.length,
+    needsConsensus,
+    setStatusMessage,
+    viewerCanConsent,
+    viewerId,
+  ])
+
+  useEffect(() => {
+    if (!needsConsensus) return undefined
+    if (!advanceIntentRef.current) return undefined
+    if (!eligibleOwnerIds.length) return undefined
+    const eligibleSet = new Set(eligibleOwnerIds)
+    const agreed = new Set()
+    consentedOwners.forEach((ownerId) => {
+      if (eligibleSet.has(ownerId)) {
+        agreed.add(ownerId)
+      }
+    })
+    if (agreed.size >= eligibleSet.size) {
+      const intent = advanceIntentRef.current
+      advanceIntentRef.current = null
+      advanceTurn(intent?.override ?? null)
+    }
+    return undefined
+  }, [advanceTurn, consentedOwners, eligibleOwnerIds, needsConsensus])
+
+  useEffect(() => {
+    setConsentedOwners([])
+    advanceIntentRef.current = null
+  }, [turn])
+
+  useEffect(() => {
+    if (preflight) {
+      setConsentedOwners([])
+      advanceIntentRef.current = null
+    }
+  }, [preflight])
 
   return {
     loading,
@@ -830,5 +921,12 @@ export function useStartClientEngine(gameId) {
     activeBgmUrl: activeHeroAssets.bgmUrl,
     activeBgmDuration: activeHeroAssets.bgmDuration,
     activeAudioProfile: activeHeroAssets.audioProfile,
+    consensus: {
+      required: eligibleOwnerIds.length,
+      count: consensusCount,
+      viewerEligible: viewerCanConsent,
+      viewerHasConsented,
+      active: needsConsensus,
+    },
   }
 }

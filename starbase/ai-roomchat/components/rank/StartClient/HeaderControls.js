@@ -6,8 +6,11 @@ export default function HeaderControls({
   onStart,
   onAdvance,
   isAdvancing,
-  canAdvance,
+  advanceDisabled = false,
+  advanceLabel,
+  consensus,
 }) {
+  const nextLabel = advanceLabel || (isAdvancing ? '진행 중…' : '다음 턴')
   return (
     <header
       style={{
@@ -60,20 +63,39 @@ export default function HeaderControls({
         <button
           type="button"
           onClick={onAdvance}
-          disabled={isAdvancing || !canAdvance}
+          disabled={isAdvancing || advanceDisabled}
           style={{
             padding: '10px 16px',
             borderRadius: 999,
             background:
-              isAdvancing || !canAdvance ? 'rgba(37, 99, 235, 0.35)' : '#2563eb',
+              isAdvancing || advanceDisabled ? 'rgba(37, 99, 235, 0.35)' : '#2563eb',
             color: '#f8fafc',
             fontWeight: 700,
             border: 'none',
-            cursor: isAdvancing || !canAdvance ? 'not-allowed' : 'pointer',
+            cursor: isAdvancing || advanceDisabled ? 'not-allowed' : 'pointer',
           }}
         >
-          {isAdvancing ? '진행 중…' : '다음 턴'}
+          {nextLabel}
         </button>
+        {consensus?.active ? (
+          <span
+            style={{
+              alignSelf: 'center',
+              fontSize: 12,
+              color: consensus.viewerEligible
+                ? consensus.viewerHasConsented
+                  ? 'rgba(34, 197, 94, 0.9)'
+                  : 'rgba(226, 232, 240, 0.75)'
+                : 'rgba(148, 163, 184, 0.75)',
+            }}
+          >
+            {consensus.viewerEligible
+              ? consensus.viewerHasConsented
+                ? '내 동의 완료'
+                : '내 동의 필요'
+              : '동의 대상 아님'}
+          </span>
+        ) : null}
       </div>
     </header>
   )
