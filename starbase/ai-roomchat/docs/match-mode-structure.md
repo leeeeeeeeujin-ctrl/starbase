@@ -51,3 +51,7 @@
 - `lib/rank/matchmakingService.js`: 큐를 조회하고 매칭 헬퍼를 호출하는 서비스.
 
 이 문서는 앞으로 구현하면서 계속 갱신할 예정입니다.
+
+## 2025-09-30 구현 메모
+- `/rank/[id]/solo`, `/rank/[id]/casual`, `/rank/[id]/duo/queue` 페이지가 `MatchQueueClient` 기반 자동 대기열 합류 흐름을 바로 구동합니다.
+- `/rank/[id]/duo`는 `DuoRoomClient`로 듀오 방 편성 UI를 제공하며, 준비가 끝나면 위 큐 페이지로 이동합니다.
