@@ -57,3 +57,8 @@ The lobby and registration flows are functional, but everything after joining a 
    - Introduce audit logs or moderation tools on `rank_battle_logs` for replays.
 
 Following this roadmap will close the scaffolding gap between “game registered” and “AI-driven matches with persistent history,” giving us a clear checklist for incremental PRs.
+
+## Progress Update — 2025-10-07
+- **Session history wiring**: `useGameRoom` now retrieves the viewer’s latest `rank_sessions` and `rank_turns`, exposing a refresh helper so the room can show personal logs without a full reload.【F:hooks/useGameRoom.js†L244-L323】
+- **Game room UI**: The lobby displays a “내 세션 히스토리” panel summarizing recent public turns, hidden entries, and truncation counts to validate the new data flow.【F:components/rank/GameRoomView.js†L134-L210】
+- **Next steps**: Extend the same Supabase-backed history to shared room chat, hook the session starter into `/api/rank/start-session`, and resume the battle/score synchronization work outlined in Phases 2–3.
