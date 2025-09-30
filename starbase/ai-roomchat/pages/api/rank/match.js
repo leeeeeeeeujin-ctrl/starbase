@@ -25,6 +25,16 @@ function mapToPlain(map) {
   return plain
 }
 
+function shuffle(entries) {
+  for (let index = entries.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    const tmp = entries[index]
+    entries[index] = entries[swapIndex]
+    entries[swapIndex] = tmp
+  }
+  return entries
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
@@ -50,7 +60,23 @@ export default async function handler(req, res) {
       gameRow?.realtime_match ? Promise.resolve([]) : loadParticipantPool(supabase, gameId),
     ])
 
-    const queue = gameRow?.realtime_match ? queueResult : queueResult.concat(participantPool)
+    let queue = queueResult
+
+    if (!gameRow?.realtime_match) {
+      const ownersInQueue = new Set(
+        queueResult.map((row) => row?.owner_id || row?.ownerId).filter(Boolean),
+      )
+      const filteredPool = participantPool.filter((row) => {
+        const ownerId = row?.owner_id || row?.ownerId
+        if (!ownerId) return false
+        if (ownersInQueue.has(ownerId)) {
+          return false
+        }
+        return true
+      })
+
+      queue = queueResult.concat(shuffle(filteredPool.slice()))
+    }
 
     const result = runMatching({ mode, roles, queue })
 

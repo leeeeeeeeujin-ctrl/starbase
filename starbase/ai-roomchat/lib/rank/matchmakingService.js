@@ -69,11 +69,19 @@ export async function loadParticipantPool(supabaseClient, gameId) {
 
   const rows = Array.isArray(result?.data) ? result.data : []
   const alive = rows.filter((row) => (row?.status || 'alive') !== 'dead')
+  const eligible = alive.filter((row) => {
+    if (!row) return false
+    const role = row.role || row.role_name || row.roleName
+    if (!role) return false
+    if (!row.hero_id && !row.heroId) return false
+    return true
+  })
 
-  return alive.map((row) => ({
+  return eligible.map((row) => ({
     // Use null id so queue updates ignore simulated entries.
     id: null,
-    owner_id: row.owner_id || null,
+    owner_id: row.owner_id || row.ownerId || null,
+    ownerId: row.owner_id || row.ownerId || null,
     hero_id: row.hero_id || null,
     role: row.role || '',
     score: deriveParticipantScore(row),
