@@ -74,6 +74,11 @@ export async function loadParticipantPool(supabaseClient, gameId) {
     const role = row.role || row.role_name || row.roleName
     if (!role) return false
     if (!row.hero_id && !row.heroId) return false
+    const status = normalizeStatus(row?.status)
+    if (DEFEATED_STATUS_SET.has(status)) return false
+    if (status === 'victory') return false
+    if (status === 'retired') return false
+    if (LOCKED_STATUS_SET.has(status)) return false
     return true
   })
 
@@ -105,6 +110,14 @@ const DEFEATED_STATUS_SET = new Set([
   'retired',
   'eliminated',
   'dead',
+])
+
+const LOCKED_STATUS_SET = new Set([
+  'engaged',
+  'engaged_offense',
+  'engaged_defense',
+  'locked',
+  'pending_battle',
 ])
 
 export async function loadRoleStatusCounts(supabaseClient, gameId) {
@@ -252,29 +265,62 @@ export async function markAssignmentsMatched(
   { assignments = [], gameId, mode, matchCode },
 ) {
   const ids = new Set()
+  const ownerIds = new Set()
   assignments.forEach((assignment) => {
     ensureArray(assignment.members).forEach((member) => {
       if (member?.id) {
         ids.add(member.id)
       }
+      const ownerId = member?.owner_id || member?.ownerId
+      if (ownerId) {
+        ownerIds.add(ownerId)
+      }
     })
   })
-  if (ids.size === 0) return
+  if (ids.size > 0) {
+    const payload = {
+      status: 'matched',
+      updated_at: nowIso(),
+    }
+    if (matchCode) payload.match_code = matchCode
 
-  const payload = {
-    status: 'matched',
-    updated_at: nowIso(),
+    const result = await withTable(supabaseClient, 'rank_match_queue', (table) =>
+      supabaseClient
+        .from(table)
+        .update(payload)
+        .in('id', Array.from(ids)),
+    )
+    if (result?.error) {
+      console.warn('매칭 상태 갱신 실패:', result.error)
+    }
   }
-  if (matchCode) payload.match_code = matchCode
 
-  const result = await withTable(supabaseClient, 'rank_match_queue', (table) =>
-    supabaseClient
+  if (ownerIds.size > 0) {
+    await lockParticipantsForAssignments(supabaseClient, { gameId, ownerIds: Array.from(ownerIds) })
+  }
+}
+
+async function lockParticipantsForAssignments(supabaseClient, { gameId, ownerIds }) {
+  if (!gameId || !Array.isArray(ownerIds) || ownerIds.length === 0) return
+
+  const now = nowIso()
+  const filterOwners = Array.from(new Set(ownerIds.filter(Boolean)))
+  if (!filterOwners.length) return
+
+  const result = await withTable(supabaseClient, 'rank_participants', (table) => {
+    let query = supabaseClient
       .from(table)
-      .update(payload)
-      .in('id', Array.from(ids)),
-  )
+      .update({ status: 'engaged', updated_at: now })
+      .eq('game_id', gameId)
+      .in('owner_id', filterOwners)
+
+    query = query.not('status', 'in', '("victory","defeated","retired","eliminated")')
+
+    return query
+  })
+
   if (result?.error) {
-    console.warn('매칭 상태 갱신 실패:', result.error)
+    console.warn('참가자 잠금 실패:', result.error)
   }
 }
 

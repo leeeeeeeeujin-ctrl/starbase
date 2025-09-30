@@ -1,6 +1,12 @@
 // lib/rank/persist.js
 import { supabase } from './db'
 
+const PARTICIPANT_UPDATE_RETRIES = 4
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function coerceUuidArray(value) {
   if (!Array.isArray(value)) return []
   return value.map((item) => item).filter(Boolean)
@@ -83,6 +89,129 @@ function normalizeTurnLogs({ turnLogs, fallbackPrompt, fallbackResponse, outcome
   return rows.sort((a, b) => a.turn_no - b.turn_no)
 }
 
+function mergeHeroIds(existing, incoming) {
+  const merged = new Set()
+  if (Array.isArray(existing)) {
+    existing.filter(Boolean).forEach((value) => merged.add(value))
+  }
+  if (Array.isArray(incoming)) {
+    incoming.filter(Boolean).forEach((value) => merged.add(value))
+  }
+  return Array.from(merged)
+}
+
+async function applyParticipantOutcome({
+  gameId,
+  ownerId,
+  heroIds,
+  primaryHeroId,
+  delta = 0,
+  status = 'active',
+  now,
+}) {
+  if (!gameId || !ownerId) return
+
+  const heroArray = coerceUuidArray(heroIds)
+  const heroId = primaryHeroId || heroArray[0] || null
+
+  let attempt = 0
+  let lastError = null
+
+  while (attempt < PARTICIPANT_UPDATE_RETRIES) {
+    attempt += 1
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('rank_participants')
+      .select('id, hero_id, hero_ids, rating, score, battles, status, updated_at, created_at')
+      .eq('game_id', gameId)
+      .eq('owner_id', ownerId)
+      .maybeSingle()
+
+    if (fetchError) throw fetchError
+
+    const baseRating = coerceNumber(existing?.rating, 1000)
+    const baseScore = coerceNumber(existing?.score, baseRating)
+    const baseBattles = coerceNumber(existing?.battles, 0)
+    const mergedHeroIds = mergeHeroIds(existing?.hero_ids ?? existing?.heroIds, heroArray)
+
+    const payload = {
+      hero_id: heroId || existing?.hero_id || null,
+      hero_ids: mergedHeroIds,
+      rating: baseRating + delta,
+      score: baseScore + delta,
+      battles: baseBattles + 1,
+      status,
+      updated_at: now,
+    }
+
+    if (existing?.id) {
+      let query = supabase
+        .from('rank_participants')
+        .update(payload)
+        .eq('game_id', gameId)
+        .eq('owner_id', ownerId)
+
+      if (existing.updated_at) {
+        query = query.eq('updated_at', existing.updated_at)
+      } else {
+        query = query.is('updated_at', null)
+      }
+
+      const { data: updatedRows, error: updateError } = await query.select('id')
+      if (updateError) {
+        lastError = updateError
+        if (updateError.code === '23505') {
+          await sleep(25)
+          continue
+        }
+        throw updateError
+      }
+
+      if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+        return
+      }
+
+      await sleep(25)
+      continue
+    }
+
+    const insertPayload = {
+      game_id: gameId,
+      owner_id: ownerId,
+      hero_id: heroId,
+      hero_ids: mergedHeroIds,
+      rating: baseRating + delta,
+      score: baseScore + delta,
+      battles: baseBattles + 1,
+      status,
+      created_at: now,
+      updated_at: now,
+    }
+
+    const { error: insertError } = await supabase
+      .from('rank_participants')
+      .insert(insertPayload, { defaultToNull: false })
+
+    if (!insertError) {
+      return
+    }
+
+    lastError = insertError
+    if (insertError.code === '23505') {
+      await sleep(25)
+      continue
+    }
+
+    throw insertError
+  }
+
+  if (lastError) {
+    throw lastError
+  }
+
+  throw new Error('participant_update_conflict')
+}
+
 export async function recordBattle({
   game,
   userId,
@@ -131,52 +260,42 @@ export async function recordBattle({
   const { error: logsError } = await supabase.from('rank_battle_logs').insert(logsPayload)
   if (logsError) throw logsError
 
-  const { data: currentParticipant, error: participantError } = await supabase
-    .from('rank_participants')
-    .select('rating, score, battles, hero_id, hero_ids')
-    .eq('game_id', game.id)
-    .eq('owner_id', userId)
-    .maybeSingle()
+  const attackerStatus = resolveStatus(outcome, 'attacker')
+  await applyParticipantOutcome({
+    gameId: game.id,
+    ownerId: userId,
+    heroIds: attackerHeroIds,
+    primaryHeroId: attackerHeroIds[0] || null,
+    delta: numericDelta,
+    status: attackerStatus,
+    now,
+  })
 
-  if (participantError) throw participantError
+  const defenderStatus = resolveStatus(outcome, 'defender')
+  const defenderDelta = Number.isFinite(numericDelta) ? -numericDelta : 0
+  if (defenderOwners.length) {
+    const defenderPairs = defenderOwners.map((ownerId, index) => ({
+      ownerId,
+      heroId: defenderHeroIds[index] || defenderHeroIds[0] || null,
+    }))
 
-  const baseRating = coerceNumber(currentParticipant?.rating, 1000)
-  const baseScore = coerceNumber(currentParticipant?.score, baseRating)
-  const baseBattles = coerceNumber(currentParticipant?.battles, 0)
-  const mergedHeroIds = (() => {
-    const existing = Array.isArray(currentParticipant?.hero_ids)
-      ? currentParticipant.hero_ids.filter(Boolean)
-      : []
-    const set = new Set(existing)
-    attackerHeroIds.forEach((id) => set.add(id))
-    return Array.from(set)
-  })()
-
-  const status = resolveStatus(outcome, 'attacker')
-
-  const { error: upsertError } = await supabase
-    .from('rank_participants')
-    .upsert(
-      {
-        game_id: game.id,
-        owner_id: userId,
-        hero_id: attackerHeroIds[0] || currentParticipant?.hero_id || null,
-        hero_ids: mergedHeroIds,
-        rating: baseRating + numericDelta,
-        score: baseScore + numericDelta,
-        battles: baseBattles + 1,
-        status,
-        updated_at: now,
-      },
-      { onConflict: 'game_id,owner_id' },
-    )
-
-  if (upsertError) throw upsertError
+    for (const { ownerId, heroId } of defenderPairs) {
+      await applyParticipantOutcome({
+        gameId: game.id,
+        ownerId,
+        heroIds: defenderHeroIds,
+        primaryHeroId: heroId,
+        delta: defenderDelta,
+        status: defenderStatus,
+        now,
+      })
+    }
+  }
 
   return {
     battleId: battle.id,
-    attackerStatus: status,
-    defenderStatus: resolveStatus(outcome, 'defender'),
+    attackerStatus,
+    defenderStatus,
     defenderOwners,
   }
 }
