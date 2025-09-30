@@ -42,10 +42,13 @@ export default function AutoMatchProgress({ gameId, mode }) {
 
   useEffect(() => {
     if (!gameId || !preferredRole) return
+    if (!state.viewerId) return
     if (state.status !== 'idle') return
 
     const heroToken = state.heroId || ''
-    const attemptKey = `${preferredRole}:${heroToken}`
+    if (!heroToken) return
+
+    const attemptKey = `${preferredRole}:${heroToken}:${state.viewerId}`
     if (lastAttemptKeyRef.current === attemptKey) return
 
     lastAttemptKeyRef.current = attemptKey
@@ -70,7 +73,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
     return () => {
       cancelled = true
     }
-  }, [actions, gameId, preferredRole, state.heroId, state.status])
+  }, [actions, gameId, preferredRole, state.heroId, state.status, state.viewerId])
 
   useEffect(() => {
     const message = state.error || localError
