@@ -63,9 +63,9 @@
 ### 난입(brawl) 처리
 - `rank_games.rules.brawl_rule = 'allow-brawl'`인 경우 `/api/rank/match`가 패배로 비워진 역할군을 다시 채우기 위해 **난입 전용 매칭**을 우선 실행합니다.【F:starbase/ai-roomchat/pages/api/rank/match.js†L17-L142】
 - 역할군별 패배/생존 카운트는 `loadRoleStatusCounts`로 수집하며, 빈 슬롯이 모두 채워질 수 있을 때만 난입 매칭을 확정합니다.【F:starbase/ai-roomchat/lib/rank/matchmakingService.js†L88-L129】
-- 난입 매칭이 성사되면 API 응답의 `matchType`이 `brawl`로 설정되고, 대체 인원/역할 메타데이터가 함께 반환됩니다. 현재 오버레이는 단순 상태만 표시하므로, 이 세부 정보를 노출하는 UI는 추후 보강이 필요합니다.【F:starbase/ai-roomchat/pages/api/rank/match.js†L17-L142】
+- 난입 매칭이 성사되면 API 응답의 `matchType`이 `brawl`로 설정되고, 대체 인원/역할 메타데이터가 함께 반환됩니다. 오버레이는 매치 코드와 난입 대상 역할, 점수 범위까지 즉시 표시해 참가자가 상황을 파악할 수 있도록 했습니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L420】
 
 ### 자동 참가 관찰 포인트
 - 오버레이는 진입 즉시 큐 합류를 시도하며, 로그인/역할/캐릭터가 준비되지 않았을 때는 안내 문구를 띄우고 조건을 충족하면 자동으로 재시도합니다.
 - 캐릭터가 비어 있는 경우 3초 뒤 메인 룸으로 되돌리고, 1분 안에 매칭이 성사되지 않으면 대기열을 취소한 뒤 재진입을 유도합니다.
-- 매칭이 확정되면 "매칭이 잡혔습니다~" 메시지와 함께 10초 확인 카운트다운을 노출하고, 참가자가 버튼을 누르면 약 1초 후 전투 화면(`/rank/[id]/start`)으로 이동합니다. 제한 시간 내 확인하지 않으면 매칭을 취소하고 메인 룸으로 복귀시킵니다.
+- 매칭이 확정되면 "매칭이 잡혔습니다~" 메시지와 함께 10초 확인 카운트다운을 노출하고, 참가자가 버튼을 누르면 약 1초 후 전투 화면(`/rank/[id]/start`)으로 이동합니다. 동시에 역할별 선발 명단과 매치 메타(난입 여부, 점수 범위, 매치 코드)를 보여줘 합류 직후에도 누가 함께 들어오는지 빠르게 확인할 수 있습니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L420】

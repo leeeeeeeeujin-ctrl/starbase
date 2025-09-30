@@ -18,6 +18,50 @@ const FAILURE_REDIRECT_DELAY_MS = 2400
 const PENALTY_NOTICE =
   '확인 시간이 지나 매칭이 취소되었습니다. 게임에 참여하지 않으면 불이익이 있을 수 있습니다.'
 
+function coerceHeroMap(raw) {
+  if (!raw) return new Map()
+  if (raw instanceof Map) return raw
+  if (typeof raw !== 'object') return new Map()
+  try {
+    return new Map(Object.entries(raw))
+  } catch (error) {
+    console.warn('히어로 맵 변환 실패:', error)
+    return new Map()
+  }
+}
+
+function resolveHeroName(heroMap, heroId) {
+  if (!heroId) return '미지정 캐릭터'
+  const id = typeof heroId === 'string' ? heroId : String(heroId)
+  const numericId = Number(id)
+  const altKey = Number.isNaN(numericId) ? id : numericId
+  const fromMap = heroMap.get(id) || heroMap.get(altKey)
+  if (fromMap?.name) {
+    return fromMap.name
+  }
+  if (fromMap?.displayName) {
+    return fromMap.displayName
+  }
+  if (typeof fromMap === 'string' && fromMap.trim()) {
+    return fromMap.trim()
+  }
+  return `캐릭터 #${id}`
+}
+
+function resolveMemberLabel({ member, heroMap }) {
+  if (!member) {
+    return '알 수 없는 참가자'
+  }
+  const heroId = member.hero_id || member.heroId || member.heroID || null
+  const heroName = resolveHeroName(heroMap, heroId)
+  const ownerId = member.owner_id || member.ownerId || ''
+  if (!ownerId) {
+    return heroName
+  }
+  const shortOwner = ownerId.length > 6 ? `${ownerId.slice(0, 3)}…${ownerId.slice(-2)}` : ownerId
+  return `${heroName} · ${shortOwner}`
+}
+
 function resolveRoleName(lockedRole, roles) {
   if (lockedRole && typeof lockedRole === 'string' && lockedRole.trim().length) {
     return lockedRole
@@ -290,6 +334,83 @@ export default function AutoMatchProgress({ gameId, mode }) {
 
   const extraBlockers = confirmationState === 'counting' ? [] : blockers.slice(1)
 
+  const heroMap = useMemo(
+    () => coerceHeroMap(state.match?.heroMap),
+    [state.match?.heroMap],
+  )
+
+  const assignmentSummary = useMemo(() => {
+    if (!state.match?.assignments?.length) return []
+    return state.match.assignments.map((assignment, assignmentIndex) => {
+      const role =
+        (typeof assignment?.role === 'string' && assignment.role.trim()) ||
+        `역할 ${assignmentIndex + 1}`
+      const members = Array.isArray(assignment?.members)
+        ? assignment.members.map((member, memberIndex) => {
+            const label = resolveMemberLabel({ member, heroMap })
+            const rawKey =
+              member?.id ??
+              member?.queue_id ??
+              member?.queueId ??
+              member?.owner_id ??
+              member?.ownerId ??
+              member?.hero_id ??
+              member?.heroId
+            const keyBase = typeof rawKey === 'string' || typeof rawKey === 'number'
+              ? String(rawKey)
+              : `${assignmentIndex}-${memberIndex}`
+            return {
+              key: `${role}-${keyBase}`,
+              label,
+            }
+          })
+        : []
+      return {
+        key: assignment?.groupKey || `${role}-${assignmentIndex}`,
+        role,
+        members,
+      }
+    })
+  }, [heroMap, state.match?.assignments])
+
+  const matchMetaLines = useMemo(() => {
+    if (!state.match) return []
+    const lines = []
+    const { matchType, maxWindow, matchCode, brawlVacancies } = state.match
+    if (matchType === 'brawl') {
+      lines.push('난입 슬롯 충원 매치로 진행됩니다.')
+    } else if (matchType && matchType !== 'standard') {
+      lines.push(`${matchType} 매치로 진행됩니다.`)
+    }
+    const numericWindow = Number(maxWindow)
+    if (Number.isFinite(numericWindow) && numericWindow > 0) {
+      lines.push(`점수 범위 ±${numericWindow} 내에서 매칭되었습니다.`)
+    }
+    if (Array.isArray(brawlVacancies) && brawlVacancies.length) {
+      const roleLine = brawlVacancies
+        .map((item) => {
+          if (!item) return null
+          const name = typeof item.name === 'string' ? item.name.trim() : ''
+          if (!name) return null
+          const rawCount = item.slot_count ?? item.slotCount ?? item.capacity
+          const count = Number(rawCount)
+          if (Number.isFinite(count) && count > 0) {
+            return `${name} ${count}자리`
+          }
+          return name
+        })
+        .filter(Boolean)
+        .join(', ')
+      if (roleLine) {
+        lines.push(`충원 대상 역할: ${roleLine}`)
+      }
+    }
+    if (typeof matchCode === 'string' && matchCode.trim()) {
+      lines.push(`매치 코드 ${matchCode.trim()}`)
+    }
+    return lines
+  }, [state.match])
+
   const display = useMemo(() => {
     if (confirmationState === 'confirmed') {
       return {
@@ -358,6 +479,35 @@ export default function AutoMatchProgress({ gameId, mode }) {
       <div className={styles.status} role="status">
         <p className={styles.message}>{display.title}</p>
         <p className={styles.detail}>{display.detail}</p>
+        {matchMetaLines.length ? (
+          <div className={styles.matchMeta} role="note">
+            {matchMetaLines.map((line) => (
+              <p key={line} className={styles.matchMetaLine}>
+                {line}
+              </p>
+            ))}
+          </div>
+        ) : null}
+        {assignmentSummary.length ? (
+          <div className={styles.assignmentList} role="group" aria-label="매칭된 역할 구성">
+            {assignmentSummary.map((assignment) => (
+              <div key={assignment.key} className={styles.assignmentItem}>
+                <span className={styles.assignmentRole}>{assignment.role}</span>
+                {assignment.members.length ? (
+                  <ul className={styles.assignmentMembers}>
+                    {assignment.members.map((member) => (
+                      <li key={member.key} className={styles.assignmentMember}>
+                        {member.label}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
         {confirmationState === 'counting' ? (
           <div className={styles.confirmArea}>
             <button type="button" className={styles.confirmButton} onClick={handleConfirmMatch}>
