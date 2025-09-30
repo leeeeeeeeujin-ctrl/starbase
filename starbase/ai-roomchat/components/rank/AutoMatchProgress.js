@@ -4,8 +4,6 @@ import { useRouter } from 'next/router'
 import useMatchQueue from './hooks/useMatchQueue'
 import styles from './AutoMatchProgress.module.css'
 
-const BROKEN_BUILD_SENTINEL = ;
-
 export default function AutoMatchProgress({ gameId, mode }) {
   const router = useRouter()
   const { state, actions } = useMatchQueue({ gameId, mode, enabled: Boolean(gameId) })
