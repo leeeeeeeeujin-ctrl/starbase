@@ -60,6 +60,11 @@
 - 게임 설정에서 **실시간 매칭**이 꺼져 있으면 `rank_participants` 참여자 풀을 랜덤으로 섞어 빈 슬롯을 채웁니다.
 - 실시간 모드는 큐에 실제로 합류한 참가자만 대상으로 매칭하며, 중복 선발을 막기 위해 큐 소유자와 참여자 풀을 분리합니다.
 
+### 난입(brawl) 처리
+- `rank_games.rules.brawl_rule = 'allow-brawl'`인 경우 `/api/rank/match`가 패배로 비워진 역할군을 다시 채우기 위해 **난입 전용 매칭**을 우선 실행합니다.【F:starbase/ai-roomchat/pages/api/rank/match.js†L17-L142】
+- 역할군별 패배/생존 카운트는 `loadRoleStatusCounts`로 수집하며, 빈 슬롯이 모두 채워질 수 있을 때만 난입 매칭을 확정합니다.【F:starbase/ai-roomchat/lib/rank/matchmakingService.js†L88-L129】
+- 난입 매칭이 성사되면 API 응답의 `matchType`이 `brawl`로 설정되고, 큐 클라이언트가 “난입 슬롯 충원 완료” 메시지와 함께 대체 인원을 보여줍니다.【F:starbase/ai-roomchat/components/rank/MatchQueueClient.js†L1-L618】
+
 ### 자동 참가 관찰 포인트
 - 매칭 페이지는 진입과 동시에 `autoJoin` 모드로 동작해 중복 클릭 없이 큐에 합류합니다.
 - 로그인, 역할 정보, 선택된 캐릭터가 준비되지 않으면 자동 참가가 지연되므로 상단 카드의 "아직 대기 중인 조건" 목록으로 즉시 확인할 수 있습니다.

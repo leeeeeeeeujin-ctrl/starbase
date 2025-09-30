@@ -197,6 +197,24 @@ export default function MatchQueueClient({
   })
   const [finalTimer, setFinalTimer] = useState(null)
   const finalTimerResolvedRef = useRef(null)
+  const matchType = state.match?.matchType || 'standard'
+  const isBrawlMatch = matchType === 'brawl'
+  const brawlSummary = useMemo(() => {
+    if (!isBrawlMatch) return ''
+    const vacancies = Array.isArray(state.match?.brawlVacancies)
+      ? state.match.brawlVacancies
+      : []
+    if (!vacancies.length) return ''
+    return vacancies
+      .map((entry) => {
+        const role = entry?.name || entry?.role || '역할'
+        const count = Number(entry?.slot_count || entry?.slots || 0)
+        if (!Number.isFinite(count) || count <= 0) return role
+        return `${role} ${count}명`
+      })
+      .filter(Boolean)
+      .join(', ')
+  }, [isBrawlMatch, state.match])
 
   useEffect(() => {
     latestStatusRef.current = state.status
@@ -580,10 +598,21 @@ export default function MatchQueueClient({
 
       {state.status === 'matched' && state.match ? (
         <section className={styles.card}>
-          <h2 className={styles.sectionTitle}>매칭 완료</h2>
+          <h2 className={styles.sectionTitle}>
+            {isBrawlMatch ? '난입 슬롯 충원 완료' : '매칭 완료'}
+          </h2>
           <p className={styles.sectionHint}>
-            허용 점수 폭 ±{state.match.maxWindow || 0} 내에서 팀이 구성되었습니다.
+            {isBrawlMatch
+              ? brawlSummary
+                ? `탈락한 역할군을 대신할 ${brawlSummary}이(가) 합류합니다.`
+                : '탈락한 역할군을 대신할 참가자가 합류합니다.'
+              : `허용 점수 폭 ±${state.match.maxWindow || 0} 내에서 팀이 구성되었습니다.`}
           </p>
+          {isBrawlMatch ? (
+            <p className={styles.sectionHint}>
+              허용 점수 폭 ±{state.match.maxWindow || 0}을 유지한 채 난입이 진행됩니다.
+            </p>
+          ) : null}
           <div className={styles.matchGrid}>
             {state.match.assignments.map((assignment, index) => (
               <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>

@@ -92,6 +92,53 @@ export async function loadParticipantPool(supabaseClient, gameId) {
   }))
 }
 
+function normalizeStatus(value) {
+  if (!value) return 'alive'
+  if (typeof value !== 'string') return 'alive'
+  return value.trim().toLowerCase() || 'alive'
+}
+
+const DEFEATED_STATUS_SET = new Set([
+  'defeated',
+  'lost',
+  'out',
+  'retired',
+  'eliminated',
+  'dead',
+])
+
+export async function loadRoleStatusCounts(supabaseClient, gameId) {
+  if (!gameId) return new Map()
+
+  const result = await withTable(supabaseClient, 'rank_participants', (table) =>
+    supabaseClient
+      .from(table)
+      .select('role, status')
+      .eq('game_id', gameId),
+  )
+
+  if (result?.error) throw result.error
+
+  const rows = Array.isArray(result?.data) ? result.data : []
+  const map = new Map()
+
+  rows.forEach((row) => {
+    const roleName = (row?.role || '').trim()
+    if (!roleName) return
+    const status = normalizeStatus(row?.status)
+    const bucket = map.get(roleName) || { total: 0, active: 0, defeated: 0 }
+    bucket.total += 1
+    if (DEFEATED_STATUS_SET.has(status)) {
+      bucket.defeated += 1
+    } else {
+      bucket.active += 1
+    }
+    map.set(roleName, bucket)
+  })
+
+  return map
+}
+
 export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
   if (!gameId) return []
   const queueModes = getQueueModes(mode)

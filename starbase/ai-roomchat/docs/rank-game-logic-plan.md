@@ -61,6 +61,7 @@
 - **3단계 – 서버 전투 기록**: `recordBattle`이 `rank_battle_logs`에 `game_id`를 아직 포함하지 않아 스키마 요구사항을 충족하지 못한다.【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L32】
 - **4단계 – UI/히스토리 연동**: 메인 룸 UI는 참가자 수만 비교해 시작 가능 여부를 판단하며, 세션 히스토리나 난입 로직 반영은 미구현 상태다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L488-L520】【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L760-L819】
 - **매칭 자동화 안정화**: `MatchQueueClient`가 뷰어 ID·역할·히어로 정보를 모두 확보한 뒤 자동 참가를 시도하도록 지연해, 페이지 진입 직후 수동 대기열 UI만 노출되던 문제를 막았습니다.【F:starbase/ai-roomchat/components/rank/MatchQueueClient.js†L1-L210】
+- **난입 슬롯 충원**: `loadRoleStatusCounts`와 `/api/rank/match`의 `brawl` 경로가 패배한 역할군을 감지해 큐에서 대체 인원을 모집하고, 성사 시 "난입 슬롯 충원 완료" 메시지를 노출합니다.【F:starbase/ai-roomchat/lib/rank/matchmakingService.js†L88-L129】【F:starbase/ai-roomchat/pages/api/rank/match.js†L17-L142】【F:starbase/ai-roomchat/components/rank/MatchQueueClient.js†L1-L618】
 
 ---
 느낀 점: 기존 코드에 매칭을 위한 초석이 꽤 깔려 있어서 흐름을 정리하기가 수월했습니다.
