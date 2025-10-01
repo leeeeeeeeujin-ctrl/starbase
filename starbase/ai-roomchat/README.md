@@ -5,7 +5,7 @@
 - 로그인(OAuth), 히어로 생성/조회, 공개 채팅(옵션)
 
 ## 0) 환경변수
-`.env.example` 참고해서 `.env.local` 작성
+`.env.example` 참고해서 `.env.local` 작성. 서버 전용 환경 변수는 [`docs/environment-variables.md`](docs/environment-variables.md)에 정리돼 있으니 배포 전에 필수 항목을 확인하세요.
 ```
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
