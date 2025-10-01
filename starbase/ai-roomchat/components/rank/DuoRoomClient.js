@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import RoleOccupancySummary from './RoleOccupancySummary'
 import styles from './DuoRoomClient.module.css'
 
 const STORAGE_PREFIX = 'duoRooms:'
@@ -90,6 +91,7 @@ export default function DuoRoomClient({
   game,
   roleDetails,
   roles,
+  roleOccupancy = [],
   myHero,
   myEntry,
   user,
@@ -414,6 +416,12 @@ export default function DuoRoomClient({
           </p>
         </div>
       </header>
+
+      {Array.isArray(roleOccupancy) && roleOccupancy.length ? (
+        <section className={styles.card}>
+          <RoleOccupancySummary occupancy={roleOccupancy} />
+        </section>
+      ) : null}
 
       {!myHero?.id ? (
         <section className={styles.card}>
