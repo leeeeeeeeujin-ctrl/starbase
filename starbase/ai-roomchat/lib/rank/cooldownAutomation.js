@@ -370,6 +370,12 @@ export async function runCooldownAutomation(event, options = {}) {
     alert: await dispatchCooldownAlert(sanitized, options),
   }
 
+  const alertDocUrl = summary.alert?.docUrl || null
+  summary.alertDocLinkAttached = Boolean(alertDocUrl)
+  if (alertDocUrl) {
+    summary.alertDocUrl = alertDocUrl
+  }
+
   const rotation = await triggerAutoKeyRotation(sanitized, options)
   summary.rotation = rotation
 
@@ -390,6 +396,12 @@ export function mergeCooldownMetadata(existingMetadata, automationSummary) {
   const previous = isObject(base.cooldownAutomation) ? base.cooldownAutomation : {}
   const previousCount = Number(previous.attemptCount)
   const attemptCount = Number.isFinite(previousCount) ? previousCount : 0
+  const previousDocLinkCount = Number(previous.docLinkAttachmentCount)
+  const docLinkAttachmentCount = Number.isFinite(previousDocLinkCount) ? previousDocLinkCount : 0
+
+  const alertDocUrl =
+    automationSummary.alertDocUrl || automationSummary.alert?.docUrl || null
+  const alertDocLinkAttached = Boolean(automationSummary.alertDocLinkAttached || alertDocUrl)
 
   const merged = {
     ...base,
@@ -401,7 +413,13 @@ export function mergeCooldownMetadata(existingMetadata, automationSummary) {
         triggered: automationSummary.triggered,
         alert: automationSummary.alert,
         rotation: automationSummary.rotation,
+        alertDocLinkAttached,
+        alertDocUrl,
       },
+      lastDocLinkAttached: alertDocLinkAttached,
+      lastDocUrl: alertDocUrl,
+      docLinkAttachmentCount:
+        alertDocLinkAttached ? docLinkAttachmentCount + 1 : docLinkAttachmentCount,
     },
   }
 

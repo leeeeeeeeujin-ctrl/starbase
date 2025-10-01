@@ -15,6 +15,7 @@
    - 삽입 이후 `lib/rank/cooldownAutomation.js`를 호출해 Slack/Webhook 경보와 키 교체 자동화 엔드포인트를 순차적으로 실행합니다.
    - 경보 또는 자동화가 한 번이라도 성공하면 `notified_at`을 현재 시각으로 갱신하고, 결과는 `metadata.cooldownAutomation`에 기록됩니다.
    - 각 호출의 응답 본문·JSON·HTTP 상태·소요 시간·에러 스택이 `metadata.cooldownAutomation.lastResult`에 포함되므로 재시도 정책을 세밀하게 튜닝할 수 있습니다.
+   - 회수 다이제스트 실행 여부와 관계없이 Slack/Webhook 알림에 런북 링크가 첨부됐는지 `metadata.cooldownAutomation.lastDocLinkAttached` 및 `docLinkAttachmentCount`로 누적 집계되며, 대시보드 카드에서도 바로 확인할 수 있습니다.
 
 3. **수동 다이제스트 (백업 경로)**
    - 실시간 경보가 실패한(즉, `notified_at IS NULL`) 레코드를 주기적으로 확인하고 필요할 때 `/api/rank/cooldown-digest`를 수동 호출합니다.

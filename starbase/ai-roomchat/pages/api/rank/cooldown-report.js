@@ -134,6 +134,8 @@ export default async function handler(req, res) {
         alert: automationSummary.alert,
         rotation: automationSummary.rotation,
         triggered: automationSummary.triggered,
+        alertDocLinkAttached: automationSummary.alertDocLinkAttached,
+        alertDocUrl: automationSummary.alertDocUrl || automationSummary.alert?.docUrl || null,
       })
 
       const metadata = mergeCooldownMetadata(row.metadata, automationSummary)
