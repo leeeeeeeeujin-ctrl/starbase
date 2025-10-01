@@ -26,11 +26,17 @@
 
 ## 환경 변수 관리
 
-- 저장소에는 암호화된 `.env.vault`만 커밋하고, 평문 `.env`는 항상 `.gitignore`에 유지합니다.
-- 처음 설정할 때는 `npm install -D dotenv dotenv-vault` 이후 `npx dotenv-vault login`, `npx dotenv-vault push`, `npx dotenv-vault build` 순으로 vault를 생성합니다.
-- 로컬에서 `ADMIN_PORTAL_PASSWORD` 등 비밀 값을 `.env`에 입력한 뒤 `npx dotenv-vault build`를 실행하면 `.env.vault`가 갱신됩니다.
-- 배포 환경(Vercel 등)에는 `DOTENV_KEY`를 추가하면 런타임에서 `.env.vault`가 자동 복호화되어 `process.env`에 값이 주입됩니다.
-- `ADMIN_PORTAL_PASSWORD` 외에도 Supabase 키(`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE`)와 슬롯 스위퍼 비밀(`RANK_SLOT_SWEEPER_SECRET`)을 함께 관리하세요.
+모든 비밀 값은 배포 대상(예: Vercel 프로젝트, 자체 서버)의 환경 변수 설정 화면에서 직접 등록합니다. 저장소에는 `.env` 계열 파일을 커밋하지 않습니다.
+
+필수 변수 목록은 다음과 같습니다.
+
+- `ADMIN_PORTAL_PASSWORD`: 관리자 포털 로그인에 사용하는 비밀번호. 프런트엔드 번들에 노출되지 않도록 서버 측 변수로만 설정합니다.
+- `NEXT_PUBLIC_SUPABASE_URL`: Supabase 프로젝트 URL. 클라이언트에서도 사용되므로 `NEXT_PUBLIC_` 접두사를 유지합니다.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase 익명 키. 브라우저 클라이언트가 API를 호출할 때 필요합니다.
+- `SUPABASE_SERVICE_ROLE`: 서버에서만 사용하는 서비스 롤 키. API 라우트와 백오피스 스크립트가 데이터 갱신에 사용합니다.
+- `RANK_SLOT_SWEEPER_SECRET`: 슬롯 스위퍼 API를 외부 트리거(Vercel Cron 등)에서 호출할 때 검증에 사용하는 공유 비밀.
+
+운영 중 추가 키가 필요하면 같은 방식으로 서버 환경 변수에 등록하고, 프런트엔드 코드에는 하드코딩하지 마세요.
 
 ## 운영 팁
 

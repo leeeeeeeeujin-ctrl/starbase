@@ -16,8 +16,5 @@
     "react-dom": "18.2.0",
     "reactflow": "^11.11.4"
   },
-  "devDependencies": {
-    "dotenv": "^17.2.3",
-    "dotenv-vault": "^1.27.0"
-  }
+  "devDependencies": {}
 }
