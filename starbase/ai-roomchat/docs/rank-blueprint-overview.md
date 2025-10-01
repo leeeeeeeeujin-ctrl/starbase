@@ -33,6 +33,7 @@
 - [프롬프트 세트 재저장 가이드](rank-prompt-set-versioning-guide.md): StartClient 경고 메시지에 맞춘 제작기 재저장 절차와 검증 체크리스트를 문서화해 누구나 즉시 대응할 수 있습니다.
 - [2025-11-06 진행 로그](rank-blueprint-progress-2025-11-06.md): API 키 쿨다운 가드를 도입하고 운영 대시보드 경보를 연동했습니다.
 - [2025-11-05 진행 로그](rank-blueprint-progress-2025-11-05.md): 롤백 이후 기준 상태를 재확인하고 실행 플랜 체크리스트를 재정렬했습니다.
+- [쿨다운 Telemetry CSV 내보내기](rank-api-key-cooldown-monitoring.md#운영-절차): 제공자/최근 시도 데이터를 바로 내려받는 버튼과 API 포맷을 정리해 운영 보고서 공유 루틴을 단축했습니다.
 
 ## 6. 다음 액션 스냅샷
 1. QA가 듀오/캐주얼 재시작 시퀀스에서 큐 일관성 회귀가 없는지 통합 테스트(`pages/api/rank/play.ts`)를 재실행하도록 준비합니다.

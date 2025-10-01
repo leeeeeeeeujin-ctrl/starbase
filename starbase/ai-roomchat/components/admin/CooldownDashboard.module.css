@@ -139,6 +139,26 @@
   margin-bottom: 1rem;
 }
 
+.exportFeedback {
+  margin: -0.5rem 0 0.75rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.65rem;
+  font-size: 0.8rem;
+  border: 1px solid transparent;
+}
+
+.exportFeedbackSuccess {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(74, 222, 128, 0.35);
+  color: #bbf7d0;
+}
+
+.exportFeedbackError {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+}
+
 .refreshButton {
   border: 1px solid rgba(129, 140, 248, 0.45);
   border-radius: 0.75rem;

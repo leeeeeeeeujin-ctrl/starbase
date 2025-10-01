@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './CooldownDashboard.module.css'
 
 const LANGUAGE_LIMIT_OPTIONS = [100, 200, 300, 500, 800, 1000]
@@ -464,9 +464,12 @@ export default function CooldownDashboard() {
   const [favoriteLabel, setFavoriteLabel] = useState('')
   const [favoriteFeedback, setFavoriteFeedback] = useState(null)
   const [shareFeedback, setShareFeedback] = useState(null)
+  const [exportStatus, setExportStatus] = useState(null)
+  const [exportingSection, setExportingSection] = useState(null)
   const [initialFiltersLoaded, setInitialFiltersLoaded] = useState(false)
   const favoritesFeedbackTimeoutRef = useRef(null)
   const shareFeedbackTimeoutRef = useRef(null)
+  const exportFeedbackTimeoutRef = useRef(null)
 
   const seasonOptions = useMemo(() => {
     const seasons = languageFilterOptions?.seasons || []
@@ -590,6 +593,9 @@ export default function CooldownDashboard() {
       if (shareFeedbackTimeoutRef.current) {
         clearTimeout(shareFeedbackTimeoutRef.current)
       }
+      if (exportFeedbackTimeoutRef.current) {
+        clearTimeout(exportFeedbackTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -610,12 +616,74 @@ export default function CooldownDashboard() {
   }, [shareFeedback])
 
   useEffect(() => {
+    if (!exportStatus) return
+    if (exportFeedbackTimeoutRef.current) {
+      clearTimeout(exportFeedbackTimeoutRef.current)
+    }
+    exportFeedbackTimeoutRef.current = setTimeout(() => setExportStatus(null), 4000)
+  }, [exportStatus])
+
+  useEffect(() => {
     if (selectedGameId === 'all') return
     if (!(languageFilterOptions?.games || []).some((game) => game.id === selectedGameId)) {
       setSelectedGameId('all')
       setSelectedSeasonId('all')
     }
   }, [languageFilterOptions, selectedGameId])
+
+  const handleExport = useCallback(
+    async (section) => {
+      if (typeof window === 'undefined') return
+      setExportStatus(null)
+      setExportingSection(section)
+      try {
+        const params = new URLSearchParams()
+        params.set('latestLimit', `${limit}`)
+        params.set('format', 'csv')
+        params.set('section', section)
+
+        const response = await fetch(`/api/rank/cooldown-telemetry?${params.toString()}`)
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          const errorMessage =
+            payload.error === 'unsupported_csv_section'
+              ? '지원하지 않는 내보내기 요청입니다.'
+              : payload.error || 'CSV 내보내기에 실패했습니다.'
+          throw new Error(errorMessage)
+        }
+
+        const blob = await response.blob()
+        const downloadUrl = window.URL.createObjectURL(blob)
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+        const anchor = document.createElement('a')
+        anchor.href = downloadUrl
+        anchor.download = `cooldown-${section}-${timestamp}.csv`
+        document.body.appendChild(anchor)
+        anchor.click()
+        document.body.removeChild(anchor)
+        window.URL.revokeObjectURL(downloadUrl)
+        setExportStatus({ section, type: 'success', text: 'CSV 파일을 다운로드했습니다.' })
+      } catch (exportError) {
+        setExportStatus({
+          section,
+          type: 'error',
+          text: exportError.message || 'CSV 내보내기에 실패했습니다.',
+        })
+      } finally {
+        setExportingSection(null)
+      }
+    },
+    [limit],
+  )
+
+  const renderExportFeedback = (section) => {
+    if (!exportStatus || exportStatus.section !== section) return null
+    const toneClass =
+      exportStatus.type === 'success'
+        ? styles.exportFeedbackSuccess
+        : styles.exportFeedbackError
+    return <p className={`${styles.exportFeedback} ${toneClass}`}>{exportStatus.text}</p>
+  }
 
   function describeFavorite(favorite) {
     const limitLabel = `최근 ${favorite.limit}건`
@@ -1020,14 +1088,32 @@ export default function CooldownDashboard() {
           <section className={styles.panel}>
             <header className={styles.panelHeader}>
               <h3>제공자별 현황</h3>
+              <button
+                type="button"
+                className={styles.refreshButton}
+                onClick={() => handleExport('providers')}
+                disabled={exportingSection === 'providers'}
+              >
+                {exportingSection === 'providers' ? '내보내는 중…' : 'CSV 내보내기'}
+              </button>
             </header>
+            {renderExportFeedback('providers')}
             <ProviderTable providers={providerAlerts} />
           </section>
 
           <section className={styles.panel}>
             <header className={styles.panelHeader}>
               <h3>최근 자동화 시도</h3>
+              <button
+                type="button"
+                className={styles.refreshButton}
+                onClick={() => handleExport('attempts')}
+                disabled={exportingSection === 'attempts'}
+              >
+                {exportingSection === 'attempts' ? '내보내는 중…' : 'CSV 내보내기'}
+              </button>
             </header>
+            {renderExportFeedback('attempts')}
             <LatestAttempts attempts={latestAlerts} />
           </section>
 

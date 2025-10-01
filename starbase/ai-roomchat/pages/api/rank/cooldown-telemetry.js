@@ -2,6 +2,176 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { buildCooldownTelemetry } from '@/lib/rank/cooldownTelemetry'
 import { evaluateCooldownAlerts } from '@/lib/rank/cooldownAlertThresholds'
 
+function toCsvValue(value) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  let stringValue = value
+
+  if (value instanceof Date) {
+    stringValue = value.toISOString()
+  } else if (typeof value === 'object') {
+    try {
+      stringValue = JSON.stringify(value)
+    } catch (error) {
+      stringValue = String(value)
+    }
+  } else if (typeof value === 'boolean') {
+    stringValue = value ? 'true' : 'false'
+  }
+
+  const normalized = String(stringValue).replace(/"/g, '""')
+  if (/[",\n]/.test(normalized)) {
+    return `"${normalized}"`
+  }
+  return normalized
+}
+
+function toCsv(rows) {
+  return rows.map((row) => row.map((value) => toCsvValue(value)).join(',')).join('\r\n')
+}
+
+function buildProviderCsv(report, alerts) {
+  const header = [
+    'generated_at',
+    'provider',
+    'status',
+    'tracked_keys',
+    'keys_with_success',
+    'currently_triggered',
+    'triggered_ratio',
+    'total_attempts',
+    'estimated_failure_rate',
+    'avg_alert_duration_ms',
+    'avg_rotation_duration_ms',
+    'recommended_backoff_ms',
+    'recommended_weight',
+    'doc_link_attachment_count',
+    'doc_link_attachment_rate',
+    'last_doc_link_attachment_rate',
+    'issues',
+  ]
+
+  const providerAlerts = new Map()
+  if (Array.isArray(alerts?.providers)) {
+    for (const entry of alerts.providers) {
+      providerAlerts.set(entry.provider, entry)
+    }
+  }
+
+  const rows = Array.isArray(report?.providers)
+    ? report.providers.map((provider) => {
+        const alert = providerAlerts.get(provider.provider) || {}
+        const issues = Array.isArray(alert.issues)
+          ? alert.issues.map((issue) => issue.message).filter(Boolean).join(' | ')
+          : ''
+        const triggeredRatio = provider.trackedKeys
+          ? provider.currentlyTriggered / provider.trackedKeys
+          : 0
+        return [
+          report.generatedAt || new Date().toISOString(),
+          provider.provider || 'unknown',
+          alert.status || 'ok',
+          provider.trackedKeys ?? 0,
+          provider.keysWithSuccess ?? 0,
+          provider.currentlyTriggered ?? 0,
+          Number.isFinite(triggeredRatio) ? Number(triggeredRatio.toFixed(3)) : 0,
+          provider.totalAttempts ?? 0,
+          provider.estimatedFailureRate ?? 0,
+          provider.avgAlertDurationMs ?? null,
+          provider.avgRotationDurationMs ?? null,
+          provider.recommendedBackoffMs ?? null,
+          provider.recommendedWeight ?? null,
+          provider.docLinkAttachmentCount ?? 0,
+          provider.docLinkAttachmentRate ?? 0,
+          provider.lastDocLinkAttachmentRate ?? 0,
+          issues,
+        ]
+      })
+    : []
+
+  return toCsv([header, ...rows])
+}
+
+function buildAttemptsCsv(report, alerts) {
+  const header = [
+    'generated_at',
+    'key_hash',
+    'key_sample',
+    'provider',
+    'reason',
+    'overall_status',
+    'issues',
+    'attempt_id',
+    'attempt_count',
+    'attempted_at',
+    'triggered',
+    'doc_link_attached',
+    'doc_link_attachment_count',
+    'doc_link_attachment_rate',
+    'alert_status',
+    'alert_duration_ms',
+    'alert_http_status',
+    'alert_error',
+    'rotation_status',
+    'rotation_duration_ms',
+    'rotation_http_status',
+    'rotation_error',
+  ]
+
+  const attemptAlerts = new Map()
+  if (Array.isArray(alerts?.attempts)) {
+    for (const entry of alerts.attempts) {
+      attemptAlerts.set(`${entry.keyHash ?? 'unknown'}::${entry.attemptedAt ?? ''}`, entry)
+    }
+  }
+
+  const rows = Array.isArray(report?.latestAttempts)
+    ? report.latestAttempts.map((attempt) => {
+        const alertKey = `${attempt.keyHash ?? 'unknown'}::${attempt.attemptedAt ?? ''}`
+        const evaluation = attemptAlerts.get(alertKey) || {}
+        const issues = Array.isArray(evaluation.issues)
+          ? evaluation.issues.map((issue) => issue.message).filter(Boolean).join(' | ')
+          : ''
+
+        const alert = attempt.alert || {}
+        const alertResponse = alert.response || {}
+        const alertError = alert.error || {}
+        const rotation = attempt.rotation || {}
+        const rotationResponse = rotation.response || {}
+        const rotationError = rotation.error || {}
+
+        return [
+          report.generatedAt || new Date().toISOString(),
+          attempt.keyHash || null,
+          attempt.keySample || null,
+          attempt.provider || null,
+          attempt.reason || null,
+          evaluation.status || 'ok',
+          issues,
+          attempt.attemptId || null,
+          attempt.attemptCount ?? 0,
+          attempt.attemptedAt || null,
+          attempt.triggered ?? false,
+          attempt.docLinkAttached ?? false,
+          attempt.docLinkAttachmentCount ?? 0,
+          attempt.docLinkAttachmentRate ?? 0,
+          alert.status ?? null,
+          alert.durationMs ?? null,
+          alertResponse.status ?? null,
+          alertError.message || null,
+          rotation.status ?? null,
+          rotation.durationMs ?? null,
+          rotationResponse.status ?? null,
+          rotationError.message || null,
+        ]
+      })
+    : []
+
+  return toCsv([header, ...rows])
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET'])
@@ -29,6 +199,30 @@ export default async function handler(req, res) {
 
     const report = buildCooldownTelemetry(data || [], { latestLimit: normalizedLimit })
     const alerts = evaluateCooldownAlerts(report)
+
+    const formatParam = Array.isArray(req.query.format) ? req.query.format[0] : req.query.format
+    const format = typeof formatParam === 'string' ? formatParam.toLowerCase() : null
+
+    if (format === 'csv') {
+      const sectionParam = Array.isArray(req.query.section) ? req.query.section[0] : req.query.section
+      const section = typeof sectionParam === 'string' ? sectionParam.toLowerCase() : 'providers'
+
+      let csvContent = null
+      if (section === 'providers') {
+        csvContent = buildProviderCsv(report, alerts)
+      } else if (section === 'attempts') {
+        csvContent = buildAttemptsCsv(report, alerts)
+      }
+
+      if (!csvContent) {
+        return res.status(400).json({ error: 'unsupported_csv_section' })
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="cooldown-${section}-${timestamp}.csv"`)
+      return res.status(200).send(`\uFEFF${csvContent}`)
+    }
 
     return res.status(200).json({
       ...report,
