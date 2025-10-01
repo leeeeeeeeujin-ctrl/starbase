@@ -11,6 +11,7 @@ import VariableDrawer from './VariableDrawer'
 
 export default function MakerEditor() {
   const {
+    router,
     isReady,
     loading,
     busy,
@@ -56,6 +57,7 @@ export default function MakerEditor() {
     saveReceipt,
     ackSaveReceipt,
     saveHistory,
+    clearSaveHistory,
   } = useMakerEditor()
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
@@ -122,6 +124,56 @@ export default function MakerEditor() {
   const handleDismissVersionAlert = useCallback(() => {
     clearVersionAlert()
   }, [clearVersionAlert])
+
+  const handleExportHistory = useCallback(() => {
+    if (!Array.isArray(saveHistory) || saveHistory.length === 0) {
+      return
+    }
+    if (typeof window === 'undefined') return
+
+    const rawSetId = router?.query?.id
+    const setIdValue = Array.isArray(rawSetId) ? rawSetId[0] : rawSetId
+    const safeName = (setInfo?.name || 'maker-set')
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, '_')
+      .slice(0, 60)
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const filenameParts = [safeName || 'maker-set']
+    if (setIdValue) {
+      filenameParts.push(setIdValue)
+    }
+    filenameParts.push(`history-${timestamp}`)
+    const filename = `${filenameParts.join('-')}.json`
+
+    try {
+      const payload = JSON.stringify(saveHistory, null, 2)
+      const blob = new Blob([payload], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url)
+      }, 1000)
+    } catch (error) {
+      console.error('[MakerEditor] 히스토리 내보내기에 실패했습니다.', error)
+    }
+  }, [router?.query?.id, saveHistory, setInfo?.name])
+
+  const handleClearHistory = useCallback(() => {
+    if (!Array.isArray(saveHistory) || saveHistory.length === 0) {
+      return
+    }
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('저장된 자동 업그레이드 히스토리를 모두 삭제할까요?')
+      if (!confirmed) return
+    }
+    clearSaveHistory()
+  }, [clearSaveHistory, saveHistory])
 
   useEffect(() => {
     if (!saveReceipt) {
@@ -371,6 +423,8 @@ export default function MakerEditor() {
               setNodes={setNodes}
               setEdges={setEdges}
               saveHistory={saveHistory}
+              onExportHistory={handleExportHistory}
+              onClearHistory={handleClearHistory}
             />
           </div>
         </div>

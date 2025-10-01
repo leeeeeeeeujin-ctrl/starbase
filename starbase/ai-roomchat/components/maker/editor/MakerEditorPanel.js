@@ -16,6 +16,8 @@ export default function MakerEditorPanel({
   setNodes,
   setEdges,
   saveHistory = [],
+  onExportHistory = () => {},
+  onClearHistory = () => {},
 }) {
   const nodeData = selectedNode?.data || null
 
@@ -206,7 +208,57 @@ export default function MakerEditorPanel({
         )}
 
         {activeTab === 'history' && (
-          <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 10,
+                flexWrap: 'wrap',
+              }}
+            >
+              <p style={{ margin: 0, color: '#64748b', fontSize: 12, lineHeight: 1.6, flex: '1 1 160px' }}>
+                자동 버전 업그레이드 히스토리는 이 브라우저에 저장됩니다. JSON으로 내보내 다른 세션에서도 보관하거나
+                공유할 수 있습니다.
+              </p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={onExportHistory}
+                  disabled={saveHistory.length === 0}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 10,
+                    border: '1px solid #cbd5f5',
+                    background: saveHistory.length === 0 ? '#f8fafc' : '#dbeafe',
+                    color: saveHistory.length === 0 ? '#94a3b8' : '#1d4ed8',
+                    fontWeight: 600,
+                    fontSize: 12,
+                  }}
+                >
+                  JSON 내보내기
+                </button>
+                <button
+                  type="button"
+                  onClick={onClearHistory}
+                  disabled={saveHistory.length === 0}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 10,
+                    border: '1px solid #fecdd3',
+                    background: saveHistory.length === 0 ? '#fef2f2' : '#fee2e2',
+                    color: saveHistory.length === 0 ? '#f87171' : '#b91c1c',
+                    fontWeight: 600,
+                    fontSize: 12,
+                    opacity: saveHistory.length === 0 ? 0.6 : 1,
+                  }}
+                >
+                  기록 비우기
+                </button>
+              </div>
+            </div>
+
             {saveHistory.length === 0 ? (
               <p style={{ margin: 0, color: '#94a3b8', fontSize: 13 }}>
                 아직 자동 버전 업그레이드 내역이 없습니다. 저장 후 자동 갱신이 실행되면 이곳에 기록이 쌓입니다.

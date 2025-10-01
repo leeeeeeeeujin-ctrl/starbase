@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import { useMakerEditorGraph } from './editor/useMakerEditorGraph'
@@ -29,6 +29,8 @@ export function useMakerEditor() {
   const [versionAlert, setVersionAlert] = useState(null)
   const [saveReceipt, setSaveReceipt] = useState(null)
   const [saveHistory, setSaveHistory] = useState([])
+  const historyStorageKeyRef = useRef(null)
+  const historyLoadedRef = useRef(false)
 
   const flowMapRef = useRef(new Map())
   const deleteNodeRef = useRef(() => {})
@@ -79,6 +81,63 @@ export function useMakerEditor() {
     setSaveReceipt(receipt)
     versionNoticeRef.current = null
     setVersionAlert(null)
+  }, [])
+
+  useEffect(() => {
+    if (!router.isReady || !setId) return
+    if (typeof window === 'undefined') return
+
+    const key = `maker:history:${setId}`
+    historyStorageKeyRef.current = key
+    historyLoadedRef.current = false
+
+    try {
+      const stored = window.localStorage.getItem(key)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          setSaveHistory(parsed)
+        } else {
+          setSaveHistory([])
+        }
+      } else {
+        setSaveHistory([])
+      }
+    } catch (error) {
+      console.warn('[MakerEditor] 저장된 히스토리 불러오기 실패', error)
+    } finally {
+      historyLoadedRef.current = true
+    }
+  }, [router.isReady, setId])
+
+  useEffect(() => {
+    if (!historyLoadedRef.current) return
+    if (!historyStorageKeyRef.current) return
+    if (typeof window === 'undefined') return
+
+    try {
+      if (saveHistory.length === 0) {
+        window.localStorage.removeItem(historyStorageKeyRef.current)
+      } else {
+        window.localStorage.setItem(
+          historyStorageKeyRef.current,
+          JSON.stringify(saveHistory),
+        )
+      }
+    } catch (error) {
+      console.warn('[MakerEditor] 히스토리 저장 실패', error)
+    }
+  }, [saveHistory])
+
+  const clearSaveHistory = useCallback(() => {
+    setSaveHistory([])
+    if (typeof window === 'undefined') return
+    if (!historyStorageKeyRef.current) return
+    try {
+      window.localStorage.removeItem(historyStorageKeyRef.current)
+    } catch (error) {
+      console.warn('[MakerEditor] 히스토리 초기화 실패', error)
+    }
   }, [])
 
   const ackSaveReceipt = useCallback((id) => {
@@ -260,6 +319,7 @@ export function useMakerEditor() {
     saveReceipt,
     ackSaveReceipt,
     saveHistory,
+    clearSaveHistory,
   }
 }
 
