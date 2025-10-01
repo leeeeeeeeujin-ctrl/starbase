@@ -101,6 +101,33 @@
   margin-bottom: 10px;
 }
 
+.autoJoinDebug {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.autoJoinDebugTitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.9);
+}
+
+.autoJoinDebugList {
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.autoJoinDebugItem + .autoJoinDebugItem {
+  margin-top: 4px;
+}
+
 .autoFlow {
   display: flex;
   flex-direction: column;

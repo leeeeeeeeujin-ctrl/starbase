@@ -30,6 +30,11 @@
   gap: 20px;
 }
 
+.noticeStack {
+  display: grid;
+  gap: 12px;
+}
+
 .timeoutNotice {
   padding: 14px 18px;
   border-radius: 18px;
@@ -40,61 +45,126 @@
   font-size: 14px;
 }
 
-.mainLayout {
-  display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(180px, 1fr) minmax(320px, 1.5fr) minmax(180px, 1fr);
-  align-items: start;
+.consensusNotice {
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #bfdbfe;
+  font-weight: 600;
+  font-size: 13px;
 }
 
-.rosterColumn {
+
+.rosterSection {
   display: grid;
-  gap: 12px;
+  gap: 16px;
+}
+
+.rosterHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
 }
 
 .rosterTitle {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: rgba(226, 232, 240, 0.85);
+  font-size: 18px;
+  font-weight: 700;
+  color: rgba(226, 232, 240, 0.9);
 }
 
-.rosterList {
+.rosterSubtitle {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.6);
+}
+
+.rosterStrip {
   list-style: none;
   margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 12px;
+  padding: 0 4px 8px;
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
 }
 
-.rosterCard {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 12px;
+.rosterStrip::-webkit-scrollbar {
+  height: 6px;
+}
+
+.rosterStrip::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+
+.rosterChip {
+  position: relative;
+  min-width: 168px;
+  display: flex;
   align-items: center;
-  padding: 14px;
-  border-radius: 18px;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 20px;
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.25);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease,
+    background 0.25s ease;
+  scroll-snap-align: start;
 }
 
-.rosterAvatar {
-  width: 72px;
-  height: 72px;
+.rosterChipActive {
+  border-color: rgba(96, 165, 250, 0.85);
+  box-shadow: 0 12px 32px rgba(30, 64, 175, 0.35);
+  transform: translateY(-2px);
+}
+
+.rosterChipUserAction {
+  background: linear-gradient(
+    130deg,
+    rgba(30, 64, 175, 0.7) 0%,
+    rgba(15, 23, 42, 0.85) 45%,
+    rgba(30, 64, 175, 0.55) 100%
+  );
+}
+
+.rosterChipAvatarWrapper {
+  position: relative;
+}
+
+.rosterChipAvatar {
+  width: 64px;
+  height: 64px;
   border-radius: 18px;
   object-fit: cover;
   border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
-.rosterAvatarPlaceholder {
-  width: 72px;
-  height: 72px;
+.rosterChipAvatarPlaceholder {
+  width: 64px;
+  height: 64px;
   border-radius: 18px;
   background: rgba(71, 85, 105, 0.4);
   border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
-.rosterMeta {
+.rosterChipBadge {
+  position: absolute;
+  bottom: -6px;
+  right: -4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f8fafc;
+  background: rgba(59, 130, 246, 0.9);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+}
+
+.rosterChipMeta {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -116,46 +186,66 @@
   color: rgba(226, 232, 240, 0.6);
 }
 
+.rosterStatusVictory {
+  color: rgba(52, 211, 153, 0.9);
+}
+
+.rosterStatusDefeated {
+  color: rgba(248, 113, 113, 0.85);
+}
+
+.rosterStatusRetired {
+  color: rgba(250, 204, 21, 0.85);
+}
+
 .rosterEmpty {
-  padding: 16px;
-  border-radius: 16px;
+  padding: 18px;
+  border-radius: 18px;
   background: rgba(15, 23, 42, 0.45);
   border: 1px dashed rgba(148, 163, 184, 0.35);
-  color: rgba(226, 232, 240, 0.6);
-  font-size: 13px;
+  color: rgba(226, 232, 240, 0.65);
+  font-size: 14px;
   text-align: center;
 }
 
-.playColumn {
+.stageLayout {
   display: grid;
-  gap: 16px;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+  align-items: start;
 }
 
-.playStack {
+.stagePrimary {
   display: grid;
-  gap: 16px;
+  gap: 18px;
+}
+
+.stageSidebar {
+  display: grid;
+  gap: 18px;
 }
 
 @media (max-width: 1080px) {
-  .mainLayout {
-    grid-template-columns: minmax(160px, 1fr) minmax(320px, 1.6fr);
-  }
-
-  .rosterColumn:last-child {
-    display: none;
+  .stageLayout {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 820px) {
-  .mainLayout {
-    grid-template-columns: 1fr;
+  .content {
+    gap: 16px;
   }
 
-  .rosterColumn {
-    order: 2;
+  .rosterStrip {
+    gap: 12px;
   }
 
-  .playColumn {
-    order: 1;
+  .rosterChip {
+    min-width: 150px;
+    padding: 10px 14px;
+  }
+
+  .stageLayout {
+    gap: 16px;
   }
 }
