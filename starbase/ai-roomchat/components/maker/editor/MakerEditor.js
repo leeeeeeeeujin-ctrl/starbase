@@ -51,6 +51,8 @@ export default function MakerEditor() {
     goToLobby,
     setNodes,
     setEdges,
+    versionAlert,
+    clearVersionAlert,
   } = useMakerEditor()
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
@@ -104,6 +106,19 @@ export default function MakerEditor() {
     [onEdgeClick, openInspector],
   )
 
+  const handleAutoUpgrade = useCallback(async () => {
+    if (busy) return
+    try {
+      await saveAll()
+    } catch (error) {
+      console.error(error)
+    }
+  }, [busy, saveAll])
+
+  const handleDismissVersionAlert = useCallback(() => {
+    clearVersionAlert()
+  }, [clearVersionAlert])
+
   if (!isReady || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
   }
@@ -139,6 +154,66 @@ export default function MakerEditor() {
           onOpenVariables={() => setVariableDrawerOpen(true)}
           quickActions={collapsedQuickActions}
         />
+
+        {versionAlert && (
+          <div
+            style={{
+              borderRadius: 14,
+              background: '#fff7ed',
+              border: '1px solid #fdba74',
+              color: '#9a3412',
+              padding: '14px 16px',
+              display: 'grid',
+              gap: 10,
+            }}
+            role="status"
+            aria-live="polite"
+          >
+            <div style={{ display: 'grid', gap: 6 }}>
+              <strong style={{ fontSize: 15 }}>변수 규칙 버전 자동 갱신 필요</strong>
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{versionAlert.summary}</p>
+              {Array.isArray(versionAlert.details) && versionAlert.details.length > 0 && (
+                <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5 }}>
+                  {versionAlert.details.map((detail) => (
+                    <li key={detail}>{detail}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={handleAutoUpgrade}
+                disabled={busy}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: '#c2410c',
+                  color: '#fff',
+                  fontWeight: 600,
+                  opacity: busy ? 0.6 : 1,
+                }}
+              >
+                {busy ? '저장 중…' : '지금 자동 갱신'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDismissVersionAlert}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 10,
+                  border: '1px solid #fdba74',
+                  background: '#fffbeb',
+                  color: '#9a3412',
+                  fontWeight: 500,
+                }}
+              >
+                나중에 다시 보기
+              </button>
+            </div>
+          </div>
+        )}
 
         <MakerEditorCanvas
           nodes={nodes}

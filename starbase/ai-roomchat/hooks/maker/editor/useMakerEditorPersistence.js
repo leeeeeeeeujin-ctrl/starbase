@@ -5,7 +5,7 @@ import { useCallback, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { sanitizeVariableRules } from '../../../lib/variableRules'
 
-export function useMakerEditorPersistence({ graph, setInfo }) {
+export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
   const {
     nodes,
     edges,
@@ -208,10 +208,13 @@ export function useMakerEditorPersistence({ graph, setInfo }) {
       )
 
       alert('저장 완료')
+      if (typeof onAfterSave === 'function') {
+        onAfterSave()
+      }
     } finally {
       setBusy(false)
     }
-  }, [busy, edges, flowMapRef, nodes, setEdges, setNodes, setInfo])
+  }, [busy, edges, flowMapRef, nodes, onAfterSave, setEdges, setNodes, setInfo])
 
   return {
     busy,

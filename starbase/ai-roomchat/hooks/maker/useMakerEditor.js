@@ -25,10 +25,19 @@ export function useMakerEditor() {
 
   const [loading, setLoading] = useState(true)
   const [setInfo, setSetInfo] = useState(null)
+  const [versionAlert, setVersionAlert] = useState(null)
 
   const flowMapRef = useRef(new Map())
   const deleteNodeRef = useRef(() => {})
   const graph = useMakerEditorGraph(flowMapRef)
+
+  const clearVersionAlert = useCallback(() => {
+    setVersionAlert(null)
+  }, [])
+
+  const handleVersionDrift = useCallback((alert) => {
+    setVersionAlert(alert)
+  }, [])
 
   const {
     nodes,
@@ -67,7 +76,7 @@ export function useMakerEditor() {
   } = graph
 
   const { busy, saveAll, handleDeletePrompt, onNodesDelete, onEdgesDelete, removeEdge } =
-    useMakerEditorPersistence({ graph, setInfo })
+    useMakerEditorPersistence({ graph, setInfo, onAfterSave: clearVersionAlert })
 
   deleteNodeRef.current = handleDeletePrompt
 
@@ -87,6 +96,7 @@ export function useMakerEditor() {
     setLoading,
     setSetInfo,
     loadGraph: loadGraphWithHandlers,
+    onVersionDrift: handleVersionDrift,
   })
 
   useMakerEditorShortcuts({
@@ -195,6 +205,8 @@ export function useMakerEditor() {
     rebuildEdgeLabel,
     goToSetList,
     goToLobby,
+    versionAlert,
+    clearVersionAlert,
   }
 }
 

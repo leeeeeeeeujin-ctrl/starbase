@@ -200,6 +200,51 @@ export function collectVariableNames(rules) {
   return Array.from(names)
 }
 
+export function analyzeVariableRuleSource(raw) {
+  const info = {
+    hadEntries: false,
+    legacyStructure: false,
+    version: null,
+  }
+
+  if (!raw) {
+    return info
+  }
+
+  if (Array.isArray(raw)) {
+    info.legacyStructure = true
+    info.hadEntries = raw.length > 0
+    return info
+  }
+
+  if (typeof raw === 'object') {
+    const autoLength = Array.isArray(raw.auto) ? raw.auto.length : 0
+    const manualLength = Array.isArray(raw.manual) ? raw.manual.length : 0
+    const activeLength = Array.isArray(raw.active) ? raw.active.length : 0
+
+    info.hadEntries = autoLength + manualLength + activeLength > 0
+
+    const parsed = Number(raw.version)
+    if (Number.isFinite(parsed)) {
+      info.version = parsed
+    } else if (info.hadEntries) {
+      info.legacyStructure = true
+    }
+
+    return info
+  }
+
+  return info
+}
+
+export function needsVariableRuleUpgrade(raw) {
+  const source = analyzeVariableRuleSource(raw)
+  if (!source.hadEntries) return false
+  if (source.legacyStructure) return true
+  if (source.version == null) return true
+  return source.version !== VARIABLE_RULES_VERSION
+}
+
 export const VARIABLE_RULE_MODES = RULE_MODES
 export const VARIABLE_RULE_SUBJECTS = SUBJECT_OPTIONS
 export const VARIABLE_RULE_STATUS = STATUS_OPTIONS
