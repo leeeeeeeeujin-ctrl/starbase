@@ -19,6 +19,14 @@ const defaultThresholds = {
     warning: 3,
     critical: 5,
   },
+  docLinkAttachmentRate: {
+    warning: 0.85,
+    critical: 0.65,
+  },
+  lastDocLinkAttachmentRate: {
+    warning: 0.9,
+    critical: 0.7,
+  },
 }
 
 function toFiniteNumber(value) {
@@ -26,10 +34,19 @@ function toFiniteNumber(value) {
   return Number.isFinite(numeric) ? numeric : null
 }
 
-function compareThresholds(value, { warning, critical }) {
+function compareThresholds(value, thresholds = {}) {
+  const { warning, critical } = thresholds
   if (value === null || value === undefined) return 'ok'
   if (typeof critical === 'number' && value >= critical) return 'critical'
   if (typeof warning === 'number' && value >= warning) return 'warning'
+  return 'ok'
+}
+
+function compareFloorThresholds(value, thresholds = {}) {
+  const { warning, critical } = thresholds
+  if (value === null || value === undefined) return 'ok'
+  if (typeof critical === 'number' && value <= critical) return 'critical'
+  if (typeof warning === 'number' && value <= warning) return 'warning'
   return 'ok'
 }
 
@@ -47,6 +64,10 @@ function evaluateTotals(totals, thresholds) {
     : 0
   const avgAlertDurationMs = toFiniteNumber(totals.avgAlertDurationMs)
   const avgRotationDurationMs = toFiniteNumber(totals.avgRotationDurationMs)
+  const docLinkAttachmentRate = toFiniteNumber(totals.docLinkAttachmentRate)
+  const lastDocLinkAttachmentRate = toFiniteNumber(
+    totals.lastDocLinkAttachmentRate,
+  )
 
   const failureSeverity = compareThresholds(failureRate, thresholds.failureRate)
   if (failureSeverity !== 'ok') {
@@ -105,6 +126,46 @@ function evaluateTotals(totals, thresholds) {
     )
   }
 
+  const attachmentSeverity = compareFloorThresholds(
+    docLinkAttachmentRate,
+    thresholds.docLinkAttachmentRate,
+  )
+  if (attachmentSeverity !== 'ok') {
+    issues.push(
+      buildIssue(
+        'docLinkAttachmentRate',
+        attachmentSeverity,
+        'Slack 경보에 런북 링크 첨부율이 낮습니다.',
+        {
+          value:
+            typeof docLinkAttachmentRate === 'number'
+              ? Number(docLinkAttachmentRate.toFixed(3))
+              : null,
+        },
+      ),
+    )
+  }
+
+  const lastAttachmentSeverity = compareFloorThresholds(
+    lastDocLinkAttachmentRate,
+    thresholds.lastDocLinkAttachmentRate,
+  )
+  if (lastAttachmentSeverity !== 'ok') {
+    issues.push(
+      buildIssue(
+        'lastDocLinkAttachmentRate',
+        lastAttachmentSeverity,
+        '최근 시도에서 런북 링크 첨부가 누락되고 있습니다.',
+        {
+          value:
+            typeof lastDocLinkAttachmentRate === 'number'
+              ? Number(lastDocLinkAttachmentRate.toFixed(3))
+              : null,
+        },
+      ),
+    )
+  }
+
   const status = issues.some((issue) => issue.severity === 'critical')
     ? 'critical'
     : issues.some((issue) => issue.severity === 'warning')
@@ -126,6 +187,10 @@ function evaluateProvider(provider, thresholds) {
     : 0
   const avgAlertDurationMs = toFiniteNumber(provider.avgAlertDurationMs)
   const avgRotationDurationMs = toFiniteNumber(provider.avgRotationDurationMs)
+  const docLinkAttachmentRate = toFiniteNumber(provider.docLinkAttachmentRate)
+  const lastDocLinkAttachmentRate = toFiniteNumber(
+    provider.lastDocLinkAttachmentRate,
+  )
 
   const failureSeverity = compareThresholds(failureRate, thresholds.failureRate)
   if (failureSeverity !== 'ok') {
@@ -180,6 +245,46 @@ function evaluateProvider(provider, thresholds) {
         rotationDurationSeverity,
         `${provider.provider} 제공자의 자동 키 교체 시간이 길어지고 있습니다.`,
         { value: avgRotationDurationMs },
+      ),
+    )
+  }
+
+  const attachmentSeverity = compareFloorThresholds(
+    docLinkAttachmentRate,
+    thresholds.docLinkAttachmentRate,
+  )
+  if (attachmentSeverity !== 'ok') {
+    issues.push(
+      buildIssue(
+        'docLinkAttachmentRate',
+        attachmentSeverity,
+        `${provider.provider} 제공자의 런북 링크 첨부율이 낮습니다.`,
+        {
+          value:
+            typeof docLinkAttachmentRate === 'number'
+              ? Number(docLinkAttachmentRate.toFixed(3))
+              : null,
+        },
+      ),
+    )
+  }
+
+  const lastAttachmentSeverity = compareFloorThresholds(
+    lastDocLinkAttachmentRate,
+    thresholds.lastDocLinkAttachmentRate,
+  )
+  if (lastAttachmentSeverity !== 'ok') {
+    issues.push(
+      buildIssue(
+        'lastDocLinkAttachmentRate',
+        lastAttachmentSeverity,
+        `${provider.provider} 제공자의 최근 시도에서 런북 링크 첨부가 누락되고 있습니다.`,
+        {
+          value:
+            typeof lastDocLinkAttachmentRate === 'number'
+              ? Number(lastDocLinkAttachmentRate.toFixed(3))
+              : null,
+        },
       ),
     )
   }
