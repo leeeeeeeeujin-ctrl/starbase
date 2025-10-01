@@ -152,3 +152,8 @@ Following this roadmap will close the scaffolding gap between “game registered
 - **운영용 다이제스트 파이프라인**: `/api/rank/cooldown-digest`를 수동 혹은 사내 스케줄러에서 호출해 미알림 이벤트를 수집·로그로 남기고, 처리된 항목은 `notified_at` 타임스탬프로 표시한다.【F:pages/api/rank/cooldown-digest.js†L1-L90】
 - **운영 가이드**: 새 `rank-api-key-cooldown-monitoring.md` 문서가 테이블 생성, 환경 변수, 수동 다이제스트 절차를 요약해 운영팀이 바로 참고할 수 있도록 정리했다.【F:docs/rank-api-key-cooldown-monitoring.md†L1-L88】
 - **진척도**: 운영 가드 하위 항목(서버 경보 연동)을 완료해 남은 작업은 Slack/Webhook 통합과 백엔드 키 재발급 자동화다. 전체 추정 진행도는 **82 %**로 상향한다.
+
+## Progress Update — 2025-11-08
+- **운영 경로 재점검**: 청사진 단계별 작업 현황을 재확인하고, 관리자 모니터링 포털이 `/admin/portal` 경로에서 정상적으로 노출되는지 확인했다. 비밀번호 미설정 시에도 안내가 표시되는 기존 가드를 유지한다.【F:docs/admin-portal.md†L1-L40】
+- **문서 갱신**: 관리자 접근 정보를 문서 첫머리에서 바로 찾을 수 있도록 보강하고, 향후 Slack/Webhook 연동 이전까지 진행률을 **82 %**로 유지한다고 명시했다.【F:docs/admin-portal.md†L1-L24】
+- **다음 단계**: 남은 운영 가드(실시간 알림·자동 키 회전)와 세션 기록 보강을 계속 진행하며, 진행 메모는 청사진 문서에 연속 기록한다.
