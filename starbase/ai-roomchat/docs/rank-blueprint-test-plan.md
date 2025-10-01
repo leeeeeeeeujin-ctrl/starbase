@@ -38,6 +38,7 @@
 | LOG-01 | 세션 생성 성공 | `/api/rank/start-session` 호출 | `rank_sessions`에 row 생성, `rank_turns`에 system turn 0 삽입 |
 | LOG-02 | 턴 실행 정상 기록 | StartClient에서 `/api/rank/run-turn` 호출 | `rank_turns`에 prompt/response 저장, `turn_number` 증가 |
 | LOG-03 | API 키 고갈 시 무효 처리 | 연속 5줄 입력 규칙을 위반하는 응답 확인 | 세션 무효화, 플레이어에게 API 교체 알림, 5시간 쿨다운 기록 |
+| LOG-04 | 히스토리 요약/가시성 플래그 저장 | `/api/rank/run-turn` 혹은 fallback `/api/rank/log-turn` 호출 후 `/api/rank/sessions` 조회 | `rank_turns.is_visible`이 공개/비공개를 반영하고, `summary_payload`·`latest_summary`가 세션 히스토리 응답에 포함됨 |
 
 ### 2.4 프롬프트/노드 컴파일
 
@@ -157,6 +158,7 @@ flowchart LR
 - [ ] 오디오 프리셋 적용/복구 QA 체크리스트 수행
 - [ ] 새 참가자 60초 파악 시간 UI 확인
 - [ ] 듀오/캐주얼 재시작 시나리오(DC-01~03) 실행 및 로그 검증
+- [ ] 히스토리 요약/가시성 플래그(LOG-04) 검증 및 세션 응답 확인
 
 ---
 

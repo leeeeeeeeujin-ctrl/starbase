@@ -91,9 +91,11 @@
 - **목표 세분화**
   - `recordBattle`이 공격/방어 다중 결과를 atomic update로 처리하고, `rank_participants`의 `engaged` 타임아웃 해제 로직을 Edge Function으로 구현한다.
   - 턴 로그 저장 시 승/패/탈락/재참전 이벤트를 단일 히스토리 메시지로 묶어 클라이언트가 재조합 없이 사용할 수 있도록 한다.
-- **필요 산출물**
-  - Supabase SQL 마이그레이션 초안(`rank_battle_logs` 가시성, `rank_sessions` 상태 컬럼 확장).
-  - QA 시나리오: 비실시간 방어전, 난입 교체 직후 연속 턴 진행, 동시 공격·방어 승패 처리.
+  - **진행 상황 메모**
+    - `/api/rank/run-turn`·`/api/rank/log-turn`이 `is_visible`·`summary_payload` 필드를 채우고, `GET /api/rank/sessions`가 요약·숨김 정보를 반환하도록 구현돼 세션 히스토리 파이프라인의 1차 목표가 가동 중입니다.
+  - **필요 산출물**
+    - Supabase SQL 마이그레이션 초안(`rank_battle_logs` 가시성, `rank_sessions` 상태 컬럼 확장).
+    - QA 시나리오: 비실시간 방어전, 난입 교체 직후 연속 턴 진행, 동시 공격·방어 승패 처리.
 - **사전 조건**: 단계 1의 일관된 세션 생성과 매치 종료 이벤트 전달이 완료돼야 함.
 
 ### 7.3 단계 3 — 프롬프트 변수 자동화
@@ -263,3 +265,11 @@
 느낀 점: 감사 로그 뼈대를 미리 확보하니 자동화 실패 경로를 데이터로 되짚을 수 있을 것 같아 운영 관점에서 마음이 놓였습니다.
 추가로 필요한 점: Edge Function이 감사 테이블에 직접 쓰기 전, 스테이징 환경에서 RLS·서비스 롤 권한을 검증할 체크리스트가 필요합니다.
 진행사항: 감사 테이블 스키마와 진행률 반영을 통해 운영 가드 단계의 설계 준비도를 끌어올렸습니다.
+
+### 진행 현황 메모 (2025-11-08 보강)
+
+- `buildTurnSummaryPayload` 헬퍼를 추가해 `run-turn`·`log-turn` API가 `is_visible`·`summary_payload`를 일관되게 적재하고, 세션 히스토리 응답에 `latest_summary`와 숨김 카운트를 노출하도록 보강했습니다.【F:lib/rank/turnSummary.js†L1-L75】【F:pages/api/rank/run-turn.js†L1-L210】【F:pages/api/rank/log-turn.js†L1-L190】【F:pages/api/rank/sessions.js†L1-L200】
+
+느낀 점: 서버 레이어에서 요약 메타를 생성하니 히스토리 UI와 QA가 재사용할 공통 포맷이 확보되어 단계 2 연동 작업이 탄력을 받는다는 확신이 들었습니다.
+추가로 필요한 점: 새 필드를 소비하는 UI·테스트 케이스를 빠르게 보강해 실제 세션 뷰에서 요약 데이터가 보이도록 해야 합니다.
+진행사항: 턴 기록 파이프라인과 세션 조회 API를 업데이트해 청사진에서 미뤄뒀던 로그 요약/가시성 요구사항을 코드로 연결했습니다.

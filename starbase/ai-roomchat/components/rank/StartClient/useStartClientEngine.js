@@ -1100,17 +1100,41 @@ export function useStartClientEngine(gameId) {
         )
 
         if (!loggedByServer) {
+          const responseSummary = {
+            preview: responseText.slice(0, 240),
+            promptPreview: promptText.slice(0, 240),
+            outcome: {
+              lastLine: outcome.lastLine || undefined,
+              variables: outcome.variables && outcome.variables.length ? outcome.variables : undefined,
+              actors: resolvedActorNames && resolvedActorNames.length ? resolvedActorNames : undefined,
+            },
+            extra: {
+              slotIndex,
+              nodeId: node?.id ?? null,
+              source: 'fallback-log',
+            },
+          }
+
           await logTurnEntries({
             entries: [
               {
                 role: promptEntry?.role || 'system',
                 content: promptEntry?.content || promptText,
                 public: promptEntry?.public,
+                visibility: promptEntry?.public === false ? 'hidden' : 'public',
+                extra: { slotIndex },
               },
               {
                 role: historyRole,
                 content: responseText,
                 public: responseEntry?.public,
+                visibility: responseEntry?.public === false ? 'hidden' : 'public',
+                actors: resolvedActorNames,
+                summary: responseSummary,
+                extra: {
+                  slotIndex,
+                  nodeId: node?.id ?? null,
+                },
               },
             ],
             turnNumber: loggedTurnNumber ?? turn,
