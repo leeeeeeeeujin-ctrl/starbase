@@ -55,6 +55,7 @@ export default function MakerEditor() {
     clearVersionAlert,
     saveReceipt,
     ackSaveReceipt,
+    saveHistory,
   } = useMakerEditor()
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
@@ -369,6 +370,7 @@ export default function MakerEditor() {
               onInsertToken={appendTokenToSelected}
               setNodes={setNodes}
               setEdges={setEdges}
+              saveHistory={saveHistory}
             />
           </div>
         </div>
@@ -431,24 +433,42 @@ export default function MakerEditor() {
             gap: 10,
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <strong style={{ fontSize: 14 }}>저장 완료</strong>
-            <button
-              type="button"
-              onClick={() => ackSaveReceipt(receiptVisible.id)}
-              style={{
-                appearance: 'none',
-                border: '1px solid rgba(148, 163, 184, 0.45)',
-                background: 'rgba(15, 23, 42, 0.6)',
-                color: '#e2e8f0',
-                borderRadius: 12,
-                fontSize: 12,
-                padding: '4px 10px',
-                cursor: 'pointer',
-              }}
-            >
-              닫기
-            </button>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => openInspector('history')}
+                style={{
+                  appearance: 'none',
+                  border: '1px solid rgba(148, 163, 184, 0.45)',
+                  background: 'rgba(15, 23, 42, 0.2)',
+                  color: '#bfdbfe',
+                  borderRadius: 12,
+                  fontSize: 12,
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                히스토리 보기
+              </button>
+              <button
+                type="button"
+                onClick={() => ackSaveReceipt(receiptVisible.id)}
+                style={{
+                  appearance: 'none',
+                  border: '1px solid rgba(148, 163, 184, 0.45)',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  color: '#e2e8f0',
+                  borderRadius: 12,
+                  fontSize: 12,
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                닫기
+              </button>
+            </div>
           </div>
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{receiptVisible.message}</p>
           {Array.isArray(receiptVisible.details) && receiptVisible.details.length > 0 && (

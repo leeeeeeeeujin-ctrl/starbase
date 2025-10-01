@@ -15,6 +15,7 @@ export default function MakerEditorPanel({
   onInsertToken,
   setNodes,
   setEdges,
+  saveHistory = [],
 }) {
   const nodeData = selectedNode?.data || null
 
@@ -201,6 +202,55 @@ export default function MakerEditorPanel({
             <p style={{ margin: 0 }}>• 노드를 선택해 템플릿과 변수 규칙을 다듬고, 필요하면 Invisible 토글로 노출 범위를 조정하세요.</p>
             <p style={{ margin: 0 }}>• 브릿지를 선택하면 조건 빌더에서 턴/변수 조건과 확률을 설정할 수 있습니다.</p>
             <p style={{ margin: 0 }}>• 오른쪽 하단의 변수 버튼을 눌러 전역·로컬 변수 규칙을 언제든지 확인할 수 있습니다.</p>
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {saveHistory.length === 0 ? (
+              <p style={{ margin: 0, color: '#94a3b8', fontSize: 13 }}>
+                아직 자동 버전 업그레이드 내역이 없습니다. 저장 후 자동 갱신이 실행되면 이곳에 기록이 쌓입니다.
+              </p>
+            ) : (
+              <ol
+                style={{
+                  margin: 0,
+                  paddingLeft: 20,
+                  display: 'grid',
+                  gap: 12,
+                  fontSize: 13,
+                  color: '#0f172a',
+                }}
+              >
+                {saveHistory.map((entry) => (
+                  <li key={entry.id} style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                      <strong style={{ fontSize: 13 }}>{entry.message}</strong>
+                      <span style={{ fontSize: 11, color: '#64748b' }}>
+                        {new Date(entry.timestamp).toLocaleString('ko-KR', {
+                          hour12: false,
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                    {entry.summary && (
+                      <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.5 }}>{entry.summary}</p>
+                    )}
+                    {Array.isArray(entry.details) && entry.details.length > 0 && (
+                      <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5, color: '#1f2937' }}>
+                        {entry.details.map((detail) => (
+                          <li key={detail}>{detail}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
         )}
       </div>

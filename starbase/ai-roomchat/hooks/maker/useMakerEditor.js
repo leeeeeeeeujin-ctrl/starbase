@@ -28,6 +28,7 @@ export function useMakerEditor() {
   const [setInfo, setSetInfo] = useState(null)
   const [versionAlert, setVersionAlert] = useState(null)
   const [saveReceipt, setSaveReceipt] = useState(null)
+  const [saveHistory, setSaveHistory] = useState([])
 
   const flowMapRef = useRef(new Map())
   const deleteNodeRef = useRef(() => {})
@@ -46,9 +47,10 @@ export function useMakerEditor() {
   const handleAfterSave = useCallback(() => {
     const notice = versionNoticeRef.current
     const detailCount = Array.isArray(notice?.details) ? notice.details.length : 0
+    const timestamp = Date.now()
     const receipt = {
-      id: Date.now(),
-      timestamp: Date.now(),
+      id: timestamp,
+      timestamp,
       message: detailCount
         ? `변수 규칙 ${detailCount}건을 v${VARIABLE_RULES_VERSION}로 자동 갱신했습니다.`
         : '모든 변수 규칙이 최신 버전입니다.',
@@ -60,6 +62,16 @@ export function useMakerEditor() {
         '[MakerEditor] 변수 규칙 버전 자동 갱신 완료',
         { count: detailCount, details: receipt.details },
       )
+      setSaveHistory((current) => {
+        const entry = {
+          id: timestamp,
+          timestamp,
+          message: receipt.message,
+          details: receipt.details,
+          summary: notice?.summary || null,
+        }
+        return [entry, ...current].slice(0, 25)
+      })
     } else {
       console.info('[MakerEditor] 저장 완료 - 변수 규칙은 이미 최신 상태였습니다.')
     }
@@ -247,6 +259,7 @@ export function useMakerEditor() {
     clearVersionAlert,
     saveReceipt,
     ackSaveReceipt,
+    saveHistory,
   }
 }
 
