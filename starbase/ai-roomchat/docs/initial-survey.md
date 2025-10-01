@@ -5,7 +5,7 @@
 - **Core Features**: Google OAuth login, hero creation/storage, roster listing, and optional public chat functionality.
 
 ## Setup Checklist
-1. Populate `.env.local` using `.env.example` values for Supabase URL and anon key.
+1. Populate `.env.local` with the Supabase URL and anon key that the ops team shares out-of-band (see `docs/admin-portal.md` for the full environment variable list).
 2. Install dependencies with `npm install` and run the development server via `npm run dev`.
 3. Configure Supabase:
    - Enable Google OAuth with proper redirect URLs.

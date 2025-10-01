@@ -34,6 +34,7 @@ export default function CasualPrivateRoomPage() {
 
   const {
     state: { loading, game, roles, myHero, user },
+    derived: { roleOccupancy },
   } = useGameRoom(id, {
     onRequireLogin: handleRequireLogin,
     onGameMissing: handleGameMissing,
@@ -86,6 +87,7 @@ export default function CasualPrivateRoomPage() {
       game={game}
       roleDetails={roleDetails}
       roles={roles}
+      roleOccupancy={roleOccupancy}
       myHero={myHero}
       user={user}
       onExit={handleExit}

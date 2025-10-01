@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import RoleOccupancySummary from './RoleOccupancySummary'
 import styles from './CasualPrivateClient.module.css'
 
 const STORAGE_PREFIX = 'casualPrivateRooms:'
@@ -235,6 +236,7 @@ export default function CasualPrivateClient({
   game,
   roleDetails,
   roles,
+  roleOccupancy = [],
   myHero,
   user,
   onExit,
@@ -532,6 +534,12 @@ export default function CasualPrivateClient({
           </p>
         </div>
       </header>
+
+      {Array.isArray(roleOccupancy) && roleOccupancy.length ? (
+        <section className={styles.card}>
+          <RoleOccupancySummary occupancy={roleOccupancy} />
+        </section>
+      ) : null}
 
       {error ? <p className={styles.errorText}>{error}</p> : null}
 

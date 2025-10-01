@@ -290,6 +290,27 @@ function formatWinRate(value) {
   return `${rounded}%`
 }
 
+function describeSessionStatus(status) {
+  const raw = typeof status === 'string' ? status.trim().toLowerCase() : ''
+  if (!raw) {
+    return { label: '진행 중', tone: 'active' }
+  }
+
+  if (['completed', 'done', 'finished', 'closed', 'victory', 'won'].includes(raw)) {
+    return { label: '종료', tone: 'completed' }
+  }
+
+  if (['failed', 'error', 'aborted', 'cancelled', 'canceled', 'defeat', 'lost'].includes(raw)) {
+    return { label: '중단', tone: 'failed' }
+  }
+
+  if (['active', 'running', 'pending', 'open', 'in_progress'].includes(raw)) {
+    return { label: '진행 중', tone: 'active' }
+  }
+
+  return { label: status || '진행 중', tone: 'active' }
+}
+
 function groupByRole(participants = []) {
   const map = new Map()
   participants.forEach((participant) => {
@@ -313,20 +334,29 @@ export default function GameRoomView({
   canStart = false,
   myHero = null,
   myEntry = null,
+  sessionHistory = [],
+  sharedSessionHistory = [],
   onBack,
   onJoin,
-  onStart,
+  onLeave,
+  onOpenModeSettings,
   onOpenLeaderboard,
   onDelete,
   isOwner = false,
   deleting = false,
   startDisabled = false,
+  startLoading = false,
+  startNotice = '',
+  startError = '',
   recentBattles = [],
   turnTimerVote = null,
   turnTimerVotes = {},
   onVoteTurnTimer,
+  roleOccupancy = [],
+  roleLeaderboards = [],
 }) {
   const [joinLoading, setJoinLoading] = useState(false)
+  const [leaveLoading, setLeaveLoading] = useState(false)
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
   const [activeTab, setActiveTab] = useState(TABS[0].key)
   const touchStartRef = useRef(null)
@@ -374,30 +404,101 @@ export default function GameRoomView({
     return Array.from(entries.values())
   }, [roles])
 
+  const roleOccupancyMap = useMemo(() => {
+    const map = new Map()
+    if (!Array.isArray(roleOccupancy)) {
+      return map
+    }
+    roleOccupancy.forEach((entry) => {
+      const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
+      if (!name) return
+      map.set(name, entry)
+    })
+    return map
+  }, [roleOccupancy])
+
   const participantsByRole = useMemo(() => {
-    const base = new Map(
-      normalizedRoles.map(({ name, capacity }) => [
-        name,
-        {
+    const base = new Map()
+    const order = []
+
+    const ensure = (rawName, capacityHint = null) => {
+      const name = typeof rawName === 'string' ? rawName.trim() : ''
+      if (!name) return null
+      if (!base.has(name)) {
+        base.set(name, {
           name,
           count: 0,
-          capacity: Number.isFinite(Number(capacity)) && Number(capacity) >= 0 ? Number(capacity) : null,
-        },
-      ]),
-    )
+          capacity: null,
+          occupiedSlots: null,
+          availableSlots: null,
+        })
+        order.push(name)
+      }
+      const entry = base.get(name)
+      if (Number.isFinite(Number(capacityHint)) && Number(capacityHint) >= 0) {
+        entry.capacity = Number(capacityHint)
+      }
+      return entry
+    }
+
+    normalizedRoles.forEach(({ name, capacity }) => {
+      ensure(name, capacity)
+    })
+
+    roleOccupancyMap.forEach((occupancy, name) => {
+      const entry = ensure(name, occupancy?.totalSlots ?? occupancy?.capacity)
+      if (!entry) return
+      if (Number.isFinite(Number(occupancy?.totalSlots)) && Number(occupancy.totalSlots) >= 0) {
+        entry.capacity = Number(occupancy.totalSlots)
+      }
+      if (Number.isFinite(Number(occupancy?.occupiedSlots))) {
+        entry.occupiedSlots = Number(occupancy.occupiedSlots)
+      }
+      if (Number.isFinite(Number(occupancy?.availableSlots)) && Number(occupancy.availableSlots) >= 0) {
+        entry.availableSlots = Number(occupancy.availableSlots)
+      }
+    })
 
     participants.forEach((participant) => {
-      const key = participant?.role
-      if (!key) return
-      if (!base.has(key)) {
-        base.set(key, { name: key, count: 0, capacity: null })
-      }
-      const entry = base.get(key)
+      const entry = ensure(participant?.role)
+      if (!entry) return
       entry.count += 1
     })
 
-    return Array.from(base.values())
-  }, [normalizedRoles, participants])
+    return order
+      .map((name) => {
+        const entry = base.get(name)
+        if (!entry) return null
+        const occupancy = roleOccupancyMap.get(name)
+        const capacity =
+          occupancy?.totalSlots != null
+            ? Number(occupancy.totalSlots)
+            : Number.isFinite(Number(entry.capacity)) && Number(entry.capacity) >= 0
+            ? Number(entry.capacity)
+            : null
+        const occupied =
+          occupancy?.occupiedSlots != null
+            ? Number(occupancy.occupiedSlots)
+            : entry.occupiedSlots != null
+            ? Number(entry.occupiedSlots)
+            : entry.count
+        const available =
+          occupancy?.availableSlots != null
+            ? Number(occupancy.availableSlots)
+            : capacity != null
+            ? Math.max(capacity - entry.count, 0)
+            : null
+
+        return {
+          name,
+          count: entry.count,
+          capacity,
+          occupiedSlots: occupied,
+          availableSlots: available,
+        }
+      })
+      .filter(Boolean)
+  }, [normalizedRoles, participants, roleOccupancyMap])
 
   const fallbackRole = normalizedRoles[0]?.name || (participantsByRole[0]?.name ?? '')
   const currentRole = pickRole || fallbackRole
@@ -444,6 +545,9 @@ export default function GameRoomView({
   }, [myHero])
 
   const hasHeroEntry = Boolean(myEntry)
+
+  const resolvedStartNotice = typeof startNotice === 'string' ? startNotice.trim() : ''
+  const resolvedStartError = typeof startError === 'string' ? startError.trim() : ''
 
   const voteSummary = useMemo(
     () => summarizeTurnTimerVotes(turnTimerVotes || {}),
@@ -509,6 +613,18 @@ export default function GameRoomView({
     return map
   }, [myHero, participants])
 
+  const participantsByOwnerId = useMemo(() => {
+    const map = new Map()
+    participants.forEach((participant) => {
+      const ownerId = participant?.owner_id || participant?.ownerId
+      if (!ownerId) return
+      if (!map.has(ownerId)) {
+        map.set(ownerId, participant)
+      }
+    })
+    return map
+  }, [participants])
+
   const heroStats = useMemo(() => {
     const rankIndex = myEntry ? participants.findIndex((participant) => participant.id === myEntry.id) : -1
     return [
@@ -531,6 +647,113 @@ export default function GameRoomView({
       : source
     return filtered.map((battle) => buildBattleLine(battle, heroNameMap))
   }, [heroNameMap, myEntry?.hero_id, myHero?.id, recentBattles])
+
+  const myRoleName = typeof myEntry?.role === 'string' ? myEntry.role : ''
+  const myHeroDisplayName =
+    (myEntry?.hero && myEntry.hero.name) || myHero?.name || ''
+
+  const normalizedSessionHistory = useMemo(() => {
+    if (!Array.isArray(sessionHistory)) return []
+    return sessionHistory
+      .map((entry) => {
+        if (!entry || !entry.sessionId) return null
+        const statusInfo = describeSessionStatus(entry.sessionStatus)
+        const createdAt = formatDate(entry.sessionCreatedAt)
+        const publicTurns = Array.isArray(entry.publicTurns) ? entry.publicTurns : []
+        const displayTurns = publicTurns.slice(-5)
+        const extraPublicWithinLimited = Math.max(publicTurns.length - displayTurns.length, 0)
+        const hiddenCount = Number(entry.hiddenCount) || 0
+        const trimmedTotal = Math.max(
+          Number(entry.turnCount || 0) - Number(entry.displayedTurnCount || 0),
+          0,
+        )
+
+        return {
+          id: entry.sessionId,
+          createdAt,
+          statusLabel: statusInfo.label,
+          tone: statusInfo.tone,
+          turns: displayTurns.map((turn, index) => ({
+            id: turn?.id || `${entry.sessionId}-${turn?.idx ?? index}`,
+            role: turn?.role || 'system',
+            content: turn?.content || '',
+          })),
+          hiddenCount,
+          extraPublicWithinLimited,
+          trimmedTotal,
+        }
+      })
+      .filter(Boolean)
+  }, [sessionHistory])
+
+  const normalizedSharedHistory = useMemo(() => {
+    if (!Array.isArray(sharedSessionHistory)) return []
+    return sharedSessionHistory
+      .map((entry) => {
+        if (!entry || !entry.id) return null
+        const statusInfo = describeSessionStatus(entry.status)
+        const createdAt = formatDate(entry.created_at)
+        const turns = Array.isArray(entry.turns) ? entry.turns : []
+        const viewerIsOwner = !!entry.viewer_is_owner
+        const ownerId = entry.owner_id || null
+
+        let baseHeroName = '시스템'
+        let roleLabel = ''
+
+        if (ownerId) {
+          if (viewerIsOwner) {
+            baseHeroName = myHeroDisplayName || '내 캐릭터'
+            roleLabel = myRoleName || ''
+            if (!myHeroDisplayName) {
+              const participant = participantsByOwnerId.get(ownerId)
+              if (participant) {
+                baseHeroName =
+                  (participant.hero && participant.hero.name) ||
+                  (participant.hero_id ? `#${participant.hero_id}` : '참가자')
+                roleLabel = roleLabel || participant.role || ''
+              }
+            }
+          } else {
+            const participant = participantsByOwnerId.get(ownerId)
+            if (participant) {
+              baseHeroName =
+                (participant.hero && participant.hero.name) ||
+                (participant.hero_id ? `#${participant.hero_id}` : '참가자')
+              roleLabel = participant.role || ''
+            } else {
+              baseHeroName = '참가자'
+              roleLabel = ''
+            }
+          }
+        }
+
+        const ownerName = baseHeroName
+        const ownerLine = [roleLabel, baseHeroName].filter(Boolean).join(' · ')
+        const displayTurns = turns.map((turn, index) => ({
+          id: turn?.id || `${entry.id}-${turn?.idx ?? index}`,
+          role: turn?.role || 'system',
+          content: turn?.content || '',
+        }))
+        const hiddenPrivateCount = Number(entry.hidden_private_count) || 0
+        const trimmedCount = Number(entry.trimmed_count) || 0
+        const totalVisible = Number(entry.total_visible_turns) || displayTurns.length
+
+        return {
+          id: entry.id,
+          createdAt,
+          statusLabel: statusInfo.label,
+          tone: statusInfo.tone,
+          ownerName,
+          ownerLine,
+          viewerIsOwner,
+          turns: displayTurns,
+          hiddenPrivateCount,
+          trimmedCount,
+          totalVisible,
+        }
+      })
+      .filter(Boolean)
+  }, [sharedSessionHistory, participantsByOwnerId, myHeroDisplayName, myRoleName])
 
   const displayedHeroLogs = useMemo(
     () => heroBattleLogs.slice(0, visibleHeroLogs),
@@ -713,7 +936,7 @@ export default function GameRoomView({
     touchStartRef.current = null
   }
 
-  const handleJoinClick = async () => {
+  const handleJoinClick = useCallback(async () => {
     if (!onJoin || alreadyJoined || joinLoading) return
     setJoinLoading(true)
     try {
@@ -721,7 +944,17 @@ export default function GameRoomView({
     } finally {
       setJoinLoading(false)
     }
-  }
+  }, [alreadyJoined, joinLoading, onJoin])
+
+  const handleLeaveClick = useCallback(async () => {
+    if (!onLeave || leaveLoading) return
+    setLeaveLoading(true)
+    try {
+      await onLeave()
+    } finally {
+      setLeaveLoading(false)
+    }
+  }, [leaveLoading, onLeave])
 
   const handleShowMoreLogs = () => {
     setVisibleHeroLogs((prev) => prev + 10)
@@ -745,6 +978,138 @@ export default function GameRoomView({
   const mainPanelContent = (
     <div className={styles.panelInner}>
       <section className={styles.joinCard}>
+        {Array.isArray(roleOccupancy) && roleOccupancy.length > 0 ? (
+          <div className={styles.roleOccupancyList}>
+            {roleOccupancy.map((entry) => {
+              const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
+              if (!name) return null
+              const total = Number.isFinite(Number(entry?.totalSlots)) && Number(entry.totalSlots) >= 0
+                ? Number(entry.totalSlots)
+                : null
+              const participantCount = Number.isFinite(Number(entry?.participantCount))
+                ? Number(entry.participantCount)
+                : 0
+              let occupied = Number.isFinite(Number(entry?.occupiedSlots))
+                ? Number(entry.occupiedSlots)
+                : participantCount
+              if (total != null && occupied > total) {
+                occupied = total
+              }
+              const available = Number.isFinite(Number(entry?.availableSlots)) && Number(entry.availableSlots) >= 0
+                ? Number(entry.availableSlots)
+                : null
+              const countLabel = total != null ? `${occupied}/${total}` : `${occupied}`
+              const availabilityText =
+                available != null ? (available > 0 ? `남은 슬롯 ${available}` : '정원 가득') : null
+              const itemClasses = [styles.roleOccupancyItem]
+              if (available === 0) {
+                itemClasses.push(styles.roleOccupancyItemFull)
+              }
+              return (
+                <div key={name} className={itemClasses.join(' ')}>
+                  <div className={styles.roleOccupancyMeta}>
+                    <span className={styles.roleOccupancyName}>{name}</span>
+                    <span className={styles.roleOccupancyCount}>{countLabel}</span>
+                  </div>
+                  {availabilityText ? (
+                    <span className={styles.roleOccupancyAvailability}>{availabilityText}</span>
+                  ) : null}
+                </div>
+              )
+            }).filter(Boolean)}
+          </div>
+        ) : null}
+
+        {Array.isArray(roleLeaderboards) && roleLeaderboards.length > 0 ? (
+          <div className={styles.roleLeaderboardSection}>
+            <h3 className={styles.roleLeaderboardTitle}>역할별 리더보드</h3>
+            <div className={styles.roleLeaderboardGrid}>
+              {roleLeaderboards.map((group) => {
+                const roleName = typeof group?.role === 'string' ? group.role : ''
+                if (!roleName) return null
+                const totalCount = Number.isFinite(Number(group?.totalParticipants))
+                  ? Number(group.totalParticipants)
+                  : group?.entries?.length || 0
+                return (
+                  <div key={roleName} className={styles.roleLeaderboardGroup}>
+                    <div className={styles.roleLeaderboardHeader}>
+                      <span className={styles.roleLeaderboardRole}>{roleName}</span>
+                      <span className={styles.roleLeaderboardCount}>
+                        참가 {totalCount}명
+                      </span>
+                    </div>
+                    {Array.isArray(group?.entries) && group.entries.length > 0 ? (
+                      <ul className={styles.roleLeaderboardList}>
+                        {group.entries.map((entry, idx) => {
+                          const key = entry?.id || `${roleName}-${idx}`
+                          const heroName =
+                            typeof entry?.heroName === 'string' && entry.heroName.trim()
+                              ? entry.heroName.trim()
+                              : '미지정'
+                          const rating = Number.isFinite(Number(entry?.rating))
+                            ? Number(entry.rating)
+                            : null
+                          const score = Number.isFinite(Number(entry?.score))
+                            ? Number(entry.score)
+                            : null
+                          const winRateValue = Number.isFinite(Number(entry?.winRate))
+                            ? Number(entry.winRate)
+                            : null
+                          const battlesValue = Number.isFinite(Number(entry?.battles))
+                            ? Number(entry.battles)
+                            : null
+                          const statParts = []
+                          if (rating != null) {
+                            statParts.push(`레이팅 ${rating}`)
+                          }
+                          if (score != null) {
+                            statParts.push(`점수 ${score}`)
+                          }
+                          if (winRateValue != null) {
+                            const formattedWinRate = Math.round(winRateValue * 10) / 10
+                            if (battlesValue != null) {
+                              statParts.push(`승률 ${formattedWinRate}% · ${battlesValue}전`)
+                            } else {
+                              statParts.push(`승률 ${formattedWinRate}%`)
+                            }
+                          } else if (battlesValue != null) {
+                            statParts.push(`${battlesValue}전 기록`)
+                          }
+
+                          return (
+                            <li key={key} className={styles.roleLeaderboardItem}>
+                              <span className={styles.roleLeaderboardRank}>{idx + 1}</span>
+                              <div className={styles.roleLeaderboardAvatar}>
+                                {entry?.hero?.image_url ? (
+                                  <img src={entry.hero.image_url} alt="" />
+                                ) : (
+                                  <span className={styles.roleLeaderboardAvatarFallback}>
+                                    {heroName.slice(0, 2)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className={styles.roleLeaderboardMeta}>
+                                <span className={styles.roleLeaderboardName}>{heroName}</span>
+                                {statParts.length > 0 ? (
+                                  <span className={styles.roleLeaderboardStats}>
+                                    {statParts.join(' · ')}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    ) : (
+                      <p className={styles.roleLeaderboardEmpty}>아직 기록이 없습니다.</p>
+                    )}
+                  </div>
+                )
+              }).filter(Boolean)}
+            </div>
+          </div>
+        ) : null}
+
         <div className={styles.capacityRow}>
           <span className={styles.capacityCount}>{capacityCountLabel}</span>
           <div className={styles.capacityLabels}>
@@ -759,12 +1124,23 @@ export default function GameRoomView({
 
         {participantsByRole.length > 0 ? (
           <div className={styles.roleList}>
-            {participantsByRole.map(({ name, count, capacity }) => {
+            {participantsByRole.map(({ name, count, capacity, occupiedSlots, availableSlots }) => {
               const isPicked = currentRole === name
               const isMine = myEntry?.role === name
               const highlight = isPicked || isMine
-              const full = typeof capacity === 'number' && capacity >= 0 && count >= capacity
-              const label = capacity != null ? `${count}/${capacity}명` : `${count}명 참여 중`
+              const capacityValue =
+                Number.isFinite(Number(capacity)) && Number(capacity) >= 0 ? Number(capacity) : null
+              const occupiedValue =
+                Number.isFinite(Number(occupiedSlots)) && Number(occupiedSlots) >= 0
+                  ? Number(occupiedSlots)
+                  : count
+              const remaining =
+                Number.isFinite(Number(availableSlots)) && Number(availableSlots) >= 0
+                  ? Number(availableSlots)
+                  : null
+              const full = capacityValue != null && occupiedValue >= capacityValue
+              const label =
+                capacityValue != null ? `${occupiedValue}/${capacityValue}명` : `${count}명 참여 중`
               const classes = [styles.roleChip]
               if (highlight) classes.push(styles.roleChipActive)
               if (alreadyJoined && !isMine) classes.push(styles.roleChipDisabled)
@@ -780,7 +1156,13 @@ export default function GameRoomView({
                 >
                   <span className={styles.roleName}>{name}</span>
                   <span className={styles.roleCount}>{label}</span>
-                  {full && !isMine ? <span className={styles.roleFullTag}>정원 마감</span> : null}
+                  {remaining != null ? (
+                    <span className={styles.roleAvailability}>
+                      {remaining > 0 ? `남은 슬롯 ${remaining}` : '정원 가득'}
+                    </span>
+                  ) : full && !isMine ? (
+                    <span className={styles.roleFullTag}>정원 마감</span>
+                  ) : null}
                 </button>
               )
             })}
@@ -798,15 +1180,34 @@ export default function GameRoomView({
           >
             {alreadyJoined ? '참여 완료됨' : joinLoading ? '참여 중…' : `${currentRole || '역할'}로 참여하기`}
           </button>
-          <button
-            type="button"
-            className={styles.ownerStartButton}
-            onClick={onStart}
-            disabled={startDisabled}
-          >
-            게임 시작
-          </button>
+          {alreadyJoined && onLeave ? (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={handleLeaveClick}
+              disabled={leaveLoading}
+            >
+              {leaveLoading ? '슬롯 비우는 중…' : '슬롯 비우기'}
+            </button>
+          ) : null}
+          {onOpenModeSettings ? (
+            <button
+              type="button"
+              className={styles.modeButton}
+              onClick={onOpenModeSettings}
+              disabled={startDisabled || startLoading}
+            >
+              {startLoading ? '매칭 준비 중…' : '모드 선택 열기'}
+            </button>
+          ) : null}
         </div>
+
+        {resolvedStartNotice ? (
+          <p className={styles.startNotice}>{resolvedStartNotice}</p>
+        ) : null}
+        {resolvedStartError ? (
+          <p className={styles.startError}>{resolvedStartError}</p>
+        ) : null}
 
         <p className={styles.capacityHint}>
           {canStart
@@ -814,7 +1215,7 @@ export default function GameRoomView({
             : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
         </p>
         <p className={styles.capacitySubHint}>
-          준비가 완료되면 누구나 게임을 시작해 매칭을 진행할 수 있습니다.
+          준비가 완료되면 모드 선택 창이 열리며 매칭이 자동으로 진행됩니다.
         </p>
 
         <TurnTimerVotePanel
@@ -845,6 +1246,141 @@ export default function GameRoomView({
               <ParticipantCard key={participant.id || participant.hero_id} p={participant} />
             ))}
           </div>
+        )}
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <h2 className={styles.sectionTitle}>공용 히스토리</h2>
+          {normalizedSharedHistory.length ? (
+            <span className={styles.sectionBadge}>{normalizedSharedHistory.length}</span>
+          ) : null}
+        </div>
+        {normalizedSharedHistory.length ? (
+          <ul className={styles.sessionHistoryList}>
+            {normalizedSharedHistory.map((entry) => {
+              const statusClass =
+                entry.tone === 'completed'
+                  ? styles.sessionHistoryStatusCompleted
+                  : entry.tone === 'failed'
+                    ? styles.sessionHistoryStatusFailed
+                    : styles.sessionHistoryStatusActive
+
+              return (
+                <li key={entry.id} className={styles.sessionHistoryItem}>
+                  <div className={styles.sessionHistoryHeader}>
+                    <span className={`${styles.sessionHistoryStatus} ${statusClass}`}>
+                      {entry.statusLabel}
+                    </span>
+                    {entry.createdAt ? (
+                      <span className={styles.sessionHistoryTimestamp}>{entry.createdAt}</span>
+                    ) : null}
+                  </div>
+                  <div className={styles.sessionHistoryMeta}>
+                    <span
+                      className={`${styles.sessionHistoryOwner} ${
+                        entry.viewerIsOwner ? styles.sessionHistoryOwnerSelf : ''
+                      }`}
+                    >
+                      {entry.viewerIsOwner ? '내 세션' : entry.ownerName}
+                    </span>
+                    {entry.ownerLine ? (
+                      <span className={styles.sessionHistoryOwnerDetail}>{entry.ownerLine}</span>
+                    ) : null}
+                    <span className={styles.sessionHistoryTurnCount}>
+                      공개 기록 {entry.totalVisible}개
+                    </span>
+                  </div>
+                  <ul className={styles.sessionHistoryTurns}>
+                    {entry.turns.length ? (
+                      entry.turns.map((turn) => (
+                        <li key={turn.id} className={styles.sessionHistoryTurn}>
+                          <span className={styles.sessionHistoryTurnRole}>{turn.role}</span>
+                          <p className={styles.sessionHistoryTurnContent}>{turn.content}</p>
+                        </li>
+                      ))
+                    ) : (
+                      <li className={styles.sessionHistoryNotice}>공유 가능한 기록이 아직 없습니다.</li>
+                    )}
+                    {entry.hiddenPrivateCount > 0 ? (
+                      <li className={styles.sessionHistoryNotice}>
+                        비공개 로그 {entry.hiddenPrivateCount}개는 표시되지 않았습니다.
+                      </li>
+                    ) : null}
+                    {entry.trimmedCount > 0 ? (
+                      <li className={styles.sessionHistoryNotice}>
+                        이전 공개 기록 {entry.trimmedCount}개가 더 있습니다.
+                      </li>
+                    ) : null}
+                  </ul>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <div className={styles.emptyCard}>아직 공유 히스토리가 없습니다.</div>
+        )}
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <h2 className={styles.sectionTitle}>내 세션 히스토리</h2>
+          {normalizedSessionHistory.length ? (
+            <span className={styles.sectionBadge}>{normalizedSessionHistory.length}</span>
+          ) : null}
+        </div>
+        {normalizedSessionHistory.length ? (
+          <ul className={styles.sessionHistoryList}>
+            {normalizedSessionHistory.map((entry) => {
+              const statusClass =
+                entry.tone === 'completed'
+                  ? styles.sessionHistoryStatusCompleted
+                  : entry.tone === 'failed'
+                    ? styles.sessionHistoryStatusFailed
+                    : styles.sessionHistoryStatusActive
+              return (
+                <li key={entry.id} className={styles.sessionHistoryItem}>
+                  <div className={styles.sessionHistoryHeader}>
+                    <span className={`${styles.sessionHistoryStatus} ${statusClass}`}>
+                      {entry.statusLabel}
+                    </span>
+                    {entry.createdAt ? (
+                      <span className={styles.sessionHistoryTimestamp}>{entry.createdAt}</span>
+                    ) : null}
+                  </div>
+                  <ul className={styles.sessionHistoryTurns}>
+                    {entry.turns.length ? (
+                      entry.turns.map((turn) => (
+                        <li key={turn.id} className={styles.sessionHistoryTurn}>
+                          <span className={styles.sessionHistoryTurnRole}>{turn.role}</span>
+                          <p className={styles.sessionHistoryTurnContent}>{turn.content}</p>
+                        </li>
+                      ))
+                    ) : (
+                      <li className={styles.sessionHistoryNotice}>공개된 기록이 아직 없습니다.</li>
+                    )}
+                    {entry.hiddenCount > 0 ? (
+                      <li className={styles.sessionHistoryNotice}>
+                        비공개 턴 {entry.hiddenCount}개가 숨겨져 있습니다.
+                      </li>
+                    ) : null}
+                    {entry.extraPublicWithinLimited > 0 ? (
+                      <li className={styles.sessionHistoryNotice}>
+                        이전 공개 기록 {entry.extraPublicWithinLimited}개가 더 있습니다.
+                      </li>
+                    ) : null}
+                    {entry.trimmedTotal > 0 ? (
+                      <li className={styles.sessionHistoryNotice}>
+                        이전 턴 기록 {entry.trimmedTotal}개가 보관되어 있습니다.
+                      </li>
+                    ) : null}
+                  </ul>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <div className={styles.emptyCard}>매칭을 시작하면 최근 세션 기록이 이곳에 표시됩니다.</div>
         )}
       </section>
 
