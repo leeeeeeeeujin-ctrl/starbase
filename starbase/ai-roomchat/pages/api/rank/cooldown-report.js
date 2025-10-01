@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import {
+  getCooldownDocumentationUrl,
   mergeCooldownMetadata,
   runCooldownAutomation,
 } from '@/lib/rank/cooldownAutomation'
@@ -114,9 +115,15 @@ export default async function handler(req, res) {
       note: insertPayload.note,
     }
 
+    const automationOptions = {}
+    const documentationUrl = getCooldownDocumentationUrl()
+    if (documentationUrl) {
+      automationOptions.docUrl = documentationUrl
+    }
+
     let automationSummary = null
     try {
-      automationSummary = await runCooldownAutomation(eventForAutomation)
+      automationSummary = await runCooldownAutomation(eventForAutomation, automationOptions)
     } catch (automationError) {
       console.error('cooldown-report automation failed:', automationError)
     }

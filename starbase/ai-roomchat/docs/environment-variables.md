@@ -9,6 +9,7 @@
 | `RANK_SLOT_SWEEPER_SECRET` | 슬롯 정리 작업(`/api/rank/slot-sweeper`)을 트리거할 때 사용하는 공유 비밀입니다. | `pages/api/rank/slot-sweeper.js`, `docs/slot-sweeper-schedule.md` | 크론 잡이나 백오피스에서 호출 시 쿼리 파라미터 `secret` 값으로 전달합니다. 현재 기본값은 `171819`입니다. |
 | `RANK_COOLDOWN_ALERT_WEBHOOK_URL` | API 키 쿨다운 발생 시 Slack/Webhook 알림을 보낼 엔드포인트 URL입니다. | `lib/rank/cooldownAutomation.js`, `pages/api/rank/cooldown-report.js`, `pages/api/rank/cooldown-digest.js` | 미설정 시 경보는 건너뜁니다. |
 | `RANK_COOLDOWN_ALERT_WEBHOOK_AUTHORIZATION` *(선택)* | Webhook 호출에 사용할 `Authorization` 헤더 값입니다. | `lib/rank/cooldownAutomation.js` | 필요하지 않다면 비워 두세요. |
+| `RANK_COOLDOWN_ALERT_DOC_URL` *(선택)* | Slack/Webhook 알림 본문에 자동으로 첨부할 운영 가이드 문서 URL입니다. | `lib/rank/cooldownAutomation.js`, `pages/api/rank/cooldown-report.js`, `pages/api/rank/cooldown-digest.js` | 미설정 시 저장소 기본 문서 링크가 사용됩니다. |
 | `RANK_COOLDOWN_ROTATION_URL` | 고갈된 키를 교체하거나 비활성화하는 자동화 스크립트 엔드포인트 URL입니다. | `lib/rank/cooldownAutomation.js`, `pages/api/rank/cooldown-report.js`, `pages/api/rank/cooldown-digest.js` | 설정 시 경보 직후 자동화 요청이 발송됩니다. |
 | `RANK_COOLDOWN_ROTATION_SECRET` *(선택)* | 자동화 엔드포인트 호출 시 사용할 토큰으로 `Authorization` 헤더에 주입됩니다. | `lib/rank/cooldownAutomation.js` | 엔드포인트에서 인증이 필요할 때만 설정하세요. |
 | `RANK_COOLDOWN_ROTATION_PROVIDER_FILTER` *(선택)* | 특정 제공자에 대해서만 자동 교체를 실행하고 싶을 때 소문자 제공자 명칭을 지정합니다. | `lib/rank/cooldownAutomation.js` | 미설정 시 모든 제공자에 대해 자동 교체가 시도됩니다. |

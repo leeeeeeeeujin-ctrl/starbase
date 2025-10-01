@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import {
+  getCooldownDocumentationUrl,
   mergeCooldownMetadata,
   runCooldownAutomation,
 } from '@/lib/rank/cooldownAutomation'
@@ -36,6 +37,8 @@ export default async function handler(req, res) {
   const payload = parseRequestPayload(req)
   const limit = Math.min(Math.max(toNumber(payload.limit, 25), 1), 200)
   const sinceMinutes = Math.max(toNumber(payload.since_minutes, 60), 1)
+  const documentationUrl = getCooldownDocumentationUrl()
+  const automationOptions = documentationUrl ? { docUrl: documentationUrl } : {}
   try {
     const { data, error } = await supabaseAdmin
       .from('rank_api_key_cooldowns')
@@ -87,7 +90,7 @@ export default async function handler(req, res) {
           recordedAt: row.recorded_at,
           expiresAt: row.expires_at,
           note: row.note,
-        })
+        }, automationOptions)
       } catch (automationError) {
         console.error('cooldown-digest automation failure:', {
           id: row.id,

@@ -64,6 +64,7 @@
    - `SUPABASE_SERVICE_ROLE`: 서버 라우터가 테이블에 삽입/갱신할 때 사용하는 서비스 롤 키.
    - `RANK_COOLDOWN_ALERT_WEBHOOK_URL`: Slack 또는 기타 Webhook 엔드포인트 URL. 설정 시 실시간 경보가 바로 발송됩니다.
    - `RANK_COOLDOWN_ALERT_WEBHOOK_AUTHORIZATION` *(선택)*: Webhook 호출에 사용할 `Authorization` 헤더 값.
+   - `RANK_COOLDOWN_ALERT_DOC_URL` *(선택)*: Slack/Webhook 경보에 자동 첨부할 운영 가이드 문서 URL. 미설정 시 저장소 기본 링크가 사용됩니다.
    - `RANK_COOLDOWN_ROTATION_URL`: 고갈된 키를 교체하거나 비활성화할 자동화 스크립트 엔드포인트.
    - `RANK_COOLDOWN_ROTATION_SECRET` *(선택)*: 자동화 엔드포인트 호출 시 사용할 비밀 토큰. 기본적으로 `Authorization` 헤더에 주입됩니다.
    - `RANK_COOLDOWN_ROTATION_PROVIDER_FILTER` *(선택)*: 특정 제공자일 때만 자동 교체를 실행하고 싶을 때 소문자 제공자 명칭을 입력합니다.
@@ -82,7 +83,7 @@
 ### Retry 상태 추적 및 대시보드 연동 (2025-11-07 업데이트)
 - **상태 머신**: `pending` → `retrying (n=1~3)` → `succeeded | failed` 단계별로 `metadata.cooldownAutomation.retryState`에 `attempt`, `nextRetryAt`, `lastResult` 필드를 누적해 JSON으로 저장합니다.
 - **대시보드 필드**: 관리자 포털 대시보드 카드에 `retryStatus`, `lastFailureAt`, `nextRetryEta`, `attemptCount` 컬럼을 추가해 실시간 모니터링이 가능하도록 했습니다.
-- **Slack 요약**: Edge Function이 각 재시도 결과를 Slack 스레드에 요약해 공유하고, 실패 시 `(결)` 태그를 붙여 회고 시 쉽게 필터링할 수 있습니다.
+- **Slack 요약**: Edge Function이 각 재시도 결과를 Slack 스레드에 요약해 공유하고, 실패 시 `(결)` 태그를 붙여 회고 시 쉽게 필터링할 수 있습니다. 메시지에는 자동으로 `Edge Webhook Retry Runbook` 링크가 첨부돼 후속 대응 문서를 바로 열 수 있습니다.
 - **수동 회수 루틴**: `/api/rank/cooldown-digest`가 성공적으로 경보를 전달하면 Edge Function이 남긴 실패 메모를 `metadata.cooldownAutomation.digestRecovery` 필드에 적재해 추후 회고에 활용합니다.
 
 ## 향후 TODO

@@ -5,6 +5,14 @@ const ALERT_WEBHOOK_URL =
   process.env.RANK_COOLDOWN_ALERT_WEBHOOK_URL || process.env.SLACK_COOLDOWN_ALERT_WEBHOOK_URL
 const ALERT_WEBHOOK_AUTH_HEADER =
   process.env.RANK_COOLDOWN_ALERT_WEBHOOK_AUTHORIZATION || process.env.RANK_COOLDOWN_ALERT_WEBHOOK_TOKEN
+const DEFAULT_ALERT_DOC_URL =
+  'https://github.com/starbasehq/starbase/blob/main/starbase/ai-roomchat/docs/rank-api-key-cooldown-monitoring.md#edge-webhook-retry-runbook-2025-11-07-%EC%97%85%EB%8D%B0%EC%9D%B4%ED%8A%B8'
+const ALERT_DOC_URL =
+  process.env.RANK_COOLDOWN_ALERT_DOC_URL ||
+  process.env.RANK_COOLDOWN_ALERT_DOC_LINK ||
+  process.env.RANK_COOLDOWN_RUNBOOK_URL ||
+  process.env.RANK_COOLDOWN_DOC_URL ||
+  DEFAULT_ALERT_DOC_URL
 const ROTATION_ENDPOINT =
   process.env.RANK_COOLDOWN_ROTATION_URL || process.env.RANK_COOLDOWN_ROTATION_WEBHOOK_URL
 const ROTATION_METHOD = (process.env.RANK_COOLDOWN_ROTATION_METHOD || 'POST').toUpperCase()
@@ -52,7 +60,25 @@ function createAbortController(timeoutMs = DEFAULT_TIMEOUT_MS) {
   }
 }
 
-function buildAlertPayload(event) {
+function resolveDocUrl(options = {}) {
+  const candidates = [options.docUrl, options.runbookUrl, ALERT_DOC_URL]
+
+  for (const candidate of candidates) {
+    const url = sanitizeString(candidate)
+    if (!url) continue
+    if (url.toLowerCase().startsWith('http://') || url.toLowerCase().startsWith('https://')) {
+      return url
+    }
+  }
+
+  return null
+}
+
+export function getCooldownDocumentationUrl() {
+  return resolveDocUrl()
+}
+
+function buildAlertPayload(event, docUrl) {
   const lines = [
     ':rotating_light: API 키 쿨다운 감지',
     `• 키 샘플: ${event.keySample || event.hashedKey}`,
@@ -81,11 +107,21 @@ function buildAlertPayload(event) {
     lines.push(`• 비고: ${event.note}`)
   }
 
-  return {
+  if (docUrl) {
+    lines.push(`• 대응 가이드: ${docUrl}`)
+  }
+
+  const payload = {
     type: 'rank.cooldown.alert',
     text: lines.join('\n'),
     event,
   }
+
+  if (docUrl) {
+    payload.links = { runbook: docUrl }
+  }
+
+  return payload
 }
 
 function toNumber(value) {
@@ -200,7 +236,8 @@ export async function dispatchCooldownAlert(event, options = {}) {
     headers.Authorization = authHeader
   }
 
-  const payload = buildAlertPayload(sanitized)
+  const docUrl = resolveDocUrl(options)
+  const payload = buildAlertPayload(sanitized, docUrl)
   const result = await postJson(webhookUrl, payload, { method: 'POST', headers })
 
   if (!result.ok) {
@@ -219,6 +256,10 @@ export async function dispatchCooldownAlert(event, options = {}) {
       summary.error = buildErrorSnapshot(result)
     }
 
+    if (docUrl) {
+      summary.docUrl = docUrl
+    }
+
     return summary
   }
 
@@ -228,6 +269,7 @@ export async function dispatchCooldownAlert(event, options = {}) {
     status: result.status,
     durationMs: toNumber(result.elapsedMs),
     response: buildHttpSnapshot(result),
+    ...(docUrl ? { docUrl } : {}),
   }
 }
 
