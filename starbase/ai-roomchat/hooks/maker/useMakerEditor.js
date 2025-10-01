@@ -17,6 +17,7 @@ import {
   VARIABLE_RULE_OUTCOMES,
   VARIABLE_RULE_STATUS,
   VARIABLE_RULE_SUBJECTS,
+  VARIABLE_RULES_VERSION,
 } from '../../lib/variableRules'
 
 export function useMakerEditor() {
@@ -26,9 +27,11 @@ export function useMakerEditor() {
   const [loading, setLoading] = useState(true)
   const [setInfo, setSetInfo] = useState(null)
   const [versionAlert, setVersionAlert] = useState(null)
+  const [saveReceipt, setSaveReceipt] = useState(null)
 
   const flowMapRef = useRef(new Map())
   const deleteNodeRef = useRef(() => {})
+  const versionNoticeRef = useRef(null)
   const graph = useMakerEditorGraph(flowMapRef)
 
   const clearVersionAlert = useCallback(() => {
@@ -36,7 +39,42 @@ export function useMakerEditor() {
   }, [])
 
   const handleVersionDrift = useCallback((alert) => {
+    versionNoticeRef.current = alert
     setVersionAlert(alert)
+  }, [])
+
+  const handleAfterSave = useCallback(() => {
+    const notice = versionNoticeRef.current
+    const detailCount = Array.isArray(notice?.details) ? notice.details.length : 0
+    const receipt = {
+      id: Date.now(),
+      timestamp: Date.now(),
+      message: detailCount
+        ? `변수 규칙 ${detailCount}건을 v${VARIABLE_RULES_VERSION}로 자동 갱신했습니다.`
+        : '모든 변수 규칙이 최신 버전입니다.',
+      details: detailCount ? notice.details : [],
+    }
+
+    if (detailCount) {
+      console.info(
+        '[MakerEditor] 변수 규칙 버전 자동 갱신 완료',
+        { count: detailCount, details: receipt.details },
+      )
+    } else {
+      console.info('[MakerEditor] 저장 완료 - 변수 규칙은 이미 최신 상태였습니다.')
+    }
+
+    setSaveReceipt(receipt)
+    versionNoticeRef.current = null
+    setVersionAlert(null)
+  }, [])
+
+  const ackSaveReceipt = useCallback((id) => {
+    setSaveReceipt((current) => {
+      if (!current) return current
+      if (current.id !== id) return current
+      return null
+    })
   }, [])
 
   const {
@@ -76,7 +114,7 @@ export function useMakerEditor() {
   } = graph
 
   const { busy, saveAll, handleDeletePrompt, onNodesDelete, onEdgesDelete, removeEdge } =
-    useMakerEditorPersistence({ graph, setInfo, onAfterSave: clearVersionAlert })
+    useMakerEditorPersistence({ graph, setInfo, onAfterSave: handleAfterSave })
 
   deleteNodeRef.current = handleDeletePrompt
 
@@ -207,6 +245,8 @@ export function useMakerEditor() {
     goToLobby,
     versionAlert,
     clearVersionAlert,
+    saveReceipt,
+    ackSaveReceipt,
   }
 }
 

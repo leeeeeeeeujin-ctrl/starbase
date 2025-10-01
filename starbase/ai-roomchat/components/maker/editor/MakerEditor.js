@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor'
 import { exportSet, importSet } from './importExport'
@@ -53,10 +53,13 @@ export default function MakerEditor() {
     setEdges,
     versionAlert,
     clearVersionAlert,
+    saveReceipt,
+    ackSaveReceipt,
   } = useMakerEditor()
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [receiptVisible, setReceiptVisible] = useState(null)
 
   const collapsedQuickActions = useMemo(
     () => [
@@ -118,6 +121,38 @@ export default function MakerEditor() {
   const handleDismissVersionAlert = useCallback(() => {
     clearVersionAlert()
   }, [clearVersionAlert])
+
+  useEffect(() => {
+    if (!saveReceipt) {
+      setReceiptVisible(null)
+      return
+    }
+
+    setReceiptVisible(saveReceipt)
+
+    const timeout = window.setTimeout(() => {
+      ackSaveReceipt(saveReceipt.id)
+    }, 6000)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [saveReceipt, ackSaveReceipt])
+
+  useEffect(() => {
+    if (!receiptVisible) return
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        ackSaveReceipt(receiptVisible.id)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [receiptVisible, ackSaveReceipt])
 
   if (!isReady || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
@@ -375,6 +410,56 @@ export default function MakerEditor() {
         onVisibilityChange={updateVisibility}
         onToggleInvisible={toggleInvisible}
       />
+
+      {receiptVisible && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: 24,
+            transform: 'translateX(-50%)',
+            background: '#0f172a',
+            color: '#f8fafc',
+            borderRadius: 16,
+            padding: '14px 18px',
+            boxShadow: '0 22px 48px -20px rgba(15, 23, 42, 0.85)',
+            width: 'min(420px, calc(100vw - 40px))',
+            zIndex: 120,
+            display: 'grid',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong style={{ fontSize: 14 }}>저장 완료</strong>
+            <button
+              type="button"
+              onClick={() => ackSaveReceipt(receiptVisible.id)}
+              style={{
+                appearance: 'none',
+                border: '1px solid rgba(148, 163, 184, 0.45)',
+                background: 'rgba(15, 23, 42, 0.6)',
+                color: '#e2e8f0',
+                borderRadius: 12,
+                fontSize: 12,
+                padding: '4px 10px',
+                cursor: 'pointer',
+              }}
+            >
+              닫기
+            </button>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{receiptVisible.message}</p>
+          {Array.isArray(receiptVisible.details) && receiptVisible.details.length > 0 && (
+            <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5 }}>
+              {receiptVisible.details.map((detail) => (
+                <li key={detail}>{detail}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -207,7 +207,6 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
         })),
       )
 
-      alert('저장 완료')
       if (typeof onAfterSave === 'function') {
         onAfterSave()
       }
