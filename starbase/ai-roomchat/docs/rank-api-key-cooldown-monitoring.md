@@ -70,14 +70,20 @@
 
 3. **알림·자동화 연동**
    - 위 환경 변수를 설정하면 `/api/rank/cooldown-report`가 Slack/Webhook 경보와 키 교체 자동화 요청을 즉시 발송합니다.
- - 실시간 경보가 실패하거나 환경 변수가 비어 있으면 운영자가 `/api/rank/cooldown-digest`를 호출해 동일한 경로를 재시도합니다(선택적으로 자체 스케줄러에 배치해도 됩니다).
-  - 자동화 엔드포인트에는 `type: "rank.cooldown.rotation_request"`와 함께 `event` 상세 정보(JSON)가 전달되므로, 서버리스 함수나 백오피스 스크립트에서 이를 파싱해 키 교체를 수행하세요.
+   - 실시간 경보가 실패하거나 환경 변수가 비어 있으면 운영자가 `/api/rank/cooldown-digest`를 호출해 동일한 경로를 재시도합니다(선택적으로 자체 스케줄러에 배치해도 됩니다).
+   - 자동화 엔드포인트에는 `type: "rank.cooldown.rotation_request"`와 함께 `event` 상세 정보(JSON)가 전달되므로, 서버리스 함수나 백오피스 스크립트에서 이를 파싱해 키 교체를 수행하세요.
 
-### Webhook 재시도 전략 (2025-11-07 초안)
+### Webhook 재시도 전략 (2025-11-07 업데이트)
 - **재시도 간격**: 최초 실패 후 3분 → 5분 → 10분 백오프로 최대 3회까지 Edge Function이 재시도합니다.
 - **재시도 한계**: 3회 모두 실패하면 `metadata.cooldownAutomation.retryState`에 실패 이력과 마지막 HTTP 상태 코드를 저장하고, `notified_at`을 비워 둔 채 관리자 대시보드에 경고 배너를 띄웁니다.
 - **대체 경로**: 실패 시 즉시 `/api/rank/cooldown-digest` 호출을 큐에 넣어 별도 스케줄러가 회수할 수 있게 하고, Webhook URL이 빈 값이면 재시도 루프를 건너뜁니다.
 - **운영 알림**: Edge Function은 세 번째 실패 후 60초 이내에 Slack 운영 채널에 “manual rotation required” 경보를 발송하고, Webhook URL/HTTP 상태/실패 시각을 첨부합니다.
+
+### Retry 상태 추적 및 대시보드 연동 (2025-11-07 업데이트)
+- **상태 머신**: `pending` → `retrying (n=1~3)` → `succeeded | failed` 단계별로 `metadata.cooldownAutomation.retryState`에 `attempt`, `nextRetryAt`, `lastResult` 필드를 누적해 JSON으로 저장합니다.
+- **대시보드 필드**: 관리자 포털 대시보드 카드에 `retryStatus`, `lastFailureAt`, `nextRetryEta`, `attemptCount` 컬럼을 추가해 실시간 모니터링이 가능하도록 했습니다.
+- **Slack 요약**: Edge Function이 각 재시도 결과를 Slack 스레드에 요약해 공유하고, 실패 시 `(결)` 태그를 붙여 회고 시 쉽게 필터링할 수 있습니다.
+- **수동 회수 루틴**: `/api/rank/cooldown-digest`가 성공적으로 경보를 전달하면 Edge Function이 남긴 실패 메모를 `metadata.cooldownAutomation.digestRecovery` 필드에 적재해 추후 회고에 활용합니다.
 
 ## 향후 TODO
 

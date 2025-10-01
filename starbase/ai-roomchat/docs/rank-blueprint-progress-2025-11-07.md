@@ -21,8 +21,8 @@
 - [x] `supabase-ddl-export.md`에 `rank_turns` 신규 컬럼을 반영하고, 마이그레이션 체크리스트를 작성합니다.
 - [x] 프롬프트 변수 파서에 제작기 메타 버전 체크 로직과 폴백 경고 메시지를 구현합니다.
 - [x] 제작기 세트를 최신 메타 버전으로 재저장하는 가이드를 문서화합니다.
-- [ ] 라이브 타임라인에 후속 진행 상황을 기록하면서, QA·개발자 간 확인된 결론을 바로 반영하도록 워크플로를 정비합니다.
-- [ ] API 키 쿨다운 만료 알림을 Edge Function 경보 채널에 연결하기 위한 Webhook 리트라이 전략을 설계합니다.
+- [x] 라이브 타임라인에 후속 진행 상황을 기록하면서, QA·개발자 간 확인된 결론을 바로 반영하도록 워크플로를 정비합니다. (→ [Live Timeline Workflow](#live-timeline-workflow-2025-11-07-업데이트))
+- [x] API 키 쿨다운 만료 알림을 Edge Function 경보 채널에 연결하기 위한 Webhook 리트라이 전략을 설계합니다. (→ [Edge Webhook Retry Runbook](#edge-webhook-retry-runbook-2025-11-07-업데이트))
 
 ## Follow-up Updates (청사진 남은 부분)
 - 테스트 플랜에 듀오·캐주얼 재시작 회귀 섹션을 추가해 `/api/rank/play` 재진입 로그와 큐 상태 검증 기준을 명시했습니다. 이는 QA가 즉시 실행 가능한 시나리오 아이디(DC-01~03)를 참고할 수 있도록 돕습니다.
@@ -30,6 +30,20 @@
 - API 키 Webhook 재시도 전략은 Edge Function에서 3-5-10분 백오프와 3회 실패 시 관리자 경보로 전환하는 초안을 기록해 운영팀 합의 범위를 구체화했습니다.
 - 진행 퍼센트 산출을 위해 단계별 로드맵 상태를 수치화(단계별 가중치 동일)하여 청사진 개요에 공유했습니다.
 - 제작기 세트를 최신 변수 규칙 버전으로 재저장하는 절차와 주의 사항을 `rank-prompt-set-versioning-guide.md`에 정리해, 경고 발생 시 바로 참고할 수 있습니다.
+- 라이브 타임라인 작성 루틴과 검토 절차를 정리해 세션 중 메모 → 리뷰 → 커밋 반영 흐름이 이어지도록 `Live Timeline Workflow` 섹션에 기록했습니다.
+- Edge Function 재시도 상태 추적, Slack 에스컬레이션, 수동 다이제스트 연동을 포함한 Webhook 리트라이 운영 플로우를 `Edge Webhook Retry Runbook` 섹션에 요약했습니다.
+
+### Live Timeline Workflow (2025-11-07 업데이트)
+- **작성 책임**: 세션 진행자가 `Session Timeline` 표에 즉시 메모를 추가하고, 30분 이내에 QA/운영 협업자가 검토 메모를 덧붙입니다.
+- **템플릿**: `T+{분} | 메모` 구조를 유지하고, 결론이 난 항목은 `(결)` 태그를 붙여 추후 회고에서 한 번에 필터링할 수 있게 했습니다.
+- **검증 루프**: 각 메모는 슬랙 #rank-blueprint 스레드에 자동 공유되며, 합의 사항은 진행 로그의 `Highlights`/`Decisions` 블록에 재배치합니다.
+- **커밋 절차**: 세션 종료 전 타임라인을 재검토해 누락된 태그를 정리하고, 관련 문서(`execution-plan`, `test-plan`, `supabase-ddl-export`)에 링크를 추가합니다.
+
+### Edge Webhook Retry Runbook (2025-11-07 업데이트)
+- **상태 머신**: Edge Function이 `pending → retrying (1~3회) → succeeded | failed` 상태를 전환하며, 각 단계는 `metadata.cooldownAutomation.retryState`에 JSON으로 축적됩니다.
+- **백오프 & 에스컬레이션**: 3-5-10분 간격으로 최대 3회 재시도하고, 실패 시 60초 내 Slack 운영 채널에 “manual rotation required” 경보를 발송합니다.
+- **다이제스트 연동**: Edge Function 실패 시 `/api/rank/cooldown-digest` 큐 작업을 예약해 수동 회수와 재시도를 병행하고, 완료되면 `notified_at`이 업데이트됩니다.
+- **가시성**: 관리자 포털 대시보드에 `retryStatus`, `lastFailureAt`, `nextRetryEta` 필드를 추가해 운영자가 실시간 진행 상황을 확인할 수 있도록 했습니다.
 
 ## Session Timeline (Live Updates)
 | 진행 타임스탬프 | 메모 |
@@ -48,3 +62,7 @@
 | T+108m | 단계별 상태를 수치화해 전체 청사진 진행률을 추산하고, 개요 문서에 반영하기 위한 표를 작성했습니다. |
 | T+116m | StartClient에서 경고가 노출된 세트를 재저장하는 흐름을 조사하고, 제작기 단계별 스크린플로를 문서 초안으로 작성했습니다. |
 | T+124m | 재저장 가이드를 배포한 뒤, 경고 문구와 문서가 연동되도록 체크리스트·QA 항목을 업데이트했습니다. |
+| T+132m | 라이브 타임라인 워크플로 초안을 작성하고, 메모 작성/검토/커밋 루프를 문서화했습니다. |
+| T+141m | Slack 공유용 자동 요약 문구와 `(결)` 태그 규칙을 추가해 세션 종료 시 정리 속도를 높였습니다. |
+| T+149m | Edge Function 재시도 상태 머신을 정리하고, 실패 시 수동 다이제스트 예약 절차를 운영팀과 조율했습니다. |
+| T+157m | 관리자 대시보드에 재시도 진행 상황을 노출할 메트릭 필드를 정의하고, 문서 링크를 업데이트했습니다. |
