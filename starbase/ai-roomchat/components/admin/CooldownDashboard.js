@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import styles from './CooldownDashboard.module.css'
+
+const LANGUAGE_LIMIT_OPTIONS = [100, 200, 300, 500, 800, 1000]
+const LANGUAGE_LIMIT_PARAM = 'langLimit'
+const LANGUAGE_GAME_PARAM = 'langGame'
+const LANGUAGE_SEASON_PARAM = 'langSeason'
+const LANGUAGE_FAVORITES_STORAGE_KEY = 'adminLanguageFilterFavorites'
 
 const STATUS_LABELS = {
   ok: { label: '정상', tone: styles.statusOk },
@@ -85,6 +91,40 @@ function buildSegments({ direction, min, max, warning, critical }) {
       width: Math.max(segment.end - segment.start, 0),
     }))
     .filter((segment) => segment.width > 0)
+}
+
+function normalizeFavorite(raw, index = 0) {
+  if (!raw || typeof raw !== 'object') return null
+  const label = typeof raw.label === 'string' ? raw.label.trim() : ''
+  if (!label) return null
+  const numericLimit = Number(raw.limit)
+  const limit = LANGUAGE_LIMIT_OPTIONS.includes(numericLimit) ? numericLimit : 300
+  const gameId = typeof raw.gameId === 'string' && raw.gameId ? raw.gameId : 'all'
+  const seasonId = typeof raw.seasonId === 'string' && raw.seasonId ? raw.seasonId : 'all'
+  const id = typeof raw.id === 'string' && raw.id
+    ? raw.id
+    : `favorite-${Date.now()}-${Math.random().toString(16).slice(2)}-${index}`
+
+  return { id, label, limit, gameId, seasonId }
+}
+
+function buildShareUrl(baseUrl, { limit, gameId, seasonId }) {
+  const url = new URL(baseUrl)
+  url.searchParams.set(LANGUAGE_LIMIT_PARAM, `${limit}`)
+
+  if (gameId && gameId !== 'all') {
+    url.searchParams.set(LANGUAGE_GAME_PARAM, gameId)
+    if (seasonId && seasonId !== 'all') {
+      url.searchParams.set(LANGUAGE_SEASON_PARAM, seasonId)
+    } else {
+      url.searchParams.delete(LANGUAGE_SEASON_PARAM)
+    }
+  } else {
+    url.searchParams.delete(LANGUAGE_GAME_PARAM)
+    url.searchParams.delete(LANGUAGE_SEASON_PARAM)
+  }
+
+  return url.toString()
 }
 
 function ThresholdGauge({
@@ -420,6 +460,13 @@ export default function CooldownDashboard() {
   const [languageFilterOptions, setLanguageFilterOptions] = useState({ games: [], seasons: [] })
   const [selectedGameId, setSelectedGameId] = useState('all')
   const [selectedSeasonId, setSelectedSeasonId] = useState('all')
+  const [filterFavorites, setFilterFavorites] = useState([])
+  const [favoriteLabel, setFavoriteLabel] = useState('')
+  const [favoriteFeedback, setFavoriteFeedback] = useState(null)
+  const [shareFeedback, setShareFeedback] = useState(null)
+  const [initialFiltersLoaded, setInitialFiltersLoaded] = useState(false)
+  const favoritesFeedbackTimeoutRef = useRef(null)
+  const shareFeedbackTimeoutRef = useRef(null)
 
   const seasonOptions = useMemo(() => {
     const seasons = languageFilterOptions?.seasons || []
@@ -436,6 +483,247 @@ export default function CooldownDashboard() {
     if (selectedSeasonId === 'all') return null
     return seasonOptions.find((season) => season.id === selectedSeasonId) || null
   }, [seasonOptions, selectedSeasonId])
+
+  const gameNameMap = useMemo(() => {
+    const map = new Map()
+    ;(languageFilterOptions?.games || []).forEach((game) => {
+      if (game?.id) {
+        map.set(game.id, game.name || game.id)
+      }
+    })
+    return map
+  }, [languageFilterOptions])
+
+  const seasonNameMap = useMemo(() => {
+    const map = new Map()
+    ;(languageFilterOptions?.seasons || []).forEach((season) => {
+      if (season?.id) {
+        map.set(season.id, season.name || season.id)
+      }
+    })
+    return map
+  }, [languageFilterOptions])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const stored = window.localStorage.getItem(LANGUAGE_FAVORITES_STORAGE_KEY)
+      if (!stored) return
+      const parsed = JSON.parse(stored)
+      if (!Array.isArray(parsed)) return
+      const normalized = parsed
+        .map((item, index) => normalizeFavorite(item, index))
+        .filter(Boolean)
+      if (normalized.length > 0) {
+        setFilterFavorites(normalized)
+      }
+    } catch (storageError) {
+      console.error('필터 즐겨찾기를 불러오지 못했습니다.', storageError)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(
+        LANGUAGE_FAVORITES_STORAGE_KEY,
+        JSON.stringify(filterFavorites),
+      )
+    } catch (storageError) {
+      console.error('필터 즐겨찾기를 저장하지 못했습니다.', storageError)
+    }
+  }, [filterFavorites])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const limitParam = params.get(LANGUAGE_LIMIT_PARAM)
+    const numericLimit = Number(limitParam)
+    if (Number.isFinite(numericLimit) && LANGUAGE_LIMIT_OPTIONS.includes(numericLimit)) {
+      setLanguageLimit((current) => (current === numericLimit ? current : numericLimit))
+    }
+
+    if (params.has(LANGUAGE_GAME_PARAM)) {
+      const gameParam = params.get(LANGUAGE_GAME_PARAM) || 'all'
+      setSelectedGameId((current) => (current === gameParam ? current : gameParam))
+    }
+
+    if (params.has(LANGUAGE_SEASON_PARAM)) {
+      const seasonParam = params.get(LANGUAGE_SEASON_PARAM) || 'all'
+      setSelectedSeasonId((current) => (current === seasonParam ? current : seasonParam))
+    }
+
+    setInitialFiltersLoaded(true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!initialFiltersLoaded) return
+    const currentUrl = new URL(window.location.href)
+    currentUrl.searchParams.set(LANGUAGE_LIMIT_PARAM, `${languageLimit}`)
+
+    if (selectedGameId && selectedGameId !== 'all') {
+      currentUrl.searchParams.set(LANGUAGE_GAME_PARAM, selectedGameId)
+      if (selectedSeasonId && selectedSeasonId !== 'all') {
+        currentUrl.searchParams.set(LANGUAGE_SEASON_PARAM, selectedSeasonId)
+      } else {
+        currentUrl.searchParams.delete(LANGUAGE_SEASON_PARAM)
+      }
+    } else {
+      currentUrl.searchParams.delete(LANGUAGE_GAME_PARAM)
+      currentUrl.searchParams.delete(LANGUAGE_SEASON_PARAM)
+    }
+
+    const newSearch = currentUrl.searchParams.toString()
+    const newPath = `${currentUrl.pathname}${newSearch ? `?${newSearch}` : ''}${currentUrl.hash}`
+    const existingPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    if (newPath !== existingPath) {
+      window.history.replaceState(null, '', newPath)
+    }
+  }, [languageLimit, selectedGameId, selectedSeasonId, initialFiltersLoaded])
+
+  useEffect(() => {
+    return () => {
+      if (favoritesFeedbackTimeoutRef.current) {
+        clearTimeout(favoritesFeedbackTimeoutRef.current)
+      }
+      if (shareFeedbackTimeoutRef.current) {
+        clearTimeout(shareFeedbackTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!favoriteFeedback) return
+    if (favoritesFeedbackTimeoutRef.current) {
+      clearTimeout(favoritesFeedbackTimeoutRef.current)
+    }
+    favoritesFeedbackTimeoutRef.current = setTimeout(() => setFavoriteFeedback(null), 3000)
+  }, [favoriteFeedback])
+
+  useEffect(() => {
+    if (!shareFeedback) return
+    if (shareFeedbackTimeoutRef.current) {
+      clearTimeout(shareFeedbackTimeoutRef.current)
+    }
+    shareFeedbackTimeoutRef.current = setTimeout(() => setShareFeedback(null), 3000)
+  }, [shareFeedback])
+
+  useEffect(() => {
+    if (selectedGameId === 'all') return
+    if (!(languageFilterOptions?.games || []).some((game) => game.id === selectedGameId)) {
+      setSelectedGameId('all')
+      setSelectedSeasonId('all')
+    }
+  }, [languageFilterOptions, selectedGameId])
+
+  function describeFavorite(favorite) {
+    const limitLabel = `최근 ${favorite.limit}건`
+    const gameLabel =
+      favorite.gameId === 'all'
+        ? '전체 게임'
+        : gameNameMap.get(favorite.gameId) || '알 수 없는 게임'
+    const seasonLabel =
+      favorite.gameId === 'all' || favorite.seasonId === 'all'
+        ? null
+        : seasonNameMap.get(favorite.seasonId) || '시즌 미확인'
+
+    return seasonLabel ? `${limitLabel} · ${gameLabel} · ${seasonLabel}` : `${limitLabel} · ${gameLabel}`
+  }
+
+  function handleSaveFavorite() {
+    const trimmedLabel = favoriteLabel.trim()
+    if (!trimmedLabel) {
+      setFavoriteFeedback({ type: 'error', text: '즐겨찾기 이름을 입력해 주세요.' })
+      return
+    }
+
+    const normalized = normalizeFavorite({
+      label: trimmedLabel,
+      limit: languageLimit,
+      gameId: selectedGameId,
+      seasonId: selectedSeasonId,
+    })
+
+    if (!normalized) {
+      setFavoriteFeedback({ type: 'error', text: '즐겨찾기를 저장하지 못했습니다.' })
+      return
+    }
+
+    const existingIndex = filterFavorites.findIndex((item) => item.label === normalized.label)
+    if (existingIndex >= 0) {
+      const nextFavorites = [...filterFavorites]
+      nextFavorites[existingIndex] = {
+        ...nextFavorites[existingIndex],
+        limit: normalized.limit,
+        gameId: normalized.gameId,
+        seasonId: normalized.seasonId,
+      }
+      setFilterFavorites(nextFavorites)
+      setFavoriteFeedback({ type: 'success', text: '즐겨찾기를 업데이트했습니다.' })
+    } else {
+      setFilterFavorites([...filterFavorites, normalized])
+      setFavoriteFeedback({ type: 'success', text: '즐겨찾기를 저장했습니다.' })
+    }
+
+    setFavoriteLabel('')
+  }
+
+  function handleApplyFavorite(favorite) {
+    if (!favorite) return
+    const safeLimit = LANGUAGE_LIMIT_OPTIONS.includes(Number(favorite.limit))
+      ? Number(favorite.limit)
+      : 300
+    setLanguageLimit(safeLimit)
+    setSelectedGameId(favorite.gameId || 'all')
+    setSelectedSeasonId(
+      favorite.gameId && favorite.gameId !== 'all' && favorite.seasonId
+        ? favorite.seasonId
+        : 'all',
+    )
+    setFavoriteFeedback({ type: 'info', text: `'${favorite.label}' 필터를 불러왔습니다.` })
+  }
+
+  function handleRemoveFavorite(favoriteId) {
+    const nextFavorites = filterFavorites.filter((item) => item.id !== favoriteId)
+    if (nextFavorites.length === filterFavorites.length) {
+      setFavoriteFeedback({ type: 'error', text: '해당 즐겨찾기를 찾을 수 없습니다.' })
+      return
+    }
+    setFilterFavorites(nextFavorites)
+    setFavoriteFeedback({ type: 'success', text: '즐겨찾기를 삭제했습니다.' })
+  }
+
+  async function handleCopyShareLink(config, successMessage = '링크를 복사했습니다.') {
+    if (typeof window === 'undefined') return
+    const baseUrl = window.location.href
+    const shareUrl = buildShareUrl(baseUrl, {
+      limit: config.limit ?? languageLimit,
+      gameId: config.gameId ?? selectedGameId,
+      seasonId: config.seasonId ?? selectedSeasonId,
+    })
+
+    try {
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === 'function'
+      ) {
+        await navigator.clipboard.writeText(shareUrl)
+        setShareFeedback({ type: 'success', text: successMessage })
+      } else {
+        throw new Error('Clipboard API unavailable')
+      }
+    } catch (copyError) {
+      if (typeof window !== 'undefined') {
+        window.prompt('링크를 복사해 주세요:', shareUrl)
+      }
+      setShareFeedback({
+        type: 'warning',
+        text: '클립보드 복사에 실패해 브라우저 프롬프트를 열었습니다.',
+      })
+    }
+  }
 
   useEffect(() => {
     if (selectedSeasonId === 'all') return
@@ -818,7 +1106,7 @@ export default function CooldownDashboard() {
                   onChange={(event) => setLanguageLimit(Number(event.target.value))}
                   disabled={languageLoading}
                 >
-                  {[100, 200, 300, 500, 800, 1000].map((option) => (
+                  {LANGUAGE_LIMIT_OPTIONS.map((option) => (
                     <option key={option} value={option}>
                       최근 {option}건
                     </option>
@@ -860,6 +1148,100 @@ export default function CooldownDashboard() {
                   ))}
                 </select>
               </label>
+            </div>
+            <div className={styles.languageFavorites}>
+              <div className={styles.languageFavoriteToolbar}>
+                <label className={styles.languageFavoriteLabel}>
+                  즐겨찾기 이름
+                  <input
+                    type="text"
+                    placeholder="예: 이벤트 시즌 비교"
+                    value={favoriteLabel}
+                    onChange={(event) => setFavoriteLabel(event.target.value)}
+                    maxLength={60}
+                  />
+                </label>
+                <div className={styles.languageFavoriteButtons}>
+                  <button type="button" className={styles.languageFavoritePrimaryButton} onClick={handleSaveFavorite}>
+                    현재 필터 저장
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.languageFavoriteSecondaryButton}
+                    onClick={() =>
+                      handleCopyShareLink(
+                        { limit: languageLimit, gameId: selectedGameId, seasonId: selectedSeasonId },
+                        '현재 필터 링크를 복사했습니다.',
+                      )
+                    }
+                  >
+                    현재 필터 링크 복사
+                  </button>
+                </div>
+              </div>
+              <div className={styles.languageFavoriteFeedbacks}>
+                {favoriteFeedback && (
+                  <p
+                    className={`${styles.languageFeedback} ${
+                      favoriteFeedback.type === 'error'
+                        ? styles.languageFeedbackError
+                        : favoriteFeedback.type === 'info'
+                        ? styles.languageFeedbackInfo
+                        : styles.languageFeedbackSuccess
+                    }`}
+                  >
+                    {favoriteFeedback.text}
+                  </p>
+                )}
+                {shareFeedback && (
+                  <p
+                    className={`${styles.languageFeedback} ${
+                      shareFeedback.type === 'warning'
+                        ? styles.languageFeedbackWarning
+                        : styles.languageFeedbackSuccess
+                    }`}
+                  >
+                    {shareFeedback.text}
+                  </p>
+                )}
+              </div>
+              {filterFavorites.length > 0 && (
+                <ul className={styles.languageFavoriteList}>
+                  {filterFavorites.map((favorite) => (
+                    <li key={favorite.id} className={styles.languageFavoriteItem}>
+                      <button
+                        type="button"
+                        className={styles.languageFavoriteApply}
+                        onClick={() => handleApplyFavorite(favorite)}
+                      >
+                        <span className={styles.languageFavoriteTitle}>{favorite.label}</span>
+                        <span className={styles.languageFavoriteSummary}>{describeFavorite(favorite)}</span>
+                      </button>
+                      <div className={styles.languageFavoriteActionRow}>
+                        <button
+                          type="button"
+                          className={styles.languageFavoriteSecondaryButton}
+                          onClick={() =>
+                            handleCopyShareLink(
+                              favorite,
+                              `'${favorite.label}' 필터 링크를 복사했습니다.`,
+                            )
+                          }
+                        >
+                          링크 복사
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.languageFavoriteDangerButton}
+                          onClick={() => handleRemoveFavorite(favorite.id)}
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             {languageFiltersError && (
               <p className={styles.languageFiltersError}>{languageFiltersError}</p>

@@ -359,6 +359,201 @@
   cursor: not-allowed;
 }
 
+.languageFavorites {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.languageFavoriteToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.languageFavoriteLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: rgba(191, 209, 255, 0.75);
+  font-weight: 600;
+  flex: 1 1 240px;
+  min-width: 220px;
+}
+
+.languageFavoriteLabel input {
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(148, 163, 255, 0.25);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8ff;
+}
+
+.languageFavoriteLabel input::placeholder {
+  color: rgba(148, 163, 255, 0.5);
+}
+
+.languageFavoriteButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.languageFavoritePrimaryButton,
+.languageFavoriteSecondaryButton,
+.languageFavoriteDangerButton {
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  font-size: 0.85rem;
+}
+
+.languageFavoritePrimaryButton {
+  border: 1px solid rgba(129, 140, 248, 0.6);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.55), rgba(79, 70, 229, 0.75));
+  color: #eef2ff;
+}
+
+.languageFavoritePrimaryButton:hover {
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.7), rgba(79, 70, 229, 0.85));
+  transform: translateY(-1px);
+}
+
+.languageFavoriteSecondaryButton {
+  border: 1px solid rgba(148, 163, 255, 0.3);
+  background: rgba(30, 41, 79, 0.4);
+  color: #e0e7ff;
+}
+
+.languageFavoriteSecondaryButton:hover {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(96, 165, 250, 0.4);
+  transform: translateY(-1px);
+}
+
+.languageFavoriteDangerButton {
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(239, 68, 68, 0.18);
+  color: #fecaca;
+}
+
+.languageFavoriteDangerButton:hover {
+  background: rgba(239, 68, 68, 0.28);
+  border-color: rgba(248, 113, 113, 0.55);
+  transform: translateY(-1px);
+}
+
+.languageFavoriteFeedbacks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.languageFeedback {
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.65rem;
+  font-size: 0.8rem;
+  border: 1px solid transparent;
+}
+
+.languageFeedbackSuccess {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(74, 222, 128, 0.35);
+  color: #bbf7d0;
+}
+
+.languageFeedbackError {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+}
+
+.languageFeedbackInfo {
+  background: rgba(96, 165, 250, 0.18);
+  border-color: rgba(96, 165, 250, 0.35);
+  color: #dbeafe;
+}
+
+.languageFeedbackWarning {
+  background: rgba(250, 204, 21, 0.2);
+  border-color: rgba(250, 204, 21, 0.35);
+  color: #fef08a;
+}
+
+.languageFavoriteList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.languageFavoriteItem {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.9rem;
+  background: rgba(14, 20, 37, 0.78);
+  border: 1px solid rgba(129, 140, 248, 0.2);
+}
+
+.languageFavoriteApply {
+  flex: 1 1 220px;
+  border: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: left;
+  color: #e2e8ff;
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 0.65rem;
+}
+
+.languageFavoriteApply:hover,
+.languageFavoriteApply:focus-visible {
+  background: rgba(59, 130, 246, 0.18);
+  outline: none;
+}
+
+.languageFavoriteTitle {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.languageFavoriteSummary {
+  font-size: 0.8rem;
+  color: rgba(191, 209, 255, 0.7);
+}
+
+.languageFavoriteActionRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.languageFavoriteDangerButton,
+.languageFavoriteSecondaryButton,
+.languageFavoritePrimaryButton {
+  outline: none;
+}
+
+.languageFavoriteDangerButton:focus-visible,
+.languageFavoriteSecondaryButton:focus-visible,
+.languageFavoritePrimaryButton:focus-visible {
+  box-shadow: 0 0 0 2px rgba(148, 163, 255, 0.45);
+}
+
 .languageFiltersError {
   margin: -0.5rem 0 0.75rem;
   color: #fecaca;
