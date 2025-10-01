@@ -168,6 +168,7 @@ export function useStartClientEngine(gameId) {
   const [activeLocal, setActiveLocal] = useState([])
   const [logs, setLogs] = useState([])
   const [statusMessage, setStatusMessage] = useState('')
+  const [promptMetaWarning, setPromptMetaWarning] = useState('')
   const [apiKey, setApiKeyState] = useState(initialStoredApiKey)
   const [apiVersion, setApiVersionState] = useState(() => {
     if (typeof window === 'undefined') return 'gemini'
@@ -403,10 +404,19 @@ export function useStartClientEngine(gameId) {
         setGame(bundle.game)
         setParticipants(bundle.participants)
         setGraph(bundle.graph)
+        if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
+          bundle.warnings.forEach((warning) => {
+            if (warning) console.warn('[StartClient] 프롬프트 변수 경고:', warning)
+          })
+          setPromptMetaWarning(bundle.warnings.filter(Boolean).join('\n'))
+        } else {
+          setPromptMetaWarning('')
+        }
       } catch (err) {
         if (!alive) return
         console.error(err)
         setError(err?.message || '게임 데이터를 불러오지 못했습니다.')
+        setPromptMetaWarning('')
       } finally {
         if (alive) setLoading(false)
       }
@@ -1352,6 +1362,7 @@ export function useStartClientEngine(gameId) {
     activeGlobal,
     activeLocal,
     statusMessage,
+    promptMetaWarning,
     apiKeyWarning,
     logs,
     aiMemory,

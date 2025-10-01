@@ -159,6 +159,29 @@ where n.nspname = 'public'
 order by (c.oid)::regclass::text;
 ```
 
+## 5. `rank_turns` 신규 컬럼 반영 (2025-11-07 업데이트)
+
+라이브 타임라인에서 합의한 `is_visible`/`summary_payload` 컬럼 초안을 기반으로 한 DDL 조각입니다. QA 검증 전 스테이징 DB에 적용해
+UI·리포트 영향 범위를 확인할 수 있습니다.
+
+```sql
+alter table public.rank_turns
+  add column if not exists is_visible boolean default true not null,
+  add column if not exists summary_payload jsonb;
+
+comment on column public.rank_turns.is_visible is
+  '히스토리 탭 노출 여부를 제어하는 플래그 (기본값: true).';
+
+comment on column public.rank_turns.summary_payload is
+  '턴 종료 후 저장되는 요약 본문/태그 JSON. 히스토리 요약 UI와 관리자 보고서에서 재사용.';
+
+create index if not exists rank_turns_visible_idx
+  on public.rank_turns (is_visible, inserted_at desc);
+
+create index if not exists rank_turns_summary_gin
+  on public.rank_turns using gin (summary_payload jsonb_path_ops);
+```
+
 ## 실행 팁
 - Supabase SQL Editor에서 결과를 복사해 `.sql` 파일로 저장하면 백업 스크립트를 빠르게 만들 수 있습니다.
 - `psql`을 사용할 때는 `\gset`을 이용해 결과를 변수에 담은 뒤, `\echo :create_table_ddl` 형태로 출력하는 방법도 있습니다.

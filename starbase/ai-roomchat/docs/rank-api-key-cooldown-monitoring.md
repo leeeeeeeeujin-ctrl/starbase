@@ -70,8 +70,14 @@
 
 3. **알림·자동화 연동**
    - 위 환경 변수를 설정하면 `/api/rank/cooldown-report`가 Slack/Webhook 경보와 키 교체 자동화 요청을 즉시 발송합니다.
-   - 실시간 경보가 실패하거나 환경 변수가 비어 있으면 운영자가 `/api/rank/cooldown-digest`를 호출해 동일한 경로를 재시도합니다(선택적으로 자체 스케줄러에 배치해도 됩니다).
-   - 자동화 엔드포인트에는 `type: "rank.cooldown.rotation_request"`와 함께 `event` 상세 정보(JSON)가 전달되므로, 서버리스 함수나 백오피스 스크립트에서 이를 파싱해 키 교체를 수행하세요.
+ - 실시간 경보가 실패하거나 환경 변수가 비어 있으면 운영자가 `/api/rank/cooldown-digest`를 호출해 동일한 경로를 재시도합니다(선택적으로 자체 스케줄러에 배치해도 됩니다).
+  - 자동화 엔드포인트에는 `type: "rank.cooldown.rotation_request"`와 함께 `event` 상세 정보(JSON)가 전달되므로, 서버리스 함수나 백오피스 스크립트에서 이를 파싱해 키 교체를 수행하세요.
+
+### Webhook 재시도 전략 (2025-11-07 초안)
+- **재시도 간격**: 최초 실패 후 3분 → 5분 → 10분 백오프로 최대 3회까지 Edge Function이 재시도합니다.
+- **재시도 한계**: 3회 모두 실패하면 `metadata.cooldownAutomation.retryState`에 실패 이력과 마지막 HTTP 상태 코드를 저장하고, `notified_at`을 비워 둔 채 관리자 대시보드에 경고 배너를 띄웁니다.
+- **대체 경로**: 실패 시 즉시 `/api/rank/cooldown-digest` 호출을 큐에 넣어 별도 스케줄러가 회수할 수 있게 하고, Webhook URL이 빈 값이면 재시도 루프를 건너뜁니다.
+- **운영 알림**: Edge Function은 세 번째 실패 후 60초 이내에 Slack 운영 채널에 “manual rotation required” 경보를 발송하고, Webhook URL/HTTP 상태/실패 시각을 첨부합니다.
 
 ## 향후 TODO
 

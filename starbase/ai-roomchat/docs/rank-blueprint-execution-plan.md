@@ -234,3 +234,14 @@
 느낀 점: 로컬에서만 보이던 쿨다운 정보가 서버 로그와 연결되니 운영팀이 즉시 반응할 수 있겠다는 든든함이 생겼습니다.
 추가로 필요한 점: Slack/Webhook 통지와 자동 키 교체 스크립트를 마련해 알림 이후의 대응 속도까지 끌어올려야 합니다.
  진행사항: 쿨다운 이벤트를 서버에 보고하고, 수동/사내 스케줄러 다이제스트로 미처리 이벤트를 정리하는 경보 파이프라인을 완성했습니다.
+
+### 진행 현황 메모 (2025-11-07 보강)
+
+- 듀오·캐주얼 재시작 회귀 테스트(DC-01~03)를 `rank-blueprint-test-plan.md`에 추가해 `/api/rank/play` 재사용 흐름의 QA 범위를 확장했습니다.【F:docs/rank-blueprint-test-plan.md†L86-L101】
+- `rank_turns`의 `is_visible`·`summary_payload` 컬럼과 인덱스 초안을 `supabase-ddl-export.md`에 정리해 마이그레이션 사전 점검이 가능해졌습니다.【F:docs/supabase-ddl-export.md†L111-L134】
+- Webhook 3-5-10분 백오프 및 수동 회수 절차를 `rank-api-key-cooldown-monitoring.md`에 추가해 운영팀이 공유 기준을 즉시 참고할 수 있게 했습니다.【F:docs/rank-api-key-cooldown-monitoring.md†L89-L108】
+- 단계별 진행률을 재계산해 청사진 개요 문서에 공유, 현재 작업량 대비 완료 비율을 수치화했습니다.【F:docs/rank-blueprint-overview.md†L47-L63】
+
+느낀 점: 테스트·DDL·운영 문서를 한 번에 조정하니 남은 블루프린트 항목이 서로 어떤 의존성을 갖는지 분명해져 다음 단계 준비가 한층 수월해졌습니다.
+추가로 필요한 점: 제작기에서 저장하기 전에 버전 불일치를 경고하거나 자동 갱신할 수 있는 UX/백엔드 훅을 마련해야 운영자가 반복 저장에 쓰는 시간을 줄일 수 있습니다.
+진행사항: 재시작 QA 플랜, `rank_turns` 마이그레이션 스크립트, Webhook 재시도 전략, 진행률 지표를 문서에 반영해 청사진 남은 부분을 정리했습니다.
