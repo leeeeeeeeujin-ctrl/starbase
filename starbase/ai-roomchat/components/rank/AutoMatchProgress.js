@@ -205,6 +205,8 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const previousConfirmationRef = useRef('idle')
   const latestConfirmationRef = useRef('idle')
   const joinErrorRef = useRef('')
+  const joinAttemptCountRef = useRef(0)
+  const queueJoinStartedAtRef = useRef(null)
   const playTriggeredRef = useRef(false)
   const [playNotice, setPlayNotice] = useState('')
 
@@ -569,6 +571,15 @@ export default function AutoMatchProgress({ gameId, mode }) {
     if (joinSignatureRef.current === signature) return
 
     joinSignatureRef.current = signature
+    joinAttemptCountRef.current += 1
+    const attemptNumber = joinAttemptCountRef.current
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    queueJoinStartedAtRef.current = startedAt
+    console.debug('[AutoMatchProgress] 자동 참가 시도', {
+      signature,
+      attemptNumber,
+      startedAt,
+    })
     actions.joinQueue(roleName).then((result) => {
       if (!result?.ok) {
         setJoinError(result?.error || '대기열에 참가하지 못했습니다. 잠시 후 다시 시도해 주세요.')
@@ -585,6 +596,10 @@ export default function AutoMatchProgress({ gameId, mode }) {
           clearTimeout(joinRetryTimerRef.current)
           joinRetryTimerRef.current = null
         }
+        console.debug('[AutoMatchProgress] 자동 참가 성공', {
+          signature,
+          attemptNumber,
+        })
       }
     })
   }, [actions, blockers, gameId, mode, roleName, state.heroId, state.status, state.viewerId])
@@ -619,10 +634,23 @@ export default function AutoMatchProgress({ gameId, mode }) {
 
   useEffect(() => {
     if (state.status === 'queued') {
+      if (queueJoinStartedAtRef.current != null) {
+        const startedAt = queueJoinStartedAtRef.current
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        const elapsedMs = Math.max(0, now - startedAt)
+        console.debug('[AutoMatchProgress] 대기열 대기 시작', {
+          elapsedMs,
+          attemptNumber: joinAttemptCountRef.current,
+        })
+      }
       if (queueTimeoutRef.current) {
         clearTimeout(queueTimeoutRef.current)
       }
       queueTimeoutRef.current = setTimeout(() => {
+        console.warn('[AutoMatchProgress] 대기열이 제한 시간 내에 매칭되지 않았습니다.', {
+          timeoutMs: QUEUE_TIMEOUT_MS,
+          attemptNumber: joinAttemptCountRef.current,
+        })
         setJoinError('1분 안에 매칭이 완료되지 않아 메인 룸으로 돌아갑니다.')
         if (!navigationLockedRef.current) {
           navigationLockedRef.current = true
@@ -653,6 +681,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
       clearConfirmationTimers()
       setConfirmationState('idle')
       setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
+      queueJoinStartedAtRef.current = null
       return
     }
 
@@ -660,6 +689,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
       clearTimeout(queueTimeoutRef.current)
       queueTimeoutRef.current = null
     }
+    queueJoinStartedAtRef.current = null
 
     if (confirmationState === 'idle') {
       startConfirmationCountdown()

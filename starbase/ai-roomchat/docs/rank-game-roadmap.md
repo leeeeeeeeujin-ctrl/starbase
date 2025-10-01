@@ -118,6 +118,11 @@ Following this roadmap will close the scaffolding gap between “game registered
 - **Follow-up focus**: Populate per-mode slices with authoritative stats (queue mode tagging for battles, season snapshots per mode) and expose drawer metrics in the roadmap dashboards to keep automation milestones visible.
   - **Backend requirement**: Tag every battle log and season snapshot with the originating matchmaking mode (solo/duo/casual) so the drawer’s filters stay accurate; coordinate Supabase migrations or backfills to stamp legacy rows with mode metadata.
 
+## Progress Update — 2025-11-09
+- **Matchmaking diagnostics**: `AutoMatchProgress` now logs every auto-join attempt with a numbered signature, records when queue waiting begins, and emits explicit warnings if the 60초 timeout path fires, making it easier to confirm whether the overlay actually enqueued players.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L220-L310】【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L604-L648】
+- **Documentation refresh**: The matchmaking diagnostics guide highlights the new attempt/timeout logs so QA can filter for them during investigations.【F:starbase/ai-roomchat/docs/matchmaking_diagnostics.md†L8-L23】
+- **Progress update**: Instrumentation improves observability rather than core features, so the rollout estimate stays near **75%**, but we now have clearer signals for finishing the remaining scoring and shared-history milestones.
+
 ## Progress Update — 2025-10-27
 - **Blueprint gap audit**: 정리한 점검표를 통해 슬롯·세션 자동화는 안정적으로 동작하고 있지만 점수 동기화, 공용 히스토리, 운영 가드는 아직 미완료 구간임을 확인했다.【F:starbase/ai-roomchat/docs/rank-blueprint-gap-audit-2025-10-27.md†L1-L60】
 - **Outstanding items**: 다중 방어자 점수 업데이트, 인비저블 히스토리 연결, API 키 고갈 경보가 남은 핵심 과제로 분류됐다.【F:starbase/ai-roomchat/docs/rank-blueprint-gap-audit-2025-10-27.md†L62-L84】
