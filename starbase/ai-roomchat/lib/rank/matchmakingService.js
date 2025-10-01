@@ -69,11 +69,24 @@ export async function loadParticipantPool(supabaseClient, gameId) {
 
   const rows = Array.isArray(result?.data) ? result.data : []
   const alive = rows.filter((row) => (row?.status || 'alive') !== 'dead')
+  const eligible = alive.filter((row) => {
+    if (!row) return false
+    const role = row.role || row.role_name || row.roleName
+    if (!role) return false
+    if (!row.hero_id && !row.heroId) return false
+    const status = normalizeStatus(row?.status)
+    if (DEFEATED_STATUS_SET.has(status)) return false
+    if (status === 'victory') return false
+    if (status === 'retired') return false
+    if (LOCKED_STATUS_SET.has(status)) return false
+    return true
+  })
 
-  return alive.map((row) => ({
+  return eligible.map((row) => ({
     // Use null id so queue updates ignore simulated entries.
     id: null,
-    owner_id: row.owner_id || null,
+    owner_id: row.owner_id || row.ownerId || null,
+    ownerId: row.owner_id || row.ownerId || null,
     hero_id: row.hero_id || null,
     role: row.role || '',
     score: deriveParticipantScore(row),
@@ -82,6 +95,61 @@ export async function loadParticipantPool(supabaseClient, gameId) {
     joined_at: row.updated_at || row.created_at || null,
     simulated: true,
   }))
+}
+
+function normalizeStatus(value) {
+  if (!value) return 'alive'
+  if (typeof value !== 'string') return 'alive'
+  return value.trim().toLowerCase() || 'alive'
+}
+
+const DEFEATED_STATUS_SET = new Set([
+  'defeated',
+  'lost',
+  'out',
+  'retired',
+  'eliminated',
+  'dead',
+])
+
+const LOCKED_STATUS_SET = new Set([
+  'engaged',
+  'engaged_offense',
+  'engaged_defense',
+  'locked',
+  'pending_battle',
+])
+
+export async function loadRoleStatusCounts(supabaseClient, gameId) {
+  if (!gameId) return new Map()
+
+  const result = await withTable(supabaseClient, 'rank_participants', (table) =>
+    supabaseClient
+      .from(table)
+      .select('role, status')
+      .eq('game_id', gameId),
+  )
+
+  if (result?.error) throw result.error
+
+  const rows = Array.isArray(result?.data) ? result.data : []
+  const map = new Map()
+
+  rows.forEach((row) => {
+    const roleName = (row?.role || '').trim()
+    if (!roleName) return
+    const status = normalizeStatus(row?.status)
+    const bucket = map.get(roleName) || { total: 0, active: 0, defeated: 0 }
+    bucket.total += 1
+    if (DEFEATED_STATUS_SET.has(status)) {
+      bucket.defeated += 1
+    } else {
+      bucket.active += 1
+    }
+    map.set(roleName, bucket)
+  })
+
+  return map
 }
 
 export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
@@ -197,29 +265,62 @@ export async function markAssignmentsMatched(
   { assignments = [], gameId, mode, matchCode },
 ) {
   const ids = new Set()
+  const ownerIds = new Set()
   assignments.forEach((assignment) => {
     ensureArray(assignment.members).forEach((member) => {
       if (member?.id) {
         ids.add(member.id)
       }
+      const ownerId = member?.owner_id || member?.ownerId
+      if (ownerId) {
+        ownerIds.add(ownerId)
+      }
     })
   })
-  if (ids.size === 0) return
+  if (ids.size > 0) {
+    const payload = {
+      status: 'matched',
+      updated_at: nowIso(),
+    }
+    if (matchCode) payload.match_code = matchCode
 
-  const payload = {
-    status: 'matched',
-    updated_at: nowIso(),
+    const result = await withTable(supabaseClient, 'rank_match_queue', (table) =>
+      supabaseClient
+        .from(table)
+        .update(payload)
+        .in('id', Array.from(ids)),
+    )
+    if (result?.error) {
+      console.warn('매칭 상태 갱신 실패:', result.error)
+    }
   }
-  if (matchCode) payload.match_code = matchCode
 
-  const result = await withTable(supabaseClient, 'rank_match_queue', (table) =>
-    supabaseClient
+  if (ownerIds.size > 0) {
+    await lockParticipantsForAssignments(supabaseClient, { gameId, ownerIds: Array.from(ownerIds) })
+  }
+}
+
+async function lockParticipantsForAssignments(supabaseClient, { gameId, ownerIds }) {
+  if (!gameId || !Array.isArray(ownerIds) || ownerIds.length === 0) return
+
+  const now = nowIso()
+  const filterOwners = Array.from(new Set(ownerIds.filter(Boolean)))
+  if (!filterOwners.length) return
+
+  const result = await withTable(supabaseClient, 'rank_participants', (table) => {
+    let query = supabaseClient
       .from(table)
-      .update(payload)
-      .in('id', Array.from(ids)),
-  )
+      .update({ status: 'engaged', updated_at: now })
+      .eq('game_id', gameId)
+      .in('owner_id', filterOwners)
+
+    query = query.not('status', 'in', '("victory","defeated","retired","eliminated")')
+
+    return query
+  })
+
   if (result?.error) {
-    console.warn('매칭 상태 갱신 실패:', result.error)
+    console.warn('참가자 잠금 실패:', result.error)
   }
 }
 

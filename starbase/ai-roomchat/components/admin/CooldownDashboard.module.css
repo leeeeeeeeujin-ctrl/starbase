@@ -1,0 +1,271 @@
+.dashboard {
+  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.caption {
+  margin-top: 0.5rem;
+  color: var(--muted-foreground, #6b7280);
+  font-size: 0.9rem;
+}
+
+.limitControl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--muted-foreground, #6b7280);
+}
+
+.limitControl select {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.05);
+  color: inherit;
+}
+
+.loading {
+  padding: 1rem;
+  text-align: center;
+}
+
+.error {
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: rgba(248, 113, 113, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.retry {
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #ef4444;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.summaryCard {
+  border-radius: 1rem;
+  padding: 1rem;
+  background: linear-gradient(145deg, rgba(30, 46, 89, 0.6), rgba(12, 18, 36, 0.8));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border: 1px solid rgba(129, 140, 248, 0.35);
+}
+
+.summaryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.summaryValue {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #f4f6ff;
+}
+
+.summaryHelper {
+  font-size: 0.85rem;
+  color: rgba(199, 210, 254, 0.82);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.statusOk {
+  background: rgba(34, 197, 94, 0.18);
+  color: #bbf7d0;
+}
+
+.statusWarning {
+  background: rgba(250, 204, 21, 0.25);
+  color: #facc15;
+}
+
+.statusCritical {
+  background: rgba(248, 113, 113, 0.3);
+  color: #fecaca;
+}
+
+.panel {
+  border-radius: 1rem;
+  padding: 1.25rem;
+  background: rgba(10, 15, 28, 0.85);
+  border: 1px solid rgba(148, 163, 255, 0.25);
+  box-shadow: 0 18px 55px -30px rgba(6, 11, 20, 0.85);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.issueList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.issueItem {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.issueMessage {
+  font-weight: 600;
+  color: #f3f4ff;
+}
+
+.issueDetails {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  color: rgba(199, 210, 254, 0.75);
+  font-size: 0.8rem;
+}
+
+.detailChip {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.18);
+  color: #dbeafe;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #e2e8ff;
+}
+
+.table th,
+.table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 255, 0.15);
+}
+
+.table thead th {
+  color: rgba(191, 209, 255, 0.85);
+  font-weight: 600;
+}
+
+.table tbody tr:hover {
+  background: rgba(30, 41, 82, 0.35);
+}
+
+.issueText {
+  font-size: 0.85rem;
+  color: rgba(248, 250, 255, 0.78);
+}
+
+.attemptList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.attemptItem {
+  border-radius: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(129, 140, 248, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(20, 26, 47, 0.8);
+  color: #e2e8ff;
+}
+
+.attemptHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.attemptMeta {
+  font-size: 0.8rem;
+  color: rgba(191, 209, 255, 0.7);
+}
+
+.thresholdList {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.thresholdList div {
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(28, 37, 71, 0.85);
+  border: 1px solid rgba(129, 140, 248, 0.35);
+  color: #e2e8ff;
+}
+
+.thresholdList dt {
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+}
+
+.thresholdList dd {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(199, 210, 254, 0.78);
+}
+
+.emptyMessage {
+  padding: 1rem 0;
+  color: rgba(191, 209, 255, 0.6);
+  text-align: center;
+}

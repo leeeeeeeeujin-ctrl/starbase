@@ -18,6 +18,12 @@ import {
 import { loadGameBundle } from './engine/loadGameBundle'
 import { pickNextEdge } from './engine/graph'
 import { buildSystemMessage, parseRules } from './engine/systemPrompt'
+import {
+  getApiKeyCooldown,
+  getCooldownDurationMs,
+  markApiKeyCooldown,
+  purgeExpiredCooldowns,
+} from '../../../lib/rank/apiKeyCooldown'
 
 function normalizeHeroName(name) {
   if (!name) return ''
@@ -85,7 +91,69 @@ function buildUserActionPersona({ heroSlot, participant }) {
   }
 }
 
+function formatDuration(ms) {
+  const numeric = Number(ms)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return '잠시'
+  }
+  const totalSeconds = Math.floor(numeric / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  const parts = []
+  if (hours > 0) {
+    parts.push(`${hours}시간`)
+  }
+  if (minutes > 0) {
+    parts.push(`${minutes}분`)
+  }
+  if (parts.length === 0) {
+    parts.push(`${Math.max(seconds, 1)}초`)
+  }
+  return parts.join(' ')
+}
+
+function formatCooldownMessage(info) {
+  if (!info?.active) return ''
+  const duration = formatDuration(info.remainingMs ?? getCooldownDurationMs())
+  const sample = info.keySample ? ` (${info.keySample})` : ''
+  const reason = info.reason === 'quota_exhausted' ? 'API 한도가 모두 소진되었습니다.' : ''
+  const detail = reason ? `${reason} ` : ''
+  return `${detail}최근 사용한 API 키${sample}는 ${duration} 동안 사용할 수 없습니다. 새 키를 입력하거나 쿨다운이 끝난 뒤 다시 시도해 주세요.`
+}
+
+function isApiKeyError(error) {
+  if (!error) return false
+  const code = typeof error?.code === 'string' ? error.code.toLowerCase() : ''
+  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : ''
+  const combined = `${code} ${message}`
+  if (!combined.trim()) return false
+  const keywords = [
+    'missing_user_api_key',
+    'quota_exhausted',
+    'invalid_api_key',
+    'api key',
+    'api-key',
+    'apikey',
+    'api키',
+    '키가 만료',
+    '키가 없습니다',
+  ]
+  return keywords.some((keyword) => combined.includes(keyword))
+}
+
 export function useStartClientEngine(gameId) {
+  const initialStoredApiKey =
+    typeof window === 'undefined' ? '' : window.sessionStorage.getItem('rank.start.apiKey') || ''
+  const initialCooldownInfo =
+    typeof window === 'undefined'
+      ? null
+      : (() => {
+          purgeExpiredCooldowns()
+          if (!initialStoredApiKey) return null
+          return getApiKeyCooldown(initialStoredApiKey)
+        })()
+
   const history = useMemo(() => createAiHistory(), [])
 
   const [loading, setLoading] = useState(true)
@@ -100,14 +168,15 @@ export function useStartClientEngine(gameId) {
   const [activeLocal, setActiveLocal] = useState([])
   const [logs, setLogs] = useState([])
   const [statusMessage, setStatusMessage] = useState('')
-  const [apiKey, setApiKeyState] = useState(() => {
-    if (typeof window === 'undefined') return ''
-    return window.sessionStorage.getItem('rank.start.apiKey') || ''
-  })
+  const [apiKey, setApiKeyState] = useState(initialStoredApiKey)
   const [apiVersion, setApiVersionState] = useState(() => {
     if (typeof window === 'undefined') return 'gemini'
     return window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
   })
+  const [apiKeyCooldown, setApiKeyCooldownState] = useState(initialCooldownInfo)
+  const [apiKeyWarning, setApiKeyWarning] = useState(() =>
+    initialCooldownInfo?.active ? formatCooldownMessage(initialCooldownInfo) : '',
+  )
   const [manualResponse, setManualResponse] = useState('')
   const [isAdvancing, setIsAdvancing] = useState(false)
   const [winCount, setWinCount] = useState(0)
@@ -115,7 +184,12 @@ export function useStartClientEngine(gameId) {
   const [viewerId, setViewerId] = useState(null)
   const [turnDeadline, setTurnDeadline] = useState(null)
   const [timeRemaining, setTimeRemaining] = useState(null)
-  const [activeHeroAssets, setActiveHeroAssets] = useState({ backgrounds: [], bgmUrl: null })
+  const [activeHeroAssets, setActiveHeroAssets] = useState({
+    backgrounds: [],
+    bgmUrl: null,
+    bgmDuration: null,
+    audioProfile: null,
+  })
   const [activeActorNames, setActiveActorNames] = useState([])
   const [turnTimerSeconds] = useState(() => {
     if (typeof window === 'undefined') return 60
@@ -123,6 +197,10 @@ export function useStartClientEngine(gameId) {
     if (Number.isFinite(stored) && stored > 0) return stored
     return 60
   })
+  const [consentedOwners, setConsentedOwners] = useState([])
+  const [startingSession, setStartingSession] = useState(false)
+  const [gameVoided, setGameVoided] = useState(false)
+  const [sessionInfo, setSessionInfo] = useState(null)
 
   const rememberActiveSession = useCallback(
     (payload = {}) => {
@@ -134,10 +212,11 @@ export function useStartClientEngine(gameId) {
         gameName: game.name || '',
         description: game.description || '',
         actorNames,
+        sessionId: payload.sessionId ?? sessionInfo?.id ?? null,
         ...payload,
       })
     },
-    [gameId, game, activeActorNames],
+    [gameId, game, activeActorNames, sessionInfo?.id],
   )
 
   const updateSessionRecord = useCallback(
@@ -150,32 +229,150 @@ export function useStartClientEngine(gameId) {
         actorNames,
         gameName: game?.name || '',
         description: game?.description || '',
+        sessionId: payload.sessionId ?? sessionInfo?.id ?? null,
         ...payload,
       })
     },
-    [gameId, game, activeActorNames],
+    [gameId, game, activeActorNames, sessionInfo?.id],
   )
 
   const clearSessionRecord = useCallback(() => {
-    if (!gameId) return
-    clearActiveSessionRecord(gameId)
+    if (gameId) {
+      clearActiveSessionRecord(gameId)
+    }
+    setSessionInfo(null)
   }, [gameId])
 
   const markSessionDefeated = useCallback(() => {
-    if (!gameId) return
-    markActiveSessionDefeated(gameId)
+    if (gameId) {
+      markActiveSessionDefeated(gameId)
+    }
+    setSessionInfo(null)
   }, [gameId])
 
-  const setApiKey = useCallback((value) => {
-    setApiKeyState(value)
-    if (typeof window !== 'undefined') {
-      if (value) {
-        window.sessionStorage.setItem('rank.start.apiKey', value)
-      } else {
-        window.sessionStorage.removeItem('rank.start.apiKey')
+  const logTurnEntries = useCallback(
+    async ({ entries, turnNumber }) => {
+      if (!sessionInfo?.id) {
+        return
       }
-    }
-  }, [])
+
+      const normalized = []
+      if (Array.isArray(entries)) {
+        entries.forEach((entry) => {
+          if (!entry) return
+          const rawRole = typeof entry.role === 'string' ? entry.role.trim() : ''
+          const role = rawRole || 'narration'
+          let content = ''
+          if (typeof entry.content === 'string') {
+            content = entry.content
+          } else if (entry.content != null) {
+            try {
+              content = JSON.stringify(entry.content)
+            } catch (error) {
+              content = String(entry.content)
+            }
+          }
+          if (!content || !content.trim()) {
+            return
+          }
+          normalized.push({
+            role,
+            content,
+            public: entry.public !== false,
+          })
+        })
+      }
+
+      if (!normalized.length) {
+        return
+      }
+
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          throw new Error('세션 토큰을 확인할 수 없습니다.')
+        }
+
+        const payload = {
+          session_id: sessionInfo.id,
+          game_id: gameId,
+          entries: normalized,
+        }
+        const numericTurn = Number(turnNumber)
+        if (Number.isFinite(numericTurn) && numericTurn > 0) {
+          payload.turn_number = numericTurn
+        }
+
+        const response = await fetch('/api/rank/log-turn', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        })
+
+        if (!response.ok) {
+          let detail = null
+          try {
+            detail = await response.json()
+          } catch (error) {
+            detail = null
+          }
+          const message = detail?.error || '턴 기록에 실패했습니다.'
+          throw new Error(message)
+        }
+      } catch (err) {
+        console.error('턴 기록 실패:', err)
+      }
+    },
+    [gameId, sessionInfo?.id],
+  )
+
+  const evaluateApiKeyCooldown = useCallback(
+    (value) => {
+      if (typeof window === 'undefined') {
+        setApiKeyCooldownState(null)
+        setApiKeyWarning('')
+        return null
+      }
+      const trimmed = typeof value === 'string' ? value.trim() : ''
+      if (!trimmed) {
+        setApiKeyCooldownState(null)
+        setApiKeyWarning('')
+        return null
+      }
+      const info = getApiKeyCooldown(trimmed)
+      if (info?.active) {
+        setApiKeyCooldownState(info)
+        setApiKeyWarning(formatCooldownMessage(info))
+        return info
+      }
+      setApiKeyCooldownState(null)
+      setApiKeyWarning('')
+      return null
+    },
+    [],
+  )
+
+  const setApiKey = useCallback(
+    (value) => {
+      setApiKeyState(value)
+      if (typeof window !== 'undefined') {
+        if (value) {
+          window.sessionStorage.setItem('rank.start.apiKey', value)
+        } else {
+          window.sessionStorage.removeItem('rank.start.apiKey')
+        }
+      }
+      evaluateApiKeyCooldown(value)
+    },
+    [evaluateApiKeyCooldown],
+  )
 
   const setApiVersion = useCallback((value) => {
     setApiVersionState(value)
@@ -190,6 +387,7 @@ export function useStartClientEngine(gameId) {
 
   const visitedSlotIds = useRef(new Set())
   const apiVersionLock = useRef(null)
+  const advanceIntentRef = useRef(null)
 
   useEffect(() => {
     if (!gameId) return
@@ -343,10 +541,24 @@ export function useStartClientEngine(gameId) {
         .filter(Boolean)
       const bgmSource = matchedEntries.find((entry) => entry.hero?.bgm_url)
 
+      const audioProfile = bgmSource
+        ? {
+            heroId: bgmSource.hero?.id || null,
+            heroName: bgmSource.hero?.name || '',
+            bgmUrl: bgmSource.hero?.bgm_url || null,
+            bgmDuration: Number(bgmSource.hero?.bgm_duration_seconds) || null,
+            equalizer: null,
+            reverb: null,
+            compressor: null,
+          }
+        : null
+
       return {
         backgrounds,
-        bgmUrl: bgmSource?.hero?.bgm_url || null,
+        bgmUrl: audioProfile?.bgmUrl || null,
+        bgmDuration: audioProfile?.bgmDuration || null,
         actorNames: resolvedNames,
+        audioProfile,
       }
     },
     [heroLookup],
@@ -354,14 +566,58 @@ export function useStartClientEngine(gameId) {
 
   const updateHeroAssets = useCallback(
     (names, fallbackContext) => {
-      const { backgrounds, bgmUrl, actorNames } = resolveHeroAssets(names, fallbackContext)
+      const { backgrounds, bgmUrl, bgmDuration, actorNames, audioProfile } =
+        resolveHeroAssets(names, fallbackContext)
       setActiveHeroAssets({
         backgrounds,
         bgmUrl,
+        bgmDuration,
+        audioProfile,
       })
       setActiveActorNames(actorNames)
     },
     [resolveHeroAssets],
+  )
+  const voidSession = useCallback(
+    (message, options = {}) => {
+      if (options?.apiKey) {
+        const info = markApiKeyCooldown(options.apiKey, {
+          reason: options.reason,
+          provider: options.provider || apiVersion || null,
+          viewerId: options.viewerId || viewerId || null,
+          gameId: options.gameId || gameId || game?.id || null,
+          sessionId: options.sessionId || sessionInfo?.id || null,
+          note: options.note || null,
+        })
+        if (info) {
+          setApiKeyCooldownState(info)
+          setApiKeyWarning(formatCooldownMessage(info))
+        }
+      }
+      setGameVoided(true)
+      setStatusMessage(
+        message || '사용 가능한 모든 API 키가 오류를 반환해 게임이 무효 처리되었습니다.',
+      )
+      setCurrentNodeId(null)
+      setTurnDeadline(null)
+      setTimeRemaining(null)
+      setConsentedOwners([])
+      updateHeroAssets([], null)
+      updateSessionRecord({ status: 'voided', actorNames: [] })
+      clearSessionRecord()
+    },
+    [
+      clearSessionRecord,
+      updateHeroAssets,
+      updateSessionRecord,
+      setApiKeyCooldownState,
+      setApiKeyWarning,
+      viewerId,
+      apiVersion,
+      gameId,
+      game?.id,
+      sessionInfo?.id,
+    ],
   )
   const participantsStatus = useMemo(
     () =>
@@ -371,6 +627,35 @@ export function useStartClientEngine(gameId) {
       })),
     [participants],
   )
+  const eligibleOwnerIds = useMemo(() => {
+    if (preflight) return []
+    if (!game?.realtime_match) return []
+    if (!Array.isArray(participants) || participants.length === 0) return []
+    const defeated = new Set(['defeated', 'lost', 'dead', 'eliminated', 'retired', 'out'])
+    const owners = []
+    participants.forEach((participant) => {
+      const ownerId = participant?.owner_id || participant?.ownerId || null
+      if (!ownerId) return
+      const status = String(participant?.status || '').toLowerCase()
+      if (defeated.has(status)) return
+      owners.push(ownerId)
+    })
+    return Array.from(new Set(owners))
+  }, [game?.realtime_match, participants, preflight])
+  const consensusCount = useMemo(() => {
+    if (!eligibleOwnerIds.length) return 0
+    const eligibleSet = new Set(eligibleOwnerIds)
+    const agreed = new Set()
+    consentedOwners.forEach((ownerId) => {
+      if (eligibleSet.has(ownerId)) {
+        agreed.add(ownerId)
+      }
+    })
+    return agreed.size
+  }, [consentedOwners, eligibleOwnerIds])
+  const needsConsensus = !preflight && eligibleOwnerIds.length > 0
+  const viewerCanConsent = needsConsensus && viewerId ? eligibleOwnerIds.includes(viewerId) : false
+  const viewerHasConsented = viewerCanConsent && consentedOwners.includes(viewerId)
   const currentNode = useMemo(
     () => graph.nodes.find((node) => node.id === currentNodeId) || null,
     [graph.nodes, currentNodeId],
@@ -418,7 +703,22 @@ export function useStartClientEngine(gameId) {
     [currentActorContext, isUserActionSlot],
   )
 
-  const handleStart = useCallback(() => {
+  const viewerParticipant = useMemo(() => {
+    if (!viewerId) return null
+    return (
+      participants.find((participant) => {
+        const ownerId =
+          participant?.owner_id ||
+          participant?.ownerId ||
+          participant?.ownerID ||
+          participant?.owner?.id ||
+          null
+        return ownerId === viewerId
+      }) || null
+    )
+  }, [participants, viewerId])
+
+  const bootLocalSession = useCallback(() => {
     if (graph.nodes.length === 0) {
       setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
       return
@@ -434,6 +734,7 @@ export function useStartClientEngine(gameId) {
     visitedSlotIds.current = new Set()
     apiVersionLock.current = null
     setPreflight(false)
+    setGameVoided(false)
     setTurn(1)
     setLogs([])
     setWinCount(0)
@@ -453,8 +754,8 @@ export function useStartClientEngine(gameId) {
       status: 'active',
       defeated: false,
     })
-    setTurnDeadline(Date.now() + turnTimerSeconds * 1000)
-    setTimeRemaining(turnTimerSeconds)
+      setTurnDeadline(null)
+      setTimeRemaining(null)
     setCurrentNodeId(startNode.id)
   }, [
     graph.nodes,
@@ -464,7 +765,114 @@ export function useStartClientEngine(gameId) {
     participants,
     updateHeroAssets,
     rememberActiveSession,
-    turnTimerSeconds,
+  ])
+
+  const handleStart = useCallback(async () => {
+    if (graph.nodes.length === 0) {
+      setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
+      return
+    }
+
+    if (startingSession) {
+      return
+    }
+
+    if (!gameId) {
+      setStatusMessage('게임 정보를 찾을 수 없습니다.')
+      return
+    }
+
+    if (apiKey) {
+      const cooldownInfo = evaluateApiKeyCooldown(apiKey)
+      if (cooldownInfo?.active) {
+        setStatusMessage(formatCooldownMessage(cooldownInfo))
+        return
+      }
+    }
+
+    setStartingSession(true)
+    setStatusMessage('세션을 준비하는 중입니다…')
+
+    let sessionReady = false
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        throw sessionError
+      }
+
+      const token = sessionData?.session?.access_token
+      if (!token) {
+        throw new Error('세션 정보가 만료되었습니다. 다시 로그인해 주세요.')
+      }
+
+      const response = await fetch('/api/rank/start-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          game_id: gameId,
+          mode: game?.realtime_match ? 'realtime' : 'manual',
+          role: viewerParticipant?.role || null,
+          match_code: null,
+        }),
+      })
+
+      let payload = {}
+      try {
+        payload = await response.json()
+      } catch (error) {
+        payload = {}
+      }
+
+      if (!response.ok) {
+        const message = payload?.error || payload?.detail || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        throw new Error(message)
+      }
+
+      if (!payload?.ok) {
+        const message = payload?.error || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        throw new Error(message)
+      }
+
+      const sessionPayload = payload?.session || null
+      if (!sessionPayload?.id) {
+        throw new Error('세션 정보를 받지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      }
+
+      setSessionInfo({
+        id: sessionPayload.id,
+        status: sessionPayload.status || 'active',
+        createdAt: sessionPayload.created_at || null,
+        reused: Boolean(sessionPayload.reused),
+      })
+
+      sessionReady = true
+    } catch (error) {
+      console.error('세션 준비 실패:', error)
+      const message =
+        error?.message || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+      setStatusMessage(message)
+    } finally {
+      setStartingSession(false)
+    }
+
+    if (!sessionReady) {
+      return
+    }
+
+    bootLocalSession()
+  }, [
+    bootLocalSession,
+    game?.realtime_match,
+    gameId,
+    graph.nodes,
+    startingSession,
+    viewerParticipant?.role,
+    apiKey,
+    evaluateApiKeyCooldown,
   ])
 
   const advanceTurn = useCallback(
@@ -484,6 +892,11 @@ export function useStartClientEngine(gameId) {
         return
       }
 
+      if (gameVoided) {
+        setStatusMessage('게임이 무효 처리되어 더 이상 진행할 수 없습니다.')
+        return
+      }
+
       const actorContext = resolveActorContext({ node, slots, participants })
       const slotTypeValue = node.slot_type || 'ai'
       const isUserAction = slotTypeValue === 'user_action' || slotTypeValue === 'manual'
@@ -496,6 +909,8 @@ export function useStartClientEngine(gameId) {
 
       setIsAdvancing(true)
       setStatusMessage('')
+      setTurnDeadline(null)
+      setTimeRemaining(null)
 
       try {
         const compiled = makeNodePrompt({
@@ -516,6 +931,9 @@ export function useStartClientEngine(gameId) {
           typeof overrideResponse === 'string'
             ? overrideResponse.trim()
             : manualResponse.trim()
+
+        let loggedByServer = false
+        let loggedTurnNumber = null
 
         let effectiveSystemPrompt = systemPrompt
         let effectivePrompt = promptText
@@ -541,25 +959,66 @@ export function useStartClientEngine(gameId) {
               }
             }
 
+            if (!sessionInfo?.id) {
+              throw new Error('세션 정보를 확인할 수 없습니다. 페이지를 새로고침해 주세요.')
+            }
+
+            const cooldownInfo = evaluateApiKeyCooldown(apiKey)
+            if (cooldownInfo?.active) {
+              setStatusMessage(formatCooldownMessage(cooldownInfo))
+              return
+            }
+
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+            if (sessionError) {
+              throw sessionError
+            }
+
+            const token = sessionData?.session?.access_token
+            if (!token) {
+              throw new Error('세션 토큰을 확인할 수 없습니다.')
+            }
+
             const res = await fetch('/api/rank/run-turn', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
               body: JSON.stringify({
                 apiKey,
                 system: effectiveSystemPrompt,
                 prompt: effectivePrompt,
                 apiVersion,
+                session_id: sessionInfo.id,
+                game_id: gameId,
+                prompt_role: 'system',
+                response_role: historyRole,
+                response_public: true,
               }),
             })
 
-            if (!res.ok) {
-              const payload = await res.json().catch(() => ({}))
-              throw new Error(payload?.error || 'AI 호출에 실패했습니다.')
+            let payload = {}
+            try {
+              payload = await res.json()
+            } catch (error) {
+              payload = {}
             }
 
-            const payload = await res.json()
+            if (!res.ok) {
+              const error = new Error(
+                payload?.error || payload?.detail || 'AI 호출에 실패했습니다.',
+              )
+              if (payload?.error) {
+                error.code = payload.error
+              }
+              throw error
+            }
+
             if (payload?.error) {
-              throw new Error(payload.error)
+              const error = new Error(payload.error)
+              error.code = payload.error
+              throw error
             }
 
             responseText =
@@ -567,6 +1026,14 @@ export function useStartClientEngine(gameId) {
               payload?.choices?.[0]?.message?.content ||
               payload?.content ||
               ''
+
+            if (payload?.logged) {
+              loggedByServer = true
+              const numericTurn = Number(payload?.turn_number)
+              if (Number.isFinite(numericTurn)) {
+                loggedTurnNumber = numericTurn
+              }
+            }
 
             if (game?.realtime_match && !apiVersionLock.current) {
               apiVersionLock.current = apiVersion
@@ -621,6 +1088,24 @@ export function useStartClientEngine(gameId) {
         const nextActiveGlobal = Array.from(
           new Set([...activeGlobal, ...(outcome.variables || [])]),
         )
+
+        if (!loggedByServer) {
+          await logTurnEntries({
+            entries: [
+              {
+                role: promptEntry?.role || 'system',
+                content: promptEntry?.content || promptText,
+                public: promptEntry?.public,
+              },
+              {
+                role: historyRole,
+                content: responseText,
+                public: responseEntry?.public,
+              },
+            ],
+            turnNumber: loggedTurnNumber ?? turn,
+          })
+        }
 
         setActiveLocal(outcome.variables || [])
         setActiveGlobal(nextActiveGlobal)
@@ -732,7 +1217,24 @@ export function useStartClientEngine(gameId) {
         setTimeRemaining(turnTimerSeconds)
       } catch (err) {
         console.error(err)
-        setStatusMessage(err?.message || '턴 진행 중 오류가 발생했습니다.')
+        if (isApiKeyError(err)) {
+          const reason = err?.code || 'api_key_error'
+          const fallback =
+            reason === 'quota_exhausted'
+              ? '사용 중인 API 키 한도가 모두 소진되어 세션이 무효 처리되었습니다. 새 키를 등록해 주세요.'
+              : err?.message || 'API 키 오류로 세션이 무효 처리되었습니다.'
+          voidSession(fallback, {
+            apiKey,
+            reason,
+            provider: apiVersion,
+            viewerId,
+            gameId,
+            sessionId: sessionInfo?.id || null,
+            note: err?.message || null,
+          })
+        } else {
+          setStatusMessage(err?.message || '턴 진행 중 오류가 발생했습니다.')
+        }
       } finally {
         setIsAdvancing(false)
       }
@@ -759,7 +1261,11 @@ export function useStartClientEngine(gameId) {
       winCount,
       viewerId,
       updateHeroAssets,
+      logTurnEntries,
       turnTimerSeconds,
+      voidSession,
+      gameVoided,
+      evaluateApiKeyCooldown,
     ],
   )
 
@@ -768,12 +1274,72 @@ export function useStartClientEngine(gameId) {
       alert('수동 응답을 입력하세요.')
       return
     }
+    advanceIntentRef.current = null
+    setConsentedOwners([])
     advanceTurn(manualResponse.trim())
   }, [advanceTurn, manualResponse])
 
   const advanceWithAi = useCallback(() => {
-    advanceTurn(null)
-  }, [advanceTurn])
+    if (!needsConsensus) {
+      advanceIntentRef.current = null
+      setConsentedOwners([])
+      advanceTurn(null)
+      return
+    }
+    if (!viewerCanConsent) {
+      setStatusMessage('동의 대상인 참가자만 다음 턴 진행을 제안할 수 있습니다.')
+      return
+    }
+    const already = consentedOwners.includes(viewerId)
+    advanceIntentRef.current = { override: null }
+    if (!already) {
+      setConsentedOwners((prev) => [...prev, viewerId])
+    }
+    const futureCount = already
+      ? consensusCount
+      : Math.min(consensusCount + 1, eligibleOwnerIds.length)
+    setStatusMessage(`다음 턴 동의 ${futureCount}/${eligibleOwnerIds.length}명`)
+  }, [
+    advanceTurn,
+    consentedOwners,
+    consensusCount,
+    eligibleOwnerIds.length,
+    needsConsensus,
+    setStatusMessage,
+    viewerCanConsent,
+    viewerId,
+  ])
+
+  useEffect(() => {
+    if (!needsConsensus) return undefined
+    if (!advanceIntentRef.current) return undefined
+    if (!eligibleOwnerIds.length) return undefined
+    const eligibleSet = new Set(eligibleOwnerIds)
+    const agreed = new Set()
+    consentedOwners.forEach((ownerId) => {
+      if (eligibleSet.has(ownerId)) {
+        agreed.add(ownerId)
+      }
+    })
+    if (agreed.size >= eligibleSet.size) {
+      const intent = advanceIntentRef.current
+      advanceIntentRef.current = null
+      advanceTurn(intent?.override ?? null)
+    }
+    return undefined
+  }, [advanceTurn, consentedOwners, eligibleOwnerIds, needsConsensus])
+
+  useEffect(() => {
+    setConsentedOwners([])
+    advanceIntentRef.current = null
+  }, [turn])
+
+  useEffect(() => {
+    if (preflight) {
+      setConsentedOwners([])
+      advanceIntentRef.current = null
+    }
+  }, [preflight])
 
   return {
     loading,
@@ -786,16 +1352,19 @@ export function useStartClientEngine(gameId) {
     activeGlobal,
     activeLocal,
     statusMessage,
+    apiKeyWarning,
     logs,
     aiMemory,
     playerHistories,
     apiKey,
     setApiKey,
+    apiKeyCooldown,
     apiVersion,
     setApiVersion,
     manualResponse,
     setManualResponse,
     isAdvancing,
+    isStarting: startingSession,
     handleStart,
     advanceWithAi,
     advanceWithManual,
@@ -806,5 +1375,15 @@ export function useStartClientEngine(gameId) {
     activeBackdropUrls: activeHeroAssets.backgrounds,
     activeActorNames,
     activeBgmUrl: activeHeroAssets.bgmUrl,
+    activeBgmDuration: activeHeroAssets.bgmDuration,
+    activeAudioProfile: activeHeroAssets.audioProfile,
+    sessionInfo,
+    consensus: {
+      required: eligibleOwnerIds.length,
+      count: consensusCount,
+      viewerEligible: viewerCanConsent,
+      viewerHasConsented,
+      active: needsConsensus,
+    },
   }
 }

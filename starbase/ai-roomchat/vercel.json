@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/rank/slot-sweeper",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/rank/cooldown-digest",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
