@@ -6,8 +6,15 @@ export default function HeaderControls({
   onStart,
   onAdvance,
   isAdvancing,
-  canAdvance,
+  advanceDisabled = false,
+  advanceLabel,
+  consensus,
+  startDisabled = false,
+  isStarting = false,
 }) {
+  const nextLabel = advanceLabel || (isAdvancing ? '진행 중…' : '다음 턴')
+  const startLabel = isStarting ? '준비 중…' : preflight ? '게임 시작' : '다시 시작'
+  const startButtonDisabled = isStarting || startDisabled
   return (
     <header
       style={{
@@ -46,34 +53,55 @@ export default function HeaderControls({
         <button
           type="button"
           onClick={onStart}
+          disabled={startButtonDisabled}
           style={{
             padding: '10px 16px',
             borderRadius: 999,
-            background: '#111827',
-            color: '#f8fafc',
+            background: startButtonDisabled ? 'rgba(17, 24, 39, 0.55)' : '#111827',
+            color: startButtonDisabled ? 'rgba(248, 250, 252, 0.6)' : '#f8fafc',
             fontWeight: 700,
             border: 'none',
+            cursor: startButtonDisabled ? 'not-allowed' : 'pointer',
           }}
         >
-          {preflight ? '게임 시작' : '다시 시작'}
+          {startLabel}
         </button>
         <button
           type="button"
           onClick={onAdvance}
-          disabled={isAdvancing || !canAdvance}
+          disabled={isAdvancing || advanceDisabled}
           style={{
             padding: '10px 16px',
             borderRadius: 999,
             background:
-              isAdvancing || !canAdvance ? 'rgba(37, 99, 235, 0.35)' : '#2563eb',
+              isAdvancing || advanceDisabled ? 'rgba(37, 99, 235, 0.35)' : '#2563eb',
             color: '#f8fafc',
             fontWeight: 700,
             border: 'none',
-            cursor: isAdvancing || !canAdvance ? 'not-allowed' : 'pointer',
+            cursor: isAdvancing || advanceDisabled ? 'not-allowed' : 'pointer',
           }}
         >
-          {isAdvancing ? '진행 중…' : '다음 턴'}
+          {nextLabel}
         </button>
+        {consensus?.active ? (
+          <span
+            style={{
+              alignSelf: 'center',
+              fontSize: 12,
+              color: consensus.viewerEligible
+                ? consensus.viewerHasConsented
+                  ? 'rgba(34, 197, 94, 0.9)'
+                  : 'rgba(226, 232, 240, 0.75)'
+                : 'rgba(148, 163, 184, 0.75)',
+            }}
+          >
+            {consensus.viewerEligible
+              ? consensus.viewerHasConsented
+                ? '내 동의 완료'
+                : '내 동의 필요'
+              : '동의 대상 아님'}
+          </span>
+        ) : null}
       </div>
     </header>
   )
