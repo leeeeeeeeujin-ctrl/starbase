@@ -414,6 +414,68 @@ export default function CooldownDashboard() {
   const [languageLoading, setLanguageLoading] = useState(true)
   const [languageError, setLanguageError] = useState(null)
   const [languageRefreshToken, setLanguageRefreshToken] = useState(0)
+  const [languageLimit, setLanguageLimit] = useState(300)
+  const [languageFiltersLoading, setLanguageFiltersLoading] = useState(true)
+  const [languageFiltersError, setLanguageFiltersError] = useState(null)
+  const [languageFilterOptions, setLanguageFilterOptions] = useState({ games: [], seasons: [] })
+  const [selectedGameId, setSelectedGameId] = useState('all')
+  const [selectedSeasonId, setSelectedSeasonId] = useState('all')
+
+  const seasonOptions = useMemo(() => {
+    const seasons = languageFilterOptions?.seasons || []
+    if (selectedGameId === 'all') return seasons
+    return seasons.filter((season) => season.gameId === selectedGameId)
+  }, [languageFilterOptions, selectedGameId])
+
+  const selectedGame = useMemo(() => {
+    if (selectedGameId === 'all') return null
+    return (languageFilterOptions?.games || []).find((game) => game.id === selectedGameId) || null
+  }, [languageFilterOptions, selectedGameId])
+
+  const selectedSeason = useMemo(() => {
+    if (selectedSeasonId === 'all') return null
+    return seasonOptions.find((season) => season.id === selectedSeasonId) || null
+  }, [seasonOptions, selectedSeasonId])
+
+  useEffect(() => {
+    if (selectedSeasonId === 'all') return
+    if (!seasonOptions.some((season) => season.id === selectedSeasonId)) {
+      setSelectedSeasonId('all')
+    }
+  }, [seasonOptions, selectedSeasonId])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadFilterOptions() {
+      setLanguageFiltersLoading(true)
+      setLanguageFiltersError(null)
+      try {
+        const response = await fetch('/api/rank/admin-language-insights-options')
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({ error: '필터 정보를 불러오지 못했습니다.' }))
+          throw new Error(payload.error || '필터 정보를 불러오지 못했습니다.')
+        }
+        const payload = await response.json()
+        if (cancelled) return
+        setLanguageFilterOptions({
+          games: Array.isArray(payload.games) ? payload.games : [],
+          seasons: Array.isArray(payload.seasons) ? payload.seasons : [],
+        })
+      } catch (loadError) {
+        if (cancelled) return
+        setLanguageFiltersError(loadError.message || '필터 정보를 불러오지 못했습니다.')
+      } finally {
+        if (cancelled) return
+        setLanguageFiltersLoading(false)
+      }
+    }
+
+    loadFilterOptions()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -491,7 +553,16 @@ export default function CooldownDashboard() {
       setLanguageLoading(true)
       setLanguageError(null)
       try {
-        const response = await fetch(`/api/rank/admin-language-insights?limit=300`, {
+        const params = new URLSearchParams()
+        params.set('limit', `${languageLimit}`)
+        if (selectedGameId !== 'all') {
+          params.set('gameId', selectedGameId)
+        }
+        if (selectedSeasonId !== 'all') {
+          params.set('seasonId', selectedSeasonId)
+        }
+
+        const response = await fetch(`/api/rank/admin-language-insights?${params.toString()}`, {
           signal: controller.signal,
         })
         if (!response.ok) {
@@ -511,7 +582,7 @@ export default function CooldownDashboard() {
     loadInsights()
 
     return () => controller.abort()
-  }, [languageRefreshToken])
+  }, [languageRefreshToken, languageLimit, selectedGameId, selectedSeasonId])
 
   const thresholdGauges = useMemo(() => {
     if (!telemetry) return []
@@ -739,6 +810,60 @@ export default function CooldownDashboard() {
             <p className={styles.caption}>
               최근 랭크 전투 로그를 분석해 단어별 사용량, 승률 상관관계, OP 문장을 티어로 정리했습니다.
             </p>
+            <div className={styles.languageControls}>
+              <label className={styles.languageControl}>
+                표본 크기
+                <select
+                  value={languageLimit}
+                  onChange={(event) => setLanguageLimit(Number(event.target.value))}
+                  disabled={languageLoading}
+                >
+                  {[100, 200, 300, 500, 800, 1000].map((option) => (
+                    <option key={option} value={option}>
+                      최근 {option}건
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.languageControl}>
+                게임
+                <select
+                  value={selectedGameId}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setSelectedGameId(value)
+                    setSelectedSeasonId('all')
+                  }}
+                  disabled={languageFiltersLoading || (languageFilterOptions?.games || []).length === 0}
+                >
+                  <option value="all">전체 게임</option>
+                  {(languageFilterOptions?.games || []).map((game) => (
+                    <option key={game.id} value={game.id}>
+                      {game.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.languageControl}>
+                시즌
+                <select
+                  value={selectedSeasonId}
+                  onChange={(event) => setSelectedSeasonId(event.target.value)}
+                  disabled={languageFiltersLoading || seasonOptions.length === 0}
+                >
+                  <option value="all">전체 시즌</option>
+                  {seasonOptions.map((season) => (
+                    <option key={season.id} value={season.id}>
+                      {season.name}
+                      {season.status ? ` · ${season.status}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {languageFiltersError && (
+              <p className={styles.languageFiltersError}>{languageFiltersError}</p>
+            )}
             {languageError ? (
               <p className={styles.errorMessage}>{languageError}</p>
             ) : languageLoading ? (
@@ -753,6 +878,8 @@ export default function CooldownDashboard() {
                       ? formatPercent(languageInsights.baseline.winRate)
                       : '—'}
                   </span>
+                  {selectedGame && <span>게임 {selectedGame.name}</span>}
+                  {selectedSeason && <span>시즌 {selectedSeason.name}</span>}
                 </div>
                 {languageInsights.meta?.missingTable && (
                   <p className={styles.languageNotice}>
