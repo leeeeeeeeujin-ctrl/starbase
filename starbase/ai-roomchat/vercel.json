@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/rank/slot-sweeper",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
