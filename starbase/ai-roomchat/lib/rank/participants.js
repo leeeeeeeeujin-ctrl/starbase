@@ -1,5 +1,6 @@
 // lib/rank/participants.js
 import { supabase } from './db'
+import { buildRoleRequirements } from './roles'
 
 export async function getOpponentCandidates(gameId, myUserId, limit = 100) {
   const { data, error } = await supabase
@@ -20,33 +21,65 @@ export async function getOpponentCandidates(gameId, myUserId, limit = 100) {
  * - 부족하면 같은 참가자에서 추가로 뽑거나, 내 팩 mirror 로 fallback
  */
 export function pickOpponentsPerSlots({ roles, candidates, myHeroIds }) {
-  const need = roles.reduce((acc, r) => acc.concat(Array(r.slot_count).fill({ roleId: r.id })), [])
+  const requirements = buildRoleRequirements(roles)
   const picked = []
-  let cIdx = 0, insideIdx = 0
+  let candidateIndex = 0
+  let heroIndexWithinCandidate = 0
 
-  if (!candidates.length) {
-    // 상대가 없으면 내 팩을 복제해서 더미로 채움
-    const mirror = myHeroIds.slice(0, need.length)
-    for (let i = 0; i < need.length; i++) {
-      picked.push({ from_owner: null, hero_id: mirror[i] || null })
-    }
+  if (!requirements.length) {
     return picked
   }
 
-  // 라운드로빈으로 참가자 순회하며 hero_ids에서 하나씩 소비
-  for (let i = 0; i < need.length; i++) {
-    let guard = 0, chosen = null
-    while (guard++ < candidates.length * 2) {
-      const cand = candidates[cIdx % candidates.length]
-      const heroes = cand.hero_ids || []
-      if (!heroes.length) { cIdx++; insideIdx = 0; continue }
-      const idx = insideIdx % heroes.length
-      chosen = { from_owner: cand.owner_id, hero_id: heroes[idx] || null }
-      cIdx++; insideIdx++
+  if (!candidates.length) {
+    const mirror = myHeroIds.slice(0, requirements.length)
+    requirements.forEach((requirement, index) => {
+      picked.push({
+        ...requirement,
+        from_owner: null,
+        hero_id: mirror[index] || null,
+      })
+    })
+    return picked
+  }
+
+  for (let i = 0; i < requirements.length; i += 1) {
+    const requirement = requirements[i]
+    let guard = 0
+    let chosen = null
+
+    while (guard < candidates.length * 2) {
+      guard += 1
+      const candidate = candidates[candidateIndex % candidates.length]
+      const heroes = Array.isArray(candidate?.hero_ids) ? candidate.hero_ids : []
+      if (!heroes.length) {
+        candidateIndex += 1
+        heroIndexWithinCandidate = 0
+        continue
+      }
+
+      const slot = heroIndexWithinCandidate % heroes.length
+      chosen = {
+        from_owner: candidate.owner_id || null,
+        hero_id: heroes[slot] || null,
+      }
+      candidateIndex += 1
+      heroIndexWithinCandidate += 1
       break
     }
-    if (!chosen) chosen = { from_owner: null, hero_id: myHeroIds[i] || null }
-    picked.push(chosen)
+
+    if (!chosen) {
+      chosen = {
+        from_owner: null,
+        hero_id: myHeroIds[i] || null,
+      }
+    }
+
+    picked.push({
+      ...requirement,
+      from_owner: chosen.from_owner ?? null,
+      hero_id: chosen.hero_id ?? null,
+    })
   }
+
   return picked
 }

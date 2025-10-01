@@ -51,3 +51,28 @@
 - `lib/rank/matchmakingService.js`: 큐를 조회하고 매칭 헬퍼를 호출하는 서비스.
 
 이 문서는 앞으로 구현하면서 계속 갱신할 예정입니다.
+
+## 2025-09-30 구현 메모
+- `/rank/[id]/solo`, `/rank/[id]/casual`, `/rank/[id]/duo/queue` 페이지는 `AutoMatchProgress` 오버레이로 진입 즉시 큐에 합류하고, 매칭이 성사되면 10초 확인 카운트다운과 함께 참가자 전원이 “전투 시작하기” 버튼을 눌렀을 때 전투 화면으로 이동합니다.
+- `/rank/[id]/duo`는 `DuoRoomClient`로 듀오 방 편성 UI를 제공하며, 준비가 끝나면 위 큐 페이지로 이동합니다.
+- 메인 룸에서는 더 이상 “게임 시작” 버튼을 노출하지 않고, 역할/캐릭터가 준비된 순간 자동으로 모드 선택 모달이 열려 솔로·듀오·캐주얼 경로를 고를 수 있습니다. 필요 시 “모드 선택 열기” 버튼으로 동일 모달을 다시 띄울 수 있습니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L326-L911】【F:starbase/ai-roomchat/pages/rank/[id].js†L1-L446】
+
+## 2025-10-14 구현 메모
+- 솔로·듀오·캐주얼 매칭 페이지는 라우터 진입 시 즉시 `AutoMatchProgress`를 마운트하고, 이전에 남아 있던 수동 “대기열 참가” 버튼을 렌더링하지 않습니다. 페이지가 로드될 때 뷰어·역할·히어로 토큰이 모두 준비될 때까지 대기한 후 자동 참가를 시도하므로 수동 버튼이 다시 보이는 문제를 방지합니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L420】【F:starbase/ai-roomchat/components/rank/hooks/useMatchQueue.js†L1-L210】
+- 듀오 경로는 `DuoMatchClient`를 통해 동일한 자동 참가 루틴을 사용하지만, 파티 편성이 끝날 때까지 `DuoRoomClient`에서 참가자 구성을 완료하도록 대기합니다. 이후 자동으로 `/duo/queue` 페이지로 전환해 두 명 모두 동일 큐 진입 시나리오를 공유합니다.【F:starbase/ai-roomchat/components/rank/DuoMatchClient.js†L1-L80】【F:starbase/ai-roomchat/pages/rank/[id]/duo/index.js†L1-L160】
+- `AutoMatchProgress`는 매칭 확정 전에 대기열 타이머와 확인 카운트다운을 관리하고, 조건을 충족하지 못했을 때(예: 히어로 미지정, 확인 미응답) 자동으로 메인 룸으로 되돌리거나 재시도하도록 큐 서명을 초기화합니다. 이 동작은 멀티 모드 페이지에서 모두 동일하게 유지됩니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L420】
+- 매칭이 확정되고 확인 버튼을 누르면 `AutoMatchProgress`가 곧바로 `/api/rank/play`를 호출해 듀오·캐주얼 모드도 솔로와 동일한 서버 전투 파이프라인을 사용합니다. 호출 결과는 오버레이 메타 영역에 노출돼 플레이어가 바로 승패를 확인할 수 있습니다.【F:components/rank/AutoMatchProgress.js†L333-L432】【F:components/rank/AutoMatchProgress.js†L747-L812】
+
+### 큐 충원 규칙
+- 게임 설정에서 **실시간 매칭**이 꺼져 있으면 `rank_participants` 참여자 풀을 랜덤으로 섞어 빈 슬롯을 채웁니다.
+- 실시간 모드는 큐에 실제로 합류한 참가자만 대상으로 매칭하며, 중복 선발을 막기 위해 큐 소유자와 참여자 풀을 분리합니다.
+
+### 난입(brawl) 처리
+- `rank_games.rules.brawl_rule = 'allow-brawl'`인 경우 `/api/rank/match`가 패배로 비워진 역할군을 다시 채우기 위해 **난입 전용 매칭**을 우선 실행합니다.【F:starbase/ai-roomchat/pages/api/rank/match.js†L17-L142】
+- 역할군별 패배/생존 카운트는 `loadRoleStatusCounts`로 수집하며, 빈 슬롯이 모두 채워질 수 있을 때만 난입 매칭을 확정합니다.【F:starbase/ai-roomchat/lib/rank/matchmakingService.js†L88-L129】
+- 난입 매칭이 성사되면 API 응답의 `matchType`이 `brawl`로 설정되고, 대체 인원/역할 메타데이터가 함께 반환됩니다. 오버레이는 매치 코드와 난입 대상 역할, 점수 범위까지 즉시 표시해 참가자가 상황을 파악할 수 있도록 했습니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L420】
+
+### 자동 참가 관찰 포인트
+- 오버레이는 진입 즉시 큐 합류를 시도하며, 로그인/역할/캐릭터가 준비되지 않았을 때는 안내 문구를 띄우고 조건을 충족하면 자동으로 재시도합니다.
+- 캐릭터가 비어 있는 경우 3초 뒤 메인 룸으로 되돌리고, 1분 안에 매칭이 성사되지 않으면 대기열을 취소한 뒤 재진입을 유도합니다.
+- 매칭이 확정되면 "매칭이 잡혔습니다~" 메시지와 함께 10초 확인 카운트다운을 노출하고, 참가자가 버튼을 누르면 약 1초 후 전투 화면(`/rank/[id]/start`)으로 이동합니다. 동시에 역할별 선발 명단과 매치 메타(난입 여부, 점수 범위, 매치 코드)를 보여줘 합류 직후에도 누가 함께 들어오는지 빠르게 확인할 수 있습니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L420】
