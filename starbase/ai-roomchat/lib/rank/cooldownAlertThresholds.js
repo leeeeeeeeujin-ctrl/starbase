@@ -198,6 +198,8 @@ function evaluateAttempt(attempt, thresholds) {
   const issues = []
   const attemptCount = toFiniteNumber(attempt.attemptCount)
   const triggered = Boolean(attempt.triggered)
+  const docLinkAttached = attempt.docLinkAttached
+  const attachmentCount = toFiniteNumber(attempt.docLinkAttachmentCount)
 
   if (typeof attemptCount === 'number') {
     const severity = compareThresholds(
@@ -218,7 +220,18 @@ function evaluateAttempt(attempt, thresholds) {
 
   if (triggered) {
     issues.push(
-      buildIssue('triggered', 'warning', '이 키는 아직 쿨다운 상태입니다.')
+      buildIssue('triggered', 'warning', '이 키는 아직 쿨다운 상태입니다.'),
+    )
+  }
+
+  if (docLinkAttached === false) {
+    issues.push(
+      buildIssue(
+        'docLinkAttached',
+        'warning',
+        '런북 링크가 첨부되지 않았습니다.',
+        attachmentCount !== null ? { attachments: attachmentCount } : null,
+      ),
     )
   }
 

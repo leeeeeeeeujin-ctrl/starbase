@@ -26,6 +26,7 @@
 4. **Telemetry 리포트 & 대시보드**
    - `/api/rank/cooldown-telemetry`는 `metadata.cooldownAutomation`을 모아 백오프와 가중치를 분석할 수 있는 요약 통계를 제공합니다.
    - 응답에는 전체·제공자별 시도 수, 추정 실패율, 평균 지속시간, 권장 백오프/가중치, 최근 시도(`latestAttempts`)가 포함됩니다.
+   - `docLinkAttachmentCount`, `docLinkAttachmentRate`, `lastDocLinkAttachmentRate` 필드로 런북 링크 첨부 누적 횟수와 최신 시도 대비 첨부율을 확인할 수 있으며, `latestAttempts[].docLinkAttached`는 경보가 문서 링크 없이 발송된 경우 바로 경고로 표기됩니다.
    - `latestLimit` 쿼리 파라미터로 최근 시도 목록 길이를 조정할 수 있으며 최대 50개까지 허용됩니다.
    - 응답의 `alerts` 필드는 기본 임계값(실패 비율 25%/45%, 쿨다운 비중 20%/40%, 알림 30초/60초, 교체 60초/180초, 연속 재시도 3/5회)을 적용해 위험도(`ok`/`warning`/`critical`)를 판별합니다.
    - 관리자 포털(`/admin/portal`)에 **API 키 쿨다운 대시보드**가 추가돼 전체 요약, 제공자별 테이블, 최근 시도, 임계값을 시각적으로 확인할 수 있습니다.

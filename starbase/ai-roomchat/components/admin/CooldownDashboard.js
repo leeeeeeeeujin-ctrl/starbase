@@ -87,6 +87,7 @@ function ProviderTable({ providers }) {
             <th>추적 키</th>
             <th>실패 비율</th>
             <th>쿨다운 키 비중</th>
+            <th>최근 런북 첨부율</th>
             <th>평균 알림 시간</th>
             <th>평균 회복 시간</th>
             <th>주요 경고</th>
@@ -98,6 +99,23 @@ function ProviderTable({ providers }) {
               ? provider.currentlyTriggered / provider.trackedKeys
               : 0
             const headline = provider.issues?.[0]?.message || '—'
+
+            const hasDocLinkRate =
+              provider.lastDocLinkAttachmentRate !== null &&
+              provider.lastDocLinkAttachmentRate !== undefined
+            let docLinkCell = '—'
+            if (hasDocLinkRate) {
+              const rateText = formatNumber(provider.lastDocLinkAttachmentRate, {
+                style: 'percent',
+                digits: 0,
+              })
+              const suffix =
+                typeof provider.docLinkAttachmentCount === 'number'
+                  ? ` · 누적 ${formatNumber(provider.docLinkAttachmentCount)}회`
+                  : ''
+              docLinkCell = `${rateText}${suffix}`
+            }
+
             return (
               <tr key={provider.provider}>
                 <td>{provider.provider}</td>
@@ -107,6 +125,7 @@ function ProviderTable({ providers }) {
                 <td>{formatNumber(provider.trackedKeys)}</td>
                 <td>{formatNumber(provider.estimatedFailureRate, { digits: 2 })}</td>
                 <td>{formatNumber(ratio, { digits: 2 })}</td>
+                <td>{docLinkCell}</td>
                 <td>{formatDuration(provider.avgAlertDurationMs)}</td>
                 <td>{formatDuration(provider.avgRotationDurationMs)}</td>
                 <td className={styles.issueText}>{headline}</td>
@@ -138,6 +157,14 @@ function LatestAttempts({ attempts }) {
           </p>
           {typeof attempt.attemptCount === 'number' && (
             <p className={styles.attemptMeta}>재시도 {attempt.attemptCount}회</p>
+          )}
+          {typeof attempt.docLinkAttached === 'boolean' && (
+            <p className={styles.attemptMeta}>
+              런북 링크 {attempt.docLinkAttached ? '첨부됨' : '미첨부'}
+              {typeof attempt.docLinkAttachmentCount === 'number' && attempt.docLinkAttachmentCount > 0
+                ? ` · 누적 ${formatNumber(attempt.docLinkAttachmentCount)}회`
+                : ''}
+            </p>
           )}
           <IssueList issues={attempt.issues} />
         </li>
@@ -196,6 +223,9 @@ export default function CooldownDashboard() {
         avgRotationDurationMs: provider?.avgRotationDurationMs ?? null,
         recommendedBackoffMs: provider?.recommendedBackoffMs ?? null,
         recommendedWeight: provider?.recommendedWeight ?? null,
+        docLinkAttachmentCount: provider?.docLinkAttachmentCount ?? null,
+        docLinkAttachmentRate: provider?.docLinkAttachmentRate ?? null,
+        lastDocLinkAttachmentRate: provider?.lastDocLinkAttachmentRate ?? null,
         ...entry,
       }
     })
@@ -211,6 +241,9 @@ export default function CooldownDashboard() {
         keySample: attempt?.keySample ?? null,
         attemptCount: attempt?.attemptCount ?? null,
         triggered: attempt?.triggered ?? false,
+        docLinkAttached: attempt?.docLinkAttached ?? null,
+        docLinkAttachmentCount: attempt?.docLinkAttachmentCount ?? null,
+        docLinkAttachmentRate: attempt?.docLinkAttachmentRate ?? null,
         ...entry,
       }
     })
@@ -269,6 +302,18 @@ export default function CooldownDashboard() {
               value={formatNumber(telemetry.totals?.recommendedWeight, { digits: 2 })}
               helper={`평균 알림 ${formatDuration(telemetry.totals?.avgAlertDurationMs)} · 교체 ${formatDuration(
                 telemetry.totals?.avgRotationDurationMs,
+              )}`}
+              status={overallStatus.status}
+            />
+            <SummaryCard
+              title="런북 링크 첨부율"
+              value={formatNumber(telemetry.totals?.lastDocLinkAttachmentRate, {
+                style: 'percent',
+                digits: 0,
+              })}
+              helper={`누적 첨부 ${formatNumber(telemetry.totals?.docLinkAttachmentCount)}회 · 시도 대비 ${formatNumber(
+                telemetry.totals?.docLinkAttachmentRate,
+                { style: 'percent', digits: 1 },
               )}`}
               status={overallStatus.status}
             />
