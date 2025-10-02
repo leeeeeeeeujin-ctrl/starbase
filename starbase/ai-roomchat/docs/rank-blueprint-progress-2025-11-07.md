@@ -44,7 +44,7 @@
 - 라이브 타임라인 작성 루틴과 검토 절차를 정리해 세션 중 메모 → 리뷰 → 커밋 반영 흐름이 이어지도록 `Live Timeline Workflow` 섹션에 기록했습니다.
 - Edge Function 재시도 상태 추적, Slack 에스컬레이션, 수동 다이제스트 연동을 포함한 Webhook 리트라이 운영 플로우를 `Edge Webhook Retry Runbook` 섹션에 요약했습니다.
 - 쿨다운 Telemetry API에 CSV 포맷(`section=providers|attempts`)을 추가하고 대시보드 패널에서 바로 내보낼 수 있는 버튼을 배치해 운영 보고를 위한 청사진 TODO를 정리했습니다.
-- StartClient 로그 보드의 모바일 히스토리 패널을 세로 스택으로 재배치하고, 데스크톱에서는 다단 그리드로 확장해 로그/히스토리 카드가 화면 크기에 맞춰 정렬되도록 CSS를 조정했습니다.【F:components/rank/StartClient/LogsPanel.module.css†L1-L247】
+- StartClient 로그 보드의 모바일 히스토리 패널을 세로 스택으로 재배치하고, 데스크톱에서는 다단 그리드로 확장해 로그/히스토리 카드가 화면 크기에 맞춰 정렬되도록 CSS를 조정했습니다. 추가로 섹션별 축약 토글과 검색 필터를 붙여 긴 전투에서도 필요한 카드만 빠르게 찾아볼 수 있게 했습니다.【F:components/rank/StartClient/LogsPanel.js†L1-L276】【F:components/rank/StartClient/LogsPanel.module.css†L1-L287】
 - `rank_api_key_audit` 테이블 초안을 정리해 만료 알림/회복 과정에서 발생한 회수 이력을 JSON으로 보관하도록 정의하고, Edge Function 재시도 로그와 어떤 필드를 교차 참조할지 문서화했습니다.
 - Edge Function 재시도 스케줄러가 감사 로그와 텔레메트리 집계를 활용해 다음 재시도 ETA/지연 시간을 추천하도록 `cooldown-retry-schedule` API와 문서를 보강했습니다.
 - `/api/rank/run-turn`·`/api/rank/log-turn` API에 `is_visible`·`summary_payload` 적재 로직을 연결하고, 세션 히스토리 응답에 요약 데이터·숨김 카운트를 노출하도록 해 단계 2 로그 파이프라인 요구사항을 실제 코드에 반영했습니다.
@@ -66,7 +66,7 @@
 - 클라이언트 전역에 오류 리포터를 두고 `/api/errors/report`로 전송되도록 한 뒤, 관리자 포털에서 `/api/admin/errors`를 통해 최신 오류를 집계·표시하는 모니터 패널을 추가해 사용자 피드백 루프를 단축했습니다.
 - **룸 BGM 연동**: `GameRoomView`가 공유 오디오 매니저를 부팅해 뷰어/호스트/참가자의 브금 중 가용한 트랙을 자동 재생하고, 방을 떠날 때 baseline 상태를 복구하도록 정리했습니다. 히어로 패널에는 현재 브금 카드가 추가돼 트랙 길이와 출처를 바로 확인할 수 있습니다.【F:components/rank/GameRoomView.js†L497-L620】【F:components/rank/GameRoomView.js†L2369-L2419】【F:components/rank/GameRoomView.module.css†L908-L940】
 - **BGM 컨트롤러**: 히어로 패널의 브금 카드에 재생/일시정지 토글, 음소거 전환, 볼륨 슬라이더, 진행 막대를 추가해 운영자가 바로 우선순위를 파악하고 음량을 조정할 수 있습니다. 모바일에서는 버튼이 세로로 재배치돼 터치 조작도 수월합니다.【F:components/rank/GameRoomView.js†L497-L687】【F:components/rank/GameRoomView.js†L2369-L2438】【F:components/rank/GameRoomView.module.css†L908-L1048】【F:components/rank/GameRoomView.module.css†L1835-L1857】
-- **StartClient 로그 보드**: 전투 턴 로그가 요약/태그/프롬프트 프리뷰와 함께 카드화되고, 모바일에서는 히스토리 패널이 세로 스택으로 재배치되며 데스크톱에서는 다단 그리드로 확장돼 운영/QA가 화면 크기에 맞춰 문맥을 확인할 수 있습니다.【F:components/rank/StartClient/LogsPanel.js†L1-L219】【F:components/rank/StartClient/LogsPanel.module.css†L1-L247】【F:components/rank/StartClient/useStartClientEngine.js†L960-L1206】
+- **StartClient 로그 보드**: 전투 턴 로그가 요약/태그/프롬프트 프리뷰와 함께 카드화되고, 모바일에서는 히스토리 패널이 세로 스택으로 재배치되며 데스크톱에서는 다단 그리드로 확장돼 운영/QA가 화면 크기에 맞춰 문맥을 확인할 수 있습니다. 섹션별 축약 토글과 검색 필터로 카드가 길어져도 필요한 항목만 빠르게 추릴 수 있습니다.【F:components/rank/StartClient/LogsPanel.js†L1-L276】【F:components/rank/StartClient/LogsPanel.module.css†L1-L287】【F:components/rank/StartClient/useStartClientEngine.js†L960-L1206】
 - **단계 진행도 갱신**: 오디오 연동이 자리 잡으면서 UI·오디오 단계 진행률이 45%까지 상승했고, 전체 청사진 진행도 추산도 약 65%로 함께 업데이트했습니다.【F:docs/rank-blueprint-overview.md†L18-L70】
 
 ### Live Timeline Workflow (2025-11-07 업데이트)

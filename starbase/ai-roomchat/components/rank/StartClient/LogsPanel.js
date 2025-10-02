@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import styles from './LogsPanel.module.css'
 import { normalizeTurnSummaryPayload } from '../../../lib/rank/turnSummary'
@@ -125,6 +125,49 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
     [playerHistories],
   )
 
+  const [searchTerm, setSearchTerm] = useState('')
+  const [collapsedSections, setCollapsedSections] = useState({
+    logs: false,
+    memory: false,
+    players: false,
+  })
+
+  const trimmedSearch = searchTerm.trim().toLowerCase()
+
+  const filteredLogs = useMemo(() => {
+    if (!trimmedSearch) return normalizedLogs
+
+    return normalizedLogs.filter((entry) => {
+      const haystacks = [
+        entry.summary?.preview,
+        entry.summary?.promptPreview,
+        entry.summary?.outcomeLine,
+        entry.summary?.role,
+        entry.response,
+        entry.prompt,
+        entry.outcome,
+        entry.actors.join(' '),
+        entry.variables.join(' '),
+        (entry.summary?.tags || []).join(' '),
+      ]
+
+      return haystacks.some((value) =>
+        typeof value === 'string' ? value.toLowerCase().includes(trimmedSearch) : false,
+      )
+    })
+  }, [normalizedLogs, trimmedSearch])
+
+  const handleToggle = useCallback((section) => {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }))
+  }, [])
+
+  const handleSearchChange = useCallback((event) => {
+    setSearchTerm(event.target.value)
+  }, [])
+
   return (
     <section className={styles.panel}>
       <div className={styles.header}>
@@ -137,20 +180,52 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
       <div className={styles.columns}>
         <div className={styles.primaryColumn}>
           <div className={styles.sectionHeader}>
-            <h3 className={styles.sectionTitle}>턴 로그</h3>
-            {normalizedLogs.length ? (
-              <span className={styles.sectionBadge}>{normalizedLogs.length}개</span>
-            ) : null}
+            <div className={styles.sectionHeading}>
+              <h3 className={styles.sectionTitle}>턴 로그</h3>
+              {normalizedLogs.length ? (
+                <span className={styles.sectionBadge}>{normalizedLogs.length}개</span>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className={styles.toggleButton}
+              onClick={() => handleToggle('logs')}
+              aria-expanded={!collapsedSections.logs}
+            >
+              {collapsedSections.logs ? '펼치기' : '축약'}
+            </button>
           </div>
 
-          {normalizedLogs.length ? (
-            <ul className={styles.logList}>
-              {normalizedLogs.map((entry) => (
-                <li key={entry.key} className={styles.logCard}>
-                  <div className={styles.logHeader}>
-                    {entry.turn != null ? (
-                      <span className={styles.turnBadge}>턴 {entry.turn}</span>
-                    ) : (
+          {collapsedSections.logs ? (
+            <p className={styles.collapsedNotice}>턴 로그 카드를 축약했습니다. 펼치면 다시 확인할 수 있어요.</p>
+          ) : (
+            <>
+              <div className={styles.sectionControls}>
+                <label className={styles.searchField}>
+                  <span className={styles.visuallyHidden}>턴 로그 검색</span>
+                  <input
+                    type="search"
+                    value={searchTerm}
+                    onChange={handleSearchChange}
+                    placeholder="요약, 주역, 프롬프트로 검색"
+                    className={styles.searchInput}
+                  />
+                </label>
+                {trimmedSearch ? (
+                  <span className={styles.filterBadge}>
+                    {filteredLogs.length ? `${filteredLogs.length}개 일치` : '일치 항목 없음'}
+                  </span>
+                ) : null}
+              </div>
+
+              {filteredLogs.length ? (
+                <ul className={styles.logList}>
+                  {filteredLogs.map((entry) => (
+                    <li key={entry.key} className={styles.logCard}>
+                      <div className={styles.logHeader}>
+                        {entry.turn != null ? (
+                          <span className={styles.turnBadge}>턴 {entry.turn}</span>
+                        ) : (
                       <span className={styles.turnBadge}>턴</span>
                     )}
                     {entry.nodeId ? (
@@ -223,16 +298,38 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
                   </div>
                 </li>
               ))}
-            </ul>
-          ) : (
-            <p className={styles.empty}>아직 진행된 턴이 없습니다.</p>
+                </ul>
+              ) : trimmedSearch ? (
+                <p className={styles.empty}>검색어와 일치하는 로그가 없습니다.</p>
+              ) : (
+                <p className={styles.empty}>아직 진행된 턴이 없습니다.</p>
+              )}
+            </>
           )}
         </div>
 
         <div className={styles.secondaryColumn}>
           <div className={styles.card}>
-            <h3 className={styles.cardTitle}>AI 히스토리</h3>
-            {normalizedMemory.length ? (
+            <div className={styles.cardHeader}>
+              <div className={styles.cardHeading}>
+                <h3 className={styles.cardTitle}>AI 히스토리</h3>
+                {normalizedMemory.length ? (
+                  <span className={styles.cardBadge}>{normalizedMemory.length}개</span>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className={styles.toggleButton}
+                onClick={() => handleToggle('memory')}
+                aria-expanded={!collapsedSections.memory}
+              >
+                {collapsedSections.memory ? '펼치기' : '축약'}
+              </button>
+            </div>
+
+            {collapsedSections.memory ? (
+              <p className={styles.collapsedNotice}>AI 히스토리를 숨겼습니다. 펼쳐서 다시 확인하세요.</p>
+            ) : normalizedMemory.length ? (
               <div className={styles.memoryList}>
                 {normalizedMemory.map((entry) => (
                   <div key={entry.key} className={styles.memoryItem}>
@@ -250,8 +347,26 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
           </div>
 
           <div className={styles.card}>
-            <h3 className={styles.cardTitle}>플레이어 히스토리</h3>
-            {normalizedPlayers.length ? (
+            <div className={styles.cardHeader}>
+              <div className={styles.cardHeading}>
+                <h3 className={styles.cardTitle}>플레이어 히스토리</h3>
+                {normalizedPlayers.length ? (
+                  <span className={styles.cardBadge}>{normalizedPlayers.length}명</span>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className={styles.toggleButton}
+                onClick={() => handleToggle('players')}
+                aria-expanded={!collapsedSections.players}
+              >
+                {collapsedSections.players ? '펼치기' : '축약'}
+              </button>
+            </div>
+
+            {collapsedSections.players ? (
+              <p className={styles.collapsedNotice}>플레이어 히스토리를 숨겼습니다. 펼쳐서 카드별 기록을 살펴보세요.</p>
+            ) : normalizedPlayers.length ? (
               <div className={styles.playerList}>
                 {normalizedPlayers.map((player) => (
                   <div key={player.key} className={styles.playerCard}>
