@@ -942,6 +942,152 @@
   background: rgba(30, 41, 59, 0.65);
 }
 
+.heroAudioMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.heroAudioPlaybackBadge {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(148, 163, 184, 0.88);
+  background: rgba(71, 85, 105, 0.42);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+.heroAudioPlaybackBadgeActive {
+  color: rgba(125, 211, 252, 0.95);
+  background: linear-gradient(120deg, rgba(14, 116, 144, 0.55), rgba(56, 189, 248, 0.4));
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.45);
+}
+
+.heroAudioControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.heroAudioButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(30, 41, 59, 0.55);
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.heroAudioButton:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.38);
+}
+
+.heroAudioButton:active {
+  transform: translateY(1px);
+}
+
+.heroAudioButton:focus-visible {
+  outline: 2px solid rgba(148, 163, 184, 0.7);
+  outline-offset: 3px;
+}
+
+.heroAudioButtonActive {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(129, 140, 248, 0.28));
+  border-color: rgba(14, 165, 233, 0.55);
+  color: #f1f5f9;
+}
+
+.heroAudioButtonMuted {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(148, 163, 184, 0.26);
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.heroAudioVolumeGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  flex: 1 1 190px;
+}
+
+.heroAudioVolumeLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.heroAudioVolumeSlider {
+  flex: 1;
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+.heroAudioVolumeSlider:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.55);
+  border-radius: 999px;
+}
+
+.heroAudioVolumeValue {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.85);
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.heroAudioProgressRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.heroAudioProgressBar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+  overflow: hidden;
+  position: relative;
+}
+
+.heroAudioProgressMeter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.75), rgba(168, 85, 247, 0.75));
+  transition: width 0.2s ease;
+}
+
+.heroAudioProgressTime {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.78);
+  font-variant-numeric: tabular-nums;
+}
+
 .heroHintRow {
   display: flex;
   justify-content: flex-end;
@@ -1689,6 +1835,26 @@
 }
 
 @media (max-width: 768px) {
+  .heroAudioMetaRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .heroAudioControls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .heroAudioButton {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .heroAudioVolumeGroup {
+    width: 100%;
+  }
+
   .sessionHistoryControlRow {
     flex-direction: column;
     align-items: stretch;

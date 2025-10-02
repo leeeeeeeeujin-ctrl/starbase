@@ -63,7 +63,8 @@
 - 자동 경고 흐름을 확장해 다음 액션 표에서 담당자 키와 목표일 메타를 파싱하면서 JSON에 기한 상태(D-Day, 연체 여부, 남은 일수)를 기록하고, 개요 문서에는 경고 블록을 자동 삽입하도록 스크립트를 보강했습니다. 주간 GitHub Actions와 PR/메인 푸시 CI는 `npm run check:blueprint-next-actions`를 함께 실행해 마감이 지나면 즉시 실패하도록 구성했습니다.
 - 다음 액션 JSON에 `priority`·`effort` 메타를 추출하고 랜딩 카드에 우선순위 뱃지, 예상 리소스 칩, 정렬 토글(우선순위/기한/목록순)을 추가해 청사진 표와 동일 기준으로 우선순위와 공수 정보를 비교할 수 있게 했습니다.
 - 클라이언트 전역에 오류 리포터를 두고 `/api/errors/report`로 전송되도록 한 뒤, 관리자 포털에서 `/api/admin/errors`를 통해 최신 오류를 집계·표시하는 모니터 패널을 추가해 사용자 피드백 루프를 단축했습니다.
-- **룸 BGM 연동**: `GameRoomView`가 공유 오디오 매니저를 부팅해 뷰어/호스트/참가자의 브금 중 가용한 트랙을 자동 재생하고, 방을 떠날 때 baseline 상태를 복구하도록 정리했습니다. 히어로 패널에는 현재 브금 카드가 추가돼 트랙 길이와 출처를 바로 확인할 수 있습니다.【F:components/rank/GameRoomView.js†L417-L540】【F:components/rank/GameRoomView.js†L1994-L2025】【F:components/rank/GameRoomView.module.css†L900-L940】
+- **룸 BGM 연동**: `GameRoomView`가 공유 오디오 매니저를 부팅해 뷰어/호스트/참가자의 브금 중 가용한 트랙을 자동 재생하고, 방을 떠날 때 baseline 상태를 복구하도록 정리했습니다. 히어로 패널에는 현재 브금 카드가 추가돼 트랙 길이와 출처를 바로 확인할 수 있습니다.【F:components/rank/GameRoomView.js†L497-L620】【F:components/rank/GameRoomView.js†L2369-L2419】【F:components/rank/GameRoomView.module.css†L908-L940】
+- **BGM 컨트롤러**: 히어로 패널의 브금 카드에 재생/일시정지 토글, 음소거 전환, 볼륨 슬라이더, 진행 막대를 추가해 운영자가 바로 우선순위를 파악하고 음량을 조정할 수 있습니다. 모바일에서는 버튼이 세로로 재배치돼 터치 조작도 수월합니다.【F:components/rank/GameRoomView.js†L497-L687】【F:components/rank/GameRoomView.js†L2369-L2438】【F:components/rank/GameRoomView.module.css†L908-L1048】【F:components/rank/GameRoomView.module.css†L1835-L1857】
 - **단계 진행도 갱신**: 오디오 연동이 자리 잡으면서 UI·오디오 단계 진행률이 45%까지 상승했고, 전체 청사진 진행도 추산도 약 65%로 함께 업데이트했습니다.【F:docs/rank-blueprint-overview.md†L18-L70】
 
 ### Live Timeline Workflow (2025-11-07 업데이트)

@@ -76,7 +76,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 ### `pages/rank/[id].js`
 - Game room orchestrator managing participant roster, hero selection modal, leaderboard drawer, and AI chat stub via `useAiHistory` and `useGameRoom` hook.【F:pages/rank/[id].js†L1-L70】【F:pages/rank/[id].js†L71-L115】
 - Delegates rendering to `GameRoomView` while providing event handlers for join/start/delete flows. Mock chat responses append timestamped stub text until real AI integration is wired in.【F:pages/rank/[id].js†L71-L115】
-- The hero panel now boots the shared hero audio manager, loading viewer/host/participant BGM automatically and rendering a “현재 브금” status card so QA can confirm soundtrack context before entering the StartClient view.【F:components/rank/GameRoomView.js†L417-L540】【F:components/rank/GameRoomView.js†L1994-L2025】【F:components/rank/GameRoomView.module.css†L900-L940】
+- The hero panel now boots the shared hero audio manager, loading viewer/host/participant BGM automatically, exposing play/pause, mute, and volume controls, and rendering a progress meter so QA can confirm soundtrack context before entering the StartClient view.【F:components/rank/GameRoomView.js†L497-L687】【F:components/rank/GameRoomView.js†L2369-L2438】【F:components/rank/GameRoomView.module.css†L908-L1048】【F:components/rank/GameRoomView.module.css†L1835-L1857】
 
 ### `pages/rank/RolesEditor.js`
 - Local stateful form utility that syncs a roles array, emitting changes to parent via `onChange`. Provides add/update/remove controls with simple inline styling.【F:pages/rank/RolesEditor.js†L1-L30】

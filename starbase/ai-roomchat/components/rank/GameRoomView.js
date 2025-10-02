@@ -490,6 +490,11 @@ export default function GameRoomView({
   }, [])
   const audioBaselineRef = useRef(null)
   const currentAudioTrackRef = useRef({ url: null, heroId: null })
+  const heroAudioVolumeMemoryRef = useRef(audioManager?.getState()?.volume ?? 0.72)
+  const [heroAudioState, setHeroAudioState] = useState(() =>
+    audioManager ? audioManager.getState() : null,
+  )
+  const heroAudioVolumeInputId = useId()
 
   const resolvedActiveIndex = useMemo(() => {
     const index = TABS.findIndex((tab) => tab.key === activeTab)
@@ -502,6 +507,23 @@ export default function GameRoomView({
       setActiveTab(safeKey)
     }
   }, [activeTab, resolvedActiveIndex])
+
+  useEffect(() => {
+    if (!audioManager) {
+      return undefined
+    }
+
+    const unsubscribe = audioManager.subscribe((snapshot) => {
+      setHeroAudioState(snapshot)
+      if (snapshot && Number.isFinite(snapshot.volume) && snapshot.volume > 0) {
+        heroAudioVolumeMemoryRef.current = snapshot.volume
+      }
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [audioManager])
 
   useEffect(() => {
     if (!audioManager) {
@@ -857,6 +879,79 @@ export default function GameRoomView({
     () => (heroAudioProfile?.bgmDuration ? formatDurationLabel(heroAudioProfile.bgmDuration) : null),
     [heroAudioProfile?.bgmDuration],
   )
+
+  const heroAudioVolumePercent = useMemo(() => {
+    const fromState = Number.isFinite(Number(heroAudioState?.volume))
+      ? Number(heroAudioState.volume)
+      : null
+    const baselineVolume = Number.isFinite(Number(audioBaselineRef.current?.volume))
+      ? Number(audioBaselineRef.current.volume)
+      : null
+    const resolved = fromState ?? baselineVolume ?? 0.72
+    return Math.round(Math.min(Math.max(resolved, 0), 1) * 100)
+  }, [heroAudioState?.volume])
+
+  const heroAudioIsMuted = heroAudioVolumePercent <= 0
+
+  const heroAudioProgressPercent = useMemo(() => {
+    if (!heroAudioState || !Number.isFinite(heroAudioState.duration) || heroAudioState.duration <= 0) {
+      return 0
+    }
+    const ratio = heroAudioState.progress && Number.isFinite(heroAudioState.progress)
+      ? heroAudioState.progress / heroAudioState.duration
+      : 0
+    return Math.round(Math.min(Math.max(ratio, 0), 1) * 100)
+  }, [heroAudioState?.duration, heroAudioState?.progress])
+
+  const heroAudioProgressLabel = useMemo(() => {
+    if (!heroAudioState) {
+      return '0:00'
+    }
+    const formatted = formatDurationLabel(heroAudioState.progress)
+    return formatted ?? '0:00'
+  }, [heroAudioState?.progress])
+
+  const heroAudioDurationDisplay = useMemo(() => {
+    const formatted = heroAudioDurationLabel
+      ?? (heroAudioState?.duration ? formatDurationLabel(heroAudioState.duration) : null)
+    return formatted ?? null
+  }, [heroAudioDurationLabel, heroAudioState?.duration])
+
+  const handleToggleHeroAudioPlayback = useCallback(() => {
+    if (!audioManager) return
+    audioManager.toggle()
+  }, [audioManager])
+
+  const handleHeroAudioVolumeChange = useCallback(
+    (event) => {
+      if (!audioManager) return
+      const raw = Number(event?.target?.value)
+      if (!Number.isFinite(raw)) return
+      const normalized = Math.min(Math.max(raw / 100, 0), 1)
+      audioManager.setVolume(normalized)
+      if (normalized > 0) {
+        heroAudioVolumeMemoryRef.current = normalized
+      }
+    },
+    [audioManager],
+  )
+
+  const handleToggleHeroAudioMute = useCallback(() => {
+    if (!audioManager) return
+    const snapshot = audioManager.getState()
+    if (!snapshot) return
+    if (snapshot.volume <= 0.001) {
+      const restore = heroAudioVolumeMemoryRef.current
+      const fallback = Number.isFinite(restore) && restore > 0 ? restore : 0.72
+      audioManager.setVolume(fallback)
+      heroAudioVolumeMemoryRef.current = fallback
+      return
+    }
+    if (snapshot.volume > 0) {
+      heroAudioVolumeMemoryRef.current = snapshot.volume
+    }
+    audioManager.setVolume(0)
+  }, [audioManager])
 
   useEffect(() => {
     if (!audioManager) {
@@ -2280,15 +2375,79 @@ export default function GameRoomView({
 
                 {heroAudioProfile && (
                   <div className={styles.heroAudioStatus}>
-                    <span className={styles.heroAudioLabel}>{heroAudioSourceLabel}</span>
+                    <div className={styles.heroAudioMetaRow}>
+                      <span className={styles.heroAudioLabel}>{heroAudioSourceLabel}</span>
+                      <span
+                        className={`${styles.heroAudioPlaybackBadge} ${
+                          heroAudioState?.isPlaying ? styles.heroAudioPlaybackBadgeActive : ''
+                        }`.trim()}
+                      >
+                        {heroAudioState?.isPlaying ? '재생 중' : '일시정지'}
+                      </span>
+                    </div>
                     <p className={styles.heroAudioTrack}>
                       {heroAudioProfile.heroName
                         ? `${heroAudioProfile.heroName} 테마`
                         : '브금 트랙'}
-                      {heroAudioDurationLabel ? (
-                        <span className={styles.heroAudioDuration}>{heroAudioDurationLabel}</span>
+                      {heroAudioDurationDisplay ? (
+                        <span className={styles.heroAudioDuration}>{heroAudioDurationDisplay}</span>
                       ) : null}
                     </p>
+                    <div className={styles.heroAudioControls}>
+                      <button
+                        type="button"
+                        className={`${styles.heroAudioButton} ${
+                          heroAudioState?.isPlaying ? styles.heroAudioButtonActive : ''
+                        }`.trim()}
+                        onClick={handleToggleHeroAudioPlayback}
+                        aria-pressed={heroAudioState?.isPlaying ?? false}
+                      >
+                        {heroAudioState?.isPlaying ? '일시정지' : '재생'}
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.heroAudioButton} ${
+                          heroAudioIsMuted ? styles.heroAudioButtonMuted : ''
+                        }`.trim()}
+                        onClick={handleToggleHeroAudioMute}
+                        aria-pressed={heroAudioIsMuted}
+                      >
+                        {heroAudioIsMuted ? '음소거 해제' : '음소거'}
+                      </button>
+                      <div className={styles.heroAudioVolumeGroup}>
+                        <label className={styles.heroAudioVolumeLabel} htmlFor={heroAudioVolumeInputId}>
+                          볼륨
+                        </label>
+                        <input
+                          id={heroAudioVolumeInputId}
+                          className={styles.heroAudioVolumeSlider}
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={heroAudioVolumePercent}
+                          onChange={handleHeroAudioVolumeChange}
+                          onInput={handleHeroAudioVolumeChange}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={heroAudioVolumePercent}
+                          aria-label="브금 볼륨"
+                        />
+                        <span className={styles.heroAudioVolumeValue}>{heroAudioVolumePercent}%</span>
+                      </div>
+                    </div>
+                    {heroAudioDurationDisplay ? (
+                      <div className={styles.heroAudioProgressRow}>
+                        <span className={styles.heroAudioProgressTime}>{heroAudioProgressLabel}</span>
+                        <div className={styles.heroAudioProgressBar}>
+                          <div
+                            className={styles.heroAudioProgressMeter}
+                            style={{ width: `${heroAudioProgressPercent}%` }}
+                          />
+                        </div>
+                        <span className={styles.heroAudioProgressTime}>{heroAudioDurationDisplay}</span>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
