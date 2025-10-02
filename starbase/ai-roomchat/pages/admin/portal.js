@@ -4,6 +4,7 @@ import styles from '../../styles/AdminPortal.module.css';
 import { parseCookies } from '@/lib/server/cookies';
 import CooldownDashboard from '@/components/admin/CooldownDashboard';
 import CooldownAnalyticsBoard from '@/components/admin/CooldownAnalyticsBoard';
+import UserErrorMonitor from '@/components/admin/UserErrorMonitor';
 
 const COOKIE_NAME = 'rank_admin_portal_session';
 
@@ -129,6 +130,7 @@ export default function AdminPortal({ authorized, misconfigured }) {
               배포/백필 중 문제가 발생하면 <strong>rank-admin@starbase.dev</strong> 혹은 전용 슬랙 채널(#rank-admin-ops)로 바로 알려주세요.
             </p>
 
+            <UserErrorMonitor />
             <CooldownDashboard />
             <CooldownAnalyticsBoard />
           </section>

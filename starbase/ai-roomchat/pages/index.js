@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import AuthButton from '../components/AuthButton'
@@ -22,6 +22,19 @@ function parseISODateOnly(value) {
 
 function startOfUTCDay(date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
+function numericOrInfinity(value, fallback = Number.POSITIVE_INFINITY) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function formatPersonDays(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null
+  const rounded = Math.round(value * 10) / 10
+  if (Math.abs(rounded - Math.round(rounded)) < 0.05) {
+    return `${Math.round(rounded)}d`
+  }
+  return `${rounded.toFixed(1)}d`
 }
 
 function deriveNextActionTiming(action) {
@@ -104,6 +117,11 @@ const stageProgress = progressData.stages
 const progressLastUpdated = progressData.lastUpdatedDisplay
 const progressLastUpdatedISO = progressData.lastUpdatedISO
 const nextActions = Array.isArray(nextActionsData.items) ? nextActionsData.items : []
+const NEXT_ACTION_SORT_OPTIONS = [
+  { id: 'priority', label: '우선순위' },
+  { id: 'deadline', label: '기한' },
+  { id: 'order', label: '목록순' },
+]
 
 export default function Home() {
   const router = useRouter()
@@ -111,6 +129,40 @@ export default function Home() {
     relativeLabel: '',
     stale: false,
   })
+
+  const [sortMode, setSortMode] = useState('priority')
+
+  const sortedNextActions = useMemo(() => {
+    const base = [...nextActions]
+
+    const compareByOrder = (a, b) => (a?.order || 0) - (b?.order || 0)
+
+    const compareByDeadline = (a, b) => {
+      const aDays = numericOrInfinity(a?.timing?.daysFromToday)
+      const bDays = numericOrInfinity(b?.timing?.daysFromToday)
+      if (aDays !== bDays) return aDays - bDays
+      return compareByOrder(a, b)
+    }
+
+    const compareByPriority = (a, b) => {
+      const aRank = numericOrInfinity(a?.priority?.sortKey)
+      const bRank = numericOrInfinity(b?.priority?.sortKey)
+      if (aRank !== bRank) return aRank - bRank
+      const aEffort = numericOrInfinity(a?.effort?.personDays)
+      const bEffort = numericOrInfinity(b?.effort?.personDays)
+      if (aEffort !== bEffort) return aEffort - bEffort
+      return compareByDeadline(a, b)
+    }
+
+    const comparators = {
+      order: compareByOrder,
+      deadline: compareByDeadline,
+      priority: compareByPriority,
+    }
+
+    const comparator = comparators[sortMode] || compareByPriority
+    return base.sort(comparator)
+  }, [sortMode])
 
   useEffect(() => {
     let cancelled = false
@@ -229,7 +281,7 @@ export default function Home() {
               ))}
             </ul>
           </div>
-          {nextActions.length ? (
+          {sortedNextActions.length ? (
             <div className={styles.nextActionsBlock}>
               <div className={styles.nextActionsHeader}>
                 <h2 className={styles.sectionTitle}>Next Actions</h2>
@@ -245,18 +297,43 @@ export default function Home() {
                   ) : null}
                 </div>
               </div>
+              <div className={styles.nextActionsControls} role="group" aria-label="다음 액션 정렬">
+                {NEXT_ACTION_SORT_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={styles.nextActionsSortButton}
+                    data-active={sortMode === option.id ? 'true' : 'false'}
+                    aria-pressed={sortMode === option.id}
+                    onClick={() => setSortMode(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <ol className={styles.nextActionsList}>
-                {nextActions.map((action) => {
+                {sortedNextActions.map((action) => {
                   const timing = deriveNextActionTiming(action)
+                  const priorityRank =
+                    typeof action.priority?.rank === 'number' ? Math.round(action.priority.rank) : null
+                  const effortBadge = formatPersonDays(action.effort?.personDays)
                   return (
                     <li key={action.order} className={styles.nextActionItem}>
                       <span className={styles.nextActionIndex}>{action.order.toString().padStart(2, '0')}</span>
                       <div className={styles.nextActionContent}>
                         <p className={styles.nextActionSummary}>{action.summary}</p>
-                        {(action.owner || timing.label) && (
+                        {(action.priority || timing.label || action.owner || action.effort) && (
                           <div className={styles.nextActionMeta}>
-                            {action.owner ? (
-                              <span className={styles.nextActionOwner}>{action.owner}</span>
+                            {action.priority?.label ? (
+                              <span
+                                className={styles.nextActionPriority}
+                                data-rank={priorityRank !== null ? String(priorityRank) : undefined}
+                              >
+                                <span className={styles.nextActionPriorityBadge}>
+                                  {action.priority?.short || 'PR'}
+                                </span>
+                                <span className={styles.nextActionPriorityLabel}>{action.priority.label}</span>
+                              </span>
                             ) : null}
                             {timing.label ? (
                               <span className={styles.nextActionDue} data-state={timing.state}>
@@ -264,6 +341,17 @@ export default function Home() {
                                   <span className={styles.nextActionDueBadge}>{timing.badge}</span>
                                 ) : null}
                                 <span className={styles.nextActionDueLabel}>{timing.label}</span>
+                              </span>
+                            ) : null}
+                            {action.owner ? (
+                              <span className={styles.nextActionOwner}>{action.owner}</span>
+                            ) : null}
+                            {action.effort?.label ? (
+                              <span className={styles.nextActionEffort}>
+                                {effortBadge ? (
+                                  <span className={styles.nextActionEffortBadge}>{effortBadge}</span>
+                                ) : null}
+                                <span className={styles.nextActionEffortLabel}>{action.effort.label}</span>
                               </span>
                             ) : null}
                           </div>

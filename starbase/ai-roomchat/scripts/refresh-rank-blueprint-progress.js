@@ -154,7 +154,22 @@ function parseNextActions(sectionContent) {
         throw new Error(`예상치 못한 다음 액션 테이블 행 형식: ${line}`);
       }
 
-      const [orderCell, summaryCell, ownerCell, targetCell] = cells;
+      let orderCell;
+      let summaryCell;
+      let ownerCell;
+      let targetCell;
+      let priorityCell = '';
+      let effortCell = '';
+
+      if (cells.length >= 6) {
+        [orderCell, summaryCell, ownerCell, targetCell, priorityCell, effortCell] = cells;
+      } else if (cells.length === 4) {
+        [orderCell, summaryCell, ownerCell, targetCell] = cells;
+      } else {
+        [orderCell, summaryCell, ownerCell, targetCell] = cells.slice(0, 4);
+        priorityCell = cells[4] || '';
+        effortCell = cells[5] || '';
+      }
       const order = Number(orderCell);
       if (!Number.isFinite(order)) {
         throw new Error(`순번을 숫자로 파싱할 수 없습니다: ${orderCell}`);
@@ -171,6 +186,8 @@ function parseNextActions(sectionContent) {
         owner,
         targetDateISO: targetMatch ? targetMatch[1] : null,
         targetDateDisplay: target,
+        priority: parsePriorityCell(priorityCell),
+        effort: parseEffortCell(effortCell),
       };
     });
   }
@@ -218,7 +235,61 @@ function parseNextActions(sectionContent) {
       owner: null,
       targetDateISO: null,
       targetDateDisplay: null,
+      priority: null,
+      effort: null,
     }));
+}
+
+function parsePriorityCell(cell) {
+  const label = (cell || '').replace(/\s+/g, ' ').trim();
+  if (!label) {
+    return null;
+  }
+
+  const priorityMatch = label.match(/p\s*(\d+(?:\.\d+)?)/i);
+  const rankValue = priorityMatch ? Number.parseFloat(priorityMatch[1]) : null;
+  const normalisedRank = Number.isFinite(rankValue) ? rankValue : null;
+  const short = priorityMatch
+    ? `P${priorityMatch[1]}`.toUpperCase()
+    : label.split(/\s+/)[0].toUpperCase();
+
+  return {
+    label,
+    short: short || null,
+    rank: normalisedRank,
+    sortKey: normalisedRank,
+  };
+}
+
+function parseEffortCell(cell) {
+  const label = (cell || '').replace(/\s+/g, ' ').trim();
+  if (!label) {
+    return null;
+  }
+
+  const lower = label.toLowerCase();
+  const match = label.match(/(\d+(?:\.\d+)?)/);
+  let personDays = null;
+
+  if (match) {
+    const value = Number.parseFloat(match[1]);
+    if (Number.isFinite(value)) {
+      if (/(?:시간|hour|hrs?|h\b)/.test(lower)) {
+        personDays = value / 8;
+      } else if (/(?:주|week)/.test(lower)) {
+        personDays = value * 5;
+      } else if (/(?:반일|half-day)/.test(lower)) {
+        personDays = value * 0.5;
+      } else {
+        personDays = value;
+      }
+    }
+  }
+
+  return {
+    label,
+    personDays: personDays !== null ? Number(personDays.toFixed(2)) : null,
+  };
 }
 
 function deriveTimingForAction(action, snapshotISO) {
@@ -280,6 +351,8 @@ function decorateNextActions(actions, snapshotISO) {
     return {
       ...action,
       ownerKey: normaliseOwnerKey(action.owner),
+      priority: action.priority || null,
+      effort: action.effort || null,
       timing,
     };
   });
@@ -364,6 +437,25 @@ function buildNextActionsPayload({ isoDate, actions }) {
       ownerKey: action.ownerKey || null,
       targetDateISO: action.targetDateISO || null,
       targetDateDisplay: action.targetDateDisplay || null,
+      priority: action.priority
+        ? {
+            label: action.priority.label || null,
+            short: action.priority.short || null,
+            rank:
+              typeof action.priority.rank === 'number' ? action.priority.rank : null,
+            sortKey:
+              typeof action.priority.sortKey === 'number' ? action.priority.sortKey : null,
+          }
+        : null,
+      effort: action.effort
+        ? {
+            label: action.effort.label || null,
+            personDays:
+              typeof action.effort.personDays === 'number'
+                ? action.effort.personDays
+                : null,
+          }
+        : null,
       timing: {
         label: action.timing?.label || (action.targetDateDisplay || action.targetDateISO || null),
         badge: action.timing?.badge || null,

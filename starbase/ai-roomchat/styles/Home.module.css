@@ -195,6 +195,38 @@
   gap: 12px;
 }
 
+.nextActionsControls {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.nextActionsSortButton {
+  border: 1px solid rgba(126, 149, 255, 0.28);
+  background: rgba(20, 30, 68, 0.6);
+  color: rgba(209, 220, 255, 0.78);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.nextActionsSortButton[data-active='true'] {
+  background: linear-gradient(135deg, rgba(108, 134, 255, 0.28), rgba(168, 188, 255, 0.32));
+  border-color: rgba(153, 176, 255, 0.6);
+  color: rgba(239, 244, 255, 0.92);
+}
+
+.nextActionsSortButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(135, 162, 255, 0.4);
+}
+
 .nextActionsRecency {
   display: inline-flex;
   align-items: center;
@@ -272,9 +304,48 @@
 .nextActionMeta {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
+  row-gap: 8px;
   align-items: center;
   font-size: 12px;
+}
+
+.nextActionPriority {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(132, 148, 255, 0.18);
+  color: rgba(226, 234, 255, 0.88);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.nextActionPriority[data-rank='0'] {
+  background: rgba(255, 92, 92, 0.22);
+  color: rgba(255, 222, 222, 0.95);
+}
+
+.nextActionPriority[data-rank='1'] {
+  background: rgba(255, 161, 102, 0.2);
+  color: rgba(255, 236, 214, 0.92);
+}
+
+.nextActionPriority[data-rank='2'] {
+  background: rgba(255, 215, 122, 0.18);
+  color: rgba(255, 244, 214, 0.9);
+}
+
+.nextActionPriorityBadge {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.nextActionPriorityLabel {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
 .nextActionOwner {
@@ -284,6 +355,29 @@
   color: rgba(219, 228, 255, 0.88);
   letter-spacing: 0.04em;
   font-weight: 500;
+}
+
+.nextActionEffort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(108, 182, 255, 0.14);
+  color: rgba(220, 233, 255, 0.86);
+  letter-spacing: 0.03em;
+  font-weight: 500;
+}
+
+.nextActionEffortBadge {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.nextActionEffortLabel {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
 .nextActionDue {

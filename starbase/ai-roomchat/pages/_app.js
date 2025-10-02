@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 
 import SharedHeroOverlay from '@/components/character/SharedHeroOverlay'
 import ActiveMatchOverlay from '@/components/rank/ActiveMatchOverlay'
+import ClientErrorReporter from '@/components/ClientErrorReporter'
 
 import '../styles/globals.css'
 
@@ -24,6 +25,7 @@ function OverlayAwareShell({ children }) {
 export default function App({ Component, pageProps }) {
   return (
     <OverlayAwareShell>
+      <ClientErrorReporter />
       <Component {...pageProps} />
     </OverlayAwareShell>
   )

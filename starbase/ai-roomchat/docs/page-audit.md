@@ -5,7 +5,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 ## Global Application Shell
 
 ### `pages/_app.js`
-- Simple pass-through that renders `Component` with `pageProps`; ensures global styles from `styles/globals.css` are applied.【F:pages/_app.js†L1-L6】
+- Boots `ClientErrorReporter` before rendering each page so unhandled errors feed `/api/errors/report`, while keeping the global overlays active and applying `styles/globals.css`.【F:pages/_app.js†L1-L29】
 
 ### Shared behaviors
 - Many pages depend on Supabase client helpers in `lib/supabase` or `lib/rank/*` for auth, storage, and leaderboard workflows.
@@ -15,7 +15,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 
 ### `pages/index.js`
 - Renders a full-screen landing page with themed background, title (“랭크 청사진에 맞춘 전선으로 바로 합류하세요”), and `AuthButton` to kick off Supabase auth flow while auto-redirecting authenticated users to `/roster`.【F:pages/index.js†L1-L118】
-- Uses `Home.module.css` for glassmorphism styling, a core feature list, and blueprint overview widgets that read JSON-backed stage progress and “다음 액션” snapshots with 담당자/목표일 메타, 자동 경고 상태(D-Day, 연체 여부), 신선도 뱃지를 함께 노출해 방문자가 단계 상태와 남은 체크리스트의 우선순위를 한눈에 파악할 수 있도록 구성합니다. `npm run refresh:blueprint-progress` regenerates the JSON payloads and 문서 경고 블록 from the overview doc so the UI stays aligned without manual edits, `npm run check:blueprint-progress-freshness` (also executed weekly via GitHub Actions) fails when the snapshot is older than the 14일 한계치, and `npm run check:blueprint-next-actions` fails CI when 마감이 지난 항목이 발견돼 문서/랜딩 모두에서 경고를 즉시 띄울 수 있습니다.【F:pages/index.js†L52-L200】【F:styles/Home.module.css†L1-L266】【F:data/rankBlueprintProgress.json†L1-L35】【F:data/rankBlueprintNextActions.json†L1-L33】【F:scripts/refresh-rank-blueprint-progress.js†L1-L339】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L74】【F:scripts/check-rank-blueprint-next-actions.js†L1-L87】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L22】
+- Uses `Home.module.css` for glassmorphism styling, a core feature list, and blueprint overview widgets that now pull priority/리소스 메타 alongside 담당자·기한 정보를 JSON에서 읽어와 D-Day 배지, 우선순위/예상 리소스 칩, 정렬 토글(우선순위·기한·목록순)을 함께 노출합니다. `npm run refresh:blueprint-progress` regenerates the JSON payloads and 문서 경고 블록 from the overview doc so the UI stays aligned without manual edits, `npm run check:blueprint-progress-freshness` (also executed weekly via GitHub Actions) fails when the snapshot is older than the 14일 한계치, and `npm run check:blueprint-next-actions` fails CI when 마감이 지난 항목이 발견돼 문서/랜딩 모두에서 경고를 즉시 띄울 수 있습니다.【F:pages/index.js†L52-L246】【F:styles/Home.module.css†L1-L332】【F:data/rankBlueprintProgress.json†L1-L35】【F:data/rankBlueprintNextActions.json†L1-L60】【F:scripts/refresh-rank-blueprint-progress.js†L1-L362】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L74】【F:scripts/check-rank-blueprint-next-actions.js†L1-L87】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L22】
 
 ### `pages/auth-callback.js`
 - Client-side handler for Supabase OAuth redirects. Parses the current URL, forwards to `handleOAuthCallback`, and responds based on returned status (direct redirect vs. error with retry).【F:pages/auth-callback.js†L1-L35】
@@ -91,6 +91,10 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 - `send.js`: validates required chat fields and inserts into `messages` table with optional avatar/hero metadata.【F:pages/api/messages/send.js†L1-L33】
 
 ### Rank APIs (`pages/api/rank/*`)
+### Error Reporting APIs
+- `/api/errors/report`: rate-limited endpoint that stores client-side error payloads in `rank_user_error_reports` using the service role, trimming stack/context payloads and normalising severity.【F:pages/api/errors/report.js†L1-L94】
+- `/api/admin/errors`: cookie-gated admin feed that summarises recent reports (총/24시간/심각도별) and returns the latest entries for the 관리자 포털 모니터 패널.【F:pages/api/admin/errors.js†L1-L86】
+
 - `list-games.js`: filters and sorts rank games using predefined order plans; supports query string search and result limits.【F:pages/api/rank/list-games.js†L1-L44】
 - `game-detail.js`: fetches roles and participants for a game, enriching participants with hero details via admin client when possible.【F:pages/api/rank/game-detail.js†L1-L56】
 - `join-game.js`: inserts a hero into `rank_participants`, defaulting score to 1000 when unspecified.【F:pages/api/rank/join-game.js†L1-L36】
@@ -100,6 +104,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 - `run-turn.js`: minimal wrapper over `callChat` enabling manual turn execution with arbitrary API keys/system prompts.【F:pages/api/rank/run-turn.js†L1-L35】
 
 ## Additional Observations & Potential Follow-Ups
+- 클라이언트 전역 오류 리포터(`ClientErrorReporter`)가 `/api/errors/report`로 전송한 스냅샷을 관리자 포털의 `UserErrorMonitor`가 `/api/admin/errors`를 통해 집계해 운영팀이 현장 오류를 즉시 파악할 수 있습니다.【F:components/ClientErrorReporter.js†L1-L119】【F:components/admin/UserErrorMonitor.js†L1-L94】
 - Supabase table helpers (`withTable`) abstract table name prefix differences across environments—most hooks and API routes rely on them for multi-tenant support.
 - Several UI shells (create, roster, maker) defer most logic to component containers; reviewing those components is recommended for full domain context beyond this page-oriented audit.
 - Ensure environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, etc.) are set for server APIs like `finalize-session` to work outside local mocks.【F:pages/api/rank/finalize-session.js†L1-L8】

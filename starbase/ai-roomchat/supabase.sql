@@ -199,6 +199,31 @@ create policy if not exists prompt_library_entries_insert
 on public.prompt_library_entries for insert
 with check (auth.uid() = owner_id);
 
+-- =========================================
+--  사용자 오류 리포트 수집
+-- =========================================
+
+create table if not exists public.rank_user_error_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  session_id text,
+  path text,
+  message text not null,
+  stack text,
+  context jsonb not null default '{}'::jsonb,
+  user_agent text,
+  severity text not null default 'error',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists rank_user_error_reports_created_at_idx
+  on public.rank_user_error_reports (created_at desc);
+
+create index if not exists rank_user_error_reports_severity_idx
+  on public.rank_user_error_reports (severity);
+
+alter table public.rank_user_error_reports enable row level security;
+
 create policy if not exists prompt_library_entries_update
 on public.prompt_library_entries for update
 using (auth.uid() = owner_id)

@@ -9,6 +9,16 @@
       "ownerKey": "qa-민서",
       "targetDateISO": "2025-11-14",
       "targetDateDisplay": "2025-11-14",
+      "priority": {
+        "label": "P0 (회귀 차단)",
+        "short": "P0",
+        "rank": 0,
+        "sortKey": 0
+      },
+      "effort": {
+        "label": "QA 2일 (2명·3세션)",
+        "personDays": 2
+      },
       "timing": {
         "label": "2025-11-14",
         "badge": "D-43",
@@ -27,6 +37,16 @@
       "ownerKey": "프론트-라라",
       "targetDateISO": "2025-11-18",
       "targetDateDisplay": "2025-11-18",
+      "priority": {
+        "label": "P1 (히스토리 동기화)",
+        "short": "P1",
+        "rank": 1,
+        "sortKey": 1
+      },
+      "effort": {
+        "label": "프론트 3일 (1명·UI/모바일)",
+        "personDays": 3
+      },
       "timing": {
         "label": "2025-11-18",
         "badge": "D-47",
@@ -45,6 +65,16 @@
       "ownerKey": "maker-ux-도윤",
       "targetDateISO": "2025-11-21",
       "targetDateDisplay": "2025-11-21",
+      "priority": {
+        "label": "P1 (제작기 안정화)",
+        "short": "P1",
+        "rank": 1,
+        "sortKey": 1
+      },
+      "effort": {
+        "label": "UX 2.5일 (리서치 포함)",
+        "personDays": 2.5
+      },
       "timing": {
         "label": "2025-11-21",
         "badge": "D-50",
@@ -63,6 +93,16 @@
       "ownerKey": "ops-지후",
       "targetDateISO": "2025-11-25",
       "targetDateDisplay": "2025-11-25",
+      "priority": {
+        "label": "P2 (운영 가드)",
+        "short": "P2",
+        "rank": 2,
+        "sortKey": 2
+      },
+      "effort": {
+        "label": "Ops 1.5일 (대시보드 연동)",
+        "personDays": 1.5
+      },
       "timing": {
         "label": "2025-11-25",
         "badge": "D-54",
@@ -81,6 +121,16 @@
       "ownerKey": "ops-지후",
       "targetDateISO": "2025-11-28",
       "targetDateDisplay": "2025-11-28",
+      "priority": {
+        "label": "P2 (재시도 루프)",
+        "short": "P2",
+        "rank": 2,
+        "sortKey": 2
+      },
+      "effort": {
+        "label": "Ops 2일 (데이터 동기화)",
+        "personDays": 2
+      },
       "timing": {
         "label": "2025-11-28",
         "badge": "D-57",
