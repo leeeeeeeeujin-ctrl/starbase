@@ -5,6 +5,7 @@ import AuthButton from '../components/AuthButton'
 import { supabase } from '../lib/supabase'
 import styles from '../styles/Home.module.css'
 import progressData from '../data/rankBlueprintProgress.json'
+import nextActionsData from '../data/rankBlueprintNextActions.json'
 
 const features = [
   {
@@ -27,6 +28,7 @@ const features = [
 const stageProgress = progressData.stages
 const progressLastUpdated = progressData.lastUpdatedDisplay
 const progressLastUpdatedISO = progressData.lastUpdatedISO
+const nextActions = Array.isArray(nextActionsData.items) ? nextActionsData.items : []
 
 export default function Home() {
   const router = useRouter()
@@ -152,6 +154,32 @@ export default function Home() {
               ))}
             </ul>
           </div>
+          {nextActions.length ? (
+            <div className={styles.nextActionsBlock}>
+              <div className={styles.nextActionsHeader}>
+                <h2 className={styles.sectionTitle}>Next Actions</h2>
+                <div
+                  className={styles.nextActionsRecency}
+                  data-stale={progressRecency.stale ? 'true' : 'false'}
+                >
+                  <span className={styles.nextActionsUpdated}>{progressLastUpdated}</span>
+                  {progressRecency.relativeLabel ? (
+                    <span className={styles.nextActionsRelative}>
+                      · {progressRecency.relativeLabel}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <ol className={styles.nextActionsList}>
+                {nextActions.map((action) => (
+                  <li key={action.order} className={styles.nextActionItem}>
+                    <span className={styles.nextActionIndex}>{action.order.toString().padStart(2, '0')}</span>
+                    <p className={styles.nextActionSummary}>{action.summary}</p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
         </section>
       </section>
       <footer className={styles.footer}>

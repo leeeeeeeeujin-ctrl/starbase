@@ -59,6 +59,7 @@
 - `/api/rank/upload-cooldown-timeline` 요청이 업로드 결과를 `rank_cooldown_timeline_uploads`에 기록하도록 하고, 텔레메트리 `timelineUploads` 요약과 대시보드 업로드 현황 패널을 추가해 누락된 공유 구간을 바로 파악할 수 있습니다.
 - 업로드 연속 실패/장기 미성공 임계값을 `cooldownAlertThresholds`와 텔레메트리 경보(`alerts.timelineUploads`)에 연결해 카드·이슈 패널·CSV 내보내기에서도 동일한 경고를 표시하도록 정비했습니다.
 - 랜딩 히어로에 청사진 주요 단계 진행률(매칭 트리거 통일, 세션/전투 동기화, 프롬프트 변수 자동화, UI·오디오 완성, 운영 가드)을 2025-11-07 기준으로 노출하는 보드를 추가하고, 진행률 데이터를 `data/rankBlueprintProgress.json`으로 분리해 업데이트 시 문서/코드 동기화를 간소화했습니다. `npm run refresh:blueprint-progress` 스크립트가 개요 문서의 표를 읽어 JSON을 재생성하도록 연결해 후속 갱신도 한 번에 처리할 수 있고, `npm run check:blueprint-progress-freshness` + 주 1회 GitHub Actions 리마인더로 14일이 지나기 전에 자동 경고를 받습니다.
+- 같은 흐름으로 "다음 액션 스냅샷" 섹션도 `data/rankBlueprintNextActions.json`으로 추출해 랜딩 히어로에 진행률 보드 옆 체크리스트 카드를 노출했습니다. 최신 업데이트 시각은 진행률 카드와 동일한 뱃지를 공유하며, `npm run refresh:blueprint-progress`를 실행하면 두 JSON이 동시에 갱신됩니다.
 
 ### Live Timeline Workflow (2025-11-07 업데이트)
 - **작성 책임**: 세션 진행자가 `Session Timeline` 표에 즉시 메모를 추가하고, 30분 이내에 QA/운영 협업자가 검토 메모를 덧붙입니다.
