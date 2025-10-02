@@ -263,6 +263,92 @@ for each row
 execute function public.touch_prompt_library_entries_updated_at();
 
 -- =========================================
+--  랭크 오디오 환경 설정
+-- =========================================
+create table if not exists public.rank_audio_preferences (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  profile_key text not null,
+  hero_id uuid,
+  hero_name text not null default '',
+  hero_source text not null default '',
+  track_id text,
+  preset_id text,
+  manual_override boolean not null default false,
+  eq_settings jsonb not null default '{"enabled": false, "low": 0, "mid": 0, "high": 0}'::jsonb,
+  reverb_settings jsonb not null default '{"enabled": false, "mix": 0.3, "decay": 1.8}'::jsonb,
+  compressor_settings jsonb not null default '{"enabled": false, "threshold": -28, "ratio": 2.5, "release": 0.25}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists rank_audio_preferences_owner_profile
+  on public.rank_audio_preferences (owner_id, profile_key);
+
+create index if not exists rank_audio_preferences_owner_updated
+  on public.rank_audio_preferences (owner_id, updated_at desc);
+
+alter table public.rank_audio_preferences enable row level security;
+
+create policy if not exists rank_audio_preferences_select_owner
+on public.rank_audio_preferences for select
+using (auth.uid() = owner_id);
+
+create policy if not exists rank_audio_preferences_insert_owner
+on public.rank_audio_preferences for insert to authenticated
+with check (auth.uid() = owner_id);
+
+create policy if not exists rank_audio_preferences_update_owner
+on public.rank_audio_preferences for update to authenticated
+using (auth.uid() = owner_id)
+with check (auth.uid() = owner_id);
+
+create policy if not exists rank_audio_preferences_delete_owner
+on public.rank_audio_preferences for delete to authenticated
+using (auth.uid() = owner_id);
+
+create or replace function public.touch_rank_audio_preferences_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_rank_audio_preferences_updated on public.rank_audio_preferences;
+create trigger trg_rank_audio_preferences_updated
+before update on public.rank_audio_preferences
+for each row
+execute function public.touch_rank_audio_preferences_updated_at();
+
+create table if not exists public.rank_audio_events (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  profile_key text not null,
+  hero_id uuid,
+  hero_name text not null default '',
+  hero_source text not null default '',
+  event_type text not null,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists rank_audio_events_owner_created
+  on public.rank_audio_events (owner_id, created_at desc);
+
+alter table public.rank_audio_events enable row level security;
+
+create policy if not exists rank_audio_events_select_owner
+on public.rank_audio_events for select
+using (auth.uid() = owner_id);
+
+create policy if not exists rank_audio_events_insert_owner
+on public.rank_audio_events for insert to authenticated
+with check (auth.uid() = owner_id);
+
+-- =========================================
 --  랭킹 게임 핵심 테이블
 -- =========================================
 create table if not exists public.rank_games (

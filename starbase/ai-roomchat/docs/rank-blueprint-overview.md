@@ -49,6 +49,17 @@
 - [Edge Function 백오프 스케줄러](rank-api-key-cooldown-monitoring.md#edge-function-백오프-스케줄러-2025-11-08-업데이트): 감사 로그와 텔레메트리 지표를 바탕으로 `GET /api/rank/cooldown-retry-schedule`이 동적 백오프를 계산하도록 연결했습니다.
 - [랜딩 청사진 보드](pages/index.js): 홈 히어로에서 단계별 진행률 보드를 노출해 매칭·세션·프롬프트·UI·운영 가드 상태를 2025-11-07 기준으로 요약합니다.【F:pages/index.js†L52-L92】【F:styles/Home.module.css†L43-L174】
 - [StartClient 로그 보드 강화](components/rank/StartClient/LogsPanel.js): 전투 턴 로그가 요약 배지·프롬프트 프리뷰·변수 메타와 함께 카드 형태로 정돈되고, 모바일에서는 히스토리 패널이 세로 스택으로 재배치되며 데스크톱에서는 다단 그리드로 확장돼 운영·QA가 화면 크기에 맞춰 문맥을 확인할 수 있습니다. 섹션별 축약 토글·검색 필터에 더해 검색어 하이라이트와 액션·주역·태그 기반 다중 필터 칩을 붙여 긴 히스토리에서도 필요한 카드만 빠르게 추릴 수 있습니다.【F:components/rank/StartClient/LogsPanel.js†L1-L400】【F:components/rank/StartClient/LogsPanel.module.css†L1-L360】
+- [브금 프리셋 & 재생목록 제어](components/rank/GameRoomView.js): 히어로 패널이 캐릭터별 재생목록 칩, EQ/리버브/컴프레서 토글, 프리셋 배지를 노출해 운영자가 상황별 사운드를 즉시 선택하거나 수동 조정 후 기본값으로 복원할 수 있고, 모바일에서도 동일 흐름이 유지되도록 버튼과 요약 영역을 세로 스택으로 재배치했습니다. 이번 라운드에선 선택한 트랙·프리셋·이펙트를 `rank_audio_preferences`에 저장하고 `rank_audio_events`로 변경 로그를 남겨, 재진입 시 그대로 복원되면서 운영자가 관리자 포털에서 추적할 수 있는 토대를 마련했습니다.【F:components/rank/GameRoomView.js†L780-L1160】【F:components/rank/GameRoomView.module.css†L927-L1340】【F:supabase.sql†L1-L120】
+
+<!-- next-actions-status:start -->
+> _2025-10-02 기준 자동 생성된 기한 알림._
+> ✅ 모든 항목이 목표일 이내에 있습니다.
+<!-- next-actions-status:end -->
+
+<!-- next-actions-status:start -->
+> _2025-10-02 기준 자동 생성된 기한 알림._
+> ✅ 모든 항목이 목표일 이내에 있습니다.
+<!-- next-actions-status:end -->
 
 <!-- next-actions-status:start -->
 > _2025-10-02 기준 자동 생성된 기한 알림._
@@ -98,7 +109,7 @@
 | 순번 | 작업 | 담당 | 목표일 | 우선순위 | 예상 리소스 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | QA가 듀오/캐주얼 재시작 시퀀스에서 큐 일관성 회귀가 없는지 통합 테스트(`pages/api/rank/play.ts`)를 재실행하도록 준비합니다. | QA (민서) | 2025-11-14 | P0 (회귀 차단) | QA 2일 (2명·3세션) |
-| 2 | 히어로 브금 카드에 프리셋/EQ 토글과 재생목록 전환 UI를 더해 운영자가 상황에 맞춰 음향 세팅을 바로 조정할 수 있도록 합니다. | 프론트 (라라) | 2025-11-20 | P1 (오디오 튜닝) | 프론트 3일 (1명·UI/오디오) |
+| 2 | 브금 프리셋·EQ 변경 로그를 관리자 포털에서 기간·담당자 기준으로 필터링하고 CSV로 내보낼 수 있도록 Telemetry API와 모니터 UI를 확장합니다. | 프론트 (라라) | 2025-11-24 | P1 (오디오 튜닝) | 프론트 2.5일 (1명·UI/백엔드) |
 | 3 | 제작기에서 세트를 저장하기 전 버전 불일치를 경고하는 Maker UX 개선안을 마련합니다. | Maker UX (도윤) | 2025-11-21 | P1 (제작기 안정화) | UX 2.5일 (리서치 포함) |
 | 4 | API 키 쿨다운 만료 알림과 대체 키 추천 워크플로를 운영 대시보드에 연결합니다. | Ops (지후) | 2025-11-25 | P2 (운영 가드) | Ops 1.5일 (대시보드 연동) |
 | 5 | Edge Function 재시도 스케줄러가 제안한 백오프·중단 사유를 운영 대시보드와 QA 회고에 노출해 경보 루프 전체에서 동일한 문맥을 공유합니다. | Ops (지후) | 2025-11-28 | P2 (재시도 루프) | Ops 2일 (데이터 동기화) |
@@ -111,10 +122,10 @@
 | 매칭 트리거 통일 | QA 검토 중 | 80% | `/api/rank/play` 재시작 케이스를 테스트 플랜(DC-01~03)에 추가해 회귀 검증 범위를 확장했습니다. |
 | 세션/전투 동기화 | 구현 진행 중 | 55% | `rank_turns` 가시성·요약 컬럼을 `run-turn`/`log-turn` API와 세션 히스토리 응답에 연결해 로그 파이프라인 일부가 작동하기 시작했습니다. |
 | 프롬프트 변수 자동화 | 진행 중 | 60% | StartClient 경고 연동과 제작기 재저장 가이드 배포까지 끝났고, 남은 과제는 폴백 QA와 Maker 사전 경고뿐입니다. |
-| UI·오디오 완성 | 진행 중 | 78% | 메인 룸 히어로 패널이 브금 자동 재생·컨트롤을 제공하고, StartClient 로그 보드는 섹션별 축약/펼치기 토글·검색 입력에 더해 검색어 하이라이트와 액션/주역/태그 다중 필터 칩을 갖춰 긴 히스토리에서도 필요한 카드만 빠르게 추리며, 모바일에선 히스토리 패널이 세로로 재배치되고 데스크톱에선 다단 그리드로 확장돼 전투/AI/플레이어 히스토리를 화면 크기에 맞춰 보여줍니다. 다음 단계는 브금 프리셋/EQ 토글과 재생목록 전환 UI입니다. |
+| UI·오디오 완성 | 진행 중 | 88% | 메인 룸 히어로 패널이 브금 자동 재생·컨트롤을 제공하고, StartClient 로그 보드는 섹션별 축약/펼치기 토글·검색 입력에 더해 검색어 하이라이트와 액션/주역/태그 다중 필터 칩을 갖춰 긴 히스토리에서도 필요한 카드만 빠르게 추리며, 모바일에선 히스토리 패널이 세로로 재배치되고 데스크톱에선 다단 그리드로 확장돼 전투/AI/플레이어 히스토리를 화면 크기에 맞춰 보여줍니다. 브금 재생목록 전환, EQ/리버브/컴프레서 토글, 프리셋 칩까지 연동된 상태에서 선택한 트랙과 이펙트는 사용자·운영자별로 저장되고 Supabase 로그로 남아 재진입 시 자동 복원됩니다. 다음 단계는 누적된 오디오 변경 로그를 관리자 포털 모니터에서 필터링·다운로드할 수 있도록 노출하는 작업입니다. |
 | 운영 가드 | 진행 중 | 85% | 감사 로그 기반 백오프 스케줄러, Slack ETA 안내, 임계값 변경 카드·감사 로그 패널, 일/주/월 토글·CSV/PNG 내보내기·팀 드라이브 자동 업로드를 갖춘 감사 타임라인 그래프에 더해 업로드 연속 실패/장기 미성공 임계값을 경보 체계와 대시보드 카드에 연동했습니다. |
 
-**총 진행률(단계별 동일 가중치)**: 약 **72%**
+**총 진행률(단계별 동일 가중치)**: 약 **74%**
 
 홈 히어로에서 노출되는 진행률 보드와 다음 액션 카드가 이 표와 위 섹션을 그대로 참조할 수 있도록 데이터를 `data/rankBlueprintProgress.json`·`data/rankBlueprintNextActions.json`으로 분리해 사용하며, 최신화 뱃지가 2주 이상 경과 시 업데이트 필요 상태를 표시합니다. `npm run refresh:blueprint-progress` 스크립트를 실행하면 두 JSON과 자동 경고 블록이 재생성돼 문서/코드 동기화를 유지할 수 있고, `npm run check:blueprint-progress-freshness`(주 1회 GitHub Actions 스케줄과 PR/메인 푸시 CI에서 실행)로 14일 한계치를 넘길 경우 경고를 발생시켜 리마인더를 받습니다. `npm run check:blueprint-next-actions`는 마감이 지난 항목이 존재하면 CI를 실패시키고, JSON에는 담당자 키·D-Day·연체 여부가 함께 기록돼 랜딩 카드와 문서가 동일한 기준으로 경고를 노출합니다. 두 워크플로 모두에서 `npm test -- --runInBand`와 `CI=1 npm run build`를 함께 실행하고 `.next/cache`를 복원하는 빌드 캐시, `jest-junit` 기반 테스트 리포트 업로드, Step Summary용 메트릭 게시를 포함해 에러 리포트 관리자 API 회귀뿐 아니라 실행 시간 추적과 병목 파악을 동시에 지원합니다.【F:data/rankBlueprintProgress.json†L1-L35】【F:data/rankBlueprintNextActions.json†L1-L33】【F:pages/index.js†L8-L200】【F:styles/Home.module.css†L1-L266】【F:scripts/refresh-rank-blueprint-progress.js†L1-L339】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L74】【F:scripts/check-rank-blueprint-next-actions.js†L1-L87】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L47】【F:.github/workflows/pr-ci.yml†L1-L42】
 

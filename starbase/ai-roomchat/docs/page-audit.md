@@ -76,7 +76,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 ### `pages/rank/[id].js`
 - Game room orchestrator managing participant roster, hero selection modal, leaderboard drawer, and AI chat stub via `useAiHistory` and `useGameRoom` hook.【F:pages/rank/[id].js†L1-L70】【F:pages/rank/[id].js†L71-L115】
 - Delegates rendering to `GameRoomView` while providing event handlers for join/start/delete flows. Mock chat responses append timestamped stub text until real AI integration is wired in.【F:pages/rank/[id].js†L71-L115】
-- The hero panel now boots the shared hero audio manager, loading viewer/host/participant BGM automatically, exposing play/pause, mute, and volume controls, and rendering a progress meter so QA can confirm soundtrack context before entering the StartClient view.【F:components/rank/GameRoomView.js†L497-L687】【F:components/rank/GameRoomView.js†L2369-L2438】【F:components/rank/GameRoomView.module.css†L908-L1048】【F:components/rank/GameRoomView.module.css†L1835-L1857】
+- The hero panel now boots the shared hero audio manager, loading viewer/host/participant BGM automatically, exposing play/pause, mute, and volume controls, rendering a progress meter, and surfacing 재생목록 칩·효과 토글·프리셋 배지 so QA/운영이 상황별 사운드를 즉시 조정하거나 기본값으로 복원할 수 있습니다. 선택한 트랙·프리셋·이펙트는 `rank_audio_preferences`/`rank_audio_events`에 저장돼 재진입 시 복원되며, 변경 로그가 추적됩니다.【F:components/rank/GameRoomView.js†L780-L1160】【F:components/rank/GameRoomView.module.css†L927-L1340】【F:supabase.sql†L1-L120】
 
 ### `pages/rank/[id]/start.js`
 - Dynamically loads the client-only `StartClient` shell so heavy assets stay out of the main bundle.【F:pages/rank/[id]/start.js†L1-L4】
@@ -112,6 +112,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 - 클라이언트 전역 오류 리포터(`ClientErrorReporter`)가 `/api/errors/report`로 전송한 스냅샷을 관리자 포털의 `UserErrorMonitor`가 `/api/admin/errors`를 통해 집계해 운영팀이 현장 오류를 즉시 파악할 수 있습니다.【F:components/ClientErrorReporter.js†L1-L119】【F:components/admin/UserErrorMonitor.js†L1-L94】
 - `/api/errors/report`와 `/api/admin/errors` 라우트는 `__tests__/api` 스위트와 헬퍼(`testUtils`)로 커버돼 있어 향후 관리자 API가 늘어나도 동일 패턴으로 테스트를 복제하며 회귀를 방지할 수 있습니다.【F:__tests__/api/testUtils.js†L1-L82】【F:__tests__/api/errors/report.test.js†L1-L137】【F:__tests__/api/admin/errors.test.js†L1-L183】
 - Supabase table helpers (`withTable`) abstract table name prefix differences across environments—most hooks and API routes rely on them for multi-tenant support.
+- `rank_audio_preferences`와 `rank_audio_events` 테이블이 추가돼 브금 프리셋 선택과 변경 로그가 Supabase에 저장되며, `GameRoomView`는 `withTable`을 통해 동일 스키마를 읽고/쓰기 합니다.【F:supabase.sql†L1-L120】【F:components/rank/GameRoomView.js†L780-L1160】
 - Several UI shells (create, roster, maker) defer most logic to component containers; reviewing those components is recommended for full domain context beyond this page-oriented audit.
 - Ensure environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, etc.) are set for server APIs like `finalize-session` to work outside local mocks.【F:pages/api/rank/finalize-session.js†L1-L8】
 

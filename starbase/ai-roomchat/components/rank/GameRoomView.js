@@ -6,6 +6,8 @@ import { TURN_TIMER_OPTIONS, summarizeTurnTimerVotes } from '../../lib/rank/turn
 import styles from './GameRoomView.module.css'
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
 import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
+import { supabase } from '../../lib/supabase'
+import { withTable } from '../../lib/supabaseTables'
 
 const RULE_OPTION_METADATA = {
   nerf_insight: {
@@ -54,11 +56,201 @@ const RULE_OPTION_METADATA = {
   },
 }
 
+const DEFAULT_EQ_SETTINGS = { enabled: false, low: 0, mid: 0, high: 0 }
+const DEFAULT_REVERB_SETTINGS = { enabled: false, mix: 0.3, decay: 1.8 }
+const DEFAULT_COMPRESSOR_SETTINGS = { enabled: false, threshold: -28, ratio: 2.5, release: 0.25 }
+
 const TABS = [
   { key: 'main', label: '메인 룸' },
   { key: 'hero', label: '캐릭터 정보' },
   { key: 'ranking', label: '랭킹' },
 ]
+
+function clamp(value, min, max, fallback) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    return Number.isFinite(fallback) ? fallback : min
+  }
+  return Math.min(Math.max(number, min), max)
+}
+
+function normalizeEqSettings(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_EQ_SETTINGS }
+  }
+
+  const enabled = Boolean(
+    typeof raw.enabled === 'boolean'
+      ? raw.enabled
+      : typeof raw.eqEnabled === 'boolean'
+      ? raw.eqEnabled
+      : raw.active,
+  )
+
+  return {
+    enabled,
+    low: clamp(raw.low ?? raw.bass ?? 0, -12, 12, 0),
+    mid: clamp(raw.mid ?? raw.middle ?? 0, -12, 12, 0),
+    high: clamp(raw.high ?? raw.treble ?? 0, -12, 12, 0),
+  }
+}
+
+function normalizeReverbSettings(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_REVERB_SETTINGS }
+  }
+
+  const enabled = Boolean(
+    typeof raw.enabled === 'boolean'
+      ? raw.enabled
+      : typeof raw.reverbEnabled === 'boolean'
+      ? raw.reverbEnabled
+      : raw.active,
+  )
+
+  return {
+    enabled,
+    mix: clamp(raw.mix ?? raw.wet ?? 0.3, 0, 1, 0.3),
+    decay: clamp(raw.decay ?? raw.duration ?? 1.8, 0.1, 6, 1.8),
+  }
+}
+
+function normalizeCompressorSettings(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_COMPRESSOR_SETTINGS }
+  }
+
+  const enabled = Boolean(
+    typeof raw.enabled === 'boolean'
+      ? raw.enabled
+      : typeof raw.compressorEnabled === 'boolean'
+      ? raw.compressorEnabled
+      : raw.active,
+  )
+
+  return {
+    enabled,
+    threshold: clamp(raw.threshold ?? raw.level ?? -28, -60, 0, -28),
+    ratio: clamp(raw.ratio ?? raw.amount ?? 2.5, 1, 20, 2.5),
+    release: clamp(raw.release ?? raw.tail ?? 0.25, 0.05, 2, 0.25),
+  }
+}
+
+function buildHeroAudioProfileKey(profile) {
+  if (!profile) return null
+  const source = typeof profile.source === 'string' && profile.source ? profile.source : 'unknown'
+  if (profile.heroId) {
+    return `${source}:${profile.heroId}`
+  }
+  const label = typeof profile.heroName === 'string' ? profile.heroName.trim().toLowerCase() : ''
+  if (label) {
+    return `${source}:${label}`
+  }
+  return source
+}
+
+function normalizeAudioPreferenceRecord(record) {
+  if (!record || typeof record !== 'object') {
+    return null
+  }
+
+  return {
+    trackId: record.track_id || record.trackId || null,
+    presetId: record.preset_id || record.presetId || null,
+    manualOverride: Boolean(record.manual_override ?? record.manualOverride ?? false),
+    eq: normalizeEqSettings(record.eq_settings || record.eqSettings),
+    reverb: normalizeReverbSettings(record.reverb_settings || record.reverbSettings),
+    compressor: normalizeCompressorSettings(record.compressor_settings || record.compressorSettings),
+  }
+}
+
+function extractHeroAudioEffectSnapshot(state) {
+  if (!state) return null
+
+  return {
+    eq: {
+      enabled: Boolean(state.eqEnabled),
+      low: clamp(state.equalizer?.low ?? 0, -12, 12, 0),
+      mid: clamp(state.equalizer?.mid ?? 0, -12, 12, 0),
+      high: clamp(state.equalizer?.high ?? 0, -12, 12, 0),
+    },
+    reverb: {
+      enabled: Boolean(state.reverbEnabled),
+      mix: clamp(state.reverbDetail?.mix ?? 0.3, 0, 1, 0.3),
+      decay: clamp(state.reverbDetail?.decay ?? 1.8, 0.1, 6, 1.8),
+    },
+    compressor: {
+      enabled: Boolean(state.compressorEnabled),
+      threshold: clamp(state.compressorDetail?.threshold ?? -28, -60, 0, -28),
+      ratio: clamp(state.compressorDetail?.ratio ?? 2.5, 1, 20, 2.5),
+      release: clamp(state.compressorDetail?.release ?? 0.25, 0.05, 2, 0.25),
+    },
+  }
+}
+
+function diffAudioPreferenceChanges(prev, next) {
+  if (!next) return []
+  const changes = []
+  if (!prev) {
+    changes.push('initial')
+  }
+
+  if ((prev?.trackId || null) !== (next.trackId || null)) {
+    if (next.trackId || prev?.trackId) {
+      changes.push('trackId')
+    }
+  }
+
+  if ((prev?.presetId || null) !== (next.presetId || null)) {
+    if (next.presetId || prev?.presetId) {
+      changes.push('presetId')
+    }
+  }
+
+  if (Boolean(prev?.manualOverride) !== Boolean(next.manualOverride)) {
+    changes.push('manualOverride')
+  }
+
+  const prevEq = prev?.eq || null
+  const nextEq = next.eq || null
+  if (
+    !prevEq ||
+    !nextEq ||
+    Boolean(prevEq.enabled) !== Boolean(nextEq.enabled) ||
+    prevEq.low !== nextEq.low ||
+    prevEq.mid !== nextEq.mid ||
+    prevEq.high !== nextEq.high
+  ) {
+    changes.push('eq')
+  }
+
+  const prevReverb = prev?.reverb || null
+  const nextReverb = next.reverb || null
+  if (
+    !prevReverb ||
+    !nextReverb ||
+    Boolean(prevReverb.enabled) !== Boolean(nextReverb.enabled) ||
+    prevReverb.mix !== nextReverb.mix ||
+    prevReverb.decay !== nextReverb.decay
+  ) {
+    changes.push('reverb')
+  }
+
+  const prevCompressor = prev?.compressor || null
+  const nextCompressor = next.compressor || null
+  if (
+    !prevCompressor ||
+    !nextCompressor ||
+    Boolean(prevCompressor.enabled) !== Boolean(nextCompressor.enabled) ||
+    prevCompressor.threshold !== nextCompressor.threshold ||
+    prevCompressor.ratio !== nextCompressor.ratio ||
+    prevCompressor.release !== nextCompressor.release
+  ) {
+    changes.push('compressor')
+  }
+
+  return Array.from(new Set(changes))
+}
 
 function normalizeHeroAudioProfile(rawHero, { fallbackHeroId = null, fallbackHeroName = '' } = {}) {
   if (!rawHero || typeof rawHero !== 'object') {
@@ -76,11 +268,147 @@ function normalizeHeroAudioProfile(rawHero, { fallbackHeroId = null, fallbackHer
     ? Math.round(Number(rawDuration))
     : null
 
+  const audioProfile = rawHero.audio_profile || rawHero.audioProfile || null
+  const trackSources = []
+
+  if (audioProfile) {
+    const playlists = []
+    if (Array.isArray(audioProfile.playlist)) {
+      playlists.push(...audioProfile.playlist)
+    }
+    if (Array.isArray(audioProfile.tracks)) {
+      playlists.push(...audioProfile.tracks)
+    }
+    if (Array.isArray(audioProfile.bgms)) {
+      playlists.push(...audioProfile.bgms)
+    }
+    playlists.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return
+      trackSources.push(entry)
+    })
+  }
+
+  const heroBgms = rawHero.hero_bgms || rawHero.heroBgms
+  if (Array.isArray(heroBgms)) {
+    heroBgms.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return
+      trackSources.push(entry)
+    })
+  }
+
+  const sanitizedTracks = []
+  const seenUrls = new Set()
+
+  trackSources.forEach((entry, index) => {
+    const url = entry.url || entry.src || entry.href || null
+    if (!url || typeof url !== 'string') {
+      return
+    }
+    if (seenUrls.has(url)) {
+      return
+    }
+    seenUrls.add(url)
+
+    const trackId =
+      entry.id || entry.key || entry.slug || (typeof entry.label === 'string' && entry.label.trim())
+        || `track-${index}`
+
+    const durationValue =
+      entry.duration_seconds ?? entry.durationSeconds ?? entry.duration ?? entry.length ?? null
+
+    sanitizedTracks.push({
+      id: trackId,
+      label:
+        entry.label || entry.name || entry.title || entry.displayName || `${fallbackHeroName || '브금'} 트랙`,
+      url,
+      duration: Number.isFinite(Number(durationValue)) ? Math.max(0, Math.round(Number(durationValue))) : null,
+      type: entry.type || entry.kind || entry.mood || null,
+      presetId: entry.preset_id || entry.presetId || entry.preset || null,
+      sortOrder: Number.isFinite(Number(entry.sort_order || entry.sortOrder))
+        ? Number(entry.sort_order || entry.sortOrder)
+        : index,
+    })
+  })
+
+  if (bgmUrl && !seenUrls.has(bgmUrl)) {
+    sanitizedTracks.push({
+      id: 'primary-track',
+      label: `${fallbackHeroName || rawHero.name || '대표'} 테마`,
+      url: bgmUrl,
+      duration,
+      type: '대표',
+      presetId: null,
+      sortOrder: -1,
+    })
+  }
+
+  sanitizedTracks.sort((a, b) => {
+    if (a.sortOrder === b.sortOrder) {
+      return a.label.localeCompare(b.label)
+    }
+    return a.sortOrder - b.sortOrder
+  })
+
+  const defaultTrackIdRaw =
+    audioProfile?.defaultTrackId || audioProfile?.defaultTrack || audioProfile?.initialTrack || null
+
+  const defaultTrack = sanitizedTracks.find((track) => track.id === defaultTrackIdRaw) || sanitizedTracks[0] || null
+
+  const eqSettings = normalizeEqSettings(
+    audioProfile?.eq || audioProfile?.equalizer || rawHero.audio_eq || rawHero.audioEq,
+  )
+  const reverbSettings = normalizeReverbSettings(
+    audioProfile?.reverb || rawHero.audio_reverb || rawHero.audioReverb,
+  )
+  const compressorSettings = normalizeCompressorSettings(
+    audioProfile?.compressor || rawHero.audio_compressor || rawHero.audioCompressor,
+  )
+
+  const rawPresets = []
+  if (audioProfile?.presets && Array.isArray(audioProfile.presets)) {
+    rawPresets.push(...audioProfile.presets)
+  } else if (audioProfile?.presetMap && typeof audioProfile.presetMap === 'object') {
+    Object.entries(audioProfile.presetMap).forEach(([key, value]) => {
+      rawPresets.push({ id: key, ...(value || {}) })
+    })
+  }
+
+  const presets = rawPresets
+    .map((preset, index) => {
+      if (!preset || typeof preset !== 'object') return null
+      const id = preset.id || preset.key || preset.slug || `preset-${index}`
+      const label = preset.label || preset.name || preset.title || `프리셋 ${index + 1}`
+      return {
+        id,
+        label,
+        description: preset.description || preset.summary || '',
+        eq: preset.eq || preset.equalizer ? normalizeEqSettings(preset.eq || preset.equalizer) : null,
+        reverb: preset.reverb ? normalizeReverbSettings(preset.reverb) : null,
+        compressor: preset.compressor ? normalizeCompressorSettings(preset.compressor) : null,
+        tags: Array.isArray(preset.tags)
+          ? preset.tags.filter((tag) => typeof tag === 'string' && tag.trim()).map((tag) => tag.trim())
+          : [],
+      }
+    })
+    .filter(Boolean)
+
+  const defaultPresetIdRaw =
+    audioProfile?.defaultPresetId || audioProfile?.defaultPreset || audioProfile?.initialPreset || null
+
+  const defaultPreset = presets.find((preset) => preset.id === defaultPresetIdRaw) || null
+
   return {
     heroId: rawHero.id || fallbackHeroId || null,
     heroName: rawHero.name || fallbackHeroName || '',
     bgmUrl,
     bgmDuration: duration,
+    tracks: sanitizedTracks,
+    defaultTrackId: defaultTrack?.id || null,
+    eq: eqSettings,
+    reverb: reverbSettings,
+    compressor: compressorSettings,
+    presets,
+    defaultPresetId: defaultPreset?.id || null,
   }
 }
 
@@ -93,6 +421,33 @@ function formatDurationLabel(seconds) {
   const mins = Math.floor(total / 60)
   const secs = total % 60
   return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+function formatDbLabel(value) {
+  if (!Number.isFinite(value)) return '0dB'
+  const rounded = Math.round(value * 10) / 10
+  const sign = rounded > 0 ? '+' : ''
+  return `${sign}${rounded.toFixed(1)}dB`
+}
+
+function formatPercentLabel(value) {
+  if (!Number.isFinite(value)) return '0%'
+  return `${Math.round(Math.min(Math.max(value, 0), 1) * 100)}%`
+}
+
+function formatSecondsLabel(value) {
+  if (!Number.isFinite(value)) return '0.0s'
+  return `${(Math.round(Math.max(value, 0) * 10) / 10).toFixed(1)}s`
+}
+
+function formatMillisecondsLabel(value) {
+  if (!Number.isFinite(value)) return '0ms'
+  return `${Math.round(Math.max(value, 0) * 1000)}ms`
+}
+
+function formatRatioLabel(value) {
+  if (!Number.isFinite(value)) return '1.0:1'
+  return `${(Math.round(Math.max(value, 0) * 10) / 10).toFixed(1)}:1`
 }
 
 function formatVoteSummary(topValues, maxCount) {
@@ -438,12 +793,22 @@ export default function GameRoomView({
     return getHeroAudioManager()
   }, [])
   const audioBaselineRef = useRef(null)
-  const currentAudioTrackRef = useRef({ url: null, heroId: null })
+  const currentAudioTrackRef = useRef({ url: null, heroId: null, trackId: null })
   const heroAudioVolumeMemoryRef = useRef(audioManager?.getState()?.volume ?? 0.72)
   const [heroAudioState, setHeroAudioState] = useState(() =>
     audioManager ? audioManager.getState() : null,
   )
   const heroAudioVolumeInputId = useId()
+  const [selectedHeroAudioTrackId, setSelectedHeroAudioTrackId] = useState(null)
+  const [selectedHeroAudioPresetId, setSelectedHeroAudioPresetId] = useState(null)
+  const [heroAudioManualOverride, setHeroAudioManualOverride] = useState(false)
+  const [viewerId, setViewerId] = useState(null)
+  const [audioPreferenceLoadedKey, setAudioPreferenceLoadedKey] = useState(null)
+  const audioPreferenceSaveTimeoutRef = useRef(null)
+  const heroAudioPreferenceDirtyRef = useRef(false)
+  const lastPersistedSignatureRef = useRef(null)
+  const lastPersistedPayloadRef = useRef(null)
+  const previousAudioProfileKeyRef = useRef(null)
 
   const resolvedActiveIndex = useMemo(() => {
     const index = TABS.findIndex((tab) => tab.key === activeTab)
@@ -807,6 +1172,86 @@ export default function GameRoomView({
     return null
   }, [game?.owner_id, myHero, participants])
 
+  const heroAudioProfileKey = useMemo(
+    () => buildHeroAudioProfileKey(heroAudioProfile),
+    [heroAudioProfile?.heroId, heroAudioProfile?.heroName, heroAudioProfile?.source],
+  )
+
+  useEffect(() => {
+    if (previousAudioProfileKeyRef.current === heroAudioProfileKey) {
+      return
+    }
+    previousAudioProfileKeyRef.current = heroAudioProfileKey
+    if (audioPreferenceSaveTimeoutRef.current) {
+      clearTimeout(audioPreferenceSaveTimeoutRef.current)
+      audioPreferenceSaveTimeoutRef.current = null
+    }
+    heroAudioPreferenceDirtyRef.current = false
+    lastPersistedSignatureRef.current = null
+    lastPersistedPayloadRef.current = null
+    setAudioPreferenceLoadedKey(null)
+  }, [heroAudioProfileKey])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined
+    }
+    let cancelled = false
+
+    supabase.auth
+      .getUser()
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) {
+          console.error('Failed to resolve viewer for audio preferences', error)
+          setViewerId(null)
+          return
+        }
+        setViewerId(data?.user?.id || null)
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Failed to resolve viewer for audio preferences', error)
+          setViewerId(null)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!heroAudioProfile) {
+      setSelectedHeroAudioTrackId(null)
+      setSelectedHeroAudioPresetId(null)
+      setHeroAudioManualOverride(false)
+      return
+    }
+
+    setSelectedHeroAudioTrackId((prev) => {
+      if (prev && heroAudioProfile.tracks?.some((track) => track.id === prev)) {
+        return prev
+      }
+      return heroAudioProfile.defaultTrackId || heroAudioProfile.tracks?.[0]?.id || null
+    })
+
+    setSelectedHeroAudioPresetId((prev) => {
+      if (prev && heroAudioProfile.presets?.some((preset) => preset.id === prev)) {
+        return prev
+      }
+      return heroAudioProfile.defaultPresetId || heroAudioProfile.presets?.[0]?.id || null
+    })
+
+    setHeroAudioManualOverride(false)
+  }, [
+    heroAudioProfile?.heroId,
+    heroAudioProfile?.defaultTrackId,
+    heroAudioProfile?.defaultPresetId,
+    heroAudioProfile?.tracks?.length,
+    heroAudioProfile?.presets?.length,
+  ])
+
   const heroAudioSourceLabel = useMemo(() => {
     if (!heroAudioProfile) {
       return ''
@@ -824,10 +1269,369 @@ export default function GameRoomView({
     }
   }, [heroAudioProfile])
 
+  const heroAudioActiveTrack = useMemo(() => {
+    if (!heroAudioProfile) {
+      return null
+    }
+
+    if (heroAudioProfile.tracks?.length) {
+      const selectedTrack = heroAudioProfile.tracks.find((track) => track.id === selectedHeroAudioTrackId)
+      return selectedTrack || heroAudioProfile.tracks[0]
+    }
+
+    if (heroAudioProfile.bgmUrl) {
+      return {
+        id: heroAudioProfile.defaultTrackId || 'primary-track',
+        label: `${heroAudioProfile.heroName || '브금'} 테마`,
+        url: heroAudioProfile.bgmUrl,
+        duration: heroAudioProfile.bgmDuration || null,
+        type: null,
+        presetId: null,
+      }
+    }
+
+    return null
+  }, [heroAudioProfile, selectedHeroAudioTrackId])
+
   const heroAudioDurationLabel = useMemo(
-    () => (heroAudioProfile?.bgmDuration ? formatDurationLabel(heroAudioProfile.bgmDuration) : null),
-    [heroAudioProfile?.bgmDuration],
+    () => (Number.isFinite(heroAudioActiveTrack?.duration) ? formatDurationLabel(heroAudioActiveTrack.duration) : null),
+    [heroAudioActiveTrack?.duration],
   )
+
+  const heroAudioTracks = heroAudioProfile?.tracks ?? []
+  const heroAudioPresets = heroAudioProfile?.presets ?? []
+  const heroAudioActivePreset = heroAudioPresets.find((preset) => preset.id === selectedHeroAudioPresetId) || null
+
+  const heroAudioEffectSnapshot = useMemo(
+    () => extractHeroAudioEffectSnapshot(heroAudioState),
+    [
+      heroAudioState?.eqEnabled,
+      heroAudioState?.equalizer?.high,
+      heroAudioState?.equalizer?.low,
+      heroAudioState?.equalizer?.mid,
+      heroAudioState?.reverbEnabled,
+      heroAudioState?.reverbDetail?.decay,
+      heroAudioState?.reverbDetail?.mix,
+      heroAudioState?.compressorEnabled,
+      heroAudioState?.compressorDetail?.ratio,
+      heroAudioState?.compressorDetail?.release,
+      heroAudioState?.compressorDetail?.threshold,
+    ],
+  )
+
+  const currentHeroAudioPreference = useMemo(() => {
+    if (!heroAudioEffectSnapshot) return null
+    return {
+      trackId: selectedHeroAudioTrackId || heroAudioActiveTrack?.id || null,
+      presetId: heroAudioManualOverride ? null : selectedHeroAudioPresetId || null,
+      manualOverride: heroAudioManualOverride,
+      eq: { ...heroAudioEffectSnapshot.eq },
+      reverb: { ...heroAudioEffectSnapshot.reverb },
+      compressor: { ...heroAudioEffectSnapshot.compressor },
+    }
+  }, [
+    heroAudioActiveTrack?.id,
+    heroAudioEffectSnapshot,
+    heroAudioManualOverride,
+    selectedHeroAudioPresetId,
+    selectedHeroAudioTrackId,
+  ])
+
+  const currentHeroAudioPreferenceSignature = useMemo(
+    () => (currentHeroAudioPreference ? JSON.stringify(currentHeroAudioPreference) : null),
+    [currentHeroAudioPreference],
+  )
+
+  const heroAudioEqSummary = useMemo(() => {
+    if (!heroAudioState?.equalizer) {
+      return '저 0dB · 중 0dB · 고 0dB'
+    }
+    return `저 ${formatDbLabel(heroAudioState.equalizer.low)} · 중 ${formatDbLabel(heroAudioState.equalizer.mid)} · 고 ${formatDbLabel(heroAudioState.equalizer.high)}`
+  }, [heroAudioState?.equalizer?.high, heroAudioState?.equalizer?.low, heroAudioState?.equalizer?.mid])
+
+  const heroAudioReverbSummary = useMemo(() => {
+    if (!heroAudioState?.reverbDetail) {
+      return '믹스 0% · 잔향 0.0s'
+    }
+    return `믹스 ${formatPercentLabel(heroAudioState.reverbDetail.mix)} · 잔향 ${formatSecondsLabel(heroAudioState.reverbDetail.decay)}`
+  }, [heroAudioState?.reverbDetail?.decay, heroAudioState?.reverbDetail?.mix])
+
+  const heroAudioCompressorSummary = useMemo(() => {
+    if (!heroAudioState?.compressorDetail) {
+      return '임계값 0dB · 비율 1.0:1 · 릴리즈 0ms'
+    }
+    return `임계값 ${formatDbLabel(heroAudioState.compressorDetail.threshold)} · 비율 ${formatRatioLabel(heroAudioState.compressorDetail.ratio)} · 릴리즈 ${formatMillisecondsLabel(heroAudioState.compressorDetail.release)}`
+  }, [
+    heroAudioState?.compressorDetail?.ratio,
+    heroAudioState?.compressorDetail?.release,
+    heroAudioState?.compressorDetail?.threshold,
+  ])
+
+  const applyLoadedHeroAudioPreference = useCallback(
+    (preference) => {
+      if (!heroAudioProfile) {
+        return { hadAdjustments: false, normalized: null }
+      }
+
+      const normalized = {
+        trackId: preference?.trackId || null,
+        presetId: preference?.presetId || null,
+        manualOverride: Boolean(preference?.manualOverride),
+        eq: normalizeEqSettings(preference?.eq),
+        reverb: normalizeReverbSettings(preference?.reverb),
+        compressor: normalizeCompressorSettings(preference?.compressor),
+      }
+
+      let hadAdjustments = false
+
+      if (normalized.trackId) {
+        if (heroAudioTracks.some((track) => track.id === normalized.trackId)) {
+          setSelectedHeroAudioTrackId(normalized.trackId)
+        } else {
+          hadAdjustments = true
+          const fallbackTrackId = heroAudioProfile.defaultTrackId || heroAudioTracks[0]?.id || null
+          setSelectedHeroAudioTrackId(fallbackTrackId || null)
+        }
+      }
+
+      const manualOverride = Boolean(normalized.manualOverride)
+      setHeroAudioManualOverride(manualOverride)
+
+      if (!manualOverride) {
+        if (normalized.presetId) {
+          if (heroAudioPresets.some((preset) => preset.id === normalized.presetId)) {
+            setSelectedHeroAudioPresetId(normalized.presetId)
+          } else {
+            hadAdjustments = true
+            if (
+              heroAudioProfile.defaultPresetId &&
+              heroAudioPresets.some((preset) => preset.id === heroAudioProfile.defaultPresetId)
+            ) {
+              setSelectedHeroAudioPresetId(heroAudioProfile.defaultPresetId)
+            } else if (heroAudioPresets.length) {
+              setSelectedHeroAudioPresetId(heroAudioPresets[0].id)
+            } else {
+              setSelectedHeroAudioPresetId(null)
+            }
+          }
+        } else if (!heroAudioPresets.length) {
+          setSelectedHeroAudioPresetId(null)
+        }
+      } else {
+        setSelectedHeroAudioPresetId(null)
+        if (audioManager) {
+          const eqSettings = normalizeEqSettings(normalized.eq)
+          audioManager.setEqEnabled(Boolean(eqSettings.enabled))
+          audioManager.setEqualizer({
+            low: eqSettings.low,
+            mid: eqSettings.mid,
+            high: eqSettings.high,
+          })
+
+          const reverbSettings = normalizeReverbSettings(normalized.reverb)
+          audioManager.setReverbEnabled(Boolean(reverbSettings.enabled))
+          audioManager.setReverbDetail({
+            mix: reverbSettings.mix,
+            decay: reverbSettings.decay,
+          })
+
+          const compressorSettings = normalizeCompressorSettings(normalized.compressor)
+          audioManager.setCompressorEnabled(Boolean(compressorSettings.enabled))
+          audioManager.setCompressorDetail({
+            threshold: compressorSettings.threshold,
+            ratio: compressorSettings.ratio,
+            release: compressorSettings.release,
+          })
+        }
+      }
+
+      return { hadAdjustments, normalized }
+    },
+    [audioManager, heroAudioPresets, heroAudioProfile, heroAudioTracks],
+  )
+
+  useEffect(() => {
+    if (!viewerId || !heroAudioProfileKey || !heroAudioProfile) {
+      return undefined
+    }
+    if (audioPreferenceLoadedKey === heroAudioProfileKey) {
+      return undefined
+    }
+
+    let cancelled = false
+
+    const loadPreference = async () => {
+      try {
+        const { data, error } = await withTable(supabase, 'rank_audio_preferences', (table) =>
+          supabase
+            .from(table)
+            .select(
+              'track_id, preset_id, manual_override, eq_settings, reverb_settings, compressor_settings',
+            )
+            .eq('owner_id', viewerId)
+            .eq('profile_key', heroAudioProfileKey)
+            .maybeSingle(),
+        )
+
+        if (cancelled) {
+          return
+        }
+
+        if (error && error.code !== 'PGRST116') {
+          console.error('Failed to load hero audio preference', error)
+        }
+
+        if (data) {
+          const normalizedRecord = normalizeAudioPreferenceRecord(data)
+          const { hadAdjustments, normalized } = applyLoadedHeroAudioPreference(normalizedRecord)
+          lastPersistedPayloadRef.current = normalized
+          lastPersistedSignatureRef.current = normalized ? JSON.stringify(normalized) : null
+          heroAudioPreferenceDirtyRef.current = Boolean(hadAdjustments)
+        } else {
+          lastPersistedPayloadRef.current = null
+          lastPersistedSignatureRef.current = null
+          heroAudioPreferenceDirtyRef.current = false
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load hero audio preference', error)
+        }
+      } finally {
+        if (!cancelled) {
+          setAudioPreferenceLoadedKey(heroAudioProfileKey)
+        }
+      }
+    }
+
+    loadPreference()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    applyLoadedHeroAudioPreference,
+    audioPreferenceLoadedKey,
+    heroAudioProfile,
+    heroAudioProfileKey,
+    viewerId,
+  ])
+
+  useEffect(() => {
+    if (!viewerId || !heroAudioProfileKey || !heroAudioProfile) {
+      return undefined
+    }
+    if (audioPreferenceLoadedKey !== heroAudioProfileKey) {
+      return undefined
+    }
+    if (!currentHeroAudioPreference || !currentHeroAudioPreferenceSignature) {
+      return undefined
+    }
+    if (!heroAudioPreferenceDirtyRef.current && !lastPersistedSignatureRef.current) {
+      return undefined
+    }
+    if (
+      !heroAudioPreferenceDirtyRef.current &&
+      lastPersistedSignatureRef.current === currentHeroAudioPreferenceSignature
+    ) {
+      return undefined
+    }
+
+    if (audioPreferenceSaveTimeoutRef.current) {
+      clearTimeout(audioPreferenceSaveTimeoutRef.current)
+      audioPreferenceSaveTimeoutRef.current = null
+    }
+
+    const payload = {
+      trackId: currentHeroAudioPreference.trackId || null,
+      presetId: currentHeroAudioPreference.presetId || null,
+      manualOverride: Boolean(currentHeroAudioPreference.manualOverride),
+      eq: { ...currentHeroAudioPreference.eq },
+      reverb: { ...currentHeroAudioPreference.reverb },
+      compressor: { ...currentHeroAudioPreference.compressor },
+    }
+
+    audioPreferenceSaveTimeoutRef.current = setTimeout(() => {
+      audioPreferenceSaveTimeoutRef.current = null
+      ;(async () => {
+        try {
+          const { error } = await withTable(supabase, 'rank_audio_preferences', (table) =>
+            supabase
+              .from(table)
+              .upsert(
+                {
+                  owner_id: viewerId,
+                  profile_key: heroAudioProfileKey,
+                  hero_id: heroAudioProfile.heroId,
+                  hero_name: heroAudioProfile.heroName || '',
+                  hero_source: heroAudioProfile.source || '',
+                  track_id: payload.trackId,
+                  preset_id: payload.presetId,
+                  manual_override: payload.manualOverride,
+                  eq_settings: payload.eq,
+                  reverb_settings: payload.reverb,
+                  compressor_settings: payload.compressor,
+                },
+                { onConflict: 'owner_id,profile_key' },
+              )
+              .select('id')
+              .maybeSingle(),
+          )
+
+          if (error) {
+            console.error('Failed to persist hero audio preference', error)
+            return
+          }
+
+          const previous = lastPersistedPayloadRef.current
+          const changedFields = diffAudioPreferenceChanges(previous, payload)
+          lastPersistedPayloadRef.current = payload
+          lastPersistedSignatureRef.current = currentHeroAudioPreferenceSignature
+          heroAudioPreferenceDirtyRef.current = false
+
+          if (changedFields.length) {
+            const eventResult = await withTable(supabase, 'rank_audio_events', (table) =>
+              supabase.from(table).insert({
+                owner_id: viewerId,
+                profile_key: heroAudioProfileKey,
+                hero_id: heroAudioProfile.heroId,
+                hero_name: heroAudioProfile.heroName || '',
+                hero_source: heroAudioProfile.source || '',
+                event_type: 'preference.updated',
+                details: {
+                  changedFields,
+                  preference: payload,
+                },
+              }),
+            )
+            if (eventResult?.error) {
+              console.error('Failed to record hero audio preference event', eventResult.error)
+            }
+          }
+        } catch (error) {
+          console.error('Failed to persist hero audio preference', error)
+        }
+      })()
+    }, 360)
+
+    return () => {
+      if (audioPreferenceSaveTimeoutRef.current) {
+        clearTimeout(audioPreferenceSaveTimeoutRef.current)
+        audioPreferenceSaveTimeoutRef.current = null
+      }
+    }
+  }, [
+    audioPreferenceLoadedKey,
+    currentHeroAudioPreference,
+    currentHeroAudioPreferenceSignature,
+    heroAudioManualOverride,
+    heroAudioProfile,
+    heroAudioProfileKey,
+    viewerId,
+  ])
+
+  const heroAudioPresetLabel = heroAudioManualOverride
+    ? '커스텀'
+    : heroAudioActivePreset?.label || (heroAudioPresets.length ? '기본 프리셋' : '기본 설정')
 
   const heroAudioVolumePercent = useMemo(() => {
     const fromState = Number.isFinite(Number(heroAudioState?.volume))
@@ -902,15 +1706,98 @@ export default function GameRoomView({
     audioManager.setVolume(0)
   }, [audioManager])
 
+  const handleSelectHeroAudioTrack = useCallback(
+    (trackId) => {
+      if (!heroAudioProfile) return
+      const nextTrack = heroAudioTracks.find((track) => track.id === trackId) || null
+      if (!nextTrack) return
+      heroAudioPreferenceDirtyRef.current = true
+      setSelectedHeroAudioTrackId(nextTrack.id)
+      if (!heroAudioManualOverride && nextTrack.presetId) {
+        const matchingPreset = heroAudioPresets.find((preset) => preset.id === nextTrack.presetId) || null
+        if (matchingPreset) {
+          setSelectedHeroAudioPresetId(matchingPreset.id)
+        }
+      }
+    },
+    [heroAudioManualOverride, heroAudioPresets, heroAudioProfile, heroAudioTracks],
+  )
+
+  const handleSelectHeroAudioPreset = useCallback(
+    (presetId) => {
+      if (!heroAudioProfile) return
+      if (!presetId) {
+        heroAudioPreferenceDirtyRef.current = true
+        setHeroAudioManualOverride(false)
+        setSelectedHeroAudioPresetId(null)
+        return
+      }
+      if (!heroAudioPresets.some((preset) => preset.id === presetId)) {
+        return
+      }
+      heroAudioPreferenceDirtyRef.current = true
+      setHeroAudioManualOverride(false)
+      setSelectedHeroAudioPresetId(presetId)
+    },
+    [heroAudioPresets, heroAudioProfile],
+  )
+
+  const handleResetHeroAudioPreset = useCallback(() => {
+    if (!heroAudioProfile) {
+      setSelectedHeroAudioPresetId(null)
+      setHeroAudioManualOverride(false)
+      return
+    }
+    heroAudioPreferenceDirtyRef.current = true
+    setHeroAudioManualOverride(false)
+    if (heroAudioProfile.defaultPresetId && heroAudioPresets.some((preset) => preset.id === heroAudioProfile.defaultPresetId)) {
+      setSelectedHeroAudioPresetId(heroAudioProfile.defaultPresetId)
+      return
+    }
+    if (heroAudioPresets.length) {
+      setSelectedHeroAudioPresetId(heroAudioPresets[0].id)
+      return
+    }
+    setSelectedHeroAudioPresetId(null)
+  }, [heroAudioPresets, heroAudioProfile])
+
+  const handleToggleHeroEq = useCallback(() => {
+    if (!audioManager) return
+    setHeroAudioManualOverride(true)
+    setSelectedHeroAudioPresetId(null)
+    heroAudioPreferenceDirtyRef.current = true
+    const nextEnabled = !(heroAudioState?.eqEnabled ?? false)
+    audioManager.setEqEnabled(nextEnabled)
+  }, [audioManager, heroAudioState?.eqEnabled])
+
+  const handleToggleHeroReverb = useCallback(() => {
+    if (!audioManager) return
+    setHeroAudioManualOverride(true)
+    setSelectedHeroAudioPresetId(null)
+    heroAudioPreferenceDirtyRef.current = true
+    const nextEnabled = !(heroAudioState?.reverbEnabled ?? false)
+    audioManager.setReverbEnabled(nextEnabled)
+  }, [audioManager, heroAudioState?.reverbEnabled])
+
+  const handleToggleHeroCompressor = useCallback(() => {
+    if (!audioManager) return
+    setHeroAudioManualOverride(true)
+    setSelectedHeroAudioPresetId(null)
+    heroAudioPreferenceDirtyRef.current = true
+    const nextEnabled = !(heroAudioState?.compressorEnabled ?? false)
+    audioManager.setCompressorEnabled(nextEnabled)
+  }, [audioManager, heroAudioState?.compressorEnabled])
+
   useEffect(() => {
     if (!audioManager) {
       return
     }
 
-    const nextUrl = heroAudioProfile?.bgmUrl || null
+    const nextUrl = heroAudioActiveTrack?.url || null
+    const nextHeroId = heroAudioProfile?.heroId || null
 
     if (!nextUrl) {
-      currentAudioTrackRef.current = { url: null, heroId: null }
+      currentAudioTrackRef.current = { url: null, heroId: null, trackId: null }
       audioManager.setEqEnabled(false)
       audioManager.setReverbEnabled(false)
       audioManager.setCompressorEnabled(false)
@@ -921,31 +1808,56 @@ export default function GameRoomView({
 
     const current = currentAudioTrackRef.current
     const shouldReload =
-      current.url !== nextUrl || current.heroId !== (heroAudioProfile?.heroId || null)
+      current.url !== nextUrl || current.heroId !== nextHeroId || current.trackId !== (heroAudioActiveTrack?.id || null)
 
     if (shouldReload) {
       currentAudioTrackRef.current = {
         url: nextUrl,
-        heroId: heroAudioProfile?.heroId || null,
+        heroId: nextHeroId,
+        trackId: heroAudioActiveTrack?.id || null,
       }
       const baselineVolume = audioBaselineRef.current?.volume
       if (Number.isFinite(baselineVolume)) {
         audioManager.setVolume(baselineVolume)
       }
       audioManager.setLoop(true)
-      audioManager.setEqEnabled(false)
-      audioManager.setEqualizer({ low: 0, mid: 0, high: 0 })
-      audioManager.setReverbEnabled(false)
-      audioManager.setReverbDetail({ mix: 0.3, decay: 1.8 })
-      audioManager.setCompressorEnabled(false)
-      audioManager.setCompressorDetail({ threshold: -28, ratio: 2.5, release: 0.25 })
+
+      const eqPreset = heroAudioProfile?.eq || DEFAULT_EQ_SETTINGS
+      audioManager.setEqEnabled(Boolean(eqPreset.enabled))
+      audioManager.setEqualizer({
+        low: Number.isFinite(eqPreset.low) ? eqPreset.low : 0,
+        mid: Number.isFinite(eqPreset.mid) ? eqPreset.mid : 0,
+        high: Number.isFinite(eqPreset.high) ? eqPreset.high : 0,
+      })
+
+      const reverbPreset = heroAudioProfile?.reverb || DEFAULT_REVERB_SETTINGS
+      audioManager.setReverbEnabled(Boolean(reverbPreset.enabled))
+      audioManager.setReverbDetail({
+        mix: Number.isFinite(reverbPreset.mix) ? reverbPreset.mix : DEFAULT_REVERB_SETTINGS.mix,
+        decay: Number.isFinite(reverbPreset.decay) ? reverbPreset.decay : DEFAULT_REVERB_SETTINGS.decay,
+      })
+
+      const compressorPreset = heroAudioProfile?.compressor || DEFAULT_COMPRESSOR_SETTINGS
+      audioManager.setCompressorEnabled(Boolean(compressorPreset.enabled))
+      audioManager.setCompressorDetail({
+        threshold: Number.isFinite(compressorPreset.threshold)
+          ? compressorPreset.threshold
+          : DEFAULT_COMPRESSOR_SETTINGS.threshold,
+        ratio: Number.isFinite(compressorPreset.ratio)
+          ? compressorPreset.ratio
+          : DEFAULT_COMPRESSOR_SETTINGS.ratio,
+        release: Number.isFinite(compressorPreset.release)
+          ? compressorPreset.release
+          : DEFAULT_COMPRESSOR_SETTINGS.release,
+      })
+
       audioManager.setEnabled(true, { resume: false })
       audioManager
         .loadHeroTrack({
-          heroId: heroAudioProfile?.heroId || null,
+          heroId: nextHeroId,
           heroName: heroAudioProfile?.heroName || '',
           trackUrl: nextUrl,
-          duration: heroAudioProfile?.bgmDuration || 0,
+          duration: heroAudioActiveTrack?.duration || heroAudioProfile?.bgmDuration || 0,
           autoPlay: true,
           loop: true,
         })
@@ -960,7 +1872,51 @@ export default function GameRoomView({
     if (!snapshot.isPlaying) {
       audioManager.play().catch(() => {})
     }
-  }, [audioManager, heroAudioProfile])
+  }, [audioManager, heroAudioActiveTrack, heroAudioProfile])
+
+  useEffect(() => {
+    if (!audioManager || !heroAudioProfile || heroAudioManualOverride) {
+      return
+    }
+
+    const preset = selectedHeroAudioPresetId
+      ? heroAudioProfile.presets?.find((entry) => entry.id === selectedHeroAudioPresetId) || null
+      : null
+
+    const eqPreset = preset?.eq || heroAudioProfile.eq || DEFAULT_EQ_SETTINGS
+    audioManager.setEqEnabled(Boolean(eqPreset.enabled))
+    audioManager.setEqualizer({
+      low: Number.isFinite(eqPreset.low) ? eqPreset.low : 0,
+      mid: Number.isFinite(eqPreset.mid) ? eqPreset.mid : 0,
+      high: Number.isFinite(eqPreset.high) ? eqPreset.high : 0,
+    })
+
+    const reverbPreset = preset?.reverb || heroAudioProfile.reverb || DEFAULT_REVERB_SETTINGS
+    audioManager.setReverbEnabled(Boolean(reverbPreset.enabled))
+    audioManager.setReverbDetail({
+      mix: Number.isFinite(reverbPreset.mix) ? reverbPreset.mix : DEFAULT_REVERB_SETTINGS.mix,
+      decay: Number.isFinite(reverbPreset.decay) ? reverbPreset.decay : DEFAULT_REVERB_SETTINGS.decay,
+    })
+
+    const compressorPreset = preset?.compressor || heroAudioProfile.compressor || DEFAULT_COMPRESSOR_SETTINGS
+    audioManager.setCompressorEnabled(Boolean(compressorPreset.enabled))
+    audioManager.setCompressorDetail({
+      threshold: Number.isFinite(compressorPreset.threshold)
+        ? compressorPreset.threshold
+        : DEFAULT_COMPRESSOR_SETTINGS.threshold,
+      ratio: Number.isFinite(compressorPreset.ratio)
+        ? compressorPreset.ratio
+        : DEFAULT_COMPRESSOR_SETTINGS.ratio,
+      release: Number.isFinite(compressorPreset.release)
+        ? compressorPreset.release
+        : DEFAULT_COMPRESSOR_SETTINGS.release,
+    })
+  }, [
+    audioManager,
+    heroAudioManualOverride,
+    heroAudioProfile,
+    selectedHeroAudioPresetId,
+  ])
 
   const heroStats = useMemo(() => {
     const rankIndex = myEntry ? participants.findIndex((participant) => participant.id === myEntry.id) : -1
@@ -2335,13 +3291,51 @@ export default function GameRoomView({
                       </span>
                     </div>
                     <p className={styles.heroAudioTrack}>
-                      {heroAudioProfile.heroName
-                        ? `${heroAudioProfile.heroName} 테마`
-                        : '브금 트랙'}
+                      <span className={styles.heroAudioTrackTitle}>
+                        {heroAudioActiveTrack?.label
+                          || (heroAudioProfile.heroName ? `${heroAudioProfile.heroName} 테마` : '브금 트랙')}
+                      </span>
+                      {heroAudioActiveTrack?.type ? (
+                        <span className={styles.heroAudioTrackBadge}>{heroAudioActiveTrack.type}</span>
+                      ) : null}
                       {heroAudioDurationDisplay ? (
                         <span className={styles.heroAudioDuration}>{heroAudioDurationDisplay}</span>
                       ) : null}
                     </p>
+                    {heroAudioTracks.length > 1 ? (
+                      <div className={styles.heroAudioPlaylist}>
+                        <div className={styles.heroAudioPlaylistHeader}>
+                          <span className={styles.heroAudioSubLabel}>재생목록</span>
+                          <span className={styles.heroAudioPlaylistMeta}>{heroAudioTracks.length}곡</span>
+                        </div>
+                        <div className={styles.heroAudioTrackButtons}>
+                          {heroAudioTracks.map((track) => {
+                            const active = heroAudioActiveTrack?.id === track.id
+                            return (
+                              <button
+                                key={track.id}
+                                type="button"
+                                className={`${styles.heroAudioTrackButton} ${
+                                  active ? styles.heroAudioTrackButtonActive : ''
+                                }`.trim()}
+                                onClick={() => handleSelectHeroAudioTrack(track.id)}
+                                aria-pressed={active}
+                              >
+                                <span className={styles.heroAudioTrackButtonLabel}>{track.label}</span>
+                                {track.type ? (
+                                  <span className={styles.heroAudioTrackButtonBadge}>{track.type}</span>
+                                ) : null}
+                                {Number.isFinite(track.duration) ? (
+                                  <span className={styles.heroAudioTrackButtonDuration}>
+                                    {formatDurationLabel(track.duration)}
+                                  </span>
+                                ) : null}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
                     <div className={styles.heroAudioControls}>
                       <button
                         type="button"
@@ -2397,6 +3391,113 @@ export default function GameRoomView({
                         <span className={styles.heroAudioProgressTime}>{heroAudioDurationDisplay}</span>
                       </div>
                     ) : null}
+                    <div className={styles.heroAudioEffects}>
+                      <div className={styles.heroAudioEffectRow}>
+                        <button
+                          type="button"
+                          className={`${styles.heroAudioEffectButton} ${
+                            heroAudioState?.eqEnabled ? styles.heroAudioEffectButtonActive : ''
+                          }`.trim()}
+                          onClick={handleToggleHeroEq}
+                          aria-pressed={heroAudioState?.eqEnabled ?? false}
+                        >
+                          EQ {heroAudioState?.eqEnabled ? '켜짐' : '꺼짐'}
+                        </button>
+                        <span className={styles.heroAudioEffectSummary}>{heroAudioEqSummary}</span>
+                      </div>
+                      <div className={styles.heroAudioEffectRow}>
+                        <button
+                          type="button"
+                          className={`${styles.heroAudioEffectButton} ${
+                            heroAudioState?.reverbEnabled ? styles.heroAudioEffectButtonActive : ''
+                          }`.trim()}
+                          onClick={handleToggleHeroReverb}
+                          aria-pressed={heroAudioState?.reverbEnabled ?? false}
+                        >
+                          리버브 {heroAudioState?.reverbEnabled ? '켜짐' : '꺼짐'}
+                        </button>
+                        <span className={styles.heroAudioEffectSummary}>{heroAudioReverbSummary}</span>
+                      </div>
+                      <div className={styles.heroAudioEffectRow}>
+                        <button
+                          type="button"
+                          className={`${styles.heroAudioEffectButton} ${
+                            heroAudioState?.compressorEnabled ? styles.heroAudioEffectButtonActive : ''
+                          }`.trim()}
+                          onClick={handleToggleHeroCompressor}
+                          aria-pressed={heroAudioState?.compressorEnabled ?? false}
+                        >
+                          컴프레서 {heroAudioState?.compressorEnabled ? '켜짐' : '꺼짐'}
+                        </button>
+                        <span className={styles.heroAudioEffectSummary}>{heroAudioCompressorSummary}</span>
+                      </div>
+                    </div>
+                    <div className={styles.heroAudioPresetSection}>
+                      <div className={styles.heroAudioPresetHeader}>
+                        <span className={styles.heroAudioSubLabel}>프리셋</span>
+                        <div className={styles.heroAudioPresetStatus}>
+                          <span
+                            className={`${styles.heroAudioPresetBadge} ${
+                              heroAudioManualOverride ? styles.heroAudioPresetBadgeWarning : ''
+                            }`.trim()}
+                          >
+                            {heroAudioPresetLabel}
+                          </span>
+                          {heroAudioManualOverride ? (
+                            <button
+                              type="button"
+                              className={styles.heroAudioResetButton}
+                              onClick={handleResetHeroAudioPreset}
+                            >
+                              기본값 복원
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className={styles.heroAudioPresetList}>
+                        <button
+                          type="button"
+                          className={`${styles.heroAudioPresetButton} ${
+                            !heroAudioManualOverride && !selectedHeroAudioPresetId
+                              ? styles.heroAudioPresetButtonActive
+                              : ''
+                          }`.trim()}
+                          onClick={() => handleSelectHeroAudioPreset(null)}
+                          aria-pressed={!heroAudioManualOverride && !selectedHeroAudioPresetId}
+                        >
+                          <span className={styles.heroAudioPresetLabel}>기본 설정</span>
+                          <span className={styles.heroAudioPresetTags}>캐릭터 기준</span>
+                        </button>
+                        {heroAudioPresets.map((preset) => {
+                          const active = !heroAudioManualOverride && selectedHeroAudioPresetId === preset.id
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              className={`${styles.heroAudioPresetButton} ${
+                                active ? styles.heroAudioPresetButtonActive : ''
+                              }`.trim()}
+                              onClick={() => handleSelectHeroAudioPreset(preset.id)}
+                              aria-pressed={active}
+                            >
+                              <span className={styles.heroAudioPresetLabel}>{preset.label}</span>
+                              {preset.tags?.length ? (
+                                <span className={styles.heroAudioPresetTags}>{preset.tags.join(' · ')}</span>
+                              ) : null}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {heroAudioManualOverride ? (
+                        <p className={styles.heroAudioPresetHint}>
+                          수동 조정 상태입니다. "기본값 복원"을 누르면 캐릭터가 추천한 효과가 다시 적용됩니다.
+                        </p>
+                      ) : heroAudioPresets.length === 0 ? (
+                        <p className={styles.heroAudioPresetHint}>
+                          등록된 프리셋이 없어 기본 효과가 적용됩니다.
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                 )}
               </div>

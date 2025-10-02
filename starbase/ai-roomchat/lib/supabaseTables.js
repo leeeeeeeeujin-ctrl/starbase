@@ -12,6 +12,8 @@ const FALLBACK_TABLES = {
   rank_room_slots: ['rank_room_slots'],
   rank_room_participants: ['rank_room_participants'],
   rank_match_queue: ['rank_match_queue'],
+  rank_audio_preferences: ['rank_audio_preferences'],
+  rank_audio_events: ['rank_audio_events'],
 }
 
 const resolvedTableCache = {}

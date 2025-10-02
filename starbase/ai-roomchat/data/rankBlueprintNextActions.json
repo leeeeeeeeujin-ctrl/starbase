@@ -32,11 +32,11 @@
     },
     {
       "order": 2,
-      "summary": "히어로 브금 카드에 프리셋/EQ 토글과 재생목록 전환 UI를 더해 운영자가 상황에 맞춰 음향 세팅을 바로 조정할 수 있도록 합니다.",
+      "summary": "브금 프리셋·EQ 변경 로그를 관리자 포털에서 기간·담당자 기준으로 필터링하고 CSV로 내보낼 수 있도록 Telemetry API와 모니터 UI를 확장합니다.",
       "owner": "프론트 (라라)",
       "ownerKey": "프론트-라라",
-      "targetDateISO": "2025-11-20",
-      "targetDateDisplay": "2025-11-20",
+      "targetDateISO": "2025-11-24",
+      "targetDateDisplay": "2025-11-24",
       "priority": {
         "label": "P1 (오디오 튜닝)",
         "short": "P1",
@@ -44,15 +44,15 @@
         "sortKey": 1
       },
       "effort": {
-        "label": "프론트 3일 (1명·UI/오디오)",
-        "personDays": 3
+        "label": "프론트 2.5일 (1명·UI/백엔드)",
+        "personDays": 2.5
       },
       "timing": {
-        "label": "2025-11-20",
-        "badge": "D-49",
+        "label": "2025-11-24",
+        "badge": "D-53",
         "state": "scheduled",
-        "daysFromToday": 49,
-        "daysFromSnapshot": 12,
+        "daysFromToday": 53,
+        "daysFromSnapshot": 16,
         "computedAtISO": "2025-10-02",
         "isOverdue": false,
         "overdueDays": 0
