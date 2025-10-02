@@ -14,12 +14,14 @@
    - 서버 오류가 발생하면 500을 반환하며 콘솔 로그로 세부 정보를 남깁니다.
    - 삽입 이후 `lib/rank/cooldownAutomation.js`를 호출해 Slack/Webhook 경보와 키 교체 자동화 엔드포인트를 순차적으로 실행합니다.
    - 경보 또는 자동화가 한 번이라도 성공하면 `notified_at`을 현재 시각으로 갱신하고, 결과는 `metadata.cooldownAutomation`에 기록됩니다.
+   - 매 시도 결과는 `rank_api_key_audit` 감사 테이블에도 적재돼 상태(`pending`/`retrying`/`succeeded`/`manual_override`), 재시도 횟수, 런북 링크 첨부 여부, Slack/Webhook 응답 스냅샷을 장기적으로 보관합니다.
    - 각 호출의 응답 본문·JSON·HTTP 상태·소요 시간·에러 스택이 `metadata.cooldownAutomation.lastResult`에 포함되므로 재시도 정책을 세밀하게 튜닝할 수 있습니다.
    - 회수 다이제스트 실행 여부와 관계없이 Slack/Webhook 알림에 런북 링크가 첨부됐는지 `metadata.cooldownAutomation.lastDocLinkAttached` 및 `docLinkAttachmentCount`로 누적 집계되며, 대시보드 카드에서도 바로 확인할 수 있습니다.
 
 3. **수동 다이제스트 (백업 경로)**
    - 실시간 경보가 실패한(즉, `notified_at IS NULL`) 레코드를 주기적으로 확인하고 필요할 때 `/api/rank/cooldown-digest`를 수동 호출합니다.
    - 호출 시 `runCooldownAutomation`이 Slack/Webhook → 자동 키 교체 순으로 재시도하며, 성공하면 `notified_at`을 현재 시각으로 업데이트합니다.
+   - 각 다이제스트 실행 역시 `rank_api_key_audit`에 기록돼 수동 회수 윈도우, 호출 메소드, 남은 노트와 함께 감사 로그로 남습니다.
    - 반복 작업이 필요하다면 사내에서 운영 중인 별도 스케줄러나 배치 파이프라인에 엔드포인트 호출을 추가하세요(공용 유료 Cron 서비스는 사용하지 않습니다).
    - 응답은 `processed`, `delivered`, `windowMinutes` 정보를 JSON으로 반환합니다.
 
@@ -38,6 +40,14 @@
   - 필터 컨트롤에서 전투 로그 표본 크기(최근 100~1000건)와 특정 게임·시즌을 선택해 샘플을 좁혀 보면 운영 팀이 시즌 이벤트나 개별 게임의 문구 품질을 독립적으로 비교할 수 있습니다.
   - 제공자 테이블과 최근 자동화 시도 목록에는 CSV 내보내기 버튼이 추가돼 현재 표시된 지표를 그대로 내려받을 수 있습니다. 내보내기 시 대시보드에서 선택한 `latestLimit` 값이 그대로 적용돼 운영팀과 QA가 동일한 샘플을 공유할 수 있습니다.
   - 자주 사용하는 조합은 대시보드 내 즐겨찾기 입력에서 저장할 수 있고, 복사 버튼으로 현재/즐겨찾기 필터를 공유 링크로 만들 수 있어 팀원 간 재현성이 높아집니다.
+
+## 감사 로그 스냅샷
+
+- `rank_api_key_audit` 테이블은 각 경보 실행(실시간·다이제스트) 결과를 시계열로 보관합니다.
+- 컬럼 구성: `status`, `retry_count`, `last_attempt_at`, `next_retry_eta`, `doc_link_attached`, `automation_payload`, `digest_payload`, `notes`.
+- `automation_payload`에는 Slack/Webhook HTTP 스냅샷, 자동 키 회전 응답, 런북 링크 첨부 여부가 JSON으로 기록됩니다.
+- `digest_payload`는 수동 호출 창(`windowMinutes`), limit, HTTP 메서드를 담아 어떤 재시도 창에서 복구가 이루어졌는지 추적할 수 있게 합니다.
+- 대시보드의 회수 타임라인, 운영 회고, 회수 실패 분석에서 이 테이블을 그대로 참조해 재시도 흐름과 문서 첨부 이력을 동시에 검토할 수 있습니다.
 
 ## 운영 절차
 

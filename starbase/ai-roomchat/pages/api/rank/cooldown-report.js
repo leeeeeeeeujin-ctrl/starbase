@@ -4,6 +4,7 @@ import {
   mergeCooldownMetadata,
   runCooldownAutomation,
 } from '@/lib/rank/cooldownAutomation'
+import { recordCooldownAuditEntry } from '@/lib/rank/cooldownAudit'
 
 function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -152,6 +153,17 @@ export default async function handler(req, res) {
       if (updateError) {
         console.error('cooldown-report metadata update failed:', updateError)
       }
+
+      await recordCooldownAuditEntry({
+        cooldownId: row.id,
+        automationSummary,
+        metadata,
+        context: {
+          source: 'report',
+          method: req.method,
+          notes: insertPayload.note,
+        },
+      })
 
       return res.status(automationSummary.triggered ? 202 : 200).json({
         recorded: true,

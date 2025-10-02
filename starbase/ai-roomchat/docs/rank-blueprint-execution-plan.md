@@ -199,6 +199,11 @@
 - `useGameRoom`이 역할별 참가자를 정렬·집계해 상위 5명 데이터를 제공함으로써 메인 룸이 추가 쿼리 없이 리더보드를 노출할 수 있게 됐습니다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L830-L907】
 - `GameRoomView`에 역할별 리더보드 섹션과 전용 스타일을 추가해 모바일 레이아웃에서도 각 역할의 상위 선수와 통계를 즉시 확인할 수 있습니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L915-L1007】【F:starbase/ai-roomchat/components/rank/GameRoomView.module.css†L264-L348】
 
+### 진행 현황 메모 (2025-11-08 추가)
+
+- `/api/rank/cooldown-report`와 `/api/rank/cooldown-digest`가 `rank_api_key_audit` 감사 로그를 직접 적재해 자동화 시도·재시도 윈도우·런북 링크 첨부 여부를 한 테이블에서 추적할 수 있게 됐습니다.【F:pages/api/rank/cooldown-report.js†L15-L123】【F:pages/api/rank/cooldown-digest.js†L11-L147】【F:lib/rank/cooldownAudit.js†L1-L118】
+- 운영 가드 단계의 남은 TODO였던 감사 로깅이 코드에 연결되면서 문서상의 5시간 쿨다운 공유 흐름이 실서비스 경보와 동기화됐습니다.【F:docs/rank-blueprint-progress-2025-11-06.md†L9-L13】【F:docs/rank-blueprint-overview.md†L32-L70】
+
 느낀 점: 메인 룸에서 바로 역할별 순위를 확인할 수 있으니 남은 UI 정리가 한층 수월해질 것 같아 작업 내내 보람찼습니다.
 추가로 필요한 점: 시즌 전체나 최근 경기 기준의 통합 리더보드를 Drawer에 통합해 모드별 비교도 가능하도록 후속 설계를 해야 합니다.
 진행사항: `useGameRoom` 파생 데이터를 확장하고 메인 룸 UI에 리더보드 패널을 도입했으며, 실행 플랜에 이번 진척을 기록했습니다.

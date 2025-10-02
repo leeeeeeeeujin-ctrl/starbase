@@ -65,6 +65,13 @@
 | DC-02 | `/api/rank/play` 재시작 — 캐주얼 파티 복귀 | 1. 캐주얼 세션 종료 직후 `/rank/[id]/casual` 진입<br>2. `/api/rank/play` 호출 | 응답 본문에 `sessionReuse: true`, `historyVisibility: "inherit"`가 포함되고, `rank_turns.is_visible` 값이 유지됨 |
 | DC-03 | 재시작 실패 롤백 | 1. DC-01과 동일한 흐름<br>2. `/api/rank/play`가 500 반환하도록 API 키 고갈 상황 모킹 | `rank_match_queue` 엔트리가 `queued`로 복구되고, `rank_api_key_cooldowns`에 실패 원인 기록 + Slack 경보 발송 |
 
+### 2.7 운영 가드 — 쿨다운 감사 로그
+
+| ID | 시나리오 | 단계 | 기대 결과 |
+| --- | --- | --- | --- |
+| OPS-01 | API 키 쿨다운 자동화 실행 후 감사 로그 확인 | `/api/rank/cooldown-report` 호출 → Slack/Webhook 실패/성공 케이스 모킹 | `rank_api_key_audit`에 status, retry_count, doc_link_attached, automation_payload가 저장되고, Telemetry 대시보드에서 감사 로그 요약이 노출 |
+| OPS-02 | 다이제스트 재시도 감사 로그 확인 | `notified_at IS NULL` 상태에서 `/api/rank/cooldown-digest?since_minutes=60` 호출 | 감사 로그 `digest_payload`에 windowMinutes·limit·method가 기록되고, 성공 시 status가 `succeeded`, 실패 시 `retrying`으로 남음 |
+
 ## 3. 자동화 및 회귀 테스트 제안
 
 1. **API 통합 테스트 (Node + Supabase 테스트 DB)**
@@ -158,6 +165,7 @@ flowchart LR
 - [ ] 오디오 프리셋 적용/복구 QA 체크리스트 수행
 - [ ] 새 참가자 60초 파악 시간 UI 확인
 - [ ] 듀오/캐주얼 재시작 시나리오(DC-01~03) 실행 및 로그 검증
+- [ ] API 키 쿨다운 감사 로그(OPS-01~02) 검증
 - [ ] 히스토리 요약/가시성 플래그(LOG-04) 검증 및 세션 응답 확인
 
 ---

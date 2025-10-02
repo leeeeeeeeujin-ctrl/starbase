@@ -4,6 +4,7 @@ import {
   mergeCooldownMetadata,
   runCooldownAutomation,
 } from '@/lib/rank/cooldownAutomation'
+import { recordCooldownAuditEntry } from '@/lib/rank/cooldownAudit'
 
 function parseRequestPayload(req) {
   if (req.method === 'GET') {
@@ -130,6 +131,19 @@ export default async function handler(req, res) {
             error: updateError,
           })
         }
+
+        await recordCooldownAuditEntry({
+          cooldownId: row.id,
+          automationSummary,
+          metadata,
+          context: {
+            source: 'digest',
+            method: req.method,
+            windowMinutes: sinceMinutes,
+            limit,
+            notes: row.note,
+          },
+        })
       }
     }
 

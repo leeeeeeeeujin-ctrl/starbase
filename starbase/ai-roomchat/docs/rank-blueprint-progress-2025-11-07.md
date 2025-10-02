@@ -36,6 +36,7 @@
 - 쿨다운 Telemetry API에 CSV 포맷(`section=providers|attempts`)을 추가하고 대시보드 패널에서 바로 내보낼 수 있는 버튼을 배치해 운영 보고를 위한 청사진 TODO를 정리했습니다.
 - `rank_api_key_audit` 테이블 초안을 정리해 만료 알림/회복 과정에서 발생한 회수 이력을 JSON으로 보관하도록 정의하고, Edge Function 재시도 로그와 어떤 필드를 교차 참조할지 문서화했습니다.
 - `/api/rank/run-turn`·`/api/rank/log-turn` API에 `is_visible`·`summary_payload` 적재 로직을 연결하고, 세션 히스토리 응답에 요약 데이터·숨김 카운트를 노출하도록 해 단계 2 로그 파이프라인 요구사항을 실제 코드에 반영했습니다.
+- `/api/rank/cooldown-report`와 `/api/rank/cooldown-digest`가 쿨다운 자동화 결과를 `rank_api_key_audit` 감사 테이블에 적재하도록 확장돼 운영 가드 단계의 남은 TODO를 해소했습니다.
 
 ### Live Timeline Workflow (2025-11-07 업데이트)
 - **작성 책임**: 세션 진행자가 `Session Timeline` 표에 즉시 메모를 추가하고, 30분 이내에 QA/운영 협업자가 검토 메모를 덧붙입니다.
