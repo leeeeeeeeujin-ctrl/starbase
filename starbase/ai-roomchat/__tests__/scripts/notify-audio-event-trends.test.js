@@ -9,6 +9,8 @@ const {
   detectAnomaly,
   summariseHeroDistribution,
   buildDistributionSummary,
+  describeFilters,
+  describeSlack,
 } = require('../../scripts/notify-audio-event-trends')
 
 describe('notify-audio-event-trends helpers', () => {
@@ -133,5 +135,47 @@ describe('notify-audio-event-trends helpers', () => {
     expect(distribution.total).toBe(12)
     expect(distribution.lines[0]).toContain('히어로 A')
     expect(buildDistributionSummary(distribution)).toContain('• 히어로 A')
+  })
+
+  it('includes subscription highlights in Slack payload', () => {
+    const payload = buildSlackPayload({
+      buckets: [],
+      summary: null,
+      lookbackWeeks: 4,
+      generatedAt: new Date('2025-10-10T12:00:00Z'),
+      anomaly: null,
+      distribution: null,
+      subscriptions: [
+        {
+          label: 'Ops Hero',
+          notes: '주간 점검',
+          count: 8,
+          meetsThreshold: true,
+          filters: { ownerId: 'owner-1', eventTypes: ['preset.update'] },
+          slack: { channel: '#ops', mention: '@ops', minEvents: 5, lookbackWeeks: 4, alwaysInclude: false },
+          anomaly: { badge: '🔺 급증 감지' },
+        },
+      ],
+    })
+
+    const subscriptionSection = payload.blocks.find(
+      (block) => block.type === 'section' && block.text.text.includes('Ops Hero'),
+    )
+    expect(subscriptionSection.text.text).toContain('Ops Hero')
+    expect(subscriptionSection.text.text).toContain('급증 감지')
+    expect(subscriptionSection.text.text).toContain('#ops')
+  })
+
+  it('summarises filters and slack metadata for subscriptions', () => {
+    const filtersText = describeFilters({ ownerId: 'owner-1', eventTypes: ['preset.update'], search: 'bgm' })
+    expect(filtersText).toContain('owner owner-1')
+    expect(filtersText).toContain('type preset.update')
+    expect(filtersText).toContain('검색 "bgm"')
+
+    const slackText = describeSlack({ channel: '#ops', mention: '@qa', minEvents: 3, lookbackWeeks: 6, alwaysInclude: true })
+    expect(slackText).toContain('#ops')
+    expect(slackText).toContain('@qa')
+    expect(slackText).toContain('임계 3건 / 6주')
+    expect(slackText).toContain('항상 포함')
   })
 })

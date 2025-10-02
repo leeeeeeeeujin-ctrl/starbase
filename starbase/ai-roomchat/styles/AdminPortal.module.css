@@ -843,6 +843,240 @@
   color: rgba(200, 210, 255, 0.78);
 }
 
+.audioEventsPreferenceBoard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.6rem;
+}
+
+.audioEventsPreferenceColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-radius: 18px;
+  background: rgba(20, 24, 48, 0.55);
+  border: 1px solid rgba(116, 137, 255, 0.28);
+  box-shadow: 0 18px 36px rgba(6, 10, 35, 0.45);
+  backdrop-filter: blur(18px);
+}
+
+.audioEventsPreferenceHeader h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  color: rgba(228, 236, 255, 0.92);
+}
+
+.audioEventsPreferenceHeader p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(198, 208, 255, 0.65);
+}
+
+.audioEventsPreferenceNote {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(178, 192, 240, 0.7);
+}
+
+.audioEventsPreferenceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.audioEventsPreferenceItem {
+  padding: 0.85rem 0.9rem;
+  border-radius: 14px;
+  border: 1px solid rgba(120, 142, 255, 0.18);
+  background: rgba(18, 28, 62, 0.55);
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.audioEventsPreferenceItemText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.audioEventsPreferenceName {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: rgba(232, 240, 255, 0.95);
+}
+
+.audioEventsPreferenceMeta {
+  font-size: 0.78rem;
+  color: rgba(188, 202, 252, 0.72);
+  word-break: break-word;
+}
+
+.audioEventsPreferenceActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: stretch;
+}
+
+.audioEventsPreferenceButton {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid rgba(130, 150, 255, 0.36);
+  background: rgba(34, 44, 90, 0.55);
+  color: rgba(210, 220, 255, 0.88);
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.audioEventsPreferenceButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.audioEventsPreferenceButton:not(:disabled):hover {
+  background: rgba(56, 72, 132, 0.7);
+  transform: translateY(-1px);
+}
+
+.audioEventsPreferenceForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 16px;
+  background: rgba(16, 22, 46, 0.62);
+  border: 1px solid rgba(110, 130, 255, 0.22);
+}
+
+.audioEventsPreferenceForm h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(224, 234, 255, 0.9);
+}
+
+.audioEventsPreferenceFormRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: rgba(196, 208, 255, 0.72);
+}
+
+.audioEventsPreferenceGridRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+
+.audioEventsPreferenceInput,
+.audioEventsPreferenceTextarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 142, 255, 0.25);
+  background: rgba(10, 14, 34, 0.6);
+  color: rgba(225, 234, 255, 0.9);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.82rem;
+  transition: border 0.18s ease, box-shadow 0.18s ease;
+}
+
+.audioEventsPreferenceTextarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.audioEventsPreferenceInput:focus,
+.audioEventsPreferenceTextarea:focus {
+  outline: none;
+  border-color: rgba(162, 184, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(120, 142, 255, 0.18);
+}
+
+.audioEventsPreferenceCheckboxRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: rgba(186, 200, 250, 0.75);
+}
+
+.audioEventsPreferenceHelp {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(174, 188, 238, 0.65);
+}
+
+.audioEventsPreferenceFormActions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+.audioEventsPreferenceSubmit {
+  border: none;
+  border-radius: 999px;
+  padding: 0.45rem 1.2rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(16, 20, 42, 0.96);
+  background: linear-gradient(135deg, rgba(162, 189, 255, 0.95), rgba(132, 168, 255, 0.88));
+  box-shadow: 0 8px 20px rgba(98, 122, 205, 0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.audioEventsPreferenceSubmit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.audioEventsPreferenceSubmit:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(108, 132, 215, 0.45);
+}
+
+.audioEventsPreferenceSecondary {
+  border-radius: 999px;
+  padding: 0.45rem 1rem;
+  font-size: 0.8rem;
+  border: 1px solid rgba(118, 140, 222, 0.4);
+  background: transparent;
+  color: rgba(198, 212, 255, 0.78);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.audioEventsPreferenceSecondary:hover {
+  background: rgba(38, 48, 92, 0.55);
+  color: rgba(222, 234, 255, 0.88);
+}
+
+.audioEventsPreferenceError {
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: rgba(255, 109, 109, 0.18);
+  border: 1px solid rgba(255, 154, 154, 0.32);
+  color: #ffdede;
+  font-size: 0.85rem;
+}
+
+.audioEventsPreferenceFeedback {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.9rem;
+  border-radius: 14px;
+  background: rgba(72, 198, 255, 0.14);
+  border: 1px solid rgba(126, 222, 255, 0.32);
+  color: rgba(206, 238, 255, 0.9);
+  font-size: 0.82rem;
+}
+
 .audioEventsEmpty {
   font-size: 0.8rem;
   color: rgba(170, 184, 235, 0.6);
@@ -882,6 +1116,15 @@
 
   .audioEventsPreference {
     grid-template-columns: 1fr;
+  }
+
+  .audioEventsPreferenceBoard {
+    grid-template-columns: 1fr;
+    gap: 1.1rem;
+  }
+
+  .audioEventsPreferenceColumn {
+    padding: 1rem;
   }
 }
 

@@ -452,6 +452,43 @@ create policy if not exists rank_audio_events_insert_owner
 on public.rank_audio_events for insert to authenticated
 with check (auth.uid() = owner_id);
 
+create table if not exists public.rank_audio_monitor_rules (
+  id uuid primary key default gen_random_uuid(),
+  rule_type text not null check (rule_type in ('favorite', 'subscription')),
+  label text not null,
+  notes text not null default '',
+  config jsonb not null default '{}'::jsonb,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create or replace function public.touch_rank_audio_monitor_rules_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_rank_audio_monitor_rules_updated on public.rank_audio_monitor_rules;
+create trigger trg_rank_audio_monitor_rules_updated
+before update on public.rank_audio_monitor_rules
+for each row
+execute function public.touch_rank_audio_monitor_rules_updated_at();
+
+create index if not exists rank_audio_monitor_rules_type_sort
+  on public.rank_audio_monitor_rules (rule_type, sort_order, updated_at desc);
+
+alter table public.rank_audio_monitor_rules enable row level security;
+
+create policy if not exists rank_audio_monitor_rules_service_only
+on public.rank_audio_monitor_rules for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
 -- =========================================
 --  랭킹 게임 핵심 테이블
 -- =========================================

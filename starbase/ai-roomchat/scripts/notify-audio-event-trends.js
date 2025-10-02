@@ -11,6 +11,77 @@ const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000
 const ANOMALY_PERCENT_THRESHOLD = 40
 const ANOMALY_MIN_ABSOLUTE_DELTA = 8
 const DISTRIBUTION_LIMIT = 4
+const SUBSCRIPTION_FETCH_LIMIT = 400
+
+function sanitiseString(value, maxLength = 160) {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  return trimmed ? trimmed.slice(0, maxLength) : ''
+}
+
+function normaliseRuleFilters(raw = {}) {
+  const eventTypes = Array.isArray(raw.eventTypes)
+    ? Array.from(
+        new Set(
+          raw.eventTypes
+            .map((value) => sanitiseString(value, 48))
+            .filter(Boolean),
+        ),
+      )
+    : []
+
+  return {
+    range: sanitiseString(raw.range, 24) || null,
+    ownerId: sanitiseString(raw.ownerId, 64),
+    profileKey: sanitiseString(raw.profileKey, 128),
+    heroId: sanitiseString(raw.heroId, 64),
+    search: sanitiseString(raw.search, 120),
+    eventTypes,
+  }
+}
+
+function normaliseSlackConfig(raw = {}) {
+  const minEventsValue = Number.parseInt(raw.minEvents, 10)
+  const lookbackValue = Number.parseInt(raw.lookbackWeeks, 10)
+
+  const minEvents = Number.isFinite(minEventsValue) && minEventsValue > 0 ? Math.min(minEventsValue, 500) : 1
+  const lookbackWeeks = Number.isFinite(lookbackValue) && lookbackValue > 0
+    ? Math.min(lookbackValue, MAX_LOOKBACK_WEEKS)
+    : DEFAULT_LOOKBACK_WEEKS
+
+  return {
+    channel: sanitiseString(raw.channel, 80),
+    mention: sanitiseString(raw.mention, 80),
+    webhookKey: sanitiseString(raw.webhookKey, 96),
+    minEvents,
+    lookbackWeeks,
+    alwaysInclude: Boolean(raw.alwaysInclude),
+    notifyOnAnomaly: raw.notifyOnAnomaly !== false,
+  }
+}
+
+function describeFilters(filters = {}) {
+  const parts = []
+  if (filters.range) parts.push(filters.range)
+  if (filters.ownerId) parts.push(`owner ${filters.ownerId}`)
+  if (filters.profileKey) parts.push(`profile ${filters.profileKey}`)
+  if (filters.heroId) parts.push(`hero ${filters.heroId}`)
+  if (filters.eventTypes && filters.eventTypes.length) {
+    parts.push(`type ${filters.eventTypes.join(', ')}`)
+  }
+  if (filters.search) parts.push(`검색 "${filters.search}"`)
+  return parts.join(' · ')
+}
+
+function describeSlack(slack = {}) {
+  const parts = []
+  if (slack.channel) parts.push(slack.channel)
+  if (slack.mention) parts.push(slack.mention)
+  parts.push(`임계 ${slack.minEvents || 1}건 / ${slack.lookbackWeeks || DEFAULT_LOOKBACK_WEEKS}주`)
+  if (slack.alwaysInclude) parts.push('항상 포함')
+  if (slack.notifyOnAnomaly === false) parts.push('급증 감지 제외')
+  return parts.join(' · ')
+}
 
 function startOfWeek(date) {
   const cloned = new Date(date.getTime())
@@ -107,7 +178,7 @@ function buildDistributionSummary(distribution) {
   return distribution.lines.map((line) => `• ${line}`).join('\n')
 }
 
-function buildSlackPayload({ buckets, summary, lookbackWeeks, generatedAt, anomaly, distribution }) {
+function buildSlackPayload({ buckets, summary, lookbackWeeks, generatedAt, anomaly, distribution, subscriptions = [] }) {
   const lines = buckets.map((bucket) => {
     const start = new Date(bucket.weekStart)
     const end = new Date(start.getTime() + MS_PER_WEEK - 1)
@@ -187,6 +258,42 @@ function buildSlackPayload({ buckets, summary, lookbackWeeks, generatedAt, anoma
         },
       },
     )
+  }
+
+  if (Array.isArray(subscriptions) && subscriptions.length) {
+    blocks.push({ type: 'divider' })
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: '*구독 조건 하이라이트*',
+      },
+    })
+
+    subscriptions.forEach((item) => {
+      const summaryParts = [`• *${item.label}*: ${formatNumber(item.count)}건`]
+      if (!item.meetsThreshold && !item.slack?.alwaysInclude) {
+        summaryParts[0] += ' (임계 미충족)'
+      }
+      if (item.anomaly?.badge) {
+        summaryParts[0] += ` · ${item.anomaly.badge}`
+      }
+
+      const metaLines = []
+      const filtersSummary = describeFilters(item.filters)
+      const slackSummary = describeSlack(item.slack)
+      if (filtersSummary) metaLines.push(filtersSummary)
+      if (slackSummary) metaLines.push(slackSummary)
+      if (item.notes) metaLines.push(item.notes)
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: [...summaryParts, ...metaLines].join('\n'),
+        },
+      })
+    })
   }
 
   return {
@@ -316,6 +423,151 @@ function summariseHeroDistribution(entries = [], { limit = DISTRIBUTION_LIMIT } 
   return { total: grandTotal, lines }
 }
 
+async function fetchSubscriptions(client) {
+  try {
+    const response = await client
+      .from('rank_audio_monitor_rules')
+      .select('id, rule_type, label, notes, config, sort_order, updated_at')
+      .eq('rule_type', 'subscription')
+      .order('sort_order', { ascending: true })
+      .order('updated_at', { ascending: false })
+
+    if (response.error) {
+      return { data: [], error: response.error }
+    }
+
+    const records = Array.isArray(response.data) ? response.data : []
+    const subscriptions = records.map((record) => ({
+      id: record.id,
+      label: record.label || '이름 없음',
+      notes: record.notes || '',
+      sortOrder: record.sort_order || 0,
+      filters: normaliseRuleFilters(record?.config?.filters || {}),
+      slack: normaliseSlackConfig(record?.config?.slack || {}),
+      trend: record?.config?.trend || {},
+    }))
+
+    return { data: subscriptions, error: null }
+  } catch (error) {
+    return { data: [], error }
+  }
+}
+
+function filterEventsBySearch(events = [], searchTerm = '') {
+  if (!searchTerm) return events
+  const needle = searchTerm.toLowerCase()
+  return events.filter((item) => {
+    const haystacks = [
+      item.hero_name,
+      item.hero_source,
+      item.profile_key,
+      item.event_type,
+      item.details?.preference?.trackId,
+      item.details?.preference?.presetId,
+      ...(Array.isArray(item.details?.changedFields) ? item.details.changedFields : []),
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase())
+    return haystacks.some((value) => value.includes(needle))
+  })
+}
+
+async function buildSubscriptionHighlights(client, subscriptions = [], { now = new Date() } = {}) {
+  if (!Array.isArray(subscriptions) || subscriptions.length === 0) {
+    return []
+  }
+
+  const highlights = []
+
+  for (const rule of subscriptions) {
+    try {
+      const slack = rule.slack || {}
+      const filters = rule.filters || {}
+      const lookbackWeeks = Math.min(Math.max(slack.lookbackWeeks || DEFAULT_LOOKBACK_WEEKS, 1), MAX_LOOKBACK_WEEKS)
+      const endDate = now instanceof Date ? now : new Date()
+      const startDate = new Date(endDate.getTime() - lookbackWeeks * MS_PER_WEEK)
+
+      let query = client
+        .from('rank_audio_events')
+        .select('id, hero_name, hero_source, profile_key, event_type, details, created_at', { count: 'exact' })
+        .gte('created_at', startDate.toISOString())
+        .lt('created_at', endDate.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(SUBSCRIPTION_FETCH_LIMIT)
+
+      if (filters.ownerId) {
+        query = query.eq('owner_id', filters.ownerId)
+      }
+      if (filters.profileKey) {
+        query = query.eq('profile_key', filters.profileKey)
+      }
+      if (filters.heroId) {
+        query = query.eq('hero_id', filters.heroId)
+      }
+      if (filters.eventTypes && filters.eventTypes.length) {
+        query = query.in('event_type', filters.eventTypes)
+      }
+
+      const { data, error, count } = await query
+      if (error) {
+        console.warn('[audio-events] Failed to fetch subscription events', rule.id, error)
+        continue
+      }
+
+      const events = Array.isArray(data) ? data : []
+      const filteredEvents = filters.search ? filterEventsBySearch(events, filters.search) : events
+
+      const matchedCount = filters.search
+        ? filteredEvents.length
+        : Number.isFinite(count)
+        ? count
+        : filteredEvents.length
+
+      const trendResponse = await fetchTrend(client, {
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        ownerId: filters.ownerId,
+        profileKey: filters.profileKey,
+        heroId: filters.heroId,
+        eventTypes: filters.eventTypes,
+      })
+
+      if (trendResponse.error) {
+        console.warn('[audio-events] Failed to fetch subscription trend', rule.id, trendResponse.error)
+      }
+
+      const trendBuckets = Array.isArray(trendResponse.data)
+        ? normaliseBuckets(trendResponse.data, { now: endDate, weeks: lookbackWeeks })
+        : []
+      const trendSummary = trendBuckets.length ? summariseTrend(trendBuckets) : null
+      const anomaly = slack.notifyOnAnomaly !== false ? detectAnomaly(trendSummary) : null
+
+      const meetsThreshold = matchedCount >= slack.minEvents
+      const includeHighlight = slack.alwaysInclude || meetsThreshold || Boolean(anomaly)
+
+      if (!includeHighlight) {
+        continue
+      }
+
+      highlights.push({
+        id: rule.id,
+        label: rule.label,
+        notes: rule.notes,
+        filters,
+        slack,
+        count: matchedCount,
+        meetsThreshold,
+        anomaly,
+        lookbackWeeks,
+      })
+    } catch (error) {
+      console.warn('[audio-events] Unexpected error building subscription highlight', rule?.id, error)
+    }
+  }
+
+  return highlights
+}
+
 async function main() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE
@@ -363,6 +615,12 @@ async function main() {
   }
   const distribution = summariseHeroDistribution(breakdownResponse.data)
 
+  const subscriptionsResponse = await fetchSubscriptions(client)
+  if (subscriptionsResponse.error) {
+    console.warn('[audio-events] Failed to fetch subscription rules', subscriptionsResponse.error)
+  }
+  const subscriptionHighlights = await buildSubscriptionHighlights(client, subscriptionsResponse.data, { now })
+
   const payload = buildSlackPayload({
     buckets,
     summary,
@@ -370,6 +628,7 @@ async function main() {
     generatedAt: now,
     anomaly,
     distribution,
+    subscriptions: subscriptionHighlights,
   })
 
   await postToSlack(webhookUrl, payload, {
@@ -395,4 +654,7 @@ module.exports = {
   detectAnomaly,
   summariseHeroDistribution,
   buildDistributionSummary,
+  buildSubscriptionHighlights,
+  describeFilters,
+  describeSlack,
 }

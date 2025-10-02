@@ -53,6 +53,48 @@ const RANGE_OPTIONS = [
   },
 ]
 
+const DEFAULT_FAVORITE_FORM = {
+  label: '',
+  notes: '',
+  sortOrder: '0',
+}
+
+const DEFAULT_SUBSCRIPTION_FORM = {
+  label: '',
+  notes: '',
+  channel: '',
+  mention: '',
+  webhookKey: '',
+  minEvents: '1',
+  lookbackWeeks: '4',
+  alwaysInclude: false,
+  notifyOnAnomaly: true,
+  sortOrder: '0',
+}
+
+function summariseFilters(filters = {}) {
+  const parts = []
+  if (filters.range) parts.push(filters.range)
+  if (filters.ownerId) parts.push(`owner ${filters.ownerId}`)
+  if (filters.profileKey) parts.push(`profile ${filters.profileKey}`)
+  if (filters.heroId) parts.push(`hero ${filters.heroId}`)
+  if (filters.eventTypes && filters.eventTypes.length) {
+    parts.push(`type ${filters.eventTypes.join(', ')}`)
+  }
+  if (filters.search) parts.push(`검색 "${filters.search}"`)
+  return parts.length ? parts.join(' · ') : '기본 필터'
+}
+
+function summariseSlack(slack = {}) {
+  const parts = []
+  if (slack.channel) parts.push(slack.channel)
+  if (slack.mention) parts.push(slack.mention)
+  parts.push(`임계치 ${slack.minEvents || 1}건 / ${slack.lookbackWeeks || 4}주`)
+  if (slack.alwaysInclude) parts.push('항상 포함')
+  if (slack.notifyOnAnomaly === false) parts.push('급증/급락 제외')
+  return parts.join(' · ')
+}
+
 function formatDateTime(iso) {
   if (!iso) return '시간 정보 없음'
   const date = new Date(iso)
@@ -83,6 +125,11 @@ function formatDurationFromNow(iso) {
   if (hours < 24) return `${hours}시간 전`
   const days = Math.floor(hours / 24)
   return `${days}일 전`
+}
+
+function formatRuleUpdatedAt(iso) {
+  if (!iso) return null
+  return formatDurationFromNow(iso) || formatDateTime(iso)
 }
 
 function startOfWeek(date) {
@@ -381,6 +428,19 @@ export default function AudioEventMonitor() {
   const [trendStackMode, setTrendStackMode] = useState('total')
   const [trendStackLimit, setTrendStackLimit] = useState('top5')
 
+  const [favorites, setFavorites] = useState([])
+  const [subscriptions, setSubscriptions] = useState([])
+  const [rulesLoading, setRulesLoading] = useState(true)
+  const [rulesError, setRulesError] = useState(null)
+  const [rulesFeedback, setRulesFeedback] = useState(null)
+  const [favoriteForm, setFavoriteForm] = useState({ ...DEFAULT_FAVORITE_FORM })
+  const [subscriptionForm, setSubscriptionForm] = useState({ ...DEFAULT_SUBSCRIPTION_FORM })
+  const [editingFavoriteId, setEditingFavoriteId] = useState(null)
+  const [editingSubscriptionId, setEditingSubscriptionId] = useState(null)
+  const [savingFavorite, setSavingFavorite] = useState(false)
+  const [savingSubscription, setSavingSubscription] = useState(false)
+  const [deletingRuleId, setDeletingRuleId] = useState(null)
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setSearchTerm(searchInput.trim())
@@ -390,6 +450,37 @@ export default function AudioEventMonitor() {
       window.clearTimeout(timer)
     }
   }, [searchInput])
+
+  const loadRules = useCallback(async () => {
+    setRulesLoading(true)
+    try {
+      const response = await fetch('/api/admin/audio-monitor-rules')
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || '즐겨찾기와 구독 조건을 불러오지 못했습니다.')
+      }
+      const payload = await response.json()
+      setFavorites(Array.isArray(payload.favorites) ? payload.favorites : [])
+      setSubscriptions(Array.isArray(payload.subscriptions) ? payload.subscriptions : [])
+      setRulesError(null)
+    } catch (err) {
+      setRulesError(err.message || '즐겨찾기와 구독 조건을 불러오지 못했습니다.')
+    } finally {
+      setRulesLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadRules()
+  }, [loadRules])
+
+  useEffect(() => {
+    if (!rulesFeedback) return () => {}
+    const timer = window.setTimeout(() => setRulesFeedback(null), 3200)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [rulesFeedback])
 
   const since = useMemo(() => {
     const option = RANGE_OPTIONS.find((item) => item.id === range)
@@ -527,6 +618,267 @@ export default function AudioEventMonitor() {
     setSelectedEventTypes([])
     setRange('24h')
   }, [])
+
+  const applyFiltersFromRule = useCallback((rule) => {
+    const filters = rule?.filters || {}
+    const eventTypes = Array.isArray(filters.eventTypes)
+      ? filters.eventTypes.filter((item, index, array) => typeof item === 'string' && array.indexOf(item) === index)
+      : []
+
+    const searchValue = filters.search || ''
+
+    setRange(filters.range || '24h')
+    setOwnerId(filters.ownerId || '')
+    setProfileKey(filters.profileKey || '')
+    setHeroId(filters.heroId || '')
+    setSearchInput(searchValue)
+    setSearchTerm(searchValue)
+    setSelectedEventTypes(eventTypes)
+  }, [])
+
+  const resetFavoriteForm = useCallback(() => {
+    setFavoriteForm({ ...DEFAULT_FAVORITE_FORM })
+    setEditingFavoriteId(null)
+  }, [])
+
+  const resetSubscriptionForm = useCallback(() => {
+    setSubscriptionForm({ ...DEFAULT_SUBSCRIPTION_FORM })
+    setEditingSubscriptionId(null)
+  }, [])
+
+  const applyFavoriteRule = useCallback(
+    (favorite) => {
+      if (!favorite) return
+      applyFiltersFromRule(favorite)
+      const trend = favorite.trend || {}
+      setTrendStackMode(trend.stackMode || 'total')
+      setTrendStackLimit(trend.stackLimit || 'top5')
+      setRulesError(null)
+      setRulesFeedback('즐겨찾기 필터를 적용했습니다.')
+    },
+    [applyFiltersFromRule],
+  )
+
+  const applySubscriptionRule = useCallback(
+    (subscription) => {
+      if (!subscription) return
+      applyFiltersFromRule(subscription)
+      const trend = subscription.trend || {}
+      setTrendStackMode(trend.stackMode || 'total')
+      setTrendStackLimit(trend.stackLimit || 'top5')
+      setRulesError(null)
+      setRulesFeedback('구독 조건 필터를 적용했습니다.')
+    },
+    [applyFiltersFromRule],
+  )
+
+  const startEditFavorite = useCallback((favorite) => {
+    if (!favorite) {
+      resetFavoriteForm()
+      return
+    }
+    setEditingFavoriteId(favorite.id)
+    setFavoriteForm({
+      label: favorite.label || '',
+      notes: favorite.notes || '',
+      sortOrder: String(Number.isFinite(favorite.sortOrder) ? favorite.sortOrder : 0),
+    })
+    setRulesError(null)
+  }, [resetFavoriteForm])
+
+  const startEditSubscription = useCallback((subscription) => {
+    if (!subscription) {
+      resetSubscriptionForm()
+      return
+    }
+    const slack = subscription.slack || {}
+    setEditingSubscriptionId(subscription.id)
+    setSubscriptionForm({
+      label: subscription.label || '',
+      notes: subscription.notes || '',
+      channel: slack.channel || '',
+      mention: slack.mention || '',
+      webhookKey: slack.webhookKey || '',
+      minEvents: String(Number.isFinite(slack.minEvents) ? slack.minEvents : 1),
+      lookbackWeeks: String(Number.isFinite(slack.lookbackWeeks) ? slack.lookbackWeeks : 4),
+      alwaysInclude: Boolean(slack.alwaysInclude),
+      notifyOnAnomaly: slack.notifyOnAnomaly !== false,
+      sortOrder: String(Number.isFinite(subscription.sortOrder) ? subscription.sortOrder : 0),
+    })
+    setRulesError(null)
+  }, [resetSubscriptionForm])
+
+  const handleSaveFavorite = useCallback(async () => {
+    const label = favoriteForm.label.trim()
+    if (!label) {
+      setRulesError('즐겨찾기 이름을 입력해 주세요.')
+      return
+    }
+
+    setSavingFavorite(true)
+    try {
+      setRulesError(null)
+      const sortOrderValue = Number.parseInt(favoriteForm.sortOrder, 10)
+      const payload = {
+        type: 'favorite',
+        label,
+        notes: favoriteForm.notes.trim(),
+        sortOrder: Number.isFinite(sortOrderValue) ? sortOrderValue : 0,
+        filters: {
+          range,
+          ownerId: ownerId.trim(),
+          profileKey: profileKey.trim(),
+          heroId: heroId.trim(),
+          search: searchInput.trim(),
+          eventTypes: selectedEventTypes,
+        },
+        trend: { stackMode: trendStackMode, stackLimit: trendStackLimit },
+      }
+
+      if (editingFavoriteId) {
+        payload.id = editingFavoriteId
+      }
+
+      const response = await fetch('/api/admin/audio-monitor-rules', {
+        method: editingFavoriteId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}))
+        throw new Error(result.error || '즐겨찾기를 저장하지 못했습니다.')
+      }
+
+      await loadRules()
+      resetFavoriteForm()
+      setRulesFeedback(editingFavoriteId ? '즐겨찾기를 업데이트했습니다.' : '즐겨찾기를 저장했습니다.')
+    } catch (err) {
+      setRulesError(err.message || '즐겨찾기를 저장하지 못했습니다.')
+    } finally {
+      setSavingFavorite(false)
+    }
+  }, [favoriteForm, editingFavoriteId, range, ownerId, profileKey, heroId, searchInput, selectedEventTypes, trendStackMode, trendStackLimit, loadRules, resetFavoriteForm])
+
+  const handleSaveSubscription = useCallback(async () => {
+    const label = subscriptionForm.label.trim()
+    if (!label) {
+      setRulesError('Slack 구독 이름을 입력해 주세요.')
+      return
+    }
+
+    const channel = subscriptionForm.channel.trim()
+    const webhookKey = subscriptionForm.webhookKey.trim()
+    if (!channel && !webhookKey) {
+      setRulesError('Slack 채널 또는 Webhook 식별자를 입력해 주세요.')
+      return
+    }
+
+    setSavingSubscription(true)
+    try {
+      setRulesError(null)
+      const sortOrderValue = Number.parseInt(subscriptionForm.sortOrder, 10)
+      const minEventsValue = Number.parseInt(subscriptionForm.minEvents, 10)
+      const lookbackValue = Number.parseInt(subscriptionForm.lookbackWeeks, 10)
+      const payload = {
+        type: 'subscription',
+        label,
+        notes: subscriptionForm.notes.trim(),
+        sortOrder: Number.isFinite(sortOrderValue) ? sortOrderValue : 0,
+        filters: {
+          range,
+          ownerId: ownerId.trim(),
+          profileKey: profileKey.trim(),
+          heroId: heroId.trim(),
+          search: searchInput.trim(),
+          eventTypes: selectedEventTypes,
+        },
+        trend: { stackMode: trendStackMode, stackLimit: trendStackLimit },
+        slack: {
+          channel,
+          mention: subscriptionForm.mention.trim(),
+          webhookKey,
+          minEvents: Number.isFinite(minEventsValue) && minEventsValue > 0 ? minEventsValue : 1,
+          lookbackWeeks: Number.isFinite(lookbackValue) && lookbackValue > 0 ? lookbackValue : 4,
+          alwaysInclude: Boolean(subscriptionForm.alwaysInclude),
+          notifyOnAnomaly: subscriptionForm.notifyOnAnomaly,
+        },
+      }
+
+      if (editingSubscriptionId) {
+        payload.id = editingSubscriptionId
+      }
+
+      const response = await fetch('/api/admin/audio-monitor-rules', {
+        method: editingSubscriptionId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}))
+        throw new Error(result.error || 'Slack 구독 조건을 저장하지 못했습니다.')
+      }
+
+      await loadRules()
+      resetSubscriptionForm()
+      setRulesFeedback(editingSubscriptionId ? '구독 조건을 업데이트했습니다.' : '구독 조건을 저장했습니다.')
+    } catch (err) {
+      setRulesError(err.message || 'Slack 구독 조건을 저장하지 못했습니다.')
+    } finally {
+      setSavingSubscription(false)
+    }
+  }, [subscriptionForm, editingSubscriptionId, range, ownerId, profileKey, heroId, searchInput, selectedEventTypes, trendStackMode, trendStackLimit, loadRules, resetSubscriptionForm])
+
+  const handleDeleteRule = useCallback(
+    async (id) => {
+      if (!id) return
+      setDeletingRuleId(id)
+      try {
+        setRulesError(null)
+        const response = await fetch('/api/admin/audio-monitor-rules', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        })
+
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}))
+          throw new Error(result.error || '조건을 삭제하지 못했습니다.')
+        }
+
+        await loadRules()
+        if (editingFavoriteId === id) {
+          resetFavoriteForm()
+        }
+        if (editingSubscriptionId === id) {
+          resetSubscriptionForm()
+        }
+        setRulesFeedback('저장된 조건을 삭제했습니다.')
+      } catch (err) {
+        setRulesError(err.message || '조건을 삭제하지 못했습니다.')
+      } finally {
+        setDeletingRuleId(null)
+      }
+    },
+    [editingFavoriteId, editingSubscriptionId, loadRules, resetFavoriteForm, resetSubscriptionForm],
+  )
+
+  const handleFavoriteSubmit = useCallback(
+    (event) => {
+      event.preventDefault()
+      handleSaveFavorite()
+    },
+    [handleSaveFavorite],
+  )
+
+  const handleSubscriptionSubmit = useCallback(
+    (event) => {
+      event.preventDefault()
+      handleSaveSubscription()
+    },
+    [handleSaveSubscription],
+  )
 
   const handleExport = useCallback(async () => {
     setExporting(true)
@@ -977,6 +1329,284 @@ export default function AudioEventMonitor() {
             )}
           </div>
         </div>
+      </div>
+
+      {rulesError ? <p className={styles.audioEventsPreferenceError}>{rulesError}</p> : null}
+      {rulesFeedback ? <p className={styles.audioEventsPreferenceFeedback}>{rulesFeedback}</p> : null}
+
+      <div className={styles.audioEventsPreferenceBoard}>
+        <section className={styles.audioEventsPreferenceColumn} aria-label="오디오 이벤트 즐겨찾기">
+          <header className={styles.audioEventsPreferenceHeader}>
+            <h3>즐겨찾기</h3>
+            <p>현재 필터 상태를 저장해 자주 확인하는 조합을 빠르게 불러옵니다.</p>
+          </header>
+          {rulesLoading ? (
+            <p className={styles.audioEventsPreferenceNote}>즐겨찾기를 불러오는 중…</p>
+          ) : favorites.length ? (
+            <ul className={styles.audioEventsPreferenceList}>
+              {favorites.map((favorite) => (
+                <li key={favorite.id} className={styles.audioEventsPreferenceItem}>
+                  <div className={styles.audioEventsPreferenceItemText}>
+                    <span className={styles.audioEventsPreferenceName}>{favorite.label}</span>
+                    {favorite.notes ? (
+                      <span className={styles.audioEventsPreferenceMeta}>{favorite.notes}</span>
+                    ) : null}
+                    <span className={styles.audioEventsPreferenceMeta}>{summariseFilters(favorite.filters)}</span>
+                    {favorite.updatedAt ? (
+                      <span className={styles.audioEventsPreferenceMeta}>
+                        마지막 저장 {formatRuleUpdatedAt(favorite.updatedAt)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className={styles.audioEventsPreferenceActions}>
+                    <button
+                      type="button"
+                      className={styles.audioEventsPreferenceButton}
+                      onClick={() => applyFavoriteRule(favorite)}
+                    >
+                      적용
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.audioEventsPreferenceButton}
+                      onClick={() => startEditFavorite(favorite)}
+                    >
+                      편집
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.audioEventsPreferenceButton}
+                      disabled={deletingRuleId === favorite.id}
+                      onClick={() => handleDeleteRule(favorite.id)}
+                    >
+                      {deletingRuleId === favorite.id ? '삭제 중…' : '삭제'}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.audioEventsPreferenceNote}>저장된 즐겨찾기가 없습니다.</p>
+          )}
+
+          <form className={styles.audioEventsPreferenceForm} onSubmit={handleFavoriteSubmit}>
+            <h4>{editingFavoriteId ? '즐겨찾기 수정' : '새 즐겨찾기 저장'}</h4>
+            <label className={styles.audioEventsPreferenceFormRow}>
+              <span>이름</span>
+              <input
+                className={styles.audioEventsPreferenceInput}
+                value={favoriteForm.label}
+                onChange={(event) => setFavoriteForm((prev) => ({ ...prev, label: event.target.value }))}
+                placeholder="예: QA 기본 필터"
+              />
+            </label>
+            <label className={styles.audioEventsPreferenceFormRow}>
+              <span>메모</span>
+              <textarea
+                className={styles.audioEventsPreferenceTextarea}
+                value={favoriteForm.notes}
+                onChange={(event) => setFavoriteForm((prev) => ({ ...prev, notes: event.target.value }))}
+                placeholder="필요 시 설명을 남겨 두세요."
+              />
+            </label>
+            <label className={styles.audioEventsPreferenceFormRow}>
+              <span>정렬</span>
+              <input
+                className={styles.audioEventsPreferenceInput}
+                type="number"
+                value={favoriteForm.sortOrder}
+                onChange={(event) => setFavoriteForm((prev) => ({ ...prev, sortOrder: event.target.value }))}
+              />
+            </label>
+            <p className={styles.audioEventsPreferenceHelp}>
+              현재 필터(기간, Owner/Profile/Hero, 검색어, 이벤트 유형, 스택 보기)를 저장합니다.
+            </p>
+            <div className={styles.audioEventsPreferenceFormActions}>
+              <button type="submit" className={styles.audioEventsPreferenceSubmit} disabled={savingFavorite}>
+                {savingFavorite ? '저장 중…' : editingFavoriteId ? '업데이트' : '저장'}
+              </button>
+              {editingFavoriteId ? (
+                <button
+                  type="button"
+                  className={styles.audioEventsPreferenceSecondary}
+                  onClick={resetFavoriteForm}
+                >
+                  취소
+                </button>
+              ) : null}
+            </div>
+          </form>
+        </section>
+
+        <section className={styles.audioEventsPreferenceColumn} aria-label="Slack 구독 조건">
+          <header className={styles.audioEventsPreferenceHeader}>
+            <h3>Slack 구독 조건</h3>
+            <p>특정 조건을 저장해 주간 Slack 다이제스트와 관리자 모니터에서 강조합니다.</p>
+          </header>
+          {rulesLoading ? (
+            <p className={styles.audioEventsPreferenceNote}>구독 조건을 불러오는 중…</p>
+          ) : subscriptions.length ? (
+            <ul className={styles.audioEventsPreferenceList}>
+              {subscriptions.map((subscription) => (
+                <li key={subscription.id} className={styles.audioEventsPreferenceItem}>
+                  <div className={styles.audioEventsPreferenceItemText}>
+                    <span className={styles.audioEventsPreferenceName}>{subscription.label}</span>
+                    {subscription.notes ? (
+                      <span className={styles.audioEventsPreferenceMeta}>{subscription.notes}</span>
+                    ) : null}
+                    <span className={styles.audioEventsPreferenceMeta}>{summariseFilters(subscription.filters)}</span>
+                    <span className={styles.audioEventsPreferenceMeta}>{summariseSlack(subscription.slack)}</span>
+                    {subscription.updatedAt ? (
+                      <span className={styles.audioEventsPreferenceMeta}>
+                        마지막 저장 {formatRuleUpdatedAt(subscription.updatedAt)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className={styles.audioEventsPreferenceActions}>
+                    <button
+                      type="button"
+                      className={styles.audioEventsPreferenceButton}
+                      onClick={() => applySubscriptionRule(subscription)}
+                    >
+                      적용
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.audioEventsPreferenceButton}
+                      onClick={() => startEditSubscription(subscription)}
+                    >
+                      편집
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.audioEventsPreferenceButton}
+                      disabled={deletingRuleId === subscription.id}
+                      onClick={() => handleDeleteRule(subscription.id)}
+                    >
+                      {deletingRuleId === subscription.id ? '삭제 중…' : '삭제'}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.audioEventsPreferenceNote}>저장된 구독 조건이 없습니다.</p>
+          )}
+
+          <form className={styles.audioEventsPreferenceForm} onSubmit={handleSubscriptionSubmit}>
+            <h4>{editingSubscriptionId ? '구독 조건 수정' : '새 구독 조건 저장'}</h4>
+            <label className={styles.audioEventsPreferenceFormRow}>
+              <span>이름</span>
+              <input
+                className={styles.audioEventsPreferenceInput}
+                value={subscriptionForm.label}
+                onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, label: event.target.value }))}
+                placeholder="예: #ops 급증 모니터"
+              />
+            </label>
+            <label className={styles.audioEventsPreferenceFormRow}>
+              <span>메모</span>
+              <textarea
+                className={styles.audioEventsPreferenceTextarea}
+                value={subscriptionForm.notes}
+                onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, notes: event.target.value }))}
+                placeholder="알림 채널이나 목적을 설명하세요."
+              />
+            </label>
+            <label className={styles.audioEventsPreferenceFormRow}>
+              <span>Slack 채널</span>
+              <input
+                className={styles.audioEventsPreferenceInput}
+                value={subscriptionForm.channel}
+                onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, channel: event.target.value }))}
+                placeholder="#channel 또는 경로"
+              />
+            </label>
+            <label className={styles.audioEventsPreferenceFormRow}>
+              <span>Webhook 키 (선택)</span>
+              <input
+                className={styles.audioEventsPreferenceInput}
+                value={subscriptionForm.webhookKey}
+                onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, webhookKey: event.target.value }))}
+                placeholder="환경 변수와 매칭되는 식별자"
+              />
+            </label>
+            <label className={styles.audioEventsPreferenceFormRow}>
+              <span>멘션 (선택)</span>
+              <input
+                className={styles.audioEventsPreferenceInput}
+                value={subscriptionForm.mention}
+                onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, mention: event.target.value }))}
+                placeholder="예: @ops"
+              />
+            </label>
+            <div className={styles.audioEventsPreferenceGridRow}>
+              <label className={styles.audioEventsPreferenceFormRow}>
+                <span>임계치(건)</span>
+                <input
+                  className={styles.audioEventsPreferenceInput}
+                  type="number"
+                  min="1"
+                  value={subscriptionForm.minEvents}
+                  onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, minEvents: event.target.value }))}
+                />
+              </label>
+              <label className={styles.audioEventsPreferenceFormRow}>
+                <span>누적 주간 수</span>
+                <input
+                  className={styles.audioEventsPreferenceInput}
+                  type="number"
+                  min="1"
+                  max="52"
+                  value={subscriptionForm.lookbackWeeks}
+                  onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, lookbackWeeks: event.target.value }))}
+                />
+              </label>
+              <label className={styles.audioEventsPreferenceFormRow}>
+                <span>정렬</span>
+                <input
+                  className={styles.audioEventsPreferenceInput}
+                  type="number"
+                  value={subscriptionForm.sortOrder}
+                  onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, sortOrder: event.target.value }))}
+                />
+              </label>
+            </div>
+            <label className={styles.audioEventsPreferenceCheckboxRow}>
+              <input
+                type="checkbox"
+                checked={subscriptionForm.alwaysInclude}
+                onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, alwaysInclude: event.target.checked }))}
+              />
+              <span>임계치를 넘지 않아도 다이제스트에 항상 포함</span>
+            </label>
+            <label className={styles.audioEventsPreferenceCheckboxRow}>
+              <input
+                type="checkbox"
+                checked={subscriptionForm.notifyOnAnomaly}
+                onChange={(event) => setSubscriptionForm((prev) => ({ ...prev, notifyOnAnomaly: event.target.checked }))}
+              />
+              <span>급증·급락 감지 시 강조 표시</span>
+            </label>
+            <p className={styles.audioEventsPreferenceHelp}>
+              현재 필터 기준으로 Slack 다이제스트와 관리자 패널 통계가 강조됩니다. Webhook 키는 환경 변수와 매칭할 때 사용합니다.
+            </p>
+            <div className={styles.audioEventsPreferenceFormActions}>
+              <button type="submit" className={styles.audioEventsPreferenceSubmit} disabled={savingSubscription}>
+                {savingSubscription ? '저장 중…' : editingSubscriptionId ? '업데이트' : '저장'}
+              </button>
+              {editingSubscriptionId ? (
+                <button
+                  type="button"
+                  className={styles.audioEventsPreferenceSecondary}
+                  onClick={resetSubscriptionForm}
+                >
+                  취소
+                </button>
+              ) : null}
+            </div>
+          </form>
+        </section>
       </div>
 
       {error ? <p className={styles.audioEventsError}>{error}</p> : null}

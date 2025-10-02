@@ -32,11 +32,11 @@
     },
     {
       "order": 2,
-      "summary": "히어로/담당자 즐겨찾기와 Slack 알림 조건 저장을 지원해 스택 그래프·다이제스트에서 우선 모니터링 대상을 고정하고 채널별 구독 옵션을 노출합니다.",
+      "summary": "즐겨찾기·Slack 구독 조건을 팀과 공유하고 Webhook 키별 다중 채널 알림·실행 로그 내보내기를 지원해 모니터링 규칙을 백업·확장합니다.",
       "owner": "프론트 (라라)",
       "ownerKey": "프론트-라라",
-      "targetDateISO": "2025-12-02",
-      "targetDateDisplay": "2025-12-02",
+      "targetDateISO": "2025-12-09",
+      "targetDateDisplay": "2025-12-09",
       "priority": {
         "label": "P1 (오디오 튜닝)",
         "short": "P1",
@@ -44,15 +44,15 @@
         "sortKey": 1
       },
       "effort": {
-        "label": "프론트 3일 (1명·UI/데이터)",
+        "label": "프론트 3일 (1명·UI/백엔드)",
         "personDays": 3
       },
       "timing": {
-        "label": "2025-12-02",
-        "badge": "D-61",
+        "label": "2025-12-09",
+        "badge": "D-68",
         "state": "scheduled",
-        "daysFromToday": 61,
-        "daysFromSnapshot": 24,
+        "daysFromToday": 68,
+        "daysFromSnapshot": 31,
         "computedAtISO": "2025-10-02",
         "isOverdue": false,
         "overdueDays": 0
