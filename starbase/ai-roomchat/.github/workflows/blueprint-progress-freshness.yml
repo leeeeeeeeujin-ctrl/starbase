@@ -16,7 +16,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: npm test -- --runInBand
+      - name: Build application
+        run: CI=1 npm run build
       - name: Run freshness check
-        run: node scripts/check-rank-blueprint-progress-freshness.js
+        run: npm run check:blueprint-progress-freshness
       - name: Check next-action deadlines
-        run: node scripts/check-rank-blueprint-next-actions.js
+        run: npm run check:blueprint-next-actions
