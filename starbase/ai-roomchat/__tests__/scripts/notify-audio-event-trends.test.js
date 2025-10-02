@@ -6,6 +6,9 @@ const {
   buildSlackPayload,
   formatDelta,
   formatNumber,
+  detectAnomaly,
+  summariseHeroDistribution,
+  buildDistributionSummary,
 } = require('../../scripts/notify-audio-event-trends')
 
 describe('notify-audio-event-trends helpers', () => {
@@ -54,7 +57,7 @@ describe('notify-audio-event-trends helpers', () => {
     expect(formatDelta(summaryDown)).toBe('−2건 (50.0%)')
   })
 
-  it('builds Slack payload with list items', () => {
+  it('builds Slack payload with anomaly and distribution', () => {
     const now = new Date('2025-10-10T12:00:00Z')
     const payload = buildSlackPayload({
       buckets: [
@@ -69,16 +72,66 @@ describe('notify-audio-event-trends helpers', () => {
       },
       lookbackWeeks: 2,
       generatedAt: now,
+      anomaly: { badge: '🔺 급증 감지', message: '급증' },
+      distribution: {
+        lines: ['히어로 A 60% (6건)', '히어로 B 40% (4건)'],
+      },
     })
 
     expect(payload.text).toContain('주간 추이')
-    expect(payload.blocks[1].text.text).toContain('지난 주')
-    expect(payload.blocks[3].type).toBe('divider')
-    expect(payload.blocks[4].text.text).toContain('• 09-22~09-28: 3건')
+    const anomalyBlock = payload.blocks.find((block) => block.type === 'context')
+    expect(anomalyBlock.elements[0].text).toContain('급증')
+    const listSection = payload.blocks.find((block) => block.type === 'section' && block.text.text.includes('09-22'))
+    expect(listSection.text.text).toContain('• 09-22~09-28: 3건')
+    const distributionSection = payload.blocks.find((block) =>
+      block.type === 'section' && block.text.text.includes('히어로 분포'),
+    )
+    expect(distributionSection.text.text).toContain('히어로 A')
   })
 
   it('formats numbers with thousands separators', () => {
     expect(formatNumber(12345)).toBe('12,345')
     expect(formatNumber('6789')).toBe('6,789')
+  })
+
+  it('detects anomalies based on deltas', () => {
+    const spike = detectAnomaly({
+      direction: 'up',
+      deltaPercent: 45,
+      deltaCount: 12,
+      current: { eventCount: 22 },
+      previous: { eventCount: 10 },
+    })
+    expect(spike).toMatchObject({ type: 'spike' })
+
+    const drop = detectAnomaly({
+      direction: 'down',
+      deltaPercent: -50,
+      deltaCount: -15,
+      current: { eventCount: 10 },
+      previous: { eventCount: 25 },
+    })
+    expect(drop).toMatchObject({ type: 'drop' })
+
+    const zeroed = detectAnomaly({
+      direction: 'flat',
+      deltaPercent: 0,
+      deltaCount: -20,
+      current: { eventCount: 0 },
+      previous: { eventCount: 20 },
+    })
+    expect(zeroed).toMatchObject({ type: 'zeroed' })
+  })
+
+  it('summarises hero distribution', () => {
+    const distribution = summariseHeroDistribution([
+      { dimension_id: 'hero-a', dimension_label: '히어로 A', event_count: 6 },
+      { dimension_id: 'hero-b', dimension_label: '히어로 B', event_count: 4 },
+      { dimension_id: 'hero-a', dimension_label: '히어로 A', event_count: 2 },
+    ])
+
+    expect(distribution.total).toBe(12)
+    expect(distribution.lines[0]).toContain('히어로 A')
+    expect(buildDistributionSummary(distribution)).toContain('• 히어로 A')
   })
 })

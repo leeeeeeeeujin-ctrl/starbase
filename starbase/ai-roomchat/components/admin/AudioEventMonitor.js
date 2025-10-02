@@ -6,6 +6,24 @@ const REFRESH_INTERVAL_MS = 120_000
 const FILTER_DEBOUNCE_MS = 320
 const API_LIMIT = 300
 
+const MAX_STACK_SEGMENTS = 6
+const HERO_STACK_COLORS = [
+  'rgba(129, 140, 248, 0.82)',
+  'rgba(14, 165, 233, 0.82)',
+  'rgba(236, 72, 153, 0.82)',
+  'rgba(139, 92, 246, 0.82)',
+  'rgba(34, 197, 94, 0.82)',
+  'rgba(251, 191, 36, 0.82)',
+]
+const OWNER_STACK_COLORS = [
+  'rgba(94, 234, 212, 0.8)',
+  'rgba(125, 211, 252, 0.8)',
+  'rgba(251, 191, 36, 0.82)',
+  'rgba(244, 114, 182, 0.82)',
+  'rgba(248, 113, 113, 0.82)',
+  'rgba(165, 180, 252, 0.82)',
+]
+
 const RANGE_OPTIONS = [
   {
     id: '24h',
@@ -102,6 +120,39 @@ function normaliseWeeklyBuckets(buckets = [], { weeks = 12, now = new Date() } =
   return result
 }
 
+function normaliseBreakdown(entries = [], { fallbackLabel = '미지정' } = {}) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return []
+  }
+
+  const results = []
+
+  for (const entry of entries) {
+    if (!entry) continue
+    const weekValue = entry.weekStart || entry.week_start
+    if (!weekValue) continue
+    const parsed = new Date(weekValue)
+    if (Number.isNaN(parsed.getTime())) continue
+    const weekStart = startOfWeek(parsed).toISOString()
+    const dimensionId = entry.dimensionId || entry.dimension_id || 'unknown'
+    const label = entry.dimensionLabel || entry.dimension_label || fallbackLabel
+    const count = Number.isFinite(entry.eventCount)
+      ? entry.eventCount
+      : Number.isFinite(entry.event_count)
+      ? entry.event_count
+      : Number(entry.event_count || entry.eventCount) || 0
+
+    results.push({
+      weekStart,
+      dimensionId,
+      dimensionLabel: label,
+      eventCount: count,
+    })
+  }
+
+  return results
+}
+
 function formatWeekLabel(iso) {
   if (!iso) return '—'
   const date = new Date(iso)
@@ -128,6 +179,112 @@ function formatNumber(value) {
     return new Intl.NumberFormat('ko-KR').format(parsed)
   }
   return new Intl.NumberFormat('ko-KR').format(value)
+}
+
+function buildStackedTrend(buckets = [], breakdownEntries = [], { palette = [], fallbackLabel = '미지정', maxValue = 0 } = {}) {
+  if (!Array.isArray(buckets) || buckets.length === 0) {
+    return null
+  }
+  if (!Array.isArray(breakdownEntries) || breakdownEntries.length === 0) {
+    return null
+  }
+
+  const totalsByDimension = new Map()
+  const labelsByDimension = new Map()
+  const weeks = new Map()
+
+  for (const entry of breakdownEntries) {
+    const count = Number(entry.eventCount)
+    if (!Number.isFinite(count) || count <= 0) {
+      continue
+    }
+    const weekKey = entry.weekStart
+    const dimensionId = entry.dimensionId || 'unknown'
+    totalsByDimension.set(dimensionId, (totalsByDimension.get(dimensionId) || 0) + count)
+    labelsByDimension.set(dimensionId, entry.dimensionLabel || fallbackLabel)
+
+    if (!weeks.has(weekKey)) {
+      weeks.set(weekKey, new Map())
+    }
+    const weekMap = weeks.get(weekKey)
+    weekMap.set(dimensionId, (weekMap.get(dimensionId) || 0) + count)
+  }
+
+  if (!totalsByDimension.size) {
+    return null
+  }
+
+  let dimensionEntries = Array.from(totalsByDimension.entries()).sort((a, b) => b[1] - a[1])
+  let aggregatedOthers = null
+
+  if (dimensionEntries.length > MAX_STACK_SEGMENTS) {
+    const keep = dimensionEntries.slice(0, MAX_STACK_SEGMENTS - 1)
+    const rest = dimensionEntries.slice(MAX_STACK_SEGMENTS - 1)
+    const restTotal = rest.reduce((sum, [, value]) => sum + value, 0)
+    const restIds = rest.map(([id]) => id)
+    dimensionEntries = keep
+    if (restTotal > 0) {
+      aggregatedOthers = { id: '__others__', total: restTotal, ids: restIds }
+    }
+  }
+
+  const legend = dimensionEntries.map(([dimensionId, total], index) => ({
+    id: dimensionId,
+    label: labelsByDimension.get(dimensionId) || fallbackLabel,
+    total,
+    color: palette[index % palette.length] || palette[palette.length - 1] || 'rgba(148, 163, 184, 0.8)',
+    sourceIds: [dimensionId],
+  }))
+
+  if (aggregatedOthers) {
+    legend.push({
+      id: aggregatedOthers.id,
+      label: '기타',
+      total: aggregatedOthers.total,
+      color: palette[legend.length % palette.length] || 'rgba(148, 163, 184, 0.75)',
+      sourceIds: aggregatedOthers.ids,
+    })
+  }
+
+  const bars = buckets.map((bucket) => {
+    const total = bucket.eventCount || 0
+    const ratio = maxValue > 0 ? Math.round((total / maxValue) * 100) : 0
+    const height = total > 0 ? Math.max(ratio, 6) : 0
+    const weekKey = bucket.weekStart
+    const weekMap = weeks.get(weekKey) || new Map()
+
+    const segments = legend.map((entry) => {
+      const value = entry.sourceIds.reduce((sum, sourceId) => sum + (weekMap.get(sourceId) || 0), 0)
+      const percentage = total > 0 ? (value / total) * 100 : 0
+      return {
+        id: entry.id,
+        label: entry.label,
+        count: value,
+        color: entry.color,
+        percentage,
+        height: percentage,
+        displayValue: percentage >= 15 && value > 0,
+      }
+    })
+
+    const tooltipLines = segments
+      .filter((segment) => segment.count > 0)
+      .map((segment) => `${segment.label}: ${formatNumber(segment.count)}건 (${Math.round(segment.percentage)}%)`)
+      .join('\n')
+    const tooltipBase = `${formatWeekRangeTooltip(bucket.weekStart)} · 총 ${formatNumber(total)}건`
+    const tooltip = tooltipLines ? `${tooltipBase}\n${tooltipLines}` : tooltipBase
+
+    return {
+      weekStart: bucket.weekStart,
+      label: formatWeekLabel(bucket.weekStart),
+      total,
+      height,
+      tooltip,
+      segments,
+    }
+  })
+
+  return { legend, bars }
 }
 
 function summariseTrend(buckets = []) {
@@ -204,10 +361,12 @@ export default function AudioEventMonitor() {
   const [trendData, setTrendData] = useState({
     buckets: [],
     range: { since: null, until: null, lookbackWeeks: 0 },
+    breakdown: { hero: [], owner: [] },
   })
   const [trendLoading, setTrendLoading] = useState(true)
   const [trendError, setTrendError] = useState(null)
   const [trendUpdatedAt, setTrendUpdatedAt] = useState(null)
+  const [trendStackMode, setTrendStackMode] = useState('total')
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -305,6 +464,10 @@ export default function AudioEventMonitor() {
         setTrendData({
           buckets: Array.isArray(payload.buckets) ? payload.buckets : [],
           range: payload.range || { since: null, until: null, lookbackWeeks: 0 },
+          breakdown: {
+            hero: Array.isArray(payload.breakdown?.hero) ? payload.breakdown.hero : [],
+            owner: Array.isArray(payload.breakdown?.owner) ? payload.breakdown.owner : [],
+          },
         })
         setTrendError(null)
         setTrendUpdatedAt(new Date().toISOString())
@@ -406,7 +569,44 @@ export default function AudioEventMonitor() {
     [normalizedTrendBuckets],
   )
 
-  const trendBars = useMemo(
+  const trendBreakdown = useMemo(
+    () => ({
+      hero: normaliseBreakdown(trendData?.breakdown?.hero || [], { fallbackLabel: '히어로 미지정' }),
+      owner: normaliseBreakdown(trendData?.breakdown?.owner || [], { fallbackLabel: '운영자 미지정' }),
+    }),
+    [trendData],
+  )
+
+  const trendStackData = useMemo(() => {
+    if (trendStackMode === 'hero') {
+      return buildStackedTrend(normalizedTrendBuckets, trendBreakdown.hero, {
+        palette: HERO_STACK_COLORS,
+        fallbackLabel: '히어로 미지정',
+        maxValue: trendMaxValue,
+      })
+    }
+    if (trendStackMode === 'owner') {
+      return buildStackedTrend(normalizedTrendBuckets, trendBreakdown.owner, {
+        palette: OWNER_STACK_COLORS,
+        fallbackLabel: '운영자 미지정',
+        maxValue: trendMaxValue,
+      })
+    }
+    return null
+  }, [normalizedTrendBuckets, trendBreakdown, trendStackMode, trendMaxValue])
+
+  const hasHeroBreakdown = trendBreakdown.hero.length > 0
+  const hasOwnerBreakdown = trendBreakdown.owner.length > 0
+
+  useEffect(() => {
+    if (trendStackMode === 'hero' && !hasHeroBreakdown) {
+      setTrendStackMode('total')
+    } else if (trendStackMode === 'owner' && !hasOwnerBreakdown) {
+      setTrendStackMode('total')
+    }
+  }, [trendStackMode, hasHeroBreakdown, hasOwnerBreakdown])
+
+  const totalTrendBars = useMemo(
     () =>
       normalizedTrendBuckets.map((bucket) => {
         const ratio = trendMaxValue > 0 ? Math.round((bucket.eventCount / trendMaxValue) * 100) : 0
@@ -429,6 +629,10 @@ export default function AudioEventMonitor() {
     if (trendSummary.direction === 'down') return styles.audioEventsTrendDeltaDown
     return styles.audioEventsTrendDeltaFlat
   }, [trendSummary])
+
+  const usingStackedTrend = trendStackMode !== 'total' && trendStackData
+  const trendChartBars = usingStackedTrend ? trendStackData?.bars || [] : totalTrendBars
+  const trendStackLegend = usingStackedTrend ? trendStackData?.legend || [] : []
 
   return (
     <section className={styles.audioEventsSection}>
@@ -467,15 +671,48 @@ export default function AudioEventMonitor() {
 
       <div className={styles.audioEventsTrend}>
         <div className={styles.audioEventsTrendHeader}>
-          <div>
+          <div className={styles.audioEventsTrendHeading}>
             <h4 className={styles.audioEventsTrendTitle}>주간 추이</h4>
             <p className={styles.audioEventsTrendSubtitle}>
               {trendLoading
                 ? '주간 데이터를 불러오는 중…'
-                : trendBars.length
-                ? `최근 ${(trendData?.range?.lookbackWeeks || trendBars.length)}주 누적`
+                : totalTrendBars.length
+                ? `최근 ${(trendData?.range?.lookbackWeeks || totalTrendBars.length)}주 누적`
                 : '최근 주간 데이터 없음'}
             </p>
+            <div className={styles.audioEventsTrendModes}>
+              <button
+                type="button"
+                className={`${styles.audioEventsTrendModeButton} ${
+                  trendStackMode === 'total' ? styles.audioEventsTrendModeButtonActive : ''
+                }`}
+                onClick={() => setTrendStackMode('total')}
+              >
+                합산
+              </button>
+              <button
+                type="button"
+                className={`${styles.audioEventsTrendModeButton} ${
+                  trendStackMode === 'hero' ? styles.audioEventsTrendModeButtonActive : ''
+                }`}
+                onClick={() => setTrendStackMode('hero')}
+                disabled={!hasHeroBreakdown}
+                title={hasHeroBreakdown ? '히어로별 분포 보기' : '히어로 데이터가 없어 비활성화됨'}
+              >
+                히어로별
+              </button>
+              <button
+                type="button"
+                className={`${styles.audioEventsTrendModeButton} ${
+                  trendStackMode === 'owner' ? styles.audioEventsTrendModeButtonActive : ''
+                }`}
+                onClick={() => setTrendStackMode('owner')}
+                disabled={!hasOwnerBreakdown}
+                title={hasOwnerBreakdown ? '담당자별 분포 보기' : '담당자 데이터가 없어 비활성화됨'}
+              >
+                담당자별
+              </button>
+            </div>
           </div>
           <div className={`${styles.audioEventsTrendDelta} ${trendDirectionClass}`}>
             <span className={styles.audioEventsTrendDeltaIcon}>
@@ -495,18 +732,46 @@ export default function AudioEventMonitor() {
         </div>
         {trendError ? <p className={styles.audioEventsTrendError}>{trendError}</p> : null}
         <div className={styles.audioEventsTrendChart} role="img" aria-label="오디오 이벤트 주간 추이">
-          {trendBars.length ? (
-            trendBars.map((bar) => (
+          {trendChartBars.length ? (
+            trendChartBars.map((bar) => (
               <div key={bar.weekStart} className={styles.audioEventsTrendBarWrapper}>
                 <div className={styles.audioEventsTrendBarTrack} title={bar.tooltip}>
-                  <div
-                    className={styles.audioEventsTrendBar}
-                    style={{ '--audio-events-trend-bar-height': `${bar.height}` }}
-                  >
-                    {bar.eventCount > 0 ? (
-                      <span className={styles.audioEventsTrendBarValue}>{formatNumber(bar.eventCount)}</span>
-                    ) : null}
-                  </div>
+                  {usingStackedTrend ? (
+                    <div
+                      className={styles.audioEventsTrendBarStack}
+                      style={{ '--audio-events-trend-bar-height': `${bar.height}` }}
+                    >
+                      {bar.segments.map((segment) => (
+                        <div
+                          key={`${bar.weekStart}-${segment.id}`}
+                          className={styles.audioEventsTrendSegment}
+                          style={{
+                            '--audio-events-trend-segment-height': `${segment.height}`,
+                            '--audio-events-trend-segment-color': segment.color,
+                          }}
+                          title={`${segment.label}: ${formatNumber(segment.count)}건 (${Math.round(segment.percentage)}%)`}
+                        >
+                          {segment.displayValue ? (
+                            <span className={styles.audioEventsTrendSegmentValue}>
+                              {formatNumber(segment.count)}
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                      {bar.total > 0 ? (
+                        <span className={styles.audioEventsTrendBarStackValue}>{formatNumber(bar.total)}</span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div
+                      className={styles.audioEventsTrendBar}
+                      style={{ '--audio-events-trend-bar-height': `${bar.height}` }}
+                    >
+                      {bar.eventCount > 0 ? (
+                        <span className={styles.audioEventsTrendBarValue}>{formatNumber(bar.eventCount)}</span>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
                 <span className={styles.audioEventsTrendBarLabel}>{bar.label}</span>
               </div>
@@ -515,6 +780,20 @@ export default function AudioEventMonitor() {
             <span className={styles.audioEventsEmpty}>추이를 표시할 데이터가 없습니다.</span>
           )}
         </div>
+        {usingStackedTrend && trendStackLegend.length ? (
+          <div className={styles.audioEventsTrendLegend}>
+            {trendStackLegend.map((item) => (
+              <span key={item.id} className={styles.audioEventsTrendLegendItem}>
+                <span
+                  className={styles.audioEventsTrendLegendSwatch}
+                  style={{ '--audio-events-trend-legend-color': item.color }}
+                />
+                <span className={styles.audioEventsTrendLegendLabel}>{item.label}</span>
+                <span className={styles.audioEventsTrendLegendValue}>{formatNumber(item.total)}건</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
         <dl className={styles.audioEventsTrendStats}>
           <div>
             <dt>이번 주</dt>

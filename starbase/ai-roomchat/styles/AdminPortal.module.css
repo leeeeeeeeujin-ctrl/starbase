@@ -285,6 +285,12 @@
   gap: 0.85rem;
 }
 
+.audioEventsTrendHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
 .audioEventsTrendTitle {
   margin: 0;
   font-size: 1.1rem;
@@ -296,6 +302,41 @@
   margin: 0.25rem 0 0;
   font-size: 0.82rem;
   color: rgba(203, 213, 225, 0.7);
+}
+
+.audioEventsTrendModes {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.audioEventsTrendModeButton {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.55);
+  color: rgba(226, 232, 240, 0.78);
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  transition: all 0.18s ease;
+}
+
+.audioEventsTrendModeButton:hover:not(:disabled) {
+  background: rgba(79, 70, 229, 0.35);
+  color: #f8fafc;
+  border-color: rgba(129, 140, 248, 0.6);
+}
+
+.audioEventsTrendModeButtonActive {
+  background: rgba(79, 70, 229, 0.5);
+  border-color: rgba(129, 140, 248, 0.85);
+  color: #f1f5f9;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.25);
+}
+
+.audioEventsTrendModeButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .audioEventsTrendDelta {
@@ -373,6 +414,7 @@
   padding: 0.35rem;
   display: flex;
   align-items: flex-end;
+  position: relative;
 }
 
 .audioEventsTrendBar {
@@ -392,15 +434,103 @@
   transform: translateY(-4px);
 }
 
+.audioEventsTrendBarStack {
+  position: relative;
+  width: 100%;
+  height: calc(var(--audio-events-trend-bar-height, 0) * 1%);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  background: rgba(59, 72, 113, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.15);
+}
+
+.audioEventsTrendBarStackValue {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(241, 245, 249, 0.95);
+  text-shadow: 0 2px 6px rgba(15, 23, 42, 0.6);
+}
+
 .audioEventsTrendBarValue {
   font-size: 0.75rem;
   color: rgba(241, 245, 249, 0.92);
   font-weight: 600;
 }
 
+.audioEventsTrendSegment {
+  width: 100%;
+  height: calc(var(--audio-events-trend-segment-height, 0) * 1%);
+  min-height: 3px;
+  background: var(--audio-events-trend-segment-color, rgba(148, 163, 184, 0.8));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0.2rem;
+  transition: opacity 0.18s ease;
+}
+
+.audioEventsTrendSegment:hover {
+  opacity: 0.95;
+}
+
+.audioEventsTrendSegmentValue {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.85);
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.82);
+  box-shadow: 0 4px 8px rgba(15, 23, 42, 0.35);
+}
+
 .audioEventsTrendBarLabel {
   font-size: 0.74rem;
   color: rgba(226, 232, 240, 0.68);
+}
+
+.audioEventsTrendLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.audioEventsTrendLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  font-size: 0.72rem;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.audioEventsTrendLegendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--audio-events-trend-legend-color, rgba(148, 163, 184, 0.8));
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.4);
+}
+
+.audioEventsTrendLegendLabel {
+  font-weight: 600;
+}
+
+.audioEventsTrendLegendValue {
+  font-family: 'Fira Code', 'SFMono-Regular', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.68rem;
+  color: rgba(203, 213, 225, 0.85);
 }
 
 .audioEventsTrendStats {

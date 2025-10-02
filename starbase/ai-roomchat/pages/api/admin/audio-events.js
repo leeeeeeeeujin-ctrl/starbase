@@ -179,22 +179,36 @@ export default async function handler(req, res) {
       const startDate = since
         || new Date(now.getTime() - lookbackWeeks * 7 * 24 * 60 * 60 * 1000).toISOString()
 
-      const { data: trendData, error: trendError } = await supabaseAdmin.rpc('rank_audio_events_weekly_trend', {
+      const rpcParams = {
         start_timestamp: startDate,
         end_timestamp: end,
         owner_filter: ownerId || null,
         profile_filter: profileKey || null,
         hero_filter: heroId || null,
         event_type_filter: eventTypes.length ? eventTypes : null,
-      })
+      }
 
-      if (trendError) {
-        console.error('[admin/audio-events] failed to fetch weekly trend', trendError)
+      const [trendResponse, heroBreakdownResponse, ownerBreakdownResponse] = await Promise.all([
+        supabaseAdmin.rpc('rank_audio_events_weekly_trend', rpcParams),
+        supabaseAdmin.rpc('rank_audio_events_weekly_breakdown', { ...rpcParams, mode: 'hero' }),
+        supabaseAdmin.rpc('rank_audio_events_weekly_breakdown', { ...rpcParams, mode: 'owner' }),
+      ])
+
+      if (trendResponse.error) {
+        console.error('[admin/audio-events] failed to fetch weekly trend', trendResponse.error)
         return res.status(500).json({ error: 'Failed to fetch weekly trend' })
       }
 
-      const buckets = Array.isArray(trendData)
-        ? trendData.map((bucket) => ({
+      if (heroBreakdownResponse.error) {
+        console.error('[admin/audio-events] failed to fetch hero breakdown', heroBreakdownResponse.error)
+      }
+
+      if (ownerBreakdownResponse.error) {
+        console.error('[admin/audio-events] failed to fetch owner breakdown', ownerBreakdownResponse.error)
+      }
+
+      const buckets = Array.isArray(trendResponse.data)
+        ? trendResponse.data.map((bucket) => ({
             weekStart: bucket.week_start,
             eventCount: Number.isFinite(bucket.event_count) ? Number(bucket.event_count) : Number.parseInt(bucket.event_count, 10) || 0,
             uniqueOwners: Number.isFinite(bucket.unique_owners)
@@ -206,12 +220,28 @@ export default async function handler(req, res) {
           }))
         : []
 
+      const normaliseBreakdown = (entries = [], fallbackLabel) =>
+        Array.isArray(entries)
+          ? entries.map((entry) => ({
+              weekStart: entry.week_start,
+              dimensionId: entry.dimension_id || 'unknown',
+              dimensionLabel: entry.dimension_label || fallbackLabel || '미지정',
+              eventCount: Number.isFinite(entry.event_count)
+                ? Number(entry.event_count)
+                : Number.parseInt(entry.event_count, 10) || 0,
+            }))
+          : []
+
       return res.status(200).json({
         buckets,
         range: {
           since: startDate,
           until: end,
           lookbackWeeks,
+        },
+        breakdown: {
+          hero: normaliseBreakdown(heroBreakdownResponse.data, '히어로 미지정'),
+          owner: normaliseBreakdown(ownerBreakdownResponse.data, '운영자 미지정'),
         },
       })
     }

@@ -382,6 +382,66 @@ as $$
   order by bucket asc;
 $$;
 
+create or replace function public.rank_audio_events_weekly_breakdown(
+  mode text default 'hero',
+  start_timestamp timestamptz default null,
+  end_timestamp timestamptz default null,
+  owner_filter uuid default null,
+  profile_filter text default null,
+  hero_filter uuid default null,
+  event_type_filter text[] default null
+)
+returns table (
+  week_start timestamptz,
+  dimension_id text,
+  dimension_label text,
+  event_count bigint
+)
+language sql
+stable
+as $$
+  with filtered as (
+    select
+      date_trunc('week', created_at) as bucket,
+      owner_id,
+      profile_key,
+      hero_id,
+      nullif(hero_name, '') as hero_name
+    from public.rank_audio_events
+    where (start_timestamp is null or created_at >= start_timestamp)
+      and (end_timestamp is null or created_at < end_timestamp)
+      and (owner_filter is null or owner_id = owner_filter)
+      and (profile_filter is null or profile_key = profile_filter)
+      and (hero_filter is null or hero_id = hero_filter)
+      and (
+        event_type_filter is null
+        or coalesce(array_length(event_type_filter, 1), 0) = 0
+        or event_type = any(event_type_filter)
+      )
+  ),
+  prepared as (
+    select
+      bucket,
+      case when lower(coalesce(mode, 'hero')) = 'owner'
+        then coalesce(owner_id::text, 'unknown')
+        else coalesce(hero_id::text, 'unknown')
+      end as dimension_id,
+      case when lower(coalesce(mode, 'hero')) = 'owner'
+        then coalesce(owner_id::text, '운영자 미지정')
+        else coalesce(hero_name, '히어로 미지정')
+      end as dimension_label
+    from filtered
+  )
+  select
+    bucket as week_start,
+    dimension_id,
+    dimension_label,
+    count(*) as event_count
+  from prepared
+  group by bucket, dimension_id, dimension_label
+  order by bucket asc, event_count desc;
+$$;
+
 alter table public.rank_audio_events enable row level security;
 
 create policy if not exists rank_audio_events_select_owner

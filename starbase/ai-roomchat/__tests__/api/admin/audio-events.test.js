@@ -181,22 +181,44 @@ describe('GET /api/admin/audio-events', () => {
     process.env.ADMIN_PORTAL_PASSWORD = password
     const handler = loadHandler()
 
-    const rpcMock = jest.fn().mockResolvedValue({
-      data: [
-        {
-          week_start: '2025-09-29T00:00:00+00:00',
-          event_count: '5',
-          unique_owners: '3',
-          unique_profiles: '4',
-        },
-        {
-          week_start: '2025-10-06T00:00:00+00:00',
-          event_count: 2,
-          unique_owners: 2,
-          unique_profiles: 2,
-        },
-      ],
-      error: null,
+    const rpcMock = jest.fn((name, params) => {
+      if (name === 'rank_audio_events_weekly_trend') {
+        return Promise.resolve({
+          data: [
+            {
+              week_start: '2025-09-29T00:00:00+00:00',
+              event_count: '5',
+              unique_owners: '3',
+              unique_profiles: '4',
+            },
+            {
+              week_start: '2025-10-06T00:00:00+00:00',
+              event_count: 2,
+              unique_owners: 2,
+              unique_profiles: 2,
+            },
+          ],
+          error: null,
+        })
+      }
+      if (name === 'rank_audio_events_weekly_breakdown') {
+        if (params.mode === 'hero') {
+          return Promise.resolve({
+            data: [
+              { week_start: '2025-09-29T00:00:00+00:00', dimension_id: 'hero-a', dimension_label: '알파', event_count: 3 },
+              { week_start: '2025-09-29T00:00:00+00:00', dimension_id: 'hero-b', dimension_label: '베타', event_count: 2 },
+            ],
+            error: null,
+          })
+        }
+        return Promise.resolve({
+          data: [
+            { week_start: '2025-09-29T00:00:00+00:00', dimension_id: 'owner-123', dimension_label: 'owner-123', event_count: 5 },
+          ],
+          error: null,
+        })
+      }
+      return Promise.resolve({ data: [], error: null })
     })
 
     registerSupabaseAdminMock(() => ({ select: () => ({}) }), rpcMock)
@@ -227,6 +249,19 @@ describe('GET /api/admin/audio-events', () => {
       event_type_filter: ['preset.applied', 'preference.updated'],
     })
 
+    expect(rpcMock).toHaveBeenCalledWith('rank_audio_events_weekly_breakdown', expect.objectContaining({
+      mode: 'hero',
+      owner_filter: 'owner-123',
+      profile_filter: 'hero:abc',
+      hero_filter: 'hero-xyz',
+    }))
+    expect(rpcMock).toHaveBeenCalledWith('rank_audio_events_weekly_breakdown', expect.objectContaining({
+      mode: 'owner',
+      owner_filter: 'owner-123',
+      profile_filter: 'hero:abc',
+      hero_filter: 'hero-xyz',
+    }))
+
     expect(res.statusCode).toBe(200)
     expect(res.body.range.lookbackWeeks).toBe(8)
     expect(typeof res.body.range.since).toBe('string')
@@ -242,6 +277,28 @@ describe('GET /api/admin/audio-events', () => {
         eventCount: 2,
         uniqueOwners: 2,
         uniqueProfiles: 2,
+      },
+    ])
+    expect(res.body.breakdown.hero).toEqual([
+      {
+        weekStart: '2025-09-29T00:00:00+00:00',
+        dimensionId: 'hero-a',
+        dimensionLabel: '알파',
+        eventCount: 3,
+      },
+      {
+        weekStart: '2025-09-29T00:00:00+00:00',
+        dimensionId: 'hero-b',
+        dimensionLabel: '베타',
+        eventCount: 2,
+      },
+    ])
+    expect(res.body.breakdown.owner).toEqual([
+      {
+        weekStart: '2025-09-29T00:00:00+00:00',
+        dimensionId: 'owner-123',
+        dimensionLabel: 'owner-123',
+        eventCount: 5,
       },
     ])
   })
