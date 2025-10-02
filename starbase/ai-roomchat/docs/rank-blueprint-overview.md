@@ -67,7 +67,7 @@
 
 **총 진행률(단계별 동일 가중치)**: 약 **64%**
 
-홈 히어로에서 노출되는 진행률 보드는 위 표와 동일한 데이터를 `data/rankBlueprintProgress.json`으로 분리해 사용하며, 최신화 뱃지가 2주 이상 경과 시 업데이트 필요 상태를 표시합니다. `npm run refresh:blueprint-progress` 스크립트를 실행하면 이 표에서 JSON이 자동으로 재생성돼 문서/코드 동기화를 유지할 수 있습니다.【F:data/rankBlueprintProgress.json†L1-L35】【F:pages/index.js†L8-L118】【F:scripts/refresh-rank-blueprint-progress.js†L1-L94】
+홈 히어로에서 노출되는 진행률 보드는 위 표와 동일한 데이터를 `data/rankBlueprintProgress.json`으로 분리해 사용하며, 최신화 뱃지가 2주 이상 경과 시 업데이트 필요 상태를 표시합니다. `npm run refresh:blueprint-progress` 스크립트를 실행하면 이 표에서 JSON이 자동으로 재생성돼 문서/코드 동기화를 유지할 수 있고, `npm run check:blueprint-progress-freshness`(주 1회 GitHub Actions에서도 실행)로 14일 한계치를 넘길 경우 경고를 발생시켜 리마인더를 받습니다.【F:data/rankBlueprintProgress.json†L1-L35】【F:pages/index.js†L8-L118】【F:scripts/refresh-rank-blueprint-progress.js†L1-L94】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L74】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L20】
 
 ---
 느낀 점: 청사진 문서가 방대해 핵심 줄기를 요약해두니 신규 인원과 동기화할 때 맥락 잡기가 한결 수월해졌습니다.

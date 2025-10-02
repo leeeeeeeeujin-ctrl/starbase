@@ -1,0 +1,20 @@
+name: Blueprint progress freshness
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  freshness-check:
+    name: Verify snapshot freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Run freshness check
+        run: node scripts/check-rank-blueprint-progress-freshness.js
