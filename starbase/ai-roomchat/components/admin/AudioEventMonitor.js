@@ -5,6 +5,7 @@ import styles from '../../styles/AdminPortal.module.css'
 const REFRESH_INTERVAL_MS = 120_000
 const FILTER_DEBOUNCE_MS = 320
 const API_LIMIT = 300
+const LAST_APPLIED_RULE_STORAGE_KEY = 'rankAudioEvents:lastAppliedRule'
 
 const HERO_STACK_COLORS = [
   'rgba(129, 140, 248, 0.82)',
@@ -440,6 +441,8 @@ export default function AudioEventMonitor() {
   const [savingFavorite, setSavingFavorite] = useState(false)
   const [savingSubscription, setSavingSubscription] = useState(false)
   const [deletingRuleId, setDeletingRuleId] = useState(null)
+  const [activeRule, setActiveRule] = useState(null)
+  const [hasRestoredRule, setHasRestoredRule] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -646,30 +649,78 @@ export default function AudioEventMonitor() {
     setEditingSubscriptionId(null)
   }, [])
 
+  const persistActiveRule = useCallback((rule) => {
+    setActiveRule(rule || null)
+
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      if (rule) {
+        window.localStorage.setItem(LAST_APPLIED_RULE_STORAGE_KEY, JSON.stringify(rule))
+      } else {
+        window.localStorage.removeItem(LAST_APPLIED_RULE_STORAGE_KEY)
+      }
+    } catch (err) {
+      console.warn('[AudioEventMonitor] failed to persist active rule', err)
+    }
+  }, [])
+
+  const clearActiveRule = useCallback(
+    ({ silent = false } = {}) => {
+      persistActiveRule(null)
+      if (!silent) {
+        setRulesFeedback('저장된 조건 적용을 해제했습니다.')
+      }
+    },
+    [persistActiveRule],
+  )
+
   const applyFavoriteRule = useCallback(
-    (favorite) => {
+    (favorite, { silent = false, track = true } = {}) => {
       if (!favorite) return
       applyFiltersFromRule(favorite)
       const trend = favorite.trend || {}
       setTrendStackMode(trend.stackMode || 'total')
       setTrendStackLimit(trend.stackLimit || 'top5')
       setRulesError(null)
-      setRulesFeedback('즐겨찾기 필터를 적용했습니다.')
+      if (!silent) {
+        setRulesFeedback('즐겨찾기 필터를 적용했습니다.')
+      }
+      if (track) {
+        persistActiveRule({
+          id: favorite.id,
+          type: 'favorite',
+          label: favorite.label || '',
+          appliedAt: new Date().toISOString(),
+        })
+      }
     },
-    [applyFiltersFromRule],
+    [applyFiltersFromRule, persistActiveRule],
   )
 
   const applySubscriptionRule = useCallback(
-    (subscription) => {
+    (subscription, { silent = false, track = true } = {}) => {
       if (!subscription) return
       applyFiltersFromRule(subscription)
       const trend = subscription.trend || {}
       setTrendStackMode(trend.stackMode || 'total')
       setTrendStackLimit(trend.stackLimit || 'top5')
       setRulesError(null)
-      setRulesFeedback('구독 조건 필터를 적용했습니다.')
+      if (!silent) {
+        setRulesFeedback('구독 조건 필터를 적용했습니다.')
+      }
+      if (track) {
+        persistActiveRule({
+          id: subscription.id,
+          type: 'subscription',
+          label: subscription.label || '',
+          appliedAt: new Date().toISOString(),
+        })
+      }
     },
-    [applyFiltersFromRule],
+    [applyFiltersFromRule, persistActiveRule],
   )
 
   const startEditFavorite = useCallback((favorite) => {
@@ -848,6 +899,9 @@ export default function AudioEventMonitor() {
         }
 
         await loadRules()
+        if (activeRule?.id === id) {
+          clearActiveRule({ silent: true })
+        }
         if (editingFavoriteId === id) {
           resetFavoriteForm()
         }
@@ -861,7 +915,7 @@ export default function AudioEventMonitor() {
         setDeletingRuleId(null)
       }
     },
-    [editingFavoriteId, editingSubscriptionId, loadRules, resetFavoriteForm, resetSubscriptionForm],
+    [activeRule?.id, clearActiveRule, editingFavoriteId, editingSubscriptionId, loadRules, resetFavoriteForm, resetSubscriptionForm],
   )
 
   const handleFavoriteSubmit = useCallback(
@@ -941,6 +995,75 @@ export default function AudioEventMonitor() {
     }),
     [trendData],
   )
+
+  const activeRuleDetails = useMemo(() => {
+    if (!activeRule) return null
+    const source = activeRule.type === 'subscription' ? subscriptions : favorites
+    const record = source.find((item) => item.id === activeRule.id)
+    if (!record) return null
+    return {
+      ...activeRule,
+      record,
+      filters: record.filters || {},
+      slack: record.slack || {},
+      updatedAt: record.updatedAt || null,
+    }
+  }, [activeRule, favorites, subscriptions])
+
+  useEffect(() => {
+    if (rulesLoading || hasRestoredRule) {
+      return
+    }
+
+    if (typeof window === 'undefined') {
+      setHasRestoredRule(true)
+      return
+    }
+
+    let stored = null
+    try {
+      const raw = window.localStorage.getItem(LAST_APPLIED_RULE_STORAGE_KEY)
+      if (raw) {
+        stored = JSON.parse(raw)
+      }
+    } catch (err) {
+      console.warn('[AudioEventMonitor] failed to restore active rule', err)
+    }
+
+    if (!stored || !stored.id || !stored.type) {
+      setHasRestoredRule(true)
+      return
+    }
+
+    const source = stored.type === 'subscription' ? subscriptions : favorites
+    const match = source.find((item) => item.id === stored.id)
+
+    if (!match) {
+      clearActiveRule({ silent: true })
+      setHasRestoredRule(true)
+      return
+    }
+
+    if (stored.type === 'subscription') {
+      applySubscriptionRule(match, { silent: true, track: false })
+    } else {
+      applyFavoriteRule(match, { silent: true, track: false })
+    }
+
+    const appliedAt = stored.appliedAt && !Number.isNaN(Date.parse(stored.appliedAt))
+      ? stored.appliedAt
+      : new Date().toISOString()
+
+    persistActiveRule({
+      id: match.id,
+      type: stored.type,
+      label: match.label || '',
+      appliedAt,
+    })
+
+    setRulesFeedback('마지막으로 저장한 조건을 복원했습니다.')
+    setHasRestoredRule(true)
+  }, [applyFavoriteRule, applySubscriptionRule, clearActiveRule, favorites, hasRestoredRule, persistActiveRule, rulesLoading, subscriptions])
 
   const trendStackLimitOption = useMemo(
     () =>
@@ -1333,6 +1456,55 @@ export default function AudioEventMonitor() {
 
       {rulesError ? <p className={styles.audioEventsPreferenceError}>{rulesError}</p> : null}
       {rulesFeedback ? <p className={styles.audioEventsPreferenceFeedback}>{rulesFeedback}</p> : null}
+
+      {activeRuleDetails ? (
+        <div className={styles.audioEventsActiveRule}>
+          <div className={styles.audioEventsActiveRuleHeader}>
+            <span className={styles.audioEventsActiveRuleBadge}>
+              {activeRuleDetails.type === 'subscription' ? 'Slack 구독' : '즐겨찾기'}
+            </span>
+            <span className={styles.audioEventsActiveRuleLabel}>
+              {activeRuleDetails.label || '이름 없음'}
+            </span>
+            {activeRuleDetails.appliedAt ? (
+              <span className={styles.audioEventsActiveRuleMeta}>
+                적용 {formatRuleUpdatedAt(activeRuleDetails.appliedAt)}
+              </span>
+            ) : null}
+          </div>
+          <p className={styles.audioEventsActiveRuleSummary}>
+            {summariseFilters(activeRuleDetails.filters)}
+            {activeRuleDetails.type === 'subscription'
+              ? ` · ${summariseSlack(activeRuleDetails.slack)}`
+              : ''}
+          </p>
+          {activeRuleDetails.updatedAt ? (
+            <p className={styles.audioEventsActiveRuleSaved}>
+              규칙 저장 {formatRuleUpdatedAt(activeRuleDetails.updatedAt)}
+            </p>
+          ) : null}
+          <div className={styles.audioEventsActiveRuleActions}>
+            <button
+              type="button"
+              className={styles.audioEventsActiveRuleButton}
+              onClick={() => clearActiveRule()}
+            >
+              저장 조건 해제
+            </button>
+            <button
+              type="button"
+              className={styles.audioEventsActiveRuleButton}
+              onClick={() =>
+                (activeRuleDetails.type === 'subscription'
+                  ? applySubscriptionRule(activeRuleDetails.record)
+                  : applyFavoriteRule(activeRuleDetails.record))
+              }
+            >
+              다시 적용
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className={styles.audioEventsPreferenceBoard}>
         <section className={styles.audioEventsPreferenceColumn} aria-label="오디오 이벤트 즐겨찾기">
