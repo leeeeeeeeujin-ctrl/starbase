@@ -33,6 +33,7 @@
   - 응답의 `alerts` 필드는 기본 임계값(실패 비율 25%/45%, 쿨다운 비중 20%/40%, 알림 30초/60초, 교체 60초/180초, 연속 재시도 3/5회, 런북 링크 첨부율 85%/65%, 최신 첨부율 90%/70%)을 적용해 위험도(`ok`/`warning`/`critical`)를 판별합니다.
   - 관리자 포털(`/admin/portal`)에 **API 키 쿨다운 대시보드**가 추가돼 전체 요약, 제공자별 테이블, 최근 시도, 임계값을 시각적으로 확인할 수 있습니다.
   - 요약 카드 중 “현재 쿨다운 키”는 `cooldown-retry-schedule`의 추천 ETA를 함께 표기해 Edge Function이 다음으로 실행될 시점을 바로 파악할 수 있습니다.
+  - 제공자 테이블에는 `다음 재시도 ETA` 열이 추가돼 각 제공자의 활성 쿨다운 키가 언제 다시 자동화될 예정인지 한눈에 비교할 수 있습니다.
   - 임계값 패널은 게이지 카드로 현재 지표와 경고/위험 구간을 나란히 표시해 런북 링크 첨부율·실패율·평균 소요 시간의 추세를 즉시 읽어낼 수 있습니다.
   - 임계값을 넘어선 항목은 즉시 강조되며, 각 이슈에 대해 재시도 정책 변경·키 교체 우선순위를 결정할 수 있습니다.
   - **쿨다운 장기 분석 보드**에서는 기간·집계 단위(일/주/월)·제공자·사유 필터를 적용해 주간·월간 추세와 제공자/사유별 누적 지표, 최근 이벤트를 비교할 수 있습니다.
@@ -107,7 +108,7 @@
 ### Retry 상태 추적 및 대시보드 연동 (2025-11-07 업데이트)
 - **상태 머신**: `pending` → `retrying (n=1~3)` → `succeeded | failed` 단계별로 `metadata.cooldownAutomation.retryState`에 `attempt`, `nextRetryAt`, `lastResult` 필드를 누적해 JSON으로 저장합니다.
 - **대시보드 필드**: 관리자 포털 대시보드 카드에 `retryStatus`, `lastFailureAt`, `nextRetryEta`, `attemptCount` 컬럼을 추가해 실시간 모니터링이 가능하도록 했습니다.
-- **Slack 요약**: Edge Function이 각 재시도 결과를 Slack 스레드에 요약해 공유하고, 실패 시 `(결)` 태그를 붙여 회고 시 쉽게 필터링할 수 있습니다. 메시지에는 자동으로 `Edge Webhook Retry Runbook` 링크가 첨부돼 후속 대응 문서를 바로 열 수 있습니다.
+- **Slack 요약**: Edge Function이 각 재시도 결과를 Slack 스레드에 요약해 공유하고, 실패 시 `(결)` 태그를 붙여 회고 시 쉽게 필터링할 수 있습니다. 메시지에는 자동으로 `Edge Webhook Retry Runbook` 링크와 다음 자동 재시도 ETA가 첨부돼 후속 대응 문서와 재시도 일정을 동시에 확인할 수 있습니다.
 - **수동 회수 루틴**: `/api/rank/cooldown-digest`가 성공적으로 경보를 전달하면 Edge Function이 남긴 실패 메모를 `metadata.cooldownAutomation.digestRecovery` 필드에 적재해 추후 회고에 활용합니다.
 
 ## 향후 TODO

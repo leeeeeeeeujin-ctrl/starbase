@@ -4,6 +4,10 @@ import {
   mergeCooldownMetadata,
   runCooldownAutomation,
 } from '@/lib/rank/cooldownAutomation'
+import {
+  RETRY_BACKOFF_SEQUENCE_MS,
+  buildCooldownRetryPlan,
+} from '@/lib/rank/cooldownRetryScheduler'
 import { recordCooldownAuditEntry } from '@/lib/rank/cooldownAudit'
 
 function parseJsonBody(req) {
@@ -46,6 +50,51 @@ function sanitizeNote(value) {
   const note = toStringValue(value)
   if (!note) return null
   return note.slice(0, 500)
+}
+
+function toObject(value) {
+  if (!value) return {}
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    } catch (error) {
+      return {}
+    }
+  }
+  if (typeof value === 'object') {
+    return value
+  }
+  return {}
+}
+
+async function computeRetryPlan(cooldownId, metadata) {
+  if (!cooldownId) return null
+  try {
+    const { data: auditRows, error } = await supabaseAdmin
+      .from('rank_api_key_audit')
+      .select(
+        'id, status, retry_count, last_attempt_at, next_retry_eta, automation_payload, inserted_at, notes',
+      )
+      .eq('cooldown_id', cooldownId)
+      .order('inserted_at', { ascending: false })
+      .limit(50)
+
+    if (error) {
+      console.error('cooldown-report retry plan lookup failed:', { cooldownId, error })
+      return null
+    }
+
+    return buildCooldownRetryPlan(auditRows || [], {
+      baseIntervalsMs: RETRY_BACKOFF_SEQUENCE_MS,
+      now: new Date(),
+      cooldownMetadata: metadata,
+      includeAuditTrail: 10,
+    })
+  } catch (error) {
+    console.error('cooldown-report retry plan unexpected failure:', { cooldownId, error })
+    return null
+  }
 }
 
 export default async function handler(req, res) {
@@ -103,6 +152,9 @@ export default async function handler(req, res) {
       return res.status(202).json({ recorded: true, automation: null })
     }
 
+    const metadataObject = toObject(row.metadata)
+    const retryPlan = await computeRetryPlan(row.id, metadataObject)
+
     const eventForAutomation = {
       hashedKey,
       keySample: row.key_sample || insertPayload.key_sample,
@@ -114,12 +166,22 @@ export default async function handler(req, res) {
       recordedAt: row.recorded_at || recordedAtIso,
       expiresAt: row.expires_at || expiresAtIso,
       note: insertPayload.note,
+      nextRetryEta:
+        retryPlan?.recommendedRunAt ||
+        retryPlan?.nextRetryEta ||
+        metadataObject?.cooldownAutomation?.retryState?.nextRetryAt ||
+        null,
     }
 
     const automationOptions = {}
     const documentationUrl = getCooldownDocumentationUrl()
     if (documentationUrl) {
       automationOptions.docUrl = documentationUrl
+    }
+    if (retryPlan) {
+      automationOptions.retryPlan = retryPlan
+    } else if (metadataObject?.cooldownAutomation?.retryState?.nextRetryAt) {
+      automationOptions.retryEta = metadataObject.cooldownAutomation.retryState.nextRetryAt
     }
 
     let automationSummary = null
@@ -162,6 +224,12 @@ export default async function handler(req, res) {
           source: 'report',
           method: req.method,
           notes: insertPayload.note,
+          nextRetryEta:
+            automationSummary.retryEta ||
+            retryPlan?.recommendedRunAt ||
+            retryPlan?.nextRetryEta ||
+            metadataObject?.cooldownAutomation?.retryState?.nextRetryAt ||
+            null,
         },
       })
 

@@ -50,6 +50,8 @@ function buildProviderCsv(report, alerts) {
     'doc_link_attachment_count',
     'doc_link_attachment_rate',
     'last_doc_link_attachment_rate',
+    'next_retry_eta',
+    'last_attempt_at',
     'issues',
   ]
 
@@ -86,6 +88,8 @@ function buildProviderCsv(report, alerts) {
           provider.docLinkAttachmentCount ?? 0,
           provider.docLinkAttachmentRate ?? 0,
           provider.lastDocLinkAttachmentRate ?? 0,
+          provider.nextRetryEta || null,
+          provider.lastAttemptAt || null,
           issues,
         ]
       })

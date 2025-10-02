@@ -400,6 +400,7 @@ function ProviderTable({ providers }) {
             <th>최근 런북 첨부율</th>
             <th>평균 알림 시간</th>
             <th>평균 회복 시간</th>
+            <th>다음 재시도 ETA</th>
             <th>주요 경고</th>
           </tr>
         </thead>
@@ -409,6 +410,12 @@ function ProviderTable({ providers }) {
               ? provider.currentlyTriggered / provider.trackedKeys
               : 0
             const headline = provider.issues?.[0]?.message || '—'
+            const etaLabel = formatEtaLabel(provider.nextRetryEta)
+            const fallbackEta =
+              !etaLabel && provider.lastAttemptAt
+                ? `${formatEtaLabel(provider.lastAttemptAt) || '—'} · 마지막 시도`
+                : null
+            const etaCell = etaLabel || fallbackEta || '—'
 
             const hasDocLinkRate =
               provider.lastDocLinkAttachmentRate !== null &&
@@ -438,6 +445,7 @@ function ProviderTable({ providers }) {
                 <td>{docLinkCell}</td>
                 <td>{formatDuration(provider.avgAlertDurationMs)}</td>
                 <td>{formatDuration(provider.avgRotationDurationMs)}</td>
+                <td>{etaCell}</td>
                 <td className={styles.issueText}>{headline}</td>
               </tr>
             )
@@ -944,6 +952,8 @@ export default function CooldownDashboard() {
         docLinkAttachmentCount: provider?.docLinkAttachmentCount ?? null,
         docLinkAttachmentRate: provider?.docLinkAttachmentRate ?? null,
         lastDocLinkAttachmentRate: provider?.lastDocLinkAttachmentRate ?? null,
+        nextRetryEta: provider?.nextRetryEta ?? null,
+        lastAttemptAt: provider?.lastAttemptAt ?? null,
         ...entry,
       }
     })

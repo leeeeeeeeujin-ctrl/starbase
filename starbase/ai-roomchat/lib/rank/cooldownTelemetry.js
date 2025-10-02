@@ -223,6 +223,8 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
         rotationDurationCount: 0,
         docLinkAttachmentCount: 0,
         lastDocLinkAttached: 0,
+        nextRetryEta: null,
+        lastAttemptAt: null,
       })
     }
 
@@ -238,6 +240,19 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
 
     if (triggered) {
       providerEntry.currentlyTriggered += 1
+
+      const nextRetryEta = pickNextRetryEta(automation)
+      if (nextRetryEta) {
+        const candidateMs = Date.parse(nextRetryEta)
+        if (Number.isFinite(candidateMs)) {
+          const existingMs = providerEntry.nextRetryEta
+            ? Date.parse(providerEntry.nextRetryEta)
+            : NaN
+          if (Number.isNaN(existingMs) || candidateMs < existingMs) {
+            providerEntry.nextRetryEta = new Date(candidateMs).toISOString()
+          }
+        }
+      }
     }
 
     if (lastDocLinkAttached) {
@@ -266,6 +281,16 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
     )
     if (latest.attemptedAt) {
       latestAttempts.push(latest)
+
+      const attemptMs = Date.parse(latest.attemptedAt)
+      if (Number.isFinite(attemptMs)) {
+        const previousMs = providerEntry.lastAttemptAt
+          ? Date.parse(providerEntry.lastAttemptAt)
+          : NaN
+        if (Number.isNaN(previousMs) || attemptMs > previousMs) {
+          providerEntry.lastAttemptAt = new Date(attemptMs).toISOString()
+        }
+      }
     }
 
     if (triggered) {
@@ -329,6 +354,8 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
       docLinkAttachmentRate: Number(docLinkAttachmentRate.toFixed(3)),
       lastDocLinkAttached: entry.lastDocLinkAttached,
       lastDocLinkAttachmentRate: Number(lastDocLinkAttachmentRate.toFixed(3)),
+      nextRetryEta: entry.nextRetryEta,
+      lastAttemptAt: entry.lastAttemptAt,
     }
   })
 
