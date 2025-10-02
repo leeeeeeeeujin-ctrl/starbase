@@ -259,7 +259,7 @@ async function fetchOwnSessionHistory(
     (table) =>
       supabase
         .from(table)
-        .select('id, session_id, idx, role, public, content, created_at')
+        .select('id, session_id, idx, role, public, is_visible, content, summary_payload, created_at')
         .in('session_id', sessionIds)
         .order('session_id', { ascending: false })
         .order('idx', { ascending: true }),
@@ -291,9 +291,16 @@ async function fetchOwnSessionHistory(
       }
       return 0
     })
-    const limited = perSessionLimit > 0 ? sorted.slice(-perSessionLimit) : sorted
-    const publicTurns = limited.filter((turn) => turn?.public !== false)
-    const hiddenTurns = limited.filter((turn) => turn?.public === false)
+    const shareableTurns = sorted.filter(
+      (turn) => turn?.public !== false && turn?.is_visible !== false,
+    )
+    const limitedShareable =
+      perSessionLimit > 0 ? shareableTurns.slice(-perSessionLimit) : shareableTurns
+    const hiddenTurns = sorted.filter((turn) => turn?.public === false)
+    const suppressedTurns = sorted.filter(
+      (turn) => turn?.public !== false && turn?.is_visible === false,
+    )
+    const latestSummarySource = [...sorted].reverse().find((turn) => turn?.summary_payload)
 
     return {
       sessionId: session.id,
@@ -301,10 +308,14 @@ async function fetchOwnSessionHistory(
       sessionCreatedAt: session.created_at || null,
       sessionUpdatedAt: session.updated_at || null,
       turnCount: sorted.length,
-      displayedTurnCount: limited.length,
-      publicTurns,
+      displayedTurnCount: limitedShareable.length,
+      publicTurnCount: shareableTurns.length,
+      publicTurns: limitedShareable,
       hiddenCount: hiddenTurns.length,
-      hasMore: sorted.length > limited.length,
+      suppressedCount: suppressedTurns.length,
+      trimmedCount: Math.max(shareableTurns.length - limitedShareable.length, 0),
+      latestSummary: latestSummarySource?.summary_payload || null,
+      hasMore: shareableTurns.length > limitedShareable.length || sorted.length > limitedShareable.length,
     }
   })
 }

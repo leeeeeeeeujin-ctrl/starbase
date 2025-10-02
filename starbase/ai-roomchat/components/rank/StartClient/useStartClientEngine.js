@@ -276,11 +276,64 @@ export function useStartClientEngine(gameId) {
           if (!content || !content.trim()) {
             return
           }
-          normalized.push({
+          const visibilityValue =
+            typeof entry.visibility === 'string' ? entry.visibility.trim().toLowerCase() : ''
+
+          let summary = null
+          const summaryCandidates = [entry.summary, entry.summary_payload, entry.summaryPayload]
+          for (const candidate of summaryCandidates) {
+            if (candidate && typeof candidate === 'object') {
+              try {
+                summary = JSON.parse(JSON.stringify(candidate))
+                break
+              } catch (error) {
+                summary = null
+              }
+            }
+          }
+
+          const prompt = typeof entry.prompt === 'string' ? entry.prompt : null
+          const actors = Array.isArray(entry.actors)
+            ? entry.actors
+                .map((actor) => (typeof actor === 'string' ? actor.trim() : ''))
+                .filter(Boolean)
+            : null
+          const extra =
+            entry.extra && typeof entry.extra === 'object'
+              ? JSON.parse(JSON.stringify(entry.extra))
+              : null
+
+          const normalizedEntry = {
             role,
             content,
             public: entry.public !== false,
-          })
+          }
+
+          if (typeof entry.isVisible === 'boolean') {
+            normalizedEntry.isVisible = entry.isVisible
+          }
+
+          if (visibilityValue) {
+            normalizedEntry.visibility = visibilityValue
+          }
+
+          if (summary) {
+            normalizedEntry.summary = summary
+          }
+
+          if (prompt) {
+            normalizedEntry.prompt = prompt
+          }
+
+          if (actors && actors.length) {
+            normalizedEntry.actors = actors
+          }
+
+          if (extra) {
+            normalizedEntry.extra = extra
+          }
+
+          normalized.push(normalizedEntry)
         })
       }
 

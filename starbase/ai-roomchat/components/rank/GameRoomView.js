@@ -250,6 +250,38 @@ function ensureArray(value) {
   return []
 }
 
+function normalizeSummaryPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const preview = typeof payload.preview === 'string' ? payload.preview.trim() : ''
+  const promptPreview =
+    typeof payload.promptPreview === 'string' ? payload.promptPreview.trim() : ''
+  const role = typeof payload.role === 'string' ? payload.role.trim() : ''
+  const actors = Array.isArray(payload.actors)
+    ? payload.actors
+        .map((actor) => (typeof actor === 'string' ? actor.trim() : ''))
+        .filter(Boolean)
+    : []
+  const outcomeLine =
+    typeof payload.outcome?.lastLine === 'string'
+      ? payload.outcome.lastLine.trim()
+      : ''
+
+  if (!preview && !promptPreview && !role && !actors.length && !outcomeLine) {
+    return null
+  }
+
+  return {
+    preview,
+    promptPreview,
+    role,
+    actors,
+    outcomeLine,
+  }
+}
+
 function buildBattleLine(battle, heroNameMap) {
   const attackers = ensureArray(battle.attacker_hero_ids).map((id) => heroNameMap.get(id) || '알 수 없음')
   const defenders = ensureArray(battle.defender_hero_ids).map((id) => heroNameMap.get(id) || '알 수 없음')
@@ -659,14 +691,29 @@ export default function GameRoomView({
         if (!entry || !entry.sessionId) return null
         const statusInfo = describeSessionStatus(entry.sessionStatus)
         const createdAt = formatDate(entry.sessionCreatedAt)
-        const publicTurns = Array.isArray(entry.publicTurns) ? entry.publicTurns : []
+        const publicTurns = Array.isArray(entry.publicTurns)
+          ? entry.publicTurns.filter((turn) => turn?.is_visible !== false)
+          : []
+        const shareableTotalRaw = Number(entry.publicTurnCount ?? publicTurns.length)
+        const shareableTotal = Number.isFinite(shareableTotalRaw)
+          ? Math.max(shareableTotalRaw, 0)
+          : publicTurns.length
         const displayTurns = publicTurns.slice(-5)
         const extraPublicWithinLimited = Math.max(publicTurns.length - displayTurns.length, 0)
+        const olderShareableCount = Math.max(shareableTotal - publicTurns.length, 0)
         const hiddenCount = Number(entry.hiddenCount) || 0
-        const trimmedTotal = Math.max(
-          Number(entry.turnCount || 0) - Number(entry.displayedTurnCount || 0),
-          0,
-        )
+        const suppressedCount = Number(entry.suppressedCount) || 0
+        const trimmedTotal = (() => {
+          const trimmed = Number(entry.trimmedCount)
+          if (Number.isFinite(trimmed) && trimmed >= 0) {
+            return trimmed
+          }
+          return Math.max(
+            Number(entry.turnCount || 0) - Number(entry.displayedTurnCount || 0),
+            0,
+          )
+        })()
+        const summary = normalizeSummaryPayload(entry.latestSummary)
 
         return {
           id: entry.sessionId,
@@ -679,8 +726,11 @@ export default function GameRoomView({
             content: turn?.content || '',
           })),
           hiddenCount,
+          suppressedCount,
           extraPublicWithinLimited,
+          olderShareableCount,
           trimmedTotal,
+          summary,
         }
       })
       .filter(Boolean)
@@ -694,6 +744,7 @@ export default function GameRoomView({
         const statusInfo = describeSessionStatus(entry.status)
         const createdAt = formatDate(entry.created_at)
         const turns = Array.isArray(entry.turns) ? entry.turns : []
+        const visibleTurns = turns.filter((turn) => turn?.is_visible !== false)
         const viewerIsOwner = !!entry.viewer_is_owner
         const ownerId = entry.owner_id || null
 
@@ -729,14 +780,15 @@ export default function GameRoomView({
 
         const ownerName = baseHeroName
         const ownerLine = [roleLabel, baseHeroName].filter(Boolean).join(' · ')
-        const displayTurns = turns.map((turn, index) => ({
+        const displayTurns = visibleTurns.map((turn, index) => ({
           id: turn?.id || `${entry.id}-${turn?.idx ?? index}`,
           role: turn?.role || 'system',
           content: turn?.content || '',
         }))
         const hiddenPrivateCount = Number(entry.hidden_private_count) || 0
         const trimmedCount = Number(entry.trimmed_count) || 0
-        const totalVisible = Number(entry.total_visible_turns) || displayTurns.length
+        const totalVisible = Number(entry.total_visible_turns) || visibleTurns.length
+        const summary = normalizeSummaryPayload(entry.latest_summary)
 
         return {
           id: entry.id,
@@ -750,6 +802,7 @@ export default function GameRoomView({
           hiddenPrivateCount,
           trimmedCount,
           totalVisible,
+          summary,
         }
       })
       .filter(Boolean)
@@ -1291,6 +1344,56 @@ export default function GameRoomView({
                       공개 기록 {entry.totalVisible}개
                     </span>
                   </div>
+                  {entry.summary ? (
+                    <div className={styles.sessionHistorySummary}>
+                      <div className={styles.sessionHistorySummaryHeader}>
+                        <span
+                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeSummary}`}
+                        >
+                          요약
+                        </span>
+                        {entry.summary.role ? (
+                          <span className={styles.sessionHistorySummaryRole}>{entry.summary.role}</span>
+                        ) : null}
+                        {entry.summary.actors && entry.summary.actors.length ? (
+                          <span className={styles.sessionHistorySummaryActors}>
+                            {entry.summary.actors.join(', ')}
+                          </span>
+                        ) : null}
+                      </div>
+                      {entry.summary.preview ? (
+                        <p className={styles.sessionHistorySummaryText}>{entry.summary.preview}</p>
+                      ) : null}
+                      {entry.summary.promptPreview ? (
+                        <p className={styles.sessionHistorySummaryHint}>
+                          프롬프트: {entry.summary.promptPreview}
+                        </p>
+                      ) : null}
+                      {entry.summary.outcomeLine ? (
+                        <p className={styles.sessionHistorySummaryHint}>
+                          결론: {entry.summary.outcomeLine}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {entry.hiddenPrivateCount > 0 || entry.trimmedCount > 0 ? (
+                    <div className={styles.sessionHistoryBadgeRow}>
+                      {entry.hiddenPrivateCount > 0 ? (
+                        <span
+                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgePrivate}`}
+                        >
+                          비공개 {entry.hiddenPrivateCount}
+                        </span>
+                      ) : null}
+                      {entry.trimmedCount > 0 ? (
+                        <span
+                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeArchive}`}
+                        >
+                          축약 {entry.trimmedCount}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <ul className={styles.sessionHistoryTurns}>
                     {entry.turns.length ? (
                       entry.turns.map((turn) => (
@@ -1302,16 +1405,6 @@ export default function GameRoomView({
                     ) : (
                       <li className={styles.sessionHistoryNotice}>공유 가능한 기록이 아직 없습니다.</li>
                     )}
-                    {entry.hiddenPrivateCount > 0 ? (
-                      <li className={styles.sessionHistoryNotice}>
-                        비공개 로그 {entry.hiddenPrivateCount}개는 표시되지 않았습니다.
-                      </li>
-                    ) : null}
-                    {entry.trimmedCount > 0 ? (
-                      <li className={styles.sessionHistoryNotice}>
-                        이전 공개 기록 {entry.trimmedCount}개가 더 있습니다.
-                      </li>
-                    ) : null}
                   </ul>
                 </li>
               )
@@ -1348,6 +1441,78 @@ export default function GameRoomView({
                       <span className={styles.sessionHistoryTimestamp}>{entry.createdAt}</span>
                     ) : null}
                   </div>
+                  {entry.summary ? (
+                    <div className={styles.sessionHistorySummary}>
+                      <div className={styles.sessionHistorySummaryHeader}>
+                        <span
+                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeSummary}`}
+                        >
+                          요약
+                        </span>
+                        {entry.summary.role ? (
+                          <span className={styles.sessionHistorySummaryRole}>{entry.summary.role}</span>
+                        ) : null}
+                        {entry.summary.actors && entry.summary.actors.length ? (
+                          <span className={styles.sessionHistorySummaryActors}>
+                            {entry.summary.actors.join(', ')}
+                          </span>
+                        ) : null}
+                      </div>
+                      {entry.summary.preview ? (
+                        <p className={styles.sessionHistorySummaryText}>{entry.summary.preview}</p>
+                      ) : null}
+                      {entry.summary.promptPreview ? (
+                        <p className={styles.sessionHistorySummaryHint}>
+                          프롬프트: {entry.summary.promptPreview}
+                        </p>
+                      ) : null}
+                      {entry.summary.outcomeLine ? (
+                        <p className={styles.sessionHistorySummaryHint}>
+                          결론: {entry.summary.outcomeLine}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {entry.hiddenCount > 0 || entry.suppressedCount > 0 || entry.trimmedTotal > 0 ||
+                  entry.extraPublicWithinLimited > 0 || entry.olderShareableCount > 0 ? (
+                    <div className={styles.sessionHistoryBadgeRow}>
+                      {entry.hiddenCount > 0 ? (
+                        <span
+                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgePrivate}`}
+                        >
+                          비공개 {entry.hiddenCount}
+                        </span>
+                      ) : null}
+                      {entry.suppressedCount > 0 ? (
+                        <span
+                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeSuppressed}`}
+                        >
+                          숨김 {entry.suppressedCount}
+                        </span>
+                      ) : null}
+                      {entry.extraPublicWithinLimited > 0 ? (
+                        <span
+                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeOverflow}`}
+                        >
+                          최근 +{entry.extraPublicWithinLimited}
+                        </span>
+                      ) : null}
+                      {entry.olderShareableCount > 0 ? (
+                        <span
+                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeQueue}`}
+                        >
+                          과거 +{entry.olderShareableCount}
+                        </span>
+                      ) : null}
+                      {entry.trimmedTotal > 0 ? (
+                        <span
+                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeArchive}`}
+                        >
+                          보관 {entry.trimmedTotal}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <ul className={styles.sessionHistoryTurns}>
                     {entry.turns.length ? (
                       entry.turns.map((turn) => (
@@ -1359,21 +1524,6 @@ export default function GameRoomView({
                     ) : (
                       <li className={styles.sessionHistoryNotice}>공개된 기록이 아직 없습니다.</li>
                     )}
-                    {entry.hiddenCount > 0 ? (
-                      <li className={styles.sessionHistoryNotice}>
-                        비공개 턴 {entry.hiddenCount}개가 숨겨져 있습니다.
-                      </li>
-                    ) : null}
-                    {entry.extraPublicWithinLimited > 0 ? (
-                      <li className={styles.sessionHistoryNotice}>
-                        이전 공개 기록 {entry.extraPublicWithinLimited}개가 더 있습니다.
-                      </li>
-                    ) : null}
-                    {entry.trimmedTotal > 0 ? (
-                      <li className={styles.sessionHistoryNotice}>
-                        이전 턴 기록 {entry.trimmedTotal}개가 보관되어 있습니다.
-                      </li>
-                    ) : null}
                   </ul>
                 </li>
               )
