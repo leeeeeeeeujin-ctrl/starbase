@@ -8,7 +8,8 @@
     "start": "next start",
     "refresh:blueprint-progress": "node scripts/refresh-rank-blueprint-progress.js",
     "check:blueprint-progress-freshness": "node scripts/check-rank-blueprint-progress-freshness.js",
-    "check:blueprint-next-actions": "node scripts/check-rank-blueprint-next-actions.js"
+    "check:blueprint-next-actions": "node scripts/check-rank-blueprint-next-actions.js",
+    "test": "jest"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
@@ -18,5 +19,11 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "reactflow": "^11.11.4"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.5",
+    "@babel/runtime": "^7.24.5",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0"
   }
 }
