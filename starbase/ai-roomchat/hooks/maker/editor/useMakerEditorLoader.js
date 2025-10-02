@@ -3,6 +3,37 @@
 import { useEffect } from 'react'
 
 import { supabase } from '../../../lib/supabase'
+import { analyzeVariableRuleSource, VARIABLE_RULES_VERSION } from '../../../lib/variableRules'
+
+function buildVersionAlert(slotRows = []) {
+  const details = []
+
+  slotRows.forEach((slot, index) => {
+    const slotLabel = slot?.slot_no != null ? `#${slot.slot_no}` : `#${index + 1}`
+
+    const globalInfo = analyzeVariableRuleSource(slot?.var_rules_global)
+    if (globalInfo.hadEntries && (globalInfo.legacyStructure || globalInfo.version !== VARIABLE_RULES_VERSION)) {
+      const sourceLabel = globalInfo.version != null ? `v${globalInfo.version}` : '레거시'
+      details.push(`${slotLabel} 전역 규칙 ${sourceLabel} → v${VARIABLE_RULES_VERSION}`)
+    }
+
+    const localInfo = analyzeVariableRuleSource(slot?.var_rules_local)
+    if (localInfo.hadEntries && (localInfo.legacyStructure || localInfo.version !== VARIABLE_RULES_VERSION)) {
+      const sourceLabel = localInfo.version != null ? `v${localInfo.version}` : '레거시'
+      details.push(`${slotLabel} 로컬 규칙 ${sourceLabel} → v${VARIABLE_RULES_VERSION}`)
+    }
+  })
+
+  if (!details.length) {
+    return null
+  }
+
+  const uniqueDetails = Array.from(new Set(details))
+  return {
+    summary: `변수 규칙 ${uniqueDetails.length}건이 최신 버전(${VARIABLE_RULES_VERSION})과 다릅니다. 저장을 누르면 자동으로 최신 버전으로 갱신됩니다.`,
+    details: uniqueDetails,
+  }
+}
 
 export function useMakerEditorLoader({
   setId,
@@ -11,6 +42,7 @@ export function useMakerEditorLoader({
   setLoading,
   setSetInfo,
   loadGraph,
+  onVersionDrift,
 }) {
   useEffect(() => {
     if (!setId || !isReady) return
@@ -61,6 +93,10 @@ export function useMakerEditorLoader({
 
         if (!active) return
 
+        if (typeof onVersionDrift === 'function') {
+          onVersionDrift(buildVersionAlert(slotRows || []))
+        }
+
         loadGraph(slotRows || [], bridgeRows || [])
       } catch (error) {
         if (!active) return
@@ -79,7 +115,7 @@ export function useMakerEditorLoader({
     return () => {
       active = false
     }
-  }, [setId, isReady, router, loadGraph, setLoading, setSetInfo])
+  }, [setId, isReady, router, loadGraph, setLoading, setSetInfo, onVersionDrift])
 }
 
 //

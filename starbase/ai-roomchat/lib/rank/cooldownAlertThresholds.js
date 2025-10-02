@@ -1,35 +1,109 @@
-const defaultThresholds = {
-  failureRate: {
-    warning: 0.25,
-    critical: 0.45,
-  },
-  triggeredRatio: {
-    warning: 0.2,
-    critical: 0.4,
-  },
-  avgAlertDurationMs: {
-    warning: 30000,
-    critical: 60000,
-  },
-  avgRotationDurationMs: {
-    warning: 60000,
-    critical: 180000,
-  },
-  attemptsWithoutSuccess: {
-    warning: 3,
-    critical: 5,
-  },
-}
+import cooldownAlertThresholds from '@/config/rank/cooldownAlertThresholds'
+
+const defaultThresholds = Object.freeze({
+  ...cooldownAlertThresholds,
+})
 
 function toFiniteNumber(value) {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric : null
 }
 
-function compareThresholds(value, { warning, critical }) {
+function sanitizeThresholdValue(value) {
+  if (value === null) {
+    return { type: 'null', value: null }
+  }
+
+  if (typeof value === 'string' && value.trim().toLowerCase() === 'null') {
+    return { type: 'null', value: null }
+  }
+
+  const numeric = toFiniteNumber(value)
+  if (numeric === null) {
+    return { type: 'invalid', value: null }
+  }
+
+  return { type: 'number', value: numeric }
+}
+
+function mergeThresholdGroup(base = {}, override = {}) {
+  const merged = { ...base }
+
+  if (!override || typeof override !== 'object') {
+    return merged
+  }
+
+  if (Object.prototype.hasOwnProperty.call(override, 'warning')) {
+    const warningValue = sanitizeThresholdValue(override.warning)
+    if (warningValue.type === 'number') {
+      merged.warning = warningValue.value
+    } else if (warningValue.type === 'null') {
+      merged.warning = null
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(override, 'critical')) {
+    const criticalValue = sanitizeThresholdValue(override.critical)
+    if (criticalValue.type === 'number') {
+      merged.critical = criticalValue.value
+    } else if (criticalValue.type === 'null') {
+      merged.critical = null
+    }
+  }
+
+  return merged
+}
+
+export function resolveCooldownAlertThresholds(overrides = {}) {
+  if (!overrides || typeof overrides !== 'object') {
+    return { ...defaultThresholds }
+  }
+
+  const keys = new Set([
+    ...Object.keys(defaultThresholds),
+    ...Object.keys(overrides),
+  ])
+
+  const resolved = {}
+  for (const key of keys) {
+    const baseGroup = defaultThresholds[key] || {}
+    const overrideGroup = overrides[key] || {}
+    resolved[key] = mergeThresholdGroup(baseGroup, overrideGroup)
+  }
+
+  return resolved
+}
+
+export function loadCooldownAlertThresholds(options = {}) {
+  const env = options.env || process.env || {}
+  const rawValue = env.RANK_COOLDOWN_ALERT_THRESHOLDS
+
+  if (!rawValue) {
+    return { ...defaultThresholds }
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue)
+    return resolveCooldownAlertThresholds(parsed)
+  } catch (error) {
+    console.warn('[cooldown-alert-thresholds] Failed to parse overrides', error)
+    return { ...defaultThresholds }
+  }
+}
+
+function compareThresholds(value, thresholds = {}) {
+  const { warning, critical } = thresholds
   if (value === null || value === undefined) return 'ok'
   if (typeof critical === 'number' && value >= critical) return 'critical'
   if (typeof warning === 'number' && value >= warning) return 'warning'
+  return 'ok'
+}
+
+function compareFloorThresholds(value, thresholds = {}) {
+  const { warning, critical } = thresholds
+  if (value === null || value === undefined) return 'ok'
+  if (typeof critical === 'number' && value <= critical) return 'critical'
+  if (typeof warning === 'number' && value <= warning) return 'warning'
   return 'ok'
 }
 
@@ -47,6 +121,10 @@ function evaluateTotals(totals, thresholds) {
     : 0
   const avgAlertDurationMs = toFiniteNumber(totals.avgAlertDurationMs)
   const avgRotationDurationMs = toFiniteNumber(totals.avgRotationDurationMs)
+  const docLinkAttachmentRate = toFiniteNumber(totals.docLinkAttachmentRate)
+  const lastDocLinkAttachmentRate = toFiniteNumber(
+    totals.lastDocLinkAttachmentRate,
+  )
 
   const failureSeverity = compareThresholds(failureRate, thresholds.failureRate)
   if (failureSeverity !== 'ok') {
@@ -105,6 +183,46 @@ function evaluateTotals(totals, thresholds) {
     )
   }
 
+  const attachmentSeverity = compareFloorThresholds(
+    docLinkAttachmentRate,
+    thresholds.docLinkAttachmentRate,
+  )
+  if (attachmentSeverity !== 'ok') {
+    issues.push(
+      buildIssue(
+        'docLinkAttachmentRate',
+        attachmentSeverity,
+        'Slack 경보에 런북 링크 첨부율이 낮습니다.',
+        {
+          value:
+            typeof docLinkAttachmentRate === 'number'
+              ? Number(docLinkAttachmentRate.toFixed(3))
+              : null,
+        },
+      ),
+    )
+  }
+
+  const lastAttachmentSeverity = compareFloorThresholds(
+    lastDocLinkAttachmentRate,
+    thresholds.lastDocLinkAttachmentRate,
+  )
+  if (lastAttachmentSeverity !== 'ok') {
+    issues.push(
+      buildIssue(
+        'lastDocLinkAttachmentRate',
+        lastAttachmentSeverity,
+        '최근 시도에서 런북 링크 첨부가 누락되고 있습니다.',
+        {
+          value:
+            typeof lastDocLinkAttachmentRate === 'number'
+              ? Number(lastDocLinkAttachmentRate.toFixed(3))
+              : null,
+        },
+      ),
+    )
+  }
+
   const status = issues.some((issue) => issue.severity === 'critical')
     ? 'critical'
     : issues.some((issue) => issue.severity === 'warning')
@@ -126,6 +244,10 @@ function evaluateProvider(provider, thresholds) {
     : 0
   const avgAlertDurationMs = toFiniteNumber(provider.avgAlertDurationMs)
   const avgRotationDurationMs = toFiniteNumber(provider.avgRotationDurationMs)
+  const docLinkAttachmentRate = toFiniteNumber(provider.docLinkAttachmentRate)
+  const lastDocLinkAttachmentRate = toFiniteNumber(
+    provider.lastDocLinkAttachmentRate,
+  )
 
   const failureSeverity = compareThresholds(failureRate, thresholds.failureRate)
   if (failureSeverity !== 'ok') {
@@ -184,6 +306,46 @@ function evaluateProvider(provider, thresholds) {
     )
   }
 
+  const attachmentSeverity = compareFloorThresholds(
+    docLinkAttachmentRate,
+    thresholds.docLinkAttachmentRate,
+  )
+  if (attachmentSeverity !== 'ok') {
+    issues.push(
+      buildIssue(
+        'docLinkAttachmentRate',
+        attachmentSeverity,
+        `${provider.provider} 제공자의 런북 링크 첨부율이 낮습니다.`,
+        {
+          value:
+            typeof docLinkAttachmentRate === 'number'
+              ? Number(docLinkAttachmentRate.toFixed(3))
+              : null,
+        },
+      ),
+    )
+  }
+
+  const lastAttachmentSeverity = compareFloorThresholds(
+    lastDocLinkAttachmentRate,
+    thresholds.lastDocLinkAttachmentRate,
+  )
+  if (lastAttachmentSeverity !== 'ok') {
+    issues.push(
+      buildIssue(
+        'lastDocLinkAttachmentRate',
+        lastAttachmentSeverity,
+        `${provider.provider} 제공자의 최근 시도에서 런북 링크 첨부가 누락되고 있습니다.`,
+        {
+          value:
+            typeof lastDocLinkAttachmentRate === 'number'
+              ? Number(lastDocLinkAttachmentRate.toFixed(3))
+              : null,
+        },
+      ),
+    )
+  }
+
   const status = issues.some((issue) => issue.severity === 'critical')
     ? 'critical'
     : issues.some((issue) => issue.severity === 'warning')
@@ -198,6 +360,8 @@ function evaluateAttempt(attempt, thresholds) {
   const issues = []
   const attemptCount = toFiniteNumber(attempt.attemptCount)
   const triggered = Boolean(attempt.triggered)
+  const docLinkAttached = attempt.docLinkAttached
+  const attachmentCount = toFiniteNumber(attempt.docLinkAttachmentCount)
 
   if (typeof attemptCount === 'number') {
     const severity = compareThresholds(
@@ -218,7 +382,18 @@ function evaluateAttempt(attempt, thresholds) {
 
   if (triggered) {
     issues.push(
-      buildIssue('triggered', 'warning', '이 키는 아직 쿨다운 상태입니다.')
+      buildIssue('triggered', 'warning', '이 키는 아직 쿨다운 상태입니다.'),
+    )
+  }
+
+  if (docLinkAttached === false) {
+    issues.push(
+      buildIssue(
+        'docLinkAttached',
+        'warning',
+        '런북 링크가 첨부되지 않았습니다.',
+        attachmentCount !== null ? { attachments: attachmentCount } : null,
+      ),
     )
   }
 

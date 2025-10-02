@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { buildTurnSummaryPayload } from '@/lib/rank/turnSummary'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -31,13 +32,69 @@ function normalizeEntries(entries) {
     if (!content || !content.trim()) {
       return
     }
+
+    const visibility = determineVisibility(entry)
+    const summary = extractSummary(entry)
+    const prompt = typeof entry.prompt === 'string' ? entry.prompt : null
+    const actors = Array.isArray(entry.actors) ? entry.actors : null
+    const extra = typeof entry.extra === 'object' && entry.extra !== null ? entry.extra : null
+
     normalized.push({
       role,
       content,
       public: entry.public !== false,
+      isVisible: visibility,
+      summary,
+      prompt,
+      actors,
+      extra,
     })
   })
   return normalized
+}
+
+function determineVisibility(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return true
+  }
+
+  if (typeof entry.isVisible === 'boolean') {
+    return entry.isVisible
+  }
+
+  const visibilityValue =
+    typeof entry.visibility === 'string'
+      ? entry.visibility.trim().toLowerCase()
+      : null
+
+  if (visibilityValue) {
+    if (['hidden', 'private', 'invisible', 'internal'].includes(visibilityValue)) {
+      return false
+    }
+    if (['public', 'party', 'visible', 'shared'].includes(visibilityValue)) {
+      return true
+    }
+  }
+
+  return entry.public !== false
+}
+
+function extractSummary(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return null
+  }
+
+  const candidates = [entry.summary, entry.summary_payload, entry.summaryPayload]
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object') {
+      try {
+        return JSON.parse(JSON.stringify(candidate))
+      } catch (error) {
+        return null
+      }
+    }
+  }
+  return null
 }
 
 export default async function handler(req, res) {
@@ -114,13 +171,33 @@ export default async function handler(req, res) {
     startIdx = Math.floor(lastIdx) + 1
   }
 
-  const rows = normalizedEntries.map((entry, offset) => ({
-    session_id: sessionId,
-    idx: startIdx + offset,
-    role: entry.role,
-    public: entry.public,
-    content: entry.content,
-  }))
+  const currentTurn = Number(session.turn)
+
+  const rows = normalizedEntries.map((entry, offset) => {
+    const idx = startIdx + offset
+    const summaryPayload =
+      entry.summary && typeof entry.summary === 'object'
+        ? entry.summary
+        : buildTurnSummaryPayload({
+            role: entry.role,
+            content: entry.content,
+            prompt: entry.prompt,
+            session: { id: sessionId, turn: currentTurn },
+            idx,
+            actors: entry.actors,
+            extra: entry.extra,
+          })
+
+    return {
+      session_id: sessionId,
+      idx,
+      role: entry.role,
+      public: entry.public,
+      is_visible: entry.isVisible,
+      content: entry.content,
+      summary_payload: summaryPayload,
+    }
+  })
 
   const { data: inserted, error: insertError } = await supabaseAdmin
     .from('rank_turns')

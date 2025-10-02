@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { callChat } from '@/lib/rank/ai'
+import { buildTurnSummaryPayload } from '@/lib/rank/turnSummary'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -137,25 +138,51 @@ export default async function handler(req, res) {
     nextIdx = Math.floor(lastIdx) + 1
   }
 
+  const previousTurn = Number(session.turn) || 0
+  const nextTurnNumber = previousTurn + 1
+
   const rows = []
   const trimmedPrompt = String(prompt)
+  let currentIdx = nextIdx
+
   if (trimmedPrompt.trim().length) {
+    const promptSummary = buildTurnSummaryPayload({
+      role: promptRole,
+      content: trimmedPrompt,
+      session: { id: sessionId, turn: nextTurnNumber },
+      idx: currentIdx,
+    })
+
     rows.push({
       session_id: sessionId,
-      idx: nextIdx,
+      idx: currentIdx,
       role: promptRole,
       public: false,
+      is_visible: false,
       content: trimmedPrompt,
+      summary_payload: promptSummary,
     })
+
+    currentIdx += 1
   }
 
   if (responseText) {
+    const responseSummary = buildTurnSummaryPayload({
+      role: responseRole,
+      content: responseText,
+      prompt: trimmedPrompt,
+      session: { id: sessionId, turn: nextTurnNumber },
+      idx: currentIdx,
+    })
+
     rows.push({
       session_id: sessionId,
-      idx: nextIdx + rows.length,
+      idx: currentIdx,
       role: responseRole,
       public: responsePublic,
+      is_visible: responsePublic !== false,
       content: responseText,
+      summary_payload: responseSummary,
     })
   }
 
@@ -164,7 +191,7 @@ export default async function handler(req, res) {
     const { data: insertedRows, error: insertError } = await supabaseAdmin
       .from('rank_turns')
       .insert(rows)
-      .select('id, idx, role, public, content, created_at')
+      .select('id, idx, role, public, is_visible, content, summary_payload, created_at')
 
     if (insertError) {
       return res.status(400).json({ error: insertError.message })
@@ -173,8 +200,6 @@ export default async function handler(req, res) {
   }
 
   const now = new Date().toISOString()
-  const previousTurn = Number(session.turn) || 0
-  const nextTurnNumber = previousTurn + 1
 
   const { error: updateError } = await supabaseAdmin
     .from('rank_sessions')

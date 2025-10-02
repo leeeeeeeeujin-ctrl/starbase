@@ -5,6 +5,14 @@ const ALERT_WEBHOOK_URL =
   process.env.RANK_COOLDOWN_ALERT_WEBHOOK_URL || process.env.SLACK_COOLDOWN_ALERT_WEBHOOK_URL
 const ALERT_WEBHOOK_AUTH_HEADER =
   process.env.RANK_COOLDOWN_ALERT_WEBHOOK_AUTHORIZATION || process.env.RANK_COOLDOWN_ALERT_WEBHOOK_TOKEN
+const DEFAULT_ALERT_DOC_URL =
+  'https://github.com/starbasehq/starbase/blob/main/starbase/ai-roomchat/docs/rank-api-key-cooldown-monitoring.md#edge-webhook-retry-runbook-2025-11-07-%EC%97%85%EB%8D%B0%EC%9D%B4%ED%8A%B8'
+const ALERT_DOC_URL =
+  process.env.RANK_COOLDOWN_ALERT_DOC_URL ||
+  process.env.RANK_COOLDOWN_ALERT_DOC_LINK ||
+  process.env.RANK_COOLDOWN_RUNBOOK_URL ||
+  process.env.RANK_COOLDOWN_DOC_URL ||
+  DEFAULT_ALERT_DOC_URL
 const ROTATION_ENDPOINT =
   process.env.RANK_COOLDOWN_ROTATION_URL || process.env.RANK_COOLDOWN_ROTATION_WEBHOOK_URL
 const ROTATION_METHOD = (process.env.RANK_COOLDOWN_ROTATION_METHOD || 'POST').toUpperCase()
@@ -27,6 +35,19 @@ function sanitizeEvent(event) {
   const hashedKey = sanitizeString(event.hashedKey).trim()
   if (!hashedKey) return null
 
+  const parseIso = (value) => {
+    if (!value) return null
+    try {
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        return null
+      }
+      return date.toISOString()
+    } catch (error) {
+      return null
+    }
+  }
+
   return {
     hashedKey,
     keySample: sanitizeString(event.keySample) || null,
@@ -35,8 +56,9 @@ function sanitizeEvent(event) {
     viewerId: sanitizeString(event.viewerId) || null,
     gameId: sanitizeString(event.gameId) || null,
     sessionId: sanitizeString(event.sessionId) || null,
-    recordedAt: event.recordedAt ? new Date(event.recordedAt).toISOString() : null,
-    expiresAt: event.expiresAt ? new Date(event.expiresAt).toISOString() : null,
+    recordedAt: parseIso(event.recordedAt),
+    expiresAt: parseIso(event.expiresAt),
+    nextRetryEta: parseIso(event.nextRetryEta),
     note: sanitizeString(event.note) || null,
   }
 }
@@ -52,7 +74,64 @@ function createAbortController(timeoutMs = DEFAULT_TIMEOUT_MS) {
   }
 }
 
-function buildAlertPayload(event) {
+function resolveDocUrl(options = {}) {
+  const candidates = [options.docUrl, options.runbookUrl, ALERT_DOC_URL]
+
+  for (const candidate of candidates) {
+    const url = sanitizeString(candidate)
+    if (!url) continue
+    if (url.toLowerCase().startsWith('http://') || url.toLowerCase().startsWith('https://')) {
+      return url
+    }
+  }
+
+  return null
+}
+
+export function getCooldownDocumentationUrl() {
+  return resolveDocUrl()
+}
+
+function formatEtaForAlert(isoString) {
+  if (!isoString) return null
+  try {
+    const target = new Date(isoString)
+    if (Number.isNaN(target.getTime())) {
+      return null
+    }
+
+    const now = new Date()
+    const baseLabel = target.toLocaleString('ko-KR', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+    const diffMs = target.getTime() - now.getTime()
+    const absMs = Math.abs(diffMs)
+
+    if (absMs < 15000) {
+      return `${baseLabel} (지금)`
+    }
+
+    const minutes = Math.round(absMs / 60000)
+    if (minutes < 60) {
+      return `${baseLabel} (${minutes}분 ${diffMs >= 0 ? '후' : '전'})`
+    }
+
+    const hours = Math.floor(minutes / 60)
+    const remainingMinutes = minutes % 60
+    const durationLabel = remainingMinutes
+      ? `${hours}시간 ${remainingMinutes}분`
+      : `${hours}시간`
+    return `${baseLabel} (${durationLabel} ${diffMs >= 0 ? '후' : '전'})`
+  } catch (error) {
+    return null
+  }
+}
+
+function buildAlertPayload(event, docUrl, { retryPlan } = {}) {
   const lines = [
     ':rotating_light: API 키 쿨다운 감지',
     `• 키 샘플: ${event.keySample || event.hashedKey}`,
@@ -81,11 +160,41 @@ function buildAlertPayload(event) {
     lines.push(`• 비고: ${event.note}`)
   }
 
-  return {
+  if (docUrl) {
+    lines.push(`• 대응 가이드: ${docUrl}`)
+  }
+
+  const retryEtaCandidate =
+    retryPlan?.recommendedRunAt ||
+    retryPlan?.nextRetryEta ||
+    event.nextRetryEta ||
+    null
+  const retryEtaLabel = formatEtaForAlert(retryEtaCandidate)
+  if (retryEtaLabel) {
+    lines.push(`• 다음 자동 재시도 ETA: ${retryEtaLabel}`)
+  }
+
+  const payload = {
     type: 'rank.cooldown.alert',
     text: lines.join('\n'),
     event,
   }
+
+  if (docUrl) {
+    payload.links = { runbook: docUrl }
+  }
+
+  if (retryPlan) {
+    payload.retryPlan = {
+      shouldRetry: Boolean(retryPlan.shouldRetry),
+      recommendedRunAt: retryPlan.recommendedRunAt || retryPlan.nextRetryEta || null,
+      failureStreak: retryPlan.failureStreak ?? null,
+      lastStatus: retryPlan.lastStatus || null,
+      nextAttemptNumber: retryPlan.nextAttemptNumber ?? null,
+    }
+  }
+
+  return payload
 }
 
 function toNumber(value) {
@@ -200,7 +309,20 @@ export async function dispatchCooldownAlert(event, options = {}) {
     headers.Authorization = authHeader
   }
 
-  const payload = buildAlertPayload(sanitized)
+  const docUrl = resolveDocUrl(options)
+  const retryPlan = options.retryPlan || null
+  const fallbackRetryEta = options.retryEta || null
+  const resolvedRetryEta =
+    sanitized.nextRetryEta ||
+    retryPlan?.recommendedRunAt ||
+    retryPlan?.nextRetryEta ||
+    fallbackRetryEta ||
+    null
+  const alertEvent = {
+    ...sanitized,
+    nextRetryEta: resolvedRetryEta,
+  }
+  const payload = buildAlertPayload(alertEvent, docUrl, { retryPlan })
   const result = await postJson(webhookUrl, payload, { method: 'POST', headers })
 
   if (!result.ok) {
@@ -209,6 +331,7 @@ export async function dispatchCooldownAlert(event, options = {}) {
       delivered: false,
       status: typeof result.status === 'number' ? result.status : null,
       durationMs: toNumber(result.elapsedMs),
+      retryEta: resolvedRetryEta,
     }
 
     if (result.status !== undefined) {
@@ -217,6 +340,14 @@ export async function dispatchCooldownAlert(event, options = {}) {
 
     if (result.error) {
       summary.error = buildErrorSnapshot(result)
+    }
+
+    if (docUrl) {
+      summary.docUrl = docUrl
+    }
+
+    if (retryPlan) {
+      summary.retryPlan = payload.retryPlan
     }
 
     return summary
@@ -228,6 +359,9 @@ export async function dispatchCooldownAlert(event, options = {}) {
     status: result.status,
     durationMs: toNumber(result.elapsedMs),
     response: buildHttpSnapshot(result),
+    retryEta: resolvedRetryEta,
+    ...(retryPlan ? { retryPlan: payload.retryPlan } : {}),
+    ...(docUrl ? { docUrl } : {}),
   }
 }
 
@@ -328,6 +462,24 @@ export async function runCooldownAutomation(event, options = {}) {
     alert: await dispatchCooldownAlert(sanitized, options),
   }
 
+  summary.retryPlan = summary.alert?.retryPlan || options.retryPlan || null
+  const retryEtaCandidate =
+    summary.alert?.retryEta ||
+    summary.retryPlan?.recommendedRunAt ||
+    summary.retryPlan?.nextRetryEta ||
+    sanitized.nextRetryEta ||
+    options.retryEta ||
+    null
+  if (retryEtaCandidate) {
+    summary.retryEta = retryEtaCandidate
+  }
+
+  const alertDocUrl = summary.alert?.docUrl || null
+  summary.alertDocLinkAttached = Boolean(alertDocUrl)
+  if (alertDocUrl) {
+    summary.alertDocUrl = alertDocUrl
+  }
+
   const rotation = await triggerAutoKeyRotation(sanitized, options)
   summary.rotation = rotation
 
@@ -346,8 +498,15 @@ function isObject(value) {
 export function mergeCooldownMetadata(existingMetadata, automationSummary) {
   const base = isObject(existingMetadata) ? existingMetadata : {}
   const previous = isObject(base.cooldownAutomation) ? base.cooldownAutomation : {}
+  const previousRetryState = isObject(previous.retryState) ? previous.retryState : {}
   const previousCount = Number(previous.attemptCount)
   const attemptCount = Number.isFinite(previousCount) ? previousCount : 0
+  const previousDocLinkCount = Number(previous.docLinkAttachmentCount)
+  const docLinkAttachmentCount = Number.isFinite(previousDocLinkCount) ? previousDocLinkCount : 0
+
+  const alertDocUrl =
+    automationSummary.alertDocUrl || automationSummary.alert?.docUrl || null
+  const alertDocLinkAttached = Boolean(automationSummary.alertDocLinkAttached || alertDocUrl)
 
   const merged = {
     ...base,
@@ -359,12 +518,58 @@ export function mergeCooldownMetadata(existingMetadata, automationSummary) {
         triggered: automationSummary.triggered,
         alert: automationSummary.alert,
         rotation: automationSummary.rotation,
+        alertDocLinkAttached,
+        alertDocUrl,
       },
+      lastDocLinkAttached: alertDocLinkAttached,
+      lastDocUrl: alertDocUrl,
+      docLinkAttachmentCount:
+        alertDocLinkAttached ? docLinkAttachmentCount + 1 : docLinkAttachmentCount,
     },
   }
 
   if (automationSummary.triggered && automationSummary.notifiedAt) {
     merged.cooldownAutomation.lastSuccessAt = automationSummary.notifiedAt
+  }
+
+  const recommendedRetryEta =
+    automationSummary.retryEta ||
+    automationSummary.retryPlan?.recommendedRunAt ||
+    automationSummary.retryPlan?.nextRetryEta ||
+    null
+
+  if (automationSummary.retryPlan || recommendedRetryEta) {
+    const retryPlan = automationSummary.retryPlan || {}
+    const generatedAt = new Date().toISOString()
+    const recommendedRunAt =
+      retryPlan.recommendedRunAt || retryPlan.nextRetryEta || recommendedRetryEta || null
+
+    const retryPlanRecord = {
+      recommendedRunAt,
+      nextAttemptNumber: retryPlan.nextAttemptNumber ?? null,
+      failureStreak: retryPlan.failureStreak ?? null,
+      lastStatus: retryPlan.lastStatus || null,
+      generatedAt,
+    }
+    if (retryPlan.shouldRetry !== undefined) {
+      retryPlanRecord.shouldRetry = Boolean(retryPlan.shouldRetry)
+    }
+
+    merged.cooldownAutomation.retryPlan = retryPlanRecord
+
+    merged.cooldownAutomation.retryState = {
+      ...previousRetryState,
+      nextRetryAt: recommendedRunAt,
+      attempt:
+        retryPlan.nextAttemptNumber ??
+        previousRetryState.attempt ??
+        (Number.isFinite(merged.cooldownAutomation.attemptCount)
+          ? merged.cooldownAutomation.attemptCount
+          : null),
+      failureStreak: retryPlan.failureStreak ?? previousRetryState.failureStreak ?? null,
+      lastStatus: retryPlan.lastStatus || previousRetryState.lastStatus || null,
+      generatedAt,
+    }
   }
 
   return merged
