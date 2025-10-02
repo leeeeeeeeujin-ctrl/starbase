@@ -35,6 +35,40 @@ function formatDuration(ms) {
   return `${minutes}분 ${remaining}초`
 }
 
+function formatEtaLabel(isoString) {
+  if (!isoString) return null
+  const eta = new Date(isoString)
+  if (Number.isNaN(eta.getTime())) return null
+
+  const now = new Date()
+  const sameDay = now.toISOString().slice(0, 10) === eta.toISOString().slice(0, 10)
+  const formatter = sameDay
+    ? { hour: '2-digit', minute: '2-digit' }
+    : { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+  const timeLabel = eta.toLocaleString('ko-KR', formatter)
+
+  const diff = eta.getTime() - now.getTime()
+  const abs = Math.abs(diff)
+
+  if (abs < 15000) {
+    return `${timeLabel} (지금)`
+  }
+
+  if (abs < 60000) {
+    return `${timeLabel} (1분 미만 ${diff >= 0 ? '후' : '전'})`
+  }
+
+  const minutes = Math.round(abs / 60000)
+  if (minutes < 60) {
+    return `${timeLabel} (${minutes}분 ${diff >= 0 ? '후' : '전'})`
+  }
+
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  const durationLabel = remainingMinutes ? `${hours}시간 ${remainingMinutes}분` : `${hours}시간`
+  return `${timeLabel} (${durationLabel} ${diff >= 0 ? '후' : '전'})`
+}
+
 function formatPercent(value, digits = 1) {
   if (value === null || value === undefined) return '—'
   return formatNumber(value, { style: 'percent', digits })
@@ -91,6 +125,10 @@ function buildSegments({ direction, min, max, warning, critical }) {
       width: Math.max(segment.end - segment.start, 0),
     }))
     .filter((segment) => segment.width > 0)
+}
+
+function joinHelper(parts) {
+  return parts.filter((part) => typeof part === 'string' && part.trim().length > 0).join(' · ')
 }
 
 function normalizeFavorite(raw, index = 0) {
@@ -467,6 +505,12 @@ export default function CooldownDashboard() {
   const [exportStatus, setExportStatus] = useState(null)
   const [exportingSection, setExportingSection] = useState(null)
   const [initialFiltersLoaded, setInitialFiltersLoaded] = useState(false)
+  const [retryScheduleState, setRetryScheduleState] = useState({
+    loading: false,
+    eta: null,
+    sampleSize: 0,
+    error: null,
+  })
   const favoritesFeedbackTimeoutRef = useRef(null)
   const shareFeedbackTimeoutRef = useRef(null)
   const exportFeedbackTimeoutRef = useRef(null)
@@ -506,6 +550,26 @@ export default function CooldownDashboard() {
     })
     return map
   }, [languageFilterOptions])
+
+  const triggeredCooldownTargets = useMemo(() => {
+    const entries = Array.isArray(telemetry?.triggeredCooldowns)
+      ? telemetry.triggeredCooldowns
+      : []
+
+    const unique = []
+    const seen = new Set()
+
+    for (const entry of entries) {
+      if (!entry) continue
+      const identifier = entry.id || entry.keyHash
+      if (!identifier || seen.has(identifier)) continue
+      seen.add(identifier)
+      unique.push(entry)
+      if (unique.length >= 5) break
+    }
+
+    return unique
+  }, [telemetry?.triggeredCooldowns])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -904,6 +968,107 @@ export default function CooldownDashboard() {
   }, [telemetry])
 
   useEffect(() => {
+    if (!triggeredCooldownTargets.length) {
+      setRetryScheduleState({ loading: false, eta: null, sampleSize: 0, error: null })
+      return
+    }
+
+    let cancelled = false
+
+    async function loadRetrySchedules() {
+      setRetryScheduleState({
+        loading: true,
+        eta: null,
+        sampleSize: triggeredCooldownTargets.length,
+        error: null,
+      })
+
+      const results = []
+
+      for (const entry of triggeredCooldownTargets) {
+        if (cancelled) {
+          return
+        }
+
+        const params = new URLSearchParams()
+        if (entry.id) {
+          params.set('cooldownId', entry.id)
+        } else if (entry.keyHash) {
+          params.set('keyHash', entry.keyHash)
+        } else {
+          continue
+        }
+
+        try {
+          const response = await fetch(`/api/rank/cooldown-retry-schedule?${params.toString()}`)
+          if (!response.ok) {
+            continue
+          }
+          const payload = await response.json()
+          const plan = payload?.plan || {}
+          if (plan.recommendedRunAt) {
+            results.push({
+              eta: plan.recommendedRunAt,
+              delayMs: typeof plan.recommendedDelayMs === 'number' ? plan.recommendedDelayMs : null,
+            })
+          }
+        } catch (error) {
+          if (cancelled) {
+            return
+          }
+        }
+      }
+
+      if (cancelled) {
+        return
+      }
+
+      if (!results.length) {
+        setRetryScheduleState({
+          loading: false,
+          eta: null,
+          sampleSize: triggeredCooldownTargets.length,
+          error: 'missing_eta',
+        })
+        return
+      }
+
+      results.sort((a, b) => {
+        const aTime = Date.parse(a.eta || '')
+        const bTime = Date.parse(b.eta || '')
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
+        if (Number.isNaN(aTime)) return 1
+        if (Number.isNaN(bTime)) return -1
+        return aTime - bTime
+      })
+
+      const next = results.find((entry) => !Number.isNaN(Date.parse(entry.eta || '')))
+      if (!next) {
+        setRetryScheduleState({
+          loading: false,
+          eta: null,
+          sampleSize: triggeredCooldownTargets.length,
+          error: 'missing_eta',
+        })
+        return
+      }
+
+      setRetryScheduleState({
+        loading: false,
+        eta: next.eta,
+        sampleSize: triggeredCooldownTargets.length,
+        error: null,
+      })
+    }
+
+    loadRetrySchedules()
+
+    return () => {
+      cancelled = true
+    }
+  }, [triggeredCooldownTargets])
+
+  useEffect(() => {
     const controller = new AbortController()
     async function loadInsights() {
       setLanguageLoading(true)
@@ -1008,6 +1173,37 @@ export default function CooldownDashboard() {
     ]
   }, [telemetry])
 
+  const etaHelper = (() => {
+    if (!triggeredCooldownTargets.length) {
+      return null
+    }
+
+    if (retryScheduleState.loading) {
+      return '다음 ETA 계산 중…'
+    }
+
+    if (retryScheduleState.error) {
+      return '다음 ETA 정보를 불러오지 못했습니다.'
+    }
+
+    if (retryScheduleState.eta) {
+      const label = formatEtaLabel(retryScheduleState.eta)
+      if (!label) {
+        return null
+      }
+      const suffix =
+        retryScheduleState.sampleSize > 1 ? ` (${retryScheduleState.sampleSize}건 기준)` : ''
+      return `다음 ETA ${label}${suffix}`
+    }
+
+    return null
+  })()
+
+  const cooldownHelperText = joinHelper([
+    `권장 백오프 ${formatDuration(telemetry?.totals?.recommendedBackoffMs)}`,
+    etaHelper,
+  ])
+
   return (
     <section className={styles.dashboard}>
       <header className={styles.header}>
@@ -1050,12 +1246,12 @@ export default function CooldownDashboard() {
               )}`}
               status={overallStatus.status}
             />
-            <SummaryCard
-              title="현재 쿨다운 키"
-              value={formatNumber(telemetry.totals?.currentlyTriggered)}
-              helper={`권장 백오프 ${formatDuration(telemetry.totals?.recommendedBackoffMs)}`}
-              status={overallStatus.status}
-            />
+          <SummaryCard
+            title="현재 쿨다운 키"
+            value={formatNumber(telemetry.totals?.currentlyTriggered)}
+            helper={cooldownHelperText}
+            status={overallStatus.status}
+          />
             <SummaryCard
               title="권장 가중치"
               value={formatNumber(telemetry.totals?.recommendedWeight, { digits: 2 })}

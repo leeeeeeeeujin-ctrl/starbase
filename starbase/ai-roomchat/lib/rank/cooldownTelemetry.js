@@ -19,6 +19,36 @@ function toFiniteNumber(value) {
   return Number.isFinite(numeric) ? numeric : null
 }
 
+function safeIso(value) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+  return date.toISOString()
+}
+
+function pickNextRetryEta(automation = {}) {
+  const retryState = toObject(automation.retryState)
+  const retryPlan = toObject(automation.retryPlan)
+  const candidates = [
+    automation.nextRetryEta,
+    retryState.nextRetryEta,
+    retryState.recommendedRunAt,
+    retryPlan.recommendedRunAt,
+    retryPlan.nextRetryAt,
+  ]
+
+  for (const candidate of candidates) {
+    const iso = safeIso(candidate)
+    if (iso) {
+      return iso
+    }
+  }
+
+  return null
+}
+
 function averageFrom(sum, count) {
   if (!count) return null
   const result = sum / count
@@ -129,6 +159,7 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
 
   const providerMap = new Map()
   const latestAttempts = []
+  const triggeredCooldowns = []
 
   for (const row of safeRows) {
     const metadata = toObject(row.metadata)
@@ -236,12 +267,34 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
     if (latest.attemptedAt) {
       latestAttempts.push(latest)
     }
+
+    if (triggered) {
+      triggeredCooldowns.push({
+        id: row.id || null,
+        keyHash: row.key_hash || null,
+        provider: row.provider || null,
+        reason: row.reason || null,
+        attemptId: latest.attemptId || null,
+        lastAttemptAt: latest.attemptedAt || null,
+        metadataNextRetryEta: pickNextRetryEta(automation),
+      })
+    }
   }
 
   latestAttempts.sort((a, b) => {
     const aTime = Date.parse(a.attemptedAt || '') || 0
     const bTime = Date.parse(b.attemptedAt || '') || 0
     return bTime - aTime
+  })
+
+  triggeredCooldowns.sort((a, b) => {
+    const aEta = Date.parse(a.metadataNextRetryEta || '')
+    const bEta = Date.parse(b.metadataNextRetryEta || '')
+    const aFallback = Date.parse(a.lastAttemptAt || '') || 0
+    const bFallback = Date.parse(b.lastAttemptAt || '') || 0
+    const aTime = Number.isNaN(aEta) ? aFallback : aEta
+    const bTime = Number.isNaN(bEta) ? bFallback : bEta
+    return aTime - bTime
   })
 
   const providerSummaries = Array.from(providerMap.values()).map((entry) => {
@@ -321,6 +374,7 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
     },
     providers: providerSummaries,
     latestAttempts: latestAttempts.slice(0, latestLimit),
+    triggeredCooldowns,
   }
 }
 
