@@ -5,6 +5,7 @@ import { parseCookies } from '@/lib/server/cookies';
 import CooldownDashboard from '@/components/admin/CooldownDashboard';
 import CooldownAnalyticsBoard from '@/components/admin/CooldownAnalyticsBoard';
 import UserErrorMonitor from '@/components/admin/UserErrorMonitor';
+import AudioEventMonitor from '@/components/admin/AudioEventMonitor';
 
 const COOKIE_NAME = 'rank_admin_portal_session';
 
@@ -131,6 +132,7 @@ export default function AdminPortal({ authorized, misconfigured }) {
             </p>
 
             <UserErrorMonitor />
+            <AudioEventMonitor />
             <CooldownDashboard />
             <CooldownAnalyticsBoard />
           </section>
