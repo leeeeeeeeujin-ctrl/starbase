@@ -43,6 +43,7 @@
 - [임계값 감사 요약 패널](rank-api-key-cool다운-monitoring.md#4-telemetry-리포트--대시보드): 텔레메트리 `thresholdAudit`과 대시보드 카드/감사 로그 패널이 최근 임계값 변경 횟수, 마지막 조정 시각, Diff 요약을 한눈에 보여 줍니다.
 - [임계값 감사 타임라인](rank-api-key-cool다운-monitoring.md#4-telemetry-리포트--대시보드): `thresholdAudit.timelines`가 일간/주간/월간 버킷을 함께 제공해 대시보드 타임라인 그래프가 모드를 전환하며 단기·장기 추세를 동시에 비교할 수 있습니다.
 - [임계값 타임라인 내보내기](rank-api-key-cool다운-monitoring.md#4-telemetry-리포트--대시보드): 선택한 모드 데이터를 CSV·PNG로 내려받아 주간 보고·회고 문서에 바로 붙일 수 있습니다. 내보낸 직후 `/api/rank/upload-cooldown-timeline`이 팀 드라이브(또는 공유 디렉터리)에 파일을 업로드해 수동 공유 단계를 생략합니다.
+- [업로드 성공 텔레메트리](rank-api-key-cool다운-monitoring.md#4-telemetry-리포트--대시보드): `timelineUploads` 요약과 업로드 감사 테이블을 연동해 최근 24시간·7일 성공 횟수, 마지막 성공 시각, 실패/건너뜀 내역을 대시보드 카드와 최근 업로드 패널에서 확인할 수 있습니다.
 - [API 키 회수 감사 스키마 초안](supabase-ddl-export.md#6-rank_api_key_audit-감사-로그-초안-2025-11-08-업데이트): `rank_api_key_audit` 테이블을 정의해 Edge Function 재시도, Slack 경보, 수동 회수 이력을 한 테이블에서 추적할 수 있도록 준비했습니다.
 - [Edge Function 백오프 스케줄러](rank-api-key-cooldown-monitoring.md#edge-function-백오프-스케줄러-2025-11-08-업데이트): 감사 로그와 텔레메트리 지표를 바탕으로 `GET /api/rank/cooldown-retry-schedule`이 동적 백오프를 계산하도록 연결했습니다.
 

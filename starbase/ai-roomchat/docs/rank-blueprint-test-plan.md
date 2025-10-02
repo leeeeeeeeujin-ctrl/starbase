@@ -77,6 +77,7 @@
 | OPS-06 | 임계값 감사 타임라인 그래프 검증 | 1. OPS-04를 연속 두 번 실행해 서로 다른 임계값 변경 생성<br>2. `/api/rank/cooldown-telemetry` 응답의 `thresholdAudit.timelines.daily/weekly/monthly` 버킷 수와 현재 기간 플래그 확인<br>3. 대시보드 타임라인 토글(일/주/월)을 순서대로 눌러 그래프 스크린샷 확보 | 일간 뷰는 `windowDays`가 14로 노출되고 현재 버킷이 강조되며, 주간/월간 뷰는 `windowLabel`에 기간명이 표시되고 그래프가 각 모드에 맞게 전환됨 |
 | OPS-07 | 감사 타임라인 CSV/PNG 내보내기 검증 | 1. OPS-06 이후 대시보드 타임라인 모드를 `주간`으로 전환<br>2. `CSV 다운로드` 버튼 클릭 후 파일 열어 버킷 라벨·count·is_current 확인<br>3. `이미지 저장` 버튼 클릭 후 PNG에 제목·모드·범례·주간 막대 강조가 포함됐는지 확인 | CSV는 `mode=weekly`와 버킷 수가 응답과 일치하고, PNG는 현재 주간 막대가 하이라이트된 상태로 저장됨 |
 | OPS-08 | 타임라인 자동 업로드 경로 확인 | 1. `.env.local`에 `TEAM_DRIVE_EXPORT_DIR=.tmp/team-drive` 설정<br>2. OPS-07 수행 후 `.tmp/team-drive` 폴더 확인<br>3. 업로드 실패 상황을 만들기 위해 `TEAM_DRIVE_EXPORT_DIR` 제거 후 다시 내보내기 | 내보내기 후 동일 파일이 `.tmp/team-drive`에 생성되고, 업로드 비활성화 시 상태 메시지에 "팀 드라이브 업로드 건너뜀" 또는 실패 경고가 노출됨 |
+| OPS-09 | 업로드 텔레메트리 요약 검증 | 1. OPS-08까지 수행 후 `/api/rank/cooldown-telemetry` 호출<br>2. 응답 `timelineUploads.summary.overall.success24h/7d`, `summary.groups` 항목이 업로드·건너뜀 시나리오와 일치하는지 확인<br>3. 대시보드 "업로드 자동 공유 현황" 카드와 최근 업로드 패널에서 동일한 숫자·상태가 노출되는지 캡처 | JSON 요약의 24시간·7일 성공 횟수와 마지막 성공 시각이 실제 업로드 로그와 일치하고, 대시보드 카드/패널도 동일한 값과 실패/건너뜀 경고를 표시함 |
 
 ## 3. 자동화 및 회귀 테스트 제안
 

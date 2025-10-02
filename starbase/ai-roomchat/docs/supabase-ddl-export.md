@@ -217,6 +217,48 @@ comment on column public.rank_api_key_audit.digest_payload is
   '수동 다이제스트 호출 결과 및 회수 로그 JSON.';
 ```
 
+## 7. `rank_cooldown_timeline_uploads` 업로드 감사 로그 (2025-11-08 업데이트)
+
+타임라인/CSV 내보내기 업로드 자동화를 추적하기 위한 감사 테이블입니다. 업로드 성공/실패 여부와 전략, 파일 메타데이터, 오류 메시지를
+보존해 누락된 공유 구간을 빠르게 찾아낼 수 있습니다.
+
+```sql
+create table if not exists public.rank_cooldown_timeline_uploads (
+  id uuid primary key default gen_random_uuid(),
+  section text not null,
+  mode text,
+  format text,
+  status text not null check (status in ('uploaded','skipped','failed','unknown')),
+  strategy text,
+  filename text,
+  uploaded_at timestamptz not null default now(),
+  metadata jsonb not null default '{}'::jsonb,
+  error_message text,
+  inserted_at timestamptz not null default now()
+);
+
+create index if not exists rank_cooldown_timeline_uploads_section_idx
+  on public.rank_cooldown_timeline_uploads (section, mode, uploaded_at desc);
+
+create index if not exists rank_cooldown_timeline_uploads_status_idx
+  on public.rank_cooldown_timeline_uploads (status, uploaded_at desc);
+
+comment on table public.rank_cooldown_timeline_uploads is
+  '쿨다운 대시보드 CSV/타임라인 내보내기 업로드 성공·실패 이력을 기록하는 테이블';
+
+comment on column public.rank_cooldown_timeline_uploads.section is
+  '업로드 유형 구분 (providers, attempts, audit-timeline 등).';
+
+comment on column public.rank_cooldown_timeline_uploads.mode is
+  '감사 타임라인 모드(daily/weekly/monthly) 등 추가 구분자.';
+
+comment on column public.rank_cooldown_timeline_uploads.status is
+  '업로드 결과 (uploaded/skipped/failed/unknown).';
+
+comment on column public.rank_cooldown_timeline_uploads.strategy is
+  'Google Drive, 파일 시스템 등 업로드 전략.';
+```
+
 ## 실행 팁
 - Supabase SQL Editor에서 결과를 복사해 `.sql` 파일로 저장하면 백업 스크립트를 빠르게 만들 수 있습니다.
 - `psql`을 사용할 때는 `\gset`을 이용해 결과를 변수에 담은 뒤, `\echo :create_table_ddl` 형태로 출력하는 방법도 있습니다.

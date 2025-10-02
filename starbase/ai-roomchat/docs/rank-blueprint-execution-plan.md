@@ -328,3 +328,13 @@
 느낀 점: 내보내기와 동시에 팀 드라이브에 파일이 적재되니 운영 보고서를 공유하는 흐름이 훨씬 단순해져 만족스러웠습니다.
 추가로 필요한 점: 향후 업로드 성공 로그를 감사 타임라인 카드에도 표시해 언제 최신 파일이 생성됐는지 대시보드에서 바로 볼 수 있도록 하고 싶습니다.
 진행사항: 타임라인 내보내기 이후 자동 업로드 스크립트를 연결해 팀 드라이브 공유 루틴을 표준화하고, 업로드 결과를 UI 메시지로 노출했습니다.
+
+### 진행 현황 메모 (2025-11-09 업로드 성공 텔레메트리)
+
+- `recordTimelineUploadEvent`가 `/api/rank/upload-cooldown-timeline` 호출 결과를 `rank_cooldown_timeline_uploads`에 기록해 업로드 성공·실패 이력을 유지합니다.【F:lib/rank/cooldownTimelineUploads.js†L1-L150】【F:pages/api/rank/upload-cooldown-timeline.js†L1-L120】
+- `/api/rank/cooldown-telemetry`는 `timelineUploads` 요약을 포함해 24시간·7일 업로드 성공 횟수, 마지막 성공 시각, 실패/건너뜀 카운트를 응답에 추가합니다.【F:lib/rank/cooldownTimelineUploads.js†L152-L218】【F:pages/api/rank/cooldown-telemetry.js†L1-L210】
+- 관리자 대시보드에는 업로드 요약 카드와 최근 업로드 패널이 추가돼 누락된 공유 구간을 시각적으로 강조합니다.【F:components/admin/CooldownDashboard.js†L1-L2100】【F:components/admin/CooldownDashboard.module.css†L360-L520】
+
+느낀 점: 업로드 성공 이력이 텔레메트리에 합쳐지니 주간 보고 누락 여부를 직접 대조하지 않아도 되어 운영 대응이 한층 빠르게 느껴졌습니다.
+추가로 필요한 점: 업로드 누락이 임계값을 넘으면 경보로 전환하는 임계 기준도 후속으로 정의하면 좋겠습니다.
+진행사항: 업로드 감사 테이블과 텔레메트리 요약, 대시보드 업로드 현황 패널을 연결해 청사진 운영 가드 단계의 누락 감시 체인을 확장했습니다.

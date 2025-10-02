@@ -19,6 +19,13 @@ const TIMELINE_MODE_LABELS = {
   monthly: '월간',
 }
 
+const UPLOAD_STATUS_LABELS = {
+  uploaded: { label: '성공', tone: styles.uploadStatusSuccess },
+  skipped: { label: '건너뜀', tone: styles.uploadStatusSkipped },
+  failed: { label: '실패', tone: styles.uploadStatusFailed },
+  unknown: { label: '미확인', tone: styles.uploadStatusUnknown },
+}
+
 async function uploadBlobToTeamDrive({ blob, filename, metadata }) {
   if (typeof window === 'undefined') return { status: 'skipped', message: '클라이언트가 아닙니다.' }
   if (!blob) return { status: 'skipped', message: '업로드할 파일이 없습니다.' }
@@ -161,6 +168,59 @@ function formatEtaLabel(isoString) {
   return `${timeLabel} (${durationLabel} ${diff >= 0 ? '후' : '전'})`
 }
 
+function formatRelativeTimestamp(isoString) {
+  if (!isoString) return '기록 없음'
+  const timestamp = new Date(isoString)
+  if (Number.isNaN(timestamp.getTime())) return '기록 오류'
+
+  const now = new Date()
+  const diff = now.getTime() - timestamp.getTime()
+  const abs = Math.abs(diff)
+  const suffix = diff >= 0 ? '전' : '후'
+  const sameDay = now.toISOString().slice(0, 10) === timestamp.toISOString().slice(0, 10)
+  const baseLabel = timestamp.toLocaleString('ko-KR', sameDay
+    ? { hour: '2-digit', minute: '2-digit' }
+    : { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  if (abs < 60000) {
+    return `${baseLabel} (1분 미만 ${suffix})`
+  }
+
+  const minutes = Math.round(abs / 60000)
+  if (minutes < 60) {
+    return `${baseLabel} (${minutes}분 ${suffix})`
+  }
+
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  if (hours < 24) {
+    const duration = remainingMinutes ? `${hours}시간 ${remainingMinutes}분` : `${hours}시간`
+    return `${baseLabel} (${duration} ${suffix})`
+  }
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) {
+    const remainingHours = hours % 24
+    const duration = remainingHours ? `${days}일 ${remainingHours}시간` : `${days}일`
+    return `${baseLabel} (${duration} ${suffix})`
+  }
+
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) {
+    const remainingDays = days % 7
+    const duration = remainingDays ? `${weeks}주 ${remainingDays}일` : `${weeks}주`
+    return `${baseLabel} (${duration} ${suffix})`
+  }
+
+  return timestamp.toLocaleString('ko-KR', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function formatPercent(value, digits = 1) {
   if (value === null || value === undefined) return '—'
   return formatNumber(value, { style: 'percent', digits })
@@ -172,6 +232,53 @@ function formatDeltaPercent(value, digits = 1) {
   const prefix = value > 0 ? '+' : '−'
   const absolute = Math.abs(value)
   return `${prefix}${formatNumber(absolute, { style: 'percent', digits })}`
+}
+
+function formatUploadSectionLabel(section, mode) {
+  const normalized = typeof section === 'string' ? section : ''
+  switch (normalized) {
+    case 'providers':
+      return '제공자 CSV'
+    case 'attempts':
+      return '최근 시도 CSV'
+    case 'audit-timeline': {
+      const modeLabel = mode ? TIMELINE_MODE_LABELS[mode] || mode : null
+      return modeLabel ? `감사 타임라인 (${modeLabel})` : '감사 타임라인'
+    }
+    default:
+      if (!normalized) return '기타 업로드'
+      return normalized.replace(/[-_]+/g, ' ')
+  }
+}
+
+function formatUploadStatus(status) {
+  if (!status) return UPLOAD_STATUS_LABELS.unknown
+  return UPLOAD_STATUS_LABELS[status] || UPLOAD_STATUS_LABELS.unknown
+}
+
+function formatUploadStrategy(strategy) {
+  if (!strategy) return '미지정'
+  switch (strategy) {
+    case 'google-drive':
+      return 'Google Drive'
+    case 'filesystem':
+      return '파일 시스템'
+    case 'not-configured':
+      return '미설정'
+    case 'upload-failed':
+      return '업로드 실패'
+    default:
+      return strategy
+  }
+}
+
+function formatUploadFormat(format) {
+  if (!format) return '기타'
+  if (typeof format !== 'string') return '기타'
+  if (format.includes('/')) {
+    return format.toUpperCase()
+  }
+  return format.toUpperCase()
 }
 
 function normalize(value, { min = 0, max = 1 } = {}) {
@@ -599,6 +706,119 @@ function ThresholdAuditTimeline({ timeline, options = [], activeMode, onModeChan
   )
 }
 
+function TimelineUploadGroupCard({ group }) {
+  if (!group) return null
+
+  const statusInfo = formatUploadStatus(group.lastEvent?.status)
+  const label = formatUploadSectionLabel(group.section, group.mode)
+  const lastEventTimestamp = group.lastEvent?.uploadedAt || group.lastEvent?.insertedAt || null
+  const lastEventLabel = lastEventTimestamp ? formatRelativeTimestamp(lastEventTimestamp) : '기록 없음'
+  const lastSuccessLabel = group.lastSuccessAt ? formatRelativeTimestamp(group.lastSuccessAt) : '기록 없음'
+  const formatSummaries = Array.isArray(group.formats) ? group.formats : []
+  const failureNotices = joinHelper([
+    group.failures24h > 0 ? `24시간 실패 ${formatNumber(group.failures24h)}회` : null,
+    group.skipped24h > 0 ? `24시간 건너뜀 ${formatNumber(group.skipped24h)}회` : null,
+  ])
+
+  return (
+    <div className={styles.timelineUploadGroupCard}>
+      <header className={styles.timelineUploadGroupHeader}>
+        <div>
+          <h4>{label}</h4>
+          {group.mode ? (
+            <p className={styles.timelineUploadGroupCaption}>
+              모드 {TIMELINE_MODE_LABELS[group.mode] || group.mode}
+            </p>
+          ) : null}
+        </div>
+        {statusInfo ? (
+          <span className={`${styles.uploadStatus} ${statusInfo.tone}`}>{statusInfo.label}</span>
+        ) : null}
+      </header>
+      <dl className={styles.timelineUploadGroupStats}>
+        <div>
+          <dt>최근 이벤트</dt>
+          <dd>{lastEventLabel}</dd>
+        </div>
+        <div>
+          <dt>마지막 성공</dt>
+          <dd>{lastSuccessLabel}</dd>
+        </div>
+        <div>
+          <dt>24시간 성공</dt>
+          <dd>{formatNumber(group.success24h)}</dd>
+        </div>
+        <div>
+          <dt>7일 성공</dt>
+          <dd>{formatNumber(group.success7d)}</dd>
+        </div>
+      </dl>
+      {formatSummaries.length ? (
+        <ul className={styles.timelineUploadFormatList}>
+          {formatSummaries.map((formatSummary) => {
+            const formatKey = formatSummary.format || 'unknown'
+            const lastFormatSuccess = formatSummary.lastSuccessAt
+              ? formatRelativeTimestamp(formatSummary.lastSuccessAt)
+              : '기록 없음'
+            return (
+              <li key={formatKey} className={styles.timelineUploadFormatItem}>
+                <span className={styles.timelineUploadFormatBadge}>
+                  {formatUploadFormat(formatSummary.format)}
+                </span>
+                <span className={styles.timelineUploadFormatDetail}>{lastFormatSuccess}</span>
+                <span className={styles.timelineUploadFormatDetail}>
+                  24시간 {formatNumber(formatSummary.success24h)}회 · 7일 {formatNumber(formatSummary.success7d)}회
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
+      {failureNotices ? <p className={styles.timelineUploadNotice}>{failureNotices}</p> : null}
+    </div>
+  )
+}
+
+function TimelineUploadList({ entries }) {
+  if (!entries || entries.length === 0) {
+    return <p className={styles.emptyMessage}>아직 업로드 기록이 없습니다.</p>
+  }
+
+  return (
+    <ul className={styles.timelineUploadList}>
+      {entries.map((entry) => {
+        const statusInfo = formatUploadStatus(entry.status)
+        const key = entry.id || `${entry.section || 'entry'}-${entry.insertedAt || entry.uploadedAt || Math.random()}`
+        const timestamp = entry.insertedAt || entry.uploadedAt || null
+        const timestampLabel = timestamp ? formatRelativeTimestamp(timestamp) : '기록 없음'
+        const metadataLabel = joinHelper([
+          entry.format ? `포맷 ${formatUploadFormat(entry.format)}` : null,
+          entry.strategy ? `전략 ${formatUploadStrategy(entry.strategy)}` : null,
+        ])
+
+        return (
+          <li key={key} className={styles.timelineUploadItem}>
+            <header className={styles.timelineUploadItemHeader}>
+              <div>
+                <strong>{formatUploadSectionLabel(entry.section, entry.mode)}</strong>
+                {entry.filename ? <span className={styles.timelineUploadFilename}> · {entry.filename}</span> : null}
+              </div>
+              {statusInfo ? (
+                <span className={`${styles.uploadStatus} ${statusInfo.tone}`}>{statusInfo.label}</span>
+              ) : null}
+            </header>
+            {metadataLabel ? <p className={styles.timelineUploadMeta}>{metadataLabel}</p> : null}
+            <p className={styles.timelineUploadMeta}>{timestampLabel}</p>
+            {entry.errorMessage ? (
+              <p className={styles.timelineUploadError}>오류: {entry.errorMessage}</p>
+            ) : null}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 function SummaryCard({ title, value, helper, status, actions }) {
   return (
     <article className={styles.summaryCard}>
@@ -850,6 +1070,18 @@ export default function CooldownDashboard() {
         activeAuditTimeline.buckets.length > 0,
     )
   }, [activeAuditTimeline])
+
+  const timelineUploadGroups = useMemo(() => {
+    const groups = telemetry?.timelineUploads?.summary?.groups
+    if (!Array.isArray(groups)) return []
+    return groups
+  }, [telemetry?.timelineUploads?.summary?.groups])
+
+  const timelineRecentUploads = useMemo(() => {
+    const entries = telemetry?.timelineUploads?.recent
+    if (!Array.isArray(entries)) return []
+    return entries.slice(0, 12)
+  }, [telemetry?.timelineUploads?.recent])
 
   useEffect(() => {
     const availableModes = auditTimelineOptions.map((option) => option.id)
@@ -1594,6 +1826,13 @@ export default function CooldownDashboard() {
   }, [limit])
 
   const overallStatus = telemetry?.alerts?.overall || { status: 'ok', issues: [] }
+  const timelineUploadOverall = telemetry?.timelineUploads?.summary?.overall || null
+  const timelineUploadStatus = useMemo(() => {
+    if (!timelineUploadOverall) return 'ok'
+    if ((timelineUploadOverall.failures24h ?? 0) > 0) return 'critical'
+    if ((timelineUploadOverall.skipped24h ?? 0) > 0) return 'warning'
+    return 'ok'
+  }, [timelineUploadOverall])
   const providerAlerts = useMemo(() => {
     if (!telemetry?.alerts?.providers) return []
     return telemetry.alerts.providers.map((entry) => {
@@ -1615,6 +1854,17 @@ export default function CooldownDashboard() {
       }
     })
   }, [telemetry])
+
+  const timelineUploadHelper = useMemo(() => {
+    if (!timelineUploadOverall) return ''
+    return joinHelper([
+      `24시간 ${formatNumber(timelineUploadOverall.success24h ?? 0)}회`,
+      `7일 ${formatNumber(timelineUploadOverall.success7d ?? 0)}회`,
+      timelineUploadOverall.lastSuccessAt
+        ? `마지막 ${formatRelativeTimestamp(timelineUploadOverall.lastSuccessAt)}`
+        : '최근 성공 없음',
+    ])
+  }, [timelineUploadOverall])
 
   const latestAlerts = useMemo(() => {
     if (!telemetry?.alerts?.attempts) return []
@@ -1979,6 +2229,12 @@ export default function CooldownDashboard() {
             status={overallStatus.status}
           />
           <SummaryCard
+            title="업로드 성공 (24시간)"
+            value={formatNumber(timelineUploadOverall?.success24h ?? 0)}
+            helper={timelineUploadHelper || '최근 업로드 기록이 없습니다.'}
+            status={timelineUploadStatus}
+          />
+          <SummaryCard
             title="임계값 변경"
             value={formatNumber(thresholdAudit?.recentCount ?? 0)}
             helper={thresholdAuditHelper || '최근 변경 이력이 없습니다.'}
@@ -2075,6 +2331,28 @@ export default function CooldownDashboard() {
                 </dd>
               </div>
             </dl>
+          </section>
+
+          <section className={styles.panel}>
+            <header className={styles.panelHeader}>
+              <h3>업로드 자동 공유 현황</h3>
+            </header>
+            <p className={styles.caption}>
+              CSV/타임라인 내보내기 업로드 성공 이력을 확인해 누락된 공유 구간을 빠르게 찾아보세요.
+            </p>
+            {timelineUploadGroups.length ? (
+              <div className={styles.timelineUploadGrid}>
+                {timelineUploadGroups.slice(0, 6).map((group) => (
+                  <TimelineUploadGroupCard key={group.key} group={group} />
+                ))}
+              </div>
+            ) : (
+              <p className={styles.emptyMessage}>요약할 업로드 기록이 아직 없습니다.</p>
+            )}
+            <div className={styles.timelineUploadRecent}>
+              <h4>최근 업로드</h4>
+              <TimelineUploadList entries={timelineRecentUploads} />
+            </div>
           </section>
 
           <section className={styles.panel}>
