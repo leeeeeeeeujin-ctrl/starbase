@@ -298,3 +298,12 @@
 느낀 점: 임계값 변경이 Slack과 감사 로그에 동시에 남으니 운영팀이 배포 원인을 되짚을 근거가 확보돼 든든했습니다.
 추가로 필요한 점: 감사 이벤트를 Telemetry API에도 노출해 최근 변경 이력을 대시보드에서 집계할 수 있도록 후속 연동이 필요합니다.
 진행사항: 임계값 변경 감사/알림 경로를 연결하고 문서에 반영해 운영 가드 단계 진행률을 끌어올렸습니다.
+
+### 진행 현황 메모 (2025-11-08 임계값 감사 집계)
+
+- `summarizeCooldownThresholdAuditTrail`이 감사 이벤트를 정규화해 최근 변경 횟수·마지막 조정 요약을 계산하고, `/api/rank/cooldown-telemetry` 응답의 `thresholdAudit` 필드로 노출합니다.【F:lib/rank/cooldownAlertThresholdAuditTrail.js†L1-L210】【F:pages/api/rank/cooldown-telemetry.js†L1-L229】
+- 관리자 대시보드는 새 요약 카드와 감사 로그 패널을 통해 임계값 변경 횟수, 마지막 시각, 변경 Diff·원본 값을 한 화면에서 확인할 수 있습니다.【F:components/admin/CooldownDashboard.js†L1-L1520】【F:components/admin/CooldownDashboard.module.css†L1-L360】
+
+느낀 점: 텔레메트리와 대시보드가 동일한 감사 요약을 공유하니 임계값 변경 맥락을 설명하기가 한층 쉬워졌습니다.
+추가로 필요한 점: 향후 감사 이벤트를 기간별 그래프나 Slack 다이제스트에도 요약해 배포 추이를 정량화하면 좋겠습니다.
+진행사항: 임계값 감사 집계를 API·대시보드에 연동하고 문서화해 운영 가드 단계 진행률을 한 단계 더 끌어올렸습니다.

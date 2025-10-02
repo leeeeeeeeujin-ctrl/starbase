@@ -73,6 +73,7 @@
 | OPS-02 | 다이제스트 재시도 감사 로그 확인 | `notified_at IS NULL` 상태에서 `/api/rank/cooldown-digest?since_minutes=60` 호출 | 감사 로그 `digest_payload`에 windowMinutes·limit·method가 기록되고, 성공 시 status가 `succeeded`, 실패 시 `retrying`으로 남음 |
 | OPS-03 | 임계값 환경 변수 오버라이드 검증 | `RANK_COOLDOWN_ALERT_THRESHOLDS`를 `{ "failureRate": { "warning": 0.1 } }`로 설정 후 `/api/rank/cooldown-telemetry` 호출 | 응답 `alerts.thresholds.failureRate.warning`이 `0.1`로 반영되고, 관리자 대시보드 임계값 정보도 동일하게 갱신됨 |
 | OPS-04 | 임계값 감사 알림 검증 | 1. `RANK_COOLDOWN_ALERT_THRESHOLDS`를 기본값에서 `{ "docLinkAttachmentRate": { "warning": 0.9 } }`로 변경<br>2. `/api/rank/cooldown-telemetry` 호출 후 감사 Webhook(모킹 서버) 페이로드 확인 | 감사 알림 텍스트와 `diff`에 이전/이후 값이 기록되고, `getCooldownThresholdAuditTrail()` 최근 항목에 동일한 변경 이력이 남음 |
+| OPS-05 | 임계값 감사 집계 노출 검증 | 1. OPS-04 시나리오 직후 `/api/rank/cooldown-telemetry` 재호출<br>2. 관리자 대시보드 "임계값 변경" 카드와 감사 로그 패널 스냅샷 확인 | 응답 `thresholdAudit.totalCount`/`recentCount`가 증가하고, 카드·패널에 동일한 Diff/원본 요약이 표시됨 |
 
 ## 3. 자동화 및 회귀 테스트 제안
 
@@ -167,7 +168,7 @@ flowchart LR
 - [ ] 오디오 프리셋 적용/복구 QA 체크리스트 수행
 - [ ] 새 참가자 60초 파악 시간 UI 확인
 - [ ] 듀오/캐주얼 재시작 시나리오(DC-01~03) 실행 및 로그 검증
-- [ ] API 키 쿨다운 감사 로그·임계값 알림(OPS-01~04) 검증
+- [ ] API 키 쿨다운 감사 로그·임계값 알림/집계(OPS-01~05) 검증
 - [ ] 히스토리 요약/가시성 플래그(LOG-04) 검증 및 세션 응답 확인
 
 ---

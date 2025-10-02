@@ -35,6 +35,34 @@ function formatDuration(ms) {
   return `${minutes}분 ${remaining}초`
 }
 
+function formatThresholdValue(value) {
+  if (value === null || value === undefined) {
+    return 'null'
+  }
+
+  if (typeof value === 'number') {
+    const abs = Math.abs(value)
+    if (abs >= 1000) return value.toFixed(0)
+    if (abs >= 10) return value.toFixed(1)
+    if (abs >= 1) return value.toFixed(2)
+    return value.toFixed(3)
+  }
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  return String(value)
+}
+
+function formatAuditChange(change) {
+  if (!change || typeof change !== 'object') {
+    return '변경 없음'
+  }
+
+  return `${formatThresholdValue(change.before)} → ${formatThresholdValue(change.after)}`
+}
+
 function formatEtaLabel(isoString) {
   if (!isoString) return null
   const eta = new Date(isoString)
@@ -365,6 +393,62 @@ function IssueList({ issues }) {
           </div>
         </li>
       ))}
+    </ul>
+  )
+}
+
+function ThresholdAuditList({ audit }) {
+  if (!audit || !Array.isArray(audit.events)) {
+    return <p className={styles.emptyMessage}>감사 로그를 불러오지 못했습니다.</p>
+  }
+
+  if (!audit.events.length) {
+    return <p className={styles.emptyMessage}>아직 기록된 임계값 변경 이력이 없습니다.</p>
+  }
+
+  return (
+    <ul className={styles.auditList}>
+      {audit.events.map((event) => {
+        const timestampLabel = formatEtaLabel(event.timestamp) || '—'
+        const rawValue = typeof event.rawEnvValue === 'string' ? event.rawEnvValue.trim() : ''
+        const rawValuePreview = rawValue.length > 160 ? `${rawValue.slice(0, 160)}…` : rawValue
+
+        return (
+          <li key={event.id} className={styles.auditItem}>
+            <div className={styles.auditMeta}>
+              <span className={styles.auditTimestamp}>{timestampLabel}</span>
+              {event.source ? <span className={styles.auditSource}>{event.source}</span> : null}
+            </div>
+            <p className={styles.auditSummary}>{event.summary || '변경 내역을 요약하지 못했습니다.'}</p>
+            {event.diff?.length ? (
+              <div className={styles.auditDiffGroup}>
+                {event.diff.map((entry) => (
+                  <div key={`${event.id}-${entry.metric}`} className={styles.auditDiffRow}>
+                    <span className={styles.auditDiffMetric}>{entry.metric}</span>
+                    <div className={styles.auditDiffChips}>
+                      {entry.changes?.warning ? (
+                        <span className={styles.auditChip}>
+                          주의 {formatAuditChange(entry.changes.warning)}
+                        </span>
+                      ) : null}
+                      {entry.changes?.critical ? (
+                        <span className={`${styles.auditChip} ${styles.auditChipCritical}`}>
+                          위험 {formatAuditChange(entry.changes.critical)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {rawValuePreview ? (
+              <p className={styles.auditRawValue}>
+                원본 값 <code className={styles.auditRawValueCode}>{rawValuePreview}</code>
+              </p>
+            ) : null}
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -1187,6 +1271,22 @@ export default function CooldownDashboard() {
     ]
   }, [telemetry])
 
+  const thresholdAudit = telemetry?.thresholdAudit || null
+  const thresholdAuditLastChanged = thresholdAudit?.lastChangedAt
+    ? formatEtaLabel(thresholdAudit.lastChangedAt)
+    : null
+  const thresholdAuditHelper = joinHelper([
+    thresholdAudit?.recentWindowHours
+      ? `최근 ${thresholdAudit.recentWindowHours}시간 ${formatNumber(thresholdAudit.recentCount || 0)}회`
+      : null,
+    thresholdAuditLastChanged ? `마지막 변경 ${thresholdAuditLastChanged}` : null,
+  ])
+  const thresholdAuditStatus = thresholdAudit?.recentCount
+    ? thresholdAudit.recentCount >= 3
+      ? 'warning'
+      : 'ok'
+    : 'ok'
+
   const etaHelper = (() => {
     if (!triggeredCooldownTargets.length) {
       return '활성 쿨다운 키가 없습니다.'
@@ -1287,27 +1387,33 @@ export default function CooldownDashboard() {
             status={overallStatus.status}
             actions={summaryActions}
           />
-            <SummaryCard
-              title="권장 가중치"
-              value={formatNumber(telemetry.totals?.recommendedWeight, { digits: 2 })}
-              helper={`평균 알림 ${formatDuration(telemetry.totals?.avgAlertDurationMs)} · 교체 ${formatDuration(
-                telemetry.totals?.avgRotationDurationMs,
-              )}`}
-              status={overallStatus.status}
-            />
-            <SummaryCard
-              title="런북 링크 첨부율"
-              value={formatNumber(telemetry.totals?.lastDocLinkAttachmentRate, {
-                style: 'percent',
-                digits: 0,
-              })}
-              helper={`누적 첨부 ${formatNumber(telemetry.totals?.docLinkAttachmentCount)}회 · 시도 대비 ${formatNumber(
-                telemetry.totals?.docLinkAttachmentRate,
-                { style: 'percent', digits: 1 },
-              )}`}
-              status={overallStatus.status}
-            />
-          </section>
+          <SummaryCard
+            title="권장 가중치"
+            value={formatNumber(telemetry.totals?.recommendedWeight, { digits: 2 })}
+            helper={`평균 알림 ${formatDuration(telemetry.totals?.avgAlertDurationMs)} · 교체 ${formatDuration(
+              telemetry.totals?.avgRotationDurationMs,
+            )}`}
+            status={overallStatus.status}
+          />
+          <SummaryCard
+            title="런북 링크 첨부율"
+            value={formatNumber(telemetry.totals?.lastDocLinkAttachmentRate, {
+              style: 'percent',
+              digits: 0,
+            })}
+            helper={`누적 첨부 ${formatNumber(telemetry.totals?.docLinkAttachmentCount)}회 · 시도 대비 ${formatNumber(
+              telemetry.totals?.docLinkAttachmentRate,
+              { style: 'percent', digits: 1 },
+            )}`}
+            status={overallStatus.status}
+          />
+          <SummaryCard
+            title="임계값 변경"
+            value={formatNumber(thresholdAudit?.recentCount ?? 0)}
+            helper={thresholdAuditHelper || '최근 변경 이력이 없습니다.'}
+            status={thresholdAuditStatus}
+          />
+        </section>
 
           <section className={styles.panel}>
             <header className={styles.panelHeader}>
@@ -1398,6 +1504,24 @@ export default function CooldownDashboard() {
                 </dd>
               </div>
             </dl>
+          </section>
+
+          <section className={styles.panel}>
+            <header className={styles.panelHeader}>
+              <h3>임계값 변경 감사 로그</h3>
+              <div className={styles.auditStats}>
+                <span>전체 {formatNumber(thresholdAudit?.totalCount ?? 0)}건</span>
+                {thresholdAudit?.recentWindowHours ? (
+                  <span>
+                    최근 {thresholdAudit.recentWindowHours}시간 {formatNumber(thresholdAudit?.recentCount ?? 0)}회
+                  </span>
+                ) : null}
+              </div>
+            </header>
+            <p className={styles.caption}>
+              환경 변수나 구성 변경으로 조정된 경보 임계값 이력을 시간순으로 보여 줍니다.
+            </p>
+            <ThresholdAuditList audit={thresholdAudit} />
           </section>
 
           <section className={styles.panel}>

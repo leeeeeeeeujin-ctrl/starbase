@@ -4,6 +4,10 @@ import {
   evaluateCooldownAlerts,
   loadCooldownAlertThresholds,
 } from '@/lib/rank/cooldownAlertThresholds'
+import {
+  getCooldownThresholdAuditTrail,
+  summarizeCooldownThresholdAuditTrail,
+} from '@/lib/rank/cooldownAlertThresholdAuditTrail'
 
 function toCsvValue(value) {
   if (value === null || value === undefined) {
@@ -207,6 +211,11 @@ export default async function handler(req, res) {
     const report = buildCooldownTelemetry(data || [], { latestLimit: normalizedLimit })
     const thresholdOverrides = loadCooldownAlertThresholds()
     const alerts = evaluateCooldownAlerts(report, thresholdOverrides)
+    const thresholdAuditTrail = getCooldownThresholdAuditTrail()
+    const thresholdAudit = summarizeCooldownThresholdAuditTrail(thresholdAuditTrail, {
+      now: new Date(),
+      limit: 8,
+    })
 
     const formatParam = Array.isArray(req.query.format) ? req.query.format[0] : req.query.format
     const format = typeof formatParam === 'string' ? formatParam.toLowerCase() : null
@@ -235,6 +244,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ...report,
       alerts,
+      thresholdAudit,
     })
   } catch (error) {
     console.error('[cooldown-telemetry] unexpected failure', error)

@@ -85,6 +85,52 @@ function formatValue(value) {
   return String(value)
 }
 
+function buildDiffSummary(diff = []) {
+  if (!Array.isArray(diff) || diff.length === 0) {
+    return '변경 없음'
+  }
+
+  const parts = []
+
+  for (const entry of diff) {
+    if (!entry || typeof entry !== 'object') continue
+    const changes = entry.changes || {}
+    const changeTexts = []
+
+    if (changes.warning) {
+      changeTexts.push(
+        `주의 ${formatValue(changes.warning.before)} → ${formatValue(changes.warning.after)}`,
+      )
+    }
+
+    if (changes.critical) {
+      changeTexts.push(
+        `위험 ${formatValue(changes.critical.before)} → ${formatValue(changes.critical.after)}`,
+      )
+    }
+
+    if (changeTexts.length > 0) {
+      parts.push(`${entry.metric}: ${changeTexts.join(', ')}`)
+    }
+  }
+
+  if (parts.length === 0) {
+    return '변경 없음'
+  }
+
+  return parts.join(' · ')
+}
+
+function normalizeTimestamp(value) {
+  if (!value) return { iso: null, ms: null }
+  const ms = Date.parse(value)
+  if (!Number.isFinite(ms)) {
+    return { iso: null, ms: null }
+  }
+
+  return { iso: new Date(ms).toISOString(), ms }
+}
+
 function buildSlackText(event) {
   const lines = [
     ':memo: RANK_COOLDOWN_ALERT_THRESHOLDS 변경 감지',
@@ -189,6 +235,72 @@ function pushAuditEvent(event) {
 
 export function getCooldownThresholdAuditTrail() {
   return auditTrail.map((entry) => ({ ...entry }))
+}
+
+export function summarizeCooldownThresholdAuditTrail(
+  events = [],
+  { now = new Date(), windowMs = 48 * 60 * 60 * 1000, limit = 6 } = {},
+) {
+  const nowMs = now instanceof Date ? now.getTime() : Date.now()
+  const normalizedWindow = Number.isFinite(windowMs) && windowMs > 0 ? windowMs : 48 * 60 * 60 * 1000
+  const normalizedLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 20) : 6
+
+  const normalizedEvents = Array.isArray(events)
+    ? events
+        .map((event) => {
+          if (!event || typeof event !== 'object') return null
+          const { iso, ms } = normalizeTimestamp(event.timestamp)
+          if (!ms) {
+            return null
+          }
+
+          const diff = Array.isArray(event.diff) ? event.diff : []
+          return {
+            id: event.id || `audit-${ms}`,
+            timestampMs: ms,
+            timestamp: iso,
+            source: event.source || null,
+            rawEnvValue:
+              typeof event.rawEnvValue === 'string' && event.rawEnvValue.trim().length
+                ? event.rawEnvValue
+                : null,
+            overrides: event.overrides || null,
+            diff,
+            summary: buildDiffSummary(diff),
+          }
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.timestampMs - a.timestampMs)
+    : []
+
+  const cutoff = nowMs - normalizedWindow
+  const recentCount = normalizedEvents.filter((event) => event.timestampMs >= cutoff).length
+  const totalCount = normalizedEvents.length
+  const latest = normalizedEvents[0] || null
+  const windowHoursRaw = normalizedWindow / (60 * 60 * 1000)
+  const recentWindowHours = Number.isInteger(windowHoursRaw)
+    ? windowHoursRaw
+    : Number(windowHoursRaw.toFixed(1))
+
+  return {
+    totalCount,
+    recentWindowMs: normalizedWindow,
+    recentWindowHours,
+    recentCount,
+    lastChangedAt: latest?.timestamp || null,
+    lastSource: latest?.source || null,
+    lastSummary: latest?.summary || null,
+    lastRawEnvValue: latest?.rawEnvValue || null,
+    events: normalizedEvents.slice(0, normalizedLimit).map((event) => ({
+      id: event.id,
+      timestamp: event.timestamp,
+      source: event.source,
+      summary: event.summary,
+      diff: event.diff,
+      rawEnvValue: event.rawEnvValue,
+      overrides: event.overrides,
+    })),
+  }
 }
 
 export function recordCooldownThresholdChange({
