@@ -3,6 +3,32 @@ import { useCallback, useMemo, useState } from 'react'
 import styles from './LogsPanel.module.css'
 import { normalizeTurnSummaryPayload } from '../../../lib/rank/turnSummary'
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function highlightText(text, tokens) {
+  if (typeof text !== 'string' || !tokens.length) return text
+
+  const escaped = tokens.map(escapeRegExp).join('|')
+  if (!escaped) return text
+  const regex = new RegExp(`(${escaped})`, 'gi')
+  const segments = text.split(regex)
+
+  return segments.map((segment, index) => {
+    if (!segment) return null
+    const match = tokens.some((token) => segment.toLowerCase() === token.toLowerCase())
+    if (match) {
+      return (
+        <mark key={`mark-${index}`} className={styles.highlight}>
+          {segment}
+        </mark>
+      )
+    }
+    return <span key={`plain-${index}`}>{segment}</span>
+  })
+}
+
 function dedupeStrings(value) {
   if (!Array.isArray(value)) return []
   const seen = new Set()
@@ -50,6 +76,7 @@ function normalizeLogEntry(entry, index) {
   const variables = dedupeStrings(entry.variables)
   const next = entry.next ?? entry.nextNode ?? null
   const actionLabel = formatActionLabel(entry.action)
+  const actionKey = typeof entry.action === 'string' ? entry.action.trim().toLowerCase() : ''
   const outcome = typeof entry.outcome === 'string' ? entry.outcome.trim() : ''
   const response = typeof entry.response === 'string' ? entry.response : ''
   const prompt = typeof entry.prompt === 'string' ? entry.prompt : ''
@@ -66,6 +93,7 @@ function normalizeLogEntry(entry, index) {
     variables,
     next,
     actionLabel,
+    actionKey,
     outcome,
     response,
     prompt,
@@ -133,11 +161,86 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
   })
 
   const trimmedSearch = searchTerm.trim().toLowerCase()
+  const searchTokens = useMemo(
+    () => (trimmedSearch ? trimmedSearch.split(/\s+/).filter(Boolean) : []),
+    [trimmedSearch],
+  )
+
+  const [activeActions, setActiveActions] = useState([])
+  const [activeActors, setActiveActors] = useState([])
+  const [activeTags, setActiveTags] = useState([])
+
+  const availableActions = useMemo(() => {
+    const unique = new Map()
+    normalizedLogs.forEach((entry) => {
+      if (!entry.actionKey) return
+      if (unique.has(entry.actionKey)) return
+      unique.set(entry.actionKey, entry.actionLabel || entry.actionKey)
+    })
+    return Array.from(unique.entries()).map(([key, label]) => ({ key, label }))
+  }, [normalizedLogs])
+
+  const availableActors = useMemo(() => {
+    const seen = new Map()
+    normalizedLogs.forEach((entry) => {
+      entry.actors.forEach((actor) => {
+        const lower = actor.toLowerCase()
+        if (seen.has(lower)) return
+        seen.set(lower, actor)
+      })
+      if (entry.summary?.actors?.length) {
+        entry.summary.actors.forEach((actor) => {
+          const lower = actor.toLowerCase()
+          if (seen.has(lower)) return
+          seen.set(lower, actor)
+        })
+      }
+    })
+    return Array.from(seen.entries())
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [normalizedLogs])
+
+  const availableTags = useMemo(() => {
+    const seen = new Map()
+    normalizedLogs.forEach((entry) => {
+      ;(entry.summary?.tags || []).forEach((tag) => {
+        const lower = tag.toLowerCase()
+        if (seen.has(lower)) return
+        seen.set(lower, tag)
+      })
+    })
+    return Array.from(seen.entries())
+      .map(([key, label]) => ({ key, label: `#${label}` }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [normalizedLogs])
 
   const filteredLogs = useMemo(() => {
-    if (!trimmedSearch) return normalizedLogs
+    const actionSet = new Set(activeActions)
+    const actorSet = new Set(activeActors)
+    const tagSet = new Set(activeTags)
 
     return normalizedLogs.filter((entry) => {
+      if (actionSet.size && (!entry.actionKey || !actionSet.has(entry.actionKey))) {
+        return false
+      }
+
+      if (actorSet.size) {
+        const summaryActors = entry.summary?.actors?.map((actor) => actor.toLowerCase()) || []
+        const entryActors = entry.actors.map((actor) => actor.toLowerCase())
+        const combined = new Set([...summaryActors, ...entryActors])
+        const matchesActor = Array.from(actorSet).some((actor) => combined.has(actor))
+        if (!matchesActor) return false
+      }
+
+      if (tagSet.size) {
+        const tags = (entry.summary?.tags || []).map((tag) => tag.toLowerCase())
+        const matchesTag = Array.from(tagSet).some((tag) => tags.includes(tag))
+        if (!matchesTag) return false
+      }
+
+      if (!trimmedSearch) return true
+
       const haystacks = [
         entry.summary?.preview,
         entry.summary?.promptPreview,
@@ -155,7 +258,7 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
         typeof value === 'string' ? value.toLowerCase().includes(trimmedSearch) : false,
       )
     })
-  }, [normalizedLogs, trimmedSearch])
+  }, [activeActions, activeActors, activeTags, normalizedLogs, trimmedSearch])
 
   const handleToggle = useCallback((section) => {
     setCollapsedSections((prev) => ({
@@ -166,6 +269,26 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
 
   const handleSearchChange = useCallback((event) => {
     setSearchTerm(event.target.value)
+  }, [])
+
+  const handleFilterToggle = useCallback((type, value) => {
+    const updater = type === 'action' ? setActiveActions : type === 'actor' ? setActiveActors : setActiveTags
+    updater((prev) => {
+      const next = new Set(prev)
+      if (next.has(value)) {
+        next.delete(value)
+      } else {
+        next.add(value)
+      }
+      return Array.from(next)
+    })
+  }, [])
+
+  const handleClearFilters = useCallback(() => {
+    setActiveActions([])
+    setActiveActors([])
+    setActiveTags([])
+    setSearchTerm('')
   }, [])
 
   return (
@@ -211,12 +334,91 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
                     className={styles.searchInput}
                   />
                 </label>
-                {trimmedSearch ? (
-                  <span className={styles.filterBadge}>
-                    {filteredLogs.length ? `${filteredLogs.length}개 일치` : '일치 항목 없음'}
-                  </span>
-                ) : null}
+                {(trimmedSearch || activeActions.length || activeActors.length || activeTags.length) && (
+                  <div className={styles.activeSummary}>
+                    <span className={styles.filterBadge}>
+                      {filteredLogs.length ? `${filteredLogs.length}개 일치` : '일치 항목 없음'}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.clearFilters}
+                      onClick={handleClearFilters}
+                    >
+                      필터 초기화
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {availableActions.length || availableActors.length || availableTags.length ? (
+                <div className={styles.filterRow}>
+                  {availableActions.length ? (
+                    <div className={styles.filterGroup}>
+                      <span className={styles.filterLabel}>액션</span>
+                      <div className={styles.filterOptions}>
+                        {availableActions.map((action) => {
+                          const isActive = activeActions.includes(action.key)
+                          return (
+                            <button
+                              key={action.key}
+                              type="button"
+                              onClick={() => handleFilterToggle('action', action.key)}
+                              className={isActive ? styles.filterChipActive : styles.filterChip}
+                              aria-pressed={isActive}
+                            >
+                              {action.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {availableActors.length ? (
+                    <div className={styles.filterGroup}>
+                      <span className={styles.filterLabel}>주역</span>
+                      <div className={styles.filterOptions}>
+                        {availableActors.map((actor) => {
+                          const isActive = activeActors.includes(actor.key)
+                          return (
+                            <button
+                              key={actor.key}
+                              type="button"
+                              onClick={() => handleFilterToggle('actor', actor.key)}
+                              className={isActive ? styles.filterChipActive : styles.filterChip}
+                              aria-pressed={isActive}
+                            >
+                              {actor.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {availableTags.length ? (
+                    <div className={styles.filterGroup}>
+                      <span className={styles.filterLabel}>태그</span>
+                      <div className={styles.filterOptions}>
+                        {availableTags.map((tag) => {
+                          const isActive = activeTags.includes(tag.key)
+                          return (
+                            <button
+                              key={tag.key}
+                              type="button"
+                              onClick={() => handleFilterToggle('tag', tag.key)}
+                              className={isActive ? styles.filterChipActive : styles.filterChip}
+                              aria-pressed={isActive}
+                            >
+                              {tag.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               {filteredLogs.length ? (
                 <ul className={styles.logList}>
@@ -239,28 +441,30 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
                     ) : null}
                   </div>
 
-                  {entry.summary ? (
-                    <div className={styles.summary}>
-                      <div className={styles.summaryHeader}>
-                        <span className={styles.summaryBadge}>요약</span>
-                        {entry.summary.role ? <span>{entry.summary.role}</span> : null}
-                        {entry.summary.actors?.length ? (
-                          <span className={styles.summaryActors}>
-                            {entry.summary.actors.join(', ')}
-                          </span>
-                        ) : null}
+                      {entry.summary ? (
+                        <div className={styles.summary}>
+                          <div className={styles.summaryHeader}>
+                            <span className={styles.summaryBadge}>요약</span>
+                            {entry.summary.role ? (
+                              <span>{highlightText(entry.summary.role, searchTokens)}</span>
+                            ) : null}
+                            {entry.summary.actors?.length ? (
+                              <span className={styles.summaryActors}>
+                                {highlightText(entry.summary.actors.join(', '), searchTokens)}
+                              </span>
+                            ) : null}
                       </div>
                       {entry.summary.preview ? (
-                        <p className={styles.summaryText}>{entry.summary.preview}</p>
+                        <p className={styles.summaryText}>{highlightText(entry.summary.preview, searchTokens)}</p>
                       ) : null}
                       {entry.summary.promptPreview ? (
                         <p className={styles.summaryHint}>
-                          프롬프트: {entry.summary.promptPreview}
+                          프롬프트: {highlightText(entry.summary.promptPreview, searchTokens)}
                         </p>
                       ) : null}
                       {entry.summary.outcomeLine ? (
                         <p className={styles.summaryHint}>
-                          결론: {entry.summary.outcomeLine}
+                          결론: {highlightText(entry.summary.outcomeLine, searchTokens)}
                         </p>
                       ) : null}
                       {entry.summary.tags?.length ? (
@@ -279,26 +483,30 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
                     {entry.response ? (
                       <div>
                         <div className={styles.bodyLabel}>응답</div>
-                        <p className={styles.bodyText}>{entry.response}</p>
+                        <p className={styles.bodyText}>{highlightText(entry.response, searchTokens)}</p>
                       </div>
                     ) : null}
                     {entry.prompt ? (
                       <div>
                         <div className={styles.bodyLabel}>사용된 프롬프트</div>
-                        <p className={styles.bodyText}>{entry.prompt}</p>
+                        <p className={styles.bodyText}>{highlightText(entry.prompt, searchTokens)}</p>
                       </div>
                     ) : null}
                     <div className={styles.bodyMetaRow}>
-                      {entry.actors.length ? <span>주역: {entry.actors.join(', ')}</span> : null}
-                      {entry.variables.length ? (
-                        <span>변수: {entry.variables.join(', ')}</span>
+                      {entry.actors.length ? (
+                        <span>{highlightText(`주역: ${entry.actors.join(', ')}`, searchTokens)}</span>
                       ) : null}
-                      {entry.outcome ? <span>결과: {entry.outcome}</span> : null}
+                      {entry.variables.length ? (
+                        <span>{highlightText(`변수: ${entry.variables.join(', ')}`, searchTokens)}</span>
+                      ) : null}
+                      {entry.outcome ? (
+                        <span>{highlightText(`결과: ${entry.outcome}`, searchTokens)}</span>
+                      ) : null}
                     </div>
                   </div>
                 </li>
               ))}
-                </ul>
+              </ul>
               ) : trimmedSearch ? (
                 <p className={styles.empty}>검색어와 일치하는 로그가 없습니다.</p>
               ) : (
@@ -335,9 +543,11 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
                   <div key={entry.key} className={styles.memoryItem}>
                     <span className={styles.memoryRole}>{entry.roleLabel}</span>
                     {entry.actors.length ? (
-                      <span className={styles.memoryMeta}>주역: {entry.actors.join(', ')}</span>
+                      <span className={styles.memoryMeta}>
+                        {highlightText(`주역: ${entry.actors.join(', ')}`, searchTokens)}
+                      </span>
                     ) : null}
-                    <p className={styles.memoryContent}>{entry.content}</p>
+                    <p className={styles.memoryContent}>{highlightText(entry.content, searchTokens)}</p>
                   </div>
                 ))}
               </div>
@@ -373,7 +583,9 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
                     <div className={styles.playerHeader}>
                       <span className={styles.playerName}>{player.name}</span>
                       {player.role ? (
-                        <span className={styles.playerRole}>{player.role}</span>
+                        <span className={styles.playerRole}>
+                          {highlightText(player.role, searchTokens)}
+                        </span>
                       ) : null}
                     </div>
                     <div className={styles.playerEntries}>
@@ -383,10 +595,12 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
                             <span className={styles.playerEntryRole}>{entry.roleLabel}</span>
                             {entry.actors.length ? (
                               <span className={styles.memoryMeta}>
-                                주역: {entry.actors.join(', ')}
+                                {highlightText(`주역: ${entry.actors.join(', ')}`, searchTokens)}
                               </span>
                             ) : null}
-                            <p className={styles.playerEntryContent}>{entry.content}</p>
+                            <p className={styles.playerEntryContent}>
+                              {highlightText(entry.content, searchTokens)}
+                            </p>
                           </div>
                         ))
                       ) : (
