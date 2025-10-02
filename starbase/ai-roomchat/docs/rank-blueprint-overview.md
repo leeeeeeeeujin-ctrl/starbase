@@ -37,13 +37,14 @@
 - [쿨다운 Telemetry CSV 내보내기](rank-api-key-cooldown-monitoring.md#운영-절차): 제공자/최근 시도 데이터를 바로 내려받는 버튼과 API 포맷을 정리해 운영 보고서 공유 루틴을 단축했습니다.
 - [쿨다운 감사 로그 적재](rank-blueprint-progress-2025-11-06.md#next-steps): `/api/rank/cooldown-report`·`/api/rank/cooldown-digest`가 `rank_api_key_audit`에 자동화 결과를 남겨 재시도 이력을 문서화하도록 확장했습니다.
 - [API 키 회수 감사 스키마 초안](supabase-ddl-export.md#6-rank_api_key_audit-감사-로그-초안-2025-11-08-업데이트): `rank_api_key_audit` 테이블을 정의해 Edge Function 재시도, Slack 경보, 수동 회수 이력을 한 테이블에서 추적할 수 있도록 준비했습니다.
+- [Edge Function 백오프 스케줄러](rank-api-key-cooldown-monitoring.md#edge-function-백오프-스케줄러-2025-11-08-업데이트): 감사 로그와 텔레메트리 지표를 바탕으로 `GET /api/rank/cooldown-retry-schedule`이 동적 백오프를 계산하도록 연결했습니다.
 
 ## 6. 다음 액션 스냅샷
 1. QA가 듀오/캐주얼 재시작 시퀀스에서 큐 일관성 회귀가 없는지 통합 테스트(`pages/api/rank/play.ts`)를 재실행하도록 준비합니다.
 2. 새로 적재되는 `summary_payload`·`is_visible`을 소비하도록 히스토리 UI/StartClient 구독 로직을 업데이트하고, 모바일 히스토리 패널에 요약 뱃지를 노출합니다.
 3. 제작기에서 세트를 저장하기 전 버전 불일치를 경고하는 Maker UX 개선안을 마련합니다.
 4. API 키 쿨다운 만료 알림과 대체 키 추천 워크플로를 운영 대시보드에 연결합니다.
-5. `rank_api_key_audit` 데이터를 Edge Function 재시도 스케줄러와 공유해 백오프/수동 회수 상태를 자동화 루프에 반영합니다.
+5. Edge Function 재시도 스케줄러가 제안한 백오프·중단 사유를 운영 대시보드와 QA 회고에 노출해 경보 루프 전체에서 동일한 문맥을 공유합니다.
 
 ## 7. 진행률 현황 (2025-11-07)
 | 단계 | 상태 | 진행률 | 메모 |
@@ -52,9 +53,9 @@
 | 세션/전투 동기화 | 구현 진행 중 | 55% | `rank_turns` 가시성·요약 컬럼을 `run-turn`/`log-turn` API와 세션 히스토리 응답에 연결해 로그 파이프라인 일부가 작동하기 시작했습니다. |
 | 프롬프트 변수 자동화 | 진행 중 | 60% | StartClient 경고 연동과 제작기 재저장 가이드 배포까지 끝났고, 남은 과제는 폴백 QA와 Maker 사전 경고뿐입니다. |
 | UI·오디오 완성 | 준비 중 | 25% | 히스토리 요약 노출 전략을 확정했으나 모바일·오디오 마감 작업은 대기 중입니다. |
-| 운영 가드 | 진행 중 | 60% | 실시간·다이제스트 경보가 `rank_api_key_audit`에 기록돼 운영 가드 단계의 감사 로그 TODO가 해소됐습니다. |
+| 운영 가드 | 진행 중 | 70% | 감사 로그 기반 백오프 스케줄러가 추가돼 Edge Function 재시도 간격을 자동 조정할 수 있게 됐습니다. |
 
-**총 진행률(단계별 동일 가중치)**: 약 **56%**
+**총 진행률(단계별 동일 가중치)**: 약 **57%**
 
 ---
 느낀 점: 청사진 문서가 방대해 핵심 줄기를 요약해두니 신규 인원과 동기화할 때 맥락 잡기가 한결 수월해졌습니다.

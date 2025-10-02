@@ -7,6 +7,7 @@
 - QA 팀과 통합 테스트 케이스 초안을 즉석에서 조율해 듀오/캐주얼 재시작 흐름이 로그 기준으로 검증될 수 있도록 테스트 시나리오를 연결했습니다.
 - StartClient 경고를 해소하기 위한 `rank-prompt-set-versioning-guide.md`를 작성해 제작기 세트 재저장 절차를 바로 실행할 수 있게 했습니다.
 - API 키 로테이션 회고를 위한 `rank_api_key_audit` 테이블 스키마를 설계하고, Supabase DDL 문서에 바로 적용 가능한 SQL 조각과 마이그레이션 체크리스트를 추가했습니다.
+- Edge Function 재시도 스케줄러가 `rank_api_key_audit` 감사 로그를 참고해 동적 백오프를 계산하도록 `/api/rank/cooldown-retry-schedule` 엔드포인트를 연결했습니다.
 
 ## Decisions
 - 난입 세션 재시작은 기존 세션 ID 유지 후 `resumeReason`을 명시해 전투 로그가 단절되지 않도록 한다.
@@ -35,6 +36,7 @@
 - Edge Function 재시도 상태 추적, Slack 에스컬레이션, 수동 다이제스트 연동을 포함한 Webhook 리트라이 운영 플로우를 `Edge Webhook Retry Runbook` 섹션에 요약했습니다.
 - 쿨다운 Telemetry API에 CSV 포맷(`section=providers|attempts`)을 추가하고 대시보드 패널에서 바로 내보낼 수 있는 버튼을 배치해 운영 보고를 위한 청사진 TODO를 정리했습니다.
 - `rank_api_key_audit` 테이블 초안을 정리해 만료 알림/회복 과정에서 발생한 회수 이력을 JSON으로 보관하도록 정의하고, Edge Function 재시도 로그와 어떤 필드를 교차 참조할지 문서화했습니다.
+- Edge Function 재시도 스케줄러가 감사 로그와 텔레메트리 집계를 활용해 다음 재시도 ETA/지연 시간을 추천하도록 `cooldown-retry-schedule` API와 문서를 보강했습니다.
 - `/api/rank/run-turn`·`/api/rank/log-turn` API에 `is_visible`·`summary_payload` 적재 로직을 연결하고, 세션 히스토리 응답에 요약 데이터·숨김 카운트를 노출하도록 해 단계 2 로그 파이프라인 요구사항을 실제 코드에 반영했습니다.
 - `/api/rank/cooldown-report`와 `/api/rank/cooldown-digest`가 쿨다운 자동화 결과를 `rank_api_key_audit` 감사 테이블에 적재하도록 확장돼 운영 가드 단계의 남은 TODO를 해소했습니다.
 
@@ -79,3 +81,4 @@
 | T+205m | `run-turn`·`log-turn` 경로에 `is_visible`·`summary_payload` 쓰기 로직을 반영하고, 히스토리 API 응답에서 새 필드 노출을 확인했습니다. |
 | T+213m | StartClient의 fallback 기록 경로가 요약 메타·가시성 정보를 포함하도록 갱신하고, 중복 로그 없이 저장되는지 수동 점검했습니다. |
 | T+221m | 진행 로그·개요·실행 플랜·테스트 플랜에 이번 반영 내역과 QA 체크리스트 갱신분을 추가해 "진행하면서 기록" 원칙을 이어갔습니다. |
+| T+229m | `cooldown-retry-schedule` API를 추가해 Edge Function이 감사 로그를 기반으로 백오프를 계산하도록 테스트했고, 운영 플레이북·개요 문서에 반영했습니다. |

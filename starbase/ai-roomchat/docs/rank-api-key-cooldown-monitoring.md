@@ -97,6 +97,12 @@
 - **대체 경로**: 실패 시 즉시 `/api/rank/cooldown-digest` 호출을 큐에 넣어 별도 스케줄러가 회수할 수 있게 하고, Webhook URL이 빈 값이면 재시도 루프를 건너뜁니다.
 - **운영 알림**: Edge Function은 세 번째 실패 후 60초 이내에 Slack 운영 채널에 “manual rotation required” 경보를 발송하고, Webhook URL/HTTP 상태/실패 시각을 첨부합니다.
 
+### Edge Function 백오프 스케줄러 (2025-11-08 업데이트)
+- **동적 백오프 계산**: `GET /api/rank/cooldown-retry-schedule`은 `cooldownId` 또는 `keyHash`를 받아 `rank_api_key_audit` 감사 로그를 조회하고, 최근 실패 스트릭·평균 응답 시간·문서 첨부율을 기반으로 다음 재시도 지연(`recommendedDelayMs`)과 실행 시각(`recommendedRunAt`)을 반환합니다. 실패율이 높거나 응답 시간이 길어질수록 기본 3/5/10분 간격을 가중치(최대 30분)와 지터(5~45초)로 조정합니다.
+- **감사 로그 연동**: 응답의 `plan.auditTrail`에는 최근 10건의 시도 상태, HTTP 지속 시간, 문서 첨부 여부가 포함돼 Edge Function이 동일한 데이터를 참고해 재시도 여부를 결정할 수 있습니다. `summary.failureRate`와 `docLinkAttachmentRate`는 대시보드·텔레메트리 지표와 동일한 방식으로 계산됩니다.
+- **재시도 중단 조건**: 최신 감사 로그가 `succeeded` 혹은 `manual_override`이면 `shouldRetry: false`와 함께 중단 사유가 표기되며, 연속 실패가 3회를 넘으면 `max_retries_exhausted`로 더 이상 스케줄을 제안하지 않습니다. 감사 로그나 `metadata.cooldownAutomation.retryState.nextRetryAt`에 예약된 ETA가 있으면 해당 시각 이후로 자동 조정됩니다.
+- **활용 예시**: Edge Function이 재시도 루프를 돌 때 각 주기마다 API를 호출해 `plan.shouldRetry`가 `true`인 경우에만 Slack/Webhook을 재호출하고, 실패 시 응답의 `recommendedDelayMs`만큼 `setTimeout`/Cron 대기 시간을 조정하면 감사 로그에 기록된 실측 데이터와 운영자가 조정한 노트를 그대로 반영할 수 있습니다.
+
 ### Retry 상태 추적 및 대시보드 연동 (2025-11-07 업데이트)
 - **상태 머신**: `pending` → `retrying (n=1~3)` → `succeeded | failed` 단계별로 `metadata.cooldownAutomation.retryState`에 `attempt`, `nextRetryAt`, `lastResult` 필드를 누적해 JSON으로 저장합니다.
 - **대시보드 필드**: 관리자 포털 대시보드 카드에 `retryStatus`, `lastFailureAt`, `nextRetryEta`, `attemptCount` 컬럼을 추가해 실시간 모니터링이 가능하도록 했습니다.
