@@ -1,0 +1,144 @@
+.hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 72px 24px 96px;
+  background-image:
+    linear-gradient(180deg, rgba(6, 10, 28, 0.82) 0%, rgba(6, 10, 28, 0.92) 70%, rgba(6, 10, 28, 0.98) 100%),
+    url('/landing/celestial-frontline.svg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  color: #f3f6ff;
+  font-family: 'Noto Sans KR', sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+.frame {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 48px 40px 52px;
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(27, 36, 78, 0.76), rgba(9, 13, 32, 0.94));
+  border: 1px solid rgba(126, 149, 255, 0.28);
+  box-shadow:
+    0 22px 48px rgba(2, 6, 18, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  text-align: left;
+}
+
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  margin-bottom: 18px;
+  border-radius: 999px;
+  background-color: rgba(114, 153, 255, 0.16);
+  color: #bcd3ff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.title {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 20px;
+  color: #ffffff;
+  text-shadow: 0 12px 38px rgba(0, 0, 0, 0.55);
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  font-size: 18px;
+  line-height: 1.66;
+  color: rgba(226, 233, 255, 0.82);
+  margin-bottom: 32px;
+  letter-spacing: 0.01em;
+}
+
+.cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 36px;
+}
+
+.ctaHint {
+  font-size: 13px;
+  color: rgba(202, 214, 255, 0.7);
+  letter-spacing: 0.04em;
+}
+
+.featureList {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.featureItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(20, 30, 68, 0.6);
+  border: 1px solid rgba(114, 153, 255, 0.18);
+  color: rgba(215, 224, 255, 0.84);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.featureLabel {
+  font-weight: 600;
+  color: #e0e7ff;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.footer {
+  margin-top: auto;
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32px 8px 0;
+  color: rgba(190, 205, 255, 0.55);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.footerVersion {
+  color: rgba(190, 205, 255, 0.32);
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: 56px 20px 72px;
+  }
+
+  .frame {
+    padding: 36px 28px 40px;
+  }
+
+  .title {
+    font-size: clamp(32px, 8vw, 44px);
+  }
+
+  .lede {
+    font-size: 16px;
+  }
+}

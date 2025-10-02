@@ -3,6 +3,25 @@ import { useRouter } from 'next/router'
 
 import AuthButton from '../components/AuthButton'
 import { supabase } from '../lib/supabase'
+import styles from '../styles/Home.module.css'
+
+const features = [
+  {
+    label: 'Auto Matchmaking',
+    description:
+      '솔로·듀오·캐주얼 모드에서 자동 매칭으로 곧바로 세션을 시작하고 재시작 흐름을 이어갑니다.',
+  },
+  {
+    label: 'Prompt Battles',
+    description:
+      '프롬프트 기반 전투와 제작기 메타 변수를 연결해 전략을 설계하고, 요약 로그로 전투 맥락을 공유합니다.',
+  },
+  {
+    label: 'Shared History',
+    description:
+      'rank_turns 히스토리와 세션 타임라인을 통해 팀과 관전자 모두가 같은 전선 기록을 확인할 수 있습니다.',
+  },
+]
 
 export default function Home() {
   const router = useRouter()
@@ -41,119 +60,29 @@ export default function Home() {
   }, [router])
 
   return (
-    <main
-      style={{
-        position: 'relative',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100vh',
-        padding: '72px 24px 96px',
-        backgroundImage:
-          'linear-gradient(180deg, rgba(6, 10, 28, 0.82) 0%, rgba(6, 10, 28, 0.92) 70%, rgba(6, 10, 28, 0.98) 100%), url(/landing/celestial-frontline.svg)',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        color: '#f3f6ff',
-        fontFamily: '"Noto Sans KR", sans-serif',
-      }}
-    >
-      <div
-        style={{
-          width: 'min(520px, 100%)',
-          margin: '0 auto',
-          padding: '40px 36px 48px',
-          borderRadius: 28,
-          background:
-            'linear-gradient(145deg, rgba(27, 36, 78, 0.72), rgba(9, 13, 32, 0.92))',
-          border: '1px solid rgba(126, 149, 255, 0.28)',
-          boxShadow:
-            '0 22px 48px rgba(2, 6, 18, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.05)',
-          textAlign: 'left',
-          backdropFilter: 'blur(12px)',
-        }}
-      >
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '6px 14px',
-            marginBottom: 18,
-            borderRadius: 999,
-            backgroundColor: 'rgba(114, 153, 255, 0.16)',
-            color: '#bcd3ff',
-            fontSize: 13,
-            fontWeight: 600,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-          }}
-        >
-          Neural Frontier
-        </span>
-        <h1
-          style={{
-            fontSize: 'clamp(36px, 5vw, 58px)',
-            fontWeight: 700,
-            lineHeight: 1.1,
-            marginBottom: 20,
-            color: '#ffffff',
-            textShadow: '0 12px 38px rgba(0, 0, 0, 0.55)',
-            letterSpacing: '-0.01em',
-          }}
-        >
-          천계전선에 합류할 준비가 되셨나요?
-        </h1>
-        <p
-          style={{
-            fontSize: '18px',
-            lineHeight: 1.66,
-            color: 'rgba(226, 233, 255, 0.82)',
-            marginBottom: 32,
-            letterSpacing: '0.01em',
-          }}
-        >
-          위태로운 전선에 투입될 영웅을 설계하고, 인공지능 참모와 함께 전략을 수립해 보세요.
-          지금 접속하면 실시간 랭킹과 공개 채널에서 다른 지휘관들과 맞붙을 수 있습니다.
+    <main className={styles.hero}>
+      <section className={styles.frame}>
+        <span className={styles.kicker}>Rank Blueprint</span>
+        <h1 className={styles.title}>랭크 청사진에 맞춘 전선으로 바로 합류하세요</h1>
+        <p className={styles.lede}>
+          자동 매칭, 프롬프트 기반 전투, 공유 히스토리를 결합한 경쟁 모드 비전을 지금 바로 체험해 보세요.
         </p>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            gap: 12,
-          }}
-        >
+        <div className={styles.cta}>
           <AuthButton />
-          <span
-            style={{
-              fontSize: 13,
-              color: 'rgba(202, 214, 255, 0.7)',
-              letterSpacing: '0.04em',
-            }}
-          >
-            Google 계정으로 즉시 접속
-          </span>
+          <span className={styles.ctaHint}>Google 계정으로 즉시 접속</span>
         </div>
-      </div>
-      <footer
-        style={{
-          marginTop: 'auto',
-          width: '100%',
-          maxWidth: 520,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '32px 8px 0',
-          color: 'rgba(190, 205, 255, 0.55)',
-          fontSize: 13,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-        }}
-      >
+        <ul className={styles.featureList}>
+          {features.map((feature) => (
+            <li key={feature.label} className={styles.featureItem}>
+              <span className={styles.featureLabel}>{feature.label}</span>
+              <span>{feature.description}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <footer className={styles.footer}>
         <span>Beta Access</span>
-        <span style={{ color: 'rgba(190, 205, 255, 0.32)' }}>ver. 0.1.0</span>
+        <span className={styles.footerVersion}>ver. 0.1.0</span>
       </footer>
     </main>
   )
