@@ -47,6 +47,7 @@
 - [업로드 실패 임계값 경보](rank-api-key-cool다운-monitoring.md#4-telemetry-리포트--대시보드): 업로드 연속 실패(2/4회)·장기 미성공(6/12시간) 임계값을 정의해 `alerts.timelineUploads`와 대시보드 이슈 패널에 경고/위험 신호를 노출합니다.
 - [API 키 회수 감사 스키마 초안](supabase-ddl-export.md#6-rank_api_key_audit-감사-로그-초안-2025-11-08-업데이트): `rank_api_key_audit` 테이블을 정의해 Edge Function 재시도, Slack 경보, 수동 회수 이력을 한 테이블에서 추적할 수 있도록 준비했습니다.
 - [Edge Function 백오프 스케줄러](rank-api-key-cooldown-monitoring.md#edge-function-백오프-스케줄러-2025-11-08-업데이트): 감사 로그와 텔레메트리 지표를 바탕으로 `GET /api/rank/cooldown-retry-schedule`이 동적 백오프를 계산하도록 연결했습니다.
+- [랜딩 청사진 보드](pages/index.js): 홈 히어로에서 단계별 진행률 보드를 노출해 매칭·세션·프롬프트·UI·운영 가드 상태를 2025-11-07 기준으로 요약합니다.【F:pages/index.js†L52-L92】【F:styles/Home.module.css†L43-L174】
 
 ## 6. 다음 액션 스냅샷
 1. QA가 듀오/캐주얼 재시작 시퀀스에서 큐 일관성 회귀가 없는지 통합 테스트(`pages/api/rank/play.ts`)를 재실행하도록 준비합니다.

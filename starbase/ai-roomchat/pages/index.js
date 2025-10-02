@@ -23,6 +23,46 @@ const features = [
   },
 ]
 
+const stageProgress = [
+  {
+    label: '매칭 트리거 통일',
+    status: 'QA 검토 중',
+    progress: 80,
+    summary:
+      '듀오·캐주얼 재시작 시퀀스를 /api/rank/play에 통일하고 회귀 테스트 케이스(DC-01~03)를 준비했습니다.',
+  },
+  {
+    label: '세션/전투 동기화',
+    status: '구현 진행 중',
+    progress: 55,
+    summary:
+      'rank_turns is_visible·summary_payload를 run-turn/log-turn과 세션 히스토리 응답에 연결했습니다.',
+  },
+  {
+    label: '프롬프트 변수 자동화',
+    status: '진행 중',
+    progress: 60,
+    summary:
+      '제작기 변수 매핑과 StartClient 경고 해소 가이드를 마련해 Maker 재저장 루틴을 정리했습니다.',
+  },
+  {
+    label: 'UI·오디오 완성',
+    status: '준비 중',
+    progress: 25,
+    summary:
+      '히스토리 요약 노출 전략은 확정됐으며 모바일 레이아웃·BGM 전환 마감 작업이 남았습니다.',
+  },
+  {
+    label: '운영 가드',
+    status: '진행 중',
+    progress: 85,
+    summary:
+      '쿨다운 ETA 안내·감사 로그·타임라인 내보내기까지 연결해 Edge Function 운영 루프를 정비했습니다.',
+  },
+]
+
+const progressLastUpdated = '2025-11-07 기준'
+
 export default function Home() {
   const router = useRouter()
 
@@ -71,14 +111,42 @@ export default function Home() {
           <AuthButton />
           <span className={styles.ctaHint}>Google 계정으로 즉시 접속</span>
         </div>
-        <ul className={styles.featureList}>
-          {features.map((feature) => (
-            <li key={feature.label} className={styles.featureItem}>
-              <span className={styles.featureLabel}>{feature.label}</span>
-              <span>{feature.description}</span>
-            </li>
-          ))}
-        </ul>
+        <section className={styles.sections}>
+          <div className={styles.featureBlock}>
+            <h2 className={styles.sectionTitle}>Core Pillars</h2>
+            <ul className={styles.featureList}>
+              {features.map((feature) => (
+                <li key={feature.label} className={styles.featureItem}>
+                  <span className={styles.featureLabel}>{feature.label}</span>
+                  <span>{feature.description}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className={styles.progressBlock}>
+            <div className={styles.progressHeader}>
+              <h2 className={styles.sectionTitle}>Blueprint Progress</h2>
+              <span className={styles.progressUpdated}>{progressLastUpdated}</span>
+            </div>
+            <ul className={styles.progressList}>
+              {stageProgress.map((stage) => (
+                <li key={stage.label} className={styles.progressItem}>
+                  <div className={styles.progressItemHeader}>
+                    <div>
+                      <span className={styles.progressLabel}>{stage.label}</span>
+                      <span className={styles.progressStatus}>{stage.status}</span>
+                    </div>
+                    <span className={styles.progressValue}>{stage.progress}%</span>
+                  </div>
+                  <p className={styles.progressSummary}>{stage.summary}</p>
+                  <div className={styles.progressMeter} role="progressbar" aria-valuenow={stage.progress} aria-valuemin={0} aria-valuemax={100}>
+                    <span style={{ width: `${stage.progress}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
       </section>
       <footer className={styles.footer}>
         <span>Beta Access</span>
