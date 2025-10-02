@@ -33,7 +33,9 @@ function mapTurn(row) {
     idx: row.idx,
     role: row.role,
     public: row.public !== false,
+    is_visible: row.is_visible !== false,
     content: row.content,
+    summary_payload: row.summary_payload || null,
     created_at: row.created_at,
   }
 }
@@ -83,7 +85,7 @@ export default async function handler(req, res) {
   if (sessionIds.length) {
     const { data: turnRows, error: turnError } = await supabaseAdmin
       .from('rank_turns')
-      .select('id, session_id, idx, role, public, content, created_at')
+      .select('id, session_id, idx, role, public, is_visible, content, summary_payload, created_at')
       .in('session_id', sessionIds)
       .order('session_id', { ascending: true })
       .order('idx', { ascending: true })
@@ -110,13 +112,15 @@ export default async function handler(req, res) {
 
     const visibleTurns = viewerIsOwner
       ? rawTurns
-      : rawTurns.filter((turn) => turn?.public !== false)
+      : rawTurns.filter((turn) => turn?.public !== false && turn?.is_visible !== false)
 
     const limitedTurns = turnLimit > 0 ? visibleTurns.slice(-turnLimit) : visibleTurns
     const hiddenPrivateCount = viewerIsOwner
       ? 0
       : rawTurns.length - visibleTurns.length
     const trimmedCount = Math.max(visibleTurns.length - limitedTurns.length, 0)
+
+    const latestSummarySource = [...rawTurns].reverse().find((turn) => turn?.summary_payload)
 
     return {
       id: session.id,
@@ -129,6 +133,7 @@ export default async function handler(req, res) {
       total_visible_turns: visibleTurns.length,
       hidden_private_count: hiddenPrivateCount,
       trimmed_count: trimmedCount,
+      latest_summary: latestSummarySource?.summary_payload || null,
       turns: limitedTurns.map(mapTurn),
     }
   })
