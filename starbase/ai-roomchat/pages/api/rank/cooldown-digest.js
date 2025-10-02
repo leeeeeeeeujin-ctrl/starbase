@@ -1,8 +1,14 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import {
+  getCooldownDocumentationUrl,
   mergeCooldownMetadata,
   runCooldownAutomation,
 } from '@/lib/rank/cooldownAutomation'
+import { recordCooldownAuditEntry } from '@/lib/rank/cooldownAudit'
+import {
+  RETRY_BACKOFF_SEQUENCE_MS,
+  buildCooldownRetryPlan,
+} from '@/lib/rank/cooldownRetryScheduler'
 
 function parseRequestPayload(req) {
   if (req.method === 'GET') {
@@ -27,6 +33,51 @@ function toNumber(value, fallback) {
   return numeric
 }
 
+function toObject(value) {
+  if (!value) return {}
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    } catch (error) {
+      return {}
+    }
+  }
+  if (typeof value === 'object') {
+    return value
+  }
+  return {}
+}
+
+async function computeRetryPlan(cooldownId, metadata) {
+  if (!cooldownId) return null
+  try {
+    const { data: auditRows, error } = await supabaseAdmin
+      .from('rank_api_key_audit')
+      .select(
+        'id, status, retry_count, last_attempt_at, next_retry_eta, automation_payload, inserted_at, notes',
+      )
+      .eq('cooldown_id', cooldownId)
+      .order('inserted_at', { ascending: false })
+      .limit(50)
+
+    if (error) {
+      console.error('cooldown-digest retry plan lookup failed:', { cooldownId, error })
+      return null
+    }
+
+    return buildCooldownRetryPlan(auditRows || [], {
+      baseIntervalsMs: RETRY_BACKOFF_SEQUENCE_MS,
+      now: new Date(),
+      cooldownMetadata: metadata,
+      includeAuditTrail: 10,
+    })
+  } catch (error) {
+    console.error('cooldown-digest retry plan unexpected failure:', { cooldownId, error })
+    return null
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     res.setHeader('Allow', ['GET', 'POST'])
@@ -36,6 +87,8 @@ export default async function handler(req, res) {
   const payload = parseRequestPayload(req)
   const limit = Math.min(Math.max(toNumber(payload.limit, 25), 1), 200)
   const sinceMinutes = Math.max(toNumber(payload.since_minutes, 60), 1)
+  const documentationUrl = getCooldownDocumentationUrl()
+  const automationOptions = documentationUrl ? { docUrl: documentationUrl } : {}
   try {
     const { data, error } = await supabaseAdmin
       .from('rank_api_key_cooldowns')
@@ -74,6 +127,15 @@ export default async function handler(req, res) {
         windowMinutes: sinceMinutes,
       })
 
+      const metadataObject = toObject(row.metadata)
+      const retryPlan = await computeRetryPlan(row.id, metadataObject)
+      const automationOptionsForRow = { ...automationOptions }
+      if (retryPlan) {
+        automationOptionsForRow.retryPlan = retryPlan
+      } else if (metadataObject?.cooldownAutomation?.retryState?.nextRetryAt) {
+        automationOptionsForRow.retryEta = metadataObject.cooldownAutomation.retryState.nextRetryAt
+      }
+
       let automationSummary = null
       try {
         automationSummary = await runCooldownAutomation({
@@ -87,7 +149,12 @@ export default async function handler(req, res) {
           recordedAt: row.recorded_at,
           expiresAt: row.expires_at,
           note: row.note,
-        })
+          nextRetryEta:
+            retryPlan?.recommendedRunAt ||
+            retryPlan?.nextRetryEta ||
+            metadataObject?.cooldownAutomation?.retryState?.nextRetryAt ||
+            null,
+        }, automationOptionsForRow)
       } catch (automationError) {
         console.error('cooldown-digest automation failure:', {
           id: row.id,
@@ -106,6 +173,8 @@ export default async function handler(req, res) {
           alert: automationSummary.alert,
           rotation: automationSummary.rotation,
           triggered: automationSummary.triggered,
+          alertDocLinkAttached: automationSummary.alertDocLinkAttached,
+          alertDocUrl: automationSummary.alertDocUrl || automationSummary.alert?.docUrl || null,
         })
 
         const metadata = mergeCooldownMetadata(row.metadata, automationSummary)
@@ -125,6 +194,25 @@ export default async function handler(req, res) {
             error: updateError,
           })
         }
+
+        await recordCooldownAuditEntry({
+          cooldownId: row.id,
+          automationSummary,
+          metadata,
+          context: {
+            source: 'digest',
+            method: req.method,
+            windowMinutes: sinceMinutes,
+            limit,
+            notes: row.note,
+            nextRetryEta:
+              automationSummary.retryEta ||
+              retryPlan?.recommendedRunAt ||
+              retryPlan?.nextRetryEta ||
+              metadataObject?.cooldownAutomation?.retryState?.nextRetryAt ||
+              null,
+          },
+        })
       }
     }
 

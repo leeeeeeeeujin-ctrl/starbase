@@ -73,6 +73,7 @@ export async function loadGameBundle(supabaseClient, gameId) {
 
   const participants = normalizeParticipants(participantRows || [])
   const graph = { nodes: [], edges: [] }
+  const warnings = []
 
   if (gameRow?.prompt_set_id) {
     const [{ data: slotRows, error: slotError }, { data: bridgeRows, error: bridgeError }] = await Promise.all([
@@ -90,11 +91,18 @@ export async function loadGameBundle(supabaseClient, gameId) {
     if (slotError) throw slotError
     if (bridgeError) throw bridgeError
 
-    graph.nodes = (slotRows || []).map((slot) => createNodeFromSlot(slot))
+    const nodeResults = (slotRows || []).map((slot) => createNodeFromSlot(slot))
+    graph.nodes = nodeResults.map((node) => {
+      if (Array.isArray(node?.warnings) && node.warnings.length) {
+        warnings.push(...node.warnings)
+      }
+      const { warnings: _warnings, ...rest } = node
+      return rest
+    })
     graph.edges = (bridgeRows || []).map(mapBridgeRow).filter((edge) => edge.from && edge.to)
   }
 
-  return { game: gameRow, participants, graph }
+  return { game: gameRow, participants, graph, warnings }
 }
 
 //

@@ -168,6 +168,7 @@ export function useStartClientEngine(gameId) {
   const [activeLocal, setActiveLocal] = useState([])
   const [logs, setLogs] = useState([])
   const [statusMessage, setStatusMessage] = useState('')
+  const [promptMetaWarning, setPromptMetaWarning] = useState('')
   const [apiKey, setApiKeyState] = useState(initialStoredApiKey)
   const [apiVersion, setApiVersionState] = useState(() => {
     if (typeof window === 'undefined') return 'gemini'
@@ -275,11 +276,64 @@ export function useStartClientEngine(gameId) {
           if (!content || !content.trim()) {
             return
           }
-          normalized.push({
+          const visibilityValue =
+            typeof entry.visibility === 'string' ? entry.visibility.trim().toLowerCase() : ''
+
+          let summary = null
+          const summaryCandidates = [entry.summary, entry.summary_payload, entry.summaryPayload]
+          for (const candidate of summaryCandidates) {
+            if (candidate && typeof candidate === 'object') {
+              try {
+                summary = JSON.parse(JSON.stringify(candidate))
+                break
+              } catch (error) {
+                summary = null
+              }
+            }
+          }
+
+          const prompt = typeof entry.prompt === 'string' ? entry.prompt : null
+          const actors = Array.isArray(entry.actors)
+            ? entry.actors
+                .map((actor) => (typeof actor === 'string' ? actor.trim() : ''))
+                .filter(Boolean)
+            : null
+          const extra =
+            entry.extra && typeof entry.extra === 'object'
+              ? JSON.parse(JSON.stringify(entry.extra))
+              : null
+
+          const normalizedEntry = {
             role,
             content,
             public: entry.public !== false,
-          })
+          }
+
+          if (typeof entry.isVisible === 'boolean') {
+            normalizedEntry.isVisible = entry.isVisible
+          }
+
+          if (visibilityValue) {
+            normalizedEntry.visibility = visibilityValue
+          }
+
+          if (summary) {
+            normalizedEntry.summary = summary
+          }
+
+          if (prompt) {
+            normalizedEntry.prompt = prompt
+          }
+
+          if (actors && actors.length) {
+            normalizedEntry.actors = actors
+          }
+
+          if (extra) {
+            normalizedEntry.extra = extra
+          }
+
+          normalized.push(normalizedEntry)
         })
       }
 
@@ -403,10 +457,19 @@ export function useStartClientEngine(gameId) {
         setGame(bundle.game)
         setParticipants(bundle.participants)
         setGraph(bundle.graph)
+        if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
+          bundle.warnings.forEach((warning) => {
+            if (warning) console.warn('[StartClient] 프롬프트 변수 경고:', warning)
+          })
+          setPromptMetaWarning(bundle.warnings.filter(Boolean).join('\n'))
+        } else {
+          setPromptMetaWarning('')
+        }
       } catch (err) {
         if (!alive) return
         console.error(err)
         setError(err?.message || '게임 데이터를 불러오지 못했습니다.')
+        setPromptMetaWarning('')
       } finally {
         if (alive) setLoading(false)
       }
@@ -1090,17 +1153,41 @@ export function useStartClientEngine(gameId) {
         )
 
         if (!loggedByServer) {
+          const responseSummary = {
+            preview: responseText.slice(0, 240),
+            promptPreview: promptText.slice(0, 240),
+            outcome: {
+              lastLine: outcome.lastLine || undefined,
+              variables: outcome.variables && outcome.variables.length ? outcome.variables : undefined,
+              actors: resolvedActorNames && resolvedActorNames.length ? resolvedActorNames : undefined,
+            },
+            extra: {
+              slotIndex,
+              nodeId: node?.id ?? null,
+              source: 'fallback-log',
+            },
+          }
+
           await logTurnEntries({
             entries: [
               {
                 role: promptEntry?.role || 'system',
                 content: promptEntry?.content || promptText,
                 public: promptEntry?.public,
+                visibility: promptEntry?.public === false ? 'hidden' : 'public',
+                extra: { slotIndex },
               },
               {
                 role: historyRole,
                 content: responseText,
                 public: responseEntry?.public,
+                visibility: responseEntry?.public === false ? 'hidden' : 'public',
+                actors: resolvedActorNames,
+                summary: responseSummary,
+                extra: {
+                  slotIndex,
+                  nodeId: node?.id ?? null,
+                },
               },
             ],
             turnNumber: loggedTurnNumber ?? turn,
@@ -1352,6 +1439,7 @@ export function useStartClientEngine(gameId) {
     activeGlobal,
     activeLocal,
     statusMessage,
+    promptMetaWarning,
     apiKeyWarning,
     logs,
     aiMemory,

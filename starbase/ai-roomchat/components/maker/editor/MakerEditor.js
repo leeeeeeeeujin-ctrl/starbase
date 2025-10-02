@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor'
 import { exportSet, importSet } from './importExport'
@@ -11,6 +11,7 @@ import VariableDrawer from './VariableDrawer'
 
 export default function MakerEditor() {
   const {
+    router,
     isReady,
     loading,
     busy,
@@ -51,10 +52,17 @@ export default function MakerEditor() {
     goToLobby,
     setNodes,
     setEdges,
+    versionAlert,
+    clearVersionAlert,
+    saveReceipt,
+    ackSaveReceipt,
+    saveHistory,
+    clearSaveHistory,
   } = useMakerEditor()
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [receiptVisible, setReceiptVisible] = useState(null)
 
   const collapsedQuickActions = useMemo(
     () => [
@@ -104,6 +112,101 @@ export default function MakerEditor() {
     [onEdgeClick, openInspector],
   )
 
+  const handleAutoUpgrade = useCallback(async () => {
+    if (busy) return
+    try {
+      await saveAll()
+    } catch (error) {
+      console.error(error)
+    }
+  }, [busy, saveAll])
+
+  const handleDismissVersionAlert = useCallback(() => {
+    clearVersionAlert()
+  }, [clearVersionAlert])
+
+  const handleExportHistory = useCallback(() => {
+    if (!Array.isArray(saveHistory) || saveHistory.length === 0) {
+      return
+    }
+    if (typeof window === 'undefined') return
+
+    const rawSetId = router?.query?.id
+    const setIdValue = Array.isArray(rawSetId) ? rawSetId[0] : rawSetId
+    const safeName = (setInfo?.name || 'maker-set')
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, '_')
+      .slice(0, 60)
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const filenameParts = [safeName || 'maker-set']
+    if (setIdValue) {
+      filenameParts.push(setIdValue)
+    }
+    filenameParts.push(`history-${timestamp}`)
+    const filename = `${filenameParts.join('-')}.json`
+
+    try {
+      const payload = JSON.stringify(saveHistory, null, 2)
+      const blob = new Blob([payload], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url)
+      }, 1000)
+    } catch (error) {
+      console.error('[MakerEditor] 히스토리 내보내기에 실패했습니다.', error)
+    }
+  }, [router?.query?.id, saveHistory, setInfo?.name])
+
+  const handleClearHistory = useCallback(() => {
+    if (!Array.isArray(saveHistory) || saveHistory.length === 0) {
+      return
+    }
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('저장된 자동 업그레이드 히스토리를 모두 삭제할까요?')
+      if (!confirmed) return
+    }
+    clearSaveHistory()
+  }, [clearSaveHistory, saveHistory])
+
+  useEffect(() => {
+    if (!saveReceipt) {
+      setReceiptVisible(null)
+      return
+    }
+
+    setReceiptVisible(saveReceipt)
+
+    const timeout = window.setTimeout(() => {
+      ackSaveReceipt(saveReceipt.id)
+    }, 6000)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [saveReceipt, ackSaveReceipt])
+
+  useEffect(() => {
+    if (!receiptVisible) return
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        ackSaveReceipt(receiptVisible.id)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [receiptVisible, ackSaveReceipt])
+
   if (!isReady || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
   }
@@ -139,6 +242,66 @@ export default function MakerEditor() {
           onOpenVariables={() => setVariableDrawerOpen(true)}
           quickActions={collapsedQuickActions}
         />
+
+        {versionAlert && (
+          <div
+            style={{
+              borderRadius: 14,
+              background: '#fff7ed',
+              border: '1px solid #fdba74',
+              color: '#9a3412',
+              padding: '14px 16px',
+              display: 'grid',
+              gap: 10,
+            }}
+            role="status"
+            aria-live="polite"
+          >
+            <div style={{ display: 'grid', gap: 6 }}>
+              <strong style={{ fontSize: 15 }}>변수 규칙 버전 자동 갱신 필요</strong>
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{versionAlert.summary}</p>
+              {Array.isArray(versionAlert.details) && versionAlert.details.length > 0 && (
+                <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5 }}>
+                  {versionAlert.details.map((detail) => (
+                    <li key={detail}>{detail}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={handleAutoUpgrade}
+                disabled={busy}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: '#c2410c',
+                  color: '#fff',
+                  fontWeight: 600,
+                  opacity: busy ? 0.6 : 1,
+                }}
+              >
+                {busy ? '저장 중…' : '지금 자동 갱신'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDismissVersionAlert}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 10,
+                  border: '1px solid #fdba74',
+                  background: '#fffbeb',
+                  color: '#9a3412',
+                  fontWeight: 500,
+                }}
+              >
+                나중에 다시 보기
+              </button>
+            </div>
+          </div>
+        )}
 
         <MakerEditorCanvas
           nodes={nodes}
@@ -259,6 +422,9 @@ export default function MakerEditor() {
               onInsertToken={appendTokenToSelected}
               setNodes={setNodes}
               setEdges={setEdges}
+              saveHistory={saveHistory}
+              onExportHistory={handleExportHistory}
+              onClearHistory={handleClearHistory}
             />
           </div>
         </div>
@@ -300,6 +466,74 @@ export default function MakerEditor() {
         onVisibilityChange={updateVisibility}
         onToggleInvisible={toggleInvisible}
       />
+
+      {receiptVisible && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: 24,
+            transform: 'translateX(-50%)',
+            background: '#0f172a',
+            color: '#f8fafc',
+            borderRadius: 16,
+            padding: '14px 18px',
+            boxShadow: '0 22px 48px -20px rgba(15, 23, 42, 0.85)',
+            width: 'min(420px, calc(100vw - 40px))',
+            zIndex: 120,
+            display: 'grid',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <strong style={{ fontSize: 14 }}>저장 완료</strong>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => openInspector('history')}
+                style={{
+                  appearance: 'none',
+                  border: '1px solid rgba(148, 163, 184, 0.45)',
+                  background: 'rgba(15, 23, 42, 0.2)',
+                  color: '#bfdbfe',
+                  borderRadius: 12,
+                  fontSize: 12,
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                히스토리 보기
+              </button>
+              <button
+                type="button"
+                onClick={() => ackSaveReceipt(receiptVisible.id)}
+                style={{
+                  appearance: 'none',
+                  border: '1px solid rgba(148, 163, 184, 0.45)',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  color: '#e2e8f0',
+                  borderRadius: 12,
+                  fontSize: 12,
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{receiptVisible.message}</p>
+          {Array.isArray(receiptVisible.details) && receiptVisible.details.length > 0 && (
+            <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5 }}>
+              {receiptVisible.details.map((detail) => (
+                <li key={detail}>{detail}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }

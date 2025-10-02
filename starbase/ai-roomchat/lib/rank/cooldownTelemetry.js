@@ -19,6 +19,36 @@ function toFiniteNumber(value) {
   return Number.isFinite(numeric) ? numeric : null
 }
 
+function safeIso(value) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+  return date.toISOString()
+}
+
+function pickNextRetryEta(automation = {}) {
+  const retryState = toObject(automation.retryState)
+  const retryPlan = toObject(automation.retryPlan)
+  const candidates = [
+    automation.nextRetryEta,
+    retryState.nextRetryEta,
+    retryState.recommendedRunAt,
+    retryPlan.recommendedRunAt,
+    retryPlan.nextRetryAt,
+  ]
+
+  for (const candidate of candidates) {
+    const iso = safeIso(candidate)
+    if (iso) {
+      return iso
+    }
+  }
+
+  return null
+}
+
 function averageFrom(sum, count) {
   if (!count) return null
   const result = sum / count
@@ -39,9 +69,25 @@ function computeWeightSuggestion(failureRate) {
   return Number(weight.toFixed(2))
 }
 
-function normalizeLatestAttempt(row, automation, alert, rotation, attemptCount, triggered) {
+function normalizeLatestAttempt(
+  row,
+  automation,
+  alert,
+  rotation,
+  attemptCount,
+  triggered,
+  lastDocLinkAttached,
+  docLinkAttachmentCount,
+) {
   const attemptedAt = automation.lastAttemptedAt || row.updated_at || row.reported_at || null
   const timestamp = attemptedAt && !Number.isNaN(Date.parse(attemptedAt)) ? new Date(attemptedAt).toISOString() : null
+  const docLinkAttached = Boolean(lastDocLinkAttached)
+  const totalDocLinkAttachments = toFiniteNumber(docLinkAttachmentCount)
+  const normalizedAttachmentCount = totalDocLinkAttachments ?? 0
+  const attachmentRate =
+    typeof attemptCount === 'number' && attemptCount > 0 && totalDocLinkAttachments !== null
+      ? Number((totalDocLinkAttachments / attemptCount).toFixed(3))
+      : null
 
   const normalizeAlert = (entry) => {
     if (!entry || typeof entry !== 'object') return null
@@ -88,6 +134,9 @@ function normalizeLatestAttempt(row, automation, alert, rotation, attemptCount, 
     triggered,
     alert: normalizeAlert(alert),
     rotation: normalizeAlert(rotation),
+    docLinkAttached,
+    docLinkAttachmentCount: normalizedAttachmentCount,
+    docLinkAttachmentRate: attachmentRate,
   }
 }
 
@@ -104,10 +153,13 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
     alertDurationCount: 0,
     rotationDurationSum: 0,
     rotationDurationCount: 0,
+    docLinkAttachmentCount: 0,
+    lastDocLinkAttached: 0,
   }
 
   const providerMap = new Map()
   const latestAttempts = []
+  const triggeredCooldowns = []
 
   for (const row of safeRows) {
     const metadata = toObject(row.metadata)
@@ -119,6 +171,10 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
     const alert = toObject(lastResult.alert)
     const rotation = toObject(lastResult.rotation)
     const triggered = Boolean(lastResult.triggered)
+    const docLinkAttachmentCount = toFiniteNumber(automation.docLinkAttachmentCount) || 0
+    const lastDocLinkAttached = Boolean(
+      automation.lastDocLinkAttached ?? lastResult.alertDocLinkAttached,
+    )
 
     const successEver = Boolean(row.notified_at)
     if (successEver) {
@@ -134,6 +190,11 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
     const successes = successEver ? 1 : 0
     const failures = attemptCount > successes ? attemptCount - successes : 0
     totals.totalFailures += failures
+
+    totals.docLinkAttachmentCount += docLinkAttachmentCount
+    if (lastDocLinkAttached) {
+      totals.lastDocLinkAttached += 1
+    }
 
     const alertDuration = toFiniteNumber(alert.durationMs)
     if (alertDuration !== null) {
@@ -160,6 +221,10 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
         alertDurationCount: 0,
         rotationDurationSum: 0,
         rotationDurationCount: 0,
+        docLinkAttachmentCount: 0,
+        lastDocLinkAttached: 0,
+        nextRetryEta: null,
+        lastAttemptAt: null,
       })
     }
 
@@ -167,6 +232,7 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
     providerEntry.trackedKeys += 1
     providerEntry.totalAttempts += attemptCount
     providerEntry.totalFailures += failures
+    providerEntry.docLinkAttachmentCount += docLinkAttachmentCount
 
     if (successEver) {
       providerEntry.keysWithSuccess += 1
@@ -174,6 +240,23 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
 
     if (triggered) {
       providerEntry.currentlyTriggered += 1
+
+      const nextRetryEta = pickNextRetryEta(automation)
+      if (nextRetryEta) {
+        const candidateMs = Date.parse(nextRetryEta)
+        if (Number.isFinite(candidateMs)) {
+          const existingMs = providerEntry.nextRetryEta
+            ? Date.parse(providerEntry.nextRetryEta)
+            : NaN
+          if (Number.isNaN(existingMs) || candidateMs < existingMs) {
+            providerEntry.nextRetryEta = new Date(candidateMs).toISOString()
+          }
+        }
+      }
+    }
+
+    if (lastDocLinkAttached) {
+      providerEntry.lastDocLinkAttached += 1
     }
 
     if (alertDuration !== null) {
@@ -186,9 +269,40 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
       providerEntry.rotationDurationCount += 1
     }
 
-    const latest = normalizeLatestAttempt(row, automation, alert, rotation, attemptCount, triggered)
+    const latest = normalizeLatestAttempt(
+      row,
+      automation,
+      alert,
+      rotation,
+      attemptCount,
+      triggered,
+      lastDocLinkAttached,
+      docLinkAttachmentCount,
+    )
     if (latest.attemptedAt) {
       latestAttempts.push(latest)
+
+      const attemptMs = Date.parse(latest.attemptedAt)
+      if (Number.isFinite(attemptMs)) {
+        const previousMs = providerEntry.lastAttemptAt
+          ? Date.parse(providerEntry.lastAttemptAt)
+          : NaN
+        if (Number.isNaN(previousMs) || attemptMs > previousMs) {
+          providerEntry.lastAttemptAt = new Date(attemptMs).toISOString()
+        }
+      }
+    }
+
+    if (triggered) {
+      triggeredCooldowns.push({
+        id: row.id || null,
+        keyHash: row.key_hash || null,
+        provider: row.provider || null,
+        reason: row.reason || null,
+        attemptId: latest.attemptId || null,
+        lastAttemptAt: latest.attemptedAt || null,
+        metadataNextRetryEta: pickNextRetryEta(automation),
+      })
     }
   }
 
@@ -196,6 +310,16 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
     const aTime = Date.parse(a.attemptedAt || '') || 0
     const bTime = Date.parse(b.attemptedAt || '') || 0
     return bTime - aTime
+  })
+
+  triggeredCooldowns.sort((a, b) => {
+    const aEta = Date.parse(a.metadataNextRetryEta || '')
+    const bEta = Date.parse(b.metadataNextRetryEta || '')
+    const aFallback = Date.parse(a.lastAttemptAt || '') || 0
+    const bFallback = Date.parse(b.lastAttemptAt || '') || 0
+    const aTime = Number.isNaN(aEta) ? aFallback : aEta
+    const bTime = Number.isNaN(bEta) ? bFallback : bEta
+    return aTime - bTime
   })
 
   const providerSummaries = Array.from(providerMap.values()).map((entry) => {
@@ -208,6 +332,12 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
       : null
 
     const failureRate = entry.totalAttempts > 0 ? entry.totalFailures / entry.totalAttempts : 0
+    const docLinkAttachmentRate = entry.totalAttempts
+      ? entry.docLinkAttachmentCount / entry.totalAttempts
+      : 0
+    const lastDocLinkAttachmentRate = entry.trackedKeys
+      ? entry.lastDocLinkAttached / entry.trackedKeys
+      : 0
 
     return {
       provider: entry.provider,
@@ -220,6 +350,12 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
       avgRotationDurationMs,
       recommendedBackoffMs: computeBackoffSuggestion(avgDuration, failureRate),
       recommendedWeight: computeWeightSuggestion(failureRate),
+      docLinkAttachmentCount: entry.docLinkAttachmentCount,
+      docLinkAttachmentRate: Number(docLinkAttachmentRate.toFixed(3)),
+      lastDocLinkAttached: entry.lastDocLinkAttached,
+      lastDocLinkAttachmentRate: Number(lastDocLinkAttachmentRate.toFixed(3)),
+      nextRetryEta: entry.nextRetryEta,
+      lastAttemptAt: entry.lastAttemptAt,
     }
   })
 
@@ -238,6 +374,12 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
     : null
 
   const estimatedFailureRate = totals.totalAttempts > 0 ? totals.totalFailures / totals.totalAttempts : 0
+  const docLinkAttachmentRate = totals.totalAttempts
+    ? totals.docLinkAttachmentCount / totals.totalAttempts
+    : 0
+  const lastDocLinkAttachmentRate = totals.trackedKeys
+    ? totals.lastDocLinkAttached / totals.trackedKeys
+    : 0
 
   return {
     generatedAt: new Date().toISOString(),
@@ -252,9 +394,14 @@ export function buildCooldownTelemetry(rows = [], { latestLimit = 15 } = {}) {
       avgRotationDurationMs,
       recommendedBackoffMs: computeBackoffSuggestion(avgDuration, estimatedFailureRate),
       recommendedWeight: computeWeightSuggestion(estimatedFailureRate),
+      docLinkAttachmentCount: totals.docLinkAttachmentCount,
+      docLinkAttachmentRate: Number(docLinkAttachmentRate.toFixed(3)),
+      lastDocLinkAttached: totals.lastDocLinkAttached,
+      lastDocLinkAttachmentRate: Number(lastDocLinkAttachmentRate.toFixed(3)),
     },
     providers: providerSummaries,
     latestAttempts: latestAttempts.slice(0, latestLimit),
+    triggeredCooldowns,
   }
 }
 
