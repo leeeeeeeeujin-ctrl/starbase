@@ -50,6 +50,10 @@
 - [랜딩 청사진 보드](pages/index.js): 홈 히어로에서 단계별 진행률 보드를 노출해 매칭·세션·프롬프트·UI·운영 가드 상태를 2025-11-07 기준으로 요약합니다.【F:pages/index.js†L52-L92】【F:styles/Home.module.css†L43-L174】
 
 ## 6. 다음 액션 스냅샷
+<!-- next-actions-status:start -->
+> _2025-10-02 기준 자동 생성된 기한 알림._
+> ✅ 모든 항목이 목표일 이내에 있습니다.
+<!-- next-actions-status:end -->
 | 순번 | 작업 | 담당 | 목표일 |
 | --- | --- | --- | --- |
 | 1 | QA가 듀오/캐주얼 재시작 시퀀스에서 큐 일관성 회귀가 없는지 통합 테스트(`pages/api/rank/play.ts`)를 재실행하도록 준비합니다. | QA (민서) | 2025-11-14 |
@@ -58,7 +62,7 @@
 | 4 | API 키 쿨다운 만료 알림과 대체 키 추천 워크플로를 운영 대시보드에 연결합니다. | Ops (지후) | 2025-11-25 |
 | 5 | Edge Function 재시도 스케줄러가 제안한 백오프·중단 사유를 운영 대시보드와 QA 회고에 노출해 경보 루프 전체에서 동일한 문맥을 공유합니다. | Ops (지후) | 2025-11-28 |
 
-담당·목표일은 7일 안팎으로 묶어 우선순위를 드러내고, 랜딩 히어로에서는 각 항목에 D-Day 뱃지를 붙여 임박/지연 상태를 바로 확인할 수 있습니다.
+담당·목표일은 7일 안팎으로 묶어 우선순위를 드러내고, 랜딩 히어로에서는 각 항목에 D-Day 뱃지를 붙여 임박/지연 상태를 바로 확인할 수 있습니다. 자동 경고 블록은 마감이 지난 항목이나 3일 이내 임박한 항목을 추적해 개요 문서를 열었을 때도 상태를 바로 알 수 있도록 동일 스크립트에서 갱신됩니다.
 
 ## 7. 진행률 현황 (2025-11-07)
 | 단계 | 상태 | 진행률 | 메모 |
@@ -71,7 +75,7 @@
 
 **총 진행률(단계별 동일 가중치)**: 약 **64%**
 
-홈 히어로에서 노출되는 진행률 보드와 다음 액션 카드가 이 표와 위 섹션을 그대로 참조할 수 있도록 데이터를 `data/rankBlueprintProgress.json`·`data/rankBlueprintNextActions.json`으로 분리해 사용하며, 최신화 뱃지가 2주 이상 경과 시 업데이트 필요 상태를 표시합니다. `npm run refresh:blueprint-progress` 스크립트를 실행하면 두 JSON이 자동으로 재생성돼 문서/코드 동기화를 유지할 수 있고, `npm run check:blueprint-progress-freshness`(주 1회 GitHub Actions에서도 실행)로 14일 한계치를 넘길 경우 경고를 발생시켜 리마인더를 받습니다.【F:data/rankBlueprintProgress.json†L1-L35】【F:data/rankBlueprintNextActions.json†L1-L21】【F:pages/index.js†L8-L142】【F:styles/Home.module.css†L1-L212】【F:scripts/refresh-rank-blueprint-progress.js†L1-L214】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L74】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L20】
+홈 히어로에서 노출되는 진행률 보드와 다음 액션 카드가 이 표와 위 섹션을 그대로 참조할 수 있도록 데이터를 `data/rankBlueprintProgress.json`·`data/rankBlueprintNextActions.json`으로 분리해 사용하며, 최신화 뱃지가 2주 이상 경과 시 업데이트 필요 상태를 표시합니다. `npm run refresh:blueprint-progress` 스크립트를 실행하면 두 JSON과 자동 경고 블록이 재생성돼 문서/코드 동기화를 유지할 수 있고, `npm run check:blueprint-progress-freshness`(주 1회 GitHub Actions에서도 실행)로 14일 한계치를 넘길 경우 경고를 발생시켜 리마인더를 받습니다. `npm run check:blueprint-next-actions`는 마감이 지난 항목이 존재하면 CI를 실패시키고, JSON에는 담당자 키·D-Day·연체 여부가 함께 기록돼 랜딩 카드와 문서가 동일한 기준으로 경고를 노출합니다.【F:data/rankBlueprintProgress.json†L1-L35】【F:data/rankBlueprintNextActions.json†L1-L33】【F:pages/index.js†L8-L200】【F:styles/Home.module.css†L1-L266】【F:scripts/refresh-rank-blueprint-progress.js†L1-L339】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L74】【F:scripts/check-rank-blueprint-next-actions.js†L1-L87】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L22】
 
 ---
 느낀 점: 청사진 문서가 방대해 핵심 줄기를 요약해두니 신규 인원과 동기화할 때 맥락 잡기가 한결 수월해졌습니다.

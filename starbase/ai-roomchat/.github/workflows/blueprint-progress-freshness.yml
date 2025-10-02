@@ -18,3 +18,5 @@ jobs:
           node-version: 18
       - name: Run freshness check
         run: node scripts/check-rank-blueprint-progress-freshness.js
+      - name: Check next-action deadlines
+        run: node scripts/check-rank-blueprint-next-actions.js

@@ -20,8 +20,12 @@ function parseISODateOnly(value) {
   return new Date(Date.UTC(year, month - 1, day))
 }
 
-function deriveNextActionTiming(action, snapshotDate) {
-  const fallbackLabel = action.targetDateDisplay || action.targetDateISO || null
+function startOfUTCDay(date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
+function deriveNextActionTiming(action) {
+  const fallbackLabel = action.timing?.label || action.targetDateDisplay || action.targetDateISO || null
 
   if (!action.targetDateISO) {
     return {
@@ -35,13 +39,13 @@ function deriveNextActionTiming(action, snapshotDate) {
   if (!targetDate) {
     return {
       label: fallbackLabel,
-      badge: null,
-      state: 'scheduled',
+      badge: action.timing?.badge || null,
+      state: action.timing?.state || 'scheduled',
     }
   }
 
-  const reference = snapshotDate || parseISODateOnly(progressData.lastUpdatedISO) || new Date()
-  const diffDays = Math.round((targetDate.getTime() - reference.getTime()) / MS_PER_DAY)
+  const today = startOfUTCDay(new Date())
+  const diffDays = Math.floor((targetDate.getTime() - today.getTime()) / MS_PER_DAY)
 
   let badge
   if (diffDays < 0) {
@@ -52,18 +56,28 @@ function deriveNextActionTiming(action, snapshotDate) {
     badge = `D-${diffDays}`
   }
 
-  let state = 'scheduled'
-  if (diffDays < 0) {
-    state = 'overdue'
-  } else if (diffDays <= 3) {
-    state = 'due-imminent'
-  } else if (diffDays <= 7) {
-    state = 'due-soon'
+  const computedState = (() => {
+    if (diffDays < 0) return 'overdue'
+    if (diffDays <= 3) return 'due-imminent'
+    if (diffDays <= 7) return 'due-soon'
+    return 'scheduled'
+  })()
+
+  const severity = {
+    overdue: 3,
+    'due-imminent': 2,
+    'due-soon': 1,
+    scheduled: 0,
+    unscheduled: 0,
   }
+
+  const stateFromJson = action.timing?.state || 'scheduled'
+  const state =
+    (severity[stateFromJson] || 0) > (severity[computedState] || 0) ? stateFromJson : computedState
 
   return {
     label: fallbackLabel,
-    badge,
+    badge: action.timing?.badge || badge,
     state,
   }
 }
@@ -90,7 +104,6 @@ const stageProgress = progressData.stages
 const progressLastUpdated = progressData.lastUpdatedDisplay
 const progressLastUpdatedISO = progressData.lastUpdatedISO
 const nextActions = Array.isArray(nextActionsData.items) ? nextActionsData.items : []
-const progressSnapshotDate = parseISODateOnly(progressData.lastUpdatedISO)
 
 export default function Home() {
   const router = useRouter()
@@ -234,7 +247,7 @@ export default function Home() {
               </div>
               <ol className={styles.nextActionsList}>
                 {nextActions.map((action) => {
-                  const timing = deriveNextActionTiming(action, progressSnapshotDate)
+                  const timing = deriveNextActionTiming(action)
                   return (
                     <li key={action.order} className={styles.nextActionItem}>
                       <span className={styles.nextActionIndex}>{action.order.toString().padStart(2, '0')}</span>

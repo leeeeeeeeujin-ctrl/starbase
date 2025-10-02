@@ -6,36 +6,91 @@
       "order": 1,
       "summary": "QA가 듀오/캐주얼 재시작 시퀀스에서 큐 일관성 회귀가 없는지 통합 테스트(`pages/api/rank/play.ts`)를 재실행하도록 준비합니다.",
       "owner": "QA (민서)",
+      "ownerKey": "qa-민서",
       "targetDateISO": "2025-11-14",
-      "targetDateDisplay": "2025-11-14"
+      "targetDateDisplay": "2025-11-14",
+      "timing": {
+        "label": "2025-11-14",
+        "badge": "D-43",
+        "state": "scheduled",
+        "daysFromToday": 43,
+        "daysFromSnapshot": 7,
+        "computedAtISO": "2025-10-02",
+        "isOverdue": false,
+        "overdueDays": 0
+      }
     },
     {
       "order": 2,
       "summary": "새로 적재되는 `summary_payload`·`is_visible`을 소비하도록 히스토리 UI/StartClient 구독 로직을 업데이트하고, 모바일 히스토리 패널에 요약 뱃지를 노출합니다.",
       "owner": "프론트 (라라)",
+      "ownerKey": "프론트-라라",
       "targetDateISO": "2025-11-18",
-      "targetDateDisplay": "2025-11-18"
+      "targetDateDisplay": "2025-11-18",
+      "timing": {
+        "label": "2025-11-18",
+        "badge": "D-47",
+        "state": "scheduled",
+        "daysFromToday": 47,
+        "daysFromSnapshot": 11,
+        "computedAtISO": "2025-10-02",
+        "isOverdue": false,
+        "overdueDays": 0
+      }
     },
     {
       "order": 3,
       "summary": "제작기에서 세트를 저장하기 전 버전 불일치를 경고하는 Maker UX 개선안을 마련합니다.",
       "owner": "Maker UX (도윤)",
+      "ownerKey": "maker-ux-도윤",
       "targetDateISO": "2025-11-21",
-      "targetDateDisplay": "2025-11-21"
+      "targetDateDisplay": "2025-11-21",
+      "timing": {
+        "label": "2025-11-21",
+        "badge": "D-50",
+        "state": "scheduled",
+        "daysFromToday": 50,
+        "daysFromSnapshot": 14,
+        "computedAtISO": "2025-10-02",
+        "isOverdue": false,
+        "overdueDays": 0
+      }
     },
     {
       "order": 4,
       "summary": "API 키 쿨다운 만료 알림과 대체 키 추천 워크플로를 운영 대시보드에 연결합니다.",
       "owner": "Ops (지후)",
+      "ownerKey": "ops-지후",
       "targetDateISO": "2025-11-25",
-      "targetDateDisplay": "2025-11-25"
+      "targetDateDisplay": "2025-11-25",
+      "timing": {
+        "label": "2025-11-25",
+        "badge": "D-54",
+        "state": "scheduled",
+        "daysFromToday": 54,
+        "daysFromSnapshot": 18,
+        "computedAtISO": "2025-10-02",
+        "isOverdue": false,
+        "overdueDays": 0
+      }
     },
     {
       "order": 5,
       "summary": "Edge Function 재시도 스케줄러가 제안한 백오프·중단 사유를 운영 대시보드와 QA 회고에 노출해 경보 루프 전체에서 동일한 문맥을 공유합니다.",
       "owner": "Ops (지후)",
+      "ownerKey": "ops-지후",
       "targetDateISO": "2025-11-28",
-      "targetDateDisplay": "2025-11-28"
+      "targetDateDisplay": "2025-11-28",
+      "timing": {
+        "label": "2025-11-28",
+        "badge": "D-57",
+        "state": "scheduled",
+        "daysFromToday": 57,
+        "daysFromSnapshot": 21,
+        "computedAtISO": "2025-10-02",
+        "isOverdue": false,
+        "overdueDays": 0
+      }
     }
   ]
 }
