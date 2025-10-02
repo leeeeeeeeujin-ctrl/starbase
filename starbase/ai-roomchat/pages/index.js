@@ -7,6 +7,67 @@ import styles from '../styles/Home.module.css'
 import progressData from '../data/rankBlueprintProgress.json'
 import nextActionsData from '../data/rankBlueprintNextActions.json'
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+function parseISODateOnly(value) {
+  if (!value) return null
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+  const [, year, month, day] = match.map(Number)
+  if ([year, month, day].some((part) => Number.isNaN(part))) {
+    return null
+  }
+  return new Date(Date.UTC(year, month - 1, day))
+}
+
+function deriveNextActionTiming(action, snapshotDate) {
+  const fallbackLabel = action.targetDateDisplay || action.targetDateISO || null
+
+  if (!action.targetDateISO) {
+    return {
+      label: fallbackLabel,
+      badge: null,
+      state: 'unscheduled',
+    }
+  }
+
+  const targetDate = parseISODateOnly(action.targetDateISO)
+  if (!targetDate) {
+    return {
+      label: fallbackLabel,
+      badge: null,
+      state: 'scheduled',
+    }
+  }
+
+  const reference = snapshotDate || parseISODateOnly(progressData.lastUpdatedISO) || new Date()
+  const diffDays = Math.round((targetDate.getTime() - reference.getTime()) / MS_PER_DAY)
+
+  let badge
+  if (diffDays < 0) {
+    badge = `D+${Math.abs(diffDays)}`
+  } else if (diffDays === 0) {
+    badge = 'D-DAY'
+  } else {
+    badge = `D-${diffDays}`
+  }
+
+  let state = 'scheduled'
+  if (diffDays < 0) {
+    state = 'overdue'
+  } else if (diffDays <= 3) {
+    state = 'due-imminent'
+  } else if (diffDays <= 7) {
+    state = 'due-soon'
+  }
+
+  return {
+    label: fallbackLabel,
+    badge,
+    state,
+  }
+}
+
 const features = [
   {
     label: 'Auto Matchmaking',
@@ -29,6 +90,7 @@ const stageProgress = progressData.stages
 const progressLastUpdated = progressData.lastUpdatedDisplay
 const progressLastUpdatedISO = progressData.lastUpdatedISO
 const nextActions = Array.isArray(nextActionsData.items) ? nextActionsData.items : []
+const progressSnapshotDate = parseISODateOnly(progressData.lastUpdatedISO)
 
 export default function Home() {
   const router = useRouter()
@@ -171,12 +233,32 @@ export default function Home() {
                 </div>
               </div>
               <ol className={styles.nextActionsList}>
-                {nextActions.map((action) => (
-                  <li key={action.order} className={styles.nextActionItem}>
-                    <span className={styles.nextActionIndex}>{action.order.toString().padStart(2, '0')}</span>
-                    <p className={styles.nextActionSummary}>{action.summary}</p>
-                  </li>
-                ))}
+                {nextActions.map((action) => {
+                  const timing = deriveNextActionTiming(action, progressSnapshotDate)
+                  return (
+                    <li key={action.order} className={styles.nextActionItem}>
+                      <span className={styles.nextActionIndex}>{action.order.toString().padStart(2, '0')}</span>
+                      <div className={styles.nextActionContent}>
+                        <p className={styles.nextActionSummary}>{action.summary}</p>
+                        {(action.owner || timing.label) && (
+                          <div className={styles.nextActionMeta}>
+                            {action.owner ? (
+                              <span className={styles.nextActionOwner}>{action.owner}</span>
+                            ) : null}
+                            {timing.label ? (
+                              <span className={styles.nextActionDue} data-state={timing.state}>
+                                {timing.badge ? (
+                                  <span className={styles.nextActionDueBadge}>{timing.badge}</span>
+                                ) : null}
+                                <span className={styles.nextActionDueLabel}>{timing.label}</span>
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
               </ol>
             </div>
           ) : null}

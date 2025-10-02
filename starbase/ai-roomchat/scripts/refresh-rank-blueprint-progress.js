@@ -84,6 +84,54 @@ function parseProgressTable(sectionContent) {
 }
 
 function parseNextActions(sectionContent) {
+  const tableLines = sectionContent
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('|'));
+
+  if (tableLines.length > 0) {
+    const dataLines = tableLines.filter((line) => !line.startsWith('| ---'));
+    // Remove header row if present.
+    if (dataLines.length && dataLines[0].match(/^\|\s*순번\s*\|/)) {
+      dataLines.shift();
+    }
+
+    if (!dataLines.length) {
+      throw new Error('다음 액션 테이블이 비어 있습니다.');
+    }
+
+    return dataLines.map((line) => {
+      const cells = line
+        .split('|')
+        .slice(1, -1)
+        .map((cell) => cell.trim());
+
+      if (cells.length < 4) {
+        throw new Error(`예상치 못한 다음 액션 테이블 행 형식: ${line}`);
+      }
+
+      const [orderCell, summaryCell, ownerCell, targetCell] = cells;
+      const order = Number(orderCell);
+      if (!Number.isFinite(order)) {
+        throw new Error(`순번을 숫자로 파싱할 수 없습니다: ${orderCell}`);
+      }
+
+      const summary = summaryCell.replace(/\s+/g, ' ').trim();
+      const owner = ownerCell.replace(/\s+/g, ' ').trim();
+      const target = targetCell.replace(/\s+/g, ' ').trim();
+      const targetMatch = target.match(/(\d{4}-\d{2}-\d{2})/);
+
+      return {
+        order,
+        summary,
+        owner,
+        targetDateISO: targetMatch ? targetMatch[1] : null,
+        targetDateDisplay: target,
+      };
+    });
+  }
+
+  // Fallback to list parsing for backward compatibility with earlier formats.
   const lines = sectionContent
     .split('\n')
     .map((line) => line.trim())
@@ -123,6 +171,9 @@ function parseNextActions(sectionContent) {
     .map((action) => ({
       order: action.order,
       summary: action.summary.replace(/\s+/g, ' ').trim(),
+      owner: null,
+      targetDateISO: null,
+      targetDateDisplay: null,
     }));
 }
 
@@ -138,7 +189,13 @@ function buildNextActionsPayload({ isoDate, actions }) {
   return {
     lastUpdatedISO: isoDate,
     lastUpdatedDisplay: `${isoDate} 기준`,
-    items: actions,
+    items: actions.map((action) => ({
+      order: action.order,
+      summary: action.summary,
+      owner: action.owner || null,
+      targetDateISO: action.targetDateISO || null,
+      targetDateDisplay: action.targetDateDisplay || null,
+    })),
   };
 }
 
