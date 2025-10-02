@@ -282,6 +282,37 @@ function normalizeSummaryPayload(payload) {
   }
 }
 
+function buildHistorySearchText(parts = []) {
+  const tokens = []
+  parts.forEach((part) => {
+    if (part === null || part === undefined) return
+    if (Array.isArray(part)) {
+      part.forEach((nested) => {
+        if (nested === null || nested === undefined) return
+        if (typeof nested === 'string') {
+          const trimmed = nested.trim()
+          if (trimmed) tokens.push(trimmed.toLowerCase())
+        } else if (typeof nested === 'number' && Number.isFinite(nested)) {
+          tokens.push(String(nested))
+        }
+      })
+      return
+    }
+
+    if (typeof part === 'string') {
+      const trimmed = part.trim()
+      if (trimmed) tokens.push(trimmed.toLowerCase())
+      return
+    }
+
+    if (typeof part === 'number' && Number.isFinite(part)) {
+      tokens.push(String(part))
+    }
+  })
+
+  return tokens.join(' ')
+}
+
 function buildBattleLine(battle, heroNameMap) {
   const attackers = ensureArray(battle.attacker_hero_ids).map((id) => heroNameMap.get(id) || '알 수 없음')
   const defenders = ensureArray(battle.defender_hero_ids).map((id) => heroNameMap.get(id) || '알 수 없음')
@@ -684,7 +715,19 @@ export default function GameRoomView({
   const myHeroDisplayName =
     (myEntry?.hero && myEntry.hero.name) || myHero?.name || ''
 
-  const normalizedSessionHistory = useMemo(() => {
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyStatusFilter, setHistoryStatusFilter] = useState('all')
+
+  const historySearchTokens = useMemo(() => {
+    if (!historySearch) return []
+    return historySearch
+      .toLowerCase()
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+  }, [historySearch])
+
+  const baseSessionHistory = useMemo(() => {
     if (!Array.isArray(sessionHistory)) return []
     return sessionHistory
       .map((entry) => {
@@ -714,6 +757,16 @@ export default function GameRoomView({
           )
         })()
         const summary = normalizeSummaryPayload(entry.latestSummary)
+        const searchText = buildHistorySearchText([
+          statusInfo.label,
+          createdAt,
+          summary?.role,
+          summary?.preview,
+          summary?.promptPreview,
+          summary?.outcomeLine,
+          summary?.actors || [],
+          displayTurns.map((turn) => `${turn.role} ${turn.content}`),
+        ])
 
         return {
           id: entry.sessionId,
@@ -731,12 +784,13 @@ export default function GameRoomView({
           olderShareableCount,
           trimmedTotal,
           summary,
+          searchText,
         }
       })
       .filter(Boolean)
   }, [sessionHistory])
 
-  const normalizedSharedHistory = useMemo(() => {
+  const baseSharedHistory = useMemo(() => {
     if (!Array.isArray(sharedSessionHistory)) return []
     return sharedSessionHistory
       .map((entry) => {
@@ -789,6 +843,18 @@ export default function GameRoomView({
         const trimmedCount = Number(entry.trimmed_count) || 0
         const totalVisible = Number(entry.total_visible_turns) || visibleTurns.length
         const summary = normalizeSummaryPayload(entry.latest_summary)
+        const searchText = buildHistorySearchText([
+          statusInfo.label,
+          createdAt,
+          ownerName,
+          ownerLine,
+          summary?.role,
+          summary?.preview,
+          summary?.promptPreview,
+          summary?.outcomeLine,
+          summary?.actors || [],
+          displayTurns.map((turn) => `${turn.role} ${turn.content}`),
+        ])
 
         return {
           id: entry.id,
@@ -803,10 +869,72 @@ export default function GameRoomView({
           trimmedCount,
           totalVisible,
           summary,
+          searchText,
         }
       })
       .filter(Boolean)
   }, [sharedSessionHistory, participantsByOwnerId, myHeroDisplayName, myRoleName])
+
+  const historyFiltersActive = historySearchTokens.length > 0 || historyStatusFilter !== 'all'
+
+  const normalizedSessionHistory = useMemo(() => {
+    if (!baseSessionHistory.length) return baseSessionHistory
+    return baseSessionHistory.filter((entry) => {
+      if (historyStatusFilter !== 'all' && entry.tone !== historyStatusFilter) {
+        return false
+      }
+      if (!historySearchTokens.length) return true
+      if (!entry.searchText) return false
+      return historySearchTokens.every((token) => entry.searchText.includes(token))
+    })
+  }, [baseSessionHistory, historySearchTokens, historyStatusFilter])
+
+  const normalizedSharedHistory = useMemo(() => {
+    if (!baseSharedHistory.length) return baseSharedHistory
+    return baseSharedHistory.filter((entry) => {
+      if (historyStatusFilter !== 'all' && entry.tone !== historyStatusFilter) {
+        return false
+      }
+      if (!historySearchTokens.length) return true
+      if (!entry.searchText) return false
+      return historySearchTokens.every((token) => entry.searchText.includes(token))
+    })
+  }, [baseSharedHistory, historySearchTokens, historyStatusFilter])
+
+  const handleHistorySearchChange = useCallback((event) => {
+    const value = event?.target?.value ?? ''
+    setHistorySearch(value)
+  }, [])
+
+  const handleHistoryStatusChange = useCallback((event) => {
+    const value = event?.target?.value ?? 'all'
+    setHistoryStatusFilter(value || 'all')
+  }, [])
+
+  const handleHistoryFilterReset = useCallback(() => {
+    setHistorySearch('')
+    setHistoryStatusFilter('all')
+  }, [])
+
+  const sharedHistoryBadgeValue = baseSharedHistory.length
+    ? historyFiltersActive
+      ? `${normalizedSharedHistory.length}/${baseSharedHistory.length}`
+      : `${baseSharedHistory.length}`
+    : null
+
+  const sessionHistoryBadgeValue = baseSessionHistory.length
+    ? historyFiltersActive
+      ? `${normalizedSessionHistory.length}/${baseSessionHistory.length}`
+      : `${baseSessionHistory.length}`
+    : null
+
+  const sharedHistoryEmptyMessage = baseSharedHistory.length
+    ? '조건에 맞는 기록이 없습니다.'
+    : '아직 공유 히스토리가 없습니다.'
+
+  const sessionHistoryEmptyMessage = baseSessionHistory.length
+    ? '조건에 맞는 기록이 없습니다.'
+    : '매칭을 시작하면 최근 세션 기록이 이곳에 표시됩니다.'
 
   const displayedHeroLogs = useMemo(
     () => heroBattleLogs.slice(0, visibleHeroLogs),
@@ -1305,8 +1433,35 @@ export default function GameRoomView({
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <h2 className={styles.sectionTitle}>공용 히스토리</h2>
-          {normalizedSharedHistory.length ? (
-            <span className={styles.sectionBadge}>{normalizedSharedHistory.length}</span>
+          {sharedHistoryBadgeValue ? (
+            <span className={styles.sectionBadge}>{sharedHistoryBadgeValue}</span>
+          ) : null}
+        </div>
+        <div className={styles.sessionHistoryControls}>
+          <input
+            type="search"
+            className={styles.sessionHistorySearch}
+            placeholder="요약·참여자·문장 검색"
+            value={historySearch}
+            onChange={handleHistorySearchChange}
+            aria-label="세션 요약 검색"
+            autoComplete="off"
+          />
+          <select
+            className={styles.sessionHistoryFilter}
+            value={historyStatusFilter}
+            onChange={handleHistoryStatusChange}
+            aria-label="세션 상태 필터"
+          >
+            <option value="all">전체 상태</option>
+            <option value="completed">종료된 세션</option>
+            <option value="active">진행 중</option>
+            <option value="failed">중단됨</option>
+          </select>
+          {historyFiltersActive ? (
+            <button type="button" className={styles.sessionHistoryClear} onClick={handleHistoryFilterReset}>
+              필터 초기화
+            </button>
           ) : null}
         </div>
         {normalizedSharedHistory.length ? (
@@ -1411,15 +1566,15 @@ export default function GameRoomView({
             })}
           </ul>
         ) : (
-          <div className={styles.emptyCard}>아직 공유 히스토리가 없습니다.</div>
+          <div className={styles.emptyCard}>{sharedHistoryEmptyMessage}</div>
         )}
       </section>
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <h2 className={styles.sectionTitle}>내 세션 히스토리</h2>
-          {normalizedSessionHistory.length ? (
-            <span className={styles.sectionBadge}>{normalizedSessionHistory.length}</span>
+          {sessionHistoryBadgeValue ? (
+            <span className={styles.sectionBadge}>{sessionHistoryBadgeValue}</span>
           ) : null}
         </div>
         {normalizedSessionHistory.length ? (
@@ -1530,7 +1685,7 @@ export default function GameRoomView({
             })}
           </ul>
         ) : (
-          <div className={styles.emptyCard}>매칭을 시작하면 최근 세션 기록이 이곳에 표시됩니다.</div>
+          <div className={styles.emptyCard}>{sessionHistoryEmptyMessage}</div>
         )}
       </section>
 
