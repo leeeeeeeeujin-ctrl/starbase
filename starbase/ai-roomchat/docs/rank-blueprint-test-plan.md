@@ -75,6 +75,7 @@
 | OPS-04 | 임계값 감사 알림 검증 | 1. `RANK_COOLDOWN_ALERT_THRESHOLDS`를 기본값에서 `{ "docLinkAttachmentRate": { "warning": 0.9 } }`로 변경<br>2. `/api/rank/cooldown-telemetry` 호출 후 감사 Webhook(모킹 서버) 페이로드 확인 | 감사 알림 텍스트와 `diff`에 이전/이후 값이 기록되고, `getCooldownThresholdAuditTrail()` 최근 항목에 동일한 변경 이력이 남음 |
 | OPS-05 | 임계값 감사 집계 노출 검증 | 1. OPS-04 시나리오 직후 `/api/rank/cooldown-telemetry` 재호출<br>2. 관리자 대시보드 "임계값 변경" 카드와 감사 로그 패널 스냅샷 확인 | 응답 `thresholdAudit.totalCount`/`recentCount`가 증가하고, 카드·패널에 동일한 Diff/원본 요약이 표시됨 |
 | OPS-06 | 임계값 감사 타임라인 그래프 검증 | 1. OPS-04를 연속 두 번 실행해 서로 다른 임계값 변경 생성<br>2. `/api/rank/cooldown-telemetry` 응답의 `thresholdAudit.timelines.daily/weekly/monthly` 버킷 수와 현재 기간 플래그 확인<br>3. 대시보드 타임라인 토글(일/주/월)을 순서대로 눌러 그래프 스크린샷 확보 | 일간 뷰는 `windowDays`가 14로 노출되고 현재 버킷이 강조되며, 주간/월간 뷰는 `windowLabel`에 기간명이 표시되고 그래프가 각 모드에 맞게 전환됨 |
+| OPS-07 | 감사 타임라인 CSV/PNG 내보내기 검증 | 1. OPS-06 이후 대시보드 타임라인 모드를 `주간`으로 전환<br>2. `CSV 다운로드` 버튼 클릭 후 파일 열어 버킷 라벨·count·is_current 확인<br>3. `이미지 저장` 버튼 클릭 후 PNG에 제목·모드·범례·주간 막대 강조가 포함됐는지 확인 | CSV는 `mode=weekly`와 버킷 수가 응답과 일치하고, PNG는 현재 주간 막대가 하이라이트된 상태로 저장됨 |
 
 ## 3. 자동화 및 회귀 테스트 제안
 

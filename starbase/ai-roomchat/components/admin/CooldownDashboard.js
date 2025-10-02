@@ -19,6 +19,26 @@ const TIMELINE_MODE_LABELS = {
   monthly: '월간',
 }
 
+const TIMELINE_EXPORT_THEME = {
+  background: '#0f172a',
+  panel: '#14213f',
+  grid: 'rgba(148, 163, 255, 0.22)',
+  axis: '#475569',
+  bar: '#6366f1',
+  barCurrent: '#ec4899',
+  barShadow: 'rgba(79, 70, 229, 0.25)',
+  barCurrentShadow: 'rgba(236, 72, 153, 0.35)',
+  textPrimary: '#e2e8f0',
+  textSecondary: '#94a3b8',
+  textHighlight: '#f8fafc',
+  panelStroke: 'rgba(99, 102, 241, 0.35)',
+}
+
+function sanitizeFilenameSegment(value) {
+  if (!value) return 'timeline'
+  return String(value).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'timeline'
+}
+
 function formatNumber(value, { style = 'decimal', digits = 0 } = {}) {
   if (value === null || value === undefined) return '—'
   return new Intl.NumberFormat('ko-KR', {
@@ -685,6 +705,8 @@ export default function CooldownDashboard() {
   const [shareFeedback, setShareFeedback] = useState(null)
   const [exportStatus, setExportStatus] = useState(null)
   const [exportingSection, setExportingSection] = useState(null)
+  const [timelineExportStatus, setTimelineExportStatus] = useState(null)
+  const [timelineExporting, setTimelineExporting] = useState(null)
   const [initialFiltersLoaded, setInitialFiltersLoaded] = useState(false)
   const [auditTimelineMode, setAuditTimelineMode] = useState('daily')
   const [retryScheduleState, setRetryScheduleState] = useState({
@@ -697,6 +719,7 @@ export default function CooldownDashboard() {
   const favoritesFeedbackTimeoutRef = useRef(null)
   const shareFeedbackTimeoutRef = useRef(null)
   const exportFeedbackTimeoutRef = useRef(null)
+  const timelineExportFeedbackTimeoutRef = useRef(null)
 
   const seasonOptions = useMemo(() => {
     const seasons = languageFilterOptions?.seasons || []
@@ -781,6 +804,14 @@ export default function CooldownDashboard() {
 
     return telemetry?.thresholdAudit?.timeline || null
   }, [telemetry?.thresholdAudit?.timelines, telemetry?.thresholdAudit?.timeline, auditTimelineMode, auditTimelineOptions])
+
+  const auditTimelineHasData = useMemo(() => {
+    return Boolean(
+      activeAuditTimeline &&
+        Array.isArray(activeAuditTimeline.buckets) &&
+        activeAuditTimeline.buckets.length > 0,
+    )
+  }, [activeAuditTimeline])
 
   useEffect(() => {
     const availableModes = auditTimelineOptions.map((option) => option.id)
@@ -882,6 +913,9 @@ export default function CooldownDashboard() {
       if (exportFeedbackTimeoutRef.current) {
         clearTimeout(exportFeedbackTimeoutRef.current)
       }
+      if (timelineExportFeedbackTimeoutRef.current) {
+        clearTimeout(timelineExportFeedbackTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -908,6 +942,17 @@ export default function CooldownDashboard() {
     }
     exportFeedbackTimeoutRef.current = setTimeout(() => setExportStatus(null), 4000)
   }, [exportStatus])
+
+  useEffect(() => {
+    if (!timelineExportStatus) return
+    if (timelineExportFeedbackTimeoutRef.current) {
+      clearTimeout(timelineExportFeedbackTimeoutRef.current)
+    }
+    timelineExportFeedbackTimeoutRef.current = setTimeout(
+      () => setTimelineExportStatus(null),
+      4000,
+    )
+  }, [timelineExportStatus])
 
   useEffect(() => {
     if (selectedGameId === 'all') return
@@ -969,6 +1014,285 @@ export default function CooldownDashboard() {
         ? styles.exportFeedbackSuccess
         : styles.exportFeedbackError
     return <p className={`${styles.exportFeedback} ${toneClass}`}>{exportStatus.text}</p>
+  }
+
+  const handleTimelineExportCsv = useCallback(async () => {
+    if (typeof window === 'undefined') return
+    setTimelineExportStatus(null)
+    setTimelineExporting('csv')
+    try {
+      const params = new URLSearchParams()
+      params.set('format', 'csv')
+      params.set('section', 'audit-timeline')
+      params.set('mode', auditTimelineMode)
+
+      const response = await fetch(`/api/rank/cooldown-telemetry?${params.toString()}`)
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        const errorMessage =
+          payload.error === 'unsupported_timeline_mode'
+            ? '지원하지 않는 타임라인 모드입니다.'
+            : payload.error || '타임라인 CSV 내보내기에 실패했습니다.'
+        throw new Error(errorMessage)
+      }
+
+      const blob = await response.blob()
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const anchor = document.createElement('a')
+      anchor.href = downloadUrl
+      anchor.download = `cooldown-threshold-audit-${sanitizeFilenameSegment(
+        auditTimelineMode,
+      )}-${timestamp}.csv`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      window.URL.revokeObjectURL(downloadUrl)
+
+      setTimelineExportStatus({ type: 'success', text: '타임라인 CSV 파일을 다운로드했습니다.' })
+    } catch (timelineError) {
+      setTimelineExportStatus({
+        type: 'error',
+        text: timelineError.message || '타임라인 CSV 내보내기에 실패했습니다.',
+      })
+    } finally {
+      setTimelineExporting(null)
+    }
+  }, [auditTimelineMode])
+
+  const handleTimelineExportImage = useCallback(async () => {
+    if (typeof window === 'undefined') return
+    if (!auditTimelineHasData || !activeAuditTimeline) {
+      setTimelineExportStatus({ type: 'error', text: '내보낼 타임라인 데이터가 없습니다.' })
+      return
+    }
+
+    setTimelineExportStatus(null)
+    setTimelineExporting('image')
+
+    try {
+      const buckets = activeAuditTimeline.buckets || []
+      const bucketCount = buckets.length
+      const now = new Date()
+      const modeLabel = TIMELINE_MODE_LABELS[auditTimelineMode] || '일간'
+      const subtitleParts = [modeLabel]
+      if (activeAuditTimeline.windowLabel) {
+        subtitleParts.push(activeAuditTimeline.windowLabel)
+      }
+      const subtitle = subtitleParts.join(' · ')
+
+      const width = Math.max(640, bucketCount * 72 + 160)
+      const height = 420
+      const topPadding = 90
+      const bottomPadding = 130
+      const leftPadding = 96
+      const rightPadding = 80
+      const chartBottom = height - bottomPadding
+      const chartHeight = chartBottom - topPadding
+      const chartWidth = width - leftPadding - rightPadding
+      const gap = bucketCount > 1 ? Math.min(28, chartWidth / (bucketCount * 3)) : 0
+      const totalGap = gap * Math.max(bucketCount - 1, 0)
+      const barWidth = bucketCount
+        ? Math.min(72, Math.max(26, (chartWidth - totalGap) / bucketCount))
+        : 32
+      const drawnWidth = barWidth * bucketCount + totalGap
+      const startX = leftPadding + Math.max(0, (chartWidth - drawnWidth) / 2)
+
+      const devicePixelRatio = window.devicePixelRatio || 1
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(width * devicePixelRatio)
+      canvas.height = Math.round(height * devicePixelRatio)
+      const ctx = canvas.getContext('2d')
+      ctx.scale(devicePixelRatio, devicePixelRatio)
+
+      ctx.fillStyle = TIMELINE_EXPORT_THEME.background
+      ctx.fillRect(0, 0, width, height)
+
+      ctx.fillStyle = TIMELINE_EXPORT_THEME.panel
+      ctx.strokeStyle = TIMELINE_EXPORT_THEME.panelStroke
+      ctx.lineWidth = 1
+      const panelX = 24
+      const panelY = 24
+      const panelWidth = width - panelX * 2
+      const panelHeight = height - panelY * 2
+      ctx.fillRect(panelX, panelY, panelWidth, panelHeight)
+      ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelWidth - 1, panelHeight - 1)
+
+      ctx.fillStyle = TIMELINE_EXPORT_THEME.textPrimary
+      ctx.font = '600 22px "Noto Sans KR", "Pretendard", sans-serif'
+      ctx.textAlign = 'left'
+      ctx.fillText('임계값 감사 타임라인', leftPadding, 60)
+
+      ctx.fillStyle = TIMELINE_EXPORT_THEME.textSecondary
+      ctx.font = '500 16px "Noto Sans KR", "Pretendard", sans-serif'
+      ctx.fillText(subtitle, leftPadding, 84)
+
+      ctx.textAlign = 'right'
+      ctx.font = '400 12px "Noto Sans KR", "Pretendard", sans-serif'
+      ctx.fillStyle = TIMELINE_EXPORT_THEME.textSecondary
+      ctx.fillText(now.toLocaleString('ko-KR'), width - rightPadding, 48)
+      ctx.textAlign = 'left'
+
+      const maxCount = Math.max(activeAuditTimeline.maxCount || 0, 1)
+      const gridSteps = Math.min(5, Math.max(2, Math.ceil(maxCount / Math.max(1, Math.floor(maxCount / 4)))))
+      ctx.strokeStyle = TIMELINE_EXPORT_THEME.grid
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 6])
+      for (let step = 1; step < gridSteps; step += 1) {
+        const ratio = step / gridSteps
+        const y = chartBottom - ratio * chartHeight
+        ctx.beginPath()
+        ctx.moveTo(leftPadding, y)
+        ctx.lineTo(width - rightPadding, y)
+        ctx.stroke()
+      }
+      ctx.setLineDash([])
+
+      ctx.strokeStyle = TIMELINE_EXPORT_THEME.axis
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(leftPadding, chartBottom)
+      ctx.lineTo(width - rightPadding, chartBottom)
+      ctx.stroke()
+
+      ctx.font = '600 12px "Noto Sans KR", "Pretendard", sans-serif'
+      ctx.textAlign = 'center'
+      buckets.forEach((bucket, index) => {
+        const value = bucket?.count ?? 0
+        const ratio = Math.max(0, Math.min(1, value / maxCount))
+        const barHeightValue = ratio * chartHeight
+        const barHeight = value > 0 ? Math.max(barHeightValue, 6) : 0
+        const x = startX + index * (barWidth + gap)
+        const y = chartBottom - barHeight
+
+        if (barHeight > 0) {
+          const gradient = ctx.createLinearGradient(0, y, 0, chartBottom)
+          if (bucket.isCurrent) {
+            gradient.addColorStop(0, '#f472b6')
+            gradient.addColorStop(1, TIMELINE_EXPORT_THEME.barCurrent)
+          } else {
+            gradient.addColorStop(0, '#a5b4fc')
+            gradient.addColorStop(1, TIMELINE_EXPORT_THEME.bar)
+          }
+          ctx.save()
+          ctx.fillStyle = gradient
+          ctx.shadowColor = bucket.isCurrent
+            ? TIMELINE_EXPORT_THEME.barCurrentShadow
+            : TIMELINE_EXPORT_THEME.barShadow
+          ctx.shadowBlur = 18
+          ctx.shadowOffsetY = 0
+          ctx.fillRect(x, y, barWidth, barHeight)
+          ctx.restore()
+        } else {
+          ctx.save()
+          ctx.fillStyle = TIMELINE_EXPORT_THEME.axis
+          ctx.globalAlpha = 0.4
+          ctx.fillRect(x, chartBottom - 3, barWidth, 3)
+          ctx.restore()
+        }
+
+        ctx.save()
+        ctx.fillStyle = TIMELINE_EXPORT_THEME.textHighlight
+        ctx.font = '700 12px "Noto Sans KR", "Pretendard", sans-serif'
+        ctx.fillText(String(value), x + barWidth / 2, Math.min(chartBottom - barHeight - 8, chartBottom - chartHeight + 16))
+        ctx.restore()
+
+        ctx.save()
+        ctx.fillStyle = TIMELINE_EXPORT_THEME.textPrimary
+        ctx.font = '600 12px "Noto Sans KR", "Pretendard", sans-serif'
+        ctx.fillText(bucket.label || '', x + barWidth / 2, chartBottom + 26)
+        if (bucket.secondaryLabel) {
+          ctx.fillStyle = TIMELINE_EXPORT_THEME.textSecondary
+          ctx.font = '500 11px "Noto Sans KR", "Pretendard", sans-serif'
+          ctx.fillText(bucket.secondaryLabel, x + barWidth / 2, chartBottom + 44)
+        }
+        ctx.restore()
+      })
+
+      ctx.textAlign = 'left'
+      const legendY = height - 56
+      let legendX = leftPadding
+      const legendItems = [
+        { label: '기록 수', colorStart: '#a5b4fc', colorEnd: TIMELINE_EXPORT_THEME.bar },
+        { label: '현재 기간', colorStart: '#f472b6', colorEnd: TIMELINE_EXPORT_THEME.barCurrent },
+      ]
+      legendItems.forEach((item) => {
+        const boxWidth = 18
+        const boxHeight = 14
+        const gradient = ctx.createLinearGradient(legendX, legendY, legendX, legendY + boxHeight)
+        gradient.addColorStop(0, item.colorStart)
+        gradient.addColorStop(1, item.colorEnd)
+        ctx.fillStyle = gradient
+        ctx.fillRect(legendX, legendY, boxWidth, boxHeight)
+        legendX += boxWidth + 8
+        ctx.fillStyle = TIMELINE_EXPORT_THEME.textPrimary
+        ctx.font = '500 12px "Noto Sans KR", "Pretendard", sans-serif'
+        ctx.fillText(item.label, legendX, legendY + boxHeight - 2)
+        legendX += ctx.measureText(item.label).width + 24
+      })
+
+      ctx.fillStyle = TIMELINE_EXPORT_THEME.textSecondary
+      ctx.font = '500 12px "Noto Sans KR", "Pretendard", sans-serif'
+      ctx.fillText('타임라인 값은 감사 이벤트 발생 횟수를 기준으로 집계됩니다.', leftPadding, height - 24)
+
+      const blob = await new Promise((resolve, reject) => {
+        if (canvas.toBlob) {
+          canvas.toBlob((result) => {
+            if (result) {
+              resolve(result)
+            } else {
+              reject(new Error('이미지 변환에 실패했습니다.'))
+            }
+          }, 'image/png')
+        } else {
+          try {
+            const dataUrl = canvas.toDataURL('image/png')
+            const binary = atob(dataUrl.split(',')[1])
+            const buffer = new Uint8Array(binary.length)
+            for (let index = 0; index < binary.length; index += 1) {
+              buffer[index] = binary.charCodeAt(index)
+            }
+            resolve(new Blob([buffer], { type: 'image/png' }))
+          } catch (conversionError) {
+            reject(conversionError)
+          }
+        }
+      })
+
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const timestamp = now.toISOString().replace(/[:.]/g, '-')
+      const anchor = document.createElement('a')
+      anchor.href = downloadUrl
+      anchor.download = `cooldown-threshold-audit-${sanitizeFilenameSegment(
+        auditTimelineMode,
+      )}-${timestamp}.png`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      window.URL.revokeObjectURL(downloadUrl)
+
+      setTimelineExportStatus({ type: 'success', text: '타임라인 이미지를 저장했습니다.' })
+    } catch (timelineError) {
+      setTimelineExportStatus({
+        type: 'error',
+        text: timelineError.message || '타임라인 이미지를 저장하지 못했습니다.',
+      })
+    } finally {
+      setTimelineExporting(null)
+    }
+  }, [activeAuditTimeline, auditTimelineHasData, auditTimelineMode])
+
+  const renderTimelineExportFeedback = () => {
+    if (!timelineExportStatus) return null
+    const toneClass =
+      timelineExportStatus.type === 'success'
+        ? styles.exportFeedbackSuccess
+        : styles.exportFeedbackError
+    return (
+      <p className={`${styles.exportFeedback} ${toneClass} ${styles.timelineExportFeedback}`} role="status">
+        {timelineExportStatus.text}
+      </p>
+    )
   }
 
   function describeFavorite(favorite) {
@@ -1655,6 +1979,30 @@ export default function CooldownDashboard() {
               activeMode={auditTimelineMode}
               onModeChange={setAuditTimelineMode}
             />
+            <div className={styles.timelineExportControls}>
+              <div className={styles.timelineExportActions}>
+                <button
+                  type="button"
+                  className={`${styles.refreshButton} ${styles.timelineExportButton}`}
+                  onClick={handleTimelineExportCsv}
+                  disabled={timelineExporting === 'csv' || !auditTimelineHasData}
+                >
+                  {timelineExporting === 'csv' ? 'CSV 생성 중…' : 'CSV 다운로드'}
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.refreshButton} ${styles.timelineExportButton}`}
+                  onClick={handleTimelineExportImage}
+                  disabled={timelineExporting === 'image' || !auditTimelineHasData}
+                >
+                  {timelineExporting === 'image' ? '이미지 준비 중…' : '이미지 저장'}
+                </button>
+              </div>
+              <span className={styles.timelineExportHint}>
+                선택한 모드의 막대 그래프를 CSV 또는 PNG로 내려받습니다.
+              </span>
+            </div>
+            {renderTimelineExportFeedback()}
             <ThresholdAuditList audit={thresholdAudit} />
           </section>
 

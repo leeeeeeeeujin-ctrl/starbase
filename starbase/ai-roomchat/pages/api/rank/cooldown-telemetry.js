@@ -183,6 +183,37 @@ function buildAttemptsCsv(report, alerts) {
   return toCsv([header, ...rows])
 }
 
+function buildAuditTimelineCsv(timeline, mode) {
+  if (!timeline || !Array.isArray(timeline.buckets)) {
+    return null
+  }
+
+  const header = [
+    'mode',
+    'window_label',
+    'bucket_label',
+    'bucket_secondary_label',
+    'bucket_start',
+    'bucket_end',
+    'count',
+    'is_current',
+  ]
+
+  const windowLabel = timeline.windowLabel || ''
+  const rows = timeline.buckets.map((bucket) => [
+    mode,
+    windowLabel,
+    bucket.label || '',
+    bucket.secondaryLabel || '',
+    bucket.start || '',
+    bucket.end || '',
+    bucket.count ?? 0,
+    bucket.isCurrent ? 'true' : 'false',
+  ])
+
+  return toCsv([header, ...rows])
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET'])
@@ -232,6 +263,15 @@ export default async function handler(req, res) {
         csvContent = buildProviderCsv(report, alerts)
       } else if (section === 'attempts') {
         csvContent = buildAttemptsCsv(report, alerts)
+      } else if (section === 'audit-timeline') {
+        const modeParam = Array.isArray(req.query.mode) ? req.query.mode[0] : req.query.mode
+        const requestedMode = typeof modeParam === 'string' ? modeParam.toLowerCase() : 'daily'
+        const availableTimelines = thresholdAudit?.timelines || {}
+        const timeline = availableTimelines[requestedMode]
+        if (!timeline) {
+          return res.status(400).json({ error: 'unsupported_timeline_mode' })
+        }
+        csvContent = buildAuditTimelineCsv(timeline, requestedMode)
       }
 
       if (!csvContent) {
@@ -240,7 +280,11 @@ export default async function handler(req, res) {
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
       res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-      res.setHeader('Content-Disposition', `attachment; filename="cooldown-${section}-${timestamp}.csv"`)
+      const normalizedSection = section.replace(/[^a-z0-9-]/gi, '') || 'export'
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="cooldown-${normalizedSection}-${timestamp}.csv"`,
+      )
       return res.status(200).send(`\uFEFF${csvContent}`)
     }
 
