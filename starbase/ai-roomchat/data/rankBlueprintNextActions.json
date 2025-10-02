@@ -1,6 +1,6 @@
 {
-  "lastUpdatedISO": "2025-11-07",
-  "lastUpdatedDisplay": "2025-11-07 기준",
+  "lastUpdatedISO": "2025-11-08",
+  "lastUpdatedDisplay": "2025-11-08 기준",
   "items": [
     {
       "order": 1,
@@ -24,7 +24,7 @@
         "badge": "D-43",
         "state": "scheduled",
         "daysFromToday": 43,
-        "daysFromSnapshot": 7,
+        "daysFromSnapshot": 6,
         "computedAtISO": "2025-10-02",
         "isOverdue": false,
         "overdueDays": 0
@@ -32,27 +32,27 @@
     },
     {
       "order": 2,
-      "summary": "모바일 히스토리 패널을 세로 정렬로 재배치하고 다단 레이아웃 QA를 마무리해 UI·오디오 단계를 닫습니다.",
+      "summary": "히어로 브금 카드에 프리셋/EQ 토글과 재생목록 전환 UI를 더해 운영자가 상황에 맞춰 음향 세팅을 바로 조정할 수 있도록 합니다.",
       "owner": "프론트 (라라)",
       "ownerKey": "프론트-라라",
-      "targetDateISO": "2025-11-18",
-      "targetDateDisplay": "2025-11-18",
+      "targetDateISO": "2025-11-20",
+      "targetDateDisplay": "2025-11-20",
       "priority": {
-        "label": "P1 (히스토리 동기화)",
+        "label": "P1 (오디오 튜닝)",
         "short": "P1",
         "rank": 1,
         "sortKey": 1
       },
       "effort": {
-        "label": "프론트 3일 (1명·UI/모바일)",
+        "label": "프론트 3일 (1명·UI/오디오)",
         "personDays": 3
       },
       "timing": {
-        "label": "2025-11-18",
-        "badge": "D-47",
+        "label": "2025-11-20",
+        "badge": "D-49",
         "state": "scheduled",
-        "daysFromToday": 47,
-        "daysFromSnapshot": 11,
+        "daysFromToday": 49,
+        "daysFromSnapshot": 12,
         "computedAtISO": "2025-10-02",
         "isOverdue": false,
         "overdueDays": 0
@@ -80,7 +80,7 @@
         "badge": "D-50",
         "state": "scheduled",
         "daysFromToday": 50,
-        "daysFromSnapshot": 14,
+        "daysFromSnapshot": 13,
         "computedAtISO": "2025-10-02",
         "isOverdue": false,
         "overdueDays": 0
@@ -108,7 +108,7 @@
         "badge": "D-54",
         "state": "scheduled",
         "daysFromToday": 54,
-        "daysFromSnapshot": 18,
+        "daysFromSnapshot": 17,
         "computedAtISO": "2025-10-02",
         "isOverdue": false,
         "overdueDays": 0
@@ -136,7 +136,7 @@
         "badge": "D-57",
         "state": "scheduled",
         "daysFromToday": 57,
-        "daysFromSnapshot": 21,
+        "daysFromSnapshot": 20,
         "computedAtISO": "2025-10-02",
         "isOverdue": false,
         "overdueDays": 0

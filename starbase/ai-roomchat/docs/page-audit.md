@@ -80,7 +80,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 
 ### `pages/rank/[id]/start.js`
 - Dynamically loads the client-only `StartClient` shell so heavy assets stay out of the main bundle.【F:pages/rank/[id]/start.js†L1-L4】
-- StartClient’s log board now normalises turn summaries, prompt previews, actors, and variables into glassmorphism cards, with AI/플레이어 히스토리가 모바일 대응 그리드로 배열돼 운영/QA가 즉시 문맥을 파악할 수 있습니다.【F:components/rank/StartClient/LogsPanel.js†L1-L219】【F:components/rank/StartClient/LogsPanel.module.css†L1-L213】【F:components/rank/StartClient/useStartClientEngine.js†L960-L1206】
+- StartClient’s log board now normalises turn summaries, prompt previews, actors, and variables into glassmorphism cards, with the history columns stacking vertically on mobile and fanning out into multi-column grids on desktop so 운영/QA can scan context at any breakpoint.【F:components/rank/StartClient/LogsPanel.js†L1-L219】【F:components/rank/StartClient/LogsPanel.module.css†L1-L247】【F:components/rank/StartClient/useStartClientEngine.js†L960-L1206】
 
 ### `pages/rank/RolesEditor.js`
 - Local stateful form utility that syncs a roles array, emitting changes to parent via `onChange`. Provides add/update/remove controls with simple inline styling.【F:pages/rank/RolesEditor.js†L1-L30】
