@@ -5,6 +5,7 @@ import ParticipantCard from './ParticipantCard'
 import { TURN_TIMER_OPTIONS, summarizeTurnTimerVotes } from '../../lib/rank/turnTimers'
 import styles from './GameRoomView.module.css'
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
+import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
 
 const RULE_OPTION_METADATA = {
   nerf_insight: {
@@ -284,58 +285,6 @@ function ensureArray(value) {
   if (Array.isArray(value)) return value
   if (value === null || value === undefined) return []
   return []
-}
-
-function normalizeSummaryPayload(payload) {
-  if (!payload || typeof payload !== 'object') {
-    return null
-  }
-
-  const preview = typeof payload.preview === 'string' ? payload.preview.trim() : ''
-  const promptPreview =
-    typeof payload.promptPreview === 'string' ? payload.promptPreview.trim() : ''
-  const role = typeof payload.role === 'string' ? payload.role.trim() : ''
-  const actors = Array.isArray(payload.actors)
-    ? payload.actors
-        .map((actor) => (typeof actor === 'string' ? actor.trim() : ''))
-        .filter(Boolean)
-    : []
-  const outcomeLine =
-    typeof payload.outcome?.lastLine === 'string'
-      ? payload.outcome.lastLine.trim()
-      : ''
-  const tagValues = []
-  const appendTags = (source) => {
-    if (!Array.isArray(source)) return
-    source.forEach((tag) => {
-      if (typeof tag !== 'string') return
-      const trimmed = tag.trim()
-      if (!trimmed) return
-      tagValues.push(trimmed)
-    })
-  }
-  appendTags(payload.tags)
-  if (payload.extra && typeof payload.extra === 'object') {
-    appendTags(payload.extra.tags)
-    appendTags(payload.extra.labels)
-  }
-  appendTags(payload.outcome?.variables)
-  const tags = Array.from(
-    new Map(tagValues.map((tag) => [tag.toLowerCase(), tag])).values(),
-  )
-
-  if (!preview && !promptPreview && !role && !actors.length && !outcomeLine && !tags.length) {
-    return null
-  }
-
-  return {
-    preview,
-    promptPreview,
-    role,
-    actors,
-    outcomeLine,
-    ...(tags.length ? { tags } : {}),
-  }
 }
 
 function buildHistorySearchText(parts = []) {
@@ -1088,7 +1037,7 @@ export default function GameRoomView({
             0,
           )
         })()
-        const summary = normalizeSummaryPayload(entry.latestSummary)
+        const summary = normalizeTurnSummaryPayload(entry.latestSummary)
         const summaryTags = Array.isArray(summary?.tags)
           ? summary.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
           : []
@@ -1192,7 +1141,7 @@ export default function GameRoomView({
         const hiddenPrivateCount = Number(entry.hidden_private_count) || 0
         const trimmedCount = Number(entry.trimmed_count) || 0
         const totalVisible = Number(entry.total_visible_turns) || visibleTurns.length
-        const summary = normalizeSummaryPayload(entry.latest_summary)
+        const summary = normalizeTurnSummaryPayload(entry.latest_summary)
         const summaryTags = Array.isArray(summary?.tags)
           ? summary.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
           : []

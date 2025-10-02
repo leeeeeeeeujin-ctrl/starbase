@@ -28,6 +28,48 @@ function pickPreview(text, limit = 240) {
   return `${trimmed.slice(0, limit - 1)}…`
 }
 
+export function normalizeTurnSummaryPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const preview = trimToString(payload.preview)
+  const promptPreview = trimToString(payload.promptPreview)
+  const role = trimToString(payload.role)
+  const actors = sanitizeArray(payload.actors)
+
+  let outcomeLine = ''
+  const outcome = payload.outcome && typeof payload.outcome === 'object' ? payload.outcome : null
+  if (outcome?.lastLine) {
+    outcomeLine = trimToString(outcome.lastLine)
+  }
+
+  const tagValues = [
+    ...sanitizeArray(payload.tags),
+    ...sanitizeArray(outcome?.variables),
+  ]
+
+  if (payload.extra && typeof payload.extra === 'object') {
+    tagValues.push(...sanitizeArray(payload.extra.tags))
+    tagValues.push(...sanitizeArray(payload.extra.labels))
+  }
+
+  if (!preview && !promptPreview && !role && !actors.length && !outcomeLine && !tagValues.length) {
+    return null
+  }
+
+  const tags = Array.from(new Map(tagValues.map((tag) => [tag.toLowerCase(), tag])).values())
+
+  return {
+    preview,
+    promptPreview,
+    role,
+    actors,
+    outcomeLine,
+    tags,
+  }
+}
+
 export function buildTurnSummaryPayload({
   role,
   content,

@@ -963,6 +963,7 @@ export function useStartClientEngine(gameId) {
       const actorContext = resolveActorContext({ node, slots, participants })
       const slotTypeValue = node.slot_type || 'ai'
       const isUserAction = slotTypeValue === 'user_action' || slotTypeValue === 'manual'
+      const historyRole = isUserAction ? 'user' : 'assistant'
       const actingOwnerId = actorContext?.participant?.owner_id || null
 
       if (isUserAction && (!viewerId || actingOwnerId !== viewerId)) {
@@ -997,6 +998,7 @@ export function useStartClientEngine(gameId) {
 
         let loggedByServer = false
         let loggedTurnNumber = null
+        let serverSummary = null
 
         let effectiveSystemPrompt = systemPrompt
         let effectivePrompt = promptText
@@ -1096,6 +1098,18 @@ export function useStartClientEngine(gameId) {
               if (Number.isFinite(numericTurn)) {
                 loggedTurnNumber = numericTurn
               }
+              if (Array.isArray(payload?.entries)) {
+                const responseEntry = payload.entries.find(
+                  (entry) => entry?.role === historyRole,
+                )
+                if (responseEntry?.summary_payload) {
+                  try {
+                    serverSummary = JSON.parse(JSON.stringify(responseEntry.summary_payload))
+                  } catch (error) {
+                    serverSummary = responseEntry.summary_payload
+                  }
+                }
+              }
             }
 
             if (game?.realtime_match && !apiVersionLock.current) {
@@ -1111,7 +1125,6 @@ export function useStartClientEngine(gameId) {
         const slotIndex = actorContext.slotIndex
         const audiencePayload =
           slotIndex >= 0 ? { audience: 'slots', slotIndex } : { audience: 'all' }
-        const historyRole = isUserAction ? 'user' : 'assistant'
 
         const fallbackActorNames = []
         if (actorContext?.participant?.hero?.name) {
@@ -1152,8 +1165,9 @@ export function useStartClientEngine(gameId) {
           new Set([...activeGlobal, ...(outcome.variables || [])]),
         )
 
+        let fallbackSummary = null
         if (!loggedByServer) {
-          const responseSummary = {
+          fallbackSummary = {
             preview: responseText.slice(0, 240),
             promptPreview: promptText.slice(0, 240),
             outcome: {
@@ -1183,7 +1197,7 @@ export function useStartClientEngine(gameId) {
                 public: responseEntry?.public,
                 visibility: responseEntry?.public === false ? 'hidden' : 'public',
                 actors: resolvedActorNames,
-                summary: responseSummary,
+                summary: fallbackSummary,
                 extra: {
                   slotIndex,
                   nodeId: node?.id ?? null,
@@ -1224,6 +1238,7 @@ export function useStartClientEngine(gameId) {
             next: chosenEdge?.to || null,
             action: chosenEdge?.data?.action || 'continue',
             actors: resolvedActorNames,
+            summary: serverSummary || fallbackSummary || null,
           },
         ])
 
