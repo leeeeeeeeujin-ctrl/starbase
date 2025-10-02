@@ -19,7 +19,17 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('package-lock.json') }}-${{ hashFiles('next.config.js', 'next.config.mjs', 'pages/**/*', 'components/**/*', 'lib/**/*', 'styles/**/*', 'data/**/*') }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('package-lock.json') }}-
+      - name: Prepare test reports directory
+        run: mkdir -p reports/junit
       - name: Run unit tests
+        id: run-tests
         run: npm test -- --runInBand
       - name: Build application
         run: CI=1 npm run build
@@ -27,3 +37,16 @@ jobs:
         run: npm run check:blueprint-progress-freshness
       - name: Check next-action deadlines
         run: npm run check:blueprint-next-actions
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-jest-report
+          path: reports/junit/junit.xml
+      - name: Publish test summary
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Jest tests (scheduled)
+          path: reports/junit/junit.xml
+          reporter: jest-junit

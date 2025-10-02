@@ -8,4 +8,15 @@ module.exports = {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },
   setupFiles: ['<rootDir>/jest.setup.js'],
+  reporters: [
+    'default',
+    [
+      'jest-junit',
+      {
+        outputDirectory: '<rootDir>/reports/junit',
+        outputName: 'junit.xml',
+        addFileAttribute: 'true',
+      },
+    ],
+  ],
 }
