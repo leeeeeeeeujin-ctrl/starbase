@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import AuthButton from '../components/AuthButton'
 import { supabase } from '../lib/supabase'
 import styles from '../styles/Home.module.css'
+import progressData from '../data/rankBlueprintProgress.json'
 
 const features = [
   {
@@ -23,48 +24,16 @@ const features = [
   },
 ]
 
-const stageProgress = [
-  {
-    label: '매칭 트리거 통일',
-    status: 'QA 검토 중',
-    progress: 80,
-    summary:
-      '듀오·캐주얼 재시작 시퀀스를 /api/rank/play에 통일하고 회귀 테스트 케이스(DC-01~03)를 준비했습니다.',
-  },
-  {
-    label: '세션/전투 동기화',
-    status: '구현 진행 중',
-    progress: 55,
-    summary:
-      'rank_turns is_visible·summary_payload를 run-turn/log-turn과 세션 히스토리 응답에 연결했습니다.',
-  },
-  {
-    label: '프롬프트 변수 자동화',
-    status: '진행 중',
-    progress: 60,
-    summary:
-      '제작기 변수 매핑과 StartClient 경고 해소 가이드를 마련해 Maker 재저장 루틴을 정리했습니다.',
-  },
-  {
-    label: 'UI·오디오 완성',
-    status: '준비 중',
-    progress: 25,
-    summary:
-      '히스토리 요약 노출 전략은 확정됐으며 모바일 레이아웃·BGM 전환 마감 작업이 남았습니다.',
-  },
-  {
-    label: '운영 가드',
-    status: '진행 중',
-    progress: 85,
-    summary:
-      '쿨다운 ETA 안내·감사 로그·타임라인 내보내기까지 연결해 Edge Function 운영 루프를 정비했습니다.',
-  },
-]
-
-const progressLastUpdated = '2025-11-07 기준'
+const stageProgress = progressData.stages
+const progressLastUpdated = progressData.lastUpdatedDisplay
+const progressLastUpdatedISO = progressData.lastUpdatedISO
 
 export default function Home() {
   const router = useRouter()
+  const [progressRecency, setProgressRecency] = useState({
+    relativeLabel: '',
+    stale: false,
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -99,6 +68,30 @@ export default function Home() {
     }
   }, [router])
 
+  useEffect(() => {
+    if (!progressLastUpdatedISO) return
+    const updatedAt = new Date(progressLastUpdatedISO)
+    if (Number.isNaN(updatedAt.getTime())) return
+
+    const now = new Date()
+    const diffMs = now.getTime() - updatedAt.getTime()
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+    let relativeLabel = ''
+    if (diffDays <= 0) {
+      relativeLabel = '오늘 업데이트'
+    } else if (diffDays === 1) {
+      relativeLabel = '1일 전 업데이트'
+    } else {
+      relativeLabel = `${diffDays}일 전 업데이트`
+    }
+
+    setProgressRecency({
+      relativeLabel,
+      stale: diffDays >= 14,
+    })
+  }, [progressLastUpdatedISO])
+
   return (
     <main className={styles.hero}>
       <section className={styles.frame}>
@@ -126,7 +119,20 @@ export default function Home() {
           <div className={styles.progressBlock}>
             <div className={styles.progressHeader}>
               <h2 className={styles.sectionTitle}>Blueprint Progress</h2>
-              <span className={styles.progressUpdated}>{progressLastUpdated}</span>
+              <div
+                className={styles.progressRecency}
+                data-stale={progressRecency.stale ? 'true' : 'false'}
+              >
+                <span className={styles.progressBadge}>
+                  {progressRecency.stale ? '업데이트 필요' : '최신 상태'}
+                </span>
+                <span className={styles.progressUpdated}>{progressLastUpdated}</span>
+                {progressRecency.relativeLabel ? (
+                  <span className={styles.progressRelative}>
+                    · {progressRecency.relativeLabel}
+                  </span>
+                ) : null}
+              </div>
             </div>
             <ul className={styles.progressList}>
               {stageProgress.map((stage) => (

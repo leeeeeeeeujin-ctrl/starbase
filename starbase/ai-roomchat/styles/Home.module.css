@@ -135,10 +135,48 @@
   gap: 12px;
 }
 
+.progressRecency {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  color: rgba(190, 205, 255, 0.55);
+  text-transform: uppercase;
+}
+
+.progressRecency[data-stale='true'] {
+  color: rgba(255, 188, 188, 0.76);
+}
+
+.progressBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(124, 163, 255, 0.18);
+  color: rgba(200, 215, 255, 0.92);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.progressRecency[data-stale='true'] .progressBadge {
+  background: rgba(255, 119, 119, 0.16);
+  color: rgba(255, 210, 210, 0.92);
+}
+
 .progressUpdated {
   font-size: 12px;
   letter-spacing: 0.06em;
   color: rgba(190, 205, 255, 0.55);
+}
+
+.progressRelative {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: rgba(190, 205, 255, 0.55);
+  text-transform: none;
 }
 
 .progressList {
