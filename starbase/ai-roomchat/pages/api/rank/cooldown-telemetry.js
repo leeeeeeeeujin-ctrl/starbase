@@ -216,6 +216,8 @@ export default async function handler(req, res) {
       now: new Date(),
       limit: 8,
       timelineDays: 14,
+      timelineWeeks: 12,
+      timelineMonths: 12,
     })
 
     const formatParam = Array.isArray(req.query.format) ? req.query.format[0] : req.query.format

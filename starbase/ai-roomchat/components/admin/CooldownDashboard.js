@@ -13,6 +13,12 @@ const STATUS_LABELS = {
   critical: { label: '위험', tone: styles.statusCritical },
 }
 
+const TIMELINE_MODE_LABELS = {
+  daily: '일간',
+  weekly: '주간',
+  monthly: '월간',
+}
+
 function formatNumber(value, { style = 'decimal', digits = 0 } = {}) {
   if (value === null || value === undefined) return '—'
   return new Intl.NumberFormat('ko-KR', {
@@ -453,7 +459,7 @@ function ThresholdAuditList({ audit }) {
   )
 }
 
-function ThresholdAuditTimeline({ timeline }) {
+function ThresholdAuditTimeline({ timeline, options = [], activeMode, onModeChange }) {
   if (!timeline || !Array.isArray(timeline.buckets)) {
     return null
   }
@@ -462,10 +468,34 @@ function ThresholdAuditTimeline({ timeline }) {
     return <p className={styles.emptyMessage}>시각화할 임계값 변경 이력이 없습니다.</p>
   }
 
+  const hasOptions = Array.isArray(options) && options.length > 1
   const maxCount = timeline.maxCount ?? Math.max(...timeline.buckets.map((bucket) => bucket.count || 0), 0)
+  const legendLabel = timeline.windowLabel || (timeline.windowDays ? `최근 ${formatNumber(timeline.windowDays)}일` : null)
 
   return (
     <div className={styles.auditTimeline}>
+      {hasOptions ? (
+        <div className={styles.auditTimelineModes}>
+          {options.map((option) => {
+            const label = TIMELINE_MODE_LABELS[option.id] || option.id
+            const isActive = option.id === activeMode
+            return (
+              <button
+                key={option.id}
+                type="button"
+                className={isActive ? styles.auditTimelineModeActive : styles.auditTimelineMode}
+                onClick={() => {
+                  if (!isActive) {
+                    onModeChange?.(option.id)
+                  }
+                }}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
       <div className={styles.auditTimelineChart} role="list">
         {timeline.buckets.map((bucket) => {
           const count = bucket.count || 0
@@ -475,19 +505,19 @@ function ThresholdAuditTimeline({ timeline }) {
           const height = maxCount > 0 ? Math.max(Math.min(rawHeight, 100), minimum) : 0
           const className = [
             styles.auditTimelineBar,
-            bucket.isToday ? styles.auditTimelineBarToday : null,
+            bucket.isCurrent ? styles.auditTimelineBarCurrent : null,
           ]
             .filter(Boolean)
             .join(' ')
 
+          const tooltip = bucket.tooltip || `${bucket.label}${
+            bucket.secondaryLabel ? ` (${bucket.secondaryLabel})` : ''
+          } · ${formatNumber(count)}회`
+
           return (
             <div key={bucket.id} className={styles.auditTimelineColumn} role="listitem">
               <div className={styles.auditTimelineBarTrack}>
-                <div
-                  className={className}
-                  style={{ height: `${height}%` }}
-                  title={`${bucket.label} (${bucket.weekday}) · ${formatNumber(count)}회`}
-                >
+                <div className={className} style={{ height: `${height}%` }} title={tooltip}>
                   {count > 0 ? (
                     <span className={styles.auditTimelineCount}>{formatNumber(count)}</span>
                   ) : null}
@@ -495,14 +525,16 @@ function ThresholdAuditTimeline({ timeline }) {
               </div>
               <div className={styles.auditTimelineAxis}>
                 <span className={styles.auditTimelineLabel}>{bucket.label}</span>
-                <span className={styles.auditTimelineWeekday}>{bucket.weekday}</span>
+                {bucket.secondaryLabel ? (
+                  <span className={styles.auditTimelineSecondary}>{bucket.secondaryLabel}</span>
+                ) : null}
               </div>
             </div>
           )
         })}
       </div>
       <div className={styles.auditTimelineLegend}>
-        <span>최근 {formatNumber(timeline.windowDays ?? timeline.buckets.length)}일</span>
+        <span>{legendLabel || `전체 ${formatNumber(timeline.buckets.length)}버킷`}</span>
         <span>최대 {formatNumber(maxCount)}회</span>
       </div>
     </div>
@@ -654,6 +686,7 @@ export default function CooldownDashboard() {
   const [exportStatus, setExportStatus] = useState(null)
   const [exportingSection, setExportingSection] = useState(null)
   const [initialFiltersLoaded, setInitialFiltersLoaded] = useState(false)
+  const [auditTimelineMode, setAuditTimelineMode] = useState('daily')
   const [retryScheduleState, setRetryScheduleState] = useState({
     loading: false,
     eta: null,
@@ -720,6 +753,45 @@ export default function CooldownDashboard() {
 
     return unique
   }, [telemetry?.triggeredCooldowns])
+
+  const auditTimelineOptions = useMemo(() => {
+    const timelines = telemetry?.thresholdAudit?.timelines || {}
+    const options = []
+
+    for (const key of ['daily', 'weekly', 'monthly']) {
+      const timeline = timelines[key]
+      if (timeline && Array.isArray(timeline.buckets)) {
+        options.push({ id: key, timeline })
+      }
+    }
+
+    return options
+  }, [telemetry?.thresholdAudit?.timelines])
+
+  const activeAuditTimeline = useMemo(() => {
+    const map = telemetry?.thresholdAudit?.timelines || {}
+    if (map[auditTimelineMode] && Array.isArray(map[auditTimelineMode].buckets)) {
+      return map[auditTimelineMode]
+    }
+
+    const fallbackOption = auditTimelineOptions[0]
+    if (fallbackOption) {
+      return fallbackOption.timeline
+    }
+
+    return telemetry?.thresholdAudit?.timeline || null
+  }, [telemetry?.thresholdAudit?.timelines, telemetry?.thresholdAudit?.timeline, auditTimelineMode, auditTimelineOptions])
+
+  useEffect(() => {
+    const availableModes = auditTimelineOptions.map((option) => option.id)
+    if (availableModes.length === 0) {
+      return
+    }
+
+    if (!availableModes.includes(auditTimelineMode)) {
+      setAuditTimelineMode(availableModes[0])
+    }
+  }, [auditTimelineOptions, auditTimelineMode])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1577,7 +1649,12 @@ export default function CooldownDashboard() {
             <p className={styles.caption}>
               환경 변수나 구성 변경으로 조정된 경보 임계값 이력을 시간순으로 보여 줍니다.
             </p>
-            <ThresholdAuditTimeline timeline={thresholdAudit?.timeline} />
+            <ThresholdAuditTimeline
+              timeline={activeAuditTimeline}
+              options={auditTimelineOptions}
+              activeMode={auditTimelineMode}
+              onModeChange={setAuditTimelineMode}
+            />
             <ThresholdAuditList audit={thresholdAudit} />
           </section>
 

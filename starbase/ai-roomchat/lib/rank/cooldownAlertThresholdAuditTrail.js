@@ -16,6 +16,13 @@ const ALERT_AUDIT_AUTH_HEADER =
 
 const auditTrail = []
 const DAY_MS = 24 * 60 * 60 * 1000
+const WEEK_MS = DAY_MS * 7
+
+const TIMELINE_LIMITS = {
+  daily: 30,
+  weekly: 26,
+  monthly: 18,
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value ?? null))
@@ -150,10 +157,186 @@ function formatTimelineWeekday(ms) {
   return date.toLocaleDateString('ko-KR', { weekday: 'short', timeZone: 'UTC' })
 }
 
-function buildTimeline(events = [], { nowMs, windowDays = 14 } = {}) {
-  const normalizedDays = Number.isFinite(windowDays) && windowDays > 0 ? Math.min(Math.floor(windowDays), 30) : 14
+function formatNumber(value) {
+  if (!Number.isFinite(value)) {
+    return '0'
+  }
+  return new Intl.NumberFormat('ko-KR').format(value)
+}
+
+function startOfUtcWeek(ms) {
+  const date = new Date(ms)
+  const utcDay = date.getUTCDay() || 7
+  const diff = utcDay - 1
+  date.setUTCDate(date.getUTCDate() - diff)
+  date.setUTCHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+function getIsoWeekInfo(ms) {
+  const date = new Date(ms)
+  const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+  const dayNumber = target.getUTCDay() || 7
+  target.setUTCDate(target.getUTCDate() + 4 - dayNumber)
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1))
+  const week = Math.ceil(((target.getTime() - yearStart.getTime()) / DAY_MS + 1) / 7)
+  return { year: target.getUTCFullYear(), week }
+}
+
+function formatWeekLabel(startMs, endMs) {
+  const start = new Date(startMs)
+  const end = new Date(endMs - 1)
+  const startLabel = `${start.getUTCMonth() + 1}/${start.getUTCDate()}`
+  const endLabel = `${end.getUTCMonth() + 1}/${end.getUTCDate()}`
+  return `${startLabel}~${endLabel}`
+}
+
+function formatWeekSecondaryLabel(ms) {
+  const { year, week } = getIsoWeekInfo(ms)
+  const weekId = String(week).padStart(2, '0')
+  return `${String(year).slice(-2)}W${weekId}`
+}
+
+function startOfUtcMonth(ms) {
+  const date = new Date(ms)
+  date.setUTCDate(1)
+  date.setUTCHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+function addUtcMonths(ms, delta) {
+  const date = new Date(ms)
+  const targetMonth = date.getUTCMonth() + delta
+  date.setUTCMonth(targetMonth, 1)
+  date.setUTCHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+function formatMonthLabel(ms) {
+  const date = new Date(ms)
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+function formatMonthSecondaryLabel(ms) {
+  const date = new Date(ms)
+  const month = date.getUTCMonth() + 1
+  return `${month}월`
+}
+
+function buildTimeline(
+  events = [],
+  { nowMs, mode = 'daily', windowDays = 14, windowWeeks = 12, windowMonths = 12 } = {},
+) {
+  const normalizedMode = ['daily', 'weekly', 'monthly'].includes(mode) ? mode : 'daily'
+  const limit = TIMELINE_LIMITS[normalizedMode] || 30
+
+  if (normalizedMode === 'weekly') {
+    const normalizedWeeks = Number.isFinite(windowWeeks) && windowWeeks > 0
+      ? Math.min(Math.floor(windowWeeks), limit)
+      : 12
+    if (!normalizedWeeks) {
+      return { mode: normalizedMode, windowLabel: '최근 0주', buckets: [], maxCount: 0 }
+    }
+
+    const currentWeekStart = startOfUtcWeek(nowMs)
+    const firstBucketStart = currentWeekStart - WEEK_MS * (normalizedWeeks - 1)
+    const bucketMap = new Map()
+
+    for (const event of events) {
+      const bucketStart = startOfUtcWeek(event.timestampMs)
+      const current = bucketMap.get(bucketStart) || { count: 0 }
+      current.count += 1
+      bucketMap.set(bucketStart, current)
+    }
+
+    const buckets = []
+    let maxCount = 0
+
+    for (let index = 0; index < normalizedWeeks; index += 1) {
+      const bucketStart = firstBucketStart + WEEK_MS * index
+      const bucketEnd = bucketStart + WEEK_MS
+      const count = bucketMap.get(bucketStart)?.count ?? 0
+      if (count > maxCount) {
+        maxCount = count
+      }
+
+      buckets.push({
+        id: `audit-week-${bucketStart}`,
+        start: new Date(bucketStart).toISOString(),
+        end: new Date(bucketEnd).toISOString(),
+        count,
+        label: formatWeekLabel(bucketStart, bucketEnd),
+        secondaryLabel: formatWeekSecondaryLabel(bucketStart),
+        tooltip: `${formatWeekLabel(bucketStart, bucketEnd)} (${formatWeekSecondaryLabel(bucketStart)}) · ${formatNumber(count)}회`,
+        isCurrent: bucketStart === currentWeekStart,
+      })
+    }
+
+    return {
+      mode: normalizedMode,
+      windowLabel: `최근 ${normalizedWeeks}주`,
+      windowWeeks: normalizedWeeks,
+      buckets,
+      maxCount,
+    }
+  }
+
+  if (normalizedMode === 'monthly') {
+    const normalizedMonths = Number.isFinite(windowMonths) && windowMonths > 0
+      ? Math.min(Math.floor(windowMonths), limit)
+      : 6
+    if (!normalizedMonths) {
+      return { mode: normalizedMode, windowLabel: '최근 0개월', buckets: [], maxCount: 0 }
+    }
+
+    const currentMonthStart = startOfUtcMonth(nowMs)
+    const firstBucketStart = addUtcMonths(currentMonthStart, -(normalizedMonths - 1))
+    const bucketMap = new Map()
+
+    for (const event of events) {
+      const bucketStart = startOfUtcMonth(event.timestampMs)
+      const current = bucketMap.get(bucketStart) || { count: 0 }
+      current.count += 1
+      bucketMap.set(bucketStart, current)
+    }
+
+    const buckets = []
+    let maxCount = 0
+
+    for (let index = 0; index < normalizedMonths; index += 1) {
+      const bucketStart = addUtcMonths(firstBucketStart, index)
+      const bucketEnd = addUtcMonths(bucketStart, 1)
+      const count = bucketMap.get(bucketStart)?.count ?? 0
+      if (count > maxCount) {
+        maxCount = count
+      }
+
+      buckets.push({
+        id: `audit-month-${bucketStart}`,
+        start: new Date(bucketStart).toISOString(),
+        end: new Date(bucketEnd).toISOString(),
+        count,
+        label: formatMonthLabel(bucketStart),
+        secondaryLabel: formatMonthSecondaryLabel(bucketStart),
+        tooltip: `${formatMonthLabel(bucketStart)} · ${formatNumber(count)}회`,
+        isCurrent: bucketStart === currentMonthStart,
+      })
+    }
+
+    return {
+      mode: normalizedMode,
+      windowLabel: `최근 ${normalizedMonths}개월`,
+      windowMonths: normalizedMonths,
+      buckets,
+      maxCount,
+    }
+  }
+
+  const normalizedDays = Number.isFinite(windowDays) && windowDays > 0 ? Math.min(Math.floor(windowDays), limit) : 14
   if (!normalizedDays) {
-    return { windowDays: 0, buckets: [], maxCount: 0 }
+    return { mode: normalizedMode, windowLabel: '최근 0일', buckets: [], maxCount: 0 }
   }
 
   const todayStart = startOfUtcDay(nowMs)
@@ -179,17 +362,24 @@ function buildTimeline(events = [], { nowMs, windowDays = 14 } = {}) {
     }
 
     buckets.push({
-      id: `audit-${bucketStart}`,
+      id: `audit-day-${bucketStart}`,
       start: new Date(bucketStart).toISOString(),
       end: new Date(bucketEnd).toISOString(),
       count,
       label: formatTimelineLabel(bucketStart),
-      weekday: formatTimelineWeekday(bucketStart),
-      isToday: bucketStart === todayStart,
+      secondaryLabel: formatTimelineWeekday(bucketStart),
+      tooltip: `${formatTimelineLabel(bucketStart)} (${formatTimelineWeekday(bucketStart)}) · ${formatNumber(count)}회`,
+      isCurrent: bucketStart === todayStart,
     })
   }
 
-  return { windowDays: normalizedDays, buckets, maxCount }
+  return {
+    mode: normalizedMode,
+    windowLabel: `최근 ${normalizedDays}일`,
+    windowDays: normalizedDays,
+    buckets,
+    maxCount,
+  }
 }
 
 function buildSlackText(event) {
@@ -300,7 +490,14 @@ export function getCooldownThresholdAuditTrail() {
 
 export function summarizeCooldownThresholdAuditTrail(
   events = [],
-  { now = new Date(), windowMs = 48 * 60 * 60 * 1000, limit = 6, timelineDays = 14 } = {},
+  {
+    now = new Date(),
+    windowMs = 48 * 60 * 60 * 1000,
+    limit = 6,
+    timelineDays = 14,
+    timelineWeeks = 12,
+    timelineMonths = 12,
+  } = {},
 ) {
   const nowMs = now instanceof Date ? now.getTime() : Date.now()
   const normalizedWindow = Number.isFinite(windowMs) && windowMs > 0 ? windowMs : 48 * 60 * 60 * 1000
@@ -343,7 +540,33 @@ export function summarizeCooldownThresholdAuditTrail(
     ? windowHoursRaw
     : Number(windowHoursRaw.toFixed(1))
 
-  const timeline = buildTimeline(normalizedEvents, { nowMs, windowDays: timelineDays })
+  const timelineDaily = buildTimeline(normalizedEvents, {
+    nowMs,
+    mode: 'daily',
+    windowDays: timelineDays,
+  })
+  const timelineWeekly = buildTimeline(normalizedEvents, {
+    nowMs,
+    mode: 'weekly',
+    windowWeeks: timelineWeeks,
+  })
+  const timelineMonthly = buildTimeline(normalizedEvents, {
+    nowMs,
+    mode: 'monthly',
+    windowMonths: timelineMonths,
+  })
+
+  const timelines = {
+    daily: timelineDaily,
+  }
+
+  if (timelineWeekly) {
+    timelines.weekly = timelineWeekly
+  }
+
+  if (timelineMonthly) {
+    timelines.monthly = timelineMonthly
+  }
 
   return {
     totalCount,
@@ -354,7 +577,8 @@ export function summarizeCooldownThresholdAuditTrail(
     lastSource: latest?.source || null,
     lastSummary: latest?.summary || null,
     lastRawEnvValue: latest?.rawEnvValue || null,
-    timeline,
+    timeline: timelineDaily,
+    timelines,
     events: normalizedEvents.slice(0, normalizedLimit).map((event) => ({
       id: event.id,
       timestamp: event.timestamp,

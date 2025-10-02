@@ -302,7 +302,7 @@
 ### 진행 현황 메모 (2025-11-08 임계값 감사 집계)
 
 - `summarizeCooldownThresholdAuditTrail`이 감사 이벤트를 정규화해 최근 변경 횟수·마지막 조정 요약을 계산하고, `/api/rank/cooldown-telemetry` 응답의 `thresholdAudit` 필드로 노출합니다.【F:lib/rank/cooldownAlertThresholdAuditTrail.js†L1-L280】【F:pages/api/rank/cooldown-telemetry.js†L1-L233】
-- `thresholdAudit.timeline`은 최근 14일 감사 이벤트를 UTC 일 단위로 버킷팅해 `count`/`label`/`weekday`/`isToday` 정보를 포함한 배열과 `maxCount` 스케일을 제공합니다.【F:lib/rank/cooldownAlertThresholdAuditTrail.js†L34-L132】
+- `thresholdAudit.timelines`는 일간/주간/월간 버킷을 제공하고, 기본 `thresholdAudit.timeline`은 일간 뷰로 유지돼 UI가 토글에 따라 동일 데이터를 재사용할 수 있습니다.【F:lib/rank/cooldownAlertThresholdAuditTrail.js†L1-L420】
 - 관리자 대시보드는 새 요약 카드와 감사 로그·타임라인 패널을 통해 임계값 변경 횟수, 마지막 시각, 변경 Diff·원본 값, 14일 추세를 한 화면에서 확인할 수 있습니다.【F:components/admin/CooldownDashboard.js†L360-L1600】【F:components/admin/CooldownDashboard.module.css†L1-L360】
 
 느낀 점: 14일 타임라인까지 더해지니 감사 이벤트 추세를 설명할 근거가 생겨 운영 보고를 준비하기가 훨씬 수월했습니다.
