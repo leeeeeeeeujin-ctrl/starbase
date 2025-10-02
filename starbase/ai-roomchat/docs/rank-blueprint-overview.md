@@ -15,7 +15,7 @@
 | 매칭 트리거 통일 | `/api/rank/play`-`/start-session` 일원화, 난입 동기화 | QA 검토 중 | `rank-blueprint-execution-plan.md` 7.1, `matchmaking_auto_flow_notes.md`, `rank-blueprint-progress-2025-11-07.md` (라이브 타임라인 포함) |
 | 세션/전투 동기화 | `recordBattle` 다중 결과, `rank_turns` 가시성 | 설계 검토 중 | `rank-game-logic-plan.md`, `rank-turn-history-spec.md`, `rank-blueprint-progress-2025-11-07.md` |
 | 프롬프트 변수 자동화 | 슬롯→변수 매핑, 제작기 메타 연동 | 진행 중 | `lib/rank/prompt.js`, `rank-blueprint-progress-2025-11-05.md`, `rank-blueprint-progress-2025-11-07.md` |
-| UI·오디오 완성 | 히스토리 탭, 모바일 레이아웃, BGM 전환 | 준비 중 | `match-mode-structure.md`, `hero-bgm.md` |
+| UI·오디오 완성 | 히스토리 탭, 모바일 레이아웃, BGM 전환 | 진행 중 | `match-mode-structure.md`, `hero-bgm.md`, `pages/index.js` |
 | 운영 가드 | API 키 교대, 큐 모니터링 | 진행 중 | `rank-api-key-cooldown-monitoring.md`, `slot-sweeper-schedule.md`, `rank-blueprint-progress-2025-11-06.md` |
 
 ## 3. 현재 결정 사항
@@ -59,6 +59,11 @@
 > ✅ 모든 항목이 목표일 이내에 있습니다.
 <!-- next-actions-status:end -->
 
+<!-- next-actions-status:start -->
+> _2025-10-02 기준 자동 생성된 기한 알림._
+> ✅ 모든 항목이 목표일 이내에 있습니다.
+<!-- next-actions-status:end -->
+
 ## 6. 다음 액션 스냅샷
 <!-- next-actions-status:start -->
 > _2025-10-02 기준 자동 생성된 기한 알림._
@@ -80,10 +85,10 @@
 | 매칭 트리거 통일 | QA 검토 중 | 80% | `/api/rank/play` 재시작 케이스를 테스트 플랜(DC-01~03)에 추가해 회귀 검증 범위를 확장했습니다. |
 | 세션/전투 동기화 | 구현 진행 중 | 55% | `rank_turns` 가시성·요약 컬럼을 `run-turn`/`log-turn` API와 세션 히스토리 응답에 연결해 로그 파이프라인 일부가 작동하기 시작했습니다. |
 | 프롬프트 변수 자동화 | 진행 중 | 60% | StartClient 경고 연동과 제작기 재저장 가이드 배포까지 끝났고, 남은 과제는 폴백 QA와 Maker 사전 경고뿐입니다. |
-| UI·오디오 완성 | 준비 중 | 25% | 히스토리 요약 노출 전략을 확정했으나 모바일·오디오 마감 작업은 대기 중입니다. |
+| UI·오디오 완성 | 진행 중 | 45% | 메인 룸 히어로 패널이 선택/호스트/참가자 브금을 자동으로 로드해 재생 상태를 표시하며, 모바일 레이아웃과 히스토리 요약 전략을 기준으로 남은 오디오 토글·모바일 다듬기를 준비 중입니다. |
 | 운영 가드 | 진행 중 | 85% | 감사 로그 기반 백오프 스케줄러, Slack ETA 안내, 임계값 변경 카드·감사 로그 패널, 일/주/월 토글·CSV/PNG 내보내기·팀 드라이브 자동 업로드를 갖춘 감사 타임라인 그래프에 더해 업로드 연속 실패/장기 미성공 임계값을 경보 체계와 대시보드 카드에 연동했습니다. |
 
-**총 진행률(단계별 동일 가중치)**: 약 **64%**
+**총 진행률(단계별 동일 가중치)**: 약 **65%**
 
 홈 히어로에서 노출되는 진행률 보드와 다음 액션 카드가 이 표와 위 섹션을 그대로 참조할 수 있도록 데이터를 `data/rankBlueprintProgress.json`·`data/rankBlueprintNextActions.json`으로 분리해 사용하며, 최신화 뱃지가 2주 이상 경과 시 업데이트 필요 상태를 표시합니다. `npm run refresh:blueprint-progress` 스크립트를 실행하면 두 JSON과 자동 경고 블록이 재생성돼 문서/코드 동기화를 유지할 수 있고, `npm run check:blueprint-progress-freshness`(주 1회 GitHub Actions 스케줄과 PR/메인 푸시 CI에서 실행)로 14일 한계치를 넘길 경우 경고를 발생시켜 리마인더를 받습니다. `npm run check:blueprint-next-actions`는 마감이 지난 항목이 존재하면 CI를 실패시키고, JSON에는 담당자 키·D-Day·연체 여부가 함께 기록돼 랜딩 카드와 문서가 동일한 기준으로 경고를 노출합니다. 두 워크플로 모두에서 `npm test -- --runInBand`와 `CI=1 npm run build`를 함께 실행하고 `.next/cache`를 복원하는 빌드 캐시, `jest-junit` 기반 테스트 리포트 업로드, Step Summary용 메트릭 게시를 포함해 에러 리포트 관리자 API 회귀뿐 아니라 실행 시간 추적과 병목 파악을 동시에 지원합니다.【F:data/rankBlueprintProgress.json†L1-L35】【F:data/rankBlueprintNextActions.json†L1-L33】【F:pages/index.js†L8-L200】【F:styles/Home.module.css†L1-L266】【F:scripts/refresh-rank-blueprint-progress.js†L1-L339】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L74】【F:scripts/check-rank-blueprint-next-actions.js†L1-L87】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L47】【F:.github/workflows/pr-ci.yml†L1-L42】
 

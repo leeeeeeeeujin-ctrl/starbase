@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import ParticipantCard from './ParticipantCard'
 import { TURN_TIMER_OPTIONS, summarizeTurnTimerVotes } from '../../lib/rank/turnTimers'
 import styles from './GameRoomView.module.css'
+import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
 
 const RULE_OPTION_METADATA = {
   nerf_insight: {
@@ -57,6 +58,41 @@ const TABS = [
   { key: 'hero', label: '캐릭터 정보' },
   { key: 'ranking', label: '랭킹' },
 ]
+
+function normalizeHeroAudioProfile(rawHero, { fallbackHeroId = null, fallbackHeroName = '' } = {}) {
+  if (!rawHero || typeof rawHero !== 'object') {
+    return null
+  }
+
+  const bgmUrl = rawHero.bgm_url || rawHero.bgmUrl || null
+  if (!bgmUrl) {
+    return null
+  }
+
+  const rawDuration =
+    rawHero.bgm_duration_seconds ?? rawHero.bgmDurationSeconds ?? rawHero.bgmDuration ?? rawHero.duration
+  const duration = Number.isFinite(Number(rawDuration)) && Number(rawDuration) > 0
+    ? Math.round(Number(rawDuration))
+    : null
+
+  return {
+    heroId: rawHero.id || fallbackHeroId || null,
+    heroName: rawHero.name || fallbackHeroName || '',
+    bgmUrl,
+    bgmDuration: duration,
+  }
+}
+
+function formatDurationLabel(seconds) {
+  if (!Number.isFinite(Number(seconds)) || Number(seconds) <= 0) {
+    return null
+  }
+
+  const total = Math.max(0, Math.round(Number(seconds)))
+  const mins = Math.floor(total / 60)
+  const secs = total % 60
+  return `${mins}:${String(secs).padStart(2, '0')}`
+}
 
 function formatVoteSummary(topValues, maxCount) {
   if (!Array.isArray(topValues) || topValues.length === 0 || !maxCount) {
@@ -446,6 +482,14 @@ export default function GameRoomView({
   const profileCloseRef = useRef(null)
   const profileTitleId = useId()
   const profileDescriptionId = useId()
+  const audioManager = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return null
+    }
+    return getHeroAudioManager()
+  }, [])
+  const audioBaselineRef = useRef(null)
+  const currentAudioTrackRef = useRef({ url: null, heroId: null })
 
   const resolvedActiveIndex = useMemo(() => {
     const index = TABS.findIndex((tab) => tab.key === activeTab)
@@ -458,6 +502,52 @@ export default function GameRoomView({
       setActiveTab(safeKey)
     }
   }, [activeTab, resolvedActiveIndex])
+
+  useEffect(() => {
+    if (!audioManager) {
+      return undefined
+    }
+
+    audioBaselineRef.current = audioManager.getState()
+
+    return () => {
+      const baseline = audioBaselineRef.current
+      if (!baseline) {
+        audioManager.setEqEnabled(false)
+        audioManager.setReverbEnabled(false)
+        audioManager.setCompressorEnabled(false)
+        audioManager.setEnabled(false, { resume: false })
+        audioManager.stop()
+        return
+      }
+
+      audioManager.setLoop(baseline.loop)
+      audioManager.setVolume(baseline.volume)
+      audioManager.setEqEnabled(baseline.eqEnabled)
+      audioManager.setEqualizer(baseline.equalizer)
+      audioManager.setReverbEnabled(baseline.reverbEnabled)
+      audioManager.setReverbDetail(baseline.reverbDetail)
+      audioManager.setCompressorEnabled(baseline.compressorEnabled)
+      audioManager.setCompressorDetail(baseline.compressorDetail)
+      audioManager.loadHeroTrack({
+        heroId: baseline.heroId,
+        heroName: baseline.heroName,
+        trackUrl: baseline.trackUrl,
+        duration: baseline.duration || 0,
+        autoPlay: false,
+        loop: baseline.loop,
+      })
+      if (baseline.enabled) {
+        audioManager.setEnabled(true, { resume: false })
+        if (baseline.isPlaying) {
+          audioManager.play().catch(() => {})
+        }
+      } else {
+        audioManager.setEnabled(false, { resume: false })
+        audioManager.stop()
+      }
+    }
+  }, [audioManager])
 
   const normalizedRoles = useMemo(() => {
     if (!Array.isArray(roles)) return []
@@ -707,6 +797,126 @@ export default function GameRoomView({
     })
     return map
   }, [participants])
+
+  const heroAudioProfile = useMemo(() => {
+    const viewerProfile = normalizeHeroAudioProfile(myHero)
+    if (viewerProfile) {
+      return { ...viewerProfile, source: 'viewer' }
+    }
+
+    const hostOwnerId = game?.owner_id || null
+    if (hostOwnerId) {
+      const hostParticipant = participants.find(
+        (participant) => participant?.owner_id === hostOwnerId && participant?.hero,
+      )
+      if (hostParticipant?.hero) {
+        const hostProfile = normalizeHeroAudioProfile(hostParticipant.hero, {
+          fallbackHeroId: hostParticipant.hero_id || null,
+          fallbackHeroName: hostParticipant.hero?.name || '',
+        })
+        if (hostProfile) {
+          return { ...hostProfile, source: 'host' }
+        }
+      }
+    }
+
+    const fallbackParticipant = participants.find(
+      (participant) => participant?.hero && (participant.hero.bgm_url || participant.hero.bgmUrl),
+    )
+    if (fallbackParticipant?.hero) {
+      const fallbackProfile = normalizeHeroAudioProfile(fallbackParticipant.hero, {
+        fallbackHeroId: fallbackParticipant.hero_id || null,
+        fallbackHeroName: fallbackParticipant.hero?.name || '',
+      })
+      if (fallbackProfile) {
+        return { ...fallbackProfile, source: 'participant' }
+      }
+    }
+
+    return null
+  }, [game?.owner_id, myHero, participants])
+
+  const heroAudioSourceLabel = useMemo(() => {
+    if (!heroAudioProfile) {
+      return ''
+    }
+
+    switch (heroAudioProfile.source) {
+      case 'viewer':
+        return '현재 브금 · 내 캐릭터'
+      case 'host':
+        return '현재 브금 · 방장 기준'
+      case 'participant':
+        return '현재 브금 · 참가자 공유'
+      default:
+        return '현재 브금'
+    }
+  }, [heroAudioProfile])
+
+  const heroAudioDurationLabel = useMemo(
+    () => (heroAudioProfile?.bgmDuration ? formatDurationLabel(heroAudioProfile.bgmDuration) : null),
+    [heroAudioProfile?.bgmDuration],
+  )
+
+  useEffect(() => {
+    if (!audioManager) {
+      return
+    }
+
+    const nextUrl = heroAudioProfile?.bgmUrl || null
+
+    if (!nextUrl) {
+      currentAudioTrackRef.current = { url: null, heroId: null }
+      audioManager.setEqEnabled(false)
+      audioManager.setReverbEnabled(false)
+      audioManager.setCompressorEnabled(false)
+      audioManager.setEnabled(false, { resume: false })
+      audioManager.stop()
+      return
+    }
+
+    const current = currentAudioTrackRef.current
+    const shouldReload =
+      current.url !== nextUrl || current.heroId !== (heroAudioProfile?.heroId || null)
+
+    if (shouldReload) {
+      currentAudioTrackRef.current = {
+        url: nextUrl,
+        heroId: heroAudioProfile?.heroId || null,
+      }
+      const baselineVolume = audioBaselineRef.current?.volume
+      if (Number.isFinite(baselineVolume)) {
+        audioManager.setVolume(baselineVolume)
+      }
+      audioManager.setLoop(true)
+      audioManager.setEqEnabled(false)
+      audioManager.setEqualizer({ low: 0, mid: 0, high: 0 })
+      audioManager.setReverbEnabled(false)
+      audioManager.setReverbDetail({ mix: 0.3, decay: 1.8 })
+      audioManager.setCompressorEnabled(false)
+      audioManager.setCompressorDetail({ threshold: -28, ratio: 2.5, release: 0.25 })
+      audioManager.setEnabled(true, { resume: false })
+      audioManager
+        .loadHeroTrack({
+          heroId: heroAudioProfile?.heroId || null,
+          heroName: heroAudioProfile?.heroName || '',
+          trackUrl: nextUrl,
+          duration: heroAudioProfile?.bgmDuration || 0,
+          autoPlay: true,
+          loop: true,
+        })
+        .catch(() => {})
+      return
+    }
+
+    const snapshot = audioManager.getState()
+    if (!snapshot.enabled) {
+      audioManager.setEnabled(true, { resume: false })
+    }
+    if (!snapshot.isPlaying) {
+      audioManager.play().catch(() => {})
+    }
+  }, [audioManager, heroAudioProfile])
 
   const heroStats = useMemo(() => {
     const rankIndex = myEntry ? participants.findIndex((participant) => participant.id === myEntry.id) : -1
@@ -2065,6 +2275,20 @@ export default function GameRoomView({
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {heroAudioProfile && (
+                  <div className={styles.heroAudioStatus}>
+                    <span className={styles.heroAudioLabel}>{heroAudioSourceLabel}</span>
+                    <p className={styles.heroAudioTrack}>
+                      {heroAudioProfile.heroName
+                        ? `${heroAudioProfile.heroName} 테마`
+                        : '브금 트랙'}
+                      {heroAudioDurationLabel ? (
+                        <span className={styles.heroAudioDuration}>{heroAudioDurationLabel}</span>
+                      ) : null}
+                    </p>
                   </div>
                 )}
               </div>
