@@ -268,8 +268,27 @@ function normalizeSummaryPayload(payload) {
     typeof payload.outcome?.lastLine === 'string'
       ? payload.outcome.lastLine.trim()
       : ''
+  const tagValues = []
+  const appendTags = (source) => {
+    if (!Array.isArray(source)) return
+    source.forEach((tag) => {
+      if (typeof tag !== 'string') return
+      const trimmed = tag.trim()
+      if (!trimmed) return
+      tagValues.push(trimmed)
+    })
+  }
+  appendTags(payload.tags)
+  if (payload.extra && typeof payload.extra === 'object') {
+    appendTags(payload.extra.tags)
+    appendTags(payload.extra.labels)
+  }
+  appendTags(payload.outcome?.variables)
+  const tags = Array.from(
+    new Map(tagValues.map((tag) => [tag.toLowerCase(), tag])).values(),
+  )
 
-  if (!preview && !promptPreview && !role && !actors.length && !outcomeLine) {
+  if (!preview && !promptPreview && !role && !actors.length && !outcomeLine && !tags.length) {
     return null
   }
 
@@ -279,6 +298,7 @@ function normalizeSummaryPayload(payload) {
     role,
     actors,
     outcomeLine,
+    ...(tags.length ? { tags } : {}),
   }
 }
 
@@ -718,6 +738,8 @@ export default function GameRoomView({
   const [historySearch, setHistorySearch] = useState('')
   const [historyStatusFilter, setHistoryStatusFilter] = useState('all')
   const [historyParticipantFilter, setHistoryParticipantFilter] = useState('all')
+  const [historyVisibilityFilter, setHistoryVisibilityFilter] = useState('all')
+  const [historyTagFilter, setHistoryTagFilter] = useState('all')
   const [historyDateFrom, setHistoryDateFrom] = useState('')
   const [historyDateTo, setHistoryDateTo] = useState('')
 
@@ -762,6 +784,12 @@ export default function GameRoomView({
           )
         })()
         const summary = normalizeSummaryPayload(entry.latestSummary)
+        const summaryTags = Array.isArray(summary?.tags)
+          ? summary.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
+          : []
+        const summaryTagKeys = Array.from(
+          new Set(summaryTags.map((tag) => tag.toLowerCase())),
+        )
         const summaryActors = Array.isArray(summary?.actors)
           ? summary.actors.filter((actor) => typeof actor === 'string' && actor.trim().length > 0)
           : []
@@ -774,6 +802,7 @@ export default function GameRoomView({
           summary?.promptPreview,
           summary?.outcomeLine,
           summaryActors,
+          summaryTags,
           displayTurns.map((turn) => `${turn.role} ${turn.content}`),
         ])
 
@@ -794,7 +823,10 @@ export default function GameRoomView({
           olderShareableCount,
           trimmedTotal,
           summary,
+          summaryTags,
+          summaryTagKeys,
           participants,
+          hasHidden: hiddenCount > 0 || suppressedCount > 0,
           searchText,
         }
       })
@@ -856,6 +888,12 @@ export default function GameRoomView({
         const trimmedCount = Number(entry.trimmed_count) || 0
         const totalVisible = Number(entry.total_visible_turns) || visibleTurns.length
         const summary = normalizeSummaryPayload(entry.latest_summary)
+        const summaryTags = Array.isArray(summary?.tags)
+          ? summary.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
+          : []
+        const summaryTagKeys = Array.from(
+          new Set(summaryTags.map((tag) => tag.toLowerCase())),
+        )
         const summaryActors = Array.isArray(summary?.actors)
           ? summary.actors.filter((actor) => typeof actor === 'string' && actor.trim().length > 0)
           : []
@@ -878,6 +916,7 @@ export default function GameRoomView({
           summary?.promptPreview,
           summary?.outcomeLine,
           summaryActors,
+          summaryTags,
           displayTurns.map((turn) => `${turn.role} ${turn.content}`),
         ])
 
@@ -895,7 +934,10 @@ export default function GameRoomView({
           trimmedCount,
           totalVisible,
           summary,
+          summaryTags,
+          summaryTagKeys,
           participants: participantList,
+          hasHidden: visibleTurns.length < turns.length,
           searchText,
         }
       })
@@ -938,10 +980,40 @@ export default function GameRoomView({
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'ko'))
   }, [baseSessionHistory, baseSharedHistory])
 
+  const historyTagOptions = useMemo(() => {
+    const map = new Map()
+    const collect = (entry) => {
+      if (!entry?.summaryTags) return
+      entry.summaryTags.forEach((tag) => {
+        if (typeof tag !== 'string') return
+        const trimmed = tag.trim()
+        if (!trimmed) return
+        const key = trimmed.toLowerCase()
+        if (!map.has(key)) {
+          map.set(key, trimmed)
+        }
+      })
+    }
+    baseSessionHistory.forEach(collect)
+    baseSharedHistory.forEach(collect)
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [baseSessionHistory, baseSharedHistory])
+
+  useEffect(() => {
+    if (historyTagFilter === 'all') return
+    const lower = historyTagFilter.toLowerCase()
+    const hasTag = historyTagOptions.some((tag) => tag.toLowerCase() === lower)
+    if (!hasTag) {
+      setHistoryTagFilter('all')
+    }
+  }, [historyTagFilter, historyTagOptions])
+
   const historyFiltersActive =
     historySearchTokens.length > 0 ||
     historyStatusFilter !== 'all' ||
     historyParticipantFilter !== 'all' ||
+    historyVisibilityFilter !== 'all' ||
+    historyTagFilter !== 'all' ||
     !!historyDateFromValue ||
     !!historyDateToValue
 
@@ -953,6 +1025,17 @@ export default function GameRoomView({
       }
       if (historyParticipantFilter !== 'all') {
         if (!entry.participants || !entry.participants.includes(historyParticipantFilter)) {
+          return false
+        }
+      }
+      if (historyVisibilityFilter === 'with-hidden' && !entry.hasHidden) {
+        return false
+      }
+      if (historyVisibilityFilter === 'without-hidden' && entry.hasHidden) {
+        return false
+      }
+      if (historyTagFilter !== 'all') {
+        if (!entry.summaryTagKeys || !entry.summaryTagKeys.includes(historyTagFilter.toLowerCase())) {
           return false
         }
       }
@@ -971,6 +1054,8 @@ export default function GameRoomView({
     historySearchTokens,
     historyStatusFilter,
     historyParticipantFilter,
+    historyVisibilityFilter,
+    historyTagFilter,
     historyDateFromValue,
     historyDateToValue,
   ])
@@ -983,6 +1068,17 @@ export default function GameRoomView({
       }
       if (historyParticipantFilter !== 'all') {
         if (!entry.participants || !entry.participants.includes(historyParticipantFilter)) {
+          return false
+        }
+      }
+      if (historyVisibilityFilter === 'with-hidden' && !entry.hasHidden) {
+        return false
+      }
+      if (historyVisibilityFilter === 'without-hidden' && entry.hasHidden) {
+        return false
+      }
+      if (historyTagFilter !== 'all') {
+        if (!entry.summaryTagKeys || !entry.summaryTagKeys.includes(historyTagFilter.toLowerCase())) {
           return false
         }
       }
@@ -1001,6 +1097,8 @@ export default function GameRoomView({
     historySearchTokens,
     historyStatusFilter,
     historyParticipantFilter,
+    historyVisibilityFilter,
+    historyTagFilter,
     historyDateFromValue,
     historyDateToValue,
   ])
@@ -1020,6 +1118,16 @@ export default function GameRoomView({
     setHistoryParticipantFilter(value || 'all')
   }, [])
 
+  const handleHistoryVisibilityChange = useCallback((event) => {
+    const value = event?.target?.value ?? 'all'
+    setHistoryVisibilityFilter(value || 'all')
+  }, [])
+
+  const handleHistoryTagChange = useCallback((event) => {
+    const value = event?.target?.value ?? 'all'
+    setHistoryTagFilter(value || 'all')
+  }, [])
+
   const handleHistoryDateFromChange = useCallback((event) => {
     const value = event?.target?.value ?? ''
     setHistoryDateFrom(value)
@@ -1034,6 +1142,8 @@ export default function GameRoomView({
     setHistorySearch('')
     setHistoryStatusFilter('all')
     setHistoryParticipantFilter('all')
+    setHistoryVisibilityFilter('all')
+    setHistoryTagFilter('all')
     setHistoryDateFrom('')
     setHistoryDateTo('')
   }, [])
@@ -1596,6 +1706,16 @@ export default function GameRoomView({
                 ))}
               </select>
             ) : null}
+            <select
+              className={styles.sessionHistoryFilter}
+              value={historyVisibilityFilter}
+              onChange={handleHistoryVisibilityChange}
+              aria-label="숨김 여부 필터"
+            >
+              <option value="all">숨김 포함 여부</option>
+              <option value="with-hidden">숨김 기록 포함</option>
+              <option value="without-hidden">숨김 없는 세션</option>
+            </select>
             {historyFiltersActive ? (
               <button type="button" className={styles.sessionHistoryClear} onClick={handleHistoryFilterReset}>
                 필터 초기화
@@ -1603,6 +1723,21 @@ export default function GameRoomView({
             ) : null}
           </div>
           <div className={styles.sessionHistoryControlRow}>
+            {historyTagOptions.length ? (
+              <select
+                className={styles.sessionHistoryFilter}
+                value={historyTagFilter}
+                onChange={handleHistoryTagChange}
+                aria-label="요약 태그 필터"
+              >
+                <option value="all">전체 태그</option>
+                {historyTagOptions.map((option) => (
+                  <option key={option} value={option}>
+                    #{option}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <label className={styles.sessionHistoryDateLabel}>
               <span className={styles.sessionHistoryDateText}>시작일</span>
               <input
@@ -1691,6 +1826,15 @@ export default function GameRoomView({
                           결론: {entry.summary.outcomeLine}
                         </p>
                       ) : null}
+                    </div>
+                  ) : null}
+                  {entry.summaryTags && entry.summaryTags.length ? (
+                    <div className={styles.sessionHistoryTagRow}>
+                      {entry.summaryTags.map((tag, index) => (
+                        <span key={`${entry.id}-tag-${index}`} className={styles.sessionHistoryTag}>
+                          #{tag}
+                        </span>
+                      ))}
                     </div>
                   ) : null}
                   {entry.hiddenPrivateCount > 0 || entry.trimmedCount > 0 ? (
@@ -1788,6 +1932,15 @@ export default function GameRoomView({
                           결론: {entry.summary.outcomeLine}
                         </p>
                       ) : null}
+                    </div>
+                  ) : null}
+                  {entry.summaryTags && entry.summaryTags.length ? (
+                    <div className={styles.sessionHistoryTagRow}>
+                      {entry.summaryTags.map((tag, index) => (
+                        <span key={`${entry.id}-tag-${index}`} className={styles.sessionHistoryTag}>
+                          #{tag}
+                        </span>
+                      ))}
                     </div>
                   ) : null}
                   {entry.hiddenCount > 0 || entry.suppressedCount > 0 || entry.trimmedTotal > 0 ||
