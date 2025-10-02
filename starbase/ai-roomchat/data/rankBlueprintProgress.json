@@ -6,31 +6,31 @@
       "label": "매칭 트리거 통일",
       "status": "QA 검토 중",
       "progress": 80,
-      "summary": "듀오·캐주얼 재시작 시퀀스를 /api/rank/play에 통일하고 회귀 테스트 케이스(DC-01~03)를 준비했습니다."
+      "summary": "`/api/rank/play` 재시작 케이스를 테스트 플랜(DC-01~03)에 추가해 회귀 검증 범위를 확장했습니다."
     },
     {
       "label": "세션/전투 동기화",
       "status": "구현 진행 중",
       "progress": 55,
-      "summary": "rank_turns is_visible·summary_payload를 run-turn/log-turn과 세션 히스토리 응답에 연결했습니다."
+      "summary": "`rank_turns` 가시성·요약 컬럼을 `run-turn`/`log-turn` API와 세션 히스토리 응답에 연결해 로그 파이프라인 일부가 작동하기 시작했습니다."
     },
     {
       "label": "프롬프트 변수 자동화",
       "status": "진행 중",
       "progress": 60,
-      "summary": "제작기 변수 매핑과 StartClient 경고 해소 가이드를 마련해 Maker 재저장 루틴을 정리했습니다."
+      "summary": "StartClient 경고 연동과 제작기 재저장 가이드 배포까지 끝났고, 남은 과제는 폴백 QA와 Maker 사전 경고뿐입니다."
     },
     {
       "label": "UI·오디오 완성",
       "status": "준비 중",
       "progress": 25,
-      "summary": "히스토리 요약 노출 전략은 확정됐으며 모바일 레이아웃·BGM 전환 마감 작업이 남았습니다."
+      "summary": "히스토리 요약 노출 전략을 확정했으나 모바일·오디오 마감 작업은 대기 중입니다."
     },
     {
       "label": "운영 가드",
       "status": "진행 중",
       "progress": 85,
-      "summary": "쿨다운 ETA 안내·감사 로그·타임라인 내보내기까지 연결해 Edge Function 운영 루프를 정비했습니다."
+      "summary": "감사 로그 기반 백오프 스케줄러, Slack ETA 안내, 임계값 변경 카드·감사 로그 패널, 일/주/월 토글·CSV/PNG 내보내기·팀 드라이브 자동 업로드를 갖춘 감사 타임라인 그래프에 더해 업로드 연속 실패/장기 미성공 임계값을 경보 체계와 대시보드 카드에 연동했습니다."
     }
   ]
 }

@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "refresh:blueprint-progress": "node scripts/refresh-rank-blueprint-progress.js"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",

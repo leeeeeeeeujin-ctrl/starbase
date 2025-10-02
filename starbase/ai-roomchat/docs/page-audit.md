@@ -15,7 +15,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 
 ### `pages/index.js`
 - Renders a full-screen landing page with themed background, title (“랭크 청사진에 맞춘 전선으로 바로 합류하세요”), and `AuthButton` to kick off Supabase auth flow while auto-redirecting authenticated users to `/roster`.【F:pages/index.js†L1-L118】
-- Uses `Home.module.css` for glassmorphism styling, a core feature list, and a blueprint progress board that reads JSON-backed stage status/percentages with a freshness badge that flags stale data to visitors.【F:pages/index.js†L52-L118】【F:styles/Home.module.css†L1-L214】【F:data/rankBlueprintProgress.json†L1-L35】
+- Uses `Home.module.css` for glassmorphism styling, a core feature list, and a blueprint progress board that reads JSON-backed stage status/percentages with a freshness badge that flags stale data to visitors. `npm run refresh:blueprint-progress` regenerates the JSON from the overview doc so the UI stays aligned with docs without manual edits.【F:pages/index.js†L52-L118】【F:styles/Home.module.css†L1-L214】【F:data/rankBlueprintProgress.json†L1-L35】【F:scripts/refresh-rank-blueprint-progress.js†L1-L94】
 
 ### `pages/auth-callback.js`
 - Client-side handler for Supabase OAuth redirects. Parses the current URL, forwards to `handleOAuthCallback`, and responds based on returned status (direct redirect vs. error with retry).【F:pages/auth-callback.js†L1-L35】
