@@ -74,6 +74,7 @@
 | OPS-03 | 임계값 환경 변수 오버라이드 검증 | `RANK_COOLDOWN_ALERT_THRESHOLDS`를 `{ "failureRate": { "warning": 0.1 } }`로 설정 후 `/api/rank/cooldown-telemetry` 호출 | 응답 `alerts.thresholds.failureRate.warning`이 `0.1`로 반영되고, 관리자 대시보드 임계값 정보도 동일하게 갱신됨 |
 | OPS-04 | 임계값 감사 알림 검증 | 1. `RANK_COOLDOWN_ALERT_THRESHOLDS`를 기본값에서 `{ "docLinkAttachmentRate": { "warning": 0.9 } }`로 변경<br>2. `/api/rank/cooldown-telemetry` 호출 후 감사 Webhook(모킹 서버) 페이로드 확인 | 감사 알림 텍스트와 `diff`에 이전/이후 값이 기록되고, `getCooldownThresholdAuditTrail()` 최근 항목에 동일한 변경 이력이 남음 |
 | OPS-05 | 임계값 감사 집계 노출 검증 | 1. OPS-04 시나리오 직후 `/api/rank/cooldown-telemetry` 재호출<br>2. 관리자 대시보드 "임계값 변경" 카드와 감사 로그 패널 스냅샷 확인 | 응답 `thresholdAudit.totalCount`/`recentCount`가 증가하고, 카드·패널에 동일한 Diff/원본 요약이 표시됨 |
+| OPS-06 | 임계값 감사 타임라인 그래프 검증 | 1. OPS-04를 연속 두 번 실행해 서로 다른 임계값 변경 생성<br>2. `/api/rank/cooldown-telemetry` 응답의 `thresholdAudit.timeline` 버킷 수·`isToday` 플래그 확인<br>3. 대시보드 타임라인 그래프 스크린샷 확보 | 타임라인 `windowDays`가 14로 노출되고, 버킷 중 오늘 날짜가 `isToday: true`로 표시되며 그래프에 최소 2개 이상의 막대가 렌더링됨 |
 
 ## 3. 자동화 및 회귀 테스트 제안
 

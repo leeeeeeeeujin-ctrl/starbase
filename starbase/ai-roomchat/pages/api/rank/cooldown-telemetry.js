@@ -215,6 +215,7 @@ export default async function handler(req, res) {
     const thresholdAudit = summarizeCooldownThresholdAuditTrail(thresholdAuditTrail, {
       now: new Date(),
       limit: 8,
+      timelineDays: 14,
     })
 
     const formatParam = Array.isArray(req.query.format) ? req.query.format[0] : req.query.format

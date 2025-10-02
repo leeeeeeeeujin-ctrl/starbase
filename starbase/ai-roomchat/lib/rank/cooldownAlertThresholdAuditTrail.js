@@ -15,6 +15,7 @@ const ALERT_AUDIT_AUTH_HEADER =
   null
 
 const auditTrail = []
+const DAY_MS = 24 * 60 * 60 * 1000
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value ?? null))
@@ -131,6 +132,66 @@ function normalizeTimestamp(value) {
   return { iso: new Date(ms).toISOString(), ms }
 }
 
+function startOfUtcDay(ms) {
+  const date = new Date(ms)
+  date.setUTCHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+function formatTimelineLabel(ms) {
+  const date = new Date(ms)
+  const month = date.getUTCMonth() + 1
+  const day = date.getUTCDate()
+  return `${month}/${day}`
+}
+
+function formatTimelineWeekday(ms) {
+  const date = new Date(ms)
+  return date.toLocaleDateString('ko-KR', { weekday: 'short', timeZone: 'UTC' })
+}
+
+function buildTimeline(events = [], { nowMs, windowDays = 14 } = {}) {
+  const normalizedDays = Number.isFinite(windowDays) && windowDays > 0 ? Math.min(Math.floor(windowDays), 30) : 14
+  if (!normalizedDays) {
+    return { windowDays: 0, buckets: [], maxCount: 0 }
+  }
+
+  const todayStart = startOfUtcDay(nowMs)
+  const firstBucketStart = todayStart - DAY_MS * (normalizedDays - 1)
+
+  const bucketMap = new Map()
+  for (const event of events) {
+    const bucketStart = startOfUtcDay(event.timestampMs)
+    const current = bucketMap.get(bucketStart) || { count: 0 }
+    current.count += 1
+    bucketMap.set(bucketStart, current)
+  }
+
+  const buckets = []
+  let maxCount = 0
+
+  for (let index = 0; index < normalizedDays; index += 1) {
+    const bucketStart = firstBucketStart + DAY_MS * index
+    const bucketEnd = bucketStart + DAY_MS
+    const count = bucketMap.get(bucketStart)?.count ?? 0
+    if (count > maxCount) {
+      maxCount = count
+    }
+
+    buckets.push({
+      id: `audit-${bucketStart}`,
+      start: new Date(bucketStart).toISOString(),
+      end: new Date(bucketEnd).toISOString(),
+      count,
+      label: formatTimelineLabel(bucketStart),
+      weekday: formatTimelineWeekday(bucketStart),
+      isToday: bucketStart === todayStart,
+    })
+  }
+
+  return { windowDays: normalizedDays, buckets, maxCount }
+}
+
 function buildSlackText(event) {
   const lines = [
     ':memo: RANK_COOLDOWN_ALERT_THRESHOLDS 변경 감지',
@@ -239,7 +300,7 @@ export function getCooldownThresholdAuditTrail() {
 
 export function summarizeCooldownThresholdAuditTrail(
   events = [],
-  { now = new Date(), windowMs = 48 * 60 * 60 * 1000, limit = 6 } = {},
+  { now = new Date(), windowMs = 48 * 60 * 60 * 1000, limit = 6, timelineDays = 14 } = {},
 ) {
   const nowMs = now instanceof Date ? now.getTime() : Date.now()
   const normalizedWindow = Number.isFinite(windowMs) && windowMs > 0 ? windowMs : 48 * 60 * 60 * 1000
@@ -282,6 +343,8 @@ export function summarizeCooldownThresholdAuditTrail(
     ? windowHoursRaw
     : Number(windowHoursRaw.toFixed(1))
 
+  const timeline = buildTimeline(normalizedEvents, { nowMs, windowDays: timelineDays })
+
   return {
     totalCount,
     recentWindowMs: normalizedWindow,
@@ -291,6 +354,7 @@ export function summarizeCooldownThresholdAuditTrail(
     lastSource: latest?.source || null,
     lastSummary: latest?.summary || null,
     lastRawEnvValue: latest?.rawEnvValue || null,
+    timeline,
     events: normalizedEvents.slice(0, normalizedLimit).map((event) => ({
       id: event.id,
       timestamp: event.timestamp,

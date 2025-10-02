@@ -301,9 +301,10 @@
 
 ### 진행 현황 메모 (2025-11-08 임계값 감사 집계)
 
-- `summarizeCooldownThresholdAuditTrail`이 감사 이벤트를 정규화해 최근 변경 횟수·마지막 조정 요약을 계산하고, `/api/rank/cooldown-telemetry` 응답의 `thresholdAudit` 필드로 노출합니다.【F:lib/rank/cooldownAlertThresholdAuditTrail.js†L1-L210】【F:pages/api/rank/cooldown-telemetry.js†L1-L229】
-- 관리자 대시보드는 새 요약 카드와 감사 로그 패널을 통해 임계값 변경 횟수, 마지막 시각, 변경 Diff·원본 값을 한 화면에서 확인할 수 있습니다.【F:components/admin/CooldownDashboard.js†L1-L1520】【F:components/admin/CooldownDashboard.module.css†L1-L360】
+- `summarizeCooldownThresholdAuditTrail`이 감사 이벤트를 정규화해 최근 변경 횟수·마지막 조정 요약을 계산하고, `/api/rank/cooldown-telemetry` 응답의 `thresholdAudit` 필드로 노출합니다.【F:lib/rank/cooldownAlertThresholdAuditTrail.js†L1-L280】【F:pages/api/rank/cooldown-telemetry.js†L1-L233】
+- `thresholdAudit.timeline`은 최근 14일 감사 이벤트를 UTC 일 단위로 버킷팅해 `count`/`label`/`weekday`/`isToday` 정보를 포함한 배열과 `maxCount` 스케일을 제공합니다.【F:lib/rank/cooldownAlertThresholdAuditTrail.js†L34-L132】
+- 관리자 대시보드는 새 요약 카드와 감사 로그·타임라인 패널을 통해 임계값 변경 횟수, 마지막 시각, 변경 Diff·원본 값, 14일 추세를 한 화면에서 확인할 수 있습니다.【F:components/admin/CooldownDashboard.js†L360-L1600】【F:components/admin/CooldownDashboard.module.css†L1-L360】
 
-느낀 점: 텔레메트리와 대시보드가 동일한 감사 요약을 공유하니 임계값 변경 맥락을 설명하기가 한층 쉬워졌습니다.
-추가로 필요한 점: 향후 감사 이벤트를 기간별 그래프나 Slack 다이제스트에도 요약해 배포 추이를 정량화하면 좋겠습니다.
-진행사항: 임계값 감사 집계를 API·대시보드에 연동하고 문서화해 운영 가드 단계 진행률을 한 단계 더 끌어올렸습니다.
+느낀 점: 14일 타임라인까지 더해지니 감사 이벤트 추세를 설명할 근거가 생겨 운영 보고를 준비하기가 훨씬 수월했습니다.
+추가로 필요한 점: 주간/월간 집계나 Slack 다이제스트용 요약도 후속으로 붙이면 장기 추세 비교가 더 쉬워질 듯합니다.
+진행사항: 감사 이벤트 타임라인을 API·대시보드·문서에 연동해 운영 가드 단계 진행률을 한 단계 더 끌어올렸습니다.

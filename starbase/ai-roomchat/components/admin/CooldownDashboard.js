@@ -453,6 +453,62 @@ function ThresholdAuditList({ audit }) {
   )
 }
 
+function ThresholdAuditTimeline({ timeline }) {
+  if (!timeline || !Array.isArray(timeline.buckets)) {
+    return null
+  }
+
+  if (!timeline.buckets.length) {
+    return <p className={styles.emptyMessage}>시각화할 임계값 변경 이력이 없습니다.</p>
+  }
+
+  const maxCount = timeline.maxCount ?? Math.max(...timeline.buckets.map((bucket) => bucket.count || 0), 0)
+
+  return (
+    <div className={styles.auditTimeline}>
+      <div className={styles.auditTimelineChart} role="list">
+        {timeline.buckets.map((bucket) => {
+          const count = bucket.count || 0
+          const ratio = maxCount > 0 ? count / maxCount : 0
+          const rawHeight = ratio * 100
+          const minimum = count > 0 ? 12 : 2
+          const height = maxCount > 0 ? Math.max(Math.min(rawHeight, 100), minimum) : 0
+          const className = [
+            styles.auditTimelineBar,
+            bucket.isToday ? styles.auditTimelineBarToday : null,
+          ]
+            .filter(Boolean)
+            .join(' ')
+
+          return (
+            <div key={bucket.id} className={styles.auditTimelineColumn} role="listitem">
+              <div className={styles.auditTimelineBarTrack}>
+                <div
+                  className={className}
+                  style={{ height: `${height}%` }}
+                  title={`${bucket.label} (${bucket.weekday}) · ${formatNumber(count)}회`}
+                >
+                  {count > 0 ? (
+                    <span className={styles.auditTimelineCount}>{formatNumber(count)}</span>
+                  ) : null}
+                </div>
+              </div>
+              <div className={styles.auditTimelineAxis}>
+                <span className={styles.auditTimelineLabel}>{bucket.label}</span>
+                <span className={styles.auditTimelineWeekday}>{bucket.weekday}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className={styles.auditTimelineLegend}>
+        <span>최근 {formatNumber(timeline.windowDays ?? timeline.buckets.length)}일</span>
+        <span>최대 {formatNumber(maxCount)}회</span>
+      </div>
+    </div>
+  )
+}
+
 function SummaryCard({ title, value, helper, status, actions }) {
   return (
     <article className={styles.summaryCard}>
@@ -1521,6 +1577,7 @@ export default function CooldownDashboard() {
             <p className={styles.caption}>
               환경 변수나 구성 변경으로 조정된 경보 임계값 이력을 시간순으로 보여 줍니다.
             </p>
+            <ThresholdAuditTimeline timeline={thresholdAudit?.timeline} />
             <ThresholdAuditList audit={thresholdAudit} />
           </section>
 
