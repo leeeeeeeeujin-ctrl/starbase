@@ -20,7 +20,10 @@ export default function ClientErrorReporter() {
     }
 
     if (!sessionId) {
-      const generator = window.crypto?.randomUUID || (() => Math.random().toString(36).slice(2))
+      const generator =
+        typeof window.crypto !== 'undefined' && typeof window.crypto.randomUUID === 'function'
+          ? () => window.crypto.randomUUID()
+          : () => Math.random().toString(36).slice(2)
       sessionId = generator()
       try {
         window.localStorage.setItem(storageKey, sessionId)
