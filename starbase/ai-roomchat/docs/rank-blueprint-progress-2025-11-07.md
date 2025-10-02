@@ -8,7 +8,7 @@
 - StartClient 경고를 해소하기 위한 `rank-prompt-set-versioning-guide.md`를 작성해 제작기 세트 재저장 절차를 바로 실행할 수 있게 했습니다.
 - API 키 로테이션 회고를 위한 `rank_api_key_audit` 테이블 스키마를 설계하고, Supabase DDL 문서에 바로 적용 가능한 SQL 조각과 마이그레이션 체크리스트를 추가했습니다.
 - Edge Function 재시도 스케줄러가 `rank_api_key_audit` 감사 로그를 참고해 동적 백오프를 계산하도록 `/api/rank/cooldown-retry-schedule` 엔드포인트를 연결했습니다.
-- 관리자 대시보드의 “현재 쿨다운 키” 카드에 Edge Function 재시도 ETA를 노출해 다음 실행 시점을 한눈에 확인할 수 있습니다.
+- 관리자 대시보드의 “현재 쿨다운 키” 카드에 수동 `ETA 새로고침` 버튼을 붙여 Edge Function 재시도 ETA를 불러오고, 다음 실행 시점을 한눈에 확인할 수 있습니다.
 - Slack/Webhook 경보에 런북 링크와 다음 재시도 ETA를 자동으로 첨부하고, 제공자 테이블에도 ETA 열을 추가해 운영자가 재시도 일정을 즉시 확인할 수 있습니다.
 
 ## Decisions
@@ -41,7 +41,7 @@
 - Edge Function 재시도 스케줄러가 감사 로그와 텔레메트리 집계를 활용해 다음 재시도 ETA/지연 시간을 추천하도록 `cooldown-retry-schedule` API와 문서를 보강했습니다.
 - `/api/rank/run-turn`·`/api/rank/log-turn` API에 `is_visible`·`summary_payload` 적재 로직을 연결하고, 세션 히스토리 응답에 요약 데이터·숨김 카운트를 노출하도록 해 단계 2 로그 파이프라인 요구사항을 실제 코드에 반영했습니다.
 - `/api/rank/cooldown-report`와 `/api/rank/cooldown-digest`가 쿨다운 자동화 결과를 `rank_api_key_audit` 감사 테이블에 적재하도록 확장돼 운영 가드 단계의 남은 TODO를 해소했습니다.
-- 요약 카드에서 `cooldown-retry-schedule` ETA를 불러와 운영 대시보드에서도 다음 Edge Function 실행 시간을 바로 확인할 수 있게 했습니다.
+- 요약 카드에서 `ETA 새로고침`을 눌러 `cooldown-retry-schedule` ETA를 불러오도록 조정해, 운영 대시보드에서도 수동 갱신으로 다음 Edge Function 실행 시간을 확인할 수 있게 했습니다.
 - Slack/Webhook 경보에 자동 ETA 안내를 추가하고, 제공자 테이블 `다음 재시도 ETA` 열로 운영 대시보드에서 재시도 일정을 비교할 수 있도록 했습니다.
 
 ### Live Timeline Workflow (2025-11-07 업데이트)
@@ -86,5 +86,5 @@
 | T+213m | StartClient의 fallback 기록 경로가 요약 메타·가시성 정보를 포함하도록 갱신하고, 중복 로그 없이 저장되는지 수동 점검했습니다. |
 | T+221m | 진행 로그·개요·실행 플랜·테스트 플랜에 이번 반영 내역과 QA 체크리스트 갱신분을 추가해 "진행하면서 기록" 원칙을 이어갔습니다. |
 | T+229m | `cooldown-retry-schedule` API를 추가해 Edge Function이 감사 로그를 기반으로 백오프를 계산하도록 테스트했고, 운영 플레이북·개요 문서에 반영했습니다. |
-| T+237m | 대시보드 요약 카드에 스케줄러 ETA를 노출하고, 운영 플레이북에 새 지표 활용법을 추가했습니다. |
+| T+237m | 대시보드 요약 카드에 `ETA 새로고침` 버튼과 스케줄러 ETA 표기를 추가하고, 운영 플레이북에 새 지표 활용법을 기록했습니다. |
 | T+245m | Slack 경보에 다음 재시도 ETA를 추가하고, 제공자 테이블에도 ETA 열을 붙여 재시도 일정을 한 번에 확인하도록 대시보드를 갱신했습니다. |

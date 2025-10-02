@@ -204,7 +204,7 @@
 - `/api/rank/cooldown-report`와 `/api/rank/cooldown-digest`가 `rank_api_key_audit` 감사 로그를 직접 적재해 자동화 시도·재시도 윈도우·런북 링크 첨부 여부를 한 테이블에서 추적할 수 있게 됐습니다.【F:pages/api/rank/cooldown-report.js†L15-L123】【F:pages/api/rank/cooldown-digest.js†L11-L147】【F:lib/rank/cooldownAudit.js†L1-L118】
 - 운영 가드 단계의 남은 TODO였던 감사 로깅이 코드에 연결되면서 문서상의 5시간 쿨다운 공유 흐름이 실서비스 경보와 동기화됐습니다.【F:docs/rank-blueprint-progress-2025-11-06.md†L9-L13】【F:docs/rank-blueprint-overview.md†L32-L70】
 - `GET /api/rank/cooldown-retry-schedule`이 감사 로그와 쿨다운 메타데이터를 모아 Edge Function 재시도 백오프를 동적으로 조정하도록 연동됐습니다.【F:pages/api/rank/cooldown-retry-schedule.js†L1-L104】【F:lib/rank/cooldownRetryScheduler.js†L1-L216】【F:docs/rank-api-key-cooldown-monitoring.md†L89-L118】
-- 관리자 대시보드 요약 카드가 `cooldown-retry-schedule` ETA를 표기해 Edge Function 재시도 예정 시각을 운영팀이 즉시 확인할 수 있습니다.【F:components/admin/CooldownDashboard.js†L1010-L1124】【F:docs/rank-api-key-cooldown-monitoring.md†L32-L47】
+- 관리자 대시보드 요약 카드가 수동 `ETA 새로고침` 버튼으로 `cooldown-retry-schedule` ETA를 불러와 Edge Function 재시도 예정 시각을 운영팀이 즉시 확인할 수 있습니다.【F:components/admin/CooldownDashboard.js†L1001-L1107】【F:docs/rank-api-key-cooldown-monitoring.md†L32-L47】
 
 느낀 점: 메인 룸에서 바로 역할별 순위를 확인할 수 있으니 남은 UI 정리가 한층 수월해질 것 같아 작업 내내 보람찼습니다.
 추가로 필요한 점: 시즌 전체나 최근 경기 기준의 통합 리더보드를 Drawer에 통합해 모드별 비교도 가능하도록 후속 설계를 해야 합니다.

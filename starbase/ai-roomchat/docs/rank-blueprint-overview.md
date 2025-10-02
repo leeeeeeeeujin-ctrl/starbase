@@ -35,7 +35,7 @@
 - [2025-11-06 진행 로그](rank-blueprint-progress-2025-11-06.md): API 키 쿨다운 가드를 도입하고 운영 대시보드 경보를 연동했습니다.
 - [2025-11-05 진행 로그](rank-blueprint-progress-2025-11-05.md): 롤백 이후 기준 상태를 재확인하고 실행 플랜 체크리스트를 재정렬했습니다.
 - [쿨다운 Telemetry CSV 내보내기](rank-api-key-cooldown-monitoring.md#운영-절차): 제공자/최근 시도 데이터를 바로 내려받는 버튼과 API 포맷을 정리해 운영 보고서 공유 루틴을 단축했습니다.
-- [쿨다운 ETA 요약 카드](rank-api-key-cooldown-monitoring.md#edge-function-백오프-스케줄러-2025-11-08-업데이트): 관리자 대시보드 요약 카드가 `cooldown-retry-schedule`의 추천 ETA를 노출해 다음 Edge Function 실행 시점을 안내합니다.
+- [쿨다운 ETA 요약 카드](rank-api-key-cooldown-monitoring.md#edge-function-백오프-스케줄러-2025-11-08-업데이트): 관리자 대시보드 요약 카드가 수동 `ETA 새로고침` 버튼으로 `cooldown-retry-schedule` 추천 ETA를 불러와 다음 Edge Function 실행 시점을 안내합니다.
 - [Slack 경보 ETA & 제공자 테이블](rank-api-key-cooldown-monitoring.md): Slack/Webhook 경보가 다음 재시도 ETA를 안내하고, 제공자 테이블에도 ETA 열이 추가돼 운영 대응이 빨라졌습니다.
 - [쿨다운 감사 로그 적재](rank-blueprint-progress-2025-11-06.md#next-steps): `/api/rank/cooldown-report`·`/api/rank/cooldown-digest`가 `rank_api_key_audit`에 자동화 결과를 남겨 재시도 이력을 문서화하도록 확장했습니다.
 - [API 키 회수 감사 스키마 초안](supabase-ddl-export.md#6-rank_api_key_audit-감사-로그-초안-2025-11-08-업데이트): `rank_api_key_audit` 테이블을 정의해 Edge Function 재시도, Slack 경보, 수동 회수 이력을 한 테이블에서 추적할 수 있도록 준비했습니다.

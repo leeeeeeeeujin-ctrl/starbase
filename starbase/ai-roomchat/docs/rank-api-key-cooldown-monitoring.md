@@ -32,7 +32,7 @@
   - `latestLimit` 쿼리 파라미터로 최근 시도 목록 길이를 조정할 수 있으며 최대 50개까지 허용됩니다.
   - 응답의 `alerts` 필드는 기본 임계값(실패 비율 25%/45%, 쿨다운 비중 20%/40%, 알림 30초/60초, 교체 60초/180초, 연속 재시도 3/5회, 런북 링크 첨부율 85%/65%, 최신 첨부율 90%/70%)을 적용해 위험도(`ok`/`warning`/`critical`)를 판별합니다.
   - 관리자 포털(`/admin/portal`)에 **API 키 쿨다운 대시보드**가 추가돼 전체 요약, 제공자별 테이블, 최근 시도, 임계값을 시각적으로 확인할 수 있습니다.
-  - 요약 카드 중 “현재 쿨다운 키”는 `cooldown-retry-schedule`의 추천 ETA를 함께 표기해 Edge Function이 다음으로 실행될 시점을 바로 파악할 수 있습니다.
+  - 요약 카드 중 “현재 쿨다운 키”는 `ETA 새로고침` 버튼으로 수동 계산을 트리거하며, 최신으로 불러온 `cooldown-retry-schedule` 추천 ETA를 함께 표기해 Edge Function이 다음으로 실행될 시점을 운영자가 확인할 수 있습니다.
   - 제공자 테이블에는 `다음 재시도 ETA` 열이 추가돼 각 제공자의 활성 쿨다운 키가 언제 다시 자동화될 예정인지 한눈에 비교할 수 있습니다.
   - 임계값 패널은 게이지 카드로 현재 지표와 경고/위험 구간을 나란히 표시해 런북 링크 첨부율·실패율·평균 소요 시간의 추세를 즉시 읽어낼 수 있습니다.
   - 임계값을 넘어선 항목은 즉시 강조되며, 각 이슈에 대해 재시도 정책 변경·키 교체 우선순위를 결정할 수 있습니다.
@@ -103,7 +103,7 @@
 - **동적 백오프 계산**: `GET /api/rank/cooldown-retry-schedule`은 `cooldownId` 또는 `keyHash`를 받아 `rank_api_key_audit` 감사 로그를 조회하고, 최근 실패 스트릭·평균 응답 시간·문서 첨부율을 기반으로 다음 재시도 지연(`recommendedDelayMs`)과 실행 시각(`recommendedRunAt`)을 반환합니다. 실패율이 높거나 응답 시간이 길어질수록 기본 3/5/10분 간격을 가중치(최대 30분)와 지터(5~45초)로 조정합니다.
 - **감사 로그 연동**: 응답의 `plan.auditTrail`에는 최근 10건의 시도 상태, HTTP 지속 시간, 문서 첨부 여부가 포함돼 Edge Function이 동일한 데이터를 참고해 재시도 여부를 결정할 수 있습니다. `summary.failureRate`와 `docLinkAttachmentRate`는 대시보드·텔레메트리 지표와 동일한 방식으로 계산됩니다.
 - **재시도 중단 조건**: 최신 감사 로그가 `succeeded` 혹은 `manual_override`이면 `shouldRetry: false`와 함께 중단 사유가 표기되며, 연속 실패가 3회를 넘으면 `max_retries_exhausted`로 더 이상 스케줄을 제안하지 않습니다. 감사 로그나 `metadata.cooldownAutomation.retryState.nextRetryAt`에 예약된 ETA가 있으면 해당 시각 이후로 자동 조정됩니다.
-- **활용 예시**: Edge Function이 재시도 루프를 돌 때 각 주기마다 API를 호출해 `plan.shouldRetry`가 `true`인 경우에만 Slack/Webhook을 재호출하고, 실패 시 응답의 `recommendedDelayMs`만큼 `setTimeout`/Cron 대기 시간을 조정하면 감사 로그에 기록된 실측 데이터와 운영자가 조정한 노트를 그대로 반영할 수 있습니다.
+- **활용 예시**: Edge Function 재시도 전 운영자가 필요할 때마다 대시보드의 `ETA 새로고침`을 눌러 API를 수동 호출하고(`GET /api/rank/cooldown-retry-schedule`), `plan.shouldRetry`가 `true`이고 `recommendedDelayMs`가 제공될 때만 후속 재시도 일정을 갱신합니다. 자동 루프 대신 필요한 순간에만 새로고침해 비용을 통제할 수 있습니다.
 
 ### Retry 상태 추적 및 대시보드 연동 (2025-11-07 업데이트)
 - **상태 머신**: `pending` → `retrying (n=1~3)` → `succeeded | failed` 단계별로 `metadata.cooldownAutomation.retryState`에 `attempt`, `nextRetryAt`, `lastResult` 필드를 누적해 JSON으로 저장합니다.

@@ -369,7 +369,7 @@ function IssueList({ issues }) {
   )
 }
 
-function SummaryCard({ title, value, helper, status }) {
+function SummaryCard({ title, value, helper, status, actions }) {
   return (
     <article className={styles.summaryCard}>
       <header className={styles.summaryHeader}>
@@ -378,6 +378,7 @@ function SummaryCard({ title, value, helper, status }) {
       </header>
       <p className={styles.summaryValue}>{value}</p>
       {helper && <p className={styles.summaryHelper}>{helper}</p>}
+      {actions ? <div className={styles.summaryFooter}>{actions}</div> : null}
     </article>
   )
 }
@@ -518,6 +519,7 @@ export default function CooldownDashboard() {
     eta: null,
     sampleSize: 0,
     error: null,
+    lastUpdatedAt: null,
   })
   const favoritesFeedbackTimeoutRef = useRef(null)
   const shareFeedbackTimeoutRef = useRef(null)
@@ -979,103 +981,105 @@ export default function CooldownDashboard() {
 
   useEffect(() => {
     if (!triggeredCooldownTargets.length) {
-      setRetryScheduleState({ loading: false, eta: null, sampleSize: 0, error: null })
+      setRetryScheduleState({
+        loading: false,
+        eta: null,
+        sampleSize: 0,
+        error: null,
+        lastUpdatedAt: null,
+      })
+    }
+  }, [triggeredCooldownTargets])
+
+  const handleRefreshRetrySchedule = useCallback(async () => {
+    if (!triggeredCooldownTargets.length) {
+      setRetryScheduleState({
+        loading: false,
+        eta: null,
+        sampleSize: 0,
+        error: 'no_targets',
+        lastUpdatedAt: null,
+      })
       return
     }
 
-    let cancelled = false
+    setRetryScheduleState({
+      loading: true,
+      eta: null,
+      sampleSize: triggeredCooldownTargets.length,
+      error: null,
+      lastUpdatedAt: null,
+    })
 
-    async function loadRetrySchedules() {
-      setRetryScheduleState({
-        loading: true,
-        eta: null,
-        sampleSize: triggeredCooldownTargets.length,
-        error: null,
-      })
+    const results = []
 
-      const results = []
+    for (const entry of triggeredCooldownTargets) {
+      const params = new URLSearchParams()
+      if (entry.id) {
+        params.set('cooldownId', entry.id)
+      } else if (entry.keyHash) {
+        params.set('keyHash', entry.keyHash)
+      } else {
+        continue
+      }
 
-      for (const entry of triggeredCooldownTargets) {
-        if (cancelled) {
-          return
-        }
-
-        const params = new URLSearchParams()
-        if (entry.id) {
-          params.set('cooldownId', entry.id)
-        } else if (entry.keyHash) {
-          params.set('keyHash', entry.keyHash)
-        } else {
+      try {
+        const response = await fetch(`/api/rank/cooldown-retry-schedule?${params.toString()}`)
+        if (!response.ok) {
           continue
         }
-
-        try {
-          const response = await fetch(`/api/rank/cooldown-retry-schedule?${params.toString()}`)
-          if (!response.ok) {
-            continue
-          }
-          const payload = await response.json()
-          const plan = payload?.plan || {}
-          if (plan.recommendedRunAt) {
-            results.push({
-              eta: plan.recommendedRunAt,
-              delayMs: typeof plan.recommendedDelayMs === 'number' ? plan.recommendedDelayMs : null,
-            })
-          }
-        } catch (error) {
-          if (cancelled) {
-            return
-          }
+        const payload = await response.json()
+        const plan = payload?.plan || {}
+        if (plan.recommendedRunAt) {
+          results.push({
+            eta: plan.recommendedRunAt,
+            delayMs: typeof plan.recommendedDelayMs === 'number' ? plan.recommendedDelayMs : null,
+          })
         }
+      } catch (error) {
+        // ignore individual failures so the operator can retry manually
       }
+    }
 
-      if (cancelled) {
-        return
-      }
-
-      if (!results.length) {
-        setRetryScheduleState({
-          loading: false,
-          eta: null,
-          sampleSize: triggeredCooldownTargets.length,
-          error: 'missing_eta',
-        })
-        return
-      }
-
-      results.sort((a, b) => {
-        const aTime = Date.parse(a.eta || '')
-        const bTime = Date.parse(b.eta || '')
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
-        if (Number.isNaN(aTime)) return 1
-        if (Number.isNaN(bTime)) return -1
-        return aTime - bTime
-      })
-
-      const next = results.find((entry) => !Number.isNaN(Date.parse(entry.eta || '')))
-      if (!next) {
-        setRetryScheduleState({
-          loading: false,
-          eta: null,
-          sampleSize: triggeredCooldownTargets.length,
-          error: 'missing_eta',
-        })
-        return
-      }
-
+    if (!results.length) {
       setRetryScheduleState({
         loading: false,
-        eta: next.eta,
+        eta: null,
         sampleSize: triggeredCooldownTargets.length,
-        error: null,
+        error: 'missing_eta',
+        lastUpdatedAt: null,
       })
+      return
     }
 
-    loadRetrySchedules()
+    results.sort((a, b) => {
+      const aTime = Date.parse(a.eta || '')
+      const bTime = Date.parse(b.eta || '')
+      if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
+      if (Number.isNaN(aTime)) return 1
+      if (Number.isNaN(bTime)) return -1
+      return aTime - bTime
+    })
 
-    return () => {
-      cancelled = true
+    const next = results.find((entry) => !Number.isNaN(Date.parse(entry.eta || '')))
+    if (!next) {
+      setRetryScheduleState({
+        loading: false,
+        eta: null,
+        sampleSize: triggeredCooldownTargets.length,
+        error: 'missing_eta',
+        lastUpdatedAt: null,
+      })
+      return
     }
+
+    setRetryScheduleState({
+      loading: false,
+      eta: next.eta,
+      sampleSize: triggeredCooldownTargets.length,
+      error: null,
+      lastUpdatedAt: new Date().toISOString(),
+    })
   }, [triggeredCooldownTargets])
 
   useEffect(() => {
@@ -1185,15 +1189,19 @@ export default function CooldownDashboard() {
 
   const etaHelper = (() => {
     if (!triggeredCooldownTargets.length) {
-      return null
+      return '활성 쿨다운 키가 없습니다.'
     }
 
     if (retryScheduleState.loading) {
       return '다음 ETA 계산 중…'
     }
 
-    if (retryScheduleState.error) {
-      return '다음 ETA 정보를 불러오지 못했습니다.'
+    if (retryScheduleState.error === 'missing_eta') {
+      return 'ETA를 계산하지 못했습니다. 다시 시도해 주세요.'
+    }
+
+    if (retryScheduleState.error === 'no_targets') {
+      return '활성 쿨다운 키가 없어 ETA를 계산하지 않았습니다.'
     }
 
     if (retryScheduleState.eta) {
@@ -1203,11 +1211,27 @@ export default function CooldownDashboard() {
       }
       const suffix =
         retryScheduleState.sampleSize > 1 ? ` (${retryScheduleState.sampleSize}건 기준)` : ''
-      return `다음 ETA ${label}${suffix}`
+      const updated = retryScheduleState.lastUpdatedAt
+        ? ` · ${formatEtaLabel(retryScheduleState.lastUpdatedAt)} 기준`
+        : ''
+      return `다음 ETA ${label}${suffix}${updated}`
     }
 
-    return null
+    return 'ETA를 확인하려면 새로고침을 눌러 주세요.'
   })()
+
+  const summaryActions = (
+    <div className={styles.summaryActions}>
+      <button
+        type="button"
+        className={styles.summaryActionButton}
+        onClick={handleRefreshRetrySchedule}
+        disabled={retryScheduleState.loading || !triggeredCooldownTargets.length}
+      >
+        {retryScheduleState.loading ? '새로고침 중…' : 'ETA 새로고침'}
+      </button>
+    </div>
+  )
 
   const cooldownHelperText = joinHelper([
     `권장 백오프 ${formatDuration(telemetry?.totals?.recommendedBackoffMs)}`,
@@ -1261,6 +1285,7 @@ export default function CooldownDashboard() {
             value={formatNumber(telemetry.totals?.currentlyTriggered)}
             helper={cooldownHelperText}
             status={overallStatus.status}
+            actions={summaryActions}
           />
             <SummaryCard
               title="권장 가중치"
