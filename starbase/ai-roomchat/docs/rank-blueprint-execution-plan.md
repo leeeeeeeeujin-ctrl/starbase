@@ -287,5 +287,14 @@
 - `/api/rank/cooldown-telemetry`는 로더가 반환한 값을 활용해 경보 평가를 수행하고, 응답 본문에 실제 적용된 임계값을 포함시켜 관리자 대시보드와 문서가 동일한 기준을 참조합니다.【F:pages/api/rank/cooldown-telemetry.js†L1-L226】
 
 느낀 점: 임계값을 코드 수정 없이 조정할 수 있게 되니 운영팀이 시즌이나 캠페인에 맞춰 기준을 손쉽게 조정할 수 있다는 확신이 생겼습니다.
-추가로 필요한 점: 환경 변수 변경 이력을 기록하는 감사 로그나 Slack 알림을 추가하면 기준 변경이 언제 있었는지 더 빠르게 파악할 수 있을 듯합니다.
+추가로 필요한 점: 감사 알림을 운영 대시보드 카드에도 요약해 언제 기준이 바뀌었는지 UI에서 바로 확인할 수 있게 해야 합니다.
 진행사항: 경보 임계값 설정 파일과 환경 변수 오버라이드 경로를 추가해 운영 가드 단계의 남은 TODO를 해소했습니다.
+
+### 진행 현황 메모 (2025-11-08 임계값 감사)
+
+- `cooldownAlertThresholds` 로더가 이전/이후 임계값을 비교해 감사 트레일을 남기고, Slack/Webhook으로 변경 내역을 통지하도록 `cooldownAlertThresholdAuditTrail` 모듈을 추가했습니다.【F:lib/rank/cooldownAlertThresholdAuditTrail.js†L1-L165】【F:lib/rank/cooldownAlertThresholds.js†L1-L126】
+- 운영 문서와 환경 변수 표에 감사 전용 Webhook 옵션을 기록해 배포 시점과 알림 경로를 명확히 했습니다.【F:docs/rank-api-key-cooldown-monitoring.md†L102-L110】【F:docs/environment-variables.md†L15-L18】
+
+느낀 점: 임계값 변경이 Slack과 감사 로그에 동시에 남으니 운영팀이 배포 원인을 되짚을 근거가 확보돼 든든했습니다.
+추가로 필요한 점: 감사 이벤트를 Telemetry API에도 노출해 최근 변경 이력을 대시보드에서 집계할 수 있도록 후속 연동이 필요합니다.
+진행사항: 임계값 변경 감사/알림 경로를 연결하고 문서에 반영해 운영 가드 단계 진행률을 끌어올렸습니다.

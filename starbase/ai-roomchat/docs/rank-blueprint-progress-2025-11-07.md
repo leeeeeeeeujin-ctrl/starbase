@@ -10,6 +10,7 @@
 - Edge Function 재시도 스케줄러가 `rank_api_key_audit` 감사 로그를 참고해 동적 백오프를 계산하도록 `/api/rank/cooldown-retry-schedule` 엔드포인트를 연결했습니다.
 - 관리자 대시보드의 “현재 쿨다운 키” 카드에 수동 `ETA 새로고침` 버튼을 붙여 Edge Function 재시도 ETA를 불러오고, 다음 실행 시점을 한눈에 확인할 수 있습니다.
 - Slack/Webhook 경보에 런북 링크와 다음 재시도 ETA를 자동으로 첨부하고, 제공자 테이블에도 ETA 열을 추가해 운영자가 재시도 일정을 즉시 확인할 수 있습니다.
+- `RANK_COOLDOWN_ALERT_THRESHOLDS`가 바뀔 때 감사 트레일과 Slack/Webhook 알림에 이전/이후 값이 기록되도록 임계값 감사 흐름을 연결했습니다.
 
 ## Decisions
 - 난입 세션 재시작은 기존 세션 ID 유지 후 `resumeReason`을 명시해 전투 로그가 단절되지 않도록 한다.
@@ -44,6 +45,7 @@
 - 요약 카드에서 `ETA 새로고침`을 눌러 `cooldown-retry-schedule` ETA를 불러오도록 조정해, 운영 대시보드에서도 수동 갱신으로 다음 Edge Function 실행 시간을 확인할 수 있게 했습니다.
 - Slack/Webhook 경보에 자동 ETA 안내를 추가하고, 제공자 테이블 `다음 재시도 ETA` 열로 운영 대시보드에서 재시도 일정을 비교할 수 있도록 했습니다.
 - 쿨다운 경보 임계값을 `config/rank/cooldownAlertThresholds.js`로 분리하고 `RANK_COOLDOWN_ALERT_THRESHOLDS` 환경 변수로 오버라이드할 수 있게 해 운영팀이 필요 시 기준을 즉시 조정하도록 했습니다.
+- 임계값 변경 시 `cooldownAlertThresholds` 로더가 감사 트레일과 Slack/Webhook 알림으로 이전/이후 값을 공유해 환경 변수 조정 이력을 추적할 수 있도록 했습니다.
 
 ### Live Timeline Workflow (2025-11-07 업데이트)
 - **작성 책임**: 세션 진행자가 `Session Timeline` 표에 즉시 메모를 추가하고, 30분 이내에 QA/운영 협업자가 검토 메모를 덧붙입니다.
@@ -90,3 +92,4 @@
 | T+237m | 대시보드 요약 카드에 `ETA 새로고침` 버튼과 스케줄러 ETA 표기를 추가하고, 운영 플레이북에 새 지표 활용법을 기록했습니다. |
 | T+245m | Slack 경보에 다음 재시도 ETA를 추가하고, 제공자 테이블에도 ETA 열을 붙여 재시도 일정을 한 번에 확인하도록 대시보드를 갱신했습니다. |
 | T+253m | 경보 임계값을 환경 변수로 조정할 수 있도록 설정 로더를 추가하고, 문서·대시보드에 적용된 수치를 그대로 노출하는 경로를 확인했습니다. |
+| T+261m | 임계값 로더가 이전/이후 값을 비교해 감사 트레일을 기록하고 Slack/Webhook으로 알림을 보내도록 연결해 환경 변수 변경 이력이 즉시 공유되도록 했습니다. |

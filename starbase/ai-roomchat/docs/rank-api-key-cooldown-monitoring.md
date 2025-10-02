@@ -110,6 +110,8 @@
 - **환경 변수 제어**: 서버 환경에서 `RANK_COOLDOWN_ALERT_THRESHOLDS`를 JSON 문자열로 지정하면 원하는 항목만 선택적으로 덮어쓸 수 있습니다. 예) `{ "failureRate": { "warning": 0.3, "critical": 0.5 } }`
 - **비활성화**: 특정 임계값을 비교하지 않으려면 해당 `warning` 또는 `critical` 값을 `null`로 지정합니다. 파싱에 실패하면 경고가 로그(`console.warn`)로 남고 기본값이 그대로 적용됩니다.
 - **가시성**: API 응답(`GET /api/rank/cooldown-telemetry`)과 관리자 대시보드는 적용된 임계값을 그대로 노출해 현행 기준이 문서·UI와 일치하도록 유지됩니다.
+- **감사·알림 경로 (2025-11-08 업데이트)**: 임계값이 변경될 때마다 `lib/rank/cooldownAlertThresholds.js`가 감사 트레일에 기록하고, `RANK_COOLDOWN_ALERT_AUDIT_WEBHOOK_URL`이 설정된 경우 Slack/Webhook으로 변경 내역을 전송합니다. 감사 알림에는 바뀐 지표와 이전/이후 값이 요약돼 운영자가 배포 히스토리를 재현할 수 있습니다.
+- **Webhook 선택 순서**: 감사용 Webhook이 설정되지 않은 경우 일반 경보용 Webhook(`RANK_COOLDOWN_ALERT_WEBHOOK_URL` → `SLACK_COOLDOWN_ALERT_WEBHOOK_URL`)과 동일한 경로로 알림이 전달됩니다. 별도 채널로 분리하고 싶다면 감사 전용 URL·토큰을 등록하세요.
 
 ### Retry 상태 추적 및 대시보드 연동 (2025-11-07 업데이트)
 - **상태 머신**: `pending` → `retrying (n=1~3)` → `succeeded | failed` 단계별로 `metadata.cooldownAutomation.retryState`에 `attempt`, `nextRetryAt`, `lastResult` 필드를 누적해 JSON으로 저장합니다.

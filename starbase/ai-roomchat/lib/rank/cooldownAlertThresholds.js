@@ -1,8 +1,62 @@
 import cooldownAlertThresholds from '@/config/rank/cooldownAlertThresholds'
+import { recordCooldownThresholdChange } from '@/lib/rank/cooldownAlertThresholdAuditTrail'
 
 const defaultThresholds = Object.freeze({
   ...cooldownAlertThresholds,
 })
+
+let lastResolvedSnapshot = null
+let lastResolvedSignature = null
+
+function cloneThresholds(value = {}) {
+  return JSON.parse(JSON.stringify(value))
+}
+
+function buildThresholdSignature(thresholds = {}) {
+  const normalized = {}
+  const metrics = Object.keys(thresholds).sort()
+
+  for (const metric of metrics) {
+    const group = thresholds[metric] || {}
+    normalized[metric] = {
+      warning:
+        typeof group.warning === 'number'
+          ? Number(group.warning)
+          : group.warning === null
+            ? null
+            : null,
+      critical:
+        typeof group.critical === 'number'
+          ? Number(group.critical)
+          : group.critical === null
+            ? null
+            : null,
+    }
+  }
+
+  return JSON.stringify(normalized)
+}
+
+function maybeAuditThresholdChange(nextThresholds, context) {
+  const signature = buildThresholdSignature(nextThresholds)
+
+  if (lastResolvedSignature && signature !== lastResolvedSignature) {
+    try {
+      recordCooldownThresholdChange({
+        previous: lastResolvedSnapshot,
+        next: nextThresholds,
+        context,
+      })
+    } catch (error) {
+      console.error('[cooldown-alert-thresholds] 감사 로그 전송 실패', {
+        error,
+      })
+    }
+  }
+
+  lastResolvedSnapshot = cloneThresholds(nextThresholds)
+  lastResolvedSignature = signature
+}
 
 function toFiniteNumber(value) {
   const numeric = Number(value)
@@ -78,17 +132,32 @@ export function loadCooldownAlertThresholds(options = {}) {
   const env = options.env || process.env || {}
   const rawValue = env.RANK_COOLDOWN_ALERT_THRESHOLDS
 
-  if (!rawValue) {
-    return { ...defaultThresholds }
+  let overrides = null
+  if (rawValue) {
+    try {
+      overrides = JSON.parse(rawValue)
+    } catch (error) {
+      console.warn('[cooldown-alert-thresholds] Failed to parse overrides', error)
+    }
   }
 
-  try {
-    const parsed = JSON.parse(rawValue)
-    return resolveCooldownAlertThresholds(parsed)
-  } catch (error) {
-    console.warn('[cooldown-alert-thresholds] Failed to parse overrides', error)
-    return { ...defaultThresholds }
+  const resolved = overrides
+    ? resolveCooldownAlertThresholds(overrides)
+    : cloneThresholds(defaultThresholds)
+
+  const context = {
+    source: rawValue
+      ? overrides
+        ? 'env:RANK_COOLDOWN_ALERT_THRESHOLDS'
+        : 'env:RANK_COOLDOWN_ALERT_THRESHOLDS (invalid)'
+      : 'default',
+    rawEnvValue: rawValue || null,
+    overrides: overrides || null,
   }
+
+  maybeAuditThresholdChange(resolved, context)
+
+  return resolved
 }
 
 function compareThresholds(value, thresholds = {}) {
