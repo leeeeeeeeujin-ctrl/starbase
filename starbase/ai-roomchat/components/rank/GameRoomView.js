@@ -717,6 +717,9 @@ export default function GameRoomView({
 
   const [historySearch, setHistorySearch] = useState('')
   const [historyStatusFilter, setHistoryStatusFilter] = useState('all')
+  const [historyParticipantFilter, setHistoryParticipantFilter] = useState('all')
+  const [historyDateFrom, setHistoryDateFrom] = useState('')
+  const [historyDateTo, setHistoryDateTo] = useState('')
 
   const historySearchTokens = useMemo(() => {
     if (!historySearch) return []
@@ -733,6 +736,8 @@ export default function GameRoomView({
       .map((entry) => {
         if (!entry || !entry.sessionId) return null
         const statusInfo = describeSessionStatus(entry.sessionStatus)
+        const createdAtValueRaw = entry.sessionCreatedAt ? Date.parse(entry.sessionCreatedAt) : NaN
+        const createdAtValue = Number.isFinite(createdAtValueRaw) ? createdAtValueRaw : null
         const createdAt = formatDate(entry.sessionCreatedAt)
         const publicTurns = Array.isArray(entry.publicTurns)
           ? entry.publicTurns.filter((turn) => turn?.is_visible !== false)
@@ -757,6 +762,10 @@ export default function GameRoomView({
           )
         })()
         const summary = normalizeSummaryPayload(entry.latestSummary)
+        const summaryActors = Array.isArray(summary?.actors)
+          ? summary.actors.filter((actor) => typeof actor === 'string' && actor.trim().length > 0)
+          : []
+        const participants = summaryActors.length ? Array.from(new Set(summaryActors)) : []
         const searchText = buildHistorySearchText([
           statusInfo.label,
           createdAt,
@@ -764,13 +773,14 @@ export default function GameRoomView({
           summary?.preview,
           summary?.promptPreview,
           summary?.outcomeLine,
-          summary?.actors || [],
+          summaryActors,
           displayTurns.map((turn) => `${turn.role} ${turn.content}`),
         ])
 
         return {
           id: entry.sessionId,
           createdAt,
+          createdAtValue,
           statusLabel: statusInfo.label,
           tone: statusInfo.tone,
           turns: displayTurns.map((turn, index) => ({
@@ -784,6 +794,7 @@ export default function GameRoomView({
           olderShareableCount,
           trimmedTotal,
           summary,
+          participants,
           searchText,
         }
       })
@@ -796,6 +807,8 @@ export default function GameRoomView({
       .map((entry) => {
         if (!entry || !entry.id) return null
         const statusInfo = describeSessionStatus(entry.status)
+        const createdAtValueRaw = entry.created_at ? Date.parse(entry.created_at) : NaN
+        const createdAtValue = Number.isFinite(createdAtValueRaw) ? createdAtValueRaw : null
         const createdAt = formatDate(entry.created_at)
         const turns = Array.isArray(entry.turns) ? entry.turns : []
         const visibleTurns = turns.filter((turn) => turn?.is_visible !== false)
@@ -843,6 +856,18 @@ export default function GameRoomView({
         const trimmedCount = Number(entry.trimmed_count) || 0
         const totalVisible = Number(entry.total_visible_turns) || visibleTurns.length
         const summary = normalizeSummaryPayload(entry.latest_summary)
+        const summaryActors = Array.isArray(summary?.actors)
+          ? summary.actors.filter((actor) => typeof actor === 'string' && actor.trim().length > 0)
+          : []
+        const participantsSet = new Set(summaryActors)
+        if (ownerName) {
+          participantsSet.add(ownerName)
+        }
+        if (viewerIsOwner) {
+          participantsSet.add('내 세션')
+        }
+        const participantList = Array.from(participantsSet)
+
         const searchText = buildHistorySearchText([
           statusInfo.label,
           createdAt,
@@ -852,13 +877,14 @@ export default function GameRoomView({
           summary?.preview,
           summary?.promptPreview,
           summary?.outcomeLine,
-          summary?.actors || [],
+          summaryActors,
           displayTurns.map((turn) => `${turn.role} ${turn.content}`),
         ])
 
         return {
           id: entry.id,
           createdAt,
+          createdAtValue,
           statusLabel: statusInfo.label,
           tone: statusInfo.tone,
           ownerName,
@@ -869,13 +895,55 @@ export default function GameRoomView({
           trimmedCount,
           totalVisible,
           summary,
+          participants: participantList,
           searchText,
         }
       })
       .filter(Boolean)
   }, [sharedSessionHistory, participantsByOwnerId, myHeroDisplayName, myRoleName])
 
-  const historyFiltersActive = historySearchTokens.length > 0 || historyStatusFilter !== 'all'
+  const historyDateFromValue = useMemo(() => {
+    if (!historyDateFrom) return null
+    const parsed = Date.parse(historyDateFrom)
+    return Number.isFinite(parsed) ? parsed : null
+  }, [historyDateFrom])
+
+  const historyDateToValue = useMemo(() => {
+    if (!historyDateTo) return null
+    const parsed = Date.parse(historyDateTo)
+    if (!Number.isFinite(parsed)) {
+      return null
+    }
+    return parsed + 24 * 60 * 60 * 1000 - 1
+  }, [historyDateTo])
+
+  const historyParticipantOptions = useMemo(() => {
+    const values = new Set()
+    baseSessionHistory.forEach((entry) => {
+      if (!entry?.participants) return
+      entry.participants.forEach((name) => {
+        if (typeof name === 'string' && name.trim().length > 0) {
+          values.add(name.trim())
+        }
+      })
+    })
+    baseSharedHistory.forEach((entry) => {
+      if (!entry?.participants) return
+      entry.participants.forEach((name) => {
+        if (typeof name === 'string' && name.trim().length > 0) {
+          values.add(name.trim())
+        }
+      })
+    })
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [baseSessionHistory, baseSharedHistory])
+
+  const historyFiltersActive =
+    historySearchTokens.length > 0 ||
+    historyStatusFilter !== 'all' ||
+    historyParticipantFilter !== 'all' ||
+    !!historyDateFromValue ||
+    !!historyDateToValue
 
   const normalizedSessionHistory = useMemo(() => {
     if (!baseSessionHistory.length) return baseSessionHistory
@@ -883,11 +951,29 @@ export default function GameRoomView({
       if (historyStatusFilter !== 'all' && entry.tone !== historyStatusFilter) {
         return false
       }
+      if (historyParticipantFilter !== 'all') {
+        if (!entry.participants || !entry.participants.includes(historyParticipantFilter)) {
+          return false
+        }
+      }
+      if (historyDateFromValue && (!entry.createdAtValue || entry.createdAtValue < historyDateFromValue)) {
+        return false
+      }
+      if (historyDateToValue && (!entry.createdAtValue || entry.createdAtValue > historyDateToValue)) {
+        return false
+      }
       if (!historySearchTokens.length) return true
       if (!entry.searchText) return false
       return historySearchTokens.every((token) => entry.searchText.includes(token))
     })
-  }, [baseSessionHistory, historySearchTokens, historyStatusFilter])
+  }, [
+    baseSessionHistory,
+    historySearchTokens,
+    historyStatusFilter,
+    historyParticipantFilter,
+    historyDateFromValue,
+    historyDateToValue,
+  ])
 
   const normalizedSharedHistory = useMemo(() => {
     if (!baseSharedHistory.length) return baseSharedHistory
@@ -895,11 +981,29 @@ export default function GameRoomView({
       if (historyStatusFilter !== 'all' && entry.tone !== historyStatusFilter) {
         return false
       }
+      if (historyParticipantFilter !== 'all') {
+        if (!entry.participants || !entry.participants.includes(historyParticipantFilter)) {
+          return false
+        }
+      }
+      if (historyDateFromValue && (!entry.createdAtValue || entry.createdAtValue < historyDateFromValue)) {
+        return false
+      }
+      if (historyDateToValue && (!entry.createdAtValue || entry.createdAtValue > historyDateToValue)) {
+        return false
+      }
       if (!historySearchTokens.length) return true
       if (!entry.searchText) return false
       return historySearchTokens.every((token) => entry.searchText.includes(token))
     })
-  }, [baseSharedHistory, historySearchTokens, historyStatusFilter])
+  }, [
+    baseSharedHistory,
+    historySearchTokens,
+    historyStatusFilter,
+    historyParticipantFilter,
+    historyDateFromValue,
+    historyDateToValue,
+  ])
 
   const handleHistorySearchChange = useCallback((event) => {
     const value = event?.target?.value ?? ''
@@ -911,9 +1015,27 @@ export default function GameRoomView({
     setHistoryStatusFilter(value || 'all')
   }, [])
 
+  const handleHistoryParticipantChange = useCallback((event) => {
+    const value = event?.target?.value ?? 'all'
+    setHistoryParticipantFilter(value || 'all')
+  }, [])
+
+  const handleHistoryDateFromChange = useCallback((event) => {
+    const value = event?.target?.value ?? ''
+    setHistoryDateFrom(value)
+  }, [])
+
+  const handleHistoryDateToChange = useCallback((event) => {
+    const value = event?.target?.value ?? ''
+    setHistoryDateTo(value)
+  }, [])
+
   const handleHistoryFilterReset = useCallback(() => {
     setHistorySearch('')
     setHistoryStatusFilter('all')
+    setHistoryParticipantFilter('all')
+    setHistoryDateFrom('')
+    setHistoryDateTo('')
   }, [])
 
   const sharedHistoryBadgeValue = baseSharedHistory.length
@@ -1438,31 +1560,71 @@ export default function GameRoomView({
           ) : null}
         </div>
         <div className={styles.sessionHistoryControls}>
-          <input
-            type="search"
-            className={styles.sessionHistorySearch}
-            placeholder="요약·참여자·문장 검색"
-            value={historySearch}
-            onChange={handleHistorySearchChange}
-            aria-label="세션 요약 검색"
-            autoComplete="off"
-          />
-          <select
-            className={styles.sessionHistoryFilter}
-            value={historyStatusFilter}
-            onChange={handleHistoryStatusChange}
-            aria-label="세션 상태 필터"
-          >
-            <option value="all">전체 상태</option>
-            <option value="completed">종료된 세션</option>
-            <option value="active">진행 중</option>
-            <option value="failed">중단됨</option>
-          </select>
-          {historyFiltersActive ? (
-            <button type="button" className={styles.sessionHistoryClear} onClick={handleHistoryFilterReset}>
-              필터 초기화
-            </button>
-          ) : null}
+          <div className={styles.sessionHistoryControlRow}>
+            <input
+              type="search"
+              className={styles.sessionHistorySearch}
+              placeholder="요약·참여자·문장 검색"
+              value={historySearch}
+              onChange={handleHistorySearchChange}
+              aria-label="세션 요약 검색"
+              autoComplete="off"
+            />
+            <select
+              className={styles.sessionHistoryFilter}
+              value={historyStatusFilter}
+              onChange={handleHistoryStatusChange}
+              aria-label="세션 상태 필터"
+            >
+              <option value="all">전체 상태</option>
+              <option value="completed">종료된 세션</option>
+              <option value="active">진행 중</option>
+              <option value="failed">중단됨</option>
+            </select>
+            {historyParticipantOptions.length ? (
+              <select
+                className={styles.sessionHistoryFilter}
+                value={historyParticipantFilter}
+                onChange={handleHistoryParticipantChange}
+                aria-label="참여자 필터"
+              >
+                <option value="all">전체 참여자</option>
+                {historyParticipantOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {historyFiltersActive ? (
+              <button type="button" className={styles.sessionHistoryClear} onClick={handleHistoryFilterReset}>
+                필터 초기화
+              </button>
+            ) : null}
+          </div>
+          <div className={styles.sessionHistoryControlRow}>
+            <label className={styles.sessionHistoryDateLabel}>
+              <span className={styles.sessionHistoryDateText}>시작일</span>
+              <input
+                type="date"
+                className={`${styles.sessionHistoryFilter} ${styles.sessionHistoryDateInput}`}
+                value={historyDateFrom}
+                onChange={handleHistoryDateFromChange}
+                aria-label="시작일 필터"
+              />
+            </label>
+            <label className={styles.sessionHistoryDateLabel}>
+              <span className={styles.sessionHistoryDateText}>종료일</span>
+              <input
+                type="date"
+                className={`${styles.sessionHistoryFilter} ${styles.sessionHistoryDateInput}`}
+                value={historyDateTo}
+                onChange={handleHistoryDateToChange}
+                aria-label="종료일 필터"
+                min={historyDateFrom || undefined}
+              />
+            </label>
+          </div>
         </div>
         {normalizedSharedHistory.length ? (
           <ul className={styles.sessionHistoryList}>

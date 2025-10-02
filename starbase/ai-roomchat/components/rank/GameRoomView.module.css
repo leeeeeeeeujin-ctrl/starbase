@@ -1552,10 +1552,16 @@
 
 .sessionHistoryControls {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+
+.sessionHistoryControlRow {
+  display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  margin: 12px 0 16px;
 }
 
 .sessionHistorySearch {
@@ -1600,6 +1606,25 @@
   box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.35);
 }
 
+.sessionHistoryDateLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.sessionHistoryDateText {
+  padding-left: 4px;
+}
+
+.sessionHistoryDateInput {
+  min-width: 150px;
+  font-size: 13px;
+}
+
 .sessionHistoryClear {
   flex: 0 0 auto;
   padding: 8px 14px;
@@ -1627,14 +1652,19 @@
 }
 
 @media (max-width: 768px) {
-  .sessionHistoryControls {
+  .sessionHistoryControlRow {
     flex-direction: column;
     align-items: stretch;
   }
 
   .sessionHistorySearch,
   .sessionHistoryFilter,
-  .sessionHistoryClear {
+  .sessionHistoryClear,
+  .sessionHistoryDateInput {
+    width: 100%;
+  }
+
+  .sessionHistoryDateLabel {
     width: 100%;
   }
 
