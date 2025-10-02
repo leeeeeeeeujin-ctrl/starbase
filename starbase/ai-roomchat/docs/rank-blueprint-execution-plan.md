@@ -72,7 +72,7 @@
 1. (완료) 듀오/캐주얼 모드에서 자동 매칭 확정 후 `/api/rank/play`를 호출하도록 `AutoMatchProgress`를 확장했다.【F:components/rank/AutoMatchProgress.js†L333-L432】
 2. (완료) `prompt.js`에 슬롯→변수 매핑 프로토타입을 추가하고, 제작기 노드 메타데이터와 구조를 비교 분석한다.
 3. (완료) `rank_turns` 히스토리를 메인 룸 히스토리 탭과 AI 전용 뷰어 UI에 연결하기 위한 스펙 초안을 작성한다.【F:starbase/ai-roomchat/docs/rank-turn-history-spec.md†L1-L194】
-4. API 키 고갈 감지에 필요한 로그 저장소 설계(테이블 이름, 주요 컬럼, TTL 정책)를 초안으로 작성한다.
+4. (완료) API 키 고갈 감지에 필요한 감사 로그(`rank_api_key_audit`) 스키마와 핵심 컬럼·인덱스를 설계해 Supabase DDL 문서에 반영한다.【F:ai-roomchat/docs/supabase-ddl-export.md†L117-L154】
 
 ## 7. 남은 청사진 세부 계획(업데이트)
 
@@ -91,9 +91,11 @@
 - **목표 세분화**
   - `recordBattle`이 공격/방어 다중 결과를 atomic update로 처리하고, `rank_participants`의 `engaged` 타임아웃 해제 로직을 Edge Function으로 구현한다.
   - 턴 로그 저장 시 승/패/탈락/재참전 이벤트를 단일 히스토리 메시지로 묶어 클라이언트가 재조합 없이 사용할 수 있도록 한다.
-- **필요 산출물**
-  - Supabase SQL 마이그레이션 초안(`rank_battle_logs` 가시성, `rank_sessions` 상태 컬럼 확장).
-  - QA 시나리오: 비실시간 방어전, 난입 교체 직후 연속 턴 진행, 동시 공격·방어 승패 처리.
+  - **진행 상황 메모**
+    - `/api/rank/run-turn`·`/api/rank/log-turn`이 `is_visible`·`summary_payload` 필드를 채우고, `GET /api/rank/sessions`가 요약·숨김 정보를 반환하도록 구현돼 세션 히스토리 파이프라인의 1차 목표가 가동 중입니다.
+  - **필요 산출물**
+    - Supabase SQL 마이그레이션 초안(`rank_battle_logs` 가시성, `rank_sessions` 상태 컬럼 확장).
+    - QA 시나리오: 비실시간 방어전, 난입 교체 직후 연속 턴 진행, 동시 공격·방어 승패 처리.
 - **사전 조건**: 단계 1의 일관된 세션 생성과 매치 종료 이벤트 전달이 완료돼야 함.
 
 ### 7.3 단계 3 — 프롬프트 변수 자동화
@@ -197,6 +199,13 @@
 - `useGameRoom`이 역할별 참가자를 정렬·집계해 상위 5명 데이터를 제공함으로써 메인 룸이 추가 쿼리 없이 리더보드를 노출할 수 있게 됐습니다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L830-L907】
 - `GameRoomView`에 역할별 리더보드 섹션과 전용 스타일을 추가해 모바일 레이아웃에서도 각 역할의 상위 선수와 통계를 즉시 확인할 수 있습니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L915-L1007】【F:starbase/ai-roomchat/components/rank/GameRoomView.module.css†L264-L348】
 
+### 진행 현황 메모 (2025-11-08 추가)
+
+- `/api/rank/cooldown-report`와 `/api/rank/cooldown-digest`가 `rank_api_key_audit` 감사 로그를 직접 적재해 자동화 시도·재시도 윈도우·런북 링크 첨부 여부를 한 테이블에서 추적할 수 있게 됐습니다.【F:pages/api/rank/cooldown-report.js†L15-L123】【F:pages/api/rank/cooldown-digest.js†L11-L147】【F:lib/rank/cooldownAudit.js†L1-L118】
+- 운영 가드 단계의 남은 TODO였던 감사 로깅이 코드에 연결되면서 문서상의 5시간 쿨다운 공유 흐름이 실서비스 경보와 동기화됐습니다.【F:docs/rank-blueprint-progress-2025-11-06.md†L9-L13】【F:docs/rank-blueprint-overview.md†L32-L70】
+- `GET /api/rank/cooldown-retry-schedule`이 감사 로그와 쿨다운 메타데이터를 모아 Edge Function 재시도 백오프를 동적으로 조정하도록 연동됐습니다.【F:pages/api/rank/cooldown-retry-schedule.js†L1-L104】【F:lib/rank/cooldownRetryScheduler.js†L1-L216】【F:docs/rank-api-key-cooldown-monitoring.md†L89-L118】
+- 관리자 대시보드 요약 카드가 수동 `ETA 새로고침` 버튼으로 `cooldown-retry-schedule` ETA를 불러와 Edge Function 재시도 예정 시각을 운영팀이 즉시 확인할 수 있습니다.【F:components/admin/CooldownDashboard.js†L1001-L1107】【F:docs/rank-api-key-cooldown-monitoring.md†L32-L47】
+
 느낀 점: 메인 룸에서 바로 역할별 순위를 확인할 수 있으니 남은 UI 정리가 한층 수월해질 것 같아 작업 내내 보람찼습니다.
 추가로 필요한 점: 시즌 전체나 최근 경기 기준의 통합 리더보드를 Drawer에 통합해 모드별 비교도 가능하도록 후속 설계를 해야 합니다.
 진행사항: `useGameRoom` 파생 데이터를 확장하고 메인 룸 UI에 리더보드 패널을 도입했으며, 실행 플랜에 이번 진척을 기록했습니다.
@@ -234,3 +243,49 @@
 느낀 점: 로컬에서만 보이던 쿨다운 정보가 서버 로그와 연결되니 운영팀이 즉시 반응할 수 있겠다는 든든함이 생겼습니다.
 추가로 필요한 점: Slack/Webhook 통지와 자동 키 교체 스크립트를 마련해 알림 이후의 대응 속도까지 끌어올려야 합니다.
  진행사항: 쿨다운 이벤트를 서버에 보고하고, 수동/사내 스케줄러 다이제스트로 미처리 이벤트를 정리하는 경보 파이프라인을 완성했습니다.
+
+### 진행 현황 메모 (2025-11-07 보강)
+
+- 듀오·캐주얼 재시작 회귀 테스트(DC-01~03)를 `rank-blueprint-test-plan.md`에 추가해 `/api/rank/play` 재사용 흐름의 QA 범위를 확장했습니다.【F:docs/rank-blueprint-test-plan.md†L86-L101】
+- `rank_turns`의 `is_visible`·`summary_payload` 컬럼과 인덱스 초안을 `supabase-ddl-export.md`에 정리해 마이그레이션 사전 점검이 가능해졌습니다.【F:docs/supabase-ddl-export.md†L111-L134】
+- Webhook 3-5-10분 백오프 및 수동 회수 절차를 `rank-api-key-cooldown-monitoring.md`에 추가해 운영팀이 공유 기준을 즉시 참고할 수 있게 했습니다.【F:docs/rank-api-key-cooldown-monitoring.md†L89-L108】
+- 단계별 진행률을 재계산해 청사진 개요 문서에 공유, 현재 작업량 대비 완료 비율을 수치화했습니다.【F:docs/rank-blueprint-overview.md†L47-L63】
+
+느낀 점: 테스트·DDL·운영 문서를 한 번에 조정하니 남은 블루프린트 항목이 서로 어떤 의존성을 갖는지 분명해져 다음 단계 준비가 한층 수월해졌습니다.
+추가로 필요한 점: 제작기에서 저장하기 전에 버전 불일치를 경고하거나 자동 갱신할 수 있는 UX/백엔드 훅을 마련해야 운영자가 반복 저장에 쓰는 시간을 줄일 수 있습니다.
+진행사항: 재시작 QA 플랜, `rank_turns` 마이그레이션 스크립트, Webhook 재시도 전략, 진행률 지표를 문서에 반영해 청사진 남은 부분을 정리했습니다.
+
+### 진행 현황 메모 (2025-11-07 라이브 워크플로 업데이트)
+
+- 2025-11-07 진행 로그에 라이브 타임라인 작성/검토/커밋 루프를 정비해 세션 중 메모가 바로 합의·문서 업데이트로 이어지도록 표준 절차를 확립했습니다.【F:docs/rank-blueprint-progress-2025-11-07.md†L24-L64】【F:docs/rank-blueprint-progress-2025-11-07.md†L118-L140】
+- Edge Function Webhook 재시도 상태 머신과 대시보드 노출 필드를 확정해 Slack 에스컬레이션 및 수동 다이제스트 회수 루틴을 운영팀이 즉시 따를 수 있게 했습니다.【F:docs/rank-blueprint-progress-2025-11-07.md†L66-L70】【F:docs/rank-api-key-cooldown-monitoring.md†L89-L105】
+
+느낀 점: 실시간 기록과 운영 런북이 동시에 정리되니 청사진 변경이 발생해도 관련자들이 같은 맥락을 공유할 수 있어 마음이 한층 든든했습니다.
+추가로 필요한 점: Slack 자동 요약 봇이 문서 링크를 함께 첨부하도록 Edge Function 통지를 확장하면 워크플로가 더 매끄럽게 이어질 듯합니다.
+진행사항: 라이브 타임라인·Webhook 재시도 운영 가이드를 실행 플랜에 편입해 문서 간 동기화 체계를 강화했습니다.
+
+### 진행 현황 메모 (2025-11-08 추가)
+
+- API 키 쿨다운 자동화/회수 흐름을 추적할 `rank_api_key_audit` 감사 테이블 구조를 확정하고, 상태·재시도·문서 첨부 정보를 JSON과 타임스탬프 컬럼으로 보관하도록 정의했습니다.【F:ai-roomchat/docs/supabase-ddl-export.md†L117-L154】
+- 감사 테이블 도입으로 운영 가드 단계에서 남은 작업(Edge Function 이벤트 생산, 대시보드 노출) 대비 스키마 기반이 마련돼 마이그레이션 준비가 수월해졌습니다.【F:ai-roomchat/docs/rank-blueprint-overview.md†L64-L85】
+
+느낀 점: 감사 로그 뼈대를 미리 확보하니 자동화 실패 경로를 데이터로 되짚을 수 있을 것 같아 운영 관점에서 마음이 놓였습니다.
+추가로 필요한 점: Edge Function이 감사 테이블에 직접 쓰기 전, 스테이징 환경에서 RLS·서비스 롤 권한을 검증할 체크리스트가 필요합니다.
+진행사항: 감사 테이블 스키마와 진행률 반영을 통해 운영 가드 단계의 설계 준비도를 끌어올렸습니다.
+
+### 진행 현황 메모 (2025-11-08 보강)
+
+- `buildTurnSummaryPayload` 헬퍼를 추가해 `run-turn`·`log-turn` API가 `is_visible`·`summary_payload`를 일관되게 적재하고, 세션 히스토리 응답에 `latest_summary`와 숨김 카운트를 노출하도록 보강했습니다.【F:lib/rank/turnSummary.js†L1-L75】【F:pages/api/rank/run-turn.js†L1-L210】【F:pages/api/rank/log-turn.js†L1-L190】【F:pages/api/rank/sessions.js†L1-L200】
+
+느낀 점: 서버 레이어에서 요약 메타를 생성하니 히스토리 UI와 QA가 재사용할 공통 포맷이 확보되어 단계 2 연동 작업이 탄력을 받는다는 확신이 들었습니다.
+추가로 필요한 점: 새 필드를 소비하는 UI·테스트 케이스를 빠르게 보강해 실제 세션 뷰에서 요약 데이터가 보이도록 해야 합니다.
+진행사항: 턴 기록 파이프라인과 세션 조회 API를 업데이트해 청사진에서 미뤄뒀던 로그 요약/가시성 요구사항을 코드로 연결했습니다.
+
+### 진행 현황 메모 (2025-11-08 경보 임계값)
+
+- 쿨다운 경보 임계값 기본 구성을 `config/rank/cooldownAlertThresholds.js`에 옮기고, 환경 변수 `RANK_COOLDOWN_ALERT_THRESHOLDS`를 통해 JSON 형태로 각 항목을 덮어쓸 수 있도록 로더를 추가했습니다.【F:config/rank/cooldownAlertThresholds.js†L1-L21】【F:lib/rank/cooldownAlertThresholds.js†L1-L120】
+- `/api/rank/cooldown-telemetry`는 로더가 반환한 값을 활용해 경보 평가를 수행하고, 응답 본문에 실제 적용된 임계값을 포함시켜 관리자 대시보드와 문서가 동일한 기준을 참조합니다.【F:pages/api/rank/cooldown-telemetry.js†L1-L226】
+
+느낀 점: 임계값을 코드 수정 없이 조정할 수 있게 되니 운영팀이 시즌이나 캠페인에 맞춰 기준을 손쉽게 조정할 수 있다는 확신이 생겼습니다.
+추가로 필요한 점: 환경 변수 변경 이력을 기록하는 감사 로그나 Slack 알림을 추가하면 기준 변경이 언제 있었는지 더 빠르게 파악할 수 있을 듯합니다.
+진행사항: 경보 임계값 설정 파일과 환경 변수 오버라이드 경로를 추가해 운영 가드 단계의 남은 TODO를 해소했습니다.

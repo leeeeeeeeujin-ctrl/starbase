@@ -9,9 +9,9 @@ import {
 } from '../../../lib/variableRules'
 import { normalizeVisibleList } from './graphTransforms'
 
-const TAB_LABELS = { selection: '선택', guide: '가이드' }
+const TAB_LABELS = { selection: '선택', guide: '가이드', history: '히스토리' }
 
-export const variablePanelTabs = ['selection', 'guide']
+export const variablePanelTabs = ['selection', 'guide', 'history']
 
 export function useGraphSelection(nodes, setNodes) {
   const [selectedNodeId, setSelectedNodeId] = useState(null)

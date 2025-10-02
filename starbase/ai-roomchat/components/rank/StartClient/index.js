@@ -140,6 +140,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     activeGlobal,
     activeLocal,
     statusMessage,
+    promptMetaWarning,
     apiKeyWarning,
     logs,
     aiMemory,
@@ -187,14 +188,18 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
   const audioBaselineRef = useRef(null)
 
   const bannerMessage = useMemo(() => {
-    if (apiKeyWarning && statusMessage) {
-      if (statusMessage.includes(apiKeyWarning)) {
-        return statusMessage
-      }
-      return `${apiKeyWarning}\n${statusMessage}`
-    }
-    return apiKeyWarning || statusMessage
-  }, [apiKeyWarning, statusMessage])
+    const parts = [promptMetaWarning, apiKeyWarning, statusMessage]
+      .map((part) => (part ? String(part) : ''))
+      .filter((part) => part.trim().length)
+    if (!parts.length) return ''
+    const seen = new Set()
+    const deduped = parts.filter((part) => {
+      if (seen.has(part)) return false
+      seen.add(part)
+      return true
+    })
+    return deduped.join('\n')
+  }, [promptMetaWarning, apiKeyWarning, statusMessage])
 
   const rosterEntries = useMemo(
     () =>
