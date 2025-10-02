@@ -61,6 +61,115 @@ function formatDurationFromNow(iso) {
   return `${days}일 전`
 }
 
+function startOfWeek(date) {
+  const result = new Date(date.getTime())
+  const day = result.getUTCDay()
+  const diff = (day + 6) % 7
+  result.setUTCDate(result.getUTCDate() - diff)
+  result.setUTCHours(0, 0, 0, 0)
+  return result
+}
+
+function normaliseWeeklyBuckets(buckets = [], { weeks = 12, now = new Date() } = {}) {
+  const totalWeeks = Number.isFinite(weeks) && weeks > 0 ? Math.min(Math.floor(weeks), 52) : 12
+  const anchor = startOfWeek(now instanceof Date ? now : new Date())
+  const map = new Map()
+
+  if (Array.isArray(buckets)) {
+    for (const bucket of buckets) {
+      if (!bucket || !bucket.weekStart) continue
+      const parsed = new Date(bucket.weekStart)
+      if (Number.isNaN(parsed.getTime())) continue
+      const key = startOfWeek(parsed).toISOString()
+      map.set(key, {
+        eventCount: Number.isFinite(bucket.eventCount) ? bucket.eventCount : Number(bucket.eventCount) || 0,
+        uniqueOwners: Number.isFinite(bucket.uniqueOwners) ? bucket.uniqueOwners : Number(bucket.uniqueOwners) || 0,
+        uniqueProfiles: Number.isFinite(bucket.uniqueProfiles)
+          ? bucket.uniqueProfiles
+          : Number(bucket.uniqueProfiles) || 0,
+      })
+    }
+  }
+
+  const result = []
+  for (let index = totalWeeks - 1; index >= 0; index -= 1) {
+    const weekDate = new Date(anchor.getTime() - index * 7 * 24 * 60 * 60 * 1000)
+    const key = weekDate.toISOString()
+    const entry = map.get(key) || { eventCount: 0, uniqueOwners: 0, uniqueProfiles: 0 }
+    result.push({ weekStart: key, ...entry })
+  }
+
+  return result
+}
+
+function formatWeekLabel(iso) {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
+}
+
+function formatWeekRangeTooltip(iso) {
+  if (!iso) return '주간 데이터 없음'
+  const start = new Date(iso)
+  if (Number.isNaN(start.getTime())) return '주간 데이터 없음'
+  const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000)
+  const startLabel = start.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
+  const endLabel = end.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
+  return `${startLabel} ~ ${endLabel}`
+}
+
+function formatNumber(value) {
+  if (!Number.isFinite(value)) {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) {
+      return '0'
+    }
+    return new Intl.NumberFormat('ko-KR').format(parsed)
+  }
+  return new Intl.NumberFormat('ko-KR').format(value)
+}
+
+function summariseTrend(buckets = []) {
+  if (!Array.isArray(buckets) || buckets.length === 0) {
+    return null
+  }
+
+  const current = buckets[buckets.length - 1]
+  const previous = buckets[buckets.length - 2] || { eventCount: 0, uniqueOwners: 0, uniqueProfiles: 0 }
+  const deltaCount = (current.eventCount || 0) - (previous.eventCount || 0)
+  const deltaPercent = previous.eventCount > 0
+    ? ((current.eventCount - previous.eventCount) / previous.eventCount) * 100
+    : current.eventCount > 0
+    ? 100
+    : 0
+
+  let direction = 'flat'
+  if (deltaCount > 0) direction = 'up'
+  if (deltaCount < 0) direction = 'down'
+
+  return {
+    current,
+    previous,
+    deltaCount,
+    deltaPercent,
+    direction,
+  }
+}
+
+function formatTrendDelta(summary) {
+  if (!summary) return '—'
+  if (summary.previous.eventCount === 0 && summary.current.eventCount > 0) {
+    return `신규 +${summary.current.eventCount}건`
+  }
+  if (summary.deltaCount === 0) {
+    return '변화 없음'
+  }
+  const symbol = summary.deltaCount > 0 ? '+' : '−'
+  const percent = Number.isFinite(summary.deltaPercent) ? Math.abs(summary.deltaPercent).toFixed(1) : '0.0'
+  return `${symbol}${Math.abs(summary.deltaCount)}건 (${percent}%)`
+}
+
 function buildQueryString({ ownerId, profileKey, heroId, since, search, eventTypes }) {
   const params = new URLSearchParams()
   params.set('limit', String(API_LIMIT))
@@ -92,6 +201,13 @@ export default function AudioEventMonitor() {
     availableEventTypes: [],
   })
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null)
+  const [trendData, setTrendData] = useState({
+    buckets: [],
+    range: { since: null, until: null, lookbackWeeks: 0 },
+  })
+  const [trendLoading, setTrendLoading] = useState(true)
+  const [trendError, setTrendError] = useState(null)
+  const [trendUpdatedAt, setTrendUpdatedAt] = useState(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -123,6 +239,11 @@ export default function AudioEventMonitor() {
       }),
     [ownerId, profileKey, heroId, since, searchTerm, selectedEventTypes],
   )
+
+  const trendQueryString = useMemo(() => {
+    const base = queryString ? `${queryString}&trend=weekly` : 'trend=weekly'
+    return base
+  }, [queryString])
 
   const loadEvents = useCallback(
     async (withSpinner = false) => {
@@ -166,19 +287,51 @@ export default function AudioEventMonitor() {
     [queryString],
   )
 
+  const loadTrend = useCallback(
+    async (withSpinner = false) => {
+      if (withSpinner) {
+        setTrendLoading(true)
+      }
+      try {
+        const endpoint = trendQueryString
+          ? `/api/admin/audio-events?${trendQueryString}`
+          : '/api/admin/audio-events?trend=weekly'
+        const response = await fetch(endpoint)
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload.error || '주간 추이를 불러오지 못했습니다.')
+        }
+        const payload = await response.json()
+        setTrendData({
+          buckets: Array.isArray(payload.buckets) ? payload.buckets : [],
+          range: payload.range || { since: null, until: null, lookbackWeeks: 0 },
+        })
+        setTrendError(null)
+        setTrendUpdatedAt(new Date().toISOString())
+      } catch (err) {
+        setTrendError(err.message || '주간 추이를 불러오지 못했습니다.')
+      } finally {
+        setTrendLoading(false)
+      }
+    },
+    [trendQueryString],
+  )
+
   useEffect(() => {
     const interval = window.setInterval(() => {
       loadEvents(false)
+      loadTrend(false)
     }, REFRESH_INTERVAL_MS)
 
     return () => {
       window.clearInterval(interval)
     }
-  }, [loadEvents])
+  }, [loadEvents, loadTrend])
 
   useEffect(() => {
     loadEvents(true)
-  }, [loadEvents])
+    loadTrend(true)
+  }, [loadEvents, loadTrend])
 
   const toggleEventType = useCallback((eventType) => {
     setSelectedEventTypes((previous) => {
@@ -232,8 +385,50 @@ export default function AudioEventMonitor() {
     }
     return entries
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, count]) => `${key} ${count}건`)
+      .map(([key, count]) => `${key} ${formatNumber(count)}건`)
   }, [data.stats.byEventType])
+
+  const normalizedTrendBuckets = useMemo(() => {
+    const weeks = trendData?.range?.lookbackWeeks
+    const untilIso = trendData?.range?.until
+    const untilDate = untilIso ? new Date(untilIso) : new Date()
+    const validUntil = Number.isNaN(untilDate.getTime()) ? new Date() : untilDate
+    return normaliseWeeklyBuckets(trendData?.buckets || [], {
+      weeks: weeks && weeks > 0 ? weeks : 12,
+      now: validUntil,
+    })
+  }, [trendData])
+
+  const trendSummary = useMemo(() => summariseTrend(normalizedTrendBuckets), [normalizedTrendBuckets])
+
+  const trendMaxValue = useMemo(
+    () => normalizedTrendBuckets.reduce((max, bucket) => Math.max(max, bucket.eventCount || 0), 0),
+    [normalizedTrendBuckets],
+  )
+
+  const trendBars = useMemo(
+    () =>
+      normalizedTrendBuckets.map((bucket) => {
+        const ratio = trendMaxValue > 0 ? Math.round((bucket.eventCount / trendMaxValue) * 100) : 0
+        const height = bucket.eventCount > 0 ? Math.max(ratio, 6) : 0
+        return {
+          weekStart: bucket.weekStart,
+          eventCount: bucket.eventCount,
+          uniqueOwners: bucket.uniqueOwners,
+          height,
+          label: formatWeekLabel(bucket.weekStart),
+          tooltip: `${formatWeekRangeTooltip(bucket.weekStart)} · ${formatNumber(bucket.eventCount)}건`,
+        }
+      }),
+    [normalizedTrendBuckets, trendMaxValue],
+  )
+
+  const trendDirectionClass = useMemo(() => {
+    if (!trendSummary) return ''
+    if (trendSummary.direction === 'up') return styles.audioEventsTrendDeltaUp
+    if (trendSummary.direction === 'down') return styles.audioEventsTrendDeltaDown
+    return styles.audioEventsTrendDeltaFlat
+  }, [trendSummary])
 
   return (
     <section className={styles.audioEventsSection}>
@@ -251,10 +446,13 @@ export default function AudioEventMonitor() {
           <button
             type="button"
             className={styles.audioEventsButton}
-            onClick={() => loadEvents(true)}
-            disabled={loading}
+            onClick={() => {
+              loadEvents(true)
+              loadTrend(true)
+            }}
+            disabled={loading || trendLoading}
           >
-            {loading ? '불러오는 중…' : '새로고침'}
+            {loading || trendLoading ? '불러오는 중…' : '새로고침'}
           </button>
         </div>
       </div>
@@ -265,6 +463,84 @@ export default function AudioEventMonitor() {
         <span>고유 프로필 {data.stats.uniqueProfiles}개</span>
         <span>{summaryChips.join(' · ')}</span>
         {lastUpdatedAt ? <span>마지막 갱신 {formatDurationFromNow(lastUpdatedAt)}</span> : null}
+      </div>
+
+      <div className={styles.audioEventsTrend}>
+        <div className={styles.audioEventsTrendHeader}>
+          <div>
+            <h4 className={styles.audioEventsTrendTitle}>주간 추이</h4>
+            <p className={styles.audioEventsTrendSubtitle}>
+              {trendLoading
+                ? '주간 데이터를 불러오는 중…'
+                : trendBars.length
+                ? `최근 ${(trendData?.range?.lookbackWeeks || trendBars.length)}주 누적`
+                : '최근 주간 데이터 없음'}
+            </p>
+          </div>
+          <div className={`${styles.audioEventsTrendDelta} ${trendDirectionClass}`}>
+            <span className={styles.audioEventsTrendDeltaIcon}>
+              {trendSummary?.direction === 'up'
+                ? '▲'
+                : trendSummary?.direction === 'down'
+                ? '▼'
+                : '→'}
+            </span>
+            <span className={styles.audioEventsTrendDeltaValue}>
+              {trendSummary ? `${formatNumber(trendSummary.current.eventCount)}건` : '데이터 없음'}
+            </span>
+            <span className={styles.audioEventsTrendDeltaChange}>
+              {trendSummary ? formatTrendDelta(trendSummary) : '변화 없음'}
+            </span>
+          </div>
+        </div>
+        {trendError ? <p className={styles.audioEventsTrendError}>{trendError}</p> : null}
+        <div className={styles.audioEventsTrendChart} role="img" aria-label="오디오 이벤트 주간 추이">
+          {trendBars.length ? (
+            trendBars.map((bar) => (
+              <div key={bar.weekStart} className={styles.audioEventsTrendBarWrapper}>
+                <div className={styles.audioEventsTrendBarTrack} title={bar.tooltip}>
+                  <div
+                    className={styles.audioEventsTrendBar}
+                    style={{ '--audio-events-trend-bar-height': `${bar.height}` }}
+                  >
+                    {bar.eventCount > 0 ? (
+                      <span className={styles.audioEventsTrendBarValue}>{formatNumber(bar.eventCount)}</span>
+                    ) : null}
+                  </div>
+                </div>
+                <span className={styles.audioEventsTrendBarLabel}>{bar.label}</span>
+              </div>
+            ))
+          ) : (
+            <span className={styles.audioEventsEmpty}>추이를 표시할 데이터가 없습니다.</span>
+          )}
+        </div>
+        <dl className={styles.audioEventsTrendStats}>
+          <div>
+            <dt>이번 주</dt>
+            <dd>
+              {trendSummary
+                ? `${formatNumber(trendSummary.current.eventCount)}건 · 운영자 ${formatNumber(
+                    trendSummary.current.uniqueOwners,
+                  )}명`
+                : '—'}
+            </dd>
+          </div>
+          <div>
+            <dt>지난 주</dt>
+            <dd>
+              {trendSummary
+                ? `${formatNumber(trendSummary.previous.eventCount)}건 · 운영자 ${formatNumber(
+                    trendSummary.previous.uniqueOwners,
+                  )}명`
+                : '—'}
+            </dd>
+          </div>
+          <div>
+            <dt>마지막 갱신</dt>
+            <dd>{trendUpdatedAt ? formatDurationFromNow(trendUpdatedAt) : '—'}</dd>
+          </div>
+        </dl>
       </div>
 
       <div className={styles.audioEventsFilters}>

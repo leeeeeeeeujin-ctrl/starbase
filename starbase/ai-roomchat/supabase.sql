@@ -338,6 +338,50 @@ create table if not exists public.rank_audio_events (
 create index if not exists rank_audio_events_owner_created
   on public.rank_audio_events (owner_id, created_at desc);
 
+create or replace function public.rank_audio_events_weekly_trend(
+  start_timestamp timestamptz default null,
+  end_timestamp timestamptz default null,
+  owner_filter uuid default null,
+  profile_filter text default null,
+  hero_filter uuid default null,
+  event_type_filter text[] default null
+)
+returns table (
+  week_start timestamptz,
+  event_count bigint,
+  unique_owners bigint,
+  unique_profiles bigint
+)
+language sql
+stable
+as $$
+  with filtered as (
+    select
+      date_trunc('week', created_at) as bucket,
+      owner_id,
+      profile_key
+    from public.rank_audio_events
+    where (start_timestamp is null or created_at >= start_timestamp)
+      and (end_timestamp is null or created_at < end_timestamp)
+      and (owner_filter is null or owner_id = owner_filter)
+      and (profile_filter is null or profile_key = profile_filter)
+      and (hero_filter is null or hero_id = hero_filter)
+      and (
+        event_type_filter is null
+        or coalesce(array_length(event_type_filter, 1), 0) = 0
+        or event_type = any(event_type_filter)
+      )
+  )
+  select
+    bucket as week_start,
+    count(*) as event_count,
+    count(distinct owner_id) as unique_owners,
+    count(distinct owner_id::text || '::' || profile_key) as unique_profiles
+  from filtered
+  group by bucket
+  order by bucket asc;
+$$;
+
 alter table public.rank_audio_events enable row level security;
 
 create policy if not exists rank_audio_events_select_owner

@@ -38,6 +38,8 @@ jobs:
         run: npm run check:blueprint-progress-freshness
       - name: Check next-action deadlines
         run: npm run check:blueprint-next-actions
+      - name: Publish audio event trend notification
+        run: npm run notify:audio-events
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4

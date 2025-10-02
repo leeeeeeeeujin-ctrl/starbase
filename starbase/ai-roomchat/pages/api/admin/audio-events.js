@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 const COOKIE_NAME = 'rank_admin_portal_session'
 const DEFAULT_LIMIT = 150
 const MAX_LIMIT = 500
+const DEFAULT_TREND_WEEKS = 12
 
 function getConfiguredPassword() {
   const value = process.env.ADMIN_PORTAL_PASSWORD
@@ -165,8 +166,56 @@ export default async function handler(req, res) {
   const since = parseDateQuery(req.query.since)
   const until = parseDateQuery(req.query.until)
   const searchTerm = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : ''
+  const trendMode = typeof req.query.trend === 'string' ? req.query.trend.trim().toLowerCase() : null
 
   try {
+    if (trendMode === 'weekly') {
+      const now = new Date()
+      const end = until || now.toISOString()
+      const lookbackWeeksParam = Number.parseInt(req.query.lookbackWeeks, 10)
+      const lookbackWeeks = Number.isFinite(lookbackWeeksParam) && lookbackWeeksParam > 0
+        ? Math.min(lookbackWeeksParam, 52)
+        : DEFAULT_TREND_WEEKS
+      const startDate = since
+        || new Date(now.getTime() - lookbackWeeks * 7 * 24 * 60 * 60 * 1000).toISOString()
+
+      const { data: trendData, error: trendError } = await supabaseAdmin.rpc('rank_audio_events_weekly_trend', {
+        start_timestamp: startDate,
+        end_timestamp: end,
+        owner_filter: ownerId || null,
+        profile_filter: profileKey || null,
+        hero_filter: heroId || null,
+        event_type_filter: eventTypes.length ? eventTypes : null,
+      })
+
+      if (trendError) {
+        console.error('[admin/audio-events] failed to fetch weekly trend', trendError)
+        return res.status(500).json({ error: 'Failed to fetch weekly trend' })
+      }
+
+      const buckets = Array.isArray(trendData)
+        ? trendData.map((bucket) => ({
+            weekStart: bucket.week_start,
+            eventCount: Number.isFinite(bucket.event_count) ? Number(bucket.event_count) : Number.parseInt(bucket.event_count, 10) || 0,
+            uniqueOwners: Number.isFinite(bucket.unique_owners)
+              ? Number(bucket.unique_owners)
+              : Number.parseInt(bucket.unique_owners, 10) || 0,
+            uniqueProfiles: Number.isFinite(bucket.unique_profiles)
+              ? Number(bucket.unique_profiles)
+              : Number.parseInt(bucket.unique_profiles, 10) || 0,
+          }))
+        : []
+
+      return res.status(200).json({
+        buckets,
+        range: {
+          since: startDate,
+          until: end,
+          lookbackWeeks,
+        },
+      })
+    }
+
     let query = supabaseAdmin
       .from('rank_audio_events')
       .select('id, owner_id, profile_key, hero_id, hero_name, hero_source, event_type, details, created_at')

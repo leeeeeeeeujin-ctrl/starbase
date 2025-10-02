@@ -1,6 +1,7 @@
 const path = require('path')
 
 let mockSupabaseFromImplementation
+let mockSupabaseRpcImplementation
 
 jest.mock('@/lib/supabaseAdmin', () => ({
   __esModule: true,
@@ -10,6 +11,12 @@ jest.mock('@/lib/supabaseAdmin', () => ({
         throw new Error('Supabase admin mock not registered')
       }
       return mockSupabaseFromImplementation(...args)
+    },
+    rpc: (...args) => {
+      if (typeof mockSupabaseRpcImplementation !== 'function') {
+        throw new Error('Supabase admin RPC mock not registered')
+      }
+      return mockSupabaseRpcImplementation(...args)
     },
   },
 }))
@@ -71,8 +78,13 @@ function loadApiRoute(...segments) {
   return module.default
 }
 
-function registerSupabaseAdminMock(fromImplementation) {
+function registerSupabaseAdminMock(fromImplementation, rpcImplementation) {
   mockSupabaseFromImplementation = fromImplementation
+  mockSupabaseRpcImplementation = rpcImplementation
+}
+
+function registerSupabaseAdminRpcMock(rpcImplementation) {
+  mockSupabaseRpcImplementation = rpcImplementation
 }
 
 function createSupabaseSelectChain(result) {
@@ -110,6 +122,7 @@ module.exports = {
   createMockResponse,
   loadApiRoute,
   registerSupabaseAdminMock,
+  registerSupabaseAdminRpcMock,
   createSupabaseSelectChain,
   createSupabaseInsertChain,
 }

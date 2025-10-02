@@ -13,6 +13,9 @@
 | `RANK_COOLDOWN_ALERT_THRESHOLDS` *(선택)* | 쿨다운 경보 지표 임계값을 JSON으로 오버라이드할 때 사용합니다. `{ "failureRate": { "warning": 0.3 } }` 형태로 작성하면 해당 항목만 교체되고 나머지는 기본값이 유지됩니다. | `pages/api/rank/cooldown-telemetry.js`, `lib/rank/cooldownAlertThresholds.js` | 파싱에 실패하면 기본값이 적용되며, `null`을 지정하면 해당 임계값 비교가 비활성화됩니다. |
 | `RANK_COOLDOWN_ALERT_AUDIT_WEBHOOK_URL` *(선택)* | 경보 임계값(`RANK_COOLDOWN_ALERT_THRESHOLDS`)이 변경될 때 감사 알림을 전송할 Slack/Webhook URL입니다. | `lib/rank/cooldownAlertThresholdAuditTrail.js` | 미설정 시 일반 경보용 Webhook(`RANK_COOLDOWN_ALERT_WEBHOOK_URL`)이 재사용됩니다. |
 | `RANK_COOLDOWN_ALERT_AUDIT_WEBHOOK_AUTHORIZATION` *(선택)* | 감사 알림 Webhook 호출 시 사용할 `Authorization` 헤더 값입니다. | `lib/rank/cooldownAlertThresholdAuditTrail.js` | 설정하지 않으면 일반 경보 토큰(`RANK_COOLDOWN_ALERT_WEBHOOK_AUTHORIZATION`) 또는 `RANK_COOLDOWN_ALERT_WEBHOOK_TOKEN`이 순차적으로 재사용됩니다. |
+| `AUDIO_EVENT_SLACK_WEBHOOK_URL` *(선택)* | 오디오 이벤트 주간 추이를 Slack/Webhook으로 전송할 엔드포인트 URL입니다. | `scripts/notify-audio-event-trends.js`, `/.github/workflows/*.yml` | 미설정 시 주간 알림 단계가 자동으로 건너뜁니다. |
+| `AUDIO_EVENT_SLACK_AUTH_HEADER` *(선택)* | 오디오 이벤트 알림 호출 시 사용할 `Authorization` 헤더 값입니다. | `scripts/notify-audio-event-trends.js` | 웹훅이 인증을 요구할 때만 설정하세요. |
+| `AUDIO_EVENT_TREND_LOOKBACK_WEEKS` *(선택)* | Slack 요약에 포함할 주간 누적 범위를 지정합니다. | `scripts/notify-audio-event-trends.js` | 1~52 사이 정수를 권장하며, 기본값은 12주입니다. |
 | `RANK_COOLDOWN_ROTATION_URL` | 고갈된 키를 교체하거나 비활성화하는 자동화 스크립트 엔드포인트 URL입니다. | `lib/rank/cooldownAutomation.js`, `pages/api/rank/cooldown-report.js`, `pages/api/rank/cooldown-digest.js` | 설정 시 경보 직후 자동화 요청이 발송됩니다. |
 | `RANK_COOLDOWN_ROTATION_SECRET` *(선택)* | 자동화 엔드포인트 호출 시 사용할 토큰으로 `Authorization` 헤더에 주입됩니다. | `lib/rank/cooldownAutomation.js` | 엔드포인트에서 인증이 필요할 때만 설정하세요. |
 | `RANK_COOLDOWN_ROTATION_PROVIDER_FILTER` *(선택)* | 특정 제공자에 대해서만 자동 교체를 실행하고 싶을 때 소문자 제공자 명칭을 지정합니다. | `lib/rank/cooldownAutomation.js` | 미설정 시 모든 제공자에 대해 자동 교체가 시도됩니다. |

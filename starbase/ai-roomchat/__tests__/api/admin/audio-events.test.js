@@ -176,6 +176,76 @@ describe('GET /api/admin/audio-events', () => {
     expect(res.body.availableEventTypes).toEqual(['preference.updated', 'preset.applied'])
   })
 
+  it('returns weekly trend data when requested', async () => {
+    const password = 'secret'
+    process.env.ADMIN_PORTAL_PASSWORD = password
+    const handler = loadHandler()
+
+    const rpcMock = jest.fn().mockResolvedValue({
+      data: [
+        {
+          week_start: '2025-09-29T00:00:00+00:00',
+          event_count: '5',
+          unique_owners: '3',
+          unique_profiles: '4',
+        },
+        {
+          week_start: '2025-10-06T00:00:00+00:00',
+          event_count: 2,
+          unique_owners: 2,
+          unique_profiles: 2,
+        },
+      ],
+      error: null,
+    })
+
+    registerSupabaseAdminMock(() => ({ select: () => ({}) }), rpcMock)
+
+    const sessionToken = crypto.createHash('sha256').update(password).digest('hex')
+
+    const req = createApiRequest({
+      headers: { cookie: `rank_admin_portal_session=${sessionToken}` },
+      query: {
+        trend: 'weekly',
+        lookbackWeeks: '8',
+        ownerId: 'owner-123',
+        profileKey: 'hero:abc',
+        heroId: 'hero-xyz',
+        eventType: 'preset.applied,preference.updated',
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(rpcMock).toHaveBeenCalledWith('rank_audio_events_weekly_trend', {
+      start_timestamp: expect.any(String),
+      end_timestamp: expect.any(String),
+      owner_filter: 'owner-123',
+      profile_filter: 'hero:abc',
+      hero_filter: 'hero-xyz',
+      event_type_filter: ['preset.applied', 'preference.updated'],
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.range.lookbackWeeks).toBe(8)
+    expect(typeof res.body.range.since).toBe('string')
+    expect(res.body.buckets).toEqual([
+      {
+        weekStart: '2025-09-29T00:00:00+00:00',
+        eventCount: 5,
+        uniqueOwners: 3,
+        uniqueProfiles: 4,
+      },
+      {
+        weekStart: '2025-10-06T00:00:00+00:00',
+        eventCount: 2,
+        uniqueOwners: 2,
+        uniqueProfiles: 2,
+      },
+    ])
+  })
+
   it('returns CSV when requested', async () => {
     const password = 'secret'
     process.env.ADMIN_PORTAL_PASSWORD = password

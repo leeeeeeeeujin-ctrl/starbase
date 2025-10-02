@@ -99,7 +99,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 ### Error Reporting APIs
 - `/api/errors/report`: rate-limited endpoint that stores client-side error payloads in `rank_user_error_reports` using the service role, trimming stack/context payloads and normalising severity.【F:pages/api/errors/report.js†L1-L94】
 - `/api/admin/errors`: cookie-gated admin feed that summarises recent reports (총/24시간/심각도별) and returns the latest entries for the 관리자 포털 모니터 패널.【F:pages/api/admin/errors.js†L1-L86】
-- `/api/admin/audio-events`: owner/profile/hero/event-type filters plus search and CSV export for BGM 변경 로그를 반환하며, 관리자 포털의 오디오 이벤트 패널이 동일 파라미터를 사용해 데이터를 요청합니다.【F:pages/api/admin/audio-events.js†L1-L214】
+- `/api/admin/audio-events`: owner/profile/hero/event-type filters plus search and CSV export for BGM 변경 로그를 반환하며, `trend=weekly` 요청 시 Supabase `rank_audio_events_weekly_trend` 뷰를 호출해 주간 집계를 돌려 관리자 포털 그래프와 Slack 다이제스트 모두에서 재사용합니다.【F:pages/api/admin/audio-events.js†L1-L244】【F:supabase.sql†L326-L362】
 
 - `list-games.js`: filters and sorts rank games using predefined order plans; supports query string search and result limits.【F:pages/api/rank/list-games.js†L1-L44】
 - `game-detail.js`: fetches roles and participants for a game, enriching participants with hero details via admin client when possible.【F:pages/api/rank/game-detail.js†L1-L56】
@@ -117,7 +117,8 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 ## Additional Observations & Potential Follow-Ups
 - 클라이언트 전역 오류 리포터(`ClientErrorReporter`)가 `/api/errors/report`로 전송한 스냅샷을 관리자 포털의 `UserErrorMonitor`가 `/api/admin/errors`를 통해 집계해 운영팀이 현장 오류를 즉시 파악할 수 있습니다.【F:components/ClientErrorReporter.js†L1-L119】【F:components/admin/UserErrorMonitor.js†L1-L94】
 - `/api/errors/report`와 `/api/admin/errors` 라우트는 `__tests__/api` 스위트와 헬퍼(`testUtils`)로 커버돼 있어 향후 관리자 API가 늘어나도 동일 패턴으로 테스트를 복제하며 회귀를 방지할 수 있습니다.【F:__tests__/api/testUtils.js†L1-L82】【F:__tests__/api/errors/report.test.js†L1-L137】【F:__tests__/api/admin/errors.test.js†L1-L183】
-- `/api/admin/audio-events`와 `AudioEventMonitor` 조합이 Owner/프로필/히어로/이벤트 유형 필터, 기간 프리셋, 검색, CSV 다운로드를 제공해 오디오 변경 로그를 운영자가 빠르게 분류·내보낼 수 있으며, 전용 Jest 스위트가 필터 체인과 CSV 헤더를 검증합니다.【F:pages/api/admin/audio-events.js†L1-L214】【F:components/admin/AudioEventMonitor.js†L1-L260】【F:__tests__/api/admin/audio-events.test.js†L1-L213】
+- `/api/admin/audio-events`와 `AudioEventMonitor` 조합이 Owner/프로필/히어로/이벤트 유형 필터, 기간 프리셋, 검색, CSV 다운로드, 주간 트렌드 그래프, 증가/감소 배지, 자동 새로고침을 제공해 오디오 변경 로그를 운영자가 빠르게 분류·추이까지 파악할 수 있으며, 전용 Jest 스위트가 필터 체인·CSV 헤더·주간 집계 RPC 호출을 검증합니다.【F:pages/api/admin/audio-events.js†L1-L244】【F:components/admin/AudioEventMonitor.js†L1-L360】【F:styles/AdminPortal.module.css†L203-L389】【F:__tests__/api/admin/audio-events.test.js†L1-L256】
+- `scripts/notify-audio-event-trends.js`는 Supabase RPC로 주간 집계를 조회해 Slack(Webhook)으로 다이제스트를 발송하며, CI 워크플로(`pr-ci.yml`, `blueprint-progress-freshness.yml`)에 통합돼 주간/PR 실행 시 자동으로 동작합니다. 헬퍼 함수들은 Jest에서 단위 검증을 거칩니다.【F:scripts/notify-audio-event-trends.js†L1-L206】【F:.github/workflows/pr-ci.yml†L1-L53】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L53】【F:__tests__/scripts/notify-audio-event-trends.test.js†L1-L66】
 - Supabase table helpers (`withTable`) abstract table name prefix differences across environments—most hooks and API routes rely on them for multi-tenant support.
 - `rank_audio_preferences`와 `rank_audio_events` 테이블이 추가돼 브금 프리셋 선택과 변경 로그가 Supabase에 저장되며, `GameRoomView`는 `withTable`을 통해 동일 스키마를 읽고/쓰기 합니다.【F:supabase.sql†L1-L120】【F:components/rank/GameRoomView.js†L780-L1160】
 - Several UI shells (create, roster, maker) defer most logic to component containers; reviewing those components is recommended for full domain context beyond this page-oriented audit.
