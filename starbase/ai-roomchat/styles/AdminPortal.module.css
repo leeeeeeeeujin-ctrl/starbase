@@ -310,6 +310,50 @@
   flex-wrap: wrap;
 }
 
+.audioEventsTrendLimit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.audioEventsTrendLimitLabel {
+  font-size: 0.72rem;
+  color: rgba(203, 213, 225, 0.75);
+  font-weight: 600;
+}
+
+.audioEventsTrendLimitButtons {
+  display: inline-flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.audioEventsTrendLimitButton {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.55);
+  color: rgba(226, 232, 240, 0.78);
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  transition: all 0.18s ease;
+}
+
+.audioEventsTrendLimitButton:hover {
+  background: rgba(79, 70, 229, 0.35);
+  color: #f8fafc;
+  border-color: rgba(129, 140, 248, 0.58);
+}
+
+.audioEventsTrendLimitButtonActive {
+  background: rgba(79, 70, 229, 0.5);
+  border-color: rgba(129, 140, 248, 0.85);
+  color: #f1f5f9;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.25);
+}
+
 .audioEventsTrendModeButton {
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: rgba(30, 41, 59, 0.55);
@@ -500,6 +544,24 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.4rem;
+  max-height: 9.5rem;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+  scrollbar-width: thin;
+}
+
+.audioEventsTrendLegend::-webkit-scrollbar {
+  width: 6px;
+}
+
+.audioEventsTrendLegend::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+}
+
+.audioEventsTrendLegend::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.35);
+  border-radius: 999px;
 }
 
 .audioEventsTrendLegendItem {
@@ -531,6 +593,12 @@
     'Liberation Mono', 'Courier New', monospace;
   font-size: 0.68rem;
   color: rgba(203, 213, 225, 0.85);
+}
+
+.audioEventsTrendLegendNote {
+  margin: 0.35rem 0 0;
+  font-size: 0.68rem;
+  color: rgba(148, 163, 184, 0.78);
 }
 
 .audioEventsTrendStats {

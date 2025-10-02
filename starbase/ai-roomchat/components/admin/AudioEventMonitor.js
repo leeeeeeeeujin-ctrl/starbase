@@ -6,7 +6,6 @@ const REFRESH_INTERVAL_MS = 120_000
 const FILTER_DEBOUNCE_MS = 320
 const API_LIMIT = 300
 
-const MAX_STACK_SEGMENTS = 6
 const HERO_STACK_COLORS = [
   'rgba(129, 140, 248, 0.82)',
   'rgba(14, 165, 233, 0.82)',
@@ -22,6 +21,13 @@ const OWNER_STACK_COLORS = [
   'rgba(244, 114, 182, 0.82)',
   'rgba(248, 113, 113, 0.82)',
   'rgba(165, 180, 252, 0.82)',
+]
+
+const DEFAULT_STACK_SEGMENTS = 6
+const TREND_STACK_LIMIT_OPTIONS = [
+  { id: 'top3', label: '상위 3', segments: 3 },
+  { id: 'top5', label: '상위 5', segments: 5 },
+  { id: 'all', label: '전체 보기', segments: null },
 ]
 
 const RANGE_OPTIONS = [
@@ -181,7 +187,11 @@ function formatNumber(value) {
   return new Intl.NumberFormat('ko-KR').format(value)
 }
 
-function buildStackedTrend(buckets = [], breakdownEntries = [], { palette = [], fallbackLabel = '미지정', maxValue = 0 } = {}) {
+function buildStackedTrend(
+  buckets = [],
+  breakdownEntries = [],
+  { palette = [], fallbackLabel = '미지정', maxValue = 0, maxSegments = DEFAULT_STACK_SEGMENTS } = {},
+) {
   if (!Array.isArray(buckets) || buckets.length === 0) {
     return null
   }
@@ -217,9 +227,9 @@ function buildStackedTrend(buckets = [], breakdownEntries = [], { palette = [], 
   let dimensionEntries = Array.from(totalsByDimension.entries()).sort((a, b) => b[1] - a[1])
   let aggregatedOthers = null
 
-  if (dimensionEntries.length > MAX_STACK_SEGMENTS) {
-    const keep = dimensionEntries.slice(0, MAX_STACK_SEGMENTS - 1)
-    const rest = dimensionEntries.slice(MAX_STACK_SEGMENTS - 1)
+  if (Number.isFinite(maxSegments) && maxSegments > 0 && dimensionEntries.length > maxSegments) {
+    const keep = dimensionEntries.slice(0, maxSegments - 1)
+    const rest = dimensionEntries.slice(maxSegments - 1)
     const restTotal = rest.reduce((sum, [, value]) => sum + value, 0)
     const restIds = rest.map(([id]) => id)
     dimensionEntries = keep
@@ -234,6 +244,7 @@ function buildStackedTrend(buckets = [], breakdownEntries = [], { palette = [], 
     total,
     color: palette[index % palette.length] || palette[palette.length - 1] || 'rgba(148, 163, 184, 0.8)',
     sourceIds: [dimensionId],
+    sourceCount: 1,
   }))
 
   if (aggregatedOthers) {
@@ -243,6 +254,7 @@ function buildStackedTrend(buckets = [], breakdownEntries = [], { palette = [], 
       total: aggregatedOthers.total,
       color: palette[legend.length % palette.length] || 'rgba(148, 163, 184, 0.75)',
       sourceIds: aggregatedOthers.ids,
+      sourceCount: aggregatedOthers.ids.length,
     })
   }
 
@@ -367,6 +379,7 @@ export default function AudioEventMonitor() {
   const [trendError, setTrendError] = useState(null)
   const [trendUpdatedAt, setTrendUpdatedAt] = useState(null)
   const [trendStackMode, setTrendStackMode] = useState('total')
+  const [trendStackLimit, setTrendStackLimit] = useState('top5')
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -577,12 +590,28 @@ export default function AudioEventMonitor() {
     [trendData],
   )
 
+  const trendStackLimitOption = useMemo(
+    () =>
+      TREND_STACK_LIMIT_OPTIONS.find((option) => option.id === trendStackLimit)
+        || TREND_STACK_LIMIT_OPTIONS[1],
+    [trendStackLimit],
+  )
+
+  const trendStackMaxSegments = useMemo(() => {
+    if (!trendStackLimitOption) return DEFAULT_STACK_SEGMENTS
+    if (Number.isFinite(trendStackLimitOption.segments)) {
+      return Math.max(1, trendStackLimitOption.segments)
+    }
+    return Number.POSITIVE_INFINITY
+  }, [trendStackLimitOption])
+
   const trendStackData = useMemo(() => {
     if (trendStackMode === 'hero') {
       return buildStackedTrend(normalizedTrendBuckets, trendBreakdown.hero, {
         palette: HERO_STACK_COLORS,
         fallbackLabel: '히어로 미지정',
         maxValue: trendMaxValue,
+        maxSegments: trendStackMaxSegments,
       })
     }
     if (trendStackMode === 'owner') {
@@ -590,10 +619,11 @@ export default function AudioEventMonitor() {
         palette: OWNER_STACK_COLORS,
         fallbackLabel: '운영자 미지정',
         maxValue: trendMaxValue,
+        maxSegments: trendStackMaxSegments,
       })
     }
     return null
-  }, [normalizedTrendBuckets, trendBreakdown, trendStackMode, trendMaxValue])
+  }, [normalizedTrendBuckets, trendBreakdown, trendStackMode, trendMaxValue, trendStackMaxSegments])
 
   const hasHeroBreakdown = trendBreakdown.hero.length > 0
   const hasOwnerBreakdown = trendBreakdown.owner.length > 0
@@ -633,6 +663,19 @@ export default function AudioEventMonitor() {
   const usingStackedTrend = trendStackMode !== 'total' && trendStackData
   const trendChartBars = usingStackedTrend ? trendStackData?.bars || [] : totalTrendBars
   const trendStackLegend = usingStackedTrend ? trendStackData?.legend || [] : []
+
+  const trendStackLegendOverflowNote = useMemo(() => {
+    if (!usingStackedTrend) return null
+    if (!trendStackLegend.length) return null
+    if (!trendStackLimitOption || !Number.isFinite(trendStackLimitOption.segments)) {
+      return null
+    }
+    const overflowEntry = trendStackLegend.find((item) => item.id === '__others__')
+    if (!overflowEntry || !overflowEntry.sourceCount) {
+      return null
+    }
+    return `기타에는 ${overflowEntry.sourceCount}개 그룹이 포함됩니다.`
+  }, [trendStackLegend, trendStackLimitOption, usingStackedTrend])
 
   return (
     <section className={styles.audioEventsSection}>
@@ -713,6 +756,28 @@ export default function AudioEventMonitor() {
                 담당자별
               </button>
             </div>
+            {usingStackedTrend ? (
+              <div className={styles.audioEventsTrendLimit}>
+                <span className={styles.audioEventsTrendLimitLabel}>표시 범위</span>
+                <div className={styles.audioEventsTrendLimitButtons}>
+                  {TREND_STACK_LIMIT_OPTIONS.map((option) => {
+                    const active = trendStackLimitOption?.id === option.id
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`${styles.audioEventsTrendLimitButton} ${
+                          active ? styles.audioEventsTrendLimitButtonActive : ''
+                        }`}
+                        onClick={() => setTrendStackLimit(option.id)}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
           <div className={`${styles.audioEventsTrendDelta} ${trendDirectionClass}`}>
             <span className={styles.audioEventsTrendDeltaIcon}>
@@ -781,18 +846,30 @@ export default function AudioEventMonitor() {
           )}
         </div>
         {usingStackedTrend && trendStackLegend.length ? (
-          <div className={styles.audioEventsTrendLegend}>
-            {trendStackLegend.map((item) => (
-              <span key={item.id} className={styles.audioEventsTrendLegendItem}>
+          <>
+            <div className={styles.audioEventsTrendLegend}>
+              {trendStackLegend.map((item) => (
                 <span
-                  className={styles.audioEventsTrendLegendSwatch}
-                  style={{ '--audio-events-trend-legend-color': item.color }}
-                />
-                <span className={styles.audioEventsTrendLegendLabel}>{item.label}</span>
-                <span className={styles.audioEventsTrendLegendValue}>{formatNumber(item.total)}건</span>
-              </span>
-            ))}
-          </div>
+                  key={item.id}
+                  className={styles.audioEventsTrendLegendItem}
+                  title={item.sourceCount > 1 ? `${item.label} 포함 그룹 ${item.sourceCount}개` : item.label}
+                >
+                  <span
+                    className={styles.audioEventsTrendLegendSwatch}
+                    style={{ '--audio-events-trend-legend-color': item.color }}
+                  />
+                  <span className={styles.audioEventsTrendLegendLabel}>{item.label}</span>
+                  <span className={styles.audioEventsTrendLegendValue}>
+                    {formatNumber(item.total)}건
+                    {item.sourceCount > 1 ? ` · ${item.sourceCount}개` : ''}
+                  </span>
+                </span>
+              ))}
+            </div>
+            {trendStackLegendOverflowNote ? (
+              <p className={styles.audioEventsTrendLegendNote}>{trendStackLegendOverflowNote}</p>
+            ) : null}
+          </>
         ) : null}
         <dl className={styles.audioEventsTrendStats}>
           <div>
