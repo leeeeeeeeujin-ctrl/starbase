@@ -101,6 +101,7 @@ export default function GameStartModeModal({
     topValues: leadingTimers = [],
     maxCount: leadingCount = 0,
   } = voteSummary
+  const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
 
   useEffect(() => {
     if (!open) return
@@ -134,10 +135,6 @@ export default function GameStartModeModal({
   }, [open, onClose])
 
   const canConfirm = useMemo(() => {
-    if (!apiKey || !apiKey.trim()) {
-      return false
-    }
-
     if (!apiVersion) {
       return false
     }
@@ -186,7 +183,7 @@ export default function GameStartModeModal({
       duoOption,
       casualOption,
       apiVersion,
-      apiKey: apiKey.trim(),
+      apiKey: trimmedApiKey,
       turnTimer: finalTurnTimer,
     })
   }
@@ -235,6 +232,12 @@ export default function GameStartModeModal({
           />
           <p className={styles.helperText}>
             Google Gemini 또는 OpenAI API 키가 필요합니다.
+            {!trimmedApiKey && (
+              <>
+                <br />
+                키가 없다면 전투 화면에서 입력하거나 교체할 수 있습니다.
+              </>
+            )}
           </p>
         </section>
 
