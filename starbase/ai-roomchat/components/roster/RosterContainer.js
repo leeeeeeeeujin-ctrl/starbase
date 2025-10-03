@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 
 import { useRoster } from '../../hooks/roster/useRoster'
 import RosterView from './RosterView'
+import { useAnnouncements } from '../../hooks/useAnnouncements'
 
 export default function RosterContainer() {
   const router = useRouter()
@@ -49,6 +50,12 @@ export default function RosterContainer() {
     router.replace('/')
   }, [router])
 
+  const {
+    items: announcements,
+    loading: announcementsLoading,
+    reload: reloadAnnouncements,
+  } = useAnnouncements({ limit: 8 })
+
   return (
     <RosterView
       loading={loading}
@@ -60,6 +67,9 @@ export default function RosterContainer() {
       onCreateHero={handleCreateHero}
       onRetry={handleRetry}
       onLogout={handleLogoutComplete}
+      announcements={announcements}
+      announcementsLoading={announcementsLoading}
+      onRefreshAnnouncements={reloadAnnouncements}
     />
   )
 }

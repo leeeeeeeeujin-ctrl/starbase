@@ -6,9 +6,10 @@
   align-items: center;
   min-height: 100vh;
   padding: 72px 24px 96px;
+  --hero-background-media: none;
   background-image:
     linear-gradient(180deg, rgba(6, 10, 28, 0.82) 0%, rgba(6, 10, 28, 0.92) 70%, rgba(6, 10, 28, 0.98) 100%),
-    url('/landing/celestial-frontline.svg');
+    var(--hero-background-media);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

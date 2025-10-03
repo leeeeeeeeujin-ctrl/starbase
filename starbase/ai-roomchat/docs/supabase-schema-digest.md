@@ -44,6 +44,14 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 - Stores monitoring rule definitions (type, label, notes, JSON config, sort order, timestamps) that automation consumes.【F:starbase/ai-roomchat/supabase.sql†L455-L464】
 - A trigger refreshes `updated_at`, indexes optimize rule lists, and only the service role may interact with the table via RLS.【F:starbase/ai-roomchat/supabase.sql†L466-L490】
 
+### `public.rank_title_settings`
+- Holds a single row per slug (default `main`) with `background_url`, optional operator `update_note`, and `updated_at` to drive the landing hero background that the admin portal edits.
+- Expose read access to the service role API while restricting mutations to service integrations; add a unique primary key on `slug` so `upsert` updates stay idempotent.
+
+### `public.rank_announcements`
+- Backs the admin notice composer with `id uuid default gen_random_uuid()`, `title`, `body`, `published_at`, and audit timestamps so roster and landing surfaces can show the freshest announcement.
+- Create an index on `published_at desc` for the feed, and restrict write access to the service role while permitting read-only endpoints for the public portal.
+
 ## Game Catalog & Seasonal Metadata
 ### `public.rank_games`
 - Game shells hold owner linkage, descriptive metadata, prompt/rule JSON payloads, engagement counters, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L495-L509】

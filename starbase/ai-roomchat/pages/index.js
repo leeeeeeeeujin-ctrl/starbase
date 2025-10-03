@@ -153,6 +153,7 @@ export default function Home() {
 
   const [sortMode, setSortMode] = useState('priority')
   const overallProgress = overallProgressValue
+  const [heroBackgroundUrl, setHeroBackgroundUrl] = useState('')
 
   const totalStages = stageProgress.length
   const completedStages = stageProgress.filter((stage) => Number(stage?.progress) >= 100).length
@@ -195,6 +196,29 @@ export default function Home() {
       setSortMode('order')
     }
   }, [hasNextActions, sortMode])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadTitleBackground() {
+      try {
+        const response = await fetch('/api/content/title')
+        if (!response.ok) return
+        const payload = await response.json().catch(() => ({}))
+        if (cancelled) return
+        const url = payload?.settings?.backgroundUrl
+        setHeroBackgroundUrl(typeof url === 'string' ? url : '')
+      } catch (error) {
+        console.error('Failed to load title background', error)
+      }
+    }
+
+    loadTitleBackground()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -253,11 +277,20 @@ export default function Home() {
     })
   }, [progressLastUpdatedISO])
 
+  const heroStyle = useMemo(() => {
+    if (!heroBackgroundUrl) {
+      return undefined
+    }
+    return {
+      '--hero-background-media': `url('${heroBackgroundUrl}')`,
+    }
+  }, [heroBackgroundUrl])
+
   return (
-    <main className={styles.hero}>
+    <main className={styles.hero} style={heroStyle}>
       <section className={styles.frame}>
         <span className={styles.kicker}>Rank Blueprint</span>
-        <h1 className={styles.title}>랭크 청사진에 맞춘 전선으로 바로 합류하세요</h1>
+        <h1 className={styles.title}>솔라리스의 바다로 곧장 합류하세요</h1>
         <p className={styles.lede}>
           자동 매칭, 프롬프트 기반 전투, 공유 히스토리를 결합한 경쟁 모드 비전을 지금 바로 체험해 보세요.
         </p>
