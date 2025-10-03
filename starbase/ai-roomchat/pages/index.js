@@ -113,7 +113,28 @@ const features = [
   },
 ]
 
-const stageProgress = progressData.stages
+const stageProgress = Array.isArray(progressData.stages) ? progressData.stages : []
+const rawOverallProgress = Number(progressData.overallProgress)
+const fallbackOverallProgress = stageProgress.length
+  ? stageProgress.reduce((total, stage) => total + (Number(stage.progress) || 0), 0) /
+    stageProgress.length
+  : 0
+const derivedOverallProgress = Number.isFinite(rawOverallProgress)
+  ? rawOverallProgress
+  : fallbackOverallProgress
+const overallProgressValue = Math.max(
+  0,
+  Math.min(100, Math.round(Number.isFinite(derivedOverallProgress) ? derivedOverallProgress : 0)),
+)
+const remainingFocusEntries = Array.isArray(progressData.remainingFocus)
+  ? progressData.remainingFocus
+  : []
+const remainingFocusByStage = remainingFocusEntries.reduce((acc, entry) => {
+  if (entry && typeof entry.stage === 'string') {
+    acc[entry.stage] = entry
+  }
+  return acc
+}, {})
 const progressLastUpdated = progressData.lastUpdatedDisplay
 const progressLastUpdatedISO = progressData.lastUpdatedISO
 const nextActions = Array.isArray(nextActionsData.items) ? nextActionsData.items : []
@@ -131,6 +152,11 @@ export default function Home() {
   })
 
   const [sortMode, setSortMode] = useState('priority')
+  const overallProgress = overallProgressValue
+
+  const totalStages = stageProgress.length
+  const completedStages = stageProgress.filter((stage) => Number(stage?.progress) >= 100).length
+  const remainingStages = stageProgress.filter((stage) => Number(stage?.progress) < 100)
 
   const sortedNextActions = useMemo(() => {
     const base = [...nextActions]
@@ -262,6 +288,50 @@ export default function Home() {
                   </span>
                 ) : null}
               </div>
+            </div>
+            <div className={styles.progressSummaryCard}>
+              <div className={styles.progressSummaryHeader}>
+                <span className={styles.progressSummaryLabel}>전체 진행도</span>
+                <span className={styles.progressSummaryValue}>{overallProgress}%</span>
+              </div>
+              <div
+                className={styles.progressSummaryMeter}
+                role="progressbar"
+                aria-valuenow={overallProgress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <span style={{ width: `${overallProgress}%` }} />
+              </div>
+              <div className={styles.progressSummaryMeta}>
+                <span>
+                  {completedStages}/{totalStages} 단계 완료
+                </span>
+                <span>
+                  {remainingStages.length
+                    ? `남은 단계: ${remainingStages.map((stage) => stage.label).join(', ')}`
+                    : '모든 단계 완료'}
+                </span>
+              </div>
+              {remainingStages.length ? (
+                <ul className={styles.progressRemainingList}>
+                  {remainingStages.map((stage) => {
+                    const focus = remainingFocusByStage[stage.label] || {}
+                    return (
+                      <li key={stage.label} className={styles.progressRemainingItem}>
+                        <div className={styles.progressRemainingHeader}>
+                          <span className={styles.progressRemainingStage}>{stage.label}</span>
+                          <span className={styles.progressRemainingPercent}>{stage.progress}%</span>
+                        </div>
+                        <span className={styles.progressRemainingStatus}>{stage.status}</span>
+                        <p className={styles.progressRemainingNextStep}>
+                          {focus.nextStep || stage.summary}
+                        </p>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : null}
             </div>
             <ul className={styles.progressList}>
               {stageProgress.map((stage) => (

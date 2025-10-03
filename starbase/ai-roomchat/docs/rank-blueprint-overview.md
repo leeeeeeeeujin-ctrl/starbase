@@ -165,6 +165,16 @@
 
 **총 진행률(단계별 동일 가중치)**: 약 **76%**
 
+### 8. 남은 청사진 핵심 작업 (2025-11-08 기준)
+| 단계 | 남은 핵심 작업 | 현재 진행률 |
+| --- | --- | --- |
+| 매칭 트리거 통일 | 듀오/캐주얼 재시작 회귀 테스트(DC-01~03) QA 완료 후 실서비스 스모크와 큐 일관성 대시보드 경보를 함께 검증합니다. | 80% |
+| 세션/전투 동기화 | `rank_turns` 요약 메타를 소비하는 UI·리포트 경로를 반영하고, 인비저블 라인 필터 QA 및 히스토리 API 폴링 전략 확정을 마칩니다. | 55% |
+| 프롬프트 변수 자동화 | 제작기 폴백 경고 UX와 자동 버전 동기화를 연결해 변수 누락 경보 없이 저장 루틴이 돌아가도록 QA 시나리오를 닫습니다. | 60% |
+| 운영 가드 | Edge Function 감사 로그를 스테이징에서 검증하고, 자동 키 회전·만료 알림 루프를 운영 대시보드와 Slack 에스컬레이션에 연동합니다. | 85% |
+
+랜딩 히어로는 이 표를 기반으로 전체 진행도 카드(76%, 5개 중 1개 단계만 남음)를 추가해 남은 단계와 다음 액션을 한눈에 확인할 수 있게 되었습니다.【F:data/rankBlueprintProgress.json†L1-L42】【F:pages/index.js†L8-L210】【F:styles/Home.module.css†L1-L360】
+
 홈 히어로에서 노출되는 진행률 보드와 다음 액션 카드가 이 표와 위 섹션을 그대로 참조할 수 있도록 데이터를 `data/rankBlueprintProgress.json`·`data/rankBlueprintNextActions.json`으로 분리해 사용하며, 최신화 뱃지가 2주 이상 경과 시 업데이트 필요 상태를 표시합니다. `npm run refresh:blueprint-progress` 스크립트를 실행하면 두 JSON과 자동 경고 블록이 재생성돼 문서/코드 동기화를 유지할 수 있고, `npm run check:blueprint-progress-freshness`(주 1회 GitHub Actions 스케줄과 PR/메인 푸시 CI에서 실행)로 14일 한계치를 넘길 경우 경고를 발생시켜 리마인더를 받습니다. `npm run check:blueprint-next-actions`는 마감이 지난 항목이 존재하면 CI를 실패시키고, JSON에는 담당자 키·D-Day·연체 여부가 함께 기록돼 랜딩 카드와 문서가 동일한 기준으로 경고를 노출합니다. 두 워크플로 모두에서 `npm test -- --runInBand`와 `CI=1 npm run build`를 함께 실행하고 `.next/cache`를 복원하는 빌드 캐시, `jest-junit` 기반 테스트 리포트 업로드, Step Summary용 메트릭 게시를 포함해 에러 리포트 관리자 API 회귀뿐 아니라 실행 시간 추적과 병목 파악을 동시에 지원합니다.【F:data/rankBlueprintProgress.json†L1-L35】【F:data/rankBlueprintNextActions.json†L1-L33】【F:pages/index.js†L8-L200】【F:styles/Home.module.css†L1-L266】【F:scripts/refresh-rank-blueprint-progress.js†L1-L339】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L74】【F:scripts/check-rank-blueprint-next-actions.js†L1-L87】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L47】【F:.github/workflows/pr-ci.yml†L1-L42】
 
 ---
