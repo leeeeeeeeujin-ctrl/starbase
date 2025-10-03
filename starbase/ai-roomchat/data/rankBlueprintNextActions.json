@@ -1,5 +1,90 @@
 {
-  "lastUpdatedISO": "2025-11-12",
-  "lastUpdatedDisplay": "2025-11-12 기준",
-  "items": []
+  "lastUpdatedISO": "2025-11-13",
+  "lastUpdatedDisplay": "2025-11-13 기준",
+  "items": [
+    {
+      "order": 1,
+      "summary": "관리자 모니터링 페이지에 랜딩 히어로·공지 WYSIWYG 블록을 붙여 코드 배포 없이 콘텐츠를 교체할 수 있도록 UI/스토리지 스키마를 확정합니다.",
+      "owner": "프론트 (라라)",
+      "ownerKey": "프론트-라라",
+      "targetDateISO": "2025-11-19",
+      "targetDateDisplay": "2025-11-19",
+      "priority": {
+        "label": "P0 (운영 커뮤니케이션)",
+        "short": "P0",
+        "rank": 0,
+        "sortKey": 0
+      },
+      "effort": {
+        "label": "프론트 3일 (UI/스토리지)",
+        "personDays": 3
+      },
+      "timing": {
+        "label": "2025-11-19",
+        "badge": "D-6",
+        "state": "due-soon",
+        "daysFromToday": 6,
+        "daysFromSnapshot": 6,
+        "computedAtISO": "2025-11-13",
+        "isOverdue": false,
+        "overdueDays": 0
+      }
+    },
+    {
+      "order": 2,
+      "summary": "페이지별 튜토리얼·체크리스트·비상 공지를 작성/승인/게시하는 워크플로와 검수 알림을 설계합니다.",
+      "owner": "Ops (지후)",
+      "ownerKey": "ops-지후",
+      "targetDateISO": "2025-11-22",
+      "targetDateDisplay": "2025-11-22",
+      "priority": {
+        "label": "P1 (운영 가이드)",
+        "short": "P1",
+        "rank": 1,
+        "sortKey": 1
+      },
+      "effort": {
+        "label": "Ops 2일 (프로세스 설계)",
+        "personDays": 2
+      },
+      "timing": {
+        "label": "2025-11-22",
+        "badge": "D-9",
+        "state": "scheduled",
+        "daysFromToday": 9,
+        "daysFromSnapshot": 9,
+        "computedAtISO": "2025-11-13",
+        "isOverdue": false,
+        "overdueDays": 0
+      }
+    },
+    {
+      "order": 3,
+      "summary": "콘텐츠 배포 이력·승인 로그를 감사 페이지와 Slack에 동기화하는 히스토리 테이블과 알림 파이프라인을 구축합니다.",
+      "owner": "백엔드 (세민)",
+      "ownerKey": "backend-세민",
+      "targetDateISO": "2025-11-27",
+      "targetDateDisplay": "2025-11-27",
+      "priority": {
+        "label": "P1 (감사 추적)",
+        "short": "P1",
+        "rank": 1,
+        "sortKey": 1
+      },
+      "effort": {
+        "label": "백엔드 3일 (테이블/알림)",
+        "personDays": 3
+      },
+      "timing": {
+        "label": "2025-11-27",
+        "badge": "D-14",
+        "state": "scheduled",
+        "daysFromToday": 14,
+        "daysFromSnapshot": 14,
+        "computedAtISO": "2025-11-13",
+        "isOverdue": false,
+        "overdueDays": 0
+      }
+    }
+  ]
 }

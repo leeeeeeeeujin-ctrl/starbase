@@ -1,7 +1,7 @@
 {
-  "lastUpdatedISO": "2025-11-12",
-  "lastUpdatedDisplay": "2025-11-12 기준",
-  "overallProgress": 100,
+  "lastUpdatedISO": "2025-11-13",
+  "lastUpdatedDisplay": "2025-11-13 기준",
+  "overallProgress": 86,
   "stages": [
     {
       "label": "매칭 트리거 통일",
@@ -32,7 +32,26 @@
       "status": "완료",
       "progress": 100,
       "summary": "Edge Function 감사 로그 검증과 자동 키 회전/만료 알림, Slack 에스컬레이션을 대시보드에 연동해 운영 가드 루프가 닫혔습니다."
+    },
+    {
+      "label": "운영 모니터링·콘텐츠 확장",
+      "status": "기획 진행 중",
+      "progress": 15,
+      "summary": "관리자 모니터링 포털에서 랜딩 히어로·공지·페이지별 튜토리얼을 직접 편집하고 배포 이력을 추적할 수 있는 콘텐츠 허브와 리뷰 플로우를 설계 중입니다."
     }
   ],
-  "remainingFocus": []
+  "remainingFocus": [
+    {
+      "stage": "운영 모니터링·콘텐츠 확장",
+      "nextStep": "관리자 모니터링 페이지에 랜딩 히어로·공지 블록을 편집·예약할 수 있는 콘텐츠 모듈을 붙이고, 편집 이력을 감사 로그에 저장하는 데이터 모델을 확정합니다.",
+      "owner": "프론트 (라라)",
+      "targetDateISO": "2025-11-19"
+    },
+    {
+      "stage": "운영 모니터링·콘텐츠 확장",
+      "nextStep": "페이지별 튜토리얼/체크리스트·비상 알림을 작성·게시할 수 있도록 에디터 UX와 검수 워크플로(임시 저장, 승인, 버전 롤백)를 설계합니다.",
+      "owner": "Ops (지후)",
+      "targetDateISO": "2025-11-26"
+    }
+  ]
 }
