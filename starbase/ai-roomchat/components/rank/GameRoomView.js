@@ -143,6 +143,37 @@ function normalizeCompressorSettings(raw) {
   }
 }
 
+function eqSettingsAreEqual(a, b) {
+  const first = normalizeEqSettings(a)
+  const second = normalizeEqSettings(b)
+  const lowDelta = Math.abs((first.low ?? 0) - (second.low ?? 0))
+  const midDelta = Math.abs((first.mid ?? 0) - (second.mid ?? 0))
+  const highDelta = Math.abs((first.high ?? 0) - (second.high ?? 0))
+  return first.enabled === second.enabled && lowDelta < 0.001 && midDelta < 0.001 && highDelta < 0.001
+}
+
+function reverbSettingsAreEqual(a, b) {
+  const first = normalizeReverbSettings(a)
+  const second = normalizeReverbSettings(b)
+  const mixDelta = Math.abs((first.mix ?? 0) - (second.mix ?? 0))
+  const decayDelta = Math.abs((first.decay ?? 0) - (second.decay ?? 0))
+  return first.enabled === second.enabled && mixDelta < 0.001 && decayDelta < 0.001
+}
+
+function compressorSettingsAreEqual(a, b) {
+  const first = normalizeCompressorSettings(a)
+  const second = normalizeCompressorSettings(b)
+  const thresholdDelta = Math.abs((first.threshold ?? 0) - (second.threshold ?? 0))
+  const ratioDelta = Math.abs((first.ratio ?? 0) - (second.ratio ?? 0))
+  const releaseDelta = Math.abs((first.release ?? 0) - (second.release ?? 0))
+  return (
+    first.enabled === second.enabled &&
+    thresholdDelta < 0.001 &&
+    ratioDelta < 0.001 &&
+    releaseDelta < 0.001
+  )
+}
+
 function buildHeroAudioProfileKey(profile) {
   if (!profile) return null
   const source = typeof profile.source === 'string' && profile.source ? profile.source : 'unknown'
@@ -764,6 +795,8 @@ export default function GameRoomView({
   const lastPersistedSignatureRef = useRef(null)
   const lastPersistedPayloadRef = useRef(null)
   const previousAudioProfileKeyRef = useRef(null)
+  const audioBaselineEffectsRef = useRef(null)
+  const baselineEffectAppliedRef = useRef(false)
 
   const resolvedActiveIndex = useMemo(() => {
     const index = TABS.findIndex((tab) => tab.key === activeTab)
@@ -799,7 +832,10 @@ export default function GameRoomView({
       return undefined
     }
 
-    audioBaselineRef.current = audioManager.getState()
+    const baselineSnapshot = audioManager.getState()
+    audioBaselineRef.current = baselineSnapshot
+    audioBaselineEffectsRef.current = extractHeroAudioEffectSnapshot(baselineSnapshot)
+    baselineEffectAppliedRef.current = false
 
     return () => {
       const baseline = audioBaselineRef.current
@@ -1205,6 +1241,7 @@ export default function GameRoomView({
     lastPersistedSignatureRef.current = null
     lastPersistedPayloadRef.current = null
     setAudioPreferenceLoadedKey(null)
+    baselineEffectAppliedRef.current = false
   }, [heroAudioProfileKey])
 
   useEffect(() => {
@@ -1940,6 +1977,100 @@ export default function GameRoomView({
     heroAudioProfile,
     selectedHeroAudioPresetId,
   ])
+
+  useEffect(() => {
+    if (!audioManager || !heroAudioProfile) {
+      return
+    }
+    if (heroAudioProfile.source === 'ranking') {
+      return
+    }
+    if (heroAudioManualOverride) {
+      return
+    }
+    if (baselineEffectAppliedRef.current) {
+      return
+    }
+
+    const baseline = audioBaselineRef.current
+    if (!baseline) {
+      return
+    }
+
+    const heroId = heroAudioProfile.heroId || null
+    const heroName = typeof heroAudioProfile.heroName === 'string'
+      ? heroAudioProfile.heroName.trim().toLowerCase()
+      : ''
+    const trackUrl = heroAudioProfile.bgmUrl || null
+
+    const baselineHeroId = baseline.heroId || null
+    const baselineHeroName = typeof baseline.heroName === 'string'
+      ? baseline.heroName.trim().toLowerCase()
+      : ''
+    const baselineTrackUrl = baseline.trackUrl || null
+
+    const matchesHero =
+      (heroId && baselineHeroId && heroId === baselineHeroId) ||
+      (trackUrl && baselineTrackUrl && trackUrl === baselineTrackUrl) ||
+      (heroName && baselineHeroName && heroName === baselineHeroName)
+
+    if (!matchesHero) {
+      return
+    }
+
+    const baselineEffects = audioBaselineEffectsRef.current || extractHeroAudioEffectSnapshot(baseline)
+    if (!baselineEffects) {
+      return
+    }
+
+    const preferenceLoadedForProfile = audioPreferenceLoadedKey === heroAudioProfileKey
+    const hasPersistedPayload = Boolean(lastPersistedPayloadRef.current)
+    if (preferenceLoadedForProfile && hasPersistedPayload) {
+      baselineEffectAppliedRef.current = true
+      return
+    }
+
+    const profileEq = heroAudioProfile.eq || DEFAULT_EQ_SETTINGS
+    const profileReverb = heroAudioProfile.reverb || DEFAULT_REVERB_SETTINGS
+    const profileCompressor = heroAudioProfile.compressor || DEFAULT_COMPRESSOR_SETTINGS
+
+    const eqMatches = eqSettingsAreEqual(baselineEffects.eq, profileEq)
+    const reverbMatches = reverbSettingsAreEqual(baselineEffects.reverb, profileReverb)
+    const compressorMatches = compressorSettingsAreEqual(
+      baselineEffects.compressor,
+      profileCompressor,
+    )
+
+    if (eqMatches && reverbMatches && compressorMatches) {
+      baselineEffectAppliedRef.current = true
+      return
+    }
+
+    baselineEffectAppliedRef.current = true
+    heroAudioPreferenceDirtyRef.current = true
+    setHeroAudioManualOverride(true)
+    setSelectedHeroAudioPresetId(null)
+
+    audioManager.setEqEnabled(Boolean(baselineEffects.eq.enabled))
+    audioManager.setEqualizer({
+      low: baselineEffects.eq.low,
+      mid: baselineEffects.eq.mid,
+      high: baselineEffects.eq.high,
+    })
+
+    audioManager.setReverbEnabled(Boolean(baselineEffects.reverb.enabled))
+    audioManager.setReverbDetail({
+      mix: baselineEffects.reverb.mix,
+      decay: baselineEffects.reverb.decay,
+    })
+
+    audioManager.setCompressorEnabled(Boolean(baselineEffects.compressor.enabled))
+    audioManager.setCompressorDetail({
+      threshold: baselineEffects.compressor.threshold,
+      ratio: baselineEffects.compressor.ratio,
+      release: baselineEffects.compressor.release,
+    })
+  }, [audioManager, audioPreferenceLoadedKey, heroAudioManualOverride, heroAudioProfile, heroAudioProfileKey])
 
   const heroStats = useMemo(() => {
     const rankIndex = myEntry ? participants.findIndex((participant) => participant.id === myEntry.id) : -1
