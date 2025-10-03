@@ -43,6 +43,12 @@
   }
 }
 
+@media (min-width: 1340px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .callout {
   border-radius: 16px;
   border: 1px solid rgba(255, 189, 115, 0.55);

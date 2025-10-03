@@ -1068,6 +1068,38 @@ create policy if not exists rank_match_queue_delete
 on public.rank_match_queue for delete to authenticated
 using (auth.uid() = owner_id);
 
+create table if not exists public.rank_matchmaking_logs (
+  id uuid primary key default gen_random_uuid(),
+  game_id uuid,
+  room_id uuid,
+  session_id uuid,
+  mode text,
+  stage text,
+  status text,
+  reason text,
+  match_code text,
+  score_window integer,
+  drop_in boolean default false,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists rank_matchmaking_logs_created_idx
+on public.rank_matchmaking_logs (created_at desc);
+
+create index if not exists rank_matchmaking_logs_stage_idx
+on public.rank_matchmaking_logs (stage);
+
+alter table public.rank_matchmaking_logs enable row level security;
+
+create policy if not exists rank_matchmaking_logs_service_insert
+on public.rank_matchmaking_logs for insert
+with check (auth.role() = 'service_role');
+
+create policy if not exists rank_matchmaking_logs_service_select
+on public.rank_matchmaking_logs for select
+using (auth.role() = 'service_role');
+
 alter table public.rank_battle_logs enable row level security;
 
 create policy if not exists rank_battle_logs_select

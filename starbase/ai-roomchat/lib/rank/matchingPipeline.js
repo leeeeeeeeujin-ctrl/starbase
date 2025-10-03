@@ -491,7 +491,22 @@ export function buildCandidateSample({
 
 export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles = [], queue = [], rules = {} } = {}) {
   if (!supabase || !gameId) return null
-  if (!Array.isArray(queue) || queue.length === 0) return null
+
+  const attemptMeta = {
+    attempted: true,
+    queueSize: Array.isArray(queue) ? queue.length : 0,
+    viableEntries: 0,
+    roomsConsidered: 0,
+    slotsScanned: 0,
+    candidates: 0,
+    reason: null,
+    timestamp: nowIso(),
+  }
+
+  if (!Array.isArray(queue) || queue.length === 0) {
+    attemptMeta.reason = 'empty_queue'
+    return { ready: false, meta: attemptMeta }
+  }
 
   const viableEntries = queue.filter((entry) => {
     if (!entry || entry.simulated) return false
@@ -501,7 +516,12 @@ export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles =
     return Number.isFinite(score)
   })
 
-  if (!viableEntries.length) return null
+  attemptMeta.viableEntries = viableEntries.length
+
+  if (!viableEntries.length) {
+    attemptMeta.reason = 'no_viable_entries'
+    return { ready: false, meta: attemptMeta }
+  }
 
   const roomResult = await withTable(supabase, 'rank_rooms', (table) =>
     supabase
@@ -512,16 +532,24 @@ export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles =
 
   if (roomResult?.error) {
     if (isMissingSupabaseTable(roomResult.error)) {
-      return null
+      attemptMeta.reason = 'missing_rank_rooms'
+      return { ready: false, missing: true, meta: attemptMeta }
     }
     throw roomResult.error
   }
 
   const rooms = (roomResult?.data || []).filter((room) => isRealtimeRoomMatch(room, mode))
-  if (!rooms.length) return null
+  attemptMeta.roomsConsidered = rooms.length
+  if (!rooms.length) {
+    attemptMeta.reason = 'no_realtime_rooms'
+    return { ready: false, meta: attemptMeta }
+  }
 
   const roomIds = rooms.map((room) => room.id).filter(Boolean)
-  if (!roomIds.length) return null
+  if (!roomIds.length) {
+    attemptMeta.reason = 'missing_room_ids'
+    return { ready: false, meta: attemptMeta }
+  }
 
   const slotResult = await withTable(supabase, 'rank_room_slots', (table) =>
     supabase
@@ -532,13 +560,18 @@ export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles =
 
   if (slotResult?.error) {
     if (isMissingSupabaseTable(slotResult.error)) {
-      return null
+      attemptMeta.reason = 'missing_rank_room_slots'
+      return { ready: false, missing: true, meta: attemptMeta }
     }
     throw slotResult.error
   }
 
   const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
-  if (!slotRows.length) return null
+  attemptMeta.slotsScanned = slotRows.length
+  if (!slotRows.length) {
+    attemptMeta.reason = 'no_open_slots'
+    return { ready: false, meta: attemptMeta }
+  }
 
   const slotsByRoom = new Map()
   const occupantOwnerIds = new Set()
@@ -624,14 +657,20 @@ export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles =
     })
   })
 
-  if (!candidates.length) return null
+  attemptMeta.candidates = candidates.length
+
+  if (!candidates.length) {
+    attemptMeta.reason = 'no_open_candidates'
+    return { ready: false, meta: attemptMeta }
+  }
 
   candidates.sort(compareCandidates)
 
   for (const candidate of candidates) {
     const claim = await claimDropInSlot({ supabase, room: candidate.room, slot: candidate.slot, entry: candidate.entry })
     if (claim.missing) {
-      return null
+      attemptMeta.reason = 'missing_slot_table'
+      return { ready: false, missing: true, meta: attemptMeta }
     }
     if (!claim.ok || !claim.slot) {
       continue
@@ -665,6 +704,14 @@ export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles =
       },
     ]
 
+    attemptMeta.reason = 'matched'
+    attemptMeta.matchedCandidate = {
+      roomId: candidate.room.id,
+      slotId: claim.slot.id,
+      scoreGap: candidate.scoreGap,
+      role: normalizeRoleName(candidate.slot.role) || normalizeRoleName(candidate.entry.role),
+    }
+
     return {
       ready: true,
       assignments,
@@ -686,8 +733,10 @@ export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles =
         openSlotsBefore: candidate.stats.openSlotsByRole.get(normalizeRoleName(candidate.slot.role)) || 1,
         claimedAt: claim.now,
       },
+      meta: attemptMeta,
     }
   }
 
-  return null
+  attemptMeta.reason = 'claims_failed'
+  return { ready: false, meta: attemptMeta }
 }

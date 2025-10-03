@@ -7,6 +7,7 @@ import {
   loadMatchingResources,
 } from '@/lib/rank/matchingPipeline'
 import { withTable } from '@/lib/supabaseTables'
+import { recordMatchmakingLog, buildAssignmentSummary } from '@/lib/rank/matchmakingLogs'
 
 function generateMatchCode() {
   const stamp = Date.now().toString(36)
@@ -108,6 +109,26 @@ export default async function handler(req, res) {
 
     let queue = queueResult
 
+    const baseMetadata = {
+      realtimeEnabled: toggles.realtimeEnabled,
+      dropInEnabled: toggles.dropInEnabled,
+      queueSize: Array.isArray(queueResult) ? queueResult.length : 0,
+      participantPoolSize: Array.isArray(participantPool) ? participantPool.length : 0,
+      roles: Array.isArray(roles) ? roles.map((role) => role?.name).filter(Boolean) : [],
+    }
+
+    const baseLog = {
+      game_id: gameId,
+      mode: mode || null,
+    }
+
+    const logStage = (overrides = {}) =>
+      recordMatchmakingLog(supabase, {
+        ...baseLog,
+        ...overrides,
+        metadata: { ...baseMetadata, ...(overrides.metadata || {}) },
+      })
+
     if (brawlEnabled) {
       const brawlVacancies = determineBrawlVacancies(roles, roleStatusMap)
       if (brawlVacancies.length) {
@@ -119,6 +140,18 @@ export default async function handler(req, res) {
             gameId,
             mode,
             matchCode,
+          })
+
+          await logStage({
+            stage: 'brawl_fill',
+            status: 'matched',
+            match_code: matchCode,
+            score_window: brawlResult.maxWindow || 0,
+            metadata: {
+              assignments: buildAssignmentSummary(brawlResult.assignments),
+              brawlVacancies,
+              roleStatus: mapCountsToPlain(roleStatusMap),
+            },
           })
 
           const members = flattenAssignmentMembers(brawlResult.assignments)
@@ -150,12 +183,36 @@ export default async function handler(req, res) {
         rules,
       })
 
+      if (dropInResult && dropInResult.meta && !dropInResult.ready) {
+        await logStage({
+          stage: 'drop_in',
+          status: dropInResult.missing ? 'missing_dependency' : 'skipped',
+          drop_in: true,
+          metadata: {
+            dropInMeta: dropInResult.meta,
+          },
+        })
+      }
+
       if (dropInResult && dropInResult.ready) {
         await markAssignmentsMatched(supabase, {
           assignments: dropInResult.assignments,
           gameId,
           mode,
           matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
+        })
+
+        await logStage({
+          stage: 'drop_in',
+          status: 'matched',
+          drop_in: true,
+          match_code: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
+          score_window: dropInResult.maxWindow || null,
+          metadata: {
+            assignments: buildAssignmentSummary(dropInResult.assignments),
+            dropInTarget: dropInResult.dropInTarget || null,
+            dropInMeta: dropInResult.meta || null,
+          },
         })
 
         const members = flattenAssignmentMembers(dropInResult.assignments)
@@ -182,6 +239,17 @@ export default async function handler(req, res) {
     const result = runMatching({ mode, roles, queue: candidateSample })
 
     if (!result.ready) {
+      await logStage({
+        stage: toggles.realtimeEnabled ? 'realtime_pool' : 'standard_pool',
+        status: 'pending',
+        score_window: result.maxWindow || sampleMeta?.window || null,
+        metadata: {
+          error: result.error || null,
+          sampleMeta,
+          assignments: buildAssignmentSummary(result.assignments),
+        },
+      })
+
       return res.status(200).json({
         ready: false,
         assignments: result.assignments || [],
@@ -200,6 +268,17 @@ export default async function handler(req, res) {
       matchCode,
     })
 
+    await logStage({
+      stage: toggles.realtimeEnabled ? 'realtime_match' : 'offline_match',
+      status: 'matched',
+      match_code: matchCode,
+      score_window: result.maxWindow || null,
+      metadata: {
+        sampleMeta,
+        assignments: buildAssignmentSummary(result.assignments),
+      },
+    })
+
     const members = flattenAssignmentMembers(result.assignments)
     const heroIds = members.map((member) => member.hero_id || member.heroId)
     const heroMap = await loadHeroesByIds(supabase, heroIds)
@@ -215,6 +294,16 @@ export default async function handler(req, res) {
       sampleMeta,
     })
   } catch (error) {
+    await recordMatchmakingLog(supabase, {
+      game_id: gameId || req.body?.gameId || null,
+      mode: mode || req.body?.mode || null,
+      stage: 'handler',
+      status: 'error',
+      reason: error?.code || error?.message || 'match_failed',
+      metadata: {
+        detail: error?.message || null,
+      },
+    })
     console.error('match handler error:', error)
     return res.status(500).json({ error: 'match_failed', detail: error?.message || String(error) })
   }

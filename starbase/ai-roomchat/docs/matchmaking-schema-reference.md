@@ -53,6 +53,12 @@ This note captures every Supabase table that participates in queueing players, f
 - Stores ordered turn transcript rows with session FK, turn index, acting role, public flag, text body, and creation timestamp.【F:starbase/ai-roomchat/supabase.sql†L863-L879】
 - Policies permit global reads and authenticated inserts so session participants can append their turns.【F:starbase/ai-roomchat/supabase.sql†L873-L879】
 
+## Diagnostics & Logging
+
+### `public.rank_matchmaking_logs`
+- Persists each pipeline stage (drop-in scan, realtime queue, offline sample, etc.) with status, reason, score window, and match code so operators can audit why a match succeeded or stalled.【F:starbase/ai-roomchat/supabase.sql†L1014-L1039】
+- Service-role-only insert/select policies protect the log stream while letting the admin portal and diagnostics API report summaries without exposing data to clients.【F:starbase/ai-roomchat/supabase.sql†L1031-L1039】
+
 ## Related Configuration
 
 - Weekly trend RPCs and monitoring tables (`rank_audio_events`, etc.) are optional for matchmaking but support operational dashboards; consult the monitoring schema note if rebuilding analytics after restoring the queue tables.

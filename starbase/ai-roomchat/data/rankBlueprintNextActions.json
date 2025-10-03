@@ -1,6 +1,6 @@
 {
-  "lastUpdatedISO": "2025-11-17",
-  "lastUpdatedDisplay": "2025-11-17 기준",
+  "lastUpdatedISO": "2025-11-18",
+  "lastUpdatedDisplay": "2025-11-18 기준",
   "items": [
     {
       "order": 1,
@@ -21,11 +21,11 @@
       },
       "timing": {
         "label": "2025-11-19",
-        "badge": "D-2",
+        "badge": "D-1",
         "state": "due-soon",
-        "daysFromToday": 2,
-        "daysFromSnapshot": 2,
-        "computedAtISO": "2025-11-17",
+        "daysFromToday": 1,
+        "daysFromSnapshot": 1,
+        "computedAtISO": "2025-11-18",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -49,11 +49,11 @@
       },
       "timing": {
         "label": "2025-11-22",
-        "badge": "D-5",
+        "badge": "D-4",
         "state": "scheduled",
-        "daysFromToday": 5,
-        "daysFromSnapshot": 5,
-        "computedAtISO": "2025-11-17",
+        "daysFromToday": 4,
+        "daysFromSnapshot": 4,
+        "computedAtISO": "2025-11-18",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -77,39 +77,11 @@
       },
       "timing": {
         "label": "2025-11-27",
-        "badge": "D-10",
+        "badge": "D-9",
         "state": "scheduled",
-        "daysFromToday": 10,
-        "daysFromSnapshot": 10,
-        "computedAtISO": "2025-11-17",
-        "isOverdue": false,
-        "overdueDays": 0
-      }
-    },
-    {
-      "order": 4,
-      "summary": "드롭인/비실시간 매칭 소크 테스트를 진행하고, 매칭 로그 요약 API 요구사항을 정리합니다.",
-      "owner": "Matchmaking (류·라라)",
-      "ownerKey": "matchmaking",
-      "targetDateISO": "2025-11-24",
-      "targetDateDisplay": "2025-11-24",
-      "priority": {
-        "label": "P1 (매칭 안정화)",
-        "short": "P1",
-        "rank": 1,
-        "sortKey": 1
-      },
-      "effort": {
-        "label": "프론트·백엔드 3일 (UX/로직 QA)",
-        "personDays": 3
-      },
-      "timing": {
-        "label": "2025-11-24",
-        "badge": "D-7",
-        "state": "scheduled",
-        "daysFromToday": 7,
-        "daysFromSnapshot": 7,
-        "computedAtISO": "2025-11-17",
+        "daysFromToday": 9,
+        "daysFromSnapshot": 9,
+        "computedAtISO": "2025-11-18",
         "isOverdue": false,
         "overdueDays": 0
       }

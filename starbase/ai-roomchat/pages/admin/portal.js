@@ -4,6 +4,7 @@ import styles from '../../styles/AdminPortal.module.css';
 import { parseCookies } from '@/lib/server/cookies';
 import TitleBackgroundEditor from '@/components/admin/TitleBackgroundEditor';
 import AnnouncementManager from '@/components/admin/AnnouncementManager';
+import MatchmakingLogMonitor from '@/components/admin/MatchmakingLogMonitor';
 
 const COOKIE_NAME = 'rank_admin_portal_session';
 
@@ -91,6 +92,7 @@ export default function AdminPortal({ authorized, misconfigured }) {
             <div className={styles.grid}>
               <TitleBackgroundEditor />
               <AnnouncementManager />
+              <MatchmakingLogMonitor />
             </div>
           </section>
         )}

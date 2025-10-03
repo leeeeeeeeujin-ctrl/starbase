@@ -19,13 +19,17 @@
 - **`public.rank_sessions`** – 매칭 성공 후 생성되는 세션 엔벨로프를 보관합니다. 게임·소유자 FK, 상태, 현재 턴, 생성/갱신 시각, 그리고 드롭인 점수 필터에 사용하는 `rating_hint` 열과 진행 중 세션 탐색 인덱스를 포함합니다.【F:starbase/ai-roomchat/supabase.sql†L1072-L1087】
 - **`public.rank_turns`** – 전투 중 기록되는 턴 텍스트를 순서대로 적재합니다. 세션 FK, 턴 인덱스, 역할, 공개 여부, 본문, 생성 시각을 담고 RLS로 인증된 사용자만 삽입할 수 있습니다.【F:starbase/ai-roomchat/supabase.sql†L1099-L1115】
 
-## 5. 복구 체크리스트
-1. `docs/supabase-rank-schema.sql`을 Supabase SQL Editor에 붙여 넣어 위 테이블과 정책·인덱스를 한 번에 생성합니다.【F:docs/supabase-rank-schema.sql†L1-L1416】
+## 5. 로그 & 진단
+- **`public.rank_matchmaking_logs`** – 드롭인/비실시간 파이프라인 단계별 이벤트를 적재합니다. 매치 코드, 단계, 상태, 점수 윈도우, 메타데이터를 JSON으로 저장하고, 생성 시각/단계 인덱스로 관리자 API가 빠르게 요약을 계산할 수 있습니다.【F:starbase/ai-roomchat/supabase.sql†L1014-L1039】
+- 서비스 롤 전용 RLS 정책(`rank_matchmaking_logs_service_insert`, `rank_matchmaking_logs_service_select`)이 포함돼 있으니 Supabase 배포 후 정책이 활성화됐는지 확인하고, 관리자 포털의 <em>매칭 로그 요약</em> 카드에서 연결 상태를 점검하세요.
+
+## 6. 복구 체크리스트
+1. `docs/supabase-rank-schema.sql`을 Supabase SQL Editor에 붙여 넣어 위 테이블과 정책·인덱스를 한 번에 생성합니다.【F:docs/supabase-rank-schema.sql†L1-L1440】
 2. 스토리지나 보조 스키마가 필요하면 `supabase_chat.sql`, `supabase_social.sql`을 추가로 실행합니다.
 3. 최소 하나의 게임/역할/슬롯 데이터를 시드해 로비가 정원을 계산할 수 있도록 합니다.
 4. 매칭 QA 전에 `rank_match_queue`, `rank_participants`에 테스트 데이터를 넣고, 방을 생성해 `rank_room_slots`가 즉시 업데이트되는지 확인하세요.
 
 ---
-느낀 점: 매칭 전용 테이블을 묶어 보니 로비→큐→세션까지 어떤 컬럼이 연쇄적으로 필요했는지 복기하기 쉬웠습니다.
-추가로 필요한 점: 향후 난입/비실시간 보강에서 추가 인덱스가 필요하면 같은 문서에 변동 이력을 계속 적재해 두면 좋겠습니다.
-진행사항: 매칭 플로우에 요구되는 테이블·인덱스를 전부 새 문서로 정리해 이관이나 복구 시 바로 참고할 수 있게 했습니다.
+느낀 점: 로그 테이블까지 포함하니 로비→큐→세션→진단으로 이어지는 데이터 경로가 더 명확해졌습니다.
+추가로 필요한 점: 실서비스에 배포할 때는 `rank_matchmaking_logs` 테이블이 주기적으로 정리되도록 보관 정책을 설정하면 좋겠습니다.
+진행사항: 매칭 플로우에 요구되는 테이블·인덱스·로그 스키마를 모두 정리해 이관이나 복구 시 바로 참고할 수 있게 했습니다.
