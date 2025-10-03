@@ -200,6 +200,8 @@ export default function MatchQueueClient({
   const finalTimerResolvedRef = useRef(null)
   const matchType = state.match?.matchType || 'standard'
   const isBrawlMatch = matchType === 'brawl'
+  const isDropInMatch = matchType === 'drop_in'
+  const dropInTarget = state.match?.dropInTarget || null
   const brawlSummary = useMemo(() => {
     if (!isBrawlMatch) return ''
     const vacancies = Array.isArray(state.match?.brawlVacancies)
@@ -216,6 +218,24 @@ export default function MatchQueueClient({
       .filter(Boolean)
       .join(', ')
   }, [isBrawlMatch, state.match])
+
+  const dropInSummary = useMemo(() => {
+    if (!isDropInMatch || !dropInTarget) return ''
+    const parts = []
+    if (typeof dropInTarget.roomCode === 'string' && dropInTarget.roomCode.trim()) {
+      parts.push(`룸 코드 ${dropInTarget.roomCode.trim()}`)
+    }
+    if (typeof dropInTarget.role === 'string' && dropInTarget.role.trim()) {
+      parts.push(`${dropInTarget.role.trim()} 슬롯`)
+    }
+    if (Number.isFinite(Number(dropInTarget.scoreDifference))) {
+      const window = Math.round(Math.abs(Number(dropInTarget.scoreDifference)))
+      if (window > 0) {
+        parts.push(`점수 차이 ±${window}`)
+      }
+    }
+    return parts.join(' · ')
+  }, [isDropInMatch, dropInTarget])
 
   useEffect(() => {
     const previous = latestStatusRef.current
@@ -621,22 +641,35 @@ export default function MatchQueueClient({
       </section>
 
       {state.status === 'matched' && state.match ? (
-        <section className={styles.card}>
-          <h2 className={styles.sectionTitle}>
-            {isBrawlMatch ? '난입 슬롯 충원 완료' : '매칭 완료'}
-          </h2>
+      <section className={styles.card}>
+        <h2 className={styles.sectionTitle}>
+          {isDropInMatch
+            ? '실시간 난입 확정'
+            : isBrawlMatch
+            ? '난입 슬롯 충원 완료'
+            : '매칭 완료'}
+        </h2>
+        <p className={styles.sectionHint}>
+          {isDropInMatch
+            ? dropInSummary
+              ? `진행 중인 전투에 합류합니다. ${dropInSummary}`
+              : '진행 중인 전투에 합류합니다. 메인 룸으로 돌아가 방에 입장해 주세요.'
+            : isBrawlMatch
+            ? brawlSummary
+              ? `탈락한 역할군을 대신할 ${brawlSummary}이(가) 합류합니다.`
+              : '탈락한 역할군을 대신할 참가자가 합류합니다.'
+            : `허용 점수 폭 ±${state.match.maxWindow || 0} 내에서 팀이 구성되었습니다.`}
+        </p>
+        {isBrawlMatch ? (
           <p className={styles.sectionHint}>
-            {isBrawlMatch
-              ? brawlSummary
-                ? `탈락한 역할군을 대신할 ${brawlSummary}이(가) 합류합니다.`
-                : '탈락한 역할군을 대신할 참가자가 합류합니다.'
-              : `허용 점수 폭 ±${state.match.maxWindow || 0} 내에서 팀이 구성되었습니다.`}
+            허용 점수 폭 ±{state.match.maxWindow || 0}을 유지한 채 난입이 진행됩니다.
           </p>
-          {isBrawlMatch ? (
-            <p className={styles.sectionHint}>
-              허용 점수 폭 ±{state.match.maxWindow || 0}을 유지한 채 난입이 진행됩니다.
-            </p>
-          ) : null}
+        ) : null}
+        {isDropInMatch ? (
+          <p className={styles.sectionHint}>
+            메인 룸에서 방을 열어둔 상태라면 즉시 입장해 전투를 시작할 수 있습니다.
+          </p>
+        ) : null}
           <div className={styles.matchGrid}>
             {state.match.assignments.map((assignment, index) => (
               <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>

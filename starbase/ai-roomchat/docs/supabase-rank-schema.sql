@@ -956,6 +956,9 @@ create table if not exists public.rank_room_slots (
   unique(room_id, slot_index)
 );
 
+create index if not exists rank_room_slots_role_vacancy_idx
+on public.rank_room_slots (room_id, role, occupant_owner_id);
+
 create table if not exists public.rank_match_queue (
   id uuid primary key default gen_random_uuid(),
   game_id uuid not null references public.rank_games(id) on delete cascade,
@@ -1079,6 +1082,12 @@ create table if not exists public.rank_sessions (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.rank_sessions
+  add column if not exists rating_hint integer;
+
+create index if not exists rank_sessions_status_recent_idx
+on public.rank_sessions (status, game_id, updated_at desc);
 
 alter table public.rank_sessions enable row level security;
 

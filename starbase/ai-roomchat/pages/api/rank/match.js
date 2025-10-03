@@ -151,7 +151,23 @@ export default async function handler(req, res) {
       })
 
       if (dropInResult && dropInResult.ready) {
-        return res.status(200).json(dropInResult)
+        await markAssignmentsMatched(supabase, {
+          assignments: dropInResult.assignments,
+          gameId,
+          mode,
+          matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
+        })
+
+        const members = flattenAssignmentMembers(dropInResult.assignments)
+        const heroIds = members.map((member) => member.hero_id || member.heroId).filter(Boolean)
+        const heroMap = heroIds.length ? await loadHeroesByIds(supabase, heroIds) : new Map()
+
+        return res.status(200).json({
+          ...dropInResult,
+          matchType: dropInResult.matchType || 'drop_in',
+          matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
+          heroMap: mapToPlain(heroMap),
+        })
       }
     }
 

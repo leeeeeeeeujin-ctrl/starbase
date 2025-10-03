@@ -8,24 +8,25 @@
 ## 진행률
 | 단계 | 설명 | 상태 | 진행도 |
 | --- | --- | --- | --- |
-| 1 | 실시간+난입 대상 탐색 설계 및 스키마 요구사항 정리 | 진행 중 | 40% |
-| 2 | 실시간 전용 표본 축소(큐 참가자 한정) 로직 구현 | 준비 중 | 10% |
-| 3 | 비실시간 보강(참가자 풀 셔플)과 표준 매칭 통합 | 준비 중 | 0% |
+| 1 | 실시간+난입 대상 탐색 설계 및 스키마 요구사항 정리 | 완료 | 100% |
+| 2 | 실시간 전용 표본 축소(큐 참가자 한정) 로직 구현 | 진행 중 | 60% |
+| 3 | 비실시간 보강(참가자 풀 셔플)과 표준 매칭 통합 | 준비 중 | 10% |
 
-- **총괄 진행률**: 17% (1단계 중간점 통과)
-- **최근 갱신**: 2025-11-13
+- **총괄 진행률**: 57% (드롭인 좌석 점유 및 실시간 표본 축소 적용)
+- **최근 갱신**: 2025-11-14
 
 ## 단계별 작업 내역
 ### 1단계 – 실시간+난입 대상 탐색
 - [x] 파이프라인 스텁 추가: `lib/rank/matchingPipeline.js`에 `extractMatchingToggles`, `loadMatchingResources`, `findRealtimeDropInTarget` 스켈레톤을 도입해 단계별 로직을 분리.
 - [x] API 연동: `/api/rank/match`가 새 파이프라인을 호출하고, 실시간+난입 조합일 때 먼저 `findRealtimeDropInTarget`을 시도하도록 분기.
-- [ ] 세션/슬롯 인덱스 설계: 진행 중. 난입 탐색에 필요한 `rank_sessions.status`, `rank_room_slots.role`, `rank_room_slots.ready_at` 인덱스를 문서화 예정.
-- [ ] 점수 힌트 열 정의: 진행 중. `rank_sessions` 또는 `rank_battles`에 최근 점수대 추적용 `rating_hint` 컬럼 추가 필요성 검토.
+- [x] 세션/슬롯 인덱스 구현: `rank_room_slots`에 `(room_id, role, occupant_owner_id)` 인덱스, `rank_sessions`에 `rating_hint` 컬럼과 `(status, game_id, updated_at desc)` 인덱스를 추가해 난입 좌석 탐색을 가속.【F:supabase.sql†L948-L951】【F:supabase.sql†L1076-L1079】
+- [x] 난입 좌석 점유: 실시간 대상이 발견되면 슬롯을 선점하고 `rank_rooms.filled_count`를 즉시 갱신하도록 서버 파이프라인을 확장.【F:lib/rank/matchingPipeline.js†L1-L283】【F:pages/api/rank/match.js†L140-L159】
 
 ### 2단계 – 실시간 표본 축소
-- [ ] `findRealtimeDropInTarget` 완성: 진행 중. 현재는 `null`을 반환하며, 이후 실시간 인입 게임 탐색 로직/점수 윈도우 계산을 채울 계획.
-- [ ] 표본 필터링: 실시간 모드일 때 큐 데이터만 대상으로 삼고, 난입 실패 시 기존 표본을 유지하도록 API에 반영(스텁 완료, 구현 예정).
-- [ ] 클라이언트 알림: 실시간 난입 성공 시 `useMatchQueue`가 즉시 매치 확정 안내를 표출하도록 Hook 확장 필요.
+- [x] `findRealtimeDropInTarget` 완성: 실시간 난입 후보를 점수 윈도우 기반으로 평가하고, 빈 슬롯을 차지한 뒤 드롭인 매치 응답을 반환한다.【F:lib/rank/matchingPipeline.js†L118-L283】
+- [x] 표본 필터링: 실시간 모드에서는 대기열만 표본으로 사용하고, 비실시간만 참가자 풀을 보강한다.【F:lib/rank/matchingPipeline.js†L83-L114】
+- [x] 큐 상태 잠금: 드롭인 성공 시 즉시 큐 엔트리를 `matched`로 잠그고 히어로 정보를 응답에 포함해 클라이언트 메시지가 일관되도록 했다.【F:pages/api/rank/match.js†L140-L169】
+- [ ] 클라이언트 알림: 실시간 난입 성공 시 `MatchQueueClient`/`AutoMatchProgress`가 별도 안내와 룸 코드 정보를 제공하도록 UX를 보완(추가 QA 예정).【F:components/rank/MatchQueueClient.js†L196-L230】【F:components/rank/AutoMatchProgress.js†L812-L825】
 
 ### 3단계 – 비실시간 보강 & 표준 매칭
 - [ ] `buildCandidateSample` 확장: 비실시간 보강 시 점수 폭 확대, 참가자 풀 샘플 크기 제한 등을 추가할 계획.
@@ -35,15 +36,15 @@
 ## 필요한 Supabase 스키마 확장
 | 테이블 | 컬럼/인덱스 | 비고 |
 | --- | --- | --- |
-| `public.rank_sessions` | `rating_hint integer` (nullable) | 최근 전투 기준 점수대 추적. drop-in 필터링에 사용. |
-| `public.rank_sessions` | 인덱스 `(status, game_id, updated_at desc)` | 진행 중 세션 빠르게 탐색.
-| `public.rank_room_slots` | 인덱스 `(session_id, role, ready_at nulls last)` | 역할별 빈 슬롯 조회 가속.
+| `public.rank_sessions` | `rating_hint integer` (nullable) | 최근 전투 기준 점수대 추적. drop-in 필터링에 사용. **(적용 완료)** |
+| `public.rank_sessions` | 인덱스 `(status, game_id, updated_at desc)` | 진행 중 세션 빠르게 탐색. **(적용 완료)** |
+| `public.rank_room_slots` | 인덱스 `(room_id, role, occupant_owner_id)` | 역할별 빈 슬롯 조회 가속. **(적용 완료)** |
 | `public.rank_match_queue` | 기존 컬럼 | 실시간 표본 축소 단계에서는 별도 확장 없이 대기열 데이터 사용.
 
 > 스키마 변경분은 `docs/supabase-rank-schema.sql`과 배포 SQL에 반영 필요. 실제 생성 시 RLS 정책 갱신 여부도 확인할 것.
 
 ## 다음 작업
-1. `rank_sessions`/`rank_room_slots`에 필요한 인덱스와 `rating_hint` 컬럼을 추가하고, 문서/SQL을 갱신한다. (담당: 류, ETA 2025-11-20)
-2. `findRealtimeDropInTarget`에 진행 중 세션 검색 및 역할 빈 슬롯 검사를 구현한다. (담당: 류, ETA 2025-11-22)
-3. `useMatchQueue`에 실시간 난입 성공 시나리오 토스트/배너를 추가한다. (담당: 라라, ETA 2025-11-25)
+1. 실시간 난입 성공 시 `MatchQueueClient` 자동 안내/리디렉션 UX를 QA하고, 드롭인 실패 재시도 로직을 보강한다. (담당: 라라, ETA 2025-11-21)
+2. 비실시간 보강 단계에서 참가자 풀 셔플/윈도우 확장 로직을 설계하고, 실패 원인 리포트를 추가한다. (담당: 류, ETA 2025-11-24)
+3. 난입 매치 로그를 운영 대시보드에서 추적할 수 있도록 이벤트/세션 기록 요약을 설계한다. (담당: 세민, ETA 2025-11-27)
 

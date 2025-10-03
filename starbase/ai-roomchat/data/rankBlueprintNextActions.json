@@ -1,6 +1,6 @@
 {
-  "lastUpdatedISO": "2025-11-13",
-  "lastUpdatedDisplay": "2025-11-13 기준",
+  "lastUpdatedISO": "2025-11-15",
+  "lastUpdatedDisplay": "2025-11-15 기준",
   "items": [
     {
       "order": 1,
@@ -21,11 +21,11 @@
       },
       "timing": {
         "label": "2025-11-19",
-        "badge": "D-6",
+        "badge": "D-4",
         "state": "due-soon",
-        "daysFromToday": 6,
-        "daysFromSnapshot": 6,
-        "computedAtISO": "2025-11-13",
+        "daysFromToday": 4,
+        "daysFromSnapshot": 4,
+        "computedAtISO": "2025-11-15",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -49,11 +49,11 @@
       },
       "timing": {
         "label": "2025-11-22",
-        "badge": "D-9",
+        "badge": "D-7",
         "state": "scheduled",
-        "daysFromToday": 9,
-        "daysFromSnapshot": 9,
-        "computedAtISO": "2025-11-13",
+        "daysFromToday": 7,
+        "daysFromSnapshot": 7,
+        "computedAtISO": "2025-11-15",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -77,11 +77,39 @@
       },
       "timing": {
         "label": "2025-11-27",
-        "badge": "D-14",
+        "badge": "D-12",
         "state": "scheduled",
-        "daysFromToday": 14,
-        "daysFromSnapshot": 14,
-        "computedAtISO": "2025-11-13",
+        "daysFromToday": 12,
+        "daysFromSnapshot": 12,
+        "computedAtISO": "2025-11-15",
+        "isOverdue": false,
+        "overdueDays": 0
+      }
+    },
+    {
+      "order": 4,
+      "summary": "실시간 난입 확정 UX와 실패 재시도 흐름을 QA하고 비실시간 보강 설계를 마무리합니다.",
+      "owner": "Matchmaking (류·라라)",
+      "ownerKey": "matchmaking",
+      "targetDateISO": "2025-11-24",
+      "targetDateDisplay": "2025-11-24",
+      "priority": {
+        "label": "P1 (매칭 안정화)",
+        "short": "P1",
+        "rank": 1,
+        "sortKey": 1
+      },
+      "effort": {
+        "label": "프론트·백엔드 3일 (UX/로직 QA)",
+        "personDays": 3
+      },
+      "timing": {
+        "label": "2025-11-24",
+        "badge": "D-9",
+        "state": "scheduled",
+        "daysFromToday": 9,
+        "daysFromSnapshot": 9,
+        "computedAtISO": "2025-11-15",
         "isOverdue": false,
         "overdueDays": 0
       }
