@@ -985,25 +985,24 @@ export default function GameRoomView({
             : Number.isFinite(Number(entry.capacity)) && Number(entry.capacity) >= 0
             ? Number(entry.capacity)
             : null
-        const occupied =
+        const baselineReady =
           occupancy?.occupiedSlots != null
-            ? Number(occupancy.occupiedSlots)
-            : entry.occupiedSlots != null
-            ? Number(entry.occupiedSlots)
-            : entry.count
-        const available =
-          occupancy?.availableSlots != null
-            ? Number(occupancy.availableSlots)
+            ? Math.max(Number(occupancy.occupiedSlots), 0)
             : capacity != null
-            ? Math.max(capacity - entry.count, 0)
-            : null
+            ? Math.min(entry.count, capacity)
+            : entry.count
+        const stillNeeded =
+          capacity != null ? Math.max(capacity - baselineReady, 0) : null
+        const overflowCount =
+          capacity != null ? Math.max(entry.count - baselineReady, 0) : 0
 
         return {
           name,
           count: entry.count,
-          capacity,
-          occupiedSlots: occupied,
-          availableSlots: available,
+          minimumRequired: capacity,
+          baselineReady,
+          overflowCount,
+          neededForStart: stillNeeded,
         }
       })
       .filter(Boolean)
@@ -1021,6 +1020,29 @@ export default function GameRoomView({
   const roster = Array.isArray(participants) ? participants : []
   const readyCount = roster.length
 
+  const baselineSummary = useMemo(() => {
+    if (!participantsByRole.length) {
+      return { totalMinimum: 0, shortfall: 0 }
+    }
+    return participantsByRole.reduce(
+      (acc, entry) => {
+        const minimumValue =
+          Number.isFinite(Number(entry.minimumRequired)) && Number(entry.minimumRequired) >= 0
+            ? Number(entry.minimumRequired)
+            : 0
+        const shortfallValue =
+          Number.isFinite(Number(entry.neededForStart)) && Number(entry.neededForStart) >= 0
+            ? Number(entry.neededForStart)
+            : 0
+        return {
+          totalMinimum: acc.totalMinimum + minimumValue,
+          shortfall: acc.shortfall + shortfallValue,
+        }
+      },
+      { totalMinimum: 0, shortfall: 0 },
+    )
+  }, [participantsByRole])
+
   const capacityCountLabel = useMemo(() => {
     if (minimumParticipants > 0) {
       return `${readyCount}/${minimumParticipants}명 참여`
@@ -1029,12 +1051,15 @@ export default function GameRoomView({
   }, [minimumParticipants, readyCount])
 
   const capacityStatusText = useMemo(() => {
-    if (canStart) return '매칭 준비 완료'
+    if (canStart) return '기본 역할 최소 인원이 모두 충족되었습니다.'
+    if (baselineSummary.shortfall > 0 && baselineSummary.totalMinimum > 0) {
+      return `시작까지 기본 슬롯 ${baselineSummary.shortfall}명 충원 필요`
+    }
     if (minimumParticipants > 0) {
       return `${minimumParticipants}명 이상 모이면 시작할 수 있습니다.`
     }
     return '함께할 참가자를 기다리는 중'
-  }, [canStart, minimumParticipants])
+  }, [baselineSummary.shortfall, baselineSummary.totalMinimum, canStart, minimumParticipants])
 
   const entryBackdrop = myEntry?.hero?.background_url || null
 
@@ -2747,48 +2772,57 @@ export default function GameRoomView({
 
         {participantsByRole.length > 0 ? (
           <div className={styles.roleList}>
-            {participantsByRole.map(({ name, count, capacity, occupiedSlots, availableSlots }) => {
-              const isPicked = currentRole === name
-              const isMine = myEntry?.role === name
-              const highlight = isPicked || isMine
-              const capacityValue =
-                Number.isFinite(Number(capacity)) && Number(capacity) >= 0 ? Number(capacity) : null
-              const occupiedValue =
-                Number.isFinite(Number(occupiedSlots)) && Number(occupiedSlots) >= 0
-                  ? Number(occupiedSlots)
-                  : count
-              const remaining =
-                Number.isFinite(Number(availableSlots)) && Number(availableSlots) >= 0
-                  ? Number(availableSlots)
-                  : null
-              const full = capacityValue != null && occupiedValue >= capacityValue
-              const label =
-                capacityValue != null ? `${occupiedValue}/${capacityValue}명` : `${count}명 참여 중`
-              const classes = [styles.roleChip]
-              if (highlight) classes.push(styles.roleChipActive)
-              if (alreadyJoined && !isMine) classes.push(styles.roleChipDisabled)
-              if (full && !isMine) classes.push(styles.roleChipFull)
-              const disabled = (alreadyJoined && !isMine) || (full && !isMine)
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  className={classes.join(' ')}
-                  onClick={() => onChangeRole?.(name)}
-                  disabled={disabled}
-                >
-                  <span className={styles.roleName}>{name}</span>
-                  <span className={styles.roleCount}>{label}</span>
-                  {remaining != null ? (
-                    <span className={styles.roleAvailability}>
-                      {remaining > 0 ? `남은 슬롯 ${remaining}` : '정원 가득'}
-                    </span>
-                  ) : full && !isMine ? (
-                    <span className={styles.roleFullTag}>정원 마감</span>
-                  ) : null}
-                </button>
-              )
-            })}
+            {participantsByRole.map(
+              ({ name, count, minimumRequired, overflowCount, neededForStart }) => {
+                const isPicked = currentRole === name
+                const isMine = myEntry?.role === name
+                const highlight = isPicked || isMine
+                const minimumValue =
+                  Number.isFinite(Number(minimumRequired)) && Number(minimumRequired) >= 0
+                    ? Number(minimumRequired)
+                    : null
+                const overflowValue =
+                  Number.isFinite(Number(overflowCount)) && Number(overflowCount) > 0
+                    ? Number(overflowCount)
+                    : 0
+                const shortfallValue =
+                  Number.isFinite(Number(neededForStart)) && Number(neededForStart) >= 0
+                    ? Number(neededForStart)
+                    : null
+                const label =
+                  minimumValue != null
+                    ? `${count}명 참여 · 최소 ${minimumValue}명 필요`
+                    : `${count}명 참여 중`
+                const statusParts = []
+                if (minimumValue != null) {
+                  statusParts.push(shortfallValue && shortfallValue > 0 ? `시작까지 ${shortfallValue}명 필요` : '기본 슬롯 충족')
+                }
+                if (overflowValue > 0) {
+                  statusParts.push(`추가 참가자 ${overflowValue}명`)
+                }
+                const statusText = statusParts.length > 0 ? statusParts.join(' · ') : '참여자 모집 중'
+                const classes = [styles.roleChip]
+                if (highlight) classes.push(styles.roleChipActive)
+                if (!isMine && minimumValue != null && shortfallValue === 0) {
+                  classes.push(styles.roleChipReady)
+                }
+                if (alreadyJoined && !isMine) classes.push(styles.roleChipDisabled)
+                const disabled = alreadyJoined && !isMine
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    className={classes.join(' ')}
+                    onClick={() => onChangeRole?.(name)}
+                    disabled={disabled}
+                  >
+                    <span className={styles.roleName}>{name}</span>
+                    <span className={styles.roleCount}>{label}</span>
+                    <span className={styles.roleAvailability}>{statusText}</span>
+                  </button>
+                )
+              },
+            )}
           </div>
         ) : (
           <div className={styles.emptyCard}>선택 가능한 역할 정보가 없습니다.</div>

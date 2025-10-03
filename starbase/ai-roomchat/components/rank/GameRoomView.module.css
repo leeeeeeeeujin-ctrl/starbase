@@ -481,10 +481,10 @@
   cursor: not-allowed;
 }
 
-.roleChipFull {
-  border-color: rgba(248, 113, 113, 0.55);
-  background: rgba(127, 29, 29, 0.22);
-  color: #fecaca;
+.roleChipReady {
+  border-color: rgba(74, 222, 128, 0.55);
+  background: rgba(22, 101, 52, 0.28);
+  color: #bbf7d0;
 }
 
 .roleName {
@@ -502,11 +502,6 @@
   color: rgba(148, 163, 184, 0.85);
 }
 
-.roleFullTag {
-  font-size: 12px;
-  font-weight: 600;
-  color: #fecaca;
-}
 
 .joinActions {
   display: flex;

@@ -670,16 +670,7 @@ export function useGameRoom(
       const alreadyClaimedSlot = roleSlots.find((slot) => slot?.hero_owner_id === user.id)
       const availableSlot = roleSlots.find((slot) => !slot?.hero_id && slot?.hero_owner_id == null)
 
-      if (!alreadyClaimedSlot && !availableSlot) {
-        const currentCount = participants.filter((participant) => participant?.role === roleName).length
-        const alreadyInRole = participants.some((participant) => participant?.hero_id === myHero.id)
-        if (capacity != null && currentCount >= capacity && !alreadyInRole) {
-          alert('이미 정원이 가득 찬 역할입니다.')
-          return { ok: false }
-        }
-        alert('이 역할에 남은 슬롯이 없습니다.')
-        return { ok: false }
-      }
+      const joiningWithoutSlot = !alreadyClaimedSlot && !availableSlot
 
       const existingEntry =
         participants.find((participant) => participant?.owner_id === user.id) || null
@@ -740,7 +731,10 @@ export function useGameRoom(
       await refreshSlots()
       await refreshBattles()
       await refreshSessionHistory()
-      return { ok: true, slot: result.slot }
+      if (joiningWithoutSlot && result?.overflow) {
+        alert('기본 슬롯은 이미 채워졌습니다. 추가 참가자로 합류했으며 시작 조건은 기존 슬롯 충족 여부에 따라 달라집니다.')
+      }
+      return { ok: true, slot: result.slot, overflow: Boolean(result?.overflow) }
     },
     [
       gameId,

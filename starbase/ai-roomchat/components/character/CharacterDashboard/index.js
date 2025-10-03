@@ -916,23 +916,28 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
                     {gameRoles.length ? (
                       gameRoles.map((role) => {
                         const slot = roleSlots.get(role.name) || { capacity: 1, occupied: 0 }
-                        const full = slot.occupied >= slot.capacity
+                        const capacity = Number.isFinite(Number(slot.capacity))
+                          ? Math.max(Number(slot.capacity), 0)
+                          : null
+                        const occupied = Number.isFinite(Number(slot.occupied))
+                          ? Math.max(Number(slot.occupied), 0)
+                          : 0
                         const isActive = roleChoice === role.name
                         return (
                           <button
                             key={role.id || role.name}
                             type="button"
-                            onClick={() => (full ? null : handleSelectRole(role.name))}
+                            onClick={() => handleSelectRole(role.name)}
                             style={{
                               ...styles.roleButton,
                               ...(isActive ? styles.roleButtonActive : null),
-                              ...(full ? styles.roleButtonDisabled : null),
                             }}
-                            disabled={full}
                           >
                             <span>{role.name}</span>
                             <span style={styles.roleSlotMeta}>
-                              {slot.occupied}/{slot.capacity} 참여 중
+                              {capacity != null
+                                ? `최소 ${capacity}명 필요 · 현재 ${occupied}명 참여`
+                                : `${occupied}명 참여 중`}
                             </span>
                           </button>
                         )
@@ -1633,10 +1638,6 @@ const styles = {
   roleButtonActive: {
     borderColor: 'rgba(96, 165, 250, 0.9)',
     background: 'rgba(37, 99, 235, 0.3)',
-  },
-  roleButtonDisabled: {
-    opacity: 0.5,
-    cursor: 'not-allowed',
   },
   roleSlotMeta: {
     fontSize: 12,
