@@ -254,12 +254,51 @@ export default function GameRoomPage() {
               })
           : []
 
-        if (!activeSlots.length) {
+        const slotTarget = activeSlots.length > 0 ? activeSlots.length : requiredParticipants
+        if (!slotTarget) {
           throw new Error('no_slots')
         }
 
-        const heroIds = activeSlots.map((slot) => slot?.hero_id || slot?.heroId || null)
-        if (heroIds.some((value) => !value)) {
+        const usedHeroIds = new Set()
+        const initialHeroIds = activeSlots.map((slot) => {
+          const slotHeroId = slot?.hero_id || slot?.heroId || null
+          if (slotHeroId) {
+            usedHeroIds.add(slotHeroId)
+          }
+          return slotHeroId
+        })
+
+        const fallbackHeroIds = []
+        activeParticipants.forEach((participant) => {
+          const directHeroId = participant?.hero_id || participant?.heroId || participant?.hero?.id || null
+          let candidateId = directHeroId
+          if (!candidateId && Array.isArray(participant?.hero_ids)) {
+            candidateId = participant.hero_ids.find((value) => Boolean(value)) || null
+          }
+          if (!candidateId) return
+          if (usedHeroIds.has(candidateId)) return
+          fallbackHeroIds.push(candidateId)
+          usedHeroIds.add(candidateId)
+        })
+
+        const heroIds = initialHeroIds.map((value) => {
+          if (value) return value
+          const nextHeroId = fallbackHeroIds.shift() || null
+          if (nextHeroId) {
+            usedHeroIds.add(nextHeroId)
+          }
+          return nextHeroId
+        })
+
+        while (heroIds.length < slotTarget && fallbackHeroIds.length) {
+          const nextHeroId = fallbackHeroIds.shift()
+          if (nextHeroId) {
+            heroIds.push(nextHeroId)
+            usedHeroIds.add(nextHeroId)
+          }
+        }
+
+        if (heroIds.length < slotTarget || heroIds.some((value) => !value)) {
           throw new Error('slot_missing_hero')
         }
 
