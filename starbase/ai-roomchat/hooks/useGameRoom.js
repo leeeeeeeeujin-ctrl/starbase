@@ -15,7 +15,7 @@ async function fetchParticipantsWithHeroes(gameId) {
     supabase
       .from(table)
       .select(
-        'id, game_id, hero_id, owner_id, role, score, rating, battles, win_rate, created_at'
+        'id, game_id, hero_id, hero_ids, owner_id, role, score, rating, battles, win_rate, status, created_at'
       )
       .eq('game_id', gameId)
       .order('score', { ascending: false })
@@ -24,7 +24,21 @@ async function fetchParticipantsWithHeroes(gameId) {
   if (participantError) throw participantError
 
   const participants = participantsData || []
-  const heroIds = participants.map((p) => p.hero_id).filter(Boolean)
+  const heroIdSet = new Set()
+  participants.forEach((participant) => {
+    const direct = participant?.hero_id
+    if (direct) {
+      heroIdSet.add(direct)
+      return
+    }
+    const heroArray = Array.isArray(participant?.hero_ids) ? participant.hero_ids : []
+    heroArray.forEach((value) => {
+      if (value) {
+        heroIdSet.add(value)
+      }
+    })
+  })
+  const heroIds = Array.from(heroIdSet)
 
   if (!heroIds.length) {
     return participants.map((p) => ({ ...p, hero: null }))
@@ -871,6 +885,28 @@ export function useGameRoom(
     return slots.filter((slot) => slot && slot.active !== false)
   }, [slots])
 
+  const activeParticipants = useMemo(() => {
+    if (!Array.isArray(participants)) return []
+    return participants.filter((participant) => {
+      if (!participant) return false
+      const status = typeof participant?.status === 'string' ? participant.status.trim().toLowerCase() : ''
+      if (status === 'out') {
+        return false
+      }
+      const directHeroId = participant?.hero_id || participant?.heroId || null
+      if (directHeroId) {
+        return true
+      }
+      if (participant?.hero && participant.hero.id) {
+        return true
+      }
+      if (Array.isArray(participant?.hero_ids)) {
+        return participant.hero_ids.some((value) => Boolean(value))
+      }
+      return false
+    })
+  }, [participants])
+
   const roleOccupancy = useMemo(() => {
     const order = []
     const map = new Map()
@@ -917,7 +953,7 @@ export function useGameRoom(
       }
     })
 
-    participants.forEach((participant) => {
+    activeParticipants.forEach((participant) => {
       const entry = register(participant?.role)
       if (!entry) return
       entry.participantCount += 1
@@ -951,7 +987,7 @@ export function useGameRoom(
         }
       })
       .filter(Boolean)
-  }, [activeSlots, participants, roles])
+  }, [activeParticipants, activeSlots, participants, roles])
 
   const roleLeaderboards = useMemo(() => {
     if (!Array.isArray(participants) || participants.length === 0) {
@@ -1093,8 +1129,8 @@ export function useGameRoom(
     if (totalActiveSlots > 0) {
       return filledSlotCount >= totalActiveSlots
     }
-    return participants.length >= minimumParticipants
-  }, [filledSlotCount, minimumParticipants, participants.length, totalActiveSlots])
+    return activeParticipants.length >= minimumParticipants
+  }, [activeParticipants.length, filledSlotCount, minimumParticipants, totalActiveSlots])
 
   const isOwner = useMemo(() => {
     if (!user || !game) return false
@@ -1123,6 +1159,7 @@ export function useGameRoom(
       alreadyJoined,
       myEntry,
       minimumParticipants,
+      activeParticipants,
       roleOccupancy,
       roleLeaderboards,
     },

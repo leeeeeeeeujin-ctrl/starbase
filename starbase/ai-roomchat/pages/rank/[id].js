@@ -79,6 +79,7 @@ export default function GameRoomPage() {
       alreadyJoined,
       myEntry,
       minimumParticipants,
+      activeParticipants,
       roleOccupancy,
       roleLeaderboards,
     },
@@ -109,7 +110,7 @@ export default function GameRoomPage() {
     ? Number(minimumParticipants)
     : 0
   const requiredParticipants = Math.max(1, resolvedMinimumParticipants)
-  const hasMinimumParticipants = participants.length >= requiredParticipants
+  const hasMinimumParticipants = activeParticipants.length >= requiredParticipants
 
   const handleJoin = async () => {
     await joinGame(pickRole)
