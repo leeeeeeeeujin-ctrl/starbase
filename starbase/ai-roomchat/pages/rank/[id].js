@@ -242,8 +242,10 @@ export default function GameRoomPage() {
       setStartError('')
 
       try {
-        const activeSlots = Array.isArray(slots)
-          ? slots
+        const refreshedSlots = await refreshSlots()
+        const slotSource = Array.isArray(refreshedSlots) ? refreshedSlots : slots
+        const activeSlots = Array.isArray(slotSource)
+          ? slotSource
               .filter((slot) => slot && slot.active !== false)
               .sort((a, b) => {
                 const aIndex = Number(a?.slot_index ?? a?.slotIndex ?? 0)

@@ -564,12 +564,14 @@ export function useGameRoom(
   }, [gameId])
 
   const refreshSlots = useCallback(async () => {
-    if (!gameId) return
+    if (!gameId) return []
     try {
       const next = await fetchSlotDetails(gameId)
       setSlots(next)
+      return next
     } catch (err) {
       console.error('슬롯 정보 갱신 실패:', err)
+      return null
     }
   }, [gameId])
 
