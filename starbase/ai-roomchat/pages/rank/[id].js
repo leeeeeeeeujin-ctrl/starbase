@@ -368,6 +368,11 @@ export default function GameRoomPage() {
       } catch (error) {
         const message = (() => {
           if (!error) return '매칭을 시작하지 못했습니다.'
+          const code = typeof error?.code === 'string' ? error.code : ''
+          const detail =
+            typeof error?.detail === 'string' && error.detail.trim()
+              ? error.detail.trim()
+              : ''
           if (error.message === 'no_slots') {
             return '슬롯 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.'
           }
@@ -380,6 +385,12 @@ export default function GameRoomPage() {
           if (error.message === 'quota_exhausted') {
             return 'AI API 사용량이 부족합니다. 다른 키로 다시 시도해 주세요.'
           }
+          if (code === 'invalid_user_api_key' || error.message === 'invalid_user_api_key') {
+            return 'AI API 키가 올바르지 않습니다. 제공자와 키 제한을 확인한 뒤 다시 시도해 주세요.'
+          }
+          if (code === 'ai_prompt_blocked' || error.message === 'ai_prompt_blocked') {
+            return 'AI 정책에 의해 차단된 요청입니다. 프롬프트 내용을 조정한 뒤 다시 시도해 주세요.'
+          }
           if (error?.message) {
             const trimmed = error.message.trim()
             if (trimmed === 'ai_failed') {
@@ -391,7 +402,13 @@ export default function GameRoomPage() {
             if (trimmed === 'server_error') {
               return '서버 오류로 매칭을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
             }
+            if (code && code !== trimmed) {
+              return code.slice(0, 200)
+            }
             return trimmed.slice(0, 200)
+          }
+          if (detail) {
+            return detail.slice(0, 200)
           }
           return '매칭을 시작하지 못했습니다.'
         })()
