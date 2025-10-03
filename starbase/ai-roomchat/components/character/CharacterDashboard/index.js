@@ -916,23 +916,28 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
                     {gameRoles.length ? (
                       gameRoles.map((role) => {
                         const slot = roleSlots.get(role.name) || { capacity: 1, occupied: 0 }
-                        const full = slot.occupied >= slot.capacity
+                        const capacity = Number.isFinite(Number(slot.capacity))
+                          ? Math.max(Number(slot.capacity), 0)
+                          : null
+                        const occupied = Number.isFinite(Number(slot.occupied))
+                          ? Math.max(Number(slot.occupied), 0)
+                          : 0
                         const isActive = roleChoice === role.name
                         return (
                           <button
                             key={role.id || role.name}
                             type="button"
-                            onClick={() => (full ? null : handleSelectRole(role.name))}
+                            onClick={() => handleSelectRole(role.name)}
                             style={{
                               ...styles.roleButton,
                               ...(isActive ? styles.roleButtonActive : null),
-                              ...(full ? styles.roleButtonDisabled : null),
                             }}
-                            disabled={full}
                           >
                             <span>{role.name}</span>
                             <span style={styles.roleSlotMeta}>
-                              {slot.occupied}/{slot.capacity} 참여 중
+                              {capacity != null
+                                ? `최소 ${capacity}명 필요 · 현재 ${occupied}명 참여`
+                                : `${occupied}명 참여 중`}
                             </span>
                           </button>
                         )
@@ -1167,7 +1172,7 @@ const styles = {
   heroShade: {
     position: 'absolute',
     inset: 0,
-    background: 'linear-gradient(180deg, rgba(2,6,23,0.1) 0%, rgba(2,6,23,0.6) 100%)',
+    background: 'linear-gradient(180deg, rgba(2,6,23,0.6) 0%, rgba(2,6,23,0.28) 45%, rgba(2,6,23,0.7) 100%)',
     pointerEvents: 'none',
   },
   heroOverlay: {
@@ -1175,24 +1180,32 @@ const styles = {
     inset: 0,
     display: 'flex',
     flexDirection: 'column',
-    justifyContent: 'flex-end',
-    gap: 8,
-    padding: '24px 22px 26px',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    gap: 10,
+    padding: '32px 24px 28px',
     pointerEvents: 'none',
     color: '#f8fafc',
-    textShadow: '0 2px 12px rgba(2, 6, 23, 0.9)',
+    textShadow: '0 3px 16px rgba(2, 6, 23, 0.85)',
   },
   heroOverlayTitle: {
     margin: 0,
     fontSize: 16,
     fontWeight: 700,
     letterSpacing: -0.2,
+    textAlign: 'center',
+    width: '100%',
+    maxWidth: 360,
   },
   heroOverlayText: {
     margin: 0,
     fontSize: 14,
     lineHeight: 1.6,
     color: '#e2e8f0',
+    textAlign: 'center',
+    maxWidth: 360,
+    width: '100%',
+    marginInline: 'auto',
   },
   heroOverlayList: {
     margin: 0,
@@ -1200,6 +1213,8 @@ const styles = {
     listStyle: 'none',
     display: 'grid',
     gap: 6,
+    width: '100%',
+    justifyItems: 'center',
   },
   heroOverlayStat: {
     display: 'flex',
@@ -1207,6 +1222,8 @@ const styles = {
     gap: 12,
     fontSize: 14,
     lineHeight: 1.5,
+    width: '100%',
+    maxWidth: 360,
   },
   heroEditButton: {
     position: 'absolute',
@@ -1633,10 +1650,6 @@ const styles = {
   roleButtonActive: {
     borderColor: 'rgba(96, 165, 250, 0.9)',
     background: 'rgba(37, 99, 235, 0.3)',
-  },
-  roleButtonDisabled: {
-    opacity: 0.5,
-    cursor: 'not-allowed',
   },
   roleSlotMeta: {
     fontSize: 12,

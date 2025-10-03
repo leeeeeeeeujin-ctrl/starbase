@@ -810,9 +810,20 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const matchMetaLines = useMemo(() => {
     if (!state.match) return playNotice ? [playNotice] : []
     const lines = []
-    const { matchType, maxWindow, matchCode, brawlVacancies } = state.match
+    const { matchType, maxWindow, matchCode, brawlVacancies, dropInTarget } = state.match
     if (matchType === 'brawl') {
       lines.push('난입 슬롯 충원 매치로 진행됩니다.')
+    } else if (matchType === 'drop_in') {
+      lines.push('실시간 난입 매치로 진행됩니다.')
+      if (dropInTarget?.roomCode) {
+        lines.push(`룸 코드 ${dropInTarget.roomCode} 방으로 이동합니다.`)
+      }
+      if (Number.isFinite(Number(dropInTarget?.scoreDifference))) {
+        const window = Math.round(Math.abs(Number(dropInTarget.scoreDifference)))
+        if (window > 0) {
+          lines.push(`점수 차이 ±${window} 이내에서 난입이 허용되었습니다.`)
+        }
+      }
     } else if (matchType && matchType !== 'standard') {
       lines.push(`${matchType} 매치로 진행됩니다.`)
     }

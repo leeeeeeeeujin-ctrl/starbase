@@ -9,6 +9,7 @@ import {
   summarizeCooldownThresholdAuditTrail,
 } from '@/lib/rank/cooldownAlertThresholdAuditTrail'
 import { fetchTimelineUploadSummary } from '@/lib/rank/cooldownTimelineUploads'
+import { isMissingSupabaseTable } from '@/lib/server/supabaseErrors'
 
 function toCsvValue(value) {
   if (value === null || value === undefined) {
@@ -235,12 +236,15 @@ export default async function handler(req, res) {
         `id, key_hash, key_sample, provider, reason, metadata, notified_at, reported_at, updated_at`,
       )
 
-    if (error) {
+    const missingTable = Boolean(error && isMissingSupabaseTable(error))
+
+    if (error && !missingTable) {
       console.error('[cooldown-telemetry] select failed', error)
       return res.status(500).json({ error: 'cooldown_telemetry_failed' })
     }
 
-    const report = buildCooldownTelemetry(data || [], { latestLimit: normalizedLimit })
+    const rows = !error && Array.isArray(data) ? data : []
+    const report = buildCooldownTelemetry(rows, { latestLimit: normalizedLimit })
     const thresholdOverrides = loadCooldownAlertThresholds()
     const thresholdAuditTrail = getCooldownThresholdAuditTrail()
     const now = new Date()
@@ -294,12 +298,18 @@ export default async function handler(req, res) {
       return res.status(200).send(`\uFEFF${csvContent}`)
     }
 
-    return res.status(200).json({
+    const payload = {
       ...report,
       alerts,
       thresholdAudit,
       timelineUploads,
-    })
+    }
+
+    if (missingTable) {
+      payload.meta = { missingTable: true }
+    }
+
+    return res.status(200).json(payload)
   } catch (error) {
     console.error('[cooldown-telemetry] unexpected failure', error)
     return res.status(500).json({ error: 'cooldown_telemetry_failed' })

@@ -416,12 +416,14 @@ export default function AudioEventMonitor() {
     items: [],
     stats: { total: 0, uniqueOwners: 0, uniqueProfiles: 0, byEventType: {} },
     availableEventTypes: [],
+    meta: {},
   })
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null)
   const [trendData, setTrendData] = useState({
     buckets: [],
     range: { since: null, until: null, lookbackWeeks: 0 },
     breakdown: { hero: [], owner: [] },
+    meta: {},
   })
   const [trendLoading, setTrendLoading] = useState(true)
   const [trendError, setTrendError] = useState(null)
@@ -511,6 +513,8 @@ export default function AudioEventMonitor() {
     return base
   }, [queryString])
 
+  const eventsMeta = data?.meta || {}
+
   const loadEvents = useCallback(
     async (withSpinner = false) => {
       if (withSpinner) {
@@ -532,6 +536,7 @@ export default function AudioEventMonitor() {
           availableEventTypes: Array.isArray(payload.availableEventTypes)
             ? payload.availableEventTypes
             : [],
+          meta: payload.meta || {},
         })
         if (Array.isArray(payload.availableEventTypes)) {
           setSelectedEventTypes((previous) => {
@@ -575,6 +580,7 @@ export default function AudioEventMonitor() {
             hero: Array.isArray(payload.breakdown?.hero) ? payload.breakdown.hero : [],
             owner: Array.isArray(payload.breakdown?.owner) ? payload.breakdown.owner : [],
           },
+          meta: payload.meta || {},
         })
         setTrendError(null)
         setTrendUpdatedAt(new Date().toISOString())
@@ -602,6 +608,21 @@ export default function AudioEventMonitor() {
     loadEvents(true)
     loadTrend(true)
   }, [loadEvents, loadTrend])
+
+  useEffect(() => {
+    const meta = trendData?.meta || {}
+    if (meta.missingWeeklyTrend && trendStackMode !== 'total') {
+      setTrendStackMode('total')
+      return
+    }
+    if (meta.missingWeeklyHeroBreakdown && trendStackMode === 'hero') {
+      setTrendStackMode('total')
+      return
+    }
+    if (meta.missingWeeklyOwnerBreakdown && trendStackMode === 'owner') {
+      setTrendStackMode('total')
+    }
+  }, [trendData, trendStackMode])
 
   const toggleEventType = useCallback((eventType) => {
     setSelectedEventTypes((previous) => {
@@ -981,6 +1002,8 @@ export default function AudioEventMonitor() {
     })
   }, [trendData])
 
+  const trendMeta = trendData?.meta || {}
+
   const trendSummary = useMemo(() => summariseTrend(normalizedTrendBuckets), [normalizedTrendBuckets])
 
   const trendMaxValue = useMemo(
@@ -1080,6 +1103,10 @@ export default function AudioEventMonitor() {
     return Number.POSITIVE_INFINITY
   }, [trendStackLimitOption])
 
+  const trendUnavailable = Boolean(trendMeta.missingWeeklyTrend)
+  const heroBreakdownAvailable = !trendMeta.missingWeeklyHeroBreakdown
+  const ownerBreakdownAvailable = !trendMeta.missingWeeklyOwnerBreakdown
+
   const trendStackData = useMemo(() => {
     if (trendStackMode === 'hero') {
       return buildStackedTrend(normalizedTrendBuckets, trendBreakdown.hero, {
@@ -1135,7 +1162,7 @@ export default function AudioEventMonitor() {
     return styles.audioEventsTrendDeltaFlat
   }, [trendSummary])
 
-  const usingStackedTrend = trendStackMode !== 'total' && trendStackData
+  const usingStackedTrend = !trendUnavailable && trendStackMode !== 'total' && trendStackData
   const trendChartBars = usingStackedTrend ? trendStackData?.bars || [] : totalTrendBars
   const trendStackLegend = usingStackedTrend ? trendStackData?.legend || [] : []
 
@@ -1179,6 +1206,13 @@ export default function AudioEventMonitor() {
         </div>
       </div>
 
+      {eventsMeta.missingTable ? (
+        <p className={styles.audioEventsNotice}>
+          <code>rank_audio_events</code> 테이블이 아직 생성되지 않아 로그가 비어 있습니다. Supabase 마이그레이션을 적용하고
+          관리자 페이지를 새로고침해주세요.
+        </p>
+      ) : null}
+
       <div className={styles.audioEventsMeta}>
         <span>총 {data.stats.total}건</span>
         <span>고유 운영자 {data.stats.uniqueOwners}명</span>
@@ -1205,28 +1239,41 @@ export default function AudioEventMonitor() {
                   trendStackMode === 'total' ? styles.audioEventsTrendModeButtonActive : ''
                 }`}
                 onClick={() => setTrendStackMode('total')}
+                disabled={trendLoading || trendUnavailable}
               >
                 합산
               </button>
               <button
                 type="button"
-                className={`${styles.audioEventsTrendModeButton} ${
-                  trendStackMode === 'hero' ? styles.audioEventsTrendModeButtonActive : ''
-                }`}
-                onClick={() => setTrendStackMode('hero')}
-                disabled={!hasHeroBreakdown}
-                title={hasHeroBreakdown ? '히어로별 분포 보기' : '히어로 데이터가 없어 비활성화됨'}
+                  className={`${styles.audioEventsTrendModeButton} ${
+                    trendStackMode === 'hero' ? styles.audioEventsTrendModeButtonActive : ''
+                  }`}
+                  onClick={() => setTrendStackMode('hero')}
+                  disabled={trendLoading || trendUnavailable || !heroBreakdownAvailable || !hasHeroBreakdown}
+                  title={
+                    trendUnavailable
+                      ? '주간 추이 함수가 준비되지 않아 분포를 계산할 수 없습니다.'
+                      : heroBreakdownAvailable && hasHeroBreakdown
+                      ? '히어로별 분포 보기'
+                      : '히어로 데이터가 없어 비활성화됨'
+                  }
               >
                 히어로별
               </button>
               <button
                 type="button"
-                className={`${styles.audioEventsTrendModeButton} ${
-                  trendStackMode === 'owner' ? styles.audioEventsTrendModeButtonActive : ''
-                }`}
-                onClick={() => setTrendStackMode('owner')}
-                disabled={!hasOwnerBreakdown}
-                title={hasOwnerBreakdown ? '담당자별 분포 보기' : '담당자 데이터가 없어 비활성화됨'}
+                  className={`${styles.audioEventsTrendModeButton} ${
+                    trendStackMode === 'owner' ? styles.audioEventsTrendModeButtonActive : ''
+                  }`}
+                  onClick={() => setTrendStackMode('owner')}
+                  disabled={trendLoading || trendUnavailable || !ownerBreakdownAvailable || !hasOwnerBreakdown}
+                  title={
+                    trendUnavailable
+                      ? '주간 추이 함수가 준비되지 않아 분포를 계산할 수 없습니다.'
+                      : ownerBreakdownAvailable && hasOwnerBreakdown
+                      ? '담당자별 분포 보기'
+                      : '담당자 데이터가 없어 비활성화됨'
+                  }
               >
                 담당자별
               </button>
@@ -1270,108 +1317,126 @@ export default function AudioEventMonitor() {
             </span>
           </div>
         </div>
-        {trendError ? <p className={styles.audioEventsTrendError}>{trendError}</p> : null}
-        <div className={styles.audioEventsTrendChart} role="img" aria-label="오디오 이벤트 주간 추이">
-          {trendChartBars.length ? (
-            trendChartBars.map((bar) => (
-              <div key={bar.weekStart} className={styles.audioEventsTrendBarWrapper}>
-                <div className={styles.audioEventsTrendBarTrack} title={bar.tooltip}>
-                  {usingStackedTrend ? (
-                    <div
-                      className={styles.audioEventsTrendBarStack}
-                      style={{ '--audio-events-trend-bar-height': `${bar.height}` }}
-                    >
-                      {bar.segments.map((segment) => (
-                        <div
-                          key={`${bar.weekStart}-${segment.id}`}
-                          className={styles.audioEventsTrendSegment}
-                          style={{
-                            '--audio-events-trend-segment-height': `${segment.height}`,
-                            '--audio-events-trend-segment-color': segment.color,
-                          }}
-                          title={`${segment.label}: ${formatNumber(segment.count)}건 (${Math.round(segment.percentage)}%)`}
-                        >
-                          {segment.displayValue ? (
-                            <span className={styles.audioEventsTrendSegmentValue}>
-                              {formatNumber(segment.count)}
-                            </span>
-                          ) : null}
-                        </div>
-                      ))}
-                      {bar.total > 0 ? (
-                        <span className={styles.audioEventsTrendBarStackValue}>{formatNumber(bar.total)}</span>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div
-                      className={styles.audioEventsTrendBar}
-                      style={{ '--audio-events-trend-bar-height': `${bar.height}` }}
-                    >
-                      {bar.eventCount > 0 ? (
-                        <span className={styles.audioEventsTrendBarValue}>{formatNumber(bar.eventCount)}</span>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-                <span className={styles.audioEventsTrendBarLabel}>{bar.label}</span>
-              </div>
-            ))
+          {trendUnavailable ? (
+            <p className={styles.audioEventsTrendNotice}>
+              <code>rank_audio_events_weekly_trend</code> RPC가 아직 Supabase에 배포되지 않아 주간 추이를 계산할 수 없습니다.
+              운영 스키마에 함수를 적용한 뒤 새로고침해주세요.
+            </p>
           ) : (
-            <span className={styles.audioEventsEmpty}>추이를 표시할 데이터가 없습니다.</span>
+            <>
+              {(!heroBreakdownAvailable || !ownerBreakdownAvailable) && (
+                <p className={styles.audioEventsTrendNotice}>
+                  {!heroBreakdownAvailable && !ownerBreakdownAvailable
+                    ? '히어로·담당자 분포 함수가 아직 배포되지 않아 합산 그래프만 사용할 수 있습니다.'
+                    : !heroBreakdownAvailable
+                    ? '히어로 분포 함수가 아직 배포되지 않아 담당자·합산 모드만 사용할 수 있습니다.'
+                    : '담당자 분포 함수가 아직 배포되지 않아 히어로·합산 모드만 사용할 수 있습니다.'}
+                </p>
+              )}
+              {trendError ? <p className={styles.audioEventsTrendError}>{trendError}</p> : null}
+              <div className={styles.audioEventsTrendChart} role="img" aria-label="오디오 이벤트 주간 추이">
+                {trendChartBars.length ? (
+                  trendChartBars.map((bar) => (
+                    <div key={bar.weekStart} className={styles.audioEventsTrendBarWrapper}>
+                      <div className={styles.audioEventsTrendBarTrack} title={bar.tooltip}>
+                        {usingStackedTrend ? (
+                          <div
+                            className={styles.audioEventsTrendBarStack}
+                            style={{ '--audio-events-trend-bar-height': `${bar.height}` }}
+                          >
+                            {bar.segments.map((segment) => (
+                              <div
+                                key={`${bar.weekStart}-${segment.id}`}
+                                className={styles.audioEventsTrendSegment}
+                                style={{
+                                  '--audio-events-trend-segment-height': `${segment.height}`,
+                                  '--audio-events-trend-segment-color': segment.color,
+                                }}
+                                title={`${segment.label}: ${formatNumber(segment.count)}건 (${Math.round(segment.percentage)}%)`}
+                              >
+                                {segment.displayValue ? (
+                                  <span className={styles.audioEventsTrendSegmentValue}>
+                                    {formatNumber(segment.count)}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ))}
+                            {bar.total > 0 ? (
+                              <span className={styles.audioEventsTrendBarStackValue}>{formatNumber(bar.total)}</span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div
+                            className={styles.audioEventsTrendBar}
+                            style={{ '--audio-events-trend-bar-height': `${bar.height}` }}
+                          >
+                            {bar.eventCount > 0 ? (
+                              <span className={styles.audioEventsTrendBarValue}>{formatNumber(bar.eventCount)}</span>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                      <span className={styles.audioEventsTrendBarLabel}>{bar.label}</span>
+                    </div>
+                  ))
+                ) : (
+                  <span className={styles.audioEventsEmpty}>추이를 표시할 데이터가 없습니다.</span>
+                )}
+              </div>
+              {usingStackedTrend && trendStackLegend.length ? (
+                <>
+                  <div className={styles.audioEventsTrendLegend}>
+                    {trendStackLegend.map((item) => (
+                      <span
+                        key={item.id}
+                        className={styles.audioEventsTrendLegendItem}
+                        title={item.sourceCount > 1 ? `${item.label} 포함 그룹 ${item.sourceCount}개` : item.label}
+                      >
+                        <span
+                          className={styles.audioEventsTrendLegendSwatch}
+                          style={{ '--audio-events-trend-legend-color': item.color }}
+                        />
+                        <span className={styles.audioEventsTrendLegendLabel}>{item.label}</span>
+                        <span className={styles.audioEventsTrendLegendValue}>
+                          {formatNumber(item.total)}건
+                          {item.sourceCount > 1 ? ` · ${item.sourceCount}개` : ''}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                  {trendStackLegendOverflowNote ? (
+                    <p className={styles.audioEventsTrendLegendNote}>{trendStackLegendOverflowNote}</p>
+                  ) : null}
+                </>
+              ) : null}
+              <dl className={styles.audioEventsTrendStats}>
+                <div>
+                  <dt>이번 주</dt>
+                  <dd>
+                    {trendSummary
+                      ? `${formatNumber(trendSummary.current.eventCount)}건 · 운영자 ${formatNumber(
+                          trendSummary.current.uniqueOwners,
+                        )}명`
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>지난 주</dt>
+                  <dd>
+                    {trendSummary
+                      ? `${formatNumber(trendSummary.previous.eventCount)}건 · 운영자 ${formatNumber(
+                          trendSummary.previous.uniqueOwners,
+                        )}명`
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>마지막 갱신</dt>
+                  <dd>{trendUpdatedAt ? formatDurationFromNow(trendUpdatedAt) : '—'}</dd>
+                </div>
+              </dl>
+            </>
           )}
-        </div>
-        {usingStackedTrend && trendStackLegend.length ? (
-          <>
-            <div className={styles.audioEventsTrendLegend}>
-              {trendStackLegend.map((item) => (
-                <span
-                  key={item.id}
-                  className={styles.audioEventsTrendLegendItem}
-                  title={item.sourceCount > 1 ? `${item.label} 포함 그룹 ${item.sourceCount}개` : item.label}
-                >
-                  <span
-                    className={styles.audioEventsTrendLegendSwatch}
-                    style={{ '--audio-events-trend-legend-color': item.color }}
-                  />
-                  <span className={styles.audioEventsTrendLegendLabel}>{item.label}</span>
-                  <span className={styles.audioEventsTrendLegendValue}>
-                    {formatNumber(item.total)}건
-                    {item.sourceCount > 1 ? ` · ${item.sourceCount}개` : ''}
-                  </span>
-                </span>
-              ))}
-            </div>
-            {trendStackLegendOverflowNote ? (
-              <p className={styles.audioEventsTrendLegendNote}>{trendStackLegendOverflowNote}</p>
-            ) : null}
-          </>
-        ) : null}
-        <dl className={styles.audioEventsTrendStats}>
-          <div>
-            <dt>이번 주</dt>
-            <dd>
-              {trendSummary
-                ? `${formatNumber(trendSummary.current.eventCount)}건 · 운영자 ${formatNumber(
-                    trendSummary.current.uniqueOwners,
-                  )}명`
-                : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt>지난 주</dt>
-            <dd>
-              {trendSummary
-                ? `${formatNumber(trendSummary.previous.eventCount)}건 · 운영자 ${formatNumber(
-                    trendSummary.previous.uniqueOwners,
-                  )}명`
-                : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt>마지막 갱신</dt>
-            <dd>{trendUpdatedAt ? formatDurationFromNow(trendUpdatedAt) : '—'}</dd>
-          </div>
-        </dl>
       </div>
 
       <div className={styles.audioEventsFilters}>

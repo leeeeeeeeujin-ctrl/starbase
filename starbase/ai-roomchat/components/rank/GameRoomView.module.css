@@ -248,49 +248,6 @@
   background: rgba(10, 15, 28, 0.6);
 }
 
-.roleOccupancyList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.roleOccupancyItem {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: rgba(15, 23, 42, 0.45);
-  border: 1px solid rgba(96, 165, 250, 0.25);
-}
-
-.roleOccupancyItemFull {
-  border-color: rgba(248, 113, 113, 0.55);
-  background: rgba(127, 29, 29, 0.2);
-}
-
-.roleOccupancyMeta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.roleOccupancyName {
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.roleOccupancyCount {
-  font-size: 13px;
-  color: rgba(226, 232, 240, 0.72);
-}
-
-.roleOccupancyAvailability {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(148, 163, 184, 0.85);
-}
-
 .roleLeaderboardSection {
   display: flex;
   flex-direction: column;
@@ -481,10 +438,10 @@
   cursor: not-allowed;
 }
 
-.roleChipFull {
-  border-color: rgba(248, 113, 113, 0.55);
-  background: rgba(127, 29, 29, 0.22);
-  color: #fecaca;
+.roleChipReady {
+  border-color: rgba(74, 222, 128, 0.55);
+  background: rgba(22, 101, 52, 0.28);
+  color: #bbf7d0;
 }
 
 .roleName {
@@ -502,11 +459,6 @@
   color: rgba(148, 163, 184, 0.85);
 }
 
-.roleFullTag {
-  font-size: 12px;
-  font-weight: 600;
-  color: #fecaca;
-}
 
 .joinActions {
   display: flex;
@@ -614,88 +566,6 @@
   margin: 6px 0 0;
   font-size: 12px;
   color: rgba(148, 163, 184, 0.9);
-}
-
-.timerVoteCard {
-  border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.45);
-  padding: 16px;
-  display: grid;
-  gap: 12px;
-}
-
-.timerVoteHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.timerVoteTitle {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.timerVoteTag {
-  font-size: 12px;
-  color: rgba(203, 213, 225, 0.75);
-}
-
-.timerVoteOptions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.timerVoteButton {
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(15, 23, 42, 0.55);
-  color: rgba(226, 232, 240, 0.9);
-  padding: 12px;
-  font-weight: 600;
-  display: grid;
-  gap: 4px;
-  justify-items: center;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.timerVoteButtonActive {
-  border-color: rgba(59, 130, 246, 0.6);
-  background: rgba(59, 130, 246, 0.2);
-  transform: translateY(-1px);
-}
-
-.timerVoteButtonLeading {
-  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.35);
-}
-
-.timerVoteCount {
-  font-size: 11px;
-  color: rgba(203, 213, 225, 0.78);
-}
-
-.timerVoteSummaryText {
-  margin: 0;
-  font-size: 12px;
-  color: rgba(203, 213, 225, 0.78);
-}
-
-.timerVoteHint {
-  margin: 0;
-  font-size: 12px;
-  color: rgba(148, 163, 184, 0.78);
-}
-
-@media (max-width: 420px) {
-  .timerVoteOptions {
-    grid-template-columns: 1fr;
-  }
 }
 
 .ownerActions {

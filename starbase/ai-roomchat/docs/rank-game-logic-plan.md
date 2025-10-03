@@ -6,7 +6,7 @@
 - **서버 API**: `/api/rank/play` 엔드포인트는 `rank_participants`에서 상대를 뽑아 프롬프트를 만들고 OpenAI 호출 후 `recordBattle`로 `rank_battles`·`rank_battle_logs`를 적재하도록 설계돼 있다. 다만 슬롯 충족/상태 업데이트/반환 데이터는 MVP 수준이다.【F:starbase/ai-roomchat/pages/api/rank/play.js†L1-L74】【F:starbase/ai-roomchat/lib/rank/persist.js†L1-L33】
 
 ## 2. 주요 데이터 포인트
-- **참가·슬롯 정보**: `rank_game_roles`로 역할별 정원을, `rank_game_slots`로 실제 슬롯 인덱스/활성 여부를 추적해야 한다.【F:starbase/ai-roomchat/lib/rank/roles.js†L1-L16】
+- **참가·슬롯 정보**: `rank_game_roles`로 역할별 최소 필요 인원을, `rank_game_slots`로 실제 슬롯 인덱스/활성 여부를 추적해야 한다.【F:starbase/ai-roomchat/lib/rank/roles.js†L1-L16】
 - **참가자 상태**: `rank_participants`가 `role`, `hero_id`, `status`, `rating`, `hero_ids` 등을 보관한다. 매칭 시 이 정보를 조합해 역할별 파티를 구성한다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L8-L118】
 - **프롬프트 그래프**: `loadGameBundle`이 `prompt_slots`·`prompt_bridges`를 묶어 노드/엣지 그래프를 만든다. 전투 중 AI 대화 히스토리는 `createAiHistory`에만 남고 Supabase 동기화는 비어 있다.【F:starbase/ai-roomchat/components/rank/StartClient/engine/loadGameBundle.js†L1-L78】
 
@@ -55,7 +55,7 @@
 
 ## 5. 다음 단계 체크리스트
 1. `useGameRoom` 데이터 모델 확장(역할·슬롯·참가자 동기화).
-2. `joinGame` → 슬롯 점유 + 정원 검증 + 참가자 상태 저장.
+2. `joinGame` → 슬롯 점유 + 최소 인원 충족 상태 추적 + 참가자 상태 저장.
 3. 메인룸 `onStart` → `/api/rank/play` 호출, 성공 응답 UI 반영.
 4. `/api/rank/play` → 슬롯 검증, 상대 매칭 개선, 난입 규칙 반영.
 5. `recordBattle` → `game_id` 포함 및 점수/상태 업데이트 보강.

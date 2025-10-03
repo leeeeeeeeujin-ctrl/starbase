@@ -22,28 +22,31 @@ export default function RoleOccupancySummary({ occupancy, title = '역할별 점
           if (!entry) return null
           const name = entry.name || '역할'
           const totalSlots = resolveNumber(entry.totalSlots)
-          const capacity =
-            totalSlots ?? resolveNumber(entry.capacity)
-          const occupied =
-            resolveNumber(entry.occupiedSlots) ?? resolveNumber(entry.participantCount) ?? 0
-          const available =
-            resolveNumber(entry.availableSlots) ?? (capacity != null ? Math.max(capacity - occupied, 0) : null)
-          const full = capacity != null && occupied >= capacity
+          const minimum = totalSlots ?? resolveNumber(entry.capacity)
+          const participantCount = resolveNumber(entry.participantCount) ?? 0
+          const baselineReady =
+            resolveNumber(entry.occupiedSlots) ??
+            (minimum != null ? Math.min(participantCount, minimum) : participantCount)
+          const shortfall = minimum != null ? Math.max(minimum - baselineReady, 0) : null
+          const overflow = minimum != null ? Math.max(participantCount - baselineReady, 0) : 0
 
-          const countLabel = capacity != null ? `${occupied}/${capacity}명` : `${occupied}명 참여 중`
-          let availabilityLabel = '참여 가능'
-          if (capacity == null) {
-            availabilityLabel = '가용 슬롯 제한 없음'
-          } else if (available === 0) {
-            availabilityLabel = '정원 마감'
-          } else if (available != null) {
-            availabilityLabel = `${available}명 남음`
+          const countLabel = `${participantCount}명 참여 중`
+          const detailParts = []
+          if (minimum != null) {
+            detailParts.push(`기본 슬롯 ${baselineReady}/${minimum}`)
+            detailParts.push(shortfall && shortfall > 0 ? `시작까지 ${shortfall}명 필요` : '기본 슬롯 충족')
+          } else {
+            detailParts.push('기본 슬롯 제한 없음')
           }
+          if (overflow > 0) {
+            detailParts.push(`추가 참가자 ${overflow}명`)
+          }
+          const availabilityLabel = detailParts.join(' · ')
 
           return (
             <li
               key={name}
-              className={`${styles.item} ${full ? styles.itemFull : ''}`.trim()}
+              className={`${styles.item} ${shortfall === 0 && minimum != null ? styles.itemReady : ''}`.trim()}
             >
               <div className={styles.meta}>
                 <span className={styles.name}>{name}</span>

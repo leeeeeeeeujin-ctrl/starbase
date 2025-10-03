@@ -40,6 +40,19 @@ function deriveParticipantScore(row) {
   return 1000
 }
 
+function resolveParticipantHeroId(row) {
+  if (!row) return null
+  if (row.hero_id) return row.hero_id
+  if (row.heroId) return row.heroId
+  if (Array.isArray(row.hero_ids) && row.hero_ids.length) {
+    return row.hero_ids.find(Boolean) || null
+  }
+  if (Array.isArray(row.heroIds) && row.heroIds.length) {
+    return row.heroIds.find(Boolean) || null
+  }
+  return null
+}
+
 export async function loadActiveRoles(supabaseClient, gameId) {
   if (!gameId) return []
   const result = await withTable(supabaseClient, 'rank_game_roles', (table) =>
@@ -61,7 +74,9 @@ export async function loadParticipantPool(supabaseClient, gameId) {
   const result = await withTable(supabaseClient, 'rank_participants', (table) =>
     supabaseClient
       .from(table)
-      .select('id, owner_id, hero_id, role, score, rating, status, updated_at, created_at')
+      .select(
+        'id, owner_id, hero_id, hero_ids, role, score, rating, status, updated_at, created_at',
+      )
       .eq('game_id', gameId),
   )
 
@@ -73,7 +88,8 @@ export async function loadParticipantPool(supabaseClient, gameId) {
     if (!row) return false
     const role = row.role || row.role_name || row.roleName
     if (!role) return false
-    if (!row.hero_id && !row.heroId) return false
+    const heroId = resolveParticipantHeroId(row)
+    if (!heroId) return false
     const status = normalizeStatus(row?.status)
     if (DEFEATED_STATUS_SET.has(status)) return false
     if (status === 'victory') return false
@@ -87,7 +103,8 @@ export async function loadParticipantPool(supabaseClient, gameId) {
     id: null,
     owner_id: row.owner_id || row.ownerId || null,
     ownerId: row.owner_id || row.ownerId || null,
-    hero_id: row.hero_id || null,
+    hero_id: resolveParticipantHeroId(row),
+    hero_ids: Array.isArray(row.hero_ids) ? row.hero_ids.filter(Boolean) : [],
     role: row.role || '',
     score: deriveParticipantScore(row),
     rating: deriveParticipantScore(row),

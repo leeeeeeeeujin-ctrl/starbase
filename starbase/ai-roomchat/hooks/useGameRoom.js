@@ -15,7 +15,7 @@ async function fetchParticipantsWithHeroes(gameId) {
     supabase
       .from(table)
       .select(
-        'id, game_id, hero_id, owner_id, role, score, rating, battles, win_rate, created_at'
+        'id, game_id, hero_id, hero_ids, owner_id, role, score, rating, battles, win_rate, status, created_at'
       )
       .eq('game_id', gameId)
       .order('score', { ascending: false })
@@ -24,7 +24,21 @@ async function fetchParticipantsWithHeroes(gameId) {
   if (participantError) throw participantError
 
   const participants = participantsData || []
-  const heroIds = participants.map((p) => p.hero_id).filter(Boolean)
+  const heroIdSet = new Set()
+  participants.forEach((participant) => {
+    const direct = participant?.hero_id
+    if (direct) {
+      heroIdSet.add(direct)
+      return
+    }
+    const heroArray = Array.isArray(participant?.hero_ids) ? participant.hero_ids : []
+    heroArray.forEach((value) => {
+      if (value) {
+        heroIdSet.add(value)
+      }
+    })
+  })
+  const heroIds = Array.from(heroIdSet)
 
   if (!heroIds.length) {
     return participants.map((p) => ({ ...p, hero: null }))
@@ -550,12 +564,14 @@ export function useGameRoom(
   }, [gameId])
 
   const refreshSlots = useCallback(async () => {
-    if (!gameId) return
+    if (!gameId) return []
     try {
       const next = await fetchSlotDetails(gameId)
       setSlots(next)
+      return next
     } catch (err) {
       console.error('슬롯 정보 갱신 실패:', err)
+      return null
     }
   }, [gameId])
 
@@ -670,16 +686,7 @@ export function useGameRoom(
       const alreadyClaimedSlot = roleSlots.find((slot) => slot?.hero_owner_id === user.id)
       const availableSlot = roleSlots.find((slot) => !slot?.hero_id && slot?.hero_owner_id == null)
 
-      if (!alreadyClaimedSlot && !availableSlot) {
-        const currentCount = participants.filter((participant) => participant?.role === roleName).length
-        const alreadyInRole = participants.some((participant) => participant?.hero_id === myHero.id)
-        if (capacity != null && currentCount >= capacity && !alreadyInRole) {
-          alert('이미 정원이 가득 찬 역할입니다.')
-          return { ok: false }
-        }
-        alert('이 역할에 남은 슬롯이 없습니다.')
-        return { ok: false }
-      }
+      const joiningWithoutSlot = !alreadyClaimedSlot && !availableSlot
 
       const existingEntry =
         participants.find((participant) => participant?.owner_id === user.id) || null
@@ -740,7 +747,10 @@ export function useGameRoom(
       await refreshSlots()
       await refreshBattles()
       await refreshSessionHistory()
-      return { ok: true, slot: result.slot }
+      if (joiningWithoutSlot && result?.overflow) {
+        alert('기본 슬롯은 이미 채워졌습니다. 추가 참가자로 합류했으며 시작 조건은 기존 슬롯 충족 여부에 따라 달라집니다.')
+      }
+      return { ok: true, slot: result.slot, overflow: Boolean(result?.overflow) }
     },
     [
       gameId,
@@ -877,6 +887,28 @@ export function useGameRoom(
     return slots.filter((slot) => slot && slot.active !== false)
   }, [slots])
 
+  const activeParticipants = useMemo(() => {
+    if (!Array.isArray(participants)) return []
+    return participants.filter((participant) => {
+      if (!participant) return false
+      const status = typeof participant?.status === 'string' ? participant.status.trim().toLowerCase() : ''
+      if (status === 'out') {
+        return false
+      }
+      const directHeroId = participant?.hero_id || participant?.heroId || null
+      if (directHeroId) {
+        return true
+      }
+      if (participant?.hero && participant.hero.id) {
+        return true
+      }
+      if (Array.isArray(participant?.hero_ids)) {
+        return participant.hero_ids.some((value) => Boolean(value))
+      }
+      return false
+    })
+  }, [participants])
+
   const roleOccupancy = useMemo(() => {
     const order = []
     const map = new Map()
@@ -923,7 +955,7 @@ export function useGameRoom(
       }
     })
 
-    participants.forEach((participant) => {
+    activeParticipants.forEach((participant) => {
       const entry = register(participant?.role)
       if (!entry) return
       entry.participantCount += 1
@@ -957,7 +989,7 @@ export function useGameRoom(
         }
       })
       .filter(Boolean)
-  }, [activeSlots, participants, roles])
+  }, [activeParticipants, activeSlots, participants, roles])
 
   const roleLeaderboards = useMemo(() => {
     if (!Array.isArray(participants) || participants.length === 0) {
@@ -1099,8 +1131,8 @@ export function useGameRoom(
     if (totalActiveSlots > 0) {
       return filledSlotCount >= totalActiveSlots
     }
-    return participants.length >= minimumParticipants
-  }, [filledSlotCount, minimumParticipants, participants.length, totalActiveSlots])
+    return activeParticipants.length >= minimumParticipants
+  }, [activeParticipants.length, filledSlotCount, minimumParticipants, totalActiveSlots])
 
   const isOwner = useMemo(() => {
     if (!user || !game) return false
@@ -1129,6 +1161,7 @@ export function useGameRoom(
       alreadyJoined,
       myEntry,
       minimumParticipants,
+      activeParticipants,
       roleOccupancy,
       roleLeaderboards,
     },

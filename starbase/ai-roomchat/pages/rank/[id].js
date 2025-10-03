@@ -37,7 +37,6 @@ export default function GameRoomPage() {
   const [turnTimerVote, setTurnTimerVote] = useState(null)
   const turnTimerVoteRef = useRef(null)
   const [turnTimerVotes, setTurnTimerVotes] = useState({})
-  const autoModePromptedRef = useRef(false)
 
   const persistTurnTimerVotes = useCallback((votes) => {
     if (typeof window === 'undefined') return
@@ -58,7 +57,7 @@ export default function GameRoomPage() {
   }, [router])
 
   const handleDeleted = useCallback(() => {
-    router.replace('/rank')
+    router.replace('/lobby')
   }, [router])
 
   const {
@@ -80,6 +79,7 @@ export default function GameRoomPage() {
       alreadyJoined,
       myEntry,
       minimumParticipants,
+      activeParticipants,
       roleOccupancy,
       roleLeaderboards,
     },
@@ -106,6 +106,11 @@ export default function GameRoomPage() {
   }, [alreadyJoined, myEntry?.role])
 
   const ready = mounted && !!id
+  const resolvedMinimumParticipants = Number.isFinite(Number(minimumParticipants))
+    ? Number(minimumParticipants)
+    : 0
+  const requiredParticipants = Math.max(1, resolvedMinimumParticipants)
+  const hasMinimumParticipants = activeParticipants.length >= requiredParticipants
 
   const handleJoin = async () => {
     await joinGame(pickRole)
@@ -197,7 +202,7 @@ export default function GameRoomPage() {
 
   const handleOpenModeModal = useCallback(() => {
     if (startLoading) return
-    if (!canStart) {
+    if (!hasMinimumParticipants) {
       setStartNotice('참가 인원이 부족해 매칭을 시작할 수 없습니다.')
       return
     }
@@ -208,7 +213,7 @@ export default function GameRoomPage() {
     setStartNotice('')
     setStartError('')
     setShowStartModal(true)
-  }, [canStart, myHero, startLoading])
+  }, [hasMinimumParticipants, myHero, startLoading])
 
   const handleConfirmStart = async (config) => {
     setShowStartModal(false)
@@ -237,8 +242,10 @@ export default function GameRoomPage() {
       setStartError('')
 
       try {
-        const activeSlots = Array.isArray(slots)
-          ? slots
+        const refreshedSlots = await refreshSlots()
+        const slotSource = Array.isArray(refreshedSlots) ? refreshedSlots : slots
+        const activeSlots = Array.isArray(slotSource)
+          ? slotSource
               .filter((slot) => slot && slot.active !== false)
               .sort((a, b) => {
                 const aIndex = Number(a?.slot_index ?? a?.slotIndex ?? 0)
@@ -247,12 +254,51 @@ export default function GameRoomPage() {
               })
           : []
 
-        if (!activeSlots.length) {
+        const slotTarget = activeSlots.length > 0 ? activeSlots.length : requiredParticipants
+        if (!slotTarget) {
           throw new Error('no_slots')
         }
 
-        const heroIds = activeSlots.map((slot) => slot?.hero_id || slot?.heroId || null)
-        if (heroIds.some((value) => !value)) {
+        const usedHeroIds = new Set()
+        const initialHeroIds = activeSlots.map((slot) => {
+          const slotHeroId = slot?.hero_id || slot?.heroId || null
+          if (slotHeroId) {
+            usedHeroIds.add(slotHeroId)
+          }
+          return slotHeroId
+        })
+
+        const fallbackHeroIds = []
+        activeParticipants.forEach((participant) => {
+          const directHeroId = participant?.hero_id || participant?.heroId || participant?.hero?.id || null
+          let candidateId = directHeroId
+          if (!candidateId && Array.isArray(participant?.hero_ids)) {
+            candidateId = participant.hero_ids.find((value) => Boolean(value)) || null
+          }
+          if (!candidateId) return
+          if (usedHeroIds.has(candidateId)) return
+          fallbackHeroIds.push(candidateId)
+          usedHeroIds.add(candidateId)
+        })
+
+        const heroIds = initialHeroIds.map((value) => {
+          if (value) return value
+          const nextHeroId = fallbackHeroIds.shift() || null
+          if (nextHeroId) {
+            usedHeroIds.add(nextHeroId)
+          }
+          return nextHeroId
+        })
+
+        while (heroIds.length < slotTarget && fallbackHeroIds.length) {
+          const nextHeroId = fallbackHeroIds.shift()
+          if (nextHeroId) {
+            heroIds.push(nextHeroId)
+            usedHeroIds.add(nextHeroId)
+          }
+        }
+
+        if (heroIds.length < slotTarget || heroIds.some((value) => !value)) {
           throw new Error('slot_missing_hero')
         }
 
@@ -322,6 +368,11 @@ export default function GameRoomPage() {
       } catch (error) {
         const message = (() => {
           if (!error) return '매칭을 시작하지 못했습니다.'
+          const code = typeof error?.code === 'string' ? error.code : ''
+          const detail =
+            typeof error?.detail === 'string' && error.detail.trim()
+              ? error.detail.trim()
+              : ''
           if (error.message === 'no_slots') {
             return '슬롯 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.'
           }
@@ -334,6 +385,12 @@ export default function GameRoomPage() {
           if (error.message === 'quota_exhausted') {
             return 'AI API 사용량이 부족합니다. 다른 키로 다시 시도해 주세요.'
           }
+          if (code === 'invalid_user_api_key' || error.message === 'invalid_user_api_key') {
+            return 'AI API 키가 올바르지 않습니다. 제공자와 키 제한을 확인한 뒤 다시 시도해 주세요.'
+          }
+          if (code === 'ai_prompt_blocked' || error.message === 'ai_prompt_blocked') {
+            return 'AI 정책에 의해 차단된 요청입니다. 프롬프트 내용을 조정한 뒤 다시 시도해 주세요.'
+          }
           if (error?.message) {
             const trimmed = error.message.trim()
             if (trimmed === 'ai_failed') {
@@ -345,7 +402,13 @@ export default function GameRoomPage() {
             if (trimmed === 'server_error') {
               return '서버 오류로 매칭을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
             }
+            if (code && code !== trimmed) {
+              return code.slice(0, 200)
+            }
             return trimmed.slice(0, 200)
+          }
+          if (detail) {
+            return detail.slice(0, 200)
           }
           return '매칭을 시작하지 못했습니다.'
         })()
@@ -386,19 +449,11 @@ export default function GameRoomPage() {
 
   useEffect(() => {
     if (!mounted) return
-    if (showStartModal || startLoading) return
-    if (!canStart || !myHero) {
-      if (!canStart) {
-        autoModePromptedRef.current = false
-      }
-      return
+    if (!hasMinimumParticipants) {
+      setStartNotice('')
+      setStartError('')
     }
-    if (autoModePromptedRef.current) return
-    autoModePromptedRef.current = true
-    setStartNotice('')
-    setStartError('')
-    setShowStartModal(true)
-  }, [mounted, canStart, myHero, showStartModal, startLoading])
+  }, [hasMinimumParticipants, mounted])
 
   if (!ready || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
@@ -427,14 +482,11 @@ export default function GameRoomPage() {
         onDelete={deleteRoom}
         isOwner={isOwner}
         deleting={deleting}
-        startDisabled={!canStart || !myHero || startLoading}
+        startDisabled={!hasMinimumParticipants || !myHero || startLoading}
         startLoading={startLoading}
         startNotice={startNotice}
         startError={startError}
         recentBattles={recentBattles}
-        turnTimerVote={turnTimerVote}
-        turnTimerVotes={turnTimerVotes}
-        onVoteTurnTimer={handleVoteTurnTimer}
         roleOccupancy={roleOccupancy}
         roleLeaderboards={roleLeaderboards}
       />
