@@ -387,10 +387,10 @@ export default function AutoMatchProgress({ gameId, mode }) {
         }
 
         const { apiKey, apiVersion } = readStoredStartConfig()
-        if (!apiKey.trim()) {
-          setJoinError('AI API 키가 설정되지 않아 전투를 시작할 수 없습니다.')
-          playTriggeredRef.current = false
-          return false
+        const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+        if (!trimmedApiKey) {
+          setPlayNotice('AI API 키 확인은 전투 화면에서 진행됩니다.')
+          return true
         }
 
         setPlayNotice('전투를 준비하는 중입니다…')
@@ -404,7 +404,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
           body: JSON.stringify({
             gameId,
             heroIds,
-            userApiKey: apiKey,
+            userApiKey: trimmedApiKey,
             apiVersion,
           }),
         })
