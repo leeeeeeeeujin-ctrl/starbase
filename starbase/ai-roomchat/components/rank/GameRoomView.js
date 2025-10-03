@@ -2628,43 +2628,76 @@ export default function GameRoomView({
       <section className={styles.joinCard}>
         {Array.isArray(roleOccupancy) && roleOccupancy.length > 0 ? (
           <div className={styles.roleOccupancyList}>
-            {roleOccupancy.map((entry) => {
-              const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
-              if (!name) return null
-              const total = Number.isFinite(Number(entry?.totalSlots)) && Number(entry.totalSlots) >= 0
-                ? Number(entry.totalSlots)
-                : null
-              const participantCount = Number.isFinite(Number(entry?.participantCount))
-                ? Number(entry.participantCount)
-                : 0
-              let occupied = Number.isFinite(Number(entry?.occupiedSlots))
-                ? Number(entry.occupiedSlots)
-                : participantCount
-              if (total != null && occupied > total) {
-                occupied = total
-              }
-              const available = Number.isFinite(Number(entry?.availableSlots)) && Number(entry.availableSlots) >= 0
-                ? Number(entry.availableSlots)
-                : null
-              const countLabel = total != null ? `${occupied}/${total}` : `${occupied}`
-              const availabilityText =
-                available != null ? (available > 0 ? `남은 슬롯 ${available}` : '정원 가득') : null
-              const itemClasses = [styles.roleOccupancyItem]
-              if (available === 0) {
-                itemClasses.push(styles.roleOccupancyItemFull)
-              }
-              return (
-                <div key={name} className={itemClasses.join(' ')}>
-                  <div className={styles.roleOccupancyMeta}>
-                    <span className={styles.roleOccupancyName}>{name}</span>
-                    <span className={styles.roleOccupancyCount}>{countLabel}</span>
-                  </div>
-                  {availabilityText ? (
+            {roleOccupancy
+              .map((entry) => {
+                const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
+                if (!name) return null
+
+                const rawTotal = Number.isFinite(Number(entry?.totalSlots)) ? Number(entry.totalSlots) : null
+                const rawCapacity = Number.isFinite(Number(entry?.capacity)) ? Number(entry.capacity) : null
+                let capacity = null
+                if (rawTotal != null && rawTotal >= 0) {
+                  capacity = rawTotal
+                } else if (rawCapacity != null && rawCapacity >= 0) {
+                  capacity = rawCapacity
+                }
+
+                const participantCount = Number.isFinite(Number(entry?.participantCount))
+                  ? Number(entry.participantCount)
+                  : 0
+
+                let baselineReady = Number.isFinite(Number(entry?.occupiedSlots))
+                  ? Math.max(Number(entry.occupiedSlots), 0)
+                  : null
+                if (capacity != null) {
+                  const boundedParticipants = Math.min(participantCount, capacity)
+                  baselineReady =
+                    baselineReady == null
+                      ? boundedParticipants
+                      : Math.min(Math.max(baselineReady, 0), capacity)
+                } else if (baselineReady == null) {
+                  baselineReady = participantCount
+                }
+
+                const shortfall = capacity != null ? Math.max(capacity - baselineReady, 0) : null
+                const overflow = capacity != null ? Math.max(participantCount - baselineReady, 0) : 0
+
+                const countLabel =
+                  capacity != null ? `${participantCount}명 참여 · 최소 ${capacity}명` : `${participantCount}명 참여 중`
+
+                const statusParts = []
+                if (capacity != null) {
+                  statusParts.push(shortfall && shortfall > 0 ? `시작까지 ${shortfall}명 필요` : '기본 슬롯 충족')
+                }
+                if (overflow > 0) {
+                  statusParts.push(`추가 참가자 ${overflow}명`)
+                }
+
+                const availabilityText = statusParts.length > 0 ? statusParts.join(' · ') : '참여자 모집 중'
+
+                const itemClasses = [styles.roleOccupancyItem]
+                if (capacity != null) {
+                  if (shortfall && shortfall > 0) {
+                    itemClasses.push(styles.roleOccupancyItemShortfall)
+                  } else {
+                    itemClasses.push(styles.roleOccupancyItemReady)
+                  }
+                }
+                if (overflow > 0) {
+                  itemClasses.push(styles.roleOccupancyItemOverflow)
+                }
+
+                return (
+                  <div key={name} className={itemClasses.join(' ')}>
+                    <div className={styles.roleOccupancyMeta}>
+                      <span className={styles.roleOccupancyName}>{name}</span>
+                      <span className={styles.roleOccupancyCount}>{countLabel}</span>
+                    </div>
                     <span className={styles.roleOccupancyAvailability}>{availabilityText}</span>
-                  ) : null}
-                </div>
-              )
-            }).filter(Boolean)}
+                  </div>
+                )
+              })
+              .filter(Boolean)}
           </div>
         ) : null}
 
