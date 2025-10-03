@@ -135,7 +135,12 @@ export default function GameStartModeModal({
   }, [open, onClose])
 
   const canConfirm = useMemo(() => {
+    const requiresImmediateApiKey = mode === MATCH_MODE_KEYS.RANK_SOLO
     if (!apiVersion) {
+      return false
+    }
+
+    if (requiresImmediateApiKey && !trimmedApiKey) {
       return false
     }
 
@@ -156,13 +161,13 @@ export default function GameStartModeModal({
 
     return true
   }, [
-    apiKey,
     apiVersion,
     mode,
     duoOption,
     casualOption,
     turnTimer,
     leadingCount,
+    trimmedApiKey,
   ])
 
   if (!open) {
@@ -232,12 +237,17 @@ export default function GameStartModeModal({
           />
           <p className={styles.helperText}>
             Google Gemini 또는 OpenAI API 키가 필요합니다.
-            {!trimmedApiKey && (
+            {mode === MATCH_MODE_KEYS.RANK_SOLO ? (
+              <>
+                <br />
+                솔로 랭크를 시작하려면 여기에서 API 키를 입력해야 합니다.
+              </>
+            ) : !trimmedApiKey ? (
               <>
                 <br />
                 키가 없다면 전투 화면에서 입력하거나 교체할 수 있습니다.
               </>
-            )}
+            ) : null}
           </p>
         </section>
 
