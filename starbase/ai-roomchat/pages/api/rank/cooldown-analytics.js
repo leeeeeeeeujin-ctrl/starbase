@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { buildCooldownAnalytics } from '@/lib/rank/cooldownAnalytics'
+import { isMissingSupabaseTable } from '@/lib/server/supabaseErrors'
 
 const RANGE_DAY_MAP = {
   '30d': 30,
@@ -75,10 +76,7 @@ export default async function handler(req, res) {
     if (error) {
       console.error('[cooldown-analytics] select failed', error)
 
-      const missingTable =
-        error?.code === '42P01' || /relation .* does not exist/i.test(error?.message || '')
-
-      if (missingTable) {
+      if (isMissingSupabaseTable(error)) {
         const analytics = buildCooldownAnalytics([], {
           grouping,
           provider,
