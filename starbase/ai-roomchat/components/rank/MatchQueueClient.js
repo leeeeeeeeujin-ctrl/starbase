@@ -188,6 +188,9 @@ export default function MatchQueueClient({
   const autoJoinRetryTimerRef = useRef(null)
   const heroMissingRedirectRef = useRef(false)
   const heroMissingTimerRef = useRef(null)
+  const dropInRedirectTimerRef = useRef(null)
+  const dropInMatchSignatureRef = useRef('')
+  const [refreshing, setRefreshing] = useState(false)
 
   const [voteRemaining, setVoteRemaining] = useState(null)
   const voteTimerRef = useRef(null)
@@ -198,8 +201,13 @@ export default function MatchQueueClient({
   })
   const [finalTimer, setFinalTimer] = useState(null)
   const finalTimerResolvedRef = useRef(null)
+  const [dropInRedirectRemaining, setDropInRedirectRemaining] = useState(null)
   const matchType = state.match?.matchType || 'standard'
   const isBrawlMatch = matchType === 'brawl'
+  const isDropInMatch = matchType === 'drop_in'
+  const dropInTarget = state.match?.dropInTarget || null
+  const pendingMatch = state.pendingMatch || null
+  const queuedSampleMeta = state.sampleMeta || null
   const brawlSummary = useMemo(() => {
     if (!isBrawlMatch) return ''
     const vacancies = Array.isArray(state.match?.brawlVacancies)
@@ -216,6 +224,164 @@ export default function MatchQueueClient({
       .filter(Boolean)
       .join(', ')
   }, [isBrawlMatch, state.match])
+
+  const dropInSummary = useMemo(() => {
+    if (!isDropInMatch || !dropInTarget) return ''
+    const parts = []
+    if (typeof dropInTarget.roomCode === 'string' && dropInTarget.roomCode.trim()) {
+      parts.push(`룸 코드 ${dropInTarget.roomCode.trim()}`)
+    }
+    if (typeof dropInTarget.role === 'string' && dropInTarget.role.trim()) {
+      parts.push(`${dropInTarget.role.trim()} 슬롯`)
+    }
+    if (Number.isFinite(Number(dropInTarget.scoreDifference))) {
+      const window = Math.round(Math.abs(Number(dropInTarget.scoreDifference)))
+      if (window > 0) {
+        parts.push(`점수 차이 ±${window}`)
+      }
+    }
+    return parts.join(' · ')
+  }, [isDropInMatch, dropInTarget])
+
+  const sampleSummary = useMemo(() => {
+    if (!state.match || !state.match.sampleMeta) return ''
+    if (isDropInMatch || isBrawlMatch) return ''
+    const meta = state.match.sampleMeta
+    const parts = []
+    const sampleType = meta.sampleType || (meta.realtime ? 'realtime_queue' : 'participant_pool')
+    if (sampleType === 'realtime_queue') {
+      if (Number.isFinite(Number(meta.queueSampled))) {
+        parts.push(`대기열 ${Number(meta.queueSampled)}명 기준`)
+      } else if (Number.isFinite(Number(meta.queueCount))) {
+        parts.push(`대기열 ${Number(meta.queueCount)}명`)
+      }
+    } else if (Number.isFinite(Number(meta.simulatedSelected))) {
+      const poolCount = Number(meta.participantPoolCount)
+      if (Number.isFinite(poolCount)) {
+        parts.push(`참가자 풀 ${poolCount}명`)
+      }
+    }
+    if (Number.isFinite(Number(meta.simulatedSelected))) {
+      const selected = Number(meta.simulatedSelected)
+      if (selected > 0) {
+        parts.push(`후보 ${selected}명 보강`)
+      } else {
+        parts.push('추가 후보 없이 구성')
+      }
+    }
+    if (Number.isFinite(Number(meta.scoreWindow)) && Number(meta.scoreWindow) > 0) {
+      parts.push(`점수 윈도우 ±${Math.round(Number(meta.scoreWindow))}`)
+    }
+    if (Number.isFinite(Number(meta.simulatedFiltered)) && Number(meta.simulatedFiltered) > 0) {
+      parts.push(`필터 제외 ${Number(meta.simulatedFiltered)}명`)
+    }
+    return parts.join(' · ')
+  }, [isBrawlMatch, isDropInMatch, state.match])
+
+  const queuedSampleSummary = useMemo(() => {
+    if (!queuedSampleMeta) return ''
+    const parts = []
+    const sampleType =
+      queuedSampleMeta.sampleType || (queuedSampleMeta.realtime ? 'realtime_queue' : 'participant_pool')
+    if (sampleType === 'realtime_queue') {
+      const queueSampled = Number(queuedSampleMeta.queueSampled)
+      if (Number.isFinite(queueSampled)) {
+        parts.push(`대기열 ${queueSampled}명 기준`)
+      } else {
+        const queueCount = Number(queuedSampleMeta.queueCount)
+        if (Number.isFinite(queueCount)) {
+          parts.push(`대기열 ${queueCount}명 기준`)
+        }
+      }
+    } else {
+      const poolCount = Number(queuedSampleMeta.participantPoolCount)
+      if (Number.isFinite(poolCount)) {
+        parts.push(`참가자 풀 ${poolCount}명`) 
+      }
+    }
+    const simulatedSelected = Number(queuedSampleMeta.simulatedSelected)
+    if (Number.isFinite(simulatedSelected)) {
+      if (simulatedSelected > 0) {
+        parts.push(`보강 후보 ${simulatedSelected}명 추가 검토`)
+      } else {
+        parts.push('보강 후보 없이 구성 시도')
+      }
+    }
+    const scoreWindow = Number(queuedSampleMeta.scoreWindow)
+    if (Number.isFinite(scoreWindow) && scoreWindow > 0) {
+      parts.push(`점수 윈도우 ±${Math.round(scoreWindow)}`)
+    }
+    return parts.join(' · ')
+  }, [queuedSampleMeta])
+
+  const queuedSampleWarnings = useMemo(() => {
+    if (!queuedSampleMeta) return []
+    const warnings = []
+    const filtered = Number(queuedSampleMeta.simulatedFiltered)
+    if (Number.isFinite(filtered) && filtered > 0) {
+      const windowLabel = Number.isFinite(Number(queuedSampleMeta.scoreWindow))
+        ? ` (점수 윈도우 ±${Math.round(Number(queuedSampleMeta.scoreWindow))})`
+        : ''
+      warnings.push(`점수 차이${windowLabel} 때문에 제외된 후보 ${filtered}명이 있습니다.`)
+    }
+    const eligible = Number(queuedSampleMeta.simulatedEligible)
+    if (Number.isFinite(eligible) && eligible === 0 && Number(queuedSampleMeta.participantPoolCount) > 0) {
+      warnings.push('참가자 풀에서는 조건을 충족하는 후보를 찾지 못했습니다.')
+    }
+    const perRoleLimit = Number(queuedSampleMeta.perRoleLimit)
+    if (Number.isFinite(perRoleLimit) && perRoleLimit >= 0) {
+      warnings.push(`역할별 보강은 최대 ${perRoleLimit}명까지 허용됩니다.`)
+    }
+    const totalLimit = Number(queuedSampleMeta.totalLimit)
+    if (Number.isFinite(totalLimit) && totalLimit >= 0) {
+      warnings.push(`비실시간 보강은 총 ${totalLimit}명까지만 추가할 수 있습니다.`)
+    }
+    return warnings
+  }, [queuedSampleMeta])
+
+  const pendingReason = useMemo(() => {
+    if (!pendingMatch || !pendingMatch.error) return ''
+    const error = pendingMatch.error
+    if (typeof error === 'string') {
+      return error
+    }
+    if (typeof error === 'object') {
+      const roleName = error.role ? String(error.role).trim() : ''
+      const missing = Number(error.missing)
+      switch (error.type) {
+        case 'no_candidates':
+          return roleName
+            ? `${roleName} 역할에 합류할 플레이어가 없어 매칭을 완료하지 못했습니다.`
+            : '선택한 역할에 합류할 플레이어가 없어 매칭을 완료하지 못했습니다.'
+        case 'insufficient_candidates':
+          if (roleName && Number.isFinite(missing) && missing > 0) {
+            return `${roleName} 역할이 ${missing}명 부족해 매칭을 잠시 대기 중입니다.`
+          }
+          if (roleName) {
+            return `${roleName} 역할의 인원이 부족해 매칭을 잠시 대기 중입니다.`
+          }
+          return '필요 인원을 모두 채우지 못해 매칭을 잠시 대기 중입니다.'
+        case 'slot_missing_hero':
+          return '참가자 중 사용 영웅이 비어 있는 슬롯이 있어 매칭을 다시 확인하고 있습니다.'
+        default:
+          if (error.type) {
+            return `매칭이 완료되기까지 조금 더 대기해 주세요. (원인: ${error.type})`
+          }
+          break
+      }
+    }
+    return '매칭이 완료되기까지 조금 더 대기해 주세요.'
+  }, [pendingMatch])
+
+  useEffect(() => {
+    if (state.status !== 'queued' && refreshing) {
+      setRefreshing(false)
+    }
+  }, [state.status, refreshing])
+
+  const showDiagnosticsCard = state.status === 'queued' && Boolean(
+    pendingReason || queuedSampleSummary || queuedSampleWarnings.length,
+  )
 
   useEffect(() => {
     const previous = latestStatusRef.current
@@ -323,6 +489,16 @@ export default function MatchQueueClient({
     }
   }
 
+  const handleManualRefresh = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await actions.refresh()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [actions, refreshing])
+
   const handleStart = useCallback(() => {
     if (navigationLockRef.current) return
     navigationLockRef.current = true
@@ -379,6 +555,17 @@ export default function MatchQueueClient({
 
   useEffect(() => {
     if (state.status === 'matched' && state.match) {
+      if (isDropInMatch) {
+        setVoteRemaining(null)
+        setFinalTimer(null)
+        finalTimerResolvedRef.current = null
+        if (voteTimerRef.current) {
+          clearInterval(voteTimerRef.current)
+          voteTimerRef.current = null
+        }
+        return () => {}
+      }
+
       finalTimerResolvedRef.current = null
       setFinalTimer(null)
       setVoteRemaining(15)
@@ -409,12 +596,13 @@ export default function MatchQueueClient({
       voteTimerRef.current = null
     }
     return () => {}
-  }, [state.status, state.match])
+  }, [state.status, state.match, isDropInMatch])
 
   useEffect(() => {
     if (
       state.status !== 'matched' ||
       !state.match ||
+      isDropInMatch ||
       voteRemaining == null ||
       voteRemaining > 0 ||
       finalTimerResolvedRef.current != null
@@ -497,12 +685,66 @@ export default function MatchQueueClient({
         clearInterval(voteTimerRef.current)
         voteTimerRef.current = null
       }
+      if (dropInRedirectTimerRef.current) {
+        clearInterval(dropInRedirectTimerRef.current)
+        dropInRedirectTimerRef.current = null
+      }
       if (latestStatusRef.current === 'queued') {
         actions.cancelQueue()
       }
     },
     [actions],
   )
+
+  useEffect(() => {
+    if (!isDropInMatch || state.status !== 'matched' || !state.match) {
+      setDropInRedirectRemaining(null)
+      dropInMatchSignatureRef.current = ''
+      if (dropInRedirectTimerRef.current) {
+        clearInterval(dropInRedirectTimerRef.current)
+        dropInRedirectTimerRef.current = null
+      }
+      return
+    }
+
+    const signature = state.match.matchCode || JSON.stringify(state.match.assignments || [])
+    if (dropInMatchSignatureRef.current === signature && dropInRedirectTimerRef.current) {
+      return
+    }
+
+    if (dropInRedirectTimerRef.current) {
+      clearInterval(dropInRedirectTimerRef.current)
+      dropInRedirectTimerRef.current = null
+    }
+
+    dropInMatchSignatureRef.current = signature
+    setDropInRedirectRemaining(5)
+
+    dropInRedirectTimerRef.current = setInterval(() => {
+      setDropInRedirectRemaining((prev) => {
+        if (prev == null) return prev
+        if (prev <= 1) {
+          if (dropInRedirectTimerRef.current) {
+            clearInterval(dropInRedirectTimerRef.current)
+            dropInRedirectTimerRef.current = null
+          }
+          if (!navigationLockRef.current) {
+            navigationLockRef.current = true
+            router.replace(`/rank/${gameId}`)
+          }
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      if (dropInRedirectTimerRef.current) {
+        clearInterval(dropInRedirectTimerRef.current)
+        dropInRedirectTimerRef.current = null
+      }
+    }
+  }, [isDropInMatch, state.status, state.match, router, gameId])
 
   const handleTimerVote = (value) => {
     const numeric = Number(value)
@@ -620,23 +862,69 @@ export default function MatchQueueClient({
         )}
       </section>
 
-      {state.status === 'matched' && state.match ? (
+      {showDiagnosticsCard ? (
         <section className={styles.card}>
-          <h2 className={styles.sectionTitle}>
-            {isBrawlMatch ? '난입 슬롯 충원 완료' : '매칭 완료'}
-          </h2>
-          <p className={styles.sectionHint}>
-            {isBrawlMatch
-              ? brawlSummary
-                ? `탈락한 역할군을 대신할 ${brawlSummary}이(가) 합류합니다.`
-                : '탈락한 역할군을 대신할 참가자가 합류합니다.'
-              : `허용 점수 폭 ±${state.match.maxWindow || 0} 내에서 팀이 구성되었습니다.`}
-          </p>
-          {isBrawlMatch ? (
-            <p className={styles.sectionHint}>
-              허용 점수 폭 ±{state.match.maxWindow || 0}을 유지한 채 난입이 진행됩니다.
-            </p>
+          <h2 className={styles.sectionTitle}>매칭 상황</h2>
+          {pendingReason ? <p className={styles.sectionHint}>{pendingReason}</p> : null}
+          {queuedSampleSummary ? (
+            <p className={styles.sectionHint}>{queuedSampleSummary}</p>
           ) : null}
+          {queuedSampleWarnings.length ? (
+            <ul className={styles.diagnosticList}>
+              {queuedSampleWarnings.map((warning, index) => (
+                <li key={`${warning}-${index}`} className={styles.diagnosticItem}>
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className={styles.retryRow}>
+            <button
+              type="button"
+              className={styles.retryButton}
+              onClick={handleManualRefresh}
+              disabled={refreshing || state.loading || state.status !== 'queued'}
+            >
+              {refreshing ? '재확인 중…' : '즉시 다시 확인'}
+            </button>
+            <span className={styles.retryHint}>대기열 정보는 4초마다 자동 갱신됩니다.</span>
+          </div>
+        </section>
+      ) : null}
+
+      {state.status === 'matched' && state.match ? (
+      <section className={styles.card}>
+        <h2 className={styles.sectionTitle}>
+          {isDropInMatch
+            ? '실시간 난입 확정'
+            : isBrawlMatch
+            ? '난입 슬롯 충원 완료'
+            : '매칭 완료'}
+        </h2>
+        <p className={styles.sectionHint}>
+          {isDropInMatch
+            ? dropInSummary
+              ? `진행 중인 전투에 합류합니다. ${dropInSummary}`
+              : '진행 중인 전투에 합류합니다. 메인 룸으로 돌아가 방에 입장해 주세요.'
+            : isBrawlMatch
+            ? brawlSummary
+              ? `탈락한 역할군을 대신할 ${brawlSummary}이(가) 합류합니다.`
+              : '탈락한 역할군을 대신할 참가자가 합류합니다.'
+            : `허용 점수 폭 ±${state.match.maxWindow || 0} 내에서 팀이 구성되었습니다.`}
+        </p>
+        {!isDropInMatch && !isBrawlMatch && sampleSummary ? (
+          <p className={styles.sectionHint}>{sampleSummary}</p>
+        ) : null}
+        {isBrawlMatch ? (
+          <p className={styles.sectionHint}>
+            허용 점수 폭 ±{state.match.maxWindow || 0}을 유지한 채 난입이 진행됩니다.
+          </p>
+        ) : null}
+        {isDropInMatch ? (
+          <p className={styles.sectionHint}>
+            메인 룸에서 방을 열어둔 상태라면 즉시 입장해 전투를 시작할 수 있습니다.
+          </p>
+        ) : null}
           <div className={styles.matchGrid}>
             {state.match.assignments.map((assignment, index) => (
               <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>
@@ -646,12 +934,22 @@ export default function MatchQueueClient({
             ))}
           </div>
 
-          <TimerVotePanel
-            remaining={voteRemaining}
-            selected={voteValue}
-            onSelect={handleTimerVote}
-            finalTimer={finalTimer}
-          />
+          {!isDropInMatch ? (
+            <TimerVotePanel
+              remaining={voteRemaining}
+              selected={voteValue}
+              onSelect={handleTimerVote}
+              finalTimer={finalTimer}
+            />
+          ) : null}
+
+          {isDropInMatch && dropInRedirectRemaining != null ? (
+            <p className={styles.dropInCountdown}>
+              {dropInRedirectRemaining > 0
+                ? `${dropInRedirectRemaining}초 후 메인 룸으로 이동합니다.`
+                : '메인 룸으로 이동합니다…'}
+            </p>
+          ) : null}
 
           {countdown != null ? (
             <div className={styles.countdownOverlay}>

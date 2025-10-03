@@ -176,6 +176,32 @@ describe('GET /api/admin/audio-events', () => {
     expect(res.body.availableEventTypes).toEqual(['preference.updated', 'preset.applied'])
   })
 
+  it('returns empty payload with missing-table notice when audio events table is absent', async () => {
+    const password = 'secret'
+    process.env.ADMIN_PORTAL_PASSWORD = password
+    const handler = loadHandler()
+
+    const chain = createSupabaseSelectChain({
+      data: null,
+      error: { code: '42P01', message: 'relation "rank_audio_events" does not exist' },
+    })
+    registerSupabaseAdminMock(chain.fromMock)
+
+    const sessionToken = crypto.createHash('sha256').update(password).digest('hex')
+    const req = createApiRequest({ headers: { cookie: `rank_admin_portal_session=${sessionToken}` } })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual({
+      items: [],
+      stats: { total: 0, uniqueOwners: 0, uniqueProfiles: 0, byEventType: {} },
+      availableEventTypes: [],
+      meta: { missingTable: true },
+    })
+  })
+
   it('returns weekly trend data when requested', async () => {
     const password = 'secret'
     process.env.ADMIN_PORTAL_PASSWORD = password
@@ -301,6 +327,39 @@ describe('GET /api/admin/audio-events', () => {
         eventCount: 5,
       },
     ])
+  })
+
+  it('marks weekly trend as missing when the RPC is unavailable', async () => {
+    const password = 'secret'
+    process.env.ADMIN_PORTAL_PASSWORD = password
+    const handler = loadHandler()
+
+    const rpcMock = jest.fn((name) => {
+      if (name === 'rank_audio_events_weekly_trend') {
+        return Promise.resolve({
+          data: null,
+          error: { code: '42883', message: 'function rank_audio_events_weekly_trend does not exist' },
+        })
+      }
+      return Promise.resolve({ data: [], error: null })
+    })
+
+    registerSupabaseAdminMock(() => ({ select: () => ({}) }), rpcMock)
+
+    const sessionToken = crypto.createHash('sha256').update(password).digest('hex')
+    const req = createApiRequest({
+      headers: { cookie: `rank_admin_portal_session=${sessionToken}` },
+      query: { trend: 'weekly' },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.buckets).toEqual([])
+    expect(res.body.breakdown.hero).toEqual([])
+    expect(res.body.breakdown.owner).toEqual([])
+    expect(res.body.meta).toEqual({ missingWeeklyTrend: true })
   })
 
   it('returns CSV when requested', async () => {

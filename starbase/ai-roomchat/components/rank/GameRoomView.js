@@ -1,8 +1,6 @@
 // components/rank/GameRoomView.js
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import ParticipantCard from './ParticipantCard'
-import { TURN_TIMER_OPTIONS, summarizeTurnTimerVotes } from '../../lib/rank/turnTimers'
 import styles from './GameRoomView.module.css'
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
 import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
@@ -59,6 +57,15 @@ const RULE_OPTION_METADATA = {
 const DEFAULT_EQ_SETTINGS = { enabled: false, low: 0, mid: 0, high: 0 }
 const DEFAULT_REVERB_SETTINGS = { enabled: false, mix: 0.3, decay: 1.8 }
 const DEFAULT_COMPRESSOR_SETTINGS = { enabled: false, threshold: -28, ratio: 2.5, release: 0.25 }
+
+function compareParticipantsByScore(a, b) {
+  const scoreA = Number.isFinite(Number(a?.score)) ? Number(a.score) : -Infinity
+  const scoreB = Number.isFinite(Number(b?.score)) ? Number(b.score) : -Infinity
+  if (scoreA === scoreB) {
+    return (a?.created_at || '').localeCompare(b?.created_at || '')
+  }
+  return scoreB - scoreA
+}
 
 const TABS = [
   { key: 'main', label: '메인 룸' },
@@ -134,6 +141,37 @@ function normalizeCompressorSettings(raw) {
     ratio: clamp(raw.ratio ?? raw.amount ?? 2.5, 1, 20, 2.5),
     release: clamp(raw.release ?? raw.tail ?? 0.25, 0.05, 2, 0.25),
   }
+}
+
+function eqSettingsAreEqual(a, b) {
+  const first = normalizeEqSettings(a)
+  const second = normalizeEqSettings(b)
+  const lowDelta = Math.abs((first.low ?? 0) - (second.low ?? 0))
+  const midDelta = Math.abs((first.mid ?? 0) - (second.mid ?? 0))
+  const highDelta = Math.abs((first.high ?? 0) - (second.high ?? 0))
+  return first.enabled === second.enabled && lowDelta < 0.001 && midDelta < 0.001 && highDelta < 0.001
+}
+
+function reverbSettingsAreEqual(a, b) {
+  const first = normalizeReverbSettings(a)
+  const second = normalizeReverbSettings(b)
+  const mixDelta = Math.abs((first.mix ?? 0) - (second.mix ?? 0))
+  const decayDelta = Math.abs((first.decay ?? 0) - (second.decay ?? 0))
+  return first.enabled === second.enabled && mixDelta < 0.001 && decayDelta < 0.001
+}
+
+function compressorSettingsAreEqual(a, b) {
+  const first = normalizeCompressorSettings(a)
+  const second = normalizeCompressorSettings(b)
+  const thresholdDelta = Math.abs((first.threshold ?? 0) - (second.threshold ?? 0))
+  const ratioDelta = Math.abs((first.ratio ?? 0) - (second.ratio ?? 0))
+  const releaseDelta = Math.abs((first.release ?? 0) - (second.release ?? 0))
+  return (
+    first.enabled === second.enabled &&
+    thresholdDelta < 0.001 &&
+    ratioDelta < 0.001 &&
+    releaseDelta < 0.001
+  )
 }
 
 function buildHeroAudioProfileKey(profile) {
@@ -450,53 +488,6 @@ function formatRatioLabel(value) {
   return `${(Math.round(Math.max(value, 0) * 10) / 10).toFixed(1)}:1`
 }
 
-function formatVoteSummary(topValues, maxCount) {
-  if (!Array.isArray(topValues) || topValues.length === 0 || !maxCount) {
-    return '아직 투표한 참가자가 없습니다.'
-  }
-  const label = topValues.map((value) => `${value}초`).join(', ')
-  return `현재 최다 득표: ${label} (${maxCount}표)`
-}
-
-function TurnTimerVotePanel({ value, onChange, voteSummary }) {
-  const currentValue = Number.isFinite(Number(value)) ? Number(value) : null
-  const { normalized = {}, topValues = [], maxCount = 0 } = voteSummary || {}
-  const summaryText = formatVoteSummary(topValues, maxCount)
-
-  return (
-    <div className={styles.timerVoteCard}>
-      <div className={styles.timerVoteHeader}>
-        <h3 className={styles.timerVoteTitle}>턴 제한 투표</h3>
-        <span className={styles.timerVoteTag}>
-          {currentValue ? `${currentValue}초 선택됨` : '선택 대기 중'}
-        </span>
-      </div>
-      <div className={styles.timerVoteOptions}>
-        {TURN_TIMER_OPTIONS.map((option) => {
-          const active = currentValue === option.value
-          const count = normalized[option.value] || 0
-          const leading = maxCount > 0 && topValues.includes(option.value)
-          return (
-            <button
-              key={option.value}
-              type="button"
-              className={`${styles.timerVoteButton} ${
-                active ? styles.timerVoteButtonActive : ''
-              } ${leading ? styles.timerVoteButtonLeading : ''}`.trim()}
-              onClick={() => onChange?.(option.value)}
-            >
-              <span>{option.label}</span>
-              <span className={styles.timerVoteCount}>{count}표</span>
-            </button>
-          )
-        })}
-      </div>
-      <p className={styles.timerVoteSummaryText}>{summaryText}</p>
-      <p className={styles.timerVoteHint}>동률이 나오면 무작위로 결정됩니다.</p>
-    </div>
-  )
-}
-
 function interpretRulesShape(value) {
   if (!value) return { type: 'empty' }
 
@@ -757,8 +748,6 @@ export default function GameRoomView({
   canStart = false,
   myHero = null,
   myEntry = null,
-  sessionHistory = [],
-  sharedSessionHistory = [],
   onBack,
   onJoin,
   onLeave,
@@ -772,9 +761,6 @@ export default function GameRoomView({
   startNotice = '',
   startError = '',
   recentBattles = [],
-  turnTimerVote = null,
-  turnTimerVotes = {},
-  onVoteTurnTimer,
   roleOccupancy = [],
   roleLeaderboards = [],
 }) {
@@ -809,6 +795,8 @@ export default function GameRoomView({
   const lastPersistedSignatureRef = useRef(null)
   const lastPersistedPayloadRef = useRef(null)
   const previousAudioProfileKeyRef = useRef(null)
+  const audioBaselineEffectsRef = useRef(null)
+  const baselineEffectAppliedRef = useRef(false)
 
   const resolvedActiveIndex = useMemo(() => {
     const index = TABS.findIndex((tab) => tab.key === activeTab)
@@ -844,7 +832,10 @@ export default function GameRoomView({
       return undefined
     }
 
-    audioBaselineRef.current = audioManager.getState()
+    const baselineSnapshot = audioManager.getState()
+    audioBaselineRef.current = baselineSnapshot
+    audioBaselineEffectsRef.current = extractHeroAudioEffectSnapshot(baselineSnapshot)
+    baselineEffectAppliedRef.current = false
 
     return () => {
       const baseline = audioBaselineRef.current
@@ -985,25 +976,24 @@ export default function GameRoomView({
             : Number.isFinite(Number(entry.capacity)) && Number(entry.capacity) >= 0
             ? Number(entry.capacity)
             : null
-        const occupied =
+        const baselineReady =
           occupancy?.occupiedSlots != null
-            ? Number(occupancy.occupiedSlots)
-            : entry.occupiedSlots != null
-            ? Number(entry.occupiedSlots)
-            : entry.count
-        const available =
-          occupancy?.availableSlots != null
-            ? Number(occupancy.availableSlots)
+            ? Math.max(Number(occupancy.occupiedSlots), 0)
             : capacity != null
-            ? Math.max(capacity - entry.count, 0)
-            : null
+            ? Math.min(entry.count, capacity)
+            : entry.count
+        const stillNeeded =
+          capacity != null ? Math.max(capacity - baselineReady, 0) : null
+        const overflowCount =
+          capacity != null ? Math.max(entry.count - baselineReady, 0) : 0
 
         return {
           name,
           count: entry.count,
-          capacity,
-          occupiedSlots: occupied,
-          availableSlots: available,
+          minimumRequired: capacity,
+          baselineReady,
+          overflowCount,
+          neededForStart: stillNeeded,
         }
       })
       .filter(Boolean)
@@ -1021,6 +1011,29 @@ export default function GameRoomView({
   const roster = Array.isArray(participants) ? participants : []
   const readyCount = roster.length
 
+  const baselineSummary = useMemo(() => {
+    if (!participantsByRole.length) {
+      return { totalMinimum: 0, shortfall: 0 }
+    }
+    return participantsByRole.reduce(
+      (acc, entry) => {
+        const minimumValue =
+          Number.isFinite(Number(entry.minimumRequired)) && Number(entry.minimumRequired) >= 0
+            ? Number(entry.minimumRequired)
+            : 0
+        const shortfallValue =
+          Number.isFinite(Number(entry.neededForStart)) && Number(entry.neededForStart) >= 0
+            ? Number(entry.neededForStart)
+            : 0
+        return {
+          totalMinimum: acc.totalMinimum + minimumValue,
+          shortfall: acc.shortfall + shortfallValue,
+        }
+      },
+      { totalMinimum: 0, shortfall: 0 },
+    )
+  }, [participantsByRole])
+
   const capacityCountLabel = useMemo(() => {
     if (minimumParticipants > 0) {
       return `${readyCount}/${minimumParticipants}명 참여`
@@ -1029,12 +1042,15 @@ export default function GameRoomView({
   }, [minimumParticipants, readyCount])
 
   const capacityStatusText = useMemo(() => {
-    if (canStart) return '매칭 준비 완료'
+    if (canStart) return '기본 역할 최소 인원이 모두 충족되었습니다.'
+    if (baselineSummary.shortfall > 0 && baselineSummary.totalMinimum > 0) {
+      return `시작까지 기본 슬롯 ${baselineSummary.shortfall}명 충원 필요`
+    }
     if (minimumParticipants > 0) {
       return `${minimumParticipants}명 이상 모이면 시작할 수 있습니다.`
     }
     return '함께할 참가자를 기다리는 중'
-  }, [canStart, minimumParticipants])
+  }, [baselineSummary.shortfall, baselineSummary.totalMinimum, canStart, minimumParticipants])
 
   const entryBackdrop = myEntry?.hero?.background_url || null
 
@@ -1057,11 +1073,6 @@ export default function GameRoomView({
 
   const resolvedStartNotice = typeof startNotice === 'string' ? startNotice.trim() : ''
   const resolvedStartError = typeof startError === 'string' ? startError.trim() : ''
-
-  const voteSummary = useMemo(
-    () => summarizeTurnTimerVotes(turnTimerVotes || {}),
-    [turnTimerVotes],
-  )
 
   const heroInfoStages = useMemo(() => {
     const stages = ['profile']
@@ -1134,7 +1145,7 @@ export default function GameRoomView({
     return map
   }, [participants])
 
-  const heroAudioProfile = useMemo(() => {
+  const baseHeroAudioProfile = useMemo(() => {
     const viewerProfile = normalizeHeroAudioProfile(myHero)
     if (viewerProfile) {
       return { ...viewerProfile, source: 'viewer' }
@@ -1172,6 +1183,46 @@ export default function GameRoomView({
     return null
   }, [game?.owner_id, myHero, participants])
 
+  const rankingHeroAudioProfile = useMemo(() => {
+    const candidates = Array.isArray(participants)
+      ? participants
+          .filter(
+            (participant) =>
+              participant?.hero && (participant.hero.bgm_url || participant.hero.bgmUrl),
+          )
+          .slice()
+          .sort(compareParticipantsByScore)
+      : []
+
+    const top = candidates[0] || null
+    if (!top?.hero) {
+      return null
+    }
+
+    const rankingProfile = normalizeHeroAudioProfile(top.hero, {
+      fallbackHeroId: top.hero_id || null,
+      fallbackHeroName: top.hero?.name || '',
+    })
+
+    if (!rankingProfile) {
+      return null
+    }
+
+    return { ...rankingProfile, source: 'ranking' }
+  }, [participants])
+
+  const heroAudioProfile = useMemo(() => {
+    if (activeTab === 'ranking' && rankingHeroAudioProfile) {
+      return rankingHeroAudioProfile
+    }
+
+    if (baseHeroAudioProfile) {
+      return baseHeroAudioProfile
+    }
+
+    return null
+  }, [activeTab, baseHeroAudioProfile, rankingHeroAudioProfile])
+
   const heroAudioProfileKey = useMemo(
     () => buildHeroAudioProfileKey(heroAudioProfile),
     [heroAudioProfile?.heroId, heroAudioProfile?.heroName, heroAudioProfile?.source],
@@ -1190,6 +1241,7 @@ export default function GameRoomView({
     lastPersistedSignatureRef.current = null
     lastPersistedPayloadRef.current = null
     setAudioPreferenceLoadedKey(null)
+    baselineEffectAppliedRef.current = false
   }, [heroAudioProfileKey])
 
   useEffect(() => {
@@ -1264,6 +1316,8 @@ export default function GameRoomView({
         return '현재 브금 · 방장 기준'
       case 'participant':
         return '현재 브금 · 참가자 공유'
+      case 'ranking':
+        return '현재 브금 · 랭킹 1위'
       default:
         return '현재 브금'
     }
@@ -1369,7 +1423,7 @@ export default function GameRoomView({
 
   const applyLoadedHeroAudioPreference = useCallback(
     (preference) => {
-      if (!heroAudioProfile) {
+      if (!heroAudioProfile || heroAudioProfile.source === 'ranking') {
         return { hadAdjustments: false, normalized: null }
       }
 
@@ -1454,6 +1508,9 @@ export default function GameRoomView({
     if (!viewerId || !heroAudioProfileKey || !heroAudioProfile) {
       return undefined
     }
+    if (heroAudioProfile.source === 'ranking') {
+      return undefined
+    }
     if (audioPreferenceLoadedKey === heroAudioProfileKey) {
       return undefined
     }
@@ -1518,6 +1575,9 @@ export default function GameRoomView({
 
   useEffect(() => {
     if (!viewerId || !heroAudioProfileKey || !heroAudioProfile) {
+      return undefined
+    }
+    if (heroAudioProfile.source === 'ranking') {
       return undefined
     }
     if (audioPreferenceLoadedKey !== heroAudioProfileKey) {
@@ -1918,6 +1978,100 @@ export default function GameRoomView({
     selectedHeroAudioPresetId,
   ])
 
+  useEffect(() => {
+    if (!audioManager || !heroAudioProfile) {
+      return
+    }
+    if (heroAudioProfile.source === 'ranking') {
+      return
+    }
+    if (heroAudioManualOverride) {
+      return
+    }
+    if (baselineEffectAppliedRef.current) {
+      return
+    }
+
+    const baseline = audioBaselineRef.current
+    if (!baseline) {
+      return
+    }
+
+    const heroId = heroAudioProfile.heroId || null
+    const heroName = typeof heroAudioProfile.heroName === 'string'
+      ? heroAudioProfile.heroName.trim().toLowerCase()
+      : ''
+    const trackUrl = heroAudioProfile.bgmUrl || null
+
+    const baselineHeroId = baseline.heroId || null
+    const baselineHeroName = typeof baseline.heroName === 'string'
+      ? baseline.heroName.trim().toLowerCase()
+      : ''
+    const baselineTrackUrl = baseline.trackUrl || null
+
+    const matchesHero =
+      (heroId && baselineHeroId && heroId === baselineHeroId) ||
+      (trackUrl && baselineTrackUrl && trackUrl === baselineTrackUrl) ||
+      (heroName && baselineHeroName && heroName === baselineHeroName)
+
+    if (!matchesHero) {
+      return
+    }
+
+    const baselineEffects = audioBaselineEffectsRef.current || extractHeroAudioEffectSnapshot(baseline)
+    if (!baselineEffects) {
+      return
+    }
+
+    const preferenceLoadedForProfile = audioPreferenceLoadedKey === heroAudioProfileKey
+    const hasPersistedPayload = Boolean(lastPersistedPayloadRef.current)
+    if (preferenceLoadedForProfile && hasPersistedPayload) {
+      baselineEffectAppliedRef.current = true
+      return
+    }
+
+    const profileEq = heroAudioProfile.eq || DEFAULT_EQ_SETTINGS
+    const profileReverb = heroAudioProfile.reverb || DEFAULT_REVERB_SETTINGS
+    const profileCompressor = heroAudioProfile.compressor || DEFAULT_COMPRESSOR_SETTINGS
+
+    const eqMatches = eqSettingsAreEqual(baselineEffects.eq, profileEq)
+    const reverbMatches = reverbSettingsAreEqual(baselineEffects.reverb, profileReverb)
+    const compressorMatches = compressorSettingsAreEqual(
+      baselineEffects.compressor,
+      profileCompressor,
+    )
+
+    if (eqMatches && reverbMatches && compressorMatches) {
+      baselineEffectAppliedRef.current = true
+      return
+    }
+
+    baselineEffectAppliedRef.current = true
+    heroAudioPreferenceDirtyRef.current = true
+    setHeroAudioManualOverride(true)
+    setSelectedHeroAudioPresetId(null)
+
+    audioManager.setEqEnabled(Boolean(baselineEffects.eq.enabled))
+    audioManager.setEqualizer({
+      low: baselineEffects.eq.low,
+      mid: baselineEffects.eq.mid,
+      high: baselineEffects.eq.high,
+    })
+
+    audioManager.setReverbEnabled(Boolean(baselineEffects.reverb.enabled))
+    audioManager.setReverbDetail({
+      mix: baselineEffects.reverb.mix,
+      decay: baselineEffects.reverb.decay,
+    })
+
+    audioManager.setCompressorEnabled(Boolean(baselineEffects.compressor.enabled))
+    audioManager.setCompressorDetail({
+      threshold: baselineEffects.compressor.threshold,
+      ratio: baselineEffects.compressor.ratio,
+      release: baselineEffects.compressor.release,
+    })
+  }, [audioManager, audioPreferenceLoadedKey, heroAudioManualOverride, heroAudioProfile, heroAudioProfileKey])
+
   const heroStats = useMemo(() => {
     const rankIndex = myEntry ? participants.findIndex((participant) => participant.id === myEntry.id) : -1
     return [
@@ -1945,439 +2099,6 @@ export default function GameRoomView({
   const myHeroDisplayName =
     (myEntry?.hero && myEntry.hero.name) || myHero?.name || ''
 
-  const [historySearch, setHistorySearch] = useState('')
-  const [historyStatusFilter, setHistoryStatusFilter] = useState('all')
-  const [historyParticipantFilter, setHistoryParticipantFilter] = useState('all')
-  const [historyVisibilityFilter, setHistoryVisibilityFilter] = useState('all')
-  const [historyTagFilter, setHistoryTagFilter] = useState('all')
-  const [historyDateFrom, setHistoryDateFrom] = useState('')
-  const [historyDateTo, setHistoryDateTo] = useState('')
-
-  const historySearchTokens = useMemo(() => {
-    if (!historySearch) return []
-    return historySearch
-      .toLowerCase()
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter(Boolean)
-  }, [historySearch])
-
-  const baseSessionHistory = useMemo(() => {
-    if (!Array.isArray(sessionHistory)) return []
-    return sessionHistory
-      .map((entry) => {
-        if (!entry || !entry.sessionId) return null
-        const statusInfo = describeSessionStatus(entry.sessionStatus)
-        const createdAtValueRaw = entry.sessionCreatedAt ? Date.parse(entry.sessionCreatedAt) : NaN
-        const createdAtValue = Number.isFinite(createdAtValueRaw) ? createdAtValueRaw : null
-        const createdAt = formatDate(entry.sessionCreatedAt)
-        const publicTurns = Array.isArray(entry.publicTurns)
-          ? entry.publicTurns.filter((turn) => turn?.is_visible !== false)
-          : []
-        const shareableTotalRaw = Number(entry.publicTurnCount ?? publicTurns.length)
-        const shareableTotal = Number.isFinite(shareableTotalRaw)
-          ? Math.max(shareableTotalRaw, 0)
-          : publicTurns.length
-        const displayTurns = publicTurns.slice(-5)
-        const extraPublicWithinLimited = Math.max(publicTurns.length - displayTurns.length, 0)
-        const olderShareableCount = Math.max(shareableTotal - publicTurns.length, 0)
-        const hiddenCount = Number(entry.hiddenCount) || 0
-        const suppressedCount = Number(entry.suppressedCount) || 0
-        const trimmedTotal = (() => {
-          const trimmed = Number(entry.trimmedCount)
-          if (Number.isFinite(trimmed) && trimmed >= 0) {
-            return trimmed
-          }
-          return Math.max(
-            Number(entry.turnCount || 0) - Number(entry.displayedTurnCount || 0),
-            0,
-          )
-        })()
-        const summary = normalizeTurnSummaryPayload(entry.latestSummary)
-        const summaryTags = Array.isArray(summary?.tags)
-          ? summary.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
-          : []
-        const summaryTagKeys = Array.from(
-          new Set(summaryTags.map((tag) => tag.toLowerCase())),
-        )
-        const summaryActors = Array.isArray(summary?.actors)
-          ? summary.actors.filter((actor) => typeof actor === 'string' && actor.trim().length > 0)
-          : []
-        const participants = summaryActors.length ? Array.from(new Set(summaryActors)) : []
-        const searchText = buildHistorySearchText([
-          statusInfo.label,
-          createdAt,
-          summary?.role,
-          summary?.preview,
-          summary?.promptPreview,
-          summary?.outcomeLine,
-          summaryActors,
-          summaryTags,
-          displayTurns.map((turn) => `${turn.role} ${turn.content}`),
-        ])
-
-        return {
-          id: entry.sessionId,
-          createdAt,
-          createdAtValue,
-          statusLabel: statusInfo.label,
-          tone: statusInfo.tone,
-          turns: displayTurns.map((turn, index) => ({
-            id: turn?.id || `${entry.sessionId}-${turn?.idx ?? index}`,
-            role: turn?.role || 'system',
-            content: turn?.content || '',
-          })),
-          hiddenCount,
-          suppressedCount,
-          extraPublicWithinLimited,
-          olderShareableCount,
-          trimmedTotal,
-          summary,
-          summaryTags,
-          summaryTagKeys,
-          participants,
-          hasHidden: hiddenCount > 0 || suppressedCount > 0,
-          searchText,
-        }
-      })
-      .filter(Boolean)
-  }, [sessionHistory])
-
-  const baseSharedHistory = useMemo(() => {
-    if (!Array.isArray(sharedSessionHistory)) return []
-    return sharedSessionHistory
-      .map((entry) => {
-        if (!entry || !entry.id) return null
-        const statusInfo = describeSessionStatus(entry.status)
-        const createdAtValueRaw = entry.created_at ? Date.parse(entry.created_at) : NaN
-        const createdAtValue = Number.isFinite(createdAtValueRaw) ? createdAtValueRaw : null
-        const createdAt = formatDate(entry.created_at)
-        const turns = Array.isArray(entry.turns) ? entry.turns : []
-        const visibleTurns = turns.filter((turn) => turn?.is_visible !== false)
-        const viewerIsOwner = !!entry.viewer_is_owner
-        const ownerId = entry.owner_id || null
-
-        let baseHeroName = '시스템'
-        let roleLabel = ''
-
-        if (ownerId) {
-          if (viewerIsOwner) {
-            baseHeroName = myHeroDisplayName || '내 캐릭터'
-            roleLabel = myRoleName || ''
-            if (!myHeroDisplayName) {
-              const participant = participantsByOwnerId.get(ownerId)
-              if (participant) {
-                baseHeroName =
-                  (participant.hero && participant.hero.name) ||
-                  (participant.hero_id ? `#${participant.hero_id}` : '참가자')
-                roleLabel = roleLabel || participant.role || ''
-              }
-            }
-          } else {
-            const participant = participantsByOwnerId.get(ownerId)
-            if (participant) {
-              baseHeroName =
-                (participant.hero && participant.hero.name) ||
-                (participant.hero_id ? `#${participant.hero_id}` : '참가자')
-              roleLabel = participant.role || ''
-            } else {
-              baseHeroName = '참가자'
-              roleLabel = ''
-            }
-          }
-        }
-
-        const ownerName = baseHeroName
-        const ownerLine = [roleLabel, baseHeroName].filter(Boolean).join(' · ')
-        const displayTurns = visibleTurns.map((turn, index) => ({
-          id: turn?.id || `${entry.id}-${turn?.idx ?? index}`,
-          role: turn?.role || 'system',
-          content: turn?.content || '',
-        }))
-        const hiddenPrivateCount = Number(entry.hidden_private_count) || 0
-        const trimmedCount = Number(entry.trimmed_count) || 0
-        const totalVisible = Number(entry.total_visible_turns) || visibleTurns.length
-        const summary = normalizeTurnSummaryPayload(entry.latest_summary)
-        const summaryTags = Array.isArray(summary?.tags)
-          ? summary.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
-          : []
-        const summaryTagKeys = Array.from(
-          new Set(summaryTags.map((tag) => tag.toLowerCase())),
-        )
-        const summaryActors = Array.isArray(summary?.actors)
-          ? summary.actors.filter((actor) => typeof actor === 'string' && actor.trim().length > 0)
-          : []
-        const participantsSet = new Set(summaryActors)
-        if (ownerName) {
-          participantsSet.add(ownerName)
-        }
-        if (viewerIsOwner) {
-          participantsSet.add('내 세션')
-        }
-        const participantList = Array.from(participantsSet)
-
-        const searchText = buildHistorySearchText([
-          statusInfo.label,
-          createdAt,
-          ownerName,
-          ownerLine,
-          summary?.role,
-          summary?.preview,
-          summary?.promptPreview,
-          summary?.outcomeLine,
-          summaryActors,
-          summaryTags,
-          displayTurns.map((turn) => `${turn.role} ${turn.content}`),
-        ])
-
-        return {
-          id: entry.id,
-          createdAt,
-          createdAtValue,
-          statusLabel: statusInfo.label,
-          tone: statusInfo.tone,
-          ownerName,
-          ownerLine,
-          viewerIsOwner,
-          turns: displayTurns,
-          hiddenPrivateCount,
-          trimmedCount,
-          totalVisible,
-          summary,
-          summaryTags,
-          summaryTagKeys,
-          participants: participantList,
-          hasHidden: visibleTurns.length < turns.length,
-          searchText,
-        }
-      })
-      .filter(Boolean)
-  }, [sharedSessionHistory, participantsByOwnerId, myHeroDisplayName, myRoleName])
-
-  const historyDateFromValue = useMemo(() => {
-    if (!historyDateFrom) return null
-    const parsed = Date.parse(historyDateFrom)
-    return Number.isFinite(parsed) ? parsed : null
-  }, [historyDateFrom])
-
-  const historyDateToValue = useMemo(() => {
-    if (!historyDateTo) return null
-    const parsed = Date.parse(historyDateTo)
-    if (!Number.isFinite(parsed)) {
-      return null
-    }
-    return parsed + 24 * 60 * 60 * 1000 - 1
-  }, [historyDateTo])
-
-  const historyParticipantOptions = useMemo(() => {
-    const values = new Set()
-    baseSessionHistory.forEach((entry) => {
-      if (!entry?.participants) return
-      entry.participants.forEach((name) => {
-        if (typeof name === 'string' && name.trim().length > 0) {
-          values.add(name.trim())
-        }
-      })
-    })
-    baseSharedHistory.forEach((entry) => {
-      if (!entry?.participants) return
-      entry.participants.forEach((name) => {
-        if (typeof name === 'string' && name.trim().length > 0) {
-          values.add(name.trim())
-        }
-      })
-    })
-    return Array.from(values).sort((a, b) => a.localeCompare(b, 'ko'))
-  }, [baseSessionHistory, baseSharedHistory])
-
-  const historyTagOptions = useMemo(() => {
-    const map = new Map()
-    const collect = (entry) => {
-      if (!entry?.summaryTags) return
-      entry.summaryTags.forEach((tag) => {
-        if (typeof tag !== 'string') return
-        const trimmed = tag.trim()
-        if (!trimmed) return
-        const key = trimmed.toLowerCase()
-        if (!map.has(key)) {
-          map.set(key, trimmed)
-        }
-      })
-    }
-    baseSessionHistory.forEach(collect)
-    baseSharedHistory.forEach(collect)
-    return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'ko'))
-  }, [baseSessionHistory, baseSharedHistory])
-
-  useEffect(() => {
-    if (historyTagFilter === 'all') return
-    const lower = historyTagFilter.toLowerCase()
-    const hasTag = historyTagOptions.some((tag) => tag.toLowerCase() === lower)
-    if (!hasTag) {
-      setHistoryTagFilter('all')
-    }
-  }, [historyTagFilter, historyTagOptions])
-
-  const historyFiltersActive =
-    historySearchTokens.length > 0 ||
-    historyStatusFilter !== 'all' ||
-    historyParticipantFilter !== 'all' ||
-    historyVisibilityFilter !== 'all' ||
-    historyTagFilter !== 'all' ||
-    !!historyDateFromValue ||
-    !!historyDateToValue
-
-  const normalizedSessionHistory = useMemo(() => {
-    if (!baseSessionHistory.length) return baseSessionHistory
-    return baseSessionHistory.filter((entry) => {
-      if (historyStatusFilter !== 'all' && entry.tone !== historyStatusFilter) {
-        return false
-      }
-      if (historyParticipantFilter !== 'all') {
-        if (!entry.participants || !entry.participants.includes(historyParticipantFilter)) {
-          return false
-        }
-      }
-      if (historyVisibilityFilter === 'with-hidden' && !entry.hasHidden) {
-        return false
-      }
-      if (historyVisibilityFilter === 'without-hidden' && entry.hasHidden) {
-        return false
-      }
-      if (historyTagFilter !== 'all') {
-        if (!entry.summaryTagKeys || !entry.summaryTagKeys.includes(historyTagFilter.toLowerCase())) {
-          return false
-        }
-      }
-      if (historyDateFromValue && (!entry.createdAtValue || entry.createdAtValue < historyDateFromValue)) {
-        return false
-      }
-      if (historyDateToValue && (!entry.createdAtValue || entry.createdAtValue > historyDateToValue)) {
-        return false
-      }
-      if (!historySearchTokens.length) return true
-      if (!entry.searchText) return false
-      return historySearchTokens.every((token) => entry.searchText.includes(token))
-    })
-  }, [
-    baseSessionHistory,
-    historySearchTokens,
-    historyStatusFilter,
-    historyParticipantFilter,
-    historyVisibilityFilter,
-    historyTagFilter,
-    historyDateFromValue,
-    historyDateToValue,
-  ])
-
-  const normalizedSharedHistory = useMemo(() => {
-    if (!baseSharedHistory.length) return baseSharedHistory
-    return baseSharedHistory.filter((entry) => {
-      if (historyStatusFilter !== 'all' && entry.tone !== historyStatusFilter) {
-        return false
-      }
-      if (historyParticipantFilter !== 'all') {
-        if (!entry.participants || !entry.participants.includes(historyParticipantFilter)) {
-          return false
-        }
-      }
-      if (historyVisibilityFilter === 'with-hidden' && !entry.hasHidden) {
-        return false
-      }
-      if (historyVisibilityFilter === 'without-hidden' && entry.hasHidden) {
-        return false
-      }
-      if (historyTagFilter !== 'all') {
-        if (!entry.summaryTagKeys || !entry.summaryTagKeys.includes(historyTagFilter.toLowerCase())) {
-          return false
-        }
-      }
-      if (historyDateFromValue && (!entry.createdAtValue || entry.createdAtValue < historyDateFromValue)) {
-        return false
-      }
-      if (historyDateToValue && (!entry.createdAtValue || entry.createdAtValue > historyDateToValue)) {
-        return false
-      }
-      if (!historySearchTokens.length) return true
-      if (!entry.searchText) return false
-      return historySearchTokens.every((token) => entry.searchText.includes(token))
-    })
-  }, [
-    baseSharedHistory,
-    historySearchTokens,
-    historyStatusFilter,
-    historyParticipantFilter,
-    historyVisibilityFilter,
-    historyTagFilter,
-    historyDateFromValue,
-    historyDateToValue,
-  ])
-
-  const handleHistorySearchChange = useCallback((event) => {
-    const value = event?.target?.value ?? ''
-    setHistorySearch(value)
-  }, [])
-
-  const handleHistoryStatusChange = useCallback((event) => {
-    const value = event?.target?.value ?? 'all'
-    setHistoryStatusFilter(value || 'all')
-  }, [])
-
-  const handleHistoryParticipantChange = useCallback((event) => {
-    const value = event?.target?.value ?? 'all'
-    setHistoryParticipantFilter(value || 'all')
-  }, [])
-
-  const handleHistoryVisibilityChange = useCallback((event) => {
-    const value = event?.target?.value ?? 'all'
-    setHistoryVisibilityFilter(value || 'all')
-  }, [])
-
-  const handleHistoryTagChange = useCallback((event) => {
-    const value = event?.target?.value ?? 'all'
-    setHistoryTagFilter(value || 'all')
-  }, [])
-
-  const handleHistoryDateFromChange = useCallback((event) => {
-    const value = event?.target?.value ?? ''
-    setHistoryDateFrom(value)
-  }, [])
-
-  const handleHistoryDateToChange = useCallback((event) => {
-    const value = event?.target?.value ?? ''
-    setHistoryDateTo(value)
-  }, [])
-
-  const handleHistoryFilterReset = useCallback(() => {
-    setHistorySearch('')
-    setHistoryStatusFilter('all')
-    setHistoryParticipantFilter('all')
-    setHistoryVisibilityFilter('all')
-    setHistoryTagFilter('all')
-    setHistoryDateFrom('')
-    setHistoryDateTo('')
-  }, [])
-
-  const sharedHistoryBadgeValue = baseSharedHistory.length
-    ? historyFiltersActive
-      ? `${normalizedSharedHistory.length}/${baseSharedHistory.length}`
-      : `${baseSharedHistory.length}`
-    : null
-
-  const sessionHistoryBadgeValue = baseSessionHistory.length
-    ? historyFiltersActive
-      ? `${normalizedSessionHistory.length}/${baseSessionHistory.length}`
-      : `${baseSessionHistory.length}`
-    : null
-
-  const sharedHistoryEmptyMessage = baseSharedHistory.length
-    ? '조건에 맞는 기록이 없습니다.'
-    : '아직 공유 히스토리가 없습니다.'
-
-  const sessionHistoryEmptyMessage = baseSessionHistory.length
-    ? '조건에 맞는 기록이 없습니다.'
-    : '매칭을 시작하면 최근 세션 기록이 이곳에 표시됩니다.'
-
   const displayedHeroLogs = useMemo(
     () => heroBattleLogs.slice(0, visibleHeroLogs),
     [heroBattleLogs, visibleHeroLogs]
@@ -2390,24 +2111,14 @@ export default function GameRoomView({
   }, [myEntry?.hero_id, myHero?.id, recentBattles])
 
   const overallRanking = useMemo(() => {
-    return [...participants].sort((a, b) => {
-      const scoreA = Number.isFinite(Number(a?.score)) ? Number(a.score) : -Infinity
-      const scoreB = Number.isFinite(Number(b?.score)) ? Number(b.score) : -Infinity
-      if (scoreA === scoreB) return (a?.created_at || '').localeCompare(b?.created_at || '')
-      return scoreB - scoreA
-    })
+    return [...participants].sort(compareParticipantsByScore)
   }, [participants])
 
   const roleRankings = useMemo(() => {
     const grouped = groupByRole(participants)
     return Array.from(grouped.entries()).map(([role, members]) => ({
       role,
-      members: [...members].sort((a, b) => {
-        const scoreA = Number.isFinite(Number(a?.score)) ? Number(a.score) : -Infinity
-        const scoreB = Number.isFinite(Number(b?.score)) ? Number(b.score) : -Infinity
-        if (scoreA === scoreB) return (a?.created_at || '').localeCompare(b?.created_at || '')
-        return scoreB - scoreA
-      }),
+      members: [...members].sort(compareParticipantsByScore),
     }))
   }, [participants])
 
@@ -2579,6 +2290,17 @@ export default function GameRoomView({
     }
   }, [leaveLoading, onLeave])
 
+  const handleDeleteClick = useCallback(() => {
+    if (!onDelete || deleting) return
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('정말로 방을 삭제하시겠습니까? 삭제 후에는 되돌릴 수 없습니다.')
+      if (!confirmed) {
+        return
+      }
+    }
+    onDelete()
+  }, [deleting, onDelete])
+
   const handleShowMoreLogs = () => {
     setVisibleHeroLogs((prev) => prev + 10)
   }
@@ -2601,138 +2323,6 @@ export default function GameRoomView({
   const mainPanelContent = (
     <div className={styles.panelInner}>
       <section className={styles.joinCard}>
-        {Array.isArray(roleOccupancy) && roleOccupancy.length > 0 ? (
-          <div className={styles.roleOccupancyList}>
-            {roleOccupancy.map((entry) => {
-              const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
-              if (!name) return null
-              const total = Number.isFinite(Number(entry?.totalSlots)) && Number(entry.totalSlots) >= 0
-                ? Number(entry.totalSlots)
-                : null
-              const participantCount = Number.isFinite(Number(entry?.participantCount))
-                ? Number(entry.participantCount)
-                : 0
-              let occupied = Number.isFinite(Number(entry?.occupiedSlots))
-                ? Number(entry.occupiedSlots)
-                : participantCount
-              if (total != null && occupied > total) {
-                occupied = total
-              }
-              const available = Number.isFinite(Number(entry?.availableSlots)) && Number(entry.availableSlots) >= 0
-                ? Number(entry.availableSlots)
-                : null
-              const countLabel = total != null ? `${occupied}/${total}` : `${occupied}`
-              const availabilityText =
-                available != null ? (available > 0 ? `남은 슬롯 ${available}` : '정원 가득') : null
-              const itemClasses = [styles.roleOccupancyItem]
-              if (available === 0) {
-                itemClasses.push(styles.roleOccupancyItemFull)
-              }
-              return (
-                <div key={name} className={itemClasses.join(' ')}>
-                  <div className={styles.roleOccupancyMeta}>
-                    <span className={styles.roleOccupancyName}>{name}</span>
-                    <span className={styles.roleOccupancyCount}>{countLabel}</span>
-                  </div>
-                  {availabilityText ? (
-                    <span className={styles.roleOccupancyAvailability}>{availabilityText}</span>
-                  ) : null}
-                </div>
-              )
-            }).filter(Boolean)}
-          </div>
-        ) : null}
-
-        {Array.isArray(roleLeaderboards) && roleLeaderboards.length > 0 ? (
-          <div className={styles.roleLeaderboardSection}>
-            <h3 className={styles.roleLeaderboardTitle}>역할별 리더보드</h3>
-            <div className={styles.roleLeaderboardGrid}>
-              {roleLeaderboards.map((group) => {
-                const roleName = typeof group?.role === 'string' ? group.role : ''
-                if (!roleName) return null
-                const totalCount = Number.isFinite(Number(group?.totalParticipants))
-                  ? Number(group.totalParticipants)
-                  : group?.entries?.length || 0
-                return (
-                  <div key={roleName} className={styles.roleLeaderboardGroup}>
-                    <div className={styles.roleLeaderboardHeader}>
-                      <span className={styles.roleLeaderboardRole}>{roleName}</span>
-                      <span className={styles.roleLeaderboardCount}>
-                        참가 {totalCount}명
-                      </span>
-                    </div>
-                    {Array.isArray(group?.entries) && group.entries.length > 0 ? (
-                      <ul className={styles.roleLeaderboardList}>
-                        {group.entries.map((entry, idx) => {
-                          const key = entry?.id || `${roleName}-${idx}`
-                          const heroName =
-                            typeof entry?.heroName === 'string' && entry.heroName.trim()
-                              ? entry.heroName.trim()
-                              : '미지정'
-                          const rating = Number.isFinite(Number(entry?.rating))
-                            ? Number(entry.rating)
-                            : null
-                          const score = Number.isFinite(Number(entry?.score))
-                            ? Number(entry.score)
-                            : null
-                          const winRateValue = Number.isFinite(Number(entry?.winRate))
-                            ? Number(entry.winRate)
-                            : null
-                          const battlesValue = Number.isFinite(Number(entry?.battles))
-                            ? Number(entry.battles)
-                            : null
-                          const statParts = []
-                          if (rating != null) {
-                            statParts.push(`레이팅 ${rating}`)
-                          }
-                          if (score != null) {
-                            statParts.push(`점수 ${score}`)
-                          }
-                          if (winRateValue != null) {
-                            const formattedWinRate = Math.round(winRateValue * 10) / 10
-                            if (battlesValue != null) {
-                              statParts.push(`승률 ${formattedWinRate}% · ${battlesValue}전`)
-                            } else {
-                              statParts.push(`승률 ${formattedWinRate}%`)
-                            }
-                          } else if (battlesValue != null) {
-                            statParts.push(`${battlesValue}전 기록`)
-                          }
-
-                          return (
-                            <li key={key} className={styles.roleLeaderboardItem}>
-                              <span className={styles.roleLeaderboardRank}>{idx + 1}</span>
-                              <div className={styles.roleLeaderboardAvatar}>
-                                {entry?.hero?.image_url ? (
-                                  <img src={entry.hero.image_url} alt="" />
-                                ) : (
-                                  <span className={styles.roleLeaderboardAvatarFallback}>
-                                    {heroName.slice(0, 2)}
-                                  </span>
-                                )}
-                              </div>
-                              <div className={styles.roleLeaderboardMeta}>
-                                <span className={styles.roleLeaderboardName}>{heroName}</span>
-                                {statParts.length > 0 ? (
-                                  <span className={styles.roleLeaderboardStats}>
-                                    {statParts.join(' · ')}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    ) : (
-                      <p className={styles.roleLeaderboardEmpty}>아직 기록이 없습니다.</p>
-                    )}
-                  </div>
-                )
-              }).filter(Boolean)}
-            </div>
-          </div>
-        ) : null}
-
         <div className={styles.capacityRow}>
           <span className={styles.capacityCount}>{capacityCountLabel}</span>
           <div className={styles.capacityLabels}>
@@ -2747,48 +2337,57 @@ export default function GameRoomView({
 
         {participantsByRole.length > 0 ? (
           <div className={styles.roleList}>
-            {participantsByRole.map(({ name, count, capacity, occupiedSlots, availableSlots }) => {
-              const isPicked = currentRole === name
-              const isMine = myEntry?.role === name
-              const highlight = isPicked || isMine
-              const capacityValue =
-                Number.isFinite(Number(capacity)) && Number(capacity) >= 0 ? Number(capacity) : null
-              const occupiedValue =
-                Number.isFinite(Number(occupiedSlots)) && Number(occupiedSlots) >= 0
-                  ? Number(occupiedSlots)
-                  : count
-              const remaining =
-                Number.isFinite(Number(availableSlots)) && Number(availableSlots) >= 0
-                  ? Number(availableSlots)
-                  : null
-              const full = capacityValue != null && occupiedValue >= capacityValue
-              const label =
-                capacityValue != null ? `${occupiedValue}/${capacityValue}명` : `${count}명 참여 중`
-              const classes = [styles.roleChip]
-              if (highlight) classes.push(styles.roleChipActive)
-              if (alreadyJoined && !isMine) classes.push(styles.roleChipDisabled)
-              if (full && !isMine) classes.push(styles.roleChipFull)
-              const disabled = (alreadyJoined && !isMine) || (full && !isMine)
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  className={classes.join(' ')}
-                  onClick={() => onChangeRole?.(name)}
-                  disabled={disabled}
-                >
-                  <span className={styles.roleName}>{name}</span>
-                  <span className={styles.roleCount}>{label}</span>
-                  {remaining != null ? (
-                    <span className={styles.roleAvailability}>
-                      {remaining > 0 ? `남은 슬롯 ${remaining}` : '정원 가득'}
-                    </span>
-                  ) : full && !isMine ? (
-                    <span className={styles.roleFullTag}>정원 마감</span>
-                  ) : null}
-                </button>
-              )
-            })}
+            {participantsByRole.map(
+              ({ name, count, minimumRequired, overflowCount, neededForStart }) => {
+                const isPicked = currentRole === name
+                const isMine = myEntry?.role === name
+                const highlight = isPicked || isMine
+                const minimumValue =
+                  Number.isFinite(Number(minimumRequired)) && Number(minimumRequired) >= 0
+                    ? Number(minimumRequired)
+                    : null
+                const overflowValue =
+                  Number.isFinite(Number(overflowCount)) && Number(overflowCount) > 0
+                    ? Number(overflowCount)
+                    : 0
+                const shortfallValue =
+                  Number.isFinite(Number(neededForStart)) && Number(neededForStart) >= 0
+                    ? Number(neededForStart)
+                    : null
+                const label =
+                  minimumValue != null
+                    ? `${count}명 참여 · 최소 ${minimumValue}명 필요`
+                    : `${count}명 참여 중`
+                const statusParts = []
+                if (minimumValue != null) {
+                  statusParts.push(shortfallValue && shortfallValue > 0 ? `시작까지 ${shortfallValue}명 필요` : '기본 슬롯 충족')
+                }
+                if (overflowValue > 0) {
+                  statusParts.push(`추가 참가자 ${overflowValue}명`)
+                }
+                const statusText = statusParts.length > 0 ? statusParts.join(' · ') : '참여자 모집 중'
+                const classes = [styles.roleChip]
+                if (highlight) classes.push(styles.roleChipActive)
+                if (!isMine && minimumValue != null && shortfallValue === 0) {
+                  classes.push(styles.roleChipReady)
+                }
+                if (alreadyJoined && !isMine) classes.push(styles.roleChipDisabled)
+                const disabled = alreadyJoined && !isMine
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    className={classes.join(' ')}
+                    onClick={() => onChangeRole?.(name)}
+                    disabled={disabled}
+                  >
+                    <span className={styles.roleName}>{name}</span>
+                    <span className={styles.roleCount}>{label}</span>
+                    <span className={styles.roleAvailability}>{statusText}</span>
+                  </button>
+                )
+              },
+            )}
           </div>
         ) : (
           <div className={styles.emptyCard}>선택 가능한 역할 정보가 없습니다.</div>
@@ -2803,16 +2402,6 @@ export default function GameRoomView({
           >
             {alreadyJoined ? '참여 완료됨' : joinLoading ? '참여 중…' : `${currentRole || '역할'}로 참여하기`}
           </button>
-          {alreadyJoined && onLeave ? (
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={handleLeaveClick}
-              disabled={leaveLoading}
-            >
-              {leaveLoading ? '슬롯 비우는 중…' : '슬롯 비우기'}
-            </button>
-          ) : null}
           {onOpenModeSettings ? (
             <button
               type="button"
@@ -2841,376 +2430,12 @@ export default function GameRoomView({
           준비가 완료되면 모드 선택 창이 열리며 매칭이 자동으로 진행됩니다.
         </p>
 
-        <TurnTimerVotePanel
-          value={turnTimerVote}
-          onChange={onVoteTurnTimer}
-          voteSummary={voteSummary}
-        />
-
         {isOwner && (
           <div className={styles.ownerActions}>
-            <button type="button" className={styles.subtleButton} onClick={onDelete} disabled={deleting}>
+            <button type="button" className={styles.subtleButton} onClick={handleDeleteClick} disabled={deleting}>
               {deleting ? '방 삭제 중…' : '방 삭제하기'}
             </button>
           </div>
-        )}
-      </section>
-
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>참가자 명단</h2>
-          <span className={styles.sectionBadge}>{readyCount}명</span>
-        </div>
-        {roster.length === 0 ? (
-          <div className={styles.emptyCard}>아직 참가자가 없습니다. 첫 번째로 참여해보세요!</div>
-        ) : (
-          <div className={styles.rosterGrid}>
-            {roster.map((participant) => (
-              <ParticipantCard key={participant.id || participant.hero_id} p={participant} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>공용 히스토리</h2>
-          {sharedHistoryBadgeValue ? (
-            <span className={styles.sectionBadge}>{sharedHistoryBadgeValue}</span>
-          ) : null}
-        </div>
-        <div className={styles.sessionHistoryControls}>
-          <div className={styles.sessionHistoryControlRow}>
-            <input
-              type="search"
-              className={styles.sessionHistorySearch}
-              placeholder="요약·참여자·문장 검색"
-              value={historySearch}
-              onChange={handleHistorySearchChange}
-              aria-label="세션 요약 검색"
-              autoComplete="off"
-            />
-            <select
-              className={styles.sessionHistoryFilter}
-              value={historyStatusFilter}
-              onChange={handleHistoryStatusChange}
-              aria-label="세션 상태 필터"
-            >
-              <option value="all">전체 상태</option>
-              <option value="completed">종료된 세션</option>
-              <option value="active">진행 중</option>
-              <option value="failed">중단됨</option>
-            </select>
-            {historyParticipantOptions.length ? (
-              <select
-                className={styles.sessionHistoryFilter}
-                value={historyParticipantFilter}
-                onChange={handleHistoryParticipantChange}
-                aria-label="참여자 필터"
-              >
-                <option value="all">전체 참여자</option>
-                {historyParticipantOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            <select
-              className={styles.sessionHistoryFilter}
-              value={historyVisibilityFilter}
-              onChange={handleHistoryVisibilityChange}
-              aria-label="숨김 여부 필터"
-            >
-              <option value="all">숨김 포함 여부</option>
-              <option value="with-hidden">숨김 기록 포함</option>
-              <option value="without-hidden">숨김 없는 세션</option>
-            </select>
-            {historyFiltersActive ? (
-              <button type="button" className={styles.sessionHistoryClear} onClick={handleHistoryFilterReset}>
-                필터 초기화
-              </button>
-            ) : null}
-          </div>
-          <div className={styles.sessionHistoryControlRow}>
-            {historyTagOptions.length ? (
-              <select
-                className={styles.sessionHistoryFilter}
-                value={historyTagFilter}
-                onChange={handleHistoryTagChange}
-                aria-label="요약 태그 필터"
-              >
-                <option value="all">전체 태그</option>
-                {historyTagOptions.map((option) => (
-                  <option key={option} value={option}>
-                    #{option}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            <label className={styles.sessionHistoryDateLabel}>
-              <span className={styles.sessionHistoryDateText}>시작일</span>
-              <input
-                type="date"
-                className={`${styles.sessionHistoryFilter} ${styles.sessionHistoryDateInput}`}
-                value={historyDateFrom}
-                onChange={handleHistoryDateFromChange}
-                aria-label="시작일 필터"
-              />
-            </label>
-            <label className={styles.sessionHistoryDateLabel}>
-              <span className={styles.sessionHistoryDateText}>종료일</span>
-              <input
-                type="date"
-                className={`${styles.sessionHistoryFilter} ${styles.sessionHistoryDateInput}`}
-                value={historyDateTo}
-                onChange={handleHistoryDateToChange}
-                aria-label="종료일 필터"
-                min={historyDateFrom || undefined}
-              />
-            </label>
-          </div>
-        </div>
-        {normalizedSharedHistory.length ? (
-          <ul className={styles.sessionHistoryList}>
-            {normalizedSharedHistory.map((entry) => {
-              const statusClass =
-                entry.tone === 'completed'
-                  ? styles.sessionHistoryStatusCompleted
-                  : entry.tone === 'failed'
-                    ? styles.sessionHistoryStatusFailed
-                    : styles.sessionHistoryStatusActive
-
-              return (
-                <li key={entry.id} className={styles.sessionHistoryItem}>
-                  <div className={styles.sessionHistoryHeader}>
-                    <span className={`${styles.sessionHistoryStatus} ${statusClass}`}>
-                      {entry.statusLabel}
-                    </span>
-                    {entry.createdAt ? (
-                      <span className={styles.sessionHistoryTimestamp}>{entry.createdAt}</span>
-                    ) : null}
-                  </div>
-                  <div className={styles.sessionHistoryMeta}>
-                    <span
-                      className={`${styles.sessionHistoryOwner} ${
-                        entry.viewerIsOwner ? styles.sessionHistoryOwnerSelf : ''
-                      }`}
-                    >
-                      {entry.viewerIsOwner ? '내 세션' : entry.ownerName}
-                    </span>
-                    {entry.ownerLine ? (
-                      <span className={styles.sessionHistoryOwnerDetail}>{entry.ownerLine}</span>
-                    ) : null}
-                    <span className={styles.sessionHistoryTurnCount}>
-                      공개 기록 {entry.totalVisible}개
-                    </span>
-                  </div>
-                  {entry.summary ? (
-                    <div className={styles.sessionHistorySummary}>
-                      <div className={styles.sessionHistorySummaryHeader}>
-                        <span
-                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeSummary}`}
-                        >
-                          요약
-                        </span>
-                        {entry.summary.role ? (
-                          <span className={styles.sessionHistorySummaryRole}>{entry.summary.role}</span>
-                        ) : null}
-                        {entry.summary.actors && entry.summary.actors.length ? (
-                          <span className={styles.sessionHistorySummaryActors}>
-                            {entry.summary.actors.join(', ')}
-                          </span>
-                        ) : null}
-                      </div>
-                      {entry.summary.preview ? (
-                        <p className={styles.sessionHistorySummaryText}>{entry.summary.preview}</p>
-                      ) : null}
-                      {entry.summary.promptPreview ? (
-                        <p className={styles.sessionHistorySummaryHint}>
-                          프롬프트: {entry.summary.promptPreview}
-                        </p>
-                      ) : null}
-                      {entry.summary.outcomeLine ? (
-                        <p className={styles.sessionHistorySummaryHint}>
-                          결론: {entry.summary.outcomeLine}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {entry.summaryTags && entry.summaryTags.length ? (
-                    <div className={styles.sessionHistoryTagRow}>
-                      {entry.summaryTags.map((tag, index) => (
-                        <span key={`${entry.id}-tag-${index}`} className={styles.sessionHistoryTag}>
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {entry.hiddenPrivateCount > 0 || entry.trimmedCount > 0 ? (
-                    <div className={styles.sessionHistoryBadgeRow}>
-                      {entry.hiddenPrivateCount > 0 ? (
-                        <span
-                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgePrivate}`}
-                        >
-                          비공개 {entry.hiddenPrivateCount}
-                        </span>
-                      ) : null}
-                      {entry.trimmedCount > 0 ? (
-                        <span
-                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeArchive}`}
-                        >
-                          축약 {entry.trimmedCount}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <ul className={styles.sessionHistoryTurns}>
-                    {entry.turns.length ? (
-                      entry.turns.map((turn) => (
-                        <li key={turn.id} className={styles.sessionHistoryTurn}>
-                          <span className={styles.sessionHistoryTurnRole}>{turn.role}</span>
-                          <p className={styles.sessionHistoryTurnContent}>{turn.content}</p>
-                        </li>
-                      ))
-                    ) : (
-                      <li className={styles.sessionHistoryNotice}>공유 가능한 기록이 아직 없습니다.</li>
-                    )}
-                  </ul>
-                </li>
-              )
-            })}
-          </ul>
-        ) : (
-          <div className={styles.emptyCard}>{sharedHistoryEmptyMessage}</div>
-        )}
-      </section>
-
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>내 세션 히스토리</h2>
-          {sessionHistoryBadgeValue ? (
-            <span className={styles.sectionBadge}>{sessionHistoryBadgeValue}</span>
-          ) : null}
-        </div>
-        {normalizedSessionHistory.length ? (
-          <ul className={styles.sessionHistoryList}>
-            {normalizedSessionHistory.map((entry) => {
-              const statusClass =
-                entry.tone === 'completed'
-                  ? styles.sessionHistoryStatusCompleted
-                  : entry.tone === 'failed'
-                    ? styles.sessionHistoryStatusFailed
-                    : styles.sessionHistoryStatusActive
-              return (
-                <li key={entry.id} className={styles.sessionHistoryItem}>
-                  <div className={styles.sessionHistoryHeader}>
-                    <span className={`${styles.sessionHistoryStatus} ${statusClass}`}>
-                      {entry.statusLabel}
-                    </span>
-                    {entry.createdAt ? (
-                      <span className={styles.sessionHistoryTimestamp}>{entry.createdAt}</span>
-                    ) : null}
-                  </div>
-                  {entry.summary ? (
-                    <div className={styles.sessionHistorySummary}>
-                      <div className={styles.sessionHistorySummaryHeader}>
-                        <span
-                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeSummary}`}
-                        >
-                          요약
-                        </span>
-                        {entry.summary.role ? (
-                          <span className={styles.sessionHistorySummaryRole}>{entry.summary.role}</span>
-                        ) : null}
-                        {entry.summary.actors && entry.summary.actors.length ? (
-                          <span className={styles.sessionHistorySummaryActors}>
-                            {entry.summary.actors.join(', ')}
-                          </span>
-                        ) : null}
-                      </div>
-                      {entry.summary.preview ? (
-                        <p className={styles.sessionHistorySummaryText}>{entry.summary.preview}</p>
-                      ) : null}
-                      {entry.summary.promptPreview ? (
-                        <p className={styles.sessionHistorySummaryHint}>
-                          프롬프트: {entry.summary.promptPreview}
-                        </p>
-                      ) : null}
-                      {entry.summary.outcomeLine ? (
-                        <p className={styles.sessionHistorySummaryHint}>
-                          결론: {entry.summary.outcomeLine}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {entry.summaryTags && entry.summaryTags.length ? (
-                    <div className={styles.sessionHistoryTagRow}>
-                      {entry.summaryTags.map((tag, index) => (
-                        <span key={`${entry.id}-tag-${index}`} className={styles.sessionHistoryTag}>
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {entry.hiddenCount > 0 || entry.suppressedCount > 0 || entry.trimmedTotal > 0 ||
-                  entry.extraPublicWithinLimited > 0 || entry.olderShareableCount > 0 ? (
-                    <div className={styles.sessionHistoryBadgeRow}>
-                      {entry.hiddenCount > 0 ? (
-                        <span
-                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgePrivate}`}
-                        >
-                          비공개 {entry.hiddenCount}
-                        </span>
-                      ) : null}
-                      {entry.suppressedCount > 0 ? (
-                        <span
-                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeSuppressed}`}
-                        >
-                          숨김 {entry.suppressedCount}
-                        </span>
-                      ) : null}
-                      {entry.extraPublicWithinLimited > 0 ? (
-                        <span
-                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeOverflow}`}
-                        >
-                          최근 +{entry.extraPublicWithinLimited}
-                        </span>
-                      ) : null}
-                      {entry.olderShareableCount > 0 ? (
-                        <span
-                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeQueue}`}
-                        >
-                          과거 +{entry.olderShareableCount}
-                        </span>
-                      ) : null}
-                      {entry.trimmedTotal > 0 ? (
-                        <span
-                          className={`${styles.sessionHistoryBadge} ${styles.sessionHistoryBadgeArchive}`}
-                        >
-                          보관 {entry.trimmedTotal}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <ul className={styles.sessionHistoryTurns}>
-                    {entry.turns.length ? (
-                      entry.turns.map((turn) => (
-                        <li key={turn.id} className={styles.sessionHistoryTurn}>
-                          <span className={styles.sessionHistoryTurnRole}>{turn.role}</span>
-                          <p className={styles.sessionHistoryTurnContent}>{turn.content}</p>
-                        </li>
-                      ))
-                    ) : (
-                      <li className={styles.sessionHistoryNotice}>공개된 기록이 아직 없습니다.</li>
-                    )}
-                  </ul>
-                </li>
-              )
-            })}
-          </ul>
-        ) : (
-          <div className={styles.emptyCard}>{sessionHistoryEmptyMessage}</div>
         )}
       </section>
 
@@ -3278,228 +2503,6 @@ export default function GameRoomView({
                   </div>
                 )}
 
-                {heroAudioProfile && (
-                  <div className={styles.heroAudioStatus}>
-                    <div className={styles.heroAudioMetaRow}>
-                      <span className={styles.heroAudioLabel}>{heroAudioSourceLabel}</span>
-                      <span
-                        className={`${styles.heroAudioPlaybackBadge} ${
-                          heroAudioState?.isPlaying ? styles.heroAudioPlaybackBadgeActive : ''
-                        }`.trim()}
-                      >
-                        {heroAudioState?.isPlaying ? '재생 중' : '일시정지'}
-                      </span>
-                    </div>
-                    <p className={styles.heroAudioTrack}>
-                      <span className={styles.heroAudioTrackTitle}>
-                        {heroAudioActiveTrack?.label
-                          || (heroAudioProfile.heroName ? `${heroAudioProfile.heroName} 테마` : '브금 트랙')}
-                      </span>
-                      {heroAudioActiveTrack?.type ? (
-                        <span className={styles.heroAudioTrackBadge}>{heroAudioActiveTrack.type}</span>
-                      ) : null}
-                      {heroAudioDurationDisplay ? (
-                        <span className={styles.heroAudioDuration}>{heroAudioDurationDisplay}</span>
-                      ) : null}
-                    </p>
-                    {heroAudioTracks.length > 1 ? (
-                      <div className={styles.heroAudioPlaylist}>
-                        <div className={styles.heroAudioPlaylistHeader}>
-                          <span className={styles.heroAudioSubLabel}>재생목록</span>
-                          <span className={styles.heroAudioPlaylistMeta}>{heroAudioTracks.length}곡</span>
-                        </div>
-                        <div className={styles.heroAudioTrackButtons}>
-                          {heroAudioTracks.map((track) => {
-                            const active = heroAudioActiveTrack?.id === track.id
-                            return (
-                              <button
-                                key={track.id}
-                                type="button"
-                                className={`${styles.heroAudioTrackButton} ${
-                                  active ? styles.heroAudioTrackButtonActive : ''
-                                }`.trim()}
-                                onClick={() => handleSelectHeroAudioTrack(track.id)}
-                                aria-pressed={active}
-                              >
-                                <span className={styles.heroAudioTrackButtonLabel}>{track.label}</span>
-                                {track.type ? (
-                                  <span className={styles.heroAudioTrackButtonBadge}>{track.type}</span>
-                                ) : null}
-                                {Number.isFinite(track.duration) ? (
-                                  <span className={styles.heroAudioTrackButtonDuration}>
-                                    {formatDurationLabel(track.duration)}
-                                  </span>
-                                ) : null}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className={styles.heroAudioControls}>
-                      <button
-                        type="button"
-                        className={`${styles.heroAudioButton} ${
-                          heroAudioState?.isPlaying ? styles.heroAudioButtonActive : ''
-                        }`.trim()}
-                        onClick={handleToggleHeroAudioPlayback}
-                        aria-pressed={heroAudioState?.isPlaying ?? false}
-                      >
-                        {heroAudioState?.isPlaying ? '일시정지' : '재생'}
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.heroAudioButton} ${
-                          heroAudioIsMuted ? styles.heroAudioButtonMuted : ''
-                        }`.trim()}
-                        onClick={handleToggleHeroAudioMute}
-                        aria-pressed={heroAudioIsMuted}
-                      >
-                        {heroAudioIsMuted ? '음소거 해제' : '음소거'}
-                      </button>
-                      <div className={styles.heroAudioVolumeGroup}>
-                        <label className={styles.heroAudioVolumeLabel} htmlFor={heroAudioVolumeInputId}>
-                          볼륨
-                        </label>
-                        <input
-                          id={heroAudioVolumeInputId}
-                          className={styles.heroAudioVolumeSlider}
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="1"
-                          value={heroAudioVolumePercent}
-                          onChange={handleHeroAudioVolumeChange}
-                          onInput={handleHeroAudioVolumeChange}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={heroAudioVolumePercent}
-                          aria-label="브금 볼륨"
-                        />
-                        <span className={styles.heroAudioVolumeValue}>{heroAudioVolumePercent}%</span>
-                      </div>
-                    </div>
-                    {heroAudioDurationDisplay ? (
-                      <div className={styles.heroAudioProgressRow}>
-                        <span className={styles.heroAudioProgressTime}>{heroAudioProgressLabel}</span>
-                        <div className={styles.heroAudioProgressBar}>
-                          <div
-                            className={styles.heroAudioProgressMeter}
-                            style={{ width: `${heroAudioProgressPercent}%` }}
-                          />
-                        </div>
-                        <span className={styles.heroAudioProgressTime}>{heroAudioDurationDisplay}</span>
-                      </div>
-                    ) : null}
-                    <div className={styles.heroAudioEffects}>
-                      <div className={styles.heroAudioEffectRow}>
-                        <button
-                          type="button"
-                          className={`${styles.heroAudioEffectButton} ${
-                            heroAudioState?.eqEnabled ? styles.heroAudioEffectButtonActive : ''
-                          }`.trim()}
-                          onClick={handleToggleHeroEq}
-                          aria-pressed={heroAudioState?.eqEnabled ?? false}
-                        >
-                          EQ {heroAudioState?.eqEnabled ? '켜짐' : '꺼짐'}
-                        </button>
-                        <span className={styles.heroAudioEffectSummary}>{heroAudioEqSummary}</span>
-                      </div>
-                      <div className={styles.heroAudioEffectRow}>
-                        <button
-                          type="button"
-                          className={`${styles.heroAudioEffectButton} ${
-                            heroAudioState?.reverbEnabled ? styles.heroAudioEffectButtonActive : ''
-                          }`.trim()}
-                          onClick={handleToggleHeroReverb}
-                          aria-pressed={heroAudioState?.reverbEnabled ?? false}
-                        >
-                          리버브 {heroAudioState?.reverbEnabled ? '켜짐' : '꺼짐'}
-                        </button>
-                        <span className={styles.heroAudioEffectSummary}>{heroAudioReverbSummary}</span>
-                      </div>
-                      <div className={styles.heroAudioEffectRow}>
-                        <button
-                          type="button"
-                          className={`${styles.heroAudioEffectButton} ${
-                            heroAudioState?.compressorEnabled ? styles.heroAudioEffectButtonActive : ''
-                          }`.trim()}
-                          onClick={handleToggleHeroCompressor}
-                          aria-pressed={heroAudioState?.compressorEnabled ?? false}
-                        >
-                          컴프레서 {heroAudioState?.compressorEnabled ? '켜짐' : '꺼짐'}
-                        </button>
-                        <span className={styles.heroAudioEffectSummary}>{heroAudioCompressorSummary}</span>
-                      </div>
-                    </div>
-                    <div className={styles.heroAudioPresetSection}>
-                      <div className={styles.heroAudioPresetHeader}>
-                        <span className={styles.heroAudioSubLabel}>프리셋</span>
-                        <div className={styles.heroAudioPresetStatus}>
-                          <span
-                            className={`${styles.heroAudioPresetBadge} ${
-                              heroAudioManualOverride ? styles.heroAudioPresetBadgeWarning : ''
-                            }`.trim()}
-                          >
-                            {heroAudioPresetLabel}
-                          </span>
-                          {heroAudioManualOverride ? (
-                            <button
-                              type="button"
-                              className={styles.heroAudioResetButton}
-                              onClick={handleResetHeroAudioPreset}
-                            >
-                              기본값 복원
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className={styles.heroAudioPresetList}>
-                        <button
-                          type="button"
-                          className={`${styles.heroAudioPresetButton} ${
-                            !heroAudioManualOverride && !selectedHeroAudioPresetId
-                              ? styles.heroAudioPresetButtonActive
-                              : ''
-                          }`.trim()}
-                          onClick={() => handleSelectHeroAudioPreset(null)}
-                          aria-pressed={!heroAudioManualOverride && !selectedHeroAudioPresetId}
-                        >
-                          <span className={styles.heroAudioPresetLabel}>기본 설정</span>
-                          <span className={styles.heroAudioPresetTags}>캐릭터 기준</span>
-                        </button>
-                        {heroAudioPresets.map((preset) => {
-                          const active = !heroAudioManualOverride && selectedHeroAudioPresetId === preset.id
-                          return (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              className={`${styles.heroAudioPresetButton} ${
-                                active ? styles.heroAudioPresetButtonActive : ''
-                              }`.trim()}
-                              onClick={() => handleSelectHeroAudioPreset(preset.id)}
-                              aria-pressed={active}
-                            >
-                              <span className={styles.heroAudioPresetLabel}>{preset.label}</span>
-                              {preset.tags?.length ? (
-                                <span className={styles.heroAudioPresetTags}>{preset.tags.join(' · ')}</span>
-                              ) : null}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      {heroAudioManualOverride ? (
-                        <p className={styles.heroAudioPresetHint}>
-                          수동 조정 상태입니다. "기본값 복원"을 누르면 캐릭터가 추천한 효과가 다시 적용됩니다.
-                        </p>
-                      ) : heroAudioPresets.length === 0 ? (
-                        <p className={styles.heroAudioPresetHint}>
-                          등록된 프리셋이 없어 기본 효과가 적용됩니다.
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
               </div>
 
               {heroStageHasMultipleViews && (

@@ -1,71 +1,62 @@
 #!/usr/bin/env node
-/**
- * Validate that data/rankBlueprintProgress.json is still within the
- * acceptable freshness window. Exits with a non-zero status when the
- * snapshot is older than the configured threshold so CI can alert
- * maintainers.
- */
 
-const fs = require('fs')
+const fs = require('fs/promises')
 const path = require('path')
 
-const rootDir = path.resolve(__dirname, '..')
-const snapshotPath = path.join(rootDir, 'data', 'rankBlueprintProgress.json')
-const defaultMaxAgeDays = Number(process.env.BLUEPRINT_PROGRESS_MAX_AGE_DAYS || '14')
-
-function readSnapshot() {
-  try {
-    const contents = fs.readFileSync(snapshotPath, 'utf8')
-    return JSON.parse(contents)
-  } catch (error) {
-    console.error(`Unable to read or parse ${snapshotPath}:`, error.message)
-    throw error
+function parseISODateOnly(value) {
+  if (!value) return null
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+  const [, y, m, d] = match
+  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
+  if (Number.isNaN(date.getTime())) {
+    return null
   }
+  return date
 }
 
-function calculateAgeDays(isoDate) {
-  if (!isoDate) {
-    throw new Error('Snapshot is missing the lastUpdatedISO field.')
-  }
-
-  const updatedAt = new Date(isoDate)
-  if (Number.isNaN(updatedAt.getTime())) {
-    throw new Error(`Invalid ISO timestamp in snapshot: ${isoDate}`)
-  }
-
-  const now = new Date()
-  const diffMs = now.getTime() - updatedAt.getTime()
-  if (diffMs <= 0) {
-    return 0
-  }
-
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24))
+function startOfUTCDay(date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
 }
 
-function main() {
-  const snapshot = readSnapshot()
-  const ageDays = calculateAgeDays(snapshot.lastUpdatedISO)
-  const maxAgeDays = Number.isNaN(defaultMaxAgeDays) ? 14 : defaultMaxAgeDays
+function diffInDays(a, b) {
+  const ms = startOfUTCDay(a).getTime() - startOfUTCDay(b).getTime()
+  return Math.round(ms / (24 * 60 * 60 * 1000))
+}
 
-  if (ageDays > maxAgeDays) {
+async function main() {
+  const filePath = path.join(__dirname, '..', 'data', 'rankBlueprintProgress.json')
+  const raw = await fs.readFile(filePath, 'utf8')
+  const data = JSON.parse(raw)
+
+  const lastUpdatedISO = data.lastUpdatedISO
+  const lastUpdatedDate = parseISODateOnly(lastUpdatedISO)
+  if (!lastUpdatedDate) {
+    console.error('❌ rankBlueprintProgress.json: lastUpdatedISO 값이 유효한 날짜 형식이 아닙니다.')
+    process.exitCode = 1
+    return
+  }
+
+  const today = startOfUTCDay(new Date())
+  const rawAgeDays = diffInDays(today, lastUpdatedDate)
+  const ageDays = Math.max(0, rawAgeDays)
+  const limit = 14
+
+  if (ageDays > limit) {
     console.error(
-      `rankBlueprintProgress.json is ${ageDays} days old (threshold: ${maxAgeDays} days). ` +
-        'Run "npm run refresh:blueprint-progress" to regenerate the snapshot.'
+      `❌ 청사진 진행 데이터가 ${ageDays}일 동안 갱신되지 않았습니다. (허용 최대 ${limit}일)`
     )
     process.exitCode = 1
     return
   }
 
-  console.log(
-    `rankBlueprintProgress.json is ${ageDays} days old (threshold: ${maxAgeDays} days). Freshness within acceptable range.`
-  )
+  const freshnessLabel =
+    rawAgeDays < 0 ? `미래 스냅샷 (${lastUpdatedISO})` : `${ageDays}일 전 (${lastUpdatedISO})`
+
+  console.log(`✅ 청사진 진행 데이터는 ${freshnessLabel}에 갱신되었습니다.`)
 }
 
-if (require.main === module) {
-  try {
-    main()
-  } catch (error) {
-    console.error(error.message)
-    process.exitCode = 1
-  }
-}
+main().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})

@@ -6,9 +6,10 @@
   align-items: center;
   min-height: 100vh;
   padding: 72px 24px 96px;
+  --hero-background-media: none;
   background-image:
     linear-gradient(180deg, rgba(6, 10, 28, 0.82) 0%, rgba(6, 10, 28, 0.92) 70%, rgba(6, 10, 28, 0.98) 100%),
-    url('/landing/celestial-frontline.svg');
+    var(--hero-background-media);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -188,6 +189,117 @@
   list-style: none;
 }
 
+.progressSummaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px 20px;
+  border-radius: 20px;
+  background: rgba(25, 35, 74, 0.7);
+  border: 1px solid rgba(124, 154, 255, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.progressSummaryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.progressSummaryLabel {
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(192, 208, 255, 0.65);
+  font-weight: 600;
+}
+
+.progressSummaryValue {
+  font-size: 32px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  text-shadow: 0 8px 28px rgba(4, 10, 28, 0.45);
+}
+
+.progressSummaryMeter {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(104, 136, 255, 0.2);
+  overflow: hidden;
+}
+
+.progressSummaryMeter > span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6e9bff 0%, #9bb6ff 100%);
+  transition: width 240ms ease;
+}
+
+.progressSummaryMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(206, 218, 255, 0.72);
+}
+
+.progressRemainingList {
+  display: grid;
+  gap: 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progressRemainingItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(18, 25, 58, 0.8);
+  border: 1px solid rgba(126, 159, 255, 0.18);
+}
+
+.progressRemainingHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.progressRemainingStage {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2e9ff;
+  letter-spacing: 0.04em;
+}
+
+.progressRemainingPercent {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(182, 204, 255, 0.8);
+}
+
+.progressRemainingStatus {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(164, 186, 255, 0.7);
+}
+
+.progressRemainingNextStep {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(212, 222, 255, 0.78);
+}
+
 .nextActionsHeader {
   display: flex;
   justify-content: space-between;
@@ -213,7 +325,13 @@
   border-radius: 999px;
   padding: 6px 12px;
   cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+}
+
+.nextActionsSortButton:disabled {
+  cursor: default;
+  opacity: 0.45;
+  box-shadow: none;
 }
 
 .nextActionsSortButton[data-active='true'] {
@@ -260,6 +378,26 @@
   list-style: none;
   display: grid;
   gap: 14px;
+}
+
+.nextActionsEmpty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 20px 18px;
+  border-radius: 20px;
+  border: 1px dashed rgba(143, 168, 255, 0.35);
+  background: rgba(34, 46, 92, 0.48);
+  color: rgba(210, 222, 255, 0.86);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.nextActionsEmpty > strong {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
 }
 
 .nextActionItem {

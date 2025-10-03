@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 
 import { parseCookies } from '@/lib/server/cookies'
+import { isMissingSupabaseFunction, isMissingSupabaseTable } from '@/lib/server/supabaseErrors'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 const COOKIE_NAME = 'rank_admin_portal_session'
@@ -194,17 +195,40 @@ export default async function handler(req, res) {
         supabaseAdmin.rpc('rank_audio_events_weekly_breakdown', { ...rpcParams, mode: 'owner' }),
       ])
 
+      const trendMeta = {}
+
       if (trendResponse.error) {
-        console.error('[admin/audio-events] failed to fetch weekly trend', trendResponse.error)
-        return res.status(500).json({ error: 'Failed to fetch weekly trend' })
+        if (isMissingSupabaseFunction(trendResponse.error) || isMissingSupabaseTable(trendResponse.error)) {
+          trendMeta.missingWeeklyTrend = true
+          if (isMissingSupabaseTable(trendResponse.error)) {
+            trendMeta.missingTable = true
+          }
+        } else {
+          console.error('[admin/audio-events] failed to fetch weekly trend', trendResponse.error)
+          return res.status(500).json({ error: 'Failed to fetch weekly trend' })
+        }
       }
 
       if (heroBreakdownResponse.error) {
-        console.error('[admin/audio-events] failed to fetch hero breakdown', heroBreakdownResponse.error)
+        if (isMissingSupabaseFunction(heroBreakdownResponse.error) || isMissingSupabaseTable(heroBreakdownResponse.error)) {
+          trendMeta.missingWeeklyHeroBreakdown = true
+          if (isMissingSupabaseTable(heroBreakdownResponse.error)) {
+            trendMeta.missingTable = true
+          }
+        } else {
+          console.error('[admin/audio-events] failed to fetch hero breakdown', heroBreakdownResponse.error)
+        }
       }
 
       if (ownerBreakdownResponse.error) {
-        console.error('[admin/audio-events] failed to fetch owner breakdown', ownerBreakdownResponse.error)
+        if (isMissingSupabaseFunction(ownerBreakdownResponse.error) || isMissingSupabaseTable(ownerBreakdownResponse.error)) {
+          trendMeta.missingWeeklyOwnerBreakdown = true
+          if (isMissingSupabaseTable(ownerBreakdownResponse.error)) {
+            trendMeta.missingTable = true
+          }
+        } else {
+          console.error('[admin/audio-events] failed to fetch owner breakdown', ownerBreakdownResponse.error)
+        }
       }
 
       const buckets = Array.isArray(trendResponse.data)
@@ -243,6 +267,7 @@ export default async function handler(req, res) {
           hero: normaliseBreakdown(heroBreakdownResponse.data, '히어로 미지정'),
           owner: normaliseBreakdown(ownerBreakdownResponse.data, '운영자 미지정'),
         },
+        meta: trendMeta,
       })
     }
 
@@ -274,6 +299,15 @@ export default async function handler(req, res) {
     const { data, error } = await query
 
     if (error) {
+      if (isMissingSupabaseTable(error)) {
+        return res.status(200).json({
+          items: [],
+          stats: { total: 0, uniqueOwners: 0, uniqueProfiles: 0, byEventType: {} },
+          availableEventTypes: [],
+          meta: { missingTable: true },
+        })
+      }
+
       console.error('[admin/audio-events] failed to fetch events', error)
       return res.status(500).json({ error: 'Failed to fetch audio events' })
     }

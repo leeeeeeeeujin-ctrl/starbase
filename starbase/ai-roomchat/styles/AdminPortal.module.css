@@ -32,6 +32,23 @@
   gap: 1.5rem;
 }
 
+.grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 980px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1340px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .callout {
   border-radius: 16px;
   border: 1px solid rgba(255, 189, 115, 0.55);
@@ -263,6 +280,29 @@
   gap: 0.6rem 1.4rem;
   font-size: 0.85rem;
   color: rgba(204, 214, 255, 0.75);
+}
+
+.audioEventsNotice,
+.audioEventsTrendNotice {
+  margin: 0;
+  margin-bottom: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(110, 130, 255, 0.3);
+  background: rgba(26, 35, 70, 0.68);
+  color: rgba(224, 232, 255, 0.9);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.audioEventsNotice code,
+.audioEventsTrendNotice code {
+  font-family: 'Fira Code', 'Roboto Mono', monospace;
+  font-size: 0.9rem;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 0 0.35rem;
+  border-radius: 6px;
+  color: #cbd5ff;
 }
 
 .audioEventsTrend {
