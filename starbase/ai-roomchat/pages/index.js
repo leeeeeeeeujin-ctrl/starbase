@@ -188,7 +188,13 @@ export default function Home() {
 
     const comparator = comparators[sortMode] || compareByPriority
     return base.sort(comparator)
-  }, [sortMode])
+  }, [sortMode, nextActions])
+  const hasNextActions = sortedNextActions.length > 0
+  useEffect(() => {
+    if (!hasNextActions && sortMode !== 'order') {
+      setSortMode('order')
+    }
+  }, [hasNextActions, sortMode])
 
   useEffect(() => {
     let cancelled = false
@@ -351,36 +357,37 @@ export default function Home() {
               ))}
             </ul>
           </div>
-          {sortedNextActions.length ? (
-            <div className={styles.nextActionsBlock}>
-              <div className={styles.nextActionsHeader}>
-                <h2 className={styles.sectionTitle}>Next Actions</h2>
-                <div
-                  className={styles.nextActionsRecency}
-                  data-stale={progressRecency.stale ? 'true' : 'false'}
+          <div className={styles.nextActionsBlock}>
+            <div className={styles.nextActionsHeader}>
+              <h2 className={styles.sectionTitle}>Next Actions</h2>
+              <div
+                className={styles.nextActionsRecency}
+                data-stale={progressRecency.stale ? 'true' : 'false'}
+              >
+                <span className={styles.nextActionsUpdated}>{progressLastUpdated}</span>
+                {progressRecency.relativeLabel ? (
+                  <span className={styles.nextActionsRelative}>
+                    · {progressRecency.relativeLabel}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div className={styles.nextActionsControls} role="group" aria-label="다음 액션 정렬">
+              {NEXT_ACTION_SORT_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={styles.nextActionsSortButton}
+                  data-active={sortMode === option.id ? 'true' : 'false'}
+                  aria-pressed={sortMode === option.id}
+                  onClick={() => setSortMode(option.id)}
+                  disabled={!hasNextActions && option.id !== 'order'}
                 >
-                  <span className={styles.nextActionsUpdated}>{progressLastUpdated}</span>
-                  {progressRecency.relativeLabel ? (
-                    <span className={styles.nextActionsRelative}>
-                      · {progressRecency.relativeLabel}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              <div className={styles.nextActionsControls} role="group" aria-label="다음 액션 정렬">
-                {NEXT_ACTION_SORT_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={styles.nextActionsSortButton}
-                    data-active={sortMode === option.id ? 'true' : 'false'}
-                    aria-pressed={sortMode === option.id}
-                    onClick={() => setSortMode(option.id)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {hasNextActions ? (
               <ol className={styles.nextActionsList}>
                 {sortedNextActions.map((action) => {
                   const timing = deriveNextActionTiming(action)
@@ -429,10 +436,16 @@ export default function Home() {
                       </div>
                     </li>
                   )
-                })}
-              </ol>
+                  })}
+                </ol>
+              ) : (
+                <div className={styles.nextActionsEmpty}>
+                  <strong>모든 후속 작업을 마쳤습니다.</strong>
+                  <span>새로운 액션이 추가되면 여기에서 바로 확인할 수 있어요.</span>
+                </div>
+              )}
             </div>
-          ) : null}
+          </div>
         </section>
       </section>
       <footer className={styles.footer}>
