@@ -22,7 +22,7 @@
 
 ## 4. 데이터 & 스키마 레퍼런스
 - [`supabase-ddl-export.md`](supabase-ddl-export.md): 최신 Supabase 테이블/뷰 DDL을 덤프한 참조본입니다.
-- [`supabase-schema-digest.md`](supabase-schema-digest.md) / [`rank-game-schema-reference.md`](rank-game-schema-reference.md) / [`social-schema.md`](social-schema.md): 랭크, 소셜 영역 별 테이블 정의와 관계도를 설명합니다.
+- [`supabase-schema-digest.md`](supabase-schema-digest.md) / [`rank-game-schema-reference.md`](rank-game-schema-reference.md) / [`matchmaking-schema-reference.md`](matchmaking-schema-reference.md) / [`social-schema.md`](social-schema.md): 랭크, 매칭, 소셜 영역 별 테이블 정의와 관계도를 설명합니다.
 - [`supabase_social.sql`](../supabase_social.sql) · [`supabase_chat.sql`](../supabase_chat.sql): 소셜/채팅 전용 스키마를 부트스트랩할 때 사용합니다.
 
 ## 5. 운영 & 관리 도구
