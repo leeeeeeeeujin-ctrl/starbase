@@ -19,6 +19,7 @@
 - [`rank-blueprint-execution-plan.md`](rank-blueprint-execution-plan.md) 및 진행 리포트(`rank-blueprint-progress-*.md`): 블루프린트 태스크 분해, 위험 요소, 최근 업데이트를 추적합니다.
 - [`rank-matching-adapter.md`](rank-matching-adapter.md): 매칭 어댑터 계층이 Supabase 데이터와 게임 세션을 어떻게 연결하는지 설명합니다.
 - [`rank-turn-history-spec.md`](rank-turn-history-spec.md) / [`rank-game-logic-plan.md`](rank-game-logic-plan.md): 턴 로그 스키마와 전투 엔진 의사결정 흐름을 정의합니다.
+- [`matchmaking-qa-checklist.md`](matchmaking-qa-checklist.md): 실시간/난입/비실시간 매칭 플로우를 검증할 때 참고할 QA 시나리오와 로그 확인 절차를 정리했습니다.
 
 ## 4. 데이터 & 스키마 레퍼런스
 - [`supabase-ddl-export.md`](supabase-ddl-export.md): 최신 Supabase 테이블/뷰 DDL을 덤프한 참조본입니다.

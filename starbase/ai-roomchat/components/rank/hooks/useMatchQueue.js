@@ -105,8 +105,11 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
   const [lockedRole, setLockedRole] = useState('')
   const [roleReady, setRoleReady] = useState(false)
   const [match, setMatch] = useState(null)
+  const [sampleMeta, setSampleMeta] = useState(null)
+  const [pendingMatch, setPendingMatch] = useState(null)
   const [heroMeta, setHeroMeta] = useState(null)
   const pollRef = useRef(null)
+  const probeRef = useRef(null)
 
   useEffect(() => {
     if (!enabled) return
@@ -224,76 +227,111 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
     }
   }, [enabled])
 
+  const runMatchProbe = useCallback(async () => {
+    if (!enabled) return
+    if (status !== 'queued') return
+
+    try {
+      const [roleList, queueRows] = await Promise.all([
+        loadActiveRoles(supabase, gameId),
+        loadQueueEntries(supabase, { gameId, mode }),
+      ])
+      setRoles(roleList)
+      setQueue(queueRows)
+
+      const response = await fetch('/api/rank/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId, mode }),
+      })
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        const message = payload?.detail || payload?.error || '매칭 정보를 불러오지 못했습니다.'
+        setError(message)
+        return
+      }
+
+      if (payload?.error?.type) {
+        setError(payload.error.type)
+      } else {
+        setError(payload?.error ? String(payload.error) : '')
+      }
+
+      const meta = payload?.sampleMeta || null
+      setSampleMeta(meta)
+      if (meta && process.env.NODE_ENV !== 'production') {
+        try {
+          if (typeof console.groupCollapsed === 'function') {
+            console.groupCollapsed('[MatchQueue] 샘플 메타')
+            console.log(meta)
+            console.groupEnd()
+          } else {
+            console.log('[MatchQueue] 샘플 메타', meta)
+          }
+        } catch (logError) {
+          console.info('[MatchQueue] 샘플 메타', meta, logError)
+        }
+      }
+
+      if (!payload?.ready) {
+        setPendingMatch({
+          assignments: Array.isArray(payload?.assignments) ? payload.assignments : [],
+          error: payload?.error || null,
+          totalSlots: payload?.totalSlots ?? 0,
+          maxWindow: payload?.maxWindow ?? 0,
+          sampleMeta: meta,
+        })
+        return
+      }
+
+      setPendingMatch(null)
+      const assignment = extractViewerAssignment({ assignments: payload.assignments, viewerId })
+      if (!assignment) return
+
+      let heroMap = null
+      if (payload.heroMap) {
+        heroMap = new Map(Object.entries(payload.heroMap))
+      }
+      if (!heroMap) {
+        const members = flattenAssignmentMembers(payload.assignments)
+        heroMap = await loadHeroesByIds(
+          supabase,
+          members.map((member) => member.hero_id || member.heroId),
+        )
+      }
+
+      setStatus('matched')
+      setMatch({
+        assignments: payload.assignments,
+        maxWindow: payload.maxWindow,
+        heroMap,
+        matchCode: payload.matchCode || '',
+        matchType: payload.matchType || 'standard',
+        brawlVacancies: Array.isArray(payload.brawlVacancies) ? payload.brawlVacancies : [],
+        roleStatus: payload.roleStatus || null,
+        sampleMeta: meta,
+      })
+    } catch (cause) {
+      console.error('매칭 확인 실패:', cause)
+    }
+  }, [enabled, status, gameId, mode, viewerId])
+
+  useEffect(() => {
+    probeRef.current = runMatchProbe
+  }, [runMatchProbe])
+
   useEffect(() => {
     if (!enabled || status !== 'queued') return
-
-    async function runCheck() {
-      try {
-        const [roleList, queueRows] = await Promise.all([
-          loadActiveRoles(supabase, gameId),
-          loadQueueEntries(supabase, { gameId, mode }),
-        ])
-        setRoles(roleList)
-        setQueue(queueRows)
-        const response = await fetch('/api/rank/match', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId, mode }),
-        })
-        const payload = await response.json().catch(() => ({}))
-        if (!response.ok) {
-          const message = payload?.detail || payload?.error || '매칭 정보를 불러오지 못했습니다.'
-          setError(message)
-          return
-        }
-        if (payload?.error?.type) {
-          setError(payload.error.type)
-        } else {
-          setError(payload?.error ? String(payload.error) : '')
-        }
-        if (!payload?.ready) {
-          return
-        }
-        const assignment = extractViewerAssignment({ assignments: payload.assignments, viewerId })
-        if (!assignment) return
-
-        let heroMap = null
-        if (payload.heroMap) {
-          heroMap = new Map(Object.entries(payload.heroMap))
-        }
-        if (!heroMap) {
-          const members = flattenAssignmentMembers(payload.assignments)
-          heroMap = await loadHeroesByIds(
-            supabase,
-            members.map((member) => member.hero_id || member.heroId),
-          )
-        }
-
-        setStatus('matched')
-        setMatch({
-          assignments: payload.assignments,
-          maxWindow: payload.maxWindow,
-          heroMap,
-          matchCode: payload.matchCode || '',
-          matchType: payload.matchType || 'standard',
-          brawlVacancies: Array.isArray(payload.brawlVacancies) ? payload.brawlVacancies : [],
-          roleStatus: payload.roleStatus || null,
-          sampleMeta: payload.sampleMeta || null,
-        })
-      } catch (cause) {
-        console.error('매칭 확인 실패:', cause)
-      }
-    }
-
-    runCheck()
-    pollRef.current = setInterval(runCheck, POLL_INTERVAL_MS)
+    runMatchProbe()
+    pollRef.current = setInterval(runMatchProbe, POLL_INTERVAL_MS)
     return () => {
       if (pollRef.current) {
         clearInterval(pollRef.current)
         pollRef.current = null
       }
     }
-  }, [enabled, gameId, mode, status, viewerId])
+  }, [enabled, status, runMatchProbe])
 
   const joinQueue = useCallback(
     async (role) => {
@@ -340,6 +378,8 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
         if (!lockedRole && finalRole) {
           setLockedRole(finalRole)
         }
+        setSampleMeta(null)
+        setPendingMatch(null)
         return { ok: true }
       } finally {
         setLoading(false)
@@ -355,6 +395,8 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
       const result = await removeQueueEntry(supabase, { gameId, mode, ownerId: viewerId })
       setStatus('idle')
       setMatch(null)
+      setSampleMeta(null)
+      setPendingMatch(null)
       return result
     } finally {
       setLoading(false)
@@ -365,6 +407,8 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
     setStatus('idle')
     setMatch(null)
     setQueue([])
+    setSampleMeta(null)
+    setPendingMatch(null)
   }, [])
 
   const derived = useMemo(
@@ -381,6 +425,8 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
       lockedRole,
       roleReady,
       heroMeta,
+      sampleMeta,
+      pendingMatch,
     }),
     [
       viewerId,
@@ -395,8 +441,16 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
       lockedRole,
       roleReady,
       heroMeta,
+      sampleMeta,
+      pendingMatch,
     ],
   )
+
+  const refresh = useCallback(async () => {
+    if (typeof probeRef.current === 'function') {
+      await probeRef.current()
+    }
+  }, [])
 
   return {
     state: derived,
@@ -404,6 +458,7 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
       joinQueue,
       cancelQueue,
       reset,
+      refresh,
       refreshHero: () => setHeroId(readStoredHeroId()),
     },
   }

@@ -188,6 +188,7 @@ export default function MatchQueueClient({
   const autoJoinRetryTimerRef = useRef(null)
   const heroMissingRedirectRef = useRef(false)
   const heroMissingTimerRef = useRef(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   const [voteRemaining, setVoteRemaining] = useState(null)
   const voteTimerRef = useRef(null)
@@ -202,6 +203,8 @@ export default function MatchQueueClient({
   const isBrawlMatch = matchType === 'brawl'
   const isDropInMatch = matchType === 'drop_in'
   const dropInTarget = state.match?.dropInTarget || null
+  const pendingMatch = state.pendingMatch || null
+  const queuedSampleMeta = state.sampleMeta || null
   const brawlSummary = useMemo(() => {
     if (!isBrawlMatch) return ''
     const vacancies = Array.isArray(state.match?.brawlVacancies)
@@ -261,6 +264,97 @@ export default function MatchQueueClient({
     }
     return parts.join(' · ')
   }, [isBrawlMatch, isDropInMatch, state.match])
+
+  const queuedSampleSummary = useMemo(() => {
+    if (!queuedSampleMeta) return ''
+    const parts = []
+    const queueCount = Number(queuedSampleMeta.queueCount)
+    if (Number.isFinite(queueCount)) {
+      parts.push(`대기열 ${queueCount}명 기준`)
+    }
+    const simulatedSelected = Number(queuedSampleMeta.simulatedSelected)
+    if (Number.isFinite(simulatedSelected)) {
+      if (simulatedSelected > 0) {
+        parts.push(`보강 후보 ${simulatedSelected}명 추가 검토`)
+      } else {
+        parts.push('보강 후보 없이 구성 시도')
+      }
+    }
+    const scoreWindow = Number(queuedSampleMeta.scoreWindow)
+    if (Number.isFinite(scoreWindow) && scoreWindow > 0) {
+      parts.push(`점수 윈도우 ±${Math.round(scoreWindow)}`)
+    }
+    return parts.join(' · ')
+  }, [queuedSampleMeta])
+
+  const queuedSampleWarnings = useMemo(() => {
+    if (!queuedSampleMeta) return []
+    const warnings = []
+    const filtered = Number(queuedSampleMeta.simulatedFiltered)
+    if (Number.isFinite(filtered) && filtered > 0) {
+      const windowLabel = Number.isFinite(Number(queuedSampleMeta.scoreWindow))
+        ? ` (점수 윈도우 ±${Math.round(Number(queuedSampleMeta.scoreWindow))})`
+        : ''
+      warnings.push(`점수 차이${windowLabel} 때문에 제외된 후보 ${filtered}명이 있습니다.`)
+    }
+    const eligible = Number(queuedSampleMeta.simulatedEligible)
+    if (Number.isFinite(eligible) && eligible === 0 && Number(queuedSampleMeta.participantPoolCount) > 0) {
+      warnings.push('참가자 풀에서는 조건을 충족하는 후보를 찾지 못했습니다.')
+    }
+    const perRoleLimit = Number(queuedSampleMeta.perRoleLimit)
+    if (Number.isFinite(perRoleLimit) && perRoleLimit >= 0) {
+      warnings.push(`역할별 보강은 최대 ${perRoleLimit}명까지 허용됩니다.`)
+    }
+    const totalLimit = Number(queuedSampleMeta.totalLimit)
+    if (Number.isFinite(totalLimit) && totalLimit >= 0) {
+      warnings.push(`비실시간 보강은 총 ${totalLimit}명까지만 추가할 수 있습니다.`)
+    }
+    return warnings
+  }, [queuedSampleMeta])
+
+  const pendingReason = useMemo(() => {
+    if (!pendingMatch || !pendingMatch.error) return ''
+    const error = pendingMatch.error
+    if (typeof error === 'string') {
+      return error
+    }
+    if (typeof error === 'object') {
+      const roleName = error.role ? String(error.role).trim() : ''
+      const missing = Number(error.missing)
+      switch (error.type) {
+        case 'no_candidates':
+          return roleName
+            ? `${roleName} 역할에 합류할 플레이어가 없어 매칭을 완료하지 못했습니다.`
+            : '선택한 역할에 합류할 플레이어가 없어 매칭을 완료하지 못했습니다.'
+        case 'insufficient_candidates':
+          if (roleName && Number.isFinite(missing) && missing > 0) {
+            return `${roleName} 역할이 ${missing}명 부족해 매칭을 잠시 대기 중입니다.`
+          }
+          if (roleName) {
+            return `${roleName} 역할의 인원이 부족해 매칭을 잠시 대기 중입니다.`
+          }
+          return '필요 인원을 모두 채우지 못해 매칭을 잠시 대기 중입니다.'
+        case 'slot_missing_hero':
+          return '참가자 중 사용 영웅이 비어 있는 슬롯이 있어 매칭을 다시 확인하고 있습니다.'
+        default:
+          if (error.type) {
+            return `매칭이 완료되기까지 조금 더 대기해 주세요. (원인: ${error.type})`
+          }
+          break
+      }
+    }
+    return '매칭이 완료되기까지 조금 더 대기해 주세요.'
+  }, [pendingMatch])
+
+  useEffect(() => {
+    if (state.status !== 'queued' && refreshing) {
+      setRefreshing(false)
+    }
+  }, [state.status, refreshing])
+
+  const showDiagnosticsCard = state.status === 'queued' && Boolean(
+    pendingReason || queuedSampleSummary || queuedSampleWarnings.length,
+  )
 
   useEffect(() => {
     const previous = latestStatusRef.current
@@ -367,6 +461,16 @@ export default function MatchQueueClient({
       alert(result.error)
     }
   }
+
+  const handleManualRefresh = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await actions.refresh()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [actions, refreshing])
 
   const handleStart = useCallback(() => {
     if (navigationLockRef.current) return
@@ -664,6 +768,36 @@ export default function MatchQueueClient({
           </div>
         )}
       </section>
+
+      {showDiagnosticsCard ? (
+        <section className={styles.card}>
+          <h2 className={styles.sectionTitle}>매칭 상황</h2>
+          {pendingReason ? <p className={styles.sectionHint}>{pendingReason}</p> : null}
+          {queuedSampleSummary ? (
+            <p className={styles.sectionHint}>{queuedSampleSummary}</p>
+          ) : null}
+          {queuedSampleWarnings.length ? (
+            <ul className={styles.diagnosticList}>
+              {queuedSampleWarnings.map((warning, index) => (
+                <li key={`${warning}-${index}`} className={styles.diagnosticItem}>
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className={styles.retryRow}>
+            <button
+              type="button"
+              className={styles.retryButton}
+              onClick={handleManualRefresh}
+              disabled={refreshing || state.loading || state.status !== 'queued'}
+            >
+              {refreshing ? '재확인 중…' : '즉시 다시 확인'}
+            </button>
+            <span className={styles.retryHint}>대기열 정보는 4초마다 자동 갱신됩니다.</span>
+          </div>
+        </section>
+      ) : null}
 
       {state.status === 'matched' && state.match ? (
       <section className={styles.card}>
