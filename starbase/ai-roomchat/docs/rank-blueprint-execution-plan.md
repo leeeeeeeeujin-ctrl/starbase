@@ -178,20 +178,20 @@
 
 ### 진행 현황 메모 (2025-10-20 추가)
 
-- `useGameRoom`이 역할별 활성 슬롯 수, 점유 수, 남은 좌석을 계산해 로비에서 실제 정원 현황을 확인할 수 있게 했습니다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L724-L804】
-- `GameRoomView`는 새 점유 데이터를 활용해 상단에 역할별 잔여 슬롯 패널을 표시하고, 역할 선택 칩에서도 남은 좌석을 시각화하도록 보강했습니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L882-L978】【F:starbase/ai-roomchat/components/rank/GameRoomView.module.css†L241-L379】
+- `useGameRoom`이 역할별 기본 슬롯 수, 충족 인원, 추가 참가자를 계산해 로비에서 최소 필요 인원 충족 현황을 확인할 수 있게 했습니다.【F:starbase/ai-roomchat/hooks/useGameRoom.js†L724-L804】
+- `GameRoomView`는 새 점유 데이터를 활용해 상단에 역할별 기본 슬롯 충족 상태와 추가 참가자 현황을 표시하고, 역할 선택 칩에서도 최소 인원 대비 상황을 시각화하도록 보강했습니다.【F:starbase/ai-roomchat/components/rank/GameRoomView.js†L882-L978】【F:starbase/ai-roomchat/components/rank/GameRoomView.module.css†L241-L379】
 
-느낀 점: 정원 정보가 눈앞에 드러나니 어떤 역할이 비어 있는지 바로 파악할 수 있어 로비 흐름이 한층 선명해졌습니다.
-추가로 필요한 점: 슬롯 점유 데이터를 듀오/사설 모드에서도 공유하도록 `useGameRoom` 호출부를 전수 점검해 동일한 지표가 노출되는지 확인할 계획입니다.
-진행사항: 역할별 점유/잔여 좌석을 집계해 로비 UI에 반영했고, 실행 계획 문서에 이번 진척을 기록했습니다.
+느낀 점: 기본 슬롯 충족 정보가 눈앞에 드러나니 어떤 역할이 아직 시작 조건을 채우지 못했는지 바로 파악할 수 있어 로비 흐름이 한층 선명해졌습니다.
+추가로 필요한 점: 슬롯 충족 데이터를 듀오/사설 모드에서도 공유하도록 `useGameRoom` 호출부를 전수 점검해 동일한 지표가 노출되는지 확인할 계획입니다.
+진행사항: 역할별 기본 슬롯 충족/추가 참가자 현황을 집계해 로비 UI에 반영했고, 실행 계획 문서에 이번 진척을 기록했습니다.
 
 ### 진행 현황 메모 (2025-10-21 추가)
 
-- 듀오 랭크 편성 화면이 `RoleOccupancySummary`를 포함하도록 갱신되어 팀 편성 전에 역할별 남은 좌석을 바로 확인할 수 있습니다.【F:starbase/ai-roomchat/components/rank/DuoRoomClient.js†L76-L118】
+- 듀오 랭크 편성 화면이 `RoleOccupancySummary`를 포함하도록 갱신되어 팀 편성 전에 역할별 기본 슬롯 충족 상태를 바로 확인할 수 있습니다.【F:starbase/ai-roomchat/components/rank/DuoRoomClient.js†L76-L118】
 - 캐주얼 사설 방 역시 동일 컴포넌트를 공유해 모든 모드에서 일관된 슬롯 현황을 노출하며, 각 라우트가 `useGameRoom`의 `roleOccupancy` 값을 그대로 전달하도록 정리했습니다.【F:starbase/ai-roomchat/components/rank/CasualPrivateClient.js†L1-L60】【F:starbase/ai-roomchat/pages/rank/[id]/duo/index.js†L29-L77】【F:starbase/ai-roomchat/pages/rank/[id]/casual-private.js†L29-L77】
 
 느낀 점: 메인 룸에서만 보이던 슬롯 지표가 모드별 준비 화면까지 확장되니 사용자 동선이 한층 자연스러워졌다는 확신이 들었습니다.
-추가로 필요한 점: 자동 매칭 오버레이에서도 동일한 정원 정보를 요약해 줄 수 있도록 `MatchQueueClient`와 `AutoMatchProgress`에 전달 경로를 검토할 예정입니다.
+추가로 필요한 점: 자동 매칭 오버레이에서도 동일한 최소 인원 충족 정보를 요약해 줄 수 있도록 `MatchQueueClient`와 `AutoMatchProgress`에 전달 경로를 검토할 예정입니다.
 진행사항: 듀오·사설 경로에 역할 점유 패널을 연결하고, 각 페이지가 `useGameRoom`의 파생 데이터를 재사용하도록 실행 플랜에 반영했습니다.
 
 ### 진행 현황 메모 (2025-10-24 추가)

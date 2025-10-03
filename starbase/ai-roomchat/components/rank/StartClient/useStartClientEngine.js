@@ -1077,6 +1077,9 @@ export function useStartClientEngine(gameId) {
               if (payload?.error) {
                 error.code = payload.error
               }
+              if (typeof payload?.detail === 'string' && payload.detail.trim()) {
+                error.detail = payload.detail.trim()
+              }
               throw error
             }
 

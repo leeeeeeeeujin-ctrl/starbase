@@ -32,9 +32,9 @@
   color: inherit;
 }
 
-.itemFull {
-  background: rgba(255, 120, 120, 0.16);
-  border-color: rgba(255, 150, 150, 0.4);
+.itemReady {
+  background: rgba(22, 101, 52, 0.18);
+  border-color: rgba(74, 222, 128, 0.4);
 }
 
 .meta {
@@ -60,6 +60,6 @@
   color: #9fb4ff;
 }
 
-.itemFull .availability {
-  color: #ffb5b5;
+.itemReady .availability {
+  color: #86efac;
 }

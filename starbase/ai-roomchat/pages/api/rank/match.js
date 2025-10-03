@@ -1,15 +1,13 @@
 import { supabase } from '@/lib/rank/db'
+import { loadHeroesByIds, markAssignmentsMatched, runMatching, flattenAssignmentMembers } from '@/lib/rank/matchmakingService'
 import {
-  loadActiveRoles,
-  loadHeroesByIds,
-  loadParticipantPool,
-  loadQueueEntries,
-  loadRoleStatusCounts,
-  markAssignmentsMatched,
-  runMatching,
-  flattenAssignmentMembers,
-} from '@/lib/rank/matchmakingService'
+  buildCandidateSample,
+  extractMatchingToggles,
+  findRealtimeDropInTarget,
+  loadMatchingResources,
+} from '@/lib/rank/matchingPipeline'
 import { withTable } from '@/lib/supabaseTables'
+import { recordMatchmakingLog, buildAssignmentSummary } from '@/lib/rank/matchmakingLogs'
 
 function generateMatchCode() {
   const stamp = Date.now().toString(36)
@@ -24,16 +22,6 @@ function mapToPlain(map) {
     plain[key] = value
   })
   return plain
-}
-
-function shuffle(entries) {
-  for (let index = entries.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1))
-    const tmp = entries[index]
-    entries[index] = entries[swapIndex]
-    entries[swapIndex] = tmp
-  }
-  return entries
 }
 
 function parseRules(raw) {
@@ -109,15 +97,37 @@ export default async function handler(req, res) {
 
     const rules = parseRules(gameRow?.rules)
     const brawlEnabled = rules?.brawl_rule === 'allow-brawl'
+    const toggles = extractMatchingToggles(gameRow, rules)
 
-    const [roles, queueResult, participantPool, roleStatusMap] = await Promise.all([
-      loadActiveRoles(supabase, gameId),
-      loadQueueEntries(supabase, { gameId, mode }),
-      gameRow?.realtime_match ? Promise.resolve([]) : loadParticipantPool(supabase, gameId),
-      brawlEnabled ? loadRoleStatusCounts(supabase, gameId) : Promise.resolve(new Map()),
-    ])
+    const { roles, queue: queueResult, participantPool, roleStatusMap } = await loadMatchingResources({
+      supabase,
+      gameId,
+      mode,
+      realtimeEnabled: toggles.realtimeEnabled,
+      brawlEnabled,
+    })
 
     let queue = queueResult
+
+    const baseMetadata = {
+      realtimeEnabled: toggles.realtimeEnabled,
+      dropInEnabled: toggles.dropInEnabled,
+      queueSize: Array.isArray(queueResult) ? queueResult.length : 0,
+      participantPoolSize: Array.isArray(participantPool) ? participantPool.length : 0,
+      roles: Array.isArray(roles) ? roles.map((role) => role?.name).filter(Boolean) : [],
+    }
+
+    const baseLog = {
+      game_id: gameId,
+      mode: mode || null,
+    }
+
+    const logStage = (overrides = {}) =>
+      recordMatchmakingLog(supabase, {
+        ...baseLog,
+        ...overrides,
+        metadata: { ...baseMetadata, ...(overrides.metadata || {}) },
+      })
 
     if (brawlEnabled) {
       const brawlVacancies = determineBrawlVacancies(roles, roleStatusMap)
@@ -130,6 +140,18 @@ export default async function handler(req, res) {
             gameId,
             mode,
             matchCode,
+          })
+
+          await logStage({
+            stage: 'brawl_fill',
+            status: 'matched',
+            match_code: matchCode,
+            score_window: brawlResult.maxWindow || 0,
+            metadata: {
+              assignments: buildAssignmentSummary(brawlResult.assignments),
+              brawlVacancies,
+              roleStatus: mapCountsToPlain(roleStatusMap),
+            },
           })
 
           const members = flattenAssignmentMembers(brawlResult.assignments)
@@ -151,31 +173,90 @@ export default async function handler(req, res) {
       }
     }
 
-    if (!gameRow?.realtime_match) {
-      const ownersInQueue = new Set(
-        queueResult.map((row) => row?.owner_id || row?.ownerId).filter(Boolean),
-      )
-      const filteredPool = participantPool.filter((row) => {
-        const ownerId = row?.owner_id || row?.ownerId
-        if (!ownerId) return false
-        if (ownersInQueue.has(ownerId)) {
-          return false
-        }
-        return true
+    if (toggles.realtimeEnabled && toggles.dropInEnabled) {
+      const dropInResult = await findRealtimeDropInTarget({
+        supabase,
+        gameId,
+        mode,
+        roles,
+        queue,
+        rules,
       })
 
-      queue = queueResult.concat(shuffle(filteredPool.slice()))
+      if (dropInResult && dropInResult.meta && !dropInResult.ready) {
+        await logStage({
+          stage: 'drop_in',
+          status: dropInResult.missing ? 'missing_dependency' : 'skipped',
+          drop_in: true,
+          metadata: {
+            dropInMeta: dropInResult.meta,
+          },
+        })
+      }
+
+      if (dropInResult && dropInResult.ready) {
+        await markAssignmentsMatched(supabase, {
+          assignments: dropInResult.assignments,
+          gameId,
+          mode,
+          matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
+        })
+
+        await logStage({
+          stage: 'drop_in',
+          status: 'matched',
+          drop_in: true,
+          match_code: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
+          score_window: dropInResult.maxWindow || null,
+          metadata: {
+            assignments: buildAssignmentSummary(dropInResult.assignments),
+            dropInTarget: dropInResult.dropInTarget || null,
+            dropInMeta: dropInResult.meta || null,
+          },
+        })
+
+        const members = flattenAssignmentMembers(dropInResult.assignments)
+        const heroIds = members.map((member) => member.hero_id || member.heroId).filter(Boolean)
+        const heroMap = heroIds.length ? await loadHeroesByIds(supabase, heroIds) : new Map()
+
+        return res.status(200).json({
+          ...dropInResult,
+          matchType: dropInResult.matchType || 'drop_in',
+          matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
+          heroMap: mapToPlain(heroMap),
+        })
+      }
     }
 
-    const result = runMatching({ mode, roles, queue })
+    const { sample: candidateSample, meta: sampleMeta } = buildCandidateSample({
+      queue,
+      participantPool,
+      realtimeEnabled: toggles.realtimeEnabled,
+      roles,
+      rules,
+    })
+
+    const result = runMatching({ mode, roles, queue: candidateSample })
 
     if (!result.ready) {
+      await logStage({
+        stage: toggles.realtimeEnabled ? 'realtime_pool' : 'standard_pool',
+        status: 'pending',
+        score_window: result.maxWindow || sampleMeta?.window || null,
+        metadata: {
+          error: result.error || null,
+          sampleMeta,
+          assignments: buildAssignmentSummary(result.assignments),
+        },
+      })
+
       return res.status(200).json({
         ready: false,
         assignments: result.assignments || [],
         totalSlots: result.totalSlots,
         maxWindow: result.maxWindow || 0,
         error: result.error || null,
+        sampleMeta,
       })
     }
 
@@ -185,6 +266,17 @@ export default async function handler(req, res) {
       gameId,
       mode,
       matchCode,
+    })
+
+    await logStage({
+      stage: toggles.realtimeEnabled ? 'realtime_match' : 'offline_match',
+      status: 'matched',
+      match_code: matchCode,
+      score_window: result.maxWindow || null,
+      metadata: {
+        sampleMeta,
+        assignments: buildAssignmentSummary(result.assignments),
+      },
     })
 
     const members = flattenAssignmentMembers(result.assignments)
@@ -199,8 +291,19 @@ export default async function handler(req, res) {
       matchCode,
       matchType: 'standard',
       heroMap: mapToPlain(heroMap),
+      sampleMeta,
     })
   } catch (error) {
+    await recordMatchmakingLog(supabase, {
+      game_id: gameId || req.body?.gameId || null,
+      mode: mode || req.body?.mode || null,
+      stage: 'handler',
+      status: 'error',
+      reason: error?.code || error?.message || 'match_failed',
+      metadata: {
+        detail: error?.message || null,
+      },
+    })
     console.error('match handler error:', error)
     return res.status(500).json({ error: 'match_failed', detail: error?.message || String(error) })
   }

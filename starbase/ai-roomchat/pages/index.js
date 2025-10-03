@@ -113,7 +113,28 @@ const features = [
   },
 ]
 
-const stageProgress = progressData.stages
+const stageProgress = Array.isArray(progressData.stages) ? progressData.stages : []
+const rawOverallProgress = Number(progressData.overallProgress)
+const fallbackOverallProgress = stageProgress.length
+  ? stageProgress.reduce((total, stage) => total + (Number(stage.progress) || 0), 0) /
+    stageProgress.length
+  : 0
+const derivedOverallProgress = Number.isFinite(rawOverallProgress)
+  ? rawOverallProgress
+  : fallbackOverallProgress
+const overallProgressValue = Math.max(
+  0,
+  Math.min(100, Math.round(Number.isFinite(derivedOverallProgress) ? derivedOverallProgress : 0)),
+)
+const remainingFocusEntries = Array.isArray(progressData.remainingFocus)
+  ? progressData.remainingFocus
+  : []
+const remainingFocusByStage = remainingFocusEntries.reduce((acc, entry) => {
+  if (entry && typeof entry.stage === 'string') {
+    acc[entry.stage] = entry
+  }
+  return acc
+}, {})
 const progressLastUpdated = progressData.lastUpdatedDisplay
 const progressLastUpdatedISO = progressData.lastUpdatedISO
 const nextActions = Array.isArray(nextActionsData.items) ? nextActionsData.items : []
@@ -131,6 +152,12 @@ export default function Home() {
   })
 
   const [sortMode, setSortMode] = useState('priority')
+  const overallProgress = overallProgressValue
+  const [heroBackgroundUrl, setHeroBackgroundUrl] = useState('')
+
+  const totalStages = stageProgress.length
+  const completedStages = stageProgress.filter((stage) => Number(stage?.progress) >= 100).length
+  const remainingStages = stageProgress.filter((stage) => Number(stage?.progress) < 100)
 
   const sortedNextActions = useMemo(() => {
     const base = [...nextActions]
@@ -162,7 +189,36 @@ export default function Home() {
 
     const comparator = comparators[sortMode] || compareByPriority
     return base.sort(comparator)
-  }, [sortMode])
+  }, [sortMode, nextActions])
+  const hasNextActions = sortedNextActions.length > 0
+  useEffect(() => {
+    if (!hasNextActions && sortMode !== 'order') {
+      setSortMode('order')
+    }
+  }, [hasNextActions, sortMode])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadTitleBackground() {
+      try {
+        const response = await fetch('/api/content/title')
+        if (!response.ok) return
+        const payload = await response.json().catch(() => ({}))
+        if (cancelled) return
+        const url = payload?.settings?.backgroundUrl
+        setHeroBackgroundUrl(typeof url === 'string' ? url : '')
+      } catch (error) {
+        console.error('Failed to load title background', error)
+      }
+    }
+
+    loadTitleBackground()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -221,11 +277,20 @@ export default function Home() {
     })
   }, [progressLastUpdatedISO])
 
+  const heroStyle = useMemo(() => {
+    if (!heroBackgroundUrl) {
+      return undefined
+    }
+    return {
+      '--hero-background-media': `url('${heroBackgroundUrl}')`,
+    }
+  }, [heroBackgroundUrl])
+
   return (
-    <main className={styles.hero}>
+    <main className={styles.hero} style={heroStyle}>
       <section className={styles.frame}>
         <span className={styles.kicker}>Rank Blueprint</span>
-        <h1 className={styles.title}>랭크 청사진에 맞춘 전선으로 바로 합류하세요</h1>
+        <h1 className={styles.title}>솔라리스의 바다로 곧장 합류하세요</h1>
         <p className={styles.lede}>
           자동 매칭, 프롬프트 기반 전투, 공유 히스토리를 결합한 경쟁 모드 비전을 지금 바로 체험해 보세요.
         </p>
@@ -263,6 +328,50 @@ export default function Home() {
                 ) : null}
               </div>
             </div>
+            <div className={styles.progressSummaryCard}>
+              <div className={styles.progressSummaryHeader}>
+                <span className={styles.progressSummaryLabel}>전체 진행도</span>
+                <span className={styles.progressSummaryValue}>{overallProgress}%</span>
+              </div>
+              <div
+                className={styles.progressSummaryMeter}
+                role="progressbar"
+                aria-valuenow={overallProgress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <span style={{ width: `${overallProgress}%` }} />
+              </div>
+              <div className={styles.progressSummaryMeta}>
+                <span>
+                  {completedStages}/{totalStages} 단계 완료
+                </span>
+                <span>
+                  {remainingStages.length
+                    ? `남은 단계: ${remainingStages.map((stage) => stage.label).join(', ')}`
+                    : '모든 단계 완료'}
+                </span>
+              </div>
+              {remainingStages.length ? (
+                <ul className={styles.progressRemainingList}>
+                  {remainingStages.map((stage) => {
+                    const focus = remainingFocusByStage[stage.label] || {}
+                    return (
+                      <li key={stage.label} className={styles.progressRemainingItem}>
+                        <div className={styles.progressRemainingHeader}>
+                          <span className={styles.progressRemainingStage}>{stage.label}</span>
+                          <span className={styles.progressRemainingPercent}>{stage.progress}%</span>
+                        </div>
+                        <span className={styles.progressRemainingStatus}>{stage.status}</span>
+                        <p className={styles.progressRemainingNextStep}>
+                          {focus.nextStep || stage.summary}
+                        </p>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : null}
+            </div>
             <ul className={styles.progressList}>
               {stageProgress.map((stage) => (
                 <li key={stage.label} className={styles.progressItem}>
@@ -281,36 +390,37 @@ export default function Home() {
               ))}
             </ul>
           </div>
-          {sortedNextActions.length ? (
-            <div className={styles.nextActionsBlock}>
-              <div className={styles.nextActionsHeader}>
-                <h2 className={styles.sectionTitle}>Next Actions</h2>
-                <div
-                  className={styles.nextActionsRecency}
-                  data-stale={progressRecency.stale ? 'true' : 'false'}
+          <div className={styles.nextActionsBlock}>
+            <div className={styles.nextActionsHeader}>
+              <h2 className={styles.sectionTitle}>Next Actions</h2>
+              <div
+                className={styles.nextActionsRecency}
+                data-stale={progressRecency.stale ? 'true' : 'false'}
+              >
+                <span className={styles.nextActionsUpdated}>{progressLastUpdated}</span>
+                {progressRecency.relativeLabel ? (
+                  <span className={styles.nextActionsRelative}>
+                    · {progressRecency.relativeLabel}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div className={styles.nextActionsControls} role="group" aria-label="다음 액션 정렬">
+              {NEXT_ACTION_SORT_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={styles.nextActionsSortButton}
+                  data-active={sortMode === option.id ? 'true' : 'false'}
+                  aria-pressed={sortMode === option.id}
+                  onClick={() => setSortMode(option.id)}
+                  disabled={!hasNextActions && option.id !== 'order'}
                 >
-                  <span className={styles.nextActionsUpdated}>{progressLastUpdated}</span>
-                  {progressRecency.relativeLabel ? (
-                    <span className={styles.nextActionsRelative}>
-                      · {progressRecency.relativeLabel}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              <div className={styles.nextActionsControls} role="group" aria-label="다음 액션 정렬">
-                {NEXT_ACTION_SORT_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={styles.nextActionsSortButton}
-                    data-active={sortMode === option.id ? 'true' : 'false'}
-                    aria-pressed={sortMode === option.id}
-                    onClick={() => setSortMode(option.id)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {hasNextActions ? (
               <ol className={styles.nextActionsList}>
                 {sortedNextActions.map((action) => {
                   const timing = deriveNextActionTiming(action)
@@ -359,10 +469,15 @@ export default function Home() {
                       </div>
                     </li>
                   )
-                })}
-              </ol>
+                  })}
+                </ol>
+              ) : (
+                <div className={styles.nextActionsEmpty}>
+                  <strong>모든 후속 작업을 마쳤습니다.</strong>
+                  <span>새로운 액션이 추가되면 여기에서 바로 확인할 수 있어요.</span>
+                </div>
+              )}
             </div>
-          ) : null}
         </section>
       </section>
       <footer className={styles.footer}>

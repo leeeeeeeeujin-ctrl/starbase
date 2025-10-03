@@ -6,7 +6,6 @@ import GameRoomView from '../../components/rank/GameRoomView'
 import GameStartModeModal from '../../components/rank/GameStartModeModal'
 import { useGameRoom } from '../../hooks/useGameRoom'
 import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes'
-import { supabase } from '../../lib/supabase'
 import {
   normalizeTurnTimerVotes,
   registerTurnTimerVote,
@@ -37,7 +36,6 @@ export default function GameRoomPage() {
   const [turnTimerVote, setTurnTimerVote] = useState(null)
   const turnTimerVoteRef = useRef(null)
   const [turnTimerVotes, setTurnTimerVotes] = useState({})
-  const autoModePromptedRef = useRef(false)
 
   const persistTurnTimerVotes = useCallback((votes) => {
     if (typeof window === 'undefined') return
@@ -58,7 +56,7 @@ export default function GameRoomPage() {
   }, [router])
 
   const handleDeleted = useCallback(() => {
-    router.replace('/rank')
+    router.replace('/lobby')
   }, [router])
 
   const {
@@ -80,6 +78,7 @@ export default function GameRoomPage() {
       alreadyJoined,
       myEntry,
       minimumParticipants,
+      activeParticipants,
       roleOccupancy,
       roleLeaderboards,
     },
@@ -106,6 +105,11 @@ export default function GameRoomPage() {
   }, [alreadyJoined, myEntry?.role])
 
   const ready = mounted && !!id
+  const resolvedMinimumParticipants = Number.isFinite(Number(minimumParticipants))
+    ? Number(minimumParticipants)
+    : 0
+  const requiredParticipants = Math.max(1, resolvedMinimumParticipants)
+  const hasMinimumParticipants = activeParticipants.length >= requiredParticipants
 
   const handleJoin = async () => {
     await joinGame(pickRole)
@@ -197,7 +201,7 @@ export default function GameRoomPage() {
 
   const handleOpenModeModal = useCallback(() => {
     if (startLoading) return
-    if (!canStart) {
+    if (!hasMinimumParticipants) {
       setStartNotice('참가 인원이 부족해 매칭을 시작할 수 없습니다.')
       return
     }
@@ -208,7 +212,7 @@ export default function GameRoomPage() {
     setStartNotice('')
     setStartError('')
     setShowStartModal(true)
-  }, [canStart, myHero, startLoading])
+  }, [hasMinimumParticipants, myHero, startLoading])
 
   const handleConfirmStart = async (config) => {
     setShowStartModal(false)
@@ -233,125 +237,84 @@ export default function GameRoomPage() {
       }
 
       setStartLoading(true)
-      setStartNotice('매칭을 준비하는 중입니다…')
+      setStartNotice('게임 화면으로 이동합니다…')
       setStartError('')
 
       try {
-        const activeSlots = Array.isArray(slots)
-          ? slots
-              .filter((slot) => slot && slot.active !== false)
-              .sort((a, b) => {
-                const aIndex = Number(a?.slot_index ?? a?.slotIndex ?? 0)
-                const bIndex = Number(b?.slot_index ?? b?.slotIndex ?? 0)
-                return aIndex - bIndex
-              })
+        const refreshedSlots = await refreshSlots()
+        const slotSource = Array.isArray(refreshedSlots) ? refreshedSlots : slots
+        const activeSlots = Array.isArray(slotSource)
+          ? slotSource.filter((slot) => slot && slot.active !== false)
           : []
 
-        if (!activeSlots.length) {
+        const slotTarget = activeSlots.length > 0 ? activeSlots.length : requiredParticipants
+        if (!slotTarget) {
           throw new Error('no_slots')
         }
 
-        const heroIds = activeSlots.map((slot) => slot?.hero_id || slot?.heroId || null)
-        if (heroIds.some((value) => !value)) {
+        const candidateHeroIds = []
+        activeParticipants.forEach((participant) => {
+          const directHeroId = participant?.hero_id || participant?.heroId || participant?.hero?.id || null
+          if (directHeroId) {
+            candidateHeroIds.push(directHeroId)
+            return
+          }
+          if (Array.isArray(participant?.hero_ids)) {
+            const fallback = participant.hero_ids.find((value) => Boolean(value)) || null
+            if (fallback) {
+              candidateHeroIds.push(fallback)
+            }
+          }
+        })
+
+        if (candidateHeroIds.length < Math.max(1, requiredParticipants)) {
           throw new Error('slot_missing_hero')
         }
 
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-        if (sessionError) {
-          throw sessionError
-        }
-
-        const token = sessionData?.session?.access_token
-        if (!token) {
-          throw new Error('missing_session')
-        }
-
-        const response = await fetch('/api/rank/play', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            gameId: id,
-            heroIds,
-            userApiKey: config.apiKey,
-            apiVersion: config.apiVersion,
-            turnTimer: config.turnTimer,
-          }),
+        await router.push({
+          pathname: `/rank/${id}/start`,
+          query: { mode: config.mode, apiVersion: config.apiVersion },
         })
-
-        if (!response.ok) {
-          let detailText = 'server_error'
-          try {
-            detailText = (await response.text()) || 'server_error'
-          } catch (readError) {
-            detailText = readError?.message || 'server_error'
-          }
-
-          try {
-            const parsed = JSON.parse(detailText)
-            if (parsed?.error) {
-              throw new Error(String(parsed.error))
-            }
-          } catch (parseError) {
-            // ignore JSON parse failure
-          }
-
-          throw new Error(detailText)
-        }
-
-        const payload = await response.json()
-        if (payload?.error && !payload.ok) {
-          throw new Error(String(payload.error))
-        }
-
-        const outcomeLabel = payload?.outcome
-          ? `전투 결과: ${payload.outcome === 'win' ? '승리' : payload.outcome === 'lose' ? '패배' : '무승부'}`
-          : '전투가 완료되었습니다.'
-        setStartNotice(outcomeLabel)
-
-        await Promise.all([
-          refreshParticipants(),
-          refreshSlots(),
-          refreshBattles(),
-          refreshSessionHistory(),
-        ])
 
         return
       } catch (error) {
         const message = (() => {
           if (!error) return '매칭을 시작하지 못했습니다.'
+          const code = typeof error?.code === 'string' ? error.code : ''
+          const detail =
+            typeof error?.detail === 'string' && error.detail.trim()
+              ? error.detail.trim()
+              : ''
           if (error.message === 'no_slots') {
             return '슬롯 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.'
           }
           if (error.message === 'slot_missing_hero') {
             return '비어 있는 역할이 있어 매칭을 시작할 수 없습니다.'
           }
-          if (error.message === 'missing_session') {
-            return '세션 정보를 찾을 수 없습니다. 다시 로그인해 주세요.'
-          }
-          if (error.message === 'quota_exhausted') {
-            return 'AI API 사용량이 부족합니다. 다른 키로 다시 시도해 주세요.'
-          }
           if (error?.message) {
             const trimmed = error.message.trim()
-            if (trimmed === 'ai_failed') {
-              return 'AI 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.'
-            }
-            if (trimmed === 'ai_network_error') {
-              return 'AI 호출 중 네트워크 오류가 발생했습니다.'
-            }
             if (trimmed === 'server_error') {
               return '서버 오류로 매칭을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
             }
+            if (code && code !== trimmed) {
+              return code.slice(0, 200)
+            }
             return trimmed.slice(0, 200)
+          }
+          if (detail) {
+            return detail.slice(0, 200)
           }
           return '매칭을 시작하지 못했습니다.'
         })()
 
-        setStartError(message)
-        setStartNotice('')
+        if (message) {
+          setStartError(message)
+          setStartNotice('')
+        } else {
+          setStartError('')
+          setStartNotice('')
+        }
+        console.error('Failed to start solo match:', error)
       } finally {
         setStartLoading(false)
       }
@@ -386,19 +349,11 @@ export default function GameRoomPage() {
 
   useEffect(() => {
     if (!mounted) return
-    if (showStartModal || startLoading) return
-    if (!canStart || !myHero) {
-      if (!canStart) {
-        autoModePromptedRef.current = false
-      }
-      return
+    if (!hasMinimumParticipants) {
+      setStartNotice('')
+      setStartError('')
     }
-    if (autoModePromptedRef.current) return
-    autoModePromptedRef.current = true
-    setStartNotice('')
-    setStartError('')
-    setShowStartModal(true)
-  }, [mounted, canStart, myHero, showStartModal, startLoading])
+  }, [hasMinimumParticipants, mounted])
 
   if (!ready || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
@@ -427,14 +382,11 @@ export default function GameRoomPage() {
         onDelete={deleteRoom}
         isOwner={isOwner}
         deleting={deleting}
-        startDisabled={!canStart || !myHero || startLoading}
+        startDisabled={!hasMinimumParticipants || !myHero || startLoading}
         startLoading={startLoading}
         startNotice={startNotice}
         startError={startError}
         recentBattles={recentBattles}
-        turnTimerVote={turnTimerVote}
-        turnTimerVotes={turnTimerVotes}
-        onVoteTurnTimer={handleVoteTurnTimer}
         roleOccupancy={roleOccupancy}
         roleLeaderboards={roleLeaderboards}
       />

@@ -91,22 +91,19 @@ export default async function handler(req, res) {
   if (slotLookupError) {
     return res.status(400).json({ error: slotLookupError.message })
   }
-  if (!slotCandidate) {
-    return res.status(409).json({ error: 'role_full' })
-  }
-
-  const { data: claimedSlot, error: claimError } = await supabaseAdmin
-    .from('rank_game_slots')
-    .update({ hero_id, hero_owner_id: ownerId, updated_at: now })
-    .eq('id', slotCandidate.id)
-    .is('hero_id', null)
-    .select('id, slot_index, role')
-    .maybeSingle()
-  if (claimError) {
-    return res.status(400).json({ error: claimError.message })
-  }
-  if (!claimedSlot) {
-    return res.status(409).json({ error: 'slot_taken' })
+  let claimedSlot = null
+  if (slotCandidate) {
+    const { data: slotRow, error: claimError } = await supabaseAdmin
+      .from('rank_game_slots')
+      .update({ hero_id, hero_owner_id: ownerId, updated_at: now })
+      .eq('id', slotCandidate.id)
+      .is('hero_id', null)
+      .select('id, slot_index, role')
+      .maybeSingle()
+    if (claimError) {
+      return res.status(400).json({ error: claimError.message })
+    }
+    claimedSlot = slotRow || null
   }
 
   const { data: existingParticipant, error: participantError } = await supabaseAdmin
@@ -116,10 +113,12 @@ export default async function handler(req, res) {
     .eq('owner_id', ownerId)
     .maybeSingle()
   if (participantError) {
-    await supabaseAdmin
-      .from('rank_game_slots')
-      .update({ hero_id: null, hero_owner_id: null, updated_at: now })
-      .eq('id', claimedSlot.id)
+    if (claimedSlot?.id) {
+      await supabaseAdmin
+        .from('rank_game_slots')
+        .update({ hero_id: null, hero_owner_id: null, updated_at: now })
+        .eq('id', claimedSlot.id)
+    }
     return res.status(400).json({ error: participantError.message })
   }
 
@@ -154,10 +153,12 @@ export default async function handler(req, res) {
     .maybeSingle()
 
   if (upsertError) {
-    await supabaseAdmin
-      .from('rank_game_slots')
-      .update({ hero_id: null, hero_owner_id: null, updated_at: now })
-      .eq('id', claimedSlot.id)
+    if (claimedSlot?.id) {
+      await supabaseAdmin
+        .from('rank_game_slots')
+        .update({ hero_id: null, hero_owner_id: null, updated_at: now })
+        .eq('id', claimedSlot.id)
+    }
     return res.status(400).json({ error: upsertError.message })
   }
 
@@ -165,5 +166,6 @@ export default async function handler(req, res) {
     ok: true,
     slot: claimedSlot,
     participant: upsertedParticipant || null,
+    overflow: !claimedSlot,
   })
 }
