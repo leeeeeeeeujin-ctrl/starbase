@@ -1,14 +1,11 @@
 import { supabase } from '@/lib/rank/db'
+import { loadHeroesByIds, markAssignmentsMatched, runMatching, flattenAssignmentMembers } from '@/lib/rank/matchmakingService'
 import {
-  loadActiveRoles,
-  loadHeroesByIds,
-  loadParticipantPool,
-  loadQueueEntries,
-  loadRoleStatusCounts,
-  markAssignmentsMatched,
-  runMatching,
-  flattenAssignmentMembers,
-} from '@/lib/rank/matchmakingService'
+  buildCandidateSample,
+  extractMatchingToggles,
+  findRealtimeDropInTarget,
+  loadMatchingResources,
+} from '@/lib/rank/matchingPipeline'
 import { withTable } from '@/lib/supabaseTables'
 
 function generateMatchCode() {
@@ -24,16 +21,6 @@ function mapToPlain(map) {
     plain[key] = value
   })
   return plain
-}
-
-function shuffle(entries) {
-  for (let index = entries.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1))
-    const tmp = entries[index]
-    entries[index] = entries[swapIndex]
-    entries[swapIndex] = tmp
-  }
-  return entries
 }
 
 function parseRules(raw) {
@@ -109,13 +96,15 @@ export default async function handler(req, res) {
 
     const rules = parseRules(gameRow?.rules)
     const brawlEnabled = rules?.brawl_rule === 'allow-brawl'
+    const toggles = extractMatchingToggles(gameRow, rules)
 
-    const [roles, queueResult, participantPool, roleStatusMap] = await Promise.all([
-      loadActiveRoles(supabase, gameId),
-      loadQueueEntries(supabase, { gameId, mode }),
-      gameRow?.realtime_match ? Promise.resolve([]) : loadParticipantPool(supabase, gameId),
-      brawlEnabled ? loadRoleStatusCounts(supabase, gameId) : Promise.resolve(new Map()),
-    ])
+    const { roles, queue: queueResult, participantPool, roleStatusMap } = await loadMatchingResources({
+      supabase,
+      gameId,
+      mode,
+      realtimeEnabled: toggles.realtimeEnabled,
+      brawlEnabled,
+    })
 
     let queue = queueResult
 
@@ -151,23 +140,28 @@ export default async function handler(req, res) {
       }
     }
 
-    if (!gameRow?.realtime_match) {
-      const ownersInQueue = new Set(
-        queueResult.map((row) => row?.owner_id || row?.ownerId).filter(Boolean),
-      )
-      const filteredPool = participantPool.filter((row) => {
-        const ownerId = row?.owner_id || row?.ownerId
-        if (!ownerId) return false
-        if (ownersInQueue.has(ownerId)) {
-          return false
-        }
-        return true
+    if (toggles.realtimeEnabled && toggles.dropInEnabled) {
+      const dropInResult = await findRealtimeDropInTarget({
+        supabase,
+        gameId,
+        mode,
+        roles,
+        queue,
+        rules,
       })
 
-      queue = queueResult.concat(shuffle(filteredPool.slice()))
+      if (dropInResult && dropInResult.ready) {
+        return res.status(200).json(dropInResult)
+      }
     }
 
-    const result = runMatching({ mode, roles, queue })
+    const candidateSample = buildCandidateSample({
+      queue,
+      participantPool,
+      realtimeEnabled: toggles.realtimeEnabled,
+    })
+
+    const result = runMatching({ mode, roles, queue: candidateSample })
 
     if (!result.ready) {
       return res.status(200).json({

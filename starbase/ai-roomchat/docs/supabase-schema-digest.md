@@ -109,6 +109,7 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 ### `public.rank_room_slots`
 - Tracks each room slot’s role, occupant ownership/hero, readiness state, join time, and timestamp audit with unique `(room_id, slot_index)` constraint.【F:starbase/ai-roomchat/supabase.sql†L939-L949】
 - Accessible for reads, while inserts require room ownership and updates allow either occupants or the host to change their slot.【F:starbase/ai-roomchat/supabase.sql†L1000-L1034】
+- Planned addition: `(session_id, role, ready_at nulls last)` 인덱스를 추가해 진행 중 세션에서 빈 슬롯을 빠르게 찾을 수 있도록 한다.【F:starbase/ai-roomchat/docs/rank-realtime-dropin-blueprint.md†L48-L52】
 
 ### `public.rank_match_queue`
 - Queue entries capture game/mode/role, owning player, hero choice, score, party key, status, joined/updated timestamps, and optional match code.【F:starbase/ai-roomchat/supabase.sql†L952-L965】
@@ -118,6 +119,7 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 ### `public.rank_sessions`
 - Session rows record the active game, optional owner, status, current turn pointer, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L1066-L1073】
 - Policies allow reads/writes for the owning user or shared null-owner sessions.【F:starbase/ai-roomchat/supabase.sql†L1076-L1085】
+- Planned addition: `rating_hint integer`와 `(status, game_id, updated_at desc)` 인덱스를 도입해 실시간 난입 대상 탐색 시 최근 전투 점수대와 진행 중 세션을 빠르게 찾을 예정이다.【F:starbase/ai-roomchat/docs/rank-realtime-dropin-blueprint.md†L33-L55】
 
 ### `public.rank_turns`
 - Holds ordered turn content with session linkage, index, role, visibility flag, text, and timestamp audit for replays.【F:starbase/ai-roomchat/supabase.sql†L1087-L1094】
