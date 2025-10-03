@@ -27,6 +27,14 @@ function summariseBody(body) {
   return `${firstLine.slice(0, 117)}…`
 }
 
+function extractParagraphs(body) {
+  if (typeof body !== 'string') return []
+  return body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
 export default function RosterView({
   loading,
   error,
@@ -102,7 +110,7 @@ export default function RosterView({
               <div style={styles.noticeBody}>
                 <h2 style={styles.noticeHeading}>{latestAnnouncement.title}</h2>
                 {latestDate && <time style={styles.noticeTimestamp}>{latestDate} 게시</time>}
-                {latestSummary && <p style={styles.noticeCopy}>{latestSummary}</p>}
+                {latestSummary && <p style={styles.noticeSummary}>{latestSummary}</p>}
               </div>
             ) : (
               <p style={styles.noticeCopy}>등록된 공지가 없습니다. 관리자 패널에서 새 공지를 작성해 주세요.</p>
@@ -111,7 +119,7 @@ export default function RosterView({
             {showAllNotices && !announcementsLoading && announcements.length > 0 && (
               <ul style={styles.noticeList}>
                 {announcements.map((item) => {
-                  const summary = summariseBody(item.body)
+                  const paragraphs = extractParagraphs(item.body)
                   const date = formatDate(item.publishedAt)
                   return (
                     <li key={item.id} style={styles.noticeListItem}>
@@ -119,7 +127,19 @@ export default function RosterView({
                         <p style={styles.noticeListTitle}>{item.title}</p>
                         {date && <time style={styles.noticeListTimestamp}>{date}</time>}
                       </div>
-                      {summary && <p style={styles.noticeListCopy}>{summary}</p>}
+                      {paragraphs.map((paragraph, index) => (
+                        <p
+                          // eslint-disable-next-line react/no-array-index-key
+                          key={index}
+                          style={
+                            index === paragraphs.length - 1
+                              ? { ...styles.noticeListParagraph, marginBottom: 0 }
+                              : styles.noticeListParagraph
+                          }
+                        >
+                          {paragraph}
+                        </p>
+                      ))}
                     </li>
                   )
                 })}

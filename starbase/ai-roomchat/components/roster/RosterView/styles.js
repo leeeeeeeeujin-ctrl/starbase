@@ -143,6 +143,15 @@ const styles = {
     lineHeight: 1.6,
     color: '#dbeafe',
   },
+  noticeSummary: {
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: '#dbeafe',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
   noticeList: {
     listStyle: 'none',
     margin: 0,
@@ -177,8 +186,8 @@ const styles = {
     color: 'rgba(191, 219, 254, 0.7)',
     letterSpacing: '0.05em',
   },
-  noticeListCopy: {
-    margin: 0,
+  noticeListParagraph: {
+    margin: '0 0 4px',
     fontSize: 13,
     lineHeight: 1.5,
     color: 'rgba(221, 232, 255, 0.85)',
