@@ -2,6 +2,8 @@
 
 Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each entry lists column highlights, security and indexing rules, plus helper routines so feature teams can evolve the schema without reopening the raw SQL exports.
 
+> 💾 **빠른 복구용 DDL**: 새 인스턴스를 부트스트랩해야 하면 `docs/supabase-rank-schema.sql` 파일을 Supabase SQL Editor에 그대로 붙여 넣으면 모든 필수 테이블·정책·스토리지 정책을 한 번에 재생성할 수 있습니다.
+
 ## Global Setup
 - The project enables the `pgcrypto` extension so `gen_random_uuid()` is available for UUID primary keys throughout the schema.【F:starbase/ai-roomchat/supabase.sql†L1-L2】
 
@@ -37,77 +39,89 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 - Unique and recency indexes accelerate lookups; owner-scoped RLS plus an `updated_at` trigger enforce safe personalization edits.【F:starbase/ai-roomchat/supabase.sql†L285-L324】
 
 ### `public.rank_audio_events`
-- Logs audio interactions with owner/profile/hero references, event types, detail JSON, and creation timestamp while supporting owner-filtered analytics.【F:starbase/ai-roomchat/supabase.sql†L326-L339】
-- Weekly trend and breakdown SQL helper functions power admin charts, and RLS restricts reads/inserts to the owning user.【F:starbase/ai-roomchat/supabase.sql†L341-L454】
+- Logs audio interactions with owner/profile/hero references, event types, detail JSON, and creation timestamp while supporting owner-filtered analytics.【F:starbase/ai-roomchat/supabase.sql†L339-L349】
+- Weekly trend and breakdown SQL helper functions power admin charts, and RLS restricts reads/inserts to the owning user.【F:starbase/ai-roomchat/supabase.sql†L351-L467】
 
 ### `public.rank_audio_monitor_rules`
-- Stores monitoring rule definitions (type, label, notes, JSON config, sort order, timestamps) that automation consumes.【F:starbase/ai-roomchat/supabase.sql†L455-L464】
-- A trigger refreshes `updated_at`, indexes optimize rule lists, and only the service role may interact with the table via RLS.【F:starbase/ai-roomchat/supabase.sql†L466-L490】
+- Stores monitoring rule definitions (type, label, notes, JSON config, sort order, timestamps) that automation consumes.【F:starbase/ai-roomchat/supabase.sql†L468-L477】
+- A trigger refreshes `updated_at`, indexes optimize rule lists, and only the service role may interact with the table via RLS.【F:starbase/ai-roomchat/supabase.sql†L479-L503】
 
 ### `public.rank_title_settings`
-- Holds a single row per slug (default `main`) with `background_url`, optional operator `update_note`, and `updated_at` to drive the landing hero background that the admin portal edits.
-- Expose read access to the service role API while restricting mutations to service integrations; add a unique primary key on `slug` so `upsert` updates stay idempotent.
-- Store uploaded artwork in a public storage bucket such as `title-backgrounds/` so the admin portal can upload binaries via the service role and the landing hero can render the resulting public URL.
+- Holds a single row per slug (default `main`) with `background_url`, optional operator `update_note`, and audit timestamps to drive the landing hero background that the admin portal edits.【F:starbase/ai-roomchat/supabase.sql†L508-L549】
+- Expose read access to any viewer while restricting mutations to service integrations; the `slug` primary key keeps `upsert` operations idempotent.【F:starbase/ai-roomchat/supabase.sql†L532-L548】
+- Store uploaded artwork in a public storage bucket such as `title-backgrounds/` so the admin portal can upload binaries via the service role and the landing hero can render the resulting public URL.【F:starbase/ai-roomchat/supabase.sql†L37-L58】【F:starbase/ai-roomchat/supabase.sql†L508-L549】
 
 ### `public.rank_announcements`
-- Backs the admin notice composer with `id uuid default gen_random_uuid()`, `title`, `body`, `published_at`, and audit timestamps so roster and landing surfaces can show the freshest announcement.
-- Create an index on `published_at desc` for the feed, and restrict write access to the service role while permitting read-only endpoints for the public portal.
+- Backs the admin notice composer with UUID ids, title/body copy, published timestamp, and audit triggers so roster and landing surfaces can show the freshest announcement.【F:starbase/ai-roomchat/supabase.sql†L551-L596】
+- The published-at index and service-role-only write policies keep feeds fast while exposing read-only access to everyone.【F:starbase/ai-roomchat/supabase.sql†L560-L596】
+
+### `public.rank_api_key_cooldowns`
+- Captures hashed key samples, providers, reasons, timeline metadata, and JSON payloads that power cooldown analytics dashboards.【F:starbase/ai-roomchat/supabase.sql†L601-L619】
+- Unique and timeline indexes plus service-role-only RLS policies keep inserts and queries constrained to automation flows.【F:starbase/ai-roomchat/supabase.sql†L621-L663】
+
+### `public.rank_api_key_audit`
+- Tracks each cooldown alert attempt with status, retry counts, timing metadata, automation/digest payloads, and notes for historical review.【F:starbase/ai-roomchat/supabase.sql†L665-L687】
+- Service-role RLS simplifies write/read access for automation while keeping the history private to the backend.【F:starbase/ai-roomchat/supabase.sql†L682-L687】
+
+### `public.rank_cooldown_timeline_uploads`
+- Stores telemetry about automated CSV/timeline exports including section/mode identifiers, status, uploaded timestamp, metadata, and optional error notes.【F:starbase/ai-roomchat/supabase.sql†L689-L708】
+- Section/status indexes and service-role-only policies ensure dashboards load quickly while preventing user access to operational logs.【F:starbase/ai-roomchat/supabase.sql†L703-L714】
 
 ## Game Catalog & Seasonal Metadata
 ### `public.rank_games`
-- Game shells hold owner linkage, descriptive metadata, prompt/rule JSON payloads, engagement counters, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L495-L509】
-- Owner-controlled RLS handles mutations while everyone can browse definitions.【F:starbase/ai-roomchat/supabase.sql†L512-L524】
+- Game shells hold owner linkage, descriptive metadata, prompt/rule JSON payloads, engagement counters, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L720-L734】
+- Owner-controlled RLS handles mutations while everyone can browse definitions.【F:starbase/ai-roomchat/supabase.sql†L736-L748】
 
 ### `public.rank_game_roles`
-- Defines role slots per game including slot counts, activation flag, and score delta bounds with timestamps.【F:starbase/ai-roomchat/supabase.sql†L526-L535】
-- Global read access with owner-linked policies for modifications.【F:starbase/ai-roomchat/supabase.sql†L537-L551】
+- Defines role slots per game including slot counts, activation flag, and score delta bounds with timestamps.【F:starbase/ai-roomchat/supabase.sql†L750-L759】
+- Global read access with owner-linked policies for modifications.【F:starbase/ai-roomchat/supabase.sql†L761-L775】
 
 ### `public.rank_game_tags`
-- Maintains `(game_id, tag)` associations plus created timestamp to power discovery filters.【F:starbase/ai-roomchat/supabase.sql†L553-L559】
-- All users may read, but mutations require matching game ownership via RLS.【F:starbase/ai-roomchat/supabase.sql†L561-L575】
+- Maintains `(game_id, tag)` associations plus created timestamp to power discovery filters.【F:starbase/ai-roomchat/supabase.sql†L777-L783】
+- All users may read, but mutations require matching game ownership via RLS.【F:starbase/ai-roomchat/supabase.sql†L785-L799】
 
 ### `public.rank_game_seasons`
-- Seasons track game linkage, name, status, start/end times, leaderboard JSON, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L577-L587】
-- Open for reads with owner-governed updates enforced by policies.【F:starbase/ai-roomchat/supabase.sql†L589-L603】
+- Seasons track game linkage, name, status, start/end times, leaderboard JSON, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L801-L810】
+- Open for reads with owner-governed updates enforced by policies.【F:starbase/ai-roomchat/supabase.sql†L812-L827】
 
 ### `public.rank_game_slots`
-- Slot grid rows map slot indices to roles, hero defaults, ownership, and timestamps with a uniqueness constraint per game.【F:starbase/ai-roomchat/supabase.sql†L605-L616】
-- Readable by all, while updates require control of the parent game.【F:starbase/ai-roomchat/supabase.sql†L618-L632】
+- Slot grid rows map slot indices to roles, hero defaults, ownership, and timestamps with a uniqueness constraint per game.【F:starbase/ai-roomchat/supabase.sql†L829-L839】
+- Readable by all, while updates require control of the parent game.【F:starbase/ai-roomchat/supabase.sql†L842-L856】
 
 ## Participation & Battle History
 ### `public.rank_participants`
-- Player enrollment keeps hero arrays, role, rating/score stats, battle counts, likes, win rate, status, and timestamps with unique `(game_id, owner_id)` constraint.【F:starbase/ai-roomchat/supabase.sql†L634-L651】
-- RLS allows universal reads but only the participant may insert/update/delete their row.【F:starbase/ai-roomchat/supabase.sql†L653-L666】
+- Player enrollment keeps hero arrays, role, rating/score stats, battle counts, likes, win rate, status, and timestamps with unique `(game_id, owner_id)` constraint.【F:starbase/ai-roomchat/supabase.sql†L858-L875】
+- RLS allows universal reads but only the participant may insert/update/delete their row.【F:starbase/ai-roomchat/supabase.sql†L877-L890】
 
 ### `public.rank_battles`
-- Records matches with attacker/defender ownership, hero arrays, outcome, score delta, hidden flag, and creation time.【F:starbase/ai-roomchat/supabase.sql†L668-L679】
-- Publicly readable and open to authenticated inserts for result logging.【F:starbase/ai-roomchat/supabase.sql†L681-L687】
+- Records matches with attacker/defender ownership, hero arrays, outcome, score delta, hidden flag, and creation time.【F:starbase/ai-roomchat/supabase.sql†L892-L902】
+- Publicly readable and open to authenticated inserts for result logging.【F:starbase/ai-roomchat/supabase.sql†L905-L911】
 
 ### `public.rank_battle_logs`
-- Stores per-turn transcripts including prompts, AI responses, metadata JSON, and timestamps linked to games and battles.【F:starbase/ai-roomchat/supabase.sql†L689-L698】
-- Selectable by everyone with authenticated users permitted to insert.【F:starbase/ai-roomchat/supabase.sql†L834-L840】
+- Stores per-turn transcripts including prompts, AI responses, metadata JSON, and timestamps linked to games and battles.【F:starbase/ai-roomchat/supabase.sql†L913-L921】
+- Selectable by everyone with authenticated users permitted to insert.【F:starbase/ai-roomchat/supabase.sql†L1058-L1064】
 
 ## Rooms & Matchmaking
 ### `public.rank_rooms`
-- Represents live rooms with game/owner references, join code, mode/status, slot/ready counters, host heartbeat, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L700-L713】
-- RLS lets anyone read, owners create, and owners or seated occupants update rooms.【F:starbase/ai-roomchat/supabase.sql†L749-L774】
+- Represents live rooms with game/owner references, join code, mode/status, slot/ready counters, host heartbeat, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L924-L937】
+- RLS lets anyone read, owners create, and owners or seated occupants update rooms.【F:starbase/ai-roomchat/supabase.sql†L973-L998】
 
 ### `public.rank_room_slots`
-- Tracks each room slot’s role, occupant ownership/hero, readiness state, join time, and timestamp audit with unique `(room_id, slot_index)` constraint.【F:starbase/ai-roomchat/supabase.sql†L715-L726】
-- Accessible for reads, while inserts require room ownership and updates allow either occupants or the host to change their slot.【F:starbase/ai-roomchat/supabase.sql†L776-L810】
+- Tracks each room slot’s role, occupant ownership/hero, readiness state, join time, and timestamp audit with unique `(room_id, slot_index)` constraint.【F:starbase/ai-roomchat/supabase.sql†L939-L949】
+- Accessible for reads, while inserts require room ownership and updates allow either occupants or the host to change their slot.【F:starbase/ai-roomchat/supabase.sql†L1000-L1034】
 
 ### `public.rank_match_queue`
-- Queue entries capture game/mode/role, owning player, hero choice, score, party key, status, joined/updated timestamps, and optional match code.【F:starbase/ai-roomchat/supabase.sql†L728-L741】
-- Indexed for queue scanning and owner lookups; RLS exposes waiting entries to everyone and allows owners to manage their own rows.【F:starbase/ai-roomchat/supabase.sql†L743-L833】
+- Queue entries capture game/mode/role, owning player, hero choice, score, party key, status, joined/updated timestamps, and optional match code.【F:starbase/ai-roomchat/supabase.sql†L952-L965】
+- Indexed for queue scanning and owner lookups; RLS exposes waiting entries to everyone and allows owners to manage their own rows.【F:starbase/ai-roomchat/supabase.sql†L967-L1056】
 
 ## Session Runtime
 ### `public.rank_sessions`
-- Session rows record the active game, optional owner, status, current turn pointer, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L842-L850】
-- Policies allow reads/writes for the owning user or shared null-owner sessions.【F:starbase/ai-roomchat/supabase.sql†L852-L861】
+- Session rows record the active game, optional owner, status, current turn pointer, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L1066-L1073】
+- Policies allow reads/writes for the owning user or shared null-owner sessions.【F:starbase/ai-roomchat/supabase.sql†L1076-L1085】
 
 ### `public.rank_turns`
-- Holds ordered turn content with session linkage, index, role, visibility flag, text, and timestamp audit for replays.【F:starbase/ai-roomchat/supabase.sql†L863-L870】
-- Global read plus authenticated insert permissions support collaborative recording.【F:starbase/ai-roomchat/supabase.sql†L873-L879】
+- Holds ordered turn content with session linkage, index, role, visibility flag, text, and timestamp audit for replays.【F:starbase/ai-roomchat/supabase.sql†L1087-L1094】
+- Global read plus authenticated insert permissions support collaborative recording.【F:starbase/ai-roomchat/supabase.sql†L1097-L1103】
 
 ## Chat & Social Graph
 ### `public.messages`
