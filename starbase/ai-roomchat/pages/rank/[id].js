@@ -57,7 +57,7 @@ export default function GameRoomPage() {
   }, [router])
 
   const handleDeleted = useCallback(() => {
-    router.replace('/rank')
+    router.replace('/lobby')
   }, [router])
 
   const {
@@ -105,6 +105,11 @@ export default function GameRoomPage() {
   }, [alreadyJoined, myEntry?.role])
 
   const ready = mounted && !!id
+  const resolvedMinimumParticipants = Number.isFinite(Number(minimumParticipants))
+    ? Number(minimumParticipants)
+    : 0
+  const requiredParticipants = Math.max(1, resolvedMinimumParticipants)
+  const hasMinimumParticipants = participants.length >= requiredParticipants
 
   const handleJoin = async () => {
     await joinGame(pickRole)
@@ -196,7 +201,7 @@ export default function GameRoomPage() {
 
   const handleOpenModeModal = useCallback(() => {
     if (startLoading) return
-    if (!canStart) {
+    if (!hasMinimumParticipants) {
       setStartNotice('참가 인원이 부족해 매칭을 시작할 수 없습니다.')
       return
     }
@@ -207,7 +212,7 @@ export default function GameRoomPage() {
     setStartNotice('')
     setStartError('')
     setShowStartModal(true)
-  }, [canStart, myHero, startLoading])
+  }, [hasMinimumParticipants, myHero, startLoading])
 
   const handleConfirmStart = async (config) => {
     setShowStartModal(false)
@@ -385,11 +390,11 @@ export default function GameRoomPage() {
 
   useEffect(() => {
     if (!mounted) return
-    if (!canStart) {
+    if (!hasMinimumParticipants) {
       setStartNotice('')
       setStartError('')
     }
-  }, [mounted, canStart])
+  }, [hasMinimumParticipants, mounted])
 
   if (!ready || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
@@ -418,7 +423,7 @@ export default function GameRoomPage() {
         onDelete={deleteRoom}
         isOwner={isOwner}
         deleting={deleting}
-        startDisabled={!canStart || !myHero || startLoading}
+        startDisabled={!hasMinimumParticipants || !myHero || startLoading}
         startLoading={startLoading}
         startNotice={startNotice}
         startError={startError}

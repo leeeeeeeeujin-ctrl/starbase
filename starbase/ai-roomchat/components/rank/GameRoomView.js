@@ -2290,6 +2290,17 @@ export default function GameRoomView({
     }
   }, [leaveLoading, onLeave])
 
+  const handleDeleteClick = useCallback(() => {
+    if (!onDelete || deleting) return
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('정말로 방을 삭제하시겠습니까? 삭제 후에는 되돌릴 수 없습니다.')
+      if (!confirmed) {
+        return
+      }
+    }
+    onDelete()
+  }, [deleting, onDelete])
+
   const handleShowMoreLogs = () => {
     setVisibleHeroLogs((prev) => prev + 10)
   }
@@ -2421,7 +2432,7 @@ export default function GameRoomView({
 
         {isOwner && (
           <div className={styles.ownerActions}>
-            <button type="button" className={styles.subtleButton} onClick={onDelete} disabled={deleting}>
+            <button type="button" className={styles.subtleButton} onClick={handleDeleteClick} disabled={deleting}>
               {deleting ? '방 삭제 중…' : '방 삭제하기'}
             </button>
           </div>
