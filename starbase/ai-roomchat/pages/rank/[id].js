@@ -240,6 +240,7 @@ export default function GameRoomPage() {
       setStartLoading(true)
       setStartNotice('매칭을 준비하는 중입니다…')
       setStartError('')
+      let redirectToStart = null
 
       try {
         const refreshedSlots = await refreshSlots()
@@ -373,6 +374,14 @@ export default function GameRoomPage() {
             typeof error?.detail === 'string' && error.detail.trim()
               ? error.detail.trim()
               : ''
+          const trimmedMessage = typeof error?.message === 'string' ? error.message.trim() : ''
+          if (trimmedMessage === 'ai_network_error' || trimmedMessage === 'ai_failed') {
+            redirectToStart = {
+              pathname: `/rank/${id}/start`,
+              query: { mode: config.mode, apiVersion: config.apiVersion },
+            }
+            return ''
+          }
           if (error.message === 'no_slots') {
             return '슬롯 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.'
           }
@@ -393,12 +402,6 @@ export default function GameRoomPage() {
           }
           if (error?.message) {
             const trimmed = error.message.trim()
-            if (trimmed === 'ai_failed') {
-              return 'AI 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.'
-            }
-            if (trimmed === 'ai_network_error') {
-              return 'AI 호출 중 네트워크 오류가 발생했습니다.'
-            }
             if (trimmed === 'server_error') {
               return '서버 오류로 매칭을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
             }
@@ -413,10 +416,18 @@ export default function GameRoomPage() {
           return '매칭을 시작하지 못했습니다.'
         })()
 
-        setStartError(message)
-        setStartNotice('')
+        if (message) {
+          setStartError(message)
+          setStartNotice('')
+        } else {
+          setStartError('')
+          setStartNotice('')
+        }
       } finally {
         setStartLoading(false)
+        if (redirectToStart) {
+          router.push(redirectToStart)
+        }
       }
       return
     }
