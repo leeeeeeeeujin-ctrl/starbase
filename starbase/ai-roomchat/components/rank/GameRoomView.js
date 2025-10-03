@@ -1,7 +1,6 @@
 // components/rank/GameRoomView.js
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import { summarizeTurnTimerVotes } from '../../lib/rank/turnTimers'
 import styles from './GameRoomView.module.css'
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
 import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
@@ -449,44 +448,6 @@ function formatRatioLabel(value) {
   return `${(Math.round(Math.max(value, 0) * 10) / 10).toFixed(1)}:1`
 }
 
-function formatVoteSummary(topValues, maxCount) {
-  if (!Array.isArray(topValues) || topValues.length === 0 || !maxCount) {
-    return '아직 투표한 참가자가 없습니다.'
-  }
-  const label = topValues.map((value) => `${value}초`).join(', ')
-  return `현재 최다 득표: ${label} (${maxCount}표)`
-}
-
-function TurnTimerSummaryCard({ value, voteSummary, onOpenModeSettings }) {
-  const currentValue = Number.isFinite(Number(value)) ? Number(value) : null
-  const { topValues = [], maxCount = 0 } = voteSummary || {}
-  const summaryText = formatVoteSummary(topValues, maxCount)
-  const tagLabel = currentValue ? `${currentValue}초 준비됨` : '타이머 미정'
-
-  return (
-    <div className={styles.timerSummaryCard}>
-      <div className={styles.timerSummaryHeader}>
-        <h3 className={styles.timerSummaryTitle}>턴 제한</h3>
-        <span className={styles.timerSummaryTag}>{tagLabel}</span>
-      </div>
-      <p className={styles.timerSummaryText}>{summaryText}</p>
-      <p className={styles.timerSummaryHint}>
-        {onOpenModeSettings ? (
-          <>
-            타이머를 바꾸려면{' '}
-            <button type="button" className={styles.timerSummaryLink} onClick={onOpenModeSettings}>
-              모드 선택
-            </button>
-            에서 다시 투표하세요.
-          </>
-        ) : (
-          '타이머는 모드 선택에서 변경할 수 있습니다.'
-        )}
-      </p>
-    </div>
-  )
-}
-
 function interpretRulesShape(value) {
   if (!value) return { type: 'empty' }
 
@@ -760,8 +721,6 @@ export default function GameRoomView({
   startNotice = '',
   startError = '',
   recentBattles = [],
-  turnTimerVote = null,
-  turnTimerVotes = {},
   roleOccupancy = [],
   roleLeaderboards = [],
 }) {
@@ -1069,11 +1028,6 @@ export default function GameRoomView({
 
   const resolvedStartNotice = typeof startNotice === 'string' ? startNotice.trim() : ''
   const resolvedStartError = typeof startError === 'string' ? startError.trim() : ''
-
-  const voteSummary = useMemo(
-    () => summarizeTurnTimerVotes(turnTimerVotes || {}),
-    [turnTimerVotes],
-  )
 
   const heroInfoStages = useMemo(() => {
     const stages = ['profile']
@@ -2180,81 +2134,6 @@ export default function GameRoomView({
   const mainPanelContent = (
     <div className={styles.panelInner}>
       <section className={styles.joinCard}>
-        {Array.isArray(roleOccupancy) && roleOccupancy.length > 0 ? (
-          <div className={styles.roleOccupancyList}>
-            {roleOccupancy
-              .map((entry) => {
-                const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
-                if (!name) return null
-
-                const rawTotal = Number.isFinite(Number(entry?.totalSlots)) ? Number(entry.totalSlots) : null
-                const rawCapacity = Number.isFinite(Number(entry?.capacity)) ? Number(entry.capacity) : null
-                let capacity = null
-                if (rawTotal != null && rawTotal >= 0) {
-                  capacity = rawTotal
-                } else if (rawCapacity != null && rawCapacity >= 0) {
-                  capacity = rawCapacity
-                }
-
-                const participantCount = Number.isFinite(Number(entry?.participantCount))
-                  ? Number(entry.participantCount)
-                  : 0
-
-                let baselineReady = Number.isFinite(Number(entry?.occupiedSlots))
-                  ? Math.max(Number(entry.occupiedSlots), 0)
-                  : null
-                if (capacity != null) {
-                  const boundedParticipants = Math.min(participantCount, capacity)
-                  baselineReady =
-                    baselineReady == null
-                      ? boundedParticipants
-                      : Math.min(Math.max(baselineReady, 0), capacity)
-                } else if (baselineReady == null) {
-                  baselineReady = participantCount
-                }
-
-                const shortfall = capacity != null ? Math.max(capacity - baselineReady, 0) : null
-                const overflow = capacity != null ? Math.max(participantCount - baselineReady, 0) : 0
-
-                const countLabel =
-                  capacity != null ? `${participantCount}명 참여 · 최소 ${capacity}명` : `${participantCount}명 참여 중`
-
-                const statusParts = []
-                if (capacity != null) {
-                  statusParts.push(shortfall && shortfall > 0 ? `시작까지 ${shortfall}명 필요` : '기본 슬롯 충족')
-                }
-                if (overflow > 0) {
-                  statusParts.push(`추가 참가자 ${overflow}명`)
-                }
-
-                const availabilityText = statusParts.length > 0 ? statusParts.join(' · ') : '참여자 모집 중'
-
-                const itemClasses = [styles.roleOccupancyItem]
-                if (capacity != null) {
-                  if (shortfall && shortfall > 0) {
-                    itemClasses.push(styles.roleOccupancyItemShortfall)
-                  } else {
-                    itemClasses.push(styles.roleOccupancyItemReady)
-                  }
-                }
-                if (overflow > 0) {
-                  itemClasses.push(styles.roleOccupancyItemOverflow)
-                }
-
-                return (
-                  <div key={name} className={itemClasses.join(' ')}>
-                    <div className={styles.roleOccupancyMeta}>
-                      <span className={styles.roleOccupancyName}>{name}</span>
-                      <span className={styles.roleOccupancyCount}>{countLabel}</span>
-                    </div>
-                    <span className={styles.roleOccupancyAvailability}>{availabilityText}</span>
-                  </div>
-                )
-              })
-              .filter(Boolean)}
-          </div>
-        ) : null}
-
         <div className={styles.capacityRow}>
           <span className={styles.capacityCount}>{capacityCountLabel}</span>
           <div className={styles.capacityLabels}>
@@ -2361,12 +2240,6 @@ export default function GameRoomView({
         <p className={styles.capacitySubHint}>
           준비가 완료되면 모드 선택 창이 열리며 매칭이 자동으로 진행됩니다.
         </p>
-
-        <TurnTimerSummaryCard
-          value={turnTimerVote}
-          voteSummary={voteSummary}
-          onOpenModeSettings={onOpenModeSettings}
-        />
 
         {isOwner && (
           <div className={styles.ownerActions}>

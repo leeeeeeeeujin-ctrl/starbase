@@ -432,8 +432,6 @@ export default function GameRoomPage() {
         startNotice={startNotice}
         startError={startError}
         recentBattles={recentBattles}
-        turnTimerVote={turnTimerVote}
-        turnTimerVotes={turnTimerVotes}
         roleOccupancy={roleOccupancy}
         roleLeaderboards={roleLeaderboards}
       />
