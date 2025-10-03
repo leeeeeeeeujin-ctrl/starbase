@@ -8,6 +8,7 @@ export default function TurnInfoPanel({
   apiVersion,
   onApiVersionChange,
   realtimeLockNotice,
+  apiKeyNotice,
   currentActor,
   timeRemaining,
   turnTimerSeconds,
@@ -91,6 +92,9 @@ export default function TurnInfoPanel({
       </label>
       {realtimeLockNotice && (
         <p style={{ margin: 0, fontSize: 12, color: '#f97316' }}>{realtimeLockNotice}</p>
+      )}
+      {apiKeyNotice && (
+        <p style={{ margin: 0, fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>{apiKeyNotice}</p>
       )}
     </section>
   )

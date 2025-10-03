@@ -426,6 +426,9 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
         consensus?.viewerHasConsented ? '내 동의 완료' : '내 동의 필요'
       }`
     : ''
+  const manualModeNotice = game?.realtime_match
+    ? ''
+    : '실시간 매칭이 꺼진 게임에서는 서버에 API 키가 저장되지 않으며, 세션을 시작한 본인이 이 화면에 입력한 키로만 AI 호출이 처리됩니다.'
 
   return (
     <div className={styles.root} style={rootStyle}>
@@ -497,6 +500,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
                   ? '실시간 매칭 중에는 세션을 시작한 뒤 API 버전을 변경할 수 없습니다.'
                   : ''
               }
+              apiKeyNotice={manualModeNotice}
               currentActor={currentActor}
               timeRemaining={timeRemaining}
               turnTimerSeconds={turnTimerSeconds}

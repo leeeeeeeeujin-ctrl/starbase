@@ -144,7 +144,9 @@ function isApiKeyError(error) {
 
 export function useStartClientEngine(gameId) {
   const initialStoredApiKey =
-    typeof window === 'undefined' ? '' : window.sessionStorage.getItem('rank.start.apiKey') || ''
+    typeof window === 'undefined'
+      ? ''
+      : (window.sessionStorage.getItem('rank.start.apiKey') || '').trim()
   const initialCooldownInfo =
     typeof window === 'undefined'
       ? null
@@ -413,19 +415,25 @@ export function useStartClientEngine(gameId) {
     [],
   )
 
+  const normaliseApiKey = useCallback((value) => {
+    if (typeof value !== 'string') return ''
+    return value.trim()
+  }, [])
+
   const setApiKey = useCallback(
     (value) => {
       setApiKeyState(value)
       if (typeof window !== 'undefined') {
-        if (value) {
-          window.sessionStorage.setItem('rank.start.apiKey', value)
+        const trimmed = normaliseApiKey(value)
+        if (trimmed) {
+          window.sessionStorage.setItem('rank.start.apiKey', trimmed)
         } else {
           window.sessionStorage.removeItem('rank.start.apiKey')
         }
       }
       evaluateApiKeyCooldown(value)
     },
-    [evaluateApiKeyCooldown],
+    [evaluateApiKeyCooldown, normaliseApiKey],
   )
 
   const setApiVersion = useCallback((value) => {
@@ -438,6 +446,11 @@ export function useStartClientEngine(gameId) {
       }
     }
   }, [])
+
+  const effectiveApiKey = useMemo(
+    () => normaliseApiKey(apiKey),
+    [apiKey, normaliseApiKey],
+  )
 
   const visitedSlotIds = useRef(new Set())
   const apiVersionLock = useRef(null)
@@ -845,8 +858,8 @@ export function useStartClientEngine(gameId) {
       return
     }
 
-    if (apiKey) {
-      const cooldownInfo = evaluateApiKeyCooldown(apiKey)
+    if (effectiveApiKey) {
+      const cooldownInfo = evaluateApiKeyCooldown(effectiveApiKey)
       if (cooldownInfo?.active) {
         setStatusMessage(formatCooldownMessage(cooldownInfo))
         return
@@ -934,7 +947,7 @@ export function useStartClientEngine(gameId) {
     graph.nodes,
     startingSession,
     viewerParticipant?.role,
-    apiKey,
+    effectiveApiKey,
     evaluateApiKeyCooldown,
   ])
 
@@ -1012,7 +1025,7 @@ export function useStartClientEngine(gameId) {
         }
 
         if (!responseText) {
-          if (apiKey) {
+          if (effectiveApiKey) {
             if (game?.realtime_match) {
               if (
                 apiVersionLock.current &&
@@ -1028,7 +1041,7 @@ export function useStartClientEngine(gameId) {
               throw new Error('세션 정보를 확인할 수 없습니다. 페이지를 새로고침해 주세요.')
             }
 
-            const cooldownInfo = evaluateApiKeyCooldown(apiKey)
+            const cooldownInfo = evaluateApiKeyCooldown(effectiveApiKey)
             if (cooldownInfo?.active) {
               setStatusMessage(formatCooldownMessage(cooldownInfo))
               return
@@ -1051,7 +1064,7 @@ export function useStartClientEngine(gameId) {
                 Authorization: `Bearer ${token}`,
               },
               body: JSON.stringify({
-                apiKey,
+                apiKey: effectiveApiKey,
                 system: effectiveSystemPrompt,
                 prompt: effectivePrompt,
                 apiVersion,
@@ -1329,7 +1342,7 @@ export function useStartClientEngine(gameId) {
               ? '사용 중인 API 키 한도가 모두 소진되어 세션이 무효 처리되었습니다. 새 키를 등록해 주세요.'
               : err?.message || 'API 키 오류로 세션이 무효 처리되었습니다.'
           voidSession(fallback, {
-            apiKey,
+            apiKey: effectiveApiKey,
             reason,
             provider: apiVersion,
             viewerId,
@@ -1354,7 +1367,7 @@ export function useStartClientEngine(gameId) {
       activeGlobal,
       activeLocal,
       manualResponse,
-      apiKey,
+      effectiveApiKey,
       apiVersion,
       systemPrompt,
       turn,
