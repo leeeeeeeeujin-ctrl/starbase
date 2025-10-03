@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import ParticipantCard from './ParticipantCard'
-import { TURN_TIMER_OPTIONS, summarizeTurnTimerVotes } from '../../lib/rank/turnTimers'
+import { summarizeTurnTimerVotes } from '../../lib/rank/turnTimers'
 import styles from './GameRoomView.module.css'
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
 import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
@@ -458,41 +458,32 @@ function formatVoteSummary(topValues, maxCount) {
   return `현재 최다 득표: ${label} (${maxCount}표)`
 }
 
-function TurnTimerVotePanel({ value, onChange, voteSummary }) {
+function TurnTimerSummaryCard({ value, voteSummary, onOpenModeSettings }) {
   const currentValue = Number.isFinite(Number(value)) ? Number(value) : null
-  const { normalized = {}, topValues = [], maxCount = 0 } = voteSummary || {}
+  const { topValues = [], maxCount = 0 } = voteSummary || {}
   const summaryText = formatVoteSummary(topValues, maxCount)
+  const tagLabel = currentValue ? `${currentValue}초 준비됨` : '타이머 미정'
 
   return (
-    <div className={styles.timerVoteCard}>
-      <div className={styles.timerVoteHeader}>
-        <h3 className={styles.timerVoteTitle}>턴 제한 투표</h3>
-        <span className={styles.timerVoteTag}>
-          {currentValue ? `${currentValue}초 선택됨` : '선택 대기 중'}
-        </span>
+    <div className={styles.timerSummaryCard}>
+      <div className={styles.timerSummaryHeader}>
+        <h3 className={styles.timerSummaryTitle}>턴 제한</h3>
+        <span className={styles.timerSummaryTag}>{tagLabel}</span>
       </div>
-      <div className={styles.timerVoteOptions}>
-        {TURN_TIMER_OPTIONS.map((option) => {
-          const active = currentValue === option.value
-          const count = normalized[option.value] || 0
-          const leading = maxCount > 0 && topValues.includes(option.value)
-          return (
-            <button
-              key={option.value}
-              type="button"
-              className={`${styles.timerVoteButton} ${
-                active ? styles.timerVoteButtonActive : ''
-              } ${leading ? styles.timerVoteButtonLeading : ''}`.trim()}
-              onClick={() => onChange?.(option.value)}
-            >
-              <span>{option.label}</span>
-              <span className={styles.timerVoteCount}>{count}표</span>
+      <p className={styles.timerSummaryText}>{summaryText}</p>
+      <p className={styles.timerSummaryHint}>
+        {onOpenModeSettings ? (
+          <>
+            타이머를 바꾸려면{' '}
+            <button type="button" className={styles.timerSummaryLink} onClick={onOpenModeSettings}>
+              모드 선택
             </button>
-          )
-        })}
-      </div>
-      <p className={styles.timerVoteSummaryText}>{summaryText}</p>
-      <p className={styles.timerVoteHint}>동률이 나오면 무작위로 결정됩니다.</p>
+            에서 다시 투표하세요.
+          </>
+        ) : (
+          '타이머는 모드 선택에서 변경할 수 있습니다.'
+        )}
+      </p>
     </div>
   )
 }
@@ -774,7 +765,6 @@ export default function GameRoomView({
   recentBattles = [],
   turnTimerVote = null,
   turnTimerVotes = {},
-  onVoteTurnTimer,
   roleOccupancy = [],
   roleLeaderboards = [],
 }) {
@@ -2908,10 +2898,10 @@ export default function GameRoomView({
           준비가 완료되면 모드 선택 창이 열리며 매칭이 자동으로 진행됩니다.
         </p>
 
-        <TurnTimerVotePanel
+        <TurnTimerSummaryCard
           value={turnTimerVote}
-          onChange={onVoteTurnTimer}
           voteSummary={voteSummary}
+          onOpenModeSettings={onOpenModeSettings}
         />
 
         {isOwner && (

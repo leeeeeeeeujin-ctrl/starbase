@@ -434,7 +434,6 @@ export default function GameRoomPage() {
         recentBattles={recentBattles}
         turnTimerVote={turnTimerVote}
         turnTimerVotes={turnTimerVotes}
-        onVoteTurnTimer={handleVoteTurnTimer}
         roleOccupancy={roleOccupancy}
         roleLeaderboards={roleLeaderboards}
       />
