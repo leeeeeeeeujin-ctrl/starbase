@@ -37,7 +37,6 @@ export default function GameRoomPage() {
   const [turnTimerVote, setTurnTimerVote] = useState(null)
   const turnTimerVoteRef = useRef(null)
   const [turnTimerVotes, setTurnTimerVotes] = useState({})
-  const autoModePromptedRef = useRef(false)
 
   const persistTurnTimerVotes = useCallback((votes) => {
     if (typeof window === 'undefined') return
@@ -386,19 +385,11 @@ export default function GameRoomPage() {
 
   useEffect(() => {
     if (!mounted) return
-    if (showStartModal || startLoading) return
-    if (!canStart || !myHero) {
-      if (!canStart) {
-        autoModePromptedRef.current = false
-      }
-      return
+    if (!canStart) {
+      setStartNotice('')
+      setStartError('')
     }
-    if (autoModePromptedRef.current) return
-    autoModePromptedRef.current = true
-    setStartNotice('')
-    setStartError('')
-    setShowStartModal(true)
-  }, [mounted, canStart, myHero, showStartModal, startLoading])
+  }, [mounted, canStart])
 
   if (!ready || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
