@@ -9,11 +9,11 @@
 | 단계 | 설명 | 상태 | 진행도 |
 | --- | --- | --- | --- |
 | 1 | 실시간+난입 대상 탐색 설계 및 스키마 요구사항 정리 | 완료 | 100% |
-| 2 | 실시간 전용 표본 축소(큐 참가자 한정) 로직 구현 | 진행 중 | 60% |
-| 3 | 비실시간 보강(참가자 풀 셔플)과 표준 매칭 통합 | 준비 중 | 10% |
+| 2 | 실시간 전용 표본 축소(큐 참가자 한정) 로직 구현 | 완료 | 100% |
+| 3 | 비실시간 보강(참가자 풀 샘플링)과 표준 매칭 통합 | 진행 중 | 65% |
 
-- **총괄 진행률**: 57% (드롭인 좌석 점유 및 실시간 표본 축소 적용)
-- **최근 갱신**: 2025-11-14
+- **총괄 진행률**: 88% (드롭인 좌석 점유, 실시간 표본 축소, 비실시간 샘플링 1차 적용)
+- **최근 갱신**: 2025-11-16
 
 ## 단계별 작업 내역
 ### 1단계 – 실시간+난입 대상 탐색
@@ -26,12 +26,13 @@
 - [x] `findRealtimeDropInTarget` 완성: 실시간 난입 후보를 점수 윈도우 기반으로 평가하고, 빈 슬롯을 차지한 뒤 드롭인 매치 응답을 반환한다.【F:lib/rank/matchingPipeline.js†L118-L283】
 - [x] 표본 필터링: 실시간 모드에서는 대기열만 표본으로 사용하고, 비실시간만 참가자 풀을 보강한다.【F:lib/rank/matchingPipeline.js†L83-L114】
 - [x] 큐 상태 잠금: 드롭인 성공 시 즉시 큐 엔트리를 `matched`로 잠그고 히어로 정보를 응답에 포함해 클라이언트 메시지가 일관되도록 했다.【F:pages/api/rank/match.js†L140-L169】
-- [ ] 클라이언트 알림: 실시간 난입 성공 시 `MatchQueueClient`/`AutoMatchProgress`가 별도 안내와 룸 코드 정보를 제공하도록 UX를 보완(추가 QA 예정).【F:components/rank/MatchQueueClient.js†L196-L230】【F:components/rank/AutoMatchProgress.js†L812-L825】
+- [x] 클라이언트 알림: 실시간 난입·보강이 확정되면 `MatchQueueClient`가 룸 코드, 점수 윈도우, 큐 표본 요약을 함께 보여 주도록 안내 문구를 다듬었다.【F:components/rank/MatchQueueClient.js†L215-L238】【F:components/rank/MatchQueueClient.js†L614-L669】
 
 ### 3단계 – 비실시간 보강 & 표준 매칭
-- [ ] `buildCandidateSample` 확장: 비실시간 보강 시 점수 폭 확대, 참가자 풀 샘플 크기 제한 등을 추가할 계획.
-- [ ] 매칭 결과 리포트: 실시간/비실시간 결과 모두 동일 구조로 반환되도록 `/api/rank/match` 응답 정리.
+- [x] `buildCandidateSample` 확장: 비실시간 보강 시 점수 윈도우/역할별 최대치/총 샘플 제한을 적용해 후보를 선별한다.【F:lib/rank/matchingPipeline.js†L300-L373】
+- [x] 매칭 결과 리포트: `/api/rank/match` 응답에 표본 메타데이터(`sampleMeta`)를 포함해 실시간/비실시간 모두 동일한 구조로 반환한다.【F:pages/api/rank/match.js†L172-L210】
 - [ ] QA 체크리스트: 솔로/듀오/캐주얼 조합별 테스트 시나리오 문서화.
+- [ ] 비실시간 잔여 작업: 샘플 메타 데이터 기반 재시도/경고 UX, QA용 로그 정리를 진행.
 
 ## 필요한 Supabase 스키마 확장
 | 테이블 | 컬럼/인덱스 | 비고 |
@@ -39,6 +40,7 @@
 | `public.rank_sessions` | `rating_hint integer` (nullable) | 최근 전투 기준 점수대 추적. drop-in 필터링에 사용. **(적용 완료)** |
 | `public.rank_sessions` | 인덱스 `(status, game_id, updated_at desc)` | 진행 중 세션 빠르게 탐색. **(적용 완료)** |
 | `public.rank_room_slots` | 인덱스 `(room_id, role, occupant_owner_id)` | 역할별 빈 슬롯 조회 가속. **(적용 완료)** |
+| `public.rank_participants` | 인덱스 `(game_id, role, status, updated_at desc)` | 비실시간 후보 스캔 가속. **(적용 완료)** |
 | `public.rank_match_queue` | 기존 컬럼 | 실시간 표본 축소 단계에서는 별도 확장 없이 대기열 데이터 사용.
 
 > 스키마 변경분은 `docs/supabase-rank-schema.sql`과 배포 SQL에 반영 필요. 실제 생성 시 RLS 정책 갱신 여부도 확인할 것.

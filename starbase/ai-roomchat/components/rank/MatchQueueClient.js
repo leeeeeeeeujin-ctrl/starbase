@@ -237,6 +237,31 @@ export default function MatchQueueClient({
     return parts.join(' · ')
   }, [isDropInMatch, dropInTarget])
 
+  const sampleSummary = useMemo(() => {
+    if (!state.match || !state.match.sampleMeta) return ''
+    if (isDropInMatch || isBrawlMatch) return ''
+    const meta = state.match.sampleMeta
+    const parts = []
+    if (Number.isFinite(Number(meta.queueCount))) {
+      parts.push(`대기열 ${Number(meta.queueCount)}명`)
+    }
+    if (Number.isFinite(Number(meta.simulatedSelected))) {
+      const selected = Number(meta.simulatedSelected)
+      if (selected > 0) {
+        parts.push(`후보 ${selected}명 보강`)
+      } else {
+        parts.push('추가 후보 없이 구성')
+      }
+    }
+    if (Number.isFinite(Number(meta.scoreWindow)) && Number(meta.scoreWindow) > 0) {
+      parts.push(`점수 윈도우 ±${Math.round(Number(meta.scoreWindow))}`)
+    }
+    if (Number.isFinite(Number(meta.simulatedFiltered)) && Number(meta.simulatedFiltered) > 0) {
+      parts.push(`필터 제외 ${Number(meta.simulatedFiltered)}명`)
+    }
+    return parts.join(' · ')
+  }, [isBrawlMatch, isDropInMatch, state.match])
+
   useEffect(() => {
     const previous = latestStatusRef.current
     latestStatusRef.current = state.status
@@ -660,6 +685,9 @@ export default function MatchQueueClient({
               : '탈락한 역할군을 대신할 참가자가 합류합니다.'
             : `허용 점수 폭 ±${state.match.maxWindow || 0} 내에서 팀이 구성되었습니다.`}
         </p>
+        {!isDropInMatch && !isBrawlMatch && sampleSummary ? (
+          <p className={styles.sectionHint}>{sampleSummary}</p>
+        ) : null}
         {isBrawlMatch ? (
           <p className={styles.sectionHint}>
             허용 점수 폭 ±{state.match.maxWindow || 0}을 유지한 채 난입이 진행됩니다.

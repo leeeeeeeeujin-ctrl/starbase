@@ -19,6 +19,25 @@ const DROP_IN_WINDOW_KEYS = [
 ]
 const ACTIVE_ROOM_STATUSES = new Set(['active', 'running', 'in_progress', 'open', 'pending'])
 const DEFAULT_DROP_IN_WINDOW = 200
+const NON_REALTIME_WINDOW_KEYS = [
+  'non_realtime_score_window',
+  'nonRealtimeScoreWindow',
+  'offline_score_window',
+  'offlineScoreWindow',
+]
+const NON_REALTIME_PER_ROLE_KEYS = [
+  'non_realtime_simulated_per_role',
+  'nonRealtimeSimulatedPerRole',
+  'offline_simulated_per_role',
+]
+const NON_REALTIME_TOTAL_KEYS = [
+  'non_realtime_simulated_total',
+  'nonRealtimeSimulatedTotal',
+  'offline_simulated_total',
+]
+const DEFAULT_NON_REALTIME_WINDOW = 300
+const DEFAULT_NON_REALTIME_PER_ROLE = 6
+const DEFAULT_NON_REALTIME_TOTAL = 24
 
 function nowIso() {
   return new Date().toISOString()
@@ -57,6 +76,13 @@ function deriveQueueEntryScore(entry) {
   return 1000
 }
 
+function deriveTimestamp(value) {
+  if (!value) return Number.NaN
+  const parsed = Date.parse(value)
+  if (Number.isFinite(parsed)) return parsed
+  return Number.NaN
+}
+
 function resolveDropInWindow(rules = {}) {
   for (const key of DROP_IN_WINDOW_KEYS) {
     const candidate = rules?.[key]
@@ -66,6 +92,39 @@ function resolveDropInWindow(rules = {}) {
     }
   }
   return DEFAULT_DROP_IN_WINDOW
+}
+
+function resolveNonRealtimeWindow(rules = {}) {
+  for (const key of NON_REALTIME_WINDOW_KEYS) {
+    const candidate = rules?.[key]
+    const numeric = Number(candidate)
+    if (Number.isFinite(numeric) && numeric >= 0) {
+      return numeric
+    }
+  }
+  return DEFAULT_NON_REALTIME_WINDOW
+}
+
+function resolveNonRealtimePerRoleLimit(rules = {}) {
+  for (const key of NON_REALTIME_PER_ROLE_KEYS) {
+    const candidate = rules?.[key]
+    const numeric = Number(candidate)
+    if (Number.isFinite(numeric) && numeric >= 0) {
+      return numeric
+    }
+  }
+  return DEFAULT_NON_REALTIME_PER_ROLE
+}
+
+function resolveNonRealtimeTotalLimit(rules = {}) {
+  for (const key of NON_REALTIME_TOTAL_KEYS) {
+    const candidate = rules?.[key]
+    const numeric = Number(candidate)
+    if (Number.isFinite(numeric) && numeric >= 0) {
+      return numeric
+    }
+  }
+  return DEFAULT_NON_REALTIME_TOTAL
 }
 
 function cloneQueueMember(entry, extras = {}) {
@@ -270,30 +329,164 @@ export async function loadMatchingResources({ supabase, gameId, mode, realtimeEn
   }
 }
 
-export function buildCandidateSample({ queue, participantPool, realtimeEnabled }) {
+function summarizeRoleAverages(queue = []) {
+  const roleTotals = new Map()
+  let overallSum = 0
+  let overallCount = 0
+
+  queue.forEach((entry) => {
+    const role = normalizeRoleName(entry?.role)
+    if (!role) return
+    const score = deriveQueueEntryScore(entry)
+    if (!Number.isFinite(score)) return
+    overallSum += score
+    overallCount += 1
+    const bucket = roleTotals.get(role) || { sum: 0, count: 0 }
+    bucket.sum += score
+    bucket.count += 1
+    roleTotals.set(role, bucket)
+  })
+
+  const roleAverages = new Map()
+  roleTotals.forEach((value, key) => {
+    if (value.count > 0) {
+      roleAverages.set(key, value.sum / value.count)
+    }
+  })
+
+  const overallAverage = overallCount > 0 ? overallSum / overallCount : null
+
+  return { roleAverages, overallAverage }
+}
+
+function toPlainNumberMap(map) {
+  const plain = {}
+  if (!map || typeof map.forEach !== 'function') return plain
+  map.forEach((value, key) => {
+    if (Number.isFinite(value)) {
+      plain[key] = Math.round(value)
+    }
+  })
+  return plain
+}
+
+export function buildCandidateSample({
+  queue = [],
+  participantPool = [],
+  realtimeEnabled,
+  roles = [],
+  rules = {},
+}) {
+  const meta = {
+    realtime: Boolean(realtimeEnabled),
+    queueCount: Array.isArray(queue) ? queue.length : 0,
+    participantPoolCount: Array.isArray(participantPool) ? participantPool.length : 0,
+    simulatedSelected: 0,
+    simulatedEligible: 0,
+    simulatedFiltered: 0,
+    scoreWindow: null,
+    perRoleLimit: null,
+    totalLimit: null,
+    queueAverageScore: null,
+    roleAverageScores: {},
+  }
+
   if (realtimeEnabled) {
-    return queue
+    return { sample: queue, meta }
   }
 
   const ownersInQueue = new Set(queue.map((row) => row?.owner_id || row?.ownerId).filter(Boolean))
-  const filteredPool = participantPool.filter((row) => {
+  const roleTargets = new Set(
+    roles
+      .map((role) => normalizeRoleName(role?.name ?? role))
+      .filter((name) => typeof name === 'string' && name.length > 0),
+  )
+
+  const { roleAverages, overallAverage } = summarizeRoleAverages(queue)
+  if (Number.isFinite(overallAverage)) {
+    meta.queueAverageScore = Math.round(overallAverage)
+  }
+  meta.roleAverageScores = toPlainNumberMap(roleAverages)
+
+  const windowSize = resolveNonRealtimeWindow(rules)
+  const perRoleLimit = resolveNonRealtimePerRoleLimit(rules)
+  const totalLimit = resolveNonRealtimeTotalLimit(rules)
+
+  meta.scoreWindow = windowSize
+  meta.perRoleLimit = perRoleLimit
+  meta.totalLimit = totalLimit
+
+  const candidates = []
+
+  participantPool.forEach((row) => {
+    if (!row) return
     const ownerId = row?.owner_id || row?.ownerId
-    if (!ownerId) return false
-    if (ownersInQueue.has(ownerId)) {
-      return false
+    if (!ownerId || ownersInQueue.has(ownerId)) {
+      return
     }
-    return true
+
+    const roleName = normalizeRoleName(row.role)
+    if (!roleName) return
+    if (roleTargets.size > 0 && !roleTargets.has(roleName)) return
+
+    const score = deriveQueueEntryScore(row)
+    const baseAverage = Number.isFinite(roleAverages.get(roleName))
+      ? roleAverages.get(roleName)
+      : overallAverage
+    let scoreGap = 0
+    if (Number.isFinite(baseAverage) && Number.isFinite(score)) {
+      scoreGap = Math.abs(baseAverage - score)
+    }
+
+    if (Number.isFinite(windowSize) && windowSize >= 0 && Number.isFinite(baseAverage)) {
+      if (scoreGap > windowSize) {
+        meta.simulatedFiltered += 1
+        return
+      }
+    }
+
+    candidates.push({
+      entry: row,
+      role: roleName,
+      scoreGap,
+      joinedStamp: deriveTimestamp(row?.joined_at || row?.joinedAt || null),
+    })
   })
 
-  const shuffled = filteredPool.slice()
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1))
-    const tmp = shuffled[index]
-    shuffled[index] = shuffled[swapIndex]
-    shuffled[swapIndex] = tmp
+  meta.simulatedEligible = candidates.length
+
+  candidates.sort((a, b) => {
+    if (a.scoreGap !== b.scoreGap) {
+      if (!Number.isFinite(a.scoreGap)) return 1
+      if (!Number.isFinite(b.scoreGap)) return -1
+      return a.scoreGap - b.scoreGap
+    }
+    if (a.joinedStamp !== b.joinedStamp) {
+      if (Number.isNaN(a.joinedStamp)) return 1
+      if (Number.isNaN(b.joinedStamp)) return -1
+      return a.joinedStamp - b.joinedStamp
+    }
+    return 0
+  })
+
+  const selected = []
+  const perRoleSelected = new Map()
+
+  for (const candidate of candidates) {
+    if (Number.isFinite(totalLimit) && totalLimit >= 0 && selected.length >= totalLimit) {
+      break
+    }
+    const currentCount = perRoleSelected.get(candidate.role) || 0
+    if (Number.isFinite(perRoleLimit) && perRoleLimit >= 0 && currentCount >= perRoleLimit) {
+      continue
+    }
+    selected.push(candidate.entry)
+    perRoleSelected.set(candidate.role, currentCount + 1)
   }
 
-  return queue.concat(shuffled)
+  meta.simulatedSelected = selected.length
+
+  return { sample: queue.concat(selected), meta }
 }
 
 export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles = [], queue = [], rules = {} } = {}) {

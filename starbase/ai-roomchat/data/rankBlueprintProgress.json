@@ -1,7 +1,7 @@
 {
-  "lastUpdatedISO": "2025-11-15",
-  "lastUpdatedDisplay": "2025-11-15 기준",
-  "overallProgress": 90,
+  "lastUpdatedISO": "2025-11-16",
+  "lastUpdatedDisplay": "2025-11-16 기준",
+  "overallProgress": 88,
   "stages": [
     {
       "label": "매칭 트리거 통일",
@@ -42,8 +42,8 @@
     {
       "label": "실시간·난입 매칭 계층화",
       "status": "구현 진행 중",
-      "progress": 60,
-      "summary": "실시간 난입 좌석 탐색·선점 파이프라인을 완성해 드롭인 매치가 라이브 룸으로 곧바로 연결되고 있으며, 남은 UX QA와 비실시간 보강 단계를 마무리할 준비를 하고 있습니다."
+      "progress": 65,
+      "summary": "실시간 난입 파이프라인에 이어 비실시간 샘플링·점수 윈도우·큐 메타 리포트를 통합해 표준 매칭 응답 구조를 정비했으며, 남은 QA/재시도 UX를 마무리할 차례입니다."
     }
   ],
   "remainingFocus": [
@@ -61,7 +61,7 @@
     },
     {
       "stage": "실시간·난입 매칭 계층화",
-      "nextStep": "실시간 난입 성공 시 안내/리디렉션 UX와 실패 재시도 로직을 QA하고, 비실시간 보강 플랜을 구체화합니다.",
+      "nextStep": "비실시간 샘플 메타 기반 재시도/경고 UX를 QA하고, 솔로·듀오·캐주얼 조합별 체크리스트를 문서화합니다.",
       "owner": "공동 (라라·류)",
       "targetDateISO": "2025-11-24"
     }

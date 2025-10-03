@@ -1,6 +1,6 @@
 # Supabase Schema Digest
 
-Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each entry lists column highlights, security and indexing rules, plus helper routines so feature teams can evolve the schema without reopening the raw SQL exports.
+Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each entry lists column highlights, security and indexing rules, plus helper routines so feature teams can evolve the schema without reopening the raw SQL exports. 매칭과 관련된 테이블만 보고 싶다면 새로 정리한 `matchmaking-supabase-handbook.md`를 참고하세요.【F:docs/matchmaking-supabase-handbook.md†L1-L40】
 
 > 💾 **빠른 복구용 DDL**: 새 인스턴스를 부트스트랩해야 하면 `docs/supabase-rank-schema.sql` 파일을 Supabase SQL Editor에 그대로 붙여 넣으면 모든 필수 테이블·정책·스토리지 정책을 한 번에 재생성할 수 있습니다.
 
@@ -91,7 +91,7 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 ## Participation & Battle History
 ### `public.rank_participants`
 - Player enrollment keeps hero arrays, role, rating/score stats, battle counts, likes, win rate, status, and timestamps with unique `(game_id, owner_id)` constraint.【F:starbase/ai-roomchat/supabase.sql†L858-L875】
-- RLS allows universal reads but only the participant may insert/update/delete their row.【F:starbase/ai-roomchat/supabase.sql†L877-L890】
+- RLS allows universal reads but only the participant may insert/update/delete their row; the `(game_id, role, status, updated_at desc)` index accelerates drop-in/비실시간 후보 스캔 시 최신 상태를 찾는 데 사용합니다.【F:starbase/ai-roomchat/supabase.sql†L877-L893】
 
 ### `public.rank_battles`
 - Records matches with attacker/defender ownership, hero arrays, outcome, score delta, hidden flag, and creation time.【F:starbase/ai-roomchat/supabase.sql†L892-L902】

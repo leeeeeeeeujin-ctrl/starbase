@@ -1,6 +1,6 @@
 {
-  "lastUpdatedISO": "2025-11-15",
-  "lastUpdatedDisplay": "2025-11-15 기준",
+  "lastUpdatedISO": "2025-11-16",
+  "lastUpdatedDisplay": "2025-11-16 기준",
   "items": [
     {
       "order": 1,
@@ -21,11 +21,11 @@
       },
       "timing": {
         "label": "2025-11-19",
-        "badge": "D-4",
+        "badge": "D-3",
         "state": "due-soon",
-        "daysFromToday": 4,
-        "daysFromSnapshot": 4,
-        "computedAtISO": "2025-11-15",
+        "daysFromToday": 3,
+        "daysFromSnapshot": 3,
+        "computedAtISO": "2025-11-16",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -49,11 +49,11 @@
       },
       "timing": {
         "label": "2025-11-22",
-        "badge": "D-7",
+        "badge": "D-6",
         "state": "scheduled",
-        "daysFromToday": 7,
-        "daysFromSnapshot": 7,
-        "computedAtISO": "2025-11-15",
+        "daysFromToday": 6,
+        "daysFromSnapshot": 6,
+        "computedAtISO": "2025-11-16",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -77,18 +77,18 @@
       },
       "timing": {
         "label": "2025-11-27",
-        "badge": "D-12",
+        "badge": "D-11",
         "state": "scheduled",
-        "daysFromToday": 12,
-        "daysFromSnapshot": 12,
-        "computedAtISO": "2025-11-15",
+        "daysFromToday": 11,
+        "daysFromSnapshot": 11,
+        "computedAtISO": "2025-11-16",
         "isOverdue": false,
         "overdueDays": 0
       }
     },
     {
       "order": 4,
-      "summary": "실시간 난입 확정 UX와 실패 재시도 흐름을 QA하고 비실시간 보강 설계를 마무리합니다.",
+      "summary": "샘플 메타 기반 재시도/경고 UX를 QA하고, 솔로·듀오·캐주얼 조합별 비실시간 매칭 체크리스트를 작성합니다.",
       "owner": "Matchmaking (류·라라)",
       "ownerKey": "matchmaking",
       "targetDateISO": "2025-11-24",
@@ -105,11 +105,11 @@
       },
       "timing": {
         "label": "2025-11-24",
-        "badge": "D-9",
+        "badge": "D-8",
         "state": "scheduled",
-        "daysFromToday": 9,
-        "daysFromSnapshot": 9,
-        "computedAtISO": "2025-11-15",
+        "daysFromToday": 8,
+        "daysFromSnapshot": 8,
+        "computedAtISO": "2025-11-16",
         "isOverdue": false,
         "overdueDays": 0
       }

@@ -171,10 +171,12 @@ export default async function handler(req, res) {
       }
     }
 
-    const candidateSample = buildCandidateSample({
+    const { sample: candidateSample, meta: sampleMeta } = buildCandidateSample({
       queue,
       participantPool,
       realtimeEnabled: toggles.realtimeEnabled,
+      roles,
+      rules,
     })
 
     const result = runMatching({ mode, roles, queue: candidateSample })
@@ -186,6 +188,7 @@ export default async function handler(req, res) {
         totalSlots: result.totalSlots,
         maxWindow: result.maxWindow || 0,
         error: result.error || null,
+        sampleMeta,
       })
     }
 
@@ -209,6 +212,7 @@ export default async function handler(req, res) {
       matchCode,
       matchType: 'standard',
       heroMap: mapToPlain(heroMap),
+      sampleMeta,
     })
   } catch (error) {
     console.error('match handler error:', error)

@@ -889,6 +889,9 @@ on public.rank_participants for update using (auth.uid() = owner_id);
 create policy if not exists rank_participants_delete
 on public.rank_participants for delete using (auth.uid() = owner_id);
 
+create index if not exists rank_participants_active_by_role
+on public.rank_participants (game_id, role, status, updated_at desc);
+
 create table if not exists public.rank_battles (
   id uuid primary key default gen_random_uuid(),
   game_id uuid not null references public.rank_games(id) on delete cascade,

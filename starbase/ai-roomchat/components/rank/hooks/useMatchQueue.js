@@ -278,6 +278,7 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
           matchType: payload.matchType || 'standard',
           brawlVacancies: Array.isArray(payload.brawlVacancies) ? payload.brawlVacancies : [],
           roleStatus: payload.roleStatus || null,
+          sampleMeta: payload.sampleMeta || null,
         })
       } catch (cause) {
         console.error('매칭 확인 실패:', cause)
