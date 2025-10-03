@@ -139,11 +139,14 @@
 > ✅ 모든 항목이 목표일 이내에 있습니다.
 <!-- next-actions-status:end -->
 
+<!-- blueprint-next-actions:start -->
 ## 6. 다음 액션 스냅샷
+
 <!-- next-actions-status:start -->
-> _2025-10-02 기준 자동 생성된 기한 알림._
-> ✅ 모든 항목이 목표일 이내에 있습니다.
+> _2025-11-08 기준 자동 생성된 기한 알림._
+> 📅 #1 (QA (민서)) 마감이 일주일 이내입니다.
 <!-- next-actions-status:end -->
+
 | 순번 | 작업 | 담당 | 목표일 | 우선순위 | 예상 리소스 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | QA가 듀오/캐주얼 재시작 시퀀스에서 큐 일관성 회귀가 없는지 통합 테스트(`pages/api/rank/play.ts`)를 재실행하도록 준비합니다. | QA (민서) | 2025-11-14 | P0 (회귀 차단) | QA 2일 (2명·3세션) |
@@ -152,30 +155,37 @@
 | 4 | API 키 쿨다운 만료 알림과 대체 키 추천 워크플로를 운영 대시보드에 연결합니다. | Ops (지후) | 2025-11-25 | P2 (운영 가드) | Ops 1.5일 (대시보드 연동) |
 | 5 | Edge Function 재시도 스케줄러가 제안한 백오프·중단 사유를 운영 대시보드와 QA 회고에 노출해 경보 루프 전체에서 동일한 문맥을 공유합니다. | Ops (지후) | 2025-11-28 | P2 (재시도 루프) | Ops 2일 (데이터 동기화) |
 
-담당·목표일은 7일 안팎으로 묶어 우선순위를 드러내고, 우선순위/리소스 열은 `P{n}` 등급과 예상 투입 공수를 함께 기록해 랜딩 히어로 카드에서도 D-Day 뱃지와 함께 우선순위·리소스 정보를 그대로 노출합니다. 자동 경고 블록은 마감이 지난 항목이나 3일 이내 임박한 항목을 추적해 개요 문서를 열었을 때도 상태를 바로 알 수 있도록 동일 스크립트에서 갱신되며, JSON 스냅샷에는 `priority.rank`와 `effort.personDays`가 포함돼 정렬 기준을 다양하게 활용할 수 있습니다.
+<!-- blueprint-next-actions:end -->
 
-## 7. 진행률 현황 (2025-11-08)
+<!-- blueprint-progress:start -->
+## 7. 진행률 현황 (2025-11-08 기준)
+
 | 단계 | 상태 | 진행률 | 메모 |
 | --- | --- | --- | --- |
 | 매칭 트리거 통일 | QA 검토 중 | 80% | `/api/rank/play` 재시작 케이스를 테스트 플랜(DC-01~03)에 추가해 회귀 검증 범위를 확장했습니다. |
 | 세션/전투 동기화 | 구현 진행 중 | 55% | `rank_turns` 가시성·요약 컬럼을 `run-turn`/`log-turn` API와 세션 히스토리 응답에 연결해 로그 파이프라인 일부가 작동하기 시작했습니다. |
 | 프롬프트 변수 자동화 | 진행 중 | 60% | StartClient 경고 연동과 제작기 재저장 가이드 배포까지 끝났고, 남은 과제는 폴백 QA와 Maker 사전 경고뿐입니다. |
-| UI·오디오 완성 | 완료 | 100% | 메인 룸 히어로 패널이 브금 자동 재생·컨트롤을 제공하고, StartClient 로그 보드는 섹션별 축약/펼치기 토글·검색 입력·하이라이트와 액션/주역/태그 다중 필터 칩을 갖춰 긴 히스토리에서도 필요한 카드만 빠르게 추립니다. 모바일에선 히스토리 패널이 세로로 재배치되고 데스크톱에선 다단 그리드로 확장돼 전투/AI/플레이어 히스토리를 화면 크기에 맞춰 보여주며, 브금 재생목록 전환·EQ/리버브/컴프레서 토글·리셋 칩이 연동된 상태에서 선택한 트랙과 이펙트는 사용자·운영자별로 저장돼 Supabase에서 복원됩니다. 관리자 포털 오디오 이벤트 패널은 Owner/히어로/이벤트 유형·검색어 필터와 기간 스위치에 더해 즐겨찾기·Slack 구독 조건을 저장/복원하는 폼, 임계치·주간 범위·항상 포함 토글, 스택 그래프 상위 N/스크롤 범례를 제공해 자주 보는 조합과 다이제스트 조건을 한곳에서 관리하고 Slack 메시지에도 동일한 하이라이트를 반영합니다. |
+| UI·오디오 완성 | 완료 | 100% | 메인 룸 히어로 패널이 브금 자동 재생·컨트롤을 제공하고, StartClient 로그 보드는 섹션별 축약/펼치기 토글·검색 입력·하이라이트와 액션/주역/태그 다중 필터 칩을 갖춰 긴 히스토리에서도 필요한 카드만 빠르게 추립니다. 모바일에선 히스토리 패널이 세로로 재배치되고 데스크톱에선 다단 그리드로 확장돼 전투/AI/플레이어 히스토리를 화면 크기에 맞춰 보여주며, 브금 재생목록 전환·EQ/리버브/컴프레서 토글·리셋 칩이 연동된 상태에서 선택한 트랙과 이펙트는 사용자·운영자별로 저장돼 Supabase에서 복원됩니다. 관리자 포털 오디오 이벤트 패널은 Owner/히어로/이벤트 유형·검색어 필터와 기간 스위치에 더해 즐겨찾기·Slack 구독 조건을 저장/복원하는 폼, 임계치·주간 범위·항상 포함 토글, 스택 그래프 상위 N/스크롤 범례를 제공하고 마지막으로 적용한 규칙을 자동 복원하는 배지로 자주 보는 조합과 다이제스트 조건을 한곳에서 관리하며 Slack 메시지에도 동일한 하이라이트를 반영합니다. |
 | 운영 가드 | 진행 중 | 85% | 감사 로그 기반 백오프 스케줄러, Slack ETA 안내, 임계값 변경 카드·감사 로그 패널, 일/주/월 토글·CSV/PNG 내보내기·팀 드라이브 자동 업로드를 갖춘 감사 타임라인 그래프에 더해 업로드 연속 실패/장기 미성공 임계값을 경보 체계와 대시보드 카드에 연동했습니다. |
 
 **총 진행률(단계별 동일 가중치)**: 약 **76%**
 
+<!-- blueprint-progress:end -->
+
+<!-- blueprint-remaining:start -->
 ### 8. 남은 청사진 핵심 작업 (2025-11-08 기준)
 | 단계 | 남은 핵심 작업 | 현재 진행률 |
 | --- | --- | --- |
-| 매칭 트리거 통일 | 듀오/캐주얼 재시작 회귀 테스트(DC-01~03) QA 완료 후 실서비스 스모크와 큐 일관성 대시보드 경보를 함께 검증합니다. | 80% |
-| 세션/전투 동기화 | `rank_turns` 요약 메타를 소비하는 UI·리포트 경로를 반영하고, 인비저블 라인 필터 QA 및 히스토리 API 폴링 전략 확정을 마칩니다. | 55% |
+| 매칭 트리거 통일 | 듀오/캐주얼 재시작 회귀(DC-01~03) QA 완료 후 실서비스 스모크를 통과시키고, 큐 일관성 대시보드 경보까지 검증합니다. | 80% |
+| 세션/전투 동기화 | `rank_turns` 요약 메타를 소비하는 UI·리포트 경로를 반영하고, 인비저블 라인 필터 QA와 히스토리 API 폴링 전략 확정을 마무리합니다. | 55% |
 | 프롬프트 변수 자동화 | 제작기 폴백 경고 UX와 자동 버전 동기화를 연결해 변수 누락 경보 없이 저장 루틴이 돌아가도록 QA 시나리오를 닫습니다. | 60% |
-| 운영 가드 | Edge Function 감사 로그를 스테이징에서 검증하고, 자동 키 회전·만료 알림 루프를 운영 대시보드와 Slack 에스컬레이션에 연동합니다. | 85% |
+| 운영 가드 | Edge Function 감사 로그를 스테이징에서 검증하고, 자동 키 회전/만료 알림 루프를 운영 대시보드와 Slack 에스컬레이션에 연동합니다. | 85% |
+
+<!-- blueprint-remaining:end -->
 
 랜딩 히어로는 이 표를 기반으로 전체 진행도 카드(76%, 5개 중 1개 단계만 남음)를 추가해 남은 단계와 다음 액션을 한눈에 확인할 수 있게 되었습니다.【F:data/rankBlueprintProgress.json†L1-L42】【F:pages/index.js†L8-L210】【F:styles/Home.module.css†L1-L360】
 
-홈 히어로에서 노출되는 진행률 보드와 다음 액션 카드가 이 표와 위 섹션을 그대로 참조할 수 있도록 데이터를 `data/rankBlueprintProgress.json`·`data/rankBlueprintNextActions.json`으로 분리해 사용하며, 최신화 뱃지가 2주 이상 경과 시 업데이트 필요 상태를 표시합니다. `npm run refresh:blueprint-progress` 스크립트를 실행하면 두 JSON과 자동 경고 블록이 재생성돼 문서/코드 동기화를 유지할 수 있고, `npm run check:blueprint-progress-freshness`(주 1회 GitHub Actions 스케줄과 PR/메인 푸시 CI에서 실행)로 14일 한계치를 넘길 경우 경고를 발생시켜 리마인더를 받습니다. `npm run check:blueprint-next-actions`는 마감이 지난 항목이 존재하면 CI를 실패시키고, JSON에는 담당자 키·D-Day·연체 여부가 함께 기록돼 랜딩 카드와 문서가 동일한 기준으로 경고를 노출합니다. 두 워크플로 모두에서 `npm test -- --runInBand`와 `CI=1 npm run build`를 함께 실행하고 `.next/cache`를 복원하는 빌드 캐시, `jest-junit` 기반 테스트 리포트 업로드, Step Summary용 메트릭 게시를 포함해 에러 리포트 관리자 API 회귀뿐 아니라 실행 시간 추적과 병목 파악을 동시에 지원합니다.【F:data/rankBlueprintProgress.json†L1-L35】【F:data/rankBlueprintNextActions.json†L1-L33】【F:pages/index.js†L8-L200】【F:styles/Home.module.css†L1-L266】【F:scripts/refresh-rank-blueprint-progress.js†L1-L339】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L74】【F:scripts/check-rank-blueprint-next-actions.js†L1-L87】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L47】【F:.github/workflows/pr-ci.yml†L1-L42】
+홈 히어로에서 노출되는 진행률 보드와 다음 액션 카드가 이 표와 위 섹션을 그대로 참조할 수 있도록 데이터를 `data/rankBlueprintProgress.json`·`data/rankBlueprintNextActions.json`으로 분리해 사용하며, 최신화 뱃지가 2주 이상 경과 시 업데이트 필요 상태를 표시합니다. `npm run refresh:blueprint-progress` 스크립트를 실행하면 두 JSON과 자동 경고 블록이 재생성돼 문서/코드 동기화를 유지할 수 있고, `npm run check:blueprint-progress-freshness`(주 1회 GitHub Actions 스케줄과 PR/메인 푸시 CI에서 실행)로 14일 한계치를 넘길 경우 경고를 발생시켜 리마인더를 받습니다. `npm run check:blueprint-next-actions`는 마감이 지난 항목이 존재하면 CI를 실패시키고, JSON에는 담당자 키·D-Day·연체 여부가 함께 기록돼 랜딩 카드와 문서가 동일한 기준으로 경고를 노출합니다. 두 워크플로 모두에서 `npm test -- --runInBand`와 `CI=1 npm run build`를 함께 실행하고 `.next/cache`를 복원하는 빌드 캐시, `jest-junit` 기반 테스트 리포트 업로드, Step Summary용 메트릭 게시를 포함해 에러 리포트 관리자 API 회귀뿐 아니라 실행 시간 추적과 병목 파악을 동시에 지원합니다.【F:data/rankBlueprintProgress.json†L1-L55】【F:data/rankBlueprintNextActions.json†L1-L145】【F:pages/index.js†L8-L200】【F:styles/Home.module.css†L1-L266】【F:scripts/refresh-rank-blueprint-progress.js†L1-L329】【F:scripts/check-rank-blueprint-progress-freshness.js†L1-L62】【F:scripts/check-rank-blueprint-next-actions.js†L1-L72】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L47】【F:.github/workflows/pr-ci.yml†L1-L42】
 
 ---
 느낀 점: 청사진 문서가 방대해 핵심 줄기를 요약해두니 신규 인원과 동기화할 때 맥락 잡기가 한결 수월해졌습니다.

@@ -21,11 +21,11 @@
       },
       "timing": {
         "label": "2025-11-14",
-        "badge": "D-43",
-        "state": "scheduled",
-        "daysFromToday": 43,
+        "badge": "D-6",
+        "state": "due-soon",
+        "daysFromToday": 6,
         "daysFromSnapshot": 6,
-        "computedAtISO": "2025-10-02",
+        "computedAtISO": "2025-11-08",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -49,11 +49,11 @@
       },
       "timing": {
         "label": "2025-12-09",
-        "badge": "D-68",
+        "badge": "D-31",
         "state": "scheduled",
-        "daysFromToday": 68,
+        "daysFromToday": 31,
         "daysFromSnapshot": 31,
-        "computedAtISO": "2025-10-02",
+        "computedAtISO": "2025-11-08",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -77,11 +77,11 @@
       },
       "timing": {
         "label": "2025-11-21",
-        "badge": "D-50",
+        "badge": "D-13",
         "state": "scheduled",
-        "daysFromToday": 50,
+        "daysFromToday": 13,
         "daysFromSnapshot": 13,
-        "computedAtISO": "2025-10-02",
+        "computedAtISO": "2025-11-08",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -105,11 +105,11 @@
       },
       "timing": {
         "label": "2025-11-25",
-        "badge": "D-54",
+        "badge": "D-17",
         "state": "scheduled",
-        "daysFromToday": 54,
+        "daysFromToday": 17,
         "daysFromSnapshot": 17,
-        "computedAtISO": "2025-10-02",
+        "computedAtISO": "2025-11-08",
         "isOverdue": false,
         "overdueDays": 0
       }
@@ -133,11 +133,11 @@
       },
       "timing": {
         "label": "2025-11-28",
-        "badge": "D-57",
+        "badge": "D-20",
         "state": "scheduled",
-        "daysFromToday": 57,
+        "daysFromToday": 20,
         "daysFromSnapshot": 20,
-        "computedAtISO": "2025-10-02",
+        "computedAtISO": "2025-11-08",
         "isOverdue": false,
         "overdueDays": 0
       }

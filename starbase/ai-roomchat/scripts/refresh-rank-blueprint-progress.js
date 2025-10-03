@@ -1,525 +1,329 @@
 #!/usr/bin/env node
-/**
- * Synchronise the landing blueprint progress JSON with the markdown snapshot
- * published in docs/rank-blueprint-overview.md.
- */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('fs/promises')
+const path = require('path')
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-const rootDir = path.resolve(__dirname, '..');
-const overviewPath = path.join(rootDir, 'docs', 'rank-blueprint-overview.md');
-const progressOutputPath = path.join(rootDir, 'data', 'rankBlueprintProgress.json');
-const nextActionsOutputPath = path.join(rootDir, 'data', 'rankBlueprintNextActions.json');
-
-function parseISODateOnly(value) {
-  if (!value) {
-    return null;
-  }
-
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    return null;
-  }
-
-  const [, year, month, day] = match.map(Number);
-  if ([year, month, day].some((part) => Number.isNaN(part))) {
-    return null;
-  }
-
-  return new Date(Date.UTC(year, month - 1, day));
+function parseArgs() {
+  const args = process.argv.slice(2)
+  return args.reduce((acc, arg) => {
+    const [key, value] = arg.split('=')
+    if (key === '--date') {
+      acc.date = value
+    }
+    return acc
+  }, {})
 }
 
-function formatDateISO(date) {
-  const year = date.getUTCFullYear();
-  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getUTCDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function parseISODateOnly(value) {
+  if (!value) return null
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+  const [, yearStr, monthStr, dayStr] = match
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  const day = Number(dayStr)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null
+  }
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+  return date
+}
+
+function formatISODate(date) {
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function formatDisplayDate(iso) {
+  return `${iso} 기준`
 }
 
 function startOfUTCDay(date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
 }
 
-function normaliseOwnerKey(owner) {
-  if (!owner) {
-    return null;
-  }
-
-  const normalised = owner
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '');
-
-  return normalised || null;
+function computeDiffInDays(target, reference) {
+  const diffMs = startOfUTCDay(target).getTime() - startOfUTCDay(reference).getTime()
+  return Math.round(diffMs / (24 * 60 * 60 * 1000))
 }
 
-function readOverview() {
-  try {
-    return fs.readFileSync(overviewPath, 'utf8');
-  } catch (error) {
-    console.error(`Failed to read overview markdown at ${overviewPath}`);
-    throw error;
-  }
+async function readJson(filePath) {
+  const buffer = await fs.readFile(filePath, 'utf8')
+  return JSON.parse(buffer)
 }
 
-function extractProgressSection(markdown) {
-  const sectionRegex = /##\s*7\.\s*진행률 현황\s*\((\d{4}-\d{2}-\d{2})\)([\s\S]*?)(?:\n\n\*\*총 진행률|\n\*\*총 진행률)/;
-  const match = markdown.match(sectionRegex);
-  if (!match) {
-    throw new Error('Unable to locate the 진행률 현황 section in the overview markdown.');
-  }
-  const [, isoDate, sectionContent] = match;
-  return { isoDate, sectionContent };
+async function writeJson(filePath, data) {
+  const content = `${JSON.stringify(data, null, 2)}\n`
+  await fs.writeFile(filePath, content, 'utf8')
 }
 
-function extractNextActionsSection(markdown) {
-  const sectionRegex = /##\s*6\.\s*다음 액션 스냅샷([\s\S]*?)(?:\n##\s*7\.|$)/;
-  const match = markdown.match(sectionRegex);
-  if (!match) {
-    throw new Error('Unable to locate the 다음 액션 스냅샷 section in the overview markdown.');
+function computeOverallProgress(stages) {
+  if (!Array.isArray(stages) || stages.length === 0) {
+    return 0
   }
-
-  return match[1];
-}
-
-function parseProgressTable(sectionContent) {
-  const lines = sectionContent
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('|'));
-
-  if (lines.length <= 2) {
-    throw new Error('The 진행률 현황 table appears to be missing rows.');
-  }
-
-  const dataLines = lines.filter((line) => !line.startsWith('| ---'));
-  // Remove the header row.
-  dataLines.shift();
-
-  return dataLines.map((line) => {
-    const cells = line
-      .split('|')
-      .slice(1, -1)
-      .map((cell) => cell.trim());
-
-    if (cells.length < 4) {
-      throw new Error(`Unexpected table row format: ${line}`);
-    }
-
-    const [label, status, progressCell, summary] = cells;
-    const progressMatch = progressCell.match(/(\d+(?:\.\d+)?)%?/);
-
-    if (!progressMatch) {
-      throw new Error(`Unable to parse progress percentage from cell: ${progressCell}`);
-    }
-
-    const progress = Math.round(parseFloat(progressMatch[1]));
-
-    return {
-      label,
-      status,
-      progress,
-      summary: summary.replace(/\s+/g, ' ').trim(),
-    };
-  });
-}
-
-function parseNextActions(sectionContent) {
-  const tableLines = sectionContent
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('|'));
-
-  if (tableLines.length > 0) {
-    const dataLines = tableLines.filter((line) => !line.startsWith('| ---'));
-    // Remove header row if present.
-    if (dataLines.length && dataLines[0].match(/^\|\s*순번\s*\|/)) {
-      dataLines.shift();
-    }
-
-    if (!dataLines.length) {
-      throw new Error('다음 액션 테이블이 비어 있습니다.');
-    }
-
-    return dataLines.map((line) => {
-      const cells = line
-        .split('|')
-        .slice(1, -1)
-        .map((cell) => cell.trim());
-
-      if (cells.length < 4) {
-        throw new Error(`예상치 못한 다음 액션 테이블 행 형식: ${line}`);
-      }
-
-      let orderCell;
-      let summaryCell;
-      let ownerCell;
-      let targetCell;
-      let priorityCell = '';
-      let effortCell = '';
-
-      if (cells.length >= 6) {
-        [orderCell, summaryCell, ownerCell, targetCell, priorityCell, effortCell] = cells;
-      } else if (cells.length === 4) {
-        [orderCell, summaryCell, ownerCell, targetCell] = cells;
-      } else {
-        [orderCell, summaryCell, ownerCell, targetCell] = cells.slice(0, 4);
-        priorityCell = cells[4] || '';
-        effortCell = cells[5] || '';
-      }
-      const order = Number(orderCell);
-      if (!Number.isFinite(order)) {
-        throw new Error(`순번을 숫자로 파싱할 수 없습니다: ${orderCell}`);
-      }
-
-      const summary = summaryCell.replace(/\s+/g, ' ').trim();
-      const owner = ownerCell.replace(/\s+/g, ' ').trim();
-      const target = targetCell.replace(/\s+/g, ' ').trim();
-      const targetMatch = target.match(/(\d{4}-\d{2}-\d{2})/);
-
-      return {
-        order,
-        summary,
-        owner,
-        targetDateISO: targetMatch ? targetMatch[1] : null,
-        targetDateDisplay: target,
-        priority: parsePriorityCell(priorityCell),
-        effort: parseEffortCell(effortCell),
-      };
-    });
-  }
-
-  // Fallback to list parsing for backward compatibility with earlier formats.
-  const lines = sectionContent
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const actions = [];
-  let current = null;
-
-  lines.forEach((line) => {
-    const match = line.match(/^(\d+)\.\s+(.*)$/);
-    if (match) {
-      if (current) {
-        actions.push(current);
-      }
-      current = {
-        order: Number(match[1]),
-        summary: match[2].trim(),
-      };
-      return;
-    }
-
-    if (current) {
-      current.summary = `${current.summary} ${line}`.trim();
-    }
-  });
-
-  if (current) {
-    actions.push(current);
-  }
-
-  if (!actions.length) {
-    throw new Error('Failed to parse any next actions from the overview markdown.');
-  }
-
-  return actions
-    .sort((a, b) => a.order - b.order)
-    .map((action) => ({
-      order: action.order,
-      summary: action.summary.replace(/\s+/g, ' ').trim(),
-      owner: null,
-      targetDateISO: null,
-      targetDateDisplay: null,
-      priority: null,
-      effort: null,
-    }));
-}
-
-function parsePriorityCell(cell) {
-  const label = (cell || '').replace(/\s+/g, ' ').trim();
-  if (!label) {
-    return null;
-  }
-
-  const priorityMatch = label.match(/p\s*(\d+(?:\.\d+)?)/i);
-  const rankValue = priorityMatch ? Number.parseFloat(priorityMatch[1]) : null;
-  const normalisedRank = Number.isFinite(rankValue) ? rankValue : null;
-  const short = priorityMatch
-    ? `P${priorityMatch[1]}`.toUpperCase()
-    : label.split(/\s+/)[0].toUpperCase();
-
-  return {
-    label,
-    short: short || null,
-    rank: normalisedRank,
-    sortKey: normalisedRank,
-  };
-}
-
-function parseEffortCell(cell) {
-  const label = (cell || '').replace(/\s+/g, ' ').trim();
-  if (!label) {
-    return null;
-  }
-
-  const lower = label.toLowerCase();
-  const match = label.match(/(\d+(?:\.\d+)?)/);
-  let personDays = null;
-
-  if (match) {
-    const value = Number.parseFloat(match[1]);
+  const sum = stages.reduce((total, stage) => {
+    const value = Number(stage?.progress)
     if (Number.isFinite(value)) {
-      if (/(?:시간|hour|hrs?|h\b)/.test(lower)) {
-        personDays = value / 8;
-      } else if (/(?:주|week)/.test(lower)) {
-        personDays = value * 5;
-      } else if (/(?:반일|half-day)/.test(lower)) {
-        personDays = value * 0.5;
-      } else {
-        personDays = value;
-      }
+      return total + value
     }
-  }
-
-  return {
-    label,
-    personDays: personDays !== null ? Number(personDays.toFixed(2)) : null,
-  };
+    return total
+  }, 0)
+  return Math.round(sum / stages.length)
 }
 
-function deriveTimingForAction(action, snapshotISO) {
-  const label = action.targetDateDisplay || action.targetDateISO || null;
-  const targetDate = action.targetDateISO ? parseISODateOnly(action.targetDateISO) : null;
-  const today = startOfUTCDay(new Date());
-  const computedAtISO = formatDateISO(today);
-  const snapshotDate = snapshotISO ? parseISODateOnly(snapshotISO) : null;
-
-  if (!targetDate) {
+function computeTiming(targetISO, snapshotDate) {
+  if (!targetISO) {
     return {
-      label,
+      label: null,
       badge: null,
       state: 'unscheduled',
       daysFromToday: null,
       daysFromSnapshot: null,
-      computedAtISO,
+      computedAtISO: formatISODate(snapshotDate),
       isOverdue: false,
       overdueDays: 0,
-    };
+    }
   }
 
-  const daysFromToday = Math.floor((targetDate.getTime() - today.getTime()) / MS_PER_DAY);
-  const daysFromSnapshot = snapshotDate
-    ? Math.floor((targetDate.getTime() - snapshotDate.getTime()) / MS_PER_DAY)
-    : null;
-
-  let state = 'scheduled';
-  if (daysFromToday < 0) {
-    state = 'overdue';
-  } else if (daysFromToday <= 3) {
-    state = 'due-imminent';
-  } else if (daysFromToday <= 7) {
-    state = 'due-soon';
+  const targetDate = parseISODateOnly(targetISO)
+  if (!targetDate) {
+    return {
+      label: targetISO,
+      badge: null,
+      state: 'scheduled',
+      daysFromToday: null,
+      daysFromSnapshot: null,
+      computedAtISO: formatISODate(snapshotDate),
+      isOverdue: false,
+      overdueDays: 0,
+    }
   }
 
-  const badge = daysFromToday < 0
-    ? `D+${Math.abs(daysFromToday)}`
-    : daysFromToday === 0
-    ? 'D-DAY'
-    : `D-${daysFromToday}`;
+  const diffDays = computeDiffInDays(targetDate, snapshotDate)
+
+  let badge
+  if (diffDays < 0) {
+    badge = `D+${Math.abs(diffDays)}`
+  } else if (diffDays === 0) {
+    badge = 'D-DAY'
+  } else {
+    badge = `D-${diffDays}`
+  }
+
+  const state = diffDays < 0 ? 'overdue' : diffDays <= 3 ? 'due-imminent' : diffDays <= 7 ? 'due-soon' : 'scheduled'
 
   return {
-    label,
+    label: targetISO,
     badge,
     state,
-    daysFromToday,
-    daysFromSnapshot,
-    computedAtISO,
-    isOverdue: state === 'overdue',
-    overdueDays: state === 'overdue' ? Math.abs(daysFromToday) : 0,
-  };
-}
-
-function decorateNextActions(actions, snapshotISO) {
-  return actions.map((action) => {
-    const timing = deriveTimingForAction(action, snapshotISO);
-
-    return {
-      ...action,
-      ownerKey: normaliseOwnerKey(action.owner),
-      priority: action.priority || null,
-      effort: action.effort || null,
-      timing,
-    };
-  });
-}
-
-function buildStatusBlock(actions) {
-  if (!actions.length) {
-    return '> ⚠️ 다음 액션 항목을 찾지 못했습니다. 개요 문서를 확인해 주세요.';
+    daysFromToday: diffDays,
+    daysFromSnapshot: diffDays,
+    computedAtISO: formatISODate(snapshotDate),
+    isOverdue: diffDays < 0,
+    overdueDays: diffDays < 0 ? Math.abs(diffDays) : 0,
   }
+}
 
-  const computedAtISO = actions[0]?.timing?.computedAtISO || formatDateISO(startOfUTCDay(new Date()));
-  const overdue = actions.filter((action) => action.timing?.isOverdue);
-  const imminent = actions.filter(
-    (action) => !action.timing?.isOverdue && action.timing?.state === 'due-imminent',
-  );
+function buildProgressSection(displayDate, stages, overall) {
+  const lines = []
+  lines.push(`## 7. 진행률 현황 (${displayDate})`)
+  lines.push('')
+  lines.push('| 단계 | 상태 | 진행률 | 메모 |')
+  lines.push('| --- | --- | --- | --- |')
+  stages.forEach((stage) => {
+    const progress = Number(stage.progress)
+    const progressLabel = Number.isFinite(progress) ? `${progress}%` : 'N/A'
+    lines.push(`| ${stage.label} | ${stage.status} | ${progressLabel} | ${stage.summary} |`)
+  })
+  lines.push('')
+  lines.push(`**총 진행률(단계별 동일 가중치)**: 약 **${overall}%**`)
+  lines.push('')
+  return lines.join('\n')
+}
 
-  const lines = [`> _${computedAtISO} 기준 자동 생성된 기한 알림._`];
+function buildRemainingSection(displayDate, remainingFocus, stageMap) {
+  const lines = []
+  lines.push(`### 8. 남은 청사진 핵심 작업 (${displayDate})`)
+  lines.push('| 단계 | 남은 핵심 작업 | 현재 진행률 |')
+  lines.push('| --- | --- | --- |')
+  remainingFocus.forEach((focus) => {
+    const stage = stageMap.get(focus.stage)
+    const progress = stage ? `${Number(stage.progress)}%` : 'N/A'
+    lines.push(`| ${focus.stage} | ${focus.nextStep} | ${progress} |`)
+  })
+  lines.push('')
+  return lines.join('\n')
+}
 
+function buildNextActionsSection(displayDate, items) {
+  const lines = []
+  lines.push('## 6. 다음 액션 스냅샷')
+  lines.push('')
+
+  const overdue = items.filter((item) => item.timing?.state === 'overdue')
+  const dueImminent = items.filter((item) => item.timing?.state === 'due-imminent')
+  const dueSoon = items.filter((item) => item.timing?.state === 'due-soon')
+
+  const formatLabels = (list) =>
+    list.map((item) => `#${item.order}${item.owner ? ` (${item.owner})` : ''}`).join(', ')
+
+  let statusLine
   if (overdue.length) {
-    lines.push('> ⚠️ **기한 경과 항목**');
-    overdue.forEach((action) => {
-      const badge = action.timing?.badge ? ` (${action.timing.badge})` : '';
-      const owner = action.owner || '담당 미지정';
-      const dateLabel = action.timing?.label || action.targetDateDisplay || action.targetDateISO || '목표일 미정';
-      lines.push(`> - ${owner} · ${dateLabel}${badge}: ${action.summary}`);
-    });
+    statusLine = `⚠️ ${formatLabels(overdue)} 마감이 지났습니다.`
+  } else if (dueImminent.length) {
+    statusLine = `⏰ ${formatLabels(dueImminent)} 마감이 임박했습니다.`
+  } else if (dueSoon.length) {
+    statusLine = `📅 ${formatLabels(dueSoon)} 마감이 일주일 이내입니다.`
+  } else {
+    statusLine = '✅ 모든 항목이 목표일 이내에 있습니다.'
   }
 
-  if (imminent.length) {
-    lines.push('> ⏰ **임박한 목표일 (3일 이하)**');
-    imminent.forEach((action) => {
-      const badge = action.timing?.badge ? ` (${action.timing.badge})` : '';
-      const owner = action.owner || '담당 미지정';
-      const dateLabel = action.timing?.label || action.targetDateDisplay || action.targetDateISO || '목표일 미정';
-      lines.push(`> - ${owner} · ${dateLabel}${badge}: ${action.summary}`);
-    });
-  }
-
-  if (!overdue.length && !imminent.length) {
-    lines.push('> ✅ 모든 항목이 목표일 이내에 있습니다.');
-  }
-
-  return lines.join('\n');
+  lines.push('<!-- next-actions-status:start -->')
+  lines.push(`> _${displayDate} 자동 생성된 기한 알림._`)
+  lines.push(`> ${statusLine}`)
+  lines.push('<!-- next-actions-status:end -->')
+  lines.push('')
+  lines.push('| 순번 | 작업 | 담당 | 목표일 | 우선순위 | 예상 리소스 |')
+  lines.push('| --- | --- | --- | --- | --- | --- |')
+  items
+    .slice()
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .forEach((item) => {
+      const target = item.targetDateDisplay || item.targetDateISO || '-'
+      const priority = item.priority?.label || '-'
+      const effort = item.effort?.label || '-'
+      lines.push(`| ${item.order} | ${item.summary} | ${item.owner || '-'} | ${target} | ${priority} | ${effort} |`)
+    })
+  lines.push('')
+  return lines.join('\n')
 }
 
-function updateOverviewStatusNote(markdown, statusBlock) {
-  const startMarker = '<!-- next-actions-status:start -->';
-  const endMarker = '<!-- next-actions-status:end -->';
-  const blockRegex = new RegExp(`${startMarker}[\s\S]*?${endMarker}`);
-  const replacement = `${startMarker}\n${statusBlock}\n${endMarker}`;
-
-  if (blockRegex.test(markdown)) {
-    return markdown.replace(blockRegex, replacement);
+function replaceBetweenMarkers(content, startMarker, endMarker, replacement) {
+  const startIndex = content.indexOf(startMarker)
+  if (startIndex === -1) {
+    throw new Error(`문서에서 "${startMarker}" 마커를 찾을 수 없습니다.`)
   }
-
-  const insertionPoint = markdown.indexOf('## 6. 다음 액션 스냅샷');
-  if (insertionPoint === -1) {
-    return markdown;
+  const endIndex = content.indexOf(endMarker, startIndex + startMarker.length)
+  if (endIndex === -1) {
+    throw new Error(`문서에서 "${endMarker}" 마커를 찾을 수 없습니다.`)
   }
-
-  const before = markdown.slice(0, insertionPoint);
-  const after = markdown.slice(insertionPoint);
-  return `${before}${startMarker}\n${statusBlock}\n${endMarker}\n\n${after}`;
+  const before = content.slice(0, startIndex + startMarker.length)
+  const after = content.slice(endIndex)
+  return `${before}\n${replacement}${after}`
 }
 
-function buildProgressPayload({ isoDate, stages }) {
-  return {
-    lastUpdatedISO: isoDate,
-    lastUpdatedDisplay: `${isoDate} 기준`,
-    stages,
-  };
+async function updateDocumentation(progressData, nextActionsData) {
+  const docPath = path.join(__dirname, '..', 'docs', 'rank-blueprint-overview.md')
+  const docContent = await fs.readFile(docPath, 'utf8')
+
+  const stageMap = new Map(progressData.stages.map((stage) => [stage.label, stage]))
+
+  const nextActionsSection = buildNextActionsSection(progressData.lastUpdatedDisplay, nextActionsData.items)
+  const progressSection = buildProgressSection(progressData.lastUpdatedDisplay, progressData.stages, progressData.overallProgress)
+  const remainingSection = buildRemainingSection(progressData.lastUpdatedDisplay, progressData.remainingFocus, stageMap)
+
+  const withNextActions = replaceBetweenMarkers(
+    docContent,
+    '<!-- blueprint-next-actions:start -->',
+    '<!-- blueprint-next-actions:end -->',
+    `${nextActionsSection}\n`
+  )
+
+  const withProgress = replaceBetweenMarkers(
+    withNextActions,
+    '<!-- blueprint-progress:start -->',
+    '<!-- blueprint-progress:end -->',
+    `${progressSection}\n`
+  )
+
+  const finalContent = replaceBetweenMarkers(
+    withProgress,
+    '<!-- blueprint-remaining:start -->',
+    '<!-- blueprint-remaining:end -->',
+    `${remainingSection}\n`
+  )
+
+  await fs.writeFile(docPath, finalContent, 'utf8')
 }
 
-function buildNextActionsPayload({ isoDate, actions }) {
-  return {
-    lastUpdatedISO: isoDate,
-    lastUpdatedDisplay: `${isoDate} 기준`,
-    items: actions.map((action) => ({
-      order: action.order,
-      summary: action.summary,
-      owner: action.owner || null,
-      ownerKey: action.ownerKey || null,
-      targetDateISO: action.targetDateISO || null,
-      targetDateDisplay: action.targetDateDisplay || null,
-      priority: action.priority
-        ? {
-            label: action.priority.label || null,
-            short: action.priority.short || null,
-            rank:
-              typeof action.priority.rank === 'number' ? action.priority.rank : null,
-            sortKey:
-              typeof action.priority.sortKey === 'number' ? action.priority.sortKey : null,
-          }
-        : null,
-      effort: action.effort
-        ? {
-            label: action.effort.label || null,
-            personDays:
-              typeof action.effort.personDays === 'number'
-                ? action.effort.personDays
-                : null,
-          }
-        : null,
+async function main() {
+  const args = parseArgs()
+  let snapshotDate
+  if (args.date) {
+    const parsed = parseISODateOnly(args.date)
+    if (!parsed) {
+      throw new Error('유효한 --date=YYYY-MM-DD 값을 입력해 주세요.')
+    }
+    snapshotDate = parsed
+  } else {
+    snapshotDate = startOfUTCDay(new Date())
+  }
+
+  const progressPath = path.join(__dirname, '..', 'data', 'rankBlueprintProgress.json')
+  const nextActionsPath = path.join(__dirname, '..', 'data', 'rankBlueprintNextActions.json')
+
+  const [progressData, nextActionsData] = await Promise.all([
+    readJson(progressPath),
+    readJson(nextActionsPath),
+  ])
+
+  const overallProgress = computeOverallProgress(progressData.stages)
+
+  const snapshotISO = formatISODate(snapshotDate)
+  const displayDate = formatDisplayDate(snapshotISO)
+
+  const normalisedStages = (Array.isArray(progressData.stages) ? progressData.stages : []).map((stage) => ({
+    ...stage,
+    progress: Number(stage.progress),
+  }))
+
+  const normalisedRemaining = (Array.isArray(progressData.remainingFocus) ? progressData.remainingFocus : []).map((focus) => ({
+    ...focus,
+  }))
+
+  const normalisedNextActions = (Array.isArray(nextActionsData.items) ? nextActionsData.items : []).map((item) => {
+    const timing = computeTiming(item.targetDateISO, snapshotDate)
+    return {
+      ...item,
       timing: {
-        label: action.timing?.label || (action.targetDateDisplay || action.targetDateISO || null),
-        badge: action.timing?.badge || null,
-        state: action.timing?.state || (action.targetDateISO ? 'scheduled' : 'unscheduled'),
-        daysFromToday:
-          typeof action.timing?.daysFromToday === 'number' ? action.timing.daysFromToday : null,
-        daysFromSnapshot:
-          typeof action.timing?.daysFromSnapshot === 'number'
-            ? action.timing.daysFromSnapshot
-            : null,
-        computedAtISO: action.timing?.computedAtISO || null,
-        isOverdue: Boolean(action.timing?.isOverdue),
-        overdueDays:
-          typeof action.timing?.overdueDays === 'number' ? action.timing.overdueDays : 0,
+        ...item.timing,
+        ...timing,
       },
-    })),
-  };
-}
+    }
+  })
 
-function writeJson(outputPath, payload) {
-  const formatted = `${JSON.stringify(payload, null, 2)}\n`;
-  fs.writeFileSync(outputPath, formatted, 'utf8');
-}
-
-function main() {
-  const markdown = readOverview();
-  const { isoDate, sectionContent } = extractProgressSection(markdown);
-  const stages = parseProgressTable(sectionContent);
-  const actionsSection = extractNextActionsSection(markdown);
-  const parsedActions = parseNextActions(actionsSection);
-  const decoratedActions = decorateNextActions(parsedActions, isoDate);
-
-  const statusBlock = buildStatusBlock(decoratedActions);
-  const updatedMarkdown = updateOverviewStatusNote(markdown, statusBlock);
-
-  const progressPayload = buildProgressPayload({ isoDate, stages });
-  const nextActionsPayload = buildNextActionsPayload({ isoDate, actions: decoratedActions });
-
-  writeJson(progressOutputPath, progressPayload);
-  writeJson(nextActionsOutputPath, nextActionsPayload);
-
-  if (updatedMarkdown !== markdown) {
-    fs.writeFileSync(overviewPath, updatedMarkdown, 'utf8');
+  const updatedProgress = {
+    ...progressData,
+    lastUpdatedISO: snapshotISO,
+    lastUpdatedDisplay: displayDate,
+    overallProgress,
+    stages: normalisedStages,
+    remainingFocus: normalisedRemaining,
   }
 
-  const overdueCount = decoratedActions.filter((action) => action.timing?.isOverdue).length;
-  const imminentCount = decoratedActions.filter(
-    (action) => !action.timing?.isOverdue && action.timing?.state === 'due-imminent',
-  ).length;
-
-  console.log(
-    `Updated ${path.relative(rootDir, progressOutputPath)} (${stages.length} stages) and ${path.relative(
-      rootDir,
-      nextActionsOutputPath,
-    )} (${decoratedActions.length} next actions) dated ${isoDate}. ` +
-      `Alerts — overdue: ${overdueCount}, due soon: ${imminentCount}.`,
-  );
-}
-
-if (require.main === module) {
-  try {
-    main();
-  } catch (error) {
-    console.error(error.message);
-    process.exitCode = 1;
+  const updatedNextActions = {
+    ...nextActionsData,
+    lastUpdatedISO: snapshotISO,
+    lastUpdatedDisplay: displayDate,
+    items: normalisedNextActions,
   }
+
+  await Promise.all([
+    writeJson(progressPath, updatedProgress),
+    writeJson(nextActionsPath, updatedNextActions),
+  ])
+
+  await updateDocumentation(updatedProgress, updatedNextActions)
+
+  console.log(`랭크 청사진 진행 데이터를 ${snapshotISO} 기준으로 새로 고쳤습니다.`)
 }
+
+main().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})
