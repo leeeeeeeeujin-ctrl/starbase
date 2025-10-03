@@ -58,6 +58,15 @@ const DEFAULT_EQ_SETTINGS = { enabled: false, low: 0, mid: 0, high: 0 }
 const DEFAULT_REVERB_SETTINGS = { enabled: false, mix: 0.3, decay: 1.8 }
 const DEFAULT_COMPRESSOR_SETTINGS = { enabled: false, threshold: -28, ratio: 2.5, release: 0.25 }
 
+function compareParticipantsByScore(a, b) {
+  const scoreA = Number.isFinite(Number(a?.score)) ? Number(a.score) : -Infinity
+  const scoreB = Number.isFinite(Number(b?.score)) ? Number(b.score) : -Infinity
+  if (scoreA === scoreB) {
+    return (a?.created_at || '').localeCompare(b?.created_at || '')
+  }
+  return scoreB - scoreA
+}
+
 const TABS = [
   { key: 'main', label: '메인 룸' },
   { key: 'hero', label: '캐릭터 정보' },
@@ -1100,7 +1109,7 @@ export default function GameRoomView({
     return map
   }, [participants])
 
-  const heroAudioProfile = useMemo(() => {
+  const baseHeroAudioProfile = useMemo(() => {
     const viewerProfile = normalizeHeroAudioProfile(myHero)
     if (viewerProfile) {
       return { ...viewerProfile, source: 'viewer' }
@@ -1137,6 +1146,46 @@ export default function GameRoomView({
 
     return null
   }, [game?.owner_id, myHero, participants])
+
+  const rankingHeroAudioProfile = useMemo(() => {
+    const candidates = Array.isArray(participants)
+      ? participants
+          .filter(
+            (participant) =>
+              participant?.hero && (participant.hero.bgm_url || participant.hero.bgmUrl),
+          )
+          .slice()
+          .sort(compareParticipantsByScore)
+      : []
+
+    const top = candidates[0] || null
+    if (!top?.hero) {
+      return null
+    }
+
+    const rankingProfile = normalizeHeroAudioProfile(top.hero, {
+      fallbackHeroId: top.hero_id || null,
+      fallbackHeroName: top.hero?.name || '',
+    })
+
+    if (!rankingProfile) {
+      return null
+    }
+
+    return { ...rankingProfile, source: 'ranking' }
+  }, [participants])
+
+  const heroAudioProfile = useMemo(() => {
+    if (activeTab === 'ranking' && rankingHeroAudioProfile) {
+      return rankingHeroAudioProfile
+    }
+
+    if (baseHeroAudioProfile) {
+      return baseHeroAudioProfile
+    }
+
+    return null
+  }, [activeTab, baseHeroAudioProfile, rankingHeroAudioProfile])
 
   const heroAudioProfileKey = useMemo(
     () => buildHeroAudioProfileKey(heroAudioProfile),
@@ -1230,6 +1279,8 @@ export default function GameRoomView({
         return '현재 브금 · 방장 기준'
       case 'participant':
         return '현재 브금 · 참가자 공유'
+      case 'ranking':
+        return '현재 브금 · 랭킹 1위'
       default:
         return '현재 브금'
     }
@@ -1335,7 +1386,7 @@ export default function GameRoomView({
 
   const applyLoadedHeroAudioPreference = useCallback(
     (preference) => {
-      if (!heroAudioProfile) {
+      if (!heroAudioProfile || heroAudioProfile.source === 'ranking') {
         return { hadAdjustments: false, normalized: null }
       }
 
@@ -1420,6 +1471,9 @@ export default function GameRoomView({
     if (!viewerId || !heroAudioProfileKey || !heroAudioProfile) {
       return undefined
     }
+    if (heroAudioProfile.source === 'ranking') {
+      return undefined
+    }
     if (audioPreferenceLoadedKey === heroAudioProfileKey) {
       return undefined
     }
@@ -1484,6 +1538,9 @@ export default function GameRoomView({
 
   useEffect(() => {
     if (!viewerId || !heroAudioProfileKey || !heroAudioProfile) {
+      return undefined
+    }
+    if (heroAudioProfile.source === 'ranking') {
       return undefined
     }
     if (audioPreferenceLoadedKey !== heroAudioProfileKey) {
@@ -1923,24 +1980,14 @@ export default function GameRoomView({
   }, [myEntry?.hero_id, myHero?.id, recentBattles])
 
   const overallRanking = useMemo(() => {
-    return [...participants].sort((a, b) => {
-      const scoreA = Number.isFinite(Number(a?.score)) ? Number(a.score) : -Infinity
-      const scoreB = Number.isFinite(Number(b?.score)) ? Number(b.score) : -Infinity
-      if (scoreA === scoreB) return (a?.created_at || '').localeCompare(b?.created_at || '')
-      return scoreB - scoreA
-    })
+    return [...participants].sort(compareParticipantsByScore)
   }, [participants])
 
   const roleRankings = useMemo(() => {
     const grouped = groupByRole(participants)
     return Array.from(grouped.entries()).map(([role, members]) => ({
       role,
-      members: [...members].sort((a, b) => {
-        const scoreA = Number.isFinite(Number(a?.score)) ? Number(a.score) : -Infinity
-        const scoreB = Number.isFinite(Number(b?.score)) ? Number(b.score) : -Infinity
-        if (scoreA === scoreB) return (a?.created_at || '').localeCompare(b?.created_at || '')
-        return scoreB - scoreA
-      }),
+      members: [...members].sort(compareParticipantsByScore),
     }))
   }, [participants])
 
