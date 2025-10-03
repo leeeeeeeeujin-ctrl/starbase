@@ -47,6 +47,7 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 ### `public.rank_title_settings`
 - Holds a single row per slug (default `main`) with `background_url`, optional operator `update_note`, and `updated_at` to drive the landing hero background that the admin portal edits.
 - Expose read access to the service role API while restricting mutations to service integrations; add a unique primary key on `slug` so `upsert` updates stay idempotent.
+- Store uploaded artwork in a public storage bucket such as `title-backgrounds/` so the admin portal can upload binaries via the service role and the landing hero can render the resulting public URL.
 
 ### `public.rank_announcements`
 - Backs the admin notice composer with `id uuid default gen_random_uuid()`, `title`, `body`, `published_at`, and audit timestamps so roster and landing surfaces can show the freshest announcement.
