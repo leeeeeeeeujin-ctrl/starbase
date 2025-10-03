@@ -388,6 +388,14 @@ export default function AutoMatchProgress({ gameId, mode }) {
 
         const { apiKey, apiVersion } = readStoredStartConfig()
         const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+
+        if (trimmedApiKey && typeof window !== 'undefined') {
+          try {
+            window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
+          } catch (error) {
+            console.warn('[AutoMatchProgress] API 키를 저장하지 못했습니다:', error)
+          }
+        }
         if (!trimmedApiKey) {
           setPlayNotice('AI API 키 확인은 전투 화면에서 진행됩니다.')
           return true
@@ -419,7 +427,11 @@ export default function AutoMatchProgress({ gameId, mode }) {
         if (!response.ok || (payload && payload.ok === false && payload.error)) {
           const message =
             payload?.error || payload?.detail || '전투를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          setJoinError(message)
+          if (message === 'missing_user_api_key') {
+            setJoinError('AI API 키가 필요합니다. 전투 화면에서 키를 입력한 뒤 다시 시도해 주세요.')
+          } else {
+            setJoinError(message)
+          }
           setPlayNotice('')
           playTriggeredRef.current = false
           return false
@@ -428,7 +440,11 @@ export default function AutoMatchProgress({ gameId, mode }) {
         if (payload?.error && !payload?.ok) {
           const message =
             payload?.error || '전투를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          setJoinError(message)
+          if (message === 'missing_user_api_key') {
+            setJoinError('AI API 키가 필요합니다. 전투 화면에서 키를 입력한 뒤 다시 시도해 주세요.')
+          } else {
+            setJoinError(message)
+          }
           setPlayNotice('')
           playTriggeredRef.current = false
           return false

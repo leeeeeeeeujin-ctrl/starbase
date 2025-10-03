@@ -436,6 +436,20 @@ export function useStartClientEngine(gameId) {
     [evaluateApiKeyCooldown, normaliseApiKey],
   )
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (typeof apiKey === 'string' && apiKey.trim()) return
+    try {
+      const stored = window.sessionStorage.getItem('rank.start.apiKey') || ''
+      const trimmed = normaliseApiKey(stored)
+      if (trimmed) {
+        setApiKey(trimmed)
+      }
+    } catch (error) {
+      console.warn('[StartClient] API 키를 불러오지 못했습니다:', error)
+    }
+  }, [apiKey, normaliseApiKey, setApiKey])
+
   const setApiVersion = useCallback((value) => {
     setApiVersionState(value)
     if (typeof window !== 'undefined') {
