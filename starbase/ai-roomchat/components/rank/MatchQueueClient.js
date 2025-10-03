@@ -188,6 +188,8 @@ export default function MatchQueueClient({
   const autoJoinRetryTimerRef = useRef(null)
   const heroMissingRedirectRef = useRef(false)
   const heroMissingTimerRef = useRef(null)
+  const dropInRedirectTimerRef = useRef(null)
+  const dropInMatchSignatureRef = useRef('')
   const [refreshing, setRefreshing] = useState(false)
 
   const [voteRemaining, setVoteRemaining] = useState(null)
@@ -199,6 +201,7 @@ export default function MatchQueueClient({
   })
   const [finalTimer, setFinalTimer] = useState(null)
   const finalTimerResolvedRef = useRef(null)
+  const [dropInRedirectRemaining, setDropInRedirectRemaining] = useState(null)
   const matchType = state.match?.matchType || 'standard'
   const isBrawlMatch = matchType === 'brawl'
   const isDropInMatch = matchType === 'drop_in'
@@ -528,6 +531,17 @@ export default function MatchQueueClient({
 
   useEffect(() => {
     if (state.status === 'matched' && state.match) {
+      if (isDropInMatch) {
+        setVoteRemaining(null)
+        setFinalTimer(null)
+        finalTimerResolvedRef.current = null
+        if (voteTimerRef.current) {
+          clearInterval(voteTimerRef.current)
+          voteTimerRef.current = null
+        }
+        return () => {}
+      }
+
       finalTimerResolvedRef.current = null
       setFinalTimer(null)
       setVoteRemaining(15)
@@ -558,12 +572,13 @@ export default function MatchQueueClient({
       voteTimerRef.current = null
     }
     return () => {}
-  }, [state.status, state.match])
+  }, [state.status, state.match, isDropInMatch])
 
   useEffect(() => {
     if (
       state.status !== 'matched' ||
       !state.match ||
+      isDropInMatch ||
       voteRemaining == null ||
       voteRemaining > 0 ||
       finalTimerResolvedRef.current != null
@@ -646,12 +661,66 @@ export default function MatchQueueClient({
         clearInterval(voteTimerRef.current)
         voteTimerRef.current = null
       }
+      if (dropInRedirectTimerRef.current) {
+        clearInterval(dropInRedirectTimerRef.current)
+        dropInRedirectTimerRef.current = null
+      }
       if (latestStatusRef.current === 'queued') {
         actions.cancelQueue()
       }
     },
     [actions],
   )
+
+  useEffect(() => {
+    if (!isDropInMatch || state.status !== 'matched' || !state.match) {
+      setDropInRedirectRemaining(null)
+      dropInMatchSignatureRef.current = ''
+      if (dropInRedirectTimerRef.current) {
+        clearInterval(dropInRedirectTimerRef.current)
+        dropInRedirectTimerRef.current = null
+      }
+      return
+    }
+
+    const signature = state.match.matchCode || JSON.stringify(state.match.assignments || [])
+    if (dropInMatchSignatureRef.current === signature && dropInRedirectTimerRef.current) {
+      return
+    }
+
+    if (dropInRedirectTimerRef.current) {
+      clearInterval(dropInRedirectTimerRef.current)
+      dropInRedirectTimerRef.current = null
+    }
+
+    dropInMatchSignatureRef.current = signature
+    setDropInRedirectRemaining(5)
+
+    dropInRedirectTimerRef.current = setInterval(() => {
+      setDropInRedirectRemaining((prev) => {
+        if (prev == null) return prev
+        if (prev <= 1) {
+          if (dropInRedirectTimerRef.current) {
+            clearInterval(dropInRedirectTimerRef.current)
+            dropInRedirectTimerRef.current = null
+          }
+          if (!navigationLockRef.current) {
+            navigationLockRef.current = true
+            router.replace(`/rank/${gameId}`)
+          }
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      if (dropInRedirectTimerRef.current) {
+        clearInterval(dropInRedirectTimerRef.current)
+        dropInRedirectTimerRef.current = null
+      }
+    }
+  }, [isDropInMatch, state.status, state.match, router, gameId])
 
   const handleTimerVote = (value) => {
     const numeric = Number(value)
@@ -841,12 +910,22 @@ export default function MatchQueueClient({
             ))}
           </div>
 
-          <TimerVotePanel
-            remaining={voteRemaining}
-            selected={voteValue}
-            onSelect={handleTimerVote}
-            finalTimer={finalTimer}
-          />
+          {!isDropInMatch ? (
+            <TimerVotePanel
+              remaining={voteRemaining}
+              selected={voteValue}
+              onSelect={handleTimerVote}
+              finalTimer={finalTimer}
+            />
+          ) : null}
+
+          {isDropInMatch && dropInRedirectRemaining != null ? (
+            <p className={styles.dropInCountdown}>
+              {dropInRedirectRemaining > 0
+                ? `${dropInRedirectRemaining}초 후 메인 룸으로 이동합니다.`
+                : '메인 룸으로 이동합니다…'}
+            </p>
+          ) : null}
 
           {countdown != null ? (
             <div className={styles.countdownOverlay}>
