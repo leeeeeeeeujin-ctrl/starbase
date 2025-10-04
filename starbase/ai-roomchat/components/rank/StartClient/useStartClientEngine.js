@@ -19,6 +19,7 @@ import { loadGameBundle } from './engine/loadGameBundle'
 import { pickNextEdge } from './engine/graph'
 import { buildSystemMessage, parseRules } from './engine/systemPrompt'
 import { resolveSlotBinding } from './engine/slotBindingResolver'
+import { createBridgeContext } from './engine/bridgeContext'
 import { createTurnTimerService } from './services/turnTimerService'
 import {
   createTurnVoteController,
@@ -215,6 +216,7 @@ export function useStartClientEngine(gameId) {
   const [manualResponse, setManualResponse] = useState('')
   const [isAdvancing, setIsAdvancing] = useState(false)
   const [winCount, setWinCount] = useState(0)
+  const [lastDropInTurn, setLastDropInTurn] = useState(null)
   const [historyVersion, setHistoryVersion] = useState(0)
   const [viewerId, setViewerId] = useState(null)
   const [turnDeadline, setTurnDeadline] = useState(null)
@@ -850,7 +852,15 @@ export function useStartClientEngine(gameId) {
         typeof prev === 'number' ? prev + extraSeconds : prev,
       )
     }
+
+    setLastDropInTurn(Number.isFinite(Number(turn)) ? Number(turn) : 0)
   }, [participants, preflight, turnDeadline, turn])
+
+  useEffect(() => {
+    if (!currentNodeId) {
+      setLastDropInTurn(null)
+    }
+  }, [currentNodeId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -1137,6 +1147,7 @@ export function useStartClientEngine(gameId) {
     setTurn(1)
     setLogs([])
     setWinCount(0)
+    setLastDropInTurn(null)
     setActiveGlobal([])
     setActiveLocal([])
     setStatusMessage('게임이 시작되었습니다.')
@@ -1585,7 +1596,7 @@ export function useStartClientEngine(gameId) {
         setActiveLocal(outcome.variables || [])
         setActiveGlobal(nextActiveGlobal)
 
-        const context = {
+        const context = createBridgeContext({
           turn,
           historyUserText: history.joinedText({ onlyPublic: true, last: 5 }),
           historyAiText: history.joinedText({ onlyPublic: false, last: 5 }),
@@ -1593,7 +1604,17 @@ export function useStartClientEngine(gameId) {
           participantsStatus,
           activeGlobalNames: nextActiveGlobal,
           activeLocalNames: outcome.variables || [],
-        }
+          currentRole:
+            actorContext?.participant?.role || actorContext?.heroSlot?.role || null,
+          sessionFlags: {
+            brawlEnabled,
+            gameVoided,
+            winCount,
+            lastDropInTurn,
+            endTriggered: triggeredEnd,
+            dropInGraceTurns: 0,
+          },
+        })
 
         const outgoing = graph.edges.filter(
           (edge) => edge.from === String(node.id) || edge.from === node.id,
@@ -1735,6 +1756,7 @@ export function useStartClientEngine(gameId) {
       brawlEnabled,
       endConditionVariable,
       winCount,
+      lastDropInTurn,
       viewerId,
       updateHeroAssets,
       logTurnEntries,
