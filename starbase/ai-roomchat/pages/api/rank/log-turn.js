@@ -2,6 +2,10 @@ import { createClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { buildTurnSummaryPayload } from '@/lib/rank/turnSummary'
+import {
+  broadcastRealtimeTimeline,
+  notifyRealtimeTimelineWebhook,
+} from '@/lib/rank/realtimeEventNotifications'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -224,5 +228,81 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: updateError.message })
   }
 
+  const resolvedTurn =
+    Number.isFinite(numericTurn) && numericTurn > 0 ? numericTurn : Number(session.turn) || null
+  const timelineEvents = extractRealtimeTimelineEvents(normalizedEntries, {
+    sessionId,
+    gameId: gameId || session.game_id || null,
+    turn: resolvedTurn,
+  })
+
+  if (timelineEvents.length) {
+    await broadcastRealtimeTimeline(sessionId, timelineEvents, {
+      turn: resolvedTurn,
+      gameId: gameId || session.game_id || null,
+    })
+
+    await notifyRealtimeTimelineWebhook(timelineEvents, {
+      sessionId,
+      gameId: gameId || session.game_id || null,
+    })
+  }
+
   return res.status(200).json({ ok: true, entries: inserted })
+}
+
+function extractRealtimeTimelineEvents(entries = [], { sessionId, gameId, turn } = {}) {
+  if (!Array.isArray(entries)) return []
+
+  return entries
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null
+      const extra = entry.extra
+      if (!extra || typeof extra !== 'object') return null
+      const type =
+        typeof extra.eventType === 'string'
+          ? extra.eventType.trim()
+          : typeof extra.type === 'string'
+            ? extra.type.trim()
+            : ''
+      if (!type) return null
+
+      const ownerId =
+        extra.ownerId ??
+        extra.owner_id ??
+        extra.ownerID ??
+        (typeof extra.owner === 'string' ? extra.owner : null) ??
+        null
+
+      const strike = Number.isFinite(Number(extra.strike)) ? Number(extra.strike) : null
+      const remaining = Number.isFinite(Number(extra.remaining)) ? Number(extra.remaining) : null
+      const limit = Number.isFinite(Number(extra.limit)) ? Number(extra.limit) : null
+      const eventTurn = Number.isFinite(Number(extra.turn)) ? Number(extra.turn) : turn ?? null
+      const timestamp = Number.isFinite(Number(extra.timestamp))
+        ? Number(extra.timestamp)
+        : Date.parse(extra.timestamp)
+
+      return {
+        id:
+          extra.eventId ||
+          extra.id ||
+          (type || ownerId
+            ? `${type}:${ownerId || 'unknown'}:${eventTurn ?? 'na'}:${
+                Number.isFinite(timestamp) ? timestamp : Date.now()
+              }`
+            : null),
+        sessionId: sessionId || null,
+        gameId: gameId || null,
+        type,
+        ownerId,
+        strike,
+        remaining,
+        limit,
+        reason: extra.reason || null,
+        turn: eventTurn,
+        timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
+        status: extra.status || null,
+      }
+    })
+    .filter(Boolean)
 }

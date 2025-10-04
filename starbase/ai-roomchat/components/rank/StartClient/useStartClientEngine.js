@@ -207,6 +207,85 @@ function isApiKeyError(error) {
   return keywords.some((keyword) => combined.includes(keyword))
 }
 
+function normalizeRealtimeEvent(event) {
+  if (!event || typeof event !== 'object') return null
+  const type =
+    typeof event.type === 'string'
+      ? event.type.trim()
+      : typeof event.eventType === 'string'
+        ? event.eventType.trim()
+        : ''
+  if (!type) return null
+
+  const ownerId =
+    event.ownerId ??
+    event.owner_id ??
+    event.ownerID ??
+    (typeof event.owner === 'string' ? event.owner : null) ??
+    null
+
+  const strike = Number.isFinite(Number(event.strike)) ? Number(event.strike) : null
+  const remaining = Number.isFinite(Number(event.remaining)) ? Number(event.remaining) : null
+  const limit = Number.isFinite(Number(event.limit)) ? Number(event.limit) : null
+  const turn = Number.isFinite(Number(event.turn)) ? Number(event.turn) : null
+
+  let timestamp = null
+  if (Number.isFinite(Number(event.timestamp))) {
+    timestamp = Number(event.timestamp)
+  } else if (event.timestamp) {
+    const parsed = Date.parse(event.timestamp)
+    if (Number.isFinite(parsed)) {
+      timestamp = parsed
+    }
+  }
+  if (!Number.isFinite(timestamp)) {
+    timestamp = Date.now()
+  }
+
+  return {
+    id: event.id || event.eventId || null,
+    type,
+    ownerId,
+    strike,
+    remaining,
+    limit,
+    reason: event.reason || event.reasonCode || null,
+    turn,
+    timestamp,
+    status: event.status || null,
+  }
+}
+
+function buildRealtimeEventKey(event) {
+  if (!event) return null
+  if (event.id) {
+    return `id:${String(event.id)}`
+  }
+  const ownerId = event.ownerId ? String(event.ownerId) : 'unknown'
+  const type = event.type || 'event'
+  const turn = event.turn != null ? event.turn : 'na'
+  const timestamp = event.timestamp != null ? event.timestamp : 'ts'
+  return `${type}:${ownerId}:${turn}:${timestamp}`
+}
+
+function mergeRealtimeEvents(existing = [], incoming = []) {
+  const map = new Map()
+
+  const upsert = (payload) => {
+    const normalized = normalizeRealtimeEvent(payload)
+    if (!normalized) return
+    const key = buildRealtimeEventKey(normalized)
+    if (!key) return
+    const prev = map.get(key) || {}
+    map.set(key, { ...prev, ...normalized })
+  }
+
+  existing.forEach(upsert)
+  incoming.forEach(upsert)
+
+  return Array.from(map.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+}
+
 export function useStartClientEngine(gameId) {
   const initialStoredApiKey =
     typeof window === 'undefined'
@@ -315,7 +394,7 @@ export function useStartClientEngine(gameId) {
   )
   const [realtimeEvents, setRealtimeEvents] = useState(() => {
     const snapshot = initialRealtimeSnapshotRef.current
-    return Array.isArray(snapshot?.events) ? snapshot.events : []
+    return mergeRealtimeEvents([], Array.isArray(snapshot?.events) ? snapshot.events : [])
   })
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
@@ -331,7 +410,7 @@ export function useStartClientEngine(gameId) {
     }
     setRealtimePresence(snapshot)
     const events = Array.isArray(snapshot.events) ? snapshot.events : []
-    setRealtimeEvents(events)
+    setRealtimeEvents((prev) => mergeRealtimeEvents(prev, events))
   }, [])
 
   const clearConsensusVotes = useCallback(() => {
@@ -1514,6 +1593,7 @@ export function useStartClientEngine(gameId) {
               ? Number(event.limit)
               : warningLimitValue
             const reasonLabel = formatRealtimeReason(event.reason)
+            const eventId = event.id || event.eventId || null
             if (event.type === 'warning') {
               if (reasonLabel) {
                 warningReasonMap.set(ownerId, reasonLabel)
@@ -1547,6 +1627,8 @@ export function useStartClientEngine(gameId) {
                   timestamp: Number.isFinite(Number(event.timestamp))
                     ? Number(event.timestamp)
                     : Date.now(),
+                  eventId,
+                  status: event.status || null,
                 },
               })
             } else if (event.type === 'proxy_escalated') {
@@ -1575,6 +1657,7 @@ export function useStartClientEngine(gameId) {
                     ? Number(event.timestamp)
                     : Date.now(),
                   status: 'proxy',
+                  eventId,
                 },
               })
             }
@@ -2226,6 +2309,37 @@ export function useStartClientEngine(gameId) {
     advanceIntentRef.current = null
     clearConsensusVotes()
   }, [turn, clearConsensusVotes])
+
+  useEffect(() => {
+    const sessionId = sessionInfo?.id
+    if (!sessionId) return undefined
+
+    const channel = supabase.channel(`rank-session:${sessionId}`, {
+      config: { broadcast: { ack: true } },
+    })
+
+    const handleTimeline = (payload) => {
+      const raw = payload?.payload || payload || {}
+      const events = Array.isArray(raw.events) ? raw.events : []
+      if (!events.length) return
+      setRealtimeEvents((prev) => mergeRealtimeEvents(prev, events))
+    }
+
+    channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)
+
+    channel.subscribe().catch((error) => {
+      console.error('[StartClient] 실시간 타임라인 채널 구독 실패:', error)
+    })
+
+    return () => {
+      try {
+        channel.unsubscribe()
+      } catch (error) {
+        console.warn('[StartClient] 실시간 타임라인 채널 해제 실패:', error)
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [sessionInfo?.id, supabase])
 
   useEffect(() => {
     if (!needsConsensus) {

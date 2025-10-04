@@ -137,7 +137,126 @@ function normalizePlayerHistory(player, index) {
   }
 }
 
-export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = [] }) {
+function formatTimelineReason(reason) {
+  if (!reason) return ''
+  const normalized = String(reason).trim().toLowerCase()
+  switch (normalized) {
+    case 'timeout':
+      return '시간 초과'
+    case 'consensus':
+      return '합의 미응답'
+    case 'manual':
+      return '수동 진행 미완료'
+    case 'ai':
+      return '자동 진행'
+    case 'inactivity':
+      return '응답 없음'
+    default:
+      return reason
+  }
+}
+
+function formatRelativeTimeLabel(timestamp) {
+  if (!Number.isFinite(timestamp)) return ''
+  const now = Date.now()
+  const diff = now - timestamp
+  const abs = Math.abs(diff)
+
+  if (abs < 30_000) {
+    return diff >= 0 ? '방금 전' : '곧'
+  }
+
+  const minutes = Math.round(abs / 60_000)
+  if (minutes < 60) {
+    return diff >= 0 ? `${minutes}분 전` : `${minutes}분 후`
+  }
+
+  const hours = Math.round(abs / 3_600_000)
+  if (hours < 24) {
+    return diff >= 0 ? `${hours}시간 전` : `${hours}시간 후`
+  }
+
+  const days = Math.round(abs / 86_400_000)
+  return diff >= 0 ? `${days}일 전` : `${days}일 후`
+}
+
+function formatAbsoluteTimeLabel(timestamp) {
+  if (!Number.isFinite(timestamp)) return ''
+  try {
+    return new Date(timestamp).toLocaleTimeString('ko-KR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+  } catch (error) {
+    return ''
+  }
+}
+
+function normalizeTimelineEvents(events = []) {
+  if (!Array.isArray(events)) return []
+
+  const seen = new Set()
+  const normalized = []
+
+  events.forEach((event, index) => {
+    if (!event || typeof event !== 'object') return
+    const type =
+      typeof event.type === 'string'
+        ? event.type.trim()
+        : typeof event.eventType === 'string'
+          ? event.eventType.trim()
+          : ''
+    if (!type) return
+
+    const ownerId =
+      event.ownerId ??
+      event.owner_id ??
+      event.ownerID ??
+      (typeof event.owner === 'string' ? event.owner : null) ??
+      null
+
+    const strike = Number.isFinite(Number(event.strike)) ? Number(event.strike) : null
+    const remaining = Number.isFinite(Number(event.remaining)) ? Number(event.remaining) : null
+    const limit = Number.isFinite(Number(event.limit)) ? Number(event.limit) : null
+    const turn = Number.isFinite(Number(event.turn)) ? Number(event.turn) : null
+    const rawTimestamp = Number.isFinite(Number(event.timestamp))
+      ? Number(event.timestamp)
+      : Date.parse(event.timestamp)
+    const timestamp = Number.isFinite(rawTimestamp) ? rawTimestamp : Date.now()
+
+    const key = event.id
+      ? `timeline-${event.id}`
+      : `timeline-${type}-${ownerId || 'unknown'}-${timestamp}-${index}`
+
+    if (seen.has(key)) return
+    seen.add(key)
+
+    normalized.push({
+      key,
+      type,
+      ownerId,
+      strike,
+      remaining,
+      limit,
+      reason: formatTimelineReason(event.reason),
+      rawReason: event.reason || '',
+      turn,
+      timestamp,
+      status: event.status || null,
+    })
+  })
+
+  normalized.sort((a, b) => b.timestamp - a.timestamp)
+  return normalized
+}
+
+export default function LogsPanel({
+  logs = [],
+  aiMemory = [],
+  playerHistories = [],
+  realtimeEvents = [],
+}) {
   const normalizedLogs = useMemo(
     () => logs.map(normalizeLogEntry).filter(Boolean),
     [logs],
@@ -153,11 +272,17 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
     [playerHistories],
   )
 
+  const normalizedTimeline = useMemo(
+    () => normalizeTimelineEvents(realtimeEvents),
+    [realtimeEvents],
+  )
+
   const [searchTerm, setSearchTerm] = useState('')
   const [collapsedSections, setCollapsedSections] = useState({
     logs: false,
     memory: false,
     players: false,
+    timeline: false,
   })
 
   const trimmedSearch = searchTerm.trim().toLowerCase()
@@ -517,6 +642,92 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
         </div>
 
         <div className={styles.secondaryColumn}>
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div className={styles.cardHeading}>
+                <h3 className={styles.cardTitle}>실시간 타임라인</h3>
+                {normalizedTimeline.length ? (
+                  <span className={styles.cardBadge}>{normalizedTimeline.length}건</span>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className={styles.toggleButton}
+                onClick={() => handleToggle('timeline')}
+                aria-expanded={!collapsedSections.timeline}
+              >
+                {collapsedSections.timeline ? '펼치기' : '축약'}
+              </button>
+            </div>
+
+            {collapsedSections.timeline ? (
+              <p className={styles.collapsedNotice}>
+                실시간 이벤트 타임라인을 숨겼습니다. 펼쳐서 최근 경고와 대역 전환을 확인하세요.
+              </p>
+            ) : normalizedTimeline.length ? (
+              <ul className={styles.timelineList}>
+                {normalizedTimeline.map((entry) => {
+                  const ownerLabel = entry.ownerId
+                    ? `플레이어 ${String(entry.ownerId).slice(0, 6)}`
+                    : '알 수 없는 참가자'
+                  const metaParts = []
+                  if (entry.strike != null) {
+                    metaParts.push(`경고 ${entry.strike}회`)
+                  }
+                  if (entry.remaining != null) {
+                    metaParts.push(`남은 기회 ${entry.remaining}회`)
+                  }
+                  if (entry.limit != null) {
+                    metaParts.push(`한도 ${entry.limit}회`)
+                  }
+                  if (entry.status === 'proxy') {
+                    metaParts.push('현재 상태: 대역')
+                  } else if (entry.status === 'spectating') {
+                    metaParts.push('현재 상태: 관전')
+                  }
+
+                  const reasonLabel = entry.reason || entry.rawReason || ''
+
+                  return (
+                    <li key={entry.key} className={styles.timelineItem}>
+                      <div className={styles.timelineHeader}>
+                        <span
+                          className={
+                            entry.type === 'proxy_escalated'
+                              ? styles.timelineBadgeAlert
+                              : styles.timelineBadgeWarn
+                          }
+                        >
+                          {entry.type === 'proxy_escalated' ? '대역 전환' : '경고'}
+                        </span>
+                        {entry.turn != null ? (
+                          <span className={styles.timelineMeta}>턴 {entry.turn}</span>
+                        ) : null}
+                        <span className={styles.timelineMeta}>
+                          {formatAbsoluteTimeLabel(entry.timestamp)}
+                        </span>
+                        <span className={styles.timelineMetaFaded}>
+                          {formatRelativeTimeLabel(entry.timestamp)}
+                        </span>
+                      </div>
+                      <div className={styles.timelineBody}>
+                        <p className={styles.timelineText}>{ownerLabel}</p>
+                        {metaParts.length ? (
+                          <p className={styles.timelineMetaText}>{metaParts.join(' · ')}</p>
+                        ) : null}
+                        {reasonLabel ? (
+                          <p className={styles.timelineReason}>사유: {reasonLabel}</p>
+                        ) : null}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className={styles.empty}>아직 실시간 이벤트가 없습니다.</p>
+            )}
+          </div>
+
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardHeading}>

@@ -101,18 +101,19 @@
 - 운영 대시보드 위젯: 난입 큐 상태, 현재 세션 타이머, 대역 전환 현황 시각화.
 
 ## 구현 진행 현황 업데이트
-- **진행률**: 75% – 실시간 경고·대역 이벤트가 서버 로그와 관전자 피드까지 흐르도록 연결해 Phase 3 사양이 가시적 성과물을 내기 시작했습니다.
+- **진행률**: 82% – 경고·대역 이벤트가 Supabase Realtime 채널과 Slack/Webhook 경보, 관전자 타임라인 UI까지 동시에 흘러 Phase 3 모드 전환 사양이 운영 관점에서도 닫히기 시작했습니다.
 - **완료 사항**:
-  - `components/rank/StartClient/services/realtimeSessionManager`에 경고/대역 이벤트 로그 스택과 타임스탬프를 추가해 `warning`·`proxy_escalated` 타입별 한도·사유를 축적하고 스냅샷에 포함했습니다.
-  - `useStartClientEngine`이 `realtimePresence.events`와 신규 `realtimeEvents`를 노출하며 경고/대역 발생 시 상태 메시지에 사유를 병기하고, 투표/행동 참여 시 스냅샷을 일관되게 갱신하도록 `applyRealtimeSnapshot` 헬퍼를 도입했습니다.
-  - 경고·대역 이벤트를 `log-turn` API로 즉시 기록해 `rank_turns`에 시스템 로그가 남도록 했고, 관전자·대시보드가 같은 페이로드를 재생성 없이 활용하도록 `extra` 필드를 통일했습니다.
+  - `pages/api/rank/log-turn`이 `broadcastRealtimeTimeline`·`notifyRealtimeTimelineWebhook`를 호출해 경고/대역 로그를 세션별 Realtime 채널과 운영용 Slack/Webhook으로 즉시 전파하며, `eventId`를 포함한 페이로드로 중복 수신을 방지했습니다.
+  - `useStartClientEngine`이 Supabase `rank-session:{sessionId}` 채널을 구독해 서버 브로드캐스트 이벤트를 `mergeRealtimeEvents`로 병합하고, 로컬 스냅샷과도 키 기반으로 중복을 제거하며 상태를 동기화합니다.
+  - `LogsPanel`에 “실시간 타임라인” 카드를 추가해 관전자/운영자가 경고·대역 전환, 남은 기회, 사유, 현재 상태를 한눈에 추적할 수 있도록 UI를 확장했습니다.
 - **다음 단계 메모**:
-  - 비실시간 매치용 `asyncSessionManager`와 대역 API 파이프라인을 설계해 경고/로그 처리 방식을 공통 인터페이스로 확장하기.
-  - `dropInQueueService`·`apiKeyPool` 구현과 함께 이벤트 로그를 Supabase Realtime 채널이나 Webhook으로 브로드캐스트해 서버-관전자 싱크를 이중화하기.
-  - 관전 전용 UI에서 `realtimeEvents` 타임라인을 시각화하고, 베틀로그 재생 시 이벤트 줄타기를 복원하는 테스트 시나리오를 작성하기.
+  - 비실시간 매치용 `asyncSessionManager`와 대역 API 파이프라인을 구현해 경고 이벤트와 로그 전파 방식을 모드 불문 공통 레이어로 끌어올리기.
+  - 난입 큐(`dropInQueueService`)와 API 키 풀을 연결하면서 경고/대역 이벤트에 난입·키 교체 결과를 첨부하는 감사 필드를 확장하기.
+  - 관전 타임라인에 과거 턴 재생(Replay)·검색 기능과 통합 테스트를 추가해 베틀로그 재생 시에도 동일한 이벤트 흐름을 복원하기.
 
 ---
 
-느낀 점: 경고·대역 이벤트를 서버 로그와 관전 피드 양쪽에 동시에 흘려보내니 게임 마스터가 사후 감사·재생을 해도 맥락이 끊기지 않을 그림이 보였습니다.
-추가로 필요한 점: Supabase Realtime이나 Slack/Webhook 연계를 구체화해 이벤트 알림이 서버에서도 즉시 소비되도록 하고, 관전자 UI의 타임라인 디자인을 별도로 다듬어야겠습니다.
-진행사항: Phase 3 진행분으로 경고/대역 이벤트 로그를 정규화하고 `StartClient`가 `realtimeEvents`를 제공하도록 확장해 메인 청사진의 로그·관전 사양을 코드에 반영했습니다.
+느낀 점: 이벤트 스트림을 Realtime 채널·Slack·타임라인 UI로 한 번에 흘려보내니 운영·관전 경험이 동일한 데이터 소스를 공유하게 돼 향후 감사나 복기 흐름이 훨씬 단단해졌습니다.
+추가로 필요한 점: 비실시간 모드와 난입 관리 레이어까지 같은 이벤트 포맷으로 묶고, 타임라인을 베틀로그/재생 화면에서도 재사용할 수 있도록 공통 컴포넌트화가 필요합니다.
+진행사항: Supabase 브로드캐스트·Slack/Webhook 알림·관전 타임라인 UI를 연결해 Phase 3 실시간 관리 섹션을 마무리 단계로 끌어올렸으며, 남은 Phase 4~5 작업(난입 큐·베틀로그 재생)을 준비 중입니다.
+

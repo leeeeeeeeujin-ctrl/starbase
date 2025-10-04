@@ -72,6 +72,23 @@ export function createRealtimeSessionManager({ warningLimit = WARNING_LIMIT } = 
             ? Number(event.timestamp)
             : Date.now(),
       }
+      const ownerId =
+        event.ownerId ??
+        event.owner_id ??
+        event.ownerID ??
+        (typeof event.owner === 'string' ? event.owner : null) ??
+        null
+      const resolvedTurn = Number.isFinite(Number(event.turn))
+        ? Number(event.turn)
+        : currentTurn || 0
+      record.id =
+        event.id ||
+        event.eventId ||
+        (record.type || ownerId
+          ? `${record.type || 'event'}:${ownerId || 'unknown'}:${resolvedTurn}:${record.timestamp}`
+          : `${record.timestamp}`)
+      record.ownerId = ownerId
+      record.turn = resolvedTurn
       eventLog.push(record)
       appended.push(record)
     })

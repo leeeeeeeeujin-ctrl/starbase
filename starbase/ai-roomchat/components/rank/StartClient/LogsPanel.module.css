@@ -551,6 +551,87 @@
   white-space: pre-wrap;
 }
 
+.timelineList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.timelineItem {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(15, 23, 42, 0.5);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.timelineHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.82);
+}
+
+.timelineBadgeWarn,
+.timelineBadgeAlert {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.timelineBadgeWarn {
+  background: rgba(252, 211, 77, 0.18);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  color: #facc15;
+}
+
+.timelineBadgeAlert {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #f87171;
+}
+
+.timelineMeta {
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.timelineMetaFaded {
+  color: rgba(148, 163, 184, 0.68);
+}
+
+.timelineBody {
+  display: grid;
+  gap: 6px;
+}
+
+.timelineText {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.timelineMetaText {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.78);
+}
+
+.timelineReason {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.88);
+}
+
 @media (min-width: 960px) {
   .columns {
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);

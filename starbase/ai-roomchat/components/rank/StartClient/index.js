@@ -144,6 +144,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     logs,
     aiMemory,
     playerHistories,
+    realtimeEvents,
     apiKey,
     setApiKey,
     apiKeyCooldown,
@@ -671,7 +672,12 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
               </button>
             </div>
             <div className={styles.overlayBody}>
-              <LogsPanel logs={logs} aiMemory={aiMemory} playerHistories={playerHistories} />
+              <LogsPanel
+                logs={logs}
+                aiMemory={aiMemory}
+                playerHistories={playerHistories}
+                realtimeEvents={realtimeEvents}
+              />
             </div>
           </div>
         </div>
