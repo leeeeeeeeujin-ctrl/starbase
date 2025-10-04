@@ -79,12 +79,32 @@ async function callGemini({ apiKey, system, prompt }) {
 
   const endpoints = [
     {
+      url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent',
+      queryKey: true,
+      supportsSystemInstruction: true,
+    },
+    {
+      url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
+      queryKey: true,
+      supportsSystemInstruction: true,
+    },
+    {
       url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
       queryKey: true,
       supportsSystemInstruction: true,
     },
     {
+      url: 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro-latest:generateContent',
+      queryKey: false,
+      supportsSystemInstruction: false,
+    },
+    {
       url: 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent',
+      queryKey: false,
+      supportsSystemInstruction: false,
+    },
+    {
+      url: 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
       queryKey: false,
       supportsSystemInstruction: false,
     },
