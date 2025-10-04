@@ -18,6 +18,7 @@ import {
 import { loadGameBundle } from './engine/loadGameBundle'
 import { pickNextEdge } from './engine/graph'
 import { buildSystemMessage, parseRules } from './engine/systemPrompt'
+import { resolveSlotBinding } from './engine/slotBindingResolver'
 import { createTurnTimerService } from './services/turnTimerService'
 import {
   createTurnVoteController,
@@ -1307,6 +1308,7 @@ export function useStartClientEngine(gameId) {
       }
 
       const actorContext = resolveActorContext({ node, slots, participants })
+      const slotBinding = resolveSlotBinding({ node, actorContext })
       const slotTypeValue = node.slot_type || 'ai'
       const isUserAction = slotTypeValue === 'user_action' || slotTypeValue === 'manual'
       const historyRole = isUserAction ? 'user' : 'assistant'
@@ -1329,7 +1331,7 @@ export function useStartClientEngine(gameId) {
           historyText: history.joinedText({ onlyPublic: false, last: 12 }),
           activeGlobalNames: activeGlobal,
           activeLocalNames: activeLocal,
-          currentSlot: null,
+          currentSlot: slotBinding.templateSlotRef,
         })
 
         const promptText = compiled.text
@@ -1481,9 +1483,18 @@ export function useStartClientEngine(gameId) {
           responseText = ['(샘플 응답)', '', '', '', '', '무승부'].join('\n')
         }
 
-        const slotIndex = actorContext.slotIndex
-        const audiencePayload =
-          slotIndex >= 0 ? { audience: 'slots', slotIndex } : { audience: 'all' }
+        const slotIndex = slotBinding.slotIndex
+        const promptAudiencePayload =
+          slotBinding.promptAudience.audience === 'slots'
+            ? { audience: 'slots', slots: slotBinding.visibleSlots }
+            : { audience: 'all' }
+        const responseAudiencePayload =
+          slotBinding.responseAudience.audience === 'slots'
+            ? { audience: 'slots', slots: slotBinding.visibleSlots }
+            : { audience: 'all' }
+        const responseIsPublic = !slotBinding.hasLimitedAudience
+        const promptVisibility = slotBinding.hasLimitedAudience ? 'private' : 'hidden'
+        const responseVisibility = responseIsPublic ? 'public' : 'private'
 
         const fallbackActorNames = []
         if (actorContext?.participant?.hero?.name) {
@@ -1497,15 +1508,15 @@ export function useStartClientEngine(gameId) {
           content: `[PROMPT]\n${effectivePrompt}`,
           public: false,
           includeInAi: true,
-          ...audiencePayload,
+          ...promptAudiencePayload,
           meta: { slotIndex },
         })
         const responseEntry = history.push({
           role: historyRole,
           content: responseText,
-          public: true,
+          public: responseIsPublic,
           includeInAi: true,
-          ...audiencePayload,
+          ...responseAudiencePayload,
           meta: { slotIndex },
         })
         setHistoryVersion((prev) => prev + 1)
@@ -1547,14 +1558,18 @@ export function useStartClientEngine(gameId) {
                 role: promptEntry?.role || 'system',
                 content: promptEntry?.content || promptText,
                 public: promptEntry?.public,
-                visibility: promptEntry?.public === false ? 'hidden' : 'public',
+                visibility: slotBinding.hasLimitedAudience
+                  ? promptVisibility
+                  : promptEntry?.public === false
+                    ? 'hidden'
+                    : 'public',
                 extra: { slotIndex },
               },
               {
                 role: historyRole,
                 content: responseText,
                 public: responseEntry?.public,
-                visibility: responseEntry?.public === false ? 'hidden' : 'public',
+                visibility: responseIsPublic ? 'public' : responseVisibility,
                 actors: resolvedActorNames,
                 summary: fallbackSummary,
                 extra: {
