@@ -47,6 +47,7 @@ import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
 import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
 import { useStartCooldown } from './hooks/useStartCooldown'
 import { useStartManualResponse } from './hooks/useStartManualResponse'
+import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog'
 import { consumeStartMatchMeta } from '../startConfig'
 
 export function useStartClientEngine(gameId) {
@@ -967,6 +968,23 @@ export function useStartClientEngine(gameId) {
         'void'
       captureBattleLog('void', { reason, turnNumber: turn })
     },
+  })
+
+  useStartSessionWatchdog({
+    enabled: !preflight && !!sessionInfo?.id && !!currentNodeId && !gameVoided,
+    turn,
+    historyVersion,
+    logsLength: Array.isArray(logs) ? logs.length : 0,
+    timelineVersion: Array.isArray(realtimeEvents) ? realtimeEvents.length : 0,
+    turnDeadline,
+    turnTimerSeconds,
+    isAdvancing,
+    gameVoided,
+    currentNodeId,
+    voidSession,
+    recordTimelineEvents,
+    sessionInfo,
+    gameId,
   })
 
   const visitedSlotIds = useRef(new Set())

@@ -6,6 +6,7 @@
 - **난입 보너스**: 난입 플레이어(역할군) 합류 턴에는 해당 턴에 한해 전역 턴 제한시간에 **+40초**를 추가해 새 참가자가 상황을 파악할 시간을 보장한다.
 - **표시 방식**: 화면 상단에 남은 시간을 실시간으로 노출하고, 10초 이하일 때 경고 색상과 진동(웹 진동 API)으로 마감 임박을 알린다.
 - **자동 진행**: 제한시간이 만료되면 현재 노드 상태를 기준으로 자동으로 다음 턴이 실행된다. 실시간/비실시간 여부와 무관하게 동일하게 동작한다.
+- **비정상 감지**: 턴 제한시간을 넘긴 뒤에도 일정 시간 이상 진행되지 않으면 세션 감시기가 자동으로 무효 처리하고 타임라인에 이유와 함께 기록한다.
 - **조기 종료 투표**: 제한시간 내에 **참여 가능 인원의 80% 이상이 “다음” 버튼**을 누르면 즉시 턴을 종료하고 다음 노드로 넘어간다. 실시간 모드에서 탈락·관전 전환된 슬롯은 계산에서 제외한다.
 
 ## 2. 프롬프트 그래프와 변수 시스템 연동
@@ -114,6 +115,7 @@
   - `useStartApiKeyManager`, `useStartSessionLifecycle`, `useHistoryBuffer` 훅을 도입해 API 키 관리·세션 라이프사이클·히스토리 버퍼를 전담 모듈로 분리하고, `useStartClientEngine`은 턴 진행·UI 연계 로직에 집중하도록 정리했습니다.
   - 수동 응답과 쿨다운 책임을 `useStartManualResponse`, `useStartCooldown` 훅으로 분리하고 각 훅의 JSDoc 타입 가이드를 추가해 엔진 서브 모듈의 인터페이스를 명확히 했습니다.
   - `useHistoryBuffer`, `useStartSessionLifecycle`, `useStartApiKeyManager`, `useStartCooldown`, `useStartManualResponse`에 대한 단위 테스트를 작성해 데이터 흐름과 세션 메타 로깅이 기대대로 유지되는지 검증했습니다. (→ `__tests__/components/rank/StartClient/hooks/startHooks.test.js`)
+  - 세션 감시 훅 `useStartSessionWatchdog`이 턴 정체를 감시해 자동 무효 처리·타임라인 로깅을 수행하고, jsdom 테스트로 비정상 시나리오와 진행 재개 시 재설정을 검증했습니다.【F:components/rank/StartClient/hooks/useStartSessionWatchdog.js†L1-L149】【F:__tests__/components/rank/StartClient/hooks/startHooks.test.js†L250-L335】
   - 타이머 경고 UI, `battleLogDraft` 캡처, 관전/대역 뱃지 구현과 함께 타깃 테스트를 추가해 청사진의 남은 UX 요구사항을 충족했습니다.【F:components/rank/StartClient/TurnInfoPanel.js†L1-L108】【F:components/rank/StartClient/engine/battleLogBuilder.js†L1-L199】【F:components/rank/StartClient/RosterPanel.js†L1-L206】【F:__tests__/components/rank/StartClient/engine/battleLogBuilder.test.js†L1-L110】【F:__tests__/components/rank/StartClient/TurnInfoPanel.test.js†L1-L58】
 - **다음 단계 메모**:
   - Edge Function 스모크 테스트 엔드포인트를 정기적으로 점검해 스테이징/프로덕션 모두에서 커버리지·응답 시간을 모니터링할 지표를 정의하기.

@@ -52,6 +52,7 @@ import { useStartManualResponse } from '../../../../../components/rank/StartClie
 import { useStartCooldown } from '../../../../../components/rank/StartClient/hooks/useStartCooldown'
 import { useStartSessionLifecycle } from '../../../../../components/rank/StartClient/hooks/useStartSessionLifecycle'
 import { useStartApiKeyManager } from '../../../../../components/rank/StartClient/hooks/useStartApiKeyManager'
+import { useStartSessionWatchdog } from '../../../../../components/rank/StartClient/hooks/useStartSessionWatchdog'
 
 function renderHook(callback, props) {
   let result
@@ -93,6 +94,10 @@ describe('StartClient hooks', () => {
         json: () => Promise.resolve({}),
       }),
     )
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
   })
 
   it('increments history version when bumping', () => {
@@ -240,6 +245,93 @@ describe('StartClient hooks', () => {
       hook.result.markSessionDefeated()
     })
     expect(mockMarkActiveSessionDefeated).toHaveBeenCalledWith('game-1')
+  })
+
+  it('voids stalled sessions after exceeding watchdog threshold', () => {
+    jest.useFakeTimers({ now: new Date('2024-01-01T00:00:00Z') })
+
+    const voidSession = jest.fn()
+    const recordTimelineEvents = jest.fn()
+
+    const baseProps = {
+      enabled: true,
+      turn: 1,
+      historyVersion: 0,
+      logsLength: 0,
+      timelineVersion: 0,
+      turnDeadline: Date.now() + 60_000,
+      turnTimerSeconds: 60,
+      isAdvancing: false,
+      gameVoided: false,
+      currentNodeId: 'node-1',
+      voidSession,
+      recordTimelineEvents,
+      sessionInfo: { id: 'session-1' },
+      gameId: 'game-1',
+    }
+
+    const hook = renderHook((props) => useStartSessionWatchdog(props), baseProps)
+
+    act(() => {
+      jest.advanceTimersByTime(260_000)
+    })
+
+    expect(voidSession).toHaveBeenCalledWith(
+      '진행이 장시간 멈춰 세션이 무효 처리되었습니다.',
+      expect.objectContaining({
+        reason: 'stalled_session',
+        gameId: 'game-1',
+        sessionId: 'session-1',
+      }),
+    )
+    expect(recordTimelineEvents).toHaveBeenCalled()
+
+    hook.unmount()
+  })
+
+  it('resets watchdog timer when new progress is detected', () => {
+    jest.useFakeTimers({ now: new Date('2024-01-01T00:00:00Z') })
+
+    const voidSession = jest.fn()
+    const recordTimelineEvents = jest.fn()
+
+    const baseProps = {
+      enabled: true,
+      turn: 1,
+      historyVersion: 0,
+      logsLength: 0,
+      timelineVersion: 0,
+      turnDeadline: Date.now() + 45_000,
+      turnTimerSeconds: 60,
+      isAdvancing: false,
+      gameVoided: false,
+      currentNodeId: 'node-1',
+      voidSession,
+      recordTimelineEvents,
+      sessionInfo: { id: 'session-1' },
+      gameId: 'game-1',
+    }
+
+    const hook = renderHook((props) => useStartSessionWatchdog(props), baseProps)
+
+    act(() => {
+      jest.advanceTimersByTime(120_000)
+    })
+
+    expect(voidSession).not.toHaveBeenCalled()
+
+    hook.rerender({
+      ...baseProps,
+      historyVersion: 1,
+      turnDeadline: Date.now() + 60_000,
+    })
+
+    act(() => {
+      jest.advanceTimersByTime(260_000)
+    })
+
+    expect(voidSession).toHaveBeenCalledTimes(1)
+    hook.unmount()
   })
 
   it('tracks API key changes and emits timeline events', async () => {
