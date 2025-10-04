@@ -26,6 +26,41 @@ jobs:
   deploy:
     name: Deploy Edge Functions
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: staging
+            github_environment: rank-edge-staging
+            require_smoke: 'false'
+            require_pagerduty: 'false'
+          - name: production
+            github_environment: rank-edge-production
+            require_smoke: 'true'
+            require_pagerduty: 'true'
+    environment: ${{ matrix.github_environment }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+      RANK_EDGE_DEPLOY_SLACK_WEBHOOK_URL: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_WEBHOOK_URL }}
+      RANK_EDGE_DEPLOY_SLACK_WEBHOOK_AUTH: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_WEBHOOK_AUTH }}
+      RANK_EDGE_DEPLOY_SLACK_MENTION: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_MENTION }}
+      RANK_EDGE_DEPLOY_SLACK_NOTIFY_SUCCESS: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_NOTIFY_SUCCESS }}
+      RANK_EDGE_DEPLOY_PAGERDUTY_ROUTING_KEY: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_ROUTING_KEY }}
+      RANK_EDGE_DEPLOY_PAGERDUTY_SEVERITY: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_SEVERITY }}
+      RANK_EDGE_DEPLOY_PAGERDUTY_SOURCE: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_SOURCE }}
+      RANK_EDGE_DEPLOY_MAX_ATTEMPTS: ${{ secrets.RANK_EDGE_DEPLOY_MAX_ATTEMPTS }}
+      RANK_EDGE_DEPLOY_BASE_RETRY_MS: ${{ secrets.RANK_EDGE_DEPLOY_BASE_RETRY_MS }}
+      RANK_EDGE_DEPLOY_FUNCTIONS: ${{ secrets.RANK_EDGE_DEPLOY_FUNCTIONS }}
+      RANK_EDGE_DEPLOY_SMOKE_TEST_URLS: ${{ secrets.RANK_EDGE_DEPLOY_SMOKE_TEST_URLS }}
+      RANK_EDGE_DEPLOY_SMOKE_TEST_METHOD: ${{ secrets.RANK_EDGE_DEPLOY_SMOKE_TEST_METHOD }}
+      RANK_EDGE_DEPLOY_SMOKE_TEST_HEADERS: ${{ secrets.RANK_EDGE_DEPLOY_SMOKE_TEST_HEADERS }}
+      RANK_EDGE_DEPLOY_SMOKE_TEST_TIMEOUT_MS: ${{ secrets.RANK_EDGE_DEPLOY_SMOKE_TEST_TIMEOUT_MS }}
+      RANK_EDGE_DEPLOY_ENVIRONMENT: ${{ matrix.name }}
+      RANK_EDGE_DEPLOY_REQUIRE_SMOKE: ${{ matrix.require_smoke }}
+      RANK_EDGE_DEPLOY_REQUIRE_PAGERDUTY: ${{ matrix.require_pagerduty }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,6 +71,9 @@ jobs:
           node-version: 18
           cache: 'npm'
 
+      - name: Validate secret configuration
+        run: npm run check:edge-deploy-config
+
       - name: Install dependencies
         run: npm ci
 
@@ -44,20 +82,5 @@ jobs:
         with:
           version: latest
 
-      - name: Deploy Edge Functions with retry & alerts
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
-          RANK_EDGE_DEPLOY_SLACK_WEBHOOK_URL: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_WEBHOOK_URL }}
-          RANK_EDGE_DEPLOY_SLACK_WEBHOOK_AUTH: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_WEBHOOK_AUTH }}
-          RANK_EDGE_DEPLOY_SLACK_MENTION: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_MENTION }}
-          RANK_EDGE_DEPLOY_SLACK_NOTIFY_SUCCESS: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_NOTIFY_SUCCESS }}
-          RANK_EDGE_DEPLOY_PAGERDUTY_ROUTING_KEY: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_ROUTING_KEY }}
-          RANK_EDGE_DEPLOY_PAGERDUTY_SEVERITY: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_SEVERITY }}
-          RANK_EDGE_DEPLOY_PAGERDUTY_SOURCE: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_SOURCE }}
-          RANK_EDGE_DEPLOY_MAX_ATTEMPTS: ${{ secrets.RANK_EDGE_DEPLOY_MAX_ATTEMPTS }}
-          RANK_EDGE_DEPLOY_BASE_RETRY_MS: ${{ secrets.RANK_EDGE_DEPLOY_BASE_RETRY_MS }}
-          RANK_EDGE_DEPLOY_FUNCTIONS: ${{ secrets.RANK_EDGE_DEPLOY_FUNCTIONS }}
+      - name: Deploy Edge Functions with retry, smoke tests & alerts
         run: npm run deploy:edge-functions

@@ -29,6 +29,11 @@
 | `RANK_EDGE_DEPLOY_MAX_ATTEMPTS` *(선택)* | 자동 배포 최대 시도 횟수입니다. | `scripts/deploy-edge-functions.js` | 기본값은 3회입니다. |
 | `RANK_EDGE_DEPLOY_BASE_RETRY_MS` *(선택)* | 재시도 기본 지연(ms)으로, 시도 번호를 곱해 백오프를 계산합니다. | `scripts/deploy-edge-functions.js` | 기본값은 60,000ms(60초)입니다. |
 | `RANK_EDGE_DEPLOY_FUNCTIONS` *(선택)* | 배포 대상 Edge Function 이름을 쉼표로 구분해 지정합니다. | `scripts/deploy-edge-functions.js` | 기본값은 `rank-match-timeline,rank-api-key-rotation`입니다. |
+| `RANK_EDGE_DEPLOY_ENVIRONMENT` *(자동 설정)* | GitHub Actions 워크플로가 현재 배포 타깃(`staging`/`production`)을 주입합니다. | `.github/workflows/edge-functions-deploy.yml` | 수동으로 수정하지 마세요. |
+| `RANK_EDGE_DEPLOY_SMOKE_TEST_URLS` *(환경별 필수)* | Edge Function 배포 후 호출할 스모크 테스트 URL 목록(쉼표 구분)입니다. | `scripts/deploy-edge-functions.js` | 프로덕션/스테이징 환경 시크릿에 각각 지정하세요. |
+| `RANK_EDGE_DEPLOY_SMOKE_TEST_METHOD` *(선택)* | 스모크 테스트 HTTP 메서드(`GET` 기본). | `scripts/deploy-edge-functions.js` | 설정하지 않으면 `GET`을 사용합니다. |
+| `RANK_EDGE_DEPLOY_SMOKE_TEST_HEADERS` *(선택)* | 스모크 테스트 호출에 사용할 헤더 JSON(`{"Authorization":"Bearer ..."}` 형태). | `scripts/deploy-edge-functions.js` | JSON 형식이 잘못되면 배포가 중단됩니다. |
+| `RANK_EDGE_DEPLOY_SMOKE_TEST_TIMEOUT_MS` *(선택)* | 각 스모크 테스트에 허용할 최대 대기 시간(ms). | `scripts/deploy-edge-functions.js` | 기본값은 15,000ms입니다. |
 | `AUDIO_EVENT_SLACK_WEBHOOK_URL` *(선택)* | 오디오 이벤트 주간 추이를 Slack/Webhook으로 전송할 엔드포인트 URL입니다. | `scripts/notify-audio-event-trends.js`, `/.github/workflows/*.yml` | 미설정 시 주간 알림 단계가 자동으로 건너뜁니다. |
 | `AUDIO_EVENT_SLACK_AUTH_HEADER` *(선택)* | 오디오 이벤트 알림 호출 시 사용할 `Authorization` 헤더 값입니다. | `scripts/notify-audio-event-trends.js` | 웹훅이 인증을 요구할 때만 설정하세요. |
 | `AUDIO_EVENT_TREND_LOOKBACK_WEEKS` *(선택)* | Slack 요약에 포함할 주간 누적 범위를 지정합니다. | `scripts/notify-audio-event-trends.js` | 1~52 사이 정수를 권장하며, 기본값은 12주입니다. |
@@ -39,6 +44,8 @@
 | `TEAM_DRIVE_PRIVATE_KEY` *(선택)* | 서비스 계정의 비공개 키 문자열입니다. 줄바꿈은 `\n`으로 이스케이프해 입력하세요. | `lib/rank/teamDriveUploader.js`, `pages/api/rank/upload-cooldown-timeline.js` | 보안상 서버 환경 변수에만 저장하세요. |
 | `TEAM_DRIVE_FOLDER_ID` *(선택)* | 내보낸 파일을 저장할 팀 드라이브 폴더 ID입니다. | `lib/rank/teamDriveUploader.js`, `pages/api/rank/upload-cooldown-timeline.js` | 미설정 시 루트에 업로드되며, `TEAM_DRIVE_EXPORT_DIR`이 지정되면 파일 시스템 경로가 우선합니다. |
 | `TEAM_DRIVE_EXPORT_DIR` *(선택)* | Google Drive 대신 로컬/마운트된 경로에 파일을 저장하고 싶을 때 지정하는 절대/상대 경로입니다. | `lib/rank/teamDriveUploader.js`, `pages/api/rank/upload-cooldown-timeline.js` | 서비스 계정 설정이 없어도 경로만 지정하면 파일 복사가 수행됩니다. |
+
+> **참고:** Edge Function 배포 워크플로(`.github/workflows/edge-functions-deploy.yml`)는 `rank-edge-staging`, `rank-edge-production` 두 GitHub Environment를 사용합니다. 각 Environment에 동일한 변수 이름으로 별도 시크릿을 등록해 스테이징/프로덕션 구성을 분리하세요.
 
 ## 설정 가이드
 1. **배포 환경** (예: Vercel): 프로젝트 설정 → Environment Variables에 위 변수와 값을 추가합니다.

@@ -109,14 +109,14 @@
   - 새 타임라인 스키마(`docs/rank-session-timeline-spec.md`)를 문서화해 서비스 롤 함수와 운영 자동화가 동일 포맷으로 이벤트를 발행할 수 있도록 기준을 마련했습니다.
   - Supabase Edge Function(`rank-match-timeline`, `rank-api-key-rotation`)이 매칭·키 교체 메타를 `rank_session_timeline_events`에 업서트하고 Realtime/Slack 경보를 동시에 발행하도록 배포 스크립트를 추가했습니다. (→ `supabase/functions/*`, `docs/rank-edge-function-schema.md`)
   - `scripts/deploy-edge-functions.js` + GitHub Actions 워크플로(`.github/workflows/edge-functions-deploy.yml`)로 Edge Function 변경 감지·재시도·Slack/PagerDuty 경보를 자동화하고, 실패·재시도 메타를 `rank_edge_function_deployments` 테이블에 적재하도록 연결했습니다. (→ `supabase.sql`, `docs/rank-edge-deploy-schema.md`, `docs/environment-variables.md`)
+  - Edge Function 배포 워크플로를 스테이징/프로덕션 매트릭스로 분리하고, 비밀 검증 스크립트(`scripts/verify-edge-deploy-config.js`)와 스모크 테스트 실행·실패 시 PagerDuty 알림을 추가했습니다. (→ `.github/workflows/edge-functions-deploy.yml`, `package.json`, `scripts/deploy-edge-functions.js`)
 - **다음 단계 메모**:
-  - Edge Function 배포 워크플로를 스테이징 환경에 연동해 테이블/RLS가 정상 적용됐는지 smoke test 자동화를 추가하기.
+  - Edge Function 스모크 테스트 엔드포인트를 정기적으로 점검해 스테이징/프로덕션 모두에서 커버리지·응답 시간을 모니터링할 지표를 정의하기.
   - 베틀로그 상세/캐릭터 대시보드에 `TimelineSection`을 재사용해 턴 기록과 타임라인 이벤트를 함께 탐색할 수 있는 필터/검색 UI를 설계하기.
   - 타임라인 이벤트에 대한 통합 테스트(자동 진행, 난입, 키 교체)를 작성해 회귀 방지와 운영 감사 로그 일관성을 보장하기.
 
 ---
 
-느낀 점: 배포 자동화가 Slack/PagerDuty 경보와 테이블 감사 로그까지 이어지니 Edge Function 장애 대응 루프가 닫혀 운영자 온콜 경험이 한결 선명해졌습니다.
-추가로 필요한 점: 새 워크플로가 스테이징·프로덕션 시크릿 구성을 모두 만족하는지 점검하고, smoke test 실패 시에도 PagerDuty 알림을 연결해 배포 실패를 즉시 감지할 필요가 있습니다.
-진행사항: Edge Function 변경 감지 CI, 재시도 스크립트, 배포 감사 테이블, 환경 변수 문서를 정비해 배포 실패 감시와 경보 루프를 청사진에 맞게 마무리했습니다.
-
+느낀 점: 스테이징/프로덕션을 분리한 배포 워크플로에 비밀 검증과 스모크 테스트 경보까지 붙이니 Edge Function 장애 탐지가 훨씬 빠르고 예측 가능해졌습니다.
+추가로 필요한 점: 스모크 테스트 URL 세트를 템플릿화해 신규 Edge Function 도입 시 누락을 방지하고, PagerDuty 라우팅 키가 환경별 정책에 맞게 유지되는지 모니터링해야 합니다.
+진행사항: Edge Function 배포 워크플로 매트릭스화, 비밀 검증 스크립트 추가, 스모크 테스트 실패 경보, 환경 변수/스키마 문서 갱신까지 마무리해 청사진의 운영 파이프라인 목표를 완성했습니다.

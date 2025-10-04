@@ -11,7 +11,8 @@
     "check:blueprint-next-actions": "node scripts/check-rank-blueprint-next-actions.js",
     "test": "jest",
     "notify:audio-events": "node scripts/notify-audio-event-trends.js",
-    "deploy:edge-functions": "node scripts/deploy-edge-functions.js"
+    "deploy:edge-functions": "node scripts/deploy-edge-functions.js",
+    "check:edge-deploy-config": "node scripts/verify-edge-deploy-config.js"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",

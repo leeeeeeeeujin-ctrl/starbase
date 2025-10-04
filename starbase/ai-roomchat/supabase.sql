@@ -1237,11 +1237,17 @@ create table if not exists public.rank_edge_function_deployments (
   created_at timestamptz not null default now()
 );
 
+alter table public.rank_edge_function_deployments
+add column if not exists environment text not null default 'unknown';
+
 create index if not exists rank_edge_function_deployments_function_idx
 on public.rank_edge_function_deployments (function_name, created_at desc);
 
 create index if not exists rank_edge_function_deployments_status_idx
 on public.rank_edge_function_deployments (status, created_at desc);
+
+create index if not exists rank_edge_function_deployments_env_idx
+on public.rank_edge_function_deployments (environment, created_at desc);
 
 alter table public.rank_edge_function_deployments enable row level security;
 

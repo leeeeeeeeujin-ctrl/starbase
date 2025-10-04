@@ -9,6 +9,7 @@ const { createClient } = require('@supabase/supabase-js')
 const DEFAULT_FUNCTIONS = ['rank-match-timeline', 'rank-api-key-rotation']
 const DEFAULT_MAX_ATTEMPTS = 3
 const DEFAULT_BASE_RETRY_MS = 60_000
+const DEFAULT_SMOKE_TIMEOUT_MS = 15_000
 const MAX_LOG_CHARS = 3000
 
 const SUPABASE_ACCESS_TOKEN = sanitiseString(process.env.SUPABASE_ACCESS_TOKEN)
@@ -32,6 +33,14 @@ const PAGERDUTY_SOURCE = sanitiseString(process.env.RANK_EDGE_DEPLOY_PAGERDUTY_S
 const FUNCTIONS = parseList(process.env.RANK_EDGE_DEPLOY_FUNCTIONS, DEFAULT_FUNCTIONS)
 const MAX_ATTEMPTS = toPositiveInteger(process.env.RANK_EDGE_DEPLOY_MAX_ATTEMPTS, DEFAULT_MAX_ATTEMPTS)
 const BASE_RETRY_MS = toPositiveInteger(process.env.RANK_EDGE_DEPLOY_BASE_RETRY_MS, DEFAULT_BASE_RETRY_MS)
+const ENVIRONMENT_LABEL = sanitiseString(process.env.RANK_EDGE_DEPLOY_ENVIRONMENT) || 'unknown'
+const SMOKE_TEST_URLS = parseList(process.env.RANK_EDGE_DEPLOY_SMOKE_TEST_URLS)
+const SMOKE_TEST_METHOD = (sanitiseString(process.env.RANK_EDGE_DEPLOY_SMOKE_TEST_METHOD) || 'GET').toUpperCase()
+const SMOKE_TEST_HEADERS = parseHeaders(process.env.RANK_EDGE_DEPLOY_SMOKE_TEST_HEADERS)
+const SMOKE_TEST_TIMEOUT_MS = toPositiveInteger(
+  process.env.RANK_EDGE_DEPLOY_SMOKE_TEST_TIMEOUT_MS,
+  DEFAULT_SMOKE_TIMEOUT_MS,
+)
 
 let supabaseClient = null
 
@@ -59,6 +68,24 @@ function toPositiveInteger(raw, fallback) {
   const parsed = Number.parseInt(raw, 10)
   if (Number.isFinite(parsed) && parsed > 0) return parsed
   return fallback
+}
+
+function parseHeaders(value) {
+  if (!value) return {}
+  if (typeof value !== 'string') return {}
+  try {
+    const parsed = JSON.parse(value)
+    if (!parsed || typeof parsed !== 'object') return {}
+    return Object.entries(parsed).reduce((acc, [key, headerValue]) => {
+      if (typeof headerValue === 'string' && headerValue.trim()) {
+        acc[key.trim()] = headerValue.trim()
+      }
+      return acc
+    }, {})
+  } catch (error) {
+    console.warn('[edge-deploy] Failed to parse SMOKE_TEST_HEADERS JSON. Ignoring headers.', { error })
+    return {}
+  }
 }
 
 function delay(ms) {
@@ -167,12 +194,31 @@ async function notifySlack({
   nextRetryAt,
   logs,
   mention,
+  environmentLabel,
+  context,
 }) {
-  const emoji =
-    status === 'succeeded' ? ':white_check_mark:' : status === 'retrying' ? ':warning:' : ':rotating_light:'
+  const emojiMap = {
+    succeeded: ':white_check_mark:',
+    retrying: ':warning:',
+    failed: ':rotating_light:',
+    smoke_failed: ':fire:',
+  }
+  const statusLabelMap = {
+    succeeded: '성공',
+    retrying: '재시도 필요',
+    failed: '실패',
+    smoke_failed: '스모크 테스트 실패',
+  }
+  const emoji = emojiMap[status] || ':rotating_light:'
+  const statusLabel = statusLabelMap[status] || '상태 알 수 없음'
   const lines = []
-  lines.push(`${emoji} Edge Function deploy ${status === 'succeeded' ? '성공' : '실패'} – ${functionName}`)
-  lines.push(`• 시도 횟수: ${attempt}/${maxAttempts}`)
+  lines.push(`${emoji} Edge Function 배포 ${statusLabel} – ${functionName}`)
+  if (environmentLabel) {
+    lines.push(`• 환경: ${environmentLabel}`)
+  }
+  if (attempt != null && maxAttempts != null) {
+    lines.push(`• 시도 횟수: ${attempt}/${maxAttempts}`)
+  }
   if (exitCode != null) {
     lines.push(`• 종료 코드: ${exitCode}`)
   }
@@ -181,6 +227,9 @@ async function notifySlack({
   }
   if (nextRetryAt) {
     lines.push(`• 다음 재시도 예정: ${nextRetryAt}`)
+  }
+  if (context) {
+    lines.push(`• 컨텍스트: ${context}`)
   }
   if (mention && status !== 'succeeded') {
     lines.push(mention)
@@ -194,7 +243,7 @@ async function notifySlack({
   return postSlack({ text: lines.join('\n') })
 }
 
-async function notifyPagerDuty({ functionName, attempt, exitCode, logs }) {
+async function notifyPagerDuty({ functionName, attempt, exitCode, logs, severity, summary, source }) {
   if (!PAGERDUTY_ROUTING_KEY) return false
 
   const body = {
@@ -202,9 +251,9 @@ async function notifyPagerDuty({ functionName, attempt, exitCode, logs }) {
     event_action: 'trigger',
     dedup_key: `rank-edge-deploy-${functionName}`,
     payload: {
-      summary: `Edge Function deploy failed for ${functionName}`,
-      source: PAGERDUTY_SOURCE,
-      severity: PAGERDUTY_SEVERITY,
+      summary: summary || `Edge Function deploy failed for ${functionName}`,
+      source: source || PAGERDUTY_SOURCE,
+      severity: severity || PAGERDUTY_SEVERITY,
       component: functionName,
       group: 'supabase-edge-functions',
       custom_details: {
@@ -242,6 +291,7 @@ async function recordAttempt({
   status,
   logs,
   nextRetryAt,
+  metadata,
 }) {
   const client = createSupabaseClient()
   if (!client) return
@@ -256,8 +306,10 @@ async function recordAttempt({
       duration_ms: durationMs,
       logs,
       next_retry_at: nextRetryAt ? new Date(nextRetryAt).toISOString() : null,
+      environment: ENVIRONMENT_LABEL,
       metadata: {
         version: '2024-EdgeDeploy',
+        ...(metadata || {}),
       },
     })
     if (error) {
@@ -278,6 +330,60 @@ async function ensureFetch() {
   if (typeof fetch === 'function') return fetch
   const mod = await import('node-fetch')
   return mod.default
+}
+
+async function runSmokeTests() {
+  if (!SMOKE_TEST_URLS.length) {
+    return { ran: false, success: true, logs: '', durationMs: 0 }
+  }
+
+  const start = Date.now()
+  const lines = []
+  let allPassed = true
+
+  for (let index = 0; index < SMOKE_TEST_URLS.length; index += 1) {
+    const url = SMOKE_TEST_URLS[index]
+    if (!url) continue
+
+    const label = `[${index + 1}/${SMOKE_TEST_URLS.length}] ${url}`
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), SMOKE_TEST_TIMEOUT_MS)
+    try {
+      const response = await fetch(url, {
+        method: SMOKE_TEST_METHOD,
+        headers: SMOKE_TEST_HEADERS,
+        signal: controller.signal,
+      })
+
+      const bodyText = await response
+        .text()
+        .catch(() => '')
+        .then((text) => (text && text.length > MAX_LOG_CHARS ? `${text.slice(0, MAX_LOG_CHARS - 3)}...` : text))
+
+      if (!response.ok) {
+        allPassed = false
+        lines.push(`❌ Smoke test 실패 – ${label} (status=${response.status})`)
+        if (bodyText) {
+          lines.push(bodyText)
+        }
+      } else {
+        lines.push(`✅ Smoke test 통과 – ${label} (status=${response.status})`)
+        if (bodyText) {
+          lines.push(bodyText)
+        }
+      }
+    } catch (error) {
+      allPassed = false
+      const errorMessage = error && error.name === 'AbortError' ? 'timeout' : error.message || 'unknown error'
+      lines.push(`❌ Smoke test 에러 – ${label} (${errorMessage})`)
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  const durationMs = Date.now() - start
+  const logs = lines.join('\n')
+  return { ran: true, success: allPassed, logs, durationMs }
 }
 
 async function main() {
@@ -324,6 +430,7 @@ async function main() {
         status,
         logs,
         nextRetryAt,
+        metadata: { stage: ENVIRONMENT_LABEL, phase: 'deploy' },
       })
 
       if (!success) {
@@ -337,11 +444,21 @@ async function main() {
           nextRetryAt,
           logs,
           mention: SLACK_MENTION,
+          environmentLabel: ENVIRONMENT_LABEL,
+          context: `phase=deploy`,
         })
 
         if (status === 'failed') {
           overallSuccess = false
-          await notifyPagerDuty({ functionName: fnName, attempt, exitCode, logs })
+          await notifyPagerDuty({
+            functionName: fnName,
+            attempt,
+            exitCode,
+            logs,
+            severity: PAGERDUTY_SEVERITY,
+            summary: `Edge Function deploy failed for ${fnName} (${ENVIRONMENT_LABEL})`,
+            source: `${PAGERDUTY_SOURCE}:${ENVIRONMENT_LABEL}`,
+          })
         } else if (delayMs > 0) {
           console.log(`[edge-deploy] Waiting ${Math.round(delayMs / 1000)}s before retrying ${fnName}`)
           await delay(delayMs)
@@ -358,8 +475,53 @@ async function main() {
             durationMs,
             logs: attempt > 1 ? logs : '',
             mention: '',
+            environmentLabel: ENVIRONMENT_LABEL,
+            context: `phase=deploy`,
           })
         }
+      }
+    }
+  }
+
+  if (overallSuccess) {
+    const smokeResult = await runSmokeTests()
+    if (smokeResult && smokeResult.ran) {
+      await recordAttempt({
+        functionName: 'smoke-tests',
+        attempt: 1,
+        maxAttempts: 1,
+        exitCode: smokeResult.success ? 0 : 1,
+        durationMs: smokeResult.durationMs,
+        status: smokeResult.success ? 'succeeded' : 'failed',
+        logs: smokeResult.logs,
+        nextRetryAt: null,
+        metadata: { stage: ENVIRONMENT_LABEL, phase: 'smoke', urls: SMOKE_TEST_URLS },
+      })
+
+      if (!smokeResult.success) {
+        overallSuccess = false
+        await notifySlack({
+          status: 'smoke_failed',
+          functionName: 'smoke-tests',
+          attempt: 1,
+          maxAttempts: 1,
+          exitCode: 1,
+          durationMs: smokeResult.durationMs,
+          logs: smokeResult.logs,
+          mention: SLACK_MENTION,
+          environmentLabel: ENVIRONMENT_LABEL,
+          context: `phase=smoke`,
+        })
+
+        await notifyPagerDuty({
+          functionName: 'smoke-tests',
+          attempt: 1,
+          exitCode: 1,
+          logs: smokeResult.logs,
+          severity: PAGERDUTY_SEVERITY,
+          summary: `Edge Function smoke tests failed (${ENVIRONMENT_LABEL})`,
+          source: `${PAGERDUTY_SOURCE}:${ENVIRONMENT_LABEL}`,
+        })
       }
     }
   }
