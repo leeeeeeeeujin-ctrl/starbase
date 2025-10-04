@@ -145,6 +145,8 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     aiMemory,
     playerHistories,
     realtimeEvents,
+    realtimePresence,
+    dropInSnapshot,
     apiKey,
     setApiKey,
     apiKeyCooldown,
@@ -693,7 +695,11 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
               </button>
             </div>
             <div className={styles.overlayBody}>
-              <RosterPanel participants={participants} />
+              <RosterPanel
+                participants={participants}
+                realtimePresence={realtimePresence}
+                dropInSnapshot={dropInSnapshot}
+              />
             </div>
           </div>
         </div>

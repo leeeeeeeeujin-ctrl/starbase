@@ -46,6 +46,7 @@ export function useStartCooldown({
   gameId,
   game,
   sessionInfo,
+  onSessionVoided = () => {},
 }) {
   const ensureApiKeyReady = useCallback(
     (apiKey) => {
@@ -87,6 +88,11 @@ export function useStartCooldown({
       clearConsensusVotes()
       updateHeroAssets([], null)
       updateSessionRecord({ status: 'voided', actorNames: [] })
+      try {
+        onSessionVoided({ message, options })
+      } catch (error) {
+        console.warn('[useStartCooldown] onSessionVoided handler failed:', error)
+      }
       clearSessionRecord()
     },
     [
@@ -96,6 +102,7 @@ export function useStartCooldown({
       clearSessionRecord,
       game?.id,
       gameId,
+      onSessionVoided,
       setCurrentNodeId,
       setGameVoided,
       setStatusMessage,

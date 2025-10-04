@@ -114,6 +114,7 @@
   - `useStartApiKeyManager`, `useStartSessionLifecycle`, `useHistoryBuffer` 훅을 도입해 API 키 관리·세션 라이프사이클·히스토리 버퍼를 전담 모듈로 분리하고, `useStartClientEngine`은 턴 진행·UI 연계 로직에 집중하도록 정리했습니다.
   - 수동 응답과 쿨다운 책임을 `useStartManualResponse`, `useStartCooldown` 훅으로 분리하고 각 훅의 JSDoc 타입 가이드를 추가해 엔진 서브 모듈의 인터페이스를 명확히 했습니다.
   - `useHistoryBuffer`, `useStartSessionLifecycle`, `useStartApiKeyManager`, `useStartCooldown`, `useStartManualResponse`에 대한 단위 테스트를 작성해 데이터 흐름과 세션 메타 로깅이 기대대로 유지되는지 검증했습니다. (→ `__tests__/components/rank/StartClient/hooks/startHooks.test.js`)
+  - 타이머 경고 UI, `battleLogDraft` 캡처, 관전/대역 뱃지 구현과 함께 타깃 테스트를 추가해 청사진의 남은 UX 요구사항을 충족했습니다.【F:components/rank/StartClient/TurnInfoPanel.js†L1-L108】【F:components/rank/StartClient/engine/battleLogBuilder.js†L1-L199】【F:components/rank/StartClient/RosterPanel.js†L1-L206】【F:__tests__/components/rank/StartClient/engine/battleLogBuilder.test.js†L1-L110】【F:__tests__/components/rank/StartClient/TurnInfoPanel.test.js†L1-L58】
 - **다음 단계 메모**:
   - Edge Function 스모크 테스트 엔드포인트를 정기적으로 점검해 스테이징/프로덕션 모두에서 커버리지·응답 시간을 모니터링할 지표를 정의하기.
   - 베틀로그 상세/캐릭터 대시보드에 `TimelineSection`을 재사용해 턴 기록과 타임라인 이벤트를 함께 탐색할 수 있는 필터/검색 UI를 설계하기.
@@ -130,15 +131,15 @@
 - **모드 전환 계층**: 실시간 경고/대역 전환은 `realtimeSessionManager`, 비실시간 난입 교대는 `asyncSessionManager`와 `dropInQueueService`가 담당하며, 공통 타임라인 이벤트로 통합돼 있습니다.【F:components/rank/StartClient/services/realtimeSessionManager.js†L1-L200】【F:components/rank/StartClient/services/asyncSessionManager.js†L1-L108】【F:components/rank/StartClient/services/dropInQueueService.js†L1-L200】
 - **타임라인 파이프라인**: `/api/rank/log-turn`이 타임라인 이벤트를 영속화·브로드캐스트하고, `useGameRoom`과 `TimelineSection`이 관전/개인 타임라인을 같은 포맷으로 렌더링합니다.【F:pages/api/rank/log-turn.js†L20-L271】【F:supabase.sql†L1189-L1221】【F:hooks/useGameRoom.js†L260-L371】【F:components/rank/GameRoomView.js†L2514-L2548】【F:components/rank/Timeline/TimelineSection.js†L1-L200】
 - **훅 단위 테스트**: 히스토리·세션·API 키·쿨다운·수동 응답 훅이 jsdom 환경 테스트로 검증돼 있습니다.【F:__tests__/components/rank/StartClient/hooks/startHooks.test.js†L1-L186】
+- **타이머 경고 UX**: 턴 타이머가 10초 이하로 떨어지면 `TurnInfoPanel`이 경고 배경·강조 색상과 함께 진동 알림을 발동합니다.【F:components/rank/StartClient/TurnInfoPanel.js†L1-L108】
+- **배틀 로그 빌더**: `captureBattleLog`이 세션 종료 시점의 히스토리·타임라인·난입 스냅샷을 `battleLogDraft`로 정규화하며, 드롭인 교체 케이스를 다루는 테스트를 포함했습니다.【F:components/rank/StartClient/engine/battleLogBuilder.js†L1-L199】【F:components/rank/StartClient/useStartClientEngine.js†L720-L829】【F:__tests__/components/rank/StartClient/engine/battleLogBuilder.test.js†L1-L110】
+- **관전/대역 뱃지 UI**: `RosterPanel`이 실시간 프레즌스와 난입 큐 스냅샷을 사용해 관전/대역/난입 상태 뱃지를 렌더링합니다.【F:components/rank/StartClient/RosterPanel.js†L1-L206】
 
 ### 미완료 또는 추가 작업 필요 항목
-- **타이머 경고 UX**: 10초 이하 경고 색상/진동 요구사항은 아직 구현되지 않았습니다. 현재 타이머 표시는 고정 색상 텍스트이고, `navigator.vibrate` 호출도 존재하지 않습니다.【F:components/rank/StartClient/TurnInfoPanel.js†L1-L52】【d22e60†L1-L1】
-- **배틀 로그 빌더**: 문서에 명시된 `battleLogBuilder` 모듈은 코드에 존재하지 않아 세션 종료 시 베틀로그 정규화 로직이 아직 비어 있습니다.【65a126†L1-L3】
-- **관전/대역 뱃지 UI**: Roster 패널이 역할·상태를 텍스트로만 노출하고 있어, 청사진에서 언급한 관전/대역 뱃지·난입 알림 UI는 아직 별도 스타일로 구현되지 않았습니다.【F:components/rank/StartClient/RosterPanel.js†L1-L71】
-- **통합 테스트 플랜**: 새 훅 테스트는 존재하지만, 타이머·난입·BGM 트리거를 다루는 통합 테스트는 아직 작성되지 않았습니다(향후 TODO 유지).【F:__tests__/components/rank/StartClient/hooks/startHooks.test.js†L1-L186】
+- **브라우저 통합 테스트**: 배틀 로그 빌더·타이머 경고에 대한 단위 검증은 추가됐지만, 전체 세션 플로우를 아우르는 브라우저 기반 통합 테스트는 아직 필요합니다.【F:__tests__/components/rank/StartClient/engine/battleLogBuilder.test.js†L1-L110】【F:__tests__/components/rank/StartClient/TurnInfoPanel.test.js†L1-L58】
 
 ---
 
-느낀 점: 수동 응답·쿨다운 훅까지 분리하고 단위 테스트를 붙이니 `useStartClientEngine`이 세션 상태 전이 중심으로 더욱 슬림해져 장기 유지보수가 한층 안심됩니다.
-추가로 필요한 점: 통합 테스트와 서비스 레이어의 타입 가이드 확장을 통해 새 훅 패턴이 실전 시나리오에서도 일관되게 동작하는지 검증해야 합니다.
-진행사항: 수동 응답/쿨다운 훅 추가, 핵심 훅 단위 테스트 작성, `apiKeyUtils` 경로 정비까지 마무리해 StartClient 리팩터링 3단계를 완료했습니다.
+느낀 점: 타이머 임계 경고와 난입/관전 뱃지, 배틀 로그 정규화까지 구현해 보니 청사진상 UX 잔여 과제들이 실제 플레이 흐름과 맞물려 동작하는 모습이 선명해졌습니다.
+추가로 필요한 점: 브라우저 통합 테스트와 베틀 로그 영속 계층(저장·재생 UI) 연동을 마련해 새 `battleLogDraft`가 전 구간에서 검증되도록 해야 합니다.
+진행사항: 타이머 경고 UX, 배틀 로그 빌더, 관전/대역 뱃지 UI, 관련 단위 테스트를 추가해 교차 검증 메모의 미완료 항목을 처리했습니다.

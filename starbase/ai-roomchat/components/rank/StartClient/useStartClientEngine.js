@@ -18,6 +18,7 @@ import {
   normalizeHeroName,
   resolveActorContext,
 } from './engine/actorContext'
+import { buildBattleLogDraft } from './engine/battleLogBuilder'
 import { formatRealtimeReason } from './engine/timelineLogBuilder'
 import {
   buildLogEntriesFromEvents,
@@ -88,6 +89,8 @@ export function useStartClientEngine(gameId) {
   const [activeGlobal, setActiveGlobal] = useState([])
   const [activeLocal, setActiveLocal] = useState([])
   const [logs, setLogs] = useState([])
+  const logsRef = useRef([])
+  const [battleLogDraft, setBattleLogDraft] = useState(null)
   const [statusMessage, setStatusMessage] = useState('')
   const [promptMetaWarning, setPromptMetaWarning] = useState('')
   const [isAdvancing, setIsAdvancing] = useState(false)
@@ -150,6 +153,23 @@ export function useStartClientEngine(gameId) {
   const [realtimeEvents, setRealtimeEvents] = useState(() =>
     initializeRealtimeEvents(initialRealtimeSnapshotRef.current),
   )
+  const realtimeEventsRef = useRef(realtimeEvents)
+  const [dropInSnapshot, setDropInSnapshot] = useState(null)
+  const dropInSnapshotRef = useRef(null)
+
+  useEffect(() => {
+    logsRef.current = Array.isArray(logs) ? logs : []
+  }, [logs])
+
+  useEffect(() => {
+    realtimeEventsRef.current = Array.isArray(realtimeEvents)
+      ? realtimeEvents
+      : []
+  }, [realtimeEvents])
+
+  useEffect(() => {
+    dropInSnapshotRef.current = dropInSnapshot || null
+  }, [dropInSnapshot])
 
   useEffect(() => {
     startMatchMetaRef.current = startMatchMeta
@@ -461,7 +481,12 @@ export function useStartClientEngine(gameId) {
           String(participant?.id ?? participant?.hero_id ?? index),
         ),
       )
-      dropInQueueRef.current?.reset()
+      const resetSnapshot = dropInQueueRef.current?.reset?.()
+      if (resetSnapshot && typeof resetSnapshot === 'object') {
+        setDropInSnapshot(resetSnapshot)
+      } else {
+        setDropInSnapshot(null)
+      }
       asyncSessionManagerRef.current?.reset()
       return
     }
@@ -479,6 +504,9 @@ export function useStartClientEngine(gameId) {
       turnNumber: turn,
       mode: game?.realtime_match ? 'realtime' : 'async',
     })
+    if (queueResult && typeof queueResult === 'object') {
+      setDropInSnapshot(queueResult.snapshot || null)
+    }
 
     const arrivals = Array.isArray(queueResult?.arrivals)
       ? queueResult.arrivals
@@ -755,6 +783,14 @@ export function useStartClientEngine(gameId) {
     gameId,
     game,
     sessionInfo,
+    onSessionVoided: (payload = {}) => {
+      const reason =
+        payload?.options?.reason ||
+        payload?.reason ||
+        payload?.options?.message ||
+        'void'
+      captureBattleLog('void', { reason, turnNumber: turn })
+    },
   })
   const participantsStatus = useMemo(
     () =>
@@ -802,6 +838,47 @@ export function useStartClientEngine(gameId) {
       }
     },
     [ownerDisplayMap, game?.realtime_match, turn, logTurnEntries],
+  )
+
+  const captureBattleLog = useCallback(
+    (outcome, { reason, turnNumber: overrideTurn } = {}) => {
+      try {
+        const finalTurn = Number.isFinite(Number(overrideTurn))
+          ? Number(overrideTurn)
+          : Number.isFinite(Number(turn))
+            ? Number(turn)
+            : null
+        const draft = buildBattleLogDraft({
+          gameId,
+          sessionId: sessionInfo?.id || null,
+          gameName: game?.name || null,
+          result: outcome || 'unknown',
+          reason: reason || null,
+          logs: logsRef.current || [],
+          historyEntries: history.getAll(),
+          timelineEvents: realtimeEventsRef.current || [],
+          participants,
+          realtimePresence,
+          dropInSnapshot: dropInSnapshotRef.current || null,
+          winCount,
+          endTurn: finalTurn,
+          endedAt: Date.now(),
+        })
+        setBattleLogDraft(draft)
+      } catch (error) {
+        console.warn('[StartClient] 배틀 로그 캡처 실패:', error)
+      }
+    },
+    [
+      gameId,
+      sessionInfo?.id,
+      game?.name,
+      participants,
+      realtimePresence,
+      winCount,
+      history,
+      turn,
+    ],
   )
 
   const {
@@ -999,7 +1076,11 @@ export function useStartClientEngine(gameId) {
     setPreflight(false)
     setGameVoided(false)
     setTurn(1)
-    setLogs([])
+    setLogs(() => {
+      logsRef.current = []
+      return []
+    })
+    setBattleLogDraft(null)
     setWinCount(0)
     setLastDropInTurn(null)
     setActiveGlobal([])
@@ -1657,21 +1738,28 @@ export function useStartClientEngine(gameId) {
         )
         const chosenEdge = pickNextEdge(outgoing, context)
 
-        setLogs((prev) => [
-          ...prev,
-          {
-            turn,
-            nodeId: node.id,
-            prompt: promptText,
-            response: responseText,
-            outcome: outcome.lastLine || '',
-            variables: outcome.variables || [],
-            next: chosenEdge?.to || null,
-            action: chosenEdge?.data?.action || 'continue',
-            actors: resolvedActorNames,
-            summary: serverSummary || fallbackSummary || null,
-          },
-        ])
+        setLogs((prev) => {
+          const nextLogs = [
+            ...prev,
+            {
+              turn,
+              nodeId: node.id,
+              slotIndex,
+              promptAudience: slotBinding.promptAudience,
+              responseAudience: slotBinding.responseAudience,
+              prompt: promptText,
+              response: responseText,
+              outcome: outcome.lastLine || '',
+              variables: outcome.variables || [],
+              next: chosenEdge?.to || null,
+              action: chosenEdge?.data?.action || 'continue',
+              actors: resolvedActorNames,
+              summary: serverSummary || fallbackSummary || null,
+            },
+          ]
+          logsRef.current = nextLogs
+          return nextLogs
+        })
 
         clearManualResponse()
 
@@ -1681,6 +1769,7 @@ export function useStartClientEngine(gameId) {
           setStatusMessage('더 이상 진행할 경로가 없어 세션을 종료합니다.')
           setTurnDeadline(null)
           setTimeRemaining(null)
+          captureBattleLog('terminated', { reason: 'no_path', turnNumber: turn })
           clearSessionRecord()
           return
         }
@@ -1710,6 +1799,7 @@ export function useStartClientEngine(gameId) {
             setStatusMessage(`승리 조건이 충족되었습니다!${suffix}`)
             setTurnDeadline(null)
             setTimeRemaining(null)
+            captureBattleLog('win', { reason: 'win', turnNumber: turn })
             clearSessionRecord()
             return
           }
@@ -1723,6 +1813,7 @@ export function useStartClientEngine(gameId) {
           )
           setTurnDeadline(null)
           setTimeRemaining(null)
+          captureBattleLog('lose', { reason: 'lose', turnNumber: turn })
           if (viewerId && actingOwnerId === viewerId) {
             markSessionDefeated()
           } else {
@@ -1735,6 +1826,7 @@ export function useStartClientEngine(gameId) {
           setStatusMessage('무승부로 종료되었습니다.')
           setTurnDeadline(null)
           setTimeRemaining(null)
+          captureBattleLog('draw', { reason: 'draw', turnNumber: turn })
           clearSessionRecord()
           return
         }
@@ -1745,6 +1837,7 @@ export function useStartClientEngine(gameId) {
           setStatusMessage('다음에 진행할 노드를 찾을 수 없습니다.')
           setTurnDeadline(null)
           setTimeRemaining(null)
+          captureBattleLog('terminated', { reason: 'missing_next', turnNumber: turn })
           clearSessionRecord()
           return
         }
@@ -2027,6 +2120,7 @@ export function useStartClientEngine(gameId) {
     logs,
     aiMemory,
     playerHistories,
+    battleLogDraft,
     apiKey,
     setApiKey,
     apiKeyCooldown,
@@ -2060,6 +2154,7 @@ export function useStartClientEngine(gameId) {
     sessionInfo,
     realtimePresence,
     realtimeEvents,
+    dropInSnapshot,
     consensus: {
       required: eligibleOwnerIds.length,
       count: consensusCount,
