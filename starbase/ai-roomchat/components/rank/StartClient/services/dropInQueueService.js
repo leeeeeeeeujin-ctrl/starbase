@@ -1,4 +1,4 @@
-import { normalizeTimelineStatus } from '../../../../lib/rank/timelineEvents'
+import { normalizeTimelineStatus } from '@/lib/rank/timelineEvents'
 
 const DEFAULT_ROLE = 'unassigned'
 

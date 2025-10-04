@@ -143,3 +143,11 @@
 느낀 점: 타이머 임계 경고와 난입/관전 뱃지, 배틀 로그 정규화까지 구현해 보니 청사진상 UX 잔여 과제들이 실제 플레이 흐름과 맞물려 동작하는 모습이 선명해졌습니다.
 추가로 필요한 점: 브라우저 통합 테스트와 베틀 로그 영속 계층(저장·재생 UI) 연동을 마련해 새 `battleLogDraft`가 전 구간에서 검증되도록 해야 합니다.
 진행사항: 타이머 경고 UX, 배틀 로그 빌더, 관전/대역 뱃지 UI, 관련 단위 테스트를 추가해 교차 검증 메모의 미완료 항목을 처리했습니다.
+
+### 추가 교차 검증 (2025-12-02)
+- **배틀 로그 영속화/재생**: `/api/rank/save-battle-log`이 `rank_session_battle_logs`에 드래프트를 저장하고, `useGameRoom`·`GameRoomView`가 개인/공유 리플레이 패널과 JSON 다운로드 버튼을 표면화합니다.【F:pages/api/rank/save-battle-log.js†L1-L109】【F:supabase.sql†L1223-L1263】【F:hooks/useGameRoom.js†L228-L367】【F:components/rank/GameRoomView.js†L2268-L2627】
+- **브라우저 통합 러너 준비**: Playwright 설정과 e2e 스켈레톤을 추가해 세션 재생 플로우를 자동화할 토대를 마련했습니다.【F:playwright.config.ts†L1-L18】【F:tests/e2e/battle-log.spec.ts†L1-L8】【F:package.json†L9-L14】
+
+느낀 점: 프론트·백엔드가 동일한 `battleLogDraft` 스키마로 움직이면서 타임라인·리플레이·다운로드가 한 파이프라인으로 묶였다는 확신이 들었습니다.
+추가로 필요한 점: Playwright 시나리오에 실제 세션 종료→리플레이 패널 노출→JSON 다운로드까지 이어지는 절차를 녹여 자동화 커버리지를 완성해야 합니다.
+진행사항: 배틀 로그 영속화/리플레이 패널·JSON 저장 기능을 연결하고 e2e 러너 구성을 마련해 교차 검증 메모의 공백을 줄였습니다.

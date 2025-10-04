@@ -10,6 +10,7 @@
     "check:blueprint-progress-freshness": "node scripts/check-rank-blueprint-progress-freshness.js",
     "check:blueprint-next-actions": "node scripts/check-rank-blueprint-next-actions.js",
     "test": "jest",
+    "test:e2e": "playwright test",
     "notify:audio-events": "node scripts/notify-audio-event-trends.js",
     "deploy:edge-functions": "node scripts/deploy-edge-functions.js",
     "check:edge-deploy-config": "node scripts/verify-edge-deploy-config.js"
@@ -29,6 +30,7 @@
     "@babel/preset-env": "^7.28.3",
     "@babel/preset-react": "^7.24.5",
     "@babel/runtime": "^7.24.5",
+    "@playwright/test": "^1.55.1",
     "babel-jest": "^29.7.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",

@@ -1,4 +1,4 @@
-import { mergeTimelineEvents } from '../../../lib/rank/timelineEvents'
+import { mergeTimelineEvents } from '@/lib/rank/timelineEvents'
 import { buildTimelineLogEntry } from './timelineLogBuilder'
 
 export function initializeRealtimeEvents(snapshot) {

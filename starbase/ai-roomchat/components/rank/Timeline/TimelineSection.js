@@ -6,7 +6,7 @@ import {
   formatAbsoluteTimelineLabel,
   formatRelativeTimelineLabel,
   normalizeTimelineEvents,
-} from '../../../lib/rank/timelineEvents'
+} from '@/lib/rank/timelineEvents'
 
 import styles from './TimelineSection.module.css'
 

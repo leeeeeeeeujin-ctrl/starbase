@@ -1,4 +1,4 @@
-import { normalizeTimelineEvent } from '../../../../lib/rank/timelineEvents'
+import { normalizeTimelineEvent } from '@/lib/rank/timelineEvents'
 
 const WARNING_LIMIT = 2
 const MAX_EVENT_LOG_SIZE = 50

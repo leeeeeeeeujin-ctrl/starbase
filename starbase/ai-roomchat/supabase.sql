@@ -1220,6 +1220,41 @@ create policy if not exists rank_session_timeline_events_insert
 on public.rank_session_timeline_events for insert
 with check (auth.role() = 'service_role');
 
+create table if not exists public.rank_session_battle_logs (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references public.rank_sessions(id) on delete cascade,
+  game_id uuid references public.rank_games(id) on delete set null,
+  owner_id uuid references auth.users(id) on delete set null,
+  result text,
+  reason text,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists rank_session_battle_logs_session_key
+on public.rank_session_battle_logs (session_id);
+
+create index if not exists rank_session_battle_logs_game_idx
+on public.rank_session_battle_logs (game_id, created_at desc);
+
+create index if not exists rank_session_battle_logs_owner_idx
+on public.rank_session_battle_logs (owner_id, created_at desc);
+
+alter table public.rank_session_battle_logs enable row level security;
+
+create policy if not exists rank_session_battle_logs_select
+on public.rank_session_battle_logs for select using (true);
+
+create policy if not exists rank_session_battle_logs_insert
+on public.rank_session_battle_logs for insert
+with check (auth.role() = 'service_role');
+
+create policy if not exists rank_session_battle_logs_update
+on public.rank_session_battle_logs for update
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
 -- =========================================
 --  Edge Function 배포 감사 로그
 -- =========================================

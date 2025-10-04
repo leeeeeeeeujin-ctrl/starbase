@@ -5,7 +5,7 @@ import styles from './GameRoomView.module.css'
 import TimelineSection from './Timeline/TimelineSection'
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
 import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
-import { normalizeTimelineEvents } from '../../lib/rank/timelineEvents'
+import { normalizeTimelineEvents } from '@/lib/rank/timelineEvents'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 
@@ -697,6 +697,59 @@ function formatNumber(value) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return String(value)
   return numeric.toLocaleString()
+}
+
+function buildReplayEntries(sessions = [], { type = 'personal' } = {}) {
+  const entries = []
+  sessions.forEach((session, index) => {
+    const battleLog = session?.battleLog || session?.battle_log || null
+    if (!battleLog || typeof battleLog !== 'object') return
+    const payload = battleLog.payload && typeof battleLog.payload === 'object' ? battleLog.payload : null
+    if (!payload) return
+
+    const meta = payload.meta && typeof payload.meta === 'object' ? payload.meta : {}
+    const turns = Array.isArray(payload.turns) ? payload.turns : []
+    const timeline = Array.isArray(payload.timeline) ? payload.timeline : []
+    const dropIn = meta.dropIn && typeof meta.dropIn === 'object' ? meta.dropIn : null
+    const baseId = session?.sessionId || session?.session_id || session?.id || `session-${index}`
+
+    entries.push({
+      id: `${type}-${baseId}`,
+      label: type === 'shared' ? `세션 ${index + 1}` : `내 세션 ${index + 1}`,
+      result: battleLog.result || meta.result || 'unknown',
+      reason: battleLog.reason || meta.reason || null,
+      generatedAt:
+        meta.generatedAt ||
+        battleLog.created_at ||
+        battleLog.updated_at ||
+        session?.sessionCreatedAt ||
+        session?.created_at ||
+        null,
+      turnCount: Number.isFinite(meta.turnCount) ? meta.turnCount : turns.length,
+      timelineCount: Number.isFinite(meta.timelineEventCount) ? meta.timelineEventCount : timeline.length,
+      dropIn,
+      payload,
+    })
+  })
+  return entries
+}
+
+function describeDropInSummary(dropIn) {
+  if (!dropIn || typeof dropIn !== 'object') return null
+  const roles = Array.isArray(dropIn.roles) ? dropIn.roles : []
+  if (!roles.length) return null
+  const summaries = roles
+    .map((role) => {
+      if (!role || typeof role !== 'object') return null
+      const name = typeof role.role === 'string' ? role.role : '역할'
+      const arrivals = Number(role.totalArrivals) || 0
+      const replacements = Number(role.replacements) || 0
+      if (!arrivals && !replacements) return null
+      return `${name}: 합류 ${arrivals}회, 교체 ${replacements}회`
+    })
+    .filter(Boolean)
+  if (!summaries.length) return null
+  return summaries.join(' · ')
 }
 
 function formatWinRate(value) {
@@ -2182,6 +2235,36 @@ export default function GameRoomView({
     return normalized.slice(0, TIMELINE_EVENT_LIMIT)
   }, [formatSessionTimestamp, sessionHistory])
 
+  const personalReplays = useMemo(
+    () => buildReplayEntries(sessionHistory, { type: 'personal' }),
+    [sessionHistory],
+  )
+
+  const sharedReplays = useMemo(
+    () => buildReplayEntries(sharedSessionHistory, { type: 'shared' }),
+    [sharedSessionHistory],
+  )
+
+  const handleDownloadReplay = useCallback((entry) => {
+    if (!entry || !entry.payload || typeof window === 'undefined') return
+    try {
+      const blob = new Blob([JSON.stringify(entry.payload, null, 2)], {
+        type: 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const safeLabel = entry.label?.replace(/[^a-zA-Z0-9-_]+/g, '_') || 'battle-log'
+      link.download = `${safeLabel}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.warn('배틀 로그 다운로드 실패:', error)
+    }
+  }, [])
+
   const overallRanking = useMemo(() => {
     return [...participants].sort(compareParticipantsByScore)
   }, [participants])
@@ -2546,6 +2629,96 @@ export default function GameRoomView({
               collapsedNotice="타임라인을 접었습니다. 펼쳐서 내 세션의 경고·난입 이벤트를 확인하세요."
             />
           </div>
+        </section>
+      ) : null}
+
+      {personalReplays.length ? (
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>내 세션 베틀로그</h2>
+            <span className={styles.sectionBadge}>{personalReplays.length}</span>
+          </div>
+          <ul className={styles.replayList}>
+            {personalReplays.map((entry) => (
+              <li key={entry.id} className={styles.replayItem}>
+                <div>
+                  <div className={styles.replayHeaderRow}>
+                    <span className={styles.replayLabel}>{entry.label}</span>
+                    <span className={styles.replayResult}>{(entry.result || 'unknown').toUpperCase()}</span>
+                  </div>
+                  <div className={styles.replayMetaRow}>
+                    {entry.generatedAt ? (
+                      <span className={styles.replayMeta}>
+                        생성 {formatDate(entry.generatedAt)}
+                      </span>
+                    ) : null}
+                    {Number.isFinite(entry.turnCount) ? (
+                      <span className={styles.replayMeta}>턴 {entry.turnCount}</span>
+                    ) : null}
+                    {Number.isFinite(entry.timelineCount) ? (
+                      <span className={styles.replayMeta}>타임라인 {entry.timelineCount}</span>
+                    ) : null}
+                    {entry.dropIn ? (
+                      <span className={styles.replayMeta}>{describeDropInSummary(entry.dropIn)}</span>
+                    ) : null}
+                    {entry.reason ? (
+                      <span className={styles.replayMetaReason}>{entry.reason}</span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className={styles.replayActions}>
+                  <button type="button" className={styles.replayButton} onClick={() => handleDownloadReplay(entry)}>
+                    JSON 저장
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {sharedReplays.length ? (
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>공유 세션 베틀로그</h2>
+            <span className={styles.sectionBadge}>{sharedReplays.length}</span>
+          </div>
+          <ul className={styles.replayList}>
+            {sharedReplays.map((entry) => (
+              <li key={entry.id} className={styles.replayItem}>
+                <div>
+                  <div className={styles.replayHeaderRow}>
+                    <span className={styles.replayLabel}>{entry.label}</span>
+                    <span className={styles.replayResult}>{(entry.result || 'unknown').toUpperCase()}</span>
+                  </div>
+                  <div className={styles.replayMetaRow}>
+                    {entry.generatedAt ? (
+                      <span className={styles.replayMeta}>
+                        생성 {formatDate(entry.generatedAt)}
+                      </span>
+                    ) : null}
+                    {Number.isFinite(entry.turnCount) ? (
+                      <span className={styles.replayMeta}>턴 {entry.turnCount}</span>
+                    ) : null}
+                    {Number.isFinite(entry.timelineCount) ? (
+                      <span className={styles.replayMeta}>타임라인 {entry.timelineCount}</span>
+                    ) : null}
+                    {entry.dropIn ? (
+                      <span className={styles.replayMeta}>{describeDropInSummary(entry.dropIn)}</span>
+                    ) : null}
+                    {entry.reason ? (
+                      <span className={styles.replayMetaReason}>{entry.reason}</span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className={styles.replayActions}>
+                  <button type="button" className={styles.replayButton} onClick={() => handleDownloadReplay(entry)}>
+                    JSON 저장
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 

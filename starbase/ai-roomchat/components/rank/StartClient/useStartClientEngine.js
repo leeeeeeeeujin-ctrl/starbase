@@ -41,7 +41,7 @@ import { createAsyncSessionManager } from './services/asyncSessionManager'
 import {
   mergeTimelineEvents,
   normalizeTimelineStatus,
-} from '../../../lib/rank/timelineEvents'
+} from '@/lib/rank/timelineEvents'
 import { useHistoryBuffer } from './hooks/useHistoryBuffer'
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
 import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
@@ -91,6 +91,7 @@ export function useStartClientEngine(gameId) {
   const [logs, setLogs] = useState([])
   const logsRef = useRef([])
   const [battleLogDraft, setBattleLogDraft] = useState(null)
+  const lastBattleLogSignatureRef = useRef(null)
   const [statusMessage, setStatusMessage] = useState('')
   const [promptMetaWarning, setPromptMetaWarning] = useState('')
   const [isAdvancing, setIsAdvancing] = useState(false)
@@ -880,6 +881,58 @@ export function useStartClientEngine(gameId) {
       turn,
     ],
   )
+
+  const persistBattleLogDraft = useCallback(
+    async (draft) => {
+      if (!draft || !sessionInfo?.id || !gameId) return
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          throw new Error('세션 토큰을 확인하지 못했습니다.')
+        }
+
+        const response = await fetch('/api/rank/save-battle-log', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            session_id: sessionInfo.id,
+            game_id: gameId,
+            draft,
+          }),
+        })
+
+        if (!response.ok) {
+          const detail = await response.text().catch(() => '')
+          throw new Error(detail || '배틀 로그 저장에 실패했습니다.')
+        }
+      } catch (error) {
+        console.warn('[StartClient] battleLogDraft 저장 실패:', error)
+      }
+    },
+    [gameId, sessionInfo?.id],
+  )
+
+  useEffect(() => {
+    if (!battleLogDraft) return
+    const signature = JSON.stringify({
+      session: sessionInfo?.id || null,
+      generatedAt: battleLogDraft?.meta?.generatedAt || null,
+      result: battleLogDraft?.meta?.result || null,
+      endTurn: battleLogDraft?.meta?.endTurn ?? null,
+    })
+    if (lastBattleLogSignatureRef.current === signature) {
+      return
+    }
+    lastBattleLogSignatureRef.current = signature
+    persistBattleLogDraft(battleLogDraft)
+  }, [battleLogDraft, persistBattleLogDraft, sessionInfo?.id])
 
   const {
     apiKey,

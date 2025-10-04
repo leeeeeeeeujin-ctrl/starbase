@@ -333,6 +333,32 @@ async function fetchOwnSessionHistory(
     ? Number(turnLimit)
     : 40
 
+  let battleLogsBySession = new Map()
+  try {
+    const { data: battleRows, error: battleError } = await withTable(
+      supabase,
+      'rank_session_battle_logs',
+      (table) =>
+        supabase
+          .from(table)
+          .select('session_id, game_id, owner_id, result, reason, payload, created_at, updated_at')
+          .in('session_id', sessionIds),
+    )
+
+    if (battleError) {
+      throw battleError
+    }
+
+    battleLogsBySession = new Map()
+    ;(Array.isArray(battleRows) ? battleRows : []).forEach((row) => {
+      if (!row?.session_id) return
+      battleLogsBySession.set(row.session_id, row)
+    })
+  } catch (battleError) {
+    console.warn('세션 베틀로그를 불러오지 못했습니다:', battleError)
+    battleLogsBySession = new Map()
+  }
+
   return sessions.map((session) => {
     const allTurns = turnsBySession.get(session.id) || []
     const sorted = [...allTurns].sort((a, b) => {
@@ -369,6 +395,25 @@ async function fetchOwnSessionHistory(
       latestSummary: latestSummarySource?.summary_payload || null,
       hasMore: shareableTurns.length > limitedShareable.length || sorted.length > limitedShareable.length,
       timelineEvents: normalizeTimelineEvents(timelineBySession.get(session.id) || [], { order: 'desc' }),
+      battleLog: (() => {
+        const row = battleLogsBySession.get(session.id)
+        if (!row) return null
+        let payload = null
+        if (row.payload && typeof row.payload === 'object') {
+          try {
+            payload = JSON.parse(JSON.stringify(row.payload))
+          } catch (error) {
+            payload = null
+          }
+        }
+        return {
+          result: row.result || null,
+          reason: row.reason || null,
+          payload,
+          created_at: row.created_at || null,
+          updated_at: row.updated_at || null,
+        }
+      })(),
     }
   })
 }
@@ -411,6 +456,25 @@ async function fetchSharedSessionHistory(
     ...session,
     turns: Array.isArray(session.turns) ? session.turns : [],
     timelineEvents: normalizeTimelineEvents(session.timeline_events || [], { order: 'desc' }),
+    battleLog: (() => {
+      const row = session.battle_log || session.battleLog || null
+      if (!row || typeof row !== 'object') return null
+      let payload = null
+      if (row.payload && typeof row.payload === 'object') {
+        try {
+          payload = JSON.parse(JSON.stringify(row.payload))
+        } catch (error) {
+          payload = null
+        }
+      }
+      return {
+        result: row.result || null,
+        reason: row.reason || null,
+        payload,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null,
+      }
+    })(),
   }))
 }
 

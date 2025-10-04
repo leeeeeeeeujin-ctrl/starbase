@@ -1,4 +1,4 @@
-import { normalizeTimelineStatus } from '../../../../lib/rank/timelineEvents'
+import { normalizeTimelineStatus } from '@/lib/rank/timelineEvents'
 import { createDropInQueueService } from './dropInQueueService'
 
 function determineArrivalReason(arrival, fallbackMode = 'async') {

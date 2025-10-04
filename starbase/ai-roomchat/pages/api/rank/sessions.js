@@ -146,6 +146,24 @@ export default async function handler(req, res) {
     })
   }
 
+  let battleLogsBySession = new Map()
+  if (sessionIds.length) {
+    const { data: battleRows, error: battleError } = await supabaseAdmin
+      .from('rank_session_battle_logs')
+      .select('session_id, result, reason, payload, created_at, updated_at')
+      .in('session_id', sessionIds)
+
+    if (battleError) {
+      return res.status(400).json({ error: battleError.message })
+    }
+
+    battleLogsBySession = new Map()
+    ;(Array.isArray(battleRows) ? battleRows : []).forEach((row) => {
+      if (!row?.session_id) return
+      battleLogsBySession.set(row.session_id, row)
+    })
+  }
+
   const viewerId = viewer.id
 
   const payload = sessions.map((session) => {
@@ -166,6 +184,26 @@ export default async function handler(req, res) {
 
     const timelineEvents = sanitizeTimelineEvents(timelineBySession.get(session.id) || [])
 
+    const battleRow = battleLogsBySession.get(session.id) || null
+    let battleLog = null
+    if (battleRow && typeof battleRow === 'object') {
+      let payload = null
+      if (battleRow.payload && typeof battleRow.payload === 'object') {
+        try {
+          payload = JSON.parse(JSON.stringify(battleRow.payload))
+        } catch (error) {
+          payload = null
+        }
+      }
+      battleLog = {
+        result: battleRow.result || null,
+        reason: battleRow.reason || null,
+        payload,
+        created_at: battleRow.created_at || null,
+        updated_at: battleRow.updated_at || null,
+      }
+    }
+
     return {
       id: session.id,
       owner_id: session.owner_id,
@@ -180,6 +218,7 @@ export default async function handler(req, res) {
       latest_summary: latestSummarySource?.summary_payload || null,
       turns: limitedTurns.map(mapTurn),
       timeline_events: timelineEvents,
+      battle_log: battleLog,
     }
   })
 
