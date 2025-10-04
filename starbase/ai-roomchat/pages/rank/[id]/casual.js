@@ -29,7 +29,7 @@ export default function CasualMatchPage() {
   }, [router])
 
   const {
-    state: { loading, game },
+    state: { loading, game, myHero },
   } = useGameRoom(id, {
     onRequireLogin: handleRequireLogin,
     onGameMissing: handleGameMissing,
@@ -46,5 +46,5 @@ export default function CasualMatchPage() {
     return <div style={{ padding: 24, color: '#f4f6fb' }}>게임 정보를 찾을 수 없습니다.</div>
   }
 
-  return <CasualMatchClient gameId={game.id} />
+  return <CasualMatchClient gameId={game.id} initialHeroId={myHero?.id} />
 }

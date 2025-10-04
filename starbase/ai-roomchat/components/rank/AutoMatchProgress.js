@@ -180,10 +180,15 @@ function readStoredStartConfig() {
   return { apiKey, apiVersion }
 }
 
-export default function AutoMatchProgress({ gameId, mode }) {
+export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const router = useRouter()
   const navigationLockedRef = useRef(false)
-  const { state, actions } = useMatchQueue({ gameId, mode, enabled: Boolean(gameId) })
+  const { state, actions } = useMatchQueue({
+    gameId,
+    mode,
+    enabled: Boolean(gameId),
+    initialHeroId,
+  })
   const [joinError, setJoinError] = useState('')
   const joinSignatureRef = useRef('')
   const heroRedirectTimerRef = useRef(null)
