@@ -176,6 +176,74 @@ export function sanitizeTimelineEvents(events = [], options = {}) {
   }))
 }
 
+export function mapTimelineEventToRow(event, { sessionId = null, gameId = null } = {}) {
+  const normalized = normalizeTimelineEvent(event)
+  if (!normalized) return null
+
+  const timestamp = Number.isFinite(normalized.timestamp)
+    ? normalized.timestamp
+    : Date.parse(event?.timestamp)
+
+  const occurredAt = Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : new Date().toISOString()
+
+  return {
+    session_id: sessionId || event?.sessionId || null,
+    game_id: gameId || event?.gameId || null,
+    event_id: normalized.id,
+    event_type: normalized.type,
+    owner_id: normalized.ownerId || null,
+    reason: normalized.reason || null,
+    strike: normalized.strike,
+    remaining: normalized.remaining,
+    limit: normalized.limit,
+    status: normalized.status || null,
+    turn: Number.isFinite(normalized.turn) ? normalized.turn : null,
+    event_timestamp: occurredAt,
+    context: normalized.context || null,
+    metadata: normalized.metadata || null,
+  }
+}
+
+export function mapTimelineRowToEvent(row, { defaultTurn = null } = {}) {
+  if (!row || typeof row !== 'object') return null
+  const timestampMs = (() => {
+    if (Number.isFinite(Number(row.timestamp_ms))) {
+      return Number(row.timestamp_ms)
+    }
+    const parsed = Date.parse(row.event_timestamp || row.created_at)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+    return Date.now()
+  })()
+
+  const normalized = normalizeTimelineEvent(
+    {
+      id: row.event_id || row.id,
+      type: row.event_type || row.type,
+      ownerId: row.owner_id,
+      strike: row.strike,
+      remaining: row.remaining,
+      limit: row.limit,
+      reason: row.reason,
+      status: row.status,
+      turn: row.turn,
+      timestamp: timestampMs,
+      context: row.context,
+      metadata: row.metadata,
+    },
+    { defaultTurn },
+  )
+
+  if (!normalized) return null
+
+  return {
+    ...normalized,
+    sessionId: row.session_id || null,
+    gameId: row.game_id || null,
+  }
+}
+
 export function formatRelativeTimelineLabel(timestamp) {
   if (!Number.isFinite(timestamp)) return ''
   const now = Date.now()

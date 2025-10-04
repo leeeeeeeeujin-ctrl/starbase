@@ -2,8 +2,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import styles from './GameRoomView.module.css'
+import TimelineSection from './Timeline/TimelineSection'
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
 import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
+import { normalizeTimelineEvents } from '../../lib/rank/timelineEvents'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 
@@ -72,6 +74,8 @@ const TABS = [
   { key: 'hero', label: '캐릭터 정보' },
   { key: 'ranking', label: '랭킹' },
 ]
+
+const TIMELINE_EVENT_LIMIT = 80
 
 function clamp(value, min, max, fallback) {
   const number = Number(value)
@@ -763,11 +767,15 @@ export default function GameRoomView({
   recentBattles = [],
   roleOccupancy = [],
   roleLeaderboards = [],
+  sessionHistory = [],
+  sharedSessionHistory = [],
 }) {
   const [joinLoading, setJoinLoading] = useState(false)
   const [leaveLoading, setLeaveLoading] = useState(false)
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
   const [activeTab, setActiveTab] = useState(TABS[0].key)
+  const [spectatorTimelineCollapsed, setSpectatorTimelineCollapsed] = useState(false)
+  const [personalTimelineCollapsed, setPersonalTimelineCollapsed] = useState(false)
   const touchStartRef = useRef(null)
   const profileCloseRef = useRef(null)
   const profileTitleId = useId()
@@ -802,6 +810,19 @@ export default function GameRoomView({
     const index = TABS.findIndex((tab) => tab.key === activeTab)
     return index >= 0 ? index : 0
   }, [activeTab])
+
+  const formatSessionTimestamp = useCallback((value) => {
+    if (!value) return ''
+    try {
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        return ''
+      }
+      return date.toLocaleString()
+    } catch (error) {
+      return ''
+    }
+  }, [])
 
   useEffect(() => {
     const safeKey = TABS[resolvedActiveIndex]?.key ?? TABS[0].key
@@ -2110,6 +2131,57 @@ export default function GameRoomView({
     setVisibleHeroLogs(10)
   }, [myEntry?.hero_id, myHero?.id, recentBattles])
 
+  const spectatorTimeline = useMemo(() => {
+    const aggregated = []
+    sharedSessionHistory.forEach((session, index) => {
+      const events = Array.isArray(session?.timelineEvents) ? session.timelineEvents : []
+      if (!events.length) return
+      const baseLabel = session?.viewer_is_owner
+        ? '내 세션'
+        : `세션 ${index + 1}`
+      const createdLabel =
+        formatSessionTimestamp(
+          session?.created_at ||
+            session?.sessionCreatedAt ||
+            session?.session_created_at ||
+            null,
+        ) || null
+      events.forEach((event) => {
+        aggregated.push({
+          ...event,
+          context: {
+            ...(event.context || {}),
+            sessionLabel: baseLabel,
+            sessionCreatedAt: createdLabel,
+          },
+        })
+      })
+    })
+    const normalized = normalizeTimelineEvents(aggregated, { order: 'desc' })
+    return normalized.slice(0, TIMELINE_EVENT_LIMIT)
+  }, [formatSessionTimestamp, sharedSessionHistory])
+
+  const personalTimeline = useMemo(() => {
+    const aggregated = []
+    sessionHistory.forEach((session, index) => {
+      const events = Array.isArray(session?.timelineEvents) ? session.timelineEvents : []
+      if (!events.length) return
+      const createdLabel = formatSessionTimestamp(session?.sessionCreatedAt || session?.session_created_at || null) || null
+      events.forEach((event) => {
+        aggregated.push({
+          ...event,
+          context: {
+            ...(event.context || {}),
+            sessionLabel: `내 세션 ${index + 1}`,
+            sessionCreatedAt: createdLabel,
+          },
+        })
+      })
+    })
+    const normalized = normalizeTimelineEvents(aggregated, { order: 'desc' })
+    return normalized.slice(0, TIMELINE_EVENT_LIMIT)
+  }, [formatSessionTimestamp, sessionHistory])
+
   const overallRanking = useMemo(() => {
     return [...participants].sort(compareParticipantsByScore)
   }, [participants])
@@ -2438,6 +2510,44 @@ export default function GameRoomView({
           </div>
         )}
       </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <h2 className={styles.sectionTitle}>관전 타임라인</h2>
+          {spectatorTimeline.length ? (
+            <span className={styles.sectionBadge}>{spectatorTimeline.length}</span>
+          ) : null}
+        </div>
+        <div className={styles.timelineContainer}>
+          <TimelineSection
+            title="실시간 이벤트"
+            events={spectatorTimeline}
+            collapsed={spectatorTimelineCollapsed}
+            onToggle={() => setSpectatorTimelineCollapsed((prev) => !prev)}
+            emptyMessage="아직 관전 타임라인 이벤트가 없습니다."
+            collapsedNotice="타임라인을 접었습니다. 펼쳐서 경고·난입, API 키 교체 이벤트를 확인하세요."
+          />
+        </div>
+      </section>
+
+      {personalTimeline.length ? (
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>내 세션 타임라인</h2>
+            <span className={styles.sectionBadge}>{personalTimeline.length}</span>
+          </div>
+          <div className={styles.timelineContainer}>
+            <TimelineSection
+              title="최근 자동 진행 이벤트"
+              events={personalTimeline}
+              collapsed={personalTimelineCollapsed}
+              onToggle={() => setPersonalTimelineCollapsed((prev) => !prev)}
+              emptyMessage="아직 기록된 타임라인 이벤트가 없습니다."
+              collapsedNotice="타임라인을 접었습니다. 펼쳐서 내 세션의 경고·난입 이벤트를 확인하세요."
+            />
+          </div>
+        </section>
+      ) : null}
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>

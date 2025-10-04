@@ -72,6 +72,12 @@ function buildMetaParts(event) {
   if (context.heroName) {
     meta.push(`캐릭터: ${context.heroName}`)
   }
+  if (context.sessionLabel) {
+    meta.push(`세션: ${context.sessionLabel}`)
+  }
+  if (context.sessionCreatedAt) {
+    meta.push(`시작: ${context.sessionCreatedAt}`)
+  }
   if (context.mode === 'async') {
     meta.push('모드: 비실시간')
   } else if (context.mode === 'realtime') {

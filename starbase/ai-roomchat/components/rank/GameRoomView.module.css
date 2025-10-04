@@ -602,6 +602,10 @@
   gap: 14px;
 }
 
+.timelineContainer {
+  margin-top: 4px;
+}
+
 .sectionHeader {
   display: flex;
   justify-content: space-between;

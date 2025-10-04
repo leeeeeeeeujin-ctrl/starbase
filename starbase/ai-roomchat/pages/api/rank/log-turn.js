@@ -6,7 +6,7 @@ import {
   broadcastRealtimeTimeline,
   notifyRealtimeTimelineWebhook,
 } from '@/lib/rank/realtimeEventNotifications'
-import { sanitizeTimelineEvents } from '@/lib/rank/timelineEvents'
+import { mapTimelineEventToRow, sanitizeTimelineEvents } from '@/lib/rank/timelineEvents'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -238,6 +238,25 @@ export default async function handler(req, res) {
   })
 
   if (timelineEvents.length) {
+    const timelineRows = timelineEvents
+      .map((event) =>
+        mapTimelineEventToRow(event, {
+          sessionId,
+          gameId: gameId || session.game_id || null,
+        }),
+      )
+      .filter(Boolean)
+
+    if (timelineRows.length) {
+      try {
+        await supabaseAdmin
+          .from('rank_session_timeline_events')
+          .upsert(timelineRows, { onConflict: 'event_id', ignoreDuplicates: false })
+      } catch (timelineError) {
+        console.error('[log-turn] failed to persist timeline events', timelineError)
+      }
+    }
+
     await broadcastRealtimeTimeline(sessionId, timelineEvents, {
       turn: resolvedTurn,
       gameId: gameId || session.game_id || null,
