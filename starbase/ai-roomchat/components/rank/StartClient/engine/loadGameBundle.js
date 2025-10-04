@@ -13,6 +13,11 @@ function normalizeParticipants(rows = []) {
       status: row?.status || 'alive',
       score: Number(row?.score) || 0,
       rating: Number(row?.rating) || 0,
+      battles: Number(row?.battles) || 0,
+      win_rate:
+        row?.win_rate !== undefined && row?.win_rate !== null
+          ? Number(row.win_rate)
+          : null,
       hero_id: row?.hero_id || null,
       hero: {
         id: hero?.id || row?.hero_id || null,
@@ -64,7 +69,7 @@ export async function loadGameBundle(supabaseClient, gameId) {
     supabaseClient
       .from(table)
       .select(
-        'id, owner_id, role, status, hero_id, score, rating, heroes:hero_id(id,name,description,image_url,background_url,bgm_url,bgm_duration_seconds,ability1,ability2,ability3,ability4)'
+        'id, owner_id, role, status, hero_id, score, rating, battles, win_rate, heroes:hero_id(id,name,description,image_url,background_url,bgm_url,bgm_duration_seconds,ability1,ability2,ability3,ability4)'
       )
       .eq('game_id', gameId)
   )
