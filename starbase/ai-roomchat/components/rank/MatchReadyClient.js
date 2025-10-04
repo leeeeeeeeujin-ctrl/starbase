@@ -29,6 +29,38 @@ function getModeLabel(mode) {
   return '솔로 랭크'
 }
 
+function buildPlayErrorMessage(payload) {
+  const code = typeof payload?.error === 'string' ? payload.error.trim() : ''
+  const detail = typeof payload?.detail === 'string' ? payload.detail.trim() : ''
+
+  switch (code) {
+    case 'missing_user_api_key':
+      return 'AI API 키가 필요합니다. 전투 화면에서 키를 입력한 뒤 다시 시도해 주세요.'
+    case 'invalid_user_api_key':
+      return detail || 'AI API 키가 올바르지 않습니다. 설정을 확인한 뒤 다시 시도해 주세요.'
+    case 'quota_exhausted':
+      return detail || 'AI 호출 가능 횟수를 모두 사용했습니다. 잠시 후 다시 시도해 주세요.'
+    case 'ai_network_error':
+      return detail
+        ? `AI 호출 중 네트워크 오류가 발생했습니다: ${detail}`
+        : 'AI 호출 중 네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+    case 'ai_prompt_blocked':
+      return detail || 'AI가 요청을 차단했습니다. 다른 영웅이나 구성을 시도해 주세요.'
+    case 'ai_failed':
+      return detail || 'AI 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.'
+    case 'server_error':
+      return detail || '전투를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+    default:
+      if (code) {
+        if (detail) {
+          return detail
+        }
+        return `전투를 시작하지 못했습니다. (${code})`
+      }
+      return detail || '전투를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+  }
+}
+
 export default function MatchReadyClient({ gameId, mode }) {
   const router = useRouter()
   const persistApiKeyOnServer = usePersistApiKey()
@@ -228,26 +260,13 @@ export default function MatchReadyClient({ gameId, mode }) {
           payloadJson = {}
         }
 
-        if (!response.ok || (payloadJson && payloadJson.ok === false && payloadJson.error)) {
-          const message =
-            payloadJson?.error || payloadJson?.detail || '전투를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          if (message === 'missing_user_api_key') {
-            setError('AI API 키가 필요합니다. 전투 화면에서 키를 입력한 뒤 다시 시도해 주세요.')
-          } else {
-            setError(message)
-          }
-          setNotice('')
-          playTriggeredRef.current = false
-          return false
-        }
+        const errorPayload =
+          !response.ok || payloadJson?.ok === false || payloadJson?.error
+            ? payloadJson || {}
+            : null
 
-        if (payloadJson?.error && !payloadJson?.ok) {
-          const message = payloadJson?.error || '전투를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          if (message === 'missing_user_api_key') {
-            setError('AI API 키가 필요합니다. 전투 화면에서 키를 입력한 뒤 다시 시도해 주세요.')
-          } else {
-            setError(message)
-          }
+        if (errorPayload) {
+          setError(buildPlayErrorMessage(errorPayload))
           setNotice('')
           playTriggeredRef.current = false
           return false
