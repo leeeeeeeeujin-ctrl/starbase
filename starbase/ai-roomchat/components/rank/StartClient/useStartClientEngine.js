@@ -168,6 +168,25 @@ function formatOwnerDisplayName(participant, fallbackId = '') {
   return '플레이어'
 }
 
+function formatRealtimeReason(reason) {
+  if (!reason) return ''
+  const normalized = String(reason).trim().toLowerCase()
+  switch (normalized) {
+    case 'timeout':
+      return '시간 초과'
+    case 'consensus':
+      return '합의 미응답'
+    case 'manual':
+      return '수동 진행 미완료'
+    case 'ai':
+      return '자동 진행'
+    case 'inactivity':
+      return '응답 없음'
+    default:
+      return ''
+  }
+}
+
 function isApiKeyError(error) {
   if (!error) return false
   const code = typeof error?.code === 'string' ? error.code.toLowerCase() : ''
@@ -282,17 +301,38 @@ export function useStartClientEngine(gameId) {
   if (!turnVoteControllerRef.current) {
     turnVoteControllerRef.current = createTurnVoteController()
   }
+  const initialRealtimeSnapshotRef = useRef(null)
+  if (!initialRealtimeSnapshotRef.current) {
+    initialRealtimeSnapshotRef.current = realtimeManagerRef.current
+      ? realtimeManagerRef.current.getSnapshot()
+      : null
+  }
   const [consensusState, setConsensusState] = useState(() =>
     turnVoteControllerRef.current.getSnapshot(),
   )
-  const [realtimePresence, setRealtimePresence] = useState(() =>
-    realtimeManagerRef.current ? realtimeManagerRef.current.getSnapshot() : null,
+  const [realtimePresence, setRealtimePresence] = useState(
+    initialRealtimeSnapshotRef.current,
   )
+  const [realtimeEvents, setRealtimeEvents] = useState(() => {
+    const snapshot = initialRealtimeSnapshotRef.current
+    return Array.isArray(snapshot?.events) ? snapshot.events : []
+  })
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
   const lastScheduledTurnRef = useRef(0)
   const participantIdSetRef = useRef(new Set())
+
+  const applyRealtimeSnapshot = useCallback((snapshot) => {
+    if (!snapshot) {
+      setRealtimePresence(null)
+      setRealtimeEvents([])
+      return
+    }
+    setRealtimePresence(snapshot)
+    const events = Array.isArray(snapshot.events) ? snapshot.events : []
+    setRealtimeEvents(events)
+  }, [])
 
   const clearConsensusVotes = useCallback(() => {
     const controller = turnVoteControllerRef.current
@@ -341,13 +381,13 @@ export function useStartClientEngine(gameId) {
     }
     if (realtimeManagerRef.current) {
       const snapshot = realtimeManagerRef.current.reset()
-      setRealtimePresence(snapshot)
+      applyRealtimeSnapshot(snapshot)
     }
     setSessionInfo(null)
     lastScheduledTurnRef.current = 0
     setTurnDeadline(null)
     setTimeRemaining(null)
-  }, [gameId])
+  }, [gameId, applyRealtimeSnapshot])
 
   const markSessionDefeated = useCallback(() => {
     if (gameId) {
@@ -355,13 +395,13 @@ export function useStartClientEngine(gameId) {
     }
     if (realtimeManagerRef.current) {
       const snapshot = realtimeManagerRef.current.reset()
-      setRealtimePresence(snapshot)
+      applyRealtimeSnapshot(snapshot)
     }
     setSessionInfo(null)
     lastScheduledTurnRef.current = 0
     setTurnDeadline(null)
     setTimeRemaining(null)
-  }, [gameId])
+  }, [gameId, applyRealtimeSnapshot])
 
   const logTurnEntries = useCallback(
     async ({ entries, turnNumber }) => {
@@ -906,20 +946,20 @@ export function useStartClientEngine(gameId) {
   useEffect(() => {
     if (!realtimeManagerRef.current) return
     const snapshot = realtimeManagerRef.current.syncParticipants(participants)
-    setRealtimePresence(snapshot)
-  }, [participants])
+    applyRealtimeSnapshot(snapshot)
+  }, [participants, applyRealtimeSnapshot])
 
   useEffect(() => {
     if (!realtimeManagerRef.current) return
     if (!game?.realtime_match) {
       const snapshot = realtimeManagerRef.current.setManagedOwners([])
-      setRealtimePresence(snapshot)
+      applyRealtimeSnapshot(snapshot)
       return
     }
     const normalizedViewer = viewerId ? [String(viewerId).trim()] : []
     const snapshot = realtimeManagerRef.current.setManagedOwners(normalizedViewer)
-    setRealtimePresence(snapshot)
-  }, [viewerId, game?.realtime_match])
+    applyRealtimeSnapshot(snapshot)
+  }, [viewerId, game?.realtime_match, applyRealtimeSnapshot])
 
   useEffect(() => {
     if (preflight) return
@@ -930,8 +970,8 @@ export function useStartClientEngine(gameId) {
       turnNumber: turn,
       eligibleOwnerIds: deriveEligibleOwnerIds(participants),
     })
-    setRealtimePresence(snapshot)
-  }, [preflight, game?.realtime_match, turn, participants])
+    applyRealtimeSnapshot(snapshot)
+  }, [preflight, game?.realtime_match, turn, participants, applyRealtimeSnapshot])
 
   useEffect(() => {
     if (!currentNodeId) {
@@ -1240,7 +1280,7 @@ export function useStartClientEngine(gameId) {
           eligibleOwnerIds: deriveEligibleOwnerIds(participants),
         })
       }
-      setRealtimePresence(manager.getSnapshot())
+      applyRealtimeSnapshot(manager.getSnapshot())
     }
 
     visitedSlotIds.current = new Set()
@@ -1290,6 +1330,7 @@ export function useStartClientEngine(gameId) {
     turnTimerSeconds,
     game?.realtime_match,
     viewerId,
+    applyRealtimeSnapshot,
   ])
 
   const handleStart = useCallback(async () => {
@@ -1453,18 +1494,111 @@ export function useStartClientEngine(gameId) {
           eligibleOwnerIds: deriveEligibleOwnerIds(participants),
         })
         if (!result) return
-        setRealtimePresence(result.snapshot)
+        applyRealtimeSnapshot(result.snapshot)
+
+        const warningReasonMap = new Map()
+        const escalationReasonMap = new Map()
+
+        if (Array.isArray(result.events) && result.events.length) {
+          const warningLimitValue = Number.isFinite(Number(result.snapshot?.warningLimit))
+            ? Number(result.snapshot.warningLimit)
+            : undefined
+          const eventEntries = []
+          result.events.forEach((event) => {
+            if (!event) return
+            const ownerId = event.ownerId ? String(event.ownerId).trim() : ''
+            if (!ownerId) return
+            const info = ownerDisplayMap.get(ownerId)
+            const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
+            const baseLimit = Number.isFinite(Number(event.limit))
+              ? Number(event.limit)
+              : warningLimitValue
+            const reasonLabel = formatRealtimeReason(event.reason)
+            if (event.type === 'warning') {
+              if (reasonLabel) {
+                warningReasonMap.set(ownerId, reasonLabel)
+              }
+              const strikeText = Number.isFinite(Number(event.strike))
+                ? `${Number(event.strike)}회`
+                : '1회'
+              const remainingText =
+                Number.isFinite(Number(event.remaining)) && Number(event.remaining) > 0
+                  ? ` (남은 기회 ${Number(event.remaining)}회)`
+                  : ''
+              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
+              eventEntries.push({
+                role: 'system',
+                content: `⚠️ ${displayName} 경고 ${strikeText}${remainingText}${reasonSuffix}`,
+                public: true,
+                visibility: 'public',
+                extra: {
+                  eventType: 'warning',
+                  ownerId,
+                  strike: Number.isFinite(Number(event.strike))
+                    ? Number(event.strike)
+                    : null,
+                  remaining:
+                    Number.isFinite(Number(event.remaining)) && Number(event.remaining) >= 0
+                      ? Number(event.remaining)
+                      : null,
+                  limit: Number.isFinite(baseLimit) ? Number(baseLimit) : null,
+                  reason: event.reason || null,
+                  turn: Number.isFinite(Number(event.turn)) ? Number(event.turn) : turn,
+                  timestamp: Number.isFinite(Number(event.timestamp))
+                    ? Number(event.timestamp)
+                    : Date.now(),
+                },
+              })
+            } else if (event.type === 'proxy_escalated') {
+              if (reasonLabel) {
+                escalationReasonMap.set(ownerId, reasonLabel)
+              }
+              const strikeText = Number.isFinite(Number(event.strike))
+                ? ` (경고 ${Number(event.strike)}회 누적)`
+                : ''
+              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
+              eventEntries.push({
+                role: 'system',
+                content: `🚨 ${displayName} 대역 전환${strikeText}${reasonSuffix}`,
+                public: true,
+                visibility: 'public',
+                extra: {
+                  eventType: 'proxy_escalated',
+                  ownerId,
+                  strike: Number.isFinite(Number(event.strike))
+                    ? Number(event.strike)
+                    : null,
+                  limit: Number.isFinite(baseLimit) ? Number(baseLimit) : null,
+                  reason: event.reason || null,
+                  turn: Number.isFinite(Number(event.turn)) ? Number(event.turn) : turn,
+                  timestamp: Number.isFinite(Number(event.timestamp))
+                    ? Number(event.timestamp)
+                    : Date.now(),
+                  status: 'proxy',
+                },
+              })
+            }
+          })
+          if (eventEntries.length) {
+            logTurnEntries({ entries: eventEntries, turnNumber: turn }).catch((error) => {
+              console.error('[StartClient] 경고/대역 이벤트 로그 실패:', error)
+            })
+          }
+        }
 
         if (Array.isArray(result.warnings) && result.warnings.length) {
           const messages = result.warnings
-            .map(({ ownerId, strike, remaining }) => {
+            .map(({ ownerId, strike, remaining, reason }) => {
               if (!ownerId) return null
               const normalized = String(ownerId).trim()
               if (!normalized) return null
               const info = ownerDisplayMap.get(normalized)
               const displayName = info?.displayName || `플레이어 ${normalized.slice(0, 6)}`
               const remainText = remaining > 0 ? ` (남은 기회 ${remaining}회)` : ''
-              return `${displayName} 경고 ${strike}회${remainText}`
+              const reasonLabel =
+                warningReasonMap.get(normalized) || formatRealtimeReason(reason)
+              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
+              return `${displayName} 경고 ${strike}회${remainText}${reasonSuffix}`
             })
             .filter(Boolean)
           if (messages.length) {
@@ -1497,7 +1631,9 @@ export function useStartClientEngine(gameId) {
             )
             const names = Array.from(escalatedSet).map((ownerId) => {
               const info = ownerDisplayMap.get(ownerId)
-              return info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
+              const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
+              const reasonLabel = escalationReasonMap.get(ownerId)
+              return reasonLabel ? `${displayName} (${reasonLabel})` : displayName
             })
             setStatusMessage((prev) => {
               const notice = `대역 전환: ${names.join(', ')} – 3회 이상 응답하지 않아 대역으로 교체되었습니다.`
@@ -1515,7 +1651,7 @@ export function useStartClientEngine(gameId) {
         const manager = realtimeManagerRef.current
         if (!manager) return
         const snapshot = manager.recordParticipation(ownerId, turn, { type })
-        setRealtimePresence(snapshot)
+        applyRealtimeSnapshot(snapshot)
       }
 
       if (isUserAction && (!viewerId || actingOwnerId !== viewerId)) {
@@ -1970,6 +2106,7 @@ export function useStartClientEngine(gameId) {
       persistApiKeyOnServer,
       normalizedGeminiMode,
       normalizedGeminiModel,
+      applyRealtimeSnapshot,
     ],
   )
 
@@ -1992,7 +2129,7 @@ export function useStartClientEngine(gameId) {
             type: 'vote',
           })
           if (snapshot) {
-            setRealtimePresence(snapshot)
+            applyRealtimeSnapshot(snapshot)
           }
         }
       }
@@ -2016,7 +2153,7 @@ export function useStartClientEngine(gameId) {
           type: 'vote',
         })
         if (snapshot) {
-          setRealtimePresence(snapshot)
+          applyRealtimeSnapshot(snapshot)
         }
       }
     }
@@ -2037,7 +2174,7 @@ export function useStartClientEngine(gameId) {
     normalizedViewerId,
     game?.realtime_match,
     turn,
-    setRealtimePresence,
+    applyRealtimeSnapshot,
   ])
 
   const autoAdvance = useCallback(() => {
@@ -2151,6 +2288,7 @@ export function useStartClientEngine(gameId) {
     activeAudioProfile: activeHeroAssets.audioProfile,
     sessionInfo,
     realtimePresence,
+    realtimeEvents,
     consensus: {
       required: eligibleOwnerIds.length,
       count: consensusCount,

@@ -1,4 +1,5 @@
 const WARNING_LIMIT = 2
+const MAX_EVENT_LOG_SIZE = 50
 
 function normalizeOwnerId(value) {
   if (value == null) return null
@@ -55,6 +56,30 @@ export function createRealtimeSessionManager({ warningLimit = WARNING_LIMIT } = 
   let pendingOwners = new Set()
   const managedOwners = new Set()
   const ownerState = new Map()
+  const eventLog = []
+
+  function pushEvents(events = []) {
+    if (!Array.isArray(events) || events.length === 0) {
+      return []
+    }
+    const appended = []
+    events.forEach((event) => {
+      if (!event || typeof event !== 'object') return
+      const record = {
+        ...event,
+        timestamp:
+          Number.isFinite(Number(event.timestamp)) && Number(event.timestamp) > 0
+            ? Number(event.timestamp)
+            : Date.now(),
+      }
+      eventLog.push(record)
+      appended.push(record)
+    })
+    if (eventLog.length > MAX_EVENT_LOG_SIZE) {
+      eventLog.splice(0, eventLog.length - MAX_EVENT_LOG_SIZE)
+    }
+    return appended
+  }
 
   function computeSnapshot() {
     const entries = []
@@ -76,6 +101,7 @@ export function createRealtimeSessionManager({ warningLimit = WARNING_LIMIT } = 
       pendingOwners: Array.from(pendingOwners),
       entries,
       warningLimit: limit,
+      events: eventLog.slice(-MAX_EVENT_LOG_SIZE).map((event) => ({ ...event })),
     }
   }
 
@@ -174,6 +200,7 @@ export function createRealtimeSessionManager({ warningLimit = WARNING_LIMIT } = 
         : []
       const newWarnings = []
       const escalated = []
+      const newEvents = []
       normalizedEligible.forEach((ownerId) => {
         if (!pendingOwners.has(ownerId)) {
           return
@@ -191,19 +218,44 @@ export function createRealtimeSessionManager({ warningLimit = WARNING_LIMIT } = 
             entry.status = 'proxy'
             entry.proxiedAtTurn = numericTurn
             escalated.push(ownerId)
+            newEvents.push({
+              type: 'proxy_escalated',
+              ownerId,
+              strike: entry.inactivityStrikes,
+              remaining: 0,
+              limit,
+              reason,
+              turn: numericTurn,
+              status: entry.status,
+            })
           }
         } else {
+          const remaining = Math.max(limit - entry.inactivityStrikes + 1, 0)
           newWarnings.push({
             ownerId,
             strike: entry.inactivityStrikes,
-            remaining: Math.max(limit - entry.inactivityStrikes + 1, 0),
+            remaining,
+            limit,
+            reason,
+          })
+          newEvents.push({
+            type: 'warning',
+            ownerId,
+            strike: entry.inactivityStrikes,
+            remaining,
+            limit,
+            reason,
+            turn: numericTurn,
+            status: entry.status,
           })
         }
       })
+      const appendedRecords = newEvents.length ? pushEvents(newEvents) : []
       return {
         snapshot: computeSnapshot(),
         warnings: newWarnings,
         escalated,
+        events: appendedRecords,
       }
     },
     reset() {
@@ -211,6 +263,7 @@ export function createRealtimeSessionManager({ warningLimit = WARNING_LIMIT } = 
       pendingOwners = new Set()
       ownerState.clear()
       managedOwners.clear()
+      eventLog.length = 0
       return computeSnapshot()
     },
     getSnapshot() {
