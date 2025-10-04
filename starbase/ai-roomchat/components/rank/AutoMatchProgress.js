@@ -216,6 +216,8 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const lastStoredApiKeyRef = useRef('')
   const [playNotice, setPlayNotice] = useState('')
   const [displayStatus, setDisplayStatus] = useState(state.status)
+  const [matchLocked, setMatchLocked] = useState(false)
+  const matchLockedRef = useRef(false)
 
   const persistApiKeyOnServer = useCallback(
     async (value, version) => {
@@ -393,6 +395,10 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     setJoinError(PENALTY_NOTICE)
     joinSignatureRef.current = ''
     actions.cancelQueue()
+    if (matchLockedRef.current) {
+      matchLockedRef.current = false
+      setMatchLocked(false)
+    }
     if (penaltyRedirectRef.current) {
       clearTimeout(penaltyRedirectRef.current)
       penaltyRedirectRef.current = null
@@ -612,6 +618,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
   useEffect(() => {
     if (
+      matchLocked ||
       state.status === 'matched' ||
       confirmationState === 'counting' ||
       confirmationState === 'confirmed'
@@ -626,7 +633,16 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     }
 
     setDisplayStatus(state.status)
-  }, [confirmationState, state.status])
+  }, [confirmationState, matchLocked, state.status])
+
+  useEffect(() => {
+    if (confirmationState === 'failed') {
+      if (matchLockedRef.current) {
+        matchLockedRef.current = false
+        setMatchLocked(false)
+      }
+    }
+  }, [confirmationState])
 
   useEffect(() => {
     if (state.status !== 'matched') {
@@ -777,26 +793,44 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [actions, gameId, router, state.status])
 
   useEffect(() => {
-    if (state.status !== 'matched') {
-      if (confirmationState === 'confirmed') {
-        return
+    if (state.status === 'matched') {
+      if (!matchLockedRef.current) {
+        matchLockedRef.current = true
+        setMatchLocked(true)
       }
-      clearConfirmationTimers()
-      setConfirmationState('idle')
-      setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
+      if (queueTimeoutRef.current) {
+        clearTimeout(queueTimeoutRef.current)
+        queueTimeoutRef.current = null
+      }
       queueJoinStartedAtRef.current = null
+
+      if (confirmationState === 'idle') {
+        startConfirmationCountdown()
+      }
       return
     }
 
-    if (queueTimeoutRef.current) {
-      clearTimeout(queueTimeoutRef.current)
-      queueTimeoutRef.current = null
+    if (state.status === 'idle' || confirmationState === 'failed') {
+      if (matchLockedRef.current) {
+        matchLockedRef.current = false
+        setMatchLocked(false)
+      }
+    }
+
+    if (matchLockedRef.current && confirmationState === 'counting') {
+      return
+    }
+
+    if (confirmationState === 'confirmed') {
+      return
+    }
+
+    clearConfirmationTimers()
+    if (confirmationState !== 'idle') {
+      setConfirmationState('idle')
+      setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
     }
     queueJoinStartedAtRef.current = null
-
-    if (confirmationState === 'idle') {
-      startConfirmationCountdown()
-    }
   }, [
     clearConfirmationTimers,
     confirmationState,
