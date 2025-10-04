@@ -247,10 +247,13 @@ describe('StartClient hooks', () => {
     expect(mockMarkActiveSessionDefeated).toHaveBeenCalledWith('game-1')
   })
 
-  it('voids stalled sessions after exceeding watchdog threshold', () => {
+  it('voids stalled sessions after exceeding watchdog threshold', async () => {
     jest.useFakeTimers({ now: new Date('2024-01-01T00:00:00Z') })
 
-    const voidSession = jest.fn()
+    const voidSessionCalls = []
+    const voidSession = (...args) => {
+      voidSessionCalls.push(args)
+    }
     const recordTimelineEvents = jest.fn()
 
     const baseProps = {
@@ -272,18 +275,20 @@ describe('StartClient hooks', () => {
 
     const hook = renderHook((props) => useStartSessionWatchdog(props), baseProps)
 
-    act(() => {
-      jest.advanceTimersByTime(260_000)
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(260_000)
     })
 
-    expect(voidSession).toHaveBeenCalledWith(
-      '진행이 장시간 멈춰 세션이 무효 처리되었습니다.',
-      expect.objectContaining({
-        reason: 'stalled_session',
-        gameId: 'game-1',
-        sessionId: 'session-1',
-      }),
-    )
+    const stalledVoidDetected = voidSessionCalls.some(([message, payload]) => {
+      return (
+        message === '진행이 장시간 멈춰 세션이 무효 처리되었습니다.' &&
+        payload?.reason === 'stalled_session' &&
+        payload?.gameId === 'game-1' &&
+        payload?.sessionId === 'session-1'
+      )
+    })
+
+    expect(stalledVoidDetected).toBe(true)
     expect(recordTimelineEvents).toHaveBeenCalled()
 
     hook.unmount()
