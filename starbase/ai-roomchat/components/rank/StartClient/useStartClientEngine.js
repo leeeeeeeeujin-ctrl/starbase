@@ -20,6 +20,10 @@ import { pickNextEdge } from './engine/graph'
 import { buildSystemMessage, parseRules } from './engine/systemPrompt'
 import { createTurnTimerService } from './services/turnTimerService'
 import {
+  createTurnVoteController,
+  deriveEligibleOwnerIds,
+} from './services/turnVoteController'
+import {
   getApiKeyCooldown,
   getCooldownDurationMs,
   markApiKeyCooldown,
@@ -235,12 +239,25 @@ export function useStartClientEngine(gameId) {
   } else {
     turnTimerServiceRef.current.configureBase(turnTimerSeconds)
   }
-  const [consentedOwners, setConsentedOwners] = useState([])
+  const turnVoteControllerRef = useRef(null)
+  if (!turnVoteControllerRef.current) {
+    turnVoteControllerRef.current = createTurnVoteController()
+  }
+  const [consensusState, setConsensusState] = useState(() =>
+    turnVoteControllerRef.current.getSnapshot(),
+  )
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
   const lastScheduledTurnRef = useRef(0)
   const participantIdSetRef = useRef(new Set())
+
+  const clearConsensusVotes = useCallback(() => {
+    const controller = turnVoteControllerRef.current
+    if (!controller) return
+    const snapshot = controller.clear()
+    setConsensusState(snapshot)
+  }, [])
 
   const rememberActiveSession = useCallback(
     (payload = {}) => {
@@ -988,7 +1005,7 @@ export function useStartClientEngine(gameId) {
       setCurrentNodeId(null)
       setTurnDeadline(null)
       setTimeRemaining(null)
-      setConsentedOwners([])
+      clearConsensusVotes()
       updateHeroAssets([], null)
       updateSessionRecord({ status: 'voided', actorNames: [] })
       clearSessionRecord()
@@ -997,6 +1014,7 @@ export function useStartClientEngine(gameId) {
       clearSessionRecord,
       updateHeroAssets,
       updateSessionRecord,
+      clearConsensusVotes,
       setApiKeyCooldownState,
       setApiKeyWarning,
       viewerId,
@@ -1014,35 +1032,20 @@ export function useStartClientEngine(gameId) {
       })),
     [participants],
   )
-  const eligibleOwnerIds = useMemo(() => {
-    if (preflight) return []
-    if (!game?.realtime_match) return []
-    if (!Array.isArray(participants) || participants.length === 0) return []
-    const defeated = new Set(['defeated', 'lost', 'dead', 'eliminated', 'retired', 'out'])
-    const owners = []
-    participants.forEach((participant) => {
-      const ownerId = participant?.owner_id || participant?.ownerId || null
-      if (!ownerId) return
-      const status = String(participant?.status || '').toLowerCase()
-      if (defeated.has(status)) return
-      owners.push(ownerId)
-    })
-    return Array.from(new Set(owners))
-  }, [game?.realtime_match, participants, preflight])
-  const consensusCount = useMemo(() => {
-    if (!eligibleOwnerIds.length) return 0
-    const eligibleSet = new Set(eligibleOwnerIds)
-    const agreed = new Set()
-    consentedOwners.forEach((ownerId) => {
-      if (eligibleSet.has(ownerId)) {
-        agreed.add(ownerId)
-      }
-    })
-    return agreed.size
-  }, [consentedOwners, eligibleOwnerIds])
-  const needsConsensus = !preflight && eligibleOwnerIds.length > 0
-  const viewerCanConsent = needsConsensus && viewerId ? eligibleOwnerIds.includes(viewerId) : false
-  const viewerHasConsented = viewerCanConsent && consentedOwners.includes(viewerId)
+  const normalizedViewerId = useMemo(() => {
+    if (!viewerId) return ''
+    return String(viewerId).trim()
+  }, [viewerId])
+  const eligibleOwnerIds = consensusState?.eligibleOwnerIds || []
+  const consentedOwnerIds = consensusState?.consentedOwnerIds || []
+  const consensusCount = consensusState?.consensusCount || 0
+  const needsConsensus = !preflight && Boolean(consensusState?.needsConsensus)
+  const viewerCanConsent =
+    needsConsensus && normalizedViewerId
+      ? eligibleOwnerIds.includes(normalizedViewerId)
+      : false
+  const viewerHasConsented =
+    viewerCanConsent && consentedOwnerIds.includes(normalizedViewerId)
   const currentNode = useMemo(
     () => graph.nodes.find((node) => node.id === currentNodeId) || null,
     [graph.nodes, currentNodeId],
@@ -1151,6 +1154,7 @@ export function useStartClientEngine(gameId) {
     })
     setTurnDeadline(null)
     setTimeRemaining(null)
+    clearConsensusVotes()
     setCurrentNodeId(startNode.id)
   }, [
     graph.nodes,
@@ -1734,14 +1738,14 @@ export function useStartClientEngine(gameId) {
       return
     }
     advanceIntentRef.current = null
-    setConsentedOwners([])
+    clearConsensusVotes()
     advanceTurn(manualResponse.trim())
-  }, [advanceTurn, manualResponse])
+  }, [advanceTurn, manualResponse, clearConsensusVotes])
 
   const advanceWithAi = useCallback(() => {
     if (!needsConsensus) {
       advanceIntentRef.current = null
-      setConsentedOwners([])
+      clearConsensusVotes()
       advanceTurn(null)
       return
     }
@@ -1749,64 +1753,87 @@ export function useStartClientEngine(gameId) {
       setStatusMessage('동의 대상인 참가자만 다음 턴 진행을 제안할 수 있습니다.')
       return
     }
-    const threshold = Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8))
-    const already = consentedOwners.includes(viewerId)
-    advanceIntentRef.current = { override: null }
-    if (!already) {
-      setConsentedOwners((prev) => [...prev, viewerId])
+    const controller = turnVoteControllerRef.current
+    if (!controller) {
+      return
     }
-    const futureCount = already
-      ? consensusCount
-      : Math.min(consensusCount + 1, eligibleOwnerIds.length)
+    advanceIntentRef.current = { override: null }
+    let snapshot = controller.getSnapshot()
+    if (!controller.hasConsented(normalizedViewerId)) {
+      snapshot = controller.registerConsent(normalizedViewerId)
+    }
+    setConsensusState(snapshot)
+    const { consensusCount: futureCount, threshold } = snapshot
     setStatusMessage(`다음 턴 동의 ${futureCount}/${threshold}명`)
   }, [
     advanceTurn,
-    consentedOwners,
-    consensusCount,
-    eligibleOwnerIds.length,
+    clearConsensusVotes,
     needsConsensus,
     setStatusMessage,
     viewerCanConsent,
-    viewerId,
+    normalizedViewerId,
   ])
 
   const autoAdvance = useCallback(() => {
     advanceIntentRef.current = null
-    setConsentedOwners([])
+    clearConsensusVotes()
     return advanceTurn(null)
-  }, [advanceTurn])
+  }, [advanceTurn, clearConsensusVotes])
 
   useEffect(() => {
     if (!needsConsensus) return undefined
     if (!advanceIntentRef.current) return undefined
-    if (!eligibleOwnerIds.length) return undefined
-    const eligibleSet = new Set(eligibleOwnerIds)
-    const threshold = Math.max(1, Math.ceil(eligibleSet.size * 0.8))
-    const agreed = new Set()
-    consentedOwners.forEach((ownerId) => {
-      if (eligibleSet.has(ownerId)) {
-        agreed.add(ownerId)
-      }
-    })
-    if (agreed.size >= threshold) {
-      const intent = advanceIntentRef.current
-      advanceIntentRef.current = null
-      advanceTurn(intent?.override ?? null)
-    }
+    if (!consensusState?.hasReachedThreshold) return undefined
+    const intent = advanceIntentRef.current
+    advanceIntentRef.current = null
+    clearConsensusVotes()
+    advanceTurn(intent?.override ?? null)
     return undefined
-  }, [advanceTurn, consentedOwners, eligibleOwnerIds, needsConsensus])
+  }, [
+    advanceTurn,
+    consensusState?.hasReachedThreshold,
+    needsConsensus,
+    clearConsensusVotes,
+  ])
 
   useEffect(() => {
-    setConsentedOwners([])
-    advanceIntentRef.current = null
-  }, [turn])
+    if (preflight || !game?.realtime_match) {
+      const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([])
+      if (snapshot) {
+        setConsensusState(snapshot)
+      }
+      return
+    }
+    const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
+      deriveEligibleOwnerIds(participants),
+    )
+    if (snapshot) {
+      setConsensusState(snapshot)
+    }
+  }, [participants, game?.realtime_match, preflight])
 
   useEffect(() => {
     if (preflight) {
-      setConsentedOwners([])
       advanceIntentRef.current = null
+      clearConsensusVotes()
     }
-  }, [preflight])
+  }, [preflight, clearConsensusVotes])
+
+  useEffect(() => {
+    advanceIntentRef.current = null
+    clearConsensusVotes()
+  }, [turn, clearConsensusVotes])
+
+  useEffect(() => {
+    if (!needsConsensus) {
+      const intent = advanceIntentRef.current
+      advanceIntentRef.current = null
+      if (intent) {
+        clearConsensusVotes()
+        advanceTurn(intent?.override ?? null)
+      }
+    }
+  }, [needsConsensus, advanceTurn, clearConsensusVotes])
 
   return {
     loading,
@@ -1861,7 +1888,8 @@ export function useStartClientEngine(gameId) {
       viewerEligible: viewerCanConsent,
       viewerHasConsented,
       active: needsConsensus,
-      threshold: Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
+      threshold: consensusState?.threshold ?? Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
+      reached: Boolean(consensusState?.hasReachedThreshold),
     },
   }
 }
