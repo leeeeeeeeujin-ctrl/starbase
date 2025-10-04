@@ -20,6 +20,26 @@ import { pickNextEdge } from './engine/graph'
 import { buildSystemMessage, parseRules } from './engine/systemPrompt'
 import { resolveSlotBinding } from './engine/slotBindingResolver'
 import { createBridgeContext } from './engine/bridgeContext'
+import {
+  buildUserActionPersona,
+  normalizeHeroName,
+  resolveActorContext,
+} from './engine/actorContext'
+import { formatRealtimeReason } from './engine/timelineLogBuilder'
+import {
+  buildLogEntriesFromEvents,
+  initializeRealtimeEvents,
+  appendSnapshotEvents,
+} from './engine/timelineState'
+import {
+  createOwnerDisplayMap,
+  deriveParticipantOwnerId,
+} from './engine/participants'
+import {
+  buildKeySample,
+  formatCooldownMessage,
+  isApiKeyError,
+} from './engine/apiKeyUtils'
 import { createTurnTimerService } from './services/turnTimerService'
 import {
   createTurnVoteController,
@@ -34,7 +54,6 @@ import {
 } from '../../../lib/rank/timelineEvents'
 import {
   getApiKeyCooldown,
-  getCooldownDurationMs,
   markApiKeyCooldown,
   purgeExpiredCooldowns,
 } from '../../../lib/rank/apiKeyCooldown'
@@ -46,314 +65,6 @@ import {
 } from '../../../lib/rank/geminiConfig'
 import useGeminiModelCatalog from '../hooks/useGeminiModelCatalog'
 import { consumeStartMatchMeta } from '../startConfig'
-
-function normalizeHeroName(name) {
-  if (!name) return ''
-  return String(name).normalize('NFC').replace(/\s+/g, '').toLowerCase()
-}
-
-function resolveActorContext({ node, slots, participants }) {
-  if (!node) {
-    return { slotIndex: -1, heroSlot: null, participant: null }
-  }
-
-  const visibleSlots = Array.isArray(node?.options?.visible_slots)
-    ? node.options.visible_slots
-    : []
-
-  const normalizedVisible = visibleSlots
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value) && value > 0)
-    .map((value) => value - 1)
-
-  let slotIndex = -1
-  const rawSlotNo = Number(node?.slot_no)
-  if (Number.isFinite(rawSlotNo) && rawSlotNo > 0) {
-    slotIndex = rawSlotNo - 1
-  }
-  if (slotIndex < 0 && normalizedVisible.length > 0) {
-    slotIndex = normalizedVisible[0]
-  }
-  if (slotIndex < 0 && slots.length > 0) {
-    slotIndex = 0
-  }
-
-  const heroSlot = slotIndex >= 0 && slotIndex < slots.length ? slots[slotIndex] : null
-  const participant =
-    slotIndex >= 0 && slotIndex < participants.length ? participants[slotIndex] : null
-
-  return { slotIndex, heroSlot, participant }
-}
-
-function buildUserActionPersona({ heroSlot, participant }) {
-  const name = heroSlot?.name || participant?.hero?.name || '플레이어 캐릭터'
-  const role = participant?.role || heroSlot?.role || ''
-  const description = heroSlot?.description || participant?.hero?.description || ''
-
-  const abilities = []
-  for (let index = 1; index <= 4; index += 1) {
-    const ability = heroSlot?.[`ability${index}`] || participant?.hero?.[`ability${index}`]
-    if (ability) abilities.push(ability)
-  }
-
-  const header = role ? `${name} (${role})` : name
-
-  const systemLines = [
-    `${header}의 1인칭 시점으로 대사와 행동을 작성하세요.`,
-    description ? `캐릭터 설명: ${description}` : null,
-    abilities.length ? `주요 능력: ${abilities.join(', ')}` : null,
-    '상황을 충분히 묘사하고 캐릭터의 말투를 유지하세요.',
-  ].filter(Boolean)
-
-  const promptIntro = `상황을 참고해 ${header}가 어떤 행동을 취할지 서술하세요.`
-
-  return {
-    system: systemLines.join('\n'),
-    prompt: promptIntro,
-  }
-}
-
-function formatDuration(ms) {
-  const numeric = Number(ms)
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return '잠시'
-  }
-  const totalSeconds = Math.floor(numeric / 1000)
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  const parts = []
-  if (hours > 0) {
-    parts.push(`${hours}시간`)
-  }
-  if (minutes > 0) {
-    parts.push(`${minutes}분`)
-  }
-  if (parts.length === 0) {
-    parts.push(`${Math.max(seconds, 1)}초`)
-  }
-  return parts.join(' ')
-}
-
-function formatCooldownMessage(info) {
-  if (!info?.active) return ''
-  const duration = formatDuration(info.remainingMs ?? getCooldownDurationMs())
-  const sample = info.keySample ? ` (${info.keySample})` : ''
-  const reason = info.reason === 'quota_exhausted' ? 'API 한도가 모두 소진되었습니다.' : ''
-  const detail = reason ? `${reason} ` : ''
-  return `${detail}최근 사용한 API 키${sample}는 ${duration} 동안 사용할 수 없습니다. 새 키를 입력하거나 쿨다운이 끝난 뒤 다시 시도해 주세요.`
-}
-
-function buildKeySample(value) {
-  if (!value) return ''
-  if (value.length <= 6) return value
-  return `${value.slice(0, 3)}…${value.slice(-2)}`
-}
-
-function deriveParticipantOwnerId(participant) {
-  if (!participant) return null
-  return (
-    participant?.owner_id ??
-    participant?.ownerId ??
-    participant?.ownerID ??
-    participant?.owner?.id ??
-    null
-  )
-}
-
-function formatOwnerDisplayName(participant, fallbackId = '') {
-  if (!participant) {
-    return fallbackId ? `플레이어 ${fallbackId.slice(0, 6)}` : '플레이어'
-  }
-  const heroName =
-    participant?.hero?.name ??
-    participant?.hero_name ??
-    participant?.display_name ??
-    participant?.name ??
-    ''
-  if (heroName) {
-    return heroName
-  }
-  const ownerId = deriveParticipantOwnerId(participant)
-  if (ownerId) {
-    return `플레이어 ${String(ownerId).slice(0, 6)}`
-  }
-  return '플레이어'
-}
-
-function buildTimelineLogEntry(event, { ownerDisplayMap, defaultTurn = null, defaultMode = 'realtime' } = {}) {
-  if (!event || typeof event !== 'object') return null
-  const type = typeof event.type === 'string' ? event.type.trim() : ''
-  if (!type) return null
-
-  const ownerId = event.ownerId ? String(event.ownerId).trim() : ''
-  const turnNumber = Number.isFinite(Number(event.turn))
-    ? Number(event.turn)
-    : Number.isFinite(Number(defaultTurn))
-      ? Number(defaultTurn)
-      : null
-  const timestamp = Number.isFinite(Number(event.timestamp))
-    ? Number(event.timestamp)
-    : Date.now()
-  const context = event.context && typeof event.context === 'object' ? event.context : {}
-  const mode = typeof context.mode === 'string' ? context.mode : defaultMode
-
-  const ownerInfo = ownerId && ownerDisplayMap ? ownerDisplayMap.get(ownerId) : null
-  const actorLabel =
-    typeof context.actorLabel === 'string' && context.actorLabel.trim()
-      ? context.actorLabel.trim()
-      : null
-  const ownerLabel =
-    actorLabel || ownerInfo?.displayName || (ownerId ? `플레이어 ${ownerId.slice(0, 6)}` : '시스템')
-
-  let content = ''
-  if (type === 'drop_in_joined') {
-    const roleName = typeof context.role === 'string' ? context.role.trim() : ''
-    const heroName = typeof context.heroName === 'string' ? context.heroName.trim() : ''
-    const detailParts = [roleName, heroName].filter(Boolean)
-    const detail = detailParts.length ? ` (${detailParts.join(' · ')})` : ''
-    content =
-      mode === 'async'
-        ? `🤖 대역 교체: ${ownerLabel}${detail}`
-        : `✨ 난입 합류: ${ownerLabel}${detail}`
-  } else if (type === 'turn_timeout') {
-    content =
-      mode === 'async'
-        ? '⏰ 제한시간 만료 – 대역이 턴을 마무리합니다.'
-        : '⏰ 제한시간 만료 – 턴을 자동으로 종료합니다.'
-  } else if (type === 'consensus_reached') {
-    const count = Number(context.consensusCount)
-    const threshold = Number(context.threshold)
-    if (Number.isFinite(count) && Number.isFinite(threshold) && threshold > 0) {
-      content = `✅ ${count}/${threshold} 동의로 턴을 종료합니다.`
-    } else {
-      content = '✅ 동의가 충족되어 턴을 종료합니다.'
-    }
-  } else if (type === 'api_key_pool_replaced') {
-    const poolMeta = event.metadata?.apiKeyPool || {}
-    const sourceLabel = formatApiKeyPoolSource(poolMeta.source)
-    const providerLabel = poolMeta.provider ? ` (${poolMeta.provider})` : ''
-    const newLabel = poolMeta.newSample ? `새 키 ${poolMeta.newSample}` : 'API 키 업데이트'
-    const replacedLabel = poolMeta.replacedSample ? ` → 교체: ${poolMeta.replacedSample}` : ''
-    content = `🔑 ${sourceLabel}${providerLabel} ${newLabel}${replacedLabel}`
-  } else if (type === 'drop_in_matching_context') {
-    const matching = event.metadata?.matching || {}
-    const label = matching.matchType === 'drop_in' ? '난입 매칭' : '매칭'
-    const details = []
-    if (matching.matchCode) {
-      details.push(`코드 ${matching.matchCode}`)
-    }
-    if (matching.dropInTarget?.role) {
-      details.push(`${matching.dropInTarget.role} 슬롯`)
-    }
-    if (matching.dropInTarget?.roomCode) {
-      details.push(`룸 ${matching.dropInTarget.roomCode}`)
-    }
-    const scoreGap = Number(matching.dropInTarget?.scoreDifference)
-    if (Number.isFinite(scoreGap) && scoreGap !== 0) {
-      details.push(`점수차 ±${Math.abs(Math.round(scoreGap))}`)
-    }
-    const queueSize = Number(matching.dropInMeta?.queueSize)
-    if (Number.isFinite(queueSize) && queueSize >= 0) {
-      details.push(`큐 대기 ${queueSize}명`)
-    }
-    const roomsConsidered = Number(matching.dropInMeta?.roomsConsidered)
-    if (Number.isFinite(roomsConsidered) && roomsConsidered > 0) {
-      details.push(`검토 룸 ${roomsConsidered}개`)
-    }
-    content = `🎯 ${label} 정보: ${details.length ? details.join(', ') : '백엔드 매칭 요약이 동기화되었습니다.'}`
-  } else {
-    content = `ℹ️ ${ownerLabel} 이벤트: ${type}`
-  }
-
-  const strike = Number.isFinite(Number(event.strike)) ? Number(event.strike) : null
-  const remaining = Number.isFinite(Number(event.remaining)) ? Number(event.remaining) : null
-  const limit = Number.isFinite(Number(event.limit)) ? Number(event.limit) : null
-
-  const extra = {
-    eventType: type,
-    ownerId: ownerId || null,
-    strike,
-    remaining,
-    limit,
-    reason: event.reason || null,
-    turn: turnNumber,
-    timestamp,
-    status: event.status || null,
-    context: context && Object.keys(context).length ? context : null,
-  }
-
-  if (event.metadata && typeof event.metadata === 'object') {
-    extra.metadata = event.metadata
-  }
-
-  return {
-    role: 'system',
-    content,
-    public: true,
-    visibility: 'public',
-    extra,
-  }
-}
-
-function formatRealtimeReason(reason) {
-  if (!reason) return ''
-  const normalized = String(reason).trim().toLowerCase()
-  switch (normalized) {
-    case 'timeout':
-      return '시간 초과'
-    case 'consensus':
-      return '합의 미응답'
-    case 'manual':
-      return '수동 진행 미완료'
-    case 'ai':
-      return '자동 진행'
-    case 'inactivity':
-      return '응답 없음'
-    default:
-      return ''
-  }
-}
-
-function formatApiKeyPoolSource(source) {
-  const normalized = typeof source === 'string' ? source.trim().toLowerCase() : ''
-  switch (normalized) {
-    case 'user_input':
-      return '사용자 입력'
-    case 'auto_rotation':
-      return '자동 교체'
-    case 'pool_rotation':
-      return '키 풀 교체'
-    case 'cleared':
-      return 'API 키 제거'
-    case 'match_ready_client':
-      return '매치 준비'
-    case 'auto_match_progress':
-      return '자동 매칭'
-    default:
-      return normalized ? normalized : 'API 키 교체'
-  }
-}
-
-function isApiKeyError(error) {
-  if (!error) return false
-  const code = typeof error?.code === 'string' ? error.code.toLowerCase() : ''
-  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : ''
-  const combined = `${code} ${message}`
-  if (!combined.trim()) return false
-  const keywords = [
-    'missing_user_api_key',
-    'quota_exhausted',
-    'invalid_api_key',
-    'api key',
-    'api-key',
-    'apikey',
-    'api키',
-    '키가 만료',
-    '키가 없습니다',
-  ]
-  return keywords.some((keyword) => combined.includes(keyword))
-}
 
 export function useStartClientEngine(gameId) {
   const initialStoredApiKey =
@@ -477,10 +188,9 @@ export function useStartClientEngine(gameId) {
   const [realtimePresence, setRealtimePresence] = useState(
     initialRealtimeSnapshotRef.current,
   )
-  const [realtimeEvents, setRealtimeEvents] = useState(() => {
-    const snapshot = initialRealtimeSnapshotRef.current
-    return mergeTimelineEvents([], Array.isArray(snapshot?.events) ? snapshot.events : [])
-  })
+  const [realtimeEvents, setRealtimeEvents] = useState(() =>
+    initializeRealtimeEvents(initialRealtimeSnapshotRef.current),
+  )
   useEffect(() => {
     startMatchMetaRef.current = startMatchMeta
   }, [startMatchMeta])
@@ -522,8 +232,7 @@ export function useStartClientEngine(gameId) {
       return
     }
     setRealtimePresence(snapshot)
-    const events = Array.isArray(snapshot.events) ? snapshot.events : []
-    setRealtimeEvents((prev) => mergeTimelineEvents(prev, events))
+    setRealtimeEvents((prev) => appendSnapshotEvents(prev, snapshot))
   }, [])
 
   const clearConsensusVotes = useCallback(() => {
@@ -1440,22 +1149,10 @@ export function useStartClientEngine(gameId) {
       })),
     [participants],
   )
-  const ownerDisplayMap = useMemo(() => {
-    const map = new Map()
-    participants.forEach((participant) => {
-      const ownerId = deriveParticipantOwnerId(participant)
-      if (!ownerId) return
-      const normalized = String(ownerId).trim()
-      if (!normalized) return
-      if (!map.has(normalized)) {
-        map.set(normalized, {
-          participant,
-          displayName: formatOwnerDisplayName(participant, normalized),
-        })
-      }
-    })
-    return map
-  }, [participants])
+  const ownerDisplayMap = useMemo(
+    () => createOwnerDisplayMap(participants),
+    [participants],
+  )
 
   const recordTimelineEvents = useCallback(
     (events, { turnNumber: overrideTurn, logEntries = null, buildLogs = true } = {}) => {
@@ -1464,22 +1161,17 @@ export function useStartClientEngine(gameId) {
 
       let entries = logEntries
       if (!entries && buildLogs) {
-        entries = events
-          .map((event) =>
-            buildTimelineLogEntry(event, {
-              ownerDisplayMap,
-              defaultTurn:
-                Number.isFinite(Number(event.turn)) && Number(event.turn) > 0
-                  ? Number(event.turn)
-                  : Number.isFinite(Number(overrideTurn))
-                    ? Number(overrideTurn)
-                    : Number.isFinite(Number(turn))
-                      ? Number(turn)
-                      : null,
-              defaultMode: game?.realtime_match ? 'realtime' : 'async',
-            }),
-          )
-          .filter(Boolean)
+        const defaultTurn =
+          Number.isFinite(Number(overrideTurn)) && Number(overrideTurn) > 0
+            ? Number(overrideTurn)
+            : Number.isFinite(Number(turn)) && Number(turn) > 0
+              ? Number(turn)
+              : null
+        entries = buildLogEntriesFromEvents(events, {
+          ownerDisplayMap,
+          defaultTurn,
+          defaultMode: game?.realtime_match ? 'realtime' : 'async',
+        })
       }
 
       if (Array.isArray(entries) && entries.length) {
