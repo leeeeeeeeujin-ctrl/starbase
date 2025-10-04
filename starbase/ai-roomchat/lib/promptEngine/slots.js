@@ -9,6 +9,10 @@ export function buildSlotsFromParticipants(participants = []) {
       id: participant.hero_id || null,
       role: participant.role || null,
       status: participant.status || 'alive',
+      slot_no:
+        participant.slot_no != null && Number.isFinite(Number(participant.slot_no))
+          ? Number(participant.slot_no)
+          : null,
       name: safeStr(hero.name),
       description: safeStr(hero.description),
       image_url: hero.image_url || null,

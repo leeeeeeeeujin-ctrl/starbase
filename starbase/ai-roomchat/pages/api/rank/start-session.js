@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { withTableQuery } from '@/lib/supabaseTables'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -74,12 +75,16 @@ export default async function handler(req, res) {
   const ownerId = user.id
   const now = new Date().toISOString()
 
-  const { data: participant, error: participantError } = await supabaseAdmin
-    .from('rank_participants')
-    .select('id, status, role, hero_id')
-    .eq('game_id', game_id)
-    .eq('owner_id', ownerId)
-    .maybeSingle()
+  const { data: participant, error: participantError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_participants',
+    (from) =>
+      from
+        .select('id, status, role, hero_id')
+        .eq('game_id', game_id)
+        .eq('owner_id', ownerId)
+        .maybeSingle(),
+  )
 
   if (participantError) {
     return res.status(400).json({ error: participantError.message })
@@ -93,14 +98,18 @@ export default async function handler(req, res) {
     return res.status(409).json({ error: 'participant_inactive' })
   }
 
-  const { data: existingSession, error: existingError } = await supabaseAdmin
-    .from('rank_sessions')
-    .select('id, status, created_at')
-    .eq('game_id', game_id)
-    .eq('owner_id', ownerId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { data: existingSession, error: existingError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) =>
+      from
+        .select('id, status, created_at')
+        .eq('game_id', game_id)
+        .eq('owner_id', ownerId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+  )
 
   if (existingError) {
     return res.status(400).json({ error: existingError.message })
@@ -110,18 +119,22 @@ export default async function handler(req, res) {
   let created = false
 
   if (!session || session.status !== 'active') {
-    const { data: inserted, error: insertError } = await supabaseAdmin
-      .from('rank_sessions')
-      .insert({
-        game_id,
-        owner_id: ownerId,
-        status: 'active',
-        turn: 0,
-        created_at: now,
-        updated_at: now,
-      })
-      .select('id, status, created_at')
-      .maybeSingle()
+    const { data: inserted, error: insertError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_sessions',
+      (from) =>
+        from
+          .insert({
+            game_id,
+            owner_id: ownerId,
+            status: 'active',
+            turn: 0,
+            created_at: now,
+            updated_at: now,
+          })
+          .select('id, status, created_at')
+          .maybeSingle(),
+    )
 
     if (insertError) {
       return res.status(400).json({ error: insertError.message })
@@ -130,10 +143,11 @@ export default async function handler(req, res) {
     session = inserted
     created = true
   } else {
-    const { error: touchError } = await supabaseAdmin
-      .from('rank_sessions')
-      .update({ updated_at: now })
-      .eq('id', session.id)
+    const { error: touchError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_sessions',
+      (from) => from.update({ updated_at: now }).eq('id', session.id),
+    )
     if (touchError) {
       return res.status(400).json({ error: touchError.message })
     }
@@ -148,14 +162,19 @@ export default async function handler(req, res) {
       createdAt: session.created_at || now,
     })
 
-    const { error: turnError } = await supabaseAdmin.from('rank_turns').insert({
-      session_id: session.id,
-      idx: 0,
-      role: 'system',
-      public: true,
-      content: summary,
-      created_at: now,
-    })
+    const { error: turnError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_turns',
+      (from) =>
+        from.insert({
+          session_id: session.id,
+          idx: 0,
+          role: 'system',
+          public: true,
+          content: summary,
+          created_at: now,
+        }),
+    )
 
     if (turnError) {
       return res.status(400).json({ error: turnError.message })

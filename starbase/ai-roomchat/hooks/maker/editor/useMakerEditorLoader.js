@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 
 import { supabase } from '../../../lib/supabase'
+import { withTableQuery } from '../../../lib/supabaseTables'
 import { analyzeVariableRuleSource, VARIABLE_RULES_VERSION } from '../../../lib/variableRules'
 
 function buildVersionAlert(slotRows = []) {
@@ -62,11 +63,11 @@ export function useMakerEditorLoader({
           return
         }
 
-        const { data: setRow, error: setError } = await supabase
-          .from('prompt_sets')
-          .select('*')
-          .eq('id', setId)
-          .single()
+        const { data: setRow, error: setError } = await withTableQuery(
+          supabase,
+          'prompt_sets',
+          (from) => from.select('*').eq('id', setId).single(),
+        )
 
         if (!active) return
 
@@ -79,16 +80,12 @@ export function useMakerEditorLoader({
         setSetInfo(setRow)
 
         const [{ data: slotRows }, { data: bridgeRows }] = await Promise.all([
-          supabase
-            .from('prompt_slots')
-            .select('*')
-            .eq('set_id', setId)
-            .order('slot_no', { ascending: true }),
-          supabase
-            .from('prompt_bridges')
-            .select('*')
-            .eq('from_set', setId)
-            .order('priority', { ascending: false }),
+          withTableQuery(supabase, 'prompt_slots', (from) =>
+            from.select('*').eq('set_id', setId).order('slot_no', { ascending: true }),
+          ),
+          withTableQuery(supabase, 'prompt_bridges', (from) =>
+            from.select('*').eq('from_set', setId).order('priority', { ascending: false }),
+          ),
         ])
 
         if (!active) return

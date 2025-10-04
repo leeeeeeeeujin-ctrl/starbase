@@ -2,8 +2,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import styles from './GameRoomView.module.css'
+import TimelineSection from './Timeline/TimelineSection'
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
 import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
+import { normalizeTimelineEvents } from '@/lib/rank/timelineEvents'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 
@@ -72,6 +74,8 @@ const TABS = [
   { key: 'hero', label: '캐릭터 정보' },
   { key: 'ranking', label: '랭킹' },
 ]
+
+const TIMELINE_EVENT_LIMIT = 80
 
 function clamp(value, min, max, fallback) {
   const number = Number(value)
@@ -695,6 +699,59 @@ function formatNumber(value) {
   return numeric.toLocaleString()
 }
 
+function buildReplayEntries(sessions = [], { type = 'personal' } = {}) {
+  const entries = []
+  sessions.forEach((session, index) => {
+    const battleLog = session?.battleLog || session?.battle_log || null
+    if (!battleLog || typeof battleLog !== 'object') return
+    const payload = battleLog.payload && typeof battleLog.payload === 'object' ? battleLog.payload : null
+    if (!payload) return
+
+    const meta = payload.meta && typeof payload.meta === 'object' ? payload.meta : {}
+    const turns = Array.isArray(payload.turns) ? payload.turns : []
+    const timeline = Array.isArray(payload.timeline) ? payload.timeline : []
+    const dropIn = meta.dropIn && typeof meta.dropIn === 'object' ? meta.dropIn : null
+    const baseId = session?.sessionId || session?.session_id || session?.id || `session-${index}`
+
+    entries.push({
+      id: `${type}-${baseId}`,
+      label: type === 'shared' ? `세션 ${index + 1}` : `내 세션 ${index + 1}`,
+      result: battleLog.result || meta.result || 'unknown',
+      reason: battleLog.reason || meta.reason || null,
+      generatedAt:
+        meta.generatedAt ||
+        battleLog.created_at ||
+        battleLog.updated_at ||
+        session?.sessionCreatedAt ||
+        session?.created_at ||
+        null,
+      turnCount: Number.isFinite(meta.turnCount) ? meta.turnCount : turns.length,
+      timelineCount: Number.isFinite(meta.timelineEventCount) ? meta.timelineEventCount : timeline.length,
+      dropIn,
+      payload,
+    })
+  })
+  return entries
+}
+
+function describeDropInSummary(dropIn) {
+  if (!dropIn || typeof dropIn !== 'object') return null
+  const roles = Array.isArray(dropIn.roles) ? dropIn.roles : []
+  if (!roles.length) return null
+  const summaries = roles
+    .map((role) => {
+      if (!role || typeof role !== 'object') return null
+      const name = typeof role.role === 'string' ? role.role : '역할'
+      const arrivals = Number(role.totalArrivals) || 0
+      const replacements = Number(role.replacements) || 0
+      if (!arrivals && !replacements) return null
+      return `${name}: 합류 ${arrivals}회, 교체 ${replacements}회`
+    })
+    .filter(Boolean)
+  if (!summaries.length) return null
+  return summaries.join(' · ')
+}
+
 function formatWinRate(value) {
   if (value === null || value === undefined) return '기록 없음'
   const numeric = Number(value)
@@ -763,11 +820,15 @@ export default function GameRoomView({
   recentBattles = [],
   roleOccupancy = [],
   roleLeaderboards = [],
+  sessionHistory = [],
+  sharedSessionHistory = [],
 }) {
   const [joinLoading, setJoinLoading] = useState(false)
   const [leaveLoading, setLeaveLoading] = useState(false)
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
   const [activeTab, setActiveTab] = useState(TABS[0].key)
+  const [spectatorTimelineCollapsed, setSpectatorTimelineCollapsed] = useState(false)
+  const [personalTimelineCollapsed, setPersonalTimelineCollapsed] = useState(false)
   const touchStartRef = useRef(null)
   const profileCloseRef = useRef(null)
   const profileTitleId = useId()
@@ -802,6 +863,19 @@ export default function GameRoomView({
     const index = TABS.findIndex((tab) => tab.key === activeTab)
     return index >= 0 ? index : 0
   }, [activeTab])
+
+  const formatSessionTimestamp = useCallback((value) => {
+    if (!value) return ''
+    try {
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        return ''
+      }
+      return date.toLocaleString()
+    } catch (error) {
+      return ''
+    }
+  }, [])
 
   useEffect(() => {
     const safeKey = TABS[resolvedActiveIndex]?.key ?? TABS[0].key
@@ -2110,6 +2184,87 @@ export default function GameRoomView({
     setVisibleHeroLogs(10)
   }, [myEntry?.hero_id, myHero?.id, recentBattles])
 
+  const spectatorTimeline = useMemo(() => {
+    const aggregated = []
+    sharedSessionHistory.forEach((session, index) => {
+      const events = Array.isArray(session?.timelineEvents) ? session.timelineEvents : []
+      if (!events.length) return
+      const baseLabel = session?.viewer_is_owner
+        ? '내 세션'
+        : `세션 ${index + 1}`
+      const createdLabel =
+        formatSessionTimestamp(
+          session?.created_at ||
+            session?.sessionCreatedAt ||
+            session?.session_created_at ||
+            null,
+        ) || null
+      events.forEach((event) => {
+        aggregated.push({
+          ...event,
+          context: {
+            ...(event.context || {}),
+            sessionLabel: baseLabel,
+            sessionCreatedAt: createdLabel,
+          },
+        })
+      })
+    })
+    const normalized = normalizeTimelineEvents(aggregated, { order: 'desc' })
+    return normalized.slice(0, TIMELINE_EVENT_LIMIT)
+  }, [formatSessionTimestamp, sharedSessionHistory])
+
+  const personalTimeline = useMemo(() => {
+    const aggregated = []
+    sessionHistory.forEach((session, index) => {
+      const events = Array.isArray(session?.timelineEvents) ? session.timelineEvents : []
+      if (!events.length) return
+      const createdLabel = formatSessionTimestamp(session?.sessionCreatedAt || session?.session_created_at || null) || null
+      events.forEach((event) => {
+        aggregated.push({
+          ...event,
+          context: {
+            ...(event.context || {}),
+            sessionLabel: `내 세션 ${index + 1}`,
+            sessionCreatedAt: createdLabel,
+          },
+        })
+      })
+    })
+    const normalized = normalizeTimelineEvents(aggregated, { order: 'desc' })
+    return normalized.slice(0, TIMELINE_EVENT_LIMIT)
+  }, [formatSessionTimestamp, sessionHistory])
+
+  const personalReplays = useMemo(
+    () => buildReplayEntries(sessionHistory, { type: 'personal' }),
+    [sessionHistory],
+  )
+
+  const sharedReplays = useMemo(
+    () => buildReplayEntries(sharedSessionHistory, { type: 'shared' }),
+    [sharedSessionHistory],
+  )
+
+  const handleDownloadReplay = useCallback((entry) => {
+    if (!entry || !entry.payload || typeof window === 'undefined') return
+    try {
+      const blob = new Blob([JSON.stringify(entry.payload, null, 2)], {
+        type: 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const safeLabel = entry.label?.replace(/[^a-zA-Z0-9-_]+/g, '_') || 'battle-log'
+      link.download = `${safeLabel}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.warn('배틀 로그 다운로드 실패:', error)
+    }
+  }, [])
+
   const overallRanking = useMemo(() => {
     return [...participants].sort(compareParticipantsByScore)
   }, [participants])
@@ -2438,6 +2593,134 @@ export default function GameRoomView({
           </div>
         )}
       </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <h2 className={styles.sectionTitle}>관전 타임라인</h2>
+          {spectatorTimeline.length ? (
+            <span className={styles.sectionBadge}>{spectatorTimeline.length}</span>
+          ) : null}
+        </div>
+        <div className={styles.timelineContainer}>
+          <TimelineSection
+            title="실시간 이벤트"
+            events={spectatorTimeline}
+            collapsed={spectatorTimelineCollapsed}
+            onToggle={() => setSpectatorTimelineCollapsed((prev) => !prev)}
+            emptyMessage="아직 관전 타임라인 이벤트가 없습니다."
+            collapsedNotice="타임라인을 접었습니다. 펼쳐서 경고·난입, API 키 교체 이벤트를 확인하세요."
+          />
+        </div>
+      </section>
+
+      {personalTimeline.length ? (
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>내 세션 타임라인</h2>
+            <span className={styles.sectionBadge}>{personalTimeline.length}</span>
+          </div>
+          <div className={styles.timelineContainer}>
+            <TimelineSection
+              title="최근 자동 진행 이벤트"
+              events={personalTimeline}
+              collapsed={personalTimelineCollapsed}
+              onToggle={() => setPersonalTimelineCollapsed((prev) => !prev)}
+              emptyMessage="아직 기록된 타임라인 이벤트가 없습니다."
+              collapsedNotice="타임라인을 접었습니다. 펼쳐서 내 세션의 경고·난입 이벤트를 확인하세요."
+            />
+          </div>
+        </section>
+      ) : null}
+
+      {personalReplays.length ? (
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>내 세션 베틀로그</h2>
+            <span className={styles.sectionBadge}>{personalReplays.length}</span>
+          </div>
+          <ul className={styles.replayList}>
+            {personalReplays.map((entry) => (
+              <li key={entry.id} className={styles.replayItem}>
+                <div>
+                  <div className={styles.replayHeaderRow}>
+                    <span className={styles.replayLabel}>{entry.label}</span>
+                    <span className={styles.replayResult}>{(entry.result || 'unknown').toUpperCase()}</span>
+                  </div>
+                  <div className={styles.replayMetaRow}>
+                    {entry.generatedAt ? (
+                      <span className={styles.replayMeta}>
+                        생성 {formatDate(entry.generatedAt)}
+                      </span>
+                    ) : null}
+                    {Number.isFinite(entry.turnCount) ? (
+                      <span className={styles.replayMeta}>턴 {entry.turnCount}</span>
+                    ) : null}
+                    {Number.isFinite(entry.timelineCount) ? (
+                      <span className={styles.replayMeta}>타임라인 {entry.timelineCount}</span>
+                    ) : null}
+                    {entry.dropIn ? (
+                      <span className={styles.replayMeta}>{describeDropInSummary(entry.dropIn)}</span>
+                    ) : null}
+                    {entry.reason ? (
+                      <span className={styles.replayMetaReason}>{entry.reason}</span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className={styles.replayActions}>
+                  <button type="button" className={styles.replayButton} onClick={() => handleDownloadReplay(entry)}>
+                    JSON 저장
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {sharedReplays.length ? (
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>공유 세션 베틀로그</h2>
+            <span className={styles.sectionBadge}>{sharedReplays.length}</span>
+          </div>
+          <ul className={styles.replayList}>
+            {sharedReplays.map((entry) => (
+              <li key={entry.id} className={styles.replayItem}>
+                <div>
+                  <div className={styles.replayHeaderRow}>
+                    <span className={styles.replayLabel}>{entry.label}</span>
+                    <span className={styles.replayResult}>{(entry.result || 'unknown').toUpperCase()}</span>
+                  </div>
+                  <div className={styles.replayMetaRow}>
+                    {entry.generatedAt ? (
+                      <span className={styles.replayMeta}>
+                        생성 {formatDate(entry.generatedAt)}
+                      </span>
+                    ) : null}
+                    {Number.isFinite(entry.turnCount) ? (
+                      <span className={styles.replayMeta}>턴 {entry.turnCount}</span>
+                    ) : null}
+                    {Number.isFinite(entry.timelineCount) ? (
+                      <span className={styles.replayMeta}>타임라인 {entry.timelineCount}</span>
+                    ) : null}
+                    {entry.dropIn ? (
+                      <span className={styles.replayMeta}>{describeDropInSummary(entry.dropIn)}</span>
+                    ) : null}
+                    {entry.reason ? (
+                      <span className={styles.replayMetaReason}>{entry.reason}</span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className={styles.replayActions}>
+                  <button type="button" className={styles.replayButton} onClick={() => handleDownloadReplay(entry)}>
+                    JSON 저장
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>

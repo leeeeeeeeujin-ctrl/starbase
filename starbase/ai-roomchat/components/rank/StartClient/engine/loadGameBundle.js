@@ -3,7 +3,7 @@ import { withTable } from '@/lib/supabaseTables'
 import { createNodeFromSlot } from './rules'
 
 function normalizeParticipants(rows = []) {
-  return rows.map((row) => {
+  const mapped = rows.map((row, index) => {
     const hero = row?.heroes || {}
     return {
       id: row?.id,
@@ -11,6 +11,10 @@ function normalizeParticipants(rows = []) {
       ownerId: row?.owner_id || row?.ownerId || null,
       role: row?.role || '',
       status: row?.status || 'alive',
+      slot_no:
+        row?.slot_no != null && Number.isFinite(Number(row?.slot_no))
+          ? Number(row.slot_no)
+          : null,
       score: Number(row?.score) || 0,
       rating: Number(row?.rating) || 0,
       battles: Number(row?.battles) || 0,
@@ -32,8 +36,23 @@ function normalizeParticipants(rows = []) {
         ability3: hero?.ability3 || '',
         ability4: hero?.ability4 || '',
       },
+      _originalIndex: index,
     }
   })
+
+  return mapped
+    .sort((a, b) => {
+      const aSlot = a.slot_no
+      const bSlot = b.slot_no
+      if (aSlot != null && bSlot != null) {
+        if (aSlot === bSlot) return a._originalIndex - b._originalIndex
+        return aSlot - bSlot
+      }
+      if (aSlot != null) return -1
+      if (bSlot != null) return 1
+      return a._originalIndex - b._originalIndex
+    })
+    .map(({ _originalIndex, ...rest }) => rest)
 }
 
 function mapBridgeRow(bridge) {
@@ -69,7 +88,7 @@ export async function loadGameBundle(supabaseClient, gameId) {
     supabaseClient
       .from(table)
       .select(
-        'id, owner_id, role, status, hero_id, score, rating, battles, win_rate, heroes:hero_id(id,name,description,image_url,background_url,bgm_url,bgm_duration_seconds,ability1,ability2,ability3,ability4)'
+        'id, owner_id, role, status, slot_no, hero_id, score, rating, battles, win_rate, heroes:hero_id(id,name,description,image_url,background_url,bgm_url,bgm_duration_seconds,ability1,ability2,ability3,ability4)'
       )
       .eq('game_id', gameId)
   )
@@ -81,16 +100,23 @@ export async function loadGameBundle(supabaseClient, gameId) {
   const warnings = []
 
   if (gameRow?.prompt_set_id) {
-    const [{ data: slotRows, error: slotError }, { data: bridgeRows, error: bridgeError }] = await Promise.all([
-      supabaseClient
-        .from('prompt_slots')
-        .select('*')
-        .eq('set_id', gameRow.prompt_set_id)
-        .order('slot_no'),
-      supabaseClient
-        .from('prompt_bridges')
-        .select('*')
-        .eq('from_set', gameRow.prompt_set_id),
+    const [
+      { data: slotRows, error: slotError },
+      { data: bridgeRows, error: bridgeError },
+    ] = await Promise.all([
+      withTable(supabaseClient, 'prompt_slots', (table) =>
+        supabaseClient
+          .from(table)
+          .select('*')
+          .eq('set_id', gameRow.prompt_set_id)
+          .order('slot_no')
+      ),
+      withTable(supabaseClient, 'prompt_bridges', (table) =>
+        supabaseClient
+          .from(table)
+          .select('*')
+          .eq('from_set', gameRow.prompt_set_id)
+      ),
     ])
 
     if (slotError) throw slotError

@@ -5,7 +5,10 @@
 | 변수 | 설명 | 사용 위치 | 비고 |
 | --- | --- | --- | --- |
 | `ADMIN_PORTAL_PASSWORD` | 관리자 포털(`/admin/portal`) 접근 시 인증에 사용하는 비밀번호입니다. | `pages/admin/portal.js`, `pages/api/admin/login.js` | **서버 전용** 변수입니다. 브라우저에 노출되지 않도록 서버 환경에만 설정하세요. |
-| `SUPABASE_SERVICE_ROLE` | Supabase 서비스 롤 키로, 랭크 게임 관련 서버 API가 보호 테이블에 쓰기 작업을 수행할 때 사용합니다. | `lib/rank/db.js`, `pages/api/rank/*.js` | Supabase 프로젝트 설정의 `service_role` 키 값을 그대로 사용합니다. 절대 클라이언트에 노출하지 마세요. |
+| `SUPABASE_URL` *(Edge Functions)* | Supabase 프로젝트 URL. Edge Function 런타임이 직접 REST/Realtime 호출을 수행할 때 사용합니다. | `supabase/functions/_shared/supabaseClient.ts` | `NEXT_PUBLIC_SUPABASE_URL`과 동일한 값을 설정하세요. |
+| `SUPABASE_SERVICE_ROLE` | Supabase 서비스 롤 키로, 랭크 게임 관련 서버 API가 보호 테이블에 쓰기 작업을 수행할 때 사용합니다. | `lib/rank/db.js`, `pages/api/rank/*.js`, `supabase/functions/_shared/supabaseClient.ts` | Supabase 프로젝트 설정의 `service_role` 키 값을 그대로 사용합니다. 절대 클라이언트에 노출하지 마세요. Edge Function 환경에서는 `SUPABASE_SERVICE_ROLE_KEY` 변수명도 허용됩니다. |
+| `SUPABASE_ACCESS_TOKEN` *(CI 배포)* | Supabase CLI가 Edge Function을 배포할 때 사용하는 Personal Access Token입니다. | `scripts/deploy-edge-functions.js`, CI 파이프라인 | GitHub Actions 등의 시크릿 스토어에 저장해 CLI 인증에 사용하세요. |
+| `SUPABASE_PROJECT_REF` *(CI 배포)* | Supabase 프로젝트 참조 ID (`abcd1234` 형태)입니다. | `scripts/deploy-edge-functions.js`, CI 파이프라인 | CLI 배포 대상 프로젝트와 일치하도록 설정합니다. |
 | `RANK_SLOT_SWEEPER_SECRET` | 슬롯 정리 작업(`/api/rank/slot-sweeper`)을 트리거할 때 사용하는 공유 비밀입니다. | `pages/api/rank/slot-sweeper.js`, `docs/slot-sweeper-schedule.md` | 크론 잡이나 백오피스에서 호출 시 쿼리 파라미터 `secret` 값으로 전달합니다. 현재 기본값은 `171819`입니다. |
 | `RANK_COOLDOWN_ALERT_WEBHOOK_URL` | API 키 쿨다운 발생 시 Slack/Webhook 알림을 보낼 엔드포인트 URL입니다. | `lib/rank/cooldownAutomation.js`, `pages/api/rank/cooldown-report.js`, `pages/api/rank/cooldown-digest.js` | 미설정 시 경보는 건너뜁니다. |
 | `RANK_COOLDOWN_ALERT_WEBHOOK_AUTHORIZATION` *(선택)* | Webhook 호출에 사용할 `Authorization` 헤더 값입니다. | `lib/rank/cooldownAutomation.js` | 필요하지 않다면 비워 두세요. |
@@ -13,6 +16,24 @@
 | `RANK_COOLDOWN_ALERT_THRESHOLDS` *(선택)* | 쿨다운 경보 지표 임계값을 JSON으로 오버라이드할 때 사용합니다. `{ "failureRate": { "warning": 0.3 } }` 형태로 작성하면 해당 항목만 교체되고 나머지는 기본값이 유지됩니다. | `pages/api/rank/cooldown-telemetry.js`, `lib/rank/cooldownAlertThresholds.js` | 파싱에 실패하면 기본값이 적용되며, `null`을 지정하면 해당 임계값 비교가 비활성화됩니다. |
 | `RANK_COOLDOWN_ALERT_AUDIT_WEBHOOK_URL` *(선택)* | 경보 임계값(`RANK_COOLDOWN_ALERT_THRESHOLDS`)이 변경될 때 감사 알림을 전송할 Slack/Webhook URL입니다. | `lib/rank/cooldownAlertThresholdAuditTrail.js` | 미설정 시 일반 경보용 Webhook(`RANK_COOLDOWN_ALERT_WEBHOOK_URL`)이 재사용됩니다. |
 | `RANK_COOLDOWN_ALERT_AUDIT_WEBHOOK_AUTHORIZATION` *(선택)* | 감사 알림 Webhook 호출 시 사용할 `Authorization` 헤더 값입니다. | `lib/rank/cooldownAlertThresholdAuditTrail.js` | 설정하지 않으면 일반 경보 토큰(`RANK_COOLDOWN_ALERT_WEBHOOK_AUTHORIZATION`) 또는 `RANK_COOLDOWN_ALERT_WEBHOOK_TOKEN`이 순차적으로 재사용됩니다. |
+| `RANK_REALTIME_EVENT_WEBHOOK_URL` *(선택)* | 실시간 경고/대역 이벤트를 Slack/Webhook으로 전파할 엔드포인트 URL입니다. | `pages/api/rank/log-turn.js`, `lib/rank/realtimeEventNotifications.js`, `supabase/functions/rank-match-timeline`, `supabase/functions/rank-api-key-rotation` | 설정 시 경고·대역 이벤트가 즉시 알림으로 전달됩니다. |
+| `RANK_REALTIME_EVENT_WEBHOOK_AUTHORIZATION` *(선택)* | 실시간 이벤트 Webhook 호출 시 사용할 `Authorization` 헤더 값입니다. | `lib/rank/realtimeEventNotifications.js`, `supabase/functions/rank-match-timeline`, `supabase/functions/rank-api-key-rotation` | 필요한 경우 `RANK_REALTIME_EVENT_WEBHOOK_TOKEN` 또는 동일 용도의 토큰을 대신 사용할 수 있습니다. |
+| `RANK_REALTIME_EVENT_CHANNEL_PREFIX` *(선택)* | Supabase Realtime 채널 이름의 접두사를 커스터마이즈합니다. | `lib/rank/realtimeEventNotifications.js`, `components/rank/StartClient/useStartClientEngine.js`, `supabase/functions/rank-match-timeline`, `supabase/functions/rank-api-key-rotation` | 기본값은 `rank-session`이며, 다중 환경에서 채널 이름이 충돌할 때만 조정하세요. |
+| `RANK_EDGE_DEPLOY_SLACK_WEBHOOK_URL` *(선택)* | Edge Function 배포 실패·재시도·성공 알림을 전달할 Slack/Webhook URL입니다. | `scripts/deploy-edge-functions.js` | 미설정 시 Slack 알림은 전송되지 않습니다. |
+| `RANK_EDGE_DEPLOY_SLACK_WEBHOOK_AUTH` *(선택)* | Edge 배포 알림 Webhook 호출 시 사용할 `Authorization` 헤더 값입니다. | `scripts/deploy-edge-functions.js` | Webhook이 토큰을 요구할 때만 설정하세요. |
+| `RANK_EDGE_DEPLOY_SLACK_MENTION` *(선택)* | 실패/재시도 알림에 추가할 멘션 문자열입니다. 예: `@oncall`. | `scripts/deploy-edge-functions.js` | Slack Webhook을 설정했다면 필요한 멘션을 지정하세요. |
+| `RANK_EDGE_DEPLOY_SLACK_NOTIFY_SUCCESS` *(선택)* | `true`로 설정하면 재시도 후 성공 시에도 Slack 알림이 전송됩니다. | `scripts/deploy-edge-functions.js` | 기본값은 `false`입니다. |
+| `RANK_EDGE_DEPLOY_PAGERDUTY_ROUTING_KEY` *(선택)* | PagerDuty Events API v2 라우팅 키입니다. | `scripts/deploy-edge-functions.js` | 설정 시 최종 실패 시 PagerDuty 경보를 트리거합니다. |
+| `RANK_EDGE_DEPLOY_PAGERDUTY_SEVERITY` *(선택)* | PagerDuty 경보 심각도(`critical`, `error`, `warning`, `info`). | `scripts/deploy-edge-functions.js` | 기본값은 `critical`입니다. |
+| `RANK_EDGE_DEPLOY_PAGERDUTY_SOURCE` *(선택)* | PagerDuty payload의 `source` 필드 값입니다. | `scripts/deploy-edge-functions.js` | 기본값은 `rank-edge-deploy`입니다. |
+| `RANK_EDGE_DEPLOY_MAX_ATTEMPTS` *(선택)* | 자동 배포 최대 시도 횟수입니다. | `scripts/deploy-edge-functions.js` | 기본값은 3회입니다. |
+| `RANK_EDGE_DEPLOY_BASE_RETRY_MS` *(선택)* | 재시도 기본 지연(ms)으로, 시도 번호를 곱해 백오프를 계산합니다. | `scripts/deploy-edge-functions.js` | 기본값은 60,000ms(60초)입니다. |
+| `RANK_EDGE_DEPLOY_FUNCTIONS` *(선택)* | 배포 대상 Edge Function 이름을 쉼표로 구분해 지정합니다. | `scripts/deploy-edge-functions.js` | 기본값은 `rank-match-timeline,rank-api-key-rotation`입니다. |
+| `RANK_EDGE_DEPLOY_ENVIRONMENT` *(자동 설정)* | GitHub Actions 워크플로가 현재 배포 타깃(`staging`/`production`)을 주입합니다. | `.github/workflows/edge-functions-deploy.yml` | 수동으로 수정하지 마세요. |
+| `RANK_EDGE_DEPLOY_SMOKE_TEST_URLS` *(환경별 필수)* | Edge Function 배포 후 호출할 스모크 테스트 URL 목록(쉼표 구분)입니다. | `scripts/deploy-edge-functions.js` | 프로덕션/스테이징 환경 시크릿에 각각 지정하세요. |
+| `RANK_EDGE_DEPLOY_SMOKE_TEST_METHOD` *(선택)* | 스모크 테스트 HTTP 메서드(`GET` 기본). | `scripts/deploy-edge-functions.js` | 설정하지 않으면 `GET`을 사용합니다. |
+| `RANK_EDGE_DEPLOY_SMOKE_TEST_HEADERS` *(선택)* | 스모크 테스트 호출에 사용할 헤더 JSON(`{"Authorization":"Bearer ..."}` 형태). | `scripts/deploy-edge-functions.js` | JSON 형식이 잘못되면 배포가 중단됩니다. |
+| `RANK_EDGE_DEPLOY_SMOKE_TEST_TIMEOUT_MS` *(선택)* | 각 스모크 테스트에 허용할 최대 대기 시간(ms). | `scripts/deploy-edge-functions.js` | 기본값은 15,000ms입니다. |
 | `AUDIO_EVENT_SLACK_WEBHOOK_URL` *(선택)* | 오디오 이벤트 주간 추이를 Slack/Webhook으로 전송할 엔드포인트 URL입니다. | `scripts/notify-audio-event-trends.js`, `/.github/workflows/*.yml` | 미설정 시 주간 알림 단계가 자동으로 건너뜁니다. |
 | `AUDIO_EVENT_SLACK_AUTH_HEADER` *(선택)* | 오디오 이벤트 알림 호출 시 사용할 `Authorization` 헤더 값입니다. | `scripts/notify-audio-event-trends.js` | 웹훅이 인증을 요구할 때만 설정하세요. |
 | `AUDIO_EVENT_TREND_LOOKBACK_WEEKS` *(선택)* | Slack 요약에 포함할 주간 누적 범위를 지정합니다. | `scripts/notify-audio-event-trends.js` | 1~52 사이 정수를 권장하며, 기본값은 12주입니다. |
@@ -23,6 +44,8 @@
 | `TEAM_DRIVE_PRIVATE_KEY` *(선택)* | 서비스 계정의 비공개 키 문자열입니다. 줄바꿈은 `\n`으로 이스케이프해 입력하세요. | `lib/rank/teamDriveUploader.js`, `pages/api/rank/upload-cooldown-timeline.js` | 보안상 서버 환경 변수에만 저장하세요. |
 | `TEAM_DRIVE_FOLDER_ID` *(선택)* | 내보낸 파일을 저장할 팀 드라이브 폴더 ID입니다. | `lib/rank/teamDriveUploader.js`, `pages/api/rank/upload-cooldown-timeline.js` | 미설정 시 루트에 업로드되며, `TEAM_DRIVE_EXPORT_DIR`이 지정되면 파일 시스템 경로가 우선합니다. |
 | `TEAM_DRIVE_EXPORT_DIR` *(선택)* | Google Drive 대신 로컬/마운트된 경로에 파일을 저장하고 싶을 때 지정하는 절대/상대 경로입니다. | `lib/rank/teamDriveUploader.js`, `pages/api/rank/upload-cooldown-timeline.js` | 서비스 계정 설정이 없어도 경로만 지정하면 파일 복사가 수행됩니다. |
+
+> **참고:** Edge Function 배포 워크플로(`.github/workflows/edge-functions-deploy.yml`)는 `rank-edge-staging`, `rank-edge-production` 두 GitHub Environment를 사용합니다. 각 Environment에 동일한 변수 이름으로 별도 시크릿을 등록해 스테이징/프로덕션 구성을 분리하세요.
 
 ## 설정 가이드
 1. **배포 환경** (예: Vercel): 프로젝트 설정 → Environment Variables에 위 변수와 값을 추가합니다.

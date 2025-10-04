@@ -2,6 +2,12 @@ import { createClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { buildTurnSummaryPayload } from '@/lib/rank/turnSummary'
+import {
+  broadcastRealtimeTimeline,
+  notifyRealtimeTimelineWebhook,
+} from '@/lib/rank/realtimeEventNotifications'
+import { mapTimelineEventToRow, sanitizeTimelineEvents } from '@/lib/rank/timelineEvents'
+import { withTableQuery } from '@/lib/supabaseTables'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -135,11 +141,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'missing_entries' })
   }
 
-  const { data: session, error: sessionError } = await supabaseAdmin
-    .from('rank_sessions')
-    .select('id, owner_id, game_id, turn')
-    .eq('id', sessionId)
-    .maybeSingle()
+  const { data: session, error: sessionError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) => from.select('id, owner_id, game_id, turn').eq('id', sessionId).maybeSingle(),
+  )
 
   if (sessionError) {
     return res.status(400).json({ error: sessionError.message })
@@ -153,13 +159,17 @@ export default async function handler(req, res) {
     return res.status(409).json({ error: 'session_game_mismatch' })
   }
 
-  const { data: lastTurn, error: lastError } = await supabaseAdmin
-    .from('rank_turns')
-    .select('idx')
-    .eq('session_id', sessionId)
-    .order('idx', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { data: lastTurn, error: lastError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_turns',
+    (from) =>
+      from
+        .select('idx')
+        .eq('session_id', sessionId)
+        .order('idx', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+  )
 
   if (lastError) {
     return res.status(400).json({ error: lastError.message })
@@ -199,10 +209,11 @@ export default async function handler(req, res) {
     }
   })
 
-  const { data: inserted, error: insertError } = await supabaseAdmin
-    .from('rank_turns')
-    .insert(rows)
-    .select('id, idx, role, public, content, created_at')
+  const { data: inserted, error: insertError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_turns',
+    (from) => from.insert(rows).select('id, idx, role, public, content, created_at'),
+  )
 
   if (insertError) {
     return res.status(400).json({ error: insertError.message })
@@ -215,14 +226,109 @@ export default async function handler(req, res) {
     updatePayload.turn = Math.max(session.turn || 0, numericTurn)
   }
 
-  const { error: updateError } = await supabaseAdmin
-    .from('rank_sessions')
-    .update(updatePayload)
-    .eq('id', sessionId)
+  const { error: updateError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) => from.update(updatePayload).eq('id', sessionId),
+  )
 
   if (updateError) {
     return res.status(400).json({ error: updateError.message })
   }
 
+  const resolvedTurn =
+    Number.isFinite(numericTurn) && numericTurn > 0 ? numericTurn : Number(session.turn) || null
+  const timelineEvents = extractRealtimeTimelineEvents(normalizedEntries, {
+    sessionId,
+    gameId: gameId || session.game_id || null,
+    turn: resolvedTurn,
+  })
+
+  if (timelineEvents.length) {
+    const timelineRows = timelineEvents
+      .map((event) =>
+        mapTimelineEventToRow(event, {
+          sessionId,
+          gameId: gameId || session.game_id || null,
+        }),
+      )
+      .filter(Boolean)
+
+    if (timelineRows.length) {
+      try {
+        await withTableQuery(
+          supabaseAdmin,
+          'rank_session_timeline_events',
+          (from) => from.upsert(timelineRows, { onConflict: 'event_id', ignoreDuplicates: false }),
+        )
+      } catch (timelineError) {
+        console.error('[log-turn] failed to persist timeline events', timelineError)
+      }
+    }
+
+    await broadcastRealtimeTimeline(sessionId, timelineEvents, {
+      turn: resolvedTurn,
+      gameId: gameId || session.game_id || null,
+    })
+
+    await notifyRealtimeTimelineWebhook(timelineEvents, {
+      sessionId,
+      gameId: gameId || session.game_id || null,
+    })
+  }
+
   return res.status(200).json({ ok: true, entries: inserted })
+}
+
+function extractRealtimeTimelineEvents(entries = [], { sessionId, gameId, turn } = {}) {
+  if (!Array.isArray(entries)) return []
+
+  const events = []
+
+  entries.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return
+    const extra = entry.extra
+    if (!extra || typeof extra !== 'object') return
+    const type =
+      typeof extra.eventType === 'string'
+        ? extra.eventType.trim()
+        : typeof extra.type === 'string'
+          ? extra.type.trim()
+          : ''
+    if (!type) return
+
+    const ownerId =
+      extra.ownerId ??
+      extra.owner_id ??
+      extra.ownerID ??
+      (typeof extra.owner === 'string' ? extra.owner : null) ??
+      null
+
+    const strike = Number.isFinite(Number(extra.strike)) ? Number(extra.strike) : null
+    const remaining = Number.isFinite(Number(extra.remaining)) ? Number(extra.remaining) : null
+    const limit = Number.isFinite(Number(extra.limit)) ? Number(extra.limit) : null
+    const eventTurn = Number.isFinite(Number(extra.turn)) ? Number(extra.turn) : turn ?? null
+    const timestamp = Number.isFinite(Number(extra.timestamp))
+      ? Number(extra.timestamp)
+      : Date.parse(extra.timestamp)
+
+    events.push({
+      id: extra.eventId || extra.id || null,
+      type,
+      ownerId,
+      strike,
+      remaining,
+      limit,
+      reason: extra.reason || null,
+      turn: eventTurn,
+      timestamp,
+      status: extra.status || null,
+      context: extra.context || null,
+      metadata: extra.metadata || null,
+      sessionId: sessionId || null,
+      gameId: gameId || null,
+    })
+  })
+
+  return sanitizeTimelineEvents(events, { defaultTurn: turn })
 }

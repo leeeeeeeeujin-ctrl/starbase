@@ -4,10 +4,15 @@ const FALLBACK_TABLES = {
   friendships: ['friendships'],
   rank_games: ['rank_games', 'games', 'rank_games_view'],
   rank_participants: ['rank_participants', 'rank_players', 'rank_session_players'],
+  prompt_sets: ['prompt_sets', 'rank_prompt_sets'],
+  prompt_slots: ['prompt_slots', 'rank_prompt_slots'],
+  prompt_bridges: ['prompt_bridges', 'rank_prompt_bridges'],
   rank_game_roles: ['rank_game_roles', 'rank_games_roles'],
   rank_battles: ['rank_battles', 'rank_sessions', 'session_logs'],
   rank_battle_logs: ['rank_battle_logs', 'rank_session_logs', 'session_logs'],
   rank_turns: ['rank_turns', 'rank_session_turns', 'session_turns', 'rank_session_logs'],
+  rank_session_battle_logs: ['rank_session_battle_logs', 'rank_battle_logs'],
+  rank_session_timeline_events: ['rank_session_timeline_events', 'rank_timeline_events'],
   rank_rooms: ['rank_rooms'],
   rank_room_slots: ['rank_room_slots'],
   rank_room_participants: ['rank_room_participants'],
@@ -82,6 +87,12 @@ export async function withTable(supabaseClient, logicalName, executor) {
 
 export function getResolvedTable(logicalName) {
   return resolvedTableCache[logicalName] || null
+}
+
+export async function withTableQuery(supabaseClient, logicalName, handler) {
+  return withTable(supabaseClient, logicalName, (tableName) =>
+    handler(supabaseClient.from(tableName), tableName),
+  )
 }
 
 // 

@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
+import { withTableQuery } from '../../../lib/supabaseTables'
 import { sanitizeVariableRules } from '../../../lib/variableRules'
 
 export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
@@ -25,7 +26,9 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
       setSelectedEdge((current) => (current?.id === edge.id ? null : current))
       const bridgeId = edge?.data?.bridgeId
       if (bridgeId) {
-        await supabase.from('prompt_bridges').delete().eq('id', bridgeId)
+        await withTableQuery(supabase, 'prompt_bridges', (from) =>
+          from.delete().eq('id', bridgeId),
+        )
       }
     },
     [setEdges, setSelectedEdge],
@@ -57,7 +60,9 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
 
       if (bridgeIds.length > 0) {
         await Promise.all(
-          bridgeIds.map((id) => supabase.from('prompt_bridges').delete().eq('id', id)),
+          bridgeIds.map((id) =>
+            withTableQuery(supabase, 'prompt_bridges', (from) => from.delete().eq('id', id)),
+          ),
         )
       }
 
@@ -65,12 +70,11 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
       forgetFlowNode(flowNodeId)
       if (!slotId) return
 
-      await supabase
-        .from('prompt_bridges')
-        .delete()
-        .or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
+      await withTableQuery(supabase, 'prompt_bridges', (from) =>
+        from.delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`),
+      )
 
-      await supabase.from('prompt_slots').delete().eq('id', slotId)
+      await withTableQuery(supabase, 'prompt_slots', (from) => from.delete().eq('id', slotId))
     },
     [edges, flowMapRef, forgetFlowNode, setEdges, setNodes, setSelectedEdge, setSelectedNodeId],
   )
@@ -81,11 +85,12 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
         const slotId = flowMapRef.current.get(node.id)
         forgetFlowNode(node.id)
         if (!slotId) continue
-        await supabase
-          .from('prompt_bridges')
-          .delete()
-          .or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
-        await supabase.from('prompt_slots').delete().eq('id', slotId)
+        await withTableQuery(supabase, 'prompt_bridges', (from) =>
+          from.delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`),
+        )
+        await withTableQuery(supabase, 'prompt_slots', (from) =>
+          from.delete().eq('id', slotId),
+        )
       }
     },
     [flowMapRef, forgetFlowNode],
@@ -95,7 +100,9 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
     for (const edge of deleted) {
       const bridgeId = edge?.data?.bridgeId
       if (bridgeId) {
-        await supabase.from('prompt_bridges').delete().eq('id', bridgeId)
+        await withTableQuery(supabase, 'prompt_bridges', (from) =>
+          from.delete().eq('id', bridgeId),
+        )
       }
     }
   }, [])
@@ -134,11 +141,11 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
         }
 
         if (!slotId) {
-          const { data: inserted, error } = await supabase
-            .from('prompt_slots')
-            .insert(payload)
-            .select()
-            .single()
+          const { data: inserted, error } = await withTableQuery(
+            supabase,
+            'prompt_slots',
+            (from) => from.insert(payload).select().single(),
+          )
           if (error || !inserted) {
             console.error(error)
             continue
@@ -146,14 +153,17 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
           slotId = inserted.id
           flowMapRef.current.set(node.id, slotId)
         } else {
-          await supabase.from('prompt_slots').update(payload).eq('id', slotId)
+          await withTableQuery(supabase, 'prompt_slots', (from) =>
+            from.update(payload).eq('id', slotId),
+          )
         }
       }
 
-      const { data: existingBridges } = await supabase
-        .from('prompt_bridges')
-        .select('id')
-        .eq('from_set', setInfo.id)
+      const { data: existingBridges } = await withTableQuery(
+        supabase,
+        'prompt_bridges',
+        (from) => from.select('id').eq('from_set', setInfo.id),
+      )
 
       const keep = new Set()
 
@@ -176,11 +186,11 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
 
         let bridgeId = edge.data?.bridgeId
         if (!bridgeId) {
-          const { data: inserted, error } = await supabase
-            .from('prompt_bridges')
-            .insert(payload)
-            .select()
-            .single()
+          const { data: inserted, error } = await withTableQuery(
+            supabase,
+            'prompt_bridges',
+            (from) => from.insert(payload).select().single(),
+          )
           if (error || !inserted) {
             console.error(error)
             continue
@@ -188,7 +198,9 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
           bridgeId = inserted.id
           edge.data = { ...(edge.data || {}), bridgeId }
         } else {
-          await supabase.from('prompt_bridges').update(payload).eq('id', bridgeId)
+          await withTableQuery(supabase, 'prompt_bridges', (from) =>
+            from.update(payload).eq('id', bridgeId),
+          )
         }
 
         keep.add(bridgeId)
@@ -196,7 +208,9 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
 
       for (const bridge of existingBridges || []) {
         if (!keep.has(bridge.id)) {
-          await supabase.from('prompt_bridges').delete().eq('id', bridge.id)
+          await withTableQuery(supabase, 'prompt_bridges', (from) =>
+            from.delete().eq('id', bridge.id),
+          )
         }
       }
 
