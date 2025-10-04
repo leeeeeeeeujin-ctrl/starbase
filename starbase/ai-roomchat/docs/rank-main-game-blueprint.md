@@ -120,6 +120,23 @@
   - StartClient 엔진 전반(타이머·투표·난입·쿨다운·수동 응답 포함)의 통합 테스트를 설계해 브라우저/Node 환경 모두에서 회귀를 조기 감지할 수 있도록 자동화 범위를 확장하기.
   - 새 훅 패턴을 `turnTimerService`, `turnVoteController` 등 기존 서비스 레이어에도 적용할 수 있도록 타입 가이드와 모듈 경계를 재정의하고, 스토리북/문서화를 통해 소비자를 정리하기.
 
+## 교차 검증 메모 (2025-10-04)
+
+### 구현으로 확인된 항목
+- **턴 타이머/자동 진행**: 첫 턴 +30초와 난입 턴 +40초 보너스가 `turnTimerService`에서 계산되고, 세션 시작 시 자동 실행·시간 만료 자동 진행 루틴이 `StartClient`에 연결돼 있습니다.【F:components/rank/StartClient/services/turnTimerService.js†L1-L86】【F:components/rank/StartClient/index.js†L378-L422】
+- **조기 종료 투표**: 실참여자 80% 합의 규칙을 `turnVoteController`가 집계하고, `StartClient`가 합의 임계치를 UI에 반영합니다.【F:components/rank/StartClient/services/turnVoteController.js†L1-L148】【F:components/rank/StartClient/index.js†L448-L459】
+- **프롬프트/변수 시스템**: 주역 캐릭터 지시문과 마지막 세 줄 포맷이 시스템 프롬프트에 고정 포함되고, 응답 분석으로 추출한 배우 이름을 배경/BGM 상태에 반영합니다.【F:components/rank/StartClient/engine/systemPrompt.js†L17-L29】【F:lib/promptEngine/outcome.js†L3-L24】【F:components/rank/StartClient/useStartClientEngine.js†L1568-L1612】
+- **슬롯 가시성/조건 분기**: 슬롯별 공개 범위가 `slotBindingResolver`에서 정규화되고, 확장된 브리지 평가기가 난입·승수·역할군 조건을 검사해 다음 노드를 선택합니다.【F:components/rank/StartClient/engine/slotBindingResolver.js†L1-L38】【F:lib/promptEngine/bridges.js†L1-L188】
+- **모드 전환 계층**: 실시간 경고/대역 전환은 `realtimeSessionManager`, 비실시간 난입 교대는 `asyncSessionManager`와 `dropInQueueService`가 담당하며, 공통 타임라인 이벤트로 통합돼 있습니다.【F:components/rank/StartClient/services/realtimeSessionManager.js†L1-L200】【F:components/rank/StartClient/services/asyncSessionManager.js†L1-L108】【F:components/rank/StartClient/services/dropInQueueService.js†L1-L200】
+- **타임라인 파이프라인**: `/api/rank/log-turn`이 타임라인 이벤트를 영속화·브로드캐스트하고, `useGameRoom`과 `TimelineSection`이 관전/개인 타임라인을 같은 포맷으로 렌더링합니다.【F:pages/api/rank/log-turn.js†L20-L271】【F:supabase.sql†L1189-L1221】【F:hooks/useGameRoom.js†L260-L371】【F:components/rank/GameRoomView.js†L2514-L2548】【F:components/rank/Timeline/TimelineSection.js†L1-L200】
+- **훅 단위 테스트**: 히스토리·세션·API 키·쿨다운·수동 응답 훅이 jsdom 환경 테스트로 검증돼 있습니다.【F:__tests__/components/rank/StartClient/hooks/startHooks.test.js†L1-L186】
+
+### 미완료 또는 추가 작업 필요 항목
+- **타이머 경고 UX**: 10초 이하 경고 색상/진동 요구사항은 아직 구현되지 않았습니다. 현재 타이머 표시는 고정 색상 텍스트이고, `navigator.vibrate` 호출도 존재하지 않습니다.【F:components/rank/StartClient/TurnInfoPanel.js†L1-L52】【d22e60†L1-L1】
+- **배틀 로그 빌더**: 문서에 명시된 `battleLogBuilder` 모듈은 코드에 존재하지 않아 세션 종료 시 베틀로그 정규화 로직이 아직 비어 있습니다.【65a126†L1-L3】
+- **관전/대역 뱃지 UI**: Roster 패널이 역할·상태를 텍스트로만 노출하고 있어, 청사진에서 언급한 관전/대역 뱃지·난입 알림 UI는 아직 별도 스타일로 구현되지 않았습니다.【F:components/rank/StartClient/RosterPanel.js†L1-L71】
+- **통합 테스트 플랜**: 새 훅 테스트는 존재하지만, 타이머·난입·BGM 트리거를 다루는 통합 테스트는 아직 작성되지 않았습니다(향후 TODO 유지).【F:__tests__/components/rank/StartClient/hooks/startHooks.test.js†L1-L186】
+
 ---
 
 느낀 점: 수동 응답·쿨다운 훅까지 분리하고 단위 테스트를 붙이니 `useStartClientEngine`이 세션 상태 전이 중심으로 더욱 슬림해져 장기 유지보수가 한층 안심됩니다.
