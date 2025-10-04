@@ -112,14 +112,16 @@
   - Edge Function 배포 워크플로를 스테이징/프로덕션 매트릭스로 분리하고, 비밀 검증 스크립트(`scripts/verify-edge-deploy-config.js`)와 스모크 테스트 실행·실패 시 PagerDuty 알림을 추가했습니다. (→ `.github/workflows/edge-functions-deploy.yml`, `package.json`, `scripts/deploy-edge-functions.js`)
   - `useStartClientEngine` 상단에 모여 있던 프롬프트/타임라인/참여자/쿨다운 포맷터를 `actorContext`, `timelineState`, `participants`, `apiKeyUtils` 모듈로 옮기고, 타임라인 로그 합성을 `buildLogEntriesFromEvents` 헬퍼로 일원화해 엔진 훅의 책임을 세션 상태 조정에 집중시켰습니다.
   - `useStartApiKeyManager`, `useStartSessionLifecycle`, `useHistoryBuffer` 훅을 도입해 API 키 관리·세션 라이프사이클·히스토리 버퍼를 전담 모듈로 분리하고, `useStartClientEngine`은 턴 진행·UI 연계 로직에 집중하도록 정리했습니다.
+  - 수동 응답과 쿨다운 책임을 `useStartManualResponse`, `useStartCooldown` 훅으로 분리하고 각 훅의 JSDoc 타입 가이드를 추가해 엔진 서브 모듈의 인터페이스를 명확히 했습니다.
+  - `useHistoryBuffer`, `useStartSessionLifecycle`, `useStartApiKeyManager`, `useStartCooldown`, `useStartManualResponse`에 대한 단위 테스트를 작성해 데이터 흐름과 세션 메타 로깅이 기대대로 유지되는지 검증했습니다. (→ `__tests__/components/rank/StartClient/hooks/startHooks.test.js`)
 - **다음 단계 메모**:
   - Edge Function 스모크 테스트 엔드포인트를 정기적으로 점검해 스테이징/프로덕션 모두에서 커버리지·응답 시간을 모니터링할 지표를 정의하기.
   - 베틀로그 상세/캐릭터 대시보드에 `TimelineSection`을 재사용해 턴 기록과 타임라인 이벤트를 함께 탐색할 수 있는 필터/검색 UI를 설계하기.
-  - 타임라인·난입·API 키 교체 이벤트에 대한 통합/단위 테스트를 작성해 회귀 방지와 운영 감사 로그 일관성을 보장하기.
-  - 분리된 훅 인터페이스를 기반으로 `useStartClientEngine` 내부 로직을 소형 서브 훅(예: 수동 응답/쿨다운 관리)으로 추가 분할하고, 각 훅의 타입 정의와 테스트 플랜을 준비하기.
+  - StartClient 엔진 전반(타이머·투표·난입·쿨다운·수동 응답 포함)의 통합 테스트를 설계해 브라우저/Node 환경 모두에서 회귀를 조기 감지할 수 있도록 자동화 범위를 확장하기.
+  - 새 훅 패턴을 `turnTimerService`, `turnVoteController` 등 기존 서비스 레이어에도 적용할 수 있도록 타입 가이드와 모듈 경계를 재정의하고, 스토리북/문서화를 통해 소비자를 정리하기.
 
 ---
 
-느낀 점: API 키·세션·히스토리 훅을 분리하면서 `useStartClientEngine`이 턴 진행과 UI 동기화에 집중해 가독성과 확장성이 모두 좋아졌습니다.
-추가로 필요한 점: 새 훅들이 기대한 데이터 흐름을 유지하는지 단위 테스트와 타입 가이드를 보강하고, 후속 서브 훅(쿨다운·수동 응답 등)도 동일한 패턴으로 정리해야 합니다.
-진행사항: 타임라인/프롬프트 헬퍼 모듈화에 이어 API 키·세션 라이프사이클·히스토리 버퍼를 전용 훅으로 분리해 리팩터링 2단계를 완료했습니다.
+느낀 점: 수동 응답·쿨다운 훅까지 분리하고 단위 테스트를 붙이니 `useStartClientEngine`이 세션 상태 전이 중심으로 더욱 슬림해져 장기 유지보수가 한층 안심됩니다.
+추가로 필요한 점: 통합 테스트와 서비스 레이어의 타입 가이드 확장을 통해 새 훅 패턴이 실전 시나리오에서도 일관되게 동작하는지 검증해야 합니다.
+진행사항: 수동 응답/쿨다운 훅 추가, 핵심 훅 단위 테스트 작성, `apiKeyUtils` 경로 정비까지 마무리해 StartClient 리팩터링 3단계를 완료했습니다.

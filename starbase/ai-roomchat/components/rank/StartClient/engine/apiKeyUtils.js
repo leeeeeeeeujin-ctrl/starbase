@@ -1,4 +1,4 @@
-import { getCooldownDurationMs } from '../../../lib/rank/apiKeyCooldown'
+import { getCooldownDurationMs } from '../../../../lib/rank/apiKeyCooldown'
 
 export function formatDuration(ms) {
   const numeric = Number(ms)

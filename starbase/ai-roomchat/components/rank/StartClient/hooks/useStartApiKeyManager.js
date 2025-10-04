@@ -38,6 +38,39 @@ function initializeCooldown(initialApiKey) {
   return { info: null, warning: '' }
 }
 
+/**
+ * 스타트 클라이언트에서 API 키·버전·Gemini 구성을 관리하는 훅입니다.
+ * @param {Object} params
+ * @param {string} [params.initialApiKey]
+ * @param {string} [params.initialApiVersion]
+ * @param {{ mode?: string, model?: string }} [params.initialGeminiConfig]
+ * @param {string|number|null} [params.viewerId]
+ * @param {number} [params.turn]
+ * @param {(events: Array<Object>, options?: Object) => void} [params.recordTimelineEvents]
+ * @returns {{
+ *   apiKey: string,
+ *   setApiKey: (value: string, options?: Object) => void,
+ *   apiVersion: string,
+ *   setApiVersion: (value: string) => void,
+ *   geminiMode: string,
+ *   setGeminiMode: (value: string) => void,
+ *   geminiModel: string,
+ *   setGeminiModel: (value: string) => void,
+ *   apiKeyCooldown: null|{active?: boolean},
+ *   apiKeyWarning: string,
+ *   evaluateApiKeyCooldown: (value: string) => null|{active?: boolean},
+ *   normaliseApiKey: (value: string) => string,
+ *   effectiveApiKey: string,
+ *   geminiModelOptions: Array<any>,
+ *   geminiModelLoading: boolean,
+ *   geminiModelError: any,
+ *   reloadGeminiModels: () => void,
+ *   normalizedGeminiMode: string,
+ *   normalizedGeminiModel: string,
+ *   persistApiKeyOnServer: (value: string, version: string, options?: Object) => Promise<boolean>,
+ *   applyCooldownInfo: (info: null|{active?: boolean}) => null|{active?: boolean},
+ * }}
+ */
 export function useStartApiKeyManager({
   initialApiKey,
   initialApiVersion = 'gemini',

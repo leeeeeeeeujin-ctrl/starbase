@@ -28,7 +28,7 @@ import {
   createOwnerDisplayMap,
   deriveParticipantOwnerId,
 } from './engine/participants'
-import { buildKeySample, formatCooldownMessage, isApiKeyError } from './engine/apiKeyUtils'
+import { isApiKeyError } from './engine/apiKeyUtils'
 import { createTurnTimerService } from './services/turnTimerService'
 import {
   createTurnVoteController,
@@ -41,10 +41,11 @@ import {
   mergeTimelineEvents,
   normalizeTimelineStatus,
 } from '../../../lib/rank/timelineEvents'
-import { markApiKeyCooldown } from '../../../lib/rank/apiKeyCooldown'
 import { useHistoryBuffer } from './hooks/useHistoryBuffer'
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
 import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
+import { useStartCooldown } from './hooks/useStartCooldown'
+import { useStartManualResponse } from './hooks/useStartManualResponse'
 import { consumeStartMatchMeta } from '../startConfig'
 
 export function useStartClientEngine(gameId) {
@@ -69,6 +70,12 @@ export function useStartClientEngine(gameId) {
   const matchMetaLoggedRef = useRef(false)
 
   const { history, historyVersion, bumpHistoryVersion } = useHistoryBuffer()
+  const {
+    manualResponse,
+    setManualResponse,
+    clearManualResponse,
+    requireManualResponse,
+  } = useStartManualResponse()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -83,7 +90,6 @@ export function useStartClientEngine(gameId) {
   const [logs, setLogs] = useState([])
   const [statusMessage, setStatusMessage] = useState('')
   const [promptMetaWarning, setPromptMetaWarning] = useState('')
-  const [manualResponse, setManualResponse] = useState('')
   const [isAdvancing, setIsAdvancing] = useState(false)
   const [winCount, setWinCount] = useState(0)
   const [lastDropInTurn, setLastDropInTurn] = useState(null)
@@ -732,46 +738,24 @@ export function useStartClientEngine(gameId) {
     },
     [resolveHeroAssets],
   )
-  const voidSession = useCallback(
-    (message, options = {}) => {
-      if (options?.apiKey) {
-        const info = markApiKeyCooldown(options.apiKey, {
-          reason: options.reason,
-          provider: options.provider || apiVersion || null,
-          viewerId: options.viewerId || viewerId || null,
-          gameId: options.gameId || gameId || game?.id || null,
-          sessionId: options.sessionId || sessionInfo?.id || null,
-          note: options.note || null,
-        })
-        if (info) {
-          applyCooldownInfo(info)
-        }
-      }
-      setGameVoided(true)
-      setStatusMessage(
-        message || '사용 가능한 모든 API 키가 오류를 반환해 게임이 무효 처리되었습니다.',
-      )
-      setCurrentNodeId(null)
-      setTurnDeadline(null)
-      setTimeRemaining(null)
-      clearConsensusVotes()
-      updateHeroAssets([], null)
-      updateSessionRecord({ status: 'voided', actorNames: [] })
-      clearSessionRecord()
-    },
-    [
-      clearSessionRecord,
-      updateHeroAssets,
-      updateSessionRecord,
-      clearConsensusVotes,
-      applyCooldownInfo,
-      viewerId,
-      apiVersion,
-      gameId,
-      game?.id,
-      sessionInfo?.id,
-    ],
-  )
+  const { ensureApiKeyReady, voidSession } = useStartCooldown({
+    evaluateApiKeyCooldown,
+    applyCooldownInfo,
+    setStatusMessage,
+    setGameVoided,
+    setCurrentNodeId,
+    setTurnDeadline,
+    setTimeRemaining,
+    clearConsensusVotes,
+    updateHeroAssets,
+    updateSessionRecord,
+    clearSessionRecord,
+    viewerId,
+    apiVersion,
+    gameId,
+    game,
+    sessionInfo,
+  })
   const participantsStatus = useMemo(
     () =>
       participants.map((participant) => ({
@@ -1068,9 +1052,7 @@ export function useStartClientEngine(gameId) {
     }
 
     if (effectiveApiKey) {
-      const cooldownInfo = evaluateApiKeyCooldown(effectiveApiKey)
-      if (cooldownInfo?.active) {
-        setStatusMessage(formatCooldownMessage(cooldownInfo))
+      if (!ensureApiKeyReady(effectiveApiKey)) {
         return
       }
 
@@ -1163,7 +1145,7 @@ export function useStartClientEngine(gameId) {
     startingSession,
     viewerParticipant?.role,
     effectiveApiKey,
-    evaluateApiKeyCooldown,
+    ensureApiKeyReady,
     persistApiKeyOnServer,
     normalizedGeminiMode,
     normalizedGeminiModel,
@@ -1447,9 +1429,7 @@ export function useStartClientEngine(gameId) {
             throw new Error('세션 정보를 확인할 수 없습니다. 페이지를 새로고침해 주세요.')
           }
 
-          const cooldownInfo = evaluateApiKeyCooldown(effectiveApiKey)
-          if (cooldownInfo?.active) {
-            setStatusMessage(formatCooldownMessage(cooldownInfo))
+          if (!ensureApiKeyReady(effectiveApiKey)) {
             return
           }
 
@@ -1693,7 +1673,7 @@ export function useStartClientEngine(gameId) {
           },
         ])
 
-        setManualResponse('')
+        clearManualResponse()
 
         if (!chosenEdge) {
           finalizeRealtimeTurn('no-bridge')
@@ -1825,7 +1805,7 @@ export function useStartClientEngine(gameId) {
       logTurnEntries,
       voidSession,
       gameVoided,
-      evaluateApiKeyCooldown,
+      ensureApiKeyReady,
       persistApiKeyOnServer,
       normalizedGeminiMode,
       normalizedGeminiModel,
@@ -1834,14 +1814,14 @@ export function useStartClientEngine(gameId) {
   )
 
   const advanceWithManual = useCallback(() => {
-    if (!manualResponse.trim()) {
-      alert('수동 응답을 입력하세요.')
+    const trimmed = requireManualResponse()
+    if (!trimmed) {
       return
     }
     advanceIntentRef.current = null
     clearConsensusVotes()
-    advanceTurn(manualResponse.trim(), { reason: 'manual' })
-  }, [advanceTurn, manualResponse, clearConsensusVotes])
+    advanceTurn(trimmed, { reason: 'manual' })
+  }, [advanceTurn, clearConsensusVotes, requireManualResponse])
 
   const advanceWithAi = useCallback(() => {
     if (!needsConsensus) {
