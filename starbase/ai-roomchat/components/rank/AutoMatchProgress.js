@@ -208,7 +208,57 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const joinAttemptCountRef = useRef(0)
   const queueJoinStartedAtRef = useRef(null)
   const playTriggeredRef = useRef(false)
+  const lastStoredApiKeyRef = useRef('')
   const [playNotice, setPlayNotice] = useState('')
+
+  const persistApiKeyOnServer = useCallback(
+    async (value, version) => {
+      const trimmed = typeof value === 'string' ? value.trim() : ''
+      if (!trimmed) {
+        return false
+      }
+      if (lastStoredApiKeyRef.current === trimmed) {
+        return true
+      }
+
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          throw new Error('세션 토큰을 확인할 수 없습니다.')
+        }
+
+        const response = await fetch('/api/rank/user-api-key', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            apiKey: trimmed,
+            apiVersion: typeof version === 'string' ? version : undefined,
+          }),
+        })
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          const message = payload?.error || 'API 키를 저장하지 못했습니다.'
+          throw new Error(message)
+        }
+
+        lastStoredApiKeyRef.current = trimmed
+        return true
+      } catch (error) {
+        console.warn('[AutoMatchProgress] API 키 저장 실패:', error)
+        return false
+      }
+    },
+    [supabase],
+  )
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
     state.lockedRole,
@@ -401,6 +451,8 @@ export default function AutoMatchProgress({ gameId, mode }) {
           return true
         }
 
+        await persistApiKeyOnServer(trimmedApiKey, apiVersion)
+
         setPlayNotice('전투를 준비하는 중입니다…')
 
         const response = await fetch('/api/rank/play', {
@@ -470,7 +522,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
         return false
       }
     },
-    [gameId, state.match?.assignments, state.roles],
+    [gameId, persistApiKeyOnServer, state.match?.assignments, state.roles],
   )
 
   const handleConfirmMatch = useCallback(async () => {

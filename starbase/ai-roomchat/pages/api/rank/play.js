@@ -7,6 +7,7 @@ import { compileTemplate } from '@/lib/rank/prompt'
 import { callChat } from '@/lib/rank/ai'
 import { judgeOutcome } from '@/lib/rank/judge'
 import { recordBattle } from '@/lib/rank/persist'
+import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 export default async function handler(req, res) {
@@ -28,6 +29,41 @@ export default async function handler(req, res) {
     }
 
     const { gameId, heroIds = [], userApiKey, apiVersion = 'gemini' } = req.body || {}
+
+    const trimmedApiKey = typeof userApiKey === 'string' ? userApiKey.trim() : ''
+
+    if (trimmedApiKey) {
+      try {
+        await upsertUserApiKey({
+          userId: user.id,
+          apiKey: trimmedApiKey,
+          apiVersion,
+        })
+      } catch (error) {
+        console.warn('[play] Failed to persist API key:', error)
+      }
+    }
+
+    let effectiveApiKey = trimmedApiKey
+    let effectiveApiVersion = apiVersion
+
+    if (!effectiveApiKey) {
+      try {
+        const stored = await fetchUserApiKey(user.id)
+        if (stored?.apiKey) {
+          effectiveApiKey = stored.apiKey
+          if (!effectiveApiVersion && stored.apiVersion) {
+            effectiveApiVersion = stored.apiVersion
+          }
+        }
+      } catch (error) {
+        console.warn('[play] Failed to load stored API key:', error)
+      }
+    }
+
+    if (!effectiveApiKey) {
+      return res.status(400).json({ error: 'missing_user_api_key' })
+    }
 
     // 게임 메타
     const { data: game, error: gerr } = await supabase.from('rank_games').select('*').eq('id', gameId).single()
@@ -62,10 +98,10 @@ export default async function handler(req, res) {
 
     // AI 호출(유저 키)
     const ai = await callChat({
-      userApiKey,
+      userApiKey: effectiveApiKey,
       system: '당신은 비동기 PvE 랭킹 전투의 심판/해설자 겸 시뮬레이터입니다.',
       user: prompt,
-      apiVersion,
+      apiVersion: effectiveApiVersion || 'gemini',
     })
     if (ai.error) {
       // 쿼터/에러 → 저장하지 않고 종료, 재시도 가능

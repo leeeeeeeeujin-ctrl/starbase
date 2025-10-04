@@ -469,6 +469,62 @@ export function useStartClientEngine(gameId) {
   const visitedSlotIds = useRef(new Set())
   const apiVersionLock = useRef(null)
   const advanceIntentRef = useRef(null)
+  const lastStoredApiKeyRef = useRef('')
+
+  const persistApiKeyOnServer = useCallback(
+    async (value, version) => {
+      const trimmed = normaliseApiKey(value)
+      if (!trimmed) {
+        return false
+      }
+      if (lastStoredApiKeyRef.current === trimmed) {
+        return true
+      }
+
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          throw new Error('세션 토큰을 확인할 수 없습니다.')
+        }
+
+        const response = await fetch('/api/rank/user-api-key', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            apiKey: trimmed,
+            apiVersion: typeof version === 'string' ? version : undefined,
+          }),
+        })
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          const message = payload?.error || 'API 키를 저장하지 못했습니다.'
+          throw new Error(message)
+        }
+
+        lastStoredApiKeyRef.current = trimmed
+        return true
+      } catch (error) {
+        console.warn('[StartClient] API 키 저장 실패:', error)
+        return false
+      }
+    },
+    [normaliseApiKey, supabase],
+  )
+
+  useEffect(() => {
+    if (!effectiveApiKey) {
+      lastStoredApiKeyRef.current = ''
+    }
+  }, [effectiveApiKey])
 
   useEffect(() => {
     if (!gameId) return
@@ -878,6 +934,8 @@ export function useStartClientEngine(gameId) {
         setStatusMessage(formatCooldownMessage(cooldownInfo))
         return
       }
+
+      await persistApiKeyOnServer(effectiveApiKey, apiVersion)
     }
 
     setStartingSession(true)
@@ -955,6 +1013,7 @@ export function useStartClientEngine(gameId) {
 
     bootLocalSession()
   }, [
+    apiVersion,
     bootLocalSession,
     game?.realtime_match,
     gameId,
@@ -963,6 +1022,7 @@ export function useStartClientEngine(gameId) {
     viewerParticipant?.role,
     effectiveApiKey,
     evaluateApiKeyCooldown,
+    persistApiKeyOnServer,
   ])
 
   const advanceTurn = useCallback(
@@ -1064,6 +1124,8 @@ export function useStartClientEngine(gameId) {
             setStatusMessage(formatCooldownMessage(cooldownInfo))
             return
           }
+
+          await persistApiKeyOnServer(effectiveApiKey, apiVersion)
 
           const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
           if (sessionError) {
@@ -1403,6 +1465,7 @@ export function useStartClientEngine(gameId) {
       voidSession,
       gameVoided,
       evaluateApiKeyCooldown,
+      persistApiKeyOnServer,
     ],
   )
 
