@@ -4,64 +4,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import useMatchQueue from './hooks/useMatchQueue'
+import usePersistApiKey from './hooks/usePersistApiKey'
 import styles from './AutoMatchProgress.module.css'
+import {
+  HERO_BLOCKER_MESSAGE,
+  HERO_REDIRECT_DELAY_MS,
+  MATCH_TRANSITION_DELAY_MS,
+  QUEUE_TIMEOUT_MS,
+  CONFIRMATION_WINDOW_SECONDS,
+  FAILURE_REDIRECT_DELAY_MS,
+  PENALTY_NOTICE,
+  ROLE_BLOCKER_MESSAGE,
+  VIEWER_BLOCKER_MESSAGE,
+} from './matchConstants'
+import {
+  coerceHeroMap,
+  extractHeroIdsFromAssignments,
+  resolveMemberLabel,
+} from './matchUtils'
+import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
+import { readStoredStartConfig } from './startConfig'
 import { supabase } from '../../lib/supabase'
-
-const HERO_BLOCKER_MESSAGE = '사용할 캐릭터를 선택해 주세요.'
-const ROLE_BLOCKER_MESSAGE = '참가할 역할 정보를 불러오고 있습니다.'
-const VIEWER_BLOCKER_MESSAGE = '로그인 상태를 확인하는 중입니다.'
-
-const HERO_REDIRECT_DELAY_MS = 3000
-const MATCH_TRANSITION_DELAY_MS = 1200
-const QUEUE_TIMEOUT_MS = 60000
-const CONFIRMATION_WINDOW_SECONDS = 10
-const FAILURE_REDIRECT_DELAY_MS = 2400
-const PENALTY_NOTICE =
-  '확인 시간이 지나 매칭이 취소되었습니다. 게임에 참여하지 않으면 불이익이 있을 수 있습니다.'
-
-function coerceHeroMap(raw) {
-  if (!raw) return new Map()
-  if (raw instanceof Map) return raw
-  if (typeof raw !== 'object') return new Map()
-  try {
-    return new Map(Object.entries(raw))
-  } catch (error) {
-    console.warn('히어로 맵 변환 실패:', error)
-    return new Map()
-  }
-}
-
-function resolveHeroName(heroMap, heroId) {
-  if (!heroId) return '미지정 캐릭터'
-  const id = typeof heroId === 'string' ? heroId : String(heroId)
-  const numericId = Number(id)
-  const altKey = Number.isNaN(numericId) ? id : numericId
-  const fromMap = heroMap.get(id) || heroMap.get(altKey)
-  if (fromMap?.name) {
-    return fromMap.name
-  }
-  if (fromMap?.displayName) {
-    return fromMap.displayName
-  }
-  if (typeof fromMap === 'string' && fromMap.trim()) {
-    return fromMap.trim()
-  }
-  return `캐릭터 #${id}`
-}
-
-function resolveMemberLabel({ member, heroMap }) {
-  if (!member) {
-    return '알 수 없는 참가자'
-  }
-  const heroId = member.hero_id || member.heroId || member.heroID || null
-  const heroName = resolveHeroName(heroMap, heroId)
-  const ownerId = member.owner_id || member.ownerId || ''
-  if (!ownerId) {
-    return heroName
-  }
-  const shortOwner = ownerId.length > 6 ? `${ownerId.slice(0, 3)}…${ownerId.slice(-2)}` : ownerId
-  return `${heroName} · ${shortOwner}`
-}
 
 function resolveRoleName(lockedRole, roles) {
   if (lockedRole && typeof lockedRole === 'string' && lockedRole.trim().length) {
@@ -81,103 +44,6 @@ function resolveRoleName(lockedRole, roles) {
     }
   }
   return ''
-}
-
-function computeRoleOffsets(rawRoles = []) {
-  let cursor = 0
-  const offsets = new Map()
-  rawRoles.forEach((role) => {
-    if (!role) return
-    const name = typeof role.name === 'string' ? role.name.trim() : ''
-    const slotCountRaw = role.slot_count ?? role.slotCount ?? role.capacity
-    const slotCount = Number(slotCountRaw)
-    if (!name || !Number.isFinite(slotCount) || slotCount <= 0) {
-      return
-    }
-    offsets.set(name, { offset: cursor, count: slotCount })
-    cursor += slotCount
-  })
-  return { offsets, total: cursor }
-}
-
-function normalizeRoleSlots(roleSlots, roleCount) {
-  if (!Array.isArray(roleSlots)) return []
-  return roleSlots
-    .map((slot) => Number(slot))
-    .filter((slot) => Number.isFinite(slot) && slot >= 0 && slot < roleCount)
-}
-
-function extractHeroIdsFromAssignments({ roles = [], assignments = [] }) {
-  const { offsets, total } = computeRoleOffsets(roles)
-  if (!total) return []
-
-  const heroIds = new Array(total).fill(null)
-  const roleUsage = new Map()
-
-  assignments.forEach((assignment) => {
-    if (!assignment) return
-    const roleName = typeof assignment.role === 'string' ? assignment.role.trim() : ''
-    if (!roleName || !offsets.has(roleName)) return
-    const { offset, count } = offsets.get(roleName)
-    if (!roleUsage.has(roleName)) {
-      roleUsage.set(roleName, new Set())
-    }
-    const usedSlots = roleUsage.get(roleName)
-    const normalizedSlots = normalizeRoleSlots(
-      assignment.roleSlots || assignment.role_slots,
-      count,
-    )
-    const members = Array.isArray(assignment.members) ? assignment.members : []
-
-    normalizedSlots.forEach((slotIndex, index) => {
-      const member = members[index]
-      if (!member) return
-      const heroId = member.hero_id || member.heroId || member.heroID || null
-      if (!heroId) return
-      const globalIndex = offset + slotIndex
-      if (globalIndex < 0 || globalIndex >= heroIds.length) return
-      heroIds[globalIndex] = String(heroId)
-      usedSlots.add(slotIndex)
-    })
-
-    members.forEach((member) => {
-      if (!member) return
-      const heroId = member.hero_id || member.heroId || member.heroID || null
-      if (!heroId) return
-      const alreadyAssigned = heroIds.includes(String(heroId))
-      if (alreadyAssigned) return
-      let slotIndex = 0
-      while (slotIndex < count && usedSlots.has(slotIndex)) {
-        slotIndex += 1
-      }
-      if (slotIndex >= count) {
-        return
-      }
-      const globalIndex = offset + slotIndex
-      if (globalIndex < 0 || globalIndex >= heroIds.length) {
-        return
-      }
-      heroIds[globalIndex] = String(heroId)
-      usedSlots.add(slotIndex)
-    })
-  })
-
-  return heroIds
-}
-
-function readStoredStartConfig() {
-  if (typeof window === 'undefined') {
-    return { apiKey: '', apiVersion: 'gemini' }
-  }
-  let apiKey = ''
-  let apiVersion = 'gemini'
-  try {
-    apiKey = (window.sessionStorage.getItem('rank.start.apiKey') || '').trim()
-    apiVersion = window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
-  } catch (error) {
-    console.warn('시작 설정을 불러오지 못했습니다:', error)
-  }
-  return { apiKey, apiVersion }
 }
 
 export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
@@ -213,60 +79,13 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const joinAttemptCountRef = useRef(0)
   const queueJoinStartedAtRef = useRef(null)
   const playTriggeredRef = useRef(false)
-  const lastStoredApiKeyRef = useRef('')
   const [playNotice, setPlayNotice] = useState('')
   const [displayStatus, setDisplayStatus] = useState(state.status)
   const [matchLocked, setMatchLocked] = useState(false)
   const matchLockedRef = useRef(false)
+  const matchRedirectedRef = useRef(false)
 
-  const persistApiKeyOnServer = useCallback(
-    async (value, version) => {
-      const trimmed = typeof value === 'string' ? value.trim() : ''
-      if (!trimmed) {
-        return false
-      }
-      if (lastStoredApiKeyRef.current === trimmed) {
-        return true
-      }
-
-      try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-        if (sessionError) {
-          throw sessionError
-        }
-
-        const token = sessionData?.session?.access_token
-        if (!token) {
-          throw new Error('세션 토큰을 확인할 수 없습니다.')
-        }
-
-        const response = await fetch('/api/rank/user-api-key', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            apiKey: trimmed,
-            apiVersion: typeof version === 'string' ? version : undefined,
-          }),
-        })
-
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}))
-          const message = payload?.error || 'API 키를 저장하지 못했습니다.'
-          throw new Error(message)
-        }
-
-        lastStoredApiKeyRef.current = trimmed
-        return true
-      } catch (error) {
-        console.warn('[AutoMatchProgress] API 키 저장 실패:', error)
-        return false
-      }
-    },
-    [supabase],
-  )
+  const persistApiKeyOnServer = usePersistApiKey()
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
     state.lockedRole,
@@ -329,6 +148,71 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
     previousStatusRef.current = state.status
   }, [state.status, state.match])
+
+  useEffect(() => {
+    if (!gameId || !mode) return
+    if (state.status !== 'matched') {
+      matchRedirectedRef.current = false
+      return
+    }
+    if (matchRedirectedRef.current) return
+
+    const match = state.match
+    if (!match) {
+      return
+    }
+
+    const plainHeroMap = match.heroMap instanceof Map
+      ? Object.fromEntries(match.heroMap)
+      : match.heroMap || null
+    const sanitizedMatch = {
+      assignments: Array.isArray(match.assignments) ? match.assignments : [],
+      maxWindow: match.maxWindow ?? null,
+      heroMap: plainHeroMap,
+      matchCode: match.matchCode || '',
+      matchType: match.matchType || 'standard',
+      brawlVacancies: Array.isArray(match.brawlVacancies) ? match.brawlVacancies : [],
+      roleStatus: match.roleStatus || null,
+      sampleMeta: match.sampleMeta || state.sampleMeta || null,
+      dropInTarget: match.dropInTarget || null,
+      turnTimer: match.turnTimer ?? match.turn_timer ?? null,
+    }
+
+    clearMatchConfirmation()
+    const saved = saveMatchConfirmation({
+      gameId,
+      mode,
+      roleName,
+      requiresManualConfirmation,
+      turnTimer,
+      roles: state.roles,
+      viewerId: state.viewerId || '',
+      heroId: state.heroId || '',
+      match: sanitizedMatch,
+      createdAt: Date.now(),
+    })
+
+    if (!saved) {
+      return
+    }
+
+    matchRedirectedRef.current = true
+    navigationLockedRef.current = true
+    router.replace({ pathname: `/rank/${gameId}/match-ready`, query: { mode } })
+  }, [
+    gameId,
+    mode,
+    requiresManualConfirmation,
+    roleName,
+    router,
+    state.heroId,
+    state.match,
+    state.roles,
+    state.sampleMeta,
+    state.status,
+    state.viewerId,
+    turnTimer,
+  ])
 
   useEffect(() => {
     const nextSignature = `${state.viewerId || ''}::${state.heroId || ''}::${roleName}`
@@ -817,6 +701,9 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [actions, gameId, router, state.status])
 
   useEffect(() => {
+    if (matchRedirectedRef.current) {
+      return
+    }
     if (state.status === 'matched') {
       if (!matchLockedRef.current) {
         matchLockedRef.current = true
@@ -885,6 +772,9 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     if (confirming) {
       return
     }
+    if (matchRedirectedRef.current) {
+      return
+    }
 
     handleConfirmMatch()
   }, [
@@ -938,6 +828,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       }
       const latestConfirmation = latestConfirmationRef.current
       if (
+        !matchRedirectedRef.current &&
         (latestStatusRef.current === 'queued' || latestStatusRef.current === 'matched') &&
         latestConfirmation !== 'confirmed'
       ) {
