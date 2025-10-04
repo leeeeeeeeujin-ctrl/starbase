@@ -10,7 +10,7 @@
 ## 2. 환경 변수 및 로컬 세팅 정리
 1. **Supabase 관련**
    - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` 최신값 확인 및 `.env.local.example` 업데이트
-   - `SUPABASE_SERVICE_ROLE_KEY`가 필요한 서버사이드 모듈(`modules/server/*` 등) 위치 재확인
+   - `SUPABASE_SERVICE_ROLE`이 필요한 서버사이드 모듈(`lib/`, `pages/api/`) 위치 재확인
    - 로컬 개발 시 SQL seed 스크립트(`supabase_chat.sql`, `supabase_social.sql`) 적용 절차 문서화
 2. **Auth/Providers**
    - OAuth 공급자 사용 시 필요한 client id/secret 항목 정리 및 예시값 주석
