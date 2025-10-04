@@ -273,6 +273,25 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     state.roles,
   ])
 
+  const isRealtimeMatch = useMemo(() => {
+    const meta = state.match?.sampleMeta || state.sampleMeta
+    if (meta && typeof meta.realtime === 'boolean') {
+      return meta.realtime
+    }
+    if (meta && typeof meta.sampleType === 'string') {
+      const normalized = meta.sampleType.toLowerCase()
+      if (normalized === 'participant_pool') {
+        return false
+      }
+      if (normalized === 'realtime_queue') {
+        return true
+      }
+    }
+    return true
+  }, [state.match?.sampleMeta, state.sampleMeta])
+
+  const requiresManualConfirmation = isRealtimeMatch
+
   const blockers = useMemo(() => {
     if (state.status === 'queued' || state.status === 'matched') {
       return []
@@ -845,6 +864,29 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [confirmationRemaining, confirmationState, handleConfirmationTimeout])
 
   useEffect(() => {
+    if (!state.match) {
+      return
+    }
+    if (requiresManualConfirmation) {
+      return
+    }
+    if (confirmationState !== 'counting') {
+      return
+    }
+    if (confirming) {
+      return
+    }
+
+    handleConfirmMatch()
+  }, [
+    confirming,
+    confirmationState,
+    handleConfirmMatch,
+    requiresManualConfirmation,
+    state.match,
+  ])
+
+  useEffect(() => {
     if (state.status !== 'matched') return undefined
     if (confirmationState !== 'confirmed') return undefined
 
@@ -1037,6 +1079,12 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     }
 
     if (confirmationState === 'counting') {
+      if (!requiresManualConfirmation) {
+        return {
+          title: '매칭이 잡혔습니다~',
+          detail: '비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.',
+        }
+      }
       return {
         title: '매칭이 잡혔습니다~',
         detail: `${confirmationRemaining}초 안에 버튼을 눌러 전투를 시작해 주세요.`,
@@ -1054,7 +1102,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       title: '매칭이 잡혔습니다~',
       detail: '',
     }
-  }, [confirmationRemaining, confirmationState, joinError])
+  }, [confirmationRemaining, confirmationState, joinError, requiresManualConfirmation])
 
   const showMatchedOverlay = matchLocked || confirmationState !== 'idle'
 
@@ -1159,19 +1207,25 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
               </div>
             ) : null}
             {confirmationState === 'counting' ? (
-              <div className={styles.confirmArea}>
-                <button
-                  type="button"
-                  className={styles.confirmButton}
-                  onClick={handleConfirmMatch}
-                  disabled={confirming}
-                  ref={confirmButtonRef}
-                >
-                  {confirming ? '준비 중…' : '전투 시작하기'}
-                  <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
-                </button>
-                <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
-              </div>
+              requiresManualConfirmation ? (
+                <div className={styles.confirmArea}>
+                  <button
+                    type="button"
+                    className={styles.confirmButton}
+                    onClick={handleConfirmMatch}
+                    disabled={confirming}
+                    ref={confirmButtonRef}
+                  >
+                    {confirming ? '준비 중…' : '전투 시작하기'}
+                    <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
+                  </button>
+                  <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
+                </div>
+              ) : (
+                <div className={styles.autoConfirmNotice}>
+                  <p className={styles.confirmHint}>비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.</p>
+                </div>
+              )
             ) : null}
             {confirmationState === 'failed' && extraBlockers.length ? (
               <ul className={styles.blockerList}>
