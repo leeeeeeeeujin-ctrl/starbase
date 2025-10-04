@@ -27,6 +27,10 @@ import {
 } from './services/turnVoteController'
 import { createRealtimeSessionManager } from './services/realtimeSessionManager'
 import {
+  mergeTimelineEvents,
+  normalizeTimelineStatus,
+} from '../../../lib/rank/timelineEvents'
+import {
   getApiKeyCooldown,
   getCooldownDurationMs,
   markApiKeyCooldown,
@@ -168,6 +172,83 @@ function formatOwnerDisplayName(participant, fallbackId = '') {
   return '플레이어'
 }
 
+function buildTimelineLogEntry(event, { ownerDisplayMap, defaultTurn = null, defaultMode = 'realtime' } = {}) {
+  if (!event || typeof event !== 'object') return null
+  const type = typeof event.type === 'string' ? event.type.trim() : ''
+  if (!type) return null
+
+  const ownerId = event.ownerId ? String(event.ownerId).trim() : ''
+  const turnNumber = Number.isFinite(Number(event.turn))
+    ? Number(event.turn)
+    : Number.isFinite(Number(defaultTurn))
+      ? Number(defaultTurn)
+      : null
+  const timestamp = Number.isFinite(Number(event.timestamp))
+    ? Number(event.timestamp)
+    : Date.now()
+  const context = event.context && typeof event.context === 'object' ? event.context : {}
+  const mode = typeof context.mode === 'string' ? context.mode : defaultMode
+
+  const ownerInfo = ownerId && ownerDisplayMap ? ownerDisplayMap.get(ownerId) : null
+  const ownerLabel = ownerInfo?.displayName || (ownerId ? `플레이어 ${ownerId.slice(0, 6)}` : '시스템')
+
+  let content = ''
+  if (type === 'drop_in_joined') {
+    const roleName = typeof context.role === 'string' ? context.role.trim() : ''
+    const heroName = typeof context.heroName === 'string' ? context.heroName.trim() : ''
+    const detailParts = [roleName, heroName].filter(Boolean)
+    const detail = detailParts.length ? ` (${detailParts.join(' · ')})` : ''
+    content =
+      mode === 'async'
+        ? `🤖 대역 교체: ${ownerLabel}${detail}`
+        : `✨ 난입 합류: ${ownerLabel}${detail}`
+  } else if (type === 'turn_timeout') {
+    content =
+      mode === 'async'
+        ? '⏰ 제한시간 만료 – 대역이 턴을 마무리합니다.'
+        : '⏰ 제한시간 만료 – 턴을 자동으로 종료합니다.'
+  } else if (type === 'consensus_reached') {
+    const count = Number(context.consensusCount)
+    const threshold = Number(context.threshold)
+    if (Number.isFinite(count) && Number.isFinite(threshold) && threshold > 0) {
+      content = `✅ ${count}/${threshold} 동의로 턴을 종료합니다.`
+    } else {
+      content = '✅ 동의가 충족되어 턴을 종료합니다.'
+    }
+  } else {
+    content = `ℹ️ ${ownerLabel} 이벤트: ${type}`
+  }
+
+  const strike = Number.isFinite(Number(event.strike)) ? Number(event.strike) : null
+  const remaining = Number.isFinite(Number(event.remaining)) ? Number(event.remaining) : null
+  const limit = Number.isFinite(Number(event.limit)) ? Number(event.limit) : null
+
+  const extra = {
+    eventType: type,
+    ownerId: ownerId || null,
+    strike,
+    remaining,
+    limit,
+    reason: event.reason || null,
+    turn: turnNumber,
+    timestamp,
+    status: event.status || null,
+    context: context && Object.keys(context).length ? context : null,
+  }
+
+  if (event.metadata && typeof event.metadata === 'object') {
+    extra.metadata = event.metadata
+  }
+
+  return {
+    role: 'system',
+    content,
+    public: true,
+    visibility: 'public',
+    extra,
+  }
+}
+
 function formatRealtimeReason(reason) {
   if (!reason) return ''
   const normalized = String(reason).trim().toLowerCase()
@@ -205,85 +286,6 @@ function isApiKeyError(error) {
     '키가 없습니다',
   ]
   return keywords.some((keyword) => combined.includes(keyword))
-}
-
-function normalizeRealtimeEvent(event) {
-  if (!event || typeof event !== 'object') return null
-  const type =
-    typeof event.type === 'string'
-      ? event.type.trim()
-      : typeof event.eventType === 'string'
-        ? event.eventType.trim()
-        : ''
-  if (!type) return null
-
-  const ownerId =
-    event.ownerId ??
-    event.owner_id ??
-    event.ownerID ??
-    (typeof event.owner === 'string' ? event.owner : null) ??
-    null
-
-  const strike = Number.isFinite(Number(event.strike)) ? Number(event.strike) : null
-  const remaining = Number.isFinite(Number(event.remaining)) ? Number(event.remaining) : null
-  const limit = Number.isFinite(Number(event.limit)) ? Number(event.limit) : null
-  const turn = Number.isFinite(Number(event.turn)) ? Number(event.turn) : null
-
-  let timestamp = null
-  if (Number.isFinite(Number(event.timestamp))) {
-    timestamp = Number(event.timestamp)
-  } else if (event.timestamp) {
-    const parsed = Date.parse(event.timestamp)
-    if (Number.isFinite(parsed)) {
-      timestamp = parsed
-    }
-  }
-  if (!Number.isFinite(timestamp)) {
-    timestamp = Date.now()
-  }
-
-  return {
-    id: event.id || event.eventId || null,
-    type,
-    ownerId,
-    strike,
-    remaining,
-    limit,
-    reason: event.reason || event.reasonCode || null,
-    turn,
-    timestamp,
-    status: event.status || null,
-  }
-}
-
-function buildRealtimeEventKey(event) {
-  if (!event) return null
-  if (event.id) {
-    return `id:${String(event.id)}`
-  }
-  const ownerId = event.ownerId ? String(event.ownerId) : 'unknown'
-  const type = event.type || 'event'
-  const turn = event.turn != null ? event.turn : 'na'
-  const timestamp = event.timestamp != null ? event.timestamp : 'ts'
-  return `${type}:${ownerId}:${turn}:${timestamp}`
-}
-
-function mergeRealtimeEvents(existing = [], incoming = []) {
-  const map = new Map()
-
-  const upsert = (payload) => {
-    const normalized = normalizeRealtimeEvent(payload)
-    if (!normalized) return
-    const key = buildRealtimeEventKey(normalized)
-    if (!key) return
-    const prev = map.get(key) || {}
-    map.set(key, { ...prev, ...normalized })
-  }
-
-  existing.forEach(upsert)
-  incoming.forEach(upsert)
-
-  return Array.from(map.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
 }
 
 export function useStartClientEngine(gameId) {
@@ -394,7 +396,7 @@ export function useStartClientEngine(gameId) {
   )
   const [realtimeEvents, setRealtimeEvents] = useState(() => {
     const snapshot = initialRealtimeSnapshotRef.current
-    return mergeRealtimeEvents([], Array.isArray(snapshot?.events) ? snapshot.events : [])
+    return mergeTimelineEvents([], Array.isArray(snapshot?.events) ? snapshot.events : [])
   })
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
@@ -410,7 +412,7 @@ export function useStartClientEngine(gameId) {
     }
     setRealtimePresence(snapshot)
     const events = Array.isArray(snapshot.events) ? snapshot.events : []
-    setRealtimeEvents((prev) => mergeRealtimeEvents(prev, events))
+    setRealtimeEvents((prev) => mergeTimelineEvents(prev, events))
   }, [])
 
   const clearConsensusVotes = useCallback(() => {
@@ -990,12 +992,17 @@ export function useStartClientEngine(gameId) {
     const previousIds = participantIdSetRef.current
     const nextIds = new Set()
     let dropInDetected = false
+    const newParticipants = []
 
     participants.forEach((participant, index) => {
       const key = String(participant?.id ?? participant?.hero_id ?? index)
       nextIds.add(key)
       if (!previousIds.has(key)) {
         dropInDetected = true
+        newParticipants.push({
+          participant,
+          ownerId: deriveParticipantOwnerId(participant),
+        })
       }
     })
 
@@ -1020,7 +1027,41 @@ export function useStartClientEngine(gameId) {
     }
 
     setLastDropInTurn(Number.isFinite(Number(turn)) ? Number(turn) : 0)
-  }, [participants, preflight, turnDeadline, turn])
+
+    if (newParticipants.length) {
+      const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null
+      const now = Date.now()
+      const timelineEvents = newParticipants.map(({ participant, ownerId }) => ({
+        type: 'drop_in_joined',
+        ownerId: ownerId ? String(ownerId).trim() : null,
+        status:
+          normalizeTimelineStatus(
+            participant?.status || (game?.realtime_match ? 'active' : 'proxy'),
+          ) || null,
+        turn: turnNumber,
+        timestamp: now,
+        reason: game?.realtime_match ? 'drop_in_joined' : 'async_substitution',
+        context: {
+          role: participant?.role || null,
+          heroName:
+            participant?.hero?.name ||
+            participant?.hero_name ||
+            participant?.heroName ||
+            null,
+          participantId: participant?.id ?? participant?.hero_id ?? null,
+          mode: game?.realtime_match ? 'realtime' : 'async',
+        },
+      }))
+      recordTimelineEvents(timelineEvents, { turnNumber })
+    }
+  }, [
+    participants,
+    preflight,
+    turnDeadline,
+    turn,
+    recordTimelineEvents,
+    game?.realtime_match,
+  ])
 
   useEffect(() => {
     if (!realtimeManagerRef.current) return
@@ -1255,6 +1296,46 @@ export function useStartClientEngine(gameId) {
     })
     return map
   }, [participants])
+
+  const recordTimelineEvents = useCallback(
+    (events, { turnNumber: overrideTurn, logEntries = null, buildLogs = true } = {}) => {
+      if (!Array.isArray(events) || events.length === 0) return
+      setRealtimeEvents((prev) => mergeTimelineEvents(prev, events))
+
+      let entries = logEntries
+      if (!entries && buildLogs) {
+        entries = events
+          .map((event) =>
+            buildTimelineLogEntry(event, {
+              ownerDisplayMap,
+              defaultTurn:
+                Number.isFinite(Number(event.turn)) && Number(event.turn) > 0
+                  ? Number(event.turn)
+                  : Number.isFinite(Number(overrideTurn))
+                    ? Number(overrideTurn)
+                    : Number.isFinite(Number(turn))
+                      ? Number(turn)
+                      : null,
+              defaultMode: game?.realtime_match ? 'realtime' : 'async',
+            }),
+          )
+          .filter(Boolean)
+      }
+
+      if (Array.isArray(entries) && entries.length) {
+        const effectiveTurn =
+          Number.isFinite(Number(overrideTurn)) && Number(overrideTurn) > 0
+            ? Number(overrideTurn)
+            : Number.isFinite(Number(turn)) && Number(turn) > 0
+              ? Number(turn)
+              : null
+        logTurnEntries({ entries, turnNumber: effectiveTurn }).catch((error) => {
+          console.error('[StartClient] 타임라인 이벤트 로그 실패:', error)
+        })
+      }
+    },
+    [ownerDisplayMap, game?.realtime_match, turn, logTurnEntries],
+  )
   const normalizedViewerId = useMemo(() => {
     if (!viewerId) return ''
     return String(viewerId).trim()
@@ -2263,13 +2344,45 @@ export function useStartClientEngine(gameId) {
   const autoAdvance = useCallback(() => {
     advanceIntentRef.current = null
     clearConsensusVotes()
+    const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null
+    recordTimelineEvents(
+      [
+        {
+          type: 'turn_timeout',
+          turn: turnNumber,
+          timestamp: Date.now(),
+          reason: 'timeout',
+          context: {
+            mode: game?.realtime_match ? 'realtime' : 'async',
+          },
+        },
+      ],
+      { turnNumber },
+    )
     return advanceTurn(null, { reason: 'timeout' })
-  }, [advanceTurn, clearConsensusVotes])
+  }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, game?.realtime_match])
 
   useEffect(() => {
     if (!needsConsensus) return undefined
     if (!advanceIntentRef.current) return undefined
     if (!consensusState?.hasReachedThreshold) return undefined
+    const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null
+    recordTimelineEvents(
+      [
+        {
+          type: 'consensus_reached',
+          turn: turnNumber,
+          timestamp: Date.now(),
+          reason: 'consensus',
+          context: {
+            consensusCount: consensusState?.consensusCount ?? null,
+            threshold: consensusState?.threshold ?? null,
+            mode: game?.realtime_match ? 'realtime' : 'async',
+          },
+        },
+      ],
+      { turnNumber },
+    )
     const intent = advanceIntentRef.current
     advanceIntentRef.current = null
     clearConsensusVotes()
@@ -2280,6 +2393,11 @@ export function useStartClientEngine(gameId) {
     consensusState?.hasReachedThreshold,
     needsConsensus,
     clearConsensusVotes,
+    recordTimelineEvents,
+    consensusState?.consensusCount,
+    consensusState?.threshold,
+    game?.realtime_match,
+    turn,
   ])
 
   useEffect(() => {
@@ -2322,7 +2440,7 @@ export function useStartClientEngine(gameId) {
       const raw = payload?.payload || payload || {}
       const events = Array.isArray(raw.events) ? raw.events : []
       if (!events.length) return
-      setRealtimeEvents((prev) => mergeRealtimeEvents(prev, events))
+      setRealtimeEvents((prev) => mergeTimelineEvents(prev, events))
     }
 
     channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)

@@ -1,3 +1,5 @@
+import { normalizeTimelineEvent } from '../../../../lib/rank/timelineEvents'
+
 const WARNING_LIMIT = 2
 const MAX_EVENT_LOG_SIZE = 50
 
@@ -65,30 +67,22 @@ export function createRealtimeSessionManager({ warningLimit = WARNING_LIMIT } = 
     const appended = []
     events.forEach((event) => {
       if (!event || typeof event !== 'object') return
+      const normalized = normalizeTimelineEvent(
+        { turn: currentTurn || 0, ...event },
+        { defaultTurn: currentTurn || 0 },
+      )
+      if (!normalized) return
       const record = {
         ...event,
+        ...normalized,
         timestamp:
-          Number.isFinite(Number(event.timestamp)) && Number(event.timestamp) > 0
-            ? Number(event.timestamp)
+          Number.isFinite(Number(normalized.timestamp)) && Number(normalized.timestamp) > 0
+            ? Number(normalized.timestamp)
             : Date.now(),
       }
-      const ownerId =
-        event.ownerId ??
-        event.owner_id ??
-        event.ownerID ??
-        (typeof event.owner === 'string' ? event.owner : null) ??
-        null
-      const resolvedTurn = Number.isFinite(Number(event.turn))
-        ? Number(event.turn)
-        : currentTurn || 0
-      record.id =
-        event.id ||
-        event.eventId ||
-        (record.type || ownerId
-          ? `${record.type || 'event'}:${ownerId || 'unknown'}:${resolvedTurn}:${record.timestamp}`
-          : `${record.timestamp}`)
-      record.ownerId = ownerId
-      record.turn = resolvedTurn
+      if (!record.id) {
+        record.id = `${record.type || 'event'}:${record.ownerId || 'unknown'}:${record.turn ?? 0}:${record.timestamp}`
+      }
       eventLog.push(record)
       appended.push(record)
     })

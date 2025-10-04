@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../supabaseAdmin'
+import { sanitizeTimelineEvents } from './timelineEvents'
 
 const REALTIME_EVENT_NAME = 'rank:timeline-event'
 const REALTIME_CHANNEL_PREFIX = process.env.RANK_REALTIME_EVENT_CHANNEL_PREFIX || 'rank-session'
@@ -18,55 +19,11 @@ function buildChannelName(sessionId) {
   return `${REALTIME_CHANNEL_PREFIX}:${suffix}`
 }
 
-function sanitizeEvents(events = []) {
-  if (!Array.isArray(events)) return []
-  return events
-    .map((event) => {
-      if (!event || typeof event !== 'object') return null
-      const type = typeof event.type === 'string' ? event.type.trim() : ''
-      if (!type) return null
-      const ownerId =
-        event.ownerId ??
-        event.owner_id ??
-        event.ownerID ??
-        (typeof event.owner === 'string' ? event.owner : null) ??
-        null
-      const strike = Number.isFinite(Number(event.strike)) ? Number(event.strike) : null
-      const remaining = Number.isFinite(Number(event.remaining)) ? Number(event.remaining) : null
-      const limit = Number.isFinite(Number(event.limit)) ? Number(event.limit) : null
-      const turn = Number.isFinite(Number(event.turn)) ? Number(event.turn) : null
-      const rawTimestamp = Number.isFinite(Number(event.timestamp))
-        ? Number(event.timestamp)
-        : Date.parse(event.timestamp)
-      const timestamp = Number.isFinite(rawTimestamp) ? rawTimestamp : Date.now()
-      const id =
-        event.id ||
-        event.eventId ||
-        (ownerId || type
-          ? `${type}:${ownerId || 'unknown'}:${turn ?? 'na'}:${timestamp}`
-          : null)
-
-      return {
-        id,
-        type,
-        ownerId,
-        strike,
-        remaining,
-        limit,
-        reason: event.reason || null,
-        turn,
-        timestamp,
-        status: event.status || null,
-      }
-    })
-    .filter(Boolean)
-}
-
 export async function broadcastRealtimeTimeline(sessionId, events, context = {}) {
   const channelName = buildChannelName(sessionId)
   if (!channelName) return false
 
-  const payloadEvents = sanitizeEvents(events)
+  const payloadEvents = sanitizeTimelineEvents(events)
   if (!payloadEvents.length) return false
 
   const channel = supabaseAdmin.channel(channelName, {
@@ -155,7 +112,7 @@ function formatSlackText(event, { sessionId, gameId } = {}) {
 
 export async function notifyRealtimeTimelineWebhook(events, { sessionId, gameId } = {}) {
   if (!WEBHOOK_URL) return false
-  const payloadEvents = sanitizeEvents(events)
+  const payloadEvents = sanitizeTimelineEvents(events)
   if (!payloadEvents.length) return false
 
   const textBlocks = payloadEvents.map((event) => formatSlackText(event, { sessionId, gameId }))
