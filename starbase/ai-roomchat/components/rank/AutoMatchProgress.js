@@ -557,7 +557,8 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   )
 
   const handleConfirmMatch = useCallback(async () => {
-    if (confirmationState !== 'counting' || confirming) return
+    if (confirmationState !== 'counting' && confirmationState !== 'auto') return
+    if (confirming) return
 
     setConfirming(true)
     try {
@@ -603,6 +604,9 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
       const playOk = await triggerPlay(token)
       if (!playOk) {
+        if (!requiresManualConfirmation) {
+          setConfirmationState('failed')
+        }
         return
       }
 
@@ -626,6 +630,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     confirming,
     gameId,
     mode,
+    requiresManualConfirmation,
     roleName,
     state.match?.matchCode,
     turnTimer,
@@ -824,7 +829,11 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       queueJoinStartedAtRef.current = null
 
       if (confirmationState === 'idle') {
-        startConfirmationCountdown()
+        if (requiresManualConfirmation) {
+          startConfirmationCountdown()
+        } else {
+          setConfirmationState('auto')
+        }
       }
       return
     }
@@ -870,7 +879,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     if (requiresManualConfirmation) {
       return
     }
-    if (confirmationState !== 'counting') {
+    if (confirmationState !== 'auto') {
       return
     }
     if (confirming) {
@@ -1078,13 +1087,14 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       }
     }
 
-    if (confirmationState === 'counting') {
-      if (!requiresManualConfirmation) {
-        return {
-          title: '매칭이 잡혔습니다~',
-          detail: '비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.',
-        }
+    if (confirmationState === 'auto') {
+      return {
+        title: '매칭이 잡혔습니다~',
+        detail: '비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.',
       }
+    }
+
+    if (confirmationState === 'counting') {
       return {
         title: '매칭이 잡혔습니다~',
         detail: `${confirmationRemaining}초 안에 버튼을 눌러 전투를 시작해 주세요.`,
@@ -1102,7 +1112,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       title: '매칭이 잡혔습니다~',
       detail: '',
     }
-  }, [confirmationRemaining, confirmationState, joinError, requiresManualConfirmation])
+    }, [confirmationRemaining, confirmationState, joinError])
 
   const showMatchedOverlay = matchLocked || confirmationState !== 'idle'
 
@@ -1206,26 +1216,26 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
                 ))}
               </div>
             ) : null}
-            {confirmationState === 'counting' ? (
-              requiresManualConfirmation ? (
-                <div className={styles.confirmArea}>
-                  <button
-                    type="button"
-                    className={styles.confirmButton}
-                    onClick={handleConfirmMatch}
-                    disabled={confirming}
-                    ref={confirmButtonRef}
-                  >
-                    {confirming ? '준비 중…' : '전투 시작하기'}
-                    <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
-                  </button>
-                  <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
-                </div>
-              ) : (
-                <div className={styles.autoConfirmNotice}>
-                  <p className={styles.confirmHint}>비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.</p>
-                </div>
-              )
+            {confirmationState === 'counting' && requiresManualConfirmation ? (
+              <div className={styles.confirmArea}>
+                <button
+                  type="button"
+                  className={styles.confirmButton}
+                  onClick={handleConfirmMatch}
+                  disabled={confirming}
+                  ref={confirmButtonRef}
+                >
+                  {confirming ? '준비 중…' : '전투 시작하기'}
+                  <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
+                </button>
+                <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
+              </div>
+            ) : null}
+            {!requiresManualConfirmation &&
+            (confirmationState === 'auto' || confirmationState === 'counting') ? (
+              <div className={styles.autoConfirmNotice}>
+                <p className={styles.confirmHint}>비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.</p>
+              </div>
             ) : null}
             {confirmationState === 'failed' && extraBlockers.length ? (
               <ul className={styles.blockerList}>
