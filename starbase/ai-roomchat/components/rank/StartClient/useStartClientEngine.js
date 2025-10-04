@@ -476,131 +476,6 @@ export function useStartClientEngine(gameId) {
   }, [preflight, currentNodeId, turn, turnDeadline, isAdvancing, scheduleTurnTimer])
 
   useEffect(() => {
-    if (preflight) {
-      participantIdSetRef.current = new Set(
-        participants.map((participant, index) =>
-          String(participant?.id ?? participant?.hero_id ?? index),
-        ),
-      )
-      const resetSnapshot = dropInQueueRef.current?.reset?.()
-      if (resetSnapshot && typeof resetSnapshot === 'object') {
-        setDropInSnapshot(resetSnapshot)
-      } else {
-        setDropInSnapshot(null)
-      }
-      asyncSessionManagerRef.current?.reset()
-      return
-    }
-
-    participantIdSetRef.current = new Set(
-      participants.map((participant, index) =>
-        String(participant?.id ?? participant?.hero_id ?? index),
-      ),
-    )
-
-    const queueService = dropInQueueRef.current
-    if (!queueService) return
-
-    const queueResult = queueService.syncParticipants(participants, {
-      turnNumber: turn,
-      mode: game?.realtime_match ? 'realtime' : 'async',
-    })
-    if (queueResult && typeof queueResult === 'object') {
-      setDropInSnapshot(queueResult.snapshot || null)
-    }
-
-    const arrivals = Array.isArray(queueResult?.arrivals)
-      ? queueResult.arrivals
-      : []
-
-    if (arrivals.length > 0) {
-      const service = turnTimerServiceRef.current
-      if (service) {
-        const hasActiveDeadline = turnDeadline && turnDeadline > Date.now()
-        const extraSeconds = service.registerDropInBonus({
-          immediate: hasActiveDeadline,
-          turnNumber: turn,
-        })
-
-        if (extraSeconds > 0 && hasActiveDeadline) {
-          setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : prev))
-          setTimeRemaining((prev) =>
-            typeof prev === 'number' ? prev + extraSeconds : prev,
-          )
-        }
-      }
-
-      setLastDropInTurn(Number.isFinite(Number(turn)) ? Number(turn) : 0)
-    }
-
-    let timelineEvents = []
-
-    if (game?.realtime_match) {
-      if (arrivals.length) {
-        timelineEvents = arrivals.map((arrival) => {
-          const status =
-            normalizeTimelineStatus(arrival.status) || 'active'
-          const cause = arrival.replaced ? 'realtime_drop_in' : 'realtime_joined'
-          return {
-            type: 'drop_in_joined',
-            ownerId: arrival.ownerId ? String(arrival.ownerId).trim() : null,
-            status,
-            turn: Number.isFinite(Number(arrival.turn))
-              ? Number(arrival.turn)
-              : Number.isFinite(Number(turn))
-                ? Number(turn)
-                : null,
-            timestamp: arrival.timestamp,
-            reason: cause,
-            context: {
-              role: arrival.role || null,
-              heroName: arrival.heroName || null,
-              participantId: arrival.participantId ?? null,
-              slotIndex: arrival.slotIndex ?? null,
-              mode: 'realtime',
-              substitution: {
-                cause,
-                replacedOwnerId: arrival.replaced?.ownerId || null,
-                replacedHeroName: arrival.replaced?.heroName || null,
-                replacedParticipantId: arrival.replaced?.participantId || null,
-                queueDepth:
-                  arrival.stats?.queueDepth ?? arrival.stats?.replacements ?? 0,
-                arrivalOrder: arrival.stats?.arrivalOrder ?? null,
-                totalReplacements: arrival.stats?.replacements ?? 0,
-                lastDepartureCause: arrival.stats?.lastDepartureCause || null,
-              },
-            },
-            metadata: matchingMetadata ? { matching: matchingMetadata } : null,
-          }
-        })
-      }
-    } else if (asyncSessionManagerRef.current) {
-      const { events } = asyncSessionManagerRef.current.processQueueResult(
-        queueResult,
-        { mode: 'async' },
-      )
-      if (Array.isArray(events) && events.length) {
-        timelineEvents = events.map((event) => ({
-          ...event,
-          metadata:
-            event.metadata || (matchingMetadata ? { matching: matchingMetadata } : null),
-        }))
-      }
-    }
-
-    if (timelineEvents.length) {
-      recordTimelineEvents(timelineEvents, { turnNumber: turn })
-    }
-  }, [
-    participants,
-    preflight,
-    turnDeadline,
-    turn,
-    recordTimelineEvents,
-    game?.realtime_match,
-  ])
-
-  useEffect(() => {
     if (!realtimeManagerRef.current) return
     const snapshot = realtimeManagerRef.current.syncParticipants(participants)
     applyRealtimeSnapshot(snapshot)
@@ -767,32 +642,6 @@ export function useStartClientEngine(gameId) {
     },
     [resolveHeroAssets],
   )
-  const { ensureApiKeyReady, voidSession } = useStartCooldown({
-    evaluateApiKeyCooldown,
-    applyCooldownInfo,
-    setStatusMessage,
-    setGameVoided,
-    setCurrentNodeId,
-    setTurnDeadline,
-    setTimeRemaining,
-    clearConsensusVotes,
-    updateHeroAssets,
-    updateSessionRecord,
-    clearSessionRecord,
-    viewerId,
-    apiVersion,
-    gameId,
-    game,
-    sessionInfo,
-    onSessionVoided: (payload = {}) => {
-      const reason =
-        payload?.options?.reason ||
-        payload?.reason ||
-        payload?.options?.message ||
-        'void'
-      captureBattleLog('void', { reason, turnNumber: turn })
-    },
-  })
   const participantsStatus = useMemo(
     () =>
       participants.map((participant) => ({
@@ -840,6 +689,134 @@ export function useStartClientEngine(gameId) {
     },
     [ownerDisplayMap, game?.realtime_match, turn, logTurnEntries],
   )
+
+  useEffect(() => {
+    if (preflight) {
+      participantIdSetRef.current = new Set(
+        participants.map((participant, index) =>
+          String(participant?.id ?? participant?.hero_id ?? index),
+        ),
+      )
+      const resetSnapshot = dropInQueueRef.current?.reset?.()
+      if (resetSnapshot && typeof resetSnapshot === 'object') {
+        setDropInSnapshot(resetSnapshot)
+      } else {
+        setDropInSnapshot(null)
+      }
+      asyncSessionManagerRef.current?.reset()
+      return
+    }
+
+    participantIdSetRef.current = new Set(
+      participants.map((participant, index) =>
+        String(participant?.id ?? participant?.hero_id ?? index),
+      ),
+    )
+
+    const queueService = dropInQueueRef.current
+    if (!queueService) return
+
+    const queueResult = queueService.syncParticipants(participants, {
+      turnNumber: turn,
+      mode: game?.realtime_match ? 'realtime' : 'async',
+    })
+    if (queueResult && typeof queueResult === 'object') {
+      setDropInSnapshot(queueResult.snapshot || null)
+    }
+
+    const arrivals = Array.isArray(queueResult?.arrivals)
+      ? queueResult.arrivals
+      : []
+
+    if (arrivals.length > 0) {
+      const service = turnTimerServiceRef.current
+      if (service) {
+        const hasActiveDeadline = turnDeadline && turnDeadline > Date.now()
+        const extraSeconds = service.registerDropInBonus({
+          immediate: hasActiveDeadline,
+          turnNumber: turn,
+        })
+
+        if (extraSeconds > 0 && hasActiveDeadline) {
+          setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : prev))
+          setTimeRemaining((prev) =>
+            typeof prev === 'number' ? prev + extraSeconds : prev,
+          )
+        }
+      }
+
+      setLastDropInTurn(Number.isFinite(Number(turn)) ? Number(turn) : 0)
+    }
+
+    let timelineEvents = []
+
+    if (game?.realtime_match) {
+      if (arrivals.length) {
+        timelineEvents = arrivals.map((arrival) => {
+          const status =
+            normalizeTimelineStatus(arrival.status) || 'active'
+          const cause = arrival.replaced ? 'realtime_drop_in' : 'realtime_joined'
+          return {
+            type: 'drop_in_joined',
+            ownerId: arrival.ownerId ? String(arrival.ownerId).trim() : null,
+            status,
+            turn: Number.isFinite(Number(arrival.turn))
+              ? Number(arrival.turn)
+              : Number.isFinite(Number(turn))
+                ? Number(turn)
+                : null,
+            timestamp: arrival.timestamp,
+            reason: cause,
+            context: {
+              role: arrival.role || null,
+              heroName: arrival.heroName || null,
+              participantId: arrival.participantId ?? null,
+              slotIndex: arrival.slotIndex ?? null,
+              mode: 'realtime',
+              substitution: {
+                cause,
+                replacedOwnerId: arrival.replaced?.ownerId || null,
+                replacedHeroName: arrival.replaced?.heroName || null,
+                replacedParticipantId: arrival.replaced?.participantId || null,
+                queueDepth:
+                  arrival.stats?.queueDepth ?? arrival.stats?.replacements ?? 0,
+                arrivalOrder: arrival.stats?.arrivalOrder ?? null,
+                totalReplacements: arrival.stats?.replacements ?? 0,
+                lastDepartureCause: arrival.stats?.lastDepartureCause || null,
+              },
+            },
+            metadata: queueResult?.matching
+              ? { matching: queueResult.matching }
+              : null,
+          }
+        })
+      }
+    } else if (asyncSessionManagerRef.current) {
+      const { events } = asyncSessionManagerRef.current.processQueueResult(
+        queueResult,
+        { mode: 'async' },
+      )
+      if (Array.isArray(events) && events.length) {
+        timelineEvents = events.map((event) => ({
+          ...event,
+          metadata:
+            event.metadata ||
+            (queueResult?.matching ? { matching: queueResult.matching } : null),
+        }))
+      }
+    }
+
+    if (timelineEvents.length) {
+      recordTimelineEvents(timelineEvents, { turnNumber: turn })
+    }
+  }, [
+    participants,
+    preflight,
+    turnDeadline,
+    turn,
+    recordTimelineEvents,
+    game?.realtime_match,
+  ])
 
   const captureBattleLog = useCallback(
     (outcome, { reason, turnNumber: overrideTurn } = {}) => {
@@ -963,6 +940,33 @@ export function useStartClientEngine(gameId) {
     viewerId,
     turn,
     recordTimelineEvents,
+  })
+
+  const { ensureApiKeyReady, voidSession } = useStartCooldown({
+    evaluateApiKeyCooldown,
+    applyCooldownInfo,
+    setStatusMessage,
+    setGameVoided,
+    setCurrentNodeId,
+    setTurnDeadline,
+    setTimeRemaining,
+    clearConsensusVotes,
+    updateHeroAssets,
+    updateSessionRecord,
+    clearSessionRecord,
+    viewerId,
+    apiVersion,
+    gameId,
+    game,
+    sessionInfo,
+    onSessionVoided: (payload = {}) => {
+      const reason =
+        payload?.options?.reason ||
+        payload?.reason ||
+        payload?.options?.message ||
+        'void'
+      captureBattleLog('void', { reason, turnNumber: turn })
+    },
   })
 
   const visitedSlotIds = useRef(new Set())
