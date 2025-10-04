@@ -164,6 +164,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     handleStart,
     advanceWithAi,
     advanceWithManual,
+    autoAdvance,
     turnTimerSeconds,
     timeRemaining,
     currentActor,
@@ -178,7 +179,6 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
   const [timeoutNotice, setTimeoutNotice] = useState('')
   const autoStartedRef = useRef(false)
   const timeoutTrackerRef = useRef({ lastProcessed: null, misses: 0 })
-  const autoAdvanceRemainingRef = useRef(0)
   const autoAdvanceRunningRef = useRef(false)
 
   const backgroundUrls = useMemo(() => {
@@ -377,7 +377,6 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
   useEffect(() => {
     if (preflight) {
       timeoutTrackerRef.current = { lastProcessed: null, misses: 0 }
-      autoAdvanceRemainingRef.current = 0
       autoAdvanceRunningRef.current = false
       setTimeoutNotice('')
       autoStartedRef.current = false
@@ -400,44 +399,26 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
       if (timeoutNotice) {
         setTimeoutNotice('')
       }
+      timeoutTrackerRef.current.misses = 0
       return
     }
+
+    if (isAdvancing) return
+    if (autoAdvanceRunningRef.current) return
 
     if (timeoutTrackerRef.current.lastProcessed === turn) {
       return
     }
 
     timeoutTrackerRef.current.lastProcessed = turn
-    timeoutTrackerRef.current.misses += 1
-
-    if (timeoutTrackerRef.current.misses === 1) {
-      setTimeoutNotice('시간 제한을 초과했습니다. 다음 턴부터 서둘러 주세요!')
-      return
-    }
-
-    setTimeoutNotice('시간 초과가 반복돼 다음 두 턴은 자동으로 진행됩니다.')
-    timeoutTrackerRef.current.misses = 0
-    autoAdvanceRemainingRef.current = 2
-    if (!autoAdvanceRunningRef.current) {
-      autoAdvanceRunningRef.current = true
-      Promise.resolve(advanceWithAi()).finally(() => {
-        autoAdvanceRunningRef.current = false
-      })
-    }
-  }, [preflight, turn, timeRemaining, advanceWithAi, timeoutNotice])
-
-  useEffect(() => {
-    if (preflight) return
-    if (autoAdvanceRemainingRef.current <= 0) return
-    if (!canSubmitAction) return
-    if (autoAdvanceRunningRef.current) return
+    timeoutTrackerRef.current.misses = (timeoutTrackerRef.current.misses || 0) + 1
+    setTimeoutNotice('시간이 만료되어 턴이 자동으로 진행됩니다.')
 
     autoAdvanceRunningRef.current = true
-    Promise.resolve(advanceWithAi()).finally(() => {
-      autoAdvanceRemainingRef.current = Math.max(0, autoAdvanceRemainingRef.current - 1)
+    Promise.resolve(autoAdvance()).finally(() => {
       autoAdvanceRunningRef.current = false
     })
-  }, [preflight, canSubmitAction, advanceWithAi])
+  }, [preflight, turn, timeRemaining, timeoutNotice, autoAdvance, isAdvancing])
 
   if (!resolvedGameId) {
     return <div style={{ padding: 16 }}>게임 정보가 없습니다.</div>

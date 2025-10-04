@@ -18,6 +18,7 @@ import {
 import { loadGameBundle } from './engine/loadGameBundle'
 import { pickNextEdge } from './engine/graph'
 import { buildSystemMessage, parseRules } from './engine/systemPrompt'
+import { createTurnTimerService } from './services/turnTimerService'
 import {
   getApiKeyCooldown,
   getCooldownDurationMs,
@@ -226,10 +227,20 @@ export function useStartClientEngine(gameId) {
     if (Number.isFinite(stored) && stored > 0) return stored
     return 60
   })
+  const turnTimerServiceRef = useRef(null)
+  if (!turnTimerServiceRef.current) {
+    turnTimerServiceRef.current = createTurnTimerService({
+      baseSeconds: turnTimerSeconds,
+    })
+  } else {
+    turnTimerServiceRef.current.configureBase(turnTimerSeconds)
+  }
   const [consentedOwners, setConsentedOwners] = useState([])
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
+  const lastScheduledTurnRef = useRef(0)
+  const participantIdSetRef = useRef(new Set())
 
   const rememberActiveSession = useCallback(
     (payload = {}) => {
@@ -270,6 +281,9 @@ export function useStartClientEngine(gameId) {
       clearActiveSessionRecord(gameId)
     }
     setSessionInfo(null)
+    lastScheduledTurnRef.current = 0
+    setTurnDeadline(null)
+    setTimeRemaining(null)
   }, [gameId])
 
   const markSessionDefeated = useCallback(() => {
@@ -277,6 +291,9 @@ export function useStartClientEngine(gameId) {
       markActiveSessionDefeated(gameId)
     }
     setSessionInfo(null)
+    lastScheduledTurnRef.current = 0
+    setTurnDeadline(null)
+    setTimeRemaining(null)
   }, [gameId])
 
   const logTurnEntries = useCallback(
@@ -746,6 +763,77 @@ export function useStartClientEngine(gameId) {
     updateSessionRecord({ turn, actorNames: activeActorNames })
   }, [gameId, preflight, turn, activeActorNames, updateSessionRecord])
 
+  const scheduleTurnTimer = useCallback(
+    (turnNumber) => {
+      if (preflight) return
+      if (!currentNodeId) return
+      if (!turnTimerServiceRef.current) return
+      const durationSeconds = turnTimerServiceRef.current.nextTurnDuration(turnNumber)
+      if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+        setTurnDeadline(null)
+        setTimeRemaining(null)
+        return
+      }
+      const deadline = Date.now() + durationSeconds * 1000
+      setTurnDeadline(deadline)
+      setTimeRemaining(durationSeconds)
+      lastScheduledTurnRef.current = turnNumber
+    },
+    [preflight, currentNodeId],
+  )
+
+  useEffect(() => {
+    if (preflight) return
+    if (!currentNodeId) return
+    if (isAdvancing) return
+    if (!turn || turn <= 0) return
+    if (lastScheduledTurnRef.current === turn && turnDeadline) return
+    scheduleTurnTimer(turn)
+  }, [preflight, currentNodeId, turn, turnDeadline, isAdvancing, scheduleTurnTimer])
+
+  useEffect(() => {
+    if (preflight) {
+      participantIdSetRef.current = new Set(
+        participants.map((participant, index) =>
+          String(participant?.id ?? participant?.hero_id ?? index),
+        ),
+      )
+      return
+    }
+
+    const previousIds = participantIdSetRef.current
+    const nextIds = new Set()
+    let dropInDetected = false
+
+    participants.forEach((participant, index) => {
+      const key = String(participant?.id ?? participant?.hero_id ?? index)
+      nextIds.add(key)
+      if (!previousIds.has(key)) {
+        dropInDetected = true
+      }
+    })
+
+    participantIdSetRef.current = nextIds
+
+    if (!dropInDetected) return
+
+    const service = turnTimerServiceRef.current
+    if (!service) return
+
+    const hasActiveDeadline = turnDeadline && turnDeadline > Date.now()
+    const extraSeconds = service.registerDropInBonus({
+      immediate: hasActiveDeadline,
+      turnNumber: turn,
+    })
+
+    if (extraSeconds > 0 && hasActiveDeadline) {
+      setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : prev))
+      setTimeRemaining((prev) =>
+        typeof prev === 'number' ? prev + extraSeconds : prev,
+      )
+    }
+  }, [participants, preflight, turnDeadline, turn])
+
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
     if (!turnDeadline) {
@@ -1032,6 +1120,14 @@ export function useStartClientEngine(gameId) {
 
     visitedSlotIds.current = new Set()
     apiVersionLock.current = null
+    turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
+    turnTimerServiceRef.current?.reset()
+    participantIdSetRef.current = new Set(
+      participants.map((participant, index) =>
+        String(participant?.id ?? participant?.hero_id ?? index),
+      ),
+    )
+    lastScheduledTurnRef.current = 0
     setPreflight(false)
     setGameVoided(false)
     setTurn(1)
@@ -1053,8 +1149,8 @@ export function useStartClientEngine(gameId) {
       status: 'active',
       defeated: false,
     })
-      setTurnDeadline(null)
-      setTimeRemaining(null)
+    setTurnDeadline(null)
+    setTimeRemaining(null)
     setCurrentNodeId(startNode.id)
   }, [
     graph.nodes,
@@ -1064,6 +1160,7 @@ export function useStartClientEngine(gameId) {
     participants,
     updateHeroAssets,
     rememberActiveSession,
+    turnTimerSeconds,
   ])
 
   const handleStart = useCallback(async () => {
@@ -1573,8 +1670,6 @@ export function useStartClientEngine(gameId) {
 
         setCurrentNodeId(nextNodeId)
         setTurn((prev) => prev + 1)
-        setTurnDeadline(Date.now() + turnTimerSeconds * 1000)
-        setTimeRemaining(turnTimerSeconds)
       } catch (err) {
         console.error(err)
         if (isApiKeyError(err)) {
@@ -1624,7 +1719,6 @@ export function useStartClientEngine(gameId) {
       viewerId,
       updateHeroAssets,
       logTurnEntries,
-      turnTimerSeconds,
       voidSession,
       gameVoided,
       evaluateApiKeyCooldown,
@@ -1675,6 +1769,12 @@ export function useStartClientEngine(gameId) {
     viewerCanConsent,
     viewerId,
   ])
+
+  const autoAdvance = useCallback(() => {
+    advanceIntentRef.current = null
+    setConsentedOwners([])
+    return advanceTurn(null)
+  }, [advanceTurn])
 
   useEffect(() => {
     if (!needsConsensus) return undefined
@@ -1744,6 +1844,7 @@ export function useStartClientEngine(gameId) {
     handleStart,
     advanceWithAi,
     advanceWithManual,
+    autoAdvance,
     turnTimerSeconds,
     timeRemaining,
     currentActor: currentActorInfo,
