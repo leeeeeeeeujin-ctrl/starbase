@@ -215,6 +215,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const playTriggeredRef = useRef(false)
   const lastStoredApiKeyRef = useRef('')
   const [playNotice, setPlayNotice] = useState('')
+  const [displayStatus, setDisplayStatus] = useState(state.status)
 
   const persistApiKeyOnServer = useCallback(
     async (value, version) => {
@@ -610,6 +611,24 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [state.status])
 
   useEffect(() => {
+    if (
+      state.status === 'matched' ||
+      confirmationState === 'counting' ||
+      confirmationState === 'confirmed'
+    ) {
+      setDisplayStatus('matched')
+      return
+    }
+
+    if (confirmationState === 'failed') {
+      setDisplayStatus('queued')
+      return
+    }
+
+    setDisplayStatus(state.status)
+  }, [confirmationState, state.status])
+
+  useEffect(() => {
     if (state.status !== 'matched') {
       playTriggeredRef.current = false
       setPlayNotice('')
@@ -637,6 +656,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   useEffect(() => {
     if (!gameId || !mode) return
     if (state.status === 'queued' || state.status === 'matched') return
+    if (confirmationState !== 'idle') return
     if (blockers.length) return
 
     const signature = `${state.viewerId || ''}::${state.heroId || ''}::${roleName}`
@@ -675,7 +695,17 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         })
       }
     })
-  }, [actions, blockers, gameId, mode, roleName, state.heroId, state.status, state.viewerId])
+  }, [
+    actions,
+    blockers,
+    confirmationState,
+    gameId,
+    mode,
+    roleName,
+    state.heroId,
+    state.status,
+    state.viewerId,
+  ])
 
   useEffect(() => {
     if (!blockers.includes(HERO_BLOCKER_MESSAGE) || state.status !== 'idle') {
@@ -958,14 +988,14 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       }
     }
 
-    if (state.status === 'matched') {
+    if (displayStatus === 'matched') {
       return {
         title: '매칭이 잡혔습니다~',
         detail: '',
       }
     }
 
-    if (state.status === 'queued') {
+    if (displayStatus === 'queued') {
       return {
         title: '매칭 중…',
         detail: '',
@@ -994,13 +1024,20 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     blockers,
     confirmationRemaining,
     confirmationState,
+    displayStatus,
     joinError,
-    state.status,
   ])
 
+  const showSpinner = useMemo(() => {
+    if (confirmationState === 'failed') {
+      return true
+    }
+    return displayStatus !== 'matched'
+  }, [confirmationState, displayStatus])
+
   return (
-    <div className={styles.root} aria-live="polite" aria-busy={state.status !== 'matched'}>
-      <div className={styles.spinner} aria-hidden="true" />
+    <div className={styles.root} aria-live="polite" aria-busy={displayStatus !== 'matched'}>
+      {showSpinner ? <div className={styles.spinner} aria-hidden="true" /> : null}
       <div className={styles.status} role="status">
         <p className={styles.message}>{display.title}</p>
         {display.detail ? (
