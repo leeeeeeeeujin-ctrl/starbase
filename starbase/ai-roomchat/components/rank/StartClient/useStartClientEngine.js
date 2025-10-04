@@ -8,13 +8,6 @@ import {
   makeNodePrompt,
   parseOutcome,
 } from '../../../lib/promptEngine'
-import { createAiHistory } from '../../../lib/history'
-import {
-  clearActiveSessionRecord,
-  markActiveSessionDefeated,
-  storeActiveSessionRecord,
-  updateActiveSessionRecord,
-} from '../../../lib/rank/activeSessionStorage'
 import { loadGameBundle } from './engine/loadGameBundle'
 import { pickNextEdge } from './engine/graph'
 import { buildSystemMessage, parseRules } from './engine/systemPrompt'
@@ -35,11 +28,7 @@ import {
   createOwnerDisplayMap,
   deriveParticipantOwnerId,
 } from './engine/participants'
-import {
-  buildKeySample,
-  formatCooldownMessage,
-  isApiKeyError,
-} from './engine/apiKeyUtils'
+import { buildKeySample, formatCooldownMessage, isApiKeyError } from './engine/apiKeyUtils'
 import { createTurnTimerService } from './services/turnTimerService'
 import {
   createTurnVoteController,
@@ -52,18 +41,10 @@ import {
   mergeTimelineEvents,
   normalizeTimelineStatus,
 } from '../../../lib/rank/timelineEvents'
-import {
-  getApiKeyCooldown,
-  markApiKeyCooldown,
-  purgeExpiredCooldowns,
-} from '../../../lib/rank/apiKeyCooldown'
-import {
-  DEFAULT_GEMINI_MODE,
-  DEFAULT_GEMINI_MODEL,
-  normalizeGeminiMode,
-  normalizeGeminiModelId,
-} from '../../../lib/rank/geminiConfig'
-import useGeminiModelCatalog from '../hooks/useGeminiModelCatalog'
+import { markApiKeyCooldown } from '../../../lib/rank/apiKeyCooldown'
+import { useHistoryBuffer } from './hooks/useHistoryBuffer'
+import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
+import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
 import { consumeStartMatchMeta } from '../startConfig'
 
 export function useStartClientEngine(gameId) {
@@ -72,36 +53,22 @@ export function useStartClientEngine(gameId) {
       ? ''
       : (window.sessionStorage.getItem('rank.start.apiKey') || '').trim()
   const initialMatchMeta = consumeStartMatchMeta()
-  const initialGeminiConfig = (() => {
-    if (typeof window === 'undefined') {
-      return { mode: DEFAULT_GEMINI_MODE, model: DEFAULT_GEMINI_MODEL }
-    }
-    try {
-      const storedMode =
-        window.sessionStorage.getItem('rank.start.geminiMode') || DEFAULT_GEMINI_MODE
-      const storedModel =
-        window.sessionStorage.getItem('rank.start.geminiModel') || DEFAULT_GEMINI_MODEL
-      const mode = normalizeGeminiMode(storedMode)
-      const model = normalizeGeminiModelId(storedModel) || DEFAULT_GEMINI_MODEL
-      return { mode, model }
-    } catch (error) {
-      console.warn('[StartClient] Gemini 설정을 불러오지 못했습니다:', error)
-      return { mode: DEFAULT_GEMINI_MODE, model: DEFAULT_GEMINI_MODEL }
-    }
-  })()
-  const initialCooldownInfo =
+  const initialApiVersion =
     typeof window === 'undefined'
-      ? null
-      : (() => {
-          purgeExpiredCooldowns()
-          if (!initialStoredApiKey) return null
-          return getApiKeyCooldown(initialStoredApiKey)
-        })()
+      ? 'gemini'
+      : window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
+  const initialGeminiConfig =
+    typeof window === 'undefined'
+      ? {}
+      : {
+          mode: window.sessionStorage.getItem('rank.start.geminiMode') || undefined,
+          model: window.sessionStorage.getItem('rank.start.geminiModel') || undefined,
+        }
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
   const matchMetaLoggedRef = useRef(false)
 
-  const history = useMemo(() => createAiHistory(), [])
+  const { history, historyVersion, bumpHistoryVersion } = useHistoryBuffer()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -116,24 +83,10 @@ export function useStartClientEngine(gameId) {
   const [logs, setLogs] = useState([])
   const [statusMessage, setStatusMessage] = useState('')
   const [promptMetaWarning, setPromptMetaWarning] = useState('')
-  const [apiKey, setApiKeyState] = useState(initialStoredApiKey)
-  const apiKeyChangeMetaRef = useRef(new Map())
-  const lastRecordedApiKeyRef = useRef('')
-  const [apiVersion, setApiVersionState] = useState(() => {
-    if (typeof window === 'undefined') return 'gemini'
-    return window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
-  })
-  const [geminiMode, setGeminiModeState] = useState(initialGeminiConfig.mode)
-  const [geminiModel, setGeminiModelState] = useState(initialGeminiConfig.model)
-  const [apiKeyCooldown, setApiKeyCooldownState] = useState(initialCooldownInfo)
-  const [apiKeyWarning, setApiKeyWarning] = useState(() =>
-    initialCooldownInfo?.active ? formatCooldownMessage(initialCooldownInfo) : '',
-  )
   const [manualResponse, setManualResponse] = useState('')
   const [isAdvancing, setIsAdvancing] = useState(false)
   const [winCount, setWinCount] = useState(0)
   const [lastDropInTurn, setLastDropInTurn] = useState(null)
-  const [historyVersion, setHistoryVersion] = useState(0)
   const [viewerId, setViewerId] = useState(null)
   const [turnDeadline, setTurnDeadline] = useState(null)
   const [timeRemaining, setTimeRemaining] = useState(null)
@@ -191,6 +144,7 @@ export function useStartClientEngine(gameId) {
   const [realtimeEvents, setRealtimeEvents] = useState(() =>
     initializeRealtimeEvents(initialRealtimeSnapshotRef.current),
   )
+
   useEffect(() => {
     startMatchMetaRef.current = startMatchMeta
   }, [startMatchMeta])
@@ -242,71 +196,25 @@ export function useStartClientEngine(gameId) {
     setConsensusState(snapshot)
   }, [])
 
-  const rememberActiveSession = useCallback(
-    (payload = {}) => {
-      if (!gameId || !game) return
-      const actorNames = Array.isArray(payload.actorNames)
-        ? payload.actorNames
-        : activeActorNames
-      storeActiveSessionRecord(gameId, {
-        gameName: game.name || '',
-        description: game.description || '',
-        actorNames,
-        sessionId: payload.sessionId ?? sessionInfo?.id ?? null,
-        ...payload,
-      })
-    },
-    [gameId, game, activeActorNames, sessionInfo?.id],
-  )
+  const {
+    rememberActiveSession,
+    updateSessionRecord,
+    clearSessionRecord,
+    markSessionDefeated,
+  } = useStartSessionLifecycle({
+    gameId,
+    game,
+    activeActorNames,
+    sessionInfo,
+    setSessionInfo,
+    realtimeManagerRef,
+    dropInQueueRef,
+    asyncSessionManagerRef,
+    applyRealtimeSnapshot,
+    setTurnDeadline,
+    setTimeRemaining,
+  })
 
-  const updateSessionRecord = useCallback(
-    (payload = {}) => {
-      if (!gameId) return
-      const actorNames = Array.isArray(payload.actorNames)
-        ? payload.actorNames
-        : activeActorNames
-      updateActiveSessionRecord(gameId, {
-        actorNames,
-        gameName: game?.name || '',
-        description: game?.description || '',
-        sessionId: payload.sessionId ?? sessionInfo?.id ?? null,
-        ...payload,
-      })
-    },
-    [gameId, game, activeActorNames, sessionInfo?.id],
-  )
-
-  const clearSessionRecord = useCallback(() => {
-    if (gameId) {
-      clearActiveSessionRecord(gameId)
-    }
-    if (realtimeManagerRef.current) {
-      const snapshot = realtimeManagerRef.current.reset()
-      applyRealtimeSnapshot(snapshot)
-    }
-    dropInQueueRef.current?.reset()
-    asyncSessionManagerRef.current?.reset()
-    setSessionInfo(null)
-    lastScheduledTurnRef.current = 0
-    setTurnDeadline(null)
-    setTimeRemaining(null)
-  }, [gameId, applyRealtimeSnapshot])
-
-  const markSessionDefeated = useCallback(() => {
-    if (gameId) {
-      markActiveSessionDefeated(gameId)
-    }
-    if (realtimeManagerRef.current) {
-      const snapshot = realtimeManagerRef.current.reset()
-      applyRealtimeSnapshot(snapshot)
-    }
-    dropInQueueRef.current?.reset()
-    asyncSessionManagerRef.current?.reset()
-    setSessionInfo(null)
-    lastScheduledTurnRef.current = 0
-    setTurnDeadline(null)
-    setTimeRemaining(null)
-  }, [gameId, applyRealtimeSnapshot])
 
   const logTurnEntries = useCallback(
     async ({ entries, turnNumber }) => {
@@ -444,281 +352,6 @@ export function useStartClientEngine(gameId) {
     [gameId, sessionInfo?.id],
   )
 
-  const evaluateApiKeyCooldown = useCallback(
-    (value) => {
-      if (typeof window === 'undefined') {
-        setApiKeyCooldownState(null)
-        setApiKeyWarning('')
-        return null
-      }
-      const trimmed = typeof value === 'string' ? value.trim() : ''
-      if (!trimmed) {
-        setApiKeyCooldownState(null)
-        setApiKeyWarning('')
-        return null
-      }
-      const info = getApiKeyCooldown(trimmed)
-      if (info?.active) {
-        setApiKeyCooldownState(info)
-        setApiKeyWarning(formatCooldownMessage(info))
-        return info
-      }
-      setApiKeyCooldownState(null)
-      setApiKeyWarning('')
-      return null
-    },
-    [],
-  )
-
-  const normaliseApiKey = useCallback((value) => {
-    if (typeof value !== 'string') return ''
-    return value.trim()
-  }, [])
-
-  const setApiKey = useCallback(
-    (value, options = {}) => {
-      setApiKeyState(value)
-      const trimmed = normaliseApiKey(value)
-      if (trimmed && !options.silent) {
-        apiKeyChangeMetaRef.current.set(trimmed, {
-          source: options.source || 'unknown',
-          reason: options.reason || null,
-          provider: options.provider || apiVersion || null,
-          poolId: options.poolId || null,
-          rotationId: options.rotationId || null,
-          note: options.note || null,
-          replacedSample: options.replacedSample || null,
-          viewerId: options.viewerId || viewerId || null,
-        })
-      }
-      if (typeof window !== 'undefined') {
-        if (trimmed) {
-          window.sessionStorage.setItem('rank.start.apiKey', trimmed)
-        } else {
-          window.sessionStorage.removeItem('rank.start.apiKey')
-        }
-      }
-      evaluateApiKeyCooldown(value)
-    },
-    [apiVersion, evaluateApiKeyCooldown, normaliseApiKey, viewerId],
-  )
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (typeof apiKey === 'string' && apiKey.trim()) return
-    try {
-      const stored = window.sessionStorage.getItem('rank.start.apiKey') || ''
-      const trimmed = normaliseApiKey(stored)
-      if (trimmed) {
-        setApiKey(trimmed, { silent: true })
-      }
-    } catch (error) {
-      console.warn('[StartClient] API 키를 불러오지 못했습니다:', error)
-    }
-  }, [apiKey, normaliseApiKey, setApiKey])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (typeof apiKey === 'string' && apiKey.trim()) return
-
-    let cancelled = false
-
-    async function loadStoredKey() {
-      try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-        if (sessionError) {
-          throw sessionError
-        }
-        const token = sessionData?.session?.access_token
-        if (!token) {
-          return
-        }
-        const response = await fetch('/api/rank/user-api-key', {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-        if (!response.ok) {
-          return
-        }
-        const payload = await response.json().catch(() => ({}))
-        if (!payload?.ok) {
-          return
-        }
-        if (cancelled) {
-          return
-        }
-        const fetchedKey = typeof payload.apiKey === 'string' ? payload.apiKey.trim() : ''
-        if (fetchedKey) {
-          setApiKey(fetchedKey, { silent: true, source: 'stored_profile' })
-        }
-        if (typeof payload.apiVersion === 'string' && payload.apiVersion.trim()) {
-          setApiVersion(payload.apiVersion.trim())
-        }
-        if (typeof payload.geminiMode === 'string' && payload.geminiMode.trim()) {
-          setGeminiMode(payload.geminiMode.trim())
-        }
-        if (typeof payload.geminiModel === 'string' && payload.geminiModel.trim()) {
-          setGeminiModel(payload.geminiModel.trim())
-        }
-      } catch (error) {
-        console.warn('[StartClient] 저장된 API 키를 불러오지 못했습니다:', error)
-      }
-    }
-
-    loadStoredKey()
-
-    return () => {
-      cancelled = true
-    }
-  }, [apiKey, setApiKey, setApiVersion, setGeminiMode, setGeminiModel])
-
-  const setApiVersion = useCallback((value) => {
-    setApiVersionState(value)
-    if (typeof window !== 'undefined') {
-      if (value) {
-        window.sessionStorage.setItem('rank.start.apiVersion', value)
-      } else {
-        window.sessionStorage.removeItem('rank.start.apiVersion')
-      }
-    }
-  }, [])
-
-  const setGeminiMode = useCallback((value) => {
-    const normalized = normalizeGeminiMode(value)
-    setGeminiModeState(normalized)
-    if (typeof window !== 'undefined') {
-      try {
-        window.sessionStorage.setItem('rank.start.geminiMode', normalized)
-      } catch (error) {
-        console.warn('[StartClient] Gemini 모드 저장 실패:', error)
-      }
-    }
-  }, [])
-
-  const setGeminiModel = useCallback((value) => {
-    const normalized = normalizeGeminiModelId(value) || DEFAULT_GEMINI_MODEL
-    setGeminiModelState(normalized)
-    if (typeof window !== 'undefined') {
-      try {
-        window.sessionStorage.setItem('rank.start.geminiModel', normalized)
-      } catch (error) {
-        console.warn('[StartClient] Gemini 모델 저장 실패:', error)
-      }
-    }
-  }, [])
-
-  const effectiveApiKey = useMemo(
-    () => normaliseApiKey(apiKey),
-    [apiKey, normaliseApiKey],
-  )
-
-  const normalizedGeminiMode = useMemo(
-    () => normalizeGeminiMode(geminiMode),
-    [geminiMode],
-  )
-  const normalizedGeminiModel = useMemo(
-    () => normalizeGeminiModelId(geminiModel) || DEFAULT_GEMINI_MODEL,
-    [geminiModel],
-  )
-
-  const {
-    options: rawGeminiModelOptions,
-    loading: geminiModelLoading,
-    error: geminiModelError,
-    reload: reloadGeminiModels,
-  } = useGeminiModelCatalog({
-    apiKey: apiVersion === 'gemini' ? effectiveApiKey : '',
-    mode: normalizedGeminiMode,
-  })
-
-  const geminiModelOptions = useMemo(() => {
-    const base = Array.isArray(rawGeminiModelOptions) ? rawGeminiModelOptions : []
-    const exists = base.some(
-      (option) => normalizeGeminiModelId(option?.id || option?.name) === normalizedGeminiModel,
-    )
-    if (exists || !normalizedGeminiModel) {
-      return base
-    }
-    return [{ id: normalizedGeminiModel, label: normalizedGeminiModel }, ...base]
-  }, [rawGeminiModelOptions, normalizedGeminiModel])
-
-  const visitedSlotIds = useRef(new Set())
-  const apiVersionLock = useRef(null)
-  const advanceIntentRef = useRef(null)
-  const lastStoredApiSignatureRef = useRef('')
-
-  const persistApiKeyOnServer = useCallback(
-    async (value, version, options = {}) => {
-      const trimmed = normaliseApiKey(value)
-      if (!trimmed) {
-        return false
-      }
-
-      const normalizedVersion = typeof version === 'string' ? version : ''
-      const normalizedGeminiMode = options.geminiMode
-        ? normalizeGeminiMode(options.geminiMode)
-        : null
-      const normalizedGeminiModel = options.geminiModel
-        ? normalizeGeminiModelId(options.geminiModel)
-        : null
-      const signature = `${trimmed}::${normalizedVersion}::${normalizedGeminiMode || ''}::${
-        normalizedGeminiModel || ''
-      }`
-
-      if (lastStoredApiSignatureRef.current === signature) {
-        return true
-      }
-
-      try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-        if (sessionError) {
-          throw sessionError
-        }
-
-        const token = sessionData?.session?.access_token
-        if (!token) {
-          throw new Error('세션 토큰을 확인할 수 없습니다.')
-        }
-
-        const response = await fetch('/api/rank/user-api-key', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            apiKey: trimmed,
-            apiVersion: normalizedVersion || undefined,
-            geminiMode:
-              normalizedVersion === 'gemini' ? normalizedGeminiMode || undefined : undefined,
-            geminiModel:
-              normalizedVersion === 'gemini' ? normalizedGeminiModel || undefined : undefined,
-          }),
-        })
-
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}))
-          const message = payload?.error || 'API 키를 저장하지 못했습니다.'
-          throw new Error(message)
-        }
-
-        lastStoredApiSignatureRef.current = signature
-        return true
-      } catch (error) {
-        console.warn('[StartClient] API 키 저장 실패:', error)
-        return false
-      }
-    },
-    [normaliseApiKey, supabase],
-  )
-
-  useEffect(() => {
-    if (!effectiveApiKey) {
-      lastStoredApiSignatureRef.current = ''
-    }
-  }, [effectiveApiKey])
 
   useEffect(() => {
     if (!gameId) return
@@ -1111,8 +744,7 @@ export function useStartClientEngine(gameId) {
           note: options.note || null,
         })
         if (info) {
-          setApiKeyCooldownState(info)
-          setApiKeyWarning(formatCooldownMessage(info))
+          applyCooldownInfo(info)
         }
       }
       setGameVoided(true)
@@ -1132,8 +764,7 @@ export function useStartClientEngine(gameId) {
       updateHeroAssets,
       updateSessionRecord,
       clearConsensusVotes,
-      setApiKeyCooldownState,
-      setApiKeyWarning,
+      applyCooldownInfo,
       viewerId,
       apiVersion,
       gameId,
@@ -1188,69 +819,44 @@ export function useStartClientEngine(gameId) {
     },
     [ownerDisplayMap, game?.realtime_match, turn, logTurnEntries],
   )
-  useEffect(() => {
-    const trimmed = normaliseApiKey(apiKey)
-    if (!trimmed) {
-      if (lastRecordedApiKeyRef.current) {
-        recordTimelineEvents(
-          [
-            {
-              type: 'api_key_pool_replaced',
-              ownerId: viewerId || null,
-              reason: 'cleared',
-              turn: Number.isFinite(Number(turn)) ? Number(turn) : null,
-              timestamp: Date.now(),
-              context: { actorLabel: '시스템' },
-              metadata: {
-                apiKeyPool: {
-                  source: 'cleared',
-                  provider: apiVersion || null,
-                  newSample: null,
-                  replacedSample: buildKeySample(lastRecordedApiKeyRef.current),
-                  viewerId: viewerId || null,
-                },
-              },
-            },
-          ],
-          { turnNumber: turn },
-        )
-      }
-      lastRecordedApiKeyRef.current = ''
-      return
-    }
-    if (lastRecordedApiKeyRef.current === trimmed) return
-    lastRecordedApiKeyRef.current = trimmed
-    const meta = apiKeyChangeMetaRef.current.get(trimmed)
-    if (!meta) return
-    apiKeyChangeMetaRef.current.delete(trimmed)
-    const metadata = {
-      apiKeyPool: {
-        source: meta.source || 'unknown',
-        provider: meta.provider || apiVersion || null,
-        poolId: meta.poolId || null,
-        rotationId: meta.rotationId || null,
-        reason: meta.reason || null,
-        note: meta.note || null,
-        newSample: buildKeySample(trimmed),
-        replacedSample: meta.replacedSample || null,
-        viewerId: meta.viewerId || viewerId || null,
-      },
-    }
-    recordTimelineEvents(
-      [
-        {
-          type: 'api_key_pool_replaced',
-          ownerId: meta.viewerId || viewerId || null,
-          reason: meta.reason || meta.source || 'updated',
-          turn: Number.isFinite(Number(turn)) ? Number(turn) : null,
-          timestamp: Date.now(),
-          context: { actorLabel: '시스템' },
-          metadata,
-        },
-      ],
-      { turnNumber: turn },
-    )
-  }, [apiKey, apiVersion, normaliseApiKey, recordTimelineEvents, turn, viewerId])
+
+  const {
+    apiKey,
+    setApiKey,
+    apiVersion,
+    setApiVersion,
+    geminiMode,
+    setGeminiMode,
+    geminiModel,
+    setGeminiModel,
+    apiKeyCooldown,
+    apiKeyWarning,
+    evaluateApiKeyCooldown,
+    normaliseApiKey,
+    effectiveApiKey,
+    geminiModelOptions,
+    geminiModelLoading,
+    geminiModelError,
+    reloadGeminiModels,
+    normalizedGeminiMode,
+    normalizedGeminiModel,
+    persistApiKeyOnServer,
+    applyCooldownInfo,
+  } = useStartApiKeyManager({
+    initialApiKey: initialStoredApiKey,
+    initialApiVersion,
+    initialGeminiConfig,
+    viewerId,
+    turn,
+    recordTimelineEvents,
+  })
+
+  const visitedSlotIds = useRef(new Set())
+  const apiVersionLock = useRef(null)
+  const advanceIntentRef = useRef(null)
+
+
+
   useEffect(() => {
     if (matchMetaLoggedRef.current) return
     const meta = startMatchMetaRef.current
@@ -1371,7 +977,7 @@ export function useStartClientEngine(gameId) {
 
     const startNode = graph.nodes.find((node) => node.is_start) || graph.nodes[0]
     history.beginSession()
-    setHistoryVersion((prev) => prev + 1)
+    bumpHistoryVersion()
     if (systemPrompt) {
       history.push({ role: 'system', content: systemPrompt, public: false })
     }
@@ -1980,7 +1586,7 @@ export function useStartClientEngine(gameId) {
           ...responseAudiencePayload,
           meta: { slotIndex },
         })
-        setHistoryVersion((prev) => prev + 1)
+        bumpHistoryVersion()
 
         const outcome = parseOutcome(responseText)
         const resolvedActorNames =

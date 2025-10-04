@@ -101,7 +101,7 @@
 - 운영 대시보드 위젯: 난입 큐 상태, 현재 세션 타이머, 대역 전환 현황 시각화.
 
 ## 구현 진행 현황 업데이트
-- **진행률**: 100% – Supabase 백엔드와 관전/재생 타임라인 파이프라인을 청사진 범위 내에서 마무리했습니다.
+- **진행률**: 100% – 청사진에 정의된 게임 진행/난입/타임라인 기능은 코드·백엔드·문서까지 반영 완료했고, 현재 작업은 안정화와 구조 리팩터링 범주입니다.
 - **완료 사항**:
   - `rank_session_timeline_events` 테이블·인덱스·RLS 정책을 정의하고 `/api/rank/log-turn`이 정규화된 타임라인 이벤트를 업서트하도록 수정해 백엔드가 `api_key_pool_replaced`/`drop_in_matching_context` 메타데이터를 영속화합니다.
   - `/api/rank/sessions`가 `timelineLimit` 파라미터와 함께 세션별 `timeline_events` 배열을 반환하며, `useGameRoom`이 개인/공유 히스토리를 타임라인으로 정규화해 관전 및 재생 뷰 모두에서 동일 데이터를 사용할 수 있게 했습니다.
@@ -111,14 +111,15 @@
   - `scripts/deploy-edge-functions.js` + GitHub Actions 워크플로(`.github/workflows/edge-functions-deploy.yml`)로 Edge Function 변경 감지·재시도·Slack/PagerDuty 경보를 자동화하고, 실패·재시도 메타를 `rank_edge_function_deployments` 테이블에 적재하도록 연결했습니다. (→ `supabase.sql`, `docs/rank-edge-deploy-schema.md`, `docs/environment-variables.md`)
   - Edge Function 배포 워크플로를 스테이징/프로덕션 매트릭스로 분리하고, 비밀 검증 스크립트(`scripts/verify-edge-deploy-config.js`)와 스모크 테스트 실행·실패 시 PagerDuty 알림을 추가했습니다. (→ `.github/workflows/edge-functions-deploy.yml`, `package.json`, `scripts/deploy-edge-functions.js`)
   - `useStartClientEngine` 상단에 모여 있던 프롬프트/타임라인/참여자/쿨다운 포맷터를 `actorContext`, `timelineState`, `participants`, `apiKeyUtils` 모듈로 옮기고, 타임라인 로그 합성을 `buildLogEntriesFromEvents` 헬퍼로 일원화해 엔진 훅의 책임을 세션 상태 조정에 집중시켰습니다.
+  - `useStartApiKeyManager`, `useStartSessionLifecycle`, `useHistoryBuffer` 훅을 도입해 API 키 관리·세션 라이프사이클·히스토리 버퍼를 전담 모듈로 분리하고, `useStartClientEngine`은 턴 진행·UI 연계 로직에 집중하도록 정리했습니다.
 - **다음 단계 메모**:
   - Edge Function 스모크 테스트 엔드포인트를 정기적으로 점검해 스테이징/프로덕션 모두에서 커버리지·응답 시간을 모니터링할 지표를 정의하기.
   - 베틀로그 상세/캐릭터 대시보드에 `TimelineSection`을 재사용해 턴 기록과 타임라인 이벤트를 함께 탐색할 수 있는 필터/검색 UI를 설계하기.
-  - 타임라인 이벤트에 대한 통합 테스트(자동 진행, 난입, 키 교체)를 작성해 회귀 방지와 운영 감사 로그 일관성을 보장하기.
-  - `useStartClientEngine`의 API 키/세션 라이프사이클과 히스토리 버퍼 로직을 후속 리팩터링으로 별도 훅으로 분리하고, 서비스 모듈 인터페이스를 문서화하기.
+  - 타임라인·난입·API 키 교체 이벤트에 대한 통합/단위 테스트를 작성해 회귀 방지와 운영 감사 로그 일관성을 보장하기.
+  - 분리된 훅 인터페이스를 기반으로 `useStartClientEngine` 내부 로직을 소형 서브 훅(예: 수동 응답/쿨다운 관리)으로 추가 분할하고, 각 훅의 타입 정의와 테스트 플랜을 준비하기.
 
 ---
 
-느낀 점: StartClient 엔진의 보조 헬퍼를 분리하니 거대한 훅이 세션 상태 전환에만 집중해 설명과 테스트 경로 파악이 훨씬 수월해졌습니다.
-추가로 필요한 점: API 키·세션 관리와 히스토리 버퍼 같은 굵직한 블록도 후속 리팩터링으로 나눠 단위 테스트 지점을 확보해야 합니다.
-진행사항: 타임라인/프롬프트/참여자 헬퍼 모듈화와 타임라인 로그 합성 유틸 도입으로 리팩터링 1단계를 문서화했습니다.
+느낀 점: API 키·세션·히스토리 훅을 분리하면서 `useStartClientEngine`이 턴 진행과 UI 동기화에 집중해 가독성과 확장성이 모두 좋아졌습니다.
+추가로 필요한 점: 새 훅들이 기대한 데이터 흐름을 유지하는지 단위 테스트와 타입 가이드를 보강하고, 후속 서브 훅(쿨다운·수동 응답 등)도 동일한 패턴으로 정리해야 합니다.
+진행사항: 타임라인/프롬프트 헬퍼 모듈화에 이어 API 키·세션 라이프사이클·히스토리 버퍼를 전용 훅으로 분리해 리팩터링 2단계를 완료했습니다.
