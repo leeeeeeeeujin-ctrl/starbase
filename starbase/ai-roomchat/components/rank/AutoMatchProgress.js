@@ -1000,35 +1000,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     return lines
   }, [playNotice, state.match, turnTimer])
 
-  const display = useMemo(() => {
-    if (confirmationState === 'confirmed') {
-      return {
-        title: '전투 화면으로 이동 중…',
-        detail: '매칭이 확정되었습니다. 전투를 불러오고 있습니다.',
-      }
-    }
-
-    if (confirmationState === 'counting') {
-      return {
-        title: '매칭이 잡혔습니다~',
-        detail: `${confirmationRemaining}초 안에 버튼을 눌러 전투를 시작해 주세요.`,
-      }
-    }
-
-    if (confirmationState === 'failed') {
-      return {
-        title: '매칭이 취소되었습니다.',
-        detail: joinError || PENALTY_NOTICE,
-      }
-    }
-
-    if (displayStatus === 'matched') {
-      return {
-        title: '매칭이 잡혔습니다~',
-        detail: '',
-      }
-    }
-
+  const baseDisplay = useMemo(() => {
     if (displayStatus === 'queued') {
       return {
         title: '매칭 중…',
@@ -1054,15 +1026,39 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       title: '매칭 중…',
       detail: '',
     }
-  }, [
-    blockers,
-    confirmationRemaining,
-    confirmationState,
-    displayStatus,
-    joinError,
-  ])
+  }, [blockers, displayStatus, joinError])
 
-  const showSpinner = useMemo(() => {
+  const matchedDisplay = useMemo(() => {
+    if (confirmationState === 'confirmed') {
+      return {
+        title: '전투 화면으로 이동 중…',
+        detail: '매칭이 확정되었습니다. 전투를 불러오고 있습니다.',
+      }
+    }
+
+    if (confirmationState === 'counting') {
+      return {
+        title: '매칭이 잡혔습니다~',
+        detail: `${confirmationRemaining}초 안에 버튼을 눌러 전투를 시작해 주세요.`,
+      }
+    }
+
+    if (confirmationState === 'failed') {
+      return {
+        title: '매칭이 취소되었습니다.',
+        detail: joinError || PENALTY_NOTICE,
+      }
+    }
+
+    return {
+      title: '매칭이 잡혔습니다~',
+      detail: '',
+    }
+  }, [confirmationRemaining, confirmationState, joinError])
+
+  const showMatchedOverlay = matchLocked || confirmationState !== 'idle'
+
+  const showBaseSpinner = useMemo(() => {
     if (confirmationState === 'failed') {
       return true
     }
@@ -1070,67 +1066,126 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [confirmationState, displayStatus])
 
   return (
-    <div className={styles.root} aria-live="polite" aria-busy={displayStatus !== 'matched'}>
-      {showSpinner ? <div className={styles.spinner} aria-hidden="true" /> : null}
-      <div className={styles.status} role="status">
-        <p className={styles.message}>{display.title}</p>
-        {display.detail ? (
-          <p className={styles.detail}>{display.detail}</p>
-        ) : null}
-        {matchMetaLines.length ? (
-          <div className={styles.matchMeta} role="note">
-            {matchMetaLines.map((line) => (
-              <p key={line} className={styles.matchMetaLine}>
-                {line}
-              </p>
-            ))}
-          </div>
-        ) : null}
-        {assignmentSummary.length ? (
-          <div className={styles.assignmentList} role="group" aria-label="매칭된 역할 구성">
-            {assignmentSummary.map((assignment) => (
-              <div key={assignment.key} className={styles.assignmentItem}>
-                <span className={styles.assignmentRole}>{assignment.role}</span>
-                {assignment.members.length ? (
-                  <ul className={styles.assignmentMembers}>
-                    {assignment.members.map((member) => (
-                      <li key={member.key} className={styles.assignmentMember}>
-                        {member.label}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {confirmationState === 'counting' ? (
-          <div className={styles.confirmArea}>
-            <button
-              type="button"
-              className={styles.confirmButton}
-              onClick={handleConfirmMatch}
-              disabled={confirming}
-              ref={confirmButtonRef}
-            >
-              {confirming ? '준비 중…' : '전투 시작하기'}
-              <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
-            </button>
-            <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
-          </div>
-        ) : null}
-        {extraBlockers.length ? (
-          <ul className={styles.blockerList}>
-            {extraBlockers.map((message) => (
-              <li key={message} className={styles.blockerItem}>
-                {message}
-              </li>
-            ))}
-          </ul>
-        ) : null}
+    <div
+      className={styles.root}
+      aria-live="polite"
+      aria-busy={!showMatchedOverlay && displayStatus !== 'matched'}
+    >
+      <div
+        className={styles.baseLayer}
+        aria-hidden={showMatchedOverlay ? 'true' : 'false'}
+      >
+        {showBaseSpinner ? <div className={styles.spinner} aria-hidden="true" /> : null}
+        <div className={styles.status} role="status">
+          <p className={styles.message}>{baseDisplay.title}</p>
+          {baseDisplay.detail ? (
+            <p className={styles.detail}>{baseDisplay.detail}</p>
+          ) : null}
+          {!showMatchedOverlay && matchMetaLines.length ? (
+            <div className={styles.matchMeta} role="note">
+              {matchMetaLines.map((line) => (
+                <p key={line} className={styles.matchMetaLine}>
+                  {line}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          {!showMatchedOverlay && assignmentSummary.length ? (
+            <div className={styles.assignmentList} role="group" aria-label="매칭된 역할 구성">
+              {assignmentSummary.map((assignment) => (
+                <div key={assignment.key} className={styles.assignmentItem}>
+                  <span className={styles.assignmentRole}>{assignment.role}</span>
+                  {assignment.members.length ? (
+                    <ul className={styles.assignmentMembers}>
+                      {assignment.members.map((member) => (
+                        <li key={member.key} className={styles.assignmentMember}>
+                          {member.label}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {!showMatchedOverlay && extraBlockers.length ? (
+            <ul className={styles.blockerList}>
+              {extraBlockers.map((message) => (
+                <li key={message} className={styles.blockerItem}>
+                  {message}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       </div>
+
+      {showMatchedOverlay ? (
+        <div className={styles.matchedOverlay} role="status" aria-live="assertive">
+          <div className={styles.status}>
+            <p className={styles.message}>{matchedDisplay.title}</p>
+            {matchedDisplay.detail ? (
+              <p className={styles.detail}>{matchedDisplay.detail}</p>
+            ) : null}
+            {matchMetaLines.length ? (
+              <div className={styles.matchMeta} role="note">
+                {matchMetaLines.map((line) => (
+                  <p key={line} className={styles.matchMetaLine}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            {assignmentSummary.length ? (
+              <div className={styles.assignmentList} role="group" aria-label="매칭된 역할 구성">
+                {assignmentSummary.map((assignment) => (
+                  <div key={assignment.key} className={styles.assignmentItem}>
+                    <span className={styles.assignmentRole}>{assignment.role}</span>
+                    {assignment.members.length ? (
+                      <ul className={styles.assignmentMembers}>
+                        {assignment.members.map((member) => (
+                          <li key={member.key} className={styles.assignmentMember}>
+                            {member.label}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {confirmationState === 'counting' ? (
+              <div className={styles.confirmArea}>
+                <button
+                  type="button"
+                  className={styles.confirmButton}
+                  onClick={handleConfirmMatch}
+                  disabled={confirming}
+                  ref={confirmButtonRef}
+                >
+                  {confirming ? '준비 중…' : '전투 시작하기'}
+                  <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
+                </button>
+                <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
+              </div>
+            ) : null}
+            {confirmationState === 'failed' && extraBlockers.length ? (
+              <ul className={styles.blockerList}>
+                {extraBlockers.map((message) => (
+                  <li key={message} className={styles.blockerItem}>
+                    {message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {joinError && state.status === 'queued' ? (
         <p className={styles.srOnly} role="alert">{joinError}</p>
       ) : null}
