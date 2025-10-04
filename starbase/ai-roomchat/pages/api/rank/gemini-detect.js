@@ -1,13 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 
-import { normalizeGeminiMode } from '@/lib/rank/geminiConfig'
-import { fetchGeminiModelList } from '@/lib/rank/geminiModelsService'
+import { detectGeminiPreset } from '@/lib/rank/geminiModelsService'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 if (!url || !anonKey) {
-  throw new Error('Missing Supabase configuration for gemini-models API')
+  throw new Error('Missing Supabase configuration for gemini-detect API')
 }
 
 const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
@@ -39,26 +38,29 @@ export default async function handler(req, res) {
     }
   }
 
-  const { apiKey, mode } = payload || {}
+  const { apiKey } = payload || {}
   const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : ''
   if (!trimmedKey) {
     return res.status(400).json({ error: 'missing_user_api_key' })
   }
 
-  const normalizedMode = normalizeGeminiMode(mode)
-  const result = await fetchGeminiModelList({ apiKey: trimmedKey, mode: normalizedMode })
-
-  if (!result.ok) {
-    const status = result.status || 500
-    return res
-      .status(status)
-      .json({ error: result.errorCode || 'list_models_failed', detail: result.detail || '' })
+  const detection = await detectGeminiPreset({ apiKey: trimmedKey })
+  if (!detection.ok) {
+    const status = detection.status || 500
+    return res.status(status).json({
+      error: detection.errorCode || 'detect_failed',
+      detail: detection.detail || 'Gemini 버전을 확인하지 못했습니다.',
+      tries: detection.tries || [],
+    })
   }
 
   return res.status(200).json({
     ok: true,
-    mode: normalizedMode,
-    models: result.models || [],
-    fallback: !!result.fallback,
+    mode: detection.mode,
+    model: detection.model,
+    models: detection.models || [],
+    fallback: !!detection.fallback,
+    tries: detection.tries || [],
   })
 }
+

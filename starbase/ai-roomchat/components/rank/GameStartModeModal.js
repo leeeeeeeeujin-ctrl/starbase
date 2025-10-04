@@ -16,7 +16,9 @@ import {
   normalizeGeminiMode,
   normalizeGeminiModelId,
 } from '../../lib/rank/geminiConfig'
+import useGeminiKeyDetector from './hooks/useGeminiKeyDetector'
 import useGeminiModelCatalog from './hooks/useGeminiModelCatalog'
+import usePersistApiKey from './hooks/usePersistApiKey'
 import styles from './GameStartModeModal.module.css'
 
 const API_VERSION_OPTIONS = [
@@ -106,6 +108,8 @@ export default function GameStartModeModal({
   const [geminiMode, setGeminiMode] = useState(initialState.geminiMode)
   const [geminiModel, setGeminiModel] = useState(initialState.geminiModel)
   const [turnTimer, setTurnTimer] = useState(initialState.turnTimer)
+  const [detectStatus, setDetectStatus] = useState('')
+  const [detectError, setDetectError] = useState('')
   const voteSummary = useMemo(
     () => summarizeTurnTimerVotes(turnTimerVotes || {}),
     [turnTimerVotes],
@@ -136,6 +140,9 @@ export default function GameStartModeModal({
     mode: normalizedGeminiMode,
   })
 
+  const { detect: detectGeminiPreset, loading: detectingGemini } = useGeminiKeyDetector()
+  const persistApiKeyOnServer = usePersistApiKey()
+
   const geminiModelOptions = useMemo(() => {
     const base = Array.isArray(rawGeminiOptions) ? rawGeminiOptions : []
     const exists = base.some(
@@ -158,6 +165,8 @@ export default function GameStartModeModal({
     setGeminiMode(nextState.geminiMode)
     setGeminiModel(nextState.geminiModel)
     setTurnTimer(nextState.turnTimer)
+    setDetectStatus('')
+    setDetectError('')
   }, [
     open,
     initialConfig?.mode,
@@ -181,6 +190,77 @@ export default function GameStartModeModal({
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [open, onClose])
+
+  useEffect(() => {
+    setDetectStatus('')
+    setDetectError('')
+  }, [trimmedApiKey])
+
+  useEffect(() => {
+    if (apiVersion !== 'gemini') {
+      setDetectStatus('')
+      setDetectError('')
+    }
+  }, [apiVersion])
+
+  const handleDetectGemini = async () => {
+    if (detectingGemini) {
+      return
+    }
+
+    if (!trimmedApiKey) {
+      setDetectStatus('')
+      setDetectError('API 키를 입력해 주세요.')
+      return
+    }
+
+    setDetectStatus('')
+    setDetectError('')
+
+    try {
+      const result = await detectGeminiPreset(trimmedApiKey)
+      const nextMode = normalizeGeminiMode(result?.mode || DEFAULT_GEMINI_MODE)
+      const nextModel =
+        normalizeGeminiModelId(result?.model || DEFAULT_GEMINI_MODEL) || DEFAULT_GEMINI_MODEL
+
+      setApiVersion('gemini')
+      setGeminiMode(nextMode)
+      setGeminiModel(nextModel)
+
+      if (typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.setItem('rank.start.apiVersion', 'gemini')
+          window.sessionStorage.setItem('rank.start.geminiMode', nextMode)
+          window.sessionStorage.setItem('rank.start.geminiModel', nextModel)
+          window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
+        } catch (error) {
+          console.warn('Gemini 프리셋을 저장하지 못했습니다:', error)
+        }
+      }
+
+      try {
+        await persistApiKeyOnServer(trimmedApiKey, 'gemini', {
+          geminiMode: nextMode,
+          geminiModel: nextModel,
+        })
+      } catch (error) {
+        console.warn('Gemini 프리셋을 서버에 저장하지 못했습니다:', error)
+        setDetectError('감지 결과를 서버에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      }
+
+      reloadGeminiModels()
+
+      const modeLabel = nextMode === 'v1' ? '안정판 (v1)' : '베타 (v1beta)'
+      let message = `Gemini ${modeLabel} 키로 확인했습니다. 기본 모델은 ${nextModel}로 설정했습니다.`
+      if (result?.fallback) {
+        message += ' (모델 목록이 비어 있어 기본값을 사용합니다.)'
+      }
+      setDetectStatus(message)
+    } catch (error) {
+      setDetectStatus('')
+      setDetectError(error?.message || 'Gemini 버전을 확인하지 못했습니다.')
+    }
+  }
 
   const canConfirm = useMemo(() => {
     const requiresImmediateApiKey = mode === MATCH_MODE_KEYS.RANK_SOLO
@@ -297,7 +377,7 @@ export default function GameStartModeModal({
             onChange={(event) => setApiKey(event.target.value)}
           />
           {apiVersion === 'gemini' && (
-            <div style={{ display: 'grid', gap: 12 }}>
+            <div className={styles.geminiSection}>
               <label className={styles.label} htmlFor="start-config-gemini-mode">
                 Gemini 엔드포인트
               </label>
@@ -317,11 +397,10 @@ export default function GameStartModeModal({
               <label className={styles.label} htmlFor="start-config-gemini-model">
                 Gemini 모델
               </label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div className={styles.geminiModelRow}>
                 <select
                   id="start-config-gemini-model"
                   className={styles.select}
-                  style={{ flex: 1 }}
                   value={geminiModel}
                   onChange={(event) =>
                     setGeminiModel(
@@ -340,20 +419,27 @@ export default function GameStartModeModal({
                   type="button"
                   onClick={() => reloadGeminiModels()}
                   disabled={geminiModelLoading}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    border: '1px solid rgba(148, 163, 184, 0.4)',
-                    background: geminiModelLoading ? 'rgba(71, 85, 105, 0.6)' : 'rgba(30, 41, 59, 0.8)',
-                    color: '#f8fafc',
-                    cursor: geminiModelLoading ? 'not-allowed' : 'pointer',
-                    minWidth: 110,
-                    fontSize: 12,
-                  }}
+                  className={styles.geminiRefreshButton}
                 >
                   {geminiModelLoading ? '새로고침 중…' : '모델 새로고침'}
                 </button>
               </div>
+              <div className={styles.geminiActions}>
+                <button
+                  type="button"
+                  onClick={handleDetectGemini}
+                  disabled={detectingGemini || !trimmedApiKey}
+                  className={styles.detectButton}
+                >
+                  {detectingGemini ? '버전 감지 중…' : 'Gemini 버전 자동 감지'}
+                </button>
+              </div>
+              {detectStatus && (
+                <p className={`${styles.helperText} ${styles.detectStatus}`}>{detectStatus}</p>
+              )}
+              {detectError && (
+                <p className={`${styles.helperText} ${styles.detectError}`}>{detectError}</p>
+              )}
               {geminiModelError && (
                 <p className={styles.helperText} style={{ color: '#f97316' }}>
                   {geminiModelError}
