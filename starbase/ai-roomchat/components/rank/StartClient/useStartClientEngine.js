@@ -1039,112 +1039,115 @@ export function useStartClientEngine(gameId) {
         }
 
         if (!responseText) {
-          if (effectiveApiKey) {
-            if (game?.realtime_match) {
-              if (
-                apiVersionLock.current &&
-                apiVersionLock.current !== apiVersion
-              ) {
-                throw new Error(
-                  '실시간 매칭에서는 처음 선택한 API 버전을 변경할 수 없습니다.',
-                )
-              }
-            }
+          if (!effectiveApiKey) {
+            setStatusMessage('AI API 키가 입력되지 않았습니다. 왼쪽 패널에서 키를 입력한 뒤 다시 시도해 주세요.')
+            return
+          }
 
-            if (!sessionInfo?.id) {
-              throw new Error('세션 정보를 확인할 수 없습니다. 페이지를 새로고침해 주세요.')
-            }
-
-            const cooldownInfo = evaluateApiKeyCooldown(effectiveApiKey)
-            if (cooldownInfo?.active) {
-              setStatusMessage(formatCooldownMessage(cooldownInfo))
-              return
-            }
-
-            const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-            if (sessionError) {
-              throw sessionError
-            }
-
-            const token = sessionData?.session?.access_token
-            if (!token) {
-              throw new Error('세션 토큰을 확인할 수 없습니다.')
-            }
-
-            const res = await fetch('/api/rank/run-turn', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                apiKey: effectiveApiKey,
-                system: effectiveSystemPrompt,
-                prompt: effectivePrompt,
-                apiVersion,
-                session_id: sessionInfo.id,
-                game_id: gameId,
-                prompt_role: 'system',
-                response_role: historyRole,
-                response_public: true,
-              }),
-            })
-
-            let payload = {}
-            try {
-              payload = await res.json()
-            } catch (error) {
-              payload = {}
-            }
-
-            if (!res.ok) {
-              const error = new Error(
-                payload?.error || payload?.detail || 'AI 호출에 실패했습니다.',
+          if (game?.realtime_match) {
+            if (
+              apiVersionLock.current &&
+              apiVersionLock.current !== apiVersion
+            ) {
+              throw new Error(
+                '실시간 매칭에서는 처음 선택한 API 버전을 변경할 수 없습니다.',
               )
-              if (payload?.error) {
-                error.code = payload.error
-              }
-              if (typeof payload?.detail === 'string' && payload.detail.trim()) {
-                error.detail = payload.detail.trim()
-              }
-              throw error
             }
+          }
 
+          if (!sessionInfo?.id) {
+            throw new Error('세션 정보를 확인할 수 없습니다. 페이지를 새로고침해 주세요.')
+          }
+
+          const cooldownInfo = evaluateApiKeyCooldown(effectiveApiKey)
+          if (cooldownInfo?.active) {
+            setStatusMessage(formatCooldownMessage(cooldownInfo))
+            return
+          }
+
+          const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+          if (sessionError) {
+            throw sessionError
+          }
+
+          const token = sessionData?.session?.access_token
+          if (!token) {
+            throw new Error('세션 토큰을 확인할 수 없습니다.')
+          }
+
+          const res = await fetch('/api/rank/run-turn', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              apiKey: effectiveApiKey,
+              system: effectiveSystemPrompt,
+              prompt: effectivePrompt,
+              apiVersion,
+              session_id: sessionInfo.id,
+              game_id: gameId,
+              prompt_role: 'system',
+              response_role: historyRole,
+              response_public: true,
+            }),
+          })
+
+          let payload = {}
+          try {
+            payload = await res.json()
+          } catch (error) {
+            payload = {}
+          }
+
+          if (!res.ok) {
+            const error = new Error(
+              payload?.error || payload?.detail || 'AI 호출에 실패했습니다.',
+            )
             if (payload?.error) {
-              const error = new Error(payload.error)
               error.code = payload.error
-              throw error
             }
+            if (typeof payload?.detail === 'string' && payload.detail.trim()) {
+              error.detail = payload.detail.trim()
+            }
+            throw error
+          }
 
-            responseText =
-              (typeof payload?.text === 'string' && payload.text.trim()) ||
-              payload?.choices?.[0]?.message?.content ||
-              payload?.content ||
-              ''
+          if (payload?.error) {
+            const error = new Error(payload.error)
+            error.code = payload.error
+            throw error
+          }
 
-            if (payload?.logged) {
-              loggedByServer = true
-              const numericTurn = Number(payload?.turn_number)
-              if (Number.isFinite(numericTurn)) {
-                loggedTurnNumber = numericTurn
-              }
-              if (Array.isArray(payload?.entries)) {
-                const responseEntry = payload.entries.find(
-                  (entry) => entry?.role === historyRole,
-                )
-                if (responseEntry?.summary_payload) {
-                  try {
-                    serverSummary = JSON.parse(JSON.stringify(responseEntry.summary_payload))
-                  } catch (error) {
-                    serverSummary = responseEntry.summary_payload
-                  }
+          responseText =
+            (typeof payload?.text === 'string' && payload.text.trim()) ||
+            payload?.choices?.[0]?.message?.content ||
+            payload?.content ||
+            ''
+
+          if (payload?.logged) {
+            loggedByServer = true
+            const numericTurn = Number(payload?.turn_number)
+            if (Number.isFinite(numericTurn)) {
+              loggedTurnNumber = numericTurn
+            }
+            if (Array.isArray(payload?.entries)) {
+              const responseEntry = payload.entries.find(
+                (entry) => entry?.role === historyRole,
+              )
+              if (responseEntry?.summary_payload) {
+                try {
+                  serverSummary = JSON.parse(JSON.stringify(responseEntry.summary_payload))
+                } catch (error) {
+                  serverSummary = responseEntry.summary_payload
                 }
               }
             }
+          }
 
-            if (game?.realtime_match && !apiVersionLock.current) {
-              apiVersionLock.current = apiVersion
-            }
+          if (game?.realtime_match && !apiVersionLock.current) {
+            apiVersionLock.current = apiVersion
           }
         }
 
@@ -1354,6 +1357,8 @@ export function useStartClientEngine(gameId) {
           const fallback =
             reason === 'quota_exhausted'
               ? '사용 중인 API 키 한도가 모두 소진되어 세션이 무효 처리되었습니다. 새 키를 등록해 주세요.'
+              : reason === 'missing_user_api_key'
+              ? 'AI API 키가 입력되지 않아 세션이 중단되었습니다. 왼쪽 패널에서 키를 입력한 뒤 다시 시도해 주세요.'
               : err?.message || 'API 키 오류로 세션이 무효 처리되었습니다.'
           voidSession(fallback, {
             apiKey: effectiveApiKey,
