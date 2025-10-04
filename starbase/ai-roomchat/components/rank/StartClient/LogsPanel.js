@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 
+import TimelineSection from '../Timeline/TimelineSection'
 import styles from './LogsPanel.module.css'
 import { normalizeTurnSummaryPayload } from '../../../lib/rank/turnSummary'
 
@@ -137,7 +138,31 @@ function normalizePlayerHistory(player, index) {
   }
 }
 
-export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = [] }) {
+function formatTimelineReason(reason) {
+  if (!reason) return ''
+  const normalized = String(reason).trim().toLowerCase()
+  switch (normalized) {
+    case 'timeout':
+      return '시간 초과'
+    case 'consensus':
+      return '합의 미응답'
+    case 'manual':
+      return '수동 진행 미완료'
+    case 'ai':
+      return '자동 진행'
+    case 'inactivity':
+      return '응답 없음'
+    default:
+      return reason
+  }
+}
+
+export default function LogsPanel({
+  logs = [],
+  aiMemory = [],
+  playerHistories = [],
+  realtimeEvents = [],
+}) {
   const normalizedLogs = useMemo(
     () => logs.map(normalizeLogEntry).filter(Boolean),
     [logs],
@@ -153,11 +178,38 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
     [playerHistories],
   )
 
+  const timelineEvents = useMemo(() => {
+    if (!Array.isArray(realtimeEvents)) return []
+    return realtimeEvents
+      .map((event) => {
+        if (!event || typeof event !== 'object') return null
+        const formattedReason = formatTimelineReason(event.reason)
+        if (formattedReason !== (event.reason || '')) {
+          return { ...event, reason: formattedReason }
+        }
+        return event
+      })
+      .filter(Boolean)
+  }, [realtimeEvents])
+  const getTimelineOwnerLabel = useCallback((event) => {
+    if (!event || typeof event !== 'object') return '알 수 없는 참가자'
+    const ownerId = event.ownerId ? String(event.ownerId).trim() : ''
+    if (ownerId) {
+      return `플레이어 ${ownerId.slice(0, 6)}`
+    }
+    const context = event.context && typeof event.context === 'object' ? event.context : {}
+    if (context.heroName) {
+      return context.heroName
+    }
+    return '알 수 없는 참가자'
+  }, [])
+
   const [searchTerm, setSearchTerm] = useState('')
   const [collapsedSections, setCollapsedSections] = useState({
     logs: false,
     memory: false,
     players: false,
+    timeline: false,
   })
 
   const trimmedSearch = searchTerm.trim().toLowerCase()
@@ -517,6 +569,16 @@ export default function LogsPanel({ logs = [], aiMemory = [], playerHistories = 
         </div>
 
         <div className={styles.secondaryColumn}>
+          <TimelineSection
+            title="실시간 타임라인"
+            events={timelineEvents}
+            collapsed={collapsedSections.timeline}
+            onToggle={() => handleToggle('timeline')}
+            emptyMessage="아직 실시간 이벤트가 없습니다."
+            collapsedNotice="실시간 이벤트 타임라인을 숨겼습니다. 펼쳐서 최근 경고와 대역 전환을 확인하세요."
+            getOwnerLabel={getTimelineOwnerLabel}
+          />
+
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardHeading}>

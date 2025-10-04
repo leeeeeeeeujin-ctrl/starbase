@@ -13,7 +13,7 @@ import {
 } from './matchConstants'
 import { coerceHeroMap, extractHeroIdsFromAssignments, resolveMemberLabel } from './matchUtils'
 import { clearMatchConfirmation, loadMatchConfirmation } from './matchStorage'
-import { readStoredStartConfig } from './startConfig'
+import { buildMatchMetaPayload, readStoredStartConfig, storeStartMatchMeta } from './startConfig'
 import styles from './MatchReadyClient.module.css'
 
 function getMatchPagePath(mode, gameId) {
@@ -317,6 +317,20 @@ export default function MatchReadyClient({ gameId, mode }) {
         throw new Error('세션 정보를 확인하지 못했습니다.')
       }
 
+      const matchMetaPayload = buildMatchMetaPayload(payload.match, {
+        mode,
+        turnTimer:
+          Number.isFinite(Number(payload.turnTimer)) && Number(payload.turnTimer) > 0
+            ? Number(payload.turnTimer)
+            : null,
+        source: 'match_ready_client',
+      })
+      if (matchMetaPayload) {
+        storeStartMatchMeta(matchMetaPayload)
+      } else {
+        storeStartMatchMeta(null)
+      }
+
       const response = await fetch('/api/rank/start-session', {
         method: 'POST',
         headers: {
@@ -358,6 +372,7 @@ export default function MatchReadyClient({ gameId, mode }) {
         setStatus('failed')
         clearTimers()
         clearMatchConfirmation()
+        storeStartMatchMeta(null)
         redirectTimerRef.current = setTimeout(() => {
           router.replace(matchPagePath)
         }, FAILURE_REDIRECT_DELAY_MS)
@@ -381,6 +396,7 @@ export default function MatchReadyClient({ gameId, mode }) {
       setStatus('failed')
       clearTimers()
       clearMatchConfirmation()
+      storeStartMatchMeta(null)
       redirectTimerRef.current = setTimeout(() => {
         router.replace(matchPagePath)
       }, FAILURE_REDIRECT_DELAY_MS)

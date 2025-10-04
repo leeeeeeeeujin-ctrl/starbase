@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { mapTimelineRowToEvent, sanitizeTimelineEvents } from '@/lib/rank/timelineEvents'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -58,13 +59,14 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'unauthorized' })
   }
 
-  const { gameId, limit: rawLimit, turnLimit: rawTurnLimit } = req.query || {}
+  const { gameId, limit: rawLimit, turnLimit: rawTurnLimit, timelineLimit: rawTimelineLimit } = req.query || {}
   if (!gameId || typeof gameId !== 'string') {
     return res.status(400).json({ error: 'missing_game_id' })
   }
 
   const limit = clamp(rawLimit, { min: 1, max: 20, fallback: 5 })
   const turnLimit = clamp(rawTurnLimit, { min: 1, max: 80, fallback: 30 })
+  const timelineLimit = clamp(rawTimelineLimit, { min: 0, max: 120, fallback: 40 })
 
   const { data: sessionRows, error: sessionError } = await supabaseAdmin
     .from('rank_sessions')
@@ -81,6 +83,7 @@ export default async function handler(req, res) {
   const sessionIds = sessions.map((session) => session.id).filter(Boolean)
 
   let turnsBySession = new Map()
+  let timelineBySession = new Map()
 
   if (sessionIds.length) {
     const { data: turnRows, error: turnError } = await supabaseAdmin
@@ -104,6 +107,63 @@ export default async function handler(req, res) {
     })
   }
 
+  if (timelineLimit > 0 && sessionIds.length) {
+    const totalLimit = timelineLimit * sessionIds.length
+    const { data: timelineRows, error: timelineError } = await supabaseAdmin
+      .from('rank_session_timeline_events')
+      .select(
+        'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit, status, turn, event_timestamp, context, metadata',
+      )
+      .in('session_id', sessionIds)
+      .order('event_timestamp', { ascending: false })
+      .limit(totalLimit)
+
+    if (timelineError) {
+      return res.status(400).json({ error: timelineError.message })
+    }
+
+    timelineBySession = new Map()
+    ;(Array.isArray(timelineRows) ? timelineRows : []).forEach((row) => {
+      if (!row?.session_id) return
+      const event = mapTimelineRowToEvent(row, { defaultTurn: row?.turn })
+      if (!event) return
+      if (!timelineBySession.has(row.session_id)) {
+        timelineBySession.set(row.session_id, [])
+      }
+      const bucket = timelineBySession.get(row.session_id)
+      if (bucket.length >= timelineLimit) {
+        return
+      }
+      bucket.push(event)
+    })
+
+    timelineBySession.forEach((bucket, key) => {
+      if (Array.isArray(bucket)) {
+        bucket.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+      } else {
+        timelineBySession.set(key, [])
+      }
+    })
+  }
+
+  let battleLogsBySession = new Map()
+  if (sessionIds.length) {
+    const { data: battleRows, error: battleError } = await supabaseAdmin
+      .from('rank_session_battle_logs')
+      .select('session_id, result, reason, payload, created_at, updated_at')
+      .in('session_id', sessionIds)
+
+    if (battleError) {
+      return res.status(400).json({ error: battleError.message })
+    }
+
+    battleLogsBySession = new Map()
+    ;(Array.isArray(battleRows) ? battleRows : []).forEach((row) => {
+      if (!row?.session_id) return
+      battleLogsBySession.set(row.session_id, row)
+    })
+  }
+
   const viewerId = viewer.id
 
   const payload = sessions.map((session) => {
@@ -122,6 +182,28 @@ export default async function handler(req, res) {
 
     const latestSummarySource = [...rawTurns].reverse().find((turn) => turn?.summary_payload)
 
+    const timelineEvents = sanitizeTimelineEvents(timelineBySession.get(session.id) || [])
+
+    const battleRow = battleLogsBySession.get(session.id) || null
+    let battleLog = null
+    if (battleRow && typeof battleRow === 'object') {
+      let payload = null
+      if (battleRow.payload && typeof battleRow.payload === 'object') {
+        try {
+          payload = JSON.parse(JSON.stringify(battleRow.payload))
+        } catch (error) {
+          payload = null
+        }
+      }
+      battleLog = {
+        result: battleRow.result || null,
+        reason: battleRow.reason || null,
+        payload,
+        created_at: battleRow.created_at || null,
+        updated_at: battleRow.updated_at || null,
+      }
+    }
+
     return {
       id: session.id,
       owner_id: session.owner_id,
@@ -135,6 +217,8 @@ export default async function handler(req, res) {
       trimmed_count: trimmedCount,
       latest_summary: latestSummarySource?.summary_payload || null,
       turns: limitedTurns.map(mapTurn),
+      timeline_events: timelineEvents,
+      battle_log: battleLog,
     }
   })
 

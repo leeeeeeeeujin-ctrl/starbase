@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useRef } from 'react'
+
 import { GEMINI_MODE_OPTIONS } from '@/lib/rank/geminiConfig'
 
 export default function TurnInfoPanel({
@@ -26,10 +28,48 @@ export default function TurnInfoPanel({
   const actorName = currentActor?.name || '미지정'
   const actorRole = currentActor?.role || '역할 미지정'
   const actorLabel = `${actorName} · ${actorRole}`
+  const isCriticalTimer =
+    typeof timeRemaining === 'number' && Number.isFinite(timeRemaining) && timeRemaining <= 10
   const remainingText =
     typeof timeRemaining === 'number'
       ? `${timeRemaining.toString().padStart(2, '0')}초`
       : '대기 중'
+
+  const timerAccent = useMemo(() => {
+    if (!isCriticalTimer) {
+      return {
+        color: 'rgba(226, 232, 240, 0.9)',
+        background: 'rgba(148, 163, 184, 0.16)',
+        fontWeight: 600,
+      }
+    }
+    return {
+      color: '#fecaca',
+      background: 'rgba(248, 113, 113, 0.28)',
+      fontWeight: 700,
+      boxShadow: '0 0 0 1px rgba(248, 113, 113, 0.35)',
+    }
+  }, [isCriticalTimer])
+
+  const lastVibrationRef = useRef(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isCriticalTimer) return
+    if (typeof timeRemaining !== 'number' || timeRemaining < 0) return
+    const vibrate = typeof navigator !== 'undefined' ? navigator.vibrate : undefined
+    if (typeof vibrate !== 'function') return
+
+    const lastValue = lastVibrationRef.current
+    if (lastValue === timeRemaining) return
+
+    try {
+      vibrate(200)
+      lastVibrationRef.current = timeRemaining
+    } catch (error) {
+      console.warn('[TurnInfoPanel] 진동 알림 실패:', error)
+    }
+  }, [isCriticalTimer, timeRemaining])
 
   return (
     <section
@@ -46,7 +86,18 @@ export default function TurnInfoPanel({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 700 }}>진행 정보</div>
         <div style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>
-          턴 {turn} · 제한 {turnTimerSeconds || 0}초 · 남은 시간 {remainingText}
+          턴 {turn} · 제한 {turnTimerSeconds || 0}초 ·{' '}
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: 999,
+              transition: 'all 0.2s ease-in-out',
+              ...timerAccent,
+            }}
+            aria-live={isCriticalTimer ? 'assertive' : 'off'}
+          >
+            남은 시간 {remainingText}
+          </span>
         </div>
       </div>
       <div style={{ fontSize: 13, display: 'grid', gap: 6, color: 'rgba(226, 232, 240, 0.85)' }}>
@@ -70,7 +121,9 @@ export default function TurnInfoPanel({
         <span style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>AI API 키</span>
         <input
           value={apiKey}
-          onChange={(event) => onApiKeyChange(event.target.value)}
+          onChange={(event) =>
+            onApiKeyChange(event.target.value, { source: 'user_input' })
+          }
           placeholder="API 키를 입력하세요"
           style={{
             padding: '10px 12px',

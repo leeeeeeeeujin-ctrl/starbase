@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { withTable } from '@/lib/supabaseTables'
 
+import { mapTimelineRowToEvent, normalizeTimelineEvents } from '../lib/rank/timelineEvents'
+
 import { supabase } from '../lib/supabase'
 
 async function fetchParticipantsWithHeroes(gameId) {
@@ -264,6 +266,7 @@ async function fetchOwnSessionHistory(
       publicTurns: [],
       hiddenCount: 0,
       hasMore: false,
+      timelineEvents: [],
     }))
   }
 
@@ -281,22 +284,83 @@ async function fetchOwnSessionHistory(
 
   if (turnError) throw turnError
 
-  const grouped = new Map()
+  const turnsBySession = new Map()
   ;(Array.isArray(turnRows) ? turnRows : []).forEach((turn) => {
     if (!turn?.session_id) return
     const key = turn.session_id
-    if (!grouped.has(key)) {
-      grouped.set(key, [])
+    if (!turnsBySession.has(key)) {
+      turnsBySession.set(key, [])
     }
-    grouped.get(key).push(turn)
+    turnsBySession.get(key).push(turn)
   })
+
+  let timelineBySession = new Map()
+  try {
+    const { data: timelineRows, error: timelineError } = await withTable(
+      supabase,
+      'rank_session_timeline_events',
+      (table) =>
+        supabase
+          .from(table)
+          .select(
+            'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit, status, turn, event_timestamp, context, metadata',
+          )
+          .in('session_id', sessionIds)
+          .order('session_id', { ascending: false })
+          .order('event_timestamp', { ascending: true }),
+    )
+
+    if (timelineError) {
+      throw timelineError
+    }
+
+    timelineBySession = new Map()
+    ;(Array.isArray(timelineRows) ? timelineRows : []).forEach((row) => {
+      if (!row?.session_id) return
+      const event = mapTimelineRowToEvent(row, { defaultTurn: row?.turn })
+      if (!event) return
+      if (!timelineBySession.has(row.session_id)) {
+        timelineBySession.set(row.session_id, [])
+      }
+      timelineBySession.get(row.session_id).push(event)
+    })
+  } catch (timelineError) {
+    console.warn('세션 타임라인을 불러오지 못했습니다:', timelineError)
+    timelineBySession = new Map()
+  }
 
   const perSessionLimit = Number.isFinite(Number(turnLimit)) && Number(turnLimit) > 0
     ? Number(turnLimit)
     : 40
 
+  let battleLogsBySession = new Map()
+  try {
+    const { data: battleRows, error: battleError } = await withTable(
+      supabase,
+      'rank_session_battle_logs',
+      (table) =>
+        supabase
+          .from(table)
+          .select('session_id, game_id, owner_id, result, reason, payload, created_at, updated_at')
+          .in('session_id', sessionIds),
+    )
+
+    if (battleError) {
+      throw battleError
+    }
+
+    battleLogsBySession = new Map()
+    ;(Array.isArray(battleRows) ? battleRows : []).forEach((row) => {
+      if (!row?.session_id) return
+      battleLogsBySession.set(row.session_id, row)
+    })
+  } catch (battleError) {
+    console.warn('세션 베틀로그를 불러오지 못했습니다:', battleError)
+    battleLogsBySession = new Map()
+  }
+
   return sessions.map((session) => {
-    const allTurns = grouped.get(session.id) || []
+    const allTurns = turnsBySession.get(session.id) || []
     const sorted = [...allTurns].sort((a, b) => {
       const left = Number(a?.idx)
       const right = Number(b?.idx)
@@ -330,11 +394,35 @@ async function fetchOwnSessionHistory(
       trimmedCount: Math.max(shareableTurns.length - limitedShareable.length, 0),
       latestSummary: latestSummarySource?.summary_payload || null,
       hasMore: shareableTurns.length > limitedShareable.length || sorted.length > limitedShareable.length,
+      timelineEvents: normalizeTimelineEvents(timelineBySession.get(session.id) || [], { order: 'desc' }),
+      battleLog: (() => {
+        const row = battleLogsBySession.get(session.id)
+        if (!row) return null
+        let payload = null
+        if (row.payload && typeof row.payload === 'object') {
+          try {
+            payload = JSON.parse(JSON.stringify(row.payload))
+          } catch (error) {
+            payload = null
+          }
+        }
+        return {
+          result: row.result || null,
+          reason: row.reason || null,
+          payload,
+          created_at: row.created_at || null,
+          updated_at: row.updated_at || null,
+        }
+      })(),
     }
   })
 }
 
-async function fetchSharedSessionHistory(gameId, token, { limit = 5, turnLimit = 30 } = {}) {
+async function fetchSharedSessionHistory(
+  gameId,
+  token,
+  { limit = 5, turnLimit = 30, timelineLimit = 60 } = {},
+) {
   if (!gameId || !token || typeof fetch === 'undefined') {
     return []
   }
@@ -346,6 +434,9 @@ async function fetchSharedSessionHistory(gameId, token, { limit = 5, turnLimit =
   }
   if (Number.isFinite(Number(turnLimit))) {
     params.set('turnLimit', String(turnLimit))
+  }
+  if (Number.isFinite(Number(timelineLimit))) {
+    params.set('timelineLimit', String(timelineLimit))
   }
 
   const response = await fetch(`/api/rank/sessions?${params.toString()}`, {
@@ -364,6 +455,26 @@ async function fetchSharedSessionHistory(gameId, token, { limit = 5, turnLimit =
   return sessions.map((session) => ({
     ...session,
     turns: Array.isArray(session.turns) ? session.turns : [],
+    timelineEvents: normalizeTimelineEvents(session.timeline_events || [], { order: 'desc' }),
+    battleLog: (() => {
+      const row = session.battle_log || session.battleLog || null
+      if (!row || typeof row !== 'object') return null
+      let payload = null
+      if (row.payload && typeof row.payload === 'object') {
+        try {
+          payload = JSON.parse(JSON.stringify(row.payload))
+        } catch (error) {
+          payload = null
+        }
+      }
+      return {
+        result: row.result || null,
+        reason: row.reason || null,
+        payload,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null,
+      }
+    })(),
   }))
 }
 

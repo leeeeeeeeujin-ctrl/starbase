@@ -3,7 +3,13 @@
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 
-import { readActiveSession, subscribeActiveSession } from '@/lib/rank/activeSessionStorage'
+import {
+  clearActiveSessionRecord,
+  readActiveSession,
+  subscribeActiveSession,
+} from '@/lib/rank/activeSessionStorage'
+import { withTable } from '@/lib/supabaseTables'
+import { supabase } from '@/lib/supabase'
 
 const styles = {
   root: {
@@ -72,6 +78,27 @@ const styles = {
   },
 }
 
+const DISQUALIFYING_STATUSES = new Set([
+  'out',
+  'removed',
+  'kicked',
+  'defeated',
+  'retired',
+  'eliminated',
+  'dead',
+  'lost',
+  'banned',
+  'timeout',
+  'timed_out',
+  'expired',
+  'disconnected',
+])
+
+function normaliseStatus(value) {
+  if (!value || typeof value !== 'string') return ''
+  return value.trim().toLowerCase()
+}
+
 function formatSummary(session) {
   if (!session) return ''
   const parts = []
@@ -88,12 +115,18 @@ export default function ActiveMatchOverlay() {
   const router = useRouter()
   const { asPath } = router
   const [session, setSession] = useState(() => readActiveSession())
+  const [forceHide, setForceHide] = useState(false)
+  const [refreshToken, setRefreshToken] = useState(0)
 
   useEffect(() => {
     return subscribeActiveSession((payload) => {
       setSession(payload || null)
     })
   }, [])
+
+  useEffect(() => {
+    setForceHide(false)
+  }, [session?.gameId, session?.sessionId])
 
   const active = useMemo(() => {
     if (!session) return null
@@ -110,7 +143,164 @@ export default function ActiveMatchOverlay() {
     return currentPath.startsWith(active.href)
   }, [active, asPath])
 
-  if (!active || hidden) return null
+  useEffect(() => {
+    if (!active) return undefined
+
+    const handleFocus = () => {
+      setRefreshToken((token) => token + 1)
+    }
+
+    const handleVisibility = () => {
+      if (typeof document === 'undefined') return
+      if (document.visibilityState === 'visible') {
+        setRefreshToken((token) => token + 1)
+      }
+    }
+
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [active?.gameId, active?.sessionId])
+
+  useEffect(() => {
+    if (!active) return undefined
+
+    let cancelled = false
+
+    const validateSession = async () => {
+      const gameId = active.gameId
+      const sessionId = active.sessionId
+
+      if (!gameId) {
+        if (!cancelled) {
+          setForceHide(true)
+          clearActiveSessionRecord()
+        }
+        return
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.getUser()
+      const viewer = authData?.user || null
+
+      if (authError) {
+        console.warn('활성 세션 상태 확인 중 사용자 정보를 가져오지 못했습니다:', authError)
+        return
+      }
+
+      if (!viewer?.id) {
+        if (!cancelled) {
+          setForceHide(true)
+          clearActiveSessionRecord(gameId)
+        }
+        return
+      }
+
+      let invalid = false
+
+      const { data: gameRow, error: gameError } = await withTable(
+        supabase,
+        'rank_games',
+        (table) =>
+          supabase
+            .from(table)
+            .select('id')
+            .eq('id', gameId)
+            .maybeSingle(),
+      )
+
+      if (gameError) {
+        console.warn('활성 세션 확인 중 게임 정보를 불러오지 못했습니다:', gameError)
+        return
+      }
+
+      if (!gameRow?.id) {
+        invalid = true
+      }
+
+      let sessionRow = null
+      if (!invalid) {
+        const { data, error } = await supabase
+          .from('rank_sessions')
+          .select('id, status, owner_id, game_id')
+          .eq('game_id', gameId)
+          .eq('owner_id', viewer.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (error) {
+          console.warn('활성 세션 확인 중 세션 정보를 불러오지 못했습니다:', error)
+          return
+        }
+
+        sessionRow = data || null
+
+        if (!sessionRow?.id) {
+          invalid = true
+        } else if (sessionId && sessionRow.id !== sessionId) {
+          // 사용자가 최신 세션이 아닌 레코드를 보고 있다면 덮어씁니다.
+          invalid = false
+        }
+
+        if (sessionRow && sessionRow.status && sessionRow.status !== 'active') {
+          invalid = true
+        }
+      }
+
+      if (invalid) {
+        if (!cancelled) {
+          setForceHide(true)
+          clearActiveSessionRecord(gameId)
+        }
+        return
+      }
+
+      const { data: participantRow, error: participantError } = await withTable(
+        supabase,
+        'rank_participants',
+        (table) =>
+          supabase
+            .from(table)
+            .select('id, status, hero_id')
+            .eq('game_id', gameId)
+            .eq('owner_id', viewer.id)
+            .maybeSingle(),
+      )
+
+      if (participantError) {
+        console.warn('활성 세션 확인 중 참가자 정보를 불러오지 못했습니다:', participantError)
+        return
+      }
+
+      const participant = participantRow || null
+
+      if (!participant?.id) {
+        invalid = true
+      } else {
+        const status = normaliseStatus(participant.status)
+        if (participant.hero_id == null || DISQUALIFYING_STATUSES.has(status)) {
+          invalid = true
+        }
+      }
+
+      if (invalid && !cancelled) {
+        setForceHide(true)
+        clearActiveSessionRecord(gameId)
+      }
+    }
+
+    validateSession()
+
+    return () => {
+      cancelled = true
+    }
+  }, [active, refreshToken])
+
+  if (!active || hidden || forceHide) return null
 
   const summary = formatSummary(active)
 
