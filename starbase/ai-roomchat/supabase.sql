@@ -1221,6 +1221,38 @@ on public.rank_session_timeline_events for insert
 with check (auth.role() = 'service_role');
 
 -- =========================================
+--  Edge Function 배포 감사 로그
+-- =========================================
+create table if not exists public.rank_edge_function_deployments (
+  id uuid primary key default uuid_generate_v4(),
+  function_name text not null,
+  status text not null check (status in ('succeeded', 'retrying', 'failed')),
+  attempt smallint not null check (attempt > 0),
+  max_attempts smallint not null check (max_attempts >= attempt),
+  exit_code smallint,
+  duration_ms integer,
+  logs text,
+  next_retry_at timestamptz,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists rank_edge_function_deployments_function_idx
+on public.rank_edge_function_deployments (function_name, created_at desc);
+
+create index if not exists rank_edge_function_deployments_status_idx
+on public.rank_edge_function_deployments (status, created_at desc);
+
+alter table public.rank_edge_function_deployments enable row level security;
+
+create policy if not exists rank_edge_function_deployments_select
+on public.rank_edge_function_deployments for select using (true);
+
+create policy if not exists rank_edge_function_deployments_insert
+on public.rank_edge_function_deployments for insert
+with check (auth.role() = 'service_role');
+
+-- =========================================
 --  공용 채팅 테이블
 -- =========================================
 create table if not exists public.messages (

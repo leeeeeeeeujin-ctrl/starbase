@@ -46,3 +46,6 @@ Edge Function이 키 풀 교체 이유를 로깅할 때 참조하는 테이블�
 | `public.rank_matchmaking_logs` | `id`, `match_code`, `stage`, `status`, `reason`, `metadata` | 매칭 파이프라인 단계 기록. Edge Function 메타(`drop_in_meta`, `role_status`, `assignments`)는 `metadata`에 저장. |
 
 위 컬럼이 준비돼 있으면 Edge Function이 생성한 타임라인 이벤트를 운영 대시보드, 관전 타임라인, Slack/Webhook 알림에서 동일하게 활용할 수 있습니다.
+
+## 4. Edge Function 배포 감사 로그
+CI에서 Edge Function 배포 실패/재시도/성공 이력을 추적하려면 `public.rank_edge_function_deployments` 테이블이 필요합니다. 컬럼·인덱스·RLS 요건은 [`docs/rank-edge-deploy-schema.md`](./rank-edge-deploy-schema.md)를 참고하세요.

@@ -108,14 +108,15 @@
   - `GameRoomView` 메인 탭에 관전 타임라인과 내 세션 타임라인 섹션을 추가하고 `TimelineSection`의 메타 출력에 세션 라벨·시작 시각을 확장해 실시간/재생 UI가 같은 컴포넌트를 공유합니다.
   - 새 타임라인 스키마(`docs/rank-session-timeline-spec.md`)를 문서화해 서비스 롤 함수와 운영 자동화가 동일 포맷으로 이벤트를 발행할 수 있도록 기준을 마련했습니다.
   - Supabase Edge Function(`rank-match-timeline`, `rank-api-key-rotation`)이 매칭·키 교체 메타를 `rank_session_timeline_events`에 업서트하고 Realtime/Slack 경보를 동시에 발행하도록 배포 스크립트를 추가했습니다. (→ `supabase/functions/*`, `docs/rank-edge-function-schema.md`)
+  - `scripts/deploy-edge-functions.js` + GitHub Actions 워크플로(`.github/workflows/edge-functions-deploy.yml`)로 Edge Function 변경 감지·재시도·Slack/PagerDuty 경보를 자동화하고, 실패·재시도 메타를 `rank_edge_function_deployments` 테이블에 적재하도록 연결했습니다. (→ `supabase.sql`, `docs/rank-edge-deploy-schema.md`, `docs/environment-variables.md`)
 - **다음 단계 메모**:
-  - Supabase CLI 배포 파이프라인에 Edge Function 변경 감지를 추가하고, 실패 시 Pager/Slack 경보를 묶는 런북을 마저 작성하기.
+  - Edge Function 배포 워크플로를 스테이징 환경에 연동해 테이블/RLS가 정상 적용됐는지 smoke test 자동화를 추가하기.
   - 베틀로그 상세/캐릭터 대시보드에 `TimelineSection`을 재사용해 턴 기록과 타임라인 이벤트를 함께 탐색할 수 있는 필터/검색 UI를 설계하기.
   - 타임라인 이벤트에 대한 통합 테스트(자동 진행, 난입, 키 교체)를 작성해 회귀 방지와 운영 감사 로그 일관성을 보장하기.
 
 ---
 
-느낀 점: Edge Function까지 연결되면서 매칭·키 교체 흐름이 동일한 타임라인 스키마를 사용해 운영·관전 모두에게 투명하게 전달되는 구조가 완성됐습니다.
-추가로 필요한 점: Edge Function 배포 자동화에 실패 감시와 재시도 알림을 더해 운영팀이 즉시 대응할 수 있도록 Pager/Slack 연계를 정비해야 합니다.
-진행사항: 실시간 경고·난입·키 교체 이벤트를 Supabase 테이블·Realtime·Slack 경보·관전/재생 UI까지 묶고, Edge Function 스키마 체크리스트를 문서화했습니다.
+느낀 점: 배포 자동화가 Slack/PagerDuty 경보와 테이블 감사 로그까지 이어지니 Edge Function 장애 대응 루프가 닫혀 운영자 온콜 경험이 한결 선명해졌습니다.
+추가로 필요한 점: 새 워크플로가 스테이징·프로덕션 시크릿 구성을 모두 만족하는지 점검하고, smoke test 실패 시에도 PagerDuty 알림을 연결해 배포 실패를 즉시 감지할 필요가 있습니다.
+진행사항: Edge Function 변경 감지 CI, 재시도 스크립트, 배포 감사 테이블, 환경 변수 문서를 정비해 배포 실패 감시와 경보 루프를 청사진에 맞게 마무리했습니다.
 

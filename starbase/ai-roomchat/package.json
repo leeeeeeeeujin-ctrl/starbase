@@ -10,7 +10,8 @@
     "check:blueprint-progress-freshness": "node scripts/check-rank-blueprint-progress-freshness.js",
     "check:blueprint-next-actions": "node scripts/check-rank-blueprint-next-actions.js",
     "test": "jest",
-    "notify:audio-events": "node scripts/notify-audio-event-trends.js"
+    "notify:audio-events": "node scripts/notify-audio-event-trends.js",
+    "deploy:edge-functions": "node scripts/deploy-edge-functions.js"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",

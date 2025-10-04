@@ -1,0 +1,63 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/**'
+      - 'scripts/deploy-edge-functions.js'
+      - 'package.json'
+      - '.github/workflows/edge-functions-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: edge-functions-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: ai-roomchat
+
+jobs:
+  deploy:
+    name: Deploy Edge Functions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Edge Functions with retry & alerts
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+          RANK_EDGE_DEPLOY_SLACK_WEBHOOK_URL: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_WEBHOOK_URL }}
+          RANK_EDGE_DEPLOY_SLACK_WEBHOOK_AUTH: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_WEBHOOK_AUTH }}
+          RANK_EDGE_DEPLOY_SLACK_MENTION: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_MENTION }}
+          RANK_EDGE_DEPLOY_SLACK_NOTIFY_SUCCESS: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_NOTIFY_SUCCESS }}
+          RANK_EDGE_DEPLOY_PAGERDUTY_ROUTING_KEY: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_ROUTING_KEY }}
+          RANK_EDGE_DEPLOY_PAGERDUTY_SEVERITY: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_SEVERITY }}
+          RANK_EDGE_DEPLOY_PAGERDUTY_SOURCE: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_SOURCE }}
+          RANK_EDGE_DEPLOY_MAX_ATTEMPTS: ${{ secrets.RANK_EDGE_DEPLOY_MAX_ATTEMPTS }}
+          RANK_EDGE_DEPLOY_BASE_RETRY_MS: ${{ secrets.RANK_EDGE_DEPLOY_BASE_RETRY_MS }}
+          RANK_EDGE_DEPLOY_FUNCTIONS: ${{ secrets.RANK_EDGE_DEPLOY_FUNCTIONS }}
+        run: npm run deploy:edge-functions
