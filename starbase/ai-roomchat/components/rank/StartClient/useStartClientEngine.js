@@ -24,6 +24,13 @@ import {
   markApiKeyCooldown,
   purgeExpiredCooldowns,
 } from '../../../lib/rank/apiKeyCooldown'
+import {
+  DEFAULT_GEMINI_MODE,
+  DEFAULT_GEMINI_MODEL,
+  normalizeGeminiMode,
+  normalizeGeminiModelId,
+} from '../../../lib/rank/geminiConfig'
+import useGeminiModelCatalog from '../hooks/useGeminiModelCatalog'
 
 function normalizeHeroName(name) {
   if (!name) return ''
@@ -144,7 +151,26 @@ function isApiKeyError(error) {
 
 export function useStartClientEngine(gameId) {
   const initialStoredApiKey =
-    typeof window === 'undefined' ? '' : window.sessionStorage.getItem('rank.start.apiKey') || ''
+    typeof window === 'undefined'
+      ? ''
+      : (window.sessionStorage.getItem('rank.start.apiKey') || '').trim()
+  const initialGeminiConfig = (() => {
+    if (typeof window === 'undefined') {
+      return { mode: DEFAULT_GEMINI_MODE, model: DEFAULT_GEMINI_MODEL }
+    }
+    try {
+      const storedMode =
+        window.sessionStorage.getItem('rank.start.geminiMode') || DEFAULT_GEMINI_MODE
+      const storedModel =
+        window.sessionStorage.getItem('rank.start.geminiModel') || DEFAULT_GEMINI_MODEL
+      const mode = normalizeGeminiMode(storedMode)
+      const model = normalizeGeminiModelId(storedModel) || DEFAULT_GEMINI_MODEL
+      return { mode, model }
+    } catch (error) {
+      console.warn('[StartClient] Gemini 설정을 불러오지 못했습니다:', error)
+      return { mode: DEFAULT_GEMINI_MODE, model: DEFAULT_GEMINI_MODEL }
+    }
+  })()
   const initialCooldownInfo =
     typeof window === 'undefined'
       ? null
@@ -174,6 +200,8 @@ export function useStartClientEngine(gameId) {
     if (typeof window === 'undefined') return 'gemini'
     return window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
   })
+  const [geminiMode, setGeminiModeState] = useState(initialGeminiConfig.mode)
+  const [geminiModel, setGeminiModelState] = useState(initialGeminiConfig.model)
   const [apiKeyCooldown, setApiKeyCooldownState] = useState(initialCooldownInfo)
   const [apiKeyWarning, setApiKeyWarning] = useState(() =>
     initialCooldownInfo?.active ? formatCooldownMessage(initialCooldownInfo) : '',
@@ -413,20 +441,97 @@ export function useStartClientEngine(gameId) {
     [],
   )
 
+  const normaliseApiKey = useCallback((value) => {
+    if (typeof value !== 'string') return ''
+    return value.trim()
+  }, [])
+
   const setApiKey = useCallback(
     (value) => {
       setApiKeyState(value)
       if (typeof window !== 'undefined') {
-        if (value) {
-          window.sessionStorage.setItem('rank.start.apiKey', value)
+        const trimmed = normaliseApiKey(value)
+        if (trimmed) {
+          window.sessionStorage.setItem('rank.start.apiKey', trimmed)
         } else {
           window.sessionStorage.removeItem('rank.start.apiKey')
         }
       }
       evaluateApiKeyCooldown(value)
     },
-    [evaluateApiKeyCooldown],
+    [evaluateApiKeyCooldown, normaliseApiKey],
   )
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (typeof apiKey === 'string' && apiKey.trim()) return
+    try {
+      const stored = window.sessionStorage.getItem('rank.start.apiKey') || ''
+      const trimmed = normaliseApiKey(stored)
+      if (trimmed) {
+        setApiKey(trimmed)
+      }
+    } catch (error) {
+      console.warn('[StartClient] API 키를 불러오지 못했습니다:', error)
+    }
+  }, [apiKey, normaliseApiKey, setApiKey])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (typeof apiKey === 'string' && apiKey.trim()) return
+
+    let cancelled = false
+
+    async function loadStoredKey() {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          return
+        }
+        const response = await fetch('/api/rank/user-api-key', {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        if (!response.ok) {
+          return
+        }
+        const payload = await response.json().catch(() => ({}))
+        if (!payload?.ok) {
+          return
+        }
+        if (cancelled) {
+          return
+        }
+        const fetchedKey = typeof payload.apiKey === 'string' ? payload.apiKey.trim() : ''
+        if (fetchedKey) {
+          setApiKey(fetchedKey)
+        }
+        if (typeof payload.apiVersion === 'string' && payload.apiVersion.trim()) {
+          setApiVersion(payload.apiVersion.trim())
+        }
+        if (typeof payload.geminiMode === 'string' && payload.geminiMode.trim()) {
+          setGeminiMode(payload.geminiMode.trim())
+        }
+        if (typeof payload.geminiModel === 'string' && payload.geminiModel.trim()) {
+          setGeminiModel(payload.geminiModel.trim())
+        }
+      } catch (error) {
+        console.warn('[StartClient] 저장된 API 키를 불러오지 못했습니다:', error)
+      }
+    }
+
+    loadStoredKey()
+
+    return () => {
+      cancelled = true
+    }
+  }, [apiKey, setApiKey, setApiVersion, setGeminiMode, setGeminiModel])
 
   const setApiVersion = useCallback((value) => {
     setApiVersionState(value)
@@ -439,9 +544,140 @@ export function useStartClientEngine(gameId) {
     }
   }, [])
 
+  const setGeminiMode = useCallback((value) => {
+    const normalized = normalizeGeminiMode(value)
+    setGeminiModeState(normalized)
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem('rank.start.geminiMode', normalized)
+      } catch (error) {
+        console.warn('[StartClient] Gemini 모드 저장 실패:', error)
+      }
+    }
+  }, [])
+
+  const setGeminiModel = useCallback((value) => {
+    const normalized = normalizeGeminiModelId(value) || DEFAULT_GEMINI_MODEL
+    setGeminiModelState(normalized)
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem('rank.start.geminiModel', normalized)
+      } catch (error) {
+        console.warn('[StartClient] Gemini 모델 저장 실패:', error)
+      }
+    }
+  }, [])
+
+  const effectiveApiKey = useMemo(
+    () => normaliseApiKey(apiKey),
+    [apiKey, normaliseApiKey],
+  )
+
+  const normalizedGeminiMode = useMemo(
+    () => normalizeGeminiMode(geminiMode),
+    [geminiMode],
+  )
+  const normalizedGeminiModel = useMemo(
+    () => normalizeGeminiModelId(geminiModel) || DEFAULT_GEMINI_MODEL,
+    [geminiModel],
+  )
+
+  const {
+    options: rawGeminiModelOptions,
+    loading: geminiModelLoading,
+    error: geminiModelError,
+    reload: reloadGeminiModels,
+  } = useGeminiModelCatalog({
+    apiKey: apiVersion === 'gemini' ? effectiveApiKey : '',
+    mode: normalizedGeminiMode,
+  })
+
+  const geminiModelOptions = useMemo(() => {
+    const base = Array.isArray(rawGeminiModelOptions) ? rawGeminiModelOptions : []
+    const exists = base.some(
+      (option) => normalizeGeminiModelId(option?.id || option?.name) === normalizedGeminiModel,
+    )
+    if (exists || !normalizedGeminiModel) {
+      return base
+    }
+    return [{ id: normalizedGeminiModel, label: normalizedGeminiModel }, ...base]
+  }, [rawGeminiModelOptions, normalizedGeminiModel])
+
   const visitedSlotIds = useRef(new Set())
   const apiVersionLock = useRef(null)
   const advanceIntentRef = useRef(null)
+  const lastStoredApiSignatureRef = useRef('')
+
+  const persistApiKeyOnServer = useCallback(
+    async (value, version, options = {}) => {
+      const trimmed = normaliseApiKey(value)
+      if (!trimmed) {
+        return false
+      }
+
+      const normalizedVersion = typeof version === 'string' ? version : ''
+      const normalizedGeminiMode = options.geminiMode
+        ? normalizeGeminiMode(options.geminiMode)
+        : null
+      const normalizedGeminiModel = options.geminiModel
+        ? normalizeGeminiModelId(options.geminiModel)
+        : null
+      const signature = `${trimmed}::${normalizedVersion}::${normalizedGeminiMode || ''}::${
+        normalizedGeminiModel || ''
+      }`
+
+      if (lastStoredApiSignatureRef.current === signature) {
+        return true
+      }
+
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          throw new Error('세션 토큰을 확인할 수 없습니다.')
+        }
+
+        const response = await fetch('/api/rank/user-api-key', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            apiKey: trimmed,
+            apiVersion: normalizedVersion || undefined,
+            geminiMode:
+              normalizedVersion === 'gemini' ? normalizedGeminiMode || undefined : undefined,
+            geminiModel:
+              normalizedVersion === 'gemini' ? normalizedGeminiModel || undefined : undefined,
+          }),
+        })
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          const message = payload?.error || 'API 키를 저장하지 못했습니다.'
+          throw new Error(message)
+        }
+
+        lastStoredApiSignatureRef.current = signature
+        return true
+      } catch (error) {
+        console.warn('[StartClient] API 키 저장 실패:', error)
+        return false
+      }
+    },
+    [normaliseApiKey, supabase],
+  )
+
+  useEffect(() => {
+    if (!effectiveApiKey) {
+      lastStoredApiSignatureRef.current = ''
+    }
+  }, [effectiveApiKey])
 
   useEffect(() => {
     if (!gameId) return
@@ -845,12 +1081,17 @@ export function useStartClientEngine(gameId) {
       return
     }
 
-    if (apiKey) {
-      const cooldownInfo = evaluateApiKeyCooldown(apiKey)
+    if (effectiveApiKey) {
+      const cooldownInfo = evaluateApiKeyCooldown(effectiveApiKey)
       if (cooldownInfo?.active) {
         setStatusMessage(formatCooldownMessage(cooldownInfo))
         return
       }
+
+          await persistApiKeyOnServer(effectiveApiKey, apiVersion, {
+            geminiMode: normalizedGeminiMode,
+            geminiModel: normalizedGeminiModel,
+          })
     }
 
     setStartingSession(true)
@@ -928,14 +1169,18 @@ export function useStartClientEngine(gameId) {
 
     bootLocalSession()
   }, [
+    apiVersion,
     bootLocalSession,
     game?.realtime_match,
     gameId,
     graph.nodes,
     startingSession,
     viewerParticipant?.role,
-    apiKey,
+    effectiveApiKey,
     evaluateApiKeyCooldown,
+    persistApiKeyOnServer,
+    normalizedGeminiMode,
+    normalizedGeminiModel,
   ])
 
   const advanceTurn = useCallback(
@@ -1012,112 +1257,122 @@ export function useStartClientEngine(gameId) {
         }
 
         if (!responseText) {
-          if (apiKey) {
-            if (game?.realtime_match) {
-              if (
-                apiVersionLock.current &&
-                apiVersionLock.current !== apiVersion
-              ) {
-                throw new Error(
-                  '실시간 매칭에서는 처음 선택한 API 버전을 변경할 수 없습니다.',
-                )
-              }
-            }
+          if (!effectiveApiKey) {
+            setStatusMessage('AI API 키가 입력되지 않았습니다. 왼쪽 패널에서 키를 입력한 뒤 다시 시도해 주세요.')
+            return
+          }
 
-            if (!sessionInfo?.id) {
-              throw new Error('세션 정보를 확인할 수 없습니다. 페이지를 새로고침해 주세요.')
-            }
-
-            const cooldownInfo = evaluateApiKeyCooldown(apiKey)
-            if (cooldownInfo?.active) {
-              setStatusMessage(formatCooldownMessage(cooldownInfo))
-              return
-            }
-
-            const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-            if (sessionError) {
-              throw sessionError
-            }
-
-            const token = sessionData?.session?.access_token
-            if (!token) {
-              throw new Error('세션 토큰을 확인할 수 없습니다.')
-            }
-
-            const res = await fetch('/api/rank/run-turn', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                apiKey,
-                system: effectiveSystemPrompt,
-                prompt: effectivePrompt,
-                apiVersion,
-                session_id: sessionInfo.id,
-                game_id: gameId,
-                prompt_role: 'system',
-                response_role: historyRole,
-                response_public: true,
-              }),
-            })
-
-            let payload = {}
-            try {
-              payload = await res.json()
-            } catch (error) {
-              payload = {}
-            }
-
-            if (!res.ok) {
-              const error = new Error(
-                payload?.error || payload?.detail || 'AI 호출에 실패했습니다.',
+          if (game?.realtime_match) {
+            if (
+              apiVersionLock.current &&
+              apiVersionLock.current !== apiVersion
+            ) {
+              throw new Error(
+                '실시간 매칭에서는 처음 선택한 API 버전을 변경할 수 없습니다.',
               )
-              if (payload?.error) {
-                error.code = payload.error
-              }
-              if (typeof payload?.detail === 'string' && payload.detail.trim()) {
-                error.detail = payload.detail.trim()
-              }
-              throw error
             }
+          }
 
+          if (!sessionInfo?.id) {
+            throw new Error('세션 정보를 확인할 수 없습니다. 페이지를 새로고침해 주세요.')
+          }
+
+          const cooldownInfo = evaluateApiKeyCooldown(effectiveApiKey)
+          if (cooldownInfo?.active) {
+            setStatusMessage(formatCooldownMessage(cooldownInfo))
+            return
+          }
+
+          await persistApiKeyOnServer(effectiveApiKey, apiVersion, {
+            geminiMode: normalizedGeminiMode,
+            geminiModel: normalizedGeminiModel,
+          })
+
+          const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+          if (sessionError) {
+            throw sessionError
+          }
+
+          const token = sessionData?.session?.access_token
+          if (!token) {
+            throw new Error('세션 토큰을 확인할 수 없습니다.')
+          }
+
+          const res = await fetch('/api/rank/run-turn', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              apiKey: effectiveApiKey,
+              system: effectiveSystemPrompt,
+              prompt: effectivePrompt,
+              apiVersion,
+              geminiMode: apiVersion === 'gemini' ? normalizedGeminiMode : undefined,
+              geminiModel: apiVersion === 'gemini' ? normalizedGeminiModel : undefined,
+              session_id: sessionInfo.id,
+              game_id: gameId,
+              prompt_role: 'system',
+              response_role: historyRole,
+              response_public: true,
+            }),
+          })
+
+          let payload = {}
+          try {
+            payload = await res.json()
+          } catch (error) {
+            payload = {}
+          }
+
+          if (!res.ok) {
+            const error = new Error(
+              payload?.error || payload?.detail || 'AI 호출에 실패했습니다.',
+            )
             if (payload?.error) {
-              const error = new Error(payload.error)
               error.code = payload.error
-              throw error
             }
+            if (typeof payload?.detail === 'string' && payload.detail.trim()) {
+              error.detail = payload.detail.trim()
+            }
+            throw error
+          }
 
-            responseText =
-              (typeof payload?.text === 'string' && payload.text.trim()) ||
-              payload?.choices?.[0]?.message?.content ||
-              payload?.content ||
-              ''
+          if (payload?.error) {
+            const error = new Error(payload.error)
+            error.code = payload.error
+            throw error
+          }
 
-            if (payload?.logged) {
-              loggedByServer = true
-              const numericTurn = Number(payload?.turn_number)
-              if (Number.isFinite(numericTurn)) {
-                loggedTurnNumber = numericTurn
-              }
-              if (Array.isArray(payload?.entries)) {
-                const responseEntry = payload.entries.find(
-                  (entry) => entry?.role === historyRole,
-                )
-                if (responseEntry?.summary_payload) {
-                  try {
-                    serverSummary = JSON.parse(JSON.stringify(responseEntry.summary_payload))
-                  } catch (error) {
-                    serverSummary = responseEntry.summary_payload
-                  }
+          responseText =
+            (typeof payload?.text === 'string' && payload.text.trim()) ||
+            payload?.choices?.[0]?.message?.content ||
+            payload?.content ||
+            ''
+
+          if (payload?.logged) {
+            loggedByServer = true
+            const numericTurn = Number(payload?.turn_number)
+            if (Number.isFinite(numericTurn)) {
+              loggedTurnNumber = numericTurn
+            }
+            if (Array.isArray(payload?.entries)) {
+              const responseEntry = payload.entries.find(
+                (entry) => entry?.role === historyRole,
+              )
+              if (responseEntry?.summary_payload) {
+                try {
+                  serverSummary = JSON.parse(JSON.stringify(responseEntry.summary_payload))
+                } catch (error) {
+                  serverSummary = responseEntry.summary_payload
                 }
               }
             }
+          }
 
-            if (game?.realtime_match && !apiVersionLock.current) {
-              apiVersionLock.current = apiVersion
-            }
+          if (game?.realtime_match && !apiVersionLock.current) {
+            apiVersionLock.current = apiVersion
           }
         }
 
@@ -1327,9 +1582,11 @@ export function useStartClientEngine(gameId) {
           const fallback =
             reason === 'quota_exhausted'
               ? '사용 중인 API 키 한도가 모두 소진되어 세션이 무효 처리되었습니다. 새 키를 등록해 주세요.'
+              : reason === 'missing_user_api_key'
+              ? 'AI API 키가 입력되지 않아 세션이 중단되었습니다. 왼쪽 패널에서 키를 입력한 뒤 다시 시도해 주세요.'
               : err?.message || 'API 키 오류로 세션이 무효 처리되었습니다.'
           voidSession(fallback, {
-            apiKey,
+            apiKey: effectiveApiKey,
             reason,
             provider: apiVersion,
             viewerId,
@@ -1354,7 +1611,7 @@ export function useStartClientEngine(gameId) {
       activeGlobal,
       activeLocal,
       manualResponse,
-      apiKey,
+      effectiveApiKey,
       apiVersion,
       systemPrompt,
       turn,
@@ -1371,6 +1628,9 @@ export function useStartClientEngine(gameId) {
       voidSession,
       gameVoided,
       evaluateApiKeyCooldown,
+      persistApiKeyOnServer,
+      normalizedGeminiMode,
+      normalizedGeminiModel,
     ],
   )
 
@@ -1395,6 +1655,7 @@ export function useStartClientEngine(gameId) {
       setStatusMessage('동의 대상인 참가자만 다음 턴 진행을 제안할 수 있습니다.')
       return
     }
+    const threshold = Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8))
     const already = consentedOwners.includes(viewerId)
     advanceIntentRef.current = { override: null }
     if (!already) {
@@ -1403,7 +1664,7 @@ export function useStartClientEngine(gameId) {
     const futureCount = already
       ? consensusCount
       : Math.min(consensusCount + 1, eligibleOwnerIds.length)
-    setStatusMessage(`다음 턴 동의 ${futureCount}/${eligibleOwnerIds.length}명`)
+    setStatusMessage(`다음 턴 동의 ${futureCount}/${threshold}명`)
   }, [
     advanceTurn,
     consentedOwners,
@@ -1420,13 +1681,14 @@ export function useStartClientEngine(gameId) {
     if (!advanceIntentRef.current) return undefined
     if (!eligibleOwnerIds.length) return undefined
     const eligibleSet = new Set(eligibleOwnerIds)
+    const threshold = Math.max(1, Math.ceil(eligibleSet.size * 0.8))
     const agreed = new Set()
     consentedOwners.forEach((ownerId) => {
       if (eligibleSet.has(ownerId)) {
         agreed.add(ownerId)
       }
     })
-    if (agreed.size >= eligibleSet.size) {
+    if (agreed.size >= threshold) {
       const intent = advanceIntentRef.current
       advanceIntentRef.current = null
       advanceTurn(intent?.override ?? null)
@@ -1467,6 +1729,14 @@ export function useStartClientEngine(gameId) {
     apiKeyCooldown,
     apiVersion,
     setApiVersion,
+    geminiMode,
+    setGeminiMode,
+    geminiModel,
+    setGeminiModel,
+    geminiModelOptions,
+    geminiModelLoading,
+    geminiModelError,
+    reloadGeminiModels,
     manualResponse,
     setManualResponse,
     isAdvancing,
@@ -1490,6 +1760,7 @@ export function useStartClientEngine(gameId) {
       viewerEligible: viewerCanConsent,
       viewerHasConsented,
       active: needsConsensus,
+      threshold: Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
     },
   }
 }

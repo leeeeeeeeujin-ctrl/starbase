@@ -1,5 +1,11 @@
 import AutoMatchProgress from './AutoMatchProgress'
 
-export default function SoloMatchClient({ gameId }) {
-  return <AutoMatchProgress gameId={gameId} mode="rank_solo" />
+export default function SoloMatchClient({ gameId, initialHeroId }) {
+  return (
+    <AutoMatchProgress
+      gameId={gameId}
+      mode="rank_solo"
+      initialHeroId={initialHeroId}
+    />
+  )
 }

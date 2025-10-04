@@ -69,6 +69,30 @@ async function loadViewerParticipation(gameId, ownerId) {
   return { score: 1000, role: row?.role || '', heroId: row.hero_id || row.heroId || '' }
 }
 
+async function loadFallbackHeroId(ownerId) {
+  if (!ownerId) return ''
+
+  const result = await withTable(supabase, 'heroes', (table) =>
+    supabase
+      .from(table)
+      .select('id, owner_id, updated_at, created_at')
+      .eq('owner_id', ownerId)
+      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  )
+
+  if (result?.error) {
+    console.warn('히어로 기본값을 불러오지 못했습니다:', result.error)
+    return ''
+  }
+
+  const hero = result?.data
+  if (!hero?.id) return ''
+  return String(hero.id)
+}
+
 async function upsertParticipantRole({ gameId, ownerId, heroId, role, score }) {
   if (!gameId || !ownerId || !role) return { ok: true }
 
@@ -93,9 +117,9 @@ async function upsertParticipantRole({ gameId, ownerId, heroId, role, score }) {
   return { ok: true }
 }
 
-export default function useMatchQueue({ gameId, mode, enabled }) {
+export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) {
   const [viewerId, setViewerId] = useState('')
-  const [heroId, setHeroId] = useState('')
+  const [heroId, setHeroId] = useState(() => (initialHeroId ? String(initialHeroId) : ''))
   const [roles, setRoles] = useState([])
   const [queue, setQueue] = useState([])
   const [status, setStatus] = useState('idle')
@@ -121,7 +145,15 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
         }
       })
       .catch((cause) => console.warn('사용자 정보를 불러오지 못했습니다:', cause))
-    setHeroId(readStoredHeroId())
+    const storedHeroId = readStoredHeroId()
+    if (storedHeroId) {
+      setHeroId((prev) => {
+        if (prev && String(prev).trim()) {
+          return prev
+        }
+        return String(storedHeroId)
+      })
+    }
     return () => {
       cancelled = true
     }
@@ -142,6 +174,27 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
       cancelled = true
     }
   }, [enabled, gameId])
+
+  useEffect(() => {
+    if (!enabled) return
+    if (!initialHeroId) return
+
+    const normalized = String(initialHeroId)
+    setHeroId((prev) => {
+      if (prev === normalized) {
+        return prev
+      }
+      return normalized
+    })
+
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('selectedHeroId', normalized)
+      } catch (error) {
+        console.warn('히어로 정보를 저장하지 못했습니다:', error)
+      }
+    }
+  }, [enabled, initialHeroId])
 
   useEffect(() => {
     if (!enabled) return
@@ -187,6 +240,31 @@ export default function useMatchQueue({ gameId, mode, enabled }) {
       cancelled = true
     }
   }, [enabled, gameId, viewerId])
+
+  useEffect(() => {
+    if (!enabled || !viewerId) return
+    if (heroId) return
+
+    let cancelled = false
+    loadFallbackHeroId(viewerId)
+      .then((fallbackId) => {
+        if (cancelled || !fallbackId) return
+        setHeroId(fallbackId)
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.setItem('selectedHeroId', fallbackId)
+            window.localStorage.setItem('selectedHeroOwnerId', viewerId)
+          } catch (error) {
+            console.warn('히어로 정보를 저장하지 못했습니다:', error)
+          }
+        }
+      })
+      .catch((cause) => console.warn('히어로 기본값을 불러오지 못했습니다:', cause))
+
+    return () => {
+      cancelled = true
+    }
+  }, [enabled, viewerId, heroId])
 
   useEffect(() => {
     if (!enabled) return

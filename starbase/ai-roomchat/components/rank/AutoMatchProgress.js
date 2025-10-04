@@ -4,64 +4,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import useMatchQueue from './hooks/useMatchQueue'
+import usePersistApiKey from './hooks/usePersistApiKey'
 import styles from './AutoMatchProgress.module.css'
+import {
+  HERO_BLOCKER_MESSAGE,
+  HERO_REDIRECT_DELAY_MS,
+  MATCH_TRANSITION_DELAY_MS,
+  QUEUE_TIMEOUT_MS,
+  CONFIRMATION_WINDOW_SECONDS,
+  FAILURE_REDIRECT_DELAY_MS,
+  PENALTY_NOTICE,
+  ROLE_BLOCKER_MESSAGE,
+  VIEWER_BLOCKER_MESSAGE,
+} from './matchConstants'
+import {
+  coerceHeroMap,
+  extractHeroIdsFromAssignments,
+  resolveMemberLabel,
+} from './matchUtils'
+import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
+import { readStoredStartConfig } from './startConfig'
 import { supabase } from '../../lib/supabase'
-
-const HERO_BLOCKER_MESSAGE = '사용할 캐릭터를 선택해 주세요.'
-const ROLE_BLOCKER_MESSAGE = '참가할 역할 정보를 불러오고 있습니다.'
-const VIEWER_BLOCKER_MESSAGE = '로그인 상태를 확인하는 중입니다.'
-
-const HERO_REDIRECT_DELAY_MS = 3000
-const MATCH_TRANSITION_DELAY_MS = 1200
-const QUEUE_TIMEOUT_MS = 60000
-const CONFIRMATION_WINDOW_SECONDS = 10
-const FAILURE_REDIRECT_DELAY_MS = 2400
-const PENALTY_NOTICE =
-  '확인 시간이 지나 매칭이 취소되었습니다. 게임에 참여하지 않으면 불이익이 있을 수 있습니다.'
-
-function coerceHeroMap(raw) {
-  if (!raw) return new Map()
-  if (raw instanceof Map) return raw
-  if (typeof raw !== 'object') return new Map()
-  try {
-    return new Map(Object.entries(raw))
-  } catch (error) {
-    console.warn('히어로 맵 변환 실패:', error)
-    return new Map()
-  }
-}
-
-function resolveHeroName(heroMap, heroId) {
-  if (!heroId) return '미지정 캐릭터'
-  const id = typeof heroId === 'string' ? heroId : String(heroId)
-  const numericId = Number(id)
-  const altKey = Number.isNaN(numericId) ? id : numericId
-  const fromMap = heroMap.get(id) || heroMap.get(altKey)
-  if (fromMap?.name) {
-    return fromMap.name
-  }
-  if (fromMap?.displayName) {
-    return fromMap.displayName
-  }
-  if (typeof fromMap === 'string' && fromMap.trim()) {
-    return fromMap.trim()
-  }
-  return `캐릭터 #${id}`
-}
-
-function resolveMemberLabel({ member, heroMap }) {
-  if (!member) {
-    return '알 수 없는 참가자'
-  }
-  const heroId = member.hero_id || member.heroId || member.heroID || null
-  const heroName = resolveHeroName(heroMap, heroId)
-  const ownerId = member.owner_id || member.ownerId || ''
-  if (!ownerId) {
-    return heroName
-  }
-  const shortOwner = ownerId.length > 6 ? `${ownerId.slice(0, 3)}…${ownerId.slice(-2)}` : ownerId
-  return `${heroName} · ${shortOwner}`
-}
 
 function resolveRoleName(lockedRole, roles) {
   if (lockedRole && typeof lockedRole === 'string' && lockedRole.trim().length) {
@@ -83,107 +46,15 @@ function resolveRoleName(lockedRole, roles) {
   return ''
 }
 
-function computeRoleOffsets(rawRoles = []) {
-  let cursor = 0
-  const offsets = new Map()
-  rawRoles.forEach((role) => {
-    if (!role) return
-    const name = typeof role.name === 'string' ? role.name.trim() : ''
-    const slotCountRaw = role.slot_count ?? role.slotCount ?? role.capacity
-    const slotCount = Number(slotCountRaw)
-    if (!name || !Number.isFinite(slotCount) || slotCount <= 0) {
-      return
-    }
-    offsets.set(name, { offset: cursor, count: slotCount })
-    cursor += slotCount
-  })
-  return { offsets, total: cursor }
-}
-
-function normalizeRoleSlots(roleSlots, roleCount) {
-  if (!Array.isArray(roleSlots)) return []
-  return roleSlots
-    .map((slot) => Number(slot))
-    .filter((slot) => Number.isFinite(slot) && slot >= 0 && slot < roleCount)
-}
-
-function extractHeroIdsFromAssignments({ roles = [], assignments = [] }) {
-  const { offsets, total } = computeRoleOffsets(roles)
-  if (!total) return []
-
-  const heroIds = new Array(total).fill(null)
-  const roleUsage = new Map()
-
-  assignments.forEach((assignment) => {
-    if (!assignment) return
-    const roleName = typeof assignment.role === 'string' ? assignment.role.trim() : ''
-    if (!roleName || !offsets.has(roleName)) return
-    const { offset, count } = offsets.get(roleName)
-    if (!roleUsage.has(roleName)) {
-      roleUsage.set(roleName, new Set())
-    }
-    const usedSlots = roleUsage.get(roleName)
-    const normalizedSlots = normalizeRoleSlots(
-      assignment.roleSlots || assignment.role_slots,
-      count,
-    )
-    const members = Array.isArray(assignment.members) ? assignment.members : []
-
-    normalizedSlots.forEach((slotIndex, index) => {
-      const member = members[index]
-      if (!member) return
-      const heroId = member.hero_id || member.heroId || member.heroID || null
-      if (!heroId) return
-      const globalIndex = offset + slotIndex
-      if (globalIndex < 0 || globalIndex >= heroIds.length) return
-      heroIds[globalIndex] = String(heroId)
-      usedSlots.add(slotIndex)
-    })
-
-    members.forEach((member) => {
-      if (!member) return
-      const heroId = member.hero_id || member.heroId || member.heroID || null
-      if (!heroId) return
-      const alreadyAssigned = heroIds.includes(String(heroId))
-      if (alreadyAssigned) return
-      let slotIndex = 0
-      while (slotIndex < count && usedSlots.has(slotIndex)) {
-        slotIndex += 1
-      }
-      if (slotIndex >= count) {
-        return
-      }
-      const globalIndex = offset + slotIndex
-      if (globalIndex < 0 || globalIndex >= heroIds.length) {
-        return
-      }
-      heroIds[globalIndex] = String(heroId)
-      usedSlots.add(slotIndex)
-    })
-  })
-
-  return heroIds
-}
-
-function readStoredStartConfig() {
-  if (typeof window === 'undefined') {
-    return { apiKey: '', apiVersion: 'gemini' }
-  }
-  let apiKey = ''
-  let apiVersion = 'gemini'
-  try {
-    apiKey = window.sessionStorage.getItem('rank.start.apiKey') || ''
-    apiVersion = window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
-  } catch (error) {
-    console.warn('시작 설정을 불러오지 못했습니다:', error)
-  }
-  return { apiKey, apiVersion }
-}
-
-export default function AutoMatchProgress({ gameId, mode }) {
+export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const router = useRouter()
   const navigationLockedRef = useRef(false)
-  const { state, actions } = useMatchQueue({ gameId, mode, enabled: Boolean(gameId) })
+  const { state, actions } = useMatchQueue({
+    gameId,
+    mode,
+    enabled: Boolean(gameId),
+    initialHeroId,
+  })
   const [joinError, setJoinError] = useState('')
   const joinSignatureRef = useRef('')
   const heroRedirectTimerRef = useRef(null)
@@ -209,11 +80,36 @@ export default function AutoMatchProgress({ gameId, mode }) {
   const queueJoinStartedAtRef = useRef(null)
   const playTriggeredRef = useRef(false)
   const [playNotice, setPlayNotice] = useState('')
+  const [displayStatus, setDisplayStatus] = useState(state.status)
+  const [matchLocked, setMatchLocked] = useState(false)
+  const matchLockedRef = useRef(false)
+  const matchRedirectedRef = useRef(false)
+
+  const persistApiKeyOnServer = usePersistApiKey()
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
     state.lockedRole,
     state.roles,
   ])
+
+  const isRealtimeMatch = useMemo(() => {
+    const meta = state.match?.sampleMeta || state.sampleMeta
+    if (meta && typeof meta.realtime === 'boolean') {
+      return meta.realtime
+    }
+    if (meta && typeof meta.sampleType === 'string') {
+      const normalized = meta.sampleType.toLowerCase()
+      if (normalized === 'participant_pool') {
+        return false
+      }
+      if (normalized === 'realtime_queue') {
+        return true
+      }
+    }
+    return true
+  }, [state.match?.sampleMeta, state.sampleMeta])
+
+  const requiresManualConfirmation = isRealtimeMatch
 
   const blockers = useMemo(() => {
     if (state.status === 'queued' || state.status === 'matched') {
@@ -252,6 +148,71 @@ export default function AutoMatchProgress({ gameId, mode }) {
 
     previousStatusRef.current = state.status
   }, [state.status, state.match])
+
+  useEffect(() => {
+    if (!gameId || !mode) return
+    if (state.status !== 'matched') {
+      matchRedirectedRef.current = false
+      return
+    }
+    if (matchRedirectedRef.current) return
+
+    const match = state.match
+    if (!match) {
+      return
+    }
+
+    const plainHeroMap = match.heroMap instanceof Map
+      ? Object.fromEntries(match.heroMap)
+      : match.heroMap || null
+    const sanitizedMatch = {
+      assignments: Array.isArray(match.assignments) ? match.assignments : [],
+      maxWindow: match.maxWindow ?? null,
+      heroMap: plainHeroMap,
+      matchCode: match.matchCode || '',
+      matchType: match.matchType || 'standard',
+      brawlVacancies: Array.isArray(match.brawlVacancies) ? match.brawlVacancies : [],
+      roleStatus: match.roleStatus || null,
+      sampleMeta: match.sampleMeta || state.sampleMeta || null,
+      dropInTarget: match.dropInTarget || null,
+      turnTimer: match.turnTimer ?? match.turn_timer ?? null,
+    }
+
+    clearMatchConfirmation()
+    const saved = saveMatchConfirmation({
+      gameId,
+      mode,
+      roleName,
+      requiresManualConfirmation,
+      turnTimer,
+      roles: state.roles,
+      viewerId: state.viewerId || '',
+      heroId: state.heroId || '',
+      match: sanitizedMatch,
+      createdAt: Date.now(),
+    })
+
+    if (!saved) {
+      return
+    }
+
+    matchRedirectedRef.current = true
+    navigationLockedRef.current = true
+    router.replace({ pathname: `/rank/${gameId}/match-ready`, query: { mode } })
+  }, [
+    gameId,
+    mode,
+    requiresManualConfirmation,
+    roleName,
+    router,
+    state.heroId,
+    state.match,
+    state.roles,
+    state.sampleMeta,
+    state.status,
+    state.viewerId,
+    turnTimer,
+  ])
 
   useEffect(() => {
     const nextSignature = `${state.viewerId || ''}::${state.heroId || ''}::${roleName}`
@@ -337,6 +298,10 @@ export default function AutoMatchProgress({ gameId, mode }) {
     setJoinError(PENALTY_NOTICE)
     joinSignatureRef.current = ''
     actions.cancelQueue()
+    if (matchLockedRef.current) {
+      matchLockedRef.current = false
+      setMatchLocked(false)
+    }
     if (penaltyRedirectRef.current) {
       clearTimeout(penaltyRedirectRef.current)
       penaltyRedirectRef.current = null
@@ -386,12 +351,25 @@ export default function AutoMatchProgress({ gameId, mode }) {
           return false
         }
 
-        const { apiKey, apiVersion } = readStoredStartConfig()
-        if (!apiKey.trim()) {
-          setJoinError('AI API 키가 설정되지 않아 전투를 시작할 수 없습니다.')
-          playTriggeredRef.current = false
-          return false
+        const { apiKey, apiVersion, geminiMode, geminiModel } = readStoredStartConfig()
+        const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+
+        if (trimmedApiKey && typeof window !== 'undefined') {
+          try {
+            window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
+          } catch (error) {
+            console.warn('[AutoMatchProgress] API 키를 저장하지 못했습니다:', error)
+          }
         }
+        if (!trimmedApiKey) {
+          setPlayNotice('AI API 키 확인은 전투 화면에서 진행됩니다.')
+          return true
+        }
+
+        await persistApiKeyOnServer(trimmedApiKey, apiVersion, {
+          geminiMode,
+          geminiModel,
+        })
 
         setPlayNotice('전투를 준비하는 중입니다…')
 
@@ -404,8 +382,10 @@ export default function AutoMatchProgress({ gameId, mode }) {
           body: JSON.stringify({
             gameId,
             heroIds,
-            userApiKey: apiKey,
+            userApiKey: trimmedApiKey,
             apiVersion,
+            geminiMode: apiVersion === 'gemini' ? geminiMode : undefined,
+            geminiModel: apiVersion === 'gemini' ? geminiModel : undefined,
           }),
         })
 
@@ -419,7 +399,11 @@ export default function AutoMatchProgress({ gameId, mode }) {
         if (!response.ok || (payload && payload.ok === false && payload.error)) {
           const message =
             payload?.error || payload?.detail || '전투를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          setJoinError(message)
+          if (message === 'missing_user_api_key') {
+            setJoinError('AI API 키가 필요합니다. 전투 화면에서 키를 입력한 뒤 다시 시도해 주세요.')
+          } else {
+            setJoinError(message)
+          }
           setPlayNotice('')
           playTriggeredRef.current = false
           return false
@@ -428,7 +412,11 @@ export default function AutoMatchProgress({ gameId, mode }) {
         if (payload?.error && !payload?.ok) {
           const message =
             payload?.error || '전투를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          setJoinError(message)
+          if (message === 'missing_user_api_key') {
+            setJoinError('AI API 키가 필요합니다. 전투 화면에서 키를 입력한 뒤 다시 시도해 주세요.')
+          } else {
+            setJoinError(message)
+          }
           setPlayNotice('')
           playTriggeredRef.current = false
           return false
@@ -454,11 +442,12 @@ export default function AutoMatchProgress({ gameId, mode }) {
         return false
       }
     },
-    [gameId, state.match?.assignments, state.roles],
+    [gameId, persistApiKeyOnServer, state.match?.assignments, state.roles],
   )
 
   const handleConfirmMatch = useCallback(async () => {
-    if (confirmationState !== 'counting' || confirming) return
+    if (confirmationState !== 'counting' && confirmationState !== 'auto') return
+    if (confirming) return
 
     setConfirming(true)
     try {
@@ -504,6 +493,9 @@ export default function AutoMatchProgress({ gameId, mode }) {
 
       const playOk = await triggerPlay(token)
       if (!playOk) {
+        if (!requiresManualConfirmation) {
+          setConfirmationState('failed')
+        }
         return
       }
 
@@ -527,6 +519,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
     confirming,
     gameId,
     mode,
+    requiresManualConfirmation,
     roleName,
     state.match?.matchCode,
     turnTimer,
@@ -535,6 +528,34 @@ export default function AutoMatchProgress({ gameId, mode }) {
   useEffect(() => {
     latestStatusRef.current = state.status
   }, [state.status])
+
+  useEffect(() => {
+    if (
+      matchLocked ||
+      state.status === 'matched' ||
+      confirmationState === 'counting' ||
+      confirmationState === 'confirmed'
+    ) {
+      setDisplayStatus('matched')
+      return
+    }
+
+    if (confirmationState === 'failed') {
+      setDisplayStatus('queued')
+      return
+    }
+
+    setDisplayStatus(state.status)
+  }, [confirmationState, matchLocked, state.status])
+
+  useEffect(() => {
+    if (confirmationState === 'failed') {
+      if (matchLockedRef.current) {
+        matchLockedRef.current = false
+        setMatchLocked(false)
+      }
+    }
+  }, [confirmationState])
 
   useEffect(() => {
     if (state.status !== 'matched') {
@@ -564,6 +585,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
   useEffect(() => {
     if (!gameId || !mode) return
     if (state.status === 'queued' || state.status === 'matched') return
+    if (confirmationState !== 'idle') return
     if (blockers.length) return
 
     const signature = `${state.viewerId || ''}::${state.heroId || ''}::${roleName}`
@@ -602,7 +624,17 @@ export default function AutoMatchProgress({ gameId, mode }) {
         })
       }
     })
-  }, [actions, blockers, gameId, mode, roleName, state.heroId, state.status, state.viewerId])
+  }, [
+    actions,
+    blockers,
+    confirmationState,
+    gameId,
+    mode,
+    roleName,
+    state.heroId,
+    state.status,
+    state.viewerId,
+  ])
 
   useEffect(() => {
     if (!blockers.includes(HERO_BLOCKER_MESSAGE) || state.status !== 'idle') {
@@ -674,26 +706,51 @@ export default function AutoMatchProgress({ gameId, mode }) {
   }, [actions, gameId, router, state.status])
 
   useEffect(() => {
-    if (state.status !== 'matched') {
-      if (confirmationState === 'confirmed') {
-        return
+    if (matchRedirectedRef.current) {
+      return
+    }
+    if (state.status === 'matched') {
+      if (!matchLockedRef.current) {
+        matchLockedRef.current = true
+        setMatchLocked(true)
       }
-      clearConfirmationTimers()
-      setConfirmationState('idle')
-      setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
+      if (queueTimeoutRef.current) {
+        clearTimeout(queueTimeoutRef.current)
+        queueTimeoutRef.current = null
+      }
       queueJoinStartedAtRef.current = null
+
+      if (confirmationState === 'idle') {
+        if (requiresManualConfirmation) {
+          startConfirmationCountdown()
+        } else {
+          setConfirmationState('auto')
+        }
+      }
       return
     }
 
-    if (queueTimeoutRef.current) {
-      clearTimeout(queueTimeoutRef.current)
-      queueTimeoutRef.current = null
+    if (state.status === 'idle' || confirmationState === 'failed') {
+      if (matchLockedRef.current) {
+        matchLockedRef.current = false
+        setMatchLocked(false)
+      }
+    }
+
+    if (matchLockedRef.current && confirmationState === 'counting') {
+      return
+    }
+
+    if (confirmationState === 'confirmed') {
+      return
+    }
+
+    clearConfirmationTimers()
+    if (confirmationState !== 'idle') {
+      setConfirmationState('idle')
+      setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
     }
     queueJoinStartedAtRef.current = null
-
-    if (confirmationState === 'idle') {
-      startConfirmationCountdown()
-    }
   }, [
     clearConfirmationTimers,
     confirmationState,
@@ -706,6 +763,32 @@ export default function AutoMatchProgress({ gameId, mode }) {
       handleConfirmationTimeout()
     }
   }, [confirmationRemaining, confirmationState, handleConfirmationTimeout])
+
+  useEffect(() => {
+    if (!state.match) {
+      return
+    }
+    if (requiresManualConfirmation) {
+      return
+    }
+    if (confirmationState !== 'auto') {
+      return
+    }
+    if (confirming) {
+      return
+    }
+    if (matchRedirectedRef.current) {
+      return
+    }
+
+    handleConfirmMatch()
+  }, [
+    confirming,
+    confirmationState,
+    handleConfirmMatch,
+    requiresManualConfirmation,
+    state.match,
+  ])
 
   useEffect(() => {
     if (state.status !== 'matched') return undefined
@@ -750,6 +833,7 @@ export default function AutoMatchProgress({ gameId, mode }) {
       }
       const latestConfirmation = latestConfirmationRef.current
       if (
+        !matchRedirectedRef.current &&
         (latestStatusRef.current === 'queued' || latestStatusRef.current === 'matched') &&
         latestConfirmation !== 'confirmed'
       ) {
@@ -863,36 +947,8 @@ export default function AutoMatchProgress({ gameId, mode }) {
     return lines
   }, [playNotice, state.match, turnTimer])
 
-  const display = useMemo(() => {
-    if (confirmationState === 'confirmed') {
-      return {
-        title: '전투 화면으로 이동 중…',
-        detail: '매칭이 확정되었습니다. 전투를 불러오고 있습니다.',
-      }
-    }
-
-    if (confirmationState === 'counting') {
-      return {
-        title: '매칭이 잡혔습니다~',
-        detail: `${confirmationRemaining}초 안에 버튼을 눌러 전투를 시작해 주세요.`,
-      }
-    }
-
-    if (confirmationState === 'failed') {
-      return {
-        title: '매칭이 취소되었습니다.',
-        detail: joinError || PENALTY_NOTICE,
-      }
-    }
-
-    if (state.status === 'matched') {
-      return {
-        title: '매칭이 잡혔습니다~',
-        detail: '',
-      }
-    }
-
-    if (state.status === 'queued') {
+  const baseDisplay = useMemo(() => {
+    if (displayStatus === 'queued') {
       return {
         title: '매칭 중…',
         detail: '',
@@ -917,76 +973,179 @@ export default function AutoMatchProgress({ gameId, mode }) {
       title: '매칭 중…',
       detail: '',
     }
-  }, [
-    blockers,
-    confirmationRemaining,
-    confirmationState,
-    joinError,
-    state.status,
-  ])
+  }, [blockers, displayStatus, joinError])
+
+  const matchedDisplay = useMemo(() => {
+    if (confirmationState === 'confirmed') {
+      return {
+        title: '전투 화면으로 이동 중…',
+        detail: '매칭이 확정되었습니다. 전투를 불러오고 있습니다.',
+      }
+    }
+
+    if (confirmationState === 'auto') {
+      return {
+        title: '매칭이 잡혔습니다~',
+        detail: '비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.',
+      }
+    }
+
+    if (confirmationState === 'counting') {
+      return {
+        title: '매칭이 잡혔습니다~',
+        detail: `${confirmationRemaining}초 안에 버튼을 눌러 전투를 시작해 주세요.`,
+      }
+    }
+
+    if (confirmationState === 'failed') {
+      return {
+        title: '매칭이 취소되었습니다.',
+        detail: joinError || PENALTY_NOTICE,
+      }
+    }
+
+    return {
+      title: '매칭이 잡혔습니다~',
+      detail: '',
+    }
+    }, [confirmationRemaining, confirmationState, joinError])
+
+  const showMatchedOverlay = matchLocked || confirmationState !== 'idle'
+
+  const showBaseSpinner = useMemo(() => {
+    if (confirmationState === 'failed') {
+      return true
+    }
+    return displayStatus !== 'matched'
+  }, [confirmationState, displayStatus])
 
   return (
-    <div className={styles.root} aria-live="polite" aria-busy={state.status !== 'matched'}>
-      <div className={styles.spinner} aria-hidden="true" />
-      <div className={styles.status} role="status">
-        <p className={styles.message}>{display.title}</p>
-        {display.detail ? (
-          <p className={styles.detail}>{display.detail}</p>
-        ) : null}
-        {matchMetaLines.length ? (
-          <div className={styles.matchMeta} role="note">
-            {matchMetaLines.map((line) => (
-              <p key={line} className={styles.matchMetaLine}>
-                {line}
-              </p>
-            ))}
-          </div>
-        ) : null}
-        {assignmentSummary.length ? (
-          <div className={styles.assignmentList} role="group" aria-label="매칭된 역할 구성">
-            {assignmentSummary.map((assignment) => (
-              <div key={assignment.key} className={styles.assignmentItem}>
-                <span className={styles.assignmentRole}>{assignment.role}</span>
-                {assignment.members.length ? (
-                  <ul className={styles.assignmentMembers}>
-                    {assignment.members.map((member) => (
-                      <li key={member.key} className={styles.assignmentMember}>
-                        {member.label}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {confirmationState === 'counting' ? (
-          <div className={styles.confirmArea}>
-            <button
-              type="button"
-              className={styles.confirmButton}
-              onClick={handleConfirmMatch}
-              disabled={confirming}
-              ref={confirmButtonRef}
-            >
-              {confirming ? '준비 중…' : '전투 시작하기'}
-              <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
-            </button>
-            <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
-          </div>
-        ) : null}
-        {extraBlockers.length ? (
-          <ul className={styles.blockerList}>
-            {extraBlockers.map((message) => (
-              <li key={message} className={styles.blockerItem}>
-                {message}
-              </li>
-            ))}
-          </ul>
-        ) : null}
+    <div
+      className={styles.root}
+      aria-live="polite"
+      aria-busy={!showMatchedOverlay && displayStatus !== 'matched'}
+    >
+      <div
+        className={styles.baseLayer}
+        aria-hidden={showMatchedOverlay ? 'true' : 'false'}
+      >
+        {showBaseSpinner ? <div className={styles.spinner} aria-hidden="true" /> : null}
+        <div className={styles.status} role="status">
+          <p className={styles.message}>{baseDisplay.title}</p>
+          {baseDisplay.detail ? (
+            <p className={styles.detail}>{baseDisplay.detail}</p>
+          ) : null}
+          {!showMatchedOverlay && matchMetaLines.length ? (
+            <div className={styles.matchMeta} role="note">
+              {matchMetaLines.map((line) => (
+                <p key={line} className={styles.matchMetaLine}>
+                  {line}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          {!showMatchedOverlay && assignmentSummary.length ? (
+            <div className={styles.assignmentList} role="group" aria-label="매칭된 역할 구성">
+              {assignmentSummary.map((assignment) => (
+                <div key={assignment.key} className={styles.assignmentItem}>
+                  <span className={styles.assignmentRole}>{assignment.role}</span>
+                  {assignment.members.length ? (
+                    <ul className={styles.assignmentMembers}>
+                      {assignment.members.map((member) => (
+                        <li key={member.key} className={styles.assignmentMember}>
+                          {member.label}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {!showMatchedOverlay && extraBlockers.length ? (
+            <ul className={styles.blockerList}>
+              {extraBlockers.map((message) => (
+                <li key={message} className={styles.blockerItem}>
+                  {message}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       </div>
+
+      {showMatchedOverlay ? (
+        <div className={styles.matchedOverlay} role="status" aria-live="assertive">
+          <div className={styles.status}>
+            <p className={styles.message}>{matchedDisplay.title}</p>
+            {matchedDisplay.detail ? (
+              <p className={styles.detail}>{matchedDisplay.detail}</p>
+            ) : null}
+            {matchMetaLines.length ? (
+              <div className={styles.matchMeta} role="note">
+                {matchMetaLines.map((line) => (
+                  <p key={line} className={styles.matchMetaLine}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            {assignmentSummary.length ? (
+              <div className={styles.assignmentList} role="group" aria-label="매칭된 역할 구성">
+                {assignmentSummary.map((assignment) => (
+                  <div key={assignment.key} className={styles.assignmentItem}>
+                    <span className={styles.assignmentRole}>{assignment.role}</span>
+                    {assignment.members.length ? (
+                      <ul className={styles.assignmentMembers}>
+                        {assignment.members.map((member) => (
+                          <li key={member.key} className={styles.assignmentMember}>
+                            {member.label}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {confirmationState === 'counting' && requiresManualConfirmation ? (
+              <div className={styles.confirmArea}>
+                <button
+                  type="button"
+                  className={styles.confirmButton}
+                  onClick={handleConfirmMatch}
+                  disabled={confirming}
+                  ref={confirmButtonRef}
+                >
+                  {confirming ? '준비 중…' : '전투 시작하기'}
+                  <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
+                </button>
+                <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
+              </div>
+            ) : null}
+            {!requiresManualConfirmation &&
+            (confirmationState === 'auto' || confirmationState === 'counting') ? (
+              <div className={styles.autoConfirmNotice}>
+                <p className={styles.confirmHint}>비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.</p>
+              </div>
+            ) : null}
+            {confirmationState === 'failed' && extraBlockers.length ? (
+              <ul className={styles.blockerList}>
+                {extraBlockers.map((message) => (
+                  <li key={message} className={styles.blockerItem}>
+                    {message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {joinError && state.status === 'queued' ? (
         <p className={styles.srOnly} role="alert">{joinError}</p>
       ) : null}

@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { callChat } from '@/lib/rank/ai'
+import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys'
 import { buildTurnSummaryPayload } from '@/lib/rank/turnSummary'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
@@ -61,6 +62,8 @@ export default async function handler(req, res) {
     prompt,
     system = '',
     apiVersion = 'gemini',
+    geminiMode,
+    geminiModel,
     session_id: sessionId,
     game_id: gameId,
     prompt_role: promptRoleInput,
@@ -75,7 +78,51 @@ export default async function handler(req, res) {
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
     return res.status(400).json({ error: 'missing_prompt' })
   }
-  if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+  const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+
+  const providedGeminiMode = typeof geminiMode === 'string' ? geminiMode.trim() : ''
+  const providedGeminiModel = typeof geminiModel === 'string' ? geminiModel.trim() : ''
+
+  if (trimmedApiKey) {
+    try {
+      await upsertUserApiKey({
+        userId: user.id,
+        apiKey: trimmedApiKey,
+        apiVersion,
+        geminiMode: providedGeminiMode,
+        geminiModel: providedGeminiModel,
+      })
+    } catch (error) {
+      console.warn('[run-turn] Failed to persist API key:', error)
+    }
+  }
+
+  let effectiveApiKey = trimmedApiKey
+  let effectiveApiVersion = apiVersion
+  let effectiveGeminiMode = providedGeminiMode
+  let effectiveGeminiModel = providedGeminiModel
+
+  if (!effectiveApiKey) {
+    try {
+      const stored = await fetchUserApiKey(user.id)
+      if (stored?.apiKey) {
+        effectiveApiKey = stored.apiKey
+        if (!effectiveApiVersion && stored.apiVersion) {
+          effectiveApiVersion = stored.apiVersion
+        }
+        if (!effectiveGeminiMode && stored.geminiMode) {
+          effectiveGeminiMode = stored.geminiMode
+        }
+        if (!effectiveGeminiModel && stored.geminiModel) {
+          effectiveGeminiModel = stored.geminiModel
+        }
+      }
+    } catch (error) {
+      console.warn('[run-turn] Failed to load stored API key:', error)
+    }
+  }
+
+  if (!effectiveApiKey) {
     return res.status(400).json({ error: 'missing_user_api_key' })
   }
 
@@ -102,10 +149,14 @@ export default async function handler(req, res) {
   }
 
   const result = await callChat({
-    userApiKey: apiKey,
+    userApiKey: effectiveApiKey,
     system: typeof system === 'string' ? system : '',
     user: prompt,
-    apiVersion,
+    apiVersion: effectiveApiVersion || 'gemini',
+    providerOptions:
+      (effectiveApiVersion || 'gemini') === 'gemini'
+        ? { geminiMode: effectiveGeminiMode, geminiModel: effectiveGeminiModel }
+        : {},
   })
 
   if (result?.error) {

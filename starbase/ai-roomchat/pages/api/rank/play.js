@@ -7,6 +7,7 @@ import { compileTemplate } from '@/lib/rank/prompt'
 import { callChat } from '@/lib/rank/ai'
 import { judgeOutcome } from '@/lib/rank/judge'
 import { recordBattle } from '@/lib/rank/persist'
+import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 export default async function handler(req, res) {
@@ -27,7 +28,61 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'unauthorized' })
     }
 
-    const { gameId, heroIds = [], userApiKey, apiVersion = 'gemini' } = req.body || {}
+    const {
+      gameId,
+      heroIds = [],
+      userApiKey,
+      apiVersion = 'gemini',
+      geminiMode,
+      geminiModel,
+    } = req.body || {}
+
+    const trimmedApiKey = typeof userApiKey === 'string' ? userApiKey.trim() : ''
+    const providedGeminiMode = typeof geminiMode === 'string' ? geminiMode.trim() : ''
+    const providedGeminiModel = typeof geminiModel === 'string' ? geminiModel.trim() : ''
+
+    if (trimmedApiKey) {
+      try {
+        await upsertUserApiKey({
+          userId: user.id,
+          apiKey: trimmedApiKey,
+          apiVersion,
+          geminiMode: providedGeminiMode,
+          geminiModel: providedGeminiModel,
+        })
+      } catch (error) {
+        console.warn('[play] Failed to persist API key:', error)
+      }
+    }
+
+    let effectiveApiKey = trimmedApiKey
+    let effectiveApiVersion = apiVersion
+    let effectiveGeminiMode = providedGeminiMode
+    let effectiveGeminiModel = providedGeminiModel
+
+    if (!effectiveApiKey) {
+      try {
+        const stored = await fetchUserApiKey(user.id)
+        if (stored?.apiKey) {
+          effectiveApiKey = stored.apiKey
+          if (!effectiveApiVersion && stored.apiVersion) {
+            effectiveApiVersion = stored.apiVersion
+          }
+          if (!effectiveGeminiMode && stored.geminiMode) {
+            effectiveGeminiMode = stored.geminiMode
+          }
+          if (!effectiveGeminiModel && stored.geminiModel) {
+            effectiveGeminiModel = stored.geminiModel
+          }
+        }
+      } catch (error) {
+        console.warn('[play] Failed to load stored API key:', error)
+      }
+    }
+
+    if (!effectiveApiKey) {
+      return res.status(400).json({ error: 'missing_user_api_key' })
+    }
 
     // 게임 메타
     const { data: game, error: gerr } = await supabase.from('rank_games').select('*').eq('id', gameId).single()
@@ -62,10 +117,14 @@ export default async function handler(req, res) {
 
     // AI 호출(유저 키)
     const ai = await callChat({
-      userApiKey,
+      userApiKey: effectiveApiKey,
       system: '당신은 비동기 PvE 랭킹 전투의 심판/해설자 겸 시뮬레이터입니다.',
       user: prompt,
-      apiVersion,
+      apiVersion: effectiveApiVersion || 'gemini',
+      providerOptions:
+        (effectiveApiVersion || 'gemini') === 'gemini'
+          ? { geminiMode: effectiveGeminiMode, geminiModel: effectiveGeminiModel }
+          : {},
     })
     if (ai.error) {
       // 쿼터/에러 → 저장하지 않고 종료, 재시도 가능

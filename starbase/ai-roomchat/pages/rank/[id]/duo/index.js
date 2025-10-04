@@ -69,7 +69,7 @@ export default function DuoRoomPage() {
   const handleLaunch = useCallback(
     () => {
       if (!id) return
-      router.push({ pathname: `/rank/${id}/duo/queue` })
+      router.push({ pathname: `/rank/${id}/duo-match` })
     },
     [id, router],
   )

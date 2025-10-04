@@ -34,7 +34,8 @@
   width: 100%;
   max-width: 560px;
   margin: 0 auto;
-  padding: 64px 16px 96px;
+  padding: 64px 16px 160px;
+  padding-bottom: calc(160px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 20px;

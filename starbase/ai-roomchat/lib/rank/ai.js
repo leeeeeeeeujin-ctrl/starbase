@@ -1,4 +1,11 @@
 // lib/rank/ai.js
+import {
+  DEFAULT_GEMINI_MODE,
+  DEFAULT_GEMINI_MODEL,
+  buildGeminiModelCandidates,
+  normalizeGeminiMode,
+  normalizeGeminiModelId,
+} from './geminiConfig'
 
 function safeParseJson(value) {
   if (!value) return null
@@ -72,53 +79,63 @@ function deriveGoogleError(status, rawBody) {
   return { error: 'ai_failed', detail: message }
 }
 
-async function callGemini({ apiKey, system, prompt }) {
+async function callGemini({ apiKey, system, prompt, mode, model }) {
   const runtimeFetch = await getRuntimeFetch()
-  const body = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: prompt }],
-      },
-    ],
+  const preparedPrompt = typeof prompt === 'string' ? prompt : ''
+  const trimmedSystem = typeof system === 'string' ? system.trim() : ''
+  const normalizedMode = normalizeGeminiMode(mode)
+  const selectedModel = normalizeGeminiModelId(model)
+  const modelCandidates = buildGeminiModelCandidates(normalizedMode, selectedModel)
+  if (!modelCandidates.length) {
+    modelCandidates.push(normalizeGeminiModelId(DEFAULT_GEMINI_MODEL))
   }
 
-  if (system) {
-    body.systemInstruction = {
-      role: 'system',
-      parts: [{ text: system }],
-    }
-  }
+  const baseUrl =
+    normalizedMode === 'v1'
+      ? 'https://generativelanguage.googleapis.com/v1/models'
+      : 'https://generativelanguage.googleapis.com/v1beta/models'
 
-  const endpoints = [
-    {
-      url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
-      queryKey: true,
-    },
-    {
-      url: 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent',
-      queryKey: false,
-    },
-  ]
+  const supportsSystemInstruction = normalizedMode === DEFAULT_GEMINI_MODE
+
+  const endpoints = modelCandidates.map((modelId) => ({
+    url: `${baseUrl}/${modelId}:generateContent`,
+    supportsSystemInstruction,
+  }))
 
   let lastFailure = null
 
   for (const endpoint of endpoints) {
+    const combinedPrompt =
+      endpoint.supportsSystemInstruction || !trimmedSystem
+        ? preparedPrompt
+        : preparedPrompt
+        ? `${trimmedSystem}\n\n${preparedPrompt}`
+        : trimmedSystem
+
+    const body = {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: combinedPrompt }],
+        },
+      ],
+    }
+
+    if (endpoint.supportsSystemInstruction && trimmedSystem) {
+      body.systemInstruction = {
+        role: 'system',
+        parts: [{ text: trimmedSystem }],
+      }
+    }
+
     const headers = {
       'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
     }
-
-    if (!endpoint.queryKey) {
-      headers['x-goog-api-key'] = apiKey
-    }
-
-    const url = endpoint.queryKey
-      ? `${endpoint.url}?key=${encodeURIComponent(apiKey)}`
-      : endpoint.url
 
     let resp
     try {
-      resp = await runtimeFetch(url, {
+      resp = await runtimeFetch(endpoint.url, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
@@ -281,7 +298,13 @@ async function callOpenAIChat({ apiKey, system, prompt }) {
   return { text: typeof value === 'string' ? value : '' }
 }
 
-export async function callChat({ userApiKey, system, user, apiVersion = 'gemini' }) {
+export async function callChat({
+  userApiKey,
+  system,
+  user,
+  apiVersion = 'gemini',
+  providerOptions = {},
+}) {
   const trimmedKey = typeof userApiKey === 'string' ? userApiKey.trim() : ''
   if (!trimmedKey) {
     return { error: 'missing_user_api_key' }
@@ -296,7 +319,13 @@ export async function callChat({ userApiKey, system, user, apiVersion = 'gemini'
 
   try {
     if (apiVersion === 'gemini') {
-      return await callGemini({ apiKey: trimmedKey, system: trimmedSystem, prompt: trimmedPrompt })
+      return await callGemini({
+        apiKey: trimmedKey,
+        system: trimmedSystem,
+        prompt: trimmedPrompt,
+        mode: providerOptions.geminiMode || providerOptions.mode,
+        model: providerOptions.geminiModel || providerOptions.model,
+      })
     }
 
     if (apiVersion === 'responses') {
