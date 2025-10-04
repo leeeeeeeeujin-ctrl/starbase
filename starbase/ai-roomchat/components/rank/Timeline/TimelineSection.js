@@ -28,6 +28,15 @@ const TYPE_TONES = {
 
 function defaultOwnerLabel(event) {
   if (!event) return '알 수 없는 참가자'
+  if (event.context && typeof event.context === 'object') {
+    const actorLabel =
+      typeof event.context.actorLabel === 'string' && event.context.actorLabel.trim()
+        ? event.context.actorLabel.trim()
+        : ''
+    if (actorLabel) {
+      return actorLabel
+    }
+  }
   if (event.ownerId) {
     const trimmed = String(event.ownerId).trim()
     if (trimmed) {
@@ -67,6 +76,37 @@ function buildMetaParts(event) {
     meta.push('모드: 비실시간')
   } else if (context.mode === 'realtime') {
     meta.push('모드: 실시간')
+  }
+  const metadata = event.metadata && typeof event.metadata === 'object' ? event.metadata : null
+  if (metadata?.apiKeyPool) {
+    const pool = metadata.apiKeyPool
+    if (pool.source) {
+      meta.push(`키 출처: ${pool.source}`)
+    }
+    if (pool.provider) {
+      meta.push(`프로바이더: ${pool.provider}`)
+    }
+    if (pool.newSample) {
+      meta.push(`신규 키: ${pool.newSample}`)
+    }
+    if (pool.replacedSample) {
+      meta.push(`교체 키: ${pool.replacedSample}`)
+    }
+  }
+  if (metadata?.matching) {
+    const matching = metadata.matching
+    if (matching.matchType) {
+      meta.push(`매치 유형: ${matching.matchType}`)
+    }
+    if (matching.matchCode) {
+      meta.push(`매치 코드: ${matching.matchCode}`)
+    }
+    if (matching.dropInTarget?.role) {
+      meta.push(`대상 역할: ${matching.dropInTarget.role}`)
+    }
+    if (Number.isFinite(Number(matching.dropInMeta?.queueSize))) {
+      meta.push(`큐 대기 ${Number(matching.dropInMeta.queueSize)}명`)
+    }
   }
   return meta
 }

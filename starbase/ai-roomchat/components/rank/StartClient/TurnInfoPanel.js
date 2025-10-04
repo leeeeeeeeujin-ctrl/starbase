@@ -70,7 +70,9 @@ export default function TurnInfoPanel({
         <span style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>AI API 키</span>
         <input
           value={apiKey}
-          onChange={(event) => onApiKeyChange(event.target.value)}
+          onChange={(event) =>
+            onApiKeyChange(event.target.value, { source: 'user_input' })
+          }
           placeholder="API 키를 입력하세요"
           style={{
             padding: '10px 12px',

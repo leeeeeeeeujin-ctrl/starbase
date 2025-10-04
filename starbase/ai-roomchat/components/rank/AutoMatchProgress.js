@@ -23,7 +23,7 @@ import {
   resolveMemberLabel,
 } from './matchUtils'
 import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
-import { readStoredStartConfig } from './startConfig'
+import { buildMatchMetaPayload, readStoredStartConfig, storeStartMatchMeta } from './startConfig'
 import { supabase } from '../../lib/supabase'
 
 function resolveRoleName(lockedRole, roles) {
@@ -460,6 +460,17 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         throw new Error('세션 정보를 확인하지 못했습니다.')
       }
 
+      const matchMetaPayload = buildMatchMetaPayload(state.match, {
+        mode,
+        turnTimer: Number.isFinite(Number(turnTimer)) ? Number(turnTimer) : null,
+        source: 'auto_match_progress',
+      })
+      if (matchMetaPayload) {
+        storeStartMatchMeta(matchMetaPayload)
+      } else {
+        storeStartMatchMeta(null)
+      }
+
       const response = await fetch('/api/rank/start-session', {
         method: 'POST',
         headers: {
@@ -480,6 +491,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         const message =
           payload?.error || payload?.detail || '전투를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
         setJoinError(message)
+        storeStartMatchMeta(null)
         return
       }
 
@@ -488,6 +500,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         const message =
           payload?.error || '전투를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
         setJoinError(message)
+        storeStartMatchMeta(null)
         return
       }
 
@@ -496,6 +509,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         if (!requiresManualConfirmation) {
           setConfirmationState('failed')
         }
+        storeStartMatchMeta(null)
         return
       }
 
@@ -509,6 +523,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     } catch (error) {
       console.error('세션 시작 실패:', error)
       setJoinError('전투를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      storeStartMatchMeta(null)
     } finally {
       setConfirming(false)
     }

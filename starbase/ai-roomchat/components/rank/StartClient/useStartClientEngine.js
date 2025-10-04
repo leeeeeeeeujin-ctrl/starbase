@@ -45,6 +45,7 @@ import {
   normalizeGeminiModelId,
 } from '../../../lib/rank/geminiConfig'
 import useGeminiModelCatalog from '../hooks/useGeminiModelCatalog'
+import { consumeStartMatchMeta } from '../startConfig'
 
 function normalizeHeroName(name) {
   if (!name) return ''
@@ -143,6 +144,12 @@ function formatCooldownMessage(info) {
   return `${detail}최근 사용한 API 키${sample}는 ${duration} 동안 사용할 수 없습니다. 새 키를 입력하거나 쿨다운이 끝난 뒤 다시 시도해 주세요.`
 }
 
+function buildKeySample(value) {
+  if (!value) return ''
+  if (value.length <= 6) return value
+  return `${value.slice(0, 3)}…${value.slice(-2)}`
+}
+
 function deriveParticipantOwnerId(participant) {
   if (!participant) return null
   return (
@@ -192,7 +199,12 @@ function buildTimelineLogEntry(event, { ownerDisplayMap, defaultTurn = null, def
   const mode = typeof context.mode === 'string' ? context.mode : defaultMode
 
   const ownerInfo = ownerId && ownerDisplayMap ? ownerDisplayMap.get(ownerId) : null
-  const ownerLabel = ownerInfo?.displayName || (ownerId ? `플레이어 ${ownerId.slice(0, 6)}` : '시스템')
+  const actorLabel =
+    typeof context.actorLabel === 'string' && context.actorLabel.trim()
+      ? context.actorLabel.trim()
+      : null
+  const ownerLabel =
+    actorLabel || ownerInfo?.displayName || (ownerId ? `플레이어 ${ownerId.slice(0, 6)}` : '시스템')
 
   let content = ''
   if (type === 'drop_in_joined') {
@@ -217,6 +229,39 @@ function buildTimelineLogEntry(event, { ownerDisplayMap, defaultTurn = null, def
     } else {
       content = '✅ 동의가 충족되어 턴을 종료합니다.'
     }
+  } else if (type === 'api_key_pool_replaced') {
+    const poolMeta = event.metadata?.apiKeyPool || {}
+    const sourceLabel = formatApiKeyPoolSource(poolMeta.source)
+    const providerLabel = poolMeta.provider ? ` (${poolMeta.provider})` : ''
+    const newLabel = poolMeta.newSample ? `새 키 ${poolMeta.newSample}` : 'API 키 업데이트'
+    const replacedLabel = poolMeta.replacedSample ? ` → 교체: ${poolMeta.replacedSample}` : ''
+    content = `🔑 ${sourceLabel}${providerLabel} ${newLabel}${replacedLabel}`
+  } else if (type === 'drop_in_matching_context') {
+    const matching = event.metadata?.matching || {}
+    const label = matching.matchType === 'drop_in' ? '난입 매칭' : '매칭'
+    const details = []
+    if (matching.matchCode) {
+      details.push(`코드 ${matching.matchCode}`)
+    }
+    if (matching.dropInTarget?.role) {
+      details.push(`${matching.dropInTarget.role} 슬롯`)
+    }
+    if (matching.dropInTarget?.roomCode) {
+      details.push(`룸 ${matching.dropInTarget.roomCode}`)
+    }
+    const scoreGap = Number(matching.dropInTarget?.scoreDifference)
+    if (Number.isFinite(scoreGap) && scoreGap !== 0) {
+      details.push(`점수차 ±${Math.abs(Math.round(scoreGap))}`)
+    }
+    const queueSize = Number(matching.dropInMeta?.queueSize)
+    if (Number.isFinite(queueSize) && queueSize >= 0) {
+      details.push(`큐 대기 ${queueSize}명`)
+    }
+    const roomsConsidered = Number(matching.dropInMeta?.roomsConsidered)
+    if (Number.isFinite(roomsConsidered) && roomsConsidered > 0) {
+      details.push(`검토 룸 ${roomsConsidered}개`)
+    }
+    content = `🎯 ${label} 정보: ${details.length ? details.join(', ') : '백엔드 매칭 요약이 동기화되었습니다.'}`
   } else {
     content = `ℹ️ ${ownerLabel} 이벤트: ${type}`
   }
@@ -270,6 +315,26 @@ function formatRealtimeReason(reason) {
   }
 }
 
+function formatApiKeyPoolSource(source) {
+  const normalized = typeof source === 'string' ? source.trim().toLowerCase() : ''
+  switch (normalized) {
+    case 'user_input':
+      return '사용자 입력'
+    case 'auto_rotation':
+      return '자동 교체'
+    case 'pool_rotation':
+      return '키 풀 교체'
+    case 'cleared':
+      return 'API 키 제거'
+    case 'match_ready_client':
+      return '매치 준비'
+    case 'auto_match_progress':
+      return '자동 매칭'
+    default:
+      return normalized ? normalized : 'API 키 교체'
+  }
+}
+
 function isApiKeyError(error) {
   if (!error) return false
   const code = typeof error?.code === 'string' ? error.code.toLowerCase() : ''
@@ -295,6 +360,7 @@ export function useStartClientEngine(gameId) {
     typeof window === 'undefined'
       ? ''
       : (window.sessionStorage.getItem('rank.start.apiKey') || '').trim()
+  const initialMatchMeta = consumeStartMatchMeta()
   const initialGeminiConfig = (() => {
     if (typeof window === 'undefined') {
       return { mode: DEFAULT_GEMINI_MODE, model: DEFAULT_GEMINI_MODEL }
@@ -320,6 +386,9 @@ export function useStartClientEngine(gameId) {
           if (!initialStoredApiKey) return null
           return getApiKeyCooldown(initialStoredApiKey)
         })()
+  const startMatchMetaRef = useRef(initialMatchMeta)
+  const [startMatchMeta] = useState(initialMatchMeta)
+  const matchMetaLoggedRef = useRef(false)
 
   const history = useMemo(() => createAiHistory(), [])
 
@@ -337,6 +406,8 @@ export function useStartClientEngine(gameId) {
   const [statusMessage, setStatusMessage] = useState('')
   const [promptMetaWarning, setPromptMetaWarning] = useState('')
   const [apiKey, setApiKeyState] = useState(initialStoredApiKey)
+  const apiKeyChangeMetaRef = useRef(new Map())
+  const lastRecordedApiKeyRef = useRef('')
   const [apiVersion, setApiVersionState] = useState(() => {
     if (typeof window === 'undefined') return 'gemini'
     return window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
@@ -410,6 +481,34 @@ export function useStartClientEngine(gameId) {
     const snapshot = initialRealtimeSnapshotRef.current
     return mergeTimelineEvents([], Array.isArray(snapshot?.events) ? snapshot.events : [])
   })
+  useEffect(() => {
+    startMatchMetaRef.current = startMatchMeta
+  }, [startMatchMeta])
+  const matchingMetadata = useMemo(() => {
+    if (!startMatchMeta) return null
+    try {
+      return JSON.parse(
+        JSON.stringify({
+          source: startMatchMeta.source || 'client_start',
+          matchType: startMatchMeta.matchType || null,
+          matchCode: startMatchMeta.matchCode || null,
+          dropInTarget: startMatchMeta.dropInTarget || null,
+          dropInMeta: startMatchMeta.dropInMeta || null,
+          sampleMeta: startMatchMeta.sampleMeta || null,
+          roleStatus: startMatchMeta.roleStatus || null,
+          assignments: Array.isArray(startMatchMeta.assignments)
+            ? startMatchMeta.assignments
+            : [],
+          storedAt: startMatchMeta.storedAt || null,
+          mode: startMatchMeta.mode || null,
+          turnTimer: startMatchMeta.turnTimer || null,
+        }),
+      )
+    } catch (error) {
+      console.warn('[StartClient] 매칭 메타데이터 직렬화 실패:', error)
+      return null
+    }
+  }, [startMatchMeta])
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
@@ -668,10 +767,22 @@ export function useStartClientEngine(gameId) {
   }, [])
 
   const setApiKey = useCallback(
-    (value) => {
+    (value, options = {}) => {
       setApiKeyState(value)
+      const trimmed = normaliseApiKey(value)
+      if (trimmed && !options.silent) {
+        apiKeyChangeMetaRef.current.set(trimmed, {
+          source: options.source || 'unknown',
+          reason: options.reason || null,
+          provider: options.provider || apiVersion || null,
+          poolId: options.poolId || null,
+          rotationId: options.rotationId || null,
+          note: options.note || null,
+          replacedSample: options.replacedSample || null,
+          viewerId: options.viewerId || viewerId || null,
+        })
+      }
       if (typeof window !== 'undefined') {
-        const trimmed = normaliseApiKey(value)
         if (trimmed) {
           window.sessionStorage.setItem('rank.start.apiKey', trimmed)
         } else {
@@ -680,7 +791,7 @@ export function useStartClientEngine(gameId) {
       }
       evaluateApiKeyCooldown(value)
     },
-    [evaluateApiKeyCooldown, normaliseApiKey],
+    [apiVersion, evaluateApiKeyCooldown, normaliseApiKey, viewerId],
   )
 
   useEffect(() => {
@@ -690,7 +801,7 @@ export function useStartClientEngine(gameId) {
       const stored = window.sessionStorage.getItem('rank.start.apiKey') || ''
       const trimmed = normaliseApiKey(stored)
       if (trimmed) {
-        setApiKey(trimmed)
+        setApiKey(trimmed, { silent: true })
       }
     } catch (error) {
       console.warn('[StartClient] API 키를 불러오지 못했습니다:', error)
@@ -731,7 +842,7 @@ export function useStartClientEngine(gameId) {
         }
         const fetchedKey = typeof payload.apiKey === 'string' ? payload.apiKey.trim() : ''
         if (fetchedKey) {
-          setApiKey(fetchedKey)
+          setApiKey(fetchedKey, { silent: true, source: 'stored_profile' })
         }
         if (typeof payload.apiVersion === 'string' && payload.apiVersion.trim()) {
           setApiVersion(payload.apiVersion.trim())
@@ -1082,6 +1193,7 @@ export function useStartClientEngine(gameId) {
                 lastDepartureCause: arrival.stats?.lastDepartureCause || null,
               },
             },
+            metadata: matchingMetadata ? { matching: matchingMetadata } : null,
           }
         })
       }
@@ -1091,7 +1203,11 @@ export function useStartClientEngine(gameId) {
         { mode: 'async' },
       )
       if (Array.isArray(events) && events.length) {
-        timelineEvents = events
+        timelineEvents = events.map((event) => ({
+          ...event,
+          metadata:
+            event.metadata || (matchingMetadata ? { matching: matchingMetadata } : null),
+        }))
       }
     }
 
@@ -1380,6 +1496,105 @@ export function useStartClientEngine(gameId) {
     },
     [ownerDisplayMap, game?.realtime_match, turn, logTurnEntries],
   )
+  useEffect(() => {
+    const trimmed = normaliseApiKey(apiKey)
+    if (!trimmed) {
+      if (lastRecordedApiKeyRef.current) {
+        recordTimelineEvents(
+          [
+            {
+              type: 'api_key_pool_replaced',
+              ownerId: viewerId || null,
+              reason: 'cleared',
+              turn: Number.isFinite(Number(turn)) ? Number(turn) : null,
+              timestamp: Date.now(),
+              context: { actorLabel: '시스템' },
+              metadata: {
+                apiKeyPool: {
+                  source: 'cleared',
+                  provider: apiVersion || null,
+                  newSample: null,
+                  replacedSample: buildKeySample(lastRecordedApiKeyRef.current),
+                  viewerId: viewerId || null,
+                },
+              },
+            },
+          ],
+          { turnNumber: turn },
+        )
+      }
+      lastRecordedApiKeyRef.current = ''
+      return
+    }
+    if (lastRecordedApiKeyRef.current === trimmed) return
+    lastRecordedApiKeyRef.current = trimmed
+    const meta = apiKeyChangeMetaRef.current.get(trimmed)
+    if (!meta) return
+    apiKeyChangeMetaRef.current.delete(trimmed)
+    const metadata = {
+      apiKeyPool: {
+        source: meta.source || 'unknown',
+        provider: meta.provider || apiVersion || null,
+        poolId: meta.poolId || null,
+        rotationId: meta.rotationId || null,
+        reason: meta.reason || null,
+        note: meta.note || null,
+        newSample: buildKeySample(trimmed),
+        replacedSample: meta.replacedSample || null,
+        viewerId: meta.viewerId || viewerId || null,
+      },
+    }
+    recordTimelineEvents(
+      [
+        {
+          type: 'api_key_pool_replaced',
+          ownerId: meta.viewerId || viewerId || null,
+          reason: meta.reason || meta.source || 'updated',
+          turn: Number.isFinite(Number(turn)) ? Number(turn) : null,
+          timestamp: Date.now(),
+          context: { actorLabel: '시스템' },
+          metadata,
+        },
+      ],
+      { turnNumber: turn },
+    )
+  }, [apiKey, apiVersion, normaliseApiKey, recordTimelineEvents, turn, viewerId])
+  useEffect(() => {
+    if (matchMetaLoggedRef.current) return
+    const meta = startMatchMetaRef.current
+    if (!meta) return
+    if (preflight) return
+    const metadata = {
+      matching: {
+        source: meta.source || 'client_start',
+        matchType: meta.matchType || null,
+        matchCode: meta.matchCode || null,
+        dropInTarget: meta.dropInTarget || null,
+        dropInMeta: meta.dropInMeta || null,
+        sampleMeta: meta.sampleMeta || null,
+        roleStatus: meta.roleStatus || null,
+        assignments: Array.isArray(meta.assignments) ? meta.assignments : [],
+        storedAt: meta.storedAt || Date.now(),
+        mode: meta.mode || null,
+        turnTimer: meta.turnTimer || null,
+      },
+    }
+    recordTimelineEvents(
+      [
+        {
+          type: 'drop_in_matching_context',
+          ownerId: null,
+          reason: metadata.matching.matchType || 'matched',
+          turn: 0,
+          timestamp: metadata.matching.storedAt,
+          context: { actorLabel: '시스템', matchType: metadata.matching.matchType || null },
+          metadata,
+        },
+      ],
+      { turnNumber: 0 },
+    )
+    matchMetaLoggedRef.current = true
+  }, [preflight, recordTimelineEvents])
   const normalizedViewerId = useMemo(() => {
     if (!viewerId) return ''
     return String(viewerId).trim()
