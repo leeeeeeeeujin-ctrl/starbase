@@ -150,6 +150,14 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     apiKeyCooldown,
     apiVersion,
     setApiVersion,
+    geminiMode,
+    setGeminiMode,
+    geminiModel,
+    setGeminiModel,
+    geminiModelOptions,
+    geminiModelLoading,
+    geminiModelError,
+    reloadGeminiModels,
     manualResponse,
     setManualResponse,
     isAdvancing,
@@ -495,6 +503,14 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
               onApiKeyChange={setApiKey}
               apiVersion={apiVersion}
               onApiVersionChange={setApiVersion}
+              geminiMode={geminiMode}
+              onGeminiModeChange={setGeminiMode}
+              geminiModel={geminiModel}
+              onGeminiModelChange={setGeminiModel}
+              geminiModelOptions={geminiModelOptions}
+              geminiModelLoading={geminiModelLoading}
+              geminiModelError={geminiModelError}
+              onReloadGeminiModels={reloadGeminiModels}
               realtimeLockNotice={
                 game?.realtime_match
                   ? '실시간 매칭 중에는 세션을 시작한 뒤 API 버전을 변경할 수 없습니다.'

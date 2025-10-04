@@ -351,7 +351,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
           return false
         }
 
-        const { apiKey, apiVersion } = readStoredStartConfig()
+        const { apiKey, apiVersion, geminiMode, geminiModel } = readStoredStartConfig()
         const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
 
         if (trimmedApiKey && typeof window !== 'undefined') {
@@ -366,7 +366,10 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
           return true
         }
 
-        await persistApiKeyOnServer(trimmedApiKey, apiVersion)
+        await persistApiKeyOnServer(trimmedApiKey, apiVersion, {
+          geminiMode,
+          geminiModel,
+        })
 
         setPlayNotice('전투를 준비하는 중입니다…')
 
@@ -381,6 +384,8 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
             heroIds,
             userApiKey: trimmedApiKey,
             apiVersion,
+            geminiMode: apiVersion === 'gemini' ? geminiMode : undefined,
+            geminiModel: apiVersion === 'gemini' ? geminiModel : undefined,
           }),
         })
 

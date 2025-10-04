@@ -1,3 +1,5 @@
+import { GEMINI_MODE_OPTIONS } from '@/lib/rank/geminiConfig'
+
 export default function TurnInfoPanel({
   turn,
   currentNode,
@@ -7,6 +9,14 @@ export default function TurnInfoPanel({
   onApiKeyChange,
   apiVersion,
   onApiVersionChange,
+  geminiMode,
+  onGeminiModeChange,
+  geminiModel,
+  onGeminiModelChange,
+  geminiModelOptions = [],
+  geminiModelLoading = false,
+  geminiModelError = '',
+  onReloadGeminiModels,
   realtimeLockNotice,
   apiKeyNotice,
   currentActor,
@@ -90,6 +100,84 @@ export default function TurnInfoPanel({
           <option value="responses">Responses API v2</option>
         </select>
       </label>
+      {apiVersion === 'gemini' && (
+        <div style={{ display: 'grid', gap: 10 }}>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>Gemini 엔드포인트</span>
+            <select
+              value={geminiMode}
+              onChange={(event) => onGeminiModeChange(event.target.value)}
+              style={{
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid rgba(148, 163, 184, 0.4)',
+                background: 'rgba(15, 23, 42, 0.45)',
+                color: '#f8fafc',
+                fontWeight: 600,
+              }}
+            >
+              {GEMINI_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>Gemini 모델</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select
+                value={geminiModel}
+                onChange={(event) => onGeminiModelChange(event.target.value)}
+                disabled={!geminiModelOptions.length}
+                style={{
+                  flex: 1,
+                  padding: '10px 12px',
+                  borderRadius: 12,
+                  border: '1px solid rgba(148, 163, 184, 0.4)',
+                  background: 'rgba(15, 23, 42, 0.45)',
+                  color: '#f8fafc',
+                  fontWeight: 600,
+                }}
+              >
+                {geminiModelOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label || option.id}
+                  </option>
+                ))}
+              </select>
+              {onReloadGeminiModels && (
+                <button
+                  type="button"
+                  onClick={onReloadGeminiModels}
+                  disabled={geminiModelLoading}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 12,
+                    border: '1px solid rgba(148, 163, 184, 0.4)',
+                    background: geminiModelLoading ? 'rgba(71, 85, 105, 0.6)' : 'rgba(30, 41, 59, 0.8)',
+                    color: '#f8fafc',
+                    cursor: geminiModelLoading ? 'not-allowed' : 'pointer',
+                    minWidth: 96,
+                    fontSize: 12,
+                  }}
+                >
+                  {geminiModelLoading ? '새로고침 중…' : '모델 새로고침'}
+                </button>
+              )}
+            </div>
+          </label>
+          {geminiModelError && (
+            <p style={{ margin: 0, fontSize: 12, color: '#f97316' }}>{geminiModelError}</p>
+          )}
+          {geminiModelLoading && !geminiModelError && (
+            <p style={{ margin: 0, fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>
+              모델 목록을 불러오는 중입니다…
+            </p>
+          )}
+        </div>
+      )}
       {realtimeLockNotice && (
         <p style={{ margin: 0, fontSize: 12, color: '#f97316' }}>{realtimeLockNotice}</p>
       )}

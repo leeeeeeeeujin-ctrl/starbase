@@ -9,6 +9,14 @@ import {
   pickTurnTimer,
   summarizeTurnTimerVotes,
 } from '../../lib/rank/turnTimers'
+import {
+  DEFAULT_GEMINI_MODE,
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_MODE_OPTIONS,
+  normalizeGeminiMode,
+  normalizeGeminiModelId,
+} from '../../lib/rank/geminiConfig'
+import useGeminiModelCatalog from './hooks/useGeminiModelCatalog'
 import styles from './GameStartModeModal.module.css'
 
 const API_VERSION_OPTIONS = [
@@ -73,6 +81,10 @@ function resolveInitialState(initialConfig) {
     casualOption: initialCasualOption(resolvedMode, initialConfig?.casualOption),
     apiVersion: getInitialValue(initialConfig?.apiVersion, 'gemini'),
     apiKey: getInitialValue(initialConfig?.apiKey, ''),
+    geminiMode: normalizeGeminiMode(initialConfig?.geminiMode || DEFAULT_GEMINI_MODE),
+    geminiModel:
+      normalizeGeminiModelId(initialConfig?.geminiModel || DEFAULT_GEMINI_MODEL) ||
+      DEFAULT_GEMINI_MODEL,
     turnTimer: Number(initialConfig?.turnTimer) || 60,
   }
 }
@@ -91,6 +103,8 @@ export default function GameStartModeModal({
   const [casualOption, setCasualOption] = useState(initialState.casualOption)
   const [apiVersion, setApiVersion] = useState(initialState.apiVersion)
   const [apiKey, setApiKey] = useState(initialState.apiKey)
+  const [geminiMode, setGeminiMode] = useState(initialState.geminiMode)
+  const [geminiModel, setGeminiModel] = useState(initialState.geminiModel)
   const [turnTimer, setTurnTimer] = useState(initialState.turnTimer)
   const voteSummary = useMemo(
     () => summarizeTurnTimerVotes(turnTimerVotes || {}),
@@ -103,6 +117,36 @@ export default function GameStartModeModal({
   } = voteSummary
   const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
 
+  const normalizedGeminiMode = useMemo(
+    () => normalizeGeminiMode(geminiMode),
+    [geminiMode],
+  )
+  const normalizedGeminiModel = useMemo(
+    () => normalizeGeminiModelId(geminiModel) || DEFAULT_GEMINI_MODEL,
+    [geminiModel],
+  )
+
+  const {
+    options: rawGeminiOptions,
+    loading: geminiModelLoading,
+    error: geminiModelError,
+    reload: reloadGeminiModels,
+  } = useGeminiModelCatalog({
+    apiKey: apiVersion === 'gemini' ? trimmedApiKey : '',
+    mode: normalizedGeminiMode,
+  })
+
+  const geminiModelOptions = useMemo(() => {
+    const base = Array.isArray(rawGeminiOptions) ? rawGeminiOptions : []
+    const exists = base.some(
+      (option) => normalizeGeminiModelId(option?.id || option?.name) === normalizedGeminiModel,
+    )
+    if (exists || !normalizedGeminiModel) {
+      return base
+    }
+    return [{ id: normalizedGeminiModel, label: normalizedGeminiModel }, ...base]
+  }, [rawGeminiOptions, normalizedGeminiModel])
+
   useEffect(() => {
     if (!open) return
     const nextState = resolveInitialState(initialConfig)
@@ -111,6 +155,8 @@ export default function GameStartModeModal({
     setCasualOption(nextState.casualOption)
     setApiVersion(nextState.apiVersion)
     setApiKey(nextState.apiKey)
+    setGeminiMode(nextState.geminiMode)
+    setGeminiModel(nextState.geminiModel)
     setTurnTimer(nextState.turnTimer)
   }, [
     open,
@@ -119,6 +165,8 @@ export default function GameStartModeModal({
     initialConfig?.casualOption,
     initialConfig?.apiVersion,
     initialConfig?.apiKey,
+    initialConfig?.geminiMode,
+    initialConfig?.geminiModel,
     initialConfig?.turnTimer,
   ])
 
@@ -138,6 +186,15 @@ export default function GameStartModeModal({
     const requiresImmediateApiKey = mode === MATCH_MODE_KEYS.RANK_SOLO
     if (!apiVersion) {
       return false
+    }
+
+    if (apiVersion === 'gemini') {
+      if (!normalizedGeminiMode) {
+        return false
+      }
+      if (!normalizedGeminiModel) {
+        return false
+      }
     }
 
     if (requiresImmediateApiKey && !trimmedApiKey) {
@@ -168,6 +225,8 @@ export default function GameStartModeModal({
     turnTimer,
     leadingCount,
     trimmedApiKey,
+    normalizedGeminiMode,
+    normalizedGeminiModel,
   ])
 
   if (!open) {
@@ -189,6 +248,8 @@ export default function GameStartModeModal({
       casualOption,
       apiVersion,
       apiKey: trimmedApiKey,
+      geminiMode: normalizedGeminiMode,
+      geminiModel: normalizedGeminiModel,
       turnTimer: finalTurnTimer,
     })
   }
@@ -235,6 +296,74 @@ export default function GameStartModeModal({
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
           />
+          {apiVersion === 'gemini' && (
+            <div style={{ display: 'grid', gap: 12 }}>
+              <label className={styles.label} htmlFor="start-config-gemini-mode">
+                Gemini 엔드포인트
+              </label>
+              <select
+                id="start-config-gemini-mode"
+                className={styles.select}
+                value={geminiMode}
+                onChange={(event) => setGeminiMode(normalizeGeminiMode(event.target.value))}
+              >
+                {GEMINI_MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              <label className={styles.label} htmlFor="start-config-gemini-model">
+                Gemini 모델
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select
+                  id="start-config-gemini-model"
+                  className={styles.select}
+                  style={{ flex: 1 }}
+                  value={geminiModel}
+                  onChange={(event) =>
+                    setGeminiModel(
+                      normalizeGeminiModelId(event.target.value) || DEFAULT_GEMINI_MODEL,
+                    )
+                  }
+                  disabled={!geminiModelOptions.length}
+                >
+                  {geminiModelOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label || option.id}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => reloadGeminiModels()}
+                  disabled={geminiModelLoading}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 12,
+                    border: '1px solid rgba(148, 163, 184, 0.4)',
+                    background: geminiModelLoading ? 'rgba(71, 85, 105, 0.6)' : 'rgba(30, 41, 59, 0.8)',
+                    color: '#f8fafc',
+                    cursor: geminiModelLoading ? 'not-allowed' : 'pointer',
+                    minWidth: 110,
+                    fontSize: 12,
+                  }}
+                >
+                  {geminiModelLoading ? '새로고침 중…' : '모델 새로고침'}
+                </button>
+              </div>
+              {geminiModelError && (
+                <p className={styles.helperText} style={{ color: '#f97316' }}>
+                  {geminiModelError}
+                </p>
+              )}
+              {geminiModelLoading && !geminiModelError && (
+                <p className={styles.helperText}>모델 목록을 불러오는 중입니다…</p>
+              )}
+            </div>
+          )}
           <p className={styles.helperText}>
             Google Gemini 또는 OpenAI API 키가 필요합니다.
             {mode === MATCH_MODE_KEYS.RANK_SOLO ? (

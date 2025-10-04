@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     }
   }
 
-  const { apiKey, apiVersion } = payload || {}
+  const { apiKey, apiVersion, geminiMode, geminiModel } = payload || {}
   const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
 
   if (!trimmedApiKey) {
@@ -50,12 +50,16 @@ export default async function handler(req, res) {
       userId: user.id,
       apiKey: trimmedApiKey,
       apiVersion: typeof apiVersion === 'string' ? apiVersion.trim() || null : null,
+      geminiMode: typeof geminiMode === 'string' ? geminiMode.trim() || null : null,
+      geminiModel: typeof geminiModel === 'string' ? geminiModel.trim() || null : null,
     })
 
     return res.status(200).json({
       ok: true,
       key_sample: result?.key_sample || '',
       api_version: result?.api_version || null,
+      gemini_mode: result?.gemini_mode || null,
+      gemini_model: result?.gemini_model || null,
       updated_at: result?.updated_at || null,
     })
   } catch (error) {

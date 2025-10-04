@@ -24,6 +24,13 @@ import {
   markApiKeyCooldown,
   purgeExpiredCooldowns,
 } from '../../../lib/rank/apiKeyCooldown'
+import {
+  DEFAULT_GEMINI_MODE,
+  DEFAULT_GEMINI_MODEL,
+  normalizeGeminiMode,
+  normalizeGeminiModelId,
+} from '../../../lib/rank/geminiConfig'
+import useGeminiModelCatalog from '../hooks/useGeminiModelCatalog'
 
 function normalizeHeroName(name) {
   if (!name) return ''
@@ -147,6 +154,23 @@ export function useStartClientEngine(gameId) {
     typeof window === 'undefined'
       ? ''
       : (window.sessionStorage.getItem('rank.start.apiKey') || '').trim()
+  const initialGeminiConfig = (() => {
+    if (typeof window === 'undefined') {
+      return { mode: DEFAULT_GEMINI_MODE, model: DEFAULT_GEMINI_MODEL }
+    }
+    try {
+      const storedMode =
+        window.sessionStorage.getItem('rank.start.geminiMode') || DEFAULT_GEMINI_MODE
+      const storedModel =
+        window.sessionStorage.getItem('rank.start.geminiModel') || DEFAULT_GEMINI_MODEL
+      const mode = normalizeGeminiMode(storedMode)
+      const model = normalizeGeminiModelId(storedModel) || DEFAULT_GEMINI_MODEL
+      return { mode, model }
+    } catch (error) {
+      console.warn('[StartClient] Gemini 설정을 불러오지 못했습니다:', error)
+      return { mode: DEFAULT_GEMINI_MODE, model: DEFAULT_GEMINI_MODEL }
+    }
+  })()
   const initialCooldownInfo =
     typeof window === 'undefined'
       ? null
@@ -176,6 +200,8 @@ export function useStartClientEngine(gameId) {
     if (typeof window === 'undefined') return 'gemini'
     return window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
   })
+  const [geminiMode, setGeminiModeState] = useState(initialGeminiConfig.mode)
+  const [geminiModel, setGeminiModelState] = useState(initialGeminiConfig.model)
   const [apiKeyCooldown, setApiKeyCooldownState] = useState(initialCooldownInfo)
   const [apiKeyWarning, setApiKeyWarning] = useState(() =>
     initialCooldownInfo?.active ? formatCooldownMessage(initialCooldownInfo) : '',
@@ -461,23 +487,89 @@ export function useStartClientEngine(gameId) {
     }
   }, [])
 
+  const setGeminiMode = useCallback((value) => {
+    const normalized = normalizeGeminiMode(value)
+    setGeminiModeState(normalized)
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem('rank.start.geminiMode', normalized)
+      } catch (error) {
+        console.warn('[StartClient] Gemini 모드 저장 실패:', error)
+      }
+    }
+  }, [])
+
+  const setGeminiModel = useCallback((value) => {
+    const normalized = normalizeGeminiModelId(value) || DEFAULT_GEMINI_MODEL
+    setGeminiModelState(normalized)
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem('rank.start.geminiModel', normalized)
+      } catch (error) {
+        console.warn('[StartClient] Gemini 모델 저장 실패:', error)
+      }
+    }
+  }, [])
+
   const effectiveApiKey = useMemo(
     () => normaliseApiKey(apiKey),
     [apiKey, normaliseApiKey],
   )
 
+  const normalizedGeminiMode = useMemo(
+    () => normalizeGeminiMode(geminiMode),
+    [geminiMode],
+  )
+  const normalizedGeminiModel = useMemo(
+    () => normalizeGeminiModelId(geminiModel) || DEFAULT_GEMINI_MODEL,
+    [geminiModel],
+  )
+
+  const {
+    options: rawGeminiModelOptions,
+    loading: geminiModelLoading,
+    error: geminiModelError,
+    reload: reloadGeminiModels,
+  } = useGeminiModelCatalog({
+    apiKey: apiVersion === 'gemini' ? effectiveApiKey : '',
+    mode: normalizedGeminiMode,
+  })
+
+  const geminiModelOptions = useMemo(() => {
+    const base = Array.isArray(rawGeminiModelOptions) ? rawGeminiModelOptions : []
+    const exists = base.some(
+      (option) => normalizeGeminiModelId(option?.id || option?.name) === normalizedGeminiModel,
+    )
+    if (exists || !normalizedGeminiModel) {
+      return base
+    }
+    return [{ id: normalizedGeminiModel, label: normalizedGeminiModel }, ...base]
+  }, [rawGeminiModelOptions, normalizedGeminiModel])
+
   const visitedSlotIds = useRef(new Set())
   const apiVersionLock = useRef(null)
   const advanceIntentRef = useRef(null)
-  const lastStoredApiKeyRef = useRef('')
+  const lastStoredApiSignatureRef = useRef('')
 
   const persistApiKeyOnServer = useCallback(
-    async (value, version) => {
+    async (value, version, options = {}) => {
       const trimmed = normaliseApiKey(value)
       if (!trimmed) {
         return false
       }
-      if (lastStoredApiKeyRef.current === trimmed) {
+
+      const normalizedVersion = typeof version === 'string' ? version : ''
+      const normalizedGeminiMode = options.geminiMode
+        ? normalizeGeminiMode(options.geminiMode)
+        : null
+      const normalizedGeminiModel = options.geminiModel
+        ? normalizeGeminiModelId(options.geminiModel)
+        : null
+      const signature = `${trimmed}::${normalizedVersion}::${normalizedGeminiMode || ''}::${
+        normalizedGeminiModel || ''
+      }`
+
+      if (lastStoredApiSignatureRef.current === signature) {
         return true
       }
 
@@ -500,7 +592,11 @@ export function useStartClientEngine(gameId) {
           },
           body: JSON.stringify({
             apiKey: trimmed,
-            apiVersion: typeof version === 'string' ? version : undefined,
+            apiVersion: normalizedVersion || undefined,
+            geminiMode:
+              normalizedVersion === 'gemini' ? normalizedGeminiMode || undefined : undefined,
+            geminiModel:
+              normalizedVersion === 'gemini' ? normalizedGeminiModel || undefined : undefined,
           }),
         })
 
@@ -510,7 +606,7 @@ export function useStartClientEngine(gameId) {
           throw new Error(message)
         }
 
-        lastStoredApiKeyRef.current = trimmed
+        lastStoredApiSignatureRef.current = signature
         return true
       } catch (error) {
         console.warn('[StartClient] API 키 저장 실패:', error)
@@ -522,7 +618,7 @@ export function useStartClientEngine(gameId) {
 
   useEffect(() => {
     if (!effectiveApiKey) {
-      lastStoredApiKeyRef.current = ''
+      lastStoredApiSignatureRef.current = ''
     }
   }, [effectiveApiKey])
 
@@ -935,7 +1031,10 @@ export function useStartClientEngine(gameId) {
         return
       }
 
-      await persistApiKeyOnServer(effectiveApiKey, apiVersion)
+          await persistApiKeyOnServer(effectiveApiKey, apiVersion, {
+            geminiMode: normalizedGeminiMode,
+            geminiModel: normalizedGeminiModel,
+          })
     }
 
     setStartingSession(true)
@@ -1023,6 +1122,8 @@ export function useStartClientEngine(gameId) {
     effectiveApiKey,
     evaluateApiKeyCooldown,
     persistApiKeyOnServer,
+    normalizedGeminiMode,
+    normalizedGeminiModel,
   ])
 
   const advanceTurn = useCallback(
@@ -1125,7 +1226,10 @@ export function useStartClientEngine(gameId) {
             return
           }
 
-          await persistApiKeyOnServer(effectiveApiKey, apiVersion)
+          await persistApiKeyOnServer(effectiveApiKey, apiVersion, {
+            geminiMode: normalizedGeminiMode,
+            geminiModel: normalizedGeminiModel,
+          })
 
           const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
           if (sessionError) {
@@ -1148,6 +1252,8 @@ export function useStartClientEngine(gameId) {
               system: effectiveSystemPrompt,
               prompt: effectivePrompt,
               apiVersion,
+              geminiMode: apiVersion === 'gemini' ? normalizedGeminiMode : undefined,
+              geminiModel: apiVersion === 'gemini' ? normalizedGeminiModel : undefined,
               session_id: sessionInfo.id,
               game_id: gameId,
               prompt_role: 'system',
@@ -1466,6 +1572,8 @@ export function useStartClientEngine(gameId) {
       gameVoided,
       evaluateApiKeyCooldown,
       persistApiKeyOnServer,
+      normalizedGeminiMode,
+      normalizedGeminiModel,
     ],
   )
 
@@ -1562,6 +1670,14 @@ export function useStartClientEngine(gameId) {
     apiKeyCooldown,
     apiVersion,
     setApiVersion,
+    geminiMode,
+    setGeminiMode,
+    geminiModel,
+    setGeminiModel,
+    geminiModelOptions,
+    geminiModelLoading,
+    geminiModelError,
+    reloadGeminiModels,
     manualResponse,
     setManualResponse,
     isAdvancing,

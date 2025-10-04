@@ -11,6 +11,12 @@ import {
   registerTurnTimerVote,
   TURN_TIMER_VALUES,
 } from '../../lib/rank/turnTimers'
+import {
+  DEFAULT_GEMINI_MODE,
+  DEFAULT_GEMINI_MODEL,
+  normalizeGeminiMode,
+  normalizeGeminiModelId,
+} from '../../lib/rank/geminiConfig'
 
 export default function GameRoomPage() {
   const router = useRouter()
@@ -28,6 +34,8 @@ export default function GameRoomPage() {
     casualOption: 'matchmaking',
     apiVersion: 'gemini',
     apiKey: '',
+    geminiMode: DEFAULT_GEMINI_MODE,
+    geminiModel: DEFAULT_GEMINI_MODEL,
     turnTimer: 60,
   })
   const [startLoading, setStartLoading] = useState(false)
@@ -127,6 +135,24 @@ export default function GameRoomPage() {
       apiVersion:
         window.sessionStorage.getItem('rank.start.apiVersion') || prev.apiVersion,
       apiKey: window.sessionStorage.getItem('rank.start.apiKey') || prev.apiKey,
+      geminiMode: (() => {
+        const stored = window.sessionStorage.getItem('rank.start.geminiMode')
+        if (stored) {
+          return normalizeGeminiMode(stored)
+        }
+        return prev.geminiMode || DEFAULT_GEMINI_MODE
+      })(),
+      geminiModel: (() => {
+        const storedModel = window.sessionStorage.getItem('rank.start.geminiModel')
+        const normalized = normalizeGeminiModelId(storedModel || '')
+        if (normalized) {
+          return normalized
+        }
+        if (prev.geminiModel) {
+          return prev.geminiModel
+        }
+        return DEFAULT_GEMINI_MODEL
+      })(),
       turnTimer: (() => {
         const storedTimer = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
         if (TURN_TIMER_VALUES.includes(storedTimer)) {
@@ -223,6 +249,14 @@ export default function GameRoomPage() {
       window.sessionStorage.setItem('rank.start.duoOption', config.duoOption)
       window.sessionStorage.setItem('rank.start.casualOption', config.casualOption)
       window.sessionStorage.setItem('rank.start.apiVersion', config.apiVersion)
+      window.sessionStorage.setItem(
+        'rank.start.geminiMode',
+        config.geminiMode || DEFAULT_GEMINI_MODE,
+      )
+      window.sessionStorage.setItem(
+        'rank.start.geminiModel',
+        config.geminiModel || DEFAULT_GEMINI_MODEL,
+      )
       window.sessionStorage.setItem('rank.start.turnTimer', String(config.turnTimer || 60))
       if (config.apiKey) {
         window.sessionStorage.setItem('rank.start.apiKey', config.apiKey)

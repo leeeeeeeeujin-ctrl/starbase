@@ -28,9 +28,18 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'unauthorized' })
     }
 
-    const { gameId, heroIds = [], userApiKey, apiVersion = 'gemini' } = req.body || {}
+    const {
+      gameId,
+      heroIds = [],
+      userApiKey,
+      apiVersion = 'gemini',
+      geminiMode,
+      geminiModel,
+    } = req.body || {}
 
     const trimmedApiKey = typeof userApiKey === 'string' ? userApiKey.trim() : ''
+    const providedGeminiMode = typeof geminiMode === 'string' ? geminiMode.trim() : ''
+    const providedGeminiModel = typeof geminiModel === 'string' ? geminiModel.trim() : ''
 
     if (trimmedApiKey) {
       try {
@@ -38,6 +47,8 @@ export default async function handler(req, res) {
           userId: user.id,
           apiKey: trimmedApiKey,
           apiVersion,
+          geminiMode: providedGeminiMode,
+          geminiModel: providedGeminiModel,
         })
       } catch (error) {
         console.warn('[play] Failed to persist API key:', error)
@@ -46,6 +57,8 @@ export default async function handler(req, res) {
 
     let effectiveApiKey = trimmedApiKey
     let effectiveApiVersion = apiVersion
+    let effectiveGeminiMode = providedGeminiMode
+    let effectiveGeminiModel = providedGeminiModel
 
     if (!effectiveApiKey) {
       try {
@@ -54,6 +67,12 @@ export default async function handler(req, res) {
           effectiveApiKey = stored.apiKey
           if (!effectiveApiVersion && stored.apiVersion) {
             effectiveApiVersion = stored.apiVersion
+          }
+          if (!effectiveGeminiMode && stored.geminiMode) {
+            effectiveGeminiMode = stored.geminiMode
+          }
+          if (!effectiveGeminiModel && stored.geminiModel) {
+            effectiveGeminiModel = stored.geminiModel
           }
         }
       } catch (error) {
@@ -102,6 +121,10 @@ export default async function handler(req, res) {
       system: '당신은 비동기 PvE 랭킹 전투의 심판/해설자 겸 시뮬레이터입니다.',
       user: prompt,
       apiVersion: effectiveApiVersion || 'gemini',
+      providerOptions:
+        (effectiveApiVersion || 'gemini') === 'gemini'
+          ? { geminiMode: effectiveGeminiMode, geminiModel: effectiveGeminiModel }
+          : {},
     })
     if (ai.error) {
       // 쿼터/에러 → 저장하지 않고 종료, 재시도 가능

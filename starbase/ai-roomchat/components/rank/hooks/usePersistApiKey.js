@@ -1,16 +1,29 @@
 import { useCallback, useRef } from 'react'
 
 import { supabase } from '../../../lib/supabase'
+import { normalizeGeminiMode, normalizeGeminiModelId } from '../../../lib/rank/geminiConfig'
 
 export default function usePersistApiKey() {
-  const lastStoredApiKeyRef = useRef('')
+  const lastStoredSignatureRef = useRef('')
 
-  return useCallback(async (value, version) => {
+  return useCallback(async (value, version, options = {}) => {
     const trimmed = typeof value === 'string' ? value.trim() : ''
     if (!trimmed) {
       return false
     }
-    if (lastStoredApiKeyRef.current === trimmed) {
+
+    const normalizedVersion = typeof version === 'string' ? version : ''
+    const normalizedGeminiMode = options.geminiMode
+      ? normalizeGeminiMode(options.geminiMode)
+      : null
+    const normalizedGeminiModel = options.geminiModel
+      ? normalizeGeminiModelId(options.geminiModel)
+      : null
+    const signature = `${trimmed}::${normalizedVersion}::${normalizedGeminiMode || ''}::${
+      normalizedGeminiModel || ''
+    }`
+
+    if (lastStoredSignatureRef.current === signature) {
       return true
     }
 
@@ -32,7 +45,9 @@ export default function usePersistApiKey() {
       },
       body: JSON.stringify({
         apiKey: trimmed,
-        apiVersion: typeof version === 'string' ? version : undefined,
+        apiVersion: normalizedVersion || undefined,
+        geminiMode: normalizedGeminiMode || undefined,
+        geminiModel: normalizedGeminiModel || undefined,
       }),
     })
 
@@ -42,7 +57,7 @@ export default function usePersistApiKey() {
       throw new Error(message)
     }
 
-    lastStoredApiKeyRef.current = trimmed
+    lastStoredSignatureRef.current = signature
     return true
   }, [])
 }

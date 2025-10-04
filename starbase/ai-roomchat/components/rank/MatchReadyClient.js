@@ -219,7 +219,7 @@ export default function MatchReadyClient({ gameId, mode }) {
           return false
         }
 
-        const { apiKey, apiVersion } = readStoredStartConfig()
+        const { apiKey, apiVersion, geminiMode, geminiModel } = readStoredStartConfig()
         const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
 
         if (trimmedApiKey && typeof window !== 'undefined') {
@@ -235,7 +235,10 @@ export default function MatchReadyClient({ gameId, mode }) {
           return true
         }
 
-        await persistApiKeyOnServer(trimmedApiKey, apiVersion)
+        await persistApiKeyOnServer(trimmedApiKey, apiVersion, {
+          geminiMode,
+          geminiModel,
+        })
 
         setNotice('전투를 준비하는 중입니다…')
 
@@ -250,6 +253,8 @@ export default function MatchReadyClient({ gameId, mode }) {
             heroIds,
             userApiKey: trimmedApiKey,
             apiVersion,
+            geminiMode: apiVersion === 'gemini' ? geminiMode : undefined,
+            geminiModel: apiVersion === 'gemini' ? geminiModel : undefined,
           }),
         })
 

@@ -700,6 +700,8 @@ create table if not exists public.rank_user_api_keys (
   key_tag text not null,
   key_version smallint not null default 1,
   api_version text,
+  gemini_mode text,
+  gemini_model text,
   key_sample text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

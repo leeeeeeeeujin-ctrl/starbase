@@ -62,6 +62,8 @@ export default async function handler(req, res) {
     prompt,
     system = '',
     apiVersion = 'gemini',
+    geminiMode,
+    geminiModel,
     session_id: sessionId,
     game_id: gameId,
     prompt_role: promptRoleInput,
@@ -78,12 +80,17 @@ export default async function handler(req, res) {
   }
   const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
 
+  const providedGeminiMode = typeof geminiMode === 'string' ? geminiMode.trim() : ''
+  const providedGeminiModel = typeof geminiModel === 'string' ? geminiModel.trim() : ''
+
   if (trimmedApiKey) {
     try {
       await upsertUserApiKey({
         userId: user.id,
         apiKey: trimmedApiKey,
         apiVersion,
+        geminiMode: providedGeminiMode,
+        geminiModel: providedGeminiModel,
       })
     } catch (error) {
       console.warn('[run-turn] Failed to persist API key:', error)
@@ -92,6 +99,8 @@ export default async function handler(req, res) {
 
   let effectiveApiKey = trimmedApiKey
   let effectiveApiVersion = apiVersion
+  let effectiveGeminiMode = providedGeminiMode
+  let effectiveGeminiModel = providedGeminiModel
 
   if (!effectiveApiKey) {
     try {
@@ -100,6 +109,12 @@ export default async function handler(req, res) {
         effectiveApiKey = stored.apiKey
         if (!effectiveApiVersion && stored.apiVersion) {
           effectiveApiVersion = stored.apiVersion
+        }
+        if (!effectiveGeminiMode && stored.geminiMode) {
+          effectiveGeminiMode = stored.geminiMode
+        }
+        if (!effectiveGeminiModel && stored.geminiModel) {
+          effectiveGeminiModel = stored.geminiModel
         }
       }
     } catch (error) {
@@ -138,6 +153,10 @@ export default async function handler(req, res) {
     system: typeof system === 'string' ? system : '',
     user: prompt,
     apiVersion: effectiveApiVersion || 'gemini',
+    providerOptions:
+      (effectiveApiVersion || 'gemini') === 'gemini'
+        ? { geminiMode: effectiveGeminiMode, geminiModel: effectiveGeminiModel }
+        : {},
   })
 
   if (result?.error) {
