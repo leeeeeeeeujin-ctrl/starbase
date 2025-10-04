@@ -272,8 +272,7 @@ export default function GameRoomPage() {
         }
 
         await router.push({
-          pathname: `/rank/${id}/start`,
-          query: { mode: config.mode, apiVersion: config.apiVersion },
+          pathname: `/rank/${id}/solo-match`,
         })
 
         return
@@ -340,7 +339,10 @@ export default function GameRoomPage() {
       return
     }
 
-    router.push({ pathname: `/rank/${id}/start`, query: { mode: config.mode, apiVersion: config.apiVersion } })
+    router.push({
+      pathname: `/rank/${id}/start`,
+      query: { mode: config.mode, apiVersion: config.apiVersion },
+    })
   }
 
   const handleCloseStartModal = () => {
