@@ -248,7 +248,7 @@ export default function DuoRoomClient({
             userId: user.id,
             heroId: myHero.id,
             heroName: hostName,
-            ready: false,
+            ready: true,
             isHost: true,
           },
         ],
@@ -320,7 +320,7 @@ export default function DuoRoomClient({
     setCodeValue('')
   }, [codeValue, handleJoinRoom, rooms])
 
-  const handleReady = useCallback(() => {
+  const handleToggleReady = useCallback(() => {
     if (!viewerRoom || !user?.id) return
     updateRooms((prev) =>
       prev.map((room) => {
@@ -328,12 +328,15 @@ export default function DuoRoomClient({
         return {
           ...room,
           members: room.members.map((member) =>
-            member.userId === user.id ? { ...member, ready: true } : member,
+            member.userId === user.id
+              ? { ...member, ready: !member.ready }
+              : member,
           ),
         }
       }),
     )
-  }, [updateRooms, user?.id, viewerRoom])
+    setError('')
+  }, [setError, updateRooms, user?.id, viewerRoom])
 
   const handleLeave = useCallback(() => {
     if (!viewerRoom || !user?.id) return
@@ -412,7 +415,7 @@ export default function DuoRoomClient({
           <p className={styles.gameName}>{game?.name || '랭크 게임'}</p>
           <h1 className={styles.title}>듀오 랭크 팀 편성</h1>
           <p className={styles.subtitle}>
-            같은 역할군으로 구성된 팀을 만들어 게임을 시작하세요. 준비 완료 후에는 방을 나갈 수 없습니다.
+            같은 역할군으로 구성된 팀을 만들어 게임을 시작하세요. 준비 상태는 언제든 다시 눌러 조정할 수 있습니다.
           </p>
         </div>
       </header>
@@ -619,13 +622,22 @@ export default function DuoRoomClient({
             ))}
           </ul>
           <div className={styles.roomActions}>
-            {!viewerMember?.ready ? (
-              <button type="button" className={styles.primaryButton} onClick={handleReady}>
-                준비 완료
+            <div className={styles.readyToggleGroup}>
+              <button
+                type="button"
+                className={`${styles.readyToggleButton} ${
+                  viewerMember?.ready ? styles.readyToggleActive : styles.readyToggleIdle
+                }`}
+                onClick={handleToggleReady}
+              >
+                {viewerMember?.ready ? '준비 해제' : '준비 완료'}
               </button>
-            ) : (
-              <span className={styles.readyHint}>준비 완료 상태에서는 방을 떠날 수 없습니다.</span>
-            )}
+              <span className={styles.readyHint}>
+                준비 완료를 눌러 팀에 신호를 보내고 다시 눌러 준비를 해제할 수 있습니다.
+                <br />
+                방을 떠나려면 먼저 준비 해제를 선택해 주세요.
+              </span>
+            </div>
             {viewerRoom.hostId === user?.id ? (
               <button
                 type="button"

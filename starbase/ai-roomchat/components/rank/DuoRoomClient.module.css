@@ -334,6 +334,41 @@
   opacity: 0.75;
 }
 
+.readyToggleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.readyToggleButton {
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  border: none;
+}
+
+.readyToggleIdle {
+  background: linear-gradient(135deg, #4b8bff, #7b5bff);
+  color: #0a0c16;
+}
+
+.readyToggleIdle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(75, 139, 255, 0.25);
+}
+
+.readyToggleActive {
+  background: rgba(111, 243, 197, 0.18);
+  color: #6ff3c5;
+  border: 1px solid rgba(111, 243, 197, 0.6);
+}
+
+.readyToggleActive:hover {
+  background: rgba(111, 243, 197, 0.24);
+}
+
 .startButton {
   border: none;
   background: linear-gradient(135deg, #6ff3c5, #4bffdd);
@@ -373,6 +408,11 @@
   }
 
   .roomActions {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .readyToggleGroup {
     flex-direction: row;
     align-items: center;
   }
