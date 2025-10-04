@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 import HeaderControls from './HeaderControls'
 import LogsPanel from './LogsPanel'
 import ManualResponsePanel from './ManualResponsePanel'
+import RosterPanel from './RosterPanel'
 import StatusBanner from './StatusBanner'
 import TurnInfoPanel from './TurnInfoPanel'
 import { useStartClientEngine } from './useStartClientEngine'
@@ -43,117 +44,6 @@ function buildBackgroundStyle(urls) {
     backgroundPosition: position,
     backgroundRepeat: 'no-repeat',
   }
-}
-
-function normalizeStatus(status) {
-  const raw = typeof status === 'string' ? status.trim().toLowerCase() : ''
-  if (!raw) {
-    return { label: '진행 중', tone: 'neutral' }
-  }
-
-  if (['victory', 'won', 'winner', 'champion'].includes(raw)) {
-    return { label: '승리', tone: 'victory' }
-  }
-
-  if (['defeated', 'lost', 'dead', 'eliminated', 'out'].includes(raw)) {
-    return { label: '패배', tone: 'defeated' }
-  }
-
-  if (['retired', 'retreat', 'retreated', 'withdrawn'].includes(raw)) {
-    return { label: '탈락', tone: 'retired' }
-  }
-
-  if (['waiting', 'queued', 'standby', 'pending'].includes(raw)) {
-    return { label: '대기 중', tone: 'neutral' }
-  }
-
-  if (['active', 'alive', 'playing', 'in_progress'].includes(raw)) {
-    return { label: '진행 중', tone: 'neutral' }
-  }
-
-  return { label: status || '진행 중', tone: 'neutral' }
-}
-
-function formatWinRate(value) {
-  if (value === null || value === undefined) return '기록 없음'
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return '기록 없음'
-  const ratio = numeric > 1 ? numeric : numeric * 100
-  const rounded = Math.round(ratio * 10) / 10
-  return `${rounded}%`
-}
-
-function getParticipantKey(participant, slotIndex) {
-  if (participant?.id) return `id:${participant.id}`
-  if (participant?.hero_id) return `hero:${participant.hero_id}`
-  return `slot:${slotIndex}`
-}
-
-function HeroBadge({
-  participant,
-  stage,
-  infoSequence,
-  onToggle,
-  isActive,
-  isUserAction,
-}) {
-  if (!participant) return null
-
-  const hero = participant.hero || {}
-  const image = hero.image_url || hero.imageUrl
-  const name = hero.name || '이름 없음'
-  const role = participant.role || '미지정'
-  const { label: statusLabel, tone } = normalizeStatus(participant.status)
-  const showInfo = stage > 0 && infoSequence.length > 0
-  const infoIndex = Math.min(stage - 1, infoSequence.length - 1)
-  const info = showInfo ? infoSequence[infoIndex] : null
-
-  const wrapperClass = [styles.heroBadgeButton]
-  if (isActive) {
-    wrapperClass.push(styles.heroBadgeButtonActive)
-    if (isUserAction) {
-      wrapperClass.push(styles.heroBadgeButtonUser)
-    }
-  }
-
-  return (
-    <li className={styles.heroBadge}>
-      <button
-        type="button"
-        className={wrapperClass.join(' ')}
-        onClick={onToggle}
-        aria-pressed={showInfo}
-      >
-        <div className={styles.heroBadgeImageWrap}>
-          {image ? (
-            <img
-              className={showInfo ? styles.heroBadgeImageDimmed : styles.heroBadgeImage}
-              src={image}
-              alt={name}
-            />
-          ) : (
-            <div className={styles.heroBadgeImagePlaceholder} />
-          )}
-        </div>
-        <div className={styles.heroBadgeInfo}>
-          {showInfo && info ? (
-            <>
-              <span className={styles.heroBadgeLabel}>{info.label}</span>
-              <span className={styles.heroBadgeText}>{info.text}</span>
-            </>
-          ) : (
-            <>
-              <span className={styles.heroBadgeName}>{name}</span>
-              <span className={styles.heroBadgeRole}>{role}</span>
-              <span className={`${styles.heroBadgeStatus} ${styles[`heroBadgeStatus-${tone}`] || ''}`}>
-                {statusLabel}
-              </span>
-            </>
-          )}
-        </div>
-      </button>
-    </li>
-  )
 }
 
 export default function StartClient({ gameId: overrideGameId, onExit }) {
@@ -240,84 +130,8 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     return deduped.join('\n')
   }, [promptMetaWarning, apiKeyWarning, statusMessage])
 
-  const rosterEntries = useMemo(
-    () =>
-      participants.map((participant, index) => ({
-        participant,
-        slotIndex: index,
-      })),
-    [participants],
-  )
-
-  const heroInfoSequences = useMemo(
-    () =>
-      rosterEntries.map(({ participant, slotIndex }) => {
-        const hero = participant?.hero || {}
-        const description = typeof hero.description === 'string' ? hero.description.trim() : ''
-        const info = []
-        if (description) {
-          info.push({ key: 'description', label: '설명', text: description })
-        }
-
-        for (let abilityIndex = 1; abilityIndex <= 4; abilityIndex += 1) {
-          const abilityRaw = hero?.[`ability${abilityIndex}`]
-          const ability = typeof abilityRaw === 'string' ? abilityRaw.trim() : ''
-          if (ability) {
-            info.push({
-              key: `ability${abilityIndex}`,
-              label: `능력 ${abilityIndex}`,
-              text: ability,
-            })
-          }
-        }
-
-        const statsParts = []
-        const scoreValue = Number(participant?.score)
-        if (Number.isFinite(scoreValue)) {
-          statsParts.push(`점수 ${scoreValue}`)
-        }
-        const winRateText = formatWinRate(participant?.win_rate ?? participant?.winRate)
-        if (winRateText !== '기록 없음') {
-          statsParts.push(`승률 ${winRateText}`)
-        }
-        if (statsParts.length) {
-          info.push({ key: 'stats', label: '기록', text: statsParts.join(' · ') })
-        }
-
-        return {
-          key: getParticipantKey(participant, slotIndex),
-          participant,
-          slotIndex,
-          info,
-        }
-      }),
-    [rosterEntries],
-  )
-
-  const [heroStageState, setHeroStageState] = useState({})
-
-  useEffect(() => {
-    setHeroStageState((prev) => {
-      const next = {}
-      heroInfoSequences.forEach(({ key, info }) => {
-        const previousValue = prev[key] ?? 0
-        const max = info.length
-        next[key] = max === 0 ? 0 : Math.min(previousValue, max)
-      })
-      return next
-    })
-  }, [heroInfoSequences])
-
-  const toggleHeroStage = (key, infoLength) => {
-    setHeroStageState((prev) => {
-      const current = prev[key] ?? 0
-      if (!infoLength) {
-        return { ...prev, [key]: 0 }
-      }
-      const nextValue = (current + 1) % (infoLength + 1)
-      return { ...prev, [key]: nextValue }
-    })
-  }
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [rosterOpen, setRosterOpen] = useState(false)
 
   useEffect(() => {
     if (!audioManager) return undefined
@@ -518,41 +332,41 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
   }
 
   const consensusActive = Boolean(consensus?.active)
-  const consensusRequired = consensusActive ? consensus?.required ?? 0 : 0
+  const participantCount = participants.length
+  const rawRequired = consensusActive ? consensus?.required ?? participantCount : participantCount
+  const consensusThreshold = consensusActive
+    ? Math.max(1, consensus?.threshold ?? Math.ceil(rawRequired * 0.8))
+    : Math.max(1, Math.ceil(Math.max(participantCount, 1) * 0.8))
   const consensusApproved = consensusActive
-    ? Math.min(consensus?.count ?? 0, consensusRequired)
+    ? Math.min(consensus?.count ?? 0, consensusThreshold)
     : 0
-  const advanceDisabled = preflight
-    ? false
-    : consensusActive
-    ? !consensus?.viewerEligible
-    : !canSubmitAction
-  const advanceLabel = consensusActive
-    ? `동의 ${consensusApproved}/${consensusRequired}`
-    : undefined
+  const nextButtonDisabled =
+    preflight || isAdvancing || (consensusActive ? !consensus?.viewerEligible : false)
   const consensusStatusText = consensusActive
-    ? `동의 현황 ${consensusApproved}/${consensusRequired}명 · ${
-        consensus?.viewerHasConsented ? '내 동의 완료' : '내 동의 필요'
+    ? `다음 진행 동의 ${consensusApproved}/${consensusThreshold}명 · ${
+        consensus?.viewerEligible
+          ? consensus?.viewerHasConsented
+            ? '내 동의 완료'
+            : '내 동의 필요'
+          : '관전자'
       }`
     : ''
   const manualModeNotice = game?.realtime_match
     ? ''
     : '실시간 매칭이 꺼진 게임에서는 서버에 API 키가 저장되지 않으며, 세션을 시작한 본인이 이 화면에 입력한 키로만 AI 호출이 처리됩니다.'
 
-  const [manualDrawerOpen, setManualDrawerOpen] = useState(false)
-  const previousCanSubmitRef = useRef(Boolean(canSubmitAction))
-
-  useEffect(() => {
-    const wasAble = previousCanSubmitRef.current
-    const isAble = Boolean(canSubmitAction)
-    if (isAble && !wasAble) {
-      setManualDrawerOpen(true)
-    }
-    if (!isAble && wasAble) {
-      setManualDrawerOpen(false)
-    }
-    previousCanSubmitRef.current = isAble
-  }, [canSubmitAction])
+  const manualDisabled = preflight || !canSubmitAction
+  const manualDisabledReason = manualDisabled
+    ? preflight
+      ? '게임을 먼저 시작해야 합니다.'
+      : '현재 차례의 플레이어만 응답을 제출할 수 있습니다.'
+    : ''
+  const timerLabel = typeof timeRemaining === 'number'
+    ? `${Math.max(timeRemaining, 0).toString().padStart(2, '0')}초 남음`
+    : turnTimerSeconds
+    ? `제한 ${turnTimerSeconds}초`
+    : '대기 중'
+  const nextButtonLabel = isAdvancing ? '진행 중…' : '다음으로 진행'
 
   return (
     <div className={styles.root} style={rootStyle}>
@@ -565,14 +379,34 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
           onStart={handleStart}
           onAdvance={advanceWithAi}
           isAdvancing={isAdvancing}
-          advanceDisabled={advanceDisabled}
-          advanceLabel={advanceLabel}
+          advanceDisabled={false}
+          advanceLabel={undefined}
           consensus={consensus}
           isStarting={isStarting}
           startDisabled={loading || Boolean(apiKeyCooldown?.active)}
+          showAdvance={false}
         />
 
         <StatusBanner message={bannerMessage} />
+
+        <div className={styles.actionRow}>
+          <button
+            type="button"
+            className={styles.actionButton}
+            onClick={() => setHistoryOpen(true)}
+            aria-expanded={historyOpen}
+          >
+            히스토리 열기
+          </button>
+          <button
+            type="button"
+            className={styles.actionButton}
+            onClick={() => setRosterOpen(true)}
+            aria-expanded={rosterOpen}
+          >
+            참가자 보기
+          </button>
+        </div>
 
         {consensusStatusText || timeoutNotice ? (
           <div className={styles.noticeStack}>
@@ -585,123 +419,107 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
           </div>
         ) : null}
 
-        <div className={styles.stageViewport}>
-          <section className={styles.stageHistory}>
-            <LogsPanel logs={logs} aiMemory={aiMemory} playerHistories={playerHistories} />
-          </section>
+        <div className={styles.stageColumn}>
           <section className={styles.stageMain}>
-            <div className={styles.stageMainInner}>
-              <TurnInfoPanel
-                turn={turn}
-                currentNode={currentNode}
-                activeGlobal={activeGlobal}
-                activeLocal={activeLocal}
-                apiKey={apiKey}
-                onApiKeyChange={setApiKey}
-                apiVersion={apiVersion}
-                onApiVersionChange={setApiVersion}
-                geminiMode={geminiMode}
-                onGeminiModeChange={setGeminiMode}
-                geminiModel={geminiModel}
-                onGeminiModelChange={setGeminiModel}
-                geminiModelOptions={geminiModelOptions}
-                geminiModelLoading={geminiModelLoading}
-                geminiModelError={geminiModelError}
-                onReloadGeminiModels={reloadGeminiModels}
-                realtimeLockNotice={
-                  game?.realtime_match
-                    ? '실시간 매칭 중에는 세션을 시작한 뒤 API 버전을 변경할 수 없습니다.'
-                    : ''
-                }
-                apiKeyNotice={manualModeNotice}
-                currentActor={currentActor}
-                timeRemaining={timeRemaining}
-                turnTimerSeconds={turnTimerSeconds}
-              />
+            <TurnInfoPanel
+              turn={turn}
+              currentNode={currentNode}
+              activeGlobal={activeGlobal}
+              activeLocal={activeLocal}
+              apiKey={apiKey}
+              onApiKeyChange={setApiKey}
+              apiVersion={apiVersion}
+              onApiVersionChange={setApiVersion}
+              geminiMode={geminiMode}
+              onGeminiModeChange={setGeminiMode}
+              geminiModel={geminiModel}
+              onGeminiModelChange={setGeminiModel}
+              geminiModelOptions={geminiModelOptions}
+              geminiModelLoading={geminiModelLoading}
+              geminiModelError={geminiModelError}
+              onReloadGeminiModels={reloadGeminiModels}
+              realtimeLockNotice={
+                game?.realtime_match
+                  ? '실시간 매칭 중에는 세션을 시작한 뒤 API 버전을 변경할 수 없습니다.'
+                  : ''
+              }
+              apiKeyNotice={manualModeNotice}
+              currentActor={currentActor}
+              timeRemaining={timeRemaining}
+              turnTimerSeconds={turnTimerSeconds}
+            />
+          </section>
 
-              <div className={styles.manualToggleRow}>
-                <button
-                  type="button"
-                  className={styles.manualToggleButton}
-                  onClick={() => setManualDrawerOpen((open) => !open)}
-                  disabled={!canSubmitAction && !manualDrawerOpen}
-                  aria-expanded={manualDrawerOpen}
-                >
-                  {manualDrawerOpen
-                    ? '수동 입력창 접기'
-                    : canSubmitAction
-                    ? '수동 입력창 열기'
-                    : '수동 입력 대기'}
-                </button>
-              </div>
+          <section
+            className={`${styles.manualPanel} ${
+              manualDisabled ? styles.manualPanelDisabled : styles.manualPanelActive
+            }`}
+          >
+            <ManualResponsePanel
+              manualResponse={manualResponse}
+              onChange={setManualResponse}
+              onManualAdvance={advanceWithManual}
+              onAiAdvance={advanceWithAi}
+              isAdvancing={isAdvancing}
+              disabled={manualDisabled}
+              disabledReason={manualDisabledReason}
+              timeRemaining={timeRemaining}
+              turnTimerSeconds={turnTimerSeconds}
+            />
+          </section>
+
+          <section className={styles.nextControls}>
+            <div className={styles.nextStatus}>
+              <span className={styles.nextTimer}>{timerLabel}</span>
+              {consensusActive ? (
+                <span className={styles.nextConsensus}>
+                  {`동의 ${consensusApproved}/${consensusThreshold}`}
+                </span>
+              ) : null}
             </div>
+            <button
+              type="button"
+              className={styles.nextButton}
+              onClick={advanceWithAi}
+              disabled={nextButtonDisabled}
+            >
+              {nextButtonLabel}
+            </button>
           </section>
         </div>
-
-        <footer className={styles.heroFooter}>
-          <div className={styles.heroFooterLabel}>참가자 카드</div>
-          {heroInfoSequences.length ? (
-            <ul className={styles.heroList}>
-              {heroInfoSequences.map(({ key, participant, info, slotIndex }) => {
-                const stage = heroStageState[key] ?? 0
-                return (
-                  <HeroBadge
-                    key={key}
-                    participant={participant}
-                    stage={stage}
-                    infoSequence={info}
-                    onToggle={() => toggleHeroStage(key, info.length)}
-                    isActive={currentActor?.slotIndex === slotIndex}
-                    isUserAction={
-                      currentActor?.slotIndex === slotIndex && !!currentActor?.isUserAction
-                    }
-                  />
-                )
-              })}
-            </ul>
-          ) : (
-            <div className={styles.heroEmpty}>참여자가 없습니다.</div>
-          )}
-        </footer>
       </div>
 
-      {manualDrawerOpen ? (
-        <button
-          type="button"
-          className={styles.manualDrawerBackdrop}
-          onClick={() => setManualDrawerOpen(false)}
-          aria-label="수동 입력창 닫기"
-        />
+      {historyOpen ? (
+        <div className={styles.overlay} role="dialog" aria-modal="true">
+          <div className={styles.overlayPanel}>
+            <div className={styles.overlayHeader}>
+              <h3>히스토리</h3>
+              <button type="button" onClick={() => setHistoryOpen(false)}>
+                닫기
+              </button>
+            </div>
+            <div className={styles.overlayBody}>
+              <LogsPanel logs={logs} aiMemory={aiMemory} playerHistories={playerHistories} />
+            </div>
+          </div>
+        </div>
       ) : null}
 
-      <aside
-        className={`${styles.manualDrawer} ${manualDrawerOpen ? styles.manualDrawerOpen : ''}`}
-        aria-hidden={!manualDrawerOpen}
-      >
-        <div className={styles.manualDrawerPanel}>
-          <button
-            type="button"
-            className={styles.manualDrawerClose}
-            onClick={() => setManualDrawerOpen(false)}
-            aria-label="수동 입력창 닫기"
-          >
-            닫기
-          </button>
-          <ManualResponsePanel
-            manualResponse={manualResponse}
-            onChange={setManualResponse}
-            onManualAdvance={advanceWithManual}
-            onAiAdvance={advanceWithAi}
-            isAdvancing={isAdvancing}
-            disabled={!canSubmitAction}
-            disabledReason={
-              canSubmitAction ? '' : '현재 차례의 플레이어만 응답을 제출할 수 있습니다.'
-            }
-            timeRemaining={timeRemaining}
-            turnTimerSeconds={turnTimerSeconds}
-          />
+      {rosterOpen ? (
+        <div className={styles.overlay} role="dialog" aria-modal="true">
+          <div className={styles.overlayPanel}>
+            <div className={styles.overlayHeader}>
+              <h3>참여자 정보</h3>
+              <button type="button" onClick={() => setRosterOpen(false)}>
+                닫기
+              </button>
+            </div>
+            <div className={styles.overlayBody}>
+              <RosterPanel participants={participants} />
+            </div>
+          </div>
         </div>
-      </aside>
+      ) : null}
     </div>
   )
 }

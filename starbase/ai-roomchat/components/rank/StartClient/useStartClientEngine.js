@@ -1598,6 +1598,7 @@ export function useStartClientEngine(gameId) {
       setStatusMessage('동의 대상인 참가자만 다음 턴 진행을 제안할 수 있습니다.')
       return
     }
+    const threshold = Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8))
     const already = consentedOwners.includes(viewerId)
     advanceIntentRef.current = { override: null }
     if (!already) {
@@ -1606,7 +1607,7 @@ export function useStartClientEngine(gameId) {
     const futureCount = already
       ? consensusCount
       : Math.min(consensusCount + 1, eligibleOwnerIds.length)
-    setStatusMessage(`다음 턴 동의 ${futureCount}/${eligibleOwnerIds.length}명`)
+    setStatusMessage(`다음 턴 동의 ${futureCount}/${threshold}명`)
   }, [
     advanceTurn,
     consentedOwners,
@@ -1623,13 +1624,14 @@ export function useStartClientEngine(gameId) {
     if (!advanceIntentRef.current) return undefined
     if (!eligibleOwnerIds.length) return undefined
     const eligibleSet = new Set(eligibleOwnerIds)
+    const threshold = Math.max(1, Math.ceil(eligibleSet.size * 0.8))
     const agreed = new Set()
     consentedOwners.forEach((ownerId) => {
       if (eligibleSet.has(ownerId)) {
         agreed.add(ownerId)
       }
     })
-    if (agreed.size >= eligibleSet.size) {
+    if (agreed.size >= threshold) {
       const intent = advanceIntentRef.current
       advanceIntentRef.current = null
       advanceTurn(intent?.override ?? null)
@@ -1701,6 +1703,7 @@ export function useStartClientEngine(gameId) {
       viewerEligible: viewerCanConsent,
       viewerHasConsented,
       active: needsConsensus,
+      threshold: Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
     },
   }
 }

@@ -11,6 +11,7 @@ export default function HeaderControls({
   consensus,
   startDisabled = false,
   isStarting = false,
+  showAdvance = true,
 }) {
   const nextLabel = advanceLabel || (isAdvancing ? '진행 중…' : '다음 턴')
   const startLabel = isStarting ? '준비 중…' : preflight ? '게임 시작' : '다시 시작'
@@ -66,23 +67,25 @@ export default function HeaderControls({
         >
           {startLabel}
         </button>
-        <button
-          type="button"
-          onClick={onAdvance}
-          disabled={isAdvancing || advanceDisabled}
-          style={{
-            padding: '10px 16px',
-            borderRadius: 999,
-            background:
-              isAdvancing || advanceDisabled ? 'rgba(37, 99, 235, 0.35)' : '#2563eb',
-            color: '#f8fafc',
-            fontWeight: 700,
-            border: 'none',
-            cursor: isAdvancing || advanceDisabled ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {nextLabel}
-        </button>
+        {showAdvance ? (
+          <button
+            type="button"
+            onClick={onAdvance}
+            disabled={isAdvancing || advanceDisabled}
+            style={{
+              padding: '10px 16px',
+              borderRadius: 999,
+              background:
+                isAdvancing || advanceDisabled ? 'rgba(37, 99, 235, 0.35)' : '#2563eb',
+              color: '#f8fafc',
+              fontWeight: 700,
+              border: 'none',
+              cursor: isAdvancing || advanceDisabled ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {nextLabel}
+          </button>
+        ) : null}
         {consensus?.active ? (
           <span
             style={{
