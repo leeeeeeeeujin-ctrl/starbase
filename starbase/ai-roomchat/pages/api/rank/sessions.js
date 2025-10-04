@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { withTableQuery } from '@/lib/supabaseTables'
 import { mapTimelineRowToEvent, sanitizeTimelineEvents } from '@/lib/rank/timelineEvents'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -68,12 +69,16 @@ export default async function handler(req, res) {
   const turnLimit = clamp(rawTurnLimit, { min: 1, max: 80, fallback: 30 })
   const timelineLimit = clamp(rawTimelineLimit, { min: 0, max: 120, fallback: 40 })
 
-  const { data: sessionRows, error: sessionError } = await supabaseAdmin
-    .from('rank_sessions')
-    .select('id, game_id, owner_id, status, turn, created_at, updated_at')
-    .eq('game_id', gameId)
-    .order('created_at', { ascending: false })
-    .limit(limit)
+  const { data: sessionRows, error: sessionError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) =>
+      from
+        .select('id, game_id, owner_id, status, turn, created_at, updated_at')
+        .eq('game_id', gameId)
+        .order('created_at', { ascending: false })
+        .limit(limit),
+  )
 
   if (sessionError) {
     return res.status(400).json({ error: sessionError.message })
@@ -86,12 +91,16 @@ export default async function handler(req, res) {
   let timelineBySession = new Map()
 
   if (sessionIds.length) {
-    const { data: turnRows, error: turnError } = await supabaseAdmin
-      .from('rank_turns')
-      .select('id, session_id, idx, role, public, is_visible, content, summary_payload, created_at')
-      .in('session_id', sessionIds)
-      .order('session_id', { ascending: true })
-      .order('idx', { ascending: true })
+    const { data: turnRows, error: turnError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_turns',
+      (from) =>
+        from
+          .select('id, session_id, idx, role, public, is_visible, content, summary_payload, created_at')
+          .in('session_id', sessionIds)
+          .order('session_id', { ascending: true })
+          .order('idx', { ascending: true }),
+    )
 
     if (turnError) {
       return res.status(400).json({ error: turnError.message })
@@ -109,14 +118,18 @@ export default async function handler(req, res) {
 
   if (timelineLimit > 0 && sessionIds.length) {
     const totalLimit = timelineLimit * sessionIds.length
-    const { data: timelineRows, error: timelineError } = await supabaseAdmin
-      .from('rank_session_timeline_events')
-      .select(
-        'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit, status, turn, event_timestamp, context, metadata',
-      )
-      .in('session_id', sessionIds)
-      .order('event_timestamp', { ascending: false })
-      .limit(totalLimit)
+    const { data: timelineRows, error: timelineError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_session_timeline_events',
+      (from) =>
+        from
+          .select(
+            'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit, status, turn, event_timestamp, context, metadata',
+          )
+          .in('session_id', sessionIds)
+          .order('event_timestamp', { ascending: false })
+          .limit(totalLimit),
+    )
 
     if (timelineError) {
       return res.status(400).json({ error: timelineError.message })
@@ -148,10 +161,14 @@ export default async function handler(req, res) {
 
   let battleLogsBySession = new Map()
   if (sessionIds.length) {
-    const { data: battleRows, error: battleError } = await supabaseAdmin
-      .from('rank_session_battle_logs')
-      .select('session_id, result, reason, payload, created_at, updated_at')
-      .in('session_id', sessionIds)
+    const { data: battleRows, error: battleError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_session_battle_logs',
+      (from) =>
+        from
+          .select('session_id, result, reason, payload, created_at, updated_at')
+          .in('session_id', sessionIds),
+    )
 
     if (battleError) {
       return res.status(400).json({ error: battleError.message })

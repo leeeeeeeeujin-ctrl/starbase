@@ -5,6 +5,7 @@ import { callChat } from '@/lib/rank/ai'
 import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys'
 import { buildTurnSummaryPayload } from '@/lib/rank/turnSummary'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { withTableQuery } from '@/lib/supabaseTables'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -126,11 +127,15 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'missing_user_api_key' })
   }
 
-  const { data: session, error: sessionError } = await supabaseAdmin
-    .from('rank_sessions')
-    .select('id, owner_id, game_id, status, turn')
-    .eq('id', sessionId)
-    .maybeSingle()
+  const { data: session, error: sessionError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) =>
+      from
+        .select('id, owner_id, game_id, status, turn')
+        .eq('id', sessionId)
+        .maybeSingle(),
+  )
 
   if (sessionError) {
     return res.status(400).json({ error: sessionError.message })
@@ -171,13 +176,17 @@ export default async function handler(req, res) {
   const responseRole = sanitizeRole(responseRoleInput, 'assistant')
   const responsePublic = coerceBoolean(responsePublicInput, true)
 
-  const { data: lastTurn, error: lastError } = await supabaseAdmin
-    .from('rank_turns')
-    .select('idx')
-    .eq('session_id', sessionId)
-    .order('idx', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { data: lastTurn, error: lastError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_turns',
+    (from) =>
+      from
+        .select('idx')
+        .eq('session_id', sessionId)
+        .order('idx', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+  )
 
   if (lastError) {
     return res.status(400).json({ error: lastError.message })
@@ -239,10 +248,12 @@ export default async function handler(req, res) {
 
   let inserted = []
   if (rows.length) {
-    const { data: insertedRows, error: insertError } = await supabaseAdmin
-      .from('rank_turns')
-      .insert(rows)
-      .select('id, idx, role, public, is_visible, content, summary_payload, created_at')
+    const { data: insertedRows, error: insertError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_turns',
+      (from) =>
+        from.insert(rows).select('id, idx, role, public, is_visible, content, summary_payload, created_at'),
+    )
 
     if (insertError) {
       return res.status(400).json({ error: insertError.message })
@@ -252,10 +263,11 @@ export default async function handler(req, res) {
 
   const now = new Date().toISOString()
 
-  const { error: updateError } = await supabaseAdmin
-    .from('rank_sessions')
-    .update({ updated_at: now, turn: nextTurnNumber })
-    .eq('id', sessionId)
+  const { error: updateError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) => from.update({ updated_at: now, turn: nextTurnNumber }).eq('id', sessionId),
+  )
 
   if (updateError) {
     return res.status(400).json({ error: updateError.message })

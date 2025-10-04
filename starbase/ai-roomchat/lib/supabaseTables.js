@@ -89,5 +89,11 @@ export function getResolvedTable(logicalName) {
   return resolvedTableCache[logicalName] || null
 }
 
+export async function withTableQuery(supabaseClient, logicalName, handler) {
+  return withTable(supabaseClient, logicalName, (tableName) =>
+    handler(supabaseClient.from(tableName), tableName),
+  )
+}
+
 // 
 

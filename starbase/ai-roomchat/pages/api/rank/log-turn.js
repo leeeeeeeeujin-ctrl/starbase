@@ -7,6 +7,7 @@ import {
   notifyRealtimeTimelineWebhook,
 } from '@/lib/rank/realtimeEventNotifications'
 import { mapTimelineEventToRow, sanitizeTimelineEvents } from '@/lib/rank/timelineEvents'
+import { withTableQuery } from '@/lib/supabaseTables'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -140,11 +141,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'missing_entries' })
   }
 
-  const { data: session, error: sessionError } = await supabaseAdmin
-    .from('rank_sessions')
-    .select('id, owner_id, game_id, turn')
-    .eq('id', sessionId)
-    .maybeSingle()
+  const { data: session, error: sessionError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) => from.select('id, owner_id, game_id, turn').eq('id', sessionId).maybeSingle(),
+  )
 
   if (sessionError) {
     return res.status(400).json({ error: sessionError.message })
@@ -158,13 +159,17 @@ export default async function handler(req, res) {
     return res.status(409).json({ error: 'session_game_mismatch' })
   }
 
-  const { data: lastTurn, error: lastError } = await supabaseAdmin
-    .from('rank_turns')
-    .select('idx')
-    .eq('session_id', sessionId)
-    .order('idx', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { data: lastTurn, error: lastError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_turns',
+    (from) =>
+      from
+        .select('idx')
+        .eq('session_id', sessionId)
+        .order('idx', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+  )
 
   if (lastError) {
     return res.status(400).json({ error: lastError.message })
@@ -204,10 +209,11 @@ export default async function handler(req, res) {
     }
   })
 
-  const { data: inserted, error: insertError } = await supabaseAdmin
-    .from('rank_turns')
-    .insert(rows)
-    .select('id, idx, role, public, content, created_at')
+  const { data: inserted, error: insertError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_turns',
+    (from) => from.insert(rows).select('id, idx, role, public, content, created_at'),
+  )
 
   if (insertError) {
     return res.status(400).json({ error: insertError.message })
@@ -220,10 +226,11 @@ export default async function handler(req, res) {
     updatePayload.turn = Math.max(session.turn || 0, numericTurn)
   }
 
-  const { error: updateError } = await supabaseAdmin
-    .from('rank_sessions')
-    .update(updatePayload)
-    .eq('id', sessionId)
+  const { error: updateError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) => from.update(updatePayload).eq('id', sessionId),
+  )
 
   if (updateError) {
     return res.status(400).json({ error: updateError.message })
@@ -249,9 +256,11 @@ export default async function handler(req, res) {
 
     if (timelineRows.length) {
       try {
-        await supabaseAdmin
-          .from('rank_session_timeline_events')
-          .upsert(timelineRows, { onConflict: 'event_id', ignoreDuplicates: false })
+        await withTableQuery(
+          supabaseAdmin,
+          'rank_session_timeline_events',
+          (from) => from.upsert(timelineRows, { onConflict: 'event_id', ignoreDuplicates: false }),
+        )
       } catch (timelineError) {
         console.error('[log-turn] failed to persist timeline events', timelineError)
       }

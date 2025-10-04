@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { withTableQuery } from '@/lib/supabaseTables'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -73,11 +74,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'game_mismatch' })
   }
 
-  const { data: session, error: sessionError } = await supabaseAdmin
-    .from('rank_sessions')
-    .select('id, owner_id, game_id')
-    .eq('id', sessionId)
-    .maybeSingle()
+  const { data: session, error: sessionError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) => from.select('id, owner_id, game_id').eq('id', sessionId).maybeSingle(),
+  )
 
   if (sessionError) {
     return res.status(400).json({ error: sessionError.message })
@@ -106,9 +107,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { error: upsertError } = await supabaseAdmin
-      .from('rank_session_battle_logs')
-      .upsert(upsertPayload, { onConflict: 'session_id' })
+    const { error: upsertError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_session_battle_logs',
+      (from) => from.upsert(upsertPayload, { onConflict: 'session_id' }),
+    )
 
     if (upsertError) {
       throw upsertError

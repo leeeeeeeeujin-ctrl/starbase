@@ -1,6 +1,7 @@
 'use client'
 
 import { supabase } from '../../../lib/supabase'
+import { withTableQuery } from '../../../lib/supabaseTables'
 import { sanitizeVariableRules } from '../../../lib/variableRules'
 
 export async function exportSet() {
@@ -12,9 +13,13 @@ export async function exportSet() {
   }
 
   const [setRow, slots, bridges] = await Promise.all([
-    supabase.from('prompt_sets').select('*').eq('id', setId).single(),
-    supabase.from('prompt_slots').select('*').eq('set_id', setId).order('slot_no'),
-    supabase.from('prompt_bridges').select('*').eq('from_set', setId),
+    withTableQuery(supabase, 'prompt_sets', (from) => from.select('*').eq('id', setId).single()),
+    withTableQuery(supabase, 'prompt_slots', (from) =>
+      from.select('*').eq('set_id', setId).order('slot_no'),
+    ),
+    withTableQuery(supabase, 'prompt_bridges', (from) =>
+      from.select('*').eq('from_set', setId),
+    ),
   ])
 
   const payload = {
@@ -50,11 +55,15 @@ export async function importSet(event) {
       return
     }
 
-    const { data: insertedSet, error: setError } = await supabase
-      .from('prompt_sets')
-      .insert({ name: payload?.set?.name || '가져온 세트', owner_id: user.id })
-      .select()
-      .single()
+    const { data: insertedSet, error: setError } = await withTableQuery(
+      supabase,
+      'prompt_sets',
+      (from) =>
+        from
+          .insert({ name: payload?.set?.name || '가져온 세트', owner_id: user.id })
+          .select()
+          .single(),
+    )
 
     if (setError || !insertedSet) {
       throw new Error(setError?.message || '세트를 생성하지 못했습니다.')
@@ -99,10 +108,11 @@ export async function importSet(event) {
         }
       })
 
-      const { data: insertedSlots, error: slotError } = await supabase
-        .from('prompt_slots')
-        .insert(slotRows.map(({ identifier, ...rest }) => rest))
-        .select()
+      const { data: insertedSlots, error: slotError } = await withTableQuery(
+        supabase,
+        'prompt_slots',
+        (from) => from.insert(slotRows.map(({ identifier, ...rest }) => rest)).select(),
+      )
 
       if (slotError) {
         throw new Error(slotError.message)
@@ -145,7 +155,11 @@ export async function importSet(event) {
         .filter((row) => row.from_slot_id && row.to_slot_id)
 
       if (bridgeRows.length) {
-        const { error: bridgeError } = await supabase.from('prompt_bridges').insert(bridgeRows)
+        const { error: bridgeError } = await withTableQuery(
+          supabase,
+          'prompt_bridges',
+          (from) => from.insert(bridgeRows),
+        )
         if (bridgeError) {
           throw new Error(bridgeError.message)
         }
