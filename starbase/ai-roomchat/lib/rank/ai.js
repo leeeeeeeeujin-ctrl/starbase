@@ -74,36 +74,48 @@ function deriveGoogleError(status, rawBody) {
 
 async function callGemini({ apiKey, system, prompt }) {
   const runtimeFetch = await getRuntimeFetch()
-  const body = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: prompt }],
-      },
-    ],
-  }
-
-  if (system) {
-    body.systemInstruction = {
-      role: 'system',
-      parts: [{ text: system }],
-    }
-  }
+  const preparedPrompt = typeof prompt === 'string' ? prompt : ''
+  const trimmedSystem = typeof system === 'string' ? system.trim() : ''
 
   const endpoints = [
     {
       url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
       queryKey: true,
+      supportsSystemInstruction: true,
     },
     {
       url: 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent',
       queryKey: false,
+      supportsSystemInstruction: false,
     },
   ]
 
   let lastFailure = null
 
   for (const endpoint of endpoints) {
+    const combinedPrompt =
+      endpoint.supportsSystemInstruction || !trimmedSystem
+        ? preparedPrompt
+        : preparedPrompt
+        ? `${trimmedSystem}\n\n${preparedPrompt}`
+        : trimmedSystem
+
+    const body = {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: combinedPrompt }],
+        },
+      ],
+    }
+
+    if (endpoint.supportsSystemInstruction && trimmedSystem) {
+      body.systemInstruction = {
+        role: 'system',
+        parts: [{ text: trimmedSystem }],
+      }
+    }
+
     const headers = {
       'Content-Type': 'application/json',
     }
