@@ -377,12 +377,13 @@ export function buildCandidateSample({
   roles = [],
   rules = {},
 }) {
+  const baseQueue = Array.isArray(queue) ? queue : []
   const meta = {
     realtime: Boolean(realtimeEnabled),
     sampleType: realtimeEnabled ? 'realtime_queue' : 'participant_pool',
-    queueCount: Array.isArray(queue) ? queue.length : 0,
+    queueCount: baseQueue.length,
     participantPoolCount: Array.isArray(participantPool) ? participantPool.length : 0,
-    queueSampled: realtimeEnabled ? (Array.isArray(queue) ? queue.length : 0) : 0,
+    queueSampled: baseQueue.length,
     simulatedSelected: 0,
     simulatedEligible: 0,
     simulatedFiltered: 0,
@@ -394,10 +395,10 @@ export function buildCandidateSample({
   }
 
   if (realtimeEnabled) {
-    return { sample: queue, meta }
+    return { sample: baseQueue, meta }
   }
 
-  const ownersInQueue = new Set(queue.map((row) => row?.owner_id || row?.ownerId).filter(Boolean))
+  const ownersInQueue = new Set(baseQueue.map((row) => row?.owner_id || row?.ownerId).filter(Boolean))
   const roleTargets = new Set(
     roles
       .map((role) => normalizeRoleName(role?.name ?? role))
@@ -488,7 +489,6 @@ export function buildCandidateSample({
 
   meta.simulatedSelected = selected.length
 
-  const baseQueue = realtimeEnabled ? (Array.isArray(queue) ? queue : []) : []
   return { sample: baseQueue.concat(selected), meta }
 }
 

@@ -255,7 +255,11 @@ export default function MatchQueueClient({
       } else if (Number.isFinite(Number(meta.queueCount))) {
         parts.push(`대기열 ${Number(meta.queueCount)}명`)
       }
-    } else if (Number.isFinite(Number(meta.simulatedSelected))) {
+    } else {
+      const queueIncluded = Number(meta.queueSampled)
+      if (Number.isFinite(queueIncluded) && queueIncluded > 0) {
+        parts.push(`대기열 ${queueIncluded}명 포함`)
+      }
       const poolCount = Number(meta.participantPoolCount)
       if (Number.isFinite(poolCount)) {
         parts.push(`참가자 풀 ${poolCount}명`)
@@ -294,9 +298,13 @@ export default function MatchQueueClient({
         }
       }
     } else {
+      const queueSampled = Number(queuedSampleMeta.queueSampled)
+      if (Number.isFinite(queueSampled) && queueSampled > 0) {
+        parts.push(`대기열 ${queueSampled}명 포함`)
+      }
       const poolCount = Number(queuedSampleMeta.participantPoolCount)
       if (Number.isFinite(poolCount)) {
-        parts.push(`참가자 풀 ${poolCount}명`) 
+        parts.push(`참가자 풀 ${poolCount}명`)
       }
     }
     const simulatedSelected = Number(queuedSampleMeta.simulatedSelected)
