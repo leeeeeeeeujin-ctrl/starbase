@@ -25,6 +25,7 @@ import {
   createTurnVoteController,
   deriveEligibleOwnerIds,
 } from './services/turnVoteController'
+import { createRealtimeSessionManager } from './services/realtimeSessionManager'
 import {
   getApiKeyCooldown,
   getCooldownDurationMs,
@@ -136,6 +137,37 @@ function formatCooldownMessage(info) {
   return `${detail}최근 사용한 API 키${sample}는 ${duration} 동안 사용할 수 없습니다. 새 키를 입력하거나 쿨다운이 끝난 뒤 다시 시도해 주세요.`
 }
 
+function deriveParticipantOwnerId(participant) {
+  if (!participant) return null
+  return (
+    participant?.owner_id ??
+    participant?.ownerId ??
+    participant?.ownerID ??
+    participant?.owner?.id ??
+    null
+  )
+}
+
+function formatOwnerDisplayName(participant, fallbackId = '') {
+  if (!participant) {
+    return fallbackId ? `플레이어 ${fallbackId.slice(0, 6)}` : '플레이어'
+  }
+  const heroName =
+    participant?.hero?.name ??
+    participant?.hero_name ??
+    participant?.display_name ??
+    participant?.name ??
+    ''
+  if (heroName) {
+    return heroName
+  }
+  const ownerId = deriveParticipantOwnerId(participant)
+  if (ownerId) {
+    return `플레이어 ${String(ownerId).slice(0, 6)}`
+  }
+  return '플레이어'
+}
+
 function isApiKeyError(error) {
   if (!error) return false
   const code = typeof error?.code === 'string' ? error.code.toLowerCase() : ''
@@ -234,6 +266,10 @@ export function useStartClientEngine(gameId) {
     if (Number.isFinite(stored) && stored > 0) return stored
     return 60
   })
+  const realtimeManagerRef = useRef(null)
+  if (!realtimeManagerRef.current) {
+    realtimeManagerRef.current = createRealtimeSessionManager()
+  }
   const turnTimerServiceRef = useRef(null)
   if (!turnTimerServiceRef.current) {
     turnTimerServiceRef.current = createTurnTimerService({
@@ -248,6 +284,9 @@ export function useStartClientEngine(gameId) {
   }
   const [consensusState, setConsensusState] = useState(() =>
     turnVoteControllerRef.current.getSnapshot(),
+  )
+  const [realtimePresence, setRealtimePresence] = useState(() =>
+    realtimeManagerRef.current ? realtimeManagerRef.current.getSnapshot() : null,
   )
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
@@ -300,6 +339,10 @@ export function useStartClientEngine(gameId) {
     if (gameId) {
       clearActiveSessionRecord(gameId)
     }
+    if (realtimeManagerRef.current) {
+      const snapshot = realtimeManagerRef.current.reset()
+      setRealtimePresence(snapshot)
+    }
     setSessionInfo(null)
     lastScheduledTurnRef.current = 0
     setTurnDeadline(null)
@@ -309,6 +352,10 @@ export function useStartClientEngine(gameId) {
   const markSessionDefeated = useCallback(() => {
     if (gameId) {
       markActiveSessionDefeated(gameId)
+    }
+    if (realtimeManagerRef.current) {
+      const snapshot = realtimeManagerRef.current.reset()
+      setRealtimePresence(snapshot)
     }
     setSessionInfo(null)
     lastScheduledTurnRef.current = 0
@@ -857,6 +904,36 @@ export function useStartClientEngine(gameId) {
   }, [participants, preflight, turnDeadline, turn])
 
   useEffect(() => {
+    if (!realtimeManagerRef.current) return
+    const snapshot = realtimeManagerRef.current.syncParticipants(participants)
+    setRealtimePresence(snapshot)
+  }, [participants])
+
+  useEffect(() => {
+    if (!realtimeManagerRef.current) return
+    if (!game?.realtime_match) {
+      const snapshot = realtimeManagerRef.current.setManagedOwners([])
+      setRealtimePresence(snapshot)
+      return
+    }
+    const normalizedViewer = viewerId ? [String(viewerId).trim()] : []
+    const snapshot = realtimeManagerRef.current.setManagedOwners(normalizedViewer)
+    setRealtimePresence(snapshot)
+  }, [viewerId, game?.realtime_match])
+
+  useEffect(() => {
+    if (preflight) return
+    if (!game?.realtime_match) return
+    if (!turn || turn <= 0) return
+    if (!realtimeManagerRef.current) return
+    const snapshot = realtimeManagerRef.current.beginTurn({
+      turnNumber: turn,
+      eligibleOwnerIds: deriveEligibleOwnerIds(participants),
+    })
+    setRealtimePresence(snapshot)
+  }, [preflight, game?.realtime_match, turn, participants])
+
+  useEffect(() => {
     if (!currentNodeId) {
       setLastDropInTurn(null)
     }
@@ -1043,6 +1120,22 @@ export function useStartClientEngine(gameId) {
       })),
     [participants],
   )
+  const ownerDisplayMap = useMemo(() => {
+    const map = new Map()
+    participants.forEach((participant) => {
+      const ownerId = deriveParticipantOwnerId(participant)
+      if (!ownerId) return
+      const normalized = String(ownerId).trim()
+      if (!normalized) return
+      if (!map.has(normalized)) {
+        map.set(normalized, {
+          participant,
+          displayName: formatOwnerDisplayName(participant, normalized),
+        })
+      }
+    })
+    return map
+  }, [participants])
   const normalizedViewerId = useMemo(() => {
     if (!viewerId) return ''
     return String(viewerId).trim()
@@ -1132,6 +1225,24 @@ export function useStartClientEngine(gameId) {
       history.push({ role: 'system', content: systemPrompt, public: false })
     }
 
+    if (realtimeManagerRef.current) {
+      const manager = realtimeManagerRef.current
+      manager.reset()
+      if (game?.realtime_match) {
+        manager.syncParticipants(participants)
+        if (viewerId) {
+          manager.setManagedOwners([String(viewerId).trim()])
+        } else {
+          manager.setManagedOwners([])
+        }
+        manager.beginTurn({
+          turnNumber: 1,
+          eligibleOwnerIds: deriveEligibleOwnerIds(participants),
+        })
+      }
+      setRealtimePresence(manager.getSnapshot())
+    }
+
     visitedSlotIds.current = new Set()
     apiVersionLock.current = null
     turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
@@ -1177,6 +1288,8 @@ export function useStartClientEngine(gameId) {
     updateHeroAssets,
     rememberActiveSession,
     turnTimerSeconds,
+    game?.realtime_match,
+    viewerId,
   ])
 
   const handleStart = useCallback(async () => {
@@ -1297,7 +1410,7 @@ export function useStartClientEngine(gameId) {
   ])
 
   const advanceTurn = useCallback(
-    async (overrideResponse = null) => {
+    async (overrideResponse = null, options = {}) => {
       if (preflight) {
         setStatusMessage('먼저 "게임 시작"을 눌러 주세요.')
         return
@@ -1318,6 +1431,11 @@ export function useStartClientEngine(gameId) {
         return
       }
 
+      const advanceReason =
+        typeof options?.reason === 'string' && options.reason.trim()
+          ? options.reason.trim()
+          : 'unspecified'
+
       const actorContext = resolveActorContext({ node, slots, participants })
       const slotBinding = resolveSlotBinding({ node, actorContext })
       const slotTypeValue = node.slot_type || 'ai'
@@ -1325,9 +1443,88 @@ export function useStartClientEngine(gameId) {
       const historyRole = isUserAction ? 'user' : 'assistant'
       const actingOwnerId = actorContext?.participant?.owner_id || null
 
+      const finalizeRealtimeTurn = (reason) => {
+        if (!game?.realtime_match) return
+        const manager = realtimeManagerRef.current
+        if (!manager) return
+        const result = manager.completeTurn({
+          turnNumber: turn,
+          reason: reason || advanceReason,
+          eligibleOwnerIds: deriveEligibleOwnerIds(participants),
+        })
+        if (!result) return
+        setRealtimePresence(result.snapshot)
+
+        if (Array.isArray(result.warnings) && result.warnings.length) {
+          const messages = result.warnings
+            .map(({ ownerId, strike, remaining }) => {
+              if (!ownerId) return null
+              const normalized = String(ownerId).trim()
+              if (!normalized) return null
+              const info = ownerDisplayMap.get(normalized)
+              const displayName = info?.displayName || `플레이어 ${normalized.slice(0, 6)}`
+              const remainText = remaining > 0 ? ` (남은 기회 ${remaining}회)` : ''
+              return `${displayName} 경고 ${strike}회${remainText}`
+            })
+            .filter(Boolean)
+          if (messages.length) {
+            setStatusMessage((prev) => {
+              const notice = `경고: ${messages.join(', ')} - "다음" 버튼을 눌러 참여해 주세요.`
+              if (!prev) return notice
+              if (prev.includes(notice)) return prev
+              return `${prev}\n${notice}`
+            })
+          }
+        }
+
+        if (Array.isArray(result.escalated) && result.escalated.length) {
+          const escalatedSet = new Set(
+            result.escalated
+              .map((ownerId) => (ownerId ? String(ownerId).trim() : ''))
+              .filter(Boolean),
+          )
+          if (escalatedSet.size) {
+            setParticipants((prev) =>
+              prev.map((participant) => {
+                const ownerId = deriveParticipantOwnerId(participant)
+                if (!ownerId) return participant
+                const normalized = String(ownerId).trim()
+                if (!escalatedSet.has(normalized)) return participant
+                const statusValue = String(participant?.status || '').toLowerCase()
+                if (statusValue === 'proxy') return participant
+                return { ...participant, status: 'proxy' }
+              }),
+            )
+            const names = Array.from(escalatedSet).map((ownerId) => {
+              const info = ownerDisplayMap.get(ownerId)
+              return info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
+            })
+            setStatusMessage((prev) => {
+              const notice = `대역 전환: ${names.join(', ')} – 3회 이상 응답하지 않아 대역으로 교체되었습니다.`
+              if (!prev) return notice
+              if (prev.includes(notice)) return prev
+              return `${prev}\n${notice}`
+            })
+          }
+        }
+      }
+
+      const recordRealtimeParticipation = (ownerId, type) => {
+        if (!game?.realtime_match) return
+        if (!ownerId) return
+        const manager = realtimeManagerRef.current
+        if (!manager) return
+        const snapshot = manager.recordParticipation(ownerId, turn, { type })
+        setRealtimePresence(snapshot)
+      }
+
       if (isUserAction && (!viewerId || actingOwnerId !== viewerId)) {
         setStatusMessage('현재 차례의 플레이어만 행동을 제출할 수 있습니다.')
         return
+      }
+
+      if (isUserAction && actingOwnerId) {
+        recordRealtimeParticipation(actingOwnerId, 'action')
       }
 
       setIsAdvancing(true)
@@ -1640,6 +1837,7 @@ export function useStartClientEngine(gameId) {
         setManualResponse('')
 
         if (!chosenEdge) {
+          finalizeRealtimeTurn('no-bridge')
           setCurrentNodeId(null)
           setStatusMessage('더 이상 진행할 경로가 없어 세션을 종료합니다.')
           setTurnDeadline(null)
@@ -1665,6 +1863,7 @@ export function useStartClientEngine(gameId) {
             if (brawlEnabled) {
               setWinCount(() => upcomingWin)
             }
+            finalizeRealtimeTurn('win')
             setCurrentNodeId(null)
             const suffix = brawlEnabled
               ? ` 누적 승리 ${upcomingWin}회를 기록했습니다.`
@@ -1676,6 +1875,7 @@ export function useStartClientEngine(gameId) {
             return
           }
         } else if (action === 'lose') {
+          finalizeRealtimeTurn('lose')
           setCurrentNodeId(null)
           setStatusMessage(
             brawlEnabled
@@ -1691,6 +1891,7 @@ export function useStartClientEngine(gameId) {
           }
           return
         } else if (action === 'draw') {
+          finalizeRealtimeTurn('draw')
           setCurrentNodeId(null)
           setStatusMessage('무승부로 종료되었습니다.')
           setTurnDeadline(null)
@@ -1700,6 +1901,7 @@ export function useStartClientEngine(gameId) {
         }
 
         if (!nextNodeId) {
+          finalizeRealtimeTurn('missing-next')
           setCurrentNodeId(null)
           setStatusMessage('다음에 진행할 노드를 찾을 수 없습니다.')
           setTurnDeadline(null)
@@ -1708,6 +1910,7 @@ export function useStartClientEngine(gameId) {
           return
         }
 
+        finalizeRealtimeTurn('continue')
         setCurrentNodeId(nextNodeId)
         setTurn((prev) => prev + 1)
       } catch (err) {
@@ -1752,6 +1955,7 @@ export function useStartClientEngine(gameId) {
       turn,
       participants,
       participantsStatus,
+      ownerDisplayMap,
       game?.realtime_match,
       brawlEnabled,
       endConditionVariable,
@@ -1776,14 +1980,25 @@ export function useStartClientEngine(gameId) {
     }
     advanceIntentRef.current = null
     clearConsensusVotes()
-    advanceTurn(manualResponse.trim())
+    advanceTurn(manualResponse.trim(), { reason: 'manual' })
   }, [advanceTurn, manualResponse, clearConsensusVotes])
 
   const advanceWithAi = useCallback(() => {
     if (!needsConsensus) {
+      if (game?.realtime_match && normalizedViewerId) {
+        const manager = realtimeManagerRef.current
+        if (manager) {
+          const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
+            type: 'vote',
+          })
+          if (snapshot) {
+            setRealtimePresence(snapshot)
+          }
+        }
+      }
       advanceIntentRef.current = null
       clearConsensusVotes()
-      advanceTurn(null)
+      advanceTurn(null, { reason: 'ai' })
       return
     }
     if (!viewerCanConsent) {
@@ -1794,7 +2009,18 @@ export function useStartClientEngine(gameId) {
     if (!controller) {
       return
     }
-    advanceIntentRef.current = { override: null }
+    if (game?.realtime_match && normalizedViewerId) {
+      const manager = realtimeManagerRef.current
+      if (manager) {
+        const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
+          type: 'vote',
+        })
+        if (snapshot) {
+          setRealtimePresence(snapshot)
+        }
+      }
+    }
+    advanceIntentRef.current = { override: null, reason: 'consensus' }
     let snapshot = controller.getSnapshot()
     if (!controller.hasConsented(normalizedViewerId)) {
       snapshot = controller.registerConsent(normalizedViewerId)
@@ -1809,12 +2035,15 @@ export function useStartClientEngine(gameId) {
     setStatusMessage,
     viewerCanConsent,
     normalizedViewerId,
+    game?.realtime_match,
+    turn,
+    setRealtimePresence,
   ])
 
   const autoAdvance = useCallback(() => {
     advanceIntentRef.current = null
     clearConsensusVotes()
-    return advanceTurn(null)
+    return advanceTurn(null, { reason: 'timeout' })
   }, [advanceTurn, clearConsensusVotes])
 
   useEffect(() => {
@@ -1824,7 +2053,7 @@ export function useStartClientEngine(gameId) {
     const intent = advanceIntentRef.current
     advanceIntentRef.current = null
     clearConsensusVotes()
-    advanceTurn(intent?.override ?? null)
+    advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' })
     return undefined
   }, [
     advanceTurn,
@@ -1867,7 +2096,9 @@ export function useStartClientEngine(gameId) {
       advanceIntentRef.current = null
       if (intent) {
         clearConsensusVotes()
-        advanceTurn(intent?.override ?? null)
+        advanceTurn(intent?.override ?? null, {
+          reason: intent?.reason || 'consensus',
+        })
       }
     }
   }, [needsConsensus, advanceTurn, clearConsensusVotes])
@@ -1919,6 +2150,7 @@ export function useStartClientEngine(gameId) {
     activeBgmDuration: activeHeroAssets.bgmDuration,
     activeAudioProfile: activeHeroAssets.audioProfile,
     sessionInfo,
+    realtimePresence,
     consensus: {
       required: eligibleOwnerIds.length,
       count: consensusCount,

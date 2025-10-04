@@ -14,6 +14,9 @@ const DEFEATED_STATUSES = new Set([
   'retired',
   'out',
   'spectating',
+  'proxy',
+  'stand-in',
+  '대역',
 ])
 
 export function deriveEligibleOwnerIds(participants = []) {
