@@ -32,7 +32,7 @@
 
 1. **API 라우트**: `/api/rank/log-turn`은 클라이언트에서 전달받은 타임라인 페이로드를 `sanitizeTimelineEvents`로 정규화한 뒤 `rank_session_timeline_events`에 업서트합니다. `event_id` 충돌 시 최신 메타데이터로 갱신합니다.
 2. **Realtime/웹훅 동기화**: 테이블에 기록된 동일한 이벤트 객체를 Supabase Realtime 채널(`rank:timeline-event`)과 Slack/Webhook 알림으로 동시에 브로드캐스트합니다.
-3. **백엔드 서비스**: 매치 메타(`drop_in_matching_context`)와 API 키 풀 교체(`api_key_pool_replaced`) 이벤트는 Supabase 백엔드 함수도 동일 스키마로 `event_id`를 생성해 업서트/브로드캐스트해야 합니다.
+3. **백엔드 서비스**: 매치 메타(`drop_in_matching_context`)와 API 키 풀 교체(`api_key_pool_replaced`) 이벤트는 Supabase 백엔드 함수도 동일 스키마로 `event_id`를 생성해 업서트/브로드캐스트해야 합니다. `supabase/functions/rank-match-timeline`과 `supabase/functions/rank-api-key-rotation`이 이를 담당하며, 실패 시 Slack/Webhook 경보를 동시에 발행합니다.
 4. **타임라인 조회**: 관전/재생 화면용 `/api/rank/sessions`는 `timelineLimit` 파라미터를 받아 세션별 최근 이벤트를 조회합니다. 응답은 `timeline_events` 배열로 포함되며 각 항목은 `TimelineSection`이 소비할 수 있는 정규화된 객체입니다.
 
 ## 3. 클라이언트 기대치

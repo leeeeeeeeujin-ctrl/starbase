@@ -107,14 +107,15 @@
   - `/api/rank/sessions`가 `timelineLimit` 파라미터와 함께 세션별 `timeline_events` 배열을 반환하며, `useGameRoom`이 개인/공유 히스토리를 타임라인으로 정규화해 관전 및 재생 뷰 모두에서 동일 데이터를 사용할 수 있게 했습니다.
   - `GameRoomView` 메인 탭에 관전 타임라인과 내 세션 타임라인 섹션을 추가하고 `TimelineSection`의 메타 출력에 세션 라벨·시작 시각을 확장해 실시간/재생 UI가 같은 컴포넌트를 공유합니다.
   - 새 타임라인 스키마(`docs/rank-session-timeline-spec.md`)를 문서화해 서비스 롤 함수와 운영 자동화가 동일 포맷으로 이벤트를 발행할 수 있도록 기준을 마련했습니다.
+  - Supabase Edge Function(`rank-match-timeline`, `rank-api-key-rotation`)이 매칭·키 교체 메타를 `rank_session_timeline_events`에 업서트하고 Realtime/Slack 경보를 동시에 발행하도록 배포 스크립트를 추가했습니다. (→ `supabase/functions/*`, `docs/rank-edge-function-schema.md`)
 - **다음 단계 메모**:
-  - Supabase Edge Functions(매칭/키 풀 관리)가 `rank_session_timeline_events` 업서트를 직접 수행하고, 실패 시 재시도·모니터링 경로를 노출하도록 백엔드 작업을 배포하기.
+  - Supabase CLI 배포 파이프라인에 Edge Function 변경 감지를 추가하고, 실패 시 Pager/Slack 경보를 묶는 런북을 마저 작성하기.
   - 베틀로그 상세/캐릭터 대시보드에 `TimelineSection`을 재사용해 턴 기록과 타임라인 이벤트를 함께 탐색할 수 있는 필터/검색 UI를 설계하기.
   - 타임라인 이벤트에 대한 통합 테스트(자동 진행, 난입, 키 교체)를 작성해 회귀 방지와 운영 감사 로그 일관성을 보장하기.
 
 ---
 
-느낀 점: 백엔드에서 이벤트를 영속화하고 관전/재생 UI에서 같은 타임라인을 공유하니 “어느 턴에 어떤 제재가 있었는지”를 설명하기 훨씬 쉬워졌습니다.
-추가로 필요한 점: 매칭/키 풀 Edge Function이 새 스키마를 사용하도록 배포 스크립트와 런북을 보강하고, 타임라인 이벤트 실패에 대한 경보 체계를 마련해야 합니다.
-진행사항: 실시간 경고·난입·키 교체 이벤트를 Supabase 테이블, Realtime, 관전·재생 UI까지 연결해 메인 게임 청사진의 관전 파이프라인을 완주했습니다.
+느낀 점: Edge Function까지 연결되면서 매칭·키 교체 흐름이 동일한 타임라인 스키마를 사용해 운영·관전 모두에게 투명하게 전달되는 구조가 완성됐습니다.
+추가로 필요한 점: Edge Function 배포 자동화에 실패 감시와 재시도 알림을 더해 운영팀이 즉시 대응할 수 있도록 Pager/Slack 연계를 정비해야 합니다.
+진행사항: 실시간 경고·난입·키 교체 이벤트를 Supabase 테이블·Realtime·Slack 경보·관전/재생 UI까지 묶고, Edge Function 스키마 체크리스트를 문서화했습니다.
 
