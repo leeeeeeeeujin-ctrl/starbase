@@ -26,6 +26,8 @@ import {
   deriveEligibleOwnerIds,
 } from './services/turnVoteController'
 import { createRealtimeSessionManager } from './services/realtimeSessionManager'
+import { createDropInQueueService } from './services/dropInQueueService'
+import { createAsyncSessionManager } from './services/asyncSessionManager'
 import {
   mergeTimelineEvents,
   normalizeTimelineStatus,
@@ -370,6 +372,16 @@ export function useStartClientEngine(gameId) {
   if (!realtimeManagerRef.current) {
     realtimeManagerRef.current = createRealtimeSessionManager()
   }
+  const dropInQueueRef = useRef(null)
+  if (!dropInQueueRef.current) {
+    dropInQueueRef.current = createDropInQueueService()
+  }
+  const asyncSessionManagerRef = useRef(null)
+  if (!asyncSessionManagerRef.current) {
+    asyncSessionManagerRef.current = createAsyncSessionManager({
+      dropInQueue: dropInQueueRef.current,
+    })
+  }
   const turnTimerServiceRef = useRef(null)
   if (!turnTimerServiceRef.current) {
     turnTimerServiceRef.current = createTurnTimerService({
@@ -464,6 +476,8 @@ export function useStartClientEngine(gameId) {
       const snapshot = realtimeManagerRef.current.reset()
       applyRealtimeSnapshot(snapshot)
     }
+    dropInQueueRef.current?.reset()
+    asyncSessionManagerRef.current?.reset()
     setSessionInfo(null)
     lastScheduledTurnRef.current = 0
     setTurnDeadline(null)
@@ -478,6 +492,8 @@ export function useStartClientEngine(gameId) {
       const snapshot = realtimeManagerRef.current.reset()
       applyRealtimeSnapshot(snapshot)
     }
+    dropInQueueRef.current?.reset()
+    asyncSessionManagerRef.current?.reset()
     setSessionInfo(null)
     lastScheduledTurnRef.current = 0
     setTurnDeadline(null)
@@ -986,73 +1002,101 @@ export function useStartClientEngine(gameId) {
           String(participant?.id ?? participant?.hero_id ?? index),
         ),
       )
+      dropInQueueRef.current?.reset()
+      asyncSessionManagerRef.current?.reset()
       return
     }
 
-    const previousIds = participantIdSetRef.current
-    const nextIds = new Set()
-    let dropInDetected = false
-    const newParticipants = []
+    participantIdSetRef.current = new Set(
+      participants.map((participant, index) =>
+        String(participant?.id ?? participant?.hero_id ?? index),
+      ),
+    )
 
-    participants.forEach((participant, index) => {
-      const key = String(participant?.id ?? participant?.hero_id ?? index)
-      nextIds.add(key)
-      if (!previousIds.has(key)) {
-        dropInDetected = true
-        newParticipants.push({
-          participant,
-          ownerId: deriveParticipantOwnerId(participant),
-        })
-      }
-    })
+    const queueService = dropInQueueRef.current
+    if (!queueService) return
 
-    participantIdSetRef.current = nextIds
-
-    if (!dropInDetected) return
-
-    const service = turnTimerServiceRef.current
-    if (!service) return
-
-    const hasActiveDeadline = turnDeadline && turnDeadline > Date.now()
-    const extraSeconds = service.registerDropInBonus({
-      immediate: hasActiveDeadline,
+    const queueResult = queueService.syncParticipants(participants, {
       turnNumber: turn,
+      mode: game?.realtime_match ? 'realtime' : 'async',
     })
 
-    if (extraSeconds > 0 && hasActiveDeadline) {
-      setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : prev))
-      setTimeRemaining((prev) =>
-        typeof prev === 'number' ? prev + extraSeconds : prev,
-      )
+    const arrivals = Array.isArray(queueResult?.arrivals)
+      ? queueResult.arrivals
+      : []
+
+    if (arrivals.length > 0) {
+      const service = turnTimerServiceRef.current
+      if (service) {
+        const hasActiveDeadline = turnDeadline && turnDeadline > Date.now()
+        const extraSeconds = service.registerDropInBonus({
+          immediate: hasActiveDeadline,
+          turnNumber: turn,
+        })
+
+        if (extraSeconds > 0 && hasActiveDeadline) {
+          setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : prev))
+          setTimeRemaining((prev) =>
+            typeof prev === 'number' ? prev + extraSeconds : prev,
+          )
+        }
+      }
+
+      setLastDropInTurn(Number.isFinite(Number(turn)) ? Number(turn) : 0)
     }
 
-    setLastDropInTurn(Number.isFinite(Number(turn)) ? Number(turn) : 0)
+    let timelineEvents = []
 
-    if (newParticipants.length) {
-      const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null
-      const now = Date.now()
-      const timelineEvents = newParticipants.map(({ participant, ownerId }) => ({
-        type: 'drop_in_joined',
-        ownerId: ownerId ? String(ownerId).trim() : null,
-        status:
-          normalizeTimelineStatus(
-            participant?.status || (game?.realtime_match ? 'active' : 'proxy'),
-          ) || null,
-        turn: turnNumber,
-        timestamp: now,
-        reason: game?.realtime_match ? 'drop_in_joined' : 'async_substitution',
-        context: {
-          role: participant?.role || null,
-          heroName:
-            participant?.hero?.name ||
-            participant?.hero_name ||
-            participant?.heroName ||
-            null,
-          participantId: participant?.id ?? participant?.hero_id ?? null,
-          mode: game?.realtime_match ? 'realtime' : 'async',
-        },
-      }))
-      recordTimelineEvents(timelineEvents, { turnNumber })
+    if (game?.realtime_match) {
+      if (arrivals.length) {
+        timelineEvents = arrivals.map((arrival) => {
+          const status =
+            normalizeTimelineStatus(arrival.status) || 'active'
+          const cause = arrival.replaced ? 'realtime_drop_in' : 'realtime_joined'
+          return {
+            type: 'drop_in_joined',
+            ownerId: arrival.ownerId ? String(arrival.ownerId).trim() : null,
+            status,
+            turn: Number.isFinite(Number(arrival.turn))
+              ? Number(arrival.turn)
+              : Number.isFinite(Number(turn))
+                ? Number(turn)
+                : null,
+            timestamp: arrival.timestamp,
+            reason: cause,
+            context: {
+              role: arrival.role || null,
+              heroName: arrival.heroName || null,
+              participantId: arrival.participantId ?? null,
+              slotIndex: arrival.slotIndex ?? null,
+              mode: 'realtime',
+              substitution: {
+                cause,
+                replacedOwnerId: arrival.replaced?.ownerId || null,
+                replacedHeroName: arrival.replaced?.heroName || null,
+                replacedParticipantId: arrival.replaced?.participantId || null,
+                queueDepth:
+                  arrival.stats?.queueDepth ?? arrival.stats?.replacements ?? 0,
+                arrivalOrder: arrival.stats?.arrivalOrder ?? null,
+                totalReplacements: arrival.stats?.replacements ?? 0,
+                lastDepartureCause: arrival.stats?.lastDepartureCause || null,
+              },
+            },
+          }
+        })
+      }
+    } else if (asyncSessionManagerRef.current) {
+      const { events } = asyncSessionManagerRef.current.processQueueResult(
+        queueResult,
+        { mode: 'async' },
+      )
+      if (Array.isArray(events) && events.length) {
+        timelineEvents = events
+      }
+    }
+
+    if (timelineEvents.length) {
+      recordTimelineEvents(timelineEvents, { turnNumber: turn })
     }
   }, [
     participants,
@@ -1447,6 +1491,8 @@ export function useStartClientEngine(gameId) {
     apiVersionLock.current = null
     turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
     turnTimerServiceRef.current?.reset()
+    dropInQueueRef.current?.reset()
+    asyncSessionManagerRef.current?.reset()
     participantIdSetRef.current = new Set(
       participants.map((participant, index) =>
         String(participant?.id ?? participant?.hero_id ?? index),
