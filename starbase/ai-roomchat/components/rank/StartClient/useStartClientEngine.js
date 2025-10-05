@@ -8,7 +8,6 @@ import {
   makeNodePrompt,
   parseOutcome,
 } from '../../../lib/promptEngine'
-import { loadGameBundle } from './engine/loadGameBundle'
 import { pickNextEdge } from './engine/graph'
 import { buildSystemMessage, parseRules } from './engine/systemPrompt'
 import { resolveSlotBinding } from './engine/slotBindingResolver'
@@ -49,6 +48,8 @@ import { useStartCooldown } from './hooks/useStartCooldown'
 import { useStartManualResponse } from './hooks/useStartManualResponse'
 import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog'
 import { consumeStartMatchMeta } from '../startConfig'
+import { useMatchContextLoader } from './hooks/useMatchContextLoader'
+import { sanitizeMatchMetadata } from './engine/matchContext'
 
 export function useStartClientEngine(gameId) {
   const initialStoredApiKey =
@@ -79,8 +80,6 @@ export function useStartClientEngine(gameId) {
     requireManualResponse,
   } = useStartManualResponse()
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [game, setGame] = useState(null)
   const [participants, setParticipants] = useState([])
   const [graph, setGraph] = useState({ nodes: [], edges: [] })
@@ -173,39 +172,70 @@ export function useStartClientEngine(gameId) {
     dropInSnapshotRef.current = dropInSnapshot || null
   }, [dropInSnapshot])
 
+  const matchingMetadata = useMemo(
+    () => sanitizeMatchMetadata(startMatchMeta),
+    [startMatchMeta],
+  )
+
   useEffect(() => {
-    startMatchMetaRef.current = startMatchMeta
-  }, [startMatchMeta])
-  const matchingMetadata = useMemo(() => {
-    if (!startMatchMeta) return null
-    try {
-      return JSON.parse(
-        JSON.stringify({
-          source: startMatchMeta.source || 'client_start',
-          matchType: startMatchMeta.matchType || null,
-          matchCode: startMatchMeta.matchCode || null,
-          dropInTarget: startMatchMeta.dropInTarget || null,
-          dropInMeta: startMatchMeta.dropInMeta || null,
-          sampleMeta: startMatchMeta.sampleMeta || null,
-          roleStatus: startMatchMeta.roleStatus || null,
-          assignments: Array.isArray(startMatchMeta.assignments)
-            ? startMatchMeta.assignments
-            : [],
-          storedAt: startMatchMeta.storedAt || null,
-          mode: startMatchMeta.mode || null,
-          turnTimer: startMatchMeta.turnTimer || null,
-        }),
-      )
-    } catch (error) {
-      console.warn('[StartClient] 매칭 메타데이터 직렬화 실패:', error)
-      return null
-    }
-  }, [startMatchMeta])
+    startMatchMetaRef.current = matchingMetadata
+  }, [matchingMetadata])
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
   const lastScheduledTurnRef = useRef(0)
   const participantIdSetRef = useRef(new Set())
+
+  const {
+    loading: matchContextLoading,
+    error: matchContextError,
+    context: matchContext,
+    warnings: matchContextWarnings,
+  } = useMatchContextLoader({
+    gameId,
+    supabaseClient: supabase,
+    startMatchMeta: matchingMetadata,
+  })
+  const loading = matchContextLoading
+  const error = matchContextError
+
+  useEffect(() => {
+    const context = matchContext || null
+    setGame(context?.game || null)
+    setParticipants(
+      Array.isArray(context?.participants) ? context.participants : [],
+    )
+    if (context?.graph && Array.isArray(context.graph.nodes)) {
+      setGraph(context.graph)
+    } else {
+      setGraph({ nodes: [], edges: [] })
+    }
+  }, [matchContext])
+
+  useEffect(() => {
+    if (!Array.isArray(matchContextWarnings) || matchContextWarnings.length === 0) {
+      setPromptMetaWarning('')
+      return
+    }
+
+    const promptMessages = []
+    matchContextWarnings.forEach((warning) => {
+      if (!warning) return
+      const message = warning.message || ''
+      if (!message) return
+      const payload = warning.context || warning
+      if (warning.type === 'slot_mismatch') {
+        console.warn('[MatchContext] 슬롯 경고:', message, payload)
+      } else {
+        console.info('[MatchContext] 경고:', message, payload)
+      }
+      if (warning.type === 'prompt_meta') {
+        promptMessages.push(message)
+      }
+    })
+
+    setPromptMetaWarning(promptMessages.join('\n'))
+  }, [matchContextWarnings])
 
   const applyRealtimeSnapshot = useCallback((snapshot) => {
     if (!snapshot) {
@@ -379,47 +409,6 @@ export function useStartClientEngine(gameId) {
     },
     [gameId, sessionInfo?.id],
   )
-
-
-  useEffect(() => {
-    if (!gameId) return
-
-    let alive = true
-
-    async function load() {
-      setLoading(true)
-      setError('')
-      try {
-        const bundle = await loadGameBundle(supabase, gameId)
-        if (!alive) return
-        setGame(bundle.game)
-        setParticipants(bundle.participants)
-        setGraph(bundle.graph)
-        if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
-          bundle.warnings.forEach((warning) => {
-            if (warning) console.warn('[StartClient] 프롬프트 변수 경고:', warning)
-          })
-          setPromptMetaWarning(bundle.warnings.filter(Boolean).join('\n'))
-        } else {
-          setPromptMetaWarning('')
-        }
-      } catch (err) {
-        if (!alive) return
-        console.error(err)
-        setError(err?.message || '게임 데이터를 불러오지 못했습니다.')
-        setPromptMetaWarning('')
-      } finally {
-        if (alive) setLoading(false)
-      }
-    }
-
-    load()
-
-    return () => {
-      alive = false
-    }
-  }, [gameId])
-
   useEffect(() => {
     let alive = true
     ;(async () => {
