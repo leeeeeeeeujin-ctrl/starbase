@@ -158,6 +158,7 @@ export function useStartClientEngine(gameId) {
   const realtimeEventsRef = useRef(realtimeEvents)
   const [dropInSnapshot, setDropInSnapshot] = useState(null)
   const dropInSnapshotRef = useRef(null)
+  const realtimeChannelNoticeRef = useRef('')
 
   useEffect(() => {
     logsRef.current = Array.isArray(logs) ? logs : []
@@ -2152,8 +2153,64 @@ export function useStartClientEngine(gameId) {
 
     channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)
 
+    const buildRealtimeChannelMessage = (status) => {
+      switch (status) {
+        case 'CHANNEL_ERROR':
+          return '실시간 타임라인 연결에 문제가 발생했습니다. 잠시 후 다시 시도하거나 페이지를 새로고침해 주세요.'
+        case 'TIMED_OUT':
+          return '실시간 타임라인 연결이 지연되고 있습니다. 안정적인 연결을 확보하는 중입니다.'
+        case 'CLOSED':
+          return '실시간 타임라인 연결이 종료되었습니다. 새로고침하여 다시 연결해 주세요.'
+        default:
+          return `실시간 타임라인 채널 상태가 "${status}"(으)로 변경되었습니다.`
+      }
+    }
+
     channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') return
+      if (status === 'SUBSCRIBED') {
+        const previousNotice = realtimeChannelNoticeRef.current
+        if (!previousNotice) return
+        realtimeChannelNoticeRef.current = ''
+        setStatusMessage((prev) => {
+          if (!prev) return prev
+          const normalizedPrevious = previousNotice.trim()
+          const filtered = prev
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line.length && line !== normalizedPrevious)
+          if (!filtered.length) return ''
+          return filtered.join('\n')
+        })
+        return
+      }
+
+      const previousNotice = realtimeChannelNoticeRef.current
+      const message = buildRealtimeChannelMessage(status)
+      const normalizedMessage = message.trim()
+      realtimeChannelNoticeRef.current = message
+
+      setStatusMessage((prev) => {
+        const existing = prev
+          ? prev
+              .split('\n')
+              .map((line) => line.trim())
+              .filter((line) => line.length)
+          : []
+
+        const normalizedPrevious = previousNotice
+          ? previousNotice.trim()
+          : ''
+        const withoutPrevious = normalizedPrevious
+          ? existing.filter((line) => line !== normalizedPrevious)
+          : existing
+
+        if (withoutPrevious.includes(normalizedMessage)) {
+          return withoutPrevious.join('\n')
+        }
+
+        return [normalizedMessage, ...withoutPrevious].join('\n')
+      })
+
       console[status === 'CHANNEL_ERROR' ? 'error' : 'warn'](
         '[StartClient] 실시간 타임라인 채널 상태 변경:',
         status,
