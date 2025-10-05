@@ -16,6 +16,10 @@ import {
   normalizeGeminiMode,
   normalizeGeminiModelId,
 } from '../../lib/rank/geminiConfig'
+import {
+  START_SESSION_KEYS,
+  writeStartSessionValues,
+} from '../../lib/rank/startSessionChannel'
 import useGeminiKeyDetector from './hooks/useGeminiKeyDetector'
 import useGeminiModelCatalog from './hooks/useGeminiModelCatalog'
 import useOpenAIKeyDetector from './hooks/useOpenAIKeyDetector'
@@ -262,10 +266,15 @@ export default function GameStartModeModal({
 
       if (typeof window !== 'undefined') {
         try {
-          window.sessionStorage.setItem('rank.start.apiVersion', 'gemini')
-          window.sessionStorage.setItem('rank.start.geminiMode', nextMode)
-          window.sessionStorage.setItem('rank.start.geminiModel', nextModel)
-          window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
+          writeStartSessionValues(
+            {
+              [START_SESSION_KEYS.API_VERSION]: 'gemini',
+              [START_SESSION_KEYS.GEMINI_MODE]: nextMode,
+              [START_SESSION_KEYS.GEMINI_MODEL]: nextModel,
+              [START_SESSION_KEYS.API_KEY]: trimmedApiKey,
+            },
+            { source: 'start-modal' },
+          )
         } catch (error) {
           console.warn('Gemini 프리셋을 저장하지 못했습니다:', error)
         }
@@ -325,10 +334,15 @@ export default function GameStartModeModal({
 
       if (typeof window !== 'undefined') {
         try {
-          window.sessionStorage.setItem('rank.start.apiVersion', recommendedVersion)
-          window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
-          window.sessionStorage.removeItem('rank.start.geminiMode')
-          window.sessionStorage.removeItem('rank.start.geminiModel')
+          writeStartSessionValues(
+            {
+              [START_SESSION_KEYS.API_VERSION]: recommendedVersion,
+              [START_SESSION_KEYS.API_KEY]: trimmedApiKey,
+              [START_SESSION_KEYS.GEMINI_MODE]: null,
+              [START_SESSION_KEYS.GEMINI_MODEL]: null,
+            },
+            { source: 'start-modal' },
+          )
         } catch (error) {
           console.warn('OpenAI 프리셋을 저장하지 못했습니다:', error)
         }

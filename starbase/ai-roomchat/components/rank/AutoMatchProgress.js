@@ -24,6 +24,11 @@ import {
 } from './matchUtils'
 import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
 import { buildMatchMetaPayload, readStoredStartConfig, storeStartMatchMeta } from './startConfig'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  writeStartSessionValue,
+} from '../../lib/rank/startSessionChannel'
 import { supabase } from '../../lib/supabase'
 
 function resolveRoleName(lockedRole, roles) {
@@ -356,7 +361,9 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
         if (trimmedApiKey && typeof window !== 'undefined') {
           try {
-            window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
+            writeStartSessionValue(START_SESSION_KEYS.API_KEY, trimmedApiKey, {
+              source: 'auto-match',
+            })
           } catch (error) {
             console.warn('[AutoMatchProgress] API 키를 저장하지 못했습니다:', error)
           }
@@ -583,7 +590,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     if (typeof window === 'undefined') {
       return
     }
-    const stored = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
+    const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
     if (Number.isFinite(stored) && stored > 0) {
       setTurnTimer(stored)
     }

@@ -22,6 +22,12 @@ import {
   normalizeGeminiMode,
   normalizeGeminiModelId,
 } from "@/lib/rank/geminiConfig"
+import {
+  START_SESSION_KEYS,
+  readStartSessionValues,
+  subscribeStartSession,
+  writeStartSessionValue,
+} from "@/lib/rank/startSessionChannel"
 
 const WIN_TOKENS = new Set(["승", "승리", "win", "victory"])
 const LOSE_TOKENS = new Set(["패", "패배", "lose", "defeat"])
@@ -392,103 +398,103 @@ export default function NonRealtimeConsole({
 
   useEffect(() => {
     if (typeof window === "undefined") return
+
     try {
-      const storedKey = window.sessionStorage.getItem("rank.start.apiKey") || ""
-      if (storedKey) {
-        setApiKey(storedKey)
+      const stored = readStartSessionValues([
+        START_SESSION_KEYS.API_KEY,
+        START_SESSION_KEYS.API_VERSION,
+        START_SESSION_KEYS.GEMINI_MODE,
+        START_SESSION_KEYS.GEMINI_MODEL,
+      ])
+
+      if (stored[START_SESSION_KEYS.API_KEY]) {
+        setApiKey(stored[START_SESSION_KEYS.API_KEY] || "")
+      }
+
+      if (stored[START_SESSION_KEYS.API_VERSION]) {
+        setApiVersion(stored[START_SESSION_KEYS.API_VERSION] || "")
+      }
+
+      if (stored[START_SESSION_KEYS.GEMINI_MODE]) {
+        setGeminiMode(normalizeGeminiMode(stored[START_SESSION_KEYS.GEMINI_MODE]))
+      }
+
+      if (stored[START_SESSION_KEYS.GEMINI_MODEL]) {
+        setGeminiModel(
+          normalizeGeminiModelId(stored[START_SESSION_KEYS.GEMINI_MODEL]) ||
+            DEFAULT_GEMINI_MODEL,
+        )
       }
     } catch (error) {
-      console.warn("[NonRealtimeConsole] API 키를 불러오지 못했습니다:", error)
+      console.warn("[NonRealtimeConsole] 설정을 불러오지 못했습니다:", error)
     }
-    try {
-      const storedVersion = window.sessionStorage.getItem("rank.start.apiVersion") || ""
-      if (storedVersion) {
-        setApiVersion(storedVersion)
-      }
-    } catch (error) {
-      console.warn("[NonRealtimeConsole] API 버전을 불러오지 못했습니다:", error)
-    }
-    try {
-      const storedMode = window.sessionStorage.getItem("rank.start.geminiMode") || ""
-      if (storedMode) {
-        setGeminiMode(normalizeGeminiMode(storedMode))
-      }
-    } catch (error) {
-      console.warn("[NonRealtimeConsole] Gemini 모드를 불러오지 못했습니다:", error)
-    }
-    try {
-      const storedModel = window.sessionStorage.getItem("rank.start.geminiModel") || ""
-      if (storedModel) {
-        setGeminiModel(normalizeGeminiModelId(storedModel) || DEFAULT_GEMINI_MODEL)
-      }
-    } catch (error) {
-      console.warn("[NonRealtimeConsole] Gemini 모델을 불러오지 못했습니다:", error)
-    }
+
     setSettingsHydrated(true)
-  }, [])
+
+    const unsubscribe = subscribeStartSession(({ source, keys, values }) => {
+      if (!keys || keys.length === 0) return
+      if (source === "manual-console") return
+
+      if (keys.includes(START_SESSION_KEYS.API_KEY)) {
+        const next = values?.[START_SESSION_KEYS.API_KEY]
+        setApiKey(next || "")
+      }
+
+      if (keys.includes(START_SESSION_KEYS.API_VERSION)) {
+        const next = values?.[START_SESSION_KEYS.API_VERSION]
+        setApiVersion(next || "")
+      }
+
+      if (keys.includes(START_SESSION_KEYS.GEMINI_MODE)) {
+        const next = values?.[START_SESSION_KEYS.GEMINI_MODE]
+        if (typeof next === "string") {
+          setGeminiMode(normalizeGeminiMode(next))
+        }
+      }
+
+      if (keys.includes(START_SESSION_KEYS.GEMINI_MODEL)) {
+        const next = values?.[START_SESSION_KEYS.GEMINI_MODEL]
+        if (typeof next === "string") {
+          setGeminiModel(normalizeGeminiModelId(next) || DEFAULT_GEMINI_MODEL)
+        }
+      }
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [setApiVersion, setGeminiMode, setGeminiModel])
 
   useEffect(() => {
     if (!settingsHydrated || typeof window === "undefined") return
-    try {
-      const trimmed = apiKey.trim()
-      if (trimmed) {
-        const existing = window.sessionStorage.getItem("rank.start.apiKey") || ""
-        if (existing !== trimmed) {
-          window.sessionStorage.setItem("rank.start.apiKey", trimmed)
-        }
-      } else if (window.sessionStorage.getItem("rank.start.apiKey")) {
-        window.sessionStorage.removeItem("rank.start.apiKey")
-      }
-    } catch (error) {
-      console.warn("[NonRealtimeConsole] API 키를 저장하지 못했습니다:", error)
-    }
+    const trimmed = apiKey.trim()
+    writeStartSessionValue(START_SESSION_KEYS.API_KEY, trimmed || null, {
+      source: "manual-console",
+    })
   }, [apiKey, settingsHydrated])
 
   useEffect(() => {
     if (!settingsHydrated || typeof window === "undefined") return
-    try {
-      const normalized = apiVersion ? apiVersion : ""
-      if (normalized) {
-        const existing = window.sessionStorage.getItem("rank.start.apiVersion") || ""
-        if (existing !== normalized) {
-          window.sessionStorage.setItem("rank.start.apiVersion", normalized)
-        }
-      } else if (window.sessionStorage.getItem("rank.start.apiVersion")) {
-        window.sessionStorage.removeItem("rank.start.apiVersion")
-      }
-    } catch (error) {
-      console.warn("[NonRealtimeConsole] API 버전을 저장하지 못했습니다:", error)
-    }
+    const normalized = apiVersion ? apiVersion : null
+    writeStartSessionValue(START_SESSION_KEYS.API_VERSION, normalized, {
+      source: "manual-console",
+    })
   }, [apiVersion, settingsHydrated])
 
   useEffect(() => {
     if (!settingsHydrated || typeof window === "undefined") return
-    try {
-      const normalized = normalizeGeminiMode(geminiMode)
-      if (normalized) {
-        const existing = window.sessionStorage.getItem("rank.start.geminiMode") || ""
-        if (existing !== normalized) {
-          window.sessionStorage.setItem("rank.start.geminiMode", normalized)
-        }
-      }
-    } catch (error) {
-      console.warn("[NonRealtimeConsole] Gemini 모드를 저장하지 못했습니다:", error)
-    }
+    const normalized = normalizeGeminiMode(geminiMode)
+    writeStartSessionValue(START_SESSION_KEYS.GEMINI_MODE, normalized, {
+      source: "manual-console",
+    })
   }, [geminiMode, settingsHydrated])
 
   useEffect(() => {
     if (!settingsHydrated || typeof window === "undefined") return
-    try {
-      const normalized = normalizeGeminiModelId(geminiModel)
-      if (normalized) {
-        const existing = window.sessionStorage.getItem("rank.start.geminiModel") || ""
-        if (existing !== normalized) {
-          window.sessionStorage.setItem("rank.start.geminiModel", normalized)
-        }
-      }
-    } catch (error) {
-      console.warn("[NonRealtimeConsole] Gemini 모델을 저장하지 못했습니다:", error)
-    }
+    const normalized = normalizeGeminiModelId(geminiModel)
+    writeStartSessionValue(START_SESSION_KEYS.GEMINI_MODEL, normalized, {
+      source: "manual-console",
+    })
   }, [geminiModel, settingsHydrated])
 
   const applyBundle = useCallback(

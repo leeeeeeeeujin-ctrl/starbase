@@ -15,6 +15,10 @@ import { coerceHeroMap, extractHeroIdsFromAssignments, resolveMemberLabel } from
 import { clearMatchConfirmation, loadMatchConfirmation } from './matchStorage'
 import { buildMatchMetaPayload, readStoredStartConfig, storeStartMatchMeta } from './startConfig'
 import styles from './MatchReadyClient.module.css'
+import {
+  START_SESSION_KEYS,
+  writeStartSessionValue,
+} from '../../lib/rank/startSessionChannel'
 
 function getMatchPagePath(mode, gameId) {
   if (!gameId) return '/rank'
@@ -224,7 +228,9 @@ export default function MatchReadyClient({ gameId, mode }) {
 
         if (trimmedApiKey && typeof window !== 'undefined') {
           try {
-            window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
+            writeStartSessionValue(START_SESSION_KEYS.API_KEY, trimmedApiKey, {
+              source: 'match-ready',
+            })
           } catch (storageError) {
             console.warn('[MatchReadyClient] API 키를 저장하지 못했습니다:', storageError)
           }

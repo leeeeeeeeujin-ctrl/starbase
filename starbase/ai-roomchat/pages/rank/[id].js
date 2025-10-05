@@ -17,6 +17,13 @@ import {
   normalizeGeminiMode,
   normalizeGeminiModelId,
 } from '../../lib/rank/geminiConfig'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  readStartSessionValues,
+  writeStartSessionValue,
+  writeStartSessionValues,
+} from '../../lib/rank/startSessionChannel'
 
 export default function GameRoomPage() {
   const router = useRouter()
@@ -48,7 +55,10 @@ export default function GameRoomPage() {
   const persistTurnTimerVotes = useCallback((votes) => {
     if (typeof window === 'undefined') return
     try {
-      window.sessionStorage.setItem('rank.start.turnTimerVotes', JSON.stringify(votes))
+      const payload = votes ? JSON.stringify(votes) : null
+      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTES, payload, {
+        source: 'match-page',
+      })
     } catch (error) {
       console.warn('턴 제한 투표 정보를 저장하지 못했습니다:', error)
     }
@@ -126,54 +136,78 @@ export default function GameRoomPage() {
   useEffect(() => {
     if (!mounted) return
     if (typeof window === 'undefined') return
-    setStartPreset((prev) => ({
-      ...prev,
-      mode: window.sessionStorage.getItem('rank.start.mode') || prev.mode,
-      duoOption: window.sessionStorage.getItem('rank.start.duoOption') || prev.duoOption,
-      casualOption:
-        window.sessionStorage.getItem('rank.start.casualOption') || prev.casualOption,
-      apiVersion:
-        window.sessionStorage.getItem('rank.start.apiVersion') || prev.apiVersion,
-      apiKey: window.sessionStorage.getItem('rank.start.apiKey') || prev.apiKey,
-      geminiMode: (() => {
-        const stored = window.sessionStorage.getItem('rank.start.geminiMode')
-        if (stored) {
-          return normalizeGeminiMode(stored)
-        }
-        return prev.geminiMode || DEFAULT_GEMINI_MODE
-      })(),
-      geminiModel: (() => {
-        const storedModel = window.sessionStorage.getItem('rank.start.geminiModel')
-        const normalized = normalizeGeminiModelId(storedModel || '')
-        if (normalized) {
-          return normalized
+
+    const stored = readStartSessionValues([
+      START_SESSION_KEYS.MODE,
+      START_SESSION_KEYS.DUO_OPTION,
+      START_SESSION_KEYS.CASUAL_OPTION,
+      START_SESSION_KEYS.API_VERSION,
+      START_SESSION_KEYS.API_KEY,
+      START_SESSION_KEYS.GEMINI_MODE,
+      START_SESSION_KEYS.GEMINI_MODEL,
+      START_SESSION_KEYS.TURN_TIMER,
+      START_SESSION_KEYS.TURN_TIMER_VOTE,
+    ])
+
+    setStartPreset((prev) => {
+      const storedMode = stored[START_SESSION_KEYS.MODE] || prev.mode
+      const storedDuo = stored[START_SESSION_KEYS.DUO_OPTION] || prev.duoOption
+      const storedCasual = stored[START_SESSION_KEYS.CASUAL_OPTION] || prev.casualOption
+      const storedApiVersion = stored[START_SESSION_KEYS.API_VERSION] || prev.apiVersion
+      const storedApiKey = stored[START_SESSION_KEYS.API_KEY] || prev.apiKey
+      const storedGeminiMode = stored[START_SESSION_KEYS.GEMINI_MODE]
+      const storedGeminiModel = stored[START_SESSION_KEYS.GEMINI_MODEL]
+      const storedTimerRaw = stored[START_SESSION_KEYS.TURN_TIMER]
+      const storedVoteRaw = stored[START_SESSION_KEYS.TURN_TIMER_VOTE]
+
+      const resolvedGeminiMode = storedGeminiMode
+        ? normalizeGeminiMode(storedGeminiMode)
+        : prev.geminiMode || DEFAULT_GEMINI_MODE
+
+      const resolvedGeminiModel = (() => {
+        if (storedGeminiModel) {
+          const normalized = normalizeGeminiModelId(storedGeminiModel)
+          if (normalized) {
+            return normalized
+          }
         }
         if (prev.geminiModel) {
           return prev.geminiModel
         }
         return DEFAULT_GEMINI_MODEL
-      })(),
-      turnTimer: (() => {
-        const storedTimer = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
+      })()
+
+      const resolvedTimer = (() => {
+        const storedTimer = Number(storedTimerRaw)
         if (TURN_TIMER_VALUES.includes(storedTimer)) {
           return storedTimer
         }
-        const storedVoteTimer = Number(
-          window.sessionStorage.getItem('rank.start.turnTimerVote'),
-        )
+        const storedVoteTimer = Number(storedVoteRaw)
         if (TURN_TIMER_VALUES.includes(storedVoteTimer)) {
           return storedVoteTimer
         }
         return prev.turnTimer
-      })(),
-    }))
+      })()
+
+      return {
+        ...prev,
+        mode: storedMode,
+        duoOption: storedDuo,
+        casualOption: storedCasual,
+        apiVersion: storedApiVersion,
+        apiKey: storedApiKey,
+        geminiMode: resolvedGeminiMode,
+        geminiModel: resolvedGeminiModel,
+        turnTimer: resolvedTimer,
+      }
+    })
   }, [mounted])
 
   useEffect(() => {
     if (!mounted) return
     if (typeof window === 'undefined') return
 
-    const storedVoteValue = Number(window.sessionStorage.getItem('rank.start.turnTimerVote'))
+    const storedVoteValue = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE))
     const hasStoredVote = TURN_TIMER_VALUES.includes(storedVoteValue)
 
     if (hasStoredVote) {
@@ -184,7 +218,7 @@ export default function GameRoomPage() {
     }
 
     let parsedVotes = {}
-    const rawVotes = window.sessionStorage.getItem('rank.start.turnTimerVotes')
+    const rawVotes = readStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTES)
     if (rawVotes) {
       try {
         parsedVotes = JSON.parse(rawVotes)
@@ -218,9 +252,9 @@ export default function GameRoomPage() {
       setTurnTimerVote(numeric)
       turnTimerVoteRef.current = numeric
 
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.setItem('rank.start.turnTimerVote', String(numeric))
-      }
+      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE, String(numeric), {
+        source: 'match-page',
+      })
     },
     [persistTurnTimerVotes],
   )
@@ -245,24 +279,19 @@ export default function GameRoomPage() {
     setStartPreset(config)
 
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('rank.start.mode', config.mode)
-      window.sessionStorage.setItem('rank.start.duoOption', config.duoOption)
-      window.sessionStorage.setItem('rank.start.casualOption', config.casualOption)
-      window.sessionStorage.setItem('rank.start.apiVersion', config.apiVersion)
-      window.sessionStorage.setItem(
-        'rank.start.geminiMode',
-        config.geminiMode || DEFAULT_GEMINI_MODE,
+      writeStartSessionValues(
+        {
+          [START_SESSION_KEYS.MODE]: config.mode,
+          [START_SESSION_KEYS.DUO_OPTION]: config.duoOption,
+          [START_SESSION_KEYS.CASUAL_OPTION]: config.casualOption,
+          [START_SESSION_KEYS.API_VERSION]: config.apiVersion,
+          [START_SESSION_KEYS.GEMINI_MODE]: config.geminiMode || DEFAULT_GEMINI_MODE,
+          [START_SESSION_KEYS.GEMINI_MODEL]: config.geminiModel || DEFAULT_GEMINI_MODEL,
+          [START_SESSION_KEYS.TURN_TIMER]: String(config.turnTimer || 60),
+          [START_SESSION_KEYS.API_KEY]: config.apiKey || null,
+        },
+        { source: 'match-page' },
       )
-      window.sessionStorage.setItem(
-        'rank.start.geminiModel',
-        config.geminiModel || DEFAULT_GEMINI_MODEL,
-      )
-      window.sessionStorage.setItem('rank.start.turnTimer', String(config.turnTimer || 60))
-      if (config.apiKey) {
-        window.sessionStorage.setItem('rank.start.apiKey', config.apiKey)
-      } else {
-        window.sessionStorage.removeItem('rank.start.apiKey')
-      }
     }
 
     if (config.mode === MATCH_MODE_KEYS.RANK_SOLO) {

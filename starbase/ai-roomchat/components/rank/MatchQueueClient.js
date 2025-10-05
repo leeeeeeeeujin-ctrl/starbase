@@ -6,6 +6,11 @@ import {
   TURN_TIMER_VALUES,
   pickTurnTimer,
 } from '../../lib/rank/turnTimers'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  writeStartSessionValue,
+} from '../../lib/rank/startSessionChannel'
 
 import useMatchQueue from './hooks/useMatchQueue'
 import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
@@ -239,7 +244,7 @@ export default function MatchQueueClient({
   const voteTimerRef = useRef(null)
   const [voteValue, setVoteValue] = useState(() => {
     if (typeof window === 'undefined') return null
-    const stored = Number(window.sessionStorage.getItem('rank.start.turnTimerVote'))
+    const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE))
     return TURN_TIMER_VALUES.includes(stored) ? stored : null
   })
   const [finalTimer, setFinalTimer] = useState(null)
@@ -701,7 +706,7 @@ export default function MatchQueueClient({
 
     let fallback = 60
     if (typeof window !== 'undefined') {
-      const stored = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
+      const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
       if (TURN_TIMER_VALUES.includes(stored)) {
         fallback = stored
       }
@@ -717,11 +722,17 @@ export default function MatchQueueClient({
     setFinalTimer(resolved)
 
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('rank.start.turnTimer', String(resolved))
+      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER, String(resolved), {
+        source: 'match-queue',
+      })
       if (TURN_TIMER_VALUES.includes(Number(voteValue))) {
-        window.sessionStorage.setItem('rank.start.turnTimerVote', String(voteValue))
+        writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE, String(voteValue), {
+          source: 'match-queue',
+        })
       } else {
-        window.sessionStorage.setItem('rank.start.turnTimerVote', String(resolved))
+        writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE, String(resolved), {
+          source: 'match-queue',
+        })
       }
     }
 
@@ -840,7 +851,9 @@ export default function MatchQueueClient({
     if (!TURN_TIMER_VALUES.includes(numeric)) return
     setVoteValue(numeric)
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('rank.start.turnTimerVote', String(numeric))
+      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE, String(numeric), {
+        source: 'match-queue',
+      })
     }
   }
 

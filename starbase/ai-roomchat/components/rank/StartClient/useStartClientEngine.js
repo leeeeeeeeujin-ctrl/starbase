@@ -60,23 +60,38 @@ import { useStartCooldown } from './hooks/useStartCooldown'
 import { useStartManualResponse } from './hooks/useStartManualResponse'
 import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog'
 import { consumeStartMatchMeta } from '../startConfig'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  readStartSessionValues,
+} from '@/lib/rank/startSessionChannel'
 
 export function useStartClientEngine(gameId) {
+  const storedStartConfig =
+    typeof window === 'undefined'
+      ? {}
+      : readStartSessionValues([
+          START_SESSION_KEYS.API_KEY,
+          START_SESSION_KEYS.API_VERSION,
+          START_SESSION_KEYS.GEMINI_MODE,
+          START_SESSION_KEYS.GEMINI_MODEL,
+          START_SESSION_KEYS.TURN_TIMER,
+        ])
   const initialStoredApiKey =
     typeof window === 'undefined'
       ? ''
-      : (window.sessionStorage.getItem('rank.start.apiKey') || '').trim()
+      : (storedStartConfig[START_SESSION_KEYS.API_KEY] || '').trim()
   const initialMatchMeta = consumeStartMatchMeta()
   const initialApiVersion =
     typeof window === 'undefined'
       ? 'gemini'
-      : window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
+      : storedStartConfig[START_SESSION_KEYS.API_VERSION] || 'gemini'
   const initialGeminiConfig =
     typeof window === 'undefined'
       ? {}
       : {
-          mode: window.sessionStorage.getItem('rank.start.geminiMode') || undefined,
-          model: window.sessionStorage.getItem('rank.start.geminiModel') || undefined,
+          mode: storedStartConfig[START_SESSION_KEYS.GEMINI_MODE] || undefined,
+          model: storedStartConfig[START_SESSION_KEYS.GEMINI_MODEL] || undefined,
         }
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
@@ -291,7 +306,7 @@ export function useStartClientEngine(gameId) {
   )
   const [turnTimerSeconds] = useState(() => {
     if (typeof window === 'undefined') return 60
-    const stored = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
+    const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
     if (Number.isFinite(stored) && stored > 0) return stored
     return 60
   })
