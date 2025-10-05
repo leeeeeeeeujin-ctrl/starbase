@@ -16,13 +16,12 @@ export function resolveActorContext({ node, slots, participants }) {
 
   const normalizedVisible = visibleSlots
     .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value) && value > 0)
-    .map((value) => value - 1)
+    .filter((value) => Number.isInteger(value) && value >= 0)
 
   let slotIndex = -1
   const rawSlotNo = Number(node?.slot_no)
-  if (Number.isFinite(rawSlotNo) && rawSlotNo > 0) {
-    slotIndex = rawSlotNo - 1
+  if (Number.isInteger(rawSlotNo) && rawSlotNo >= 0) {
+    slotIndex = rawSlotNo
   }
   if (slotIndex < 0 && normalizedVisible.length > 0) {
     slotIndex = normalizedVisible[0]

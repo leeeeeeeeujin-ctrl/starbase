@@ -26,6 +26,10 @@ import {
   appendSnapshotEvents,
 } from './engine/timelineState'
 import {
+  reconcileParticipantsForGame,
+  formatPreflightSummary,
+} from './engine/preflight'
+import {
   createOwnerDisplayMap,
   deriveParticipantOwnerId,
 } from './engine/participants'
@@ -83,6 +87,7 @@ export function useStartClientEngine(gameId) {
   const [error, setError] = useState('')
   const [game, setGame] = useState(null)
   const [participants, setParticipants] = useState([])
+  const [slotLayout, setSlotLayout] = useState([])
   const [graph, setGraph] = useState({ nodes: [], edges: [] })
   const [preflight, setPreflight] = useState(true)
   const [turn, setTurn] = useState(1)
@@ -394,6 +399,7 @@ export function useStartClientEngine(gameId) {
         if (!alive) return
         setGame(bundle.game)
         setParticipants(bundle.participants)
+        setSlotLayout(Array.isArray(bundle.slotLayout) ? bundle.slotLayout : [])
         setGraph(bundle.graph)
         if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
           bundle.warnings.forEach((warning) => {
@@ -407,6 +413,7 @@ export function useStartClientEngine(gameId) {
         if (!alive) return
         console.error(err)
         setError(err?.message || '게임 데이터를 불러오지 못했습니다.')
+        setSlotLayout([])
         setPromptMetaWarning('')
       } finally {
         if (alive) setLoading(false)
@@ -1105,92 +1112,113 @@ export function useStartClientEngine(gameId) {
     )
   }, [participants, viewerId])
 
-  const bootLocalSession = useCallback(() => {
-    if (graph.nodes.length === 0) {
-      setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
-      return
-    }
-
-    const startNode = graph.nodes.find((node) => node.is_start) || graph.nodes[0]
-    history.beginSession()
-    bumpHistoryVersion()
-    if (systemPrompt) {
-      history.push({ role: 'system', content: systemPrompt, public: false })
-    }
-
-    if (realtimeManagerRef.current) {
-      const manager = realtimeManagerRef.current
-      manager.reset()
-      if (game?.realtime_match) {
-        manager.syncParticipants(participants)
-        if (viewerId) {
-          manager.setManagedOwners([String(viewerId).trim()])
-        } else {
-          manager.setManagedOwners([])
-        }
-        manager.beginTurn({
-          turnNumber: 1,
-          eligibleOwnerIds: deriveEligibleOwnerIds(participants),
-        })
+  const bootLocalSession = useCallback(
+    (overrides = null) => {
+      if (graph.nodes.length === 0) {
+        setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
+        return
       }
-      applyRealtimeSnapshot(manager.getSnapshot())
-    }
 
-    visitedSlotIds.current = new Set()
-    apiVersionLock.current = null
-    turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
-    turnTimerServiceRef.current?.reset()
-    dropInQueueRef.current?.reset()
-    asyncSessionManagerRef.current?.reset()
-    participantIdSetRef.current = new Set(
-      participants.map((participant, index) =>
-        String(participant?.id ?? participant?.hero_id ?? index),
-      ),
-    )
-    lastScheduledTurnRef.current = 0
-    setPreflight(false)
-    setGameVoided(false)
-    setTurn(1)
-    setLogs(() => {
-      logsRef.current = []
-      return []
-    })
-    setBattleLogDraft(null)
-    setWinCount(0)
-    setLastDropInTurn(null)
-    setActiveGlobal([])
-    setActiveLocal([])
-    setStatusMessage('게임이 시작되었습니다.')
-    const startContext = resolveActorContext({ node: startNode, slots, participants })
-    const startNames = startContext?.participant?.hero?.name
-      ? [startContext.participant.hero.name]
-      : startContext?.heroSlot?.name
-      ? [startContext.heroSlot.name]
-      : []
-    updateHeroAssets(startNames, startContext)
-    rememberActiveSession({
-      turn: 1,
-      actorNames: startNames,
-      status: 'active',
-      defeated: false,
-    })
-    setTurnDeadline(null)
-    setTimeRemaining(null)
-    clearConsensusVotes()
-    setCurrentNodeId(startNode.id)
-  }, [
-    graph.nodes,
-    history,
-    systemPrompt,
-    slots,
-    participants,
-    updateHeroAssets,
-    rememberActiveSession,
-    turnTimerSeconds,
-    game?.realtime_match,
-    viewerId,
-    applyRealtimeSnapshot,
-  ])
+      const sessionParticipants = Array.isArray(overrides)
+        ? overrides.filter(Boolean)
+        : participants
+
+      if (!sessionParticipants || sessionParticipants.length === 0) {
+        setStatusMessage('참가자를 찾을 수 없어 게임을 시작할 수 없습니다.')
+        return
+      }
+
+      if (overrides) {
+        setParticipants(sessionParticipants)
+      }
+
+      const sessionSlots = buildSlotsFromParticipants(sessionParticipants)
+
+      const startNode = graph.nodes.find((node) => node.is_start) || graph.nodes[0]
+      history.beginSession()
+      bumpHistoryVersion()
+      if (systemPrompt) {
+        history.push({ role: 'system', content: systemPrompt, public: false })
+      }
+
+      if (realtimeManagerRef.current) {
+        const manager = realtimeManagerRef.current
+        manager.reset()
+        if (game?.realtime_match) {
+          manager.syncParticipants(sessionParticipants)
+          if (viewerId) {
+            manager.setManagedOwners([String(viewerId).trim()])
+          } else {
+            manager.setManagedOwners([])
+          }
+          manager.beginTurn({
+            turnNumber: 1,
+            eligibleOwnerIds: deriveEligibleOwnerIds(sessionParticipants),
+          })
+        }
+        applyRealtimeSnapshot(manager.getSnapshot())
+      }
+
+      visitedSlotIds.current = new Set()
+      apiVersionLock.current = null
+      turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
+      turnTimerServiceRef.current?.reset()
+      dropInQueueRef.current?.reset()
+      asyncSessionManagerRef.current?.reset()
+      participantIdSetRef.current = new Set(
+        sessionParticipants.map((participant, index) =>
+          String(participant?.id ?? participant?.hero_id ?? index),
+        ),
+      )
+      lastScheduledTurnRef.current = 0
+      setPreflight(false)
+      setGameVoided(false)
+      setTurn(1)
+      setLogs(() => {
+        logsRef.current = []
+        return []
+      })
+      setBattleLogDraft(null)
+      setWinCount(0)
+      setLastDropInTurn(null)
+      setActiveGlobal([])
+      setActiveLocal([])
+      setStatusMessage('게임이 시작되었습니다.')
+      const startContext = resolveActorContext({
+        node: startNode,
+        slots: sessionSlots,
+        participants: sessionParticipants,
+      })
+      const startNames = startContext?.participant?.hero?.name
+        ? [startContext.participant.hero.name]
+        : startContext?.heroSlot?.name
+        ? [startContext.heroSlot.name]
+        : []
+      updateHeroAssets(startNames, startContext)
+      rememberActiveSession({
+        turn: 1,
+        actorNames: startNames,
+        status: 'active',
+        defeated: false,
+      })
+      setTurnDeadline(null)
+      setTimeRemaining(null)
+      clearConsensusVotes()
+      setCurrentNodeId(startNode.id)
+    },
+    [
+      graph.nodes,
+      history,
+      systemPrompt,
+      participants,
+      updateHeroAssets,
+      rememberActiveSession,
+      turnTimerSeconds,
+      game?.realtime_match,
+      viewerId,
+      applyRealtimeSnapshot,
+    ],
+  )
 
   const handleStart = useCallback(async () => {
     if (graph.nodes.length === 0) {
@@ -1291,7 +1319,45 @@ export function useStartClientEngine(gameId) {
       return
     }
 
-    bootLocalSession()
+    setStatusMessage('매칭 데이터를 검증하는 중입니다…')
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    let sessionParticipants = participants
+    try {
+      const { participants: sanitized, removed } = reconcileParticipantsForGame({
+        participants,
+        slotLayout,
+        matchingMetadata,
+      })
+
+      if (!sanitized || sanitized.length === 0) {
+        setStatusMessage('역할이 맞는 참가자를 찾을 수 없어 게임을 시작할 수 없습니다.')
+        return
+      }
+
+      sessionParticipants = sanitized
+
+      if (removed.length) {
+        const summary = formatPreflightSummary(removed)
+        if (summary) {
+          console.warn('[StartClient] 후보정으로 제외된 참가자 목록:\n' + summary)
+          setPromptMetaWarning((prev) => {
+            const trimmed = prev ? String(prev).trim() : ''
+            const notice = `[후보정] 역할 검증에서 제외된 참가자:\n${summary}`
+            return trimmed ? `${trimmed}\n\n${notice}` : notice
+          })
+        }
+        setStatusMessage('역할이 맞지 않는 참가자를 제외하고 게임을 시작합니다.')
+      } else {
+        setStatusMessage('게임 준비가 완료되었습니다.')
+      }
+    } catch (error) {
+      console.error('후보정 검증 실패:', error)
+      setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      return
+    }
+
+    bootLocalSession(sessionParticipants)
   }, [
     apiVersion,
     bootLocalSession,
@@ -1305,6 +1371,10 @@ export function useStartClientEngine(gameId) {
     persistApiKeyOnServer,
     normalizedGeminiMode,
     normalizedGeminiModel,
+    participants,
+    slotLayout,
+    matchingMetadata,
+    setPromptMetaWarning,
   ])
 
   const advanceTurn = useCallback(

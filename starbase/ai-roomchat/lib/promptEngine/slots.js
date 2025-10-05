@@ -27,8 +27,8 @@ export function buildSlotsFromParticipants(participants = []) {
       row[`ability${k}`] = safeStr(hero[`ability${k}`])
     }
 
-    if (slotNoCandidate != null && slotNoCandidate > 0) {
-      const index = slotNoCandidate - 1
+    if (slotNoCandidate != null && slotNoCandidate >= 0) {
+      const index = slotNoCandidate
       if (slots[index] === undefined) {
         slots[index] = row
         continue

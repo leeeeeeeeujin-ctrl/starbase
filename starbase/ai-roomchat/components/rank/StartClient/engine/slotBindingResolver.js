@@ -2,8 +2,7 @@ function normalizeVisibleSlots(options = {}) {
   const rawList = Array.isArray(options.visible_slots) ? options.visible_slots : []
   const normalized = rawList
     .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value) && value >= 0)
-    .map((value) => (value > 0 ? value - 1 : value))
+    .filter((value) => Number.isInteger(value) && value >= 0)
 
   return Array.from(new Set(normalized)).filter((value) => value >= 0)
 }

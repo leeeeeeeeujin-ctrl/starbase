@@ -19,13 +19,14 @@ export function resolveParticipantSlotIndex(participant) {
     return explicitIndex
   }
 
-  const slotNo = Number(
-    participant?.slot_no ??
-      participant?.slotNo ??
-      (participant?.slot_index != null ? participant.slot_index + 1 : null),
-  )
-  if (Number.isInteger(slotNo) && slotNo > 0) {
-    return slotNo - 1
+  const slotNo = Number(participant?.slot_no ?? participant?.slotNo)
+  if (Number.isInteger(slotNo) && slotNo >= 0) {
+    return slotNo
+  }
+
+  const legacyIndex = Number(participant?.slot_index)
+  if (Number.isInteger(legacyIndex) && legacyIndex >= 0) {
+    return legacyIndex
   }
 
   return null
