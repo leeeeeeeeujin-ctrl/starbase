@@ -1,5 +1,6 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/router"
 
@@ -7,6 +8,11 @@ import styles from "./StartClient.module.css"
 import { loadGameBundle } from "./engine/loadGameBundle"
 import { supabase } from "../../../lib/supabase"
 import { interpretPromptNode, buildParticipantSlotMap } from "@/lib/rank/promptInterpreter"
+
+const EmbeddedManualConsole = dynamic(() => import("../NonRealtimeConsole"), {
+  ssr: false,
+  loading: () => <p className={styles.manualConsoleLoader}>콘솔을 불러오는 중입니다…</p>,
+})
 
 function buildBackgroundStyle(imageUrl) {
   if (!imageUrl) {
@@ -412,6 +418,8 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
     enabled: Boolean(overrideGameId) || routerReady,
   })
 
+  const [manualConsoleOpen, setManualConsoleOpen] = useState(true)
+
   const backgroundStyle = useMemo(
     () => buildBackgroundStyle(bundle?.game?.image_url),
     [bundle?.game?.image_url],
@@ -507,6 +515,32 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
             <p>{error.message}</p>
           </div>
         ) : null}
+
+        <section className={styles.manualConsoleSection}>
+          <div className={styles.manualConsoleHeader}>
+            <div>
+              <h2>비실시간 수동 콘솔</h2>
+              <p className={styles.manualConsoleDescription}>
+                번들로 불러온 프롬프트를 그대로 전송하고 응답을 판정해 다음 브릿지로 진행해 보세요.
+              </p>
+            </div>
+            <button
+              type="button"
+              className={styles.manualConsoleToggle}
+              onClick={() => setManualConsoleOpen((prev) => !prev)}
+            >
+              {manualConsoleOpen ? "접기" : "펼치기"}
+            </button>
+          </div>
+          {manualConsoleOpen ? (
+            <EmbeddedManualConsole
+              initialGameId={resolvedGameId || ""}
+              initialBundle={bundle}
+              autoHydrate
+              embedded
+            />
+          ) : null}
+        </section>
 
         {!loading && !error ? (
           <>

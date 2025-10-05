@@ -78,10 +78,15 @@ function mapEdgeForEvaluation(edge) {
   }
 }
 
-export default function NonRealtimeConsole() {
+export default function NonRealtimeConsole({
+  initialGameId = "",
+  initialBundle = null,
+  autoHydrate = false,
+  embedded = false,
+} = {}) {
   const router = useRouter()
-  const [gameIdInput, setGameIdInput] = useState("")
-  const [bundle, setBundle] = useState(null)
+  const [gameIdInput, setGameIdInput] = useState(initialGameId || "")
+  const [bundle, setBundle] = useState(initialBundle || null)
   const [loadError, setLoadError] = useState("")
   const [loading, setLoading] = useState(false)
   const [operatorKey, setOperatorKey] = useState("")
@@ -102,12 +107,40 @@ export default function NonRealtimeConsole() {
   }, [aiHistory])
 
   useEffect(() => {
-    if (!router.isReady) return
-    const routeId = router.query?.id
-    if (typeof routeId === "string" && routeId) {
-      setGameIdInput(routeId)
+    if (!autoHydrate) {
+      if (!router.isReady) return
+      const routeId = router.query?.id
+      if (typeof routeId === "string" && routeId) {
+        setGameIdInput(routeId)
+      }
     }
-  }, [router.isReady, router.query?.id])
+  }, [autoHydrate, router.isReady, router.query?.id])
+
+  useEffect(() => {
+    if (!autoHydrate) return
+    if (!initialGameId) return
+    setGameIdInput(String(initialGameId))
+  }, [autoHydrate, initialGameId])
+
+  const applyBundle = useCallback(
+    (loaded, { gameId } = {}) => {
+      if (!loaded) return
+      setBundle(loaded)
+      setParticipants(ensureArray(loaded.participants).map(normalizeParticipant))
+      const startNode = loaded.graph?.nodes?.find((node) => node?.is_start)
+      const fallbackNode = loaded.graph?.nodes?.[0] ?? null
+      setCurrentNodeId(startNode?.id ?? fallbackNode?.id ?? null)
+      setTurns([])
+      visitedSlotsRef.current = new Set()
+      aiHistory.beginSession()
+      setHistoryVersion((v) => v + 1)
+      setSessionEnded(false)
+      if (gameId != null) {
+        setGameIdInput(String(gameId))
+      }
+    },
+    [aiHistory],
+  )
 
   const loadGame = useCallback(async () => {
     if (!gameIdInput) {
@@ -119,16 +152,7 @@ export default function NonRealtimeConsole() {
     setStatusMessage("")
     try {
       const loaded = await loadGameBundle(supabase, gameIdInput)
-      setBundle(loaded)
-      setParticipants(ensureArray(loaded.participants).map(normalizeParticipant))
-      const startNode = loaded.graph?.nodes?.find((node) => node?.is_start)
-      const fallbackNode = loaded.graph?.nodes?.[0] ?? null
-      setCurrentNodeId(startNode?.id ?? fallbackNode?.id ?? null)
-      setTurns([])
-      visitedSlotsRef.current = new Set()
-      aiHistory.beginSession()
-      setHistoryVersion((v) => v + 1)
-      setSessionEnded(false)
+      applyBundle(loaded, { gameId: gameIdInput })
     } catch (error) {
       console.error("[NonRealtimeConsole] 게임 불러오기 실패", error)
       setLoadError(error?.message || "게임 정보를 불러오지 못했습니다.")
@@ -142,13 +166,21 @@ export default function NonRealtimeConsole() {
     } finally {
       setLoading(false)
     }
-  }, [aiHistory, gameIdInput])
+  }, [aiHistory, applyBundle, gameIdInput])
 
   useEffect(() => {
+    if (autoHydrate) return
     if (router.isReady && router.query?.id && !bundle && !loading) {
       loadGame()
     }
-  }, [bundle, loading, loadGame, router.isReady, router.query?.id])
+  }, [autoHydrate, bundle, loading, loadGame, router.isReady, router.query?.id])
+
+  useEffect(() => {
+    if (!autoHydrate) return
+    if (!initialBundle) return
+    const routeId = typeof router.query?.id === "string" ? router.query.id : undefined
+    applyBundle(initialBundle, { gameId: initialGameId || routeId })
+  }, [applyBundle, autoHydrate, initialBundle, initialGameId, router.query?.id])
 
   const slotsMap = useMemo(
     () => buildParticipantSlotMap(participants.map((participant) => ({ ...participant }))),
@@ -270,8 +302,10 @@ export default function NonRealtimeConsole() {
     turns.length,
   ])
 
+  const wrapperClassName = embedded ? styles.wrapperEmbedded : styles.wrapper
+
   return (
-    <div className={styles.wrapper}>
+    <div className={wrapperClassName}>
       <header className={styles.header}>
         <div>
           <h1>비실시간 랭크 전투 콘솔</h1>
@@ -282,16 +316,29 @@ export default function NonRealtimeConsole() {
         <div className={styles.headerControls}>
           <label className={styles.controlField}>
             <span>게임 ID</span>
-            <div className={styles.inlineControls}>
-              <input
-                value={gameIdInput}
-                onChange={(event) => setGameIdInput(event.target.value)}
-                placeholder="예: 12345"
-              />
-              <button type="button" onClick={loadGame} disabled={loading}>
-                {loading ? "불러오는 중..." : "불러오기"}
-              </button>
-            </div>
+            {embedded ? (
+              <div className={styles.inlineControls}>
+                <input value={gameIdInput} readOnly />
+                <button
+                  type="button"
+                  onClick={loadGame}
+                  disabled={loading || !gameIdInput}
+                >
+                  {loading ? "불러오는 중..." : "다시 불러오기"}
+                </button>
+              </div>
+            ) : (
+              <div className={styles.inlineControls}>
+                <input
+                  value={gameIdInput}
+                  onChange={(event) => setGameIdInput(event.target.value)}
+                  placeholder="예: 12345"
+                />
+                <button type="button" onClick={loadGame} disabled={loading}>
+                  {loading ? "불러오는 중..." : "불러오기"}
+                </button>
+              </div>
+            )}
           </label>
           <label className={styles.controlField}>
             <span>운영 키</span>
