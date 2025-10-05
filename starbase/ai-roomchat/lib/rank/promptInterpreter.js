@@ -8,12 +8,26 @@ import { sanitizeVariableRules } from '@/lib/variableRules'
 import { buildRuleOptionLines } from './rules'
 import { compileTemplate as compileRankTemplate } from './prompt'
 
-const DEFAULT_RULE_GUIDANCE = [
-  '- 마지막 줄에는 이번 턴의 핵심 캐릭터 이름과 승패·탈락 등 결과를 함께 기재하라.',
-  '- 마지막에서 두 번째 줄에는 활성화된 변수 이름을 공백으로 구분해 적고, 없다면 "none"이라고 적어라.',
-  '- 마지막에서 세 번째 줄에는 비중이 높은 캐릭터 이름을 기재하되, 특별히 중요하지 않으면 공란으로 두라.',
-  '- 마지막에서 세 번째 줄 위의 다섯 줄은 후속 기록을 위해 공란으로 남겨 둔다.',
+const DEFAULT_RULE_GUIDANCE_ENTRIES = [
+  {
+    text: '- 마지막 줄에는 이번 턴의 핵심 캐릭터 이름과 승패·탈락 등 결과를 함께 기재하라.',
+    matchers: [/(마지막\s*줄)/, /(승패|탈락|결과)/],
+  },
+  {
+    text: '- 마지막에서 두 번째 줄에는 활성화된 변수 이름을 공백으로 구분해 적고, 없다면 "none"이라고 적어라.',
+    matchers: [/(마지막)(에서)?[^\n]*(둘|두)[^\s]*\s*줄/, /변수/],
+  },
+  {
+    text: '- 마지막에서 세 번째 줄에는 비중이 높은 캐릭터 이름을 기재하되, 특별히 중요하지 않으면 공란으로 두라.',
+    matchers: [/(마지막)(에서)?[^\n]*(셋|세)[^\s]*\s*줄/, /(비중|중요)/],
+  },
+  {
+    text: '- 마지막에서 세 번째 줄 위의 다섯 줄은 후속 기록을 위해 공란으로 남겨 둔다.',
+    matchers: [/((다섯|5)[^\s]*\s*줄)/, /(공란|공백)/],
+  },
 ]
+
+const DEFAULT_RULE_GUIDANCE = DEFAULT_RULE_GUIDANCE_ENTRIES.map((entry) => entry.text)
 
 function cleanLines(text) {
   return String(text || '')
@@ -372,7 +386,30 @@ function buildRuleSections({ game, node } = {}) {
     cleanLines(checklistLines).forEach((line) => pushBaseRule(line, 'checklist'))
   }
 
-  DEFAULT_RULE_GUIDANCE.forEach((line) => pushBaseRule(line, 'default'))
+  const baseRuleSnapshot = baseRuleEntries.map((entry) => safeStr(entry.text))
+
+  DEFAULT_RULE_GUIDANCE_ENTRIES.forEach(({ text, matchers = [] }) => {
+    const trimmed = safeStr(text)
+    if (!trimmed) return
+
+    const hasSimilarLine = Array.isArray(matchers) && matchers.length
+      ? baseRuleSnapshot.some((existing) => {
+          const normalizedExisting = safeStr(existing)
+          if (!normalizedExisting) return false
+          return matchers.every((matcher) => {
+            if (!matcher) return false
+            if (matcher instanceof RegExp) {
+              return matcher.test(normalizedExisting)
+            }
+            return normalizedExisting.includes(String(matcher))
+          })
+        })
+      : false
+
+    if (!hasSimilarLine) {
+      pushBaseRule(trimmed, 'default')
+    }
+  })
 
   const globalScope = collectVariableScope(node, 'global')
   const localScope = collectVariableScope(node, 'local')

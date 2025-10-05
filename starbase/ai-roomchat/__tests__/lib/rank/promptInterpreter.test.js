@@ -122,6 +122,29 @@ describe('promptInterpreter', () => {
     expect(result.promptBody).toContain('zero 용사 아린')
   })
 
+  it('omits default formatting guidance when checklist already covers it', () => {
+    const gameWithChecklistFormatting = {
+      ...baseGame,
+      rules_prefix: '',
+      rules: {
+        checklist: [
+          { text: '마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 5줄=공백.' },
+        ],
+      },
+    }
+
+    const result = interpretPromptNode({
+      game: gameWithChecklistFormatting,
+      node,
+      participants: [participant],
+    })
+
+    expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[0])
+    expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[1])
+    expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[3])
+    expect(result.rulesBlock).toContain('마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 5줄=공백.')
+  })
+
   it('prefers toggle-provided rules over duplicate base guidance', () => {
     const fairnessLine =
       '- 능력은 여건이 될 때만 사용하되, 상시발동 능력은 제약 없이 가능하다.'
