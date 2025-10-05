@@ -10,7 +10,8 @@ import { compileTemplate as compileRankTemplate } from './prompt'
 
 const DEFAULT_RULE_GUIDANCE_ENTRIES = [
   {
-    text: '- 마지막 줄에는 이번 턴의 핵심 캐릭터 이름과 승패·탈락 등 결과를 함께 기재하라.',
+    text:
+      '- 마지막 줄에는 이번 턴의 핵심 캐릭터 이름과 승패·탈락 등 결과를 함께 기재하라. 다만 승패나 탈락(전투 속행 불가)이 명백히 밝혀지지 않았다면 "무"만을 기재해라.',
     matchers: [/(마지막\s*줄)/, /(승패|탈락|결과)/],
   },
   {
