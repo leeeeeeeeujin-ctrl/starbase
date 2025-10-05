@@ -6,6 +6,7 @@ import { useRouter } from "next/router"
 import styles from "./StartClient.module.css"
 import { loadGameBundle } from "./engine/loadGameBundle"
 import { supabase } from "../../../lib/supabase"
+import { interpretPromptNode, buildParticipantSlotMap } from "@/lib/rank/promptInterpreter"
 
 function buildBackgroundStyle(imageUrl) {
   if (!imageUrl) {
@@ -88,7 +89,7 @@ function useGameBundle(gameId, { enabled = true } = {}) {
   return state
 }
 
-function PromptList({ nodes }) {
+function PromptList({ nodes, game, slotsMap }) {
   if (!nodes.length) {
     return <p className={styles.emptyMessage}>연결된 프롬프트 슬롯이 없습니다.</p>
   }
@@ -106,6 +107,9 @@ function PromptList({ nodes }) {
         const activeLocal = node?.options?.active_vars_local?.length || 0
         const totalManual = manualGlobal + manualLocal
         const totalActive = activeGlobal + activeLocal
+        const interpretation = interpretPromptNode({ game, node, slotsMap })
+        const globalGuidelines = interpretation.sections?.globalVariables?.length || 0
+        const localGuidelines = interpretation.sections?.localVariables?.length || 0
 
         return (
           <li key={node?.id || `${slotLabel}-${index}`} className={styles.promptCard}>
@@ -116,10 +120,25 @@ function PromptList({ nodes }) {
                 {node?.is_start ? <span className={styles.promptStart}>시작 슬롯</span> : null}
               </div>
             </header>
-            <pre className={styles.promptTemplate}>{template}</pre>
+            <div className={styles.promptSections}>
+              <div>
+                <h3 className={styles.promptSectionLabel}>규칙 · 변수 요약</h3>
+                <pre className={styles.promptRules}>{interpretation.rulesBlock}</pre>
+              </div>
+              <div>
+                <h3 className={styles.promptSectionLabel}>최종 전달 프롬프트</h3>
+                <pre className={styles.promptTemplate}>{interpretation.promptBody}</pre>
+              </div>
+              <details className={styles.promptRawToggle}>
+                <summary>원본 템플릿 보기</summary>
+                <pre className={styles.promptRaw}>{template}</pre>
+              </details>
+            </div>
             <footer className={styles.promptFooter}>
               <span>수동 변수 {totalManual}개</span>
               <span>자동 활성 {totalActive}개</span>
+              <span>전역 지침 {globalGuidelines}개</span>
+              <span>로컬 지침 {localGuidelines}개</span>
             </footer>
           </li>
         )
@@ -193,6 +212,10 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
 
   const participants = bundle?.participants || []
   const warnings = bundle?.warnings || []
+  const participantSlotsMap = useMemo(
+    () => buildParticipantSlotMap(participants),
+    [participants],
+  )
 
   return (
     <div className={styles.root} style={backgroundStyle}>
@@ -239,7 +262,7 @@ export default function StartClient({ gameId: overrideGameId, onExit }) {
                   <span className={styles.panelMeta}>세트 ID {bundle.game.prompt_set_id}</span>
                 ) : null}
               </div>
-              <PromptList nodes={promptNodes} />
+              <PromptList nodes={promptNodes} game={bundle?.game} slotsMap={participantSlotsMap} />
             </section>
 
             <section className={styles.participantPanel}>
