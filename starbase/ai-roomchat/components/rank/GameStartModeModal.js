@@ -22,11 +22,19 @@ import useOpenAIKeyDetector from './hooks/useOpenAIKeyDetector'
 import usePersistApiKey from './hooks/usePersistApiKey'
 import styles from './GameStartModeModal.module.css'
 
-const API_VERSION_OPTIONS = [
+const API_PROVIDER_OPTIONS = [
   { value: 'gemini', label: 'Google Gemini (기본)' },
-  { value: 'chat_completions', label: 'OpenAI Chat Completions' },
-  { value: 'responses', label: 'OpenAI Responses API v2' },
+  { value: 'openai', label: 'OpenAI' },
 ]
+
+const OPENAI_SERVICE_OPTIONS = [
+  { value: 'responses', label: 'Responses API v2 (권장)' },
+  { value: 'chat_completions', label: 'Chat Completions v1' },
+]
+
+function isOpenAIService(version) {
+  return version === 'responses' || version === 'chat_completions'
+}
 
 const DUO_JOIN_OPTIONS = [
   {
@@ -78,11 +86,17 @@ function initialCasualOption(mode, provided) {
 
 function resolveInitialState(initialConfig) {
   const resolvedMode = normaliseMode(initialConfig?.mode)
+  const initialVersion = getInitialValue(initialConfig?.apiVersion, 'gemini')
+  const initialProvider = isOpenAIService(initialVersion) ? 'openai' : 'gemini'
+  const initialOpenAIService = isOpenAIService(initialVersion)
+    ? initialVersion
+    : 'responses'
   return {
     mode: resolvedMode,
     duoOption: getInitialValue(initialConfig?.duoOption, 'search'),
     casualOption: initialCasualOption(resolvedMode, initialConfig?.casualOption),
-    apiVersion: getInitialValue(initialConfig?.apiVersion, 'gemini'),
+    apiProvider: initialProvider,
+    openaiService: initialOpenAIService,
     apiKey: getInitialValue(initialConfig?.apiKey, ''),
     geminiMode: normalizeGeminiMode(initialConfig?.geminiMode || DEFAULT_GEMINI_MODE),
     geminiModel:
@@ -104,7 +118,8 @@ export default function GameStartModeModal({
   const [mode, setMode] = useState(initialState.mode)
   const [duoOption, setDuoOption] = useState(initialState.duoOption)
   const [casualOption, setCasualOption] = useState(initialState.casualOption)
-  const [apiVersion, setApiVersion] = useState(initialState.apiVersion)
+  const [apiProvider, setApiProvider] = useState(initialState.apiProvider)
+  const [openaiService, setOpenaiService] = useState(initialState.openaiService)
   const [apiKey, setApiKey] = useState(initialState.apiKey)
   const [geminiMode, setGeminiMode] = useState(initialState.geminiMode)
   const [geminiModel, setGeminiModel] = useState(initialState.geminiModel)
@@ -124,6 +139,9 @@ export default function GameStartModeModal({
   } = voteSummary
   const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
 
+  const usingOpenAI = apiProvider === 'openai'
+  const resolvedApiVersion = usingOpenAI ? openaiService : 'gemini'
+
   const normalizedGeminiMode = useMemo(
     () => normalizeGeminiMode(geminiMode),
     [geminiMode],
@@ -139,7 +157,7 @@ export default function GameStartModeModal({
     error: geminiModelError,
     reload: reloadGeminiModels,
   } = useGeminiModelCatalog({
-    apiKey: apiVersion === 'gemini' ? trimmedApiKey : '',
+    apiKey: resolvedApiVersion === 'gemini' ? trimmedApiKey : '',
     mode: normalizedGeminiMode,
   })
 
@@ -164,7 +182,8 @@ export default function GameStartModeModal({
     setMode(nextState.mode)
     setDuoOption(nextState.duoOption)
     setCasualOption(nextState.casualOption)
-    setApiVersion(nextState.apiVersion)
+    setApiProvider(nextState.apiProvider)
+    setOpenaiService(nextState.openaiService)
     setApiKey(nextState.apiKey)
     setGeminiMode(nextState.geminiMode)
     setGeminiModel(nextState.geminiModel)
@@ -205,14 +224,14 @@ export default function GameStartModeModal({
   }, [trimmedApiKey])
 
   useEffect(() => {
-    if (apiVersion === 'gemini') {
+    if (resolvedApiVersion === 'gemini') {
       setOpenAIDetectStatus('')
       setOpenAIDetectError('')
     } else {
       setGeminiDetectStatus('')
       setGeminiDetectError('')
     }
-  }, [apiVersion])
+  }, [resolvedApiVersion])
 
   const handleDetectGemini = async () => {
     if (detectingGemini) {
@@ -236,7 +255,8 @@ export default function GameStartModeModal({
       const nextModel =
         normalizeGeminiModelId(result?.model || DEFAULT_GEMINI_MODEL) || DEFAULT_GEMINI_MODEL
 
-      setApiVersion('gemini')
+      setApiProvider('gemini')
+      setOpenaiService('responses')
       setGeminiMode(nextMode)
       setGeminiModel(nextModel)
 
@@ -300,16 +320,15 @@ export default function GameStartModeModal({
           ? result.apiVersion
           : 'chat_completions'
 
-      setApiVersion(recommendedVersion)
+      setApiProvider('openai')
+      setOpenaiService(recommendedVersion)
 
       if (typeof window !== 'undefined') {
         try {
           window.sessionStorage.setItem('rank.start.apiVersion', recommendedVersion)
           window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
-          if (recommendedVersion !== 'gemini') {
-            window.sessionStorage.removeItem('rank.start.geminiMode')
-            window.sessionStorage.removeItem('rank.start.geminiModel')
-          }
+          window.sessionStorage.removeItem('rank.start.geminiMode')
+          window.sessionStorage.removeItem('rank.start.geminiModel')
         } catch (error) {
           console.warn('OpenAI 프리셋을 저장하지 못했습니다:', error)
         }
@@ -341,11 +360,11 @@ export default function GameStartModeModal({
 
   const canConfirm = useMemo(() => {
     const requiresImmediateApiKey = mode === MATCH_MODE_KEYS.RANK_SOLO
-    if (!apiVersion) {
+    if (!resolvedApiVersion) {
       return false
     }
 
-    if (apiVersion === 'gemini') {
+    if (resolvedApiVersion === 'gemini') {
       if (!normalizedGeminiMode) {
         return false
       }
@@ -375,7 +394,7 @@ export default function GameStartModeModal({
 
     return true
   }, [
-    apiVersion,
+    resolvedApiVersion,
     mode,
     duoOption,
     casualOption,
@@ -403,7 +422,7 @@ export default function GameStartModeModal({
       mode: resolvedMode,
       duoOption,
       casualOption,
-      apiVersion,
+      apiVersion: resolvedApiVersion,
       apiKey: trimmedApiKey,
       geminiMode: normalizedGeminiMode,
       geminiModel: normalizedGeminiModel,
@@ -426,16 +445,22 @@ export default function GameStartModeModal({
 
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>AI API 연결</h3>
-          <label className={styles.label} htmlFor="start-config-api-version">
+          <label className={styles.label} htmlFor="start-config-api-provider">
             API 종류
           </label>
           <select
-            id="start-config-api-version"
+            id="start-config-api-provider"
             className={styles.select}
-            value={apiVersion}
-            onChange={(event) => setApiVersion(event.target.value)}
+            value={apiProvider}
+            onChange={(event) => {
+              const nextProvider = event.target.value
+              setApiProvider(nextProvider)
+              if (nextProvider === 'gemini') {
+                setOpenaiService('responses')
+              }
+            }}
           >
-            {API_VERSION_OPTIONS.map((option) => (
+            {API_PROVIDER_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -453,7 +478,26 @@ export default function GameStartModeModal({
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
           />
-          {apiVersion === 'gemini' && (
+          {usingOpenAI && (
+            <>
+              <label className={styles.label} htmlFor="start-config-openai-service">
+                OpenAI 서비스 선택
+              </label>
+              <select
+                id="start-config-openai-service"
+                className={styles.select}
+                value={openaiService}
+                onChange={(event) => setOpenaiService(event.target.value)}
+              >
+                {OPENAI_SERVICE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          {resolvedApiVersion === 'gemini' && (
             <div className={styles.geminiSection}>
               <label className={styles.label} htmlFor="start-config-gemini-mode">
                 Gemini 엔드포인트
@@ -531,7 +575,7 @@ export default function GameStartModeModal({
               )}
             </div>
           )}
-          {apiVersion !== 'gemini' && (
+          {usingOpenAI && (
             <>
               <div className={styles.geminiActions}>
                 <button
