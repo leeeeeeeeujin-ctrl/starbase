@@ -656,6 +656,192 @@ export function useStartClientEngine(gameId) {
     [participants],
   )
 
+  const finalizeRealtimeTurn = useCallback(
+    (reason, { defaultReason } = {}) => {
+      if (!game?.realtime_match) return
+      const manager = realtimeManagerRef.current
+      if (!manager) return
+
+      const result = manager.completeTurn({
+        turnNumber: turn,
+        reason: reason || defaultReason || 'unspecified',
+        eligibleOwnerIds: deriveEligibleOwnerIds(participants),
+      })
+      if (!result) return
+
+      applyRealtimeSnapshot(result.snapshot)
+
+      const warningReasonMap = new Map()
+      const escalationReasonMap = new Map()
+
+      if (Array.isArray(result.events) && result.events.length) {
+        const warningLimitValue = Number.isFinite(Number(result.snapshot?.warningLimit))
+          ? Number(result.snapshot.warningLimit)
+          : undefined
+        const eventEntries = []
+
+        result.events.forEach((event) => {
+          if (!event) return
+          const ownerId = event.ownerId ? String(event.ownerId).trim() : ''
+          if (!ownerId) return
+
+          const info = ownerDisplayMap.get(ownerId)
+          const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
+          const baseLimit = Number.isFinite(Number(event.limit))
+            ? Number(event.limit)
+            : warningLimitValue
+          const reasonLabel = formatRealtimeReason(event.reason)
+          const eventId = event.id || event.eventId || null
+
+          if (event.type === 'warning') {
+            if (reasonLabel) {
+              warningReasonMap.set(ownerId, reasonLabel)
+            }
+            const strikeText = Number.isFinite(Number(event.strike))
+              ? `${Number(event.strike)}회`
+              : '1회'
+            const remainingText =
+              Number.isFinite(Number(event.remaining)) && Number(event.remaining) > 0
+                ? ` (남은 기회 ${Number(event.remaining)}회)`
+                : ''
+            const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
+            eventEntries.push({
+              role: 'system',
+              content: `⚠️ ${displayName} 경고 ${strikeText}${remainingText}${reasonSuffix}`,
+              public: true,
+              visibility: 'public',
+              extra: {
+                eventType: 'warning',
+                ownerId,
+                strike: Number.isFinite(Number(event.strike))
+                  ? Number(event.strike)
+                  : null,
+                remaining:
+                  Number.isFinite(Number(event.remaining)) && Number(event.remaining) >= 0
+                    ? Number(event.remaining)
+                    : null,
+                limit: Number.isFinite(baseLimit) ? Number(baseLimit) : null,
+                reason: event.reason || null,
+                turn: Number.isFinite(Number(event.turn)) ? Number(event.turn) : turn,
+                timestamp: Number.isFinite(Number(event.timestamp))
+                  ? Number(event.timestamp)
+                  : Date.now(),
+                eventId,
+                status: event.status || null,
+              },
+            })
+          } else if (event.type === 'proxy_escalated') {
+            if (reasonLabel) {
+              escalationReasonMap.set(ownerId, reasonLabel)
+            }
+            const strikeText = Number.isFinite(Number(event.strike))
+              ? ` (경고 ${Number(event.strike)}회 누적)`
+              : ''
+            const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
+            eventEntries.push({
+              role: 'system',
+              content: `🚨 ${displayName} 대역 전환${strikeText}${reasonSuffix}`,
+              public: true,
+              visibility: 'public',
+              extra: {
+                eventType: 'proxy_escalated',
+                ownerId,
+                strike: Number.isFinite(Number(event.strike))
+                  ? Number(event.strike)
+                  : null,
+                limit: Number.isFinite(baseLimit) ? Number(baseLimit) : null,
+                reason: event.reason || null,
+                turn: Number.isFinite(Number(event.turn)) ? Number(event.turn) : turn,
+                timestamp: Number.isFinite(Number(event.timestamp))
+                  ? Number(event.timestamp)
+                  : Date.now(),
+                status: 'proxy',
+                eventId,
+              },
+            })
+          }
+        })
+
+        if (eventEntries.length) {
+          logTurnEntries({ entries: eventEntries, turnNumber: turn }).catch((error) => {
+            console.error('[StartClient] 경고/대역 이벤트 로그 실패:', error)
+          })
+        }
+      }
+
+      if (Array.isArray(result.warnings) && result.warnings.length) {
+        const messages = result.warnings
+          .map(({ ownerId, strike, remaining, reason: warningReason }) => {
+            if (!ownerId) return null
+            const normalized = String(ownerId).trim()
+            if (!normalized) return null
+            const info = ownerDisplayMap.get(normalized)
+            const displayName = info?.displayName || `플레이어 ${normalized.slice(0, 6)}`
+            const remainText = remaining > 0 ? ` (남은 기회 ${remaining}회)` : ''
+            const reasonLabel =
+              warningReasonMap.get(normalized) || formatRealtimeReason(warningReason)
+            const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
+            return `${displayName} 경고 ${strike}회${remainText}${reasonSuffix}`
+          })
+          .filter(Boolean)
+
+        if (messages.length) {
+          setStatusMessage((prev) => {
+            const notice = `경고: ${messages.join(', ')} - "다음" 버튼을 눌러 참여해 주세요.`
+            if (!prev) return notice
+            if (prev.includes(notice)) return prev
+            return `${prev}\n${notice}`
+          })
+        }
+      }
+
+      if (Array.isArray(result.escalated) && result.escalated.length) {
+        const escalatedSet = new Set(
+          result.escalated
+            .map((ownerId) => (ownerId ? String(ownerId).trim() : ''))
+            .filter(Boolean),
+        )
+        if (escalatedSet.size) {
+          setParticipants((prev) =>
+            prev.map((participant) => {
+              const ownerId = deriveParticipantOwnerId(participant)
+              if (!ownerId) return participant
+              const normalized = String(ownerId).trim()
+              if (!escalatedSet.has(normalized)) return participant
+              const statusValue = String(participant?.status || '').toLowerCase()
+              if (statusValue === 'proxy') return participant
+              return { ...participant, status: 'proxy' }
+            }),
+          )
+          const names = Array.from(escalatedSet).map((ownerId) => {
+            const info = ownerDisplayMap.get(ownerId)
+            const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
+            const reasonLabel = escalationReasonMap.get(ownerId)
+            return reasonLabel ? `${displayName} (${reasonLabel})` : displayName
+          })
+          setStatusMessage((prev) => {
+            const notice = `대역 전환: ${names.join(', ')} – 3회 이상 응답하지 않아 대역으로 교체되었습니다.`
+            if (!prev) return notice
+            if (prev.includes(notice)) return prev
+            return `${prev}\n${notice}`
+          })
+        }
+      }
+
+      return result
+    },
+    [
+      game?.realtime_match,
+      applyRealtimeSnapshot,
+      logTurnEntries,
+      ownerDisplayMap,
+      participants,
+      setParticipants,
+      setStatusMessage,
+      turn,
+    ],
+  )
+
   const recordTimelineEvents = useCallback(
     (events, { turnNumber: overrideTurn, logEntries = null, buildLogs = true } = {}) => {
       if (!Array.isArray(events) || events.length === 0) return
@@ -1341,171 +1527,6 @@ export function useStartClientEngine(gameId) {
       const historyRole = isUserAction ? 'user' : 'assistant'
       const actingOwnerId = actorContext?.participant?.owner_id || null
 
-      const finalizeRealtimeTurn = (reason) => {
-        if (!game?.realtime_match) return
-        const manager = realtimeManagerRef.current
-        if (!manager) return
-        const result = manager.completeTurn({
-          turnNumber: turn,
-          reason: reason || advanceReason,
-          eligibleOwnerIds: deriveEligibleOwnerIds(participants),
-        })
-        if (!result) return
-        applyRealtimeSnapshot(result.snapshot)
-
-        const warningReasonMap = new Map()
-        const escalationReasonMap = new Map()
-
-        if (Array.isArray(result.events) && result.events.length) {
-          const warningLimitValue = Number.isFinite(Number(result.snapshot?.warningLimit))
-            ? Number(result.snapshot.warningLimit)
-            : undefined
-          const eventEntries = []
-          result.events.forEach((event) => {
-            if (!event) return
-            const ownerId = event.ownerId ? String(event.ownerId).trim() : ''
-            if (!ownerId) return
-            const info = ownerDisplayMap.get(ownerId)
-            const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
-            const baseLimit = Number.isFinite(Number(event.limit))
-              ? Number(event.limit)
-              : warningLimitValue
-            const reasonLabel = formatRealtimeReason(event.reason)
-            const eventId = event.id || event.eventId || null
-            if (event.type === 'warning') {
-              if (reasonLabel) {
-                warningReasonMap.set(ownerId, reasonLabel)
-              }
-              const strikeText = Number.isFinite(Number(event.strike))
-                ? `${Number(event.strike)}회`
-                : '1회'
-              const remainingText =
-                Number.isFinite(Number(event.remaining)) && Number(event.remaining) > 0
-                  ? ` (남은 기회 ${Number(event.remaining)}회)`
-                  : ''
-              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
-              eventEntries.push({
-                role: 'system',
-                content: `⚠️ ${displayName} 경고 ${strikeText}${remainingText}${reasonSuffix}`,
-                public: true,
-                visibility: 'public',
-                extra: {
-                  eventType: 'warning',
-                  ownerId,
-                  strike: Number.isFinite(Number(event.strike))
-                    ? Number(event.strike)
-                    : null,
-                  remaining:
-                    Number.isFinite(Number(event.remaining)) && Number(event.remaining) >= 0
-                      ? Number(event.remaining)
-                      : null,
-                  limit: Number.isFinite(baseLimit) ? Number(baseLimit) : null,
-                  reason: event.reason || null,
-                  turn: Number.isFinite(Number(event.turn)) ? Number(event.turn) : turn,
-                  timestamp: Number.isFinite(Number(event.timestamp))
-                    ? Number(event.timestamp)
-                    : Date.now(),
-                  eventId,
-                  status: event.status || null,
-                },
-              })
-            } else if (event.type === 'proxy_escalated') {
-              if (reasonLabel) {
-                escalationReasonMap.set(ownerId, reasonLabel)
-              }
-              const strikeText = Number.isFinite(Number(event.strike))
-                ? ` (경고 ${Number(event.strike)}회 누적)`
-                : ''
-              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
-              eventEntries.push({
-                role: 'system',
-                content: `🚨 ${displayName} 대역 전환${strikeText}${reasonSuffix}`,
-                public: true,
-                visibility: 'public',
-                extra: {
-                  eventType: 'proxy_escalated',
-                  ownerId,
-                  strike: Number.isFinite(Number(event.strike))
-                    ? Number(event.strike)
-                    : null,
-                  limit: Number.isFinite(baseLimit) ? Number(baseLimit) : null,
-                  reason: event.reason || null,
-                  turn: Number.isFinite(Number(event.turn)) ? Number(event.turn) : turn,
-                  timestamp: Number.isFinite(Number(event.timestamp))
-                    ? Number(event.timestamp)
-                    : Date.now(),
-                  status: 'proxy',
-                  eventId,
-                },
-              })
-            }
-          })
-          if (eventEntries.length) {
-            logTurnEntries({ entries: eventEntries, turnNumber: turn }).catch((error) => {
-              console.error('[StartClient] 경고/대역 이벤트 로그 실패:', error)
-            })
-          }
-        }
-
-        if (Array.isArray(result.warnings) && result.warnings.length) {
-          const messages = result.warnings
-            .map(({ ownerId, strike, remaining, reason }) => {
-              if (!ownerId) return null
-              const normalized = String(ownerId).trim()
-              if (!normalized) return null
-              const info = ownerDisplayMap.get(normalized)
-              const displayName = info?.displayName || `플레이어 ${normalized.slice(0, 6)}`
-              const remainText = remaining > 0 ? ` (남은 기회 ${remaining}회)` : ''
-              const reasonLabel =
-                warningReasonMap.get(normalized) || formatRealtimeReason(reason)
-              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
-              return `${displayName} 경고 ${strike}회${remainText}${reasonSuffix}`
-            })
-            .filter(Boolean)
-          if (messages.length) {
-            setStatusMessage((prev) => {
-              const notice = `경고: ${messages.join(', ')} - "다음" 버튼을 눌러 참여해 주세요.`
-              if (!prev) return notice
-              if (prev.includes(notice)) return prev
-              return `${prev}\n${notice}`
-            })
-          }
-        }
-
-        if (Array.isArray(result.escalated) && result.escalated.length) {
-          const escalatedSet = new Set(
-            result.escalated
-              .map((ownerId) => (ownerId ? String(ownerId).trim() : ''))
-              .filter(Boolean),
-          )
-          if (escalatedSet.size) {
-            setParticipants((prev) =>
-              prev.map((participant) => {
-                const ownerId = deriveParticipantOwnerId(participant)
-                if (!ownerId) return participant
-                const normalized = String(ownerId).trim()
-                if (!escalatedSet.has(normalized)) return participant
-                const statusValue = String(participant?.status || '').toLowerCase()
-                if (statusValue === 'proxy') return participant
-                return { ...participant, status: 'proxy' }
-              }),
-            )
-            const names = Array.from(escalatedSet).map((ownerId) => {
-              const info = ownerDisplayMap.get(ownerId)
-              const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
-              const reasonLabel = escalationReasonMap.get(ownerId)
-              return reasonLabel ? `${displayName} (${reasonLabel})` : displayName
-            })
-            setStatusMessage((prev) => {
-              const notice = `대역 전환: ${names.join(', ')} – 3회 이상 응답하지 않아 대역으로 교체되었습니다.`
-              if (!prev) return notice
-              if (prev.includes(notice)) return prev
-              return `${prev}\n${notice}`
-            })
-          }
-        }
-      }
-
       const recordRealtimeParticipation = (ownerId, type) => {
         if (!game?.realtime_match) return
         if (!ownerId) return
@@ -1839,7 +1860,7 @@ export function useStartClientEngine(gameId) {
         clearManualResponse()
 
         if (!chosenEdge) {
-          finalizeRealtimeTurn('no-bridge')
+          finalizeRealtimeTurn('no-bridge', { defaultReason: advanceReason })
           setCurrentNodeId(null)
           setStatusMessage('더 이상 진행할 경로가 없어 세션을 종료합니다.')
           setTurnDeadline(null)
@@ -1866,7 +1887,7 @@ export function useStartClientEngine(gameId) {
             if (brawlEnabled) {
               setWinCount(() => upcomingWin)
             }
-            finalizeRealtimeTurn('win')
+            finalizeRealtimeTurn('win', { defaultReason: advanceReason })
             setCurrentNodeId(null)
             const suffix = brawlEnabled
               ? ` 누적 승리 ${upcomingWin}회를 기록했습니다.`
@@ -1879,7 +1900,7 @@ export function useStartClientEngine(gameId) {
             return
           }
         } else if (action === 'lose') {
-          finalizeRealtimeTurn('lose')
+          finalizeRealtimeTurn('lose', { defaultReason: advanceReason })
           setCurrentNodeId(null)
           setStatusMessage(
             brawlEnabled
@@ -1896,7 +1917,7 @@ export function useStartClientEngine(gameId) {
           }
           return
         } else if (action === 'draw') {
-          finalizeRealtimeTurn('draw')
+          finalizeRealtimeTurn('draw', { defaultReason: advanceReason })
           setCurrentNodeId(null)
           setStatusMessage('무승부로 종료되었습니다.')
           setTurnDeadline(null)
@@ -1907,7 +1928,7 @@ export function useStartClientEngine(gameId) {
         }
 
         if (!nextNodeId) {
-          finalizeRealtimeTurn('missing-next')
+          finalizeRealtimeTurn('missing-next', { defaultReason: advanceReason })
           setCurrentNodeId(null)
           setStatusMessage('다음에 진행할 노드를 찾을 수 없습니다.')
           setTurnDeadline(null)
@@ -1917,7 +1938,7 @@ export function useStartClientEngine(gameId) {
           return
         }
 
-        finalizeRealtimeTurn('continue')
+        finalizeRealtimeTurn('continue', { defaultReason: advanceReason })
         setCurrentNodeId(nextNodeId)
         setTurn((prev) => prev + 1)
       } catch (err) {
@@ -1962,7 +1983,6 @@ export function useStartClientEngine(gameId) {
       turn,
       participants,
       participantsStatus,
-      ownerDisplayMap,
       game?.realtime_match,
       brawlEnabled,
       endConditionVariable,
@@ -1978,6 +1998,7 @@ export function useStartClientEngine(gameId) {
       normalizedGeminiMode,
       normalizedGeminiModel,
       applyRealtimeSnapshot,
+      finalizeRealtimeTurn,
     ],
   )
 
