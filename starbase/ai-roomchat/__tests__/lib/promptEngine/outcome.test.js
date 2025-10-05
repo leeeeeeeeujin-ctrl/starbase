@@ -53,4 +53,48 @@ describe('promptEngine/parseOutcome', () => {
     expect(result.variables).toEqual([])
     expect(result.actors).toEqual([])
   })
+
+  it('parses variable tokens separated by punctuation and deduplicates them', () => {
+    const assistantText = [
+      '본문',
+      '추가',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '하이라이트 없음',
+      'alpha, beta / gamma · Alpha',
+      '케릭 승리',
+    ].join('\n')
+
+    const result = parseOutcome(assistantText)
+
+    expect(result.variables).toEqual(['alpha', 'beta', 'gamma'])
+  })
+
+  it('cleans actor names with comma-separated values and removes duplicates', () => {
+    const assistantText = [
+      '서사',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '주역: 철수, 영희 / 철수',
+      'none',
+      '철수 승리',
+    ].join('\n')
+
+    const result = parseOutcome(assistantText)
+
+    expect(result.actors).toEqual(['철수', '영희'])
+  })
 })
