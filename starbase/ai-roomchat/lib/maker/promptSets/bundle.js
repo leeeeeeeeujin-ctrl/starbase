@@ -19,7 +19,8 @@ function normalizeSlotPayload(slot, index) {
       ? slot.position.y
       : null
 
-  const slotNo = slot?.slot_no ?? slot?.slotNo ?? index + 1
+  const slotNo =
+    slot?.slot_no ?? slot?.slotNo ?? slot?.slot_index ?? slot?.slotIndex ?? index
   const identifier = slot?.id ?? slot?.slot_id ?? `slot_no:${slotNo}`
 
   return {
