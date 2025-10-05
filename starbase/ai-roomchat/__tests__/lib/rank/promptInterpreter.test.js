@@ -121,5 +121,28 @@ describe('promptInterpreter', () => {
     expect(result.promptBody).toContain('용사 아린 vs 수호자 벨라')
     expect(result.promptBody).toContain('zero 용사 아린')
   })
+
+  it('prefers toggle-provided rules over duplicate base guidance', () => {
+    const fairnessLine =
+      '- 능력은 여건이 될 때만 사용하되, 상시발동 능력은 제약 없이 가능하다.'
+    const gameWithDuplicate = {
+      ...baseGame,
+      rules_prefix: `${fairnessLine}\n- 추가 규칙: 테스트`,
+      rules: {
+        ...baseGame.rules,
+        fair_power_balance: true,
+      },
+    }
+
+    const result = interpretPromptNode({
+      game: gameWithDuplicate,
+      node,
+      participants: [participant],
+    })
+
+    const occurrences = result.rulesBlock.split(fairnessLine).length - 1
+    expect(occurrences).toBe(1)
+    expect(result.rulesBlock).toContain('- 추가 규칙: 테스트')
+  })
 })
 

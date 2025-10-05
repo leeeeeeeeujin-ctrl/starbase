@@ -321,6 +321,13 @@ export function buildParticipantSlotMap(participants = []) {
   return slotMap
 }
 
+const RULE_SOURCE_PRIORITY = {
+  option: 3,
+  checklist: 2,
+  prefix: 1,
+  default: 0,
+}
+
 function buildRuleSections({ game, node } = {}) {
   const sections = {
     baseRules: [],
@@ -328,32 +335,44 @@ function buildRuleSections({ game, node } = {}) {
     localVariables: [],
   }
 
-  const seen = new Set()
-  const pushBaseRule = (line) => {
+  const baseRuleEntries = []
+  const indexByLine = new Map()
+  const pushBaseRule = (line, source = 'default') => {
     const text = safeStr(line)
     if (!text) return
     const key = text.trim()
     if (!key) return
-    if (seen.has(key)) return
-    seen.add(key)
-    sections.baseRules.push(text)
+
+    const priority = RULE_SOURCE_PRIORITY[source] ?? RULE_SOURCE_PRIORITY.default
+    if (indexByLine.has(key)) {
+      const existingIndex = indexByLine.get(key)
+      const existing = baseRuleEntries[existingIndex]
+      if (existing.priority >= priority) {
+        return
+      }
+      baseRuleEntries[existingIndex] = { text, priority }
+      return
+    }
+
+    indexByLine.set(key, baseRuleEntries.length)
+    baseRuleEntries.push({ text, priority })
   }
 
   const prefixLines = cleanLines(game?.rules_prefix)
     .map((line) => line.replace(/^규칙:?$/i, '').trim())
     .filter(Boolean)
-  prefixLines.forEach((line) => pushBaseRule(line))
+  prefixLines.forEach((line) => pushBaseRule(line, 'prefix'))
 
   const { options: ruleOptions, checklist } = parseGameRules(game)
   const ruleOptionLines = buildRuleOptionLines(ruleOptions)
-  ruleOptionLines.forEach((line) => pushBaseRule(line))
+  ruleOptionLines.forEach((line) => pushBaseRule(line, 'option'))
 
   const checklistLines = buildSystemPromptFromChecklist({ checklist })
   if (checklistLines) {
-    cleanLines(checklistLines).forEach((line) => pushBaseRule(line))
+    cleanLines(checklistLines).forEach((line) => pushBaseRule(line, 'checklist'))
   }
 
-  DEFAULT_RULE_GUIDANCE.forEach((line) => pushBaseRule(line))
+  DEFAULT_RULE_GUIDANCE.forEach((line) => pushBaseRule(line, 'default'))
 
   const globalScope = collectVariableScope(node, 'global')
   const localScope = collectVariableScope(node, 'local')
@@ -377,6 +396,8 @@ function buildRuleSections({ game, node } = {}) {
   if (localRules.length) {
     sections.localVariables.push(...localRules)
   }
+
+  sections.baseRules = baseRuleEntries.map((entry) => entry.text)
 
   return sections
 }
