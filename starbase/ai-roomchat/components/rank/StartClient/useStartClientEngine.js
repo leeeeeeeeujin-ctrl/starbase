@@ -19,6 +19,7 @@ import {
   resolveActorContext,
 } from './engine/actorContext'
 import { buildBattleLogDraft } from './engine/battleLogBuilder'
+import { formatRealtimeReason } from './engine/timelineLogBuilder'
 import {
   buildLogEntriesFromEvents,
   initializeRealtimeEvents,
@@ -48,95 +49,6 @@ import { useStartCooldown } from './hooks/useStartCooldown'
 import { useStartManualResponse } from './hooks/useStartManualResponse'
 import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog'
 import { consumeStartMatchMeta } from '../startConfig'
-
-function describeRealtimeReason(reason) {
-  if (!reason) return ''
-  const normalized = String(reason).trim().toLowerCase()
-  switch (normalized) {
-    case 'timeout':
-      return '시간 초과'
-    case 'consensus':
-      return '합의 미응답'
-    case 'manual':
-      return '수동 진행 미완료'
-    case 'ai':
-      return '자동 진행'
-    case 'inactivity':
-      return '응답 없음'
-    default:
-      return ''
-  }
-}
-
-function normalizeSlotNumber(value) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return null
-  const whole = Math.trunc(numeric)
-  return whole > 0 ? whole : null
-}
-
-function alignParticipantsBySlot(list = []) {
-  if (!Array.isArray(list) || list.length <= 1) {
-    return Array.isArray(list) ? list.filter(Boolean) : []
-  }
-
-  const withSlot = []
-  const overflow = []
-  const taken = new Set()
-
-  list.forEach((participant, index) => {
-    if (!participant || typeof participant !== 'object') return
-    const slot = normalizeSlotNumber(participant.slot_no)
-    const entry = { participant, index, slot }
-    if (slot && !taken.has(slot)) {
-      taken.add(slot)
-      withSlot.push(entry)
-    } else {
-      overflow.push(entry)
-    }
-  })
-
-  withSlot.sort((a, b) => {
-    if (a.slot === b.slot) {
-      return a.index - b.index
-    }
-    return a.slot - b.slot
-  })
-  overflow.sort((a, b) => a.index - b.index)
-
-  const ordered = []
-  const seen = new Set()
-  withSlot.forEach((entry) => {
-    seen.add(entry.slot)
-    ordered.push(entry)
-  })
-
-  let cursor = 1
-  overflow.forEach((entry) => {
-    let slot = normalizeSlotNumber(entry.slot)
-    if (!slot || seen.has(slot)) {
-      while (seen.has(cursor)) {
-        cursor += 1
-      }
-      slot = cursor
-      cursor += 1
-    }
-    seen.add(slot)
-    ordered.push({ ...entry, slot })
-  })
-
-  ordered.sort((a, b) => {
-    if (a.slot === b.slot) {
-      return a.index - b.index
-    }
-    return a.slot - b.slot
-  })
-
-  return ordered.map(({ participant, slot }) => ({
-    ...participant,
-    slot_no: slot,
-  }))
-}
 
 export function useStartClientEngine(gameId) {
   const initialStoredApiKey =
@@ -246,7 +158,6 @@ export function useStartClientEngine(gameId) {
   const realtimeEventsRef = useRef(realtimeEvents)
   const [dropInSnapshot, setDropInSnapshot] = useState(null)
   const dropInSnapshotRef = useRef(null)
-  const realtimeChannelNoticeRef = useRef('')
 
   useEffect(() => {
     logsRef.current = Array.isArray(logs) ? logs : []
@@ -482,7 +393,7 @@ export function useStartClientEngine(gameId) {
         const bundle = await loadGameBundle(supabase, gameId)
         if (!alive) return
         setGame(bundle.game)
-        setParticipants(alignParticipantsBySlot(bundle.participants))
+        setParticipants(bundle.participants)
         setGraph(bundle.graph)
         if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
           bundle.warnings.forEach((warning) => {
@@ -1459,7 +1370,7 @@ export function useStartClientEngine(gameId) {
             const baseLimit = Number.isFinite(Number(event.limit))
               ? Number(event.limit)
               : warningLimitValue
-            const reasonLabel = describeRealtimeReason(event.reason)
+            const reasonLabel = formatRealtimeReason(event.reason)
             const eventId = event.id || event.eventId || null
             if (event.type === 'warning') {
               if (reasonLabel) {
@@ -1546,7 +1457,7 @@ export function useStartClientEngine(gameId) {
               const displayName = info?.displayName || `플레이어 ${normalized.slice(0, 6)}`
               const remainText = remaining > 0 ? ` (남은 기회 ${remaining}회)` : ''
               const reasonLabel =
-                warningReasonMap.get(normalized) || describeRealtimeReason(reason)
+                warningReasonMap.get(normalized) || formatRealtimeReason(reason)
               const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
               return `${displayName} 경고 ${strike}회${remainText}${reasonSuffix}`
             })
@@ -2241,69 +2152,20 @@ export function useStartClientEngine(gameId) {
 
     channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)
 
-    const buildRealtimeChannelMessage = (status) => {
-      switch (status) {
-        case 'CHANNEL_ERROR':
-          return '실시간 타임라인 연결에 문제가 발생했습니다. 잠시 후 다시 시도하거나 페이지를 새로고침해 주세요.'
-        case 'TIMED_OUT':
-          return '실시간 타임라인 연결이 지연되고 있습니다. 안정적인 연결을 확보하는 중입니다.'
-        case 'CLOSED':
-          return '실시간 타임라인 연결이 종료되었습니다. 새로고침하여 다시 연결해 주세요.'
-        default:
-          return `실시간 타임라인 채널 상태가 "${status}"(으)로 변경되었습니다.`
-      }
-    }
-
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        const previousNotice = realtimeChannelNoticeRef.current
-        if (!previousNotice) return
-        realtimeChannelNoticeRef.current = ''
-        setStatusMessage((prev) => {
-          if (!prev) return prev
-          const normalizedPrevious = previousNotice.trim()
-          const filtered = prev
-            .split('\n')
-            .map((line) => line.trim())
-            .filter((line) => line.length && line !== normalizedPrevious)
-          if (!filtered.length) return ''
-          return filtered.join('\n')
-        })
-        return
-      }
-
-      const previousNotice = realtimeChannelNoticeRef.current
-      const message = buildRealtimeChannelMessage(status)
-      const normalizedMessage = message.trim()
-      realtimeChannelNoticeRef.current = message
-
-      setStatusMessage((prev) => {
-        const existing = prev
-          ? prev
-              .split('\n')
-              .map((line) => line.trim())
-              .filter((line) => line.length)
-          : []
-
-        const normalizedPrevious = previousNotice
-          ? previousNotice.trim()
-          : ''
-        const withoutPrevious = normalizedPrevious
-          ? existing.filter((line) => line !== normalizedPrevious)
-          : existing
-
-        if (withoutPrevious.includes(normalizedMessage)) {
-          return withoutPrevious.join('\n')
+    try {
+      channel.subscribe((status) => {
+        if (!status || status === 'SUBSCRIBED') {
+          return
         }
-
-        return [normalizedMessage, ...withoutPrevious].join('\n')
+        const logger = status === 'CHANNEL_ERROR' ? 'error' : 'warn'
+        console[logger](
+          '[StartClient] 실시간 타임라인 채널 상태:',
+          status,
+        )
       })
-
-      console[status === 'CHANNEL_ERROR' ? 'error' : 'warn'](
-        '[StartClient] 실시간 타임라인 채널 상태 변경:',
-        status,
-      )
-    })
+    } catch (error) {
+      console.error('[StartClient] 실시간 타임라인 채널 구독 실패:', error)
+    }
 
     return () => {
       try {

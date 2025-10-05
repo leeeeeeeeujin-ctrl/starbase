@@ -36,6 +36,7 @@ export function matchRankParticipants({
 
   const buckets = buildRoleBuckets(queue, partySize)
   const usedGroupKeys = new Set()
+  const usedHeroIds = new Set()
   const assignments = []
   let maxWindow = 0
 
@@ -46,6 +47,7 @@ export function matchRankParticipants({
       partySize,
       scoreWindows,
       usedGroupKeys,
+      usedHeroIds,
     })
 
     if (!resolution.ok) {
@@ -69,6 +71,7 @@ export function matchRankParticipants({
     for (const assignment of resolution.assignments) {
       assignments.push(assignment)
       usedGroupKeys.add(assignment.groupKey)
+      appendHeroIds(usedHeroIds, assignment.heroIds)
     }
   }
 
@@ -94,6 +97,7 @@ export function matchCasualParticipants({ roles = [], queue = [], partySize = 1 
 
   const buckets = buildRoleBuckets(queue, partySize)
   const usedGroupKeys = new Set()
+  const usedHeroIds = new Set()
   const assignments = []
 
   for (const role of normalizedRoles) {
@@ -102,6 +106,7 @@ export function matchCasualParticipants({ roles = [], queue = [], partySize = 1 
       buckets,
       partySize,
       usedGroupKeys,
+      usedHeroIds,
     })
 
     if (!resolution.ok) {
@@ -120,6 +125,7 @@ export function matchCasualParticipants({ roles = [], queue = [], partySize = 1 
     for (const assignment of resolution.assignments) {
       assignments.push(assignment)
       usedGroupKeys.add(assignment.groupKey)
+      appendHeroIds(usedHeroIds, assignment.heroIds)
     }
   }
 
@@ -136,8 +142,15 @@ export function matchCasualParticipants({ roles = [], queue = [], partySize = 1 
 // Core role resolution
 // ---------------------------------------------------------------------------
 
-function resolveRankRole({ role, buckets, partySize, scoreWindows, usedGroupKeys }) {
-  const available = getAvailableGroupsForRole({ role, buckets, usedGroupKeys })
+function resolveRankRole({
+  role,
+  buckets,
+  partySize,
+  scoreWindows,
+  usedGroupKeys,
+  usedHeroIds,
+}) {
+  const available = getAvailableGroupsForRole({ role, buckets, usedGroupKeys, usedHeroIds })
   if (available.length === 0) {
     return { ok: false, reason: 'no_candidates', missing: role.slotCount }
   }
@@ -154,6 +167,7 @@ function resolveRankRole({ role, buckets, partySize, scoreWindows, usedGroupKeys
       groupsNeeded,
       role,
       windows,
+      usedHeroIds,
     })
 
     if (attempt.ok) {
@@ -175,27 +189,38 @@ function resolveRankRole({ role, buckets, partySize, scoreWindows, usedGroupKeys
   }
 }
 
-function resolveCasualRole({ role, buckets, partySize, usedGroupKeys }) {
-  const available = getAvailableGroupsForRole({ role, buckets, usedGroupKeys })
+function resolveCasualRole({
+  role,
+  buckets,
+  partySize,
+  usedGroupKeys,
+  usedHeroIds,
+}) {
+  const available = getAvailableGroupsForRole({ role, buckets, usedGroupKeys, usedHeroIds })
   if (available.length === 0) {
     return { ok: false, reason: 'no_candidates', missing: role.slotCount }
   }
 
   const picks = []
   let slotsRemaining = role.slotCount
+  const localHeroIds = new Set()
 
   for (const group of available) {
+    if (hasHeroConflict(group.heroIds, usedHeroIds, localHeroIds)) {
+      continue
+    }
     if (slotsRemaining < group.members.length) {
       continue
     }
 
     picks.push(group)
     slotsRemaining -= group.members.length
+    appendHeroIds(localHeroIds, group.heroIds)
 
     if (slotsRemaining === 0) {
-        return {
-          ok: true,
-          assignments: materializeAssignments({ role, picks }),
+      return {
+        ok: true,
+        assignments: materializeAssignments({ role, picks }),
         }
     }
   }
@@ -208,10 +233,23 @@ function resolveCasualRole({ role, buckets, partySize, usedGroupKeys }) {
   }
 }
 
-function tryPickRankGroups({ anchor, anchorIndex, available, groupsNeeded, role, windows }) {
+function tryPickRankGroups({
+  anchor,
+  anchorIndex,
+  available,
+  groupsNeeded,
+  role,
+  windows,
+  usedHeroIds,
+}) {
   const picks = [anchor]
   let slotsRemaining = role.slotCount - anchor.members.length
   if (slotsRemaining < 0) {
+    return { ok: false }
+  }
+
+  const localHeroIds = new Set(anchor.heroIds || [])
+  if (hasHeroConflict(anchor.heroIds, usedHeroIds)) {
     return { ok: false }
   }
 
@@ -229,11 +267,13 @@ function tryPickRankGroups({ anchor, anchorIndex, available, groupsNeeded, role,
       if (pickedKeys.has(group.groupKey)) continue
       if (Math.abs(group.score - anchor.score) > window) continue
       if (slotsRemaining < group.members.length) continue
+      if (hasHeroConflict(group.heroIds, usedHeroIds, localHeroIds)) continue
 
       picks.push(group)
       pickedKeys.add(group.groupKey)
       slotsRemaining -= group.members.length
       if (window > bestWindow) bestWindow = window
+      appendHeroIds(localHeroIds, group.heroIds)
 
       if (slotsRemaining === 0) {
         return { ok: true, groups: picks, window: bestWindow }
@@ -264,6 +304,7 @@ function materializeAssignments({ role, picks }) {
       partyKey: group.partyKey ?? null,
       anchorScore: group.score,
       joinedAt: group.joinedAt,
+      heroIds: Array.isArray(group.heroIds) ? group.heroIds.slice() : [],
     })
     slotCursor += group.members.length
   }
@@ -280,10 +321,14 @@ function buildRoleSlotRange(totalSlots, start, count) {
   return indices
 }
 
-function getAvailableGroupsForRole({ role, buckets, usedGroupKeys }) {
+function getAvailableGroupsForRole({ role, buckets, usedGroupKeys, usedHeroIds }) {
   const bucket = buckets.get(role.name)
   if (!bucket) return []
-  return bucket.filter((group) => !usedGroupKeys.has(group.groupKey))
+  return bucket.filter((group) => {
+    if (usedGroupKeys.has(group.groupKey)) return false
+    if (hasHeroConflict(group.heroIds, usedHeroIds)) return false
+    return true
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +388,7 @@ function buildRoleBuckets(queue, partySize) {
         members: [candidate],
         groupKey: key,
         partyKey: candidate.partyKey ?? null,
+        heroIds: candidate.heroIds || [],
       }
       pushGroup(perRole, candidate.role, group)
     }
@@ -389,6 +435,7 @@ function appendPartyBuckets(perRole, candidates, partySize) {
         members: slice,
         groupKey: `${partyKey}#${index}`,
         partyKey,
+        heroIds: collectGroupHeroIds(slice),
       }
 
       pushGroup(perRole, roleName, group)
@@ -417,6 +464,7 @@ function normalizeQueue(queue) {
     const joinedAt = deriveTimestamp(entry)
     const partyKey = derivePartyKey(entry)
     const groupKey = deriveGroupKey(entry)
+    const heroIds = deriveHeroIds(entry)
 
     result.push({
       role,
@@ -424,6 +472,7 @@ function normalizeQueue(queue) {
       joinedAt,
       partyKey,
       groupKey,
+      heroIds,
       entry,
     })
   }
@@ -481,6 +530,76 @@ function deriveGroupKey(entry) {
   if (entry.ownerId != null) return `owner:${entry.ownerId}`
   const fallback = Math.random().toString(36).slice(2)
   return `rand:${fallback}`
+}
+
+function deriveHeroIds(entry) {
+  const collected = new Set()
+
+  const push = (value) => {
+    if (value === null || value === undefined) return
+    let normalized = value
+    if (typeof normalized === 'string') {
+      normalized = normalized.trim()
+    }
+    if (typeof normalized === 'number') {
+      if (!Number.isFinite(normalized)) return
+      normalized = String(normalized)
+    }
+    if (typeof normalized === 'bigint') {
+      normalized = normalized.toString()
+    }
+    if (typeof normalized !== 'string') {
+      normalized = String(normalized)
+    }
+    if (!normalized) return
+    collected.add(normalized)
+  }
+
+  push(entry.hero_id)
+  push(entry.heroId)
+
+  const heroIdArrays = [entry.hero_ids, entry.heroIds]
+  heroIdArrays.forEach((list) => {
+    if (!Array.isArray(list)) return
+    list.forEach((value) => push(value))
+  })
+
+  if (collected.size === 0 && entry.hero && entry.hero.id != null) {
+    push(entry.hero.id)
+  }
+
+  return Array.from(collected)
+}
+
+function collectGroupHeroIds(members = []) {
+  const collected = new Set()
+  members.forEach((candidate) => {
+    appendHeroIds(collected, candidate.heroIds)
+  })
+  return Array.from(collected)
+}
+
+function appendHeroIds(targetSet, heroIds = []) {
+  if (!targetSet || typeof targetSet.add !== 'function') return
+  if (!Array.isArray(heroIds)) return
+  heroIds.forEach((id) => {
+    if (!id) return
+    targetSet.add(id)
+  })
+}
+
+function hasHeroConflict(heroIds = [], ...sets) {
+  if (!Array.isArray(heroIds) || heroIds.length === 0) return false
+  for (const id of heroIds) {
+    if (!id) continue
+    for (const set of sets) {
+      if (!set) continue
+      if (set.has && set.has(id)) {
+        return true
+      }
+    }
+  }
+  return false
 }
 
 function coerceInteger(value, fallback) {
