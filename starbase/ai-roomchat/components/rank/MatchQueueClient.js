@@ -8,6 +8,7 @@ import {
 } from '../../lib/rank/turnTimers'
 
 import useMatchQueue from './hooks/useMatchQueue'
+import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
 import styles from './MatchQueueClient.module.css'
 
 function groupQueue(queue) {
@@ -178,12 +179,23 @@ export default function MatchQueueClient({
 }) {
   const router = useRouter()
   const { state, actions } = useMatchQueue({ gameId, mode, enabled: true })
+  const {
+    loading: plannerLoading,
+    error: plannerError,
+    plan: plannerPlan,
+    meta: plannerMeta,
+    queue: plannerQueue,
+    lastUpdated: plannerUpdatedAt,
+    refresh: refreshPlanner,
+    exportPlan: exportPlanner,
+  } = useLocalMatchPlanner({ gameId, mode, enabled: true })
   const [countdown, setCountdown] = useState(null)
   const countdownTimerRef = useRef(null)
   const navigationLockRef = useRef(false)
   const latestStatusRef = useRef('idle')
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
   const [autoJoinError, setAutoJoinError] = useState('')
+  const [plannerExportNotice, setPlannerExportNotice] = useState('')
   const autoJoinSignatureRef = useRef('')
   const autoJoinRetryTimerRef = useRef(null)
   const heroMissingRedirectRef = useRef(false)
@@ -772,6 +784,84 @@ export default function MatchQueueClient({
     return state.heroId
   }, [state.heroId, state.heroMeta?.name])
 
+  const plannerSummary = useMemo(() => {
+    if (!plannerPlan) return ''
+    const parts = []
+    const queueCount = Number(plannerMeta?.queueCount)
+    const fallbackQueue = plannerQueue?.length || 0
+    const resolvedQueue = Number.isFinite(queueCount) && queueCount >= 0 ? queueCount : fallbackQueue
+    if (resolvedQueue) {
+      parts.push(`대기열 ${resolvedQueue}명 기준`)
+    }
+    if (Number.isFinite(plannerPlan.memberCount)) {
+      parts.push(`배정 ${plannerPlan.memberCount}명`)
+    }
+    if (Number.isFinite(plannerPlan.totalSlots)) {
+      parts.push(`필요 슬롯 ${plannerPlan.totalSlots}개`)
+    }
+    const filtered = Number(plannerMeta?.simulatedFiltered)
+    if (Number.isFinite(filtered) && filtered > 0) {
+      parts.push(`점수 초과 제외 ${filtered}명`)
+    }
+    const windowValue = Number.isFinite(Number(plannerPlan.maxWindow))
+      ? Number(plannerPlan.maxWindow)
+      : Number(plannerMeta?.scoreWindow)
+    if (Number.isFinite(windowValue) && windowValue > 0) {
+      parts.push(`점수 윈도우 ±${Math.round(windowValue)}`)
+    }
+    parts.push(plannerPlan.ready ? '모든 슬롯 충족' : '슬롯 부족')
+    return parts.join(' · ')
+  }, [plannerPlan, plannerMeta, plannerQueue?.length])
+
+  const plannerUpdatedLabel = useMemo(() => {
+    if (!plannerUpdatedAt) return ''
+    try {
+      return new Intl.DateTimeFormat('ko-KR', {
+        dateStyle: 'medium',
+        timeStyle: 'medium',
+      }).format(plannerUpdatedAt)
+    } catch (error) {
+      console.debug('시간 포맷 실패:', error)
+      return plannerUpdatedAt.toISOString()
+    }
+  }, [plannerUpdatedAt])
+
+  const handlePlannerRefresh = useCallback(() => {
+    refreshPlanner()
+      .then((result) => {
+        if (!result?.ok && result?.error) {
+          setPlannerExportNotice(result.error)
+        } else {
+          setPlannerExportNotice('로컬 매칭 데이터를 새로 불러왔습니다.')
+        }
+      })
+      .catch((cause) => {
+        console.error('로컬 매칭 새로고침 실패:', cause)
+        setPlannerExportNotice('로컬 매칭 데이터를 새로 불러오지 못했습니다.')
+      })
+  }, [refreshPlanner])
+
+  const handlePlannerExport = useCallback(() => {
+    const result = exportPlanner()
+    if (result?.ok) {
+      setPlannerExportNotice('로컬 매칭 결과를 JSON으로 저장했습니다.')
+    } else if (result?.error) {
+      setPlannerExportNotice(result.error)
+    } else {
+      setPlannerExportNotice('매칭 결과를 내보내지 못했습니다.')
+    }
+  }, [exportPlanner])
+
+  useEffect(() => {
+    if (!plannerExportNotice) return undefined
+    const timer = setTimeout(() => {
+      setPlannerExportNotice('')
+    }, 4000)
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [plannerExportNotice])
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -868,6 +958,69 @@ export default function MatchQueueClient({
             ))}
           </div>
         )}
+      </section>
+
+      <section className={styles.card}>
+        <div className={styles.plannerHeader}>
+          <div>
+            <h2 className={styles.sectionTitle}>로컬 매칭 시뮬레이터</h2>
+            <p className={styles.sectionHint}>
+              게임 슬롯과 대기열 데이터를 직접 불러와 점수·역할 기준으로 구성한 미리보기입니다.
+            </p>
+          </div>
+          <div className={styles.plannerActions}>
+            <button
+              type="button"
+              className={styles.plannerButton}
+              onClick={handlePlannerRefresh}
+              disabled={plannerLoading}
+            >
+              {plannerLoading ? '불러오는 중…' : '새로 고침'}
+            </button>
+            <button
+              type="button"
+              className={`${styles.plannerButton} ${styles.exportButton}`}
+              onClick={handlePlannerExport}
+              disabled={plannerLoading || !plannerPlan}
+            >
+              JSON 내보내기
+            </button>
+          </div>
+        </div>
+        {plannerUpdatedLabel ? (
+          <p className={styles.plannerTimestamp}>최근 갱신: {plannerUpdatedLabel}</p>
+        ) : null}
+        {plannerExportNotice ? (
+          <p className={styles.successText}>{plannerExportNotice}</p>
+        ) : null}
+        {plannerError ? <p className={styles.errorText}>{plannerError}</p> : null}
+        {!plannerPlan && !plannerLoading && !plannerError ? (
+          <p className={styles.sectionHint}>대기열 데이터를 불러와 로컬 매칭을 구성합니다.</p>
+        ) : null}
+        {plannerPlan ? (
+          <>
+            {plannerSummary ? (
+              <p className={styles.sectionHint}>{plannerSummary}</p>
+            ) : null}
+            {plannerPlan.warnings?.length ? (
+              <ul className={styles.diagnosticList}>
+                {plannerPlan.warnings.map((warning, index) => (
+                  <li key={`${warning}-${index}`} className={styles.diagnosticItem}>
+                    {warning}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className={styles.matchGrid}>
+              {plannerPlan.assignments.map((assignment, index) => (
+                <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>
+                  <h3 className={styles.queueRole}>{assignment.role}</h3>
+                  <MemberList assignment={assignment} heroMap={plannerPlan.heroMap} />
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
       </section>
 
       {showDiagnosticsCard ? (

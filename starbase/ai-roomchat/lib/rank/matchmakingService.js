@@ -68,6 +68,99 @@ export async function loadActiveRoles(supabaseClient, gameId) {
     .map((row) => ({ name: row.name, slot_count: row.slot_count ?? row.slotCount ?? 0 }))
 }
 
+function normalizeRoleName(value) {
+  if (!value) return ''
+  if (typeof value !== 'string') return ''
+  return value.trim()
+}
+
+function coerceSlotIndex(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return Math.trunc(numeric)
+}
+
+export async function loadRoleLayout(supabaseClient, gameId) {
+  if (!gameId) {
+    return { roles: [], slotLayout: [] }
+  }
+
+  const [roleResult, slotResult] = await Promise.all([
+    withTable(supabaseClient, 'rank_game_roles', (table) =>
+      supabaseClient
+        .from(table)
+        .select('name, slot_count, active')
+        .eq('game_id', gameId),
+    ),
+    withTable(supabaseClient, 'rank_game_slots', (table) =>
+      supabaseClient
+        .from(table)
+        .select('slot_index, role, active, hero_id, hero_owner_id')
+        .eq('game_id', gameId)
+        .order('slot_index', { ascending: true }),
+    ),
+  ])
+
+  if (roleResult?.error) throw roleResult.error
+  if (slotResult?.error) throw slotResult.error
+
+  const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
+  const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
+
+  const layout = slotRows
+    .map((row) => {
+      if (!row || row.active === false) return null
+      const slotIndex = coerceSlotIndex(row.slot_index ?? row.slotIndex ?? row.slot_no ?? row.slotNo)
+      const roleName = normalizeRoleName(row.role)
+      if (slotIndex == null || roleName === '') return null
+      return {
+        slotIndex,
+        role: roleName,
+        heroId: row.hero_id || row.heroId || null,
+        heroOwnerId: row.hero_owner_id || row.heroOwnerId || null,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.slotIndex - b.slotIndex)
+
+  const slotCounts = new Map()
+  layout.forEach((slot) => {
+    const count = slotCounts.get(slot.role) || 0
+    slotCounts.set(slot.role, count + 1)
+  })
+
+  const normalizedRoles = []
+  const roleMap = new Map()
+
+  roleRows
+    .filter((row) => row && row.active !== false)
+    .forEach((row) => {
+      const name = normalizeRoleName(row.name)
+      if (!name) return
+      const requestedCount = Number(row.slot_count ?? row.slotCount ?? row.capacity)
+      const normalizedCount = Number.isFinite(requestedCount) && requestedCount > 0 ? requestedCount : 0
+      const slotCount = slotCounts.get(name) || 0
+      const finalCount = Math.max(normalizedCount, slotCount)
+      if (finalCount <= 0) return
+      if (!roleMap.has(name)) {
+        normalizedRoles.push({ name, slot_count: finalCount })
+        roleMap.set(name, normalizedRoles[normalizedRoles.length - 1])
+      } else {
+        roleMap.get(name).slot_count = finalCount
+      }
+    })
+
+  slotCounts.forEach((count, name) => {
+    if (count <= 0) return
+    if (roleMap.has(name)) return
+    const entry = { name, slot_count: count }
+    roleMap.set(name, entry)
+    normalizedRoles.push(entry)
+  })
+
+  return { roles: normalizedRoles, slotLayout: layout }
+}
+
 export async function loadParticipantPool(supabaseClient, gameId) {
   if (!gameId) return []
 
@@ -352,7 +445,18 @@ export async function loadHeroesByIds(supabaseClient, heroIds) {
   )
   if (result?.error) throw result.error
   const rows = Array.isArray(result?.data) ? result.data : []
-  return new Map(rows.map((row) => [row.id, { id: row.id, name: row.name, imageUrl: row.image_url, ownerId: row.owner_id }]))
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        name: row.name,
+        imageUrl: row.image_url,
+        image_url: row.image_url,
+        ownerId: row.owner_id,
+      },
+    ]),
+  )
 }
 
 export function flattenAssignmentMembers(assignments = []) {
