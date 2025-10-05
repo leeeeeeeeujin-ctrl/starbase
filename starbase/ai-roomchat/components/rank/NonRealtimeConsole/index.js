@@ -12,6 +12,15 @@ import { createAiHistory } from "@/lib/history"
 import { parseOutcome } from "@/lib/promptEngine"
 import { chooseNext } from "@/lib/bridgeEval"
 import { makeCallModel } from "@/lib/modelClient"
+import {
+  DEFAULT_GEMINI_MODE,
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_MODE_OPTIONS,
+  ensureModelInCatalog,
+  formatGeminiOptionLabel,
+  normalizeGeminiMode,
+  normalizeGeminiModelId,
+} from "@/lib/rank/geminiConfig"
 
 function normalizeParticipant(participant) {
   if (!participant) return null
@@ -78,6 +87,21 @@ function mapEdgeForEvaluation(edge) {
   }
 }
 
+function describeProvider(meta) {
+  if (!meta) return "AI 응답을 불러왔습니다."
+  if (meta.provider === "gemini") {
+    const mode = meta.mode ? ` · ${meta.mode}` : ""
+    const model = meta.model ? ` (${meta.model})` : ""
+    return `Google Gemini${mode}${model} 응답을 불러왔습니다.`
+  }
+  if (meta.provider === "openai") {
+    const version = meta.version === "responses" ? "Responses" : "Chat"
+    const model = meta.model ? ` (${meta.model})` : ""
+    return `OpenAI ${version}${model} 응답을 불러왔습니다.`
+  }
+  return "AI 응답을 불러왔습니다."
+}
+
 export default function NonRealtimeConsole({
   initialGameId = "",
   initialBundle = null,
@@ -89,13 +113,17 @@ export default function NonRealtimeConsole({
   const [bundle, setBundle] = useState(initialBundle || null)
   const [loadError, setLoadError] = useState("")
   const [loading, setLoading] = useState(false)
-  const [operatorKey, setOperatorKey] = useState("")
+  const [apiKey, setApiKey] = useState("")
+  const [apiVersion, setApiVersion] = useState("gemini")
+  const [geminiMode, setGeminiMode] = useState(DEFAULT_GEMINI_MODE)
+  const [geminiModel, setGeminiModel] = useState(DEFAULT_GEMINI_MODEL)
   const [participants, setParticipants] = useState([])
   const [currentNodeId, setCurrentNodeId] = useState(null)
   const [turns, setTurns] = useState([])
   const [historyVersion, setHistoryVersion] = useState(0)
   const [pendingTurn, setPendingTurn] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
+  const [turnError, setTurnError] = useState("")
   const [sessionEnded, setSessionEnded] = useState(false)
 
   const aiHistory = useMemo(() => createAiHistory(), [])
@@ -121,6 +149,93 @@ export default function NonRealtimeConsole({
     if (!initialGameId) return
     setGameIdInput(String(initialGameId))
   }, [autoHydrate, initialGameId])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const storedKey = window.sessionStorage.getItem("rank.start.apiKey") || ""
+      if (storedKey) {
+        setApiKey(storedKey)
+      }
+    } catch (error) {
+      console.warn("[NonRealtimeConsole] API 키를 불러오지 못했습니다:", error)
+    }
+    try {
+      const storedVersion = window.sessionStorage.getItem("rank.start.apiVersion") || ""
+      if (storedVersion) {
+        setApiVersion(storedVersion)
+      }
+    } catch (error) {
+      console.warn("[NonRealtimeConsole] API 버전을 불러오지 못했습니다:", error)
+    }
+    try {
+      const storedMode = window.sessionStorage.getItem("rank.start.geminiMode") || ""
+      if (storedMode) {
+        setGeminiMode(normalizeGeminiMode(storedMode))
+      }
+    } catch (error) {
+      console.warn("[NonRealtimeConsole] Gemini 모드를 불러오지 못했습니다:", error)
+    }
+    try {
+      const storedModel = window.sessionStorage.getItem("rank.start.geminiModel") || ""
+      if (storedModel) {
+        setGeminiModel(normalizeGeminiModelId(storedModel) || DEFAULT_GEMINI_MODEL)
+      }
+    } catch (error) {
+      console.warn("[NonRealtimeConsole] Gemini 모델을 불러오지 못했습니다:", error)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const trimmed = apiKey.trim()
+      if (trimmed) {
+        window.sessionStorage.setItem("rank.start.apiKey", trimmed)
+      } else {
+        window.sessionStorage.removeItem("rank.start.apiKey")
+      }
+    } catch (error) {
+      console.warn("[NonRealtimeConsole] API 키를 저장하지 못했습니다:", error)
+    }
+  }, [apiKey])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      if (apiVersion) {
+        window.sessionStorage.setItem("rank.start.apiVersion", apiVersion)
+      } else {
+        window.sessionStorage.removeItem("rank.start.apiVersion")
+      }
+    } catch (error) {
+      console.warn("[NonRealtimeConsole] API 버전을 저장하지 못했습니다:", error)
+    }
+  }, [apiVersion])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const normalized = normalizeGeminiMode(geminiMode)
+      if (normalized) {
+        window.sessionStorage.setItem("rank.start.geminiMode", normalized)
+      }
+    } catch (error) {
+      console.warn("[NonRealtimeConsole] Gemini 모드를 저장하지 못했습니다:", error)
+    }
+  }, [geminiMode])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const normalized = normalizeGeminiModelId(geminiModel)
+      if (normalized) {
+        window.sessionStorage.setItem("rank.start.geminiModel", normalized)
+      }
+    } catch (error) {
+      console.warn("[NonRealtimeConsole] Gemini 모델을 저장하지 못했습니다:", error)
+    }
+  }, [geminiModel])
 
   const applyBundle = useCallback(
     (loaded, { gameId } = {}) => {
@@ -150,6 +265,7 @@ export default function NonRealtimeConsole({
     setLoading(true)
     setLoadError("")
     setStatusMessage("")
+    setTurnError("")
     try {
       const loaded = await loadGameBundle(supabase, gameIdInput)
       applyBundle(loaded, { gameId: gameIdInput })
@@ -228,17 +344,28 @@ export default function NonRealtimeConsole({
     )
   }, [])
 
+  const callModel = useMemo(
+    () =>
+      makeCallModel({
+        getKey: () => apiKey.trim(),
+        getApiVersion: () => apiVersion,
+        getGeminiMode: () => geminiMode,
+        getGeminiModel: () => geminiModel,
+      }),
+    [apiKey, apiVersion, geminiMode, geminiModel],
+  )
+
   const handleRunTurn = useCallback(async () => {
     if (!bundle || !currentNode || !promptPreview) return
-    if (!operatorKey.trim()) {
-      setStatusMessage("운영 키를 입력해 주세요.")
+    if (!apiKey.trim()) {
+      setTurnError("운영 키를 입력해 주세요.")
       return
     }
     const nextTurnIndex = turns.length + 1
     setPendingTurn(true)
-    setStatusMessage("")
+    setStatusMessage("모델 응답을 기다리는 중입니다…")
+    setTurnError("")
     try {
-      const callModel = makeCallModel({ getKey: () => operatorKey.trim() })
       const result = await callModel({
         system: promptPreview.rulesBlock,
         userText: promptPreview.promptBody,
@@ -279,28 +406,40 @@ export default function NonRealtimeConsole({
         },
       ])
 
+      const providerSummary = describeProvider(result.meta)
+
       if (bridgeResult?.nextSlotId) {
         setCurrentNodeId(String(bridgeResult.nextSlotId))
+        setStatusMessage(providerSummary)
       } else if (bridgeResult?.action === "stop") {
         setSessionEnded(true)
-        setStatusMessage("브릿지 액션이 stop으로 설정되어 세션을 종료했습니다.")
+        setStatusMessage(`${providerSummary} · 브릿지 액션이 stop으로 설정되어 세션을 종료했습니다.`)
       } else if (!bridgeResult) {
-        setStatusMessage("다음으로 진행할 브릿지를 찾지 못했습니다.")
+        setStatusMessage(`${providerSummary} · 다음으로 진행할 브릿지를 찾지 못했습니다.`)
+      } else {
+        setStatusMessage(providerSummary)
       }
     } catch (error) {
       console.error("[NonRealtimeConsole] 턴 실행 실패", error)
-      setStatusMessage(error?.message || "턴 실행 중 오류가 발생했습니다.")
+      setTurnError(error?.message || "턴 실행 중 오류가 발생했습니다.")
+      setStatusMessage("")
     } finally {
       setPendingTurn(false)
     }
   }, [
     aiHistory,
+    apiKey,
     bundle,
+    callModel,
     currentNode,
-    operatorKey,
     promptPreview,
     turns.length,
   ])
+
+  const geminiModelOptions = useMemo(
+    () => ensureModelInCatalog(geminiMode, geminiModel),
+    [geminiMode, geminiModel],
+  )
 
   const wrapperClassName = embedded ? styles.wrapperEmbedded : styles.wrapper
 
@@ -344,15 +483,51 @@ export default function NonRealtimeConsole({
             <span>운영 키</span>
             <input
               type="password"
-              value={operatorKey}
-              onChange={(event) => setOperatorKey(event.target.value)}
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
               placeholder="매칭 직전 입력한 유저 API 키"
             />
           </label>
+          <label className={styles.controlField}>
+            <span>API 버전</span>
+            <select value={apiVersion} onChange={(event) => setApiVersion(event.target.value)}>
+              <option value="gemini">Google Gemini</option>
+              <option value="chat_completions">OpenAI Chat Completions</option>
+              <option value="responses">OpenAI Responses</option>
+            </select>
+          </label>
+          {apiVersion === "gemini" ? (
+            <div className={styles.controlGroup}>
+              <label className={styles.controlField}>
+                <span>Gemini 엔드포인트</span>
+                <select value={geminiMode} onChange={(event) => setGeminiMode(event.target.value)}>
+                  {GEMINI_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.controlField}>
+                <span>Gemini 모델</span>
+                <select value={geminiModel} onChange={(event) => setGeminiModel(event.target.value)}>
+                  {geminiModelOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {formatGeminiOptionLabel(option)}
+                    </option>
+                  ))}
+                  {!geminiModelOptions.length ? (
+                    <option value={geminiModel}>{geminiModel}</option>
+                  ) : null}
+                </select>
+              </label>
+            </div>
+          ) : null}
         </div>
       </header>
 
       {loadError && <p className={styles.error}>{loadError}</p>}
+      {turnError && <p className={styles.error}>{turnError}</p>}
       {statusMessage && <p className={styles.status}>{statusMessage}</p>}
 
       {bundle ? (
