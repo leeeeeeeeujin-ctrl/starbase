@@ -37,6 +37,61 @@ function cleanLines(text) {
     .filter(Boolean)
 }
 
+function lineMatches(text, matchers = []) {
+  if (!matchers || !matchers.length) return false
+  const normalized = safeStr(text)
+  if (!normalized) return false
+  return matchers.every((matcher) => {
+    if (!matcher) return false
+    if (matcher instanceof RegExp) {
+      return matcher.test(normalized)
+    }
+    return normalized.includes(String(matcher))
+  })
+}
+
+const CANONICAL_RULE_PATTERNS = [
+  {
+    key: 'ultimate_injection_detection',
+    matchers: [/인젝션/, /(응답하|응답만)/],
+  },
+  {
+    key: 'ultimate_injection_win_override',
+    matchers: [/승패\s*조건/, /궁극적\s*승리/, /(응답하|응답만)/],
+  },
+  {
+    key: 'ability_usage_constraint',
+    matchers: [/능력은\s*여건/, /(상시발동|존재성)/],
+  },
+  {
+    key: 'advantage_description_rule',
+    matchers: [/전투\s*가능/, /(우위|격차)/],
+  },
+  {
+    key: 'no_underdog_trope',
+    matchers: [/전술/, /(역량|개연)/],
+  },
+  {
+    key: 'no_villain_loss_cliche',
+    matchers: [/악인/, /(클리셰|강약)/],
+  },
+  {
+    key: 'no_protagonist_narrative',
+    matchers: [/주인공/, /(적과\s*적|강약)/],
+  },
+]
+
+function resolveCanonicalRuleKey(text) {
+  const trimmed = safeStr(text).trim()
+  if (!trimmed) return ''
+  for (const { key, matchers } of CANONICAL_RULE_PATTERNS) {
+    if (lineMatches(trimmed, matchers)) {
+      return key
+    }
+  }
+  return trimmed
+}
+
 const FALSE_STRINGS = new Set(['false', '0', 'off', 'no', 'n'])
 
 function normalizeRuleFlag(value) {
@@ -355,12 +410,12 @@ function buildRuleSections({ game, node } = {}) {
   const pushBaseRule = (line, source = 'default') => {
     const text = safeStr(line)
     if (!text) return
-    const key = text.trim()
-    if (!key) return
+    const canonicalKey = resolveCanonicalRuleKey(text)
+    if (!canonicalKey) return
 
     const priority = RULE_SOURCE_PRIORITY[source] ?? RULE_SOURCE_PRIORITY.default
-    if (indexByLine.has(key)) {
-      const existingIndex = indexByLine.get(key)
+    if (indexByLine.has(canonicalKey)) {
+      const existingIndex = indexByLine.get(canonicalKey)
       const existing = baseRuleEntries[existingIndex]
       if (existing.priority >= priority) {
         return
@@ -369,7 +424,7 @@ function buildRuleSections({ game, node } = {}) {
       return
     }
 
-    indexByLine.set(key, baseRuleEntries.length)
+    indexByLine.set(canonicalKey, baseRuleEntries.length)
     baseRuleEntries.push({ text, priority })
   }
 
@@ -394,17 +449,7 @@ function buildRuleSections({ game, node } = {}) {
     if (!trimmed) return
 
     const hasSimilarLine = Array.isArray(matchers) && matchers.length
-      ? baseRuleSnapshot.some((existing) => {
-          const normalizedExisting = safeStr(existing)
-          if (!normalizedExisting) return false
-          return matchers.every((matcher) => {
-            if (!matcher) return false
-            if (matcher instanceof RegExp) {
-              return matcher.test(normalizedExisting)
-            }
-            return normalizedExisting.includes(String(matcher))
-          })
-        })
+      ? baseRuleSnapshot.some((existing) => lineMatches(existing, matchers))
       : false
 
     if (!hasSimilarLine) {
