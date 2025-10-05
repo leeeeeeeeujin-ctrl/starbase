@@ -568,6 +568,14 @@ function deriveHeroIds(entry) {
     push(entry.hero.id)
   }
 
+  if (collected.size === 0) {
+    const ownerId =
+      entry.owner_id ?? entry.ownerId ?? entry.ownerID ?? entry.owner?.id ?? null
+    if (ownerId != null) {
+      push(ownerId)
+    }
+  }
+
   return Array.from(collected)
 }
 

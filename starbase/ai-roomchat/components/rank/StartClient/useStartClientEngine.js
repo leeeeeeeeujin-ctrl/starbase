@@ -19,7 +19,7 @@ import {
   resolveActorContext,
 } from './engine/actorContext'
 import { buildBattleLogDraft } from './engine/battleLogBuilder'
-import { formatRealtimeReason } from './engine/timelineLogBuilder'
+import { formatRealtimeReason } from './engine/realtimeReasons'
 import {
   buildLogEntriesFromEvents,
   initializeRealtimeEvents,
