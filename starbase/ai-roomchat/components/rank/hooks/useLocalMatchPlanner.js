@@ -3,14 +3,26 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   flattenAssignmentMembers,
   loadHeroesByIds,
-  loadQueueEntries,
+  loadMatchSampleSource,
   loadRoleLayout,
   runMatching,
 } from '../../../lib/rank/matchmakingService'
 import { supabase } from '../../../lib/supabase'
 
-function buildLocalSampleMeta({ queue = [], assignments = [], result = null, layout = [] }) {
+function buildLocalSampleMeta({
+  queue = [],
+  participantPool = [],
+  sampleEntries = [],
+  sampleType = 'realtime_queue',
+  realtimeEnabled = false,
+  assignments = [],
+  result = null,
+  layout = [],
+  generatedAt = null,
+}) {
   const queueCount = Array.isArray(queue) ? queue.length : 0
+  const poolCount = Array.isArray(participantPool) ? participantPool.length : 0
+  const sampleCount = Array.isArray(sampleEntries) ? sampleEntries.length : 0
   const members = flattenAssignmentMembers(assignments)
   const selectedCount = members.length
   const layoutCount = Array.isArray(layout) ? layout.length : 0
@@ -22,14 +34,22 @@ function buildLocalSampleMeta({ queue = [], assignments = [], result = null, lay
   )
 
   const scoreWindow = Number(result?.maxWindow)
+  const queueSampled =
+    sampleType === 'realtime_queue'
+      ? sampleCount
+      : Math.min(queueCount, sampleCount)
+  const filteredCount = Math.max(0, sampleCount - selectedCount)
 
   return {
-    sampleType: 'client_simulation',
-    generatedAt: new Date().toISOString(),
+    sampleType,
+    realtime: Boolean(realtimeEnabled),
+    generatedAt: generatedAt || new Date().toISOString(),
     queueCount,
-    queueSampled: queueCount,
+    queueSampled,
+    participantPoolCount: poolCount,
+    sampleCount,
     simulatedSelected: selectedCount,
-    simulatedFiltered: Math.max(0, queueCount - selectedCount),
+    simulatedFiltered: filteredCount,
     simulatedEligible: selectedCount,
     slotLayoutCount: layoutCount,
     uniqueHeroCount: uniqueHeroes.size,
@@ -75,6 +95,11 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
   const [roles, setRoles] = useState([])
   const [slotLayout, setSlotLayout] = useState([])
   const [queueSnapshot, setQueueSnapshot] = useState([])
+  const [sampleSnapshot, setSampleSnapshot] = useState([])
+  const [participantSnapshot, setParticipantSnapshot] = useState([])
+  const [sampleType, setSampleType] = useState('realtime_queue')
+  const [sampleRealtime, setSampleRealtime] = useState(false)
+  const [sampleGeneratedAt, setSampleGeneratedAt] = useState('')
   const [meta, setMeta] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
 
@@ -89,16 +114,27 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
     setError('')
 
     try {
-      const [{ roles: roleList, slotLayout: layout }, queueRows] = await Promise.all([
+      const [{ roles: roleList, slotLayout: layout }, sampleSet] = await Promise.all([
         loadRoleLayout(supabase, gameId),
-        loadQueueEntries(supabase, { gameId, mode }),
+        loadMatchSampleSource(supabase, { gameId, mode }),
       ])
 
       setRoles(roleList)
       setSlotLayout(layout)
-      setQueueSnapshot(queueRows)
+      const queueRows = Array.isArray(sampleSet.queue) ? sampleSet.queue : []
+      const participantPool = Array.isArray(sampleSet.participantPool)
+        ? sampleSet.participantPool
+        : []
+      const sampleEntries = Array.isArray(sampleSet.entries) ? sampleSet.entries : []
 
-      const result = runMatching({ mode, roles: roleList, queue: queueRows })
+      setQueueSnapshot(queueRows)
+      setParticipantSnapshot(participantPool)
+      setSampleSnapshot(sampleEntries)
+      setSampleType(sampleSet.sampleType || (sampleSet.realtimeEnabled ? 'realtime_queue' : 'participant_pool'))
+      setSampleRealtime(Boolean(sampleSet.realtimeEnabled))
+      setSampleGeneratedAt(sampleSet.generatedAt || new Date().toISOString())
+
+      const result = runMatching({ mode, roles: roleList, queue: sampleEntries })
       const assignments = Array.isArray(result.assignments) ? result.assignments : []
 
       const members = flattenAssignmentMembers(assignments)
@@ -115,9 +151,14 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
 
       const metaPayload = buildLocalSampleMeta({
         queue: queueRows,
+        participantPool,
+        sampleEntries,
+        sampleType: sampleSet.sampleType || (sampleSet.realtimeEnabled ? 'realtime_queue' : 'participant_pool'),
+        realtimeEnabled: sampleSet.realtimeEnabled,
         assignments,
         result,
         layout,
+        generatedAt: sampleSet.generatedAt,
       })
 
       if (!warnings.length && result?.error?.type) {
@@ -133,6 +174,9 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
         heroMap,
         warnings,
         memberCount: members.length,
+        sampleType: metaPayload.sampleType,
+        realtime: metaPayload.realtime,
+        sampleGeneratedAt: metaPayload.generatedAt,
       }
 
       setPlan(snapshot)
@@ -164,6 +208,11 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
       roles,
       slotLayout,
       queue: queueSnapshot,
+      sample: sampleSnapshot,
+      participantPool: participantSnapshot,
+      sampleType,
+      realtime: sampleRealtime,
+      sampleGeneratedAt,
       assignments: plan.assignments,
       totalSlots: plan.totalSlots,
       maxWindow: plan.maxWindow,
@@ -195,7 +244,20 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
     }
 
     return { ok: true, payload }
-  }, [plan, gameId, mode, roles, slotLayout, queueSnapshot, meta])
+  }, [
+    plan,
+    gameId,
+    mode,
+    roles,
+    slotLayout,
+    queueSnapshot,
+    sampleSnapshot,
+    participantSnapshot,
+    sampleType,
+    sampleRealtime,
+    sampleGeneratedAt,
+    meta,
+  ])
 
   useEffect(() => {
     if (!enabled) return
@@ -217,6 +279,10 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
     roles,
     slotLayout,
     queue: queueSnapshot,
+    sample: sampleSnapshot,
+    participantPool: participantSnapshot,
+    sampleType,
+    realtimeEnabled: sampleRealtime,
     meta,
     lastUpdated,
     refresh,

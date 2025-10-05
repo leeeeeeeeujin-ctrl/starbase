@@ -169,6 +169,18 @@ function resolveDefaultRoleName(roles) {
   return ''
 }
 
+function describeSampleType(sampleType) {
+  switch (sampleType) {
+    case 'participant_pool':
+      return '참가자 풀 기준'
+    case 'participant_pool_fallback_queue':
+      return '참가자 풀(큐 대체) 기준'
+    case 'realtime_queue':
+    default:
+      return '실시간 대기열 기준'
+  }
+}
+
 export default function MatchQueueClient({
   gameId,
   mode,
@@ -185,6 +197,9 @@ export default function MatchQueueClient({
     plan: plannerPlan,
     meta: plannerMeta,
     queue: plannerQueue,
+    participantPool: plannerParticipantPool,
+    sampleType: plannerSampleType,
+    realtimeEnabled: plannerRealtimeEnabled,
     lastUpdated: plannerUpdatedAt,
     refresh: refreshPlanner,
     exportPlan: exportPlanner,
@@ -787,11 +802,36 @@ export default function MatchQueueClient({
   const plannerSummary = useMemo(() => {
     if (!plannerPlan) return ''
     const parts = []
+    const summarySampleType = plannerMeta?.sampleType || plannerSampleType || 'realtime_queue'
     const queueCount = Number(plannerMeta?.queueCount)
-    const fallbackQueue = plannerQueue?.length || 0
-    const resolvedQueue = Number.isFinite(queueCount) && queueCount >= 0 ? queueCount : fallbackQueue
-    if (resolvedQueue) {
-      parts.push(`대기열 ${resolvedQueue}명 기준`)
+    const queueSampled = Number(plannerMeta?.queueSampled)
+    const poolCount = Number(plannerMeta?.participantPoolCount)
+    const sampleCount = Number(plannerMeta?.sampleCount)
+    if (summarySampleType === 'realtime_queue') {
+      const resolvedQueue = Number.isFinite(queueSampled)
+        ? queueSampled
+        : Number.isFinite(queueCount)
+        ? queueCount
+        : plannerQueue?.length || 0
+      if (resolvedQueue) {
+        parts.push(`실시간 대기열 ${resolvedQueue}명 기준`)
+      }
+    } else {
+      const resolvedPool = Number.isFinite(poolCount)
+        ? poolCount
+        : plannerParticipantPool?.length || 0
+      if (resolvedPool) {
+        parts.push(`참가자 풀 ${resolvedPool}명 기준`)
+      }
+      if (Number.isFinite(queueSampled) && queueSampled > 0) {
+        parts.push(`대기열 ${queueSampled}명 포함`)
+      }
+      if (!Number.isFinite(queueSampled) && plannerQueue?.length) {
+        parts.push(`대기열 ${plannerQueue.length}명 참고`)
+      }
+    }
+    if (Number.isFinite(sampleCount) && sampleCount >= 0 && summarySampleType !== 'realtime_queue') {
+      parts.push(`후보 ${sampleCount}명 추출`)
     }
     if (Number.isFinite(plannerPlan.memberCount)) {
       parts.push(`배정 ${plannerPlan.memberCount}명`)
@@ -809,11 +849,32 @@ export default function MatchQueueClient({
     if (Number.isFinite(windowValue) && windowValue > 0) {
       parts.push(`점수 윈도우 ±${Math.round(windowValue)}`)
     }
+    if (plannerRealtimeEnabled != null) {
+      parts.push(describeSampleType(summarySampleType))
+    }
     parts.push(plannerPlan.ready ? '모든 슬롯 충족' : '슬롯 부족')
     return parts.join(' · ')
-  }, [plannerPlan, plannerMeta, plannerQueue?.length])
+  }, [
+    plannerPlan,
+    plannerMeta,
+    plannerQueue?.length,
+    plannerParticipantPool?.length,
+    plannerSampleType,
+    plannerRealtimeEnabled,
+  ])
 
   const plannerUpdatedLabel = useMemo(() => {
+    if (plannerMeta?.generatedAt) {
+      try {
+        return new Intl.DateTimeFormat('ko-KR', {
+          dateStyle: 'medium',
+          timeStyle: 'medium',
+        }).format(new Date(plannerMeta.generatedAt))
+      } catch (error) {
+        console.debug('시간 포맷 실패:', error)
+        return plannerMeta.generatedAt
+      }
+    }
     if (!plannerUpdatedAt) return ''
     try {
       return new Intl.DateTimeFormat('ko-KR', {
@@ -824,7 +885,7 @@ export default function MatchQueueClient({
       console.debug('시간 포맷 실패:', error)
       return plannerUpdatedAt.toISOString()
     }
-  }, [plannerUpdatedAt])
+  }, [plannerMeta?.generatedAt, plannerUpdatedAt])
 
   const handlePlannerRefresh = useCallback(() => {
     refreshPlanner()

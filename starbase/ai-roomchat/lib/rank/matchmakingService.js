@@ -262,6 +262,63 @@ export async function loadRoleStatusCounts(supabaseClient, gameId) {
   return map
 }
 
+async function loadRealtimeToggle(supabaseClient, gameId) {
+  if (!gameId) return false
+
+  const { data, error } = await withTable(supabaseClient, 'rank_games', (table) =>
+    supabaseClient.from(table).select('realtime_match').eq('id', gameId).maybeSingle(),
+  )
+
+  if (error) throw error
+
+  return Boolean(data?.realtime_match)
+}
+
+export async function loadMatchSampleSource(
+  supabaseClient,
+  { gameId, mode, realtimeEnabled: realtimeOverride } = {},
+) {
+  if (!gameId) {
+    return {
+      realtimeEnabled: false,
+      sampleType: 'participant_pool',
+      entries: [],
+      queue: [],
+      participantPool: [],
+      generatedAt: new Date().toISOString(),
+    }
+  }
+
+  let realtimeEnabled =
+    typeof realtimeOverride === 'boolean'
+      ? realtimeOverride
+      : await loadRealtimeToggle(supabaseClient, gameId)
+
+  const [queueEntries, participantPool] = await Promise.all([
+    loadQueueEntries(supabaseClient, { gameId, mode }),
+    realtimeEnabled ? Promise.resolve([]) : loadParticipantPool(supabaseClient, gameId),
+  ])
+
+  let sampleEntries = realtimeEnabled ? queueEntries : participantPool
+  let sampleType = realtimeEnabled ? 'realtime_queue' : 'participant_pool'
+
+  if (!realtimeEnabled && (!Array.isArray(sampleEntries) || sampleEntries.length === 0)) {
+    sampleEntries = queueEntries
+    if (Array.isArray(sampleEntries) && sampleEntries.length > 0) {
+      sampleType = 'participant_pool_fallback_queue'
+    }
+  }
+
+  return {
+    realtimeEnabled: Boolean(realtimeEnabled),
+    sampleType,
+    entries: Array.isArray(sampleEntries) ? sampleEntries : [],
+    queue: Array.isArray(queueEntries) ? queueEntries : [],
+    participantPool: Array.isArray(participantPool) ? participantPool : [],
+    generatedAt: new Date().toISOString(),
+  }
+}
+
 export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
   if (!gameId) return []
   const queueModes = getQueueModes(mode)
