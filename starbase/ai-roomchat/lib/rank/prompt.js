@@ -25,16 +25,18 @@ function cloneHeroForSlot(hero, slotNo) {
   if (slotNo != null) {
     clone.slot_no = slotNo
     clone.slotNo = slotNo
-    const slotIndex = slotNo - 1
+    const slotIndex = slotNo
     clone.slot_index = slotIndex
     clone.slotIndex = slotIndex
+    clone.slot_number = slotIndex + 1
+    clone.slotNumber = clone.slot_number
   }
   return clone
 }
 
 function buildFallbackPools(slotsMap = {}) {
   const pools = new Map()
-  for (let s = 1; s <= 12; s += 1) {
+  for (let s = 0; s < 12; s += 1) {
     const hero = slotsMap[s]
     if (!hero) continue
     const key = buildRoleKey(hero)
@@ -42,6 +44,7 @@ function buildFallbackPools(slotsMap = {}) {
     const entry = {
       hero,
       slotNo: s,
+      slotNumber: s + 1,
       status: normalizeStatus(hero.status),
     }
     if (pools.has(key)) {
@@ -73,10 +76,24 @@ function findFallbackHero({ pools, key, excludeHeroId }) {
   return null
 }
 
+function placeholderLabels(slotNo) {
+  const numeric = Number(slotNo)
+  if (!Number.isFinite(numeric)) return []
+  const labels = new Set()
+  labels.add(String(numeric))
+  labels.add(String(numeric + 1))
+  return Array.from(labels)
+}
+
 function clearSlotPlaceholders(text, slotNo) {
   if (!text) return ''
-  const pattern = new RegExp(`\\{\\{slot${slotNo}\\.[^}]+\\}\\}`, 'g')
-  return text.replace(pattern, '')
+  let out = text
+  const labels = placeholderLabels(slotNo)
+  labels.forEach((label) => {
+    const pattern = new RegExp(`\\{\\{slot${label}\\.[^}]+\\}\\}`, 'g')
+    out = out.replace(pattern, '')
+  })
+  return out
 }
 
 function applyHeroPlaceholders(text, hero, slotNo) {
@@ -85,27 +102,58 @@ function applyHeroPlaceholders(text, hero, slotNo) {
   }
 
   let out = text
-  out = out.replaceAll(`{{slot${slotNo}.name}}`, hero.name ?? '')
-  out = out.replaceAll(`{{slot${slotNo}.description}}`, hero.description ?? '')
-  for (let a = 1; a <= 12; a += 1) {
-    out = out.replaceAll(`{{slot${slotNo}.ability${a}}}`, hero[`ability${a}`] ?? '')
-  }
-  out = out.replaceAll(`{{slot${slotNo}.role}}`, hero.role ?? '')
-  out = out.replaceAll(`{{slot${slotNo}.side}}`, hero.side ?? '')
-  out = out.replaceAll(`{{slot${slotNo}.status}}`, hero.status ?? '')
-  out = out.replaceAll(`{{slot${slotNo}.owner_id}}`, hero.owner_id ?? '')
-  out = out.replaceAll(`{{slot${slotNo}.ownerId}}`, hero.ownerId ?? '')
-  out = out.replaceAll(`{{slot${slotNo}.slotNo}}`, hero.slotNo ?? hero.slot_no ?? '')
-  out = out.replaceAll(`{{slot${slotNo}.slot_no}}`, hero.slot_no ?? hero.slotNo ?? '')
-  out = out.replaceAll(`{{slot${slotNo}.name_or_role}}`, hero.name_or_role ?? hero.name ?? hero.role ?? '')
-  out = out.replaceAll(`{{slot${slotNo}.display_name}}`, hero.display_name ?? hero.name ?? '')
+  const labels = placeholderLabels(slotNo)
+  const zeroBasedValue = Number(slotNo)
+  const oneBasedValue = zeroBasedValue + 1
 
-  const keys = Object.keys(hero)
-  keys.forEach((key) => {
-    const placeholder = `{{slot${slotNo}.${key}}}`
-    if (out.includes(placeholder)) {
-      out = out.replaceAll(placeholder, stringifyValue(hero[key]))
+  labels.forEach((label) => {
+    out = out.replaceAll(`{{slot${label}.name}}`, hero.name ?? '')
+    out = out.replaceAll(`{{slot${label}.description}}`, hero.description ?? '')
+    for (let a = 1; a <= 12; a += 1) {
+      out = out.replaceAll(`{{slot${label}.ability${a}}}`, hero[`ability${a}`] ?? '')
     }
+    out = out.replaceAll(`{{slot${label}.role}}`, hero.role ?? '')
+    out = out.replaceAll(`{{slot${label}.side}}`, hero.side ?? '')
+    out = out.replaceAll(`{{slot${label}.status}}`, hero.status ?? '')
+    out = out.replaceAll(`{{slot${label}.owner_id}}`, hero.owner_id ?? '')
+    out = out.replaceAll(`{{slot${label}.ownerId}}`, hero.ownerId ?? '')
+
+    const slotNoValue = hero.slotNo ?? hero.slot_no ?? zeroBasedValue
+
+    out = out.replaceAll(`{{slot${label}.slotNo}}`, slotNoValue)
+    out = out.replaceAll(`{{slot${label}.slot_no}}`, slotNoValue)
+    out = out.replaceAll(
+      `{{slot${label}.slotNumber}}`,
+      hero.slotNumber ?? hero.slot_number ?? oneBasedValue,
+    )
+    out = out.replaceAll(
+      `{{slot${label}.slot_number}}`,
+      hero.slot_number ?? hero.slotNumber ?? oneBasedValue,
+    )
+    out = out.replaceAll(
+      `{{slot${label}.slotIndex}}`,
+      hero.slotIndex ?? hero.slot_index ?? zeroBasedValue,
+    )
+    out = out.replaceAll(
+      `{{slot${label}.slot_index}}`,
+      hero.slot_index ?? hero.slotIndex ?? zeroBasedValue,
+    )
+    out = out.replaceAll(
+      `{{slot${label}.name_or_role}}`,
+      hero.name_or_role ?? hero.name ?? hero.role ?? '',
+    )
+    out = out.replaceAll(
+      `{{slot${label}.display_name}}`,
+      hero.display_name ?? hero.name ?? '',
+    )
+
+    const keys = Object.keys(hero)
+    keys.forEach((key) => {
+      const placeholder = `{{slot${label}.${key}}}`
+      if (out.includes(placeholder)) {
+        out = out.replaceAll(placeholder, stringifyValue(hero[key]))
+      }
+    })
   })
 
   return out
@@ -119,6 +167,8 @@ function resolveSlotHero({
   const meta = {
     baseHeroId: baseHero?.hero_id ?? baseHero?.heroId ?? null,
     baseStatus: normalizeStatus(baseHero?.status),
+    slotNo,
+    slotNumber: slotNo != null ? slotNo + 1 : null,
   }
 
   if (!baseHero) {
@@ -147,6 +197,7 @@ function resolveSlotHero({
           ...meta,
           replaced: true,
           fallbackFromSlot: fallback.slotNo,
+          fallbackFromSlotNumber: fallback.slotNumber,
           fallbackHeroId: fallback.hero?.hero_id ?? fallback.hero?.heroId ?? null,
           fallbackStatus: fallback.status,
         },
@@ -174,7 +225,7 @@ export function compileTemplate({ template, slotsMap = {}, historyText = '' }) {
   const pools = buildFallbackPools(slotsMap)
   const slotMeta = {}
 
-  for (let s = 1; s <= 12; s += 1) {
+  for (let s = 0; s < 12; s += 1) {
     const baseHero = slotsMap[s]
     const { hero, meta } = resolveSlotHero({ slotNo: s, baseHero, pools })
     if (meta) {
@@ -202,12 +253,24 @@ export function compileTemplate({ template, slotsMap = {}, historyText = '' }) {
     if (!opts.length) return ''
     return opts[Math.floor(Math.random() * opts.length)]
   })
-  out = out.replaceAll('{{slot.random}}', String(Math.floor(Math.random() * 12) + 1))
+  const randomSlotZero = Math.floor(Math.random() * 12)
+  out = out.replaceAll('{{slot.random}}', String(randomSlotZero))
+  out = out.replaceAll('{{slot.random_one_based}}', String(randomSlotZero + 1))
+  out = out.replaceAll('{{slot.randomOneBased}}', String(randomSlotZero + 1))
   out = out.replaceAll(
     '{{random.ability}}',
     (() => {
-      const k = Math.floor(Math.random() * 12) + 1
-      return `{{slot${Math.floor(Math.random() * 12) + 1}.ability${k}}}`
+      const abilityIndex = Math.floor(Math.random() * 12) + 1
+      const slotIndex = Math.floor(Math.random() * 12)
+      return `{{slot${slotIndex}.ability${abilityIndex}}}`
+    })(),
+  )
+  out = out.replaceAll(
+    '{{random.ability_one_based}}',
+    (() => {
+      const abilityIndex = Math.floor(Math.random() * 12) + 1
+      const slotIndex = Math.floor(Math.random() * 12) + 1
+      return `{{slot${slotIndex}.ability${abilityIndex}}}`
     })(),
   )
 

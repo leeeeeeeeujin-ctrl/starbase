@@ -15,11 +15,11 @@ export async function loadHeroesMap(heroIds) {
   return map
 }
 
-/** 슬롯 인덱스 1..N에 hero detail을 배치해 프롬프트 토큰용 구조로 만든다 */
+/** 슬롯 인덱스 0..N-1에 hero detail을 배치해 프롬프트 토큰용 구조로 만든다 */
 export function buildSlotsMap({ roles = [], myHeroIds = [], oppPicks = [], heroesMap = {} }) {
   const slots = {}
   const requirements = buildRoleRequirements(roles)
-  let slotNumber = 1
+  let slotNumber = 0
 
   requirements.forEach((requirement, index) => {
     const heroId = myHeroIds[index] || null
@@ -89,8 +89,10 @@ function toPromptHero(
   out.requirementSlotIndex = out.requirement_slot_index
   out.slot_no = slotNumber
   out.slotNo = slotNumber
-  out.slot_index = typeof slotNumber === 'number' ? slotNumber - 1 : null
+  out.slot_index = typeof slotNumber === 'number' ? slotNumber : null
   out.slotIndex = out.slot_index
+  out.slot_number = typeof slotNumber === 'number' ? slotNumber + 1 : null
+  out.slotNumber = out.slot_number
   out.background_url = hero.background_url || hero.backgroundUrl || null
   out.backgroundUrl = out.background_url
   out.bgm_url = hero.bgm_url || hero.bgmUrl || null

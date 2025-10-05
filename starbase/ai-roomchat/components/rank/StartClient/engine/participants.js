@@ -9,6 +9,48 @@ export function deriveParticipantOwnerId(participant) {
   )
 }
 
+export function resolveParticipantSlotIndex(participant) {
+  if (!participant || typeof participant !== 'object') {
+    return null
+  }
+
+  const explicitIndex = Number(participant?.slotIndex ?? participant?.slot_index)
+  if (Number.isInteger(explicitIndex) && explicitIndex >= 0) {
+    return explicitIndex
+  }
+
+  const slotNo = Number(participant?.slot_no ?? participant?.slotNo)
+  if (Number.isInteger(slotNo) && slotNo >= 0) {
+    return slotNo
+  }
+
+  const legacyIndex = Number(participant?.slot_index)
+  if (Number.isInteger(legacyIndex) && legacyIndex >= 0) {
+    return legacyIndex
+  }
+
+  return null
+}
+
+export function findParticipantBySlotIndex(participants, slotIndex) {
+  if (!Number.isInteger(slotIndex) || slotIndex < 0) {
+    return null
+  }
+
+  if (!Array.isArray(participants) || participants.length === 0) {
+    return null
+  }
+
+  for (const participant of participants) {
+    const resolvedIndex = resolveParticipantSlotIndex(participant)
+    if (resolvedIndex === slotIndex) {
+      return participant
+    }
+  }
+
+  return participants[slotIndex] ?? null
+}
+
 export function formatOwnerDisplayName(participant, fallbackId = '') {
   if (!participant) {
     return fallbackId ? `플레이어 ${fallbackId.slice(0, 6)}` : '플레이어'

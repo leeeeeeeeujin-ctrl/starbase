@@ -902,6 +902,7 @@ create table if not exists public.rank_participants (
   hero_id uuid references public.heroes(id) on delete set null,
   heroes_id uuid references public.heroes(id) on delete set null,
   hero_ids uuid[] not null default array[]::uuid[],
+  slot_no integer,
   role text,
   rating integer not null default 1000,
   score integer,
@@ -913,6 +914,13 @@ create table if not exists public.rank_participants (
   updated_at timestamptz not null default now(),
   unique (game_id, owner_id)
 );
+
+alter table public.rank_participants
+  add column if not exists slot_no integer;
+
+create unique index if not exists rank_participants_slot_unique
+  on public.rank_participants (game_id, slot_no)
+  where slot_no is not null;
 
 alter table public.rank_participants enable row level security;
 

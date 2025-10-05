@@ -1,6 +1,10 @@
 import { normalizeTimelineStatus, sanitizeTimelineEvents } from '@/lib/rank/timelineEvents'
 
-import { deriveParticipantOwnerId } from './participants'
+import {
+  deriveParticipantOwnerId,
+  findParticipantBySlotIndex,
+  resolveParticipantSlotIndex,
+} from './participants'
 
 function dedupeStrings(list = []) {
   if (!Array.isArray(list)) return []
@@ -99,10 +103,12 @@ function normalizeParticipant(participant, index, presenceMap, roleMap, dropInSn
   const status = presence?.status ? normalizeTimelineStatus(presence.status) || baseStatus : baseStatus
   const roleKey = typeof participant?.role === 'string' ? participant.role.trim() : ''
   const roleStats = roleKey ? roleMap.get(roleKey) : null
+  const resolvedSlotIndex = resolveParticipantSlotIndex(participant)
+  const slotIndex = Number.isInteger(resolvedSlotIndex) ? resolvedSlotIndex : index
 
   return {
     participantId: participant?.id ?? participant?.hero_id ?? null,
-    slotIndex: index,
+    slotIndex,
     ownerId: ownerId ? String(ownerId) : null,
     role: roleKey || null,
     heroId: participant?.hero?.id ?? participant?.hero_id ?? null,
@@ -157,7 +163,9 @@ function buildTurnEntries({
     if (!entry || typeof entry !== 'object') return null
     const turnNumber = coerceNumber(entry.turn)
     const slotIndex = Number.isInteger(entry.slotIndex) ? entry.slotIndex : null
-    const participant = Number.isInteger(slotIndex) ? participants[slotIndex] : null
+    const participant = Number.isInteger(slotIndex)
+      ? findParticipantBySlotIndex(participants, slotIndex)
+      : null
     const actorOwnerId = participant ? deriveParticipantOwnerId(participant) : null
     return {
       turn: turnNumber,

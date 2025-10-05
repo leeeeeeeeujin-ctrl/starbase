@@ -18,14 +18,23 @@ import {
 } from '../../lib/rank/geminiConfig'
 import useGeminiKeyDetector from './hooks/useGeminiKeyDetector'
 import useGeminiModelCatalog from './hooks/useGeminiModelCatalog'
+import useOpenAIKeyDetector from './hooks/useOpenAIKeyDetector'
 import usePersistApiKey from './hooks/usePersistApiKey'
 import styles from './GameStartModeModal.module.css'
 
-const API_VERSION_OPTIONS = [
+const API_PROVIDER_OPTIONS = [
   { value: 'gemini', label: 'Google Gemini (기본)' },
-  { value: 'chat_completions', label: 'OpenAI Chat Completions' },
-  { value: 'responses', label: 'OpenAI Responses API v2' },
+  { value: 'openai', label: 'OpenAI' },
 ]
+
+const OPENAI_SERVICE_OPTIONS = [
+  { value: 'responses', label: 'Responses API v2 (권장)' },
+  { value: 'chat_completions', label: 'Chat Completions v1' },
+]
+
+function isOpenAIService(version) {
+  return version === 'responses' || version === 'chat_completions'
+}
 
 const DUO_JOIN_OPTIONS = [
   {
@@ -77,11 +86,17 @@ function initialCasualOption(mode, provided) {
 
 function resolveInitialState(initialConfig) {
   const resolvedMode = normaliseMode(initialConfig?.mode)
+  const initialVersion = getInitialValue(initialConfig?.apiVersion, 'gemini')
+  const initialProvider = isOpenAIService(initialVersion) ? 'openai' : 'gemini'
+  const initialOpenAIService = isOpenAIService(initialVersion)
+    ? initialVersion
+    : 'responses'
   return {
     mode: resolvedMode,
     duoOption: getInitialValue(initialConfig?.duoOption, 'search'),
     casualOption: initialCasualOption(resolvedMode, initialConfig?.casualOption),
-    apiVersion: getInitialValue(initialConfig?.apiVersion, 'gemini'),
+    apiProvider: initialProvider,
+    openaiService: initialOpenAIService,
     apiKey: getInitialValue(initialConfig?.apiKey, ''),
     geminiMode: normalizeGeminiMode(initialConfig?.geminiMode || DEFAULT_GEMINI_MODE),
     geminiModel:
@@ -103,13 +118,16 @@ export default function GameStartModeModal({
   const [mode, setMode] = useState(initialState.mode)
   const [duoOption, setDuoOption] = useState(initialState.duoOption)
   const [casualOption, setCasualOption] = useState(initialState.casualOption)
-  const [apiVersion, setApiVersion] = useState(initialState.apiVersion)
+  const [apiProvider, setApiProvider] = useState(initialState.apiProvider)
+  const [openaiService, setOpenaiService] = useState(initialState.openaiService)
   const [apiKey, setApiKey] = useState(initialState.apiKey)
   const [geminiMode, setGeminiMode] = useState(initialState.geminiMode)
   const [geminiModel, setGeminiModel] = useState(initialState.geminiModel)
   const [turnTimer, setTurnTimer] = useState(initialState.turnTimer)
-  const [detectStatus, setDetectStatus] = useState('')
-  const [detectError, setDetectError] = useState('')
+  const [geminiDetectStatus, setGeminiDetectStatus] = useState('')
+  const [geminiDetectError, setGeminiDetectError] = useState('')
+  const [openaiDetectStatus, setOpenAIDetectStatus] = useState('')
+  const [openaiDetectError, setOpenAIDetectError] = useState('')
   const voteSummary = useMemo(
     () => summarizeTurnTimerVotes(turnTimerVotes || {}),
     [turnTimerVotes],
@@ -120,6 +138,9 @@ export default function GameStartModeModal({
     maxCount: leadingCount = 0,
   } = voteSummary
   const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+
+  const usingOpenAI = apiProvider === 'openai'
+  const resolvedApiVersion = usingOpenAI ? openaiService : 'gemini'
 
   const normalizedGeminiMode = useMemo(
     () => normalizeGeminiMode(geminiMode),
@@ -136,11 +157,12 @@ export default function GameStartModeModal({
     error: geminiModelError,
     reload: reloadGeminiModels,
   } = useGeminiModelCatalog({
-    apiKey: apiVersion === 'gemini' ? trimmedApiKey : '',
+    apiKey: resolvedApiVersion === 'gemini' ? trimmedApiKey : '',
     mode: normalizedGeminiMode,
   })
 
   const { detect: detectGeminiPreset, loading: detectingGemini } = useGeminiKeyDetector()
+  const { detect: detectOpenAIPreset, loading: detectingOpenAI } = useOpenAIKeyDetector()
   const persistApiKeyOnServer = usePersistApiKey()
 
   const geminiModelOptions = useMemo(() => {
@@ -160,13 +182,16 @@ export default function GameStartModeModal({
     setMode(nextState.mode)
     setDuoOption(nextState.duoOption)
     setCasualOption(nextState.casualOption)
-    setApiVersion(nextState.apiVersion)
+    setApiProvider(nextState.apiProvider)
+    setOpenaiService(nextState.openaiService)
     setApiKey(nextState.apiKey)
     setGeminiMode(nextState.geminiMode)
     setGeminiModel(nextState.geminiModel)
     setTurnTimer(nextState.turnTimer)
-    setDetectStatus('')
-    setDetectError('')
+    setGeminiDetectStatus('')
+    setGeminiDetectError('')
+    setOpenAIDetectStatus('')
+    setOpenAIDetectError('')
   }, [
     open,
     initialConfig?.mode,
@@ -192,16 +217,21 @@ export default function GameStartModeModal({
   }, [open, onClose])
 
   useEffect(() => {
-    setDetectStatus('')
-    setDetectError('')
+    setGeminiDetectStatus('')
+    setGeminiDetectError('')
+    setOpenAIDetectStatus('')
+    setOpenAIDetectError('')
   }, [trimmedApiKey])
 
   useEffect(() => {
-    if (apiVersion !== 'gemini') {
-      setDetectStatus('')
-      setDetectError('')
+    if (resolvedApiVersion === 'gemini') {
+      setOpenAIDetectStatus('')
+      setOpenAIDetectError('')
+    } else {
+      setGeminiDetectStatus('')
+      setGeminiDetectError('')
     }
-  }, [apiVersion])
+  }, [resolvedApiVersion])
 
   const handleDetectGemini = async () => {
     if (detectingGemini) {
@@ -209,13 +239,15 @@ export default function GameStartModeModal({
     }
 
     if (!trimmedApiKey) {
-      setDetectStatus('')
-      setDetectError('API 키를 입력해 주세요.')
+      setGeminiDetectStatus('')
+      setGeminiDetectError('API 키를 입력해 주세요.')
       return
     }
 
-    setDetectStatus('')
-    setDetectError('')
+    setGeminiDetectStatus('')
+    setGeminiDetectError('')
+    setOpenAIDetectStatus('')
+    setOpenAIDetectError('')
 
     try {
       const result = await detectGeminiPreset(trimmedApiKey)
@@ -223,7 +255,8 @@ export default function GameStartModeModal({
       const nextModel =
         normalizeGeminiModelId(result?.model || DEFAULT_GEMINI_MODEL) || DEFAULT_GEMINI_MODEL
 
-      setApiVersion('gemini')
+      setApiProvider('gemini')
+      setOpenaiService('responses')
       setGeminiMode(nextMode)
       setGeminiModel(nextModel)
 
@@ -243,10 +276,12 @@ export default function GameStartModeModal({
           geminiMode: nextMode,
           geminiModel: nextModel,
         })
-      } catch (error) {
-        console.warn('Gemini 프리셋을 서버에 저장하지 못했습니다:', error)
-        setDetectError('감지 결과를 서버에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.')
-      }
+        } catch (error) {
+          console.warn('Gemini 프리셋을 서버에 저장하지 못했습니다:', error)
+          setGeminiDetectError(
+            '감지 결과를 서버에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+          )
+        }
 
       reloadGeminiModels()
 
@@ -255,20 +290,81 @@ export default function GameStartModeModal({
       if (result?.fallback) {
         message += ' (모델 목록이 비어 있어 기본값을 사용합니다.)'
       }
-      setDetectStatus(message)
+      setGeminiDetectStatus(message)
     } catch (error) {
-      setDetectStatus('')
-      setDetectError(error?.message || 'Gemini 버전을 확인하지 못했습니다.')
+      setGeminiDetectStatus('')
+      setGeminiDetectError(error?.message || 'Gemini 버전을 확인하지 못했습니다.')
+    }
+  }
+
+  const handleDetectOpenAI = async () => {
+    if (detectingOpenAI) {
+      return
+    }
+
+    if (!trimmedApiKey) {
+      setOpenAIDetectStatus('')
+      setOpenAIDetectError('API 키를 입력해 주세요.')
+      return
+    }
+
+    setOpenAIDetectStatus('')
+    setOpenAIDetectError('')
+    setGeminiDetectStatus('')
+    setGeminiDetectError('')
+
+    try {
+      const result = await detectOpenAIPreset(trimmedApiKey)
+      const recommendedVersion =
+        result?.apiVersion === 'responses' || result?.apiVersion === 'chat_completions'
+          ? result.apiVersion
+          : 'chat_completions'
+
+      setApiProvider('openai')
+      setOpenaiService(recommendedVersion)
+
+      if (typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.setItem('rank.start.apiVersion', recommendedVersion)
+          window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
+          window.sessionStorage.removeItem('rank.start.geminiMode')
+          window.sessionStorage.removeItem('rank.start.geminiModel')
+        } catch (error) {
+          console.warn('OpenAI 프리셋을 저장하지 못했습니다:', error)
+        }
+      }
+
+      try {
+        await persistApiKeyOnServer(trimmedApiKey, recommendedVersion)
+      } catch (error) {
+        console.warn('OpenAI 프리셋을 서버에 저장하지 못했습니다:', error)
+        setOpenAIDetectError('감지 결과를 서버에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      }
+
+      const versionLabel =
+        recommendedVersion === 'responses' ? 'Responses API v2' : 'Chat Completions v1'
+      const baseModel = (result?.model && result.model.trim()) || 'gpt-4o-mini'
+      let message =
+        typeof result?.detail === 'string' && result.detail.trim()
+          ? result.detail.trim()
+          : `OpenAI ${versionLabel} 키로 확인했습니다. 기본 모델은 ${baseModel}로 설정했습니다.`
+      if (result?.fallback && recommendedVersion === 'chat_completions') {
+        message += ' (Responses API v2를 사용할 수 없어 대체했습니다.)'
+      }
+      setOpenAIDetectStatus(message)
+    } catch (error) {
+      setOpenAIDetectStatus('')
+      setOpenAIDetectError(error?.message || 'OpenAI 버전을 확인하지 못했습니다.')
     }
   }
 
   const canConfirm = useMemo(() => {
     const requiresImmediateApiKey = mode === MATCH_MODE_KEYS.RANK_SOLO
-    if (!apiVersion) {
+    if (!resolvedApiVersion) {
       return false
     }
 
-    if (apiVersion === 'gemini') {
+    if (resolvedApiVersion === 'gemini') {
       if (!normalizedGeminiMode) {
         return false
       }
@@ -298,7 +394,7 @@ export default function GameStartModeModal({
 
     return true
   }, [
-    apiVersion,
+    resolvedApiVersion,
     mode,
     duoOption,
     casualOption,
@@ -326,7 +422,7 @@ export default function GameStartModeModal({
       mode: resolvedMode,
       duoOption,
       casualOption,
-      apiVersion,
+      apiVersion: resolvedApiVersion,
       apiKey: trimmedApiKey,
       geminiMode: normalizedGeminiMode,
       geminiModel: normalizedGeminiModel,
@@ -349,16 +445,22 @@ export default function GameStartModeModal({
 
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>AI API 연결</h3>
-          <label className={styles.label} htmlFor="start-config-api-version">
+          <label className={styles.label} htmlFor="start-config-api-provider">
             API 종류
           </label>
           <select
-            id="start-config-api-version"
+            id="start-config-api-provider"
             className={styles.select}
-            value={apiVersion}
-            onChange={(event) => setApiVersion(event.target.value)}
+            value={apiProvider}
+            onChange={(event) => {
+              const nextProvider = event.target.value
+              setApiProvider(nextProvider)
+              if (nextProvider === 'gemini') {
+                setOpenaiService('responses')
+              }
+            }}
           >
-            {API_VERSION_OPTIONS.map((option) => (
+            {API_PROVIDER_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -376,7 +478,26 @@ export default function GameStartModeModal({
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
           />
-          {apiVersion === 'gemini' && (
+          {usingOpenAI && (
+            <>
+              <label className={styles.label} htmlFor="start-config-openai-service">
+                OpenAI 서비스 선택
+              </label>
+              <select
+                id="start-config-openai-service"
+                className={styles.select}
+                value={openaiService}
+                onChange={(event) => setOpenaiService(event.target.value)}
+              >
+                {OPENAI_SERVICE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          {resolvedApiVersion === 'gemini' && (
             <div className={styles.geminiSection}>
               <label className={styles.label} htmlFor="start-config-gemini-mode">
                 Gemini 엔드포인트
@@ -434,11 +555,15 @@ export default function GameStartModeModal({
                   {detectingGemini ? '버전 감지 중…' : 'Gemini 버전 자동 감지'}
                 </button>
               </div>
-              {detectStatus && (
-                <p className={`${styles.helperText} ${styles.detectStatus}`}>{detectStatus}</p>
+              {geminiDetectStatus && (
+                <p className={`${styles.helperText} ${styles.detectStatus}`}>
+                  {geminiDetectStatus}
+                </p>
               )}
-              {detectError && (
-                <p className={`${styles.helperText} ${styles.detectError}`}>{detectError}</p>
+              {geminiDetectError && (
+                <p className={`${styles.helperText} ${styles.detectError}`}>
+                  {geminiDetectError}
+                </p>
               )}
               {geminiModelError && (
                 <p className={styles.helperText} style={{ color: '#f97316' }}>
@@ -449,6 +574,30 @@ export default function GameStartModeModal({
                 <p className={styles.helperText}>모델 목록을 불러오는 중입니다…</p>
               )}
             </div>
+          )}
+          {usingOpenAI && (
+            <>
+              <div className={styles.geminiActions}>
+                <button
+                  type="button"
+                  onClick={handleDetectOpenAI}
+                  disabled={detectingOpenAI || !trimmedApiKey}
+                  className={styles.detectButton}
+                >
+                  {detectingOpenAI ? '버전 감지 중…' : 'OpenAI 버전 자동 감지'}
+                </button>
+              </div>
+              {openaiDetectStatus && (
+                <p className={`${styles.helperText} ${styles.detectStatus}`}>
+                  {openaiDetectStatus}
+                </p>
+              )}
+              {openaiDetectError && (
+                <p className={`${styles.helperText} ${styles.detectError}`}>
+                  {openaiDetectError}
+                </p>
+              )}
+            </>
           )}
           <p className={styles.helperText}>
             Google Gemini 또는 OpenAI API 키가 필요합니다.

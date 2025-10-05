@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
 import {
@@ -26,9 +26,20 @@ import {
   appendSnapshotEvents,
 } from './engine/timelineState'
 import {
+  reconcileParticipantsForGame,
+  formatPreflightSummary,
+} from './engine/preflight'
+import {
   createOwnerDisplayMap,
   deriveParticipantOwnerId,
 } from './engine/participants'
+import {
+  appendMainGameLogs,
+  initialMainGameState,
+  mainGameReducer,
+  patchMainGameState,
+  replaceMainGameLogs,
+} from './engine/mainGameMachine'
 import { isApiKeyError } from './engine/apiKeyUtils'
 import { createTurnTimerService } from './services/turnTimerService'
 import {
@@ -79,35 +90,205 @@ export function useStartClientEngine(gameId) {
     requireManualResponse,
   } = useStartManualResponse()
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [game, setGame] = useState(null)
-  const [participants, setParticipants] = useState([])
-  const [graph, setGraph] = useState({ nodes: [], edges: [] })
-  const [preflight, setPreflight] = useState(true)
-  const [turn, setTurn] = useState(1)
-  const [currentNodeId, setCurrentNodeId] = useState(null)
-  const [activeGlobal, setActiveGlobal] = useState([])
-  const [activeLocal, setActiveLocal] = useState([])
-  const [logs, setLogs] = useState([])
+  const [engineState, dispatchEngine] = useReducer(mainGameReducer, initialMainGameState)
+  const {
+    loading,
+    error,
+    game,
+    participants,
+    slotLayout,
+    graph,
+    preflight,
+    turn,
+    currentNodeId,
+    activeGlobal,
+    activeLocal,
+    logs,
+    battleLogDraft,
+    statusMessage,
+    promptMetaWarning,
+    isAdvancing,
+    winCount,
+    lastDropInTurn,
+    viewerId,
+    turnDeadline,
+    timeRemaining,
+    activeHeroAssets,
+    activeActorNames,
+  } = engineState
   const logsRef = useRef([])
-  const [battleLogDraft, setBattleLogDraft] = useState(null)
+  const participantsRef = useRef([])
+  const statusMessageRef = useRef('')
+  const turnRef = useRef(initialMainGameState.turn)
+  const promptMetaWarningRef = useRef('')
+  const winCountRef = useRef(initialMainGameState.winCount)
+  const turnDeadlineRef = useRef(initialMainGameState.turnDeadline)
+  const timeRemainingRef = useRef(initialMainGameState.timeRemaining)
   const lastBattleLogSignatureRef = useRef(null)
-  const [statusMessage, setStatusMessage] = useState('')
-  const [promptMetaWarning, setPromptMetaWarning] = useState('')
-  const [isAdvancing, setIsAdvancing] = useState(false)
-  const [winCount, setWinCount] = useState(0)
-  const [lastDropInTurn, setLastDropInTurn] = useState(null)
-  const [viewerId, setViewerId] = useState(null)
-  const [turnDeadline, setTurnDeadline] = useState(null)
-  const [timeRemaining, setTimeRemaining] = useState(null)
-  const [activeHeroAssets, setActiveHeroAssets] = useState({
-    backgrounds: [],
-    bgmUrl: null,
-    bgmDuration: null,
-    audioProfile: null,
-  })
-  const [activeActorNames, setActiveActorNames] = useState([])
+  const patchEngineState = useCallback(
+    (payload) => {
+      dispatchEngine(patchMainGameState(payload))
+    },
+    [dispatchEngine],
+  )
+  const replaceEngineLogs = useCallback(
+    (entries) => {
+      dispatchEngine(replaceMainGameLogs(entries))
+    },
+    [dispatchEngine],
+  )
+  const appendEngineLogs = useCallback(
+    (entries) => {
+      dispatchEngine(appendMainGameLogs(entries))
+    },
+    [dispatchEngine],
+  )
+  const setStatusMessage = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(statusMessageRef.current)
+        patchEngineState({ statusMessage: next })
+      } else {
+        patchEngineState({ statusMessage: value })
+      }
+    },
+    [patchEngineState],
+  )
+  const setPreflight = useCallback(
+    (value) => {
+      patchEngineState({ preflight: !!value })
+    },
+    [patchEngineState],
+  )
+  const setTurn = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(turnRef.current)
+        patchEngineState({ turn: next })
+      } else {
+        patchEngineState({ turn: value })
+      }
+    },
+    [patchEngineState],
+  )
+  const setLogs = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(logsRef.current)
+        replaceEngineLogs(Array.isArray(next) ? next : [])
+      } else {
+        replaceEngineLogs(Array.isArray(value) ? value : [])
+      }
+    },
+    [replaceEngineLogs],
+  )
+  const setBattleLogDraft = useCallback(
+    (value) => {
+      patchEngineState({ battleLogDraft: value })
+    },
+    [patchEngineState],
+  )
+  const setPromptMetaWarning = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(promptMetaWarningRef.current)
+        patchEngineState({ promptMetaWarning: next })
+      } else {
+        patchEngineState({ promptMetaWarning: value })
+      }
+    },
+    [patchEngineState],
+  )
+  const setIsAdvancing = useCallback(
+    (value) => {
+      patchEngineState({ isAdvancing: !!value })
+    },
+    [patchEngineState],
+  )
+  const setWinCount = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(winCountRef.current)
+        patchEngineState({ winCount: next })
+      } else {
+        patchEngineState({ winCount: value })
+      }
+    },
+    [patchEngineState],
+  )
+  const setLastDropInTurn = useCallback(
+    (value) => {
+      patchEngineState({ lastDropInTurn: value })
+    },
+    [patchEngineState],
+  )
+  const setViewerId = useCallback(
+    (value) => {
+      patchEngineState({ viewerId: value })
+    },
+    [patchEngineState],
+  )
+  const setTurnDeadline = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(turnDeadlineRef.current)
+        patchEngineState({ turnDeadline: next })
+      } else {
+        patchEngineState({ turnDeadline: value })
+      }
+    },
+    [patchEngineState],
+  )
+  const setTimeRemaining = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(timeRemainingRef.current)
+        patchEngineState({ timeRemaining: next })
+      } else {
+        patchEngineState({ timeRemaining: value })
+      }
+    },
+    [patchEngineState],
+  )
+  const setActiveHeroAssets = useCallback(
+    (value) => {
+      patchEngineState({ activeHeroAssets: value })
+    },
+    [patchEngineState],
+  )
+  const setActiveActorNames = useCallback(
+    (value) => {
+      patchEngineState({ activeActorNames: Array.isArray(value) ? value : [] })
+    },
+    [patchEngineState],
+  )
+  const setActiveGlobal = useCallback(
+    (value) => {
+      patchEngineState({ activeGlobal: Array.isArray(value) ? value : [] })
+    },
+    [patchEngineState],
+  )
+  const setActiveLocal = useCallback(
+    (value) => {
+      patchEngineState({ activeLocal: Array.isArray(value) ? value : [] })
+    },
+    [patchEngineState],
+  )
+  const setParticipants = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(participantsRef.current)
+        patchEngineState({
+          participants: Array.isArray(next) ? next : [],
+        })
+      } else {
+        patchEngineState({
+          participants: Array.isArray(value) ? value : [],
+        })
+      }
+    },
+    [patchEngineState],
+  )
   const [turnTimerSeconds] = useState(() => {
     if (typeof window === 'undefined') return 60
     const stored = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
@@ -162,6 +343,40 @@ export function useStartClientEngine(gameId) {
   useEffect(() => {
     logsRef.current = Array.isArray(logs) ? logs : []
   }, [logs])
+
+  useEffect(() => {
+    participantsRef.current = Array.isArray(participants)
+      ? participants
+      : []
+  }, [participants])
+
+  useEffect(() => {
+    statusMessageRef.current =
+      typeof statusMessage === 'string' ? statusMessage : ''
+  }, [statusMessage])
+
+  useEffect(() => {
+    turnRef.current = turn
+  }, [turn])
+
+  useEffect(() => {
+    promptMetaWarningRef.current =
+      typeof promptMetaWarning === 'string' ? promptMetaWarning : ''
+  }, [promptMetaWarning])
+
+  useEffect(() => {
+    winCountRef.current = Number.isFinite(Number(winCount))
+      ? Number(winCount)
+      : 0
+  }, [winCount])
+
+  useEffect(() => {
+    turnDeadlineRef.current = turnDeadline ?? null
+  }, [turnDeadline])
+
+  useEffect(() => {
+    timeRemainingRef.current = timeRemaining ?? null
+  }, [timeRemaining])
 
   useEffect(() => {
     realtimeEventsRef.current = Array.isArray(realtimeEvents)
@@ -387,14 +602,16 @@ export function useStartClientEngine(gameId) {
     let alive = true
 
     async function load() {
-      setLoading(true)
-      setError('')
+      patchEngineState({ loading: true, error: '' })
       try {
         const bundle = await loadGameBundle(supabase, gameId)
         if (!alive) return
-        setGame(bundle.game)
-        setParticipants(bundle.participants)
-        setGraph(bundle.graph)
+        patchEngineState({
+          game: bundle.game,
+          participants: bundle.participants,
+          slotLayout: Array.isArray(bundle.slotLayout) ? bundle.slotLayout : [],
+          graph: bundle.graph,
+        })
         if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
           bundle.warnings.forEach((warning) => {
             if (warning) console.warn('[StartClient] 프롬프트 변수 경고:', warning)
@@ -406,10 +623,13 @@ export function useStartClientEngine(gameId) {
       } catch (err) {
         if (!alive) return
         console.error(err)
-        setError(err?.message || '게임 데이터를 불러오지 못했습니다.')
+        patchEngineState({
+          error: err?.message || '게임 데이터를 불러오지 못했습니다.',
+          slotLayout: [],
+        })
         setPromptMetaWarning('')
       } finally {
-        if (alive) setLoading(false)
+        if (alive) patchEngineState({ loading: false })
       }
     }
 
@@ -1105,92 +1325,117 @@ export function useStartClientEngine(gameId) {
     )
   }, [participants, viewerId])
 
-  const bootLocalSession = useCallback(() => {
-    if (graph.nodes.length === 0) {
-      setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
-      return
-    }
-
-    const startNode = graph.nodes.find((node) => node.is_start) || graph.nodes[0]
-    history.beginSession()
-    bumpHistoryVersion()
-    if (systemPrompt) {
-      history.push({ role: 'system', content: systemPrompt, public: false })
-    }
-
-    if (realtimeManagerRef.current) {
-      const manager = realtimeManagerRef.current
-      manager.reset()
-      if (game?.realtime_match) {
-        manager.syncParticipants(participants)
-        if (viewerId) {
-          manager.setManagedOwners([String(viewerId).trim()])
-        } else {
-          manager.setManagedOwners([])
-        }
-        manager.beginTurn({
-          turnNumber: 1,
-          eligibleOwnerIds: deriveEligibleOwnerIds(participants),
+  const bootLocalSession = useCallback(
+    (overrides = null) => {
+      if (graph.nodes.length === 0) {
+        patchEngineState({
+          statusMessage: '시작할 프롬프트 세트를 찾을 수 없습니다.',
         })
+        return
       }
-      applyRealtimeSnapshot(manager.getSnapshot())
-    }
 
-    visitedSlotIds.current = new Set()
-    apiVersionLock.current = null
-    turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
-    turnTimerServiceRef.current?.reset()
-    dropInQueueRef.current?.reset()
-    asyncSessionManagerRef.current?.reset()
-    participantIdSetRef.current = new Set(
-      participants.map((participant, index) =>
-        String(participant?.id ?? participant?.hero_id ?? index),
-      ),
-    )
-    lastScheduledTurnRef.current = 0
-    setPreflight(false)
-    setGameVoided(false)
-    setTurn(1)
-    setLogs(() => {
-      logsRef.current = []
-      return []
-    })
-    setBattleLogDraft(null)
-    setWinCount(0)
-    setLastDropInTurn(null)
-    setActiveGlobal([])
-    setActiveLocal([])
-    setStatusMessage('게임이 시작되었습니다.')
-    const startContext = resolveActorContext({ node: startNode, slots, participants })
-    const startNames = startContext?.participant?.hero?.name
-      ? [startContext.participant.hero.name]
-      : startContext?.heroSlot?.name
-      ? [startContext.heroSlot.name]
-      : []
-    updateHeroAssets(startNames, startContext)
-    rememberActiveSession({
-      turn: 1,
-      actorNames: startNames,
-      status: 'active',
-      defeated: false,
-    })
-    setTurnDeadline(null)
-    setTimeRemaining(null)
-    clearConsensusVotes()
-    setCurrentNodeId(startNode.id)
-  }, [
-    graph.nodes,
-    history,
-    systemPrompt,
-    slots,
-    participants,
-    updateHeroAssets,
-    rememberActiveSession,
-    turnTimerSeconds,
-    game?.realtime_match,
-    viewerId,
-    applyRealtimeSnapshot,
-  ])
+      const sessionParticipants = Array.isArray(overrides)
+        ? overrides.filter(Boolean)
+        : participants
+
+      if (!sessionParticipants || sessionParticipants.length === 0) {
+        patchEngineState({
+          statusMessage: '참가자를 찾을 수 없어 게임을 시작할 수 없습니다.',
+        })
+        return
+      }
+
+      if (overrides) {
+        patchEngineState({ participants: sessionParticipants })
+      }
+
+      const sessionSlots = buildSlotsFromParticipants(sessionParticipants)
+
+      const startNode = graph.nodes.find((node) => node.is_start) || graph.nodes[0]
+      history.beginSession()
+      bumpHistoryVersion()
+      if (systemPrompt) {
+        history.push({ role: 'system', content: systemPrompt, public: false })
+      }
+
+      if (realtimeManagerRef.current) {
+        const manager = realtimeManagerRef.current
+        manager.reset()
+        if (game?.realtime_match) {
+          manager.syncParticipants(sessionParticipants)
+          if (viewerId) {
+            manager.setManagedOwners([String(viewerId).trim()])
+          } else {
+            manager.setManagedOwners([])
+          }
+          manager.beginTurn({
+            turnNumber: 1,
+            eligibleOwnerIds: deriveEligibleOwnerIds(sessionParticipants),
+          })
+        }
+        applyRealtimeSnapshot(manager.getSnapshot())
+      }
+
+      visitedSlotIds.current = new Set()
+      apiVersionLock.current = null
+      turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
+      turnTimerServiceRef.current?.reset()
+      dropInQueueRef.current?.reset()
+      asyncSessionManagerRef.current?.reset()
+      participantIdSetRef.current = new Set(
+        sessionParticipants.map((participant, index) =>
+          String(participant?.id ?? participant?.hero_id ?? index),
+        ),
+      )
+      lastScheduledTurnRef.current = 0
+      setPreflight(false)
+      setGameVoided(false)
+      setTurn(1)
+      setLogs(() => {
+        logsRef.current = []
+        return []
+      })
+      setBattleLogDraft(null)
+      setWinCount(0)
+      setLastDropInTurn(null)
+      setActiveGlobal([])
+      setActiveLocal([])
+      setStatusMessage('게임이 시작되었습니다.')
+      const startContext = resolveActorContext({
+        node: startNode,
+        slots: sessionSlots,
+        participants: sessionParticipants,
+      })
+      const startNames = startContext?.participant?.hero?.name
+        ? [startContext.participant.hero.name]
+        : startContext?.heroSlot?.name
+        ? [startContext.heroSlot.name]
+        : []
+      updateHeroAssets(startNames, startContext)
+      rememberActiveSession({
+        turn: 1,
+        actorNames: startNames,
+        status: 'active',
+        defeated: false,
+      })
+      setTurnDeadline(null)
+      setTimeRemaining(null)
+      clearConsensusVotes()
+      setCurrentNodeId(startNode.id)
+    },
+    [
+      graph.nodes,
+      history,
+      systemPrompt,
+      participants,
+      updateHeroAssets,
+      rememberActiveSession,
+      turnTimerSeconds,
+      game?.realtime_match,
+      viewerId,
+      applyRealtimeSnapshot,
+    ],
+  )
 
   const handleStart = useCallback(async () => {
     if (graph.nodes.length === 0) {
@@ -1291,7 +1536,45 @@ export function useStartClientEngine(gameId) {
       return
     }
 
-    bootLocalSession()
+    setStatusMessage('매칭 데이터를 검증하는 중입니다…')
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    let sessionParticipants = participants
+    try {
+      const { participants: sanitized, removed } = reconcileParticipantsForGame({
+        participants,
+        slotLayout,
+        matchingMetadata,
+      })
+
+      if (!sanitized || sanitized.length === 0) {
+        setStatusMessage('역할이 맞는 참가자를 찾을 수 없어 게임을 시작할 수 없습니다.')
+        return
+      }
+
+      sessionParticipants = sanitized
+
+      if (removed.length) {
+        const summary = formatPreflightSummary(removed)
+        if (summary) {
+          console.warn('[StartClient] 후보정으로 제외된 참가자 목록:\n' + summary)
+          setPromptMetaWarning((prev) => {
+            const trimmed = prev ? String(prev).trim() : ''
+            const notice = `[후보정] 역할 검증에서 제외된 참가자:\n${summary}`
+            return trimmed ? `${trimmed}\n\n${notice}` : notice
+          })
+        }
+        setStatusMessage('역할이 맞지 않는 참가자를 제외하고 게임을 시작합니다.')
+      } else {
+        setStatusMessage('게임 준비가 완료되었습니다.')
+      }
+    } catch (error) {
+      console.error('후보정 검증 실패:', error)
+      setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      return
+    }
+
+    bootLocalSession(sessionParticipants)
   }, [
     apiVersion,
     bootLocalSession,
@@ -1305,6 +1588,10 @@ export function useStartClientEngine(gameId) {
     persistApiKeyOnServer,
     normalizedGeminiMode,
     normalizedGeminiModel,
+    participants,
+    slotLayout,
+    matchingMetadata,
+    setPromptMetaWarning,
   ])
 
   const advanceTurn = useCallback(
@@ -1463,12 +1750,14 @@ export function useStartClientEngine(gameId) {
             })
             .filter(Boolean)
           if (messages.length) {
-            setStatusMessage((prev) => {
-              const notice = `경고: ${messages.join(', ')} - "다음" 버튼을 눌러 참여해 주세요.`
-              if (!prev) return notice
-              if (prev.includes(notice)) return prev
-              return `${prev}\n${notice}`
-            })
+            const notice = `경고: ${messages.join(', ')} - "다음" 버튼을 눌러 참여해 주세요.`
+            const prevMessage = statusMessageRef.current
+            const nextMessage = !prevMessage
+              ? notice
+              : prevMessage.includes(notice)
+                ? prevMessage
+                : `${prevMessage}\n${notice}`
+            patchEngineState({ statusMessage: nextMessage })
           }
         }
 
@@ -1479,29 +1768,30 @@ export function useStartClientEngine(gameId) {
               .filter(Boolean),
           )
           if (escalatedSet.size) {
-            setParticipants((prev) =>
-              prev.map((participant) => {
-                const ownerId = deriveParticipantOwnerId(participant)
-                if (!ownerId) return participant
-                const normalized = String(ownerId).trim()
-                if (!escalatedSet.has(normalized)) return participant
-                const statusValue = String(participant?.status || '').toLowerCase()
-                if (statusValue === 'proxy') return participant
-                return { ...participant, status: 'proxy' }
-              }),
-            )
+            const updatedParticipants = participantsRef.current.map((participant) => {
+              const ownerId = deriveParticipantOwnerId(participant)
+              if (!ownerId) return participant
+              const normalized = String(ownerId).trim()
+              if (!escalatedSet.has(normalized)) return participant
+              const statusValue = String(participant?.status || '').toLowerCase()
+              if (statusValue === 'proxy') return participant
+              return { ...participant, status: 'proxy' }
+            })
+            patchEngineState({ participants: updatedParticipants })
             const names = Array.from(escalatedSet).map((ownerId) => {
               const info = ownerDisplayMap.get(ownerId)
               const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
               const reasonLabel = escalationReasonMap.get(ownerId)
               return reasonLabel ? `${displayName} (${reasonLabel})` : displayName
             })
-            setStatusMessage((prev) => {
-              const notice = `대역 전환: ${names.join(', ')} – 3회 이상 응답하지 않아 대역으로 교체되었습니다.`
-              if (!prev) return notice
-              if (prev.includes(notice)) return prev
-              return `${prev}\n${notice}`
-            })
+            const notice = `대역 전환: ${names.join(', ')} – 3회 이상 응답하지 않아 대역으로 교체되었습니다.`
+            const prevMessage = statusMessageRef.current
+            const nextMessage = !prevMessage
+              ? notice
+              : prevMessage.includes(notice)
+                ? prevMessage
+                : `${prevMessage}\n${notice}`
+            patchEngineState({ statusMessage: nextMessage })
           }
         }
       }
@@ -2152,8 +2442,16 @@ export function useStartClientEngine(gameId) {
 
     channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)
 
-    channel.subscribe().catch((error) => {
-      console.error('[StartClient] 실시간 타임라인 채널 구독 실패:', error)
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        return
+      }
+      if (status === 'CHANNEL_ERROR') {
+        console.error('[StartClient] 실시간 타임라인 채널 오류가 발생했습니다.')
+      }
+      if (status === 'TIMED_OUT') {
+        console.warn('[StartClient] 실시간 타임라인 채널 구독이 제한 시간 안에 완료되지 않았습니다.')
+      }
     })
 
     return () => {

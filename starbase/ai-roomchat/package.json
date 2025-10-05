@@ -13,7 +13,8 @@
     "test:e2e": "playwright test",
     "notify:audio-events": "node scripts/notify-audio-event-trends.js",
     "deploy:edge-functions": "node scripts/deploy-edge-functions.js",
-    "check:edge-deploy-config": "node scripts/verify-edge-deploy-config.js"
+    "check:edge-deploy-config": "node scripts/verify-edge-deploy-config.js",
+    "simulate:start-engine": "node scripts/start-engine-simulator.js"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",

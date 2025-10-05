@@ -19,8 +19,8 @@ This note captures every Supabase table that participates in queueing players, f
 ## Persistent Player State
 
 ### `public.rank_participants`
-- Stores each player’s enrollment per game with hero selections, cached hero arrays, role preference, rating/score counters, and readiness status fields.【F:starbase/ai-roomchat/supabase.sql†L634-L666】
-- RLS lets everyone read the leaderboard while participants alone may insert/update/delete their own row to record progress.【F:starbase/ai-roomchat/supabase.sql†L653-L666】
+- Stores each player’s enrollment per game with hero selections, mirrored slot assignment via `slot_no`, cached hero arrays, role preference, rating/score counters, and readiness status fields.【F:starbase/ai-roomchat/supabase.sql†L898-L916】
+- RLS lets everyone read the leaderboard while participants alone may insert/update/delete their own row to record progress, with a partial unique index ensuring one occupant per `(game_id, slot_no)` when the column is populated.【F:starbase/ai-roomchat/supabase.sql†L918-L938】【F:starbase/ai-roomchat/supabase.sql†L921-L923】
 
 ### `public.rank_battles` & `public.rank_battle_logs`
 - Battle envelopes capture attacker/defender hero arrays, outcomes, score deltas, and timestamps; logs capture per-turn prompts and AI responses for review.【F:starbase/ai-roomchat/supabase.sql†L668-L698】

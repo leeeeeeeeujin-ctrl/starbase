@@ -10,7 +10,7 @@ Each slot object should include the following properties:
 
 - `id` – unique identifier. Optional when compiling transient graphs, but required when
   evaluating bridge conditions.
-- `slot_no` – 1-indexed order that determines player prompts and bridge remapping.
+- `slot_no` – zero-based order that determines player prompts and bridge remapping.
 - `slot_type` – either `ai`, `manual`, or `system` to determine how turns are driven.
 - `slot_pick` – string identifier for selection rules (defaults to `'1'`).
 - `template` – raw template string before variable interpolation.

@@ -12,7 +12,7 @@ export function compileTemplate({
   let out = template
 
   out = out.replace(/\{\{slot(\d+)\.(\w+)\}\}/g, (match, rawIndex, field) => {
-    const index = Number(rawIndex) - 1
+    const index = Number(rawIndex)
     if (index < 0 || index >= slots.length) return ''
     const row = slots[index]
     return row && row[field] != null ? String(row[field]) : ''

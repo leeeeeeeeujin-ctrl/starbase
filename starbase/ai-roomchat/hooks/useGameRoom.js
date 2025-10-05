@@ -17,7 +17,7 @@ async function fetchParticipantsWithHeroes(gameId) {
     supabase
       .from(table)
       .select(
-        'id, game_id, hero_id, hero_ids, owner_id, role, score, rating, battles, win_rate, status, created_at'
+        'id, game_id, hero_id, hero_ids, owner_id, role, score, rating, battles, win_rate, status, slot_no, created_at'
       )
       .eq('game_id', gameId)
       .order('score', { ascending: false })

@@ -8,7 +8,16 @@ import {
 const MATCH_META_KEY = 'rank.start.matchMeta'
 
 function safeClone(value) {
-  if (!value || typeof value !== 'object') return null
+  if (value === null || value === undefined) return null
+  if (typeof value !== 'object') return value
+  if (value instanceof Map) {
+    try {
+      return JSON.parse(JSON.stringify(Object.fromEntries(value.entries())))
+    } catch (error) {
+      console.warn('매치 메타데이터 Map 직렬화 실패:', error)
+      return null
+    }
+  }
   try {
     return JSON.parse(JSON.stringify(value))
   } catch (error) {
@@ -17,15 +26,166 @@ function safeClone(value) {
   }
 }
 
+function normalizeAssignmentMember(member, index) {
+  if (!member || typeof member !== 'object') {
+    return { index }
+  }
+
+  const clone = { ...member }
+  const heroId =
+    member.hero_id ??
+    member.heroId ??
+    member.heroID ??
+    (member.hero && (member.hero.id ?? member.heroId)) ??
+    null
+  const ownerId = member.owner_id ?? member.ownerId ?? member.ownerID ?? null
+  const slotCandidate =
+    member.slot_no ??
+    member.slotNo ??
+    member.slot_index ??
+    member.slotIndex ??
+    null
+  const slotNo =
+    slotCandidate != null && Number.isFinite(Number(slotCandidate))
+      ? Number(slotCandidate)
+      : null
+
+  const normalizedHeroId = heroId != null ? String(heroId).trim() : null
+  if (normalizedHeroId) {
+    clone.hero_id = normalizedHeroId
+    clone.heroId = normalizedHeroId
+  }
+  const normalizedOwnerId = ownerId != null ? String(ownerId).trim() : null
+  if (normalizedOwnerId) {
+    clone.owner_id = normalizedOwnerId
+    clone.ownerId = normalizedOwnerId
+  }
+  if (slotNo != null) {
+    clone.slot_no = slotNo
+    clone.slotNo = slotNo
+  }
+
+  const queueId = member.queue_id ?? member.queueId ?? member.queueID ?? null
+  const normalizedQueueId = queueId != null ? String(queueId).trim() : null
+  if (normalizedQueueId) {
+    clone.queue_id = normalizedQueueId
+    clone.queueId = normalizedQueueId
+  }
+
+  const partyKey = member.party_key ?? member.partyKey ?? null
+  const normalizedPartyKey = partyKey != null ? String(partyKey).trim() : null
+  if (normalizedPartyKey) {
+    clone.party_key = normalizedPartyKey
+    clone.partyKey = normalizedPartyKey
+  }
+
+  const partyMemberIndex =
+    member.party_member_index ?? member.partyMemberIndex ?? member.memberIndex
+  if (partyMemberIndex != null && Number.isFinite(Number(partyMemberIndex))) {
+    clone.party_member_index = Number(partyMemberIndex)
+    clone.partyMemberIndex = Number(partyMemberIndex)
+  }
+
+  const joinedAt = member.joined_at ?? member.joinedAt ?? null
+  if (joinedAt) {
+    clone.joined_at = joinedAt
+    clone.joinedAt = joinedAt
+  }
+
+  const rating = member.rating ?? member.score ?? null
+  if (rating != null && Number.isFinite(Number(rating))) {
+    clone.rating = Number(rating)
+  }
+
+  return clone
+}
+
+function normalizeAssignment(assignment) {
+  if (!assignment || typeof assignment !== 'object') return null
+
+  const role = typeof assignment.role === 'string' ? assignment.role.trim() : ''
+  const slots =
+    assignment.slots != null && Number.isFinite(Number(assignment.slots))
+      ? Number(assignment.slots)
+      : null
+  const roleSlots = Array.isArray(assignment.roleSlots)
+    ? assignment.roleSlots
+        .map((slot) => Number(slot))
+        .filter((slot) => Number.isFinite(slot))
+    : Array.isArray(assignment.role_slots)
+    ? assignment.role_slots
+        .map((slot) => Number(slot))
+        .filter((slot) => Number.isFinite(slot))
+    : []
+  const heroIds = Array.isArray(assignment.heroIds)
+    ? assignment.heroIds
+        .map((id) => (id != null ? String(id).trim() : ''))
+        .filter((id) => id.length > 0)
+    : []
+  const members = Array.isArray(assignment.members)
+    ? assignment.members
+        .map((member, index) => normalizeAssignmentMember(member, index))
+        .map((member) => safeClone(member) ?? member)
+    : []
+
+  const payload = {
+    role,
+    slots,
+    roleSlots,
+    heroIds,
+    members,
+  }
+
+  if (assignment.groupKey) {
+    payload.groupKey = assignment.groupKey
+  }
+  if (assignment.partyKey) {
+    payload.partyKey = assignment.partyKey
+  }
+  if (assignment.anchorScore != null) {
+    payload.anchorScore = assignment.anchorScore
+  }
+
+  return payload
+}
+
+function normalizeRolesForMeta(roles = []) {
+  if (!Array.isArray(roles)) return []
+  return roles
+    .map((role) => {
+      if (!role) return null
+      if (typeof role === 'string') {
+        const trimmed = role.trim()
+        return trimmed ? { name: trimmed } : null
+      }
+      const name =
+        typeof role.name === 'string'
+          ? role.name.trim()
+          : typeof role.role === 'string'
+          ? role.role.trim()
+          : ''
+      if (!name) return null
+      const slotCount = Number(role.slot_count ?? role.slotCount ?? role.slots)
+      const normalized = { name }
+      if (Number.isFinite(slotCount)) {
+        normalized.slotCount = slotCount
+      }
+      return normalized
+    })
+    .filter(Boolean)
+}
+
 export function buildMatchMetaPayload(match, extras = {}) {
   if (!match || typeof match !== 'object') return null
 
-  const assignmentSummary = Array.isArray(match.assignments)
-    ? match.assignments.map((assignment) => ({
-        role: typeof assignment?.role === 'string' ? assignment.role.trim() : '',
-        members: Array.isArray(assignment?.members) ? assignment.members.length : 0,
-      }))
+  const normalizedAssignments = Array.isArray(match.assignments)
+    ? match.assignments
+        .map((assignment) => normalizeAssignment(assignment))
+        .filter(Boolean)
     : []
+
+  const heroMapClone =
+    match.heroMap instanceof Map ? safeClone(match.heroMap) : safeClone(match.heroMap || null)
 
   const payload = {
     storedAt: Date.now(),
@@ -35,8 +195,18 @@ export function buildMatchMetaPayload(match, extras = {}) {
     dropInMeta: safeClone(match.dropInMeta || null),
     sampleMeta: safeClone(match.sampleMeta || null),
     roleStatus: safeClone(match.roleStatus || null),
-    assignments: assignmentSummary,
+    roles: normalizeRolesForMeta(match.roles || match.roleStatus?.roles || []),
+    assignments: normalizedAssignments,
+    scoreWindow:
+      match.maxWindow != null && Number.isFinite(Number(match.maxWindow))
+        ? Number(match.maxWindow)
+        : null,
+    heroMap: heroMapClone,
     ...extras,
+  }
+
+  if (match.source) {
+    payload.source = match.source
   }
 
   return safeClone(payload)

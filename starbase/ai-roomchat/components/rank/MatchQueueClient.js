@@ -8,6 +8,7 @@ import {
 } from '../../lib/rank/turnTimers'
 
 import useMatchQueue from './hooks/useMatchQueue'
+import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
 import styles from './MatchQueueClient.module.css'
 
 function groupQueue(queue) {
@@ -46,6 +47,15 @@ function MemberList({ assignment, heroMap }) {
         const hero = resolveHero(heroMap, heroId)
         const label = hero?.name || member.hero_name || '미지정 영웅'
         const score = member.score ?? member.rating ?? member.mmr
+        const source = member.match_source || (member.standin ? 'participant_pool' : 'realtime_queue')
+        const sourceLabel =
+          source === 'participant_pool' ? '대역' : source === 'realtime_queue' ? '실시간' : '기타'
+        const sourceClass =
+          source === 'participant_pool'
+            ? styles.memberSourceStandin
+            : source === 'realtime_queue'
+            ? styles.memberSourceRealtime
+            : styles.memberSourceUnknown
         return (
           <li key={key} className={styles.memberItem}>
             {hero?.image_url ? (
@@ -59,6 +69,7 @@ function MemberList({ assignment, heroMap }) {
             )}
             <div className={styles.memberMeta}>
               <span className={styles.memberName}>{label}</span>
+              <span className={`${styles.memberSourceBadge} ${sourceClass}`}>{sourceLabel}</span>
               {Number.isFinite(score) ? (
                 <span className={styles.memberScore}>{score}</span>
               ) : null}
@@ -168,6 +179,24 @@ function resolveDefaultRoleName(roles) {
   return ''
 }
 
+function describeSampleType(sampleType) {
+  switch (sampleType) {
+    case 'participant_pool':
+      return '참가자 풀 기준'
+    case 'participant_pool_fallback_queue':
+      return '참가자 풀(큐 대체) 기준'
+    case 'realtime_queue_waiting':
+      return '실시간 대기열 대기 중'
+    case 'realtime_queue_with_standins':
+      return '실시간 대기열 + 대역 보강'
+    case 'realtime_queue_fallback_pool':
+      return '실시간 대기열 없음(참가자 풀 사용)'
+    case 'realtime_queue':
+    default:
+      return '실시간 대기열 기준'
+  }
+}
+
 export default function MatchQueueClient({
   gameId,
   mode,
@@ -178,12 +207,26 @@ export default function MatchQueueClient({
 }) {
   const router = useRouter()
   const { state, actions } = useMatchQueue({ gameId, mode, enabled: true })
+  const {
+    loading: plannerLoading,
+    error: plannerError,
+    plan: plannerPlan,
+    meta: plannerMeta,
+    queue: plannerQueue,
+    participantPool: plannerParticipantPool,
+    sampleType: plannerSampleType,
+    realtimeEnabled: plannerRealtimeEnabled,
+    lastUpdated: plannerUpdatedAt,
+    refresh: refreshPlanner,
+    exportPlan: exportPlanner,
+  } = useLocalMatchPlanner({ gameId, mode, enabled: true })
   const [countdown, setCountdown] = useState(null)
   const countdownTimerRef = useRef(null)
   const navigationLockRef = useRef(false)
   const latestStatusRef = useRef('idle')
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
   const [autoJoinError, setAutoJoinError] = useState('')
+  const [plannerExportNotice, setPlannerExportNotice] = useState('')
   const autoJoinSignatureRef = useRef('')
   const autoJoinRetryTimerRef = useRef(null)
   const heroMissingRedirectRef = useRef(false)
@@ -249,20 +292,41 @@ export default function MatchQueueClient({
     const meta = state.match.sampleMeta
     const parts = []
     const sampleType = meta.sampleType || (meta.realtime ? 'realtime_queue' : 'participant_pool')
-    if (sampleType === 'realtime_queue') {
-      if (Number.isFinite(Number(meta.queueSampled))) {
-        parts.push(`대기열 ${Number(meta.queueSampled)}명 기준`)
-      } else if (Number.isFinite(Number(meta.queueCount))) {
-        parts.push(`대기열 ${Number(meta.queueCount)}명`)
+    const queueSampled = Number(meta.queueSampled)
+    const queueCount = Number(meta.queueCount)
+    const poolCount = Number(meta.participantPoolCount)
+    const standinSampled = Number(meta.standinSampled)
+    const waitSeconds = Number(meta.queueWaitSeconds)
+    const waitThreshold = Number(meta.queueWaitThresholdSeconds)
+
+    if (sampleType.startsWith('realtime_queue')) {
+      if (Number.isFinite(queueSampled)) {
+        parts.push(`대기열 ${queueSampled}명 기준`)
+      } else if (Number.isFinite(queueCount)) {
+        parts.push(`대기열 ${queueCount}명`)
+      }
+      if (Number.isFinite(waitSeconds)) {
+        if (sampleType === 'realtime_queue_waiting' && Number.isFinite(waitThreshold)) {
+          parts.push(`대기 ${Math.max(0, Math.round(waitSeconds))}초 (최소 ${Math.round(waitThreshold)}초)`)
+        } else if (waitSeconds >= 0) {
+          parts.push(`대기 ${Math.max(0, Math.round(waitSeconds))}초 경과`)
+        }
+      }
+      if (sampleType === 'realtime_queue_with_standins' && Number.isFinite(standinSampled) && standinSampled > 0) {
+        parts.push(`대역 ${standinSampled}명 보강`)
+      }
+      if (sampleType === 'realtime_queue_fallback_pool' && Number.isFinite(poolCount)) {
+        parts.push(`참가자 풀 ${poolCount}명 대체`)
       }
     } else {
-      const queueIncluded = Number(meta.queueSampled)
-      if (Number.isFinite(queueIncluded) && queueIncluded > 0) {
-        parts.push(`대기열 ${queueIncluded}명 포함`)
+      if (Number.isFinite(queueSampled) && queueSampled > 0) {
+        parts.push(`대기열 ${queueSampled}명 포함`)
       }
-      const poolCount = Number(meta.participantPoolCount)
       if (Number.isFinite(poolCount)) {
         parts.push(`참가자 풀 ${poolCount}명`)
+      }
+      if (Number.isFinite(standinSampled) && standinSampled > 0) {
+        parts.push(`대역 ${standinSampled}명 사용`)
       }
     }
     if (Number.isFinite(Number(meta.simulatedSelected))) {
@@ -287,24 +351,41 @@ export default function MatchQueueClient({
     const parts = []
     const sampleType =
       queuedSampleMeta.sampleType || (queuedSampleMeta.realtime ? 'realtime_queue' : 'participant_pool')
-    if (sampleType === 'realtime_queue') {
-      const queueSampled = Number(queuedSampleMeta.queueSampled)
+    const queueSampled = Number(queuedSampleMeta.queueSampled)
+    const queueCount = Number(queuedSampleMeta.queueCount)
+    const poolCount = Number(queuedSampleMeta.participantPoolCount)
+    const standinSampled = Number(queuedSampleMeta.standinSampled)
+    const waitSeconds = Number(queuedSampleMeta.queueWaitSeconds)
+    const waitThreshold = Number(queuedSampleMeta.queueWaitThresholdSeconds)
+
+    if (sampleType.startsWith('realtime_queue')) {
       if (Number.isFinite(queueSampled)) {
         parts.push(`대기열 ${queueSampled}명 기준`)
-      } else {
-        const queueCount = Number(queuedSampleMeta.queueCount)
-        if (Number.isFinite(queueCount)) {
-          parts.push(`대기열 ${queueCount}명 기준`)
+      } else if (Number.isFinite(queueCount)) {
+        parts.push(`대기열 ${queueCount}명 기준`)
+      }
+      if (Number.isFinite(waitSeconds)) {
+        if (sampleType === 'realtime_queue_waiting' && Number.isFinite(waitThreshold)) {
+          parts.push(`대기 ${Math.max(0, Math.round(waitSeconds))}초 (최소 ${Math.round(waitThreshold)}초)`)
+        } else if (waitSeconds >= 0) {
+          parts.push(`대기 ${Math.max(0, Math.round(waitSeconds))}초 경과`)
         }
       }
+      if (sampleType === 'realtime_queue_with_standins' && Number.isFinite(standinSampled) && standinSampled > 0) {
+        parts.push(`대역 ${standinSampled}명 보강`)
+      }
+      if (sampleType === 'realtime_queue_fallback_pool' && Number.isFinite(poolCount)) {
+        parts.push(`참가자 풀 ${poolCount}명 대체`)
+      }
     } else {
-      const queueSampled = Number(queuedSampleMeta.queueSampled)
       if (Number.isFinite(queueSampled) && queueSampled > 0) {
         parts.push(`대기열 ${queueSampled}명 포함`)
       }
-      const poolCount = Number(queuedSampleMeta.participantPoolCount)
       if (Number.isFinite(poolCount)) {
         parts.push(`참가자 풀 ${poolCount}명`)
+      }
+      if (Number.isFinite(standinSampled) && standinSampled > 0) {
+        parts.push(`대역 ${standinSampled}명 사용`)
       }
     }
     const simulatedSelected = Number(queuedSampleMeta.simulatedSelected)
@@ -772,6 +853,130 @@ export default function MatchQueueClient({
     return state.heroId
   }, [state.heroId, state.heroMeta?.name])
 
+  const plannerSummary = useMemo(() => {
+    if (!plannerPlan) return ''
+    const parts = []
+    const summarySampleType = plannerMeta?.sampleType || plannerSampleType || 'realtime_queue'
+    const queueCount = Number(plannerMeta?.queueCount)
+    const queueSampled = Number(plannerMeta?.queueSampled)
+    const poolCount = Number(plannerMeta?.participantPoolCount)
+    const sampleCount = Number(plannerMeta?.sampleCount)
+    if (summarySampleType === 'realtime_queue') {
+      const resolvedQueue = Number.isFinite(queueSampled)
+        ? queueSampled
+        : Number.isFinite(queueCount)
+        ? queueCount
+        : plannerQueue?.length || 0
+      if (resolvedQueue) {
+        parts.push(`실시간 대기열 ${resolvedQueue}명 기준`)
+      }
+    } else {
+      const resolvedPool = Number.isFinite(poolCount)
+        ? poolCount
+        : plannerParticipantPool?.length || 0
+      if (resolvedPool) {
+        parts.push(`참가자 풀 ${resolvedPool}명 기준`)
+      }
+      if (Number.isFinite(queueSampled) && queueSampled > 0) {
+        parts.push(`대기열 ${queueSampled}명 포함`)
+      }
+      if (!Number.isFinite(queueSampled) && plannerQueue?.length) {
+        parts.push(`대기열 ${plannerQueue.length}명 참고`)
+      }
+    }
+    if (Number.isFinite(sampleCount) && sampleCount >= 0 && summarySampleType !== 'realtime_queue') {
+      parts.push(`후보 ${sampleCount}명 추출`)
+    }
+    if (Number.isFinite(plannerPlan.memberCount)) {
+      parts.push(`배정 ${plannerPlan.memberCount}명`)
+    }
+    if (Number.isFinite(plannerPlan.totalSlots)) {
+      parts.push(`필요 슬롯 ${plannerPlan.totalSlots}개`)
+    }
+    const filtered = Number(plannerMeta?.simulatedFiltered)
+    if (Number.isFinite(filtered) && filtered > 0) {
+      parts.push(`점수 초과 제외 ${filtered}명`)
+    }
+    const windowValue = Number.isFinite(Number(plannerPlan.maxWindow))
+      ? Number(plannerPlan.maxWindow)
+      : Number(plannerMeta?.scoreWindow)
+    if (Number.isFinite(windowValue) && windowValue > 0) {
+      parts.push(`점수 윈도우 ±${Math.round(windowValue)}`)
+    }
+    if (plannerRealtimeEnabled != null) {
+      parts.push(describeSampleType(summarySampleType))
+    }
+    parts.push(plannerPlan.ready ? '모든 슬롯 충족' : '슬롯 부족')
+    return parts.join(' · ')
+  }, [
+    plannerPlan,
+    plannerMeta,
+    plannerQueue?.length,
+    plannerParticipantPool?.length,
+    plannerSampleType,
+    plannerRealtimeEnabled,
+  ])
+
+  const plannerUpdatedLabel = useMemo(() => {
+    if (plannerMeta?.generatedAt) {
+      try {
+        return new Intl.DateTimeFormat('ko-KR', {
+          dateStyle: 'medium',
+          timeStyle: 'medium',
+        }).format(new Date(plannerMeta.generatedAt))
+      } catch (error) {
+        console.debug('시간 포맷 실패:', error)
+        return plannerMeta.generatedAt
+      }
+    }
+    if (!plannerUpdatedAt) return ''
+    try {
+      return new Intl.DateTimeFormat('ko-KR', {
+        dateStyle: 'medium',
+        timeStyle: 'medium',
+      }).format(plannerUpdatedAt)
+    } catch (error) {
+      console.debug('시간 포맷 실패:', error)
+      return plannerUpdatedAt.toISOString()
+    }
+  }, [plannerMeta?.generatedAt, plannerUpdatedAt])
+
+  const handlePlannerRefresh = useCallback(() => {
+    refreshPlanner()
+      .then((result) => {
+        if (!result?.ok && result?.error) {
+          setPlannerExportNotice(result.error)
+        } else {
+          setPlannerExportNotice('로컬 매칭 데이터를 새로 불러왔습니다.')
+        }
+      })
+      .catch((cause) => {
+        console.error('로컬 매칭 새로고침 실패:', cause)
+        setPlannerExportNotice('로컬 매칭 데이터를 새로 불러오지 못했습니다.')
+      })
+  }, [refreshPlanner])
+
+  const handlePlannerExport = useCallback(() => {
+    const result = exportPlanner()
+    if (result?.ok) {
+      setPlannerExportNotice('로컬 매칭 결과를 JSON으로 저장했습니다.')
+    } else if (result?.error) {
+      setPlannerExportNotice(result.error)
+    } else {
+      setPlannerExportNotice('매칭 결과를 내보내지 못했습니다.')
+    }
+  }, [exportPlanner])
+
+  useEffect(() => {
+    if (!plannerExportNotice) return undefined
+    const timer = setTimeout(() => {
+      setPlannerExportNotice('')
+    }, 4000)
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [plannerExportNotice])
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -868,6 +1073,69 @@ export default function MatchQueueClient({
             ))}
           </div>
         )}
+      </section>
+
+      <section className={styles.card}>
+        <div className={styles.plannerHeader}>
+          <div>
+            <h2 className={styles.sectionTitle}>로컬 매칭 시뮬레이터</h2>
+            <p className={styles.sectionHint}>
+              게임 슬롯과 대기열 데이터를 직접 불러와 점수·역할 기준으로 구성한 미리보기입니다.
+            </p>
+          </div>
+          <div className={styles.plannerActions}>
+            <button
+              type="button"
+              className={styles.plannerButton}
+              onClick={handlePlannerRefresh}
+              disabled={plannerLoading}
+            >
+              {plannerLoading ? '불러오는 중…' : '새로 고침'}
+            </button>
+            <button
+              type="button"
+              className={`${styles.plannerButton} ${styles.exportButton}`}
+              onClick={handlePlannerExport}
+              disabled={plannerLoading || !plannerPlan}
+            >
+              JSON 내보내기
+            </button>
+          </div>
+        </div>
+        {plannerUpdatedLabel ? (
+          <p className={styles.plannerTimestamp}>최근 갱신: {plannerUpdatedLabel}</p>
+        ) : null}
+        {plannerExportNotice ? (
+          <p className={styles.successText}>{plannerExportNotice}</p>
+        ) : null}
+        {plannerError ? <p className={styles.errorText}>{plannerError}</p> : null}
+        {!plannerPlan && !plannerLoading && !plannerError ? (
+          <p className={styles.sectionHint}>대기열 데이터를 불러와 로컬 매칭을 구성합니다.</p>
+        ) : null}
+        {plannerPlan ? (
+          <>
+            {plannerSummary ? (
+              <p className={styles.sectionHint}>{plannerSummary}</p>
+            ) : null}
+            {plannerPlan.warnings?.length ? (
+              <ul className={styles.diagnosticList}>
+                {plannerPlan.warnings.map((warning, index) => (
+                  <li key={`${warning}-${index}`} className={styles.diagnosticItem}>
+                    {warning}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className={styles.matchGrid}>
+              {plannerPlan.assignments.map((assignment, index) => (
+                <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>
+                  <h3 className={styles.queueRole}>{assignment.role}</h3>
+                  <MemberList assignment={assignment} heroMap={plannerPlan.heroMap} />
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
       </section>
 
       {showDiagnosticsCard ? (
