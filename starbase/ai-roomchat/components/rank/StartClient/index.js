@@ -1,203 +1,243 @@
-'use client'
+"use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/router"
 
-import HeaderControls from './HeaderControls'
-import LogsPanel from './LogsPanel'
-import ManualResponsePanel from './ManualResponsePanel'
-import RosterPanel from './RosterPanel'
-import StatusBanner from './StatusBanner'
-import TurnInfoPanel from './TurnInfoPanel'
-import { useStartClientEngine } from './useStartClientEngine'
-import styles from './StartClient.module.css'
-import { getHeroAudioManager } from '../../../lib/audio/heroAudioManager'
+import styles from "./StartClient.module.css"
+import { loadGameBundle } from "./engine/loadGameBundle"
+import { supabase } from "../../../lib/supabase"
 
-function formatStatusLabel(status) {
-  if (!status) return '상태 미확인'
-  const normalized = String(status).toLowerCase()
-  if (['defeated', 'lost', '패배'].includes(normalized)) return '패배'
-  if (['eliminated', 'retired', '탈락'].includes(normalized)) return '탈락'
-  if (['pending', 'waiting'].includes(normalized)) return '대기 중'
-  if (['active', 'alive', 'in_battle'].includes(normalized)) return '전투 중'
-  return status
-}
-
-function getStatusClassName(status) {
-  const normalized = String(status || '').toLowerCase()
-  if (['defeated', 'lost', '패배'].includes(normalized)) {
-    return styles.statusDefeated
+function buildBackgroundStyle(imageUrl) {
+  if (!imageUrl) {
+    return { backgroundColor: "#0f172a" }
   }
-  if (['eliminated', 'retired', '탈락'].includes(normalized)) {
-    return styles.statusEliminated
-  }
-  return ''
-}
-
-function formatWinRate(value) {
-  if (value === null || value === undefined) return null
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return null
-  const ratio = numeric > 1 ? numeric : numeric * 100
-  const rounded = Math.round(ratio * 10) / 10
-  return `${rounded}%`
-}
-
-function formatBattles(value) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric < 0) return null
-  return `${numeric}전`
-}
-
-function formatScore(value) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return null
-  return `점수 ${numeric}`
-}
-
-function buildParticipantStages(participant = {}) {
-  const hero = participant.hero || {}
-  const stages = []
-  const name = hero.name || '이름 없는 영웅'
-  const subtitleParts = []
-  if (participant.role) {
-    subtitleParts.push(`역할 ${participant.role}`)
-  }
-  subtitleParts.push(`상태 ${formatStatusLabel(participant.status)}`)
-  stages.push({ title: name, subtitle: subtitleParts.join(' · ') })
-
-  if (hero.description) {
-    stages.push({ title: '설명', subtitle: hero.description })
-  }
-
-  for (let index = 1; index <= 4; index += 1) {
-    const ability = hero[`ability${index}`]
-    if (ability) {
-      stages.push({ title: `능력 ${index}`, subtitle: ability })
-    }
-  }
-
-  const statsParts = []
-  const score = formatScore(participant.score)
-  const battles = formatBattles(participant.battles ?? participant.total_battles)
-  const winRate = formatWinRate(participant.win_rate ?? participant.winRate)
-  if (score) statsParts.push(score)
-  if (battles) statsParts.push(battles)
-  if (winRate) statsParts.push(`승률 ${winRate}`)
-  if (statsParts.length) {
-    stages.push({ title: '전적', subtitle: statsParts.join(' · ') })
-  }
-
-  return stages
-}
-
-function buildBackgroundStyle(urls) {
-  if (!Array.isArray(urls) || urls.length === 0) {
-    return { backgroundColor: '#0f172a' }
-  }
-
-  const safeUrls = urls.map((url) => `url(${url})`)
-  if (safeUrls.length === 1) {
-    return {
-      backgroundImage: safeUrls[0],
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
-    }
-  }
-
-  const count = safeUrls.length
-  const size = safeUrls.map(() => `${(100 / count).toFixed(2)}% 100%`).join(', ')
-  const position = safeUrls
-    .map((_, index) => {
-      if (count === 1) return '50% 50%'
-      const x = Math.round((index / (count - 1)) * 100)
-      return `${x}% 50%`
-    })
-    .join(', ')
-
   return {
-    backgroundImage: safeUrls.join(', '),
-    backgroundSize: size,
-    backgroundPosition: position,
-    backgroundRepeat: 'no-repeat',
+    backgroundImage: `linear-gradient(rgba(15,23,42,0.82), rgba(15,23,42,0.94)), url(${imageUrl})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
   }
+}
+
+function formatRole(role) {
+  if (!role) return "역할 미지정"
+  return role
+}
+
+function formatSlotNumber(slotNo, fallbackIndex) {
+  const base = slotNo ?? fallbackIndex ?? null
+  if (base == null) return "슬롯 미지정"
+  return `슬롯 ${base + 1}`
+}
+
+function sanitizeTemplate(template) {
+  if (!template) return "템플릿 내용이 비어 있습니다."
+  const trimmed = String(template).trim()
+  if (!trimmed) return "템플릿 내용이 비어 있습니다."
+  return trimmed
+}
+
+function useGameBundle(gameId, { enabled = true } = {}) {
+  const [state, setState] = useState({ loading: true, error: null, bundle: null })
+
+  useEffect(() => {
+    let active = true
+
+    if (!enabled) {
+      setState((prev) => ({ ...prev, loading: true }))
+      return () => {
+        active = false
+      }
+    }
+
+    if (!gameId) {
+      setState({ loading: false, error: new Error("게임 ID가 없습니다."), bundle: null })
+      return () => {
+        active = false
+      }
+    }
+
+    setState((prev) => ({ ...prev, loading: true, error: null }))
+
+    loadGameBundle(supabase, gameId)
+      .then((bundle) => {
+        if (!active) return
+        setState({ loading: false, error: null, bundle })
+      })
+      .catch((error) => {
+        if (!active) return
+        setState({ loading: false, error, bundle: null })
+      })
+
+    return () => {
+      active = false
+    }
+  }, [enabled, gameId])
+
+  return state
+}
+
+function PromptList({ nodes }) {
+  if (!nodes.length) {
+    return <p className={styles.emptyMessage}>연결된 프롬프트 슬롯이 없습니다.</p>
+  }
+
+  return (
+    <ul className={styles.promptList}>
+      {nodes.map((node, index) => {
+        const slotLabel = formatSlotNumber(node?.slot_no, index)
+        const roleLabel = node?.slot_type === "player" ? "플레이어" : node?.slot_type === "gm" ? "GM" : "AI"
+        const template = sanitizeTemplate(node?.template)
+        const manualGlobal = node?.options?.manual_vars_global?.length || 0
+        const manualLocal = node?.options?.manual_vars_local?.length || 0
+        const activeGlobal = node?.options?.active_vars_global?.length || 0
+        const activeLocal = node?.options?.active_vars_local?.length || 0
+        const totalManual = manualGlobal + manualLocal
+        const totalActive = activeGlobal + activeLocal
+
+        return (
+          <li key={node?.id || `${slotLabel}-${index}`} className={styles.promptCard}>
+            <header className={styles.promptCardHeader}>
+              <div className={styles.promptSlot}>{slotLabel}</div>
+              <div className={styles.promptMeta}>
+                <span>{roleLabel}</span>
+                {node?.is_start ? <span className={styles.promptStart}>시작 슬롯</span> : null}
+              </div>
+            </header>
+            <pre className={styles.promptTemplate}>{template}</pre>
+            <footer className={styles.promptFooter}>
+              <span>수동 변수 {totalManual}개</span>
+              <span>자동 활성 {totalActive}개</span>
+            </footer>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function ParticipantStrip({ participants }) {
+  if (!participants.length) {
+    return <p className={styles.emptyMessage}>등록된 참가자가 없습니다.</p>
+  }
+
+  return (
+    <div className={styles.participantStrip}>
+      {participants.map((participant, index) => {
+        const hero = participant?.hero || {}
+        const slotLabel = formatSlotNumber(participant?.slot_no, index)
+        const abilities = [hero?.ability1, hero?.ability2, hero?.ability3, hero?.ability4].filter(Boolean)
+        return (
+          <article key={participant?.id || `${participant?.owner_id}-${index}`} className={styles.participantCard}>
+            <div className={styles.participantHeader}>
+              <span className={styles.participantSlot}>{slotLabel}</span>
+              <span className={styles.participantRole}>{formatRole(participant?.role)}</span>
+            </div>
+            <h3 className={styles.participantName}>{hero?.name || "이름 없는 영웅"}</h3>
+            {participant?.status ? (
+              <p className={styles.participantStatus}>상태 {participant.status}</p>
+            ) : null}
+            {abilities.length ? (
+              <ul className={styles.participantAbilities}>
+                {abilities.map((ability, abilityIndex) => (
+                  <li key={abilityIndex}>{ability}</li>
+                ))}
+              </ul>
+            ) : null}
+          </article>
+        )
+      })}
+    </div>
+  )
 }
 
 export default function StartClient({ gameId: overrideGameId, onExit }) {
   const router = useRouter()
-  const resolvedGameId = overrideGameId ?? router.query.id
+  const routerReady = router?.isReady ?? false
+  const resolvedGameId = overrideGameId ?? (routerReady ? router.query.id : null)
 
-  const {
-    loading,
-    error,
-    game,
-    participants,
-    currentNode,
-    preflight,
-    turn,
-    activeGlobal,
-    activeLocal,
-    statusMessage,
-    promptMetaWarning,
-    apiKeyWarning,
-    logs,
-    aiMemory,
-    playerHistories,
-    realtimeEvents,
-    realtimePresence,
-    dropInSnapshot,
-    apiKey,
-    setApiKey,
-    apiKeyCooldown,
-    apiVersion,
-    setApiVersion,
-    geminiMode,
-    setGeminiMode,
-    geminiModel,
-    setGeminiModel,
-    geminiModelOptions,
-    geminiModelLoading,
-    geminiModelError,
-    reloadGeminiModels,
-    manualResponse,
-    setManualResponse,
-    isAdvancing,
-    isStarting,
-    handleStart,
-    advanceWithAi,
-    advanceWithManual,
-    autoAdvance,
-    turnTimerSeconds,
-    timeRemaining,
-    currentActor,
-    canSubmitAction,
-    activeBackdropUrls,
-    activeBgmUrl,
-    activeBgmDuration,
-    activeAudioProfile,
-    consensus,
-  } = useStartClientEngine(resolvedGameId)
+  const { loading, error, bundle } = useGameBundle(resolvedGameId, {
+    enabled: Boolean(overrideGameId) || routerReady,
+  })
 
-  const [timeoutNotice, setTimeoutNotice] = useState('')
-  const autoStartedRef = useRef(false)
-  const timeoutTrackerRef = useRef({ lastProcessed: null, misses: 0 })
-  const autoAdvanceRunningRef = useRef(false)
+  const backgroundStyle = useMemo(
+    () => buildBackgroundStyle(bundle?.game?.image_url),
+    [bundle?.game?.image_url],
+  )
 
-  const backgroundUrls = useMemo(() => {
-    if (activeBackdropUrls && activeBackdropUrls.length) return activeBackdropUrls
-    if (game?.image_url) return [game.image_url]
-    return []
-  }, [activeBackdropUrls, game?.image_url])
+  const promptNodes = useMemo(() => {
+    if (!bundle?.graph?.nodes) return []
+    return [...bundle.graph.nodes].sort((a, b) => {
+      const aSlot = a?.slot_no ?? Number.POSITIVE_INFINITY
+      const bSlot = b?.slot_no ?? Number.POSITIVE_INFINITY
+      if (aSlot === bSlot) return 0
+      return aSlot - bSlot
+    })
+  }, [bundle?.graph?.nodes])
 
-  const rootStyle = useMemo(() => buildBackgroundStyle(backgroundUrls), [backgroundUrls])
-  const audioManager = useMemo(() => {
-    if (typeof window === 'undefined') return null
-    return getHeroAudioManager()
-  }, [])
-  const audioBaselineRef = useRef(null)
+  const participants = bundle?.participants || []
+  const warnings = bundle?.warnings || []
 
-  const bannerMessage = useMemo(() => {
+  return (
+    <div className={styles.root} style={backgroundStyle}>
+      <div className={styles.shell}>
+        <header className={styles.header}>
+          <div>
+            <h1 className={styles.title}>{bundle?.game?.title || bundle?.game?.name || "메인 게임"}</h1>
+            <p className={styles.subtitle}>
+              {resolvedGameId ? `게임 ID: ${resolvedGameId}` : "게임 정보를 불러오지 못했습니다."}
+            </p>
+          </div>
+          {onExit ? (
+            <button type="button" className={styles.exitButton} onClick={onExit}>
+              나가기
+            </button>
+          ) : null}
+        </header>
+
+        {loading ? <p className={styles.statusMessage}>게임 데이터를 불러오는 중입니다…</p> : null}
+        {error ? (
+          <div className={styles.errorBox}>
+            <h2>데이터를 불러오지 못했습니다</h2>
+            <p>{error.message}</p>
+          </div>
+        ) : null}
+
+        {!loading && !error ? (
+          <>
+            {warnings.length ? (
+              <div className={styles.warningBox}>
+                <h2>프롬프트 경고</h2>
+                <ul>
+                  {warnings.map((warning, index) => (
+                    <li key={index}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <section className={styles.promptPanel}>
+              <div className={styles.panelHeader}>
+                <h2>프롬프트 세트</h2>
+                {bundle?.game?.prompt_set_id ? (
+                  <span className={styles.panelMeta}>세트 ID {bundle.game.prompt_set_id}</span>
+                ) : null}
+              </div>
+              <PromptList nodes={promptNodes} />
+            </section>
+
+            <section className={styles.participantPanel}>
+              <div className={styles.panelHeader}>
+                <h2>매칭된 참가자</h2>
+                <span className={styles.panelMeta}>{participants.length}명</span>
+              </div>
+              <ParticipantStrip participants={participants} />
+            </section>
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+}
     const parts = [promptMetaWarning, apiKeyWarning, statusMessage]
       .map((part) => (part ? String(part) : ''))
       .filter((part) => part.trim().length)
