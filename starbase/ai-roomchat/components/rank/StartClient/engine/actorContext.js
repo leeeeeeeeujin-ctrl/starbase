@@ -3,6 +3,8 @@ export function normalizeHeroName(name) {
   return String(name).normalize('NFC').replace(/\s+/g, '').toLowerCase()
 }
 
+import { findParticipantBySlotIndex } from './participants'
+
 export function resolveActorContext({ node, slots, participants }) {
   if (!node) {
     return { slotIndex: -1, heroSlot: null, participant: null }
@@ -30,8 +32,7 @@ export function resolveActorContext({ node, slots, participants }) {
   }
 
   const heroSlot = slotIndex >= 0 && slotIndex < slots.length ? slots[slotIndex] : null
-  const participant =
-    slotIndex >= 0 && slotIndex < participants.length ? participants[slotIndex] : null
+  const participant = findParticipantBySlotIndex(participants, slotIndex)
 
   return { slotIndex, heroSlot, participant }
 }
