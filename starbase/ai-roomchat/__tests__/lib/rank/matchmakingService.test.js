@@ -1,4 +1,4 @@
-import { loadMatchSampleSource } from '@/lib/rank/matchmakingService'
+import { loadMatchSampleSource, runMatching } from '@/lib/rank/matchmakingService'
 
 function createSupabaseStub(tableData = {}) {
   return {
@@ -214,5 +214,86 @@ describe('loadMatchSampleSource', () => {
     const standin = result.entries.find((entry) => entry.standin)
     expect(standin).toBeTruthy()
     expect(standin.match_source).toBe('participant_pool')
+  })
+})
+
+describe('runMatching', () => {
+  it('ignores duplicate heroes when building assignments', () => {
+    const result = runMatching({
+      mode: 'rank_solo',
+      roles: [
+        {
+          name: 'attack',
+          slot_count: 2,
+        },
+      ],
+      queue: [
+        {
+          id: 'q1',
+          role: 'attack',
+          hero_id: 'hero-1',
+          owner_id: 'owner-1',
+          score: 1200,
+          joined_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'q2',
+          role: 'attack',
+          hero_id: 'hero-2',
+          owner_id: 'owner-2',
+          score: 1210,
+          joined_at: '2024-01-01T00:00:10Z',
+        },
+        {
+          id: 'q3',
+          role: 'attack',
+          hero_id: 'hero-1',
+          owner_id: 'owner-3',
+          score: 1190,
+          joined_at: '2024-01-01T00:00:20Z',
+        },
+      ],
+    })
+
+    expect(result.ready).toBe(true)
+    const heroes = result.assignments.flatMap((assignment) =>
+      assignment.members.map((member) => member.hero_id || member.heroId),
+    )
+
+    expect(heroes).toHaveLength(2)
+    expect(new Set(heroes)).toEqual(new Set(['hero-1', 'hero-2']))
+  })
+
+  it('fails to match when only duplicate heroes are available', () => {
+    const result = runMatching({
+      mode: 'rank_solo',
+      roles: [
+        {
+          name: 'attack',
+          slot_count: 2,
+        },
+      ],
+      queue: [
+        {
+          id: 'q1',
+          role: 'attack',
+          hero_id: 'hero-1',
+          owner_id: 'owner-1',
+          score: 1200,
+          joined_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'q2',
+          role: 'attack',
+          hero_id: 'hero-1',
+          owner_id: 'owner-2',
+          score: 1210,
+          joined_at: '2024-01-01T00:00:10Z',
+        },
+      ],
+    })
+
+    expect(result.ready).toBe(false)
+    expect(result.error?.type).toBe('insufficient_candidates')
   })
 })
