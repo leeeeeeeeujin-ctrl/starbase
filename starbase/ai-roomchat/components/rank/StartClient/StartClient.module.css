@@ -194,6 +194,83 @@
   gap: 12px;
 }
 
+.bridgeList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bridgeItem {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.55);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bridgeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bridgeDestination {
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.bridgeBadges {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bridgeBadge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+  color: rgba(226, 232, 240, 0.86);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.bridgeBadgeFallback {
+  background: rgba(59, 130, 246, 0.28);
+  color: #bfdbfe;
+}
+
+.bridgeConditions {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.bridgeMeta {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.bridgeEmpty {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.38);
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.78);
+}
+
 .promptSectionLabel {
   margin: 0 0 6px;
   font-size: 13px;
