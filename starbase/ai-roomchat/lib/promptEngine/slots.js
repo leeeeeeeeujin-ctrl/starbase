@@ -4,6 +4,7 @@ export function buildSlotsFromParticipants(participants = []) {
   const slots = []
   let i = 0
   for (const participant of participants) {
+    if (!participant) continue
     const hero = participant.hero || {}
     const row = {
       id: participant.hero_id || null,
@@ -18,7 +19,7 @@ export function buildSlotsFromParticipants(participants = []) {
       image_url: hero.image_url || null,
     }
 
-    for (let k = 1; k <= 12; k++) {
+    for (let k = 1; k <= 12; k += 1) {
       row[`ability${k}`] = safeStr(hero[`ability${k}`])
     }
 
