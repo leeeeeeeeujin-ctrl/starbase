@@ -8,6 +8,9 @@ describe('promptInterpreter', () => {
   const baseGame = {
     rules_prefix: '게임 진행 전 반드시 체크할 것.',
     rules: {
+      nerf_insight: true,
+      fair_power_balance: true,
+      char_limit: 300,
       checklist: [
         { text: '플레이어는 서로 협력해 위기를 해결하라.', mandatory: true },
         { text: '시네마틱 연출을 중시하라.' },
@@ -50,6 +53,9 @@ describe('promptInterpreter', () => {
     expect(result.rulesBlock).toContain('[규칙]')
     expect(result.rulesBlock).toContain('게임 진행 전 반드시 체크할 것.')
     expect(result.rulesBlock).toContain('플레이어는 서로 협력해 위기를 해결하라.')
+    expect(result.rulesBlock).toContain('분석/통찰은 조건이 모호하면 실패로 처리하라')
+    expect(result.rulesBlock).toContain('능력은 여건이 될 때만 사용하되')
+    expect(result.rulesBlock).toContain('글을 300자로 써라')
     expect(result.rulesBlock).toContain(DEFAULT_RULE_GUIDANCE[0])
     expect(result.rulesBlock).toContain('전역 변수 지침')
     expect(result.rulesBlock).toContain('전역 변수 FIRE_GUARD')

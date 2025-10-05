@@ -4,6 +4,7 @@ import {
   buildSystemPromptFromChecklist,
   safeStr,
 } from '@/lib/promptEngine'
+import { buildRuleOptionLines } from './rules'
 import { compileTemplate as compileRankTemplate } from './prompt'
 
 const DEFAULT_RULE_GUIDANCE = [
@@ -163,18 +164,32 @@ function buildRuleSections({ game, node } = {}) {
     localVariables: [],
   }
 
-  const prefix = safeStr(game?.rules_prefix).trim()
-  if (prefix) {
-    sections.baseRules.push(prefix)
+  const seen = new Set()
+  const pushBaseRule = (line) => {
+    const text = safeStr(line)
+    if (!text) return
+    const key = text.trim()
+    if (!key) return
+    if (seen.has(key)) return
+    seen.add(key)
+    sections.baseRules.push(text)
   }
+
+  const prefixLines = cleanLines(game?.rules_prefix)
+    .map((line) => line.replace(/^규칙:?$/i, '').trim())
+    .filter(Boolean)
+  prefixLines.forEach((line) => pushBaseRule(line))
 
   const parsedRules = parseGameRules(game)
+  const ruleOptionLines = buildRuleOptionLines(parsedRules)
+  ruleOptionLines.forEach((line) => pushBaseRule(line))
+
   const checklist = buildSystemPromptFromChecklist(parsedRules)
   if (checklist) {
-    sections.baseRules.push(...cleanLines(checklist))
+    cleanLines(checklist).forEach((line) => pushBaseRule(line))
   }
 
-  sections.baseRules.push(...DEFAULT_RULE_GUIDANCE)
+  DEFAULT_RULE_GUIDANCE.forEach((line) => pushBaseRule(line))
 
   const manualGlobal = node?.options?.manual_vars_global || []
   const activeGlobal = node?.options?.active_vars_global || []
