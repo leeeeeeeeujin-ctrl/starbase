@@ -364,6 +364,7 @@ export default function NonRealtimeConsole({
   const [sessionEnded, setSessionEnded] = useState(false)
   const [activeGlobalNames, setActiveGlobalNames] = useState([])
   const [activeLocalNames, setActiveLocalNames] = useState([])
+  const [settingsHydrated, setSettingsHydrated] = useState(false)
 
   const aiHistory = useMemo(() => createAiHistory(), [])
   const visitedSlotsRef = useRef(new Set())
@@ -423,58 +424,72 @@ export default function NonRealtimeConsole({
     } catch (error) {
       console.warn("[NonRealtimeConsole] Gemini 모델을 불러오지 못했습니다:", error)
     }
+    setSettingsHydrated(true)
   }, [])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (!settingsHydrated || typeof window === "undefined") return
     try {
       const trimmed = apiKey.trim()
       if (trimmed) {
-        window.sessionStorage.setItem("rank.start.apiKey", trimmed)
-      } else {
+        const existing = window.sessionStorage.getItem("rank.start.apiKey") || ""
+        if (existing !== trimmed) {
+          window.sessionStorage.setItem("rank.start.apiKey", trimmed)
+        }
+      } else if (window.sessionStorage.getItem("rank.start.apiKey")) {
         window.sessionStorage.removeItem("rank.start.apiKey")
       }
     } catch (error) {
       console.warn("[NonRealtimeConsole] API 키를 저장하지 못했습니다:", error)
     }
-  }, [apiKey])
+  }, [apiKey, settingsHydrated])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (!settingsHydrated || typeof window === "undefined") return
     try {
-      if (apiVersion) {
-        window.sessionStorage.setItem("rank.start.apiVersion", apiVersion)
-      } else {
+      const normalized = apiVersion ? apiVersion : ""
+      if (normalized) {
+        const existing = window.sessionStorage.getItem("rank.start.apiVersion") || ""
+        if (existing !== normalized) {
+          window.sessionStorage.setItem("rank.start.apiVersion", normalized)
+        }
+      } else if (window.sessionStorage.getItem("rank.start.apiVersion")) {
         window.sessionStorage.removeItem("rank.start.apiVersion")
       }
     } catch (error) {
       console.warn("[NonRealtimeConsole] API 버전을 저장하지 못했습니다:", error)
     }
-  }, [apiVersion])
+  }, [apiVersion, settingsHydrated])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (!settingsHydrated || typeof window === "undefined") return
     try {
       const normalized = normalizeGeminiMode(geminiMode)
       if (normalized) {
-        window.sessionStorage.setItem("rank.start.geminiMode", normalized)
+        const existing = window.sessionStorage.getItem("rank.start.geminiMode") || ""
+        if (existing !== normalized) {
+          window.sessionStorage.setItem("rank.start.geminiMode", normalized)
+        }
       }
     } catch (error) {
       console.warn("[NonRealtimeConsole] Gemini 모드를 저장하지 못했습니다:", error)
     }
-  }, [geminiMode])
+  }, [geminiMode, settingsHydrated])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (!settingsHydrated || typeof window === "undefined") return
     try {
       const normalized = normalizeGeminiModelId(geminiModel)
       if (normalized) {
-        window.sessionStorage.setItem("rank.start.geminiModel", normalized)
+        const existing = window.sessionStorage.getItem("rank.start.geminiModel") || ""
+        if (existing !== normalized) {
+          window.sessionStorage.setItem("rank.start.geminiModel", normalized)
+        }
       }
     } catch (error) {
       console.warn("[NonRealtimeConsole] Gemini 모델을 저장하지 못했습니다:", error)
     }
-  }, [geminiModel])
+  }, [geminiModel, settingsHydrated])
 
   const applyBundle = useCallback(
     (loaded, { gameId } = {}) => {
