@@ -115,6 +115,150 @@ function mergeWarnings(bundleWarnings = [], slotWarnings = []) {
   return combined
 }
 
+function indexSlotLayout(slotRows = []) {
+  const entries = []
+  const byRole = new Map()
+  const byHeroId = new Map()
+  const byOwnerId = new Map()
+
+  slotRows.forEach((row) => {
+    const slotIndex =
+      row?.slot_index != null && Number.isFinite(Number(row?.slot_index))
+        ? Number(row.slot_index)
+        : row?.slotIndex != null && Number.isFinite(Number(row?.slotIndex))
+        ? Number(row.slotIndex)
+        : null
+    if (slotIndex == null) return
+
+    const role = typeof row?.role === 'string' ? row.role.trim() : ''
+    const heroId = normalizeId(row?.hero_id ?? row?.heroId ?? null)
+    const ownerId = normalizeId(row?.hero_owner_id ?? row?.heroOwnerId ?? row?.ownerId ?? null)
+
+    const entry = {
+      id: row?.id || null,
+      role: role || null,
+      slotNo: slotIndex,
+      slotIndex,
+      active: row?.active !== false,
+      heroId,
+      ownerId,
+    }
+
+    entries.push(entry)
+    if (entry.role) {
+      if (!byRole.has(entry.role)) {
+        byRole.set(entry.role, [])
+      }
+      byRole.get(entry.role).push(entry)
+    }
+    if (entry.heroId) {
+      if (!byHeroId.has(entry.heroId)) {
+        byHeroId.set(entry.heroId, entry)
+      }
+    }
+    if (entry.ownerId) {
+      if (!byOwnerId.has(entry.ownerId)) {
+        byOwnerId.set(entry.ownerId, entry)
+      }
+    }
+  })
+
+  byRole.forEach((list) => {
+    list.sort((a, b) => a.slotNo - b.slotNo)
+  })
+
+  return {
+    entries,
+    byRole,
+    byHeroId,
+    byOwnerId,
+  }
+}
+
+function pickSlotFromEntries(entries, assigned) {
+  if (!Array.isArray(entries)) return null
+  for (const entry of entries) {
+    if (!entry) continue
+    const slotNo = Number(entry.slotNo)
+    if (!Number.isFinite(slotNo)) continue
+    if (assigned && assigned.has(slotNo)) continue
+    return slotNo
+  }
+  return null
+}
+
+function resolveSlotNumber({
+  roleName,
+  assignmentSlotIndex,
+  member,
+  memberIndex,
+  layout,
+  assignedSlots,
+}) {
+  if (!layout) return null
+  const roleKey = typeof roleName === 'string' ? roleName.trim() : ''
+  const roleSlots = roleKey ? layout.byRole.get(roleKey) || [] : []
+
+  const heroId = normalizeId(
+    member?.hero_id ?? member?.heroId ?? member?.hero?.id ?? null,
+  )
+  const ownerId = normalizeId(
+    member?.owner_id ?? member?.ownerId ?? member?.owner?.id ?? null,
+  )
+
+  if (Number.isFinite(Number(assignmentSlotIndex))) {
+    const slotFromIndex = pickSlotFromEntries(
+      [roleSlots[Number(assignmentSlotIndex)]],
+      assignedSlots,
+    )
+    if (slotFromIndex != null) return slotFromIndex
+  }
+
+  if (heroId && layout.byHeroId.has(heroId)) {
+    const slotFromHero = pickSlotFromEntries(
+      [layout.byHeroId.get(heroId)],
+      assignedSlots,
+    )
+    if (slotFromHero != null) return slotFromHero
+  }
+
+  if (ownerId && layout.byOwnerId.has(ownerId)) {
+    const slotFromOwner = pickSlotFromEntries(
+      [layout.byOwnerId.get(ownerId)],
+      assignedSlots,
+    )
+    if (slotFromOwner != null) return slotFromOwner
+  }
+
+  if (Number.isFinite(Number(memberIndex))) {
+    const slotFromMemberIndex = pickSlotFromEntries(
+      [roleSlots[Number(memberIndex)]],
+      assignedSlots,
+    )
+    if (slotFromMemberIndex != null) return slotFromMemberIndex
+  }
+
+  return pickSlotFromEntries(roleSlots, assignedSlots)
+}
+
+function resolveSlotForPoolEntry(entry, layout, assignedSlots) {
+  if (!layout) return null
+  const heroSlot = entry?.heroId ? layout.byHeroId.get(entry.heroId) : null
+  const ownerSlot = entry?.ownerId ? layout.byOwnerId.get(entry.ownerId) : null
+
+  const heroCandidate = pickSlotFromEntries(heroSlot ? [heroSlot] : [], assignedSlots)
+  if (heroCandidate != null) return heroCandidate
+
+  const ownerCandidate = pickSlotFromEntries(
+    ownerSlot ? [ownerSlot] : [],
+    assignedSlots,
+  )
+  if (ownerCandidate != null) return ownerCandidate
+
+  const roleSlots = entry?.role ? layout.byRole.get(entry.role) || [] : []
+  return pickSlotFromEntries(roleSlots, assignedSlots)
+}
+
 export function sanitizeMatchMetadata(rawMeta) {
   if (!rawMeta) return null
   try {
@@ -258,10 +402,13 @@ function normalizeAssignments(assignments = []) {
 export function normalizeMatchParticipants({
   participants = [],
   assignments = [],
+  slotLayout = [],
 }) {
   const pool = normalizeParticipantPool(participants)
   const normalizedAssignments = normalizeAssignments(assignments)
+  const layoutIndex = indexSlotLayout(slotLayout)
   const used = new Set()
+  const assignedSlots = new Set()
   const resolvedParticipants = []
   const warnings = []
 
@@ -325,10 +472,29 @@ export function normalizeMatchParticipants({
         assignment.members[index]?.slot_index ??
         assignment.members[index]?.slotIndex ??
         null
-      const slotNo =
+      const slotFromMetadata =
         slotNoRaw != null && Number.isFinite(Number(slotNoRaw))
           ? Number(slotNoRaw)
           : null
+
+      let resolvedSlotNo = resolveSlotNumber({
+        roleName,
+        assignmentSlotIndex: assignment.roleSlots[index],
+        member: assignment.members[index],
+        memberIndex: index,
+        layout: layoutIndex,
+        assignedSlots,
+      })
+
+      if (resolvedSlotNo == null && slotFromMetadata != null) {
+        const fallbackValue = Number(slotFromMetadata)
+        if (Number.isFinite(fallbackValue)) {
+          const normalizedValue = fallbackValue + 1
+          if (!assignedSlots.has(normalizedValue)) {
+            resolvedSlotNo = normalizedValue
+          }
+        }
+      }
 
       let claimed = takeByHero(heroId)
       if (!claimed) claimed = takeByOwner(ownerId)
@@ -336,26 +502,53 @@ export function normalizeMatchParticipants({
       if (!claimed) claimed = takeAny()
 
       if (claimed) {
-        resolvedParticipants.push(
-          adoptParticipant(claimed, {
-            role: roleName || claimed.role,
-            slotNo,
-          }),
-        )
+        const adopted = adoptParticipant(claimed, {
+          role: roleName || claimed.role,
+          slotNo: resolvedSlotNo,
+        })
+        if (resolvedSlotNo != null) {
+          assignedSlots.add(resolvedSlotNo)
+        } else if (
+          adopted.slot_no != null &&
+          Number.isFinite(Number(adopted.slot_no))
+        ) {
+          assignedSlots.add(Number(adopted.slot_no))
+        }
+        resolvedParticipants.push(adopted)
       } else {
         warnings.push({
           type: 'slot_mismatch',
           message: '[MatchContext] 매칭된 슬롯을 참가자와 일치시키지 못했습니다.',
-          context: { role: roleName, slotNo, heroId, ownerId },
-        })
-        resolvedParticipants.push(
-          buildPlaceholderParticipant({
+          context: {
             role: roleName,
-            slotNo,
+            slotNo:
+              resolvedSlotNo != null
+                ? resolvedSlotNo
+                : slotFromMetadata != null && Number.isFinite(Number(slotFromMetadata))
+                ? Number(slotFromMetadata) + 1
+                : null,
             heroId,
             ownerId,
-          }),
-        )
+          },
+        })
+        const placeholder = buildPlaceholderParticipant({
+          role: roleName,
+          slotNo:
+            resolvedSlotNo != null
+              ? resolvedSlotNo
+              : slotFromMetadata != null && Number.isFinite(Number(slotFromMetadata))
+              ? Number(slotFromMetadata) + 1
+              : null,
+          heroId,
+          ownerId,
+        })
+        if (
+          placeholder.slot_no != null &&
+          Number.isFinite(Number(placeholder.slot_no))
+        ) {
+          assignedSlots.add(Number(placeholder.slot_no))
+        }
+        resolvedParticipants.push(placeholder)
       }
     }
   })
@@ -363,12 +556,32 @@ export function normalizeMatchParticipants({
   pool.forEach((entry) => {
     if (used.has(entry.index)) return
     used.add(entry.index)
-    resolvedParticipants.push(adoptParticipant(entry))
+    const slotOverride = resolveSlotForPoolEntry(entry, layoutIndex, assignedSlots)
+    const adopted = adoptParticipant(entry, {
+      slotNo:
+        slotOverride != null
+          ? slotOverride
+          : entry.slotNo != null
+          ? entry.slotNo
+          : null,
+    })
+    if (
+      adopted.slot_no != null &&
+      Number.isFinite(Number(adopted.slot_no))
+    ) {
+      assignedSlots.add(Number(adopted.slot_no))
+    }
+    resolvedParticipants.push(adopted)
   })
 
   const slots = buildSlotsFromParticipants(resolvedParticipants)
 
-  return { participants: resolvedParticipants, slots, warnings }
+  return {
+    participants: resolvedParticipants,
+    slots,
+    warnings,
+    slotLayout: layoutIndex.entries,
+  }
 }
 
 export function createMatchContext({
@@ -377,11 +590,13 @@ export function createMatchContext({
   graph = { nodes: [], edges: [] },
   matchingMetadata = null,
   bundleWarnings = [],
+  slotLayout = [],
 }) {
   const sanitized = sanitizeMatchMetadata(matchingMetadata)
   const normalized = normalizeMatchParticipants({
     participants,
     assignments: sanitized?.assignments || [],
+    slotLayout,
   })
   const promptSet = game?.prompt_set_id
     ? {
@@ -403,6 +618,7 @@ export function createMatchContext({
     graph,
     participants: normalized.participants,
     slots: normalized.slots,
+    slotLayout: normalized.slotLayout,
     promptSet,
     matching: sanitized,
     roles,
@@ -416,6 +632,7 @@ export function createEmptyMatchContext() {
     graph: { nodes: [], edges: [] },
     participants: [],
     slots: [],
+    slotLayout: [],
     promptSet: null,
     matching: null,
     roles: [],

@@ -2,6 +2,41 @@ import { withTable } from '@/lib/supabaseTables'
 
 import { createNodeFromSlot } from './rules'
 
+function normalizeSlotLayout(rows = []) {
+  if (!Array.isArray(rows) || rows.length === 0) return []
+
+  return rows
+    .map((row, index) => {
+      const slotIndex =
+        row?.slot_index != null && Number.isFinite(Number(row?.slot_index))
+          ? Number(row.slot_index)
+          : null
+
+      if (slotIndex == null) return null
+
+      const role = typeof row?.role === 'string' ? row.role.trim() : ''
+
+      return {
+        id: row?.id || null,
+        role: role || null,
+        slot_index: slotIndex,
+        slotIndex,
+        active: row?.active !== false,
+        hero_id: row?.hero_id || null,
+        hero_owner_id: row?.hero_owner_id || null,
+        order: index,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.slot_index === b.slot_index) {
+        return a.order - b.order
+      }
+      return a.slot_index - b.slot_index
+    })
+    .map(({ order, ...rest }) => rest)
+}
+
 function normalizeParticipants(rows = []) {
   const mapped = rows.map((row, index) => {
     const hero = row?.heroes || {}
@@ -96,6 +131,25 @@ export async function loadGameBundle(supabaseClient, gameId) {
   if (participantError) throw participantError
 
   const participants = normalizeParticipants(participantRows || [])
+  let slotLayout = []
+  try {
+    const slotResult = await withTable(
+      supabaseClient,
+      'rank_game_slots',
+      (table) =>
+        supabaseClient
+          .from(table)
+          .select('id, slot_index, role, active, hero_id, hero_owner_id')
+          .eq('game_id', gameId)
+          .order('slot_index'),
+    )
+    if (!slotResult?.error && Array.isArray(slotResult?.data)) {
+      slotLayout = normalizeSlotLayout(slotResult.data)
+    }
+  } catch (error) {
+    console.warn('[StartClient] 슬롯 레이아웃을 불러오지 못했습니다:', error)
+    slotLayout = []
+  }
   const graph = { nodes: [], edges: [] }
   const warnings = []
 
@@ -133,7 +187,7 @@ export async function loadGameBundle(supabaseClient, gameId) {
     graph.edges = (bridgeRows || []).map(mapBridgeRow).filter((edge) => edge.from && edge.to)
   }
 
-  return { game: gameRow, participants, graph, warnings }
+  return { game: gameRow, participants, slotLayout, graph, warnings }
 }
 
 //

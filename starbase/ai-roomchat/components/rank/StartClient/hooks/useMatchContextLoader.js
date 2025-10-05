@@ -61,6 +61,7 @@ export function useMatchContextLoader({
         game: bundle.game,
         participants: bundle.participants,
         graph: bundle.graph,
+        slotLayout: bundle.slotLayout,
         matchingMetadata: sanitizedMeta,
         bundleWarnings: bundle.warnings || [],
       })
