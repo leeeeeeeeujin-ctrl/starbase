@@ -2152,8 +2152,12 @@ export function useStartClientEngine(gameId) {
 
     channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)
 
-    channel.subscribe().catch((error) => {
-      console.error('[StartClient] 실시간 타임라인 채널 구독 실패:', error)
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') return
+      console[status === 'CHANNEL_ERROR' ? 'error' : 'warn'](
+        '[StartClient] 실시간 타임라인 채널 상태 변경:',
+        status,
+      )
     })
 
     return () => {
