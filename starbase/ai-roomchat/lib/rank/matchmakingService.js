@@ -296,13 +296,20 @@ export async function loadMatchSampleSource(
 
   const [queueEntries, participantPool] = await Promise.all([
     loadQueueEntries(supabaseClient, { gameId, mode }),
-    realtimeEnabled ? Promise.resolve([]) : loadParticipantPool(supabaseClient, gameId),
+    loadParticipantPool(supabaseClient, gameId),
   ])
 
   let sampleEntries = realtimeEnabled ? queueEntries : participantPool
   let sampleType = realtimeEnabled ? 'realtime_queue' : 'participant_pool'
 
-  if (!realtimeEnabled && (!Array.isArray(sampleEntries) || sampleEntries.length === 0)) {
+  if (realtimeEnabled) {
+    if (!Array.isArray(sampleEntries) || sampleEntries.length === 0) {
+      sampleEntries = participantPool
+      if (Array.isArray(sampleEntries) && sampleEntries.length > 0) {
+        sampleType = 'realtime_queue_fallback_pool'
+      }
+    }
+  } else if (!Array.isArray(sampleEntries) || sampleEntries.length === 0) {
     sampleEntries = queueEntries
     if (Array.isArray(sampleEntries) && sampleEntries.length > 0) {
       sampleType = 'participant_pool_fallback_queue'
