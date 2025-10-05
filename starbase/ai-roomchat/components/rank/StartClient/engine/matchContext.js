@@ -119,13 +119,18 @@ export function sanitizeMatchMetadata(rawMeta) {
   if (!rawMeta) return null
   try {
     const normalized = {
-      source: rawMeta.source || 'client_start',
+      source: rawMeta.source || rawMeta.matchSource || 'client_start',
       matchType: rawMeta.matchType || null,
       matchCode: rawMeta.matchCode || null,
       dropInTarget: rawMeta.dropInTarget || null,
       dropInMeta: rawMeta.dropInMeta || null,
       sampleMeta: rawMeta.sampleMeta || null,
       roleStatus: rawMeta.roleStatus || null,
+      roles: Array.isArray(rawMeta.roles)
+        ? rawMeta.roles.map((role) => ({
+            ...role,
+          }))
+        : [],
       assignments: Array.isArray(rawMeta.assignments)
         ? rawMeta.assignments.map((assignment) => ({
             ...assignment,
@@ -137,6 +142,11 @@ export function sanitizeMatchMetadata(rawMeta) {
         rawMeta.turnTimer != null && Number.isFinite(Number(rawMeta.turnTimer))
           ? Number(rawMeta.turnTimer)
           : null,
+      scoreWindow:
+        rawMeta.scoreWindow != null && Number.isFinite(Number(rawMeta.scoreWindow))
+          ? Number(rawMeta.scoreWindow)
+          : null,
+      heroMap: rawMeta.heroMap || null,
     }
     return normalized
   } catch (error) {
@@ -177,12 +187,60 @@ function normalizeAssignments(assignments = []) {
         : null
     const roleSlots = Array.isArray(assignment?.roleSlots)
       ? assignment.roleSlots
+          .map((slot) => Number(slot))
+          .filter((value) => Number.isFinite(value))
+      : Array.isArray(assignment?.role_slots)
+      ? assignment.role_slots
+          .map((slot) => Number(slot))
+          .filter((value) => Number.isFinite(value))
       : []
     const heroIds = Array.isArray(assignment?.heroIds)
       ? assignment.heroIds
+          .map((id) => (id != null ? String(id).trim() : ''))
+          .filter((value) => value.length > 0)
       : []
     const members = Array.isArray(assignment?.members)
       ? assignment.members
+          .map((member) => {
+            if (!member || typeof member !== 'object') {
+              return null
+            }
+            const heroId =
+              member.hero_id ??
+              member.heroId ??
+              member.heroID ??
+              (member.hero && (member.hero.id ?? member.heroId)) ??
+              null
+            const normalizedHeroId =
+              heroId != null && String(heroId).trim().length
+                ? String(heroId).trim()
+                : null
+            const ownerId = member.owner_id ?? member.ownerId ?? member.ownerID ?? null
+            const normalizedOwnerId =
+              ownerId != null && String(ownerId).trim().length
+                ? String(ownerId).trim()
+                : null
+            const slotCandidate =
+              member.slot_no ??
+              member.slotNo ??
+              member.slot_index ??
+              member.slotIndex ??
+              null
+            const slotNo =
+              slotCandidate != null && Number.isFinite(Number(slotCandidate))
+                ? Number(slotCandidate)
+                : null
+            return {
+              ...member,
+              hero_id: normalizedHeroId ?? null,
+              heroId: normalizedHeroId ?? null,
+              owner_id: normalizedOwnerId ?? null,
+              ownerId: normalizedOwnerId ?? null,
+              slot_no: slotNo ?? null,
+              slotNo: slotNo ?? null,
+            }
+          })
+          .filter(Boolean)
       : []
     return {
       role: roleName,
@@ -260,7 +318,13 @@ export function normalizeMatchParticipants({
           assignment.members[index]?.owner?.id ??
           null,
       )
-      const slotNoRaw = assignment.roleSlots[index]
+      const slotNoRaw =
+        assignment.roleSlots[index] ??
+        assignment.members[index]?.slot_no ??
+        assignment.members[index]?.slotNo ??
+        assignment.members[index]?.slot_index ??
+        assignment.members[index]?.slotIndex ??
+        null
       const slotNo =
         slotNoRaw != null && Number.isFinite(Number(slotNoRaw))
           ? Number(slotNoRaw)
