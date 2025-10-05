@@ -1,7 +1,23 @@
-import { formatRealtimeReason } from './realtimeReasons'
 import { formatOwnerDisplayName } from './participants'
 
-export { formatRealtimeReason } from './realtimeReasons'
+export function formatRealtimeReason(reason) {
+  if (!reason) return ''
+  const normalized = String(reason).trim().toLowerCase()
+  switch (normalized) {
+    case 'timeout':
+      return '시간 초과'
+    case 'consensus':
+      return '합의 미응답'
+    case 'manual':
+      return '수동 진행 미완료'
+    case 'ai':
+      return '자동 진행'
+    case 'inactivity':
+      return '응답 없음'
+    default:
+      return ''
+  }
+}
 
 export function formatApiKeyPoolSource(source) {
   const normalized = typeof source === 'string' ? source.trim().toLowerCase() : ''
