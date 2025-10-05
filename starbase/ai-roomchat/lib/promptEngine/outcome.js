@@ -2,9 +2,20 @@ import { linesOf } from './utils'
 
 export function parseOutcome(assistantText = '') {
   const arr = linesOf(assistantText)
-  const lastLine = (arr[arr.length - 1] || '').trim()
-  const secondLast = (arr[arr.length - 2] || '').trim()
-  const thirdLast = (arr[arr.length - 3] || '').trim()
+  let endIndex = arr.length - 1
+
+  while (endIndex >= 0) {
+    const candidate = arr[endIndex]
+    if (!candidate || !candidate.trim()) {
+      endIndex -= 1
+      continue
+    }
+    break
+  }
+
+  const lastLine = endIndex >= 0 ? (arr[endIndex] || '').trim() : ''
+  const secondLast = endIndex - 1 >= 0 ? (arr[endIndex - 1] || '').trim() : ''
+  const thirdLast = endIndex - 2 >= 0 ? (arr[endIndex - 2] || '').trim() : ''
 
   const normalizedSecond = secondLast.toLowerCase()
   const variables =
