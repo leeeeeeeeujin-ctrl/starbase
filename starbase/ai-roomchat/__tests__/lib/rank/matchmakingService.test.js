@@ -296,4 +296,50 @@ describe('runMatching', () => {
     expect(result.ready).toBe(false)
     expect(result.error?.type).toBe('insufficient_candidates')
   })
+
+  it('allows stand-in duplicates when they originate from the participant pool', () => {
+    const result = runMatching({
+      mode: 'rank_solo',
+      roles: [
+        {
+          name: 'attack',
+          slot_count: 2,
+        },
+      ],
+      queue: [
+        {
+          id: 'q1',
+          role: 'attack',
+          hero_id: 'hero-1',
+          owner_id: 'creator',
+          score: 1200,
+          joined_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: null,
+          role: 'attack',
+          hero_id: 'hero-2',
+          owner_id: 'creator',
+          score: 1180,
+          joined_at: '2024-01-01T00:00:05Z',
+          simulated: true,
+          standin: true,
+          match_source: 'participant_pool',
+        },
+      ],
+    })
+
+    expect(result.ready).toBe(true)
+    expect(result.assignments).toHaveLength(2)
+
+    const memberOwners = result.assignments.map((assignment) =>
+      (assignment.members[0]?.owner_id || assignment.members[0]?.ownerId || null),
+    )
+    expect(memberOwners).toEqual(['creator', 'creator'])
+
+    const heroIds = result.assignments.map((assignment) =>
+      assignment.members[0]?.hero_id || assignment.members[0]?.heroId || null,
+    )
+    expect(new Set(heroIds)).toEqual(new Set(['hero-1', 'hero-2']))
+  })
 })

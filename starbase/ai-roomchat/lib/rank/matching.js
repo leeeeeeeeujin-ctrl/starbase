@@ -526,8 +526,17 @@ function derivePartyKey(entry) {
 
 function deriveGroupKey(entry) {
   if (entry.id != null) return `id:${entry.id}`
+
+  const heroId = entry.hero_id ?? entry.heroId ?? null
+  const isStandin = entry.simulated === true || entry.standin === true || entry.match_source === 'participant_pool'
+
+  if (isStandin && heroId != null) {
+    return `hero:${heroId}`
+  }
+
   if (entry.owner_id != null) return `owner:${entry.owner_id}`
   if (entry.ownerId != null) return `owner:${entry.ownerId}`
+  if (heroId != null) return `hero:${heroId}`
   const fallback = Math.random().toString(36).slice(2)
   return `rand:${fallback}`
 }
