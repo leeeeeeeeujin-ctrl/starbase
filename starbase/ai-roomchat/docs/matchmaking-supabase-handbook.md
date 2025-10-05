@@ -8,7 +8,7 @@
 - **`public.rank_game_slots`** – 게임별 기본 슬롯 격자를 제공해 로비가 최소 정원을 판단하고 슬롯별 기본 히어로를 표시할 수 있습니다. `(game_id, slot_index)` 유니크 제약으로 순서를 고정합니다.【F:starbase/ai-roomchat/supabase.sql†L829-L856】
 
 ## 2. 대기열 & 참가자 저장소
-- **`public.rank_participants`** – 플레이어의 영구 등록 정보를 보관합니다. 영웅/역할, 점수·레이팅, 전적, 상태 플래그, 타임스탬프를 포함하며 `(game_id, owner_id)` 유니크 제약과 소유자 기반 RLS가 적용됩니다. 난입·보강 시 최신 후보를 빠르게 찾기 위해 `(game_id, role, status, updated_at desc)` 인덱스를 추가했습니다.【F:starbase/ai-roomchat/supabase.sql†L858-L893】
+- **`public.rank_participants`** – 플레이어의 영구 등록 정보를 보관합니다. 영웅/역할, 슬롯 미러링 `slot_no`, 점수·레이팅, 전적, 상태 플래그, 타임스탬프를 포함하며 `(game_id, owner_id)` 유니크 제약과 소유자 기반 RLS가 적용됩니다. 난입·보강 시 최신 후보를 빠르게 찾기 위해 `(game_id, role, status, updated_at desc)` 인덱스와 `(game_id, slot_no)` 부분 유니크 인덱스를 함께 둡니다.【F:starbase/ai-roomchat/supabase.sql†L898-L940】【F:starbase/ai-roomchat/supabase.sql†L921-L923】
 - **`public.rank_match_queue`** – 실시간 대기열 엔트리를 관리합니다. 게임·모드·역할·점수·파티 키·상태·참여 시각을 저장하고 큐 조회/소유자 조회용 인덱스를 제공합니다.【F:starbase/ai-roomchat/supabase.sql†L958-L977】
 
 ## 3. 라이브 방 & 슬롯

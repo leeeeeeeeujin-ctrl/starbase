@@ -90,8 +90,8 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 
 ## Participation & Battle History
 ### `public.rank_participants`
-- Player enrollment keeps hero arrays, role, rating/score stats, battle counts, likes, win rate, status, and timestamps with unique `(game_id, owner_id)` constraint.【F:starbase/ai-roomchat/supabase.sql†L858-L875】
-- RLS allows universal reads but only the participant may insert/update/delete their row; the `(game_id, role, status, updated_at desc)` index accelerates drop-in/비실시간 후보 스캔 시 최신 상태를 찾는 데 사용합니다.【F:starbase/ai-roomchat/supabase.sql†L877-L893】
+- Player enrollment keeps hero arrays, mirrored `slot_no`, role, rating/score stats, battle counts, likes, win rate, status, and timestamps with unique `(game_id, owner_id)` constraint plus a partial `(game_id, slot_no)` guard for seated slots.【F:starbase/ai-roomchat/supabase.sql†L898-L923】
+- RLS allows universal reads but only the participant may insert/update/delete their row; the `(game_id, role, status, updated_at desc)` index accelerates drop-in/비실시간 후보 스캔 시 최신 상태를 찾는 데 사용합니다.【F:starbase/ai-roomchat/supabase.sql†L925-L940】
 
 ### `public.rank_battles`
 - Records matches with attacker/defender ownership, hero arrays, outcome, score delta, hidden flag, and creation time.【F:starbase/ai-roomchat/supabase.sql†L892-L902】
