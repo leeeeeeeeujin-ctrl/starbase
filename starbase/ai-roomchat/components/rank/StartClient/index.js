@@ -29,6 +29,18 @@ function formatSlotNumber(slotNo, fallbackIndex) {
   return `슬롯 ${base + 1}`
 }
 
+function describeParticipantSource(participant) {
+  const source =
+    participant?.match_source || (participant?.standin ? 'participant_pool' : 'realtime_queue')
+  if (source === 'participant_pool') {
+    return { label: '대역', className: styles.participantSourceStandin }
+  }
+  if (source === 'realtime_queue') {
+    return { label: '실시간', className: styles.participantSourceRealtime }
+  }
+  return { label: '알 수 없음', className: styles.participantSourceUnknown }
+}
+
 function sanitizeTemplate(template) {
   if (!template) return "템플릿 내용이 비어 있습니다."
   const trimmed = String(template).trim()
@@ -127,11 +139,15 @@ function ParticipantStrip({ participants }) {
         const hero = participant?.hero || {}
         const slotLabel = formatSlotNumber(participant?.slot_no, index)
         const abilities = [hero?.ability1, hero?.ability2, hero?.ability3, hero?.ability4].filter(Boolean)
+        const sourceInfo = describeParticipantSource(participant)
         return (
           <article key={participant?.id || `${participant?.owner_id}-${index}`} className={styles.participantCard}>
             <div className={styles.participantHeader}>
               <span className={styles.participantSlot}>{slotLabel}</span>
               <span className={styles.participantRole}>{formatRole(participant?.role)}</span>
+              <span className={`${styles.participantSourceBadge} ${sourceInfo.className}`}>
+                {sourceInfo.label}
+              </span>
             </div>
             <h3 className={styles.participantName}>{hero?.name || "이름 없는 영웅"}</h3>
             {participant?.status ? (

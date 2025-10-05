@@ -93,6 +93,8 @@ describe('loadMatchSampleSource', () => {
     expect(result.entries).toHaveLength(1)
     expect(result.participantPool).toHaveLength(1)
     expect(result.entries[0].owner_id).toBe('creator')
+    expect(result.standinCount).toBe(0)
+    expect(result.queueWaitSeconds).toBeNull()
   })
 
   it('falls back to queue entries when participant pool is empty', async () => {
@@ -123,5 +125,94 @@ describe('loadMatchSampleSource', () => {
     expect(result.entries).toHaveLength(1)
     expect(result.queue).toHaveLength(1)
     expect(result.entries[0].owner_id).toBe('player')
+    expect(typeof result.queueWaitSeconds === 'number').toBe(true)
+  })
+
+  it('waits for realtime queue before injecting stand-ins when under threshold', async () => {
+    const now = Date.now()
+    const supabase = createSupabaseStub({
+      rank_match_queue: [
+        {
+          id: 'q1',
+          game_id: 'game-3',
+          mode: 'rank_solo',
+          owner_id: 'player-1',
+          hero_id: 'hero-10',
+          role: 'attack',
+          score: 1000,
+          joined_at: new Date(now - 5_000).toISOString(),
+          status: 'waiting',
+        },
+      ],
+      rank_participants: [
+        {
+          id: 'p2',
+          game_id: 'game-3',
+          owner_id: 'standin-1',
+          hero_id: 'hero-99',
+          role: 'attack',
+          score: 950,
+          status: 'alive',
+          updated_at: new Date(now - 60_000).toISOString(),
+        },
+      ],
+    })
+
+    const result = await loadMatchSampleSource(supabase, {
+      gameId: 'game-3',
+      mode: 'rank_solo',
+      realtimeEnabled: true,
+    })
+
+    expect(result.sampleType).toBe('realtime_queue_waiting')
+    expect(result.entries).toHaveLength(1)
+    expect(result.standinCount).toBe(0)
+    expect(result.queueWaitSeconds).toBeGreaterThanOrEqual(0)
+    expect(result.queueWaitSeconds).toBeLessThan(30)
+  })
+
+  it('injects stand-ins from participant pool after the wait threshold', async () => {
+    const now = Date.now()
+    const supabase = createSupabaseStub({
+      rank_match_queue: [
+        {
+          id: 'q2',
+          game_id: 'game-4',
+          mode: 'rank_solo',
+          owner_id: 'player-2',
+          hero_id: 'hero-22',
+          role: 'defense',
+          score: 1100,
+          joined_at: new Date(now - 120_000).toISOString(),
+          status: 'waiting',
+        },
+      ],
+      rank_participants: [
+        {
+          id: 'p3',
+          game_id: 'game-4',
+          owner_id: 'standin-2',
+          hero_id: 'hero-42',
+          role: 'defense',
+          score: 1080,
+          status: 'alive',
+          updated_at: new Date(now - 300_000).toISOString(),
+        },
+      ],
+    })
+
+    const result = await loadMatchSampleSource(supabase, {
+      gameId: 'game-4',
+      mode: 'rank_solo',
+      realtimeEnabled: true,
+    })
+
+    expect(result.sampleType).toBe('realtime_queue_with_standins')
+    expect(result.entries).toHaveLength(2)
+    expect(result.standinCount).toBe(1)
+    expect(result.queueWaitSeconds).toBeGreaterThanOrEqual(30)
+    const standin = result.entries.find((entry) => entry.standin)
+    expect(standin).toBeTruthy()
+    expect(standin.match_source).toBe('participant_pool')
   })
 })

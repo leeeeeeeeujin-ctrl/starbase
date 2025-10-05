@@ -47,6 +47,15 @@ function MemberList({ assignment, heroMap }) {
         const hero = resolveHero(heroMap, heroId)
         const label = hero?.name || member.hero_name || '미지정 영웅'
         const score = member.score ?? member.rating ?? member.mmr
+        const source = member.match_source || (member.standin ? 'participant_pool' : 'realtime_queue')
+        const sourceLabel =
+          source === 'participant_pool' ? '대역' : source === 'realtime_queue' ? '실시간' : '기타'
+        const sourceClass =
+          source === 'participant_pool'
+            ? styles.memberSourceStandin
+            : source === 'realtime_queue'
+            ? styles.memberSourceRealtime
+            : styles.memberSourceUnknown
         return (
           <li key={key} className={styles.memberItem}>
             {hero?.image_url ? (
@@ -60,6 +69,7 @@ function MemberList({ assignment, heroMap }) {
             )}
             <div className={styles.memberMeta}>
               <span className={styles.memberName}>{label}</span>
+              <span className={`${styles.memberSourceBadge} ${sourceClass}`}>{sourceLabel}</span>
               {Number.isFinite(score) ? (
                 <span className={styles.memberScore}>{score}</span>
               ) : null}
@@ -175,6 +185,12 @@ function describeSampleType(sampleType) {
       return '참가자 풀 기준'
     case 'participant_pool_fallback_queue':
       return '참가자 풀(큐 대체) 기준'
+    case 'realtime_queue_waiting':
+      return '실시간 대기열 대기 중'
+    case 'realtime_queue_with_standins':
+      return '실시간 대기열 + 대역 보강'
+    case 'realtime_queue_fallback_pool':
+      return '실시간 대기열 없음(참가자 풀 사용)'
     case 'realtime_queue':
     default:
       return '실시간 대기열 기준'
@@ -276,20 +292,41 @@ export default function MatchQueueClient({
     const meta = state.match.sampleMeta
     const parts = []
     const sampleType = meta.sampleType || (meta.realtime ? 'realtime_queue' : 'participant_pool')
-    if (sampleType === 'realtime_queue') {
-      if (Number.isFinite(Number(meta.queueSampled))) {
-        parts.push(`대기열 ${Number(meta.queueSampled)}명 기준`)
-      } else if (Number.isFinite(Number(meta.queueCount))) {
-        parts.push(`대기열 ${Number(meta.queueCount)}명`)
+    const queueSampled = Number(meta.queueSampled)
+    const queueCount = Number(meta.queueCount)
+    const poolCount = Number(meta.participantPoolCount)
+    const standinSampled = Number(meta.standinSampled)
+    const waitSeconds = Number(meta.queueWaitSeconds)
+    const waitThreshold = Number(meta.queueWaitThresholdSeconds)
+
+    if (sampleType.startsWith('realtime_queue')) {
+      if (Number.isFinite(queueSampled)) {
+        parts.push(`대기열 ${queueSampled}명 기준`)
+      } else if (Number.isFinite(queueCount)) {
+        parts.push(`대기열 ${queueCount}명`)
+      }
+      if (Number.isFinite(waitSeconds)) {
+        if (sampleType === 'realtime_queue_waiting' && Number.isFinite(waitThreshold)) {
+          parts.push(`대기 ${Math.max(0, Math.round(waitSeconds))}초 (최소 ${Math.round(waitThreshold)}초)`)
+        } else if (waitSeconds >= 0) {
+          parts.push(`대기 ${Math.max(0, Math.round(waitSeconds))}초 경과`)
+        }
+      }
+      if (sampleType === 'realtime_queue_with_standins' && Number.isFinite(standinSampled) && standinSampled > 0) {
+        parts.push(`대역 ${standinSampled}명 보강`)
+      }
+      if (sampleType === 'realtime_queue_fallback_pool' && Number.isFinite(poolCount)) {
+        parts.push(`참가자 풀 ${poolCount}명 대체`)
       }
     } else {
-      const queueIncluded = Number(meta.queueSampled)
-      if (Number.isFinite(queueIncluded) && queueIncluded > 0) {
-        parts.push(`대기열 ${queueIncluded}명 포함`)
+      if (Number.isFinite(queueSampled) && queueSampled > 0) {
+        parts.push(`대기열 ${queueSampled}명 포함`)
       }
-      const poolCount = Number(meta.participantPoolCount)
       if (Number.isFinite(poolCount)) {
         parts.push(`참가자 풀 ${poolCount}명`)
+      }
+      if (Number.isFinite(standinSampled) && standinSampled > 0) {
+        parts.push(`대역 ${standinSampled}명 사용`)
       }
     }
     if (Number.isFinite(Number(meta.simulatedSelected))) {
@@ -314,24 +351,41 @@ export default function MatchQueueClient({
     const parts = []
     const sampleType =
       queuedSampleMeta.sampleType || (queuedSampleMeta.realtime ? 'realtime_queue' : 'participant_pool')
-    if (sampleType === 'realtime_queue') {
-      const queueSampled = Number(queuedSampleMeta.queueSampled)
+    const queueSampled = Number(queuedSampleMeta.queueSampled)
+    const queueCount = Number(queuedSampleMeta.queueCount)
+    const poolCount = Number(queuedSampleMeta.participantPoolCount)
+    const standinSampled = Number(queuedSampleMeta.standinSampled)
+    const waitSeconds = Number(queuedSampleMeta.queueWaitSeconds)
+    const waitThreshold = Number(queuedSampleMeta.queueWaitThresholdSeconds)
+
+    if (sampleType.startsWith('realtime_queue')) {
       if (Number.isFinite(queueSampled)) {
         parts.push(`대기열 ${queueSampled}명 기준`)
-      } else {
-        const queueCount = Number(queuedSampleMeta.queueCount)
-        if (Number.isFinite(queueCount)) {
-          parts.push(`대기열 ${queueCount}명 기준`)
+      } else if (Number.isFinite(queueCount)) {
+        parts.push(`대기열 ${queueCount}명 기준`)
+      }
+      if (Number.isFinite(waitSeconds)) {
+        if (sampleType === 'realtime_queue_waiting' && Number.isFinite(waitThreshold)) {
+          parts.push(`대기 ${Math.max(0, Math.round(waitSeconds))}초 (최소 ${Math.round(waitThreshold)}초)`)
+        } else if (waitSeconds >= 0) {
+          parts.push(`대기 ${Math.max(0, Math.round(waitSeconds))}초 경과`)
         }
       }
+      if (sampleType === 'realtime_queue_with_standins' && Number.isFinite(standinSampled) && standinSampled > 0) {
+        parts.push(`대역 ${standinSampled}명 보강`)
+      }
+      if (sampleType === 'realtime_queue_fallback_pool' && Number.isFinite(poolCount)) {
+        parts.push(`참가자 풀 ${poolCount}명 대체`)
+      }
     } else {
-      const queueSampled = Number(queuedSampleMeta.queueSampled)
       if (Number.isFinite(queueSampled) && queueSampled > 0) {
         parts.push(`대기열 ${queueSampled}명 포함`)
       }
-      const poolCount = Number(queuedSampleMeta.participantPoolCount)
       if (Number.isFinite(poolCount)) {
         parts.push(`참가자 풀 ${poolCount}명`)
+      }
+      if (Number.isFinite(standinSampled) && standinSampled > 0) {
+        parts.push(`대역 ${standinSampled}명 사용`)
       }
     }
     const simulatedSelected = Number(queuedSampleMeta.simulatedSelected)

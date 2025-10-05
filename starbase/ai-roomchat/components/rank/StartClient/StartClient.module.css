@@ -217,6 +217,7 @@
   align-items: center;
   font-size: 13px;
   color: rgba(226, 232, 240, 0.8);
+  gap: 8px;
 }
 
 .participantSlot {
@@ -227,6 +228,33 @@
 .participantRole {
   font-weight: 600;
   color: rgba(148, 163, 184, 0.95);
+}
+
+.participantSourceBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(71, 85, 105, 0.35);
+  color: rgba(226, 232, 240, 0.82);
+}
+
+.participantSourceRealtime {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.participantSourceStandin {
+  background: rgba(244, 114, 182, 0.22);
+  color: #fbcfe8;
+}
+
+.participantSourceUnknown {
+  background: rgba(148, 163, 184, 0.25);
+  color: rgba(226, 232, 240, 0.75);
 }
 
 .participantName {

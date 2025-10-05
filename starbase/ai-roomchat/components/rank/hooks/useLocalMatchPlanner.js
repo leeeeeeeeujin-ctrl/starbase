@@ -19,6 +19,9 @@ function buildLocalSampleMeta({
   result = null,
   layout = [],
   generatedAt = null,
+  standinCount = 0,
+  queueWaitSeconds = null,
+  queueWaitThresholdSeconds = null,
 }) {
   const queueCount = Array.isArray(queue) ? queue.length : 0
   const poolCount = Array.isArray(participantPool) ? participantPool.length : 0
@@ -39,6 +42,13 @@ function buildLocalSampleMeta({
       ? sampleCount
       : Math.min(queueCount, sampleCount)
   const filteredCount = Math.max(0, sampleCount - selectedCount)
+  const standinSampled = Array.isArray(sampleEntries)
+    ? sampleEntries.filter((entry) => entry?.standin || entry?.match_source === 'participant_pool')
+        .length
+    : 0
+  const standinSelected = members.filter(
+    (member) => member?.standin || member?.match_source === 'participant_pool',
+  ).length
 
   return {
     sampleType,
@@ -54,6 +64,17 @@ function buildLocalSampleMeta({
     slotLayoutCount: layoutCount,
     uniqueHeroCount: uniqueHeroes.size,
     scoreWindow: Number.isFinite(scoreWindow) ? scoreWindow : 0,
+    standinSampled,
+    standinSelected,
+    standinAvailable: Number.isFinite(Number(standinCount)) ? Number(standinCount) : standinCount,
+    queueWaitSeconds:
+      typeof queueWaitSeconds === 'number' && Number.isFinite(queueWaitSeconds)
+        ? queueWaitSeconds
+        : null,
+    queueWaitThresholdSeconds:
+      typeof queueWaitThresholdSeconds === 'number' && Number.isFinite(queueWaitThresholdSeconds)
+        ? queueWaitThresholdSeconds
+        : null,
     ready: Boolean(result?.ready),
     totalSlots: Number(result?.totalSlots) || layoutCount || 0,
   }
@@ -159,6 +180,9 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
         result,
         layout,
         generatedAt: sampleSet.generatedAt,
+        standinCount: sampleSet.standinCount,
+        queueWaitSeconds: sampleSet.queueWaitSeconds,
+        queueWaitThresholdSeconds: sampleSet.queueWaitThresholdSeconds,
       })
 
       if (!warnings.length && result?.error?.type) {
@@ -177,6 +201,10 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
         sampleType: metaPayload.sampleType,
         realtime: metaPayload.realtime,
         sampleGeneratedAt: metaPayload.generatedAt,
+        standinSelected: metaPayload.standinSelected,
+        standinSampled: metaPayload.standinSampled,
+        queueWaitSeconds: metaPayload.queueWaitSeconds,
+        queueWaitThresholdSeconds: metaPayload.queueWaitThresholdSeconds,
       }
 
       setPlan(snapshot)
@@ -219,6 +247,10 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
       ready: plan.ready,
       warnings: plan.warnings,
       memberCount: plan.memberCount,
+      standinSelected: plan.standinSelected,
+      standinSampled: plan.standinSampled,
+      queueWaitSeconds: plan.queueWaitSeconds,
+      queueWaitThresholdSeconds: plan.queueWaitThresholdSeconds,
       meta,
       heroMap: mapToPlain(plan.heroMap),
     }

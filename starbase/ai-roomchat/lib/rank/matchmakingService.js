@@ -13,6 +13,8 @@ import {
 } from './matchModes'
 import { withTable } from '../supabaseTables'
 
+const WAIT_THRESHOLD_SECONDS = 30
+
 const MATCHER_BY_KEY = {
   rank: matchRankParticipants,
   rank_solo: matchSoloRankParticipants,
@@ -204,6 +206,8 @@ export async function loadParticipantPool(supabaseClient, gameId) {
     status: 'waiting',
     joined_at: row.updated_at || row.created_at || null,
     simulated: true,
+    standin: true,
+    match_source: 'participant_pool',
   }))
 }
 
@@ -299,18 +303,55 @@ export async function loadMatchSampleSource(
     loadParticipantPool(supabaseClient, gameId),
   ])
 
-  let sampleEntries = realtimeEnabled ? queueEntries : participantPool
+  const queueAnnotated = Array.isArray(queueEntries)
+    ? queueEntries.map((entry) => ({
+        ...entry,
+        match_source: entry?.match_source || 'realtime_queue',
+        standin: false,
+        simulated: Boolean(entry?.simulated) && entry.simulated === true,
+      }))
+    : []
+
+  const participantAnnotated = Array.isArray(participantPool)
+    ? participantPool.map((entry) => ({
+        ...entry,
+        match_source: entry?.match_source || 'participant_pool',
+        standin: true,
+        simulated: true,
+      }))
+    : []
+
+  const waitInfo = computeQueueWaitInfo(queueAnnotated)
+
+  let sampleEntries = realtimeEnabled ? queueAnnotated.slice() : participantAnnotated.slice()
   let sampleType = realtimeEnabled ? 'realtime_queue' : 'participant_pool'
+  let standins = []
 
   if (realtimeEnabled) {
-    if (!Array.isArray(sampleEntries) || sampleEntries.length === 0) {
-      sampleEntries = participantPool
-      if (Array.isArray(sampleEntries) && sampleEntries.length > 0) {
+    if (queueAnnotated.length === 0) {
+      sampleEntries = participantAnnotated.slice()
+      if (sampleEntries.length > 0) {
         sampleType = 'realtime_queue_fallback_pool'
+      }
+    } else if (
+      typeof waitInfo.waitSeconds === 'number' &&
+      waitInfo.waitSeconds < WAIT_THRESHOLD_SECONDS &&
+      waitInfo.waitSeconds >= 0
+    ) {
+      sampleEntries = queueAnnotated.slice()
+      sampleType = 'realtime_queue_waiting'
+    } else {
+      standins = buildStandinsForQueue(queueAnnotated, participantAnnotated)
+      if (standins.length > 0) {
+        sampleEntries = queueAnnotated.concat(standins)
+        sampleType = 'realtime_queue_with_standins'
+      } else {
+        sampleEntries = queueAnnotated.slice()
+        sampleType = 'realtime_queue'
       }
     }
   } else if (!Array.isArray(sampleEntries) || sampleEntries.length === 0) {
-    sampleEntries = queueEntries
+    sampleEntries = queueAnnotated.slice()
     if (Array.isArray(sampleEntries) && sampleEntries.length > 0) {
       sampleType = 'participant_pool_fallback_queue'
     }
@@ -320,10 +361,84 @@ export async function loadMatchSampleSource(
     realtimeEnabled: Boolean(realtimeEnabled),
     sampleType,
     entries: Array.isArray(sampleEntries) ? sampleEntries : [],
-    queue: Array.isArray(queueEntries) ? queueEntries : [],
-    participantPool: Array.isArray(participantPool) ? participantPool : [],
+    queue: queueAnnotated,
+    participantPool: participantAnnotated,
     generatedAt: new Date().toISOString(),
+    queueWaitSeconds:
+      typeof waitInfo.waitSeconds === 'number' && Number.isFinite(waitInfo.waitSeconds)
+        ? waitInfo.waitSeconds
+        : null,
+    queueOldestJoinedAt: waitInfo.oldestJoinedAt,
+    queueWaitThresholdSeconds: WAIT_THRESHOLD_SECONDS,
+    standinCount: standins.length,
   }
+}
+
+function computeQueueWaitInfo(queueEntries = []) {
+  if (!Array.isArray(queueEntries) || queueEntries.length === 0) {
+    return { waitSeconds: null, oldestJoinedAt: null }
+  }
+
+  let oldestTimestamp = Number.POSITIVE_INFINITY
+  let oldestIso = null
+
+  queueEntries.forEach((entry) => {
+    if (!entry) return
+    const joined = entry.joined_at || entry.joinedAt
+    if (!joined) return
+    const parsed = Date.parse(joined)
+    if (!Number.isFinite(parsed)) return
+    if (parsed < oldestTimestamp) {
+      oldestTimestamp = parsed
+      oldestIso = new Date(parsed).toISOString()
+    }
+  })
+
+  if (!Number.isFinite(oldestTimestamp)) {
+    return { waitSeconds: null, oldestJoinedAt: null }
+  }
+
+  const now = Date.now()
+  const diffMs = Math.max(0, now - oldestTimestamp)
+  return { waitSeconds: diffMs / 1000, oldestJoinedAt: oldestIso }
+}
+
+function buildStandinsForQueue(queueEntries = [], participantPool = []) {
+  if (!Array.isArray(queueEntries) || !Array.isArray(participantPool)) return []
+  if (!queueEntries.length || !participantPool.length) return []
+
+  const usedOwners = new Set()
+  const usedHeroes = new Set()
+
+  queueEntries.forEach((entry) => {
+    if (!entry) return
+    const owner = entry.owner_id || entry.ownerId || null
+    const hero = entry.hero_id || entry.heroId || null
+    if (owner) usedOwners.add(String(owner))
+    if (hero) usedHeroes.add(String(hero))
+  })
+
+  const standins = []
+  participantPool.forEach((candidate) => {
+    if (!candidate) return
+    const owner = candidate.owner_id || candidate.ownerId || null
+    if (owner && usedOwners.has(String(owner))) return
+    const hero = candidate.hero_id || candidate.heroId || null
+    if (hero && usedHeroes.has(String(hero))) return
+
+    const clone = {
+      ...candidate,
+      match_source: 'participant_pool',
+      standin: true,
+      simulated: true,
+    }
+
+    standins.push(clone)
+    if (owner) usedOwners.add(String(owner))
+    if (hero) usedHeroes.add(String(hero))
+  })
+
+  return standins
 }
 
 export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
@@ -345,7 +460,13 @@ export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
     return query
   })
   if (result?.error) throw result.error
-  return Array.isArray(result?.data) ? result.data : []
+  const rows = Array.isArray(result?.data) ? result.data : []
+  return rows.map((row) => ({
+    ...row,
+    match_source: row?.match_source || 'realtime_queue',
+    simulated: Boolean(row?.simulated) && row.simulated === true,
+    standin: false,
+  }))
 }
 
 export async function removeQueueEntry(supabaseClient, { gameId, mode, ownerId }) {
