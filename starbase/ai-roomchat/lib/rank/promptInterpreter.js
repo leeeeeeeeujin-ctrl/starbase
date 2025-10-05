@@ -340,6 +340,26 @@ function buildScopeVariableRules({ manual = [], active = [], activeNames = [], s
     })
 }
 
+function normalizeActiveNameList(names = []) {
+  const list = Array.isArray(names) ? names : []
+  const seen = new Set()
+  const normalized = []
+  list.forEach((value) => {
+    const text = safeStr(value).trim()
+    if (!text) return
+    if (seen.has(text)) return
+    seen.add(text)
+    normalized.push(text)
+  })
+  return normalized
+}
+
+function buildVariableStateLines(names = [], scopeLabel = '전역') {
+  const normalized = normalizeActiveNameList(names)
+  const summary = normalized.length ? normalized.join(', ') : 'none'
+  return [`- 활성화된 ${scopeLabel} 변수: ${summary}`]
+}
+
 function normalizeStatus(value) {
   const text = safeStr(value).trim().toLowerCase()
   return text || 'alive'
@@ -446,11 +466,18 @@ const RULE_SOURCE_PRIORITY = {
   default: 0,
 }
 
-function buildRuleSections({ game, node } = {}) {
+function buildRuleSections({
+  game,
+  node,
+  activeGlobalNames = [],
+  activeLocalNames = [],
+} = {}) {
   const sections = {
     baseRules: [],
     globalVariables: [],
     localVariables: [],
+    globalVariableStates: [],
+    localVariableStates: [],
   }
 
   const baseRuleEntries = []
@@ -547,6 +574,23 @@ function buildRuleSections({ game, node } = {}) {
     sections.localVariables.push(...localRules)
   }
 
+  const mergedGlobalStateNames = normalizeActiveNameList([
+    ...(globalScope.activeNames || []),
+    ...(Array.isArray(activeGlobalNames) ? activeGlobalNames : []),
+  ])
+  const mergedLocalStateNames = normalizeActiveNameList([
+    ...(localScope.activeNames || []),
+    ...(Array.isArray(activeLocalNames) ? activeLocalNames : []),
+  ])
+
+  if (sections.globalVariables.length || mergedGlobalStateNames.length) {
+    sections.globalVariableStates.push(...buildVariableStateLines(mergedGlobalStateNames, '전역'))
+  }
+
+  if (sections.localVariables.length || mergedLocalStateNames.length) {
+    sections.localVariableStates.push(...buildVariableStateLines(mergedLocalStateNames, '로컬'))
+  }
+
   sections.baseRules = baseRuleEntries.map((entry) => entry.text)
 
   return sections
@@ -575,6 +619,22 @@ function buildRulesBlock(sections) {
     lines.push(...sections.localVariables)
   }
 
+  if (sections.globalVariableStates.length) {
+    if (lines[lines.length - 1] !== '') {
+      lines.push('')
+    }
+    lines.push('[전역 변수 상태]')
+    lines.push(...sections.globalVariableStates)
+  }
+
+  if (sections.localVariableStates.length) {
+    if (lines[lines.length - 1] !== '') {
+      lines.push('')
+    }
+    lines.push('[로컬 변수 상태]')
+    lines.push(...sections.localVariableStates)
+  }
+
   return lines.join('\n')
 }
 
@@ -599,13 +659,21 @@ export function interpretPromptNode({
   participants = [],
   slotsMap = null,
   historyText = '',
+  activeGlobalNames = [],
+  activeLocalNames = [],
 } = {}) {
   if (!node) {
     return {
       text: '',
       promptBody: '',
       rulesBlock: '[규칙]\n',
-      sections: { baseRules: [], globalVariables: [], localVariables: [] },
+      sections: {
+        baseRules: [],
+        globalVariables: [],
+        localVariables: [],
+        globalVariableStates: [],
+        localVariableStates: [],
+      },
       meta: {},
     }
   }
@@ -618,7 +686,12 @@ export function interpretPromptNode({
   })
 
   const promptBody = applyPostReplacements(compiledText, { historyText })
-  const sections = buildRuleSections({ game, node })
+  const sections = buildRuleSections({
+    game,
+    node,
+    activeGlobalNames,
+    activeLocalNames,
+  })
   const rulesBlock = buildRulesBlock(sections)
   const finalText = [rulesBlock, '-------------------------------------', promptBody]
     .filter((block) => block != null && block !== '')

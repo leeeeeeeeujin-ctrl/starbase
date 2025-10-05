@@ -125,6 +125,8 @@ export default function NonRealtimeConsole({
   const [statusMessage, setStatusMessage] = useState("")
   const [turnError, setTurnError] = useState("")
   const [sessionEnded, setSessionEnded] = useState(false)
+  const [activeGlobalNames, setActiveGlobalNames] = useState([])
+  const [activeLocalNames, setActiveLocalNames] = useState([])
 
   const aiHistory = useMemo(() => createAiHistory(), [])
   const visitedSlotsRef = useRef(new Set())
@@ -250,6 +252,8 @@ export default function NonRealtimeConsole({
       aiHistory.beginSession()
       setHistoryVersion((v) => v + 1)
       setSessionEnded(false)
+      setActiveGlobalNames([])
+      setActiveLocalNames([])
       if (gameId != null) {
         setGameIdInput(String(gameId))
       }
@@ -322,12 +326,22 @@ export default function NonRealtimeConsole({
         participants,
         slotsMap,
         historyText,
+        activeGlobalNames,
+        activeLocalNames,
       })
     } catch (error) {
       console.error("[NonRealtimeConsole] 프롬프트 해석 실패", error)
       return null
     }
-  }, [bundle, currentNode, participants, slotsMap, historyText])
+  }, [
+    activeGlobalNames,
+    activeLocalNames,
+    bundle,
+    currentNode,
+    participants,
+    slotsMap,
+    historyText,
+  ])
 
   const handleParticipantChange = useCallback((index, field, value) => {
     setParticipants((prev) =>
@@ -368,18 +382,27 @@ export default function NonRealtimeConsole({
     try {
       const result = await callModel({
         system: promptPreview.rulesBlock,
-        userText: promptPreview.promptBody,
+        userText: promptPreview.text,
       })
       if (!result?.ok) {
         throw new Error(result?.error || "AI 호출이 실패했습니다.")
       }
       const aiText = result.text || result.aiText || ""
       visitedSlotsRef.current.add(String(currentNode.id))
-      aiHistory.push({ role: "user", content: promptPreview.promptBody, public: true })
+      aiHistory.push({ role: "user", content: promptPreview.text, public: true })
       aiHistory.push({ role: "assistant", content: aiText, public: true })
       setHistoryVersion((v) => v + 1)
 
       const outcome = parseOutcome(aiText)
+      const outcomeVariables = Array.isArray(outcome.variables)
+        ? outcome.variables
+            .map((name) => (typeof name === "string" ? name.trim() : ""))
+            .filter(Boolean)
+        : []
+      const nextActiveLocalNames = Array.from(new Set(outcomeVariables))
+      const nextActiveGlobalNames = Array.from(
+        new Set([...(activeGlobalNames || []), ...nextActiveLocalNames]),
+      )
       const evaluatedEdges = ensureArray(bundle.graph?.edges)
         .map(mapEdgeForEvaluation)
         .filter(Boolean)
@@ -389,11 +412,15 @@ export default function NonRealtimeConsole({
         edges: evaluatedEdges,
         context: {
           historyAiText: aiText,
-          historyUserText: promptPreview.promptBody,
+          historyUserText: promptPreview.text,
           visitedSlotIds: visitedSlotsRef.current,
+          activeGlobalNames: nextActiveGlobalNames,
+          activeLocalNames: nextActiveLocalNames,
           turn: nextTurnIndex,
         },
       })
+      setActiveGlobalNames(nextActiveGlobalNames)
+      setActiveLocalNames(nextActiveLocalNames)
 
       setTurns((prev) => [
         ...prev,
@@ -403,6 +430,8 @@ export default function NonRealtimeConsole({
           responseText: aiText,
           outcome,
           bridge: bridgeResult,
+          activeGlobalNames: nextActiveGlobalNames,
+          activeLocalNames: nextActiveLocalNames,
         },
       ])
 
@@ -427,6 +456,7 @@ export default function NonRealtimeConsole({
       setPendingTurn(false)
     }
   }, [
+    activeGlobalNames,
     aiHistory,
     apiKey,
     bundle,
@@ -440,6 +470,10 @@ export default function NonRealtimeConsole({
     () => ensureModelInCatalog(geminiMode, geminiModel),
     [geminiMode, geminiModel],
   )
+
+  useEffect(() => {
+    setActiveLocalNames([])
+  }, [currentNodeId])
 
   const wrapperClassName = embedded ? styles.wrapperEmbedded : styles.wrapper
 
