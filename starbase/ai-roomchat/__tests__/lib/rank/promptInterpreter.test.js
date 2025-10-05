@@ -186,5 +186,44 @@ describe('promptInterpreter', () => {
     expect(occurrences).toBe(1)
     expect(result.rulesBlock).toContain('- 추가 규칙: 테스트')
   })
+
+  it('replaces spectator slots with active heroes from the same role', () => {
+    const participants = [
+      {
+        slot_no: 0,
+        role: 'attack',
+        status: 'spectator',
+        hero_id: 'hero-1',
+        hero: {
+          id: 'hero-1',
+          name: '용사 아린',
+          role: 'attack',
+          status: 'spectator',
+        },
+      },
+      {
+        slot_no: 1,
+        role: 'attack',
+        status: 'alive',
+        hero_id: 'hero-2',
+        hero: {
+          id: 'hero-2',
+          name: '수호자 벨라',
+          role: 'attack',
+          status: 'alive',
+        },
+      },
+    ]
+
+    const nodeSpectator = {
+      id: 'slot-fallback',
+      slot_no: 0,
+      slot_type: 'ai',
+      template: '{{slot0.name}}와 {{slot1.name}}이 격돌한다.',
+    }
+
+    const result = interpretPromptNode({ game: baseGame, node: nodeSpectator, participants })
+    expect(result.promptBody).toContain('수호자 벨라와 수호자 벨라')
+  })
 })
 

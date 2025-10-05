@@ -7,6 +7,7 @@ import styles from "./NonRealtimeConsole.module.css"
 
 import { supabase } from "@/lib/supabase"
 import { loadGameBundle } from "@/components/rank/StartClient/engine/loadGameBundle"
+import { createBridgeContext } from "@/components/rank/StartClient/engine/bridgeContext"
 import { buildParticipantSlotMap, interpretPromptNode } from "@/lib/rank/promptInterpreter"
 import { createAiHistory } from "@/lib/history"
 import { parseOutcome } from "@/lib/promptEngine"
@@ -22,12 +23,243 @@ import {
   normalizeGeminiModelId,
 } from "@/lib/rank/geminiConfig"
 
+const WIN_TOKENS = new Set(["승", "승리", "win", "victory"])
+const LOSE_TOKENS = new Set(["패", "패배", "lose", "defeat"])
+const OUT_TOKENS = new Set([
+  "탈락",
+  "실격",
+  "out",
+  "eliminate",
+  "eliminated",
+  "관전",
+  "관전자",
+  "관전화",
+  "퇴장",
+  "은퇴",
+])
+const DRAW_TOKENS = new Set(["무", "무승부", "draw", "none"])
+
+function cleanTokenEdges(token) {
+  if (!token) return ""
+  return token.replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, "")
+}
+
+function preprocessResultTokens(line) {
+  if (!line) return []
+  return String(line)
+    .replace(/[|·,:;\\/\u2010-\u2015\-]+/g, " ")
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+function normalizeNameKey(name) {
+  return String(name || "")
+    .replace(/[\s\p{P}\p{S}]+/gu, "")
+    .toLowerCase()
+}
+
+function detectDecisionTypeFromToken(token) {
+  const cleaned = cleanTokenEdges(token).toLowerCase()
+  if (!cleaned) return null
+  if (DRAW_TOKENS.has(cleaned)) return "none"
+  if (OUT_TOKENS.has(cleaned)) return "out"
+  if (LOSE_TOKENS.has(cleaned)) return "lose"
+  if (WIN_TOKENS.has(cleaned)) return "win"
+  return null
+}
+
+function matchParticipantByName(participants = [], candidateName = "", line = "") {
+  const normalizedCandidate = normalizeNameKey(candidateName)
+  const normalizedLine = normalizeNameKey(line)
+  let matched = null
+  participants.forEach((participant, index) => {
+    if (matched) return
+    const heroName =
+      participant?.hero?.name || participant?.hero_name || participant?.name || ""
+    if (!heroName) return
+    const normalizedHero = normalizeNameKey(heroName)
+    if (!normalizedHero) return
+    if (normalizedCandidate && normalizedHero === normalizedCandidate) {
+      matched = { participant, index, heroName }
+      return
+    }
+    if (normalizedCandidate && normalizedCandidate.includes(normalizedHero)) {
+      matched = { participant, index, heroName }
+      return
+    }
+    if (normalizedLine && normalizedLine.includes(normalizedHero)) {
+      matched = { participant, index, heroName }
+    }
+  })
+  return matched
+}
+
+function parseDecisionFromOutcome({ line, participants = [] } = {}) {
+  const rawLine = String(line || "").trim()
+  if (!rawLine) {
+    return { type: "empty", rawLine }
+  }
+
+  const tokens = preprocessResultTokens(rawLine)
+  if (tokens.length === 0) {
+    return { type: "empty", rawLine }
+  }
+
+  for (let offset = 0; offset < Math.min(tokens.length, 2); offset += 1) {
+    const tokenIndex = tokens.length - 1 - offset
+    const token = tokens[tokenIndex]
+    const decisionType = detectDecisionTypeFromToken(token)
+    if (!decisionType || decisionType === "none") {
+      if (decisionType === "none") {
+        return { type: "none", rawLine, keyword: token }
+      }
+      continue
+    }
+
+    const heroTokens = tokens
+      .slice(0, tokenIndex)
+      .map((part) => cleanTokenEdges(part))
+      .filter(Boolean)
+    const candidateName = heroTokens.join(" ")
+    const matched = matchParticipantByName(participants, candidateName, rawLine)
+    const heroName =
+      matched?.heroName || candidateName || matched?.participant?.hero?.name || ""
+
+    return {
+      type: decisionType,
+      keyword: cleanTokenEdges(token) || token,
+      participantIndex: matched?.index ?? null,
+      heroName,
+      rawLine,
+    }
+  }
+
+  const fallbackType = detectDecisionTypeFromToken(tokens[tokens.length - 1])
+  if (fallbackType === "none") {
+    return { type: "none", rawLine, keyword: tokens[tokens.length - 1] }
+  }
+
+  return { type: "unknown", rawLine }
+}
+
+function normalizeParticipantStatus(value) {
+  const text = String(value ?? "").trim().toLowerCase()
+  return text || "alive"
+}
+
+function applyDecisionToParticipants({ participants = [], decision = null, turnNumber = null }) {
+  if (!decision) {
+    return { participants, decision: null }
+  }
+
+  const enrichedDecision = { ...decision, turn: turnNumber ?? null }
+  if (enrichedDecision.participantIndex == null) {
+    return { participants, decision: enrichedDecision }
+  }
+
+  const statusByType = {
+    win: "spectator",
+    lose: "defeated",
+    out: "spectator",
+  }
+
+  const nextStatus = statusByType[enrichedDecision.type]
+  if (!nextStatus) {
+    return { participants, decision: enrichedDecision }
+  }
+
+  let changed = false
+  const updated = participants.map((participant, index) => {
+    if (index !== enrichedDecision.participantIndex) {
+      return participant
+    }
+
+    changed = true
+    const heroName =
+      enrichedDecision.heroName || participant?.hero?.name || participant?.name || ""
+
+    const hero = participant?.hero
+      ? { ...participant.hero, status: nextStatus }
+      : { status: nextStatus, name: heroName }
+
+    return {
+      ...participant,
+      status: nextStatus,
+      hero,
+      lastOutcome: {
+        type: enrichedDecision.type,
+        keyword: enrichedDecision.keyword || "",
+        line: enrichedDecision.rawLine || "",
+        heroName,
+        turn: turnNumber ?? null,
+      },
+    }
+  })
+
+  if (!changed) {
+    return { participants, decision: enrichedDecision }
+  }
+
+  const participantIndex = enrichedDecision.participantIndex
+  const resolvedHeroName =
+    updated[participantIndex]?.hero?.name || updated[participantIndex]?.heroName || enrichedDecision.heroName || ""
+
+  return {
+    participants: updated,
+    decision: { ...enrichedDecision, heroName: resolvedHeroName },
+  }
+}
+
+function describeDecision(decision) {
+  if (!decision || !decision.type) return ""
+  const labelMap = {
+    win: "승리로 관전화",
+    lose: "패배 확정",
+    out: "탈락 처리",
+  }
+  const label = labelMap[decision.type]
+  if (!label) return ""
+  if (decision.heroName) {
+    return `${decision.heroName} ${label}`
+  }
+  return label
+}
+
+function describeParticipantStatus(participant) {
+  const status = normalizeParticipantStatus(participant?.status || participant?.hero?.status)
+  if (status === "defeated" || status === "lost" || status === "eliminated") {
+    return { label: "패배", variant: "defeated" }
+  }
+  if (status === "spectator" || status === "observer" || status === "retired" || status === "inactive") {
+    return { label: "관전자", variant: "spectator" }
+  }
+  return { label: "참전 중", variant: "active" }
+}
+
+function describeParticipantOutcome(participant) {
+  const outcome = participant?.lastOutcome
+  if (!outcome || !outcome.type) return ""
+  const labelMap = { win: "승리", lose: "패배", out: "탈락" }
+  const label = labelMap[outcome.type]
+  if (!label) return ""
+  const pieces = [label]
+  if (Number.isFinite(Number(outcome.turn)) && Number(outcome.turn) > 0) {
+    pieces.push(`${Number(outcome.turn)}턴`)
+  }
+  return pieces.join(" · ")
+}
+
 function normalizeParticipant(participant) {
   if (!participant) return null
   const hero = participant.hero || {}
+  const normalizedStatus = normalizeParticipantStatus(participant.status ?? hero.status)
   return {
     ...participant,
+    status: normalizedStatus,
+    lastOutcome: participant.lastOutcome || null,
     hero: {
+      ...hero,
       id: hero.id ?? null,
       name: hero.name || "",
       description: hero.description || "",
@@ -37,6 +269,7 @@ function normalizeParticipant(participant) {
       ability2: hero.ability2 || "",
       ability3: hero.ability3 || "",
       ability4: hero.ability4 || "",
+      status: normalizedStatus,
     },
   }
 }
@@ -56,6 +289,10 @@ function formatSlotLabel(node) {
 function formatOutcome(outcome) {
   if (!outcome) return "결과 정보를 파싱하지 못했습니다."
   const parts = []
+  const decisionSummary = describeDecision(outcome.decision)
+  if (decisionSummary) {
+    parts.push(`처리: ${decisionSummary}`)
+  }
   if (outcome.lastLine) {
     parts.push(`마지막 줄: ${outcome.lastLine}`)
   }
@@ -394,6 +631,19 @@ export default function NonRealtimeConsole({
       setHistoryVersion((v) => v + 1)
 
       const outcome = parseOutcome(aiText)
+      const parsedDecision = parseDecisionFromOutcome({
+        line: outcome.lastLine,
+        participants,
+      })
+      const { participants: updatedParticipants, decision: appliedDecision } =
+        applyDecisionToParticipants({
+          participants,
+          decision: parsedDecision,
+          turnNumber: nextTurnIndex,
+        })
+      const effectiveParticipants =
+        updatedParticipants === participants ? participants : updatedParticipants
+
       const outcomeVariables = Array.isArray(outcome.variables)
         ? outcome.variables
             .map((name) => (typeof name === "string" ? name.trim() : ""))
@@ -407,20 +657,33 @@ export default function NonRealtimeConsole({
         .map(mapEdgeForEvaluation)
         .filter(Boolean)
 
+      const participantsStatus = effectiveParticipants.map((participant) => ({
+        role: participant?.role || participant?.hero?.role || "",
+        status: normalizeParticipantStatus(participant?.status || participant?.hero?.status),
+      }))
+
+      const bridgeContext = createBridgeContext({
+        turn: nextTurnIndex,
+        historyAiText: aiText,
+        historyUserText: promptPreview.text,
+        visitedSlotIds: visitedSlotsRef.current,
+        activeGlobalNames: nextActiveGlobalNames,
+        activeLocalNames: nextActiveLocalNames,
+        participantsStatus,
+      })
+
       const bridgeResult = chooseNext({
         currentSlotId: currentNode.id,
         edges: evaluatedEdges,
-        context: {
-          historyAiText: aiText,
-          historyUserText: promptPreview.text,
-          visitedSlotIds: visitedSlotsRef.current,
-          activeGlobalNames: nextActiveGlobalNames,
-          activeLocalNames: nextActiveLocalNames,
-          turn: nextTurnIndex,
-        },
+        context: bridgeContext,
       })
+      if (updatedParticipants !== participants) {
+        setParticipants(updatedParticipants)
+      }
       setActiveGlobalNames(nextActiveGlobalNames)
       setActiveLocalNames(nextActiveLocalNames)
+
+      const outcomeWithDecision = { ...outcome, decision: appliedDecision }
 
       setTurns((prev) => [
         ...prev,
@@ -428,7 +691,7 @@ export default function NonRealtimeConsole({
           node: currentNode,
           prompt: promptPreview,
           responseText: aiText,
-          outcome,
+          outcome: outcomeWithDecision,
           bridge: bridgeResult,
           activeGlobalNames: nextActiveGlobalNames,
           activeLocalNames: nextActiveLocalNames,
@@ -436,17 +699,22 @@ export default function NonRealtimeConsole({
       ])
 
       const providerSummary = describeProvider(result.meta)
-
+      const decisionSummary = describeDecision(appliedDecision)
+      const summaryBase = decisionSummary
+        ? `${providerSummary} · ${decisionSummary}`
+        : providerSummary
       if (bridgeResult?.nextSlotId) {
         setCurrentNodeId(String(bridgeResult.nextSlotId))
-        setStatusMessage(providerSummary)
+        setStatusMessage(summaryBase)
       } else if (bridgeResult?.action === "stop") {
         setSessionEnded(true)
-        setStatusMessage(`${providerSummary} · 브릿지 액션이 stop으로 설정되어 세션을 종료했습니다.`)
+        setStatusMessage(
+          `${summaryBase} · 브릿지 액션이 stop으로 설정되어 세션을 종료했습니다.`,
+        )
       } else if (!bridgeResult) {
-        setStatusMessage(`${providerSummary} · 다음으로 진행할 브릿지를 찾지 못했습니다.`)
+        setStatusMessage(`${summaryBase} · 다음으로 진행할 브릿지를 찾지 못했습니다.`)
       } else {
-        setStatusMessage(providerSummary)
+        setStatusMessage(summaryBase)
       }
     } catch (error) {
       console.error("[NonRealtimeConsole] 턴 실행 실패", error)
@@ -462,6 +730,7 @@ export default function NonRealtimeConsole({
     bundle,
     callModel,
     currentNode,
+    participants,
     promptPreview,
     turns.length,
   ])
@@ -602,40 +871,59 @@ export default function NonRealtimeConsole({
               {participants.length === 0 ? (
                 <p className={styles.placeholder}>참가자 정보가 없습니다.</p>
               ) : (
-                participants.map((participant, index) => (
-                  <div key={participant.id ?? index} className={styles.participantCard}>
-                    <header>
-                      <strong>{participant.hero?.name || `참가자 ${index + 1}`}</strong>
-                      {participant.role && <span className={styles.participantRole}>{participant.role}</span>}
-                    </header>
-                    <label>
-                      <span>이름</span>
-                      <input
-                        value={participant.hero?.name || ""}
-                        onChange={(event) =>
-                          handleParticipantChange(index, "name", event.target.value)
-                        }
-                      />
-                    </label>
-                    <div className={styles.abilityGrid}>
-                      {[1, 2, 3, 4].map((no) => (
-                        <label key={no}>
-                          <span>{`능력 ${no}`}</span>
-                          <input
-                            value={participant.hero?.[`ability${no}`] || ""}
-                            onChange={(event) =>
-                              handleParticipantChange(
-                                index,
-                                `ability${no}`,
-                                event.target.value,
-                              )
-                            }
-                          />
-                        </label>
-                      ))}
+                participants.map((participant, index) => {
+                  const statusInfo = describeParticipantStatus(participant)
+                  const outcomeSummary = describeParticipantOutcome(participant)
+                  const statusClasses = [styles.participantStatus]
+                  if (statusInfo.variant === "spectator") {
+                    statusClasses.push(styles.participantStatusSpectator)
+                  } else if (statusInfo.variant === "defeated") {
+                    statusClasses.push(styles.participantStatusDefeated)
+                  } else {
+                    statusClasses.push(styles.participantStatusActive)
+                  }
+
+                  return (
+                    <div key={participant.id ?? index} className={styles.participantCard}>
+                      <header>
+                        <strong>{participant.hero?.name || `참가자 ${index + 1}`}</strong>
+                        {participant.role && (
+                          <span className={styles.participantRole}>{participant.role}</span>
+                        )}
+                        <span className={statusClasses.join(" ")}>{statusInfo.label}</span>
+                      </header>
+                      {outcomeSummary ? (
+                        <p className={styles.participantOutcome}>{`최근 결과: ${outcomeSummary}`}</p>
+                      ) : null}
+                      <label>
+                        <span>이름</span>
+                        <input
+                          value={participant.hero?.name || ""}
+                          onChange={(event) =>
+                            handleParticipantChange(index, "name", event.target.value)
+                          }
+                        />
+                      </label>
+                      <div className={styles.abilityGrid}>
+                        {[1, 2, 3, 4].map((no) => (
+                          <label key={no}>
+                            <span>{`능력 ${no}`}</span>
+                            <input
+                              value={participant.hero?.[`ability${no}`] || ""}
+                              onChange={(event) =>
+                                handleParticipantChange(
+                                  index,
+                                  `ability${no}`,
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </section>
