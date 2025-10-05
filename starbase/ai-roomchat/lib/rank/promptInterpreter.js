@@ -4,6 +4,7 @@ import {
   buildSystemPromptFromChecklist,
   safeStr,
 } from '@/lib/promptEngine'
+import { sanitizeVariableRules } from '@/lib/variableRules'
 import { buildRuleOptionLines } from './rules'
 import { compileTemplate as compileRankTemplate } from './prompt'
 
@@ -21,41 +22,204 @@ function cleanLines(text) {
     .filter(Boolean)
 }
 
+const FALSE_STRINGS = new Set(['false', '0', 'off', 'no', 'n'])
+
+function normalizeRuleFlag(value) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase()
+    if (!trimmed) return false
+    if (FALSE_STRINGS.has(trimmed)) return false
+    if (['true', '1', 'yes', 'y', 'on'].includes(trimmed)) return true
+  }
+  return Boolean(value)
+}
+
+function extractRuleValue(entry) {
+  if (entry == null) return null
+  if (typeof entry === 'string') {
+    const trimmed = entry.trim()
+    if (!trimmed || FALSE_STRINGS.has(trimmed.toLowerCase())) return null
+    return trimmed
+  }
+  if (typeof entry === 'number') {
+    if (!Number.isFinite(entry)) return null
+    return entry
+  }
+  if (typeof entry === 'boolean') {
+    return entry ? true : null
+  }
+  if (Array.isArray(entry)) {
+    return entry.length ? entry : null
+  }
+  if (typeof entry === 'object') {
+    if ('enabled' in entry || 'checked' in entry || 'active' in entry) {
+      const flag = normalizeRuleFlag(entry.enabled ?? entry.checked ?? entry.active)
+      if (!flag) return null
+      if ('value' in entry) return extractRuleValue(entry.value)
+      if ('option' in entry) return extractRuleValue(entry.option)
+      if ('text' in entry) return extractRuleValue(entry.text)
+      return true
+    }
+    if ('value' in entry) {
+      return extractRuleValue(entry.value)
+    }
+    if ('text' in entry) {
+      return extractRuleValue(entry.text)
+    }
+  }
+  return null
+}
+
+function normalizeRuleOptionsShape(rawRules) {
+  const base = rawRules && typeof rawRules === 'object' ? rawRules : {}
+  const checklist = Array.isArray(base.checklist) ? base.checklist : []
+
+  const options = {}
+  const seen = new Set()
+
+  const register = (key, value) => {
+    const normalizedKey = safeStr(key).trim()
+    if (!normalizedKey) return
+    if (normalizedKey === 'checklist' || normalizedKey === 'options') return
+    const normalizedValue = extractRuleValue(value)
+    if (normalizedValue == null) return
+    const dedupeKey = `${normalizedKey}:${
+      typeof normalizedValue === 'string' ? normalizedValue.trim() : normalizedValue
+    }`
+    if (seen.has(dedupeKey)) return
+    seen.add(dedupeKey)
+    options[normalizedKey] = normalizedValue
+  }
+
+  const processEntries = (entries) => {
+    if (!entries) return
+    if (Array.isArray(entries)) {
+      entries.forEach((entry) => {
+        if (!entry) return
+        if (typeof entry === 'string') {
+          register(entry, true)
+          return
+        }
+        if (typeof entry !== 'object') return
+        const key =
+          entry.key ?? entry.id ?? entry.name ?? entry.option ?? entry.label ?? null
+        if (!key) return
+        if ('value' in entry || 'enabled' in entry || 'checked' in entry || 'active' in entry) {
+          register(key, entry)
+        } else {
+          register(key, entry)
+        }
+      })
+      return
+    }
+
+    Object.entries(entries).forEach(([key, value]) => {
+      if (key === 'checklist' || key === 'options') return
+      register(key, value)
+    })
+  }
+
+  processEntries(base)
+  if (base.options && typeof base.options === 'object') {
+    processEntries(base.options)
+  }
+
+  return { options, checklist }
+}
+
 export function parseGameRules(game) {
-  if (!game) return {}
+  if (!game) return { options: {}, checklist: [] }
   if (game.rules && typeof game.rules === 'object' && !Array.isArray(game.rules)) {
-    return game.rules
+    return normalizeRuleOptionsShape(game.rules)
   }
   const source = game.rules_json ?? game.rules ?? null
-  if (!source) return {}
+  if (!source) return { options: {}, checklist: [] }
   if (typeof source === 'string') {
     try {
       const parsed = JSON.parse(source)
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed
+        return normalizeRuleOptionsShape(parsed)
       }
     } catch (error) {
-      return {}
+      return { options: {}, checklist: [] }
     }
   }
-  return {}
+  return { options: {}, checklist: [] }
 }
 
-function buildScopeVariableRules({ manual = [], active = [], scope }) {
+function normalizeManualEntries(entries = []) {
+  const out = []
+  entries.forEach((entry) => {
+    const name = safeStr(entry?.name ?? entry?.variable).trim()
+    if (!name) return
+    const instruction = safeStr(entry?.instruction ?? entry?.condition ?? '').trim()
+    out.push({ name, instruction })
+  })
+  return out
+}
+
+function normalizeActiveEntries(entries = []) {
+  const out = []
+  entries.forEach((entry) => {
+    const name = safeStr(entry?.name ?? entry?.variable).trim()
+    const directive = safeStr(entry?.directive ?? entry?.ruleText).trim()
+    const condition = safeStr(entry?.condition).trim()
+    if (!directive) return
+    out.push({ name, directive, condition })
+  })
+  return out
+}
+
+function collectVariableScope(node, scope) {
+  const key = scope === 'global' ? 'global' : 'local'
+  const options = node?.options || {}
+
+  const legacyManual = Array.isArray(options?.[`manual_vars_${key}`])
+    ? options[`manual_vars_${key}`]
+    : []
+  const legacyActive = Array.isArray(options?.[`active_vars_${key}`])
+    ? options[`active_vars_${key}`]
+    : []
+  const sanitized = sanitizeVariableRules(node?.[`var_rules_${key}`])
+
+  const manual = normalizeManualEntries([
+    ...legacyManual,
+    ...(Array.isArray(sanitized.manual) ? sanitized.manual : []),
+  ])
+  const active = normalizeActiveEntries([
+    ...legacyActive,
+    ...(Array.isArray(sanitized.active) ? sanitized.active : []),
+  ])
+
+  const activeNames = Array.isArray(options?.[`active_${key}_names`])
+    ? options[`active_${key}_names`]
+    : []
+
+  return { manual, active, activeNames }
+}
+
+function buildScopeVariableRules({ manual = [], active = [], activeNames = [], scope }) {
   const scopeRules = buildVariableRules({
     manual_vars_global: scope === 'global' ? manual : [],
     manual_vars_local: scope === 'local' ? manual : [],
     active_vars_global: scope === 'global' ? active : [],
     active_vars_local: scope === 'local' ? active : [],
-    activeGlobalNames: [],
-    activeLocalNames: [],
+    activeGlobalNames: scope === 'global' ? activeNames : [],
+    activeLocalNames: scope === 'local' ? activeNames : [],
   })
+  if (!scopeRules) return []
+  const seen = new Set()
   return scopeRules
-    ? scopeRules
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-    : []
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false
+      if (seen.has(line)) return false
+      seen.add(line)
+      return true
+    })
 }
 
 function normalizeStatus(value) {
@@ -180,25 +344,24 @@ function buildRuleSections({ game, node } = {}) {
     .filter(Boolean)
   prefixLines.forEach((line) => pushBaseRule(line))
 
-  const parsedRules = parseGameRules(game)
-  const ruleOptionLines = buildRuleOptionLines(parsedRules)
+  const { options: ruleOptions, checklist } = parseGameRules(game)
+  const ruleOptionLines = buildRuleOptionLines(ruleOptions)
   ruleOptionLines.forEach((line) => pushBaseRule(line))
 
-  const checklist = buildSystemPromptFromChecklist(parsedRules)
-  if (checklist) {
-    cleanLines(checklist).forEach((line) => pushBaseRule(line))
+  const checklistLines = buildSystemPromptFromChecklist({ checklist })
+  if (checklistLines) {
+    cleanLines(checklistLines).forEach((line) => pushBaseRule(line))
   }
 
   DEFAULT_RULE_GUIDANCE.forEach((line) => pushBaseRule(line))
 
-  const manualGlobal = node?.options?.manual_vars_global || []
-  const activeGlobal = node?.options?.active_vars_global || []
-  const manualLocal = node?.options?.manual_vars_local || []
-  const activeLocal = node?.options?.active_vars_local || []
+  const globalScope = collectVariableScope(node, 'global')
+  const localScope = collectVariableScope(node, 'local')
 
   const globalRules = buildScopeVariableRules({
-    manual: manualGlobal,
-    active: activeGlobal,
+    manual: globalScope.manual,
+    active: globalScope.active,
+    activeNames: globalScope.activeNames,
     scope: 'global',
   })
   if (globalRules.length) {
@@ -206,8 +369,9 @@ function buildRuleSections({ game, node } = {}) {
   }
 
   const localRules = buildScopeVariableRules({
-    manual: manualLocal,
-    active: activeLocal,
+    manual: localScope.manual,
+    active: localScope.active,
+    activeNames: localScope.activeNames,
     scope: 'local',
   })
   if (localRules.length) {

@@ -79,7 +79,10 @@ function findFallbackHero({ pools, key, excludeHeroId }) {
 function placeholderLabels(slotNo) {
   const numeric = Number(slotNo)
   if (!Number.isFinite(numeric)) return []
-  return [String(numeric)]
+  const labels = new Set()
+  labels.add(String(numeric))
+  labels.add(String(numeric + 1))
+  return Array.from(labels)
 }
 
 function clearSlotPlaceholders(text, slotNo) {

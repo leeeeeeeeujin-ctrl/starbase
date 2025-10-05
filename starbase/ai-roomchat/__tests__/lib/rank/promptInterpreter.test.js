@@ -10,6 +10,8 @@ describe('promptInterpreter', () => {
     rules: {
       nerf_insight: true,
       fair_power_balance: true,
+      ban_kindness: false,
+      options: { nerf_peace: { enabled: false } },
       char_limit: 300,
       checklist: [
         { text: '플레이어는 서로 협력해 위기를 해결하라.', mandatory: true },
@@ -44,6 +46,14 @@ describe('promptInterpreter', () => {
       active_vars_global: [{ directive: '군중 제어를 우선하라.', name: 'CONTROL' }],
       active_vars_local: [],
     },
+    var_rules_global: {
+      manual: [{ variable: 'FIRE_GUARD', condition: '화염 장벽을 유지 중일 때.' }],
+      active: [{ variable: 'CONTROL', directive: '군중 제어를 우선하라.', condition: '' }],
+    },
+    var_rules_local: {
+      manual: [{ variable: 'LOCAL_CHECK', condition: '특수 조건 충족.' }],
+      active: [{ variable: 'LOCAL_ONLY', directive: '이 슬롯만의 경고를 추가하라.' }],
+    },
   }
 
   it('interprets prompt with rules and variables', () => {
@@ -56,6 +66,7 @@ describe('promptInterpreter', () => {
     expect(result.rulesBlock).toContain('분석/통찰은 조건이 모호하면 실패로 처리하라')
     expect(result.rulesBlock).toContain('능력은 여건이 될 때만 사용하되')
     expect(result.rulesBlock).toContain('글을 300자로 써라')
+    expect(result.rulesBlock).not.toContain('약자 배려 금지')
     expect(result.rulesBlock).toContain(DEFAULT_RULE_GUIDANCE[0])
     expect(result.rulesBlock).toContain('전역 변수 지침')
     expect(result.rulesBlock).toContain('전역 변수 FIRE_GUARD')
@@ -82,6 +93,33 @@ describe('promptInterpreter', () => {
     expect(result.promptBody).not.toContain('{{pick:')
     expect(result.promptBody).toContain(historyText)
     expect(result.promptBody.includes('alpha') || result.promptBody.includes('beta')).toBe(true)
+  })
+
+  it('maps one-based slot placeholders to zero-based participants without duplication', () => {
+    const participants = [
+      participant,
+      {
+        ...participant,
+        slot_no: 1,
+        hero_id: 'hero-2',
+        hero: {
+          id: 'hero-2',
+          name: '수호자 벨라',
+          description: '방패를 드는 수호 기사',
+        },
+      },
+    ]
+    const slotsMap = buildParticipantSlotMap(participants)
+    const nodeWithSlots = {
+      id: 'slot-lookup',
+      slot_no: 0,
+      slot_type: 'ai',
+      template: '{{slot1.name}} vs {{slot2.name}} / zero {{slot0.name}}',
+    }
+
+    const result = interpretPromptNode({ game: baseGame, node: nodeWithSlots, slotsMap })
+    expect(result.promptBody).toContain('용사 아린 vs 수호자 벨라')
+    expect(result.promptBody).toContain('zero 용사 아린')
   })
 })
 
