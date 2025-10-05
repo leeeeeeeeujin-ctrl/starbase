@@ -30,11 +30,59 @@ const DEFAULT_RULE_GUIDANCE_ENTRIES = [
 
 const DEFAULT_RULE_GUIDANCE = DEFAULT_RULE_GUIDANCE_ENTRIES.map((entry) => entry.text)
 
+const SIMILAR_RULE_SIMILARITY_THRESHOLD = 0.68
+
 function cleanLines(text) {
   return String(text || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
+}
+
+function normalizeForSimilarity(text) {
+  return safeStr(text)
+    .replace(/^[•\-\u2022\s]+/, '')
+    .replace(/["'`“”‘’\[\]\(\)\{\}<>]/g, ' ')
+    .replace(/[.,!?·~_:;\\/]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function buildBigramSet(text) {
+  const collapsed = text.replace(/\s+/g, '')
+  const bigrams = new Set()
+  for (let index = 0; index < collapsed.length - 1; index += 1) {
+    bigrams.add(collapsed.slice(index, index + 2))
+  }
+  return bigrams
+}
+
+function areLinesSimilar(lineA, lineB) {
+  const normalizedA = normalizeForSimilarity(lineA)
+  const normalizedB = normalizeForSimilarity(lineB)
+
+  if (!normalizedA || !normalizedB) return false
+  if (normalizedA === normalizedB) return true
+
+  const bigramsA = buildBigramSet(normalizedA)
+  const bigramsB = buildBigramSet(normalizedB)
+
+  if (!bigramsA.size || !bigramsB.size) {
+    return normalizedA === normalizedB
+  }
+
+  let intersection = 0
+  bigramsA.forEach((token) => {
+    if (bigramsB.has(token)) {
+      intersection += 1
+    }
+  })
+
+  const union = bigramsA.size + bigramsB.size - intersection
+  if (!union) return true
+
+  return intersection / union >= SIMILAR_RULE_SIMILARITY_THRESHOLD
 }
 
 function lineMatches(text, matchers = []) {
@@ -407,11 +455,30 @@ function buildRuleSections({ game, node } = {}) {
 
   const baseRuleEntries = []
   const indexByLine = new Map()
+  const findSimilarCanonicalKey = (candidate) => {
+    for (const [existingKey, existingIndex] of indexByLine.entries()) {
+      const existingEntry = baseRuleEntries[existingIndex]
+      if (!existingEntry) continue
+      if (areLinesSimilar(existingEntry.text, candidate)) {
+        return existingKey
+      }
+    }
+    return ''
+  }
   const pushBaseRule = (line, source = 'default') => {
     const text = safeStr(line)
     if (!text) return
-    const canonicalKey = resolveCanonicalRuleKey(text)
+    const trimmed = text.trim()
+    if (!trimmed) return
+    let canonicalKey = resolveCanonicalRuleKey(text)
     if (!canonicalKey) return
+
+    if (canonicalKey === trimmed) {
+      const similarKey = findSimilarCanonicalKey(text)
+      if (similarKey) {
+        canonicalKey = similarKey
+      }
+    }
 
     const priority = RULE_SOURCE_PRIORITY[source] ?? RULE_SOURCE_PRIORITY.default
     if (indexByLine.has(canonicalKey)) {
