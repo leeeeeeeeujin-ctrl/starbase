@@ -893,19 +893,8 @@ export default function useMatchQueue({
         return entryHeroId && normalizedHeroId && entryHeroId === normalizedHeroId
       })
 
-      if (!rosterEntry) {
-        const message = '선택한 캐릭터는 이 게임에 등록된 이력이 없습니다.'
-        console.warn('[MatchQueue] joinQueue 중단: 등록된 캐릭터 없음', {
-          viewerId,
-          heroId: activeHero,
-          role: finalRoleName,
-        })
-        setError(message)
-        return { ok: false, error: message }
-      }
-
-      const rosterRoleKey = normalizeRoleKey(rosterEntry.role)
-      if (!rosterRoleKey) {
+      const rosterRoleKey = rosterEntry ? normalizeRoleKey(rosterEntry.role) : ''
+      if (rosterEntry && !rosterRoleKey) {
         const message = '선택한 캐릭터의 역할 정보를 확인할 수 없습니다.'
         console.warn('[MatchQueue] joinQueue 중단: 역할 정보 없음', {
           viewerId,
@@ -916,7 +905,7 @@ export default function useMatchQueue({
         return { ok: false, error: message }
       }
 
-      if (rosterRoleKey !== normalizedRoleKey) {
+      if (rosterRoleKey && rosterRoleKey !== normalizedRoleKey) {
         const message = '선택한 캐릭터는 해당 역할에 배정되어 있지 않습니다.'
         console.warn('[MatchQueue] joinQueue 중단: 역할 불일치', {
           viewerId,
