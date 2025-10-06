@@ -1,10 +1,12 @@
 import {
+  enqueueParticipant,
+  filterStaleQueueEntries,
+  heartbeatQueueEntry,
   loadActiveRoles,
   loadMatchSampleSource,
   loadOwnerParticipantRoster,
   loadRoleLayout,
   runMatching,
-  enqueueParticipant,
 } from '@/lib/rank/matchmakingService'
 
 function createSupabaseStub(tableData = {}) {
@@ -22,6 +24,7 @@ function createQueryBuilder(initialRows, tableName, tableData) {
   let orderConfig = null
   let action = 'select'
   let insertPayload = null
+  let updatePayload = null
 
   const builder = {
     select() {
@@ -59,6 +62,11 @@ function createQueryBuilder(initialRows, tableName, tableData) {
       insertPayload = Array.isArray(payload) ? payload : [payload]
       return builder
     },
+    update(payload) {
+      action = 'update'
+      updatePayload = payload || {}
+      return builder
+    },
     then(resolve, reject) {
       try {
         const payload = performAction()
@@ -90,6 +98,23 @@ function createQueryBuilder(initialRows, tableName, tableData) {
       action = 'select'
       insertPayload = null
       return { data, error: null }
+    }
+
+    if (action === 'update') {
+      const rows = getRows()
+      const matched = []
+      const updated = rows.map((row) => {
+        if (filters.every((filter) => filter(row))) {
+          const nextRow = { ...row, ...updatePayload }
+          matched.push(nextRow)
+          return nextRow
+        }
+        return row
+      })
+      tableData[tableName] = updated
+      action = 'select'
+      updatePayload = null
+      return { data: matched, error: null }
     }
 
     const data = runQuery()
@@ -678,5 +703,61 @@ describe('runMatching', () => {
     expect(result.assignments).toHaveLength(2)
     expect(result.assignments.every((assignment) => assignment.filledSlots === 1)).toBe(true)
     expect(result.rooms.every((room) => room.missingSlots === 1)).toBe(true)
+  })
+})
+
+describe('filterStaleQueueEntries', () => {
+  it('separates fresh and stale entries based on updated timestamp', () => {
+    const now = Date.now()
+    const entries = [
+      {
+        id: 'fresh',
+        owner_id: 'fresh-owner',
+        updated_at: new Date(now - 5_000).toISOString(),
+        joined_at: new Date(now - 10_000).toISOString(),
+      },
+      {
+        id: 'stale',
+        owner_id: 'stale-owner',
+        updated_at: new Date(now - 60_000).toISOString(),
+        joined_at: new Date(now - 120_000).toISOString(),
+      },
+    ]
+
+    const { freshEntries, staleEntries } = filterStaleQueueEntries(entries, {
+      staleThresholdMs: 30_000,
+      nowMs: now,
+    })
+
+    expect(freshEntries.map((entry) => entry.id)).toEqual(['fresh'])
+    expect(staleEntries.map((entry) => entry.id)).toEqual(['stale'])
+  })
+})
+
+describe('heartbeatQueueEntry', () => {
+  it('updates the queue entry timestamp when waiting', async () => {
+    const supabase = createSupabaseStub({
+      rank_match_queue: [
+        {
+          id: 'queue-1',
+          game_id: 'game-heartbeat',
+          mode: 'rank_solo',
+          owner_id: 'owner-heartbeat',
+          status: 'waiting',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    })
+
+    const result = await heartbeatQueueEntry(supabase, {
+      gameId: 'game-heartbeat',
+      mode: 'rank_solo',
+      ownerId: 'owner-heartbeat',
+    })
+
+    expect(result.ok).toBe(true)
+    const updated = supabase.__tables.rank_match_queue[0].updated_at
+    expect(updated).not.toBe('2024-01-01T00:00:00Z')
+    expect(Date.parse(updated)).toBeGreaterThan(Date.parse('2024-01-01T00:00:00Z'))
   })
 })

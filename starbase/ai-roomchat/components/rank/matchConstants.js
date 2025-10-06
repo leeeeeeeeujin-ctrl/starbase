@@ -10,3 +10,8 @@ export const CONFIRMATION_WINDOW_SECONDS = 10
 export const FAILURE_REDIRECT_DELAY_MS = 2400
 export const PENALTY_NOTICE =
   '10초 안에 게임을 시작하지 않아 매칭이 취소되었습니다. 다른 참가자들은 다시 매칭을 진행합니다.'
+
+export {
+  QUEUE_HEARTBEAT_INTERVAL_MS,
+  QUEUE_STALE_THRESHOLD_MS,
+} from '../../lib/rank/queueHeartbeat'

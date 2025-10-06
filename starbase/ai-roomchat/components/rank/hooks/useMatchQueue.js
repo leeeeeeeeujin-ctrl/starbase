@@ -5,7 +5,9 @@ import { withTable } from '../../../lib/supabaseTables'
 import {
   enqueueParticipant,
   extractViewerAssignment,
+  filterStaleQueueEntries,
   flattenAssignmentMembers,
+  heartbeatQueueEntry,
   loadActiveRoles,
   loadHeroesByIds,
   loadOwnerParticipantRoster,
@@ -13,6 +15,10 @@ import {
   removeQueueEntry,
 } from '../../../lib/rank/matchmakingService'
 import { guessOwnerParticipant, normalizeHeroIdValue } from '../../../lib/rank/participantUtils'
+import {
+  QUEUE_HEARTBEAT_INTERVAL_MS,
+  QUEUE_STALE_THRESHOLD_MS,
+} from '../matchConstants'
 
 const POLL_INTERVAL_MS = 4000
 
@@ -600,12 +606,16 @@ export default function useMatchQueue({
     if (status !== 'queued') return
 
     try {
-      const [roleList, queueRows] = await Promise.all([
+      const [roleList, queueRowsRaw] = await Promise.all([
         loadActiveRoles(supabase, gameId),
         loadQueueEntries(supabase, { gameId, mode }),
       ])
       setRoles(normalizeRoleList(roleList))
-      setQueue(queueRows)
+
+      const { freshEntries } = filterStaleQueueEntries(queueRowsRaw, {
+        staleThresholdMs: QUEUE_STALE_THRESHOLD_MS,
+      })
+      setQueue(freshEntries)
 
       const response = await fetch('/api/rank/match', {
         method: 'POST',
@@ -742,6 +752,55 @@ export default function useMatchQueue({
       }
     }
   }, [enabled, status, runMatchProbe])
+
+  useEffect(() => {
+    if (!enabled) return undefined
+    if (!viewerId) return undefined
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined
+    if (status !== 'queued' && status !== 'matched') return undefined
+
+    let cancelled = false
+    let timer = null
+
+    const schedule = () => {
+      if (cancelled) return
+      timer = setTimeout(tick, QUEUE_HEARTBEAT_INTERVAL_MS)
+    }
+
+    const tick = async () => {
+      if (cancelled) return
+      if (document.visibilityState !== 'visible') {
+        schedule()
+        return
+      }
+      try {
+        await heartbeatQueueEntry(supabase, { gameId, mode, ownerId: viewerId })
+      } catch (error) {
+        console.warn('[MatchQueue] heartbeat failed:', error)
+      }
+      schedule()
+    }
+
+    const handleVisibility = () => {
+      if (cancelled) return
+      if (document.visibilityState === 'visible') {
+        tick()
+      }
+    }
+
+    tick()
+
+    document.addEventListener('visibilitychange', handleVisibility, true)
+
+    return () => {
+      cancelled = true
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+      document.removeEventListener('visibilitychange', handleVisibility, true)
+    }
+  }, [enabled, gameId, mode, status, viewerId])
 
   const joinQueue = useCallback(
     async (role) => {

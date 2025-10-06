@@ -1,12 +1,15 @@
 import {
+  filterStaleQueueEntries,
   loadParticipantPool,
   loadQueueEntries,
   loadRoleLayout,
   loadRoleStatusCounts,
+  removeQueueEntry,
 } from '@/lib/rank/matchmakingService'
 import { getQueueModes } from '@/lib/rank/matchModes'
 import { withTable } from '@/lib/supabaseTables'
 import { isMissingSupabaseTable } from '@/lib/server/supabaseErrors'
+import { QUEUE_STALE_THRESHOLD_MS } from '@/lib/rank/queueHeartbeat'
 
 const DROP_IN_RULE_KEYS = ['drop_in', 'allow_drop_in', 'dropIn', 'allowDropIn', 'enable_drop_in', 'drop_in_enabled']
 const DROP_IN_WINDOW_KEYS = [
@@ -387,10 +390,34 @@ export async function loadMatchingResources({ supabase, gameId, mode, realtimeEn
     brawlEnabled ? loadRoleStatusCounts(supabase, gameId) : Promise.resolve(new Map()),
   ])
 
+  const { freshEntries, staleEntries } = filterStaleQueueEntries(queueResult, {
+    staleThresholdMs: QUEUE_STALE_THRESHOLD_MS,
+  })
+
+  if (staleEntries.length) {
+    try {
+      await Promise.all(
+        staleEntries
+          .map((entry) => ({
+            ownerId: entry?.owner_id || entry?.ownerId,
+            mode: entry?.mode || mode,
+          }))
+          .filter((entry) => entry.ownerId)
+          .map((entry) => removeQueueEntry(supabase, {
+            gameId,
+            mode: entry.mode,
+            ownerId: entry.ownerId,
+          })),
+      )
+    } catch (error) {
+      console.warn('stale queue cleanup failed:', error)
+    }
+  }
+
   return {
     roles,
     slotLayout,
-    queue: queueResult,
+    queue: freshEntries,
     participantPool,
     roleStatusMap,
   }

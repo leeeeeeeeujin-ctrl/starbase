@@ -13,6 +13,10 @@ import {
 } from './matchModes'
 import { withTable } from '../supabaseTables'
 import {
+  partitionQueueByHeartbeat,
+  QUEUE_STALE_THRESHOLD_MS,
+} from './queueHeartbeat'
+import {
   buildOwnerParticipantIndex,
   guessOwnerParticipant,
   normalizeHeroIdValue,
@@ -599,7 +603,9 @@ export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
   const result = await withTable(supabaseClient, 'rank_match_queue', (table) => {
     let query = supabaseClient
       .from(table)
-      .select('id, game_id, mode, owner_id, hero_id, role, score, joined_at, status, party_key')
+      .select(
+        'id, game_id, mode, owner_id, hero_id, role, score, joined_at, updated_at, status, party_key',
+      )
       .eq('game_id', gameId)
       .eq('status', 'waiting')
       .order('joined_at', { ascending: true })
@@ -612,24 +618,62 @@ export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
   })
   if (result?.error) throw result.error
   const rows = Array.isArray(result?.data) ? result.data : []
-  return rows.map((row) => ({
-    ...row,
-    match_source: row?.match_source || 'realtime_queue',
-    simulated: Boolean(row?.simulated) && row.simulated === true,
-    standin: false,
-  }))
+  return rows
+    .map((row) => ({
+      ...row,
+      updatedAt: row?.updated_at || row?.updatedAt || null,
+      match_source: row?.match_source || 'realtime_queue',
+      simulated: Boolean(row?.simulated) && row.simulated === true,
+      standin: false,
+    }))
+}
+
+export function filterStaleQueueEntries(
+  queueEntries = [],
+  { staleThresholdMs = QUEUE_STALE_THRESHOLD_MS, nowMs = Date.now() } = {},
+) {
+  return partitionQueueByHeartbeat(queueEntries, {
+    staleThresholdMs,
+    nowMs,
+  })
+}
+
+export async function heartbeatQueueEntry(supabaseClient, { gameId, mode, ownerId }) {
+  if (!gameId || !ownerId) {
+    return { ok: false, error: '대기열 정보를 확인할 수 없습니다.' }
+  }
+
+  const now = nowIso()
+  const result = await withTable(supabaseClient, 'rank_match_queue', (table) => {
+    let query = supabaseClient
+      .from(table)
+      .update({ updated_at: now })
+      .eq('game_id', gameId)
+      .eq('owner_id', ownerId)
+      .eq('status', 'waiting')
+    if (mode) {
+      query = query.eq('mode', mode)
+    }
+    return query
+  })
+
+  if (result?.error) {
+    console.warn('대기열 하트비트 갱신 실패:', result.error)
+    return { ok: false, error: result.error.message || '대기열 상태를 갱신하지 못했습니다.' }
+  }
+
+  return { ok: true, updatedAt: now }
 }
 
 export async function removeQueueEntry(supabaseClient, { gameId, mode, ownerId }) {
   if (!gameId || !ownerId) return { ok: true }
-  const result = await withTable(supabaseClient, 'rank_match_queue', (table) =>
-    supabaseClient
-      .from(table)
-      .delete()
-      .eq('game_id', gameId)
-      .eq('mode', mode)
-      .eq('owner_id', ownerId),
-  )
+  const result = await withTable(supabaseClient, 'rank_match_queue', (table) => {
+    let query = supabaseClient.from(table).delete().eq('game_id', gameId).eq('owner_id', ownerId)
+    if (mode) {
+      query = query.eq('mode', mode)
+    }
+    return query
+  })
   if (result?.error) {
     console.warn('큐 제거 실패:', result.error)
     return { ok: false, error: result.error.message || '대기열에서 제거하지 못했습니다.' }
