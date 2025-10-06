@@ -19,6 +19,10 @@ import {
   START_SESSION_KEYS,
   writeStartSessionValue,
 } from '../../lib/rank/startSessionChannel'
+import {
+  registerMatchConnections,
+  removeConnectionEntries,
+} from '../../lib/rank/startConnectionRegistry'
 
 function getMatchPagePath(mode, gameId) {
   if (!gameId) return '/rank'
@@ -82,6 +86,15 @@ export default function MatchReadyClient({ gameId, mode }) {
 
   const matchPagePath = useMemo(() => getMatchPagePath(mode, gameId), [gameId, mode])
   const mainRoomPath = useMemo(() => (gameId ? `/rank/${gameId}` : '/rank'), [gameId])
+
+  const clearConnectionRegistry = useCallback(() => {
+    if (!gameId) return
+    try {
+      removeConnectionEntries({ gameId, source: 'match-ready' })
+    } catch (error) {
+      console.warn('[MatchReadyClient] 연결 정보 초기화 실패:', error)
+    }
+  }, [gameId])
 
   const requiresManualConfirmation = Boolean(payload?.requiresManualConfirmation)
 
@@ -189,10 +202,11 @@ export default function MatchReadyClient({ gameId, mode }) {
     }).catch((errorCause) => {
       console.warn('[MatchReadyClient] 큐 제거 실패:', errorCause)
     })
+    clearConnectionRegistry()
     redirectTimerRef.current = setTimeout(() => {
       router.replace(mainRoomPath)
     }, FAILURE_REDIRECT_DELAY_MS)
-  }, [gameId, mainRoomPath, mode, payload, router])
+  }, [clearConnectionRegistry, gameId, mainRoomPath, mode, payload, router])
 
   const clearTimers = useCallback(() => {
     if (timerRef.current) {
@@ -379,6 +393,7 @@ export default function MatchReadyClient({ gameId, mode }) {
         clearTimers()
         clearMatchConfirmation()
         storeStartMatchMeta(null)
+        clearConnectionRegistry()
         redirectTimerRef.current = setTimeout(() => {
           router.replace(matchPagePath)
         }, FAILURE_REDIRECT_DELAY_MS)
@@ -403,6 +418,7 @@ export default function MatchReadyClient({ gameId, mode }) {
       clearTimers()
       clearMatchConfirmation()
       storeStartMatchMeta(null)
+      clearConnectionRegistry()
       redirectTimerRef.current = setTimeout(() => {
         router.replace(matchPagePath)
       }, FAILURE_REDIRECT_DELAY_MS)
@@ -410,6 +426,7 @@ export default function MatchReadyClient({ gameId, mode }) {
       setConfirming(false)
     }
   }, [
+    clearConnectionRegistry,
     clearTimers,
     gameId,
     matchPagePath,
@@ -428,8 +445,9 @@ export default function MatchReadyClient({ gameId, mode }) {
     }).catch((errorCause) => {
       console.warn('[MatchReadyClient] 큐 제거 실패:', errorCause)
     })
+    clearConnectionRegistry()
     router.replace(matchPagePath)
-  }, [gameId, matchPagePath, mode, payload?.viewerId, router])
+  }, [clearConnectionRegistry, gameId, matchPagePath, mode, payload?.viewerId, router])
 
   const handleReturnToRoom = useCallback(() => {
     clearMatchConfirmation()
@@ -440,8 +458,9 @@ export default function MatchReadyClient({ gameId, mode }) {
     }).catch((errorCause) => {
       console.warn('[MatchReadyClient] 큐 제거 실패:', errorCause)
     })
+    clearConnectionRegistry()
     router.replace(mainRoomPath)
-  }, [gameId, mainRoomPath, mode, payload?.viewerId, router])
+  }, [clearConnectionRegistry, gameId, mainRoomPath, mode, payload?.viewerId, router])
 
   useEffect(() => {
     if (!router.isReady) return
@@ -449,6 +468,7 @@ export default function MatchReadyClient({ gameId, mode }) {
     const stored = loadMatchConfirmation()
     if (!stored || stored.gameId !== gameId || stored.mode !== mode || !stored.match) {
       clearMatchConfirmation()
+      clearConnectionRegistry()
       router.replace(matchPagePath)
       return
     }
@@ -458,7 +478,21 @@ export default function MatchReadyClient({ gameId, mode }) {
     setNotice('')
     autoTriggerRef.current = false
     playTriggeredRef.current = false
-  }, [gameId, matchPagePath, mode, router])
+  }, [clearConnectionRegistry, gameId, matchPagePath, mode, router])
+
+  useEffect(() => {
+    if (!gameId || !payload?.match) return
+    try {
+      registerMatchConnections({
+        gameId,
+        match: payload.match,
+        viewerId: payload.viewerId || '',
+        source: 'match-ready',
+      })
+    } catch (error) {
+      console.warn('[MatchReadyClient] 연결 정보 등록 실패:', error)
+    }
+  }, [gameId, payload?.match, payload?.viewerId])
 
   useEffect(() => {
     if (!requiresManualConfirmation || status === 'confirmed' || status === 'failed' || status === 'expired') {

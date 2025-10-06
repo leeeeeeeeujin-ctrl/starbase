@@ -13,6 +13,7 @@ export const START_SESSION_KEYS = Object.freeze({
   TURN_TIMER_VOTE: "turnTimerVote",
   TURN_TIMER_VOTES: "turnTimerVotes",
   MATCH_META: "matchMeta",
+  CONNECTIONS: "connections",
 })
 
 function toStorageKey(key) {

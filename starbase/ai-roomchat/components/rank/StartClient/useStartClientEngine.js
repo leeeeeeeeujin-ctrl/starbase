@@ -68,6 +68,10 @@ import {
   readStartSessionValue,
   readStartSessionValues,
 } from '@/lib/rank/startSessionChannel'
+import {
+  getConnectionEntriesForGame,
+  subscribeConnectionRegistry,
+} from '@/lib/rank/startConnectionRegistry'
 
 export function useStartClientEngine(gameId) {
   const storedStartConfig =
@@ -99,6 +103,10 @@ export function useStartClientEngine(gameId) {
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
   const matchMetaLoggedRef = useRef(false)
+  const gameIdRef = useRef(gameId ? String(gameId) : '')
+  const [connectionRoster, setConnectionRoster] = useState(() =>
+    getConnectionEntriesForGame(gameId),
+  )
 
   const { history, historyVersion, bumpHistoryVersion } = useHistoryBuffer()
   const {
@@ -149,6 +157,24 @@ export function useStartClientEngine(gameId) {
     },
     [dispatchEngine],
   )
+  useEffect(() => {
+    gameIdRef.current = gameId ? String(gameId) : ''
+    setConnectionRoster(getConnectionEntriesForGame(gameId))
+  }, [gameId])
+  useEffect(() => {
+    const unsubscribe = subscribeConnectionRegistry(() => {
+      const key = gameIdRef.current
+      if (!key) {
+        setConnectionRoster([])
+        return
+      }
+      setConnectionRoster(getConnectionEntriesForGame(key))
+    })
+    return unsubscribe
+  }, [])
+  useEffect(() => {
+    patchEngineState({ connectionRoster })
+  }, [connectionRoster, patchEngineState])
   const replaceEngineLogs = useCallback(
     (entries) => {
       dispatchEngine(replaceMainGameLogs(entries))
@@ -2600,6 +2626,7 @@ export function useStartClientEngine(gameId) {
     realtimePresence,
     realtimeEvents,
     dropInSnapshot,
+    connectionRoster,
     sharedTurn: {
       owners: managedOwnerIds,
       roster: sharedTurnRoster,
