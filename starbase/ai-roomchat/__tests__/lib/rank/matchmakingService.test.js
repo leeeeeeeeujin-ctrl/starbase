@@ -1,4 +1,4 @@
-import { loadMatchSampleSource, runMatching } from '@/lib/rank/matchmakingService'
+import { loadActiveRoles, loadMatchSampleSource, runMatching } from '@/lib/rank/matchmakingService'
 
 function createSupabaseStub(tableData = {}) {
   return {
@@ -64,6 +64,43 @@ function normalizeValue(value) {
   }
   return value
 }
+
+describe('loadActiveRoles', () => {
+  it('limits slot counts to active slots when a layout exists', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-roles', name: 'attack', slot_count: 3, active: true },
+        { game_id: 'game-roles', name: 'support', slot_count: 2, active: true },
+        { game_id: 'game-roles', name: 'tank', slot_count: 1, active: false },
+      ],
+      rank_game_slots: [
+        { game_id: 'game-roles', slot_index: 0, role: 'attack', active: true },
+        { game_id: 'game-roles', slot_index: 1, role: 'attack', active: true },
+        { game_id: 'game-roles', slot_index: 2, role: 'attack', active: false },
+        { game_id: 'game-roles', slot_index: 0, role: 'support', active: true },
+        { game_id: 'game-roles', slot_index: 1, role: 'support', active: false },
+      ],
+    })
+
+    const roles = await loadActiveRoles(supabase, 'game-roles')
+    expect(roles).toEqual([
+      { name: 'attack', slot_count: 2 },
+      { name: 'support', slot_count: 1 },
+    ])
+  })
+
+  it('falls back to declared counts when no slot layout exists', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-empty', name: 'attack', slot_count: 2, active: true },
+      ],
+      rank_game_slots: [],
+    })
+
+    const roles = await loadActiveRoles(supabase, 'game-empty')
+    expect(roles).toEqual([{ name: 'attack', slot_count: 2 }])
+  })
+})
 
 describe('loadMatchSampleSource', () => {
   it('falls back to participant pool when realtime queue is empty', async () => {
