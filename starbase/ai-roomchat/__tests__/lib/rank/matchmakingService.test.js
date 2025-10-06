@@ -143,8 +143,8 @@ describe('loadActiveRoles', () => {
 
     const roles = await loadActiveRoles(supabase, 'game-roles')
     expect(roles).toEqual([
-      { name: 'attack', slot_count: 2 },
-      { name: 'support', slot_count: 1 },
+      { name: 'attack', slot_count: 2, slotCount: 2 },
+      { name: 'support', slot_count: 1, slotCount: 1 },
     ])
   })
 
@@ -157,7 +157,7 @@ describe('loadActiveRoles', () => {
     })
 
     const roles = await loadActiveRoles(supabase, 'game-empty')
-    expect(roles).toEqual([{ name: 'attack', slot_count: 2 }])
+    expect(roles).toEqual([{ name: 'attack', slot_count: 2, slotCount: 2 }])
   })
 
   it('derives slot counts from the rank_games.roles array when provided', async () => {
@@ -176,9 +176,9 @@ describe('loadActiveRoles', () => {
 
     const roles = await loadActiveRoles(supabase, 'game-inline')
     expect(roles).toEqual([
-      { name: '공격', slot_count: 3 },
-      { name: '수비', slot_count: 1 },
-      { name: '지원', slot_count: 1 },
+      { name: '공격', slot_count: 3, slotCount: 3 },
+      { name: '수비', slot_count: 1, slotCount: 1 },
+      { name: '지원', slot_count: 1, slotCount: 1 },
     ])
   })
 })
@@ -196,8 +196,8 @@ describe('loadRoleLayout', () => {
 
     const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-inline')
     expect(roles).toEqual([
-      { name: 'A', slot_count: 2 },
-      { name: 'B', slot_count: 1 },
+      { name: 'A', slot_count: 2, slotCount: 2 },
+      { name: 'B', slot_count: 1, slotCount: 1 },
     ])
     expect(slotLayout).toEqual([
       { slotIndex: 0, role: 'A', heroId: null, heroOwnerId: null },

@@ -106,7 +106,22 @@ async function loadRoleResources(supabaseClient, gameId) {
 
   const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
   const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
-  const gameRoles = Array.isArray(gameResult?.data?.roles) ? gameResult.data.roles : []
+
+  let gameRoles = []
+  const rawGameRoles = gameResult?.data?.roles
+  if (Array.isArray(rawGameRoles)) {
+    gameRoles = rawGameRoles
+  } else if (typeof rawGameRoles === 'string' && rawGameRoles.trim()) {
+    try {
+      const parsed = JSON.parse(rawGameRoles)
+      if (Array.isArray(parsed)) {
+        gameRoles = parsed
+      }
+    } catch (error) {
+      console.warn('rank_games.roles 파싱 실패:', error)
+      gameRoles = []
+    }
+  }
 
   return normaliseRolesAndSlots(roleRows, slotRows, gameRoles)
 }
@@ -156,6 +171,17 @@ function deriveGameRoleSlots(rawSlots = []) {
   return layout
 }
 
+function coerceSlotCount(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) return 0
+  return Math.trunc(numeric)
+}
+
+function attachSlotCountPayload(name, count) {
+  const slotCount = coerceSlotCount(count)
+  return { name, slot_count: slotCount, slotCount }
+}
+
 function buildRolesFromLayout(layout = []) {
   const roleOrder = []
   const roleCounts = new Map()
@@ -172,7 +198,7 @@ function buildRolesFromLayout(layout = []) {
     }
   })
 
-  return roleOrder.map((name) => ({ name, slot_count: roleCounts.get(name) || 0 }))
+  return roleOrder.map((name) => attachSlotCountPayload(name, roleCounts.get(name) || 0))
 }
 
 function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []) {
@@ -217,7 +243,8 @@ function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []
       const name = normalizeRoleName(row.name)
       if (!name) return
       const requestedCount = Number(row.slot_count ?? row.slotCount ?? row.capacity)
-      const normalizedCount = Number.isFinite(requestedCount) && requestedCount > 0 ? requestedCount : 0
+      const normalizedCount =
+        Number.isFinite(requestedCount) && requestedCount > 0 ? Math.trunc(requestedCount) : 0
       const slotCount = slotCounts.get(name) || 0
       const hasSlotDefinition = slotPresence.has(name)
 
@@ -232,18 +259,20 @@ function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []
 
       if (finalCount <= 0) return
       if (!roleMap.has(name)) {
-        const entry = { name, slot_count: finalCount }
+        const entry = attachSlotCountPayload(name, finalCount)
         roleMap.set(name, entry)
         normalizedRoles.push(entry)
       } else {
-        roleMap.get(name).slot_count = finalCount
+        const entry = roleMap.get(name)
+        entry.slot_count = coerceSlotCount(finalCount)
+        entry.slotCount = entry.slot_count
       }
     })
 
   slotCounts.forEach((count, name) => {
     if (count <= 0) return
     if (roleMap.has(name)) return
-    const entry = { name, slot_count: count }
+    const entry = attachSlotCountPayload(name, count)
     roleMap.set(name, entry)
     normalizedRoles.push(entry)
   })

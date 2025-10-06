@@ -29,6 +29,36 @@ function extractRoleName(entry) {
   return ''
 }
 
+function normalizeRoleEntry(entry) {
+  if (!entry) return null
+  if (typeof entry === 'string') {
+    const trimmed = entry.trim()
+    return trimmed ? { name: trimmed, slot_count: 1, slotCount: 1 } : null
+  }
+
+  if (typeof entry !== 'object') return null
+
+  const name = extractRoleName(entry)
+  if (!name) return null
+
+  const slotRaw = entry.slot_count ?? entry.slotCount ?? entry.slots ?? entry.capacity
+  const slotNumeric = Number(slotRaw)
+  const slotCount = Number.isFinite(slotNumeric) && slotNumeric > 0 ? Math.trunc(slotNumeric) : 0
+
+  if (slotCount > 0) {
+    return { ...entry, name, slot_count: slotCount, slotCount }
+  }
+
+  return { ...entry, name }
+}
+
+function normalizeRoleList(list) {
+  if (!Array.isArray(list)) return []
+  return list
+    .map((entry) => normalizeRoleEntry(entry))
+    .filter(Boolean)
+}
+
 function readStoredHeroId() {
   if (typeof window === 'undefined') return ''
   try {
@@ -437,7 +467,7 @@ export default function useMatchQueue({
     let cancelled = false
     loadActiveRoles(supabase, gameId)
       .then((list) => {
-        if (!cancelled) setRoles(list)
+        if (!cancelled) setRoles(normalizeRoleList(list))
       })
       .catch((cause) => {
         console.error('역할 정보를 불러오지 못했습니다:', cause)
@@ -574,7 +604,7 @@ export default function useMatchQueue({
         loadActiveRoles(supabase, gameId),
         loadQueueEntries(supabase, { gameId, mode }),
       ])
-      setRoles(roleList)
+      setRoles(normalizeRoleList(roleList))
       setQueue(queueRows)
 
       const response = await fetch('/api/rank/match', {
@@ -626,7 +656,7 @@ export default function useMatchQueue({
 
       const meta = payload?.sampleMeta || null
       setSampleMeta(meta)
-      const payloadRoles = Array.isArray(payload?.roles) ? payload.roles : []
+      const payloadRoles = normalizeRoleList(Array.isArray(payload?.roles) ? payload.roles : [])
       const payloadLayout = Array.isArray(payload?.slotLayout) ? payload.slotLayout : []
       setRoles(payloadRoles)
       setSlotLayout(payloadLayout)

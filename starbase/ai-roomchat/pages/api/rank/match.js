@@ -55,7 +55,9 @@ function serializeRoles(roles) {
       const slotCount = Number(slotCountRaw)
       const payload = { name }
       if (Number.isFinite(slotCount) && slotCount >= 0) {
-        payload.slot_count = slotCount
+        const normalized = Math.trunc(slotCount)
+        payload.slot_count = normalized
+        payload.slotCount = normalized
       }
       return payload
     })
