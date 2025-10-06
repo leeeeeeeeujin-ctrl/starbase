@@ -414,64 +414,122 @@ export default function MatchQueueClient({
   const latestStatusRef = useRef('idle')
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
   const roomSummaries = useMemo(() => {
-    const source = Array.isArray(state.match?.rooms) && state.match.rooms.length
+    const rooms = Array.isArray(state.match?.rooms) && state.match.rooms.length
       ? state.match.rooms
       : Array.isArray(state.pendingMatch?.rooms) && state.pendingMatch.rooms.length
         ? state.pendingMatch.rooms
         : []
 
-    const deriveTotalsFromSlots = (slots = []) => {
-      if (!Array.isArray(slots) || !slots.length) {
-        return { label: '', total: 0, filled: 0 }
-      }
+    const roleSource = Array.isArray(state.match?.roles) && state.match.roles.length
+      ? state.match.roles
+      : Array.isArray(state.pendingMatch?.roles) && state.pendingMatch.roles.length
+        ? state.pendingMatch.roles
+        : []
 
-      const counts = new Map()
-      let filled = 0
+    const layoutSource = Array.isArray(state.match?.slotLayout) && state.match.slotLayout.length
+      ? state.match.slotLayout
+      : Array.isArray(state.pendingMatch?.slotLayout) && state.pendingMatch.slotLayout.length
+        ? state.pendingMatch.slotLayout
+        : []
 
-      slots.forEach((slot) => {
-        if (!slot) return
-        const name = typeof slot.role === 'string' ? slot.role.trim() : ''
-        if (!name) return
-        const bucket = counts.get(name) || { total: 0 }
-        bucket.total += 1
-        counts.set(name, bucket)
-        const occupied = slot.occupied === true || Boolean(slot.member)
-        if (occupied) {
-          filled += 1
+    const normalizedRoles = roleSource
+      .map((entry) => {
+        if (!entry) return null
+        if (typeof entry === 'string') {
+          const trimmed = entry.trim()
+          return trimmed ? { name: trimmed, slotCount: null } : null
         }
+        const name =
+          typeof entry.name === 'string'
+            ? entry.name.trim()
+            : typeof entry.role === 'string'
+            ? entry.role.trim()
+            : ''
+        if (!name) return null
+        const rawCount = entry.slot_count ?? entry.slotCount ?? entry.capacity
+        const numeric = Number(rawCount)
+        const slotCount = Number.isFinite(numeric) && numeric >= 0 ? Math.trunc(numeric) : null
+        return { name, slotCount }
       })
+      .filter(Boolean)
 
-      const parts = []
-      counts.forEach((value, key) => {
-        if (!key) return
-        parts.push(value.total > 1 ? `${key} x${value.total}` : key)
-      })
+    const roleOrder = normalizedRoles.map((entry) => entry.name)
+    const bucketMap = new Map()
 
-      return { label: parts.join(' · '), total: slots.length, filled }
+    const ensureBucket = (rawName) => {
+      if (typeof rawName !== 'string') return null
+      const name = rawName.trim()
+      if (!name) return null
+      if (!bucketMap.has(name)) {
+        bucketMap.set(name, { role: name, total: 0, filled: 0 })
+      }
+      return bucketMap.get(name)
     }
 
-    return source.map((room, index) => {
-      const slots = Array.isArray(room?.slots) ? room.slots : []
-      const slotSummary = deriveTotalsFromSlots(slots)
+    const registerSlot = (slot) => {
+      if (!slot) return
+      const name = typeof slot.role === 'string' ? slot.role.trim() : ''
+      if (!name) return
+      const bucket = ensureBucket(name)
+      if (!bucket) return
+      bucket.total += 1
+      const occupied =
+        slot.occupied === true ||
+        Boolean(slot.member) ||
+        (Array.isArray(slot.members) && slot.members.some(Boolean)) ||
+        slot.heroId != null ||
+        slot.hero_id != null ||
+        slot.heroOwnerId != null ||
+        slot.hero_owner_id != null
+      if (occupied) {
+        bucket.filled += 1
+      }
+    }
 
-      const rawLabel = typeof room?.label === 'string' ? room.label.trim() : ''
-      const label = rawLabel || slotSummary.label || `매치 ${index + 1}`
+    if (rooms.length) {
+      rooms.forEach((room) => {
+        const slots = Array.isArray(room?.slots) ? room.slots : []
+        slots.forEach(registerSlot)
+      })
+    } else if (layoutSource.length) {
+      layoutSource.forEach(registerSlot)
+    }
 
-      const rawFilled = Number(room?.filledSlots ?? room?.filled_slots)
-      const filled = Number.isFinite(rawFilled) && rawFilled >= 0 ? rawFilled : slotSummary.filled
-
-      const rawTotal = Number(room?.totalSlots ?? room?.slotCount)
-      const total = Number.isFinite(rawTotal) && rawTotal >= 0 ? rawTotal : slotSummary.total
-
-      const rawMissing = Number(room?.missingSlots ?? room?.missing_slots)
-      const missing = Number.isFinite(rawMissing)
-        ? rawMissing
-        : Math.max(0, total - filled)
-
-      const ready = room?.ready === true || (total > 0 && missing <= 0 && filled >= total)
-
-      return { role: label, filled, total, missing, ready }
+    normalizedRoles.forEach((entry) => {
+      const bucket = ensureBucket(entry.name)
+      if (!bucket) return
+      if (bucket.total <= 0 && Number.isInteger(entry.slotCount) && entry.slotCount > 0) {
+        bucket.total = entry.slotCount
+      }
     })
+
+    const orderedBuckets = []
+    roleOrder.forEach((name) => {
+      const bucket = bucketMap.get(name)
+      if (bucket) {
+        orderedBuckets.push(bucket)
+      }
+    })
+    bucketMap.forEach((bucket, name) => {
+      if (!roleOrder.includes(name)) {
+        orderedBuckets.push(bucket)
+      }
+    })
+
+    return orderedBuckets
+      .map((bucket) => {
+        const total = Math.max(0, bucket.total)
+        const filled = Math.min(Math.max(0, bucket.filled), total)
+        const missing = Math.max(0, total - filled)
+        return {
+          role: bucket.role,
+          filled,
+          total,
+          missing,
+          ready: total > 0 && missing === 0,
+        }
+      })
+      .filter((entry) => entry.total > 0)
   }, [state.match, state.pendingMatch])
   const [plannerExportNotice, setPlannerExportNotice] = useState('')
   const autoJoinSignatureRef = useRef('')
