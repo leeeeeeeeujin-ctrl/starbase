@@ -37,17 +37,51 @@ export default function GameDetail({
   joinLoading = false,
 }) {
   const hasGame = Boolean(game)
-  const isViewerOwner = Boolean(viewerId && game && game.owner_id === viewerId)
-
-  const conflictEntries = useMemo(() => {
-    if (!viewerId) return []
-    return participants.filter((row) => row?.owner_id === viewerId)
-  }, [participants, viewerId])
+  const viewerKey = viewerId != null ? String(viewerId) : null
+  const isViewerOwner = Boolean(
+    viewerKey && game && game.owner_id != null && String(game.owner_id) === viewerKey
+  )
 
   const conflictingOthers = useMemo(() => {
-    if (!viewerParticipant) return conflictEntries
-    return conflictEntries.filter((row) => row !== viewerParticipant)
-  }, [conflictEntries, viewerParticipant])
+    if (!viewerKey) return []
+    const list = Array.isArray(participants) ? participants : []
+    const viewerRows = list.filter((row) => {
+      if (!row) return false
+      const ownerKey =
+        row.owner_id != null ? String(row.owner_id) : row.ownerId != null ? String(row.ownerId) : null
+      return ownerKey && ownerKey === viewerKey
+    })
+
+    if (viewerRows.length <= 1) {
+      return []
+    }
+
+    const participantId = viewerParticipant?.id || null
+    const heroId =
+      viewerParticipant?.hero_id ||
+      viewerParticipant?.heroId ||
+      viewerParticipant?.hero?.id ||
+      null
+
+    return viewerRows.filter((row) => {
+      if (!row) return false
+      if (participantId && row.id === participantId) return false
+      if (heroId != null) {
+        const rowHeroId =
+          row.hero_id != null
+            ? row.hero_id
+            : row.heroId != null
+              ? row.heroId
+              : row.hero?.id != null
+                ? row.hero.id
+                : null
+        if (rowHeroId != null && rowHeroId === heroId) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [participants, viewerKey, viewerParticipant])
 
   const hasConflict = conflictingOthers.length > 0 && !isViewerOwner
 

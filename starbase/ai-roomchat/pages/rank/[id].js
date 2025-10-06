@@ -131,21 +131,53 @@ export default function GameRoomPage() {
   const hasMinimumParticipants = activeParticipants.length >= requiredParticipants
 
   const viewerId = user?.id || null
+  const viewerKey = viewerId != null ? String(viewerId) : null
   const participantConflicts = useMemo(() => {
-    if (!viewerId) return []
+    if (!viewerKey) return []
     const list = Array.isArray(participants) ? participants : []
-    return list.filter((participant) => participant?.owner_id === viewerId)
-  }, [participants, viewerId])
+    const viewerRows = list.filter((participant) => {
+      if (!participant) return false
+      const ownerKey =
+        participant.owner_id != null
+          ? String(participant.owner_id)
+          : participant.ownerId != null
+            ? String(participant.ownerId)
+            : null
+      return ownerKey && ownerKey === viewerKey
+    })
 
-  const conflictingOthers = useMemo(() => {
-    if (!viewerId) return []
-    if (!participantConflicts.length) return []
-    if (!myEntry) return participantConflicts
-    return participantConflicts.filter((row) => row !== myEntry)
-  }, [myEntry, participantConflicts, viewerId])
+    if (viewerRows.length <= 1) {
+      return []
+    }
+
+    const entryHeroId = myEntry?.hero_id || myEntry?.heroId || myEntry?.hero?.id || null
+    return viewerRows.filter((participant) => {
+      if (!participant) return false
+      if (myEntry?.id && participant.id === myEntry.id) return false
+      if (entryHeroId != null) {
+        const heroId =
+          participant.hero_id != null
+            ? participant.hero_id
+            : participant.heroId != null
+              ? participant.heroId
+              : participant.hero?.id != null
+                ? participant.hero.id
+                : null
+        if (heroId != null && heroId === entryHeroId) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [myEntry?.hero?.id, myEntry?.heroId, myEntry?.hero_id, myEntry?.id, participants, viewerKey])
+
+  const conflictingOthers = participantConflicts
 
   const hasOwnerConflict =
-    conflictingOthers.length > 0 && game && game.owner_id && game.owner_id !== viewerId
+    conflictingOthers.length > 0 &&
+    game &&
+    game.owner_id &&
+    String(game.owner_id) !== viewerKey
 
   const handleJoin = async () => {
     await joinGame(pickRole)
