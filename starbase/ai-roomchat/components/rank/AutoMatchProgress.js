@@ -58,11 +58,23 @@ function resolveRoleName(lockedRole, roles) {
 export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const router = useRouter()
   const navigationLockedRef = useRef(false)
+  const apiKeyExpiredHandledRef = useRef(false)
+  const apiKeyExpiredHandlerRef = useRef(null)
+  const apiKeyExpiredProxy = useCallback((info) => {
+    const handler = apiKeyExpiredHandlerRef.current
+    if (typeof handler === 'function') {
+      handler(info)
+    }
+  }, [])
+  useEffect(() => {
+    apiKeyExpiredHandledRef.current = false
+  }, [gameId])
   const { state, actions } = useMatchQueue({
     gameId,
     mode,
     enabled: Boolean(gameId),
     initialHeroId,
+    onApiKeyExpired: apiKeyExpiredProxy,
   })
   const [joinError, setJoinError] = useState('')
   const joinSignatureRef = useRef('')
@@ -109,6 +121,66 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       clearConnectionRegistry()
     })
   }, [actions, clearConnectionRegistry])
+
+  const handleApiKeyExpired = useCallback(
+    () => {
+      if (apiKeyExpiredHandledRef.current) return
+      apiKeyExpiredHandledRef.current = true
+      const notice = 'API 키가 만료되었습니다. 새 API 키를 사용해주세요.'
+      setJoinError(notice)
+      setConfirmationState('failed')
+      joinSignatureRef.current = ''
+      if (queueTimeoutRef.current) {
+        clearTimeout(queueTimeoutRef.current)
+        queueTimeoutRef.current = null
+      }
+      if (heroRedirectTimerRef.current) {
+        clearTimeout(heroRedirectTimerRef.current)
+        heroRedirectTimerRef.current = null
+      }
+      if (joinRetryTimerRef.current) {
+        clearTimeout(joinRetryTimerRef.current)
+        joinRetryTimerRef.current = null
+      }
+      if (confirmationTimerRef.current) {
+        clearTimeout(confirmationTimerRef.current)
+        confirmationTimerRef.current = null
+      }
+      if (confirmationIntervalRef.current) {
+        clearInterval(confirmationIntervalRef.current)
+        confirmationIntervalRef.current = null
+      }
+      if (penaltyRedirectRef.current) {
+        clearTimeout(penaltyRedirectRef.current)
+        penaltyRedirectRef.current = null
+      }
+      if (dropInRedirectTimerRef.current) {
+        clearInterval(dropInRedirectTimerRef.current)
+        dropInRedirectTimerRef.current = null
+      }
+      navigationLockedRef.current = true
+      clearMatchConfirmation()
+      try {
+        if (typeof window !== 'undefined') {
+          window.alert(notice)
+        }
+      } catch (alertError) {
+        console.warn('[AutoMatchProgress] API 키 만료 알림 표시 실패:', alertError)
+      }
+      cancelQueueWithCleanup()
+        .catch((error) => {
+          console.warn('[AutoMatchProgress] API 키 만료 후 대기열 정리 실패:', error)
+        })
+        .finally(() => {
+          router.replace(`/rank/${gameId}`)
+        })
+    },
+    [cancelQueueWithCleanup, gameId, router],
+  )
+
+  useEffect(() => {
+    apiKeyExpiredHandlerRef.current = handleApiKeyExpired
+  }, [handleApiKeyExpired])
 
   const persistApiKeyOnServer = usePersistApiKey()
 
