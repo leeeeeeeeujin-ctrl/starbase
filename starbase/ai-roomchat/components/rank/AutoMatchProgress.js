@@ -274,7 +274,9 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     })
 
     if (
-      confirmationState === 'counting' &&
+      (confirmationState === 'counting' ||
+        confirmationState === 'confirmed' ||
+        confirmationState === 'launching') &&
       previous === 'matched' &&
       state.status !== 'matched'
     ) {
@@ -282,6 +284,8 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       setConfirmationState('idle')
       setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
       joinSignatureRef.current = ''
+      playTriggeredRef.current = false
+      storeStartMatchMeta(null)
       if (penaltyRedirectRef.current) {
         clearTimeout(penaltyRedirectRef.current)
         penaltyRedirectRef.current = null
@@ -472,9 +476,20 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
   const handleConfirmationTimeout = useCallback(() => {
     clearConfirmationTimers()
+    const latest = latestConfirmationRef.current
+    if (latest === 'confirmed' || latest === 'launching') {
+      setConfirmationRemaining(0)
+      if (latest !== 'launching') {
+        setConfirmationState('launching')
+      }
+      setJoinError('')
+      return
+    }
     setConfirmationState('failed')
     setJoinError(PENALTY_NOTICE)
     joinSignatureRef.current = ''
+    playTriggeredRef.current = false
+    storeStartMatchMeta(null)
     cancelQueueWithCleanup()
     if (matchLockedRef.current) {
       matchLockedRef.current = false
@@ -490,7 +505,14 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       navigationLockedRef.current = true
       router.replace(`/rank/${gameId}`)
     }, FAILURE_REDIRECT_DELAY_MS)
-  }, [cancelQueueWithCleanup, clearConfirmationTimers, gameId, router])
+  }, [
+    cancelQueueWithCleanup,
+    clearConfirmationTimers,
+    gameId,
+    router,
+    setConfirmationRemaining,
+    storeStartMatchMeta,
+  ])
 
   const startConfirmationCountdown = useCallback(() => {
     clearConfirmationTimers()
@@ -691,7 +713,6 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         return
       }
 
-      clearConfirmationTimers()
       setConfirmationState('confirmed')
       setJoinError('')
       cancelQueueWithCleanup()
@@ -726,7 +747,8 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       matchLocked ||
       state.status === 'matched' ||
       confirmationState === 'counting' ||
-      confirmationState === 'confirmed'
+      confirmationState === 'confirmed' ||
+      confirmationState === 'launching'
     ) {
       setDisplayStatus('matched')
       return
@@ -1011,6 +1033,13 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       return
     }
 
+    if (
+      matchLockedRef.current &&
+      ['counting', 'confirmed', 'launching'].includes(confirmationState)
+    ) {
+      return
+    }
+
     if (state.status === 'idle' || confirmationState === 'failed') {
       if (matchLockedRef.current) {
         matchLockedRef.current = false
@@ -1018,11 +1047,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       }
     }
 
-    if (matchLockedRef.current && confirmationState === 'counting') {
-      return
-    }
-
-    if (confirmationState === 'confirmed') {
+    if (confirmationState === 'confirmed' || confirmationState === 'launching') {
       return
     }
 
@@ -1040,13 +1065,16 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   ])
 
   useEffect(() => {
-    if (confirmationState === 'counting' && confirmationRemaining <= 0) {
+    if (
+      (confirmationState === 'counting' || confirmationState === 'confirmed') &&
+      confirmationRemaining <= 0
+    ) {
       handleConfirmationTimeout()
     }
   }, [confirmationRemaining, confirmationState, handleConfirmationTimeout])
 
   useEffect(() => {
-    if (confirmationState !== 'confirmed') return undefined
+    if (confirmationState !== 'launching') return undefined
     if (!gameId) return undefined
 
     const timer = setTimeout(() => {
@@ -1095,7 +1123,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       if (
         !matchRedirectedRef.current &&
         (latestStatusRef.current === 'queued' || latestStatusRef.current === 'matched') &&
-        latestConfirmation !== 'confirmed'
+        !['confirmed', 'launching'].includes(latestConfirmation)
       ) {
         cancelQueueWithCleanup()
       }
@@ -1447,17 +1475,24 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [blockers, displayStatus, joinError])
 
   const matchedDisplay = useMemo(() => {
-    if (confirmationState === 'confirmed') {
-      return {
-        title: '게임을 불러오는 중…',
-        detail: '게임 시작을 준비하고 있습니다.',
-      }
-    }
-
     if (confirmationState === 'counting') {
       return {
         title: '매칭이 완료되었습니다.',
         detail: `${confirmationRemaining}초 안에 "게임 시작" 버튼을 눌러주세요.`,
+      }
+    }
+
+    if (confirmationState === 'confirmed') {
+      return {
+        title: '참가 확인 완료!',
+        detail: `${confirmationRemaining}초 뒤 게임이 시작됩니다.`,
+      }
+    }
+
+    if (confirmationState === 'launching') {
+      return {
+        title: '게임을 불러오는 중…',
+        detail: '잠시 후 본 게임 화면으로 이동합니다.',
       }
     }
 
@@ -1592,6 +1627,18 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
                   {CONFIRMATION_WINDOW_SECONDS}
                   초 안에 게임을 시작하지 않으면 매칭이 취소되고 다시 매칭이 진행됩니다.
                 </p>
+              </div>
+            ) : null}
+            {confirmationState === 'confirmed' ? (
+              <div className={styles.confirmArea}>
+                <p className={styles.confirmHint}>
+                  참가 의사를 확인했습니다. 남은 {confirmationRemaining}초 동안 준비를 마무리해 주세요.
+                </p>
+              </div>
+            ) : null}
+            {confirmationState === 'launching' ? (
+              <div className={styles.confirmArea}>
+                <p className={styles.confirmHint}>게임을 불러오는 중입니다. 곧 전투 화면으로 이동합니다.</p>
               </div>
             ) : null}
             {confirmationState === 'failed' && extraBlockers.length ? (
