@@ -39,6 +39,53 @@ function resolveHero(heroMap, heroId) {
   return null
 }
 
+function normaliseRoleKey(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value.trim().toLowerCase()
+  return ''
+}
+
+function pickAutoHeroCandidate({ heroOptions = [], viewerRoster = [], targetRole }) {
+  const normalizedRole = normaliseRoleKey(targetRole)
+  const optionList = Array.isArray(heroOptions) ? heroOptions : []
+  const rosterList = Array.isArray(viewerRoster) ? viewerRoster : []
+
+  if (optionList.length) {
+    const roleMatch = optionList.find((option) => {
+      if (!option || !option.heroId) return false
+      const optionRole = normaliseRoleKey(option.role)
+      if (normalizedRole) {
+        return optionRole === normalizedRole
+      }
+      return false
+    })
+    if (roleMatch?.heroId) {
+      return String(roleMatch.heroId)
+    }
+
+    const anyMatch = optionList.find((option) => option?.heroId)
+    if (anyMatch?.heroId) {
+      return String(anyMatch.heroId)
+    }
+  }
+
+  let fallback = ''
+  for (const entry of rosterList) {
+    if (!entry) continue
+    const heroId = entry.heroId ? String(entry.heroId) : ''
+    if (!heroId) continue
+    const entryRole = normaliseRoleKey(entry.role)
+    if (normalizedRole && entryRole === normalizedRole) {
+      return heroId
+    }
+    if (!fallback) {
+      fallback = heroId
+    }
+  }
+
+  return fallback || ''
+}
+
 function MemberList({ assignment, heroMap }) {
   if (!assignment) return null
   const members = Array.isArray(assignment.members) ? assignment.members : []
@@ -639,6 +686,18 @@ export default function MatchQueueClient({
     return resolveDefaultRoleName(state.roles)
   }, [state.lockedRole, state.roleReady, state.roles])
 
+  const autoHeroCandidate = useMemo(
+    () =>
+      state.heroId
+        ? ''
+        : pickAutoHeroCandidate({
+            heroOptions,
+            viewerRoster,
+            targetRole: targetRoleName,
+          }),
+    [state.heroId, heroOptions, viewerRoster, targetRoleName],
+  )
+
   const joinBlockers = useMemo(() => {
     if (state.status !== 'idle') return []
 
@@ -649,11 +708,18 @@ export default function MatchQueueClient({
     if (!state.roleReady || !targetRoleName) {
       blockers.push('참가할 역할 정보를 불러오는 중입니다.')
     }
-    if (!state.heroId) {
+    if (!state.heroId && !autoHeroCandidate) {
       blockers.push('사용할 캐릭터를 선택해 주세요.')
     }
     return blockers
-  }, [state.status, state.viewerId, state.roleReady, targetRoleName, state.heroId])
+  }, [
+    state.status,
+    state.viewerId,
+    state.roleReady,
+    targetRoleName,
+    state.heroId,
+    autoHeroCandidate,
+  ])
 
   const joinDisabled =
     state.loading || state.status !== 'idle' || joinBlockers.length > 0
@@ -661,7 +727,12 @@ export default function MatchQueueClient({
   const handleJoinClick = useCallback(async () => {
     if (state.loading) return
     if (state.status === 'queued' || state.status === 'matched') return
-    if (!state.heroId) {
+    let heroId = state.heroId
+    if (!heroId && autoHeroCandidate) {
+      heroId = autoHeroCandidate
+      actions.setHero(heroId)
+    }
+    if (!heroId) {
       alert('먼저 사용할 캐릭터를 선택해 주세요.')
       return
     }
@@ -674,7 +745,14 @@ export default function MatchQueueClient({
     if (!result?.ok && result?.error) {
       alert(result.error)
     }
-  }, [state.loading, state.status, state.heroId, targetRoleName, actions])
+  }, [
+    state.loading,
+    state.status,
+    state.heroId,
+    autoHeroCandidate,
+    targetRoleName,
+    actions,
+  ])
 
   const roleLabel = useMemo(() => {
     if (state.lockedRole) return state.lockedRole
@@ -696,7 +774,7 @@ export default function MatchQueueClient({
     } else if (!targetRoleName) {
       blockers.push('참가할 역할 정보를 불러오고 있습니다.')
     }
-    if (!state.heroId) {
+    if (!state.heroId && !autoHeroCandidate) {
       blockers.push('사용할 캐릭터를 선택해 주세요.')
     }
     return blockers
@@ -708,6 +786,7 @@ export default function MatchQueueClient({
     state.roleReady,
     targetRoleName,
     state.heroId,
+    autoHeroCandidate,
   ])
 
   useEffect(() => {
@@ -724,7 +803,11 @@ export default function MatchQueueClient({
     if (state.status === 'queued' || state.status === 'matched') return
     if (!state.viewerId) return
     if (!targetRoleName) return
-    const activeHeroId = state.heroId || ''
+    let activeHeroId = state.heroId || ''
+    if (!activeHeroId && autoHeroCandidate) {
+      activeHeroId = autoHeroCandidate
+      actions.setHero(activeHeroId)
+    }
     if (!activeHeroId) return
 
     const signature = `${state.viewerId}::${targetRoleName}::${activeHeroId}`
