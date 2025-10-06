@@ -266,7 +266,7 @@ describe('loadMatchSampleSource', () => {
     expect(result.queueWaitSeconds).toBeLessThan(30)
   })
 
-  it('injects stand-ins from participant pool after the wait threshold', async () => {
+  it('keeps realtime queues limited to actual entrants after the wait threshold', async () => {
     const now = Date.now()
     const supabase = createSupabaseStub({
       rank_match_queue: [
@@ -302,13 +302,12 @@ describe('loadMatchSampleSource', () => {
       realtimeEnabled: true,
     })
 
-    expect(result.sampleType).toBe('realtime_queue_with_standins')
-    expect(result.entries).toHaveLength(2)
-    expect(result.standinCount).toBe(1)
+    expect(result.sampleType).toBe('realtime_queue')
+    expect(result.entries).toHaveLength(1)
+    expect(result.standinCount).toBe(0)
     expect(result.queueWaitSeconds).toBeGreaterThanOrEqual(30)
     const standin = result.entries.find((entry) => entry.standin)
-    expect(standin).toBeTruthy()
-    expect(standin.match_source).toBe('participant_pool')
+    expect(standin).toBeUndefined()
   })
 })
 
@@ -526,7 +525,7 @@ describe('runMatching', () => {
     expect(result.rooms[0].missingSlots).toBe(1)
   })
 
-  it('prevents duplicate heroes from occupying the same room', () => {
+  it('keeps duplicate heroes in separate waiting rooms', () => {
     const result = runMatching({
       mode: 'rank_solo',
       roles: [
@@ -556,10 +555,12 @@ describe('runMatching', () => {
     })
 
     expect(result.ready).toBe(false)
-    expect(result.error?.type).toBe('insufficient_candidates')
+    expect(result.error).toBeNull()
+    expect(result.assignments).toHaveLength(2)
+    expect(result.assignments.every((assignment) => assignment.filledSlots === 1)).toBe(true)
   })
 
-  it('allows a participant pool stand-in to pair with the original owner', () => {
+  it('ignores participant-pool stand-ins when assembling realtime rooms', () => {
     const result = runMatching({
       mode: 'rank_solo',
       roles: [
@@ -591,12 +592,10 @@ describe('runMatching', () => {
       ],
     })
 
-    expect(result.ready).toBe(true)
+    expect(result.ready).toBe(false)
     expect(result.assignments).toHaveLength(1)
-    expect(result.assignments[0].members).toHaveLength(2)
-    expect(new Set(result.assignments[0].members.map((member) => member.hero_id || member.heroId))).toEqual(
-      new Set(['hero-alpha', 'hero-beta']),
-    )
+    expect(result.assignments[0].members).toHaveLength(1)
+    expect(result.assignments[0].missingSlots).toBe(1)
   })
 
   it('rejects parties that exceed the score window', () => {
@@ -629,8 +628,8 @@ describe('runMatching', () => {
     })
 
     expect(result.ready).toBe(false)
-    expect(result.assignments).toHaveLength(1)
-    expect(result.assignments[0].members).toHaveLength(1)
-    expect(result.rooms[0].missingSlots).toBe(1)
+    expect(result.assignments).toHaveLength(2)
+    expect(result.assignments.every((assignment) => assignment.filledSlots === 1)).toBe(true)
+    expect(result.rooms.every((room) => room.missingSlots === 1)).toBe(true)
   })
 })

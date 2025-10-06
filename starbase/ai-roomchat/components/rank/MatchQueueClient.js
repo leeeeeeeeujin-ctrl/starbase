@@ -86,6 +86,90 @@ function MemberList({ assignment, heroMap }) {
   )
 }
 
+function RosterHeroPicker({
+  entries = [],
+  heroMap = new Map(),
+  selectedHeroId,
+  onSelect,
+  disabled,
+}) {
+  const cards = useMemo(() => {
+    if (!Array.isArray(entries)) return []
+    return entries
+      .map((entry) => {
+        if (!entry) return null
+        const heroId = entry.heroId ? String(entry.heroId) : ''
+        if (!heroId) return null
+        const meta = heroMap instanceof Map ? heroMap.get(heroId) || heroMap.get(String(heroId)) : null
+        const name =
+          meta?.name ||
+          meta?.hero_name ||
+          entry.raw?.hero_name ||
+          entry.name ||
+          `ID ${heroId}`
+        const role = entry.role || meta?.role || ''
+        const score =
+          Number.isFinite(Number(entry.score))
+            ? Number(entry.score)
+            : Number.isFinite(Number(meta?.score))
+            ? Number(meta.score)
+            : null
+        const avatarUrl = meta?.image_url || meta?.avatar_url || entry.raw?.hero_avatar_url || null
+        const status = entry.status || meta?.status || ''
+        return {
+          heroId,
+          name,
+          role,
+          score,
+          avatarUrl,
+          status,
+        }
+      })
+      .filter(Boolean)
+  }, [entries, heroMap])
+
+  if (!cards.length) return null
+
+  return (
+    <div className={styles.rosterPicker}>
+      <div className={styles.rosterPickerHeader}>
+        <h3 className={styles.rosterPickerTitle}>내 캐릭터</h3>
+        <p className={styles.rosterPickerHint}>방에 들어갈 캐릭터를 선택하세요.</p>
+      </div>
+      <div className={styles.rosterPickerGrid}>
+        {cards.map((card) => {
+          const active = Boolean(selectedHeroId) && selectedHeroId === card.heroId
+          return (
+            <button
+              key={card.heroId}
+              type="button"
+              className={`${styles.rosterPickerCard} ${active ? styles.rosterPickerCardActive : ''}`}
+              onClick={() => (disabled ? null : onSelect?.(card.heroId))}
+              disabled={disabled}
+            >
+              {card.avatarUrl ? (
+                <img src={card.avatarUrl} alt={card.name} className={styles.rosterPickerAvatar} />
+              ) : (
+                <div className={styles.rosterPickerAvatarPlaceholder} />
+              )}
+              <div className={styles.rosterPickerMeta}>
+                <span className={styles.rosterPickerName}>{card.name}</span>
+                <span className={styles.rosterPickerRole}>{card.role || '역할 미지정'}</span>
+                {Number.isFinite(card.score) ? (
+                  <span className={styles.rosterPickerScore}>{card.score}</span>
+                ) : null}
+                {card.status ? (
+                  <span className={styles.rosterPickerStatus}>{card.status}</span>
+                ) : null}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function TimerVotePanel({ remaining, selected, onSelect, finalTimer }) {
   const normalized = Number(selected)
   const showOptions = finalTimer == null
@@ -294,6 +378,7 @@ export default function MatchQueueClient({
   const pendingMatch = state.pendingMatch || null
   const queuedSampleMeta = state.sampleMeta || null
   const heroOptions = Array.isArray(state.heroOptions) ? state.heroOptions : []
+  const viewerRoster = Array.isArray(state.viewerRoster) ? state.viewerRoster : []
   const [manualHeroId, setManualHeroId] = useState(() => state.heroId || '')
   useEffect(() => {
     setManualHeroId(state.heroId || '')
@@ -1070,6 +1155,13 @@ export default function MatchQueueClient({
         <p className={styles.sectionHint}>
           매칭 대기열에 합류하기 전에 이 게임에서 사용할 캐릭터를 직접 선택해 주세요.
         </p>
+        <RosterHeroPicker
+          entries={viewerRoster}
+          heroMap={state.heroMap}
+          selectedHeroId={state.heroId}
+          onSelect={handleHeroOptionSelect}
+          disabled={state.loading || state.status === 'queued'}
+        />
         {heroOptions.length ? (
           <div className={styles.heroOptionList}>
             {heroOptions.map((option) => {

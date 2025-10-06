@@ -1452,6 +1452,9 @@ function normalizeQueue(queue) {
 
   for (const entry of queue) {
     if (!entry) continue
+    if (entry.simulated === true || entry.standin === true) {
+      continue
+    }
 
     const role = entry.role ?? entry.role_name ?? entry.roleName
     if (!role) continue

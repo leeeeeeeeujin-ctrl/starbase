@@ -63,6 +63,107 @@
   line-height: 1.45;
 }
 
+.rosterPicker {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.rosterPickerHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rosterPickerTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.rosterPickerHint {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.rosterPickerGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.rosterPickerCard {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(30, 41, 59, 0.32);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.rosterPickerCard:hover:not(:disabled) {
+  border-color: rgba(96, 165, 250, 0.55);
+  box-shadow: 0 12px 28px rgba(59, 130, 246, 0.28);
+}
+
+.rosterPickerCardActive {
+  border-color: rgba(96, 165, 250, 0.75);
+  background: rgba(59, 130, 246, 0.2);
+  box-shadow: 0 16px 32px rgba(59, 130, 246, 0.32);
+}
+
+.rosterPickerAvatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
+}
+
+.rosterPickerAvatarPlaceholder {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(71, 85, 105, 0.45);
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+}
+
+.rosterPickerMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rosterPickerName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.rosterPickerRole {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.rosterPickerScore {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.rosterPickerStatus {
+  font-size: 12px;
+  color: #facc15;
+  font-weight: 600;
+}
+
 .statusRow {
   display: flex;
   align-items: center;

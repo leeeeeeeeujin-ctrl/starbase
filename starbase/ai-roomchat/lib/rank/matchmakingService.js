@@ -427,7 +427,6 @@ export async function loadMatchSampleSource(
 
   let sampleEntries = realtimeEnabled ? queueAnnotated.slice() : participantAnnotated.slice()
   let sampleType = realtimeEnabled ? 'realtime_queue' : 'participant_pool'
-  let standins = []
 
   if (realtimeEnabled) {
     if (queueAnnotated.length === 0) {
@@ -443,14 +442,8 @@ export async function loadMatchSampleSource(
       sampleEntries = queueAnnotated.slice()
       sampleType = 'realtime_queue_waiting'
     } else {
-      standins = buildStandinsForQueue(queueAnnotated, participantAnnotated)
-      if (standins.length > 0) {
-        sampleEntries = queueAnnotated.concat(standins)
-        sampleType = 'realtime_queue_with_standins'
-      } else {
-        sampleEntries = queueAnnotated.slice()
-        sampleType = 'realtime_queue'
-      }
+      sampleEntries = queueAnnotated.slice()
+      sampleType = 'realtime_queue'
     }
   } else if (!Array.isArray(sampleEntries) || sampleEntries.length === 0) {
     sampleEntries = queueAnnotated.slice()
@@ -472,7 +465,7 @@ export async function loadMatchSampleSource(
         : null,
     queueOldestJoinedAt: waitInfo.oldestJoinedAt,
     queueWaitThresholdSeconds: WAIT_THRESHOLD_SECONDS,
-    standinCount: standins.length,
+    standinCount: 0,
   }
 }
 
@@ -503,44 +496,6 @@ function computeQueueWaitInfo(queueEntries = []) {
   const now = Date.now()
   const diffMs = Math.max(0, now - oldestTimestamp)
   return { waitSeconds: diffMs / 1000, oldestJoinedAt: oldestIso }
-}
-
-function buildStandinsForQueue(queueEntries = [], participantPool = []) {
-  if (!Array.isArray(queueEntries) || !Array.isArray(participantPool)) return []
-  if (!queueEntries.length || !participantPool.length) return []
-
-  const usedOwners = new Set()
-  const usedHeroes = new Set()
-
-  queueEntries.forEach((entry) => {
-    if (!entry) return
-    const owner = entry.owner_id || entry.ownerId || null
-    const hero = entry.hero_id || entry.heroId || null
-    if (owner) usedOwners.add(String(owner))
-    if (hero) usedHeroes.add(String(hero))
-  })
-
-  const standins = []
-  participantPool.forEach((candidate) => {
-    if (!candidate) return
-    const owner = candidate.owner_id || candidate.ownerId || null
-    if (owner && usedOwners.has(String(owner))) return
-    const hero = candidate.hero_id || candidate.heroId || null
-    if (hero && usedHeroes.has(String(hero))) return
-
-    const clone = {
-      ...candidate,
-      match_source: 'participant_pool',
-      standin: true,
-      simulated: true,
-    }
-
-    standins.push(clone)
-    if (owner) usedOwners.add(String(owner))
-    if (hero) usedHeroes.add(String(hero))
-  })
-
-  return standins
 }
 
 export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
