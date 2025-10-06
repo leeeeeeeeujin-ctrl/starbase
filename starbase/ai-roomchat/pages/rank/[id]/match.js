@@ -54,6 +54,8 @@ export default function RankMatchQueuePage() {
       title="랭크 매칭"
       description="역할별 방을 만들거나 합류해 모든 참가자가 준비되면 자동으로 경기가 시작됩니다."
       emptyHint="아직 열린 방이 없습니다. 새 방을 만들거나 잠시 후 다시 확인해 주세요."
+      autoJoin
+      autoStart
     />
   )
 }

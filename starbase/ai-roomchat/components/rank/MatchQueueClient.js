@@ -362,6 +362,7 @@ export default function MatchQueueClient({
   description,
   emptyHint,
   autoJoin = false,
+  autoStart = false,
 }) {
   const router = useRouter()
   const { state, actions } = useMatchQueue({ gameId, mode, enabled: true })
@@ -407,6 +408,7 @@ export default function MatchQueueClient({
   const heroMissingTimerRef = useRef(null)
   const dropInRedirectTimerRef = useRef(null)
   const dropInMatchSignatureRef = useRef('')
+  const autoStartHandledRef = useRef(false)
   const [refreshing, setRefreshing] = useState(false)
 
   const [voteRemaining, setVoteRemaining] = useState(null)
@@ -938,18 +940,23 @@ export default function MatchQueueClient({
 
       finalTimerResolvedRef.current = null
       setFinalTimer(null)
-      setVoteRemaining(15)
+      const initialVote = autoStart ? 0 : 15
+      setVoteRemaining(initialVote)
       setCountdown(null)
       if (voteTimerRef.current) {
         clearInterval(voteTimerRef.current)
       }
-      voteTimerRef.current = setInterval(() => {
-        setVoteRemaining((prev) => {
-          if (prev == null) return prev
-          if (prev <= 0) return 0
-          return prev - 1
-        })
-      }, 1000)
+      if (!autoStart) {
+        voteTimerRef.current = setInterval(() => {
+          setVoteRemaining((prev) => {
+            if (prev == null) return prev
+            if (prev <= 0) return 0
+            return prev - 1
+          })
+        }, 1000)
+      } else {
+        voteTimerRef.current = null
+      }
       return () => {
         if (voteTimerRef.current) {
           clearInterval(voteTimerRef.current)
@@ -961,12 +968,19 @@ export default function MatchQueueClient({
     setVoteRemaining(null)
     setFinalTimer(null)
     finalTimerResolvedRef.current = null
+    autoStartHandledRef.current = false
     if (voteTimerRef.current) {
       clearInterval(voteTimerRef.current)
       voteTimerRef.current = null
     }
     return () => {}
-  }, [state.status, state.match, isDropInMatch])
+  }, [state.status, state.match, isDropInMatch, autoStart])
+
+  useEffect(() => {
+    if (state.status !== 'matched') {
+      autoStartHandledRef.current = false
+    }
+  }, [state.status])
 
   useEffect(() => {
     if (
@@ -1012,8 +1026,10 @@ export default function MatchQueueClient({
       }
     }
 
-    setCountdown(5)
-  }, [state.status, state.match, voteRemaining, voteValue])
+    if (!autoStart) {
+      setCountdown(5)
+    }
+  }, [state.status, state.match, voteRemaining, voteValue, autoStart])
 
   useEffect(() => {
     if (state.status === 'matched' && state.match && finalTimer != null) {
@@ -1050,6 +1066,28 @@ export default function MatchQueueClient({
       }
     }
   }, [countdown, handleStart])
+
+  useEffect(() => {
+    if (!autoStart) return
+    if (autoStartHandledRef.current) return
+    if (isDropInMatch) return
+    if (state.status !== 'matched' || !state.match) return
+    if (finalTimer == null) return
+
+    autoStartHandledRef.current = true
+    if (voteTimerRef.current) {
+      clearInterval(voteTimerRef.current)
+      voteTimerRef.current = null
+    }
+    setVoteRemaining(null)
+    if (countdownTimerRef.current) {
+      clearTimeout(countdownTimerRef.current)
+      countdownTimerRef.current = null
+    }
+    setCountdown(null)
+    navigationLockRef.current = true
+    handleStart()
+  }, [autoStart, state.status, state.match, finalTimer, isDropInMatch, handleStart])
 
   useEffect(
     () => () => {
