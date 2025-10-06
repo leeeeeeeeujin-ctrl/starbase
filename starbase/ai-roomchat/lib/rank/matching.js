@@ -51,43 +51,14 @@ export function matchRankParticipants({
     })
   }
 
-  const rooms = []
-  const unplaced = []
   const maxWindowAllowed = normaliseWindowThreshold(scoreWindows)
-
-  groups.forEach((group) => {
-    if (!group) return
-    if (!template.roles.has(group.role)) {
-      unplaced.push({ group, reason: 'unsupported_role' })
-      return
-    }
-    if (template.roles.get(group.role).capacity < group.size) {
-      unplaced.push({ group, reason: 'insufficient_role_slots' })
-      return
-    }
-
-    let room = findCompatibleRoom({ rooms, group, template, maxWindowAllowed })
-    if (!room) {
-      room = createRoomFromTemplate(template)
-      rooms.push(room)
-    }
-
-    const placed = assignGroupToRoom({ room, group, template, maxWindowAllowed })
-    if (!placed) {
-      const fallbackRoom = createRoomFromTemplate(template)
-      rooms.push(fallbackRoom)
-      const fallbackPlaced = assignGroupToRoom({
-        room: fallbackRoom,
-        group,
-        template,
-        maxWindowAllowed,
-      })
-      if (!fallbackPlaced) {
-        rooms.pop()
-        unplaced.push({ group, reason: 'conflict' })
-      }
-    }
+  const { pools: rolePools, skipped } = buildRolePools({ template, groups })
+  const { rooms, unplaced } = allocateRoomsFromPools({
+    template,
+    rolePools,
+    maxWindowAllowed,
   })
+  const combinedUnplaced = skipped.concat(unplaced)
 
   const assignments = []
   let ready = false
@@ -107,10 +78,10 @@ export function matchRankParticipants({
   const serializedRooms = rooms.map((room) => serializeRoom(room, template))
   let error = null
   if (!ready) {
-    if (unplaced.length) {
+    if (combinedUnplaced.length) {
       error = {
         type: 'insufficient_candidates',
-        groups: unplaced.map((entry) => ({
+        groups: combinedUnplaced.map((entry) => ({
           role: entry.group.role,
           reason: entry.reason,
           size: entry.group.size,
@@ -263,6 +234,128 @@ function buildQueueGroups(queue) {
   return groups
 }
 
+function buildRolePools({ template, groups }) {
+  const pools = new Map()
+  const skipped = []
+  if (!template || !Array.isArray(groups)) {
+    return { pools, skipped }
+  }
+
+  template.roles.forEach((meta, roleName) => {
+    pools.set(roleName, {
+      capacity: Number(meta?.capacity) || 0,
+      groups: [],
+    })
+  })
+
+  groups.forEach((group) => {
+    if (!group) return
+    const entry = pools.get(group.role)
+    if (!entry) {
+      skipped.push({ group, reason: 'unsupported_role' })
+      return
+    }
+    if (group.size > entry.capacity) {
+      skipped.push({ group, reason: 'insufficient_role_slots' })
+      return
+    }
+    entry.groups.push(group)
+  })
+
+  pools.forEach((entry) => {
+    entry.groups.sort((a, b) => a.joinedAt - b.joinedAt)
+  })
+
+  return { pools, skipped }
+}
+
+function hasRemainingRoleGroups(pools) {
+  if (!pools) return false
+  for (const entry of pools.values()) {
+    if (entry && Array.isArray(entry.groups) && entry.groups.length) {
+      return true
+    }
+  }
+  return false
+}
+
+function allocateRoomsFromPools({ template, rolePools, maxWindowAllowed }) {
+  const rooms = []
+  const leftover = []
+  if (!template || !rolePools || !hasRemainingRoleGroups(rolePools)) {
+    return { rooms, unplaced: leftover }
+  }
+
+  while (hasRemainingRoleGroups(rolePools)) {
+    const room = createRoomFromTemplate(template)
+    let placedAny = false
+
+    for (const [roleName, meta] of template.roles.entries()) {
+      const pool = rolePools.get(roleName)
+      if (!pool || !Array.isArray(pool.groups) || !pool.groups.length) {
+        continue
+      }
+
+      let remaining = Number(meta?.capacity) || 0
+      while (remaining > 0 && pool.groups.length) {
+        const placedGroup = pickCandidateForRole({
+          pool,
+          room,
+          template,
+          maxWindowAllowed,
+        })
+
+        if (!placedGroup) {
+          break
+        }
+
+        remaining -= placedGroup.size
+        placedAny = true
+      }
+    }
+
+    if (!placedAny) {
+      break
+    }
+
+    finalizeRoom(room)
+    rooms.push(room)
+  }
+
+  for (const [roleName, entry] of rolePools.entries()) {
+    if (!entry || !Array.isArray(entry.groups)) continue
+    entry.groups.forEach((group) => {
+      leftover.push({ group, reason: 'conflict', role: roleName })
+    })
+  }
+
+  return { rooms, unplaced: leftover }
+}
+
+function pickCandidateForRole({ pool, room, template, maxWindowAllowed }) {
+  if (!pool || !Array.isArray(pool.groups) || pool.groups.length === 0) {
+    return null
+  }
+
+  for (let index = 0; index < pool.groups.length; index += 1) {
+    const candidate = pool.groups[index]
+    if (!candidate) continue
+    const placed = assignGroupToRoom({
+      room,
+      group: candidate,
+      template,
+      maxWindowAllowed,
+    })
+    if (!placed) {
+      continue
+    }
+    pool.groups.splice(index, 1)
+    return candidate
+  }
+
+  return null
+}
+
 function normalizePartyKey(value) {
   if (value == null) return null
   if (typeof value === 'string' && value.trim()) return value.trim()
@@ -309,6 +402,12 @@ function normaliseQueueMember(candidate) {
   if (partyKey) {
     clone.party_key = partyKey
     clone.partyKey = partyKey
+  }
+
+  if (Array.isArray(candidate?.heroIds) && candidate.heroIds.length) {
+    clone.heroIds = candidate.heroIds.map((id) => (id == null ? id : String(id)))
+  } else if (heroId) {
+    clone.heroIds = [heroId]
   }
 
   return clone
@@ -500,6 +599,8 @@ function createRoomFromTemplate(template) {
     createdAt: Date.now(),
     anchorScore: null,
     maxScoreGap: 0,
+    roleAnchors: new Map(),
+    roleMaxGaps: new Map(),
     groups: [],
   }
 }
@@ -511,8 +612,10 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
   }
 
   const groupScore = Number.isFinite(group.score) ? Number(group.score) : FALLBACK_SCORE
-  if (room.anchorScore != null) {
-    const gap = Math.abs(groupScore - room.anchorScore)
+
+  const roleAnchor = room.roleAnchors.get(group.role)
+  if (roleAnchor != null) {
+    const gap = Math.abs(groupScore - roleAnchor)
     if (gap > maxWindowAllowed) {
       return false
     }
@@ -552,7 +655,15 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
   if (room.anchorScore == null) {
     room.anchorScore = groupScore
   }
-  const gap = Math.abs(groupScore - room.anchorScore)
+  if (!room.roleAnchors.has(group.role)) {
+    room.roleAnchors.set(group.role, groupScore)
+  }
+  const roleAnchorScore = room.roleAnchors.get(group.role)
+  const gap = Math.abs(groupScore - roleAnchorScore)
+  const existingRoleGap = room.roleMaxGaps.get(group.role) || 0
+  if (gap > existingRoleGap) {
+    room.roleMaxGaps.set(group.role, gap)
+  }
   if (gap > room.maxScoreGap) {
     room.maxScoreGap = gap
   }
