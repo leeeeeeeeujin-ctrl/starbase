@@ -450,6 +450,13 @@ export function useStartClientEngine(gameId) {
           assignments: Array.isArray(startMatchMeta.assignments)
             ? startMatchMeta.assignments
             : [],
+          slotLayout: Array.isArray(startMatchMeta.slotLayout)
+            ? startMatchMeta.slotLayout
+            : [],
+          heroMap:
+            startMatchMeta.heroMap && typeof startMatchMeta.heroMap === 'object'
+              ? startMatchMeta.heroMap
+              : null,
           storedAt: startMatchMeta.storedAt || null,
           mode: startMatchMeta.mode || null,
           turnTimer: startMatchMeta.turnTimer || null,

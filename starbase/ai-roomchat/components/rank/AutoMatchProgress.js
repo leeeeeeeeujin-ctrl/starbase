@@ -15,6 +15,7 @@ import {
   CONFIRMATION_WINDOW_SECONDS,
   FAILURE_REDIRECT_DELAY_MS,
   PENALTY_NOTICE,
+  MATCH_REQUEUE_NOTICE,
   ROLE_BLOCKER_MESSAGE,
   VIEWER_BLOCKER_MESSAGE,
 } from './matchConstants'
@@ -272,6 +273,26 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       matchCode: state.match?.matchCode ?? null,
     })
 
+    if (
+      confirmationState === 'counting' &&
+      previous === 'matched' &&
+      state.status !== 'matched'
+    ) {
+      clearConfirmationTimers()
+      setConfirmationState('idle')
+      setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
+      joinSignatureRef.current = ''
+      if (penaltyRedirectRef.current) {
+        clearTimeout(penaltyRedirectRef.current)
+        penaltyRedirectRef.current = null
+      }
+      if (matchLockedRef.current) {
+        matchLockedRef.current = false
+        setMatchLocked(false)
+      }
+      setJoinError(MATCH_REQUEUE_NOTICE)
+    }
+
     if (state.status === 'idle' && previous && previous !== 'idle') {
       console.debug('[AutoMatchProgress] 대기열 상태가 초기화되어 자동 참가 서명을 재설정합니다.')
       joinSignatureRef.current = ''
@@ -282,7 +303,17 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     }
 
     previousStatusRef.current = state.status
-  }, [state.status, state.match])
+  }, [
+    CONFIRMATION_WINDOW_SECONDS,
+    clearConfirmationTimers,
+    confirmationState,
+    setConfirmationState,
+    setConfirmationRemaining,
+    setJoinError,
+    setMatchLocked,
+    state.match,
+    state.status,
+  ])
 
   useEffect(() => {
     if (!gameId || !mode) return
@@ -1073,11 +1104,11 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
   useEffect(() => {
     if (state.status === 'queued' || state.status === 'matched') {
-      if (confirmationState !== 'failed') {
+      if (confirmationState !== 'failed' && joinError !== MATCH_REQUEUE_NOTICE) {
         setJoinError('')
       }
     }
-  }, [confirmationState, state.status])
+  }, [confirmationState, joinError, state.status])
 
   const extraBlockers = confirmationState === 'counting' ? [] : blockers.slice(1)
 
