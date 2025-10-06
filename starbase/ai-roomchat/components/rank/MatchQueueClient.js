@@ -17,6 +17,7 @@ import useMatchQueue from './hooks/useMatchQueue'
 import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
 import styles from './MatchQueueClient.module.css'
 import { buildRoleSummaries } from './queueSummaryUtils'
+import { emitQueueLeaveBeacon } from '../../lib/rank/matchmakingService'
 
 function groupQueue(queue) {
   const map = new Map()
@@ -1285,6 +1286,36 @@ export default function MatchQueueClient({
   }, [autoStart, state.status, state.match, finalTimer, isDropInMatch, handleStart])
 
   const cancelQueue = actions.cancelQueue
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const handlePageLeave = () => {
+      if (navigationLockRef.current) return
+      if (latestStatusRef.current !== 'queued' && latestStatusRef.current !== 'matched') {
+        return
+      }
+      if (state.viewerId) {
+        emitQueueLeaveBeacon({
+          gameId,
+          mode,
+          ownerId: state.viewerId,
+          heroId: state.heroId || null,
+        })
+      }
+      cancelQueue().catch((error) => {
+        console.warn('[MatchQueue] 페이지 이탈 시 대기열 취소 실패:', error)
+      })
+    }
+
+    window.addEventListener('pagehide', handlePageLeave)
+    window.addEventListener('beforeunload', handlePageLeave)
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageLeave)
+      window.removeEventListener('beforeunload', handlePageLeave)
+    }
+  }, [cancelQueue, gameId, mode, state.heroId, state.viewerId])
 
   useEffect(
     () => () => {

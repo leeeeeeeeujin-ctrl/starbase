@@ -35,6 +35,7 @@ import {
   removeConnectionEntries,
 } from '../../lib/rank/startConnectionRegistry'
 import { supabase } from '../../lib/supabase'
+import { emitQueueLeaveBeacon } from '../../lib/rank/matchmakingService'
 
 function resolveRoleName(lockedRole, roles) {
   if (lockedRole && typeof lockedRole === 'string' && lockedRole.trim().length) {
@@ -198,6 +199,14 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current)
         inactivityTimerRef.current = null
+      }
+      if (state.viewerId) {
+        emitQueueLeaveBeacon({
+          gameId,
+          mode,
+          ownerId: state.viewerId,
+          heroId: state.heroId || null,
+        })
       }
       cancelQueueWithCleanup().catch((error) => {
         console.warn('[AutoMatchProgress] 페이지 이탈 시 대기열 취소 실패:', error)

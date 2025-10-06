@@ -35,6 +35,14 @@ function nowIso() {
   return new Date().toISOString()
 }
 
+function hasNavigator() {
+  return typeof navigator !== 'undefined' && navigator !== null
+}
+
+function hasWindow() {
+  return typeof window !== 'undefined' && window !== null
+}
+
 function ensureArray(value) {
   if (Array.isArray(value)) return value
   return value ? [value] : []
@@ -679,6 +687,46 @@ export async function removeQueueEntry(supabaseClient, { gameId, mode, ownerId }
     return { ok: false, error: result.error.message || '대기열에서 제거하지 못했습니다.' }
   }
   return { ok: true }
+}
+
+export function emitQueueLeaveBeacon({ gameId, mode, ownerId, heroId = null }) {
+  if (!gameId || !ownerId || !hasNavigator()) {
+    return false
+  }
+
+  const payload = {
+    gameId,
+    ownerId,
+    mode: mode || null,
+  }
+
+  if (heroId != null) {
+    payload.heroId = heroId
+  }
+
+  const body = JSON.stringify(payload)
+  const endpoint = '/api/rank/match/leave'
+
+  try {
+    if (typeof navigator.sendBeacon === 'function') {
+      const blob = new Blob([body], { type: 'application/json' })
+      return navigator.sendBeacon(endpoint, blob)
+    }
+
+    if (typeof fetch === 'function') {
+      fetch(endpoint, {
+        method: 'POST',
+        body,
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: hasWindow(),
+      }).catch(() => {})
+      return true
+    }
+  } catch (error) {
+    console.warn('대기열 이탈 신호 전송 실패:', error)
+  }
+
+  return false
 }
 
 export async function enqueueParticipant(
