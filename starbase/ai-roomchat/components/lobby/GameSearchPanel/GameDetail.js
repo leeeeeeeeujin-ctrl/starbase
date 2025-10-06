@@ -44,7 +44,12 @@ export default function GameDetail({
     return participants.filter((row) => row?.owner_id === viewerId)
   }, [participants, viewerId])
 
-  const hasConflict = conflictEntries.length > 0 && !isViewerOwner
+  const conflictingOthers = useMemo(() => {
+    if (!viewerParticipant) return conflictEntries
+    return conflictEntries.filter((row) => row !== viewerParticipant)
+  }, [conflictEntries, viewerParticipant])
+
+  const hasConflict = conflictingOthers.length > 0 && !isViewerOwner
 
   useEffect(() => {
     if (!hasGame || detailLoading) return
@@ -129,7 +134,7 @@ export default function GameDetail({
   }
 
   if (hasConflict) {
-    const heroSummaries = conflictEntries.map((row) => {
+    const heroSummaries = conflictingOthers.map((row) => {
       const heroName =
         (typeof row?.hero_name === 'string' && row.hero_name.trim()) ||
         (typeof row?.heroName === 'string' && row.heroName.trim()) ||

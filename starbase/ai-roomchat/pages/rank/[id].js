@@ -137,8 +137,15 @@ export default function GameRoomPage() {
     return list.filter((participant) => participant?.owner_id === viewerId)
   }, [participants, viewerId])
 
+  const conflictingOthers = useMemo(() => {
+    if (!viewerId) return []
+    if (!participantConflicts.length) return []
+    if (!myEntry) return participantConflicts
+    return participantConflicts.filter((row) => row !== myEntry)
+  }, [myEntry, participantConflicts, viewerId])
+
   const hasOwnerConflict =
-    participantConflicts.length > 0 && game && game.owner_id && game.owner_id !== viewerId
+    conflictingOthers.length > 0 && game && game.owner_id && game.owner_id !== viewerId
 
   const handleJoin = async () => {
     await joinGame(pickRole)
@@ -436,7 +443,7 @@ export default function GameRoomPage() {
   }
 
   if (hasOwnerConflict) {
-    const heroSummaries = participantConflicts.map((row, index) => {
+    const heroSummaries = conflictingOthers.map((row, index) => {
       const heroName =
         (typeof row?.hero_name === 'string' && row.hero_name.trim()) ||
         (typeof row?.heroName === 'string' && row.heroName.trim()) ||
