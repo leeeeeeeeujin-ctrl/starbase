@@ -34,6 +34,11 @@ function normaliseOwnerId(value) {
   return result || ''
 }
 
+function normalizeQueueId(value) {
+  const result = normaliseString(value)
+  return result || ''
+}
+
 function normaliseRole(value) {
   if (!value) return ''
   if (typeof value === 'string') return value.trim()
@@ -49,7 +54,18 @@ function normaliseSlotIndices(value, memberCount = 0) {
     return []
   }
   const indices = value
-    .map((slot) => Number(slot))
+    .map((slot) => {
+      if (typeof slot === 'number') {
+        return Number(slot)
+      }
+      if (typeof slot === 'object' && slot !== null) {
+        const candidate = slot.slotIndex ?? slot.slot_index ?? slot.index
+        if (Number.isFinite(Number(candidate))) {
+          return Number(candidate)
+        }
+      }
+      return Number.NaN
+    })
     .filter((slot) => Number.isInteger(slot) && slot >= 0)
   if (!indices.length && memberCount > 0) {
     const fallback = []
@@ -143,6 +159,76 @@ function normaliseEntry(entry) {
   }
 }
 
+function normaliseRoleSlotEntries(roleSlots) {
+  if (!Array.isArray(roleSlots)) return []
+  return roleSlots.map((slot) => {
+    if (!slot || typeof slot !== 'object') {
+      return {
+        role: null,
+        slotIndex: Number.isFinite(Number(slot)) ? Number(slot) : null,
+        members: [],
+      }
+    }
+    const role = normaliseRole(slot.role ?? slot.name)
+    const slotIndexRaw = slot.slotIndex ?? slot.slot_index ?? slot.index
+    const slotIndex = Number.isFinite(Number(slotIndexRaw)) ? Number(slotIndexRaw) : null
+    const members = Array.isArray(slot.members) ? slot.members : []
+    const heroId = slot.heroId ?? slot.hero_id ?? null
+    const id = slot.id ?? null
+    return {
+      role,
+      slotIndex,
+      members,
+      heroId,
+      id,
+    }
+  })
+}
+
+function membersMatch(left, right) {
+  if (!left || !right) return false
+  if (left === right) return true
+  const leftId = normalizeQueueId(left.id ?? left.queue_id ?? left.queueId)
+  const rightId = normalizeQueueId(right.id ?? right.queue_id ?? right.queueId)
+  if (leftId && rightId && leftId === rightId) return true
+  const leftHero = normalizeHeroIdValue(left.hero_id ?? left.heroId)
+  const rightHero = normalizeHeroIdValue(right.hero_id ?? right.heroId)
+  if (leftHero && rightHero && leftHero === rightHero) return true
+  const leftOwner = normaliseOwnerId(left.owner_id ?? left.ownerId)
+  const rightOwner = normaliseOwnerId(right.owner_id ?? right.ownerId)
+  if (leftOwner && rightOwner && leftOwner === rightOwner && leftHero && rightHero) {
+    return true
+  }
+  return false
+}
+
+function matchMemberToSlot(member, slots, usedIndices) {
+  if (!member || !Array.isArray(slots)) return null
+
+  for (let index = 0; index < slots.length; index += 1) {
+    if (usedIndices.has(index)) continue
+    const slot = slots[index]
+    if (!slot) continue
+    const members = Array.isArray(slot.members) ? slot.members : []
+    if (members.some((candidate) => membersMatch(candidate, member))) {
+      usedIndices.add(index)
+      return { slot, index }
+    }
+  }
+
+  for (let index = 0; index < slots.length; index += 1) {
+    if (usedIndices.has(index)) continue
+    const slot = slots[index]
+    if (!slot) continue
+    if (slot.role && slot.role === normaliseRole(member.role)) {
+      usedIndices.add(index)
+      return { slot, index }
+    }
+  }
+
+  return null
+}
+
 function readRawState() {
   if (typeof window === 'undefined') return DEFAULT_STATE
   const raw = readStartSessionValue(REGISTRY_KEY)
@@ -212,10 +298,10 @@ export function registerMatchConnections({
 
   assignments.forEach((assignment) => {
     if (!assignment || typeof assignment !== 'object') return
-    const role = normaliseRole(assignment.role)
     const members = Array.isArray(assignment.members) ? assignment.members : []
     if (!members.length) return
-    const slotIndices = normaliseSlotIndices(assignment.roleSlots, members.length)
+    const slotEntries = normaliseRoleSlotEntries(assignment.roleSlots)
+    const usedSlotIndices = new Set()
 
     members.forEach((member, memberIndex) => {
       if (!member || typeof member !== 'object') return
@@ -229,12 +315,11 @@ export function registerMatchConnections({
         normaliseString(heroRecord?.name) ||
         normaliseString(member.hero_name ?? member.heroName) ||
         null
-      const slotIndex =
-        slotIndices.length > memberIndex
-          ? slotIndices[memberIndex]
-          : slotIndices.length
-            ? slotIndices[slotIndices.length - 1]
-            : memberIndex
+      const matched = matchMemberToSlot(member, slotEntries, usedSlotIndices)
+      const slotIndex = matched?.slot?.slotIndex ?? matched?.index ?? null
+      const slotIndices =
+        matched && matched.slot ? normaliseSlotIndices([matched.slot], 1) : normaliseSlotIndices(assignment.roleSlots, members.length)
+      const role = matched?.slot?.role || normaliseRole(assignment.role)
 
       entries.push({
         gameId: key,

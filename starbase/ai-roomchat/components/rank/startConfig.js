@@ -114,15 +114,25 @@ function normalizeAssignment(assignment) {
     assignment.slots != null && Number.isFinite(Number(assignment.slots))
       ? Number(assignment.slots)
       : null
-  const roleSlots = Array.isArray(assignment.roleSlots)
+  const roleSlotsRaw = Array.isArray(assignment.roleSlots)
     ? assignment.roleSlots
-        .map((slot) => Number(slot))
-        .filter((slot) => Number.isFinite(slot))
     : Array.isArray(assignment.role_slots)
     ? assignment.role_slots
-        .map((slot) => Number(slot))
-        .filter((slot) => Number.isFinite(slot))
     : []
+  const roleSlots = roleSlotsRaw
+    .map((slot) => {
+      if (typeof slot === 'number') {
+        return Number(slot)
+      }
+      if (typeof slot === 'object' && slot !== null) {
+        const value = slot.slotIndex ?? slot.slot_index ?? slot.index
+        if (Number.isFinite(Number(value))) {
+          return Number(value)
+        }
+      }
+      return Number.NaN
+    })
+    .filter((slot) => Number.isFinite(slot))
   const heroIds = Array.isArray(assignment.heroIds)
     ? assignment.heroIds
         .map((id) => (id != null ? String(id).trim() : ''))

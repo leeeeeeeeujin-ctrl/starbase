@@ -10,6 +10,13 @@
 const DEFAULT_SCORE_WINDOWS = Object.freeze([100, 200])
 const FALLBACK_SCORE = 1000
 
+let roomSequence = 0
+
+function nextRoomId() {
+  roomSequence += 1
+  return `room-${roomSequence}`
+}
+
 export function matchSoloRankParticipants(options = {}) {
   return matchRankParticipants(options)
 }
@@ -23,79 +30,659 @@ export function matchRankParticipants({
   queue = [],
   scoreWindows = DEFAULT_SCORE_WINDOWS,
 } = {}) {
-  const normalizedRoles = normalizeRoles(roles)
-  const totalSlots = countTotalSlots(normalizedRoles)
-  if (totalSlots === 0) {
+  const template = buildRoomTemplate(roles)
+  const totalSlots = template.totalSlots
+  if (!totalSlots) {
     return buildResult({
       ready: false,
-      totalSlots,
+      totalSlots: 0,
       error: { type: 'no_active_slots' },
     })
   }
 
-  const groupsByRole = buildMixedRoleGroups(queue)
-  const usedGroupKeys = new Set()
-  const usedHeroIds = new Set()
-  const assignments = []
-  const rooms = []
-  let maxWindow = 0
-  let allFilled = true
-
-  for (const role of normalizedRoles) {
-    const groups = groupsByRole.get(role.name) || []
-    const resolution = resolveRoleWithRooms({
-      role,
-      groups,
-      scoreWindows,
-      usedGroupKeys,
-      usedHeroIds,
+  const groups = buildQueueGroups(queue)
+  if (!groups.length) {
+    return buildResult({
+      ready: false,
+      assignments: [],
+      rooms: [],
+      totalSlots,
+      maxWindow: 0,
     })
+  }
 
-    if (!resolution.ok) {
-      return buildResult({
-        ready: false,
-        assignments: assignments.concat(resolution.partialAssignments ?? []),
-        rooms: rooms.concat(resolution.partialRooms ?? []),
-        totalSlots,
-        maxWindow,
-        error: {
-          type: resolution.reason,
-          role: role.name,
-          missing: resolution.missing,
-        },
-      })
+  const rooms = []
+  const unplaced = []
+  const maxWindowAllowed = normaliseWindowThreshold(scoreWindows)
+
+  groups.forEach((group) => {
+    if (!group) return
+    if (!template.roles.has(group.role)) {
+      unplaced.push({ group, reason: 'unsupported_role' })
+      return
+    }
+    if (template.roles.get(group.role).capacity < group.size) {
+      unplaced.push({ group, reason: 'insufficient_role_slots' })
+      return
     }
 
-    const { assignment, room, window, heroIds, ready } = resolution
-    if (assignment) {
-      assignments.push(assignment)
+    let room = findCompatibleRoom({ rooms, group, template, maxWindowAllowed })
+    if (!room) {
+      room = createRoomFromTemplate(template)
       rooms.push(room)
-      if (Array.isArray(heroIds)) {
-        appendHeroIds(usedHeroIds, heroIds)
+    }
+
+    const placed = assignGroupToRoom({ room, group, template, maxWindowAllowed })
+    if (!placed) {
+      const fallbackRoom = createRoomFromTemplate(template)
+      rooms.push(fallbackRoom)
+      const fallbackPlaced = assignGroupToRoom({
+        room: fallbackRoom,
+        group,
+        template,
+        maxWindowAllowed,
+      })
+      if (!fallbackPlaced) {
+        rooms.pop()
+        unplaced.push({ group, reason: 'conflict' })
       }
-      if (room?.groups) {
-        room.groups.forEach((group) => {
-          if (group?.groupKey) {
-            usedGroupKeys.add(group.groupKey)
-          }
-        })
+    }
+  })
+
+  const assignments = []
+  let ready = false
+  let maxWindowUsed = 0
+
+  rooms.forEach((room) => {
+    finalizeRoom(room)
+    if (room.maxScoreGap > maxWindowUsed) {
+      maxWindowUsed = room.maxScoreGap
+    }
+    if (room.ready) {
+      ready = true
+    }
+    assignments.push(buildRoomAssignment(room, template))
+  })
+
+  const serializedRooms = rooms.map((room) => serializeRoom(room, template))
+  let error = null
+  if (!ready) {
+    if (unplaced.length) {
+      error = {
+        type: 'insufficient_candidates',
+        groups: unplaced.map((entry) => ({
+          role: entry.group.role,
+          reason: entry.reason,
+          size: entry.group.size,
+        })),
       }
-      if (typeof window === 'number' && window > maxWindow) {
-        maxWindow = window
-      }
-      if (!ready) {
-        allFilled = false
-      }
+    } else if (!assignments.length) {
+      error = { type: 'no_candidates' }
     }
   }
 
   return buildResult({
-    ready: allFilled && assignments.length > 0,
+    ready,
     assignments,
-    rooms,
+    rooms: serializedRooms,
     totalSlots,
-    maxWindow,
+    maxWindow: maxWindowUsed,
+    error,
   })
+}
+
+function buildRoomTemplate(rawRoles) {
+  const normalized = normalizeRoles(rawRoles)
+  const slots = []
+  const roles = new Map()
+  let cursor = 0
+
+  for (const role of normalized) {
+    const roleName = normalizeRoleLabel(role.name)
+    const capacity = coerceInteger(role.slotCount, 0)
+    if (!roleName || capacity <= 0) continue
+
+    roles.set(roleName, {
+      capacity,
+      offset: cursor,
+    })
+
+    for (let index = 0; index < capacity; index += 1) {
+      slots.push({ role: roleName, slotIndex: index })
+    }
+
+    cursor += capacity
+  }
+
+  const signature = slots.map((slot) => `${slot.role}#${slot.slotIndex}`).join('|')
+
+  return {
+    roles,
+    slots,
+    totalSlots: slots.length,
+    signature,
+  }
+}
+
+function normalizeRoleLabel(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'object' && value !== null) {
+    if (typeof value.name === 'string') return value.name.trim()
+    if (typeof value.role === 'string') return value.role.trim()
+  }
+  return ''
+}
+
+function normaliseWindowThreshold(windows = DEFAULT_SCORE_WINDOWS) {
+  if (!Array.isArray(windows) || windows.length === 0) {
+    return DEFAULT_SCORE_WINDOWS[DEFAULT_SCORE_WINDOWS.length - 1]
+  }
+
+  let max = 0
+  windows.forEach((value) => {
+    const numeric = Number(value)
+    if (Number.isFinite(numeric) && numeric >= 0 && numeric > max) {
+      max = numeric
+    }
+  })
+
+  if (max <= 0) {
+    return DEFAULT_SCORE_WINDOWS[DEFAULT_SCORE_WINDOWS.length - 1]
+  }
+
+  return max
+}
+
+function buildQueueGroups(queue) {
+  const normalized = normalizeQueue(queue)
+  if (!normalized.length) return []
+
+  const partyBuckets = new Map()
+  const soloGroups = []
+
+  normalized.forEach((candidate) => {
+    const role = normalizeRoleLabel(candidate.role)
+    if (!role) return
+
+    const member = normaliseQueueMember(candidate)
+    if (!member) return
+
+    const partyKey = normalizePartyKey(candidate.partyKey)
+
+    if (partyKey) {
+      const composite = `${role}::${partyKey}`
+      if (!partyBuckets.has(composite)) {
+        partyBuckets.set(composite, [])
+      }
+      partyBuckets.get(composite).push({
+        member,
+        joinedAt: candidate.joinedAt,
+        score: candidate.score,
+      })
+      return
+    }
+
+    const group = materialiseGroup({
+      role,
+      members: [member],
+      partyKey: null,
+      joinedAt: candidate.joinedAt,
+      score: candidate.score,
+      groupKey: candidate.groupKey || buildSoloGroupKey(member),
+    })
+    if (group) {
+      soloGroups.push(group)
+    }
+  })
+
+  const partyGroups = []
+  for (const [composite, items] of partyBuckets.entries()) {
+    const [roleName, partyKey] = composite.split('::')
+    const role = normalizeRoleLabel(roleName)
+    if (!role) continue
+    const sorted = items.slice().sort((a, b) => a.joinedAt - b.joinedAt)
+    const members = sorted.map((item) => item.member)
+    const score = averageScore(sorted.map((item) => item.score))
+    const joinedAt = sorted[0]?.joinedAt ?? Number.MAX_SAFE_INTEGER
+    const group = materialiseGroup({
+      role,
+      members,
+      partyKey,
+      joinedAt,
+      score,
+      groupKey: `party:${partyKey || role}`,
+    })
+    if (group) {
+      partyGroups.push(group)
+    }
+  }
+
+  const groups = soloGroups.concat(partyGroups)
+  groups.sort((a, b) => a.joinedAt - b.joinedAt)
+  return groups
+}
+
+function normalizePartyKey(value) {
+  if (value == null) return null
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null
+    return String(value)
+  }
+  return null
+}
+
+function normaliseQueueMember(candidate) {
+  const entry = candidate?.entry
+  if (!entry || typeof entry !== 'object') return null
+
+  const role = normalizeRoleLabel(candidate.role)
+  if (!role) return null
+
+  const ownerId = normalizeOwnerId(entry.owner_id ?? entry.ownerId ?? entry.user_id ?? entry.userId)
+  const heroId = normalizeHeroId(entry.hero_id ?? entry.heroId ?? entry.hero?.id)
+  if (!ownerId || !heroId) {
+    return null
+  }
+
+  const id = normalizeQueueId(entry.id ?? entry.queue_id ?? entry.queueId)
+  const joinedAtIso = normalizeJoinedAt(entry.joined_at ?? entry.joinedAt ?? candidate.joinedAt)
+  const score = Number.isFinite(candidate.score) ? Number(candidate.score) : FALLBACK_SCORE
+  const partyKey = normalizePartyKey(candidate.partyKey)
+
+  const clone = { ...entry }
+  if (id != null) {
+    clone.id = id
+    clone.queue_id = id
+    clone.queueId = id
+  }
+  clone.owner_id = ownerId
+  clone.ownerId = ownerId
+  clone.hero_id = heroId
+  clone.heroId = heroId
+  clone.role = role
+  clone.joined_at = joinedAtIso
+  clone.joinedAt = joinedAtIso
+  clone.score = score
+  clone.rating = score
+  if (partyKey) {
+    clone.party_key = partyKey
+    clone.partyKey = partyKey
+  }
+
+  return clone
+}
+
+function normalizeOwnerId(value) {
+  if (value == null) return null
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null
+    return String(value)
+  }
+  return null
+}
+
+function normalizeHeroId(value) {
+  if (value == null) return null
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null
+    return String(value)
+  }
+  return null
+}
+
+function normalizeQueueId(value) {
+  if (value == null) return null
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null
+    return String(value)
+  }
+  return null
+}
+
+function normalizeJoinedAt(value) {
+  if (!value) return new Date().toISOString()
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value)
+    if (Number.isFinite(parsed)) {
+      return new Date(parsed).toISOString()
+    }
+    return value.trim()
+  }
+  if (Number.isFinite(value)) {
+    return new Date(value).toISOString()
+  }
+  return new Date().toISOString()
+}
+
+function buildSoloGroupKey(member) {
+  if (!member) return `solo:${Math.random().toString(36).slice(2)}`
+  const ownerId = member.owner_id || member.ownerId || 'owner'
+  const heroId = member.hero_id || member.heroId || 'hero'
+  return `solo:${ownerId}:${heroId}`
+}
+
+function materialiseGroup({ role, members, partyKey, joinedAt, score, groupKey }) {
+  if (!Array.isArray(members) || members.length === 0) return null
+  const normalizedMembers = members.map((member, index) => cloneMemberForRoom(member, index))
+  const heroIds = collectGroupHeroIds(normalizedMembers)
+  if (!heroIds.length) return null
+  const ownerIds = collectGroupOwnerIds(normalizedMembers)
+  const groupScore = Number.isFinite(score) ? Number(score) : averageScore(normalizedMembers.map((m) => m.score))
+  const normalizedJoinedAt = Number.isFinite(joinedAt) ? joinedAt : Date.parse(normalizedMembers[0]?.joined_at || normalizedMembers[0]?.joinedAt || Date.now())
+
+  return {
+    role,
+    members: normalizedMembers,
+    partyKey: partyKey || null,
+    groupKey: groupKey || null,
+    heroIds,
+    ownerIds,
+    size: normalizedMembers.length,
+    score: Number.isFinite(groupScore) ? groupScore : FALLBACK_SCORE,
+    joinedAt: Number.isFinite(normalizedJoinedAt) ? normalizedJoinedAt : Date.now(),
+  }
+}
+
+function cloneMemberForRoom(member, memberIndex = 0) {
+  if (!member || typeof member !== 'object') return null
+  const clone = { ...member }
+  if (memberIndex != null && !Number.isNaN(Number(memberIndex))) {
+    clone.memberIndex = Number(memberIndex)
+  }
+  if (!clone.joined_at && clone.joinedAt) {
+    clone.joined_at = clone.joinedAt
+  }
+  if (!clone.joinedAt && clone.joined_at) {
+    clone.joinedAt = clone.joined_at
+  }
+  if (clone.score == null && Number.isFinite(Number(clone.rating))) {
+    clone.score = Number(clone.rating)
+  }
+  if (clone.rating == null && Number.isFinite(Number(clone.score))) {
+    clone.rating = Number(clone.score)
+  }
+  return clone
+}
+
+function averageScore(values = []) {
+  const filtered = values.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+  if (!filtered.length) return FALLBACK_SCORE
+  const sum = filtered.reduce((acc, value) => acc + value, 0)
+  return Math.round(sum / filtered.length)
+}
+
+function collectGroupOwnerIds(members = []) {
+  const owners = new Set()
+  members.forEach((member) => {
+    const ownerId = normalizeOwnerId(member?.owner_id ?? member?.ownerId)
+    if (ownerId) {
+      owners.add(ownerId)
+    }
+  })
+  return Array.from(owners)
+}
+
+function findCompatibleRoom({ rooms, group, template, maxWindowAllowed }) {
+  if (!Array.isArray(rooms) || rooms.length === 0) return null
+  const candidates = []
+  const groupScore = Number.isFinite(group.score) ? Number(group.score) : FALLBACK_SCORE
+
+  rooms.forEach((room) => {
+    if (!roomHasRoleCapacity(room, group.role, group.size)) return
+    if (hasRoomHeroConflict(room, group)) return
+    if (hasRoomOwnerConflict(room, group)) return
+
+    const anchorScore = room.anchorScore ?? groupScore
+    const gap = Math.abs(groupScore - anchorScore)
+    if (room.anchorScore != null && gap > maxWindowAllowed) return
+
+    candidates.push({
+      room,
+      gap,
+    })
+  })
+
+  if (!candidates.length) return null
+
+  candidates.sort((a, b) => {
+    if (a.gap !== b.gap) return a.gap - b.gap
+    if (a.room.filledSlots !== b.room.filledSlots) return b.room.filledSlots - a.room.filledSlots
+    return a.room.createdAt - b.room.createdAt
+  })
+
+  return candidates[0]?.room || null
+}
+
+function roomHasRoleCapacity(room, role, needed) {
+  if (!room || !role) return false
+  let available = 0
+  room.slots.forEach((slot) => {
+    if (slot.role !== role) return
+    if (!slot.member) {
+      available += 1
+    }
+  })
+  return available >= needed
+}
+
+function hasRoomHeroConflict(room, group) {
+  if (!room || !group) return false
+  return group.heroIds.some((heroId) => heroId && room.heroIds.has(heroId))
+}
+
+function hasRoomOwnerConflict(room, group) {
+  if (!room || !group) return false
+  return group.ownerIds.some((ownerId) => ownerId && room.ownerIds.has(ownerId))
+}
+
+function createRoomFromTemplate(template) {
+  const slots = template.slots.map((slot) => ({
+    role: slot.role,
+    slotIndex: slot.slotIndex,
+    member: null,
+    groupKey: null,
+    partyKey: null,
+    occupied: false,
+  }))
+
+  return {
+    id: nextRoomId(),
+    signature: template.signature,
+    slots,
+    filledSlots: 0,
+    ownerIds: new Set(),
+    heroIds: new Set(),
+    createdAt: Date.now(),
+    anchorScore: null,
+    maxScoreGap: 0,
+    groups: [],
+  }
+}
+
+function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
+  if (!room || !group) return false
+  if (!roomHasRoleCapacity(room, group.role, group.size)) {
+    return false
+  }
+
+  const groupScore = Number.isFinite(group.score) ? Number(group.score) : FALLBACK_SCORE
+  if (room.anchorScore != null) {
+    const gap = Math.abs(groupScore - room.anchorScore)
+    if (gap > maxWindowAllowed) {
+      return false
+    }
+  }
+
+  if (hasRoomHeroConflict(room, group) || hasRoomOwnerConflict(room, group)) {
+    return false
+  }
+
+  const openSlots = room.slots.filter((slot) => slot.role === group.role && !slot.member)
+  if (openSlots.length < group.size) {
+    return false
+  }
+
+  const slotIndices = []
+  group.members.forEach((member, index) => {
+    const slot = openSlots[index]
+    if (!slot) return
+    const clone = cloneMemberForRoom(member, index)
+    slot.member = clone
+    slot.groupKey = group.groupKey || null
+    slot.partyKey = group.partyKey || null
+    slot.occupied = true
+    slotIndices.push(slot.slotIndex)
+
+    const heroId = clone.hero_id || clone.heroId || null
+    if (heroId) {
+      room.heroIds.add(heroId)
+    }
+    const ownerId = clone.owner_id || clone.ownerId || null
+    if (ownerId) {
+      room.ownerIds.add(ownerId)
+    }
+  })
+
+  room.filledSlots += group.size
+  if (room.anchorScore == null) {
+    room.anchorScore = groupScore
+  }
+  const gap = Math.abs(groupScore - room.anchorScore)
+  if (gap > room.maxScoreGap) {
+    room.maxScoreGap = gap
+  }
+  if (group.joinedAt && group.joinedAt < room.createdAt) {
+    room.createdAt = group.joinedAt
+  }
+
+  room.groups.push({
+    role: group.role,
+    groupKey: group.groupKey || null,
+    partyKey: group.partyKey || null,
+    size: group.size,
+    score: groupScore,
+    joinedAt: group.joinedAt,
+    slotIndices,
+    members: group.members.map((member, index) => cloneMemberForRoom(member, index)),
+  })
+
+  return true
+}
+
+function finalizeRoom(room) {
+  if (!room) return
+  const totalSlots = room.slots.length
+  room.missingSlots = Math.max(0, totalSlots - room.filledSlots)
+  room.ready = totalSlots > 0 && room.missingSlots === 0
+}
+
+function buildRoomAssignment(room, template) {
+  const roleSlots = room.slots.map((slot) => {
+    const meta = template.roles.get(slot.role) || { offset: 0 }
+    const localIndex = slot.slotIndex
+    const globalIndex = Number.isInteger(meta.offset)
+      ? Number(meta.offset) + Number(localIndex)
+      : Number(localIndex)
+    return {
+      role: slot.role,
+      slotIndex: Number.isFinite(globalIndex) ? globalIndex : localIndex,
+      localIndex,
+      occupied: Boolean(slot.member),
+      members: slot.member ? [slot.member] : [],
+      member: slot.member ? { ...slot.member } : null,
+      groupKey: slot.groupKey || null,
+      partyKey: slot.partyKey || null,
+    }
+  })
+
+  const members = []
+  roleSlots.forEach((slot) => {
+    if (!Array.isArray(slot.members)) return
+    slot.members.forEach((member) => {
+      if (member) {
+        members.push(member)
+      }
+    })
+  })
+
+  const roleLabel = buildRoomLabel(template)
+
+  return {
+    role: roleLabel,
+    roomId: room.id,
+    slots: room.slots.length,
+    filledSlots: room.filledSlots,
+    missingSlots: room.missingSlots,
+    ready: room.ready,
+    roleSlots,
+    members,
+    groups: room.groups.map((group) => ({
+      role: group.role,
+      groupKey: group.groupKey,
+      partyKey: group.partyKey,
+      size: group.size,
+      slotIndices: group.slotIndices,
+      score: group.score,
+      joinedAt: group.joinedAt,
+    })),
+    anchorScore: room.anchorScore,
+    maxWindow: room.maxScoreGap,
+  }
+}
+
+function serializeRoom(room, template) {
+  return {
+    id: room.id,
+    ready: room.ready,
+    filledSlots: room.filledSlots,
+    missingSlots: room.missingSlots,
+    totalSlots: room.slots.length,
+    anchorScore: room.anchorScore,
+    maxScoreGap: room.maxScoreGap,
+    label: buildRoomLabel(template),
+    slots: room.slots.map((slot) => {
+      const meta = template.roles.get(slot.role) || { offset: 0 }
+      const localIndex = slot.slotIndex
+      const globalIndex = Number.isInteger(meta.offset)
+        ? Number(meta.offset) + Number(localIndex)
+        : Number(localIndex)
+      return {
+        role: slot.role,
+        slotIndex: Number.isFinite(globalIndex) ? globalIndex : localIndex,
+        localIndex,
+        occupied: Boolean(slot.member),
+        member: slot.member ? { ...slot.member } : null,
+        groupKey: slot.groupKey || null,
+        partyKey: slot.partyKey || null,
+      }
+    }),
+    groups: room.groups.map((group) => ({
+      role: group.role,
+      groupKey: group.groupKey,
+      partyKey: group.partyKey,
+      size: group.size,
+      slotIndices: group.slotIndices,
+      score: group.score,
+      joinedAt: group.joinedAt,
+    })),
+  }
+}
+
+function buildRoomLabel(template) {
+  if (!template || !template.roles) return '룸'
+  const parts = []
+  for (const [roleName, meta] of template.roles.entries()) {
+    const capacity = Number(meta?.capacity)
+    if (!roleName || capacity <= 0) continue
+    parts.push(capacity > 1 ? `${roleName} x${capacity}` : roleName)
+  }
+  if (!parts.length) return '룸'
+  return parts.join(' · ')
 }
 
 export function matchCasualParticipants({ roles = [], queue = [], partySize = 1 } = {}) {

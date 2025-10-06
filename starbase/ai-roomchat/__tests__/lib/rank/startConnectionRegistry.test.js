@@ -10,7 +10,13 @@ function createMatchPayload() {
     assignments: [
       {
         role: 'attacker',
-        roleSlots: [0],
+        roleSlots: [
+          {
+            role: 'attacker',
+            slotIndex: 0,
+            localIndex: 0,
+          },
+        ],
         members: [
           {
             owner_id: 'owner-1',
@@ -21,7 +27,13 @@ function createMatchPayload() {
       },
       {
         role: 'defender',
-        roleSlots: [1],
+        roleSlots: [
+          {
+            role: 'defender',
+            slotIndex: 1,
+            localIndex: 0,
+          },
+        ],
         members: [
           {
             owner_id: 'owner-2',
@@ -86,7 +98,13 @@ describe('startConnectionRegistry', () => {
       assignments: [
         {
           role: 'attacker',
-          roleSlots: [2],
+          roleSlots: [
+            {
+              role: 'attacker',
+              slotIndex: 2,
+              localIndex: 2,
+            },
+          ],
           members: [
             {
               owner_id: 'owner-1',

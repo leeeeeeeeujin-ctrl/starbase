@@ -480,12 +480,16 @@ describe('runMatching', () => {
     expect(result.rooms).toHaveLength(1)
 
     const [assignment] = result.assignments
+    expect(assignment.role).toBe('attack x3')
     expect(assignment.members).toHaveLength(3)
     expect(assignment.filledSlots).toBe(3)
     expect(assignment.groups).toHaveLength(2)
+    expect(assignment.roleSlots).toHaveLength(3)
+    expect(assignment.roleSlots.every((slot) => slot.role === 'attack')).toBe(true)
     expect(new Set(assignment.members.map((member) => member.owner_id || member.ownerId))).toEqual(
       new Set(['owner-1', 'owner-2', 'owner-3']),
     )
+    expect(result.rooms[0].label).toBe('attack x3')
     expect(result.rooms[0].missingSlots).toBe(0)
   })
 
@@ -513,8 +517,11 @@ describe('runMatching', () => {
     expect(result.ready).toBe(false)
     expect(result.assignments).toHaveLength(1)
     const [assignment] = result.assignments
+    expect(assignment.role).toBe('support x2')
     expect(assignment.ready).toBe(false)
     expect(assignment.missingSlots).toBe(1)
+    expect(assignment.roleSlots).toHaveLength(2)
+    expect(assignment.roleSlots[0].role).toBe('support')
     expect(result.rooms[0].filledSlots).toBe(1)
     expect(result.rooms[0].missingSlots).toBe(1)
   })
