@@ -21,6 +21,31 @@ describe('matchRankParticipants', () => {
     { name: 'support', slot_count: 1 },
   ]
 
+  it('marks a room ready when a single-slot role fills its lone seat', () => {
+    const singleRole = [{ name: 'solo', slot_count: 1 }]
+    const queue = [
+      buildQueueEntry({
+        id: 'q-solo',
+        ownerId: 'owner-solo',
+        heroId: 'hero-solo',
+        role: 'solo',
+        score: 1120,
+      }),
+    ]
+
+    const result = matchRankParticipants({ roles: singleRole, queue })
+
+    expect(result.ready).toBe(true)
+    expect(result.totalSlots).toBe(1)
+    expect(result.assignments).toHaveLength(1)
+    const [assignment] = result.assignments
+    expect(assignment.ready).toBe(true)
+    expect(assignment.roleSlots).toEqual([
+      expect.objectContaining({ role: 'solo', occupied: true, slotIndex: 0 }),
+    ])
+    expect(result.rooms[0].missingSlots).toBe(0)
+  })
+
   it('combines groups from different roles when score gaps stay within the window', () => {
     const queue = [
       buildQueueEntry({ id: 'q1', ownerId: 'owner-a', heroId: 'hero-a', role: 'attack', score: 1200 }),
