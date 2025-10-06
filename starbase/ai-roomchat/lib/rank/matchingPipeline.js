@@ -53,6 +53,55 @@ function normalizeId(value) {
   return String(value)
 }
 
+function normalizeBooleanFlag(value, defaultValue = false) {
+  if (value == null) return defaultValue
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return defaultValue
+    return value !== 0
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return defaultValue
+    if (['true', '1', 'yes', 'on', 'enable', 'enabled'].includes(normalized)) {
+      return true
+    }
+    if (['false', '0', 'no', 'off', 'disable', 'disabled'].includes(normalized)) {
+      return false
+    }
+    if (['realtime', 'real-time', 'realtime_only', 'realtime-only', 'live'].includes(normalized)) {
+      return true
+    }
+    if (
+      [
+        'manual',
+        'manual_only',
+        'manual-only',
+        'offline',
+        'off-line',
+        'nonrealtime',
+        'non-realtime',
+        'non_realtime',
+        'queue',
+        'turn',
+        'turn-based',
+        'turn_based',
+      ].includes(normalized)
+    ) {
+      return false
+    }
+    if (normalized === 'allow') return true
+    if (normalized === 'forbid' || normalized === 'ban') return false
+    if (normalized === 'allow-drop-in') return true
+  }
+  if (typeof value === 'object' && value !== null) {
+    if (typeof value.value !== 'undefined') {
+      return normalizeBooleanFlag(value.value, defaultValue)
+    }
+  }
+  return Boolean(value)
+}
+
 function normalizeRoleName(raw) {
   if (!raw) return ''
   if (typeof raw === 'string') return raw.trim()
@@ -285,31 +334,48 @@ async function claimDropInSlot({ supabase, room, slot, entry }) {
 }
 
 export function extractMatchingToggles(gameRow, rules = {}) {
-  const realtimeEnabled = Boolean(gameRow?.realtime_match)
+  let realtimeEnabled = normalizeBooleanFlag(gameRow?.realtime_match, false)
+
+  const matchSourceRaw =
+    typeof gameRow?.match_source === 'string'
+      ? gameRow.match_source
+      : typeof gameRow?.matchSource === 'string'
+      ? gameRow.matchSource
+      : null
+
+  if (matchSourceRaw) {
+    const normalized = matchSourceRaw.trim().toLowerCase()
+    if (['manual', 'manual_only', 'manual-only', 'offline', 'nonrealtime', 'non-realtime', 'non_realtime'].includes(normalized)) {
+      realtimeEnabled = false
+    }
+    if (['realtime', 'real-time', 'realtime_only', 'realtime-only', 'live'].includes(normalized)) {
+      realtimeEnabled = true
+    }
+  }
+
   let dropInEnabled = false
-  DROP_IN_RULE_KEYS.some((key) => {
-    const value = rules?.[key]
-    if (typeof value === 'string') {
-      if (value === 'allow' || value === 'enabled' || value === 'on' || value === 'true') {
+  for (const key of DROP_IN_RULE_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(rules || {}, key)) {
+      continue
+    }
+    const candidate = rules?.[key]
+    if (typeof candidate === 'string') {
+      const normalized = candidate.trim().toLowerCase()
+      if (!normalized) continue
+      if (['allow', 'allow-drop-in', 'enabled', 'enable', 'on', 'true', 'yes', '1'].includes(normalized)) {
         dropInEnabled = true
-        return true
+        break
       }
-      if (value === 'forbid' || value === 'disabled' || value === 'off' || value === 'false') {
+      if (['forbid', 'disabled', 'disable', 'off', 'false', 'no', '0', 'ban'].includes(normalized)) {
         dropInEnabled = false
-        return true
+        break
       }
-      return false
+      continue
     }
-    if (typeof value === 'boolean') {
-      dropInEnabled = value
-      return true
-    }
-    if (value === 'allow-drop-in') {
-      dropInEnabled = true
-      return true
-    }
-    return false
-  })
+    dropInEnabled = normalizeBooleanFlag(candidate, dropInEnabled)
+    break
+  }
+
   return { realtimeEnabled, dropInEnabled }
 }
 
@@ -387,6 +453,8 @@ export function buildCandidateSample({
     simulatedSelected: 0,
     simulatedEligible: 0,
     simulatedFiltered: 0,
+    duplicateEligible: 0,
+    duplicateSelected: 0,
     scoreWindow: null,
     perRoleLimit: null,
     totalLimit: null,
@@ -419,12 +487,21 @@ export function buildCandidateSample({
   meta.perRoleLimit = perRoleLimit
   meta.totalLimit = totalLimit
 
-  const candidates = []
+  const uniqueOwnerCandidates = []
+  const duplicateOwnerCandidates = []
+
+  const createCandidate = ({ entry, role, scoreGap, joinedStamp, duplicateOwner }) => ({
+    entry,
+    role,
+    scoreGap,
+    joinedStamp,
+    duplicateOwner: Boolean(duplicateOwner),
+  })
 
   participantPool.forEach((row) => {
     if (!row) return
     const ownerId = row?.owner_id || row?.ownerId
-    if (!ownerId || ownersInQueue.has(ownerId)) {
+    if (!ownerId) {
       return
     }
 
@@ -448,48 +525,83 @@ export function buildCandidateSample({
       }
     }
 
-    candidates.push({
+    const duplicateOwner = ownersInQueue.has(ownerId)
+    const candidate = createCandidate({
       entry: row,
       role: roleName,
       scoreGap,
       joinedStamp: deriveTimestamp(row?.joined_at || row?.joinedAt || null),
+      duplicateOwner,
     })
+
+    if (duplicateOwner) {
+      duplicateOwnerCandidates.push(candidate)
+    } else {
+      uniqueOwnerCandidates.push(candidate)
+    }
   })
 
-  meta.simulatedEligible = candidates.length
+  meta.simulatedEligible = uniqueOwnerCandidates.length
+  meta.duplicateEligible = duplicateOwnerCandidates.length
 
-  candidates.sort((a, b) => {
-    if (a.scoreGap !== b.scoreGap) {
-      if (!Number.isFinite(a.scoreGap)) return 1
-      if (!Number.isFinite(b.scoreGap)) return -1
-      return a.scoreGap - b.scoreGap
-    }
-    if (a.joinedStamp !== b.joinedStamp) {
-      if (Number.isNaN(a.joinedStamp)) return 1
-      if (Number.isNaN(b.joinedStamp)) return -1
-      return a.joinedStamp - b.joinedStamp
-    }
-    return 0
-  })
+  const sortCandidates = (list) =>
+    list.sort((a, b) => {
+      if (a.scoreGap !== b.scoreGap) {
+        if (!Number.isFinite(a.scoreGap)) return 1
+        if (!Number.isFinite(b.scoreGap)) return -1
+        return a.scoreGap - b.scoreGap
+      }
+      if (a.joinedStamp !== b.joinedStamp) {
+        if (Number.isNaN(a.joinedStamp)) return 1
+        if (Number.isNaN(b.joinedStamp)) return -1
+        return a.joinedStamp - b.joinedStamp
+      }
+      return 0
+    })
 
-  const selected = []
+  sortCandidates(uniqueOwnerCandidates)
+  sortCandidates(duplicateOwnerCandidates)
+
+  const totalSlots = Array.isArray(roles)
+    ? roles.reduce((acc, role) => acc + Math.max(0, Number(role?.slot_count ?? role?.slotCount ?? role?.slots ?? 0) || 0), 0)
+    : 0
+
+  const requiredStandins = Math.max(0, totalSlots - baseQueue.length)
+  const allowDuplicateOwners = duplicateOwnerCandidates.length > 0 && requiredStandins > uniqueOwnerCandidates.length
+
+  const orderedCandidates = allowDuplicateOwners
+    ? uniqueOwnerCandidates.concat(duplicateOwnerCandidates)
+    : uniqueOwnerCandidates.slice()
+
+  const totalLimitCap =
+    Number.isFinite(totalLimit) && totalLimit >= 0 ? totalLimit : Number.POSITIVE_INFINITY
+  const standinLimitCap = requiredStandins > 0 ? requiredStandins : Number.POSITIVE_INFINITY
+  const selectionCap = Math.min(totalLimitCap, standinLimitCap)
+
+  const selectedCandidates = []
   const perRoleSelected = new Map()
 
-  for (const candidate of candidates) {
-    if (Number.isFinite(totalLimit) && totalLimit >= 0 && selected.length >= totalLimit) {
+  for (const candidate of orderedCandidates) {
+    if (candidate.duplicateOwner && !allowDuplicateOwners) {
+      continue
+    }
+    if (selectedCandidates.length >= selectionCap) {
       break
     }
     const currentCount = perRoleSelected.get(candidate.role) || 0
     if (Number.isFinite(perRoleLimit) && perRoleLimit >= 0 && currentCount >= perRoleLimit) {
       continue
     }
-    selected.push(candidate.entry)
+    selectedCandidates.push(candidate)
     perRoleSelected.set(candidate.role, currentCount + 1)
   }
 
-  meta.simulatedSelected = selected.length
+  const selectedEntries = selectedCandidates.map((candidate) => candidate.entry)
 
-  return { sample: baseQueue.concat(selected), meta }
+  meta.simulatedSelected = selectedEntries.length
+  meta.duplicateSelected = selectedCandidates.filter((candidate) => candidate.duplicateOwner).length
+
+  return { sample: baseQueue.concat(selectedEntries), meta }
 }
 
 export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles = [], queue = [], rules = {} } = {}) {

@@ -91,6 +91,7 @@ export default function Lobby() {
           roleSlots={gameBrowser.roleSlots}
           onEnterGame={handleEnterGame}
           viewerParticipant={gameBrowser.viewerParticipant}
+          viewerId={gameBrowser.viewerId}
           onJoinGame={gameBrowser.joinSelectedGame}
           joinLoading={gameBrowser.joinLoading}
         />

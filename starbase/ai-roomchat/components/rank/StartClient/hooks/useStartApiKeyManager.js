@@ -18,6 +18,11 @@ import {
   formatCooldownMessage,
 } from '../engine/apiKeyUtils'
 import useGeminiModelCatalog from '../../hooks/useGeminiModelCatalog'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  writeStartSessionValue,
+} from '../../../../lib/rank/startSessionChannel'
 
 function initializeCooldown(initialApiKey) {
   if (typeof window === 'undefined') {
@@ -150,11 +155,9 @@ export function useStartApiKeyManager({
         })
       }
       if (typeof window !== 'undefined') {
-        if (trimmed) {
-          window.sessionStorage.setItem('rank.start.apiKey', trimmed)
-        } else {
-          window.sessionStorage.removeItem('rank.start.apiKey')
-        }
+        writeStartSessionValue(START_SESSION_KEYS.API_KEY, trimmed || null, {
+          source: 'start-client',
+        })
       }
       evaluateApiKeyCooldown(value)
     },
@@ -165,7 +168,7 @@ export function useStartApiKeyManager({
     if (typeof window === 'undefined') return
     if (typeof apiKey === 'string' && apiKey.trim()) return
     try {
-      const stored = window.sessionStorage.getItem('rank.start.apiKey') || ''
+      const stored = readStartSessionValue(START_SESSION_KEYS.API_KEY) || ''
       const trimmed = normaliseApiKey(stored)
       if (trimmed) {
         setApiKey(trimmed, { silent: true })
@@ -178,11 +181,9 @@ export function useStartApiKeyManager({
   const setApiVersion = useCallback((value) => {
     setApiVersionState(value)
     if (typeof window !== 'undefined') {
-      if (value) {
-        window.sessionStorage.setItem('rank.start.apiVersion', value)
-      } else {
-        window.sessionStorage.removeItem('rank.start.apiVersion')
-      }
+      writeStartSessionValue(START_SESSION_KEYS.API_VERSION, value || null, {
+        source: 'start-client',
+      })
     }
   }, [])
 
@@ -191,7 +192,9 @@ export function useStartApiKeyManager({
     setGeminiModeState(normalized)
     if (typeof window !== 'undefined') {
       try {
-        window.sessionStorage.setItem('rank.start.geminiMode', normalized)
+        writeStartSessionValue(START_SESSION_KEYS.GEMINI_MODE, normalized, {
+          source: 'start-client',
+        })
       } catch (error) {
         console.warn('[StartClient] Gemini 모드 저장 실패:', error)
       }
@@ -203,7 +206,9 @@ export function useStartApiKeyManager({
     setGeminiModelState(normalized)
     if (typeof window !== 'undefined') {
       try {
-        window.sessionStorage.setItem('rank.start.geminiModel', normalized)
+        writeStartSessionValue(START_SESSION_KEYS.GEMINI_MODEL, normalized, {
+          source: 'start-client',
+        })
       } catch (error) {
         console.warn('[StartClient] Gemini 모델 저장 실패:', error)
       }

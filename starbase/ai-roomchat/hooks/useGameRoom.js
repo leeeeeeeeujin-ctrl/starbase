@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { withTable } from '@/lib/supabaseTables'
 
 import { mapTimelineRowToEvent, normalizeTimelineEvents } from '../lib/rank/timelineEvents'
+import { normalizeHeroIdValue, resolveParticipantHeroId } from '../lib/rank/participantUtils'
 
 import { supabase } from '../lib/supabase'
 
@@ -28,15 +29,17 @@ async function fetchParticipantsWithHeroes(gameId) {
   const participants = participantsData || []
   const heroIdSet = new Set()
   participants.forEach((participant) => {
-    const direct = participant?.hero_id
-    if (direct) {
-      heroIdSet.add(direct)
+    const resolvedId = resolveParticipantHeroId(participant)
+    if (resolvedId) {
+      heroIdSet.add(resolvedId)
       return
     }
+
     const heroArray = Array.isArray(participant?.hero_ids) ? participant.hero_ids : []
     heroArray.forEach((value) => {
-      if (value) {
-        heroIdSet.add(value)
+      const normalized = normalizeHeroIdValue(value)
+      if (normalized) {
+        heroIdSet.add(normalized)
       }
     })
   })
@@ -60,11 +63,20 @@ async function fetchParticipantsWithHeroes(gameId) {
 
   if (heroError) throw heroError
 
-  const heroesById = new Map((heroesData || []).map((hero) => [hero.id, hero]))
+  const heroesById = new Map()
+  ;(heroesData || []).forEach((hero) => {
+    const key = normalizeHeroIdValue(hero?.id)
+    if (!key) return
+    heroesById.set(key, hero)
+  })
 
   return participants.map((participant) => ({
     ...participant,
-    hero: heroesById.get(participant.hero_id) || null,
+    hero: (() => {
+      const resolvedId = resolveParticipantHeroId(participant)
+      if (!resolvedId) return null
+      return heroesById.get(resolvedId) || null
+    })(),
   }))
 }
 
@@ -664,6 +676,40 @@ export function useGameRoom(
     }
   }, [gameId])
 
+  useEffect(() => {
+    if (!user?.id) return
+    if (!Array.isArray(participants) || !participants.length) return
+
+    const viewerKey = String(user.id)
+    const entry = participants.find((participant) => {
+      if (!participant) return false
+      const ownerId =
+        participant.owner_id != null
+          ? String(participant.owner_id)
+          : participant.ownerId != null
+            ? String(participant.ownerId)
+            : null
+      return ownerId === viewerKey
+    })
+
+    if (!entry) return
+
+    const heroRecord = entry.hero || null
+    if (!heroRecord || !heroRecord.id) return
+
+    if (myHero?.id === heroRecord.id) return
+
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('selectedHeroId', heroRecord.id)
+      }
+    } catch (err) {
+      console.warn('로컬 영웅 저장 실패:', err)
+    }
+
+    setMyHero(heroRecord)
+  }, [myHero?.id, participants, user?.id])
+
   const refreshBattles = useCallback(async () => {
     if (!gameId) return
     try {
@@ -966,9 +1012,16 @@ export function useGameRoom(
   }, [gameId, game, onDeleted, user])
 
   const myEntry = useMemo(() => {
-    if (!myHero) return null
-    return participants.find((participant) => participant.hero_id === myHero.id) || null
-  }, [participants, myHero])
+    if (!Array.isArray(participants) || !participants.length) return null
+    const heroKey = normalizeHeroIdValue(myHero?.id)
+    if (heroKey) {
+      const match = participants.find(
+        (participant) => resolveParticipantHeroId(participant) === heroKey,
+      )
+      if (match) return match
+    }
+    return null
+  }, [myHero?.id, participants])
 
   const fallbackMinimum = useMemo(() => {
     if (!Array.isArray(roles) || !roles.length) return 1

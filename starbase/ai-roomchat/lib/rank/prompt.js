@@ -1,7 +1,14 @@
 // lib/rank/prompt.js
 
 const DEFEATED_STATUS_SET = new Set(['defeated', 'lost', 'dead'])
-const RETIRED_STATUS_SET = new Set(['retired', 'eliminated', 'out', 'inactive'])
+const RETIRED_STATUS_SET = new Set([
+  'retired',
+  'eliminated',
+  'out',
+  'inactive',
+  'spectator',
+  'observer',
+])
 
 function normalizeStatus(value) {
   if (!value && value !== 0) return 'unknown'

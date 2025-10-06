@@ -63,8 +63,7 @@ function buildRoleExpectations({ slotLayout = [], matchingMetadata = null } = {}
   const meta = matchingMetadata || {}
   const assignments = Array.isArray(meta.assignments) ? meta.assignments : []
   assignments.forEach((assignment) => {
-    const role = normalizeRoleName(assignment?.role)
-    if (!role) return
+    const assignmentRole = normalizeRoleName(assignment?.role)
 
     const roleSlots = Array.isArray(assignment?.roleSlots)
       ? assignment.roleSlots
@@ -72,29 +71,38 @@ function buildRoleExpectations({ slotLayout = [], matchingMetadata = null } = {}
       ? assignment.role_slots
       : []
     roleSlots.forEach((slotValue) => {
-      const slotIndex = parseSlotIndex(slotValue)
+      const slotRole =
+        typeof slotValue === 'object' && slotValue !== null
+          ? normalizeRoleName(slotValue.role)
+          : assignmentRole
+      if (!slotRole) return
+      const slotIndex =
+        typeof slotValue === 'object' && slotValue !== null
+          ? parseSlotIndex(slotValue.localIndex ?? slotValue.slotIndex ?? slotValue)
+          : parseSlotIndex(slotValue)
       if (slotIndex != null && !slotRoleMap.has(slotIndex)) {
-        slotRoleMap.set(slotIndex, role)
+        slotRoleMap.set(slotIndex, slotRole)
       }
     })
 
     const members = Array.isArray(assignment?.members) ? assignment.members : []
     members.forEach((member) => {
+      const memberRole = normalizeRoleName(member?.role) || assignmentRole
       const slotIndex = parseSlotIndex(
         member?.slot_no ?? member?.slotNo ?? member?.slot_index ?? member?.slotIndex,
       )
       if (slotIndex != null && !slotRoleMap.has(slotIndex)) {
-        slotRoleMap.set(slotIndex, role)
+        slotRoleMap.set(slotIndex, memberRole)
       }
       registerIfEmpty(
         heroRoleMap,
         member?.hero_id ?? member?.heroId ?? member?.heroID ?? member?.hero?.id,
-        role,
+        memberRole,
       )
       registerIfEmpty(
         ownerRoleMap,
         member?.owner_id ?? member?.ownerId ?? member?.ownerID ?? member?.owner?.id,
-        role,
+        memberRole,
       )
     })
   })

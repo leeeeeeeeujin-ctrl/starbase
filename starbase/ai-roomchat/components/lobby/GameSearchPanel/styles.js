@@ -121,6 +121,54 @@ export const styles = {
     color: '#64748b',
     background: '#fff',
   },
+  conflictBox: {
+    border: '1px solid rgba(248, 113, 113, 0.35)',
+    borderRadius: 20,
+    padding: 20,
+    background: '#fff7f7',
+    color: '#7f1d1d',
+    display: 'grid',
+    gap: 14,
+  },
+  conflictCard: {
+    display: 'grid',
+    gap: 12,
+  },
+  conflictTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+  },
+  conflictBody: {
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.6,
+  },
+  conflictList: {
+    display: 'grid',
+    gap: 8,
+  },
+  conflictListItem: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    padding: '8px 12px',
+    borderRadius: 12,
+    background: 'rgba(248, 113, 113, 0.12)',
+    color: '#991b1b',
+  },
+  conflictHero: {
+    fontWeight: 700,
+    fontSize: 14,
+  },
+  conflictRole: {
+    fontSize: 12,
+    color: '#b91c1c',
+  },
+  conflictHint: {
+    margin: 0,
+    fontSize: 12,
+    color: '#b91c1c',
+  },
   detailHeader: {
     display: 'grid',
     gap: 6,

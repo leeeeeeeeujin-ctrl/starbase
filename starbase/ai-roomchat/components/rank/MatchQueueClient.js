@@ -6,6 +6,11 @@ import {
   TURN_TIMER_VALUES,
   pickTurnTimer,
 } from '../../lib/rank/turnTimers'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  writeStartSessionValue,
+} from '../../lib/rank/startSessionChannel'
 
 import useMatchQueue from './hooks/useMatchQueue'
 import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
@@ -34,6 +39,53 @@ function resolveHero(heroMap, heroId) {
   return null
 }
 
+function normaliseRoleKey(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value.trim().toLowerCase()
+  return ''
+}
+
+function pickAutoHeroCandidate({ heroOptions = [], viewerRoster = [], targetRole }) {
+  const normalizedRole = normaliseRoleKey(targetRole)
+  const optionList = Array.isArray(heroOptions) ? heroOptions : []
+  const rosterList = Array.isArray(viewerRoster) ? viewerRoster : []
+
+  if (optionList.length) {
+    const roleMatch = optionList.find((option) => {
+      if (!option || !option.heroId) return false
+      const optionRole = normaliseRoleKey(option.role)
+      if (normalizedRole) {
+        return optionRole === normalizedRole
+      }
+      return false
+    })
+    if (roleMatch?.heroId) {
+      return String(roleMatch.heroId)
+    }
+
+    const anyMatch = optionList.find((option) => option?.heroId)
+    if (anyMatch?.heroId) {
+      return String(anyMatch.heroId)
+    }
+  }
+
+  let fallback = ''
+  for (const entry of rosterList) {
+    if (!entry) continue
+    const heroId = entry.heroId ? String(entry.heroId) : ''
+    if (!heroId) continue
+    const entryRole = normaliseRoleKey(entry.role)
+    if (normalizedRole && entryRole === normalizedRole) {
+      return heroId
+    }
+    if (!fallback) {
+      fallback = heroId
+    }
+  }
+
+  return fallback || ''
+}
+
 function MemberList({ assignment, heroMap }) {
   if (!assignment) return null
   const members = Array.isArray(assignment.members) ? assignment.members : []
@@ -45,7 +97,7 @@ function MemberList({ assignment, heroMap }) {
           member.id || `${member.owner_id || member.ownerId}-${member.hero_id || member.heroId}`
         const heroId = member.hero_id || member.heroId
         const hero = resolveHero(heroMap, heroId)
-        const label = hero?.name || member.hero_name || '미지정 영웅'
+        const label = hero?.name || member.name || member.hero_name || '미지정 영웅'
         const score = member.score ?? member.rating ?? member.mmr
         const source = member.match_source || (member.standin ? 'participant_pool' : 'realtime_queue')
         const sourceLabel =
@@ -78,6 +130,91 @@ function MemberList({ assignment, heroMap }) {
         )
       })}
     </ul>
+  )
+}
+
+function RosterHeroPicker({
+  entries = [],
+  heroMap = new Map(),
+  selectedHeroId,
+  onSelect,
+  disabled,
+}) {
+  const cards = useMemo(() => {
+    if (!Array.isArray(entries)) return []
+    return entries
+      .map((entry) => {
+        if (!entry) return null
+        const heroId = entry.heroId ? String(entry.heroId) : ''
+        if (!heroId) return null
+        const meta = heroMap instanceof Map ? heroMap.get(heroId) || heroMap.get(String(heroId)) : null
+        const name =
+          meta?.name ||
+          meta?.hero_name ||
+          entry.raw?.name ||
+          entry.raw?.hero_name ||
+          entry.name ||
+          `ID ${heroId}`
+        const role = entry.role || meta?.role || ''
+        const score =
+          Number.isFinite(Number(entry.score))
+            ? Number(entry.score)
+            : Number.isFinite(Number(meta?.score))
+            ? Number(meta.score)
+            : null
+        const avatarUrl = meta?.image_url || meta?.avatar_url || entry.raw?.hero_avatar_url || null
+        const status = entry.status || meta?.status || ''
+        return {
+          heroId,
+          name,
+          role,
+          score,
+          avatarUrl,
+          status,
+        }
+      })
+      .filter(Boolean)
+  }, [entries, heroMap])
+
+  if (!cards.length) return null
+
+  return (
+    <div className={styles.rosterPicker}>
+      <div className={styles.rosterPickerHeader}>
+        <h3 className={styles.rosterPickerTitle}>내 캐릭터</h3>
+        <p className={styles.rosterPickerHint}>방에 들어갈 캐릭터를 선택하세요.</p>
+      </div>
+      <div className={styles.rosterPickerGrid}>
+        {cards.map((card) => {
+          const active = Boolean(selectedHeroId) && selectedHeroId === card.heroId
+          return (
+            <button
+              key={card.heroId}
+              type="button"
+              className={`${styles.rosterPickerCard} ${active ? styles.rosterPickerCardActive : ''}`}
+              onClick={() => (disabled ? null : onSelect?.(card.heroId))}
+              disabled={disabled}
+            >
+              {card.avatarUrl ? (
+                <img src={card.avatarUrl} alt={card.name} className={styles.rosterPickerAvatar} />
+              ) : (
+                <div className={styles.rosterPickerAvatarPlaceholder} />
+              )}
+              <div className={styles.rosterPickerMeta}>
+                <span className={styles.rosterPickerName}>{card.name}</span>
+                <span className={styles.rosterPickerRole}>{card.role || '역할 미지정'}</span>
+                {Number.isFinite(card.score) ? (
+                  <span className={styles.rosterPickerScore}>{card.score}</span>
+                ) : null}
+                {card.status ? (
+                  <span className={styles.rosterPickerStatus}>{card.status}</span>
+                ) : null}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -197,6 +334,27 @@ function describeSampleType(sampleType) {
   }
 }
 
+const PARTICIPANT_STATUS_LABELS = {
+  alive: '',
+  engaged: '전투 중',
+  engaged_offense: '전투 중',
+  engaged_defense: '전투 중',
+  locked: '전투 예약',
+  pending_battle: '전투 예약',
+  defeated: '탈락',
+  lost: '탈락',
+  out: '관전자',
+  retired: '관전자',
+  eliminated: '탈락',
+  dead: '탈락',
+}
+
+function formatParticipantStatus(status) {
+  if (!status) return ''
+  const normalized = status.trim().toLowerCase()
+  return PARTICIPANT_STATUS_LABELS[normalized] || normalized
+}
+
 export default function MatchQueueClient({
   gameId,
   mode,
@@ -204,6 +362,7 @@ export default function MatchQueueClient({
   description,
   emptyHint,
   autoJoin = false,
+  autoStart = false,
 }) {
   const router = useRouter()
   const { state, actions } = useMatchQueue({ gameId, mode, enabled: true })
@@ -225,6 +384,22 @@ export default function MatchQueueClient({
   const navigationLockRef = useRef(false)
   const latestStatusRef = useRef('idle')
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
+  const roomSummaries = useMemo(() => {
+    const source = Array.isArray(state.match?.rooms) && state.match.rooms.length
+      ? state.match.rooms
+      : Array.isArray(state.pendingMatch?.rooms) && state.pendingMatch.rooms.length
+        ? state.pendingMatch.rooms
+        : []
+
+    return source.map((room) => {
+      const role = room?.role || '역할'
+      const filled = Number(room?.filledSlots ?? room?.filled_slots ?? 0)
+      const total = Number(room?.slotCount ?? room?.slots ?? 0)
+      const missing = Number(room?.missingSlots ?? room?.missing_slots ?? Math.max(0, total - filled))
+      const ready = room?.ready === true || (total > 0 && missing <= 0 && filled >= total)
+      return { role, filled, total, missing, ready }
+    })
+  }, [state.match, state.pendingMatch])
   const [autoJoinError, setAutoJoinError] = useState('')
   const [plannerExportNotice, setPlannerExportNotice] = useState('')
   const autoJoinSignatureRef = useRef('')
@@ -233,13 +408,14 @@ export default function MatchQueueClient({
   const heroMissingTimerRef = useRef(null)
   const dropInRedirectTimerRef = useRef(null)
   const dropInMatchSignatureRef = useRef('')
+  const autoStartHandledRef = useRef(false)
   const [refreshing, setRefreshing] = useState(false)
 
   const [voteRemaining, setVoteRemaining] = useState(null)
   const voteTimerRef = useRef(null)
   const [voteValue, setVoteValue] = useState(() => {
     if (typeof window === 'undefined') return null
-    const stored = Number(window.sessionStorage.getItem('rank.start.turnTimerVote'))
+    const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE))
     return TURN_TIMER_VALUES.includes(stored) ? stored : null
   })
   const [finalTimer, setFinalTimer] = useState(null)
@@ -251,6 +427,33 @@ export default function MatchQueueClient({
   const dropInTarget = state.match?.dropInTarget || null
   const pendingMatch = state.pendingMatch || null
   const queuedSampleMeta = state.sampleMeta || null
+  const heroOptions = Array.isArray(state.heroOptions) ? state.heroOptions : []
+  const viewerRoster = Array.isArray(state.viewerRoster) ? state.viewerRoster : []
+  const [manualHeroId, setManualHeroId] = useState(() => state.heroId || '')
+  useEffect(() => {
+    setManualHeroId(state.heroId || '')
+  }, [state.heroId])
+  const handleHeroOptionSelect = useCallback(
+    (value) => {
+      if (value == null) return
+      const normalized = String(value).trim()
+      if (!normalized) return
+      if (state.heroId === normalized) return
+      actions.setHero(normalized)
+    },
+    [actions, state.heroId],
+  )
+  const handleManualHeroInput = useCallback((event) => {
+    setManualHeroId(event.target.value)
+  }, [])
+  const handleManualHeroSubmit = useCallback(
+    (event) => {
+      event.preventDefault()
+      const trimmed = (manualHeroId || '').trim()
+      actions.setHero(trimmed)
+    },
+    [actions, manualHeroId],
+  )
   const brawlSummary = useMemo(() => {
     if (!isBrawlMatch) return ''
     const vacancies = Array.isArray(state.match?.brawlVacancies)
@@ -486,6 +689,81 @@ export default function MatchQueueClient({
     return resolveDefaultRoleName(state.roles)
   }, [state.lockedRole, state.roleReady, state.roles])
 
+  const autoHeroCandidate = useMemo(
+    () =>
+      state.heroId
+        ? ''
+        : pickAutoHeroCandidate({
+            heroOptions,
+            viewerRoster,
+            targetRole: targetRoleName,
+          }),
+    [state.heroId, heroOptions, viewerRoster, targetRoleName],
+  )
+
+  const joinBlockers = useMemo(() => {
+    if (state.status !== 'idle') return []
+
+    const blockers = []
+    if (!state.viewerId) {
+      blockers.push('로그인이 필요합니다.')
+    }
+    if (!state.roleReady || !targetRoleName) {
+      blockers.push('참가할 역할 정보를 불러오는 중입니다.')
+    }
+    if (!state.heroId && !autoHeroCandidate) {
+      blockers.push('사용할 캐릭터를 선택해 주세요.')
+    }
+    return blockers
+  }, [
+    state.status,
+    state.viewerId,
+    state.roleReady,
+    targetRoleName,
+    state.heroId,
+    autoHeroCandidate,
+  ])
+
+  const joinDisabled =
+    state.loading || state.status !== 'idle' || joinBlockers.length > 0
+
+  const handleJoinClick = useCallback(async () => {
+    if (state.loading) return
+    if (state.status === 'queued' || state.status === 'matched') return
+    let heroId = state.heroId
+    if (!heroId && autoHeroCandidate) {
+      heroId = autoHeroCandidate
+      actions.setHero(heroId)
+    }
+    if (!heroId) {
+      alert('먼저 사용할 캐릭터를 선택해 주세요.')
+      return
+    }
+    if (!targetRoleName) {
+      alert('참가할 역할 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.')
+      return
+    }
+
+    const result = await actions.joinQueue(targetRoleName)
+    if (!result?.ok && result?.error) {
+      alert(result.error)
+    }
+  }, [
+    state.loading,
+    state.status,
+    state.heroId,
+    autoHeroCandidate,
+    targetRoleName,
+    actions,
+  ])
+
+  const roleLabel = useMemo(() => {
+    if (state.lockedRole) return state.lockedRole
+    if (!state.roleReady) return '역할 정보를 불러오는 중'
+    if (targetRoleName) return targetRoleName
+    return '선택된 역할 없음'
+  }, [state.lockedRole, state.roleReady, targetRoleName])
+
   const autoJoinBlockers = useMemo(() => {
     if (!autoJoin) return []
     if (state.status === 'queued' || state.status === 'matched') return []
@@ -499,7 +777,7 @@ export default function MatchQueueClient({
     } else if (!targetRoleName) {
       blockers.push('참가할 역할 정보를 불러오고 있습니다.')
     }
-    if (!state.heroId) {
+    if (!state.heroId && !autoHeroCandidate) {
       blockers.push('사용할 캐릭터를 선택해 주세요.')
     }
     return blockers
@@ -511,6 +789,7 @@ export default function MatchQueueClient({
     state.roleReady,
     targetRoleName,
     state.heroId,
+    autoHeroCandidate,
   ])
 
   useEffect(() => {
@@ -527,7 +806,11 @@ export default function MatchQueueClient({
     if (state.status === 'queued' || state.status === 'matched') return
     if (!state.viewerId) return
     if (!targetRoleName) return
-    const activeHeroId = state.heroId || ''
+    let activeHeroId = state.heroId || ''
+    if (!activeHeroId && autoHeroCandidate) {
+      activeHeroId = autoHeroCandidate
+      actions.setHero(activeHeroId)
+    }
     if (!activeHeroId) return
 
     const signature = `${state.viewerId}::${targetRoleName}::${activeHeroId}`
@@ -657,18 +940,23 @@ export default function MatchQueueClient({
 
       finalTimerResolvedRef.current = null
       setFinalTimer(null)
-      setVoteRemaining(15)
+      const initialVote = autoStart ? 0 : 15
+      setVoteRemaining(initialVote)
       setCountdown(null)
       if (voteTimerRef.current) {
         clearInterval(voteTimerRef.current)
       }
-      voteTimerRef.current = setInterval(() => {
-        setVoteRemaining((prev) => {
-          if (prev == null) return prev
-          if (prev <= 0) return 0
-          return prev - 1
-        })
-      }, 1000)
+      if (!autoStart) {
+        voteTimerRef.current = setInterval(() => {
+          setVoteRemaining((prev) => {
+            if (prev == null) return prev
+            if (prev <= 0) return 0
+            return prev - 1
+          })
+        }, 1000)
+      } else {
+        voteTimerRef.current = null
+      }
       return () => {
         if (voteTimerRef.current) {
           clearInterval(voteTimerRef.current)
@@ -680,12 +968,19 @@ export default function MatchQueueClient({
     setVoteRemaining(null)
     setFinalTimer(null)
     finalTimerResolvedRef.current = null
+    autoStartHandledRef.current = false
     if (voteTimerRef.current) {
       clearInterval(voteTimerRef.current)
       voteTimerRef.current = null
     }
     return () => {}
-  }, [state.status, state.match, isDropInMatch])
+  }, [state.status, state.match, isDropInMatch, autoStart])
+
+  useEffect(() => {
+    if (state.status !== 'matched') {
+      autoStartHandledRef.current = false
+    }
+  }, [state.status])
 
   useEffect(() => {
     if (
@@ -701,7 +996,7 @@ export default function MatchQueueClient({
 
     let fallback = 60
     if (typeof window !== 'undefined') {
-      const stored = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
+      const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
       if (TURN_TIMER_VALUES.includes(stored)) {
         fallback = stored
       }
@@ -717,16 +1012,24 @@ export default function MatchQueueClient({
     setFinalTimer(resolved)
 
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('rank.start.turnTimer', String(resolved))
+      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER, String(resolved), {
+        source: 'match-queue',
+      })
       if (TURN_TIMER_VALUES.includes(Number(voteValue))) {
-        window.sessionStorage.setItem('rank.start.turnTimerVote', String(voteValue))
+        writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE, String(voteValue), {
+          source: 'match-queue',
+        })
       } else {
-        window.sessionStorage.setItem('rank.start.turnTimerVote', String(resolved))
+        writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE, String(resolved), {
+          source: 'match-queue',
+        })
       }
     }
 
-    setCountdown(5)
-  }, [state.status, state.match, voteRemaining, voteValue])
+    if (!autoStart) {
+      setCountdown(5)
+    }
+  }, [state.status, state.match, voteRemaining, voteValue, autoStart])
 
   useEffect(() => {
     if (state.status === 'matched' && state.match && finalTimer != null) {
@@ -764,6 +1067,30 @@ export default function MatchQueueClient({
     }
   }, [countdown, handleStart])
 
+  useEffect(() => {
+    if (!autoStart) return
+    if (autoStartHandledRef.current) return
+    if (isDropInMatch) return
+    if (state.status !== 'matched' || !state.match) return
+    if (finalTimer == null) return
+
+    autoStartHandledRef.current = true
+    if (voteTimerRef.current) {
+      clearInterval(voteTimerRef.current)
+      voteTimerRef.current = null
+    }
+    setVoteRemaining(null)
+    if (countdownTimerRef.current) {
+      clearTimeout(countdownTimerRef.current)
+      countdownTimerRef.current = null
+    }
+    setCountdown(null)
+    navigationLockRef.current = true
+    handleStart()
+  }, [autoStart, state.status, state.match, finalTimer, isDropInMatch, handleStart])
+
+  const cancelQueue = actions.cancelQueue
+
   useEffect(
     () => () => {
       if (countdownTimerRef.current) {
@@ -779,10 +1106,10 @@ export default function MatchQueueClient({
         dropInRedirectTimerRef.current = null
       }
       if (latestStatusRef.current === 'queued') {
-        actions.cancelQueue()
+        cancelQueue()
       }
     },
-    [actions],
+    [cancelQueue],
   )
 
   useEffect(() => {
@@ -840,7 +1167,9 @@ export default function MatchQueueClient({
     if (!TURN_TIMER_VALUES.includes(numeric)) return
     setVoteValue(numeric)
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('rank.start.turnTimerVote', String(numeric))
+      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE, String(numeric), {
+        source: 'match-queue',
+      })
     }
   }
 
@@ -850,8 +1179,10 @@ export default function MatchQueueClient({
   const heroLabel = useMemo(() => {
     if (!state.heroId) return '선택된 캐릭터 없음'
     if (state.heroMeta?.name) return state.heroMeta.name
+    const matched = heroOptions.find((option) => option.heroId === state.heroId)
+    if (matched?.name) return matched.name
     return state.heroId
-  }, [state.heroId, state.heroMeta?.name])
+  }, [state.heroId, state.heroMeta?.name, heroOptions])
 
   const plannerSummary = useMemo(() => {
     if (!plannerPlan) return ''
@@ -988,9 +1319,98 @@ export default function MatchQueueClient({
       </header>
 
       <section className={styles.card}>
+        <h2 className={styles.sectionTitle}>사용할 캐릭터 선택</h2>
+        <p className={styles.sectionHint}>
+          매칭 대기열에 합류하기 전에 이 게임에서 사용할 캐릭터를 직접 선택해 주세요.
+        </p>
+        <RosterHeroPicker
+          entries={viewerRoster}
+          heroMap={state.heroMap}
+          selectedHeroId={state.heroId}
+          onSelect={handleHeroOptionSelect}
+          disabled={state.loading || state.status === 'queued'}
+        />
+        {heroOptions.length ? (
+          <div className={styles.heroOptionList}>
+            {heroOptions.map((option) => {
+              const checked = Boolean(state.heroId) && state.heroId === option.heroId
+              const detailParts = []
+              if (option.role) {
+                detailParts.push(option.role)
+              }
+              if (Number.isFinite(Number(option.score))) {
+                detailParts.push(`점수 ${Math.round(Number(option.score))}`)
+              }
+              const detailLabel = detailParts.join(' · ')
+              const statusLabel = formatParticipantStatus(option.status)
+              return (
+                <label
+                  key={option.heroId}
+                  className={`${styles.heroOptionItem} ${checked ? styles.heroOptionItemActive : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="match-hero-option"
+                    value={option.heroId}
+                    checked={checked}
+                    onChange={() => handleHeroOptionSelect(option.heroId)}
+                    className={styles.heroOptionRadio}
+                  />
+                  <div className={styles.heroOptionContent}>
+                    {option.avatarUrl ? (
+                      <img
+                        src={option.avatarUrl}
+                        alt={option.name || option.heroId}
+                        className={styles.heroOptionAvatar}
+                      />
+                    ) : (
+                      <div className={styles.heroOptionAvatarPlaceholder} />
+                    )}
+                    <div className={styles.heroOptionMeta}>
+                      <span className={styles.heroOptionName}>{option.name || option.heroId}</span>
+                      {detailLabel ? (
+                        <span className={styles.heroOptionDetail}>{detailLabel}</span>
+                      ) : null}
+                      {statusLabel ? (
+                        <span className={styles.heroOptionStatus}>{statusLabel}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+        ) : (
+          <p className={styles.emptyHint}>
+            이 게임에 등록된 캐릭터 정보를 찾지 못했습니다. 아래 입력란에 캐릭터 ID를 직접 입력해 주세요.
+          </p>
+        )}
+        <form className={styles.heroManualForm} onSubmit={handleManualHeroSubmit}>
+          <label className={styles.heroManualLabel} htmlFor="manual-hero-id">
+            직접 캐릭터 ID 입력
+          </label>
+          <div className={styles.heroManualControls}>
+            <input
+              id="manual-hero-id"
+              type="text"
+              className={styles.heroManualInput}
+              placeholder="예: 12345"
+              value={manualHeroId}
+              onChange={handleManualHeroInput}
+            />
+            <button type="submit" className={styles.heroManualButton}>
+              ID 적용
+            </button>
+          </div>
+          <p className={styles.heroManualHint}>ID를 비워 두면 선택한 캐릭터가 초기화됩니다.</p>
+        </form>
+      </section>
+
+      <section className={styles.card}>
         <div className={styles.statusRow}>
           <span className={styles.statusBadge}>{statusLabel}</span>
           <span className={styles.heroBadge}>선택한 캐릭터: {heroLabel}</span>
+          <span className={styles.roleBadge}>참가 역할: {roleLabel}</span>
         </div>
 
         {autoJoin ? (
@@ -1046,7 +1466,71 @@ export default function MatchQueueClient({
               대기열 나가고 메인 룸으로 돌아가기
             </button>
           </div>
-        ) : null}
+        ) : (
+          <div className={styles.manualActions}>
+            {state.status === 'idle' ? (
+              <>
+                <div className={styles.actionRow}>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={handleJoinClick}
+                    disabled={joinDisabled}
+                  >
+                    매칭 참가
+                  </button>
+                </div>
+                {joinBlockers.length ? (
+                  <>
+                    <p className={styles.sectionHint}>
+                      매칭 버튼을 활성화하려면 다음 항목을 먼저 확인해 주세요.
+                    </p>
+                    <ul className={styles.blockerList}>
+                      {joinBlockers.map((message, index) => (
+                        <li key={`${message}-${index}`} className={styles.blockerListItem}>
+                          {message}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className={styles.sectionHint}>
+                    선택한 캐릭터와 역할로 점수 ±200 범위의 방을 찾거나 새로 만듭니다. 빈 자리가
+                    없다면 자동으로 새 방을 만들고 기다립니다.
+                  </p>
+                )}
+              </>
+            ) : null}
+
+            {state.status === 'queued' ? (
+              <>
+                <div className={styles.actionRow}>
+                  <button type="button" className={styles.primaryButton} disabled>
+                    대기열 확인 중…
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={handleCancel}
+                    disabled={state.loading}
+                  >
+                    대기열 나가기
+                  </button>
+                </div>
+                <p className={styles.sectionHint}>
+                  비슷한 점수의 같은 역할 방을 찾는 중입니다. 모든 슬롯이 채워지면 자동으로 다음
+                  단계로 이동합니다.
+                </p>
+              </>
+            ) : null}
+
+            {state.status === 'matched' ? (
+              <p className={styles.sectionHint}>
+                매칭이 완료되었습니다. 아래 팀 구성을 확인하고 전투를 준비해 주세요.
+              </p>
+            ) : null}
+          </div>
+        )}
 
         {state.error || autoJoinError ? (
           <p className={styles.errorText}>{state.error || autoJoinError}</p>
@@ -1061,7 +1545,23 @@ export default function MatchQueueClient({
 
       <section className={styles.card}>
         <h2 className={styles.sectionTitle}>대기열 현황</h2>
-        {queueByRole.length === 0 ? (
+        {roomSummaries.length > 0 ? (
+          <div className={styles.queueGrid}>
+            {roomSummaries.map((room) => (
+              <div key={room.role} className={styles.queueColumn}>
+                <h3 className={styles.queueRole}>{room.role}</h3>
+                <p className={styles.queueCount}>
+                  {room.filled}/{room.total}명 준비
+                </p>
+                {room.ready ? (
+                  <p className={styles.queueReady}>대기 완료</p>
+                ) : (
+                  <p className={styles.queuePending}>남은 슬롯 {Math.max(0, room.missing)}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : queueByRole.length === 0 ? (
           <p className={styles.emptyHint}>{emptyHint}</p>
         ) : (
           <div className={styles.queueGrid}>

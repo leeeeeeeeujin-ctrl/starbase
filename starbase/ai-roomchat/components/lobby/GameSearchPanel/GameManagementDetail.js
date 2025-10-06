@@ -294,7 +294,7 @@ export default function GameManagementDetail({
           {!detailLoading && participants.length === 0 && <div style={styles.emptyState}>아직 참여한 사람이 없습니다.</div>}
           {participants.map((row) => (
             <div key={row.id} style={styles.participantRow}>
-              <span style={styles.participantName}>{row.hero_name || row.hero_id}</span>
+              <span style={styles.participantName}>{row.name || row.hero_name || row.hero_id}</span>
               <span style={styles.participantRole}>{row.role || '미지정'}</span>
             </div>
           ))}
@@ -319,7 +319,7 @@ export default function GameManagementDetail({
               <div style={styles.topPlayerList}>
                 {activeSeason.leaderboard.slice(0, 5).map((entry) => (
                   <div key={`${activeSeason.id}-${entry.rank}-${entry.hero_id}`} style={styles.topPlayerRow}>
-                    {entry.rank}. {entry.hero_name || entry.hero_id} — 레이팅 {formatNumber(entry.rating)}
+                    {entry.rank}. {entry.name || entry.hero_name || entry.hero_id} — 레이팅 {formatNumber(entry.rating)}
                   </div>
                 ))}
               </div>
@@ -354,7 +354,7 @@ export default function GameManagementDetail({
                   <div style={styles.topPlayerList}>
                     {season.leaderboard.slice(0, 5).map((entry) => (
                       <div key={`${season.id}-${entry.rank}-${entry.hero_id}`} style={styles.topPlayerRow}>
-                        {entry.rank}. {entry.hero_name || entry.hero_id} — 레이팅 {formatNumber(entry.rating)}
+                        {entry.rank}. {entry.name || entry.hero_name || entry.hero_id} — 레이팅 {formatNumber(entry.rating)}
                       </div>
                     ))}
                   </div>
