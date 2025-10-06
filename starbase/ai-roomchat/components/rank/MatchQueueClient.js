@@ -639,6 +639,50 @@ export default function MatchQueueClient({
     return resolveDefaultRoleName(state.roles)
   }, [state.lockedRole, state.roleReady, state.roles])
 
+  const joinBlockers = useMemo(() => {
+    if (state.status !== 'idle') return []
+
+    const blockers = []
+    if (!state.viewerId) {
+      blockers.push('로그인이 필요합니다.')
+    }
+    if (!state.roleReady || !targetRoleName) {
+      blockers.push('참가할 역할 정보를 불러오는 중입니다.')
+    }
+    if (!state.heroId) {
+      blockers.push('사용할 캐릭터를 선택해 주세요.')
+    }
+    return blockers
+  }, [state.status, state.viewerId, state.roleReady, targetRoleName, state.heroId])
+
+  const joinDisabled =
+    state.loading || state.status !== 'idle' || joinBlockers.length > 0
+
+  const handleJoinClick = useCallback(async () => {
+    if (state.loading) return
+    if (state.status === 'queued' || state.status === 'matched') return
+    if (!state.heroId) {
+      alert('먼저 사용할 캐릭터를 선택해 주세요.')
+      return
+    }
+    if (!targetRoleName) {
+      alert('참가할 역할 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.')
+      return
+    }
+
+    const result = await actions.joinQueue(targetRoleName)
+    if (!result?.ok && result?.error) {
+      alert(result.error)
+    }
+  }, [state.loading, state.status, state.heroId, targetRoleName, actions])
+
+  const roleLabel = useMemo(() => {
+    if (state.lockedRole) return state.lockedRole
+    if (!state.roleReady) return '역할 정보를 불러오는 중'
+    if (targetRoleName) return targetRoleName
+    return '선택된 역할 없음'
+  }, [state.lockedRole, state.roleReady, targetRoleName])
+
   const autoJoinBlockers = useMemo(() => {
     if (!autoJoin) return []
     if (state.status === 'queued' || state.status === 'matched') return []
@@ -1242,6 +1286,7 @@ export default function MatchQueueClient({
         <div className={styles.statusRow}>
           <span className={styles.statusBadge}>{statusLabel}</span>
           <span className={styles.heroBadge}>선택한 캐릭터: {heroLabel}</span>
+          <span className={styles.roleBadge}>참가 역할: {roleLabel}</span>
         </div>
 
         {autoJoin ? (
@@ -1297,7 +1342,71 @@ export default function MatchQueueClient({
               대기열 나가고 메인 룸으로 돌아가기
             </button>
           </div>
-        ) : null}
+        ) : (
+          <div className={styles.manualActions}>
+            {state.status === 'idle' ? (
+              <>
+                <div className={styles.actionRow}>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={handleJoinClick}
+                    disabled={joinDisabled}
+                  >
+                    매칭 참가
+                  </button>
+                </div>
+                {joinBlockers.length ? (
+                  <>
+                    <p className={styles.sectionHint}>
+                      매칭 버튼을 활성화하려면 다음 항목을 먼저 확인해 주세요.
+                    </p>
+                    <ul className={styles.blockerList}>
+                      {joinBlockers.map((message, index) => (
+                        <li key={`${message}-${index}`} className={styles.blockerListItem}>
+                          {message}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className={styles.sectionHint}>
+                    선택한 캐릭터와 역할로 점수 ±200 범위의 방을 찾거나 새로 만듭니다. 빈 자리가
+                    없다면 자동으로 새 방을 만들고 기다립니다.
+                  </p>
+                )}
+              </>
+            ) : null}
+
+            {state.status === 'queued' ? (
+              <>
+                <div className={styles.actionRow}>
+                  <button type="button" className={styles.primaryButton} disabled>
+                    대기열 확인 중…
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={handleCancel}
+                    disabled={state.loading}
+                  >
+                    대기열 나가기
+                  </button>
+                </div>
+                <p className={styles.sectionHint}>
+                  비슷한 점수의 같은 역할 방을 찾는 중입니다. 모든 슬롯이 채워지면 자동으로 다음
+                  단계로 이동합니다.
+                </p>
+              </>
+            ) : null}
+
+            {state.status === 'matched' ? (
+              <p className={styles.sectionHint}>
+                매칭이 완료되었습니다. 아래 팀 구성을 확인하고 전투를 준비해 주세요.
+              </p>
+            ) : null}
+          </div>
+        )}
 
         {state.error || autoJoinError ? (
           <p className={styles.errorText}>{state.error || autoJoinError}</p>

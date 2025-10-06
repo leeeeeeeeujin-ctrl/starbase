@@ -194,6 +194,16 @@
   font-size: 13px;
 }
 
+.roleBadge {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(20, 184, 166, 0.25);
+  color: rgba(165, 243, 252, 0.9);
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .heroOptionList {
   display: grid;
   gap: 12px;
@@ -530,6 +540,23 @@
   display: flex;
   gap: 12px;
   margin-top: 12px;
+}
+
+.manualActions {
+  display: grid;
+  gap: 12px;
+}
+
+.blockerList {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  color: rgba(226, 232, 240, 0.75);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.blockerListItem {
+  margin: 2px 0;
 }
 
 .primaryButton,
