@@ -16,6 +16,7 @@ import { buildMatchMetaPayload, storeStartMatchMeta } from './startConfig'
 import useMatchQueue from './hooks/useMatchQueue'
 import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
 import styles from './MatchQueueClient.module.css'
+import { buildRoleSummaries } from './queueSummaryUtils'
 
 function groupQueue(queue) {
   const map = new Map()
@@ -413,124 +414,14 @@ export default function MatchQueueClient({
   const matchMetaSignatureRef = useRef('')
   const latestStatusRef = useRef('idle')
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
-  const roomSummaries = useMemo(() => {
-    const rooms = Array.isArray(state.match?.rooms) && state.match.rooms.length
-      ? state.match.rooms
-      : Array.isArray(state.pendingMatch?.rooms) && state.pendingMatch.rooms.length
-        ? state.pendingMatch.rooms
-        : []
-
-    const roleSource = Array.isArray(state.match?.roles) && state.match.roles.length
-      ? state.match.roles
-      : Array.isArray(state.pendingMatch?.roles) && state.pendingMatch.roles.length
-        ? state.pendingMatch.roles
-        : []
-
-    const layoutSource = Array.isArray(state.match?.slotLayout) && state.match.slotLayout.length
-      ? state.match.slotLayout
-      : Array.isArray(state.pendingMatch?.slotLayout) && state.pendingMatch.slotLayout.length
-        ? state.pendingMatch.slotLayout
-        : []
-
-    const normalizedRoles = roleSource
-      .map((entry) => {
-        if (!entry) return null
-        if (typeof entry === 'string') {
-          const trimmed = entry.trim()
-          return trimmed ? { name: trimmed, slotCount: null } : null
-        }
-        const name =
-          typeof entry.name === 'string'
-            ? entry.name.trim()
-            : typeof entry.role === 'string'
-            ? entry.role.trim()
-            : ''
-        if (!name) return null
-        const rawCount = entry.slot_count ?? entry.slotCount ?? entry.capacity
-        const numeric = Number(rawCount)
-        const slotCount = Number.isFinite(numeric) && numeric >= 0 ? Math.trunc(numeric) : null
-        return { name, slotCount }
-      })
-      .filter(Boolean)
-
-    const roleOrder = normalizedRoles.map((entry) => entry.name)
-    const bucketMap = new Map()
-
-    const ensureBucket = (rawName) => {
-      if (typeof rawName !== 'string') return null
-      const name = rawName.trim()
-      if (!name) return null
-      if (!bucketMap.has(name)) {
-        bucketMap.set(name, { role: name, total: 0, filled: 0 })
-      }
-      return bucketMap.get(name)
-    }
-
-    const registerSlot = (slot) => {
-      if (!slot) return
-      const name = typeof slot.role === 'string' ? slot.role.trim() : ''
-      if (!name) return
-      const bucket = ensureBucket(name)
-      if (!bucket) return
-      bucket.total += 1
-      const occupied =
-        slot.occupied === true ||
-        Boolean(slot.member) ||
-        (Array.isArray(slot.members) && slot.members.some(Boolean)) ||
-        slot.heroId != null ||
-        slot.hero_id != null ||
-        slot.heroOwnerId != null ||
-        slot.hero_owner_id != null
-      if (occupied) {
-        bucket.filled += 1
-      }
-    }
-
-    if (rooms.length) {
-      rooms.forEach((room) => {
-        const slots = Array.isArray(room?.slots) ? room.slots : []
-        slots.forEach(registerSlot)
-      })
-    } else if (layoutSource.length) {
-      layoutSource.forEach(registerSlot)
-    }
-
-    normalizedRoles.forEach((entry) => {
-      const bucket = ensureBucket(entry.name)
-      if (!bucket) return
-      if (bucket.total <= 0 && Number.isInteger(entry.slotCount) && entry.slotCount > 0) {
-        bucket.total = entry.slotCount
-      }
-    })
-
-    const orderedBuckets = []
-    roleOrder.forEach((name) => {
-      const bucket = bucketMap.get(name)
-      if (bucket) {
-        orderedBuckets.push(bucket)
-      }
-    })
-    bucketMap.forEach((bucket, name) => {
-      if (!roleOrder.includes(name)) {
-        orderedBuckets.push(bucket)
-      }
-    })
-
-    return orderedBuckets
-      .map((bucket) => {
-        const total = Math.max(0, bucket.total)
-        const filled = Math.min(Math.max(0, bucket.filled), total)
-        const missing = Math.max(0, total - filled)
-        return {
-          role: bucket.role,
-          filled,
-          total,
-          missing,
-          ready: total > 0 && missing === 0,
-        }
-      })
-      .filter((entry) => entry.total > 0)
-  }, [state.match, state.pendingMatch])
+  const roomSummaries = useMemo(
+    () =>
+      buildRoleSummaries({
+        match: state.match,
+        pendingMatch: state.pendingMatch,
+      }),
+    [state.match, state.pendingMatch],
+  )
   const [plannerExportNotice, setPlannerExportNotice] = useState('')
   const autoJoinSignatureRef = useRef('')
   const autoJoinRetryTimerRef = useRef(null)
