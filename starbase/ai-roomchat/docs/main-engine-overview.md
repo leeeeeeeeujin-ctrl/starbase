@@ -32,7 +32,8 @@
 2. **프롬프트/룰 준비**: `buildSystemMessage`, `resolveSlotBinding`, `parseRules` 등을 통해 현재 노드의 프롬프트와 적용 규칙을 계산하고, `setStatusMessage` 및 `setPromptMetaWarning`으로 알림을 설정합니다.
 3. **타임라인 통합**: `initializeRealtimeEvents`, `appendSnapshotEvents`, `buildLogEntriesFromEvents`가 실시간 이벤트와 스냅샷을 병합하며, 결과는 `setLogs` 또는 `appendEngineLogs`로 반영됩니다.
 4. **서비스 연동**: 턴 타이머(`createTurnTimerService`), 투표 컨트롤러(`createTurnVoteController`), 드롭인 큐(`createDropInQueueService`), 비동기 세션(`createAsyncSessionManager`), 실시간 세션(`createRealtimeSessionManager`)이 각각 콜백으로 상태 업데이트를 트리거합니다. 예를 들어, 투표 종료 시 `setTurn`과 `patchEngineState`로 다음 턴을 준비합니다.
-5. **감시 및 복구**: `useStartManualResponse`, `useStartCooldown`, `useStartSessionWatchdog` 등이 내부 상태를 모니터링하며, 이상 징후 시 `setStatusMessage` 또는 `patchEngineState`를 통해 운영자에게 경고합니다.
+5. **공유 턴 관리**: 실시간 세션 매니저는 참가자 목록에서 오너 ID를 모두 추출해 `sharedTurn` 스냅샷으로 노출하고, 같은 매치에 참가한 양측이 동일한 턴 정보를 공유할 수 있게 `setManagedOwners`를 갱신합니다. 이 정보는 세션 스토리지에도 기록돼 새로고침 후에도 두 캐릭터의 조합을 복구합니다.
+6. **감시 및 복구**: `useStartManualResponse`, `useStartCooldown`, `useStartSessionWatchdog` 등이 내부 상태를 모니터링하며, 이상 징후 시 `setStatusMessage` 또는 `patchEngineState`를 통해 운영자에게 경고합니다.
 
 이 흐름을 통해 메인 엔진은 Supabase 데이터, 프롬프트 그래프, 실시간 서비스 이벤트를 하나의 리듀서 상태로 통합해 UI에 안정적으로 공급합니다.
 

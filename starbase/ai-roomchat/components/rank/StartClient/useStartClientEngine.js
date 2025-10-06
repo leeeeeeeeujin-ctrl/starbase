@@ -30,6 +30,9 @@ import {
   formatPreflightSummary,
 } from './engine/preflight'
 import {
+  buildOwnerParticipantMap,
+  buildOwnerRosterSnapshot,
+  collectUniqueOwnerIds,
   createOwnerDisplayMap,
   deriveParticipantOwnerId,
 } from './engine/participants'
@@ -680,8 +683,21 @@ export function useStartClientEngine(gameId) {
 
   useEffect(() => {
     if (!gameId || preflight) return
-    updateSessionRecord({ turn, actorNames: activeActorNames })
-  }, [gameId, preflight, turn, activeActorNames, updateSessionRecord])
+    updateSessionRecord({
+      turn,
+      actorNames: activeActorNames,
+      sharedOwners: managedOwnerIds,
+      ownerRoster: ownerRosterSnapshot,
+    })
+  }, [
+    gameId,
+    preflight,
+    turn,
+    activeActorNames,
+    updateSessionRecord,
+    managedOwnerIds,
+    ownerRosterSnapshot,
+  ])
 
   const scheduleTurnTimer = useCallback(
     (turnNumber) => {
@@ -724,10 +740,9 @@ export function useStartClientEngine(gameId) {
       applyRealtimeSnapshot(snapshot)
       return
     }
-    const normalizedViewer = viewerId ? [String(viewerId).trim()] : []
-    const snapshot = realtimeManagerRef.current.setManagedOwners(normalizedViewer)
+    const snapshot = realtimeManagerRef.current.setManagedOwners(managedOwnerIds)
     applyRealtimeSnapshot(snapshot)
-  }, [viewerId, game?.realtime_match, applyRealtimeSnapshot])
+  }, [managedOwnerIds, game?.realtime_match, applyRealtimeSnapshot])
 
   useEffect(() => {
     if (preflight) return
@@ -890,6 +905,41 @@ export function useStartClientEngine(gameId) {
     () => createOwnerDisplayMap(participants),
     [participants],
   )
+  const ownerParticipantMap = useMemo(
+    () => buildOwnerParticipantMap(participants),
+    [participants],
+  )
+  const sharedTurnRoster = useMemo(() => {
+    const roster = []
+    ownerParticipantMap.forEach((participant, ownerId) => {
+      roster.push({
+        ownerId,
+        participant,
+        hero: participant?.hero || null,
+        heroId:
+          participant?.hero?.id ??
+          participant?.hero_id ??
+          participant?.heroId ??
+          null,
+        role: participant?.role || null,
+        status: participant?.status || null,
+      })
+    })
+    return roster
+  }, [ownerParticipantMap])
+  const ownerRosterSnapshot = useMemo(
+    () => buildOwnerRosterSnapshot(participants),
+    [participants],
+  )
+  const managedOwnerIds = useMemo(() => {
+    const owners = collectUniqueOwnerIds(participants)
+    const viewerKey = viewerId ? String(viewerId).trim() : ''
+    if (!viewerKey) {
+      return owners
+    }
+    const filtered = owners.filter((ownerId) => ownerId !== viewerKey)
+    return [viewerKey, ...filtered]
+  }, [participants, viewerId])
 
   const recordTimelineEvents = useCallback(
     (events, { turnNumber: overrideTurn, logEntries = null, buildLogs = true } = {}) => {
@@ -1373,20 +1423,25 @@ export function useStartClientEngine(gameId) {
         history.push({ role: 'system', content: systemPrompt, public: false })
       }
 
+      const sessionOwnerIds = collectUniqueOwnerIds(sessionParticipants)
+      const viewerKey = viewerId ? String(viewerId).trim() : ''
+      const managedOwnersForSession = viewerKey
+        ? [viewerKey, ...sessionOwnerIds.filter((ownerId) => ownerId !== viewerKey)]
+        : sessionOwnerIds
+      const sessionRosterSnapshot = buildOwnerRosterSnapshot(sessionParticipants)
+
       if (realtimeManagerRef.current) {
         const manager = realtimeManagerRef.current
         manager.reset()
         if (game?.realtime_match) {
           manager.syncParticipants(sessionParticipants)
-          if (viewerId) {
-            manager.setManagedOwners([String(viewerId).trim()])
-          } else {
-            manager.setManagedOwners([])
-          }
+          manager.setManagedOwners(managedOwnersForSession)
           manager.beginTurn({
             turnNumber: 1,
             eligibleOwnerIds: deriveEligibleOwnerIds(sessionParticipants),
           })
+        } else {
+          manager.setManagedOwners([])
         }
         applyRealtimeSnapshot(manager.getSnapshot())
       }
@@ -1432,6 +1487,8 @@ export function useStartClientEngine(gameId) {
         actorNames: startNames,
         status: 'active',
         defeated: false,
+        sharedOwners: managedOwnersForSession,
+        ownerRoster: sessionRosterSnapshot,
       })
       setTurnDeadline(null)
       setTimeRemaining(null)
@@ -2543,6 +2600,10 @@ export function useStartClientEngine(gameId) {
     realtimePresence,
     realtimeEvents,
     dropInSnapshot,
+    sharedTurn: {
+      owners: managedOwnerIds,
+      roster: sharedTurnRoster,
+    },
     consensus: {
       required: eligibleOwnerIds.length,
       count: consensusCount,
