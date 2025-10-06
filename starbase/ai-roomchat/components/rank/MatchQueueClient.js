@@ -1089,6 +1089,8 @@ export default function MatchQueueClient({
     handleStart()
   }, [autoStart, state.status, state.match, finalTimer, isDropInMatch, handleStart])
 
+  const cancelQueue = actions.cancelQueue
+
   useEffect(
     () => () => {
       if (countdownTimerRef.current) {
@@ -1104,10 +1106,10 @@ export default function MatchQueueClient({
         dropInRedirectTimerRef.current = null
       }
       if (latestStatusRef.current === 'queued') {
-        actions.cancelQueue()
+        cancelQueue()
       }
     },
-    [actions],
+    [cancelQueue],
   )
 
   useEffect(() => {
