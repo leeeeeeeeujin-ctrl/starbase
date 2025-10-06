@@ -90,13 +90,6 @@
   align-items: center;
 }
 
-.autoConfirmNotice {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: center;
-}
-
 .confirmButton {
   display: inline-flex;
   align-items: center;

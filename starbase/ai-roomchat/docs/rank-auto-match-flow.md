@@ -12,13 +12,14 @@
 - 차단 요인이 없을 때 `useEffect` 훅이 `actions.joinQueue(roleName)`을 호출해 자동으로 대기열에 참가합니다. 실패 시 1.5초 후 서명을 비워 다음 시도를 준비해 여러 번 재시도할 수 있습니다.【F:components/rank/AutoMatchProgress.js†L644-L686】
 - 동일한 자동 참가 패턴은 수동 매칭 콘솔에서도 유지되어, 캐릭터와 역할이 준비되면 큐에 합류하고 실패 시 재시도 대기 타이머를 설정합니다.【F:components/rank/MatchQueueClient.js†L767-L845】
 
-## 3. 매칭 확정 후 매치 준비 화면으로 이동
-- 상태가 `matched`가 되면 `AutoMatchProgress`는 매치 배정, 점수 윈도우, 턴 타이머 정보를 정규화해 저장한 뒤 `/rank/[id]/match-ready`로 리디렉션합니다. 저장된 매치 정보는 이후 단계에서 재사용됩니다.【F:components/rank/AutoMatchProgress.js†L177-L243】
-- `MatchQueueClient` 경로에서도 자동 시작 카운트다운 또는 즉시 시작 플래그(`autoStart`)를 통해 `/rank/[id]/start` 페이지로 이동시킵니다.【F:components/rank/MatchQueueClient.js†L1044-L1118】
-- 드롭인 매치처럼 룸 합류가 확정되면 5초 카운트다운 후 자동으로 메인 룸(`/rank/[id]`)으로 돌려보내는 안전 장치도 내장되어 있습니다.【F:components/rank/MatchQueueClient.js†L1120-L1179】
+## 3. 매칭 확정 후 오버레이에서 확인
+- 상태가 `matched`가 되면 `AutoMatchProgress`는 매치 배정, 점수 윈도우, 턴 타이머 정보를 정규화해 저장하고, 해당 매치 연결 정보를 등록해 이후 단계에서 재사용합니다.【F:components/rank/AutoMatchProgress.js†L187-L247】
+- 동일한 컴포넌트가 즉시 10초 카운트다운이 표시된 오버레이를 띄워 역할별 참가자 프로파일을 보여줍니다. 플레이어가 "게임 시작" 버튼을 누르면 본게임 전환이 준비되고, 시간을 초과하면 매칭이 취소되어 메인 룸으로 복귀합니다.【F:components/rank/AutoMatchProgress.js†L870-L939】【F:components/rank/AutoMatchProgress.js†L1231-L1408】
+- `MatchQueueClient` 경로에서도 자동 참가 흐름은 유지되지만, 최종 시작은 동일한 오버레이 확인을 거쳐 진행되도록 `AutoMatchProgress`가 담당합니다.【F:components/rank/MatchQueueClient.js†L1044-L1118】
 
-## 4. 매치 준비 화면에서 본게임 진입
-- `MatchReadyClient`는 저장된 매치 서명을 읽어 재확인하고, 세션 토큰으로 `/api/rank/start-session`과 `/api/rank/play`를 호출합니다. 호출이 성공하면 큐 정리를 수행하고 `/rank/[id]/start`로 이동합니다.【F:components/rank/MatchReadyClient.js†L326-L417】
+## 4. 오버레이에서 확정 후 본게임 진입
+- "게임 시작"을 누르면 `AutoMatchProgress`가 저장된 매치 메타데이터와 함께 `/api/rank/start-session`, `/api/rank/play`를 호출해 세션을 준비하고 큐를 정리합니다.【F:components/rank/AutoMatchProgress.js†L560-L707】
+- 호출이 성공하면 확인 상태가 `confirmed`로 전환되며, 짧은 지연 후 `/rank/[id]/start`로 이동해 본게임 클라이언트를 띄웁니다.【F:components/rank/AutoMatchProgress.js†L707-L736】
 - `/rank/[id]/start` 페이지는 서버 사이드 렌더링 없이 `StartClient`를 로드해 실제 전투 UI를 표시합니다.【F:pages/rank/[id]/start.js†L1-L4】
 
 ## 5. 실패 및 예외 처리

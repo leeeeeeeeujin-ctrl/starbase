@@ -9,4 +9,4 @@ export const MATCH_INACTIVITY_TIMEOUT_MS = 45000
 export const CONFIRMATION_WINDOW_SECONDS = 10
 export const FAILURE_REDIRECT_DELAY_MS = 2400
 export const PENALTY_NOTICE =
-  '확인 시간이 지나 매칭이 취소되었습니다. 게임에 참여하지 않으면 불이익이 있을 수 있습니다.'
+  '10초 안에 게임을 시작하지 않아 매칭이 취소되었습니다. 다른 참가자들은 다시 매칭을 진행합니다.'
