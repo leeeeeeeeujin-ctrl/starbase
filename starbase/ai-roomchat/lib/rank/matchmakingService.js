@@ -80,7 +80,7 @@ async function resolveQueueHeroId(supabaseClient, { gameId, ownerId, heroId, rol
 export async function loadActiveRoles(supabaseClient, gameId) {
   if (!gameId) return []
 
-  const [roleResult, slotResult] = await Promise.all([
+  const [roleResult, slotResult, gameResult] = await Promise.all([
     withTable(supabaseClient, 'rank_game_roles', (table) =>
       supabaseClient
         .from(table)
@@ -93,15 +93,20 @@ export async function loadActiveRoles(supabaseClient, gameId) {
         .select('slot_index, role, active, hero_id, hero_owner_id')
         .eq('game_id', gameId),
     ),
+    withTable(supabaseClient, 'rank_games', (table) =>
+      supabaseClient.from(table).select('roles').eq('id', gameId).maybeSingle(),
+    ),
   ])
 
   if (roleResult?.error) throw roleResult.error
   if (slotResult?.error) throw slotResult.error
+  if (gameResult?.error) throw gameResult.error
 
   const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
   const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
+  const gameRoles = Array.isArray(gameResult?.data?.roles) ? gameResult.data.roles : []
 
-  const { roles } = normaliseRolesAndSlots(roleRows, slotRows)
+  const { roles } = normaliseRolesAndSlots(roleRows, slotRows, gameRoles)
   return roles
 }
 
@@ -117,7 +122,62 @@ function coerceSlotIndex(value) {
   return Math.trunc(numeric)
 }
 
-function normaliseRolesAndSlots(roleRows = [], slotRows = []) {
+function deriveGameRoleSlots(rawSlots = []) {
+  if (!Array.isArray(rawSlots)) return []
+
+  const layout = []
+
+  rawSlots.forEach((value, index) => {
+    if (value == null) return
+
+    let name = ''
+    if (typeof value === 'string') {
+      name = normalizeRoleName(value)
+    } else if (typeof value === 'object') {
+      name = normalizeRoleName(value.name ?? value.role ?? value.label ?? '')
+    }
+
+    if (!name) return
+
+    layout.push({
+      slotIndex: index,
+      role: name,
+      heroId: null,
+      heroOwnerId: null,
+    })
+  })
+
+  return layout
+}
+
+function buildRolesFromLayout(layout = []) {
+  const roleOrder = []
+  const roleCounts = new Map()
+
+  layout.forEach((slot) => {
+    if (!slot) return
+    const name = normalizeRoleName(slot.role)
+    if (!name) return
+    if (!roleCounts.has(name)) {
+      roleCounts.set(name, 1)
+      roleOrder.push(name)
+    } else {
+      roleCounts.set(name, roleCounts.get(name) + 1)
+    }
+  })
+
+  return roleOrder.map((name) => ({ name, slot_count: roleCounts.get(name) || 0 }))
+}
+
+function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []) {
+  const inlineLayout = deriveGameRoleSlots(gameRoleSlots)
+  if (inlineLayout.length > 0) {
+    return {
+      roles: buildRolesFromLayout(inlineLayout),
+      slotLayout: inlineLayout,
+    }
+  }
+
   const slotPresence = new Set()
   const layout = []
   const slotCounts = new Map()
@@ -190,7 +250,7 @@ export async function loadRoleLayout(supabaseClient, gameId) {
     return { roles: [], slotLayout: [] }
   }
 
-  const [roleResult, slotResult] = await Promise.all([
+  const [roleResult, slotResult, gameResult] = await Promise.all([
     withTable(supabaseClient, 'rank_game_roles', (table) =>
       supabaseClient
         .from(table)
@@ -204,15 +264,20 @@ export async function loadRoleLayout(supabaseClient, gameId) {
         .eq('game_id', gameId)
         .order('slot_index', { ascending: true }),
     ),
+    withTable(supabaseClient, 'rank_games', (table) =>
+      supabaseClient.from(table).select('roles').eq('id', gameId).maybeSingle(),
+    ),
   ])
 
   if (roleResult?.error) throw roleResult.error
   if (slotResult?.error) throw slotResult.error
+  if (gameResult?.error) throw gameResult.error
 
   const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
   const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
+  const gameRoles = Array.isArray(gameResult?.data?.roles) ? gameResult.data.roles : []
 
-  return normaliseRolesAndSlots(roleRows, slotRows)
+  return normaliseRolesAndSlots(roleRows, slotRows, gameRoles)
 }
 
 export async function loadParticipantPool(supabaseClient, gameId) {

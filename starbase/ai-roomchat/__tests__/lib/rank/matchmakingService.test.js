@@ -158,6 +158,28 @@ describe('loadActiveRoles', () => {
     const roles = await loadActiveRoles(supabase, 'game-empty')
     expect(roles).toEqual([{ name: 'attack', slot_count: 2 }])
   })
+
+  it('derives slot counts from the rank_games.roles array when provided', async () => {
+    const supabase = createSupabaseStub({
+      rank_games: [
+        {
+          id: 'game-inline',
+          roles: ['공격', '공격', null, '', '수비', '공격', '지원'],
+        },
+      ],
+      rank_game_roles: [
+        { game_id: 'game-inline', name: '공격', slot_count: 1, active: true },
+        { game_id: 'game-inline', name: '수비', slot_count: 1, active: true },
+      ],
+    })
+
+    const roles = await loadActiveRoles(supabase, 'game-inline')
+    expect(roles).toEqual([
+      { name: '공격', slot_count: 3 },
+      { name: '수비', slot_count: 1 },
+      { name: '지원', slot_count: 1 },
+    ])
+  })
 })
 
 describe('loadMatchSampleSource', () => {
