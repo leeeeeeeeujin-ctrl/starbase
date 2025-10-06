@@ -12,7 +12,7 @@ import {
   loadQueueEntries,
   removeQueueEntry,
 } from '../../../lib/rank/matchmakingService'
-import { guessOwnerParticipant } from '../../../lib/rank/participantUtils'
+import { guessOwnerParticipant, normalizeHeroIdValue } from '../../../lib/rank/participantUtils'
 
 const POLL_INTERVAL_MS = 4000
 
@@ -60,6 +60,10 @@ async function loadViewerParticipation(
       ownerIds: [ownerId],
     })
 
+    const participantEntries = roster instanceof Map ? roster.get(String(ownerId)) || [] : []
+    const heroEntries = await loadOwnerHeroEntries(ownerId)
+    const combinedEntries = mergeRosterEntries(participantEntries, heroEntries)
+
     const guess = guessOwnerParticipant({
       ownerId,
       roster,
@@ -67,13 +71,35 @@ async function loadViewerParticipation(
       fallbackHeroId,
     })
 
-    const ownerEntries = roster instanceof Map ? roster.get(String(ownerId)) || [] : []
+    const rosterCandidate = pickRosterHeroCandidate(combinedEntries, {
+      rolePreference,
+      fallbackHeroId,
+    })
+
+    const guessHeroId = normalizeHeroIdValue(guess.heroId)
+    const fallbackHeroCandidateId = normalizeHeroIdValue(rosterCandidate?.heroId)
+    const storedFallbackHeroId = normalizeHeroIdValue(fallbackHeroId)
+
+    const resolvedHeroId =
+      guessHeroId || fallbackHeroCandidateId || storedFallbackHeroId || ''
+
+    const resolvedRole =
+      (typeof guess.role === 'string' && guess.role.trim()) ||
+      (typeof rosterCandidate?.role === 'string' && rosterCandidate.role.trim()) ||
+      (typeof rolePreference === 'string' ? rolePreference.trim() : '') ||
+      ''
+
+    let resolvedScore = Number.isFinite(guess.score) && guess.score > 0 ? guess.score : null
+    if (!Number.isFinite(resolvedScore) || resolvedScore == null) {
+      const candidateScore = Number.isFinite(rosterCandidate?.score) ? rosterCandidate.score : null
+      resolvedScore = Number.isFinite(candidateScore) && candidateScore != null ? candidateScore : 1000
+    }
 
     return {
-      score: Number.isFinite(guess.score) ? guess.score : 1000,
-      role: guess.role || rolePreference || '',
-      heroId: guess.heroId || fallbackHeroId || '',
-      rosterEntries: ownerEntries,
+      score: resolvedScore,
+      role: resolvedRole,
+      heroId: resolvedHeroId ? String(resolvedHeroId) : '',
+      rosterEntries: combinedEntries,
     }
   } catch (error) {
     console.warn('참가자 정보를 불러오지 못했습니다:', error)
@@ -109,6 +135,179 @@ async function loadFallbackHeroId(ownerId) {
   const hero = result?.data
   if (!hero?.id) return ''
   return String(hero.id)
+}
+
+function normalizeRoleKey(value) {
+  if (!value) return ''
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? trimmed.toLowerCase() : ''
+  }
+  return ''
+}
+
+function coerceRosterScore(value, fallback = 1000) {
+  const numeric = Number(value)
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric
+  }
+  return fallback
+}
+
+async function loadOwnerHeroEntries(ownerId) {
+  if (!ownerId) return []
+
+  try {
+    const result = await withTable(supabase, 'heroes', (table) =>
+      supabase
+        .from(table)
+        .select(
+          'id, owner_id, name, hero_name, role, role_name, roleName, score, rating, mmr, rank_score, rankScore, status, image_url, avatar_url, hero_avatar_url',
+        )
+        .eq('owner_id', ownerId),
+    )
+
+    if (result?.error) {
+      throw result.error
+    }
+
+    const rows = Array.isArray(result?.data) ? result.data : []
+    return rows
+      .map((row) => {
+        const heroId = normalizeHeroIdValue(row?.id)
+        if (!heroId) return null
+
+        const roleFields = [row?.role, row?.role_name, row?.roleName]
+        let role = ''
+        for (const field of roleFields) {
+          if (typeof field === 'string' && field.trim()) {
+            role = field.trim()
+            break
+          }
+        }
+
+        const scoreCandidates = [row?.score, row?.rating, row?.mmr, row?.rank_score, row?.rankScore]
+        let score = 1000
+        for (const candidate of scoreCandidates) {
+          const normalizedScore = coerceRosterScore(candidate, NaN)
+          if (Number.isFinite(normalizedScore)) {
+            score = normalizedScore
+            break
+          }
+        }
+
+        if (!Number.isFinite(score)) {
+          score = 1000
+        }
+
+        const status = typeof row?.status === 'string' ? row.status.trim().toLowerCase() : ''
+
+        return {
+          ownerId: String(row?.owner_id || ownerId),
+          heroId: String(heroId),
+          role,
+          score,
+          slotIndex: null,
+          status,
+          raw: {
+            hero_id: heroId,
+            hero_name: row?.name || row?.hero_name || row?.heroName || '',
+            hero_avatar_url: row?.image_url || row?.avatar_url || row?.hero_avatar_url || null,
+          },
+        }
+      })
+      .filter(Boolean)
+  } catch (error) {
+    console.warn('히어로 목록을 불러오지 못했습니다:', error)
+    return []
+  }
+}
+
+function mergeRosterEntries(participantEntries = [], heroEntries = []) {
+  const output = []
+  const indexByHeroId = new Map()
+
+  const addEntry = (entry, { preferExisting = false } = {}) => {
+    if (!entry) return
+    const heroId = entry.heroId != null ? String(entry.heroId) : ''
+    if (!heroId) return
+    if (indexByHeroId.has(heroId)) {
+      if (preferExisting) {
+        return
+      }
+      const index = indexByHeroId.get(heroId)
+      const existing = output[index]
+      const nextScore = coerceRosterScore(entry.score, NaN)
+      const prevScore = coerceRosterScore(existing.score, NaN)
+      output[index] = {
+        ...existing,
+        ...entry,
+        heroId,
+        role: entry.role || existing.role || '',
+        score: Number.isFinite(nextScore) ? nextScore : Number.isFinite(prevScore) ? prevScore : null,
+        status: entry.status || existing.status || '',
+        slotIndex: entry.slotIndex ?? existing.slotIndex ?? null,
+        raw: entry.raw || existing.raw || null,
+      }
+      return
+    }
+
+    indexByHeroId.set(heroId, output.length)
+    const initialScore = coerceRosterScore(entry.score, NaN)
+    output.push({
+      ...entry,
+      heroId,
+      role: entry.role || '',
+      status: entry.status || '',
+      slotIndex: entry.slotIndex ?? null,
+      score: Number.isFinite(initialScore) ? initialScore : null,
+    })
+  }
+
+  ;(participantEntries || []).forEach((entry) => addEntry(entry))
+  ;(heroEntries || []).forEach((entry) => addEntry(entry, { preferExisting: true }))
+
+  return output
+}
+
+function pickRosterHeroCandidate(entries = [], { rolePreference = '', fallbackHeroId = '' } = {}) {
+  if (!Array.isArray(entries)) return null
+
+  const normalizedFallback = normalizeHeroIdValue(fallbackHeroId)
+  const normalizedRole = normalizeRoleKey(rolePreference)
+
+  const mapped = entries
+    .map((entry) => {
+      if (!entry) return null
+      const heroId = normalizeHeroIdValue(entry.heroId)
+      if (!heroId) return null
+      const role = typeof entry.role === 'string' ? entry.role.trim() : ''
+      const score = coerceRosterScore(entry.score, NaN)
+      return {
+        heroId,
+        role,
+        roleKey: normalizeRoleKey(role),
+        score: Number.isFinite(score) ? score : null,
+        entry,
+      }
+    })
+    .filter(Boolean)
+
+  if (!mapped.length) {
+    return null
+  }
+
+  if (normalizedFallback) {
+    const fallbackMatch = mapped.find((item) => item.heroId === normalizedFallback)
+    if (fallbackMatch) return fallbackMatch.entry
+  }
+
+  if (normalizedRole) {
+    const roleMatch = mapped.find((item) => item.roleKey === normalizedRole)
+    if (roleMatch) return roleMatch.entry
+  }
+
+  return mapped[0].entry
 }
 
 async function upsertParticipantRole({ gameId, ownerId, heroId, role, score }) {
@@ -266,7 +465,8 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
     }
     let cancelled = false
     setRoleReady(false)
-    loadViewerParticipation(gameId, viewerId)
+    const storedHeroFallback = readStoredHeroId() || heroIdRef.current || ''
+    loadViewerParticipation(gameId, viewerId, { fallbackHeroId: storedHeroFallback })
       .then((value) => {
         if (cancelled || !value) return
         setScore(value.score)
