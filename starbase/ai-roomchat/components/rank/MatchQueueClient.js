@@ -202,6 +202,27 @@ function describeSampleType(sampleType) {
   }
 }
 
+const PARTICIPANT_STATUS_LABELS = {
+  alive: '',
+  engaged: '전투 중',
+  engaged_offense: '전투 중',
+  engaged_defense: '전투 중',
+  locked: '전투 예약',
+  pending_battle: '전투 예약',
+  defeated: '탈락',
+  lost: '탈락',
+  out: '관전자',
+  retired: '관전자',
+  eliminated: '탈락',
+  dead: '탈락',
+}
+
+function formatParticipantStatus(status) {
+  if (!status) return ''
+  const normalized = status.trim().toLowerCase()
+  return PARTICIPANT_STATUS_LABELS[normalized] || normalized
+}
+
 export default function MatchQueueClient({
   gameId,
   mode,
@@ -256,6 +277,32 @@ export default function MatchQueueClient({
   const dropInTarget = state.match?.dropInTarget || null
   const pendingMatch = state.pendingMatch || null
   const queuedSampleMeta = state.sampleMeta || null
+  const heroOptions = Array.isArray(state.heroOptions) ? state.heroOptions : []
+  const [manualHeroId, setManualHeroId] = useState(() => state.heroId || '')
+  useEffect(() => {
+    setManualHeroId(state.heroId || '')
+  }, [state.heroId])
+  const handleHeroOptionSelect = useCallback(
+    (value) => {
+      if (value == null) return
+      const normalized = String(value).trim()
+      if (!normalized) return
+      if (state.heroId === normalized) return
+      actions.setHero(normalized)
+    },
+    [actions, state.heroId],
+  )
+  const handleManualHeroInput = useCallback((event) => {
+    setManualHeroId(event.target.value)
+  }, [])
+  const handleManualHeroSubmit = useCallback(
+    (event) => {
+      event.preventDefault()
+      const trimmed = (manualHeroId || '').trim()
+      actions.setHero(trimmed)
+    },
+    [actions, manualHeroId],
+  )
   const brawlSummary = useMemo(() => {
     if (!isBrawlMatch) return ''
     const vacancies = Array.isArray(state.match?.brawlVacancies)
@@ -863,8 +910,10 @@ export default function MatchQueueClient({
   const heroLabel = useMemo(() => {
     if (!state.heroId) return '선택된 캐릭터 없음'
     if (state.heroMeta?.name) return state.heroMeta.name
+    const matched = heroOptions.find((option) => option.heroId === state.heroId)
+    if (matched?.name) return matched.name
     return state.heroId
-  }, [state.heroId, state.heroMeta?.name])
+  }, [state.heroId, state.heroMeta?.name, heroOptions])
 
   const plannerSummary = useMemo(() => {
     if (!plannerPlan) return ''
@@ -999,6 +1048,87 @@ export default function MatchQueueClient({
         <h1 className={styles.title}>{title}</h1>
         <p className={styles.subtitle}>{description}</p>
       </header>
+
+      <section className={styles.card}>
+        <h2 className={styles.sectionTitle}>사용할 캐릭터 선택</h2>
+        <p className={styles.sectionHint}>
+          매칭 대기열에 합류하기 전에 이 게임에서 사용할 캐릭터를 직접 선택해 주세요.
+        </p>
+        {heroOptions.length ? (
+          <div className={styles.heroOptionList}>
+            {heroOptions.map((option) => {
+              const checked = Boolean(state.heroId) && state.heroId === option.heroId
+              const detailParts = []
+              if (option.role) {
+                detailParts.push(option.role)
+              }
+              if (Number.isFinite(Number(option.score))) {
+                detailParts.push(`점수 ${Math.round(Number(option.score))}`)
+              }
+              const detailLabel = detailParts.join(' · ')
+              const statusLabel = formatParticipantStatus(option.status)
+              return (
+                <label
+                  key={option.heroId}
+                  className={`${styles.heroOptionItem} ${checked ? styles.heroOptionItemActive : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="match-hero-option"
+                    value={option.heroId}
+                    checked={checked}
+                    onChange={() => handleHeroOptionSelect(option.heroId)}
+                    className={styles.heroOptionRadio}
+                  />
+                  <div className={styles.heroOptionContent}>
+                    {option.avatarUrl ? (
+                      <img
+                        src={option.avatarUrl}
+                        alt={option.name || option.heroId}
+                        className={styles.heroOptionAvatar}
+                      />
+                    ) : (
+                      <div className={styles.heroOptionAvatarPlaceholder} />
+                    )}
+                    <div className={styles.heroOptionMeta}>
+                      <span className={styles.heroOptionName}>{option.name || option.heroId}</span>
+                      {detailLabel ? (
+                        <span className={styles.heroOptionDetail}>{detailLabel}</span>
+                      ) : null}
+                      {statusLabel ? (
+                        <span className={styles.heroOptionStatus}>{statusLabel}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+        ) : (
+          <p className={styles.emptyHint}>
+            이 게임에 등록된 캐릭터 정보를 찾지 못했습니다. 아래 입력란에 캐릭터 ID를 직접 입력해 주세요.
+          </p>
+        )}
+        <form className={styles.heroManualForm} onSubmit={handleManualHeroSubmit}>
+          <label className={styles.heroManualLabel} htmlFor="manual-hero-id">
+            직접 캐릭터 ID 입력
+          </label>
+          <div className={styles.heroManualControls}>
+            <input
+              id="manual-hero-id"
+              type="text"
+              className={styles.heroManualInput}
+              placeholder="예: 12345"
+              value={manualHeroId}
+              onChange={handleManualHeroInput}
+            />
+            <button type="submit" className={styles.heroManualButton}>
+              ID 적용
+            </button>
+          </div>
+          <p className={styles.heroManualHint}>ID를 비워 두면 선택한 캐릭터가 초기화됩니다.</p>
+        </form>
+      </section>
 
       <section className={styles.card}>
         <div className={styles.statusRow}>

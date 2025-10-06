@@ -67,16 +67,24 @@ async function loadViewerParticipation(
       fallbackHeroId,
     })
 
+    const ownerEntries = roster instanceof Map ? roster.get(String(ownerId)) || [] : []
+
     return {
       score: Number.isFinite(guess.score) ? guess.score : 1000,
       role: guess.role || rolePreference || '',
       heroId: guess.heroId || fallbackHeroId || '',
+      rosterEntries: ownerEntries,
     }
   } catch (error) {
     console.warn('참가자 정보를 불러오지 못했습니다:', error)
   }
 
-  return { score: 1000, role: rolePreference || '', heroId: fallbackHeroId || '' }
+  return {
+    score: 1000,
+    role: rolePreference || '',
+    heroId: fallbackHeroId || '',
+    rosterEntries: [],
+  }
 }
 
 async function loadFallbackHeroId(ownerId) {
@@ -130,6 +138,45 @@ async function upsertParticipantRole({ gameId, ownerId, heroId, role, score }) {
 export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) {
   const [viewerId, setViewerId] = useState('')
   const [heroId, setHeroId] = useState(() => (initialHeroId ? String(initialHeroId) : ''))
+  const heroIdRef = useRef(heroId || '')
+  const updateHeroSelection = useCallback(
+    (value, { ownerId: ownerIdOverride, persistOwner = true } = {}) => {
+      const normalized = value != null ? String(value).trim() : ''
+      heroIdRef.current = normalized
+      setHeroId((prev) => {
+        if (prev === normalized) {
+          return prev
+        }
+        return normalized
+      })
+
+      if (typeof window === 'undefined') {
+        return normalized
+      }
+
+      try {
+        if (normalized) {
+          window.localStorage.setItem('selectedHeroId', normalized)
+          if (persistOwner) {
+            const targetOwner = ownerIdOverride || viewerId
+            if (targetOwner) {
+              window.localStorage.setItem('selectedHeroOwnerId', String(targetOwner))
+            }
+          }
+        } else {
+          window.localStorage.removeItem('selectedHeroId')
+        }
+      } catch (error) {
+        console.warn('히어로 정보를 저장하지 못했습니다:', error)
+      }
+
+      return normalized
+    },
+    [viewerId],
+  )
+  useEffect(() => {
+    heroIdRef.current = heroId || ''
+  }, [heroId])
   const [roles, setRoles] = useState([])
   const [queue, setQueue] = useState([])
   const [status, setStatus] = useState('idle')
@@ -141,9 +188,17 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
   const [match, setMatch] = useState(null)
   const [sampleMeta, setSampleMeta] = useState(null)
   const [pendingMatch, setPendingMatch] = useState(null)
-  const [heroMeta, setHeroMeta] = useState(null)
+  const [viewerRoster, setViewerRoster] = useState([])
+  const [heroMap, setHeroMap] = useState(() => new Map())
   const pollRef = useRef(null)
   const probeRef = useRef(null)
+
+  useEffect(() => {
+    if (!viewerId) return
+    const active = heroIdRef.current || ''
+    if (!active) return
+    updateHeroSelection(active, { ownerId: viewerId })
+  }, [viewerId, updateHeroSelection])
 
   useEffect(() => {
     if (!enabled) return
@@ -190,20 +245,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
     if (!initialHeroId) return
 
     const normalized = String(initialHeroId)
-    setHeroId((prev) => {
-      if (prev === normalized) {
-        return prev
-      }
-      return normalized
-    })
-
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.setItem('selectedHeroId', normalized)
-      } catch (error) {
-        console.warn('히어로 정보를 저장하지 못했습니다:', error)
-      }
-    }
+    updateHeroSelection(normalized, { ownerId: viewerId || undefined })
   }, [enabled, initialHeroId])
 
   useEffect(() => {
@@ -229,15 +271,10 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
         if (cancelled || !value) return
         setScore(value.score)
         setLockedRole(value.role || '')
-        if (value.heroId) {
-          setHeroId(String(value.heroId))
-          if (typeof window !== 'undefined') {
-            try {
-              window.localStorage.setItem('selectedHeroId', String(value.heroId))
-            } catch (error) {
-              console.warn('히어로 정보를 저장하지 못했습니다:', error)
-            }
-          }
+        setViewerRoster(Array.isArray(value.rosterEntries) ? value.rosterEntries : [])
+        const existing = readStoredHeroId() || heroIdRef.current || ''
+        if (!existing && value.heroId) {
+          updateHeroSelection(String(value.heroId), { ownerId: viewerId || undefined })
         }
       })
       .catch((cause) => console.warn('점수를 불러오지 못했습니다:', cause))
@@ -259,15 +296,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
     loadFallbackHeroId(viewerId)
       .then((fallbackId) => {
         if (cancelled || !fallbackId) return
-        setHeroId(fallbackId)
-        if (typeof window !== 'undefined') {
-          try {
-            window.localStorage.setItem('selectedHeroId', fallbackId)
-            window.localStorage.setItem('selectedHeroOwnerId', viewerId)
-          } catch (error) {
-            console.warn('히어로 정보를 저장하지 못했습니다:', error)
-          }
-        }
+        updateHeroSelection(fallbackId, { ownerId: viewerId || undefined })
       })
       .catch((cause) => console.warn('히어로 기본값을 불러오지 못했습니다:', cause))
 
@@ -278,25 +307,37 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
 
   useEffect(() => {
     if (!enabled) return
-    if (!heroId) {
-      setHeroMeta(null)
-      return
-    }
     let cancelled = false
-    loadHeroesByIds(supabase, [heroId])
+    const ids = new Set()
+    if (heroId) {
+      ids.add(String(heroId))
+    }
+    if (Array.isArray(viewerRoster)) {
+      viewerRoster.forEach((entry) => {
+        if (entry?.heroId) {
+          ids.add(String(entry.heroId))
+        }
+      })
+    }
+    const list = Array.from(ids).filter((item) => item && item.length > 0)
+    if (list.length === 0) {
+      setHeroMap(new Map())
+      return () => {}
+    }
+
+    loadHeroesByIds(supabase, list)
       .then((map) => {
         if (cancelled) return
-        const meta = map.get(heroId) || map.get(String(heroId)) || null
-        setHeroMeta(meta)
+        setHeroMap(map)
       })
       .catch((cause) => {
         console.warn('히어로 정보를 불러오지 못했습니다:', cause)
-        if (!cancelled) setHeroMeta(null)
+        if (!cancelled) setHeroMap(new Map())
       })
     return () => {
       cancelled = true
     }
-  }, [enabled, heroId])
+  }, [enabled, heroId, viewerRoster])
 
   useEffect(() => {
     if (!enabled) return
@@ -466,7 +507,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
 
         setStatus('queued')
         setMatch(null)
-        setHeroId(queueHeroId)
+        updateHeroSelection(queueHeroId, { ownerId: viewerId || undefined })
         if (!roleReady) {
           setRoleReady(true)
         }
@@ -519,7 +560,37 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       match,
       lockedRole,
       roleReady,
-      heroMeta,
+      heroMeta:
+        heroId
+          ? heroMap.get(heroId) || heroMap.get(String(heroId)) || null
+          : null,
+      heroOptions: Array.isArray(viewerRoster)
+        ? viewerRoster
+            .map((entry) => {
+              if (!entry) return null
+              const resolvedId = entry.heroId ? String(entry.heroId) : ''
+              if (!resolvedId) return null
+              const meta = resolvedId
+                ? heroMap.get(resolvedId) || heroMap.get(String(resolvedId)) || null
+                : null
+              return {
+                heroId: resolvedId,
+                role: entry.role || '',
+                score: entry.score ?? null,
+                slotIndex: entry.slotIndex ?? null,
+                status: entry.status || '',
+                name:
+                  meta?.name ||
+                  meta?.hero_name ||
+                  entry.raw?.hero_name ||
+                  (resolvedId ? `ID ${resolvedId}` : ''),
+                avatarUrl: meta?.image_url || meta?.avatar_url || null,
+              }
+            })
+            .filter(Boolean)
+        : [],
+      heroMap,
+      viewerRoster,
       sampleMeta,
       pendingMatch,
     }),
@@ -535,9 +606,10 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       match,
       lockedRole,
       roleReady,
-      heroMeta,
       sampleMeta,
       pendingMatch,
+      heroMap,
+      viewerRoster,
     ],
   )
 
@@ -554,7 +626,12 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       cancelQueue,
       reset,
       refresh,
-      refreshHero: () => setHeroId(readStoredHeroId()),
+      refreshHero: () => updateHeroSelection(readStoredHeroId() || '', { persistOwner: false }),
+      setHero: (value, options = {}) =>
+        updateHeroSelection(value != null ? String(value) : '', {
+          ownerId: (options && options.ownerId) || viewerId || undefined,
+          persistOwner: options?.persistOwner !== false,
+        }),
     },
   }
 }

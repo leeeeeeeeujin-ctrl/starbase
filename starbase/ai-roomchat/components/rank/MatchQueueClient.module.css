@@ -93,6 +93,139 @@
   font-size: 13px;
 }
 
+.heroOptionList {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.heroOptionItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(30, 41, 59, 0.35);
+  transition: border 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  cursor: pointer;
+}
+
+.heroOptionItemActive {
+  border-color: rgba(96, 165, 250, 0.65);
+  background: rgba(59, 130, 246, 0.25);
+  box-shadow: 0 12px 28px rgba(59, 130, 246, 0.35);
+}
+
+.heroOptionRadio {
+  accent-color: #60a5fa;
+  width: 18px;
+  height: 18px;
+}
+
+.heroOptionContent {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.heroOptionAvatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
+}
+
+.heroOptionAvatarPlaceholder {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: rgba(71, 85, 105, 0.45);
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+}
+
+.heroOptionMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.heroOptionName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.heroOptionDetail {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.heroOptionStatus {
+  font-size: 12px;
+  color: #facc15;
+  font-weight: 600;
+}
+
+.heroManualForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.heroManualLabel {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.heroManualControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.heroManualInput {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.5);
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.heroManualInput:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.65);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25);
+}
+
+.heroManualButton {
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.9));
+  color: #f8fafc;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.heroManualButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 28px rgba(37, 99, 235, 0.45);
+}
+
+.heroManualHint {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.65);
+}
+
 .autoJoinNotice {
   padding: 16px;
   border-radius: 18px;
