@@ -11,6 +11,7 @@ import {
   HERO_REDIRECT_DELAY_MS,
   MATCH_TRANSITION_DELAY_MS,
   QUEUE_TIMEOUT_MS,
+  MATCH_INACTIVITY_TIMEOUT_MS,
   CONFIRMATION_WINDOW_SECONDS,
   FAILURE_REDIRECT_DELAY_MS,
   PENALTY_NOTICE,
@@ -80,6 +81,8 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const joinSignatureRef = useRef('')
   const heroRedirectTimerRef = useRef(null)
   const queueTimeoutRef = useRef(null)
+  const inactivityTimerRef = useRef(null)
+  const dropInRedirectTimerRef = useRef(null)
   const latestStatusRef = useRef('idle')
   const confirmationTimerRef = useRef(null)
   const confirmationIntervalRef = useRef(null)
@@ -105,6 +108,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const [matchLocked, setMatchLocked] = useState(false)
   const matchLockedRef = useRef(false)
   const matchRedirectedRef = useRef(false)
+  const inactivityTriggeredRef = useRef(false)
 
   const clearConnectionRegistry = useCallback(() => {
     if (!gameId) return
@@ -183,6 +187,31 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [handleApiKeyExpired])
 
   const persistApiKeyOnServer = usePersistApiKey()
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    if (state.status === 'idle') return undefined
+
+    const handlePageLeave = () => {
+      if (navigationLockedRef.current) return
+      if (state.status !== 'queued' && state.status !== 'matched') return
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+      cancelQueueWithCleanup().catch((error) => {
+        console.warn('[AutoMatchProgress] 페이지 이탈 시 대기열 취소 실패:', error)
+      })
+    }
+
+    window.addEventListener('pagehide', handlePageLeave)
+    window.addEventListener('beforeunload', handlePageLeave)
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageLeave)
+      window.removeEventListener('beforeunload', handlePageLeave)
+    }
+  }, [cancelQueueWithCleanup, state.status])
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
     state.lockedRole,
@@ -845,6 +874,99 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [cancelQueueWithCleanup, gameId, router, state.status])
 
   useEffect(() => {
+    if (state.status !== 'matched' || !requiresManualConfirmation) {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+      inactivityTriggeredRef.current = false
+      return undefined
+    }
+
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined
+    }
+
+    if (navigationLockedRef.current || matchRedirectedRef.current) {
+      return undefined
+    }
+
+    inactivityTriggeredRef.current = false
+
+    const scheduleInactivityCancel = () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+      }
+      inactivityTimerRef.current = setTimeout(() => {
+        if (navigationLockedRef.current || matchRedirectedRef.current) {
+          return
+        }
+        if (inactivityTriggeredRef.current) {
+          return
+        }
+        inactivityTriggeredRef.current = true
+        console.warn('[AutoMatchProgress] 사용자 활동이 감지되지 않아 매칭을 취소합니다.')
+        setJoinError('응답이 없어 매칭이 취소되었습니다.')
+        cancelQueueWithCleanup()
+          .catch((error) => {
+            console.warn('[AutoMatchProgress] 무활동 매칭 취소 실패:', error)
+          })
+          .finally(() => {
+            if (inactivityTimerRef.current) {
+              clearTimeout(inactivityTimerRef.current)
+              inactivityTimerRef.current = null
+            }
+            if (!navigationLockedRef.current) {
+              navigationLockedRef.current = true
+              matchRedirectedRef.current = true
+              router.replace(`/rank/${gameId}`)
+            }
+          })
+      }, MATCH_INACTIVITY_TIMEOUT_MS)
+    }
+
+    const handleActivity = () => {
+      if (navigationLockedRef.current || matchRedirectedRef.current) {
+        return
+      }
+      inactivityTriggeredRef.current = false
+      scheduleInactivityCancel()
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleActivity()
+      }
+    }
+
+    scheduleInactivityCancel()
+
+    window.addEventListener('pointerdown', handleActivity, true)
+    window.addEventListener('keydown', handleActivity, true)
+    window.addEventListener('mousemove', handleActivity, true)
+    window.addEventListener('touchstart', handleActivity, true)
+    document.addEventListener('visibilitychange', handleVisibility, true)
+
+    return () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+      window.removeEventListener('pointerdown', handleActivity, true)
+      window.removeEventListener('keydown', handleActivity, true)
+      window.removeEventListener('mousemove', handleActivity, true)
+      window.removeEventListener('touchstart', handleActivity, true)
+      document.removeEventListener('visibilitychange', handleVisibility, true)
+    }
+  }, [
+    cancelQueueWithCleanup,
+    gameId,
+    requiresManualConfirmation,
+    router,
+    state.status,
+  ])
+
+  useEffect(() => {
     if (matchRedirectedRef.current) {
       return
     }
@@ -971,6 +1093,10 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       if (joinRetryTimerRef.current) {
         clearTimeout(joinRetryTimerRef.current)
         joinRetryTimerRef.current = null
+      }
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
       }
       const latestConfirmation = latestConfirmationRef.current
       if (

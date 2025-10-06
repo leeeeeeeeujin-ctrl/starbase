@@ -5,6 +5,7 @@ export const VIEWER_BLOCKER_MESSAGE = '로그인 상태를 확인하는 중입�
 export const HERO_REDIRECT_DELAY_MS = 3000
 export const MATCH_TRANSITION_DELAY_MS = 1200
 export const QUEUE_TIMEOUT_MS = 60000
+export const MATCH_INACTIVITY_TIMEOUT_MS = 45000
 export const CONFIRMATION_WINDOW_SECONDS = 10
 export const FAILURE_REDIRECT_DELAY_MS = 2400
 export const PENALTY_NOTICE =
