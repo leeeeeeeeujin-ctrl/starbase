@@ -22,6 +22,7 @@ export default function GameSearchPanel({
   roleSlots,
   onEnterGame,
   viewerParticipant,
+  viewerId,
   onJoinGame,
   joinLoading,
 }) {
@@ -53,6 +54,7 @@ export default function GameSearchPanel({
         roleSlots={roleSlots}
         onEnterGame={onEnterGame}
         viewerParticipant={viewerParticipant}
+        viewerId={viewerId}
         onJoinGame={onJoinGame}
         joinLoading={joinLoading}
       />

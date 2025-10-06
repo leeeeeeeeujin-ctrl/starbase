@@ -9,6 +9,7 @@
  */
 
 export const MATCH_MODE_KEYS = Object.freeze({
+  RANK_SHARED: 'rank_shared',
   RANK_SOLO: 'rank_solo',
   RANK_DUO: 'rank_duo',
   CASUAL_MATCH: 'casual_match',
@@ -26,35 +27,25 @@ const QUEUE_GROUPS = Object.freeze({
   PRIVATE: 'private',
 })
 
+const RANK_SHARED_CONFIG = {
+  key: MATCH_MODE_KEYS.RANK_SHARED,
+  label: '랭크',
+  queueGroup: QUEUE_GROUPS.RANK,
+  queueModes: ['rank_shared', 'rank_solo', 'solo', 'rank_duo', 'duo', 'rank'],
+  matcherKey: 'rank',
+  defaultPartySize: 1,
+  maxPartySize: 3,
+  allowSpectators: false,
+  allowBrawlReplacement: true,
+  requiresFullActivation: true,
+  description:
+    '역할별 슬롯이 준비된 방을 만들거나 합류해 ±200점 범위 안의 참가자들과 매칭됩니다.',
+}
+
 export const MATCH_MODE_CONFIGS = Object.freeze({
-  [MATCH_MODE_KEYS.RANK_SOLO]: {
-    key: MATCH_MODE_KEYS.RANK_SOLO,
-    label: '솔로 랭크',
-    queueGroup: QUEUE_GROUPS.RANK,
-    queueModes: ['rank_solo', 'solo', 'rank_duo', 'duo'],
-    matcherKey: 'rank',
-    defaultPartySize: 1,
-    maxPartySize: 1,
-    allowSpectators: false,
-    allowBrawlReplacement: true,
-    requiresFullActivation: true,
-    description:
-      '혼자서 즉시 랭크 매칭을 돌립니다. 듀오 큐와 같은 풀에서 짝이 맞춰집니다.',
-  },
-  [MATCH_MODE_KEYS.RANK_DUO]: {
-    key: MATCH_MODE_KEYS.RANK_DUO,
-    label: '듀오 랭크',
-    queueGroup: QUEUE_GROUPS.RANK,
-    queueModes: ['rank_solo', 'solo', 'rank_duo', 'duo'],
-    matcherKey: 'rank',
-    defaultPartySize: 2,
-    maxPartySize: 3,
-    allowSpectators: false,
-    allowBrawlReplacement: true,
-    requiresFullActivation: true,
-    description:
-      '같은 역할군의 친구들과 최대 3명까지 파티를 이뤄 랭크 큐에 합류합니다.',
-  },
+  [MATCH_MODE_KEYS.RANK_SHARED]: RANK_SHARED_CONFIG,
+  [MATCH_MODE_KEYS.RANK_SOLO]: RANK_SHARED_CONFIG,
+  [MATCH_MODE_KEYS.RANK_DUO]: RANK_SHARED_CONFIG,
   [MATCH_MODE_KEYS.CASUAL_MATCH]: {
     key: MATCH_MODE_KEYS.CASUAL_MATCH,
     label: '캐주얼 매칭',

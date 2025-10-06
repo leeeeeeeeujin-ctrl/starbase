@@ -16,6 +16,7 @@ function formatDate(value) {
 }
 
 function getParticipantLabel(row) {
+  if (row.name) return row.name
   if (row.hero_name) return row.hero_name
   if (row.hero_id) return row.hero_id
   if (row.owner_id) return row.owner_id.slice(0, 8)
@@ -32,20 +33,70 @@ export default function GameDetail({
   roleSlots = new Map(),
   onEnterGame,
   viewerParticipant,
+  viewerId,
   onJoinGame,
   joinLoading = false,
 }) {
   const hasGame = Boolean(game)
+  const viewerKey = viewerId != null ? String(viewerId) : null
+  const isViewerOwner = Boolean(
+    viewerKey && game && game.owner_id != null && String(game.owner_id) === viewerKey
+  )
+
+  const conflictingOthers = useMemo(() => {
+    if (!viewerKey) return []
+    const list = Array.isArray(participants) ? participants : []
+    const viewerRows = list.filter((row) => {
+      if (!row) return false
+      const ownerKey =
+        row.owner_id != null ? String(row.owner_id) : row.ownerId != null ? String(row.ownerId) : null
+      return ownerKey && ownerKey === viewerKey
+    })
+
+    if (viewerRows.length <= 1) {
+      return []
+    }
+
+    const participantId = viewerParticipant?.id || null
+    const heroId =
+      viewerParticipant?.hero_id ||
+      viewerParticipant?.heroId ||
+      viewerParticipant?.hero?.id ||
+      null
+
+    return viewerRows.filter((row) => {
+      if (!row) return false
+      if (participantId && row.id === participantId) return false
+      if (heroId != null) {
+        const rowHeroId =
+          row.hero_id != null
+            ? row.hero_id
+            : row.heroId != null
+              ? row.heroId
+              : row.hero?.id != null
+                ? row.hero.id
+                : null
+        if (rowHeroId != null && rowHeroId === heroId) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [participants, viewerKey, viewerParticipant])
+
+  const hasConflict = conflictingOthers.length > 0 && !isViewerOwner
 
   useEffect(() => {
     if (!hasGame || detailLoading) return
     if (!viewerParticipant) return
+    if (hasConflict) return
     onEnterGame(game)
-  }, [game, hasGame, detailLoading, onEnterGame, viewerParticipant])
+  }, [game, hasGame, detailLoading, hasConflict, onEnterGame, viewerParticipant])
 
   useEffect(() => {
     if (!hasGame || detailLoading) return
     if (viewerParticipant) return
+    if (hasConflict) return
     if (roleChoice) return
 
     const fallbackRole = [...roles]
@@ -59,7 +110,16 @@ export default function GameDetail({
     if (roleToApply) {
       onRoleChange(roleToApply.name)
     }
-  }, [hasGame, detailLoading, viewerParticipant, roleChoice, roles, roleSlots, onRoleChange])
+  }, [
+    hasGame,
+    detailLoading,
+    viewerParticipant,
+    hasConflict,
+    roleChoice,
+    roles,
+    roleSlots,
+    onRoleChange,
+  ])
 
   const totalParticipants = participants.length
 
@@ -80,7 +140,7 @@ export default function GameDetail({
     [roles, roleSlots],
   )
 
-  const joinDisabled = detailLoading || joinLoading || !roleChoice
+  const joinDisabled = detailLoading || joinLoading || !roleChoice || hasConflict
 
   const handleJoin = async () => {
     if (!game || joinDisabled) return
@@ -100,10 +160,44 @@ export default function GameDetail({
     return <div style={styles.detailPlaceholder}>게임을 선택하면 상세 정보가 표시됩니다.</div>
   }
 
-  if (viewerParticipant) {
+  if (viewerParticipant && !hasConflict) {
     return (
       <div style={styles.detailPlaceholder}>
         이미 참여 중인 게임입니다. 곧 게임 룸으로 이동합니다…
+      </div>
+    )
+  }
+
+  if (hasConflict) {
+    const heroSummaries = conflictingOthers.map((row) => {
+      const heroName =
+        (typeof row?.name === 'string' && row.name.trim()) ||
+        (typeof row?.hero_name === 'string' && row.hero_name.trim()) ||
+        (typeof row?.heroName === 'string' && row.heroName.trim()) ||
+        (row?.hero && typeof row.hero.name === 'string' && row.hero.name.trim()) ||
+        (row?.hero_id ? `#${row.hero_id}` : '알 수 없음')
+      const roleName = (row?.role && row.role.trim()) || ''
+      return { heroName, roleName }
+    })
+
+    return (
+      <div style={styles.conflictBox}>
+        <div style={styles.conflictCard}>
+          <div style={styles.conflictTitle}>이미 동일 명의로 참여한 게임입니다.</div>
+          <p style={styles.conflictBody}>
+            동일 명의로 참가 중인 캐릭터가 있어 새로 입장할 수 없습니다. 아래 정보를 확인한 뒤 기존 참가
+            캐릭터로 게임을 진행하거나 다른 게임을 선택해 주세요.
+          </p>
+          <div style={styles.conflictList}>
+            {heroSummaries.map(({ heroName, roleName }, index) => (
+              <div key={`${heroName}-${roleName || 'none'}-${index}`} style={styles.conflictListItem}>
+                <span style={styles.conflictHero}>{heroName}</span>
+                {roleName ? <span style={styles.conflictRole}>{roleName}</span> : null}
+              </div>
+            ))}
+          </div>
+          <p style={styles.conflictHint}>참여 중인 캐릭터를 해제하거나 다른 게임을 선택해 주세요.</p>
+        </div>
       </div>
     )
   }

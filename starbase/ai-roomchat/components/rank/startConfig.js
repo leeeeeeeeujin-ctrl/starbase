@@ -4,8 +4,14 @@ import {
   normalizeGeminiMode,
   normalizeGeminiModelId,
 } from '@/lib/rank/geminiConfig'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  writeStartSessionValue,
+  removeStartSessionValue,
+} from '@/lib/rank/startSessionChannel'
 
-const MATCH_META_KEY = 'rank.start.matchMeta'
+const MATCH_META_KEY = START_SESSION_KEYS.MATCH_META
 
 function safeClone(value) {
   if (value === null || value === undefined) return null
@@ -108,15 +114,25 @@ function normalizeAssignment(assignment) {
     assignment.slots != null && Number.isFinite(Number(assignment.slots))
       ? Number(assignment.slots)
       : null
-  const roleSlots = Array.isArray(assignment.roleSlots)
+  const roleSlotsRaw = Array.isArray(assignment.roleSlots)
     ? assignment.roleSlots
-        .map((slot) => Number(slot))
-        .filter((slot) => Number.isFinite(slot))
     : Array.isArray(assignment.role_slots)
     ? assignment.role_slots
-        .map((slot) => Number(slot))
-        .filter((slot) => Number.isFinite(slot))
     : []
+  const roleSlots = roleSlotsRaw
+    .map((slot) => {
+      if (typeof slot === 'number') {
+        return Number(slot)
+      }
+      if (typeof slot === 'object' && slot !== null) {
+        const value = slot.slotIndex ?? slot.slot_index ?? slot.index
+        if (Number.isFinite(Number(value))) {
+          return Number(value)
+        }
+      }
+      return Number.NaN
+    })
+    .filter((slot) => Number.isFinite(slot))
   const heroIds = Array.isArray(assignment.heroIds)
     ? assignment.heroIds
         .map((id) => (id != null ? String(id).trim() : ''))
@@ -215,16 +231,18 @@ export function buildMatchMetaPayload(match, extras = {}) {
 export function storeStartMatchMeta(meta) {
   if (typeof window === 'undefined') return
   if (!meta) {
-    window.sessionStorage.removeItem(MATCH_META_KEY)
+    removeStartSessionValue(MATCH_META_KEY, { source: 'start-config' })
     return
   }
   const sanitized = safeClone(meta)
   if (!sanitized) {
-    window.sessionStorage.removeItem(MATCH_META_KEY)
+    removeStartSessionValue(MATCH_META_KEY, { source: 'start-config' })
     return
   }
   try {
-    window.sessionStorage.setItem(MATCH_META_KEY, JSON.stringify(sanitized))
+    writeStartSessionValue(MATCH_META_KEY, JSON.stringify(sanitized), {
+      source: 'start-config',
+    })
   } catch (error) {
     console.warn('매치 메타데이터를 저장하지 못했습니다:', error)
   }
@@ -233,9 +251,9 @@ export function storeStartMatchMeta(meta) {
 export function consumeStartMatchMeta() {
   if (typeof window === 'undefined') return null
   try {
-    const raw = window.sessionStorage.getItem(MATCH_META_KEY)
+    const raw = readStartSessionValue(MATCH_META_KEY)
     if (!raw) return null
-    window.sessionStorage.removeItem(MATCH_META_KEY)
+    removeStartSessionValue(MATCH_META_KEY, { source: 'start-config' })
     const parsed = JSON.parse(raw)
     return safeClone(parsed)
   } catch (error) {
@@ -258,13 +276,13 @@ export function readStoredStartConfig() {
   let geminiMode = DEFAULT_GEMINI_MODE
   let geminiModel = DEFAULT_GEMINI_MODEL
   try {
-    apiKey = (window.sessionStorage.getItem('rank.start.apiKey') || '').trim()
-    apiVersion = window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
+    apiKey = (readStartSessionValue(START_SESSION_KEYS.API_KEY) || '').trim()
+    apiVersion = readStartSessionValue(START_SESSION_KEYS.API_VERSION) || 'gemini'
     geminiMode = normalizeGeminiMode(
-      window.sessionStorage.getItem('rank.start.geminiMode') || DEFAULT_GEMINI_MODE,
+      readStartSessionValue(START_SESSION_KEYS.GEMINI_MODE) || DEFAULT_GEMINI_MODE,
     )
     geminiModel = normalizeGeminiModelId(
-      window.sessionStorage.getItem('rank.start.geminiModel') || DEFAULT_GEMINI_MODEL,
+      readStartSessionValue(START_SESSION_KEYS.GEMINI_MODEL) || DEFAULT_GEMINI_MODEL,
     )
     if (!geminiModel) {
       geminiModel = DEFAULT_GEMINI_MODEL

@@ -12,6 +12,12 @@ import {
   getQueueModes,
 } from './matchModes'
 import { withTable } from '../supabaseTables'
+import {
+  buildOwnerParticipantIndex,
+  guessOwnerParticipant,
+  normalizeHeroIdValue,
+  resolveParticipantHeroId as deriveParticipantHeroId,
+} from './participantUtils'
 
 const WAIT_THRESHOLD_SECONDS = 30
 
@@ -43,31 +49,60 @@ function deriveParticipantScore(row) {
 }
 
 function resolveParticipantHeroId(row) {
-  if (!row) return null
-  if (row.hero_id) return row.hero_id
-  if (row.heroId) return row.heroId
-  if (Array.isArray(row.hero_ids) && row.hero_ids.length) {
-    return row.hero_ids.find(Boolean) || null
+  return deriveParticipantHeroId(row)
+}
+
+async function resolveQueueHeroId(supabaseClient, { gameId, ownerId, heroId, role }) {
+  const explicitHeroId = normalizeHeroIdValue(heroId)
+  if (!gameId || !ownerId) {
+    return explicitHeroId
   }
-  if (Array.isArray(row.heroIds) && row.heroIds.length) {
-    return row.heroIds.find(Boolean) || null
+
+  try {
+    const roster = await loadOwnerParticipantRoster(supabaseClient, {
+      gameId,
+      ownerIds: [ownerId],
+    })
+    const guess = guessOwnerParticipant({
+      ownerId,
+      roster,
+      rolePreference: role,
+      fallbackHeroId: explicitHeroId,
+    })
+    return guess.heroId || explicitHeroId
+  } catch (error) {
+    console.warn('참가자 정보를 확인하지 못했습니다:', error)
   }
-  return null
+
+  return explicitHeroId
 }
 
 export async function loadActiveRoles(supabaseClient, gameId) {
   if (!gameId) return []
-  const result = await withTable(supabaseClient, 'rank_game_roles', (table) =>
-    supabaseClient
-      .from(table)
-      .select('name, slot_count, active')
-      .eq('game_id', gameId),
-  )
-  if (result?.error) throw result.error
-  const rows = Array.isArray(result?.data) ? result.data : []
-  return rows
-    .filter((row) => row.active !== false)
-    .map((row) => ({ name: row.name, slot_count: row.slot_count ?? row.slotCount ?? 0 }))
+
+  const [roleResult, slotResult] = await Promise.all([
+    withTable(supabaseClient, 'rank_game_roles', (table) =>
+      supabaseClient
+        .from(table)
+        .select('name, slot_count, active')
+        .eq('game_id', gameId),
+    ),
+    withTable(supabaseClient, 'rank_game_slots', (table) =>
+      supabaseClient
+        .from(table)
+        .select('slot_index, role, active, hero_id, hero_owner_id')
+        .eq('game_id', gameId),
+    ),
+  ])
+
+  if (roleResult?.error) throw roleResult.error
+  if (slotResult?.error) throw slotResult.error
+
+  const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
+  const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
+
+  const { roles } = normaliseRolesAndSlots(roleRows, slotRows)
+  return roles
 }
 
 function normalizeRoleName(value) {
@@ -80,6 +115,74 @@ function coerceSlotIndex(value) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return null
   return Math.trunc(numeric)
+}
+
+function normaliseRolesAndSlots(roleRows = [], slotRows = []) {
+  const slotPresence = new Set()
+  const layout = []
+  const slotCounts = new Map()
+
+  slotRows.forEach((row) => {
+    if (!row) return
+    const roleName = normalizeRoleName(row.role)
+    if (!roleName) return
+    slotPresence.add(roleName)
+    if (row.active === false) return
+    const slotIndex = coerceSlotIndex(row.slot_index ?? row.slotIndex ?? row.slot_no ?? row.slotNo)
+    if (slotIndex == null) return
+    const entry = {
+      slotIndex,
+      role: roleName,
+      heroId: row.hero_id || row.heroId || null,
+      heroOwnerId: row.hero_owner_id || row.heroOwnerId || null,
+    }
+    layout.push(entry)
+    slotCounts.set(roleName, (slotCounts.get(roleName) || 0) + 1)
+  })
+
+  layout.sort((a, b) => a.slotIndex - b.slotIndex)
+
+  const normalizedRoles = []
+  const roleMap = new Map()
+
+  roleRows
+    .filter((row) => row && row.active !== false)
+    .forEach((row) => {
+      const name = normalizeRoleName(row.name)
+      if (!name) return
+      const requestedCount = Number(row.slot_count ?? row.slotCount ?? row.capacity)
+      const normalizedCount = Number.isFinite(requestedCount) && requestedCount > 0 ? requestedCount : 0
+      const slotCount = slotCounts.get(name) || 0
+      const hasSlotDefinition = slotPresence.has(name)
+
+      let finalCount = 0
+      if (slotCount > 0) {
+        finalCount = slotCount
+      } else if (!hasSlotDefinition) {
+        finalCount = normalizedCount
+      } else {
+        finalCount = 0
+      }
+
+      if (finalCount <= 0) return
+      if (!roleMap.has(name)) {
+        const entry = { name, slot_count: finalCount }
+        roleMap.set(name, entry)
+        normalizedRoles.push(entry)
+      } else {
+        roleMap.get(name).slot_count = finalCount
+      }
+    })
+
+  slotCounts.forEach((count, name) => {
+    if (count <= 0) return
+    if (roleMap.has(name)) return
+    const entry = { name, slot_count: count }
+    roleMap.set(name, entry)
+    normalizedRoles.push(entry)
+  })
+
+  return { roles: normalizedRoles, slotLayout: layout }
 }
 
 export async function loadRoleLayout(supabaseClient, gameId) {
@@ -109,58 +212,7 @@ export async function loadRoleLayout(supabaseClient, gameId) {
   const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
   const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
 
-  const layout = slotRows
-    .map((row) => {
-      if (!row || row.active === false) return null
-      const slotIndex = coerceSlotIndex(row.slot_index ?? row.slotIndex ?? row.slot_no ?? row.slotNo)
-      const roleName = normalizeRoleName(row.role)
-      if (slotIndex == null || roleName === '') return null
-      return {
-        slotIndex,
-        role: roleName,
-        heroId: row.hero_id || row.heroId || null,
-        heroOwnerId: row.hero_owner_id || row.heroOwnerId || null,
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.slotIndex - b.slotIndex)
-
-  const slotCounts = new Map()
-  layout.forEach((slot) => {
-    const count = slotCounts.get(slot.role) || 0
-    slotCounts.set(slot.role, count + 1)
-  })
-
-  const normalizedRoles = []
-  const roleMap = new Map()
-
-  roleRows
-    .filter((row) => row && row.active !== false)
-    .forEach((row) => {
-      const name = normalizeRoleName(row.name)
-      if (!name) return
-      const requestedCount = Number(row.slot_count ?? row.slotCount ?? row.capacity)
-      const normalizedCount = Number.isFinite(requestedCount) && requestedCount > 0 ? requestedCount : 0
-      const slotCount = slotCounts.get(name) || 0
-      const finalCount = Math.max(normalizedCount, slotCount)
-      if (finalCount <= 0) return
-      if (!roleMap.has(name)) {
-        normalizedRoles.push({ name, slot_count: finalCount })
-        roleMap.set(name, normalizedRoles[normalizedRoles.length - 1])
-      } else {
-        roleMap.get(name).slot_count = finalCount
-      }
-    })
-
-  slotCounts.forEach((count, name) => {
-    if (count <= 0) return
-    if (roleMap.has(name)) return
-    const entry = { name, slot_count: count }
-    roleMap.set(name, entry)
-    normalizedRoles.push(entry)
-  })
-
-  return { roles: normalizedRoles, slotLayout: layout }
+  return normaliseRolesAndSlots(roleRows, slotRows)
 }
 
 export async function loadParticipantPool(supabaseClient, gameId) {
@@ -209,6 +261,56 @@ export async function loadParticipantPool(supabaseClient, gameId) {
     standin: true,
     match_source: 'participant_pool',
   }))
+}
+
+function normalizeOwnerIds(values = []) {
+  return values
+    .map((value) => {
+      if (value == null) return null
+      if (typeof value === 'string') return value.trim()
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+      if (typeof value === 'object' && value !== null && typeof value.id !== 'undefined') {
+        return String(value.id)
+      }
+      return null
+    })
+    .filter((value) => typeof value === 'string' && value.length > 0)
+}
+
+export async function loadOwnerParticipantRoster(
+  supabaseClient,
+  { gameId, ownerIds = [] } = {},
+) {
+  if (!gameId) {
+    return new Map()
+  }
+
+  const result = await withTable(supabaseClient, 'rank_participants', (table) => {
+    let query = supabaseClient
+      .from(table)
+      .select(
+        'owner_id, hero_id, hero_ids, role, score, rating, status, slot_index, slot_no, updated_at, created_at',
+      )
+      .eq('game_id', gameId)
+
+    const ids = normalizeOwnerIds(ownerIds)
+    if (ids.length > 0) {
+      if (ids.length === 1) {
+        query = query.eq('owner_id', ids[0])
+      } else {
+        query = query.in('owner_id', ids)
+      }
+    }
+
+    return query
+  })
+
+  if (result?.error) {
+    throw result.error
+  }
+
+  const rows = Array.isArray(result?.data) ? result.data : []
+  return buildOwnerParticipantIndex(rows)
 }
 
 function normalizeStatus(value) {
@@ -325,7 +427,6 @@ export async function loadMatchSampleSource(
 
   let sampleEntries = realtimeEnabled ? queueAnnotated.slice() : participantAnnotated.slice()
   let sampleType = realtimeEnabled ? 'realtime_queue' : 'participant_pool'
-  let standins = []
 
   if (realtimeEnabled) {
     if (queueAnnotated.length === 0) {
@@ -341,14 +442,8 @@ export async function loadMatchSampleSource(
       sampleEntries = queueAnnotated.slice()
       sampleType = 'realtime_queue_waiting'
     } else {
-      standins = buildStandinsForQueue(queueAnnotated, participantAnnotated)
-      if (standins.length > 0) {
-        sampleEntries = queueAnnotated.concat(standins)
-        sampleType = 'realtime_queue_with_standins'
-      } else {
-        sampleEntries = queueAnnotated.slice()
-        sampleType = 'realtime_queue'
-      }
+      sampleEntries = queueAnnotated.slice()
+      sampleType = 'realtime_queue'
     }
   } else if (!Array.isArray(sampleEntries) || sampleEntries.length === 0) {
     sampleEntries = queueAnnotated.slice()
@@ -370,7 +465,7 @@ export async function loadMatchSampleSource(
         : null,
     queueOldestJoinedAt: waitInfo.oldestJoinedAt,
     queueWaitThresholdSeconds: WAIT_THRESHOLD_SECONDS,
-    standinCount: standins.length,
+    standinCount: 0,
   }
 }
 
@@ -401,44 +496,6 @@ function computeQueueWaitInfo(queueEntries = []) {
   const now = Date.now()
   const diffMs = Math.max(0, now - oldestTimestamp)
   return { waitSeconds: diffMs / 1000, oldestJoinedAt: oldestIso }
-}
-
-function buildStandinsForQueue(queueEntries = [], participantPool = []) {
-  if (!Array.isArray(queueEntries) || !Array.isArray(participantPool)) return []
-  if (!queueEntries.length || !participantPool.length) return []
-
-  const usedOwners = new Set()
-  const usedHeroes = new Set()
-
-  queueEntries.forEach((entry) => {
-    if (!entry) return
-    const owner = entry.owner_id || entry.ownerId || null
-    const hero = entry.hero_id || entry.heroId || null
-    if (owner) usedOwners.add(String(owner))
-    if (hero) usedHeroes.add(String(hero))
-  })
-
-  const standins = []
-  participantPool.forEach((candidate) => {
-    if (!candidate) return
-    const owner = candidate.owner_id || candidate.ownerId || null
-    if (owner && usedOwners.has(String(owner))) return
-    const hero = candidate.hero_id || candidate.heroId || null
-    if (hero && usedHeroes.has(String(hero))) return
-
-    const clone = {
-      ...candidate,
-      match_source: 'participant_pool',
-      standin: true,
-      simulated: true,
-    }
-
-    standins.push(clone)
-    if (owner) usedOwners.add(String(owner))
-    if (hero) usedHeroes.add(String(hero))
-  })
-
-  return standins
 }
 
 export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
@@ -494,11 +551,18 @@ export async function enqueueParticipant(
     return { ok: false, error: '대기열에 필요한 정보가 부족합니다.' }
   }
 
+  const resolvedHeroId = await resolveQueueHeroId(supabaseClient, {
+    gameId,
+    ownerId,
+    heroId,
+    role,
+  })
+
   const payload = {
     game_id: gameId,
     mode,
     owner_id: ownerId,
-    hero_id: heroId ?? null,
+    hero_id: resolvedHeroId ?? null,
     role,
     score,
     party_key: partyKey,
@@ -525,7 +589,7 @@ export async function enqueueParticipant(
     return { ok: false, error: insert.error.message || '대기열에 등록하지 못했습니다.' }
   }
 
-  return { ok: true }
+  return { ok: true, heroId: resolvedHeroId ?? null }
 }
 
 export function runMatching({ mode, roles, queue }) {
@@ -534,8 +598,7 @@ export function runMatching({ mode, roles, queue }) {
   if (!matcher) {
     return { ready: false, assignments: [], totalSlots: 0, error: { type: 'unsupported_mode' } }
   }
-  const partySize = getDefaultPartySize(mode)
-  return matcher({ roles, queue, partySize })
+  return matcher({ roles, queue })
 }
 
 export function extractViewerAssignment({ assignments = [], viewerId }) {
@@ -636,6 +699,7 @@ export async function loadHeroesByIds(supabaseClient, heroIds) {
       {
         id: row.id,
         name: row.name,
+        hero_name: row.name,
         imageUrl: row.image_url,
         image_url: row.image_url,
         ownerId: row.owner_id,

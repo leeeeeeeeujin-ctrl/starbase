@@ -74,24 +74,40 @@ function collectExpectations(slotLayout = [], matchingMetadata = {}) {
     ? matchingMetadata.assignments
     : []
   assignments.forEach((assignment) => {
-    const role = normalizeRole(assignment.role)
-    if (!role) return
-
+    const roleSlots = Array.isArray(assignment.roleSlots)
+      ? assignment.roleSlots
+      : Array.isArray(assignment.role_slots)
+      ? assignment.role_slots
+      : []
     const members = Array.isArray(assignment.members) ? assignment.members : []
+
+    roleSlots.forEach((slotValue) => {
+      if (!slotValue) return
+      const slotRole = normalizeRole(slotValue.role ?? assignment.role)
+      if (!slotRole) return
+      const slotIndex = parseSlotIndex(
+        slotValue.localIndex ?? slotValue.slotIndex ?? slotValue.slot_index ?? slotValue,
+      )
+      if (slotIndex != null && !slotRoleMap.has(slotIndex)) {
+        slotRoleMap.set(slotIndex, slotRole)
+      }
+    })
+
     members.forEach((member) => {
+      const memberRole = normalizeRole(member.role ?? assignment.role)
       const slotIndex = parseSlotIndex(
         member.slot_no ?? member.slotNo ?? member.slot_index ?? member.slotIndex,
       )
-      if (slotIndex != null && !slotRoleMap.has(slotIndex)) {
-        slotRoleMap.set(slotIndex, role)
+      if (slotIndex != null && memberRole && !slotRoleMap.has(slotIndex)) {
+        slotRoleMap.set(slotIndex, memberRole)
       }
       const heroId = member.hero_id ?? member.heroId ?? member.heroID ?? member.hero?.id
-      if (heroId && !heroRoleMap.has(String(heroId).trim())) {
-        heroRoleMap.set(String(heroId).trim(), role)
+      if (heroId && memberRole && !heroRoleMap.has(String(heroId).trim())) {
+        heroRoleMap.set(String(heroId).trim(), memberRole)
       }
       const ownerId = member.owner_id ?? member.ownerId ?? member.ownerID ?? member.owner?.id
-      if (ownerId && !ownerRoleMap.has(String(ownerId).trim())) {
-        ownerRoleMap.set(String(ownerId).trim(), role)
+      if (ownerId && memberRole && !ownerRoleMap.has(String(ownerId).trim())) {
+        ownerRoleMap.set(String(ownerId).trim(), memberRole)
       }
     })
   })

@@ -30,6 +30,9 @@ import {
   formatPreflightSummary,
 } from './engine/preflight'
 import {
+  buildOwnerParticipantMap,
+  buildOwnerRosterSnapshot,
+  collectUniqueOwnerIds,
   createOwnerDisplayMap,
   deriveParticipantOwnerId,
 } from './engine/participants'
@@ -60,27 +63,50 @@ import { useStartCooldown } from './hooks/useStartCooldown'
 import { useStartManualResponse } from './hooks/useStartManualResponse'
 import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog'
 import { consumeStartMatchMeta } from '../startConfig'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  readStartSessionValues,
+} from '@/lib/rank/startSessionChannel'
+import {
+  getConnectionEntriesForGame,
+  subscribeConnectionRegistry,
+} from '@/lib/rank/startConnectionRegistry'
 
 export function useStartClientEngine(gameId) {
+  const storedStartConfig =
+    typeof window === 'undefined'
+      ? {}
+      : readStartSessionValues([
+          START_SESSION_KEYS.API_KEY,
+          START_SESSION_KEYS.API_VERSION,
+          START_SESSION_KEYS.GEMINI_MODE,
+          START_SESSION_KEYS.GEMINI_MODEL,
+          START_SESSION_KEYS.TURN_TIMER,
+        ])
   const initialStoredApiKey =
     typeof window === 'undefined'
       ? ''
-      : (window.sessionStorage.getItem('rank.start.apiKey') || '').trim()
+      : (storedStartConfig[START_SESSION_KEYS.API_KEY] || '').trim()
   const initialMatchMeta = consumeStartMatchMeta()
   const initialApiVersion =
     typeof window === 'undefined'
       ? 'gemini'
-      : window.sessionStorage.getItem('rank.start.apiVersion') || 'gemini'
+      : storedStartConfig[START_SESSION_KEYS.API_VERSION] || 'gemini'
   const initialGeminiConfig =
     typeof window === 'undefined'
       ? {}
       : {
-          mode: window.sessionStorage.getItem('rank.start.geminiMode') || undefined,
-          model: window.sessionStorage.getItem('rank.start.geminiModel') || undefined,
+          mode: storedStartConfig[START_SESSION_KEYS.GEMINI_MODE] || undefined,
+          model: storedStartConfig[START_SESSION_KEYS.GEMINI_MODEL] || undefined,
         }
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
   const matchMetaLoggedRef = useRef(false)
+  const gameIdRef = useRef(gameId ? String(gameId) : '')
+  const [connectionRoster, setConnectionRoster] = useState(() =>
+    getConnectionEntriesForGame(gameId),
+  )
 
   const { history, historyVersion, bumpHistoryVersion } = useHistoryBuffer()
   const {
@@ -131,6 +157,24 @@ export function useStartClientEngine(gameId) {
     },
     [dispatchEngine],
   )
+  useEffect(() => {
+    gameIdRef.current = gameId ? String(gameId) : ''
+    setConnectionRoster(getConnectionEntriesForGame(gameId))
+  }, [gameId])
+  useEffect(() => {
+    const unsubscribe = subscribeConnectionRegistry(() => {
+      const key = gameIdRef.current
+      if (!key) {
+        setConnectionRoster([])
+        return
+      }
+      setConnectionRoster(getConnectionEntriesForGame(key))
+    })
+    return unsubscribe
+  }, [])
+  useEffect(() => {
+    patchEngineState({ connectionRoster })
+  }, [connectionRoster, patchEngineState])
   const replaceEngineLogs = useCallback(
     (entries) => {
       dispatchEngine(replaceMainGameLogs(entries))
@@ -291,7 +335,7 @@ export function useStartClientEngine(gameId) {
   )
   const [turnTimerSeconds] = useState(() => {
     if (typeof window === 'undefined') return 60
-    const stored = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
+    const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
     if (Number.isFinite(stored) && stored > 0) return stored
     return 60
   })
@@ -665,8 +709,21 @@ export function useStartClientEngine(gameId) {
 
   useEffect(() => {
     if (!gameId || preflight) return
-    updateSessionRecord({ turn, actorNames: activeActorNames })
-  }, [gameId, preflight, turn, activeActorNames, updateSessionRecord])
+    updateSessionRecord({
+      turn,
+      actorNames: activeActorNames,
+      sharedOwners: managedOwnerIds,
+      ownerRoster: ownerRosterSnapshot,
+    })
+  }, [
+    gameId,
+    preflight,
+    turn,
+    activeActorNames,
+    updateSessionRecord,
+    managedOwnerIds,
+    ownerRosterSnapshot,
+  ])
 
   const scheduleTurnTimer = useCallback(
     (turnNumber) => {
@@ -709,10 +766,9 @@ export function useStartClientEngine(gameId) {
       applyRealtimeSnapshot(snapshot)
       return
     }
-    const normalizedViewer = viewerId ? [String(viewerId).trim()] : []
-    const snapshot = realtimeManagerRef.current.setManagedOwners(normalizedViewer)
+    const snapshot = realtimeManagerRef.current.setManagedOwners(managedOwnerIds)
     applyRealtimeSnapshot(snapshot)
-  }, [viewerId, game?.realtime_match, applyRealtimeSnapshot])
+  }, [managedOwnerIds, game?.realtime_match, applyRealtimeSnapshot])
 
   useEffect(() => {
     if (preflight) return
@@ -875,6 +931,41 @@ export function useStartClientEngine(gameId) {
     () => createOwnerDisplayMap(participants),
     [participants],
   )
+  const ownerParticipantMap = useMemo(
+    () => buildOwnerParticipantMap(participants),
+    [participants],
+  )
+  const sharedTurnRoster = useMemo(() => {
+    const roster = []
+    ownerParticipantMap.forEach((participant, ownerId) => {
+      roster.push({
+        ownerId,
+        participant,
+        hero: participant?.hero || null,
+        heroId:
+          participant?.hero?.id ??
+          participant?.hero_id ??
+          participant?.heroId ??
+          null,
+        role: participant?.role || null,
+        status: participant?.status || null,
+      })
+    })
+    return roster
+  }, [ownerParticipantMap])
+  const ownerRosterSnapshot = useMemo(
+    () => buildOwnerRosterSnapshot(participants),
+    [participants],
+  )
+  const managedOwnerIds = useMemo(() => {
+    const owners = collectUniqueOwnerIds(participants)
+    const viewerKey = viewerId ? String(viewerId).trim() : ''
+    if (!viewerKey) {
+      return owners
+    }
+    const filtered = owners.filter((ownerId) => ownerId !== viewerKey)
+    return [viewerKey, ...filtered]
+  }, [participants, viewerId])
 
   const recordTimelineEvents = useCallback(
     (events, { turnNumber: overrideTurn, logEntries = null, buildLogs = true } = {}) => {
@@ -1278,6 +1369,7 @@ export function useStartClientEngine(gameId) {
         role: participant?.role || '',
         heroName:
           participant?.hero?.name ||
+          participant?.name ||
           participant?.hero_name ||
           participant?.heroName ||
           '',
@@ -1358,20 +1450,25 @@ export function useStartClientEngine(gameId) {
         history.push({ role: 'system', content: systemPrompt, public: false })
       }
 
+      const sessionOwnerIds = collectUniqueOwnerIds(sessionParticipants)
+      const viewerKey = viewerId ? String(viewerId).trim() : ''
+      const managedOwnersForSession = viewerKey
+        ? [viewerKey, ...sessionOwnerIds.filter((ownerId) => ownerId !== viewerKey)]
+        : sessionOwnerIds
+      const sessionRosterSnapshot = buildOwnerRosterSnapshot(sessionParticipants)
+
       if (realtimeManagerRef.current) {
         const manager = realtimeManagerRef.current
         manager.reset()
         if (game?.realtime_match) {
           manager.syncParticipants(sessionParticipants)
-          if (viewerId) {
-            manager.setManagedOwners([String(viewerId).trim()])
-          } else {
-            manager.setManagedOwners([])
-          }
+          manager.setManagedOwners(managedOwnersForSession)
           manager.beginTurn({
             turnNumber: 1,
             eligibleOwnerIds: deriveEligibleOwnerIds(sessionParticipants),
           })
+        } else {
+          manager.setManagedOwners([])
         }
         applyRealtimeSnapshot(manager.getSnapshot())
       }
@@ -1417,6 +1514,8 @@ export function useStartClientEngine(gameId) {
         actorNames: startNames,
         status: 'active',
         defeated: false,
+        sharedOwners: managedOwnersForSession,
+        ownerRoster: sessionRosterSnapshot,
       })
       setTurnDeadline(null)
       setTimeRemaining(null)
@@ -2528,6 +2627,11 @@ export function useStartClientEngine(gameId) {
     realtimePresence,
     realtimeEvents,
     dropInSnapshot,
+    connectionRoster,
+    sharedTurn: {
+      owners: managedOwnerIds,
+      roster: sharedTurnRoster,
+    },
     consensus: {
       required: eligibleOwnerIds.length,
       count: consensusCount,
