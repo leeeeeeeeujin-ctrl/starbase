@@ -40,24 +40,6 @@ function isOpenAIService(version) {
   return version === 'responses' || version === 'chat_completions'
 }
 
-const DUO_JOIN_OPTIONS = [
-  {
-    value: 'search',
-    title: '방 검색',
-    description: '현재 열린 듀오 방을 찾아 팀 평균 점수와 역할 구성을 확인한 뒤 들어갑니다.',
-  },
-  {
-    value: 'create',
-    title: '방 만들기',
-    description: '팀 평균 점수와 필요한 역할을 입력해 새 방을 개설합니다. 200점 이내의 팀만 참가할 수 있습니다.',
-  },
-  {
-    value: 'code',
-    title: '방 코드로 합류',
-    description: '친구가 공유한 6자리 방 코드를 입력해 같은 팀으로 빠르게 합류합니다.',
-  },
-]
-
 const CASUAL_OPTIONS = [
   {
     value: 'matchmaking',
@@ -80,7 +62,7 @@ const CASUAL_MODE_SET = new Set([MATCH_MODE_KEYS.CASUAL_MATCH, MATCH_MODE_KEYS.C
 
 function normaliseMode(mode) {
   const config = getMatchModeConfig(mode)
-  return config?.key ?? MATCH_MODE_KEYS.RANK_SOLO
+  return config?.key ?? MATCH_MODE_KEYS.RANK_SHARED
 }
 
 function initialCasualOption(mode, provided) {
@@ -97,7 +79,6 @@ function resolveInitialState(initialConfig) {
     : 'responses'
   return {
     mode: resolvedMode,
-    duoOption: getInitialValue(initialConfig?.duoOption, 'search'),
     casualOption: initialCasualOption(resolvedMode, initialConfig?.casualOption),
     apiProvider: initialProvider,
     openaiService: initialOpenAIService,
@@ -120,7 +101,6 @@ export default function GameStartModeModal({
 }) {
   const initialState = resolveInitialState(initialConfig)
   const [mode, setMode] = useState(initialState.mode)
-  const [duoOption, setDuoOption] = useState(initialState.duoOption)
   const [casualOption, setCasualOption] = useState(initialState.casualOption)
   const [apiProvider, setApiProvider] = useState(initialState.apiProvider)
   const [openaiService, setOpenaiService] = useState(initialState.openaiService)
@@ -184,7 +164,6 @@ export default function GameStartModeModal({
     if (!open) return
     const nextState = resolveInitialState(initialConfig)
     setMode(nextState.mode)
-    setDuoOption(nextState.duoOption)
     setCasualOption(nextState.casualOption)
     setApiProvider(nextState.apiProvider)
     setOpenaiService(nextState.openaiService)
@@ -199,7 +178,6 @@ export default function GameStartModeModal({
   }, [
     open,
     initialConfig?.mode,
-    initialConfig?.duoOption,
     initialConfig?.casualOption,
     initialConfig?.apiVersion,
     initialConfig?.apiKey,
@@ -373,7 +351,7 @@ export default function GameStartModeModal({
   }
 
   const canConfirm = useMemo(() => {
-    const requiresImmediateApiKey = mode === MATCH_MODE_KEYS.RANK_SOLO
+    const requiresImmediateApiKey = mode === MATCH_MODE_KEYS.RANK_SHARED
     if (!resolvedApiVersion) {
       return false
     }
@@ -388,10 +366,6 @@ export default function GameStartModeModal({
     }
 
     if (requiresImmediateApiKey && !trimmedApiKey) {
-      return false
-    }
-
-    if (mode === MATCH_MODE_KEYS.RANK_DUO && !duoOption) {
       return false
     }
 
@@ -410,7 +384,6 @@ export default function GameStartModeModal({
   }, [
     resolvedApiVersion,
     mode,
-    duoOption,
     casualOption,
     turnTimer,
     leadingCount,
@@ -430,11 +403,10 @@ export default function GameStartModeModal({
       ? casualOption === 'private'
         ? MATCH_MODE_KEYS.CASUAL_PRIVATE
         : MATCH_MODE_KEYS.CASUAL_MATCH
-      : mode
+      : MATCH_MODE_KEYS.RANK_SHARED
     const finalTurnTimer = pickTurnTimer(turnTimerVotes, turnTimer)
     onConfirm?.({
       mode: resolvedMode,
-      duoOption,
       casualOption,
       apiVersion: resolvedApiVersion,
       apiKey: trimmedApiKey,
@@ -615,10 +587,10 @@ export default function GameStartModeModal({
           )}
           <p className={styles.helperText}>
             Google Gemini 또는 OpenAI API 키가 필요합니다.
-            {mode === MATCH_MODE_KEYS.RANK_SOLO ? (
+            {mode === MATCH_MODE_KEYS.RANK_SHARED ? (
               <>
                 <br />
-                솔로 랭크를 시작하려면 여기에서 API 키를 입력해야 합니다.
+                랭크 매치를 시작하려면 여기에서 API 키를 입력해 주세요.
               </>
             ) : !trimmedApiKey ? (
               <>
@@ -671,63 +643,24 @@ export default function GameStartModeModal({
           <div className={styles.modeGroup}>
             <label
               className={`${styles.modeOption} ${
-                mode === MATCH_MODE_KEYS.RANK_DUO ? styles.modeOptionActive : ''
+                mode === MATCH_MODE_KEYS.RANK_SHARED ? styles.modeOptionActive : ''
               }`}
             >
               <input
                 type="radio"
                 name="start-mode"
-                value="duo"
-                checked={mode === MATCH_MODE_KEYS.RANK_DUO}
-                onChange={() => setMode(MATCH_MODE_KEYS.RANK_DUO)}
+                value="rank"
+                checked={mode === MATCH_MODE_KEYS.RANK_SHARED}
+                onChange={() => setMode(MATCH_MODE_KEYS.RANK_SHARED)}
               />
               <div className={styles.modeBody}>
                 <div className={styles.modeHeader}>
-                  <span className={styles.modeName}>듀오 랭크</span>
-                  <span className={styles.modeBadge}>평균 점수 ±200</span>
+                  <span className={styles.modeName}>랭크</span>
+                  <span className={styles.modeBadge}>역할별 방 · 점수 ±200</span>
                 </div>
                 <p className={styles.modeDescription}>
-                  팀 평균 점수와 역할을 맞춰 친구와 함께 경쟁합니다. 200점 이내의 팀만 매칭됩니다.
-                </p>
-                {mode === MATCH_MODE_KEYS.RANK_DUO && (
-                  <div className={styles.subOptions}>
-                    {DUO_JOIN_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`${styles.subOption} ${
-                          duoOption === option.value ? styles.subOptionActive : ''
-                        }`}
-                        onClick={() => setDuoOption(option.value)}
-                      >
-                        <span className={styles.subOptionTitle}>{option.title}</span>
-                        <span className={styles.subOptionDescription}>{option.description}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </label>
-
-            <label
-              className={`${styles.modeOption} ${
-                mode === MATCH_MODE_KEYS.RANK_SOLO ? styles.modeOptionActive : ''
-              }`}
-            >
-              <input
-                type="radio"
-                name="start-mode"
-                value="solo"
-                checked={mode === MATCH_MODE_KEYS.RANK_SOLO}
-                onChange={() => setMode(MATCH_MODE_KEYS.RANK_SOLO)}
-              />
-              <div className={styles.modeBody}>
-                <div className={styles.modeHeader}>
-                  <span className={styles.modeName}>솔로 랭크</span>
-                  <span className={styles.modeBadge}>실시간 매칭</span>
-                </div>
-                <p className={styles.modeDescription}>
-                  혼자 큐를 돌려 비슷한 점수대의 플레이어가 모일 때까지 대기합니다.
+                  활성화된 역할 슬롯만큼 방이 생성되고, 같은 역할군 참가자끼리 방을 채웁니다. 모든 인원이 준비되면
+                  자동으로 매칭이 실행됩니다.
                 </p>
               </div>
             </label>

@@ -6,7 +6,7 @@ This note consolidates where matchmaking and the main game store their state so 
 
 | Scope | Owner | Keys / fields | Purpose |
 | --- | --- | --- | --- |
-| `sessionStorage` (via `startSessionChannel`) | game room start modal (`pages/rank/[id].js`) | `rank.start.mode`, `rank.start.duoOption`, `rank.start.casualOption`, `rank.start.apiVersion`, `rank.start.apiKey` | Persist the last start preset the viewer used so returning to the room pre-fills the modal without the modal needing to poke the DOM API directly. |
+| `sessionStorage` (via `startSessionChannel`) | game room start modal (`pages/rank/[id].js`) | `rank.start.mode`, `rank.start.casualOption`, `rank.start.apiVersion`, `rank.start.apiKey`, `rank.start.duoOption` (legacy placeholder cleared on write) | Persist the last start preset the viewer used so returning to the room pre-fills the modal without the modal needing to poke the DOM API directly. |
 | `sessionStorage` (via `startSessionChannel`) | turn timer voting (`pages/rank/[id].js`, `MatchQueueClient`) | `rank.start.turnTimer`, `rank.start.turnTimerVote`, `rank.start.turnTimerVotes` | Store the viewer's preferred time limit and the most recent vote map so timer decisions survive navigation. |
 | `sessionStorage` (via `startSessionChannel`) | start client engine (`StartClient/useStartClientEngine.js`) | reuses the same `rank.start.*` keys | Allows the running battle client to read the API version/key and resolved timer without re-asking the viewer. |
 | `sessionStorage` (via `startSessionChannel`) | manual console (`NonRealtimeConsole`, embedded in `StartClient`) | `rank.start.apiKey`, `rank.start.apiVersion`, `rank.start.geminiMode`, `rank.start.geminiModel` | Shares the operator's provider credentials/settings with the queue modal and StartClient while deduplicating writes to avoid stomping the queue's listeners. |
@@ -35,15 +35,13 @@ This note consolidates where matchmaking and the main game store their state so 
 ### Mode selection modal (`GameStartModeModal`)
 * Writes the latest preset to `sessionStorage` before navigation.
 * Routes into:
-  * `/rank/[id]/solo`
-  * `/rank/[id]/duo` (and eventually `/rank/[id]/duo/queue` after the partner selection)
+  * `/rank/[id]/match`
   * `/rank/[id]/casual` or `/rank/[id]/casual-private`
 
 ### Mode pages
 * Each mode page mounts `useGameRoom(id, { suppressRedirects: true })` to re-validate ownership and hero selection.
 * On successful load they immediately render the appropriate queue client:
-  * `SoloMatchClient` → `MatchQueueClient`
-  * `DuoMatchClient` (wrapper) → `MatchQueueClient`
+  * `MatchQueueClient` for the unified 랭크 방 큐(`/rank/[id]/match`)
   * `CasualMatchClient` → `MatchQueueClient`
 * The queue client checks `autoJoin.blockers` (missing hero, role mismatch, session loading) before calling `/api/rank/match`.
 * Confirmation, retry, and timeout timers live entirely inside `MatchQueueClient`; the page itself stays declarative.

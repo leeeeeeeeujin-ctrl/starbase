@@ -40,8 +40,7 @@ export default function GameRoomPage() {
   const [pickRole, setPickRole] = useState('')
   const [showStartModal, setShowStartModal] = useState(false)
   const [startPreset, setStartPreset] = useState({
-    mode: MATCH_MODE_KEYS.RANK_SOLO,
-    duoOption: 'code',
+    mode: MATCH_MODE_KEYS.RANK_SHARED,
     casualOption: 'matchmaking',
     apiVersion: 'gemini',
     apiKey: '',
@@ -111,7 +110,6 @@ export default function GameRoomPage() {
       deleteRoom,
       refreshParticipants,
       refreshBattles,
-      refreshSlots,
       refreshSessionHistory,
       refreshSharedHistory,
     },
@@ -189,7 +187,6 @@ export default function GameRoomPage() {
 
     const stored = readStartSessionValues([
       START_SESSION_KEYS.MODE,
-      START_SESSION_KEYS.DUO_OPTION,
       START_SESSION_KEYS.CASUAL_OPTION,
       START_SESSION_KEYS.API_VERSION,
       START_SESSION_KEYS.API_KEY,
@@ -201,7 +198,6 @@ export default function GameRoomPage() {
 
     setStartPreset((prev) => {
       const storedMode = stored[START_SESSION_KEYS.MODE] || prev.mode
-      const storedDuo = stored[START_SESSION_KEYS.DUO_OPTION] || prev.duoOption
       const storedCasual = stored[START_SESSION_KEYS.CASUAL_OPTION] || prev.casualOption
       const storedApiVersion = stored[START_SESSION_KEYS.API_VERSION] || prev.apiVersion
       const storedApiKey = stored[START_SESSION_KEYS.API_KEY] || prev.apiKey
@@ -242,7 +238,6 @@ export default function GameRoomPage() {
       return {
         ...prev,
         mode: storedMode,
-        duoOption: storedDuo,
         casualOption: storedCasual,
         apiVersion: storedApiVersion,
         apiKey: storedApiKey,
@@ -332,7 +327,7 @@ export default function GameRoomPage() {
       writeStartSessionValues(
         {
           [START_SESSION_KEYS.MODE]: config.mode,
-          [START_SESSION_KEYS.DUO_OPTION]: config.duoOption,
+          [START_SESSION_KEYS.DUO_OPTION]: null,
           [START_SESSION_KEYS.CASUAL_OPTION]: config.casualOption,
           [START_SESSION_KEYS.API_VERSION]: config.apiVersion,
           [START_SESSION_KEYS.GEMINI_MODE]: config.geminiMode || DEFAULT_GEMINI_MODE,
@@ -344,101 +339,27 @@ export default function GameRoomPage() {
       )
     }
 
-    if (config.mode === MATCH_MODE_KEYS.RANK_SOLO) {
+    if (config.mode === MATCH_MODE_KEYS.RANK_SHARED) {
       if (startLoading) {
         return
       }
 
       setStartLoading(true)
-      setStartNotice('게임 화면으로 이동합니다…')
+      setStartNotice('랭크 대기열로 이동합니다…')
       setStartError('')
 
       try {
-        const refreshedSlots = await refreshSlots()
-        const slotSource = Array.isArray(refreshedSlots) ? refreshedSlots : slots
-        const activeSlots = Array.isArray(slotSource)
-          ? slotSource.filter((slot) => slot && slot.active !== false)
-          : []
-
-        const slotTarget = activeSlots.length > 0 ? activeSlots.length : requiredParticipants
-        if (!slotTarget) {
-          throw new Error('no_slots')
-        }
-
-        const candidateHeroIds = []
-        activeParticipants.forEach((participant) => {
-          const directHeroId = participant?.hero_id || participant?.heroId || participant?.hero?.id || null
-          if (directHeroId) {
-            candidateHeroIds.push(directHeroId)
-            return
-          }
-          if (Array.isArray(participant?.hero_ids)) {
-            const fallback = participant.hero_ids.find((value) => Boolean(value)) || null
-            if (fallback) {
-              candidateHeroIds.push(fallback)
-            }
-          }
-        })
-
-        if (candidateHeroIds.length < Math.max(1, requiredParticipants)) {
-          throw new Error('slot_missing_hero')
-        }
-
         await router.push({
-          pathname: `/rank/${id}/solo-match`,
+          pathname: `/rank/${id}/match`,
         })
-
-        return
       } catch (error) {
-        const message = (() => {
-          if (!error) return '매칭을 시작하지 못했습니다.'
-          const code = typeof error?.code === 'string' ? error.code : ''
-          const detail =
-            typeof error?.detail === 'string' && error.detail.trim()
-              ? error.detail.trim()
-              : ''
-          if (error.message === 'no_slots') {
-            return '슬롯 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.'
-          }
-          if (error.message === 'slot_missing_hero') {
-            return '비어 있는 역할이 있어 매칭을 시작할 수 없습니다.'
-          }
-          if (error?.message) {
-            const trimmed = error.message.trim()
-            if (trimmed === 'server_error') {
-              return '서버 오류로 매칭을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-            }
-            if (code && code !== trimmed) {
-              return code.slice(0, 200)
-            }
-            return trimmed.slice(0, 200)
-          }
-          if (detail) {
-            return detail.slice(0, 200)
-          }
-          return '매칭을 시작하지 못했습니다.'
-        })()
-
-        if (message) {
-          setStartError(message)
-          setStartNotice('')
-        } else {
-          setStartError('')
-          setStartNotice('')
-        }
-        console.error('Failed to start solo match:', error)
+        console.error('Failed to open rank match queue:', error)
+        setStartError('랭크 매칭 페이지로 이동하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        setStartNotice('')
       } finally {
         setStartLoading(false)
       }
-      return
-    }
 
-    if (config.mode === MATCH_MODE_KEYS.RANK_DUO) {
-      const action = config.duoOption || 'search'
-      router.push({
-        pathname: `/rank/${id}/duo`,
-        query: { action },
-      })
       return
     }
 

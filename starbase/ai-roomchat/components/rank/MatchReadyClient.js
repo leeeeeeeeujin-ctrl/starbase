@@ -26,15 +26,18 @@ import {
 
 function getMatchPagePath(mode, gameId) {
   if (!gameId) return '/rank'
-  if (mode === 'rank_duo') return `/rank/${gameId}/duo-match`
   if (mode === 'casual_match') return `/rank/${gameId}/casual`
-  return `/rank/${gameId}/solo-match`
+  if (mode === 'casual_private') return `/rank/${gameId}/casual-private`
+  if (mode === 'rank_shared' || mode === 'rank_duo' || mode === 'rank_solo') {
+    return `/rank/${gameId}/match`
+  }
+  return `/rank/${gameId}/match`
 }
 
 function getModeLabel(mode) {
-  if (mode === 'rank_duo') return '듀오 랭크'
   if (mode === 'casual_match') return '캐주얼'
-  return '솔로 랭크'
+  if (mode === 'casual_private') return '캐주얼 사설 방'
+  return '랭크'
 }
 
 function buildPlayErrorMessage(payload) {
