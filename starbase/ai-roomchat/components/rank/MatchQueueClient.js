@@ -420,13 +420,57 @@ export default function MatchQueueClient({
         ? state.pendingMatch.rooms
         : []
 
-    return source.map((room) => {
-      const role = room?.role || '역할'
-      const filled = Number(room?.filledSlots ?? room?.filled_slots ?? 0)
-      const total = Number(room?.slotCount ?? room?.slots ?? 0)
-      const missing = Number(room?.missingSlots ?? room?.missing_slots ?? Math.max(0, total - filled))
+    const deriveTotalsFromSlots = (slots = []) => {
+      if (!Array.isArray(slots) || !slots.length) {
+        return { label: '', total: 0, filled: 0 }
+      }
+
+      const counts = new Map()
+      let filled = 0
+
+      slots.forEach((slot) => {
+        if (!slot) return
+        const name = typeof slot.role === 'string' ? slot.role.trim() : ''
+        if (!name) return
+        const bucket = counts.get(name) || { total: 0 }
+        bucket.total += 1
+        counts.set(name, bucket)
+        const occupied = slot.occupied === true || Boolean(slot.member)
+        if (occupied) {
+          filled += 1
+        }
+      })
+
+      const parts = []
+      counts.forEach((value, key) => {
+        if (!key) return
+        parts.push(value.total > 1 ? `${key} x${value.total}` : key)
+      })
+
+      return { label: parts.join(' · '), total: slots.length, filled }
+    }
+
+    return source.map((room, index) => {
+      const slots = Array.isArray(room?.slots) ? room.slots : []
+      const slotSummary = deriveTotalsFromSlots(slots)
+
+      const rawLabel = typeof room?.label === 'string' ? room.label.trim() : ''
+      const label = rawLabel || slotSummary.label || `매치 ${index + 1}`
+
+      const rawFilled = Number(room?.filledSlots ?? room?.filled_slots)
+      const filled = Number.isFinite(rawFilled) && rawFilled >= 0 ? rawFilled : slotSummary.filled
+
+      const rawTotal = Number(room?.totalSlots ?? room?.slotCount)
+      const total = Number.isFinite(rawTotal) && rawTotal >= 0 ? rawTotal : slotSummary.total
+
+      const rawMissing = Number(room?.missingSlots ?? room?.missing_slots)
+      const missing = Number.isFinite(rawMissing)
+        ? rawMissing
+        : Math.max(0, total - filled)
+
       const ready = room?.ready === true || (total > 0 && missing <= 0 && filled >= total)
-      return { role, filled, total, missing, ready }
+
+      return { role: label, filled, total, missing, ready }
     })
   }, [state.match, state.pendingMatch])
   const [plannerExportNotice, setPlannerExportNotice] = useState('')
