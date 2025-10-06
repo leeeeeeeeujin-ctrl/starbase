@@ -438,10 +438,15 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
           return response
         }
 
+        const queueHeroId =
+          response.heroId != null && response.heroId !== ''
+            ? String(response.heroId)
+            : String(activeHero)
+
         const persisted = await upsertParticipantRole({
           gameId,
           ownerId: viewerId,
-          heroId: activeHero,
+          heroId: queueHeroId,
           role: finalRole,
           score,
         })
@@ -451,7 +456,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
 
         setStatus('queued')
         setMatch(null)
-        setHeroId(activeHero)
+        setHeroId(queueHeroId)
         if (!roleReady) {
           setRoleReady(true)
         }

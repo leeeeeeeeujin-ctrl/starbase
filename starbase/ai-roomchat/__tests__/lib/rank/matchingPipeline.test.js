@@ -159,4 +159,19 @@ describe('extractMatchingToggles', () => {
     expect(toggles.realtimeEnabled).toBe(false)
     expect(toggles.dropInEnabled).toBe(true)
   })
+
+  it('treats manual string flags as disabled realtime', () => {
+    const toggles = extractMatchingToggles({ realtime_match: 'manual' })
+    expect(toggles.realtimeEnabled).toBe(false)
+  })
+
+  it('honours match_source overrides for manual games', () => {
+    const toggles = extractMatchingToggles({ realtime_match: 'true', match_source: 'manual' })
+    expect(toggles.realtimeEnabled).toBe(false)
+  })
+
+  it('honours match_source overrides for realtime games', () => {
+    const toggles = extractMatchingToggles({ realtime_match: 'false', match_source: 'realtime' })
+    expect(toggles.realtimeEnabled).toBe(true)
+  })
 })

@@ -69,6 +69,27 @@ function normalizeBooleanFlag(value, defaultValue = false) {
     if (['false', '0', 'no', 'off', 'disable', 'disabled'].includes(normalized)) {
       return false
     }
+    if (['realtime', 'real-time', 'realtime_only', 'realtime-only', 'live'].includes(normalized)) {
+      return true
+    }
+    if (
+      [
+        'manual',
+        'manual_only',
+        'manual-only',
+        'offline',
+        'off-line',
+        'nonrealtime',
+        'non-realtime',
+        'non_realtime',
+        'queue',
+        'turn',
+        'turn-based',
+        'turn_based',
+      ].includes(normalized)
+    ) {
+      return false
+    }
     if (normalized === 'allow') return true
     if (normalized === 'forbid' || normalized === 'ban') return false
     if (normalized === 'allow-drop-in') return true
@@ -313,7 +334,24 @@ async function claimDropInSlot({ supabase, room, slot, entry }) {
 }
 
 export function extractMatchingToggles(gameRow, rules = {}) {
-  const realtimeEnabled = normalizeBooleanFlag(gameRow?.realtime_match, false)
+  let realtimeEnabled = normalizeBooleanFlag(gameRow?.realtime_match, false)
+
+  const matchSourceRaw =
+    typeof gameRow?.match_source === 'string'
+      ? gameRow.match_source
+      : typeof gameRow?.matchSource === 'string'
+      ? gameRow.matchSource
+      : null
+
+  if (matchSourceRaw) {
+    const normalized = matchSourceRaw.trim().toLowerCase()
+    if (['manual', 'manual_only', 'manual-only', 'offline', 'nonrealtime', 'non-realtime', 'non_realtime'].includes(normalized)) {
+      realtimeEnabled = false
+    }
+    if (['realtime', 'real-time', 'realtime_only', 'realtime-only', 'live'].includes(normalized)) {
+      realtimeEnabled = true
+    }
+  }
 
   let dropInEnabled = false
   for (const key of DROP_IN_RULE_KEYS) {

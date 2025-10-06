@@ -1,20 +1,29 @@
-import { loadActiveRoles, loadMatchSampleSource, runMatching } from '@/lib/rank/matchmakingService'
+import {
+  loadActiveRoles,
+  loadMatchSampleSource,
+  runMatching,
+  enqueueParticipant,
+} from '@/lib/rank/matchmakingService'
 
 function createSupabaseStub(tableData = {}) {
   return {
+    __tables: tableData,
     from(table) {
       const rows = tableData[table] || []
-      return createQueryBuilder(rows)
+      return createQueryBuilder(rows, table, tableData)
     },
   }
 }
 
-function createQueryBuilder(rows) {
+function createQueryBuilder(initialRows, tableName, tableData) {
   const filters = []
   let orderConfig = null
+  let action = 'select'
+  let insertPayload = null
 
   const builder = {
     select() {
+      action = 'select'
       return builder
     },
     eq(column, value) {
@@ -30,28 +39,76 @@ function createQueryBuilder(rows) {
       orderConfig = { column, ascending: options.ascending !== false }
       return builder
     },
+    maybeSingle() {
+      try {
+        const data = runQuery()
+        const first = Array.isArray(data) ? data[0] ?? null : data
+        return Promise.resolve({ data: first, error: null })
+      } catch (error) {
+        return Promise.resolve({ data: null, error })
+      }
+    },
+    delete() {
+      action = 'delete'
+      return builder
+    },
+    insert(payload) {
+      action = 'insert'
+      insertPayload = Array.isArray(payload) ? payload : [payload]
+      return builder
+    },
     then(resolve, reject) {
       try {
-        let data = Array.isArray(rows) ? [...rows] : []
-        for (const filter of filters) {
-          data = data.filter(filter)
-        }
-        if (orderConfig) {
-          const { column, ascending } = orderConfig
-          data.sort((a, b) => {
-            const left = a?.[column] ?? 0
-            const right = b?.[column] ?? 0
-            if (left === right) return 0
-            return ascending ? (left < right ? -1 : 1) : left < right ? 1 : -1
-          })
-        }
-        const payload = { data, error: null }
+        const payload = performAction()
         return Promise.resolve(payload).then(resolve, reject)
       } catch (error) {
         const payload = { data: null, error }
         return Promise.resolve(payload).then(resolve, reject)
       }
     },
+  }
+
+  function getRows() {
+    return Array.isArray(tableData[tableName]) ? [...tableData[tableName]] : [...initialRows]
+  }
+
+  function performAction() {
+    if (action === 'delete') {
+      const data = runQuery()
+      const remaining = getRows().filter((row) => !data.includes(row))
+      tableData[tableName] = remaining
+      action = 'select'
+      return { data, error: null }
+    }
+
+    if (action === 'insert') {
+      const current = getRows()
+      tableData[tableName] = [...current, ...insertPayload]
+      const data = insertPayload
+      action = 'select'
+      insertPayload = null
+      return { data, error: null }
+    }
+
+    const data = runQuery()
+    return { data, error: null }
+  }
+
+  function runQuery() {
+    let data = getRows()
+    for (const filter of filters) {
+      data = data.filter(filter)
+    }
+    if (orderConfig) {
+      const { column, ascending } = orderConfig
+      data.sort((a, b) => {
+        const left = a?.[column] ?? 0
+        const right = b?.[column] ?? 0
+        if (left === right) return 0
+        return ascending ? (left < right ? -1 : 1) : left < right ? 1 : -1
+      })
+    }
+    return data
   }
 
   return builder
@@ -251,6 +308,61 @@ describe('loadMatchSampleSource', () => {
     const standin = result.entries.find((entry) => entry.standin)
     expect(standin).toBeTruthy()
     expect(standin.match_source).toBe('participant_pool')
+  })
+})
+
+describe('enqueueParticipant', () => {
+  it('prefers the participant record hero when queuing', async () => {
+    const tables = {
+      rank_participants: [
+        {
+          game_id: 'game-hero',
+          owner_id: 'player-1',
+          hero_id: 'hero-correct',
+          hero_ids: ['hero-correct', 'hero-alt'],
+          role: 'attack',
+          score: 1234,
+        },
+      ],
+      rank_match_queue: [],
+    }
+    const supabase = createSupabaseStub(tables)
+
+    const response = await enqueueParticipant(supabase, {
+      gameId: 'game-hero',
+      mode: 'rank_solo',
+      ownerId: 'player-1',
+      heroId: 'hero-wrong',
+      role: 'attack',
+      score: 1200,
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.heroId).toBe('hero-correct')
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
+    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-correct')
+  })
+
+  it('falls back to explicit hero when participant entry is missing', async () => {
+    const tables = {
+      rank_participants: [],
+      rank_match_queue: [],
+    }
+    const supabase = createSupabaseStub(tables)
+
+    const response = await enqueueParticipant(supabase, {
+      gameId: 'game-hero',
+      mode: 'rank_solo',
+      ownerId: 'player-2',
+      heroId: 'hero-explicit',
+      role: 'support',
+      score: 1100,
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.heroId).toBe('hero-explicit')
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
+    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-explicit')
   })
 })
 

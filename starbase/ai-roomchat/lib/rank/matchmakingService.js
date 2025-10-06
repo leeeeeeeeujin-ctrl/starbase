@@ -12,6 +12,10 @@ import {
   getQueueModes,
 } from './matchModes'
 import { withTable } from '../supabaseTables'
+import {
+  normalizeHeroIdValue,
+  resolveParticipantHeroId as deriveParticipantHeroId,
+} from './participantUtils'
 
 const WAIT_THRESHOLD_SECONDS = 30
 
@@ -43,16 +47,36 @@ function deriveParticipantScore(row) {
 }
 
 function resolveParticipantHeroId(row) {
-  if (!row) return null
-  if (row.hero_id) return row.hero_id
-  if (row.heroId) return row.heroId
-  if (Array.isArray(row.hero_ids) && row.hero_ids.length) {
-    return row.hero_ids.find(Boolean) || null
+  return deriveParticipantHeroId(row)
+}
+
+async function resolveQueueHeroId(supabaseClient, { gameId, ownerId, heroId }) {
+  const explicitHeroId = normalizeHeroIdValue(heroId)
+  if (!gameId || !ownerId) {
+    return explicitHeroId
   }
-  if (Array.isArray(row.heroIds) && row.heroIds.length) {
-    return row.heroIds.find(Boolean) || null
+
+  const result = await withTable(supabaseClient, 'rank_participants', (table) =>
+    supabaseClient
+      .from(table)
+      .select('hero_id, hero_ids, heroId, heroIds')
+      .eq('game_id', gameId)
+      .eq('owner_id', ownerId)
+      .maybeSingle(),
+  )
+
+  if (result?.error) {
+    console.warn('참가자 정보를 확인하지 못했습니다:', result.error)
+    return explicitHeroId
   }
-  return null
+
+  const participant = result?.data
+  const participantHeroId = resolveParticipantHeroId(participant)
+  if (participantHeroId) {
+    return participantHeroId
+  }
+
+  return explicitHeroId
 }
 
 export async function loadActiveRoles(supabaseClient, gameId) {
@@ -524,11 +548,17 @@ export async function enqueueParticipant(
     return { ok: false, error: '대기열에 필요한 정보가 부족합니다.' }
   }
 
+  const resolvedHeroId = await resolveQueueHeroId(supabaseClient, {
+    gameId,
+    ownerId,
+    heroId,
+  })
+
   const payload = {
     game_id: gameId,
     mode,
     owner_id: ownerId,
-    hero_id: heroId ?? null,
+    hero_id: resolvedHeroId ?? null,
     role,
     score,
     party_key: partyKey,
@@ -555,7 +585,7 @@ export async function enqueueParticipant(
     return { ok: false, error: insert.error.message || '대기열에 등록하지 못했습니다.' }
   }
 
-  return { ok: true }
+  return { ok: true, heroId: resolvedHeroId ?? null }
 }
 
 export function runMatching({ mode, roles, queue }) {
