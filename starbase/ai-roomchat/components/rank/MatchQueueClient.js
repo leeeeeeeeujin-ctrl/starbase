@@ -11,6 +11,7 @@ import {
   readStartSessionValue,
   writeStartSessionValue,
 } from '../../lib/rank/startSessionChannel'
+import { buildMatchMetaPayload, storeStartMatchMeta } from './startConfig'
 
 import useMatchQueue from './hooks/useMatchQueue'
 import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
@@ -409,6 +410,7 @@ export default function MatchQueueClient({
   const [countdown, setCountdown] = useState(null)
   const countdownTimerRef = useRef(null)
   const navigationLockRef = useRef(false)
+  const matchMetaSignatureRef = useRef('')
   const latestStatusRef = useRef('idle')
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
   const roomSummaries = useMemo(() => {
@@ -905,8 +907,74 @@ export default function MatchQueueClient({
       clearTimeout(countdownTimerRef.current)
       countdownTimerRef.current = null
     }
+    if (state.status === 'matched' && state.match) {
+      const viewerRoleName = state.lockedRole || targetRoleName || ''
+      const turnTimerValue =
+        Number.isFinite(Number(finalTimer)) && Number(finalTimer) > 0
+          ? Number(finalTimer)
+          : null
+      const payload = buildMatchMetaPayload(state.match, {
+        mode: mode || null,
+        turnTimer: turnTimerValue,
+        source: 'match_queue_client_handle_start',
+        viewerId: state.viewerId || null,
+        viewerRole: viewerRoleName || null,
+        viewerHeroId: state.heroId || null,
+        viewerHeroName: state.heroMeta?.name || null,
+        autoStart: Boolean(autoStart),
+      })
+      if (payload) {
+        storeStartMatchMeta(payload)
+        try {
+          const assignmentStamp = Array.isArray(state.match.assignments)
+            ? state.match.assignments
+                .map((assignment) => {
+                  if (!assignment) return ''
+                  const role = assignment.role || ''
+                  const members = Array.isArray(assignment.members)
+                    ? assignment.members
+                        .map((member) => {
+                          if (!member) return ''
+                          const owner = member.owner_id ?? member.ownerId ?? ''
+                          const hero = member.hero_id ?? member.heroId ?? ''
+                          return `${owner}:${hero}`
+                        })
+                        .join(',')
+                    : ''
+                  return `${role}|${members}`
+                })
+                .join(';')
+            : ''
+          matchMetaSignatureRef.current = JSON.stringify({
+            matchCode: state.match.matchCode || '',
+            turnTimer: turnTimerValue,
+            viewerHeroId: state.heroId || '',
+            viewerRole: viewerRoleName,
+            assignmentStamp,
+          })
+        } catch (signatureError) {
+          console.debug('[MatchQueueClient] 매치 메타 서명 생성 실패', signatureError)
+        }
+      } else {
+        storeStartMatchMeta(null)
+        matchMetaSignatureRef.current = ''
+      }
+    }
     router.push({ pathname: `/rank/${gameId}/start`, query: { mode } })
-  }, [router, gameId, mode])
+  }, [
+    router,
+    gameId,
+    mode,
+    state.status,
+    state.match,
+    state.lockedRole,
+    targetRoleName,
+    finalTimer,
+    state.viewerId,
+    state.heroId,
+    state.heroMeta?.name,
+    autoStart,
+  ])
 
   const handleBackToRoom = () => {
     router.push(`/rank/${gameId}`)
@@ -1120,6 +1188,85 @@ export default function MatchQueueClient({
       }
     }
   }, [countdown, handleStart])
+
+  useEffect(() => {
+    if (state.status === 'matched' && state.match) {
+      const viewerRoleName = state.lockedRole || targetRoleName || ''
+      const turnTimerValue =
+        Number.isFinite(Number(finalTimer)) && Number(finalTimer) > 0
+          ? Number(finalTimer)
+          : null
+      let assignmentStamp = ''
+      try {
+        assignmentStamp = Array.isArray(state.match.assignments)
+          ? state.match.assignments
+              .map((assignment) => {
+                if (!assignment) return ''
+                const role = assignment.role || ''
+                const members = Array.isArray(assignment.members)
+                  ? assignment.members
+                      .map((member) => {
+                        if (!member) return ''
+                        const owner = member.owner_id ?? member.ownerId ?? ''
+                        const hero = member.hero_id ?? member.heroId ?? ''
+                        return `${owner}:${hero}`
+                      })
+                      .join(',')
+                  : ''
+                return `${role}|${members}`
+              })
+              .join(';')
+          : ''
+      } catch (stampError) {
+        console.debug('[MatchQueueClient] 매치 메타 stamp 생성 실패', stampError)
+      }
+
+      const signature = JSON.stringify({
+        matchCode: state.match.matchCode || '',
+        turnTimer: turnTimerValue,
+        viewerHeroId: state.heroId || '',
+        viewerRole: viewerRoleName,
+        assignmentStamp,
+      })
+
+      if (matchMetaSignatureRef.current !== signature) {
+        matchMetaSignatureRef.current = signature
+        const payload = buildMatchMetaPayload(state.match, {
+          mode: mode || null,
+          turnTimer: turnTimerValue,
+          source: 'match_queue_client_ready',
+          viewerId: state.viewerId || null,
+          viewerRole: viewerRoleName || null,
+          viewerHeroId: state.heroId || null,
+          viewerHeroName: state.heroMeta?.name || null,
+          autoStart: Boolean(autoStart),
+        })
+        if (payload) {
+          storeStartMatchMeta(payload)
+        } else {
+          storeStartMatchMeta(null)
+          matchMetaSignatureRef.current = ''
+        }
+      }
+      return
+    }
+
+    if (matchMetaSignatureRef.current) {
+      matchMetaSignatureRef.current = ''
+      storeStartMatchMeta(null)
+    }
+  }, [
+    state.status,
+    state.match,
+    state.lockedRole,
+    targetRoleName,
+    finalTimer,
+    mode,
+    state.viewerId,
+    state.heroId,
+    state.heroMeta?.name,
+    autoStart,
+  ])
 
   useEffect(() => {
     if (!autoStart) return
