@@ -27,6 +27,7 @@ export const initialMainGameState = {
     audioProfile: null,
   },
   activeActorNames: [],
+  connectionRoster: [],
 }
 
 const ACTIONS = {

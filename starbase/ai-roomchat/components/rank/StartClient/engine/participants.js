@@ -87,3 +87,68 @@ export function createOwnerDisplayMap(participants) {
   })
   return map
 }
+
+export function collectUniqueOwnerIds(participants = []) {
+  if (!Array.isArray(participants) || participants.length === 0) {
+    return []
+  }
+
+  const owners = []
+  const seen = new Set()
+
+  participants.forEach((participant) => {
+    const ownerId = deriveParticipantOwnerId(participant)
+    if (ownerId == null) return
+    const normalized = String(ownerId).trim()
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    owners.push(normalized)
+  })
+
+  return owners
+}
+
+export function buildOwnerParticipantMap(participants = []) {
+  const map = new Map()
+  if (!Array.isArray(participants) || participants.length === 0) {
+    return map
+  }
+
+  participants.forEach((participant) => {
+    const ownerId = deriveParticipantOwnerId(participant)
+    if (ownerId == null) return
+    const normalized = String(ownerId).trim()
+    if (!normalized || map.has(normalized)) return
+    map.set(normalized, participant)
+  })
+
+  return map
+}
+
+export function buildOwnerRosterSnapshot(participants = []) {
+  const map = buildOwnerParticipantMap(participants)
+  const roster = []
+
+  map.forEach((participant, ownerId) => {
+    const heroIdRaw =
+      participant?.hero?.id ?? participant?.hero_id ?? participant?.heroId ?? null
+    const heroId =
+      heroIdRaw != null && String(heroIdRaw).trim() ? String(heroIdRaw).trim() : null
+    const heroName =
+      participant?.hero?.name ??
+      participant?.hero_name ??
+      participant?.display_name ??
+      participant?.name ??
+      null
+
+    roster.push({
+      ownerId,
+      heroId,
+      heroName: heroName ? String(heroName) : null,
+      role: participant?.role || null,
+      status: participant?.status || null,
+    })
+  })
+
+  return roster
+}

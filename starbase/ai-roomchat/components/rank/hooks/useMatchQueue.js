@@ -8,9 +8,11 @@ import {
   flattenAssignmentMembers,
   loadActiveRoles,
   loadHeroesByIds,
+  loadOwnerParticipantRoster,
   loadQueueEntries,
   removeQueueEntry,
 } from '../../../lib/rank/matchmakingService'
+import { guessOwnerParticipant, normalizeHeroIdValue } from '../../../lib/rank/participantUtils'
 
 const POLL_INTERVAL_MS = 4000
 
@@ -43,30 +45,72 @@ async function loadViewer() {
   return data.user.id
 }
 
-async function loadViewerParticipation(gameId, ownerId) {
+async function loadViewerParticipation(
+  gameId,
+  ownerId,
+  { rolePreference = '', fallbackHeroId = '' } = {},
+) {
   if (!gameId || !ownerId) {
-    return { score: 1000, role: '', heroId: '' }
+    return { score: 1000, role: rolePreference || '', heroId: fallbackHeroId || '' }
   }
-  const result = await withTable(supabase, 'rank_participants', (table) =>
-    supabase
-      .from(table)
-      .select('score, rating, role, hero_id')
-      .eq('game_id', gameId)
-      .eq('owner_id', ownerId)
-      .maybeSingle(),
-  )
-  if (result?.error) return { score: 1000, role: '', heroId: '' }
-  const row = result?.data
-  if (!row) return { score: 1000, role: '', heroId: '' }
-  const score = Number(row.score)
-  if (Number.isFinite(score) && score > 0) {
-    return { score, role: row.role || '', heroId: row.hero_id || row.heroId || '' }
+
+  try {
+    const roster = await loadOwnerParticipantRoster(supabase, {
+      gameId,
+      ownerIds: [ownerId],
+    })
+
+    const participantEntries = roster instanceof Map ? roster.get(String(ownerId)) || [] : []
+    const heroEntries = await loadOwnerHeroEntries(ownerId)
+    const combinedEntries = mergeRosterEntries(participantEntries, heroEntries)
+
+    const guess = guessOwnerParticipant({
+      ownerId,
+      roster,
+      rolePreference,
+      fallbackHeroId,
+    })
+
+    const rosterCandidate = pickRosterHeroCandidate(combinedEntries, {
+      rolePreference,
+      fallbackHeroId,
+    })
+
+    const guessHeroId = normalizeHeroIdValue(guess.heroId)
+    const fallbackHeroCandidateId = normalizeHeroIdValue(rosterCandidate?.heroId)
+    const storedFallbackHeroId = normalizeHeroIdValue(fallbackHeroId)
+
+    const resolvedHeroId =
+      guessHeroId || fallbackHeroCandidateId || storedFallbackHeroId || ''
+
+    const resolvedRole =
+      (typeof guess.role === 'string' && guess.role.trim()) ||
+      (typeof rosterCandidate?.role === 'string' && rosterCandidate.role.trim()) ||
+      (typeof rolePreference === 'string' ? rolePreference.trim() : '') ||
+      ''
+
+    let resolvedScore = Number.isFinite(guess.score) && guess.score > 0 ? guess.score : null
+    if (!Number.isFinite(resolvedScore) || resolvedScore == null) {
+      const candidateScore = Number.isFinite(rosterCandidate?.score) ? rosterCandidate.score : null
+      resolvedScore = Number.isFinite(candidateScore) && candidateScore != null ? candidateScore : 1000
+    }
+
+    return {
+      score: resolvedScore,
+      role: resolvedRole,
+      heroId: resolvedHeroId ? String(resolvedHeroId) : '',
+      rosterEntries: combinedEntries,
+    }
+  } catch (error) {
+    console.warn('참가자 정보를 불러오지 못했습니다:', error)
   }
-  const rating = Number(row.rating)
-  if (Number.isFinite(rating) && rating > 0) {
-    return { score: rating, role: row.role || '', heroId: row.hero_id || row.heroId || '' }
+
+  return {
+    score: 1000,
+    role: rolePreference || '',
+    heroId: fallbackHeroId || '',
+    rosterEntries: [],
   }
-  return { score: 1000, role: row?.role || '', heroId: row.hero_id || row.heroId || '' }
 }
 
 async function loadFallbackHeroId(ownerId) {
@@ -91,6 +135,181 @@ async function loadFallbackHeroId(ownerId) {
   const hero = result?.data
   if (!hero?.id) return ''
   return String(hero.id)
+}
+
+function normalizeRoleKey(value) {
+  if (!value) return ''
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? trimmed.toLowerCase() : ''
+  }
+  return ''
+}
+
+function coerceRosterScore(value, fallback = 1000) {
+  const numeric = Number(value)
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric
+  }
+  return fallback
+}
+
+async function loadOwnerHeroEntries(ownerId) {
+  if (!ownerId) return []
+
+  try {
+    const result = await withTable(supabase, 'heroes', (table) =>
+      supabase
+        .from(table)
+        .select(
+          'id, owner_id, name, hero_name:name, role, role_name, roleName, score, rating, mmr, rank_score, rankScore, status, image_url, avatar_url, hero_avatar_url',
+        )
+        .eq('owner_id', ownerId),
+    )
+
+    if (result?.error) {
+      throw result.error
+    }
+
+    const rows = Array.isArray(result?.data) ? result.data : []
+    return rows
+      .map((row) => {
+        const heroId = normalizeHeroIdValue(row?.id)
+        if (!heroId) return null
+
+        const roleFields = [row?.role, row?.role_name, row?.roleName]
+        let role = ''
+        for (const field of roleFields) {
+          if (typeof field === 'string' && field.trim()) {
+            role = field.trim()
+            break
+          }
+        }
+
+        const scoreCandidates = [row?.score, row?.rating, row?.mmr, row?.rank_score, row?.rankScore]
+        let score = 1000
+        for (const candidate of scoreCandidates) {
+          const normalizedScore = coerceRosterScore(candidate, NaN)
+          if (Number.isFinite(normalizedScore)) {
+            score = normalizedScore
+            break
+          }
+        }
+
+        if (!Number.isFinite(score)) {
+          score = 1000
+        }
+
+        const status = typeof row?.status === 'string' ? row.status.trim().toLowerCase() : ''
+
+        return {
+          ownerId: String(row?.owner_id || ownerId),
+          heroId: String(heroId),
+          role,
+          score,
+          slotIndex: null,
+          status,
+          name: row?.name || row?.hero_name || row?.heroName || '',
+          raw: {
+            hero_id: heroId,
+            name: row?.name || '',
+            hero_name: row?.name || row?.hero_name || row?.heroName || '',
+            hero_avatar_url: row?.image_url || row?.avatar_url || row?.hero_avatar_url || null,
+          },
+        }
+      })
+      .filter(Boolean)
+  } catch (error) {
+    console.warn('히어로 목록을 불러오지 못했습니다:', error)
+    return []
+  }
+}
+
+function mergeRosterEntries(participantEntries = [], heroEntries = []) {
+  const output = []
+  const indexByHeroId = new Map()
+
+  const addEntry = (entry, { preferExisting = false } = {}) => {
+    if (!entry) return
+    const heroId = entry.heroId != null ? String(entry.heroId) : ''
+    if (!heroId) return
+    if (indexByHeroId.has(heroId)) {
+      if (preferExisting) {
+        return
+      }
+      const index = indexByHeroId.get(heroId)
+      const existing = output[index]
+      const nextScore = coerceRosterScore(entry.score, NaN)
+      const prevScore = coerceRosterScore(existing.score, NaN)
+      output[index] = {
+        ...existing,
+        ...entry,
+        heroId,
+        role: entry.role || existing.role || '',
+        score: Number.isFinite(nextScore) ? nextScore : Number.isFinite(prevScore) ? prevScore : null,
+        status: entry.status || existing.status || '',
+        slotIndex: entry.slotIndex ?? existing.slotIndex ?? null,
+        raw: entry.raw || existing.raw || null,
+      }
+      return
+    }
+
+    indexByHeroId.set(heroId, output.length)
+    const initialScore = coerceRosterScore(entry.score, NaN)
+    output.push({
+      ...entry,
+      heroId,
+      role: entry.role || '',
+      status: entry.status || '',
+      slotIndex: entry.slotIndex ?? null,
+      score: Number.isFinite(initialScore) ? initialScore : null,
+    })
+  }
+
+  ;(participantEntries || []).forEach((entry) => addEntry(entry))
+  ;(heroEntries || []).forEach((entry) => addEntry(entry, { preferExisting: true }))
+
+  return output
+}
+
+function pickRosterHeroCandidate(entries = [], { rolePreference = '', fallbackHeroId = '' } = {}) {
+  if (!Array.isArray(entries)) return null
+
+  const normalizedFallback = normalizeHeroIdValue(fallbackHeroId)
+  const normalizedRole = normalizeRoleKey(rolePreference)
+
+  const mapped = entries
+    .map((entry) => {
+      if (!entry) return null
+      const heroId = normalizeHeroIdValue(entry.heroId)
+      if (!heroId) return null
+      const role = typeof entry.role === 'string' ? entry.role.trim() : ''
+      const score = coerceRosterScore(entry.score, NaN)
+      return {
+        heroId,
+        role,
+        roleKey: normalizeRoleKey(role),
+        score: Number.isFinite(score) ? score : null,
+        entry,
+      }
+    })
+    .filter(Boolean)
+
+  if (!mapped.length) {
+    return null
+  }
+
+  if (normalizedFallback) {
+    const fallbackMatch = mapped.find((item) => item.heroId === normalizedFallback)
+    if (fallbackMatch) return fallbackMatch.entry
+  }
+
+  if (normalizedRole) {
+    const roleMatch = mapped.find((item) => item.roleKey === normalizedRole)
+    if (roleMatch) return roleMatch.entry
+  }
+
+  return mapped[0].entry
 }
 
 async function upsertParticipantRole({ gameId, ownerId, heroId, role, score }) {
@@ -120,6 +339,45 @@ async function upsertParticipantRole({ gameId, ownerId, heroId, role, score }) {
 export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) {
   const [viewerId, setViewerId] = useState('')
   const [heroId, setHeroId] = useState(() => (initialHeroId ? String(initialHeroId) : ''))
+  const heroIdRef = useRef(heroId || '')
+  const updateHeroSelection = useCallback(
+    (value, { ownerId: ownerIdOverride, persistOwner = true } = {}) => {
+      const normalized = value != null ? String(value).trim() : ''
+      heroIdRef.current = normalized
+      setHeroId((prev) => {
+        if (prev === normalized) {
+          return prev
+        }
+        return normalized
+      })
+
+      if (typeof window === 'undefined') {
+        return normalized
+      }
+
+      try {
+        if (normalized) {
+          window.localStorage.setItem('selectedHeroId', normalized)
+          if (persistOwner) {
+            const targetOwner = ownerIdOverride || viewerId
+            if (targetOwner) {
+              window.localStorage.setItem('selectedHeroOwnerId', String(targetOwner))
+            }
+          }
+        } else {
+          window.localStorage.removeItem('selectedHeroId')
+        }
+      } catch (error) {
+        console.warn('히어로 정보를 저장하지 못했습니다:', error)
+      }
+
+      return normalized
+    },
+    [viewerId],
+  )
+  useEffect(() => {
+    heroIdRef.current = heroId || ''
+  }, [heroId])
   const [roles, setRoles] = useState([])
   const [queue, setQueue] = useState([])
   const [status, setStatus] = useState('idle')
@@ -131,9 +389,17 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
   const [match, setMatch] = useState(null)
   const [sampleMeta, setSampleMeta] = useState(null)
   const [pendingMatch, setPendingMatch] = useState(null)
-  const [heroMeta, setHeroMeta] = useState(null)
+  const [viewerRoster, setViewerRoster] = useState([])
+  const [heroMap, setHeroMap] = useState(() => new Map())
   const pollRef = useRef(null)
   const probeRef = useRef(null)
+
+  useEffect(() => {
+    if (!viewerId) return
+    const active = heroIdRef.current || ''
+    if (!active) return
+    updateHeroSelection(active, { ownerId: viewerId })
+  }, [viewerId, updateHeroSelection])
 
   useEffect(() => {
     if (!enabled) return
@@ -180,20 +446,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
     if (!initialHeroId) return
 
     const normalized = String(initialHeroId)
-    setHeroId((prev) => {
-      if (prev === normalized) {
-        return prev
-      }
-      return normalized
-    })
-
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.setItem('selectedHeroId', normalized)
-      } catch (error) {
-        console.warn('히어로 정보를 저장하지 못했습니다:', error)
-      }
-    }
+    updateHeroSelection(normalized, { ownerId: viewerId || undefined })
   }, [enabled, initialHeroId])
 
   useEffect(() => {
@@ -214,20 +467,16 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
     }
     let cancelled = false
     setRoleReady(false)
-    loadViewerParticipation(gameId, viewerId)
+    const storedHeroFallback = readStoredHeroId() || heroIdRef.current || ''
+    loadViewerParticipation(gameId, viewerId, { fallbackHeroId: storedHeroFallback })
       .then((value) => {
         if (cancelled || !value) return
         setScore(value.score)
         setLockedRole(value.role || '')
-        if (value.heroId) {
-          setHeroId(String(value.heroId))
-          if (typeof window !== 'undefined') {
-            try {
-              window.localStorage.setItem('selectedHeroId', String(value.heroId))
-            } catch (error) {
-              console.warn('히어로 정보를 저장하지 못했습니다:', error)
-            }
-          }
+        setViewerRoster(Array.isArray(value.rosterEntries) ? value.rosterEntries : [])
+        const existing = readStoredHeroId() || heroIdRef.current || ''
+        if (!existing && value.heroId) {
+          updateHeroSelection(String(value.heroId), { ownerId: viewerId || undefined })
         }
       })
       .catch((cause) => console.warn('점수를 불러오지 못했습니다:', cause))
@@ -249,15 +498,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
     loadFallbackHeroId(viewerId)
       .then((fallbackId) => {
         if (cancelled || !fallbackId) return
-        setHeroId(fallbackId)
-        if (typeof window !== 'undefined') {
-          try {
-            window.localStorage.setItem('selectedHeroId', fallbackId)
-            window.localStorage.setItem('selectedHeroOwnerId', viewerId)
-          } catch (error) {
-            console.warn('히어로 정보를 저장하지 못했습니다:', error)
-          }
-        }
+        updateHeroSelection(fallbackId, { ownerId: viewerId || undefined })
       })
       .catch((cause) => console.warn('히어로 기본값을 불러오지 못했습니다:', cause))
 
@@ -268,25 +509,37 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
 
   useEffect(() => {
     if (!enabled) return
-    if (!heroId) {
-      setHeroMeta(null)
-      return
-    }
     let cancelled = false
-    loadHeroesByIds(supabase, [heroId])
+    const ids = new Set()
+    if (heroId) {
+      ids.add(String(heroId))
+    }
+    if (Array.isArray(viewerRoster)) {
+      viewerRoster.forEach((entry) => {
+        if (entry?.heroId) {
+          ids.add(String(entry.heroId))
+        }
+      })
+    }
+    const list = Array.from(ids).filter((item) => item && item.length > 0)
+    if (list.length === 0) {
+      setHeroMap(new Map())
+      return () => {}
+    }
+
+    loadHeroesByIds(supabase, list)
       .then((map) => {
         if (cancelled) return
-        const meta = map.get(heroId) || map.get(String(heroId)) || null
-        setHeroMeta(meta)
+        setHeroMap(map)
       })
       .catch((cause) => {
         console.warn('히어로 정보를 불러오지 못했습니다:', cause)
-        if (!cancelled) setHeroMeta(null)
+        if (!cancelled) setHeroMap(new Map())
       })
     return () => {
       cancelled = true
     }
-  }, [enabled, heroId])
+  }, [enabled, heroId, viewerRoster])
 
   useEffect(() => {
     if (!enabled) return
@@ -355,6 +608,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       if (!payload?.ready) {
         setPendingMatch({
           assignments: Array.isArray(payload?.assignments) ? payload.assignments : [],
+          rooms: Array.isArray(payload?.rooms) ? payload.rooms : [],
           error: payload?.error || null,
           totalSlots: payload?.totalSlots ?? 0,
           maxWindow: payload?.maxWindow ?? 0,
@@ -391,6 +645,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
         sampleMeta: meta,
         dropInTarget: payload.dropInTarget || null,
         dropInMeta: payload.meta || null,
+        rooms: Array.isArray(payload.rooms) ? payload.rooms : [],
       })
     } catch (cause) {
       console.error('매칭 확인 실패:', cause)
@@ -415,16 +670,46 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
 
   const joinQueue = useCallback(
     async (role) => {
-      if (!enabled) return { ok: false, error: '매칭이 비활성화되어 있습니다.' }
-      if (!viewerId) return { ok: false, error: '로그인이 필요합니다.' }
+      if (!enabled) {
+        console.warn('[MatchQueue] joinQueue 중단: 매칭 비활성화 상태', {
+          gameId,
+          mode,
+          viewerId,
+        })
+        return { ok: false, error: '매칭이 비활성화되어 있습니다.' }
+      }
+      if (!viewerId) {
+        console.warn('[MatchQueue] joinQueue 중단: 로그인 필요', { gameId, mode, role })
+        return { ok: false, error: '로그인이 필요합니다.' }
+      }
       const activeHero = readStoredHeroId() || heroId
-      if (!activeHero) return { ok: false, error: '먼저 사용할 캐릭터를 선택해 주세요.' }
+      if (!activeHero) {
+        console.warn('[MatchQueue] joinQueue 중단: 선택된 캐릭터 없음', {
+          viewerId,
+          role,
+        })
+        return { ok: false, error: '먼저 사용할 캐릭터를 선택해 주세요.' }
+      }
       const finalRole = lockedRole || role
-      if (!finalRole) return { ok: false, error: '역할을 선택해 주세요.' }
+      if (!finalRole) {
+        console.warn('[MatchQueue] joinQueue 중단: 역할 미선택', {
+          viewerId,
+          heroId: activeHero,
+        })
+        return { ok: false, error: '역할을 선택해 주세요.' }
+      }
 
       setLoading(true)
       setError('')
       try {
+        console.info('[MatchQueue] 대기열 참가 요청', {
+          gameId,
+          mode,
+          viewerId,
+          heroId: activeHero,
+          role: finalRole,
+          score,
+        })
         const response = await enqueueParticipant(supabase, {
           gameId,
           mode,
@@ -434,24 +719,43 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
           score,
         })
         if (!response.ok) {
+          console.error('[MatchQueue] 대기열 참가 실패', {
+            gameId,
+            mode,
+            viewerId,
+            heroId: activeHero,
+            role: finalRole,
+            error: response.error,
+          })
           setError(response.error || '대기열에 참가하지 못했습니다.')
           return response
         }
 
+        const queueHeroId =
+          response.heroId != null && response.heroId !== ''
+            ? String(response.heroId)
+            : String(activeHero)
+
         const persisted = await upsertParticipantRole({
           gameId,
           ownerId: viewerId,
-          heroId: activeHero,
+          heroId: queueHeroId,
           role: finalRole,
           score,
         })
         if (!persisted.ok && persisted.error) {
+          console.warn('[MatchQueue] 참가자 역할 저장 실패', {
+            viewerId,
+            heroId: queueHeroId,
+            role: finalRole,
+            error: persisted.error,
+          })
           setError(persisted.error)
         }
 
         setStatus('queued')
         setMatch(null)
-        setHeroId(activeHero)
+        updateHeroSelection(queueHeroId, { ownerId: viewerId || undefined })
         if (!roleReady) {
           setRoleReady(true)
         }
@@ -460,6 +764,11 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
         }
         setSampleMeta(null)
         setPendingMatch(null)
+        console.info('[MatchQueue] 대기열 참가 완료', {
+          viewerId,
+          heroId: queueHeroId,
+          role: finalRole,
+        })
         return { ok: true }
       } finally {
         setLoading(false)
@@ -504,7 +813,38 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       match,
       lockedRole,
       roleReady,
-      heroMeta,
+      heroMeta:
+        heroId
+          ? heroMap.get(heroId) || heroMap.get(String(heroId)) || null
+          : null,
+      heroOptions: Array.isArray(viewerRoster)
+        ? viewerRoster
+            .map((entry) => {
+              if (!entry) return null
+              const resolvedId = entry.heroId ? String(entry.heroId) : ''
+              if (!resolvedId) return null
+              const meta = resolvedId
+                ? heroMap.get(resolvedId) || heroMap.get(String(resolvedId)) || null
+                : null
+              return {
+                heroId: resolvedId,
+                role: entry.role || '',
+                score: entry.score ?? null,
+                slotIndex: entry.slotIndex ?? null,
+                status: entry.status || '',
+                name:
+                  meta?.name ||
+                  meta?.hero_name ||
+                  entry.raw?.name ||
+                  entry.raw?.hero_name ||
+                  (resolvedId ? `ID ${resolvedId}` : ''),
+                avatarUrl: meta?.image_url || meta?.avatar_url || null,
+              }
+            })
+            .filter(Boolean)
+        : [],
+      heroMap,
+      viewerRoster,
       sampleMeta,
       pendingMatch,
     }),
@@ -520,9 +860,10 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       match,
       lockedRole,
       roleReady,
-      heroMeta,
       sampleMeta,
       pendingMatch,
+      heroMap,
+      viewerRoster,
     ],
   )
 
@@ -539,7 +880,12 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       cancelQueue,
       reset,
       refresh,
-      refreshHero: () => setHeroId(readStoredHeroId()),
+      refreshHero: () => updateHeroSelection(readStoredHeroId() || '', { persistOwner: false }),
+      setHero: (value, options = {}) =>
+        updateHeroSelection(value != null ? String(value) : '', {
+          ownerId: (options && options.ownerId) || viewerId || undefined,
+          persistOwner: options?.persistOwner !== false,
+        }),
     },
   }
 }

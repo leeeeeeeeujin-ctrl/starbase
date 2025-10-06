@@ -24,6 +24,15 @@ import {
 } from './matchUtils'
 import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
 import { buildMatchMetaPayload, readStoredStartConfig, storeStartMatchMeta } from './startConfig'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  writeStartSessionValue,
+} from '../../lib/rank/startSessionChannel'
+import {
+  registerMatchConnections,
+  removeConnectionEntries,
+} from '../../lib/rank/startConnectionRegistry'
 import { supabase } from '../../lib/supabase'
 
 function resolveRoleName(lockedRole, roles) {
@@ -84,6 +93,22 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const [matchLocked, setMatchLocked] = useState(false)
   const matchLockedRef = useRef(false)
   const matchRedirectedRef = useRef(false)
+
+  const clearConnectionRegistry = useCallback(() => {
+    if (!gameId) return
+    try {
+      removeConnectionEntries({ gameId, source: 'auto-match-progress' })
+    } catch (error) {
+      console.warn('[AutoMatchProgress] 연결 정보 초기화 실패:', error)
+    }
+  }, [gameId])
+
+  const cancelQueueWithCleanup = useCallback(() => {
+    const result = actions.cancelQueue()
+    return Promise.resolve(result).finally(() => {
+      clearConnectionRegistry()
+    })
+  }, [actions, clearConnectionRegistry])
 
   const persistApiKeyOnServer = usePersistApiKey()
 
@@ -152,7 +177,11 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   useEffect(() => {
     if (!gameId || !mode) return
     if (state.status !== 'matched') {
+      if (latestStatusRef.current === 'matched') {
+        clearConnectionRegistry()
+      }
       matchRedirectedRef.current = false
+      latestStatusRef.current = state.status
       return
     }
     if (matchRedirectedRef.current) return
@@ -160,6 +189,17 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     const match = state.match
     if (!match) {
       return
+    }
+
+    try {
+      registerMatchConnections({
+        gameId,
+        match,
+        viewerId: state.viewerId || '',
+        source: 'auto-match-progress',
+      })
+    } catch (error) {
+      console.warn('[AutoMatchProgress] 연결 정보 등록 실패:', error)
     }
 
     const plainHeroMap = match.heroMap instanceof Map
@@ -198,10 +238,12 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
     matchRedirectedRef.current = true
     navigationLockedRef.current = true
+    latestStatusRef.current = state.status
     router.replace({ pathname: `/rank/${gameId}/match-ready`, query: { mode } })
   }, [
     gameId,
     mode,
+    clearConnectionRegistry,
     requiresManualConfirmation,
     roleName,
     router,
@@ -297,7 +339,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     setConfirmationState('failed')
     setJoinError(PENALTY_NOTICE)
     joinSignatureRef.current = ''
-    actions.cancelQueue()
+    cancelQueueWithCleanup()
     if (matchLockedRef.current) {
       matchLockedRef.current = false
       setMatchLocked(false)
@@ -312,7 +354,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       navigationLockedRef.current = true
       router.replace(`/rank/${gameId}`)
     }, FAILURE_REDIRECT_DELAY_MS)
-  }, [actions, clearConfirmationTimers, gameId, router])
+  }, [cancelQueueWithCleanup, clearConfirmationTimers, gameId, router])
 
   const startConfirmationCountdown = useCallback(() => {
     clearConfirmationTimers()
@@ -356,7 +398,9 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
         if (trimmedApiKey && typeof window !== 'undefined') {
           try {
-            window.sessionStorage.setItem('rank.start.apiKey', trimmedApiKey)
+            writeStartSessionValue(START_SESSION_KEYS.API_KEY, trimmedApiKey, {
+              source: 'auto-match',
+            })
           } catch (error) {
             console.warn('[AutoMatchProgress] API 키를 저장하지 못했습니다:', error)
           }
@@ -516,7 +560,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       clearConfirmationTimers()
       setConfirmationState('confirmed')
       setJoinError('')
-      Promise.resolve(actions.cancelQueue())
+      cancelQueueWithCleanup()
         .catch((error) => {
           console.warn('[AutoMatchProgress] 큐 정리 실패', error)
         })
@@ -528,7 +572,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       setConfirming(false)
     }
   }, [
-    actions.cancelQueue,
+    cancelQueueWithCleanup,
     clearConfirmationTimers,
     confirmationState,
     confirming,
@@ -583,7 +627,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     if (typeof window === 'undefined') {
       return
     }
-    const stored = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
+    const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
     if (Number.isFinite(stored) && stored > 0) {
       setTurnTimer(stored)
     }
@@ -701,7 +745,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         setJoinError('1분 안에 매칭이 완료되지 않아 메인 룸으로 돌아갑니다.')
         if (!navigationLockedRef.current) {
           navigationLockedRef.current = true
-          actions.cancelQueue()
+          cancelQueueWithCleanup()
           router.replace(`/rank/${gameId}`)
         }
       }, QUEUE_TIMEOUT_MS)
@@ -718,7 +762,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       queueTimeoutRef.current = null
     }
     return () => {}
-  }, [actions, gameId, router, state.status])
+  }, [cancelQueueWithCleanup, gameId, router, state.status])
 
   useEffect(() => {
     if (matchRedirectedRef.current) {
@@ -852,10 +896,10 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         (latestStatusRef.current === 'queued' || latestStatusRef.current === 'matched') &&
         latestConfirmation !== 'confirmed'
       ) {
-        actions.cancelQueue()
+        cancelQueueWithCleanup()
       }
     }
-  }, [actions])
+  }, [cancelQueueWithCleanup])
 
   useEffect(() => {
     if (state.status === 'queued' || state.status === 'matched') {

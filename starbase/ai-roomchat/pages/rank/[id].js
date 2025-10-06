@@ -1,5 +1,5 @@
 // pages/rank/[id].js
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import GameRoomView from '../../components/rank/GameRoomView'
@@ -17,6 +17,17 @@ import {
   normalizeGeminiMode,
   normalizeGeminiModelId,
 } from '../../lib/rank/geminiConfig'
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  readStartSessionValues,
+  writeStartSessionValue,
+  writeStartSessionValues,
+} from '../../lib/rank/startSessionChannel'
+import {
+  normalizeHeroIdValue,
+  resolveParticipantHeroId,
+} from '../../lib/rank/participantUtils'
 
 export default function GameRoomPage() {
   const router = useRouter()
@@ -29,8 +40,7 @@ export default function GameRoomPage() {
   const [pickRole, setPickRole] = useState('')
   const [showStartModal, setShowStartModal] = useState(false)
   const [startPreset, setStartPreset] = useState({
-    mode: MATCH_MODE_KEYS.RANK_SOLO,
-    duoOption: 'code',
+    mode: MATCH_MODE_KEYS.RANK_SHARED,
     casualOption: 'matchmaking',
     apiVersion: 'gemini',
     apiKey: '',
@@ -48,7 +58,10 @@ export default function GameRoomPage() {
   const persistTurnTimerVotes = useCallback((votes) => {
     if (typeof window === 'undefined') return
     try {
-      window.sessionStorage.setItem('rank.start.turnTimerVotes', JSON.stringify(votes))
+      const payload = votes ? JSON.stringify(votes) : null
+      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTES, payload, {
+        source: 'match-page',
+      })
     } catch (error) {
       console.warn('턴 제한 투표 정보를 저장하지 못했습니다:', error)
     }
@@ -70,6 +83,7 @@ export default function GameRoomPage() {
   const {
     state: {
       loading,
+      user,
       game,
       roles,
       participants,
@@ -96,7 +110,6 @@ export default function GameRoomPage() {
       deleteRoom,
       refreshParticipants,
       refreshBattles,
-      refreshSlots,
       refreshSessionHistory,
       refreshSharedHistory,
     },
@@ -119,6 +132,51 @@ export default function GameRoomPage() {
   const requiredParticipants = Math.max(1, resolvedMinimumParticipants)
   const hasMinimumParticipants = activeParticipants.length >= requiredParticipants
 
+  const viewerId = user?.id || null
+  const viewerKey = viewerId != null ? String(viewerId) : null
+  const participantConflicts = useMemo(() => {
+    if (!viewerKey) return []
+    const list = Array.isArray(participants) ? participants : []
+    const viewerRows = list.filter((participant) => {
+      if (!participant) return false
+      const ownerKey =
+        participant.owner_id != null
+          ? String(participant.owner_id)
+          : participant.ownerId != null
+            ? String(participant.ownerId)
+            : null
+      return ownerKey && ownerKey === viewerKey
+    })
+
+    if (viewerRows.length <= 1) {
+      return []
+    }
+
+    const entryHeroId = normalizeHeroIdValue(
+      myEntry ? resolveParticipantHeroId(myEntry) : myHero?.id,
+    )
+
+    return viewerRows.filter((participant) => {
+      if (!participant) return false
+      if (myEntry?.id && participant.id === myEntry.id) return false
+      if (entryHeroId) {
+        const heroId = normalizeHeroIdValue(resolveParticipantHeroId(participant))
+        if (heroId && heroId === entryHeroId) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [myEntry, myHero?.id, participants, viewerKey])
+
+  const conflictingOthers = participantConflicts
+
+  const hasOwnerConflict =
+    conflictingOthers.length > 0 &&
+    game &&
+    game.owner_id &&
+    String(game.owner_id) !== viewerKey
+
   const handleJoin = async () => {
     await joinGame(pickRole)
   }
@@ -126,54 +184,75 @@ export default function GameRoomPage() {
   useEffect(() => {
     if (!mounted) return
     if (typeof window === 'undefined') return
-    setStartPreset((prev) => ({
-      ...prev,
-      mode: window.sessionStorage.getItem('rank.start.mode') || prev.mode,
-      duoOption: window.sessionStorage.getItem('rank.start.duoOption') || prev.duoOption,
-      casualOption:
-        window.sessionStorage.getItem('rank.start.casualOption') || prev.casualOption,
-      apiVersion:
-        window.sessionStorage.getItem('rank.start.apiVersion') || prev.apiVersion,
-      apiKey: window.sessionStorage.getItem('rank.start.apiKey') || prev.apiKey,
-      geminiMode: (() => {
-        const stored = window.sessionStorage.getItem('rank.start.geminiMode')
-        if (stored) {
-          return normalizeGeminiMode(stored)
-        }
-        return prev.geminiMode || DEFAULT_GEMINI_MODE
-      })(),
-      geminiModel: (() => {
-        const storedModel = window.sessionStorage.getItem('rank.start.geminiModel')
-        const normalized = normalizeGeminiModelId(storedModel || '')
-        if (normalized) {
-          return normalized
+
+    const stored = readStartSessionValues([
+      START_SESSION_KEYS.MODE,
+      START_SESSION_KEYS.CASUAL_OPTION,
+      START_SESSION_KEYS.API_VERSION,
+      START_SESSION_KEYS.API_KEY,
+      START_SESSION_KEYS.GEMINI_MODE,
+      START_SESSION_KEYS.GEMINI_MODEL,
+      START_SESSION_KEYS.TURN_TIMER,
+      START_SESSION_KEYS.TURN_TIMER_VOTE,
+    ])
+
+    setStartPreset((prev) => {
+      const storedMode = stored[START_SESSION_KEYS.MODE] || prev.mode
+      const storedCasual = stored[START_SESSION_KEYS.CASUAL_OPTION] || prev.casualOption
+      const storedApiVersion = stored[START_SESSION_KEYS.API_VERSION] || prev.apiVersion
+      const storedApiKey = stored[START_SESSION_KEYS.API_KEY] || prev.apiKey
+      const storedGeminiMode = stored[START_SESSION_KEYS.GEMINI_MODE]
+      const storedGeminiModel = stored[START_SESSION_KEYS.GEMINI_MODEL]
+      const storedTimerRaw = stored[START_SESSION_KEYS.TURN_TIMER]
+      const storedVoteRaw = stored[START_SESSION_KEYS.TURN_TIMER_VOTE]
+
+      const resolvedGeminiMode = storedGeminiMode
+        ? normalizeGeminiMode(storedGeminiMode)
+        : prev.geminiMode || DEFAULT_GEMINI_MODE
+
+      const resolvedGeminiModel = (() => {
+        if (storedGeminiModel) {
+          const normalized = normalizeGeminiModelId(storedGeminiModel)
+          if (normalized) {
+            return normalized
+          }
         }
         if (prev.geminiModel) {
           return prev.geminiModel
         }
         return DEFAULT_GEMINI_MODEL
-      })(),
-      turnTimer: (() => {
-        const storedTimer = Number(window.sessionStorage.getItem('rank.start.turnTimer'))
+      })()
+
+      const resolvedTimer = (() => {
+        const storedTimer = Number(storedTimerRaw)
         if (TURN_TIMER_VALUES.includes(storedTimer)) {
           return storedTimer
         }
-        const storedVoteTimer = Number(
-          window.sessionStorage.getItem('rank.start.turnTimerVote'),
-        )
+        const storedVoteTimer = Number(storedVoteRaw)
         if (TURN_TIMER_VALUES.includes(storedVoteTimer)) {
           return storedVoteTimer
         }
         return prev.turnTimer
-      })(),
-    }))
+      })()
+
+      return {
+        ...prev,
+        mode: storedMode,
+        casualOption: storedCasual,
+        apiVersion: storedApiVersion,
+        apiKey: storedApiKey,
+        geminiMode: resolvedGeminiMode,
+        geminiModel: resolvedGeminiModel,
+        turnTimer: resolvedTimer,
+      }
+    })
   }, [mounted])
 
   useEffect(() => {
     if (!mounted) return
     if (typeof window === 'undefined') return
 
-    const storedVoteValue = Number(window.sessionStorage.getItem('rank.start.turnTimerVote'))
+    const storedVoteValue = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE))
     const hasStoredVote = TURN_TIMER_VALUES.includes(storedVoteValue)
 
     if (hasStoredVote) {
@@ -184,7 +263,7 @@ export default function GameRoomPage() {
     }
 
     let parsedVotes = {}
-    const rawVotes = window.sessionStorage.getItem('rank.start.turnTimerVotes')
+    const rawVotes = readStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTES)
     if (rawVotes) {
       try {
         parsedVotes = JSON.parse(rawVotes)
@@ -218,9 +297,9 @@ export default function GameRoomPage() {
       setTurnTimerVote(numeric)
       turnTimerVoteRef.current = numeric
 
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.setItem('rank.start.turnTimerVote', String(numeric))
-      }
+      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE, String(numeric), {
+        source: 'match-page',
+      })
     },
     [persistTurnTimerVotes],
   )
@@ -245,121 +324,42 @@ export default function GameRoomPage() {
     setStartPreset(config)
 
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('rank.start.mode', config.mode)
-      window.sessionStorage.setItem('rank.start.duoOption', config.duoOption)
-      window.sessionStorage.setItem('rank.start.casualOption', config.casualOption)
-      window.sessionStorage.setItem('rank.start.apiVersion', config.apiVersion)
-      window.sessionStorage.setItem(
-        'rank.start.geminiMode',
-        config.geminiMode || DEFAULT_GEMINI_MODE,
+      writeStartSessionValues(
+        {
+          [START_SESSION_KEYS.MODE]: config.mode,
+          [START_SESSION_KEYS.DUO_OPTION]: null,
+          [START_SESSION_KEYS.CASUAL_OPTION]: config.casualOption,
+          [START_SESSION_KEYS.API_VERSION]: config.apiVersion,
+          [START_SESSION_KEYS.GEMINI_MODE]: config.geminiMode || DEFAULT_GEMINI_MODE,
+          [START_SESSION_KEYS.GEMINI_MODEL]: config.geminiModel || DEFAULT_GEMINI_MODEL,
+          [START_SESSION_KEYS.TURN_TIMER]: String(config.turnTimer || 60),
+          [START_SESSION_KEYS.API_KEY]: config.apiKey || null,
+        },
+        { source: 'match-page' },
       )
-      window.sessionStorage.setItem(
-        'rank.start.geminiModel',
-        config.geminiModel || DEFAULT_GEMINI_MODEL,
-      )
-      window.sessionStorage.setItem('rank.start.turnTimer', String(config.turnTimer || 60))
-      if (config.apiKey) {
-        window.sessionStorage.setItem('rank.start.apiKey', config.apiKey)
-      } else {
-        window.sessionStorage.removeItem('rank.start.apiKey')
-      }
     }
 
-    if (config.mode === MATCH_MODE_KEYS.RANK_SOLO) {
+    if (config.mode === MATCH_MODE_KEYS.RANK_SHARED) {
       if (startLoading) {
         return
       }
 
       setStartLoading(true)
-      setStartNotice('게임 화면으로 이동합니다…')
+      setStartNotice('랭크 대기열로 이동합니다…')
       setStartError('')
 
       try {
-        const refreshedSlots = await refreshSlots()
-        const slotSource = Array.isArray(refreshedSlots) ? refreshedSlots : slots
-        const activeSlots = Array.isArray(slotSource)
-          ? slotSource.filter((slot) => slot && slot.active !== false)
-          : []
-
-        const slotTarget = activeSlots.length > 0 ? activeSlots.length : requiredParticipants
-        if (!slotTarget) {
-          throw new Error('no_slots')
-        }
-
-        const candidateHeroIds = []
-        activeParticipants.forEach((participant) => {
-          const directHeroId = participant?.hero_id || participant?.heroId || participant?.hero?.id || null
-          if (directHeroId) {
-            candidateHeroIds.push(directHeroId)
-            return
-          }
-          if (Array.isArray(participant?.hero_ids)) {
-            const fallback = participant.hero_ids.find((value) => Boolean(value)) || null
-            if (fallback) {
-              candidateHeroIds.push(fallback)
-            }
-          }
-        })
-
-        if (candidateHeroIds.length < Math.max(1, requiredParticipants)) {
-          throw new Error('slot_missing_hero')
-        }
-
         await router.push({
-          pathname: `/rank/${id}/solo-match`,
+          pathname: `/rank/${id}/match`,
         })
-
-        return
       } catch (error) {
-        const message = (() => {
-          if (!error) return '매칭을 시작하지 못했습니다.'
-          const code = typeof error?.code === 'string' ? error.code : ''
-          const detail =
-            typeof error?.detail === 'string' && error.detail.trim()
-              ? error.detail.trim()
-              : ''
-          if (error.message === 'no_slots') {
-            return '슬롯 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.'
-          }
-          if (error.message === 'slot_missing_hero') {
-            return '비어 있는 역할이 있어 매칭을 시작할 수 없습니다.'
-          }
-          if (error?.message) {
-            const trimmed = error.message.trim()
-            if (trimmed === 'server_error') {
-              return '서버 오류로 매칭을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-            }
-            if (code && code !== trimmed) {
-              return code.slice(0, 200)
-            }
-            return trimmed.slice(0, 200)
-          }
-          if (detail) {
-            return detail.slice(0, 200)
-          }
-          return '매칭을 시작하지 못했습니다.'
-        })()
-
-        if (message) {
-          setStartError(message)
-          setStartNotice('')
-        } else {
-          setStartError('')
-          setStartNotice('')
-        }
-        console.error('Failed to start solo match:', error)
+        console.error('Failed to open rank match queue:', error)
+        setStartError('랭크 매칭 페이지로 이동하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        setStartNotice('')
       } finally {
         setStartLoading(false)
       }
-      return
-    }
 
-    if (config.mode === MATCH_MODE_KEYS.RANK_DUO) {
-      const action = config.duoOption || 'search'
-      router.push({
-        pathname: `/rank/${id}/duo`,
-        query: { action },
-      })
       return
     }
 
@@ -393,6 +393,89 @@ export default function GameRoomPage() {
 
   if (!ready || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
+  }
+
+  if (hasOwnerConflict) {
+    const heroSummaries = conflictingOthers.map((row, index) => {
+      const heroName =
+        (typeof row?.hero_name === 'string' && row.hero_name.trim()) ||
+        (typeof row?.heroName === 'string' && row.heroName.trim()) ||
+        (row?.hero && typeof row.hero.name === 'string' && row.hero.name.trim()) ||
+        (row?.hero_id ? `#${row.hero_id}` : '알 수 없음')
+      const roleName = (row?.role && row.role.trim()) || ''
+      return { key: `${row?.id || index}`, heroName, roleName }
+    })
+
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+          background: '#f8fafc',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 520,
+            width: '100%',
+            background: '#fff7f7',
+            border: '1px solid rgba(248, 113, 113, 0.35)',
+            borderRadius: 24,
+            padding: 28,
+            boxShadow: '0 28px 60px -46px rgba(15, 23, 42, 0.45)',
+            display: 'grid',
+            gap: 18,
+            color: '#7f1d1d',
+          }}
+        >
+          <div style={{ fontSize: 22, fontWeight: 700 }}>이미 동일 명의로 참가 중입니다</div>
+          <div style={{ fontSize: 14, lineHeight: 1.6 }}>
+            이 게임에는 이미 동일 명의로 참가 중인 캐릭터가 있어 매칭 페이지를 이용할 수 없습니다. 아래
+            캐릭터 정보를 확인한 뒤 기존 참가를 해제하거나 다른 게임을 선택해 주세요.
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {heroSummaries.map(({ key, heroName, roleName }) => (
+              <div
+                key={key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: 10,
+                  padding: '10px 14px',
+                  borderRadius: 14,
+                  background: 'rgba(248, 113, 113, 0.12)',
+                  color: '#991b1b',
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                <span>{heroName}</span>
+                {roleName ? <span style={{ fontSize: 12, color: '#b91c1c' }}>{roleName}</span> : null}
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => router.replace('/lobby')}
+            style={{
+              border: 'none',
+              background: '#ef4444',
+              color: '#fff',
+              padding: '12px 18px',
+              borderRadius: 999,
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            로비로 돌아가기
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (

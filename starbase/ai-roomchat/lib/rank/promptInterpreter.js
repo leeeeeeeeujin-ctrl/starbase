@@ -30,11 +30,114 @@ const DEFAULT_RULE_GUIDANCE_ENTRIES = [
 
 const DEFAULT_RULE_GUIDANCE = DEFAULT_RULE_GUIDANCE_ENTRIES.map((entry) => entry.text)
 
+const SIMILAR_RULE_SIMILARITY_THRESHOLD = 0.68
+
 function cleanLines(text) {
   return String(text || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
+}
+
+function normalizeForSimilarity(text) {
+  return safeStr(text)
+    .replace(/^[•\-\u2022\s]+/, '')
+    .replace(/["'`“”‘’\[\]\(\)\{\}<>]/g, ' ')
+    .replace(/[.,!?·~_:;\\/]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function buildBigramSet(text) {
+  const collapsed = text.replace(/\s+/g, '')
+  const bigrams = new Set()
+  for (let index = 0; index < collapsed.length - 1; index += 1) {
+    bigrams.add(collapsed.slice(index, index + 2))
+  }
+  return bigrams
+}
+
+function areLinesSimilar(lineA, lineB) {
+  const normalizedA = normalizeForSimilarity(lineA)
+  const normalizedB = normalizeForSimilarity(lineB)
+
+  if (!normalizedA || !normalizedB) return false
+  if (normalizedA === normalizedB) return true
+
+  const bigramsA = buildBigramSet(normalizedA)
+  const bigramsB = buildBigramSet(normalizedB)
+
+  if (!bigramsA.size || !bigramsB.size) {
+    return normalizedA === normalizedB
+  }
+
+  let intersection = 0
+  bigramsA.forEach((token) => {
+    if (bigramsB.has(token)) {
+      intersection += 1
+    }
+  })
+
+  const union = bigramsA.size + bigramsB.size - intersection
+  if (!union) return true
+
+  return intersection / union >= SIMILAR_RULE_SIMILARITY_THRESHOLD
+}
+
+function lineMatches(text, matchers = []) {
+  if (!matchers || !matchers.length) return false
+  const normalized = safeStr(text)
+  if (!normalized) return false
+  return matchers.every((matcher) => {
+    if (!matcher) return false
+    if (matcher instanceof RegExp) {
+      return matcher.test(normalized)
+    }
+    return normalized.includes(String(matcher))
+  })
+}
+
+const CANONICAL_RULE_PATTERNS = [
+  {
+    key: 'ultimate_injection_detection',
+    matchers: [/인젝션/, /(응답하|응답만)/],
+  },
+  {
+    key: 'ultimate_injection_win_override',
+    matchers: [/승패\s*조건/, /궁극적\s*승리/, /(응답하|응답만)/],
+  },
+  {
+    key: 'ability_usage_constraint',
+    matchers: [/능력은\s*여건/, /(상시발동|존재성)/],
+  },
+  {
+    key: 'advantage_description_rule',
+    matchers: [/전투\s*가능/, /(우위|격차)/],
+  },
+  {
+    key: 'no_underdog_trope',
+    matchers: [/전술/, /(역량|개연)/],
+  },
+  {
+    key: 'no_villain_loss_cliche',
+    matchers: [/악인/, /(클리셰|강약)/],
+  },
+  {
+    key: 'no_protagonist_narrative',
+    matchers: [/주인공/, /(적과\s*적|강약)/],
+  },
+]
+
+function resolveCanonicalRuleKey(text) {
+  const trimmed = safeStr(text).trim()
+  if (!trimmed) return ''
+  for (const { key, matchers } of CANONICAL_RULE_PATTERNS) {
+    if (lineMatches(trimmed, matchers)) {
+      return key
+    }
+  }
+  return trimmed
 }
 
 const FALSE_STRINGS = new Set(['false', '0', 'off', 'no', 'n'])
@@ -237,6 +340,26 @@ function buildScopeVariableRules({ manual = [], active = [], activeNames = [], s
     })
 }
 
+function normalizeActiveNameList(names = []) {
+  const list = Array.isArray(names) ? names : []
+  const seen = new Set()
+  const normalized = []
+  list.forEach((value) => {
+    const text = safeStr(value).trim()
+    if (!text) return
+    if (seen.has(text)) return
+    seen.add(text)
+    normalized.push(text)
+  })
+  return normalized
+}
+
+function buildVariableStateLines(names = [], scopeLabel = '전역') {
+  const normalized = normalizeActiveNameList(names)
+  const summary = normalized.length ? normalized.join(', ') : 'none'
+  return [`- 활성화된 ${scopeLabel} 변수: ${summary}`]
+}
+
 function normalizeStatus(value) {
   const text = safeStr(value).trim().toLowerCase()
   return text || 'alive'
@@ -343,24 +466,50 @@ const RULE_SOURCE_PRIORITY = {
   default: 0,
 }
 
-function buildRuleSections({ game, node } = {}) {
+function buildRuleSections({
+  game,
+  node,
+  activeGlobalNames = [],
+  activeLocalNames = [],
+} = {}) {
   const sections = {
     baseRules: [],
     globalVariables: [],
     localVariables: [],
+    globalVariableStates: [],
+    localVariableStates: [],
   }
 
   const baseRuleEntries = []
   const indexByLine = new Map()
+  const findSimilarCanonicalKey = (candidate) => {
+    for (const [existingKey, existingIndex] of indexByLine.entries()) {
+      const existingEntry = baseRuleEntries[existingIndex]
+      if (!existingEntry) continue
+      if (areLinesSimilar(existingEntry.text, candidate)) {
+        return existingKey
+      }
+    }
+    return ''
+  }
   const pushBaseRule = (line, source = 'default') => {
     const text = safeStr(line)
     if (!text) return
-    const key = text.trim()
-    if (!key) return
+    const trimmed = text.trim()
+    if (!trimmed) return
+    let canonicalKey = resolveCanonicalRuleKey(text)
+    if (!canonicalKey) return
+
+    if (canonicalKey === trimmed) {
+      const similarKey = findSimilarCanonicalKey(text)
+      if (similarKey) {
+        canonicalKey = similarKey
+      }
+    }
 
     const priority = RULE_SOURCE_PRIORITY[source] ?? RULE_SOURCE_PRIORITY.default
-    if (indexByLine.has(key)) {
-      const existingIndex = indexByLine.get(key)
+    if (indexByLine.has(canonicalKey)) {
+      const existingIndex = indexByLine.get(canonicalKey)
       const existing = baseRuleEntries[existingIndex]
       if (existing.priority >= priority) {
         return
@@ -369,7 +518,7 @@ function buildRuleSections({ game, node } = {}) {
       return
     }
 
-    indexByLine.set(key, baseRuleEntries.length)
+    indexByLine.set(canonicalKey, baseRuleEntries.length)
     baseRuleEntries.push({ text, priority })
   }
 
@@ -394,17 +543,7 @@ function buildRuleSections({ game, node } = {}) {
     if (!trimmed) return
 
     const hasSimilarLine = Array.isArray(matchers) && matchers.length
-      ? baseRuleSnapshot.some((existing) => {
-          const normalizedExisting = safeStr(existing)
-          if (!normalizedExisting) return false
-          return matchers.every((matcher) => {
-            if (!matcher) return false
-            if (matcher instanceof RegExp) {
-              return matcher.test(normalizedExisting)
-            }
-            return normalizedExisting.includes(String(matcher))
-          })
-        })
+      ? baseRuleSnapshot.some((existing) => lineMatches(existing, matchers))
       : false
 
     if (!hasSimilarLine) {
@@ -435,6 +574,23 @@ function buildRuleSections({ game, node } = {}) {
     sections.localVariables.push(...localRules)
   }
 
+  const mergedGlobalStateNames = normalizeActiveNameList([
+    ...(globalScope.activeNames || []),
+    ...(Array.isArray(activeGlobalNames) ? activeGlobalNames : []),
+  ])
+  const mergedLocalStateNames = normalizeActiveNameList([
+    ...(localScope.activeNames || []),
+    ...(Array.isArray(activeLocalNames) ? activeLocalNames : []),
+  ])
+
+  if (sections.globalVariables.length || mergedGlobalStateNames.length) {
+    sections.globalVariableStates.push(...buildVariableStateLines(mergedGlobalStateNames, '전역'))
+  }
+
+  if (sections.localVariables.length || mergedLocalStateNames.length) {
+    sections.localVariableStates.push(...buildVariableStateLines(mergedLocalStateNames, '로컬'))
+  }
+
   sections.baseRules = baseRuleEntries.map((entry) => entry.text)
 
   return sections
@@ -463,6 +619,22 @@ function buildRulesBlock(sections) {
     lines.push(...sections.localVariables)
   }
 
+  if (sections.globalVariableStates.length) {
+    if (lines[lines.length - 1] !== '') {
+      lines.push('')
+    }
+    lines.push('[전역 변수 상태]')
+    lines.push(...sections.globalVariableStates)
+  }
+
+  if (sections.localVariableStates.length) {
+    if (lines[lines.length - 1] !== '') {
+      lines.push('')
+    }
+    lines.push('[로컬 변수 상태]')
+    lines.push(...sections.localVariableStates)
+  }
+
   return lines.join('\n')
 }
 
@@ -487,13 +659,21 @@ export function interpretPromptNode({
   participants = [],
   slotsMap = null,
   historyText = '',
+  activeGlobalNames = [],
+  activeLocalNames = [],
 } = {}) {
   if (!node) {
     return {
       text: '',
       promptBody: '',
       rulesBlock: '[규칙]\n',
-      sections: { baseRules: [], globalVariables: [], localVariables: [] },
+      sections: {
+        baseRules: [],
+        globalVariables: [],
+        localVariables: [],
+        globalVariableStates: [],
+        localVariableStates: [],
+      },
       meta: {},
     }
   }
@@ -506,7 +686,12 @@ export function interpretPromptNode({
   })
 
   const promptBody = applyPostReplacements(compiledText, { historyText })
-  const sections = buildRuleSections({ game, node })
+  const sections = buildRuleSections({
+    game,
+    node,
+    activeGlobalNames,
+    activeLocalNames,
+  })
   const rulesBlock = buildRulesBlock(sections)
   const finalText = [rulesBlock, '-------------------------------------', promptBody]
     .filter((block) => block != null && block !== '')

@@ -115,7 +115,12 @@ function normalizeMemoryEntry(entry, index) {
 }
 
 function normalizePlayerHistory(player, index) {
-  const name = player.heroName || player.hero_name || player.hero?.name || `슬롯 ${index + 1}`
+  const name =
+    player.heroName ||
+    player.hero_name ||
+    player.name ||
+    player.hero?.name ||
+    `슬롯 ${index + 1}`
   const role = player.role || ''
   const entries = Array.isArray(player.entries) ? player.entries.slice(-4) : []
   const normalizedEntries = entries.map((entry, entryIndex) => {

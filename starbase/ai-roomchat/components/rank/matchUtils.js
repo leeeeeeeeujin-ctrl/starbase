@@ -62,7 +62,16 @@ export function computeRoleOffsets(rawRoles = []) {
 export function normalizeRoleSlots(roleSlots, roleCount) {
   if (!Array.isArray(roleSlots)) return []
   return roleSlots
-    .map((slot) => Number(slot))
+    .map((slot) => {
+      if (typeof slot === 'number') return Number(slot)
+      if (typeof slot === 'object' && slot !== null) {
+        const candidate = slot.slotIndex ?? slot.slot_index ?? slot.index
+        if (Number.isFinite(Number(candidate))) {
+          return Number(candidate)
+        }
+      }
+      return Number.NaN
+    })
     .filter((slot) => Number.isFinite(slot) && slot >= 0 && slot < roleCount)
 }
 
@@ -71,53 +80,65 @@ export function extractHeroIdsFromAssignments({ roles = [], assignments = [] }) 
   if (!total) return []
 
   const heroIds = new Array(total).fill(null)
-  const roleUsage = new Map()
 
   assignments.forEach((assignment) => {
     if (!assignment) return
-    const roleName = typeof assignment.role === 'string' ? assignment.role.trim() : ''
-    if (!roleName || !offsets.has(roleName)) return
-    const { offset, count } = offsets.get(roleName)
-    if (!roleUsage.has(roleName)) {
-      roleUsage.set(roleName, new Set())
-    }
-    const usedSlots = roleUsage.get(roleName)
-    const normalizedSlots = normalizeRoleSlots(
-      assignment.roleSlots || assignment.role_slots,
-      count,
-    )
-    const members = Array.isArray(assignment.members) ? assignment.members : []
+    const slots = Array.isArray(assignment.roleSlots || assignment.role_slots)
+      ? assignment.roleSlots || assignment.role_slots
+      : []
 
-    normalizedSlots.forEach((slotIndex, index) => {
-      const member = members[index]
-      if (!member) return
-      const heroId = member.hero_id || member.heroId || member.heroID || null
+    slots.forEach((slot) => {
+      const roleName = typeof slot === 'object' ? slot.role || slot.name : null
+      const normalizedRole = typeof roleName === 'string' ? roleName.trim() : ''
+      if (!normalizedRole || !offsets.has(normalizedRole)) return
+
+      const { offset, count } = offsets.get(normalizedRole)
+      const slotIndexRaw =
+        (slot && typeof slot === 'object'
+          ? slot.localIndex ?? slot.local_index ?? slot.slotIndex ?? slot.slot_index ?? slot.index
+          : slot) ?? null
+      let slotIndex = Number(slotIndexRaw)
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= count) {
+        const globalValue = Number(
+          slot && typeof slot === 'object'
+            ? slot.slotIndex ?? slot.slot_index ?? slot.index
+            : slot,
+        )
+        if (Number.isInteger(globalValue) && globalValue >= offset && globalValue < offset + count) {
+          slotIndex = globalValue - offset
+        } else {
+          return
+        }
+      }
+
+      const members = Array.isArray(slot.members)
+        ? slot.members
+        : Array.isArray(assignment.members)
+        ? assignment.members
+        : []
+
+      const member = members.find((candidate) => {
+        if (!candidate) return false
+        if (slot.member && candidate === slot.member) return true
+        if (slot.member && slot.member.id && candidate.id && slot.member.id === candidate.id)
+          return true
+        const heroId = candidate.hero_id || candidate.heroId || candidate.heroID
+        if (!heroId) return false
+        const slotHero = slot.heroId || slot.hero_id
+        if (slotHero && slotHero === heroId) return true
+        return false
+      }) || (Array.isArray(slot.members) && slot.members[0])
+
+      const heroId =
+        (member && (member.hero_id || member.heroId || member.heroID)) ||
+        slot.heroId ||
+        slot.hero_id ||
+        null
       if (!heroId) return
+
       const globalIndex = offset + slotIndex
       if (globalIndex < 0 || globalIndex >= heroIds.length) return
       heroIds[globalIndex] = String(heroId)
-      usedSlots.add(slotIndex)
-    })
-
-    members.forEach((member) => {
-      if (!member) return
-      const heroId = member.hero_id || member.heroId || member.heroID || null
-      if (!heroId) return
-      const alreadyAssigned = heroIds.includes(String(heroId))
-      if (alreadyAssigned) return
-      let slotIndex = 0
-      while (slotIndex < count && usedSlots.has(slotIndex)) {
-        slotIndex += 1
-      }
-      if (slotIndex >= count) {
-        return
-      }
-      const globalIndex = offset + slotIndex
-      if (globalIndex < 0 || globalIndex >= heroIds.length) {
-        return
-      }
-      heroIds[globalIndex] = String(heroId)
-      usedSlots.add(slotIndex)
     })
   })
 
