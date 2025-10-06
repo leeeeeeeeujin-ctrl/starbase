@@ -598,6 +598,8 @@ function createRoomFromTemplate(template) {
     heroIds: new Set(),
     createdAt: Date.now(),
     anchorScore: null,
+    totalScore: 0,
+    groupCount: 0,
     maxScoreGap: 0,
     roleAnchors: new Map(),
     roleMaxGaps: new Map(),
@@ -612,6 +614,23 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
   }
 
   const groupScore = Number.isFinite(group.score) ? Number(group.score) : FALLBACK_SCORE
+
+  const hasExistingGroups = room.groupCount > 0
+  const roomAnchor = hasExistingGroups
+    ? Number.isFinite(room.anchorScore)
+      ? Number(room.anchorScore)
+      : room.groupCount > 0
+      ? room.totalScore / room.groupCount
+      : null
+    : null
+
+  let gapToRoomBeforePlacement = 0
+  if (hasExistingGroups && Number.isFinite(roomAnchor)) {
+    gapToRoomBeforePlacement = Math.abs(groupScore - roomAnchor)
+    if (gapToRoomBeforePlacement > maxWindowAllowed) {
+      return false
+    }
+  }
 
   const roleAnchor = room.roleAnchors.get(group.role)
   if (roleAnchor != null) {
@@ -652,7 +671,12 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
   })
 
   room.filledSlots += group.size
-  if (room.anchorScore == null) {
+  room.groupCount += 1
+  room.totalScore += groupScore
+  const anchorAverage = room.totalScore / room.groupCount
+  if (Number.isFinite(anchorAverage)) {
+    room.anchorScore = anchorAverage
+  } else if (room.anchorScore == null) {
     room.anchorScore = groupScore
   }
   if (!room.roleAnchors.has(group.role)) {
@@ -664,8 +688,11 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
   if (gap > existingRoleGap) {
     room.roleMaxGaps.set(group.role, gap)
   }
-  if (gap > room.maxScoreGap) {
-    room.maxScoreGap = gap
+  const gapToRoom = room.groupCount > 1 && Number.isFinite(room.anchorScore)
+    ? Math.max(gapToRoomBeforePlacement, Math.abs(groupScore - room.anchorScore))
+    : gap
+  if (gapToRoom > room.maxScoreGap) {
+    room.maxScoreGap = gapToRoom
   }
   if (group.joinedAt && group.joinedAt < room.createdAt) {
     room.createdAt = group.joinedAt
