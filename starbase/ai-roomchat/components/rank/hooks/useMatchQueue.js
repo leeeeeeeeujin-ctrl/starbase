@@ -625,6 +625,8 @@ export default function useMatchQueue({
 
       const meta = payload?.sampleMeta || null
       setSampleMeta(meta)
+      const payloadRoles = Array.isArray(payload?.roles) ? payload.roles : []
+      setRoles(payloadRoles)
       if (meta && process.env.NODE_ENV !== 'production') {
         try {
           if (typeof console.groupCollapsed === 'function') {
@@ -647,6 +649,8 @@ export default function useMatchQueue({
           totalSlots: payload?.totalSlots ?? 0,
           maxWindow: payload?.maxWindow ?? 0,
           sampleMeta: meta,
+          roles: payloadRoles,
+          gameId,
         })
         return
       }
@@ -680,6 +684,8 @@ export default function useMatchQueue({
         dropInTarget: payload.dropInTarget || null,
         dropInMeta: payload.meta || null,
         rooms: Array.isArray(payload.rooms) ? payload.rooms : [],
+        roles: payloadRoles,
+        gameId,
       })
     } catch (cause) {
       console.error('매칭 확인 실패:', cause)

@@ -44,6 +44,24 @@ function parseRules(raw) {
   return {}
 }
 
+function serializeRoles(roles) {
+  if (!Array.isArray(roles)) return []
+  return roles
+    .map((role) => {
+      if (!role) return null
+      const name = typeof role.name === 'string' ? role.name.trim() : ''
+      if (!name) return null
+      const slotCountRaw = role.slot_count ?? role.slotCount ?? role.capacity
+      const slotCount = Number(slotCountRaw)
+      const payload = { name }
+      if (Number.isFinite(slotCount) && slotCount >= 0) {
+        payload.slot_count = slotCount
+      }
+      return payload
+    })
+    .filter(Boolean)
+}
+
 function determineBrawlVacancies(roles, statusMap) {
   const vacancies = []
   if (!Array.isArray(roles) || !(statusMap instanceof Map)) {
@@ -168,6 +186,7 @@ export default async function handler(req, res) {
             matchType: 'brawl',
             brawlVacancies,
             roleStatus: mapCountsToPlain(roleStatusMap),
+            roles: serializeRoles(roles),
           })
         }
       }
@@ -224,6 +243,7 @@ export default async function handler(req, res) {
           matchType: dropInResult.matchType || 'drop_in',
           matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
           heroMap: mapToPlain(heroMap),
+          roles: serializeRoles(roles),
         })
       }
     }
@@ -258,6 +278,7 @@ export default async function handler(req, res) {
         maxWindow: result.maxWindow || 0,
         error: result.error || null,
         sampleMeta,
+        roles: serializeRoles(roles),
       })
     }
 
@@ -294,6 +315,7 @@ export default async function handler(req, res) {
       matchType: 'standard',
       heroMap: mapToPlain(heroMap),
       sampleMeta,
+      roles: serializeRoles(roles),
     })
   } catch (error) {
     await recordMatchmakingLog(supabase, {

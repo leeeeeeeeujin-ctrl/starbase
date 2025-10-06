@@ -915,6 +915,7 @@ export default function MatchQueueClient({
           : null
       const payload = buildMatchMetaPayload(state.match, {
         mode: mode || null,
+        gameId: gameId || null,
         turnTimer: turnTimerValue,
         source: 'match_queue_client_handle_start',
         viewerId: state.viewerId || null,
