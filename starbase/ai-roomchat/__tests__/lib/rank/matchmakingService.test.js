@@ -2,6 +2,7 @@ import {
   loadActiveRoles,
   loadMatchSampleSource,
   loadOwnerParticipantRoster,
+  loadRoleLayout,
   runMatching,
   enqueueParticipant,
 } from '@/lib/rank/matchmakingService'
@@ -178,6 +179,30 @@ describe('loadActiveRoles', () => {
       { name: '공격', slot_count: 3 },
       { name: '수비', slot_count: 1 },
       { name: '지원', slot_count: 1 },
+    ])
+  })
+})
+
+describe('loadRoleLayout', () => {
+  it('returns slot layout derived from inline roles array', async () => {
+    const supabase = createSupabaseStub({
+      rank_games: [
+        {
+          id: 'game-layout-inline',
+          roles: ['A', null, 'B', 'A'],
+        },
+      ],
+    })
+
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-inline')
+    expect(roles).toEqual([
+      { name: 'A', slot_count: 2 },
+      { name: 'B', slot_count: 1 },
+    ])
+    expect(slotLayout).toEqual([
+      { slotIndex: 0, role: 'A', heroId: null, heroOwnerId: null },
+      { slotIndex: 2, role: 'B', heroId: null, heroOwnerId: null },
+      { slotIndex: 3, role: 'A', heroId: null, heroOwnerId: null },
     ])
   })
 })

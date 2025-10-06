@@ -397,6 +397,7 @@ export default function useMatchQueue({
   const [pendingMatch, setPendingMatch] = useState(null)
   const [viewerRoster, setViewerRoster] = useState([])
   const [heroMap, setHeroMap] = useState(() => new Map())
+  const [slotLayout, setSlotLayout] = useState([])
   const pollRef = useRef(null)
   const probeRef = useRef(null)
 
@@ -626,7 +627,9 @@ export default function useMatchQueue({
       const meta = payload?.sampleMeta || null
       setSampleMeta(meta)
       const payloadRoles = Array.isArray(payload?.roles) ? payload.roles : []
+      const payloadLayout = Array.isArray(payload?.slotLayout) ? payload.slotLayout : []
       setRoles(payloadRoles)
+      setSlotLayout(payloadLayout)
       if (meta && process.env.NODE_ENV !== 'production') {
         try {
           if (typeof console.groupCollapsed === 'function') {
@@ -650,6 +653,7 @@ export default function useMatchQueue({
           maxWindow: payload?.maxWindow ?? 0,
           sampleMeta: meta,
           roles: payloadRoles,
+          slotLayout: payloadLayout,
           gameId,
         })
         return
@@ -685,6 +689,7 @@ export default function useMatchQueue({
         dropInMeta: payload.meta || null,
         rooms: Array.isArray(payload.rooms) ? payload.rooms : [],
         roles: payloadRoles,
+        slotLayout: payloadLayout,
         gameId,
       })
     } catch (cause) {
@@ -835,6 +840,7 @@ export default function useMatchQueue({
   const reset = useCallback(() => {
     setStatus('idle')
     setMatch(null)
+    setSlotLayout([])
     setQueue([])
     setSampleMeta(null)
     setPendingMatch(null)
@@ -887,6 +893,7 @@ export default function useMatchQueue({
       viewerRoster,
       sampleMeta,
       pendingMatch,
+      slotLayout,
     }),
     [
       viewerId,
@@ -902,6 +909,7 @@ export default function useMatchQueue({
       roleReady,
       sampleMeta,
       pendingMatch,
+      slotLayout,
       heroMap,
       viewerRoster,
     ],

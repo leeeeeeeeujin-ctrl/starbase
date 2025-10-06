@@ -1,7 +1,7 @@
 import {
-  loadActiveRoles,
   loadParticipantPool,
   loadQueueEntries,
+  loadRoleLayout,
   loadRoleStatusCounts,
 } from '@/lib/rank/matchmakingService'
 import { getQueueModes } from '@/lib/rank/matchModes'
@@ -380,8 +380,8 @@ export function extractMatchingToggles(gameRow, rules = {}) {
 }
 
 export async function loadMatchingResources({ supabase, gameId, mode, realtimeEnabled, brawlEnabled }) {
-  const [roles, queueResult, participantPool, roleStatusMap] = await Promise.all([
-    loadActiveRoles(supabase, gameId),
+  const [{ roles, slotLayout }, queueResult, participantPool, roleStatusMap] = await Promise.all([
+    loadRoleLayout(supabase, gameId),
     loadQueueEntries(supabase, { gameId, mode }),
     realtimeEnabled ? Promise.resolve([]) : loadParticipantPool(supabase, gameId),
     brawlEnabled ? loadRoleStatusCounts(supabase, gameId) : Promise.resolve(new Map()),
@@ -389,6 +389,7 @@ export async function loadMatchingResources({ supabase, gameId, mode, realtimeEn
 
   return {
     roles,
+    slotLayout,
     queue: queueResult,
     participantPool,
     roleStatusMap,

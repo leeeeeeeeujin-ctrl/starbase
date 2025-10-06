@@ -62,6 +62,32 @@ function serializeRoles(roles) {
     .filter(Boolean)
 }
 
+function serializeSlotLayout(layout) {
+  if (!Array.isArray(layout)) return []
+  return layout
+    .map((slot, index) => {
+      if (!slot) return null
+      const roleName = typeof slot.role === 'string' ? slot.role.trim() : ''
+      if (!roleName) return null
+      const rawIndex = Number(slot.slotIndex ?? slot.slot_index ?? index)
+      if (!Number.isFinite(rawIndex) || rawIndex < 0) return null
+      const payload = {
+        slotIndex: rawIndex,
+        role: roleName,
+      }
+      const heroId = slot.heroId ?? slot.hero_id
+      if (heroId != null && heroId !== '') {
+        payload.heroId = heroId
+      }
+      const heroOwnerId = slot.heroOwnerId ?? slot.hero_owner_id
+      if (heroOwnerId != null && heroOwnerId !== '') {
+        payload.heroOwnerId = heroOwnerId
+      }
+      return payload
+    })
+    .filter(Boolean)
+}
+
 function determineBrawlVacancies(roles, statusMap) {
   const vacancies = []
   if (!Array.isArray(roles) || !(statusMap instanceof Map)) {
@@ -117,7 +143,13 @@ export default async function handler(req, res) {
     const brawlEnabled = rules?.brawl_rule === 'allow-brawl'
     const toggles = extractMatchingToggles(gameRow, rules)
 
-    const { roles, queue: queueResult, participantPool, roleStatusMap } = await loadMatchingResources({
+    const {
+      roles,
+      slotLayout,
+      queue: queueResult,
+      participantPool,
+      roleStatusMap,
+    } = await loadMatchingResources({
       supabase,
       gameId,
       mode,
@@ -133,6 +165,7 @@ export default async function handler(req, res) {
       queueSize: Array.isArray(queueResult) ? queueResult.length : 0,
       participantPoolSize: Array.isArray(participantPool) ? participantPool.length : 0,
       roles: Array.isArray(roles) ? roles.map((role) => role?.name).filter(Boolean) : [],
+      slotLayout: serializeSlotLayout(slotLayout),
     }
 
     const baseLog = {
@@ -187,6 +220,7 @@ export default async function handler(req, res) {
             brawlVacancies,
             roleStatus: mapCountsToPlain(roleStatusMap),
             roles: serializeRoles(roles),
+            slotLayout: serializeSlotLayout(slotLayout),
           })
         }
       }
@@ -244,6 +278,7 @@ export default async function handler(req, res) {
           matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
           heroMap: mapToPlain(heroMap),
           roles: serializeRoles(roles),
+          slotLayout: serializeSlotLayout(slotLayout),
         })
       }
     }
@@ -279,6 +314,7 @@ export default async function handler(req, res) {
         error: result.error || null,
         sampleMeta,
         roles: serializeRoles(roles),
+        slotLayout: serializeSlotLayout(slotLayout),
       })
     }
 
@@ -316,6 +352,7 @@ export default async function handler(req, res) {
       heroMap: mapToPlain(heroMap),
       sampleMeta,
       roles: serializeRoles(roles),
+      slotLayout: serializeSlotLayout(slotLayout),
     })
   } catch (error) {
     await recordMatchmakingLog(supabase, {

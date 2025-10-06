@@ -77,8 +77,10 @@ async function resolveQueueHeroId(supabaseClient, { gameId, ownerId, heroId, rol
   return explicitHeroId
 }
 
-export async function loadActiveRoles(supabaseClient, gameId) {
-  if (!gameId) return []
+async function loadRoleResources(supabaseClient, gameId) {
+  if (!gameId) {
+    return { roles: [], slotLayout: [] }
+  }
 
   const [roleResult, slotResult, gameResult] = await Promise.all([
     withTable(supabaseClient, 'rank_game_roles', (table) =>
@@ -106,7 +108,11 @@ export async function loadActiveRoles(supabaseClient, gameId) {
   const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
   const gameRoles = Array.isArray(gameResult?.data?.roles) ? gameResult.data.roles : []
 
-  const { roles } = normaliseRolesAndSlots(roleRows, slotRows, gameRoles)
+  return normaliseRolesAndSlots(roleRows, slotRows, gameRoles)
+}
+
+export async function loadActiveRoles(supabaseClient, gameId) {
+  const { roles } = await loadRoleResources(supabaseClient, gameId)
   return roles
 }
 
@@ -246,38 +252,32 @@ function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []
 }
 
 export async function loadRoleLayout(supabaseClient, gameId) {
-  if (!gameId) {
-    return { roles: [], slotLayout: [] }
+  const result = await loadRoleResources(supabaseClient, gameId)
+  if (!Array.isArray(result.slotLayout)) {
+    return { roles: Array.isArray(result.roles) ? result.roles : [], slotLayout: [] }
   }
 
-  const [roleResult, slotResult, gameResult] = await Promise.all([
-    withTable(supabaseClient, 'rank_game_roles', (table) =>
-      supabaseClient
-        .from(table)
-        .select('name, slot_count, active')
-        .eq('game_id', gameId),
-    ),
-    withTable(supabaseClient, 'rank_game_slots', (table) =>
-      supabaseClient
-        .from(table)
-        .select('slot_index, role, active, hero_id, hero_owner_id')
-        .eq('game_id', gameId)
-        .order('slot_index', { ascending: true }),
-    ),
-    withTable(supabaseClient, 'rank_games', (table) =>
-      supabaseClient.from(table).select('roles').eq('id', gameId).maybeSingle(),
-    ),
-  ])
+  const sanitizedLayout = result.slotLayout
+    .map((slot, index) => {
+      if (!slot) return null
+      const roleName = normalizeRoleName(slot?.role)
+      if (!roleName) return null
+      const rawIndex = Number(slot?.slotIndex ?? slot?.slot_index ?? index)
+      if (!Number.isFinite(rawIndex) || rawIndex < 0) return null
+      return {
+        slotIndex: rawIndex,
+        role: roleName,
+        heroId: slot?.heroId ?? slot?.hero_id ?? null,
+        heroOwnerId: slot?.heroOwnerId ?? slot?.hero_owner_id ?? null,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.slotIndex - b.slotIndex)
 
-  if (roleResult?.error) throw roleResult.error
-  if (slotResult?.error) throw slotResult.error
-  if (gameResult?.error) throw gameResult.error
-
-  const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
-  const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
-  const gameRoles = Array.isArray(gameResult?.data?.roles) ? gameResult.data.roles : []
-
-  return normaliseRolesAndSlots(roleRows, slotRows, gameRoles)
+  return {
+    roles: Array.isArray(result.roles) ? result.roles : [],
+    slotLayout: sanitizedLayout,
+  }
 }
 
 export async function loadParticipantPool(supabaseClient, gameId) {
