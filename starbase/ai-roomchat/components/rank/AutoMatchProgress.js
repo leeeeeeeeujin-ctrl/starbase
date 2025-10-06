@@ -256,7 +256,9 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       latestStatusRef.current = state.status
       return
     }
-    if (matchRedirectedRef.current) return
+    if (requiresManualConfirmation && matchRedirectedRef.current) {
+      return
+    }
 
     const match = state.match
     if (!match) {
@@ -305,12 +307,18 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     })
 
     if (!saved) {
+      latestStatusRef.current = state.status
+      return
+    }
+
+    latestStatusRef.current = state.status
+
+    if (!requiresManualConfirmation) {
       return
     }
 
     matchRedirectedRef.current = true
     navigationLockedRef.current = true
-    latestStatusRef.current = state.status
     router.replace({ pathname: `/rank/${gameId}/match-ready`, query: { mode } })
   }, [
     gameId,
@@ -922,19 +930,21 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   ])
 
   useEffect(() => {
-    if (state.status !== 'matched') return undefined
     if (confirmationState !== 'confirmed') return undefined
+    if (!gameId) return undefined
+    if (requiresManualConfirmation) return undefined
 
     const timer = setTimeout(() => {
       if (navigationLockedRef.current) return
       navigationLockedRef.current = true
+      matchRedirectedRef.current = true
       router.replace({ pathname: `/rank/${gameId}/start`, query: { mode } })
     }, MATCH_TRANSITION_DELAY_MS)
 
     return () => {
       clearTimeout(timer)
     }
-  }, [confirmationState, gameId, mode, router, state.status])
+  }, [confirmationState, gameId, mode, requiresManualConfirmation, router])
 
   useEffect(() => {
     return () => {
