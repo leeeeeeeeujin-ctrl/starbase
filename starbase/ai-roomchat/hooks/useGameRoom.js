@@ -664,6 +664,40 @@ export function useGameRoom(
     }
   }, [gameId])
 
+  useEffect(() => {
+    if (!user?.id) return
+    if (!Array.isArray(participants) || !participants.length) return
+
+    const viewerKey = String(user.id)
+    const entry = participants.find((participant) => {
+      if (!participant) return false
+      const ownerId =
+        participant.owner_id != null
+          ? String(participant.owner_id)
+          : participant.ownerId != null
+            ? String(participant.ownerId)
+            : null
+      return ownerId === viewerKey
+    })
+
+    if (!entry) return
+
+    const heroRecord = entry.hero || null
+    if (!heroRecord || !heroRecord.id) return
+
+    if (myHero?.id === heroRecord.id) return
+
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('selectedHeroId', heroRecord.id)
+      }
+    } catch (err) {
+      console.warn('로컬 영웅 저장 실패:', err)
+    }
+
+    setMyHero(heroRecord)
+  }, [myHero?.id, participants, user?.id])
+
   const refreshBattles = useCallback(async () => {
     if (!gameId) return
     try {
