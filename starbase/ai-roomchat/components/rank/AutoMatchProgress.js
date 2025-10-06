@@ -19,11 +19,9 @@ import {
   ROLE_BLOCKER_MESSAGE,
   VIEWER_BLOCKER_MESSAGE,
 } from './matchConstants'
-import {
-  coerceHeroMap,
-  extractHeroIdsFromAssignments,
-  resolveMemberLabel,
-} from './matchUtils'
+import { coerceHeroMap, extractHeroIdsFromAssignments } from './matchUtils'
+import { buildRoleSummaries } from './queueSummaryUtils'
+import { buildMatchOverlaySummary } from './matchOverlayUtils'
 import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
 import { buildMatchMetaPayload, readStoredStartConfig, storeStartMatchMeta } from './startConfig'
 import {
@@ -1207,188 +1205,27 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     return assignments
   }, [state.match?.assignments, state.viewerId])
 
-  const assignmentSummary = useMemo(() => {
-    if (!relevantAssignments.length) return []
+  const roleSummaries = useMemo(
+    () =>
+      buildRoleSummaries({
+        match: state.match,
+        pendingMatch: state.pendingMatch,
+        roles: state.roles,
+        slotLayout: state.slotLayout,
+      }),
+    [state.match, state.pendingMatch, state.roles, state.slotLayout],
+  )
 
-    let fallbackRoleCounter = 0
-    const slotEntries = []
-
-    const mapMember = (member, assignmentIndex, slotKey, memberIndex, roleLabel) => {
-      const label = resolveMemberLabel({ member, heroMap })
-      const rawKey =
-        member?.id ??
-        member?.queue_id ??
-        member?.queueId ??
-        member?.owner_id ??
-        member?.ownerId ??
-        member?.hero_id ??
-        member?.heroId
-      const keyFragment =
-        typeof rawKey === 'string' || typeof rawKey === 'number'
-          ? String(rawKey)
-          : `${assignmentIndex}-${slotKey}-${memberIndex}`
-      return {
-        key: `${roleLabel}-${keyFragment}`,
-        label,
-      }
-    }
-
-    relevantAssignments.forEach((assignment, assignmentIndex) => {
-      const roleSlots = Array.isArray(assignment?.roleSlots)
-        ? assignment.roleSlots
-        : Array.isArray(assignment?.role_slots)
-        ? assignment.role_slots
-        : []
-
-      if (!roleSlots.length) {
-        fallbackRoleCounter += 1
-        const normalizedRole =
-          (typeof assignment?.role === 'string' && assignment.role.trim()) || ''
-        const fallbackLabel = normalizedRole || `역할 ${fallbackRoleCounter}`
-        const membersSource = Array.isArray(assignment?.members) ? assignment.members : []
-        const members = membersSource.map((member, memberIndex) =>
-          mapMember(member, assignmentIndex, 'assignment', memberIndex, fallbackLabel),
-        )
-        slotEntries.push({
-          assignmentIndex,
-          slotIndex: null,
-          order: fallbackRoleCounter,
-          roleName: normalizedRole,
-          fallbackLabel,
-          fallbackKey: fallbackRoleCounter,
-          members,
-        })
-        return
-      }
-
-      roleSlots.forEach((slot, slotOrderIndex) => {
-        fallbackRoleCounter += 1
-        const normalizedRole =
-          typeof slot?.role === 'string' && slot.role.trim() ? slot.role.trim() : ''
-        const fallbackLabel = normalizedRole || `역할 ${fallbackRoleCounter}`
-
-        const slotMembersRaw = Array.isArray(slot?.members)
-          ? slot.members
-          : slot?.member
-          ? [slot.member]
-          : []
-
-        let membersSource = slotMembersRaw
-        if (!membersSource.length && Array.isArray(assignment?.members)) {
-          const slotMember = slot?.member
-          if (slotMember) {
-            membersSource = assignment.members.filter((candidate) => {
-              if (!candidate) return false
-              const candidateOwner =
-                candidate.owner_id || candidate.ownerId || candidate.ownerID || null
-              const slotOwner =
-                slotMember.owner_id || slotMember.ownerId || slotMember.ownerID || null
-              if (
-                candidateOwner &&
-                slotOwner &&
-                String(candidateOwner) === String(slotOwner)
-              ) {
-                return true
-              }
-              const candidateHero = candidate.hero_id || candidate.heroId || null
-              const slotHero = slotMember.hero_id || slotMember.heroId || null
-              if (
-                candidateHero &&
-                slotHero &&
-                String(candidateHero) === String(slotHero)
-              ) {
-                return true
-              }
-              const candidateId =
-                candidate.id || candidate.queue_id || candidate.queueId || null
-              const slotId = slotMember.id || slotMember.queue_id || slotMember.queueId || null
-              if (candidateId && slotId && String(candidateId) === String(slotId)) {
-                return true
-              }
-              return false
-            })
-          }
-        }
-
-        const members = membersSource.map((member, memberIndex) =>
-          mapMember(
-            member,
-            assignmentIndex,
-            slot?.slotIndex ?? slot?.slot_index ?? slotOrderIndex,
-            memberIndex,
-            fallbackLabel,
-          ),
-        )
-
-        const slotIndexValue = Number(
-          slot?.slotIndex ??
-            slot?.slot_index ??
-            (Number.isFinite(Number(slot?.localIndex))
-              ? Number(slot?.localIndex)
-              : Number.isFinite(Number(slot?.local_index))
-              ? Number(slot?.local_index)
-              : Number.NaN),
-        )
-        const slotIndex = Number.isFinite(slotIndexValue) ? slotIndexValue : null
-
-        slotEntries.push({
-          assignmentIndex,
-          slotIndex,
-          order: fallbackRoleCounter,
-          roleName: normalizedRole,
-          fallbackLabel,
-          fallbackKey: fallbackRoleCounter,
-          members,
-        })
-      })
-    })
-
-    if (!slotEntries.length) return []
-
-    slotEntries.sort((a, b) => {
-      if (a.assignmentIndex !== b.assignmentIndex) {
-        return a.assignmentIndex - b.assignmentIndex
-      }
-      const aHasSlot = typeof a.slotIndex === 'number' && Number.isFinite(a.slotIndex)
-      const bHasSlot = typeof b.slotIndex === 'number' && Number.isFinite(b.slotIndex)
-      if (aHasSlot && bHasSlot && a.slotIndex !== b.slotIndex) {
-        return a.slotIndex - b.slotIndex
-      }
-      if (aHasSlot !== bHasSlot) {
-        return aHasSlot ? -1 : 1
-      }
-      return a.order - b.order
-    })
-
-    const summary = []
-    const groupMap = new Map()
-
-    slotEntries.forEach((entry) => {
-      const baseKey = entry.roleName
-        ? `role-${entry.assignmentIndex}-${entry.roleName}`
-        : `fallback-${entry.assignmentIndex}-${entry.fallbackKey}`
-      let group = groupMap.get(baseKey)
-      if (!group) {
-        group = {
-          key: baseKey,
-          role: entry.roleName || entry.fallbackLabel,
-          members: [],
-          memberKeys: new Set(),
-        }
-        groupMap.set(baseKey, group)
-        summary.push(group)
-      }
-      entry.members.forEach((member) => {
-        if (!member) return
-        const memberKey = member.key || `${baseKey}-${group.members.length}`
-        if (group.memberKeys.has(memberKey)) return
-        group.memberKeys.add(memberKey)
-        group.members.push(member)
-      })
-    })
-
-    return summary.map(({ memberKeys, ...rest }) => rest)
-  }, [heroMap, relevantAssignments])
+  const assignmentSummary = useMemo(
+    () =>
+      buildMatchOverlaySummary({
+        assignments: relevantAssignments,
+        heroMap,
+        roleSummaries,
+        rooms: state.match?.rooms,
+      }),
+    [heroMap, relevantAssignments, roleSummaries, state.match?.rooms],
+  )
 
   const matchMetaLines = useMemo(() => {
     if (!state.match) return playNotice ? [playNotice] : []
@@ -1556,9 +1393,15 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
                         </li>
                       ))}
                     </ul>
-                  ) : (
+                  ) : null}
+                  {assignment.missing > 0 ? (
+                    <p className={styles.assignmentEmpty}>
+                      남은 슬롯 {assignment.missing}
+                    </p>
+                  ) : null}
+                  {assignment.members.length === 0 && assignment.missing === 0 ? (
                     <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -1604,9 +1447,15 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
                           </li>
                         ))}
                       </ul>
-                    ) : (
+                    ) : null}
+                    {assignment.missing > 0 ? (
+                      <p className={styles.assignmentEmpty}>
+                        남은 슬롯 {assignment.missing}
+                      </p>
+                    ) : null}
+                    {assignment.members.length === 0 && assignment.missing === 0 ? (
                       <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
-                    )}
+                    ) : null}
                   </div>
                 ))}
               </div>
