@@ -8,9 +8,11 @@ import {
   flattenAssignmentMembers,
   loadActiveRoles,
   loadHeroesByIds,
+  loadOwnerParticipantRoster,
   loadQueueEntries,
   removeQueueEntry,
 } from '../../../lib/rank/matchmakingService'
+import { guessOwnerParticipant } from '../../../lib/rank/participantUtils'
 
 const POLL_INTERVAL_MS = 4000
 
@@ -43,30 +45,38 @@ async function loadViewer() {
   return data.user.id
 }
 
-async function loadViewerParticipation(gameId, ownerId) {
+async function loadViewerParticipation(
+  gameId,
+  ownerId,
+  { rolePreference = '', fallbackHeroId = '' } = {},
+) {
   if (!gameId || !ownerId) {
-    return { score: 1000, role: '', heroId: '' }
+    return { score: 1000, role: rolePreference || '', heroId: fallbackHeroId || '' }
   }
-  const result = await withTable(supabase, 'rank_participants', (table) =>
-    supabase
-      .from(table)
-      .select('score, rating, role, hero_id')
-      .eq('game_id', gameId)
-      .eq('owner_id', ownerId)
-      .maybeSingle(),
-  )
-  if (result?.error) return { score: 1000, role: '', heroId: '' }
-  const row = result?.data
-  if (!row) return { score: 1000, role: '', heroId: '' }
-  const score = Number(row.score)
-  if (Number.isFinite(score) && score > 0) {
-    return { score, role: row.role || '', heroId: row.hero_id || row.heroId || '' }
+
+  try {
+    const roster = await loadOwnerParticipantRoster(supabase, {
+      gameId,
+      ownerIds: [ownerId],
+    })
+
+    const guess = guessOwnerParticipant({
+      ownerId,
+      roster,
+      rolePreference,
+      fallbackHeroId,
+    })
+
+    return {
+      score: Number.isFinite(guess.score) ? guess.score : 1000,
+      role: guess.role || rolePreference || '',
+      heroId: guess.heroId || fallbackHeroId || '',
+    }
+  } catch (error) {
+    console.warn('참가자 정보를 불러오지 못했습니다:', error)
   }
-  const rating = Number(row.rating)
-  if (Number.isFinite(rating) && rating > 0) {
-    return { score: rating, role: row.role || '', heroId: row.hero_id || row.heroId || '' }
-  }
-  return { score: 1000, role: row?.role || '', heroId: row.hero_id || row.heroId || '' }
+
+  return { score: 1000, role: rolePreference || '', heroId: fallbackHeroId || '' }
 }
 
 async function loadFallbackHeroId(ownerId) {

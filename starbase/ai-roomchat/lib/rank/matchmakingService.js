@@ -13,6 +13,8 @@ import {
 } from './matchModes'
 import { withTable } from '../supabaseTables'
 import {
+  buildOwnerParticipantIndex,
+  guessOwnerParticipant,
   normalizeHeroIdValue,
   resolveParticipantHeroId as deriveParticipantHeroId,
 } from './participantUtils'
@@ -50,30 +52,26 @@ function resolveParticipantHeroId(row) {
   return deriveParticipantHeroId(row)
 }
 
-async function resolveQueueHeroId(supabaseClient, { gameId, ownerId, heroId }) {
+async function resolveQueueHeroId(supabaseClient, { gameId, ownerId, heroId, role }) {
   const explicitHeroId = normalizeHeroIdValue(heroId)
   if (!gameId || !ownerId) {
     return explicitHeroId
   }
 
-  const result = await withTable(supabaseClient, 'rank_participants', (table) =>
-    supabaseClient
-      .from(table)
-      .select('hero_id, hero_ids, heroId, heroIds')
-      .eq('game_id', gameId)
-      .eq('owner_id', ownerId)
-      .maybeSingle(),
-  )
-
-  if (result?.error) {
-    console.warn('참가자 정보를 확인하지 못했습니다:', result.error)
-    return explicitHeroId
-  }
-
-  const participant = result?.data
-  const participantHeroId = resolveParticipantHeroId(participant)
-  if (participantHeroId) {
-    return participantHeroId
+  try {
+    const roster = await loadOwnerParticipantRoster(supabaseClient, {
+      gameId,
+      ownerIds: [ownerId],
+    })
+    const guess = guessOwnerParticipant({
+      ownerId,
+      roster,
+      rolePreference: role,
+      fallbackHeroId: explicitHeroId,
+    })
+    return guess.heroId || explicitHeroId
+  } catch (error) {
+    console.warn('참가자 정보를 확인하지 못했습니다:', error)
   }
 
   return explicitHeroId
@@ -263,6 +261,56 @@ export async function loadParticipantPool(supabaseClient, gameId) {
     standin: true,
     match_source: 'participant_pool',
   }))
+}
+
+function normalizeOwnerIds(values = []) {
+  return values
+    .map((value) => {
+      if (value == null) return null
+      if (typeof value === 'string') return value.trim()
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+      if (typeof value === 'object' && value !== null && typeof value.id !== 'undefined') {
+        return String(value.id)
+      }
+      return null
+    })
+    .filter((value) => typeof value === 'string' && value.length > 0)
+}
+
+export async function loadOwnerParticipantRoster(
+  supabaseClient,
+  { gameId, ownerIds = [] } = {},
+) {
+  if (!gameId) {
+    return new Map()
+  }
+
+  const result = await withTable(supabaseClient, 'rank_participants', (table) => {
+    let query = supabaseClient
+      .from(table)
+      .select(
+        'owner_id, hero_id, hero_ids, role, score, rating, status, slot_index, slot_no, updated_at, created_at',
+      )
+      .eq('game_id', gameId)
+
+    const ids = normalizeOwnerIds(ownerIds)
+    if (ids.length > 0) {
+      if (ids.length === 1) {
+        query = query.eq('owner_id', ids[0])
+      } else {
+        query = query.in('owner_id', ids)
+      }
+    }
+
+    return query
+  })
+
+  if (result?.error) {
+    throw result.error
+  }
+
+  const rows = Array.isArray(result?.data) ? result.data : []
+  return buildOwnerParticipantIndex(rows)
 }
 
 function normalizeStatus(value) {
@@ -552,6 +600,7 @@ export async function enqueueParticipant(
     gameId,
     ownerId,
     heroId,
+    role,
   })
 
   const payload = {

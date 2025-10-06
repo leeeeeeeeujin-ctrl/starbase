@@ -1,6 +1,7 @@
 import {
   loadActiveRoles,
   loadMatchSampleSource,
+  loadOwnerParticipantRoster,
   runMatching,
   enqueueParticipant,
 } from '@/lib/rank/matchmakingService'
@@ -363,6 +364,74 @@ describe('enqueueParticipant', () => {
     expect(response.heroId).toBe('hero-explicit')
     expect(supabase.__tables.rank_match_queue).toHaveLength(1)
     expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-explicit')
+  })
+
+  it('selects the hero that matches the requested role when multiple entries exist', async () => {
+    const tables = {
+      rank_participants: [
+        {
+          game_id: 'game-hero',
+          owner_id: 'player-3',
+          hero_id: 'hero-attack',
+          role: 'attack',
+          score: 1400,
+        },
+        {
+          game_id: 'game-hero',
+          owner_id: 'player-3',
+          hero_id: 'hero-support',
+          role: 'support',
+          score: 1300,
+        },
+      ],
+      rank_match_queue: [],
+    }
+    const supabase = createSupabaseStub(tables)
+
+    const response = await enqueueParticipant(supabase, {
+      gameId: 'game-hero',
+      mode: 'rank_solo',
+      ownerId: 'player-3',
+      heroId: 'hero-manual',
+      role: 'support',
+      score: 1250,
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.heroId).toBe('hero-support')
+    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-support')
+  })
+})
+
+describe('loadOwnerParticipantRoster', () => {
+  it('returns a roster map scoped to the provided owners', async () => {
+    const tables = {
+      rank_participants: [
+        {
+          game_id: 'game-roster',
+          owner_id: 'owner-1',
+          hero_id: 'hero-a',
+          role: 'attack',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          game_id: 'game-roster',
+          owner_id: 'owner-2',
+          hero_id: 'hero-b',
+          role: 'support',
+        },
+      ],
+    }
+    const supabase = createSupabaseStub(tables)
+
+    const roster = await loadOwnerParticipantRoster(supabase, {
+      gameId: 'game-roster',
+      ownerIds: ['owner-1'],
+    })
+
+    expect(roster.get('owner-1')).toHaveLength(1)
+    expect(roster.get('owner-1')?.[0]?.heroId).toBe('hero-a')
+    expect(roster.get('owner-2')).toBeUndefined()
   })
 })
 
