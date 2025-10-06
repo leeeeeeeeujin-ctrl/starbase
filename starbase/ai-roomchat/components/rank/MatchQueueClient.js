@@ -365,7 +365,34 @@ export default function MatchQueueClient({
   autoStart = false,
 }) {
   const router = useRouter()
-  const { state, actions } = useMatchQueue({ gameId, mode, enabled: true })
+  const [autoJoinError, setAutoJoinError] = useState('')
+  const apiKeyExpiredHandledRef = useRef(false)
+  useEffect(() => {
+    apiKeyExpiredHandledRef.current = false
+  }, [gameId])
+  const handleApiKeyExpired = useCallback(
+    () => {
+      if (apiKeyExpiredHandledRef.current) return
+      apiKeyExpiredHandledRef.current = true
+      const notice = 'API 키가 만료되었습니다. 새 API 키를 사용해주세요.'
+      setAutoJoinError(notice)
+      try {
+        if (typeof window !== 'undefined') {
+          window.alert(notice)
+        }
+      } catch (alertError) {
+        console.warn('[MatchQueue] API 키 만료 알림 표시 실패:', alertError)
+      }
+      router.replace(`/rank/${gameId}`)
+    },
+    [router, gameId],
+  )
+  const { state, actions } = useMatchQueue({
+    gameId,
+    mode,
+    enabled: true,
+    onApiKeyExpired: handleApiKeyExpired,
+  })
   const {
     loading: plannerLoading,
     error: plannerError,
@@ -400,7 +427,6 @@ export default function MatchQueueClient({
       return { role, filled, total, missing, ready }
     })
   }, [state.match, state.pendingMatch])
-  const [autoJoinError, setAutoJoinError] = useState('')
   const [plannerExportNotice, setPlannerExportNotice] = useState('')
   const autoJoinSignatureRef = useRef('')
   const autoJoinRetryTimerRef = useRef(null)

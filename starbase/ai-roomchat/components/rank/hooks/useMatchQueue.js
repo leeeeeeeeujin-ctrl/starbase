@@ -161,9 +161,9 @@ async function loadOwnerHeroEntries(ownerId) {
     const result = await withTable(supabase, 'heroes', (table) =>
       supabase
         .from(table)
-        .select(
-          'id, owner_id, name, hero_name:name, role, role_name, roleName, score, rating, mmr, rank_score, rankScore, status, image_url, avatar_url, hero_avatar_url',
-        )
+        .select('id, owner_id, name, hero_name:name, image_url, updated_at, created_at')
+        // NOTE: per-game 역할/점수 정보는 `rank_participants`에 저장되어 있으므로
+        // `heroes` 뷰에서는 기본 프로필 필드만 요청한다.
         .eq('owner_id', ownerId),
     )
 
@@ -336,7 +336,13 @@ async function upsertParticipantRole({ gameId, ownerId, heroId, role, score }) {
   return { ok: true }
 }
 
-export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) {
+export default function useMatchQueue({
+  gameId,
+  mode,
+  enabled,
+  initialHeroId,
+  onApiKeyExpired,
+}) {
   const [viewerId, setViewerId] = useState('')
   const [heroId, setHeroId] = useState(() => (initialHeroId ? String(initialHeroId) : ''))
   const heroIdRef = useRef(heroId || '')
@@ -579,6 +585,34 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
 
       if (!response.ok) {
         const message = payload?.detail || payload?.error || '매칭 정보를 불러오지 못했습니다.'
+        if (response.status === 400) {
+          const notice = 'API 키가 만료되었습니다. 새 API 키를 사용해주세요.'
+          setError(notice)
+          setStatus('idle')
+          setMatch(null)
+          setPendingMatch(null)
+          setSampleMeta(null)
+          if (viewerId) {
+            try {
+              await removeQueueEntry(supabase, { gameId, mode, ownerId: viewerId })
+            } catch (cleanupError) {
+              console.warn('[MatchQueue] 대기열 정리 실패:', cleanupError)
+            }
+          }
+          if (typeof onApiKeyExpired === 'function') {
+            try {
+              onApiKeyExpired({
+                status: response.status,
+                message: notice,
+                detail: payload?.detail || '',
+                error: payload?.error || '',
+              })
+            } catch (callbackError) {
+              console.warn('[MatchQueue] API 키 만료 콜백 실행 실패:', callbackError)
+            }
+          }
+          return
+        }
         setError(message)
         return
       }
@@ -650,7 +684,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
     } catch (cause) {
       console.error('매칭 확인 실패:', cause)
     }
-  }, [enabled, status, gameId, mode, viewerId])
+  }, [enabled, status, gameId, mode, viewerId, onApiKeyExpired])
 
   useEffect(() => {
     probeRef.current = runMatchProbe
