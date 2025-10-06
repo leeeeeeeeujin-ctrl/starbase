@@ -1,4 +1,4 @@
-import { buildCandidateSample } from '@/lib/rank/matchingPipeline'
+import { buildCandidateSample, extractMatchingToggles } from '@/lib/rank/matchingPipeline'
 
 function createQueueEntry({
   id,
@@ -137,5 +137,26 @@ describe('buildCandidateSample', () => {
 
     expect(meta.duplicateEligible).toBe(2)
     expect(meta.duplicateSelected).toBe(1)
+  })
+})
+
+describe('extractMatchingToggles', () => {
+  it('treats string "false" realtime flag as disabled', () => {
+    const toggles = extractMatchingToggles({ realtime_match: 'false' })
+    expect(toggles.realtimeEnabled).toBe(false)
+  })
+
+  it('treats string "true" realtime flag as enabled', () => {
+    const toggles = extractMatchingToggles({ realtime_match: 'true' })
+    expect(toggles.realtimeEnabled).toBe(true)
+  })
+
+  it('parses drop-in rule aliases', () => {
+    const toggles = extractMatchingToggles(
+      { realtime_match: 0 },
+      { drop_in: 'allow', allow_drop_in: 'off', dropIn: 'enabled' },
+    )
+    expect(toggles.realtimeEnabled).toBe(false)
+    expect(toggles.dropInEnabled).toBe(true)
   })
 })

@@ -24,6 +24,10 @@ import {
   writeStartSessionValue,
   writeStartSessionValues,
 } from '../../lib/rank/startSessionChannel'
+import {
+  normalizeHeroIdValue,
+  resolveParticipantHeroId,
+} from '../../lib/rank/participantUtils'
 
 export default function GameRoomPage() {
   const router = useRouter()
@@ -150,26 +154,22 @@ export default function GameRoomPage() {
       return []
     }
 
-    const entryHeroId = myEntry?.hero_id || myEntry?.heroId || myEntry?.hero?.id || null
+    const entryHeroId = normalizeHeroIdValue(
+      myEntry ? resolveParticipantHeroId(myEntry) : myHero?.id,
+    )
+
     return viewerRows.filter((participant) => {
       if (!participant) return false
       if (myEntry?.id && participant.id === myEntry.id) return false
-      if (entryHeroId != null) {
-        const heroId =
-          participant.hero_id != null
-            ? participant.hero_id
-            : participant.heroId != null
-              ? participant.heroId
-              : participant.hero?.id != null
-                ? participant.hero.id
-                : null
-        if (heroId != null && heroId === entryHeroId) {
+      if (entryHeroId) {
+        const heroId = normalizeHeroIdValue(resolveParticipantHeroId(participant))
+        if (heroId && heroId === entryHeroId) {
           return false
         }
       }
       return true
     })
-  }, [myEntry?.hero?.id, myEntry?.heroId, myEntry?.hero_id, myEntry?.id, participants, viewerKey])
+  }, [myEntry, myHero?.id, participants, viewerKey])
 
   const conflictingOthers = participantConflicts
 

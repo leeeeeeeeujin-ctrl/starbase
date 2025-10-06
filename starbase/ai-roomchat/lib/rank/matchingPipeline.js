@@ -53,6 +53,34 @@ function normalizeId(value) {
   return String(value)
 }
 
+function normalizeBooleanFlag(value, defaultValue = false) {
+  if (value == null) return defaultValue
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return defaultValue
+    return value !== 0
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return defaultValue
+    if (['true', '1', 'yes', 'on', 'enable', 'enabled'].includes(normalized)) {
+      return true
+    }
+    if (['false', '0', 'no', 'off', 'disable', 'disabled'].includes(normalized)) {
+      return false
+    }
+    if (normalized === 'allow') return true
+    if (normalized === 'forbid' || normalized === 'ban') return false
+    if (normalized === 'allow-drop-in') return true
+  }
+  if (typeof value === 'object' && value !== null) {
+    if (typeof value.value !== 'undefined') {
+      return normalizeBooleanFlag(value.value, defaultValue)
+    }
+  }
+  return Boolean(value)
+}
+
 function normalizeRoleName(raw) {
   if (!raw) return ''
   if (typeof raw === 'string') return raw.trim()
@@ -285,31 +313,31 @@ async function claimDropInSlot({ supabase, room, slot, entry }) {
 }
 
 export function extractMatchingToggles(gameRow, rules = {}) {
-  const realtimeEnabled = Boolean(gameRow?.realtime_match)
+  const realtimeEnabled = normalizeBooleanFlag(gameRow?.realtime_match, false)
+
   let dropInEnabled = false
-  DROP_IN_RULE_KEYS.some((key) => {
-    const value = rules?.[key]
-    if (typeof value === 'string') {
-      if (value === 'allow' || value === 'enabled' || value === 'on' || value === 'true') {
+  for (const key of DROP_IN_RULE_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(rules || {}, key)) {
+      continue
+    }
+    const candidate = rules?.[key]
+    if (typeof candidate === 'string') {
+      const normalized = candidate.trim().toLowerCase()
+      if (!normalized) continue
+      if (['allow', 'allow-drop-in', 'enabled', 'enable', 'on', 'true', 'yes', '1'].includes(normalized)) {
         dropInEnabled = true
-        return true
+        break
       }
-      if (value === 'forbid' || value === 'disabled' || value === 'off' || value === 'false') {
+      if (['forbid', 'disabled', 'disable', 'off', 'false', 'no', '0', 'ban'].includes(normalized)) {
         dropInEnabled = false
-        return true
+        break
       }
-      return false
+      continue
     }
-    if (typeof value === 'boolean') {
-      dropInEnabled = value
-      return true
-    }
-    if (value === 'allow-drop-in') {
-      dropInEnabled = true
-      return true
-    }
-    return false
-  })
+    dropInEnabled = normalizeBooleanFlag(candidate, dropInEnabled)
+    break
+  }
+
   return { realtimeEnabled, dropInEnabled }
 }
 
