@@ -16,6 +16,7 @@ function formatDate(value) {
 }
 
 function getParticipantLabel(row) {
+  if (row.name) return row.name
   if (row.hero_name) return row.hero_name
   if (row.hero_id) return row.hero_id
   if (row.owner_id) return row.owner_id.slice(0, 8)
@@ -170,6 +171,7 @@ export default function GameDetail({
   if (hasConflict) {
     const heroSummaries = conflictingOthers.map((row) => {
       const heroName =
+        (typeof row?.name === 'string' && row.name.trim()) ||
         (typeof row?.hero_name === 'string' && row.hero_name.trim()) ||
         (typeof row?.heroName === 'string' && row.heroName.trim()) ||
         (row?.hero && typeof row.hero.name === 'string' && row.hero.name.trim()) ||

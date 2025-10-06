@@ -209,8 +209,10 @@ async function loadOwnerHeroEntries(ownerId) {
           score,
           slotIndex: null,
           status,
+          name: row?.name || row?.hero_name || row?.heroName || '',
           raw: {
             hero_id: heroId,
+            name: row?.name || '',
             hero_name: row?.name || row?.hero_name || row?.heroName || '',
             hero_avatar_url: row?.image_url || row?.avatar_url || row?.hero_avatar_url || null,
           },
@@ -668,16 +670,46 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
 
   const joinQueue = useCallback(
     async (role) => {
-      if (!enabled) return { ok: false, error: '매칭이 비활성화되어 있습니다.' }
-      if (!viewerId) return { ok: false, error: '로그인이 필요합니다.' }
+      if (!enabled) {
+        console.warn('[MatchQueue] joinQueue 중단: 매칭 비활성화 상태', {
+          gameId,
+          mode,
+          viewerId,
+        })
+        return { ok: false, error: '매칭이 비활성화되어 있습니다.' }
+      }
+      if (!viewerId) {
+        console.warn('[MatchQueue] joinQueue 중단: 로그인 필요', { gameId, mode, role })
+        return { ok: false, error: '로그인이 필요합니다.' }
+      }
       const activeHero = readStoredHeroId() || heroId
-      if (!activeHero) return { ok: false, error: '먼저 사용할 캐릭터를 선택해 주세요.' }
+      if (!activeHero) {
+        console.warn('[MatchQueue] joinQueue 중단: 선택된 캐릭터 없음', {
+          viewerId,
+          role,
+        })
+        return { ok: false, error: '먼저 사용할 캐릭터를 선택해 주세요.' }
+      }
       const finalRole = lockedRole || role
-      if (!finalRole) return { ok: false, error: '역할을 선택해 주세요.' }
+      if (!finalRole) {
+        console.warn('[MatchQueue] joinQueue 중단: 역할 미선택', {
+          viewerId,
+          heroId: activeHero,
+        })
+        return { ok: false, error: '역할을 선택해 주세요.' }
+      }
 
       setLoading(true)
       setError('')
       try {
+        console.info('[MatchQueue] 대기열 참가 요청', {
+          gameId,
+          mode,
+          viewerId,
+          heroId: activeHero,
+          role: finalRole,
+          score,
+        })
         const response = await enqueueParticipant(supabase, {
           gameId,
           mode,
@@ -687,6 +719,14 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
           score,
         })
         if (!response.ok) {
+          console.error('[MatchQueue] 대기열 참가 실패', {
+            gameId,
+            mode,
+            viewerId,
+            heroId: activeHero,
+            role: finalRole,
+            error: response.error,
+          })
           setError(response.error || '대기열에 참가하지 못했습니다.')
           return response
         }
@@ -704,6 +744,12 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
           score,
         })
         if (!persisted.ok && persisted.error) {
+          console.warn('[MatchQueue] 참가자 역할 저장 실패', {
+            viewerId,
+            heroId: queueHeroId,
+            role: finalRole,
+            error: persisted.error,
+          })
           setError(persisted.error)
         }
 
@@ -718,6 +764,11 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
         }
         setSampleMeta(null)
         setPendingMatch(null)
+        console.info('[MatchQueue] 대기열 참가 완료', {
+          viewerId,
+          heroId: queueHeroId,
+          role: finalRole,
+        })
         return { ok: true }
       } finally {
         setLoading(false)
@@ -784,6 +835,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
                 name:
                   meta?.name ||
                   meta?.hero_name ||
+                  entry.raw?.name ||
                   entry.raw?.hero_name ||
                   (resolvedId ? `ID ${resolvedId}` : ''),
                 avatarUrl: meta?.image_url || meta?.avatar_url || null,

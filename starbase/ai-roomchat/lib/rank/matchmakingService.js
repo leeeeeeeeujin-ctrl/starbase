@@ -699,6 +699,7 @@ export async function loadHeroesByIds(supabaseClient, heroIds) {
       {
         id: row.id,
         name: row.name,
+        hero_name: row.name,
         imageUrl: row.image_url,
         image_url: row.image_url,
         ownerId: row.owner_id,

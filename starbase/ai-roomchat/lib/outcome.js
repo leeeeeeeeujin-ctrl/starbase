@@ -11,7 +11,7 @@ const out = []
 
 
 for (const p of participants) {
-const name = p.heroes?.name || p.hero_name || ''
+  const name = p.heroes?.name || p.name || p.hero_name || ''
 if (!name) continue
 if (!last.includes(name)) continue
 

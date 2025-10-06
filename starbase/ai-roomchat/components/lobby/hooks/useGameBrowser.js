@@ -18,7 +18,7 @@ function computeGameStats(participants = [], battles = [], game = {}) {
     .map((row, index) => ({
       rank: index + 1,
       heroId: row.hero_id,
-      heroName: row.hero_name || row.hero_id || '알 수 없음',
+      heroName: row.name || row.hero_name || row.hero_id || '알 수 없음',
       rating: row.rating ?? 0,
       battles: row.battles ?? 0,
       winRate: row.win_rate ?? 0,
@@ -673,7 +673,7 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
         .map((row, index) => ({
           rank: index + 1,
           hero_id: row.hero_id,
-          hero_name: row.hero_name || row.hero_id,
+          hero_name: row.name || row.hero_name || row.hero_id,
           rating: row.rating ?? 0,
           battles: row.battles ?? 0,
           win_rate: row.win_rate ?? 0,

@@ -97,7 +97,7 @@ function MemberList({ assignment, heroMap }) {
           member.id || `${member.owner_id || member.ownerId}-${member.hero_id || member.heroId}`
         const heroId = member.hero_id || member.heroId
         const hero = resolveHero(heroMap, heroId)
-        const label = hero?.name || member.hero_name || '미지정 영웅'
+        const label = hero?.name || member.name || member.hero_name || '미지정 영웅'
         const score = member.score ?? member.rating ?? member.mmr
         const source = member.match_source || (member.standin ? 'participant_pool' : 'realtime_queue')
         const sourceLabel =
@@ -151,6 +151,7 @@ function RosterHeroPicker({
         const name =
           meta?.name ||
           meta?.hero_name ||
+          entry.raw?.name ||
           entry.raw?.hero_name ||
           entry.name ||
           `ID ${heroId}`

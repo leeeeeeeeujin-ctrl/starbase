@@ -149,7 +149,8 @@ function normaliseEntry(entry) {
     ownerId,
     viewerId,
     heroId: heroId || null,
-    heroName: normaliseString(entry.heroName || entry.hero_name) || null,
+    heroName:
+      normaliseString(entry.heroName || entry.hero_name || entry.name) || null,
     role: role || null,
     slotIndex: normalizedSlotIndex,
     slotIndices,
@@ -313,7 +314,8 @@ export function registerMatchConnections({
       const heroRecord = resolveHeroFromMap(heroMap, heroId)
       const heroName =
         normaliseString(heroRecord?.name) ||
-        normaliseString(member.hero_name ?? member.heroName) ||
+        normaliseString(heroRecord?.hero_name) ||
+        normaliseString(member.hero_name ?? member.heroName ?? member.name) ||
         null
       const matched = matchMemberToSlot(member, slotEntries, usedSlotIndices)
       const slotIndex = matched?.slot?.slotIndex ?? matched?.index ?? null

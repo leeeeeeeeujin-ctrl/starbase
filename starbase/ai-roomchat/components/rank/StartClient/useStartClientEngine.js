@@ -1369,6 +1369,7 @@ export function useStartClientEngine(gameId) {
         role: participant?.role || '',
         heroName:
           participant?.hero?.name ||
+          participant?.name ||
           participant?.hero_name ||
           participant?.heroName ||
           '',
