@@ -63,6 +63,11 @@
 - `AutoMatchProgress`는 매칭 확정 전에 대기열 타이머와 확인 카운트다운을 관리하고, 조건을 충족하지 못했을 때(예: 히어로 미지정, 확인 미응답) 자동으로 메인 룸으로 되돌리거나 재시도하도록 큐 서명을 초기화합니다. 이 동작은 멀티 모드 페이지에서 모두 동일하게 유지됩니다.【F:starbase/ai-roomchat/components/rank/AutoMatchProgress.js†L1-L420】
 - 매칭이 확정되고 확인 버튼을 누르면 `AutoMatchProgress`가 곧바로 `/api/rank/play`를 호출해 듀오·캐주얼 모드도 솔로와 동일한 서버 전투 파이프라인을 사용합니다. 호출 결과는 오버레이 메타 영역에 노출돼 플레이어가 바로 승패를 확인할 수 있습니다.【F:components/rank/AutoMatchProgress.js†L333-L432】【F:components/rank/AutoMatchProgress.js†L747-L812】
 
+## 2025-10-16 구현 메모
+- 솔로와 듀오 큐는 이제 동일한 **공유 방(room)** 구조를 사용합니다. `matchRankParticipants`가 파티 유무와 관계없이 역할별 그룹을 묶어 ±100/±200 점수 윈도우 안에서 방을 만들고, 빈 슬롯이 남으면 `rooms[].missingSlots`로 표시해 대기 상태를 반환합니다.【F:starbase/ai-roomchat/lib/rank/matching.js†L14-L208】
+- `runMatching`의 응답에는 `rooms` 필드가 추가되어 운영자가 역할별 충원 상황을 빠르게 파악할 수 있습니다. 준비가 끝난 방은 `ready: true`, 부족한 방은 `missingSlots`가 0보다 큰 상태로 돌아옵니다.【F:starbase/ai-roomchat/lib/rank/matching.js†L24-L111】【F:starbase/ai-roomchat/lib/rank/matchmakingService.js†L640-L646】
+- 듀오 파티는 동일 역할 내에서만 그룹화되며, 초대 인원이 점수 윈도우 밖에 있으면 자동으로 다음 윈도우가 열릴 때까지 대기합니다.【F:starbase/ai-roomchat/lib/rank/matching.js†L120-L206】
+
 ### 큐 충원 규칙
 - 게임 설정에서 **실시간 매칭**이 꺼져 있으면 `rank_participants` 참여자 풀을 랜덤으로 섞어 빈 슬롯을 채웁니다.
 - 실시간 모드는 큐에 실제로 합류한 참가자만 대상으로 매칭하며, 중복 선발을 막기 위해 큐 소유자와 참여자 풀을 분리합니다.

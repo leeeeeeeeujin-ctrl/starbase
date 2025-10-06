@@ -436,53 +436,90 @@ describe('loadOwnerParticipantRoster', () => {
 })
 
 describe('runMatching', () => {
-  it('ignores duplicate heroes when building assignments', () => {
+  it('groups solos and duos into a single room within the score window', () => {
     const result = runMatching({
       mode: 'rank_solo',
       roles: [
         {
           name: 'attack',
-          slot_count: 2,
+          slot_count: 3,
         },
       ],
       queue: [
         {
-          id: 'q1',
+          id: 'solo-1',
           role: 'attack',
           hero_id: 'hero-1',
           owner_id: 'owner-1',
-          score: 1200,
+          score: 1250,
           joined_at: '2024-01-01T00:00:00Z',
         },
         {
-          id: 'q2',
+          id: 'duo-1',
           role: 'attack',
           hero_id: 'hero-2',
           owner_id: 'owner-2',
-          score: 1210,
-          joined_at: '2024-01-01T00:00:10Z',
+          party_key: 'party-a',
+          score: 1240,
+          joined_at: '2024-01-01T00:00:05Z',
         },
         {
-          id: 'q3',
+          id: 'duo-2',
           role: 'attack',
-          hero_id: 'hero-1',
+          hero_id: 'hero-3',
           owner_id: 'owner-3',
-          score: 1190,
-          joined_at: '2024-01-01T00:00:20Z',
+          party_key: 'party-a',
+          score: 1265,
+          joined_at: '2024-01-01T00:00:06Z',
         },
       ],
     })
 
     expect(result.ready).toBe(true)
-    const heroes = result.assignments.flatMap((assignment) =>
-      assignment.members.map((member) => member.hero_id || member.heroId),
-    )
+    expect(result.assignments).toHaveLength(1)
+    expect(result.rooms).toHaveLength(1)
 
-    expect(heroes).toHaveLength(2)
-    expect(new Set(heroes)).toEqual(new Set(['hero-1', 'hero-2']))
+    const [assignment] = result.assignments
+    expect(assignment.members).toHaveLength(3)
+    expect(assignment.filledSlots).toBe(3)
+    expect(assignment.groups).toHaveLength(2)
+    expect(new Set(assignment.members.map((member) => member.owner_id || member.ownerId))).toEqual(
+      new Set(['owner-1', 'owner-2', 'owner-3']),
+    )
+    expect(result.rooms[0].missingSlots).toBe(0)
   })
 
-  it('fails to match when only duplicate heroes are available', () => {
+  it('returns a pending room when slots are missing', () => {
+    const result = runMatching({
+      mode: 'rank_solo',
+      roles: [
+        {
+          name: 'support',
+          slot_count: 2,
+        },
+      ],
+      queue: [
+        {
+          id: 'support-1',
+          role: 'support',
+          hero_id: 'hero-s1',
+          owner_id: 'supporter',
+          score: 990,
+          joined_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    })
+
+    expect(result.ready).toBe(false)
+    expect(result.assignments).toHaveLength(1)
+    const [assignment] = result.assignments
+    expect(assignment.ready).toBe(false)
+    expect(assignment.missingSlots).toBe(1)
+    expect(result.rooms[0].filledSlots).toBe(1)
+    expect(result.rooms[0].missingSlots).toBe(1)
+  })
+
+  it('prevents duplicate heroes from occupying the same room', () => {
     const result = runMatching({
       mode: 'rank_solo',
       roles: [
@@ -493,20 +530,20 @@ describe('runMatching', () => {
       ],
       queue: [
         {
-          id: 'q1',
+          id: 'a-1',
           role: 'attack',
-          hero_id: 'hero-1',
+          hero_id: 'hero-dup',
           owner_id: 'owner-1',
-          score: 1200,
+          score: 1180,
           joined_at: '2024-01-01T00:00:00Z',
         },
         {
-          id: 'q2',
+          id: 'a-2',
           role: 'attack',
-          hero_id: 'hero-1',
+          hero_id: 'hero-dup',
           owner_id: 'owner-2',
-          score: 1210,
-          joined_at: '2024-01-01T00:00:10Z',
+          score: 1195,
+          joined_at: '2024-01-01T00:00:05Z',
         },
       ],
     })
@@ -515,7 +552,7 @@ describe('runMatching', () => {
     expect(result.error?.type).toBe('insufficient_candidates')
   })
 
-  it('allows stand-in duplicates when they originate from the participant pool', () => {
+  it('allows a participant pool stand-in to pair with the original owner', () => {
     const result = runMatching({
       mode: 'rank_solo',
       roles: [
@@ -528,7 +565,7 @@ describe('runMatching', () => {
         {
           id: 'q1',
           role: 'attack',
-          hero_id: 'hero-1',
+          hero_id: 'hero-alpha',
           owner_id: 'creator',
           score: 1200,
           joined_at: '2024-01-01T00:00:00Z',
@@ -536,7 +573,7 @@ describe('runMatching', () => {
         {
           id: null,
           role: 'attack',
-          hero_id: 'hero-2',
+          hero_id: 'hero-beta',
           owner_id: 'creator',
           score: 1180,
           joined_at: '2024-01-01T00:00:05Z',
@@ -548,16 +585,45 @@ describe('runMatching', () => {
     })
 
     expect(result.ready).toBe(true)
-    expect(result.assignments).toHaveLength(2)
-
-    const memberOwners = result.assignments.map((assignment) =>
-      (assignment.members[0]?.owner_id || assignment.members[0]?.ownerId || null),
+    expect(result.assignments).toHaveLength(1)
+    expect(result.assignments[0].members).toHaveLength(2)
+    expect(new Set(result.assignments[0].members.map((member) => member.hero_id || member.heroId))).toEqual(
+      new Set(['hero-alpha', 'hero-beta']),
     )
-    expect(memberOwners).toEqual(['creator', 'creator'])
+  })
 
-    const heroIds = result.assignments.map((assignment) =>
-      assignment.members[0]?.hero_id || assignment.members[0]?.heroId || null,
-    )
-    expect(new Set(heroIds)).toEqual(new Set(['hero-1', 'hero-2']))
+  it('rejects parties that exceed the score window', () => {
+    const result = runMatching({
+      mode: 'rank_solo',
+      roles: [
+        {
+          name: 'attack',
+          slot_count: 2,
+        },
+      ],
+      queue: [
+        {
+          id: 'anchor',
+          role: 'attack',
+          hero_id: 'hero-a',
+          owner_id: 'owner-a',
+          score: 1400,
+          joined_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'out-of-window',
+          role: 'attack',
+          hero_id: 'hero-b',
+          owner_id: 'owner-b',
+          score: 1650,
+          joined_at: '2024-01-01T00:00:05Z',
+        },
+      ],
+    })
+
+    expect(result.ready).toBe(false)
+    expect(result.assignments).toHaveLength(1)
+    expect(result.assignments[0].members).toHaveLength(1)
+    expect(result.rooms[0].missingSlots).toBe(1)
   })
 })

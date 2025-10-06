@@ -406,6 +406,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       if (!payload?.ready) {
         setPendingMatch({
           assignments: Array.isArray(payload?.assignments) ? payload.assignments : [],
+          rooms: Array.isArray(payload?.rooms) ? payload.rooms : [],
           error: payload?.error || null,
           totalSlots: payload?.totalSlots ?? 0,
           maxWindow: payload?.maxWindow ?? 0,
@@ -442,6 +443,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
         sampleMeta: meta,
         dropInTarget: payload.dropInTarget || null,
         dropInMeta: payload.meta || null,
+        rooms: Array.isArray(payload.rooms) ? payload.rooms : [],
       })
     } catch (cause) {
       console.error('매칭 확인 실패:', cause)

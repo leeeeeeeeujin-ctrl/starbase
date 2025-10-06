@@ -496,6 +496,19 @@
   color: rgba(226, 232, 240, 0.75);
 }
 
+.queueReady {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success-foreground, #34d399);
+}
+
+.queuePending {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--warning-foreground, #f97316);
+}
+
 .plannerHeader {
   display: flex;
   align-items: flex-start;

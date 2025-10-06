@@ -643,8 +643,7 @@ export function runMatching({ mode, roles, queue }) {
   if (!matcher) {
     return { ready: false, assignments: [], totalSlots: 0, error: { type: 'unsupported_mode' } }
   }
-  const partySize = getDefaultPartySize(mode)
-  return matcher({ roles, queue, partySize })
+  return matcher({ roles, queue })
 }
 
 export function extractViewerAssignment({ assignments = [], viewerId }) {

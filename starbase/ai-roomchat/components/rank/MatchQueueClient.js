@@ -251,6 +251,22 @@ export default function MatchQueueClient({
   const navigationLockRef = useRef(false)
   const latestStatusRef = useRef('idle')
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
+  const roomSummaries = useMemo(() => {
+    const source = Array.isArray(state.match?.rooms) && state.match.rooms.length
+      ? state.match.rooms
+      : Array.isArray(state.pendingMatch?.rooms) && state.pendingMatch.rooms.length
+        ? state.pendingMatch.rooms
+        : []
+
+    return source.map((room) => {
+      const role = room?.role || '역할'
+      const filled = Number(room?.filledSlots ?? room?.filled_slots ?? 0)
+      const total = Number(room?.slotCount ?? room?.slots ?? 0)
+      const missing = Number(room?.missingSlots ?? room?.missing_slots ?? Math.max(0, total - filled))
+      const ready = room?.ready === true || (total > 0 && missing <= 0 && filled >= total)
+      return { role, filled, total, missing, ready }
+    })
+  }, [state.match, state.pendingMatch])
   const [autoJoinError, setAutoJoinError] = useState('')
   const [plannerExportNotice, setPlannerExportNotice] = useState('')
   const autoJoinSignatureRef = useRef('')
@@ -1204,7 +1220,23 @@ export default function MatchQueueClient({
 
       <section className={styles.card}>
         <h2 className={styles.sectionTitle}>대기열 현황</h2>
-        {queueByRole.length === 0 ? (
+        {roomSummaries.length > 0 ? (
+          <div className={styles.queueGrid}>
+            {roomSummaries.map((room) => (
+              <div key={room.role} className={styles.queueColumn}>
+                <h3 className={styles.queueRole}>{room.role}</h3>
+                <p className={styles.queueCount}>
+                  {room.filled}/{room.total}명 준비
+                </p>
+                {room.ready ? (
+                  <p className={styles.queueReady}>대기 완료</p>
+                ) : (
+                  <p className={styles.queuePending}>남은 슬롯 {Math.max(0, room.missing)}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : queueByRole.length === 0 ? (
           <p className={styles.emptyHint}>{emptyHint}</p>
         ) : (
           <div className={styles.queueGrid}>

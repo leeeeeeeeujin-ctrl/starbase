@@ -253,6 +253,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ready: false,
         assignments: result.assignments || [],
+        rooms: result.rooms || [],
         totalSlots: result.totalSlots,
         maxWindow: result.maxWindow || 0,
         error: result.error || null,
@@ -286,6 +287,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ready: true,
       assignments: result.assignments,
+      rooms: result.rooms || [],
       totalSlots: result.totalSlots,
       maxWindow: result.maxWindow || 0,
       matchCode,

@@ -7,22 +7,21 @@
 // (updating slots, marking queue entries, etc.) is left for the layer that
 // invokes these helpers.
 
-const DEFAULT_SCORE_WINDOWS = Object.freeze([100, 200, 300])
+const DEFAULT_SCORE_WINDOWS = Object.freeze([100, 200])
 const FALLBACK_SCORE = 1000
 
 export function matchSoloRankParticipants(options = {}) {
-  return matchRankParticipants({ ...options, partySize: 1 })
+  return matchRankParticipants(options)
 }
 
 export function matchDuoRankParticipants(options = {}) {
-  return matchRankParticipants({ ...options, partySize: 2 })
+  return matchRankParticipants(options)
 }
 
 export function matchRankParticipants({
   roles = [],
   queue = [],
   scoreWindows = DEFAULT_SCORE_WINDOWS,
-  partySize = 1,
 } = {}) {
   const normalizedRoles = normalizeRoles(roles)
   const totalSlots = countTotalSlots(normalizedRoles)
@@ -34,17 +33,19 @@ export function matchRankParticipants({
     })
   }
 
-  const buckets = buildRoleBuckets(queue, partySize)
+  const groupsByRole = buildMixedRoleGroups(queue)
   const usedGroupKeys = new Set()
   const usedHeroIds = new Set()
   const assignments = []
+  const rooms = []
   let maxWindow = 0
+  let allFilled = true
 
   for (const role of normalizedRoles) {
-    const resolution = resolveRankRole({
+    const groups = groupsByRole.get(role.name) || []
+    const resolution = resolveRoleWithRooms({
       role,
-      buckets,
-      partySize,
+      groups,
       scoreWindows,
       usedGroupKeys,
       usedHeroIds,
@@ -54,31 +55,44 @@ export function matchRankParticipants({
       return buildResult({
         ready: false,
         assignments: assignments.concat(resolution.partialAssignments ?? []),
+        rooms: rooms.concat(resolution.partialRooms ?? []),
         totalSlots,
+        maxWindow,
         error: {
           type: resolution.reason,
           role: role.name,
           missing: resolution.missing,
         },
-        maxWindow,
       })
     }
 
-    if (resolution.window > maxWindow) {
-      maxWindow = resolution.window
-    }
-
-    for (const assignment of resolution.assignments) {
+    const { assignment, room, window, heroIds, ready } = resolution
+    if (assignment) {
       assignments.push(assignment)
-      usedGroupKeys.add(assignment.groupKey)
-      appendHeroIds(usedHeroIds, assignment.heroIds)
+      rooms.push(room)
+      if (Array.isArray(heroIds)) {
+        appendHeroIds(usedHeroIds, heroIds)
+      }
+      if (room?.groups) {
+        room.groups.forEach((group) => {
+          if (group?.groupKey) {
+            usedGroupKeys.add(group.groupKey)
+          }
+        })
+      }
+      if (typeof window === 'number' && window > maxWindow) {
+        maxWindow = window
+      }
+      if (!ready) {
+        allFilled = false
+      }
     }
   }
 
-  const assignedSlots = assignments.reduce((acc, item) => acc + item.slots, 0)
   return buildResult({
-    ready: assignedSlots >= totalSlots,
+    ready: allFilled && assignments.length > 0,
     assignments,
+    rooms,
     totalSlots,
     maxWindow,
   })
@@ -139,53 +153,84 @@ export function matchCasualParticipants({ roles = [], queue = [], partySize = 1 
 }
 
 // ---------------------------------------------------------------------------
-// Core role resolution
+// Shared rank room helpers
 // ---------------------------------------------------------------------------
 
-function resolveRankRole({
-  role,
-  buckets,
-  partySize,
-  scoreWindows,
-  usedGroupKeys,
-  usedHeroIds,
-}) {
-  const available = getAvailableGroupsForRole({ role, buckets, usedGroupKeys, usedHeroIds })
-  if (available.length === 0) {
-    return { ok: false, reason: 'no_candidates', missing: role.slotCount }
-  }
-
-  const groupsNeeded = Math.ceil(role.slotCount / partySize)
-  const windows = normalizeWindows(scoreWindows)
-
-  for (let anchorIndex = 0; anchorIndex < available.length; anchorIndex += 1) {
-    const anchor = available[anchorIndex]
-    const attempt = tryPickRankGroups({
-      anchor,
-      anchorIndex,
-      available,
-      groupsNeeded,
-      role,
-      windows,
-      usedHeroIds,
-    })
-
-    if (attempt.ok) {
-      return {
-        ok: true,
-        assignments: materializeAssignments({
-          role,
-          picks: attempt.groups,
-        }),
-        window: attempt.window,
-      }
+function resolveRoleWithRooms({ role, groups, scoreWindows, usedGroupKeys, usedHeroIds }) {
+  const slotCount = Number(role?.slotCount) || 0
+  const candidates = Array.isArray(groups) ? groups.slice() : []
+  if (slotCount <= 0) {
+    return {
+      ok: false,
+      reason: 'no_active_slots',
+      missing: 0,
+      partialAssignments: [],
+      partialRooms: [],
     }
   }
 
+  const filtered = candidates
+    .filter((group) => {
+      if (!group) return false
+      if (usedGroupKeys.has(group.groupKey)) return false
+      if (hasHeroConflict(group.heroIds, usedHeroIds)) return false
+      const size = getGroupSize(group)
+      if (size <= 0) return false
+      return true
+    })
+    .sort((a, b) => a.joinedAt - b.joinedAt)
+
+  if (filtered.length === 0) {
+    return { ok: false, reason: 'no_candidates', missing: slotCount }
+  }
+
+  const windows = normalizeWindows(scoreWindows)
+  let best = null
+
+  for (let index = 0; index < filtered.length; index += 1) {
+    const anchor = filtered[index]
+    const anchorSize = getGroupSize(anchor)
+    if (anchorSize > slotCount) continue
+
+    for (const window of windows) {
+      const attempt = assembleRoomForRole({
+        anchor,
+        candidates: filtered,
+        slotCount,
+        window,
+        usedHeroIds,
+      })
+
+      if (!attempt) continue
+      if (!best || isBetterRoom(attempt, best)) {
+        best = attempt
+        if (attempt.ready) break
+      }
+    }
+
+    if (best?.ready) {
+      break
+    }
+  }
+
+  if (!best) {
+    return {
+      ok: false,
+      reason: 'insufficient_candidates',
+      missing: slotCount,
+    }
+  }
+
+  const assignment = createAssignmentFromGroups({ role, picks: best.picks, window: best.window })
+  const room = createRoomDescriptor({ role, picks: best.picks, window: best.window })
+
   return {
-    ok: false,
-    reason: 'insufficient_candidates',
-    missing: role.slotCount,
+    ok: true,
+    assignment,
+    room,
+    window: best.window,
+    heroIds: best.heroIds,
+    ready: best.ready,
   }
 }
 
@@ -329,6 +374,259 @@ function getAvailableGroupsForRole({ role, buckets, usedGroupKeys, usedHeroIds }
     if (hasHeroConflict(group.heroIds, usedHeroIds)) return false
     return true
   })
+}
+
+function buildMixedRoleGroups(queue) {
+  const normalized = normalizeQueue(queue)
+  const perRole = new Map()
+  const partyBuckets = new Map()
+
+  for (const candidate of normalized) {
+    if (!candidate.role) continue
+    if (candidate.partyKey) {
+      const composite = `${candidate.role}::${candidate.partyKey}`
+      if (!partyBuckets.has(composite)) {
+        partyBuckets.set(composite, [])
+      }
+      partyBuckets.get(composite).push(candidate)
+      continue
+    }
+
+    const soloGroup = {
+      role: candidate.role,
+      members: [candidate],
+      size: 1,
+      score: candidate.score,
+      joinedAt: candidate.joinedAt,
+      groupKey: candidate.groupKey,
+      partyKey: null,
+      heroIds: candidate.heroIds || [],
+    }
+    pushGroup(perRole, candidate.role, soloGroup)
+  }
+
+  for (const [composite, members] of partyBuckets.entries()) {
+    const [roleName, partyKey] = composite.split('::')
+    if (!roleName) continue
+    const sortedMembers = members.slice().sort((a, b) => a.joinedAt - b.joinedAt)
+    const averageScore = Math.round(
+      sortedMembers.reduce((acc, candidate) => acc + candidate.score, 0) /
+        sortedMembers.length,
+    )
+    const partyGroup = {
+      role: roleName,
+      members: sortedMembers,
+      size: sortedMembers.length,
+      score: averageScore,
+      joinedAt: sortedMembers[0]?.joinedAt ?? Number.MAX_SAFE_INTEGER,
+      groupKey: `party:${partyKey}`,
+      partyKey,
+      heroIds: collectGroupHeroIds(sortedMembers),
+    }
+    pushGroup(perRole, roleName, partyGroup)
+  }
+
+  for (const [, groups] of perRole.entries()) {
+    groups.sort((a, b) => a.joinedAt - b.joinedAt)
+  }
+
+  return perRole
+}
+
+function assembleRoomForRole({ anchor, candidates, slotCount, window, usedHeroIds }) {
+  if (!anchor) return null
+  const anchorSize = getGroupSize(anchor)
+  if (anchorSize <= 0 || anchorSize > slotCount) {
+    return null
+  }
+
+  const normalizedWindow = Number(window) || 0
+  const heroSet = new Set()
+  appendHeroIds(heroSet, anchor.heroIds)
+  const picks = [anchor]
+  let best = createRoomCandidate({ picks, heroSet, slotCount, window: normalizedWindow })
+
+  const others = candidates
+    .filter((group) => group && group.groupKey !== anchor.groupKey)
+    .sort((a, b) => a.joinedAt - b.joinedAt)
+
+  function dfs(startIndex, occupantCount) {
+    const candidateState = createRoomCandidate({
+      picks,
+      heroSet,
+      slotCount,
+      window: normalizedWindow,
+    })
+
+    if (!best || isBetterRoom(candidateState, best)) {
+      best = candidateState
+    }
+
+    if (occupantCount >= slotCount) {
+      return
+    }
+
+    for (let index = startIndex; index < others.length; index += 1) {
+      const group = others[index]
+      const size = getGroupSize(group)
+      if (size <= 0 || occupantCount + size > slotCount) continue
+
+      const scoreGap = Math.abs((group.score ?? FALLBACK_SCORE) - (anchor.score ?? FALLBACK_SCORE))
+      if (scoreGap > normalizedWindow) continue
+      if (hasHeroConflict(group.heroIds, heroSet, usedHeroIds)) continue
+
+      picks.push(group)
+      const added = addHeroIds(heroSet, group.heroIds)
+      dfs(index + 1, occupantCount + size)
+      picks.pop()
+      removeHeroIds(heroSet, added)
+    }
+  }
+
+  dfs(0, anchorSize)
+
+  return best
+}
+
+function createRoomCandidate({ picks, heroSet, slotCount, window }) {
+  const occupantCount = picks.reduce((acc, group) => acc + getGroupSize(group), 0)
+  const ready = slotCount > 0 && occupantCount >= slotCount
+  const latestJoin = picks.reduce((acc, group) => Math.max(acc, group.joinedAt ?? 0), 0)
+  return {
+    picks: picks.slice(),
+    heroIds: Array.from(heroSet),
+    occupantCount,
+    ready,
+    window,
+    latestJoin,
+  }
+}
+
+function isBetterRoom(candidate, current) {
+  if (!current) return true
+  if (candidate.ready && !current.ready) return true
+  if (!candidate.ready && current.ready) return false
+  if (candidate.occupantCount > current.occupantCount) return true
+  if (candidate.occupantCount < current.occupantCount) return false
+  if (candidate.latestJoin < current.latestJoin) return true
+  if (candidate.latestJoin > current.latestJoin) return false
+  return candidate.window < current.window
+}
+
+function createAssignmentFromGroups({ role, picks, window }) {
+  const slotCount = Number(role?.slotCount) || 0
+  const members = []
+  const groups = []
+  let filled = 0
+
+  picks.forEach((group) => {
+    const size = getGroupSize(group)
+    filled += size
+    groups.push({
+      groupKey: group.groupKey,
+      partyKey: group.partyKey ?? null,
+      size,
+      score: group.score,
+      joinedAt: group.joinedAt,
+      heroIds: Array.isArray(group.heroIds) ? group.heroIds.slice() : [],
+    })
+    group.members.forEach((candidate) => {
+      members.push(candidate.entry || candidate)
+    })
+  })
+
+  const missing = Math.max(0, slotCount - filled)
+
+  return {
+    role: role.name,
+    slots: slotCount,
+    filledSlots: Math.min(filled, slotCount),
+    missingSlots: missing,
+    ready: missing === 0 && slotCount > 0,
+    window,
+    members,
+    groups,
+    roomKey: buildRoomKey(role.name, picks),
+    anchorScore: picks[0]?.score ?? null,
+  }
+}
+
+function createRoomDescriptor({ role, picks, window }) {
+  const slotCount = Number(role?.slotCount) || 0
+  const members = []
+  const groups = []
+  let filled = 0
+
+  picks.forEach((group) => {
+    const size = getGroupSize(group)
+    filled += size
+    groups.push({
+      groupKey: group.groupKey,
+      partyKey: group.partyKey ?? null,
+      size,
+      score: group.score,
+      joinedAt: group.joinedAt,
+      heroIds: Array.isArray(group.heroIds) ? group.heroIds.slice() : [],
+    })
+    group.members.forEach((candidate) => {
+      members.push(candidate.entry || candidate)
+    })
+  })
+
+  const missing = Math.max(0, slotCount - filled)
+
+  return {
+    role: role.name,
+    slotCount,
+    filledSlots: Math.min(filled, slotCount),
+    missingSlots: missing,
+    ready: missing === 0 && slotCount > 0,
+    window,
+    members,
+    groups,
+    roomKey: buildRoomKey(role.name, picks),
+    anchorScore: picks[0]?.score ?? null,
+  }
+}
+
+function buildRoomKey(roleName, picks = []) {
+  const anchor = picks[0]
+  const baseKey = anchor?.groupKey || anchor?.partyKey || 'solo'
+  const joinedAt = anchor?.joinedAt ?? Date.now()
+  return `${roleName || 'role'}::${baseKey}::${joinedAt}`
+}
+
+function addHeroIds(targetSet, heroIds = []) {
+  const added = []
+  if (!targetSet || typeof targetSet.add !== 'function') return added
+  if (!Array.isArray(heroIds)) return added
+  heroIds.forEach((id) => {
+    if (!id) return
+    if (!targetSet.has(id)) {
+      targetSet.add(id)
+      added.push(id)
+    }
+  })
+  return added
+}
+
+function removeHeroIds(targetSet, heroIds = []) {
+  if (!targetSet || typeof targetSet.delete !== 'function') return
+  heroIds.forEach((id) => {
+    targetSet.delete(id)
+  })
+}
+
+function getGroupSize(group) {
+  if (!group) return 0
+  const numeric = Number(group.size)
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric
+  }
+  if (Array.isArray(group.members)) {
+    return group.members.length
+  }
+  return 0
 }
 
 // ---------------------------------------------------------------------------
@@ -625,10 +923,18 @@ function coerceInteger(value, fallback) {
   return Math.max(0, Math.trunc(parsed))
 }
 
-function buildResult({ ready, assignments = [], totalSlots = 0, maxWindow = 0, error = null }) {
+function buildResult({
+  ready,
+  assignments = [],
+  rooms = [],
+  totalSlots = 0,
+  maxWindow = 0,
+  error = null,
+}) {
   return {
     ready: Boolean(ready),
     assignments,
+    rooms,
     totalSlots,
     maxWindow,
     error,
