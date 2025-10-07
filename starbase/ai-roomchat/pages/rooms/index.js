@@ -20,6 +20,9 @@ const SCORE_WINDOWS = [
   { key: '200', label: '±200', value: 200 },
 ]
 
+const RANK_SCORE_WINDOWS = SCORE_WINDOWS.filter((option) => option.value !== null)
+const DEFAULT_RANK_SCORE_WINDOW = RANK_SCORE_WINDOWS[0]?.value ?? 80
+
 const styles = {
   page: {
     minHeight: '100vh',
@@ -383,7 +386,11 @@ export default function RoomBrowserPage() {
   const [heroRatings, setHeroRatings] = useState({})
   const [heroLoading, setHeroLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
-  const [createState, setCreateState] = useState({ mode: 'rank', gameId: '', scoreWindow: null })
+  const [createState, setCreateState] = useState({
+    mode: 'rank',
+    gameId: '',
+    scoreWindow: DEFAULT_RANK_SCORE_WINDOW,
+  })
   const [createPending, setCreatePending] = useState(false)
   const [createError, setCreateError] = useState('')
 
@@ -393,6 +400,21 @@ export default function RoomBrowserPage() {
       mountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    if (createState.mode !== 'rank') return
+    if (
+      createState.scoreWindow === null ||
+      !RANK_SCORE_WINDOWS.some((option) => option.value === createState.scoreWindow)
+    ) {
+      const fallback = DEFAULT_RANK_SCORE_WINDOW
+      setCreateState((prev) => {
+        if (prev.mode !== 'rank') return prev
+        if (prev.scoreWindow === fallback) return prev
+        return { ...prev, scoreWindow: fallback }
+      })
+    }
+  }, [createState.mode, createState.scoreWindow])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1110,6 +1132,11 @@ export default function RoomBrowserPage() {
     [createState.mode, createState.scoreWindow, heroSummary.ownerId, loadRooms, rooms, selectedGameId],
   )
 
+  const createScoreWindowOptions = useMemo(
+    () => (createState.mode === 'casual' ? SCORE_WINDOWS : RANK_SCORE_WINDOWS),
+    [createState.mode],
+  )
+
   const gameFilters = useMemo(() => {
     const unique = participations
       .filter((entry) => entry?.game?.id)
@@ -1288,20 +1315,23 @@ export default function RoomBrowserPage() {
                 <label style={styles.filtersLabel} htmlFor="room-score-select">
                   점수 범위 지정 (선택)
                 </label>
-                <select
-                  id="room-score-select"
-                  value={createState.scoreWindow ?? ''}
+                  <select
+                    id="room-score-select"
+                    value={createState.scoreWindow === null ? '' : String(createState.scoreWindow)}
                   onChange={(event) => {
                     const value = event.target.value ? Number(event.target.value) : null
                     setCreateState((prev) => ({ ...prev, scoreWindow: value }))
                   }}
                   style={styles.select}
                 >
-                  <option value="">점수 제한 없음</option>
-                  <option value="80">±80</option>
-                  <option value="120">±120</option>
-                  <option value="160">±160</option>
-                  <option value="200">±200</option>
+                  {createScoreWindowOptions.map((option) => (
+                    <option
+                      key={option.key}
+                      value={option.value === null ? '' : String(option.value)}
+                    >
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
