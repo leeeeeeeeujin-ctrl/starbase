@@ -2,13 +2,28 @@
 
 import crypto from 'crypto'
 
-const SECRET = process.env.RANK_API_KEY_SECRET || ''
+const RAW_SECRET = (process.env.RANK_API_KEY_SECRET || '').trim()
 
-if (!SECRET.trim()) {
+if (!RAW_SECRET) {
   throw new Error('Missing RANK_API_KEY_SECRET environment variable')
 }
 
-const KEY = crypto.createHash('sha256').update(SECRET, 'utf8').digest()
+function deriveKey(secret) {
+  let decoded
+  try {
+    decoded = Buffer.from(secret, 'base64')
+  } catch (error) {
+    decoded = null
+  }
+
+  if (decoded && decoded.length === 32) {
+    return decoded
+  }
+
+  return crypto.createHash('sha256').update(secret, 'utf8').digest()
+}
+
+const KEY = deriveKey(RAW_SECRET)
 const CURRENT_VERSION = 1
 
 export function encryptText(plainText) {

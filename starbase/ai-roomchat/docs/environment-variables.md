@@ -9,6 +9,7 @@
 | `SUPABASE_SERVICE_ROLE` | Supabase 서비스 롤 키로, 랭크 게임 관련 서버 API가 보호 테이블에 쓰기 작업을 수행할 때 사용합니다. | `lib/rank/db.js`, `pages/api/rank/*.js`, `supabase/functions/_shared/supabaseClient.ts` | Supabase 프로젝트 설정의 `service_role` 키 값을 그대로 사용합니다. 절대 클라이언트에 노출하지 마세요. Edge Function 환경에서는 `SUPABASE_SERVICE_ROLE_KEY` 변수명도 허용됩니다. |
 | `SUPABASE_ACCESS_TOKEN` *(CI 배포)* | Supabase CLI가 Edge Function을 배포할 때 사용하는 Personal Access Token입니다. | `scripts/deploy-edge-functions.js`, CI 파이프라인 | GitHub Actions 등의 시크릿 스토어에 저장해 CLI 인증에 사용하세요. |
 | `SUPABASE_PROJECT_REF` *(CI 배포)* | Supabase 프로젝트 참조 ID (`abcd1234` 형태)입니다. | `scripts/deploy-edge-functions.js`, CI 파이프라인 | CLI 배포 대상 프로젝트와 일치하도록 설정합니다. |
+| `RANK_API_KEY_SECRET` | AI API 키를 암호화해 `rank_user_api_keyring` 테이블에 저장할 때 사용하는 32바이트 비밀 키입니다. | `lib/rank/encryption.js`, `lib/rank/userApiKeyring.js`, `pages/api/rank/user-api-keyring.js` | Base64로 인코딩된 32바이트 값을 권장합니다. 미설정 시 서버가 즉시 오류를 발생시키므로 필수로 등록하세요. |
 | `RANK_SLOT_SWEEPER_SECRET` | 슬롯 정리 작업(`/api/rank/slot-sweeper`)을 트리거할 때 사용하는 공유 비밀입니다. | `pages/api/rank/slot-sweeper.js`, `docs/slot-sweeper-schedule.md` | 크론 잡이나 백오피스에서 호출 시 쿼리 파라미터 `secret` 값으로 전달합니다. 현재 기본값은 `171819`입니다. |
 | `RANK_COOLDOWN_ALERT_WEBHOOK_URL` | API 키 쿨다운 발생 시 Slack/Webhook 알림을 보낼 엔드포인트 URL입니다. | `lib/rank/cooldownAutomation.js`, `pages/api/rank/cooldown-report.js`, `pages/api/rank/cooldown-digest.js` | 미설정 시 경보는 건너뜁니다. |
 | `RANK_COOLDOWN_ALERT_WEBHOOK_AUTHORIZATION` *(선택)* | Webhook 호출에 사용할 `Authorization` 헤더 값입니다. | `lib/rank/cooldownAutomation.js` | 필요하지 않다면 비워 두세요. |
