@@ -14,6 +14,13 @@ import {
   readHeroSelection,
 } from '@/lib/heroes/selectedHeroStorage'
 
+const HOST_CLEANUP_DELAY_MS = 15000
+
+const hostCleanupState = {
+  timerId: null,
+  roomId: null,
+}
+
 const styles = {
   page: {
     minHeight: '100vh',
@@ -763,9 +770,18 @@ export default function RoomDetailPage() {
     [activeSlotId, loadRoom, viewer.ownerId],
   )
 
+  const cancelHostCleanup = useCallback(() => {
+    if (hostCleanupState.timerId) {
+      clearTimeout(hostCleanupState.timerId)
+      hostCleanupState.timerId = null
+      hostCleanupState.roomId = null
+    }
+  }, [])
+
   const deleteRoom = useCallback(
     async ({ silent = false, skipNavigate = false } = {}) => {
       if (!room?.id || !isHost) return
+      cancelHostCleanup()
       if (!silent) {
         setDeletePending(true)
         setActionError('')
@@ -793,8 +809,22 @@ export default function RoomDetailPage() {
         }
       }
     },
-    [isHost, room?.id, router],
+    [cancelHostCleanup, isHost, room?.id, router],
   )
+
+  const requestHostCleanup = useCallback(() => {
+    if (!isHost || !room?.id) return
+    if (typeof window === 'undefined') {
+      deleteRoom({ silent: true, skipNavigate: true })
+      return
+    }
+    cancelHostCleanup()
+    hostCleanupState.roomId = room.id
+    hostCleanupState.timerId = window.setTimeout(() => {
+      cancelHostCleanup()
+      deleteRoom({ silent: true, skipNavigate: true })
+    }, HOST_CLEANUP_DELAY_MS)
+  }, [cancelHostCleanup, deleteRoom, isHost, room?.id])
 
   const handleJoin = useCallback(async () => {
     if (!roomId) return
@@ -868,11 +898,11 @@ export default function RoomDetailPage() {
         leaveRoom({ silent: true, skipReload: true })
       }
       if (isHost && room?.id) {
-        deleteRoom({ silent: true, skipNavigate: true })
+        requestHostCleanup()
       }
     }
     return cleanup
-  }, [activeSlotId, viewer.ownerId, leaveRoom, isHost, room?.id, deleteRoom])
+  }, [activeSlotId, viewer.ownerId, leaveRoom, isHost, room?.id, requestHostCleanup])
 
   useEffect(() => {
     const handleRouteChange = () => {
@@ -880,14 +910,22 @@ export default function RoomDetailPage() {
         leaveRoom({ silent: true, skipReload: true })
       }
       if (isHost && room?.id) {
-        deleteRoom({ silent: true, skipNavigate: true })
+        requestHostCleanup()
       }
     }
     router.events.on('routeChangeStart', handleRouteChange)
     return () => {
       router.events.off('routeChangeStart', handleRouteChange)
     }
-  }, [activeSlotId, viewer.ownerId, leaveRoom, isHost, room?.id, deleteRoom, router.events])
+  }, [
+    activeSlotId,
+    viewer.ownerId,
+    leaveRoom,
+    isHost,
+    room?.id,
+    requestHostCleanup,
+    router.events,
+  ])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -896,14 +934,20 @@ export default function RoomDetailPage() {
         leaveRoom({ silent: true, skipReload: true })
       }
       if (isHost && room?.id) {
-        deleteRoom({ silent: true, skipNavigate: true })
+        requestHostCleanup()
       }
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [activeSlotId, viewer.ownerId, leaveRoom, isHost, room?.id, deleteRoom])
+  }, [activeSlotId, viewer.ownerId, leaveRoom, isHost, room?.id, requestHostCleanup])
+
+  useEffect(() => {
+    if (isHost && room?.id) {
+      cancelHostCleanup()
+    }
+  }, [cancelHostCleanup, isHost, room?.id])
 
   const joined = !!activeSlotId
   const hostRatingText = Number.isFinite(room?.hostRating)
