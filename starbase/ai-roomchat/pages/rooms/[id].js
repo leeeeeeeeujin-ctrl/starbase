@@ -5,6 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { supabase } from '@/lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
+import {
+  HERO_ID_KEY,
+  HERO_OWNER_KEY,
+  clearHeroSelection,
+  persistHeroOwner,
+  persistHeroSelection,
+  readHeroSelection,
+} from '@/lib/heroes/selectedHeroStorage'
 
 const styles = {
   page: {
@@ -317,16 +325,9 @@ export default function RoomDetailPage() {
     async (explicitHeroId) => {
       setViewerLoading(true)
       try {
-        let storedHeroId = ''
-        let storedOwnerId = ''
-        if (typeof window !== 'undefined') {
-          try {
-            storedHeroId = window.localStorage.getItem('selectedHeroId') || ''
-            storedOwnerId = window.localStorage.getItem('selectedHeroOwnerId') || ''
-          } catch (storageError) {
-            console.error('[RoomDetail] Failed to read stored hero metadata:', storageError)
-          }
-        }
+        const selection = readHeroSelection()
+        let storedHeroId = selection?.heroId || ''
+        let storedOwnerId = selection?.ownerId || ''
 
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
         if (sessionError) throw sessionError
@@ -338,6 +339,17 @@ export default function RoomDetailPage() {
           user = userData?.user || null
         }
 
+        const viewerOwnerKey = user?.id ? String(user.id) : ''
+        if (viewerOwnerKey) {
+          persistHeroOwner(viewerOwnerKey)
+        }
+
+        if (viewerOwnerKey && storedOwnerId && storedOwnerId !== viewerOwnerKey) {
+          clearHeroSelection()
+          storedHeroId = ''
+          storedOwnerId = ''
+        }
+
         const heroCandidate = explicitHeroId || storedHeroId || null
         let profile = null
         if (user) {
@@ -345,11 +357,10 @@ export default function RoomDetailPage() {
         }
 
         let resolvedHeroId = ''
-        if (heroCandidate) {
-          resolvedHeroId = heroCandidate
-        }
         if (profile?.hero_id) {
           resolvedHeroId = profile.hero_id
+        } else if (heroCandidate) {
+          resolvedHeroId = heroCandidate
         }
 
         let resolvedHeroName = ''
@@ -365,16 +376,29 @@ export default function RoomDetailPage() {
           }
         }
 
-        const resolvedOwnerId =
-          profile?.owner_id || profile?.user_id || storedOwnerId || user?.id || null
+        let resolvedOwnerId =
+          profile?.owner_id || profile?.user_id || storedOwnerId || viewerOwnerKey || null
+
+        if (viewerOwnerKey && resolvedOwnerId && resolvedOwnerId !== viewerOwnerKey) {
+          clearHeroSelection()
+          resolvedHeroId = ''
+          resolvedHeroName = ''
+          resolvedOwnerId = viewerOwnerKey
+        }
+
+        if (resolvedHeroId && resolvedOwnerId) {
+          persistHeroSelection({ id: resolvedHeroId }, resolvedOwnerId)
+        } else if (viewerOwnerKey) {
+          persistHeroOwner(viewerOwnerKey)
+        }
 
         if (mountedRef.current) {
           setViewer((prev) => ({
             ...prev,
             heroId: resolvedHeroId,
-            heroName: resolvedHeroName,
-            ownerId: resolvedOwnerId,
-            userId: user?.id || null,
+            heroName: resolvedHeroId ? resolvedHeroName || '이름 없는 영웅' : '',
+            ownerId: resolvedOwnerId || viewerOwnerKey || null,
+            userId: viewerOwnerKey || null,
           }))
         }
       } catch (viewerError) {
@@ -403,13 +427,17 @@ export default function RoomDetailPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
     const handleStorage = (event) => {
-      if (event.key === 'selectedHeroId' || event.key === 'selectedHeroOwnerId') {
-        loadViewerHero(heroParam)
+      if (event.key && event.key !== HERO_ID_KEY && event.key !== HERO_OWNER_KEY) {
+        return
       }
+      loadViewerHero(heroParam)
     }
+    const handleOverlayRefresh = () => loadViewerHero(heroParam)
     window.addEventListener('storage', handleStorage)
+    window.addEventListener('hero-overlay:refresh', handleOverlayRefresh)
     return () => {
       window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('hero-overlay:refresh', handleOverlayRefresh)
     }
   }, [heroParam, loadViewerHero])
   const loadRoom = useCallback(

@@ -6,6 +6,14 @@ import { supabase } from '@/lib/supabase'
 import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { withTable } from '@/lib/supabaseTables'
 import { fetchHeroParticipationBundle } from '@/modules/character/participation'
+import {
+  HERO_ID_KEY,
+  HERO_OWNER_KEY,
+  clearHeroSelection,
+  persistHeroOwner,
+  persistHeroSelection,
+  readHeroSelection,
+} from '@/lib/heroes/selectedHeroStorage'
 
 const MODE_TABS = [
   { key: 'rank', label: '랭크' },
@@ -375,6 +383,7 @@ export default function RoomBrowserPage() {
 
   const mountedRef = useRef(true)
 
+  const [viewerUserId, setViewerUserId] = useState('')
   const [storedHeroId, setStoredHeroId] = useState('')
   const [viewerHeroProfile, setViewerHeroProfile] = useState(null)
   const [rooms, setRooms] = useState([])
@@ -422,23 +431,42 @@ export default function RoomBrowserPage() {
   }, [createState.mode, createState.scoreWindow])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return undefined
 
     const syncStoredHero = () => {
       try {
-        const savedHeroId = window.localStorage.getItem('selectedHeroId') || ''
+        const selection = readHeroSelection()
+        const nextHeroId = selection?.heroId || ''
+        const selectionOwner = selection?.ownerId || ''
+        const viewerOwner = viewerUserId ? String(viewerUserId) : ''
+
+        if (viewerOwner && selectionOwner && selectionOwner !== viewerOwner) {
+          clearHeroSelection()
+          setStoredHeroId('')
+          setViewerHeroProfile((prev) => {
+            if (!prev) return prev
+            return null
+          })
+          return
+        }
+
+        if (nextHeroId && viewerOwner && !selectionOwner) {
+          persistHeroSelection({ id: nextHeroId }, viewerOwner)
+        }
+
         setStoredHeroId((prev) => {
-          if (prev === savedHeroId) return prev
-          return savedHeroId
+          if (prev === nextHeroId) return prev
+          return nextHeroId
         })
-        if (!savedHeroId) {
+
+        if (!nextHeroId) {
           setViewerHeroProfile((prev) => {
             if (!prev) return prev
             return null
           })
         }
       } catch (storageError) {
-        console.error('[RoomBrowser] Failed to read stored hero id:', storageError)
+        console.error('[RoomBrowser] Failed to sync hero selection:', storageError)
       }
     }
 
@@ -446,7 +474,7 @@ export default function RoomBrowserPage() {
 
     const handleStorage = (event) => {
       if (!event) return
-      if (event.key && event.key !== 'selectedHeroId' && event.key !== 'selectedHeroOwnerId') {
+      if (event.key && event.key !== HERO_ID_KEY && event.key !== HERO_OWNER_KEY) {
         return
       }
       syncStoredHero()
@@ -459,7 +487,12 @@ export default function RoomBrowserPage() {
       window.removeEventListener('storage', handleStorage)
       window.removeEventListener('hero-overlay:refresh', syncStoredHero)
     }
-  }, [])
+  }, [viewerUserId])
+
+  useEffect(() => {
+    if (!viewerUserId) return
+    persistHeroOwner(viewerUserId)
+  }, [viewerUserId])
 
   const resolvedHeroId = viewerHeroProfile?.hero_id || ''
   const effectiveHeroId = heroId || storedHeroId || resolvedHeroId
@@ -496,6 +529,10 @@ export default function RoomBrowserPage() {
           user = userData?.user || null
         }
 
+        if (!cancelled && mountedRef.current) {
+          setViewerUserId(user?.id || '')
+        }
+
         if (!user) {
           if (!cancelled && mountedRef.current) {
             setViewerHeroProfile(null)
@@ -505,6 +542,8 @@ export default function RoomBrowserPage() {
 
         const profile = await resolveViewerProfile(user, null)
         if (!cancelled && mountedRef.current) {
+          const resolvedOwner = profile?.owner_id || profile?.user_id || user.id || ''
+          setViewerUserId(resolvedOwner || user.id || '')
           if (profile?.hero_id) {
             setViewerHeroProfile(profile)
             setStoredHeroId((prev) => (prev ? prev : profile.hero_id))
@@ -516,6 +555,7 @@ export default function RoomBrowserPage() {
         console.error('[RoomBrowser] Failed to resolve viewer hero profile:', profileError)
         if (!cancelled && mountedRef.current) {
           setViewerHeroProfile(null)
+          setViewerUserId('')
         }
       } finally {
         resolvingViewerHeroRef.current = false
@@ -569,12 +609,33 @@ export default function RoomBrowserPage() {
       const ownerId =
         heroRow?.owner_id ?? fallbackSeed?.owner_id ?? viewerHeroProfile?.owner_id ?? viewerHeroProfile?.user_id ?? null
 
+      const viewerOwnerKey = viewerUserId ? String(viewerUserId) : ''
+      const resolvedOwnerKey = ownerId != null ? String(ownerId) : ''
+
+      if (viewerOwnerKey && resolvedOwnerKey && resolvedOwnerKey !== viewerOwnerKey) {
+        clearHeroSelection()
+        setStoredHeroId('')
+        setHeroSummary({ heroName: '', ownerId: null })
+        setParticipations([])
+        setHeroRatings({})
+        setSelectedGameId('all')
+        setCreateState((prev) => ({ ...prev, gameId: '' }))
+        setHeroLoading(false)
+        return
+      }
+
+      const effectiveOwnerId = resolvedOwnerKey || viewerOwnerKey || null
+
+      if (normalizedHeroId && effectiveOwnerId) {
+        persistHeroSelection({ id: normalizedHeroId }, effectiveOwnerId)
+      }
+
       const bundle = await fetchHeroParticipationBundle(normalizedHeroId, {
         heroSeed: heroRow
           ? {
               id: heroRow.id,
               name: heroName,
-              owner_id: ownerId,
+              owner_id: effectiveOwnerId,
             }
           : fallbackSeed || undefined,
       })
@@ -716,7 +777,7 @@ export default function RoomBrowserPage() {
 
       const uniqueGames = gameEntries
 
-      setHeroSummary({ heroName, ownerId })
+      setHeroSummary({ heroName, ownerId: effectiveOwnerId })
       setParticipations(uniqueGames)
 
       const defaultGame = uniqueGames.find((entry) => entry.game?.id === initialGameId)
@@ -726,7 +787,8 @@ export default function RoomBrowserPage() {
       setSelectedGameId(defaultGame || 'all')
       setCreateState((prev) => ({ ...prev, gameId: defaultGame || '' }))
 
-      if (ownerId && uniqueGames.length) {
+      const ratingOwnerId = effectiveOwnerId
+      if (ratingOwnerId && uniqueGames.length) {
         const gameIds = uniqueGames.map((entry) => entry.game.id)
         const { data: ratingRows, error: ratingError } = await withTable(
           supabase,
@@ -735,7 +797,7 @@ export default function RoomBrowserPage() {
             supabase
               .from(table)
               .select('game_id, rating')
-              .eq('owner_id', ownerId)
+              .eq('owner_id', ratingOwnerId)
               .in('game_id', gameIds),
         )
 
@@ -773,7 +835,16 @@ export default function RoomBrowserPage() {
         setHeroLoading(false)
       }
     }
-  }, [initialGameId, viewerHeroProfile?.name, viewerHeroProfile?.owner_id, viewerHeroProfile?.user_id, viewerHeroSeed?.id, viewerHeroSeed?.name, viewerHeroSeed?.owner_id])
+  }, [
+    initialGameId,
+    viewerHeroProfile?.name,
+    viewerHeroProfile?.owner_id,
+    viewerHeroProfile?.user_id,
+    viewerHeroSeed?.id,
+    viewerHeroSeed?.name,
+    viewerHeroSeed?.owner_id,
+    viewerUserId,
+  ])
 
   useEffect(() => {
     loadHeroContext(effectiveHeroId)

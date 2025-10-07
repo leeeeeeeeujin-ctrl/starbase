@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 import { useRoster } from '../../hooks/roster/useRoster'
 import RosterView from './RosterView'
 import { useAnnouncements } from '../../hooks/useAnnouncements'
+import { persistHeroSelection } from '../../lib/heroes/selectedHeroStorage'
 
 export default function RosterContainer() {
   const router = useRouter()
@@ -21,16 +22,11 @@ export default function RosterContainer() {
     (hero) => {
       if (!hero?.id) return
 
-      if (typeof window !== 'undefined') {
         try {
-          window.localStorage.setItem('selectedHeroId', hero.id)
-          if (hero.owner_id) {
-            window.localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
-          }
+          persistHeroSelection(hero)
         } catch (storageError) {
           console.error('Failed to persist selected hero before navigation:', storageError)
         }
-      }
 
       router.push(`/character/${hero.id}`)
     },

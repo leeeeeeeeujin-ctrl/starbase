@@ -5,6 +5,11 @@ import { useRouter } from 'next/router'
 
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
+import {
+  clearHeroSelection,
+  persistHeroOwner,
+  readHeroSelection,
+} from '../../lib/heroes/selectedHeroStorage'
 
 const DEFAULT_PROFILE_NAME = '사용자'
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
@@ -146,13 +151,7 @@ export function useRoster({ onUnauthorized } = {}) {
 
       setProfile(deriveProfile(user))
 
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem('selectedHeroOwnerId', user.id)
-        } catch (storageError) {
-          console.error('Failed to persist roster owner metadata:', storageError)
-        }
-      }
+      persistHeroOwner(user.id)
 
       const { data, error: heroesError } = await withTable(
         supabase,
@@ -173,15 +172,10 @@ export function useRoster({ onUnauthorized } = {}) {
       } else {
         const normalizedHeroes = (data || []).map(normalizeHero)
         setHeroes(normalizedHeroes)
-        if (typeof window !== 'undefined') {
-          const storedHeroId = window.localStorage.getItem('selectedHeroId')
-          if (storedHeroId && !normalizedHeroes.some((hero) => hero.id === storedHeroId)) {
-            try {
-              window.localStorage.removeItem('selectedHeroId')
-            } catch (storageError) {
-              console.error('Failed to clear missing hero selection:', storageError)
-            }
-          }
+        const selection = readHeroSelection()
+        if (selection?.heroId && !normalizedHeroes.some((hero) => hero.id === selection.heroId)) {
+          clearHeroSelection()
+          persistHeroOwner(user.id)
         }
       }
 

@@ -1,5 +1,12 @@
 import { supabase } from '../supabase'
 import { withTable } from '../supabaseTables'
+import {
+  clearHeroSelection,
+  fetchHeroRecordById,
+  persistHeroOwner,
+  persistHeroSelection,
+  readHeroSelection,
+} from './selectedHeroStorage'
 
 function extractFallbackHero(hint, user) {
   if (!hint) return null
@@ -50,67 +57,6 @@ function mergeProfileWithFallback(profile, fallback) {
   return merged
 }
 
-function persistSelectedHero(hero) {
-  if (typeof window === 'undefined') return
-  if (!hero?.id) return
-  try {
-    window.localStorage.setItem('selectedHeroId', hero.id)
-    if (hero.owner_id) {
-      window.localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
-    }
-  } catch (error) {
-    console.error('Failed to persist selected hero metadata:', error)
-  }
-}
-
-function clearSelectedHero() {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.removeItem('selectedHeroId')
-    window.localStorage.removeItem('selectedHeroOwnerId')
-  } catch (error) {
-    console.error('Failed to clear selected hero metadata:', error)
-  }
-}
-
-function readStoredSelection(userId) {
-  if (typeof window === 'undefined') return null
-  try {
-    const heroId = window.localStorage.getItem('selectedHeroId')
-    const ownerId = window.localStorage.getItem('selectedHeroOwnerId')
-    if (!heroId) return null
-    if (ownerId && userId && ownerId !== userId) {
-      return null
-    }
-    return { heroId, ownerId }
-  } catch (error) {
-    console.error('Failed to read stored hero metadata:', error)
-    return null
-  }
-}
-
-async function fetchHeroById(heroId) {
-  if (!heroId) return null
-  // NOTE: we always request the logical table name `heroes` here. The
-  // `withTable` helper resolves it to the actual physical table (commonly also
-  // `heroes`) so there is no separate `hero` table involved—the singular
-  // "hero" references in the UI are just JavaScript objects hydrated from this
-  // row. This nuance helps when debugging environments where the table might be
-  // exposed under a different alias such as `rank_heroes`.
-  const { data: hero, error } = await withTable(supabase, 'heroes', (table) =>
-    supabase
-      .from(table)
-      .select('id,name,image_url,owner_id')
-      .eq('id', heroId)
-      .maybeSingle(),
-  )
-  if (error) {
-    console.error('Failed to fetch hero by id:', error)
-    return null
-  }
-  return hero || null
-}
-
 export async function resolveViewerProfile(user, explicitHeroId, options = {}) {
   const fallbackProfile = extractFallbackHero(options?.fallbackHero, user)
 
@@ -129,7 +75,7 @@ export async function resolveViewerProfile(user, explicitHeroId, options = {}) {
     attempts.push({ heroId: explicitHeroId, enforceOwner: false, fallback: fallbackProfile })
   }
 
-  const stored = readStoredSelection(user.id)
+  const stored = readHeroSelection()
   if (stored?.heroId && stored.heroId !== explicitHeroId) {
     attempts.push({ heroId: stored.heroId, enforceOwner: true, fallback: fallbackProfile })
   }
@@ -139,7 +85,7 @@ export async function resolveViewerProfile(user, explicitHeroId, options = {}) {
   }
 
   for (const attempt of attempts) {
-    const hero = await fetchHeroById(attempt.heroId)
+    const hero = await fetchHeroRecordById(attempt.heroId)
     if (!hero) {
       if (attempt.preferFallback && attempt.fallback) {
         persistStoredHeroFromFallback(attempt.fallback)
@@ -157,9 +103,12 @@ export async function resolveViewerProfile(user, explicitHeroId, options = {}) {
       continue
     }
     if (attempt.enforceOwner && hero.owner_id && hero.owner_id !== user.id) {
+      if (stored?.heroId === hero.id) {
+        clearHeroSelection()
+      }
       continue
     }
-    persistSelectedHero(hero)
+    persistHeroSelection(hero)
     return mergeProfileWithFallback(
       {
         name: hero.name,
@@ -183,7 +132,7 @@ export async function resolveViewerProfile(user, explicitHeroId, options = {}) {
   )
 
   if (myHero) {
-    persistSelectedHero(myHero)
+    persistHeroSelection(myHero)
     return mergeProfileWithFallback(
       {
         name: myHero.name,
@@ -196,7 +145,7 @@ export async function resolveViewerProfile(user, explicitHeroId, options = {}) {
     )
   }
 
-  clearSelectedHero()
+  clearHeroSelection()
 
   const meta = user?.user_metadata || {}
   return mergeProfileWithFallback(
@@ -212,9 +161,17 @@ export async function resolveViewerProfile(user, explicitHeroId, options = {}) {
 }
 
 function persistStoredHeroFromFallback(fallback) {
-  if (!fallback?.hero_id) return
-  persistSelectedHero({
-    id: fallback.hero_id,
-    owner_id: fallback.owner_id,
-  })
+  if (!fallback?.hero_id) {
+    if (fallback?.owner_id) {
+      persistHeroOwner(fallback.owner_id)
+    }
+    return
+  }
+  persistHeroSelection(
+    {
+      id: fallback.hero_id,
+      owner_id: fallback.owner_id,
+    },
+    fallback.owner_id,
+  )
 }

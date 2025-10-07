@@ -9,6 +9,7 @@ import { withTable } from '@/lib/supabaseTables'
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 import { fetchHeroById, normaliseHero } from '@/services/heroes'
 import { useHeroSocial } from '@/hooks/social/useHeroSocial'
+import { clearHeroSelection, readHeroSelection } from '@/lib/heroes/selectedHeroStorage'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
 const DEFAULT_DESCRIPTION =
@@ -879,21 +880,22 @@ export default function SharedHeroOverlay() {
     }
   }, [])
 
-  const loadCurrentHero = useCallback(async () => {
-    if (typeof window === 'undefined') return
-    const storedId = window.localStorage.getItem('selectedHeroId')
-    if (!storedId) {
-      setCurrentHero(null)
-      audioManager.setEnabled(false)
-      return
-    }
-    try {
-      const heroRow = await fetchHeroById(storedId)
-      if (!heroRow) {
+    const loadCurrentHero = useCallback(async () => {
+      const selection = readHeroSelection()
+      const storedId = selection?.heroId || ''
+      if (!storedId) {
         setCurrentHero(null)
         audioManager.setEnabled(false)
         return
       }
+      try {
+        const heroRow = await fetchHeroById(storedId)
+        if (!heroRow) {
+          clearHeroSelection()
+          setCurrentHero(null)
+          audioManager.setEnabled(false)
+          return
+        }
       setCurrentHero(heroRow)
       const trackUrl = heroRow.bgm_url || null
       const snapshot = audioManager.getState()

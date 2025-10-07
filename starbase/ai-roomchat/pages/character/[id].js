@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 
 import CharacterBasicView from '@/components/character/CharacterBasicView'
 import { useCharacterDetail } from '@/hooks/character/useCharacterDetail'
+import { persistHeroSelection } from '@/lib/heroes/selectedHeroStorage'
 
 function FullScreenState({ title, message, actionLabel, onAction }) {
   return (
@@ -65,13 +66,11 @@ export default function CharacterDetailPage() {
 
   useEffect(() => {
     if (!hero?.id) return
-    if (typeof window === 'undefined') return
     try {
-      window.localStorage.setItem('selectedHeroId', hero.id)
-      if (hero.owner_id) {
-        window.localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
+      persistHeroSelection(hero)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('hero-overlay:refresh'))
       }
-      window.dispatchEvent(new Event('hero-overlay:refresh'))
     } catch (storageError) {
       console.error('Failed to persist selected hero metadata:', storageError)
     }

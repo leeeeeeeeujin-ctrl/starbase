@@ -4,6 +4,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { withTable } from '@/lib/supabaseTables'
+import {
+  clearHeroSelection,
+  persistHeroSelection,
+  resolveStoredHeroForUser,
+} from '@/lib/heroes/selectedHeroStorage'
 
 import { mapTimelineRowToEvent, normalizeTimelineEvents } from '../lib/rank/timelineEvents'
 import { normalizeHeroIdValue, resolveParticipantHeroId } from '../lib/rank/participantUtils'
@@ -202,23 +207,11 @@ function computeRequiredSlots(roleList, slotCounts) {
   return 0
 }
 
-async function resolveStoredHero() {
-  if (typeof window === 'undefined') return null
-  const heroId = window.localStorage.getItem('selectedHeroId')
-  if (!heroId) return null
-
-  const { data, error } = await withTable(supabase, 'heroes', (table) =>
-    supabase
-      .from(table)
-      .select(
-        'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4, bgm_url, bgm_duration_seconds'
-      )
-      .eq('id', heroId)
-      .maybeSingle()
-  )
-
-  if (error) return null
-  return data || null
+async function resolveStoredHero(ownerId) {
+  return resolveStoredHeroForUser(ownerId, {
+    columns:
+      'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4, bgm_url, bgm_duration_seconds',
+  })
 }
 
 async function fetchRecentBattles(gameId) {
@@ -627,7 +620,7 @@ export function useGameRoom(
           console.warn('최근 전투 기록을 불러오지 못했습니다:', battleError)
         }
 
-        const storedHero = await resolveStoredHero()
+        const storedHero = await resolveStoredHero(currentUser?.id)
         if (!alive) return
         setMyHero(storedHero)
 
@@ -700,9 +693,7 @@ export function useGameRoom(
     if (myHero?.id === heroRecord.id) return
 
     try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('selectedHeroId', heroRecord.id)
-      }
+      persistHeroSelection(heroRecord)
     } catch (err) {
       console.warn('로컬 영웅 저장 실패:', err)
     }
@@ -779,9 +770,9 @@ export function useGameRoom(
   const selectHero = useCallback((hero) => {
     try {
       if (hero) {
-        window.localStorage.setItem('selectedHeroId', hero.id)
+        persistHeroSelection(hero)
       } else {
-        window.localStorage.removeItem('selectedHeroId')
+        clearHeroSelection()
       }
     } catch (err) {
       console.warn('로컬 저장 실패:', err)

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
+import { persistHeroSelection } from '../../lib/heroes/selectedHeroStorage'
 
 export default function HeroPicker({ open, onClose, onPick }) {
   const [loading, setLoading] = useState(true)
@@ -43,12 +44,7 @@ export default function HeroPicker({ open, onClose, onPick }) {
     const hero = rows.find(r => r.id === selectedId)
     if (!hero) return
     // 로컬 저장(문자열 UUID 그대로!)
-    try {
-      localStorage.setItem('selectedHeroId', hero.id)
-      if (hero.owner_id) {
-        localStorage.setItem('selectedHeroOwnerId', hero.owner_id)
-      }
-    } catch {}
+    persistHeroSelection(hero)
     onPick?.(hero)
     onClose?.()
   }
