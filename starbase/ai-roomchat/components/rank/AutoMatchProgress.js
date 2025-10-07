@@ -26,6 +26,13 @@ import { buildMatchOverlaySummary } from './matchOverlayUtils'
 import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
 import { buildMatchMetaPayload, readStoredStartConfig, storeStartMatchMeta } from './startConfig'
 import {
+  hydrateGameMatchData,
+  setGameMatchConfirmation,
+  setGameMatchHeroSelection,
+  setGameMatchPostCheck,
+  setGameMatchSnapshot,
+} from '../../modules/rank/matchDataStore'
+import {
   START_SESSION_KEYS,
   readStartSessionValue,
   writeStartSessionValue,
@@ -78,6 +85,10 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     initialHeroId,
     onApiKeyExpired: apiKeyExpiredProxy,
   })
+  useEffect(() => {
+    if (!gameId) return
+    hydrateGameMatchData(gameId)
+  }, [gameId])
   const [joinError, setJoinError] = useState('')
   const joinSignatureRef = useRef('')
   const heroRedirectTimerRef = useRef(null)
@@ -249,6 +260,14 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     state.lockedRole,
     state.roles,
   ])
+  useEffect(() => {
+    if (!gameId) return
+    setGameMatchHeroSelection(gameId, {
+      heroId: state.heroId || '',
+      viewerId: state.viewerId || '',
+      role: roleName || '',
+    })
+  }, [gameId, roleName, state.heroId, state.viewerId])
 
   useEffect(() => {
     if (state.status === 'queued' || state.status === 'matched') {
@@ -404,8 +423,17 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       turnTimer: match.turnTimer ?? match.turn_timer ?? null,
     }
 
-    clearMatchConfirmation()
-    const saved = saveMatchConfirmation({
+    const createdAt = Date.now()
+    setGameMatchSnapshot(gameId, {
+      match: sanitizedMatch,
+      pendingMatch,
+      viewerId: state.viewerId || '',
+      heroId: state.heroId || '',
+      role: roleName || '',
+      mode,
+      createdAt,
+    })
+    const confirmationPayload = {
       gameId,
       mode,
       roleName,
@@ -415,8 +443,12 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       viewerId: state.viewerId || '',
       heroId: state.heroId || '',
       match: sanitizedMatch,
-      createdAt: Date.now(),
-    })
+      createdAt,
+    }
+    setGameMatchConfirmation(gameId, confirmationPayload)
+
+    clearMatchConfirmation()
+    const saved = saveMatchConfirmation(confirmationPayload)
 
     if (!saved) {
       latestStatusRef.current = state.status
@@ -449,6 +481,8 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     state.viewerId,
     turnTimer,
     router,
+    pendingMatch,
+    requiresManualConfirmation,
   ])
 
   useEffect(() => {
@@ -1276,6 +1310,15 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       }),
     [state.match, state.pendingMatch, state.roles, state.slotLayout],
   )
+  const pendingMatch = state.pendingMatch || null
+  const pendingPostCheck = pendingMatch?.postCheck
+  const activePostCheck = state.match?.postCheck
+  useEffect(() => {
+    if (!gameId) return
+    const payload = pendingPostCheck || activePostCheck
+    if (!payload) return
+    setGameMatchPostCheck(gameId, payload)
+  }, [activePostCheck, gameId, pendingPostCheck])
 
   const assignmentSummary = useMemo(
     () =>

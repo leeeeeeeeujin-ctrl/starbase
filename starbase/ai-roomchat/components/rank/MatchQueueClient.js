@@ -23,6 +23,14 @@ import {
   registerMatchConnections,
   removeConnectionEntries,
 } from '../../lib/rank/startConnectionRegistry'
+import {
+  hydrateGameMatchData,
+  setGameMatchConfirmation,
+  setGameMatchHeroSelection,
+  setGameMatchParticipation,
+  setGameMatchPostCheck,
+  setGameMatchSnapshot,
+} from '../../modules/rank/matchDataStore'
 
 function groupQueue(queue) {
   const map = new Map()
@@ -401,6 +409,10 @@ export default function MatchQueueClient({
     enabled: true,
     onApiKeyExpired: handleApiKeyExpired,
   })
+  useEffect(() => {
+    if (!gameId) return
+    hydrateGameMatchData(gameId)
+  }, [gameId])
   const clearConnectionRegistry = useCallback(() => {
     if (!gameId) return
     try {
@@ -462,6 +474,8 @@ export default function MatchQueueClient({
   const isDropInMatch = matchType === 'drop_in'
   const dropInTarget = state.match?.dropInTarget || null
   const pendingMatch = state.pendingMatch || null
+  const pendingPostCheck = pendingMatch?.postCheck
+  const activePostCheck = state.match?.postCheck
   const queuedSampleMeta = state.sampleMeta || null
   const heroOptions = Array.isArray(state.heroOptions) ? state.heroOptions : []
   const viewerRoster = Array.isArray(state.viewerRoster) ? state.viewerRoster : []
@@ -469,6 +483,30 @@ export default function MatchQueueClient({
   useEffect(() => {
     setManualHeroId(state.heroId || '')
   }, [state.heroId])
+  useEffect(() => {
+    if (!gameId) return
+    setGameMatchParticipation(gameId, {
+      roster: viewerRoster,
+      heroOptions,
+      participantPool: plannerParticipantPool,
+      heroMap: state.heroMap,
+    })
+  }, [gameId, heroOptions, plannerParticipantPool, state.heroMap, viewerRoster])
+  useEffect(() => {
+    if (!gameId) return
+    setGameMatchHeroSelection(gameId, {
+      heroId: state.heroId || '',
+      viewerId: state.viewerId || '',
+      role: state.lockedRole || targetRoleName || '',
+      heroMeta: state.heroMeta || null,
+    })
+  }, [gameId, state.heroId, state.heroMeta, state.lockedRole, state.viewerId, targetRoleName])
+  useEffect(() => {
+    if (!gameId) return
+    const payload = pendingPostCheck || activePostCheck
+    if (!payload) return
+    setGameMatchPostCheck(gameId, payload)
+  }, [activePostCheck, gameId, pendingPostCheck])
   const handleHeroOptionSelect = useCallback(
     (value) => {
       if (value == null) return
@@ -1203,8 +1241,17 @@ export default function MatchQueueClient({
       ? Number(sanitizedMatch.turnTimer)
       : null
 
-    clearMatchConfirmation()
-    const saved = saveMatchConfirmation({
+    const createdAt = Date.now()
+    setGameMatchSnapshot(gameId, {
+      match: sanitizedMatch,
+      pendingMatch,
+      viewerId: state.viewerId || '',
+      heroId: state.heroId || '',
+      role: viewerRoleName,
+      mode,
+      createdAt,
+    })
+    const confirmationPayload = {
       gameId,
       mode,
       roleName: viewerRoleName,
@@ -1214,8 +1261,12 @@ export default function MatchQueueClient({
       viewerId: state.viewerId || '',
       heroId: state.heroId || '',
       match: sanitizedMatch,
-      createdAt: Date.now(),
-    })
+      createdAt,
+    }
+    setGameMatchConfirmation(gameId, confirmationPayload)
+
+    clearMatchConfirmation()
+    const saved = saveMatchConfirmation(confirmationPayload)
 
     if (!saved) {
       console.warn('[MatchQueue] 매칭 확인 정보를 저장하지 못했습니다.')
@@ -1241,6 +1292,7 @@ export default function MatchQueueClient({
     finalTimer,
     clearConnectionRegistry,
     router,
+    pendingMatch,
   ])
 
   useEffect(() => {
