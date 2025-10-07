@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import GameRoomView from '../../components/rank/GameRoomView'
 import GameStartModeModal from '../../components/rank/GameStartModeModal'
+import AutoMatchProgress from '../../components/rank/AutoMatchProgress'
 import { useGameRoom } from '../../hooks/useGameRoom'
 import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes'
 import {
@@ -39,6 +40,8 @@ export default function GameRoomPage() {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [pickRole, setPickRole] = useState('')
   const [showStartModal, setShowStartModal] = useState(false)
+  const [showMatchOverlay, setShowMatchOverlay] = useState(false)
+  const [matchOverlayMode, setMatchOverlayMode] = useState(null)
   const [startPreset, setStartPreset] = useState({
     mode: MATCH_MODE_KEYS.RANK_SHARED,
     casualOption: 'matchmaking',
@@ -177,6 +180,23 @@ export default function GameRoomPage() {
     game.owner_id &&
     String(game.owner_id) !== viewerKey
 
+  const matchOverlayHeroId = useMemo(() => {
+    if (myEntry) {
+      const entryHero = normalizeHeroIdValue(resolveParticipantHeroId(myEntry))
+      if (entryHero) {
+        return entryHero
+      }
+    }
+    return normalizeHeroIdValue(myHero?.id)
+  }, [myEntry, myHero?.id])
+
+  const handleMatchOverlayClose = useCallback(() => {
+    setShowMatchOverlay(false)
+    setMatchOverlayMode(null)
+    setStartNotice('')
+    setStartError('')
+  }, [])
+
   const handleJoin = async () => {
     await joinGame(pickRole)
   }
@@ -305,7 +325,7 @@ export default function GameRoomPage() {
   )
 
   const handleOpenModeModal = useCallback(() => {
-    if (startLoading) return
+    if (startLoading || showMatchOverlay) return
     if (!hasMinimumParticipants) {
       setStartNotice('참가 인원이 부족해 매칭을 시작할 수 없습니다.')
       return
@@ -317,7 +337,7 @@ export default function GameRoomPage() {
     setStartNotice('')
     setStartError('')
     setShowStartModal(true)
-  }, [hasMinimumParticipants, myHero, startLoading])
+  }, [hasMinimumParticipants, myHero, showMatchOverlay, startLoading])
 
   const handleConfirmStart = async (config) => {
     setShowStartModal(false)
@@ -340,27 +360,10 @@ export default function GameRoomPage() {
     }
 
     if (config.mode === MATCH_MODE_KEYS.RANK_SHARED) {
-      if (startLoading) {
-        return
-      }
-
-      setStartLoading(true)
-      setStartNotice('랭크 매칭 룸으로 이동합니다…')
+      setStartNotice('')
       setStartError('')
-
-      try {
-        await router.push({
-          pathname: `/rank/${id}/match`,
-          query: { mode: config.mode, apiVersion: config.apiVersion },
-        })
-      } catch (error) {
-        console.error('Failed to open rank match page:', error)
-        setStartError('랭크 매칭 룸으로 이동하지 못했습니다. 잠시 후 다시 시도해 주세요.')
-        setStartNotice('')
-      } finally {
-        setStartLoading(false)
-      }
-
+      setShowMatchOverlay(true)
+      setMatchOverlayMode(config.mode)
       return
     }
 
@@ -391,6 +394,16 @@ export default function GameRoomPage() {
       setStartError('')
     }
   }, [hasMinimumParticipants, mounted])
+
+  useEffect(() => {
+    if (!showMatchOverlay) return
+    if (typeof document === 'undefined') return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [showMatchOverlay])
 
   if (!ready || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
@@ -502,8 +515,8 @@ export default function GameRoomPage() {
         onDelete={deleteRoom}
         isOwner={isOwner}
         deleting={deleting}
-        startDisabled={!hasMinimumParticipants || !myHero || startLoading}
-        startLoading={startLoading}
+        startDisabled={!hasMinimumParticipants || !myHero || startLoading || showMatchOverlay}
+        startLoading={startLoading || showMatchOverlay}
         startNotice={startNotice}
         startError={startError}
         recentBattles={recentBattles}
@@ -513,6 +526,28 @@ export default function GameRoomPage() {
 
       {showLeaderboard && (
         <LeaderboardDrawer gameId={id} onClose={() => setShowLeaderboard(false)} />
+      )}
+      {showMatchOverlay && game?.id && matchOverlayMode && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(2, 6, 23, 0.78)',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <AutoMatchProgress
+            key={`${game.id}-${matchOverlayMode}`}
+            gameId={game.id}
+            mode={matchOverlayMode}
+            initialHeroId={matchOverlayHeroId || undefined}
+            onClose={handleMatchOverlayClose}
+          />
+        </div>
       )}
       <GameStartModeModal
         open={showStartModal}
