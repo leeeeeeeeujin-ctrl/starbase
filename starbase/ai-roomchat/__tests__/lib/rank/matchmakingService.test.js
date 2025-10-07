@@ -6,6 +6,7 @@ import {
   loadMatchSampleSource,
   loadOwnerParticipantRoster,
   loadRoleLayout,
+  extractViewerAssignment,
   runMatching,
 } from '@/lib/rank/matchmakingService'
 
@@ -862,5 +863,63 @@ describe('heartbeatQueueEntry', () => {
     const updated = supabase.__tables.rank_match_queue[0].updated_at
     expect(updated).not.toBe('2024-01-01T00:00:00Z')
     expect(Date.parse(updated)).toBeGreaterThan(Date.parse('2024-01-01T00:00:00Z'))
+  })
+})
+
+describe('extractViewerAssignment', () => {
+  it('returns the assignment when the viewer owns a member', () => {
+    const assignments = [
+      {
+        role: '공격',
+        members: [
+          { owner_id: 'viewer-1', hero_id: 'hero-a' },
+          { owner_id: 'ally-2', hero_id: 'hero-b' },
+        ],
+      },
+      {
+        role: '수비',
+        members: [{ owner_id: 'ally-3', hero_id: 'hero-c' }],
+      },
+    ]
+
+    const assignment = extractViewerAssignment({ assignments, viewerId: 'viewer-1' })
+    expect(assignment).toBe(assignments[0])
+  })
+
+  it('falls back to hero ownership when owner information is missing', () => {
+    const assignments = [
+      {
+        role: '지원',
+        members: [
+          { owner_id: 'ally-10', hero_id: 'hero-extra' },
+          { owner_id: 'ally-11', hero_id: 'hero-target' },
+        ],
+      },
+    ]
+
+    const assignment = extractViewerAssignment({
+      assignments,
+      viewerId: 'viewer-x',
+      heroId: 'hero-target',
+    })
+
+    expect(assignment).toBe(assignments[0])
+  })
+
+  it('returns null when no members match the viewer or hero', () => {
+    const assignments = [
+      {
+        role: '공격',
+        members: [{ owner_id: 'ally-1', hero_id: 'hero-1' }],
+      },
+    ]
+
+    const assignment = extractViewerAssignment({
+      assignments,
+      viewerId: 'viewer-none',
+      heroId: 'hero-missing',
+    })
+
+    expect(assignment).toBeNull()
   })
 })

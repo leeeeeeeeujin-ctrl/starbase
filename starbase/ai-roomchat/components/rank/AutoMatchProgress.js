@@ -16,6 +16,7 @@ import {
   FAILURE_REDIRECT_DELAY_MS,
   PENALTY_NOTICE,
   MATCH_REQUEUE_NOTICE,
+  QUEUE_LEAVE_NOTICE,
   ROLE_BLOCKER_MESSAGE,
   VIEWER_BLOCKER_MESSAGE,
 } from './matchConstants'
@@ -109,6 +110,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const matchLockedRef = useRef(false)
   const matchRedirectedRef = useRef(false)
   const inactivityTriggeredRef = useRef(false)
+  const queueAbandonedRef = useRef(false)
 
   const clearConnectionRegistry = useCallback(() => {
     if (!gameId) return
@@ -125,6 +127,19 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       clearConnectionRegistry()
     })
   }, [actions, clearConnectionRegistry])
+
+  const handleReturnToRoster = useCallback(() => {
+    if (!gameId) return
+    navigationLockedRef.current = true
+    router.replace(`/rank/${gameId}`)
+  }, [gameId, router])
+
+  const markQueueAbandoned = useCallback(() => {
+    if (queueAbandonedRef.current) return
+    queueAbandonedRef.current = true
+    setJoinError(QUEUE_LEAVE_NOTICE)
+    setDisplayStatus('cancelled')
+  }, [setDisplayStatus, setJoinError])
 
   const handleApiKeyExpired = useCallback(
     () => {
@@ -199,6 +214,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         clearTimeout(inactivityTimerRef.current)
         inactivityTimerRef.current = null
       }
+      markQueueAbandoned()
       if (state.viewerId) {
         emitQueueLeaveBeacon({
           gameId,
@@ -213,18 +229,32 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     }
 
     window.addEventListener('pagehide', handlePageLeave)
-    window.addEventListener('beforeunload', handlePageLeave)
+      window.addEventListener('beforeunload', handlePageLeave)
 
-    return () => {
-      window.removeEventListener('pagehide', handlePageLeave)
-      window.removeEventListener('beforeunload', handlePageLeave)
-    }
-  }, [cancelQueueWithCleanup, state.status])
+      return () => {
+        window.removeEventListener('pagehide', handlePageLeave)
+        window.removeEventListener('beforeunload', handlePageLeave)
+      }
+  }, [
+    cancelQueueWithCleanup,
+    gameId,
+    markQueueAbandoned,
+    mode,
+    state.heroId,
+    state.status,
+    state.viewerId,
+  ])
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
     state.lockedRole,
     state.roles,
   ])
+
+  useEffect(() => {
+    if (state.status === 'queued' || state.status === 'matched') {
+      queueAbandonedRef.current = false
+    }
+  }, [state.status])
 
   const isRealtimeMatch = useMemo(() => {
     const meta = state.match?.sampleMeta || state.sampleMeta
@@ -271,6 +301,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       matchCode: state.match?.matchCode ?? null,
     })
 
+    let triggeredRequeue = false
     if (
       (confirmationState === 'counting' ||
         confirmationState === 'confirmed' ||
@@ -293,6 +324,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         setMatchLocked(false)
       }
       setJoinError(MATCH_REQUEUE_NOTICE)
+      triggeredRequeue = true
     }
 
     if (state.status === 'idle' && previous && previous !== 'idle') {
@@ -301,6 +333,18 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       if (joinRetryTimerRef.current) {
         clearTimeout(joinRetryTimerRef.current)
         joinRetryTimerRef.current = null
+      }
+      const currentJoinError = joinErrorRef.current || ''
+      if (
+        !triggeredRequeue &&
+        !navigationLockedRef.current &&
+        !matchRedirectedRef.current &&
+        !queueAbandonedRef.current &&
+        currentJoinError !== MATCH_REQUEUE_NOTICE &&
+        currentJoinError !== PENALTY_NOTICE &&
+        currentJoinError !== QUEUE_LEAVE_NOTICE
+      ) {
+        markQueueAbandoned()
       }
     }
 
@@ -313,6 +357,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     setConfirmationRemaining,
     setJoinError,
     setMatchLocked,
+    markQueueAbandoned,
     state.match,
     state.status,
   ])
@@ -741,6 +786,10 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [state.status])
 
   useEffect(() => {
+    if (queueAbandonedRef.current && state.status === 'idle') {
+      setDisplayStatus('cancelled')
+      return
+    }
     if (
       matchLocked ||
       state.status === 'matched' ||
@@ -1284,6 +1333,12 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [playNotice, state.match, turnTimer])
 
   const baseDisplay = useMemo(() => {
+    if (displayStatus === 'cancelled') {
+      return {
+        title: '매칭이 취소되었습니다.',
+        detail: QUEUE_LEAVE_NOTICE,
+      }
+    }
     if (displayStatus === 'queued') {
       return {
         title: '매칭 중…',
@@ -1352,6 +1407,9 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     if (confirmationState === 'failed') {
       return true
     }
+    if (displayStatus === 'cancelled') {
+      return false
+    }
     return displayStatus !== 'matched'
   }, [confirmationState, displayStatus])
 
@@ -1370,6 +1428,13 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
           <p className={styles.message}>{baseDisplay.title}</p>
           {baseDisplay.detail ? (
             <p className={styles.detail}>{baseDisplay.detail}</p>
+          ) : null}
+          {displayStatus === 'cancelled' ? (
+            <div className={styles.cancelActions}>
+              <button type="button" className={styles.returnButton} onClick={handleReturnToRoster}>
+                캐릭터 화면으로 가기
+              </button>
+            </div>
           ) : null}
           {!showMatchedOverlay && matchMetaLines.length ? (
             <div className={styles.matchMeta} role="note">
@@ -1503,7 +1568,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         </div>
       ) : null}
 
-      {joinError && state.status === 'queued' ? (
+      {joinError ? (
         <p className={styles.srOnly} role="alert">{joinError}</p>
       ) : null}
     </div>

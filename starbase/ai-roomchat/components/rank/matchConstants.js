@@ -12,6 +12,8 @@ export const PENALTY_NOTICE =
   '15초 안에 게임 참여를 확정하지 않아 매칭에서 제외되었어요. 다른 참가자들은 다시 매칭을 진행합니다.'
 export const MATCH_REQUEUE_NOTICE =
   '다른 참가자가 게임 참여를 확정하지 않아 다시 매칭을 진행합니다.'
+export const QUEUE_LEAVE_NOTICE =
+  '임의로 대기열에서 벗어나 매칭이 취소되었습니다.'
 
 export {
   QUEUE_HEARTBEAT_INTERVAL_MS,

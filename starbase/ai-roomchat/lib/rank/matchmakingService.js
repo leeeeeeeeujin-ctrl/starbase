@@ -831,14 +831,23 @@ export function runMatching({ mode, roles, queue }) {
   return matcher({ roles, queue })
 }
 
-export function extractViewerAssignment({ assignments = [], viewerId }) {
-  if (!viewerId) return null
+export function extractViewerAssignment({ assignments = [], viewerId, heroId }) {
+  const normalizedViewerId = viewerId ? String(viewerId) : ''
+  const normalizedHeroId = heroId ? String(heroId) : ''
   for (const assignment of assignments) {
     if (!Array.isArray(assignment.members)) continue
     const matched = assignment.members.some((member) => {
       if (!member) return false
-      if (member.owner_id && member.owner_id === viewerId) return true
-      if (member.ownerId && member.ownerId === viewerId) return true
+      const ownerId = member.owner_id ?? member.ownerId
+      if (normalizedViewerId && ownerId && String(ownerId) === normalizedViewerId) {
+        return true
+      }
+      if (normalizedHeroId) {
+        const memberHeroId = member.hero_id ?? member.heroId
+        if (memberHeroId && String(memberHeroId) === normalizedHeroId) {
+          return true
+        }
+      }
       return false
     })
     if (matched) {

@@ -739,7 +739,11 @@ export default function useMatchQueue({
       }
 
       setPendingMatch(null)
-      const assignment = extractViewerAssignment({ assignments: payload.assignments, viewerId })
+      const assignment = extractViewerAssignment({
+        assignments: payload.assignments,
+        viewerId,
+        heroId: heroIdRef.current || heroId || '',
+      })
       if (!assignment) return
 
       let heroMap = null
