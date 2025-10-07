@@ -557,6 +557,9 @@ export default function RankRoomSearchPage() {
             <Link href="/rank" style={styles.subtleLink}>
               랭킹 허브
             </Link>
+            <Link href="/lobby" style={styles.subtleLink}>
+              로비로 이동
+            </Link>
           </div>
 
           <div style={styles.summaryRow}>
