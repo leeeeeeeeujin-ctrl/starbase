@@ -446,7 +446,41 @@ export default function RoomBrowserPage() {
       if (!mountedRef.current) return
 
       const participationsList = Array.isArray(bundle?.participations) ? bundle.participations : []
-      const uniqueGames = participationsList.filter((row) => row?.game?.id)
+      const hydratedParticipations = participationsList.map((entry) => {
+        const existingGame = entry?.game
+        const existingId = existingGame?.id
+        const fallbackId = entry?.game_id || null
+
+        if (existingId) {
+          const normalisedName = existingGame?.name?.trim?.() || '이름 없는 게임'
+          return {
+            ...entry,
+            game: {
+              ...existingGame,
+              id: existingId,
+              name: normalisedName,
+            },
+          }
+        }
+
+        if (!fallbackId) {
+          return entry
+        }
+
+        return {
+          ...entry,
+          game: {
+            id: fallbackId,
+            name: '이름 없는 게임',
+            cover_path: null,
+            description: '',
+            owner_id: null,
+            created_at: null,
+            image_url: null,
+          },
+        }
+      })
+      const uniqueGames = hydratedParticipations.filter((row) => row?.game?.id)
 
       setHeroSummary({ heroName, ownerId })
       setParticipations(uniqueGames)
