@@ -191,6 +191,37 @@ function normalizeRolesForMeta(roles = []) {
     .filter(Boolean)
 }
 
+function normalizeSlotLayoutForMeta(layout = []) {
+  if (!Array.isArray(layout)) return []
+  return layout
+    .map((slot, index) => {
+      if (!slot) return null
+      const roleName =
+        typeof slot.role === 'string'
+          ? slot.role.trim()
+          : typeof slot.name === 'string'
+          ? slot.name.trim()
+          : ''
+      if (!roleName) return null
+      const rawIndex = Number(
+        slot.slotIndex ?? slot.slot_index ?? slot.index ?? slot.slot ?? index,
+      )
+      if (!Number.isFinite(rawIndex) || rawIndex < 0) return null
+      const payload = { slotIndex: rawIndex, role: roleName }
+      const heroId = slot.heroId ?? slot.hero_id
+      if (heroId != null && heroId !== '') {
+        payload.heroId = heroId
+      }
+      const heroOwnerId = slot.heroOwnerId ?? slot.hero_owner_id
+      if (heroOwnerId != null && heroOwnerId !== '') {
+        payload.heroOwnerId = heroOwnerId
+      }
+      return payload
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.slotIndex - b.slotIndex)
+}
+
 export function buildMatchMetaPayload(match, extras = {}) {
   if (!match || typeof match !== 'object') return null
 
@@ -203,6 +234,11 @@ export function buildMatchMetaPayload(match, extras = {}) {
   const heroMapClone =
     match.heroMap instanceof Map ? safeClone(match.heroMap) : safeClone(match.heroMap || null)
 
+  const { slotLayout: extraSlotLayout, ...extraRest } = extras || {}
+  const normalizedSlotLayout = normalizeSlotLayoutForMeta(
+    extraSlotLayout ?? match.slotLayout ?? match.roleStatus?.slotLayout ?? [],
+  )
+
   const payload = {
     storedAt: Date.now(),
     matchType: typeof match.matchType === 'string' ? match.matchType.trim() : null,
@@ -212,13 +248,14 @@ export function buildMatchMetaPayload(match, extras = {}) {
     sampleMeta: safeClone(match.sampleMeta || null),
     roleStatus: safeClone(match.roleStatus || null),
     roles: normalizeRolesForMeta(match.roles || match.roleStatus?.roles || []),
+    slotLayout: normalizedSlotLayout,
     assignments: normalizedAssignments,
     scoreWindow:
       match.maxWindow != null && Number.isFinite(Number(match.maxWindow))
         ? Number(match.maxWindow)
         : null,
     heroMap: heroMapClone,
-    ...extras,
+    ...extraRest,
   }
 
   if (match.source) {

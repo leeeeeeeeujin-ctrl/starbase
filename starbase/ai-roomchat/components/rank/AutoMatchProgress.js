@@ -11,19 +11,27 @@ import {
   HERO_REDIRECT_DELAY_MS,
   MATCH_TRANSITION_DELAY_MS,
   QUEUE_TIMEOUT_MS,
+  MATCH_INACTIVITY_TIMEOUT_MS,
   CONFIRMATION_WINDOW_SECONDS,
   FAILURE_REDIRECT_DELAY_MS,
   PENALTY_NOTICE,
+  MATCH_REQUEUE_NOTICE,
+  QUEUE_LEAVE_NOTICE,
   ROLE_BLOCKER_MESSAGE,
   VIEWER_BLOCKER_MESSAGE,
 } from './matchConstants'
-import {
-  coerceHeroMap,
-  extractHeroIdsFromAssignments,
-  resolveMemberLabel,
-} from './matchUtils'
+import { coerceHeroMap, extractHeroIdsFromAssignments } from './matchUtils'
+import { buildRoleSummaries } from './queueSummaryUtils'
+import { buildMatchOverlaySummary } from './matchOverlayUtils'
 import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
 import { buildMatchMetaPayload, readStoredStartConfig, storeStartMatchMeta } from './startConfig'
+import {
+  hydrateGameMatchData,
+  setGameMatchConfirmation,
+  setGameMatchHeroSelection,
+  setGameMatchPostCheck,
+  setGameMatchSnapshot,
+} from '../../modules/rank/matchDataStore'
 import {
   START_SESSION_KEYS,
   readStartSessionValue,
@@ -34,6 +42,7 @@ import {
   removeConnectionEntries,
 } from '../../lib/rank/startConnectionRegistry'
 import { supabase } from '../../lib/supabase'
+import { emitQueueLeaveBeacon } from '../../lib/rank/matchmakingService'
 
 function resolveRoleName(lockedRole, roles) {
   if (lockedRole && typeof lockedRole === 'string' && lockedRole.trim().length) {
@@ -58,16 +67,34 @@ function resolveRoleName(lockedRole, roles) {
 export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const router = useRouter()
   const navigationLockedRef = useRef(false)
+  const apiKeyExpiredHandledRef = useRef(false)
+  const apiKeyExpiredHandlerRef = useRef(null)
+  const apiKeyExpiredProxy = useCallback((info) => {
+    const handler = apiKeyExpiredHandlerRef.current
+    if (typeof handler === 'function') {
+      handler(info)
+    }
+  }, [])
+  useEffect(() => {
+    apiKeyExpiredHandledRef.current = false
+  }, [gameId])
   const { state, actions } = useMatchQueue({
     gameId,
     mode,
     enabled: Boolean(gameId),
     initialHeroId,
+    onApiKeyExpired: apiKeyExpiredProxy,
   })
+  useEffect(() => {
+    if (!gameId) return
+    hydrateGameMatchData(gameId)
+  }, [gameId])
   const [joinError, setJoinError] = useState('')
   const joinSignatureRef = useRef('')
   const heroRedirectTimerRef = useRef(null)
   const queueTimeoutRef = useRef(null)
+  const inactivityTimerRef = useRef(null)
+  const dropInRedirectTimerRef = useRef(null)
   const latestStatusRef = useRef('idle')
   const confirmationTimerRef = useRef(null)
   const confirmationIntervalRef = useRef(null)
@@ -93,6 +120,8 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const [matchLocked, setMatchLocked] = useState(false)
   const matchLockedRef = useRef(false)
   const matchRedirectedRef = useRef(false)
+  const inactivityTriggeredRef = useRef(false)
+  const queueAbandonedRef = useRef(false)
 
   const clearConnectionRegistry = useCallback(() => {
     if (!gameId) return
@@ -110,12 +139,141 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     })
   }, [actions, clearConnectionRegistry])
 
+  const handleReturnToRoster = useCallback(() => {
+    if (!gameId) return
+    navigationLockedRef.current = true
+    router.replace(`/rank/${gameId}`)
+  }, [gameId, router])
+
+  const markQueueAbandoned = useCallback(() => {
+    if (queueAbandonedRef.current) return
+    queueAbandonedRef.current = true
+    setJoinError(QUEUE_LEAVE_NOTICE)
+    setDisplayStatus('cancelled')
+  }, [setDisplayStatus, setJoinError])
+
+  const handleApiKeyExpired = useCallback(
+    () => {
+      if (apiKeyExpiredHandledRef.current) return
+      apiKeyExpiredHandledRef.current = true
+      const notice = 'API 키가 만료되었습니다. 새 API 키를 사용해주세요.'
+      setJoinError(notice)
+      setConfirmationState('failed')
+      joinSignatureRef.current = ''
+      if (queueTimeoutRef.current) {
+        clearTimeout(queueTimeoutRef.current)
+        queueTimeoutRef.current = null
+      }
+      if (heroRedirectTimerRef.current) {
+        clearTimeout(heroRedirectTimerRef.current)
+        heroRedirectTimerRef.current = null
+      }
+      if (joinRetryTimerRef.current) {
+        clearTimeout(joinRetryTimerRef.current)
+        joinRetryTimerRef.current = null
+      }
+      if (confirmationTimerRef.current) {
+        clearTimeout(confirmationTimerRef.current)
+        confirmationTimerRef.current = null
+      }
+      if (confirmationIntervalRef.current) {
+        clearInterval(confirmationIntervalRef.current)
+        confirmationIntervalRef.current = null
+      }
+      if (penaltyRedirectRef.current) {
+        clearTimeout(penaltyRedirectRef.current)
+        penaltyRedirectRef.current = null
+      }
+      if (dropInRedirectTimerRef.current) {
+        clearInterval(dropInRedirectTimerRef.current)
+        dropInRedirectTimerRef.current = null
+      }
+      navigationLockedRef.current = true
+      clearMatchConfirmation()
+      try {
+        if (typeof window !== 'undefined') {
+          window.alert(notice)
+        }
+      } catch (alertError) {
+        console.warn('[AutoMatchProgress] API 키 만료 알림 표시 실패:', alertError)
+      }
+      cancelQueueWithCleanup()
+        .catch((error) => {
+          console.warn('[AutoMatchProgress] API 키 만료 후 대기열 정리 실패:', error)
+        })
+        .finally(() => {
+          router.replace(`/rank/${gameId}`)
+        })
+    },
+    [cancelQueueWithCleanup, gameId, router],
+  )
+
+  useEffect(() => {
+    apiKeyExpiredHandlerRef.current = handleApiKeyExpired
+  }, [handleApiKeyExpired])
+
   const persistApiKeyOnServer = usePersistApiKey()
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    if (state.status === 'idle') return undefined
+
+    const handlePageLeave = () => {
+      if (navigationLockedRef.current) return
+      if (state.status !== 'queued' && state.status !== 'matched') return
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+      markQueueAbandoned()
+      if (state.viewerId) {
+        emitQueueLeaveBeacon({
+          gameId,
+          mode,
+          ownerId: state.viewerId,
+          heroId: state.heroId || null,
+        })
+      }
+      cancelQueueWithCleanup().catch((error) => {
+        console.warn('[AutoMatchProgress] 페이지 이탈 시 대기열 취소 실패:', error)
+      })
+    }
+
+    window.addEventListener('pagehide', handlePageLeave)
+      window.addEventListener('beforeunload', handlePageLeave)
+
+      return () => {
+        window.removeEventListener('pagehide', handlePageLeave)
+        window.removeEventListener('beforeunload', handlePageLeave)
+      }
+  }, [
+    cancelQueueWithCleanup,
+    gameId,
+    markQueueAbandoned,
+    mode,
+    state.heroId,
+    state.status,
+    state.viewerId,
+  ])
 
   const roleName = useMemo(() => resolveRoleName(state.lockedRole, state.roles), [
     state.lockedRole,
     state.roles,
   ])
+  useEffect(() => {
+    if (!gameId) return
+    setGameMatchHeroSelection(gameId, {
+      heroId: state.heroId || '',
+      viewerId: state.viewerId || '',
+      role: roleName || '',
+    })
+  }, [gameId, roleName, state.heroId, state.viewerId])
+
+  useEffect(() => {
+    if (state.status === 'queued' || state.status === 'matched') {
+      queueAbandonedRef.current = false
+    }
+  }, [state.status])
 
   const isRealtimeMatch = useMemo(() => {
     const meta = state.match?.sampleMeta || state.sampleMeta
@@ -162,6 +320,32 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       matchCode: state.match?.matchCode ?? null,
     })
 
+    let triggeredRequeue = false
+    if (
+      (confirmationState === 'counting' ||
+        confirmationState === 'confirmed' ||
+        confirmationState === 'launching') &&
+      previous === 'matched' &&
+      state.status !== 'matched'
+    ) {
+      clearConfirmationTimers()
+      setConfirmationState('idle')
+      setConfirmationRemaining(CONFIRMATION_WINDOW_SECONDS)
+      joinSignatureRef.current = ''
+      playTriggeredRef.current = false
+      storeStartMatchMeta(null)
+      if (penaltyRedirectRef.current) {
+        clearTimeout(penaltyRedirectRef.current)
+        penaltyRedirectRef.current = null
+      }
+      if (matchLockedRef.current) {
+        matchLockedRef.current = false
+        setMatchLocked(false)
+      }
+      setJoinError(MATCH_REQUEUE_NOTICE)
+      triggeredRequeue = true
+    }
+
     if (state.status === 'idle' && previous && previous !== 'idle') {
       console.debug('[AutoMatchProgress] 대기열 상태가 초기화되어 자동 참가 서명을 재설정합니다.')
       joinSignatureRef.current = ''
@@ -169,10 +353,33 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         clearTimeout(joinRetryTimerRef.current)
         joinRetryTimerRef.current = null
       }
+      const currentJoinError = joinErrorRef.current || ''
+      if (
+        !triggeredRequeue &&
+        !navigationLockedRef.current &&
+        !matchRedirectedRef.current &&
+        !queueAbandonedRef.current &&
+        currentJoinError !== MATCH_REQUEUE_NOTICE &&
+        currentJoinError !== PENALTY_NOTICE &&
+        currentJoinError !== QUEUE_LEAVE_NOTICE
+      ) {
+        markQueueAbandoned()
+      }
     }
 
     previousStatusRef.current = state.status
-  }, [state.status, state.match])
+  }, [
+    CONFIRMATION_WINDOW_SECONDS,
+    clearConfirmationTimers,
+    confirmationState,
+    setConfirmationState,
+    setConfirmationRemaining,
+    setJoinError,
+    setMatchLocked,
+    markQueueAbandoned,
+    state.match,
+    state.status,
+  ])
 
   useEffect(() => {
     if (!gameId || !mode) return
@@ -184,8 +391,6 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       latestStatusRef.current = state.status
       return
     }
-    if (matchRedirectedRef.current) return
-
     const match = state.match
     if (!match) {
       return
@@ -218,8 +423,17 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       turnTimer: match.turnTimer ?? match.turn_timer ?? null,
     }
 
-    clearMatchConfirmation()
-    const saved = saveMatchConfirmation({
+    const createdAt = Date.now()
+    setGameMatchSnapshot(gameId, {
+      match: sanitizedMatch,
+      pendingMatch,
+      viewerId: state.viewerId || '',
+      heroId: state.heroId || '',
+      role: roleName || '',
+      mode,
+      createdAt,
+    })
+    const confirmationPayload = {
       gameId,
       mode,
       roleName,
@@ -229,24 +443,36 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       viewerId: state.viewerId || '',
       heroId: state.heroId || '',
       match: sanitizedMatch,
-      createdAt: Date.now(),
-    })
+      createdAt,
+    }
+    setGameMatchConfirmation(gameId, confirmationPayload)
+
+    clearMatchConfirmation()
+    const saved = saveMatchConfirmation(confirmationPayload)
 
     if (!saved) {
+      latestStatusRef.current = state.status
       return
     }
 
-    matchRedirectedRef.current = true
-    navigationLockedRef.current = true
     latestStatusRef.current = state.status
-    router.replace({ pathname: `/rank/${gameId}/match-ready`, query: { mode } })
+
+    if (
+      state.status === 'matched' &&
+      !matchRedirectedRef.current &&
+      gameId &&
+      mode
+    ) {
+      matchRedirectedRef.current = true
+      navigationLockedRef.current = true
+      router.replace({ pathname: `/rank/${gameId}/match-ready`, query: { mode } })
+    }
+
   }, [
     gameId,
     mode,
     clearConnectionRegistry,
-    requiresManualConfirmation,
     roleName,
-    router,
     state.heroId,
     state.match,
     state.roles,
@@ -254,6 +480,9 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     state.status,
     state.viewerId,
     turnTimer,
+    router,
+    pendingMatch,
+    requiresManualConfirmation,
   ])
 
   useEffect(() => {
@@ -336,9 +565,20 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
   const handleConfirmationTimeout = useCallback(() => {
     clearConfirmationTimers()
+    const latest = latestConfirmationRef.current
+    if (latest === 'confirmed' || latest === 'launching') {
+      setConfirmationRemaining(0)
+      if (latest !== 'launching') {
+        setConfirmationState('launching')
+      }
+      setJoinError('')
+      return
+    }
     setConfirmationState('failed')
     setJoinError(PENALTY_NOTICE)
     joinSignatureRef.current = ''
+    playTriggeredRef.current = false
+    storeStartMatchMeta(null)
     cancelQueueWithCleanup()
     if (matchLockedRef.current) {
       matchLockedRef.current = false
@@ -354,7 +594,14 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       navigationLockedRef.current = true
       router.replace(`/rank/${gameId}`)
     }, FAILURE_REDIRECT_DELAY_MS)
-  }, [cancelQueueWithCleanup, clearConfirmationTimers, gameId, router])
+  }, [
+    cancelQueueWithCleanup,
+    clearConfirmationTimers,
+    gameId,
+    router,
+    setConfirmationRemaining,
+    storeStartMatchMeta,
+  ])
 
   const startConfirmationCountdown = useCallback(() => {
     clearConfirmationTimers()
@@ -490,7 +737,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   )
 
   const handleConfirmMatch = useCallback(async () => {
-    if (confirmationState !== 'counting' && confirmationState !== 'auto') return
+    if (confirmationState !== 'counting') return
     if (confirming) return
 
     setConfirming(true)
@@ -550,14 +797,11 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
       const playOk = await triggerPlay(token)
       if (!playOk) {
-        if (!requiresManualConfirmation) {
-          setConfirmationState('failed')
-        }
+        setConfirmationState('failed')
         storeStartMatchMeta(null)
         return
       }
 
-      clearConfirmationTimers()
       setConfirmationState('confirmed')
       setJoinError('')
       cancelQueueWithCleanup()
@@ -578,7 +822,6 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     confirming,
     gameId,
     mode,
-    requiresManualConfirmation,
     roleName,
     state.match?.matchCode,
     turnTimer,
@@ -589,11 +832,16 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [state.status])
 
   useEffect(() => {
+    if (queueAbandonedRef.current && state.status === 'idle') {
+      setDisplayStatus('cancelled')
+      return
+    }
     if (
       matchLocked ||
       state.status === 'matched' ||
       confirmationState === 'counting' ||
-      confirmationState === 'confirmed'
+      confirmationState === 'confirmed' ||
+      confirmationState === 'launching'
     ) {
       setDisplayStatus('matched')
       return
@@ -765,6 +1013,99 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [cancelQueueWithCleanup, gameId, router, state.status])
 
   useEffect(() => {
+    if (state.status !== 'matched' || !requiresManualConfirmation) {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+      inactivityTriggeredRef.current = false
+      return undefined
+    }
+
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined
+    }
+
+    if (navigationLockedRef.current || matchRedirectedRef.current) {
+      return undefined
+    }
+
+    inactivityTriggeredRef.current = false
+
+    const scheduleInactivityCancel = () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+      }
+      inactivityTimerRef.current = setTimeout(() => {
+        if (navigationLockedRef.current || matchRedirectedRef.current) {
+          return
+        }
+        if (inactivityTriggeredRef.current) {
+          return
+        }
+        inactivityTriggeredRef.current = true
+        console.warn('[AutoMatchProgress] 사용자 활동이 감지되지 않아 매칭을 취소합니다.')
+        setJoinError('응답이 없어 매칭이 취소되었습니다.')
+        cancelQueueWithCleanup()
+          .catch((error) => {
+            console.warn('[AutoMatchProgress] 무활동 매칭 취소 실패:', error)
+          })
+          .finally(() => {
+            if (inactivityTimerRef.current) {
+              clearTimeout(inactivityTimerRef.current)
+              inactivityTimerRef.current = null
+            }
+            if (!navigationLockedRef.current) {
+              navigationLockedRef.current = true
+              matchRedirectedRef.current = true
+              router.replace(`/rank/${gameId}`)
+            }
+          })
+      }, MATCH_INACTIVITY_TIMEOUT_MS)
+    }
+
+    const handleActivity = () => {
+      if (navigationLockedRef.current || matchRedirectedRef.current) {
+        return
+      }
+      inactivityTriggeredRef.current = false
+      scheduleInactivityCancel()
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleActivity()
+      }
+    }
+
+    scheduleInactivityCancel()
+
+    window.addEventListener('pointerdown', handleActivity, true)
+    window.addEventListener('keydown', handleActivity, true)
+    window.addEventListener('mousemove', handleActivity, true)
+    window.addEventListener('touchstart', handleActivity, true)
+    document.addEventListener('visibilitychange', handleVisibility, true)
+
+    return () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+      window.removeEventListener('pointerdown', handleActivity, true)
+      window.removeEventListener('keydown', handleActivity, true)
+      window.removeEventListener('mousemove', handleActivity, true)
+      window.removeEventListener('touchstart', handleActivity, true)
+      document.removeEventListener('visibilitychange', handleVisibility, true)
+    }
+  }, [
+    cancelQueueWithCleanup,
+    gameId,
+    requiresManualConfirmation,
+    router,
+    state.status,
+  ])
+
+  useEffect(() => {
     if (matchRedirectedRef.current) {
       return
     }
@@ -780,12 +1121,15 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       queueJoinStartedAtRef.current = null
 
       if (confirmationState === 'idle') {
-        if (requiresManualConfirmation) {
-          startConfirmationCountdown()
-        } else {
-          setConfirmationState('auto')
-        }
+        startConfirmationCountdown()
       }
+      return
+    }
+
+    if (
+      matchLockedRef.current &&
+      ['counting', 'confirmed', 'launching'].includes(confirmationState)
+    ) {
       return
     }
 
@@ -796,11 +1140,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
       }
     }
 
-    if (matchLockedRef.current && confirmationState === 'counting') {
-      return
-    }
-
-    if (confirmationState === 'confirmed') {
+    if (confirmationState === 'confirmed' || confirmationState === 'launching') {
       return
     }
 
@@ -818,51 +1158,29 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   ])
 
   useEffect(() => {
-    if (confirmationState === 'counting' && confirmationRemaining <= 0) {
+    if (
+      (confirmationState === 'counting' || confirmationState === 'confirmed') &&
+      confirmationRemaining <= 0
+    ) {
       handleConfirmationTimeout()
     }
   }, [confirmationRemaining, confirmationState, handleConfirmationTimeout])
 
   useEffect(() => {
-    if (!state.match) {
-      return
-    }
-    if (requiresManualConfirmation) {
-      return
-    }
-    if (confirmationState !== 'auto') {
-      return
-    }
-    if (confirming) {
-      return
-    }
-    if (matchRedirectedRef.current) {
-      return
-    }
-
-    handleConfirmMatch()
-  }, [
-    confirming,
-    confirmationState,
-    handleConfirmMatch,
-    requiresManualConfirmation,
-    state.match,
-  ])
-
-  useEffect(() => {
-    if (state.status !== 'matched') return undefined
-    if (confirmationState !== 'confirmed') return undefined
+    if (confirmationState !== 'launching') return undefined
+    if (!gameId) return undefined
 
     const timer = setTimeout(() => {
       if (navigationLockedRef.current) return
       navigationLockedRef.current = true
+      matchRedirectedRef.current = true
       router.replace({ pathname: `/rank/${gameId}/start`, query: { mode } })
     }, MATCH_TRANSITION_DELAY_MS)
 
     return () => {
       clearTimeout(timer)
     }
-  }, [confirmationState, gameId, mode, router, state.status])
+  }, [confirmationState, gameId, mode, router])
 
   useEffect(() => {
     return () => {
@@ -890,11 +1208,15 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         clearTimeout(joinRetryTimerRef.current)
         joinRetryTimerRef.current = null
       }
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
       const latestConfirmation = latestConfirmationRef.current
       if (
         !matchRedirectedRef.current &&
         (latestStatusRef.current === 'queued' || latestStatusRef.current === 'matched') &&
-        latestConfirmation !== 'confirmed'
+        !['confirmed', 'launching'].includes(latestConfirmation)
       ) {
         cancelQueueWithCleanup()
       }
@@ -903,11 +1225,11 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
   useEffect(() => {
     if (state.status === 'queued' || state.status === 'matched') {
-      if (confirmationState !== 'failed') {
+      if (confirmationState !== 'failed' && joinError !== MATCH_REQUEUE_NOTICE) {
         setJoinError('')
       }
     }
-  }, [confirmationState, state.status])
+  }, [confirmationState, joinError, state.status])
 
   const extraBlockers = confirmationState === 'counting' ? [] : blockers.slice(1)
 
@@ -916,39 +1238,98 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     [state.match?.heroMap],
   )
 
-  const assignmentSummary = useMemo(() => {
-    if (!state.match?.assignments?.length) return []
-    return state.match.assignments.map((assignment, assignmentIndex) => {
-      const role =
-        (typeof assignment?.role === 'string' && assignment.role.trim()) ||
-        `역할 ${assignmentIndex + 1}`
-      const members = Array.isArray(assignment?.members)
-        ? assignment.members.map((member, memberIndex) => {
-            const label = resolveMemberLabel({ member, heroMap })
-            const rawKey =
-              member?.id ??
-              member?.queue_id ??
-              member?.queueId ??
-              member?.owner_id ??
-              member?.ownerId ??
-              member?.hero_id ??
-              member?.heroId
-            const keyBase = typeof rawKey === 'string' || typeof rawKey === 'number'
-              ? String(rawKey)
-              : `${assignmentIndex}-${memberIndex}`
-            return {
-              key: `${role}-${keyBase}`,
-              label,
-            }
-          })
-        : []
-      return {
-        key: assignment?.groupKey || `${role}-${assignmentIndex}`,
-        role,
-        members,
+  const relevantAssignments = useMemo(() => {
+    const assignments = Array.isArray(state.match?.assignments)
+      ? state.match.assignments
+      : []
+    if (!assignments.length) return []
+
+    const viewerId = state.viewerId
+    if (!viewerId) return assignments
+
+    const viewerKey = String(viewerId)
+
+    const gatherMembers = (assignment) => {
+      const members = []
+      if (Array.isArray(assignment?.members)) {
+        assignment.members.forEach((member) => {
+          if (member) members.push(member)
+        })
       }
+      const roleSlots = Array.isArray(assignment?.roleSlots)
+        ? assignment.roleSlots
+        : Array.isArray(assignment?.role_slots)
+        ? assignment.role_slots
+        : []
+      roleSlots.forEach((slot) => {
+        if (!slot) return
+        if (Array.isArray(slot.members)) {
+          slot.members.forEach((member) => {
+            if (member) members.push(member)
+          })
+          return
+        }
+        if (slot.member) {
+          members.push(slot.member)
+        }
+      })
+      return members
+    }
+
+    const viewerAssignment = assignments.find((assignment) => {
+      const members = gatherMembers(assignment)
+      return members.some((member) => {
+        if (!member) return false
+        const owner =
+          member.owner_id ||
+          member.ownerId ||
+          member.ownerID ||
+          member.owner ||
+          member.viewer_id ||
+          member.viewerId ||
+          null
+        if (owner == null) return false
+        return String(owner) === viewerKey
+      })
     })
-  }, [heroMap, state.match?.assignments])
+
+    if (viewerAssignment) {
+      return [viewerAssignment]
+    }
+
+    return assignments
+  }, [state.match?.assignments, state.viewerId])
+
+  const roleSummaries = useMemo(
+    () =>
+      buildRoleSummaries({
+        match: state.match,
+        pendingMatch: state.pendingMatch,
+        roles: state.roles,
+        slotLayout: state.slotLayout,
+      }),
+    [state.match, state.pendingMatch, state.roles, state.slotLayout],
+  )
+  const pendingMatch = state.pendingMatch || null
+  const pendingPostCheck = pendingMatch?.postCheck
+  const activePostCheck = state.match?.postCheck
+  useEffect(() => {
+    if (!gameId) return
+    const payload = pendingPostCheck || activePostCheck
+    if (!payload) return
+    setGameMatchPostCheck(gameId, payload)
+  }, [activePostCheck, gameId, pendingPostCheck])
+
+  const assignmentSummary = useMemo(
+    () =>
+      buildMatchOverlaySummary({
+        assignments: relevantAssignments,
+        heroMap,
+        roleSummaries,
+        rooms: state.match?.rooms,
+      }),
+    [heroMap, relevantAssignments, roleSummaries, state.match?.rooms],
+  )
 
   const matchMetaLines = useMemo(() => {
     if (!state.match) return playNotice ? [playNotice] : []
@@ -1007,6 +1388,12 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [playNotice, state.match, turnTimer])
 
   const baseDisplay = useMemo(() => {
+    if (displayStatus === 'cancelled') {
+      return {
+        title: '매칭이 취소되었습니다.',
+        detail: QUEUE_LEAVE_NOTICE,
+      }
+    }
     if (displayStatus === 'queued') {
       return {
         title: '매칭 중…',
@@ -1035,24 +1422,24 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   }, [blockers, displayStatus, joinError])
 
   const matchedDisplay = useMemo(() => {
-    if (confirmationState === 'confirmed') {
-      return {
-        title: '전투 화면으로 이동 중…',
-        detail: '매칭이 확정되었습니다. 전투를 불러오고 있습니다.',
-      }
-    }
-
-    if (confirmationState === 'auto') {
-      return {
-        title: '매칭이 잡혔습니다~',
-        detail: '비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.',
-      }
-    }
-
     if (confirmationState === 'counting') {
       return {
-        title: '매칭이 잡혔습니다~',
-        detail: `${confirmationRemaining}초 안에 버튼을 눌러 전투를 시작해 주세요.`,
+        title: '매칭이 완료되었습니다.',
+        detail: `${confirmationRemaining}초 안에 "게임 시작" 버튼을 눌러주세요.`,
+      }
+    }
+
+    if (confirmationState === 'confirmed') {
+      return {
+        title: '참가 확인 완료!',
+        detail: `${confirmationRemaining}초 뒤 게임이 시작됩니다.`,
+      }
+    }
+
+    if (confirmationState === 'launching') {
+      return {
+        title: '게임을 불러오는 중…',
+        detail: '잠시 후 본 게임 화면으로 이동합니다.',
       }
     }
 
@@ -1064,16 +1451,19 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     }
 
     return {
-      title: '매칭이 잡혔습니다~',
-      detail: '',
+      title: '매칭이 완료되었습니다.',
+      detail: '참가자 구성을 확인해 주세요.',
     }
-    }, [confirmationRemaining, confirmationState, joinError])
+  }, [confirmationRemaining, confirmationState, joinError])
 
   const showMatchedOverlay = matchLocked || confirmationState !== 'idle'
 
   const showBaseSpinner = useMemo(() => {
     if (confirmationState === 'failed') {
       return true
+    }
+    if (displayStatus === 'cancelled') {
+      return false
     }
     return displayStatus !== 'matched'
   }, [confirmationState, displayStatus])
@@ -1093,6 +1483,13 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
           <p className={styles.message}>{baseDisplay.title}</p>
           {baseDisplay.detail ? (
             <p className={styles.detail}>{baseDisplay.detail}</p>
+          ) : null}
+          {displayStatus === 'cancelled' ? (
+            <div className={styles.cancelActions}>
+              <button type="button" className={styles.returnButton} onClick={handleReturnToRoster}>
+                캐릭터 화면으로 가기
+              </button>
+            </div>
           ) : null}
           {!showMatchedOverlay && matchMetaLines.length ? (
             <div className={styles.matchMeta} role="note">
@@ -1116,9 +1513,15 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
                         </li>
                       ))}
                     </ul>
-                  ) : (
+                  ) : null}
+                  {assignment.missing > 0 ? (
+                    <p className={styles.assignmentEmpty}>
+                      남은 슬롯 {assignment.missing}
+                    </p>
+                  ) : null}
+                  {assignment.members.length === 0 && assignment.missing === 0 ? (
                     <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -1164,14 +1567,20 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
                           </li>
                         ))}
                       </ul>
-                    ) : (
+                    ) : null}
+                    {assignment.missing > 0 ? (
+                      <p className={styles.assignmentEmpty}>
+                        남은 슬롯 {assignment.missing}
+                      </p>
+                    ) : null}
+                    {assignment.members.length === 0 && assignment.missing === 0 ? (
                       <p className={styles.assignmentEmpty}>참가자 정보를 불러오는 중…</p>
-                    )}
+                    ) : null}
                   </div>
                 ))}
               </div>
             ) : null}
-            {confirmationState === 'counting' && requiresManualConfirmation ? (
+            {confirmationState === 'counting' ? (
               <div className={styles.confirmArea}>
                 <button
                   type="button"
@@ -1180,16 +1589,25 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
                   disabled={confirming}
                   ref={confirmButtonRef}
                 >
-                  {confirming ? '준비 중…' : '전투 시작하기'}
+                  {confirming ? '시작 준비 중…' : '게임 시작'}
                   <span className={styles.confirmCountdown}>{confirmationRemaining}초</span>
                 </button>
-                <p className={styles.confirmHint}>모든 참가자가 확인하면 전투가 시작됩니다.</p>
+                <p className={styles.confirmHint}>
+                  {CONFIRMATION_WINDOW_SECONDS}
+                  초 안에 게임을 시작하지 않으면 매칭이 취소되고 다시 매칭이 진행됩니다.
+                </p>
               </div>
             ) : null}
-            {!requiresManualConfirmation &&
-            (confirmationState === 'auto' || confirmationState === 'counting') ? (
-              <div className={styles.autoConfirmNotice}>
-                <p className={styles.confirmHint}>비실시간 매칭은 자동으로 시작됩니다. 잠시만 기다려 주세요.</p>
+            {confirmationState === 'confirmed' ? (
+              <div className={styles.confirmArea}>
+                <p className={styles.confirmHint}>
+                  참가 의사를 확인했습니다. 남은 {confirmationRemaining}초 동안 준비를 마무리해 주세요.
+                </p>
+              </div>
+            ) : null}
+            {confirmationState === 'launching' ? (
+              <div className={styles.confirmArea}>
+                <p className={styles.confirmHint}>게임을 불러오는 중입니다. 곧 전투 화면으로 이동합니다.</p>
               </div>
             ) : null}
             {confirmationState === 'failed' && extraBlockers.length ? (
@@ -1205,7 +1623,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
         </div>
       ) : null}
 
-      {joinError && state.status === 'queued' ? (
+      {joinError ? (
         <p className={styles.srOnly} role="alert">{joinError}</p>
       ) : null}
     </div>

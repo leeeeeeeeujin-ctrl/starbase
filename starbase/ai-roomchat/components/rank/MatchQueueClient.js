@@ -11,10 +11,26 @@ import {
   readStartSessionValue,
   writeStartSessionValue,
 } from '../../lib/rank/startSessionChannel'
+import { buildMatchMetaPayload, storeStartMatchMeta } from './startConfig'
+import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
 
 import useMatchQueue from './hooks/useMatchQueue'
 import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
 import styles from './MatchQueueClient.module.css'
+import { buildRoleSummaries } from './queueSummaryUtils'
+import { emitQueueLeaveBeacon } from '../../lib/rank/matchmakingService'
+import {
+  registerMatchConnections,
+  removeConnectionEntries,
+} from '../../lib/rank/startConnectionRegistry'
+import {
+  hydrateGameMatchData,
+  setGameMatchConfirmation,
+  setGameMatchHeroSelection,
+  setGameMatchParticipation,
+  setGameMatchPostCheck,
+  setGameMatchSnapshot,
+} from '../../modules/rank/matchDataStore'
 
 function groupQueue(queue) {
   const map = new Map()
@@ -365,7 +381,46 @@ export default function MatchQueueClient({
   autoStart = false,
 }) {
   const router = useRouter()
-  const { state, actions } = useMatchQueue({ gameId, mode, enabled: true })
+  const [autoJoinError, setAutoJoinError] = useState('')
+  const apiKeyExpiredHandledRef = useRef(false)
+  useEffect(() => {
+    apiKeyExpiredHandledRef.current = false
+  }, [gameId])
+  const handleApiKeyExpired = useCallback(
+    () => {
+      if (apiKeyExpiredHandledRef.current) return
+      apiKeyExpiredHandledRef.current = true
+      const notice = 'API 키가 만료되었습니다. 새 API 키를 사용해주세요.'
+      setAutoJoinError(notice)
+      try {
+        if (typeof window !== 'undefined') {
+          window.alert(notice)
+        }
+      } catch (alertError) {
+        console.warn('[MatchQueue] API 키 만료 알림 표시 실패:', alertError)
+      }
+      router.replace(`/rank/${gameId}`)
+    },
+    [router, gameId],
+  )
+  const { state, actions } = useMatchQueue({
+    gameId,
+    mode,
+    enabled: true,
+    onApiKeyExpired: handleApiKeyExpired,
+  })
+  useEffect(() => {
+    if (!gameId) return
+    hydrateGameMatchData(gameId)
+  }, [gameId])
+  const clearConnectionRegistry = useCallback(() => {
+    if (!gameId) return
+    try {
+      removeConnectionEntries({ gameId, source: 'match-queue-client' })
+    } catch (error) {
+      console.warn('[MatchQueue] 연결 정보 초기화 실패:', error)
+    }
+  }, [gameId])
   const {
     loading: plannerLoading,
     error: plannerError,
@@ -382,25 +437,18 @@ export default function MatchQueueClient({
   const [countdown, setCountdown] = useState(null)
   const countdownTimerRef = useRef(null)
   const navigationLockRef = useRef(false)
+  const matchMetaSignatureRef = useRef('')
   const latestStatusRef = useRef('idle')
+  const matchRedirectedRef = useRef(false)
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
-  const roomSummaries = useMemo(() => {
-    const source = Array.isArray(state.match?.rooms) && state.match.rooms.length
-      ? state.match.rooms
-      : Array.isArray(state.pendingMatch?.rooms) && state.pendingMatch.rooms.length
-        ? state.pendingMatch.rooms
-        : []
-
-    return source.map((room) => {
-      const role = room?.role || '역할'
-      const filled = Number(room?.filledSlots ?? room?.filled_slots ?? 0)
-      const total = Number(room?.slotCount ?? room?.slots ?? 0)
-      const missing = Number(room?.missingSlots ?? room?.missing_slots ?? Math.max(0, total - filled))
-      const ready = room?.ready === true || (total > 0 && missing <= 0 && filled >= total)
-      return { role, filled, total, missing, ready }
-    })
-  }, [state.match, state.pendingMatch])
-  const [autoJoinError, setAutoJoinError] = useState('')
+  const roomSummaries = useMemo(
+    () =>
+      buildRoleSummaries({
+        match: state.match,
+        pendingMatch: state.pendingMatch,
+      }),
+    [state.match, state.pendingMatch],
+  )
   const [plannerExportNotice, setPlannerExportNotice] = useState('')
   const autoJoinSignatureRef = useRef('')
   const autoJoinRetryTimerRef = useRef(null)
@@ -426,6 +474,8 @@ export default function MatchQueueClient({
   const isDropInMatch = matchType === 'drop_in'
   const dropInTarget = state.match?.dropInTarget || null
   const pendingMatch = state.pendingMatch || null
+  const pendingPostCheck = pendingMatch?.postCheck
+  const activePostCheck = state.match?.postCheck
   const queuedSampleMeta = state.sampleMeta || null
   const heroOptions = Array.isArray(state.heroOptions) ? state.heroOptions : []
   const viewerRoster = Array.isArray(state.viewerRoster) ? state.viewerRoster : []
@@ -433,6 +483,30 @@ export default function MatchQueueClient({
   useEffect(() => {
     setManualHeroId(state.heroId || '')
   }, [state.heroId])
+  useEffect(() => {
+    if (!gameId) return
+    setGameMatchParticipation(gameId, {
+      roster: viewerRoster,
+      heroOptions,
+      participantPool: plannerParticipantPool,
+      heroMap: state.heroMap,
+    })
+  }, [gameId, heroOptions, plannerParticipantPool, state.heroMap, viewerRoster])
+  useEffect(() => {
+    if (!gameId) return
+    setGameMatchHeroSelection(gameId, {
+      heroId: state.heroId || '',
+      viewerId: state.viewerId || '',
+      role: state.lockedRole || targetRoleName || '',
+      heroMeta: state.heroMeta || null,
+    })
+  }, [gameId, state.heroId, state.heroMeta, state.lockedRole, state.viewerId, targetRoleName])
+  useEffect(() => {
+    if (!gameId) return
+    const payload = pendingPostCheck || activePostCheck
+    if (!payload) return
+    setGameMatchPostCheck(gameId, payload)
+  }, [activePostCheck, gameId, pendingPostCheck])
   const handleHeroOptionSelect = useCallback(
     (value) => {
       if (value == null) return
@@ -872,6 +946,7 @@ export default function MatchQueueClient({
   }, [actions, refreshing])
 
   const handleStart = useCallback(() => {
+    if (autoStart) return
     if (navigationLockRef.current) return
     navigationLockRef.current = true
     setCountdown(null)
@@ -879,10 +954,78 @@ export default function MatchQueueClient({
       clearTimeout(countdownTimerRef.current)
       countdownTimerRef.current = null
     }
+    if (state.status === 'matched' && state.match) {
+      const viewerRoleName = state.lockedRole || targetRoleName || ''
+      const turnTimerValue =
+        Number.isFinite(Number(finalTimer)) && Number(finalTimer) > 0
+          ? Number(finalTimer)
+          : null
+      const payload = buildMatchMetaPayload(state.match, {
+        mode: mode || null,
+        gameId: gameId || null,
+        turnTimer: turnTimerValue,
+        source: 'match_queue_client_handle_start',
+        viewerId: state.viewerId || null,
+        viewerRole: viewerRoleName || null,
+        viewerHeroId: state.heroId || null,
+        viewerHeroName: state.heroMeta?.name || null,
+        autoStart: Boolean(autoStart),
+      })
+      if (payload) {
+        storeStartMatchMeta(payload)
+        try {
+          const assignmentStamp = Array.isArray(state.match.assignments)
+            ? state.match.assignments
+                .map((assignment) => {
+                  if (!assignment) return ''
+                  const role = assignment.role || ''
+                  const members = Array.isArray(assignment.members)
+                    ? assignment.members
+                        .map((member) => {
+                          if (!member) return ''
+                          const owner = member.owner_id ?? member.ownerId ?? ''
+                          const hero = member.hero_id ?? member.heroId ?? ''
+                          return `${owner}:${hero}`
+                        })
+                        .join(',')
+                    : ''
+                  return `${role}|${members}`
+                })
+                .join(';')
+            : ''
+          matchMetaSignatureRef.current = JSON.stringify({
+            matchCode: state.match.matchCode || '',
+            turnTimer: turnTimerValue,
+            viewerHeroId: state.heroId || '',
+            viewerRole: viewerRoleName,
+            assignmentStamp,
+          })
+        } catch (signatureError) {
+          console.debug('[MatchQueueClient] 매치 메타 서명 생성 실패', signatureError)
+        }
+      } else {
+        storeStartMatchMeta(null)
+        matchMetaSignatureRef.current = ''
+      }
+    }
     router.push({ pathname: `/rank/${gameId}/start`, query: { mode } })
-  }, [router, gameId, mode])
+  }, [
+    router,
+    gameId,
+    mode,
+    state.status,
+    state.match,
+    state.lockedRole,
+    targetRoleName,
+    finalTimer,
+    state.viewerId,
+    state.heroId,
+    state.heroMeta?.name,
+    autoStart,
+  ])
 
   const handleBackToRoom = () => {
+    clearConnectionRegistry()
     router.push(`/rank/${gameId}`)
   }
 
@@ -1042,6 +1185,117 @@ export default function MatchQueueClient({
   ])
 
   useEffect(() => {
+    if (!gameId || !mode) return
+
+    if (state.status !== 'matched' || !state.match) {
+      if (latestStatusRef.current === 'matched') {
+        clearMatchConfirmation()
+        clearConnectionRegistry()
+      }
+      matchRedirectedRef.current = false
+      return
+    }
+
+    const match = state.match
+
+    try {
+      registerMatchConnections({
+        gameId,
+        match,
+        viewerId: state.viewerId || '',
+        source: 'match-queue-client',
+      })
+    } catch (error) {
+      console.warn('[MatchQueue] 연결 정보 등록 실패:', error)
+    }
+
+    const plainHeroMap =
+      match.heroMap instanceof Map
+        ? Object.fromEntries(match.heroMap)
+        : match.heroMap || null
+
+    const sanitizedMatch = {
+      assignments: Array.isArray(match.assignments) ? match.assignments : [],
+      maxWindow: match.maxWindow ?? null,
+      heroMap: plainHeroMap,
+      matchCode: match.matchCode || '',
+      matchType: match.matchType || 'standard',
+      brawlVacancies: Array.isArray(match.brawlVacancies) ? match.brawlVacancies : [],
+      roleStatus: match.roleStatus || null,
+      sampleMeta: match.sampleMeta || state.sampleMeta || null,
+      dropInTarget: match.dropInTarget || null,
+      turnTimer: match.turnTimer ?? match.turn_timer ?? null,
+      rooms: Array.isArray(match.rooms) ? match.rooms : [],
+      roles: Array.isArray(match.roles)
+        ? match.roles
+        : Array.isArray(state.roles)
+        ? state.roles
+        : [],
+      slotLayout: Array.isArray(match.slotLayout) ? match.slotLayout : [],
+    }
+
+    const viewerRoleName = state.lockedRole || targetRoleName || ''
+    const resolvedTurnTimer = Number.isFinite(Number(finalTimer)) && Number(finalTimer) > 0
+      ? Number(finalTimer)
+      : Number.isFinite(Number(sanitizedMatch.turnTimer)) && Number(sanitizedMatch.turnTimer) > 0
+      ? Number(sanitizedMatch.turnTimer)
+      : null
+
+    const createdAt = Date.now()
+    setGameMatchSnapshot(gameId, {
+      match: sanitizedMatch,
+      pendingMatch,
+      viewerId: state.viewerId || '',
+      heroId: state.heroId || '',
+      role: viewerRoleName,
+      mode,
+      createdAt,
+    })
+    const confirmationPayload = {
+      gameId,
+      mode,
+      roleName: viewerRoleName,
+      requiresManualConfirmation: true,
+      turnTimer: resolvedTurnTimer,
+      roles: sanitizedMatch.roles,
+      viewerId: state.viewerId || '',
+      heroId: state.heroId || '',
+      match: sanitizedMatch,
+      createdAt,
+    }
+    setGameMatchConfirmation(gameId, confirmationPayload)
+
+    clearMatchConfirmation()
+    const saved = saveMatchConfirmation(confirmationPayload)
+
+    if (!saved) {
+      console.warn('[MatchQueue] 매칭 확인 정보를 저장하지 못했습니다.')
+      return
+    }
+
+    if (!matchRedirectedRef.current) {
+      matchRedirectedRef.current = true
+      navigationLockRef.current = true
+      router.replace({ pathname: `/rank/${gameId}/match-ready`, query: { mode } })
+    }
+  }, [
+    gameId,
+    mode,
+    state.status,
+    state.match,
+    state.viewerId,
+    state.heroId,
+    state.lockedRole,
+    state.roles,
+    state.sampleMeta,
+    targetRoleName,
+    finalTimer,
+    clearConnectionRegistry,
+    router,
+    pendingMatch,
+  ])
+
+  useEffect(() => {
     if (autoStart) return
     if (state.status !== 'matched' || !state.match || isDropInMatch) return
     if (finalTimer == null) return
@@ -1096,13 +1350,93 @@ export default function MatchQueueClient({
   }, [countdown, handleStart])
 
   useEffect(() => {
+    if (state.status === 'matched' && state.match) {
+      const viewerRoleName = state.lockedRole || targetRoleName || ''
+      const turnTimerValue =
+        Number.isFinite(Number(finalTimer)) && Number(finalTimer) > 0
+          ? Number(finalTimer)
+          : null
+      let assignmentStamp = ''
+      try {
+        assignmentStamp = Array.isArray(state.match.assignments)
+          ? state.match.assignments
+              .map((assignment) => {
+                if (!assignment) return ''
+                const role = assignment.role || ''
+                const members = Array.isArray(assignment.members)
+                  ? assignment.members
+                      .map((member) => {
+                        if (!member) return ''
+                        const owner = member.owner_id ?? member.ownerId ?? ''
+                        const hero = member.hero_id ?? member.heroId ?? ''
+                        return `${owner}:${hero}`
+                      })
+                      .join(',')
+                  : ''
+                return `${role}|${members}`
+              })
+              .join(';')
+          : ''
+      } catch (stampError) {
+        console.debug('[MatchQueueClient] 매치 메타 stamp 생성 실패', stampError)
+      }
+
+      const signature = JSON.stringify({
+        matchCode: state.match.matchCode || '',
+        turnTimer: turnTimerValue,
+        viewerHeroId: state.heroId || '',
+        viewerRole: viewerRoleName,
+        assignmentStamp,
+      })
+
+      if (matchMetaSignatureRef.current !== signature) {
+        matchMetaSignatureRef.current = signature
+        const payload = buildMatchMetaPayload(state.match, {
+          mode: mode || null,
+          turnTimer: turnTimerValue,
+          source: 'match_queue_client_ready',
+          viewerId: state.viewerId || null,
+          viewerRole: viewerRoleName || null,
+          viewerHeroId: state.heroId || null,
+          viewerHeroName: state.heroMeta?.name || null,
+          autoStart: Boolean(autoStart),
+        })
+        if (payload) {
+          storeStartMatchMeta(payload)
+        } else {
+          storeStartMatchMeta(null)
+          matchMetaSignatureRef.current = ''
+        }
+      }
+      return
+    }
+
+    if (matchMetaSignatureRef.current) {
+      matchMetaSignatureRef.current = ''
+      storeStartMatchMeta(null)
+    }
+  }, [
+    state.status,
+    state.match,
+    state.lockedRole,
+    targetRoleName,
+    finalTimer,
+    mode,
+    state.viewerId,
+    state.heroId,
+    state.heroMeta?.name,
+    autoStart,
+  ])
+
+  useEffect(() => {
     if (!autoStart) return
-    if (autoStartHandledRef.current) return
     if (isDropInMatch) return
     if (state.status !== 'matched' || !state.match) return
     if (finalTimer == null) return
 
-    autoStartHandledRef.current = true
+    if (!autoStartHandledRef.current) {
+      autoStartHandledRef.current = true
+    }
     if (voteTimerRef.current) {
       clearInterval(voteTimerRef.current)
       voteTimerRef.current = null
@@ -1113,11 +1447,39 @@ export default function MatchQueueClient({
       countdownTimerRef.current = null
     }
     setCountdown(null)
-    navigationLockRef.current = true
-    handleStart()
-  }, [autoStart, state.status, state.match, finalTimer, isDropInMatch, handleStart])
+  }, [autoStart, state.status, state.match, finalTimer, isDropInMatch])
 
   const cancelQueue = actions.cancelQueue
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const handlePageLeave = () => {
+      if (navigationLockRef.current) return
+      if (latestStatusRef.current !== 'queued' && latestStatusRef.current !== 'matched') {
+        return
+      }
+      if (state.viewerId) {
+        emitQueueLeaveBeacon({
+          gameId,
+          mode,
+          ownerId: state.viewerId,
+          heroId: state.heroId || null,
+        })
+      }
+      cancelQueue().catch((error) => {
+        console.warn('[MatchQueue] 페이지 이탈 시 대기열 취소 실패:', error)
+      })
+    }
+
+    window.addEventListener('pagehide', handlePageLeave)
+    window.addEventListener('beforeunload', handlePageLeave)
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageLeave)
+      window.removeEventListener('beforeunload', handlePageLeave)
+    }
+  }, [cancelQueue, gameId, mode, state.heroId, state.viewerId])
 
   useEffect(
     () => () => {
@@ -1133,11 +1495,12 @@ export default function MatchQueueClient({
         clearInterval(dropInRedirectTimerRef.current)
         dropInRedirectTimerRef.current = null
       }
+      clearConnectionRegistry()
       if (latestStatusRef.current === 'queued') {
         cancelQueue()
       }
     },
-    [cancelQueue],
+    [cancelQueue, clearConnectionRegistry],
   )
 
   useEffect(() => {

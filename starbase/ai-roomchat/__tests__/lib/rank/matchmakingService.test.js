@@ -1,10 +1,16 @@
 import {
+  enqueueParticipant,
+  filterStaleQueueEntries,
+  heartbeatQueueEntry,
   loadActiveRoles,
   loadMatchSampleSource,
   loadOwnerParticipantRoster,
+  loadRoleLayout,
+  extractViewerAssignment,
   runMatching,
-  enqueueParticipant,
+  postCheckMatchAssignments,
 } from '@/lib/rank/matchmakingService'
+import { computeRoleReadiness } from '@/lib/rank/matchRoleSummary'
 
 function createSupabaseStub(tableData = {}) {
   return {
@@ -21,6 +27,7 @@ function createQueryBuilder(initialRows, tableName, tableData) {
   let orderConfig = null
   let action = 'select'
   let insertPayload = null
+  let updatePayload = null
 
   const builder = {
     select() {
@@ -58,6 +65,11 @@ function createQueryBuilder(initialRows, tableName, tableData) {
       insertPayload = Array.isArray(payload) ? payload : [payload]
       return builder
     },
+    update(payload) {
+      action = 'update'
+      updatePayload = payload || {}
+      return builder
+    },
     then(resolve, reject) {
       try {
         const payload = performAction()
@@ -89,6 +101,23 @@ function createQueryBuilder(initialRows, tableName, tableData) {
       action = 'select'
       insertPayload = null
       return { data, error: null }
+    }
+
+    if (action === 'update') {
+      const rows = getRows()
+      const matched = []
+      const updated = rows.map((row) => {
+        if (filters.every((filter) => filter(row))) {
+          const nextRow = { ...row, ...updatePayload }
+          matched.push(nextRow)
+          return nextRow
+        }
+        return row
+      })
+      tableData[tableName] = updated
+      action = 'select'
+      updatePayload = null
+      return { data: matched, error: null }
     }
 
     const data = runQuery()
@@ -142,8 +171,8 @@ describe('loadActiveRoles', () => {
 
     const roles = await loadActiveRoles(supabase, 'game-roles')
     expect(roles).toEqual([
-      { name: 'attack', slot_count: 2 },
-      { name: 'support', slot_count: 1 },
+      { name: 'attack', slot_count: 2, slotCount: 2 },
+      { name: 'support', slot_count: 1, slotCount: 1 },
     ])
   })
 
@@ -156,7 +185,380 @@ describe('loadActiveRoles', () => {
     })
 
     const roles = await loadActiveRoles(supabase, 'game-empty')
-    expect(roles).toEqual([{ name: 'attack', slot_count: 2 }])
+    expect(roles).toEqual([{ name: 'attack', slot_count: 2, slotCount: 2 }])
+  })
+
+  it('aggregates duplicate role rows for the same game', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-duplicates', name: '공격', slot_count: 1, active: true },
+        { game_id: 'game-duplicates', name: '공격', slot_count: 2, active: true },
+        { game_id: 'game-duplicates', name: '지원', slot_count: 1, active: true },
+      ],
+      rank_game_slots: [],
+    })
+
+    const roles = await loadActiveRoles(supabase, 'game-duplicates')
+    expect(roles).toEqual([
+      { name: '공격', slot_count: 3, slotCount: 3 },
+      { name: '지원', slot_count: 1, slotCount: 1 },
+    ])
+  })
+
+  it('falls back to the rank_games.roles array only when tables are empty', async () => {
+    const supabase = createSupabaseStub({
+      rank_games: [
+        {
+          id: 'game-inline',
+          roles: ['공격', '공격', null, '', '수비', '공격', '지원'],
+        },
+      ],
+      rank_game_roles: [],
+      rank_game_slots: [],
+    })
+
+    const roles = await loadActiveRoles(supabase, 'game-inline')
+    expect(roles).toEqual([
+      { name: '공격', slot_count: 3, slotCount: 3 },
+      { name: '수비', slot_count: 1, slotCount: 1 },
+      { name: '지원', slot_count: 1, slotCount: 1 },
+    ])
+  })
+})
+
+describe('postCheckMatchAssignments', () => {
+  it('removes duplicate hero entries that do not match their participant role', async () => {
+    const supabase = createSupabaseStub({
+      rank_participants: [
+        {
+          game_id: 'game-dup',
+          owner_id: 'owner-1',
+          hero_id: 'hero-1',
+          role: '공격',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    })
+
+    const assignments = [
+      {
+        role: '공격',
+        members: [{ owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' }],
+      },
+      {
+        role: '수비',
+        members: [{ owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q2' }],
+      },
+    ]
+
+    const rooms = [
+      {
+        id: 'room-1',
+        slots: [
+          { role: '공격', hero_id: 'hero-1' },
+          { role: '수비', hero_id: 'hero-1' },
+        ],
+      },
+    ]
+
+    const slotLayout = [
+      { slotIndex: 0, role: '공격' },
+      { slotIndex: 1, role: '수비' },
+    ]
+
+    const result = await postCheckMatchAssignments(supabase, {
+      gameId: 'game-dup',
+      assignments,
+      rooms,
+      roles: [],
+      slotLayout,
+    })
+
+    expect(result.assignments[0].members).toHaveLength(1)
+    expect(result.assignments[1].members).toHaveLength(0)
+    expect(result.rooms[0].slots).toEqual([
+      expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
+      expect.objectContaining({ role: '수비', hero_id: null, occupied: false }),
+    ])
+    expect(result.removedMembers).toEqual([
+      { heroId: 'hero-1', ownerId: 'owner-1', role: '수비', reason: 'role_mismatch' },
+    ])
+  })
+
+  it('enforces role capacity limits after removing duplicates', async () => {
+    const supabase = createSupabaseStub({
+      rank_participants: [
+        {
+          game_id: 'game-cap',
+          owner_id: 'owner-1',
+          hero_id: 'hero-1',
+          role: '공격',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          game_id: 'game-cap',
+          owner_id: 'owner-2',
+          hero_id: 'hero-2',
+          role: '공격',
+          updated_at: '2024-01-02T00:00:00Z',
+        },
+      ],
+    })
+
+    const assignments = [
+      {
+        role: '공격',
+        members: [
+          { owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' },
+          { owner_id: 'owner-2', hero_id: 'hero-2', queue_id: 'q2' },
+        ],
+      },
+    ]
+
+    const rooms = [
+      {
+        id: 'room-cap',
+        slots: [
+          { role: '공격', hero_id: 'hero-1' },
+          { role: '공격', hero_id: 'hero-2' },
+        ],
+      },
+    ]
+
+    const slotLayout = [{ slotIndex: 0, role: '공격' }]
+
+    const result = await postCheckMatchAssignments(supabase, {
+      gameId: 'game-cap',
+      assignments,
+      rooms,
+      roles: [],
+      slotLayout,
+    })
+
+    expect(result.assignments[0].members).toEqual([
+      expect.objectContaining({ owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' }),
+    ])
+    expect(result.rooms[0].slots).toEqual([
+      expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
+      expect.objectContaining({ role: '공격', hero_id: null, occupied: false }),
+    ])
+    expect(result.removedMembers).toEqual([
+      { heroId: 'hero-2', ownerId: 'owner-2', role: '공격', reason: 'exceeds_capacity' },
+    ])
+  })
+
+  it('realigns slot roles to declared roles when assignments use merged labels', async () => {
+    const supabase = createSupabaseStub({
+      rank_participants: [
+        {
+          game_id: 'game-merged',
+          owner_id: 'owner-1',
+          hero_id: 'hero-1',
+          role: '공격',
+          updated_at: '2024-02-01T00:00:00Z',
+        },
+        {
+          game_id: 'game-merged',
+          owner_id: 'owner-2',
+          hero_id: 'hero-2',
+          role: '수비',
+          updated_at: '2024-02-01T00:00:00Z',
+        },
+      ],
+    })
+
+    const assignments = [
+      {
+        role: '공격 · 수비',
+        slots: 2,
+        members: [
+          { owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' },
+          { owner_id: 'owner-2', hero_id: 'hero-2', queue_id: 'q2' },
+        ],
+        roleSlots: [
+          {
+            slotIndex: 0,
+            role: '공격 · 수비',
+            member: { owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' },
+            members: [{ owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' }],
+            hero_id: 'hero-1',
+          },
+          {
+            slotIndex: 1,
+            role: '공격 · 수비',
+            member: { owner_id: 'owner-2', hero_id: 'hero-2', queue_id: 'q2' },
+            members: [{ owner_id: 'owner-2', hero_id: 'hero-2', queue_id: 'q2' }],
+            hero_id: 'hero-2',
+          },
+        ],
+      },
+    ]
+
+    const rooms = [
+      {
+        id: 'room-merged',
+        slots: [
+          {
+            slotIndex: 0,
+            role: '공격 · 수비',
+            hero_id: 'hero-1',
+            hero_owner_id: 'owner-1',
+            member: { owner_id: 'owner-1', hero_id: 'hero-1' },
+          },
+          {
+            slotIndex: 1,
+            role: '공격 · 수비',
+            hero_id: 'hero-2',
+            hero_owner_id: 'owner-2',
+            member: { owner_id: 'owner-2', hero_id: 'hero-2' },
+          },
+        ],
+      },
+    ]
+
+    const roles = [
+      { name: '공격', slot_count: 1, slotCount: 1 },
+      { name: '수비', slot_count: 1, slotCount: 1 },
+    ]
+
+    const slotLayout = [
+      { slotIndex: 0, role: '공격', heroId: null, heroOwnerId: null },
+      { slotIndex: 1, role: '수비', heroId: null, heroOwnerId: null },
+    ]
+
+    const result = await postCheckMatchAssignments(supabase, {
+      gameId: 'game-merged',
+      assignments,
+      rooms,
+      roles,
+      slotLayout,
+    })
+
+    expect(result.assignments[0].roleSlots).toHaveLength(2)
+    expect(result.assignments[0].roleSlots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: '공격', heroId: 'hero-1', hero_id: 'hero-1' }),
+        expect.objectContaining({ role: '수비', heroId: 'hero-2', hero_id: 'hero-2' }),
+      ]),
+    )
+    expect(result.rooms[0].slots).toHaveLength(2)
+    expect(result.rooms[0].slots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
+        expect.objectContaining({ role: '수비', hero_id: 'hero-2', occupied: true }),
+      ]),
+    )
+
+    const readiness = computeRoleReadiness({
+      roles,
+      slotLayout,
+      assignments: result.assignments,
+      rooms: result.rooms,
+    })
+
+    expect(readiness.ready).toBe(true)
+    expect(readiness.buckets).toEqual([
+      expect.objectContaining({ role: '공격', filled: 1, total: 1, ready: true }),
+      expect.objectContaining({ role: '수비', filled: 1, total: 1, ready: true }),
+    ])
+  })
+})
+
+describe('loadRoleLayout', () => {
+  it('builds layout from slot rows when present', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-layout-slots', name: 'A', slot_count: 99, active: true },
+      ],
+      rank_game_slots: [
+        { game_id: 'game-layout-slots', slot_index: 3, role: 'A', active: true },
+        { game_id: 'game-layout-slots', slot_index: 1, role: 'B', active: true },
+        { game_id: 'game-layout-slots', slot_index: 2, role: 'B', active: false },
+      ],
+    })
+
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-slots')
+    expect(roles).toEqual([
+      { name: 'B', slot_count: 1, slotCount: 1 },
+      { name: 'A', slot_count: 1, slotCount: 1 },
+    ])
+    expect(slotLayout).toEqual([
+      { slotIndex: 1, role: 'B', heroId: null, heroOwnerId: null },
+      { slotIndex: 3, role: 'A', heroId: null, heroOwnerId: null },
+    ])
+  })
+
+  it('falls back to role rows when slot layout roles mismatch', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-layout-mismatch', name: '공격', slot_count: 2, active: true },
+        { game_id: 'game-layout-mismatch', name: '수비', slot_count: 1, active: true },
+      ],
+      rank_game_slots: [
+        {
+          game_id: 'game-layout-mismatch',
+          slot_index: 0,
+          role: '공격 · 수비',
+          active: true,
+          hero_id: 'hero-1',
+          hero_owner_id: 'owner-1',
+        },
+      ],
+    })
+
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-mismatch')
+    expect(roles).toEqual([
+      { name: '공격', slot_count: 2, slotCount: 2 },
+      { name: '수비', slot_count: 1, slotCount: 1 },
+    ])
+    expect(slotLayout).toEqual([
+      { slotIndex: 0, role: '공격', heroId: null, heroOwnerId: null },
+      { slotIndex: 1, role: '공격', heroId: null, heroOwnerId: null },
+      { slotIndex: 2, role: '수비', heroId: null, heroOwnerId: null },
+    ])
+  })
+
+  it('creates layout from role counts when slots are missing', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-layout-roles', name: 'A', slot_count: 2, active: true },
+        { game_id: 'game-layout-roles', name: 'B', slot_count: 1, active: true },
+      ],
+      rank_game_slots: [],
+    })
+
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-roles')
+    expect(roles).toEqual([
+      { name: 'A', slot_count: 2, slotCount: 2 },
+      { name: 'B', slot_count: 1, slotCount: 1 },
+    ])
+    expect(slotLayout).toEqual([
+      { slotIndex: 0, role: 'A', heroId: null, heroOwnerId: null },
+      { slotIndex: 1, role: 'A', heroId: null, heroOwnerId: null },
+      { slotIndex: 2, role: 'B', heroId: null, heroOwnerId: null },
+    ])
+  })
+
+  it('returns slot layout derived from inline roles array', async () => {
+    const supabase = createSupabaseStub({
+      rank_games: [
+        {
+          id: 'game-layout-inline',
+          roles: ['A', null, 'B', 'A'],
+        },
+      ],
+    })
+
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-inline')
+    expect(roles).toEqual([
+      { name: 'A', slot_count: 2, slotCount: 2 },
+      { name: 'B', slot_count: 1, slotCount: 1 },
+    ])
+    expect(slotLayout).toEqual([
+      { slotIndex: 0, role: 'A', heroId: null, heroOwnerId: null },
+      { slotIndex: 2, role: 'B', heroId: null, heroOwnerId: null },
+      { slotIndex: 3, role: 'A', heroId: null, heroOwnerId: null },
+    ])
   })
 })
 
@@ -400,6 +802,109 @@ describe('enqueueParticipant', () => {
     expect(response.heroId).toBe('hero-support')
     expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-support')
   })
+
+  it('prevents queuing when already waiting in another queue', async () => {
+    const tables = {
+      rank_participants: [],
+      rank_match_queue: [
+        {
+          id: 'queue-existing',
+          game_id: 'other-game',
+          mode: 'rank_solo',
+          owner_id: 'player-duplicate',
+          hero_id: 'hero-existing',
+          role: 'attack',
+          status: 'waiting',
+          joined_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    }
+
+    const supabase = createSupabaseStub(tables)
+
+    const response = await enqueueParticipant(supabase, {
+      gameId: 'game-hero',
+      mode: 'rank_solo',
+      ownerId: 'player-duplicate',
+      heroId: 'hero-new',
+      role: 'support',
+      score: 1500,
+    })
+
+    expect(response.ok).toBe(false)
+    expect(response.error).toMatch('이미 다른 대기열에 참여 중입니다')
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
+  })
+
+  it('prevents queuing when already matched in the same queue', async () => {
+    const tables = {
+      rank_participants: [],
+      rank_match_queue: [
+        {
+          id: 'queue-matched',
+          game_id: 'game-hero',
+          mode: 'rank_solo',
+          owner_id: 'player-duplicate',
+          hero_id: 'hero-existing',
+          role: 'attack',
+          status: 'matched',
+          joined_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:05:00Z',
+        },
+      ],
+    }
+
+    const supabase = createSupabaseStub(tables)
+
+    const response = await enqueueParticipant(supabase, {
+      gameId: 'game-hero',
+      mode: 'rank_solo',
+      ownerId: 'player-duplicate',
+      heroId: 'hero-new',
+      role: 'support',
+      score: 1500,
+    })
+
+    expect(response.ok).toBe(false)
+    expect(response.error).toMatch('이미 다른 대기열에 참여 중입니다')
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
+  })
+
+  it('replaces an existing waiting entry in the same queue', async () => {
+    const tables = {
+      rank_participants: [],
+      rank_match_queue: [
+        {
+          id: 'queue-waiting',
+          game_id: 'game-hero',
+          mode: 'rank_solo',
+          owner_id: 'player-duplicate',
+          hero_id: 'hero-old',
+          role: 'attack',
+          status: 'waiting',
+          joined_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    }
+
+    const supabase = createSupabaseStub(tables)
+
+    const response = await enqueueParticipant(supabase, {
+      gameId: 'game-hero',
+      mode: 'rank_solo',
+      ownerId: 'player-duplicate',
+      heroId: 'hero-new',
+      role: 'attack',
+      score: 1600,
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.heroId).toBe('hero-new')
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
+    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-new')
+  })
 })
 
 describe('loadOwnerParticipantRoster', () => {
@@ -431,6 +936,39 @@ describe('loadOwnerParticipantRoster', () => {
     expect(roster.get('owner-1')).toHaveLength(1)
     expect(roster.get('owner-1')?.[0]?.heroId).toBe('hero-a')
     expect(roster.get('owner-2')).toBeUndefined()
+  })
+
+  it('preserves hero and role assignments for each participant entry', async () => {
+    const tables = {
+      rank_participants: [
+        {
+          game_id: 'game-roster',
+          owner_id: 'owner-1',
+          hero_id: 'hero-a',
+          role: '공격',
+          updated_at: '2024-01-02T00:00:00Z',
+        },
+        {
+          game_id: 'game-roster',
+          owner_id: 'owner-1',
+          hero_id: 'hero-b',
+          role: '수비',
+          updated_at: '2024-01-03T00:00:00Z',
+        },
+      ],
+    }
+
+    const supabase = createSupabaseStub(tables)
+
+    const roster = await loadOwnerParticipantRoster(supabase, {
+      gameId: 'game-roster',
+      ownerIds: ['owner-1'],
+    })
+
+    const ownerRoster = roster.get('owner-1') || []
+    expect(ownerRoster).toHaveLength(2)
+    expect(ownerRoster.map((entry) => entry.heroId)).toEqual(['hero-b', 'hero-a'])
+    expect(ownerRoster.map((entry) => entry.role)).toEqual(['수비', '공격'])
   })
 })
 
@@ -631,5 +1169,119 @@ describe('runMatching', () => {
     expect(result.assignments).toHaveLength(2)
     expect(result.assignments.every((assignment) => assignment.filledSlots === 1)).toBe(true)
     expect(result.rooms.every((room) => room.missingSlots === 1)).toBe(true)
+  })
+})
+
+describe('filterStaleQueueEntries', () => {
+  it('separates fresh and stale entries based on updated timestamp', () => {
+    const now = Date.now()
+    const entries = [
+      {
+        id: 'fresh',
+        owner_id: 'fresh-owner',
+        updated_at: new Date(now - 5_000).toISOString(),
+        joined_at: new Date(now - 10_000).toISOString(),
+      },
+      {
+        id: 'stale',
+        owner_id: 'stale-owner',
+        updated_at: new Date(now - 60_000).toISOString(),
+        joined_at: new Date(now - 120_000).toISOString(),
+      },
+    ]
+
+    const { freshEntries, staleEntries } = filterStaleQueueEntries(entries, {
+      staleThresholdMs: 30_000,
+      nowMs: now,
+    })
+
+    expect(freshEntries.map((entry) => entry.id)).toEqual(['fresh'])
+    expect(staleEntries.map((entry) => entry.id)).toEqual(['stale'])
+  })
+})
+
+describe('heartbeatQueueEntry', () => {
+  it('updates the queue entry timestamp when waiting', async () => {
+    const supabase = createSupabaseStub({
+      rank_match_queue: [
+        {
+          id: 'queue-1',
+          game_id: 'game-heartbeat',
+          mode: 'rank_solo',
+          owner_id: 'owner-heartbeat',
+          status: 'waiting',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    })
+
+    const result = await heartbeatQueueEntry(supabase, {
+      gameId: 'game-heartbeat',
+      mode: 'rank_solo',
+      ownerId: 'owner-heartbeat',
+    })
+
+    expect(result.ok).toBe(true)
+    const updated = supabase.__tables.rank_match_queue[0].updated_at
+    expect(updated).not.toBe('2024-01-01T00:00:00Z')
+    expect(Date.parse(updated)).toBeGreaterThan(Date.parse('2024-01-01T00:00:00Z'))
+  })
+})
+
+describe('extractViewerAssignment', () => {
+  it('returns the assignment when the viewer owns a member', () => {
+    const assignments = [
+      {
+        role: '공격',
+        members: [
+          { owner_id: 'viewer-1', hero_id: 'hero-a' },
+          { owner_id: 'ally-2', hero_id: 'hero-b' },
+        ],
+      },
+      {
+        role: '수비',
+        members: [{ owner_id: 'ally-3', hero_id: 'hero-c' }],
+      },
+    ]
+
+    const assignment = extractViewerAssignment({ assignments, viewerId: 'viewer-1' })
+    expect(assignment).toBe(assignments[0])
+  })
+
+  it('falls back to hero ownership when owner information is missing', () => {
+    const assignments = [
+      {
+        role: '지원',
+        members: [
+          { owner_id: 'ally-10', hero_id: 'hero-extra' },
+          { owner_id: 'ally-11', hero_id: 'hero-target' },
+        ],
+      },
+    ]
+
+    const assignment = extractViewerAssignment({
+      assignments,
+      viewerId: 'viewer-x',
+      heroId: 'hero-target',
+    })
+
+    expect(assignment).toBe(assignments[0])
+  })
+
+  it('returns null when no members match the viewer or hero', () => {
+    const assignments = [
+      {
+        role: '공격',
+        members: [{ owner_id: 'ally-1', hero_id: 'hero-1' }],
+      },
+    ]
+
+    const assignment = extractViewerAssignment({
+      assignments,
+      viewerId: 'viewer-none',
+      heroId: 'hero-missing',
+    })
+
+    expect(assignment).toBeNull()
   })
 })

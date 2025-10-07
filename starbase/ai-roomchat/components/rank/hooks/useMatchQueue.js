@@ -5,7 +5,9 @@ import { withTable } from '../../../lib/supabaseTables'
 import {
   enqueueParticipant,
   extractViewerAssignment,
+  filterStaleQueueEntries,
   flattenAssignmentMembers,
+  heartbeatQueueEntry,
   loadActiveRoles,
   loadHeroesByIds,
   loadOwnerParticipantRoster,
@@ -13,6 +15,10 @@ import {
   removeQueueEntry,
 } from '../../../lib/rank/matchmakingService'
 import { guessOwnerParticipant, normalizeHeroIdValue } from '../../../lib/rank/participantUtils'
+import {
+  QUEUE_HEARTBEAT_INTERVAL_MS,
+  QUEUE_STALE_THRESHOLD_MS,
+} from '../matchConstants'
 
 const POLL_INTERVAL_MS = 4000
 
@@ -27,6 +33,36 @@ function extractRoleName(entry) {
     if (name) return name
   }
   return ''
+}
+
+function normalizeRoleEntry(entry) {
+  if (!entry) return null
+  if (typeof entry === 'string') {
+    const trimmed = entry.trim()
+    return trimmed ? { name: trimmed, slot_count: 1, slotCount: 1 } : null
+  }
+
+  if (typeof entry !== 'object') return null
+
+  const name = extractRoleName(entry)
+  if (!name) return null
+
+  const slotRaw = entry.slot_count ?? entry.slotCount ?? entry.slots ?? entry.capacity
+  const slotNumeric = Number(slotRaw)
+  const slotCount = Number.isFinite(slotNumeric) && slotNumeric > 0 ? Math.trunc(slotNumeric) : 0
+
+  if (slotCount > 0) {
+    return { ...entry, name, slot_count: slotCount, slotCount }
+  }
+
+  return { ...entry, name }
+}
+
+function normalizeRoleList(list) {
+  if (!Array.isArray(list)) return []
+  return list
+    .map((entry) => normalizeRoleEntry(entry))
+    .filter(Boolean)
 }
 
 function readStoredHeroId() {
@@ -161,9 +197,9 @@ async function loadOwnerHeroEntries(ownerId) {
     const result = await withTable(supabase, 'heroes', (table) =>
       supabase
         .from(table)
-        .select(
-          'id, owner_id, name, hero_name:name, role, role_name, roleName, score, rating, mmr, rank_score, rankScore, status, image_url, avatar_url, hero_avatar_url',
-        )
+        .select('id, owner_id, name, hero_name:name, image_url, updated_at, created_at')
+        // NOTE: per-game 역할/점수 정보는 `rank_participants`에 저장되어 있으므로
+        // `heroes` 뷰에서는 기본 프로필 필드만 요청한다.
         .eq('owner_id', ownerId),
     )
 
@@ -336,7 +372,13 @@ async function upsertParticipantRole({ gameId, ownerId, heroId, role, score }) {
   return { ok: true }
 }
 
-export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) {
+export default function useMatchQueue({
+  gameId,
+  mode,
+  enabled,
+  initialHeroId,
+  onApiKeyExpired,
+}) {
   const [viewerId, setViewerId] = useState('')
   const [heroId, setHeroId] = useState(() => (initialHeroId ? String(initialHeroId) : ''))
   const heroIdRef = useRef(heroId || '')
@@ -391,6 +433,46 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
   const [pendingMatch, setPendingMatch] = useState(null)
   const [viewerRoster, setViewerRoster] = useState([])
   const [heroMap, setHeroMap] = useState(() => new Map())
+  const [slotLayout, setSlotLayout] = useState([])
+  const roleLookup = useMemo(() => {
+    const register = (map, value) => {
+      if (!value || typeof value !== 'string') return
+      const trimmed = value.trim()
+      if (!trimmed) return
+      const key = trimmed.toLowerCase()
+      if (!map.has(key)) {
+        map.set(key, trimmed)
+      }
+    }
+
+    const map = new Map()
+
+    if (Array.isArray(slotLayout) && slotLayout.length > 0) {
+      slotLayout.forEach((slot) => {
+        if (!slot) return
+        register(map, typeof slot.role === 'string' ? slot.role : '')
+      })
+    }
+
+    if (map.size === 0 && Array.isArray(roles)) {
+      roles.forEach((entry) => {
+        if (!entry) return
+        if (typeof entry === 'string') {
+          register(map, entry)
+          return
+        }
+        const name =
+          typeof entry.name === 'string'
+            ? entry.name
+            : typeof entry.role === 'string'
+            ? entry.role
+            : ''
+        register(map, name)
+      })
+    }
+
+    return map
+  }, [roles, slotLayout])
   const pollRef = useRef(null)
   const probeRef = useRef(null)
 
@@ -430,7 +512,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
     let cancelled = false
     loadActiveRoles(supabase, gameId)
       .then((list) => {
-        if (!cancelled) setRoles(list)
+        if (!cancelled) setRoles(normalizeRoleList(list))
       })
       .catch((cause) => {
         console.error('역할 정보를 불러오지 못했습니다:', cause)
@@ -563,12 +645,16 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
     if (status !== 'queued') return
 
     try {
-      const [roleList, queueRows] = await Promise.all([
+      const [roleList, queueRowsRaw] = await Promise.all([
         loadActiveRoles(supabase, gameId),
         loadQueueEntries(supabase, { gameId, mode }),
       ])
-      setRoles(roleList)
-      setQueue(queueRows)
+      setRoles(normalizeRoleList(roleList))
+
+      const { freshEntries } = filterStaleQueueEntries(queueRowsRaw, {
+        staleThresholdMs: QUEUE_STALE_THRESHOLD_MS,
+      })
+      setQueue(freshEntries)
 
       const response = await fetch('/api/rank/match', {
         method: 'POST',
@@ -579,6 +665,34 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
 
       if (!response.ok) {
         const message = payload?.detail || payload?.error || '매칭 정보를 불러오지 못했습니다.'
+        if (response.status === 400) {
+          const notice = 'API 키가 만료되었습니다. 새 API 키를 사용해주세요.'
+          setError(notice)
+          setStatus('idle')
+          setMatch(null)
+          setPendingMatch(null)
+          setSampleMeta(null)
+          if (viewerId) {
+            try {
+              await removeQueueEntry(supabase, { gameId, mode, ownerId: viewerId })
+            } catch (cleanupError) {
+              console.warn('[MatchQueue] 대기열 정리 실패:', cleanupError)
+            }
+          }
+          if (typeof onApiKeyExpired === 'function') {
+            try {
+              onApiKeyExpired({
+                status: response.status,
+                message: notice,
+                detail: payload?.detail || '',
+                error: payload?.error || '',
+              })
+            } catch (callbackError) {
+              console.warn('[MatchQueue] API 키 만료 콜백 실행 실패:', callbackError)
+            }
+          }
+          return
+        }
         setError(message)
         return
       }
@@ -591,6 +705,10 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
 
       const meta = payload?.sampleMeta || null
       setSampleMeta(meta)
+      const payloadRoles = normalizeRoleList(Array.isArray(payload?.roles) ? payload.roles : [])
+      const payloadLayout = Array.isArray(payload?.slotLayout) ? payload.slotLayout : []
+      setRoles(payloadRoles)
+      setSlotLayout(payloadLayout)
       if (meta && process.env.NODE_ENV !== 'production') {
         try {
           if (typeof console.groupCollapsed === 'function') {
@@ -613,12 +731,19 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
           totalSlots: payload?.totalSlots ?? 0,
           maxWindow: payload?.maxWindow ?? 0,
           sampleMeta: meta,
+          roles: payloadRoles,
+          slotLayout: payloadLayout,
+          gameId,
         })
         return
       }
 
       setPendingMatch(null)
-      const assignment = extractViewerAssignment({ assignments: payload.assignments, viewerId })
+      const assignment = extractViewerAssignment({
+        assignments: payload.assignments,
+        viewerId,
+        heroId: heroIdRef.current || heroId || '',
+      })
       if (!assignment) return
 
       let heroMap = null
@@ -646,11 +771,14 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
         dropInTarget: payload.dropInTarget || null,
         dropInMeta: payload.meta || null,
         rooms: Array.isArray(payload.rooms) ? payload.rooms : [],
+        roles: payloadRoles,
+        slotLayout: payloadLayout,
+        gameId,
       })
     } catch (cause) {
       console.error('매칭 확인 실패:', cause)
     }
-  }, [enabled, status, gameId, mode, viewerId])
+  }, [enabled, status, gameId, mode, viewerId, onApiKeyExpired])
 
   useEffect(() => {
     probeRef.current = runMatchProbe
@@ -667,6 +795,55 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       }
     }
   }, [enabled, status, runMatchProbe])
+
+  useEffect(() => {
+    if (!enabled) return undefined
+    if (!viewerId) return undefined
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined
+    if (status !== 'queued' && status !== 'matched') return undefined
+
+    let cancelled = false
+    let timer = null
+
+    const schedule = () => {
+      if (cancelled) return
+      timer = setTimeout(tick, QUEUE_HEARTBEAT_INTERVAL_MS)
+    }
+
+    const tick = async () => {
+      if (cancelled) return
+      if (document.visibilityState !== 'visible') {
+        schedule()
+        return
+      }
+      try {
+        await heartbeatQueueEntry(supabase, { gameId, mode, ownerId: viewerId })
+      } catch (error) {
+        console.warn('[MatchQueue] heartbeat failed:', error)
+      }
+      schedule()
+    }
+
+    const handleVisibility = () => {
+      if (cancelled) return
+      if (document.visibilityState === 'visible') {
+        tick()
+      }
+    }
+
+    tick()
+
+    document.addEventListener('visibilitychange', handleVisibility, true)
+
+    return () => {
+      cancelled = true
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+      document.removeEventListener('visibilitychange', handleVisibility, true)
+    }
+  }, [enabled, gameId, mode, status, viewerId])
 
   const joinQueue = useCallback(
     async (role) => {
@@ -691,12 +868,57 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
         return { ok: false, error: '먼저 사용할 캐릭터를 선택해 주세요.' }
       }
       const finalRole = lockedRole || role
-      if (!finalRole) {
+      const finalRoleName = typeof finalRole === 'string' ? finalRole.trim() : ''
+      if (!finalRoleName) {
         console.warn('[MatchQueue] joinQueue 중단: 역할 미선택', {
           viewerId,
           heroId: activeHero,
         })
         return { ok: false, error: '역할을 선택해 주세요.' }
+      }
+
+      const normalizedRoleKey = normalizeRoleKey(finalRoleName)
+      if (roleLookup.size > 0 && !roleLookup.has(normalizedRoleKey)) {
+        const message = '선택한 역할이 이 게임 구성과 일치하지 않습니다.'
+        console.warn('[MatchQueue] joinQueue 중단: 역할 미정의', {
+          viewerId,
+          heroId: activeHero,
+          role: finalRoleName,
+        })
+        setError(message)
+        return { ok: false, error: message }
+      }
+
+      const rosterEntries = Array.isArray(viewerRoster) ? viewerRoster : []
+      const normalizedHeroId = normalizeHeroIdValue(activeHero)
+      const rosterEntry = rosterEntries.find((entry) => {
+        if (!entry) return false
+        const entryHeroId = normalizeHeroIdValue(entry.heroId)
+        return entryHeroId && normalizedHeroId && entryHeroId === normalizedHeroId
+      })
+
+      const rosterRoleKey = rosterEntry ? normalizeRoleKey(rosterEntry.role) : ''
+      if (rosterEntry && !rosterRoleKey) {
+        const message = '선택한 캐릭터의 역할 정보를 확인할 수 없습니다.'
+        console.warn('[MatchQueue] joinQueue 중단: 역할 정보 없음', {
+          viewerId,
+          heroId: activeHero,
+          role: finalRoleName,
+        })
+        setError(message)
+        return { ok: false, error: message }
+      }
+
+      if (rosterRoleKey && rosterRoleKey !== normalizedRoleKey) {
+        const message = '선택한 캐릭터는 해당 역할에 배정되어 있지 않습니다.'
+        console.warn('[MatchQueue] joinQueue 중단: 역할 불일치', {
+          viewerId,
+          heroId: activeHero,
+          requestedRole: finalRoleName,
+          rosterRole: rosterEntry.role,
+        })
+        setError(message)
+        return { ok: false, error: message }
       }
 
       setLoading(true)
@@ -715,7 +937,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
           mode,
           ownerId: viewerId,
           heroId: activeHero,
-          role: finalRole,
+          role: finalRoleName,
           score,
         })
         if (!response.ok) {
@@ -724,7 +946,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
             mode,
             viewerId,
             heroId: activeHero,
-            role: finalRole,
+            role: finalRoleName,
             error: response.error,
           })
           setError(response.error || '대기열에 참가하지 못했습니다.')
@@ -740,14 +962,14 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
           gameId,
           ownerId: viewerId,
           heroId: queueHeroId,
-          role: finalRole,
+          role: finalRoleName,
           score,
         })
         if (!persisted.ok && persisted.error) {
           console.warn('[MatchQueue] 참가자 역할 저장 실패', {
             viewerId,
             heroId: queueHeroId,
-            role: finalRole,
+            role: finalRoleName,
             error: persisted.error,
           })
           setError(persisted.error)
@@ -767,14 +989,25 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
         console.info('[MatchQueue] 대기열 참가 완료', {
           viewerId,
           heroId: queueHeroId,
-          role: finalRole,
+          role: finalRoleName,
         })
         return { ok: true }
       } finally {
         setLoading(false)
       }
     },
-    [enabled, gameId, mode, viewerId, heroId, score, lockedRole, roleReady],
+    [
+      enabled,
+      gameId,
+      mode,
+      viewerId,
+      heroId,
+      score,
+      lockedRole,
+      roleReady,
+      roleLookup,
+      viewerRoster,
+    ],
   )
 
   const cancelQueue = useCallback(async () => {
@@ -795,6 +1028,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
   const reset = useCallback(() => {
     setStatus('idle')
     setMatch(null)
+    setSlotLayout([])
     setQueue([])
     setSampleMeta(null)
     setPendingMatch(null)
@@ -847,6 +1081,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       viewerRoster,
       sampleMeta,
       pendingMatch,
+      slotLayout,
     }),
     [
       viewerId,
@@ -862,6 +1097,7 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId }) 
       roleReady,
       sampleMeta,
       pendingMatch,
+      slotLayout,
       heroMap,
       viewerRoster,
     ],

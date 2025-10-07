@@ -1,5 +1,11 @@
 import { supabase } from '@/lib/rank/db'
-import { loadHeroesByIds, markAssignmentsMatched, runMatching, flattenAssignmentMembers } from '@/lib/rank/matchmakingService'
+import {
+  loadHeroesByIds,
+  markAssignmentsMatched,
+  runMatching,
+  flattenAssignmentMembers,
+  postCheckMatchAssignments,
+} from '@/lib/rank/matchmakingService'
 import {
   buildCandidateSample,
   extractMatchingToggles,
@@ -8,6 +14,7 @@ import {
 } from '@/lib/rank/matchingPipeline'
 import { withTable } from '@/lib/supabaseTables'
 import { recordMatchmakingLog, buildAssignmentSummary } from '@/lib/rank/matchmakingLogs'
+import { computeRoleReadiness } from '@/lib/rank/matchRoleSummary'
 
 function generateMatchCode() {
   const stamp = Date.now().toString(36)
@@ -42,6 +49,52 @@ function parseRules(raw) {
     return raw
   }
   return {}
+}
+
+function serializeRoles(roles) {
+  if (!Array.isArray(roles)) return []
+  return roles
+    .map((role) => {
+      if (!role) return null
+      const name = typeof role.name === 'string' ? role.name.trim() : ''
+      if (!name) return null
+      const slotCountRaw = role.slot_count ?? role.slotCount ?? role.capacity
+      const slotCount = Number(slotCountRaw)
+      const payload = { name }
+      if (Number.isFinite(slotCount) && slotCount >= 0) {
+        const normalized = Math.trunc(slotCount)
+        payload.slot_count = normalized
+        payload.slotCount = normalized
+      }
+      return payload
+    })
+    .filter(Boolean)
+}
+
+function serializeSlotLayout(layout) {
+  if (!Array.isArray(layout)) return []
+  return layout
+    .map((slot, index) => {
+      if (!slot) return null
+      const roleName = typeof slot.role === 'string' ? slot.role.trim() : ''
+      if (!roleName) return null
+      const rawIndex = Number(slot.slotIndex ?? slot.slot_index ?? index)
+      if (!Number.isFinite(rawIndex) || rawIndex < 0) return null
+      const payload = {
+        slotIndex: rawIndex,
+        role: roleName,
+      }
+      const heroId = slot.heroId ?? slot.hero_id
+      if (heroId != null && heroId !== '') {
+        payload.heroId = heroId
+      }
+      const heroOwnerId = slot.heroOwnerId ?? slot.hero_owner_id
+      if (heroOwnerId != null && heroOwnerId !== '') {
+        payload.heroOwnerId = heroOwnerId
+      }
+      return payload
+    })
+    .filter(Boolean)
 }
 
 function determineBrawlVacancies(roles, statusMap) {
@@ -99,7 +152,13 @@ export default async function handler(req, res) {
     const brawlEnabled = rules?.brawl_rule === 'allow-brawl'
     const toggles = extractMatchingToggles(gameRow, rules)
 
-    const { roles, queue: queueResult, participantPool, roleStatusMap } = await loadMatchingResources({
+    const {
+      roles,
+      slotLayout,
+      queue: queueResult,
+      participantPool,
+      roleStatusMap,
+    } = await loadMatchingResources({
       supabase,
       gameId,
       mode,
@@ -115,6 +174,7 @@ export default async function handler(req, res) {
       queueSize: Array.isArray(queueResult) ? queueResult.length : 0,
       participantPoolSize: Array.isArray(participantPool) ? participantPool.length : 0,
       roles: Array.isArray(roles) ? roles.map((role) => role?.name).filter(Boolean) : [],
+      slotLayout: serializeSlotLayout(slotLayout),
     }
 
     const baseLog = {
@@ -168,6 +228,8 @@ export default async function handler(req, res) {
             matchType: 'brawl',
             brawlVacancies,
             roleStatus: mapCountsToPlain(roleStatusMap),
+            roles: serializeRoles(roles),
+            slotLayout: serializeSlotLayout(slotLayout),
           })
         }
       }
@@ -224,6 +286,8 @@ export default async function handler(req, res) {
           matchType: dropInResult.matchType || 'drop_in',
           matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
           heroMap: mapToPlain(heroMap),
+          roles: serializeRoles(roles),
+          slotLayout: serializeSlotLayout(slotLayout),
         })
       }
     }
@@ -238,32 +302,71 @@ export default async function handler(req, res) {
 
     const result = runMatching({ mode, roles, queue: candidateSample })
 
-    if (!result.ready) {
+    let assignments = Array.isArray(result.assignments) ? result.assignments : []
+    let rooms = Array.isArray(result.rooms) ? result.rooms : []
+    let readiness = computeRoleReadiness({
+      roles,
+      slotLayout,
+      assignments,
+      rooms,
+    })
+
+    let matchReady = Boolean(result.ready || readiness.ready)
+    let postCheckResult = null
+
+    if (matchReady) {
+      postCheckResult = await postCheckMatchAssignments(supabase, {
+        gameId,
+        assignments,
+        rooms,
+        roles,
+        slotLayout,
+      })
+
+      assignments = postCheckResult.assignments
+      rooms = postCheckResult.rooms
+      readiness = computeRoleReadiness({
+        roles,
+        slotLayout,
+        assignments,
+        rooms,
+      })
+      matchReady = readiness.ready
+    }
+
+    if (!matchReady) {
+      const errorCode = postCheckResult ? 'post_check_pending' : result.error || null
       await logStage({
         stage: toggles.realtimeEnabled ? 'realtime_pool' : 'standard_pool',
         status: 'pending',
         score_window: result.maxWindow || sampleMeta?.window || null,
         metadata: {
-          error: result.error || null,
+          error: errorCode,
           sampleMeta,
-          assignments: buildAssignmentSummary(result.assignments),
+          assignments: buildAssignmentSummary(assignments),
+          roleBuckets: readiness.buckets,
+          postCheckRemoved: postCheckResult?.removedMembers || [],
         },
       })
 
       return res.status(200).json({
         ready: false,
-        assignments: result.assignments || [],
-        rooms: result.rooms || [],
+        assignments,
+        rooms,
         totalSlots: result.totalSlots,
         maxWindow: result.maxWindow || 0,
-        error: result.error || null,
+        error: errorCode,
         sampleMeta,
+        roles: serializeRoles(roles),
+        slotLayout: serializeSlotLayout(slotLayout),
+        roleBuckets: readiness.buckets,
+        removedMembers: postCheckResult?.removedMembers || [],
       })
     }
 
     const matchCode = generateMatchCode()
     await markAssignmentsMatched(supabase, {
-      assignments: result.assignments,
+      assignments,
       gameId,
       mode,
       matchCode,
@@ -276,24 +379,30 @@ export default async function handler(req, res) {
       score_window: result.maxWindow || null,
       metadata: {
         sampleMeta,
-        assignments: buildAssignmentSummary(result.assignments),
+        assignments: buildAssignmentSummary(assignments),
+        roleBuckets: readiness.buckets,
+        postCheckRemoved: postCheckResult?.removedMembers || [],
       },
     })
 
-    const members = flattenAssignmentMembers(result.assignments)
+    const members = flattenAssignmentMembers(assignments)
     const heroIds = members.map((member) => member.hero_id || member.heroId)
     const heroMap = await loadHeroesByIds(supabase, heroIds)
 
     return res.status(200).json({
       ready: true,
-      assignments: result.assignments,
-      rooms: result.rooms || [],
+      assignments,
+      rooms,
       totalSlots: result.totalSlots,
       maxWindow: result.maxWindow || 0,
       matchCode,
       matchType: 'standard',
       heroMap: mapToPlain(heroMap),
       sampleMeta,
+      roles: serializeRoles(roles),
+      slotLayout: serializeSlotLayout(slotLayout),
+      roleBuckets: readiness.buckets,
+      removedMembers: postCheckResult?.removedMembers || [],
     })
   } catch (error) {
     await recordMatchmakingLog(supabase, {

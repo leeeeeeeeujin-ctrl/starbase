@@ -345,16 +345,17 @@ export default function GameRoomPage() {
       }
 
       setStartLoading(true)
-      setStartNotice('랭크 대기열로 이동합니다…')
+      setStartNotice('랭크 매칭 룸으로 이동합니다…')
       setStartError('')
 
       try {
         await router.push({
           pathname: `/rank/${id}/match`,
+          query: { mode: config.mode, apiVersion: config.apiVersion },
         })
       } catch (error) {
-        console.error('Failed to open rank match queue:', error)
-        setStartError('랭크 매칭 페이지로 이동하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        console.error('Failed to open rank match page:', error)
+        setStartError('랭크 매칭 룸으로 이동하지 못했습니다. 잠시 후 다시 시도해 주세요.')
         setStartNotice('')
       } finally {
         setStartLoading(false)

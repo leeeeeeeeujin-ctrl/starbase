@@ -24,7 +24,7 @@
 }
 
 .matchedOverlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: linear-gradient(180deg, rgba(8, 20, 38, 0.92) 0%, rgba(6, 14, 28, 0.95) 60%, rgba(5, 8, 15, 0.98) 100%);
   backdrop-filter: blur(2px);
@@ -70,6 +70,36 @@
   color: rgba(226, 232, 240, 0.9);
 }
 
+.cancelActions {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.returnButton {
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.35);
+  color: #e2e8f0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.returnButton:hover,
+.returnButton:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(94, 234, 212, 0.6);
+  box-shadow: 0 6px 18px rgba(94, 234, 212, 0.25);
+  outline: none;
+}
+
+.returnButton:active {
+  transform: translateY(0);
+}
+
 .matchMeta {
   display: flex;
   flex-direction: column;
@@ -87,13 +117,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  align-items: center;
-}
-
-.autoConfirmNotice {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   align-items: center;
 }
 

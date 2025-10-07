@@ -64,6 +64,10 @@ import { useStartManualResponse } from './hooks/useStartManualResponse'
 import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog'
 import { consumeStartMatchMeta } from '../startConfig'
 import {
+  clearGameMatchData,
+  hydrateGameMatchData,
+} from '../../../modules/rank/matchDataStore'
+import {
   START_SESSION_KEYS,
   readStartSessionValue,
   readStartSessionValues,
@@ -88,7 +92,11 @@ export function useStartClientEngine(gameId) {
     typeof window === 'undefined'
       ? ''
       : (storedStartConfig[START_SESSION_KEYS.API_KEY] || '').trim()
-  const initialMatchMeta = consumeStartMatchMeta()
+  const initialFrontMatchData =
+    typeof window === 'undefined' ? null : hydrateGameMatchData(gameId)
+  const initialMatchMetaCandidate = consumeStartMatchMeta()
+  const initialMatchMeta =
+    initialMatchMetaCandidate || initialFrontMatchData?.matchSnapshot?.match || null
   const initialApiVersion =
     typeof window === 'undefined'
       ? 'gemini'
@@ -102,6 +110,7 @@ export function useStartClientEngine(gameId) {
         }
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
+  const [frontMatchData] = useState(initialFrontMatchData)
   const matchMetaLoggedRef = useRef(false)
   const gameIdRef = useRef(gameId ? String(gameId) : '')
   const [connectionRoster, setConnectionRoster] = useState(() =>
@@ -162,6 +171,12 @@ export function useStartClientEngine(gameId) {
     setConnectionRoster(getConnectionEntriesForGame(gameId))
   }, [gameId])
   useEffect(() => {
+    if (!frontMatchData) return
+    if (!startMatchMetaRef.current && frontMatchData.matchSnapshot?.match) {
+      startMatchMetaRef.current = frontMatchData.matchSnapshot.match
+    }
+  }, [frontMatchData])
+  useEffect(() => {
     const unsubscribe = subscribeConnectionRegistry(() => {
       const key = gameIdRef.current
       if (!key) {
@@ -172,6 +187,13 @@ export function useStartClientEngine(gameId) {
     })
     return unsubscribe
   }, [])
+  useEffect(() => {
+    return () => {
+      if (gameId) {
+        clearGameMatchData(gameId)
+      }
+    }
+  }, [gameId])
   useEffect(() => {
     patchEngineState({ connectionRoster })
   }, [connectionRoster, patchEngineState])
@@ -450,6 +472,13 @@ export function useStartClientEngine(gameId) {
           assignments: Array.isArray(startMatchMeta.assignments)
             ? startMatchMeta.assignments
             : [],
+          slotLayout: Array.isArray(startMatchMeta.slotLayout)
+            ? startMatchMeta.slotLayout
+            : [],
+          heroMap:
+            startMatchMeta.heroMap && typeof startMatchMeta.heroMap === 'object'
+              ? startMatchMeta.heroMap
+              : null,
           storedAt: startMatchMeta.storedAt || null,
           mode: startMatchMeta.mode || null,
           turnTimer: startMatchMeta.turnTimer || null,

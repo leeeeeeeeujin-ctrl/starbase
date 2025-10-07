@@ -23,6 +23,13 @@ import {
   registerMatchConnections,
   removeConnectionEntries,
 } from '../../lib/rank/startConnectionRegistry'
+import {
+  hydrateGameMatchData,
+  setGameMatchConfirmation,
+  setGameMatchHeroSelection,
+  setGameMatchPostCheck,
+  setGameMatchSnapshot,
+} from '../../modules/rank/matchDataStore'
 
 function getMatchPagePath(mode, gameId) {
   if (!gameId) return '/rank'
@@ -86,6 +93,10 @@ export default function MatchReadyClient({ gameId, mode }) {
   const redirectTimerRef = useRef(null)
   const autoTriggerRef = useRef(false)
   const playTriggeredRef = useRef(false)
+  useEffect(() => {
+    if (!gameId) return
+    hydrateGameMatchData(gameId)
+  }, [gameId])
 
   const matchPagePath = useMemo(() => getMatchPagePath(mode, gameId), [gameId, mode])
   const mainRoomPath = useMemo(() => (gameId ? `/rank/${gameId}` : '/rank'), [gameId])
@@ -475,12 +486,53 @@ export default function MatchReadyClient({ gameId, mode }) {
       router.replace(matchPagePath)
       return
     }
+    const moduleState = hydrateGameMatchData(gameId) || {}
+    const heroSelection = moduleState?.heroSelection || null
+    const snapshot = moduleState?.matchSnapshot || null
+    const confirmed = moduleState?.confirmation || null
+    if (!stored.match && snapshot?.match) {
+      stored.match = snapshot.match
+    }
+    if (!stored.heroId && heroSelection?.heroId) {
+      stored.heroId = heroSelection.heroId
+    }
+    if (!stored.viewerId && heroSelection?.viewerId) {
+      stored.viewerId = heroSelection.viewerId
+    }
+    if (!stored.roleName && heroSelection?.role) {
+      stored.roleName = heroSelection.role
+    }
+    if (!stored.createdAt && (snapshot?.createdAt || confirmed?.createdAt)) {
+      stored.createdAt = snapshot?.createdAt || confirmed?.createdAt
+    }
     setPayload(stored)
     setStatus('ready')
     setError('')
     setNotice('')
     autoTriggerRef.current = false
     playTriggeredRef.current = false
+    setGameMatchConfirmation(gameId, stored)
+    if (stored.match) {
+      setGameMatchSnapshot(gameId, {
+        match: stored.match,
+        pendingMatch: snapshot?.pendingMatch || null,
+        viewerId: stored.viewerId || heroSelection?.viewerId || '',
+        heroId: stored.heroId || heroSelection?.heroId || '',
+        role: stored.roleName || heroSelection?.role || '',
+        mode,
+        createdAt: stored.createdAt || Date.now(),
+      })
+      if (stored.match.postCheck) {
+        setGameMatchPostCheck(gameId, stored.match.postCheck)
+      }
+    } else if (moduleState?.postCheck) {
+      setGameMatchPostCheck(gameId, moduleState.postCheck)
+    }
+    setGameMatchHeroSelection(gameId, {
+      heroId: stored.heroId || heroSelection?.heroId || '',
+      viewerId: stored.viewerId || heroSelection?.viewerId || '',
+      role: stored.roleName || heroSelection?.role || '',
+    })
   }, [clearConnectionRegistry, gameId, matchPagePath, mode, router])
 
   useEffect(() => {
@@ -530,6 +582,30 @@ export default function MatchReadyClient({ gameId, mode }) {
       }
     }
   }, [clearTimers])
+
+  useEffect(() => {
+    if (!gameId || !payload) return
+    setGameMatchConfirmation(gameId, payload)
+    setGameMatchHeroSelection(gameId, {
+      heroId: payload.heroId || '',
+      viewerId: payload.viewerId || '',
+      role: payload.roleName || '',
+    })
+    if (payload.match) {
+      setGameMatchSnapshot(gameId, {
+        match: payload.match,
+        pendingMatch: null,
+        viewerId: payload.viewerId || '',
+        heroId: payload.heroId || '',
+        role: payload.roleName || '',
+        mode,
+        createdAt: payload.createdAt || Date.now(),
+      })
+      if (payload.match.postCheck) {
+        setGameMatchPostCheck(gameId, payload.match.postCheck)
+      }
+    }
+  }, [gameId, mode, payload])
 
   if (status === 'loading') {
     return <div className={styles.container}>매칭 정보를 불러오는 중…</div>

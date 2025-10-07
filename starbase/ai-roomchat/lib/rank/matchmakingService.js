@@ -13,13 +13,25 @@ import {
 } from './matchModes'
 import { withTable } from '../supabaseTables'
 import {
+  partitionQueueByHeartbeat,
+  QUEUE_STALE_THRESHOLD_MS,
+} from './queueHeartbeat'
+import {
   buildOwnerParticipantIndex,
   guessOwnerParticipant,
   normalizeHeroIdValue,
   resolveParticipantHeroId as deriveParticipantHeroId,
 } from './participantUtils'
+import {
+  loadActiveRoles as loadActiveRolesInternal,
+  loadRoleLayout as loadRoleLayoutInternal,
+} from './roleLayoutLoader'
+import { postCheckMatchAssignments as executePostCheck } from './matchPostCheck'
 
 const WAIT_THRESHOLD_SECONDS = 30
+
+export const loadActiveRoles = loadActiveRolesInternal
+export const loadRoleLayout = loadRoleLayoutInternal
 
 const MATCHER_BY_KEY = {
   rank: matchRankParticipants,
@@ -29,6 +41,14 @@ const MATCHER_BY_KEY = {
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+function hasNavigator() {
+  return typeof navigator !== 'undefined' && navigator !== null
+}
+
+function hasWindow() {
+  return typeof window !== 'undefined' && window !== null
 }
 
 function ensureArray(value) {
@@ -77,144 +97,6 @@ async function resolveQueueHeroId(supabaseClient, { gameId, ownerId, heroId, rol
   return explicitHeroId
 }
 
-export async function loadActiveRoles(supabaseClient, gameId) {
-  if (!gameId) return []
-
-  const [roleResult, slotResult] = await Promise.all([
-    withTable(supabaseClient, 'rank_game_roles', (table) =>
-      supabaseClient
-        .from(table)
-        .select('name, slot_count, active')
-        .eq('game_id', gameId),
-    ),
-    withTable(supabaseClient, 'rank_game_slots', (table) =>
-      supabaseClient
-        .from(table)
-        .select('slot_index, role, active, hero_id, hero_owner_id')
-        .eq('game_id', gameId),
-    ),
-  ])
-
-  if (roleResult?.error) throw roleResult.error
-  if (slotResult?.error) throw slotResult.error
-
-  const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
-  const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
-
-  const { roles } = normaliseRolesAndSlots(roleRows, slotRows)
-  return roles
-}
-
-function normalizeRoleName(value) {
-  if (!value) return ''
-  if (typeof value !== 'string') return ''
-  return value.trim()
-}
-
-function coerceSlotIndex(value) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return null
-  return Math.trunc(numeric)
-}
-
-function normaliseRolesAndSlots(roleRows = [], slotRows = []) {
-  const slotPresence = new Set()
-  const layout = []
-  const slotCounts = new Map()
-
-  slotRows.forEach((row) => {
-    if (!row) return
-    const roleName = normalizeRoleName(row.role)
-    if (!roleName) return
-    slotPresence.add(roleName)
-    if (row.active === false) return
-    const slotIndex = coerceSlotIndex(row.slot_index ?? row.slotIndex ?? row.slot_no ?? row.slotNo)
-    if (slotIndex == null) return
-    const entry = {
-      slotIndex,
-      role: roleName,
-      heroId: row.hero_id || row.heroId || null,
-      heroOwnerId: row.hero_owner_id || row.heroOwnerId || null,
-    }
-    layout.push(entry)
-    slotCounts.set(roleName, (slotCounts.get(roleName) || 0) + 1)
-  })
-
-  layout.sort((a, b) => a.slotIndex - b.slotIndex)
-
-  const normalizedRoles = []
-  const roleMap = new Map()
-
-  roleRows
-    .filter((row) => row && row.active !== false)
-    .forEach((row) => {
-      const name = normalizeRoleName(row.name)
-      if (!name) return
-      const requestedCount = Number(row.slot_count ?? row.slotCount ?? row.capacity)
-      const normalizedCount = Number.isFinite(requestedCount) && requestedCount > 0 ? requestedCount : 0
-      const slotCount = slotCounts.get(name) || 0
-      const hasSlotDefinition = slotPresence.has(name)
-
-      let finalCount = 0
-      if (slotCount > 0) {
-        finalCount = slotCount
-      } else if (!hasSlotDefinition) {
-        finalCount = normalizedCount
-      } else {
-        finalCount = 0
-      }
-
-      if (finalCount <= 0) return
-      if (!roleMap.has(name)) {
-        const entry = { name, slot_count: finalCount }
-        roleMap.set(name, entry)
-        normalizedRoles.push(entry)
-      } else {
-        roleMap.get(name).slot_count = finalCount
-      }
-    })
-
-  slotCounts.forEach((count, name) => {
-    if (count <= 0) return
-    if (roleMap.has(name)) return
-    const entry = { name, slot_count: count }
-    roleMap.set(name, entry)
-    normalizedRoles.push(entry)
-  })
-
-  return { roles: normalizedRoles, slotLayout: layout }
-}
-
-export async function loadRoleLayout(supabaseClient, gameId) {
-  if (!gameId) {
-    return { roles: [], slotLayout: [] }
-  }
-
-  const [roleResult, slotResult] = await Promise.all([
-    withTable(supabaseClient, 'rank_game_roles', (table) =>
-      supabaseClient
-        .from(table)
-        .select('name, slot_count, active')
-        .eq('game_id', gameId),
-    ),
-    withTable(supabaseClient, 'rank_game_slots', (table) =>
-      supabaseClient
-        .from(table)
-        .select('slot_index, role, active, hero_id, hero_owner_id')
-        .eq('game_id', gameId)
-        .order('slot_index', { ascending: true }),
-    ),
-  ])
-
-  if (roleResult?.error) throw roleResult.error
-  if (slotResult?.error) throw slotResult.error
-
-  const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
-  const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
-
-  return normaliseRolesAndSlots(roleRows, slotRows)
-}
-
 export async function loadParticipantPool(supabaseClient, gameId) {
   if (!gameId) return []
 
@@ -246,7 +128,6 @@ export async function loadParticipantPool(supabaseClient, gameId) {
   })
 
   return eligible.map((row) => ({
-    // Use null id so queue updates ignore simulated entries.
     id: null,
     owner_id: row.owner_id || row.ownerId || null,
     ownerId: row.owner_id || row.ownerId || null,
@@ -312,6 +193,15 @@ export async function loadOwnerParticipantRoster(
   const rows = Array.isArray(result?.data) ? result.data : []
   return buildOwnerParticipantIndex(rows)
 }
+
+export async function postCheckMatchAssignments(supabaseClient, options = {}) {
+  return executePostCheck(supabaseClient, options, {
+    loadRoster: ({ gameId, ownerIds }) =>
+      loadOwnerParticipantRoster(supabaseClient, { gameId, ownerIds }),
+  })
+}
+
+
 
 function normalizeStatus(value) {
   if (!value) return 'alive'
@@ -505,7 +395,9 @@ export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
   const result = await withTable(supabaseClient, 'rank_match_queue', (table) => {
     let query = supabaseClient
       .from(table)
-      .select('id, game_id, mode, owner_id, hero_id, role, score, joined_at, status, party_key')
+      .select(
+        'id, game_id, mode, owner_id, hero_id, role, score, joined_at, updated_at, status, party_key',
+      )
       .eq('game_id', gameId)
       .eq('status', 'waiting')
       .order('joined_at', { ascending: true })
@@ -518,29 +410,107 @@ export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
   })
   if (result?.error) throw result.error
   const rows = Array.isArray(result?.data) ? result.data : []
-  return rows.map((row) => ({
-    ...row,
-    match_source: row?.match_source || 'realtime_queue',
-    simulated: Boolean(row?.simulated) && row.simulated === true,
-    standin: false,
-  }))
+  return rows
+    .map((row) => ({
+      ...row,
+      updatedAt: row?.updated_at || row?.updatedAt || null,
+      match_source: row?.match_source || 'realtime_queue',
+      simulated: Boolean(row?.simulated) && row.simulated === true,
+      standin: false,
+    }))
+}
+
+export function filterStaleQueueEntries(
+  queueEntries = [],
+  { staleThresholdMs = QUEUE_STALE_THRESHOLD_MS, nowMs = Date.now() } = {},
+) {
+  return partitionQueueByHeartbeat(queueEntries, {
+    staleThresholdMs,
+    nowMs,
+  })
+}
+
+export async function heartbeatQueueEntry(supabaseClient, { gameId, mode, ownerId }) {
+  if (!gameId || !ownerId) {
+    return { ok: false, error: '대기열 정보를 확인할 수 없습니다.' }
+  }
+
+  const now = nowIso()
+  const result = await withTable(supabaseClient, 'rank_match_queue', (table) => {
+    let query = supabaseClient
+      .from(table)
+      .update({ updated_at: now })
+      .eq('game_id', gameId)
+      .eq('owner_id', ownerId)
+      .eq('status', 'waiting')
+    if (mode) {
+      query = query.eq('mode', mode)
+    }
+    return query
+  })
+
+  if (result?.error) {
+    console.warn('대기열 하트비트 갱신 실패:', result.error)
+    return { ok: false, error: result.error.message || '대기열 상태를 갱신하지 못했습니다.' }
+  }
+
+  return { ok: true, updatedAt: now }
 }
 
 export async function removeQueueEntry(supabaseClient, { gameId, mode, ownerId }) {
   if (!gameId || !ownerId) return { ok: true }
-  const result = await withTable(supabaseClient, 'rank_match_queue', (table) =>
-    supabaseClient
-      .from(table)
-      .delete()
-      .eq('game_id', gameId)
-      .eq('mode', mode)
-      .eq('owner_id', ownerId),
-  )
+  const result = await withTable(supabaseClient, 'rank_match_queue', (table) => {
+    let query = supabaseClient.from(table).delete().eq('game_id', gameId).eq('owner_id', ownerId)
+    if (mode) {
+      query = query.eq('mode', mode)
+    }
+    return query
+  })
   if (result?.error) {
     console.warn('큐 제거 실패:', result.error)
     return { ok: false, error: result.error.message || '대기열에서 제거하지 못했습니다.' }
   }
   return { ok: true }
+}
+
+export function emitQueueLeaveBeacon({ gameId, mode, ownerId, heroId = null }) {
+  if (!gameId || !ownerId || !hasNavigator()) {
+    return false
+  }
+
+  const payload = {
+    gameId,
+    ownerId,
+    mode: mode || null,
+  }
+
+  if (heroId != null) {
+    payload.heroId = heroId
+  }
+
+  const body = JSON.stringify(payload)
+  const endpoint = '/api/rank/match/leave'
+
+  try {
+    if (typeof navigator.sendBeacon === 'function') {
+      const blob = new Blob([body], { type: 'application/json' })
+      return navigator.sendBeacon(endpoint, blob)
+    }
+
+    if (typeof fetch === 'function') {
+      fetch(endpoint, {
+        method: 'POST',
+        body,
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: hasWindow(),
+      }).catch(() => {})
+      return true
+    }
+  } catch (error) {
+    console.warn('대기열 이탈 신호 전송 실패:', error)
+  }
+
+  return false
 }
 
 export async function enqueueParticipant(
@@ -557,6 +527,50 @@ export async function enqueueParticipant(
     heroId,
     role,
   })
+
+  const duplicateCheck = await withTable(
+    supabaseClient,
+    'rank_match_queue',
+    (table) =>
+      supabaseClient
+        .from(table)
+        .select('id, game_id, mode, status, hero_id')
+        .eq('owner_id', ownerId)
+        .in('status', ['waiting', 'matched']),
+  )
+
+  if (duplicateCheck?.error) {
+    console.warn('대기열 중복 상태를 확인하지 못했습니다:', duplicateCheck.error)
+    return {
+      ok: false,
+      error: '대기열 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.',
+    }
+  }
+
+  const duplicateEntries = Array.isArray(duplicateCheck?.data)
+    ? duplicateCheck.data.filter((entry) => {
+        if (!entry) return false
+        const entryGameId = entry.game_id ?? entry.gameId
+        const entryMode = entry.mode
+        const entryStatus = entry.status
+
+        const sameGame = String(entryGameId ?? '') === String(gameId ?? '')
+        const sameMode = String(entryMode ?? '') === String(mode ?? '')
+
+        if (sameGame && sameMode && entryStatus === 'waiting') {
+          return false
+        }
+
+        return true
+      })
+    : []
+
+  if (duplicateEntries.length > 0) {
+    return {
+      ok: false,
+      error: '이미 다른 대기열에 참여 중입니다. 기존 대기열을 먼저 취소해주세요.',
+    }
+  }
 
   const payload = {
     game_id: gameId,
@@ -601,14 +615,23 @@ export function runMatching({ mode, roles, queue }) {
   return matcher({ roles, queue })
 }
 
-export function extractViewerAssignment({ assignments = [], viewerId }) {
-  if (!viewerId) return null
+export function extractViewerAssignment({ assignments = [], viewerId, heroId }) {
+  const normalizedViewerId = viewerId ? String(viewerId) : ''
+  const normalizedHeroId = heroId ? String(heroId) : ''
   for (const assignment of assignments) {
     if (!Array.isArray(assignment.members)) continue
     const matched = assignment.members.some((member) => {
       if (!member) return false
-      if (member.owner_id && member.owner_id === viewerId) return true
-      if (member.ownerId && member.ownerId === viewerId) return true
+      const ownerId = member.owner_id ?? member.ownerId
+      if (normalizedViewerId && ownerId && String(ownerId) === normalizedViewerId) {
+        return true
+      }
+      if (normalizedHeroId) {
+        const memberHeroId = member.hero_id ?? member.heroId
+        if (memberHeroId && String(memberHeroId) === normalizedHeroId) {
+          return true
+        }
+      }
       return false
     })
     if (matched) {
