@@ -91,6 +91,13 @@ const styles = {
     alignItems: 'flex-start',
     gap: 16,
   },
+  actionGroup: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
   titleBlock: {
     display: 'grid',
     gap: 8,
@@ -114,6 +121,16 @@ const styles = {
     color: disabled ? '#94a3b8' : '#f8fafc',
     fontWeight: 700,
     cursor: disabled ? 'not-allowed' : 'pointer',
+    transition: 'background 0.2s ease',
+  }),
+  secondaryButton: (active) => ({
+    padding: '11px 18px',
+    borderRadius: 14,
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: active ? 'rgba(45, 212, 191, 0.22)' : 'rgba(15, 23, 42, 0.55)',
+    color: active ? '#5eead4' : '#cbd5f5',
+    fontWeight: 600,
+    cursor: 'pointer',
     transition: 'background 0.2s ease',
   }),
   helperRow: {
@@ -151,6 +168,156 @@ const styles = {
   },
   filterDiagnosticsItem: {
     margin: 0,
+  },
+  keyManagerCard: {
+    background: 'rgba(15, 23, 42, 0.84)',
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    borderRadius: 22,
+    padding: '20px 22px',
+    display: 'grid',
+    gap: 16,
+  },
+  keyManagerHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  keyManagerTitle: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 700,
+    color: '#f8fafc',
+  },
+  keyManagerHint: {
+    margin: 0,
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  keyManagerLimit: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#5eead4',
+    background: 'rgba(45, 212, 191, 0.18)',
+    borderRadius: 999,
+    padding: '6px 12px',
+    alignSelf: 'flex-start',
+  },
+  keyManagerForm: {
+    display: 'grid',
+    gap: 10,
+  },
+  keyManagerInputRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  keyManagerInput: {
+    flex: '1 1 260px',
+    minWidth: 220,
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#e2e8f0',
+    fontSize: 14,
+  },
+  keyManagerCheckboxRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  keyManagerStatus: {
+    margin: 0,
+    fontSize: 13,
+    color: '#5eead4',
+  },
+  keyManagerError: {
+    margin: 0,
+    fontSize: 13,
+    color: '#fca5a5',
+  },
+  keyManagerList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'grid',
+    gap: 12,
+  },
+  keyManagerItem: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.3)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    padding: '14px 16px',
+  },
+  keyManagerMeta: {
+    display: 'grid',
+    gap: 6,
+    minWidth: 200,
+  },
+  keyManagerSampleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontWeight: 700,
+    color: '#f8fafc',
+  },
+  keyManagerBadge: (active) => ({
+    fontSize: 11,
+    fontWeight: 700,
+    color: active ? '#172554' : '#e0f2fe',
+    background: active ? '#5eead4' : 'rgba(125, 211, 252, 0.25)',
+    padding: '4px 8px',
+    borderRadius: 999,
+  }),
+  keyManagerDetail: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  keyManagerActions: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+  },
+  keyManagerActionButton: (variant, disabled) => {
+    const base = {
+      padding: '8px 12px',
+      borderRadius: 10,
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.6 : 1,
+      transition: 'background 0.2s ease',
+    }
+    if (variant === 'primary') {
+      return {
+        ...base,
+        border: '1px solid rgba(59, 130, 246, 0.55)',
+        background: disabled ? 'rgba(30, 64, 175, 0.4)' : 'rgba(37, 99, 235, 0.4)',
+        color: '#bfdbfe',
+      }
+    }
+    return {
+      ...base,
+      border: '1px solid rgba(248, 113, 113, 0.4)',
+      background: disabled ? 'rgba(127, 29, 29, 0.35)' : 'rgba(190, 24, 93, 0.4)',
+      color: '#fecaca',
+    }
+  },
+  keyManagerEmpty: {
+    margin: 0,
+    fontSize: 13,
+    color: '#94a3b8',
   },
   filterCard: {
     background: 'rgba(15, 23, 42, 0.78)',
@@ -409,6 +576,33 @@ function resolveErrorMessage(error) {
   return '알 수 없는 오류가 발생했습니다.'
 }
 
+function resolveKeyringError(code, detail) {
+  if (detail && typeof detail === 'string') {
+    return detail
+  }
+  switch (code) {
+    case 'keyring_limit_reached':
+      return '등록 가능한 최대 개수를 초과했습니다. 기존 키를 정리한 뒤 다시 시도해 주세요.'
+    case 'missing_user_api_key':
+    case 'missing_api_key':
+      return 'API 키를 입력해 주세요.'
+    case 'unrecognized_api_key':
+      return 'API 키 종류를 확인하지 못했습니다. 키를 다시 확인해 주세요.'
+    case 'detect_failed':
+      return 'API 키 정보를 확인하지 못했습니다.'
+    case 'failed_to_store_api_key':
+      return 'API 키를 저장하지 못했습니다.'
+    case 'failed_to_activate_api_key':
+      return 'API 키를 활성화하지 못했습니다.'
+    case 'failed_to_delete_api_key':
+      return 'API 키를 삭제하지 못했습니다.'
+    case 'failed_to_load_keyring':
+      return 'API 키 목록을 불러오지 못했습니다.'
+    default:
+      return 'API 키 요청을 처리하지 못했습니다.'
+  }
+}
+
 function generateRoomCode(existing = []) {
   const used = new Set(existing.map((value) => value?.toUpperCase?.() ?? ''))
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -465,6 +659,16 @@ export default function RoomBrowserPage() {
   })
   const [createPending, setCreatePending] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [keyManagerOpen, setKeyManagerOpen] = useState(false)
+  const [keyringEntries, setKeyringEntries] = useState([])
+  const [keyringLimit, setKeyringLimit] = useState(5)
+  const [keyringLoading, setKeyringLoading] = useState(false)
+  const [keyringError, setKeyringError] = useState('')
+  const [keyringStatus, setKeyringStatus] = useState('')
+  const [keyringInput, setKeyringInput] = useState('')
+  const [keyringActivate, setKeyringActivate] = useState(true)
+  const [keyringBusy, setKeyringBusy] = useState(false)
+  const [keyringAction, setKeyringAction] = useState(null)
 
   useEffect(() => {
     mountedRef.current = true
@@ -551,6 +755,14 @@ export default function RoomBrowserPage() {
     if (!viewerUserId) return
     persistHeroOwner(viewerUserId)
   }, [viewerUserId])
+
+  useEffect(() => {
+    if (!keyManagerOpen) return undefined
+
+    loadKeyring()
+
+    return undefined
+  }, [keyManagerOpen, loadKeyring])
 
   const resolvedHeroId = viewerHeroProfile?.hero_id || ''
   const effectiveHeroId = heroId || storedHeroId || resolvedHeroId
@@ -1274,6 +1486,204 @@ export default function RoomBrowserPage() {
     return messages
   }, [filterDiagnostics, modeTab])
 
+  const keyringCount = keyringEntries.length
+
+  const getAuthToken = useCallback(async () => {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) {
+      throw sessionError
+    }
+
+    const token = sessionData?.session?.access_token
+    if (!token) {
+      throw new Error('세션 토큰을 확인할 수 없습니다.')
+    }
+
+    return token
+  }, [])
+
+  const loadKeyring = useCallback(async () => {
+    setKeyringLoading(true)
+    setKeyringError('')
+    setKeyringAction(null)
+    try {
+      const token = await getAuthToken()
+      const response = await fetch('/api/rank/user-api-keyring', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const message = resolveKeyringError(payload?.error, payload?.detail)
+        const error = new Error(message)
+        error.code = payload?.error
+        throw error
+      }
+
+      setKeyringEntries(Array.isArray(payload?.keys) ? payload.keys : [])
+      if (typeof payload?.limit === 'number' && Number.isFinite(payload.limit)) {
+        setKeyringLimit(payload.limit)
+      }
+    } catch (loadError) {
+      console.error('[RoomBrowser] Failed to load API keyring:', loadError)
+      setKeyringError(loadError?.message || 'API 키 목록을 불러오지 못했습니다.')
+    } finally {
+      setKeyringLoading(false)
+    }
+  }, [getAuthToken])
+
+  const handleToggleKeyManager = useCallback(() => {
+    setKeyManagerOpen((prev) => {
+      const next = !prev
+      if (!next) {
+        setKeyringError('')
+        setKeyringStatus('')
+        setKeyringAction(null)
+      }
+      return next
+    })
+  }, [])
+
+  const handleKeyringSubmit = useCallback(async () => {
+    const trimmed = typeof keyringInput === 'string' ? keyringInput.trim() : ''
+    if (!trimmed) {
+      setKeyringError('API 키를 입력해 주세요.')
+      return
+    }
+
+    if (keyringCount >= keyringLimit) {
+      setKeyringError('등록 가능한 최대 개수를 초과했습니다.')
+      return
+    }
+
+    setKeyringBusy(true)
+    setKeyringError('')
+    setKeyringStatus('')
+
+    try {
+      const token = await getAuthToken()
+      const response = await fetch('/api/rank/user-api-keyring', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ apiKey: trimmed, activate: keyringActivate }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const message = resolveKeyringError(payload?.error, payload?.detail)
+        const error = new Error(message)
+        error.code = payload?.error
+        throw error
+      }
+
+      const providerLabel =
+        payload?.detection?.provider === 'gemini'
+          ? 'Gemini'
+          : payload?.detection?.provider === 'openai'
+          ? 'OpenAI'
+          : '새'
+      const modelLabel = payload?.detection?.modelLabel
+      const statusMessage = `${providerLabel} 키를 등록했습니다.${
+        modelLabel ? ` (${modelLabel})` : ''
+      }`
+      setKeyringStatus(statusMessage)
+      setKeyringInput('')
+      setKeyringActivate(true)
+      await loadKeyring()
+    } catch (submitError) {
+      console.error('[RoomBrowser] Failed to store API key:', submitError)
+      setKeyringError(submitError?.message || 'API 키를 저장하지 못했습니다.')
+    } finally {
+      setKeyringBusy(false)
+    }
+  }, [
+    getAuthToken,
+    keyringActivate,
+    keyringCount,
+    keyringInput,
+    keyringLimit,
+    loadKeyring,
+  ])
+
+  const handleKeyringActivate = useCallback(
+    async (entryId) => {
+      if (!entryId) return
+
+      setKeyringAction({ id: entryId, type: 'activate' })
+      setKeyringError('')
+      setKeyringStatus('')
+
+      try {
+        const token = await getAuthToken()
+        const response = await fetch('/api/rank/user-api-keyring', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ id: entryId }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          const message = resolveKeyringError(payload?.error, payload?.detail)
+          const error = new Error(message)
+          error.code = payload?.error
+          throw error
+        }
+
+        setKeyringStatus('선택한 API 키를 활성화했습니다.')
+        await loadKeyring()
+      } catch (activateError) {
+        console.error('[RoomBrowser] Failed to activate API key:', activateError)
+        setKeyringError(activateError?.message || 'API 키를 활성화하지 못했습니다.')
+      } finally {
+        setKeyringAction(null)
+      }
+    },
+    [getAuthToken, loadKeyring],
+  )
+
+  const handleKeyringDelete = useCallback(
+    async (entryId) => {
+      if (!entryId) return
+
+      setKeyringAction({ id: entryId, type: 'delete' })
+      setKeyringError('')
+      setKeyringStatus('')
+
+      try {
+        const token = await getAuthToken()
+        const response = await fetch('/api/rank/user-api-keyring', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ id: entryId }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          const message = resolveKeyringError(payload?.error, payload?.detail)
+          const error = new Error(message)
+          error.code = payload?.error
+          throw error
+        }
+
+        setKeyringStatus('API 키를 삭제했습니다.')
+        await loadKeyring()
+      } catch (deleteError) {
+        console.error('[RoomBrowser] Failed to delete API key:', deleteError)
+        setKeyringError(deleteError?.message || 'API 키를 삭제하지 못했습니다.')
+      } finally {
+        setKeyringAction(null)
+      }
+    },
+    [getAuthToken, loadKeyring],
+  )
+
   const handleModeChange = useCallback((nextMode) => {
     setModeTab(nextMode)
   }, [])
@@ -1547,6 +1957,8 @@ export default function RoomBrowserPage() {
     return deduped
   }, [participations])
 
+  const canAddKey = keyringCount < keyringLimit
+
   return (
     <div style={styles.page}>
       <div style={styles.shell}>
@@ -1558,14 +1970,23 @@ export default function RoomBrowserPage() {
                 참여했던 게임을 기준으로 필터링하고, 점수 차이를 지정해 원하는 방을 탐색하세요.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleToggleCreate}
-              style={styles.createButton(createPending)}
-              disabled={createPending}
-            >
-              {createPending ? '생성 중...' : createOpen ? '생성 닫기' : '방 만들기'}
-            </button>
+            <div style={styles.actionGroup}>
+              <button
+                type="button"
+                onClick={handleToggleKeyManager}
+                style={styles.secondaryButton(keyManagerOpen)}
+              >
+                {keyManagerOpen ? '키 관리 닫기' : 'AI API 키 관리'}
+              </button>
+              <button
+                type="button"
+                onClick={handleToggleCreate}
+                style={styles.createButton(createPending)}
+                disabled={createPending}
+              >
+                {createPending ? '생성 중...' : createOpen ? '생성 닫기' : '방 만들기'}
+              </button>
+            </div>
           </div>
           <div style={styles.helperRow}>
             <Link href="/lobby" style={styles.helperLink} prefetch>
@@ -1594,6 +2015,128 @@ export default function RoomBrowserPage() {
             {lastLoadedAt ? <span>마지막 새로고침: {formatRelativeTime(lastLoadedAt)}</span> : null}
           </div>
         </header>
+
+        {keyManagerOpen ? (
+          <section style={styles.keyManagerCard}>
+            <div style={styles.keyManagerHeader}>
+              <div>
+                <h2 style={styles.keyManagerTitle}>AI API 키 관리</h2>
+                <p style={styles.keyManagerHint}>
+                  최대 {keyringLimit}개의 키를 저장해 상황에 맞게 전환할 수 있습니다.
+                </p>
+              </div>
+              <span style={styles.keyManagerLimit}>
+                {keyringCount} / {keyringLimit}
+              </span>
+            </div>
+            {keyringError ? <p style={styles.keyManagerError}>{keyringError}</p> : null}
+            {keyringStatus ? <p style={styles.keyManagerStatus}>{keyringStatus}</p> : null}
+            {!canAddKey && !keyringError ? (
+              <p style={styles.keyManagerHint}>
+                등록 가능한 최대 개수에 도달했습니다. 사용하지 않는 키를 삭제한 뒤 다시 시도해 주세요.
+              </p>
+            ) : null}
+            <div style={styles.keyManagerForm}>
+              <div style={styles.keyManagerInputRow}>
+                <input
+                  type="text"
+                  placeholder="API 키를 입력하세요"
+                  value={keyringInput}
+                  onChange={(event) => setKeyringInput(event.target.value)}
+                  style={styles.keyManagerInput}
+                  disabled={!canAddKey || keyringBusy || keyringLoading}
+                />
+                <button
+                  type="button"
+                  onClick={handleKeyringSubmit}
+                  style={styles.createButton(keyringBusy || !canAddKey)}
+                  disabled={keyringBusy || !canAddKey || keyringLoading}
+                >
+                  {keyringBusy ? '등록 중...' : canAddKey ? '등록' : '제한 도달'}
+                </button>
+              </div>
+              <label style={styles.keyManagerCheckboxRow}>
+                <input
+                  type="checkbox"
+                  checked={keyringActivate}
+                  onChange={(event) => setKeyringActivate(event.target.checked)}
+                  disabled={keyringBusy}
+                />
+                등록 후 바로 사용
+              </label>
+            </div>
+            {keyringLoading ? (
+              <p style={styles.keyManagerHint}>키 정보를 불러오는 중입니다...</p>
+            ) : keyringEntries.length ? (
+              <ul style={styles.keyManagerList}>
+                {keyringEntries.map((entry) => {
+                  const providerLabel =
+                    entry.provider === 'gemini'
+                      ? 'Gemini'
+                      : entry.provider === 'openai'
+                      ? 'OpenAI'
+                      : '알 수 없음'
+                  const updatedLabel = entry.updatedAt ? formatRelativeTime(entry.updatedAt) : null
+                  const actionInFlight = Boolean(keyringAction)
+                  const isCurrentAction = keyringAction?.id === entry.id
+                  const isDeleteAction = isCurrentAction && keyringAction?.type === 'delete'
+                  const disableActivate =
+                    entry.isActive || actionInFlight || keyringLoading || keyringBusy
+                  const disableDelete =
+                    entry.isActive || actionInFlight || keyringLoading || keyringBusy
+                  const activateLabel = entry.isActive
+                    ? '사용 중'
+                    : isCurrentAction && keyringAction?.type === 'activate'
+                    ? '처리 중...'
+                    : '활성화'
+                  const deleteLabel = isDeleteAction ? '삭제 중...' : '삭제'
+
+                  return (
+                    <li key={entry.id} style={styles.keyManagerItem}>
+                      <div style={styles.keyManagerMeta}>
+                        <div style={styles.keyManagerSampleRow}>
+                          <span>{entry.keySample || '알 수 없는 키'}</span>
+                          {entry.isActive ? (
+                            <span style={styles.keyManagerBadge(true)}>사용 중</span>
+                          ) : null}
+                        </div>
+                        <div style={styles.keyManagerDetail}>
+                          <span>{providerLabel}</span>
+                          {entry.modelLabel ? <span>모델: {entry.modelLabel}</span> : null}
+                          {entry.provider === 'gemini' && entry.geminiMode ? (
+                            <span>모드: {entry.geminiMode}</span>
+                          ) : null}
+                          {entry.apiVersion ? <span>버전: {entry.apiVersion}</span> : null}
+                          {updatedLabel ? <span>업데이트: {updatedLabel}</span> : null}
+                        </div>
+                      </div>
+                      <div style={styles.keyManagerActions}>
+                        <button
+                          type="button"
+                          style={styles.keyManagerActionButton('primary', disableActivate)}
+                          disabled={disableActivate}
+                          onClick={() => handleKeyringActivate(entry.id)}
+                        >
+                          {activateLabel}
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.keyManagerActionButton('danger', disableDelete)}
+                          disabled={disableDelete}
+                          onClick={() => handleKeyringDelete(entry.id)}
+                        >
+                          {deleteLabel}
+                        </button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p style={styles.keyManagerEmpty}>등록된 API 키가 없습니다.</p>
+            )}
+          </section>
+        ) : null}
 
         <section style={styles.filterCard}>
           <div>

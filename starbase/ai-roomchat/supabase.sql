@@ -703,6 +703,29 @@ create table if not exists public.rank_user_api_keys (
 create index if not exists rank_user_api_keys_updated_idx
   on public.rank_user_api_keys (updated_at desc);
 
+create table if not exists public.rank_user_api_keyring (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  provider text not null,
+  model_label text,
+  api_version text,
+  gemini_mode text,
+  gemini_model text,
+  key_ciphertext text not null,
+  key_iv text not null,
+  key_tag text not null,
+  key_version smallint not null default 1,
+  key_sample text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists rank_user_api_keyring_user_idx
+  on public.rank_user_api_keyring (user_id, created_at);
+
+create index if not exists rank_user_api_keyring_updated_idx
+  on public.rank_user_api_keyring (updated_at desc);
+
 create or replace function public.touch_rank_user_api_keys_updated_at()
 returns trigger
 language plpgsql
@@ -723,6 +746,29 @@ alter table public.rank_user_api_keys enable row level security;
 
 create policy if not exists rank_user_api_keys_service_all
 on public.rank_user_api_keys for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
+create or replace function public.touch_rank_user_api_keyring_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_rank_user_api_keyring_updated on public.rank_user_api_keyring;
+create trigger trg_rank_user_api_keyring_updated
+before update on public.rank_user_api_keyring
+for each row
+execute function public.touch_rank_user_api_keyring_updated_at();
+
+alter table public.rank_user_api_keyring enable row level security;
+
+create policy if not exists rank_user_api_keyring_service_all
+on public.rank_user_api_keyring for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
