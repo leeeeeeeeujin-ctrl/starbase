@@ -125,6 +125,23 @@ export async function postCheckMatchAssignments(
       : [],
   )
 
+  const ensureRecognizedRole = (roleName, fallbackCandidates = []) => {
+    const normalized = normalizeRoleName(roleName)
+    if (normalized && (declaredRoleNames.size === 0 || declaredRoleNames.has(normalized))) {
+      return normalized
+    }
+    if (Array.isArray(fallbackCandidates)) {
+      for (const candidate of fallbackCandidates) {
+        const normalizedCandidate = normalizeRoleName(candidate)
+        if (!normalizedCandidate) continue
+        if (declaredRoleNames.size === 0 || declaredRoleNames.has(normalizedCandidate)) {
+          return normalizedCandidate
+        }
+      }
+    }
+    return declaredRoleNames.size === 0 ? normalized : ''
+  }
+
   heroBuckets.forEach((entries, heroId) => {
     entries.forEach((entry) => {
       entry.expectedRole = lookupParticipantRole(roster, entry.ownerId, heroId)
@@ -198,10 +215,25 @@ export async function postCheckMatchAssignments(
     }
   })
 
+  memberEntries.forEach((entry) => {
+    if (!entry || entry.remove) return
+    const overrideRole = entry.heroId ? heroRoleOverrides.get(entry.heroId) || '' : ''
+    const resolvedRole =
+      ensureRecognizedRole(entry.roleName, [entry.expectedRole, overrideRole]) ||
+      normalizeRoleName(entry.expectedRole) ||
+      normalizeRoleName(overrideRole) ||
+      normalizeRoleName(entry.roleName)
+    entry.resolvedRole = resolvedRole
+  })
+
   const capacity = buildRoleCapacityMap({ roles, slotLayout })
   capacity.forEach((limit, roleName) => {
     if (!Number.isFinite(limit) || limit <= 0) return
-    const bucket = memberEntries.filter((entry) => entry.roleName === roleName && !entry.remove)
+    const normalizedRoleName = normalizeRoleName(roleName)
+    if (!normalizedRoleName) return
+    const bucket = memberEntries.filter(
+      (entry) => entry.resolvedRole === normalizedRoleName && !entry.remove,
+    )
     if (bucket.length <= limit) return
     bucket
       .slice(limit)
@@ -219,7 +251,7 @@ export async function postCheckMatchAssignments(
     .map((entry) => ({
       heroId: entry.heroId || null,
       ownerId: entry.ownerId || null,
-      role: entry.roleName || '',
+      role: entry.resolvedRole || entry.roleName || '',
       reason: entry.reason || 'removed',
     }))
 
@@ -240,8 +272,8 @@ export async function postCheckMatchAssignments(
   )
   const survivorKeys = new Set(
     memberEntries
-      .filter((entry) => !entry.remove && entry.heroId && entry.roleName)
-      .map((entry) => `${entry.heroId}::${entry.roleName}`),
+      .filter((entry) => !entry.remove && entry.heroId && entry.resolvedRole)
+      .map((entry) => `${entry.heroId}::${entry.resolvedRole}`),
   )
 
   const deriveOverrideRole = (members = []) => {
@@ -256,24 +288,7 @@ export async function postCheckMatchAssignments(
     return ''
   }
 
-  const ensureRecognizedRole = (roleName, fallbackCandidates = []) => {
-    const normalized = normalizeRoleName(roleName)
-    if (normalized && (declaredRoleNames.size === 0 || declaredRoleNames.has(normalized))) {
-      return normalized
-    }
-    if (Array.isArray(fallbackCandidates)) {
-      for (const candidate of fallbackCandidates) {
-        const normalizedCandidate = normalizeRoleName(candidate)
-        if (!normalizedCandidate) continue
-        if (declaredRoleNames.size === 0 || declaredRoleNames.has(normalizedCandidate)) {
-          return normalizedCandidate
-        }
-      }
-    }
-    return declaredRoleNames.size === 0 ? normalized : ''
-  }
-
-  const sanitizeSlotMembers = (slot, { removalIndices }) => {
+  const sanitizeSlotMembers = (slot, { removalIndices, assignmentRole }) => {
     const roleName = normalizeRoleName(slot?.role)
     const rawMembers = []
     if (slot?.member) {
@@ -282,6 +297,9 @@ export async function postCheckMatchAssignments(
     if (Array.isArray(slot?.members)) {
       rawMembers.push(...slot.members)
     }
+
+    const overrideRole = deriveOverrideRole(rawMembers)
+    const resolvedRole = ensureRecognizedRole(roleName, [overrideRole, assignmentRole])
 
     const sanitized = []
     rawMembers.forEach((member) => {
@@ -297,7 +315,12 @@ export async function postCheckMatchAssignments(
         if (survivorHeroIds.size > 0 && !survivorHeroIds.has(heroId)) {
           return
         }
-        if (roleName && survivorKeys.size > 0 && !survivorKeys.has(`${heroId}::${roleName}`)) {
+        const survivorKeyRole = resolvedRole || overrideRole || roleName
+        if (
+          survivorKeyRole &&
+          survivorKeys.size > 0 &&
+          !survivorKeys.has(`${heroId}::${survivorKeyRole}`)
+        ) {
           return
         }
       }
@@ -378,7 +401,10 @@ export async function postCheckMatchAssignments(
 
     const sanitizedSlots = assignment.roleSlots.map((slot) => {
       if (!slot || typeof slot !== 'object') return slot
-      const members = sanitizeSlotMembers(slot, { removalIndices })
+      const members = sanitizeSlotMembers(slot, {
+        removalIndices,
+        assignmentRole: assignment?.role,
+      })
       const primaryMember = members.length > 0 ? members[0] : null
       const sanitizedSlot = {
         ...slot,
@@ -458,7 +484,13 @@ export async function postCheckMatchAssignments(
       if (!slot || typeof slot !== 'object') return slot
       const roleName = normalizeRoleName(slot.role)
       const heroId = normalizeHeroIdValue(slot.hero_id ?? slot.heroId ?? null)
-      const compositeKey = heroId && roleName ? `${heroId}::${roleName}` : null
+      const slotMember = slot.member
+      const slotMembers = Array.isArray(slot.members) ? slot.members : []
+      const overrideRole =
+        (heroId && heroRoleOverrides.has(heroId) ? heroRoleOverrides.get(heroId) : '') ||
+        deriveOverrideRole([slotMember, ...slotMembers])
+      const resolvedSlotRole = ensureRecognizedRole(roleName, [overrideRole]) || overrideRole || roleName
+      const compositeKey = heroId && resolvedSlotRole ? `${heroId}::${resolvedSlotRole}` : null
       const heroSurvives =
         (!heroId || survivorHeroIds.size === 0 || survivorHeroIds.has(heroId)) &&
         (!compositeKey || survivorKeys.size === 0 || survivorKeys.has(compositeKey))
@@ -476,8 +508,6 @@ export async function postCheckMatchAssignments(
         }
       }
 
-      const slotMember = slot.member
-      const slotMembers = Array.isArray(slot.members) ? slot.members : []
       const hasHero =
         heroId != null ||
         normalizeHeroIdValue(slotMember?.hero_id ?? slotMember?.heroId ?? null) != null ||
@@ -486,7 +516,6 @@ export async function postCheckMatchAssignments(
           const memberHero = normalizeHeroIdValue(member.hero_id ?? member.heroId ?? null)
           return memberHero != null
         })
-      const overrideRole = heroId && heroRoleOverrides.has(heroId) ? heroRoleOverrides.get(heroId) : ''
       const memberDerivedRole = overrideRole || deriveOverrideRole([slotMember, ...slotMembers])
       const sanitizedRole = ensureRecognizedRole(memberDerivedRole || slot.role, [overrideRole, slot.role])
       const occupied =
