@@ -1,58 +1,61 @@
 'use client'
 
-import Link from 'next/link'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
-import { useEffect } from 'react'
+
+import MatchQueueClient from '../../../components/rank/MatchQueueClient'
+import { MATCH_MODE_KEYS } from '../../../lib/rank/matchModes'
+import { useGameRoom } from '../../../hooks/useGameRoom'
 
 export default function RankMatchQueuePage() {
   const router = useRouter()
   const { id } = router.query
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    if (!router.isReady) return
-    if (id) {
-      router.replace(`/rank/${id}`)
-    } else {
-      router.replace('/rank')
-    }
-  }, [id, router])
+    setMounted(true)
+  }, [])
+
+  const handleRequireLogin = useCallback(() => {
+    router.replace('/')
+  }, [router])
+
+  const handleGameMissing = useCallback(() => {
+    alert('게임을 찾을 수 없습니다.')
+    router.replace('/rank')
+  }, [router])
+
+  const handleDeleted = useCallback(() => {
+    router.replace('/rank')
+  }, [router])
+
+  const {
+    state: { loading, game },
+  } = useGameRoom(id, {
+    onRequireLogin: handleRequireLogin,
+    onGameMissing: handleGameMissing,
+    onDeleted: handleDeleted,
+  })
+
+  const ready = mounted && !loading
+
+  if (!ready) {
+    return <div style={{ padding: 24, color: '#f4f6fb' }}>랭크 매칭 정보를 불러오는 중…</div>
+  }
+
+  if (!game) {
+    return <div style={{ padding: 24, color: '#f4f6fb' }}>게임 정보를 찾을 수 없습니다.</div>
+  }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 32,
-        background: '#0f172a',
-        color: '#f8fafc',
-        textAlign: 'center',
-      }}
-    >
-      <div style={{ maxWidth: 520 }}>
-        <h1 style={{ fontSize: 28, marginBottom: 16 }}>자동 매칭 페이지가 제거되었습니다</h1>
-        <p style={{ lineHeight: 1.6, marginBottom: 12 }}>
-          랭크 매칭은 이제 별도의 대기열 없이 진행됩니다. 메인 룸에서 자신의 캐릭터를 선택하고 역할·점수 조건을
-          만족하면 바로 슬롯에 배치할 수 있습니다.
-        </p>
-        <p style={{ lineHeight: 1.6, marginBottom: 24 }}>
-          필요한 인원이 모두 준비되면 메인 룸에서 곧바로 게임을 시작해주세요.
-        </p>
-        <Link
-          href={id ? `/rank/${id}` : '/rank'}
-          style={{
-            display: 'inline-block',
-            padding: '12px 20px',
-            borderRadius: 8,
-            background: '#38bdf8',
-            color: '#0f172a',
-            fontWeight: 600,
-          }}
-        >
-          메인 룸으로 이동
-        </Link>
-      </div>
-    </div>
+    <MatchQueueClient
+      gameId={game.id}
+      mode={MATCH_MODE_KEYS.RANK_SHARED}
+      title="랭크 매칭"
+      description="역할별 방을 만들거나 합류해 모든 참가자가 준비되면 자동으로 경기가 시작됩니다."
+      emptyHint="아직 열린 방이 없습니다. 새 방을 만들거나 잠시 후 다시 확인해 주세요."
+      autoJoin
+      autoStart
+    />
   )
 }
