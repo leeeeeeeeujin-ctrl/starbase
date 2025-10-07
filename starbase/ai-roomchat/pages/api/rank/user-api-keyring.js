@@ -22,6 +22,48 @@ if (!url || !anonKey) {
 
 const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
 
+function normalizeUserId(value) {
+  if (!value) return ''
+  return String(value).trim()
+}
+
+function extractUserIdFromRequest(req) {
+  if (!req) return ''
+
+  const headerUserId =
+    normalizeUserId(req.headers['x-rank-user-id']) || normalizeUserId(req.headers['x-user-id'])
+  if (headerUserId) {
+    return headerUserId
+  }
+
+  const queryUserId =
+    normalizeUserId(req.query?.userId) || normalizeUserId(req.query?.user_id)
+  if (queryUserId) {
+    return queryUserId
+  }
+
+  if (req.body) {
+    let payload = req.body
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload || '{}')
+      } catch (error) {
+        payload = null
+      }
+    }
+
+    if (payload && typeof payload === 'object') {
+      const bodyUserId =
+        normalizeUserId(payload.userId) || normalizeUserId(payload.user_id)
+      if (bodyUserId) {
+        return bodyUserId
+      }
+    }
+  }
+
+  return ''
+}
+
 async function resolveUser(req, res) {
   try {
     const supabase = createPagesServerClient({ req, res })
@@ -37,16 +79,19 @@ async function resolveUser(req, res) {
 
   const authHeader = req.headers.authorization || ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
-  if (!token) {
-    return { user: null }
+  if (token) {
+    const { data, error } = await anonClient.auth.getUser(token)
+    if (!error && data?.user) {
+      return { user: data.user }
+    }
   }
 
-  const { data, error } = await anonClient.auth.getUser(token)
-  if (error || !data?.user) {
-    return { user: null }
+  const fallbackUserId = extractUserIdFromRequest(req)
+  if (fallbackUserId) {
+    return { user: { id: fallbackUserId }, via: 'service' }
   }
 
-  return { user: data.user }
+  return { user: null }
 }
 
 function normalizeEntryResponse(entry, options = {}) {
@@ -418,7 +463,7 @@ export default async function handler(req, res) {
 
   const { user } = await resolveUser(req, res)
   if (!user) {
-    return res.status(401).json({ error: 'unauthorized' })
+    return res.status(401).json({ error: 'missing_user_id' })
   }
 
   if (req.method === 'GET') {

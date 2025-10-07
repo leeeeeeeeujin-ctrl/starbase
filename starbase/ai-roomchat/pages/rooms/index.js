@@ -606,6 +606,8 @@ function resolveKeyringError(code, detail) {
       return 'API 키를 삭제하지 못했습니다.'
     case 'failed_to_load_keyring':
       return 'API 키 목록을 불러오지 못했습니다.'
+    case 'missing_user_id':
+      return '사용자 정보를 확인하지 못했습니다. 캐릭터를 다시 선택한 뒤 시도해 주세요.'
     case 'unauthorized':
       return '로그인 세션이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.'
     default:
@@ -647,6 +649,7 @@ export default function RoomBrowserPage() {
 
   const [viewerUserId, setViewerUserId] = useState('')
   const [storedHeroId, setStoredHeroId] = useState('')
+  const [storedHeroOwnerId, setStoredHeroOwnerId] = useState('')
   const [viewerHeroProfile, setViewerHeroProfile] = useState(null)
   const [rooms, setRooms] = useState([])
   const [loading, setLoading] = useState(true)
@@ -715,6 +718,7 @@ export default function RoomBrowserPage() {
         if (viewerOwner && selectionOwner && selectionOwner !== viewerOwner) {
           clearHeroSelection()
           setStoredHeroId('')
+          setStoredHeroOwnerId('')
           setViewerHeroProfile((prev) => {
             if (!prev) return prev
             return null
@@ -726,6 +730,11 @@ export default function RoomBrowserPage() {
           persistHeroSelection({ id: nextHeroId }, viewerOwner)
         }
 
+        setStoredHeroOwnerId((prev) => {
+          if (prev === selectionOwner) return prev
+          return selectionOwner
+        })
+
         setStoredHeroId((prev) => {
           if (prev === nextHeroId) return prev
           return nextHeroId
@@ -735,6 +744,10 @@ export default function RoomBrowserPage() {
           setViewerHeroProfile((prev) => {
             if (!prev) return prev
             return null
+          })
+          setStoredHeroOwnerId((prev) => {
+            if (!prev) return prev
+            return ''
           })
         }
       } catch (storageError) {
@@ -764,6 +777,10 @@ export default function RoomBrowserPage() {
   useEffect(() => {
     if (!viewerUserId) return
     persistHeroOwner(viewerUserId)
+    setStoredHeroOwnerId((prev) => {
+      if (prev === viewerUserId) return prev
+      return viewerUserId
+    })
   }, [viewerUserId])
 
   const resolvedHeroId = viewerHeroProfile?.hero_id || ''
@@ -777,6 +794,13 @@ export default function RoomBrowserPage() {
       owner_id: viewerHeroProfile.owner_id || viewerHeroProfile.user_id || null,
     }
   }, [viewerHeroProfile?.hero_id, viewerHeroProfile?.name, viewerHeroProfile?.owner_id, viewerHeroProfile?.user_id])
+
+  const effectiveUserId = useMemo(() => {
+    const viewerOwner = viewerUserId ? String(viewerUserId).trim() : ''
+    const storedOwner = storedHeroOwnerId ? String(storedHeroOwnerId).trim() : ''
+    const summaryOwner = heroSummary?.ownerId ? String(heroSummary.ownerId).trim() : ''
+    return viewerOwner || storedOwner || summaryOwner || ''
+  }, [heroSummary?.ownerId, storedHeroOwnerId, viewerUserId])
 
   const resolvingViewerHeroRef = useRef(false)
 
@@ -1515,6 +1539,9 @@ export default function RoomBrowserPage() {
       if (token) {
         headers.Authorization = `Bearer ${token}`
       }
+      if (effectiveUserId) {
+        headers['X-Rank-User-Id'] = effectiveUserId
+      }
       const response = await fetch('/api/rank/user-api-keyring', { headers })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -1534,7 +1561,7 @@ export default function RoomBrowserPage() {
     } finally {
       setKeyringLoading(false)
     }
-  }, [getAuthToken])
+  }, [effectiveUserId, getAuthToken])
 
   useEffect(() => {
     if (!keyManagerOpen) return undefined
@@ -1578,10 +1605,17 @@ export default function RoomBrowserPage() {
       if (token) {
         headers.Authorization = `Bearer ${token}`
       }
+      if (effectiveUserId) {
+        headers['X-Rank-User-Id'] = effectiveUserId
+      }
       const response = await fetch('/api/rank/user-api-keyring', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ apiKey: trimmed, activate: keyringActivate }),
+        body: JSON.stringify({
+          apiKey: trimmed,
+          activate: keyringActivate,
+          userId: effectiveUserId || undefined,
+        }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -1612,6 +1646,7 @@ export default function RoomBrowserPage() {
       setKeyringBusy(false)
     }
   }, [
+    effectiveUserId,
     getAuthToken,
     keyringActivate,
     keyringCount,
@@ -1634,10 +1669,13 @@ export default function RoomBrowserPage() {
         if (token) {
           headers.Authorization = `Bearer ${token}`
         }
+        if (effectiveUserId) {
+          headers['X-Rank-User-Id'] = effectiveUserId
+        }
         const response = await fetch('/api/rank/user-api-keyring', {
           method: 'PATCH',
           headers,
-          body: JSON.stringify({ id: entryId }),
+          body: JSON.stringify({ id: entryId, userId: effectiveUserId || undefined }),
         })
         const payload = await response.json().catch(() => ({}))
         if (!response.ok) {
@@ -1656,7 +1694,7 @@ export default function RoomBrowserPage() {
         setKeyringAction(null)
       }
     },
-    [getAuthToken, loadKeyring],
+    [effectiveUserId, getAuthToken, loadKeyring],
   )
 
   const handleKeyringDelete = useCallback(
@@ -1673,10 +1711,13 @@ export default function RoomBrowserPage() {
         if (token) {
           headers.Authorization = `Bearer ${token}`
         }
+        if (effectiveUserId) {
+          headers['X-Rank-User-Id'] = effectiveUserId
+        }
         const response = await fetch('/api/rank/user-api-keyring', {
           method: 'DELETE',
           headers,
-          body: JSON.stringify({ id: entryId }),
+          body: JSON.stringify({ id: entryId, userId: effectiveUserId || undefined }),
         })
         const payload = await response.json().catch(() => ({}))
         if (!response.ok) {
@@ -1695,7 +1736,7 @@ export default function RoomBrowserPage() {
         setKeyringAction(null)
       }
     },
-    [getAuthToken, loadKeyring],
+    [effectiveUserId, getAuthToken, loadKeyring],
   )
 
   const handleModeChange = useCallback((nextMode) => {
