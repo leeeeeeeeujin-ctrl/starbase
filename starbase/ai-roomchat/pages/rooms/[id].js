@@ -323,6 +323,12 @@ export default function RoomDetailPage() {
   })
   const [viewerLoading, setViewerLoading] = useState(true)
   const [activeSlotId, setActiveSlotId] = useState(null)
+  const latestPresenceRef = useRef({
+    activeSlotId: null,
+    ownerId: null,
+    isHost: false,
+    roomId: null,
+  })
 
   const occupancy = useMemo(() => {
     const total = slots.length
@@ -770,6 +776,11 @@ export default function RoomDetailPage() {
     [activeSlotId, loadRoom, viewer.ownerId],
   )
 
+  const leaveRoomRef = useRef(leaveRoom)
+  useEffect(() => {
+    leaveRoomRef.current = leaveRoom
+  }, [leaveRoom])
+
   const cancelHostCleanup = useCallback(() => {
     if (hostCleanupState.timerId) {
       clearTimeout(hostCleanupState.timerId)
@@ -825,6 +836,20 @@ export default function RoomDetailPage() {
       deleteRoom({ silent: true, skipNavigate: true })
     }, HOST_CLEANUP_DELAY_MS)
   }, [cancelHostCleanup, deleteRoom, isHost, room?.id])
+
+  const requestHostCleanupRef = useRef(requestHostCleanup)
+  useEffect(() => {
+    requestHostCleanupRef.current = requestHostCleanup
+  }, [requestHostCleanup])
+
+  useEffect(() => {
+    latestPresenceRef.current = {
+      activeSlotId,
+      ownerId: viewer.ownerId,
+      isHost,
+      roomId: room?.id ?? null,
+    }
+  }, [activeSlotId, isHost, room?.id, viewer.ownerId])
 
   const handleJoin = useCallback(async () => {
     if (!roomId) return
@@ -893,55 +918,52 @@ export default function RoomDetailPage() {
   }, [loadRoom])
 
   useEffect(() => {
-    const cleanup = () => {
-      if (activeSlotId && viewer.ownerId) {
-        leaveRoom({ silent: true, skipReload: true })
+    return () => {
+      const { activeSlotId: latestSlotId, ownerId, isHost: latestIsHost, roomId } =
+        latestPresenceRef.current
+      if (latestSlotId && ownerId) {
+        leaveRoomRef.current({ silent: true, skipReload: true })
       }
-      if (isHost && room?.id) {
-        requestHostCleanup()
+      if (latestIsHost && roomId) {
+        requestHostCleanupRef.current()
       }
     }
-    return cleanup
-  }, [activeSlotId, viewer.ownerId, leaveRoom, isHost, room?.id, requestHostCleanup])
+  }, [])
 
   useEffect(() => {
     const handleRouteChange = () => {
-      if (activeSlotId && viewer.ownerId) {
-        leaveRoom({ silent: true, skipReload: true })
+      const { activeSlotId: latestSlotId, ownerId, isHost: latestIsHost, roomId } =
+        latestPresenceRef.current
+      if (latestSlotId && ownerId) {
+        leaveRoomRef.current({ silent: true, skipReload: true })
       }
-      if (isHost && room?.id) {
-        requestHostCleanup()
+      if (latestIsHost && roomId) {
+        requestHostCleanupRef.current()
       }
     }
     router.events.on('routeChangeStart', handleRouteChange)
     return () => {
       router.events.off('routeChangeStart', handleRouteChange)
     }
-  }, [
-    activeSlotId,
-    viewer.ownerId,
-    leaveRoom,
-    isHost,
-    room?.id,
-    requestHostCleanup,
-    router.events,
-  ])
+  }, [router.events])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
     const handleBeforeUnload = () => {
-      if (activeSlotId && viewer.ownerId) {
-        leaveRoom({ silent: true, skipReload: true })
+      const { activeSlotId: latestSlotId, ownerId, isHost: latestIsHost, roomId } =
+        latestPresenceRef.current
+      if (latestSlotId && ownerId) {
+        leaveRoomRef.current({ silent: true, skipReload: true })
       }
-      if (isHost && room?.id) {
-        requestHostCleanup()
+      if (latestIsHost && roomId) {
+        requestHostCleanupRef.current()
       }
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [activeSlotId, viewer.ownerId, leaveRoom, isHost, room?.id, requestHostCleanup])
+  }, [])
 
   useEffect(() => {
     if (isHost && room?.id) {

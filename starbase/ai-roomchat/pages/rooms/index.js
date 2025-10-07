@@ -1109,8 +1109,21 @@ export default function RoomBrowserPage() {
       })
       .filter((room) => {
         if (!scoreWindow || !heroRatingForSelection) return true
-        if (!room.rating || !Number.isFinite(room.rating.average)) return false
-        return Math.abs(room.rating.average - heroRatingForSelection) <= scoreWindow
+
+        const comparisonRating = Number.isFinite(room.rating?.average)
+          ? room.rating.average
+          : Number.isFinite(room.hostRating)
+          ? room.hostRating
+          : null
+
+        if (!Number.isFinite(comparisonRating)) {
+          return true
+        }
+
+        const roomWindow = Number.isFinite(room.scoreWindow) ? room.scoreWindow : null
+        const allowedWindow = roomWindow ? Math.min(scoreWindow, roomWindow) : scoreWindow
+
+        return Math.abs(comparisonRating - heroRatingForSelection) <= allowedWindow
       })
   }, [heroRatingForSelection, modeTab, rooms, scoreWindow, selectedGameId])
 
