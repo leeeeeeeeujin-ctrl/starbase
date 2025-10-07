@@ -371,6 +371,36 @@ describe('loadRoleLayout', () => {
     ])
   })
 
+  it('falls back to role rows when slot layout roles mismatch', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-layout-mismatch', name: '공격', slot_count: 2, active: true },
+        { game_id: 'game-layout-mismatch', name: '수비', slot_count: 1, active: true },
+      ],
+      rank_game_slots: [
+        {
+          game_id: 'game-layout-mismatch',
+          slot_index: 0,
+          role: '공격 · 수비',
+          active: true,
+          hero_id: 'hero-1',
+          hero_owner_id: 'owner-1',
+        },
+      ],
+    })
+
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-mismatch')
+    expect(roles).toEqual([
+      { name: '공격', slot_count: 2, slotCount: 2 },
+      { name: '수비', slot_count: 1, slotCount: 1 },
+    ])
+    expect(slotLayout).toEqual([
+      { slotIndex: 0, role: '공격', heroId: null, heroOwnerId: null },
+      { slotIndex: 1, role: '공격', heroId: null, heroOwnerId: null },
+      { slotIndex: 2, role: '수비', heroId: null, heroOwnerId: null },
+    ])
+  })
+
   it('creates layout from role counts when slots are missing', async () => {
     const supabase = createSupabaseStub({
       rank_game_roles: [

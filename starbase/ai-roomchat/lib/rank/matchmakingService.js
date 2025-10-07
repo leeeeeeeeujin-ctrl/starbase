@@ -293,15 +293,46 @@ function buildLayoutFromRoleCounts(roleEntries = []) {
 }
 
 function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []) {
+  const rolesFromRows = buildRolesFromRoleRows(roleRows)
+
   const slotLayout = buildLayoutFromSlotRows(slotRows)
   if (slotLayout.length > 0) {
-    return {
-      roles: buildRolesFromLayout(slotLayout),
-      slotLayout,
+    if (rolesFromRows.length > 0) {
+      const roleNames = new Set(
+        rolesFromRows
+          .map((role) => normalizeRoleName(role.name))
+          .filter((name) => typeof name === 'string' && name.length > 0),
+      )
+      const layoutNames = new Set(
+        slotLayout
+          .map((slot) => normalizeRoleName(slot.role))
+          .filter((name) => typeof name === 'string' && name.length > 0),
+      )
+
+      const layoutIncludesAllDeclaredRoles =
+        roleNames.size === 0 || Array.from(roleNames).every((name) => layoutNames.has(name))
+      const layoutOnlyUsesDeclaredRoles =
+        layoutNames.size === 0 || Array.from(layoutNames).every((name) => roleNames.has(name))
+
+      const shouldFallbackToRoles =
+        roleNames.size > 0 &&
+        (layoutNames.size === 0 ||
+          (layoutNames.size < roleNames.size && (!layoutIncludesAllDeclaredRoles || !layoutOnlyUsesDeclaredRoles)))
+
+      if (!shouldFallbackToRoles) {
+        return {
+          roles: buildRolesFromLayout(slotLayout),
+          slotLayout,
+        }
+      }
+    } else {
+      return {
+        roles: buildRolesFromLayout(slotLayout),
+        slotLayout,
+      }
     }
   }
 
-  const rolesFromRows = buildRolesFromRoleRows(roleRows)
   if (rolesFromRows.length > 0) {
     return {
       roles: rolesFromRows,
