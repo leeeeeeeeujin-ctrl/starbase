@@ -13,11 +13,18 @@ import {
   persistHeroSelection,
   readHeroSelection,
 } from '@/lib/heroes/selectedHeroStorage'
+import {
+  setGameMatchHeroSelection,
+  setGameMatchParticipation,
+  setGameMatchSnapshot,
+} from '@/modules/rank/matchDataStore'
 
 const ROOM_EXIT_DELAY_MS = 5000
 const HOST_CLEANUP_DELAY_MS = ROOM_EXIT_DELAY_MS
 const ROOM_AUTO_REFRESH_INTERVAL_MS = 5000
 const LAST_CREATED_ROOM_KEY = 'rooms:lastCreatedHostFeedback'
+
+const CASUAL_MODE_TOKENS = ['casual', '캐주얼', 'normal']
 
 const hostCleanupState = {
   timerId: null,
@@ -52,6 +59,197 @@ async function performParticipantCleanup({ slotId, ownerId }) {
     }
   } catch (cleanupError) {
     console.error('[RoomDetail] Failed to auto-leave room:', cleanupError)
+  }
+}
+
+function normalizeRoomMode(value) {
+  if (typeof value !== 'string') return 'rank'
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return 'rank'
+  return CASUAL_MODE_TOKENS.some((token) => normalized.includes(token)) ? 'casual' : 'rank'
+}
+
+function toStringOrNull(value) {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function toNumberOrNull(value) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function buildRosterFromSlots(slots) {
+  if (!Array.isArray(slots) || !slots.length) return []
+  return slots.map((slot) => ({
+    slotId: slot?.id || null,
+    slotIndex: Number.isFinite(Number(slot?.slotIndex)) ? Number(slot.slotIndex) : 0,
+    role:
+      typeof slot?.role === 'string' && slot.role.trim() ? slot.role.trim() : '역할 미지정',
+    ownerId: toStringOrNull(slot?.occupantOwnerId),
+    heroId: toStringOrNull(slot?.occupantHeroId),
+    heroName: typeof slot?.occupantHeroName === 'string' ? slot.occupantHeroName : '',
+    ready: !!slot?.occupantReady,
+    joinedAt: slot?.joinedAt || null,
+  }))
+}
+
+function buildHeroMapFromRoster(roster) {
+  return roster.reduce((acc, entry) => {
+    if (!entry?.heroId) return acc
+    const key = entry.heroId
+    if (!acc[key]) {
+      acc[key] = {
+        id: entry.heroId,
+        name: entry.heroName || `캐릭터 #${entry.heroId}`,
+        ownerId: entry.ownerId,
+      }
+    }
+    return acc
+  }, {})
+}
+
+function buildRolesFromRoster(roster) {
+  const map = new Map()
+  roster.forEach((entry) => {
+    if (!entry) return
+    const roleName =
+      typeof entry.role === 'string' && entry.role.trim() ? entry.role.trim() : '역할 미지정'
+    map.set(roleName, (map.get(roleName) || 0) + 1)
+  })
+  return Array.from(map.entries()).map(([name, count]) => ({
+    name,
+    slot_count: count,
+  }))
+}
+
+function buildAssignmentsFromRoster(roster) {
+  const grouped = new Map()
+  roster.forEach((entry) => {
+    if (!entry) return
+    const roleName =
+      typeof entry.role === 'string' && entry.role.trim() ? entry.role.trim() : '역할 미지정'
+    if (!grouped.has(roleName)) {
+      grouped.set(roleName, [])
+    }
+    grouped.get(roleName).push(entry)
+  })
+
+  return Array.from(grouped.entries()).map(([roleName, entries]) => {
+    const sorted = entries
+      .map((entry) => ({ ...entry }))
+      .sort((a, b) => (a.slotIndex || 0) - (b.slotIndex || 0))
+
+    const members = sorted
+      .filter((entry) => entry.ownerId && entry.heroId)
+      .map((entry) => ({
+        ownerId: entry.ownerId,
+        heroId: entry.heroId,
+        heroName: entry.heroName || '',
+        ready: !!entry.ready,
+        slotIndex: entry.slotIndex || 0,
+        joinedAt: entry.joinedAt || null,
+      }))
+
+    const roleSlots = sorted.map((entry, localIndex) => ({
+      slotId: entry.slotId,
+      role: roleName,
+      slotIndex: entry.slotIndex || 0,
+      localIndex,
+      ownerId: entry.ownerId,
+      heroId: entry.heroId,
+      heroName: entry.heroName || '',
+      ready: !!entry.ready,
+      joinedAt: entry.joinedAt || null,
+      members:
+        entry.ownerId && entry.heroId
+          ? [
+              {
+                ownerId: entry.ownerId,
+                heroId: entry.heroId,
+                heroName: entry.heroName || '',
+                ready: !!entry.ready,
+                joinedAt: entry.joinedAt || null,
+              },
+            ]
+          : [],
+    }))
+
+    return {
+      role: roleName,
+      slots: roleSlots.length,
+      members,
+      roleSlots,
+    }
+  })
+}
+
+function buildSlotLayoutFromRoster(roster) {
+  return roster
+    .map((entry) => ({ ...entry }))
+    .sort((a, b) => (a.slotIndex || 0) - (b.slotIndex || 0))
+    .map((entry) => ({
+      slotId: entry.slotId,
+      slotIndex: entry.slotIndex || 0,
+      role: entry.role,
+      ownerId: entry.ownerId,
+      heroId: entry.heroId,
+      heroName: entry.heroName || '',
+      ready: !!entry.ready,
+      joinedAt: entry.joinedAt || null,
+    }))
+}
+
+function buildMatchTransferPayload(room, slots) {
+  if (!room || !Array.isArray(slots) || !slots.length) return null
+  const roster = buildRosterFromSlots(slots)
+  if (!roster.length) return null
+  const heroMap = buildHeroMapFromRoster(roster)
+  const roles = buildRolesFromRoster(roster)
+  const assignments = buildAssignmentsFromRoster(roster)
+  const slotLayout = buildSlotLayoutFromRoster(roster)
+  const maxWindow = toNumberOrNull(room?.scoreWindow)
+  const timestamp = Date.now()
+
+  const match = {
+    assignments,
+    maxWindow,
+    heroMap,
+    matchCode: room?.code || '',
+    matchType: 'standard',
+    brawlVacancies: [],
+    roleStatus: {
+      slotLayout,
+      roles,
+      updatedAt: timestamp,
+    },
+    sampleMeta: null,
+    dropInTarget: null,
+    turnTimer: null,
+    rooms: [
+      {
+        id: room?.id || '',
+        code: room?.code || '',
+        ownerId: room?.ownerId || null,
+        status: room?.status || '',
+        mode: room?.mode || '',
+        scoreWindow: maxWindow,
+        updatedAt: room?.updatedAt || null,
+      },
+    ],
+    roles,
+    slotLayout,
+    source: 'room-fill',
+  }
+
+  return {
+    roster,
+    heroMap,
+    roles,
+    assignments,
+    slotLayout,
+    match,
   }
 }
 
@@ -380,6 +578,7 @@ export default function RoomDetailPage() {
     roomId: null,
   })
   const slotRefreshTimeoutRef = useRef(null)
+  const autoRedirectRef = useRef(false)
 
   const occupancy = useMemo(() => {
     const total = slots.length
@@ -1178,6 +1377,82 @@ export default function RoomDetailPage() {
   const hostRatingText = Number.isFinite(room?.hostRating)
     ? `${room.hostRating}점`
     : '정보 없음'
+
+  useEffect(() => {
+    if (autoRedirectRef.current) return
+    if (typeof window === 'undefined') return
+    if (!room?.gameId) return
+    if (!Array.isArray(slots) || !slots.length) return
+    if (!occupancy.total || occupancy.filled !== occupancy.total) return
+    if (!joined) return
+
+    const payload = buildMatchTransferPayload(room, slots)
+    if (!payload) return
+
+    const viewerOwnerKey = viewer.ownerId != null ? String(viewer.ownerId) : ''
+    const viewerUserKey = viewer.userId != null ? String(viewer.userId) : viewerOwnerKey
+    const heroOptions = Array.from(
+      new Set(payload.roster.map((entry) => entry.heroId).filter(Boolean)),
+    )
+
+    try {
+      setGameMatchParticipation(room.gameId, {
+        roster: payload.roster,
+        heroOptions,
+        participantPool: payload.roster,
+        heroMap: payload.heroMap,
+      })
+
+      setGameMatchHeroSelection(room.gameId, {
+        heroId: viewer.heroId || '',
+        viewerId: viewerUserKey,
+        ownerId: viewerOwnerKey || viewerUserKey,
+        role: viewer.role || '',
+        heroMeta: viewer.heroId
+          ? {
+              id: viewer.heroId,
+              name: viewer.heroName || '',
+              role: viewer.role || '',
+              ownerId: viewerOwnerKey || viewerUserKey || null,
+            }
+          : null,
+      })
+
+      const createdAt = payload.match?.roleStatus?.updatedAt || Date.now()
+
+      setGameMatchSnapshot(room.gameId, {
+        match: payload.match,
+        pendingMatch: null,
+        viewerId: viewerUserKey,
+        heroId: viewer.heroId || '',
+        role: viewer.role || '',
+        mode: normalizeRoomMode(room.mode),
+        createdAt,
+      })
+    } catch (transferError) {
+      console.error('[RoomDetail] Failed to stage match data before redirect:', transferError)
+      return
+    }
+
+    autoRedirectRef.current = true
+
+    router.replace(`/rank/${room.gameId}`).catch((redirectError) => {
+      console.error('[RoomDetail] Failed to redirect to main game:', redirectError)
+      autoRedirectRef.current = false
+    })
+  }, [
+    joined,
+    occupancy.filled,
+    occupancy.total,
+    room,
+    router,
+    slots,
+    viewer.heroId,
+    viewer.heroName,
+    viewer.ownerId,
+    viewer.role,
+    viewer.userId,
+  ])
 
   return (
     <div style={styles.page}>
