@@ -804,8 +804,13 @@ export default function CharacterBasicView({ hero }) {
   }, [currentHero])
 
   const handleOpenRoomSearch = useCallback(() => {
-    router.push('/rank/rooms')
-  }, [router])
+    const heroId = currentHero?.id
+    if (heroId) {
+      router.push({ pathname: '/rooms', query: { hero: heroId } })
+      return
+    }
+    router.push('/rooms')
+  }, [currentHero?.id, router])
 
   const [viewMode, setViewMode] = useState(0)
   const [activeTab, setActiveTab] = useState(0)
