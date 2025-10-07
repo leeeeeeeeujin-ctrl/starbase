@@ -8,6 +8,7 @@ import {
 } from '@/lib/rank/matchingPipeline'
 import { withTable } from '@/lib/supabaseTables'
 import { recordMatchmakingLog, buildAssignmentSummary } from '@/lib/rank/matchmakingLogs'
+import { computeRoleReadiness } from '@/lib/rank/matchRoleSummary'
 
 function generateMatchCode() {
   const stamp = Date.now().toString(36)
@@ -295,7 +296,16 @@ export default async function handler(req, res) {
 
     const result = runMatching({ mode, roles, queue: candidateSample })
 
-    if (!result.ready) {
+    const readiness = computeRoleReadiness({
+      roles,
+      slotLayout,
+      assignments: result.assignments,
+      rooms: result.rooms,
+    })
+
+    const matchReady = Boolean(result.ready || readiness.ready)
+
+    if (!matchReady) {
       await logStage({
         stage: toggles.realtimeEnabled ? 'realtime_pool' : 'standard_pool',
         status: 'pending',
@@ -304,6 +314,7 @@ export default async function handler(req, res) {
           error: result.error || null,
           sampleMeta,
           assignments: buildAssignmentSummary(result.assignments),
+          roleBuckets: readiness.buckets,
         },
       })
 
@@ -317,6 +328,7 @@ export default async function handler(req, res) {
         sampleMeta,
         roles: serializeRoles(roles),
         slotLayout: serializeSlotLayout(slotLayout),
+        roleBuckets: readiness.buckets,
       })
     }
 
@@ -336,6 +348,7 @@ export default async function handler(req, res) {
       metadata: {
         sampleMeta,
         assignments: buildAssignmentSummary(result.assignments),
+        roleBuckets: readiness.buckets,
       },
     })
 
@@ -355,6 +368,7 @@ export default async function handler(req, res) {
       sampleMeta,
       roles: serializeRoles(roles),
       slotLayout: serializeSlotLayout(slotLayout),
+      roleBuckets: readiness.buckets,
     })
   } catch (error) {
     await recordMatchmakingLog(supabase, {

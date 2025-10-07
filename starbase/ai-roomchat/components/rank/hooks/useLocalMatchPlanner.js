@@ -8,6 +8,7 @@ import {
   runMatching,
 } from '../../../lib/rank/matchmakingService'
 import { supabase } from '../../../lib/supabase'
+import { buildRoleSummaryBuckets } from '../../../lib/rank/matchRoleSummary'
 
 function buildLocalSampleMeta({
   queue = [],
@@ -157,6 +158,15 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
 
       const result = runMatching({ mode, roles: roleList, queue: sampleEntries })
       const assignments = Array.isArray(result.assignments) ? result.assignments : []
+      const rooms = Array.isArray(result.rooms) ? result.rooms : []
+
+      const roleSummaries = buildRoleSummaryBuckets({
+        roles: roleList,
+        slotLayout: layout,
+        assignments,
+        rooms,
+      })
+      const summaryReady = roleSummaries.length > 0 && roleSummaries.every((entry) => entry.ready)
 
       const members = flattenAssignmentMembers(assignments)
       const heroIds = members
@@ -190,7 +200,7 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
       }
 
       const snapshot = {
-        ready: Boolean(result.ready),
+        ready: summaryReady || Boolean(result.ready),
         assignments,
         totalSlots: Number(result.totalSlots) || layout.length || 0,
         maxWindow: Number(result.maxWindow) || 0,
@@ -198,6 +208,7 @@ export default function useLocalMatchPlanner({ gameId, mode, enabled }) {
         heroMap,
         warnings,
         memberCount: members.length,
+        roleSummaries,
         sampleType: metaPayload.sampleType,
         realtime: metaPayload.realtime,
         sampleGeneratedAt: metaPayload.generatedAt,
