@@ -480,7 +480,105 @@ export default function RoomBrowserPage() {
           },
         }
       })
-      const uniqueGames = hydratedParticipations.filter((row) => row?.game?.id)
+      const gameEntries = []
+      const seenGameIds = new Set()
+
+      hydratedParticipations.forEach((entry) => {
+        const gameId = entry?.game?.id
+        if (!gameId || seenGameIds.has(gameId)) return
+        seenGameIds.add(gameId)
+        gameEntries.push(entry)
+      })
+
+      let rankParticipantGames = []
+      const { data: participantGamesRows, error: participantGamesError } = await withTable(
+        supabase,
+        'rank_participants',
+        (table) =>
+          supabase
+            .from(table)
+            .select('game_id')
+            .eq('hero_id', normalizedHeroId),
+      )
+
+      if (participantGamesError && participantGamesError.code !== 'PGRST116') {
+        throw participantGamesError
+      }
+
+      if (Array.isArray(participantGamesRows)) {
+        rankParticipantGames = participantGamesRows
+          .map((row) => row?.game_id)
+          .filter((gameId) => typeof gameId === 'string' && gameId.trim() !== '')
+      }
+
+      const missingGameIds = Array.from(new Set(rankParticipantGames)).filter(
+        (gameId) => !seenGameIds.has(gameId),
+      )
+
+      if (missingGameIds.length) {
+        const { data: fallbackGameRows, error: fallbackGameError } = await withTable(
+          supabase,
+          'rank_games',
+          (table) =>
+            supabase
+              .from(table)
+              .select('id, name, cover_path, description, owner_id, created_at, image_url')
+              .in('id', missingGameIds),
+        )
+
+        if (fallbackGameError && fallbackGameError.code !== 'PGRST116') {
+          throw fallbackGameError
+        }
+
+        const fallbackGameMap = new Map(
+          (Array.isArray(fallbackGameRows) ? fallbackGameRows : [])
+            .filter((row) => row?.id)
+            .map((row) => [
+              row.id,
+              {
+                id: row.id,
+                name: row.name?.trim?.() || '이름 없는 게임',
+                cover_path: row.cover_path || null,
+                description: row.description || '',
+                owner_id: row.owner_id || null,
+                created_at: row.created_at || null,
+                image_url: row.cover_path || row.image_url || null,
+              },
+            ]),
+        )
+
+        missingGameIds.forEach((gameId) => {
+          if (seenGameIds.has(gameId)) return
+
+          const fallbackGame =
+            fallbackGameMap.get(gameId) ||
+            {
+              id: gameId,
+              name: '이름 없는 게임',
+              cover_path: null,
+              description: '',
+              owner_id: null,
+              created_at: null,
+              image_url: null,
+            }
+
+          gameEntries.push({
+            id: `rank-participant:${gameId}`,
+            game_id: gameId,
+            hero_id: normalizedHeroId,
+            slot_no: null,
+            role: '',
+            sessionCount: null,
+            latestSessionAt: null,
+            firstSessionAt: null,
+            primaryMode: null,
+            game: fallbackGame,
+          })
+          seenGameIds.add(gameId)
+        })
+      }
+
+      const uniqueGames = gameEntries
 
       setHeroSummary({ heroName, ownerId })
       setParticipations(uniqueGames)
