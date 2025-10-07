@@ -744,6 +744,50 @@ export async function enqueueParticipant(
     role,
   })
 
+  const duplicateCheck = await withTable(
+    supabaseClient,
+    'rank_match_queue',
+    (table) =>
+      supabaseClient
+        .from(table)
+        .select('id, game_id, mode, status, hero_id')
+        .eq('owner_id', ownerId)
+        .in('status', ['waiting', 'matched']),
+  )
+
+  if (duplicateCheck?.error) {
+    console.warn('대기열 중복 상태를 확인하지 못했습니다:', duplicateCheck.error)
+    return {
+      ok: false,
+      error: '대기열 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.',
+    }
+  }
+
+  const duplicateEntries = Array.isArray(duplicateCheck?.data)
+    ? duplicateCheck.data.filter((entry) => {
+        if (!entry) return false
+        const entryGameId = entry.game_id ?? entry.gameId
+        const entryMode = entry.mode
+        const entryStatus = entry.status
+
+        const sameGame = String(entryGameId ?? '') === String(gameId ?? '')
+        const sameMode = String(entryMode ?? '') === String(mode ?? '')
+
+        if (sameGame && sameMode && entryStatus === 'waiting') {
+          return false
+        }
+
+        return true
+      })
+    : []
+
+  if (duplicateEntries.length > 0) {
+    return {
+      ok: false,
+      error: '이미 다른 대기열에 참여 중입니다. 기존 대기열을 먼저 취소해주세요.',
+    }
+  }
+
   const payload = {
     game_id: gameId,
     mode,

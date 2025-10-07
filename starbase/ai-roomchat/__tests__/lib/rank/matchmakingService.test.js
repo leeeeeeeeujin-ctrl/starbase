@@ -472,6 +472,109 @@ describe('enqueueParticipant', () => {
     expect(response.heroId).toBe('hero-support')
     expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-support')
   })
+
+  it('prevents queuing when already waiting in another queue', async () => {
+    const tables = {
+      rank_participants: [],
+      rank_match_queue: [
+        {
+          id: 'queue-existing',
+          game_id: 'other-game',
+          mode: 'rank_solo',
+          owner_id: 'player-duplicate',
+          hero_id: 'hero-existing',
+          role: 'attack',
+          status: 'waiting',
+          joined_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    }
+
+    const supabase = createSupabaseStub(tables)
+
+    const response = await enqueueParticipant(supabase, {
+      gameId: 'game-hero',
+      mode: 'rank_solo',
+      ownerId: 'player-duplicate',
+      heroId: 'hero-new',
+      role: 'support',
+      score: 1500,
+    })
+
+    expect(response.ok).toBe(false)
+    expect(response.error).toMatch('이미 다른 대기열에 참여 중입니다')
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
+  })
+
+  it('prevents queuing when already matched in the same queue', async () => {
+    const tables = {
+      rank_participants: [],
+      rank_match_queue: [
+        {
+          id: 'queue-matched',
+          game_id: 'game-hero',
+          mode: 'rank_solo',
+          owner_id: 'player-duplicate',
+          hero_id: 'hero-existing',
+          role: 'attack',
+          status: 'matched',
+          joined_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:05:00Z',
+        },
+      ],
+    }
+
+    const supabase = createSupabaseStub(tables)
+
+    const response = await enqueueParticipant(supabase, {
+      gameId: 'game-hero',
+      mode: 'rank_solo',
+      ownerId: 'player-duplicate',
+      heroId: 'hero-new',
+      role: 'support',
+      score: 1500,
+    })
+
+    expect(response.ok).toBe(false)
+    expect(response.error).toMatch('이미 다른 대기열에 참여 중입니다')
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
+  })
+
+  it('replaces an existing waiting entry in the same queue', async () => {
+    const tables = {
+      rank_participants: [],
+      rank_match_queue: [
+        {
+          id: 'queue-waiting',
+          game_id: 'game-hero',
+          mode: 'rank_solo',
+          owner_id: 'player-duplicate',
+          hero_id: 'hero-old',
+          role: 'attack',
+          status: 'waiting',
+          joined_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    }
+
+    const supabase = createSupabaseStub(tables)
+
+    const response = await enqueueParticipant(supabase, {
+      gameId: 'game-hero',
+      mode: 'rank_solo',
+      ownerId: 'player-duplicate',
+      heroId: 'hero-new',
+      role: 'attack',
+      score: 1600,
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.heroId).toBe('hero-new')
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
+    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-new')
+  })
 })
 
 describe('loadOwnerParticipantRoster', () => {
