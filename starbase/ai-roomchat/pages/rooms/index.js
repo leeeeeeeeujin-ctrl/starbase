@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
+import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { withTable } from '@/lib/supabaseTables'
 import { fetchHeroParticipationBundle } from '@/modules/character/participation'
 
@@ -367,6 +368,7 @@ export default function RoomBrowserPage() {
   const mountedRef = useRef(true)
 
   const [storedHeroId, setStoredHeroId] = useState('')
+  const [viewerHeroProfile, setViewerHeroProfile] = useState(null)
   const [rooms, setRooms] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -394,15 +396,111 @@ export default function RoomBrowserPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    try {
-      const savedHeroId = window.localStorage.getItem('selectedHeroId') || ''
-      setStoredHeroId(savedHeroId)
-    } catch (storageError) {
-      console.error('[RoomBrowser] Failed to read stored hero id:', storageError)
+
+    const syncStoredHero = () => {
+      try {
+        const savedHeroId = window.localStorage.getItem('selectedHeroId') || ''
+        setStoredHeroId((prev) => {
+          if (prev === savedHeroId) return prev
+          return savedHeroId
+        })
+        if (!savedHeroId) {
+          setViewerHeroProfile((prev) => {
+            if (!prev) return prev
+            return null
+          })
+        }
+      } catch (storageError) {
+        console.error('[RoomBrowser] Failed to read stored hero id:', storageError)
+      }
+    }
+
+    syncStoredHero()
+
+    const handleStorage = (event) => {
+      if (!event) return
+      if (event.key && event.key !== 'selectedHeroId' && event.key !== 'selectedHeroOwnerId') {
+        return
+      }
+      syncStoredHero()
+    }
+
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener('hero-overlay:refresh', syncStoredHero)
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('hero-overlay:refresh', syncStoredHero)
     }
   }, [])
 
-  const effectiveHeroId = heroId || storedHeroId
+  const resolvedHeroId = viewerHeroProfile?.hero_id || ''
+  const effectiveHeroId = heroId || storedHeroId || resolvedHeroId
+
+  const viewerHeroSeed = useMemo(() => {
+    if (!viewerHeroProfile?.hero_id) return null
+    return {
+      id: viewerHeroProfile.hero_id,
+      name: viewerHeroProfile.name || '이름 없는 영웅',
+      owner_id: viewerHeroProfile.owner_id || viewerHeroProfile.user_id || null,
+    }
+  }, [viewerHeroProfile?.hero_id, viewerHeroProfile?.name, viewerHeroProfile?.owner_id, viewerHeroProfile?.user_id])
+
+  const resolvingViewerHeroRef = useRef(false)
+
+  useEffect(() => {
+    if (heroId || storedHeroId || viewerHeroProfile?.hero_id) {
+      return
+    }
+    if (resolvingViewerHeroRef.current) return
+
+    let cancelled = false
+    resolvingViewerHeroRef.current = true
+
+    const resolveHeroProfile = async () => {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) throw sessionError
+
+        let user = sessionData?.session?.user || null
+        if (!user) {
+          const { data: userData, error: userError } = await supabase.auth.getUser()
+          if (userError) throw userError
+          user = userData?.user || null
+        }
+
+        if (!user) {
+          if (!cancelled && mountedRef.current) {
+            setViewerHeroProfile(null)
+          }
+          return
+        }
+
+        const profile = await resolveViewerProfile(user, null)
+        if (!cancelled && mountedRef.current) {
+          if (profile?.hero_id) {
+            setViewerHeroProfile(profile)
+            setStoredHeroId((prev) => (prev ? prev : profile.hero_id))
+          } else {
+            setViewerHeroProfile(null)
+          }
+        }
+      } catch (profileError) {
+        console.error('[RoomBrowser] Failed to resolve viewer hero profile:', profileError)
+        if (!cancelled && mountedRef.current) {
+          setViewerHeroProfile(null)
+        }
+      } finally {
+        resolvingViewerHeroRef.current = false
+      }
+    }
+
+    resolveHeroProfile()
+
+    return () => {
+      cancelled = true
+    }
+  }, [heroId, storedHeroId, viewerHeroProfile?.hero_id])
 
   const loadHeroContext = useCallback(async (targetHeroId) => {
     const normalizedHeroId = typeof targetHeroId === 'string' ? targetHeroId.trim() : ''
@@ -417,21 +515,32 @@ export default function RoomBrowserPage() {
     }
 
     setHeroLoading(true)
+    const fallbackSeed =
+      viewerHeroSeed?.id === normalizedHeroId
+        ? {
+            id: viewerHeroSeed.id,
+            name: viewerHeroSeed.name || '이름 없는 영웅',
+            owner_id: viewerHeroSeed.owner_id || null,
+          }
+        : null
+
     try {
       const { data: heroRow, error: heroError } = await withTable(supabase, 'heroes', (table) =>
         supabase
           .from(table)
           .select('id, name, owner_id')
           .eq('id', normalizedHeroId)
-          .single(),
+          .maybeSingle(),
       )
 
-      if (heroError) {
+      if (heroError && heroError.code !== 'PGRST116') {
         throw heroError
       }
 
-      const heroName = heroRow?.name?.trim?.() || '이름 없는 영웅'
-      const ownerId = heroRow?.owner_id || null
+      const heroName =
+        heroRow?.name?.trim?.() || fallbackSeed?.name || viewerHeroProfile?.name || '이름 없는 영웅'
+      const ownerId =
+        heroRow?.owner_id ?? fallbackSeed?.owner_id ?? viewerHeroProfile?.owner_id ?? viewerHeroProfile?.user_id ?? null
 
       const bundle = await fetchHeroParticipationBundle(normalizedHeroId, {
         heroSeed: heroRow
@@ -440,7 +549,7 @@ export default function RoomBrowserPage() {
               name: heroName,
               owner_id: ownerId,
             }
-          : undefined,
+          : fallbackSeed || undefined,
       })
 
       if (!mountedRef.current) return
@@ -625,7 +734,10 @@ export default function RoomBrowserPage() {
     } catch (heroLoadError) {
       console.error('[RoomBrowser] Failed to load hero context:', heroLoadError)
       if (mountedRef.current) {
-        setHeroSummary({ heroName: '', ownerId: null })
+        const fallbackName = fallbackSeed?.name || viewerHeroProfile?.name || ''
+        const fallbackOwner =
+          fallbackSeed?.owner_id ?? viewerHeroProfile?.owner_id ?? viewerHeroProfile?.user_id ?? null
+        setHeroSummary({ heroName: fallbackName, ownerId: fallbackOwner })
         setParticipations([])
         setHeroRatings({})
       }
@@ -634,7 +746,7 @@ export default function RoomBrowserPage() {
         setHeroLoading(false)
       }
     }
-  }, [initialGameId])
+  }, [initialGameId, viewerHeroProfile?.name, viewerHeroProfile?.owner_id, viewerHeroProfile?.user_id, viewerHeroSeed?.id, viewerHeroSeed?.name, viewerHeroSeed?.owner_id])
 
   useEffect(() => {
     loadHeroContext(effectiveHeroId)
