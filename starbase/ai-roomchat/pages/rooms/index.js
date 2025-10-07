@@ -1149,7 +1149,8 @@ export default function RoomBrowserPage() {
   const handleCreateSubmit = useCallback(
     async (event) => {
       event.preventDefault()
-      if (!heroSummary.ownerId) {
+      const roomOwnerId = heroSummary.ownerId || viewerUserId || null
+      if (!roomOwnerId) {
         setCreateError('로그인이 필요합니다.')
         return
       }
@@ -1172,7 +1173,7 @@ export default function RoomBrowserPage() {
             .from(table)
             .insert({
               game_id: targetGameId,
-              owner_id: heroSummary.ownerId,
+              owner_id: roomOwnerId,
               code,
               mode: modeValue,
               status: 'open',
@@ -1266,6 +1267,7 @@ export default function RoomBrowserPage() {
       createState.scoreWindow,
       effectiveHeroId,
       heroSummary.ownerId,
+      viewerUserId,
       rooms,
       router,
       selectedGameId,
