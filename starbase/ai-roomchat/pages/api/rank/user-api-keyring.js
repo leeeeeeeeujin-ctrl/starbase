@@ -57,6 +57,44 @@ function normalizeEntryResponse(entry, options = {}) {
   return payload
 }
 
+const OPENAI_KEY_PATTERNS = [
+  /^sk-[a-z0-9]{16,}$/i,
+  /^sk-(live|test|proj|proj-test|share)-[a-z0-9-]{8,}$/i,
+]
+
+const GEMINI_KEY_PATTERNS = [/^AIza[0-9A-Za-z_\-]{20,}$/, /^gk-[0-9a-z]{16,}$/i]
+
+function heuristicDetectProvider(apiKey) {
+  const trimmed = typeof apiKey === 'string' ? apiKey.trim() : ''
+  if (!trimmed) return null
+
+  if (OPENAI_KEY_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+    return {
+      provider: 'openai',
+      apiVersion: null,
+      detail: '키 형식이 OpenAI 패턴과 일치합니다.',
+    }
+  }
+
+  if (GEMINI_KEY_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+    return {
+      provider: 'gemini',
+      geminiMode: 'v1beta',
+      detail: '키 형식이 Gemini 패턴과 일치합니다.',
+    }
+  }
+
+  if (trimmed.toLowerCase().startsWith('sk-')) {
+    return {
+      provider: 'openai',
+      apiVersion: null,
+      detail: '키 형식이 OpenAI 패턴과 일치합니다.',
+    }
+  }
+
+  return null
+}
+
 async function handleList(req, res, user) {
   try {
     const [entries, active] = await Promise.all([
@@ -87,8 +125,18 @@ async function detectProvider(apiKey) {
     return { ok: false, error: 'missing_api_key' }
   }
 
-  try {
-    const openaiResult = await detectOpenAIPreset({ apiKey: trimmed })
+  const heuristic = heuristicDetectProvider(trimmed)
+
+  const shouldTryOpenAI = !heuristic || heuristic.provider === 'openai'
+  let openaiResult = null
+  if (shouldTryOpenAI) {
+    try {
+      openaiResult = await detectOpenAIPreset({ apiKey: trimmed })
+    } catch (error) {
+      console.warn('[user-api-keyring] OpenAI detection failed:', error)
+      openaiResult = { ok: false, errorCode: 'detect_failed', detail: error?.message || '' }
+    }
+
     if (openaiResult?.ok) {
       return {
         ok: true,
@@ -97,16 +145,64 @@ async function detectProvider(apiKey) {
         apiVersion: openaiResult.apiVersion || null,
         geminiMode: null,
         geminiModel: null,
-        detail: openaiResult.detail || null,
+        detail: openaiResult.detail || '',
+        fallback: !!openaiResult.fallback,
       }
     }
-  } catch (error) {
-    // ignore and fall back to Gemini detection
-    console.warn('[user-api-keyring] OpenAI detection failed:', error)
+
+    if (openaiResult?.errorCode === 'invalid_user_api_key') {
+      return {
+        ok: false,
+        error: 'invalid_user_api_key',
+        detail: openaiResult.detail || 'API 키가 올바르지 않습니다.',
+      }
+    }
+
+    if (heuristic?.provider === 'openai') {
+      return {
+        ok: true,
+        provider: 'openai',
+        modelLabel: null,
+        apiVersion: heuristic.apiVersion || null,
+        geminiMode: null,
+        geminiModel: null,
+        detail:
+          openaiResult?.detail ||
+          (openaiResult?.errorCode === 'quota_exhausted'
+            ? '요청 한도를 초과했지만 OpenAI 키로 판단했습니다.'
+            : heuristic.detail || ''),
+        fallback: true,
+      }
+    }
+
+    if (openaiResult) {
+      return {
+        ok: true,
+        provider: 'openai',
+        modelLabel: null,
+        apiVersion: openaiResult.apiVersion || null,
+        geminiMode: null,
+        geminiModel: null,
+        detail:
+          openaiResult.detail ||
+          (openaiResult.errorCode === 'quota_exhausted'
+            ? '요청 한도를 초과했지만 OpenAI 키로 판단했습니다.'
+            : 'OpenAI 응답을 확인하지 못했지만 키 형식이 유효해 보입니다.'),
+        fallback: true,
+      }
+    }
   }
 
-  try {
-    const geminiResult = await detectGeminiPreset({ apiKey: trimmed })
+  const shouldTryGemini = !heuristic || heuristic.provider === 'gemini'
+  let geminiResult = null
+  if (shouldTryGemini) {
+    try {
+      geminiResult = await detectGeminiPreset({ apiKey: trimmed })
+    } catch (error) {
+      console.warn('[user-api-keyring] Gemini detection failed:', error)
+      geminiResult = { ok: false, errorCode: 'detect_failed', detail: error?.message || '' }
+    }
+
     if (geminiResult?.ok) {
       return {
         ok: true,
@@ -115,17 +211,74 @@ async function detectProvider(apiKey) {
         apiVersion: null,
         geminiMode: geminiResult.mode || null,
         geminiModel: geminiResult.model || null,
-        detail: geminiResult.detail || null,
+        detail: geminiResult.detail || '',
+        fallback: !!geminiResult.fallback,
       }
     }
-  } catch (error) {
-    console.warn('[user-api-keyring] Gemini detection failed:', error)
+
+    if (geminiResult?.errorCode === 'invalid_user_api_key') {
+      return {
+        ok: false,
+        error: 'invalid_user_api_key',
+        detail: geminiResult.detail || 'API 키가 올바르지 않습니다.',
+      }
+    }
+
+    if (heuristic?.provider === 'gemini') {
+      return {
+        ok: true,
+        provider: 'gemini',
+        modelLabel: null,
+        apiVersion: null,
+        geminiMode: heuristic.geminiMode || null,
+        geminiModel: heuristic.geminiModel || null,
+        detail:
+          geminiResult?.detail ||
+          (geminiResult?.errorCode === 'quota_exhausted'
+            ? '요청 한도를 초과했지만 Gemini 키로 판단했습니다.'
+            : heuristic.detail || ''),
+        fallback: true,
+      }
+    }
+
+    if (geminiResult) {
+      return {
+        ok: true,
+        provider: 'gemini',
+        modelLabel: null,
+        apiVersion: null,
+        geminiMode: geminiResult.mode || null,
+        geminiModel: null,
+        detail:
+          geminiResult.detail ||
+          (geminiResult.errorCode === 'quota_exhausted'
+            ? '요청 한도를 초과했지만 Gemini 키로 판단했습니다.'
+            : 'Gemini 응답을 확인하지 못했지만 키 형식이 유효해 보입니다.'),
+        fallback: true,
+      }
+    }
+  }
+
+  if (heuristic) {
+    return {
+      ok: true,
+      provider: heuristic.provider,
+      modelLabel: heuristic.modelLabel || null,
+      apiVersion: heuristic.apiVersion || null,
+      geminiMode: heuristic.geminiMode || null,
+      geminiModel: heuristic.geminiModel || null,
+      detail: heuristic.detail || '',
+      fallback: true,
+    }
   }
 
   return {
     ok: false,
-    error: 'unrecognized_api_key',
-    detail: 'API 키 제공자를 확인하지 못했습니다.',
+    error: openaiResult?.errorCode || geminiResult?.errorCode || 'unrecognized_api_key',
+    detail:
+      openaiResult?.detail ||
+      geminiResult?.detail ||
+      'API 키 제공자를 확인하지 못했습니다.',
   }
 }
 

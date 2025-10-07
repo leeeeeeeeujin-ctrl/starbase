@@ -586,10 +586,18 @@ function resolveKeyringError(code, detail) {
     case 'missing_user_api_key':
     case 'missing_api_key':
       return 'API 키를 입력해 주세요.'
+    case 'invalid_user_api_key':
+      return 'API 키가 올바르지 않습니다. 키를 다시 확인해 주세요.'
+    case 'quota_exhausted':
+      return 'API 키 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.'
+    case 'ai_network_error':
+      return 'API 제공자에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.'
     case 'unrecognized_api_key':
       return 'API 키 종류를 확인하지 못했습니다. 키를 다시 확인해 주세요.'
     case 'detect_failed':
       return 'API 키 정보를 확인하지 못했습니다.'
+    case 'list_models_failed':
+      return 'API 키 모델 정보를 불러오지 못했습니다.'
     case 'failed_to_store_api_key':
       return 'API 키를 저장하지 못했습니다.'
     case 'failed_to_activate_api_key':
