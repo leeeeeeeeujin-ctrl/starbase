@@ -612,6 +612,7 @@ export async function postCheckMatchAssignments(
   }
 
   const heroBuckets = new Map()
+  const heroRoleOverrides = new Map()
   memberEntries.forEach((entry) => {
     if (!entry.heroId) return
     const list = heroBuckets.get(entry.heroId) || []
@@ -619,14 +620,30 @@ export async function postCheckMatchAssignments(
     heroBuckets.set(entry.heroId, list)
   })
 
+  const declaredRoleNames = new Set(
+    Array.isArray(roles)
+      ? roles
+          .map((entry) => normalizeRoleName(entry?.name ?? entry?.role))
+          .filter((name) => typeof name === 'string' && name.length > 0)
+      : [],
+  )
+
   heroBuckets.forEach((entries, heroId) => {
     entries.forEach((entry) => {
       entry.expectedRole = lookupParticipantRole(roster, entry.ownerId, heroId)
     })
 
-    const mismatched = entries.filter(
-      (entry) => entry.expectedRole && entry.roleName && entry.roleName !== entry.expectedRole,
-    )
+    const mismatched = entries.filter((entry) => {
+      if (!entry.expectedRole) return false
+      const normalizedRole = normalizeRoleName(entry.roleName)
+      const normalizedExpected = normalizeRoleName(entry.expectedRole)
+      if (!normalizedExpected) return false
+      if (!normalizedRole) return false
+      if (declaredRoleNames.size > 0 && !declaredRoleNames.has(normalizedRole)) {
+        return false
+      }
+      return normalizedRole !== normalizedExpected
+    })
     mismatched.forEach((entry) => {
       entry.remove = true
       entry.reason = 'role_mismatch'
@@ -636,9 +653,13 @@ export async function postCheckMatchAssignments(
     })
 
     const eligible = entries.filter((entry) => !entry.remove)
-    const exactMatches = eligible.filter(
-      (entry) => entry.expectedRole && entry.roleName === entry.expectedRole,
-    )
+    const exactMatches = eligible.filter((entry) => {
+      if (!entry.expectedRole) return false
+      const normalizedRole = normalizeRoleName(entry.roleName)
+      const normalizedExpected = normalizeRoleName(entry.expectedRole)
+      if (!normalizedRole || !normalizedExpected) return false
+      return normalizedRole === normalizedExpected
+    })
 
     if (exactMatches.length > 1) {
       exactMatches.slice(1).forEach((entry) => {
@@ -663,6 +684,19 @@ export async function postCheckMatchAssignments(
               entry.member.__remove = true
             }
           })
+      }
+    }
+
+    const survivingWithRole = entries.find((entry) => {
+      if (entry.remove) return false
+      const normalizedExpected = normalizeRoleName(entry.expectedRole)
+      return Boolean(normalizedExpected)
+    })
+    if (survivingWithRole) {
+      const normalizedRole = normalizeRoleName(survivingWithRole.expectedRole)
+      const normalizedHeroId = normalizeHeroIdValue(heroId)
+      if (normalizedHeroId && normalizedRole) {
+        heroRoleOverrides.set(normalizedHeroId, normalizedRole)
       }
     }
   })
@@ -713,6 +747,35 @@ export async function postCheckMatchAssignments(
       .map((entry) => `${entry.heroId}::${entry.roleName}`),
   )
 
+  const deriveOverrideRole = (members = []) => {
+    if (!Array.isArray(members)) return ''
+    for (const member of members) {
+      if (!member || typeof member !== 'object') continue
+      const heroId = normalizeHeroIdValue(member.hero_id ?? member.heroId ?? null)
+      if (heroId && heroRoleOverrides.has(heroId)) {
+        return heroRoleOverrides.get(heroId)
+      }
+    }
+    return ''
+  }
+
+  const ensureRecognizedRole = (roleName, fallbackCandidates = []) => {
+    const normalized = normalizeRoleName(roleName)
+    if (normalized && (declaredRoleNames.size === 0 || declaredRoleNames.has(normalized))) {
+      return normalized
+    }
+    if (Array.isArray(fallbackCandidates)) {
+      for (const candidate of fallbackCandidates) {
+        const normalizedCandidate = normalizeRoleName(candidate)
+        if (!normalizedCandidate) continue
+        if (declaredRoleNames.size === 0 || declaredRoleNames.has(normalizedCandidate)) {
+          return normalizedCandidate
+        }
+      }
+    }
+    return declaredRoleNames.size === 0 ? normalized : ''
+  }
+
   const sanitizeSlotMembers = (slot, { removalIndices }) => {
     const roleName = normalizeRoleName(slot?.role)
     const rawMembers = []
@@ -762,13 +825,30 @@ export async function postCheckMatchAssignments(
                 return null
               }
               const heroId = normalizeHeroIdValue(clone.hero_id ?? clone.heroId ?? null)
-              const roleName = normalizeRoleName(assignment.role)
+              const declaredRole = normalizeRoleName(assignment.role)
               if (heroId) {
                 if (survivorHeroIds.size > 0 && !survivorHeroIds.has(heroId)) {
                   return null
                 }
-                if (roleName && survivorKeys.size > 0 && !survivorKeys.has(`${heroId}::${roleName}`)) {
+                if (
+                  declaredRole &&
+                  survivorKeys.size > 0 &&
+                  !survivorKeys.has(`${heroId}::${declaredRole}`)
+                ) {
                   return null
+                }
+                const overrideRole = heroRoleOverrides.get(heroId) || ''
+                const resolvedRole = ensureRecognizedRole(clone.role ?? overrideRole, [
+                  overrideRole,
+                  declaredRole,
+                ])
+                if (resolvedRole) {
+                  clone.role = resolvedRole
+                }
+              } else if (clone.role) {
+                const resolvedRole = ensureRecognizedRole(clone.role, [declaredRole])
+                if (resolvedRole) {
+                  clone.role = resolvedRole
                 }
               }
               return clone
@@ -778,6 +858,16 @@ export async function postCheckMatchAssignments(
 
       assignment.members = sanitizedMembers
       assignment.roleSlots = []
+
+      const memberRoles = sanitizedMembers
+        .map((member) => ensureRecognizedRole(member?.role ?? assignment?.role, [assignment?.role]))
+        .filter(Boolean)
+      if (memberRoles.length > 0) {
+        const uniqueRoles = Array.from(new Set(memberRoles))
+        if (uniqueRoles.length === 1) {
+          assignment.role = uniqueRoles[0]
+        }
+      }
 
       const totalSlots = Number.isFinite(Number(assignment.slots))
         ? Number(assignment.slots)
@@ -810,11 +900,20 @@ export async function postCheckMatchAssignments(
           sanitizedSlot.hero_owner_id = ownerId
           sanitizedSlot.heroOwnerId = ownerId
         }
+        const overrideRole = deriveOverrideRole([primaryMember]) || deriveOverrideRole(members)
+        const fallbackRole = ensureRecognizedRole(slot.role, [overrideRole, assignment?.role])
+        const normalizedOverride = normalizeRoleName(overrideRole)
+        const resolvedRole = normalizedOverride || fallbackRole
+        sanitizedSlot.role =
+          resolvedRole ||
+          (declaredRoleNames.size === 0 ? normalizeRoleName(slot.role) : '')
       } else {
         sanitizedSlot.hero_id = null
         sanitizedSlot.heroId = null
         sanitizedSlot.hero_owner_id = null
         sanitizedSlot.heroOwnerId = null
+        const fallbackRole = ensureRecognizedRole(slot.role, [assignment?.role])
+        sanitizedSlot.role = fallbackRole || (declaredRoleNames.size === 0 ? normalizeRoleName(slot.role) : '')
       }
       return sanitizedSlot
     })
@@ -844,6 +943,16 @@ export async function postCheckMatchAssignments(
     assignment.filledSlots = filledSlots
     assignment.missingSlots = Math.max(0, totalSlots - filledSlots)
     assignment.ready = totalSlots > 0 && assignment.missingSlots === 0
+
+    const slotRoles = sanitizedSlots
+      .map((slot) => normalizeRoleName(slot?.role))
+      .filter((name) => name && (declaredRoleNames.size === 0 || declaredRoleNames.has(name)))
+    if (slotRoles.length > 0) {
+      const unique = Array.from(new Set(slotRoles))
+      if (unique.length === 1) {
+        assignment.role = unique[0]
+      }
+    }
   })
 
   clonedRooms.forEach((room) => {
@@ -880,6 +989,9 @@ export async function postCheckMatchAssignments(
           const memberHero = normalizeHeroIdValue(member.hero_id ?? member.heroId ?? null)
           return memberHero != null
         })
+      const overrideRole = heroId && heroRoleOverrides.has(heroId) ? heroRoleOverrides.get(heroId) : ''
+      const memberDerivedRole = overrideRole || deriveOverrideRole([slotMember, ...slotMembers])
+      const sanitizedRole = ensureRecognizedRole(memberDerivedRole || slot.role, [overrideRole, slot.role])
       const occupied =
         Boolean(slotMember) ||
         Boolean(slot.occupied) ||
@@ -887,6 +999,7 @@ export async function postCheckMatchAssignments(
         hasHero
       return {
         ...slot,
+        role: sanitizedRole,
         occupied,
       }
     })

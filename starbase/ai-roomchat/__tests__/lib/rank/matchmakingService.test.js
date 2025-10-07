@@ -10,6 +10,7 @@ import {
   runMatching,
   postCheckMatchAssignments,
 } from '@/lib/rank/matchmakingService'
+import { computeRoleReadiness } from '@/lib/rank/matchRoleSummary'
 
 function createSupabaseStub(tableData = {}) {
   return {
@@ -335,7 +336,7 @@ describe('postCheckMatchAssignments', () => {
     })
 
     expect(result.assignments[0].members).toEqual([
-      { owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' },
+      expect.objectContaining({ owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' }),
     ])
     expect(result.rooms[0].slots).toEqual([
       expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
@@ -343,6 +344,122 @@ describe('postCheckMatchAssignments', () => {
     ])
     expect(result.removedMembers).toEqual([
       { heroId: 'hero-2', ownerId: 'owner-2', role: '공격', reason: 'exceeds_capacity' },
+    ])
+  })
+
+  it('realigns slot roles to declared roles when assignments use merged labels', async () => {
+    const supabase = createSupabaseStub({
+      rank_participants: [
+        {
+          game_id: 'game-merged',
+          owner_id: 'owner-1',
+          hero_id: 'hero-1',
+          role: '공격',
+          updated_at: '2024-02-01T00:00:00Z',
+        },
+        {
+          game_id: 'game-merged',
+          owner_id: 'owner-2',
+          hero_id: 'hero-2',
+          role: '수비',
+          updated_at: '2024-02-01T00:00:00Z',
+        },
+      ],
+    })
+
+    const assignments = [
+      {
+        role: '공격 · 수비',
+        slots: 2,
+        members: [
+          { owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' },
+          { owner_id: 'owner-2', hero_id: 'hero-2', queue_id: 'q2' },
+        ],
+        roleSlots: [
+          {
+            slotIndex: 0,
+            role: '공격 · 수비',
+            member: { owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' },
+            members: [{ owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' }],
+            hero_id: 'hero-1',
+          },
+          {
+            slotIndex: 1,
+            role: '공격 · 수비',
+            member: { owner_id: 'owner-2', hero_id: 'hero-2', queue_id: 'q2' },
+            members: [{ owner_id: 'owner-2', hero_id: 'hero-2', queue_id: 'q2' }],
+            hero_id: 'hero-2',
+          },
+        ],
+      },
+    ]
+
+    const rooms = [
+      {
+        id: 'room-merged',
+        slots: [
+          {
+            slotIndex: 0,
+            role: '공격 · 수비',
+            hero_id: 'hero-1',
+            hero_owner_id: 'owner-1',
+            member: { owner_id: 'owner-1', hero_id: 'hero-1' },
+          },
+          {
+            slotIndex: 1,
+            role: '공격 · 수비',
+            hero_id: 'hero-2',
+            hero_owner_id: 'owner-2',
+            member: { owner_id: 'owner-2', hero_id: 'hero-2' },
+          },
+        ],
+      },
+    ]
+
+    const roles = [
+      { name: '공격', slot_count: 1, slotCount: 1 },
+      { name: '수비', slot_count: 1, slotCount: 1 },
+    ]
+
+    const slotLayout = [
+      { slotIndex: 0, role: '공격', heroId: null, heroOwnerId: null },
+      { slotIndex: 1, role: '수비', heroId: null, heroOwnerId: null },
+    ]
+
+    const result = await postCheckMatchAssignments(supabase, {
+      gameId: 'game-merged',
+      assignments,
+      rooms,
+      roles,
+      slotLayout,
+    })
+
+    expect(result.assignments[0].roleSlots).toHaveLength(2)
+    expect(result.assignments[0].roleSlots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: '공격', heroId: 'hero-1', hero_id: 'hero-1' }),
+        expect.objectContaining({ role: '수비', heroId: 'hero-2', hero_id: 'hero-2' }),
+      ]),
+    )
+    expect(result.rooms[0].slots).toHaveLength(2)
+    expect(result.rooms[0].slots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
+        expect.objectContaining({ role: '수비', hero_id: 'hero-2', occupied: true }),
+      ]),
+    )
+
+    const readiness = computeRoleReadiness({
+      roles,
+      slotLayout,
+      assignments: result.assignments,
+      rooms: result.rooms,
+    })
+
+    expect(readiness.ready).toBe(true)
+    expect(readiness.buckets).toEqual([
+      expect.objectContaining({ role: '공격', filled: 1, total: 1, ready: true }),
+      expect.objectContaining({ role: '수비', filled: 1, total: 1, ready: true }),
     ])
   })
 })
