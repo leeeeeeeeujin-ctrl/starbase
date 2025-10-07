@@ -901,10 +901,10 @@ export default function RoomBrowserPage() {
           )
 
           if (slotResult.error && slotResult.error.code !== 'PGRST116') {
-            throw slotResult.error
+            console.warn('[RoomBrowser] Failed to load room slots:', slotResult.error)
+          } else {
+            slotRows = Array.isArray(slotResult.data) ? slotResult.data : []
           }
-
-          slotRows = Array.isArray(slotResult.data) ? slotResult.data : []
         }
 
         const slotMap = new Map()
@@ -939,11 +939,11 @@ export default function RoomBrowserPage() {
           )
 
           if (gamesResult.error && gamesResult.error.code !== 'PGRST116') {
-            throw gamesResult.error
+            console.warn('[RoomBrowser] Failed to load games:', gamesResult.error)
+          } else {
+            const gameRows = Array.isArray(gamesResult.data) ? gamesResult.data : []
+            gameMap = new Map(gameRows.map((row) => [row.id, row]))
           }
-
-          const gameRows = Array.isArray(gamesResult.data) ? gamesResult.data : []
-          gameMap = new Map(gameRows.map((row) => [row.id, row]))
         }
 
         let participantRatings = new Map()
@@ -957,17 +957,17 @@ export default function RoomBrowserPage() {
           )
 
           if (participantResult.error && participantResult.error.code !== 'PGRST116') {
-            throw participantResult.error
+            console.warn('[RoomBrowser] Failed to load participant ratings:', participantResult.error)
+          } else {
+            const participantRows = Array.isArray(participantResult.data) ? participantResult.data : []
+            participantRatings = participantRows.reduce((map, row) => {
+              if (!row?.game_id || !row?.owner_id) return map
+              const ratingValue = Number(row?.rating)
+              if (!Number.isFinite(ratingValue)) return map
+              map.set(`${row.game_id}:${row.owner_id}`, ratingValue)
+              return map
+            }, new Map())
           }
-
-          const participantRows = Array.isArray(participantResult.data) ? participantResult.data : []
-          participantRatings = participantRows.reduce((map, row) => {
-            if (!row?.game_id || !row?.owner_id) return map
-            const ratingValue = Number(row?.rating)
-            if (!Number.isFinite(ratingValue)) return map
-            map.set(`${row.game_id}:${row.owner_id}`, ratingValue)
-            return map
-          }, new Map())
         }
 
         const normalized = roomRows.map((row) => {
@@ -1225,9 +1225,22 @@ export default function RoomBrowserPage() {
           )
         }
 
-        setCreateOpen(false)
-        setCreateState((prev) => ({ ...prev, gameId: targetGameId }))
-        await loadRooms(true)
+        if (mountedRef.current) {
+          setCreateOpen(false)
+          setCreateState((prev) => ({ ...prev, gameId: targetGameId }))
+        }
+
+        const nextRoute = {
+          pathname: '/rooms/[id]',
+          query: { id: roomId },
+        }
+
+        if (effectiveHeroId) {
+          nextRoute.query.hero = effectiveHeroId
+        }
+
+        await router.push(nextRoute)
+        return
       } catch (createFailure) {
         console.error('[RoomBrowser] Failed to create room:', createFailure)
         setCreateError(resolveErrorMessage(createFailure))
@@ -1235,7 +1248,15 @@ export default function RoomBrowserPage() {
         setCreatePending(false)
       }
     },
-    [createState.mode, createState.scoreWindow, heroSummary.ownerId, loadRooms, rooms, selectedGameId],
+    [
+      createState.mode,
+      createState.scoreWindow,
+      effectiveHeroId,
+      heroSummary.ownerId,
+      rooms,
+      router,
+      selectedGameId,
+    ],
   )
 
   const createScoreWindowOptions = useMemo(

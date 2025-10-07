@@ -538,11 +538,12 @@ export default function RoomDetailPage() {
             .order('slot_index', { ascending: true }),
         )
 
+        let slotRows = []
         if (slotResult.error && slotResult.error.code !== 'PGRST116') {
-          throw slotResult.error
+          console.warn('[RoomDetail] Failed to load slots:', slotResult.error)
+        } else {
+          slotRows = Array.isArray(slotResult.data) ? slotResult.data : []
         }
-
-        const slotRows = Array.isArray(slotResult.data) ? slotResult.data : []
 
         let activeIndexes = null
         if (baseRoom.gameId) {
@@ -554,11 +555,16 @@ export default function RoomDetailPage() {
               .order('slot_index', { ascending: true }),
           )
 
-          if (templateResult.error && templateResult.error.code !== 'PGRST116') {
-            throw templateResult.error
-          }
+          const templates =
+            templateResult.error && templateResult.error.code !== 'PGRST116'
+              ? []
+              : Array.isArray(templateResult.data)
+              ? templateResult.data
+              : []
 
-          const templates = Array.isArray(templateResult.data) ? templateResult.data : []
+          if (templateResult.error && templateResult.error.code !== 'PGRST116') {
+            console.warn('[RoomDetail] Failed to load game slot template:', templateResult.error)
+          }
           activeIndexes = new Set(
             templates
               .filter((template) => template?.active ?? true)
@@ -584,10 +590,11 @@ export default function RoomDetailPage() {
             supabase.from(table).select('id, name').in('id', heroIds),
           )
           if (heroResult.error && heroResult.error.code !== 'PGRST116') {
-            throw heroResult.error
+            console.warn('[RoomDetail] Failed to load hero names:', heroResult.error)
+          } else {
+            const heroRows = Array.isArray(heroResult.data) ? heroResult.data : []
+            heroMap = new Map(heroRows.map((row) => [row.id, row]))
           }
-          const heroRows = Array.isArray(heroResult.data) ? heroResult.data : []
-          heroMap = new Map(heroRows.map((row) => [row.id, row]))
         }
 
         let hostRating = null
@@ -603,11 +610,12 @@ export default function RoomDetailPage() {
               .maybeSingle(),
           )
           if (hostResult.error && hostResult.error.code !== 'PGRST116') {
-            throw hostResult.error
-          }
-          const ratingValue = Number(hostResult.data?.rating)
-          if (Number.isFinite(ratingValue)) {
-            hostRating = ratingValue
+            console.warn('[RoomDetail] Failed to load host rating:', hostResult.error)
+          } else {
+            const ratingValue = Number(hostResult.data?.rating)
+            if (Number.isFinite(ratingValue)) {
+              hostRating = ratingValue
+            }
           }
         }
 
