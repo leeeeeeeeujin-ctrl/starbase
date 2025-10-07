@@ -94,7 +94,7 @@ async function loadRoleResources(supabaseClient, gameId) {
     return { roles: [], slotLayout: [] }
   }
 
-  const [roleResult, slotResult, gameResult] = await Promise.all([
+  const [roleResult, slotResult] = await Promise.all([
     withTable(supabaseClient, 'rank_game_roles', (table) =>
       supabaseClient
         .from(table)
@@ -107,17 +107,24 @@ async function loadRoleResources(supabaseClient, gameId) {
         .select('slot_index, role, active, hero_id, hero_owner_id')
         .eq('game_id', gameId),
     ),
-    withTable(supabaseClient, 'rank_games', (table) =>
-      supabaseClient.from(table).select('roles').eq('id', gameId).maybeSingle(),
-    ),
   ])
 
   if (roleResult?.error) throw roleResult.error
   if (slotResult?.error) throw slotResult.error
-  if (gameResult?.error) throw gameResult.error
 
   const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
   const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
+
+  const resources = normaliseRolesAndSlots(roleRows, slotRows)
+  if (resources.slotLayout.length > 0 || resources.roles.length > 0) {
+    return resources
+  }
+
+  const gameResult = await withTable(supabaseClient, 'rank_games', (table) =>
+    supabaseClient.from(table).select('roles').eq('id', gameId).maybeSingle(),
+  )
+
+  if (gameResult?.error) throw gameResult.error
 
   let gameRoles = []
   const rawGameRoles = gameResult?.data?.roles
@@ -135,7 +142,7 @@ async function loadRoleResources(supabaseClient, gameId) {
     }
   }
 
-  return normaliseRolesAndSlots(roleRows, slotRows, gameRoles)
+  return normaliseRolesAndSlots([], [], gameRoles)
 }
 
 export async function loadActiveRoles(supabaseClient, gameId) {
@@ -213,39 +220,30 @@ function buildRolesFromLayout(layout = []) {
   return roleOrder.map((name) => attachSlotCountPayload(name, roleCounts.get(name) || 0))
 }
 
-function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []) {
-  const inlineLayout = deriveGameRoleSlots(gameRoleSlots)
-  if (inlineLayout.length > 0) {
-    return {
-      roles: buildRolesFromLayout(inlineLayout),
-      slotLayout: inlineLayout,
-    }
-  }
-
-  const slotPresence = new Set()
+function buildLayoutFromSlotRows(slotRows = []) {
   const layout = []
-  const slotCounts = new Map()
 
   slotRows.forEach((row) => {
     if (!row) return
+    if (row.active === false) return
     const roleName = normalizeRoleName(row.role)
     if (!roleName) return
-    slotPresence.add(roleName)
-    if (row.active === false) return
     const slotIndex = coerceSlotIndex(row.slot_index ?? row.slotIndex ?? row.slot_no ?? row.slotNo)
     if (slotIndex == null) return
-    const entry = {
+
+    layout.push({
       slotIndex,
       role: roleName,
       heroId: row.hero_id || row.heroId || null,
       heroOwnerId: row.hero_owner_id || row.heroOwnerId || null,
-    }
-    layout.push(entry)
-    slotCounts.set(roleName, (slotCounts.get(roleName) || 0) + 1)
+    })
   })
 
   layout.sort((a, b) => a.slotIndex - b.slotIndex)
+  return layout
+}
 
+function buildRolesFromRoleRows(roleRows = []) {
   const normalizedRoles = []
   const roleMap = new Map()
 
@@ -257,39 +255,69 @@ function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []
       const requestedCount = Number(row.slot_count ?? row.slotCount ?? row.capacity)
       const normalizedCount =
         Number.isFinite(requestedCount) && requestedCount > 0 ? Math.trunc(requestedCount) : 0
-      const slotCount = slotCounts.get(name) || 0
-      const hasSlotDefinition = slotPresence.has(name)
+      if (normalizedCount <= 0) return
 
-      let finalCount = 0
-      if (slotCount > 0) {
-        finalCount = slotCount
-      } else if (!hasSlotDefinition) {
-        finalCount = normalizedCount
-      } else {
-        finalCount = 0
-      }
-
-      if (finalCount <= 0) return
       if (!roleMap.has(name)) {
-        const entry = attachSlotCountPayload(name, finalCount)
+        const entry = attachSlotCountPayload(name, normalizedCount)
         roleMap.set(name, entry)
         normalizedRoles.push(entry)
       } else {
         const entry = roleMap.get(name)
-        entry.slot_count = coerceSlotCount(finalCount)
-        entry.slotCount = entry.slot_count
+        const total = coerceSlotCount(entry.slot_count + normalizedCount)
+        entry.slot_count = total
+        entry.slotCount = total
       }
     })
 
-  slotCounts.forEach((count, name) => {
+  return normalizedRoles
+}
+
+function buildLayoutFromRoleCounts(roleEntries = []) {
+  const layout = []
+  let cursor = 0
+
+  roleEntries.forEach((entry) => {
+    if (!entry) return
+    const name = normalizeRoleName(entry.name)
+    if (!name) return
+    const count = coerceSlotCount(entry.slot_count ?? entry.slotCount ?? 0)
     if (count <= 0) return
-    if (roleMap.has(name)) return
-    const entry = attachSlotCountPayload(name, count)
-    roleMap.set(name, entry)
-    normalizedRoles.push(entry)
+
+    for (let index = 0; index < count; index += 1) {
+      layout.push({ slotIndex: cursor, role: name, heroId: null, heroOwnerId: null })
+      cursor += 1
+    }
   })
 
-  return { roles: normalizedRoles, slotLayout: layout }
+  return layout
+}
+
+function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []) {
+  const slotLayout = buildLayoutFromSlotRows(slotRows)
+  if (slotLayout.length > 0) {
+    return {
+      roles: buildRolesFromLayout(slotLayout),
+      slotLayout,
+    }
+  }
+
+  const rolesFromRows = buildRolesFromRoleRows(roleRows)
+  if (rolesFromRows.length > 0) {
+    return {
+      roles: rolesFromRows,
+      slotLayout: buildLayoutFromRoleCounts(rolesFromRows),
+    }
+  }
+
+  const inlineLayout = deriveGameRoleSlots(gameRoleSlots)
+  if (inlineLayout.length > 0) {
+    return {
+      roles: buildRolesFromLayout(inlineLayout),
+      slotLayout: inlineLayout,
+    }
+  }
+
+  return { roles: [], slotLayout: [] }
 }
 
 export async function loadRoleLayout(supabaseClient, gameId) {

@@ -186,7 +186,24 @@ describe('loadActiveRoles', () => {
     expect(roles).toEqual([{ name: 'attack', slot_count: 2, slotCount: 2 }])
   })
 
-  it('derives slot counts from the rank_games.roles array when provided', async () => {
+  it('aggregates duplicate role rows for the same game', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-duplicates', name: '공격', slot_count: 1, active: true },
+        { game_id: 'game-duplicates', name: '공격', slot_count: 2, active: true },
+        { game_id: 'game-duplicates', name: '지원', slot_count: 1, active: true },
+      ],
+      rank_game_slots: [],
+    })
+
+    const roles = await loadActiveRoles(supabase, 'game-duplicates')
+    expect(roles).toEqual([
+      { name: '공격', slot_count: 3, slotCount: 3 },
+      { name: '지원', slot_count: 1, slotCount: 1 },
+    ])
+  })
+
+  it('falls back to the rank_games.roles array only when tables are empty', async () => {
     const supabase = createSupabaseStub({
       rank_games: [
         {
@@ -194,10 +211,8 @@ describe('loadActiveRoles', () => {
           roles: ['공격', '공격', null, '', '수비', '공격', '지원'],
         },
       ],
-      rank_game_roles: [
-        { game_id: 'game-inline', name: '공격', slot_count: 1, active: true },
-        { game_id: 'game-inline', name: '수비', slot_count: 1, active: true },
-      ],
+      rank_game_roles: [],
+      rank_game_slots: [],
     })
 
     const roles = await loadActiveRoles(supabase, 'game-inline')
@@ -210,6 +225,50 @@ describe('loadActiveRoles', () => {
 })
 
 describe('loadRoleLayout', () => {
+  it('builds layout from slot rows when present', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-layout-slots', name: 'A', slot_count: 99, active: true },
+      ],
+      rank_game_slots: [
+        { game_id: 'game-layout-slots', slot_index: 3, role: 'A', active: true },
+        { game_id: 'game-layout-slots', slot_index: 1, role: 'B', active: true },
+        { game_id: 'game-layout-slots', slot_index: 2, role: 'B', active: false },
+      ],
+    })
+
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-slots')
+    expect(roles).toEqual([
+      { name: 'B', slot_count: 1, slotCount: 1 },
+      { name: 'A', slot_count: 1, slotCount: 1 },
+    ])
+    expect(slotLayout).toEqual([
+      { slotIndex: 1, role: 'B', heroId: null, heroOwnerId: null },
+      { slotIndex: 3, role: 'A', heroId: null, heroOwnerId: null },
+    ])
+  })
+
+  it('creates layout from role counts when slots are missing', async () => {
+    const supabase = createSupabaseStub({
+      rank_game_roles: [
+        { game_id: 'game-layout-roles', name: 'A', slot_count: 2, active: true },
+        { game_id: 'game-layout-roles', name: 'B', slot_count: 1, active: true },
+      ],
+      rank_game_slots: [],
+    })
+
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-roles')
+    expect(roles).toEqual([
+      { name: 'A', slot_count: 2, slotCount: 2 },
+      { name: 'B', slot_count: 1, slotCount: 1 },
+    ])
+    expect(slotLayout).toEqual([
+      { slotIndex: 0, role: 'A', heroId: null, heroOwnerId: null },
+      { slotIndex: 1, role: 'A', heroId: null, heroOwnerId: null },
+      { slotIndex: 2, role: 'B', heroId: null, heroOwnerId: null },
+    ])
+  })
+
   it('returns slot layout derived from inline roles array', async () => {
     const supabase = createSupabaseStub({
       rank_games: [
