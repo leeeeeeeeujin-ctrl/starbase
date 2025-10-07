@@ -366,6 +366,7 @@ export default function RoomBrowserPage() {
 
   const mountedRef = useRef(true)
 
+  const [storedHeroId, setStoredHeroId] = useState('')
   const [rooms, setRooms] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -391,8 +392,22 @@ export default function RoomBrowserPage() {
     }
   }, [])
 
-  const loadHeroContext = useCallback(async () => {
-    if (!heroId) {
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const savedHeroId = window.localStorage.getItem('selectedHeroId') || ''
+      setStoredHeroId(savedHeroId)
+    } catch (storageError) {
+      console.error('[RoomBrowser] Failed to read stored hero id:', storageError)
+    }
+  }, [])
+
+  const effectiveHeroId = heroId || storedHeroId
+
+  const loadHeroContext = useCallback(async (targetHeroId) => {
+    const normalizedHeroId = typeof targetHeroId === 'string' ? targetHeroId.trim() : ''
+
+    if (!normalizedHeroId) {
       setHeroSummary({ heroName: '', ownerId: null })
       setParticipations([])
       setHeroRatings({})
@@ -407,7 +422,7 @@ export default function RoomBrowserPage() {
         supabase
           .from(table)
           .select('id, name, owner_id')
-          .eq('id', heroId)
+          .eq('id', normalizedHeroId)
           .single(),
       )
 
@@ -418,7 +433,7 @@ export default function RoomBrowserPage() {
       const heroName = heroRow?.name?.trim?.() || '이름 없는 영웅'
       const ownerId = heroRow?.owner_id || null
 
-      const bundle = await fetchHeroParticipationBundle(heroId, {
+      const bundle = await fetchHeroParticipationBundle(normalizedHeroId, {
         heroSeed: heroRow
           ? {
               id: heroRow.id,
@@ -487,11 +502,11 @@ export default function RoomBrowserPage() {
         setHeroLoading(false)
       }
     }
-  }, [heroId, initialGameId])
+  }, [initialGameId])
 
   useEffect(() => {
-    loadHeroContext()
-  }, [loadHeroContext])
+    loadHeroContext(effectiveHeroId)
+  }, [effectiveHeroId, loadHeroContext])
 
   const loadRooms = useCallback(
     async (fromRefresh = false) => {
@@ -893,7 +908,7 @@ export default function RoomBrowserPage() {
             </Link>
           </div>
           <div style={styles.heroSummary}>
-            {heroId ? (
+            {effectiveHeroId ? (
               <>
                 <span>
                   선택한 캐릭터: <strong>{heroSummary.heroName || '알 수 없는 영웅'}</strong>
