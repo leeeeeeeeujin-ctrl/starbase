@@ -340,28 +340,22 @@ export default function GameRoomPage() {
     }
 
     if (config.mode === MATCH_MODE_KEYS.RANK_SHARED) {
-      if (!hasMinimumParticipants || !canStart) {
-        setStartError('필요 인원이 아직 충족되지 않았습니다. 역할과 점수 조건을 맞춰 직접 슬롯을 채워주세요.')
-        setStartNotice('')
-        return
-      }
-
       if (startLoading) {
         return
       }
 
       setStartLoading(true)
-      setStartNotice('랭크 경기를 시작합니다…')
+      setStartNotice('랭크 매칭 룸으로 이동합니다…')
       setStartError('')
 
       try {
         await router.push({
-          pathname: `/rank/${id}/start`,
+          pathname: `/rank/${id}/match`,
           query: { mode: config.mode, apiVersion: config.apiVersion },
         })
       } catch (error) {
-        console.error('Failed to open rank start screen:', error)
-        setStartError('랭크 게임 시작 화면으로 이동하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        console.error('Failed to open rank match page:', error)
+        setStartError('랭크 매칭 룸으로 이동하지 못했습니다. 잠시 후 다시 시도해 주세요.')
         setStartNotice('')
       } finally {
         setStartLoading(false)
