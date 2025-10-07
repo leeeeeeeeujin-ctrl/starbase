@@ -31,6 +31,8 @@ const SCORE_WINDOWS = [
 const RANK_SCORE_WINDOWS = SCORE_WINDOWS.filter((option) => option.value !== null)
 const DEFAULT_RANK_SCORE_WINDOW = RANK_SCORE_WINDOWS[0]?.value ?? 80
 
+const LAST_CREATED_ROOM_KEY = 'rooms:lastCreatedHostFeedback'
+
 const FLEXIBLE_ROLE_KEYS = new Set([
   '',
   '역할 미지정',
@@ -1235,6 +1237,7 @@ export default function RoomBrowserPage() {
         const templates = Array.isArray(templateResult.data) ? templateResult.data : []
 
         let hostSeated = false
+        let participantRow = null
 
         if (templates.length) {
           const slotPayload = templates.map((template) => ({
@@ -1255,8 +1258,6 @@ export default function RoomBrowserPage() {
           }
 
           if (roomOwnerId && targetGameId) {
-            let participantRow = null
-
             if (effectiveHeroId) {
               const byHero = await withTable(supabase, 'rank_participants', (table) =>
                 supabase
@@ -1362,6 +1363,25 @@ export default function RoomBrowserPage() {
 
         if (effectiveHeroId) {
           nextRoute.query.hero = effectiveHeroId
+        }
+
+        if (typeof window !== 'undefined') {
+          const ratingValue = Number(participantRow?.rating)
+          const hostRating = Number.isFinite(ratingValue) ? ratingValue : null
+          const feedbackPayload = {
+            roomId,
+            hostSeated,
+            hostRating,
+            timestamp: Date.now(),
+          }
+          try {
+            window.sessionStorage.setItem(
+              LAST_CREATED_ROOM_KEY,
+              JSON.stringify(feedbackPayload),
+            )
+          } catch (storageError) {
+            console.warn('[RoomBrowser] Failed to persist creation feedback:', storageError)
+          }
         }
 
         await router.push(nextRoute)

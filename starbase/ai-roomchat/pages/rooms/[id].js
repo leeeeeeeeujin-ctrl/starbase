@@ -15,6 +15,7 @@ import {
 } from '@/lib/heroes/selectedHeroStorage'
 
 const HOST_CLEANUP_DELAY_MS = 15000
+const LAST_CREATED_ROOM_KEY = 'rooms:lastCreatedHostFeedback'
 
 const hostCleanupState = {
   timerId: null,
@@ -81,6 +82,21 @@ const styles = {
     gap: 12,
     fontSize: 13,
     color: '#cbd5f5',
+  },
+  creationFeedback: {
+    marginTop: -4,
+    marginBottom: 4,
+    padding: '12px 16px',
+    background: 'rgba(34, 197, 94, 0.08)',
+    borderRadius: 14,
+    border: '1px solid rgba(34, 197, 94, 0.35)',
+    color: '#bbf7d0',
+    fontSize: 13,
+    lineHeight: '20px',
+  },
+  creationFeedbackStrong: {
+    color: '#4ade80',
+    fontWeight: 700,
   },
   heroSummary: {
     display: 'flex',
@@ -311,6 +327,7 @@ export default function RoomDetailPage() {
   const [actionError, setActionError] = useState('')
   const [joinPending, setJoinPending] = useState(false)
   const [leavePending, setLeavePending] = useState(false)
+  const [creationFeedback, setCreationFeedback] = useState(null)
   const [deletePending, setDeletePending] = useState(false)
 
   const [viewer, setViewer] = useState({
@@ -341,6 +358,29 @@ export default function RoomDetailPage() {
     if (!Number.isFinite(room.scoreWindow)) return '제한 없음'
     return `±${room.scoreWindow}`
   }, [room])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    if (!roomId) return undefined
+    const rawFeedback = window.sessionStorage.getItem(LAST_CREATED_ROOM_KEY)
+    if (!rawFeedback) return undefined
+    try {
+      const parsed = JSON.parse(rawFeedback)
+      if (parsed && parsed.roomId && `${parsed.roomId}` === `${roomId}`) {
+        setCreationFeedback({
+          hostSeated: !!parsed.hostSeated,
+          hostRating: Number.isFinite(Number(parsed.hostRating))
+            ? Number(parsed.hostRating)
+            : null,
+        })
+        window.sessionStorage.removeItem(LAST_CREATED_ROOM_KEY)
+      }
+    } catch (feedbackError) {
+      console.warn('[RoomDetail] Failed to read creation feedback:', feedbackError)
+      window.sessionStorage.removeItem(LAST_CREATED_ROOM_KEY)
+    }
+    return undefined
+  }, [roomId])
 
   const ratingDelta = useMemo(() => {
     if (!Number.isFinite(room?.hostRating) || !Number.isFinite(viewer.rating)) return null
@@ -1009,6 +1049,26 @@ export default function RoomDetailPage() {
             ) : null}
             {lastLoadedAt ? <span>새로고침: {formatRelativeTime(lastLoadedAt)}</span> : null}
           </div>
+          {creationFeedback ? (
+            <div style={styles.creationFeedback}>
+              <span style={styles.creationFeedbackStrong}>새로 만든 방이 준비되었습니다.</span>{' '}
+              {creationFeedback.hostSeated
+                ? '방장이 자동으로 자리에 착석했고 현재 준비 상태는 대기입니다. '
+                : '방장 자리가 아직 비어 있습니다. '}
+              {Number.isFinite(creationFeedback.hostRating)
+                ? (
+                    <>
+                      내 현재 점수는{' '}
+                      <span style={styles.creationFeedbackStrong}>
+                        {creationFeedback.hostRating}점
+                      </span>
+                      입니다.
+                    </>
+                  )
+                : null}
+              {' '}필요하면 바로 준비 완료를 눌러 다른 참가자에게 상태를 알릴 수 있어요.
+            </div>
+          ) : null}
           <div style={styles.heroSummary}>
             {viewerLoading ? (
               <span>캐릭터 정보를 불러오는 중...</span>
