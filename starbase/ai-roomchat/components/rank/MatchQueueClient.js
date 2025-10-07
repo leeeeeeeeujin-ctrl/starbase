@@ -12,12 +12,17 @@ import {
   writeStartSessionValue,
 } from '../../lib/rank/startSessionChannel'
 import { buildMatchMetaPayload, storeStartMatchMeta } from './startConfig'
+import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
 
 import useMatchQueue from './hooks/useMatchQueue'
 import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
 import styles from './MatchQueueClient.module.css'
 import { buildRoleSummaries } from './queueSummaryUtils'
 import { emitQueueLeaveBeacon } from '../../lib/rank/matchmakingService'
+import {
+  registerMatchConnections,
+  removeConnectionEntries,
+} from '../../lib/rank/startConnectionRegistry'
 
 function groupQueue(queue) {
   const map = new Map()
@@ -396,6 +401,14 @@ export default function MatchQueueClient({
     enabled: true,
     onApiKeyExpired: handleApiKeyExpired,
   })
+  const clearConnectionRegistry = useCallback(() => {
+    if (!gameId) return
+    try {
+      removeConnectionEntries({ gameId, source: 'match-queue-client' })
+    } catch (error) {
+      console.warn('[MatchQueue] 연결 정보 초기화 실패:', error)
+    }
+  }, [gameId])
   const {
     loading: plannerLoading,
     error: plannerError,
@@ -414,6 +427,7 @@ export default function MatchQueueClient({
   const navigationLockRef = useRef(false)
   const matchMetaSignatureRef = useRef('')
   const latestStatusRef = useRef('idle')
+  const matchRedirectedRef = useRef(false)
   const queueByRole = useMemo(() => groupQueue(state.queue), [state.queue])
   const roomSummaries = useMemo(
     () =>
@@ -894,6 +908,7 @@ export default function MatchQueueClient({
   }, [actions, refreshing])
 
   const handleStart = useCallback(() => {
+    if (autoStart) return
     if (navigationLockRef.current) return
     navigationLockRef.current = true
     setCountdown(null)
@@ -972,6 +987,7 @@ export default function MatchQueueClient({
   ])
 
   const handleBackToRoom = () => {
+    clearConnectionRegistry()
     router.push(`/rank/${gameId}`)
   }
 
@@ -1131,6 +1147,103 @@ export default function MatchQueueClient({
   ])
 
   useEffect(() => {
+    if (!gameId || !mode) return
+
+    if (state.status !== 'matched' || !state.match) {
+      if (latestStatusRef.current === 'matched') {
+        clearMatchConfirmation()
+        clearConnectionRegistry()
+      }
+      matchRedirectedRef.current = false
+      return
+    }
+
+    const match = state.match
+
+    try {
+      registerMatchConnections({
+        gameId,
+        match,
+        viewerId: state.viewerId || '',
+        source: 'match-queue-client',
+      })
+    } catch (error) {
+      console.warn('[MatchQueue] 연결 정보 등록 실패:', error)
+    }
+
+    const plainHeroMap =
+      match.heroMap instanceof Map
+        ? Object.fromEntries(match.heroMap)
+        : match.heroMap || null
+
+    const sanitizedMatch = {
+      assignments: Array.isArray(match.assignments) ? match.assignments : [],
+      maxWindow: match.maxWindow ?? null,
+      heroMap: plainHeroMap,
+      matchCode: match.matchCode || '',
+      matchType: match.matchType || 'standard',
+      brawlVacancies: Array.isArray(match.brawlVacancies) ? match.brawlVacancies : [],
+      roleStatus: match.roleStatus || null,
+      sampleMeta: match.sampleMeta || state.sampleMeta || null,
+      dropInTarget: match.dropInTarget || null,
+      turnTimer: match.turnTimer ?? match.turn_timer ?? null,
+      rooms: Array.isArray(match.rooms) ? match.rooms : [],
+      roles: Array.isArray(match.roles)
+        ? match.roles
+        : Array.isArray(state.roles)
+        ? state.roles
+        : [],
+      slotLayout: Array.isArray(match.slotLayout) ? match.slotLayout : [],
+    }
+
+    const viewerRoleName = state.lockedRole || targetRoleName || ''
+    const resolvedTurnTimer = Number.isFinite(Number(finalTimer)) && Number(finalTimer) > 0
+      ? Number(finalTimer)
+      : Number.isFinite(Number(sanitizedMatch.turnTimer)) && Number(sanitizedMatch.turnTimer) > 0
+      ? Number(sanitizedMatch.turnTimer)
+      : null
+
+    clearMatchConfirmation()
+    const saved = saveMatchConfirmation({
+      gameId,
+      mode,
+      roleName: viewerRoleName,
+      requiresManualConfirmation: true,
+      turnTimer: resolvedTurnTimer,
+      roles: sanitizedMatch.roles,
+      viewerId: state.viewerId || '',
+      heroId: state.heroId || '',
+      match: sanitizedMatch,
+      createdAt: Date.now(),
+    })
+
+    if (!saved) {
+      console.warn('[MatchQueue] 매칭 확인 정보를 저장하지 못했습니다.')
+      return
+    }
+
+    if (!matchRedirectedRef.current) {
+      matchRedirectedRef.current = true
+      navigationLockRef.current = true
+      router.replace({ pathname: `/rank/${gameId}/match-ready`, query: { mode } })
+    }
+  }, [
+    gameId,
+    mode,
+    state.status,
+    state.match,
+    state.viewerId,
+    state.heroId,
+    state.lockedRole,
+    state.roles,
+    state.sampleMeta,
+    targetRoleName,
+    finalTimer,
+    clearConnectionRegistry,
+    router,
+  ])
+
+  useEffect(() => {
     if (autoStart) return
     if (state.status !== 'matched' || !state.match || isDropInMatch) return
     if (finalTimer == null) return
@@ -1265,12 +1378,13 @@ export default function MatchQueueClient({
 
   useEffect(() => {
     if (!autoStart) return
-    if (autoStartHandledRef.current) return
     if (isDropInMatch) return
     if (state.status !== 'matched' || !state.match) return
     if (finalTimer == null) return
 
-    autoStartHandledRef.current = true
+    if (!autoStartHandledRef.current) {
+      autoStartHandledRef.current = true
+    }
     if (voteTimerRef.current) {
       clearInterval(voteTimerRef.current)
       voteTimerRef.current = null
@@ -1281,9 +1395,7 @@ export default function MatchQueueClient({
       countdownTimerRef.current = null
     }
     setCountdown(null)
-    navigationLockRef.current = true
-    handleStart()
-  }, [autoStart, state.status, state.match, finalTimer, isDropInMatch, handleStart])
+  }, [autoStart, state.status, state.match, finalTimer, isDropInMatch])
 
   const cancelQueue = actions.cancelQueue
 
@@ -1331,11 +1443,12 @@ export default function MatchQueueClient({
         clearInterval(dropInRedirectTimerRef.current)
         dropInRedirectTimerRef.current = null
       }
+      clearConnectionRegistry()
       if (latestStatusRef.current === 'queued') {
         cancelQueue()
       }
     },
-    [cancelQueue],
+    [cancelQueue, clearConnectionRegistry],
   )
 
   useEffect(() => {
