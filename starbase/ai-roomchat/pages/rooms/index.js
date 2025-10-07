@@ -999,17 +999,6 @@ export default function RoomBrowserPage() {
             }))
             .sort((a, b) => a.role.localeCompare(b.role, 'ko', { sensitivity: 'base' }))
 
-          let ratingStats = null
-          if (occupantRatings.length) {
-            const sum = occupantRatings.reduce((acc, value) => acc + value, 0)
-            ratingStats = {
-              count: occupantRatings.length,
-              min: Math.min(...occupantRatings),
-              max: Math.max(...occupantRatings),
-              average: Math.round(sum / occupantRatings.length),
-            }
-          }
-
           const slotCount = Number.isFinite(Number(row.slot_count))
             ? Number(row.slot_count)
             : roles.reduce((acc, role) => acc + role.total, 0)
@@ -1030,6 +1019,23 @@ export default function RoomBrowserPage() {
           const hostRating = row.owner_id
             ? participantRatings.get(`${row.game_id}:${row.owner_id}`) ?? null
             : null
+
+          const ratingSamples = occupantRatings.length
+            ? occupantRatings
+            : Number.isFinite(hostRating)
+            ? [hostRating]
+            : []
+
+          let ratingStats = null
+          if (ratingSamples.length) {
+            const sum = ratingSamples.reduce((acc, value) => acc + value, 0)
+            ratingStats = {
+              count: ratingSamples.length,
+              min: Math.min(...ratingSamples),
+              max: Math.max(...ratingSamples),
+              average: Math.round(sum / ratingSamples.length),
+            }
+          }
 
           return {
             id: row.id,

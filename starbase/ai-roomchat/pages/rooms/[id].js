@@ -222,6 +222,27 @@ const styles = {
   },
 }
 
+const FLEXIBLE_ROLE_KEYS = new Set([
+  '',
+  '역할 미지정',
+  '미정',
+  '자유',
+  '자유 선택',
+  'any',
+  'all',
+  'flex',
+  'flexible',
+])
+
+function normalizeRole(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+function isFlexibleRole(role) {
+  const normalized = normalizeRole(role)
+  return FLEXIBLE_ROLE_KEYS.has(normalized)
+}
+
 function formatRelativeTime(value) {
   if (!value) return '시간 정보 없음'
   const date = value instanceof Date ? value : new Date(value)
@@ -291,6 +312,7 @@ export default function RoomDetailPage() {
     ownerId: null,
     userId: null,
     rating: null,
+    role: '',
   })
   const [viewerLoading, setViewerLoading] = useState(true)
   const [activeSlotId, setActiveSlotId] = useState(null)
@@ -399,6 +421,7 @@ export default function RoomDetailPage() {
             heroName: resolvedHeroId ? resolvedHeroName || '이름 없는 영웅' : '',
             ownerId: resolvedOwnerId || viewerOwnerKey || null,
             userId: viewerOwnerKey || null,
+            role: resolvedHeroId && resolvedHeroId === prev.heroId ? prev.role : '',
           }))
         }
       } catch (viewerError) {
@@ -409,6 +432,7 @@ export default function RoomDetailPage() {
             heroId: '',
             heroName: '',
             ownerId: prev.ownerId || null,
+            role: '',
           }))
         }
       } finally {
@@ -641,7 +665,7 @@ export default function RoomDetailPage() {
 
   useEffect(() => {
     if (!room?.gameId || !viewer.ownerId) {
-      setViewer((prev) => ({ ...prev, rating: null }))
+      setViewer((prev) => ({ ...prev, rating: null, role: '' }))
       return
     }
 
@@ -652,7 +676,7 @@ export default function RoomDetailPage() {
         const ratingResult = await withTable(supabase, 'rank_participants', (table) =>
           supabase
             .from(table)
-            .select('rating')
+            .select('rating, role')
             .eq('game_id', room.gameId)
             .eq('owner_id', viewer.ownerId)
             .order('updated_at', { ascending: false })
@@ -663,13 +687,19 @@ export default function RoomDetailPage() {
           throw ratingResult.error
         }
         const ratingValue = Number(ratingResult.data?.rating)
+        const roleValue =
+          typeof ratingResult.data?.role === 'string' ? ratingResult.data.role.trim() : ''
         if (!cancelled && mountedRef.current) {
-          setViewer((prev) => ({ ...prev, rating: Number.isFinite(ratingValue) ? ratingValue : null }))
+          setViewer((prev) => ({
+            ...prev,
+            rating: Number.isFinite(ratingValue) ? ratingValue : null,
+            role: roleValue,
+          }))
         }
       } catch (ratingError) {
         console.error('[RoomDetail] Failed to load viewer rating:', ratingError)
         if (!cancelled && mountedRef.current) {
-          setViewer((prev) => ({ ...prev, rating: null }))
+          setViewer((prev) => ({ ...prev, rating: null, role: '' }))
         }
       }
     }
@@ -768,26 +798,28 @@ export default function RoomDetailPage() {
       setActionError('참여할 캐릭터를 먼저 선택해 주세요.')
       return
     }
+    const normalizedViewerRole = normalizeRole(viewer.role)
+    if (!normalizedViewerRole) {
+      setActionError('이 캐릭터의 역할 정보를 불러오지 못했습니다. 다시 시도해 주세요.')
+      return
+    }
+    const availableSlots = slots.filter((slot) => !slot.occupantOwnerId)
+    if (!availableSlots.length) {
+      setActionError('비어 있는 슬롯이 없습니다.')
+      return
+    }
+    const exactMatch = availableSlots.find(
+      (slot) => normalizeRole(slot.role) === normalizedViewerRole,
+    )
+    const flexibleMatch = availableSlots.find((slot) => isFlexibleRole(slot.role))
+    const targetSlot = exactMatch || flexibleMatch
+    if (!targetSlot) {
+      setActionError('이 역할에 맞는 빈 슬롯이 없습니다.')
+      return
+    }
     setJoinPending(true)
     setActionError('')
     try {
-      const slotResult = await withTable(supabase, 'rank_room_slots', (table) =>
-        supabase
-          .from(table)
-          .select('id')
-          .eq('room_id', roomId)
-          .is('occupant_owner_id', null)
-          .order('slot_index', { ascending: true })
-          .limit(1)
-          .maybeSingle(),
-      )
-      if (slotResult.error && slotResult.error.code !== 'PGRST116') {
-        throw slotResult.error
-      }
-      const slotId = slotResult.data?.id
-      if (!slotId) {
-        throw new Error('비어 있는 슬롯이 없습니다.')
-      }
       const joinResult = await withTable(supabase, 'rank_room_slots', (table) =>
         supabase
           .from(table)
@@ -797,7 +829,7 @@ export default function RoomDetailPage() {
             occupant_ready: false,
             joined_at: new Date().toISOString(),
           })
-          .eq('id', slotId)
+          .eq('id', targetSlot.id)
           .is('occupant_owner_id', null)
           .select('id')
           .maybeSingle(),
@@ -816,7 +848,7 @@ export default function RoomDetailPage() {
         setJoinPending(false)
       }
     }
-  }, [loadRoom, roomId, viewer.heroId, viewer.ownerId])
+  }, [loadRoom, roomId, slots, viewer.heroId, viewer.ownerId, viewer.role])
 
   const handleRefresh = useCallback(() => {
     loadRoom(true)
@@ -909,6 +941,12 @@ export default function RoomDetailPage() {
             ) : viewer.heroId ? (
               <span>
                 선택 캐릭터: <strong>{viewer.heroName || '이름 없는 영웅'}</strong>
+                {normalizeRole(viewer.role) ? (
+                  <>
+                    {' '}
+                    <em style={{ color: '#facc15' }}>({viewer.role})</em>
+                  </>
+                ) : null}
               </span>
             ) : (
               <span>선택된 캐릭터가 없습니다. 캐릭터를 선택하면 참여할 수 있습니다.</span>
@@ -937,8 +975,15 @@ export default function RoomDetailPage() {
               <button
                 type="button"
                 onClick={handleJoin}
-                style={styles.primaryButton(joinPending || !viewer.heroId || !viewer.ownerId)}
-                disabled={joinPending || !viewer.heroId || !viewer.ownerId}
+                style={styles.primaryButton(
+                  joinPending ||
+                    !viewer.heroId ||
+                    !viewer.ownerId ||
+                    !normalizeRole(viewer.role),
+                )}
+                disabled={
+                  joinPending || !viewer.heroId || !viewer.ownerId || !normalizeRole(viewer.role)
+                }
               >
                 {joinPending ? '참여 중...' : '빈 슬롯 참여'}
               </button>
