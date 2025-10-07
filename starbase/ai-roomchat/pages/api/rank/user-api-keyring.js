@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { createPagesServerClient } from '@supabase/auth-helpers-nextjs'
 
 import {
   USER_API_KEYRING_LIMIT,
@@ -21,7 +22,19 @@ if (!url || !anonKey) {
 
 const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
 
-async function resolveUser(req) {
+async function resolveUser(req, res) {
+  try {
+    const supabase = createPagesServerClient({ req, res })
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (user) {
+      return { user }
+    }
+  } catch (cookieError) {
+    console.warn('[user-api-keyring] Failed to resolve user from cookies:', cookieError)
+  }
+
   const authHeader = req.headers.authorization || ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
   if (!token) {
@@ -403,7 +416,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'method_not_allowed' })
   }
 
-  const { user } = await resolveUser(req)
+  const { user } = await resolveUser(req, res)
   if (!user) {
     return res.status(401).json({ error: 'unauthorized' })
   }

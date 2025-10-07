@@ -606,6 +606,8 @@ function resolveKeyringError(code, detail) {
       return 'API 키를 삭제하지 못했습니다.'
     case 'failed_to_load_keyring':
       return 'API 키 목록을 불러오지 못했습니다.'
+    case 'unauthorized':
+      return '로그인 세션이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.'
     default:
       return 'API 키 요청을 처리하지 못했습니다.'
   }
@@ -1489,17 +1491,18 @@ export default function RoomBrowserPage() {
   const keyringCount = keyringEntries.length
 
   const getAuthToken = useCallback(async () => {
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-    if (sessionError) {
-      throw sessionError
-    }
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        throw sessionError
+      }
 
-    const token = sessionData?.session?.access_token
-    if (!token) {
-      throw new Error('세션 토큰을 확인할 수 없습니다.')
+      const token = sessionData?.session?.access_token
+      return token || null
+    } catch (sessionError) {
+      console.warn('[RoomBrowser] Failed to resolve session token:', sessionError)
+      return null
     }
-
-    return token
   }, [])
 
   const loadKeyring = useCallback(async () => {
@@ -1508,11 +1511,11 @@ export default function RoomBrowserPage() {
     setKeyringAction(null)
     try {
       const token = await getAuthToken()
-      const response = await fetch('/api/rank/user-api-keyring', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
+      const headers = {}
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      const response = await fetch('/api/rank/user-api-keyring', { headers })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         const message = resolveKeyringError(payload?.error, payload?.detail)
@@ -1571,12 +1574,13 @@ export default function RoomBrowserPage() {
 
     try {
       const token = await getAuthToken()
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
       const response = await fetch('/api/rank/user-api-keyring', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify({ apiKey: trimmed, activate: keyringActivate }),
       })
       const payload = await response.json().catch(() => ({}))
@@ -1626,12 +1630,13 @@ export default function RoomBrowserPage() {
 
       try {
         const token = await getAuthToken()
+        const headers = { 'Content-Type': 'application/json' }
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        }
         const response = await fetch('/api/rank/user-api-keyring', {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers,
           body: JSON.stringify({ id: entryId }),
         })
         const payload = await response.json().catch(() => ({}))
@@ -1664,12 +1669,13 @@ export default function RoomBrowserPage() {
 
       try {
         const token = await getAuthToken()
+        const headers = { 'Content-Type': 'application/json' }
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        }
         const response = await fetch('/api/rank/user-api-keyring', {
           method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers,
           body: JSON.stringify({ id: entryId }),
         })
         const payload = await response.json().catch(() => ({}))
