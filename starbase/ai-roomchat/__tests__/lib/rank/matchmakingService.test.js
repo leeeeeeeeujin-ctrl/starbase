@@ -937,6 +937,39 @@ describe('loadOwnerParticipantRoster', () => {
     expect(roster.get('owner-1')?.[0]?.heroId).toBe('hero-a')
     expect(roster.get('owner-2')).toBeUndefined()
   })
+
+  it('preserves hero and role assignments for each participant entry', async () => {
+    const tables = {
+      rank_participants: [
+        {
+          game_id: 'game-roster',
+          owner_id: 'owner-1',
+          hero_id: 'hero-a',
+          role: '공격',
+          updated_at: '2024-01-02T00:00:00Z',
+        },
+        {
+          game_id: 'game-roster',
+          owner_id: 'owner-1',
+          hero_id: 'hero-b',
+          role: '수비',
+          updated_at: '2024-01-03T00:00:00Z',
+        },
+      ],
+    }
+
+    const supabase = createSupabaseStub(tables)
+
+    const roster = await loadOwnerParticipantRoster(supabase, {
+      gameId: 'game-roster',
+      ownerIds: ['owner-1'],
+    })
+
+    const ownerRoster = roster.get('owner-1') || []
+    expect(ownerRoster).toHaveLength(2)
+    expect(ownerRoster.map((entry) => entry.heroId)).toEqual(['hero-b', 'hero-a'])
+    expect(ownerRoster.map((entry) => entry.role)).toEqual(['수비', '공격'])
+  })
 })
 
 describe('runMatching', () => {
