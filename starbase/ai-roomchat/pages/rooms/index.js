@@ -162,6 +162,11 @@ const styles = {
     display: 'grid',
     gap: 16,
   },
+  roomLink: {
+    textDecoration: 'none',
+    color: 'inherit',
+    display: 'block',
+  },
   roomCard: {
     borderRadius: 20,
     border: '1px solid rgba(148, 163, 184, 0.22)',
@@ -792,12 +797,14 @@ export default function RoomBrowserPage() {
               [
                 'id',
                 'game_id',
+                'owner_id',
                 'code',
                 'mode',
                 'status',
                 'slot_count',
                 'filled_count',
                 'ready_count',
+                'score_window',
                 'created_at',
                 'updated_at',
               ].join(','),
@@ -844,6 +851,12 @@ export default function RoomBrowserPage() {
           })
           if (row?.occupant_owner_id) {
             occupantOwners.add(row.occupant_owner_id)
+          }
+        })
+
+        roomRows.forEach((row) => {
+          if (row?.owner_id) {
+            occupantOwners.add(row.owner_id)
           }
         })
 
@@ -939,6 +952,14 @@ export default function RoomBrowserPage() {
           const mode = typeof row.mode === 'string' ? row.mode : ''
           const modeLabel = mode.trim() || '모드 미지정'
 
+          const scoreWindow = Number.isFinite(Number(row.score_window))
+            ? Number(row.score_window)
+            : null
+
+          const hostRating = row.owner_id
+            ? participantRatings.get(`${row.game_id}:${row.owner_id}`) ?? null
+            : null
+
           return {
             id: row.id,
             gameId: row.game_id || '',
@@ -951,6 +972,9 @@ export default function RoomBrowserPage() {
             readyCount,
             roles,
             rating: ratingStats,
+            scoreWindow,
+            hostRating,
+            ownerId: row.owner_id || null,
             updatedAt: row.updated_at || row.created_at || null,
           }
         })
@@ -1065,6 +1089,10 @@ export default function RoomBrowserPage() {
               slot_count: 0,
               filled_count: 0,
               ready_count: 0,
+              score_window:
+                createState.mode === 'casual'
+                  ? createState.scoreWindow ?? null
+                  : createState.scoreWindow ?? DEFAULT_RANK_SCORE_WINDOW,
             })
             .select('id')
             .single(),
@@ -1084,6 +1112,7 @@ export default function RoomBrowserPage() {
             .from(table)
             .select('slot_index, role')
             .eq('game_id', targetGameId)
+            .eq('active', true)
             .order('slot_index', { ascending: true }),
         )
 
@@ -1362,48 +1391,72 @@ export default function RoomBrowserPage() {
             <div style={styles.emptyState}>조건에 맞는 방을 찾지 못했습니다.</div>
           ) : (
             <div style={styles.roomGrid}>
-              {filteredRooms.map((room) => (
-                <article key={room.id} style={styles.roomCard}>
-                  <div style={styles.roomHeader}>
-                    <div>
-                      <h3 style={styles.roomTitle}>{room.gameName}</h3>
-                      <p style={styles.roomMeta}>
-                        <span>
-                          코드: <span style={styles.roomCode}>{room.code}</span>
-                        </span>
-                        <span>모드: {room.mode}</span>
-                        <span>
-                          인원: {room.filledCount}/{room.slotCount}
-                        </span>
-                      </p>
-                    </div>
-                    {room.rating && Number.isFinite(room.rating.average) ? (
-                      <span style={styles.ratingBadge}>
-                        평균 {room.rating.average}점
-                      </span>
-                    ) : null}
-                  </div>
-                  {room.roles.length ? (
-                    <div style={styles.roomRoles}>
-                      {room.roles.map((role) => (
-                        <div key={role.role}>
-                          {role.role}: {role.occupied}/{role.total} (준비 {role.ready})
+              {filteredRooms.map((room) => {
+                const href = effectiveHeroId
+                  ? { pathname: `/rooms/${room.id}`, query: { hero: effectiveHeroId } }
+                  : { pathname: `/rooms/${room.id}` }
+                const scoreWindowLabel =
+                  room.scoreWindow === null ? '제한 없음' : `±${room.scoreWindow}`
+                const hostRatingText = Number.isFinite(room.hostRating)
+                  ? `${room.hostRating}점`
+                  : '정보 없음'
+                const heroDelta =
+                  heroRatingForSelection && Number.isFinite(room.hostRating)
+                    ? Math.abs(heroRatingForSelection - room.hostRating)
+                    : null
+
+                return (
+                  <Link key={room.id} href={href} style={styles.roomLink} prefetch>
+                    <article style={styles.roomCard}>
+                      <div style={styles.roomHeader}>
+                        <div>
+                          <h3 style={styles.roomTitle}>{room.gameName}</h3>
+                          <p style={styles.roomMeta}>
+                            <span>
+                              코드: <span style={styles.roomCode}>{room.code}</span>
+                            </span>
+                            <span>모드: {room.mode}</span>
+                            <span>
+                              인원: {room.filledCount}/{room.slotCount}
+                            </span>
+                          </p>
+                          <p style={styles.roomMeta}>
+                            <span>방장 점수: {hostRatingText}</span>
+                            <span>허용 범위: {scoreWindowLabel}</span>
+                            {heroDelta !== null ? (
+                              <span>내 점수와 차이: ±{heroDelta}</span>
+                            ) : null}
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div style={styles.roomFooter}>
-                    <span>{formatRelativeTime(room.updatedAt)} 업데이트</span>
-                    {room.rating?.count ? (
-                      <span>
-                        점수 범위 {room.rating.min}~{room.rating.max} ({room.rating.count}명)
-                      </span>
-                    ) : (
-                      <span>점수 정보 없음</span>
-                    )}
-                  </div>
-                </article>
-              ))}
+                        {room.rating && Number.isFinite(room.rating.average) ? (
+                          <span style={styles.ratingBadge}>
+                            평균 {room.rating.average}점
+                          </span>
+                        ) : null}
+                      </div>
+                      {room.roles.length ? (
+                        <div style={styles.roomRoles}>
+                          {room.roles.map((role) => (
+                            <div key={role.role}>
+                              {role.role}: {role.occupied}/{role.total} (준비 {role.ready})
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div style={styles.roomFooter}>
+                        <span>{formatRelativeTime(room.updatedAt)} 업데이트</span>
+                        {room.rating?.count ? (
+                          <span>
+                            점수 범위 {room.rating.min}~{room.rating.max} ({room.rating.count}명)
+                          </span>
+                        ) : (
+                          <span>점수 정보 없음</span>
+                        )}
+                      </div>
+                    </article>
+                  </Link>
+                )
+              })}
             </div>
           )}
         </section>
