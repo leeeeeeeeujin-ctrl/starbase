@@ -31,6 +31,27 @@ const SCORE_WINDOWS = [
 const RANK_SCORE_WINDOWS = SCORE_WINDOWS.filter((option) => option.value !== null)
 const DEFAULT_RANK_SCORE_WINDOW = RANK_SCORE_WINDOWS[0]?.value ?? 80
 
+const FLEXIBLE_ROLE_KEYS = new Set([
+  '',
+  '역할 미지정',
+  '미정',
+  '자유',
+  '자유 선택',
+  'any',
+  'all',
+  'flex',
+  'flexible',
+])
+
+function normalizeRole(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+function isFlexibleRole(role) {
+  const normalized = normalizeRole(role)
+  return FLEXIBLE_ROLE_KEYS.has(normalized)
+}
+
 const styles = {
   page: {
     minHeight: '100vh',
@@ -1213,6 +1234,8 @@ export default function RoomBrowserPage() {
 
         const templates = Array.isArray(templateResult.data) ? templateResult.data : []
 
+        let hostSeated = false
+
         if (templates.length) {
           const slotPayload = templates.map((template) => ({
             room_id: roomId,
@@ -1231,13 +1254,101 @@ export default function RoomBrowserPage() {
             throw slotInsert.error
           }
 
-          await withTable(supabase, 'rank_rooms', (table) =>
-            supabase
-              .from(table)
-              .update({ slot_count: templates.length })
-              .eq('id', roomId),
-          )
+          if (roomOwnerId && targetGameId) {
+            let participantRow = null
+
+            if (effectiveHeroId) {
+              const byHero = await withTable(supabase, 'rank_participants', (table) =>
+                supabase
+                  .from(table)
+                  .select('role, rating')
+                  .eq('game_id', targetGameId)
+                  .eq('hero_id', effectiveHeroId)
+                  .order('updated_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle(),
+              )
+
+              if (byHero.error && byHero.error.code !== 'PGRST116') {
+                throw byHero.error
+              }
+
+              if (byHero.data) {
+                participantRow = byHero.data
+              }
+            }
+
+            if (!participantRow) {
+              const byOwner = await withTable(supabase, 'rank_participants', (table) =>
+                supabase
+                  .from(table)
+                  .select('role, rating')
+                  .eq('game_id', targetGameId)
+                  .eq('owner_id', roomOwnerId)
+                  .order('updated_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle(),
+              )
+
+              if (byOwner.error && byOwner.error.code !== 'PGRST116') {
+                throw byOwner.error
+              }
+
+              if (byOwner.data) {
+                participantRow = byOwner.data
+              }
+            }
+
+            const normalizedHostRole = normalizeRole(participantRow?.role)
+
+            const roleMatch = normalizedHostRole
+              ? templates.find((template) => normalizeRole(template.role) === normalizedHostRole)
+              : null
+            const flexibleMatch = templates.find((template) => isFlexibleRole(template.role))
+            const fallbackMatch = templates[0]
+            const targetTemplate = roleMatch || flexibleMatch || fallbackMatch
+
+            if (targetTemplate) {
+              const seatResult = await withTable(supabase, 'rank_room_slots', (table) =>
+                supabase
+                  .from(table)
+                  .update({
+                    occupant_owner_id: roomOwnerId,
+                    occupant_hero_id: effectiveHeroId || null,
+                    occupant_ready: false,
+                    joined_at: new Date().toISOString(),
+                  })
+                  .eq('room_id', roomId)
+                  .eq('slot_index', targetTemplate.slot_index ?? 0)
+                  .is('occupant_owner_id', null)
+                  .select('id')
+                  .maybeSingle(),
+              )
+
+              if (seatResult.error && seatResult.error.code !== 'PGRST116') {
+                throw seatResult.error
+              }
+
+              if (!seatResult.error && seatResult.data) {
+                hostSeated = true
+              }
+            }
+          }
         }
+
+        const nowIso = new Date().toISOString()
+
+        await withTable(supabase, 'rank_rooms', (table) =>
+          supabase
+            .from(table)
+            .update({
+              slot_count: templates.length,
+              filled_count: hostSeated ? 1 : 0,
+              ready_count: 0,
+              host_last_active_at: nowIso,
+            })
+            .eq('id', roomId),
+        )
 
         if (mountedRef.current) {
           setCreateOpen(false)
