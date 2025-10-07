@@ -1149,12 +1149,20 @@ export default function RoomBrowserPage() {
   }, [heroRatings, selectedGameId])
 
   const { filteredRooms, filterDiagnostics } = useMemo(() => {
+    const hasComparableRatings = rooms.some(
+      (room) => Number.isFinite(room?.rating?.average) || Number.isFinite(room?.hostRating),
+    )
+
     const stats = {
       total: rooms.length,
       modeExcluded: 0,
       gameExcluded: 0,
       scoreExcluded: 0,
-      scoreFilterActive: Boolean(scoreWindow) && Number.isFinite(heroRatingForSelection),
+      scoreMissing: 0,
+      scoreFilterActive:
+        Boolean(scoreWindow) &&
+        Number.isFinite(heroRatingForSelection) &&
+        hasComparableRatings,
       scoreExamples: [],
     }
 
@@ -1202,6 +1210,8 @@ export default function RoomBrowserPage() {
             }
             return
           }
+        } else {
+          stats.scoreMissing += 1
         }
       }
 
@@ -1237,6 +1247,12 @@ export default function RoomBrowserPage() {
         : ''
       messages.push(
         `점수 범위 조건으로 제외된 방이 ${filterDiagnostics.scoreExcluded}개 있습니다.${detail}`,
+      )
+    }
+
+    if (filterDiagnostics.scoreFilterActive && filterDiagnostics.scoreMissing) {
+      messages.push(
+        `점수 비교 정보가 없는 방 ${filterDiagnostics.scoreMissing}개는 조건 확인 없이 함께 표시했습니다.`,
       )
     }
 
