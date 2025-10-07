@@ -756,14 +756,6 @@ export default function RoomBrowserPage() {
     persistHeroOwner(viewerUserId)
   }, [viewerUserId])
 
-  useEffect(() => {
-    if (!keyManagerOpen) return undefined
-
-    loadKeyring()
-
-    return undefined
-  }, [keyManagerOpen, loadKeyring])
-
   const resolvedHeroId = viewerHeroProfile?.hero_id || ''
   const effectiveHeroId = heroId || storedHeroId || resolvedHeroId
 
@@ -1532,6 +1524,14 @@ export default function RoomBrowserPage() {
       setKeyringLoading(false)
     }
   }, [getAuthToken])
+
+  useEffect(() => {
+    if (!keyManagerOpen) return undefined
+
+    loadKeyring()
+
+    return undefined
+  }, [keyManagerOpen, loadKeyring])
 
   const handleToggleKeyManager = useCallback(() => {
     setKeyManagerOpen((prev) => {
