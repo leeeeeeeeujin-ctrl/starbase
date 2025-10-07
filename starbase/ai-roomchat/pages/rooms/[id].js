@@ -14,12 +14,45 @@ import {
   readHeroSelection,
 } from '@/lib/heroes/selectedHeroStorage'
 
-const HOST_CLEANUP_DELAY_MS = 15000
+const ROOM_EXIT_DELAY_MS = 5000
+const HOST_CLEANUP_DELAY_MS = ROOM_EXIT_DELAY_MS
+const ROOM_AUTO_REFRESH_INTERVAL_MS = 5000
 const LAST_CREATED_ROOM_KEY = 'rooms:lastCreatedHostFeedback'
 
 const hostCleanupState = {
   timerId: null,
   roomId: null,
+}
+
+const participantCleanupState = {
+  timerId: null,
+  roomId: null,
+  ownerId: null,
+  slotId: null,
+}
+
+async function performParticipantCleanup({ slotId, ownerId }) {
+  if (!slotId || !ownerId) return
+  try {
+    const leaveResult = await withTable(supabase, 'rank_room_slots', (table) =>
+      supabase
+        .from(table)
+        .update({
+          occupant_owner_id: null,
+          occupant_hero_id: null,
+          occupant_ready: false,
+          joined_at: null,
+        })
+        .eq('id', slotId)
+        .eq('occupant_owner_id', ownerId),
+    )
+
+    if (leaveResult.error && leaveResult.error.code !== 'PGRST116') {
+      throw leaveResult.error
+    }
+  } catch (cleanupError) {
+    console.error('[RoomDetail] Failed to auto-leave room:', cleanupError)
+  }
 }
 
 const styles = {
@@ -721,6 +754,16 @@ export default function RoomDetailPage() {
   }, [roomId, loadRoom])
 
   useEffect(() => {
+    if (!roomId || typeof window === 'undefined') return undefined
+    const intervalId = window.setInterval(() => {
+      loadRoom('passive')
+    }, ROOM_AUTO_REFRESH_INTERVAL_MS)
+    return () => {
+      clearInterval(intervalId)
+    }
+  }, [roomId, loadRoom])
+
+  useEffect(() => {
     if (!roomId) return undefined
 
     const channel = supabase
@@ -879,6 +922,46 @@ export default function RoomDetailPage() {
     leaveRoomRef.current = leaveRoom
   }, [leaveRoom])
 
+  const cancelParticipantCleanup = useCallback(() => {
+    if (participantCleanupState.timerId) {
+      clearTimeout(participantCleanupState.timerId)
+    }
+    participantCleanupState.timerId = null
+    participantCleanupState.roomId = null
+    participantCleanupState.ownerId = null
+    participantCleanupState.slotId = null
+  }, [])
+
+  const requestParticipantCleanup = useCallback(
+    (snapshot) => {
+      const presence = snapshot || latestPresenceRef.current
+      const slotId = presence?.activeSlotId || null
+      const ownerId = presence?.ownerId || null
+      const roomId = presence?.roomId || null
+      if (!slotId || !ownerId) return
+
+      if (typeof window === 'undefined') {
+        performParticipantCleanup({ slotId, ownerId })
+        return
+      }
+
+      cancelParticipantCleanup()
+      participantCleanupState.roomId = roomId
+      participantCleanupState.ownerId = ownerId
+      participantCleanupState.slotId = slotId
+      participantCleanupState.timerId = window.setTimeout(async () => {
+        cancelParticipantCleanup()
+        await performParticipantCleanup({ slotId, ownerId })
+      }, ROOM_EXIT_DELAY_MS)
+    },
+    [cancelParticipantCleanup],
+  )
+
+  const requestParticipantCleanupRef = useRef(requestParticipantCleanup)
+  useEffect(() => {
+    requestParticipantCleanupRef.current = requestParticipantCleanup
+  }, [requestParticipantCleanup])
+
   const cancelHostCleanup = useCallback(() => {
     if (hostCleanupState.timerId) {
       clearTimeout(hostCleanupState.timerId)
@@ -948,6 +1031,16 @@ export default function RoomDetailPage() {
       roomId: room?.id ?? null,
     }
   }, [activeSlotId, isHost, room?.id, viewer.ownerId])
+
+  useEffect(() => {
+    cancelParticipantCleanup()
+  }, [cancelParticipantCleanup])
+
+  useEffect(() => {
+    if (activeSlotId && viewer.ownerId && room?.id) {
+      cancelParticipantCleanup()
+    }
+  }, [activeSlotId, cancelParticipantCleanup, room?.id, viewer.ownerId])
 
   const handleJoin = useCallback(async () => {
     if (!roomId) return
@@ -1020,7 +1113,11 @@ export default function RoomDetailPage() {
       const { activeSlotId: latestSlotId, ownerId, isHost: latestIsHost, roomId } =
         latestPresenceRef.current
       if (latestSlotId && ownerId) {
-        leaveRoomRef.current({ silent: true, skipReload: true })
+        requestParticipantCleanupRef.current({
+          activeSlotId: latestSlotId,
+          ownerId,
+          roomId,
+        })
       }
       if (latestIsHost && roomId) {
         requestHostCleanupRef.current()
@@ -1033,7 +1130,11 @@ export default function RoomDetailPage() {
       const { activeSlotId: latestSlotId, ownerId, isHost: latestIsHost, roomId } =
         latestPresenceRef.current
       if (latestSlotId && ownerId) {
-        leaveRoomRef.current({ silent: true, skipReload: true })
+        requestParticipantCleanupRef.current({
+          activeSlotId: latestSlotId,
+          ownerId,
+          roomId,
+        })
       }
       if (latestIsHost && roomId) {
         requestHostCleanupRef.current()
@@ -1051,7 +1152,11 @@ export default function RoomDetailPage() {
       const { activeSlotId: latestSlotId, ownerId, isHost: latestIsHost, roomId } =
         latestPresenceRef.current
       if (latestSlotId && ownerId) {
-        leaveRoomRef.current({ silent: true, skipReload: true })
+        requestParticipantCleanupRef.current({
+          activeSlotId: latestSlotId,
+          ownerId,
+          roomId,
+        })
       }
       if (latestIsHost && roomId) {
         requestHostCleanupRef.current()

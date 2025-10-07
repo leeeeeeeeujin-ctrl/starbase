@@ -32,6 +32,7 @@ const RANK_SCORE_WINDOWS = SCORE_WINDOWS.filter((option) => option.value !== nul
 const DEFAULT_RANK_SCORE_WINDOW = RANK_SCORE_WINDOWS[0]?.value ?? 80
 
 const LAST_CREATED_ROOM_KEY = 'rooms:lastCreatedHostFeedback'
+const ROOM_BROWSER_AUTO_REFRESH_INTERVAL_MS = 5000
 
 const FLEXIBLE_ROLE_KEYS = new Set([
   '',
@@ -908,11 +909,11 @@ export default function RoomBrowserPage() {
   }, [effectiveHeroId, loadHeroContext])
 
   const loadRooms = useCallback(
-    async (fromRefresh = false) => {
+    async (mode = 'initial') => {
       if (!mountedRef.current) return
-      if (fromRefresh) {
+      if (mode === 'refresh') {
         setRefreshing(true)
-      } else {
+      } else if (mode === 'initial') {
         setLoading(true)
       }
       setError('')
@@ -1124,21 +1125,35 @@ export default function RoomBrowserPage() {
         }
       } finally {
         if (!mountedRef.current) return
-        if (!fromRefresh) {
+        if (mode === 'initial') {
           setLoading(false)
+          setRefreshing(false)
+        } else if (mode === 'refresh') {
+          setRefreshing(false)
+        } else {
+          setRefreshing(false)
         }
-        setRefreshing(false)
       }
     },
     [],
   )
 
   useEffect(() => {
-    loadRooms(false)
+    loadRooms('initial')
+  }, [loadRooms])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const intervalId = window.setInterval(() => {
+      loadRooms('auto')
+    }, ROOM_BROWSER_AUTO_REFRESH_INTERVAL_MS)
+    return () => {
+      clearInterval(intervalId)
+    }
   }, [loadRooms])
 
   const handleRefresh = useCallback(() => {
-    loadRooms(true)
+    loadRooms('refresh')
   }, [loadRooms])
 
   const heroRatingForSelection = useMemo(() => {
