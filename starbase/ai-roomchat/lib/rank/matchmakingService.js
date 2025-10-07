@@ -661,15 +661,16 @@ export async function postCheckMatchAssignments(
       reason: entry.reason || 'removed',
     }))
 
-  clonedAssignments.forEach((assignment) => {
-    if (!Array.isArray(assignment.members)) return
-    assignment.members = assignment.members.filter((member) => {
-      if (member && member.__remove) {
-        delete member.__remove
-        return false
-      }
-      return true
-    })
+  const assignmentMeta = new Map()
+  memberEntries.forEach((entry) => {
+    const assignmentIndex = Number(entry.assignmentIndex)
+    if (!Number.isFinite(assignmentIndex)) return
+    if (!assignmentMeta.has(assignmentIndex)) {
+      assignmentMeta.set(assignmentIndex, { removalIndices: new Set() })
+    }
+    if (entry.remove && Number.isFinite(Number(entry.memberIndex))) {
+      assignmentMeta.get(assignmentIndex).removalIndices.add(Number(entry.memberIndex))
+    }
   })
 
   const survivorHeroIds = new Set(
@@ -681,24 +682,191 @@ export async function postCheckMatchAssignments(
       .map((entry) => `${entry.heroId}::${entry.roleName}`),
   )
 
+  const sanitizeSlotMembers = (slot, { removalIndices }) => {
+    const roleName = normalizeRoleName(slot?.role)
+    const rawMembers = []
+    if (slot?.member) {
+      rawMembers.push(slot.member)
+    }
+    if (Array.isArray(slot?.members)) {
+      rawMembers.push(...slot.members)
+    }
+
+    const sanitized = []
+    rawMembers.forEach((member) => {
+      if (!member || typeof member !== 'object') return
+      const clone = { ...member }
+      delete clone.__remove
+      const memberIndex = Number(clone.memberIndex ?? clone.member_index)
+      if (Number.isFinite(memberIndex) && removalIndices.has(memberIndex)) {
+        return
+      }
+      const heroId = normalizeHeroIdValue(clone.hero_id ?? clone.heroId ?? null)
+      if (heroId) {
+        if (survivorHeroIds.size > 0 && !survivorHeroIds.has(heroId)) {
+          return
+        }
+        if (roleName && survivorKeys.size > 0 && !survivorKeys.has(`${heroId}::${roleName}`)) {
+          return
+        }
+      }
+      sanitized.push(clone)
+    })
+
+    return sanitized
+  }
+
+  clonedAssignments.forEach((assignment, assignmentIndex) => {
+    const removalIndices = assignmentMeta.get(assignmentIndex)?.removalIndices || new Set()
+
+    if (!Array.isArray(assignment.roleSlots) || assignment.roleSlots.length === 0) {
+      const sanitizedMembers = Array.isArray(assignment.members)
+        ? assignment.members
+            .map((member, memberIndex) => {
+              if (!member || typeof member !== 'object') return null
+              const clone = { ...member }
+              delete clone.__remove
+              const index = Number(clone.memberIndex ?? clone.member_index ?? memberIndex)
+              if (Number.isFinite(index) && removalIndices.has(index)) {
+                return null
+              }
+              const heroId = normalizeHeroIdValue(clone.hero_id ?? clone.heroId ?? null)
+              const roleName = normalizeRoleName(assignment.role)
+              if (heroId) {
+                if (survivorHeroIds.size > 0 && !survivorHeroIds.has(heroId)) {
+                  return null
+                }
+                if (roleName && survivorKeys.size > 0 && !survivorKeys.has(`${heroId}::${roleName}`)) {
+                  return null
+                }
+              }
+              return clone
+            })
+            .filter(Boolean)
+        : []
+
+      assignment.members = sanitizedMembers
+      assignment.roleSlots = []
+
+      const totalSlots = Number.isFinite(Number(assignment.slots))
+        ? Number(assignment.slots)
+        : sanitizedMembers.length
+      const filledSlots = Math.min(sanitizedMembers.length, totalSlots)
+      assignment.filledSlots = filledSlots
+      assignment.missingSlots = Math.max(0, totalSlots - filledSlots)
+      assignment.ready = totalSlots > 0 && assignment.missingSlots === 0
+      return
+    }
+
+    const sanitizedSlots = assignment.roleSlots.map((slot) => {
+      if (!slot || typeof slot !== 'object') return slot
+      const members = sanitizeSlotMembers(slot, { removalIndices })
+      const primaryMember = members.length > 0 ? members[0] : null
+      const sanitizedSlot = {
+        ...slot,
+        members,
+        member: primaryMember,
+        occupied: members.length > 0,
+      }
+      if (primaryMember) {
+        const heroId = primaryMember.hero_id ?? primaryMember.heroId ?? null
+        const ownerId = primaryMember.owner_id ?? primaryMember.ownerId ?? null
+        if (heroId != null) {
+          sanitizedSlot.hero_id = heroId
+          sanitizedSlot.heroId = heroId
+        }
+        if (ownerId != null) {
+          sanitizedSlot.hero_owner_id = ownerId
+          sanitizedSlot.heroOwnerId = ownerId
+        }
+      } else {
+        sanitizedSlot.hero_id = null
+        sanitizedSlot.heroId = null
+        sanitizedSlot.hero_owner_id = null
+        sanitizedSlot.heroOwnerId = null
+      }
+      return sanitizedSlot
+    })
+
+    assignment.roleSlots = sanitizedSlots
+
+    const rebuiltMembers = []
+    sanitizedSlots.forEach((slot) => {
+      if (!slot || typeof slot !== 'object') return
+      if (Array.isArray(slot.members) && slot.members.length > 0) {
+        slot.members.forEach((member) => {
+          if (member) {
+            rebuiltMembers.push(member)
+          }
+        })
+      } else if (slot.member) {
+        rebuiltMembers.push(slot.member)
+      }
+    })
+
+    assignment.members = rebuiltMembers
+
+    const totalSlots = Number.isFinite(Number(assignment.slots))
+      ? Number(assignment.slots)
+      : sanitizedSlots.length
+    const filledSlots = sanitizedSlots.filter((slot) => slot && slot.occupied).length
+    assignment.filledSlots = filledSlots
+    assignment.missingSlots = Math.max(0, totalSlots - filledSlots)
+    assignment.ready = totalSlots > 0 && assignment.missingSlots === 0
+  })
+
   clonedRooms.forEach((room) => {
     if (!Array.isArray(room.slots)) return
-    room.slots = room.slots.filter((slot) => {
-      if (!slot || typeof slot !== 'object') return true
+    room.slots = room.slots.map((slot) => {
+      if (!slot || typeof slot !== 'object') return slot
+      const roleName = normalizeRoleName(slot.role)
       const heroId = normalizeHeroIdValue(slot.hero_id ?? slot.heroId ?? null)
-      if (!heroId) return true
-      if (survivorHeroIds.size === 0) {
-        return false
+      const compositeKey = heroId && roleName ? `${heroId}::${roleName}` : null
+      const heroSurvives =
+        (!heroId || survivorHeroIds.size === 0 || survivorHeroIds.has(heroId)) &&
+        (!compositeKey || survivorKeys.size === 0 || survivorKeys.has(compositeKey))
+
+      if (!heroSurvives) {
+        return {
+          ...slot,
+          hero_id: null,
+          heroId: null,
+          hero_owner_id: null,
+          heroOwnerId: null,
+          member: null,
+          members: Array.isArray(slot.members) ? [] : slot.members,
+          occupied: false,
+        }
       }
-      if (!survivorHeroIds.has(heroId)) {
-        return false
+
+      const slotMember = slot.member
+      const slotMembers = Array.isArray(slot.members) ? slot.members : []
+      const hasHero =
+        heroId != null ||
+        normalizeHeroIdValue(slotMember?.hero_id ?? slotMember?.heroId ?? null) != null ||
+        slotMembers.some((member) => {
+          if (!member || typeof member !== 'object') return false
+          const memberHero = normalizeHeroIdValue(member.hero_id ?? member.heroId ?? null)
+          return memberHero != null
+        })
+      const occupied =
+        Boolean(slotMember) ||
+        Boolean(slot.occupied) ||
+        slotMembers.some(Boolean) ||
+        hasHero
+      return {
+        ...slot,
+        occupied,
       }
-      const slotRole = normalizeRoleName(slot.role)
-      if (!slotRole) {
-        return true
-      }
-      return survivorKeys.has(`${heroId}::${slotRole}`)
     })
+
+    const totalSlots = Number.isFinite(Number(room.totalSlots))
+      ? Number(room.totalSlots)
+      : room.slots.length
+    const filledSlots = room.slots.filter((slot) => slot && (slot.occupied || slot.member)).length
+    room.filledSlots = filledSlots
+    room.missingSlots = Math.max(0, totalSlots - filledSlots)
+    room.ready = totalSlots > 0 && room.missingSlots === 0
   })
 
   return { assignments: clonedAssignments, rooms: clonedRooms, removedMembers }

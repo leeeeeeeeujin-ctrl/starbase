@@ -275,7 +275,10 @@ describe('postCheckMatchAssignments', () => {
 
     expect(result.assignments[0].members).toHaveLength(1)
     expect(result.assignments[1].members).toHaveLength(0)
-    expect(result.rooms[0].slots).toEqual([{ role: '공격', hero_id: 'hero-1' }])
+    expect(result.rooms[0].slots).toEqual([
+      expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
+      expect.objectContaining({ role: '수비', hero_id: null, occupied: false }),
+    ])
     expect(result.removedMembers).toEqual([
       { heroId: 'hero-1', ownerId: 'owner-1', role: '수비', reason: 'role_mismatch' },
     ])
@@ -334,7 +337,10 @@ describe('postCheckMatchAssignments', () => {
     expect(result.assignments[0].members).toEqual([
       { owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' },
     ])
-    expect(result.rooms[0].slots).toEqual([{ role: '공격', hero_id: 'hero-1' }])
+    expect(result.rooms[0].slots).toEqual([
+      expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
+      expect.objectContaining({ role: '공격', hero_id: null, occupied: false }),
+    ])
     expect(result.removedMembers).toEqual([
       { heroId: 'hero-2', ownerId: 'owner-2', role: '공격', reason: 'exceeds_capacity' },
     ])
