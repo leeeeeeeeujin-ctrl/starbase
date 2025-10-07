@@ -425,6 +425,17 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
 
     latestStatusRef.current = state.status
 
+    if (
+      state.status === 'matched' &&
+      !matchRedirectedRef.current &&
+      gameId &&
+      mode
+    ) {
+      matchRedirectedRef.current = true
+      navigationLockedRef.current = true
+      router.replace({ pathname: `/rank/${gameId}/match-ready`, query: { mode } })
+    }
+
   }, [
     gameId,
     mode,
@@ -437,6 +448,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
     state.status,
     state.viewerId,
     turnTimer,
+    router,
   ])
 
   useEffect(() => {

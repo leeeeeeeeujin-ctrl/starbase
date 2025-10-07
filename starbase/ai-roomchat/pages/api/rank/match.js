@@ -1,5 +1,11 @@
 import { supabase } from '@/lib/rank/db'
-import { loadHeroesByIds, markAssignmentsMatched, runMatching, flattenAssignmentMembers } from '@/lib/rank/matchmakingService'
+import {
+  loadHeroesByIds,
+  markAssignmentsMatched,
+  runMatching,
+  flattenAssignmentMembers,
+  postCheckMatchAssignments,
+} from '@/lib/rank/matchmakingService'
 import {
   buildCandidateSample,
   extractMatchingToggles,
@@ -296,45 +302,71 @@ export default async function handler(req, res) {
 
     const result = runMatching({ mode, roles, queue: candidateSample })
 
-    const readiness = computeRoleReadiness({
+    let assignments = Array.isArray(result.assignments) ? result.assignments : []
+    let rooms = Array.isArray(result.rooms) ? result.rooms : []
+    let readiness = computeRoleReadiness({
       roles,
       slotLayout,
-      assignments: result.assignments,
-      rooms: result.rooms,
+      assignments,
+      rooms,
     })
 
-    const matchReady = Boolean(result.ready || readiness.ready)
+    let matchReady = Boolean(result.ready || readiness.ready)
+    let postCheckResult = null
+
+    if (matchReady) {
+      postCheckResult = await postCheckMatchAssignments(supabase, {
+        gameId,
+        assignments,
+        rooms,
+        roles,
+        slotLayout,
+      })
+
+      assignments = postCheckResult.assignments
+      rooms = postCheckResult.rooms
+      readiness = computeRoleReadiness({
+        roles,
+        slotLayout,
+        assignments,
+        rooms,
+      })
+      matchReady = readiness.ready
+    }
 
     if (!matchReady) {
+      const errorCode = postCheckResult ? 'post_check_pending' : result.error || null
       await logStage({
         stage: toggles.realtimeEnabled ? 'realtime_pool' : 'standard_pool',
         status: 'pending',
         score_window: result.maxWindow || sampleMeta?.window || null,
         metadata: {
-          error: result.error || null,
+          error: errorCode,
           sampleMeta,
-          assignments: buildAssignmentSummary(result.assignments),
+          assignments: buildAssignmentSummary(assignments),
           roleBuckets: readiness.buckets,
+          postCheckRemoved: postCheckResult?.removedMembers || [],
         },
       })
 
       return res.status(200).json({
         ready: false,
-        assignments: result.assignments || [],
-        rooms: result.rooms || [],
+        assignments,
+        rooms,
         totalSlots: result.totalSlots,
         maxWindow: result.maxWindow || 0,
-        error: result.error || null,
+        error: errorCode,
         sampleMeta,
         roles: serializeRoles(roles),
         slotLayout: serializeSlotLayout(slotLayout),
         roleBuckets: readiness.buckets,
+        removedMembers: postCheckResult?.removedMembers || [],
       })
     }
 
     const matchCode = generateMatchCode()
     await markAssignmentsMatched(supabase, {
-      assignments: result.assignments,
+      assignments,
       gameId,
       mode,
       matchCode,
@@ -347,19 +379,20 @@ export default async function handler(req, res) {
       score_window: result.maxWindow || null,
       metadata: {
         sampleMeta,
-        assignments: buildAssignmentSummary(result.assignments),
+        assignments: buildAssignmentSummary(assignments),
         roleBuckets: readiness.buckets,
+        postCheckRemoved: postCheckResult?.removedMembers || [],
       },
     })
 
-    const members = flattenAssignmentMembers(result.assignments)
+    const members = flattenAssignmentMembers(assignments)
     const heroIds = members.map((member) => member.hero_id || member.heroId)
     const heroMap = await loadHeroesByIds(supabase, heroIds)
 
     return res.status(200).json({
       ready: true,
-      assignments: result.assignments,
-      rooms: result.rooms || [],
+      assignments,
+      rooms,
       totalSlots: result.totalSlots,
       maxWindow: result.maxWindow || 0,
       matchCode,
@@ -369,6 +402,7 @@ export default async function handler(req, res) {
       roles: serializeRoles(roles),
       slotLayout: serializeSlotLayout(slotLayout),
       roleBuckets: readiness.buckets,
+      removedMembers: postCheckResult?.removedMembers || [],
     })
   } catch (error) {
     await recordMatchmakingLog(supabase, {

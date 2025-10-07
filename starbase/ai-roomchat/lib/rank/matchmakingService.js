@@ -447,6 +447,263 @@ export async function loadOwnerParticipantRoster(
   return buildOwnerParticipantIndex(rows)
 }
 
+function buildRoleCapacityMap({ roles = [], slotLayout = [] } = {}) {
+  const capacity = new Map()
+
+  if (Array.isArray(slotLayout) && slotLayout.length > 0) {
+    slotLayout.forEach((slot) => {
+      if (!slot) return
+      const roleName = normalizeRoleName(slot.role)
+      if (!roleName) return
+      capacity.set(roleName, (capacity.get(roleName) || 0) + 1)
+    })
+    return capacity
+  }
+
+  if (Array.isArray(roles)) {
+    roles.forEach((role) => {
+      if (!role) return
+      const roleName = normalizeRoleName(role.name ?? role.role)
+      if (!roleName) return
+      const rawCount = role.slot_count ?? role.slotCount ?? role.capacity
+      const slotCount = coerceSlotCount(rawCount, 0)
+      if (slotCount <= 0) return
+      capacity.set(roleName, slotCount)
+    })
+  }
+
+  return capacity
+}
+
+function lookupParticipantRole(roster, ownerId, heroId) {
+  if (!ownerId) return ''
+  if (!(roster instanceof Map)) return ''
+  const entries = roster.get(String(ownerId)) || []
+  if (!Array.isArray(entries) || entries.length === 0) return ''
+
+  const normalizedHeroId = normalizeHeroIdValue(heroId)
+  if (!normalizedHeroId) return ''
+
+  for (const entry of entries) {
+    if (!entry) continue
+    if (entry.heroId && entry.heroId === normalizedHeroId) {
+      return typeof entry.role === 'string' ? entry.role : ''
+    }
+    if (Array.isArray(entry.heroIds) && entry.heroIds.includes(normalizedHeroId)) {
+      return typeof entry.role === 'string' ? entry.role : ''
+    }
+  }
+
+  return ''
+}
+
+function cloneAssignment(assignment) {
+  if (!assignment) return null
+  const members = Array.isArray(assignment.members)
+    ? assignment.members.map((member) => (member && typeof member === 'object' ? { ...member } : member))
+    : []
+  const roleSlots = Array.isArray(assignment.roleSlots || assignment.role_slots)
+    ? (assignment.roleSlots || assignment.role_slots).map((slot) =>
+        slot && typeof slot === 'object' ? { ...slot } : slot,
+      )
+    : []
+
+  return {
+    ...assignment,
+    members,
+    roleSlots,
+  }
+}
+
+function cloneRoom(room) {
+  if (!room) return null
+  const slots = Array.isArray(room.slots)
+    ? room.slots.map((slot) => (slot && typeof slot === 'object' ? { ...slot } : slot))
+    : []
+  return {
+    ...room,
+    slots,
+  }
+}
+
+export async function postCheckMatchAssignments(
+  supabaseClient,
+  { gameId, assignments = [], rooms = [], roles = [], slotLayout = [] } = {},
+) {
+  const clonedAssignments = Array.isArray(assignments)
+    ? assignments.map((assignment) => cloneAssignment(assignment)).filter(Boolean)
+    : []
+  const clonedRooms = Array.isArray(rooms)
+    ? rooms.map((room) => cloneRoom(room)).filter(Boolean)
+    : []
+
+  const memberEntries = []
+  const ownerIds = new Set()
+
+  clonedAssignments.forEach((assignment, assignmentIndex) => {
+    const roleName = normalizeRoleName(assignment?.role)
+    const members = Array.isArray(assignment?.members) ? assignment.members : []
+    members.forEach((member, memberIndex) => {
+      if (!member || typeof member !== 'object') return
+      const ownerIdRaw = member.owner_id ?? member.ownerId
+      const ownerId = ownerIdRaw != null ? String(ownerIdRaw) : ''
+      const heroId = normalizeHeroIdValue(member.hero_id ?? member.heroId ?? null)
+      if (ownerId) {
+        ownerIds.add(ownerId)
+      }
+      memberEntries.push({
+        assignmentIndex,
+        memberIndex,
+        roleName,
+        ownerId,
+        heroId,
+        member,
+        remove: false,
+        expectedRole: '',
+      })
+    })
+  })
+
+  if (!memberEntries.length) {
+    return { assignments: clonedAssignments, rooms: clonedRooms, removedMembers: [] }
+  }
+
+  let roster = new Map()
+  if (ownerIds.size > 0) {
+    try {
+      roster = await loadOwnerParticipantRoster(supabaseClient, {
+        gameId,
+        ownerIds: Array.from(ownerIds),
+      })
+    } catch (error) {
+      console.warn('참가자 정보를 확인하지 못해 후검사를 건너뜁니다:', error)
+    }
+  }
+
+  const heroBuckets = new Map()
+  memberEntries.forEach((entry) => {
+    if (!entry.heroId) return
+    const list = heroBuckets.get(entry.heroId) || []
+    list.push(entry)
+    heroBuckets.set(entry.heroId, list)
+  })
+
+  heroBuckets.forEach((entries, heroId) => {
+    entries.forEach((entry) => {
+      entry.expectedRole = lookupParticipantRole(roster, entry.ownerId, heroId)
+    })
+
+    const mismatched = entries.filter(
+      (entry) => entry.expectedRole && entry.roleName && entry.roleName !== entry.expectedRole,
+    )
+    mismatched.forEach((entry) => {
+      entry.remove = true
+      entry.reason = 'role_mismatch'
+      if (entry.member) {
+        entry.member.__remove = true
+      }
+    })
+
+    const eligible = entries.filter((entry) => !entry.remove)
+    const exactMatches = eligible.filter(
+      (entry) => entry.expectedRole && entry.roleName === entry.expectedRole,
+    )
+
+    if (exactMatches.length > 1) {
+      exactMatches.slice(1).forEach((entry) => {
+        entry.remove = true
+        entry.reason = 'duplicate_role'
+        if (entry.member) {
+          entry.member.__remove = true
+        }
+      })
+    }
+
+    const survivors = entries.filter((entry) => !entry.remove)
+    if (survivors.length > 1) {
+      const ambiguous = survivors.filter((entry) => !entry.expectedRole)
+      if (ambiguous.length > 1) {
+        ambiguous
+          .slice(1)
+          .forEach((entry) => {
+            entry.remove = true
+            entry.reason = 'duplicate_ambiguous'
+            if (entry.member) {
+              entry.member.__remove = true
+            }
+          })
+      }
+    }
+  })
+
+  const capacity = buildRoleCapacityMap({ roles, slotLayout })
+  capacity.forEach((limit, roleName) => {
+    if (!Number.isFinite(limit) || limit <= 0) return
+    const bucket = memberEntries.filter((entry) => entry.roleName === roleName && !entry.remove)
+    if (bucket.length <= limit) return
+    bucket
+      .slice(limit)
+      .forEach((entry) => {
+        entry.remove = true
+        entry.reason = 'exceeds_capacity'
+        if (entry.member) {
+          entry.member.__remove = true
+        }
+      })
+  })
+
+  const removedMembers = memberEntries
+    .filter((entry) => entry.remove)
+    .map((entry) => ({
+      heroId: entry.heroId || null,
+      ownerId: entry.ownerId || null,
+      role: entry.roleName || '',
+      reason: entry.reason || 'removed',
+    }))
+
+  clonedAssignments.forEach((assignment) => {
+    if (!Array.isArray(assignment.members)) return
+    assignment.members = assignment.members.filter((member) => {
+      if (member && member.__remove) {
+        delete member.__remove
+        return false
+      }
+      return true
+    })
+  })
+
+  const survivorHeroIds = new Set(
+    memberEntries.filter((entry) => !entry.remove && entry.heroId).map((entry) => entry.heroId),
+  )
+  const survivorKeys = new Set(
+    memberEntries
+      .filter((entry) => !entry.remove && entry.heroId && entry.roleName)
+      .map((entry) => `${entry.heroId}::${entry.roleName}`),
+  )
+
+  clonedRooms.forEach((room) => {
+    if (!Array.isArray(room.slots)) return
+    room.slots = room.slots.filter((slot) => {
+      if (!slot || typeof slot !== 'object') return true
+      const heroId = normalizeHeroIdValue(slot.hero_id ?? slot.heroId ?? null)
+      if (!heroId) return true
+      if (survivorHeroIds.size === 0) {
+        return false
+      }
+      if (!survivorHeroIds.has(heroId)) {
+        return false
+      }
+      const slotRole = normalizeRoleName(slot.role)
+      if (!slotRole) {
+        return true
+      }
+      return survivorKeys.has(`${heroId}::${slotRole}`)
+    })
+  })
+
+  return { assignments: clonedAssignments, rooms: clonedRooms, removedMembers }
+}
+
 function normalizeStatus(value) {
   if (!value) return 'alive'
   if (typeof value !== 'string') return 'alive'
