@@ -54,6 +54,15 @@ function isFlexibleRole(role) {
   return FLEXIBLE_ROLE_KEYS.has(normalized)
 }
 
+const CASUAL_MODE_TOKENS = ['casual', '캐주얼', 'normal']
+
+function isCasualModeLabel(value) {
+  if (typeof value !== 'string') return false
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return false
+  return CASUAL_MODE_TOKENS.some((token) => normalized.includes(token))
+}
+
 const styles = {
   page: {
     minHeight: '100vh',
@@ -116,6 +125,31 @@ const styles = {
     color: '#38bdf8',
     fontWeight: 600,
     textDecoration: 'none',
+  },
+  filterDiagnosticsCard: {
+    background: 'rgba(148, 163, 184, 0.08)',
+    border: '1px dashed rgba(148, 163, 184, 0.3)',
+    borderRadius: 16,
+    padding: '16px 18px',
+    display: 'grid',
+    gap: 8,
+    color: '#e2e8f0',
+    fontSize: 13,
+    lineHeight: 1.6,
+  },
+  filterDiagnosticsIntro: {
+    margin: 0,
+    fontWeight: 600,
+    color: '#cbd5f5',
+  },
+  filterDiagnosticsList: {
+    margin: 0,
+    paddingLeft: 18,
+    display: 'grid',
+    gap: 4,
+  },
+  filterDiagnosticsItem: {
+    margin: 0,
   },
   filterCard: {
     background: 'rgba(15, 23, 42, 0.78)',
@@ -1114,41 +1148,100 @@ export default function RoomBrowserPage() {
     return rating
   }, [heroRatings, selectedGameId])
 
-  const filteredRooms = useMemo(() => {
-    return rooms
-      .filter((room) => {
-        if (modeTab === 'rank') {
-          if (room.mode.toLowerCase().includes('casual')) {
-            return false
-          }
-        } else if (!room.mode.toLowerCase().includes('casual')) {
-          return false
-        }
-        return true
-      })
-      .filter((room) => {
-        if (!selectedGameId || selectedGameId === 'all') return true
-        return room.gameId === selectedGameId
-      })
-      .filter((room) => {
-        if (!scoreWindow || !heroRatingForSelection) return true
+  const { filteredRooms, filterDiagnostics } = useMemo(() => {
+    const stats = {
+      total: rooms.length,
+      modeExcluded: 0,
+      gameExcluded: 0,
+      scoreExcluded: 0,
+      scoreFilterActive: Boolean(scoreWindow) && Number.isFinite(heroRatingForSelection),
+      scoreExamples: [],
+    }
 
+    const result = []
+
+    rooms.forEach((room) => {
+      const isCasualRoom = isCasualModeLabel(room.mode || '')
+      const inModeTab =
+        modeTab === 'rank' ? !isCasualRoom : isCasualRoom
+
+      if (!inModeTab) {
+        stats.modeExcluded += 1
+        return
+      }
+
+      const matchesGame =
+        !selectedGameId || selectedGameId === 'all' || room.gameId === selectedGameId
+
+      if (!matchesGame) {
+        stats.gameExcluded += 1
+        return
+      }
+
+      if (stats.scoreFilterActive) {
         const comparisonRating = Number.isFinite(room.rating?.average)
           ? room.rating.average
           : Number.isFinite(room.hostRating)
           ? room.hostRating
           : null
 
-        if (!Number.isFinite(comparisonRating)) {
-          return true
+        if (Number.isFinite(comparisonRating)) {
+          const roomWindow = Number.isFinite(room.scoreWindow) ? room.scoreWindow : null
+          const allowedWindow = roomWindow ? Math.min(scoreWindow, roomWindow) : scoreWindow
+          const delta = Math.abs(comparisonRating - heroRatingForSelection)
+
+          if (delta > allowedWindow) {
+            stats.scoreExcluded += 1
+            if (stats.scoreExamples.length < 3) {
+              stats.scoreExamples.push({
+                roomName: room.gameName,
+                hostRating: comparisonRating,
+                delta,
+                allowed: allowedWindow,
+              })
+            }
+            return
+          }
         }
+      }
 
-        const roomWindow = Number.isFinite(room.scoreWindow) ? room.scoreWindow : null
-        const allowedWindow = roomWindow ? Math.min(scoreWindow, roomWindow) : scoreWindow
+      result.push(room)
+    })
 
-        return Math.abs(comparisonRating - heroRatingForSelection) <= allowedWindow
-      })
+    return { filteredRooms: result, filterDiagnostics: stats }
   }, [heroRatingForSelection, modeTab, rooms, scoreWindow, selectedGameId])
+
+  const filterMessages = useMemo(() => {
+    if (!filterDiagnostics) return []
+    const messages = []
+
+    if (filterDiagnostics.modeExcluded) {
+      const label = modeTab === 'rank' ? '캐주얼' : '랭크'
+      messages.push(
+        `${label} 모드 방 ${filterDiagnostics.modeExcluded}개는 현재 탭에서 제외되었습니다.`,
+      )
+    }
+
+    if (filterDiagnostics.gameExcluded) {
+      messages.push(
+        `선택한 게임과 다른 방 ${filterDiagnostics.gameExcluded}개는 표시되지 않았습니다.`,
+      )
+    }
+
+    if (filterDiagnostics.scoreFilterActive && filterDiagnostics.scoreExcluded) {
+      const [example] = filterDiagnostics.scoreExamples
+      const detail = example
+        ? ` 예: ${example.roomName} 방은 호스트 ${example.hostRating}점으로 내 점수와 ±${Math.round(
+            example.delta,
+          )} 차이가 나서 허용 범위(±${example.allowed}) 밖입니다.`
+        : ''
+      messages.push(
+        `점수 범위 조건으로 제외된 방이 ${filterDiagnostics.scoreExcluded}개 있습니다.${detail}`,
+      )
+    }
+
+    return messages
+  }, [filterDiagnostics, modeTab])
 
   const handleModeChange = useCallback((nextMode) => {
     setModeTab(nextMode)
@@ -1629,6 +1722,20 @@ export default function RoomBrowserPage() {
 
         <section style={styles.roomsCard}>
           <h2 style={styles.filtersLabel}>검색 결과</h2>
+          {filterMessages.length ? (
+            <div style={styles.filterDiagnosticsCard}>
+              <p style={styles.filterDiagnosticsIntro}>
+                총 {filterDiagnostics.total}개 중 {filteredRooms.length}개가 현재 조건과 일치합니다.
+              </p>
+              <ul style={styles.filterDiagnosticsList}>
+                {filterMessages.map((message, index) => (
+                  <li key={index} style={styles.filterDiagnosticsItem}>
+                    {message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {loading ? (
             <div style={styles.loadingState}>방 목록을 불러오는 중입니다...</div>
           ) : filteredRooms.length === 0 ? (
