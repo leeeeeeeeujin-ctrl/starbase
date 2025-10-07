@@ -346,6 +346,7 @@ export default function RoomDetailPage() {
     isHost: false,
     roomId: null,
   })
+  const slotRefreshTimeoutRef = useRef(null)
 
   const occupancy = useMemo(() => {
     const total = slots.length
@@ -518,11 +519,11 @@ export default function RoomDetailPage() {
     }
   }, [heroParam, loadViewerHero])
   const loadRoom = useCallback(
-    async (fromRefresh = false) => {
+    async (mode = 'initial') => {
       if (!roomId) return
-      if (fromRefresh) {
+      if (mode === 'refresh') {
         setRefreshing(true)
-      } else {
+      } else if (mode === 'initial') {
         setLoading(true)
       }
       setError('')
@@ -703,10 +704,12 @@ export default function RoomDetailPage() {
         }
       } finally {
         if (!mountedRef.current) return
-        if (!fromRefresh) {
+        if (mode === 'initial') {
           setLoading(false)
+          setRefreshing(false)
+        } else if (mode === 'refresh') {
+          setRefreshing(false)
         }
-        setRefreshing(false)
       }
     },
     [roomId],
@@ -714,7 +717,62 @@ export default function RoomDetailPage() {
 
   useEffect(() => {
     if (!roomId) return
-    loadRoom(false)
+    loadRoom('initial')
+  }, [roomId, loadRoom])
+
+  useEffect(() => {
+    if (!roomId) return undefined
+
+    const channel = supabase
+      .channel(`room-slots:${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rank_room_slots',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          const { eventType, new: newRow, old: oldRow } = payload
+          const prevOwner = oldRow?.occupant_owner_id || null
+          const nextOwner = newRow?.occupant_owner_id || null
+          const prevHero = oldRow?.occupant_hero_id || null
+          const nextHero = newRow?.occupant_hero_id || null
+          const occupantChanged =
+            eventType === 'DELETE' ||
+            eventType === 'INSERT' ||
+            prevOwner !== nextOwner ||
+            prevHero !== nextHero
+
+          if (!occupantChanged) {
+            return
+          }
+
+          if (slotRefreshTimeoutRef.current) {
+            clearTimeout(slotRefreshTimeoutRef.current)
+          }
+
+          slotRefreshTimeoutRef.current = setTimeout(() => {
+            loadRoom('passive')
+            slotRefreshTimeoutRef.current = null
+          }, 120)
+        },
+      )
+      .subscribe()
+
+    return () => {
+      if (slotRefreshTimeoutRef.current) {
+        clearTimeout(slotRefreshTimeoutRef.current)
+        slotRefreshTimeoutRef.current = null
+      }
+      if (typeof channel.unsubscribe === 'function') {
+        channel.unsubscribe()
+      }
+      if (typeof supabase.removeChannel === 'function') {
+        supabase.removeChannel(channel)
+      }
+    }
   }, [roomId, loadRoom])
 
   useEffect(() => {
@@ -795,7 +853,7 @@ export default function RoomDetailPage() {
           throw leaveResult.error
         }
         if (!skipReload) {
-          await loadRoom(true)
+          await loadRoom('refresh')
         }
         if (mountedRef.current) {
           setActiveSlotId((prev) => (prev === activeSlotId ? null : prev))
@@ -940,7 +998,7 @@ export default function RoomDetailPage() {
       if (joinResult.error && joinResult.error.code !== 'PGRST116') {
         throw joinResult.error
       }
-      await loadRoom(true)
+      await loadRoom('refresh')
     } catch (joinError) {
       console.error('[RoomDetail] Failed to join room:', joinError)
       if (mountedRef.current) {
@@ -954,7 +1012,7 @@ export default function RoomDetailPage() {
   }, [loadRoom, roomId, slots, viewer.heroId, viewer.ownerId, viewer.role])
 
   const handleRefresh = useCallback(() => {
-    loadRoom(true)
+    loadRoom('refresh')
   }, [loadRoom])
 
   useEffect(() => {
