@@ -2576,14 +2576,18 @@ export default function GameRoomView({
           <p className={styles.startError}>{resolvedStartError}</p>
         ) : null}
 
-        <p className={styles.capacityHint}>
-          {canStart
-            ? '게임을 시작하면 비슷한 점수의 참가자들이 자동으로 선발됩니다.'
-            : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
-        </p>
-        <p className={styles.capacitySubHint}>
-          준비가 완료되면 모드 선택 창이 열리며 매칭이 자동으로 진행됩니다.
-        </p>
+        {onOpenModeSettings ? (
+          <>
+            <p className={styles.capacityHint}>
+              {canStart
+                ? '게임을 시작하면 비슷한 점수의 참가자들이 자동으로 선발됩니다.'
+                : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
+            </p>
+            <p className={styles.capacitySubHint}>
+              준비가 완료되면 모드 선택 창이 열리며 매칭이 자동으로 진행됩니다.
+            </p>
+          </>
+        ) : null}
 
         {isOwner && (
           <div className={styles.ownerActions}>

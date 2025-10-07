@@ -60,6 +60,7 @@ export default function CharacterDetailPage() {
   useEffect(() => {
     if (!router.isReady) return
     router.prefetch('/roster').catch(() => {})
+    router.prefetch('/rank/rooms').catch(() => {})
   }, [router])
 
   useEffect(() => {
