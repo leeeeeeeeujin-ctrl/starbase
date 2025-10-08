@@ -276,11 +276,16 @@ async function detectProvider(apiKey) {
     }
 
     if (heuristic?.provider === 'openai') {
+      const fallbackApiVersion =
+        heuristic.apiVersion ||
+        (openaiResult?.tries?.find((entry) => entry.ok)?.apiVersion ?? null) ||
+        (openaiResult?.tries?.[0]?.apiVersion ?? 'responses')
+
       return {
         ok: true,
         provider: 'openai',
         modelLabel: null,
-        apiVersion: heuristic.apiVersion || null,
+        apiVersion: fallbackApiVersion,
         geminiMode: null,
         geminiModel: null,
         detail:
@@ -293,11 +298,16 @@ async function detectProvider(apiKey) {
     }
 
     if (openaiResult) {
+      const fallbackApiVersion =
+        openaiResult.apiVersion ||
+        (openaiResult.tries?.find((entry) => entry.ok)?.apiVersion ?? null) ||
+        (openaiResult.tries?.[0]?.apiVersion ?? 'responses')
+
       return {
         ok: true,
         provider: 'openai',
         modelLabel: null,
-        apiVersion: openaiResult.apiVersion || null,
+        apiVersion: fallbackApiVersion,
         geminiMode: null,
         geminiModel: null,
         detail:
@@ -377,11 +387,16 @@ async function detectProvider(apiKey) {
   }
 
   if (heuristic) {
+    const fallbackApiVersion =
+      heuristic?.apiVersion ||
+      (openaiResult?.tries?.find((entry) => entry.ok)?.apiVersion ?? null) ||
+      (openaiResult?.tries?.[0]?.apiVersion ?? null)
+
     return {
       ok: true,
       provider: heuristic.provider,
       modelLabel: heuristic.modelLabel || null,
-      apiVersion: heuristic.apiVersion || null,
+      apiVersion: fallbackApiVersion,
       geminiMode: heuristic.geminiMode || null,
       geminiModel: heuristic.geminiModel || null,
       detail: heuristic.detail || '',
