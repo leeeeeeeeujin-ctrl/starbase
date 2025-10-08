@@ -24,6 +24,7 @@ import {
   readRankAuthSnapshot,
   RANK_AUTH_STORAGE_EVENT,
 } from '@/lib/rank/rankAuthStorage'
+import { persistRankKeyringSnapshot } from '@/lib/rank/keyringStorage'
 
 const MODE_TABS = [
   { key: 'rank', label: '랭크' },
@@ -713,6 +714,7 @@ export default function RoomBrowserPage() {
   const [keyringActivate, setKeyringActivate] = useState(true)
   const [keyringBusy, setKeyringBusy] = useState(false)
   const [keyringAction, setKeyringAction] = useState(null)
+  const lastKeyringUserIdRef = useRef('')
 
   useEffect(() => {
     mountedRef.current = true
@@ -1487,6 +1489,17 @@ export default function RoomBrowserPage() {
     loadRooms('refresh')
   }, [loadRooms])
 
+  const participationFilter = useMemo(() => {
+    const set = new Set()
+    participations.forEach((entry) => {
+      const gameId = entry?.game?.id
+      if (gameId) {
+        set.add(gameId)
+      }
+    })
+    return { set }
+  }, [participations])
+
   const heroRatingForSelection = useMemo(() => {
     if (!selectedGameId || selectedGameId === 'all') return null
     const rating = heroRatings[selectedGameId]
@@ -1495,12 +1508,17 @@ export default function RoomBrowserPage() {
   }, [heroRatings, selectedGameId])
 
   const { filteredRooms, filterDiagnostics } = useMemo(() => {
+    const participationSet = participationFilter.set
+    const enforceParticipation = !heroLoading
     const hasComparableRatings = rooms.some(
       (room) => Number.isFinite(room?.rating?.average) || Number.isFinite(room?.hostRating),
     )
 
     const stats = {
       total: rooms.length,
+      participationRequired: enforceParticipation,
+      participationMissing: enforceParticipation && participationSet.size === 0,
+      participationExcluded: 0,
       modeExcluded: 0,
       gameExcluded: 0,
       scoreExcluded: 0,
@@ -1522,6 +1540,13 @@ export default function RoomBrowserPage() {
       if (!inModeTab) {
         stats.modeExcluded += 1
         return
+      }
+
+      if (enforceParticipation) {
+        if (!participationSet.size || !participationSet.has(room.gameId)) {
+          stats.participationExcluded += 1
+          return
+        }
       }
 
       const matchesGame =
@@ -1565,14 +1590,34 @@ export default function RoomBrowserPage() {
     })
 
     return { filteredRooms: result, filterDiagnostics: stats }
-  }, [heroRatingForSelection, modeTab, rooms, scoreWindow, selectedGameId])
+  }, [
+    heroLoading,
+    heroRatingForSelection,
+    modeTab,
+    participationFilter,
+    rooms,
+    scoreWindow,
+    selectedGameId,
+  ])
 
   const filterMessages = useMemo(() => {
     if (!filterDiagnostics) return []
     const messages = []
 
+    if (filterDiagnostics.participationRequired) {
+      if (filterDiagnostics.participationMissing) {
+        messages.push(
+          '참여한 게임이 없어 표시할 방이 없습니다. 먼저 해당 게임에 참가하거나 최근 선택한 캐릭터를 확인해 주세요.',
+        )
+      } else if (filterDiagnostics.participationExcluded) {
+        messages.push(
+          `참여 기록이 없는 게임의 방 ${filterDiagnostics.participationExcluded}개는 제외했습니다.`,
+        )
+      }
+    }
+
     if (filterDiagnostics.modeExcluded) {
-      const label = modeTab === 'rank' ? '캐주얼' : '랭크'
+      const label = modeTab === 'rank' ? '랭크' : '캐주얼'
       messages.push(
         `${label} 모드 방 ${filterDiagnostics.modeExcluded}개는 현재 탭에서 제외되었습니다.`,
       )
@@ -1699,6 +1744,30 @@ export default function RoomBrowserPage() {
 
     return undefined
   }, [keyManagerOpen, loadKeyring])
+
+  useEffect(() => {
+    const targetUserId = effectiveUserId || storedAuthSnapshot?.userId || ''
+    if (!targetUserId) {
+      if (lastKeyringUserIdRef.current) {
+        lastKeyringUserIdRef.current = ''
+        setKeyringEntries([])
+        persistRankKeyringSnapshot({ userId: '', entries: [] })
+      }
+      return
+    }
+
+    if (lastKeyringUserIdRef.current === targetUserId) {
+      return
+    }
+
+    lastKeyringUserIdRef.current = targetUserId
+    loadKeyring()
+  }, [effectiveUserId, loadKeyring, storedAuthSnapshot?.userId])
+
+  useEffect(() => {
+    const userId = effectiveUserId || storedAuthSnapshot?.userId || ''
+    persistRankKeyringSnapshot({ userId, entries: keyringEntries })
+  }, [effectiveUserId, keyringEntries, storedAuthSnapshot?.userId])
 
   const handleToggleKeyManager = useCallback(() => {
     setKeyManagerOpen((prev) => {

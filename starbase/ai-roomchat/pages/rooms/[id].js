@@ -29,6 +29,12 @@ import {
   RANK_AUTH_STORAGE_EVENT,
 } from '@/lib/rank/rankAuthStorage'
 import { MATCH_MODE_KEYS } from '@/lib/rank/matchModes'
+import {
+  hasActiveKeyInSnapshot,
+  RANK_KEYRING_STORAGE_EVENT,
+  RANK_KEYRING_STORAGE_KEY,
+  readRankKeyringSnapshot,
+} from '@/lib/rank/keyringStorage'
 
 const ROOM_EXIT_DELAY_MS = 5000
 const HOST_CLEANUP_DELAY_MS = ROOM_EXIT_DELAY_MS
@@ -386,6 +392,17 @@ const styles = {
     fontSize: 13,
     color: '#94a3b8',
   },
+  keyRequirement: {
+    marginTop: -6,
+    marginBottom: 6,
+    padding: '12px 16px',
+    borderRadius: 14,
+    border: '1px solid rgba(96, 165, 250, 0.45)',
+    background: 'rgba(30, 64, 175, 0.35)',
+    color: '#bfdbfe',
+    fontSize: 13,
+    lineHeight: '20px',
+  },
   actionsRow: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -612,6 +629,7 @@ export default function RoomDetailPage() {
   const [deletePending, setDeletePending] = useState(false)
   const [storedAuthSnapshot, setStoredAuthSnapshot] = useState(() => readRankAuthSnapshot())
 
+  const [keyringSnapshot, setKeyringSnapshot] = useState(() => readRankKeyringSnapshot())
   const [viewer, setViewer] = useState({
     heroId: '',
     heroName: '',
@@ -698,6 +716,31 @@ export default function RoomDetailPage() {
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const syncKeyring = () => {
+      setKeyringSnapshot(readRankKeyringSnapshot())
+    }
+
+    const handleStorage = (event) => {
+      if (event?.key && event.key !== RANK_KEYRING_STORAGE_KEY) {
+        return
+      }
+      syncKeyring()
+    }
+
+    syncKeyring()
+
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener(RANK_KEYRING_STORAGE_EVENT, syncKeyring)
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener(RANK_KEYRING_STORAGE_EVENT, syncKeyring)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!storedAuthSnapshot?.userId) return
     setViewer((prev) => {
       if (prev?.userId) return prev
@@ -714,6 +757,11 @@ export default function RoomDetailPage() {
     if (ratingDelta === null) return null
     return Math.abs(ratingDelta)
   }, [ratingDelta])
+
+  const hasActiveApiKey = useMemo(
+    () => hasActiveKeyInSnapshot(keyringSnapshot, viewer.userId),
+    [keyringSnapshot, viewer.userId],
+  )
 
   const isHost = useMemo(() => {
     if (!room?.ownerId || !viewer.ownerId) return false
@@ -1349,6 +1397,10 @@ export default function RoomDetailPage() {
   }, [activeSlotId, cancelParticipantCleanup, room?.id, viewer.ownerId])
 
   const handleJoin = useCallback(async () => {
+    if (!hasActiveApiKey) {
+      setActionError('AI API 키를 사용 설정해야 방에 참여할 수 있습니다.')
+      return
+    }
     if (!roomId) return
     if (!viewer.ownerId) {
       setActionError('로그인이 필요합니다.')
@@ -1408,7 +1460,15 @@ export default function RoomDetailPage() {
         setJoinPending(false)
       }
     }
-  }, [loadRoom, roomId, slots, viewer.heroId, viewer.ownerId, viewer.role])
+  }, [
+    hasActiveApiKey,
+    loadRoom,
+    roomId,
+    slots,
+    viewer.heroId,
+    viewer.ownerId,
+    viewer.role,
+  ])
 
   const handleRefresh = useCallback(() => {
     loadRoom('refresh')
@@ -1485,6 +1545,13 @@ export default function RoomDetailPage() {
   const hostRatingText = Number.isFinite(room?.hostRating)
     ? `${room.hostRating}점`
     : '정보 없음'
+
+  const joinDisabled =
+    joinPending ||
+    !viewer.heroId ||
+    !viewer.ownerId ||
+    !normalizeRole(viewer.role) ||
+    !hasActiveApiKey
 
   useEffect(() => {
     if (autoRedirectRef.current) return
@@ -1640,6 +1707,11 @@ export default function RoomDetailPage() {
             )}
             {room?.gameName ? <span>게임: {room.gameName}</span> : null}
           </div>
+          {!hasActiveApiKey ? (
+            <div style={styles.keyRequirement}>
+              AI API 키를 사용 설정해야 이 방에 참여할 수 있습니다. 방 찾기 상단의 AI API 키 관리에서 키를 등록하고 활성화해 주세요.
+            </div>
+          ) : null}
           <div style={styles.actionsRow}>
             <button
               type="button"
@@ -1662,15 +1734,8 @@ export default function RoomDetailPage() {
               <button
                 type="button"
                 onClick={handleJoin}
-                style={styles.primaryButton(
-                  joinPending ||
-                    !viewer.heroId ||
-                    !viewer.ownerId ||
-                    !normalizeRole(viewer.role),
-                )}
-                disabled={
-                  joinPending || !viewer.heroId || !viewer.ownerId || !normalizeRole(viewer.role)
-                }
+                style={styles.primaryButton(joinDisabled)}
+                disabled={joinDisabled}
               >
                 {joinPending ? '참여 중...' : '빈 슬롯 참여'}
               </button>
