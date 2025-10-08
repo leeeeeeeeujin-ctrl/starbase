@@ -144,6 +144,75 @@ function normalizeRosterEntries(roster = []) {
     .sort((a, b) => a.slotIndex - b.slotIndex)
 }
 
+function buildRosterEntriesFromAssignments(assignments = []) {
+  if (!Array.isArray(assignments) || assignments.length === 0) return []
+
+  const entries = []
+  assignments.forEach((assignment) => {
+    if (!assignment) return
+    const roleName =
+      typeof assignment.role === 'string'
+        ? assignment.role.trim()
+        : typeof assignment.roleName === 'string'
+        ? assignment.roleName.trim()
+        : ''
+
+    const members = Array.isArray(assignment.members)
+      ? assignment.members
+      : Array.isArray(assignment.membership)
+      ? assignment.membership
+      : []
+
+    members.forEach((member, index) => {
+      if (!member) return
+      entries.push({
+        slotIndex:
+          member.slotIndex ?? member.slot_index ?? member.slotNo ?? member.slot_no ?? index,
+        role: roleName || null,
+        ownerId:
+          member.ownerId ?? member.owner_id ?? member.occupantOwnerId ?? member.ownerID ?? null,
+        heroId:
+          member.heroId ?? member.hero_id ?? member.occupantHeroId ?? member.heroID ?? null,
+        heroName:
+          member.heroName ?? member.hero_name ?? member.displayName ?? member.name ?? '',
+        ready: Boolean(member.ready ?? member.isReady ?? member.occupantReady),
+        joinedAt: member.joinedAt ?? member.joined_at ?? null,
+      })
+    })
+  })
+
+  return entries
+}
+
+function deriveRosterFromMatchSnapshot(matchSnapshot) {
+  if (!matchSnapshot) return []
+
+  const slotCandidates = []
+  if (Array.isArray(matchSnapshot.slotLayout) && matchSnapshot.slotLayout.length) {
+    slotCandidates.push(matchSnapshot.slotLayout)
+  }
+  if (
+    matchSnapshot.roleStatus &&
+    Array.isArray(matchSnapshot.roleStatus.slotLayout) &&
+    matchSnapshot.roleStatus.slotLayout.length
+  ) {
+    slotCandidates.push(matchSnapshot.roleStatus.slotLayout)
+  }
+
+  for (const candidate of slotCandidates) {
+    const normalized = normalizeRosterEntries(candidate)
+    if (normalized.length) return normalized
+  }
+
+  const assignmentEntries = buildRosterEntriesFromAssignments(matchSnapshot.assignments)
+  if (assignmentEntries.length) {
+    const normalizedAssignments = normalizeRosterEntries(assignmentEntries)
+    if (normalizedAssignments.length) return normalizedAssignments
+  }
+
+  return []
+}
+
 function buildSlotLayoutFromRosterSnapshot(roster = []) {
   if (!Array.isArray(roster) || roster.length === 0) return []
 
@@ -428,11 +497,12 @@ export function useStartClientEngine(gameId) {
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
   const [frontMatchData] = useState(initialFrontMatchData)
-  const rosterSnapshot = useMemo(
-    () => normalizeRosterEntries(frontMatchData?.participation?.roster || []),
-    [frontMatchData],
-  )
   const matchSnapshotSeed = frontMatchData?.matchSnapshot?.match || null
+  const rosterSnapshot = useMemo(() => {
+    const normalized = normalizeRosterEntries(frontMatchData?.participation?.roster || [])
+    if (normalized.length) return normalized
+    return deriveRosterFromMatchSnapshot(matchSnapshotSeed)
+  }, [frontMatchData, matchSnapshotSeed])
   const slotLayoutSeed = useMemo(() => {
     if (!matchSnapshotSeed) return []
     const sources = []
