@@ -83,6 +83,317 @@ import {
   REALTIME_MODES,
 } from '@/lib/rank/realtimeModes'
 
+function toTrimmedString(value) {
+  if (value === null || value === undefined) return null
+  const stringValue = String(value).trim()
+  return stringValue ? stringValue : null
+}
+
+function parseSlotIndex(value, fallback = null) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return fallback
+  if (numeric < 0) return fallback
+  return numeric
+}
+
+function normalizeRosterEntries(roster = []) {
+  if (!Array.isArray(roster) || roster.length === 0) return []
+
+  return roster
+    .map((entry, index) => {
+      if (!entry) return null
+
+      const slotIndex = parseSlotIndex(
+        entry.slotIndex ?? entry.slot_index ?? entry.slotNo ?? entry.slot_no,
+        index,
+      )
+      const roleValue =
+        typeof entry.role === 'string'
+          ? entry.role.trim()
+          : typeof entry.roleName === 'string'
+          ? entry.roleName.trim()
+          : ''
+      const ownerId = toTrimmedString(
+        entry.ownerId ?? entry.owner_id ?? entry.occupantOwnerId ?? entry.ownerID,
+      )
+      const heroId = toTrimmedString(
+        entry.heroId ?? entry.hero_id ?? entry.occupantHeroId ?? entry.heroID,
+      )
+      const slotId = toTrimmedString(entry.slotId ?? entry.slot_id ?? entry.id)
+      const joinedAt = entry.joinedAt ?? entry.joined_at ?? null
+      const ready = Boolean(entry.ready ?? entry.isReady ?? entry.occupantReady)
+      const heroNameValue =
+        typeof entry.heroName === 'string'
+          ? entry.heroName
+          : typeof entry.hero_name === 'string'
+          ? entry.hero_name
+          : ''
+
+      return {
+        slotId,
+        slotIndex,
+        role: roleValue || null,
+        ownerId,
+        heroId,
+        heroName: heroNameValue,
+        ready,
+        joinedAt,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.slotIndex - b.slotIndex)
+}
+
+function buildSlotLayoutFromRosterSnapshot(roster = []) {
+  if (!Array.isArray(roster) || roster.length === 0) return []
+
+  return roster.map((entry) => {
+    const ownerId = toTrimmedString(entry.ownerId)
+    const heroId = toTrimmedString(entry.heroId)
+    return {
+      id: entry.slotId,
+      slot_index: entry.slotIndex,
+      slotIndex: entry.slotIndex,
+      role: entry.role || null,
+      active: true,
+      hero_id: heroId,
+      hero_owner_id: ownerId,
+      occupant_owner_id: ownerId,
+      occupant_hero_id: heroId,
+      occupant_ready: entry.ready || false,
+      occupant_joined_at: entry.joinedAt || null,
+    }
+  })
+}
+
+function normalizeSlotLayoutEntries(list = []) {
+  if (!Array.isArray(list) || list.length === 0) return []
+
+  return list
+    .map((entry, index) => {
+      if (!entry) return null
+      const slotIndex = parseSlotIndex(
+        entry.slot_index ?? entry.slotIndex ?? entry.slotNo ?? entry.slot_no,
+        index,
+      )
+      if (slotIndex == null) return null
+      const roleValue =
+        typeof entry.role === 'string'
+          ? entry.role.trim()
+          : typeof entry.role_name === 'string'
+          ? entry.role_name.trim()
+          : ''
+      const ownerId = toTrimmedString(
+        entry.hero_owner_id ?? entry.heroOwnerId ?? entry.ownerId ?? entry.occupantOwnerId,
+      )
+      const heroId = toTrimmedString(
+        entry.hero_id ?? entry.heroId ?? entry.occupantHeroId ?? entry.heroID,
+      )
+      const occupantOwner = toTrimmedString(
+        entry.occupant_owner_id ?? entry.occupantOwnerId ?? ownerId,
+      )
+      const occupantHero = toTrimmedString(
+        entry.occupant_hero_id ?? entry.occupantHeroId ?? heroId,
+      )
+
+      return {
+        id: entry.id ?? entry.slotId ?? null,
+        slot_index: slotIndex,
+        slotIndex,
+        role: roleValue || null,
+        active: entry.active !== false,
+        hero_id: heroId,
+        hero_owner_id: ownerId,
+        occupant_owner_id: occupantOwner,
+        occupant_hero_id: occupantHero,
+        occupant_ready:
+          entry.occupant_ready ?? entry.ready ?? entry.isReady ?? false,
+        occupant_joined_at: entry.occupant_joined_at ?? entry.joinedAt ?? null,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.slot_index - b.slot_index)
+}
+
+function mergeSlotLayoutSeed(primary = [], fallback = []) {
+  const primaryList = Array.isArray(primary)
+    ? primary.map((entry) => ({ ...entry }))
+    : []
+  const fallbackList = Array.isArray(fallback)
+    ? fallback.map((entry) => ({ ...entry }))
+    : []
+
+  if (primaryList.length === 0) {
+    return fallbackList
+  }
+
+  const fallbackMap = new Map()
+  fallbackList.forEach((entry) => {
+    const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex)
+    if (slotIndex == null) return
+    if (!fallbackMap.has(slotIndex)) {
+      fallbackMap.set(slotIndex, {
+        ...entry,
+        slot_index: slotIndex,
+        slotIndex,
+      })
+    }
+  })
+
+  const merged = primaryList
+    .map((entry) => {
+      const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex)
+      if (slotIndex == null) return null
+      const fallbackEntry = fallbackMap.get(slotIndex)
+      if (fallbackEntry) {
+        fallbackMap.delete(slotIndex)
+        const roleValue =
+          typeof entry.role === 'string' && entry.role.trim()
+            ? entry.role.trim()
+            : fallbackEntry.role || null
+        return {
+          ...fallbackEntry,
+          ...entry,
+          id: fallbackEntry.id ?? entry.id ?? null,
+          slot_index: slotIndex,
+          slotIndex,
+          role: roleValue,
+          hero_id: entry.hero_id ?? fallbackEntry.hero_id ?? null,
+          hero_owner_id:
+            entry.hero_owner_id ?? fallbackEntry.hero_owner_id ?? null,
+          active:
+            entry.active !== undefined ? entry.active : fallbackEntry.active,
+          occupant_owner_id:
+            entry.occupant_owner_id ?? fallbackEntry.occupant_owner_id ?? null,
+          occupant_hero_id:
+            entry.occupant_hero_id ?? fallbackEntry.occupant_hero_id ?? null,
+          occupant_ready:
+            entry.occupant_ready ?? fallbackEntry.occupant_ready ?? false,
+          occupant_joined_at:
+            entry.occupant_joined_at ?? fallbackEntry.occupant_joined_at ?? null,
+        }
+      }
+      return {
+        ...entry,
+        slot_index: slotIndex,
+        slotIndex,
+        id: entry.id ?? null,
+        active: entry.active !== false,
+      }
+    })
+    .filter(Boolean)
+
+  fallbackMap.forEach((entry) => {
+    merged.push(entry)
+  })
+
+  return merged.sort((a, b) => a.slot_index - b.slot_index)
+}
+
+function hydrateParticipantsWithRoster(participants = [], roster = []) {
+  if (!Array.isArray(participants) || participants.length === 0) {
+    return participants || []
+  }
+  if (!Array.isArray(roster) || roster.length === 0) {
+    return participants
+  }
+
+  const compositeMap = new Map()
+  const heroMap = new Map()
+  const ownerMap = new Map()
+
+  roster.forEach((entry) => {
+    const ownerId = toTrimmedString(entry.ownerId)
+    const heroId = toTrimmedString(entry.heroId)
+    if (ownerId && heroId) {
+      const compositeKey = `${ownerId}::${heroId}`
+      if (!compositeMap.has(compositeKey)) {
+        compositeMap.set(compositeKey, entry)
+      }
+    }
+    if (heroId && !heroMap.has(heroId)) {
+      heroMap.set(heroId, entry)
+    }
+    if (ownerId && !ownerMap.has(ownerId)) {
+      ownerMap.set(ownerId, entry)
+    }
+  })
+
+  const decorated = participants.map((participant, index) => {
+    if (!participant) {
+      return { participant: null, index }
+    }
+
+    const ownerId = toTrimmedString(deriveParticipantOwnerId(participant))
+    const heroId = toTrimmedString(
+      participant?.hero?.id ?? participant?.hero_id ?? participant?.heroId,
+    )
+
+    let rosterEntry = null
+    if (ownerId && heroId) {
+      rosterEntry = compositeMap.get(`${ownerId}::${heroId}`) || null
+    }
+    if (!rosterEntry && heroId) {
+      rosterEntry = heroMap.get(heroId) || null
+    }
+    if (!rosterEntry && ownerId) {
+      rosterEntry = ownerMap.get(ownerId) || null
+    }
+
+    if (!rosterEntry) {
+      return { participant, index }
+    }
+
+    const slotIndex =
+      rosterEntry.slotIndex ??
+      parseSlotIndex(
+        participant.slot_no ?? participant.slotIndex ?? participant.slot_index,
+      )
+    const roleValue =
+      (typeof rosterEntry.role === 'string' && rosterEntry.role.trim()) ||
+      participant.role ||
+      null
+
+    return {
+      participant: {
+        ...participant,
+        slot_no: slotIndex,
+        slotIndex,
+        slot_index: slotIndex,
+        role: roleValue,
+        occupant_ready:
+          rosterEntry.ready ?? participant.occupant_ready ?? null,
+        occupant_joined_at:
+          rosterEntry.joinedAt ??
+          participant.occupant_joined_at ??
+          participant.joined_at ??
+          null,
+      },
+      index,
+    }
+  })
+
+  decorated.sort((a, b) => {
+    const slotA = parseSlotIndex(
+      a.participant?.slot_no ?? a.participant?.slotIndex ?? a.participant?.slot_index,
+    )
+    const slotB = parseSlotIndex(
+      b.participant?.slot_no ?? b.participant?.slotIndex ?? b.participant?.slot_index,
+    )
+    if (slotA != null && slotB != null) {
+      if (slotA === slotB) return a.index - b.index
+      return slotA - slotB
+    }
+    if (slotA != null) return -1
+    if (slotB != null) return 1
+    return a.index - b.index
+  })
+
+  return decorated
+    .map((entry) => entry.participant)
+    .filter((participant) => participant !== null)
+}
+
 export function useStartClientEngine(gameId) {
   const storedStartConfig =
     typeof window === 'undefined'
@@ -117,6 +428,30 @@ export function useStartClientEngine(gameId) {
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
   const [frontMatchData] = useState(initialFrontMatchData)
+  const rosterSnapshot = useMemo(
+    () => normalizeRosterEntries(frontMatchData?.participation?.roster || []),
+    [frontMatchData],
+  )
+  const matchSnapshotSeed = frontMatchData?.matchSnapshot?.match || null
+  const slotLayoutSeed = useMemo(() => {
+    if (!matchSnapshotSeed) return []
+    const sources = []
+    if (Array.isArray(matchSnapshotSeed.slotLayout) && matchSnapshotSeed.slotLayout.length) {
+      sources.push(matchSnapshotSeed.slotLayout)
+    }
+    if (
+      matchSnapshotSeed.roleStatus &&
+      Array.isArray(matchSnapshotSeed.roleStatus.slotLayout) &&
+      matchSnapshotSeed.roleStatus.slotLayout.length
+    ) {
+      sources.push(matchSnapshotSeed.roleStatus.slotLayout)
+    }
+    for (const candidate of sources) {
+      const normalized = normalizeSlotLayoutEntries(candidate)
+      if (normalized.length) return normalized
+    }
+    return []
+  }, [matchSnapshotSeed])
   const matchMetaLoggedRef = useRef(false)
   const gameIdRef = useRef(gameId ? String(gameId) : '')
   const [connectionRoster, setConnectionRoster] = useState(() =>
@@ -180,7 +515,7 @@ export function useStartClientEngine(gameId) {
   useEffect(() => {
     gameIdRef.current = gameId ? String(gameId) : ''
     setConnectionRoster(getConnectionEntriesForGame(gameId))
-  }, [gameId])
+  }, [gameId, rosterSnapshot, slotLayoutSeed])
   useEffect(() => {
     if (!frontMatchData) return
     if (!startMatchMetaRef.current && frontMatchData.matchSnapshot?.match) {
@@ -691,10 +1026,36 @@ export function useStartClientEngine(gameId) {
       try {
         const bundle = await loadGameBundle(supabase, gameId)
         if (!alive) return
+
+        const participantsFromBundle = Array.isArray(bundle.participants)
+          ? bundle.participants.map((participant) => ({ ...participant }))
+          : []
+        const slotLayoutFromBundle = Array.isArray(bundle.slotLayout)
+          ? bundle.slotLayout.map((slot) => ({ ...slot }))
+          : []
+
+        const hydratedParticipants = rosterSnapshot.length
+          ? hydrateParticipantsWithRoster(participantsFromBundle, rosterSnapshot)
+          : participantsFromBundle
+
+        const baseSlotLayout = rosterSnapshot.length
+          ? buildSlotLayoutFromRosterSnapshot(rosterSnapshot)
+          : slotLayoutSeed.length
+          ? slotLayoutSeed
+          : []
+
+        const mergedSlotLayout = mergeSlotLayoutSeed(
+          baseSlotLayout,
+          slotLayoutFromBundle,
+        )
+
+        const finalSlotLayout =
+          mergedSlotLayout.length > 0 ? mergedSlotLayout : slotLayoutFromBundle
+
         patchEngineState({
           game: bundle.game,
-          participants: bundle.participants,
-          slotLayout: Array.isArray(bundle.slotLayout) ? bundle.slotLayout : [],
+          participants: hydratedParticipants,
+          slotLayout: finalSlotLayout,
           graph: bundle.graph,
         })
         if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
