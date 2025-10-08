@@ -858,6 +858,12 @@ export default function RoomBrowserPage() {
     viewerUserId,
   ])
 
+  useEffect(() => {
+    if (!effectiveUserId) return
+    persistRankAuthUser(effectiveUserId)
+    persistHeroOwner(effectiveUserId)
+  }, [effectiveUserId])
+
   const resolvingViewerHeroRef = useRef(false)
 
   useEffect(() => {
@@ -1593,17 +1599,34 @@ export default function RoomBrowserPage() {
         persistRankAuthSession(session)
         if (session.user?.id) {
           persistRankAuthUser(session.user)
+          setViewerUserId((prev) => (prev ? prev : session.user.id))
         }
         const token = session.access_token || session.accessToken || null
         if (token) {
           return token
         }
       }
+
+      const { data: userData, error: userError } = await supabase.auth.getUser()
+      if (userError) {
+        throw userError
+      }
+
+      const user = userData?.user || null
+      if (user?.id) {
+        persistRankAuthUser(user)
+        setViewerUserId((prev) => (prev ? prev : user.id))
+      }
     } catch (sessionError) {
       console.warn('[RoomBrowser] Failed to resolve session token:', sessionError)
     }
+
+    if (storedAuthSnapshot?.userId) {
+      setViewerUserId((prev) => (prev ? prev : storedAuthSnapshot.userId))
+    }
+
     return storedAuthSnapshot?.accessToken || null
-  }, [storedAuthSnapshot?.accessToken])
+  }, [storedAuthSnapshot?.accessToken, storedAuthSnapshot?.userId])
 
   const loadKeyring = useCallback(async () => {
     setKeyringLoading(true)
@@ -1611,14 +1634,24 @@ export default function RoomBrowserPage() {
     setKeyringAction(null)
     try {
       const token = await getAuthToken()
+      const latestAuth = readRankAuthSnapshot()
+      const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
       const headers = {}
       if (token) {
         headers.Authorization = `Bearer ${token}`
       }
-      if (effectiveUserId) {
-        headers['X-Rank-User-Id'] = effectiveUserId
+      if (resolvedUserId) {
+        headers['X-Rank-User-Id'] = resolvedUserId
       }
-      const response = await fetch('/api/rank/user-api-keyring', { headers })
+      if (!token && !resolvedUserId) {
+        throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
+          code: 'missing_user_id',
+        })
+      }
+      const endpoint = resolvedUserId
+        ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
+        : '/api/rank/user-api-keyring'
+      const response = await fetch(endpoint, { headers })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         const message = resolveKeyringError(payload?.error, payload?.detail)
@@ -1677,20 +1710,30 @@ export default function RoomBrowserPage() {
 
     try {
       const token = await getAuthToken()
+      const latestAuth = readRankAuthSnapshot()
+      const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
       const headers = { 'Content-Type': 'application/json' }
       if (token) {
         headers.Authorization = `Bearer ${token}`
       }
-      if (effectiveUserId) {
-        headers['X-Rank-User-Id'] = effectiveUserId
+      if (resolvedUserId) {
+        headers['X-Rank-User-Id'] = resolvedUserId
       }
-      const response = await fetch('/api/rank/user-api-keyring', {
+      if (!token && !resolvedUserId) {
+        throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
+          code: 'missing_user_id',
+        })
+      }
+      const endpoint = resolvedUserId
+        ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
+        : '/api/rank/user-api-keyring'
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           apiKey: trimmed,
           activate: keyringActivate,
-          userId: effectiveUserId || undefined,
+          userId: resolvedUserId || undefined,
         }),
       })
       const payload = await response.json().catch(() => ({}))
@@ -1741,17 +1784,27 @@ export default function RoomBrowserPage() {
 
       try {
         const token = await getAuthToken()
+        const latestAuth = readRankAuthSnapshot()
+        const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
         const headers = { 'Content-Type': 'application/json' }
         if (token) {
           headers.Authorization = `Bearer ${token}`
         }
-        if (effectiveUserId) {
-          headers['X-Rank-User-Id'] = effectiveUserId
+        if (resolvedUserId) {
+          headers['X-Rank-User-Id'] = resolvedUserId
         }
-        const response = await fetch('/api/rank/user-api-keyring', {
+        if (!token && !resolvedUserId) {
+          throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
+            code: 'missing_user_id',
+          })
+        }
+        const endpoint = resolvedUserId
+          ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
+          : '/api/rank/user-api-keyring'
+        const response = await fetch(endpoint, {
           method: 'PATCH',
           headers,
-          body: JSON.stringify({ id: entryId, userId: effectiveUserId || undefined }),
+          body: JSON.stringify({ id: entryId, userId: resolvedUserId || undefined }),
         })
         const payload = await response.json().catch(() => ({}))
         if (!response.ok) {
@@ -1783,17 +1836,27 @@ export default function RoomBrowserPage() {
 
       try {
         const token = await getAuthToken()
+        const latestAuth = readRankAuthSnapshot()
+        const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
         const headers = { 'Content-Type': 'application/json' }
         if (token) {
           headers.Authorization = `Bearer ${token}`
         }
-        if (effectiveUserId) {
-          headers['X-Rank-User-Id'] = effectiveUserId
+        if (resolvedUserId) {
+          headers['X-Rank-User-Id'] = resolvedUserId
         }
-        const response = await fetch('/api/rank/user-api-keyring', {
+        if (!token && !resolvedUserId) {
+          throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
+            code: 'missing_user_id',
+          })
+        }
+        const endpoint = resolvedUserId
+          ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
+          : '/api/rank/user-api-keyring'
+        const response = await fetch(endpoint, {
           method: 'DELETE',
           headers,
-          body: JSON.stringify({ id: entryId, userId: effectiveUserId || undefined }),
+          body: JSON.stringify({ id: entryId, userId: resolvedUserId || undefined }),
         })
         const payload = await response.json().catch(() => ({}))
         if (!response.ok) {
