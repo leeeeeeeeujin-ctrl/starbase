@@ -64,6 +64,64 @@ function extractUserIdFromRequest(req) {
   return ''
 }
 
+function buildErrorDetail(error) {
+  if (!error) return ''
+  const parts = []
+  if (error.message) parts.push(String(error.message))
+  if (error.details) parts.push(String(error.details))
+  if (error.hint) parts.push(String(error.hint))
+  const detail = parts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(' ')
+  return detail
+}
+
+function normalizeRouteError(error, fallbackCode) {
+  const detail = buildErrorDetail(error)
+  const combined = detail || (error?.message ? String(error.message).trim() : '')
+  const lowered = combined.toLowerCase()
+
+  if (error?.code === '23503' || lowered.includes('violates foreign key constraint')) {
+    return {
+      error: 'user_not_found',
+      detail:
+        'Supabase에 해당 사용자 ID가 없습니다. 로그인하여 세션을 갱신하거나 `auth.users`에 계정을 생성한 뒤 다시 시도해 주세요.',
+    }
+  }
+
+  if (lowered.includes('violates row-level security policy')) {
+    return {
+      error: 'forbidden',
+      detail: '서비스 롤 권한이 없는 요청입니다. 서버 측에서 service key를 사용해 호출해 주세요.',
+    }
+  }
+
+  const missingColumnMatch = combined.match(/column "?([^"]+)"? does not exist/i)
+  if (missingColumnMatch) {
+    const column = missingColumnMatch[1]
+    return {
+      error: 'schema_mismatch',
+      detail: `Supabase에 필요한 컬럼 \"${column}\" 이 없습니다. docs/supabase-rank-schema.sql의 최신 마이그레이션을 적용해 주세요.`,
+    }
+  }
+
+  const missingTableMatch = combined.match(/relation "?([^"]+)"? does not exist/i)
+  if (missingTableMatch) {
+    const relation = missingTableMatch[1]
+    return {
+      error: 'schema_mismatch',
+      detail: `Supabase에 필요한 테이블 \"${relation}\" 이 없습니다. docs/supabase-rank-schema.sql에 정의된 객체를 생성해 주세요.`,
+    }
+  }
+
+  if (combined) {
+    return { error: fallbackCode, detail: combined }
+  }
+
+  return { error: fallbackCode, detail: '' }
+}
+
 async function resolveUser(req, res) {
   try {
     const supabase = createPagesServerClient({ req, res })
@@ -173,7 +231,8 @@ async function handleList(req, res, user) {
       limit: USER_API_KEYRING_LIMIT,
     })
   } catch (error) {
-    return res.status(400).json({ error: error.message || 'failed_to_load_keyring' })
+    const payload = normalizeRouteError(error, 'failed_to_load_keyring')
+    return res.status(400).json(payload)
   }
 }
 
@@ -402,7 +461,8 @@ async function handleCreate(req, res, user) {
     })
   } catch (error) {
     console.error('[user-api-keyring] Failed to store API key:', error)
-    return res.status(400).json({ error: error.message || 'failed_to_store_api_key' })
+    const payload = normalizeRouteError(error, 'failed_to_store_api_key')
+    return res.status(400).json(payload)
   }
 }
 
@@ -434,7 +494,8 @@ async function handleActivate(req, res, user) {
     })
   } catch (error) {
     console.error('[user-api-keyring] Failed to activate API key:', error)
-    return res.status(400).json({ error: error.message || 'failed_to_activate_api_key' })
+    const payload = normalizeRouteError(error, 'failed_to_activate_api_key')
+    return res.status(400).json(payload)
   }
 }
 
@@ -458,7 +519,8 @@ async function handleDelete(req, res, user) {
     return res.status(200).json({ ok: true })
   } catch (error) {
     console.error('[user-api-keyring] Failed to delete API key:', error)
-    return res.status(400).json({ error: error.message || 'failed_to_delete_api_key' })
+    const payload = normalizeRouteError(error, 'failed_to_delete_api_key')
+    return res.status(400).json(payload)
   }
 }
 

@@ -618,6 +618,12 @@ function resolveKeyringError(code, detail) {
       return 'API 키 목록을 불러오지 못했습니다.'
     case 'missing_user_id':
       return '사용자 정보를 확인하지 못했습니다. 캐릭터를 다시 선택한 뒤 시도해 주세요.'
+    case 'user_not_found':
+      return 'Supabase 계정을 찾을 수 없습니다. 다시 로그인하거나 계정 생성을 확인해 주세요.'
+    case 'forbidden':
+      return '서비스 권한이 없는 요청입니다. 서버에서 service key를 사용하도록 설정해 주세요.'
+    case 'schema_mismatch':
+      return 'Supabase 스키마가 최신 버전과 일치하지 않습니다. 최신 마이그레이션을 적용해 주세요.'
     case 'unauthorized':
       return '로그인 세션이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.'
     default:
