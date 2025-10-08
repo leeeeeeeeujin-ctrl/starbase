@@ -18,6 +18,16 @@ import {
   setGameMatchParticipation,
   setGameMatchSnapshot,
 } from '@/modules/rank/matchDataStore'
+import {
+  AUTH_ACCESS_EXPIRES_AT_KEY,
+  AUTH_ACCESS_TOKEN_KEY,
+  AUTH_REFRESH_TOKEN_KEY,
+  AUTH_USER_ID_KEY,
+  persistRankAuthSession,
+  persistRankAuthUser,
+  readRankAuthSnapshot,
+  RANK_AUTH_STORAGE_EVENT,
+} from '@/lib/rank/rankAuthStorage'
 
 const ROOM_EXIT_DELAY_MS = 5000
 const HOST_CLEANUP_DELAY_MS = ROOM_EXIT_DELAY_MS
@@ -560,6 +570,7 @@ export default function RoomDetailPage() {
   const [leavePending, setLeavePending] = useState(false)
   const [creationFeedback, setCreationFeedback] = useState(null)
   const [deletePending, setDeletePending] = useState(false)
+  const [storedAuthSnapshot, setStoredAuthSnapshot] = useState(() => readRankAuthSnapshot())
 
   const [viewer, setViewer] = useState({
     heroId: '',
@@ -615,6 +626,45 @@ export default function RoomDetailPage() {
     return undefined
   }, [roomId])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const syncStoredAuth = () => {
+      setStoredAuthSnapshot(readRankAuthSnapshot())
+    }
+
+    const handleStorage = (event) => {
+      if (
+        event?.key &&
+        event.key !== AUTH_ACCESS_TOKEN_KEY &&
+        event.key !== AUTH_REFRESH_TOKEN_KEY &&
+        event.key !== AUTH_ACCESS_EXPIRES_AT_KEY &&
+        event.key !== AUTH_USER_ID_KEY
+      ) {
+        return
+      }
+      syncStoredAuth()
+    }
+
+    syncStoredAuth()
+
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener(RANK_AUTH_STORAGE_EVENT, syncStoredAuth)
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener(RANK_AUTH_STORAGE_EVENT, syncStoredAuth)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!storedAuthSnapshot?.userId) return
+    setViewer((prev) => {
+      if (prev?.userId) return prev
+      return { ...prev, userId: storedAuthSnapshot.userId }
+    })
+  }, [storedAuthSnapshot?.userId])
+
   const ratingDelta = useMemo(() => {
     if (!Number.isFinite(room?.hostRating) || !Number.isFinite(viewer.rating)) return null
     return viewer.rating - room.hostRating
@@ -640,16 +690,32 @@ export default function RoomDetailPage() {
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
         if (sessionError) throw sessionError
 
-        let user = sessionData?.session?.user || null
+        const session = sessionData?.session || null
+        if (session) {
+          persistRankAuthSession(session)
+          if (session.user?.id) {
+            persistRankAuthUser(session.user)
+          }
+        }
+
+        let user = session?.user || null
         if (!user) {
           const { data: userData, error: userError } = await supabase.auth.getUser()
           if (userError) throw userError
           user = userData?.user || null
+          if (user?.id) {
+            persistRankAuthUser(user)
+          }
+        }
+
+        if (!user && storedAuthSnapshot?.userId) {
+          user = { id: storedAuthSnapshot.userId }
         }
 
         const viewerOwnerKey = user?.id ? String(user.id) : ''
         if (viewerOwnerKey) {
           persistHeroOwner(viewerOwnerKey)
+          persistRankAuthUser(viewerOwnerKey)
         }
 
         if (viewerOwnerKey && storedOwnerId && storedOwnerId !== viewerOwnerKey) {
@@ -706,7 +772,7 @@ export default function RoomDetailPage() {
             heroId: resolvedHeroId,
             heroName: resolvedHeroId ? resolvedHeroName || '이름 없는 영웅' : '',
             ownerId: resolvedOwnerId || viewerOwnerKey || null,
-            userId: viewerOwnerKey || null,
+            userId: viewerOwnerKey || storedAuthSnapshot?.userId || null,
             role: resolvedHeroId && resolvedHeroId === prev.heroId ? prev.role : '',
           }))
         }
@@ -717,7 +783,8 @@ export default function RoomDetailPage() {
             ...prev,
             heroId: '',
             heroName: '',
-            ownerId: prev.ownerId || null,
+            ownerId: prev.ownerId || storedAuthSnapshot?.userId || null,
+            userId: prev.userId || storedAuthSnapshot?.userId || null,
             role: '',
           }))
         }
@@ -727,7 +794,7 @@ export default function RoomDetailPage() {
         }
       }
     },
-    [],
+    [storedAuthSnapshot?.userId],
   )
 
   useEffect(() => {

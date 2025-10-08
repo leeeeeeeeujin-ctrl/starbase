@@ -14,6 +14,16 @@ import {
   persistHeroSelection,
   readHeroSelection,
 } from '@/lib/heroes/selectedHeroStorage'
+import {
+  AUTH_ACCESS_EXPIRES_AT_KEY,
+  AUTH_ACCESS_TOKEN_KEY,
+  AUTH_REFRESH_TOKEN_KEY,
+  AUTH_USER_ID_KEY,
+  persistRankAuthSession,
+  persistRankAuthUser,
+  readRankAuthSnapshot,
+  RANK_AUTH_STORAGE_EVENT,
+} from '@/lib/rank/rankAuthStorage'
 
 const MODE_TABS = [
   { key: 'rank', label: '랭크' },
@@ -647,6 +657,7 @@ export default function RoomBrowserPage() {
 
   const mountedRef = useRef(true)
 
+  const [storedAuthSnapshot, setStoredAuthSnapshot] = useState(() => readRankAuthSnapshot())
   const [viewerUserId, setViewerUserId] = useState('')
   const [storedHeroId, setStoredHeroId] = useState('')
   const [storedHeroOwnerId, setStoredHeroOwnerId] = useState('')
@@ -704,6 +715,42 @@ export default function RoomBrowserPage() {
       })
     }
   }, [createState.mode, createState.scoreWindow])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const syncStoredAuth = () => {
+      setStoredAuthSnapshot(readRankAuthSnapshot())
+    }
+
+    const handleStorage = (event) => {
+      if (
+        event?.key &&
+        event.key !== AUTH_ACCESS_TOKEN_KEY &&
+        event.key !== AUTH_REFRESH_TOKEN_KEY &&
+        event.key !== AUTH_ACCESS_EXPIRES_AT_KEY &&
+        event.key !== AUTH_USER_ID_KEY
+      ) {
+        return
+      }
+      syncStoredAuth()
+    }
+
+    syncStoredAuth()
+
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener(RANK_AUTH_STORAGE_EVENT, syncStoredAuth)
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener(RANK_AUTH_STORAGE_EVENT, syncStoredAuth)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!storedAuthSnapshot?.userId) return
+    setViewerUserId((prev) => (prev ? prev : storedAuthSnapshot.userId))
+  }, [storedAuthSnapshot?.userId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -777,6 +824,7 @@ export default function RoomBrowserPage() {
   useEffect(() => {
     if (!viewerUserId) return
     persistHeroOwner(viewerUserId)
+    persistRankAuthUser(viewerUserId)
     setStoredHeroOwnerId((prev) => {
       if (prev === viewerUserId) return prev
       return viewerUserId
@@ -799,8 +847,16 @@ export default function RoomBrowserPage() {
     const viewerOwner = viewerUserId ? String(viewerUserId).trim() : ''
     const storedOwner = storedHeroOwnerId ? String(storedHeroOwnerId).trim() : ''
     const summaryOwner = heroSummary?.ownerId ? String(heroSummary.ownerId).trim() : ''
-    return viewerOwner || storedOwner || summaryOwner || ''
-  }, [heroSummary?.ownerId, storedHeroOwnerId, viewerUserId])
+    const storedAuthOwner = storedAuthSnapshot?.userId
+      ? String(storedAuthSnapshot.userId).trim()
+      : ''
+    return viewerOwner || storedOwner || summaryOwner || storedAuthOwner || ''
+  }, [
+    heroSummary?.ownerId,
+    storedAuthSnapshot?.userId,
+    storedHeroOwnerId,
+    viewerUserId,
+  ])
 
   const resolvingViewerHeroRef = useRef(false)
 
@@ -818,11 +874,22 @@ export default function RoomBrowserPage() {
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
         if (sessionError) throw sessionError
 
-        let user = sessionData?.session?.user || null
+        const session = sessionData?.session || null
+        if (session) {
+          persistRankAuthSession(session)
+          if (session.user?.id) {
+            persistRankAuthUser(session.user)
+          }
+        }
+
+        let user = session?.user || null
         if (!user) {
           const { data: userData, error: userError } = await supabase.auth.getUser()
           if (userError) throw userError
           user = userData?.user || null
+          if (user?.id) {
+            persistRankAuthUser(user)
+          }
         }
 
         if (!cancelled && mountedRef.current) {
@@ -1521,13 +1588,22 @@ export default function RoomBrowserPage() {
         throw sessionError
       }
 
-      const token = sessionData?.session?.access_token
-      return token || null
+      const session = sessionData?.session || null
+      if (session) {
+        persistRankAuthSession(session)
+        if (session.user?.id) {
+          persistRankAuthUser(session.user)
+        }
+        const token = session.access_token || session.accessToken || null
+        if (token) {
+          return token
+        }
+      }
     } catch (sessionError) {
       console.warn('[RoomBrowser] Failed to resolve session token:', sessionError)
-      return null
     }
-  }, [])
+    return storedAuthSnapshot?.accessToken || null
+  }, [storedAuthSnapshot?.accessToken])
 
   const loadKeyring = useCallback(async () => {
     setKeyringLoading(true)

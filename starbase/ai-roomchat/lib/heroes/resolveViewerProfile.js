@@ -1,5 +1,6 @@
 import { supabase } from '../supabase'
 import { withTable } from '../supabaseTables'
+import { persistRankAuthUser } from '../rank/rankAuthStorage'
 import {
   clearHeroSelection,
   fetchHeroRecordById,
@@ -68,6 +69,10 @@ export async function resolveViewerProfile(user, explicitHeroId, options = {}) {
       owner_id: null,
       user_id: null,
     }
+  }
+
+  if (user?.id) {
+    persistRankAuthUser(user)
   }
 
   const attempts = []
