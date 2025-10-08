@@ -13,8 +13,9 @@ import {
 import { detectGeminiPreset } from '@/lib/rank/geminiModelsService'
 import { detectOpenAIPreset } from '@/lib/rank/openaiDetection'
 import { deleteUserApiKey, fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys'
+import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv'
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 if (!url || !anonKey) {

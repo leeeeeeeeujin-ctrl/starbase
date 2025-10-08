@@ -498,6 +498,7 @@ export function useStartClientEngine(gameId) {
   )
   const realtimeEnabled = isRealtimeEnabled(realtimeMode)
   const logsRef = useRef([])
+  const currentNodeIdRef = useRef(initialMainGameState.currentNodeId)
   const participantsRef = useRef([])
   const statusMessageRef = useRef('')
   const turnRef = useRef(initialMainGameState.turn)
@@ -562,6 +563,17 @@ export function useStartClientEngine(gameId) {
         patchEngineState({ statusMessage: next })
       } else {
         patchEngineState({ statusMessage: value })
+      }
+    },
+    [patchEngineState],
+  )
+  const setCurrentNodeId = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(currentNodeIdRef.current)
+        patchEngineState({ currentNodeId: next ?? null })
+      } else {
+        patchEngineState({ currentNodeId: value ?? null })
       }
     },
     [patchEngineState],
@@ -762,6 +774,10 @@ export function useStartClientEngine(gameId) {
       ? participants
       : []
   }, [participants])
+
+  useEffect(() => {
+    currentNodeIdRef.current = currentNodeId ?? null
+  }, [currentNodeId])
 
   useEffect(() => {
     statusMessageRef.current =
