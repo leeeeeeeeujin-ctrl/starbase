@@ -207,61 +207,117 @@ function toTrimmedString(value) {
   return trimmed
 }
 
-function toNumeric(value) {
+function parseSlotIndex(value, fallbackIndex = null) {
+  if (value === undefined || value === null) {
+    return fallbackIndex
+  }
   const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : null
+  if (Number.isFinite(numeric)) {
+    return numeric
+  }
+  return fallbackIndex
 }
 
-function filterParticipantsForRoster(participants, rosterSnapshot) {
-  if (!Array.isArray(rosterSnapshot) || rosterSnapshot.length === 0) {
-    return participants
+function buildParticipantsFromRosterSnapshot(roster = []) {
+  if (!Array.isArray(roster) || roster.length === 0) {
+    return []
   }
 
-  const ownerIdSet = new Set()
-  const heroIdSet = new Set()
-  const slotIndexSet = new Set()
+  return roster
+    .map((entry, index) => {
+      if (!entry) return null
 
-  rosterSnapshot.forEach((entry) => {
-    if (!entry) return
-    const ownerId = toTrimmedString(entry.ownerId)
-    if (ownerId) ownerIdSet.add(ownerId)
-    const heroId = toTrimmedString(entry.heroId)
-    if (heroId) heroIdSet.add(heroId)
-    const slotIndex = toNumeric(entry.slotIndex)
-    if (slotIndex !== null) slotIndexSet.add(slotIndex)
-  })
+      const ownerId = toTrimmedString(entry.ownerId)
+      const heroId = toTrimmedString(entry.heroId)
 
-  if (!ownerIdSet.size && !heroIdSet.size && !slotIndexSet.size) {
-    return participants
+      if (!ownerId || !heroId) {
+        return null
+      }
+
+      const slotIndex = parseSlotIndex(entry.slotIndex, index)
+      const heroName =
+        typeof entry.heroName === 'string' && entry.heroName.trim()
+          ? entry.heroName.trim()
+          : ''
+
+      return {
+        id: `roster-${slotIndex != null ? slotIndex : index}-${ownerId}`,
+        owner_id: ownerId,
+        ownerId,
+        role:
+          typeof entry.role === 'string' && entry.role.trim()
+            ? entry.role.trim()
+            : '',
+        status: entry.ready ? 'ready' : 'alive',
+        slot_no: slotIndex,
+        slotIndex,
+        slot_index: slotIndex,
+        score: 0,
+        rating: 0,
+        battles: 0,
+        win_rate: null,
+        hero_id: heroId,
+        match_source: 'room_roster',
+        standin: false,
+        heroes: {
+          id: heroId,
+          name: heroName || (heroId ? `캐릭터 #${heroId}` : '알 수 없는 영웅'),
+          description: '',
+          image_url: '',
+          background_url: '',
+          bgm_url: '',
+          bgm_duration_seconds: null,
+          ability1: '',
+          ability2: '',
+          ability3: '',
+          ability4: '',
+        },
+        joined_at: entry.joinedAt || null,
+        ready: !!entry.ready,
+      }
+    })
+    .filter(Boolean)
+}
+
+function buildSlotLayoutFromRosterSnapshot(roster = []) {
+  if (!Array.isArray(roster) || roster.length === 0) {
+    return []
   }
 
-  const filtered = []
-  const fallback = []
+  return roster
+    .map((entry, index) => {
+      if (!entry) return null
 
-  participants.forEach((participant) => {
-    if (!participant) return
-    const ownerId = toTrimmedString(
-      participant.owner_id ?? participant.ownerId ?? participant.ownerID,
-    )
-    const heroId = toTrimmedString(participant.hero_id ?? participant.heroId)
-    const slotNo = toNumeric(participant.slot_no ?? participant.slotNo)
+      const slotIndex = parseSlotIndex(entry.slotIndex, index)
+      if (slotIndex == null) {
+        return null
+      }
 
-    const ownerMatch = ownerId && ownerIdSet.has(ownerId)
-    const heroMatch = heroId && heroIdSet.has(heroId)
-    const slotMatch = slotNo !== null && slotIndexSet.has(slotNo)
+      const role =
+        typeof entry.role === 'string' && entry.role.trim()
+          ? entry.role.trim()
+          : null
 
-    if (ownerMatch || heroMatch || slotMatch) {
-      filtered.push(participant)
-    } else {
-      fallback.push(participant)
-    }
-  })
-
-  if (filtered.length) {
-    return filtered
-  }
-
-  return []
+      return {
+        id: entry.slotId || null,
+        slot_index: slotIndex,
+        slotIndex,
+        role,
+        hero_id: toTrimmedString(entry.heroId) || null,
+        hero_owner_id: toTrimmedString(entry.ownerId) || null,
+        active: true,
+        ready: !!entry.ready,
+        order: index,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.slot_index === b.slot_index) {
+        return a.order - b.order
+      }
+      return a.slot_index - b.slot_index
+    })
+    .map(({ order, ...rest }) => rest)
 }
 
 export async function loadGameBundle(
@@ -324,25 +380,12 @@ export async function loadGameBundle(
     const normalizedStageRows = normalizeMatchRosterParticipants(stagedRosterRows)
     stagedSlotLayout = normalizeMatchRosterSlotLayout(stagedRosterRows)
     participants = normalizeParticipants(normalizedStageRows)
+  } else if (Array.isArray(rosterSnapshot) && rosterSnapshot.length) {
+    const rosterParticipants = buildParticipantsFromRosterSnapshot(rosterSnapshot)
+    participants = normalizeParticipants(rosterParticipants)
+    stagedSlotLayout = buildSlotLayoutFromRosterSnapshot(rosterSnapshot)
   } else {
-    const {
-      data: participantRows,
-      error: participantError,
-    } = await withTable(supabaseClient, 'rank_participants', (table) =>
-      supabaseClient
-        .from(table)
-        .select(
-          'id, owner_id, role, status, slot_no, hero_id, score, rating, battles, win_rate, match_source, standin, heroes:hero_id(id,name,description,image_url,background_url,bgm_url,bgm_duration_seconds,ability1,ability2,ability3,ability4)'
-        )
-        .eq('game_id', gameId),
-    )
-
-    if (participantError) throw participantError
-
-    participants = filterParticipantsForRoster(
-      normalizeParticipants(participantRows || []),
-      rosterSnapshot,
-    )
+    participants = []
   }
 
   let slotLayout = []
