@@ -330,13 +330,20 @@ async function detectProvider(apiKey) {
     }
   }
 
+  const fallbackDetail =
+    openaiResult?.detail ||
+    geminiResult?.detail ||
+    'API 키 제공자를 확인하지 못했지만 입력한 키를 저장합니다.'
+
   return {
-    ok: false,
-    error: openaiResult?.errorCode || geminiResult?.errorCode || 'unrecognized_api_key',
-    detail:
-      openaiResult?.detail ||
-      geminiResult?.detail ||
-      'API 키 제공자를 확인하지 못했습니다.',
+    ok: true,
+    provider: 'unknown',
+    modelLabel: null,
+    apiVersion: null,
+    geminiMode: null,
+    geminiModel: null,
+    detail: fallbackDetail,
+    fallback: true,
   }
 }
 

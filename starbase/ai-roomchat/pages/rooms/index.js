@@ -1749,11 +1749,15 @@ export default function RoomBrowserPage() {
           ? 'Gemini'
           : payload?.detection?.provider === 'openai'
           ? 'OpenAI'
-          : '새'
+          : '사용자 지정'
       const modelLabel = payload?.detection?.modelLabel
+      const fallbackDetail =
+        payload?.detection?.fallback && payload?.detection?.detail
+          ? ` ${payload.detection.detail}`
+          : ''
       const statusMessage = `${providerLabel} 키를 등록했습니다.${
         modelLabel ? ` (${modelLabel})` : ''
-      }`
+      }${fallbackDetail}`
       setKeyringStatus(statusMessage)
       setKeyringInput('')
       setKeyringActivate(true)
