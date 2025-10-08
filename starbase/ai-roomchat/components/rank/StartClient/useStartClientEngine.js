@@ -1109,6 +1109,54 @@ export function useStartClientEngine(gameId) {
     }
   }, [])
 
+  const participantsStatus = useMemo(
+    () =>
+      participants.map((participant) => ({
+        role: participant.role,
+        status: participant.status,
+      })),
+    [participants],
+  )
+  const ownerDisplayMap = useMemo(
+    () => createOwnerDisplayMap(participants),
+    [participants],
+  )
+  const ownerParticipantMap = useMemo(
+    () => buildOwnerParticipantMap(participants),
+    [participants],
+  )
+  const sharedTurnRoster = useMemo(() => {
+    const roster = []
+    ownerParticipantMap.forEach((participant, ownerId) => {
+      roster.push({
+        ownerId,
+        participant,
+        hero: participant?.hero || null,
+        heroId:
+          participant?.hero?.id ??
+          participant?.hero_id ??
+          participant?.heroId ??
+          null,
+        role: participant?.role || null,
+        status: participant?.status || null,
+      })
+    })
+    return roster
+  }, [ownerParticipantMap])
+  const ownerRosterSnapshot = useMemo(
+    () => buildOwnerRosterSnapshot(participants),
+    [participants],
+  )
+  const managedOwnerIds = useMemo(() => {
+    const owners = collectUniqueOwnerIds(participants)
+    const viewerKey = viewerId ? String(viewerId).trim() : ''
+    if (!viewerKey) {
+      return owners
+    }
+    const filtered = owners.filter((ownerId) => ownerId !== viewerKey)
+    return [viewerKey, ...filtered]
+  }, [participants, viewerId])
+
   useEffect(() => {
     if (!gameId || preflight) return
     updateSessionRecord({
@@ -1321,54 +1369,6 @@ export function useStartClientEngine(gameId) {
     },
     [resolveHeroAssets],
   )
-  const participantsStatus = useMemo(
-    () =>
-      participants.map((participant) => ({
-        role: participant.role,
-        status: participant.status,
-      })),
-    [participants],
-  )
-  const ownerDisplayMap = useMemo(
-    () => createOwnerDisplayMap(participants),
-    [participants],
-  )
-  const ownerParticipantMap = useMemo(
-    () => buildOwnerParticipantMap(participants),
-    [participants],
-  )
-  const sharedTurnRoster = useMemo(() => {
-    const roster = []
-    ownerParticipantMap.forEach((participant, ownerId) => {
-      roster.push({
-        ownerId,
-        participant,
-        hero: participant?.hero || null,
-        heroId:
-          participant?.hero?.id ??
-          participant?.hero_id ??
-          participant?.heroId ??
-          null,
-        role: participant?.role || null,
-        status: participant?.status || null,
-      })
-    })
-    return roster
-  }, [ownerParticipantMap])
-  const ownerRosterSnapshot = useMemo(
-    () => buildOwnerRosterSnapshot(participants),
-    [participants],
-  )
-  const managedOwnerIds = useMemo(() => {
-    const owners = collectUniqueOwnerIds(participants)
-    const viewerKey = viewerId ? String(viewerId).trim() : ''
-    if (!viewerKey) {
-      return owners
-    }
-    const filtered = owners.filter((ownerId) => ownerId !== viewerKey)
-    return [viewerKey, ...filtered]
-  }, [participants, viewerId])
-
   const recordTimelineEvents = useCallback(
     (events, { turnNumber: overrideTurn, logEntries = null, buildLogs = true } = {}) => {
       if (!Array.isArray(events) || events.length === 0) return
