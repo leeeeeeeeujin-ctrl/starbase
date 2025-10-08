@@ -7,11 +7,12 @@ import {
   countUserApiKeyringEntries,
   deleteUserApiKeyringEntry,
   fetchUserApiKeyring,
+  fetchUserApiKeyringEntry,
   insertUserApiKeyringEntry,
 } from '@/lib/rank/userApiKeyring'
 import { detectGeminiPreset } from '@/lib/rank/geminiModelsService'
 import { detectOpenAIPreset } from '@/lib/rank/openaiDetection'
-import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys'
+import { deleteUserApiKey, fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -491,7 +492,41 @@ async function handleActivate(req, res, user) {
     }
   }
 
-  const { id } = payload || {}
+  const { id, action } = payload || {}
+  if (action === 'deactivate') {
+    if (!id) {
+      return res.status(400).json({ error: 'missing_entry_id' })
+    }
+
+    try {
+      const [entry, active] = await Promise.all([
+        fetchUserApiKeyringEntry({ userId: user.id, entryId: id, includeSecret: true }),
+        fetchUserApiKey(user.id).catch(() => null),
+      ])
+
+      if (!entry) {
+        return res.status(400).json({ error: 'api_key_entry_not_found' })
+      }
+
+      const activeKey = active?.apiKey || ''
+      if (!activeKey || !entry.apiKey || entry.apiKey !== activeKey) {
+        return res.status(400).json({ error: 'api_key_entry_not_active' })
+      }
+
+      await deleteUserApiKey({ userId: user.id })
+
+      return res.status(200).json({
+        ok: true,
+        entry: normalizeEntryResponse(entry, { isActive: false }),
+        deactivated: true,
+      })
+    } catch (error) {
+      console.error('[user-api-keyring] Failed to deactivate API key:', error)
+      const payload = normalizeRouteError(error, 'failed_to_deactivate_api_key')
+      return res.status(400).json(payload)
+    }
+  }
+
   if (!id) {
     return res.status(400).json({ error: 'missing_entry_id' })
   }
@@ -530,7 +565,19 @@ async function handleDelete(req, res, user) {
   }
 
   try {
+    const [entry, active] = await Promise.all([
+      fetchUserApiKeyringEntry({ userId: user.id, entryId: id, includeSecret: true }).catch(() => null),
+      fetchUserApiKey(user.id).catch(() => null),
+    ])
+
     await deleteUserApiKeyringEntry({ userId: user.id, entryId: id })
+
+    if (entry?.apiKey && active?.apiKey && entry.apiKey === active.apiKey) {
+      await deleteUserApiKey({ userId: user.id }).catch((error) => {
+        console.warn('[user-api-keyring] Failed to clear active key after delete:', error)
+      })
+    }
+
     return res.status(200).json({ ok: true })
   } catch (error) {
     console.error('[user-api-keyring] Failed to delete API key:', error)

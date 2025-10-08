@@ -317,6 +317,14 @@ const styles = {
         color: '#bfdbfe',
       }
     }
+    if (variant === 'secondary') {
+      return {
+        ...base,
+        border: '1px solid rgba(148, 163, 184, 0.35)',
+        background: disabled ? 'rgba(30, 41, 59, 0.5)' : 'rgba(71, 85, 105, 0.35)',
+        color: '#cbd5f5',
+      }
+    }
     return {
       ...base,
       border: '1px solid rgba(248, 113, 113, 0.4)',
@@ -612,6 +620,8 @@ function resolveKeyringError(code, detail) {
       return 'API 키를 저장하지 못했습니다.'
     case 'failed_to_activate_api_key':
       return 'API 키를 활성화하지 못했습니다.'
+    case 'failed_to_deactivate_api_key':
+      return 'API 키 사용을 해제하지 못했습니다.'
     case 'failed_to_delete_api_key':
       return 'API 키를 삭제하지 못했습니다.'
     case 'failed_to_load_keyring':
@@ -626,6 +636,10 @@ function resolveKeyringError(code, detail) {
       return 'Supabase 스키마가 최신 버전과 일치하지 않습니다. 최신 마이그레이션을 적용해 주세요.'
     case 'unauthorized':
       return '로그인 세션이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.'
+    case 'api_key_entry_not_active':
+      return '이미 사용 중이 아닌 키입니다. 새로고침 후 다시 확인해 주세요.'
+    case 'api_key_entry_not_found':
+      return '선택한 API 키를 찾을 수 없습니다. 목록을 새로고침해 주세요.'
     default:
       return 'API 키 요청을 처리하지 못했습니다.'
   }
@@ -1836,6 +1850,64 @@ export default function RoomBrowserPage() {
     [effectiveUserId, getAuthToken, loadKeyring],
   )
 
+  const handleKeyringDeactivate = useCallback(
+    async (entryId) => {
+      if (!entryId) return
+
+      setKeyringAction({ id: entryId, type: 'deactivate' })
+      setKeyringError('')
+      setKeyringStatus('')
+
+      try {
+        const token = await getAuthToken()
+        const latestAuth = readRankAuthSnapshot()
+        const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
+        const headers = { 'Content-Type': 'application/json' }
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        }
+        if (resolvedUserId) {
+          headers['X-Rank-User-Id'] = resolvedUserId
+        }
+        if (!token && !resolvedUserId) {
+          throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
+            code: 'missing_user_id',
+          })
+        }
+        const endpoint = resolvedUserId
+          ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
+          : '/api/rank/user-api-keyring'
+        const response = await fetch(endpoint, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            id: entryId,
+            action: 'deactivate',
+            userId: resolvedUserId || undefined,
+          }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          const message = resolveKeyringError(payload?.error, payload?.detail)
+          const error = new Error(message)
+          error.code = payload?.error
+          throw error
+        }
+
+        setKeyringStatus('선택한 API 키 사용을 해제했습니다.')
+        await loadKeyring()
+      } catch (deactivateError) {
+        console.error('[RoomBrowser] Failed to deactivate API key:', deactivateError)
+        setKeyringError(
+          deactivateError?.message || 'API 키 사용을 해제하지 못했습니다.',
+        )
+      } finally {
+        setKeyringAction(null)
+      }
+    },
+    [effectiveUserId, getAuthToken, loadKeyring],
+  )
+
   const handleKeyringDelete = useCallback(
     async (entryId) => {
       if (!entryId) return
@@ -2284,15 +2356,23 @@ export default function RoomBrowserPage() {
                   const actionInFlight = Boolean(keyringAction)
                   const isCurrentAction = keyringAction?.id === entry.id
                   const isDeleteAction = isCurrentAction && keyringAction?.type === 'delete'
+                  const isDeactivateAction =
+                    isCurrentAction && keyringAction?.type === 'deactivate'
                   const disableActivate =
                     entry.isActive || actionInFlight || keyringLoading || keyringBusy
-                  const disableDelete =
-                    entry.isActive || actionInFlight || keyringLoading || keyringBusy
+                  const disableDeactivate =
+                    !entry.isActive || actionInFlight || keyringLoading || keyringBusy
+                  const disableDelete = actionInFlight || keyringLoading || keyringBusy
                   const activateLabel = entry.isActive
                     ? '사용 중'
                     : isCurrentAction && keyringAction?.type === 'activate'
                     ? '처리 중...'
                     : '활성화'
+                  const deactivateLabel = entry.isActive
+                    ? isDeactivateAction
+                      ? '해제 중...'
+                      : '사용 해제'
+                    : '해제 불가'
                   const deleteLabel = isDeleteAction ? '삭제 중...' : '삭제'
 
                   return (
@@ -2322,6 +2402,14 @@ export default function RoomBrowserPage() {
                           onClick={() => handleKeyringActivate(entry.id)}
                         >
                           {activateLabel}
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.keyManagerActionButton('secondary', disableDeactivate)}
+                          disabled={disableDeactivate}
+                          onClick={() => handleKeyringDeactivate(entry.id)}
+                        >
+                          {deactivateLabel}
                         </button>
                         <button
                           type="button"

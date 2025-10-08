@@ -91,3 +91,17 @@ export async function fetchUserApiKey(userId) {
   }
 }
 
+export async function deleteUserApiKey({ userId }) {
+  if (!userId) {
+    throw new Error('userId is required')
+  }
+
+  const { error } = await supabaseAdmin.from(TABLE).delete().eq('user_id', userId)
+
+  if (error) {
+    throw error
+  }
+
+  return true
+}
+
