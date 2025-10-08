@@ -455,6 +455,39 @@ const styles = {
     flexWrap: 'wrap',
     gap: 12,
   },
+  tabBar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: -4,
+    padding: '0 2px',
+  },
+  tabButton: (active) => ({
+    padding: '10px 18px',
+    borderRadius: 12,
+    border: active
+      ? '1px solid rgba(59, 130, 246, 0.55)'
+      : '1px solid rgba(148, 163, 184, 0.25)',
+    background: active ? 'rgba(30, 64, 175, 0.45)' : 'rgba(15, 23, 42, 0.6)',
+    color: active ? '#e0f2fe' : '#cbd5f5',
+    fontWeight: active ? 700 : 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  }),
+  tabButtonLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+  },
+  tabBadge: {
+    padding: '2px 8px',
+    borderRadius: 999,
+    background: 'rgba(59, 130, 246, 0.28)',
+    color: '#bfdbfe',
+    fontSize: 12,
+    fontWeight: 600,
+  },
   primaryButton: (disabled) => ({
     padding: '10px 18px',
     borderRadius: 12,
@@ -531,9 +564,81 @@ const styles = {
     display: 'grid',
     gap: 18,
   },
+  overviewSection: {
+    background: 'rgba(15, 23, 42, 0.78)',
+    borderRadius: 22,
+    border: '1px solid rgba(148, 163, 184, 0.28)',
+    padding: '24px 26px',
+    display: 'grid',
+    gap: 18,
+  },
+  overviewGrid: {
+    display: 'grid',
+    gap: 14,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+  },
+  overviewCard: {
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.22)',
+    background: 'rgba(15, 23, 42, 0.55)',
+    padding: '16px 18px',
+    display: 'grid',
+    gap: 8,
+  },
+  overviewLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  overviewValue: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#e2e8f0',
+  },
+  overviewSubtle: {
+    fontSize: 12,
+    color: '#a5b4fc',
+  },
+  roleList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'grid',
+    gap: 10,
+  },
+  roleItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    padding: '12px 14px',
+    borderRadius: 14,
+    background: 'rgba(30, 41, 59, 0.55)',
+    border: '1px solid rgba(148, 163, 184, 0.22)',
+  },
+  roleName: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#cbd5f5',
+  },
+  roleCount: {
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  overviewEmpty: {
+    textAlign: 'center',
+    padding: '36px 20px',
+    color: '#94a3b8',
+    fontSize: 13,
+  },
   sectionTitle: {
     margin: 0,
     fontSize: 18,
+    fontWeight: 700,
+  },
+  subSectionTitle: {
+    margin: 0,
+    fontSize: 15,
     fontWeight: 700,
   },
   emptyState: {
@@ -589,6 +694,11 @@ const styles = {
     fontWeight: 600,
   },
 }
+
+const ROOM_DETAIL_TABS = [
+  { id: 'overview', label: '방 개요' },
+  { id: 'participants', label: '인원' },
+]
 
 const FLEXIBLE_ROLE_KEYS = new Set([
   '',
@@ -692,6 +802,7 @@ export default function RoomDetailPage() {
   const [leavePending, setLeavePending] = useState(false)
   const [creationFeedback, setCreationFeedback] = useState(null)
   const [deletePending, setDeletePending] = useState(false)
+  const [activeTab, setActiveTab] = useState('participants')
   const [storedAuthSnapshot, setStoredAuthSnapshot] = useState(() => createEmptyRankAuthSnapshot())
 
   const [keyringSnapshot, setKeyringSnapshot] = useState(() => createEmptyRankKeyringSnapshot())
@@ -719,6 +830,49 @@ export default function RoomDetailPage() {
     const filled = slots.filter((slot) => !!slot.occupantOwnerId).length
     return { total, filled }
   }, [slots])
+
+  const readyCount = useMemo(() => {
+    return slots.filter((slot) => slot.occupantOwnerId && slot.occupantReady).length
+  }, [slots])
+
+  const roleSummaries = useMemo(() => {
+    if (!slots.length) return []
+    const summaries = []
+    const indexMap = new Map()
+    slots.forEach((slot) => {
+      const roleLabel = slot.role || '역할 미지정'
+      if (!indexMap.has(roleLabel)) {
+        indexMap.set(roleLabel, summaries.length)
+        summaries.push({ role: roleLabel, filled: 0, total: 0 })
+      }
+      const entry = summaries[indexMap.get(roleLabel)]
+      entry.total += 1
+      if (slot.occupantOwnerId) {
+        entry.filled += 1
+      }
+    })
+    return summaries
+  }, [slots])
+
+  const hostSlot = useMemo(() => {
+    if (!room?.ownerId) return null
+    return (
+      slots.find((slot) => slot.occupantOwnerId && slot.occupantOwnerId === room.ownerId) || null
+    )
+  }, [room?.ownerId, slots])
+
+  const hostDisplayName = useMemo(() => {
+    if (!hostSlot || !hostSlot.occupantOwnerId) return '자리 비어 있음'
+    const hideIdentity =
+      room?.blindMode && hostSlot.occupantOwnerId && hostSlot.occupantOwnerId !== viewer.ownerId
+    if (hideIdentity) return '비공개 참가자'
+    return hostSlot.occupantHeroName || '이름 없는 영웅'
+  }, [hostSlot, room?.blindMode, viewer.ownerId])
+
+  const hostReadyLabel = useMemo(() => {
+    if (!hostSlot || !hostSlot.occupantOwnerId) return '방장이 아직 착석하지 않았습니다.'
+    return hostSlot.occupantReady ? '준비 완료' : '준비 대기'
+  }, [hostSlot])
 
   const scoreWindowLabel = useMemo(() => {
     if (!room) return '정보 없음'
@@ -1734,6 +1888,123 @@ export default function RoomDetailPage() {
     return '난전 규칙이 활성화되어 있어 빈 슬롯에 재충원이 가능합니다.'
   }, [room?.dropInEnabled, room?.status])
 
+  const overviewPanel = (
+    <section style={styles.overviewSection}>
+      <h2 style={styles.sectionTitle}>방 개요</h2>
+      <div style={styles.overviewGrid}>
+        <div style={styles.overviewCard}>
+          <span style={styles.overviewLabel}>참여 인원</span>
+          <span style={styles.overviewValue}>
+            {occupancy.filled}/{occupancy.total}
+          </span>
+          <span style={styles.overviewSubtle}>준비 완료 {readyCount}명</span>
+        </div>
+        <div style={styles.overviewCard}>
+          <span style={styles.overviewLabel}>방장</span>
+          <span style={styles.overviewValue}>{hostDisplayName}</span>
+          <span style={styles.overviewSubtle}>{hostReadyLabel}</span>
+        </div>
+        <div style={styles.overviewCard}>
+          <span style={styles.overviewLabel}>점수 범위</span>
+          <span style={styles.overviewValue}>{scoreWindowLabel}</span>
+          {hostLimitLabel ? <span style={styles.overviewSubtle}>{hostLimitLabel}</span> : null}
+        </div>
+        <div style={styles.overviewCard}>
+          <span style={styles.overviewLabel}>난입 규칙</span>
+          <span style={styles.overviewValue}>{room?.dropInEnabled ? '허용' : '불가'}</span>
+          <span style={styles.overviewSubtle}>
+            {room?.dropInEnabled
+              ? '전투 중 탈락한 역할군에는 대기 참가자가 난입할 수 있습니다.'
+              : '게임 중에는 새로운 참가자가 합류할 수 없습니다.'}
+          </span>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <h3 style={styles.subSectionTitle}>역할별 배치</h3>
+        {roleSummaries.length > 0 ? (
+          <ul style={styles.roleList}>
+            {roleSummaries.map((summary) => (
+              <li key={summary.role} style={styles.roleItem}>
+                <span style={styles.roleName}>{summary.role}</span>
+                <span style={styles.roleCount}>
+                  {summary.filled}/{summary.total}명
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div style={styles.overviewEmpty}>활성화된 슬롯이 없습니다.</div>
+        )}
+      </div>
+    </section>
+  )
+
+  const participantsPanel = (
+    <section style={styles.slotSection}>
+      <h2 style={styles.sectionTitle}>슬롯 현황</h2>
+      {slots.length === 0 ? (
+        <div style={styles.emptyState}>활성화된 슬롯이 없습니다.</div>
+      ) : (
+        <div style={styles.slotGrid}>
+          {slots.map((slot) => {
+            const isViewerSlot = viewer.ownerId && slot.occupantOwnerId === viewer.ownerId
+            const isHostSlot = room?.ownerId && slot.occupantOwnerId === room.ownerId
+            const hideIdentity =
+              room?.blindMode &&
+              slot.occupantOwnerId &&
+              slot.occupantOwnerId !== viewer.ownerId
+            const occupantLabel = hideIdentity ? '비공개 참가자' : slot.occupantHeroName
+            return (
+              <div key={slot.id || `${slot.slotIndex}`} style={styles.slotCard(isViewerSlot)}>
+                <div style={styles.slotHeader}>
+                  <span style={styles.slotRole}>{slot.role}</span>
+                  <span style={styles.slotIndex}>#{slot.slotIndex + 1}</span>
+                </div>
+                <p style={styles.slotBody}>
+                  {slot.occupantOwnerId ? (
+                    <>
+                      <strong>{occupantLabel}</strong>
+                      <br />
+                      {slot.occupantReady ? '준비 완료' : '준비 대기'}
+                    </>
+                  ) : (
+                    <>비어 있는 자리</>
+                  )}
+                </p>
+                <div style={styles.slotTags}>
+                  {isViewerSlot ? <span style={styles.slotTag}>내 자리</span> : null}
+                  {isHostSlot ? <span style={styles.slotTag}>방장</span> : null}
+                  {slot.occupantOwnerId && !slot.occupantReady ? (
+                    <span style={styles.slotTag}>준비 중</span>
+                  ) : null}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+
+  let panelContent
+  if (loading) {
+    panelContent = <div style={styles.loadingState}>방 정보를 불러오는 중입니다...</div>
+  } else if (error) {
+    panelContent = (
+      <section style={styles.errorCard}>
+        <h2 style={styles.errorTitle}>방 정보를 불러오지 못했습니다.</h2>
+        <p style={styles.errorText}>{error}</p>
+        <button type="button" onClick={handleRefresh} style={styles.retryButton}>
+          다시 시도
+        </button>
+      </section>
+    )
+  } else if (activeTab === 'overview') {
+    panelContent = overviewPanel
+  } else {
+    panelContent = participantsPanel
+  }
+
   const joinDisabled =
     joinPending ||
     !viewer.heroId ||
@@ -1990,62 +2261,37 @@ export default function RoomDetailPage() {
           {actionError ? <p style={styles.infoText}>{actionError}</p> : null}
         </header>
 
-        {loading ? (
-          <div style={styles.loadingState}>방 정보를 불러오는 중입니다...</div>
-        ) : error ? (
-          <section style={styles.errorCard}>
-            <h2 style={styles.errorTitle}>방 정보를 불러오지 못했습니다.</h2>
-            <p style={styles.errorText}>{error}</p>
-            <button type="button" onClick={handleRefresh} style={styles.retryButton}>
-              다시 시도
-            </button>
-          </section>
-        ) : (
-          <section style={styles.slotSection}>
-            <h2 style={styles.sectionTitle}>슬롯 현황</h2>
-            {slots.length === 0 ? (
-              <div style={styles.emptyState}>활성화된 슬롯이 없습니다.</div>
-            ) : (
-              <div style={styles.slotGrid}>
-                {slots.map((slot) => {
-                  const isViewerSlot = viewer.ownerId && slot.occupantOwnerId === viewer.ownerId
-                  const isHostSlot = room?.ownerId && slot.occupantOwnerId === room.ownerId
-                  const hideIdentity =
-                    room?.blindMode &&
-                    slot.occupantOwnerId &&
-                    slot.occupantOwnerId !== viewer.ownerId
-                  const occupantLabel = hideIdentity ? '비공개 참가자' : slot.occupantHeroName
-                  return (
-                    <div key={slot.id || `${slot.slotIndex}`} style={styles.slotCard(isViewerSlot)}>
-                      <div style={styles.slotHeader}>
-                        <span style={styles.slotRole}>{slot.role}</span>
-                        <span style={styles.slotIndex}>#{slot.slotIndex + 1}</span>
-                      </div>
-                      <p style={styles.slotBody}>
-                        {slot.occupantOwnerId ? (
-                          <>
-                            <strong>{occupantLabel}</strong>
-                            <br />
-                            {slot.occupantReady ? '준비 완료' : '준비 대기'}
-                          </>
-                        ) : (
-                          <>비어 있는 자리</>
-                        )}
-                      </p>
-                      <div style={styles.slotTags}>
-                        {isViewerSlot ? <span style={styles.slotTag}>내 자리</span> : null}
-                        {isHostSlot ? <span style={styles.slotTag}>방장</span> : null}
-                        {slot.occupantOwnerId && !slot.occupantReady ? (
-                          <span style={styles.slotTag}>준비 중</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </section>
-        )}
+        <nav style={styles.tabBar}>
+          {ROOM_DETAIL_TABS.map((tab) => {
+            const active = activeTab === tab.id
+            const handleClick = () => {
+              if (!active) {
+                setActiveTab(tab.id)
+              }
+            }
+            const badge =
+              tab.id === 'participants' ? (
+                <span style={styles.tabBadge}>
+                  {occupancy.filled}/{occupancy.total}
+                </span>
+              ) : null
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={handleClick}
+                style={styles.tabButton(active)}
+              >
+                <span style={styles.tabButtonLabel}>
+                  {tab.label}
+                  {badge}
+                </span>
+              </button>
+            )
+          })}
+        </nav>
+
+        {panelContent}
       </div>
     </div>
   )
