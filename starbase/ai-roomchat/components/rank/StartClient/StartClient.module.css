@@ -1,503 +1,188 @@
-.root {
+.page {
   min-height: 100vh;
-  width: 100%;
+  padding: 48px 16px 80px;
+  box-sizing: border-box;
   display: flex;
-  flex-direction: column;
-  background-color: #0f172a;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  color: #e2e8f0;
+  justify-content: center;
+  background: radial-gradient(circle at top, #101a33 0%, #040712 55%, #02040a 100%);
+  color: #f8fafc;
 }
 
 .shell {
-  flex: 1;
+  width: min(960px, 100%);
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 32px 24px 40px;
-  max-width: 1080px;
-  width: 100%;
-  margin: 0 auto;
+  padding: 32px 30px 40px;
+  background: rgba(15, 23, 42, 0.76);
+  border-radius: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
   box-sizing: border-box;
+}
+
+.status {
+  margin: 0;
+  font-size: 16px;
+  color: rgba(226, 232, 240, 0.92);
 }
 
 .header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
   gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.headerText {
+  display: grid;
+  gap: 6px;
 }
 
 .title {
   margin: 0;
   font-size: 28px;
-  font-weight: 700;
-  color: #f8fafc;
+  font-weight: 800;
 }
 
 .subtitle {
-  margin: 4px 0 0;
-  font-size: 14px;
-  color: rgba(226, 232, 240, 0.72);
-}
-
-.exitButton {
-  padding: 10px 18px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.7);
-  color: #e2e8f0;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-.exitButton:hover,
-.exitButton:focus-visible {
-  background: rgba(37, 99, 235, 0.6);
-  border-color: rgba(96, 165, 250, 0.8);
-  outline: none;
-}
-
-.statusMessage {
-  margin: 0;
-  padding: 14px 18px;
-  border-radius: 16px;
-  background: rgba(96, 165, 250, 0.16);
-  border: 1px solid rgba(96, 165, 250, 0.4);
-  font-weight: 600;
-}
-
-.manualConsoleSection {
-  border-radius: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.78);
-  padding: 20px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.manualConsoleHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.manualConsoleHeader h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  color: #f8fafc;
-}
-
-.manualConsoleDescription {
-  margin: 6px 0 0;
-  font-size: 13px;
-  color: rgba(226, 232, 240, 0.76);
-  line-height: 1.5;
-}
-
-.manualConsoleToggle {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(96, 165, 250, 0.5);
-  background: rgba(37, 99, 235, 0.28);
-  color: #f8fafc;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-.manualConsoleToggle:hover,
-.manualConsoleToggle:focus-visible {
-  background: rgba(59, 130, 246, 0.4);
-  border-color: rgba(147, 197, 253, 0.8);
-  outline: none;
-}
-
-.manualConsoleLoader {
   margin: 0;
   font-size: 14px;
-  color: rgba(226, 232, 240, 0.8);
+  color: rgba(148, 163, 184, 0.86);
 }
 
-.errorBox,
-.warningBox {
-  padding: 18px 20px;
-  border-radius: 18px;
-  border: 1px solid rgba(248, 113, 113, 0.4);
-  background: rgba(239, 68, 68, 0.14);
-  color: #fecaca;
+.actionsRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.warningBox {
-  border-color: rgba(250, 204, 21, 0.45);
-  background: rgba(250, 204, 21, 0.14);
-  color: #facc15;
-}
-
-.errorBox h2,
-.warningBox h2 {
-  margin: 0 0 8px;
+.sectionTitle {
+  margin: 0;
   font-size: 18px;
   font-weight: 700;
 }
 
-.errorBox p,
-.warningBox ul {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.promptPanel,
-.participantPanel {
-  border-radius: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.7);
-  padding: 20px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.panelHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.panelHeader h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  color: #f8fafc;
-}
-
-.panelMeta {
-  font-size: 13px;
-  color: rgba(148, 163, 184, 0.9);
-}
-
-.promptList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.metaSection,
+.rosterSection,
+.placeholderSection {
   display: grid;
   gap: 14px;
 }
 
-.promptCard {
-  border-radius: 20px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(15, 23, 42, 0.85);
-  padding: 18px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.promptCardHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  font-size: 14px;
-  color: rgba(226, 232, 240, 0.85);
-}
-
-.promptSlot {
-  font-weight: 700;
-  color: #93c5fd;
-}
-
-.promptMeta {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.promptStart {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(34, 197, 94, 0.2);
-  color: #bbf7d0;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.promptTemplate {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: 'Pretendard', 'Noto Sans KR', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 14px;
-  line-height: 1.6;
-  color: #e2e8f0;
-  background: rgba(15, 23, 42, 0.6);
-  border-radius: 14px;
-  padding: 12px 14px;
-}
-
-.promptSections {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.bridgeList {
+.metaList,
+.rosterList {
+  list-style: none;
   margin: 0;
   padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  gap: 10px;
 }
 
-.bridgeItem {
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.55);
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.bridgeHeader {
+.metaItem {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.bridgeDestination {
-  font-weight: 600;
-  color: #fbbf24;
-}
-
-.bridgeBadges {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.bridgeBadge {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.28);
-  color: rgba(226, 232, 240, 0.86);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.bridgeBadgeFallback {
-  background: rgba(59, 130, 246, 0.28);
-  color: #bfdbfe;
-}
-
-.bridgeConditions {
-  margin: 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-  color: rgba(226, 232, 240, 0.85);
-}
-
-.bridgeMeta {
-  font-size: 12px;
-  color: rgba(148, 163, 184, 0.85);
-}
-
-.bridgeEmpty {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px dashed rgba(148, 163, 184, 0.3);
-  background: rgba(15, 23, 42, 0.38);
-  font-size: 12px;
-  color: rgba(226, 232, 240, 0.78);
-}
-
-.promptSectionLabel {
-  margin: 0 0 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #93c5fd;
-}
-
-.promptRules {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: 'Pretendard', 'Noto Sans KR', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #cbd5f5;
-  background: rgba(15, 23, 42, 0.52);
-  border-radius: 12px;
-  padding: 10px 12px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-}
-
-.promptRawToggle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: rgba(148, 163, 184, 0.9);
-}
-
-.promptRawToggle > summary {
-  cursor: pointer;
-  list-style: none;
-  outline: none;
-  font-weight: 600;
-}
-
-.promptRawToggle > summary::-webkit-details-marker {
-  display: none;
-}
-
-.promptRawToggle > summary::after {
-  content: ' ▾';
-  font-size: 11px;
-}
-
-.promptRawToggle[open] > summary::after {
-  content: ' ▴';
-}
-
-.promptRaw {
-  margin: 8px 0 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: 'Pretendard', 'Noto Sans KR', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 13px;
-  line-height: 1.6;
-  color: rgba(226, 232, 240, 0.88);
-  background: rgba(15, 23, 42, 0.4);
-  border-radius: 12px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(148, 163, 184, 0.22);
 }
 
-.promptFooter {
-  display: flex;
-  gap: 12px;
-  font-size: 12px;
-  color: rgba(148, 163, 184, 0.9);
+.metaLabel {
+  font-size: 13px;
+  color: rgba(203, 213, 225, 0.9);
 }
 
-.participantStrip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+.metaValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(190, 242, 255, 0.95);
 }
 
-.participantCard {
-  border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(15, 23, 42, 0.85);
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.participantHeader {
+.rosterItem {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.rosterText {
+  display: grid;
+  gap: 2px;
+}
+
+.rosterName {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rosterRole {
   font-size: 13px;
-  color: rgba(226, 232, 240, 0.8);
-  gap: 8px;
+  color: rgba(148, 163, 184, 0.9);
 }
 
-.participantSlot {
-  font-weight: 700;
-  color: #fbbf24;
-}
-
-.participantRole {
-  font-weight: 600;
-  color: rgba(148, 163, 184, 0.95);
-}
-
-.participantSourceBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+.badgeReady,
+.badgeWaiting {
+  padding: 6px 12px;
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  background: rgba(71, 85, 105, 0.35);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badgeReady {
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+  border: 1px solid rgba(34, 197, 94, 0.32);
+}
+
+.badgeWaiting {
+  background: rgba(234, 179, 8, 0.16);
+  color: #fde68a;
+  border: 1px solid rgba(234, 179, 8, 0.32);
+}
+
+.placeholderBody {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
   color: rgba(226, 232, 240, 0.82);
 }
 
-.participantSourceRealtime {
-  background: rgba(59, 130, 246, 0.2);
-  color: #93c5fd;
+.secondaryButton {
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: rgba(15, 23, 42, 0.55);
+  color: #e2e8f0;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
 }
 
-.participantSourceStandin {
-  background: rgba(244, 114, 182, 0.22);
-  color: #fbcfe8;
-}
-
-.participantSourceUnknown {
-  background: rgba(148, 163, 184, 0.25);
-  color: rgba(226, 232, 240, 0.75);
-}
-
-.participantName {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
+.secondaryButton:hover,
+.secondaryButton:focus-visible {
+  border-color: rgba(148, 163, 184, 0.6);
   color: #f8fafc;
 }
 
-.participantStatus {
-  margin: 0;
-  font-size: 13px;
-  color: rgba(248, 250, 252, 0.7);
-}
-
-.participantAbilities {
-  margin: 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-  color: rgba(226, 232, 240, 0.85);
-}
-
-.participantAbilities li {
-  line-height: 1.45;
-}
-
-.emptyMessage {
-  margin: 0;
-  padding: 16px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px dashed rgba(148, 163, 184, 0.4);
-  text-align: center;
-  color: rgba(226, 232, 240, 0.72);
-}
-
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .shell {
-    padding: 24px 16px 32px;
+    padding: 26px 20px 32px;
+    gap: 20px;
   }
 
-  .promptTemplate {
-    font-size: 13px;
+  .actionsRow {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .secondaryButton {
+    width: 100%;
   }
 }

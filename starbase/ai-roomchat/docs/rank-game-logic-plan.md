@@ -1,5 +1,7 @@
 # 랭크 게임 메인룸 → 전투 진행 로직 설계안
 
+> **업데이트 (2025-03)**: `/rank/[id]/start`는 현재 간소화된 준비 화면으로 재구성되어 이전 문서에 언급된 `useStartClientEngine` 기반 전투 엔진이 일시적으로 비활성화된 상태입니다. 아래 항목은 장기적인 복원 계획을 참고용으로 남겨두었으며, 새 흐름의 구조는 [메인 게임(Start) 구조 개요](./main-game-structure.md)를 참조하세요.
+
 ## 1. 현재 흐름 요약
 - **페이지 진입**: `/rank/[id].js`가 `useGameRoom` 훅으로 게임, 참가자, 최근 전투를 불러와 `GameRoomView`에 전달한다. `onStart` 이벤트는 `/rank/[id]/start` 경로로 라우팅만 하고 실제 매칭은 수행하지 않는다.【F:starbase/ai-roomchat/pages/rank/[id].js†L1-L76】【F:starbase/ai-roomchat/hooks/useGameRoom.js†L1-L213】
 - **게임 시작 화면**: `/rank/[id]/start`는 `StartClient`를 불러와 로컬 상태로 프롬프트 그래프를 돌리고 AI 호출을 수동으로 시도할 수 있게 한다. 이제 메인 룸의 “게임 시작” 버튼은 솔로 랭크 모드에서 바로 `/api/rank/play`를 호출해 서버측 매칭을 수행하고, 응답을 받은 뒤 참가자/슬롯/전투 기록을 자동으로 새로고침한다.【F:starbase/ai-roomchat/pages/rank/[id].js†L1-L308】
