@@ -30,6 +30,7 @@ This note captures every Supabase table that participates in queueing players, f
 
 ### `public.rank_rooms`
 - Represents every open lobby room with game/owner FKs, join code, mode, realtime mode, status, slot/ready counters, host role caps, brawl rule snapshot, and host heartbeat timestamps.【F:starbase/ai-roomchat/supabase.sql†L700-L719】
+- The optional `blind_mode` flag hides occupant hero names until the match-ready flow hands control to the main game client.【F:starbase/ai-roomchat/supabase.sql†L700-L719】
 - RLS allows public reads, owner-only inserts, and updates by either the host or seated occupants to reflect joins/leaves.【F:starbase/ai-roomchat/supabase.sql†L749-L774】
 
 ### `public.rank_room_slots`

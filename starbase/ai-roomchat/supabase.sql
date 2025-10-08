@@ -1034,6 +1034,7 @@ create table if not exists public.rank_rooms (
   ready_count integer not null default 0,
   host_role_limit integer,
   brawl_rule text,
+  blind_mode boolean not null default false,
   host_last_active_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -1047,6 +1048,9 @@ alter table public.rank_rooms
 
 alter table public.rank_rooms
   add column if not exists brawl_rule text;
+
+alter table public.rank_rooms
+  add column if not exists blind_mode boolean not null default false;
 
 create table if not exists public.rank_room_slots (
   id uuid primary key default gen_random_uuid(),

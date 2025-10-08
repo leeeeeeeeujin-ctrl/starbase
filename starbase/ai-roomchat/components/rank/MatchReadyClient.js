@@ -41,7 +41,7 @@ function buildMetaLines(state) {
   return lines
 }
 
-function buildRosterDisplay(roster) {
+function buildRosterDisplay(roster, viewer, blindMode) {
   if (!Array.isArray(roster) || roster.length === 0) {
     return [
       {
@@ -52,10 +52,19 @@ function buildRosterDisplay(roster) {
     ]
   }
 
+  const viewerOwnerId = viewer?.ownerId ? String(viewer.ownerId).trim() : ''
+
   return roster.map((entry, index) => {
-    const heroLabel = entry.heroName || (entry.heroId ? `캐릭터 #${entry.heroId}` : '빈 슬롯')
+    const isOccupied = entry.heroId && entry.ownerId
+    const hideIdentity =
+      blindMode &&
+      isOccupied &&
+      (!viewerOwnerId || String(entry.ownerId).trim() !== viewerOwnerId)
+    const heroLabel = hideIdentity
+      ? '비공개 참가자'
+      : entry.heroName || (entry.heroId ? `캐릭터 #${entry.heroId}` : '빈 슬롯')
     const roleLabel = entry.role || '역할 미지정'
-    const readyLabel = entry.heroId && entry.ownerId ? '착석 완료' : '대기'
+    const readyLabel = isOccupied ? '착석 완료' : '대기'
     return {
       key: `${entry.slotId || index}-${entry.heroId || index}`,
       label: `${roleLabel} · ${heroLabel}`,
@@ -74,7 +83,10 @@ export default function MatchReadyClient({ gameId }) {
   }, [gameId])
 
   const metaLines = useMemo(() => buildMetaLines(state), [state])
-  const rosterDisplay = useMemo(() => buildRosterDisplay(state?.roster), [state?.roster])
+  const rosterDisplay = useMemo(
+    () => buildRosterDisplay(state?.roster, state?.viewer, state?.room?.blindMode),
+    [state?.roster, state?.viewer, state?.room?.blindMode],
+  )
 
   const handleRefresh = useCallback(() => {
     if (!gameId) return
@@ -126,6 +138,16 @@ export default function MatchReadyClient({ gameId }) {
             ))}
           </section>
         )}
+
+        {state?.room?.blindMode ? (
+          <section className={styles.bannerInfo}>
+            <p className={styles.bannerTitle}>블라인드 모드가 활성화된 매치입니다.</p>
+            <p className={styles.bannerBody}>
+              전투가 시작되기 전까지는 다른 참가자의 캐릭터 정보가 공개되지 않습니다. 준비를 마친 뒤 메인
+              게임으로 이동하면 전체 로스터가 표시됩니다.
+            </p>
+          </section>
+        ) : null}
 
         {missingKey && (
           <section className={styles.bannerWarning}>

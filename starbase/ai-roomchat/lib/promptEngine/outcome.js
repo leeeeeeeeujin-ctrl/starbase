@@ -1,5 +1,16 @@
 import { linesOf } from './utils'
 
+function isNoneToken(text) {
+  if (!text) return true
+  const trimmed = text.trim()
+  if (!trimmed) return true
+  const lower = trimmed.toLowerCase()
+  if (lower === 'none') return true
+  if (lower.includes('없음')) return true
+  if (trimmed === '무') return true
+  return false
+}
+
 export function parseOutcome(assistantText = '') {
   const arr = linesOf(assistantText)
   let endIndex = arr.length - 1
@@ -19,7 +30,7 @@ export function parseOutcome(assistantText = '') {
 
   const normalizedSecond = secondLast.toLowerCase()
   let variables = []
-  if (normalizedSecond && normalizedSecond !== 'none' && !normalizedSecond.includes('없음')) {
+  if (normalizedSecond && !isNoneToken(secondLast)) {
     const tokenSource = secondLast.replace(/[|·,:;\\/]+/g, ' ')
     const parts = tokenSource
       .split(/\s+/)
@@ -30,7 +41,7 @@ export function parseOutcome(assistantText = '') {
     const filtered = []
     for (const part of parts) {
       const key = part.toLowerCase()
-      if (key === 'none' || key.includes('없음')) {
+      if (key === 'none' || key.includes('없음') || key === '무') {
         sawNoneToken = true
         continue
       }
@@ -52,7 +63,7 @@ export function parseOutcome(assistantText = '') {
       }
     }
     const normalizedThird = thirdLast.toLowerCase()
-    if (thirdLast && normalizedThird !== 'none' && !normalizedThird.includes('없음')) {
+    if (thirdLast && !isNoneToken(thirdLast)) {
       const tokenSource = thirdLast
         .replace(/[|·/\\]+/g, ',')
         .replace(/\s+/g, ' ')
@@ -65,7 +76,7 @@ export function parseOutcome(assistantText = '') {
         const cleaned = part.replace(/[,:;]+/g, ' ').trim()
         if (!cleaned) continue
         const key = cleaned.toLowerCase()
-        if (key === 'none' || key.includes('없음')) {
+        if (key === 'none' || key.includes('없음') || key === '무') {
           continue
         }
         if (seen.has(key)) continue

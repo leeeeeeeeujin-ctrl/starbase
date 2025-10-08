@@ -20,6 +20,11 @@
   box-sizing: border-box;
 }
 
+.statusGroup {
+  display: grid;
+  gap: 12px;
+}
+
 .status {
   margin: 0;
   font-size: 16px;
@@ -68,6 +73,11 @@
 .placeholderSection {
   display: grid;
   gap: 14px;
+}
+
+.splitGrid {
+  display: grid;
+  gap: 20px;
 }
 
 .metaList,
@@ -184,5 +194,15 @@
 
   .secondaryButton {
     width: 100%;
+  }
+
+  .splitGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 980px) {
+  .splitGrid {
+    grid-template-columns: 1.05fr 0.95fr;
   }
 }

@@ -110,7 +110,17 @@ export function readMatchFlowState(gameId) {
   }
 
   const rooms = Array.isArray(snapshot?.match?.rooms) ? snapshot.match.rooms : []
-  const room = rooms.length ? rooms[0] : null
+  const room = rooms.length
+    ? {
+        ...rooms[0],
+        blindMode:
+          rooms[0]?.blindMode === true ||
+          rooms[0]?.blind_mode === true ||
+          snapshot?.match?.blindMode === true,
+      }
+    : snapshot?.match?.blindMode
+    ? { blindMode: true }
+    : null
 
   const authSnapshot = readRankAuthSnapshot()
   const keyringSnapshot = readRankKeyringSnapshot()

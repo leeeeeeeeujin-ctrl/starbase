@@ -478,6 +478,14 @@ const styles = {
     gap: 10,
     flexWrap: 'wrap',
   },
+  roomBadge: {
+    padding: '2px 8px',
+    borderRadius: 999,
+    background: 'rgba(59, 130, 246, 0.2)',
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    color: '#bfdbfe',
+    fontWeight: 600,
+  },
   roomRoles: {
     display: 'grid',
     gap: 6,
@@ -573,6 +581,20 @@ const styles = {
   formRow: {
     display: 'grid',
     gap: 8,
+  },
+  checkboxRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  checkboxInput: {
+    width: 18,
+    height: 18,
+    accentColor: '#38bdf8',
+  },
+  checkboxLabel: {
+    fontSize: 13,
+    color: 'rgba(226, 232, 240, 0.82)',
   },
   select: {
     padding: '10px 14px',
@@ -734,6 +756,7 @@ export default function RoomBrowserPage() {
     gameId: '',
     scoreWindow: DEFAULT_RANK_SCORE_WINDOW,
     pulseLimit: MAX_PULSE_ROLE_LIMIT,
+    blindMode: false,
   })
   const [createPending, setCreatePending] = useState(false)
   const [createError, setCreateError] = useState('')
@@ -1433,6 +1456,7 @@ export default function RoomBrowserPage() {
                 'ready_count',
                 'host_role_limit',
                 'brawl_rule',
+                'blind_mode',
                 'score_window',
                 'created_at',
                 'updated_at',
@@ -1622,6 +1646,7 @@ export default function RoomBrowserPage() {
             hostRoleLimit,
             brawlRule,
             dropInEnabled,
+            blindMode: row.blind_mode === true,
           }
         })
 
@@ -2269,6 +2294,7 @@ export default function RoomBrowserPage() {
               ready_count: 0,
               host_role_limit: null,
               brawl_rule: brawlRule,
+              blind_mode: !!createState.blindMode,
               score_window:
                 createState.mode === 'casual'
                   ? createState.scoreWindow ?? null
@@ -2871,6 +2897,26 @@ export default function RoomBrowserPage() {
                 </div>
               ) : null}
 
+              <div style={styles.formRow}>
+                <label style={styles.filtersLabel} htmlFor="room-blind-toggle">
+                  블라인드 모드
+                </label>
+                <div style={styles.checkboxRow}>
+                  <input
+                    id="room-blind-toggle"
+                    type="checkbox"
+                    checked={createState.blindMode}
+                    onChange={(event) =>
+                      setCreateState((prev) => ({ ...prev, blindMode: event.target.checked }))
+                    }
+                    style={styles.checkboxInput}
+                  />
+                  <span style={styles.checkboxLabel}>
+                    게임이 시작되기 전까지 참가자 목록과 캐릭터 이름을 서로에게 숨깁니다.
+                  </span>
+                </div>
+              </div>
+
               {createError ? <p style={styles.createError}>{createError}</p> : null}
 
               <button type="submit" style={styles.submitButton(createPending)} disabled={createPending}>
@@ -2958,6 +3004,7 @@ export default function RoomBrowserPage() {
                             <span>
                               인원: {room.filledCount}/{room.slotCount}
                             </span>
+                            {room.blindMode ? <span style={styles.roomBadge}>블라인드</span> : null}
                           </p>
                           <p style={styles.roomMeta}>
                             <span>방장 점수: {hostRatingText}</span>

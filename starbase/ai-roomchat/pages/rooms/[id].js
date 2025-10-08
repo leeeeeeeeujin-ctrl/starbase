@@ -275,6 +275,7 @@ function buildMatchTransferPayload(room, slots) {
     heroMap,
     matchCode: room?.code || '',
     matchType: 'standard',
+    blindMode: !!room?.blindMode,
     brawlVacancies: [],
     roleStatus: {
       slotLayout,
@@ -296,6 +297,7 @@ function buildMatchTransferPayload(room, slots) {
         brawlRule: room?.brawlRule || '',
         hostRoleLimit: room?.hostRoleLimit ?? null,
         updatedAt: room?.updatedAt || null,
+        blindMode: !!room?.blindMode,
       },
     ],
     roles,
@@ -404,6 +406,17 @@ const styles = {
     border: '1px solid rgba(96, 165, 250, 0.45)',
     background: 'rgba(30, 64, 175, 0.35)',
     color: '#bfdbfe',
+    fontSize: 13,
+    lineHeight: '20px',
+  },
+  blindNotice: {
+    marginTop: -4,
+    marginBottom: 6,
+    padding: '12px 16px',
+    borderRadius: 14,
+    border: '1px solid rgba(59, 130, 246, 0.4)',
+    background: 'rgba(37, 99, 235, 0.18)',
+    color: '#c7d2fe',
     fontSize: 13,
     lineHeight: '20px',
   },
@@ -964,6 +977,7 @@ export default function RoomDetailPage() {
                 'score_window',
                 'host_role_limit',
                 'brawl_rule',
+                'blind_mode',
                 'created_at',
                 'updated_at',
               ].join(','),
@@ -1003,6 +1017,7 @@ export default function RoomDetailPage() {
           hostRoleLimit,
           brawlRule,
           dropInEnabled,
+          blindMode: roomRow.blind_mode === true,
           updatedAt: roomRow.updated_at || roomRow.created_at || null,
         }
 
@@ -1827,6 +1842,12 @@ export default function RoomDetailPage() {
             {room?.dropInEnabled ? <span>난전 허용</span> : null}
             {lastLoadedAt ? <span>새로고침: {formatRelativeTime(lastLoadedAt)}</span> : null}
           </div>
+          {room?.blindMode ? (
+            <div style={styles.blindNotice}>
+              블라인드 모드가 활성화된 방입니다. 게임이 시작되기 전까지는 다른 참가자의 캐릭터와 이름이
+              공개되지 않습니다.
+            </div>
+          ) : null}
           {dropInMessage ? <div style={styles.statusHint}>{dropInMessage}</div> : null}
           {creationFeedback ? (
             <div style={styles.creationFeedback}>
@@ -1933,6 +1954,11 @@ export default function RoomDetailPage() {
                 {slots.map((slot) => {
                   const isViewerSlot = viewer.ownerId && slot.occupantOwnerId === viewer.ownerId
                   const isHostSlot = room?.ownerId && slot.occupantOwnerId === room.ownerId
+                  const hideIdentity =
+                    room?.blindMode &&
+                    slot.occupantOwnerId &&
+                    slot.occupantOwnerId !== viewer.ownerId
+                  const occupantLabel = hideIdentity ? '비공개 참가자' : slot.occupantHeroName
                   return (
                     <div key={slot.id || `${slot.slotIndex}`} style={styles.slotCard(isViewerSlot)}>
                       <div style={styles.slotHeader}>
@@ -1942,7 +1968,7 @@ export default function RoomDetailPage() {
                       <p style={styles.slotBody}>
                         {slot.occupantOwnerId ? (
                           <>
-                            <strong>{slot.occupantHeroName}</strong>
+                            <strong>{occupantLabel}</strong>
                             <br />
                             {slot.occupantReady ? '준비 완료' : '준비 대기'}
                           </>

@@ -4,51 +4,68 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import styles from './StartClient.module.css'
+import HeaderControls from './HeaderControls'
+import RosterPanel from './RosterPanel'
+import TurnInfoPanel from './TurnInfoPanel'
+import ManualResponsePanel from './ManualResponsePanel'
+import StatusBanner from './StatusBanner'
+import LogsPanel from './LogsPanel'
 import { clearMatchFlow, readMatchFlowState } from '../../../lib/rank/matchFlow'
-
-function buildRosterEntries(roster) {
-  if (!Array.isArray(roster) || roster.length === 0) {
-    return [
-      {
-        key: 'empty',
-        title: '참가자 정보가 없습니다.',
-        subtitle: '',
-      },
-    ]
-  }
-
-  return roster.map((entry, index) => ({
-    key: `${entry.slotId || index}-${entry.heroId || index}`,
-    title: entry.heroName || (entry.heroId ? `캐릭터 #${entry.heroId}` : '빈 슬롯'),
-    subtitle: entry.role || '역할 미지정',
-    ready: !!entry.heroId && !!entry.ownerId,
-  }))
-}
+import { useStartClientEngine } from './useStartClientEngine'
 
 function buildSessionMeta(state) {
+  if (!state) return []
   const meta = []
-  if (state?.room?.mode) {
-    meta.push({ label: '모드', value: state.room.mode })
-  }
-  if (state?.snapshot?.match?.matchCode) {
-    meta.push({ label: '방 코드', value: state.snapshot.match.matchCode })
-  }
-  if (Number.isFinite(Number(state?.snapshot?.match?.maxWindow)) && Number(state.snapshot.match.maxWindow) > 0) {
-    meta.push({ label: '점수 범위', value: `±${Number(state.snapshot.match.maxWindow)}` })
+  if (state?.room?.code) {
+    meta.push({ label: '방 코드', value: state.room.code })
   }
   if (state?.matchMode) {
     meta.push({ label: '매치 모드', value: state.matchMode })
   }
+  if (state?.snapshot?.match?.matchType) {
+    meta.push({ label: '매치 유형', value: state.snapshot.match.matchType })
+  }
+  if (Number.isFinite(Number(state?.snapshot?.match?.maxWindow)) && Number(state.snapshot.match.maxWindow) > 0) {
+    meta.push({ label: '점수 범위', value: `±${Number(state.snapshot.match.maxWindow)}` })
+  }
   if (state?.room?.realtimeMode) {
     meta.push({ label: '실시간 옵션', value: state.room.realtimeMode })
   }
+  if (state?.rosterReadyCount != null && state?.totalSlots != null) {
+    meta.push({ label: '참가자', value: `${state.rosterReadyCount}/${state.totalSlots}` })
+  }
   return meta
+}
+
+function formatHeaderDescription({ state, meta, game }) {
+  const lines = []
+  if (game?.description) {
+    const trimmed = String(game.description).trim()
+    if (trimmed) {
+      lines.push(trimmed)
+    }
+  }
+  if (state?.room?.blindMode) {
+    lines.push('블라인드 방에서 전투를 시작합니다. 이제 모든 참가자 정보가 공개됩니다.')
+  }
+  if (meta.length) {
+    const summary = meta.map((item) => `${item.label}: ${item.value}`).join(' · ')
+    lines.push(summary)
+  }
+  return lines.join(' · ')
+}
+
+function toDisplayError(error) {
+  if (!error) return ''
+  if (typeof error === 'string') return error
+  if (typeof error.message === 'string') return error.message
+  return '세션을 불러오는 중 오류가 발생했습니다.'
 }
 
 export default function StartClient() {
   const router = useRouter()
   const [gameId, setGameId] = useState('')
-  const [state, setState] = useState(() => readMatchFlowState(''))
+  const [matchState, setMatchState] = useState(() => readMatchFlowState(''))
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -56,12 +73,12 @@ export default function StartClient() {
     const { id } = router.query
     if (typeof id !== 'string' || !id.trim()) {
       setGameId('')
-      setState(readMatchFlowState(''))
+      setMatchState(readMatchFlowState(''))
       setReady(true)
       return
     }
     setGameId(id)
-    setState(readMatchFlowState(id))
+    setMatchState(readMatchFlowState(id))
     setReady(true)
 
     return () => {
@@ -69,12 +86,68 @@ export default function StartClient() {
     }
   }, [router.isReady, router.query])
 
-  const rosterEntries = useMemo(() => buildRosterEntries(state?.roster), [state?.roster])
-  const sessionMeta = useMemo(() => buildSessionMeta(state), [state])
+  const engine = useStartClientEngine(gameId)
+  const {
+    loading: engineLoading,
+    error: engineError,
+    game,
+    participants,
+    currentNode,
+    preflight,
+    turn,
+    activeGlobal,
+    activeLocal,
+    statusMessage,
+    promptMetaWarning,
+    apiKeyWarning,
+    logs,
+    aiMemory,
+    playerHistories,
+    apiKey,
+    setApiKey,
+    apiKeyCooldown,
+    apiVersion,
+    setApiVersion,
+    geminiMode,
+    setGeminiMode,
+    geminiModel,
+    setGeminiModel,
+    geminiModelOptions,
+    geminiModelLoading,
+    geminiModelError,
+    reloadGeminiModels,
+    manualResponse,
+    setManualResponse,
+    isAdvancing,
+    isStarting,
+    handleStart,
+    advanceWithAi,
+    advanceWithManual,
+    turnTimerSeconds,
+    timeRemaining,
+    currentActor,
+    canSubmitAction,
+    sessionInfo,
+    realtimePresence,
+    realtimeEvents,
+    dropInSnapshot,
+    consensus,
+  } = engine
+
+  const sessionMeta = useMemo(() => buildSessionMeta(matchState), [matchState])
+  const headerTitle = useMemo(() => {
+    if (game?.name) return game.name
+    if (matchState?.room?.mode) return `${matchState.room.mode} 메인 게임`
+    return '메인 게임'
+  }, [game?.name, matchState?.room?.mode])
+  const headerDescription = useMemo(
+    () => formatHeaderDescription({ state: matchState, meta: sessionMeta, game }),
+    [matchState, sessionMeta, game],
+  )
 
   const handleBackToRoom = useCallback(() => {
-    if (state?.room?.id) {
-      router.push(`/rooms/${state.room.id}`).catch(() => {})
+    if (matchState?.room?.id) {
+      router.push(`/rooms/${matchState.room.id}`).catch(() => {})
       return
     }
     if (gameId) {
@@ -82,13 +155,37 @@ export default function StartClient() {
       return
     }
     router.push('/rooms').catch(() => {})
-  }, [router, state?.room?.id, gameId])
+  }, [router, matchState?.room?.id, gameId])
 
-  const handleReset = useCallback(() => {
-    if (!gameId) return
-    clearMatchFlow(gameId)
-    setState(readMatchFlowState(gameId))
-  }, [gameId])
+  const statusMessages = useMemo(() => {
+    const messages = []
+    const errorText = toDisplayError(engineError)
+    if (errorText) messages.push(errorText)
+    if (statusMessage) messages.push(statusMessage)
+    if (apiKeyWarning) messages.push(apiKeyWarning)
+    if (promptMetaWarning) messages.push(promptMetaWarning)
+    const unique = []
+    messages.forEach((message) => {
+      if (!message) return
+      if (!unique.includes(message)) {
+        unique.push(message)
+      }
+    })
+    return unique
+  }, [engineError, statusMessage, apiKeyWarning, promptMetaWarning])
+
+  const realtimeLockNotice = useMemo(() => {
+    if (!consensus?.active) return ''
+    if (consensus.viewerEligible) {
+      return `동의 ${consensus.count}/${consensus.required}명 확보 중입니다.`
+    }
+    return '다른 참가자의 동의를 기다리고 있습니다.'
+  }, [consensus?.active, consensus?.viewerEligible, consensus?.count, consensus?.required])
+
+  const manualDisabled = preflight || !canSubmitAction
+  const manualDisabledReason = preflight
+    ? '먼저 게임을 시작해 주세요.'
+    : '현재 차례의 플레이어만 응답을 제출할 수 있습니다.'
 
   if (!ready) {
     return (
@@ -100,7 +197,7 @@ export default function StartClient() {
     )
   }
 
-  if (!gameId || !state?.snapshot) {
+  if (!gameId || !matchState?.snapshot) {
     return (
       <div className={styles.page}>
         <div className={styles.shell}>
@@ -118,24 +215,29 @@ export default function StartClient() {
   return (
     <div className={styles.page}>
       <div className={styles.shell}>
-        <header className={styles.header}>
-          <div className={styles.headerText}>
-            <h1 className={styles.title}>{state?.room?.mode ? `${state.room.mode} 메인 게임` : '메인 게임'}</h1>
-            <p className={styles.subtitle}>
-              참가자 {state?.rosterReadyCount}/{state?.totalSlots}
-            </p>
-          </div>
-          <div className={styles.actionsRow}>
-            <button type="button" className={styles.secondaryButton} onClick={handleBackToRoom}>
-              방으로 돌아가기
-            </button>
-            <button type="button" className={styles.secondaryButton} onClick={handleReset}>
-              세션 초기화
-            </button>
-          </div>
-        </header>
+        <HeaderControls
+          onBack={handleBackToRoom}
+          title={headerTitle}
+          description={headerDescription}
+          preflight={preflight}
+          onStart={handleStart}
+          onAdvance={advanceWithAi}
+          isAdvancing={isAdvancing}
+          advanceDisabled={preflight || !sessionInfo?.id || engineLoading}
+          consensus={consensus}
+          startDisabled={engineLoading}
+          isStarting={isStarting}
+        />
 
-        {sessionMeta.length > 0 && (
+        {statusMessages.length ? (
+          <div className={styles.statusGroup}>
+            {statusMessages.map((message, index) => (
+              <StatusBanner key={`${message}-${index}`} message={message} />
+            ))}
+          </div>
+        ) : null}
+
+        {sessionMeta.length ? (
           <section className={styles.metaSection}>
             <h2 className={styles.sectionTitle}>매치 정보</h2>
             <ul className={styles.metaList}>
@@ -147,31 +249,58 @@ export default function StartClient() {
               ))}
             </ul>
           </section>
-        )}
+        ) : null}
 
-        <section className={styles.rosterSection}>
-          <h2 className={styles.sectionTitle}>참가자</h2>
-          <ul className={styles.rosterList}>
-            {rosterEntries.map((entry) => (
-              <li key={entry.key} className={styles.rosterItem}>
-                <div className={styles.rosterText}>
-                  <span className={styles.rosterName}>{entry.title}</span>
-                  <span className={styles.rosterRole}>{entry.subtitle}</span>
-                </div>
-                <span className={entry.ready ? styles.badgeReady : styles.badgeWaiting}>
-                  {entry.ready ? '준비 완료' : '대기'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <div className={styles.splitGrid}>
+          <TurnInfoPanel
+            turn={turn}
+            currentNode={currentNode}
+            activeGlobal={activeGlobal}
+            activeLocal={activeLocal}
+            apiKey={apiKey}
+            onApiKeyChange={setApiKey}
+            apiVersion={apiVersion}
+            onApiVersionChange={setApiVersion}
+            geminiMode={geminiMode}
+            onGeminiModeChange={setGeminiMode}
+            geminiModel={geminiModel}
+            onGeminiModelChange={setGeminiModel}
+            geminiModelOptions={geminiModelOptions}
+            geminiModelLoading={geminiModelLoading}
+            geminiModelError={geminiModelError}
+            onReloadGeminiModels={reloadGeminiModels}
+            realtimeLockNotice={realtimeLockNotice}
+            apiKeyNotice={apiKeyCooldown?.active ? apiKeyWarning : ''}
+            currentActor={currentActor}
+            timeRemaining={timeRemaining}
+            turnTimerSeconds={turnTimerSeconds}
+          />
 
-        <section className={styles.placeholderSection}>
-          <h2 className={styles.sectionTitle}>전투 준비 단계</h2>
-          <p className={styles.placeholderBody}>
-            메인 게임 로직은 현재 재구성 중입니다. 참가자 구성이 확정되면 여기에 전투 로그와 세션 진행 상황이 표시될 예정입니다.
-          </p>
-        </section>
+          <ManualResponsePanel
+            manualResponse={manualResponse}
+            onChange={setManualResponse}
+            onManualAdvance={advanceWithManual}
+            onAiAdvance={advanceWithAi}
+            isAdvancing={isAdvancing}
+            disabled={manualDisabled}
+            disabledReason={manualDisabled ? manualDisabledReason : ''}
+            timeRemaining={timeRemaining}
+            turnTimerSeconds={turnTimerSeconds}
+          />
+        </div>
+
+        <RosterPanel
+          participants={participants}
+          realtimePresence={realtimePresence}
+          dropInSnapshot={dropInSnapshot}
+        />
+
+        <LogsPanel
+          logs={logs}
+          aiMemory={aiMemory}
+          playerHistories={playerHistories}
+          realtimeEvents={realtimeEvents}
+        />
       </div>
     </div>
   )
