@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+import { sanitizeSupabaseUrl } from './supabaseEnv'
+
+const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const key =
   process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY // ⚠️ server-only
 
