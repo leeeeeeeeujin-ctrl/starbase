@@ -108,7 +108,70 @@ function mapBridgeRow(bridge) {
   }
 }
 
-export async function loadGameBundle(supabaseClient, gameId) {
+function toTrimmedString(value) {
+  if (value === undefined || value === null) return ''
+  const trimmed = String(value).trim()
+  return trimmed
+}
+
+function toNumeric(value) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function filterParticipantsForRoster(participants, rosterSnapshot) {
+  if (!Array.isArray(rosterSnapshot) || rosterSnapshot.length === 0) {
+    return participants
+  }
+
+  const ownerIdSet = new Set()
+  const heroIdSet = new Set()
+  const slotIndexSet = new Set()
+
+  rosterSnapshot.forEach((entry) => {
+    if (!entry) return
+    const ownerId = toTrimmedString(entry.ownerId)
+    if (ownerId) ownerIdSet.add(ownerId)
+    const heroId = toTrimmedString(entry.heroId)
+    if (heroId) heroIdSet.add(heroId)
+    const slotIndex = toNumeric(entry.slotIndex)
+    if (slotIndex !== null) slotIndexSet.add(slotIndex)
+  })
+
+  if (!ownerIdSet.size && !heroIdSet.size && !slotIndexSet.size) {
+    return participants
+  }
+
+  const filtered = []
+  const fallback = []
+
+  participants.forEach((participant) => {
+    if (!participant) return
+    const ownerId = toTrimmedString(
+      participant.owner_id ?? participant.ownerId ?? participant.ownerID,
+    )
+    const heroId = toTrimmedString(participant.hero_id ?? participant.heroId)
+    const slotNo = toNumeric(participant.slot_no ?? participant.slotNo)
+
+    const ownerMatch = ownerId && ownerIdSet.has(ownerId)
+    const heroMatch = heroId && heroIdSet.has(heroId)
+    const slotMatch = slotNo !== null && slotIndexSet.has(slotNo)
+
+    if (ownerMatch || heroMatch || slotMatch) {
+      filtered.push(participant)
+    } else {
+      fallback.push(participant)
+    }
+  })
+
+  if (filtered.length) {
+    return filtered
+  }
+
+  return fallback.length ? fallback : participants
+}
+
+export async function loadGameBundle(supabaseClient, gameId, { rosterSnapshot = [] } = {}) {
   const {
     data: gameRow,
     error: gameError,
@@ -132,7 +195,10 @@ export async function loadGameBundle(supabaseClient, gameId) {
 
   if (participantError) throw participantError
 
-  const participants = normalizeParticipants(participantRows || [])
+  const participants = filterParticipantsForRoster(
+    normalizeParticipants(participantRows || []),
+    rosterSnapshot,
+  )
   let slotLayout = []
   try {
     const slotResult = await withTable(

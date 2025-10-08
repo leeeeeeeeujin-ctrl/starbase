@@ -1040,7 +1040,7 @@ export function useStartClientEngine(gameId) {
     async function load() {
       patchEngineState({ loading: true, error: '' })
       try {
-        const bundle = await loadGameBundle(supabase, gameId)
+        const bundle = await loadGameBundle(supabase, gameId, { rosterSnapshot })
         if (!alive) return
 
         const participantsFromBundle = Array.isArray(bundle.participants)
