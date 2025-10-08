@@ -14,7 +14,7 @@ This document lists the tables, columns, and constraints required to run the ran
 - **`public.prompt_library_entries`** – Shared library entries plus helper triggers to bump download counts and refresh `updated_at`. 【F:supabase.sql†L121-L239】
 
 ## Game Definition & Roles
-- **`public.rank_games`** – Master game record linking owners to prompt sets, storing rules JSON, realtime flag, and engagement counters. 【F:supabase.sql†L243-L272】
+- **`public.rank_games`** – Master game record linking owners to prompt sets, storing rules JSON, realtime mode (`off`, `standard`, or `pulse`), and engagement counters. 【F:supabase.sql†L243-L272】
 - **`public.rank_game_roles`** – Per-role quota table with slot counts and score delta bounds. 【F:supabase.sql†L274-L299】
 - **`public.rank_game_tags`** – Tag metadata with `(game_id, tag)` uniqueness. 【F:supabase.sql†L301-L307】
 - **`public.rank_game_seasons`** – Optional season tracking with status and leaderboard snapshots. 【F:supabase.sql†L325-L335】

@@ -7,6 +7,11 @@ import {
   removeQueueEntry,
 } from '@/lib/rank/matchmakingService'
 import { getQueueModes } from '@/lib/rank/matchModes'
+import {
+  isRealtimeEnabled,
+  normalizeRealtimeMode,
+  REALTIME_MODES,
+} from '@/lib/rank/realtimeModes'
 import { withTable } from '@/lib/supabaseTables'
 import { isMissingSupabaseTable } from '@/lib/server/supabaseErrors'
 import { QUEUE_STALE_THRESHOLD_MS } from '@/lib/rank/queueHeartbeat'
@@ -337,7 +342,8 @@ async function claimDropInSlot({ supabase, room, slot, entry }) {
 }
 
 export function extractMatchingToggles(gameRow, rules = {}) {
-  let realtimeEnabled = normalizeBooleanFlag(gameRow?.realtime_match, false)
+  let realtimeMode = normalizeRealtimeMode(gameRow?.realtime_match)
+  let realtimeEnabled = isRealtimeEnabled(realtimeMode)
 
   const matchSourceRaw =
     typeof gameRow?.match_source === 'string'
@@ -350,9 +356,13 @@ export function extractMatchingToggles(gameRow, rules = {}) {
     const normalized = matchSourceRaw.trim().toLowerCase()
     if (['manual', 'manual_only', 'manual-only', 'offline', 'nonrealtime', 'non-realtime', 'non_realtime'].includes(normalized)) {
       realtimeEnabled = false
+      realtimeMode = REALTIME_MODES.OFF
     }
     if (['realtime', 'real-time', 'realtime_only', 'realtime-only', 'live'].includes(normalized)) {
       realtimeEnabled = true
+      if (realtimeMode === REALTIME_MODES.OFF) {
+        realtimeMode = REALTIME_MODES.STANDARD
+      }
     }
   }
 
@@ -379,7 +389,7 @@ export function extractMatchingToggles(gameRow, rules = {}) {
     break
   }
 
-  return { realtimeEnabled, dropInEnabled }
+  return { realtimeEnabled, dropInEnabled, realtimeMode }
 }
 
 export async function loadMatchingResources({ supabase, gameId, mode, realtimeEnabled, brawlEnabled }) {

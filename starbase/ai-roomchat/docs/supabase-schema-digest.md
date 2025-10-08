@@ -103,7 +103,7 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 
 ## Rooms & Matchmaking
 ### `public.rank_rooms`
-- Represents live rooms with game/owner references, join code, mode/status, slot/ready counters, host heartbeat, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L924-L937】
+- Represents live rooms with game/owner references, join code, mode/realtime mode/status, slot/ready counters, host role caps, brawl rule snapshot, host heartbeat, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L924-L941】
 - RLS lets anyone read, owners create, and owners or seated occupants update rooms.【F:starbase/ai-roomchat/supabase.sql†L973-L998】
 
 ### `public.rank_room_slots`

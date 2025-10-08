@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
+import { withTable } from '../../../lib/supabaseTables'
 import {
   buildSlotsFromParticipants,
   makeNodePrompt,
@@ -76,6 +77,11 @@ import {
   getConnectionEntriesForGame,
   subscribeConnectionRegistry,
 } from '@/lib/rank/startConnectionRegistry'
+import {
+  isRealtimeEnabled,
+  normalizeRealtimeMode,
+  REALTIME_MODES,
+} from '@/lib/rank/realtimeModes'
 
 export function useStartClientEngine(gameId) {
   const storedStartConfig =
@@ -151,6 +157,11 @@ export function useStartClientEngine(gameId) {
     activeHeroAssets,
     activeActorNames,
   } = engineState
+  const realtimeMode = useMemo(
+    () => normalizeRealtimeMode(game?.realtime_match),
+    [game?.realtime_match],
+  )
+  const realtimeEnabled = isRealtimeEnabled(realtimeMode)
   const logsRef = useRef([])
   const participantsRef = useRef([])
   const statusMessageRef = useRef('')
@@ -369,6 +380,7 @@ export function useStartClientEngine(gameId) {
   if (!dropInQueueRef.current) {
     dropInQueueRef.current = createDropInQueueService()
   }
+  const processedDropInReleasesRef = useRef(new Set())
   const asyncSessionManagerRef = useRef(null)
   if (!asyncSessionManagerRef.current) {
     asyncSessionManagerRef.current = createAsyncSessionManager({
@@ -790,18 +802,18 @@ export function useStartClientEngine(gameId) {
 
   useEffect(() => {
     if (!realtimeManagerRef.current) return
-    if (!game?.realtime_match) {
+    if (!realtimeEnabled) {
       const snapshot = realtimeManagerRef.current.setManagedOwners([])
       applyRealtimeSnapshot(snapshot)
       return
     }
     const snapshot = realtimeManagerRef.current.setManagedOwners(managedOwnerIds)
     applyRealtimeSnapshot(snapshot)
-  }, [managedOwnerIds, game?.realtime_match, applyRealtimeSnapshot])
+  }, [managedOwnerIds, realtimeEnabled, applyRealtimeSnapshot])
 
   useEffect(() => {
     if (preflight) return
-    if (!game?.realtime_match) return
+    if (!realtimeEnabled) return
     if (!turn || turn <= 0) return
     if (!realtimeManagerRef.current) return
     const snapshot = realtimeManagerRef.current.beginTurn({
@@ -809,7 +821,7 @@ export function useStartClientEngine(gameId) {
       eligibleOwnerIds: deriveEligibleOwnerIds(participants),
     })
     applyRealtimeSnapshot(snapshot)
-  }, [preflight, game?.realtime_match, turn, participants, applyRealtimeSnapshot])
+  }, [preflight, realtimeEnabled, turn, participants, applyRealtimeSnapshot])
 
   useEffect(() => {
     if (!currentNodeId) {
@@ -1012,7 +1024,7 @@ export function useStartClientEngine(gameId) {
         entries = buildLogEntriesFromEvents(events, {
           ownerDisplayMap,
           defaultTurn,
-          defaultMode: game?.realtime_match ? 'realtime' : 'async',
+          defaultMode: realtimeEnabled ? 'realtime' : 'async',
         })
       }
 
@@ -1028,7 +1040,7 @@ export function useStartClientEngine(gameId) {
         })
       }
     },
-    [ownerDisplayMap, game?.realtime_match, turn, logTurnEntries],
+    [ownerDisplayMap, realtimeEnabled, turn, logTurnEntries],
   )
 
   useEffect(() => {
@@ -1044,6 +1056,7 @@ export function useStartClientEngine(gameId) {
       } else {
         setDropInSnapshot(null)
       }
+      processedDropInReleasesRef.current.clear()
       asyncSessionManagerRef.current?.reset()
       return
     }
@@ -1059,7 +1072,7 @@ export function useStartClientEngine(gameId) {
 
     const queueResult = queueService.syncParticipants(participants, {
       turnNumber: turn,
-      mode: game?.realtime_match ? 'realtime' : 'async',
+      mode: realtimeEnabled ? 'realtime' : 'async',
     })
     if (queueResult && typeof queueResult === 'object') {
       setDropInSnapshot(queueResult.snapshot || null)
@@ -1091,7 +1104,7 @@ export function useStartClientEngine(gameId) {
 
     let timelineEvents = []
 
-    if (game?.realtime_match) {
+    if (realtimeEnabled) {
       if (arrivals.length) {
         timelineEvents = arrivals.map((arrival) => {
           const status =
@@ -1147,6 +1160,60 @@ export function useStartClientEngine(gameId) {
       }
     }
 
+    if (arrivals.length) {
+      const dropInTarget = startMatchMetaRef.current?.dropInTarget || null
+      const dropInRoomIdRaw =
+        dropInTarget?.roomId ?? dropInTarget?.room_id ?? dropInTarget?.roomID ?? null
+      const dropInRoomId = dropInRoomIdRaw ? String(dropInRoomIdRaw).trim() : ''
+      if (dropInRoomId) {
+        const releaseTargets = []
+        arrivals.forEach((arrival) => {
+          const replaced = arrival?.replaced || null
+          if (!replaced) return
+          const ownerCandidate =
+            replaced?.ownerId ??
+            replaced?.ownerID ??
+            replaced?.owner_id ??
+            (typeof replaced?.owner === 'object' ? replaced.owner?.id : null)
+          if (!ownerCandidate) return
+          const ownerId = String(ownerCandidate).trim()
+          if (!ownerId) return
+          const key = `${dropInRoomId}::${ownerId}`
+          if (processedDropInReleasesRef.current.has(key)) return
+          releaseTargets.push({ roomId: dropInRoomId, ownerId, key })
+        })
+
+        if (releaseTargets.length) {
+          const tasks = releaseTargets.map(({ roomId, ownerId, key }) =>
+            withTable(supabase, 'rank_room_slots', (table) =>
+              supabase
+                .from(table)
+                .update({
+                  occupant_owner_id: null,
+                  occupant_hero_id: null,
+                  occupant_ready: false,
+                  joined_at: null,
+                })
+                .eq('room_id', roomId)
+                .eq('occupant_owner_id', ownerId),
+            ).then((result) => {
+              if (result?.error && result.error.code !== 'PGRST116') {
+                throw result.error
+              }
+              processedDropInReleasesRef.current.add(key)
+            }),
+          )
+
+          Promise.all(tasks).catch((error) => {
+            console.warn('[StartClient] Failed to release drop-in slot:', error)
+            releaseTargets.forEach(({ key }) =>
+              processedDropInReleasesRef.current.delete(key),
+            )
+          })
+        }
+      }
+    }
+
     if (timelineEvents.length) {
       recordTimelineEvents(timelineEvents, { turnNumber: turn })
     }
@@ -1156,7 +1223,7 @@ export function useStartClientEngine(gameId) {
     turnDeadline,
     turn,
     recordTimelineEvents,
-    game?.realtime_match,
+    realtimeEnabled,
   ])
 
   const captureBattleLog = useCallback(
@@ -1489,7 +1556,7 @@ export function useStartClientEngine(gameId) {
       if (realtimeManagerRef.current) {
         const manager = realtimeManagerRef.current
         manager.reset()
-        if (game?.realtime_match) {
+        if (realtimeEnabled) {
           manager.syncParticipants(sessionParticipants)
           manager.setManagedOwners(managedOwnersForSession)
           manager.beginTurn({
@@ -1507,6 +1574,7 @@ export function useStartClientEngine(gameId) {
       turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
       turnTimerServiceRef.current?.reset()
       dropInQueueRef.current?.reset()
+      processedDropInReleasesRef.current.clear()
       asyncSessionManagerRef.current?.reset()
       participantIdSetRef.current = new Set(
         sessionParticipants.map((participant, index) =>
@@ -1559,7 +1627,7 @@ export function useStartClientEngine(gameId) {
       updateHeroAssets,
       rememberActiveSession,
       turnTimerSeconds,
-      game?.realtime_match,
+      realtimeEnabled,
       viewerId,
       applyRealtimeSnapshot,
     ],
@@ -1615,7 +1683,7 @@ export function useStartClientEngine(gameId) {
         },
         body: JSON.stringify({
           game_id: gameId,
-          mode: game?.realtime_match ? 'realtime' : 'manual',
+          mode: realtimeEnabled ? 'realtime' : 'manual',
           role: viewerParticipant?.role || null,
           match_code: null,
         }),
@@ -1706,7 +1774,7 @@ export function useStartClientEngine(gameId) {
   }, [
     apiVersion,
     bootLocalSession,
-    game?.realtime_match,
+    realtimeEnabled,
     gameId,
     graph.nodes,
     startingSession,
@@ -1757,7 +1825,7 @@ export function useStartClientEngine(gameId) {
       const actingOwnerId = actorContext?.participant?.owner_id || null
 
       const finalizeRealtimeTurn = (reason) => {
-        if (!game?.realtime_match) return
+        if (!realtimeEnabled) return
         const manager = realtimeManagerRef.current
         if (!manager) return
         const result = manager.completeTurn({
@@ -1925,7 +1993,7 @@ export function useStartClientEngine(gameId) {
       }
 
       const recordRealtimeParticipation = (ownerId, type) => {
-        if (!game?.realtime_match) return
+        if (!realtimeEnabled) return
         if (!ownerId) return
         const manager = realtimeManagerRef.current
         if (!manager) return
@@ -1974,7 +2042,7 @@ export function useStartClientEngine(gameId) {
         let effectiveSystemPrompt = systemPrompt
         let effectivePrompt = promptText
 
-        if (!game?.realtime_match && isUserAction) {
+        if (!realtimeEnabled && isUserAction) {
           const persona = buildUserActionPersona(actorContext)
           effectiveSystemPrompt = [systemPrompt, persona.system]
             .filter(Boolean)
@@ -1988,7 +2056,7 @@ export function useStartClientEngine(gameId) {
             return
           }
 
-          if (game?.realtime_match) {
+          if (realtimeEnabled) {
             if (
               apiVersionLock.current &&
               apiVersionLock.current !== apiVersion
@@ -2095,7 +2163,7 @@ export function useStartClientEngine(gameId) {
             }
           }
 
-          if (game?.realtime_match && !apiVersionLock.current) {
+          if (realtimeEnabled && !apiVersionLock.current) {
             apiVersionLock.current = apiVersion
           }
         }
@@ -2381,7 +2449,7 @@ export function useStartClientEngine(gameId) {
       participants,
       participantsStatus,
       ownerDisplayMap,
-      game?.realtime_match,
+      realtimeEnabled,
       brawlEnabled,
       endConditionVariable,
       winCount,
@@ -2411,7 +2479,7 @@ export function useStartClientEngine(gameId) {
 
   const advanceWithAi = useCallback(() => {
     if (!needsConsensus) {
-      if (game?.realtime_match && normalizedViewerId) {
+      if (realtimeEnabled && normalizedViewerId) {
         const manager = realtimeManagerRef.current
         if (manager) {
           const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
@@ -2435,7 +2503,7 @@ export function useStartClientEngine(gameId) {
     if (!controller) {
       return
     }
-    if (game?.realtime_match && normalizedViewerId) {
+    if (realtimeEnabled && normalizedViewerId) {
       const manager = realtimeManagerRef.current
       if (manager) {
         const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
@@ -2461,7 +2529,7 @@ export function useStartClientEngine(gameId) {
     setStatusMessage,
     viewerCanConsent,
     normalizedViewerId,
-    game?.realtime_match,
+    realtimeEnabled,
     turn,
     applyRealtimeSnapshot,
   ])
@@ -2478,14 +2546,14 @@ export function useStartClientEngine(gameId) {
           timestamp: Date.now(),
           reason: 'timeout',
           context: {
-            mode: game?.realtime_match ? 'realtime' : 'async',
+            mode: realtimeEnabled ? 'realtime' : 'async',
           },
         },
       ],
       { turnNumber },
     )
     return advanceTurn(null, { reason: 'timeout' })
-  }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, game?.realtime_match])
+  }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled])
 
   useEffect(() => {
     if (!needsConsensus) return undefined
@@ -2502,7 +2570,7 @@ export function useStartClientEngine(gameId) {
           context: {
             consensusCount: consensusState?.consensusCount ?? null,
             threshold: consensusState?.threshold ?? null,
-            mode: game?.realtime_match ? 'realtime' : 'async',
+            mode: realtimeEnabled ? 'realtime' : 'async',
           },
         },
       ],
@@ -2521,12 +2589,12 @@ export function useStartClientEngine(gameId) {
     recordTimelineEvents,
     consensusState?.consensusCount,
     consensusState?.threshold,
-    game?.realtime_match,
+    realtimeEnabled,
     turn,
   ])
 
   useEffect(() => {
-    if (preflight || !game?.realtime_match) {
+    if (preflight || !realtimeEnabled) {
       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([])
       if (snapshot) {
         setConsensusState(snapshot)
@@ -2539,7 +2607,7 @@ export function useStartClientEngine(gameId) {
     if (snapshot) {
       setConsensusState(snapshot)
     }
-  }, [participants, game?.realtime_match, preflight])
+  }, [participants, realtimeEnabled, preflight])
 
   useEffect(() => {
     if (preflight) {

@@ -815,7 +815,7 @@ create table if not exists public.rank_games (
   roles jsonb default '[]'::jsonb,
   rules jsonb default '{}'::jsonb,
   rules_prefix text,
-  realtime_match boolean not null default false,
+  realtime_match text not null default 'off',
   likes_count integer not null default 0,
   play_count integer not null default 0,
   created_at timestamptz not null default now(),
@@ -1027,14 +1027,26 @@ create table if not exists public.rank_rooms (
   owner_id uuid not null references auth.users(id) on delete cascade,
   code text not null unique,
   mode text not null default 'casual',
+  realtime_mode text not null default 'standard',
   status text not null default 'open',
   slot_count integer not null default 0,
   filled_count integer not null default 0,
   ready_count integer not null default 0,
+  host_role_limit integer,
+  brawl_rule text,
   host_last_active_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.rank_rooms
+  add column if not exists realtime_mode text not null default 'standard';
+
+alter table public.rank_rooms
+  add column if not exists host_role_limit integer;
+
+alter table public.rank_rooms
+  add column if not exists brawl_rule text;
 
 create table if not exists public.rank_room_slots (
   id uuid primary key default gen_random_uuid(),

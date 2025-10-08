@@ -8,6 +8,7 @@ import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
 import { normalizeTimelineEvents } from '@/lib/rank/timelineEvents'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
+import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '../../lib/rank/realtimeModes'
 
 const RULE_OPTION_METADATA = {
   nerf_insight: {
@@ -863,6 +864,14 @@ export default function GameRoomView({
     const index = TABS.findIndex((tab) => tab.key === activeTab)
     return index >= 0 ? index : 0
   }, [activeTab])
+
+  const realtimeMode = useMemo(
+    () => normalizeRealtimeMode(game?.realtime_match),
+    [game?.realtime_match],
+  )
+  const realtimeEnabled = isRealtimeEnabled(realtimeMode)
+  const realtimeChipLabel =
+    realtimeMode === REALTIME_MODES.PULSE ? 'Pulse 실시간' : '실시간'
 
   const formatSessionTimestamp = useCallback((value) => {
     if (!value) return ''
@@ -3032,7 +3041,9 @@ export default function GameRoomView({
                 {game.description?.trim() || '소개 문구가 아직 준비되지 않았습니다.'}
               </p>
               <div className={styles.metaRow}>
-                {game.realtime_match && <span className={styles.metaChip}>실시간 매칭</span>}
+                {realtimeEnabled && (
+                  <span className={styles.metaChip}>{realtimeChipLabel} 매칭</span>
+                )}
                 {createdAt && <span className={styles.metaChip}>등록 {createdAt}</span>}
                 {updatedAt && <span className={styles.metaChip}>갱신 {updatedAt}</span>}
                 <button type="button" className={styles.linkButton} onClick={onOpenLeaderboard}>

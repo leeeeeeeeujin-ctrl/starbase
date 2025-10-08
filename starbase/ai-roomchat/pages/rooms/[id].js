@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { supabase } from '@/lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
+import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import {
   HERO_ID_KEY,
   HERO_OWNER_KEY,
@@ -291,6 +292,9 @@ function buildMatchTransferPayload(room, slots) {
         status: room?.status || '',
         mode: room?.mode || '',
         scoreWindow: maxWindow,
+        realtimeMode: room?.realtimeMode || '',
+        brawlRule: room?.brawlRule || '',
+        hostRoleLimit: room?.hostRoleLimit ?? null,
         updatedAt: room?.updatedAt || null,
       },
     ],
@@ -400,6 +404,17 @@ const styles = {
     border: '1px solid rgba(96, 165, 250, 0.45)',
     background: 'rgba(30, 64, 175, 0.35)',
     color: '#bfdbfe',
+    fontSize: 13,
+    lineHeight: '20px',
+  },
+  statusHint: {
+    marginTop: -4,
+    marginBottom: 6,
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: '1px solid rgba(16, 185, 129, 0.35)',
+    background: 'rgba(16, 185, 129, 0.12)',
+    color: '#bbf7d0',
     fontSize: 13,
     lineHeight: '20px',
   },
@@ -562,6 +577,24 @@ function normalizeRole(value) {
 function isFlexibleRole(role) {
   const normalized = normalizeRole(role)
   return FLEXIBLE_ROLE_KEYS.has(normalized)
+}
+
+function parseBrawlRule(raw) {
+  if (!raw) return 'banish-on-loss'
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return 'banish-on-loss'
+    return trimmed
+  }
+  if (typeof raw === 'object' && typeof raw.brawl_rule === 'string') {
+    const trimmed = raw.brawl_rule.trim()
+    return trimmed || 'banish-on-loss'
+  }
+  return 'banish-on-loss'
+}
+
+function isDropInEnabled({ realtimeMode, brawlRule }) {
+  return isRealtimeEnabled(realtimeMode) && parseBrawlRule(brawlRule) === 'allow-brawl'
 }
 
 function formatRelativeTime(value) {
@@ -927,7 +960,10 @@ export default function RoomDetailPage() {
                 'code',
                 'mode',
                 'status',
+                'realtime_mode',
                 'score_window',
+                'host_role_limit',
+                'brawl_rule',
                 'created_at',
                 'updated_at',
               ].join(','),
@@ -945,6 +981,14 @@ export default function RoomDetailPage() {
           throw new Error('방 정보를 찾을 수 없습니다.')
         }
 
+        const realtimeMode = normalizeRealtimeMode(roomRow.realtime_mode)
+        const hostRoleLimit =
+          realtimeMode === 'pulse' && Number.isFinite(Number(roomRow.host_role_limit))
+            ? Math.max(1, Math.floor(Number(roomRow.host_role_limit)))
+            : null
+        const brawlRule = parseBrawlRule(roomRow.brawl_rule)
+        const dropInEnabled = isDropInEnabled({ realtimeMode, brawlRule })
+
         const baseRoom = {
           id: roomRow.id,
           gameId: roomRow.game_id || '',
@@ -955,6 +999,10 @@ export default function RoomDetailPage() {
           scoreWindow: Number.isFinite(Number(roomRow.score_window))
             ? Number(roomRow.score_window)
             : null,
+          realtimeMode,
+          hostRoleLimit,
+          brawlRule,
+          dropInEnabled,
           updatedAt: roomRow.updated_at || roomRow.created_at || null,
         }
 
@@ -1081,7 +1129,66 @@ export default function RoomDetailPage() {
 
         if (!mountedRef.current) return
 
-        setRoom({ ...baseRoom, gameName, hostRating })
+        const slotCount = normalizedSlots.length
+        const filledCount = normalizedSlots.filter((slot) => !!slot.occupantOwnerId).length
+        const readyCount = normalizedSlots.filter((slot) => !!slot.occupantReady).length
+        const allFilled = slotCount && filledCount >= slotCount
+        const anyOccupied = filledCount > 0
+        const nextStatus = (() => {
+          if (baseRoom.dropInEnabled) {
+            if (allFilled || anyOccupied) {
+              return 'brawl'
+            }
+            return 'open'
+          }
+          if (allFilled) {
+            return 'in_progress'
+          }
+          return 'open'
+        })()
+
+        const normalizedHostLimit = baseRoom.realtimeMode === 'pulse' ? baseRoom.hostRoleLimit : null
+        const numericHostLimit = Number.isFinite(Number(normalizedHostLimit))
+          ? Math.max(1, Math.floor(Number(normalizedHostLimit)))
+          : null
+
+        const needsUpdate =
+          Number(roomRow.slot_count) !== slotCount ||
+          Number(roomRow.filled_count) !== filledCount ||
+          Number(roomRow.ready_count) !== readyCount ||
+          (roomRow.status || '') !== nextStatus ||
+          (baseRoom.realtimeMode === 'pulse'
+            ? Number(roomRow.host_role_limit) !== numericHostLimit
+            : roomRow.host_role_limit !== null)
+
+        if (needsUpdate) {
+          try {
+            await withTable(supabase, 'rank_rooms', (table) =>
+              supabase
+                .from(table)
+                .update({
+                  slot_count: slotCount,
+                  filled_count: filledCount,
+                  ready_count: readyCount,
+                  status: nextStatus,
+                  host_role_limit: baseRoom.realtimeMode === 'pulse' ? numericHostLimit : null,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', roomId),
+            )
+          } catch (updateError) {
+            console.warn('[RoomDetail] Failed to sync room counters:', updateError)
+          }
+        }
+
+        const resolvedRoom = {
+          ...baseRoom,
+          status: nextStatus,
+          gameName,
+          hostRating,
+        }
+
+        setRoom(resolvedRoom)
         setSlots(normalizedSlots)
         setLastLoadedAt(new Date())
       } catch (loadError) {
@@ -1410,10 +1517,32 @@ export default function RoomDetailPage() {
       setActionError('참여할 캐릭터를 먼저 선택해 주세요.')
       return
     }
+    const dropInEnabled = room?.dropInEnabled
+    const normalizedStatus = typeof room?.status === 'string' ? room.status.trim() : ''
+    const inProgress = normalizedStatus === 'in_progress' || normalizedStatus === 'battle'
+    if (inProgress && !dropInEnabled) {
+      setActionError('이미 진행 중인 전투에는 참여할 수 없습니다.')
+      return
+    }
     const normalizedViewerRole = normalizeRole(viewer.role)
     if (!normalizedViewerRole) {
       setActionError('이 캐릭터의 역할 정보를 불러오지 못했습니다. 다시 시도해 주세요.')
       return
+    }
+    if (room?.realtimeMode === 'pulse' && Number.isFinite(Number(room?.hostRoleLimit))) {
+      const hostSlot = slots.find((slot) => slot.occupantOwnerId && room?.ownerId && slot.occupantOwnerId === room.ownerId)
+      const hostRole = normalizeRole(hostSlot?.role)
+      const numericLimit = Math.max(1, Math.floor(Number(room.hostRoleLimit)))
+      if (hostRole && normalizedViewerRole === hostRole) {
+        const sameRoleFilled = slots.filter((slot) => {
+          if (!slot?.occupantOwnerId) return false
+          return normalizeRole(slot.role) === hostRole
+        }).length
+        if (sameRoleFilled >= numericLimit) {
+          setActionError(`방장과 같은 역할군은 최대 ${numericLimit}명까지만 참여할 수 있습니다.`)
+          return
+        }
+      }
     }
     const availableSlots = slots.filter((slot) => !slot.occupantOwnerId)
     if (!availableSlots.length) {
@@ -1545,13 +1674,39 @@ export default function RoomDetailPage() {
   const hostRatingText = Number.isFinite(room?.hostRating)
     ? `${room.hostRating}점`
     : '정보 없음'
+  const realtimeLabel = useMemo(() => {
+    if (!room) return '알 수 없음'
+    if (!isRealtimeEnabled(room.realtimeMode)) return '비실시간'
+    if (room.realtimeMode === 'pulse') return 'Pulse 실시간'
+    return '실시간'
+  }, [room])
+  const statusLabel = useMemo(() => {
+    const normalized = typeof room?.status === 'string' ? room.status.trim() : ''
+    if (normalized === 'brawl') return '난전'
+    if (normalized === 'in_progress' || normalized === 'battle') return '게임중'
+    if (normalized === 'open') return '대기'
+    return normalized || '알 수 없음'
+  }, [room?.status])
+  const hostLimitLabel = useMemo(() => {
+    if (!room || room.realtimeMode !== 'pulse') return ''
+    if (!Number.isFinite(Number(room.hostRoleLimit))) return ''
+    const numeric = Math.max(1, Math.floor(Number(room.hostRoleLimit)))
+    return `같은 역할 최대 ${numeric}명`
+  }, [room])
+  const dropInMessage = useMemo(() => {
+    if (!room?.dropInEnabled) return ''
+    if (room?.status === 'brawl') return '난전 진행 중: 탈락한 역할군에 새 참가자가 합류할 수 있습니다.'
+    if (room?.status === 'open') return '난전 규칙이 활성화된 방입니다. 전투 중에도 빈 슬롯에 합류할 수 있습니다.'
+    return '난전 규칙이 활성화되어 있어 빈 슬롯에 재충원이 가능합니다.'
+  }, [room?.dropInEnabled, room?.status])
 
   const joinDisabled =
     joinPending ||
     !viewer.heroId ||
     !viewer.ownerId ||
     !normalizeRole(viewer.role) ||
-    !hasActiveApiKey
+    !hasActiveApiKey ||
+    (((room?.status === 'in_progress' || room?.status === 'battle') && !room?.dropInEnabled))
 
   useEffect(() => {
     if (autoRedirectRef.current) return
@@ -1654,7 +1809,8 @@ export default function RoomDetailPage() {
             </Link>
           </div>
           <div style={styles.metaRow}>
-            <span>상태: {room?.status || '알 수 없음'}</span>
+            <span>상태: {statusLabel}</span>
+            <span>실시간: {realtimeLabel}</span>
             <span>방장 점수: {hostRatingText}</span>
             <span>허용 범위: {scoreWindowLabel}</span>
             <span>
@@ -1667,8 +1823,11 @@ export default function RoomDetailPage() {
                 {absoluteDelta}
               </span>
             ) : null}
+            {hostLimitLabel ? <span>{hostLimitLabel}</span> : null}
+            {room?.dropInEnabled ? <span>난전 허용</span> : null}
             {lastLoadedAt ? <span>새로고침: {formatRelativeTime(lastLoadedAt)}</span> : null}
           </div>
+          {dropInMessage ? <div style={styles.statusHint}>{dropInMessage}</div> : null}
           {creationFeedback ? (
             <div style={styles.creationFeedback}>
               <span style={styles.creationFeedbackStrong}>새로 만든 방이 준비되었습니다.</span>{' '}

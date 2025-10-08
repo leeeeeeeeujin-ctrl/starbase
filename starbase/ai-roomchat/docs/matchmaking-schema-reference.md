@@ -5,7 +5,7 @@ This note captures every Supabase table that participates in queueing players, f
 ## Catalog & Role Capacity
 
 ### `public.rank_games`
-- Core game definition with owner linkage, hero prompt metadata, engagement counters, and the `realtime_match` toggle that decides whether a room must queue or can start instantly.【F:starbase/ai-roomchat/supabase.sql†L500-L524】
+- Core game definition with owner linkage, hero prompt metadata, engagement counters, and the `realtime_match` mode (`off`, `standard`, or `pulse`) that decides whether a room must queue or can start instantly.【F:starbase/ai-roomchat/supabase.sql†L500-L524】
 - RLS policies allow anyone to read games while only the owner can insert, update, or delete rows.【F:starbase/ai-roomchat/supabase.sql†L512-L524】
 
 ### `public.rank_game_roles`
@@ -29,7 +29,7 @@ This note captures every Supabase table that participates in queueing players, f
 ## Rooms & Live Occupancy
 
 ### `public.rank_rooms`
-- Represents every open lobby room with game/owner FKs, join code, mode, status, slot/ready counters, and host heartbeat timestamps.【F:starbase/ai-roomchat/supabase.sql†L700-L713】
+- Represents every open lobby room with game/owner FKs, join code, mode, realtime mode, status, slot/ready counters, host role caps, brawl rule snapshot, and host heartbeat timestamps.【F:starbase/ai-roomchat/supabase.sql†L700-L719】
 - RLS allows public reads, owner-only inserts, and updates by either the host or seated occupants to reflect joins/leaves.【F:starbase/ai-roomchat/supabase.sql†L749-L774】
 
 ### `public.rank_room_slots`

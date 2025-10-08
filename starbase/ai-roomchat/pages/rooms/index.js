@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { withTable } from '@/lib/supabaseTables'
+import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import { fetchHeroParticipationBundle } from '@/modules/character/participation'
 import {
   HERO_ID_KEY,
@@ -73,6 +74,32 @@ function isCasualModeLabel(value) {
   const normalized = value.trim().toLowerCase()
   if (!normalized) return false
   return CASUAL_MODE_TOKENS.some((token) => normalized.includes(token))
+}
+
+const MAX_PULSE_ROLE_LIMIT = 3
+
+function buildPulseLimitOptions(maxSlots) {
+  const numeric = Number.isFinite(Number(maxSlots)) ? Math.floor(Number(maxSlots)) : null
+  const limit = numeric && numeric > 0 ? Math.min(MAX_PULSE_ROLE_LIMIT, numeric) : MAX_PULSE_ROLE_LIMIT
+  return Array.from({ length: limit }, (_, index) => index + 1)
+}
+
+function parseBrawlRule(raw) {
+  if (!raw) return 'banish-on-loss'
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return 'banish-on-loss'
+    return trimmed
+  }
+  if (typeof raw === 'object' && typeof raw.brawl_rule === 'string') {
+    const trimmed = raw.brawl_rule.trim()
+    return trimmed || 'banish-on-loss'
+  }
+  return 'banish-on-loss'
+}
+
+function isDropInEnabled({ realtimeMode, brawlRule }) {
+  return isRealtimeEnabled(realtimeMode) && parseBrawlRule(brawlRule) === 'allow-brawl'
 }
 
 const styles = {
@@ -402,6 +429,11 @@ const styles = {
     fontSize: 13,
     color: '#94a3b8',
   },
+  formHint: {
+    margin: '6px 0 0',
+    fontSize: 12,
+    color: '#94a3b8',
+  },
   roomsCard: {
     background: 'rgba(15, 23, 42, 0.78)',
     border: '1px solid rgba(148, 163, 184, 0.28)',
@@ -701,9 +733,24 @@ export default function RoomBrowserPage() {
     mode: 'rank',
     gameId: '',
     scoreWindow: DEFAULT_RANK_SCORE_WINDOW,
+    pulseLimit: MAX_PULSE_ROLE_LIMIT,
   })
   const [createPending, setCreatePending] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [selectedGameMeta, setSelectedGameMeta] = useState(null)
+  const pulseLimitOptions = useMemo(() => {
+    if (!selectedGameMeta || selectedGameMeta.realtimeMode !== REALTIME_MODES.PULSE) {
+      return buildPulseLimitOptions(MAX_PULSE_ROLE_LIMIT)
+    }
+    const metaLimit = Number.isFinite(Number(selectedGameMeta.pulseLimitMax))
+      ? Math.floor(Number(selectedGameMeta.pulseLimitMax))
+      : null
+    const activeSlots = Number.isFinite(Number(selectedGameMeta.activeSlotCount))
+      ? Math.floor(Number(selectedGameMeta.activeSlotCount))
+      : null
+    const source = metaLimit || activeSlots || MAX_PULSE_ROLE_LIMIT
+    return buildPulseLimitOptions(source)
+  }, [selectedGameMeta])
   const [keyManagerOpen, setKeyManagerOpen] = useState(false)
   const [keyringEntries, setKeyringEntries] = useState([])
   const [keyringLimit, setKeyringLimit] = useState(5)
@@ -715,6 +762,7 @@ export default function RoomBrowserPage() {
   const [keyringBusy, setKeyringBusy] = useState(false)
   const [keyringAction, setKeyringAction] = useState(null)
   const lastKeyringUserIdRef = useRef('')
+  const gameMetaCacheRef = useRef(new Map())
 
   useEffect(() => {
     mountedRef.current = true
@@ -737,6 +785,22 @@ export default function RoomBrowserPage() {
       })
     }
   }, [createState.mode, createState.scoreWindow])
+
+  useEffect(() => {
+    if (!selectedGameMeta || selectedGameMeta.realtimeMode !== REALTIME_MODES.PULSE) {
+      return
+    }
+    const numericCurrent = Number(createState.pulseLimit)
+    const options = pulseLimitOptions
+    const fallback = options[options.length - 1] || 1
+    if (!options.includes(numericCurrent)) {
+      setCreateState((prev) => {
+        if (prev.mode !== 'rank') return prev
+        if (Number(prev.pulseLimit) === fallback) return prev
+        return { ...prev, pulseLimit: fallback }
+      })
+    }
+  }, [createState.mode, createState.pulseLimit, pulseLimitOptions, selectedGameMeta])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -1241,6 +1305,106 @@ export default function RoomBrowserPage() {
     loadHeroContext(effectiveHeroId)
   }, [effectiveHeroId, loadHeroContext])
 
+  const ensureGameMeta = useCallback(
+    async (gameId) => {
+      if (!gameId) {
+        setSelectedGameMeta(null)
+        return null
+      }
+      const cache = gameMetaCacheRef.current
+      if (cache.has(gameId)) {
+        const cached = cache.get(gameId)
+        setSelectedGameMeta(cached)
+        return cached
+      }
+
+      try {
+        const gameResult = await withTable(supabase, 'rank_games', (table) =>
+          supabase.from(table).select('id, realtime_match, rules').eq('id', gameId).maybeSingle(),
+        )
+
+        if (gameResult.error && gameResult.error.code !== 'PGRST116') {
+          throw gameResult.error
+        }
+
+        const rawRules = gameResult.data?.rules
+        let parsedRules = null
+        if (rawRules && typeof rawRules === 'object') {
+          parsedRules = rawRules
+        } else if (typeof rawRules === 'string') {
+          try {
+            parsedRules = JSON.parse(rawRules)
+          } catch (parseError) {
+            parsedRules = null
+          }
+        }
+
+        let activeSlotCount = null
+        try {
+          const slotResult = await withTable(supabase, 'rank_game_slots', (table) =>
+            supabase
+              .from(table)
+              .select('slot_index, active')
+              .eq('game_id', gameId)
+              .order('slot_index', { ascending: true }),
+          )
+
+          if (slotResult.error && slotResult.error.code !== 'PGRST116') {
+            throw slotResult.error
+          }
+
+          const templates = Array.isArray(slotResult.data) ? slotResult.data : []
+          const activeTemplates = templates.filter((template) =>
+            template?.active ?? true,
+          )
+          activeSlotCount = activeTemplates.length
+        } catch (slotError) {
+          console.warn('[RoomBrowser] Failed to load game slot templates:', slotError)
+        }
+
+        const activeLimit =
+          activeSlotCount != null
+            ? Math.max(1, Math.min(MAX_PULSE_ROLE_LIMIT, activeSlotCount))
+            : null
+
+        const meta = {
+          id: gameId,
+          realtimeMode: normalizeRealtimeMode(gameResult.data?.realtime_match),
+          brawlRule: parseBrawlRule(parsedRules || rawRules),
+          rules: parsedRules,
+          activeSlotCount,
+          pulseLimitMax: activeLimit,
+        }
+
+        cache.set(gameId, meta)
+        setSelectedGameMeta(meta)
+        return meta
+      } catch (metaError) {
+        console.error('[RoomBrowser] Failed to load game metadata:', metaError)
+        const fallback = {
+          id: gameId,
+          realtimeMode: 'off',
+          brawlRule: 'banish-on-loss',
+          rules: null,
+          activeSlotCount: null,
+          pulseLimitMax: null,
+        }
+        cache.set(gameId, fallback)
+        setSelectedGameMeta(fallback)
+        return fallback
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!createState.gameId) {
+      setSelectedGameMeta(null)
+      return
+    }
+    ensureGameMeta(createState.gameId)
+  }, [createState.gameId, ensureGameMeta])
+
   const loadRooms = useCallback(
     async (mode = 'initial') => {
       if (!mountedRef.current) return
@@ -1263,9 +1427,12 @@ export default function RoomBrowserPage() {
                 'code',
                 'mode',
                 'status',
+                'realtime_mode',
                 'slot_count',
                 'filled_count',
                 'ready_count',
+                'host_role_limit',
+                'brawl_rule',
                 'score_window',
                 'created_at',
                 'updated_at',
@@ -1407,6 +1574,13 @@ export default function RoomBrowserPage() {
             ? Number(row.score_window)
             : null
 
+          const realtimeMode = normalizeRealtimeMode(row.realtime_mode)
+          const hostRoleLimit = Number.isFinite(Number(row.host_role_limit))
+            ? Math.max(1, Math.floor(Number(row.host_role_limit)))
+            : null
+          const brawlRule = parseBrawlRule(row.brawl_rule)
+          const dropInEnabled = isDropInEnabled({ realtimeMode, brawlRule })
+
           const hostRating = row.owner_id
             ? participantRatings.get(`${row.game_id}:${row.owner_id}`) ?? null
             : null
@@ -1444,6 +1618,10 @@ export default function RoomBrowserPage() {
             hostRating,
             ownerId: row.owner_id || null,
             updatedAt: row.updated_at || row.created_at || null,
+            realtimeMode,
+            hostRoleLimit,
+            brawlRule,
+            dropInEnabled,
           }
         })
 
@@ -2069,6 +2247,12 @@ export default function RoomBrowserPage() {
         const existingCodes = rooms.map((room) => room.code)
         const code = generateRoomCode(existingCodes)
         const modeValue = createState.mode === 'casual' ? 'casual' : 'solo'
+        const meta = await ensureGameMeta(targetGameId)
+        const metaPulseLimit = Number.isFinite(Number(meta?.pulseLimitMax))
+          ? Math.floor(Number(meta.pulseLimitMax))
+          : null
+        const realtimeMode = meta?.realtimeMode || 'off'
+        const brawlRule = meta?.brawlRule || 'banish-on-loss'
 
         const insertResult = await withTable(supabase, 'rank_rooms', (table) =>
           supabase
@@ -2079,9 +2263,12 @@ export default function RoomBrowserPage() {
               code,
               mode: modeValue,
               status: 'open',
+              realtime_mode: realtimeMode,
               slot_count: 0,
               filled_count: 0,
               ready_count: 0,
+              host_role_limit: null,
+              brawl_rule: brawlRule,
               score_window:
                 createState.mode === 'casual'
                   ? createState.scoreWindow ?? null
@@ -2117,6 +2304,7 @@ export default function RoomBrowserPage() {
 
         let hostSeated = false
         let participantRow = null
+        let hostRoleLimitValue = null
 
         if (templates.length) {
           const slotPayload = templates.map((template) => ({
@@ -2135,6 +2323,8 @@ export default function RoomBrowserPage() {
           if (slotInsert.error && slotInsert.error.code !== 'PGRST116') {
             throw slotInsert.error
           }
+
+          let normalizedHostRole = ''
 
           if (roomOwnerId && targetGameId) {
             if (effectiveHeroId) {
@@ -2179,7 +2369,7 @@ export default function RoomBrowserPage() {
               }
             }
 
-            const normalizedHostRole = normalizeRole(participantRow?.role)
+            normalizedHostRole = normalizeRole(participantRow?.role)
 
             const roleMatch = normalizedHostRole
               ? templates.find((template) => normalizeRole(template.role) === normalizedHostRole)
@@ -2214,6 +2404,21 @@ export default function RoomBrowserPage() {
               }
             }
           }
+
+          if (realtimeMode === 'pulse') {
+            const selectedLimit = Number(createState.pulseLimit)
+            const normalizedSelection = Number.isFinite(selectedLimit) && selectedLimit > 0
+              ? Math.min(MAX_PULSE_ROLE_LIMIT, Math.floor(selectedLimit))
+              : 1
+            const matchingSlots = normalizedHostRole
+              ? templates.filter((template) => normalizeRole(template.role) === normalizedHostRole).length
+              : 0
+            const capacity = matchingSlots || templates.length || 1
+            const cappedCapacity = Math.max(1, Math.min(MAX_PULSE_ROLE_LIMIT, capacity))
+            const metaCap = metaPulseLimit ? Math.max(1, Math.min(metaPulseLimit, MAX_PULSE_ROLE_LIMIT)) : null
+            const effectiveCap = metaCap ? Math.min(metaCap, cappedCapacity) : cappedCapacity
+            hostRoleLimitValue = Math.max(1, Math.min(normalizedSelection, effectiveCap))
+          }
         }
 
         const nowIso = new Date().toISOString()
@@ -2225,6 +2430,7 @@ export default function RoomBrowserPage() {
               slot_count: templates.length,
               filled_count: hostSeated ? 1 : 0,
               ready_count: 0,
+              host_role_limit: realtimeMode === 'pulse' ? hostRoleLimitValue : null,
               host_last_active_at: nowIso,
             })
             .eq('id', roomId),
@@ -2275,6 +2481,8 @@ export default function RoomBrowserPage() {
     [
       createState.mode,
       createState.scoreWindow,
+      createState.pulseLimit,
+      ensureGameMeta,
       effectiveHeroId,
       heroSummary.ownerId,
       viewerUserId,
@@ -2616,9 +2824,9 @@ export default function RoomBrowserPage() {
                 <label style={styles.filtersLabel} htmlFor="room-score-select">
                   점수 범위 지정 (선택)
                 </label>
-                  <select
-                    id="room-score-select"
-                    value={createState.scoreWindow === null ? '' : String(createState.scoreWindow)}
+                <select
+                  id="room-score-select"
+                  value={createState.scoreWindow === null ? '' : String(createState.scoreWindow)}
                   onChange={(event) => {
                     const value = event.target.value ? Number(event.target.value) : null
                     setCreateState((prev) => ({ ...prev, scoreWindow: value }))
@@ -2635,6 +2843,33 @@ export default function RoomBrowserPage() {
                   ))}
                 </select>
               </div>
+
+              {selectedGameMeta?.realtimeMode === 'pulse' ? (
+                <div style={styles.formRow}>
+                  <label style={styles.filtersLabel} htmlFor="room-pulse-limit-select">
+                    같은 역할군 허용 인원
+                  </label>
+                  <select
+                    id="room-pulse-limit-select"
+                    value={String(createState.pulseLimit)}
+                    onChange={(event) => {
+                      const value = Number(event.target.value)
+                      setCreateState((prev) => ({ ...prev, pulseLimit: value || 1 }))
+                    }}
+                    style={styles.select}
+                  >
+                    {pulseLimitOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}명까지 허용
+                      </option>
+                    ))}
+                  </select>
+                  <p style={styles.formHint}>
+                    방장과 같은 역할군은 최대 {Math.max(1, createState.pulseLimit || 1)}명까지
+                    입장할 수 있도록 제한합니다.
+                  </p>
+                </div>
+              ) : null}
 
               {createError ? <p style={styles.createError}>{createError}</p> : null}
 
@@ -2686,6 +2921,22 @@ export default function RoomBrowserPage() {
                 const hostRatingText = Number.isFinite(room.hostRating)
                   ? `${room.hostRating}점`
                   : '정보 없음'
+                const realtimeLabel = isRealtimeEnabled(room.realtimeMode)
+                  ? room.realtimeMode === 'pulse'
+                    ? 'Pulse 실시간'
+                    : '실시간'
+                  : '비실시간'
+                const statusLabel = (() => {
+                  const normalizedStatus = typeof room.status === 'string' ? room.status.trim() : ''
+                  if (normalizedStatus === 'brawl') return '난전'
+                  if (normalizedStatus === 'in_progress' || normalizedStatus === 'battle') return '게임중'
+                  if (normalizedStatus === 'open') return '대기'
+                  return normalizedStatus || '상태 미지정'
+                })()
+                const hostLimitLabel =
+                  room.realtimeMode === 'pulse' && Number.isFinite(room.hostRoleLimit)
+                    ? `같은 역할 최대 ${room.hostRoleLimit}명`
+                    : null
                 const heroDelta =
                   heroRatingForSelection && Number.isFinite(room.hostRating)
                     ? Math.abs(heroRatingForSelection - room.hostRating)
@@ -2702,6 +2953,8 @@ export default function RoomBrowserPage() {
                               코드: <span style={styles.roomCode}>{room.code}</span>
                             </span>
                             <span>모드: {room.mode}</span>
+                            <span>실시간: {realtimeLabel}</span>
+                            <span>상태: {statusLabel}</span>
                             <span>
                               인원: {room.filledCount}/{room.slotCount}
                             </span>
@@ -2712,6 +2965,7 @@ export default function RoomBrowserPage() {
                             {heroDelta !== null ? (
                               <span>내 점수와 차이: ±{heroDelta}</span>
                             ) : null}
+                            {hostLimitLabel ? <span>{hostLimitLabel}</span> : null}
                           </p>
                         </div>
                         {room.rating && Number.isFinite(room.rating.average) ? (
