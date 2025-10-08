@@ -2,7 +2,8 @@
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE
+const serviceKey =
+  process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 if (!supabaseUrl) {
@@ -13,6 +14,18 @@ if (!serviceKey && !anonKey) {
   throw new Error('Missing Supabase key. Provide SUPABASE_SERVICE_ROLE or NEXT_PUBLIC_SUPABASE_ANON_KEY')
 }
 
-export const supabase = createClient(supabaseUrl, serviceKey || anonKey, {
+const supabaseKey = serviceKey || anonKey
+
+export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: supabaseKey,
+      ...(serviceKey
+        ? { Authorization: `Bearer ${serviceKey}` }
+        : anonKey
+        ? { Authorization: `Bearer ${anonKey}` }
+        : {}),
+    },
+  },
 })
