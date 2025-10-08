@@ -28,6 +28,7 @@ import {
   readRankAuthSnapshot,
   RANK_AUTH_STORAGE_EVENT,
 } from '@/lib/rank/rankAuthStorage'
+import { MATCH_MODE_KEYS } from '@/lib/rank/matchModes'
 
 const ROOM_EXIT_DELAY_MS = 5000
 const HOST_CLEANUP_DELAY_MS = ROOM_EXIT_DELAY_MS
@@ -35,6 +36,7 @@ const ROOM_AUTO_REFRESH_INTERVAL_MS = 5000
 const LAST_CREATED_ROOM_KEY = 'rooms:lastCreatedHostFeedback'
 
 const CASUAL_MODE_TOKENS = ['casual', '캐주얼', 'normal']
+const MATCH_READY_DEFAULT_MODE = MATCH_MODE_KEYS.RANK_SHARED
 
 const hostCleanupState = {
   timerId: null,
@@ -77,6 +79,44 @@ function normalizeRoomMode(value) {
   const normalized = value.trim().toLowerCase()
   if (!normalized) return 'rank'
   return CASUAL_MODE_TOKENS.some((token) => normalized.includes(token)) ? 'casual' : 'rank'
+}
+
+function resolveMatchReadyMode(value) {
+  if (typeof value !== 'string') return MATCH_READY_DEFAULT_MODE
+
+  const trimmed = value.trim()
+  if (!trimmed) return MATCH_READY_DEFAULT_MODE
+
+  const lowered = trimmed.toLowerCase()
+
+  if (['casual_private', 'private'].includes(lowered)) {
+    return MATCH_MODE_KEYS.CASUAL_PRIVATE
+  }
+
+  if (['casual_match', 'casual', 'normal'].includes(lowered)) {
+    return MATCH_MODE_KEYS.CASUAL_MATCH
+  }
+
+  if (['rank_duo', 'duo'].includes(lowered)) {
+    return MATCH_MODE_KEYS.RANK_DUO
+  }
+
+  if (['rank_solo', 'solo'].includes(lowered)) {
+    return MATCH_MODE_KEYS.RANK_SOLO
+  }
+
+  if (
+    [
+      MATCH_MODE_KEYS.RANK_SHARED,
+      MATCH_MODE_KEYS.RANK_SOLO,
+      MATCH_MODE_KEYS.RANK_DUO,
+      'rank',
+    ].includes(lowered)
+  ) {
+    return MATCH_MODE_KEYS.RANK_SHARED
+  }
+
+  return trimmed
 }
 
 function toStringOrNull(value) {
@@ -1441,6 +1481,7 @@ export default function RoomDetailPage() {
   }, [cancelHostCleanup, isHost, room?.id])
 
   const joined = !!activeSlotId
+  const matchReadyMode = useMemo(() => resolveMatchReadyMode(room?.mode), [room?.mode])
   const hostRatingText = Number.isFinite(room?.hostRating)
     ? `${room.hostRating}점`
     : '정보 없음'
@@ -1449,6 +1490,7 @@ export default function RoomDetailPage() {
     if (autoRedirectRef.current) return
     if (typeof window === 'undefined') return
     if (!room?.gameId) return
+    if (!matchReadyMode) return
     if (!Array.isArray(slots) || !slots.length) return
     if (!occupancy.total || occupancy.filled !== occupancy.total) return
     if (!joined) return
@@ -1493,7 +1535,7 @@ export default function RoomDetailPage() {
         viewerId: viewerUserKey,
         heroId: viewer.heroId || '',
         role: viewer.role || '',
-        mode: normalizeRoomMode(room.mode),
+        mode: matchReadyMode || normalizeRoomMode(room.mode),
         createdAt,
       })
     } catch (transferError) {
@@ -1503,7 +1545,12 @@ export default function RoomDetailPage() {
 
     autoRedirectRef.current = true
 
-    router.replace(`/rank/${room.gameId}`).catch((redirectError) => {
+    const nextRoute = {
+      pathname: `/rank/${room.gameId}/match-ready`,
+      query: { mode: matchReadyMode },
+    }
+
+    router.replace(nextRoute).catch((redirectError) => {
       console.error('[RoomDetail] Failed to redirect to main game:', redirectError)
       autoRedirectRef.current = false
     })
@@ -1519,6 +1566,7 @@ export default function RoomDetailPage() {
     viewer.ownerId,
     viewer.role,
     viewer.userId,
+    matchReadyMode,
   ])
 
   return (
