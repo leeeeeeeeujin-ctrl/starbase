@@ -37,6 +37,99 @@ function normalizeSlotLayout(rows = []) {
     .map(({ order, ...rest }) => rest)
 }
 
+function coerceHeroSummary(value) {
+  if (!value) return null
+  if (typeof value === 'object') return value
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      if (parsed && typeof parsed === 'object') return parsed
+    } catch (error) {
+      return null
+    }
+  }
+  return null
+}
+
+function normalizeMatchRosterParticipants(rows = []) {
+  if (!Array.isArray(rows) || rows.length === 0) return []
+
+  return rows.map((row, index) => {
+    const slotIndex =
+      row?.slot_index != null && Number.isFinite(Number(row.slot_index))
+        ? Number(row.slot_index)
+        : null
+    const heroSummary = coerceHeroSummary(row?.hero_summary)
+    const heroDetails = row?.heroes && typeof row.heroes === 'object' ? row.heroes : null
+    const heroFallback = {
+      id: row?.hero_id || null,
+      name: row?.hero_name || (row?.hero_id ? '이름 없는 영웅' : ''),
+      description: '',
+      image_url: '',
+      background_url: '',
+      bgm_url: '',
+      bgm_duration_seconds: null,
+      ability1: '',
+      ability2: '',
+      ability3: '',
+      ability4: '',
+    }
+
+    return {
+      id: row?.id || null,
+      owner_id: row?.owner_id || row?.ownerId || null,
+      role: row?.role || '',
+      status: row?.status || 'alive',
+      slot_no: slotIndex,
+      hero_id: row?.hero_id || null,
+      score: Number.isFinite(Number(row?.score)) ? Number(row.score) : null,
+      rating: Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null,
+      battles: Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null,
+      win_rate:
+        row?.win_rate !== undefined && row?.win_rate !== null ? Number(row.win_rate) : null,
+      match_source: row?.match_source || row?.matchSource || null,
+      standin: row?.standin === true,
+      heroes: heroSummary || heroDetails || heroFallback,
+      joined_at: row?.joined_at || row?.joinedAt || null,
+      ready: row?.ready === true,
+      _stagedOrder: index,
+    }
+  })
+}
+
+function normalizeMatchRosterSlotLayout(rows = []) {
+  if (!Array.isArray(rows) || rows.length === 0) return []
+
+  return rows
+    .map((row, index) => {
+      const slotIndex =
+        row?.slot_index != null && Number.isFinite(Number(row.slot_index))
+          ? Number(row.slot_index)
+          : null
+      if (slotIndex == null) return null
+      const role = typeof row?.role === 'string' ? row.role.trim() : ''
+      return {
+        id: row?.slot_id || row?.id || null,
+        slot_index: slotIndex,
+        slotIndex,
+        role: role || null,
+        hero_id: row?.hero_id || null,
+        hero_owner_id: row?.owner_id || null,
+        active: true,
+        ready: row?.ready === true,
+        order: index,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.slot_index === b.slot_index) {
+        return a.order - b.order
+      }
+      return a.slot_index - b.slot_index
+    })
+    .map(({ order, ...rest }) => rest)
+}
+
 function normalizeParticipants(rows = []) {
   const mapped = rows.map((row, index) => {
     const hero = row?.heroes || {}
@@ -171,34 +264,87 @@ function filterParticipantsForRoster(participants, rosterSnapshot) {
   return []
 }
 
-export async function loadGameBundle(supabaseClient, gameId, { rosterSnapshot = [] } = {}) {
+export async function loadGameBundle(
+  supabaseClient,
+  gameId,
+  { rosterSnapshot = [], matchInstanceId = null, roomId = null } = {},
+) {
   const {
     data: gameRow,
     error: gameError,
   } = await withTable(supabaseClient, 'rank_games', (table) =>
-    supabaseClient.from(table).select('*').eq('id', gameId).single()
+    supabaseClient.from(table).select('*').eq('id', gameId).single(),
   )
 
   if (gameError) throw gameError
 
-  const {
-    data: participantRows,
-    error: participantError,
-  } = await withTable(supabaseClient, 'rank_participants', (table) =>
-    supabaseClient
-      .from(table)
-      .select(
-        'id, owner_id, role, status, slot_no, hero_id, score, rating, battles, win_rate, match_source, standin, heroes:hero_id(id,name,description,image_url,background_url,bgm_url,bgm_duration_seconds,ability1,ability2,ability3,ability4)'
+  const trimmedInstanceId =
+    matchInstanceId && typeof matchInstanceId === 'string'
+      ? matchInstanceId.trim()
+      : ''
+  const trimmedRoomId = roomId && typeof roomId === 'string' ? roomId.trim() : ''
+
+  let stagedRosterRows = []
+  if (trimmedInstanceId || trimmedRoomId) {
+    try {
+      const rosterResult = await withTable(
+        supabaseClient,
+        'rank_match_roster',
+        (table) => {
+          let query = supabaseClient
+            .from(table)
+            .select(
+              'id, match_instance_id, room_id, slot_index, slot_id, role, owner_id, hero_id, hero_name, hero_summary, ready, joined_at, score, rating, battles, win_rate, status, standin, match_source, heroes:hero_id(id,name,description,image_url,background_url,bgm_url,bgm_duration_seconds,ability1,ability2,ability3,ability4)',
+            )
+            .eq('game_id', gameId)
+            .order('slot_index', { ascending: true })
+
+          if (trimmedInstanceId) {
+            query = query.eq('match_instance_id', trimmedInstanceId)
+          } else if (trimmedRoomId) {
+            query = query.eq('room_id', trimmedRoomId)
+          }
+
+          return query
+        },
       )
-      .eq('game_id', gameId)
-  )
 
-  if (participantError) throw participantError
+      if (!rosterResult.error && Array.isArray(rosterResult.data)) {
+        stagedRosterRows = rosterResult.data
+      }
+    } catch (error) {
+      console.warn('[StartClient] 매치 로스터를 불러오지 못했습니다:', error)
+    }
+  }
 
-  const participants = filterParticipantsForRoster(
-    normalizeParticipants(participantRows || []),
-    rosterSnapshot,
-  )
+  let stagedSlotLayout = []
+  let participants = []
+
+  if (stagedRosterRows.length) {
+    const normalizedStageRows = normalizeMatchRosterParticipants(stagedRosterRows)
+    stagedSlotLayout = normalizeMatchRosterSlotLayout(stagedRosterRows)
+    participants = normalizeParticipants(normalizedStageRows)
+  } else {
+    const {
+      data: participantRows,
+      error: participantError,
+    } = await withTable(supabaseClient, 'rank_participants', (table) =>
+      supabaseClient
+        .from(table)
+        .select(
+          'id, owner_id, role, status, slot_no, hero_id, score, rating, battles, win_rate, match_source, standin, heroes:hero_id(id,name,description,image_url,background_url,bgm_url,bgm_duration_seconds,ability1,ability2,ability3,ability4)'
+        )
+        .eq('game_id', gameId),
+    )
+
+    if (participantError) throw participantError
+
+    participants = filterParticipantsForRoster(
+      normalizeParticipants(participantRows || []),
+      rosterSnapshot,
+    )
+  }
+
   let slotLayout = []
   try {
     const slotResult = await withTable(
@@ -217,6 +363,27 @@ export async function loadGameBundle(supabaseClient, gameId, { rosterSnapshot = 
   } catch (error) {
     console.warn('[StartClient] 슬롯 레이아웃을 불러오지 못했습니다:', error)
     slotLayout = []
+  }
+
+  if (stagedSlotLayout.length) {
+    if (slotLayout.length) {
+      const stagedMap = new Map()
+      stagedSlotLayout.forEach((entry) => {
+        stagedMap.set(entry.slot_index, entry)
+      })
+      slotLayout = slotLayout.map((slot) => {
+        const staged = stagedMap.get(slot.slot_index)
+        if (!staged) return slot
+        return {
+          ...slot,
+          hero_id: staged.hero_id || slot.hero_id || null,
+          hero_owner_id: staged.hero_owner_id || slot.hero_owner_id || null,
+          ready: staged.ready ?? slot.ready,
+        }
+      })
+    } else {
+      slotLayout = stagedSlotLayout
+    }
   }
   const graph = { nodes: [], edges: [] }
   const warnings = []

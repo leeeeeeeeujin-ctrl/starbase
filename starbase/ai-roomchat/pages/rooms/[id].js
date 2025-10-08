@@ -137,6 +137,18 @@ function toNumberOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null
 }
 
+function createMatchInstanceId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return crypto.randomUUID()
+    } catch (error) {
+      // ignore and fall back
+    }
+  }
+  const suffix = Math.random().toString(36).slice(2, 10)
+  return `match_${Date.now()}_${suffix}`
+}
+
 function buildRosterFromSlots(slots) {
   if (!Array.isArray(slots) || !slots.length) return []
   return slots.map((slot) => ({
@@ -268,8 +280,12 @@ function buildMatchTransferPayload(room, slots) {
   const slotLayout = buildSlotLayoutFromRoster(roster)
   const maxWindow = toNumberOrNull(room?.scoreWindow)
   const timestamp = Date.now()
+  const instanceId = createMatchInstanceId()
 
   const match = {
+    instanceId,
+    matchInstanceId: instanceId,
+    match_instance_id: instanceId,
     assignments,
     maxWindow,
     heroMap,
@@ -312,6 +328,7 @@ function buildMatchTransferPayload(room, slots) {
     assignments,
     slotLayout,
     match,
+    matchInstanceId: instanceId,
   }
 }
 
@@ -1735,62 +1752,99 @@ export default function RoomDetailPage() {
     const payload = buildMatchTransferPayload(room, slots)
     if (!payload) return
 
-    const viewerOwnerKey = viewer.ownerId != null ? String(viewer.ownerId) : ''
-    const viewerUserKey = viewer.userId != null ? String(viewer.userId) : viewerOwnerKey
-    const heroOptions = Array.from(
-      new Set(payload.roster.map((entry) => entry.heroId).filter(Boolean)),
-    )
-
-    try {
-      setGameMatchParticipation(room.gameId, {
-        roster: payload.roster,
-        heroOptions,
-        participantPool: payload.roster,
-        heroMap: payload.heroMap,
-      })
-
-      setGameMatchHeroSelection(room.gameId, {
-        heroId: viewer.heroId || '',
-        viewerId: viewerUserKey,
-        ownerId: viewerOwnerKey || viewerUserKey,
-        role: viewer.role || '',
-        heroMeta: viewer.heroId
-          ? {
-              id: viewer.heroId,
-              name: viewer.heroName || '',
-              role: viewer.role || '',
-              ownerId: viewerOwnerKey || viewerUserKey || null,
-            }
-          : null,
-      })
-
-      const createdAt = payload.match?.roleStatus?.updatedAt || Date.now()
-
-      setGameMatchSnapshot(room.gameId, {
-        match: payload.match,
-        pendingMatch: null,
-        viewerId: viewerUserKey,
-        heroId: viewer.heroId || '',
-        role: viewer.role || '',
-        mode: matchReadyMode || normalizeRoomMode(room.mode),
-        createdAt,
-      })
-    } catch (transferError) {
-      console.error('[RoomDetail] Failed to stage match data before redirect:', transferError)
-      return
-    }
-
     autoRedirectRef.current = true
 
-    const nextRoute = {
-      pathname: `/rank/${room.gameId}/match-ready`,
-      query: { mode: matchReadyMode },
-    }
+    ;(async () => {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          throw new Error('세션 토큰을 확인할 수 없습니다.')
+        }
 
-    router.replace(nextRoute).catch((redirectError) => {
-      console.error('[RoomDetail] Failed to redirect to main game:', redirectError)
-      autoRedirectRef.current = false
-    })
+        const stageResponse = await fetch('/api/rank/stage-room-match', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            match_instance_id: payload.matchInstanceId,
+            room_id: room.id,
+            game_id: room.gameId,
+            roster: payload.roster,
+            hero_map: payload.heroMap,
+          }),
+        })
+
+        if (!stageResponse.ok) {
+          let detail = null
+          try {
+            detail = await stageResponse.json()
+          } catch (parseError) {
+            detail = null
+          }
+          const message = detail?.error || 'match_roster_stage_failed'
+          throw new Error(message)
+        }
+
+        const viewerOwnerKey = viewer.ownerId != null ? String(viewer.ownerId) : ''
+        const viewerUserKey = viewer.userId != null ? String(viewer.userId) : viewerOwnerKey
+        const heroOptions = Array.from(
+          new Set(payload.roster.map((entry) => entry.heroId).filter(Boolean)),
+        )
+
+        setGameMatchParticipation(room.gameId, {
+          roster: payload.roster,
+          heroOptions,
+          participantPool: payload.roster,
+          heroMap: payload.heroMap,
+        })
+
+        setGameMatchHeroSelection(room.gameId, {
+          heroId: viewer.heroId || '',
+          viewerId: viewerUserKey,
+          ownerId: viewerOwnerKey || viewerUserKey,
+          role: viewer.role || '',
+          heroMeta: viewer.heroId
+            ? {
+                id: viewer.heroId,
+                name: viewer.heroName || '',
+                role: viewer.role || '',
+                ownerId: viewerOwnerKey || viewerUserKey || null,
+              }
+            : null,
+        })
+
+        const createdAt = payload.match?.roleStatus?.updatedAt || Date.now()
+
+        setGameMatchSnapshot(room.gameId, {
+          match: payload.match,
+          pendingMatch: null,
+          viewerId: viewerUserKey,
+          heroId: viewer.heroId || '',
+          role: viewer.role || '',
+          mode: matchReadyMode || normalizeRoomMode(room.mode),
+          createdAt,
+        })
+
+        const nextRoute = {
+          pathname: `/rank/${room.gameId}/match-ready`,
+          query: { mode: matchReadyMode },
+        }
+
+        router.replace(nextRoute).catch((redirectError) => {
+          console.error('[RoomDetail] Failed to redirect to main game:', redirectError)
+          autoRedirectRef.current = false
+        })
+      } catch (stageError) {
+        console.error('[RoomDetail] Failed to stage match data before redirect:', stageError)
+        autoRedirectRef.current = false
+      }
+    })()
   }, [
     joined,
     occupancy.filled,

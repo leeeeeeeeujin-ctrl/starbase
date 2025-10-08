@@ -37,6 +37,10 @@ This note captures every Supabase table that participates in queueing players, f
 - Tracks per-room slot index, assigned role, occupant owner/hero IDs, readiness flag, join timestamp, and audit columns with uniqueness on `(room_id, slot_index)`.【F:starbase/ai-roomchat/supabase.sql†L715-L810】
 - Policies gate inserts to the room owner and updates to either the occupant or owner, preventing unauthorized seat shuffles.【F:starbase/ai-roomchat/supabase.sql†L781-L810】
 
+### `public.rank_match_roster`
+- Ephemeral snapshot of a filled room’s lineup keyed by `match_instance_id`, preserving the seated owner/hero pair, slot index, readiness flag, and cached stats (`score`, `rating`, `battles`, `win_rate`) for the upcoming session.【F:starbase/ai-roomchat/supabase.sql†L1129-L1156】
+- Service-role writers stage roster rows immediately before redirecting to the match-ready flow, while everyone can read them so the main game only hydrates participants from the active room.【F:starbase/ai-roomchat/supabase.sql†L1158-L1164】
+
 ## Queue Management
 
 ### `public.rank_match_queue`

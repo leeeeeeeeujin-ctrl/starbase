@@ -137,6 +137,11 @@ export function readMatchFlowState(gameId) {
     viewer,
     room,
     matchMode: snapshot?.mode || '',
+    matchInstanceId:
+      snapshot?.match?.instanceId ||
+      snapshot?.match?.matchInstanceId ||
+      snapshot?.match?.match_instance_id ||
+      '',
     hasActiveKey,
     rosterReadyCount: readyCount,
     totalSlots,

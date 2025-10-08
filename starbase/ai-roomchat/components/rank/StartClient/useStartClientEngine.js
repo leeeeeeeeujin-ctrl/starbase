@@ -567,6 +567,30 @@ export function useStartClientEngine(gameId) {
   const [startMatchMeta] = useState(initialMatchMeta)
   const [frontMatchData] = useState(initialFrontMatchData)
   const matchSnapshotSeed = frontMatchData?.matchSnapshot?.match || null
+  const matchInstanceId = useMemo(() => {
+    if (!matchSnapshotSeed) return ''
+    const direct =
+      matchSnapshotSeed.instanceId ||
+      matchSnapshotSeed.matchInstanceId ||
+      matchSnapshotSeed.match_instance_id ||
+      null
+    if (direct && typeof direct === 'string') {
+      return direct.trim()
+    }
+    return ''
+  }, [matchSnapshotSeed])
+  const stagedRoomId = useMemo(() => {
+    if (!matchSnapshotSeed) return ''
+    const rooms = Array.isArray(matchSnapshotSeed.rooms) ? matchSnapshotSeed.rooms : []
+    if (rooms.length) {
+      const idValue = rooms[0]?.id
+      if (idValue != null) {
+        const trimmed = String(idValue).trim()
+        if (trimmed) return trimmed
+      }
+    }
+    return ''
+  }, [matchSnapshotSeed])
   const rosterSnapshot = useMemo(() => {
     const normalized = normalizeRosterEntries(frontMatchData?.participation?.roster || [])
     if (normalized.length) return normalized
@@ -1179,7 +1203,11 @@ export function useStartClientEngine(gameId) {
     async function load() {
       patchEngineState({ loading: true, error: '' })
       try {
-        const bundle = await loadGameBundle(supabase, gameId, { rosterSnapshot })
+        const bundle = await loadGameBundle(supabase, gameId, {
+          rosterSnapshot,
+          matchInstanceId,
+          roomId: stagedRoomId,
+        })
         if (!alive) return
 
         const participantsFromBundle = Array.isArray(bundle.participants)

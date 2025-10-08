@@ -10,6 +10,10 @@
   않았거나 게임 ID가 없으면 즉시 초기화합니다.【F:components/rank/StartClient/index.js†L49-L77】
 - 컴포넌트가 언마운트될 때 `clearMatchFlow`를 호출해 동일 브라우저 세션에 이전 전투 데이터가 남지 않도록
   합니다.【F:components/rank/StartClient/index.js†L60-L77】【F:lib/rank/matchFlow.js†L133-L135】
+- `useStartClientEngine`는 스냅샷에서 복구한 `rosterSnapshot`을 이용해 Supabase `rank_match_roster`에서 최신
+  세션 참가자를 우선 불러오고, 비어 있을 때만 `rank_participants`를 폴백으로 사용합니다. 덕분에 메인 게임이
+  방과 무관한 과거 참가자 목록으로 되돌아가지 않습니다.【F:components/rank/StartClient/useStartClientEngine.js†L1135-L1211】
+
 
 ## 2. 상단 헤더와 상태 배너
 - `HeaderControls`는 방/게임 정보, 뒤로 가기, 세션 시작(또는 재시작), 다음 턴 호출 버튼을 노출합니다.

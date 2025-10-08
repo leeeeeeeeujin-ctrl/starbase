@@ -1152,6 +1152,50 @@ with check (
   )
 );
 
+create table if not exists public.rank_match_roster (
+  id uuid primary key default gen_random_uuid(),
+  match_instance_id uuid not null,
+  room_id uuid not null references public.rank_rooms(id) on delete cascade,
+  game_id uuid not null references public.rank_games(id) on delete cascade,
+  slot_id uuid,
+  slot_index integer not null,
+  role text not null,
+  owner_id uuid references auth.users(id) on delete set null,
+  hero_id uuid references public.heroes(id) on delete set null,
+  hero_name text,
+  hero_summary jsonb default '{}'::jsonb,
+  ready boolean default false,
+  joined_at timestamptz,
+  score integer,
+  rating integer,
+  battles integer,
+  win_rate numeric,
+  status text,
+  standin boolean default false,
+  match_source text,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create unique index if not exists rank_match_roster_instance_slot_unique
+on public.rank_match_roster (match_instance_id, slot_index);
+
+create index if not exists rank_match_roster_room_idx
+on public.rank_match_roster (room_id);
+
+create index if not exists rank_match_roster_game_idx
+on public.rank_match_roster (game_id);
+
+alter table public.rank_match_roster enable row level security;
+
+create policy if not exists rank_match_roster_select
+on public.rank_match_roster for select using (true);
+
+create policy if not exists rank_match_roster_service_write
+on public.rank_match_roster for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
 alter table public.rank_match_queue enable row level security;
 
 create policy if not exists rank_match_queue_select

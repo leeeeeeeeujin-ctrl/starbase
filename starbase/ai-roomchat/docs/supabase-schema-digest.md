@@ -111,6 +111,10 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 - Accessible for reads, while inserts require room ownership and updates allow either occupants or the host to change their slot.【F:starbase/ai-roomchat/supabase.sql†L1000-L1034】
 - Indexed by `(room_id, role, occupant_owner_id)` so vacancy scans for drop-in matching can quickly locate open seats without table scans.【F:starbase/ai-roomchat/supabase.sql†L949-L951】
 
+### `public.rank_match_roster`
+- Ephemeral roster snapshot keyed by `match_instance_id`, storing the seated owner/hero pair per slot alongside readiness flags and cached stats (`score`, `rating`, `battles`, `win_rate`) that the main game consumes right after room fill.【F:starbase/ai-roomchat/supabase.sql†L1129-L1156】
+- Universal read access keeps the start client lightweight, while service-role policies gate inserts/updates/deletes so only the staging API can refresh the lineup.【F:starbase/ai-roomchat/supabase.sql†L1158-L1164】
+
 ### `public.rank_match_queue`
 - Queue entries capture game/mode/role, owning player, hero choice, score, party key, status, joined/updated timestamps, and optional match code.【F:starbase/ai-roomchat/supabase.sql†L952-L965】
 - Indexed for queue scanning and owner lookups; RLS exposes waiting entries to everyone and allows owners to manage their own rows.【F:starbase/ai-roomchat/supabase.sql†L967-L1056】
