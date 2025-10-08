@@ -66,29 +66,38 @@ function toDisplayError(error) {
   return '세션을 불러오는 중 오류가 발생했습니다.'
 }
 
-export default function StartClient() {
+export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   const router = useRouter()
-  const [gameId, setGameId] = useState('')
+  const trimmedPropId = typeof gameIdProp === 'string' ? gameIdProp.trim() : ''
+  const usePropGameId = Boolean(trimmedPropId)
+  const [gameId, setGameId] = useState(trimmedPropId)
   const [matchState, setMatchState] = useState(() => createEmptyMatchFlowState())
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    if (!router.isReady) return
-    const { id } = router.query
-    if (typeof id !== 'string' || !id.trim()) {
-      setGameId('')
-      setMatchState(createEmptyMatchFlowState())
+    if (usePropGameId) {
+      setGameId(trimmedPropId)
+      setMatchState(readMatchFlowState(trimmedPropId))
       setReady(true)
       return
     }
-    setGameId(id)
-    setMatchState(readMatchFlowState(id))
+    if (!router.isReady) return undefined
+    const { id } = router.query
+    const resolvedId = typeof id === 'string' ? id.trim() : ''
+    if (!resolvedId) {
+      setGameId('')
+      setMatchState(createEmptyMatchFlowState())
+      setReady(true)
+      return undefined
+    }
+    setGameId(resolvedId)
+    setMatchState(readMatchFlowState(resolvedId))
     setReady(true)
 
     return () => {
-      clearMatchFlow(id)
+      clearMatchFlow(resolvedId)
     }
-  }, [router.isReady, router.query])
+  }, [usePropGameId, trimmedPropId, router.isReady, router.query])
 
   const engine = useStartClientEngine(gameId)
   const {
@@ -150,6 +159,10 @@ export default function StartClient() {
   )
 
   const handleBackToRoom = useCallback(() => {
+    if (typeof onRequestClose === 'function') {
+      onRequestClose()
+      return
+    }
     if (matchState?.room?.id) {
       router.push(`/rooms/${matchState.room.id}`).catch(() => {})
       return
@@ -159,7 +172,7 @@ export default function StartClient() {
       return
     }
     router.push('/rooms').catch(() => {})
-  }, [router, matchState?.room?.id, gameId])
+  }, [router, matchState?.room?.id, gameId, onRequestClose])
 
   const statusMessages = useMemo(() => {
     const messages = []

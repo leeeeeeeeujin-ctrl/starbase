@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 
 import styles from './MatchReadyClient.module.css'
 import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow'
+import StartClient from './StartClient'
 
 function buildMetaLines(state) {
   const lines = []
@@ -76,6 +77,7 @@ function buildRosterDisplay(roster, viewer, blindMode) {
 export default function MatchReadyClient({ gameId }) {
   const router = useRouter()
   const [state, setState] = useState(() => createEmptyMatchFlowState())
+  const [showGame, setShowGame] = useState(false)
 
   useEffect(() => {
     if (!gameId) {
@@ -109,10 +111,28 @@ export default function MatchReadyClient({ gameId }) {
 
   const handleStart = useCallback(() => {
     if (!gameId) return
-    router.push(`/rank/${gameId}/start`).catch(() => {})
-  }, [router, gameId])
+    setShowGame(true)
+  }, [gameId])
 
   const allowStart = Boolean(gameId && state?.snapshot && state?.hasActiveKey)
+
+  useEffect(() => {
+    if (showGame) {
+      const previous = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = previous
+      }
+    }
+    return undefined
+  }, [showGame])
+
+  useEffect(() => {
+    if (!allowStart && showGame) {
+      setShowGame(false)
+    }
+  }, [allowStart, showGame])
+
   const missingKey = state?.snapshot && !state?.hasActiveKey
 
   return (
@@ -183,7 +203,7 @@ export default function MatchReadyClient({ gameId }) {
             onClick={handleStart}
             disabled={!allowStart}
           >
-            메인 게임으로 이동
+            게임 화면 열기
           </button>
           {!allowStart && state?.snapshot && (
             <p className={styles.footerHint}>
@@ -194,6 +214,14 @@ export default function MatchReadyClient({ gameId }) {
           )}
         </footer>
       </div>
+      {showGame ? (
+        <div className={styles.overlayRoot}>
+          <div className={styles.overlayBackdrop} />
+          <div className={styles.overlayContent}>
+            <StartClient gameId={gameId} onRequestClose={() => setShowGame(false)} />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

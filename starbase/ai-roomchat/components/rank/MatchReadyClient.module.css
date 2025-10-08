@@ -189,6 +189,29 @@
   color: rgba(148, 163, 184, 0.9);
 }
 
+.overlayRoot {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.overlayBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.overlayContent {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  overflow-y: auto;
+}
+
 @media (max-width: 640px) {
   .shell {
     padding: 26px 20px 32px;
