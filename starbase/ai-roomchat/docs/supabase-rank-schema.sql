@@ -727,6 +727,9 @@ create table if not exists public.rank_user_api_keyring (
   updated_at timestamptz not null default now()
 );
 
+alter table public.rank_user_api_keyring
+  add column if not exists model_label text;
+
 create index if not exists rank_user_api_keyring_user_idx
   on public.rank_user_api_keyring (user_id, created_at);
 
