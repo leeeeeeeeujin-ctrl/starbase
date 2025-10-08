@@ -360,18 +360,22 @@ function mergeSlotLayoutSeed(primary = [], fallback = []) {
 }
 
 function hydrateParticipantsWithRoster(participants = [], roster = []) {
-  if (!Array.isArray(participants) || participants.length === 0) {
-    return participants || []
+  const participantList = Array.isArray(participants) ? participants : []
+  const rosterList = Array.isArray(roster) ? roster : []
+
+  if (rosterList.length === 0) {
+    return participantList
   }
-  if (!Array.isArray(roster) || roster.length === 0) {
-    return participants
+
+  if (participantList.length === 0) {
+    return buildParticipantsFromRoster(rosterList)
   }
 
   const compositeMap = new Map()
   const heroMap = new Map()
   const ownerMap = new Map()
 
-  roster.forEach((entry) => {
+  rosterList.forEach((entry) => {
     const ownerId = toTrimmedString(entry.ownerId)
     const heroId = toTrimmedString(entry.heroId)
     if (ownerId && heroId) {
@@ -388,59 +392,65 @@ function hydrateParticipantsWithRoster(participants = [], roster = []) {
     }
   })
 
-  const decorated = participants.map((participant, index) => {
-    if (!participant) {
-      return { participant: null, index }
-    }
+  const decorated = participantList
+    .map((participant, index) => {
+      if (!participant) {
+        return null
+      }
 
-    const ownerId = toTrimmedString(deriveParticipantOwnerId(participant))
-    const heroId = toTrimmedString(
-      participant?.hero?.id ?? participant?.hero_id ?? participant?.heroId,
-    )
-
-    let rosterEntry = null
-    if (ownerId && heroId) {
-      rosterEntry = compositeMap.get(`${ownerId}::${heroId}`) || null
-    }
-    if (!rosterEntry && heroId) {
-      rosterEntry = heroMap.get(heroId) || null
-    }
-    if (!rosterEntry && ownerId) {
-      rosterEntry = ownerMap.get(ownerId) || null
-    }
-
-    if (!rosterEntry) {
-      return { participant, index }
-    }
-
-    const slotIndex =
-      rosterEntry.slotIndex ??
-      parseSlotIndex(
-        participant.slot_no ?? participant.slotIndex ?? participant.slot_index,
+      const ownerId = toTrimmedString(deriveParticipantOwnerId(participant))
+      const heroId = toTrimmedString(
+        participant?.hero?.id ?? participant?.hero_id ?? participant?.heroId,
       )
-    const roleValue =
-      (typeof rosterEntry.role === 'string' && rosterEntry.role.trim()) ||
-      participant.role ||
-      null
 
-    return {
-      participant: {
-        ...participant,
-        slot_no: slotIndex,
-        slotIndex,
-        slot_index: slotIndex,
-        role: roleValue,
-        occupant_ready:
-          rosterEntry.ready ?? participant.occupant_ready ?? null,
-        occupant_joined_at:
-          rosterEntry.joinedAt ??
-          participant.occupant_joined_at ??
-          participant.joined_at ??
-          null,
-      },
-      index,
-    }
-  })
+      let rosterEntry = null
+      if (ownerId && heroId) {
+        rosterEntry = compositeMap.get(`${ownerId}::${heroId}`) || null
+      }
+      if (!rosterEntry && heroId) {
+        rosterEntry = heroMap.get(heroId) || null
+      }
+      if (!rosterEntry && ownerId) {
+        rosterEntry = ownerMap.get(ownerId) || null
+      }
+
+      if (!rosterEntry) {
+        return null
+      }
+
+      const slotIndex =
+        rosterEntry.slotIndex ??
+        parseSlotIndex(
+          participant.slot_no ?? participant.slotIndex ?? participant.slot_index,
+        )
+      const roleValue =
+        (typeof rosterEntry.role === 'string' && rosterEntry.role.trim()) ||
+        participant.role ||
+        null
+
+      return {
+        participant: {
+          ...participant,
+          slot_no: slotIndex,
+          slotIndex,
+          slot_index: slotIndex,
+          role: roleValue,
+          occupant_ready:
+            rosterEntry.ready ?? participant.occupant_ready ?? null,
+          occupant_joined_at:
+            rosterEntry.joinedAt ??
+            participant.occupant_joined_at ??
+            participant.joined_at ??
+            null,
+        },
+        index,
+      }
+    })
+    .filter(Boolean)
+
+  if (!decorated.length) {
+    return buildParticipantsFromRoster(rosterList)
+  }
 
   decorated.sort((a, b) => {
     const slotA = parseSlotIndex(
@@ -458,9 +468,68 @@ function hydrateParticipantsWithRoster(participants = [], roster = []) {
     return a.index - b.index
   })
 
-  return decorated
-    .map((entry) => entry.participant)
-    .filter((participant) => participant !== null)
+  return decorated.map((entry) => entry.participant)
+}
+
+function buildParticipantsFromRoster(roster = []) {
+  return roster
+    .map((entry, index) => {
+      if (!entry) return null
+      const slotIndex = parseSlotIndex(entry.slotIndex, index)
+      const ownerId = toTrimmedString(entry.ownerId)
+      const heroId = toTrimmedString(entry.heroId)
+      const heroName = normalizeHeroName(entry.heroName || '')
+      const ready = Boolean(entry.ready)
+
+      if (!ownerId || !heroId) {
+        return null
+      }
+
+      return {
+        id: `roster-${slotIndex != null ? slotIndex : index}-${ownerId}`,
+        owner_id: ownerId,
+        ownerId,
+        role: entry.role || '',
+        status: ready ? 'ready' : 'alive',
+        slot_no: slotIndex,
+        slotIndex,
+        slot_index: slotIndex,
+        score: 0,
+        rating: 0,
+        battles: 0,
+        win_rate: null,
+        hero_id: heroId,
+        match_source: 'room_roster',
+        standin: false,
+        occupant_ready: ready,
+        occupant_joined_at: entry.joinedAt || null,
+        hero: {
+          id: heroId,
+          name: heroName || (heroId ? `캐릭터 #${heroId}` : '알 수 없는 영웅'),
+          description: '',
+          image_url: '',
+          background_url: '',
+          bgm_url: '',
+          bgm_duration_seconds: null,
+          ability1: '',
+          ability2: '',
+          ability3: '',
+          ability4: '',
+        },
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const slotA = parseSlotIndex(a.slot_no, 0)
+      const slotB = parseSlotIndex(b.slot_no, 0)
+      if (slotA != null && slotB != null) {
+        if (slotA === slotB) return 0
+        return slotA - slotB
+      }
+      if (slotA != null) return -1
+      if (slotB != null) return 1
+      return 0
+    })
 }
 
 export function useStartClientEngine(gameId) {

@@ -168,7 +168,7 @@ function filterParticipantsForRoster(participants, rosterSnapshot) {
     return filtered
   }
 
-  return fallback.length ? fallback : participants
+  return []
 }
 
 export async function loadGameBundle(supabaseClient, gameId, { rosterSnapshot = [] } = {}) {
