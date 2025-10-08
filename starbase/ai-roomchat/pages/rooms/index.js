@@ -20,6 +20,7 @@ import {
   AUTH_ACCESS_TOKEN_KEY,
   AUTH_REFRESH_TOKEN_KEY,
   AUTH_USER_ID_KEY,
+  createEmptyRankAuthSnapshot,
   persistRankAuthSession,
   persistRankAuthUser,
   readRankAuthSnapshot,
@@ -732,7 +733,7 @@ export default function RoomBrowserPage() {
 
   const mountedRef = useRef(true)
 
-  const [storedAuthSnapshot, setStoredAuthSnapshot] = useState(() => readRankAuthSnapshot())
+  const [storedAuthSnapshot, setStoredAuthSnapshot] = useState(() => createEmptyRankAuthSnapshot())
   const [viewerUserId, setViewerUserId] = useState('')
   const [storedHeroId, setStoredHeroId] = useState('')
   const [storedHeroOwnerId, setStoredHeroOwnerId] = useState('')

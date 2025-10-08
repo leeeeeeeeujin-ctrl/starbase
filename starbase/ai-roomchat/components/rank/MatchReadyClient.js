@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import styles from './MatchReadyClient.module.css'
-import { readMatchFlowState } from '../../lib/rank/matchFlow'
+import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow'
 
 function buildMetaLines(state) {
   const lines = []
@@ -75,10 +75,13 @@ function buildRosterDisplay(roster, viewer, blindMode) {
 
 export default function MatchReadyClient({ gameId }) {
   const router = useRouter()
-  const [state, setState] = useState(() => readMatchFlowState(gameId))
+  const [state, setState] = useState(() => createEmptyMatchFlowState())
 
   useEffect(() => {
-    if (!gameId) return
+    if (!gameId) {
+      setState(createEmptyMatchFlowState())
+      return
+    }
     setState(readMatchFlowState(gameId))
   }, [gameId])
 
@@ -89,7 +92,10 @@ export default function MatchReadyClient({ gameId }) {
   )
 
   const handleRefresh = useCallback(() => {
-    if (!gameId) return
+    if (!gameId) {
+      setState(createEmptyMatchFlowState())
+      return
+    }
     setState(readMatchFlowState(gameId))
   }, [gameId])
 

@@ -17,7 +17,15 @@ if (!url || !anonKey) {
   throw new Error('Missing Supabase configuration for log-turn API')
 }
 
-const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
+const anonClient = createClient(url, anonKey, {
+  auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+  },
+})
 
 function normalizeEntries(entries) {
   if (!Array.isArray(entries)) return []

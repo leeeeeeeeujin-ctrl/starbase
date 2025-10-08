@@ -24,6 +24,7 @@ import {
   AUTH_ACCESS_TOKEN_KEY,
   AUTH_REFRESH_TOKEN_KEY,
   AUTH_USER_ID_KEY,
+  createEmptyRankAuthSnapshot,
   persistRankAuthSession,
   persistRankAuthUser,
   readRankAuthSnapshot,
@@ -31,6 +32,7 @@ import {
 } from '@/lib/rank/rankAuthStorage'
 import { MATCH_MODE_KEYS } from '@/lib/rank/matchModes'
 import {
+  createEmptyRankKeyringSnapshot,
   hasActiveKeyInSnapshot,
   RANK_KEYRING_STORAGE_EVENT,
   RANK_KEYRING_STORAGE_KEY,
@@ -690,9 +692,9 @@ export default function RoomDetailPage() {
   const [leavePending, setLeavePending] = useState(false)
   const [creationFeedback, setCreationFeedback] = useState(null)
   const [deletePending, setDeletePending] = useState(false)
-  const [storedAuthSnapshot, setStoredAuthSnapshot] = useState(() => readRankAuthSnapshot())
+  const [storedAuthSnapshot, setStoredAuthSnapshot] = useState(() => createEmptyRankAuthSnapshot())
 
-  const [keyringSnapshot, setKeyringSnapshot] = useState(() => readRankKeyringSnapshot())
+  const [keyringSnapshot, setKeyringSnapshot] = useState(() => createEmptyRankKeyringSnapshot())
   const [viewer, setViewer] = useState({
     heroId: '',
     heroName: '',

@@ -2,11 +2,51 @@ import {
   readGameMatchData,
   clearGameMatchData,
 } from '../../modules/rank/matchDataStore'
-import { readRankAuthSnapshot } from './rankAuthStorage'
+import { readRankAuthSnapshot, createEmptyRankAuthSnapshot } from './rankAuthStorage'
 import {
+  createEmptyRankKeyringSnapshot,
   hasActiveKeyInSnapshot,
   readRankKeyringSnapshot,
 } from './keyringStorage'
+
+const EMPTY_MATCH_FLOW_STATE = {
+  snapshot: null,
+  roster: [],
+  assignments: [],
+  viewer: {
+    heroId: '',
+    role: '',
+    ownerId: '',
+    viewerId: '',
+    heroName: '',
+  },
+  room: null,
+  matchMode: '',
+  matchInstanceId: '',
+  hasActiveKey: false,
+  rosterReadyCount: 0,
+  totalSlots: 0,
+  authSnapshot: createEmptyRankAuthSnapshot(),
+  keyringSnapshot: createEmptyRankKeyringSnapshot(),
+  raw: null,
+}
+
+export function createEmptyMatchFlowState(overrides = {}) {
+  const { authSnapshot: overrideAuth, keyringSnapshot: overrideKeyring, ...rest } = overrides || {}
+  const authSnapshot = overrideAuth
+    ? { ...createEmptyRankAuthSnapshot(), ...overrideAuth }
+    : createEmptyRankAuthSnapshot()
+  const keyringSnapshot = overrideKeyring
+    ? { ...createEmptyRankKeyringSnapshot(), ...overrideKeyring }
+    : createEmptyRankKeyringSnapshot()
+
+  return {
+    ...EMPTY_MATCH_FLOW_STATE,
+    authSnapshot,
+    keyringSnapshot,
+    ...rest,
+  }
+}
 
 function toNumber(value) {
   const numeric = Number(value)
@@ -72,26 +112,7 @@ function deriveUserId({ viewer, authSnapshot }) {
 
 export function readMatchFlowState(gameId) {
   if (!gameId && gameId !== 0) {
-    return {
-      snapshot: null,
-      roster: [],
-      assignments: [],
-      viewer: {
-        heroId: '',
-        role: '',
-        ownerId: '',
-        viewerId: '',
-        heroName: '',
-      },
-      room: null,
-      matchMode: '',
-      hasActiveKey: false,
-      rosterReadyCount: 0,
-      totalSlots: 0,
-      authSnapshot: { userId: '', accessToken: '', refreshToken: '', expiresAt: null },
-      keyringSnapshot: { userId: '', entries: [], updatedAt: 0 },
-      raw: null,
-    }
+    return createEmptyMatchFlowState()
   }
 
   const raw = readGameMatchData(gameId) || {}
@@ -131,6 +152,7 @@ export function readMatchFlowState(gameId) {
   const totalSlots = roster.length
 
   return {
+    ...createEmptyMatchFlowState({ authSnapshot, keyringSnapshot }),
     snapshot,
     roster,
     assignments,
@@ -145,8 +167,6 @@ export function readMatchFlowState(gameId) {
     hasActiveKey,
     rosterReadyCount: readyCount,
     totalSlots,
-    authSnapshot,
-    keyringSnapshot,
     raw,
   }
 }

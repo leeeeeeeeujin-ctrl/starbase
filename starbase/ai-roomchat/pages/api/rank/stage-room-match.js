@@ -11,7 +11,15 @@ if (!url || !anonKey) {
   throw new Error('Missing Supabase configuration for stage-room-match API')
 }
 
-const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
+const anonClient = createClient(url, anonKey, {
+  auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+  },
+})
 
 function toTrimmedString(value) {
   if (value === null || value === undefined) return ''

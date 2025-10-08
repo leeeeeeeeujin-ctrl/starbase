@@ -11,7 +11,15 @@ if (!url || !anonKey) {
   throw new Error('Missing Supabase configuration for start-session API')
 }
 
-const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
+const anonClient = createClient(url, anonKey, {
+  auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+  },
+})
 
 function buildSessionSummary({ mode, role, matchCode, turnTimer, createdAt }) {
   const lines = ['랭크 세션이 시작되었습니다.']

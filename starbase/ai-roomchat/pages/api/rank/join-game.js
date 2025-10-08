@@ -10,7 +10,15 @@ if (!url || !anonKey) {
   throw new Error('Missing Supabase configuration for join-game API')
 }
 
-const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
+const anonClient = createClient(url, anonKey, {
+  auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+  },
+})
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

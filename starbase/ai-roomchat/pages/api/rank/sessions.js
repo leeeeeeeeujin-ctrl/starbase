@@ -14,6 +14,12 @@ if (!supabaseUrl || !anonKey) {
 
 const anonClient = createClient(supabaseUrl, anonKey, {
   auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+  },
 })
 
 function clamp(value, { min, max, fallback }) {

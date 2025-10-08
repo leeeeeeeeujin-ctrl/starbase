@@ -10,7 +10,11 @@ import TurnInfoPanel from './TurnInfoPanel'
 import ManualResponsePanel from './ManualResponsePanel'
 import StatusBanner from './StatusBanner'
 import LogsPanel from './LogsPanel'
-import { clearMatchFlow, readMatchFlowState } from '../../../lib/rank/matchFlow'
+import {
+  clearMatchFlow,
+  createEmptyMatchFlowState,
+  readMatchFlowState,
+} from '../../../lib/rank/matchFlow'
 import { useStartClientEngine } from './useStartClientEngine'
 
 function buildSessionMeta(state) {
@@ -65,7 +69,7 @@ function toDisplayError(error) {
 export default function StartClient() {
   const router = useRouter()
   const [gameId, setGameId] = useState('')
-  const [matchState, setMatchState] = useState(() => readMatchFlowState(''))
+  const [matchState, setMatchState] = useState(() => createEmptyMatchFlowState())
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -73,7 +77,7 @@ export default function StartClient() {
     const { id } = router.query
     if (typeof id !== 'string' || !id.trim()) {
       setGameId('')
-      setMatchState(readMatchFlowState(''))
+      setMatchState(createEmptyMatchFlowState())
       setReady(true)
       return
     }

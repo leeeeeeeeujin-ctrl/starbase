@@ -4,6 +4,17 @@ const AUTH_REFRESH_TOKEN_KEY = 'rankAuthRefreshToken'
 const AUTH_ACCESS_EXPIRES_AT_KEY = 'rankAuthAccessExpiresAt'
 const RANK_AUTH_STORAGE_EVENT = 'rank-auth:refresh'
 
+const EMPTY_AUTH_SNAPSHOT = {
+  userId: '',
+  accessToken: '',
+  refreshToken: '',
+  expiresAt: null,
+}
+
+export function createEmptyRankAuthSnapshot() {
+  return { ...EMPTY_AUTH_SNAPSHOT }
+}
+
 function safeStorage() {
   if (typeof window === 'undefined') return null
   try {
@@ -111,12 +122,7 @@ export function clearRankAuthSession() {
 export function readRankAuthSnapshot() {
   const storage = safeStorage()
   if (!storage) {
-    return {
-      userId: '',
-      accessToken: '',
-      refreshToken: '',
-      expiresAt: null,
-    }
+    return createEmptyRankAuthSnapshot()
   }
 
   let expiresAt = null

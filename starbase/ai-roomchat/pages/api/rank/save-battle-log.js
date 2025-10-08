@@ -11,7 +11,15 @@ if (!url || !anonKey) {
   throw new Error('Missing Supabase configuration for save-battle-log API')
 }
 
-const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
+const anonClient = createClient(url, anonKey, {
+  auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+  },
+})
 
 function sanitizeDraft(input) {
   if (!input || typeof input !== 'object') {

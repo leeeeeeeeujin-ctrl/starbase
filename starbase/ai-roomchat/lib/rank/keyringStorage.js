@@ -1,6 +1,16 @@
 const RANK_KEYRING_STORAGE_KEY = 'rankKeyringSnapshot'
 const RANK_KEYRING_STORAGE_EVENT = 'rank-keyring:refresh'
 
+const EMPTY_KEYRING_SNAPSHOT = { userId: '', entries: [], updatedAt: 0 }
+
+export function createEmptyRankKeyringSnapshot() {
+  return {
+    userId: '',
+    entries: [],
+    updatedAt: 0,
+  }
+}
+
 function safeStorage() {
   if (typeof window === 'undefined') return null
   try {
@@ -84,13 +94,13 @@ export function clearRankKeyringSnapshot() {
 export function readRankKeyringSnapshot() {
   const storage = safeStorage()
   if (!storage) {
-    return { userId: '', entries: [], updatedAt: 0 }
+    return createEmptyRankKeyringSnapshot()
   }
 
   try {
     const raw = storage.getItem(RANK_KEYRING_STORAGE_KEY)
     if (!raw) {
-      return { userId: '', entries: [], updatedAt: 0 }
+      return createEmptyRankKeyringSnapshot()
     }
 
     const parsed = JSON.parse(raw)
@@ -106,7 +116,7 @@ export function readRankKeyringSnapshot() {
   } catch (error) {
     console.warn('[RankKeyringStorage] Failed to read snapshot:', error)
     clearRankKeyringSnapshot()
-    return { userId: '', entries: [], updatedAt: 0 }
+    return createEmptyRankKeyringSnapshot()
   }
 }
 
