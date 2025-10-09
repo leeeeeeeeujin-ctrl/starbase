@@ -111,6 +111,9 @@
 - 오디오/룰/참가자 계산이 한 파일에서 이뤄져 1,000라인 이상으로 비대하다. 오디오 프로필·룰 카드·참가자 패널을 분리 컴포넌트로 재구성해 유지보수를 용이하게 한다.【F:components/rank/GameRoomView.js†L1-L1120】
 - 히스토리/리플레이 빌더가 문자열 가공을 직접 수행한다. 검색 토큰화 로직을 유틸로 추출하고, 타임라인/배틀 로그 노출을 lazy chunk로 분할해 초기 렌더 비용을 줄인다.【F:components/rank/GameRoomView.js†L641-L720】
 
+**추가 개선 사항**
+- (완료) 모바일 세로 화면에서는 `GameRoomView` 상단 요약 카드가 토글 버튼/오버레이로 전환되고, 하단 고정 탭 버튼으로 `메인·캐릭터·랭킹` 패널을 이동할 수 있어 협소한 뷰포트에서도 본 게임 보드가 가려지지 않는다.【F:components/rank/GameRoomView.js†L331-L530】【F:components/rank/GameRoomView.module.css†L1-L160】
+
 ## 3. 구현 및 리팩터링 로드맵
 
 ### 3.1 1단계 – 데이터 구조 정비
@@ -218,7 +221,12 @@
 - **데이터 격리 보장**: 자동 충원 결과는 게임 본편에서만 소비하도록 `matchFlow` 리더가 `pendingMatch`를 병합할 때 참가자 세부 정보를 sanitize하고, `StartClient`는 `participantPool` 메타만 사용해 외부 플레이어 정보가 UI에 섞이지 않도록 한다.【F:lib/rank/matchFlow.js†L62-L171】【F:components/rank/StartClient/useStartClientEngine.js†L1203-L1262】
 - **시작 조건 완화 UI**: 비실시간 방에는 “정원 미달 상태로 시작” 버튼을 별도로 제공하고, 버튼 클릭 시 부족 인원이 자동 충원 대기열로 이동함을 안내하는 토스트를 띄운다. `pages/rooms/[id].js`의 매치 시작 루틴에 `asyncStart` 플래그를 추가해 즉시 메인게임으로 전환한다.【F:pages/rooms/[id].js†L2008-L2134】
 
-### 5.3 예상 문제 & 대응
+### 5.3 턴 기반 동기화 플로우
+- `matchDataStore`의 `sessionMeta`에 턴 커서/보너스/투표 결과를 함께 적재해 `MatchReady` → `StartClient` → 본게임이 동일한 스냅샷을 소비하도록 한다. 투표 결과는 이미 `setSessionMeta`로 저장되므로 동일 구조에 `turnCursor`·`dropInBonusAppliedAt` 등을 추가해 재동기화 트리거를 구현한다.【F:modules/rank/matchDataStore.js†L154-L244】【F:components/rank/MatchReadyClient.js†L210-L320】
+- `StartClient`의 `useStartClientEngine`에서 `scheduleTurnTimer`와 `registerDropInBonus`가 호출될 때마다 `turnTimerService`와 `asyncSessionManager`가 발행하는 이벤트를 GameSession Store에 반영해, 각 참가자의 클라이언트가 동일한 턴 마감 시각과 보너스 적용 여부를 확인하게 한다.【F:components/rank/StartClient/useStartClientEngine.js†L640-L940】【F:components/rank/StartClient/services/turnTimerService.js†L1-L90】
+- 드롭인/턴 진행 이벤트는 `matchFlow`가 읽어오는 세션 메타와 함께 `rooms/[id]` 실시간 채널로 브로드캐스트해 늦게 접속한 플레이어도 최신 턴 상태를 수신하게 한다. 채널 페이로드에는 세션 버전과 turn hash를 포함해 중복 이벤트를 무시한다.【F:lib/rank/matchFlow.js†L118-L220】【F:pages/rooms/[id].js†L1989-L2134】
+
+### 5.4 예상 문제 & 대응
 - **슬롯 데이터 동시 갱신 충돌**: 방 호스트와 참가자가 동시에 슬롯을 수정할 경우 경합이 발생할 수 있음 → `stage-room-match`에 슬롯 버전 필드를 추가하고 Supabase Row Level Security로 낙관적 잠금을 구현한다.【F:pages/api/rank/stage-room-match.js†L112-L207】
 - **방 검색 성능 저하**: 실시간 방 수가 늘어나면 쿼리 비용 증가 → 로비에서 실시간 채널 이벤트를 디바운스하고, 자동 새로 고침 주기를 피처 플래그로 조절한다.【F:pages/rooms/index.js†L1406-L1467】
 - **본게임 진입 전 검증 실패**: GameSession Store와 Supabase 데이터가 어긋날 수 있음 → `MatchReadyClient`에서 `readMatchFlowState`와 서버 검증을 묶고 실패 시 재시도/룸 복귀 경로를 제공한다.【F:lib/rank/matchFlow.js†L118-L171】【F:components/rank/MatchReadyClient.js†L96-L155】
@@ -227,6 +235,7 @@
 - [x] 게임 등록 폼이 Supabase 인증·역할 중복 제거·슬롯 업서트를 끝까지 수행하며 `/rank/${gameId}`로 전환하는 MVP 플로우 확립.【F:components/rank/RankNewClient.js†L12-L333】
 - [x] 방 상세 → MatchReady → StartClient로 이어지는 스테이징·세션 동기화 루프 구축, `setGameMatchSnapshot`까지 연계 완료.【F:pages/rooms/[id].js†L2025-L2134】【F:components/rank/MatchReadyClient.js†L1-L220】【F:components/rank/StartClient/useStartClientEngine.js†L1188-L1248】
 - [x] GameRoomView가 룰 카드·오디오 프로필·참가자 통계를 모두 계산해 뷰어에게 제공하는 상태 유지.【F:components/rank/GameRoomView.js†L13-L1120】
+- [x] GameRoomView 모바일 세로 레이아웃을 요약 토글/하단 고정 탭으로 전환해 본게임 뷰가 가려지지 않도록 보강했다.【F:components/rank/GameRoomView.js†L331-L530】【F:components/rank/GameRoomView.module.css†L1-L160】
 - [x] GameSession Store가 슬롯 템플릿 버전·세션 메타를 저장하고 `MatchReady`/`StartClient`가 동일한 데이터를 초기화에 활용하도록 확장했다.【F:modules/rank/matchDataStore.js†L1-L244】【F:lib/rank/matchFlow.js†L1-L220】【F:components/rank/StartClient/useStartClientEngine.js†L540-L940】
 - [x] 등록 안내 텍스트/난입 설명 분리 및 다국어 구조화 계획 수립, `RankNewClient`·`RulesChecklist` 리소스를 `rankRegistrationContent` 데이터로 이동해 공유.【F:components/rank/RankNewClient.js†L120-L355】【F:components/rank/RulesChecklist.js†L1-L60】【F:ai-roomchat/data/rankRegistrationContent.js†L1-L60】
 - [x] 등록 탭 레이아웃을 `RegistrationLayout`/`RegistrationCard`/`SidebarCard`로 세분화해 개요 사이드바와 본문 카드를 분리하고, 모드·난입·규칙 입력 흐름을 재구성했다.【F:components/rank/RankNewClient.js†L335-L512】【F:components/rank/registration/RegistrationLayout.js†L1-L83】【F:components/rank/registration/SidebarCard.js†L1-L20】
@@ -238,4 +247,4 @@
 ---
 **백엔드 TODO**: Supabase 역할/슬롯 검증 함수 공통화, RoomInitService용 슬롯/역할 캐시 테이블 및 락 RPC 추가, `validate_session` RPC 및 슬롯 버전 필드 도입, 제한시간 투표·비실시간 자동 충원 결과를 저장하는 `upsert_match_session_meta`(가칭) RPC 설계, 이미지 업로드 정책(용량/파일형식) 강화, 등록/매칭 로그 감사 테이블 확장. → 관련 스키마·정책·RPC 초안은 `docs/supabase-rank-backend-upgrades.sql`에 모아두었으며, 제한시간 투표 동기화만 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql` 파일을 Supabase SQL Editor에 붙여넣으면 된다.
 **추가 필요 사항**: 다국어 대비 문자열 리소스 분리, 매칭/룸 UI 카피 검수, GameSession Store 스키마 및 Maker JSON 버전 문서화, 비실시간 자동 충원 통계 대시보드 정의, 테스트 환경용 Supabase 프로젝트 분리.
-**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축)와 2-2 단계(안내/체크리스트 리소스 분리, 레이아웃 재배치)를 마무리했고, 2-3 단계에서는 방 로비 필터·검색 결과를 컴포넌트화해 상태 계산과 뷰 계층을 분리했다. GameRoomView는 오디오/히스토리 유틸을 전용 모듈과 `GameRoomHistoryPane` lazy chunk로 이관해 본문 로직을 단순화했고, GameSession Store는 슬롯 템플릿·세션 메타 저장까지 확장되어 본게임 초기화 루프에 연결되었다. 5단계 계획서는 본게임 타이머·난입·비실시간 충원 전략을 계속 구체화 중이며, 다음 작업은 로비 실시간 배지/스토리북 분리, 등록 폼 검증 보강 이후 3단계 확장 기능으로 넘어가는 것이다.
+**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축)와 2-2 단계(안내/체크리스트 리소스 분리, 레이아웃 재배치)를 마무리했고, 2-3 단계에서는 방 로비 필터·검색 결과를 컴포넌트화해 상태 계산과 뷰 계층을 분리했다. GameRoomView는 오디오/히스토리 유틸을 전용 모듈과 `GameRoomHistoryPane` lazy chunk로 이관한 데 이어 모바일 뷰에서 요약 토글·하단 고정 탭을 제공해 협소 화면에서도 본게임 판이 유지되도록 조정했다.【F:components/rank/GameRoomView.js†L331-L530】【F:components/rank/GameRoomHistoryPane.js†L1-L151】 GameSession Store는 슬롯 템플릿·세션 메타 저장까지 확장되어 본게임 초기화 루프에 연결되었으며, 5단계 계획에는 제한시간 투표·난입·비실시간 충원 전략에 더해 턴 기반 동기화 플로우까지 포함해 세션 전 구간에서 동일한 턴 스냅샷을 유지하도록 방향을 보강했다.【F:modules/rank/matchDataStore.js†L154-L244】【F:components/rank/MatchReadyClient.js†L210-L320】【F:components/rank/StartClient/useStartClientEngine.js†L640-L940】 다음 작업은 로비 실시간 배지/스토리북 분리, 등록 폼 검증 보강 이후 3단계 확장 기능으로 넘어가는 것이다.

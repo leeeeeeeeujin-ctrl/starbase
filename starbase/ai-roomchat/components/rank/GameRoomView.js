@@ -108,6 +108,11 @@ const TABS = [
 const TIMELINE_EVENT_LIMIT = 80
 
 
+function joinClassNames(...values) {
+  return values.filter(Boolean).join(' ')
+}
+
+
 
 function interpretRulesShape(value) {
   if (!value) return { type: 'empty' }
@@ -331,6 +336,8 @@ export default function GameRoomView({
   const [leaveLoading, setLeaveLoading] = useState(false)
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
   const [activeTab, setActiveTab] = useState(TABS[0].key)
+  const [isCompactLayout, setIsCompactLayout] = useState(false)
+  const [compactInfoOpen, setCompactInfoOpen] = useState(false)
   const [spectatorTimelineCollapsed, setSpectatorTimelineCollapsed] = useState(false)
   const [personalTimelineCollapsed, setPersonalTimelineCollapsed] = useState(false)
   const toggleSpectatorTimeline = useCallback(() => {
@@ -339,10 +346,18 @@ export default function GameRoomView({
   const togglePersonalTimeline = useCallback(() => {
     setPersonalTimelineCollapsed((prev) => !prev)
   }, [])
+  const handleCompactInfoToggle = useCallback(() => {
+    setCompactInfoOpen((prev) => !prev)
+  }, [])
+  const handleCompactInfoClose = useCallback(() => {
+    setCompactInfoOpen(false)
+  }, [])
   const touchStartRef = useRef(null)
   const profileCloseRef = useRef(null)
   const profileTitleId = useId()
   const profileDescriptionId = useId()
+  const summaryTitleId = useId()
+  const summaryDescriptionId = useId()
   const audioManager = useMemo(() => {
     if (typeof window === 'undefined') {
       return null
@@ -381,6 +396,47 @@ export default function GameRoomView({
   const realtimeEnabled = isRealtimeEnabled(realtimeMode)
   const realtimeChipLabel =
     realtimeMode === REALTIME_MODES.PULSE ? 'Pulse 실시간' : '실시간'
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined
+    }
+
+    const handleResize = () => {
+      setIsCompactLayout(window.innerWidth <= 720)
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isCompactLayout) {
+      setCompactInfoOpen(false)
+    }
+  }, [isCompactLayout])
+
+  useEffect(() => {
+    if (!compactInfoOpen) {
+      return undefined
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setCompactInfoOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [compactInfoOpen])
 
   const formatSessionTimestamp = useCallback((value) => {
     if (!value) return ''
@@ -735,6 +791,11 @@ export default function GameRoomView({
       }
     })
     return map
+  }, [participants])
+
+  const participantCountLabel = useMemo(() => {
+    const count = Array.isArray(participants) ? participants.length : 0
+    return `${count.toLocaleString()}명 참여`
   }, [participants])
 
   const baseHeroAudioProfile = useMemo(() => {
@@ -2409,8 +2470,59 @@ export default function GameRoomView({
     ranking: rankingPanelContent,
   }
 
+  const roomClassName = joinClassNames(styles.room, isCompactLayout && styles.compactLayout)
+  const summaryCardClassName = joinClassNames(
+    styles.summaryCard,
+    isCompactLayout && styles.summaryCardCompact,
+  )
+
+  const summaryCard = (
+    <section
+      id="game-room-compact-info"
+      className={summaryCardClassName}
+      aria-labelledby={summaryTitleId}
+      aria-describedby={summaryDescriptionId}
+    >
+      {isCompactLayout && (
+        <button
+          type="button"
+          className={styles.compactInfoCloseButton}
+          onClick={handleCompactInfoClose}
+        >
+          닫기
+        </button>
+      )}
+      <div className={styles.gameHeader}>
+        <div className={styles.gameText}>
+          <span className={styles.gameBadge}>랭크 게임</span>
+          <h1 id={summaryTitleId} className={styles.gameTitle}>
+            {game.name || '이름 없는 게임'}
+          </h1>
+          <p id={summaryDescriptionId} className={styles.gameDescription}>
+            {game.description?.trim() || '소개 문구가 아직 준비되지 않았습니다.'}
+          </p>
+          <div className={styles.metaRow}>
+            {realtimeEnabled && <span className={styles.metaChip}>{realtimeChipLabel} 매칭</span>}
+            {createdAt && <span className={styles.metaChip}>등록 {createdAt}</span>}
+            {updatedAt && <span className={styles.metaChip}>갱신 {updatedAt}</span>}
+            <button type="button" className={styles.linkButton} onClick={onOpenLeaderboard}>
+              리더보드 보기
+            </button>
+          </div>
+        </div>
+        <div className={styles.coverFrame}>
+          {coverImage ? (
+            <img src={coverImage} alt={game.name || '게임 대표 이미지'} loading="lazy" />
+          ) : (
+            <div className={styles.coverPlaceholder}>대표 이미지가 등록되지 않았습니다.</div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+
   return (
-    <div className={styles.room}>
+    <div className={roomClassName}>
       {backgroundImage ? (
         <div className={styles.backdrop} style={{ backgroundImage: `url(${backgroundImage})` }} aria-hidden />
       ) : (
@@ -2425,54 +2537,44 @@ export default function GameRoomView({
           </button>
         )}
 
-        <section className={styles.summaryCard}>
-          <div className={styles.gameHeader}>
-            <div className={styles.gameText}>
-              <span className={styles.gameBadge}>랭크 게임</span>
-              <h1 className={styles.gameTitle}>{game.name || '이름 없는 게임'}</h1>
-              <p className={styles.gameDescription}>
-                {game.description?.trim() || '소개 문구가 아직 준비되지 않았습니다.'}
-              </p>
-              <div className={styles.metaRow}>
-                {realtimeEnabled && (
-                  <span className={styles.metaChip}>{realtimeChipLabel} 매칭</span>
-                )}
-                {createdAt && <span className={styles.metaChip}>등록 {createdAt}</span>}
-                {updatedAt && <span className={styles.metaChip}>갱신 {updatedAt}</span>}
-                <button type="button" className={styles.linkButton} onClick={onOpenLeaderboard}>
-                  리더보드 보기
-                </button>
-              </div>
-            </div>
-            <div className={styles.coverFrame}>
-              {coverImage ? (
-                <img src={coverImage} alt={game.name || '게임 대표 이미지'} loading="lazy" />
-              ) : (
-                <div className={styles.coverPlaceholder}>대표 이미지가 등록되지 않았습니다.</div>
-              )}
-            </div>
+        {isCompactLayout ? (
+          <div className={styles.compactInfoToggleRow}>
+            <button
+              type="button"
+              className={styles.compactInfoButton}
+              onClick={handleCompactInfoToggle}
+              aria-expanded={compactInfoOpen}
+              aria-controls="game-room-compact-info"
+            >
+              <span className={styles.compactInfoButtonLabel}>게임 정보</span>
+              <span className={styles.compactInfoButtonMeta}>{participantCountLabel}</span>
+            </button>
           </div>
-        </section>
+        ) : (
+          summaryCard
+        )}
 
-        <div className={styles.tabBar} role="tablist" aria-label="랭크 게임 탭">
-          {TABS.map((tab, index) => {
-            const selected = resolvedActiveIndex === index
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                id={tabButtonId(tab.key)}
-                aria-controls={tabPanelId(tab.key)}
-                aria-selected={selected}
-                className={`${styles.tabButton} ${selected ? styles.tabButtonActive : ''}`}
-                onClick={() => setActiveTab(tab.key)}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
+        {!isCompactLayout && (
+          <div className={styles.tabBar} role="tablist" aria-label="랭크 게임 탭">
+            {TABS.map((tab, index) => {
+              const selected = resolvedActiveIndex === index
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  id={tabButtonId(tab.key)}
+                  aria-controls={tabPanelId(tab.key)}
+                  aria-selected={selected}
+                  className={`${styles.tabButton} ${selected ? styles.tabButtonActive : ''}`}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         <div
           className={styles.panels}
@@ -2498,6 +2600,50 @@ export default function GameRoomView({
           })}
         </div>
       </div>
+
+      {isCompactLayout && (
+        <>
+          <div className={styles.compactActionBar} role="tablist" aria-label="랭크 게임 패널">
+            {TABS.map((tab, index) => {
+              const selected = resolvedActiveIndex === index
+              return (
+                <button
+                  key={`compact-${tab.key}`}
+                  type="button"
+                  role="tab"
+                  id={`compact-${tabButtonId(tab.key)}`}
+                  aria-controls={tabPanelId(tab.key)}
+                  aria-selected={selected}
+                  className={joinClassNames(
+                    styles.compactActionButton,
+                    selected && styles.compactActionButtonActive,
+                  )}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {compactInfoOpen && (
+            <div
+              className={styles.compactInfoBackdrop}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={summaryTitleId}
+              onClick={handleCompactInfoClose}
+            >
+              <div
+                className={styles.compactInfoCardWrapper}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {summaryCard}
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {activeProfileEntry && (
         <div
