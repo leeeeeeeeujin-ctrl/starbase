@@ -220,6 +220,7 @@
 - **랜덤 자동 충원 로직**: 부족한 슬롯은 `participantPool`(전 매치 참여자 목록)을 기반으로 역할·점수 기준으로 필터링한 뒤 중복 없이 무작위 선정한다. 선정된 플레이어는 `matchSnapshot.pendingMatch`에만 주입해 게임 내 실시간 데이터와 분리하고, 룸 UI에는 익명화된 통계만 노출한다.【F:modules/rank/matchDataStore.js†L147-L200】【F:lib/rank/matchFlow.js†L118-L170】
 - **데이터 격리 보장**: 자동 충원 결과는 게임 본편에서만 소비하도록 `matchFlow` 리더가 `pendingMatch`를 병합할 때 참가자 세부 정보를 sanitize하고, `StartClient`는 `participantPool` 메타만 사용해 외부 플레이어 정보가 UI에 섞이지 않도록 한다.【F:lib/rank/matchFlow.js†L62-L171】【F:components/rank/StartClient/useStartClientEngine.js†L1203-L1262】
 - **시작 조건 완화 UI**: 비실시간 방에는 “정원 미달 상태로 시작” 버튼을 별도로 제공하고, 버튼 클릭 시 부족 인원이 자동 충원 대기열로 이동함을 안내하는 토스트를 띄운다. `pages/rooms/[id].js`의 매치 시작 루틴에 `asyncStart` 플래그를 추가해 즉시 메인게임으로 전환한다.【F:pages/rooms/[id].js†L2008-L2134】
+- (완료) `matchDataStore`가 비실시간 모드일 때 호스트 역할 좌석 제한, 대기 슬롯, 자동 충원 후보를 `sessionMeta.asyncFill`에 저장하고 `MatchReadyClient`가 대기열·후보 정보를 요약해 노출한다.【F:modules/rank/matchDataStore.js†L600-L690】【F:components/rank/MatchReadyClient.js†L180-L340】
 
 ### 5.3 턴 기반 동기화 플로우
 - `matchDataStore`의 `sessionMeta`에 턴 커서/보너스/투표 결과를 함께 적재해 `MatchReady` → `StartClient` → 본게임이 동일한 스냅샷을 소비하도록 한다. 투표 결과는 이미 `setSessionMeta`로 저장되므로 동일 구조에 `turnCursor`·`dropInBonusAppliedAt` 등을 추가해 재동기화 트리거를 구현한다.【F:modules/rank/matchDataStore.js†L154-L244】【F:components/rank/MatchReadyClient.js†L210-L320】
@@ -244,6 +245,7 @@
 - [x] 방 검색 페이지의 필터와 결과 목록을 `RoomFiltersSection`·`RoomResultsSection` 컴포넌트로 분리해 로비 상태 계산과 UI 표현을 느슨하게 결합했다.【F:components/rank/rooms/RoomFiltersSection.js†L1-L153】【F:components/rank/rooms/RoomResultsSection.js†L1-L153】
 - [x] Next 빌드가 `prop-types` 의존성 없이 통과하도록 룸 필터/검색 컴포넌트의 PropTypes 선언을 JSDoc 기반 설명으로 대체했다.【F:components/rank/rooms/RoomFiltersSection.js†L1-L154】【F:components/rank/rooms/RoomResultsSection.js†L1-L154】
 - [x] GameRoomView 오디오/히스토리 유틸을 분리 컴포넌트화하고, 타임라인/리플레이 노출을 lazy chunk로 나누어 렌더 부하를 낮췄다.【F:components/rank/GameRoomView.js†L1-L360】【F:components/rank/GameRoomHistoryPane.js†L1-L151】【F:lib/rank/gameRoomAudio.js†L1-L360】【F:lib/rank/gameRoomHistory.js†L1-L80】
+- [x] 비실시간 방에서 `sessionMeta.asyncFill`에 좌석 제한·대기열·자동 충원 후보를 저장하고 MatchReady 화면에서 요약 정보를 노출한다.【F:modules/rank/matchDataStore.js†L600-L690】【F:components/rank/MatchReadyClient.js†L180-L340】
 - [ ] `stage-room-match` 낙관적 락·슬롯 버전 필드 추가 및 API 유틸 통합 작업 미착수.【F:pages/api/rank/stage-room-match.js†L112-L200】
 
 ---

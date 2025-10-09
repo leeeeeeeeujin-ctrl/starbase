@@ -55,6 +55,86 @@ describe('matchDataStore', () => {
     expect(snapshot?.participation?.heroMap).toHaveProperty('hero-1')
   })
 
+  it('builds async fill snapshot for async lobbies', () => {
+    setGameMatchParticipation(gameId, {
+      roster: [
+        {
+          slotId: 'slot-1',
+          slotIndex: 0,
+          role: '지휘관',
+          ownerId: 'host-1',
+          heroId: 'hero-host',
+          heroName: '호스트',
+          ready: true,
+        },
+        {
+          slotId: 'slot-2',
+          slotIndex: 1,
+          role: '지휘관',
+          ownerId: 'ally-1',
+          heroId: 'hero-ally-1',
+          heroName: '동료1',
+          ready: true,
+        },
+        {
+          slotId: 'slot-3',
+          slotIndex: 2,
+          role: '지휘관',
+          ownerId: null,
+          heroId: null,
+          heroName: '',
+          ready: false,
+        },
+        {
+          slotId: 'slot-4',
+          slotIndex: 3,
+          role: '지휘관',
+          ownerId: 'ally-2',
+          heroId: 'hero-ally-2',
+          heroName: '동료2',
+          ready: true,
+        },
+        {
+          slotId: 'slot-5',
+          slotIndex: 4,
+          role: '지휘관',
+          ownerId: 'ally-3',
+          heroId: 'hero-ally-3',
+          heroName: '동료3',
+          ready: true,
+        },
+        {
+          slotId: 'slot-6',
+          slotIndex: 5,
+          role: '탱커',
+          ownerId: 'tank-1',
+          heroId: 'hero-tank',
+          heroName: '탱커',
+          ready: true,
+        },
+      ],
+      heroOptions: [],
+      participantPool: [
+        { ownerId: 'ally-1', role: '지휘관' },
+        { ownerId: 'candidate-1', role: '지휘관', heroName: '예비1' },
+        { ownerId: 'candidate-2', role: '탱커', heroName: '예비탱커' },
+      ],
+      heroMap: null,
+      realtimeMode: 'off',
+      hostOwnerId: 'host-1',
+      hostRoleLimit: 3,
+    })
+
+    const snapshot = hydrateGameMatchData(gameId)
+    const asyncFill = snapshot?.sessionMeta?.asyncFill
+    expect(asyncFill?.mode).toBe('off')
+    expect(asyncFill?.seatLimit).toMatchObject({ allowed: 3, total: 5 })
+    expect(asyncFill?.pendingSeatIndexes).toContain(2)
+    expect(asyncFill?.overflow?.map((entry) => entry.slotIndex)).toContain(4)
+    expect(asyncFill?.fillQueue).toHaveLength(1)
+    expect(asyncFill?.fillQueue?.[0]).toMatchObject({ ownerId: 'candidate-1' })
+  })
+
   it('persists match snapshots to session storage', () => {
     const createdAt = Date.now()
     setGameMatchSnapshot(gameId, {

@@ -191,10 +191,23 @@ function buildMetaLines(state) {
     lines.push('난입 매치 진행 중')
   }
 
+  const asyncFill = state?.sessionMeta?.asyncFill
+  if (asyncFill?.mode === 'off' && asyncFill?.seatLimit) {
+    const allowed = Number(asyncFill.seatLimit.allowed) || 0
+    const total = Number(asyncFill.seatLimit.total) || 0
+    const queueCount = Array.isArray(asyncFill.fillQueue) ? asyncFill.fillQueue.length : 0
+    const roleLabel = asyncFill.hostRole || '역할 미지정'
+    if (total > 0) {
+      lines.push(
+        `비실시간 충원 · ${roleLabel} 좌석 ${allowed}/${total} · 대기열 ${queueCount}명`,
+      )
+    }
+  }
+
   return lines
 }
 
-function buildRosterDisplay(roster, viewer, blindMode) {
+function buildRosterDisplay(roster, viewer, blindMode, asyncFill) {
   if (!Array.isArray(roster) || roster.length === 0) {
     return [
       {
@@ -206,6 +219,26 @@ function buildRosterDisplay(roster, viewer, blindMode) {
   }
 
   const viewerOwnerId = viewer?.ownerId ? String(viewer.ownerId).trim() : ''
+  const seatIndexes = new Set(
+    Array.isArray(asyncFill?.seatIndexes)
+      ? asyncFill.seatIndexes.map((value) => Number(value)).filter(Number.isFinite)
+      : [],
+  )
+  const overflowIndexes = new Set(
+    Array.isArray(asyncFill?.overflow)
+      ? asyncFill.overflow
+          .map((entry) => Number(entry?.slotIndex))
+          .filter((value) => Number.isFinite(value))
+      : [],
+  )
+  const pendingIndexes = new Set(
+    Array.isArray(asyncFill?.pendingSeatIndexes)
+      ? asyncFill.pendingSeatIndexes
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value))
+      : [],
+  )
+  const hasSeatLimit = seatIndexes.size > 0
 
   return roster.map((entry, index) => {
     const isOccupied = entry.heroId && entry.ownerId
@@ -217,7 +250,19 @@ function buildRosterDisplay(roster, viewer, blindMode) {
       ? '비공개 참가자'
       : entry.heroName || (entry.heroId ? `캐릭터 #${entry.heroId}` : '빈 슬롯')
     const roleLabel = entry.role || '역할 미지정'
-    const readyLabel = isOccupied ? '착석 완료' : '대기'
+    const slotIndex = Number.isFinite(Number(entry.slotIndex))
+      ? Number(entry.slotIndex)
+      : index
+    let readyLabel = isOccupied ? '착석 완료' : '대기'
+
+    if (overflowIndexes.has(slotIndex)) {
+      readyLabel = isOccupied ? '대기열 (자동 충원 대기)' : '대기열 슬롯'
+    } else if (hasSeatLimit && !seatIndexes.has(slotIndex)) {
+      readyLabel = isOccupied ? '예비 슬롯' : '예비 슬롯'
+    } else if (!isOccupied && pendingIndexes.has(slotIndex)) {
+      readyLabel = '자동 충원 예정'
+    }
+
     return {
       key: `${entry.slotId || index}-${entry.heroId || index}`,
       label: `${roleLabel} · ${heroLabel}`,
@@ -233,10 +278,28 @@ export default function MatchReadyClient({ gameId }) {
   const [voteNotice, setVoteNotice] = useState('')
 
   const metaLines = useMemo(() => buildMetaLines(state), [state])
+  const asyncFillInfo = useMemo(() => state?.sessionMeta?.asyncFill || null, [state?.sessionMeta?.asyncFill])
   const rosterDisplay = useMemo(
-    () => buildRosterDisplay(state?.roster, state?.viewer, state?.room?.blindMode),
-    [state?.roster, state?.viewer, state?.room?.blindMode],
+    () => buildRosterDisplay(state?.roster, state?.viewer, state?.room?.blindMode, asyncFillInfo),
+    [state?.roster, state?.viewer, state?.room?.blindMode, asyncFillInfo],
   )
+  const asyncFillSummary = useMemo(() => {
+    if (!asyncFillInfo || asyncFillInfo.mode !== 'off') return null
+    const seatLimit = asyncFillInfo.seatLimit || {}
+    const allowed = Number(seatLimit.allowed) || 0
+    const total = Number(seatLimit.total) || 0
+    const pendingCount = Array.isArray(asyncFillInfo.pendingSeatIndexes)
+      ? asyncFillInfo.pendingSeatIndexes.length
+      : 0
+    const queue = Array.isArray(asyncFillInfo.fillQueue) ? asyncFillInfo.fillQueue : []
+    return {
+      role: asyncFillInfo.hostRole || '역할 미지정',
+      allowed,
+      total,
+      pendingCount,
+      queue,
+    }
+  }, [asyncFillInfo])
 
   const viewerIdentity = useMemo(() => getViewerIdentity(state), [state])
 
@@ -451,6 +514,24 @@ export default function MatchReadyClient({ gameId }) {
               </li>
             ))}
           </ul>
+          {asyncFillSummary ? (
+            <div className={styles.asyncFillSummary}>
+              <div className={styles.asyncFillTitle}>비실시간 자동 충원</div>
+              <p className={styles.asyncFillText}>
+                {`${asyncFillSummary.role} 좌석 ${asyncFillSummary.allowed}/${asyncFillSummary.total} · 대기 슬롯 ${asyncFillSummary.pendingCount}개`}
+              </p>
+              {asyncFillSummary.queue.length ? (
+                <div className={styles.asyncFillQueue}>
+                  <span className={styles.asyncFillQueueLabel}>대기 후보:</span>
+                  <span className={styles.asyncFillQueueNames}>
+                    {asyncFillSummary.queue
+                      .map((candidate) => candidate.heroName || candidate.ownerId)
+                      .join(', ')}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         <footer className={styles.footer}>

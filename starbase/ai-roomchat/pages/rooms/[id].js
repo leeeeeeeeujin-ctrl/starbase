@@ -2077,6 +2077,9 @@ export default function RoomDetailPage() {
           heroOptions,
           participantPool: payload.roster,
           heroMap: payload.heroMap,
+          realtimeMode: room.realtimeMode,
+          hostOwnerId: room.ownerId,
+          hostRoleLimit: room.hostRoleLimit,
         })
 
         setGameMatchHeroSelection(room.gameId, {

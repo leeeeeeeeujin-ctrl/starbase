@@ -1,3 +1,5 @@
+import { normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
+
 const STORAGE_PREFIX = 'rank.match.game.'
 
 function createEmptySlotTemplate() {
@@ -172,6 +174,60 @@ function sanitizeHeroMap(heroMap) {
 function sanitizeList(list) {
   if (!Array.isArray(list)) return []
   return safeClone(list) || []
+}
+
+function normalizeRoleLabel(value) {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  return trimmed
+}
+
+function normalizeRoleKey(value) {
+  if (typeof value !== 'string') return ''
+  return value.trim().toLowerCase()
+}
+
+function sanitizeParticipantCandidate(entry, fallbackRole) {
+  if (!entry) return null
+
+  const role = normalizeRoleLabel(
+    entry.role ?? entry.roleName ?? entry.role_label ?? fallbackRole ?? '',
+  )
+  const ownerId = entry.ownerId ?? entry.owner_id ?? entry.ownerID ?? null
+  const heroId = entry.heroId ?? entry.hero_id ?? entry.heroID ?? null
+
+  const ownerKey = ownerId != null ? String(ownerId).trim() : ''
+  if (!ownerKey) return null
+
+  return {
+    ownerId: ownerKey,
+    role,
+    roleKey: normalizeRoleKey(role),
+    heroId: heroId != null ? String(heroId).trim() : null,
+    heroName:
+      typeof entry.heroName === 'string'
+        ? entry.heroName
+        : typeof entry.hero_name === 'string'
+        ? entry.hero_name
+        : '',
+    score: Number.isFinite(Number(entry.score)) ? Number(entry.score) : null,
+    rating: Number.isFinite(Number(entry.rating)) ? Number(entry.rating) : null,
+  }
+}
+
+function sanitizeParticipantPool(pool = [], fallbackRole) {
+  if (!Array.isArray(pool)) return []
+  const seen = new Set()
+  const result = []
+  pool.forEach((entry) => {
+    const candidate = sanitizeParticipantCandidate(entry, fallbackRole)
+    if (!candidate) return
+    if (seen.has(candidate.ownerId)) return
+    seen.add(candidate.ownerId)
+    result.push(candidate)
+  })
+  return result
 }
 
 function sanitizeSlotTemplateSlots(slots) {
@@ -405,6 +461,130 @@ function sanitizeTurnStatePatch(patch, previous) {
   return next
 }
 
+function buildAsyncFillSnapshot({
+  roster = [],
+  participantPool = [],
+  realtimeMode = REALTIME_MODES.OFF,
+  hostOwnerId = null,
+  hostRoleLimit = null,
+}) {
+  const normalizedMode = normalizeRealtimeMode(realtimeMode)
+  if (normalizedMode !== REALTIME_MODES.OFF) {
+    return null
+  }
+
+  const ownerKey = hostOwnerId != null ? String(hostOwnerId).trim() : ''
+  const rosterEntries = Array.isArray(roster) ? roster.slice() : []
+  if (!rosterEntries.length) {
+    return {
+      mode: REALTIME_MODES.OFF,
+      hostOwnerId: ownerKey || null,
+      hostRole: null,
+      seatLimit: { allowed: 0, total: 0 },
+      seatIndexes: [],
+      pendingSeatIndexes: [],
+      assigned: [],
+      overflow: [],
+      fillQueue: [],
+      poolSize: 0,
+      generatedAt: Date.now(),
+    }
+  }
+
+  const orderedRoster = rosterEntries
+    .map((entry, index) => ({
+      slotIndex: Number.isFinite(Number(entry?.slotIndex)) ? Number(entry.slotIndex) : index,
+      slotId: entry?.slotId ?? null,
+      ownerId: entry?.ownerId != null ? String(entry.ownerId).trim() : null,
+      heroId: entry?.heroId != null ? String(entry.heroId).trim() : null,
+      heroName: typeof entry?.heroName === 'string' ? entry.heroName : '',
+      role: normalizeRoleLabel(entry?.role || '역할 미지정'),
+      ready: !!entry?.ready,
+      joinedAt: entry?.joinedAt || null,
+    }))
+    .sort((a, b) => a.slotIndex - b.slotIndex)
+
+  let hostRole = ''
+  if (ownerKey) {
+    const hostSeat = orderedRoster.find((entry) => entry.ownerId === ownerKey)
+    if (hostSeat) {
+      hostRole = hostSeat.role
+    }
+  }
+  if (!hostRole) {
+    const firstSeat = orderedRoster.find((entry) => entry.role)
+    hostRole = firstSeat ? firstSeat.role : '역할 미지정'
+  }
+  const hostRoleKey = normalizeRoleKey(hostRole)
+
+  const hostRoleSeats = orderedRoster.filter(
+    (entry) => normalizeRoleKey(entry.role) === hostRoleKey,
+  )
+  const totalHostSeats = hostRoleSeats.length
+  const cap = Number.isFinite(Number(hostRoleLimit))
+    ? Math.max(1, Math.min(Math.floor(Number(hostRoleLimit)), totalHostSeats || 0))
+    : Math.min(totalHostSeats || 0, 3)
+  const allowedSeats = cap > 0 ? cap : Math.min(totalHostSeats || 0, 3)
+
+  const seatIndexes = hostRoleSeats.slice(0, allowedSeats).map((entry) => entry.slotIndex)
+  const assignedSeats = hostRoleSeats.slice(0, allowedSeats)
+  const overflowSeats = hostRoleSeats.slice(allowedSeats)
+
+  const pendingSeats = assignedSeats
+    .filter((entry) => !entry.ownerId)
+    .map((entry) => entry.slotIndex)
+
+  const occupantIds = new Set(
+    assignedSeats.filter((entry) => entry.ownerId).map((entry) => entry.ownerId),
+  )
+
+  const candidatePool = sanitizeParticipantPool(participantPool, hostRole)
+    .filter((candidate) => candidate.roleKey === hostRoleKey)
+    .filter((candidate) => !occupantIds.has(candidate.ownerId))
+
+  const queue = []
+  if (pendingSeats.length > 0 && candidatePool.length > 0) {
+    const remaining = pendingSeats.length
+    const sorted = candidatePool.slice().sort((a, b) => a.ownerId.localeCompare(b.ownerId))
+    for (let index = 0; index < sorted.length && queue.length < remaining; index += 1) {
+      queue.push(sorted[index])
+    }
+  }
+
+  return {
+    mode: REALTIME_MODES.OFF,
+    hostOwnerId: ownerKey || null,
+    hostRole,
+    seatLimit: {
+      allowed: allowedSeats,
+      total: totalHostSeats,
+    },
+    seatIndexes,
+    pendingSeatIndexes: pendingSeats,
+    assigned: assignedSeats.map((entry) => ({
+      slotIndex: entry.slotIndex,
+      slotId: entry.slotId,
+      ownerId: entry.ownerId,
+      heroId: entry.heroId,
+      heroName: entry.heroName,
+      ready: entry.ready,
+      joinedAt: entry.joinedAt,
+    })),
+    overflow: overflowSeats.map((entry) => ({
+      slotIndex: entry.slotIndex,
+      slotId: entry.slotId,
+      ownerId: entry.ownerId,
+      heroId: entry.heroId,
+      heroName: entry.heroName,
+      ready: entry.ready,
+      joinedAt: entry.joinedAt,
+    })),
+    fillQueue: queue,
+    poolSize: candidatePool.length,
+    generatedAt: Date.now(),
+  }
+}
+
 export function hydrateGameMatchData(gameId) {
   const entry = ensureEntry(gameId)
   return safeClone(entry)
@@ -422,6 +602,9 @@ export function setGameMatchParticipation(gameId, payload = {}) {
   const heroOptions = sanitizeList(payload.heroOptions)
   const participantPool = sanitizeList(payload.participantPool)
   const heroMap = sanitizeHeroMap(payload.heroMap)
+  const realtimeMode = payload.realtimeMode ?? payload.mode ?? REALTIME_MODES.OFF
+  const hostOwnerId = payload.hostOwnerId ?? null
+  const hostRoleLimit = payload.hostRoleLimit ?? null
   const updatedAt = Date.now()
   return updateEntry(gameId, (entry) => {
     entry.participation = {
@@ -431,6 +614,22 @@ export function setGameMatchParticipation(gameId, payload = {}) {
       heroMap,
       updatedAt,
     }
+
+    const asyncFillSnapshot = buildAsyncFillSnapshot({
+      roster,
+      participantPool,
+      realtimeMode,
+      hostOwnerId,
+      hostRoleLimit,
+    })
+
+    entry.sessionMeta = sanitizeSessionMetaPatch(
+      {
+        asyncFill: asyncFillSnapshot,
+        source: 'match-participation',
+      },
+      entry.sessionMeta,
+    )
   })
 }
 
