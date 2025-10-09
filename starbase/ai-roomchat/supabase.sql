@@ -703,6 +703,32 @@ create table if not exists public.rank_user_api_keys (
 create index if not exists rank_user_api_keys_updated_idx
   on public.rank_user_api_keys (updated_at desc);
 
+create table if not exists public.rank_user_api_keyring (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  provider text not null,
+  model_label text,
+  api_version text,
+  gemini_mode text,
+  gemini_model text,
+  key_ciphertext text not null,
+  key_iv text not null,
+  key_tag text not null,
+  key_version smallint not null default 1,
+  key_sample text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.rank_user_api_keyring
+  add column if not exists model_label text;
+
+create index if not exists rank_user_api_keyring_user_idx
+  on public.rank_user_api_keyring (user_id, created_at);
+
+create index if not exists rank_user_api_keyring_updated_idx
+  on public.rank_user_api_keyring (updated_at desc);
+
 create or replace function public.touch_rank_user_api_keys_updated_at()
 returns trigger
 language plpgsql
@@ -723,6 +749,29 @@ alter table public.rank_user_api_keys enable row level security;
 
 create policy if not exists rank_user_api_keys_service_all
 on public.rank_user_api_keys for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
+create or replace function public.touch_rank_user_api_keyring_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_rank_user_api_keyring_updated on public.rank_user_api_keyring;
+create trigger trg_rank_user_api_keyring_updated
+before update on public.rank_user_api_keyring
+for each row
+execute function public.touch_rank_user_api_keyring_updated_at();
+
+alter table public.rank_user_api_keyring enable row level security;
+
+create policy if not exists rank_user_api_keyring_service_all
+on public.rank_user_api_keyring for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
@@ -766,7 +815,7 @@ create table if not exists public.rank_games (
   roles jsonb default '[]'::jsonb,
   rules jsonb default '{}'::jsonb,
   rules_prefix text,
-  realtime_match boolean not null default false,
+  realtime_match text not null default 'off',
   likes_count integer not null default 0,
   play_count integer not null default 0,
   created_at timestamptz not null default now(),
@@ -978,14 +1027,30 @@ create table if not exists public.rank_rooms (
   owner_id uuid not null references auth.users(id) on delete cascade,
   code text not null unique,
   mode text not null default 'casual',
+  realtime_mode text not null default 'standard',
   status text not null default 'open',
   slot_count integer not null default 0,
   filled_count integer not null default 0,
   ready_count integer not null default 0,
+  host_role_limit integer,
+  brawl_rule text,
+  blind_mode boolean not null default false,
   host_last_active_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.rank_rooms
+  add column if not exists realtime_mode text not null default 'standard';
+
+alter table public.rank_rooms
+  add column if not exists host_role_limit integer;
+
+alter table public.rank_rooms
+  add column if not exists brawl_rule text;
+
+alter table public.rank_rooms
+  add column if not exists blind_mode boolean not null default false;
 
 create table if not exists public.rank_room_slots (
   id uuid primary key default gen_random_uuid(),
@@ -1086,6 +1151,50 @@ with check (
       and public.rank_rooms.owner_id = auth.uid()
   )
 );
+
+create table if not exists public.rank_match_roster (
+  id uuid primary key default gen_random_uuid(),
+  match_instance_id uuid not null,
+  room_id uuid not null references public.rank_rooms(id) on delete cascade,
+  game_id uuid not null references public.rank_games(id) on delete cascade,
+  slot_id uuid,
+  slot_index integer not null,
+  role text not null,
+  owner_id uuid references auth.users(id) on delete set null,
+  hero_id uuid references public.heroes(id) on delete set null,
+  hero_name text,
+  hero_summary jsonb default '{}'::jsonb,
+  ready boolean default false,
+  joined_at timestamptz,
+  score integer,
+  rating integer,
+  battles integer,
+  win_rate numeric,
+  status text,
+  standin boolean default false,
+  match_source text,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create unique index if not exists rank_match_roster_instance_slot_unique
+on public.rank_match_roster (match_instance_id, slot_index);
+
+create index if not exists rank_match_roster_room_idx
+on public.rank_match_roster (room_id);
+
+create index if not exists rank_match_roster_game_idx
+on public.rank_match_roster (game_id);
+
+alter table public.rank_match_roster enable row level security;
+
+create policy if not exists rank_match_roster_select
+on public.rank_match_roster for select using (true);
+
+create policy if not exists rank_match_roster_service_write
+on public.rank_match_roster for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
 
 alter table public.rank_match_queue enable row level security;
 

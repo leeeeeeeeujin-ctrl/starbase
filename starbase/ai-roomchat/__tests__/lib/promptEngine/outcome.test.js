@@ -89,7 +89,7 @@ describe('promptEngine/parseOutcome', () => {
       '',
       '',
       '주역: 철수, 영희 / 철수',
-      'none',
+      '무',
       '철수 승리',
     ].join('\n')
 

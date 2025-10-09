@@ -803,15 +803,14 @@ export default function CharacterBasicView({ hero }) {
     ].filter((pair) => pair.entries.length > 0)
   }, [currentHero])
 
-  const currentHeroId = currentHero?.id || null
-
-  const handleOpenLobby = useCallback(() => {
-    if (currentHeroId) {
-      router.push(`/lobby?heroId=${currentHeroId}`)
-    } else {
-      router.push('/lobby')
+  const handleOpenRoomSearch = useCallback(() => {
+    const heroId = currentHero?.id
+    if (heroId) {
+      router.push({ pathname: '/rooms', query: { hero: heroId } })
+      return
     }
-  }, [currentHeroId, router])
+    router.push('/rooms')
+  }, [currentHero?.id, router])
 
   const [viewMode, setViewMode] = useState(0)
   const [activeTab, setActiveTab] = useState(0)
@@ -2140,8 +2139,8 @@ export default function CharacterBasicView({ hero }) {
                       로스터로
                     </Link>
                     {activeTabKey === 'character' ? (
-                      <button type="button" style={styles.battleButton} onClick={handleOpenLobby}>
-                        게임 시작
+                      <button type="button" style={styles.battleButton} onClick={handleOpenRoomSearch}>
+                        방 검색
                       </button>
                     ) : null}
                   </div>

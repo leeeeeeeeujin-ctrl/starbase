@@ -64,7 +64,7 @@ function resolveRoleName(lockedRole, roles) {
   return ''
 }
 
-export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
+export default function AutoMatchProgress({ gameId, mode, initialHeroId, onClose }) {
   const router = useRouter()
   const navigationLockedRef = useRef(false)
   const apiKeyExpiredHandledRef = useRef(false)
@@ -142,8 +142,18 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId }) {
   const handleReturnToRoster = useCallback(() => {
     if (!gameId) return
     navigationLockedRef.current = true
-    router.replace(`/rank/${gameId}`)
-  }, [gameId, router])
+    const target = `/rank/${gameId}`
+    const navigation = router.replace(target)
+    Promise.resolve(navigation)
+      .catch((error) => {
+        console.warn('[AutoMatchProgress] 메인 룸으로 돌아가는 데 실패했습니다:', error)
+      })
+      .finally(() => {
+        if (typeof onClose === 'function') {
+          onClose()
+        }
+      })
+  }, [gameId, onClose, router])
 
   const markQueueAbandoned = useCallback(() => {
     if (queueAbandonedRef.current) return

@@ -103,13 +103,17 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 
 ## Rooms & Matchmaking
 ### `public.rank_rooms`
-- Represents live rooms with game/owner references, join code, mode/status, slot/ready counters, host heartbeat, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L924-L937】
+- Represents live rooms with game/owner references, join code, mode/realtime mode/status, slot/ready counters, host role caps, brawl rule snapshot, host heartbeat, and audit timestamps.【F:starbase/ai-roomchat/supabase.sql†L924-L941】
 - RLS lets anyone read, owners create, and owners or seated occupants update rooms.【F:starbase/ai-roomchat/supabase.sql†L973-L998】
 
 ### `public.rank_room_slots`
 - Tracks each room slot’s role, occupant ownership/hero, readiness state, join time, and timestamp audit with unique `(room_id, slot_index)` constraint.【F:starbase/ai-roomchat/supabase.sql†L939-L949】
 - Accessible for reads, while inserts require room ownership and updates allow either occupants or the host to change their slot.【F:starbase/ai-roomchat/supabase.sql†L1000-L1034】
 - Indexed by `(room_id, role, occupant_owner_id)` so vacancy scans for drop-in matching can quickly locate open seats without table scans.【F:starbase/ai-roomchat/supabase.sql†L949-L951】
+
+### `public.rank_match_roster`
+- Ephemeral roster snapshot keyed by `match_instance_id`, storing the seated owner/hero pair per slot alongside readiness flags and cached stats (`score`, `rating`, `battles`, `win_rate`) that the main game consumes right after room fill.【F:starbase/ai-roomchat/supabase.sql†L1129-L1156】
+- Universal read access keeps the start client lightweight, while service-role policies gate inserts/updates/deletes so only the staging API can refresh the lineup.【F:starbase/ai-roomchat/supabase.sql†L1158-L1164】
 
 ### `public.rank_match_queue`
 - Queue entries capture game/mode/role, owning player, hero choice, score, party key, status, joined/updated timestamps, and optional match code.【F:starbase/ai-roomchat/supabase.sql†L952-L965】

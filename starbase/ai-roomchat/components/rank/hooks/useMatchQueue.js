@@ -19,6 +19,14 @@ import {
   QUEUE_HEARTBEAT_INTERVAL_MS,
   QUEUE_STALE_THRESHOLD_MS,
 } from '../matchConstants'
+import {
+  HERO_ID_KEY,
+  HERO_OWNER_KEY,
+  clearHeroSelection,
+  persistHeroOwner,
+  persistHeroSelection,
+  readHeroSelection,
+} from '../../../lib/heroes/selectedHeroStorage'
 
 const POLL_INTERVAL_MS = 4000
 
@@ -65,15 +73,10 @@ function normalizeRoleList(list) {
     .filter(Boolean)
 }
 
-function readStoredHeroId() {
-  if (typeof window === 'undefined') return ''
-  try {
-    return window.localStorage.getItem('selectedHeroId') || ''
-  } catch (error) {
-    console.warn('히어로 정보를 불러오지 못했습니다:', error)
-    return ''
+  function readStoredHeroId() {
+    const selection = readHeroSelection()
+    return selection?.heroId || ''
   }
-}
 
 async function loadViewer() {
   const { data, error } = await supabase.auth.getUser()
@@ -393,21 +396,21 @@ export default function useMatchQueue({
         return normalized
       })
 
-      if (typeof window === 'undefined') {
-        return normalized
-      }
-
       try {
         if (normalized) {
-          window.localStorage.setItem('selectedHeroId', normalized)
-          if (persistOwner) {
-            const targetOwner = ownerIdOverride || viewerId
-            if (targetOwner) {
-              window.localStorage.setItem('selectedHeroOwnerId', String(targetOwner))
-            }
+          const existingSelection = readHeroSelection()
+          const ownerToPersist = persistOwner
+            ? ownerIdOverride || viewerId || existingSelection?.ownerId || null
+            : existingSelection?.ownerId || null
+          persistHeroSelection({ id: normalized }, ownerToPersist)
+          if (persistOwner && (ownerIdOverride || viewerId)) {
+            persistHeroOwner(ownerIdOverride || viewerId)
           }
         } else {
-          window.localStorage.removeItem('selectedHeroId')
+          clearHeroSelection()
+          if (persistOwner && viewerId) {
+            persistHeroOwner(viewerId)
+          }
         }
       } catch (error) {
         console.warn('히어로 정보를 저장하지 못했습니다:', error)
@@ -623,22 +626,24 @@ export default function useMatchQueue({
     }
   }, [enabled, heroId, viewerRoster])
 
-  useEffect(() => {
-    if (!enabled) return
-    const handleStorage = (event) => {
-      if (event?.key && event.key !== 'selectedHeroId') return
-      setHeroId(readStoredHeroId())
-    }
-    const handleFocus = () => {
-      setHeroId(readStoredHeroId())
-    }
-    window.addEventListener('storage', handleStorage)
-    window.addEventListener('focus', handleFocus)
-    return () => {
-      window.removeEventListener('storage', handleStorage)
-      window.removeEventListener('focus', handleFocus)
-    }
-  }, [enabled])
+    useEffect(() => {
+      if (!enabled) return
+      const handleStorage = (event) => {
+        if (event?.key && event.key !== HERO_ID_KEY && event.key !== HERO_OWNER_KEY) return
+        setHeroId(readStoredHeroId())
+      }
+      const handleRefresh = () => {
+        setHeroId(readStoredHeroId())
+      }
+      window.addEventListener('storage', handleStorage)
+      window.addEventListener('focus', handleRefresh)
+      window.addEventListener('hero-overlay:refresh', handleRefresh)
+      return () => {
+        window.removeEventListener('storage', handleStorage)
+        window.removeEventListener('focus', handleRefresh)
+        window.removeEventListener('hero-overlay:refresh', handleRefresh)
+      }
+    }, [enabled])
 
   const runMatchProbe = useCallback(async () => {
     if (!enabled) return

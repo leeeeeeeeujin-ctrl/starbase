@@ -4,6 +4,7 @@ const FALLBACK_TABLES = {
   friendships: ['friendships'],
   rank_games: ['rank_games', 'games', 'rank_games_view'],
   rank_participants: ['rank_participants', 'rank_players', 'rank_session_players'],
+  rank_match_roster: ['rank_match_roster'],
   prompt_sets: ['prompt_sets', 'rank_prompt_sets'],
   prompt_slots: ['prompt_slots', 'rank_prompt_slots'],
   prompt_bridges: ['prompt_bridges', 'rank_prompt_bridges'],

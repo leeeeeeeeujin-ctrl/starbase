@@ -5,7 +5,7 @@ This note captures every Supabase table that participates in queueing players, f
 ## Catalog & Role Capacity
 
 ### `public.rank_games`
-- Core game definition with owner linkage, hero prompt metadata, engagement counters, and the `realtime_match` toggle that decides whether a room must queue or can start instantly.【F:starbase/ai-roomchat/supabase.sql†L500-L524】
+- Core game definition with owner linkage, hero prompt metadata, engagement counters, and the `realtime_match` mode (`off`, `standard`, or `pulse`) that decides whether a room must queue or can start instantly.【F:starbase/ai-roomchat/supabase.sql†L500-L524】
 - RLS policies allow anyone to read games while only the owner can insert, update, or delete rows.【F:starbase/ai-roomchat/supabase.sql†L512-L524】
 
 ### `public.rank_game_roles`
@@ -29,12 +29,17 @@ This note captures every Supabase table that participates in queueing players, f
 ## Rooms & Live Occupancy
 
 ### `public.rank_rooms`
-- Represents every open lobby room with game/owner FKs, join code, mode, status, slot/ready counters, and host heartbeat timestamps.【F:starbase/ai-roomchat/supabase.sql†L700-L713】
+- Represents every open lobby room with game/owner FKs, join code, mode, realtime mode, status, slot/ready counters, host role caps, brawl rule snapshot, and host heartbeat timestamps.【F:starbase/ai-roomchat/supabase.sql†L700-L719】
+- The optional `blind_mode` flag hides occupant hero names until the match-ready flow hands control to the main game client.【F:starbase/ai-roomchat/supabase.sql†L700-L719】
 - RLS allows public reads, owner-only inserts, and updates by either the host or seated occupants to reflect joins/leaves.【F:starbase/ai-roomchat/supabase.sql†L749-L774】
 
 ### `public.rank_room_slots`
 - Tracks per-room slot index, assigned role, occupant owner/hero IDs, readiness flag, join timestamp, and audit columns with uniqueness on `(room_id, slot_index)`.【F:starbase/ai-roomchat/supabase.sql†L715-L810】
 - Policies gate inserts to the room owner and updates to either the occupant or owner, preventing unauthorized seat shuffles.【F:starbase/ai-roomchat/supabase.sql†L781-L810】
+
+### `public.rank_match_roster`
+- Ephemeral snapshot of a filled room’s lineup keyed by `match_instance_id`, preserving the seated owner/hero pair, slot index, readiness flag, and cached stats (`score`, `rating`, `battles`, `win_rate`) for the upcoming session.【F:starbase/ai-roomchat/supabase.sql†L1129-L1156】
+- Service-role writers stage roster rows immediately before redirecting to the match-ready flow, while everyone can read them so the main game only hydrates participants from the active room.【F:starbase/ai-roomchat/supabase.sql†L1158-L1164】
 
 ## Queue Management
 

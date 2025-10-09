@@ -1,0 +1,260 @@
+import { createClient } from '@supabase/supabase-js'
+
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { withTableQuery } from '@/lib/supabaseTables'
+import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv'
+
+const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+if (!url || !anonKey) {
+  throw new Error('Missing Supabase configuration for stage-room-match API')
+}
+
+const anonClient = createClient(url, anonKey, {
+  auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+  },
+})
+
+function toTrimmedString(value) {
+  if (value === null || value === undefined) return ''
+  const trimmed = String(value).trim()
+  return trimmed
+}
+
+function toOptionalTrimmedString(value) {
+  const trimmed = toTrimmedString(value)
+  return trimmed ? trimmed : null
+}
+
+function toSlotIndex(value, fallback) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return fallback
+  }
+  return numeric
+}
+
+function normalizeRosterEntries(entries = []) {
+  if (!Array.isArray(entries)) return []
+  return entries
+    .map((entry, index) => {
+      if (!entry) return null
+      const slotIndex = toSlotIndex(
+        entry.slotIndex ?? entry.slot_index ?? entry.slotNo ?? entry.slot_no,
+        index,
+      )
+      const role = toTrimmedString(entry.role ?? entry.roleName)
+      const ownerId = toOptionalTrimmedString(
+        entry.ownerId ?? entry.owner_id ?? entry.occupantOwnerId ?? entry.ownerID,
+      )
+      const heroId = toOptionalTrimmedString(
+        entry.heroId ?? entry.hero_id ?? entry.occupantHeroId ?? entry.heroID,
+      )
+      const slotId = toOptionalTrimmedString(entry.slotId ?? entry.slot_id ?? entry.id)
+      const heroName = toTrimmedString(entry.heroName ?? entry.hero_name)
+      const ready = Boolean(entry.ready ?? entry.isReady ?? entry.occupantReady)
+      const joinedAt = entry.joinedAt ?? entry.joined_at ?? null
+
+      return {
+        slotIndex,
+        slotId,
+        role: role || '역할 미지정',
+        ownerId,
+        heroId,
+        heroName: heroName || null,
+        ready,
+        joinedAt,
+      }
+    })
+    .filter((entry) => entry && entry.slotIndex != null)
+    .sort((a, b) => a.slotIndex - b.slotIndex)
+}
+
+function buildHeroSummary(row) {
+  if (!row) return null
+  const summary = {
+    id: row.id || null,
+    name: row.name || '',
+    description: row.description || '',
+    image_url: row.image_url || '',
+    background_url: row.background_url || '',
+    bgm_url: row.bgm_url || '',
+    bgm_duration_seconds: Number(row.bgm_duration_seconds) || null,
+    ability1: row.ability1 || '',
+    ability2: row.ability2 || '',
+    ability3: row.ability3 || '',
+    ability4: row.ability4 || '',
+  }
+  return summary
+}
+
+function parseBody(req) {
+  let payload = req.body
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload || '{}')
+    } catch (error) {
+      return { error: 'invalid_payload' }
+    }
+  }
+  if (!payload || typeof payload !== 'object') {
+    return { error: 'invalid_payload' }
+  }
+  return { payload }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST'])
+    return res.status(405).json({ error: 'method_not_allowed' })
+  }
+
+  const authHeader = req.headers.authorization || ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+  if (!token) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const { data: userData, error: userError } = await anonClient.auth.getUser(token)
+  const user = userData?.user || null
+  if (userError || !user) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const { payload, error } = parseBody(req)
+  if (error) {
+    return res.status(400).json({ error })
+  }
+
+  const matchInstanceId = toOptionalTrimmedString(payload.match_instance_id || payload.matchInstanceId)
+  const roomId = toOptionalTrimmedString(payload.room_id || payload.roomId)
+  const gameId = toOptionalTrimmedString(payload.game_id || payload.gameId)
+  const rosterEntries = normalizeRosterEntries(payload.roster)
+  const heroMap = payload.hero_map && typeof payload.hero_map === 'object' ? payload.hero_map : {}
+
+  if (!matchInstanceId) {
+    return res.status(400).json({ error: 'missing_match_instance_id' })
+  }
+  if (!roomId) {
+    return res.status(400).json({ error: 'missing_room_id' })
+  }
+  if (!gameId) {
+    return res.status(400).json({ error: 'missing_game_id' })
+  }
+  if (!rosterEntries.length) {
+    return res.status(400).json({ error: 'empty_roster' })
+  }
+
+  const ownerIds = Array.from(new Set(rosterEntries.map((entry) => entry.ownerId).filter(Boolean)))
+  const heroIds = Array.from(new Set(rosterEntries.map((entry) => entry.heroId).filter(Boolean)))
+
+  let participantRows = []
+  if (ownerIds.length) {
+    const { data, error: participantError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_participants',
+      (from) =>
+        from
+          .select(
+            'owner_id, hero_id, score, rating, battles, win_rate, status, standin, match_source',
+          )
+          .eq('game_id', gameId)
+          .in('owner_id', ownerIds),
+    )
+    if (participantError) {
+      return res.status(400).json({ error: participantError.message })
+    }
+    participantRows = Array.isArray(data) ? data : []
+  }
+
+  let heroRows = []
+  if (heroIds.length) {
+    const { data, error: heroError } = await withTableQuery(supabaseAdmin, 'heroes', (from) =>
+      from
+        .select(
+          'id, name, description, image_url, background_url, bgm_url, bgm_duration_seconds, ability1, ability2, ability3, ability4',
+        )
+        .in('id', heroIds),
+    )
+    if (heroError) {
+      return res.status(400).json({ error: heroError.message })
+    }
+    heroRows = Array.isArray(data) ? data : []
+  }
+
+  const participantMap = new Map()
+  participantRows.forEach((row) => {
+    const key = toOptionalTrimmedString(row?.owner_id)
+    if (!key) return
+    participantMap.set(key, {
+      score: Number.isFinite(Number(row?.score)) ? Number(row.score) : null,
+      rating: Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null,
+      battles: Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null,
+      win_rate:
+        row?.win_rate !== undefined && row?.win_rate !== null ? Number(row.win_rate) : null,
+      status: toOptionalTrimmedString(row?.status),
+      standin: row?.standin === true,
+      match_source: toOptionalTrimmedString(row?.match_source),
+    })
+  })
+
+  const heroSummaryMap = new Map()
+  heroRows.forEach((row) => {
+    const key = toOptionalTrimmedString(row?.id)
+    if (!key) return
+    heroSummaryMap.set(key, buildHeroSummary(row))
+  })
+
+  const now = new Date().toISOString()
+  const insertRows = rosterEntries.map((entry) => {
+    const stats = participantMap.get(entry.ownerId || '') || {}
+    const heroMeta = heroSummaryMap.get(entry.heroId || '') || heroMap[entry.heroId || ''] || null
+    const heroName = heroMeta?.name || entry.heroName || null
+
+    return {
+      match_instance_id: matchInstanceId,
+      room_id: roomId,
+      game_id: gameId,
+      slot_index: entry.slotIndex,
+      slot_id: entry.slotId,
+      role: entry.role,
+      owner_id: entry.ownerId,
+      hero_id: entry.heroId,
+      hero_name: heroName,
+      hero_summary: heroMeta,
+      ready: entry.ready,
+      joined_at: entry.joinedAt,
+      score: stats.score,
+      rating: stats.rating,
+      battles: stats.battles,
+      win_rate: stats.win_rate,
+      status: stats.status,
+      standin: stats.standin || false,
+      match_source: stats.match_source,
+      created_at: now,
+      updated_at: now,
+    }
+  })
+
+  const { error: deleteError } = await withTableQuery(supabaseAdmin, 'rank_match_roster', (from) =>
+    from.delete().eq('room_id', roomId),
+  )
+  if (deleteError) {
+    return res.status(400).json({ error: deleteError.message })
+  }
+
+  const { error: insertError } = await withTableQuery(supabaseAdmin, 'rank_match_roster', (from) =>
+    from.insert(insertRows),
+  )
+  if (insertError) {
+    return res.status(400).json({ error: insertError.message })
+  }
+
+  return res.status(200).json({ ok: true, staged: insertRows.length })
+}

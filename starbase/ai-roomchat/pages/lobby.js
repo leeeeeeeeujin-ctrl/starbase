@@ -10,6 +10,7 @@ import CharacterStatsPanel from '../components/lobby/CharacterStatsPanel'
 import useGameBrowser from '../components/lobby/hooks/useGameBrowser'
 import { LOBBY_TABS, NAV_LINKS } from '../components/lobby/constants'
 import useLobbyStats from '../components/lobby/hooks/useLobbyStats'
+import { readHeroSelection } from '../lib/heroes/selectedHeroStorage'
 
 export default function Lobby() {
   const router = useRouter()
@@ -25,10 +26,10 @@ export default function Lobby() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const selection = readHeroSelection()
+    setStoredHeroId(selection?.heroId || '')
     try {
-      const savedHeroId = window.localStorage.getItem('selectedHeroId') || ''
       const savedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
-      setStoredHeroId(savedHeroId)
       setBackgroundUrl(savedBackground)
     } catch (error) {
       console.error('로비 배경 정보를 불러오지 못했습니다:', error)

@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabase'
 import { withTable } from '../../../lib/supabaseTables'
 import { MAX_GAME_ROWS, SORT_OPTIONS, DEFAULT_SORT_KEY, METRIC_SORT_KEYS, getSortOptions } from '../constants'
 import { isMissingColumnError } from '../../../lib/supabaseErrors'
+import { clearHeroSelection, readHeroSelection } from '../../../lib/heroes/selectedHeroStorage'
 
 function computeGameStats(participants = [], battles = [], game = {}) {
   const totalPlayers = participants.length
@@ -510,18 +511,18 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
         return { ok: false, error: '이미 참여 절차를 진행 중입니다.' }
       }
 
-      let storedHeroId = null
-      if (typeof window !== 'undefined') {
-        try {
-          storedHeroId = window.localStorage.getItem('selectedHeroId')
-        } catch (error) {
-          console.warn('선택한 캐릭터 정보를 불러오지 못했습니다:', error)
-        }
-      }
+        const selection = readHeroSelection()
+        const storedHeroId = selection?.heroId || ''
+        const storedOwnerId = selection?.ownerId || ''
 
-      if (!storedHeroId) {
-        return { ok: false, error: '참여 전에 사용할 캐릭터를 선택해 주세요.' }
-      }
+        if (!storedHeroId) {
+          return { ok: false, error: '참여 전에 사용할 캐릭터를 선택해 주세요.' }
+        }
+
+        if (storedOwnerId && String(storedOwnerId) !== String(viewerId)) {
+          clearHeroSelection()
+          return { ok: false, error: '현재 계정과 다른 캐릭터가 선택되어 있어요. 다시 선택해 주세요.' }
+        }
 
       setJoinLoading(true)
       try {

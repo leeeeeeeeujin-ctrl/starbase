@@ -3,6 +3,11 @@ import { useRouter } from 'next/router'
 
 import AuthButton from '../components/AuthButton'
 import { supabase } from '../lib/supabase'
+import {
+  clearRankAuthSession,
+  persistRankAuthSession,
+  persistRankAuthUser,
+} from '../lib/rank/rankAuthStorage'
 import styles from '../styles/Home.module.css'
 import progressData from '../data/rankBlueprintProgress.json'
 import nextActionsData from '../data/rankBlueprintNextActions.json'
@@ -228,6 +233,8 @@ export default function Home() {
         const { data } = await supabase.auth.getSession()
         if (cancelled) return
         if (data?.session?.user) {
+          persistRankAuthSession(data.session)
+          persistRankAuthUser(data.session.user)
           router.replace('/roster')
         }
       } catch (error) {
@@ -240,9 +247,12 @@ export default function Home() {
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled) return
       if (session?.user) {
+        persistRankAuthSession(session)
+        persistRankAuthUser(session.user)
         router.replace('/roster')
       }
       if (event === 'SIGNED_OUT') {
+        clearRankAuthSession()
         router.replace('/')
       }
     })

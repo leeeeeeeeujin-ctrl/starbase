@@ -11,20 +11,23 @@ import { compileTemplate as compileRankTemplate } from './prompt'
 const DEFAULT_RULE_GUIDANCE_ENTRIES = [
   {
     text:
-      '- 마지막 줄에는 이번 턴의 핵심 캐릭터 이름과 승패·탈락 등 결과를 함께 기재하라. 다만 승패나 탈락(전투 속행 불가)이 명백히 밝혀지지 않았다면 "무"만을 기재해라.',
-    matchers: [/(마지막\s*줄)/, /(승패|탈락|결과)/],
+      '- 응답의 마지막 여덟 줄 중 위 다섯 줄은 공란으로 남겨 두고, 맨 아래 세 줄만 다음 형식으로 채워라.',
+    matchers: [/마지막/, /(다섯|5)[^\s]*\s*줄/, /(공란|공백)/],
   },
   {
-    text: '- 마지막에서 두 번째 줄에는 활성화된 변수 이름을 공백으로 구분해 적고, 없다면 "none"이라고 적어라.',
-    matchers: [/(마지막)(에서)?[^\n]*(둘|두)[^\s]*\s*줄/, /변수/],
+    text:
+      '- 마지막에서 세 번째 줄에는 이번 턴에서 독보적인 활약을 펼친 캐릭터 이름을 적되, 적합한 인물이 없으면 비워 둔다.',
+    matchers: [/(마지막)(에서)?[^\n]*(셋|세)[^\s]*\s*줄/, /(활약|주역|독보)/],
   },
   {
-    text: '- 마지막에서 세 번째 줄에는 비중이 높은 캐릭터 이름을 기재하되, 특별히 중요하지 않으면 공란으로 두라.',
-    matchers: [/(마지막)(에서)?[^\n]*(셋|세)[^\s]*\s*줄/, /(비중|중요)/],
+    text:
+      '- 마지막에서 두 번째 줄에는 활성화된 변수명을 공백으로 구분해 적고, 없다면 "무"만 적어라.',
+    matchers: [/(마지막)(에서)?[^\n]*(둘|두)[^\s]*\s*줄/, /(변수|변수명)/],
   },
   {
-    text: '- 마지막에서 세 번째 줄 위의 다섯 줄은 후속 기록을 위해 공란으로 남겨 둔다.',
-    matchers: [/((다섯|5)[^\s]*\s*줄)/, /(공란|공백)/],
+    text:
+      '- 마지막 줄에는 해당 턴의 판정을 캐릭터 이름과 함께 "승리", "패배", "탈락" 중 하나로 선언하고, 판정이 없다면 "무"만 적어라.',
+    matchers: [/(마지막\s*줄)/, /(승리|패배|탈락|판정|결과)/],
   },
 ]
 
@@ -356,7 +359,7 @@ function normalizeActiveNameList(names = []) {
 
 function buildVariableStateLines(names = [], scopeLabel = '전역') {
   const normalized = normalizeActiveNameList(names)
-  const summary = normalized.length ? normalized.join(', ') : 'none'
+  const summary = normalized.length ? normalized.join(', ') : '무'
   return [`- 활성화된 ${scopeLabel} 변수: ${summary}`]
 }
 

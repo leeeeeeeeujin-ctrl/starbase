@@ -1,29 +1,9 @@
 // pages/rank/[id].js
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
 import GameRoomView from '../../components/rank/GameRoomView'
-import GameStartModeModal from '../../components/rank/GameStartModeModal'
 import { useGameRoom } from '../../hooks/useGameRoom'
-import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes'
-import {
-  normalizeTurnTimerVotes,
-  registerTurnTimerVote,
-  TURN_TIMER_VALUES,
-} from '../../lib/rank/turnTimers'
-import {
-  DEFAULT_GEMINI_MODE,
-  DEFAULT_GEMINI_MODEL,
-  normalizeGeminiMode,
-  normalizeGeminiModelId,
-} from '../../lib/rank/geminiConfig'
-import {
-  START_SESSION_KEYS,
-  readStartSessionValue,
-  readStartSessionValues,
-  writeStartSessionValue,
-  writeStartSessionValues,
-} from '../../lib/rank/startSessionChannel'
 import {
   normalizeHeroIdValue,
   resolveParticipantHeroId,
@@ -33,39 +13,8 @@ export default function GameRoomPage() {
   const router = useRouter()
   const { id } = router.query
 
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
-
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [pickRole, setPickRole] = useState('')
-  const [showStartModal, setShowStartModal] = useState(false)
-  const [startPreset, setStartPreset] = useState({
-    mode: MATCH_MODE_KEYS.RANK_SHARED,
-    casualOption: 'matchmaking',
-    apiVersion: 'gemini',
-    apiKey: '',
-    geminiMode: DEFAULT_GEMINI_MODE,
-    geminiModel: DEFAULT_GEMINI_MODEL,
-    turnTimer: 60,
-  })
-  const [startLoading, setStartLoading] = useState(false)
-  const [startNotice, setStartNotice] = useState('')
-  const [startError, setStartError] = useState('')
-  const [turnTimerVote, setTurnTimerVote] = useState(null)
-  const turnTimerVoteRef = useRef(null)
-  const [turnTimerVotes, setTurnTimerVotes] = useState({})
-
-  const persistTurnTimerVotes = useCallback((votes) => {
-    if (typeof window === 'undefined') return
-    try {
-      const payload = votes ? JSON.stringify(votes) : null
-      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTES, payload, {
-        source: 'match-page',
-      })
-    } catch (error) {
-      console.warn('턴 제한 투표 정보를 저장하지 못했습니다:', error)
-    }
-  }, [])
 
   const handleRequireLogin = useCallback(() => {
     router.replace('/')
@@ -87,7 +36,6 @@ export default function GameRoomPage() {
       game,
       roles,
       participants,
-      slots,
       myHero,
       deleting,
       recentBattles,
@@ -108,10 +56,6 @@ export default function GameRoomPage() {
       joinGame,
       leaveGame,
       deleteRoom,
-      refreshParticipants,
-      refreshBattles,
-      refreshSessionHistory,
-      refreshSharedHistory,
     },
   } = useGameRoom(id, {
     onRequireLogin: handleRequireLogin,
@@ -125,7 +69,7 @@ export default function GameRoomPage() {
     }
   }, [alreadyJoined, myEntry?.role])
 
-  const ready = mounted && !!id
+  const ready = !!id
   const resolvedMinimumParticipants = Number.isFinite(Number(minimumParticipants))
     ? Number(minimumParticipants)
     : 0
@@ -181,216 +125,8 @@ export default function GameRoomPage() {
     await joinGame(pickRole)
   }
 
-  useEffect(() => {
-    if (!mounted) return
-    if (typeof window === 'undefined') return
-
-    const stored = readStartSessionValues([
-      START_SESSION_KEYS.MODE,
-      START_SESSION_KEYS.CASUAL_OPTION,
-      START_SESSION_KEYS.API_VERSION,
-      START_SESSION_KEYS.API_KEY,
-      START_SESSION_KEYS.GEMINI_MODE,
-      START_SESSION_KEYS.GEMINI_MODEL,
-      START_SESSION_KEYS.TURN_TIMER,
-      START_SESSION_KEYS.TURN_TIMER_VOTE,
-    ])
-
-    setStartPreset((prev) => {
-      const storedMode = stored[START_SESSION_KEYS.MODE] || prev.mode
-      const storedCasual = stored[START_SESSION_KEYS.CASUAL_OPTION] || prev.casualOption
-      const storedApiVersion = stored[START_SESSION_KEYS.API_VERSION] || prev.apiVersion
-      const storedApiKey = stored[START_SESSION_KEYS.API_KEY] || prev.apiKey
-      const storedGeminiMode = stored[START_SESSION_KEYS.GEMINI_MODE]
-      const storedGeminiModel = stored[START_SESSION_KEYS.GEMINI_MODEL]
-      const storedTimerRaw = stored[START_SESSION_KEYS.TURN_TIMER]
-      const storedVoteRaw = stored[START_SESSION_KEYS.TURN_TIMER_VOTE]
-
-      const resolvedGeminiMode = storedGeminiMode
-        ? normalizeGeminiMode(storedGeminiMode)
-        : prev.geminiMode || DEFAULT_GEMINI_MODE
-
-      const resolvedGeminiModel = (() => {
-        if (storedGeminiModel) {
-          const normalized = normalizeGeminiModelId(storedGeminiModel)
-          if (normalized) {
-            return normalized
-          }
-        }
-        if (prev.geminiModel) {
-          return prev.geminiModel
-        }
-        return DEFAULT_GEMINI_MODEL
-      })()
-
-      const resolvedTimer = (() => {
-        const storedTimer = Number(storedTimerRaw)
-        if (TURN_TIMER_VALUES.includes(storedTimer)) {
-          return storedTimer
-        }
-        const storedVoteTimer = Number(storedVoteRaw)
-        if (TURN_TIMER_VALUES.includes(storedVoteTimer)) {
-          return storedVoteTimer
-        }
-        return prev.turnTimer
-      })()
-
-      return {
-        ...prev,
-        mode: storedMode,
-        casualOption: storedCasual,
-        apiVersion: storedApiVersion,
-        apiKey: storedApiKey,
-        geminiMode: resolvedGeminiMode,
-        geminiModel: resolvedGeminiModel,
-        turnTimer: resolvedTimer,
-      }
-    })
-  }, [mounted])
-
-  useEffect(() => {
-    if (!mounted) return
-    if (typeof window === 'undefined') return
-
-    const storedVoteValue = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE))
-    const hasStoredVote = TURN_TIMER_VALUES.includes(storedVoteValue)
-
-    if (hasStoredVote) {
-      setTurnTimerVote(storedVoteValue)
-      turnTimerVoteRef.current = storedVoteValue
-    } else {
-      turnTimerVoteRef.current = null
-    }
-
-    let parsedVotes = {}
-    const rawVotes = readStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTES)
-    if (rawVotes) {
-      try {
-        parsedVotes = JSON.parse(rawVotes)
-      } catch (error) {
-        parsedVotes = {}
-      }
-    }
-
-    let normalized = normalizeTurnTimerVotes(parsedVotes)
-    if (hasStoredVote && !normalized[storedVoteValue]) {
-      normalized = registerTurnTimerVote(normalized, null, storedVoteValue)
-    }
-
-    setTurnTimerVotes(normalized)
-    persistTurnTimerVotes(normalized)
-  }, [mounted, persistTurnTimerVotes])
-
-  const handleVoteTurnTimer = useCallback(
-    (value) => {
-      const numeric = Number(value)
-      if (!TURN_TIMER_VALUES.includes(numeric)) {
-        return
-      }
-
-      setTurnTimerVotes((prev) => {
-        const next = registerTurnTimerVote(prev, turnTimerVoteRef.current, numeric)
-        persistTurnTimerVotes(next)
-        return next
-      })
-
-      setTurnTimerVote(numeric)
-      turnTimerVoteRef.current = numeric
-
-      writeStartSessionValue(START_SESSION_KEYS.TURN_TIMER_VOTE, String(numeric), {
-        source: 'match-page',
-      })
-    },
-    [persistTurnTimerVotes],
-  )
-
-  const handleOpenModeModal = useCallback(() => {
-    if (startLoading) return
-    if (!hasMinimumParticipants) {
-      setStartNotice('참가 인원이 부족해 매칭을 시작할 수 없습니다.')
-      return
-    }
-    if (!myHero) {
-      alert('캐릭터가 필요합니다.')
-      return
-    }
-    setStartNotice('')
-    setStartError('')
-    setShowStartModal(true)
-  }, [hasMinimumParticipants, myHero, startLoading])
-
-  const handleConfirmStart = async (config) => {
-    setShowStartModal(false)
-    setStartPreset(config)
-
-    if (typeof window !== 'undefined') {
-      writeStartSessionValues(
-        {
-          [START_SESSION_KEYS.MODE]: config.mode,
-          [START_SESSION_KEYS.DUO_OPTION]: null,
-          [START_SESSION_KEYS.CASUAL_OPTION]: config.casualOption,
-          [START_SESSION_KEYS.API_VERSION]: config.apiVersion,
-          [START_SESSION_KEYS.GEMINI_MODE]: config.geminiMode || DEFAULT_GEMINI_MODE,
-          [START_SESSION_KEYS.GEMINI_MODEL]: config.geminiModel || DEFAULT_GEMINI_MODEL,
-          [START_SESSION_KEYS.TURN_TIMER]: String(config.turnTimer || 60),
-          [START_SESSION_KEYS.API_KEY]: config.apiKey || null,
-        },
-        { source: 'match-page' },
-      )
-    }
-
-    if (config.mode === MATCH_MODE_KEYS.RANK_SHARED) {
-      if (startLoading) {
-        return
-      }
-
-      setStartLoading(true)
-      setStartNotice('랭크 매칭 룸으로 이동합니다…')
-      setStartError('')
-
-      try {
-        await router.push({
-          pathname: `/rank/${id}/match`,
-          query: { mode: config.mode, apiVersion: config.apiVersion },
-        })
-      } catch (error) {
-        console.error('Failed to open rank match page:', error)
-        setStartError('랭크 매칭 룸으로 이동하지 못했습니다. 잠시 후 다시 시도해 주세요.')
-        setStartNotice('')
-      } finally {
-        setStartLoading(false)
-      }
-
-      return
-    }
-
-    if (config.mode === MATCH_MODE_KEYS.CASUAL_PRIVATE) {
-      router.push({ pathname: `/rank/${id}/casual-private` })
-      return
-    }
-
-    if (config.mode === MATCH_MODE_KEYS.CASUAL_MATCH) {
-      router.push({ pathname: `/rank/${id}/casual` })
-      return
-    }
-
-    router.push({
-      pathname: `/rank/${id}/start`,
-      query: { mode: config.mode, apiVersion: config.apiVersion },
-    })
-  }
-
-  const handleCloseStartModal = () => {
-    setShowStartModal(false)
-  }
-
-  useEffect(() => {
-    if (!mounted) return
-    if (!hasMinimumParticipants) {
-      setStartNotice('')
-      setStartError('')
-    }
-  }, [hasMinimumParticipants, mounted])
+  const matchDisabledNotice =
+    '이제 메인 룸에서는 매칭을 시작하지 않습니다. 캐릭터 페이지의 "방 검색" 버튼을 통해 공개 방을 찾아 주세요.'
 
   if (!ready || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
@@ -497,15 +233,11 @@ export default function GameRoomPage() {
         onBack={() => router.replace('/lobby')}
         onJoin={handleJoin}
         onLeave={leaveGame}
-        onOpenModeSettings={handleOpenModeModal}
         onOpenLeaderboard={() => setShowLeaderboard(true)}
         onDelete={deleteRoom}
         isOwner={isOwner}
         deleting={deleting}
-        startDisabled={!hasMinimumParticipants || !myHero || startLoading}
-        startLoading={startLoading}
-        startNotice={startNotice}
-        startError={startError}
+        startNotice={matchDisabledNotice}
         recentBattles={recentBattles}
         roleOccupancy={roleOccupancy}
         roleLeaderboards={roleLeaderboards}
@@ -514,14 +246,6 @@ export default function GameRoomPage() {
       {showLeaderboard && (
         <LeaderboardDrawer gameId={id} onClose={() => setShowLeaderboard(false)} />
       )}
-      <GameStartModeModal
-        open={showStartModal}
-        onClose={handleCloseStartModal}
-        onConfirm={handleConfirmStart}
-        initialConfig={startPreset}
-        turnTimerVotes={turnTimerVotes}
-        onVoteTurnTimer={handleVoteTurnTimer}
-      />
     </>
   )
 }

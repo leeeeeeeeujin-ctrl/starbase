@@ -49,7 +49,7 @@
 ## Supabase Schema Highlights (from `supabase.sql`)
 | Table | Purpose | Key Columns |
 | --- | --- | --- |
-| `rank_games` | Primary registry of games | `id`, `owner_id`, `name`, `description`, `image_url`, `prompt_set_id`, `roles` (legacy JSON copy), `rules`, `rules_prefix`, `realtime_match`, `likes_count`, `play_count`, timestamps.【F:starbase/ai-roomchat/supabase.sql†L243-L262】 |
+| `rank_games` | Primary registry of games | `id`, `owner_id`, `name`, `description`, `image_url`, `prompt_set_id`, `roles` (legacy JSON copy), `rules`, `rules_prefix`, `realtime_match` (`off`/`standard`/`pulse`), `likes_count`, `play_count`, timestamps.【F:starbase/ai-roomchat/supabase.sql†L243-L262】 |
 | `rank_game_roles` | Canonical role definitions per game | `game_id`, `name`, `slot_count`, `active`, `score_delta_min`, `score_delta_max`.【F:starbase/ai-roomchat/supabase.sql†L264-L291】 |
 | `rank_game_tags` | User-editable tags surfaced in lobby | `game_id`, `tag`, uniqueness constraint, timestamps.【F:starbase/ai-roomchat/supabase.sql†L293-L317】 |
 | `rank_game_seasons` | Season tracking and archived leaderboards | `game_id`, `name`, `status`, `started_at`, `ended_at`, `leaderboard` JSON.【F:starbase/ai-roomchat/supabase.sql†L319-L340】 |

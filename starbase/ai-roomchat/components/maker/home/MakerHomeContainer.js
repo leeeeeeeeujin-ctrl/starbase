@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 
 import { useMakerHome } from '../../../hooks/maker/useMakerHome'
 import MakerHomeView from './MakerHomeView'
+import { readHeroSelection } from '../../../lib/heroes/selectedHeroStorage'
 
 export default function MakerHomeContainer() {
   const router = useRouter()
@@ -35,10 +36,10 @@ export default function MakerHomeContainer() {
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const selection = readHeroSelection()
+    setReturnHeroId(selection?.heroId || '')
     try {
-      const storedHeroId = window.localStorage.getItem('selectedHeroId') || ''
       const storedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
-      setReturnHeroId(storedHeroId)
       setBackgroundImage(storedBackground)
     } catch (error) {
       console.error('Failed to hydrate Maker background context:', error)

@@ -8,15 +8,24 @@ import {
 } from '@/lib/rank/realtimeEventNotifications'
 import { mapTimelineEventToRow, sanitizeTimelineEvents } from '@/lib/rank/timelineEvents'
 import { withTableQuery } from '@/lib/supabaseTables'
+import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv'
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 if (!url || !anonKey) {
   throw new Error('Missing Supabase configuration for log-turn API')
 }
 
-const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
+const anonClient = createClient(url, anonKey, {
+  auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+  },
+})
 
 function normalizeEntries(entries) {
   if (!Array.isArray(entries)) return []

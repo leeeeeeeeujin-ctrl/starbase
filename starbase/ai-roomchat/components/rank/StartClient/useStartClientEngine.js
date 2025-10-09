@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { supabase } from '../../../lib/supabase'
+import { withTable } from '../../../lib/supabaseTables'
 import {
   buildSlotsFromParticipants,
   makeNodePrompt,
@@ -76,6 +77,460 @@ import {
   getConnectionEntriesForGame,
   subscribeConnectionRegistry,
 } from '@/lib/rank/startConnectionRegistry'
+import {
+  isRealtimeEnabled,
+  normalizeRealtimeMode,
+  REALTIME_MODES,
+} from '@/lib/rank/realtimeModes'
+
+function toTrimmedString(value) {
+  if (value === null || value === undefined) return null
+  const stringValue = String(value).trim()
+  return stringValue ? stringValue : null
+}
+
+function parseSlotIndex(value, fallback = null) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return fallback
+  if (numeric < 0) return fallback
+  return numeric
+}
+
+function normalizeRosterEntries(roster = []) {
+  if (!Array.isArray(roster) || roster.length === 0) return []
+
+  return roster
+    .map((entry, index) => {
+      if (!entry) return null
+
+      const slotIndex = parseSlotIndex(
+        entry.slotIndex ?? entry.slot_index ?? entry.slotNo ?? entry.slot_no,
+        index,
+      )
+      const roleValue =
+        typeof entry.role === 'string'
+          ? entry.role.trim()
+          : typeof entry.roleName === 'string'
+          ? entry.roleName.trim()
+          : ''
+      const ownerId = toTrimmedString(
+        entry.ownerId ?? entry.owner_id ?? entry.occupantOwnerId ?? entry.ownerID,
+      )
+      const heroId = toTrimmedString(
+        entry.heroId ?? entry.hero_id ?? entry.occupantHeroId ?? entry.heroID,
+      )
+      const slotId = toTrimmedString(entry.slotId ?? entry.slot_id ?? entry.id)
+      const joinedAt = entry.joinedAt ?? entry.joined_at ?? null
+      const ready = Boolean(entry.ready ?? entry.isReady ?? entry.occupantReady)
+      const heroNameValue =
+        typeof entry.heroName === 'string'
+          ? entry.heroName
+          : typeof entry.hero_name === 'string'
+          ? entry.hero_name
+          : ''
+
+      return {
+        slotId,
+        slotIndex,
+        role: roleValue || null,
+        ownerId,
+        heroId,
+        heroName: heroNameValue,
+        ready,
+        joinedAt,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.slotIndex - b.slotIndex)
+}
+
+function buildRosterEntriesFromAssignments(assignments = []) {
+  if (!Array.isArray(assignments) || assignments.length === 0) return []
+
+  const entries = []
+  assignments.forEach((assignment) => {
+    if (!assignment) return
+    const roleName =
+      typeof assignment.role === 'string'
+        ? assignment.role.trim()
+        : typeof assignment.roleName === 'string'
+        ? assignment.roleName.trim()
+        : ''
+
+    const members = Array.isArray(assignment.members)
+      ? assignment.members
+      : Array.isArray(assignment.membership)
+      ? assignment.membership
+      : []
+
+    members.forEach((member, index) => {
+      if (!member) return
+      entries.push({
+        slotIndex:
+          member.slotIndex ?? member.slot_index ?? member.slotNo ?? member.slot_no ?? index,
+        role: roleName || null,
+        ownerId:
+          member.ownerId ?? member.owner_id ?? member.occupantOwnerId ?? member.ownerID ?? null,
+        heroId:
+          member.heroId ?? member.hero_id ?? member.occupantHeroId ?? member.heroID ?? null,
+        heroName:
+          member.heroName ?? member.hero_name ?? member.displayName ?? member.name ?? '',
+        ready: Boolean(member.ready ?? member.isReady ?? member.occupantReady),
+        joinedAt: member.joinedAt ?? member.joined_at ?? null,
+      })
+    })
+  })
+
+  return entries
+}
+
+function deriveRosterFromMatchSnapshot(matchSnapshot) {
+  if (!matchSnapshot) return []
+
+  const slotCandidates = []
+  if (Array.isArray(matchSnapshot.slotLayout) && matchSnapshot.slotLayout.length) {
+    slotCandidates.push(matchSnapshot.slotLayout)
+  }
+  if (
+    matchSnapshot.roleStatus &&
+    Array.isArray(matchSnapshot.roleStatus.slotLayout) &&
+    matchSnapshot.roleStatus.slotLayout.length
+  ) {
+    slotCandidates.push(matchSnapshot.roleStatus.slotLayout)
+  }
+
+  for (const candidate of slotCandidates) {
+    const normalized = normalizeRosterEntries(candidate)
+    if (normalized.length) return normalized
+  }
+
+  const assignmentEntries = buildRosterEntriesFromAssignments(matchSnapshot.assignments)
+  if (assignmentEntries.length) {
+    const normalizedAssignments = normalizeRosterEntries(assignmentEntries)
+    if (normalizedAssignments.length) return normalizedAssignments
+  }
+
+  return []
+}
+
+function buildSlotLayoutFromRosterSnapshot(roster = []) {
+  if (!Array.isArray(roster) || roster.length === 0) return []
+
+  return roster.map((entry) => {
+    const ownerId = toTrimmedString(entry.ownerId)
+    const heroId = toTrimmedString(entry.heroId)
+    return {
+      id: entry.slotId,
+      slot_index: entry.slotIndex,
+      slotIndex: entry.slotIndex,
+      role: entry.role || null,
+      active: true,
+      hero_id: heroId,
+      hero_owner_id: ownerId,
+      occupant_owner_id: ownerId,
+      occupant_hero_id: heroId,
+      occupant_ready: entry.ready || false,
+      occupant_joined_at: entry.joinedAt || null,
+    }
+  })
+}
+
+function normalizeSlotLayoutEntries(list = []) {
+  if (!Array.isArray(list) || list.length === 0) return []
+
+  return list
+    .map((entry, index) => {
+      if (!entry) return null
+      const slotIndex = parseSlotIndex(
+        entry.slot_index ?? entry.slotIndex ?? entry.slotNo ?? entry.slot_no,
+        index,
+      )
+      if (slotIndex == null) return null
+      const roleValue =
+        typeof entry.role === 'string'
+          ? entry.role.trim()
+          : typeof entry.role_name === 'string'
+          ? entry.role_name.trim()
+          : ''
+      const ownerId = toTrimmedString(
+        entry.hero_owner_id ?? entry.heroOwnerId ?? entry.ownerId ?? entry.occupantOwnerId,
+      )
+      const heroId = toTrimmedString(
+        entry.hero_id ?? entry.heroId ?? entry.occupantHeroId ?? entry.heroID,
+      )
+      const occupantOwner = toTrimmedString(
+        entry.occupant_owner_id ?? entry.occupantOwnerId ?? ownerId,
+      )
+      const occupantHero = toTrimmedString(
+        entry.occupant_hero_id ?? entry.occupantHeroId ?? heroId,
+      )
+
+      return {
+        id: entry.id ?? entry.slotId ?? null,
+        slot_index: slotIndex,
+        slotIndex,
+        role: roleValue || null,
+        active: entry.active !== false,
+        hero_id: heroId,
+        hero_owner_id: ownerId,
+        occupant_owner_id: occupantOwner,
+        occupant_hero_id: occupantHero,
+        occupant_ready:
+          entry.occupant_ready ?? entry.ready ?? entry.isReady ?? false,
+        occupant_joined_at: entry.occupant_joined_at ?? entry.joinedAt ?? null,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.slot_index - b.slot_index)
+}
+
+function mergeSlotLayoutSeed(primary = [], fallback = []) {
+  const primaryList = Array.isArray(primary)
+    ? primary.map((entry) => ({ ...entry }))
+    : []
+  const fallbackList = Array.isArray(fallback)
+    ? fallback.map((entry) => ({ ...entry }))
+    : []
+
+  if (primaryList.length === 0) {
+    return fallbackList
+  }
+
+  const fallbackMap = new Map()
+  fallbackList.forEach((entry) => {
+    const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex)
+    if (slotIndex == null) return
+    if (!fallbackMap.has(slotIndex)) {
+      fallbackMap.set(slotIndex, {
+        ...entry,
+        slot_index: slotIndex,
+        slotIndex,
+      })
+    }
+  })
+
+  const merged = primaryList
+    .map((entry) => {
+      const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex)
+      if (slotIndex == null) return null
+      const fallbackEntry = fallbackMap.get(slotIndex)
+      if (fallbackEntry) {
+        fallbackMap.delete(slotIndex)
+        const roleValue =
+          typeof entry.role === 'string' && entry.role.trim()
+            ? entry.role.trim()
+            : fallbackEntry.role || null
+        return {
+          ...fallbackEntry,
+          ...entry,
+          id: fallbackEntry.id ?? entry.id ?? null,
+          slot_index: slotIndex,
+          slotIndex,
+          role: roleValue,
+          hero_id: entry.hero_id ?? fallbackEntry.hero_id ?? null,
+          hero_owner_id:
+            entry.hero_owner_id ?? fallbackEntry.hero_owner_id ?? null,
+          active:
+            entry.active !== undefined ? entry.active : fallbackEntry.active,
+          occupant_owner_id:
+            entry.occupant_owner_id ?? fallbackEntry.occupant_owner_id ?? null,
+          occupant_hero_id:
+            entry.occupant_hero_id ?? fallbackEntry.occupant_hero_id ?? null,
+          occupant_ready:
+            entry.occupant_ready ?? fallbackEntry.occupant_ready ?? false,
+          occupant_joined_at:
+            entry.occupant_joined_at ?? fallbackEntry.occupant_joined_at ?? null,
+        }
+      }
+      return {
+        ...entry,
+        slot_index: slotIndex,
+        slotIndex,
+        id: entry.id ?? null,
+        active: entry.active !== false,
+      }
+    })
+    .filter(Boolean)
+
+  fallbackMap.forEach((entry) => {
+    merged.push(entry)
+  })
+
+  return merged.sort((a, b) => a.slot_index - b.slot_index)
+}
+
+function hydrateParticipantsWithRoster(participants = [], roster = []) {
+  const participantList = Array.isArray(participants) ? participants : []
+  const rosterList = Array.isArray(roster) ? roster : []
+
+  if (rosterList.length === 0) {
+    return participantList
+  }
+
+  if (participantList.length === 0) {
+    return buildParticipantsFromRoster(rosterList)
+  }
+
+  const compositeMap = new Map()
+  const heroMap = new Map()
+  const ownerMap = new Map()
+
+  rosterList.forEach((entry) => {
+    const ownerId = toTrimmedString(entry.ownerId)
+    const heroId = toTrimmedString(entry.heroId)
+    if (ownerId && heroId) {
+      const compositeKey = `${ownerId}::${heroId}`
+      if (!compositeMap.has(compositeKey)) {
+        compositeMap.set(compositeKey, entry)
+      }
+    }
+    if (heroId && !heroMap.has(heroId)) {
+      heroMap.set(heroId, entry)
+    }
+    if (ownerId && !ownerMap.has(ownerId)) {
+      ownerMap.set(ownerId, entry)
+    }
+  })
+
+  const decorated = participantList
+    .map((participant, index) => {
+      if (!participant) {
+        return null
+      }
+
+      const ownerId = toTrimmedString(deriveParticipantOwnerId(participant))
+      const heroId = toTrimmedString(
+        participant?.hero?.id ?? participant?.hero_id ?? participant?.heroId,
+      )
+
+      let rosterEntry = null
+      if (ownerId && heroId) {
+        rosterEntry = compositeMap.get(`${ownerId}::${heroId}`) || null
+      }
+      if (!rosterEntry && heroId) {
+        rosterEntry = heroMap.get(heroId) || null
+      }
+      if (!rosterEntry && ownerId) {
+        rosterEntry = ownerMap.get(ownerId) || null
+      }
+
+      if (!rosterEntry) {
+        return null
+      }
+
+      const slotIndex =
+        rosterEntry.slotIndex ??
+        parseSlotIndex(
+          participant.slot_no ?? participant.slotIndex ?? participant.slot_index,
+        )
+      const roleValue =
+        (typeof rosterEntry.role === 'string' && rosterEntry.role.trim()) ||
+        participant.role ||
+        null
+
+      return {
+        participant: {
+          ...participant,
+          slot_no: slotIndex,
+          slotIndex,
+          slot_index: slotIndex,
+          role: roleValue,
+          occupant_ready:
+            rosterEntry.ready ?? participant.occupant_ready ?? null,
+          occupant_joined_at:
+            rosterEntry.joinedAt ??
+            participant.occupant_joined_at ??
+            participant.joined_at ??
+            null,
+        },
+        index,
+      }
+    })
+    .filter(Boolean)
+
+  if (!decorated.length) {
+    return buildParticipantsFromRoster(rosterList)
+  }
+
+  decorated.sort((a, b) => {
+    const slotA = parseSlotIndex(
+      a.participant?.slot_no ?? a.participant?.slotIndex ?? a.participant?.slot_index,
+    )
+    const slotB = parseSlotIndex(
+      b.participant?.slot_no ?? b.participant?.slotIndex ?? b.participant?.slot_index,
+    )
+    if (slotA != null && slotB != null) {
+      if (slotA === slotB) return a.index - b.index
+      return slotA - slotB
+    }
+    if (slotA != null) return -1
+    if (slotB != null) return 1
+    return a.index - b.index
+  })
+
+  return decorated.map((entry) => entry.participant)
+}
+
+function buildParticipantsFromRoster(roster = []) {
+  return roster
+    .map((entry, index) => {
+      if (!entry) return null
+      const slotIndex = parseSlotIndex(entry.slotIndex, index)
+      const ownerId = toTrimmedString(entry.ownerId)
+      const heroId = toTrimmedString(entry.heroId)
+      const heroName = normalizeHeroName(entry.heroName || '')
+      const ready = Boolean(entry.ready)
+
+      if (!ownerId || !heroId) {
+        return null
+      }
+
+      return {
+        id: `roster-${slotIndex != null ? slotIndex : index}-${ownerId}`,
+        owner_id: ownerId,
+        ownerId,
+        role: entry.role || '',
+        status: ready ? 'ready' : 'alive',
+        slot_no: slotIndex,
+        slotIndex,
+        slot_index: slotIndex,
+        score: 0,
+        rating: 0,
+        battles: 0,
+        win_rate: null,
+        hero_id: heroId,
+        match_source: 'room_roster',
+        standin: false,
+        occupant_ready: ready,
+        occupant_joined_at: entry.joinedAt || null,
+        hero: {
+          id: heroId,
+          name: heroName || (heroId ? `캐릭터 #${heroId}` : '알 수 없는 영웅'),
+          description: '',
+          image_url: '',
+          background_url: '',
+          bgm_url: '',
+          bgm_duration_seconds: null,
+          ability1: '',
+          ability2: '',
+          ability3: '',
+          ability4: '',
+        },
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const slotA = parseSlotIndex(a.slot_no, 0)
+      const slotB = parseSlotIndex(b.slot_no, 0)
+      if (slotA != null && slotB != null) {
+        if (slotA === slotB) return 0
+        return slotA - slotB
+      }
+      if (slotA != null) return -1
+      if (slotB != null) return 1
+      return 0
+    })
+}
 
 export function useStartClientEngine(gameId) {
   const storedStartConfig =
@@ -111,6 +566,55 @@ export function useStartClientEngine(gameId) {
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
   const [frontMatchData] = useState(initialFrontMatchData)
+  const matchSnapshotSeed = frontMatchData?.matchSnapshot?.match || null
+  const matchInstanceId = useMemo(() => {
+    if (!matchSnapshotSeed) return ''
+    const direct =
+      matchSnapshotSeed.instanceId ||
+      matchSnapshotSeed.matchInstanceId ||
+      matchSnapshotSeed.match_instance_id ||
+      null
+    if (direct && typeof direct === 'string') {
+      return direct.trim()
+    }
+    return ''
+  }, [matchSnapshotSeed])
+  const stagedRoomId = useMemo(() => {
+    if (!matchSnapshotSeed) return ''
+    const rooms = Array.isArray(matchSnapshotSeed.rooms) ? matchSnapshotSeed.rooms : []
+    if (rooms.length) {
+      const idValue = rooms[0]?.id
+      if (idValue != null) {
+        const trimmed = String(idValue).trim()
+        if (trimmed) return trimmed
+      }
+    }
+    return ''
+  }, [matchSnapshotSeed])
+  const rosterSnapshot = useMemo(() => {
+    const normalized = normalizeRosterEntries(frontMatchData?.participation?.roster || [])
+    if (normalized.length) return normalized
+    return deriveRosterFromMatchSnapshot(matchSnapshotSeed)
+  }, [frontMatchData, matchSnapshotSeed])
+  const slotLayoutSeed = useMemo(() => {
+    if (!matchSnapshotSeed) return []
+    const sources = []
+    if (Array.isArray(matchSnapshotSeed.slotLayout) && matchSnapshotSeed.slotLayout.length) {
+      sources.push(matchSnapshotSeed.slotLayout)
+    }
+    if (
+      matchSnapshotSeed.roleStatus &&
+      Array.isArray(matchSnapshotSeed.roleStatus.slotLayout) &&
+      matchSnapshotSeed.roleStatus.slotLayout.length
+    ) {
+      sources.push(matchSnapshotSeed.roleStatus.slotLayout)
+    }
+    for (const candidate of sources) {
+      const normalized = normalizeSlotLayoutEntries(candidate)
+      if (normalized.length) return normalized
+    }
+    return []
+  }, [matchSnapshotSeed])
   const matchMetaLoggedRef = useRef(false)
   const gameIdRef = useRef(gameId ? String(gameId) : '')
   const [connectionRoster, setConnectionRoster] = useState(() =>
@@ -151,7 +655,13 @@ export function useStartClientEngine(gameId) {
     activeHeroAssets,
     activeActorNames,
   } = engineState
+  const realtimeMode = useMemo(
+    () => normalizeRealtimeMode(game?.realtime_match),
+    [game?.realtime_match],
+  )
+  const realtimeEnabled = isRealtimeEnabled(realtimeMode)
   const logsRef = useRef([])
+  const currentNodeIdRef = useRef(initialMainGameState.currentNodeId)
   const participantsRef = useRef([])
   const statusMessageRef = useRef('')
   const turnRef = useRef(initialMainGameState.turn)
@@ -169,7 +679,7 @@ export function useStartClientEngine(gameId) {
   useEffect(() => {
     gameIdRef.current = gameId ? String(gameId) : ''
     setConnectionRoster(getConnectionEntriesForGame(gameId))
-  }, [gameId])
+  }, [gameId, rosterSnapshot, slotLayoutSeed])
   useEffect(() => {
     if (!frontMatchData) return
     if (!startMatchMetaRef.current && frontMatchData.matchSnapshot?.match) {
@@ -216,6 +726,17 @@ export function useStartClientEngine(gameId) {
         patchEngineState({ statusMessage: next })
       } else {
         patchEngineState({ statusMessage: value })
+      }
+    },
+    [patchEngineState],
+  )
+  const setCurrentNodeId = useCallback(
+    (value) => {
+      if (typeof value === 'function') {
+        const next = value(currentNodeIdRef.current)
+        patchEngineState({ currentNodeId: next ?? null })
+      } else {
+        patchEngineState({ currentNodeId: value ?? null })
       }
     },
     [patchEngineState],
@@ -369,6 +890,7 @@ export function useStartClientEngine(gameId) {
   if (!dropInQueueRef.current) {
     dropInQueueRef.current = createDropInQueueService()
   }
+  const processedDropInReleasesRef = useRef(new Set())
   const asyncSessionManagerRef = useRef(null)
   if (!asyncSessionManagerRef.current) {
     asyncSessionManagerRef.current = createAsyncSessionManager({
@@ -415,6 +937,10 @@ export function useStartClientEngine(gameId) {
       ? participants
       : []
   }, [participants])
+
+  useEffect(() => {
+    currentNodeIdRef.current = currentNodeId ?? null
+  }, [currentNodeId])
 
   useEffect(() => {
     statusMessageRef.current =
@@ -677,12 +1203,42 @@ export function useStartClientEngine(gameId) {
     async function load() {
       patchEngineState({ loading: true, error: '' })
       try {
-        const bundle = await loadGameBundle(supabase, gameId)
+        const bundle = await loadGameBundle(supabase, gameId, {
+          rosterSnapshot,
+          matchInstanceId,
+          roomId: stagedRoomId,
+        })
         if (!alive) return
+
+        const participantsFromBundle = Array.isArray(bundle.participants)
+          ? bundle.participants.map((participant) => ({ ...participant }))
+          : []
+        const slotLayoutFromBundle = Array.isArray(bundle.slotLayout)
+          ? bundle.slotLayout.map((slot) => ({ ...slot }))
+          : []
+
+        const hydratedParticipants = rosterSnapshot.length
+          ? hydrateParticipantsWithRoster(participantsFromBundle, rosterSnapshot)
+          : participantsFromBundle
+
+        const baseSlotLayout = rosterSnapshot.length
+          ? buildSlotLayoutFromRosterSnapshot(rosterSnapshot)
+          : slotLayoutSeed.length
+          ? slotLayoutSeed
+          : []
+
+        const mergedSlotLayout = mergeSlotLayoutSeed(
+          baseSlotLayout,
+          slotLayoutFromBundle,
+        )
+
+        const finalSlotLayout =
+          mergedSlotLayout.length > 0 ? mergedSlotLayout : slotLayoutFromBundle
+
         patchEngineState({
           game: bundle.game,
-          participants: bundle.participants,
-          slotLayout: Array.isArray(bundle.slotLayout) ? bundle.slotLayout : [],
+          participants: hydratedParticipants,
+          slotLayout: finalSlotLayout,
           graph: bundle.graph,
         })
         if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
@@ -735,6 +1291,54 @@ export function useStartClientEngine(gameId) {
       alive = false
     }
   }, [])
+
+  const participantsStatus = useMemo(
+    () =>
+      participants.map((participant) => ({
+        role: participant.role,
+        status: participant.status,
+      })),
+    [participants],
+  )
+  const ownerDisplayMap = useMemo(
+    () => createOwnerDisplayMap(participants),
+    [participants],
+  )
+  const ownerParticipantMap = useMemo(
+    () => buildOwnerParticipantMap(participants),
+    [participants],
+  )
+  const sharedTurnRoster = useMemo(() => {
+    const roster = []
+    ownerParticipantMap.forEach((participant, ownerId) => {
+      roster.push({
+        ownerId,
+        participant,
+        hero: participant?.hero || null,
+        heroId:
+          participant?.hero?.id ??
+          participant?.hero_id ??
+          participant?.heroId ??
+          null,
+        role: participant?.role || null,
+        status: participant?.status || null,
+      })
+    })
+    return roster
+  }, [ownerParticipantMap])
+  const ownerRosterSnapshot = useMemo(
+    () => buildOwnerRosterSnapshot(participants),
+    [participants],
+  )
+  const managedOwnerIds = useMemo(() => {
+    const owners = collectUniqueOwnerIds(participants)
+    const viewerKey = viewerId ? String(viewerId).trim() : ''
+    if (!viewerKey) {
+      return owners
+    }
+    const filtered = owners.filter((ownerId) => ownerId !== viewerKey)
+    return [viewerKey, ...filtered]
+  }, [participants, viewerId])
 
   useEffect(() => {
     if (!gameId || preflight) return
@@ -790,18 +1394,18 @@ export function useStartClientEngine(gameId) {
 
   useEffect(() => {
     if (!realtimeManagerRef.current) return
-    if (!game?.realtime_match) {
+    if (!realtimeEnabled) {
       const snapshot = realtimeManagerRef.current.setManagedOwners([])
       applyRealtimeSnapshot(snapshot)
       return
     }
     const snapshot = realtimeManagerRef.current.setManagedOwners(managedOwnerIds)
     applyRealtimeSnapshot(snapshot)
-  }, [managedOwnerIds, game?.realtime_match, applyRealtimeSnapshot])
+  }, [managedOwnerIds, realtimeEnabled, applyRealtimeSnapshot])
 
   useEffect(() => {
     if (preflight) return
-    if (!game?.realtime_match) return
+    if (!realtimeEnabled) return
     if (!turn || turn <= 0) return
     if (!realtimeManagerRef.current) return
     const snapshot = realtimeManagerRef.current.beginTurn({
@@ -809,7 +1413,7 @@ export function useStartClientEngine(gameId) {
       eligibleOwnerIds: deriveEligibleOwnerIds(participants),
     })
     applyRealtimeSnapshot(snapshot)
-  }, [preflight, game?.realtime_match, turn, participants, applyRealtimeSnapshot])
+  }, [preflight, realtimeEnabled, turn, participants, applyRealtimeSnapshot])
 
   useEffect(() => {
     if (!currentNodeId) {
@@ -948,54 +1552,6 @@ export function useStartClientEngine(gameId) {
     },
     [resolveHeroAssets],
   )
-  const participantsStatus = useMemo(
-    () =>
-      participants.map((participant) => ({
-        role: participant.role,
-        status: participant.status,
-      })),
-    [participants],
-  )
-  const ownerDisplayMap = useMemo(
-    () => createOwnerDisplayMap(participants),
-    [participants],
-  )
-  const ownerParticipantMap = useMemo(
-    () => buildOwnerParticipantMap(participants),
-    [participants],
-  )
-  const sharedTurnRoster = useMemo(() => {
-    const roster = []
-    ownerParticipantMap.forEach((participant, ownerId) => {
-      roster.push({
-        ownerId,
-        participant,
-        hero: participant?.hero || null,
-        heroId:
-          participant?.hero?.id ??
-          participant?.hero_id ??
-          participant?.heroId ??
-          null,
-        role: participant?.role || null,
-        status: participant?.status || null,
-      })
-    })
-    return roster
-  }, [ownerParticipantMap])
-  const ownerRosterSnapshot = useMemo(
-    () => buildOwnerRosterSnapshot(participants),
-    [participants],
-  )
-  const managedOwnerIds = useMemo(() => {
-    const owners = collectUniqueOwnerIds(participants)
-    const viewerKey = viewerId ? String(viewerId).trim() : ''
-    if (!viewerKey) {
-      return owners
-    }
-    const filtered = owners.filter((ownerId) => ownerId !== viewerKey)
-    return [viewerKey, ...filtered]
-  }, [participants, viewerId])
-
   const recordTimelineEvents = useCallback(
     (events, { turnNumber: overrideTurn, logEntries = null, buildLogs = true } = {}) => {
       if (!Array.isArray(events) || events.length === 0) return
@@ -1012,7 +1568,7 @@ export function useStartClientEngine(gameId) {
         entries = buildLogEntriesFromEvents(events, {
           ownerDisplayMap,
           defaultTurn,
-          defaultMode: game?.realtime_match ? 'realtime' : 'async',
+          defaultMode: realtimeEnabled ? 'realtime' : 'async',
         })
       }
 
@@ -1028,7 +1584,7 @@ export function useStartClientEngine(gameId) {
         })
       }
     },
-    [ownerDisplayMap, game?.realtime_match, turn, logTurnEntries],
+    [ownerDisplayMap, realtimeEnabled, turn, logTurnEntries],
   )
 
   useEffect(() => {
@@ -1044,6 +1600,7 @@ export function useStartClientEngine(gameId) {
       } else {
         setDropInSnapshot(null)
       }
+      processedDropInReleasesRef.current.clear()
       asyncSessionManagerRef.current?.reset()
       return
     }
@@ -1059,7 +1616,7 @@ export function useStartClientEngine(gameId) {
 
     const queueResult = queueService.syncParticipants(participants, {
       turnNumber: turn,
-      mode: game?.realtime_match ? 'realtime' : 'async',
+      mode: realtimeEnabled ? 'realtime' : 'async',
     })
     if (queueResult && typeof queueResult === 'object') {
       setDropInSnapshot(queueResult.snapshot || null)
@@ -1091,7 +1648,7 @@ export function useStartClientEngine(gameId) {
 
     let timelineEvents = []
 
-    if (game?.realtime_match) {
+    if (realtimeEnabled) {
       if (arrivals.length) {
         timelineEvents = arrivals.map((arrival) => {
           const status =
@@ -1147,6 +1704,60 @@ export function useStartClientEngine(gameId) {
       }
     }
 
+    if (arrivals.length) {
+      const dropInTarget = startMatchMetaRef.current?.dropInTarget || null
+      const dropInRoomIdRaw =
+        dropInTarget?.roomId ?? dropInTarget?.room_id ?? dropInTarget?.roomID ?? null
+      const dropInRoomId = dropInRoomIdRaw ? String(dropInRoomIdRaw).trim() : ''
+      if (dropInRoomId) {
+        const releaseTargets = []
+        arrivals.forEach((arrival) => {
+          const replaced = arrival?.replaced || null
+          if (!replaced) return
+          const ownerCandidate =
+            replaced?.ownerId ??
+            replaced?.ownerID ??
+            replaced?.owner_id ??
+            (typeof replaced?.owner === 'object' ? replaced.owner?.id : null)
+          if (!ownerCandidate) return
+          const ownerId = String(ownerCandidate).trim()
+          if (!ownerId) return
+          const key = `${dropInRoomId}::${ownerId}`
+          if (processedDropInReleasesRef.current.has(key)) return
+          releaseTargets.push({ roomId: dropInRoomId, ownerId, key })
+        })
+
+        if (releaseTargets.length) {
+          const tasks = releaseTargets.map(({ roomId, ownerId, key }) =>
+            withTable(supabase, 'rank_room_slots', (table) =>
+              supabase
+                .from(table)
+                .update({
+                  occupant_owner_id: null,
+                  occupant_hero_id: null,
+                  occupant_ready: false,
+                  joined_at: null,
+                })
+                .eq('room_id', roomId)
+                .eq('occupant_owner_id', ownerId),
+            ).then((result) => {
+              if (result?.error && result.error.code !== 'PGRST116') {
+                throw result.error
+              }
+              processedDropInReleasesRef.current.add(key)
+            }),
+          )
+
+          Promise.all(tasks).catch((error) => {
+            console.warn('[StartClient] Failed to release drop-in slot:', error)
+            releaseTargets.forEach(({ key }) =>
+              processedDropInReleasesRef.current.delete(key),
+            )
+          })
+        }
+      }
+    }
+
     if (timelineEvents.length) {
       recordTimelineEvents(timelineEvents, { turnNumber: turn })
     }
@@ -1156,7 +1767,7 @@ export function useStartClientEngine(gameId) {
     turnDeadline,
     turn,
     recordTimelineEvents,
-    game?.realtime_match,
+    realtimeEnabled,
   ])
 
   const captureBattleLog = useCallback(
@@ -1489,7 +2100,7 @@ export function useStartClientEngine(gameId) {
       if (realtimeManagerRef.current) {
         const manager = realtimeManagerRef.current
         manager.reset()
-        if (game?.realtime_match) {
+        if (realtimeEnabled) {
           manager.syncParticipants(sessionParticipants)
           manager.setManagedOwners(managedOwnersForSession)
           manager.beginTurn({
@@ -1507,6 +2118,7 @@ export function useStartClientEngine(gameId) {
       turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
       turnTimerServiceRef.current?.reset()
       dropInQueueRef.current?.reset()
+      processedDropInReleasesRef.current.clear()
       asyncSessionManagerRef.current?.reset()
       participantIdSetRef.current = new Set(
         sessionParticipants.map((participant, index) =>
@@ -1559,7 +2171,7 @@ export function useStartClientEngine(gameId) {
       updateHeroAssets,
       rememberActiveSession,
       turnTimerSeconds,
-      game?.realtime_match,
+      realtimeEnabled,
       viewerId,
       applyRealtimeSnapshot,
     ],
@@ -1615,7 +2227,7 @@ export function useStartClientEngine(gameId) {
         },
         body: JSON.stringify({
           game_id: gameId,
-          mode: game?.realtime_match ? 'realtime' : 'manual',
+          mode: realtimeEnabled ? 'realtime' : 'manual',
           role: viewerParticipant?.role || null,
           match_code: null,
         }),
@@ -1706,7 +2318,7 @@ export function useStartClientEngine(gameId) {
   }, [
     apiVersion,
     bootLocalSession,
-    game?.realtime_match,
+    realtimeEnabled,
     gameId,
     graph.nodes,
     startingSession,
@@ -1757,7 +2369,7 @@ export function useStartClientEngine(gameId) {
       const actingOwnerId = actorContext?.participant?.owner_id || null
 
       const finalizeRealtimeTurn = (reason) => {
-        if (!game?.realtime_match) return
+        if (!realtimeEnabled) return
         const manager = realtimeManagerRef.current
         if (!manager) return
         const result = manager.completeTurn({
@@ -1925,7 +2537,7 @@ export function useStartClientEngine(gameId) {
       }
 
       const recordRealtimeParticipation = (ownerId, type) => {
-        if (!game?.realtime_match) return
+        if (!realtimeEnabled) return
         if (!ownerId) return
         const manager = realtimeManagerRef.current
         if (!manager) return
@@ -1974,7 +2586,7 @@ export function useStartClientEngine(gameId) {
         let effectiveSystemPrompt = systemPrompt
         let effectivePrompt = promptText
 
-        if (!game?.realtime_match && isUserAction) {
+        if (!realtimeEnabled && isUserAction) {
           const persona = buildUserActionPersona(actorContext)
           effectiveSystemPrompt = [systemPrompt, persona.system]
             .filter(Boolean)
@@ -1988,7 +2600,7 @@ export function useStartClientEngine(gameId) {
             return
           }
 
-          if (game?.realtime_match) {
+          if (realtimeEnabled) {
             if (
               apiVersionLock.current &&
               apiVersionLock.current !== apiVersion
@@ -2095,7 +2707,7 @@ export function useStartClientEngine(gameId) {
             }
           }
 
-          if (game?.realtime_match && !apiVersionLock.current) {
+          if (realtimeEnabled && !apiVersionLock.current) {
             apiVersionLock.current = apiVersion
           }
         }
@@ -2381,7 +2993,7 @@ export function useStartClientEngine(gameId) {
       participants,
       participantsStatus,
       ownerDisplayMap,
-      game?.realtime_match,
+      realtimeEnabled,
       brawlEnabled,
       endConditionVariable,
       winCount,
@@ -2411,7 +3023,7 @@ export function useStartClientEngine(gameId) {
 
   const advanceWithAi = useCallback(() => {
     if (!needsConsensus) {
-      if (game?.realtime_match && normalizedViewerId) {
+      if (realtimeEnabled && normalizedViewerId) {
         const manager = realtimeManagerRef.current
         if (manager) {
           const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
@@ -2435,7 +3047,7 @@ export function useStartClientEngine(gameId) {
     if (!controller) {
       return
     }
-    if (game?.realtime_match && normalizedViewerId) {
+    if (realtimeEnabled && normalizedViewerId) {
       const manager = realtimeManagerRef.current
       if (manager) {
         const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
@@ -2461,7 +3073,7 @@ export function useStartClientEngine(gameId) {
     setStatusMessage,
     viewerCanConsent,
     normalizedViewerId,
-    game?.realtime_match,
+    realtimeEnabled,
     turn,
     applyRealtimeSnapshot,
   ])
@@ -2478,14 +3090,14 @@ export function useStartClientEngine(gameId) {
           timestamp: Date.now(),
           reason: 'timeout',
           context: {
-            mode: game?.realtime_match ? 'realtime' : 'async',
+            mode: realtimeEnabled ? 'realtime' : 'async',
           },
         },
       ],
       { turnNumber },
     )
     return advanceTurn(null, { reason: 'timeout' })
-  }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, game?.realtime_match])
+  }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled])
 
   useEffect(() => {
     if (!needsConsensus) return undefined
@@ -2502,7 +3114,7 @@ export function useStartClientEngine(gameId) {
           context: {
             consensusCount: consensusState?.consensusCount ?? null,
             threshold: consensusState?.threshold ?? null,
-            mode: game?.realtime_match ? 'realtime' : 'async',
+            mode: realtimeEnabled ? 'realtime' : 'async',
           },
         },
       ],
@@ -2521,12 +3133,12 @@ export function useStartClientEngine(gameId) {
     recordTimelineEvents,
     consensusState?.consensusCount,
     consensusState?.threshold,
-    game?.realtime_match,
+    realtimeEnabled,
     turn,
   ])
 
   useEffect(() => {
-    if (preflight || !game?.realtime_match) {
+    if (preflight || !realtimeEnabled) {
       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([])
       if (snapshot) {
         setConsensusState(snapshot)
@@ -2539,7 +3151,7 @@ export function useStartClientEngine(gameId) {
     if (snapshot) {
       setConsensusState(snapshot)
     }
-  }, [participants, game?.realtime_match, preflight])
+  }, [participants, realtimeEnabled, preflight])
 
   useEffect(() => {
     if (preflight) {

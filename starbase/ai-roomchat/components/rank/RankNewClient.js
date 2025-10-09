@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
+import { REALTIME_MODES } from '../../lib/rank/realtimeModes'
 import PromptSetPicker from '../../components/rank/PromptSetPicker'
 import SlotMatrix from '../../components/rank/SlotMatrix'
 import RolesEditor from '../../components/rank/RolesEditor'
@@ -38,7 +39,7 @@ async function registerGame(payload) {
     description: payload?.description || '',
     image_url: payload?.image_url || '',
     prompt_set_id: payload?.prompt_set_id,
-    realtime_match: !!payload?.realtime_match,
+    realtime_match: payload?.realtime_match || REALTIME_MODES.OFF,
     rules: payload?.rules ?? null,
     rules_prefix: payload?.rules_prefix ?? null,
   }
@@ -97,7 +98,7 @@ export default function RankNewClient() {
   const [desc, setDesc] = useState('')
   const [imgFile, setImgFile] = useState(null)
   const [setId, setSetId] = useState('')
-  const [realtime, setRealtime] = useState(false)
+  const [realtimeMode, setRealtimeMode] = useState(REALTIME_MODES.OFF)
 
   // 역할/슬롯
   const [roles, setRoles] = useState([
@@ -219,7 +220,7 @@ export default function RankNewClient() {
       roles: rolePayload,
       rules: compiledRules,
       rules_prefix: buildRulesPrefix(compiledRules),
-      realtime_match: realtime,
+      realtime_match: realtimeMode,
     })
 
     if (!res.ok) {
@@ -399,14 +400,20 @@ export default function RankNewClient() {
               <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
                 <PromptSetPicker value={setId} onChange={setSetId} />
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#cbd5f5' }}>
-                <input
-                  type="checkbox"
-                  checked={realtime}
-                  onChange={(event) => setRealtime(event.target.checked)}
-                  style={{ width: 16, height: 16 }}
-                />
-                실시간 매칭 사용
+              <label style={labelStyle}>
+                <span style={{ color: '#cbd5f5' }}>실시간 매칭 모드</span>
+                <select
+                  value={realtimeMode}
+                  onChange={(event) => setRealtimeMode(event.target.value)}
+                  style={inputStyle}
+                >
+                  <option value={REALTIME_MODES.OFF}>비실시간 (대기열 진행)</option>
+                  <option value={REALTIME_MODES.STANDARD}>실시간 (표준)</option>
+                  <option value={REALTIME_MODES.PULSE}>Pulse 실시간 (역할 제한)</option>
+                </select>
+                <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                  Pulse 실시간은 방장과 같은 역할군에 동시에 참여할 수 있는 인원을 제한합니다.
+                </span>
               </label>
               <label style={labelStyle}>
                 <span style={{ color: '#cbd5f5' }}>표지 이미지</span>

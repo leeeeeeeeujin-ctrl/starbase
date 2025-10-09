@@ -27,6 +27,7 @@ import {
   loadRoleLayout as loadRoleLayoutInternal,
 } from './roleLayoutLoader'
 import { postCheckMatchAssignments as executePostCheck } from './matchPostCheck'
+import { isRealtimeEnabled, normalizeRealtimeMode } from './realtimeModes'
 
 const WAIT_THRESHOLD_SECONDS = 30
 
@@ -267,7 +268,8 @@ async function loadRealtimeToggle(supabaseClient, gameId) {
 
   if (error) throw error
 
-  return Boolean(data?.realtime_match)
+  const mode = normalizeRealtimeMode(data?.realtime_match)
+  return isRealtimeEnabled(mode)
 }
 
 export async function loadMatchSampleSource(

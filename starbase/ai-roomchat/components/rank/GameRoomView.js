@@ -8,6 +8,7 @@ import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
 import { normalizeTimelineEvents } from '@/lib/rank/timelineEvents'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
+import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '../../lib/rank/realtimeModes'
 
 const RULE_OPTION_METADATA = {
   nerf_insight: {
@@ -863,6 +864,14 @@ export default function GameRoomView({
     const index = TABS.findIndex((tab) => tab.key === activeTab)
     return index >= 0 ? index : 0
   }, [activeTab])
+
+  const realtimeMode = useMemo(
+    () => normalizeRealtimeMode(game?.realtime_match),
+    [game?.realtime_match],
+  )
+  const realtimeEnabled = isRealtimeEnabled(realtimeMode)
+  const realtimeChipLabel =
+    realtimeMode === REALTIME_MODES.PULSE ? 'Pulse 실시간' : '실시간'
 
   const formatSessionTimestamp = useCallback((value) => {
     if (!value) return ''
@@ -2576,14 +2585,18 @@ export default function GameRoomView({
           <p className={styles.startError}>{resolvedStartError}</p>
         ) : null}
 
-        <p className={styles.capacityHint}>
-          {canStart
-            ? '게임을 시작하면 비슷한 점수의 참가자들이 자동으로 선발됩니다.'
-            : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
-        </p>
-        <p className={styles.capacitySubHint}>
-          준비가 완료되면 모드 선택 창이 열리며 매칭이 자동으로 진행됩니다.
-        </p>
+        {onOpenModeSettings ? (
+          <>
+            <p className={styles.capacityHint}>
+              {canStart
+                ? '게임을 시작하면 비슷한 점수의 참가자들이 자동으로 선발됩니다.'
+                : '최소 두 명 이상이 모이면 비슷한 점수대끼리 경기 준비가 완료됩니다.'}
+            </p>
+            <p className={styles.capacitySubHint}>
+              준비가 완료되면 모드 선택 창이 열리며 매칭이 자동으로 진행됩니다.
+            </p>
+          </>
+        ) : null}
 
         {isOwner && (
           <div className={styles.ownerActions}>
@@ -3028,7 +3041,9 @@ export default function GameRoomView({
                 {game.description?.trim() || '소개 문구가 아직 준비되지 않았습니다.'}
               </p>
               <div className={styles.metaRow}>
-                {game.realtime_match && <span className={styles.metaChip}>실시간 매칭</span>}
+                {realtimeEnabled && (
+                  <span className={styles.metaChip}>{realtimeChipLabel} 매칭</span>
+                )}
                 {createdAt && <span className={styles.metaChip}>등록 {createdAt}</span>}
                 {updatedAt && <span className={styles.metaChip}>갱신 {updatedAt}</span>}
                 <button type="button" className={styles.linkButton} onClick={onOpenLeaderboard}>

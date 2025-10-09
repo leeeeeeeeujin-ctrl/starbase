@@ -1,13 +1,25 @@
 import { createClient } from '@supabase/supabase-js'
 
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv'
 import { withTableQuery } from '@/lib/supabaseTables'
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE
+const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-const adminClient = createClient(url, serviceKey, { auth: { persistSession: false } })
-const anonClient = createClient(url, anonKey, { auth: { persistSession: false } })
+if (!url || !anonKey) {
+  throw new Error('Missing Supabase configuration for finalize-session API')
+}
+
+const anonClient = createClient(url, anonKey, {
+  auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+  },
+})
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -37,7 +49,7 @@ export default async function handler(req, res) {
 
   try {
     const { data: game, error: gameError } = await withTableQuery(
-      adminClient,
+      supabaseAdmin,
       'rank_games',
       (from) => from.select('id, owner_id').eq('id', gameId).single(),
     )
@@ -60,7 +72,7 @@ export default async function handler(req, res) {
         updated_at: now,
       }
       const { data: updatedRows, error: updateError } = await withTableQuery(
-        adminClient,
+        supabaseAdmin,
         'rank_participants',
         (from) => {
           let builder = from.update(payload).eq('id', entry.participantId)
@@ -94,7 +106,7 @@ export default async function handler(req, res) {
         .filter(Boolean)
 
       const { data: battle } = await withTableQuery(
-        adminClient,
+        supabaseAdmin,
         'rank_battles',
         (from) =>
           from
@@ -115,7 +127,7 @@ export default async function handler(req, res) {
       battleId = battle?.id || null
 
       if (battleId) {
-        await withTableQuery(adminClient, 'rank_battle_logs', (from) =>
+        await withTableQuery(supabaseAdmin, 'rank_battle_logs', (from) =>
           from.insert({
             battle_id: battleId,
             turn_no: 0,

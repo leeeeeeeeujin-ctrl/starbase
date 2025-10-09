@@ -14,7 +14,7 @@ This document lists the tables, columns, and constraints required to run the ran
 - **`public.prompt_library_entries`** – Shared library entries plus helper triggers to bump download counts and refresh `updated_at`. 【F:supabase.sql†L121-L239】
 
 ## Game Definition & Roles
-- **`public.rank_games`** – Master game record linking owners to prompt sets, storing rules JSON, realtime flag, and engagement counters. 【F:supabase.sql†L243-L272】
+- **`public.rank_games`** – Master game record linking owners to prompt sets, storing rules JSON, realtime mode (`off`, `standard`, or `pulse`), and engagement counters. 【F:supabase.sql†L243-L272】
 - **`public.rank_game_roles`** – Per-role quota table with slot counts and score delta bounds. 【F:supabase.sql†L274-L299】
 - **`public.rank_game_tags`** – Tag metadata with `(game_id, tag)` uniqueness. 【F:supabase.sql†L301-L307】
 - **`public.rank_game_seasons`** – Optional season tracking with status and leaderboard snapshots. 【F:supabase.sql†L325-L335】
@@ -39,6 +39,7 @@ This document lists the tables, columns, and constraints required to run the ran
 ## Optional Supporting Tables
 - **`public.messages`** – Shared lobby/chat feed used by the game UI. 【F:supabase.sql†L632-L638】
 - **`public.rank_api_key_cooldowns`** – Client-reported key exhaustion events captured via `/api/rank/cooldown-report`. Suggested columns: `id uuid primary key`, `key_hash text unique`, `key_sample text`, `reason text`, `provider text`, `viewer_id uuid`, `game_id uuid`, `session_id uuid`, `recorded_at timestamptz`, `expires_at timestamptz`, `reported_at timestamptz`, `notified_at timestamptz`, `source text`, `note text`, `metadata jsonb`, plus indexes on `(notified_at, recorded_at)` to speed up manual digest checks. (Custom migration required; not present in current export.)
+- **`public.rank_user_api_keyring`** – Per-user AI API key registry allowing up to five encrypted keys. Columns: `id uuid primary key`, `user_id uuid` FK to `auth.users`, `provider text` (`openai`, `gemini`, etc.), `model text`, optional `alias text`, `is_active boolean`, encrypted payload triplet (`key_ciphertext`, `key_iv`, `key_tag`), `key_version smallint`, `key_sample text`, and timestamps. Includes indexes on `(user_id, created_at)` and `updated_at` plus `touch_rank_user_api_keyring_updated_at` trigger to maintain `updated_at`. RLS policy `rank_user_api_keyring_service_all` grants service role full access. 【F:supabase.sql†L696-L778】
 
 ## Policies & Indexes
 All tables defined above enable Row Level Security with policies tailored to owner or participant access. Ensure migrations include the bundled policy blocks from `supabase.sql`. Key indexes: `rank_match_queue_lookup` and `rank_match_queue_owner_lookup` for queue scans, plus uniqueness on slots, room slots, and participant ownership. 【F:supabase.sql†L491-L580】

@@ -1,5 +1,6 @@
 import { supabase as supabaseAnon } from '@/lib/rank/db'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -24,7 +25,7 @@ export default async function handler(req, res) {
     image_url = '',
     prompt_set_id,
     roles = [], // [{name, slot_count}]
-    realtime_match = false,
+    realtime_match = REALTIME_MODES.OFF,
   } = req.body || {}
   if (!prompt_set_id) return res.status(400).json({ error: 'prompt_set_id required' })
 
@@ -41,6 +42,8 @@ export default async function handler(req, res) {
       ),
     )
 
+    const realtimeMode = normalizeRealtimeMode(realtime_match)
+
     const { data: game, error: e1 } = await supabaseAdmin
       .from('rank_games')
       .insert({
@@ -49,7 +52,7 @@ export default async function handler(req, res) {
         description,
         image_url,
         prompt_set_id,
-        realtime_match: !!realtime_match,
+        realtime_match: realtimeMode,
         roles: roleNames.length ? roleNames : null,
       })
       .select()

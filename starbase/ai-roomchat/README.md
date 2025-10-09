@@ -43,7 +43,7 @@ npm run dev
 
 ## 4) 구조 메모 (요약)
 - **테이블 자동 매핑** – `lib/supabaseTables.js`의 `withTable`이 논리 테이블 이름을 다중 후보로 시도하고, 성공한 물리 테이블을 캐시해 환경마다 다른 스키마(`heroes`, `rank_heroes` 등)를 투명하게 감싸줍니다.【F:lib/supabaseTables.js†L1-L64】
-- **랭킹 전투 클라이언트** – `StartClient`는 헤더·상태·로스터·턴 패널을 조합하고, `useStartClientEngine` 훅이 게임 번들 로딩, 시스템 프롬프트 구성, 턴 진행/로그 적재, OpenAI 호출 제어까지 담당합니다.【F:components/rank/StartClient/index.js†L1-L125】【F:components/rank/StartClient/useStartClientEngine.js†L1-L200】
+- **랭킹 전투 준비 화면** – 2025년 3월부터 `StartClient`는 방에서 전달된 매칭 스냅샷을 검증하고 참가자·메타 정보를 보여 주는 간소화된 준비 UI로 동작합니다. 전투 엔진은 이후 단계에서 재도입될 예정이며, 현재 구조는 `lib/rank/matchFlow`와 함께 작동합니다.【F:components/rank/StartClient/index.js†L1-L188】【F:lib/rank/matchFlow.js†L1-L135】
 - **공용 채팅 독** – `SharedChatDockProvider`로 레이아웃을 감싸면 어느 페이지에서도 동일한 메시지/차단 상태를 공유할 수 있고, 내부에선 `useSharedChatDock`이 프로필 해석·구독·귓속말 관리를 담당하며 `SharedChatDock`이 UI를 그립니다.【F:components/common/SharedChatDock/useSharedChatDock.js†L1-L213】【F:components/common/SharedChatDock/index.js†L1-L78】【F:components/roster/RosterContainer.js†L1-L207】
 - **메이커 편집기** – `MakerEditor`는 React Flow 기반 노드/엣지 편집, 패널 탭, 변수 서랍을 `useMakerEditor` 훅과 하위 컴포넌트로 분리해 시각 편집과 저장/불러오기를 조율합니다.【F:components/maker/editor/MakerEditor.js†L1-L162】
 - **Supabase 스키마 스크립트** – `supabase.sql`은 영웅/프롬프트/랭킹 테이블과 RLS, 스토리지 정책, `rank_heroes` 뷰 등을 한 번에 재생성할 수 있게 정의돼 있어 환경 초기화 시 실행하면 됩니다.【F:supabase.sql†L1-L200】
