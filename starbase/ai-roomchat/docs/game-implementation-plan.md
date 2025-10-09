@@ -20,10 +20,10 @@
 #### 2.1 단계별 실행 계획 (2-1)
 | 상태 | 태스크 | 세부 내용 | 참고 코드 |
 | --- | --- | --- | --- |
-| ☐ | QuickActionsSheet 재구성 | `QuickActionsSheet`에서 `refresh` 호출을 제거하고 `MakerHomeContainer` 상단 버튼에만 배치. 액션 시트는 생성/가져오기/내보내기만 담당하도록 props 재정의.【F:components/maker/home/MakerHomeContainer.js†L107-L145】 | `components/maker/home/MakerHomeContainer.js`, `components/maker/home/QuickActionsSheet.js` |
-| ☐ | MakerEditor 컨텍스트 도입 | `useMakerEditor` 반환값을 `graph`, `persistence`, `uiState` 그룹으로 분리하고, `<MakerEditorProviders>`(신규)에서 컨텍스트 공급. 기존 `MakerEditor`는 새 컨텍스트 훅을 사용하도록 마이그레이션.【F:hooks/maker/useMakerEditor.js†L58-L211】【F:components/maker/editor/MakerEditor.js†L1-L162】 | `hooks/maker/useMakerEditor.js`, `components/maker/editor/MakerEditor.js` |
-| ☐ | 히스토리 패널 이동 | `saveHistory` UI를 고급 패널(예: `<AdvancedToolsPanel>`)로 이동. 히스토리 내보내기/초기화 버튼에 `maker:history:${setId}` 키를 노출하고, `useLocalStorage` 훅을 재사용해 접근성을 통일.【F:hooks/maker/useMakerEditor.js†L44-L95】 | `components/maker/editor/AdvancedToolsPanel.js`(신규), `hooks/maker/useMakerEditor.js` |
-| ☐ | 공용 PromptSet 스토리지 훅 | Maker 홈과 Rank 등록에서 공유하는 `selectedHeroBackgroundUrl`·`promptSetId`를 `useSharedPromptSetStorage`(가칭)로 추출. 초기화 타임스탬프를 저장해 최신 값만 반영.【F:hooks/maker/useMakerHome.js†L40-L133】【F:components/rank/RankNewClient.js†L110-L208】 | `hooks/shared/useSharedPromptSetStorage.js`(신규), `hooks/maker/useMakerHome.js`, `components/rank/RankNewClient.js` |
+| ☑ | QuickActionsSheet 재구성 | `QuickActionsSheet`에서 `refresh` 호출을 제거하고 `MakerHomeContainer` 상단 버튼에만 배치. 액션 시트는 생성/가져오기/내보내기만 담당하도록 props 재정의.【F:components/maker/home/MakerHomeContainer.js†L80-L167】【F:components/maker/home/QuickActionsSheet.js†L1-L120】 | `components/maker/home/MakerHomeContainer.js`, `components/maker/home/QuickActionsSheet.js` |
+| ☑ | MakerEditor 상태 분리 | `useMakerEditor` 반환값을 `status`·`graph`·`selection`·`variables`·`history` 그룹으로 재구성해 `MakerEditor`가 필요한 조각만 구독하도록 정리하고, 패널·알림 전달 props를 축소했다.【F:hooks/maker/useMakerEditor.js†L24-L274】【F:components/maker/editor/MakerEditor.js†L1-L220】 | `hooks/maker/useMakerEditor.js`, `components/maker/editor/MakerEditor.js` |
+| ☑ | 히스토리 패널 이동 | `saveHistory` UI를 고급 패널(예: `<AdvancedToolsPanel>`)로 이동. 히스토리 내보내기/초기화 버튼에 `maker:history:${setId}` 키를 노출하고, `useLocalStorage` 훅을 재사용해 접근성을 통일.【F:components/maker/editor/AdvancedToolsPanel.js†L1-L173】 | `components/maker/editor/AdvancedToolsPanel.js`(신규), `hooks/maker/useMakerEditor.js` |
+| ☑ | 공용 PromptSet 스토리지 훅 | Maker 홈과 Rank 등록에서 공유하는 `selectedHeroBackgroundUrl`·`promptSetId`를 `useSharedPromptSetStorage`(가칭)로 추출. 초기화 타임스탬프를 저장해 최신 값만 반영.【F:hooks/shared/useSharedPromptSetStorage.js†L1-L172】 | `hooks/shared/useSharedPromptSetStorage.js`(신규), `hooks/maker/useMakerHome.js`, `components/rank/RankNewClient.js` |
 
 #### 2.1 예상 리스크 & 대응
 - **컨텍스트 도입 시 렌더 폭증**: 컨텍스트 분리 후 공급자가 여러 번 리렌더링될 수 있다 → `React.memo`와 `useMemo`로 컨텍스트 값 래핑, 그래프 이벤트 핸들러는 `useCallback` 유지.
@@ -210,4 +210,4 @@
 ---
 **백엔드 TODO**: Supabase 역할/슬롯 검증 함수 공통화, RoomInitService용 슬롯/역할 캐시 테이블 및 락 RPC 추가, `validate_session` RPC 및 슬롯 버전 필드 도입, 이미지 업로드 정책(용량/파일형식) 강화, 등록/매칭 로그 감사 테이블 확장.
 **추가 필요 사항**: 다국어 대비 문자열 리소스 분리, 매칭/룸 UI 카피 검수, GameSession Store 스키마 및 Maker JSON 버전 문서화, 테스트 환경용 Supabase 프로젝트 분리.
-**진행 상황**: 구현 계획 고도화 및 리스크 대응 전략 문서화 완료 (문서 업데이트).
+**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축) 코드 반영 완료. 다음 단계는 2.2 UI 재배치 준비.
