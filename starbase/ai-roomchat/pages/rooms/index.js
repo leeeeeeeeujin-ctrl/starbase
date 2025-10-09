@@ -7,6 +7,8 @@ import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { withTable } from '@/lib/supabaseTables'
 import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import { fetchHeroParticipationBundle } from '@/modules/character/participation'
+import { RoomFiltersSection } from '@/components/rank/rooms/RoomFiltersSection'
+import { RoomResultsSection } from '@/components/rank/rooms/RoomResultsSection'
 import {
   HERO_ID_KEY,
   HERO_OWNER_KEY,
@@ -183,31 +185,6 @@ const styles = {
     fontWeight: 600,
     textDecoration: 'none',
   },
-  filterDiagnosticsCard: {
-    background: 'rgba(148, 163, 184, 0.08)',
-    border: '1px dashed rgba(148, 163, 184, 0.3)',
-    borderRadius: 16,
-    padding: '16px 18px',
-    display: 'grid',
-    gap: 8,
-    color: '#e2e8f0',
-    fontSize: 13,
-    lineHeight: 1.6,
-  },
-  filterDiagnosticsIntro: {
-    margin: 0,
-    fontWeight: 600,
-    color: '#cbd5f5',
-  },
-  filterDiagnosticsList: {
-    margin: 0,
-    paddingLeft: 18,
-    display: 'grid',
-    gap: 4,
-  },
-  filterDiagnosticsItem: {
-    margin: 0,
-  },
   keyManagerCard: {
     background: 'rgba(15, 23, 42, 0.84)',
     border: '1px solid rgba(148, 163, 184, 0.35)',
@@ -366,151 +343,16 @@ const styles = {
     fontSize: 13,
     color: '#94a3b8',
   },
-  filterCard: {
-    background: 'rgba(15, 23, 42, 0.78)',
-    border: '1px solid rgba(148, 163, 184, 0.28)',
-    borderRadius: 20,
-    padding: '20px 22px',
-    display: 'grid',
-    gap: 18,
-  },
-  modeTabs: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  modeTab: (active) => ({
-    padding: '8px 16px',
-    borderRadius: 12,
-    border: active ? '1px solid rgba(96, 165, 250, 0.55)' : '1px solid rgba(148, 163, 184, 0.35)',
-    background: active ? 'rgba(37, 99, 235, 0.35)' : 'rgba(15, 23, 42, 0.6)',
-    color: active ? '#bfdbfe' : '#cbd5f5',
-    fontWeight: active ? 700 : 500,
-    cursor: 'pointer',
-  }),
-  gameFilters: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  gameFilterButton: (active) => ({
-    padding: '8px 14px',
-    borderRadius: 10,
-    border: active ? '1px solid rgba(45, 212, 191, 0.6)' : '1px solid rgba(148, 163, 184, 0.32)',
-    background: active ? 'rgba(16, 185, 129, 0.22)' : 'rgba(15, 23, 42, 0.5)',
-    color: active ? '#99f6e4' : '#cbd5f5',
-    fontSize: 13,
-    fontWeight: active ? 700 : 500,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  }),
-  scoreWindowRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  scoreButton: (active) => ({
-    padding: '8px 14px',
-    borderRadius: 999,
-    border: active ? '1px solid rgba(59, 130, 246, 0.6)' : '1px solid rgba(148, 163, 184, 0.3)',
-    background: active ? 'rgba(59, 130, 246, 0.2)' : 'rgba(15, 23, 42, 0.45)',
-    color: active ? '#bfdbfe' : '#cbd5f5',
-    fontSize: 13,
-    fontWeight: active ? 700 : 500,
-    cursor: 'pointer',
-  }),
-  filtersLabel: {
+  fieldLabel: {
     margin: 0,
     fontSize: 14,
     fontWeight: 700,
     color: '#e2e8f0',
   },
-  filterHint: {
-    margin: 0,
-    fontSize: 13,
-    color: '#94a3b8',
-  },
   formHint: {
     margin: '6px 0 0',
     fontSize: 12,
     color: '#94a3b8',
-  },
-  roomsCard: {
-    background: 'rgba(15, 23, 42, 0.78)',
-    border: '1px solid rgba(148, 163, 184, 0.28)',
-    borderRadius: 22,
-    padding: '20px 22px',
-    display: 'grid',
-    gap: 18,
-  },
-  roomGrid: {
-    display: 'grid',
-    gap: 16,
-  },
-  roomLink: {
-    textDecoration: 'none',
-    color: 'inherit',
-    display: 'block',
-  },
-  roomCard: {
-    borderRadius: 20,
-    border: '1px solid rgba(148, 163, 184, 0.22)',
-    background: 'rgba(15, 23, 42, 0.65)',
-    padding: '18px 20px',
-    display: 'grid',
-    gap: 12,
-  },
-  roomHeader: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  roomTitle: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 700,
-  },
-  roomMeta: {
-    margin: 0,
-    fontSize: 13,
-    color: '#94a3b8',
-    display: 'flex',
-    gap: 10,
-    flexWrap: 'wrap',
-  },
-  roomBadge: {
-    padding: '2px 8px',
-    borderRadius: 999,
-    background: 'rgba(59, 130, 246, 0.2)',
-    border: '1px solid rgba(59, 130, 246, 0.45)',
-    color: '#bfdbfe',
-    fontWeight: 600,
-  },
-  roomRoles: {
-    display: 'grid',
-    gap: 6,
-    fontSize: 13,
-    color: '#cbd5f5',
-  },
-  roomFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 10,
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  emptyState: {
-    textAlign: 'center',
-    padding: '60px 20px',
-    color: '#94a3b8',
-  },
-  loadingState: {
-    textAlign: 'center',
-    padding: '80px 20px',
-    color: '#94a3b8',
-    fontSize: 15,
   },
   errorCard: {
     background: 'rgba(248, 113, 113, 0.12)',
@@ -541,19 +383,6 @@ const styles = {
     fontWeight: 600,
     cursor: 'pointer',
   },
-  roomCode: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: '#38bdf8',
-  },
-  ratingBadge: {
-    padding: '4px 10px',
-    borderRadius: 999,
-    background: 'rgba(59, 130, 246, 0.22)',
-    color: '#bfdbfe',
-    fontSize: 12,
-    fontWeight: 700,
-  },
   heroSummary: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -561,16 +390,6 @@ const styles = {
     fontSize: 12,
     color: '#94a3b8',
   },
-  refreshButton: (disabled) => ({
-    padding: '10px 16px',
-    borderRadius: 12,
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    background: disabled ? 'rgba(30, 41, 59, 0.55)' : 'rgba(30, 41, 59, 0.85)',
-    color: disabled ? '#94a3b8' : '#f8fafc',
-    fontWeight: 600,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'background 0.2s ease',
-  }),
   createPanel: {
     background: 'rgba(15, 23, 42, 0.78)',
     border: '1px solid rgba(148, 163, 184, 0.35)',
@@ -2734,85 +2553,25 @@ export default function RoomBrowserPage() {
           </section>
         ) : null}
 
-        <section style={styles.filterCard}>
-          <div>
-            <p style={styles.filtersLabel}>모드 선택</p>
-            <div style={styles.modeTabs}>
-              {MODE_TABS.map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => handleModeChange(tab.key)}
-                  style={styles.modeTab(modeTab === tab.key)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p style={styles.filtersLabel}>게임 필터</p>
-            <p style={styles.filterHint}>
-              캐릭터가 참여한 게임을 기준으로 방을 좁힐 수 있습니다.
-            </p>
-            <div style={styles.gameFilters}>
-              <button
-                type="button"
-                style={styles.gameFilterButton(selectedGameId === 'all')}
-                onClick={() => handleGameFilter('all')}
-              >
-                전체 보기
-              </button>
-              {gameFilters.map((game) => (
-                <button
-                  key={game.id}
-                  type="button"
-                  style={styles.gameFilterButton(selectedGameId === game.id)}
-                  onClick={() => handleGameFilter(game.id)}
-                >
-                  {game.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p style={styles.filtersLabel}>점수 범위</p>
-            <p style={styles.filterHint}>
-              원하는 점수 차이를 설정하면 평균 점수가 범위 안에 있는 방만 표시합니다.
-            </p>
-            <div style={styles.scoreWindowRow}>
-              {SCORE_WINDOWS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  style={styles.scoreButton(scoreWindow === option.value)}
-                  onClick={() => handleScoreWindowChange(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <button
-              type="button"
-              onClick={handleRefresh}
-              style={styles.refreshButton(refreshing)}
-              disabled={refreshing}
-            >
-              {refreshing ? '새로고침 중...' : '목록 새로고침'}
-            </button>
-          </div>
-        </section>
+        <RoomFiltersSection
+          modeTab={modeTab}
+          modeTabs={MODE_TABS}
+          onModeChange={handleModeChange}
+          gameFilters={gameFilters}
+          selectedGameId={selectedGameId}
+          onSelectGame={handleGameFilter}
+          scoreOptions={SCORE_WINDOWS}
+          scoreWindow={scoreWindow}
+          onScoreWindowChange={handleScoreWindowChange}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+        />
 
         {createOpen ? (
           <section style={styles.createPanel}>
             <form onSubmit={handleCreateSubmit}>
               <div style={styles.formRow}>
-                <label style={styles.filtersLabel} htmlFor="room-mode-select">
+                <label style={styles.fieldLabel} htmlFor="room-mode-select">
                   방 유형
                 </label>
                 <select
@@ -2829,7 +2588,7 @@ export default function RoomBrowserPage() {
               </div>
 
               <div style={styles.formRow}>
-                <label style={styles.filtersLabel} htmlFor="room-game-select">
+                <label style={styles.fieldLabel} htmlFor="room-game-select">
                   대상 게임
                 </label>
                 <select
@@ -2848,7 +2607,7 @@ export default function RoomBrowserPage() {
               </div>
 
               <div style={styles.formRow}>
-                <label style={styles.filtersLabel} htmlFor="room-score-select">
+                <label style={styles.fieldLabel} htmlFor="room-score-select">
                   점수 범위 지정 (선택)
                 </label>
                 <select
@@ -2873,7 +2632,7 @@ export default function RoomBrowserPage() {
 
               {selectedGameMeta?.realtimeMode === 'pulse' ? (
                 <div style={styles.formRow}>
-                  <label style={styles.filtersLabel} htmlFor="room-pulse-limit-select">
+                  <label style={styles.fieldLabel} htmlFor="room-pulse-limit-select">
                     같은 역할군 허용 인원
                   </label>
                   <select
@@ -2899,7 +2658,7 @@ export default function RoomBrowserPage() {
               ) : null}
 
               <div style={styles.formRow}>
-                <label style={styles.filtersLabel} htmlFor="room-blind-toggle">
+                <label style={styles.fieldLabel} htmlFor="room-blind-toggle">
                   블라인드 모드
                 </label>
                 <div style={styles.checkboxRow}>
@@ -2937,117 +2696,15 @@ export default function RoomBrowserPage() {
           </section>
         ) : null}
 
-        <section style={styles.roomsCard}>
-          <h2 style={styles.filtersLabel}>검색 결과</h2>
-          {filterMessages.length ? (
-            <div style={styles.filterDiagnosticsCard}>
-              <p style={styles.filterDiagnosticsIntro}>
-                총 {filterDiagnostics.total}개 중 {filteredRooms.length}개가 현재 조건과 일치합니다.
-              </p>
-              <ul style={styles.filterDiagnosticsList}>
-                {filterMessages.map((message, index) => (
-                  <li key={index} style={styles.filterDiagnosticsItem}>
-                    {message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {loading ? (
-            <div style={styles.loadingState}>방 목록을 불러오는 중입니다...</div>
-          ) : filteredRooms.length === 0 ? (
-            <div style={styles.emptyState}>조건에 맞는 방을 찾지 못했습니다.</div>
-          ) : (
-            <div style={styles.roomGrid}>
-              {filteredRooms.map((room) => {
-                const href = effectiveHeroId
-                  ? { pathname: `/rooms/${room.id}`, query: { hero: effectiveHeroId } }
-                  : { pathname: `/rooms/${room.id}` }
-                const scoreWindowLabel =
-                  room.scoreWindow === null ? '제한 없음' : `±${room.scoreWindow}`
-                const hostRatingText = Number.isFinite(room.hostRating)
-                  ? `${room.hostRating}점`
-                  : '정보 없음'
-                const realtimeLabel = isRealtimeEnabled(room.realtimeMode)
-                  ? room.realtimeMode === 'pulse'
-                    ? 'Pulse 실시간'
-                    : '실시간'
-                  : '비실시간'
-                const statusLabel = (() => {
-                  const normalizedStatus = typeof room.status === 'string' ? room.status.trim() : ''
-                  if (normalizedStatus === 'brawl') return '난전'
-                  if (normalizedStatus === 'in_progress' || normalizedStatus === 'battle') return '게임중'
-                  if (normalizedStatus === 'open') return '대기'
-                  return normalizedStatus || '상태 미지정'
-                })()
-                const hostLimitLabel =
-                  room.realtimeMode === 'pulse' && Number.isFinite(room.hostRoleLimit)
-                    ? `같은 역할 최대 ${room.hostRoleLimit}명`
-                    : null
-                const heroDelta =
-                  heroRatingForSelection && Number.isFinite(room.hostRating)
-                    ? Math.abs(heroRatingForSelection - room.hostRating)
-                    : null
-
-                return (
-                  <Link key={room.id} href={href} style={styles.roomLink} prefetch>
-                    <article style={styles.roomCard}>
-                      <div style={styles.roomHeader}>
-                        <div>
-                          <h3 style={styles.roomTitle}>{room.gameName}</h3>
-                          <p style={styles.roomMeta}>
-                            <span>
-                              코드: <span style={styles.roomCode}>{room.code}</span>
-                            </span>
-                            <span>모드: {room.mode}</span>
-                            <span>실시간: {realtimeLabel}</span>
-                            <span>상태: {statusLabel}</span>
-                            <span>
-                              인원: {room.filledCount}/{room.slotCount}
-                            </span>
-                            {room.blindMode ? <span style={styles.roomBadge}>블라인드</span> : null}
-                          </p>
-                          <p style={styles.roomMeta}>
-                            <span>방장 점수: {hostRatingText}</span>
-                            <span>허용 범위: {scoreWindowLabel}</span>
-                            {heroDelta !== null ? (
-                              <span>내 점수와 차이: ±{heroDelta}</span>
-                            ) : null}
-                            {hostLimitLabel ? <span>{hostLimitLabel}</span> : null}
-                          </p>
-                        </div>
-                        {room.rating && Number.isFinite(room.rating.average) ? (
-                          <span style={styles.ratingBadge}>
-                            평균 {room.rating.average}점
-                          </span>
-                        ) : null}
-                      </div>
-                      {room.roles.length ? (
-                        <div style={styles.roomRoles}>
-                          {room.roles.map((role) => (
-                            <div key={role.role}>
-                              {role.role}: {role.occupied}/{role.total} (준비 {role.ready})
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      <div style={styles.roomFooter}>
-                        <span>{formatRelativeTime(room.updatedAt)} 업데이트</span>
-                        {room.rating?.count ? (
-                          <span>
-                            점수 범위 {room.rating.min}~{room.rating.max} ({room.rating.count}명)
-                          </span>
-                        ) : (
-                          <span>점수 정보 없음</span>
-                        )}
-                      </div>
-                    </article>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </section>
+        <RoomResultsSection
+          loading={loading}
+          filteredRooms={filteredRooms}
+          filterDiagnostics={filterDiagnostics}
+          filterMessages={filterMessages}
+          effectiveHeroId={effectiveHeroId}
+          heroRatingForSelection={heroRatingForSelection}
+          formatRelativeTime={formatRelativeTime}
+        />
       </div>
     </div>
   )

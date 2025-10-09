@@ -59,10 +59,11 @@
 **진행 현황**
 - 로비는 현재 폴링과 실시간 채널을 동시에 사용해 기본 동기화 루프가 작동 중이며, 단일 파일이지만 방 생성/입장 정보를 즉시 반영한다.【F:pages/rooms/index.js†L31-L1467】
 - `resolveViewerProfile`과 `rankAuthStorage` 연계로 영웅 선택·API 키 스냅샷이 읽히고 있어 GameSession Store 확장 시 활용 가능한 세션 데이터 축적이 이미 이루어지고 있다.【F:pages/rooms/index.js†L944-L1158】【F:modules/rank/matchDataStore.js†L1-L118】
+- 필터/검색 결과 UI를 `RoomFiltersSection`과 `RoomResultsSection` 컴포넌트로 분리해 목록 카드·진단 메시지를 독립 렌더러로 관리하고, 페이지 본문은 상태 계산과 모달 제어에 집중하도록 정리했다.【F:components/rank/rooms/RoomFiltersSection.js†L1-L153】【F:components/rank/rooms/RoomResultsSection.js†L1-L153】
 
 **정비/축소 후보**
 - 뷰어 영웅/유저 정보를 해결하는 비동기 체인이 `resolveViewerProfile` → `fetchHeroParticipationBundle` → 상태 업데이트로 이어져 길다. `Promise.allSettled` 패턴과 에러 토스트를 추가해 실패 시에도 UI 응답성을 유지하도록 정리한다.【F:pages/rooms/index.js†L990-L1158】
-- 방 목록 필터 UI와 실시간 상태 카드가 하나의 파일에 응집되어 있어 유지보수가 어렵다. 필터 패널/방 카드/상태 배지를 독립 컴포넌트로 분리해 재사용성과 테스트 용이성을 높인다.【F:pages/rooms/index.js†L106-L200】
+- (진행) 필터 패널과 검색 결과는 컴포넌트로 분리했으나, 실시간 상태 배지·폴링 스피너를 공용 UI로 이동시키는 후속 작업과 스토리북 예시가 남아 있다.【F:components/rank/rooms/RoomResultsSection.js†L36-L149】
 
 ### 2.4 방 상세/입장
 **유지해야 할 흐름**
@@ -226,10 +227,11 @@
 - [x] GameSession Store가 슬롯 템플릿 버전·세션 메타를 저장하고 `MatchReady`/`StartClient`가 동일한 데이터를 초기화에 활용하도록 확장했다.【F:modules/rank/matchDataStore.js†L1-L244】【F:lib/rank/matchFlow.js†L1-L220】【F:components/rank/StartClient/useStartClientEngine.js†L540-L940】
 - [x] 등록 안내 텍스트/난입 설명 분리 및 다국어 구조화 계획 수립, `RankNewClient`·`RulesChecklist` 리소스를 `rankRegistrationContent` 데이터로 이동해 공유.【F:components/rank/RankNewClient.js†L120-L355】【F:components/rank/RulesChecklist.js†L1-L60】【F:ai-roomchat/data/rankRegistrationContent.js†L1-L60】
 - [x] 등록 탭 레이아웃을 `RegistrationLayout`/`RegistrationCard`/`SidebarCard`로 세분화해 개요 사이드바와 본문 카드를 분리하고, 모드·난입·규칙 입력 흐름을 재구성했다.【F:components/rank/RankNewClient.js†L335-L512】【F:components/rank/registration/RegistrationLayout.js†L1-L83】【F:components/rank/registration/SidebarCard.js†L1-L20】
+- [x] 방 검색 페이지의 필터와 결과 목록을 `RoomFiltersSection`·`RoomResultsSection` 컴포넌트로 분리해 로비 상태 계산과 UI 표현을 느슨하게 결합했다.【F:components/rank/rooms/RoomFiltersSection.js†L1-L153】【F:components/rank/rooms/RoomResultsSection.js†L1-L153】
 - [ ] GameRoomView 오디오/히스토리 유틸을 분리 컴포넌트화하고, 타임라인/리플레이 노출을 lazy chunk로 나누는 리팩터링 미진행.【F:components/rank/GameRoomView.js†L1-L1120】
 - [ ] `stage-room-match` 낙관적 락·슬롯 버전 필드 추가 및 API 유틸 통합 작업 미착수.【F:pages/api/rank/stage-room-match.js†L112-L200】
 
 ---
 **백엔드 TODO**: Supabase 역할/슬롯 검증 함수 공통화, RoomInitService용 슬롯/역할 캐시 테이블 및 락 RPC 추가, `validate_session` RPC 및 슬롯 버전 필드 도입, 제한시간 투표·비실시간 자동 충원 결과를 저장하는 `upsert_match_session_meta`(가칭) RPC 설계, 이미지 업로드 정책(용량/파일형식) 강화, 등록/매칭 로그 감사 테이블 확장. → 관련 스키마·정책·RPC 초안은 `docs/supabase-rank-backend-upgrades.sql`에 모아두었으며, Supabase에 배포하면 프론트 작업과 연동 가능하다.
 **추가 필요 사항**: 다국어 대비 문자열 리소스 분리, 매칭/룸 UI 카피 검수, GameSession Store 스키마 및 Maker JSON 버전 문서화, 비실시간 자동 충원 통계 대시보드 정의, 테스트 환경용 Supabase 프로젝트 분리.
-**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축) 코드 반영 완료. 2-2 단계에서는 안내/체크리스트 리소스 분리와 레이아웃/사이드바 재배치를 마쳤고, GameSession Store에 슬롯 템플릿·세션 메타를 저장하도록 확장해 본게임 초기화 루프까지 연결했다. 5단계 계획에서는 본게임 타이머·난입·비실시간 충원 전략을 지속적으로 구체화하고 있으며, 다음 작업은 등록 폼 이미지 미리보기·검증 보강 및 3단계 확장 기능 준비다.
+**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축)와 2-2 단계(안내/체크리스트 리소스 분리, 레이아웃 재배치)를 마무리했고, 2-3 단계에서는 방 로비 필터·검색 결과를 컴포넌트화해 상태 계산과 뷰 계층을 분리했다. GameSession Store는 슬롯 템플릿·세션 메타 저장까지 확장되어 본게임 초기화 루프에 연결되었으며, 5단계 계획서는 본게임 타이머·난입·비실시간 충원 전략을 계속 구체화 중이다. 다음 작업은 로비 실시간 배지/스토리북 분리, 등록 폼 검증 보강 이후 3단계 확장 기능으로 넘어가는 것이다.
