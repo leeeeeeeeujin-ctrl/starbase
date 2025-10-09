@@ -6,9 +6,10 @@
 1. `rank_sessions` 테이블에 슬롯 버전 컬럼을 추가하고, 세션 정보를 확인하는 `validate_session` RPC를 교체한다.
 2. 매치 방 스테이징에서 사용할 슬롯 캐시 테이블과 잠금 RPC(`claim_rank_room_slot`)를 생성한다.
 3. 제한시간 투표·난입 보너스 등 메타 정보를 저장하는 `rank_session_meta` 테이블과 `upsert_match_session_meta`·`refresh_match_session_async_fill` RPC를 만든다.
-4. (선택) 감사 로그·이미지 정책 보강도 함께 적용하려면 번들 전체를 실행한다.
+4. 방 상세 페이지가 호출하는 `stage-room-match`용 `sync_rank_match_roster` RPC를 배포해 슬롯 버전 충돌을 서버에서 차단한다.
+5. (선택) 감사 로그·이미지 정책 보강도 함께 적용하려면 번들 전체를 실행한다.
 
-모든 스키마/함수 정의는 `docs/supabase-rank-backend-upgrades.sql`에 있다. 아래 요약된 스니펫을 순서대로 실행하면 핵심 1~3단계가 완료된다. `time_vote`·`turn_state`·`async_fill_snapshot` 저장만 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql`과 `docs/sql/refresh-match-session-async-fill.sql` 파일을 그대로 붙여넣으면 된다.
+모든 스키마/함수 정의는 `docs/supabase-rank-backend-upgrades.sql`에 있다. 아래 요약된 스니펫을 순서대로 실행하면 핵심 1~4단계가 완료된다. `time_vote`·`turn_state`·`async_fill_snapshot` 저장만 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql`과 `docs/sql/refresh-match-session-async-fill.sql`을, 슬롯 버전 잠금을 즉시 적용하려면 `docs/sql/sync-rank-match-roster.sql`을 그대로 붙여넣으면 된다.
 
 ## 2. 필수 SQL 스니펫
 ```sql

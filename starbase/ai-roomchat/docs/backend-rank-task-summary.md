@@ -18,7 +18,7 @@
 
 ## 3. 매칭·방 단계
 - ☐ 로비 자동 새로고침에 사용되는 `fetchRoomSummaries` RPC를 보강해, 새 GameSession Store 버전 필드를 반환하고 실시간 채널에서 동일 구조를 공유한다.
-- ☐ 방 상세 페이지가 호출하는 `stage-room-match` RPC에 낙관적 락과 차등 업데이트를 도입해, 재입장 시 전체 삭제/삽입으로 인한 쓰기 폭주를 줄인다.
+- ✅ 방 상세 페이지가 호출하는 `stage-room-match` RPC에 낙관적 락과 슬롯 버전 검증을 도입했다. `docs/sql/sync-rank-match-roster.sql`(또는 번들 파일)의 `sync_rank_match_roster` 함수가 슬롯 버전을 비교하고 충돌 시 `slot_version_conflict` 오류를 반환한다.
 - 🔄 비실시간 모드에서 부족 인원을 자동 충원할 때 사용할 `async_fill_queue` 테이블과 관련 RPC를 설계해, 역할군별 좌석 제한과 중복 방지를 서버에서 강제한다. `refresh_match_session_async_fill` RPC가 `rank_room_slots`·`rank_match_queue` 데이터를 이용해 좌석 제한과 대기열을 계산하도록 SQL 스니펫으로 준비되어 있으며(`docs/sql/refresh-match-session-async-fill.sql`), 테이블 영속화 및 Edge Function 연동은 후속 작업으로 남아 있다.【F:docs/sql/refresh-match-session-async-fill.sql†L1-L220】
 
 ## 4. 본게임·세션 메타

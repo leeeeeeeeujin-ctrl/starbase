@@ -72,7 +72,7 @@
 - `loadRoom`은 Supabase에서 방 메타, 슬롯, 활성 슬롯 템플릿, 호스트 레이팅까지 순차적으로 조회한 뒤 슬롯 점유율을 계산해 방 상태를 재평가한다. 슬롯 카운터와 상태를 즉시 갱신하는 로직은 참가자 수치 정확도를 위해 유지한다.【F:pages/rooms/[id].js†L1127-L1395】
 - 방 상태는 수동 새로 고침, 30초 간격 폴링, `rank_room_slots` 실시간 구독을 결합해 갱신한다. 특히 슬롯 변경 이벤트에 120ms 디바운스를 적용해 과도한 API 호출을 줄이는 구조는 유지 가치가 있다.【F:pages/rooms/[id].js†L1400-L1468】
 - 참가자 퇴장/방 삭제에 대비한 지연 클린업 타이머(`ROOM_EXIT_DELAY_MS`, `HOST_CLEANUP_DELAY_MS`)는 세션 종료 시 남은 슬롯을 정리하고 방 정리를 자동화하므로 유지한다.【F:pages/rooms/[id].js†L1525-L1660】
-- 모든 슬롯이 준비 완료되면 `buildMatchTransferPayload`로 로스터/매치 메타를 조립하고 `stage-room-match` API를 호출한 뒤 GameSession Store(`matchDataStore`)에 참여자·스냅샷을 싱크한 후 `match-ready`로 전환한다. 이 시퀀스는 본게임 데이터 전달의 핵심이므로 구조를 유지하되 보강한다.【F:pages/rooms/[id].js†L1989-L2104】【F:pages/api/rank/stage-room-match.js†L112-L200】
+- 모든 슬롯이 준비 완료되면 `buildMatchTransferPayload`로 로스터/매치 메타를 조립하고 `stage-room-match` API를 호출한 뒤 GameSession Store(`matchDataStore`)에 참여자·스냅샷을 싱크한 후 `match-ready`로 전환한다. 이 시퀀스는 본게임 데이터 전달의 핵심이므로 구조를 유지하되 보강한다.【F:pages/rooms/[id].js†L1989-L2139】【F:pages/api/rank/stage-room-match.js†L215-L337】
 
 **진행 현황**
 - 방 상세 화면은 현재 게임 메타 → 슬롯 → 템플릿 → 호스트 레이팅 순으로 데이터를 채우고, 실시간 구독/폴링이 결합된 상태로 운영되어 기능적으로는 완주했다.【F:pages/rooms/[id].js†L1127-L1520】
@@ -80,7 +80,7 @@
 
 **정비/축소 후보**
 - `loadRoom` 내부에서 슬롯 활성화 필터링, 히어로 이름 조회, 호스트 레이팅 계산까지 처리해 함수가 비대하다. 슬롯·히어로·참가자 조회를 유틸로 분리하고, 실패 시 부분 데이터를 표시할 수 있도록 UI 계층을 분리한다.【F:pages/rooms/[id].js†L1127-L1395】
-- `stage-room-match`는 요청마다 전체 `rank_match_roster`를 삭제 후 삽입한다. 낙관적 락과 차등 업데이트를 도입해 데이터 손실 위험과 쓰기 트래픽을 줄인다.【F:pages/api/rank/stage-room-match.js†L112-L207】
+- `stage-room-match`는 이제 `sync_rank_match_roster` RPC를 호출해 슬롯 버전 충돌을 검사한 뒤 한 번의 RPC로 삽입을 수행한다. 추후에는 차등 업데이트를 검토하지만, 현재는 Supabase 함수에서 버전 비교·트랜잭션을 책임져 데이터 손실 위험을 줄였다.【F:pages/api/rank/stage-room-match.js†L215-L306】【F:docs/sql/sync-rank-match-roster.sql†L1-L112】
 
 ### 2.5 메인 게임 준비 & 실행
 **유지해야 할 흐름**
@@ -161,7 +161,7 @@
 - (완료) 난입 허용 시 `endCondition`이 비어 있으면 `registerGame` 호출 전에 경고를 띄워 입력을 요구하고, 서버에서는 `pages/api/rank/register-game.js`에 동일 필수 검증을 재사용할 계획이다.【F:components/rank/RankNewClient.js†L235-L257】【F:pages/api/rank/register-game.js†L45-L94】
 - Maker JSON 업로드는 `insertPromptSetBundle` 호출 후 바로 `refresh()`를 실행한다. 이 과정에 `payload.meta?.version` 체크를 추가하고, `useMakerEditor`의 `VARIABLE_RULES_VERSION`과 비교해 업그레이드 안내 배너를 띄운다.【F:hooks/maker/useMakerHome.js†L95-L133】【F:hooks/maker/useMakerEditor.js†L24-L70】
 - 룸 생성 API(`/api/rank/match`)는 현재 슬롯 정보를 `rank_match_roster`에 스테이징한다. GameSession Store를 확장하면 `stage-room-match` 호출 전에 `matchDataStore.setGameMatchSnapshot`에 슬롯 버전을 씌워, 본게임 페이지(`/rooms/[id].js`)가 동일 데이터를 읽어 초기화한다.【F:pages/api/rank/match.js†L147-L419】【F:pages/rooms/[id].js†L287-L2136】【F:modules/rank/matchDataStore.js†L124-L204】
-- `stage-room-match`는 참가자 통계와 영웅 요약을 합쳐 `rank_match_roster`를 재구성한다. 슬롯 버전/역할 매핑을 함께 저장해 `StartClient` 엔진이 번들을 병합할 때 재검증하도록 확장한다.【F:pages/api/rank/stage-room-match.js†L112-L207】【F:components/rank/StartClient/useStartClientEngine.js†L1203-L1258】
+- `stage-room-match`는 참가자 통계와 영웅 요약을 합쳐 `rank_match_roster`를 재구성한다. 이제 `sync_rank_match_roster` RPC가 슬롯 버전·소스를 열에 기록해 `StartClient` 엔진이 번들을 병합할 때 동일 버전인지 재검증할 수 있다.【F:pages/api/rank/stage-room-match.js†L215-L306】【F:components/rank/StartClient/useStartClientEngine.js†L1203-L1258】
 
 #### 예상 문제 & 대응
 - **이미지 업로드 용량 초과/실패**: 사용자마다 업로드 환경이 다름 → 업로드 전 클라이언트에서 용량·확장자 검증, 실패 시 재업로드 힌트 제공, 서버에는 업로드 한도 초과 로그 추가.
@@ -229,7 +229,7 @@
 - (완료) GameSession Store `sessionMeta.turnState`에 턴 번호·마감 시각·드롭인 보너스를 기록하고, `StartClient`가 턴 예약·보너스·완료 시점을 저장해 준비 화면/본게임이 동일한 제한시간 정보를 공유한다.【F:modules/rank/matchDataStore.js†L12-L210】【F:components/rank/StartClient/useStartClientEngine.js†L895-L1508】
 
 ### 5.4 예상 문제 & 대응
-- **슬롯 데이터 동시 갱신 충돌**: 방 호스트와 참가자가 동시에 슬롯을 수정할 경우 경합이 발생할 수 있음 → `stage-room-match`에 슬롯 버전 필드를 추가하고 Supabase Row Level Security로 낙관적 잠금을 구현한다.【F:pages/api/rank/stage-room-match.js†L112-L207】
+- **슬롯 데이터 동시 갱신 충돌**: `sync_rank_match_roster` RPC가 슬롯 버전 필드를 검증하도록 도입돼, 더 최신 버전을 가진 요청만 성공한다. 추후에는 부분 업데이트를 고려하지만 현재는 버전 충돌 시 `slot_version_conflict` 오류를 반환하도록 막았다.【F:pages/api/rank/stage-room-match.js†L215-L306】【F:docs/sql/sync-rank-match-roster.sql†L1-L112】
 - **방 검색 성능 저하**: 실시간 방 수가 늘어나면 쿼리 비용 증가 → 로비에서 실시간 채널 이벤트를 디바운스하고, 자동 새로 고침 주기를 피처 플래그로 조절한다.【F:pages/rooms/index.js†L1406-L1467】
 - **본게임 진입 전 검증 실패**: GameSession Store와 Supabase 데이터가 어긋날 수 있음 → `MatchReadyClient`에서 `readMatchFlowState`와 서버 검증을 묶고 실패 시 재시도/룸 복귀 경로를 제공한다.【F:lib/rank/matchFlow.js†L118-L171】【F:components/rank/MatchReadyClient.js†L96-L155】
 
@@ -246,7 +246,7 @@
 - [x] Next 빌드가 `prop-types` 의존성 없이 통과하도록 룸 필터/검색 컴포넌트의 PropTypes 선언을 JSDoc 기반 설명으로 대체했다.【F:components/rank/rooms/RoomFiltersSection.js†L1-L154】【F:components/rank/rooms/RoomResultsSection.js†L1-L154】
 - [x] GameRoomView 오디오/히스토리 유틸을 분리 컴포넌트화하고, 타임라인/리플레이 노출을 lazy chunk로 나누어 렌더 부하를 낮췄다.【F:components/rank/GameRoomView.js†L1-L360】【F:components/rank/GameRoomHistoryPane.js†L1-L151】【F:lib/rank/gameRoomAudio.js†L1-L360】【F:lib/rank/gameRoomHistory.js†L1-L80】
 - [x] 비실시간 방에서 `sessionMeta.asyncFill`에 좌석 제한·대기열·자동 충원 후보를 저장하고 MatchReady 화면에서 요약 정보를 노출한다.【F:modules/rank/matchDataStore.js†L600-L690】【F:components/rank/MatchReadyClient.js†L180-L340】
-- [ ] `stage-room-match` 낙관적 락·슬롯 버전 필드 추가 및 API 유틸 통합 작업 미착수.【F:pages/api/rank/stage-room-match.js†L112-L200】
+- [x] `stage-room-match` 낙관적 락·슬롯 버전 필드 추가 및 API 유틸 통합을 `sync_rank_match_roster` RPC로 마무리했다. API는 RPC 오류를 해석해 409 충돌을 반환한다.【F:pages/api/rank/stage-room-match.js†L215-L320】【F:docs/sql/sync-rank-match-roster.sql†L1-L112】
 
 ---
 **백엔드 TODO**: Supabase 역할/슬롯 검증 함수 공통화, RoomInitService용 슬롯/역할 캐시 테이블 및 락 RPC 추가, `validate_session` RPC 및 슬롯 버전 필드 도입, 제한시간 투표·비실시간 자동 충원 결과를 저장하는 `upsert_match_session_meta`/`refresh_match_session_async_fill` RPC 배포, 이미지 업로드 정책(용량/파일형식) 강화, 등록/매칭 로그 감사 테이블 확장. → 관련 스키마·정책·RPC 초안은 `docs/supabase-rank-backend-upgrades.sql`에 모아두었으며, 세션 메타 동기화만 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql`과 `docs/sql/refresh-match-session-async-fill.sql`을 Supabase SQL Editor에 붙여넣으면 된다.

@@ -300,7 +300,9 @@ function buildMatchTransferPayload(room, slots) {
     roleStatus: {
       slotLayout,
       roles,
+      version: timestamp,
       updatedAt: timestamp,
+      source: 'room-stage',
     },
     sampleMeta: null,
     dropInTarget: null,
@@ -325,6 +327,14 @@ function buildMatchTransferPayload(room, slots) {
     source: 'room-fill',
   }
 
+  const slotTemplate = {
+    slots: slotLayout,
+    roles,
+    version: timestamp,
+    updatedAt: timestamp,
+    source: 'room-stage',
+  }
+
   return {
     roster,
     heroMap,
@@ -333,6 +343,7 @@ function buildMatchTransferPayload(room, slots) {
     slotLayout,
     match,
     matchInstanceId: instanceId,
+    slotTemplate,
   }
 }
 
@@ -2052,6 +2063,7 @@ export default function RoomDetailPage() {
             game_id: room.gameId,
             roster: payload.roster,
             hero_map: payload.heroMap,
+            slot_template: payload.slotTemplate,
           }),
         })
 
@@ -2110,15 +2122,20 @@ export default function RoomDetailPage() {
         })
 
         setGameMatchSlotTemplate(room.gameId, {
-          slots: payload.slotLayout,
-          roles: payload.roles,
+          ...(payload.slotTemplate || {}),
+          slots: payload.slotTemplate?.slots || payload.slotLayout,
+          roles: payload.slotTemplate?.roles || payload.roles,
+          updatedAt:
+            payload.slotTemplate?.updatedAt ||
+            payload.match?.roleStatus?.updatedAt ||
+            createdAt,
           version:
-            payload.match?.roleStatus?.version ??
-            payload.match?.roleStatus?.updatedAt ??
-            payload.match?.roleStatus?.timestamp ??
-            1,
-          updatedAt: payload.match?.roleStatus?.updatedAt ?? createdAt,
-          source: 'room-stage',
+            payload.slotTemplate?.version ||
+            payload.match?.roleStatus?.version ||
+            payload.match?.roleStatus?.updatedAt ||
+            payload.match?.roleStatus?.timestamp ||
+            createdAt,
+          source: payload.slotTemplate?.source || 'room-stage',
         })
 
         setGameMatchSessionMeta(room.gameId, {
