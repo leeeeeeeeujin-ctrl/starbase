@@ -10,7 +10,7 @@
 5. 게임 등록을 서버에서 일괄 처리할 `register_rank_game` RPC를 적용해 역할·슬롯 저장을 RPC 경유로 전환한다. 이 스니펫은 `rank_game_slots`의 `(game_id, slot_index)` 유니크 제약도 함께 보강해 중복 슬롯 업서트 에러를 방지한다.
 6. (선택) 감사 로그·이미지 정책 보강도 함께 적용하려면 번들 전체를 실행한다.
 
-모든 스키마/함수 정의는 `docs/supabase-rank-backend-upgrades.sql`에 있다. 아래 요약된 스니펫을 순서대로 실행하면 핵심 1~5단계가 완료된다. `time_vote`·`turn_state`·`async_fill_snapshot` 저장만 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql`과 `docs/sql/refresh-match-session-async-fill.sql`을, 턴 상태 실시간 브로드캐스트까지 즉시 구성하려면 `docs/sql/rank-turn-realtime-sync.sql`을, 슬롯 버전 잠금을 즉시 적용하려면 `docs/sql/sync-rank-match-roster.sql`을, 등록 RPC만 따로 배포하려면 `docs/sql/register-rank-game.sql`을 그대로 붙여넣으면 된다.
+모든 스키마/함수 정의는 `docs/supabase-rank-backend-upgrades.sql`에 있다. 아래 요약된 스니펫을 순서대로 실행하면 핵심 1~5단계가 완료된다. `time_vote`·`turn_state`·`async_fill_snapshot` 저장만 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql`과 `docs/sql/refresh-match-session-async-fill.sql`을, 턴 상태 실시간 브로드캐스트까지 즉시 구성하려면 `docs/sql/rank-turn-realtime-sync.sql`을, 브로드캐스트 누락분을 백필하려면 `docs/sql/fetch-rank-turn-state-events.sql`을, 슬롯 버전 잠금을 즉시 적용하려면 `docs/sql/sync-rank-match-roster.sql`을, 등록 RPC만 따로 배포하려면 `docs/sql/register-rank-game.sql`을 그대로 붙여넣으면 된다.
 
 ## 2. 필수 SQL 스니펫
 ```sql
@@ -584,3 +584,13 @@ grant execute on function public.refresh_match_session_async_fill(uuid, uuid, in
 - `rank_turn_state_events`는 각 턴 상태 스냅샷을 보관하면서 Supabase Realtime을 통해 클라이언트로 브로드캐스트된다.
 - `enqueue_rank_turn_state_event` RPC는 기존 `upsert_match_session_meta`를 호출해 세션 메타(`turn_state`)를 갱신한 뒤, 이벤트 테이블에 기록한다.
 - PR에서 추가된 세션 스토어는 추후 `/api/rank/session-meta`(가칭)에서 이 RPC를 호출해 드롭인 보너스, 남은 시간, 턴 번호를 서버와 동기화하게 된다.
+
+### 2.y 턴 이벤트 백필 RPC (`fetch_rank_turn_state_events`)
+```sql
+-- 누락된 턴 이벤트를 최근 순으로 가져오는 RPC
+\i docs/sql/fetch-rank-turn-state-events.sql
+```
+
+- 실시간 채널이 일시적으로 끊겼을 때 최신 턴 정보를 백필하기 위해 `fetch_rank_turn_state_events` RPC를 추가했다.
+- 위 스니펫은 `turn_number` 체크 제약을 보강하고, 지정된 세션 ID·타임스탬프 이후의 이벤트를 시간 순으로 반환한다.
+- `/api/rank/turn-events`는 이 RPC를 호출해 최대 200개의 이벤트를 반환하며, StartClient는 채널이 다시 연결될 때 해당 API로 누락된 턴 로그를 보완한다.

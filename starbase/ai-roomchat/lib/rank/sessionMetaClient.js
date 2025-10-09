@@ -214,6 +214,46 @@ export function buildSessionMetaRequest({ state }) {
   return { metaPayload, turnStateEvent, metaSignature, turnStateSignature }
 }
 
+export async function fetchTurnStateEvents({ sessionId, since, limit, signal } = {}) {
+  if (!sessionId) {
+    throw new Error('sessionId is required')
+  }
+
+  const params = new URLSearchParams({ sessionId })
+  if (since !== undefined && since !== null) {
+    if (since instanceof Date) {
+      params.set('since', String(since.getTime()))
+    } else if (Number.isFinite(Number(since))) {
+      params.set('since', String(Math.floor(Number(since))))
+    } else {
+      params.set('since', String(since))
+    }
+  }
+
+  if (limit !== undefined && limit !== null) {
+    const numeric = Number(limit)
+    if (Number.isFinite(numeric) && numeric > 0) {
+      params.set('limit', String(Math.floor(numeric)))
+    }
+  }
+
+  const response = await fetch(`/api/rank/turn-events?${params.toString()}`, {
+    method: 'GET',
+    signal,
+  })
+
+  if (!response.ok) {
+    const message = `failed to fetch turn events: ${response.status}`
+    throw new Error(message)
+  }
+
+  const payload = await response.json().catch(() => ({}))
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.events)) {
+    return []
+  }
+  return payload.events
+}
+
 export async function postSessionMeta({ token, sessionId, gameId, meta, turnStateEvent, source }) {
   if (!token) throw new Error('세션 토큰이 필요합니다.')
   if (!sessionId) throw new Error('sessionId가 필요합니다.')
