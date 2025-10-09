@@ -6,8 +6,8 @@
 
 ## 1. 즉시 대응이 필요한 공통 작업
 - 🔄 `verify_rank_roles_and_slots`(가칭) RPC를 추가해 등록·매칭·룸 스테이징에서 동일한 역할/슬롯 검증 로직을 사용하도록 통합한다. `supabase-rank-backend-upgrades.sql`에 함수 초안과 실행 권한을 정리했으며, Supabase에 배포하면 `pages/api/rank/register-game.js`와 `stage-room-match`가 같은 검증을 재사용할 수 있다.
-- 🔄 `RoomInitService`가 참조할 `rank_room_slot_cache` 테이블과 행 단위 잠금을 제공하는 RPC를 작성해, 실시간 입장 경쟁 시 슬롯 경합을 방지한다. 슬롯 캐시 테이블과 `claim_rank_room_slot` RPC SQL을 추가했으므로 적용만 하면 된다.
-- 🔄 `validate_session` RPC에 슬롯 버전(`slot_schema_version`)과 타임스탬프를 포함해 GameSession Store가 클라이언트-서버 간 버전 차이를 감지할 수 있게 한다. `rank_sessions` 컬럼 확장과 `validate_session`/`bump_rank_session_slot_version` RPC 초안을 SQL로 준비했다.
+- ✅ `RoomInitService`가 참조할 `rank_room_slot_cache` 테이블과 행 단위 잠금을 제공하는 RPC를 작성해, 실시간 입장 경쟁 시 슬롯 경합을 방지한다. 슬롯 캐시 테이블과 `claim_rank_room_slot` RPC SQL을 `supabase-rank-session-sync-guide.md`에 스니펫으로 정리했다.【F:docs/supabase-rank-session-sync-guide.md†L55-L111】
+- ✅ `validate_session` RPC에 슬롯 버전(`slot_schema_version`)과 타임스탬프를 포함해 GameSession Store가 클라이언트-서버 간 버전 차이를 감지할 수 있게 한다. `rank_sessions` 컬럼 확장과 `validate_session`/`bump_rank_session_slot_version` RPC 교체 SQL을 같은 가이드에 담았다.【F:docs/supabase-rank-session-sync-guide.md†L16-L73】
 - 🔄 이미지 업로드 Edge Function에 3MB 용량 제한과 MIME 화이트리스트를 적용해, 프론트의 사전 검증(`RankNewClient` 이미지 검사)과 백엔드 정책을 일치시킨다. `rank-game-covers` 버킷 전용 트리거와 정책을 SQL에 추가했다.
 - 🔄 `rank_game_logs`(가칭) 감사 테이블을 확장해 등록/매칭/본게임에서 발생하는 주요 이벤트와 실패 케이스를 모두 기록한다. 감사 테이블과 인덱스, 서비스 롤 정책을 SQL로 마련했다.
 
@@ -22,7 +22,7 @@
 - ☐ 비실시간 모드에서 부족 인원을 자동 충원할 때 사용할 `async_fill_queue` 테이블과 관련 RPC를 설계해, 역할군별 좌석 제한과 중복 방지를 서버에서 강제한다.
 
 ## 4. 본게임·세션 메타
-- ☐ `upsert_match_session_meta`(가칭) RPC를 만들어 제한시간 투표 결과, 난입 보너스 로그, 비실시간 자동 충원 히스토리를 한 곳에 저장한다.
+- ✅ `upsert_match_session_meta`(가칭) RPC를 만들어 제한시간 투표 결과, 난입 보너스 로그, 비실시간 자동 충원 히스토리를 한 곳에 저장한다.【F:docs/supabase-rank-session-sync-guide.md†L113-L175】
 - ☐ `start_match` Edge Function에서 위 메타 정보를 불러 `turnTimerService`와 `dropInQueueService`가 동일한 타이머/보너스 값을 받도록 초기화한다.
 - ☐ 새로 난입한 참가자에게 30초 보너스를 부여하는 규칙을 서버 타임라인에도 기록해, 클라이언트-서버 타이머 싱크를 검증할 수 있게 한다.
 
