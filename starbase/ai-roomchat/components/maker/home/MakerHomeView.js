@@ -8,6 +8,7 @@ export default function MakerHomeView({
   backgroundImage,
   listHeader,
   errorMessage,
+  noticeMessage,
   loading,
   rows,
   editingId,
@@ -67,7 +68,12 @@ export default function MakerHomeView({
             gap: 18,
           }}
         >
-          <MakerHomeHeader listHeader={listHeader} errorMessage={errorMessage} onGoBack={onGoBack} />
+          <MakerHomeHeader
+            listHeader={listHeader}
+            errorMessage={errorMessage}
+            noticeMessage={noticeMessage}
+            onGoBack={onGoBack}
+          />
 
           <section
             style={{

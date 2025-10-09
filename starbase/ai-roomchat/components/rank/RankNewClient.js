@@ -21,6 +21,7 @@ import {
   registrationOverviewCopy,
   realtimeModeCopy,
 } from '../../data/rankRegistrationContent'
+import { prepareRegistrationPayload } from '../../lib/rank/registrationValidation'
 
 const MAX_IMAGE_SIZE_BYTES = 3 * 1024 * 1024
 
@@ -39,30 +40,14 @@ async function registerGame(payload) {
     return { ok: false, error: '로그인이 필요합니다.' }
   }
 
-  const roleNames = Array.from(
-    new Set(
-      (payload?.roles || [])
-        .map((role) => {
-          if (!role?.name) return ''
-          return String(role.name).trim()
-        })
-        .filter(Boolean),
-    ),
-  )
-
-  const gameInsert = {
-    owner_id: user.id,
-    name: payload?.name || '새 게임',
-    description: payload?.description || '',
-    image_url: payload?.image_url || '',
-    prompt_set_id: payload?.prompt_set_id,
-    realtime_match: payload?.realtime_match || REALTIME_MODES.OFF,
-    rules: payload?.rules ?? null,
-    rules_prefix: payload?.rules_prefix ?? null,
+  const prepared = prepareRegistrationPayload({ ...payload })
+  if (!prepared.ok) {
+    return { ok: false, error: prepared.error }
   }
 
-  if (roleNames.length > 0) {
-    gameInsert.roles = roleNames
+  const gameInsert = {
+    ...prepared.game,
+    owner_id: user.id,
   }
 
   const { data: game, error: gameError } = await withTable(supabase, 'rank_games', (table) => {
@@ -77,23 +62,15 @@ async function registerGame(payload) {
     return { ok: false, error: gameError?.message || '게임 등록에 실패했습니다.' }
   }
 
-  if (Array.isArray(payload?.roles) && payload.roles.length) {
-    const rows = payload.roles.map((role) => {
-      const rawMin = Number(role?.score_delta_min)
-      const rawMax = Number(role?.score_delta_max)
-      const min = Number.isFinite(rawMin) ? rawMin : 20
-      const max = Number.isFinite(rawMax) ? rawMax : 40
-
-      const slotCount = Number.isFinite(Number(role?.slot_count)) ? Number(role.slot_count) : 0
-      return {
-        game_id: game.id,
-        name: role?.name ? String(role.name) : '역할',
-        slot_count: Math.max(0, slotCount),
-        active: true,
-        score_delta_min: Math.max(0, min),
-        score_delta_max: Math.max(Math.max(0, min), max),
-      }
-    })
+  if (prepared.roles.length) {
+    const rows = prepared.roles.map((role) => ({
+      game_id: game.id,
+      name: role.name,
+      slot_count: role.slot_count,
+      active: true,
+      score_delta_min: role.score_delta_min,
+      score_delta_max: role.score_delta_max,
+    }))
 
     const { error: roleError } = await withTable(supabase, 'rank_game_roles', (table) =>
       supabase.from(table).insert(rows)

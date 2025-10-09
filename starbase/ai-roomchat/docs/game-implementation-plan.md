@@ -42,6 +42,7 @@
 - 레이아웃을 `RegistrationLayout`·`RegistrationCard`·`SidebarCard` 컴포넌트로 분리해 개요/사이드 가이드를 별도 칼럼으로 고정하고, 기본 정보·모드·역할·슬롯·규칙을 카드 기반으로 재배치했다.【F:components/rank/RankNewClient.js†L335-L512】【F:components/rank/registration/RegistrationLayout.js†L1-L83】【F:components/rank/registration/RegistrationCard.js†L1-L42】
 - 표지 이미지 입력에 3MB 용량 검증과 미리보기·제거 컨트롤을 추가해 업로드 전 품질을 확인할 수 있도록 했다.【F:components/rank/RankNewClient.js†L180-L258】【F:data/rankRegistrationContent.js†L28-L36】
 - 난입 허용 시 종료 변수 필드를 비워둘 수 없도록 클라이언트 검증을 추가해 규칙 누락을 방지한다.【F:components/rank/RankNewClient.js†L235-L257】
+- JSON 가져오기 시 변수 규칙 버전 정보를 확인하고, 구버전/미표기 세트에는 재저장을 안내하는 공지 메시지를 노출하도록 제작기 홈을 보강했다.【F:hooks/maker/useMakerHome.js†L12-L163】【F:components/maker/home/MakerHomeHeader.js†L1-L60】
 
 **정비/축소 후보**
 - (완료) 등록 안내 문구와 난입 설명을 `rankRegistrationContent` 데이터로 추출했다. 이후 다국어 리소스를 연결할 때 해당 데이터 객체를 번들 경량화를 위해 동적 임포트하도록 보완한다.【F:ai-roomchat/data/rankRegistrationContent.js†L1-L60】
@@ -158,6 +159,10 @@
 
 #### 예상 문제 & 대응
 - **이미지 업로드 용량 초과/실패**: 사용자마다 업로드 환경이 다름 → 업로드 전 클라이언트에서 용량·확장자 검증, 실패 시 재업로드 힌트 제공, 서버에는 업로드 한도 초과 로그 추가.
+
+**진행 현황 업데이트**
+- Maker JSON 업로드 시 `payload.meta`의 변수 규칙 버전을 점검해 최신 포맷 안내를 띄우고, 성공적으로 불러온 세트는 확인 메시지를 노출한다.【F:hooks/maker/useMakerHome.js†L95-L163】【F:components/maker/home/MakerHomeHeader.js†L23-L55】
+- 등록 폼과 `register-game` API가 `prepareRegistrationPayload` 유틸을 공유해 역할 점수 범위·슬롯 개수·난입 종료 조건을 동일 기준으로 검증하도록 정리했다.【F:lib/rank/registrationValidation.js†L1-L87】【F:components/rank/RankNewClient.js†L24-L120】【F:pages/api/rank/register-game.js†L1-L80】
 - **규칙 상호 검증 충돌**: 조건이 복잡해질수록 경고가 남발될 수 있음 → 검증 로직을 스키마 기반으로 구성하고, 경고 우선순위를 조정해 한 번에 한 오류만 노출.
 - **JSON 스키마 버전 불일치**: 구버전 파일이 업로드될 수 있음 → 마이그레이션 단계를 UI로 노출하고, 자동 변환 실패 시 디프 비교와 가이드 제공.
 - **테스트 전투 CTA 남용**: 테스트 방이 다수 생성되면 리소스 낭비 → CTA 실행 시 자동 삭제 타이머와 사용량 제한 설정.

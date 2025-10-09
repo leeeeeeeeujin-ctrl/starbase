@@ -10,7 +10,7 @@
 - ☐ `rank_game_logs`(가칭) 감사 테이블을 확장해 등록/매칭/본게임에서 발생하는 주요 이벤트와 실패 케이스를 모두 기록한다.
 
 ## 2. 게임 등록 지원
-- 🔄 `register-game` API에서 역할 점수 범위·난입 종료 조건 검증을 RPC에 위임하고, 실패 사유를 프론트에 전달할 수 있도록 오류 코드를 통일한다.
+- 🔄 `register-game` API에서 역할 점수 범위·난입 종료 조건 검증을 RPC에 위임하고, 실패 사유를 프론트에 전달할 수 있도록 오류 코드를 통일한다. 현재는 프론트·API가 `prepareRegistrationPayload` 유틸을 공유하도록 맞춰 1차 동기화를 끝냈으며, 다음 단계로 RPC로 분리하고 에러 코드를 정의해야 한다.【F:lib/rank/registrationValidation.js†L1-L87】【F:pages/api/rank/register-game.js†L1-L80】
 - ☐ 이미지 업로드 재시도 로직과 업로드 실패 원인(용량 초과, 확장자 불일치 등)을 Supabase `storage` 에러 메시지로 구분해 로깅한다.
 - ☐ 프롬프트 세트 ID가 삭제된 경우를 대비해 `prompt_set_id` 외래키 검증 및 친절한 오류 메시지를 반환하는 방어 로직을 추가한다.
 

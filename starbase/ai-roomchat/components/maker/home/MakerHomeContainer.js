@@ -21,6 +21,7 @@ export default function MakerHomeContainer() {
     hydrated,
     loading,
     errorMessage,
+    noticeMessage,
     rows,
     refresh,
     renameSet,
@@ -29,6 +30,7 @@ export default function MakerHomeContainer() {
     exportSet,
     importFromFile,
     setErrorMessage,
+    setNoticeMessage,
   } = useMakerHome({ onUnauthorized: handleUnauthorized })
 
   const [editingId, setEditingId] = useState(null)
@@ -140,8 +142,9 @@ export default function MakerHomeContainer() {
 
   const handleRefresh = useCallback(() => {
     setErrorMessage('')
+    setNoticeMessage('')
     refresh()
-  }, [refresh, setErrorMessage])
+  }, [refresh, setErrorMessage, setNoticeMessage])
 
   const handleGoBack = useCallback(() => {
     if (returnHeroId) {
@@ -160,6 +163,7 @@ export default function MakerHomeContainer() {
       backgroundImage={backgroundUrl}
       listHeader={listHeader}
       errorMessage={errorMessage}
+      noticeMessage={noticeMessage}
       loading={loading}
       rows={rows}
       editingId={editingId}
