@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
 import styles from './StartClient.module.css'
@@ -18,6 +18,8 @@ import {
 } from '../../../lib/rank/matchFlow'
 import { normalizeRoleName } from '../../../lib/rank/roleLayoutLoader'
 import { useStartClientEngine } from './useStartClientEngine'
+import { supabase } from '../../../lib/supabase'
+import { buildSessionMetaRequest, postSessionMeta } from '../../../lib/rank/sessionMetaClient'
 
 function buildSessionMeta(state) {
   if (!state) return []
@@ -154,6 +156,19 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     activeActorNames,
   } = engine
 
+  const sessionMetaSignatureRef = useRef('')
+  const turnStateSignatureRef = useRef('')
+  const sessionIdRef = useRef(null)
+
+  useEffect(() => {
+    const nextSessionId = sessionInfo?.id || null
+    if (sessionIdRef.current !== nextSessionId) {
+      sessionIdRef.current = nextSessionId
+      sessionMetaSignatureRef.current = ''
+      turnStateSignatureRef.current = ''
+    }
+  }, [sessionInfo?.id])
+
   const sessionMeta = useMemo(() => buildSessionMeta(matchState), [matchState])
   const headerTitle = useMemo(() => {
     if (game?.name) return game.name
@@ -197,6 +212,72 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     })
     return unique
   }, [engineError, statusMessage, apiKeyWarning, promptMetaWarning])
+
+  useEffect(() => {
+    const sessionId = sessionInfo?.id
+    if (!sessionId) return
+
+    const stateForRequest = {
+      sessionMeta: matchState?.sessionMeta || null,
+      room: { realtimeMode: matchState?.room?.realtimeMode || null },
+    }
+
+    const { metaPayload, turnStateEvent, metaSignature, turnStateSignature } = buildSessionMetaRequest({
+      state: stateForRequest,
+    })
+
+    if (!metaPayload) return
+
+    const metaChanged = metaSignature && metaSignature !== sessionMetaSignatureRef.current
+    const turnChanged = turnStateSignature && turnStateSignature !== turnStateSignatureRef.current
+
+    if (!metaChanged && !turnChanged) {
+      return
+    }
+
+    sessionMetaSignatureRef.current = metaSignature || ''
+    if (turnChanged) {
+      turnStateSignatureRef.current = turnStateSignature
+    }
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          throw new Error('세션 토큰을 확인하지 못했습니다.')
+        }
+
+        await postSessionMeta({
+          token,
+          sessionId,
+          gameId,
+          meta: metaPayload,
+          turnStateEvent: turnChanged ? turnStateEvent : null,
+          source: 'start-client',
+        })
+      } catch (error) {
+        console.warn('[StartClient] 세션 메타 동기화 실패:', error)
+        if (!cancelled) {
+          if (metaChanged) {
+            sessionMetaSignatureRef.current = ''
+          }
+          if (turnChanged) {
+            turnStateSignatureRef.current = ''
+          }
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [gameId, matchState?.room?.realtimeMode, matchState?.sessionMeta, sessionInfo?.id])
 
   const realtimeLockNotice = useMemo(() => {
     if (!consensus?.active) return ''
