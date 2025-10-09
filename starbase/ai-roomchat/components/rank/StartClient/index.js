@@ -7,6 +7,7 @@ import styles from './StartClient.module.css'
 import HeaderControls from './HeaderControls'
 import RosterPanel from './RosterPanel'
 import TurnInfoPanel from './TurnInfoPanel'
+import TurnSummaryPanel from './TurnSummaryPanel'
 import ManualResponsePanel from './ManualResponsePanel'
 import StatusBanner from './StatusBanner'
 import LogsPanel from './LogsPanel'
@@ -138,6 +139,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     advanceWithManual,
     turnTimerSeconds,
     timeRemaining,
+    turnDeadline,
     currentActor,
     canSubmitAction,
     sessionInfo,
@@ -145,6 +147,8 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     realtimeEvents,
     dropInSnapshot,
     consensus,
+    lastDropInTurn,
+    turnTimerSnapshot,
   } = engine
 
   const sessionMeta = useMemo(() => buildSessionMeta(matchState), [matchState])
@@ -253,6 +257,16 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
             ))}
           </div>
         ) : null}
+
+        <TurnSummaryPanel
+          sessionMeta={matchState?.sessionMeta || null}
+          turn={turn}
+          turnTimerSeconds={turnTimerSeconds}
+          timeRemaining={timeRemaining}
+          turnDeadline={turnDeadline}
+          turnTimerSnapshot={turnTimerSnapshot}
+          lastDropInTurn={lastDropInTurn}
+        />
 
         {sessionMeta.length ? (
           <section className={styles.metaSection}>

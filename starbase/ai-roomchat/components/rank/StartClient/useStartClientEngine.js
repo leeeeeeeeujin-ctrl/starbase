@@ -3404,6 +3404,53 @@ export function useStartClientEngine(gameId) {
     }
   }, [needsConsensus, advanceTurn, clearConsensusVotes])
 
+  const turnTimerSnapshot = useMemo(() => {
+    const baseFromState = Number.isFinite(Number(turnTimerSeconds))
+      ? Math.max(0, Math.floor(Number(turnTimerSeconds)))
+      : null
+    const fallbackBonus = 30
+    const fallbackTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
+    const fallbackDropInTurn = Number.isFinite(Number(lastDropInTurn))
+      ? Math.floor(Number(lastDropInTurn))
+      : 0
+
+    const service = turnTimerServiceRef.current
+    if (!service) {
+      return {
+        baseSeconds: baseFromState,
+        firstTurnBonusSeconds: fallbackBonus,
+        firstTurnBonusAvailable: false,
+        dropInBonusSeconds: fallbackBonus,
+        pendingDropInBonus: false,
+        lastTurnNumber: fallbackTurn,
+        lastDropInAppliedTurn: fallbackDropInTurn,
+      }
+    }
+
+    const snapshot = service.getSnapshot() || {}
+    const resolvedBase = Number.isFinite(Number(snapshot.baseSeconds))
+      ? Math.floor(Number(snapshot.baseSeconds))
+      : baseFromState
+
+    return {
+      baseSeconds: resolvedBase,
+      firstTurnBonusSeconds: Number.isFinite(Number(snapshot.firstTurnBonusSeconds))
+        ? Math.floor(Number(snapshot.firstTurnBonusSeconds))
+        : fallbackBonus,
+      firstTurnBonusAvailable: Boolean(snapshot.firstTurnBonusAvailable),
+      dropInBonusSeconds: Number.isFinite(Number(snapshot.dropInBonusSeconds))
+        ? Math.floor(Number(snapshot.dropInBonusSeconds))
+        : fallbackBonus,
+      pendingDropInBonus: Boolean(snapshot.pendingDropInBonus),
+      lastTurnNumber: Number.isFinite(Number(snapshot.lastTurnNumber))
+        ? Math.floor(Number(snapshot.lastTurnNumber))
+        : fallbackTurn,
+      lastDropInAppliedTurn: Number.isFinite(Number(snapshot.lastDropInAppliedTurn))
+        ? Math.floor(Number(snapshot.lastDropInAppliedTurn))
+        : fallbackDropInTurn,
+    }
+  }, [turnTimerSeconds, turn, lastDropInTurn, timeRemaining, turnDeadline])
+
   return {
     loading,
     error,
@@ -3444,6 +3491,7 @@ export function useStartClientEngine(gameId) {
     autoAdvance,
     turnTimerSeconds,
     timeRemaining,
+    turnDeadline,
     currentActor: currentActorInfo,
     canSubmitAction,
     activeBackdropUrls: activeHeroAssets.backgrounds,
@@ -3451,6 +3499,8 @@ export function useStartClientEngine(gameId) {
     activeBgmUrl: activeHeroAssets.bgmUrl,
     activeBgmDuration: activeHeroAssets.bgmDuration,
     activeAudioProfile: activeHeroAssets.audioProfile,
+    lastDropInTurn,
+    turnTimerSnapshot,
     sessionInfo,
     realtimePresence,
     realtimeEvents,
