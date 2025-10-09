@@ -162,6 +162,7 @@
 - Maker JSON 업로드는 `insertPromptSetBundle` 호출 후 바로 `refresh()`를 실행한다. 이 과정에 `payload.meta?.version` 체크를 추가하고, `useMakerEditor`의 `VARIABLE_RULES_VERSION`과 비교해 업그레이드 안내 배너를 띄운다.【F:hooks/maker/useMakerHome.js†L95-L133】【F:hooks/maker/useMakerEditor.js†L24-L70】
 - 룸 생성 API(`/api/rank/match`)는 현재 슬롯 정보를 `rank_match_roster`에 스테이징한다. GameSession Store를 확장하면 `stage-room-match` 호출 전에 `matchDataStore.setGameMatchSnapshot`에 슬롯 버전을 씌워, 본게임 페이지(`/rooms/[id].js`)가 동일 데이터를 읽어 초기화한다.【F:pages/api/rank/match.js†L147-L419】【F:pages/rooms/[id].js†L287-L2136】【F:modules/rank/matchDataStore.js†L124-L204】
 - `stage-room-match`는 참가자 통계와 영웅 요약을 합쳐 `rank_match_roster`를 재구성한다. 이제 `sync_rank_match_roster` RPC가 슬롯 버전·소스를 열에 기록해 `StartClient` 엔진이 번들을 병합할 때 동일 버전인지 재검증할 수 있다.【F:pages/api/rank/stage-room-match.js†L215-L306】【F:components/rank/StartClient/useStartClientEngine.js†L1203-L1258】
+- (신규) `stage-room-match`는 슬롯 템플릿이 포함될 경우 `verify_rank_roles_and_slots` RPC를 먼저 호출해 역할/슬롯 선언을 검증하고, 오류 발생 시 `roles_slots_invalid` 코드를 반환하도록 정비했다.【F:pages/api/rank/stage-room-match.js†L236-L312】【F:docs/sql/verify-rank-roles-and-slots.sql†L1-L111】
 
 #### 예상 문제 & 대응
 - **이미지 업로드 용량 초과/실패**: 사용자마다 업로드 환경이 다름 → 업로드 전 클라이언트에서 용량·확장자 검증, 실패 시 재업로드 힌트 제공, 서버에는 업로드 한도 초과 로그 추가.
@@ -172,6 +173,7 @@
 - (신규) `/api/rank/register-game`이 역할과 슬롯을 함께 저장하도록 전환해, 프론트엔드가 Supabase 테이블에 직접 접근하지 않고도 검증된 슬롯 매핑을 재사용할 수 있게 했다.【F:components/rank/RankNewClient.js†L24-L340】【F:pages/api/rank/register-game.js†L1-L120】【F:lib/rank/registrationValidation.js†L1-L130】
 - (신규) `register_rank_game` RPC SQL을 문서화하고 API가 우선 RPC를 호출하도록 조정해, Supabase가 배포만 끝내면 즉시 RPC 경로로 전환되고, 미배포 환경에서는 기존 테이블 삽입 경로로 자동 폴백한다.【F:pages/api/rank/register-game.js†L1-L83】【F:docs/sql/register-rank-game.sql†L1-L115】【F:docs/supabase-rank-session-sync-guide.md†L7-L22】
 - (신규) 폴백 경로가 슬롯 업서트 대신 삭제→삽입 시퀀스를 사용하도록 조정하고, SQL 번들은 슬롯 중복 키를 명시적 제약으로 처리해 `game_id` 중복 참조 오류를 방지했다.【F:pages/api/rank/register-game.js†L83-L123】【F:docs/sql/register-rank-game.sql†L76-L105】
+- (신규) 등록 API 진입 시 `prompt_set_id` 존재 여부를 Supabase에서 확인하고, `verify_rank_roles_and_slots` RPC로 슬롯·역할 매핑을 재검증해 잘못된 조합을 서버에서 차단한다.【F:pages/api/rank/register-game.js†L36-L83】【F:docs/sql/verify-rank-roles-and-slots.sql†L1-L111】
 - GameSession Store가 `setGameMatchSlotTemplate`·`setGameMatchSessionMeta`로 슬롯 템플릿 버전과 세션 메타를 저장해 `MatchReady`와 `StartClient`가 동일한 슬롯 구성·턴 타이머 기본값을 공유한다.【F:modules/rank/matchDataStore.js†L1-L244】【F:lib/rank/matchFlow.js†L1-L220】【F:components/rank/StartClient/useStartClientEngine.js†L540-L940】
 - `MatchReadyClient`에 턴 제한시간 투표 섹션을 도입해 선택 즉시 GameSession Store 세션 메타에 반영하고, `StartClient` 기본 타이머로 재사용할 수 있게 했다.【F:components/rank/MatchReadyClient.js†L1-L311】【F:modules/rank/matchDataStore.js†L360-L404】
 - (신규) 방 상세 페이지가 로딩한 슬롯 배열을 기반으로 GameSession Store의 `slotTemplate`을 `room-load` 출처로 캐싱해, 매치 스테이징 이전에도 최신 RoleSlotMatrix를 공유한다.【F:pages/rooms/[id].js†L1317-L1371】

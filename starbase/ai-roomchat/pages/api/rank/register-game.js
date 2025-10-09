@@ -1,5 +1,6 @@
 import { supabase as supabaseAnon } from '@/lib/rank/db'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { withTableQuery } from '@/lib/supabaseTables'
 import { normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import { prepareRegistrationPayload } from '@/lib/rank/registrationValidation'
 
@@ -37,11 +38,46 @@ export default async function handler(req, res) {
       realtime_match: realtimeMode,
     }
 
+    const {
+      data: promptSetRows,
+      error: promptSetError,
+    } = await withTableQuery(supabaseAdmin, 'prompt_sets', (from) =>
+      from.select('id').eq('id', sanitizedGame.prompt_set_id).limit(1),
+    )
+
+    if (promptSetError) {
+      console.warn('prompt set lookup failed:', promptSetError?.message || promptSetError)
+      return res.status(500).json({ error: 'prompt_set_lookup_failed' })
+    }
+
+    const promptSetRecord = Array.isArray(promptSetRows) ? promptSetRows[0] : promptSetRows
+    if (!promptSetRecord) {
+      return res.status(400).json({ error: 'invalid_prompt_set' })
+    }
+
     const rpcPayload = {
       p_owner_id: user.id,
       p_game: sanitizedGame,
       p_roles: prepared.roles,
       p_slots: prepared.slots,
+    }
+
+    const { error: verifyError } = await supabaseAdmin.rpc('verify_rank_roles_and_slots', {
+      p_roles: prepared.roles,
+      p_slots: prepared.slots,
+    })
+
+    if (verifyError) {
+      const message = `${verifyError?.message || ''} ${verifyError?.details || ''}`.toLowerCase()
+      const missingVerify =
+        message.includes('verify_rank_roles_and_slots') && message.includes('does not exist')
+      if (!missingVerify) {
+        console.warn('verify_rank_roles_and_slots RPC failed:', verifyError?.message || verifyError)
+        return res.status(400).json({
+          error: 'roles_slots_invalid',
+          detail: verifyError?.details || verifyError?.message || null,
+        })
+      }
     }
 
     const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('register_rank_game', rpcPayload)

@@ -40,7 +40,7 @@ describe('POST /api/rank/stage-room-match', () => {
       auth: { getUser: getUserMock },
     }))
 
-    rpcMock = jest.fn().mockResolvedValue({ data: [{ inserted_count: 1 }], error: null })
+    rpcMock = jest.fn().mockResolvedValue({ data: [], error: null })
     registerSupabaseAdminMock(jest.fn(), rpcMock)
 
     mockWithTableQuery = jest.fn().mockImplementation(async () => ({ data: [], error: null }))
@@ -93,10 +93,9 @@ describe('POST /api/rank/stage-room-match', () => {
     mockWithTableQuery.mockResolvedValueOnce({ data: [], error: null })
     mockWithTableQuery.mockResolvedValueOnce({ data: [], error: null })
 
-    rpcMock.mockResolvedValueOnce({
-      data: null,
-      error: { message: 'slot_version_conflict' },
-    })
+    rpcMock
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'slot_version_conflict' } })
 
     const req = createApiRequest({
       method: 'POST',
@@ -106,7 +105,19 @@ describe('POST /api/rank/stage-room-match', () => {
         room_id: 'room-1',
         game_id: 'game-1',
         roster,
-        slot_template: { version: 123, source: 'client', updated_at: '2025-02-01T10:00:00Z' },
+        slot_template: {
+          version: 123,
+          source: 'client',
+          updated_at: '2025-02-01T10:00:00Z',
+          slots: [
+            { slot_index: 0, role: '딜러', active: true },
+            { slot_index: 1, role: '탱커', active: true },
+          ],
+          roles: [
+            { name: '딜러', slot_count: 1 },
+            { name: '탱커', slot_count: 1 },
+          ],
+        },
       },
     })
     const res = createMockResponse()
@@ -114,7 +125,16 @@ describe('POST /api/rank/stage-room-match', () => {
     await handler(req, res)
 
     expect(getUserMock).toHaveBeenCalledWith('session-token')
-    expect(rpcMock).toHaveBeenCalledWith(
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      1,
+      'verify_rank_roles_and_slots',
+      expect.objectContaining({
+        p_roles: expect.any(Array),
+        p_slots: expect.any(Array),
+      }),
+    )
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      2,
       'sync_rank_match_roster',
       expect.objectContaining({
         p_game_id: 'game-1',
@@ -157,16 +177,18 @@ describe('POST /api/rank/stage-room-match', () => {
         error: null,
       })
 
-    rpcMock.mockResolvedValueOnce({
-      data: [
-        {
-          inserted_count: 1,
-          slot_template_version: 456,
-          slot_template_updated_at: '2025-02-03T12:00:00Z',
-        },
-      ],
-      error: null,
-    })
+    rpcMock
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            inserted_count: 1,
+            slot_template_version: 456,
+            slot_template_updated_at: '2025-02-03T12:00:00Z',
+          },
+        ],
+        error: null,
+      })
 
     const req = createApiRequest({
       method: 'POST',
@@ -179,7 +201,17 @@ describe('POST /api/rank/stage-room-match', () => {
         hero_map: {
           'hero-2': { id: 'hero-2', name: '베타' },
         },
-        slot_template: { version: 987, source: 'room-stage', updated_at: '2025-02-03T12:00:00Z' },
+        slot_template: {
+          version: 987,
+          source: 'room-stage',
+          updated_at: '2025-02-03T12:00:00Z',
+          slots: [
+            { slot_index: 1, role: '서포터', active: true },
+          ],
+          roles: [
+            { name: '서포터', slot_count: 1 },
+          ],
+        },
       },
     })
     const res = createMockResponse()
@@ -189,7 +221,16 @@ describe('POST /api/rank/stage-room-match', () => {
     expect(getUserMock).toHaveBeenCalledWith('bearer-token')
     expect(mockWithTableQuery).toHaveBeenNthCalledWith(1, expect.any(Object), 'rank_participants', expect.any(Function))
     expect(mockWithTableQuery).toHaveBeenNthCalledWith(2, expect.any(Object), 'heroes', expect.any(Function))
-    expect(rpcMock).toHaveBeenCalledWith(
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      1,
+      'verify_rank_roles_and_slots',
+      expect.objectContaining({
+        p_roles: expect.any(Array),
+        p_slots: expect.any(Array),
+      }),
+    )
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      2,
       'sync_rank_match_roster',
       expect.objectContaining({
         p_room_id: 'room-9',
@@ -213,5 +254,48 @@ describe('POST /api/rank/stage-room-match', () => {
       slot_template_version: 456,
       slot_template_updated_at: '2025-02-03T12:00:00Z',
     })
+  })
+
+  it('propagates verification errors from the RPC', async () => {
+    const handler = loadHandler()
+
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'invalid_roles', details: 'slot_count_mismatch:딜러' },
+    })
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer tkn' },
+      body: {
+        match_instance_id: 'match-77',
+        room_id: 'room-22',
+        game_id: 'game-88',
+        roster: [
+          { slotIndex: 0, role: '딜러', ownerId: 'owner-x', heroId: 'hero-x', ready: true },
+        ],
+        slot_template: {
+          version: 1,
+          slots: [
+            { slot_index: 0, role: '딜러', active: true },
+            { slot_index: 1, role: '딜러', active: true },
+          ],
+          roles: [
+            { name: '딜러', slot_count: 1 },
+          ],
+        },
+      },
+    })
+
+    const res = createMockResponse()
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({
+      error: 'roles_slots_invalid',
+      detail: 'slot_count_mismatch:딜러',
+    })
+    expect(rpcMock).toHaveBeenCalledTimes(1)
+    expect(getUserMock).toHaveBeenCalledWith('tkn')
   })
 })

@@ -63,6 +63,12 @@ function toNumericVersion(value, fallback) {
   return Math.trunc(numeric)
 }
 
+function isMissingRpcError(error, name) {
+  if (!error) return false
+  const text = `${error.message || ''} ${error.details || ''}`.toLowerCase()
+  return text.includes(name.toLowerCase()) && text.includes('does not exist')
+}
+
 function toSlotIndex(value, fallback) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric < 0) {
@@ -275,6 +281,33 @@ export default async function handler(req, res) {
 
   const slotTemplatePayload =
     payload.slot_template && typeof payload.slot_template === 'object' ? payload.slot_template : {}
+
+  const verificationRoles = Array.isArray(slotTemplatePayload.roles)
+    ? slotTemplatePayload.roles
+    : Array.isArray(payload.roles)
+    ? payload.roles
+    : []
+  const verificationSlots = Array.isArray(slotTemplatePayload.slots)
+    ? slotTemplatePayload.slots
+    : Array.isArray(slotTemplatePayload.slot_map)
+    ? slotTemplatePayload.slot_map
+    : Array.isArray(payload.slots)
+    ? payload.slots
+    : []
+
+  if (verificationSlots.length) {
+    const { error: verifyError } = await supabaseAdmin.rpc('verify_rank_roles_and_slots', {
+      p_roles: verificationRoles,
+      p_slots: verificationSlots,
+    })
+
+    if (verifyError && !isMissingRpcError(verifyError, 'verify_rank_roles_and_slots')) {
+      return res.status(400).json({
+        error: 'roles_slots_invalid',
+        detail: verifyError.details || verifyError.message || null,
+      })
+    }
+  }
 
   const slotTemplateVersion = toNumericVersion(
     slotTemplatePayload.version ??
