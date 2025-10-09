@@ -1,92 +1,86 @@
 // components/rank/RankNewClient.js
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
-import { withTable } from '../../lib/supabaseTables'
 import { REALTIME_MODES } from '../../lib/rank/realtimeModes'
 import PromptSetPicker from '../../components/rank/PromptSetPicker'
 import SlotMatrix from '../../components/rank/SlotMatrix'
 import RolesEditor from '../../components/rank/RolesEditor'
 import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
 import { uploadGameImage } from '../../lib/rank/storage'
+import { useSharedPromptSetStorage } from '../../hooks/shared/useSharedPromptSetStorage'
+import RegistrationLayout from './registration/RegistrationLayout'
+import RegistrationCard from './registration/RegistrationCard'
+import SidebarCard from './registration/SidebarCard'
+import {
+  brawlModeCopy,
+  imageFieldCopy,
+  registrationOverviewCopy,
+  realtimeModeCopy,
+} from '../../data/rankRegistrationContent'
+import { prepareRegistrationPayload } from '../../lib/rank/registrationValidation'
+import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes'
+
+const MAX_IMAGE_SIZE_BYTES = 3 * 1024 * 1024
+
+const REALTIME_MODE_OPTIONS = (realtimeModeCopy?.options || []).map((option) => ({
+  value: REALTIME_MODES?.[option.value] ?? option.value,
+  label: option.label,
+}))
 
 async function registerGame(payload) {
   const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession()
 
-  if (userError || !user) {
+  const token = session?.access_token
+
+  if (sessionError || !token) {
     return { ok: false, error: '로그인이 필요합니다.' }
   }
 
-  const roleNames = Array.from(
-    new Set(
-      (payload?.roles || [])
-        .map((role) => {
-          if (!role?.name) return ''
-          return String(role.name).trim()
-        })
-        .filter(Boolean),
-    ),
-  )
-
-  const gameInsert = {
-    owner_id: user.id,
-    name: payload?.name || '새 게임',
-    description: payload?.description || '',
-    image_url: payload?.image_url || '',
-    prompt_set_id: payload?.prompt_set_id,
-    realtime_match: payload?.realtime_match || REALTIME_MODES.OFF,
-    rules: payload?.rules ?? null,
-    rules_prefix: payload?.rules_prefix ?? null,
+  const prepared = prepareRegistrationPayload({ ...payload })
+  if (!prepared.ok) {
+    return { ok: false, error: prepared.error }
   }
 
-  if (roleNames.length > 0) {
-    gameInsert.roles = roleNames
-  }
-
-  const { data: game, error: gameError } = await withTable(supabase, 'rank_games', (table) => {
-    const insertPayload = { ...gameInsert }
-    if (table !== 'rank_games') {
-      delete insertPayload.roles
-    }
-    return supabase.from(table).insert(insertPayload).select().single()
-  })
-
-  if (gameError || !game) {
-    return { ok: false, error: gameError?.message || '게임 등록에 실패했습니다.' }
-  }
-
-  if (Array.isArray(payload?.roles) && payload.roles.length) {
-    const rows = payload.roles.map((role) => {
-      const rawMin = Number(role?.score_delta_min)
-      const rawMax = Number(role?.score_delta_max)
-      const min = Number.isFinite(rawMin) ? rawMin : 20
-      const max = Number.isFinite(rawMax) ? rawMax : 40
-
-      const slotCount = Number.isFinite(Number(role?.slot_count)) ? Number(role.slot_count) : 0
-      return {
-        game_id: game.id,
-        name: role?.name ? String(role.name) : '역할',
-        slot_count: Math.max(0, slotCount),
-        active: true,
-        score_delta_min: Math.max(0, min),
-        score_delta_max: Math.max(Math.max(0, min), max),
-      }
+  let response
+  try {
+    response = await fetch('/api/rank/register-game', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        ...prepared.game,
+        roles: prepared.roles,
+        slots: prepared.slots,
+      }),
     })
+  } catch (networkError) {
+    console.warn('register-game request failed:', networkError)
+    return { ok: false, error: '게임 등록 요청을 전송하지 못했습니다.' }
+  }
 
-    const { error: roleError } = await withTable(supabase, 'rank_game_roles', (table) =>
-      supabase.from(table).insert(rows)
-    )
-    if (roleError) {
-      return { ok: false, error: roleError.message || '역할을 저장하지 못했습니다.' }
+  if (!response.ok) {
+    try {
+      const errorPayload = await response.json()
+      return { ok: false, error: errorPayload?.error || '게임 등록에 실패했습니다.' }
+    } catch (error) {
+      return { ok: false, error: '게임 등록에 실패했습니다.' }
     }
   }
 
-  return { ok: true, gameId: game.id }
+  const result = await response.json()
+  if (!result?.ok) {
+    return { ok: false, error: result?.error || '게임 등록에 실패했습니다.' }
+  }
+
+  return { ok: true, gameId: result.gameId }
 }
 
 export default function RankNewClient() {
@@ -97,14 +91,21 @@ export default function RankNewClient() {
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [imgFile, setImgFile] = useState(null)
+  const [imgPreviewUrl, setImgPreviewUrl] = useState('')
+  const [imgError, setImgError] = useState('')
+  const [fileInputKey, setFileInputKey] = useState(0)
   const [setId, setSetId] = useState('')
   const [realtimeMode, setRealtimeMode] = useState(REALTIME_MODES.OFF)
 
   // 역할/슬롯
-  const [roles, setRoles] = useState([
-    { name: '공격', score_delta_min: 20, score_delta_max: 40 },
-    { name: '수비', score_delta_min: 20, score_delta_max: 40 },
-  ])
+  const DEFAULT_ROLES = useMemo(
+    () => [
+      { name: '공격', score_delta_min: 20, score_delta_max: 40 },
+      { name: '수비', score_delta_min: 20, score_delta_max: 40 },
+    ],
+    [],
+  )
+  const [roles, setRoles] = useState(DEFAULT_ROLES)
   const [slotMap, setSlotMap] = useState([])
 
   // 규칙
@@ -119,7 +120,14 @@ export default function RankNewClient() {
   const [brawlEnabled, setBrawlEnabled] = useState(false)
   const [endCondition, setEndCondition] = useState('')
   const [showBrawlHelp, setShowBrawlHelp] = useState(false)
-  const [backgroundImage, setBackgroundImage] = useState('')
+  const [submitStatus, setSubmitStatus] = useState('idle')
+  const [submitError, setSubmitError] = useState('')
+  const [lastCreatedGame, setLastCreatedGame] = useState(null)
+  const {
+    backgroundUrl,
+    promptSetId: sharedPromptSetId,
+    setPromptSetId: setSharedPromptSetId,
+  } = useSharedPromptSetStorage()
 
   useEffect(() => {
     let alive = true
@@ -133,28 +141,67 @@ export default function RankNewClient() {
   }, [router])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const storedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
-      setBackgroundImage(storedBackground)
-    } catch (error) {
-      console.error('Failed to hydrate register background:', error)
+    if (sharedPromptSetId) {
+      setSetId(sharedPromptSetId)
     }
+  }, [sharedPromptSetId])
+
+  useEffect(() => {
+    return () => {
+      if (imgPreviewUrl) {
+        URL.revokeObjectURL(imgPreviewUrl)
+      }
+    }
+  }, [imgPreviewUrl])
+
+  const handlePromptSetChange = useCallback(
+    (value) => {
+      setSetId(value)
+      setSharedPromptSetId(value)
+    },
+    [setSharedPromptSetId],
+  )
+
+  const handleClearImage = useCallback(() => {
+    setImgFile(null)
+    setImgError('')
+    setImgPreviewUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev)
+      }
+      return ''
+    })
+    setFileInputKey((prev) => prev + 1)
   }, [])
+
+  const handleImageChange = useCallback((event) => {
+    const file = event.target.files?.[0] || null
+    handleClearImage()
+
+    if (!file) {
+      return
+    }
+
+    if (!file.type?.startsWith('image/')) {
+      setImgError(imageFieldCopy.typeError)
+      setFileInputKey((prev) => prev + 1)
+      return
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setImgError(imageFieldCopy.sizeError)
+      setFileInputKey((prev) => prev + 1)
+      return
+    }
+
+    const nextUrl = URL.createObjectURL(file)
+    setImgFile(file)
+    setImgPreviewUrl(nextUrl)
+  }, [handleClearImage])
 
   const activeSlots = useMemo(
     () => (slotMap || []).filter(s => s.active && s.role && s.role.trim()),
     [slotMap]
-  )
-
-  const registerChecklist = useMemo(
-    () => [
-      '대표 이미지와 설명을 준비했나요?',
-      '실시간, 혹은 싱글 플레이 여부를 생각했나요?',
-      '프롬프트 세트를 충분히 준비했나요?',
-      '역할 이름을 헷갈리진 않았나요?',
-    ],
-    [],
   )
 
   const handleToggleBrawl = () => {
@@ -168,10 +215,41 @@ export default function RankNewClient() {
     })
   }
 
+  const resetForm = useCallback(() => {
+    setName('')
+    setDesc('')
+    handleClearImage()
+    setSetId('')
+    setSharedPromptSetId('')
+    setRealtimeMode(REALTIME_MODES.OFF)
+    setRoles(DEFAULT_ROLES)
+    setSlotMap([])
+    setRules({
+      nerf_insight: false,
+      ban_kindness: false,
+      nerf_peace: false,
+      nerf_ultimate_injection: true,
+      fair_power_balance: true,
+      char_limit: 0,
+    })
+    setBrawlEnabled(false)
+    setEndCondition('')
+    setShowBrawlHelp(false)
+    setSubmitStatus('idle')
+    setSubmitError('')
+  }, [DEFAULT_ROLES, handleClearImage, setSharedPromptSetId])
+
   async function onSubmit() {
+    if (submitStatus === 'submitting') {
+      return
+    }
     if (!user) return alert('로그인이 필요합니다.')
     if (!setId) return alert('프롬프트 세트를 선택하세요.')
     if (activeSlots.length === 0) return alert('최소 1개의 슬롯을 활성화하고 역할을 지정하세요.')
+    if (imgError) return alert(imgError)
+
+    setSubmitStatus('submitting')
+    setSubmitError('')
 
     let image_url = ''
     if (imgFile) {
@@ -184,6 +262,9 @@ export default function RankNewClient() {
     }
 
     const trimmedEndCondition = endCondition.trim()
+    if (brawlEnabled && !trimmedEndCondition) {
+      return alert('난입 허용 시 종료 조건 변수를 입력해야 합니다.')
+    }
     const compiledRules = {
       ...rules,
       brawl_rule: brawlEnabled ? 'allow-brawl' : 'banish-on-loss',
@@ -221,54 +302,36 @@ export default function RankNewClient() {
       rules: compiledRules,
       rules_prefix: buildRulesPrefix(compiledRules),
       realtime_match: realtimeMode,
+      slots: slotMap,
     })
 
     if (!res.ok) {
-      return alert('게임 등록 실패: ' + (res.error || 'unknown'))
+      setSubmitStatus('idle')
+      setSubmitError(res.error || '게임 등록에 실패했습니다.')
+      return
     }
 
     const gameId = res.gameId
-    const payload = activeSlots.map(s => ({
-      game_id: gameId, slot_index: s.slot_index, role: s.role, active: true,
-    }))
-    const { error: slotError } = await withTable(supabase, 'rank_game_slots', (table) =>
-      supabase.from(table).upsert(payload, { onConflict: 'game_id,slot_index' })
-    )
-
-    if (slotError) {
-      return alert('슬롯 저장 실패: ' + (slotError.message || slotError))
-    }
-
-    alert('등록 완료')
-    router.replace(`/rank/${gameId}`)
+    const createdAt = new Date().toISOString()
+    setLastCreatedGame({
+      id: gameId,
+      name: name || '새 게임',
+      realtimeMode,
+      createdAt,
+    })
+    setSubmitStatus('success')
   }
 
-  const pageStyle = backgroundImage
-    ? {
-        minHeight: '100vh',
-        backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.96) 100%), url(${backgroundImage})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed',
-        display: 'flex',
-        flexDirection: 'column',
-      }
-    : {
-        minHeight: '100vh',
-        background: 'linear-gradient(180deg, #0f172a 0%, #1f2937 28%, #0f172a 100%)',
-        display: 'flex',
-        flexDirection: 'column',
-      }
-
-  const cardStyle = {
-    background: 'rgba(15,23,42,0.78)',
-    borderRadius: 24,
-    padding: '24px 28px',
-    boxShadow: '0 32px 68px -48px rgba(15, 23, 42, 0.8)',
-    color: '#e2e8f0',
-    display: 'grid',
-    gap: 18,
+  const inputStyle = {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.55)',
+    color: '#f8fafc',
   }
+
+  const labelStyle = { display: 'grid', gap: 6, fontSize: 13 }
 
   const togglePillStyle = (active) => ({
     padding: '8px 18px',
@@ -281,283 +344,400 @@ export default function RankNewClient() {
     cursor: 'pointer',
   })
 
-  const inputStyle = {
-    width: '100%',
-    padding: '10px 12px',
-    borderRadius: 12,
-    border: '1px solid rgba(148,163,184,0.45)',
-    background: 'rgba(15,23,42,0.55)',
-    color: '#f8fafc',
+  const helperTextStyle = { fontSize: 12, color: '#94a3b8' }
+
+  const moduleShellStyle = {
+    background: 'rgba(15,23,42,0.45)',
+    borderRadius: 16,
+    padding: '12px 14px',
   }
 
-  const labelStyle = { display: 'grid', gap: 6, fontSize: 13 }
-  const infoTextStyle = { margin: 0, fontSize: 14, lineHeight: 1.6, color: '#cbd5f5' }
-  const overviewColumns = {
-    display: 'grid',
-    gap: 16,
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+  const sidebarCards = [
+    <SidebarCard key="overview-checklist" title={registrationOverviewCopy.checklist.title}>
+      <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, color: '#cbd5f5' }}>
+        {registrationOverviewCopy.checklist.items.map((item) => (
+          <li key={item.id}>{item.text}</li>
+        ))}
+      </ul>
+    </SidebarCard>,
+    <SidebarCard key="overview-guide" title={registrationOverviewCopy.guide.title}>
+      <p style={{ margin: 0, color: '#cbd5f5' }}>{registrationOverviewCopy.guide.description}</p>
+    </SidebarCard>,
+    <SidebarCard key="realtime-helper" title={realtimeModeCopy.label}>
+      <p style={{ margin: 0, color: '#bfdbfe' }}>{realtimeModeCopy.helper}</p>
+    </SidebarCard>,
+  ]
+
+  const renderSuccessCard = () => {
+    if (!lastCreatedGame) return null
+
+    const { id: gameId, name: gameName, realtimeMode: createdRealtimeMode, createdAt } =
+      lastCreatedGame
+
+    const summaryLines = [
+      `${gameName} (ID: ${gameId})`,
+      createdRealtimeMode === REALTIME_MODES.OFF
+        ? '비실시간 옵션 · 필요 시 자동 충원 사용'
+        : '실시간 옵션 · 매칭 대기열로 바로 연결',
+    ]
+
+    const handleOpenHub = () => {
+      router.push(`/rank/${gameId}`)
+    }
+
+    const handleOpenMatchReady = () => {
+      router.push(`/rank/${gameId}/match-ready?mode=${MATCH_MODE_KEYS.RANK_SHARED}`)
+    }
+
+    const handleOpenSimulator = () => {
+      router.push(`/rank/${gameId}/manual-console`)
+    }
+
+    const handleRegisterAnother = () => {
+      setLastCreatedGame(null)
+      resetForm()
+    }
+
+    return (
+      <RegistrationCard
+        key="registration-success"
+        title="등록이 완료되었습니다"
+        description={`테스트 전투나 매칭 준비를 바로 진행할 수 있습니다. (${new Date(
+          createdAt,
+        ).toLocaleTimeString()})`}
+      >
+        <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4, color: '#cbd5f5' }}>
+          {summaryLines.map((line, index) => (
+            <li key={`${line}-${index}`}>{line}</li>
+          ))}
+        </ul>
+        <div
+          style={{
+            marginTop: 18,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleOpenHub}
+            style={{
+              padding: '10px 18px',
+              borderRadius: 999,
+              border: 'none',
+              background: 'rgba(59,130,246,0.18)',
+              color: '#dbeafe',
+              fontWeight: 700,
+            }}
+          >
+            허브에서 게임 열기
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenMatchReady}
+            style={{
+              padding: '10px 18px',
+              borderRadius: 999,
+              border: 'none',
+              background: 'rgba(34,197,94,0.18)',
+              color: '#bbf7d0',
+              fontWeight: 700,
+            }}
+          >
+            매치 준비 화면 이동
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenSimulator}
+            style={{
+              padding: '10px 18px',
+              borderRadius: 999,
+              border: 'none',
+              background: 'rgba(251,191,36,0.18)',
+              color: '#fef3c7',
+              fontWeight: 700,
+            }}
+          >
+            매치 시뮬레이터 열기
+          </button>
+          <button
+            type="button"
+            onClick={handleRegisterAnother}
+            style={{
+              padding: '10px 18px',
+              borderRadius: 999,
+              border: '1px solid rgba(148,163,184,0.45)',
+              background: 'transparent',
+              color: '#cbd5f5',
+              fontWeight: 600,
+            }}
+          >
+            새 게임 계속 등록
+          </button>
+        </div>
+      </RegistrationCard>
+    )
   }
 
   return (
-    <div style={pageStyle}>
-      <div
-        style={{
-          flex: '1 1 auto',
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          padding: '32px 16px 180px',
-          boxSizing: 'border-box',
-        }}
-      >
+    <RegistrationLayout
+      backgroundImage={backgroundUrl}
+      title="게임 등록"
+      subtitle="역할과 슬롯, 규칙을 채운 뒤 등록을 완료하세요."
+      onBack={() => router.back()}
+      sidebar={sidebarCards}
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={onSubmit}
+            style={{
+              padding: '12px 20px',
+              borderRadius: 999,
+              border: 'none',
+              background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
+              color: '#fff',
+              fontWeight: 700,
+              boxShadow: '0 24px 60px -32px rgba(37, 99, 235, 0.65)',
+            }}
+            disabled={submitStatus === 'submitting'}
+          >
+            {submitStatus === 'submitting' ? '등록 중…' : '등록'}
+          </button>
+        </div>
+      }
+    >
+      {submitError ? (
         <div
           style={{
-            width: '100%',
-            maxWidth: 1040,
-            display: 'grid',
-            gap: 20,
+            marginBottom: 12,
+            padding: '12px 16px',
+            borderRadius: 12,
+            background: 'rgba(248, 113, 113, 0.12)',
+            color: '#fecaca',
+            fontSize: 13,
           }}
         >
-          <header
+          {submitError}
+        </div>
+      ) : null}
+      {renderSuccessCard()}
+      <RegistrationCard
+        title="기본 정보"
+        description="게임 소개와 대표 이미지를 설정하세요."
+        contentGap={14}
+      >
+        <label style={labelStyle}>
+          <span style={{ color: '#cbd5f5' }}>게임 이름</span>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="예: 별빛 난투 시즌1"
+            style={inputStyle}
+          />
+        </label>
+        <label style={labelStyle}>
+          <span style={{ color: '#cbd5f5' }}>설명</span>
+          <textarea
+            placeholder="게임 소개와 매칭 규칙을 간단히 적어 주세요."
+            rows={3}
+            value={desc}
+            onChange={(event) => setDesc(event.target.value)}
+            style={{ ...inputStyle, resize: 'vertical' }}
+          />
+        </label>
+        <div style={moduleShellStyle}>
+          <PromptSetPicker value={setId} onChange={handlePromptSetChange} />
+        </div>
+        <label style={labelStyle}>
+          <span style={{ color: '#cbd5f5' }}>{imageFieldCopy.label}</span>
+          <input
+            type="file"
+            accept="image/*"
+            key={fileInputKey}
+            onChange={handleImageChange}
+            style={{ padding: '8px 0', color: '#f8fafc' }}
+          />
+          <span style={helperTextStyle}>{imageFieldCopy.sizeLimitNotice}</span>
+          {imgError ? (
+            <span style={{ ...helperTextStyle, color: '#fca5a5' }}>{imgError}</span>
+          ) : null}
+          {imgFile ? (
+            <span style={helperTextStyle}>{imgFile.name}</span>
+          ) : (
+            <span style={helperTextStyle}>{imageFieldCopy.fallback}</span>
+          )}
+          {imgPreviewUrl ? (
+            <div
+              style={{
+                display: 'grid',
+                gap: 8,
+                background: 'rgba(15,23,42,0.45)',
+                borderRadius: 12,
+                padding: 12,
+                border: '1px solid rgba(148,163,184,0.35)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>
+                  {imageFieldCopy.previewLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearImage}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#cbd5f5',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  제거
+                </button>
+              </div>
+              <img
+                src={imgPreviewUrl}
+                alt="선택한 표지 이미지 미리보기"
+                style={{
+                  width: '100%',
+                  maxHeight: 200,
+                  objectFit: 'cover',
+                  borderRadius: 10,
+                }}
+              />
+            </div>
+          ) : null}
+        </label>
+      </RegistrationCard>
+
+      <RegistrationCard
+        title="모드 설정"
+        description="실시간 여부와 난입 조건을 구성합니다."
+        contentGap={16}
+      >
+        <label style={labelStyle}>
+          <span style={{ color: '#cbd5f5' }}>{realtimeModeCopy.label}</span>
+          <select
+            value={realtimeMode}
+            onChange={(event) => setRealtimeMode(event.target.value)}
+            style={inputStyle}
+          >
+            {REALTIME_MODE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div
+          style={{
+            display: 'grid',
+            gap: 10,
+            padding: '16px 18px',
+            borderRadius: 18,
+            border: '1px solid rgba(96,165,250,0.35)',
+            background: 'rgba(30,64,175,0.28)',
+            boxShadow: '0 16px 36px -28px rgba(37, 99, 235, 0.65)',
+          }}
+        >
+          <div
             style={{
               display: 'flex',
-              alignItems: 'center',
               justifyContent: 'space-between',
+              alignItems: 'center',
               gap: 12,
               flexWrap: 'wrap',
-              color: '#f8fafc',
             }}
           >
-            <h2 style={{ margin: 0, fontSize: 28 }}>게임 등록</h2>
-            <button
-              onClick={() => router.back()}
-              style={{
-                padding: '8px 14px',
-                borderRadius: 999,
-                border: '1px solid rgba(148,163,184,0.45)',
-                background: 'rgba(15,23,42,0.55)',
-                color: '#e2e8f0',
-                fontWeight: 600,
-              }}
-            >
-              ← 뒤로
-            </button>
-          </header>
-
-          <section style={cardStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-              <div style={{ display: 'grid', gap: 6 }}>
-                <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>등록 개요</p>
-                <p style={infoTextStyle}>
-                  아래 카드에서 슬롯, 규칙, 모드를 채워 넣으세요. 모든 항목은 언제든지 수정할 수 있습니다.
-                </p>
-              </div>
+            <div style={{ display: 'grid', gap: 4, minWidth: 240 }}>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>{brawlModeCopy.title}</p>
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>{brawlModeCopy.summary}</p>
             </div>
-            <div style={overviewColumns}>
-              <div style={{ display: 'grid', gap: 8, background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '16px 18px' }}>
-                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>등록 체크리스트</p>
-                <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, fontSize: 13, color: '#cbd5f5' }}>
-                  {registerChecklist.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-              <div style={{ display: 'grid', gap: 10, background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '16px 18px' }}>
-                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>등록 가이드</p>
-                <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
-                  게임 소개 자료와 룰 구성을 마쳤다면 하단 카드에서 역할·슬롯·모드를 채운 뒤 등록 버튼을 눌러 주세요. 제작 중인 세트는 Maker에서,
-                  캐릭터 정보는 로스터에서 언제든 보완할 수 있습니다.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section style={cardStyle}>
-            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>역할 정의</p>
-            <p style={infoTextStyle}>게임에서 사용할 역할과 기본 점수 범위를 정리하세요.</p>
-            <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
-              <RolesEditor roles={roles} onChange={setRoles} />
-            </div>
-          </section>
-
-          <section style={cardStyle}>
-            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>기본 정보</p>
-            <div style={{ display: 'grid', gap: 12 }}>
-              <label style={labelStyle}>
-                <span style={{ color: '#cbd5f5' }}>게임 이름</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 별빛 난투 시즌1" style={inputStyle} />
-              </label>
-              <label style={labelStyle}>
-                <span style={{ color: '#cbd5f5' }}>설명</span>
-                <textarea
-                  placeholder="게임 소개와 매칭 규칙을 간단히 적어 주세요."
-                  rows={3}
-                  value={desc}
-                  onChange={(e) => setDesc(e.target.value)}
-                  style={{ ...inputStyle, resize: 'vertical' }}
-                />
-              </label>
-              <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
-                <PromptSetPicker value={setId} onChange={setSetId} />
-              </div>
-              <label style={labelStyle}>
-                <span style={{ color: '#cbd5f5' }}>실시간 매칭 모드</span>
-                <select
-                  value={realtimeMode}
-                  onChange={(event) => setRealtimeMode(event.target.value)}
-                  style={inputStyle}
-                >
-                  <option value={REALTIME_MODES.OFF}>비실시간 (대기열 진행)</option>
-                  <option value={REALTIME_MODES.STANDARD}>실시간 (표준)</option>
-                  <option value={REALTIME_MODES.PULSE}>Pulse 실시간 (역할 제한)</option>
-                </select>
-                <span style={{ color: '#94a3b8', fontSize: 12 }}>
-                  Pulse 실시간은 방장과 같은 역할군에 동시에 참여할 수 있는 인원을 제한합니다.
-                </span>
-              </label>
-              <label style={labelStyle}>
-                <span style={{ color: '#cbd5f5' }}>표지 이미지</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => setImgFile(event.target.files?.[0] || null)}
-                  style={{
-                    padding: '8px 0',
-                    color: '#f8fafc',
-                  }}
-                />
-                {imgFile ? (
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{imgFile.name}</span>
-                ) : (
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>이미지를 선택하지 않으면 기본 배경이 사용됩니다.</span>
-                )}
-              </label>
-            </div>
-          </section>
-
-          <section style={cardStyle}>
-            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>슬롯 매핑</p>
-            <p style={infoTextStyle}>역할과 슬롯을 연결해 실제 매칭 시 사용할 구성을 지정하세요.</p>
-            <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
-              <SlotMatrix value={slotMap} onChange={setSlotMap} roleOptions={roles.map((role) => role.name)} />
-            </div>
-          </section>
-
-          <section style={cardStyle}>
-            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>체크리스트 · 세부 규칙</p>
-            <div style={{ display: 'grid', gap: 12 }}>
-              <div
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setShowBrawlHelp((prev) => !prev)}
                 style={{
-                  display: 'grid',
-                  gap: 10,
-                  padding: '16px 18px',
-                  borderRadius: 18,
-                  border: '1px solid rgba(96,165,250,0.35)',
-                  background: 'rgba(30,64,175,0.28)',
-                  boxShadow: '0 16px 36px -28px rgba(37, 99, 235, 0.65)',
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  border: '1px solid rgba(148,163,184,0.45)',
+                  background: 'rgba(15,23,42,0.55)',
+                  color: '#f8fafc',
+                  fontWeight: 700,
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ display: 'grid', gap: 4, minWidth: 240 }}>
-                    <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>난입 허용</p>
-                    <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>
-                      해당 옵션에 체크하면 전투 중 패배한 인원을 대체해 같은 역할군의 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowBrawlHelp((prev) => !prev)}
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: '50%',
-                        border: '1px solid rgba(148,163,184,0.45)',
-                        background: 'rgba(15,23,42,0.55)',
-                        color: '#f8fafc',
-                        fontWeight: 700,
-                      }}
-                    >
-                      ?
-                    </button>
-                    <button type="button" style={togglePillStyle(brawlEnabled)} onClick={handleToggleBrawl}>
-                      {brawlEnabled ? 'ON' : 'OFF'}
-                    </button>
-                  </div>
-                </div>
-                {showBrawlHelp ? (
-                  <div
-                    style={{
-                      background: 'rgba(15,23,42,0.55)',
-                      borderRadius: 14,
-                      padding: '12px 14px',
-                      fontSize: 13,
-                      lineHeight: 1.6,
-                      color: '#e2e8f0',
-                    }}
-                  >
-                    해당 옵션에 체크하면 전투 중 패배한 인원을 대체해 같은 역할군의 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
-                  </div>
-                ) : null}
-                {brawlEnabled ? (
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    <label style={labelStyle}>
-                      <span style={{ color: '#dbeafe' }}>게임 종료 조건 변수</span>
-                      <input
-                        type="text"
-                        value={endCondition}
-                        onChange={(event) => setEndCondition(event.target.value)}
-                        placeholder="예: remainingTeams <= 1"
-                        style={inputStyle}
-                      />
-                      <span style={{ fontSize: 12, color: '#bfdbfe' }}>
-                        등록 폼의 끝에서 두 번째 줄에 위치한 변수 칸과 연결됩니다. 조건을 만족할 때까지 게임은 종료되지 않으며, 종료 시 승리 횟수에 따라 점수가 정산됩니다.
-                      </span>
-                    </label>
-                  </div>
-                ) : (
-                  <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>
-                    난입 허용을 끄면 패배한 참가자는 해당 경기 동안 재참여할 수 없습니다.
-                  </p>
-                )}
-              </div>
-              <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
-                <RulesChecklist value={rules} onChange={setRules} />
-              </div>
+                ?
+              </button>
+              <button type="button" style={togglePillStyle(brawlEnabled)} onClick={handleToggleBrawl}>
+                {brawlEnabled ? 'ON' : 'OFF'}
+              </button>
             </div>
-          </section>
+          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              onClick={onSubmit}
+          {showBrawlHelp ? (
+            <div
               style={{
-                padding: '12px 20px',
-                borderRadius: 999,
-                border: 'none',
-                background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
-                color: '#fff',
-                fontWeight: 700,
-                boxShadow: '0 24px 60px -32px rgba(37, 99, 235, 0.65)',
+                background: 'rgba(15,23,42,0.55)',
+                borderRadius: 14,
+                padding: '12px 14px',
+                fontSize: 13,
+                lineHeight: 1.6,
+                color: '#e2e8f0',
               }}
             >
-              등록
-            </button>
-          </div>
-          <div
-            aria-hidden="true"
-            style={{
-              marginTop: 20,
-              width: '100%',
-              height: 56,
-              borderRadius: 18,
-              border: '1px solid rgba(148, 163, 184, 0.12)',
-              background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.2), rgba(30, 64, 175, 0.08))',
-              backdropFilter: 'blur(6px)',
-              pointerEvents: 'none',
-            }}
-          />
+              {brawlModeCopy.tooltip}
+            </div>
+          ) : null}
+
+          {brawlEnabled ? (
+            <label style={labelStyle}>
+              <span style={{ color: '#dbeafe' }}>{brawlModeCopy.endCondition.label}</span>
+              <input
+                type="text"
+                value={endCondition}
+                onChange={(event) => setEndCondition(event.target.value)}
+                placeholder={brawlModeCopy.endCondition.placeholder}
+                style={inputStyle}
+              />
+              <span style={{ fontSize: 12, color: '#bfdbfe' }}>{brawlModeCopy.endCondition.helper}</span>
+            </label>
+          ) : (
+            <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>{brawlModeCopy.offHint}</p>
+          )}
         </div>
-      </div>
-    </div>
+      </RegistrationCard>
+
+      <RegistrationCard
+        title="역할 정의"
+        description="게임에서 사용할 역할과 점수 범위를 정리하세요."
+      >
+        <div style={moduleShellStyle}>
+          <RolesEditor roles={roles} onChange={setRoles} />
+        </div>
+      </RegistrationCard>
+
+      <RegistrationCard
+        title="슬롯 매핑"
+        description="역할과 슬롯을 연결해 매칭 시나리오를 구성합니다."
+      >
+        <div style={moduleShellStyle}>
+          <SlotMatrix value={slotMap} onChange={setSlotMap} roleOptions={roles.map((role) => role.name)} />
+        </div>
+      </RegistrationCard>
+
+      <RegistrationCard
+        title="체크리스트 · 세부 규칙"
+        description="규칙을 검토하고 세부 설정을 마무리합니다."
+      >
+        <div style={moduleShellStyle}>
+          <RulesChecklist value={rules} onChange={setRules} />
+        </div>
+      </RegistrationCard>
+    </RegistrationLayout>
   )
 }

@@ -7,6 +7,7 @@ import styles from './StartClient.module.css'
 import HeaderControls from './HeaderControls'
 import RosterPanel from './RosterPanel'
 import TurnInfoPanel from './TurnInfoPanel'
+import TurnSummaryPanel from './TurnSummaryPanel'
 import ManualResponsePanel from './ManualResponsePanel'
 import StatusBanner from './StatusBanner'
 import LogsPanel from './LogsPanel'
@@ -15,6 +16,7 @@ import {
   createEmptyMatchFlowState,
   readMatchFlowState,
 } from '../../../lib/rank/matchFlow'
+import { normalizeRoleName } from '../../../lib/rank/roleLayoutLoader'
 import { useStartClientEngine } from './useStartClientEngine'
 
 function buildSessionMeta(state) {
@@ -138,6 +140,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     advanceWithManual,
     turnTimerSeconds,
     timeRemaining,
+    turnDeadline,
     currentActor,
     canSubmitAction,
     sessionInfo,
@@ -145,6 +148,10 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     realtimeEvents,
     dropInSnapshot,
     consensus,
+    lastDropInTurn,
+    turnTimerSnapshot,
+    activeBackdropUrls,
+    activeActorNames,
   } = engine
 
   const sessionMeta = useMemo(() => buildSessionMeta(matchState), [matchState])
@@ -199,14 +206,75 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     return '다른 참가자의 동의를 기다리고 있습니다.'
   }, [consensus?.active, consensus?.viewerEligible, consensus?.count, consensus?.required])
 
+  const asyncFillInfo = matchState?.sessionMeta?.asyncFill || null
+  const isAsyncMode = asyncFillInfo?.mode === 'off'
+  const blindMode = Boolean(matchState?.room?.blindMode)
+  const rosterEntries = Array.isArray(matchState?.roster) ? matchState.roster : []
+  const viewerOwnerId = useMemo(() => {
+    const raw = matchState?.viewer?.ownerId || matchState?.viewer?.viewerId
+    return raw ? String(raw).trim() : ''
+  }, [matchState?.viewer?.ownerId, matchState?.viewer?.viewerId])
+  const hostOwnerId = useMemo(() => {
+    const fromRoom = matchState?.room?.ownerId ? String(matchState.room.ownerId).trim() : ''
+    if (fromRoom) return fromRoom
+    const fromAsync = asyncFillInfo?.hostOwnerId
+    return fromAsync ? String(fromAsync).trim() : ''
+  }, [matchState?.room?.ownerId, asyncFillInfo?.hostOwnerId])
+  const hostRoleName = useMemo(() => {
+    if (typeof asyncFillInfo?.hostRole === 'string' && asyncFillInfo.hostRole.trim()) {
+      return asyncFillInfo.hostRole.trim()
+    }
+    if (!hostOwnerId) return ''
+    const hostEntry = rosterEntries.find((entry) => {
+      if (!entry) return false
+      const ownerId = entry.ownerId != null ? String(entry.ownerId).trim() : ''
+      return ownerId === hostOwnerId
+    })
+    return hostEntry?.role ? String(hostEntry.role).trim() : ''
+  }, [asyncFillInfo?.hostRole, hostOwnerId, rosterEntries])
+  const normalizedHostRole = useMemo(() => normalizeRoleName(hostRoleName), [hostRoleName])
+  const normalizedViewerRole = useMemo(
+    () => normalizeRoleName(matchState?.viewer?.role || ''),
+    [matchState?.viewer?.role],
+  )
+  const restrictedContext = blindMode || isAsyncMode
+  const viewerIsHostOwner = Boolean(hostOwnerId && viewerOwnerId && viewerOwnerId === hostOwnerId)
+  const viewerMatchesHostRole = Boolean(
+    normalizedHostRole && normalizedViewerRole && normalizedHostRole === normalizedViewerRole,
+  )
+  const viewerMaySeeFull = !restrictedContext || viewerIsHostOwner || viewerMatchesHostRole
+  const viewerCanToggleDetails = restrictedContext && (viewerIsHostOwner || viewerMatchesHostRole)
+  const [showRosterDetails, setShowRosterDetails] = useState(() => viewerMaySeeFull)
+
+  useEffect(() => {
+    setShowRosterDetails(viewerMaySeeFull)
+  }, [viewerMaySeeFull, normalizedHostRole, normalizedViewerRole, restrictedContext])
+
   const manualDisabled = preflight || !canSubmitAction
   const manualDisabledReason = preflight
     ? '먼저 게임을 시작해 주세요.'
     : '현재 차례의 플레이어만 응답을 제출할 수 있습니다.'
 
+  const pageStyle = useMemo(() => {
+    const baseGradient =
+      'radial-gradient(circle at top, rgba(16,26,51,0.92) 0%, rgba(4,7,18,0.96) 55%, rgba(2,4,10,1) 100%)'
+    const heroLayers = Array.isArray(activeBackdropUrls)
+      ? activeBackdropUrls
+          .map((url) => (typeof url === 'string' ? url.trim() : ''))
+          .filter(Boolean)
+          .map((url) => `url(${url})`)
+      : []
+    return {
+      backgroundImage: [baseGradient, ...heroLayers].join(', '),
+      backgroundSize: ['cover', ...heroLayers.map(() => 'cover')].join(', '),
+      backgroundPosition: ['center', ...heroLayers.map(() => 'center')].join(', '),
+      backgroundRepeat: ['no-repeat', ...heroLayers.map(() => 'no-repeat')].join(', '),
+    }
+  }, [activeBackdropUrls])
+
   if (!ready) {
     return (
-      <div className={styles.page}>
+      <div className={styles.page} style={pageStyle}>
         <div className={styles.shell}>
           <p className={styles.status}>매칭 정보를 불러오는 중…</p>
         </div>
@@ -216,7 +284,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
 
   if (!gameId || !matchState?.snapshot) {
     return (
-      <div className={styles.page}>
+      <div className={styles.page} style={pageStyle}>
         <div className={styles.shell}>
           <p className={styles.status}>활성화된 매치 정보를 찾지 못했습니다.</p>
           <div className={styles.actionsRow}>
@@ -230,7 +298,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} style={pageStyle}>
       <div className={styles.shell}>
         <HeaderControls
           onBack={handleBackToRoom}
@@ -252,6 +320,65 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
               <StatusBanner key={`${message}-${index}`} message={message} />
             ))}
           </div>
+        ) : null}
+
+        <TurnSummaryPanel
+          sessionMeta={matchState?.sessionMeta || null}
+          turn={turn}
+          turnTimerSeconds={turnTimerSeconds}
+          timeRemaining={timeRemaining}
+          turnDeadline={turnDeadline}
+          turnTimerSnapshot={turnTimerSnapshot}
+          lastDropInTurn={lastDropInTurn}
+        />
+
+        {restrictedContext ? (
+          <section className={styles.visibilitySection}>
+            <div className={styles.visibilityHeader}>
+              <h2 className={styles.sectionTitle}>정보 가시성</h2>
+              {Array.isArray(activeActorNames) && activeActorNames.length ? (
+                <div className={styles.actorBadgeRow}>
+                  {activeActorNames.map((name, index) => (
+                    <span key={`${name}-${index}`} className={styles.actorBadge}>
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <p className={styles.visibilityHint}>
+              블라인드 또는 비실시간 모드에서는 호스트 역할군만 상세한 캐릭터 정보를 확인할 수 있습니다.
+            </p>
+            <div className={styles.visibilityControls}>
+              <button
+                type="button"
+                className={
+                  !showRosterDetails || !viewerCanToggleDetails
+                    ? styles.visibilityButtonActive
+                    : styles.visibilityButton
+                }
+                onClick={() => setShowRosterDetails(false)}
+              >
+                요약 보기
+              </button>
+              <button
+                type="button"
+                className={showRosterDetails ? styles.visibilityButtonActive : styles.visibilityButton}
+                onClick={() => {
+                  if (!viewerMaySeeFull) return
+                  setShowRosterDetails(true)
+                }}
+                disabled={!viewerCanToggleDetails}
+              >
+                상세 보기
+              </button>
+            </div>
+            {!viewerMaySeeFull && (
+              <p className={styles.visibilityNotice}>
+                호스트와 동일한 역할군만 상세 정보를 열람할 수 있습니다.
+              </p>
+            )}
+          </section>
         ) : null}
 
         {sessionMeta.length ? (
@@ -310,6 +437,10 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           participants={participants}
           realtimePresence={realtimePresence}
           dropInSnapshot={dropInSnapshot}
+          showDetails={!restrictedContext || (showRosterDetails && viewerMaySeeFull)}
+          viewerOwnerId={viewerOwnerId}
+          normalizedHostRole={normalizedHostRole}
+          normalizedViewerRole={normalizedViewerRole}
         />
 
         <LogsPanel
