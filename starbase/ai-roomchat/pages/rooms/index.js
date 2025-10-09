@@ -87,6 +87,10 @@ function buildPulseLimitOptions(maxSlots) {
   return Array.from({ length: limit }, (_, index) => index + 1)
 }
 
+const HERO_PARTICIPATION_NOTICE_ID = 'hero-participation-error'
+const HERO_CONTEXT_NOTICE_ID = 'hero-context-error'
+const PARTICIPANT_GAMES_NOTICE_ID = 'participant-games-error'
+
 function parseBrawlRule(raw) {
   if (!raw) return 'banish-on-loss'
   if (typeof raw === 'string') {
@@ -561,6 +565,25 @@ export default function RoomBrowserPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [roomNotices, setRoomNotices] = useState([])
+
+  const upsertRoomNotice = useCallback((nextNotice) => {
+    if (!nextNotice || !nextNotice.id) return
+    setRoomNotices((prev) => {
+      const filtered = prev.filter((notice) => notice.id !== nextNotice.id)
+      return [...filtered, nextNotice]
+    })
+  }, [])
+
+  const clearRoomNotice = useCallback((id) => {
+    if (!id) return
+    setRoomNotices((prev) => prev.filter((notice) => notice.id !== id))
+  }, [])
+
+  const clearRoomNotices = useCallback((ids) => {
+    if (!Array.isArray(ids) || !ids.length) return
+    setRoomNotices((prev) => prev.filter((notice) => !ids.includes(notice.id)))
+  }, [])
   const [lastLoadedAt, setLastLoadedAt] = useState(null)
   const [nextAutoRefreshAt, setNextAutoRefreshAt] = useState(null)
   const [autoRefreshCountdown, setAutoRefreshCountdown] = useState(null)
@@ -870,6 +893,12 @@ export default function RoomBrowserPage() {
   }, [heroId, storedHeroId, viewerHeroProfile?.hero_id])
 
   const loadHeroContext = useCallback(async (targetHeroId) => {
+    clearRoomNotices([
+      HERO_PARTICIPATION_NOTICE_ID,
+      HERO_CONTEXT_NOTICE_ID,
+      PARTICIPANT_GAMES_NOTICE_ID,
+    ])
+
     const normalizedHeroId = typeof targetHeroId === 'string' ? targetHeroId.trim() : ''
 
     if (!normalizedHeroId) {
@@ -957,8 +986,17 @@ export default function RoomBrowserPage() {
       let bundle = null
       if (bundleOutcome.status === 'fulfilled') {
         bundle = bundleOutcome.value
+        clearRoomNotice(HERO_PARTICIPATION_NOTICE_ID)
       } else {
         console.warn('[RoomBrowser] Failed to load hero participation bundle:', bundleOutcome.reason)
+        const retryHeroId = normalizedHeroId
+        upsertRoomNotice({
+          id: HERO_PARTICIPATION_NOTICE_ID,
+          type: 'error',
+          message: '영웅 참여 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
+          actionLabel: '다시 시도',
+          onAction: () => loadHeroContext(retryHeroId),
+        })
       }
 
       const participationsList = Array.isArray(bundle?.participations) ? bundle.participations : []
@@ -1011,13 +1049,30 @@ export default function RoomBrowserPage() {
         const participantResult = participantOutcome.value
         if (participantResult?.error && participantResult.error.code !== 'PGRST116') {
           console.warn('[RoomBrowser] Failed to load rank participant games:', participantResult.error)
+          const retryHeroId = normalizedHeroId
+          upsertRoomNotice({
+            id: PARTICIPANT_GAMES_NOTICE_ID,
+            type: 'error',
+            message: '참여 기록을 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+            actionLabel: '다시 시도',
+            onAction: () => loadHeroContext(retryHeroId),
+          })
         } else if (Array.isArray(participantResult?.data)) {
           rankParticipantGames = participantResult.data
             .map((row) => row?.game_id)
             .filter((gameId) => typeof gameId === 'string' && gameId.trim() !== '')
+          clearRoomNotice(PARTICIPANT_GAMES_NOTICE_ID)
         }
       } else {
         console.warn('[RoomBrowser] Failed to query rank participant games:', participantOutcome.reason)
+        const retryHeroId = normalizedHeroId
+        upsertRoomNotice({
+          id: PARTICIPANT_GAMES_NOTICE_ID,
+          type: 'error',
+          message: '참여 기록을 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+          actionLabel: '다시 시도',
+          onAction: () => loadHeroContext(retryHeroId),
+        })
       }
 
       const missingGameIds = Array.from(new Set(rankParticipantGames)).filter(
@@ -1141,6 +1196,16 @@ export default function RoomBrowserPage() {
         setHeroSummary({ heroName: fallbackName, ownerId: fallbackOwner })
         setParticipations([])
         setHeroRatings({})
+        const retryHeroId = normalizedHeroId || (typeof targetHeroId === 'string' ? targetHeroId : '')
+        if (retryHeroId) {
+          upsertRoomNotice({
+            id: HERO_CONTEXT_NOTICE_ID,
+            type: 'error',
+            message: '영웅 정보를 불러오는 중 오류가 발생했습니다. 다시 시도해주세요.',
+            actionLabel: '다시 시도',
+            onAction: () => loadHeroContext(retryHeroId),
+          })
+        }
       }
     } finally {
       if (mountedRef.current) {
@@ -1156,6 +1221,9 @@ export default function RoomBrowserPage() {
     viewerHeroSeed?.name,
     viewerHeroSeed?.owner_id,
     viewerUserId,
+    clearRoomNotice,
+    clearRoomNotices,
+    upsertRoomNotice,
   ])
 
   useEffect(() => {
@@ -2744,6 +2812,7 @@ export default function RoomBrowserPage() {
           effectiveHeroId={effectiveHeroId}
           heroRatingForSelection={heroRatingForSelection}
           autoRefreshCountdown={autoRefreshCountdown}
+          notices={roomNotices}
           formatRelativeTime={formatRelativeTime}
         />
       </div>

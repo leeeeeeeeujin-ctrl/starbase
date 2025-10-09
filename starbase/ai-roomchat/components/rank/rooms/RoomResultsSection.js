@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { isRealtimeEnabled } from '@/lib/rank/realtimeModes'
+import { RoomRefreshIndicator } from './RoomRefreshIndicator'
 
 const styles = {
   card: {
@@ -42,40 +43,38 @@ const styles = {
   diagnosticsItem: {
     margin: 0,
   },
-  statusRow: {
+  noticeList: {
+    display: 'grid',
+    gap: 10,
+  },
+  noticeCard: (type) => ({
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 12,
-  },
-  statusBadge: (active) => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '6px 12px',
+    borderRadius: 16,
+    padding: '12px 16px',
+    border:
+      type === 'error'
+        ? '1px solid rgba(248, 113, 113, 0.5)'
+        : '1px solid rgba(148, 163, 184, 0.35)',
+    background:
+      type === 'error'
+        ? 'rgba(248, 113, 113, 0.08)'
+        : 'rgba(148, 163, 184, 0.12)',
+    color: type === 'error' ? '#fecaca' : '#cbd5f5',
+    fontSize: 13,
+    lineHeight: 1.6,
+  }),
+  noticeAction: {
+    padding: '8px 14px',
     borderRadius: 999,
-    border: active
-      ? '1px solid rgba(45, 212, 191, 0.45)'
-      : '1px solid rgba(148, 163, 184, 0.35)',
-    background: active ? 'rgba(16, 185, 129, 0.22)' : 'rgba(15, 23, 42, 0.5)',
-    color: active ? '#99f6e4' : '#cbd5f5',
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(15, 23, 42, 0.65)',
+    color: '#e2e8f0',
     fontWeight: 600,
-    fontSize: 12,
-  }),
-  statusDot: (active) => ({
-    width: 10,
-    height: 10,
-    borderRadius: '50%',
-    background: active ? '#34d399' : '#64748b',
-    boxShadow: active ? '0 0 8px rgba(52, 211, 153, 0.6)' : 'none',
-  }),
-  statusMeta: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    fontSize: 12,
-    color: '#94a3b8',
+    cursor: 'pointer',
   },
   loading: {
     textAlign: 'center',
@@ -180,6 +179,7 @@ function resolveStatusLabel(status) {
  * @param {string} [props.effectiveHeroId]
  * @param {number | null} [props.heroRatingForSelection]
  * @param {number | null} [props.autoRefreshCountdown]
+ * @param {Array<{ id: string, type?: 'info' | 'error', message: string, actionLabel?: string, onAction?: () => void }>} [props.notices]
  * @param {(date: string | number | Date) => string} props.formatRelativeTime
  */
 export function RoomResultsSection({
@@ -191,28 +191,37 @@ export function RoomResultsSection({
   effectiveHeroId,
   heroRatingForSelection,
   autoRefreshCountdown,
+  notices,
   formatRelativeTime,
 }) {
   const hasRealtimeRooms = filteredRooms.some((room) => isRealtimeEnabled(room.realtimeMode))
-  const countdownLabel =
-    typeof autoRefreshCountdown === 'number'
-      ? autoRefreshCountdown <= 0
-        ? '곧 자동 새로고침 예정'
-        : `다음 자동 새로고침까지 약 ${autoRefreshCountdown}초`
-      : '자동 새로고침 대기 중'
 
   return (
     <section style={styles.card}>
       <h2 style={styles.title}>검색 결과</h2>
-      <div style={styles.statusRow}>
-        <span style={styles.statusBadge(hasRealtimeRooms)}>
-          <span aria-hidden="true" style={styles.statusDot(hasRealtimeRooms)} />
-          {hasRealtimeRooms ? '실시간 방 모니터링 중' : '표준 모드 모니터링'}
-        </span>
-        <div style={styles.statusMeta}>
-          {refreshing ? <span>새로고침 중...</span> : <span>{countdownLabel}</span>}
+      {Array.isArray(notices) && notices.length ? (
+        <div style={styles.noticeList}>
+          {notices.map((notice) => (
+            <div
+              key={notice.id}
+              role={notice.type === 'error' ? 'alert' : undefined}
+              style={styles.noticeCard(notice.type || 'info')}
+            >
+              <span>{notice.message}</span>
+              {notice.actionLabel && typeof notice.onAction === 'function' ? (
+                <button type="button" style={styles.noticeAction} onClick={notice.onAction}>
+                  {notice.actionLabel}
+                </button>
+              ) : null}
+            </div>
+          ))}
         </div>
-      </div>
+      ) : null}
+      <RoomRefreshIndicator
+        hasRealtimeRooms={hasRealtimeRooms}
+        refreshing={refreshing}
+        autoRefreshCountdown={autoRefreshCountdown}
+      />
       {filterMessages.length ? (
         <div style={styles.diagnosticsCard}>
           <p style={styles.diagnosticsIntro}>
@@ -317,6 +326,7 @@ RoomResultsSection.defaultProps = {
   effectiveHeroId: '',
   heroRatingForSelection: null,
   autoRefreshCountdown: null,
+  notices: [],
 }
 
 export default RoomResultsSection
