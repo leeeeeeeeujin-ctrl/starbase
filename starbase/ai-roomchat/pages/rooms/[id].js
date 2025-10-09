@@ -534,6 +534,11 @@ const styles = {
     fontSize: 13,
     color: '#fca5a5',
   },
+  asyncStartHint: {
+    margin: '4px 0 0',
+    fontSize: 13,
+    color: '#bae6fd',
+  },
   loadingState: {
     textAlign: 'center',
     padding: '80px 20px',
@@ -813,6 +818,7 @@ export default function RoomDetailPage() {
   const [actionError, setActionError] = useState('')
   const [joinPending, setJoinPending] = useState(false)
   const [leavePending, setLeavePending] = useState(false)
+  const [manualStagePending, setManualStagePending] = useState(false)
   const [creationFeedback, setCreationFeedback] = useState(null)
   const [deletePending, setDeletePending] = useState(false)
   const [activeTab, setActiveTab] = useState('participants')
@@ -2026,6 +2032,161 @@ export default function RoomDetailPage() {
     !hasActiveApiKey ||
     (((room?.status === 'in_progress' || room?.status === 'battle') && !room?.dropInEnabled))
 
+  const stageMatch = useCallback(
+    async ({ allowPartialStart = false } = {}) => {
+      if (typeof window === 'undefined') {
+        throw new Error('stage_unavailable')
+      }
+      if (!room?.gameId) {
+        throw new Error('missing_game_id')
+      }
+      if (!matchReadyMode) {
+        throw new Error('missing_match_mode')
+      }
+      if (!Array.isArray(slots) || !slots.length) {
+        throw new Error('missing_slots')
+      }
+      if (!allowPartialStart) {
+        if (!occupancy.total || occupancy.filled !== occupancy.total) {
+          throw new Error('slots_incomplete')
+        }
+      }
+      if (!joined) {
+        throw new Error('not_joined')
+      }
+
+      const payload = buildMatchTransferPayload(room, slots)
+      if (!payload) {
+        throw new Error('stage_payload_unavailable')
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        throw sessionError
+      }
+      const token = sessionData?.session?.access_token
+      if (!token) {
+        throw new Error('세션 토큰을 확인할 수 없습니다.')
+      }
+
+      const stageResponse = await fetch('/api/rank/stage-room-match', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          match_instance_id: payload.matchInstanceId,
+          room_id: room.id,
+          game_id: room.gameId,
+          roster: payload.roster,
+          hero_map: payload.heroMap,
+          slot_template: payload.slotTemplate,
+        }),
+      })
+
+      if (!stageResponse.ok) {
+        let detail = null
+        try {
+          detail = await stageResponse.json()
+        } catch (parseError) {
+          detail = null
+        }
+        const message = detail?.error || 'match_roster_stage_failed'
+        throw new Error(message)
+      }
+
+      const viewerOwnerKey = viewer.ownerId != null ? String(viewer.ownerId) : ''
+      const viewerUserKey = viewer.userId != null ? String(viewer.userId) : viewerOwnerKey
+      const heroOptions = Array.from(
+        new Set(payload.roster.map((entry) => entry.heroId).filter(Boolean)),
+      )
+
+      setGameMatchParticipation(room.gameId, {
+        roster: payload.roster,
+        heroOptions,
+        participantPool: payload.roster,
+        heroMap: payload.heroMap,
+        realtimeMode: room.realtimeMode,
+        hostOwnerId: room.ownerId,
+        hostRoleLimit: room.hostRoleLimit,
+      })
+
+      setGameMatchHeroSelection(room.gameId, {
+        heroId: viewer.heroId || '',
+        viewerId: viewerUserKey,
+        ownerId: viewerOwnerKey || viewerUserKey,
+        role: viewer.role || '',
+        heroMeta: viewer.heroId
+          ? {
+              id: viewer.heroId,
+              name: viewer.heroName || '',
+              role: viewer.role || '',
+              ownerId: viewerOwnerKey || viewerUserKey || null,
+            }
+          : null,
+      })
+
+      const createdAt = payload.match?.roleStatus?.updatedAt || Date.now()
+
+      setGameMatchSnapshot(room.gameId, {
+        match: payload.match,
+        pendingMatch: null,
+        viewerId: viewerUserKey,
+        heroId: viewer.heroId || '',
+        role: viewer.role || '',
+        mode: matchReadyMode || normalizeRoomMode(room.mode),
+        createdAt,
+      })
+
+      setGameMatchSlotTemplate(room.gameId, {
+        ...(payload.slotTemplate || {}),
+        slots: payload.slotTemplate?.slots || payload.slotLayout,
+        roles: payload.slotTemplate?.roles || payload.roles,
+        updatedAt:
+          payload.slotTemplate?.updatedAt ||
+          payload.match?.roleStatus?.updatedAt ||
+          createdAt,
+        version:
+          payload.slotTemplate?.version ||
+          payload.match?.roleStatus?.version ||
+          payload.match?.roleStatus?.updatedAt ||
+          payload.match?.roleStatus?.timestamp ||
+          createdAt,
+        source: payload.slotTemplate?.source || 'room-stage',
+      })
+
+      setGameMatchSessionMeta(room.gameId, {
+        turnTimer: payload.match?.turnTimer ?? null,
+        dropIn: payload.match?.dropInMeta ?? null,
+        asyncFill: payload.match?.asyncFillMeta ?? null,
+        source: 'room-stage',
+      })
+
+      const nextRoute = {
+        pathname: `/rank/${room.gameId}/match-ready`,
+        query: { mode: matchReadyMode },
+      }
+
+      await router.replace(nextRoute)
+    },
+    [
+      joined,
+      matchReadyMode,
+      occupancy.filled,
+      occupancy.total,
+      room,
+      router,
+      slots,
+      supabase,
+      viewer.heroId,
+      viewer.heroName,
+      viewer.ownerId,
+      viewer.role,
+      viewer.userId,
+    ],
+  )
+
   useEffect(() => {
     if (autoRedirectRef.current) return
     if (typeof window === 'undefined') return
@@ -2035,144 +2196,76 @@ export default function RoomDetailPage() {
     if (!occupancy.total || occupancy.filled !== occupancy.total) return
     if (!joined) return
 
-    const payload = buildMatchTransferPayload(room, slots)
-    if (!payload) return
-
     autoRedirectRef.current = true
 
     ;(async () => {
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-        if (sessionError) {
-          throw sessionError
-        }
-        const token = sessionData?.session?.access_token
-        if (!token) {
-          throw new Error('세션 토큰을 확인할 수 없습니다.')
-        }
-
-        const stageResponse = await fetch('/api/rank/stage-room-match', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            match_instance_id: payload.matchInstanceId,
-            room_id: room.id,
-            game_id: room.gameId,
-            roster: payload.roster,
-            hero_map: payload.heroMap,
-            slot_template: payload.slotTemplate,
-          }),
-        })
-
-        if (!stageResponse.ok) {
-          let detail = null
-          try {
-            detail = await stageResponse.json()
-          } catch (parseError) {
-            detail = null
-          }
-          const message = detail?.error || 'match_roster_stage_failed'
-          throw new Error(message)
-        }
-
-        const viewerOwnerKey = viewer.ownerId != null ? String(viewer.ownerId) : ''
-        const viewerUserKey = viewer.userId != null ? String(viewer.userId) : viewerOwnerKey
-        const heroOptions = Array.from(
-          new Set(payload.roster.map((entry) => entry.heroId).filter(Boolean)),
-        )
-
-        setGameMatchParticipation(room.gameId, {
-          roster: payload.roster,
-          heroOptions,
-          participantPool: payload.roster,
-          heroMap: payload.heroMap,
-          realtimeMode: room.realtimeMode,
-          hostOwnerId: room.ownerId,
-          hostRoleLimit: room.hostRoleLimit,
-        })
-
-        setGameMatchHeroSelection(room.gameId, {
-          heroId: viewer.heroId || '',
-          viewerId: viewerUserKey,
-          ownerId: viewerOwnerKey || viewerUserKey,
-          role: viewer.role || '',
-          heroMeta: viewer.heroId
-            ? {
-                id: viewer.heroId,
-                name: viewer.heroName || '',
-                role: viewer.role || '',
-                ownerId: viewerOwnerKey || viewerUserKey || null,
-              }
-            : null,
-        })
-
-        const createdAt = payload.match?.roleStatus?.updatedAt || Date.now()
-
-        setGameMatchSnapshot(room.gameId, {
-          match: payload.match,
-          pendingMatch: null,
-          viewerId: viewerUserKey,
-          heroId: viewer.heroId || '',
-          role: viewer.role || '',
-          mode: matchReadyMode || normalizeRoomMode(room.mode),
-          createdAt,
-        })
-
-        setGameMatchSlotTemplate(room.gameId, {
-          ...(payload.slotTemplate || {}),
-          slots: payload.slotTemplate?.slots || payload.slotLayout,
-          roles: payload.slotTemplate?.roles || payload.roles,
-          updatedAt:
-            payload.slotTemplate?.updatedAt ||
-            payload.match?.roleStatus?.updatedAt ||
-            createdAt,
-          version:
-            payload.slotTemplate?.version ||
-            payload.match?.roleStatus?.version ||
-            payload.match?.roleStatus?.updatedAt ||
-            payload.match?.roleStatus?.timestamp ||
-            createdAt,
-          source: payload.slotTemplate?.source || 'room-stage',
-        })
-
-        setGameMatchSessionMeta(room.gameId, {
-          turnTimer: payload.match?.turnTimer ?? null,
-          dropIn: payload.match?.dropInMeta ?? null,
-          asyncFill: payload.match?.asyncFillMeta ?? null,
-          source: 'room-stage',
-        })
-
-        const nextRoute = {
-          pathname: `/rank/${room.gameId}/match-ready`,
-          query: { mode: matchReadyMode },
-        }
-
-        router.replace(nextRoute).catch((redirectError) => {
-          console.error('[RoomDetail] Failed to redirect to main game:', redirectError)
-          autoRedirectRef.current = false
-        })
+        await stageMatch({ allowPartialStart: false })
       } catch (stageError) {
         console.error('[RoomDetail] Failed to stage match data before redirect:', stageError)
         autoRedirectRef.current = false
+        if (mountedRef.current) {
+          setActionError(resolveErrorMessage(stageError))
+        }
       }
     })()
   }, [
     joined,
+    matchReadyMode,
     occupancy.filled,
     occupancy.total,
-    room,
-    router,
+    room?.gameId,
     slots,
-    viewer.heroId,
-    viewer.heroName,
-    viewer.ownerId,
-    viewer.role,
-    viewer.userId,
-    matchReadyMode,
+    stageMatch,
   ])
+
+  const handleAsyncStart = useCallback(async () => {
+    if (manualStagePending) return
+    if (!room?.gameId) return
+    if (
+      !isHost ||
+      isRealtimeEnabled(room?.realtimeMode) ||
+      !joined ||
+      !occupancy.total ||
+      occupancy.filled >= occupancy.total
+    ) {
+      return
+    }
+    autoRedirectRef.current = true
+    setActionError('')
+    setManualStagePending(true)
+    try {
+      await stageMatch({ allowPartialStart: true })
+    } catch (startError) {
+      console.error('[RoomDetail] Failed to start match with async fill:', startError)
+      autoRedirectRef.current = false
+      if (mountedRef.current) {
+        setActionError(resolveErrorMessage(startError))
+      }
+    } finally {
+      if (mountedRef.current) {
+        setManualStagePending(false)
+      }
+    }
+  }, [
+    joined,
+    manualStagePending,
+    occupancy.filled,
+    occupancy.total,
+    room?.gameId,
+    room?.realtimeMode,
+    stageMatch,
+    isHost,
+  ])
+
+  const allowAsyncStart =
+    isHost &&
+    !isRealtimeEnabled(room?.realtimeMode) &&
+    joined &&
+    occupancy.total > 0 &&
+    occupancy.filled < occupancy.total
+
+  const asyncStartDisabled = !allowAsyncStart || manualStagePending
 
   return (
     <div style={styles.page}>
@@ -2288,6 +2381,16 @@ export default function RoomDetailPage() {
                 {joinPending ? '참여 중...' : '빈 슬롯 참여'}
               </button>
             )}
+            {allowAsyncStart ? (
+              <button
+                type="button"
+                onClick={handleAsyncStart}
+                style={styles.primaryButton(asyncStartDisabled)}
+                disabled={asyncStartDisabled}
+              >
+                {manualStagePending ? '매치 준비 중...' : '자동 충원으로 시작'}
+              </button>
+            ) : null}
             {isHost ? (
               <button
                 type="button"
@@ -2300,6 +2403,11 @@ export default function RoomDetailPage() {
             ) : null}
           </div>
           {actionError ? <p style={styles.infoText}>{actionError}</p> : null}
+          {allowAsyncStart ? (
+            <p style={styles.asyncStartHint}>
+              부족한 인원은 자동 충원 대기열에서 채워지며 본게임에서만 세부 정보가 공개됩니다.
+            </p>
+          ) : null}
         </header>
 
         <nav style={styles.tabBar}>
