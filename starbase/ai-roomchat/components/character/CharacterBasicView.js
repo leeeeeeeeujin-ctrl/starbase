@@ -8,6 +8,10 @@ import { supabase } from '@/lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 import { sanitizeFileName } from '@/utils/characterAssets'
+import {
+  clearSharedBackgroundUrl,
+  writeSharedBackgroundUrl,
+} from '@/hooks/shared/useSharedPromptSetStorage'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
 const DEFAULT_DESCRIPTION =
@@ -1029,15 +1033,10 @@ export default function CharacterBasicView({ hero }) {
     : pageStyles.base
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      if (currentHero?.background_url) {
-        window.localStorage.setItem('selectedHeroBackgroundUrl', currentHero.background_url)
-      } else {
-        window.localStorage.removeItem('selectedHeroBackgroundUrl')
-      }
-    } catch (storageError) {
-      console.error('Failed to persist hero background:', storageError)
+    if (currentHero?.background_url) {
+      writeSharedBackgroundUrl(currentHero.background_url)
+    } else {
+      clearSharedBackgroundUrl()
     }
   }, [currentHero?.background_url])
 

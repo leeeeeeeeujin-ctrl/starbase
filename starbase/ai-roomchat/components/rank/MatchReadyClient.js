@@ -6,6 +6,51 @@ import { useRouter } from 'next/router'
 import styles from './MatchReadyClient.module.css'
 import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow'
 import StartClient from './StartClient'
+import { setGameMatchSessionMeta } from '../../modules/rank/matchDataStore'
+import {
+  TURN_TIMER_OPTIONS,
+  sanitizeSecondsOption,
+  formatSecondsLabel,
+  sanitizeTurnTimerVote,
+  buildTurnTimerVotePatch,
+} from '../../lib/rank/turnTimerMeta'
+
+function useMatchReadyState(gameId) {
+  const [state, setState] = useState(() => createEmptyMatchFlowState())
+
+  const refresh = useCallback(() => {
+    if (!gameId && gameId !== 0) {
+      const empty = createEmptyMatchFlowState()
+      setState(empty)
+      return empty
+    }
+    const snapshot = readMatchFlowState(gameId)
+    setState(snapshot)
+    return snapshot
+  }, [gameId])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  const allowStart = useMemo(
+    () => Boolean(gameId && state?.snapshot && state?.hasActiveKey),
+    [gameId, state?.snapshot, state?.hasActiveKey],
+  )
+
+  const missingKey = Boolean(state?.snapshot && !state?.hasActiveKey)
+
+  return { state, refresh, allowStart, missingKey }
+}
+
+function getViewerIdentity(state) {
+  const ownerId = state?.viewer?.ownerId ? String(state.viewer.ownerId).trim() : ''
+  if (ownerId) return ownerId
+  const viewerId = state?.viewer?.viewerId ? String(state.viewer.viewerId).trim() : ''
+  if (viewerId) return viewerId
+  const authId = state?.authSnapshot?.userId
+  return authId ? String(authId).trim() : ''
+}
 
 function buildMetaLines(state) {
   const lines = []
@@ -39,10 +84,23 @@ function buildMetaLines(state) {
     lines.push('난입 매치 진행 중')
   }
 
+  const asyncFill = state?.sessionMeta?.asyncFill
+  if (asyncFill?.mode === 'off' && asyncFill?.seatLimit) {
+    const allowed = Number(asyncFill.seatLimit.allowed) || 0
+    const total = Number(asyncFill.seatLimit.total) || 0
+    const queueCount = Array.isArray(asyncFill.fillQueue) ? asyncFill.fillQueue.length : 0
+    const roleLabel = asyncFill.hostRole || '역할 미지정'
+    if (total > 0) {
+      lines.push(
+        `비실시간 충원 · ${roleLabel} 좌석 ${allowed}/${total} · 대기열 ${queueCount}명`,
+      )
+    }
+  }
+
   return lines
 }
 
-function buildRosterDisplay(roster, viewer, blindMode) {
+function buildRosterDisplay(roster, viewer, blindMode, asyncFill) {
   if (!Array.isArray(roster) || roster.length === 0) {
     return [
       {
@@ -54,6 +112,26 @@ function buildRosterDisplay(roster, viewer, blindMode) {
   }
 
   const viewerOwnerId = viewer?.ownerId ? String(viewer.ownerId).trim() : ''
+  const seatIndexes = new Set(
+    Array.isArray(asyncFill?.seatIndexes)
+      ? asyncFill.seatIndexes.map((value) => Number(value)).filter(Number.isFinite)
+      : [],
+  )
+  const overflowIndexes = new Set(
+    Array.isArray(asyncFill?.overflow)
+      ? asyncFill.overflow
+          .map((entry) => Number(entry?.slotIndex))
+          .filter((value) => Number.isFinite(value))
+      : [],
+  )
+  const pendingIndexes = new Set(
+    Array.isArray(asyncFill?.pendingSeatIndexes)
+      ? asyncFill.pendingSeatIndexes
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value))
+      : [],
+  )
+  const hasSeatLimit = seatIndexes.size > 0
 
   return roster.map((entry, index) => {
     const isOccupied = entry.heroId && entry.ownerId
@@ -65,7 +143,19 @@ function buildRosterDisplay(roster, viewer, blindMode) {
       ? '비공개 참가자'
       : entry.heroName || (entry.heroId ? `캐릭터 #${entry.heroId}` : '빈 슬롯')
     const roleLabel = entry.role || '역할 미지정'
-    const readyLabel = isOccupied ? '착석 완료' : '대기'
+    const slotIndex = Number.isFinite(Number(entry.slotIndex))
+      ? Number(entry.slotIndex)
+      : index
+    let readyLabel = isOccupied ? '착석 완료' : '대기'
+
+    if (overflowIndexes.has(slotIndex)) {
+      readyLabel = isOccupied ? '대기열 (자동 충원 대기)' : '대기열 슬롯'
+    } else if (hasSeatLimit && !seatIndexes.has(slotIndex)) {
+      readyLabel = isOccupied ? '예비 슬롯' : '예비 슬롯'
+    } else if (!isOccupied && pendingIndexes.has(slotIndex)) {
+      readyLabel = '자동 충원 예정'
+    }
+
     return {
       key: `${entry.slotId || index}-${entry.heroId || index}`,
       label: `${roleLabel} · ${heroLabel}`,
@@ -76,30 +166,57 @@ function buildRosterDisplay(roster, viewer, blindMode) {
 
 export default function MatchReadyClient({ gameId }) {
   const router = useRouter()
-  const [state, setState] = useState(() => createEmptyMatchFlowState())
+  const { state, refresh, allowStart, missingKey } = useMatchReadyState(gameId)
   const [showGame, setShowGame] = useState(false)
-
-  useEffect(() => {
-    if (!gameId) {
-      setState(createEmptyMatchFlowState())
-      return
-    }
-    setState(readMatchFlowState(gameId))
-  }, [gameId])
+  const [voteNotice, setVoteNotice] = useState('')
 
   const metaLines = useMemo(() => buildMetaLines(state), [state])
+  const asyncFillInfo = useMemo(() => state?.sessionMeta?.asyncFill || null, [state?.sessionMeta?.asyncFill])
   const rosterDisplay = useMemo(
-    () => buildRosterDisplay(state?.roster, state?.viewer, state?.room?.blindMode),
-    [state?.roster, state?.viewer, state?.room?.blindMode],
+    () => buildRosterDisplay(state?.roster, state?.viewer, state?.room?.blindMode, asyncFillInfo),
+    [state?.roster, state?.viewer, state?.room?.blindMode, asyncFillInfo],
+  )
+  const asyncFillSummary = useMemo(() => {
+    if (!asyncFillInfo || asyncFillInfo.mode !== 'off') return null
+    const seatLimit = asyncFillInfo.seatLimit || {}
+    const allowed = Number(seatLimit.allowed) || 0
+    const total = Number(seatLimit.total) || 0
+    const pendingCount = Array.isArray(asyncFillInfo.pendingSeatIndexes)
+      ? asyncFillInfo.pendingSeatIndexes.length
+      : 0
+    const queue = Array.isArray(asyncFillInfo.fillQueue) ? asyncFillInfo.fillQueue : []
+    return {
+      role: asyncFillInfo.hostRole || '역할 미지정',
+      allowed,
+      total,
+      pendingCount,
+      queue,
+    }
+  }, [asyncFillInfo])
+
+  const viewerIdentity = useMemo(() => getViewerIdentity(state), [state])
+
+  const appliedTurnTimerSeconds = useMemo(() => {
+    const metaSeconds = Number(state?.sessionMeta?.turnTimer?.baseSeconds)
+    if (Number.isFinite(metaSeconds) && metaSeconds > 0) {
+      return Math.floor(metaSeconds)
+    }
+    return null
+  }, [state?.sessionMeta?.turnTimer?.baseSeconds])
+
+  const voteSnapshot = useMemo(
+    () => sanitizeTurnTimerVote(state?.sessionMeta?.vote?.turnTimer),
+    [state?.sessionMeta?.vote?.turnTimer],
   )
 
+  const viewerSelection = useMemo(() => {
+    if (!viewerIdentity) return null
+    return sanitizeSecondsOption(voteSnapshot.voters?.[viewerIdentity])
+  }, [viewerIdentity, voteSnapshot.voters])
+
   const handleRefresh = useCallback(() => {
-    if (!gameId) {
-      setState(createEmptyMatchFlowState())
-      return
-    }
-    setState(readMatchFlowState(gameId))
-  }, [gameId])
+    refresh()
+  }, [refresh])
 
   const handleReturnToRoom = useCallback(() => {
     if (state?.room?.id) {
@@ -113,8 +230,6 @@ export default function MatchReadyClient({ gameId }) {
     if (!gameId) return
     setShowGame(true)
   }, [gameId])
-
-  const allowStart = Boolean(gameId && state?.snapshot && state?.hasActiveKey)
 
   useEffect(() => {
     if (showGame) {
@@ -133,7 +248,48 @@ export default function MatchReadyClient({ gameId }) {
     }
   }, [allowStart, showGame])
 
-  const missingKey = state?.snapshot && !state?.hasActiveKey
+  useEffect(() => {
+    if (!voteNotice) return undefined
+    const timer = setTimeout(() => {
+      setVoteNotice('')
+    }, 2800)
+    return () => clearTimeout(timer)
+  }, [voteNotice])
+
+  const handleVoteSelection = useCallback(
+    (seconds) => {
+      const normalized = sanitizeSecondsOption(seconds)
+      if (!normalized || !gameId) return
+
+      const now = Date.now()
+      setGameMatchSessionMeta(gameId, {
+        turnTimer: {
+          baseSeconds: normalized,
+          source: 'match-ready-vote',
+          updatedAt: now,
+        },
+        vote: buildTurnTimerVotePatch(state?.sessionMeta?.vote, normalized, viewerIdentity),
+        source: 'match-ready-client',
+      })
+
+      refresh()
+      setVoteNotice(`${formatSecondsLabel(normalized)} 제한시간이 적용되었습니다.`)
+    },
+    [gameId, refresh, state?.sessionMeta?.vote, viewerIdentity],
+  )
+
+  const voteCounts = useMemo(() => {
+    const entries = Object.entries(voteSnapshot.selections || {})
+      .map(([key, value]) => {
+        const option = sanitizeSecondsOption(key)
+        const count = Number(value)
+        if (!option || !Number.isFinite(count) || count <= 0) return null
+        return { option, count: Math.floor(count) }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.count - a.count || a.option - b.option)
+    return entries
+  }, [voteSnapshot.selections])
 
   return (
     <div className={styles.page}>
@@ -142,7 +298,9 @@ export default function MatchReadyClient({ gameId }) {
           <div className={styles.headerText}>
             <h1 className={styles.title}>{state?.room?.mode ? `${state.room.mode} 매치 준비` : '매치 준비'}</h1>
             <p className={styles.subtitle}>
-              {state?.room?.code ? `코드 ${state.room.code} · 참가자 ${state.rosterReadyCount}/${state.totalSlots}` : '방 정보를 확인하고 있습니다.'}
+              {state?.room?.code
+                ? `코드 ${state.room.code} · 참가자 ${state.rosterReadyCount}/${state.totalSlots}`
+                : '방 정보를 확인하고 있습니다.'}
             </p>
           </div>
           <div className={styles.actionsInline}>
@@ -184,6 +342,61 @@ export default function MatchReadyClient({ gameId }) {
           </section>
         )}
 
+        <section className={styles.voteSection}>
+          <div className={styles.voteHeader}>
+            <h2 className={styles.sectionTitle}>턴 제한시간 투표</h2>
+            <p className={styles.voteDescription}>
+              참가자들이 원하는 제한시간을 선택하면 메인 게임의 기본 타이머로 적용됩니다.
+            </p>
+          </div>
+          <div className={styles.voteOptions}>
+            {TURN_TIMER_OPTIONS.map((option) => {
+              const seconds = sanitizeSecondsOption(option)
+              if (!seconds) return null
+              const isApplied = appliedTurnTimerSeconds === seconds
+              const isMine = viewerSelection === seconds
+              const summary = voteCounts.find((entry) => entry.option === seconds)
+              return (
+                <button
+                  key={seconds}
+                  type="button"
+                  className={`${styles.voteOptionButton} ${
+                    isApplied ? styles.voteOptionButtonActive : ''
+                  }`}
+                  onClick={() => handleVoteSelection(seconds)}
+                >
+                  <span className={styles.voteOptionLabel}>{formatSecondsLabel(seconds)}</span>
+                  <span className={styles.voteOptionHint}>
+                    {isApplied ? '적용 중' : isMine ? '내 선택' : '선택'}
+                  </span>
+                  {summary ? (
+                    <span className={styles.voteOptionBadge}>{summary.count}표</span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+          <div className={styles.voteSummary}>
+            <p className={styles.voteSummaryLine}>
+              현재 적용된 제한시간: {formatSecondsLabel(appliedTurnTimerSeconds || 60)}
+              {appliedTurnTimerSeconds ? '' : ' (기본값)'}
+            </p>
+            {voteCounts.length > 0 ? (
+              <p className={styles.voteSummaryLine}>
+                선호도 순위:{' '}
+                {voteCounts
+                  .map((entry) => `${formatSecondsLabel(entry.option)} ${entry.count}표`)
+                  .join(' · ')}
+              </p>
+            ) : (
+              <p className={styles.voteSummaryLine}>
+                아직 저장된 투표가 없습니다. 원하는 제한시간을 선택해 주세요.
+              </p>
+            )}
+            {voteNotice ? <p className={styles.voteNotice}>{voteNotice}</p> : null}
+          </div>
+        </section>
+
         <section className={styles.rosterSection}>
           <h2 className={styles.sectionTitle}>참가자 구성</h2>
           <ul className={styles.rosterList}>
@@ -194,6 +407,24 @@ export default function MatchReadyClient({ gameId }) {
               </li>
             ))}
           </ul>
+          {asyncFillSummary ? (
+            <div className={styles.asyncFillSummary}>
+              <div className={styles.asyncFillTitle}>비실시간 자동 충원</div>
+              <p className={styles.asyncFillText}>
+                {`${asyncFillSummary.role} 좌석 ${asyncFillSummary.allowed}/${asyncFillSummary.total} · 대기 슬롯 ${asyncFillSummary.pendingCount}개`}
+              </p>
+              {asyncFillSummary.queue.length ? (
+                <div className={styles.asyncFillQueue}>
+                  <span className={styles.asyncFillQueueLabel}>대기 후보:</span>
+                  <span className={styles.asyncFillQueueNames}>
+                    {asyncFillSummary.queue
+                      .map((candidate) => candidate.heroName || candidate.ownerId)
+                      .join(', ')}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         <footer className={styles.footer}>

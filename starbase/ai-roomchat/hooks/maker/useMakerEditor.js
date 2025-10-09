@@ -29,6 +29,7 @@ export function useMakerEditor() {
   const [versionAlert, setVersionAlert] = useState(null)
   const [saveReceipt, setSaveReceipt] = useState(null)
   const [saveHistory, setSaveHistory] = useState([])
+  const [historyStorageKey, setHistoryStorageKey] = useState('')
   const historyStorageKeyRef = useRef(null)
   const historyLoadedRef = useRef(false)
 
@@ -84,12 +85,18 @@ export function useMakerEditor() {
   }, [])
 
   useEffect(() => {
-    if (!router.isReady || !setId) return
+    if (!router.isReady || !setId) {
+      historyStorageKeyRef.current = null
+      historyLoadedRef.current = false
+      setHistoryStorageKey('')
+      return
+    }
     if (typeof window === 'undefined') return
 
     const key = `maker:history:${setId}`
     historyStorageKeyRef.current = key
     historyLoadedRef.current = false
+    setHistoryStorageKey(key)
 
     try {
       const stored = window.localStorage.getItem(key)
@@ -148,6 +155,48 @@ export function useMakerEditor() {
     })
   }, [])
 
+  const setInfoName = setInfo?.name || ''
+
+  const exportSaveHistory = useCallback(() => {
+    if (!Array.isArray(saveHistory) || saveHistory.length === 0) {
+      return
+    }
+
+    if (typeof window === 'undefined') return
+
+    const rawSetId = router?.query?.id
+    const setIdValue = Array.isArray(rawSetId) ? rawSetId[0] : rawSetId
+    const safeName = (setInfoName || 'maker-set')
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, '_')
+      .slice(0, 60)
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const filenameParts = [safeName || 'maker-set']
+    if (setIdValue) {
+      filenameParts.push(setIdValue)
+    }
+    filenameParts.push(`history-${timestamp}`)
+    const filename = `${filenameParts.join('-')}.json`
+
+    try {
+      const payload = JSON.stringify(saveHistory, null, 2)
+      const blob = new Blob([payload], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url)
+      }, 1000)
+    } catch (error) {
+      console.error('[MakerEditor] 히스토리 내보내기에 실패했습니다.', error)
+    }
+  }, [router?.query?.id, saveHistory, setInfoName])
+
   const {
     nodes,
     setNodes,
@@ -179,7 +228,6 @@ export function useMakerEditor() {
     slotSuggestions,
     characterSuggestions,
     appendTokenToSelected,
-    rebuildEdgeLabel,
     loadGraph,
     markAsStart,
   } = graph
@@ -264,62 +312,78 @@ export function useMakerEditor() {
     [handleDeletePrompt, markAsStart, setNodes, setSelectedNodeId],
   )
 
-  const characterVisibility = useMemo(() => ({
-    invisible: selectedVisibility.invisible,
-    visible_slots: selectedVisibility.visible_slots,
-  }), [selectedVisibility])
+  const characterVisibility = useMemo(
+    () => ({
+      invisible: selectedVisibility.invisible,
+      visible_slots: selectedVisibility.visible_slots,
+    }),
+    [selectedVisibility],
+  )
 
   return {
-    router,
-    isReady: router.isReady,
-    loading,
-    busy,
-    setInfo,
-    nodes,
-    setNodes,
-    edges,
-    setEdges,
-    onNodesChange,
-    onEdgesChange,
-    onConnect,
-    onNodeClick,
-    onEdgeClick,
-    onPaneClick,
-    onSelectionChange,
-    onNodesDelete,
-    onEdgesDelete,
-    selectedNodeId,
-    selectedEdge,
-    selectedNode,
-    setSelectedNodeId,
-    setSelectedEdge,
-    markAsStart,
-    toggleInvisible,
-    handleDeletePrompt,
-    addPromptNode,
-    saveAll,
-    panelTabs,
-    activePanelTab,
-    setActivePanelTab,
-    selectedGlobalRules,
-    selectedLocalRules,
-    commitGlobalRules,
-    commitLocalRules,
-    availableVariableNames,
-    selectedVisibility: characterVisibility,
-    updateVisibility,
-    slotSuggestions,
-    characterSuggestions,
-    appendTokenToSelected,
-    rebuildEdgeLabel,
-    goToSetList,
-    goToLobby,
-    versionAlert,
-    clearVersionAlert,
-    saveReceipt,
-    ackSaveReceipt,
-    saveHistory,
-    clearSaveHistory,
+    status: {
+      router,
+      isReady: router.isReady,
+      loading,
+      setInfo,
+    },
+    graph: {
+      nodes,
+      setNodes,
+      edges,
+      setEdges,
+      onNodesChange,
+      onEdgesChange,
+      onConnect,
+      onNodesDelete,
+      onEdgesDelete,
+    },
+    selection: {
+      selectedNodeId,
+      selectedEdge,
+      selectedNode,
+      onNodeClick,
+      onEdgeClick,
+      onPaneClick,
+      onSelectionChange,
+      panelTabs,
+      activePanelTab,
+      setActivePanelTab,
+      markAsStart,
+      appendTokenToSelected,
+    },
+    variables: {
+      selectedGlobalRules,
+      selectedLocalRules,
+      commitGlobalRules,
+      commitLocalRules,
+      availableVariableNames,
+      selectedVisibility: characterVisibility,
+      updateVisibility,
+      toggleInvisible,
+      slotSuggestions,
+      characterSuggestions,
+    },
+    persistence: {
+      busy,
+      saveAll,
+      deletePrompt: handleDeletePrompt,
+      addPromptNode,
+      goToSetList,
+      goToLobby,
+    },
+    history: {
+      entries: saveHistory,
+      storageKey: historyStorageKey,
+      exportEntries: exportSaveHistory,
+      clearEntries: clearSaveHistory,
+      receipt: saveReceipt,
+      ackReceipt: ackSaveReceipt,
+    },
+    version: {
+      alert: versionAlert,
+      clearAlert: clearVersionAlert,
+    },
   }
 }
 
