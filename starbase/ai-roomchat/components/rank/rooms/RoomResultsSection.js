@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import PropTypes from 'prop-types'
 
 import { isRealtimeEnabled } from '@/lib/rank/realtimeModes'
 
@@ -136,6 +135,16 @@ function resolveStatusLabel(status) {
   return normalized || '상태 미지정'
 }
 
+/**
+ * @param {Object} props
+ * @param {boolean} props.loading
+ * @param {Array<Object>} props.filteredRooms
+ * @param {{ total: number }} props.filterDiagnostics
+ * @param {string[]} props.filterMessages
+ * @param {string} [props.effectiveHeroId]
+ * @param {number | null} [props.heroRatingForSelection]
+ * @param {(date: string | number | Date) => string} props.formatRelativeTime
+ */
 export function RoomResultsSection({
   loading,
   filteredRooms,
@@ -246,16 +255,6 @@ export function RoomResultsSection({
       )}
     </section>
   )
-}
-
-RoomResultsSection.propTypes = {
-  loading: PropTypes.bool.isRequired,
-  filteredRooms: PropTypes.arrayOf(PropTypes.shape({ id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]) })).isRequired,
-  filterDiagnostics: PropTypes.shape({ total: PropTypes.number }).isRequired,
-  filterMessages: PropTypes.arrayOf(PropTypes.string).isRequired,
-  effectiveHeroId: PropTypes.string,
-  heroRatingForSelection: PropTypes.number,
-  formatRelativeTime: PropTypes.func.isRequired,
 }
 
 RoomResultsSection.defaultProps = {

@@ -1,5 +1,3 @@
-import PropTypes from 'prop-types'
-
 const styles = {
   card: {
     background: 'rgba(15, 23, 42, 0.78)',
@@ -83,6 +81,20 @@ const styles = {
   }),
 }
 
+/**
+ * @param {Object} props
+ * @param {string} props.modeTab
+ * @param {{ key: string, label: string }[]} props.modeTabs
+ * @param {(key: string) => void} props.onModeChange
+ * @param {{ id: string | number, name: string }[]} props.gameFilters
+ * @param {string} props.selectedGameId
+ * @param {(id: string) => void} props.onSelectGame
+ * @param {{ key: string, label: string, value: number | null }[]} props.scoreOptions
+ * @param {number | null} [props.scoreWindow]
+ * @param {(value: number | null) => void} props.onScoreWindowChange
+ * @param {boolean} props.refreshing
+ * @param {() => void} props.onRefresh
+ */
 export function RoomFiltersSection({
   modeTab,
   modeTabs,
@@ -167,33 +179,6 @@ export function RoomFiltersSection({
       </div>
     </section>
   )
-}
-
-RoomFiltersSection.propTypes = {
-  modeTab: PropTypes.string.isRequired,
-  modeTabs: PropTypes.arrayOf(
-    PropTypes.shape({ key: PropTypes.string.isRequired, label: PropTypes.string.isRequired }),
-  ).isRequired,
-  onModeChange: PropTypes.func.isRequired,
-  gameFilters: PropTypes.arrayOf(
-    PropTypes.shape({
-      id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-      name: PropTypes.string.isRequired,
-    }),
-  ).isRequired,
-  selectedGameId: PropTypes.string.isRequired,
-  onSelectGame: PropTypes.func.isRequired,
-  scoreOptions: PropTypes.arrayOf(
-    PropTypes.shape({
-      key: PropTypes.string.isRequired,
-      label: PropTypes.string.isRequired,
-      value: PropTypes.oneOfType([PropTypes.number, PropTypes.oneOf([null])]),
-    }),
-  ).isRequired,
-  scoreWindow: PropTypes.number,
-  onScoreWindowChange: PropTypes.func.isRequired,
-  refreshing: PropTypes.bool.isRequired,
-  onRefresh: PropTypes.func.isRequired,
 }
 
 RoomFiltersSection.defaultProps = {

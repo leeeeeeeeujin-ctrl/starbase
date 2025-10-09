@@ -228,6 +228,7 @@
 - [x] 등록 안내 텍스트/난입 설명 분리 및 다국어 구조화 계획 수립, `RankNewClient`·`RulesChecklist` 리소스를 `rankRegistrationContent` 데이터로 이동해 공유.【F:components/rank/RankNewClient.js†L120-L355】【F:components/rank/RulesChecklist.js†L1-L60】【F:ai-roomchat/data/rankRegistrationContent.js†L1-L60】
 - [x] 등록 탭 레이아웃을 `RegistrationLayout`/`RegistrationCard`/`SidebarCard`로 세분화해 개요 사이드바와 본문 카드를 분리하고, 모드·난입·규칙 입력 흐름을 재구성했다.【F:components/rank/RankNewClient.js†L335-L512】【F:components/rank/registration/RegistrationLayout.js†L1-L83】【F:components/rank/registration/SidebarCard.js†L1-L20】
 - [x] 방 검색 페이지의 필터와 결과 목록을 `RoomFiltersSection`·`RoomResultsSection` 컴포넌트로 분리해 로비 상태 계산과 UI 표현을 느슨하게 결합했다.【F:components/rank/rooms/RoomFiltersSection.js†L1-L153】【F:components/rank/rooms/RoomResultsSection.js†L1-L153】
+- [x] Next 빌드가 `prop-types` 의존성 없이 통과하도록 룸 필터/검색 컴포넌트의 PropTypes 선언을 JSDoc 기반 설명으로 대체했다.【F:components/rank/rooms/RoomFiltersSection.js†L1-L154】【F:components/rank/rooms/RoomResultsSection.js†L1-L154】
 - [ ] GameRoomView 오디오/히스토리 유틸을 분리 컴포넌트화하고, 타임라인/리플레이 노출을 lazy chunk로 나누는 리팩터링 미진행.【F:components/rank/GameRoomView.js†L1-L1120】
 - [ ] `stage-room-match` 낙관적 락·슬롯 버전 필드 추가 및 API 유틸 통합 작업 미착수.【F:pages/api/rank/stage-room-match.js†L112-L200】
 
