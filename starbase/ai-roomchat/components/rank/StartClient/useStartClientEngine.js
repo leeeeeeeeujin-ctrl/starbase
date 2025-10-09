@@ -57,6 +57,7 @@ import {
   mergeTimelineEvents,
   normalizeTimelineStatus,
 } from '@/lib/rank/timelineEvents'
+import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline'
 import { useHistoryBuffer } from './hooks/useHistoryBuffer'
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
 import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
@@ -67,6 +68,7 @@ import { consumeStartMatchMeta } from '../startConfig'
 import {
   clearGameMatchData,
   hydrateGameMatchData,
+  setGameMatchSessionMeta,
 } from '../../../modules/rank/matchDataStore'
 import {
   START_SESSION_KEYS,
@@ -77,16 +79,149 @@ import {
   getConnectionEntriesForGame,
   subscribeConnectionRegistry,
 } from '@/lib/rank/startConnectionRegistry'
+
+function toInt(value, { min = null } = {}) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  const rounded = Math.floor(numeric)
+  if (min !== null && rounded < min) return null
+  return rounded
+}
+
+function toTrimmed(value) {
+  if (value === null || value === undefined) return null
+  const trimmed = String(value).trim()
+  return trimmed || null
+}
+
+function sanitizeDropInArrivals(arrivals) {
+  if (!Array.isArray(arrivals) || arrivals.length === 0) return []
+  return arrivals
+    .slice(0, 8)
+    .map((arrival) => {
+      if (!arrival || typeof arrival !== 'object') return null
+      const normalized = {}
+      const ownerId =
+        arrival.ownerId ??
+        arrival.owner_id ??
+        arrival.ownerID ??
+        arrival?.owner?.id ??
+        null
+      const role = toTrimmed(arrival.role)
+      const heroName =
+        arrival.heroName ??
+        arrival.hero_name ??
+        arrival.display_name ??
+        arrival.name ??
+        null
+      const slotIndex = toInt(arrival.slotIndex, { min: 0 })
+      const timestamp = toInt(arrival.timestamp, { min: 0 })
+      const queueDepth = toInt(arrival?.stats?.queueDepth, { min: 0 })
+      const replacements = toInt(arrival?.stats?.replacements, { min: 0 })
+      const arrivalOrder = toInt(arrival?.stats?.arrivalOrder, { min: 0 })
+      const replacedOwner =
+        arrival?.replaced?.ownerId ??
+        arrival?.replaced?.owner_id ??
+        arrival?.replacedOwnerId ??
+        null
+      const replacedHero =
+        arrival?.replaced?.heroName ??
+        arrival?.replaced?.hero_name ??
+        arrival?.replacedHeroName ??
+        null
+      const status = toTrimmed(arrival.status)
+
+      if (toTrimmed(ownerId)) normalized.ownerId = toTrimmed(ownerId)
+      if (role) normalized.role = role
+      if (toTrimmed(heroName)) normalized.heroName = toTrimmed(heroName)
+      if (slotIndex !== null) normalized.slotIndex = slotIndex
+      if (timestamp !== null) normalized.timestamp = timestamp
+      if (queueDepth !== null) normalized.queueDepth = queueDepth
+      if (replacements !== null) normalized.replacements = replacements
+      if (arrivalOrder !== null) normalized.arrivalOrder = arrivalOrder
+      if (toTrimmed(replacedOwner)) normalized.replacedOwnerId = toTrimmed(replacedOwner)
+      if (toTrimmed(replacedHero)) normalized.replacedHeroName = toTrimmed(replacedHero)
+      if (status) normalized.status = status
+
+      if (Object.keys(normalized).length === 0) return null
+      return normalized
+    })
+    .filter(Boolean)
+}
+
+function buildDropInMetaPayload({
+  arrivals,
+  status,
+  bonusSeconds,
+  appliedAt,
+  turnNumber,
+  mode,
+  queueResult,
+  roomId,
+}) {
+  const sanitizedArrivals = sanitizeDropInArrivals(arrivals)
+  const meta = {}
+
+  const normalizedStatus = toTrimmed(status)
+  if (normalizedStatus) meta.status = normalizedStatus
+
+  const normalizedMode = toTrimmed(mode)
+  if (normalizedMode) meta.mode = normalizedMode
+
+  const normalizedBonus = toInt(bonusSeconds, { min: 0 })
+  if (normalizedBonus !== null) meta.bonusSeconds = normalizedBonus
+
+  const normalizedAppliedAt = toInt(appliedAt, { min: 0 })
+  if (normalizedAppliedAt !== null) meta.appliedAt = normalizedAppliedAt
+
+  const normalizedTurn = toInt(turnNumber, { min: 0 })
+  if (normalizedTurn !== null) meta.turnNumber = normalizedTurn
+
+  const normalizedRoomId = toTrimmed(roomId)
+  if (normalizedRoomId) meta.targetRoomId = normalizedRoomId
+
+  if (sanitizedArrivals.length) {
+    meta.arrivals = sanitizedArrivals
+    const queueDepth = sanitizedArrivals.reduce((max, entry) => {
+      const depth = typeof entry.queueDepth === 'number' ? entry.queueDepth : 0
+      return depth > max ? depth : max
+    }, 0)
+    const replacements = sanitizedArrivals.reduce((max, entry) => {
+      const count = typeof entry.replacements === 'number' ? entry.replacements : 0
+      return count > max ? count : max
+    }, 0)
+    if (queueDepth > 0) meta.queueDepth = queueDepth
+    if (replacements > 0) meta.replacements = replacements
+  }
+
+  if (queueResult?.matching) {
+    meta.matching = queueResult.matching
+  }
+
+  meta.updatedAt = Date.now()
+
+  return meta
+}
 import {
   isRealtimeEnabled,
   normalizeRealtimeMode,
   REALTIME_MODES,
 } from '@/lib/rank/realtimeModes'
+import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient'
 
 function toTrimmedString(value) {
   if (value === null || value === undefined) return null
   const stringValue = String(value).trim()
   return stringValue ? stringValue : null
+}
+
+function deepClone(value) {
+  if (value === null || value === undefined) return value
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch (error) {
+    return null
+  }
 }
 
 function parseSlotIndex(value, fallback = null) {
@@ -549,9 +684,62 @@ export function useStartClientEngine(gameId) {
       : (storedStartConfig[START_SESSION_KEYS.API_KEY] || '').trim()
   const initialFrontMatchData =
     typeof window === 'undefined' ? null : hydrateGameMatchData(gameId)
+  const initialSessionMeta =
+    initialFrontMatchData && typeof initialFrontMatchData.sessionMeta === 'object'
+      ? deepClone(initialFrontMatchData.sessionMeta) || initialFrontMatchData.sessionMeta
+      : null
+  const initialSlotTemplate =
+    initialFrontMatchData && typeof initialFrontMatchData.slotTemplate === 'object'
+      ? deepClone(initialFrontMatchData.slotTemplate) || initialFrontMatchData.slotTemplate
+      : null
   const initialMatchMetaCandidate = consumeStartMatchMeta()
-  const initialMatchMeta =
+  const baseMatchMeta =
     initialMatchMetaCandidate || initialFrontMatchData?.matchSnapshot?.match || null
+  const slotTemplateSlots =
+    initialSlotTemplate && Array.isArray(initialSlotTemplate.slots)
+      ? deepClone(initialSlotTemplate.slots) || initialSlotTemplate.slots
+      : null
+  let initialMatchMeta = baseMatchMeta ? deepClone(baseMatchMeta) || baseMatchMeta : null
+
+  if (slotTemplateSlots && slotTemplateSlots.length) {
+    if (initialMatchMeta) {
+      const roleStatusSource =
+        initialMatchMeta.roleStatus && typeof initialMatchMeta.roleStatus === 'object'
+          ? { ...initialMatchMeta.roleStatus }
+          : {}
+      if (!Array.isArray(initialMatchMeta.slotLayout) || !initialMatchMeta.slotLayout.length) {
+        initialMatchMeta = { ...initialMatchMeta, slotLayout: slotTemplateSlots }
+      }
+      if (!Array.isArray(roleStatusSource.slotLayout) || !roleStatusSource.slotLayout.length) {
+        roleStatusSource.slotLayout = slotTemplateSlots
+      }
+      if (initialSlotTemplate.version && !roleStatusSource.version) {
+        roleStatusSource.version = initialSlotTemplate.version
+      }
+      if (initialSlotTemplate.updatedAt && !roleStatusSource.updatedAt) {
+        roleStatusSource.updatedAt = initialSlotTemplate.updatedAt
+      }
+      initialMatchMeta = { ...initialMatchMeta, roleStatus: roleStatusSource }
+    } else {
+      initialMatchMeta = {
+        slotLayout: slotTemplateSlots,
+        roleStatus: {
+          slotLayout: slotTemplateSlots,
+          version: initialSlotTemplate?.version || null,
+          updatedAt: initialSlotTemplate?.updatedAt || null,
+        },
+      }
+    }
+  }
+
+  if (initialSessionMeta?.turnTimer) {
+    const timerMeta = deepClone(initialSessionMeta.turnTimer) || initialSessionMeta.turnTimer
+    if (initialMatchMeta) {
+      initialMatchMeta = { ...initialMatchMeta, turnTimer: timerMeta }
+    } else {
+      initialMatchMeta = { turnTimer: timerMeta }
+    }
+  }
   const initialApiVersion =
     typeof window === 'undefined'
       ? 'gemini'
@@ -597,6 +785,10 @@ export function useStartClientEngine(gameId) {
     return deriveRosterFromMatchSnapshot(matchSnapshotSeed)
   }, [frontMatchData, matchSnapshotSeed])
   const slotLayoutSeed = useMemo(() => {
+    if (Array.isArray(initialSlotTemplate?.slots) && initialSlotTemplate.slots.length) {
+      const fromTemplate = normalizeSlotLayoutEntries(initialSlotTemplate.slots)
+      if (fromTemplate.length) return fromTemplate
+    }
     if (!matchSnapshotSeed) return []
     const sources = []
     if (Array.isArray(matchSnapshotSeed.slotLayout) && matchSnapshotSeed.slotLayout.length) {
@@ -614,7 +806,7 @@ export function useStartClientEngine(gameId) {
       if (normalized.length) return normalized
     }
     return []
-  }, [matchSnapshotSeed])
+  }, [matchSnapshotSeed, initialSlotTemplate])
   const matchMetaLoggedRef = useRef(false)
   const gameIdRef = useRef(gameId ? String(gameId) : '')
   const [connectionRoster, setConnectionRoster] = useState(() =>
@@ -669,7 +861,174 @@ export function useStartClientEngine(gameId) {
   const winCountRef = useRef(initialMainGameState.winCount)
   const turnDeadlineRef = useRef(initialMainGameState.turnDeadline)
   const timeRemainingRef = useRef(initialMainGameState.timeRemaining)
+  const lastBroadcastTurnStateRef = useRef({ turnNumber: 0, deadline: 0 })
+  const lastRealtimeTurnEventRef = useRef({ id: null, emittedAt: 0, turnNumber: 0 })
+  const turnEventBackfillAbortRef = useRef(null)
   const lastBattleLogSignatureRef = useRef(null)
+  const applyTurnStateChange = useCallback(
+    (change, { commitTimestamp } = {}) => {
+      if (!change || typeof change !== 'object') {
+        return
+      }
+
+      const sessionId = sessionInfo?.id
+      if (!sessionId) {
+        return
+      }
+
+      const targetSessionId = change.session_id || change.sessionId || sessionId
+      if (!targetSessionId || targetSessionId !== sessionId) {
+        return
+      }
+
+      const state = change.state || change.turn_state || null
+      if (!state || typeof state !== 'object') {
+        return
+      }
+
+      const eventId = (() => {
+        if (change.id !== undefined && change.id !== null) {
+          return String(change.id)
+        }
+        const turnValue = Number(state.turnNumber)
+        const normalizedTurn = Number.isFinite(turnValue) && turnValue >= 0 ? Math.floor(turnValue) : 0
+        const emittedToken =
+          change.emitted_at || change.emittedAt || commitTimestamp || state.updatedAt || Date.now()
+        return `${sessionId}:${normalizedTurn}:${emittedToken}`
+      })()
+
+      const emittedAtValue = (() => {
+        const candidates = [change.emitted_at, change.emittedAt, commitTimestamp, state.updatedAt]
+        for (const candidate of candidates) {
+          if (candidate === null || candidate === undefined || candidate === '') continue
+          const numeric = Number(candidate)
+          if (Number.isFinite(numeric) && numeric > 0) {
+            return Math.floor(numeric)
+          }
+          const timestamp = new Date(candidate).getTime()
+          if (!Number.isNaN(timestamp)) return timestamp
+        }
+        return Date.now()
+      })()
+
+      const lastEvent = lastRealtimeTurnEventRef.current
+      if (lastEvent?.id === eventId) {
+        return
+      }
+      if (
+        lastEvent &&
+        lastEvent.emittedAt &&
+        emittedAtValue &&
+        emittedAtValue <= lastEvent.emittedAt &&
+        Number.isFinite(Number(state.turnNumber)) &&
+        lastEvent.turnNumber >= Math.floor(Number(state.turnNumber))
+      ) {
+        return
+      }
+
+      lastRealtimeTurnEventRef.current = {
+        id: eventId,
+        emittedAt: emittedAtValue,
+        turnNumber: Number.isFinite(Number(state.turnNumber)) ? Math.floor(Number(state.turnNumber)) : 0,
+      }
+
+      if (gameId) {
+        setGameMatchSessionMeta(gameId, {
+          turnState: {
+            ...state,
+            source: state.source || change.source || 'realtime',
+            updatedAt: emittedAtValue,
+          },
+          extras: change.extras || undefined,
+          source: 'realtime/turn-state',
+        })
+      }
+
+      const numericTurn = Number.isFinite(Number(state.turnNumber))
+        ? Math.max(0, Math.floor(Number(state.turnNumber)))
+        : null
+      if (numericTurn !== null) {
+        setTurn(numericTurn)
+      }
+
+      const resolvedDeadline = Number(state.deadline)
+      const deadlineMillis =
+        Number.isFinite(resolvedDeadline) && resolvedDeadline > 0 ? Math.floor(resolvedDeadline) : 0
+      if (deadlineMillis) {
+        setTurnDeadline(deadlineMillis)
+      } else {
+        setTurnDeadline(null)
+      }
+
+      const remainingFromState = Number(state.remainingSeconds)
+      let resolvedRemaining =
+        Number.isFinite(remainingFromState) && remainingFromState >= 0
+          ? Math.floor(remainingFromState)
+          : null
+      if (deadlineMillis) {
+        const derived = Math.floor((deadlineMillis - Date.now()) / 1000)
+        if (!Number.isFinite(resolvedRemaining) || resolvedRemaining < 0) {
+          resolvedRemaining = derived
+        }
+      }
+      if (Number.isFinite(resolvedRemaining)) {
+        setTimeRemaining(Math.max(0, resolvedRemaining))
+      } else {
+        setTimeRemaining(null)
+      }
+
+      const dropInTurn = Number(state.dropInBonusTurn)
+      if (Number.isFinite(dropInTurn) && dropInTurn > 0) {
+        setLastDropInTurn(Math.floor(dropInTurn))
+      }
+
+      lastBroadcastTurnStateRef.current = {
+        turnNumber: numericTurn || 0,
+        deadline: deadlineMillis,
+      }
+    },
+    [
+      sessionInfo?.id,
+      gameId,
+      setGameMatchSessionMeta,
+      setTurn,
+      setTurnDeadline,
+      setTimeRemaining,
+      setLastDropInTurn,
+    ],
+  )
+  const backfillTurnEvents = useCallback(async () => {
+    if (!sessionInfo?.id) {
+      return
+    }
+    const controller = new AbortController()
+    if (turnEventBackfillAbortRef.current) {
+      turnEventBackfillAbortRef.current.abort()
+    }
+    turnEventBackfillAbortRef.current = controller
+    try {
+      const lastEvent = lastRealtimeTurnEventRef.current
+      const since = lastEvent?.emittedAt ? Number(lastEvent.emittedAt) : null
+      const events = await fetchTurnStateEvents({
+        sessionId: sessionInfo.id,
+        since,
+        limit: 50,
+        signal: controller.signal,
+      })
+      events.forEach((event) => {
+        if (!event || typeof event !== 'object') return
+        applyTurnStateChange(event, { commitTimestamp: event.emitted_at || event.emittedAt || null })
+      })
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        console.error('[StartClient] 턴 이벤트 백필 실패:', error)
+      }
+    } finally {
+      if (turnEventBackfillAbortRef.current === controller) {
+        turnEventBackfillAbortRef.current = null
+      }
+    }
+  }, [sessionInfo?.id, applyTurnStateChange])
   const patchEngineState = useCallback(
     (payload) => {
       dispatchEngine(patchMainGameState(payload))
@@ -837,6 +1196,36 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  const recordTurnState = useCallback(
+    (patch = {}, options = {}) => {
+      if (preflight) return
+      if (!gameId) return
+
+      let turnStatePatch
+      if (patch === null) {
+        turnStatePatch = null
+      } else if (typeof patch === 'object') {
+        turnStatePatch = { ...patch }
+        if (!turnStatePatch.source) {
+          turnStatePatch.source = 'start-client'
+        }
+      } else {
+        return
+      }
+
+      const metaPatch =
+        options && typeof options === 'object' && options.metaPatch && typeof options.metaPatch === 'object'
+          ? options.metaPatch
+          : null
+
+      const payload = metaPatch ? { ...metaPatch } : {}
+      payload.turnState = turnStatePatch
+      payload.source = 'start-client/turn-state'
+
+      setGameMatchSessionMeta(gameId, payload)
+    },
+    [gameId, preflight],
+  )
   const setActiveHeroAssets = useCallback(
     (value) => {
       patchEngineState({ activeHeroAssets: value })
@@ -877,6 +1266,10 @@ export function useStartClientEngine(gameId) {
     [patchEngineState],
   )
   const [turnTimerSeconds] = useState(() => {
+    const timerFromMeta = Number(initialSessionMeta?.turnTimer?.baseSeconds)
+    if (Number.isFinite(timerFromMeta) && timerFromMeta > 0) {
+      return timerFromMeta
+    }
     if (typeof window === 'undefined') return 60
     const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
     if (Number.isFinite(stored) && stored > 0) return stored
@@ -1363,18 +1756,38 @@ export function useStartClientEngine(gameId) {
       if (preflight) return
       if (!currentNodeId) return
       if (!turnTimerServiceRef.current) return
+      if (!gameId) return
       const durationSeconds = turnTimerServiceRef.current.nextTurnDuration(turnNumber)
+      const numericTurn = Number.isFinite(Number(turnNumber)) ? Math.floor(Number(turnNumber)) : 0
       if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
         setTurnDeadline(null)
         setTimeRemaining(null)
+        recordTurnState({
+          turnNumber: numericTurn,
+          status: 'idle',
+          deadline: 0,
+          durationSeconds: 0,
+          remainingSeconds: 0,
+        })
+        lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 }
         return
       }
-      const deadline = Date.now() + durationSeconds * 1000
+      const scheduledAt = Date.now()
+      const deadline = scheduledAt + durationSeconds * 1000
       setTurnDeadline(deadline)
       setTimeRemaining(durationSeconds)
+      recordTurnState({
+        turnNumber: numericTurn,
+        scheduledAt,
+        deadline,
+        durationSeconds,
+        remainingSeconds: durationSeconds,
+        status: 'scheduled',
+      })
       lastScheduledTurnRef.current = turnNumber
+      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline }
     },
-    [preflight, currentNodeId],
+    [preflight, currentNodeId, gameId, recordTurnState],
   )
 
   useEffect(() => {
@@ -1385,6 +1798,27 @@ export function useStartClientEngine(gameId) {
     if (lastScheduledTurnRef.current === turn && turnDeadline) return
     scheduleTurnTimer(turn)
   }, [preflight, currentNodeId, turn, turnDeadline, isAdvancing, scheduleTurnTimer])
+
+  useEffect(() => {
+    if (preflight) return
+    if (!gameId) return
+
+    const previous = lastBroadcastTurnStateRef.current || { turnNumber: 0, deadline: 0 }
+    const currentDeadline = typeof turnDeadline === 'number' && turnDeadline > 0 ? turnDeadline : 0
+    const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : previous.turnNumber || 0
+
+    if (previous.deadline && !currentDeadline && numericTurn > 0) {
+      recordTurnState({
+        turnNumber: numericTurn,
+        deadline: 0,
+        remainingSeconds: 0,
+        status: 'idle',
+      })
+      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 }
+    } else if (currentDeadline && currentDeadline !== previous.deadline) {
+      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: currentDeadline }
+    }
+  }, [preflight, gameId, turnDeadline, turn, recordTurnState])
 
   useEffect(() => {
     if (!realtimeManagerRef.current) return
@@ -1626,68 +2060,154 @@ export function useStartClientEngine(gameId) {
       ? queueResult.arrivals
       : []
 
+    let dropInRoomId = ''
+
+    let timelineEvents = []
+
     if (arrivals.length > 0) {
+      const dropInTarget = startMatchMetaRef.current?.dropInTarget || null
+      const dropInRoomIdRaw =
+        dropInTarget?.roomId ?? dropInTarget?.room_id ?? dropInTarget?.roomID ?? null
+      dropInRoomId = dropInRoomIdRaw ? String(dropInRoomIdRaw).trim() : ''
+
       const service = turnTimerServiceRef.current
       if (service) {
-        const hasActiveDeadline = turnDeadline && turnDeadline > Date.now()
+        const now = Date.now()
+        const deadlineRefValue =
+          typeof turnDeadlineRef.current === 'number' && turnDeadlineRef.current > 0
+            ? turnDeadlineRef.current
+            : typeof turnDeadline === 'number'
+            ? turnDeadline
+            : 0
+        const hasActiveDeadline = deadlineRefValue && deadlineRefValue > now
+        const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
         const extraSeconds = service.registerDropInBonus({
           immediate: hasActiveDeadline,
           turnNumber: turn,
         })
 
-        if (extraSeconds > 0 && hasActiveDeadline) {
-          setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : prev))
-          setTimeRemaining((prev) =>
-            typeof prev === 'number' ? prev + extraSeconds : prev,
-          )
+        const dropInMeta = buildDropInMetaPayload({
+          arrivals,
+          status: hasActiveDeadline ? 'bonus-applied' : 'bonus-queued',
+          bonusSeconds: extraSeconds,
+          appliedAt: now,
+          turnNumber: numericTurn,
+          mode: realtimeEnabled ? 'realtime' : 'async',
+          queueResult,
+          roomId: dropInRoomId,
+        })
+
+        if (extraSeconds > 0) {
+          if (hasActiveDeadline) {
+            const baseDeadline = deadlineRefValue || now
+            const newDeadline = baseDeadline + extraSeconds * 1000
+            const previousRemaining =
+              typeof timeRemainingRef.current === 'number' && timeRemainingRef.current > 0
+                ? timeRemainingRef.current
+                : 0
+            const updatedRemaining = previousRemaining + extraSeconds
+
+            setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : newDeadline))
+            setTimeRemaining((prev) =>
+              typeof prev === 'number' ? prev + extraSeconds : updatedRemaining,
+            )
+            recordTurnState(
+              {
+                turnNumber: numericTurn,
+                deadline: newDeadline,
+                remainingSeconds: updatedRemaining,
+                dropInBonusSeconds: extraSeconds,
+                dropInBonusAppliedAt: now,
+                dropInBonusTurn: numericTurn,
+                status: 'bonus-applied',
+              },
+              {
+                metaPatch: dropInMeta ? { dropIn: dropInMeta } : null,
+              },
+            )
+            lastBroadcastTurnStateRef.current = {
+              turnNumber: numericTurn,
+              deadline: newDeadline,
+            }
+          } else {
+            recordTurnState(
+              {
+                turnNumber: numericTurn,
+                dropInBonusSeconds: extraSeconds,
+                dropInBonusAppliedAt: now,
+                dropInBonusTurn: numericTurn,
+                status: 'bonus-queued',
+                deadline: 0,
+                remainingSeconds: 0,
+              },
+              {
+                metaPatch: dropInMeta ? { dropIn: dropInMeta } : null,
+              },
+            )
+          }
+
+          const extensionEvent = buildDropInExtensionTimelineEvent({
+            extraSeconds,
+            appliedAt: now,
+            hasActiveDeadline,
+            dropInMeta,
+            arrivals,
+            mode: realtimeEnabled ? 'realtime' : 'async',
+            turnNumber: numericTurn,
+          })
+          if (extensionEvent) {
+            timelineEvents.push(extensionEvent)
+          }
+        } else if (dropInMeta) {
+          setGameMatchSessionMeta(gameId, { dropIn: dropInMeta })
         }
       }
 
       setLastDropInTurn(Number.isFinite(Number(turn)) ? Number(turn) : 0)
     }
 
-    let timelineEvents = []
-
     if (realtimeEnabled) {
       if (arrivals.length) {
-        timelineEvents = arrivals.map((arrival) => {
-          const status =
-            normalizeTimelineStatus(arrival.status) || 'active'
-          const cause = arrival.replaced ? 'realtime_drop_in' : 'realtime_joined'
-          return {
-            type: 'drop_in_joined',
-            ownerId: arrival.ownerId ? String(arrival.ownerId).trim() : null,
-            status,
-            turn: Number.isFinite(Number(arrival.turn))
-              ? Number(arrival.turn)
-              : Number.isFinite(Number(turn))
-                ? Number(turn)
-                : null,
-            timestamp: arrival.timestamp,
-            reason: cause,
-            context: {
-              role: arrival.role || null,
-              heroName: arrival.heroName || null,
-              participantId: arrival.participantId ?? null,
-              slotIndex: arrival.slotIndex ?? null,
-              mode: 'realtime',
-              substitution: {
-                cause,
-                replacedOwnerId: arrival.replaced?.ownerId || null,
-                replacedHeroName: arrival.replaced?.heroName || null,
-                replacedParticipantId: arrival.replaced?.participantId || null,
-                queueDepth:
-                  arrival.stats?.queueDepth ?? arrival.stats?.replacements ?? 0,
-                arrivalOrder: arrival.stats?.arrivalOrder ?? null,
-                totalReplacements: arrival.stats?.replacements ?? 0,
-                lastDepartureCause: arrival.stats?.lastDepartureCause || null,
+        timelineEvents = timelineEvents.concat(
+          arrivals.map((arrival) => {
+            const status =
+              normalizeTimelineStatus(arrival.status) || 'active'
+            const cause = arrival.replaced ? 'realtime_drop_in' : 'realtime_joined'
+            return {
+              type: 'drop_in_joined',
+              ownerId: arrival.ownerId ? String(arrival.ownerId).trim() : null,
+              status,
+              turn: Number.isFinite(Number(arrival.turn))
+                ? Number(arrival.turn)
+                : Number.isFinite(Number(turn))
+                  ? Number(turn)
+                  : null,
+              timestamp: arrival.timestamp,
+              reason: cause,
+              context: {
+                role: arrival.role || null,
+                heroName: arrival.heroName || null,
+                participantId: arrival.participantId ?? null,
+                slotIndex: arrival.slotIndex ?? null,
+                mode: 'realtime',
+                substitution: {
+                  cause,
+                  replacedOwnerId: arrival.replaced?.ownerId || null,
+                  replacedHeroName: arrival.replaced?.heroName || null,
+                  replacedParticipantId: arrival.replaced?.participantId || null,
+                  queueDepth:
+                    arrival.stats?.queueDepth ?? arrival.stats?.replacements ?? 0,
+                  arrivalOrder: arrival.stats?.arrivalOrder ?? null,
+                  totalReplacements: arrival.stats?.replacements ?? 0,
+                  lastDepartureCause: arrival.stats?.lastDepartureCause || null,
+                },
               },
-            },
-            metadata: queueResult?.matching
-              ? { matching: queueResult.matching }
-              : null,
-          }
-        })
+              metadata: queueResult?.matching
+                ? { matching: queueResult.matching }
+                : null,
+            }
+          }),
+        )
       }
     } else if (asyncSessionManagerRef.current) {
       const { events } = asyncSessionManagerRef.current.processQueueResult(
@@ -1695,66 +2215,62 @@ export function useStartClientEngine(gameId) {
         { mode: 'async' },
       )
       if (Array.isArray(events) && events.length) {
-        timelineEvents = events.map((event) => ({
-          ...event,
-          metadata:
-            event.metadata ||
-            (queueResult?.matching ? { matching: queueResult.matching } : null),
-        }))
+        timelineEvents = timelineEvents.concat(
+          events.map((event) => ({
+            ...event,
+            metadata:
+              event.metadata ||
+              (queueResult?.matching ? { matching: queueResult.matching } : null),
+          })),
+        )
       }
     }
 
-    if (arrivals.length) {
-      const dropInTarget = startMatchMetaRef.current?.dropInTarget || null
-      const dropInRoomIdRaw =
-        dropInTarget?.roomId ?? dropInTarget?.room_id ?? dropInTarget?.roomID ?? null
-      const dropInRoomId = dropInRoomIdRaw ? String(dropInRoomIdRaw).trim() : ''
-      if (dropInRoomId) {
-        const releaseTargets = []
-        arrivals.forEach((arrival) => {
-          const replaced = arrival?.replaced || null
-          if (!replaced) return
-          const ownerCandidate =
-            replaced?.ownerId ??
-            replaced?.ownerID ??
-            replaced?.owner_id ??
-            (typeof replaced?.owner === 'object' ? replaced.owner?.id : null)
-          if (!ownerCandidate) return
-          const ownerId = String(ownerCandidate).trim()
-          if (!ownerId) return
-          const key = `${dropInRoomId}::${ownerId}`
-          if (processedDropInReleasesRef.current.has(key)) return
-          releaseTargets.push({ roomId: dropInRoomId, ownerId, key })
-        })
+    if (arrivals.length && dropInRoomId) {
+      const releaseTargets = []
+      arrivals.forEach((arrival) => {
+        const replaced = arrival?.replaced || null
+        if (!replaced) return
+        const ownerCandidate =
+          replaced?.ownerId ??
+          replaced?.ownerID ??
+          replaced?.owner_id ??
+          (typeof replaced?.owner === 'object' ? replaced.owner?.id : null)
+        if (!ownerCandidate) return
+        const ownerId = String(ownerCandidate).trim()
+        if (!ownerId) return
+        const key = `${dropInRoomId}::${ownerId}`
+        if (processedDropInReleasesRef.current.has(key)) return
+        releaseTargets.push({ roomId: dropInRoomId, ownerId, key })
+      })
 
-        if (releaseTargets.length) {
-          const tasks = releaseTargets.map(({ roomId, ownerId, key }) =>
-            withTable(supabase, 'rank_room_slots', (table) =>
-              supabase
-                .from(table)
-                .update({
-                  occupant_owner_id: null,
-                  occupant_hero_id: null,
-                  occupant_ready: false,
-                  joined_at: null,
-                })
-                .eq('room_id', roomId)
-                .eq('occupant_owner_id', ownerId),
-            ).then((result) => {
-              if (result?.error && result.error.code !== 'PGRST116') {
-                throw result.error
-              }
-              processedDropInReleasesRef.current.add(key)
-            }),
+      if (releaseTargets.length) {
+        const tasks = releaseTargets.map(({ roomId, ownerId, key }) =>
+          withTable(supabase, 'rank_room_slots', (table) =>
+            supabase
+              .from(table)
+              .update({
+                occupant_owner_id: null,
+                occupant_hero_id: null,
+                occupant_ready: false,
+                joined_at: null,
+              })
+              .eq('room_id', roomId)
+              .eq('occupant_owner_id', ownerId),
+          ).then((result) => {
+            if (result?.error && result.error.code !== 'PGRST116') {
+              throw result.error
+            }
+            processedDropInReleasesRef.current.add(key)
+          }),
+        )
+
+        Promise.all(tasks).catch((error) => {
+          console.warn('[StartClient] Failed to release drop-in slot:', error)
+          releaseTargets.forEach(({ key }) =>
+            processedDropInReleasesRef.current.delete(key),
           )
-
-          Promise.all(tasks).catch((error) => {
-            console.warn('[StartClient] Failed to release drop-in slot:', error)
-            releaseTargets.forEach(({ key }) =>
-              processedDropInReleasesRef.current.delete(key),
-            )
-          })
-        }
+        })
       }
     }
 
@@ -1764,6 +2280,7 @@ export function useStartClientEngine(gameId) {
   }, [
     participants,
     preflight,
+    gameId,
     turnDeadline,
     turn,
     recordTimelineEvents,
@@ -2378,6 +2895,14 @@ export function useStartClientEngine(gameId) {
           eligibleOwnerIds: deriveEligibleOwnerIds(participants),
         })
         if (!result) return
+        const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
+        recordTurnState({
+          turnNumber: numericTurn,
+          status: reason ? `completed:${reason}` : `completed:${advanceReason}`,
+          deadline: 0,
+          remainingSeconds: 0,
+        })
+        lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 }
         applyRealtimeSnapshot(result.snapshot)
 
         const warningReasonMap = new Map()
@@ -3008,6 +3533,7 @@ export function useStartClientEngine(gameId) {
       normalizedGeminiMode,
       normalizedGeminiModel,
       applyRealtimeSnapshot,
+      recordTurnState,
     ],
   )
 
@@ -3180,10 +3706,27 @@ export function useStartClientEngine(gameId) {
       setRealtimeEvents((prev) => mergeTimelineEvents(prev, events))
     }
 
+    const handleTurnStateEvent = (payload) => {
+      const change = payload?.new || payload?.payload || null
+      const commitTimestamp = payload?.commit_timestamp || payload?.commitTimestamp || null
+      applyTurnStateChange(change, { commitTimestamp })
+    }
+
     channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'rank_turn_state_events',
+        filter: `session_id=eq.${sessionId}`,
+      },
+      handleTurnStateEvent,
+    )
 
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
+        backfillTurnEvents()
         return
       }
       if (status === 'CHANNEL_ERROR') {
@@ -3200,9 +3743,19 @@ export function useStartClientEngine(gameId) {
       } catch (error) {
         console.warn('[StartClient] 실시간 타임라인 채널 해제 실패:', error)
       }
+      if (turnEventBackfillAbortRef.current) {
+        turnEventBackfillAbortRef.current.abort()
+        turnEventBackfillAbortRef.current = null
+      }
       supabase.removeChannel(channel)
     }
-  }, [sessionInfo?.id, supabase])
+  }, [
+    sessionInfo?.id,
+    supabase,
+    setRealtimeEvents,
+    applyTurnStateChange,
+    backfillTurnEvents,
+  ])
 
   useEffect(() => {
     if (!needsConsensus) {
@@ -3216,6 +3769,53 @@ export function useStartClientEngine(gameId) {
       }
     }
   }, [needsConsensus, advanceTurn, clearConsensusVotes])
+
+  const turnTimerSnapshot = useMemo(() => {
+    const baseFromState = Number.isFinite(Number(turnTimerSeconds))
+      ? Math.max(0, Math.floor(Number(turnTimerSeconds)))
+      : null
+    const fallbackBonus = 30
+    const fallbackTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
+    const fallbackDropInTurn = Number.isFinite(Number(lastDropInTurn))
+      ? Math.floor(Number(lastDropInTurn))
+      : 0
+
+    const service = turnTimerServiceRef.current
+    if (!service) {
+      return {
+        baseSeconds: baseFromState,
+        firstTurnBonusSeconds: fallbackBonus,
+        firstTurnBonusAvailable: false,
+        dropInBonusSeconds: fallbackBonus,
+        pendingDropInBonus: false,
+        lastTurnNumber: fallbackTurn,
+        lastDropInAppliedTurn: fallbackDropInTurn,
+      }
+    }
+
+    const snapshot = service.getSnapshot() || {}
+    const resolvedBase = Number.isFinite(Number(snapshot.baseSeconds))
+      ? Math.floor(Number(snapshot.baseSeconds))
+      : baseFromState
+
+    return {
+      baseSeconds: resolvedBase,
+      firstTurnBonusSeconds: Number.isFinite(Number(snapshot.firstTurnBonusSeconds))
+        ? Math.floor(Number(snapshot.firstTurnBonusSeconds))
+        : fallbackBonus,
+      firstTurnBonusAvailable: Boolean(snapshot.firstTurnBonusAvailable),
+      dropInBonusSeconds: Number.isFinite(Number(snapshot.dropInBonusSeconds))
+        ? Math.floor(Number(snapshot.dropInBonusSeconds))
+        : fallbackBonus,
+      pendingDropInBonus: Boolean(snapshot.pendingDropInBonus),
+      lastTurnNumber: Number.isFinite(Number(snapshot.lastTurnNumber))
+        ? Math.floor(Number(snapshot.lastTurnNumber))
+        : fallbackTurn,
+      lastDropInAppliedTurn: Number.isFinite(Number(snapshot.lastDropInAppliedTurn))
+        ? Math.floor(Number(snapshot.lastDropInAppliedTurn))
+        : fallbackDropInTurn,
+    }
+  }, [turnTimerSeconds, turn, lastDropInTurn, timeRemaining, turnDeadline])
 
   return {
     loading,
@@ -3257,6 +3857,7 @@ export function useStartClientEngine(gameId) {
     autoAdvance,
     turnTimerSeconds,
     timeRemaining,
+    turnDeadline,
     currentActor: currentActorInfo,
     canSubmitAction,
     activeBackdropUrls: activeHeroAssets.backgrounds,
@@ -3264,6 +3865,8 @@ export function useStartClientEngine(gameId) {
     activeBgmUrl: activeHeroAssets.bgmUrl,
     activeBgmDuration: activeHeroAssets.bgmDuration,
     activeAudioProfile: activeHeroAssets.audioProfile,
+    lastDropInTurn,
+    turnTimerSnapshot,
     sessionInfo,
     realtimePresence,
     realtimeEvents,
