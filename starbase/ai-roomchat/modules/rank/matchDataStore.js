@@ -10,12 +10,30 @@ function createEmptySlotTemplate() {
   }
 }
 
+function createEmptyTurnState() {
+  return {
+    version: 1,
+    turnNumber: 0,
+    scheduledAt: 0,
+    deadline: 0,
+    durationSeconds: 0,
+    remainingSeconds: 0,
+    status: '',
+    dropInBonusSeconds: 0,
+    dropInBonusAppliedAt: 0,
+    dropInBonusTurn: 0,
+    source: '',
+    updatedAt: 0,
+  }
+}
+
 function createEmptySessionMeta() {
   return {
     turnTimer: null,
     vote: null,
     dropIn: null,
     asyncFill: null,
+    turnState: createEmptyTurnState(),
     extras: null,
     source: '',
     updatedAt: 0,
@@ -308,9 +326,75 @@ function sanitizeSessionMetaPatch(patch, previous) {
       const cloned = safeClone(patch.asyncFill)
       next.asyncFill = cloned === undefined ? null : cloned
     }
+    if (patch.turnState !== undefined) {
+      next.turnState = sanitizeTurnStatePatch(patch.turnState, next.turnState)
+    }
     if (patch.extras !== undefined) {
       const cloned = safeClone(patch.extras)
       next.extras = cloned === undefined ? null : cloned
+    }
+    if (patch.source !== undefined) {
+      next.source = typeof patch.source === 'string' ? patch.source.trim() : next.source || ''
+    }
+  }
+
+  next.updatedAt = Date.now()
+  return next
+}
+
+function sanitizeTurnStatePatch(patch, previous) {
+  if (patch === null) {
+    const cleared = createEmptyTurnState()
+    cleared.updatedAt = Date.now()
+    return cleared
+  }
+
+  const base = previous && typeof previous === 'object' ? safeClone(previous) || createEmptyTurnState() : createEmptyTurnState()
+  const next = { ...createEmptyTurnState(), ...base }
+
+  if (patch && typeof patch === 'object') {
+    if (patch.version !== undefined) {
+      const numericVersion = Number(patch.version)
+      if (Number.isFinite(numericVersion) && numericVersion > 0) {
+        next.version = Math.floor(numericVersion)
+      }
+    }
+    if (patch.turnNumber !== undefined) {
+      const turnNumber = Number(patch.turnNumber)
+      if (Number.isFinite(turnNumber) && turnNumber >= 0) {
+        next.turnNumber = Math.floor(turnNumber)
+      }
+    }
+    if (patch.scheduledAt !== undefined) {
+      const scheduledAt = Number(patch.scheduledAt)
+      next.scheduledAt = Number.isFinite(scheduledAt) && scheduledAt > 0 ? scheduledAt : 0
+    }
+    if (patch.deadline !== undefined) {
+      const deadline = Number(patch.deadline)
+      next.deadline = Number.isFinite(deadline) && deadline > 0 ? deadline : 0
+    }
+    if (patch.durationSeconds !== undefined) {
+      const duration = Number(patch.durationSeconds)
+      next.durationSeconds = Number.isFinite(duration) && duration >= 0 ? duration : 0
+    }
+    if (patch.remainingSeconds !== undefined) {
+      const remaining = Number(patch.remainingSeconds)
+      next.remainingSeconds = Number.isFinite(remaining) && remaining >= 0 ? remaining : 0
+    }
+    if (patch.status !== undefined) {
+      next.status = typeof patch.status === 'string' ? patch.status.trim() : next.status || ''
+    }
+    if (patch.dropInBonusSeconds !== undefined) {
+      const bonus = Number(patch.dropInBonusSeconds)
+      next.dropInBonusSeconds = Number.isFinite(bonus) && bonus >= 0 ? bonus : 0
+    }
+    if (patch.dropInBonusAppliedAt !== undefined) {
+      const appliedAt = Number(patch.dropInBonusAppliedAt)
+      next.dropInBonusAppliedAt = Number.isFinite(appliedAt) && appliedAt > 0 ? appliedAt : 0
+    }
+    if (patch.dropInBonusTurn !== undefined) {
+      const bonusTurn = Number(patch.dropInBonusTurn)
+      next.dropInBonusTurn = Number.isFinite(bonusTurn) && bonusTurn >= 0 ? Math.floor(bonusTurn) : 0
     }
     if (patch.source !== undefined) {
       next.source = typeof patch.source === 'string' ? patch.source.trim() : next.source || ''

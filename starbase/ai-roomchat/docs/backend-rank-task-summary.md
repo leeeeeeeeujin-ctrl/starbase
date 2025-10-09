@@ -22,7 +22,7 @@
 - ☐ 비실시간 모드에서 부족 인원을 자동 충원할 때 사용할 `async_fill_queue` 테이블과 관련 RPC를 설계해, 역할군별 좌석 제한과 중복 방지를 서버에서 강제한다.
 
 ## 4. 본게임·세션 메타
-- ✅ `upsert_match_session_meta`(가칭) RPC를 만들어 제한시간 투표 결과, 난입 보너스 로그, 비실시간 자동 충원 히스토리를 한 곳에 저장한다. `MatchReadyClient`가 `time_vote`·`selected_time_limit_seconds` 필드를 쓰기 시작했으므로 Supabase에 SQL을 적용해 프론트와 동기화해야 한다. 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql` 파일을 그대로 붙여넣으면 된다.【F:docs/supabase-rank-session-sync-guide.md†L108-L175】【F:docs/sql/upsert-match-session-meta.sql†L1-L78】【F:components/rank/MatchReadyClient.js†L1-L311】
+- ✅ `upsert_match_session_meta`(가칭) RPC를 만들어 제한시간 투표 결과, 난입 보너스 로그, 턴 상태(`turn_state`), 비실시간 자동 충원 히스토리를 한 곳에 저장한다. `MatchReadyClient`가 `time_vote`·`selected_time_limit_seconds` 필드를 쓰기 시작했으며, 본게임은 `turn_state` JSON을 동기화하므로 Supabase SQL을 적용해 프론트와 데이터를 일치시켜야 한다. 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql` 파일을 그대로 붙여넣으면 된다.【F:docs/supabase-rank-session-sync-guide.md†L108-L190】【F:docs/sql/upsert-match-session-meta.sql†L1-L90】【F:components/rank/MatchReadyClient.js†L1-L311】
 - ☐ `start_match` Edge Function에서 위 메타 정보를 불러 `turnTimerService`와 `dropInQueueService`가 동일한 타이머/보너스 값을 받도록 초기화한다.
 - ☐ 새로 난입한 참가자에게 30초 보너스를 부여하는 규칙을 서버 타임라인에도 기록해, 클라이언트-서버 타이머 싱크를 검증할 수 있게 한다.
 

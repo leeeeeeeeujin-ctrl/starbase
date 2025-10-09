@@ -144,6 +144,7 @@ describe('matchDataStore', () => {
     expect(firstSnapshot?.sessionMeta?.dropIn).toMatchObject({ bonusSeconds: 30 })
     expect(firstSnapshot?.sessionMeta?.source).toBe('room-stage')
     expect(firstSnapshot?.sessionMeta?.updatedAt).toBeGreaterThan(0)
+    expect(firstSnapshot?.sessionMeta?.turnState).toMatchObject({ turnNumber: 0 })
 
     setGameMatchSessionMeta(gameId, {
       vote: { '30': 2, '60': 1 },
@@ -153,12 +154,41 @@ describe('matchDataStore', () => {
     expect(secondSnapshot?.sessionMeta?.turnTimer).toMatchObject({ baseSeconds: 90 })
     expect(secondSnapshot?.sessionMeta?.vote).toMatchObject({ '30': 2, '60': 1 })
 
+    setGameMatchSessionMeta(gameId, {
+      turnState: {
+        turnNumber: 3,
+        scheduledAt: 10,
+        deadline: 6010,
+        durationSeconds: 60,
+        remainingSeconds: 45,
+        dropInBonusSeconds: 15,
+        dropInBonusAppliedAt: 12,
+        dropInBonusTurn: 3,
+        status: 'scheduled',
+      },
+    })
+
+    const thirdSnapshot = hydrateGameMatchData(gameId)
+    expect(thirdSnapshot?.sessionMeta?.turnTimer).toMatchObject({ baseSeconds: 90 })
+    expect(thirdSnapshot?.sessionMeta?.turnState).toMatchObject({
+      turnNumber: 3,
+      deadline: 6010,
+      remainingSeconds: 45,
+      dropInBonusSeconds: 15,
+      status: 'scheduled',
+    })
+
     setGameMatchSessionMeta(gameId, null)
 
     const clearedSnapshot = hydrateGameMatchData(gameId)
     expect(clearedSnapshot?.sessionMeta?.turnTimer).toBeNull()
     expect(clearedSnapshot?.sessionMeta?.vote).toBeNull()
     expect(clearedSnapshot?.sessionMeta?.dropIn).toBeNull()
+    expect(clearedSnapshot?.sessionMeta?.turnState).toMatchObject({
+      turnNumber: 0,
+      deadline: 0,
+      remainingSeconds: 0,
+    })
   })
 
   it('updates confirmation payloads consistently', () => {

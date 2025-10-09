@@ -17,11 +17,27 @@ const EMPTY_SLOT_TEMPLATE = Object.freeze({
   updatedAt: 0,
 })
 
+const EMPTY_TURN_STATE = Object.freeze({
+  version: 1,
+  turnNumber: 0,
+  scheduledAt: 0,
+  deadline: 0,
+  durationSeconds: 0,
+  remainingSeconds: 0,
+  status: '',
+  dropInBonusSeconds: 0,
+  dropInBonusAppliedAt: 0,
+  dropInBonusTurn: 0,
+  source: '',
+  updatedAt: 0,
+})
+
 const EMPTY_SESSION_META = Object.freeze({
   turnTimer: null,
   vote: null,
   dropIn: null,
   asyncFill: null,
+  turnState: EMPTY_TURN_STATE,
   extras: null,
   source: '',
   updatedAt: 0,
@@ -74,7 +90,14 @@ export function createEmptyMatchFlowState(overrides = {}) {
     ? { ...EMPTY_SLOT_TEMPLATE, ...overrideSlotTemplate }
     : { ...EMPTY_SLOT_TEMPLATE }
   const sessionMeta = overrideSessionMeta
-    ? { ...EMPTY_SESSION_META, ...overrideSessionMeta }
+    ? {
+        ...EMPTY_SESSION_META,
+        ...overrideSessionMeta,
+        turnState: {
+          ...EMPTY_TURN_STATE,
+          ...(overrideSessionMeta.turnState || {}),
+        },
+      }
     : { ...EMPTY_SESSION_META }
   const slotTemplateVersion =
     overrideSlotVersion != null ? overrideSlotVersion : slotTemplate.version || 0
@@ -253,6 +276,7 @@ function normalizeSessionMeta(rawSessionMeta, snapshot) {
     vote: null,
     dropIn: null,
     asyncFill: null,
+    turnState: { ...EMPTY_TURN_STATE },
     extras: null,
     source: '',
     updatedAt: 0,
@@ -274,6 +298,9 @@ function normalizeSessionMeta(rawSessionMeta, snapshot) {
     if (rawSessionMeta.asyncFill !== undefined) {
       const cloned = deepClone(rawSessionMeta.asyncFill)
       base.asyncFill = cloned === undefined ? null : cloned
+    }
+    if (rawSessionMeta.turnState !== undefined) {
+      base.turnState = normalizeTurnState(rawSessionMeta.turnState)
     }
     if (rawSessionMeta.extras !== undefined) {
       const cloned = deepClone(rawSessionMeta.extras)
@@ -306,7 +333,71 @@ function normalizeSessionMeta(rawSessionMeta, snapshot) {
     base.asyncFill = cloned === undefined ? null : cloned
   }
 
+  if (!rawSessionMeta?.turnState && snapshot?.match?.turnState) {
+    base.turnState = normalizeTurnState(snapshot.match.turnState)
+  }
+
   return base
+}
+
+function normalizeTurnState(rawTurnState) {
+  const normalized = { ...EMPTY_TURN_STATE }
+  if (!rawTurnState || typeof rawTurnState !== 'object') {
+    return normalized
+  }
+
+  if (rawTurnState.version !== undefined) {
+    const version = Number(rawTurnState.version)
+    if (Number.isFinite(version) && version > 0) {
+      normalized.version = Math.floor(version)
+    }
+  }
+  if (rawTurnState.turnNumber !== undefined) {
+    const turnNumber = Number(rawTurnState.turnNumber)
+    if (Number.isFinite(turnNumber) && turnNumber >= 0) {
+      normalized.turnNumber = Math.floor(turnNumber)
+    }
+  }
+  if (rawTurnState.scheduledAt !== undefined) {
+    const scheduledAt = Number(rawTurnState.scheduledAt)
+    normalized.scheduledAt = Number.isFinite(scheduledAt) && scheduledAt > 0 ? scheduledAt : 0
+  }
+  if (rawTurnState.deadline !== undefined) {
+    const deadline = Number(rawTurnState.deadline)
+    normalized.deadline = Number.isFinite(deadline) && deadline > 0 ? deadline : 0
+  }
+  if (rawTurnState.durationSeconds !== undefined) {
+    const duration = Number(rawTurnState.durationSeconds)
+    normalized.durationSeconds = Number.isFinite(duration) && duration >= 0 ? duration : 0
+  }
+  if (rawTurnState.remainingSeconds !== undefined) {
+    const remaining = Number(rawTurnState.remainingSeconds)
+    normalized.remainingSeconds = Number.isFinite(remaining) && remaining >= 0 ? remaining : 0
+  }
+  if (rawTurnState.status !== undefined) {
+    normalized.status = typeof rawTurnState.status === 'string' ? rawTurnState.status.trim() : ''
+  }
+  if (rawTurnState.dropInBonusSeconds !== undefined) {
+    const bonus = Number(rawTurnState.dropInBonusSeconds)
+    normalized.dropInBonusSeconds = Number.isFinite(bonus) && bonus >= 0 ? bonus : 0
+  }
+  if (rawTurnState.dropInBonusAppliedAt !== undefined) {
+    const appliedAt = Number(rawTurnState.dropInBonusAppliedAt)
+    normalized.dropInBonusAppliedAt = Number.isFinite(appliedAt) && appliedAt > 0 ? appliedAt : 0
+  }
+  if (rawTurnState.dropInBonusTurn !== undefined) {
+    const bonusTurn = Number(rawTurnState.dropInBonusTurn)
+    normalized.dropInBonusTurn = Number.isFinite(bonusTurn) && bonusTurn >= 0 ? Math.floor(bonusTurn) : 0
+  }
+  if (rawTurnState.source !== undefined) {
+    normalized.source = typeof rawTurnState.source === 'string' ? rawTurnState.source.trim() : ''
+  }
+  if (rawTurnState.updatedAt !== undefined) {
+    const updatedAt = Number(rawTurnState.updatedAt)
+    normalized.updatedAt = Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : 0
+  }
+
+  return normalized
 }
 
 function deriveUserId({ viewer, authSnapshot }) {

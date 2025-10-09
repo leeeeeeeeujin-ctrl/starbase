@@ -9,6 +9,7 @@ create table if not exists public.rank_session_meta (
   selected_time_limit_seconds integer,
   realtime_mode text default 'off',
   drop_in_bonus_seconds integer default 0,
+  turn_state jsonb,
   async_fill_snapshot jsonb,
   updated_at timestamptz not null default now()
 );
@@ -18,6 +19,7 @@ create or replace function public.upsert_match_session_meta(
   p_selected_time_limit integer default null,
   p_time_vote jsonb default null,
   p_drop_in_bonus_seconds integer default 0,
+  p_turn_state jsonb default null,
   p_async_fill_snapshot jsonb default null,
   p_realtime_mode text default null
 )
@@ -26,6 +28,7 @@ returns table (
   selected_time_limit_seconds integer,
   time_vote jsonb,
   drop_in_bonus_seconds integer,
+  turn_state jsonb,
   async_fill_snapshot jsonb,
   realtime_mode text,
   updated_at timestamptz
@@ -49,6 +52,7 @@ begin
     selected_time_limit_seconds,
     time_vote,
     drop_in_bonus_seconds,
+    turn_state,
     async_fill_snapshot,
     realtime_mode,
     updated_at
@@ -57,6 +61,7 @@ begin
     p_selected_time_limit,
     p_time_vote,
     p_drop_in_bonus_seconds,
+    p_turn_state,
     p_async_fill_snapshot,
     v_mode,
     v_now
@@ -66,6 +71,7 @@ begin
     selected_time_limit_seconds = excluded.selected_time_limit_seconds,
     time_vote = excluded.time_vote,
     drop_in_bonus_seconds = excluded.drop_in_bonus_seconds,
+    turn_state = excluded.turn_state,
     async_fill_snapshot = excluded.async_fill_snapshot,
     realtime_mode = excluded.realtime_mode,
     updated_at = v_now
@@ -76,6 +82,7 @@ begin
     v_row.selected_time_limit_seconds,
     v_row.time_vote,
     v_row.drop_in_bonus_seconds,
+    v_row.turn_state,
     v_row.async_fill_snapshot,
     v_row.realtime_mode,
     v_row.updated_at;
@@ -87,6 +94,7 @@ grant execute on function public.upsert_match_session_meta(
   integer,
   jsonb,
   integer,
+  jsonb,
   jsonb,
   text
 ) to service_role;
