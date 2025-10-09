@@ -2,12 +2,14 @@
 
 프론트엔드 리팩토링과 실시간 계획 확장에 맞춰, Supabase·Edge Functions·서버 유틸이 보강해야 할 항목을 모아둔 문서다. 우선순위는 "즉시 대응" → "매칭/방" → "본게임" 순으로 진행하며, 각 항목은 진행 상황에 따라 ✅(완료) / 🔄(진행 중) / ☐(미착수)로 업데이트한다.
 
+> 📦 이번 회차에서는 `docs/supabase-rank-backend-upgrades.sql`에 공통 스키마·RPC·정책 초안을 추가했다. 아래 체크리스트의 🔄 항목은 SQL이 준비되었으며, Supabase에 적용하면 즉시 사용할 수 있다.
+
 ## 1. 즉시 대응이 필요한 공통 작업
-- ☐ `verify_rank_roles_and_slots`(가칭) RPC를 추가해 등록·매칭·룸 스테이징에서 동일한 역할/슬롯 검증 로직을 사용하도록 통합한다. `pages/api/rank/register-game.js`와 `stage-room-match`가 같은 함수로 유효성을 확인하게 만드는 것이 목표다.
-- ☐ `RoomInitService`가 참조할 `rank_room_slot_cache` 테이블과 행 단위 잠금을 제공하는 RPC를 작성해, 실시간 입장 경쟁 시 슬롯 경합을 방지한다.
-- ☐ `validate_session` RPC에 슬롯 버전(`slot_schema_version`)과 타임스탬프를 포함해 GameSession Store가 클라이언트-서버 간 버전 차이를 감지할 수 있게 한다.
-- ☐ 이미지 업로드 Edge Function에 3MB 용량 제한과 MIME 화이트리스트를 적용해, 프론트의 사전 검증(`RankNewClient` 이미지 검사)과 백엔드 정책을 일치시킨다.
-- ☐ `rank_game_logs`(가칭) 감사 테이블을 확장해 등록/매칭/본게임에서 발생하는 주요 이벤트와 실패 케이스를 모두 기록한다.
+- 🔄 `verify_rank_roles_and_slots`(가칭) RPC를 추가해 등록·매칭·룸 스테이징에서 동일한 역할/슬롯 검증 로직을 사용하도록 통합한다. `supabase-rank-backend-upgrades.sql`에 함수 초안과 실행 권한을 정리했으며, Supabase에 배포하면 `pages/api/rank/register-game.js`와 `stage-room-match`가 같은 검증을 재사용할 수 있다.
+- 🔄 `RoomInitService`가 참조할 `rank_room_slot_cache` 테이블과 행 단위 잠금을 제공하는 RPC를 작성해, 실시간 입장 경쟁 시 슬롯 경합을 방지한다. 슬롯 캐시 테이블과 `claim_rank_room_slot` RPC SQL을 추가했으므로 적용만 하면 된다.
+- 🔄 `validate_session` RPC에 슬롯 버전(`slot_schema_version`)과 타임스탬프를 포함해 GameSession Store가 클라이언트-서버 간 버전 차이를 감지할 수 있게 한다. `rank_sessions` 컬럼 확장과 `validate_session`/`bump_rank_session_slot_version` RPC 초안을 SQL로 준비했다.
+- 🔄 이미지 업로드 Edge Function에 3MB 용량 제한과 MIME 화이트리스트를 적용해, 프론트의 사전 검증(`RankNewClient` 이미지 검사)과 백엔드 정책을 일치시킨다. `rank-game-covers` 버킷 전용 트리거와 정책을 SQL에 추가했다.
+- 🔄 `rank_game_logs`(가칭) 감사 테이블을 확장해 등록/매칭/본게임에서 발생하는 주요 이벤트와 실패 케이스를 모두 기록한다. 감사 테이블과 인덱스, 서비스 롤 정책을 SQL로 마련했다.
 
 ## 2. 게임 등록 지원
 - 🔄 `register-game` API에서 역할 점수 범위·난입 종료 조건 검증을 RPC에 위임하고, 실패 사유를 프론트에 전달할 수 있도록 오류 코드를 통일한다. 현재는 프론트·API가 `prepareRegistrationPayload` 유틸을 공유하도록 맞춰 1차 동기화를 끝냈으며, 다음 단계로 RPC로 분리하고 에러 코드를 정의해야 한다.【F:lib/rank/registrationValidation.js†L1-L87】【F:pages/api/rank/register-game.js†L1-L80】
