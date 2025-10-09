@@ -1,6 +1,6 @@
 'use client'
 
-export default function MakerHomeHeader({ listHeader, errorMessage, onGoBack }) {
+export default function MakerHomeHeader({ listHeader, errorMessage, noticeMessage, onGoBack }) {
   return (
     <header
       style={{
@@ -45,7 +45,12 @@ export default function MakerHomeHeader({ listHeader, errorMessage, onGoBack }) 
         }}
       >
         <span style={{ fontSize: 13, color: '#94a3b8' }}>{listHeader}</span>
-        {errorMessage && <span style={{ fontSize: 12, color: '#fca5a5' }}>{errorMessage}</span>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+          {noticeMessage && (
+            <span style={{ fontSize: 12, color: '#bfdbfe', textAlign: 'right' }}>{noticeMessage}</span>
+          )}
+          {errorMessage && <span style={{ fontSize: 12, color: '#fca5a5', textAlign: 'right' }}>{errorMessage}</span>}
+        </div>
       </div>
     </header>
   )
