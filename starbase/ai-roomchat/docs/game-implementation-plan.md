@@ -191,6 +191,9 @@
 - **Supabase 의존 테스트 불안정**: 네트워크 불안으로 flake 발생 → Supabase 호출을 테스트 더블로 대체하고, E2E는 전용 테스트 프로젝트/테이블 사용.
 - **Playwright CI 실행 시간 증가**: E2E 시나리오가 늘어나면 10분 이상 소요될 수 있음 → 시나리오를 태그로 그룹화하고, PR에서는 핵심 시나리오만 실행하도록 워크플로 조정.
 
+**진행 현황 업데이트**
+- (신규) `useMakerHome` 훅의 무단 접근 처리, 목록 새로고침 실패 경고, 구버전 프롬프트 세트 알림을 검증하는 jsdom 테스트를 추가했다. 이를 통해 Maker 홈 공통 훅이 계획한 예외 흐름을 안전하게 처리하는지 회귀 방지를 마련했다.【F:__tests__/hooks/maker/useMakerHome.test.js†L1-L129】
+
 ### 3.5 구현 계획 보강 요약
 - 프론트 훅/컴포넌트별로 확인한 상태명과 스토리지 키를 토대로, 중복 새로고침/메시지 처리·히스토리 저장·슬롯 매핑 구조 개선을 명확히 정의했다.【F:components/maker/home/MakerHomeContainer.js†L80-L167】【F:hooks/maker/useMakerEditor.js†L24-L138】【F:components/rank/RankNewClient.js†L110-L333】
 - `matchDataStore`를 GameSession Store의 출발점으로 잡아, 매칭→방→본게임 데이터 전달에 필요한 `slotTemplate`·버전 필드 추가를 계획했다.【F:modules/rank/matchDataStore.js†L1-L176】【F:pages/rooms/index.js†L31-L1467】【F:pages/rooms/[id].js†L287-L2136】
@@ -259,3 +262,4 @@
 - `matchDataStore` 확장 분기와 세션 메타 합성 동작을 확인하기 위해 `npm test -- matchDataStore`를 실행했고, GameSession Store 관련 단위 테스트 7건이 모두 통과했다. 이를 통해 턴 상태, 비실시간 충원 스냅샷, 슬롯 템플릿 버전 병합이 계획대로 동작함을 재검증했다.【df07ee†L1-L13】
 - Next.js 프로덕션 빌드를 수행(`npm run build`)해 MatchReady/StartClient 리팩터링, GameRoomView 모바일 레이아웃, 로비 컴포넌트 분리를 포함한 전체 페이지 구성이 문제 없이 번들링되는지 확인했다. 빌드는 경고 없이 완료되어 현 시점 계획 범위가 배포 관점에서도 안정적임을 확인했다.【0ea82a†L1-L66】
 - StartClient 가시성 토글과 참가자 정보 마스킹 동작을 검증하는 jsdom 기반 단위 테스트를 추가했다. `RosterPanel`이 비공개 모드에서 정보를 숨기고, 호스트·동일 역할·본인 좌석에 대해서만 상세 정보를 복구하는지 확인해 가시성 계획의 회귀를 방지한다.【F:__tests__/components/rank/StartClient/RosterPanel.test.js†L1-L108】
+- Maker 홈 공용 훅 `useMakerHome`에 대한 jsdom 테스트(`npm test -- useMakerHome`)를 실행해 무단 접근, 새로고침 실패 경고, 구버전 세트 알림 흐름이 모두 정상적으로 동작함을 확인했다.【47ccd0†L1-L11】
