@@ -8,36 +8,32 @@ import MakerEditorCanvas from './MakerEditorCanvas'
 import MakerEditorHeader from './MakerEditorHeader'
 import MakerEditorPanel from './MakerEditorPanel'
 import VariableDrawer from './VariableDrawer'
+import AdvancedToolsPanel from './AdvancedToolsPanel'
 
 export default function MakerEditor() {
+  const { status, graph, selection, variables, persistence, history, version } = useMakerEditor()
+
+  const { isReady, loading, setInfo } = status
+
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, onNodesDelete, onEdgesDelete, setNodes, setEdges } =
+    graph
+
   const {
-    router,
-    isReady,
-    loading,
-    busy,
-    setInfo,
-    nodes,
-    edges,
-    onNodesChange,
-    onEdgesChange,
-    onConnect,
+    selectedNode,
+    selectedNodeId,
+    selectedEdge,
     onNodeClick,
     onEdgeClick,
     onPaneClick,
     onSelectionChange,
-    onNodesDelete,
-    onEdgesDelete,
-    selectedNode,
-    selectedNodeId,
-    selectedEdge,
-    markAsStart,
-    toggleInvisible,
-    handleDeletePrompt,
-    addPromptNode,
-    saveAll,
     panelTabs,
     activePanelTab,
     setActivePanelTab,
+    markAsStart,
+    appendTokenToSelected,
+  } = selection
+
+  const {
     selectedGlobalRules,
     selectedLocalRules,
     commitGlobalRules,
@@ -45,23 +41,27 @@ export default function MakerEditor() {
     availableVariableNames,
     selectedVisibility,
     updateVisibility,
+    toggleInvisible,
     slotSuggestions,
     characterSuggestions,
-    appendTokenToSelected,
-    goToSetList,
-    goToLobby,
-    setNodes,
-    setEdges,
-    versionAlert,
-    clearVersionAlert,
-    saveReceipt,
-    ackSaveReceipt,
-    saveHistory,
-    clearSaveHistory,
-  } = useMakerEditor()
+  } = variables
+
+  const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence
+
+  const {
+    entries: saveHistory,
+    storageKey: historyStorageKey,
+    exportEntries: exportHistory,
+    clearEntries: clearHistory,
+    receipt: saveReceipt,
+    ackReceipt,
+  } = history
+
+  const { alert: versionAlert, clearAlert: clearVersionAlert } = version
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false)
   const [receiptVisible, setReceiptVisible] = useState(null)
 
   const collapsedQuickActions = useMemo(
@@ -80,6 +80,9 @@ export default function MakerEditor() {
         const hasTab = panelTabs?.some((tab) => tab.id === tabId)
         if (hasTab) {
           setActivePanelTab(tabId)
+          if (tabId === 'history') {
+            setAdvancedToolsOpen(true)
+          }
         } else if (panelTabs?.length) {
           setActivePanelTab(panelTabs[0].id)
         }
@@ -89,7 +92,7 @@ export default function MakerEditor() {
 
       setInspectorOpen(true)
     },
-    [panelTabs, setActivePanelTab],
+    [panelTabs, setActivePanelTab, setAdvancedToolsOpen],
   )
 
   const handleNodeDoubleClick = useCallback(
@@ -125,56 +128,6 @@ export default function MakerEditor() {
     clearVersionAlert()
   }, [clearVersionAlert])
 
-  const handleExportHistory = useCallback(() => {
-    if (!Array.isArray(saveHistory) || saveHistory.length === 0) {
-      return
-    }
-    if (typeof window === 'undefined') return
-
-    const rawSetId = router?.query?.id
-    const setIdValue = Array.isArray(rawSetId) ? rawSetId[0] : rawSetId
-    const safeName = (setInfo?.name || 'maker-set')
-      .trim()
-      .replace(/[\\/:*?"<>|]+/g, '_')
-      .replace(/\s+/g, '_')
-      .slice(0, 60)
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const filenameParts = [safeName || 'maker-set']
-    if (setIdValue) {
-      filenameParts.push(setIdValue)
-    }
-    filenameParts.push(`history-${timestamp}`)
-    const filename = `${filenameParts.join('-')}.json`
-
-    try {
-      const payload = JSON.stringify(saveHistory, null, 2)
-      const blob = new Blob([payload], { type: 'application/json' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.setTimeout(() => {
-        window.URL.revokeObjectURL(url)
-      }, 1000)
-    } catch (error) {
-      console.error('[MakerEditor] 히스토리 내보내기에 실패했습니다.', error)
-    }
-  }, [router?.query?.id, saveHistory, setInfo?.name])
-
-  const handleClearHistory = useCallback(() => {
-    if (!Array.isArray(saveHistory) || saveHistory.length === 0) {
-      return
-    }
-    if (typeof window !== 'undefined') {
-      const confirmed = window.confirm('저장된 자동 업그레이드 히스토리를 모두 삭제할까요?')
-      if (!confirmed) return
-    }
-    clearSaveHistory()
-  }, [clearSaveHistory, saveHistory])
-
   useEffect(() => {
     if (!saveReceipt) {
       setReceiptVisible(null)
@@ -184,20 +137,20 @@ export default function MakerEditor() {
     setReceiptVisible(saveReceipt)
 
     const timeout = window.setTimeout(() => {
-      ackSaveReceipt(saveReceipt.id)
+      ackReceipt(saveReceipt.id)
     }, 6000)
 
     return () => {
       window.clearTimeout(timeout)
     }
-  }, [saveReceipt, ackSaveReceipt])
+  }, [saveReceipt, ackReceipt])
 
   useEffect(() => {
     if (!receiptVisible) return
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        ackSaveReceipt(receiptVisible.id)
+        ackReceipt(receiptVisible.id)
       }
     }
 
@@ -205,7 +158,7 @@ export default function MakerEditor() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [receiptVisible, ackSaveReceipt])
+  }, [receiptVisible, ackReceipt])
 
   if (!isReady || loading) {
     return <div style={{ padding: 20 }}>불러오는 중…</div>
@@ -322,7 +275,11 @@ export default function MakerEditor() {
 
       <button
         type="button"
-        onClick={() => (inspectorOpen ? setInspectorOpen(false) : openInspector())}
+        onClick={() =>
+          inspectorOpen
+            ? (setInspectorOpen(false), setAdvancedToolsOpen(false))
+            : openInspector()
+        }
         style={{
           position: 'fixed',
           left: 16,
@@ -386,7 +343,10 @@ export default function MakerEditor() {
               </button>
               <button
                 type="button"
-                onClick={() => setInspectorOpen(false)}
+                onClick={() => {
+                  setInspectorOpen(false)
+                  setAdvancedToolsOpen(false)
+                }}
                 style={{
                   padding: '4px 10px',
                   borderRadius: 10,
@@ -418,13 +378,19 @@ export default function MakerEditor() {
               selectedNodeId={selectedNodeId}
               selectedEdge={selectedEdge}
               onMarkAsStart={markAsStart}
-              onDeleteSelected={() => selectedNodeId && handleDeletePrompt(selectedNodeId)}
+              onDeleteSelected={() => selectedNodeId && deletePrompt(selectedNodeId)}
               onInsertToken={appendTokenToSelected}
               setNodes={setNodes}
               setEdges={setEdges}
-              saveHistory={saveHistory}
-              onExportHistory={handleExportHistory}
-              onClearHistory={handleClearHistory}
+              onRequestAdvancedTools={() => setAdvancedToolsOpen(true)}
+            />
+            <AdvancedToolsPanel
+              expanded={advancedToolsOpen}
+              onToggle={() => setAdvancedToolsOpen((prev) => !prev)}
+              storageKey={historyStorageKey}
+              historyEntries={saveHistory}
+              onExport={exportHistory}
+              onClear={clearHistory}
             />
           </div>
         </div>
@@ -508,7 +474,7 @@ export default function MakerEditor() {
               </button>
               <button
                 type="button"
-                onClick={() => ackSaveReceipt(receiptVisible.id)}
+              onClick={() => ackReceipt(receiptVisible.id)}
                 style={{
                   appearance: 'none',
                   border: '1px solid rgba(148, 163, 184, 0.45)',

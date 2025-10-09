@@ -93,6 +93,102 @@
   color: rgba(254, 202, 202, 0.92);
 }
 
+.voteSection {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.74) 0%, rgba(15, 23, 42, 0.58) 100%);
+}
+
+.voteHeader {
+  display: grid;
+  gap: 6px;
+}
+
+.voteDescription {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(148, 163, 184, 0.82);
+}
+
+.voteOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.voteOptionButton {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.voteOptionButton:hover,
+.voteOptionButton:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.voteOptionButtonActive {
+  border-color: rgba(56, 189, 248, 0.9);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22) 0%, rgba(14, 165, 233, 0.28) 100%);
+  color: #f0f9ff;
+}
+
+.voteOptionLabel {
+  font-size: 15px;
+}
+
+.voteOptionHint {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.voteOptionButtonActive .voteOptionHint {
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.voteOptionBadge {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.9);
+  color: #021825;
+  font-weight: 700;
+}
+
+.voteSummary {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: rgba(203, 213, 225, 0.92);
+}
+
+.voteSummaryLine {
+  margin: 0;
+}
+
+.voteNotice {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(56, 189, 248, 0.92);
+}
+
 .rosterSection {
   display: grid;
   gap: 12px;
@@ -132,6 +228,45 @@
   font-size: 13px;
   font-weight: 600;
   color: rgba(125, 211, 252, 0.95);
+}
+
+.asyncFillSummary {
+  margin-top: 12px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  background: rgba(30, 58, 138, 0.28);
+  display: grid;
+  gap: 6px;
+}
+
+.asyncFillTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #bae6fd;
+}
+
+.asyncFillText {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(191, 219, 254, 0.9);
+}
+
+.asyncFillQueue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(191, 219, 254, 0.88);
+}
+
+.asyncFillQueueLabel {
+  font-weight: 600;
+  color: rgba(96, 165, 250, 0.95);
+}
+
+.asyncFillQueueNames {
+  font-weight: 500;
 }
 
 .footer {
@@ -201,34 +336,16 @@
 .overlayBackdrop {
   position: absolute;
   inset: 0;
-  background: rgba(2, 6, 23, 0.72);
-  backdrop-filter: blur(6px);
+  background: rgba(15, 23, 42, 0.85);
 }
 
 .overlayContent {
   position: relative;
   z-index: 1;
-  flex: 1;
-  overflow-y: auto;
-}
-
-@media (max-width: 640px) {
-  .shell {
-    padding: 26px 20px 32px;
-    gap: 20px;
-  }
-
-  .actionsInline {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .primaryButton {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .footer {
-    justify-items: stretch;
-  }
+  margin: 40px 16px;
+  width: min(1280px, 100%);
+  max-height: calc(100vh - 80px);
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.55);
 }

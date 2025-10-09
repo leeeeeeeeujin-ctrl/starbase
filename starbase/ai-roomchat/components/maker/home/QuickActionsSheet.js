@@ -1,6 +1,13 @@
 'use client'
 
-export default function QuickActionsSheet({ open, onClose, onCreateSet, onImportFile, onRefresh }) {
+export default function QuickActionsSheet({
+  open,
+  promptSets = [],
+  onClose,
+  onCreateSet,
+  onImportFile,
+  onExportSet,
+}) {
   if (!open) {
     return null
   }
@@ -96,24 +103,60 @@ export default function QuickActionsSheet({ open, onClose, onCreateSet, onImport
           />
         </label>
 
-        <button
-          type="button"
-          onClick={() => {
-            onClose()
-            onRefresh()
-          }}
+        <div
           style={{
+            display: 'grid',
+            gap: 10,
             padding: '12px 14px',
             borderRadius: 16,
-            background: '#e2e8f0',
-            color: '#0f172a',
-            fontWeight: 600,
-            border: 'none',
+            background: '#f8fafc',
+            border: '1px solid rgba(148,163,184,0.35)',
           }}
         >
-          목록 새로고침
-        </button>
-
+          <strong style={{ fontSize: 14, color: '#0f172a', fontWeight: 700 }}>세트 내보내기</strong>
+          {promptSets.length === 0 ? (
+            <p
+              style={{
+                margin: 0,
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: '#64748b',
+              }}
+            >
+              내보낼 세트가 아직 없습니다. 먼저 세트를 만든 뒤 다시 시도하세요.
+            </p>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gap: 8,
+                maxHeight: 220,
+                overflowY: 'auto',
+              }}
+            >
+              {promptSets.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => {
+                    onExportSet?.(row.id)
+                  }}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 12,
+                    border: '1px solid rgba(148,163,184,0.5)',
+                    background: '#fff',
+                    color: '#0f172a',
+                    textAlign: 'left',
+                    fontWeight: 600,
+                  }}
+                >
+                  {row.name || '이름 없는 세트'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
