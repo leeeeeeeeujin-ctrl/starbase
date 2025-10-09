@@ -200,10 +200,11 @@ export default function MakerHomeView({
 
       <QuickActionsSheet
         open={actionSheetOpen}
+        promptSets={rows}
         onClose={() => onToggleActionSheet(false)}
         onCreateSet={onCreateSet}
         onImportFile={onImportFile}
-        onRefresh={onRefresh}
+        onExportSet={onExportSet}
       />
     </div>
   )

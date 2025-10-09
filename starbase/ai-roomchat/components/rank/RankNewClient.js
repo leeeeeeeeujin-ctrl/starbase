@@ -1,7 +1,7 @@
 // components/rank/RankNewClient.js
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
@@ -11,6 +11,7 @@ import SlotMatrix from '../../components/rank/SlotMatrix'
 import RolesEditor from '../../components/rank/RolesEditor'
 import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
 import { uploadGameImage } from '../../lib/rank/storage'
+import { useSharedPromptSetStorage } from '../../hooks/shared/useSharedPromptSetStorage'
 
 async function registerGame(payload) {
   const {
@@ -119,7 +120,11 @@ export default function RankNewClient() {
   const [brawlEnabled, setBrawlEnabled] = useState(false)
   const [endCondition, setEndCondition] = useState('')
   const [showBrawlHelp, setShowBrawlHelp] = useState(false)
-  const [backgroundImage, setBackgroundImage] = useState('')
+  const {
+    backgroundUrl,
+    promptSetId: sharedPromptSetId,
+    setPromptSetId: setSharedPromptSetId,
+  } = useSharedPromptSetStorage()
 
   useEffect(() => {
     let alive = true
@@ -133,14 +138,18 @@ export default function RankNewClient() {
   }, [router])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const storedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
-      setBackgroundImage(storedBackground)
-    } catch (error) {
-      console.error('Failed to hydrate register background:', error)
+    if (sharedPromptSetId) {
+      setSetId(sharedPromptSetId)
     }
-  }, [])
+  }, [sharedPromptSetId])
+
+  const handlePromptSetChange = useCallback(
+    (value) => {
+      setSetId(value)
+      setSharedPromptSetId(value)
+    },
+    [setSharedPromptSetId],
+  )
 
   const activeSlots = useMemo(
     () => (slotMap || []).filter(s => s.active && s.role && s.role.trim()),
@@ -243,10 +252,10 @@ export default function RankNewClient() {
     router.replace(`/rank/${gameId}`)
   }
 
-  const pageStyle = backgroundImage
+  const pageStyle = backgroundUrl
     ? {
         minHeight: '100vh',
-        backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.96) 100%), url(${backgroundImage})`,
+        backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.96) 100%), url(${backgroundUrl})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundAttachment: 'fixed',
@@ -398,7 +407,7 @@ export default function RankNewClient() {
                 />
               </label>
               <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>
-                <PromptSetPicker value={setId} onChange={setSetId} />
+                <PromptSetPicker value={setId} onChange={handlePromptSetChange} />
               </div>
               <label style={labelStyle}>
                 <span style={{ color: '#cbd5f5' }}>실시간 매칭 모드</span>

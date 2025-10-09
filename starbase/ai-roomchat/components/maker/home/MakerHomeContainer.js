@@ -6,11 +6,12 @@ import { useRouter } from 'next/router'
 import { useMakerHome } from '../../../hooks/maker/useMakerHome'
 import MakerHomeView from './MakerHomeView'
 import { readHeroSelection } from '../../../lib/heroes/selectedHeroStorage'
+import { useSharedPromptSetStorage } from '../../../hooks/shared/useSharedPromptSetStorage'
 
 export default function MakerHomeContainer() {
   const router = useRouter()
   const [returnHeroId, setReturnHeroId] = useState('')
-  const [backgroundImage, setBackgroundImage] = useState('')
+  const { backgroundUrl, setPromptSetId } = useSharedPromptSetStorage()
 
   const handleUnauthorized = useCallback(() => {
     router.replace('/')
@@ -38,12 +39,6 @@ export default function MakerHomeContainer() {
     if (typeof window === 'undefined') return
     const selection = readHeroSelection()
     setReturnHeroId(selection?.heroId || '')
-    try {
-      const storedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
-      setBackgroundImage(storedBackground)
-    } catch (error) {
-      console.error('Failed to hydrate Maker background context:', error)
-    }
   }, [])
 
   const listHeader = useMemo(() => {
@@ -103,13 +98,14 @@ export default function MakerHomeContainer() {
       const inserted = await createSet()
       setActionSheetOpen(false)
       if (inserted?.id) {
+        setPromptSetId(inserted.id)
         router.push(`/maker/${inserted.id}`)
       }
     } catch (err) {
       console.error(err)
       alert(err instanceof Error ? err.message : '세트를 생성하지 못했습니다.')
     }
-  }, [createSet, router])
+  }, [createSet, router, setPromptSetId])
 
   const handleImportFile = useCallback(
     async (file) => {
@@ -118,6 +114,7 @@ export default function MakerHomeContainer() {
         const inserted = await importFromFile(file)
         setActionSheetOpen(false)
         if (inserted?.id) {
+          setPromptSetId(inserted.id)
           router.push(`/maker/${inserted.id}`)
         }
       } catch (err) {
@@ -125,19 +122,20 @@ export default function MakerHomeContainer() {
         alert(err instanceof Error ? err.message : 'JSON을 불러오지 못했습니다.')
       }
     },
-    [importFromFile, router],
+    [importFromFile, router, setPromptSetId],
   )
 
   const handleExportSet = useCallback(
     async (id) => {
       try {
+        setActionSheetOpen(false)
         await exportSet(id)
       } catch (err) {
         console.error(err)
         alert(err instanceof Error ? err.message : '세트를 내보내지 못했습니다.')
       }
     },
-    [exportSet],
+    [exportSet, setActionSheetOpen],
   )
 
   const handleRefresh = useCallback(() => {
@@ -159,7 +157,7 @@ export default function MakerHomeContainer() {
 
   return (
     <MakerHomeView
-      backgroundImage={backgroundImage}
+      backgroundImage={backgroundUrl}
       listHeader={listHeader}
       errorMessage={errorMessage}
       loading={loading}
@@ -173,7 +171,10 @@ export default function MakerHomeContainer() {
       onSubmitRename={handleSubmitRename}
       onCancelRename={handleCancelRename}
       onDeleteSet={handleDeleteSet}
-      onOpenSet={(id) => router.push(`/maker/${id}`)}
+      onOpenSet={(id) => {
+        setPromptSetId(id)
+        router.push(`/maker/${id}`)
+      }}
       onExportSet={handleExportSet}
       onImportFile={handleImportFile}
       onCreateSet={handleCreateSet}
