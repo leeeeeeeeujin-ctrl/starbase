@@ -194,7 +194,19 @@
 - **방 입장/검색 단계**: 참가자가 모두 착석하면 `buildMatchTransferPayload` 결과를 `stage-room-match`에 전달해 `rank_match_roster`를 스테이징하고, 동시에 GameSession Store(`matchDataStore`)에 로스터·히어로 선택·매치 스냅샷을 기록한다.【F:pages/rooms/[id].js†L1989-L2104】【F:pages/api/rank/stage-room-match.js†L112-L200】【F:modules/rank/matchDataStore.js†L97-L204】
 - **본게임 진입**: `MatchReadyClient`는 스테이지된 스냅샷을 불러와 API 키·로스터 준비 상태를 검증한 뒤 `StartClient`를 띄운다. 엔진은 `loadGameBundle`로 스테이지된 슬롯·참가자 정보를 병합하고, 프롬프트 그래프를 로딩해 실시간/드롭인 기능을 활성화한다.【F:components/rank/MatchReadyClient.js†L77-L199】【F:components/rank/StartClient/index.js†L69-L159】【F:components/rank/StartClient/useStartClientEngine.js†L1203-L1258】
 
-### 예상 문제 & 대응
+### 5.1 본게임 실시간/턴 타이머 보강 계획
+- **사전 투표 기반 제한시간 확정**: `MatchReadyClient` 상단에 제한시간 투표 모달을 추가해 15·30·60·120·180초 중 하나를 선택하게 하고, 합의된 값은 `startMatchMeta`와 함께 GameSession Store에 저장한다. `StartClient` 초기화 시 `createTurnTimerService.configureBase`를 호출해 해당 값을 기본 제한시간으로 설정한다.【F:components/rank/MatchReadyClient.js†L136-L215】【F:components/rank/StartClient/useStartClientEngine.js†L640-L706】【F:components/rank/StartClient/services/turnTimerService.js†L1-L70】
+- **턴 타이머 UI/싱크 재구성**: 기존 `useStartClientEngine`의 `turnDeadline`·`timeRemaining` 스냅샷을 타이머 헤더 컴포넌트로 추출하고, 투표 결과에 따라 1턴 보너스(30초) 노출 여부를 명확히 표시한다. 실시간 모드에서는 `realtimeManager.beginTurn` 직후 `scheduleTurnTimer`를 호출하고, 비실시간 모드에서는 서버 스케줄러에 전송해 오프셋을 기록한다.【F:components/rank/StartClient/useStartClientEngine.js†L1406-L1442】【F:components/rank/StartClient/index.js†L146-L320】
+- **난입 보너스 30초 적용**: 새 참가자가 동일 턴에 합류하면 `registerDropInBonus({ immediate: true })`로 30초 보너스를 적용하고, 드롭인 큐 스냅샷에 해당 턴을 기록해 중복 보너스를 방지한다. `dropInQueueService`와 `turnTimerService`의 보너스 값을 30초로 통일하고, 보너스 적용 시 `recordTimelineEvents`에 “턴 연장” 로그를 남겨 플레이어에게 피드백한다.【F:components/rank/StartClient/services/turnTimerService.js†L9-L70】【F:components/rank/StartClient/useStartClientEngine.js†L1555-L1587】【F:components/rank/StartClient/services/asyncSessionManager.js†L66-L96】
+- **가시성 토글과 참가자 정보 개선**: `StartClient` 상단 패널에 전투 정보·가시성 토글을 분리하고, `resolveHeroAssets` 결과를 이용해 캐릭터 초상·배경을 즉시 노출한다. 블라인드/비실시간 모드에서는 호스트 역할군만 전체 정보를 확인하고, 다른 참가자에게는 역할·상태만 표시하도록 조건부 렌더링을 추가한다.【F:components/rank/StartClient/useStartClientEngine.js†L1455-L1554】【F:components/rank/StartClient/RosterPanel.js†L46-L199】
+
+### 5.2 비실시간 매치 인원 충원 전략
+- **동일 역할군 최대 3인 착석 제한**: 비실시간 모드(`isRealtimeEnabled`가 false)인 경우 `MatchReady` 단계에서 호스트와 동일 역할군의 최대 3명만 룸에 입장하도록 `setGameMatchParticipation`을 필터링하고, 초과 인원은 대기열에 남긴다.【F:components/rank/StartClient/useStartClientEngine.js†L662-L717】【F:modules/rank/matchDataStore.js†L147-L200】
+- **랜덤 자동 충원 로직**: 부족한 슬롯은 `participantPool`(전 매치 참여자 목록)을 기반으로 역할·점수 기준으로 필터링한 뒤 중복 없이 무작위 선정한다. 선정된 플레이어는 `matchSnapshot.pendingMatch`에만 주입해 게임 내 실시간 데이터와 분리하고, 룸 UI에는 익명화된 통계만 노출한다.【F:modules/rank/matchDataStore.js†L147-L200】【F:lib/rank/matchFlow.js†L118-L170】
+- **데이터 격리 보장**: 자동 충원 결과는 게임 본편에서만 소비하도록 `matchFlow` 리더가 `pendingMatch`를 병합할 때 참가자 세부 정보를 sanitize하고, `StartClient`는 `participantPool` 메타만 사용해 외부 플레이어 정보가 UI에 섞이지 않도록 한다.【F:lib/rank/matchFlow.js†L62-L171】【F:components/rank/StartClient/useStartClientEngine.js†L1203-L1262】
+- **시작 조건 완화 UI**: 비실시간 방에는 “정원 미달 상태로 시작” 버튼을 별도로 제공하고, 버튼 클릭 시 부족 인원이 자동 충원 대기열로 이동함을 안내하는 토스트를 띄운다. `pages/rooms/[id].js`의 매치 시작 루틴에 `asyncStart` 플래그를 추가해 즉시 메인게임으로 전환한다.【F:pages/rooms/[id].js†L2008-L2134】
+
+### 5.3 예상 문제 & 대응
 - **슬롯 데이터 동시 갱신 충돌**: 방 호스트와 참가자가 동시에 슬롯을 수정할 경우 경합이 발생할 수 있음 → `stage-room-match`에 슬롯 버전 필드를 추가하고 Supabase Row Level Security로 낙관적 잠금을 구현한다.【F:pages/api/rank/stage-room-match.js†L112-L207】
 - **방 검색 성능 저하**: 실시간 방 수가 늘어나면 쿼리 비용 증가 → 로비에서 실시간 채널 이벤트를 디바운스하고, 자동 새로 고침 주기를 피처 플래그로 조절한다.【F:pages/rooms/index.js†L1406-L1467】
 - **본게임 진입 전 검증 실패**: GameSession Store와 Supabase 데이터가 어긋날 수 있음 → `MatchReadyClient`에서 `readMatchFlowState`와 서버 검증을 묶고 실패 시 재시도/룸 복귀 경로를 제공한다.【F:lib/rank/matchFlow.js†L118-L171】【F:components/rank/MatchReadyClient.js†L96-L155】
@@ -210,6 +222,6 @@
 - [ ] `stage-room-match` 낙관적 락·슬롯 버전 필드 추가 및 API 유틸 통합 작업 미착수.【F:pages/api/rank/stage-room-match.js†L112-L200】
 
 ---
-**백엔드 TODO**: Supabase 역할/슬롯 검증 함수 공통화, RoomInitService용 슬롯/역할 캐시 테이블 및 락 RPC 추가, `validate_session` RPC 및 슬롯 버전 필드 도입, 이미지 업로드 정책(용량/파일형식) 강화, 등록/매칭 로그 감사 테이블 확장.
-**추가 필요 사항**: 다국어 대비 문자열 리소스 분리, 매칭/룸 UI 카피 검수, GameSession Store 스키마 및 Maker JSON 버전 문서화, 테스트 환경용 Supabase 프로젝트 분리.
-**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축) 코드 반영 완료. 2-2 단계에서는 안내/체크리스트 리소스 분리와 레이아웃/사이드바 재배치를 마쳤고, 다음 작업은 등록 폼 이미지 미리보기·검증 보강 및 3단계 확장 기능 준비다.
+**백엔드 TODO**: Supabase 역할/슬롯 검증 함수 공통화, RoomInitService용 슬롯/역할 캐시 테이블 및 락 RPC 추가, `validate_session` RPC 및 슬롯 버전 필드 도입, 제한시간 투표·비실시간 자동 충원 결과를 저장하는 `upsert_match_session_meta`(가칭) RPC 설계, 이미지 업로드 정책(용량/파일형식) 강화, 등록/매칭 로그 감사 테이블 확장.
+**추가 필요 사항**: 다국어 대비 문자열 리소스 분리, 매칭/룸 UI 카피 검수, GameSession Store 스키마 및 Maker JSON 버전 문서화, 비실시간 자동 충원 통계 대시보드 정의, 테스트 환경용 Supabase 프로젝트 분리.
+**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축) 코드 반영 완료. 2-2 단계에서는 안내/체크리스트 리소스 분리와 레이아웃/사이드바 재배치를 마쳤고, 5단계에서는 본게임 타이머·난입·비실시간 충원 계획을 상세화했다. 다음 작업은 등록 폼 이미지 미리보기·검증 보강 및 3단계 확장 기능 준비다.
