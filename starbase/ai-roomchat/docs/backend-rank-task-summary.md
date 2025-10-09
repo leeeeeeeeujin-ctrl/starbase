@@ -24,6 +24,7 @@
 
 ## 4. 본게임·세션 메타
 - ✅ `upsert_match_session_meta`(가칭) RPC를 만들어 제한시간 투표 결과, 난입 보너스 로그, 턴 상태(`turn_state`), 비실시간 자동 충원 히스토리를 한 곳에 저장한다. `refresh_match_session_async_fill` RPC는 좌석 제한·대기열 스냅샷을 계산해 같은 테이블에 저장하도록 확장됐으며, 두 함수 모두 SQL 스니펫으로 제공된다. 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql`과 `docs/sql/refresh-match-session-async-fill.sql` 파일을 그대로 붙여넣으면 된다.【F:docs/supabase-rank-session-sync-guide.md†L88-L216】【F:docs/sql/upsert-match-session-meta.sql†L1-L120】【F:docs/sql/refresh-match-session-async-fill.sql†L1-L220】
+- 🔄 턴 상태를 실시간으로 브로드캐스트하기 위한 `rank_turn_state_events` 테이블과 `enqueue_rank_turn_state_event` RPC를 배포한다. Supabase Realtime이 테이블 변경을 방송하도록 `docs/sql/rank-turn-realtime-sync.sql`을 실행하면 되고, 세션 메타 upsert와 동일한 트랜잭션에서 턴 스냅샷을 기록한다.【F:docs/sql/rank-turn-realtime-sync.sql†L1-L101】【F:docs/supabase-rank-session-sync-guide.md†L220-L231】
 - ☐ `start_match` Edge Function에서 위 메타 정보를 불러 `turnTimerService`와 `dropInQueueService`가 동일한 타이머/보너스 값을 받도록 초기화한다.
 - ☐ 새로 난입한 참가자에게 30초 보너스를 부여하는 규칙을 서버 타임라인에도 기록해, 클라이언트-서버 타이머 싱크를 검증할 수 있게 한다.
 
