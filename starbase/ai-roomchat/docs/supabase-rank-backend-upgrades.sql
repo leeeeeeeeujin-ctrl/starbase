@@ -967,11 +967,25 @@ on storage.objects for update to authenticated
 using (bucket_id = 'rank-game-covers')
 with check (bucket_id = 'rank-game-covers');
 
--- Supabase rank game registration RPC
 -- Creates register_rank_game so the frontend can submit game metadata,
 -- role definitions, and slot templates in a single call. Run this in the
 -- Supabase SQL editor (or via `supabase db execute`) to provision the RPC
 -- before deploying the revamped registration flow.
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'rank_game_slots_game_id_slot_index_key'
+      and conrelid = 'public.rank_game_slots'::regclass
+  ) then
+    alter table public.rank_game_slots
+      add constraint rank_game_slots_game_id_slot_index_key
+        unique (game_id, slot_index);
+  end if;
+end;
+$$;
 
 create or replace function public.register_rank_game(
   p_owner_id uuid,
@@ -1016,7 +1030,7 @@ begin
     nullif(p_game->>'prompt_set_id', '')::uuid,
     nullif(lower(trim(p_game->>'realtime_match')), ''),
     (
-      select case when count(*) > 0 then array_agg(role_name) else null end
+      select jsonb_agg(to_jsonb(role_name))
       from (
         select distinct trim(value)::text as role_name
         from jsonb_array_elements_text(coalesce(p_game->'roles', '[]'::jsonb))

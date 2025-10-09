@@ -7,7 +7,7 @@
 2. 매치 방 스테이징에서 사용할 슬롯 캐시 테이블과 잠금 RPC(`claim_rank_room_slot`)를 생성한다.
 3. 제한시간 투표·난입 보너스 등 메타 정보를 저장하는 `rank_session_meta` 테이블과 `upsert_match_session_meta`·`refresh_match_session_async_fill` RPC를 만든다.
 4. 방 상세 페이지가 호출하는 `stage-room-match`용 `sync_rank_match_roster` RPC를 배포해 슬롯 버전 충돌을 서버에서 차단한다.
-5. 게임 등록을 서버에서 일괄 처리할 `register_rank_game` RPC를 적용해 역할·슬롯 저장을 RPC 경유로 전환한다.
+5. 게임 등록을 서버에서 일괄 처리할 `register_rank_game` RPC를 적용해 역할·슬롯 저장을 RPC 경유로 전환한다. 이 스니펫은 `rank_game_slots`의 `(game_id, slot_index)` 유니크 제약도 함께 보강해 중복 슬롯 업서트 에러를 방지한다.
 6. (선택) 감사 로그·이미지 정책 보강도 함께 적용하려면 번들 전체를 실행한다.
 
 모든 스키마/함수 정의는 `docs/supabase-rank-backend-upgrades.sql`에 있다. 아래 요약된 스니펫을 순서대로 실행하면 핵심 1~5단계가 완료된다. `time_vote`·`turn_state`·`async_fill_snapshot` 저장만 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql`과 `docs/sql/refresh-match-session-async-fill.sql`을, 턴 상태 실시간 브로드캐스트까지 즉시 구성하려면 `docs/sql/rank-turn-realtime-sync.sql`을, 슬롯 버전 잠금을 즉시 적용하려면 `docs/sql/sync-rank-match-roster.sql`을, 등록 RPC만 따로 배포하려면 `docs/sql/register-rank-game.sql`을 그대로 붙여넣으면 된다.

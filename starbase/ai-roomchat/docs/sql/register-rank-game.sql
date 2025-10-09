@@ -4,6 +4,21 @@
 -- Supabase SQL editor (or via `supabase db execute`) to provision the RPC
 -- before deploying the revamped registration flow.
 
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'rank_game_slots_game_id_slot_index_key'
+      and conrelid = 'public.rank_game_slots'::regclass
+  ) then
+    alter table public.rank_game_slots
+      add constraint rank_game_slots_game_id_slot_index_key
+        unique (game_id, slot_index);
+  end if;
+end;
+$$;
+
 create or replace function public.register_rank_game(
   p_owner_id uuid,
   p_game jsonb,
