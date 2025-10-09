@@ -67,6 +67,7 @@ import { consumeStartMatchMeta } from '../startConfig'
 import {
   clearGameMatchData,
   hydrateGameMatchData,
+  setGameMatchSessionMeta,
 } from '../../../modules/rank/matchDataStore'
 import {
   START_SESSION_KEYS,
@@ -87,6 +88,15 @@ function toTrimmedString(value) {
   if (value === null || value === undefined) return null
   const stringValue = String(value).trim()
   return stringValue ? stringValue : null
+}
+
+function deepClone(value) {
+  if (value === null || value === undefined) return value
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch (error) {
+    return null
+  }
 }
 
 function parseSlotIndex(value, fallback = null) {
@@ -549,9 +559,62 @@ export function useStartClientEngine(gameId) {
       : (storedStartConfig[START_SESSION_KEYS.API_KEY] || '').trim()
   const initialFrontMatchData =
     typeof window === 'undefined' ? null : hydrateGameMatchData(gameId)
+  const initialSessionMeta =
+    initialFrontMatchData && typeof initialFrontMatchData.sessionMeta === 'object'
+      ? deepClone(initialFrontMatchData.sessionMeta) || initialFrontMatchData.sessionMeta
+      : null
+  const initialSlotTemplate =
+    initialFrontMatchData && typeof initialFrontMatchData.slotTemplate === 'object'
+      ? deepClone(initialFrontMatchData.slotTemplate) || initialFrontMatchData.slotTemplate
+      : null
   const initialMatchMetaCandidate = consumeStartMatchMeta()
-  const initialMatchMeta =
+  const baseMatchMeta =
     initialMatchMetaCandidate || initialFrontMatchData?.matchSnapshot?.match || null
+  const slotTemplateSlots =
+    initialSlotTemplate && Array.isArray(initialSlotTemplate.slots)
+      ? deepClone(initialSlotTemplate.slots) || initialSlotTemplate.slots
+      : null
+  let initialMatchMeta = baseMatchMeta ? deepClone(baseMatchMeta) || baseMatchMeta : null
+
+  if (slotTemplateSlots && slotTemplateSlots.length) {
+    if (initialMatchMeta) {
+      const roleStatusSource =
+        initialMatchMeta.roleStatus && typeof initialMatchMeta.roleStatus === 'object'
+          ? { ...initialMatchMeta.roleStatus }
+          : {}
+      if (!Array.isArray(initialMatchMeta.slotLayout) || !initialMatchMeta.slotLayout.length) {
+        initialMatchMeta = { ...initialMatchMeta, slotLayout: slotTemplateSlots }
+      }
+      if (!Array.isArray(roleStatusSource.slotLayout) || !roleStatusSource.slotLayout.length) {
+        roleStatusSource.slotLayout = slotTemplateSlots
+      }
+      if (initialSlotTemplate.version && !roleStatusSource.version) {
+        roleStatusSource.version = initialSlotTemplate.version
+      }
+      if (initialSlotTemplate.updatedAt && !roleStatusSource.updatedAt) {
+        roleStatusSource.updatedAt = initialSlotTemplate.updatedAt
+      }
+      initialMatchMeta = { ...initialMatchMeta, roleStatus: roleStatusSource }
+    } else {
+      initialMatchMeta = {
+        slotLayout: slotTemplateSlots,
+        roleStatus: {
+          slotLayout: slotTemplateSlots,
+          version: initialSlotTemplate?.version || null,
+          updatedAt: initialSlotTemplate?.updatedAt || null,
+        },
+      }
+    }
+  }
+
+  if (initialSessionMeta?.turnTimer) {
+    const timerMeta = deepClone(initialSessionMeta.turnTimer) || initialSessionMeta.turnTimer
+    if (initialMatchMeta) {
+      initialMatchMeta = { ...initialMatchMeta, turnTimer: timerMeta }
+    } else {
+      initialMatchMeta = { turnTimer: timerMeta }
+    }
+  }
   const initialApiVersion =
     typeof window === 'undefined'
       ? 'gemini'
@@ -597,6 +660,10 @@ export function useStartClientEngine(gameId) {
     return deriveRosterFromMatchSnapshot(matchSnapshotSeed)
   }, [frontMatchData, matchSnapshotSeed])
   const slotLayoutSeed = useMemo(() => {
+    if (Array.isArray(initialSlotTemplate?.slots) && initialSlotTemplate.slots.length) {
+      const fromTemplate = normalizeSlotLayoutEntries(initialSlotTemplate.slots)
+      if (fromTemplate.length) return fromTemplate
+    }
     if (!matchSnapshotSeed) return []
     const sources = []
     if (Array.isArray(matchSnapshotSeed.slotLayout) && matchSnapshotSeed.slotLayout.length) {
@@ -614,7 +681,7 @@ export function useStartClientEngine(gameId) {
       if (normalized.length) return normalized
     }
     return []
-  }, [matchSnapshotSeed])
+  }, [matchSnapshotSeed, initialSlotTemplate])
   const matchMetaLoggedRef = useRef(false)
   const gameIdRef = useRef(gameId ? String(gameId) : '')
   const [connectionRoster, setConnectionRoster] = useState(() =>
@@ -669,6 +736,7 @@ export function useStartClientEngine(gameId) {
   const winCountRef = useRef(initialMainGameState.winCount)
   const turnDeadlineRef = useRef(initialMainGameState.turnDeadline)
   const timeRemainingRef = useRef(initialMainGameState.timeRemaining)
+  const lastBroadcastTurnStateRef = useRef({ turnNumber: 0, deadline: 0 })
   const lastBattleLogSignatureRef = useRef(null)
   const patchEngineState = useCallback(
     (payload) => {
@@ -837,6 +905,30 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  const recordTurnState = useCallback(
+    (patch = {}) => {
+      if (preflight) return
+      if (!gameId) return
+
+      let turnStatePatch
+      if (patch === null) {
+        turnStatePatch = null
+      } else if (typeof patch === 'object') {
+        turnStatePatch = { ...patch }
+        if (!turnStatePatch.source) {
+          turnStatePatch.source = 'start-client'
+        }
+      } else {
+        return
+      }
+
+      setGameMatchSessionMeta(gameId, {
+        turnState: turnStatePatch,
+        source: 'start-client/turn-state',
+      })
+    },
+    [gameId, preflight],
+  )
   const setActiveHeroAssets = useCallback(
     (value) => {
       patchEngineState({ activeHeroAssets: value })
@@ -877,6 +969,10 @@ export function useStartClientEngine(gameId) {
     [patchEngineState],
   )
   const [turnTimerSeconds] = useState(() => {
+    const timerFromMeta = Number(initialSessionMeta?.turnTimer?.baseSeconds)
+    if (Number.isFinite(timerFromMeta) && timerFromMeta > 0) {
+      return timerFromMeta
+    }
     if (typeof window === 'undefined') return 60
     const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
     if (Number.isFinite(stored) && stored > 0) return stored
@@ -1363,18 +1459,38 @@ export function useStartClientEngine(gameId) {
       if (preflight) return
       if (!currentNodeId) return
       if (!turnTimerServiceRef.current) return
+      if (!gameId) return
       const durationSeconds = turnTimerServiceRef.current.nextTurnDuration(turnNumber)
+      const numericTurn = Number.isFinite(Number(turnNumber)) ? Math.floor(Number(turnNumber)) : 0
       if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
         setTurnDeadline(null)
         setTimeRemaining(null)
+        recordTurnState({
+          turnNumber: numericTurn,
+          status: 'idle',
+          deadline: 0,
+          durationSeconds: 0,
+          remainingSeconds: 0,
+        })
+        lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 }
         return
       }
-      const deadline = Date.now() + durationSeconds * 1000
+      const scheduledAt = Date.now()
+      const deadline = scheduledAt + durationSeconds * 1000
       setTurnDeadline(deadline)
       setTimeRemaining(durationSeconds)
+      recordTurnState({
+        turnNumber: numericTurn,
+        scheduledAt,
+        deadline,
+        durationSeconds,
+        remainingSeconds: durationSeconds,
+        status: 'scheduled',
+      })
       lastScheduledTurnRef.current = turnNumber
+      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline }
     },
-    [preflight, currentNodeId],
+    [preflight, currentNodeId, gameId, recordTurnState],
   )
 
   useEffect(() => {
@@ -1385,6 +1501,27 @@ export function useStartClientEngine(gameId) {
     if (lastScheduledTurnRef.current === turn && turnDeadline) return
     scheduleTurnTimer(turn)
   }, [preflight, currentNodeId, turn, turnDeadline, isAdvancing, scheduleTurnTimer])
+
+  useEffect(() => {
+    if (preflight) return
+    if (!gameId) return
+
+    const previous = lastBroadcastTurnStateRef.current || { turnNumber: 0, deadline: 0 }
+    const currentDeadline = typeof turnDeadline === 'number' && turnDeadline > 0 ? turnDeadline : 0
+    const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : previous.turnNumber || 0
+
+    if (previous.deadline && !currentDeadline && numericTurn > 0) {
+      recordTurnState({
+        turnNumber: numericTurn,
+        deadline: 0,
+        remainingSeconds: 0,
+        status: 'idle',
+      })
+      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 }
+    } else if (currentDeadline && currentDeadline !== previous.deadline) {
+      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: currentDeadline }
+    }
+  }, [preflight, gameId, turnDeadline, turn, recordTurnState])
 
   useEffect(() => {
     if (!realtimeManagerRef.current) return
@@ -1629,17 +1766,58 @@ export function useStartClientEngine(gameId) {
     if (arrivals.length > 0) {
       const service = turnTimerServiceRef.current
       if (service) {
-        const hasActiveDeadline = turnDeadline && turnDeadline > Date.now()
+        const now = Date.now()
+        const deadlineRefValue =
+          typeof turnDeadlineRef.current === 'number' && turnDeadlineRef.current > 0
+            ? turnDeadlineRef.current
+            : typeof turnDeadline === 'number'
+            ? turnDeadline
+            : 0
+        const hasActiveDeadline = deadlineRefValue && deadlineRefValue > now
+        const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
         const extraSeconds = service.registerDropInBonus({
           immediate: hasActiveDeadline,
           turnNumber: turn,
         })
 
-        if (extraSeconds > 0 && hasActiveDeadline) {
-          setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : prev))
-          setTimeRemaining((prev) =>
-            typeof prev === 'number' ? prev + extraSeconds : prev,
-          )
+        if (extraSeconds > 0) {
+          if (hasActiveDeadline) {
+            const baseDeadline = deadlineRefValue || now
+            const newDeadline = baseDeadline + extraSeconds * 1000
+            const previousRemaining =
+              typeof timeRemainingRef.current === 'number' && timeRemainingRef.current > 0
+                ? timeRemainingRef.current
+                : 0
+            const updatedRemaining = previousRemaining + extraSeconds
+
+            setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : newDeadline))
+            setTimeRemaining((prev) =>
+              typeof prev === 'number' ? prev + extraSeconds : updatedRemaining,
+            )
+            recordTurnState({
+              turnNumber: numericTurn,
+              deadline: newDeadline,
+              remainingSeconds: updatedRemaining,
+              dropInBonusSeconds: extraSeconds,
+              dropInBonusAppliedAt: now,
+              dropInBonusTurn: numericTurn,
+              status: 'bonus-applied',
+            })
+            lastBroadcastTurnStateRef.current = {
+              turnNumber: numericTurn,
+              deadline: newDeadline,
+            }
+          } else {
+            recordTurnState({
+              turnNumber: numericTurn,
+              dropInBonusSeconds: extraSeconds,
+              dropInBonusAppliedAt: now,
+              dropInBonusTurn: numericTurn,
+              status: 'bonus-queued',
+              deadline: 0,
+              remainingSeconds: 0,
+            })
+          }
         }
       }
 
@@ -2378,6 +2556,14 @@ export function useStartClientEngine(gameId) {
           eligibleOwnerIds: deriveEligibleOwnerIds(participants),
         })
         if (!result) return
+        const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
+        recordTurnState({
+          turnNumber: numericTurn,
+          status: reason ? `completed:${reason}` : `completed:${advanceReason}`,
+          deadline: 0,
+          remainingSeconds: 0,
+        })
+        lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 }
         applyRealtimeSnapshot(result.snapshot)
 
         const warningReasonMap = new Map()
@@ -3008,6 +3194,7 @@ export function useStartClientEngine(gameId) {
       normalizedGeminiMode,
       normalizedGeminiModel,
       applyRealtimeSnapshot,
+      recordTurnState,
     ],
   )
 
@@ -3217,6 +3404,53 @@ export function useStartClientEngine(gameId) {
     }
   }, [needsConsensus, advanceTurn, clearConsensusVotes])
 
+  const turnTimerSnapshot = useMemo(() => {
+    const baseFromState = Number.isFinite(Number(turnTimerSeconds))
+      ? Math.max(0, Math.floor(Number(turnTimerSeconds)))
+      : null
+    const fallbackBonus = 30
+    const fallbackTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
+    const fallbackDropInTurn = Number.isFinite(Number(lastDropInTurn))
+      ? Math.floor(Number(lastDropInTurn))
+      : 0
+
+    const service = turnTimerServiceRef.current
+    if (!service) {
+      return {
+        baseSeconds: baseFromState,
+        firstTurnBonusSeconds: fallbackBonus,
+        firstTurnBonusAvailable: false,
+        dropInBonusSeconds: fallbackBonus,
+        pendingDropInBonus: false,
+        lastTurnNumber: fallbackTurn,
+        lastDropInAppliedTurn: fallbackDropInTurn,
+      }
+    }
+
+    const snapshot = service.getSnapshot() || {}
+    const resolvedBase = Number.isFinite(Number(snapshot.baseSeconds))
+      ? Math.floor(Number(snapshot.baseSeconds))
+      : baseFromState
+
+    return {
+      baseSeconds: resolvedBase,
+      firstTurnBonusSeconds: Number.isFinite(Number(snapshot.firstTurnBonusSeconds))
+        ? Math.floor(Number(snapshot.firstTurnBonusSeconds))
+        : fallbackBonus,
+      firstTurnBonusAvailable: Boolean(snapshot.firstTurnBonusAvailable),
+      dropInBonusSeconds: Number.isFinite(Number(snapshot.dropInBonusSeconds))
+        ? Math.floor(Number(snapshot.dropInBonusSeconds))
+        : fallbackBonus,
+      pendingDropInBonus: Boolean(snapshot.pendingDropInBonus),
+      lastTurnNumber: Number.isFinite(Number(snapshot.lastTurnNumber))
+        ? Math.floor(Number(snapshot.lastTurnNumber))
+        : fallbackTurn,
+      lastDropInAppliedTurn: Number.isFinite(Number(snapshot.lastDropInAppliedTurn))
+        ? Math.floor(Number(snapshot.lastDropInAppliedTurn))
+        : fallbackDropInTurn,
+    }
+  }, [turnTimerSeconds, turn, lastDropInTurn, timeRemaining, turnDeadline])
+
   return {
     loading,
     error,
@@ -3257,6 +3491,7 @@ export function useStartClientEngine(gameId) {
     autoAdvance,
     turnTimerSeconds,
     timeRemaining,
+    turnDeadline,
     currentActor: currentActorInfo,
     canSubmitAction,
     activeBackdropUrls: activeHeroAssets.backgrounds,
@@ -3264,6 +3499,8 @@ export function useStartClientEngine(gameId) {
     activeBgmUrl: activeHeroAssets.bgmUrl,
     activeBgmDuration: activeHeroAssets.bgmDuration,
     activeAudioProfile: activeHeroAssets.audioProfile,
+    lastDropInTurn,
+    turnTimerSnapshot,
     sessionInfo,
     realtimePresence,
     realtimeEvents,
