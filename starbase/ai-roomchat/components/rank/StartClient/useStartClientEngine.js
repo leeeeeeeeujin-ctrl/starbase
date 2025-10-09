@@ -737,6 +737,7 @@ export function useStartClientEngine(gameId) {
   const turnDeadlineRef = useRef(initialMainGameState.turnDeadline)
   const timeRemainingRef = useRef(initialMainGameState.timeRemaining)
   const lastBroadcastTurnStateRef = useRef({ turnNumber: 0, deadline: 0 })
+  const lastRealtimeTurnEventRef = useRef({ id: null, emittedAt: 0, turnNumber: 0 })
   const lastBattleLogSignatureRef = useRef(null)
   const patchEngineState = useCallback(
     (payload) => {
@@ -3367,7 +3368,117 @@ export function useStartClientEngine(gameId) {
       setRealtimeEvents((prev) => mergeTimelineEvents(prev, events))
     }
 
+    const handleTurnStateEvent = (payload) => {
+      const change = payload?.new || payload?.payload || null
+      if (!change || typeof change !== 'object') {
+        return
+      }
+      const targetSessionId = change.session_id || change.sessionId || null
+      if (!targetSessionId || targetSessionId !== sessionId) {
+        return
+      }
+      const state = change.state || change.turn_state || null
+      if (!state || typeof state !== 'object') {
+        return
+      }
+      const eventId = change.id || `${targetSessionId}:${state.turnNumber ?? '0'}:${change.emitted_at || ''}`
+      const emittedAtValue = (() => {
+        if (change.emitted_at) {
+          const timestamp = new Date(change.emitted_at).getTime()
+          if (!Number.isNaN(timestamp)) return timestamp
+        }
+        if (payload?.commit_timestamp) {
+          const timestamp = new Date(payload.commit_timestamp).getTime()
+          if (!Number.isNaN(timestamp)) return timestamp
+        }
+        if (Number.isFinite(Number(state.updatedAt))) {
+          return Number(state.updatedAt)
+        }
+        return Date.now()
+      })()
+
+      const lastEvent = lastRealtimeTurnEventRef.current
+      if (lastEvent?.id === eventId) {
+        return
+      }
+      if (lastEvent && lastEvent.emittedAt && emittedAtValue && emittedAtValue <= lastEvent.emittedAt) {
+        if (Number.isFinite(Number(state.turnNumber)) && lastEvent.turnNumber >= Number(state.turnNumber)) {
+          return
+        }
+      }
+
+      lastRealtimeTurnEventRef.current = {
+        id: eventId,
+        emittedAt: emittedAtValue,
+        turnNumber: Number.isFinite(Number(state.turnNumber)) ? Math.floor(Number(state.turnNumber)) : 0,
+      }
+
+      if (gameId) {
+        setGameMatchSessionMeta(gameId, {
+          turnState: {
+            ...state,
+            source: state.source || change.source || 'realtime',
+            updatedAt: emittedAtValue,
+          },
+          extras: change.extras || undefined,
+          source: 'realtime/turn-state',
+        })
+      }
+
+      const numericTurn = Number.isFinite(Number(state.turnNumber))
+        ? Math.max(0, Math.floor(Number(state.turnNumber)))
+        : null
+      if (numericTurn !== null) {
+        setTurn(numericTurn)
+      }
+
+      const resolvedDeadline = Number(state.deadline)
+      const deadlineMillis = Number.isFinite(resolvedDeadline) && resolvedDeadline > 0 ? Math.floor(resolvedDeadline) : 0
+      if (deadlineMillis) {
+        setTurnDeadline(deadlineMillis)
+      } else {
+        setTurnDeadline(null)
+      }
+
+      const remainingFromState = Number(state.remainingSeconds)
+      let resolvedRemaining =
+        Number.isFinite(remainingFromState) && remainingFromState >= 0
+          ? Math.floor(remainingFromState)
+          : null
+      if (deadlineMillis) {
+        const derived = Math.floor((deadlineMillis - Date.now()) / 1000)
+        if (!Number.isFinite(resolvedRemaining) || resolvedRemaining < 0) {
+          resolvedRemaining = derived
+        }
+      }
+      if (Number.isFinite(resolvedRemaining)) {
+        setTimeRemaining(Math.max(0, resolvedRemaining))
+      } else {
+        setTimeRemaining(null)
+      }
+
+      const dropInTurn = Number(state.dropInBonusTurn)
+      if (Number.isFinite(dropInTurn) && dropInTurn > 0) {
+        setLastDropInTurn(Math.floor(dropInTurn))
+      }
+
+      lastBroadcastTurnStateRef.current = {
+        turnNumber: numericTurn || 0,
+        deadline: deadlineMillis,
+      }
+    }
+
     channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'rank_turn_state_events',
+        filter: `session_id=eq.${sessionId}`,
+      },
+      handleTurnStateEvent,
+    )
 
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
@@ -3389,7 +3500,17 @@ export function useStartClientEngine(gameId) {
       }
       supabase.removeChannel(channel)
     }
-  }, [sessionInfo?.id, supabase])
+  }, [
+    sessionInfo?.id,
+    supabase,
+    setRealtimeEvents,
+    gameId,
+    setGameMatchSessionMeta,
+    setTurn,
+    setTurnDeadline,
+    setTimeRemaining,
+    setLastDropInTurn,
+  ])
 
   useEffect(() => {
     if (!needsConsensus) {

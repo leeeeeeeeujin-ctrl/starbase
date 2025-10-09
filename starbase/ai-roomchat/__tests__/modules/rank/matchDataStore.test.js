@@ -7,6 +7,7 @@ import {
   setGameMatchSnapshot,
   setGameMatchSlotTemplate,
   setGameMatchSessionMeta,
+  subscribeGameMatchData,
 } from '../../../modules/rank/matchDataStore'
 
 describe('matchDataStore', () => {
@@ -287,5 +288,23 @@ describe('matchDataStore', () => {
       mode: 'rank',
       roleName: '공격',
     })
+  })
+
+  it('notifies subscribers when session data changes', () => {
+    const updates = []
+    const unsubscribe = subscribeGameMatchData(gameId, (snapshot) => {
+      updates.push(snapshot?.sessionMeta?.turnTimer?.baseSeconds || 0)
+    })
+
+    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 45 } })
+    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 60 } })
+
+    expect(updates).toEqual([45, 60])
+
+    unsubscribe()
+
+    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 90 } })
+
+    expect(updates).toEqual([45, 60])
   })
 })

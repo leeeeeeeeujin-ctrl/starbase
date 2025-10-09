@@ -108,6 +108,21 @@ function getStorageKey(gameId) {
 }
 
 const memoryStore = new Map()
+const listenerStore = new Map()
+
+function emitUpdate(gameKey, snapshot) {
+  if (!gameKey) return
+  const listeners = listenerStore.get(gameKey)
+  if (!listeners || listeners.size === 0) return
+  listeners.forEach((listener) => {
+    if (typeof listener !== 'function') return
+    try {
+      listener(safeClone(snapshot) || null)
+    } catch (error) {
+      console.warn('[matchDataStore] 구독자 알림 실패:', error)
+    }
+  })
+}
 
 function readFromSession(gameId) {
   if (typeof window === 'undefined') return null
@@ -157,6 +172,7 @@ function updateEntry(gameId, updater) {
   next.updatedAt = Date.now()
   memoryStore.set(key, next)
   persistToSession(key, next)
+  emitUpdate(key, next)
   return safeClone(next)
 }
 
@@ -709,10 +725,31 @@ export function clearGameMatchData(gameId) {
       console.warn('[matchDataStore] 세션에서 매칭 데이터를 삭제하지 못했습니다:', error)
     }
   }
+  emitUpdate(key, createEmptyState())
 }
 
 export function consumeGameMatchData(gameId) {
   const snapshot = readGameMatchData(gameId)
   clearGameMatchData(gameId)
   return snapshot
+}
+
+export function subscribeGameMatchData(gameId, listener) {
+  const key = String(gameId || '').trim()
+  if (!key) return () => {}
+  if (typeof listener !== 'function') return () => {}
+  let listeners = listenerStore.get(key)
+  if (!listeners) {
+    listeners = new Set()
+    listenerStore.set(key, listeners)
+  }
+  listeners.add(listener)
+  return () => {
+    const set = listenerStore.get(key)
+    if (!set) return
+    set.delete(listener)
+    if (set.size === 0) {
+      listenerStore.delete(key)
+    }
+  }
 }

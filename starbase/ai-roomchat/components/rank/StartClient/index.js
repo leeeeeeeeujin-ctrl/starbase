@@ -16,6 +16,7 @@ import {
   createEmptyMatchFlowState,
   readMatchFlowState,
 } from '../../../lib/rank/matchFlow'
+import { subscribeGameMatchData } from '../../../modules/rank/matchDataStore'
 import { normalizeRoleName } from '../../../lib/rank/roleLayoutLoader'
 import { useStartClientEngine } from './useStartClientEngine'
 import { supabase } from '../../../lib/supabase'
@@ -102,6 +103,14 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       clearMatchFlow(resolvedId)
     }
   }, [usePropGameId, trimmedPropId, router.isReady, router.query])
+
+  useEffect(() => {
+    if (!gameId) return undefined
+    const unsubscribe = subscribeGameMatchData(gameId, () => {
+      setMatchState(readMatchFlowState(gameId))
+    })
+    return unsubscribe
+  }, [gameId])
 
   const engine = useStartClientEngine(gameId)
   const {
