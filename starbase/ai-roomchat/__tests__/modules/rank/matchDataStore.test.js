@@ -5,6 +5,8 @@ import {
   setGameMatchHeroSelection,
   setGameMatchParticipation,
   setGameMatchSnapshot,
+  setGameMatchSlotTemplate,
+  setGameMatchSessionMeta,
 } from '../../../modules/rank/matchDataStore'
 
 describe('matchDataStore', () => {
@@ -76,6 +78,87 @@ describe('matchDataStore', () => {
 
     const raw = window.sessionStorage.getItem(`rank.match.game.${gameId}`)
     expect(raw).toBeTruthy()
+  })
+
+  it('stores slot template data with version metadata', () => {
+    setGameMatchSlotTemplate(gameId, {
+      slots: [
+        {
+          slotId: 'slot-1',
+          slotIndex: '1',
+          role: '딜러',
+          ownerId: 'owner-1',
+          heroId: 'hero-1',
+          heroName: '라나',
+          ready: true,
+        },
+        {
+          slotIndex: 'not-a-number',
+          role: '탱커',
+        },
+      ],
+      roles: [
+        {
+          role: '딜러',
+          slots: '2',
+          members: [
+            { ownerId: 'owner-1', heroId: 'hero-1', slotIndex: '1', ready: true },
+            { owner_id: 'owner-2', hero_id: 'hero-2' },
+          ],
+        },
+      ],
+      version: '3',
+      source: 'room-stage',
+      updatedAt: 123456,
+    })
+
+    const snapshot = hydrateGameMatchData(gameId)
+    expect(snapshot?.slotTemplate?.version).toBe(3)
+    expect(snapshot?.slotTemplate?.source).toBe('room-stage')
+    expect(snapshot?.slotTemplate?.updatedAt).toBe(123456)
+    expect(snapshot?.slotTemplate?.slots).toHaveLength(2)
+    expect(snapshot?.slotTemplate?.slots?.[0]).toMatchObject({
+      slotIndex: 1,
+      role: '딜러',
+      ownerId: 'owner-1',
+    })
+    expect(snapshot?.slotTemplate?.roles).toHaveLength(1)
+    expect(snapshot?.slotTemplate?.roles?.[0]).toMatchObject({
+      role: '딜러',
+      slots: 2,
+    })
+  })
+
+  it('merges session meta updates and supports clearing data', () => {
+    setGameMatchSessionMeta(gameId, {
+      turnTimer: { baseSeconds: 90, source: 'vote' },
+      dropIn: { bonusSeconds: 30 },
+      source: 'room-stage',
+    })
+
+    const firstSnapshot = hydrateGameMatchData(gameId)
+    expect(firstSnapshot?.sessionMeta?.turnTimer).toMatchObject({
+      baseSeconds: 90,
+      source: 'vote',
+    })
+    expect(firstSnapshot?.sessionMeta?.dropIn).toMatchObject({ bonusSeconds: 30 })
+    expect(firstSnapshot?.sessionMeta?.source).toBe('room-stage')
+    expect(firstSnapshot?.sessionMeta?.updatedAt).toBeGreaterThan(0)
+
+    setGameMatchSessionMeta(gameId, {
+      vote: { '30': 2, '60': 1 },
+    })
+
+    const secondSnapshot = hydrateGameMatchData(gameId)
+    expect(secondSnapshot?.sessionMeta?.turnTimer).toMatchObject({ baseSeconds: 90 })
+    expect(secondSnapshot?.sessionMeta?.vote).toMatchObject({ '30': 2, '60': 1 })
+
+    setGameMatchSessionMeta(gameId, null)
+
+    const clearedSnapshot = hydrateGameMatchData(gameId)
+    expect(clearedSnapshot?.sessionMeta?.turnTimer).toBeNull()
+    expect(clearedSnapshot?.sessionMeta?.vote).toBeNull()
+    expect(clearedSnapshot?.sessionMeta?.dropIn).toBeNull()
   })
 
   it('updates confirmation payloads consistently', () => {

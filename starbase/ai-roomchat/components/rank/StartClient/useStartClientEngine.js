@@ -89,6 +89,15 @@ function toTrimmedString(value) {
   return stringValue ? stringValue : null
 }
 
+function deepClone(value) {
+  if (value === null || value === undefined) return value
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch (error) {
+    return null
+  }
+}
+
 function parseSlotIndex(value, fallback = null) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return fallback
@@ -549,9 +558,62 @@ export function useStartClientEngine(gameId) {
       : (storedStartConfig[START_SESSION_KEYS.API_KEY] || '').trim()
   const initialFrontMatchData =
     typeof window === 'undefined' ? null : hydrateGameMatchData(gameId)
+  const initialSessionMeta =
+    initialFrontMatchData && typeof initialFrontMatchData.sessionMeta === 'object'
+      ? deepClone(initialFrontMatchData.sessionMeta) || initialFrontMatchData.sessionMeta
+      : null
+  const initialSlotTemplate =
+    initialFrontMatchData && typeof initialFrontMatchData.slotTemplate === 'object'
+      ? deepClone(initialFrontMatchData.slotTemplate) || initialFrontMatchData.slotTemplate
+      : null
   const initialMatchMetaCandidate = consumeStartMatchMeta()
-  const initialMatchMeta =
+  const baseMatchMeta =
     initialMatchMetaCandidate || initialFrontMatchData?.matchSnapshot?.match || null
+  const slotTemplateSlots =
+    initialSlotTemplate && Array.isArray(initialSlotTemplate.slots)
+      ? deepClone(initialSlotTemplate.slots) || initialSlotTemplate.slots
+      : null
+  let initialMatchMeta = baseMatchMeta ? deepClone(baseMatchMeta) || baseMatchMeta : null
+
+  if (slotTemplateSlots && slotTemplateSlots.length) {
+    if (initialMatchMeta) {
+      const roleStatusSource =
+        initialMatchMeta.roleStatus && typeof initialMatchMeta.roleStatus === 'object'
+          ? { ...initialMatchMeta.roleStatus }
+          : {}
+      if (!Array.isArray(initialMatchMeta.slotLayout) || !initialMatchMeta.slotLayout.length) {
+        initialMatchMeta = { ...initialMatchMeta, slotLayout: slotTemplateSlots }
+      }
+      if (!Array.isArray(roleStatusSource.slotLayout) || !roleStatusSource.slotLayout.length) {
+        roleStatusSource.slotLayout = slotTemplateSlots
+      }
+      if (initialSlotTemplate.version && !roleStatusSource.version) {
+        roleStatusSource.version = initialSlotTemplate.version
+      }
+      if (initialSlotTemplate.updatedAt && !roleStatusSource.updatedAt) {
+        roleStatusSource.updatedAt = initialSlotTemplate.updatedAt
+      }
+      initialMatchMeta = { ...initialMatchMeta, roleStatus: roleStatusSource }
+    } else {
+      initialMatchMeta = {
+        slotLayout: slotTemplateSlots,
+        roleStatus: {
+          slotLayout: slotTemplateSlots,
+          version: initialSlotTemplate?.version || null,
+          updatedAt: initialSlotTemplate?.updatedAt || null,
+        },
+      }
+    }
+  }
+
+  if (initialSessionMeta?.turnTimer) {
+    const timerMeta = deepClone(initialSessionMeta.turnTimer) || initialSessionMeta.turnTimer
+    if (initialMatchMeta) {
+      initialMatchMeta = { ...initialMatchMeta, turnTimer: timerMeta }
+    } else {
+      initialMatchMeta = { turnTimer: timerMeta }
+    }
+  }
   const initialApiVersion =
     typeof window === 'undefined'
       ? 'gemini'
@@ -597,6 +659,10 @@ export function useStartClientEngine(gameId) {
     return deriveRosterFromMatchSnapshot(matchSnapshotSeed)
   }, [frontMatchData, matchSnapshotSeed])
   const slotLayoutSeed = useMemo(() => {
+    if (Array.isArray(initialSlotTemplate?.slots) && initialSlotTemplate.slots.length) {
+      const fromTemplate = normalizeSlotLayoutEntries(initialSlotTemplate.slots)
+      if (fromTemplate.length) return fromTemplate
+    }
     if (!matchSnapshotSeed) return []
     const sources = []
     if (Array.isArray(matchSnapshotSeed.slotLayout) && matchSnapshotSeed.slotLayout.length) {
@@ -614,7 +680,7 @@ export function useStartClientEngine(gameId) {
       if (normalized.length) return normalized
     }
     return []
-  }, [matchSnapshotSeed])
+  }, [matchSnapshotSeed, initialSlotTemplate])
   const matchMetaLoggedRef = useRef(false)
   const gameIdRef = useRef(gameId ? String(gameId) : '')
   const [connectionRoster, setConnectionRoster] = useState(() =>
@@ -877,6 +943,10 @@ export function useStartClientEngine(gameId) {
     [patchEngineState],
   )
   const [turnTimerSeconds] = useState(() => {
+    const timerFromMeta = Number(initialSessionMeta?.turnTimer?.baseSeconds)
+    if (Number.isFinite(timerFromMeta) && timerFromMeta > 0) {
+      return timerFromMeta
+    }
     if (typeof window === 'undefined') return 60
     const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
     if (Number.isFinite(stored) && stored > 0) return stored

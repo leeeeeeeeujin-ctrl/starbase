@@ -1,5 +1,27 @@
 const STORAGE_PREFIX = 'rank.match.game.'
 
+function createEmptySlotTemplate() {
+  return {
+    slots: [],
+    roles: [],
+    version: 0,
+    source: '',
+    updatedAt: 0,
+  }
+}
+
+function createEmptySessionMeta() {
+  return {
+    turnTimer: null,
+    vote: null,
+    dropIn: null,
+    asyncFill: null,
+    extras: null,
+    source: '',
+    updatedAt: 0,
+  }
+}
+
 function createEmptyState() {
   return {
     updatedAt: 0,
@@ -14,6 +36,8 @@ function createEmptyState() {
     matchSnapshot: null,
     postCheck: null,
     confirmation: null,
+    slotTemplate: createEmptySlotTemplate(),
+    sessionMeta: createEmptySessionMeta(),
   }
 }
 
@@ -132,6 +156,171 @@ function sanitizeList(list) {
   return safeClone(list) || []
 }
 
+function sanitizeSlotTemplateSlots(slots) {
+  if (!Array.isArray(slots)) return []
+  return slots
+    .map((slot, index) => {
+      if (!slot) return null
+      const slotIndex = Number(slot.slotIndex ?? slot.slot_index)
+      return {
+        slotId: slot.slotId ?? slot.slot_id ?? null,
+        slotIndex: Number.isFinite(slotIndex) ? slotIndex : index,
+        role: typeof slot.role === 'string' ? slot.role.trim() : slot.role || '',
+        ownerId:
+          slot.ownerId != null
+            ? String(slot.ownerId).trim()
+            : slot.owner_id != null
+            ? String(slot.owner_id).trim()
+            : '',
+        heroId:
+          slot.heroId != null
+            ? String(slot.heroId).trim()
+            : slot.hero_id != null
+            ? String(slot.hero_id).trim()
+            : '',
+        heroName:
+          typeof slot.heroName === 'string'
+            ? slot.heroName
+            : typeof slot.hero_name === 'string'
+            ? slot.hero_name
+            : '',
+        ready: slot.ready === true || slot.occupant_ready === true,
+        joinedAt: slot.joinedAt ?? slot.joined_at ?? null,
+      }
+    })
+    .filter(Boolean)
+}
+
+function sanitizeSlotTemplateRoles(roles) {
+  if (!Array.isArray(roles)) return []
+  return roles
+    .map((role, index) => {
+      if (!role) return null
+      const members = Array.isArray(role.members)
+        ? role.members
+            .map((member, memberIndex) => {
+              if (!member) return null
+              const slotIndex = Number(member.slotIndex ?? member.slot_index)
+              return {
+                ownerId:
+                  member.ownerId != null
+                    ? String(member.ownerId).trim()
+                    : member.owner_id != null
+                    ? String(member.owner_id).trim()
+                    : '',
+                heroId:
+                  member.heroId != null
+                    ? String(member.heroId).trim()
+                    : member.hero_id != null
+                    ? String(member.hero_id).trim()
+                    : '',
+                heroName:
+                  typeof member.heroName === 'string'
+                    ? member.heroName
+                    : typeof member.hero_name === 'string'
+                    ? member.hero_name
+                    : '',
+                ready: member.ready === true,
+                slotIndex: Number.isFinite(slotIndex) ? slotIndex : memberIndex,
+              }
+            })
+            .filter(Boolean)
+        : []
+      const sanitizedSlots = Array.isArray(role.roleSlots)
+        ? sanitizeSlotTemplateSlots(role.roleSlots)
+        : []
+      const slotCount = Number(role.slots)
+      return {
+        role: typeof role.role === 'string' ? role.role.trim() : role.role || `역할 ${index + 1}`,
+        slots: Number.isFinite(slotCount) && slotCount >= 0 ? slotCount : sanitizedSlots.length || members.length,
+        members,
+        roleSlots: sanitizedSlots,
+      }
+    })
+    .filter(Boolean)
+}
+
+function sanitizeSlotTemplatePayload(payload, previous) {
+  if (payload === null) {
+    const cleared = createEmptySlotTemplate()
+    cleared.updatedAt = Date.now()
+    return cleared
+  }
+
+  const base = previous ? safeClone(previous) || createEmptySlotTemplate() : createEmptySlotTemplate()
+  const next = { ...createEmptySlotTemplate(), ...base }
+
+  if (payload && typeof payload === 'object') {
+    if (payload.slots !== undefined) {
+      next.slots = sanitizeSlotTemplateSlots(payload.slots)
+    }
+    if (payload.roles !== undefined) {
+      next.roles = sanitizeSlotTemplateRoles(payload.roles)
+    }
+    if (payload.version !== undefined) {
+      const numericVersion = Number(payload.version)
+      if (Number.isFinite(numericVersion)) {
+        next.version = numericVersion
+      }
+    }
+    if (payload.source !== undefined) {
+      next.source = typeof payload.source === 'string' ? payload.source.trim() : next.source || ''
+    }
+    if (payload.updatedAt !== undefined) {
+      const updatedAt = Number(payload.updatedAt)
+      if (Number.isFinite(updatedAt)) {
+        next.updatedAt = updatedAt
+      }
+    }
+  }
+
+  if (!next.updatedAt) {
+    next.updatedAt = Date.now()
+  }
+
+  return next
+}
+
+function sanitizeSessionMetaPatch(patch, previous) {
+  if (patch === null) {
+    const cleared = createEmptySessionMeta()
+    cleared.updatedAt = Date.now()
+    return cleared
+  }
+
+  const base = previous ? safeClone(previous) || createEmptySessionMeta() : createEmptySessionMeta()
+  const next = { ...createEmptySessionMeta(), ...base }
+
+  if (patch && typeof patch === 'object') {
+    if (patch.turnTimer !== undefined) {
+      const cloned = safeClone(patch.turnTimer)
+      next.turnTimer = cloned === undefined ? null : cloned
+    }
+    if (patch.vote !== undefined) {
+      const cloned = safeClone(patch.vote)
+      next.vote = cloned === undefined ? null : cloned
+    }
+    if (patch.dropIn !== undefined) {
+      const cloned = safeClone(patch.dropIn)
+      next.dropIn = cloned === undefined ? null : cloned
+    }
+    if (patch.asyncFill !== undefined) {
+      const cloned = safeClone(patch.asyncFill)
+      next.asyncFill = cloned === undefined ? null : cloned
+    }
+    if (patch.extras !== undefined) {
+      const cloned = safeClone(patch.extras)
+      next.extras = cloned === undefined ? null : cloned
+    }
+    if (patch.source !== undefined) {
+      next.source = typeof patch.source === 'string' ? patch.source.trim() : next.source || ''
+    }
+  }
+
+  next.updatedAt = Date.now()
+  return next
+}
+
 export function hydrateGameMatchData(gameId) {
   const entry = ensureEntry(gameId)
   return safeClone(entry)
@@ -192,6 +381,18 @@ export function setGameMatchSnapshot(gameId, payload = {}) {
   }
   return updateEntry(gameId, (entry) => {
     entry.matchSnapshot = snapshot
+  })
+}
+
+export function setGameMatchSlotTemplate(gameId, payload = {}) {
+  return updateEntry(gameId, (entry) => {
+    entry.slotTemplate = sanitizeSlotTemplatePayload(payload, entry.slotTemplate)
+  })
+}
+
+export function setGameMatchSessionMeta(gameId, payload = {}) {
+  return updateEntry(gameId, (entry) => {
+    entry.sessionMeta = sanitizeSessionMetaPatch(payload, entry.sessionMeta)
   })
 }
 

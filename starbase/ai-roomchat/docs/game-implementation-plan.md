@@ -163,6 +163,7 @@
 **진행 현황 업데이트**
 - Maker JSON 업로드 시 `payload.meta`의 변수 규칙 버전을 점검해 최신 포맷 안내를 띄우고, 성공적으로 불러온 세트는 확인 메시지를 노출한다.【F:hooks/maker/useMakerHome.js†L95-L163】【F:components/maker/home/MakerHomeHeader.js†L23-L55】
 - 등록 폼과 `register-game` API가 `prepareRegistrationPayload` 유틸을 공유해 역할 점수 범위·슬롯 개수·난입 종료 조건을 동일 기준으로 검증하도록 정리했다.【F:lib/rank/registrationValidation.js†L1-L87】【F:components/rank/RankNewClient.js†L24-L120】【F:pages/api/rank/register-game.js†L1-L80】
+- GameSession Store가 `setGameMatchSlotTemplate`·`setGameMatchSessionMeta`로 슬롯 템플릿 버전과 세션 메타를 저장해 `MatchReady`와 `StartClient`가 동일한 슬롯 구성·턴 타이머 기본값을 공유한다.【F:modules/rank/matchDataStore.js†L1-L244】【F:lib/rank/matchFlow.js†L1-L220】【F:components/rank/StartClient/useStartClientEngine.js†L540-L940】
 - **규칙 상호 검증 충돌**: 조건이 복잡해질수록 경고가 남발될 수 있음 → 검증 로직을 스키마 기반으로 구성하고, 경고 우선순위를 조정해 한 번에 한 오류만 노출.
 - **JSON 스키마 버전 불일치**: 구버전 파일이 업로드될 수 있음 → 마이그레이션 단계를 UI로 노출하고, 자동 변환 실패 시 디프 비교와 가이드 제공.
 - **테스트 전투 CTA 남용**: 테스트 방이 다수 생성되면 리소스 낭비 → CTA 실행 시 자동 삭제 타이머와 사용량 제한 설정.
@@ -222,7 +223,7 @@
 - [x] 게임 등록 폼이 Supabase 인증·역할 중복 제거·슬롯 업서트를 끝까지 수행하며 `/rank/${gameId}`로 전환하는 MVP 플로우 확립.【F:components/rank/RankNewClient.js†L12-L333】
 - [x] 방 상세 → MatchReady → StartClient로 이어지는 스테이징·세션 동기화 루프 구축, `setGameMatchSnapshot`까지 연계 완료.【F:pages/rooms/[id].js†L2025-L2134】【F:components/rank/MatchReadyClient.js†L1-L220】【F:components/rank/StartClient/useStartClientEngine.js†L1188-L1248】
 - [x] GameRoomView가 룰 카드·오디오 프로필·참가자 통계를 모두 계산해 뷰어에게 제공하는 상태 유지.【F:components/rank/GameRoomView.js†L13-L1120】
-- [~] GameSession Store 확장 설계와 버전 필드 추가가 설계 문서에 정의돼 있으며, `matchDataStore` 기반 확장 작업 대기 중.【F:modules/rank/matchDataStore.js†L1-L118】【F:lib/rank/matchFlow.js†L118-L172】
+- [x] GameSession Store가 슬롯 템플릿 버전·세션 메타를 저장하고 `MatchReady`/`StartClient`가 동일한 데이터를 초기화에 활용하도록 확장했다.【F:modules/rank/matchDataStore.js†L1-L244】【F:lib/rank/matchFlow.js†L1-L220】【F:components/rank/StartClient/useStartClientEngine.js†L540-L940】
 - [x] 등록 안내 텍스트/난입 설명 분리 및 다국어 구조화 계획 수립, `RankNewClient`·`RulesChecklist` 리소스를 `rankRegistrationContent` 데이터로 이동해 공유.【F:components/rank/RankNewClient.js†L120-L355】【F:components/rank/RulesChecklist.js†L1-L60】【F:ai-roomchat/data/rankRegistrationContent.js†L1-L60】
 - [x] 등록 탭 레이아웃을 `RegistrationLayout`/`RegistrationCard`/`SidebarCard`로 세분화해 개요 사이드바와 본문 카드를 분리하고, 모드·난입·규칙 입력 흐름을 재구성했다.【F:components/rank/RankNewClient.js†L335-L512】【F:components/rank/registration/RegistrationLayout.js†L1-L83】【F:components/rank/registration/SidebarCard.js†L1-L20】
 - [ ] GameRoomView 오디오/히스토리 유틸을 분리 컴포넌트화하고, 타임라인/리플레이 노출을 lazy chunk로 나누는 리팩터링 미진행.【F:components/rank/GameRoomView.js†L1-L1120】
@@ -231,4 +232,4 @@
 ---
 **백엔드 TODO**: Supabase 역할/슬롯 검증 함수 공통화, RoomInitService용 슬롯/역할 캐시 테이블 및 락 RPC 추가, `validate_session` RPC 및 슬롯 버전 필드 도입, 제한시간 투표·비실시간 자동 충원 결과를 저장하는 `upsert_match_session_meta`(가칭) RPC 설계, 이미지 업로드 정책(용량/파일형식) 강화, 등록/매칭 로그 감사 테이블 확장. → 관련 스키마·정책·RPC 초안은 `docs/supabase-rank-backend-upgrades.sql`에 모아두었으며, Supabase에 배포하면 프론트 작업과 연동 가능하다.
 **추가 필요 사항**: 다국어 대비 문자열 리소스 분리, 매칭/룸 UI 카피 검수, GameSession Store 스키마 및 Maker JSON 버전 문서화, 비실시간 자동 충원 통계 대시보드 정의, 테스트 환경용 Supabase 프로젝트 분리.
-**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축) 코드 반영 완료. 2-2 단계에서는 안내/체크리스트 리소스 분리와 레이아웃/사이드바 재배치를 마쳤고, 5단계에서는 본게임 타이머·난입·비실시간 충원 계획을 상세화했다. 다음 작업은 등록 폼 이미지 미리보기·검증 보강 및 3단계 확장 기능 준비다.
+**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축) 코드 반영 완료. 2-2 단계에서는 안내/체크리스트 리소스 분리와 레이아웃/사이드바 재배치를 마쳤고, GameSession Store에 슬롯 템플릿·세션 메타를 저장하도록 확장해 본게임 초기화 루프까지 연결했다. 5단계 계획에서는 본게임 타이머·난입·비실시간 충원 전략을 지속적으로 구체화하고 있으며, 다음 작업은 등록 폼 이미지 미리보기·검증 보강 및 3단계 확장 기능 준비다.

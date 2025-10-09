@@ -18,6 +18,8 @@ import {
   setGameMatchHeroSelection,
   setGameMatchParticipation,
   setGameMatchSnapshot,
+  setGameMatchSlotTemplate,
+  setGameMatchSessionMeta,
 } from '@/modules/rank/matchDataStore'
 import {
   AUTH_ACCESS_EXPIRES_AT_KEY,
@@ -2102,6 +2104,25 @@ export default function RoomDetailPage() {
           role: viewer.role || '',
           mode: matchReadyMode || normalizeRoomMode(room.mode),
           createdAt,
+        })
+
+        setGameMatchSlotTemplate(room.gameId, {
+          slots: payload.slotLayout,
+          roles: payload.roles,
+          version:
+            payload.match?.roleStatus?.version ??
+            payload.match?.roleStatus?.updatedAt ??
+            payload.match?.roleStatus?.timestamp ??
+            1,
+          updatedAt: payload.match?.roleStatus?.updatedAt ?? createdAt,
+          source: 'room-stage',
+        })
+
+        setGameMatchSessionMeta(room.gameId, {
+          turnTimer: payload.match?.turnTimer ?? null,
+          dropIn: payload.match?.dropInMeta ?? null,
+          asyncFill: payload.match?.asyncFillMeta ?? null,
+          source: 'room-stage',
         })
 
         const nextRoute = {
