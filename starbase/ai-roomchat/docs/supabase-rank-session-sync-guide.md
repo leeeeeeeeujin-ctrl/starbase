@@ -8,7 +8,7 @@
 3. 제한시간 투표·난입 보너스 등 메타 정보를 저장하는 `rank_session_meta` 테이블과 `upsert_match_session_meta` RPC를 만든다.
 4. (선택) 감사 로그·이미지 정책 보강도 함께 적용하려면 번들 전체를 실행한다.
 
-모든 스키마/함수 정의는 `docs/supabase-rank-backend-upgrades.sql`에 있다. 아래 요약된 스니펫을 순서대로 실행하면 핵심 1~3단계가 완료된다.
+모든 스키마/함수 정의는 `docs/supabase-rank-backend-upgrades.sql`에 있다. 아래 요약된 스니펫을 순서대로 실행하면 핵심 1~3단계가 완료된다. `time_vote`와 `selected_time_limit_seconds` 필드만 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql` 파일을 그대로 붙여넣으면 된다.
 
 ## 2. 필수 SQL 스니펫
 ```sql
