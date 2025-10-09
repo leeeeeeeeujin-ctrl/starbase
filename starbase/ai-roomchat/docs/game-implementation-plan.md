@@ -199,6 +199,7 @@
 - (신규) `useMakerHome` 훅의 무단 접근 처리, 목록 새로고침 실패 경고, 구버전 프롬프트 세트 알림을 검증하는 jsdom 테스트를 추가했다. 이를 통해 Maker 홈 공통 훅이 계획한 예외 흐름을 안전하게 처리하는지 회귀 방지를 마련했다.【F:__tests__/hooks/maker/useMakerHome.test.js†L1-L129】
 - (신규) `stage-room-match` API가 슬롯 버전 충돌 시 409 오류를 반환하고 정상 케이스에서 Supabase RPC 페이로드를 완성하는지 검증하는 단위 테스트를 추가해, 낙관적 락과 슬롯 메타 연동 시나리오를 안전하게 커버했다.【F:__tests__/api/rank/stage-room-match.test.js†L1-L220】
 - (신규) `buildSessionMetaRequest`가 드롭인 보너스·대기열 정보를 턴 이벤트에 포함하도록 보강하고, `/api/rank/session-meta`가 중첩 extras를 그대로 RPC에 전달하는 경로를 테스트로 검증했다.【F:__tests__/lib/rank/sessionMetaClient.test.js†L1-L44】【F:__tests__/api/rank/session-meta.test.js†L100-L137】
+- (신규) `MatchReadyClient`가 `subscribeGameMatchData` 구독을 통해 세션 메타와 투표 변경을 자동 반영하도록 갱신해, 제한시간 요약과 투표 배지가 수동 새로고침 없이 최신 상태를 유지한다.【F:components/rank/MatchReadyClient.js†L9-L12】【F:components/rank/MatchReadyClient.js†L39-L49】
 
 ### 3.5 구현 계획 보강 요약
 - 프론트 훅/컴포넌트별로 확인한 상태명과 스토리지 키를 토대로, 중복 새로고침/메시지 처리·히스토리 저장·슬롯 매핑 구조 개선을 명확히 정의했다.【F:components/maker/home/MakerHomeContainer.js†L80-L167】【F:hooks/maker/useMakerEditor.js†L24-L138】【F:components/rank/RankNewClient.js†L110-L333】
@@ -283,3 +284,4 @@
 - StartClient 가시성 토글과 참가자 정보 마스킹 동작을 검증하는 jsdom 기반 단위 테스트를 추가했다. `RosterPanel`이 비공개 모드에서 정보를 숨기고, 호스트·동일 역할·본인 좌석에 대해서만 상세 정보를 복구하는지 확인해 가시성 계획의 회귀를 방지한다.【F:__tests__/components/rank/StartClient/RosterPanel.test.js†L1-L108】
 - Maker 홈 공용 훅 `useMakerHome`에 대한 jsdom 테스트(`npm test -- useMakerHome`)를 실행해 무단 접근, 새로고침 실패 경고, 구버전 세트 알림 흐름이 모두 정상적으로 동작함을 확인했다.【47ccd0†L1-L11】
 - `stage-room-match` API 테스트(`npm test -- stage-room-match`)를 추가 실행해 슬롯 버전 충돌과 성공 시나리오를 시뮬레이션했고, 새로운 낙관적 락 흐름이 의도대로 동작함을 확인했다.【7a8234†L1-L16】
+- `MatchReadyClient` 구독 테스트(`npm test -- MatchReadyClient`)를 통해 세션 메타 업데이트가 제한시간 요약과 투표 배지에 즉시 반영되는지를 jsdom 환경에서 검증했다.【F:__tests__/components/rank/MatchReadyClient.test.js†L1-L210】

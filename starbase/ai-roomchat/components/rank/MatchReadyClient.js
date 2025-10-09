@@ -6,7 +6,10 @@ import { useRouter } from 'next/router'
 import styles from './MatchReadyClient.module.css'
 import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow'
 import StartClient from './StartClient'
-import { setGameMatchSessionMeta } from '../../modules/rank/matchDataStore'
+import {
+  setGameMatchSessionMeta,
+  subscribeGameMatchData,
+} from '../../modules/rank/matchDataStore'
 import {
   TURN_TIMER_OPTIONS,
   sanitizeSecondsOption,
@@ -32,6 +35,18 @@ function useMatchReadyState(gameId) {
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  useEffect(() => {
+    if (!gameId && gameId !== 0) return undefined
+    const unsubscribe = subscribeGameMatchData(gameId, () => {
+      refresh()
+    })
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
+    }
+  }, [gameId, refresh])
 
   const allowStart = useMemo(
     () => Boolean(gameId && state?.snapshot && state?.hasActiveKey),
