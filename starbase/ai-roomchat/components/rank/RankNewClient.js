@@ -12,6 +12,17 @@ import RolesEditor from '../../components/rank/RolesEditor'
 import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
 import { uploadGameImage } from '../../lib/rank/storage'
 import { useSharedPromptSetStorage } from '../../hooks/shared/useSharedPromptSetStorage'
+import {
+  brawlModeCopy,
+  imageFieldCopy,
+  registrationOverviewCopy,
+  realtimeModeCopy,
+} from '../../data/rankRegistrationContent'
+
+const REALTIME_MODE_OPTIONS = (realtimeModeCopy?.options || []).map((option) => ({
+  value: REALTIME_MODES?.[option.value] ?? option.value,
+  label: option.label,
+}))
 
 async function registerGame(payload) {
   const {
@@ -154,16 +165,6 @@ export default function RankNewClient() {
   const activeSlots = useMemo(
     () => (slotMap || []).filter(s => s.active && s.role && s.role.trim()),
     [slotMap]
-  )
-
-  const registerChecklist = useMemo(
-    () => [
-      '대표 이미지와 설명을 준비했나요?',
-      '실시간, 혹은 싱글 플레이 여부를 생각했나요?',
-      '프롬프트 세트를 충분히 준비했나요?',
-      '역할 이름을 헷갈리진 않았나요?',
-    ],
-    [],
   )
 
   const handleToggleBrawl = () => {
@@ -364,18 +365,21 @@ export default function RankNewClient() {
             </div>
             <div style={overviewColumns}>
               <div style={{ display: 'grid', gap: 8, background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '16px 18px' }}>
-                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>등록 체크리스트</p>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+                  {registrationOverviewCopy.checklist.title}
+                </p>
                 <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, fontSize: 13, color: '#cbd5f5' }}>
-                  {registerChecklist.map((item) => (
-                    <li key={item}>{item}</li>
+                  {registrationOverviewCopy.checklist.items.map((item) => (
+                    <li key={item.id}>{item.text}</li>
                   ))}
                 </ul>
               </div>
               <div style={{ display: 'grid', gap: 10, background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '16px 18px' }}>
-                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>등록 가이드</p>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+                  {registrationOverviewCopy.guide.title}
+                </p>
                 <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
-                  게임 소개 자료와 룰 구성을 마쳤다면 하단 카드에서 역할·슬롯·모드를 채운 뒤 등록 버튼을 눌러 주세요. 제작 중인 세트는 Maker에서,
-                  캐릭터 정보는 로스터에서 언제든 보완할 수 있습니다.
+                  {registrationOverviewCopy.guide.description}
                 </p>
               </div>
             </div>
@@ -410,22 +414,24 @@ export default function RankNewClient() {
                 <PromptSetPicker value={setId} onChange={handlePromptSetChange} />
               </div>
               <label style={labelStyle}>
-                <span style={{ color: '#cbd5f5' }}>실시간 매칭 모드</span>
+                <span style={{ color: '#cbd5f5' }}>{realtimeModeCopy.label}</span>
                 <select
                   value={realtimeMode}
                   onChange={(event) => setRealtimeMode(event.target.value)}
                   style={inputStyle}
                 >
-                  <option value={REALTIME_MODES.OFF}>비실시간 (대기열 진행)</option>
-                  <option value={REALTIME_MODES.STANDARD}>실시간 (표준)</option>
-                  <option value={REALTIME_MODES.PULSE}>Pulse 실시간 (역할 제한)</option>
+                  {REALTIME_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
                 <span style={{ color: '#94a3b8', fontSize: 12 }}>
-                  Pulse 실시간은 방장과 같은 역할군에 동시에 참여할 수 있는 인원을 제한합니다.
+                  {realtimeModeCopy.helper}
                 </span>
               </label>
               <label style={labelStyle}>
-                <span style={{ color: '#cbd5f5' }}>표지 이미지</span>
+                <span style={{ color: '#cbd5f5' }}>{imageFieldCopy.label}</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -438,7 +444,7 @@ export default function RankNewClient() {
                 {imgFile ? (
                   <span style={{ fontSize: 12, color: '#94a3b8' }}>{imgFile.name}</span>
                 ) : (
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>이미지를 선택하지 않으면 기본 배경이 사용됩니다.</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{imageFieldCopy.fallback}</span>
                 )}
               </label>
             </div>
@@ -468,10 +474,8 @@ export default function RankNewClient() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ display: 'grid', gap: 4, minWidth: 240 }}>
-                    <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>난입 허용</p>
-                    <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>
-                      해당 옵션에 체크하면 전투 중 패배한 인원을 대체해 같은 역할군의 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
-                    </p>
+                    <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>{brawlModeCopy.title}</p>
+                    <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>{brawlModeCopy.summary}</p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button
@@ -505,29 +509,25 @@ export default function RankNewClient() {
                       color: '#e2e8f0',
                     }}
                   >
-                    해당 옵션에 체크하면 전투 중 패배한 인원을 대체해 같은 역할군의 새 인원이 난입합니다. 승리해도 게임이 끝나지 않으며, 게임이 끝나는 조건, 즉 변수를 지정해야 합니다.
+                    {brawlModeCopy.tooltip}
                   </div>
                 ) : null}
                 {brawlEnabled ? (
                   <div style={{ display: 'grid', gap: 12 }}>
                     <label style={labelStyle}>
-                      <span style={{ color: '#dbeafe' }}>게임 종료 조건 변수</span>
+                      <span style={{ color: '#dbeafe' }}>{brawlModeCopy.endCondition.label}</span>
                       <input
                         type="text"
                         value={endCondition}
                         onChange={(event) => setEndCondition(event.target.value)}
-                        placeholder="예: remainingTeams <= 1"
+                        placeholder={brawlModeCopy.endCondition.placeholder}
                         style={inputStyle}
                       />
-                      <span style={{ fontSize: 12, color: '#bfdbfe' }}>
-                        등록 폼의 끝에서 두 번째 줄에 위치한 변수 칸과 연결됩니다. 조건을 만족할 때까지 게임은 종료되지 않으며, 종료 시 승리 횟수에 따라 점수가 정산됩니다.
-                      </span>
+                      <span style={{ fontSize: 12, color: '#bfdbfe' }}>{brawlModeCopy.endCondition.helper}</span>
                     </label>
                   </div>
                 ) : (
-                  <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>
-                    난입 허용을 끄면 패배한 참가자는 해당 경기 동안 재참여할 수 없습니다.
-                  </p>
+                  <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>{brawlModeCopy.offHint}</p>
                 )}
               </div>
               <div style={{ background: 'rgba(15,23,42,0.45)', borderRadius: 16, padding: '12px 14px' }}>

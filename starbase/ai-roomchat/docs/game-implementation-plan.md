@@ -41,7 +41,7 @@
 - UI는 RolesEditor·SlotMatrix·RulesChecklist 카드가 모두 활성화되어 있고, 난입 토글과 실시간 모드 선택이 카드 단위로 묶여 있어 핵심 편집 시퀀스가 이미 운영 중이다.【F:components/rank/RankNewClient.js†L271-L458】
 
 **정비/축소 후보**
-- 등록 안내 문구(`registerChecklist` 배열 등)는 컴포넌트 상수로 박혀 있다. 다국어 준비를 위해 JSON/MDX 구성으로 분리하고 `RulesChecklist`와 공유할 수 있도록 매핑한다.【F:components/rank/RankNewClient.js†L120-L166】【F:components/rank/RulesChecklist.js†L1-L120】
+- (완료) 등록 안내 문구와 난입 설명을 `rankRegistrationContent` 데이터로 추출했다. 이후 다국어 리소스를 연결할 때 해당 데이터 객체를 번들 경량화를 위해 동적 임포트하도록 보완한다.【F:ai-roomchat/data/rankRegistrationContent.js†L1-L60】
 - 이미지 입력은 파일명만 보여주므로, `uploadGameImage` 호출 전 `URL.createObjectURL`로 미리보기를 제공하거나 기본 이미지 경고를 강화한다.【F:components/rank/RankNewClient.js†L317-L350】
 - `registerGame`는 역할 이름 트리밍·점수 보정·슬롯 수 계산을 클라이언트에서 수행한다. `pages/api/rank/register-game.js`나 공유 유틸로 이동해 서버 검증을 공통화하면 등록/매칭 API 중복을 줄인다.【F:components/rank/RankNewClient.js†L12-L207】【F:pages/api/rank/register-game.js†L1-L94】
 
@@ -203,11 +203,11 @@
 - [x] 방 상세 → MatchReady → StartClient로 이어지는 스테이징·세션 동기화 루프 구축, `setGameMatchSnapshot`까지 연계 완료.【F:pages/rooms/[id].js†L2025-L2134】【F:components/rank/MatchReadyClient.js†L1-L220】【F:components/rank/StartClient/useStartClientEngine.js†L1188-L1248】
 - [x] GameRoomView가 룰 카드·오디오 프로필·참가자 통계를 모두 계산해 뷰어에게 제공하는 상태 유지.【F:components/rank/GameRoomView.js†L13-L1120】
 - [~] GameSession Store 확장 설계와 버전 필드 추가가 설계 문서에 정의돼 있으며, `matchDataStore` 기반 확장 작업 대기 중.【F:modules/rank/matchDataStore.js†L1-L118】【F:lib/rank/matchFlow.js†L118-L172】
-- [~] 등록 안내 텍스트/난입 설명 분리 및 다국어 구조화 계획 수립, `RankNewClient`·`RulesChecklist` 리소스 분리 작업 준비 중.【F:components/rank/RankNewClient.js†L120-L167】【F:components/rank/RulesChecklist.js†L36-L101】
+- [x] 등록 안내 텍스트/난입 설명 분리 및 다국어 구조화 계획 수립, `RankNewClient`·`RulesChecklist` 리소스를 `rankRegistrationContent` 데이터로 이동해 공유.【F:components/rank/RankNewClient.js†L120-L355】【F:components/rank/RulesChecklist.js†L1-L60】【F:ai-roomchat/data/rankRegistrationContent.js†L1-L60】
 - [ ] GameRoomView 오디오/히스토리 유틸을 분리 컴포넌트화하고, 타임라인/리플레이 노출을 lazy chunk로 나누는 리팩터링 미진행.【F:components/rank/GameRoomView.js†L1-L1120】
 - [ ] `stage-room-match` 낙관적 락·슬롯 버전 필드 추가 및 API 유틸 통합 작업 미착수.【F:pages/api/rank/stage-room-match.js†L112-L200】
 
 ---
 **백엔드 TODO**: Supabase 역할/슬롯 검증 함수 공통화, RoomInitService용 슬롯/역할 캐시 테이블 및 락 RPC 추가, `validate_session` RPC 및 슬롯 버전 필드 도입, 이미지 업로드 정책(용량/파일형식) 강화, 등록/매칭 로그 감사 테이블 확장.
 **추가 필요 사항**: 다국어 대비 문자열 리소스 분리, 매칭/룸 UI 카피 검수, GameSession Store 스키마 및 Maker JSON 버전 문서화, 테스트 환경용 Supabase 프로젝트 분리.
-**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축) 코드 반영 완료. 다음 단계는 2.2 UI 재배치 준비.
+**진행 상황**: 2-1 단계(공용 스토리지, Maker 홈 정비, 에디터 상태 분리·고급 도구 패널 구축) 코드 반영 완료. 2-2 단계 중 안내/체크리스트 리소스 분리와 RulesChecklist 데이터화를 완료했고, 다음 단계는 2.2 UI 재배치 준비.
