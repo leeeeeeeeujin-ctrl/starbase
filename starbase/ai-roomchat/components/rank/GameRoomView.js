@@ -14,6 +14,7 @@ import {
   DEFAULT_EQ_SETTINGS,
   DEFAULT_REVERB_SETTINGS,
   buildHeroAudioProfileKey,
+  eqSettingsAreEqual,
   compressorSettingsAreEqual,
   diffAudioPreferenceChanges,
   extractHeroAudioEffectSnapshot,
