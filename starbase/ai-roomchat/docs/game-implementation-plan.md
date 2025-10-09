@@ -17,6 +17,19 @@
 - `useMakerEditor`가 그래프·선택·저장·히스토리·버전 경고를 한 훅에서 반환해 props 포화가 일어난다. 반환값을 `graph`, `persistence`, `uiState` 등 그룹으로 나누거나, `MakerEditorContext`를 도입해 하위 컴포넌트가 필요한 조각만 구독하도록 리팩터링한다.【F:hooks/maker/useMakerEditor.js†L58-L138】
 - 자동 저장 히스토리(`saveHistory`)는 로컬 스토리지 키 `maker:history:${setId}`에 즉시 반영되지만, UI상 노출이 미미하다. 고급 기능 패널로 이동해 히스토리 내보내기/초기화 액션을 명시한다.【F:hooks/maker/useMakerEditor.js†L44-L95】
 
+#### 2.1 단계별 실행 계획 (2-1)
+| 상태 | 태스크 | 세부 내용 | 참고 코드 |
+| --- | --- | --- | --- |
+| ☐ | QuickActionsSheet 재구성 | `QuickActionsSheet`에서 `refresh` 호출을 제거하고 `MakerHomeContainer` 상단 버튼에만 배치. 액션 시트는 생성/가져오기/내보내기만 담당하도록 props 재정의.【F:components/maker/home/MakerHomeContainer.js†L107-L145】 | `components/maker/home/MakerHomeContainer.js`, `components/maker/home/QuickActionsSheet.js` |
+| ☐ | MakerEditor 컨텍스트 도입 | `useMakerEditor` 반환값을 `graph`, `persistence`, `uiState` 그룹으로 분리하고, `<MakerEditorProviders>`(신규)에서 컨텍스트 공급. 기존 `MakerEditor`는 새 컨텍스트 훅을 사용하도록 마이그레이션.【F:hooks/maker/useMakerEditor.js†L58-L211】【F:components/maker/editor/MakerEditor.js†L1-L162】 | `hooks/maker/useMakerEditor.js`, `components/maker/editor/MakerEditor.js` |
+| ☐ | 히스토리 패널 이동 | `saveHistory` UI를 고급 패널(예: `<AdvancedToolsPanel>`)로 이동. 히스토리 내보내기/초기화 버튼에 `maker:history:${setId}` 키를 노출하고, `useLocalStorage` 훅을 재사용해 접근성을 통일.【F:hooks/maker/useMakerEditor.js†L44-L95】 | `components/maker/editor/AdvancedToolsPanel.js`(신규), `hooks/maker/useMakerEditor.js` |
+| ☐ | 공용 PromptSet 스토리지 훅 | Maker 홈과 Rank 등록에서 공유하는 `selectedHeroBackgroundUrl`·`promptSetId`를 `useSharedPromptSetStorage`(가칭)로 추출. 초기화 타임스탬프를 저장해 최신 값만 반영.【F:hooks/maker/useMakerHome.js†L40-L133】【F:components/rank/RankNewClient.js†L110-L208】 | `hooks/shared/useSharedPromptSetStorage.js`(신규), `hooks/maker/useMakerHome.js`, `components/rank/RankNewClient.js` |
+
+#### 2.1 예상 리스크 & 대응
+- **컨텍스트 도입 시 렌더 폭증**: 컨텍스트 분리 후 공급자가 여러 번 리렌더링될 수 있다 → `React.memo`와 `useMemo`로 컨텍스트 값 래핑, 그래프 이벤트 핸들러는 `useCallback` 유지.
+- **스토리지 동기화 충돌**: Maker와 Rank에서 동시에 스토리지를 갱신하면 값이 덮어써질 수 있다 → `useSharedPromptSetStorage`에 업데이트 시퀀스 넘버를 저장하고 최신 타임스탬프만 반영.
+- **히스토리 패널 가시성 하락**: 고급 패널 이동 후 사용자 접근성이 떨어질 수 있다 → `AdvancedToolsPanel`에 온보딩 툴팁을 추가하고, 최근 저장 시 알림 배지 제공.
+
 ### 2.2 등록 탭
 **유지해야 할 흐름**
 - 배경은 로컬 스토리지에서 `selectedHeroBackgroundUrl`을 불러오고, `router.back()` 버튼으로 허브로 복귀한다. 허브 경험과 연결되는 요소이므로 유지.【F:components/rank/RankNewClient.js†L58-L108】【F:components/rank/RankNewClient.js†L273-L322】
