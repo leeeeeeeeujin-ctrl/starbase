@@ -174,7 +174,11 @@ begin
 end;
 $$;
 
--- 3) 세션 메타 테이블 & upsert RPC
+--    • 최신 스키마를 빠르게 반영하려면 `docs/sql/upsert-match-session-meta.sql`
+--      파일을 그대로 붙여넣으면 된다. 기존 프로젝트는 `alter table ... add
+--      column if not exists` 블록이 turn_state와 async_fill_snapshot을 추가하고
+--      기본값을 맞춰준다.
+
 create table if not exists public.rank_session_meta (
   session_id uuid primary key references public.rank_sessions(id) on delete cascade,
   time_vote jsonb,

@@ -1,7 +1,7 @@
 -- Supabase rank session meta bundle
--- Copy/paste this snippet into the Supabase SQL editor to create the
--- rank_session_meta table, the upsert RPC, and the required grants so
--- MatchReadyClient can persist time_vote and selected_time_limit_seconds.
+-- rank_session_meta table, keep existing installations in sync, and set up the
+-- upsert RPC plus the required grants so MatchReadyClient can persist
+-- time_vote, selected_time_limit_seconds, and turn_state snapshots.
 
 create table if not exists public.rank_session_meta (
   session_id uuid primary key references public.rank_sessions(id) on delete cascade,
@@ -13,6 +13,31 @@ create table if not exists public.rank_session_meta (
   async_fill_snapshot jsonb,
   updated_at timestamptz not null default now()
 );
+
+alter table public.rank_session_meta
+  add column if not exists time_vote jsonb,
+  add column if not exists selected_time_limit_seconds integer,
+  add column if not exists realtime_mode text,
+  add column if not exists drop_in_bonus_seconds integer,
+  add column if not exists turn_state jsonb,
+  add column if not exists async_fill_snapshot jsonb,
+  add column if not exists updated_at timestamptz;
+
+alter table public.rank_session_meta
+  alter column realtime_mode set default 'off',
+  alter column drop_in_bonus_seconds set default 0,
+  alter column updated_at set default now();
+
+update public.rank_session_meta
+  set updated_at = coalesce(updated_at, now()),
+      realtime_mode = coalesce(realtime_mode, 'off'),
+      drop_in_bonus_seconds = coalesce(drop_in_bonus_seconds, 0)
+where updated_at is null
+   or realtime_mode is null
+   or drop_in_bonus_seconds is null;
+
+alter table public.rank_session_meta
+  alter column updated_at set not null;
 
 create or replace function public.upsert_match_session_meta(
   p_session_id uuid,
