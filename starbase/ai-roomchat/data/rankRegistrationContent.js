@@ -43,6 +43,10 @@ export const realtimeModeCopy = {
 export const imageFieldCopy = {
   label: '표지 이미지',
   fallback: '이미지를 선택하지 않으면 기본 배경이 사용됩니다.',
+  previewLabel: '미리보기',
+  sizeLimitNotice: '최대 3MB 이하의 PNG/JPEG/GIF를 권장합니다.',
+  typeError: '이미지 파일만 업로드할 수 있습니다.',
+  sizeError: '이미지 용량이 3MB를 초과했습니다. 압축 후 다시 시도해 주세요.',
 }
 
 export const rulesChecklistCopy = {

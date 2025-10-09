@@ -22,6 +22,8 @@ import {
   realtimeModeCopy,
 } from '../../data/rankRegistrationContent'
 
+const MAX_IMAGE_SIZE_BYTES = 3 * 1024 * 1024
+
 const REALTIME_MODE_OPTIONS = (realtimeModeCopy?.options || []).map((option) => ({
   value: REALTIME_MODES?.[option.value] ?? option.value,
   label: option.label,
@@ -112,6 +114,9 @@ export default function RankNewClient() {
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [imgFile, setImgFile] = useState(null)
+  const [imgPreviewUrl, setImgPreviewUrl] = useState('')
+  const [imgError, setImgError] = useState('')
+  const [fileInputKey, setFileInputKey] = useState(0)
   const [setId, setSetId] = useState('')
   const [realtimeMode, setRealtimeMode] = useState(REALTIME_MODES.OFF)
 
@@ -157,6 +162,14 @@ export default function RankNewClient() {
     }
   }, [sharedPromptSetId])
 
+  useEffect(() => {
+    return () => {
+      if (imgPreviewUrl) {
+        URL.revokeObjectURL(imgPreviewUrl)
+      }
+    }
+  }, [imgPreviewUrl])
+
   const handlePromptSetChange = useCallback(
     (value) => {
       setSetId(value)
@@ -164,6 +177,43 @@ export default function RankNewClient() {
     },
     [setSharedPromptSetId],
   )
+
+  const handleClearImage = useCallback(() => {
+    setImgFile(null)
+    setImgError('')
+    setImgPreviewUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev)
+      }
+      return ''
+    })
+    setFileInputKey((prev) => prev + 1)
+  }, [])
+
+  const handleImageChange = useCallback((event) => {
+    const file = event.target.files?.[0] || null
+    handleClearImage()
+
+    if (!file) {
+      return
+    }
+
+    if (!file.type?.startsWith('image/')) {
+      setImgError(imageFieldCopy.typeError)
+      setFileInputKey((prev) => prev + 1)
+      return
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setImgError(imageFieldCopy.sizeError)
+      setFileInputKey((prev) => prev + 1)
+      return
+    }
+
+    const nextUrl = URL.createObjectURL(file)
+    setImgFile(file)
+    setImgPreviewUrl(nextUrl)
+  }, [handleClearImage])
 
   const activeSlots = useMemo(
     () => (slotMap || []).filter(s => s.active && s.role && s.role.trim()),
@@ -185,6 +235,7 @@ export default function RankNewClient() {
     if (!user) return alert('로그인이 필요합니다.')
     if (!setId) return alert('프롬프트 세트를 선택하세요.')
     if (activeSlots.length === 0) return alert('최소 1개의 슬롯을 활성화하고 역할을 지정하세요.')
+    if (imgError) return alert(imgError)
 
     let image_url = ''
     if (imgFile) {
@@ -197,6 +248,9 @@ export default function RankNewClient() {
     }
 
     const trimmedEndCondition = endCondition.trim()
+    if (brawlEnabled && !trimmedEndCondition) {
+      return alert('난입 허용 시 종료 조건 변수를 입력해야 합니다.')
+    }
     const compiledRules = {
       ...rules,
       brawl_rule: brawlEnabled ? 'allow-brawl' : 'banish-on-loss',
@@ -361,14 +415,61 @@ export default function RankNewClient() {
           <input
             type="file"
             accept="image/*"
-            onChange={(event) => setImgFile(event.target.files?.[0] || null)}
+            key={fileInputKey}
+            onChange={handleImageChange}
             style={{ padding: '8px 0', color: '#f8fafc' }}
           />
+          <span style={helperTextStyle}>{imageFieldCopy.sizeLimitNotice}</span>
+          {imgError ? (
+            <span style={{ ...helperTextStyle, color: '#fca5a5' }}>{imgError}</span>
+          ) : null}
           {imgFile ? (
             <span style={helperTextStyle}>{imgFile.name}</span>
           ) : (
             <span style={helperTextStyle}>{imageFieldCopy.fallback}</span>
           )}
+          {imgPreviewUrl ? (
+            <div
+              style={{
+                display: 'grid',
+                gap: 8,
+                background: 'rgba(15,23,42,0.45)',
+                borderRadius: 12,
+                padding: 12,
+                border: '1px solid rgba(148,163,184,0.35)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>
+                  {imageFieldCopy.previewLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearImage}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#cbd5f5',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  제거
+                </button>
+              </div>
+              <img
+                src={imgPreviewUrl}
+                alt="선택한 표지 이미지 미리보기"
+                style={{
+                  width: '100%',
+                  maxHeight: 200,
+                  objectFit: 'cover',
+                  borderRadius: 10,
+                }}
+              />
+            </div>
+          ) : null}
         </label>
       </RegistrationCard>
 

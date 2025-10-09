@@ -40,10 +40,12 @@
 - 등록 폼은 `registerGame`이 인증 상태 검증, 역할 중복 제거, 점수 범위 보정까지 담당하면서 슬롯 업서트와 리다이렉트가 이어지도록 구성되어 있어 1차 동작 완성도를 갖췄다.【F:components/rank/RankNewClient.js†L12-L207】【F:components/rank/RankNewClient.js†L208-L333】
 - UI는 RolesEditor·SlotMatrix·RulesChecklist 카드가 모두 활성화되어 있고, 난입 토글과 실시간 모드 선택이 카드 단위로 묶여 있어 핵심 편집 시퀀스가 이미 운영 중이다.【F:components/rank/RankNewClient.js†L271-L458】
 - 레이아웃을 `RegistrationLayout`·`RegistrationCard`·`SidebarCard` 컴포넌트로 분리해 개요/사이드 가이드를 별도 칼럼으로 고정하고, 기본 정보·모드·역할·슬롯·규칙을 카드 기반으로 재배치했다.【F:components/rank/RankNewClient.js†L335-L512】【F:components/rank/registration/RegistrationLayout.js†L1-L83】【F:components/rank/registration/RegistrationCard.js†L1-L42】
+- 표지 이미지 입력에 3MB 용량 검증과 미리보기·제거 컨트롤을 추가해 업로드 전 품질을 확인할 수 있도록 했다.【F:components/rank/RankNewClient.js†L180-L258】【F:data/rankRegistrationContent.js†L28-L36】
+- 난입 허용 시 종료 변수 필드를 비워둘 수 없도록 클라이언트 검증을 추가해 규칙 누락을 방지한다.【F:components/rank/RankNewClient.js†L235-L257】
 
 **정비/축소 후보**
 - (완료) 등록 안내 문구와 난입 설명을 `rankRegistrationContent` 데이터로 추출했다. 이후 다국어 리소스를 연결할 때 해당 데이터 객체를 번들 경량화를 위해 동적 임포트하도록 보완한다.【F:ai-roomchat/data/rankRegistrationContent.js†L1-L60】
-- 이미지 입력은 파일명만 보여주므로, `uploadGameImage` 호출 전 `URL.createObjectURL`로 미리보기를 제공하거나 기본 이미지 경고를 강화한다.【F:components/rank/RankNewClient.js†L317-L350】
+- (완료) 이미지 입력은 파일명만 보여주던 문제를 3MB 이하 이미지 검사와 미리보기 카드로 교체했다.【F:components/rank/RankNewClient.js†L180-L258】【F:data/rankRegistrationContent.js†L28-L36】
 - `registerGame`는 역할 이름 트리밍·점수 보정·슬롯 수 계산을 클라이언트에서 수행한다. `pages/api/rank/register-game.js`나 공유 유틸로 이동해 서버 검증을 공통화하면 등록/매칭 API 중복을 줄인다.【F:components/rank/RankNewClient.js†L12-L207】【F:pages/api/rank/register-game.js†L1-L94】
 
 ### 2.3 방 찾기(로비)
@@ -149,7 +151,7 @@
 - 룸 생성 시 `RoleSlotMatrix` 데이터를 캐시하고, 플레이어 매칭 단계에서 슬롯이 점유될 때마다 상태를 업데이트하여 메인 게임 진입 시 자동으로 역할별 초기화 데이터를 주입한다.
 
 **코드 기준 세부 설계**
-- 난입 허용 시 `endCondition`이 비어 있으면 `registerGame` 호출 전에 `alert`이 발생하도록 클라이언트 검증을 추가하고, 서버에서는 `pages/api/rank/register-game.js`에서 동일 필수 검증을 재사용한다.【F:components/rank/RankNewClient.js†L166-L248】【F:pages/api/rank/register-game.js†L45-L94】
+- (완료) 난입 허용 시 `endCondition`이 비어 있으면 `registerGame` 호출 전에 경고를 띄워 입력을 요구하고, 서버에서는 `pages/api/rank/register-game.js`에 동일 필수 검증을 재사용할 계획이다.【F:components/rank/RankNewClient.js†L235-L257】【F:pages/api/rank/register-game.js†L45-L94】
 - Maker JSON 업로드는 `insertPromptSetBundle` 호출 후 바로 `refresh()`를 실행한다. 이 과정에 `payload.meta?.version` 체크를 추가하고, `useMakerEditor`의 `VARIABLE_RULES_VERSION`과 비교해 업그레이드 안내 배너를 띄운다.【F:hooks/maker/useMakerHome.js†L95-L133】【F:hooks/maker/useMakerEditor.js†L24-L70】
 - 룸 생성 API(`/api/rank/match`)는 현재 슬롯 정보를 `rank_match_roster`에 스테이징한다. GameSession Store를 확장하면 `stage-room-match` 호출 전에 `matchDataStore.setGameMatchSnapshot`에 슬롯 버전을 씌워, 본게임 페이지(`/rooms/[id].js`)가 동일 데이터를 읽어 초기화한다.【F:pages/api/rank/match.js†L147-L419】【F:pages/rooms/[id].js†L287-L2136】【F:modules/rank/matchDataStore.js†L124-L204】
 - `stage-room-match`는 참가자 통계와 영웅 요약을 합쳐 `rank_match_roster`를 재구성한다. 슬롯 버전/역할 매핑을 함께 저장해 `StartClient` 엔진이 번들을 병합할 때 재검증하도록 확장한다.【F:pages/api/rank/stage-room-match.js†L112-L207】【F:components/rank/StartClient/useStartClientEngine.js†L1203-L1258】
