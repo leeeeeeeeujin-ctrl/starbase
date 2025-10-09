@@ -562,6 +562,8 @@ export default function RoomBrowserPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const [lastLoadedAt, setLastLoadedAt] = useState(null)
+  const [nextAutoRefreshAt, setNextAutoRefreshAt] = useState(null)
+  const [autoRefreshCountdown, setAutoRefreshCountdown] = useState(null)
 
   const [modeTab, setModeTab] = useState('rank')
   const [participations, setParticipations] = useState([])
@@ -928,7 +930,7 @@ export default function RoomBrowserPage() {
         persistHeroSelection({ id: normalizedHeroId }, effectiveOwnerId)
       }
 
-      const bundle = await fetchHeroParticipationBundle(normalizedHeroId, {
+      const participationPromise = fetchHeroParticipationBundle(normalizedHeroId, {
         heroSeed: heroRow
           ? {
               id: heroRow.id,
@@ -938,7 +940,26 @@ export default function RoomBrowserPage() {
           : fallbackSeed || undefined,
       })
 
+      const participantGamesPromise = withTable(supabase, 'rank_participants', (table) =>
+        supabase
+          .from(table)
+          .select('game_id')
+          .eq('hero_id', normalizedHeroId),
+      )
+
+      const [bundleOutcome, participantOutcome] = await Promise.allSettled([
+        participationPromise,
+        participantGamesPromise,
+      ])
+
       if (!mountedRef.current) return
+
+      let bundle = null
+      if (bundleOutcome.status === 'fulfilled') {
+        bundle = bundleOutcome.value
+      } else {
+        console.warn('[RoomBrowser] Failed to load hero participation bundle:', bundleOutcome.reason)
+      }
 
       const participationsList = Array.isArray(bundle?.participations) ? bundle.participations : []
       const hydratedParticipations = participationsList.map((entry) => {
@@ -986,24 +1007,17 @@ export default function RoomBrowserPage() {
       })
 
       let rankParticipantGames = []
-      const { data: participantGamesRows, error: participantGamesError } = await withTable(
-        supabase,
-        'rank_participants',
-        (table) =>
-          supabase
-            .from(table)
-            .select('game_id')
-            .eq('hero_id', normalizedHeroId),
-      )
-
-      if (participantGamesError && participantGamesError.code !== 'PGRST116') {
-        throw participantGamesError
-      }
-
-      if (Array.isArray(participantGamesRows)) {
-        rankParticipantGames = participantGamesRows
-          .map((row) => row?.game_id)
-          .filter((gameId) => typeof gameId === 'string' && gameId.trim() !== '')
+      if (participantOutcome.status === 'fulfilled') {
+        const participantResult = participantOutcome.value
+        if (participantResult?.error && participantResult.error.code !== 'PGRST116') {
+          console.warn('[RoomBrowser] Failed to load rank participant games:', participantResult.error)
+        } else if (Array.isArray(participantResult?.data)) {
+          rankParticipantGames = participantResult.data
+            .map((row) => row?.game_id)
+            .filter((gameId) => typeof gameId === 'string' && gameId.trim() !== '')
+        }
+      } else {
+        console.warn('[RoomBrowser] Failed to query rank participant games:', participantOutcome.reason)
       }
 
       const missingGameIds = Array.from(new Set(rankParticipantGames)).filter(
@@ -1481,6 +1495,7 @@ export default function RoomBrowserPage() {
         }
       } finally {
         if (!mountedRef.current) return
+        setNextAutoRefreshAt(Date.now() + ROOM_BROWSER_AUTO_REFRESH_INTERVAL_MS)
         if (mode === 'initial') {
           setLoading(false)
           setRefreshing(false)
@@ -1507,6 +1522,30 @@ export default function RoomBrowserPage() {
       clearInterval(intervalId)
     }
   }, [loadRooms])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      setAutoRefreshCountdown(null)
+      return undefined
+    }
+    if (!nextAutoRefreshAt) {
+      setAutoRefreshCountdown(null)
+      return undefined
+    }
+
+    const updateCountdown = () => {
+      const diffMs = nextAutoRefreshAt - Date.now()
+      const seconds = diffMs > 0 ? Math.round(diffMs / 1000) : 0
+      if (!mountedRef.current) return
+      setAutoRefreshCountdown(seconds)
+    }
+
+    updateCountdown()
+    const intervalId = window.setInterval(updateCountdown, 1000)
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [nextAutoRefreshAt])
 
   const handleRefresh = useCallback(() => {
     loadRooms('refresh')
@@ -2698,11 +2737,13 @@ export default function RoomBrowserPage() {
 
         <RoomResultsSection
           loading={loading}
+          refreshing={refreshing}
           filteredRooms={filteredRooms}
           filterDiagnostics={filterDiagnostics}
           filterMessages={filterMessages}
           effectiveHeroId={effectiveHeroId}
           heroRatingForSelection={heroRatingForSelection}
+          autoRefreshCountdown={autoRefreshCountdown}
           formatRelativeTime={formatRelativeTime}
         />
       </div>

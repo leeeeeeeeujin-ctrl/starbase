@@ -60,9 +60,11 @@
 - 로비는 현재 폴링과 실시간 채널을 동시에 사용해 기본 동기화 루프가 작동 중이며, 단일 파일이지만 방 생성/입장 정보를 즉시 반영한다.【F:pages/rooms/index.js†L31-L1467】
 - `resolveViewerProfile`과 `rankAuthStorage` 연계로 영웅 선택·API 키 스냅샷이 읽히고 있어 GameSession Store 확장 시 활용 가능한 세션 데이터 축적이 이미 이루어지고 있다.【F:pages/rooms/index.js†L944-L1158】【F:modules/rank/matchDataStore.js†L1-L118】
 - 필터/검색 결과 UI를 `RoomFiltersSection`과 `RoomResultsSection` 컴포넌트로 분리해 목록 카드·진단 메시지를 독립 렌더러로 관리하고, 페이지 본문은 상태 계산과 모달 제어에 집중하도록 정리했다.【F:components/rank/rooms/RoomFiltersSection.js†L1-L153】【F:components/rank/rooms/RoomResultsSection.js†L1-L153】
+- 영웅 참여 데이터와 참가 게임 조회를 `Promise.allSettled`로 병렬 처리해 한쪽 호출이 실패해도 나머지 데이터가 유지되도록 했고, 실패 시 콘솔 경고로 추적 가능하게 했다.【F:pages/rooms/index.js†L1009-L1107】
+- 검색 결과 섹션에 실시간 모니터링 배지와 자동 새로고침 카운트다운을 추가해 현재 새로고침 상태를 즉시 파악할 수 있다.【F:components/rank/rooms/RoomResultsSection.js†L1-L120】【F:components/rank/rooms/RoomResultsSection.js†L134-L180】
 
 **정비/축소 후보**
-- 뷰어 영웅/유저 정보를 해결하는 비동기 체인이 `resolveViewerProfile` → `fetchHeroParticipationBundle` → 상태 업데이트로 이어져 길다. `Promise.allSettled` 패턴과 에러 토스트를 추가해 실패 시에도 UI 응답성을 유지하도록 정리한다.【F:pages/rooms/index.js†L990-L1158】
+- (진행) 뷰어 영웅/유저 정보를 해결하는 비동기 체인이 `resolveViewerProfile` → `fetchHeroParticipationBundle` → 상태 업데이트로 이어져 길다. `Promise.allSettled` 패턴은 도입했으므로 이후 단계에서 사용자용 에러 토스트와 재시도 안내를 추가한다.【F:pages/rooms/index.js†L1009-L1107】
 - (진행) 필터 패널과 검색 결과는 컴포넌트로 분리했으나, 실시간 상태 배지·폴링 스피너를 공용 UI로 이동시키는 후속 작업과 스토리북 예시가 남아 있다.【F:components/rank/rooms/RoomResultsSection.js†L36-L149】
 
 ### 2.4 방 상세/입장
