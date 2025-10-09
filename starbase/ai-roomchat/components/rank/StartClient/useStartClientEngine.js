@@ -78,6 +78,129 @@ import {
   getConnectionEntriesForGame,
   subscribeConnectionRegistry,
 } from '@/lib/rank/startConnectionRegistry'
+
+function toInt(value, { min = null } = {}) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  const rounded = Math.floor(numeric)
+  if (min !== null && rounded < min) return null
+  return rounded
+}
+
+function toTrimmed(value) {
+  if (value === null || value === undefined) return null
+  const trimmed = String(value).trim()
+  return trimmed || null
+}
+
+function sanitizeDropInArrivals(arrivals) {
+  if (!Array.isArray(arrivals) || arrivals.length === 0) return []
+  return arrivals
+    .slice(0, 8)
+    .map((arrival) => {
+      if (!arrival || typeof arrival !== 'object') return null
+      const normalized = {}
+      const ownerId =
+        arrival.ownerId ??
+        arrival.owner_id ??
+        arrival.ownerID ??
+        arrival?.owner?.id ??
+        null
+      const role = toTrimmed(arrival.role)
+      const heroName =
+        arrival.heroName ??
+        arrival.hero_name ??
+        arrival.display_name ??
+        arrival.name ??
+        null
+      const slotIndex = toInt(arrival.slotIndex, { min: 0 })
+      const timestamp = toInt(arrival.timestamp, { min: 0 })
+      const queueDepth = toInt(arrival?.stats?.queueDepth, { min: 0 })
+      const replacements = toInt(arrival?.stats?.replacements, { min: 0 })
+      const arrivalOrder = toInt(arrival?.stats?.arrivalOrder, { min: 0 })
+      const replacedOwner =
+        arrival?.replaced?.ownerId ??
+        arrival?.replaced?.owner_id ??
+        arrival?.replacedOwnerId ??
+        null
+      const replacedHero =
+        arrival?.replaced?.heroName ??
+        arrival?.replaced?.hero_name ??
+        arrival?.replacedHeroName ??
+        null
+      const status = toTrimmed(arrival.status)
+
+      if (toTrimmed(ownerId)) normalized.ownerId = toTrimmed(ownerId)
+      if (role) normalized.role = role
+      if (toTrimmed(heroName)) normalized.heroName = toTrimmed(heroName)
+      if (slotIndex !== null) normalized.slotIndex = slotIndex
+      if (timestamp !== null) normalized.timestamp = timestamp
+      if (queueDepth !== null) normalized.queueDepth = queueDepth
+      if (replacements !== null) normalized.replacements = replacements
+      if (arrivalOrder !== null) normalized.arrivalOrder = arrivalOrder
+      if (toTrimmed(replacedOwner)) normalized.replacedOwnerId = toTrimmed(replacedOwner)
+      if (toTrimmed(replacedHero)) normalized.replacedHeroName = toTrimmed(replacedHero)
+      if (status) normalized.status = status
+
+      if (Object.keys(normalized).length === 0) return null
+      return normalized
+    })
+    .filter(Boolean)
+}
+
+function buildDropInMetaPayload({
+  arrivals,
+  status,
+  bonusSeconds,
+  appliedAt,
+  turnNumber,
+  mode,
+  queueResult,
+  roomId,
+}) {
+  const sanitizedArrivals = sanitizeDropInArrivals(arrivals)
+  const meta = {}
+
+  const normalizedStatus = toTrimmed(status)
+  if (normalizedStatus) meta.status = normalizedStatus
+
+  const normalizedMode = toTrimmed(mode)
+  if (normalizedMode) meta.mode = normalizedMode
+
+  const normalizedBonus = toInt(bonusSeconds, { min: 0 })
+  if (normalizedBonus !== null) meta.bonusSeconds = normalizedBonus
+
+  const normalizedAppliedAt = toInt(appliedAt, { min: 0 })
+  if (normalizedAppliedAt !== null) meta.appliedAt = normalizedAppliedAt
+
+  const normalizedTurn = toInt(turnNumber, { min: 0 })
+  if (normalizedTurn !== null) meta.turnNumber = normalizedTurn
+
+  const normalizedRoomId = toTrimmed(roomId)
+  if (normalizedRoomId) meta.targetRoomId = normalizedRoomId
+
+  if (sanitizedArrivals.length) {
+    meta.arrivals = sanitizedArrivals
+    const queueDepth = sanitizedArrivals.reduce((max, entry) => {
+      const depth = typeof entry.queueDepth === 'number' ? entry.queueDepth : 0
+      return depth > max ? depth : max
+    }, 0)
+    const replacements = sanitizedArrivals.reduce((max, entry) => {
+      const count = typeof entry.replacements === 'number' ? entry.replacements : 0
+      return count > max ? count : max
+    }, 0)
+    if (queueDepth > 0) meta.queueDepth = queueDepth
+    if (replacements > 0) meta.replacements = replacements
+  }
+
+  if (queueResult?.matching) {
+    meta.matching = queueResult.matching
+  }
+
+  meta.updatedAt = Date.now()
+
+  return meta
+}
 import {
   isRealtimeEnabled,
   normalizeRealtimeMode,
@@ -1073,7 +1196,7 @@ export function useStartClientEngine(gameId) {
     [patchEngineState],
   )
   const recordTurnState = useCallback(
-    (patch = {}) => {
+    (patch = {}, options = {}) => {
       if (preflight) return
       if (!gameId) return
 
@@ -1089,10 +1212,16 @@ export function useStartClientEngine(gameId) {
         return
       }
 
-      setGameMatchSessionMeta(gameId, {
-        turnState: turnStatePatch,
-        source: 'start-client/turn-state',
-      })
+      const metaPatch =
+        options && typeof options === 'object' && options.metaPatch && typeof options.metaPatch === 'object'
+          ? options.metaPatch
+          : null
+
+      const payload = metaPatch ? { ...metaPatch } : {}
+      payload.turnState = turnStatePatch
+      payload.source = 'start-client/turn-state'
+
+      setGameMatchSessionMeta(gameId, payload)
     },
     [gameId, preflight],
   )
@@ -1930,7 +2059,14 @@ export function useStartClientEngine(gameId) {
       ? queueResult.arrivals
       : []
 
+    let dropInRoomId = ''
+
     if (arrivals.length > 0) {
+      const dropInTarget = startMatchMetaRef.current?.dropInTarget || null
+      const dropInRoomIdRaw =
+        dropInTarget?.roomId ?? dropInTarget?.room_id ?? dropInTarget?.roomID ?? null
+      dropInRoomId = dropInRoomIdRaw ? String(dropInRoomIdRaw).trim() : ''
+
       const service = turnTimerServiceRef.current
       if (service) {
         const now = Date.now()
@@ -1947,6 +2083,17 @@ export function useStartClientEngine(gameId) {
           turnNumber: turn,
         })
 
+        const dropInMeta = buildDropInMetaPayload({
+          arrivals,
+          status: hasActiveDeadline ? 'bonus-applied' : 'bonus-queued',
+          bonusSeconds: extraSeconds,
+          appliedAt: now,
+          turnNumber: numericTurn,
+          mode: realtimeEnabled ? 'realtime' : 'async',
+          queueResult,
+          roomId: dropInRoomId,
+        })
+
         if (extraSeconds > 0) {
           if (hasActiveDeadline) {
             const baseDeadline = deadlineRefValue || now
@@ -1961,30 +2108,42 @@ export function useStartClientEngine(gameId) {
             setTimeRemaining((prev) =>
               typeof prev === 'number' ? prev + extraSeconds : updatedRemaining,
             )
-            recordTurnState({
-              turnNumber: numericTurn,
-              deadline: newDeadline,
-              remainingSeconds: updatedRemaining,
-              dropInBonusSeconds: extraSeconds,
-              dropInBonusAppliedAt: now,
-              dropInBonusTurn: numericTurn,
-              status: 'bonus-applied',
-            })
+            recordTurnState(
+              {
+                turnNumber: numericTurn,
+                deadline: newDeadline,
+                remainingSeconds: updatedRemaining,
+                dropInBonusSeconds: extraSeconds,
+                dropInBonusAppliedAt: now,
+                dropInBonusTurn: numericTurn,
+                status: 'bonus-applied',
+              },
+              {
+                metaPatch: dropInMeta ? { dropIn: dropInMeta } : null,
+              },
+            )
             lastBroadcastTurnStateRef.current = {
               turnNumber: numericTurn,
               deadline: newDeadline,
             }
           } else {
-            recordTurnState({
-              turnNumber: numericTurn,
-              dropInBonusSeconds: extraSeconds,
-              dropInBonusAppliedAt: now,
-              dropInBonusTurn: numericTurn,
-              status: 'bonus-queued',
-              deadline: 0,
-              remainingSeconds: 0,
-            })
+            recordTurnState(
+              {
+                turnNumber: numericTurn,
+                dropInBonusSeconds: extraSeconds,
+                dropInBonusAppliedAt: now,
+                dropInBonusTurn: numericTurn,
+                status: 'bonus-queued',
+                deadline: 0,
+                remainingSeconds: 0,
+              },
+              {
+                metaPatch: dropInMeta ? { dropIn: dropInMeta } : null,
+              },
+            )
           }
+        } else if (dropInMeta) {
+          setGameMatchSessionMeta(gameId, { dropIn: dropInMeta })
         }
       }
 
@@ -2049,57 +2208,51 @@ export function useStartClientEngine(gameId) {
       }
     }
 
-    if (arrivals.length) {
-      const dropInTarget = startMatchMetaRef.current?.dropInTarget || null
-      const dropInRoomIdRaw =
-        dropInTarget?.roomId ?? dropInTarget?.room_id ?? dropInTarget?.roomID ?? null
-      const dropInRoomId = dropInRoomIdRaw ? String(dropInRoomIdRaw).trim() : ''
-      if (dropInRoomId) {
-        const releaseTargets = []
-        arrivals.forEach((arrival) => {
-          const replaced = arrival?.replaced || null
-          if (!replaced) return
-          const ownerCandidate =
-            replaced?.ownerId ??
-            replaced?.ownerID ??
-            replaced?.owner_id ??
-            (typeof replaced?.owner === 'object' ? replaced.owner?.id : null)
-          if (!ownerCandidate) return
-          const ownerId = String(ownerCandidate).trim()
-          if (!ownerId) return
-          const key = `${dropInRoomId}::${ownerId}`
-          if (processedDropInReleasesRef.current.has(key)) return
-          releaseTargets.push({ roomId: dropInRoomId, ownerId, key })
-        })
+    if (arrivals.length && dropInRoomId) {
+      const releaseTargets = []
+      arrivals.forEach((arrival) => {
+        const replaced = arrival?.replaced || null
+        if (!replaced) return
+        const ownerCandidate =
+          replaced?.ownerId ??
+          replaced?.ownerID ??
+          replaced?.owner_id ??
+          (typeof replaced?.owner === 'object' ? replaced.owner?.id : null)
+        if (!ownerCandidate) return
+        const ownerId = String(ownerCandidate).trim()
+        if (!ownerId) return
+        const key = `${dropInRoomId}::${ownerId}`
+        if (processedDropInReleasesRef.current.has(key)) return
+        releaseTargets.push({ roomId: dropInRoomId, ownerId, key })
+      })
 
-        if (releaseTargets.length) {
-          const tasks = releaseTargets.map(({ roomId, ownerId, key }) =>
-            withTable(supabase, 'rank_room_slots', (table) =>
-              supabase
-                .from(table)
-                .update({
-                  occupant_owner_id: null,
-                  occupant_hero_id: null,
-                  occupant_ready: false,
-                  joined_at: null,
-                })
-                .eq('room_id', roomId)
-                .eq('occupant_owner_id', ownerId),
-            ).then((result) => {
-              if (result?.error && result.error.code !== 'PGRST116') {
-                throw result.error
-              }
-              processedDropInReleasesRef.current.add(key)
-            }),
+      if (releaseTargets.length) {
+        const tasks = releaseTargets.map(({ roomId, ownerId, key }) =>
+          withTable(supabase, 'rank_room_slots', (table) =>
+            supabase
+              .from(table)
+              .update({
+                occupant_owner_id: null,
+                occupant_hero_id: null,
+                occupant_ready: false,
+                joined_at: null,
+              })
+              .eq('room_id', roomId)
+              .eq('occupant_owner_id', ownerId),
+          ).then((result) => {
+            if (result?.error && result.error.code !== 'PGRST116') {
+              throw result.error
+            }
+            processedDropInReleasesRef.current.add(key)
+          }),
+        )
+
+        Promise.all(tasks).catch((error) => {
+          console.warn('[StartClient] Failed to release drop-in slot:', error)
+          releaseTargets.forEach(({ key }) =>
+            processedDropInReleasesRef.current.delete(key),
           )
-
-          Promise.all(tasks).catch((error) => {
-            console.warn('[StartClient] Failed to release drop-in slot:', error)
-            releaseTargets.forEach(({ key }) =>
-              processedDropInReleasesRef.current.delete(key),
-            )
-          })
-        }
+        })
       }
     }
 
@@ -2109,6 +2262,7 @@ export function useStartClientEngine(gameId) {
   }, [
     participants,
     preflight,
+    gameId,
     turnDeadline,
     turn,
     recordTimelineEvents,

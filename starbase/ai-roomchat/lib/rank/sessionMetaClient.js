@@ -144,6 +144,118 @@ function sanitizeDropInBonus(meta, turnState) {
   return null
 }
 
+function sanitizeDropInMeta(meta) {
+  if (!meta || typeof meta !== 'object') return null
+  const clone = safeClone(meta)
+  if (!clone) return null
+
+  const toInt = (value, { min = null } = {}) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return null
+    const rounded = Math.floor(numeric)
+    if (min !== null && rounded < min) return null
+    return rounded
+  }
+
+  const toTimestamp = (value) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return null
+    return Math.floor(numeric)
+  }
+
+  const toText = (value) => {
+    if (value === null || value === undefined) return null
+    const trimmed = String(value).trim()
+    return trimmed || null
+  }
+
+  const sanitizeArrivals = (list) => {
+    if (!Array.isArray(list) || list.length === 0) return []
+    return list
+      .slice(0, 10)
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null
+        const normalized = {}
+        const ownerId =
+          entry.ownerId ?? entry.owner_id ?? entry.ownerID ?? entry?.owner?.id ?? null
+        const role = toText(entry.role)
+        const heroName =
+          entry.heroName ?? entry.hero_name ?? entry.display_name ?? entry.name ?? null
+        const slotIndex = toInt(entry.slotIndex ?? entry.slot_index, { min: 0 })
+        const timestamp = toTimestamp(entry.timestamp)
+        const queueDepth = toInt(entry.queueDepth ?? entry.queue_depth, { min: 0 })
+        const replacements = toInt(entry.replacements, { min: 0 })
+        const arrivalOrder = toInt(entry.arrivalOrder ?? entry.arrival_order, { min: 0 })
+        const replacedOwner =
+          entry.replacedOwnerId ??
+          entry.replaced_owner_id ??
+          entry?.replaced?.ownerId ??
+          entry?.replaced?.owner_id ??
+          null
+        const replacedHero =
+          entry.replacedHeroName ??
+          entry.replaced_hero_name ??
+          entry?.replaced?.heroName ??
+          entry?.replaced?.hero_name ??
+          null
+        const status = toText(entry.status)
+
+        if (toText(ownerId)) normalized.ownerId = toText(ownerId)
+        if (role) normalized.role = role
+        if (toText(heroName)) normalized.heroName = toText(heroName)
+        if (slotIndex !== null) normalized.slotIndex = slotIndex
+        if (timestamp !== null) normalized.timestamp = timestamp
+        if (queueDepth !== null) normalized.queueDepth = queueDepth
+        if (replacements !== null) normalized.replacements = replacements
+        if (arrivalOrder !== null) normalized.arrivalOrder = arrivalOrder
+        if (toText(replacedOwner)) normalized.replacedOwnerId = toText(replacedOwner)
+        if (toText(replacedHero)) normalized.replacedHeroName = toText(replacedHero)
+        if (status) normalized.status = status
+        return Object.keys(normalized).length ? normalized : null
+      })
+      .filter(Boolean)
+  }
+
+  const sanitized = {}
+
+  const status = toText(clone.status)
+  if (status) sanitized.status = status
+
+  const mode = toText(clone.mode)
+  if (mode) sanitized.mode = mode
+
+  const bonusSeconds = toInt(clone.bonusSeconds ?? clone.bonus_seconds, { min: 0 })
+  if (bonusSeconds !== null) sanitized.bonusSeconds = bonusSeconds
+
+  const appliedAt = toTimestamp(clone.appliedAt ?? clone.applied_at)
+  if (appliedAt !== null) sanitized.appliedAt = appliedAt
+
+  const turnNumber = toInt(clone.turnNumber ?? clone.turn_number, { min: 0 })
+  if (turnNumber !== null) sanitized.turnNumber = turnNumber
+
+  const queueDepth = toInt(clone.queueDepth ?? clone.queue_depth, { min: 0 })
+  if (queueDepth !== null) sanitized.queueDepth = queueDepth
+
+  const replacements = toInt(clone.replacements, { min: 0 })
+  if (replacements !== null) sanitized.replacements = replacements
+
+  const targetRoomId = toText(clone.targetRoomId ?? clone.roomId ?? clone.room_id)
+  if (targetRoomId) sanitized.targetRoomId = targetRoomId
+
+  const updatedAt = toTimestamp(clone.updatedAt ?? clone.updated_at)
+  if (updatedAt !== null) sanitized.updatedAt = updatedAt
+
+  const arrivals = sanitizeArrivals(clone.arrivals)
+  if (arrivals.length) sanitized.arrivals = arrivals
+
+  if (clone.matching) {
+    sanitized.matching = safeClone(clone.matching)
+  }
+
+  if (!Object.keys(sanitized).length) return null
+  return sanitized
+}
+
 function cleanupPayload(payload) {
   if (!payload || typeof payload !== 'object') return {}
   const cleaned = {}
@@ -170,6 +282,7 @@ export function buildSessionMetaRequest({ state }) {
   const asyncFill = sanitizeAsyncFillSnapshot(sessionMeta.asyncFill)
   const timeVote = sanitizeTimeVote(sessionMeta.vote)
   const dropInBonus = sanitizeDropInBonus(sessionMeta.dropIn, turnState)
+  const dropInMeta = sanitizeDropInMeta(sessionMeta.dropIn)
   const turnTimerSeconds = sanitizeSelectedLimit(sessionMeta?.turnTimer?.baseSeconds)
   const realtimeMode = sanitizeRealtime(state?.room?.realtimeMode)
 
@@ -185,19 +298,24 @@ export function buildSessionMetaRequest({ state }) {
   let turnStateSignature = ''
   let turnStateEvent = null
   if (turnState) {
+    const extras = {}
+    if (dropInBonus !== null) {
+      extras.dropInBonusSeconds = dropInBonus
+      extras.dropInBonusAppliedAt = turnState.dropInBonusAppliedAt || 0
+    }
+    if (dropInMeta) {
+      extras.dropIn = dropInMeta
+    }
+
     turnStateEvent = {
       turn_state: turnState,
       turn_number: Number.isFinite(Number(turnState.turnNumber))
         ? Math.floor(Number(turnState.turnNumber))
         : null,
       source: sessionMeta?.source || turnState.source || null,
-      extras: dropInBonus
-        ? {
-            dropInBonusSeconds: dropInBonus,
-            dropInBonusAppliedAt: turnState.dropInBonusAppliedAt || 0,
-          }
-        : null,
+      extras: Object.keys(extras).length ? extras : null,
     }
+    const dropInSignature = dropInMeta ? JSON.stringify(dropInMeta) : ''
     turnStateSignature = JSON.stringify({
       turn: turnState.turnNumber || 0,
       deadline: turnState.deadline || 0,
@@ -206,6 +324,7 @@ export function buildSessionMetaRequest({ state }) {
       updatedAt: turnState.updatedAt || 0,
       bonus: turnState.dropInBonusSeconds || 0,
       bonusAppliedAt: turnState.dropInBonusAppliedAt || 0,
+      dropIn: dropInSignature,
     })
   }
 

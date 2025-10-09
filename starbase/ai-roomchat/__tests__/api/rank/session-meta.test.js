@@ -102,16 +102,29 @@ describe('POST /api/rank/session-meta', () => {
           drop_in_bonus_seconds: 30,
           realtime_mode: 'standard',
           time_vote: { selections: { '120': 3 } },
-          turn_state: { turnNumber: 2, deadline: Date.now(), status: 'active' },
-        },
-        turn_state_event: {
-          turn_state: { turnNumber: 2, deadline: Date.now(), status: 'active' },
-          turn_number: 2,
-          source: 'start-client',
-          extras: { dropInBonusSeconds: 30 },
+        turn_state: { turnNumber: 2, deadline: Date.now(), status: 'active' },
+      },
+      turn_state_event: {
+        turn_state: { turnNumber: 2, deadline: Date.now(), status: 'active' },
+        turn_number: 2,
+        source: 'start-client',
+        extras: {
+          dropInBonusSeconds: 30,
+          dropIn: {
+            status: 'bonus-applied',
+            bonusSeconds: 30,
+            arrivals: [
+              {
+                ownerId: 'owner-1',
+                role: '딜러',
+                queueDepth: 1,
+              },
+            ],
+          },
         },
       },
-    })
+    },
+  })
 
     const res = createMockResponse()
 
@@ -135,6 +148,10 @@ describe('POST /api/rank/session-meta', () => {
         p_session_id: 'session-1',
         p_turn_number: 2,
         p_source: 'start-client',
+        p_extras: expect.objectContaining({
+          dropInBonusSeconds: 30,
+          dropIn: expect.objectContaining({ status: 'bonus-applied', bonusSeconds: 30 }),
+        }),
       }),
     )
     expect(res.statusCode).toBe(200)
