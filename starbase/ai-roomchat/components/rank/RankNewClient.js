@@ -95,7 +95,7 @@ export default function RankNewClient() {
   const [imgError, setImgError] = useState('')
   const [fileInputKey, setFileInputKey] = useState(0)
   const [setId, setSetId] = useState('')
-  const [realtimeMode, setRealtimeMode] = useState(REALTIME_MODES.OFF)
+  const [realtimeMode, setRealtimeMode] = useState(REALTIME_MODES.STANDARD)
 
   // 역할/슬롯
   const DEFAULT_ROLES = useMemo(
@@ -221,7 +221,7 @@ export default function RankNewClient() {
     handleClearImage()
     setSetId('')
     setSharedPromptSetId('')
-    setRealtimeMode(REALTIME_MODES.OFF)
+    setRealtimeMode(REALTIME_MODES.STANDARD)
     setRoles(DEFAULT_ROLES)
     setSlotMap([])
     setRules({
@@ -374,11 +374,13 @@ export default function RankNewClient() {
     const { id: gameId, name: gameName, realtimeMode: createdRealtimeMode, createdAt } =
       lastCreatedGame
 
+    const realtimeSummaryLabel =
+      REALTIME_MODE_OPTIONS.find((option) => option.value === createdRealtimeMode)?.label ||
+      '실시간 (표준)'
+
     const summaryLines = [
       `${gameName} (ID: ${gameId})`,
-      createdRealtimeMode === REALTIME_MODES.OFF
-        ? '비실시간 옵션 · 필요 시 자동 충원 사용'
-        : '실시간 옵션 · 매칭 대기열로 바로 연결',
+      `선택한 모드: ${realtimeSummaryLabel}`,
     ]
 
     const handleOpenHub = () => {

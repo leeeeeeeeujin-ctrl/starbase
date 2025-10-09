@@ -262,6 +262,7 @@
 - [x] Next 빌드가 `prop-types` 의존성 없이 통과하도록 룸 필터/검색 컴포넌트의 PropTypes 선언을 JSDoc 기반 설명으로 대체했다.【F:components/rank/rooms/RoomFiltersSection.js†L1-L154】【F:components/rank/rooms/RoomResultsSection.js†L1-L154】
 - [x] GameRoomView 오디오/히스토리 유틸을 분리 컴포넌트화하고, 타임라인/리플레이 노출을 lazy chunk로 나누어 렌더 부하를 낮췄다.【F:components/rank/GameRoomView.js†L1-L360】【F:components/rank/GameRoomHistoryPane.js†L1-L151】【F:lib/rank/gameRoomAudio.js†L1-L360】【F:lib/rank/gameRoomHistory.js†L1-L80】
 - [x] 비실시간 방에서 `sessionMeta.asyncFill`에 좌석 제한·대기열·자동 충원 후보를 저장하고 MatchReady 화면에서 요약 정보를 노출한다.【F:modules/rank/matchDataStore.js†L600-L690】【F:components/rank/MatchReadyClient.js†L180-L340】
+- [x] `register-game` API가 OPTIONS 프리플라이트를 허용하고 등록 화면의 실시간 모드 선택지를 표준/Pulse만 노출하도록 조정해 브라우저 요청이 400 오류 없이 진행되도록 했다.【F:pages/api/rank/register-game.js†L7-L24】【F:data/rankRegistrationContent.js†L27-L34】【F:components/rank/RankNewClient.js†L92-L116】
 - [x] `stage-room-match` 낙관적 락·슬롯 버전 필드 추가 및 API 유틸 통합을 `sync_rank_match_roster` RPC로 마무리했다. API는 RPC 오류를 해석해 409 충돌을 반환한다.【F:pages/api/rank/stage-room-match.js†L215-L320】【F:docs/sql/sync-rank-match-roster.sql†L1-L112】
 
 ---

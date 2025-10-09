@@ -33,7 +33,6 @@ export const brawlModeCopy = {
 export const realtimeModeCopy = {
   label: '실시간 매칭 모드',
   options: [
-    { value: 'OFF', label: '비실시간 (대기열 진행)' },
     { value: 'STANDARD', label: '실시간 (표준)' },
     { value: 'PULSE', label: 'Pulse 실시간 (역할 제한)' },
   ],

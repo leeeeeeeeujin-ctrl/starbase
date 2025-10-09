@@ -4,8 +4,13 @@ import { normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import { prepareRegistrationPayload } from '@/lib/rank/registrationValidation'
 
 export default async function handler(req, res) {
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Allow', ['POST', 'OPTIONS'])
+    return res.status(204).end()
+  }
+
   if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST'])
+    res.setHeader('Allow', ['POST', 'OPTIONS'])
     return res.status(405).json({ error: 'method_not_allowed' })
   }
 
