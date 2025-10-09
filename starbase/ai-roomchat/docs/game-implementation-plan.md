@@ -167,6 +167,7 @@
 - Maker JSON 업로드 시 `payload.meta`의 변수 규칙 버전을 점검해 최신 포맷 안내를 띄우고, 성공적으로 불러온 세트는 확인 메시지를 노출한다.【F:hooks/maker/useMakerHome.js†L95-L163】【F:components/maker/home/MakerHomeHeader.js†L23-L55】
 - 등록 폼과 `register-game` API가 `prepareRegistrationPayload` 유틸을 공유해 역할 점수 범위·슬롯 개수·난입 종료 조건을 동일 기준으로 검증하도록 정리했다.【F:lib/rank/registrationValidation.js†L1-L87】【F:components/rank/RankNewClient.js†L24-L120】【F:pages/api/rank/register-game.js†L1-L80】
 - GameSession Store가 `setGameMatchSlotTemplate`·`setGameMatchSessionMeta`로 슬롯 템플릿 버전과 세션 메타를 저장해 `MatchReady`와 `StartClient`가 동일한 슬롯 구성·턴 타이머 기본값을 공유한다.【F:modules/rank/matchDataStore.js†L1-L244】【F:lib/rank/matchFlow.js†L1-L220】【F:components/rank/StartClient/useStartClientEngine.js†L540-L940】
+- `MatchReadyClient`에 턴 제한시간 투표 섹션을 도입해 선택 즉시 GameSession Store 세션 메타에 반영하고, `StartClient` 기본 타이머로 재사용할 수 있게 했다.【F:components/rank/MatchReadyClient.js†L1-L311】【F:modules/rank/matchDataStore.js†L360-L404】
 - **규칙 상호 검증 충돌**: 조건이 복잡해질수록 경고가 남발될 수 있음 → 검증 로직을 스키마 기반으로 구성하고, 경고 우선순위를 조정해 한 번에 한 오류만 노출.
 - **JSON 스키마 버전 불일치**: 구버전 파일이 업로드될 수 있음 → 마이그레이션 단계를 UI로 노출하고, 자동 변환 실패 시 디프 비교와 가이드 제공.
 - **테스트 전투 CTA 남용**: 테스트 방이 다수 생성되면 리소스 낭비 → CTA 실행 시 자동 삭제 타이머와 사용량 제한 설정.

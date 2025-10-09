@@ -6,6 +6,158 @@ import { useRouter } from 'next/router'
 import styles from './MatchReadyClient.module.css'
 import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow'
 import StartClient from './StartClient'
+import { setGameMatchSessionMeta } from '../../modules/rank/matchDataStore'
+
+const TURN_TIMER_OPTIONS = [15, 30, 60, 120, 180]
+
+function sanitizeSecondsOption(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return null
+  }
+  return Math.floor(numeric)
+}
+
+function formatSecondsLabel(seconds) {
+  const normalized = sanitizeSecondsOption(seconds)
+  if (!normalized) return '미정'
+  if (normalized < 60) {
+    return `${normalized}초`
+  }
+  const minutes = Math.floor(normalized / 60)
+  const remainder = normalized % 60
+  if (remainder === 0) {
+    return `${minutes}분`
+  }
+  return `${minutes}분 ${remainder}초`
+}
+
+function sanitizeTurnTimerVote(vote) {
+  const base = {
+    selections: {},
+    voters: {},
+    lastSelection: null,
+    updatedAt: 0,
+  }
+  if (!vote || typeof vote !== 'object') {
+    return base
+  }
+
+  const selections =
+    vote.selections && typeof vote.selections === 'object' ? vote.selections : vote
+  if (selections && typeof selections === 'object') {
+    for (const [key, value] of Object.entries(selections)) {
+      const option = sanitizeSecondsOption(key)
+      const count = Number(value)
+      if (option && Number.isFinite(count) && count > 0) {
+        base.selections[String(option)] = Math.floor(count)
+      }
+    }
+  }
+
+  const voters = vote.voters && typeof vote.voters === 'object' ? vote.voters : null
+  if (voters) {
+    for (const [key, value] of Object.entries(voters)) {
+      const voterId = String(key || '').trim()
+      const choice = sanitizeSecondsOption(value)
+      if (voterId) {
+        base.voters[voterId] = choice
+      }
+    }
+  }
+
+  const lastSelection = sanitizeSecondsOption(vote.lastSelection)
+  if (lastSelection) {
+    base.lastSelection = lastSelection
+  }
+
+  const updatedAt = Number(vote.updatedAt)
+  if (Number.isFinite(updatedAt) && updatedAt > 0) {
+    base.updatedAt = updatedAt
+  }
+
+  return base
+}
+
+function buildTurnTimerVotePatch(previousVote, selection, voterId) {
+  const normalized = sanitizeSecondsOption(selection)
+  if (!normalized) {
+    return previousVote && typeof previousVote === 'object' ? { ...previousVote } : {}
+  }
+
+  const existing = sanitizeTurnTimerVote(previousVote?.turnTimer || previousVote)
+  const selections = { ...existing.selections }
+  const voters = { ...existing.voters }
+
+  if (voterId) {
+    const previousSelection = sanitizeSecondsOption(voters[voterId])
+    if (previousSelection) {
+      const key = String(previousSelection)
+      if (selections[key] && selections[key] > 0) {
+        const decremented = selections[key] - 1
+        if (decremented > 0) {
+          selections[key] = decremented
+        } else {
+          delete selections[key]
+        }
+      }
+    }
+    voters[voterId] = normalized
+  }
+
+  const key = String(normalized)
+  selections[key] = (Number(selections[key]) || 0) + 1
+
+  const now = Date.now()
+  const nextVote =
+    previousVote && typeof previousVote === 'object' ? { ...previousVote } : {}
+
+  nextVote.turnTimer = {
+    selections,
+    voters,
+    lastSelection: normalized,
+    updatedAt: now,
+  }
+
+  return nextVote
+}
+
+function useMatchReadyState(gameId) {
+  const [state, setState] = useState(() => createEmptyMatchFlowState())
+
+  const refresh = useCallback(() => {
+    if (!gameId && gameId !== 0) {
+      const empty = createEmptyMatchFlowState()
+      setState(empty)
+      return empty
+    }
+    const snapshot = readMatchFlowState(gameId)
+    setState(snapshot)
+    return snapshot
+  }, [gameId])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  const allowStart = useMemo(
+    () => Boolean(gameId && state?.snapshot && state?.hasActiveKey),
+    [gameId, state?.snapshot, state?.hasActiveKey],
+  )
+
+  const missingKey = Boolean(state?.snapshot && !state?.hasActiveKey)
+
+  return { state, refresh, allowStart, missingKey }
+}
+
+function getViewerIdentity(state) {
+  const ownerId = state?.viewer?.ownerId ? String(state.viewer.ownerId).trim() : ''
+  if (ownerId) return ownerId
+  const viewerId = state?.viewer?.viewerId ? String(state.viewer.viewerId).trim() : ''
+  if (viewerId) return viewerId
+  const authId = state?.authSnapshot?.userId
+  return authId ? String(authId).trim() : ''
+}
 
 function buildMetaLines(state) {
   const lines = []
@@ -76,16 +228,9 @@ function buildRosterDisplay(roster, viewer, blindMode) {
 
 export default function MatchReadyClient({ gameId }) {
   const router = useRouter()
-  const [state, setState] = useState(() => createEmptyMatchFlowState())
+  const { state, refresh, allowStart, missingKey } = useMatchReadyState(gameId)
   const [showGame, setShowGame] = useState(false)
-
-  useEffect(() => {
-    if (!gameId) {
-      setState(createEmptyMatchFlowState())
-      return
-    }
-    setState(readMatchFlowState(gameId))
-  }, [gameId])
+  const [voteNotice, setVoteNotice] = useState('')
 
   const metaLines = useMemo(() => buildMetaLines(state), [state])
   const rosterDisplay = useMemo(
@@ -93,13 +238,29 @@ export default function MatchReadyClient({ gameId }) {
     [state?.roster, state?.viewer, state?.room?.blindMode],
   )
 
-  const handleRefresh = useCallback(() => {
-    if (!gameId) {
-      setState(createEmptyMatchFlowState())
-      return
+  const viewerIdentity = useMemo(() => getViewerIdentity(state), [state])
+
+  const appliedTurnTimerSeconds = useMemo(() => {
+    const metaSeconds = Number(state?.sessionMeta?.turnTimer?.baseSeconds)
+    if (Number.isFinite(metaSeconds) && metaSeconds > 0) {
+      return Math.floor(metaSeconds)
     }
-    setState(readMatchFlowState(gameId))
-  }, [gameId])
+    return null
+  }, [state?.sessionMeta?.turnTimer?.baseSeconds])
+
+  const voteSnapshot = useMemo(
+    () => sanitizeTurnTimerVote(state?.sessionMeta?.vote?.turnTimer),
+    [state?.sessionMeta?.vote?.turnTimer],
+  )
+
+  const viewerSelection = useMemo(() => {
+    if (!viewerIdentity) return null
+    return sanitizeSecondsOption(voteSnapshot.voters?.[viewerIdentity])
+  }, [viewerIdentity, voteSnapshot.voters])
+
+  const handleRefresh = useCallback(() => {
+    refresh()
+  }, [refresh])
 
   const handleReturnToRoom = useCallback(() => {
     if (state?.room?.id) {
@@ -113,8 +274,6 @@ export default function MatchReadyClient({ gameId }) {
     if (!gameId) return
     setShowGame(true)
   }, [gameId])
-
-  const allowStart = Boolean(gameId && state?.snapshot && state?.hasActiveKey)
 
   useEffect(() => {
     if (showGame) {
@@ -133,7 +292,48 @@ export default function MatchReadyClient({ gameId }) {
     }
   }, [allowStart, showGame])
 
-  const missingKey = state?.snapshot && !state?.hasActiveKey
+  useEffect(() => {
+    if (!voteNotice) return undefined
+    const timer = setTimeout(() => {
+      setVoteNotice('')
+    }, 2800)
+    return () => clearTimeout(timer)
+  }, [voteNotice])
+
+  const handleVoteSelection = useCallback(
+    (seconds) => {
+      const normalized = sanitizeSecondsOption(seconds)
+      if (!normalized || !gameId) return
+
+      const now = Date.now()
+      setGameMatchSessionMeta(gameId, {
+        turnTimer: {
+          baseSeconds: normalized,
+          source: 'match-ready-vote',
+          updatedAt: now,
+        },
+        vote: buildTurnTimerVotePatch(state?.sessionMeta?.vote, normalized, viewerIdentity),
+        source: 'match-ready-client',
+      })
+
+      refresh()
+      setVoteNotice(`${formatSecondsLabel(normalized)} 제한시간이 적용되었습니다.`)
+    },
+    [gameId, refresh, state?.sessionMeta?.vote, viewerIdentity],
+  )
+
+  const voteCounts = useMemo(() => {
+    const entries = Object.entries(voteSnapshot.selections || {})
+      .map(([key, value]) => {
+        const option = sanitizeSecondsOption(key)
+        const count = Number(value)
+        if (!option || !Number.isFinite(count) || count <= 0) return null
+        return { option, count: Math.floor(count) }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.count - a.count || a.option - b.option)
+    return entries
+  }, [voteSnapshot.selections])
 
   return (
     <div className={styles.page}>
@@ -142,7 +342,9 @@ export default function MatchReadyClient({ gameId }) {
           <div className={styles.headerText}>
             <h1 className={styles.title}>{state?.room?.mode ? `${state.room.mode} 매치 준비` : '매치 준비'}</h1>
             <p className={styles.subtitle}>
-              {state?.room?.code ? `코드 ${state.room.code} · 참가자 ${state.rosterReadyCount}/${state.totalSlots}` : '방 정보를 확인하고 있습니다.'}
+              {state?.room?.code
+                ? `코드 ${state.room.code} · 참가자 ${state.rosterReadyCount}/${state.totalSlots}`
+                : '방 정보를 확인하고 있습니다.'}
             </p>
           </div>
           <div className={styles.actionsInline}>
@@ -183,6 +385,61 @@ export default function MatchReadyClient({ gameId }) {
             </p>
           </section>
         )}
+
+        <section className={styles.voteSection}>
+          <div className={styles.voteHeader}>
+            <h2 className={styles.sectionTitle}>턴 제한시간 투표</h2>
+            <p className={styles.voteDescription}>
+              참가자들이 원하는 제한시간을 선택하면 메인 게임의 기본 타이머로 적용됩니다.
+            </p>
+          </div>
+          <div className={styles.voteOptions}>
+            {TURN_TIMER_OPTIONS.map((option) => {
+              const seconds = sanitizeSecondsOption(option)
+              if (!seconds) return null
+              const isApplied = appliedTurnTimerSeconds === seconds
+              const isMine = viewerSelection === seconds
+              const summary = voteCounts.find((entry) => entry.option === seconds)
+              return (
+                <button
+                  key={seconds}
+                  type="button"
+                  className={`${styles.voteOptionButton} ${
+                    isApplied ? styles.voteOptionButtonActive : ''
+                  }`}
+                  onClick={() => handleVoteSelection(seconds)}
+                >
+                  <span className={styles.voteOptionLabel}>{formatSecondsLabel(seconds)}</span>
+                  <span className={styles.voteOptionHint}>
+                    {isApplied ? '적용 중' : isMine ? '내 선택' : '선택'}
+                  </span>
+                  {summary ? (
+                    <span className={styles.voteOptionBadge}>{summary.count}표</span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+          <div className={styles.voteSummary}>
+            <p className={styles.voteSummaryLine}>
+              현재 적용된 제한시간: {formatSecondsLabel(appliedTurnTimerSeconds || 60)}
+              {appliedTurnTimerSeconds ? '' : ' (기본값)'}
+            </p>
+            {voteCounts.length > 0 ? (
+              <p className={styles.voteSummaryLine}>
+                선호도 순위:{' '}
+                {voteCounts
+                  .map((entry) => `${formatSecondsLabel(entry.option)} ${entry.count}표`)
+                  .join(' · ')}
+              </p>
+            ) : (
+              <p className={styles.voteSummaryLine}>
+                아직 저장된 투표가 없습니다. 원하는 제한시간을 선택해 주세요.
+              </p>
+            )}
+            {voteNotice ? <p className={styles.voteNotice}>{voteNotice}</p> : null}
+          </div>
+        </section>
 
         <section className={styles.rosterSection}>
           <h2 className={styles.sectionTitle}>참가자 구성</h2>
