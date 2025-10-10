@@ -1,12 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
 import styles from './MatchReadyClient.module.css'
 import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow'
 import {
+  setGameMatchParticipation,
+  setGameMatchSlotTemplate,
+  setGameMatchSnapshot,
   setGameMatchSessionMeta,
   subscribeGameMatchData,
 } from '../../modules/rank/matchDataStore'
@@ -17,6 +20,8 @@ import {
   sanitizeTurnTimerVote,
   buildTurnTimerVotePatch,
 } from '../../lib/rank/turnTimerMeta'
+import { supabase } from '../../lib/supabase'
+import { loadMatchFlowSnapshot } from '../../modules/rank/matchRealtimeSync'
 
 const StartClient = dynamic(() => import('./StartClient'), {
   ssr: false,
@@ -29,8 +34,16 @@ const StartClient = dynamic(() => import('./StartClient'), {
 
 function useMatchReadyState(gameId) {
   const [state, setState] = useState(() => createEmptyMatchFlowState())
+  const refreshPromiseRef = useRef(null)
+  const latestRef = useRef({
+    slotTemplateVersion: null,
+    slotTemplateUpdatedAt: null,
+    sessionId: null,
+    roomId: null,
+  })
+  const refreshTimeoutRef = useRef(null)
 
-  const refresh = useCallback(() => {
+  const applySnapshot = useCallback(() => {
     if (!gameId && gameId !== 0) {
       const empty = createEmptyMatchFlowState()
       setState(empty)
@@ -41,19 +54,166 @@ function useMatchReadyState(gameId) {
     return snapshot
   }, [gameId])
 
+  const syncFromRemote = useCallback(async () => {
+    if (!gameId && gameId !== 0) {
+      latestRef.current = {
+        slotTemplateVersion: null,
+        slotTemplateUpdatedAt: null,
+        sessionId: null,
+        roomId: null,
+      }
+      const empty = createEmptyMatchFlowState()
+      setState(empty)
+      return empty
+    }
+
+    try {
+      const payload = await loadMatchFlowSnapshot(supabase, gameId)
+      if (payload) {
+        if (Array.isArray(payload.roster) && payload.roster.length) {
+          setGameMatchParticipation(gameId, {
+            roster: payload.roster,
+            participantPool: payload.participantPool,
+            heroOptions: payload.heroOptions,
+            heroMap: payload.heroMap,
+            realtimeMode: payload.realtimeMode,
+            hostOwnerId: payload.hostOwnerId,
+            hostRoleLimit: payload.hostRoleLimit,
+          })
+        }
+
+        if (payload.slotTemplate) {
+          setGameMatchSlotTemplate(gameId, payload.slotTemplate)
+        }
+
+        if (payload.matchSnapshot) {
+          setGameMatchSnapshot(gameId, payload.matchSnapshot)
+        }
+
+        if (payload.sessionMeta) {
+          setGameMatchSessionMeta(gameId, payload.sessionMeta)
+        }
+
+        latestRef.current = {
+          slotTemplateVersion:
+            payload.slotTemplateVersion != null
+              ? payload.slotTemplateVersion
+              : latestRef.current.slotTemplateVersion,
+          slotTemplateUpdatedAt:
+            payload.slotTemplateUpdatedAt != null
+              ? payload.slotTemplateUpdatedAt
+              : latestRef.current.slotTemplateUpdatedAt,
+          sessionId:
+            payload.sessionId != null ? String(payload.sessionId).trim() : latestRef.current.sessionId,
+          roomId: payload.roomId != null ? String(payload.roomId).trim() : latestRef.current.roomId,
+        }
+      }
+    } catch (error) {
+      console.warn('[MatchReadyClient] 실시간 매치 데이터를 불러오지 못했습니다:', error)
+    }
+
+    return applySnapshot()
+  }, [gameId, applySnapshot])
+
+  const refresh = useCallback(() => {
+    if (refreshPromiseRef.current) {
+      return refreshPromiseRef.current
+    }
+    const promise = syncFromRemote().finally(() => {
+      refreshPromiseRef.current = null
+    })
+    refreshPromiseRef.current = promise
+    return promise
+  }, [syncFromRemote])
+
   useEffect(() => {
+    latestRef.current = {
+      slotTemplateVersion: null,
+      slotTemplateUpdatedAt: null,
+      sessionId: null,
+      roomId: null,
+    }
     refresh()
   }, [refresh])
 
   useEffect(() => {
     if (!gameId && gameId !== 0) return undefined
     const unsubscribe = subscribeGameMatchData(gameId, () => {
-      refresh()
+      applySnapshot()
     })
     return () => {
       if (typeof unsubscribe === 'function') {
         unsubscribe()
       }
+    }
+  }, [gameId, applySnapshot])
+
+  useEffect(() => {
+    if (!gameId && gameId !== 0) return undefined
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) return
+      refreshTimeoutRef.current = setTimeout(() => {
+        refreshTimeoutRef.current = null
+        refresh()
+      }, 250)
+    }
+
+    const channel = supabase.channel(`match-ready-sync:${gameId}`, {
+      config: { broadcast: { ack: true } },
+    })
+
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rank_match_roster', filter: `game_id=eq.${gameId}` },
+      scheduleRefresh,
+    )
+
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rank_sessions', filter: `game_id=eq.${gameId}` },
+      scheduleRefresh,
+    )
+
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rank_rooms', filter: `game_id=eq.${gameId}` },
+      scheduleRefresh,
+    )
+
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'rank_session_meta' }, (payload) => {
+      const sessionId = latestRef.current.sessionId
+      if (!sessionId) return
+      const record = payload?.new || payload?.record || null
+      if (!record || typeof record !== 'object') return
+      const incoming = record.session_id ?? record.sessionId ?? null
+      if (!incoming) return
+      if (String(incoming).trim() !== String(sessionId).trim()) return
+      scheduleRefresh()
+    })
+
+    try {
+      const subscription = channel.subscribe()
+      if (subscription && typeof subscription.then === 'function') {
+        subscription.catch((error) => {
+          console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
+        })
+      }
+    } catch (error) {
+      console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
+    }
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+        refreshTimeoutRef.current = null
+      }
+      try {
+        channel.unsubscribe()
+      } catch (error) {
+        console.warn('[MatchReadyClient] 실시간 채널 해제 실패:', error)
+      }
+      supabase.removeChannel(channel)
     }
   }, [gameId, refresh])
 

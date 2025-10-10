@@ -7,6 +7,10 @@ import { act, create } from 'react-test-renderer'
 
 jest.mock('@/components/rank/MatchReadyClient.module.css', () => ({}), { virtual: true })
 
+jest.mock('@/modules/rank/matchRealtimeSync', () => ({
+  loadMatchFlowSnapshot: jest.fn(() => Promise.resolve(null)),
+}))
+
 import MatchReadyClient from '@/components/rank/MatchReadyClient'
 import {
   clearGameMatchData,
