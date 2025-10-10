@@ -164,11 +164,12 @@ export default async function handler(req, res) {
     },
   })
 
-  const { data: sessionRow, error: sessionError } = await userClient
-    .from('rank_sessions')
-    .select('id, owner_id, game_id')
-    .eq('id', sessionId)
-    .maybeSingle()
+  const {
+    data: sessionRow,
+    error: sessionError,
+  } = await withTableQuery(userClient, 'rank_sessions', (from) =>
+    from.select('id, owner_id, game_id').eq('id', sessionId).maybeSingle(),
+  )
 
   if (sessionError) {
     console.error('[session-meta] session lookup failed:', sessionError)
