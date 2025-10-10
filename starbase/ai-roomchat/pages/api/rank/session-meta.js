@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { createSupabaseAuthConfig, supabaseAdmin } from '@/lib/supabaseAdmin'
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv'
 import { withTableQuery } from '@/lib/supabaseTables'
 import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline'
@@ -17,13 +17,16 @@ if (!url || !anonKey) {
   throw new Error('Missing Supabase configuration for session-meta API')
 }
 
+const anonAuthConfig = createSupabaseAuthConfig(url, {
+  apikey: anonKey,
+  authorization: `Bearer ${anonKey}`,
+})
+
 const anonClient = createClient(url, anonKey, {
   auth: { persistSession: false },
   global: {
-    headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
-    },
+    headers: { ...anonAuthConfig.headers },
+    fetch: anonAuthConfig.fetch,
   },
 })
 
@@ -481,13 +484,16 @@ export default async function handler(req, res) {
     payload.collaborators ?? payload.shared_owners ?? payload.sharedOwners,
   )
 
+  const userAuthConfig = createSupabaseAuthConfig(url, {
+    apikey: anonKey,
+    authorization: `Bearer ${token}`,
+  })
+
   const userClient = createClient(url, anonKey, {
     auth: { persistSession: false },
     global: {
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { ...userAuthConfig.headers },
+      fetch: userAuthConfig.fetch,
     },
   })
 
