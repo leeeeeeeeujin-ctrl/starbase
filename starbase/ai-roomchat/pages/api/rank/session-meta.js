@@ -136,6 +136,32 @@ function sanitizeTurnStateEvent(rawEvent) {
   }
 }
 
+async function resolveSessionRoomId(sessionId) {
+  const normalized = toOptionalUuid(sessionId)
+  if (!normalized) return null
+
+  try {
+    const { data, error } = await withTableQuery(supabaseAdmin, 'rank_matchmaking_logs', (from) =>
+      from
+        .select('room_id')
+        .eq('session_id', normalized)
+        .order('created_at', { ascending: false })
+        .limit(1),
+    )
+
+    if (error) {
+      console.error('[session-meta] session room lookup failed:', error)
+      return null
+    }
+
+    const row = Array.isArray(data) && data.length ? data[0] : null
+    return toOptionalUuid(row?.room_id)
+  } catch (lookupError) {
+    console.error('[session-meta] session room query error:', lookupError)
+    return null
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
@@ -165,7 +191,6 @@ export default async function handler(req, res) {
   }
 
   const gameId = toOptionalUuid(payload.game_id ?? payload.gameId)
-  const roomId = toOptionalUuid(payload.room_id ?? payload.roomId)
   const matchInstanceId = toTrimmedString(payload.match_instance_id ?? payload.matchInstanceId)
   const collaborators = parseCollaborators(
     payload.collaborators ?? payload.shared_owners ?? payload.sharedOwners,
@@ -199,10 +224,11 @@ export default async function handler(req, res) {
 
   const ownerId = toOptionalUuid(sessionRow.owner_id)
   const sessionGameId = toOptionalUuid(sessionRow.game_id)
+  const sessionRoomId = await resolveSessionRoomId(sessionId)
 
   let authorized = !!ownerId && ownerId === userId
 
-  if (!authorized && roomId) {
+  if (!authorized && sessionRoomId) {
     try {
       const { data: slotRow, error: slotError } = await withTableQuery(
         supabaseAdmin,
@@ -210,7 +236,7 @@ export default async function handler(req, res) {
         (from) =>
           from
             .select('occupant_owner_id, room_id')
-            .eq('room_id', roomId)
+            .eq('room_id', sessionRoomId)
             .eq('occupant_owner_id', userId)
             .maybeSingle(),
       )
@@ -224,7 +250,7 @@ export default async function handler(req, res) {
             const { data: roomRow, error: roomError } = await withTableQuery(
               supabaseAdmin,
               'rank_rooms',
-              (from) => from.select('id, game_id').eq('id', roomId).maybeSingle(),
+              (from) => from.select('id, game_id').eq('id', sessionRoomId).maybeSingle(),
             )
 
             if (roomError) {
