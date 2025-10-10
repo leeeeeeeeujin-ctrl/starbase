@@ -16,6 +16,8 @@ const TYPE_LABELS = {
   drop_in_joined: '난입 합류',
   turn_timeout: '자동 진행',
   consensus_reached: '합의 완료',
+  turn_extended: '턴 연장',
+  turn_bonus_pending: '보너스 대기',
 }
 
 const TYPE_TONES = {
@@ -24,6 +26,8 @@ const TYPE_TONES = {
   drop_in_joined: 'info',
   turn_timeout: 'info',
   consensus_reached: 'info',
+  turn_extended: 'info',
+  turn_bonus_pending: 'info',
 }
 
 function defaultOwnerLabel(event) {
@@ -82,6 +86,18 @@ function buildMetaParts(event) {
     meta.push('모드: 비실시간')
   } else if (context.mode === 'realtime') {
     meta.push('모드: 실시간')
+  }
+  if (Number.isFinite(Number(context.bonusSeconds))) {
+    meta.push(`보너스 +${Number(context.bonusSeconds)}초`)
+  }
+  if (Number.isFinite(Number(context.arrivalCount))) {
+    meta.push(`합류 ${Number(context.arrivalCount)}명`)
+  }
+  if (Number.isFinite(Number(context.queueDepth))) {
+    meta.push(`대기열 ${Number(context.queueDepth)}명`)
+  }
+  if (Number.isFinite(Number(context.replacements))) {
+    meta.push(`교체 ${Number(context.replacements)}회`)
   }
   const metadata = event.metadata && typeof event.metadata === 'object' ? event.metadata : null
   if (metadata?.apiKeyPool) {

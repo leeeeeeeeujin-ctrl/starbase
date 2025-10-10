@@ -15,9 +15,7 @@ export default function MakerEditorPanel({
   onInsertToken,
   setNodes,
   setEdges,
-  saveHistory = [],
-  onExportHistory = () => {},
-  onClearHistory = () => {},
+  onRequestAdvancedTools = () => {},
 }) {
   const nodeData = selectedNode?.data || null
 
@@ -208,101 +206,27 @@ export default function MakerEditorPanel({
         )}
 
         {activeTab === 'history' && (
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div
+          <div style={{ display: 'grid', gap: 12, fontSize: 13, lineHeight: 1.6, color: '#475569' }}>
+            <p style={{ margin: 0 }}>
+              자동 버전 업그레이드 히스토리는 이제 고급 도구 패널에서 확인하고 내보낼 수 있습니다. 아래 버튼을 눌러 고급
+              도구를 열어보세요.
+            </p>
+            <button
+              type="button"
+              onClick={onRequestAdvancedTools}
               style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                gap: 10,
-                flexWrap: 'wrap',
+                padding: '6px 12px',
+                borderRadius: 10,
+                border: '1px solid #94a3b8',
+                background: '#f1f5f9',
+                color: '#0f172a',
+                fontWeight: 600,
+                fontSize: 12,
+                justifySelf: 'start',
               }}
             >
-              <p style={{ margin: 0, color: '#64748b', fontSize: 12, lineHeight: 1.6, flex: '1 1 160px' }}>
-                자동 버전 업그레이드 히스토리는 이 브라우저에 저장됩니다. JSON으로 내보내 다른 세션에서도 보관하거나
-                공유할 수 있습니다.
-              </p>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  onClick={onExportHistory}
-                  disabled={saveHistory.length === 0}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 10,
-                    border: '1px solid #cbd5f5',
-                    background: saveHistory.length === 0 ? '#f8fafc' : '#dbeafe',
-                    color: saveHistory.length === 0 ? '#94a3b8' : '#1d4ed8',
-                    fontWeight: 600,
-                    fontSize: 12,
-                  }}
-                >
-                  JSON 내보내기
-                </button>
-                <button
-                  type="button"
-                  onClick={onClearHistory}
-                  disabled={saveHistory.length === 0}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 10,
-                    border: '1px solid #fecdd3',
-                    background: saveHistory.length === 0 ? '#fef2f2' : '#fee2e2',
-                    color: saveHistory.length === 0 ? '#f87171' : '#b91c1c',
-                    fontWeight: 600,
-                    fontSize: 12,
-                    opacity: saveHistory.length === 0 ? 0.6 : 1,
-                  }}
-                >
-                  기록 비우기
-                </button>
-              </div>
-            </div>
-
-            {saveHistory.length === 0 ? (
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: 13 }}>
-                아직 자동 버전 업그레이드 내역이 없습니다. 저장 후 자동 갱신이 실행되면 이곳에 기록이 쌓입니다.
-              </p>
-            ) : (
-              <ol
-                style={{
-                  margin: 0,
-                  paddingLeft: 20,
-                  display: 'grid',
-                  gap: 12,
-                  fontSize: 13,
-                  color: '#0f172a',
-                }}
-              >
-                {saveHistory.map((entry) => (
-                  <li key={entry.id} style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                      <strong style={{ fontSize: 13 }}>{entry.message}</strong>
-                      <span style={{ fontSize: 11, color: '#64748b' }}>
-                        {new Date(entry.timestamp).toLocaleString('ko-KR', {
-                          hour12: false,
-                          month: '2-digit',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                        })}
-                      </span>
-                    </div>
-                    {entry.summary && (
-                      <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.5 }}>{entry.summary}</p>
-                    )}
-                    {Array.isArray(entry.details) && entry.details.length > 0 && (
-                      <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5, color: '#1f2937' }}>
-                        {entry.details.map((detail) => (
-                          <li key={detail}>{detail}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            )}
+              고급 도구 열기
+            </button>
           </div>
         )}
       </div>
