@@ -163,6 +163,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     realtimePresence,
     realtimeEvents,
     dropInSnapshot,
+    sessionOutcome,
     consensus,
     lastDropInTurn,
     turnTimerSnapshot,
@@ -545,6 +546,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           participants={participants}
           realtimePresence={realtimePresence}
           dropInSnapshot={dropInSnapshot}
+          sessionOutcome={sessionOutcome}
           showDetails={!restrictedContext || (showRosterDetails && viewerMaySeeFull)}
           viewerOwnerId={viewerOwnerId}
           normalizedHostRole={normalizedHostRole}

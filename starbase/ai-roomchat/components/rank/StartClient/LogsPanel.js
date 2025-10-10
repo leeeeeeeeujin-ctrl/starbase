@@ -81,7 +81,15 @@ function normalizeLogEntry(entry, index) {
   const actionLabel = formatActionLabel(entry.action)
   const actionKey = typeof entry.action === 'string' ? entry.action.trim().toLowerCase() : ''
   const outcome = typeof entry.outcome === 'string' ? entry.outcome.trim() : ''
-  const response = typeof entry.response === 'string' ? entry.response : ''
+  const visibleResponse =
+    typeof entry.visibleResponse === 'string'
+      ? entry.visibleResponse
+      : typeof entry.displayResponse === 'string'
+        ? entry.displayResponse
+        : typeof entry.response === 'string'
+          ? entry.response
+          : ''
+  const response = typeof entry.response === 'string' ? entry.response : visibleResponse
   const prompt = typeof entry.prompt === 'string' ? entry.prompt : ''
   const key = Number.isFinite(turn)
     ? `log-${turn}-${nodeId ?? index}`
@@ -99,6 +107,7 @@ function normalizeLogEntry(entry, index) {
     actionKey,
     outcome,
     response,
+    visibleResponse,
     prompt,
   }
 }
@@ -320,6 +329,7 @@ export default function LogsPanel({
         entry.summary?.promptPreview,
         entry.summary?.outcomeLine,
         entry.summary?.role,
+        entry.visibleResponse,
         entry.response,
         entry.prompt,
         entry.outcome,
@@ -554,10 +564,12 @@ export default function LogsPanel({
                   ) : null}
 
                   <div className={styles.logBody}>
-                    {entry.response ? (
+                    {(entry.visibleResponse || entry.response) ? (
                       <div>
                         <div className={styles.bodyLabel}>응답</div>
-                        <p className={styles.bodyText}>{highlightText(entry.response, searchTokens)}</p>
+                        <p className={styles.bodyText}>
+                          {highlightText(entry.visibleResponse || entry.response, searchTokens)}
+                        </p>
                       </div>
                     ) : null}
                     {entry.prompt ? (

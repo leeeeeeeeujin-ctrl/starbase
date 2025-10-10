@@ -44,6 +44,12 @@ import {
   patchMainGameState,
   replaceMainGameLogs,
 } from './engine/mainGameMachine'
+import {
+  createOutcomeLedger,
+  syncOutcomeLedger,
+  recordOutcomeLedger,
+  buildOutcomeSnapshot,
+} from './engine/outcomeLedger'
 import { isApiKeyError } from './engine/apiKeyUtils'
 import { createTurnTimerService } from './services/turnTimerService'
 import {
@@ -147,6 +153,65 @@ function sanitizeDropInArrivals(arrivals) {
       return normalized
     })
     .filter(Boolean)
+}
+
+function stripOutcomeFooter(text = '') {
+  if (!text) return { body: '', footer: [] }
+  const working = String(text).split(/\r?\n/)
+  const footer = []
+  let captured = 0
+  let index = working.length - 1
+
+  while (index >= 0 && captured < 3) {
+    const candidate = working[index]
+    if (!candidate.trim()) {
+      working.splice(index, 1)
+      index -= 1
+      continue
+    }
+    footer.unshift(candidate)
+    working.splice(index, 1)
+    captured += 1
+
+    while (index - 1 >= 0 && !working[index - 1].trim()) {
+      working.splice(index - 1, 1)
+      index -= 1
+    }
+
+    index = working.length - 1
+  }
+
+  while (working.length && !working[working.length - 1].trim()) {
+    working.pop()
+  }
+
+  return { body: working.join('\n'), footer }
+}
+
+function buildOutcomeStatusMessage(snapshot) {
+  if (!snapshot) {
+    return '모든 역할군 결과가 확정되어 세션을 종료합니다.'
+  }
+  const summaries = Array.isArray(snapshot.roleSummaries) ? snapshot.roleSummaries : []
+  const wins = summaries.filter((entry) => entry.status === 'won').length
+  const losses = summaries.filter((entry) => entry.status === 'lost').length
+  const baseLabel = (() => {
+    switch (snapshot.overallResult) {
+      case 'won':
+        return '승리'
+      case 'lost':
+        return '패배'
+      case 'draw':
+        return '무승부'
+      default:
+        return '종료'
+    }
+  })()
+  const pieces = []
+  if (wins) pieces.push(`${wins}승`)
+  if (losses) pieces.push(`${losses}패`)
+  const summary = pieces.length ? ` (${pieces.join(' · ')})` : ''
+  return `모든 역할군 결과가 확정되어 세션을 ${baseLabel}로 마무리했습니다.${summary}`
 }
 
 function buildDropInMetaPayload({
@@ -850,6 +915,11 @@ export function useStartClientEngine(gameId) {
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
+  const outcomeLedgerRef = useRef(createOutcomeLedger())
+  const [sessionOutcome, setSessionOutcome] = useState(() =>
+    buildOutcomeSnapshot(outcomeLedgerRef.current),
+  )
+  const sessionFinalizedRef = useRef(false)
 
   const realtimeMode = useMemo(
     () => normalizeRealtimeMode(game?.realtime_match),
@@ -1366,10 +1436,21 @@ export function useStartClientEngine(gameId) {
   }, [logs])
 
   useEffect(() => {
-    participantsRef.current = Array.isArray(participants)
-      ? participants
-      : []
+    const list = Array.isArray(participants) ? participants : []
+    participantsRef.current = list
+    if (outcomeLedgerRef.current) {
+      const changed = syncOutcomeLedger(outcomeLedgerRef.current, { participants: list })
+      if (changed) {
+        setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current))
+      }
+    }
   }, [participants])
+
+  useEffect(() => {
+    outcomeLedgerRef.current = createOutcomeLedger({ participants: participantsRef.current })
+    setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current))
+    sessionFinalizedRef.current = false
+  }, [gameId])
 
   useEffect(() => {
     currentNodeIdRef.current = currentNodeId ?? null
@@ -2417,6 +2498,48 @@ export function useStartClientEngine(gameId) {
     persistBattleLogDraft(battleLogDraft)
   }, [battleLogDraft, persistBattleLogDraft, sessionInfo?.id])
 
+  const finalizeSessionRemotely = useCallback(
+    async ({ snapshot, reason, responseText, turnNumber }) => {
+      if (!sessionInfo?.id || !gameId) return
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          throw new Error('세션 토큰을 확인하지 못했습니다.')
+        }
+
+        const payload = {
+          sessionId: sessionInfo.id,
+          gameId,
+          turnNumber,
+          reason: reason || 'roles_resolved',
+          outcome: snapshot || buildOutcomeSnapshot(outcomeLedgerRef.current),
+          finalResponse: responseText || '',
+        }
+
+        const response = await fetch('/api/rank/complete-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        })
+
+        if (!response.ok) {
+          const detail = await response.text().catch(() => '')
+          throw new Error(detail || '세션 결과 정산 요청에 실패했습니다.')
+        }
+      } catch (error) {
+        console.warn('[StartClient] 세션 결과 정산 요청 실패:', error)
+      }
+    },
+    [sessionInfo?.id, gameId],
+  )
+
   const {
     apiKey,
     setApiKey,
@@ -3318,6 +3441,7 @@ export function useStartClientEngine(gameId) {
 
         const outcome = parseOutcome(responseText)
         const outcomeVariables = outcome.variables || []
+        const { body: visibleResponse } = stripOutcomeFooter(responseText)
         const triggeredEnd = endConditionVariable
           ? outcomeVariables.includes(endConditionVariable)
           : false
@@ -3337,7 +3461,7 @@ export function useStartClientEngine(gameId) {
         let fallbackSummary = null
         if (!loggedByServer) {
           fallbackSummary = {
-            preview: responseText.slice(0, 240),
+            preview: visibleResponse.slice(0, 240),
             promptPreview: promptText.slice(0, 240),
             outcome: {
               lastLine: outcome.lastLine || undefined,
@@ -3420,6 +3544,7 @@ export function useStartClientEngine(gameId) {
               responseAudience: slotBinding.responseAudience,
               prompt: promptText,
               response: responseText,
+              visibleResponse,
               outcome: outcome.lastLine || '',
               variables: outcomeVariables,
               next: chosenEdge?.to || null,
@@ -3433,6 +3558,49 @@ export function useStartClientEngine(gameId) {
         })
 
         clearManualResponse()
+
+        if (outcomeLedgerRef.current) {
+          const recordResult = recordOutcomeLedger(outcomeLedgerRef.current, {
+            turn,
+            slotIndex,
+            resultLine: outcome.lastLine || '',
+            variables: outcomeVariables,
+            actors: resolvedActorNames,
+            participantsSnapshot: participantsRef.current,
+            brawlEnabled,
+          })
+
+          if (recordResult.changed) {
+            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
+            setSessionOutcome(snapshot)
+
+            if (recordResult.completed && !sessionFinalizedRef.current) {
+              sessionFinalizedRef.current = true
+              const statusMessageText = buildOutcomeStatusMessage(snapshot)
+              setStatusMessage(statusMessageText)
+              finalizeRealtimeTurn('roles_resolved')
+              setCurrentNodeId(null)
+              setTurnDeadline(null)
+              setTimeRemaining(null)
+              captureBattleLog(
+                snapshot.overallResult === 'won'
+                  ? 'win'
+                  : snapshot.overallResult === 'lost'
+                    ? 'lose'
+                    : 'draw',
+                { reason: 'roles_resolved', turnNumber: turn },
+              )
+              clearSessionRecord()
+              void finalizeSessionRemotely({
+                snapshot,
+                reason: 'roles_resolved',
+                responseText,
+                turnNumber: turn,
+              })
+              return
+            }
+          }
+        }
 
         if (!chosenEdge) {
           finalizeRealtimeTurn('no-bridge')
@@ -3468,6 +3636,24 @@ export function useStartClientEngine(gameId) {
             setTurnDeadline(null)
             setTimeRemaining(null)
             captureBattleLog('win', { reason: 'win', turnNumber: turn })
+            sessionFinalizedRef.current = true
+            if (outcomeLedgerRef.current) {
+              const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
+              setSessionOutcome(snapshot)
+              void finalizeSessionRemotely({
+                snapshot,
+                reason: 'win',
+                responseText,
+                turnNumber: turn,
+              })
+            } else {
+              void finalizeSessionRemotely({
+                snapshot: null,
+                reason: 'win',
+                responseText,
+                turnNumber: turn,
+              })
+            }
             clearSessionRecord()
             return
           }
@@ -3482,6 +3668,24 @@ export function useStartClientEngine(gameId) {
           setTurnDeadline(null)
           setTimeRemaining(null)
           captureBattleLog('lose', { reason: 'lose', turnNumber: turn })
+          sessionFinalizedRef.current = true
+          if (outcomeLedgerRef.current) {
+            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
+            setSessionOutcome(snapshot)
+            void finalizeSessionRemotely({
+              snapshot,
+              reason: 'lose',
+              responseText,
+              turnNumber: turn,
+            })
+          } else {
+            void finalizeSessionRemotely({
+              snapshot: null,
+              reason: 'lose',
+              responseText,
+              turnNumber: turn,
+            })
+          }
           if (viewerId && actingOwnerId === viewerId) {
             markSessionDefeated()
           } else {
@@ -3495,6 +3699,24 @@ export function useStartClientEngine(gameId) {
           setTurnDeadline(null)
           setTimeRemaining(null)
           captureBattleLog('draw', { reason: 'draw', turnNumber: turn })
+          sessionFinalizedRef.current = true
+          if (outcomeLedgerRef.current) {
+            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
+            setSessionOutcome(snapshot)
+            void finalizeSessionRemotely({
+              snapshot,
+              reason: 'draw',
+              responseText,
+              turnNumber: turn,
+            })
+          } else {
+            void finalizeSessionRemotely({
+              snapshot: null,
+              reason: 'draw',
+              responseText,
+              turnNumber: turn,
+            })
+          }
           clearSessionRecord()
           return
         }
@@ -3910,6 +4132,7 @@ export function useStartClientEngine(gameId) {
     realtimeEvents,
     dropInSnapshot,
     connectionRoster,
+    sessionOutcome,
     sharedTurn: {
       owners: managedOwnerIds,
       roster: sharedTurnRoster,

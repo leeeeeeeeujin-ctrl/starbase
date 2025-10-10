@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { normalizeRoleName } from '@/lib/rank/roleLayoutLoader'
 import { normalizeTimelineStatus } from '@/lib/rank/timelineEvents'
 
-import { deriveParticipantOwnerId } from './engine/participants'
+import { deriveParticipantOwnerId, resolveParticipantSlotIndex } from './engine/participants'
 
 function formatWinRate(value) {
   if (value === null || value === undefined) return '기록 없음'
@@ -169,10 +169,53 @@ function buildBadges({ status, presenceEntry, roleStats, snapshotTurn }) {
   return badges
 }
 
+function normalizeHeroKey(name) {
+  if (!name) return ''
+  return String(name)
+    .normalize('NFC')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+}
+
+function buildOutcomeDisplay(entry) {
+  if (!entry) return null
+  const labelMap = {
+    won: '승리',
+    lost: '패배',
+    eliminated: '탈락',
+    pending: '대기',
+  }
+  const label = labelMap[entry.result] || '대기'
+  const wins = Number.isFinite(Number(entry.wins)) ? Number(entry.wins) : 0
+  const losses = Number.isFinite(Number(entry.losses)) ? Number(entry.losses) : 0
+  const scoreDelta = Number.isFinite(Number(entry.scoreDelta)) ? Number(entry.scoreDelta) : null
+  const parts = []
+  if (wins || losses) {
+    const battleParts = []
+    if (wins) battleParts.push(`${wins}승`)
+    if (losses) battleParts.push(`${losses}패`)
+    parts.push(battleParts.join(' · '))
+  }
+  if (scoreDelta != null) {
+    if (scoreDelta === 0) {
+      parts.push('점수 ±0')
+    } else {
+      parts.push(`점수 ${scoreDelta > 0 ? `+${scoreDelta}` : scoreDelta}`)
+    }
+  }
+
+  return {
+    label,
+    details: parts.join(' · '),
+    scoreDelta,
+  }
+}
+
 export default function RosterPanel({
   participants = [],
   realtimePresence = null,
   dropInSnapshot = null,
+  sessionOutcome = null,
   showDetails = true,
   viewerOwnerId = '',
   normalizedHostRole = '',
@@ -186,6 +229,15 @@ export default function RosterPanel({
   const viewerKey = viewerOwnerId ? String(viewerOwnerId).trim() : ''
   const hostRoleKey = normalizeRoleName(normalizedHostRole)
   const viewerRoleKey = normalizeRoleName(normalizedViewerRole)
+  const outcomeLookup = useMemo(() => {
+    if (!sessionOutcome || typeof sessionOutcome !== 'object') {
+      return { bySlot: {}, byHero: {} }
+    }
+    return {
+      bySlot: sessionOutcome.bySlotIndex || {},
+      byHero: sessionOutcome.byHeroName || {},
+    }
+  }, [sessionOutcome])
 
   return (
     <section
@@ -207,6 +259,18 @@ export default function RosterPanel({
           const status = normalizeTimelineStatus(
             presenceEntry?.status || participant.status,
           )
+          const slotIndex = resolveParticipantSlotIndex(participant)
+          const heroKey = normalizeHeroKey(
+            participant?.hero?.name ||
+              participant?.hero_name ||
+              participant?.display_name ||
+              participant?.name ||
+              '',
+          )
+          const outcomeEntry =
+            (Number.isInteger(slotIndex) && outcomeLookup.bySlot[slotIndex]) ||
+            (heroKey ? outcomeLookup.byHero[heroKey] : null)
+          const outcomeDisplay = buildOutcomeDisplay(outcomeEntry)
           const roleKey = typeof participant.role === 'string' ? participant.role.trim() : ''
           const roleStats = roleKey ? roleMap.get(roleKey) : null
           const badges = buildBadges({
@@ -378,6 +442,34 @@ export default function RosterPanel({
                           {badge.label}
                         </span>
                       ))}
+                    </div>
+                  ) : null}
+                  {outcomeDisplay ? (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: 12,
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                        alignItems: 'center',
+                        color: 'rgba(226, 232, 240, 0.82)',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          color:
+                            outcomeDisplay.scoreDelta != null
+                              ? outcomeDisplay.scoreDelta > 0
+                                ? '#34d399'
+                                : '#f87171'
+                              : '#fbbf24',
+                        }}
+                      >
+                        {outcomeDisplay.label}
+                      </span>
+                      {outcomeDisplay.details ? <span>{outcomeDisplay.details}</span> : null}
                     </div>
                   ) : null}
                 </div>
