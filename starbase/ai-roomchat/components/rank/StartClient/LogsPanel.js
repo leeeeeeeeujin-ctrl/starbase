@@ -114,34 +114,6 @@ function normalizeMemoryEntry(entry, index) {
   }
 }
 
-function normalizePlayerHistory(player, index) {
-  const name =
-    player.heroName ||
-    player.hero_name ||
-    player.name ||
-    player.hero?.name ||
-    `슬롯 ${index + 1}`
-  const role = player.role || ''
-  const entries = Array.isArray(player.entries) ? player.entries.slice(-4) : []
-  const normalizedEntries = entries.map((entry, entryIndex) => {
-    const roleLabel = formatRoleLabel(entry.role)
-    const content = typeof entry.content === 'string' ? entry.content : ''
-    const actors = dedupeStrings(entry.meta?.actors)
-    return {
-      key: `player-${index}-${entry.index ?? entryIndex}`,
-      roleLabel,
-      content,
-      actors,
-    }
-  })
-
-  return {
-    key: `player-${index}`,
-    name,
-    role,
-    entries: normalizedEntries,
-  }
-}
 
 function formatTimelineReason(reason) {
   if (!reason) return ''
@@ -178,10 +150,53 @@ export default function LogsPanel({
     [aiMemory],
   )
 
-  const normalizedPlayers = useMemo(
-    () => playerHistories.map(normalizePlayerHistory).filter(Boolean),
-    [playerHistories],
-  )
+  const normalizedPlayers = useMemo(() => {
+    if (!Array.isArray(playerHistories) || playerHistories.length === 0) {
+      return []
+    }
+
+    return playerHistories
+      .map((player, index) => {
+        if (!player || typeof player !== 'object') {
+          return null
+        }
+
+        const name =
+          player.heroName ||
+          player.hero_name ||
+          player.name ||
+          player.hero?.name ||
+          `슬롯 ${index + 1}`
+        const role = player.role || ''
+        const entries = Array.isArray(player.entries) ? player.entries.slice(-4) : []
+        const normalizedEntries = entries
+          .map((entry, entryIndex) => {
+            if (!entry || typeof entry !== 'object') {
+              return null
+            }
+
+            const roleLabel = formatRoleLabel(entry.role)
+            const content = typeof entry.content === 'string' ? entry.content : ''
+            const actors = dedupeStrings(entry.meta?.actors)
+
+            return {
+              key: `player-${index}-${entry.index ?? entryIndex}`,
+              roleLabel,
+              content,
+              actors,
+            }
+          })
+          .filter(Boolean)
+
+        return {
+          key: `player-${index}`,
+          name,
+          role,
+          entries: normalizedEntries,
+        }
+      })
+      .filter(Boolean)
+  }, [playerHistories])
 
   const timelineEvents = useMemo(() => {
     if (!Array.isArray(realtimeEvents)) return []
