@@ -19,9 +19,9 @@ alter table public.rank_turn_state_events enable row level security;
 
 create policy rank_turn_state_events_service_role on public.rank_turn_state_events
   for all
+  to service_role
   using (true)
-  with check (true)
-  to service_role;
+  with check (true);
 
 alter publication supabase_realtime add table public.rank_turn_state_events;
 
