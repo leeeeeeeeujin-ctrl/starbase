@@ -202,6 +202,27 @@ function extractMissingColumnNames(error) {
   return Array.from(names)
 }
 
+function isAmbiguousColumnError(error, columnName = '') {
+  if (!error) return false
+
+  const code = String(error.code || '').toUpperCase()
+  const normalizedColumn = toTrimmedString(columnName).toLowerCase()
+  const segments = [error.message, error.details, error.hint]
+    .filter((value) => typeof value === 'string' && value)
+    .join(' ')
+    .toLowerCase()
+
+  if (code === '42702') {
+    if (!normalizedColumn) return true
+    if (!segments) return true
+    return segments.includes(normalizedColumn)
+  }
+
+  if (!segments || !segments.includes('ambiguous')) return false
+  if (!normalizedColumn) return true
+  return segments.includes(normalizedColumn)
+}
+
 function serializeSupabaseError(error, seen = new Set()) {
   if (!error || seen.has(error)) return null
   seen.add(error)
@@ -661,17 +682,29 @@ export default async function handler(req, res) {
     }
   }
 
-  if (metaError && (isMissingFunctionError(metaError, 'upsert_match_session_meta') || extractMissingColumnNames(metaError).length)) {
+  const missingColumns = metaError ? extractMissingColumnNames(metaError) : []
+  const hasAmbiguousSessionId = metaError ? isAmbiguousColumnError(metaError, 'session_id') : false
+  const shouldUseLegacyFallback =
+    metaError &&
+    (isMissingFunctionError(metaError, 'upsert_match_session_meta') ||
+      missingColumns.length > 0 ||
+      hasAmbiguousSessionId)
+
+  if (shouldUseLegacyFallback) {
     console.warn('[session-meta] RPC unavailable, attempting direct table upsert', {
       code: metaError.code,
       message: metaError.message,
+      reason: missingColumns.length
+        ? 'missing_columns'
+        : hasAmbiguousSessionId
+        ? 'ambiguous_session_id'
+        : 'missing_function',
     })
-    const initialSkip = extractMissingColumnNames(metaError)
     const legacyResult = await upsertMetaViaLegacyTable(
       serviceRoleAuthFailed ? userClient : supabaseAdmin,
       sessionId,
       metaPayload,
-      { initialSkip },
+      { initialSkip: missingColumns },
     )
 
     if (!legacyResult.error) {

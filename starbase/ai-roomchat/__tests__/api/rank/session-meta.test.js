@@ -829,6 +829,46 @@ describe('POST /api/rank/session-meta', () => {
     expect(res.body.meta).toMatchObject({ selected_time_limit_seconds: 120, realtime_mode: 'standard' })
   })
 
+  it('falls back to direct table upsert when session meta RPC reports an ambiguous session_id', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: '42702',
+        message: 'column reference "session_id" is ambiguous',
+        details: 'It could refer to either a PL/pgSQL variable or a table column.',
+      },
+    })
+    sessionMetaUpsertSelectMock.mockResolvedValueOnce({
+      data: [
+        {
+          session_id: 'session-1',
+          selected_time_limit_seconds: 75,
+        },
+      ],
+      error: null,
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: { selected_time_limit_seconds: 75 },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(sessionMetaUpsertMock).toHaveBeenCalledTimes(1)
+    expect(res.body.meta).toMatchObject({
+      session_id: 'session-1',
+      selected_time_limit_seconds: 75,
+    })
+  })
+
   it('omits missing legacy columns when falling back to the table upsert', async () => {
     rpcMock.mockResolvedValueOnce({
       data: null,

@@ -3,11 +3,12 @@
 ## 증상
 
 * 메인 게임 진입 직후 `/api/rank/session-meta` 호출이 500으로 실패하고 클라이언트 콘솔에 `{"error":"upsert_failed","supabaseError":{...}}`가 반복적으로 남습니다.
-* Supabase 로그에는 `POST /rest/v1/rpc/upsert_match_session_meta` 요청이 400으로 끝나며, 본문에는 `function upsert_match_session_meta(...) does not exist` 혹은 `column "async_fill_snapshot" does not exist`와 같은 메시지가 기록됩니다.
+* Supabase 로그에는 `POST /rest/v1/rpc/upsert_match_session_meta` 요청이 400으로 끝나며, 본문에는 `function upsert_match_session_meta(...) does not exist`, `column "async_fill_snapshot" does not exist`, 혹은 `column reference "session_id" is ambiguous`와 같은 메시지가 기록됩니다.
 
 ## 원인
 
 * `upsert_match_session_meta` RPC 또는 `rank_session_meta` 테이블의 최신 컬럼(`async_fill_snapshot`, `realtime_mode`, `drop_in_bonus_seconds`, `updated_at`)이 배포되지 않은 상태에서 새 클라이언트가 최신 페이로드를 전송하면 Supabase가 400 에러를 반환합니다.
+* 구 버전 RPC에 `session_id`와 동일한 이름의 파라미터/로컬 변수가 존재하면 PostgreSQL이 `column reference "session_id" is ambiguous` 오류를 발생시켜 동일하게 400이 반환됩니다.
 * 서비스 롤 키가 존재하더라도, 함수나 컬럼 자체가 없으면 RPC가 실패하고 클라이언트는 `upsert_failed`와 함께 Supabase 에러 본문을 수신합니다.
 
 ## 해결 방법
@@ -147,7 +148,7 @@
 
 2. **턴 상태 브로드캐스트 RPC 권한 확인** – 실시간 이벤트를 사용 중이라면 `ai-roomchat/docs/sql/rank-turn-realtime-sync.sql`에 있는 `enqueue_rank_turn_state_event` 함수 정의와 `grant execute ... to authenticated` 구문도 함께 실행합니다.
 
-3. SQL 적용 후 `/api/rank/session-meta`를 다시 호출해 200 응답과 함께 `meta` 필드가 반환되는지 확인합니다.
+3. SQL 적용 후 `/api/rank/session-meta`를 다시 호출해 200 응답과 함께 `meta` 필드가 반환되는지 확인합니다. (앰비규어스 오류가 남아 있어도 서버 API는 테이블 업서트 폴백을 시도하지만, 장기적으로는 RPC를 최신화하는 것이 좋습니다.)
 
 ## 참고 경로
 
