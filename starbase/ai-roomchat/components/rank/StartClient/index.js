@@ -117,7 +117,25 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     return unsubscribe
   }, [gameId])
 
-  const engine = useStartClientEngine(gameId)
+  const hostOwnerId = useMemo(() => {
+    const roomOwner = matchState?.room?.ownerId
+    if (roomOwner !== null && roomOwner !== undefined) {
+      const trimmed = String(roomOwner).trim()
+      if (trimmed) {
+        return trimmed
+      }
+    }
+    const asyncHost = matchState?.sessionMeta?.asyncFill?.hostOwnerId
+    if (asyncHost !== null && asyncHost !== undefined) {
+      const trimmed = String(asyncHost).trim()
+      if (trimmed) {
+        return trimmed
+      }
+    }
+    return ''
+  }, [matchState?.room?.ownerId, matchState?.sessionMeta?.asyncFill?.hostOwnerId])
+
+  const engine = useStartClientEngine(gameId, { hostOwnerId })
   const {
     loading: engineLoading,
     error: engineError,
@@ -323,12 +341,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     const raw = matchState?.viewer?.ownerId || matchState?.viewer?.viewerId
     return raw ? String(raw).trim() : ''
   }, [matchState?.viewer?.ownerId, matchState?.viewer?.viewerId])
-  const hostOwnerId = useMemo(() => {
-    const fromRoom = matchState?.room?.ownerId ? String(matchState.room.ownerId).trim() : ''
-    if (fromRoom) return fromRoom
-    const fromAsync = asyncFillInfo?.hostOwnerId
-    return fromAsync ? String(fromAsync).trim() : ''
-  }, [matchState?.room?.ownerId, asyncFillInfo?.hostOwnerId])
   const hostRoleName = useMemo(() => {
     if (typeof asyncFillInfo?.hostRole === 'string' && asyncFillInfo.hostRole.trim()) {
       return asyncFillInfo.hostRole.trim()

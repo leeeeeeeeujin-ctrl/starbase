@@ -732,7 +732,15 @@ function buildParticipantsFromRoster(roster = []) {
     })
 }
 
-export function useStartClientEngine(gameId) {
+export function useStartClientEngine(gameId, options = {}) {
+  const hostOwnerIdOption = options?.hostOwnerId ?? ''
+  const normalizedHostOwnerId = useMemo(() => {
+    if (hostOwnerIdOption === null || hostOwnerIdOption === undefined) {
+      return ''
+    }
+    const trimmed = String(hostOwnerIdOption).trim()
+    return trimmed
+  }, [hostOwnerIdOption])
   const storedStartConfig =
     typeof window === 'undefined'
       ? {}
@@ -915,6 +923,8 @@ export function useStartClientEngine(gameId) {
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
+  const remoteSessionAdoptedRef = useRef(false)
+  const remoteSessionFetchRef = useRef({ running: false, lastFetchedAt: 0 })
   const outcomeLedgerRef = useRef(createOutcomeLedger())
   const [sessionOutcome, setSessionOutcome] = useState(() =>
     buildOutcomeSnapshot(outcomeLedgerRef.current),
@@ -943,6 +953,17 @@ export function useStartClientEngine(gameId) {
   const setTurnDeadlineCallbackRef = useRef(null)
   const setTimeRemainingCallbackRef = useRef(null)
   const setLastDropInTurnCallbackRef = useRef(null)
+
+  useEffect(() => {
+    remoteSessionAdoptedRef.current = false
+    remoteSessionFetchRef.current = { running: false, lastFetchedAt: 0 }
+  }, [gameId])
+
+  useEffect(() => {
+    if (!sessionInfo?.id) {
+      remoteSessionAdoptedRef.current = false
+    }
+  }, [sessionInfo?.id])
   const applyTurnStateChange = useCallback(
     (change, { commitTimestamp } = {}) => {
       if (!change || typeof change !== 'object') {
@@ -1567,6 +1588,257 @@ export function useStartClientEngine(gameId) {
     setTurnDeadline,
     setTimeRemaining,
   })
+
+  const adoptRemoteSession = useCallback(
+    async (sessionRow) => {
+      if (!sessionRow || typeof sessionRow !== 'object') {
+        return false
+      }
+
+      const sessionId = sessionRow.id || sessionRow.session_id || sessionRow.sessionId
+      if (!sessionId) {
+        return false
+      }
+
+      if (remoteSessionAdoptedRef.current && sessionInfo?.id === sessionId) {
+        return false
+      }
+
+      const statusToken = sessionRow.status ? String(sessionRow.status).trim().toLowerCase() : 'active'
+      if (statusToken && statusToken !== 'active') {
+        return false
+      }
+
+      const ownerSource =
+        sessionRow.owner_id ??
+        sessionRow.ownerId ??
+        sessionRow.ownerID ??
+        (sessionRow.owner && typeof sessionRow.owner === 'object' ? sessionRow.owner.id : null)
+      const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : ''
+      if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) {
+        return false
+      }
+
+      if (!preflight) {
+        if (!sessionInfo?.id) {
+          setSessionInfo({
+            id: sessionId,
+            status: sessionRow.status || 'active',
+            createdAt: sessionRow.created_at || sessionRow.createdAt || null,
+            reused: true,
+          })
+        }
+        return false
+      }
+
+      if (!participants || participants.length === 0) {
+        return false
+      }
+
+      setSessionInfo({
+        id: sessionId,
+        status: sessionRow.status || 'active',
+        createdAt: sessionRow.created_at || sessionRow.createdAt || null,
+        reused: true,
+      })
+
+      remoteSessionAdoptedRef.current = true
+
+      let sessionParticipants = participants
+      try {
+        const { participants: sanitized, removed } = reconcileParticipantsForGame({
+          participants,
+          slotLayout,
+          matchingMetadata,
+        })
+
+        if (!sanitized || sanitized.length === 0) {
+          remoteSessionAdoptedRef.current = false
+          setStatusMessage('참가자 구성이 유효하지 않아 게임에 참여할 수 없습니다.')
+          return false
+        }
+
+        sessionParticipants = sanitized
+
+        if (removed.length) {
+          const summary = formatPreflightSummary(removed)
+          if (summary) {
+            console.warn('[StartClient] 원격 후보정 제외 참가자:\n' + summary)
+            setPromptMetaWarning((prev) => {
+              const trimmed = prev ? String(prev).trim() : ''
+              const notice = `[후보정] 제외된 참가자:\n${summary}`
+              return trimmed ? `${trimmed}\n\n${notice}` : notice
+            })
+          }
+        }
+      } catch (error) {
+        remoteSessionAdoptedRef.current = false
+        console.error('[StartClient] 원격 세션 검증 실패:', error)
+        setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        return false
+      }
+
+      setStatusMessage('호스트가 게임을 시작했습니다. 전투에 합류합니다.')
+      bootLocalSession(sessionParticipants)
+      return true
+    },
+    [
+      preflight,
+      participants,
+      slotLayout,
+      matchingMetadata,
+      setPromptMetaWarning,
+      bootLocalSession,
+      setStatusMessage,
+      sessionInfo?.id,
+      normalizedHostOwnerId,
+      setSessionInfo,
+    ],
+  )
+
+  useEffect(() => {
+    if (!gameId) return undefined
+    if (sessionInfo?.id) return undefined
+    if (!preflight) return undefined
+    if (startingSession) return undefined
+    if (remoteSessionAdoptedRef.current) return undefined
+    if (!participants || participants.length === 0) return undefined
+
+    const now = Date.now()
+    if (remoteSessionFetchRef.current.running) {
+      return undefined
+    }
+    if (now - remoteSessionFetchRef.current.lastFetchedAt < 2000) {
+      return undefined
+    }
+
+    let cancelled = false
+    remoteSessionFetchRef.current.running = true
+
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('rank_sessions')
+          .select('id, status, owner_id, game_id, created_at, updated_at')
+          .eq('game_id', gameId)
+          .eq('status', 'active')
+          .order('updated_at', { ascending: false })
+          .limit(5)
+
+        if (cancelled) {
+          return
+        }
+
+        if (error) {
+          console.warn('[StartClient] 원격 세션 조회 실패:', error)
+          return
+        }
+
+        if (!Array.isArray(data) || data.length === 0) {
+          return
+        }
+
+        let candidate = null
+        if (normalizedHostOwnerId) {
+          candidate = data.find((row) => {
+            const owner = row?.owner_id !== null && row?.owner_id !== undefined ? String(row.owner_id).trim() : ''
+            return owner && owner === normalizedHostOwnerId
+          })
+        }
+
+        if (!candidate) {
+          candidate = data[0] || null
+        }
+
+        if (candidate) {
+          adoptRemoteSession(candidate)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[StartClient] 원격 세션 조회 중 오류:', error)
+        }
+      } finally {
+        remoteSessionFetchRef.current.running = false
+        remoteSessionFetchRef.current.lastFetchedAt = Date.now()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    gameId,
+    sessionInfo?.id,
+    preflight,
+    startingSession,
+    participants,
+    adoptRemoteSession,
+    normalizedHostOwnerId,
+  ])
+
+  useEffect(() => {
+    if (!gameId) return undefined
+
+    const channel = supabase.channel(`rank-session-watch:${gameId}`, {
+      config: { broadcast: { ack: true } },
+    })
+
+    const handleChange = (payload) => {
+      const eventType = payload?.eventType || payload?.type || ''
+      if (eventType === 'DELETE') {
+        return
+      }
+
+      const record = payload?.new || payload?.record || null
+      if (!record || typeof record !== 'object') {
+        return
+      }
+
+      const recordGameId = record.game_id ?? record.gameId ?? null
+      if (recordGameId && String(recordGameId).trim() !== String(gameId).trim()) {
+        return
+      }
+
+      const statusToken = record.status ? String(record.status).trim().toLowerCase() : 'active'
+      if (statusToken && statusToken !== 'active') {
+        return
+      }
+
+      const ownerSource =
+        record.owner_id ??
+        record.ownerId ??
+        record.ownerID ??
+        (record.owner && typeof record.owner === 'object' ? record.owner.id : null)
+      const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : ''
+      if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) {
+        return
+      }
+
+      adoptRemoteSession(record)
+    }
+
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'rank_sessions',
+        filter: `game_id=eq.${gameId}`,
+      },
+      handleChange,
+    )
+
+    channel.subscribe()
+
+    return () => {
+      try {
+        channel.unsubscribe()
+      } catch (error) {
+        console.warn('[StartClient] 세션 감시 채널 해제 실패:', error)
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [gameId, adoptRemoteSession, normalizedHostOwnerId])
 
 
   const logTurnEntries = useCallback(
