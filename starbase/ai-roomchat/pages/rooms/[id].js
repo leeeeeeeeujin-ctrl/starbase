@@ -1368,7 +1368,7 @@ export default function RoomDetailPage() {
             ? Number(roomRow.host_role_limit) !== numericHostLimit
             : roomRow.host_role_limit !== null)
 
-        if (needsUpdate) {
+        if (needsUpdate && isHost) {
           try {
             await withTable(supabase, 'rank_rooms', (table) =>
               supabase
@@ -1386,6 +1386,8 @@ export default function RoomDetailPage() {
           } catch (updateError) {
             console.warn('[RoomDetail] Failed to sync room counters:', updateError)
           }
+        } else if (needsUpdate && !isHost) {
+          console.debug('[RoomDetail] Skipping counter sync for non-host viewer')
         }
 
         const resolvedRoom = {
@@ -1441,7 +1443,7 @@ export default function RoomDetailPage() {
         }
       }
     },
-    [roomId],
+    [roomId, isHost],
   )
 
   useEffect(() => {
