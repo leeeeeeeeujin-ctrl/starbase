@@ -924,6 +924,7 @@ export function useStartClientEngine(gameId, options = {}) {
   const [gameVoided, setGameVoided] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
   const remoteSessionAdoptedRef = useRef(false)
+  const bootLocalSessionRef = useRef(null)
   const remoteSessionFetchRef = useRef({ running: false, lastFetchedAt: 0 })
   const outcomeLedgerRef = useRef(createOutcomeLedger())
   const [sessionOutcome, setSessionOutcome] = useState(() =>
@@ -1679,7 +1680,16 @@ export function useStartClientEngine(gameId, options = {}) {
       }
 
       setStatusMessage('호스트가 게임을 시작했습니다. 전투에 합류합니다.')
-      bootLocalSession(sessionParticipants)
+      const bootSession =
+        typeof bootLocalSessionRef.current === 'function' ? bootLocalSessionRef.current : null
+      if (!bootSession) {
+        remoteSessionAdoptedRef.current = false
+        console.warn('[StartClient] 로컬 세션 부팅 콜백이 초기화되지 않았습니다.')
+        setStatusMessage('게임 화면을 초기화하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.')
+        return false
+      }
+
+      bootSession(sessionParticipants)
       return true
     },
     [
@@ -1688,7 +1698,6 @@ export function useStartClientEngine(gameId, options = {}) {
       slotLayout,
       matchingMetadata,
       setPromptMetaWarning,
-      bootLocalSession,
       setStatusMessage,
       sessionInfo?.id,
       normalizedHostOwnerId,
@@ -3125,6 +3134,7 @@ export function useStartClientEngine(gameId, options = {}) {
       applyRealtimeSnapshot,
     ],
   )
+  bootLocalSessionRef.current = bootLocalSession
 
   const handleStart = useCallback(async () => {
     if (graph.nodes.length === 0) {
