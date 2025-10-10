@@ -1,11 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
 import styles from './MatchReadyClient.module.css'
 import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow'
-import StartClient from './StartClient'
 import {
   setGameMatchSessionMeta,
   subscribeGameMatchData,
@@ -17,6 +17,15 @@ import {
   sanitizeTurnTimerVote,
   buildTurnTimerVotePatch,
 } from '../../lib/rank/turnTimerMeta'
+
+const StartClient = dynamic(() => import('./StartClient'), {
+  ssr: false,
+  loading: () => (
+    <div className={styles.overlayLoading}>
+      <p className={styles.overlayLoadingText}>본게임 화면을 준비하고 있습니다…</p>
+    </div>
+  ),
+})
 
 function useMatchReadyState(gameId) {
   const [state, setState] = useState(() => createEmptyMatchFlowState())
