@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { supabase } from '../../lib/supabase'
+import { VARIABLE_RULES_VERSION } from '../../lib/variableRules'
 import {
   insertPromptSetBundle,
   promptSetsRepository,
@@ -45,6 +46,7 @@ export function useMakerHome({ onUnauthorized } = {}) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const { message: errorMessage, setMessage: setErrorMessage, setFromError } = useResultMessage()
+  const [noticeMessage, setNoticeMessage] = useState('')
 
   const loadPromptSets = useCallback(async (ownerId) => {
     const result = await promptSetsRepository.list(ownerId)
@@ -112,13 +114,14 @@ export function useMakerHome({ onUnauthorized } = {}) {
       if (!owner) return
       setLoading(true)
       setErrorMessage('')
+      setNoticeMessage('')
       const result = await loadPromptSets(owner)
       if (result.error) {
         setFromError(result.error)
       }
       setLoading(false)
     },
-    [loadPromptSets, setErrorMessage, setFromError, userId],
+    [loadPromptSets, setErrorMessage, setFromError, setNoticeMessage, userId],
   )
 
   const handleRename = useCallback(async (id, nextName) => {
@@ -176,21 +179,52 @@ export function useMakerHome({ onUnauthorized } = {}) {
       }
 
       const payload = await parseImportPayload(file)
+      const importedVersion = (() => {
+        const meta = payload?.meta
+        if (!meta || typeof meta !== 'object') return null
+        const { variableRulesVersion, version } = meta
+        const candidate = Number.isFinite(variableRulesVersion)
+          ? variableRulesVersion
+          : Number.isFinite(version)
+          ? version
+          : Number.isFinite(Number(variableRulesVersion))
+          ? Number(variableRulesVersion)
+          : Number.isFinite(Number(version))
+          ? Number(version)
+          : null
+        return Number.isFinite(candidate) ? Number(candidate) : null
+      })()
+
       const result = await insertPromptSetBundle(userId, payload)
       if (result.error) {
         setFromError(result.error)
         throw result.error
       }
+
       await refresh(userId)
+
+      if (importedVersion == null) {
+        setNoticeMessage(
+          '가져온 세트의 변수 규칙 버전을 확인할 수 없습니다. 제작기에서 세트를 열어 다시 저장해 최신 포맷으로 맞춰 주세요.',
+        )
+      } else if (importedVersion !== VARIABLE_RULES_VERSION) {
+        setNoticeMessage(
+          `가져온 세트의 변수 규칙 버전(v${importedVersion})이 최신(v${VARIABLE_RULES_VERSION})과 달라 기본 파서로 변환했습니다. 세트를 열어 다시 저장해 주세요.`,
+        )
+      } else {
+        setNoticeMessage('세트를 불러왔습니다. 필요하다면 바로 편집을 시작할 수 있어요.')
+      }
+
       return result.data
     },
-    [refresh, setFromError, userId],
+    [refresh, setFromError, setNoticeMessage, userId],
   )
 
   return {
     hydrated,
     loading,
     errorMessage,
+    noticeMessage,
     rows,
     refresh,
     renameSet: handleRename,
@@ -199,6 +233,7 @@ export function useMakerHome({ onUnauthorized } = {}) {
     exportSet,
     importFromFile,
     setErrorMessage,
+    setNoticeMessage,
   }
 }
 
