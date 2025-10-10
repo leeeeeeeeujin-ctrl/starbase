@@ -869,6 +869,10 @@ export function useStartClientEngine(gameId) {
   const lastRealtimeTurnEventRef = useRef({ id: null, emittedAt: 0, turnNumber: 0 })
   const turnEventBackfillAbortRef = useRef(null)
   const lastBattleLogSignatureRef = useRef(null)
+  const setTurnCallbackRef = useRef(null)
+  const setTurnDeadlineCallbackRef = useRef(null)
+  const setTimeRemainingCallbackRef = useRef(null)
+  const setLastDropInTurnCallbackRef = useRef(null)
   const applyTurnStateChange = useCallback(
     (change, { commitTimestamp } = {}) => {
       if (!change || typeof change !== 'object') {
@@ -952,16 +956,16 @@ export function useStartClientEngine(gameId) {
         ? Math.max(0, Math.floor(Number(state.turnNumber)))
         : null
       if (numericTurn !== null) {
-        setTurn(numericTurn)
+        setTurnCallbackRef.current?.(numericTurn)
       }
 
       const resolvedDeadline = Number(state.deadline)
       const deadlineMillis =
         Number.isFinite(resolvedDeadline) && resolvedDeadline > 0 ? Math.floor(resolvedDeadline) : 0
       if (deadlineMillis) {
-        setTurnDeadline(deadlineMillis)
+        setTurnDeadlineCallbackRef.current?.(deadlineMillis)
       } else {
-        setTurnDeadline(null)
+        setTurnDeadlineCallbackRef.current?.(null)
       }
 
       const remainingFromState = Number(state.remainingSeconds)
@@ -976,14 +980,14 @@ export function useStartClientEngine(gameId) {
         }
       }
       if (Number.isFinite(resolvedRemaining)) {
-        setTimeRemaining(Math.max(0, resolvedRemaining))
+        setTimeRemainingCallbackRef.current?.(Math.max(0, resolvedRemaining))
       } else {
-        setTimeRemaining(null)
+        setTimeRemainingCallbackRef.current?.(null)
       }
 
       const dropInTurn = Number(state.dropInBonusTurn)
       if (Number.isFinite(dropInTurn) && dropInTurn > 0) {
-        setLastDropInTurn(Math.floor(dropInTurn))
+        setLastDropInTurnCallbackRef.current?.(Math.floor(dropInTurn))
       }
 
       lastBroadcastTurnStateRef.current = {
@@ -995,10 +999,10 @@ export function useStartClientEngine(gameId) {
       sessionInfo?.id,
       gameId,
       setGameMatchSessionMeta,
-      setTurn,
-      setTurnDeadline,
-      setTimeRemaining,
-      setLastDropInTurn,
+      setTurnCallbackRef,
+      setTurnDeadlineCallbackRef,
+      setTimeRemainingCallbackRef,
+      setLastDropInTurnCallbackRef,
     ],
   )
   const backfillTurnEvents = useCallback(async () => {
@@ -1121,6 +1125,7 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  setTurnCallbackRef.current = setTurn
   const setLogs = useCallback(
     (value) => {
       if (typeof value === 'function') {
@@ -1172,6 +1177,7 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  setLastDropInTurnCallbackRef.current = setLastDropInTurn
   const setViewerId = useCallback(
     (value) => {
       patchEngineState({ viewerId: value })
@@ -1189,6 +1195,7 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  setTurnDeadlineCallbackRef.current = setTurnDeadline
   const setTimeRemaining = useCallback(
     (value) => {
       if (typeof value === 'function') {
@@ -1200,6 +1207,7 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  setTimeRemainingCallbackRef.current = setTimeRemaining
   const recordTurnState = useCallback(
     (patch = {}, options = {}) => {
       if (preflight) return
