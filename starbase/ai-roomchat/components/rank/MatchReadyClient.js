@@ -473,7 +473,9 @@ export default function MatchReadyClient({ gameId }) {
         <div className={styles.overlayRoot}>
           <div className={styles.overlayBackdrop} />
           <div className={styles.overlayContent}>
-            <StartClient gameId={gameId} onRequestClose={() => setShowGame(false)} />
+            <div className={styles.overlayScrollArea}>
+              <StartClient gameId={gameId} onRequestClose={() => setShowGame(false)} />
+            </div>
           </div>
         </div>
       ) : null}
