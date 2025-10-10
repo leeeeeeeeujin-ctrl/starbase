@@ -2,13 +2,13 @@
 
 ## 증상
 
-* 메인 게임 진입 직후 `/api/rank/session-meta` 호출이 500으로 실패하고 클라이언트 콘솔에 `{"error":"upsert_failed"}`가 반복적으로 남습니다.
+* 메인 게임 진입 직후 `/api/rank/session-meta` 호출이 500으로 실패하고 클라이언트 콘솔에 `{"error":"upsert_failed","supabaseError":{...}}`가 반복적으로 남습니다.
 * Supabase 로그에는 `POST /rest/v1/rpc/upsert_match_session_meta` 요청이 400으로 끝나며, 본문에는 `function upsert_match_session_meta(...) does not exist` 혹은 `column "async_fill_snapshot" does not exist`와 같은 메시지가 기록됩니다.
 
 ## 원인
 
 * `upsert_match_session_meta` RPC 또는 `rank_session_meta` 테이블의 최신 컬럼(`async_fill_snapshot`, `realtime_mode`, `drop_in_bonus_seconds`, `updated_at`)이 배포되지 않은 상태에서 새 클라이언트가 최신 페이로드를 전송하면 Supabase가 400 에러를 반환합니다.
-* 서비스 롤 키가 존재하더라도, 함수나 컬럼 자체가 없으면 RPC가 실패하고 클라이언트는 `upsert_failed`로 종료됩니다.
+* 서비스 롤 키가 존재하더라도, 함수나 컬럼 자체가 없으면 RPC가 실패하고 클라이언트는 `upsert_failed`와 함께 Supabase 에러 본문을 수신합니다.
 
 ## 해결 방법
 

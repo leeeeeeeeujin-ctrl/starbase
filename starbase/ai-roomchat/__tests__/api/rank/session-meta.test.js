@@ -405,7 +405,10 @@ describe('POST /api/rank/session-meta', () => {
     await handler(req, res)
 
     expect(res.statusCode).toBe(500)
-    expect(res.body).toEqual({ error: 'upsert_failed' })
+    expect(res.body).toEqual({
+      error: 'upsert_failed',
+      supabaseError: { message: 'permission denied', code: '42501' },
+    })
     expect(rpcMock).toHaveBeenCalledTimes(1)
     expect(userRpcMock).toHaveBeenCalledWith(
       'upsert_match_session_meta',
@@ -762,7 +765,10 @@ describe('POST /api/rank/session-meta', () => {
     await handler(req, res)
 
     expect(res.statusCode).toBe(500)
-    expect(res.body).toEqual({ error: 'upsert_failed' })
+    expect(res.body).toEqual({
+      error: 'upsert_failed',
+      supabaseError: { message: 'failed' },
+    })
   })
 
   it('continues when turn-state event RPC fails', async () => {

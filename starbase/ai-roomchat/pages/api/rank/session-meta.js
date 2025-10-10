@@ -202,6 +202,53 @@ function extractMissingColumnNames(error) {
   return Array.from(names)
 }
 
+function serializeSupabaseError(error, seen = new Set()) {
+  if (!error || seen.has(error)) return null
+  seen.add(error)
+
+  const payload = {}
+
+  const assignIfPresent = (key, value) => {
+    if (value === null || value === undefined) return
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (!trimmed) return
+      payload[key] = trimmed
+      return
+    }
+    payload[key] = value
+  }
+
+  assignIfPresent('code', error.code)
+  assignIfPresent('status', error.status)
+  assignIfPresent('name', error.name)
+  assignIfPresent('message', error.message)
+  assignIfPresent('details', error.details)
+  assignIfPresent('hint', error.hint)
+
+  if (!payload.message && typeof error === 'string') {
+    assignIfPresent('message', error)
+  }
+
+  if (!payload.message && error instanceof Error) {
+    assignIfPresent('message', error.message)
+  }
+
+  const cause = error.cause
+  if (cause && typeof cause === 'object' && cause !== error) {
+    const serializedCause = serializeSupabaseError(cause, seen)
+    if (serializedCause) {
+      payload.cause = serializedCause
+    }
+  }
+
+  if (!Object.keys(payload).length) {
+    return { message: String(error) }
+  }
+
+  return payload
+}
+
 function buildLegacyMetaRow(sessionId, metaPayload, skipColumns) {
   const row = { session_id: sessionId }
   const skip = skipColumns || new Set()
@@ -637,7 +684,10 @@ export default async function handler(req, res) {
 
   if (metaError) {
     console.error('[session-meta] upsert failed:', metaError)
-    return res.status(500).json({ error: 'upsert_failed' })
+    const supabaseError = serializeSupabaseError(metaError)
+    return res.status(500).json(
+      supabaseError ? { error: 'upsert_failed', supabaseError } : { error: 'upsert_failed' },
+    )
   }
 
   let eventResult = null
