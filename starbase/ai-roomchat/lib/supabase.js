@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { sanitizeSupabaseUrl } from './supabaseEnv'
+import { createSupabaseAuthConfig } from './supabaseAuthConfig'
 
 // ❗반드시 .env.local에 넣으세요
 // NEXT_PUBLIC_SUPABASE_URL=https://jvopmawzszamguydylwu.supabase.co
@@ -21,4 +22,14 @@ export const supabase = createClient(url, anon, {
     autoRefreshToken: true,
     detectSessionInUrl: true, // 코드 교환은 콜백 페이지에서만
   },
+  global: (() => {
+    const authConfig = createSupabaseAuthConfig(url, {
+      apikey: anon,
+      authorization: `Bearer ${anon}`,
+    })
+    return {
+      headers: authConfig.headers,
+      fetch: authConfig.fetch,
+    }
+  })(),
 })
