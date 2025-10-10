@@ -3317,6 +3317,10 @@ export function useStartClientEngine(gameId) {
         bumpHistoryVersion()
 
         const outcome = parseOutcome(responseText)
+        const outcomeVariables = outcome.variables || []
+        const triggeredEnd = endConditionVariable
+          ? outcomeVariables.includes(endConditionVariable)
+          : false
         const resolvedActorNames =
           outcome.actors && outcome.actors.length ? outcome.actors : fallbackActorNames
         updateHeroAssets(resolvedActorNames, actorContext)
@@ -3377,7 +3381,7 @@ export function useStartClientEngine(gameId) {
           })
         }
 
-        setActiveLocal(outcome.variables || [])
+        setActiveLocal(outcomeVariables)
         setActiveGlobal(nextActiveGlobal)
 
         const context = createBridgeContext({
@@ -3387,7 +3391,7 @@ export function useStartClientEngine(gameId) {
           visitedSlotIds: visitedSlotIds.current,
           participantsStatus,
           activeGlobalNames: nextActiveGlobal,
-          activeLocalNames: outcome.variables || [],
+          activeLocalNames: outcomeVariables,
           currentRole:
             actorContext?.participant?.role || actorContext?.heroSlot?.role || null,
           sessionFlags: {
@@ -3417,7 +3421,7 @@ export function useStartClientEngine(gameId) {
               prompt: promptText,
               response: responseText,
               outcome: outcome.lastLine || '',
-              variables: outcome.variables || [],
+              variables: outcomeVariables,
               next: chosenEdge?.to || null,
               action: chosenEdge?.data?.action || 'continue',
               actors: resolvedActorNames,
@@ -3444,10 +3448,7 @@ export function useStartClientEngine(gameId) {
         const action = chosenEdge.data?.action || 'continue'
         const nextNodeId = chosenEdge.to != null ? String(chosenEdge.to) : null
 
-        const outcomeVariables = outcome.variables || []
-        const triggeredEnd = endConditionVariable
-          ? outcomeVariables.includes(endConditionVariable)
-          : false
+
 
         if (action === 'win') {
           const upcomingWin = winCount + 1
