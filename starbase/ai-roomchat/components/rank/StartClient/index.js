@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
 import styles from './StartClient.module.css'
@@ -10,7 +11,6 @@ import TurnInfoPanel from './TurnInfoPanel'
 import TurnSummaryPanel from './TurnSummaryPanel'
 import ManualResponsePanel from './ManualResponsePanel'
 import StatusBanner from './StatusBanner'
-import LogsPanel from './LogsPanel'
 import {
   clearMatchFlow,
   createEmptyMatchFlowState,
@@ -21,6 +21,11 @@ import { normalizeRoleName } from '../../../lib/rank/roleLayoutLoader'
 import { useStartClientEngine } from './useStartClientEngine'
 import { supabase } from '../../../lib/supabase'
 import { buildSessionMetaRequest, postSessionMeta } from '../../../lib/rank/sessionMetaClient'
+
+const LogsPanel = dynamic(() => import('./LogsPanel'), {
+  loading: () => <div className={styles.logsLoading}>로그 패널을 불러오는 중…</div>,
+  ssr: false,
+})
 
 function buildSessionMeta(state) {
   if (!state) return []
