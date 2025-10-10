@@ -74,6 +74,12 @@ export function createSupabaseAuthConfig(supabaseUrl, { apikey, authorization } 
   const { ensureHeaders, ensureUrl } = createAuthEnsurer(supabaseUrl, { apikey, authorization })
 
   const fetchWithAuth = async (input, init = {}) => {
+    if (typeof Request !== 'undefined' && input instanceof Request) {
+      const headers = ensureHeaders(init.headers || input.headers)
+      const finalInit = { ...init, headers }
+      return fetch(input, finalInit)
+    }
+
     const headers = ensureHeaders(init.headers)
     const finalInit = { ...init, headers }
 
@@ -83,10 +89,6 @@ export function createSupabaseAuthConfig(supabaseUrl, { apikey, authorization } 
 
     if (input instanceof URL) {
       return fetch(ensureUrl(input.toString()), finalInit)
-    }
-
-    if (typeof Request !== 'undefined' && input instanceof Request) {
-      return fetch(ensureUrl(input.url), finalInit)
     }
 
     return fetch(input, finalInit)
