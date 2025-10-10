@@ -224,9 +224,13 @@ export default async function handler(req, res) {
 
   const ownerId = toOptionalUuid(sessionRow.owner_id)
   const sessionGameId = toOptionalUuid(sessionRow.game_id)
-  const sessionRoomId = await resolveSessionRoomId(sessionId)
 
   let authorized = !!ownerId && ownerId === userId
+  let sessionRoomId = null
+
+  if (!authorized) {
+    sessionRoomId = await resolveSessionRoomId(sessionId)
+  }
 
   if (!authorized && sessionRoomId) {
     try {
