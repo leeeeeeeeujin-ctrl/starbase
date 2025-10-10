@@ -111,3 +111,12 @@ grant execute on function public.enqueue_rank_turn_state_event(
   uuid,
   jsonb
 ) to service_role;
+
+grant execute on function public.enqueue_rank_turn_state_event(
+  uuid,
+  jsonb,
+  integer,
+  text,
+  uuid,
+  jsonb
+) to authenticated;

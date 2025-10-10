@@ -37,6 +37,7 @@ describe('POST /api/rank/session-meta', () => {
   let sessionSelectMock
   let sessionEqMock
   let sessionMaybeSingleMock
+  let userRpcMock
   let roomSlotSelectMock
   let roomSlotFirstEqMock
   let roomSlotSecondEqMock
@@ -85,6 +86,7 @@ describe('POST /api/rank/session-meta', () => {
               select: () => ({ maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }) }),
             }
           },
+          rpc: userRpcMock,
         }
       }
 
@@ -92,6 +94,7 @@ describe('POST /api/rank/session-meta', () => {
     })
 
     rpcMock = jest.fn().mockResolvedValue({ data: [{ session_id: 'session-1' }], error: null })
+    userRpcMock = jest.fn().mockResolvedValue({ data: [{ session_id: 'session-1' }], error: null })
     timelineUpsertMock = jest.fn().mockResolvedValue({ data: null, error: null })
     sessionMaybeSingleMock = jest
       .fn()
@@ -297,6 +300,7 @@ describe('POST /api/rank/session-meta', () => {
         context: expect.objectContaining({ bonusSeconds: 30 }),
       }),
     )
+    expect(userRpcMock).not.toHaveBeenCalled()
   })
 
   it('returns 404 when session is not found', async () => {
@@ -336,6 +340,67 @@ describe('POST /api/rank/session-meta', () => {
     expect(res.statusCode).toBe(403)
     expect(res.body).toEqual({ error: 'forbidden' })
     expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it('falls back to user RPC when service role auth fails', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'No API key found in request', status: 401 },
+    })
+    const handler = loadHandler()
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: { selected_time_limit_seconds: 90 },
+      },
+    })
+
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toMatchObject({ ok: true })
+    expect(rpcMock).toHaveBeenCalledTimes(1)
+    expect(userRpcMock).toHaveBeenCalledWith(
+      'upsert_match_session_meta',
+      expect.objectContaining({ p_session_id: 'session-1' }),
+    )
+  })
+
+  it('returns 500 when both service role and fallback RPC calls fail', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'No API key found in request', status: 401 },
+    })
+    userRpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'permission denied', code: '42501' },
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: {},
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(500)
+    expect(res.body).toEqual({ error: 'upsert_failed' })
+    expect(rpcMock).toHaveBeenCalledTimes(1)
+    expect(userRpcMock).toHaveBeenCalledWith(
+      'upsert_match_session_meta',
+      expect.objectContaining({ p_session_id: 'session-1' }),
+    )
   })
 
   it('allows session collaborators occupying the room to update meta', async () => {

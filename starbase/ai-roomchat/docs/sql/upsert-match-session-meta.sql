@@ -123,3 +123,13 @@ grant execute on function public.upsert_match_session_meta(
   jsonb,
   text
 ) to service_role;
+
+grant execute on function public.upsert_match_session_meta(
+  uuid,
+  integer,
+  jsonb,
+  integer,
+  jsonb,
+  jsonb,
+  text
+) to authenticated;

@@ -570,6 +570,7 @@ grant execute on function public.validate_session(uuid) to authenticated;
 grant execute on function public.bump_rank_session_slot_version(uuid) to service_role;
 grant execute on function public.claim_rank_room_slot(uuid, integer, text, uuid, integer) to service_role;
 grant execute on function public.upsert_match_session_meta(uuid, integer, jsonb, integer, jsonb, jsonb, text) to service_role;
+grant execute on function public.upsert_match_session_meta(uuid, integer, jsonb, integer, jsonb, jsonb, text) to authenticated;
 grant execute on function public.refresh_match_session_async_fill(uuid, uuid, integer, integer) to service_role;
 ```
 
@@ -587,6 +588,7 @@ grant execute on function public.refresh_match_session_async_fill(uuid, uuid, in
 - `rank_turn_state_events`는 각 턴 상태 스냅샷을 보관하면서 Supabase Realtime을 통해 클라이언트로 브로드캐스트된다.
 - `enqueue_rank_turn_state_event` RPC는 기존 `upsert_match_session_meta`를 호출해 세션 메타(`turn_state`)를 갱신한 뒤, 이벤트 테이블에 기록한다.
 - PR에서 추가된 세션 스토어는 추후 `/api/rank/session-meta`(가칭)에서 이 RPC를 호출해 드롭인 보너스, 남은 시간, 턴 번호를 서버와 동기화하게 된다.
+- 서비스 롤 키가 누락된 환경에서도 `/api/rank/session-meta`가 정상 동작하도록 `enqueue_rank_turn_state_event`와 `upsert_match_session_meta` 모두 `authenticated` 롤에 실행 권한을 부여했다. 최신 SQL 스니펫(`docs/sql/upsert-match-session-meta.sql`, `docs/sql/rank-turn-realtime-sync.sql`)을 다시 적용해 권한을 갱신해 주세요.
 
 ### 2.y 턴 이벤트 백필 RPC (`fetch_rank_turn_state_events`)
 ```sql

@@ -190,6 +190,26 @@ async function resolveSessionRoomId(sessionId, { fallbackRoomId = null, sessionO
   return null
 }
 
+function isServiceRoleAuthError(error) {
+  if (!error) return false
+  const rawCode = String(error.code || '')
+  const code = rawCode.trim().toLowerCase()
+  if (code === '401' || code === '403' || code === 'pgrst301') return true
+  const status = Number(error.status)
+  if (status === 401 || status === 403) return true
+  const merged = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`
+    .toLowerCase()
+    .trim()
+  if (!merged) return false
+  if (merged.includes('no api key')) return true
+  if (merged.includes('invalid api key')) return true
+  if (merged.includes('jwterror')) return true
+  if (merged.includes('jwt expired')) return true
+  if (merged.includes('jwt') && merged.includes('unauthorized')) return true
+  if (merged.includes('authentication') && merged.includes('failed')) return true
+  return false
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
@@ -256,6 +276,7 @@ export default async function handler(req, res) {
 
   let authorized = !!ownerId && ownerId === userId
   let sessionRoomId = null
+  let serviceRoleAuthFailed = false
 
   if (!authorized) {
     sessionRoomId = await resolveSessionRoomId(sessionId, {
@@ -398,10 +419,32 @@ export default async function handler(req, res) {
     p_realtime_mode: metaPayload.realtime_mode,
   }
 
-  const { data: metaResult, error: metaError } = await supabaseAdmin.rpc(
-    'upsert_match_session_meta',
-    rpcPayload,
-  )
+  let metaResult = null
+  let metaError = null
+  try {
+    const { data, error: primaryError } = await supabaseAdmin.rpc(
+      'upsert_match_session_meta',
+      rpcPayload,
+    )
+    metaResult = data
+    metaError = primaryError
+  } catch (rpcError) {
+    metaError = rpcError
+  }
+
+  if (metaError && isServiceRoleAuthError(metaError)) {
+    serviceRoleAuthFailed = true
+    try {
+      const { data, error: fallbackError } = await userClient.rpc(
+        'upsert_match_session_meta',
+        rpcPayload,
+      )
+      metaResult = data
+      metaError = fallbackError || null
+    } catch (fallbackFailure) {
+      metaError = fallbackFailure
+    }
+  }
 
   if (metaError) {
     console.error('[session-meta] upsert failed:', metaError)
@@ -411,17 +454,41 @@ export default async function handler(req, res) {
   let eventResult = null
   let timelineEvent = null
   if (eventPayload) {
-    const { data: eventData, error: eventError } = await supabaseAdmin.rpc(
-      'enqueue_rank_turn_state_event',
-      {
+    let eventError = null
+    let eventData = null
+    try {
+      const { data, error } = await supabaseAdmin.rpc('enqueue_rank_turn_state_event', {
         p_session_id: sessionId,
         p_turn_state: eventPayload.turn_state,
         p_turn_number: eventPayload.turn_number,
         p_source: eventPayload.source,
         p_emitter: eventPayload.emitter_id,
         p_extras: eventPayload.extras,
-      },
-    )
+      })
+      eventData = data
+      eventError = error
+    } catch (rpcError) {
+      eventError = rpcError
+    }
+
+    if (eventError && (serviceRoleAuthFailed || isServiceRoleAuthError(eventError))) {
+      serviceRoleAuthFailed = true
+      try {
+        const { data, error } = await userClient.rpc('enqueue_rank_turn_state_event', {
+          p_session_id: sessionId,
+          p_turn_state: eventPayload.turn_state,
+          p_turn_number: eventPayload.turn_number,
+          p_source: eventPayload.source,
+          p_emitter: eventPayload.emitter_id,
+          p_extras: eventPayload.extras,
+        })
+        eventData = data
+        eventError = error || null
+      } catch (fallbackError) {
+        eventError = fallbackError
+      }
+    }
+
     if (eventError) {
       console.error('[session-meta] enqueue event failed:', eventError)
     } else {
@@ -465,32 +532,40 @@ export default async function handler(req, res) {
           })
 
           if (row) {
-            try {
-              const { error: timelineError } = await withTableQuery(
-                supabaseAdmin,
-                'rank_session_timeline_events',
-                (from) =>
-                  from.upsert([row], {
-                    onConflict: 'event_id',
-                    ignoreDuplicates: false,
-                  }),
-              )
+            if (serviceRoleAuthFailed) {
+              console.warn('[session-meta] skipping timeline upsert due to service auth failure')
+            } else {
+              try {
+                const { error: timelineError } = await withTableQuery(
+                  supabaseAdmin,
+                  'rank_session_timeline_events',
+                  (from) =>
+                    from.upsert([row], {
+                      onConflict: 'event_id',
+                      ignoreDuplicates: false,
+                    }),
+                )
 
-              if (!timelineError) {
-                timelineEvent = timelineCandidate
-                await broadcastRealtimeTimeline(sessionId, [timelineCandidate], {
-                  turn: timelineCandidate.turn ?? null,
-                  gameId: gameId || null,
-                })
-                await notifyRealtimeTimelineWebhook([timelineCandidate], {
-                  sessionId,
-                  gameId: gameId || null,
-                })
-              } else {
-                console.error('[session-meta] timeline upsert failed', timelineError)
+                if (!timelineError) {
+                  timelineEvent = timelineCandidate
+                  await broadcastRealtimeTimeline(sessionId, [timelineCandidate], {
+                    turn: timelineCandidate.turn ?? null,
+                    gameId: gameId || null,
+                  })
+                  await notifyRealtimeTimelineWebhook([timelineCandidate], {
+                    sessionId,
+                    gameId: gameId || null,
+                  })
+                } else {
+                  if (isServiceRoleAuthError(timelineError)) {
+                    serviceRoleAuthFailed = true
+                    console.warn('[session-meta] timeline upsert requires service role access')
+                  }
+                  console.error('[session-meta] timeline upsert failed', timelineError)
+                }
+              } catch (timelineError) {
+                console.error('[session-meta] timeline persistence error', timelineError)
               }
-            } catch (timelineError) {
-              console.error('[session-meta] timeline persistence error', timelineError)
             }
           }
         }
