@@ -32,6 +32,43 @@ function toOptionalTrimmedString(value) {
   return trimmed ? trimmed : null
 }
 
+function toNumericVersion(value, fallback) {
+  if (value === null || value === undefined) return fallback
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return fallback
+    return Math.trunc(value)
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return fallback
+    const numericFromString = Number(trimmed)
+    if (Number.isFinite(numericFromString)) {
+      return Math.trunc(numericFromString)
+    }
+    const parsed = Date.parse(trimmed)
+    if (!Number.isNaN(parsed)) {
+      return Math.trunc(parsed)
+    }
+    return fallback
+  }
+  if (value instanceof Date) {
+    const time = value.getTime()
+    if (!Number.isFinite(time)) return fallback
+    return Math.trunc(time)
+  }
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+  return Math.trunc(numeric)
+}
+
+function isMissingRpcError(error, name) {
+  if (!error) return false
+  const text = `${error.message || ''} ${error.details || ''}`.toLowerCase()
+  return text.includes(name.toLowerCase()) && text.includes('does not exist')
+}
+
 function toSlotIndex(value, fallback) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric < 0) {
@@ -242,19 +279,93 @@ export default async function handler(req, res) {
     }
   })
 
-  const { error: deleteError } = await withTableQuery(supabaseAdmin, 'rank_match_roster', (from) =>
-    from.delete().eq('room_id', roomId),
-  )
-  if (deleteError) {
-    return res.status(400).json({ error: deleteError.message })
+  const slotTemplatePayload =
+    payload.slot_template && typeof payload.slot_template === 'object' ? payload.slot_template : {}
+
+  const verificationRoles = Array.isArray(slotTemplatePayload.roles)
+    ? slotTemplatePayload.roles
+    : Array.isArray(payload.roles)
+    ? payload.roles
+    : []
+  const verificationSlots = Array.isArray(slotTemplatePayload.slots)
+    ? slotTemplatePayload.slots
+    : Array.isArray(slotTemplatePayload.slot_map)
+    ? slotTemplatePayload.slot_map
+    : Array.isArray(payload.slots)
+    ? payload.slots
+    : []
+
+  if (verificationSlots.length) {
+    const { error: verifyError } = await supabaseAdmin.rpc('verify_rank_roles_and_slots', {
+      p_roles: verificationRoles,
+      p_slots: verificationSlots,
+    })
+
+    if (verifyError && !isMissingRpcError(verifyError, 'verify_rank_roles_and_slots')) {
+      return res.status(400).json({
+        error: 'roles_slots_invalid',
+        detail: verifyError.details || verifyError.message || null,
+      })
+    }
   }
 
-  const { error: insertError } = await withTableQuery(supabaseAdmin, 'rank_match_roster', (from) =>
-    from.insert(insertRows),
+  const slotTemplateVersion = toNumericVersion(
+    slotTemplatePayload.version ??
+      slotTemplatePayload.version_ms ??
+      slotTemplatePayload.updatedAt ??
+      slotTemplatePayload.updated_at,
+    Date.now(),
   )
-  if (insertError) {
-    return res.status(400).json({ error: insertError.message })
+
+  const slotTemplateSource =
+    toOptionalTrimmedString(slotTemplatePayload.source ?? slotTemplatePayload.origin) || 'room-stage'
+
+  const updatedAtRaw =
+    slotTemplatePayload.updated_at ??
+    slotTemplatePayload.updatedAt ??
+    (Number.isFinite(slotTemplateVersion) ? new Date(slotTemplateVersion).toISOString() : null)
+
+  let slotTemplateUpdatedAt
+  if (typeof updatedAtRaw === 'string') {
+    const parsed = new Date(updatedAtRaw)
+    slotTemplateUpdatedAt = Number.isNaN(parsed.getTime()) ? new Date(slotTemplateVersion).toISOString() : parsed.toISOString()
+  } else if (Number.isFinite(Number(updatedAtRaw))) {
+    slotTemplateUpdatedAt = new Date(Number(updatedAtRaw)).toISOString()
+  } else if (Number.isFinite(slotTemplateVersion)) {
+    slotTemplateUpdatedAt = new Date(slotTemplateVersion).toISOString()
+  } else {
+    slotTemplateUpdatedAt = now
   }
 
-  return res.status(200).json({ ok: true, staged: insertRows.length })
+  const rpcPayload = {
+    p_room_id: roomId,
+    p_game_id: gameId,
+    p_match_instance_id: matchInstanceId,
+    p_slot_template_version: slotTemplateVersion,
+    p_slot_template_source: slotTemplateSource,
+    p_slot_template_updated_at: slotTemplateUpdatedAt,
+    p_roster: insertRows,
+  }
+
+  const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('sync_rank_match_roster', rpcPayload)
+
+  if (rpcError) {
+    const message = rpcError.message || 'sync_failed'
+    if (message.includes('slot_version_conflict')) {
+      return res.status(409).json({ error: 'slot_version_conflict' })
+    }
+    if (message.includes('empty_roster')) {
+      return res.status(400).json({ error: 'empty_roster' })
+    }
+    return res.status(400).json({ error: message })
+  }
+
+  const summary = Array.isArray(rpcData) && rpcData.length ? rpcData[0] : null
+
+  return res.status(200).json({
+    ok: true,
+    staged: summary?.inserted_count ?? insertRows.length,
+    slot_template_version: summary?.slot_template_version ?? slotTemplateVersion,
+    slot_template_updated_at: summary?.slot_template_updated_at ?? slotTemplateUpdatedAt,
+  })
 }
