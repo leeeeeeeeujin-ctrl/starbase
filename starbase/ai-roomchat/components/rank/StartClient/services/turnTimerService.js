@@ -9,7 +9,7 @@ export function sanitizeSeconds(value, fallback = 60) {
 export function createTurnTimerService({
   baseSeconds,
   firstTurnBonusSeconds = 30,
-  dropInBonusSeconds = 40,
+  dropInBonusSeconds = 30,
 } = {}) {
   let base = sanitizeSeconds(baseSeconds)
   let firstTurnBonusAvailable = true
@@ -74,7 +74,9 @@ export function createTurnTimerService({
     getSnapshot() {
       return {
         baseSeconds: base,
+        firstTurnBonusSeconds,
         firstTurnBonusAvailable,
+        dropInBonusSeconds,
         pendingDropInBonus,
         lastTurnNumber,
         lastDropInAppliedTurn,
