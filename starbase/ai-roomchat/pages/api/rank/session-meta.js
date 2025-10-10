@@ -86,6 +86,16 @@ function safeClone(value) {
 
 const REALTIME_MODES = ['off', 'standard', 'pulse']
 
+const LEGACY_META_COLUMNS = [
+  'selected_time_limit_seconds',
+  'time_vote',
+  'drop_in_bonus_seconds',
+  'turn_state',
+  'async_fill_snapshot',
+  'realtime_mode',
+  'updated_at',
+]
+
 function sanitizeRealtimeMode(value) {
   const trimmed = toTrimmedString(value).toLowerCase()
   if (!trimmed) return 'off'
@@ -134,6 +144,164 @@ function sanitizeTurnStateEvent(rawEvent) {
     source: source || null,
     extras: extras || null,
   }
+}
+
+function isMissingFunctionError(error, functionName) {
+  if (!error) return false
+  const code = String(error.code || '')
+  if (code.toUpperCase() === '42883') return true
+  const merged = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`
+    .toLowerCase()
+    .trim()
+  if (!merged) return false
+  const needle = String(functionName || '').toLowerCase().trim()
+  if (!needle) return false
+  return merged.includes(`function ${needle}`) && merged.includes('does not exist')
+}
+
+function normalizeColumnToken(token) {
+  if (!token) return ''
+  const cleaned = String(token).replace(/"/g, '').trim()
+  if (!cleaned) return ''
+  const parts = cleaned.split('.')
+  const last = parts[parts.length - 1]
+  return String(last || '').trim().toLowerCase()
+}
+
+function extractMissingColumnNames(error) {
+  if (!error) return []
+  const segments = [error.message, error.details, error.hint]
+    .filter((value) => typeof value === 'string' && value)
+    .join(' ')
+  if (!segments) return []
+
+  const names = new Set()
+  const primaryRegex = /column\s+"?([A-Za-z0-9_\.]+)"?\s+does not exist/gi
+  let match = primaryRegex.exec(segments)
+  while (match) {
+    const normalized = normalizeColumnToken(match[1])
+    if (normalized) {
+      names.add(normalized)
+    }
+    match = primaryRegex.exec(segments)
+  }
+
+  if (names.size > 0) {
+    return Array.from(names)
+  }
+
+  const lowered = segments.toLowerCase()
+  if (!lowered.includes('does not exist')) return []
+
+  LEGACY_META_COLUMNS.forEach((column) => {
+    if (lowered.includes(column.toLowerCase())) {
+      names.add(column)
+    }
+  })
+
+  return Array.from(names)
+}
+
+function buildLegacyMetaRow(sessionId, metaPayload, skipColumns) {
+  const row = { session_id: sessionId }
+  const skip = skipColumns || new Set()
+
+  if (!skip.has('selected_time_limit_seconds')) {
+    row.selected_time_limit_seconds =
+      metaPayload.selected_time_limit_seconds ?? null
+  }
+
+  if (!skip.has('time_vote')) {
+    row.time_vote = metaPayload.time_vote ?? null
+  }
+
+  if (!skip.has('drop_in_bonus_seconds')) {
+    row.drop_in_bonus_seconds =
+      metaPayload.drop_in_bonus_seconds ?? null
+  }
+
+  if (!skip.has('turn_state')) {
+    row.turn_state = metaPayload.turn_state ?? null
+  }
+
+  if (!skip.has('async_fill_snapshot')) {
+    row.async_fill_snapshot = metaPayload.async_fill_snapshot ?? null
+  }
+
+  if (!skip.has('realtime_mode')) {
+    row.realtime_mode = metaPayload.realtime_mode ?? null
+  }
+
+  if (!skip.has('updated_at')) {
+    row.updated_at = new Date().toISOString()
+  }
+
+  return row
+}
+
+function buildLegacySelectColumns(skipColumns) {
+  const skip = skipColumns || new Set()
+  const columns = ['session_id']
+  LEGACY_META_COLUMNS.forEach((column) => {
+    if (!skip.has(column)) {
+      columns.push(column)
+    }
+  })
+  return columns.join(', ')
+}
+
+async function upsertMetaViaLegacyTable(client, sessionId, metaPayload, options = {}) {
+  const initialSkip = Array.isArray(options.initialSkip)
+    ? options.initialSkip
+    : []
+  const skipColumns = new Set(initialSkip.filter(Boolean).map((name) => name.toLowerCase()))
+  const maxAttempts = LEGACY_META_COLUMNS.length + 2
+  let attempt = 0
+  let lastError = null
+
+  while (attempt < maxAttempts) {
+    attempt += 1
+    const row = buildLegacyMetaRow(sessionId, metaPayload, skipColumns)
+    try {
+      const result = await withTableQuery(client, 'rank_session_meta', (from) =>
+        from
+          .upsert([row], { onConflict: 'session_id', ignoreDuplicates: false })
+          .select(buildLegacySelectColumns(skipColumns)),
+      )
+
+      if (!result.error) {
+        const payload = Array.isArray(result.data)
+          ? result.data[0] || null
+          : result.data || null
+        return { data: payload, error: null, skipped: skipColumns }
+      }
+
+      lastError = result.error
+
+      const missingColumns = extractMissingColumnNames(result.error)
+      if (!missingColumns.length) {
+        break
+      }
+
+      let appended = false
+      missingColumns.forEach((column) => {
+        const normalized = normalizeColumnToken(column)
+        if (normalized && normalized !== 'session_id' && !skipColumns.has(normalized)) {
+          skipColumns.add(normalized)
+          appended = true
+        }
+      })
+
+      if (!appended) {
+        break
+      }
+    } catch (error) {
+      lastError = error
+      break
+    }
+  }
+
+  return { data: null, error: lastError, skipped: skipColumns }
 }
 
 async function resolveSessionRoomId(sessionId, { fallbackRoomId = null, sessionOwnerId = null } = {}) {
@@ -443,6 +611,27 @@ export default async function handler(req, res) {
       metaError = fallbackError || null
     } catch (fallbackFailure) {
       metaError = fallbackFailure
+    }
+  }
+
+  if (metaError && (isMissingFunctionError(metaError, 'upsert_match_session_meta') || extractMissingColumnNames(metaError).length)) {
+    console.warn('[session-meta] RPC unavailable, attempting direct table upsert', {
+      code: metaError.code,
+      message: metaError.message,
+    })
+    const initialSkip = extractMissingColumnNames(metaError)
+    const legacyResult = await upsertMetaViaLegacyTable(
+      serviceRoleAuthFailed ? userClient : supabaseAdmin,
+      sessionId,
+      metaPayload,
+      { initialSkip },
+    )
+
+    if (!legacyResult.error) {
+      metaResult = legacyResult.data
+      metaError = null
+    } else {
+      metaError = legacyResult.error
     }
   }
 

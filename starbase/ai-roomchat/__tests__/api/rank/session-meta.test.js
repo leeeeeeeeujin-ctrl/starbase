@@ -57,6 +57,8 @@ describe('POST /api/rank/session-meta', () => {
   let participantGameEqMock
   let participantOwnerEqMock
   let participantMaybeSingleMock
+  let sessionMetaUpsertMock
+  let sessionMetaUpsertSelectMock
 
   beforeEach(() => {
     jest.resetModules()
@@ -134,6 +136,11 @@ describe('POST /api/rank/session-meta', () => {
     participantOwnerEqMock = jest.fn(() => ({ maybeSingle: participantMaybeSingleMock }))
     participantGameEqMock = jest.fn(() => ({ eq: participantOwnerEqMock, maybeSingle: participantMaybeSingleMock }))
     participantSelectMock = jest.fn(() => ({ eq: participantGameEqMock }))
+    sessionMetaUpsertSelectMock = jest.fn().mockResolvedValue({
+      data: [{ session_id: 'session-1' }],
+      error: null,
+    })
+    sessionMetaUpsertMock = jest.fn(() => ({ select: sessionMetaUpsertSelectMock }))
     fromMock = jest.fn((table) => {
       if (table === 'rank_sessions') {
         return { select: sessionSelectMock }
@@ -152,6 +159,9 @@ describe('POST /api/rank/session-meta', () => {
       }
       if (table === 'rank_participants') {
         return { select: participantSelectMock }
+      }
+      if (table === 'rank_session_meta') {
+        return { upsert: sessionMetaUpsertMock }
       }
       if (table === 'rank_session_timeline_events') {
         return { upsert: timelineUpsertMock }
@@ -777,5 +787,86 @@ describe('POST /api/rank/session-meta', () => {
     expect(res.statusCode).toBe(200)
     expect(res.body).toMatchObject({ ok: true, meta: expect.any(Object) })
     expect(timelineUpsertMock).not.toHaveBeenCalled()
+  })
+
+  it('falls back to direct table upsert when session meta RPC is missing', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'function upsert_match_session_meta(uuid) does not exist', code: '42883' },
+    })
+    sessionMetaUpsertSelectMock.mockResolvedValueOnce({
+      data: [
+        {
+          session_id: 'session-1',
+          selected_time_limit_seconds: 120,
+          realtime_mode: 'standard',
+        },
+      ],
+      error: null,
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: { selected_time_limit_seconds: 120, realtime_mode: 'standard' },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(sessionMetaUpsertMock).toHaveBeenCalledTimes(1)
+    expect(res.body.meta).toMatchObject({ selected_time_limit_seconds: 120, realtime_mode: 'standard' })
+  })
+
+  it('omits missing legacy columns when falling back to the table upsert', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'function upsert_match_session_meta does not exist', code: '42883' },
+    })
+    sessionMetaUpsertSelectMock
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          message: 'column "async_fill_snapshot" does not exist',
+          code: '42703',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            session_id: 'session-1',
+            turn_state: { turnNumber: 1 },
+          },
+        ],
+        error: null,
+      })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: {
+          async_fill_snapshot: { foo: 'bar' },
+          turn_state: { turnNumber: 1 },
+        },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(sessionMetaUpsertMock).toHaveBeenCalledTimes(2)
+    const firstPayload = sessionMetaUpsertMock.mock.calls[0][0][0]
+    const secondPayload = sessionMetaUpsertMock.mock.calls[1][0][0]
+    expect(firstPayload).toHaveProperty('async_fill_snapshot')
+    expect(secondPayload).not.toHaveProperty('async_fill_snapshot')
   })
 })
