@@ -106,8 +106,12 @@ describe('POST /api/rank/session-meta', () => {
     roomSlotFirstEqMock = jest.fn(() => ({ eq: roomSlotSecondEqMock, maybeSingle: roomSlotMaybeSingleMock }))
     roomSlotSelectMock = jest.fn(() => ({ eq: roomSlotFirstEqMock }))
     roomMaybeSingleMock = jest.fn().mockResolvedValue({ data: null, error: null })
-    roomEqMock = jest.fn(() => ({ maybeSingle: roomMaybeSingleMock }))
-    roomSelectMock = jest.fn(() => ({ eq: roomEqMock }))
+    const roomQueryApi = {
+      eq: jest.fn(),
+      maybeSingle: roomMaybeSingleMock,
+    }
+    roomEqMock = roomQueryApi.eq.mockImplementation(() => roomQueryApi)
+    roomSelectMock = jest.fn(() => roomQueryApi)
     matchmakingLimitMock = jest.fn().mockResolvedValue({ data: [], error: null })
     matchmakingEqMock = jest.fn()
     matchmakingOrderMock = jest.fn()
@@ -348,7 +352,7 @@ describe('POST /api/rank/session-meta', () => {
       error: null,
     })
     roomMaybeSingleMock.mockResolvedValueOnce({
-      data: { id: 'room-1', game_id: 'game-1' },
+      data: { id: 'room-1', owner_id: 'owner-99', game_id: 'game-1' },
       error: null,
     })
 
@@ -379,6 +383,45 @@ describe('POST /api/rank/session-meta', () => {
     expect(rpcMock).toHaveBeenCalled()
   })
 
+  it('allows collaborators when logs are missing but room belongs to session owner', async () => {
+    sessionMaybeSingleMock.mockResolvedValueOnce({
+      data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
+      error: null,
+    })
+    matchmakingLimitMock.mockResolvedValueOnce({ data: [], error: null })
+    roomMaybeSingleMock
+      .mockResolvedValueOnce({ data: { id: 'room-1', owner_id: 'owner-99' }, error: null })
+      .mockResolvedValueOnce({
+        data: { id: 'room-1', owner_id: 'owner-99', game_id: 'game-1' },
+        error: null,
+      })
+    roomSlotMaybeSingleMock.mockResolvedValueOnce({
+      data: { occupant_owner_id: 'user-1', room_id: 'room-1' },
+      error: null,
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        game_id: 'game-1',
+        room_id: 'room-1',
+        collaborators: ['user-1'],
+        meta: { selected_time_limit_seconds: 30 },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(matchmakingSelectMock).toHaveBeenCalled()
+    expect(roomEqMock).toHaveBeenCalledWith('owner_id', 'owner-99')
+    expect(res.statusCode).toBe(200)
+    expect(rpcMock).toHaveBeenCalled()
+  })
+
   it('rejects room collaborators when room game does not match session', async () => {
     sessionMaybeSingleMock.mockResolvedValueOnce({
       data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
@@ -393,7 +436,7 @@ describe('POST /api/rank/session-meta', () => {
       error: null,
     })
     roomMaybeSingleMock.mockResolvedValueOnce({
-      data: { id: 'room-2', game_id: 'other-game' },
+      data: { id: 'room-2', owner_id: 'owner-99', game_id: 'other-game' },
       error: null,
     })
 
@@ -417,6 +460,46 @@ describe('POST /api/rank/session-meta', () => {
     expect(roomSelectMock).toHaveBeenCalled()
     expect(matchmakingSelectMock).toHaveBeenCalled()
     expect(roomSlotFirstEqMock).toHaveBeenCalledWith('room_id', 'room-2')
+    expect(res.statusCode).toBe(403)
+    expect(res.body).toEqual({ error: 'forbidden' })
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects room collaborators when room owner differs from session owner', async () => {
+    sessionMaybeSingleMock.mockResolvedValueOnce({
+      data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
+      error: null,
+    })
+    matchmakingLimitMock.mockResolvedValueOnce({
+      data: [{ room_id: 'room-2' }],
+      error: null,
+    })
+    roomSlotMaybeSingleMock.mockResolvedValueOnce({
+      data: { occupant_owner_id: 'user-1', room_id: 'room-2' },
+      error: null,
+    })
+    roomMaybeSingleMock.mockResolvedValueOnce({
+      data: { id: 'room-2', owner_id: 'other-owner', game_id: 'game-1' },
+      error: null,
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        game_id: 'game-1',
+        room_id: 'room-2',
+        collaborators: ['user-1'],
+        meta: {},
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(roomSelectMock).toHaveBeenCalled()
     expect(res.statusCode).toBe(403)
     expect(res.body).toEqual({ error: 'forbidden' })
     expect(rpcMock).not.toHaveBeenCalled()
@@ -451,6 +534,37 @@ describe('POST /api/rank/session-meta', () => {
 
     expect(matchmakingSelectMock).toHaveBeenCalled()
     expect(roomSlotFirstEqMock).toHaveBeenCalledWith('room_id', 'room-99')
+    expect(res.statusCode).toBe(403)
+    expect(res.body).toEqual({ error: 'forbidden' })
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects collaborators when fallback room is owned by someone else', async () => {
+    sessionMaybeSingleMock.mockResolvedValueOnce({
+      data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
+      error: null,
+    })
+    matchmakingLimitMock.mockResolvedValueOnce({ data: [], error: null })
+    roomMaybeSingleMock.mockResolvedValueOnce({ data: null, error: null })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        game_id: 'game-1',
+        room_id: 'room-2',
+        collaborators: ['user-1'],
+        meta: {},
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(matchmakingSelectMock).toHaveBeenCalled()
+    expect(roomEqMock).toHaveBeenCalledWith('owner_id', 'owner-99')
     expect(res.statusCode).toBe(403)
     expect(res.body).toEqual({ error: 'forbidden' })
     expect(rpcMock).not.toHaveBeenCalled()

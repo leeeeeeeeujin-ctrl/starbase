@@ -136,15 +136,15 @@ function sanitizeTurnStateEvent(rawEvent) {
   }
 }
 
-async function resolveSessionRoomId(sessionId) {
-  const normalized = toOptionalUuid(sessionId)
-  if (!normalized) return null
+async function resolveSessionRoomId(sessionId, { fallbackRoomId = null, sessionOwnerId = null } = {}) {
+  const normalizedSessionId = toOptionalUuid(sessionId)
+  if (!normalizedSessionId) return null
 
   try {
     const { data, error } = await withTableQuery(supabaseAdmin, 'rank_matchmaking_logs', (from) =>
       from
         .select('room_id')
-        .eq('session_id', normalized)
+        .eq('session_id', normalizedSessionId)
         .order('created_at', { ascending: false })
         .limit(1),
     )
@@ -155,11 +155,39 @@ async function resolveSessionRoomId(sessionId) {
     }
 
     const row = Array.isArray(data) && data.length ? data[0] : null
-    return toOptionalUuid(row?.room_id)
+    const matchedRoomId = toOptionalUuid(row?.room_id)
+    if (matchedRoomId) {
+      return matchedRoomId
+    }
   } catch (lookupError) {
     console.error('[session-meta] session room query error:', lookupError)
+  }
+
+  const normalizedOwnerId = toOptionalUuid(sessionOwnerId)
+  const normalizedFallbackRoomId = toOptionalUuid(fallbackRoomId)
+
+  if (!normalizedFallbackRoomId || !normalizedOwnerId) {
     return null
   }
+
+  try {
+    const { data: roomRow, error: roomError } = await withTableQuery(supabaseAdmin, 'rank_rooms', (from) =>
+      from.select('id').eq('id', normalizedFallbackRoomId).eq('owner_id', normalizedOwnerId).maybeSingle(),
+    )
+
+    if (roomError) {
+      console.error('[session-meta] fallback room lookup failed:', roomError)
+      return null
+    }
+
+    if (roomRow?.id === normalizedFallbackRoomId) {
+      return normalizedFallbackRoomId
+    }
+  } catch (fallbackError) {
+    console.error('[session-meta] fallback room query error:', fallbackError)
+  }
+
+  return null
 }
 
 export default async function handler(req, res) {
@@ -191,6 +219,7 @@ export default async function handler(req, res) {
   }
 
   const gameId = toOptionalUuid(payload.game_id ?? payload.gameId)
+  const roomId = toOptionalUuid(payload.room_id ?? payload.roomId)
   const matchInstanceId = toTrimmedString(payload.match_instance_id ?? payload.matchInstanceId)
   const collaborators = parseCollaborators(
     payload.collaborators ?? payload.shared_owners ?? payload.sharedOwners,
@@ -229,7 +258,10 @@ export default async function handler(req, res) {
   let sessionRoomId = null
 
   if (!authorized) {
-    sessionRoomId = await resolveSessionRoomId(sessionId)
+    sessionRoomId = await resolveSessionRoomId(sessionId, {
+      fallbackRoomId: roomId,
+      sessionOwnerId: ownerId,
+    })
   }
 
   if (!authorized && sessionRoomId) {
@@ -249,12 +281,12 @@ export default async function handler(req, res) {
       } else if (slotRow) {
         let roomMatchesSession = true
 
-        if (sessionGameId) {
+        if (ownerId || sessionGameId) {
           try {
             const { data: roomRow, error: roomError } = await withTableQuery(
               supabaseAdmin,
               'rank_rooms',
-              (from) => from.select('id, game_id').eq('id', sessionRoomId).maybeSingle(),
+              (from) => from.select('id, owner_id, game_id').eq('id', sessionRoomId).maybeSingle(),
             )
 
             if (roomError) {
@@ -263,9 +295,18 @@ export default async function handler(req, res) {
             } else if (!roomRow) {
               roomMatchesSession = false
             } else {
-              const roomGameId = toOptionalUuid(roomRow.game_id)
-              if (roomGameId && roomGameId !== sessionGameId) {
-                roomMatchesSession = false
+              if (ownerId) {
+                const roomOwnerId = toOptionalUuid(roomRow.owner_id)
+                if (!roomOwnerId || roomOwnerId !== ownerId) {
+                  roomMatchesSession = false
+                }
+              }
+
+              if (roomMatchesSession && sessionGameId) {
+                const roomGameId = toOptionalUuid(roomRow.game_id)
+                if (roomGameId && roomGameId !== sessionGameId) {
+                  roomMatchesSession = false
+                }
               }
             }
           } catch (roomQueryError) {
