@@ -1,14 +1,48 @@
 // components/rank/GameRoomView.js
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 
 import styles from './GameRoomView.module.css'
-import TimelineSection from './Timeline/TimelineSection'
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
 import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary'
 import { normalizeTimelineEvents } from '@/lib/rank/timelineEvents'
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '../../lib/rank/realtimeModes'
+import {
+  DEFAULT_COMPRESSOR_SETTINGS,
+  DEFAULT_EQ_SETTINGS,
+  DEFAULT_REVERB_SETTINGS,
+  buildHeroAudioProfileKey,
+  eqSettingsAreEqual,
+  compressorSettingsAreEqual,
+  diffAudioPreferenceChanges,
+  extractHeroAudioEffectSnapshot,
+  formatDbLabel,
+  formatDurationLabel,
+  formatMillisecondsLabel,
+  formatPercentLabel,
+  formatRatioLabel,
+  formatSecondsLabel,
+  normalizeAudioPreferenceRecord,
+  normalizeCompressorSettings,
+  normalizeEqSettings,
+  normalizeHeroAudioProfile,
+  normalizeReverbSettings,
+  reverbSettingsAreEqual,
+} from '@/lib/rank/gameRoomAudio'
+import { buildBattleLine, buildReplayEntries, ensureArray, formatDate } from '@/lib/rank/gameRoomHistory'
+
+const GameRoomHistoryPane = dynamic(() => import('./GameRoomHistoryPane'), {
+  loading: () => (
+    <section className={styles.section}>
+      <div className={styles.sectionHeader}>
+        <h2 className={styles.sectionTitle}>기록을 불러오는 중…</h2>
+      </div>
+      <div className={styles.loadingCard}>타임라인 데이터를 준비하고 있습니다…</div>
+    </section>
+  ),
+})
 
 const RULE_OPTION_METADATA = {
   nerf_insight: {
@@ -57,10 +91,6 @@ const RULE_OPTION_METADATA = {
   },
 }
 
-const DEFAULT_EQ_SETTINGS = { enabled: false, low: 0, mid: 0, high: 0 }
-const DEFAULT_REVERB_SETTINGS = { enabled: false, mix: 0.3, decay: 1.8 }
-const DEFAULT_COMPRESSOR_SETTINGS = { enabled: false, threshold: -28, ratio: 2.5, release: 0.25 }
-
 function compareParticipantsByScore(a, b) {
   const scoreA = Number.isFinite(Number(a?.score)) ? Number(a.score) : -Infinity
   const scoreB = Number.isFinite(Number(b?.score)) ? Number(b.score) : -Infinity
@@ -78,420 +108,12 @@ const TABS = [
 
 const TIMELINE_EVENT_LIMIT = 80
 
-function clamp(value, min, max, fallback) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) {
-    return Number.isFinite(fallback) ? fallback : min
-  }
-  return Math.min(Math.max(number, min), max)
+
+function joinClassNames(...values) {
+  return values.filter(Boolean).join(' ')
 }
 
-function normalizeEqSettings(raw) {
-  if (!raw || typeof raw !== 'object') {
-    return { ...DEFAULT_EQ_SETTINGS }
-  }
 
-  const enabled = Boolean(
-    typeof raw.enabled === 'boolean'
-      ? raw.enabled
-      : typeof raw.eqEnabled === 'boolean'
-      ? raw.eqEnabled
-      : raw.active,
-  )
-
-  return {
-    enabled,
-    low: clamp(raw.low ?? raw.bass ?? 0, -12, 12, 0),
-    mid: clamp(raw.mid ?? raw.middle ?? 0, -12, 12, 0),
-    high: clamp(raw.high ?? raw.treble ?? 0, -12, 12, 0),
-  }
-}
-
-function normalizeReverbSettings(raw) {
-  if (!raw || typeof raw !== 'object') {
-    return { ...DEFAULT_REVERB_SETTINGS }
-  }
-
-  const enabled = Boolean(
-    typeof raw.enabled === 'boolean'
-      ? raw.enabled
-      : typeof raw.reverbEnabled === 'boolean'
-      ? raw.reverbEnabled
-      : raw.active,
-  )
-
-  return {
-    enabled,
-    mix: clamp(raw.mix ?? raw.wet ?? 0.3, 0, 1, 0.3),
-    decay: clamp(raw.decay ?? raw.duration ?? 1.8, 0.1, 6, 1.8),
-  }
-}
-
-function normalizeCompressorSettings(raw) {
-  if (!raw || typeof raw !== 'object') {
-    return { ...DEFAULT_COMPRESSOR_SETTINGS }
-  }
-
-  const enabled = Boolean(
-    typeof raw.enabled === 'boolean'
-      ? raw.enabled
-      : typeof raw.compressorEnabled === 'boolean'
-      ? raw.compressorEnabled
-      : raw.active,
-  )
-
-  return {
-    enabled,
-    threshold: clamp(raw.threshold ?? raw.level ?? -28, -60, 0, -28),
-    ratio: clamp(raw.ratio ?? raw.amount ?? 2.5, 1, 20, 2.5),
-    release: clamp(raw.release ?? raw.tail ?? 0.25, 0.05, 2, 0.25),
-  }
-}
-
-function eqSettingsAreEqual(a, b) {
-  const first = normalizeEqSettings(a)
-  const second = normalizeEqSettings(b)
-  const lowDelta = Math.abs((first.low ?? 0) - (second.low ?? 0))
-  const midDelta = Math.abs((first.mid ?? 0) - (second.mid ?? 0))
-  const highDelta = Math.abs((first.high ?? 0) - (second.high ?? 0))
-  return first.enabled === second.enabled && lowDelta < 0.001 && midDelta < 0.001 && highDelta < 0.001
-}
-
-function reverbSettingsAreEqual(a, b) {
-  const first = normalizeReverbSettings(a)
-  const second = normalizeReverbSettings(b)
-  const mixDelta = Math.abs((first.mix ?? 0) - (second.mix ?? 0))
-  const decayDelta = Math.abs((first.decay ?? 0) - (second.decay ?? 0))
-  return first.enabled === second.enabled && mixDelta < 0.001 && decayDelta < 0.001
-}
-
-function compressorSettingsAreEqual(a, b) {
-  const first = normalizeCompressorSettings(a)
-  const second = normalizeCompressorSettings(b)
-  const thresholdDelta = Math.abs((first.threshold ?? 0) - (second.threshold ?? 0))
-  const ratioDelta = Math.abs((first.ratio ?? 0) - (second.ratio ?? 0))
-  const releaseDelta = Math.abs((first.release ?? 0) - (second.release ?? 0))
-  return (
-    first.enabled === second.enabled &&
-    thresholdDelta < 0.001 &&
-    ratioDelta < 0.001 &&
-    releaseDelta < 0.001
-  )
-}
-
-function buildHeroAudioProfileKey(profile) {
-  if (!profile) return null
-  const source = typeof profile.source === 'string' && profile.source ? profile.source : 'unknown'
-  if (profile.heroId) {
-    return `${source}:${profile.heroId}`
-  }
-  const label = typeof profile.heroName === 'string' ? profile.heroName.trim().toLowerCase() : ''
-  if (label) {
-    return `${source}:${label}`
-  }
-  return source
-}
-
-function normalizeAudioPreferenceRecord(record) {
-  if (!record || typeof record !== 'object') {
-    return null
-  }
-
-  return {
-    trackId: record.track_id || record.trackId || null,
-    presetId: record.preset_id || record.presetId || null,
-    manualOverride: Boolean(record.manual_override ?? record.manualOverride ?? false),
-    eq: normalizeEqSettings(record.eq_settings || record.eqSettings),
-    reverb: normalizeReverbSettings(record.reverb_settings || record.reverbSettings),
-    compressor: normalizeCompressorSettings(record.compressor_settings || record.compressorSettings),
-  }
-}
-
-function extractHeroAudioEffectSnapshot(state) {
-  if (!state) return null
-
-  return {
-    eq: {
-      enabled: Boolean(state.eqEnabled),
-      low: clamp(state.equalizer?.low ?? 0, -12, 12, 0),
-      mid: clamp(state.equalizer?.mid ?? 0, -12, 12, 0),
-      high: clamp(state.equalizer?.high ?? 0, -12, 12, 0),
-    },
-    reverb: {
-      enabled: Boolean(state.reverbEnabled),
-      mix: clamp(state.reverbDetail?.mix ?? 0.3, 0, 1, 0.3),
-      decay: clamp(state.reverbDetail?.decay ?? 1.8, 0.1, 6, 1.8),
-    },
-    compressor: {
-      enabled: Boolean(state.compressorEnabled),
-      threshold: clamp(state.compressorDetail?.threshold ?? -28, -60, 0, -28),
-      ratio: clamp(state.compressorDetail?.ratio ?? 2.5, 1, 20, 2.5),
-      release: clamp(state.compressorDetail?.release ?? 0.25, 0.05, 2, 0.25),
-    },
-  }
-}
-
-function diffAudioPreferenceChanges(prev, next) {
-  if (!next) return []
-  const changes = []
-  if (!prev) {
-    changes.push('initial')
-  }
-
-  if ((prev?.trackId || null) !== (next.trackId || null)) {
-    if (next.trackId || prev?.trackId) {
-      changes.push('trackId')
-    }
-  }
-
-  if ((prev?.presetId || null) !== (next.presetId || null)) {
-    if (next.presetId || prev?.presetId) {
-      changes.push('presetId')
-    }
-  }
-
-  if (Boolean(prev?.manualOverride) !== Boolean(next.manualOverride)) {
-    changes.push('manualOverride')
-  }
-
-  const prevEq = prev?.eq || null
-  const nextEq = next.eq || null
-  if (
-    !prevEq ||
-    !nextEq ||
-    Boolean(prevEq.enabled) !== Boolean(nextEq.enabled) ||
-    prevEq.low !== nextEq.low ||
-    prevEq.mid !== nextEq.mid ||
-    prevEq.high !== nextEq.high
-  ) {
-    changes.push('eq')
-  }
-
-  const prevReverb = prev?.reverb || null
-  const nextReverb = next.reverb || null
-  if (
-    !prevReverb ||
-    !nextReverb ||
-    Boolean(prevReverb.enabled) !== Boolean(nextReverb.enabled) ||
-    prevReverb.mix !== nextReverb.mix ||
-    prevReverb.decay !== nextReverb.decay
-  ) {
-    changes.push('reverb')
-  }
-
-  const prevCompressor = prev?.compressor || null
-  const nextCompressor = next.compressor || null
-  if (
-    !prevCompressor ||
-    !nextCompressor ||
-    Boolean(prevCompressor.enabled) !== Boolean(nextCompressor.enabled) ||
-    prevCompressor.threshold !== nextCompressor.threshold ||
-    prevCompressor.ratio !== nextCompressor.ratio ||
-    prevCompressor.release !== nextCompressor.release
-  ) {
-    changes.push('compressor')
-  }
-
-  return Array.from(new Set(changes))
-}
-
-function normalizeHeroAudioProfile(rawHero, { fallbackHeroId = null, fallbackHeroName = '' } = {}) {
-  if (!rawHero || typeof rawHero !== 'object') {
-    return null
-  }
-
-  const bgmUrl = rawHero.bgm_url || rawHero.bgmUrl || null
-  if (!bgmUrl) {
-    return null
-  }
-
-  const rawDuration =
-    rawHero.bgm_duration_seconds ?? rawHero.bgmDurationSeconds ?? rawHero.bgmDuration ?? rawHero.duration
-  const duration = Number.isFinite(Number(rawDuration)) && Number(rawDuration) > 0
-    ? Math.round(Number(rawDuration))
-    : null
-
-  const audioProfile = rawHero.audio_profile || rawHero.audioProfile || null
-  const trackSources = []
-
-  if (audioProfile) {
-    const playlists = []
-    if (Array.isArray(audioProfile.playlist)) {
-      playlists.push(...audioProfile.playlist)
-    }
-    if (Array.isArray(audioProfile.tracks)) {
-      playlists.push(...audioProfile.tracks)
-    }
-    if (Array.isArray(audioProfile.bgms)) {
-      playlists.push(...audioProfile.bgms)
-    }
-    playlists.forEach((entry) => {
-      if (!entry || typeof entry !== 'object') return
-      trackSources.push(entry)
-    })
-  }
-
-  const heroBgms = rawHero.hero_bgms || rawHero.heroBgms
-  if (Array.isArray(heroBgms)) {
-    heroBgms.forEach((entry) => {
-      if (!entry || typeof entry !== 'object') return
-      trackSources.push(entry)
-    })
-  }
-
-  const sanitizedTracks = []
-  const seenUrls = new Set()
-
-  trackSources.forEach((entry, index) => {
-    const url = entry.url || entry.src || entry.href || null
-    if (!url || typeof url !== 'string') {
-      return
-    }
-    if (seenUrls.has(url)) {
-      return
-    }
-    seenUrls.add(url)
-
-    const trackId =
-      entry.id || entry.key || entry.slug || (typeof entry.label === 'string' && entry.label.trim())
-        || `track-${index}`
-
-    const durationValue =
-      entry.duration_seconds ?? entry.durationSeconds ?? entry.duration ?? entry.length ?? null
-
-    sanitizedTracks.push({
-      id: trackId,
-      label:
-        entry.label || entry.name || entry.title || entry.displayName || `${fallbackHeroName || '브금'} 트랙`,
-      url,
-      duration: Number.isFinite(Number(durationValue)) ? Math.max(0, Math.round(Number(durationValue))) : null,
-      type: entry.type || entry.kind || entry.mood || null,
-      presetId: entry.preset_id || entry.presetId || entry.preset || null,
-      sortOrder: Number.isFinite(Number(entry.sort_order || entry.sortOrder))
-        ? Number(entry.sort_order || entry.sortOrder)
-        : index,
-    })
-  })
-
-  if (bgmUrl && !seenUrls.has(bgmUrl)) {
-    sanitizedTracks.push({
-      id: 'primary-track',
-      label: `${fallbackHeroName || rawHero.name || '대표'} 테마`,
-      url: bgmUrl,
-      duration,
-      type: '대표',
-      presetId: null,
-      sortOrder: -1,
-    })
-  }
-
-  sanitizedTracks.sort((a, b) => {
-    if (a.sortOrder === b.sortOrder) {
-      return a.label.localeCompare(b.label)
-    }
-    return a.sortOrder - b.sortOrder
-  })
-
-  const defaultTrackIdRaw =
-    audioProfile?.defaultTrackId || audioProfile?.defaultTrack || audioProfile?.initialTrack || null
-
-  const defaultTrack = sanitizedTracks.find((track) => track.id === defaultTrackIdRaw) || sanitizedTracks[0] || null
-
-  const eqSettings = normalizeEqSettings(
-    audioProfile?.eq || audioProfile?.equalizer || rawHero.audio_eq || rawHero.audioEq,
-  )
-  const reverbSettings = normalizeReverbSettings(
-    audioProfile?.reverb || rawHero.audio_reverb || rawHero.audioReverb,
-  )
-  const compressorSettings = normalizeCompressorSettings(
-    audioProfile?.compressor || rawHero.audio_compressor || rawHero.audioCompressor,
-  )
-
-  const rawPresets = []
-  if (audioProfile?.presets && Array.isArray(audioProfile.presets)) {
-    rawPresets.push(...audioProfile.presets)
-  } else if (audioProfile?.presetMap && typeof audioProfile.presetMap === 'object') {
-    Object.entries(audioProfile.presetMap).forEach(([key, value]) => {
-      rawPresets.push({ id: key, ...(value || {}) })
-    })
-  }
-
-  const presets = rawPresets
-    .map((preset, index) => {
-      if (!preset || typeof preset !== 'object') return null
-      const id = preset.id || preset.key || preset.slug || `preset-${index}`
-      const label = preset.label || preset.name || preset.title || `프리셋 ${index + 1}`
-      return {
-        id,
-        label,
-        description: preset.description || preset.summary || '',
-        eq: preset.eq || preset.equalizer ? normalizeEqSettings(preset.eq || preset.equalizer) : null,
-        reverb: preset.reverb ? normalizeReverbSettings(preset.reverb) : null,
-        compressor: preset.compressor ? normalizeCompressorSettings(preset.compressor) : null,
-        tags: Array.isArray(preset.tags)
-          ? preset.tags.filter((tag) => typeof tag === 'string' && tag.trim()).map((tag) => tag.trim())
-          : [],
-      }
-    })
-    .filter(Boolean)
-
-  const defaultPresetIdRaw =
-    audioProfile?.defaultPresetId || audioProfile?.defaultPreset || audioProfile?.initialPreset || null
-
-  const defaultPreset = presets.find((preset) => preset.id === defaultPresetIdRaw) || null
-
-  return {
-    heroId: rawHero.id || fallbackHeroId || null,
-    heroName: rawHero.name || fallbackHeroName || '',
-    bgmUrl,
-    bgmDuration: duration,
-    tracks: sanitizedTracks,
-    defaultTrackId: defaultTrack?.id || null,
-    eq: eqSettings,
-    reverb: reverbSettings,
-    compressor: compressorSettings,
-    presets,
-    defaultPresetId: defaultPreset?.id || null,
-  }
-}
-
-function formatDurationLabel(seconds) {
-  if (!Number.isFinite(Number(seconds)) || Number(seconds) <= 0) {
-    return null
-  }
-
-  const total = Math.max(0, Math.round(Number(seconds)))
-  const mins = Math.floor(total / 60)
-  const secs = total % 60
-  return `${mins}:${String(secs).padStart(2, '0')}`
-}
-
-function formatDbLabel(value) {
-  if (!Number.isFinite(value)) return '0dB'
-  const rounded = Math.round(value * 10) / 10
-  const sign = rounded > 0 ? '+' : ''
-  return `${sign}${rounded.toFixed(1)}dB`
-}
-
-function formatPercentLabel(value) {
-  if (!Number.isFinite(value)) return '0%'
-  return `${Math.round(Math.min(Math.max(value, 0), 1) * 100)}%`
-}
-
-function formatSecondsLabel(value) {
-  if (!Number.isFinite(value)) return '0.0s'
-  return `${(Math.round(Math.max(value, 0) * 10) / 10).toFixed(1)}s`
-}
-
-function formatMillisecondsLabel(value) {
-  if (!Number.isFinite(value)) return '0ms'
-  return `${Math.round(Math.max(value, 0) * 1000)}ms`
-}
-
-function formatRatioLabel(value) {
-  if (!Number.isFinite(value)) return '1.0:1'
-  return `${(Math.round(Math.max(value, 0) * 10) / 10).toFixed(1)}:1`
-}
 
 function interpretRulesShape(value) {
   if (!value) return { type: 'empty' }
@@ -621,77 +243,13 @@ function renderRules(rules) {
   }
 }
 
-function formatDate(value) {
-  if (!value) return ''
-  try {
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
-    return date.toLocaleString()
-  } catch (error) {
-    return ''
-  }
-}
 
-function ensureArray(value) {
-  if (Array.isArray(value)) return value
-  if (value === null || value === undefined) return []
-  return []
-}
 
-function buildHistorySearchText(parts = []) {
-  const tokens = []
-  parts.forEach((part) => {
-    if (part === null || part === undefined) return
-    if (Array.isArray(part)) {
-      part.forEach((nested) => {
-        if (nested === null || nested === undefined) return
-        if (typeof nested === 'string') {
-          const trimmed = nested.trim()
-          if (trimmed) tokens.push(trimmed.toLowerCase())
-        } else if (typeof nested === 'number' && Number.isFinite(nested)) {
-          tokens.push(String(nested))
-        }
-      })
-      return
-    }
 
-    if (typeof part === 'string') {
-      const trimmed = part.trim()
-      if (trimmed) tokens.push(trimmed.toLowerCase())
-      return
-    }
 
-    if (typeof part === 'number' && Number.isFinite(part)) {
-      tokens.push(String(part))
-    }
-  })
 
-  return tokens.join(' ')
-}
 
-function buildBattleLine(battle, heroNameMap) {
-  const attackers = ensureArray(battle.attacker_hero_ids).map((id) => heroNameMap.get(id) || '알 수 없음')
-  const defenders = ensureArray(battle.defender_hero_ids).map((id) => heroNameMap.get(id) || '알 수 없음')
-  const createdAt = formatDate(battle.created_at)
-  const score = Number.isFinite(Number(battle.score_delta)) && Number(battle.score_delta) !== 0
-    ? `${Number(battle.score_delta) > 0 ? '+' : ''}${Number(battle.score_delta)}`
-    : null
-  const parts = []
-  if (createdAt) parts.push(createdAt)
-  if (attackers.length || defenders.length) {
-    const matchUp = `${attackers.length ? attackers.join(', ') : '공격'} vs ${
-      defenders.length ? defenders.join(', ') : '방어'
-    }`
-    parts.push(matchUp)
-  }
-  if (battle.result) parts.push(battle.result)
-  if (score) parts.push(`${score}점`)
-  return {
-    id: battle.id,
-    text: parts.join(' · '),
-    result: battle.result || '',
-  }
-}
+
 
 function formatNumber(value) {
   if (value === null || value === undefined) return '0'
@@ -700,58 +258,9 @@ function formatNumber(value) {
   return numeric.toLocaleString()
 }
 
-function buildReplayEntries(sessions = [], { type = 'personal' } = {}) {
-  const entries = []
-  sessions.forEach((session, index) => {
-    const battleLog = session?.battleLog || session?.battle_log || null
-    if (!battleLog || typeof battleLog !== 'object') return
-    const payload = battleLog.payload && typeof battleLog.payload === 'object' ? battleLog.payload : null
-    if (!payload) return
 
-    const meta = payload.meta && typeof payload.meta === 'object' ? payload.meta : {}
-    const turns = Array.isArray(payload.turns) ? payload.turns : []
-    const timeline = Array.isArray(payload.timeline) ? payload.timeline : []
-    const dropIn = meta.dropIn && typeof meta.dropIn === 'object' ? meta.dropIn : null
-    const baseId = session?.sessionId || session?.session_id || session?.id || `session-${index}`
 
-    entries.push({
-      id: `${type}-${baseId}`,
-      label: type === 'shared' ? `세션 ${index + 1}` : `내 세션 ${index + 1}`,
-      result: battleLog.result || meta.result || 'unknown',
-      reason: battleLog.reason || meta.reason || null,
-      generatedAt:
-        meta.generatedAt ||
-        battleLog.created_at ||
-        battleLog.updated_at ||
-        session?.sessionCreatedAt ||
-        session?.created_at ||
-        null,
-      turnCount: Number.isFinite(meta.turnCount) ? meta.turnCount : turns.length,
-      timelineCount: Number.isFinite(meta.timelineEventCount) ? meta.timelineEventCount : timeline.length,
-      dropIn,
-      payload,
-    })
-  })
-  return entries
-}
 
-function describeDropInSummary(dropIn) {
-  if (!dropIn || typeof dropIn !== 'object') return null
-  const roles = Array.isArray(dropIn.roles) ? dropIn.roles : []
-  if (!roles.length) return null
-  const summaries = roles
-    .map((role) => {
-      if (!role || typeof role !== 'object') return null
-      const name = typeof role.role === 'string' ? role.role : '역할'
-      const arrivals = Number(role.totalArrivals) || 0
-      const replacements = Number(role.replacements) || 0
-      if (!arrivals && !replacements) return null
-      return `${name}: 합류 ${arrivals}회, 교체 ${replacements}회`
-    })
-    .filter(Boolean)
-  if (!summaries.length) return null
-  return summaries.join(' · ')
-}
 
 function formatWinRate(value) {
   if (value === null || value === undefined) return '기록 없음'
@@ -828,12 +337,28 @@ export default function GameRoomView({
   const [leaveLoading, setLeaveLoading] = useState(false)
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
   const [activeTab, setActiveTab] = useState(TABS[0].key)
+  const [isCompactLayout, setIsCompactLayout] = useState(false)
+  const [compactInfoOpen, setCompactInfoOpen] = useState(false)
   const [spectatorTimelineCollapsed, setSpectatorTimelineCollapsed] = useState(false)
   const [personalTimelineCollapsed, setPersonalTimelineCollapsed] = useState(false)
+  const toggleSpectatorTimeline = useCallback(() => {
+    setSpectatorTimelineCollapsed((prev) => !prev)
+  }, [])
+  const togglePersonalTimeline = useCallback(() => {
+    setPersonalTimelineCollapsed((prev) => !prev)
+  }, [])
+  const handleCompactInfoToggle = useCallback(() => {
+    setCompactInfoOpen((prev) => !prev)
+  }, [])
+  const handleCompactInfoClose = useCallback(() => {
+    setCompactInfoOpen(false)
+  }, [])
   const touchStartRef = useRef(null)
   const profileCloseRef = useRef(null)
   const profileTitleId = useId()
   const profileDescriptionId = useId()
+  const summaryTitleId = useId()
+  const summaryDescriptionId = useId()
   const audioManager = useMemo(() => {
     if (typeof window === 'undefined') {
       return null
@@ -872,6 +397,47 @@ export default function GameRoomView({
   const realtimeEnabled = isRealtimeEnabled(realtimeMode)
   const realtimeChipLabel =
     realtimeMode === REALTIME_MODES.PULSE ? 'Pulse 실시간' : '실시간'
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined
+    }
+
+    const handleResize = () => {
+      setIsCompactLayout(window.innerWidth <= 720)
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isCompactLayout) {
+      setCompactInfoOpen(false)
+    }
+  }, [isCompactLayout])
+
+  useEffect(() => {
+    if (!compactInfoOpen) {
+      return undefined
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setCompactInfoOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [compactInfoOpen])
 
   const formatSessionTimestamp = useCallback((value) => {
     if (!value) return ''
@@ -1226,6 +792,11 @@ export default function GameRoomView({
       }
     })
     return map
+  }, [participants])
+
+  const participantCountLabel = useMemo(() => {
+    const count = Array.isArray(participants) ? participants.length : 0
+    return `${count.toLocaleString()}명 참여`
   }, [participants])
 
   const baseHeroAudioProfile = useMemo(() => {
@@ -2607,133 +2178,17 @@ export default function GameRoomView({
         )}
       </section>
 
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>관전 타임라인</h2>
-          {spectatorTimeline.length ? (
-            <span className={styles.sectionBadge}>{spectatorTimeline.length}</span>
-          ) : null}
-        </div>
-        <div className={styles.timelineContainer}>
-          <TimelineSection
-            title="실시간 이벤트"
-            events={spectatorTimeline}
-            collapsed={spectatorTimelineCollapsed}
-            onToggle={() => setSpectatorTimelineCollapsed((prev) => !prev)}
-            emptyMessage="아직 관전 타임라인 이벤트가 없습니다."
-            collapsedNotice="타임라인을 접었습니다. 펼쳐서 경고·난입, API 키 교체 이벤트를 확인하세요."
-          />
-        </div>
-      </section>
-
-      {personalTimeline.length ? (
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>내 세션 타임라인</h2>
-            <span className={styles.sectionBadge}>{personalTimeline.length}</span>
-          </div>
-          <div className={styles.timelineContainer}>
-            <TimelineSection
-              title="최근 자동 진행 이벤트"
-              events={personalTimeline}
-              collapsed={personalTimelineCollapsed}
-              onToggle={() => setPersonalTimelineCollapsed((prev) => !prev)}
-              emptyMessage="아직 기록된 타임라인 이벤트가 없습니다."
-              collapsedNotice="타임라인을 접었습니다. 펼쳐서 내 세션의 경고·난입 이벤트를 확인하세요."
-            />
-          </div>
-        </section>
-      ) : null}
-
-      {personalReplays.length ? (
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>내 세션 베틀로그</h2>
-            <span className={styles.sectionBadge}>{personalReplays.length}</span>
-          </div>
-          <ul className={styles.replayList}>
-            {personalReplays.map((entry) => (
-              <li key={entry.id} className={styles.replayItem}>
-                <div>
-                  <div className={styles.replayHeaderRow}>
-                    <span className={styles.replayLabel}>{entry.label}</span>
-                    <span className={styles.replayResult}>{(entry.result || 'unknown').toUpperCase()}</span>
-                  </div>
-                  <div className={styles.replayMetaRow}>
-                    {entry.generatedAt ? (
-                      <span className={styles.replayMeta}>
-                        생성 {formatDate(entry.generatedAt)}
-                      </span>
-                    ) : null}
-                    {Number.isFinite(entry.turnCount) ? (
-                      <span className={styles.replayMeta}>턴 {entry.turnCount}</span>
-                    ) : null}
-                    {Number.isFinite(entry.timelineCount) ? (
-                      <span className={styles.replayMeta}>타임라인 {entry.timelineCount}</span>
-                    ) : null}
-                    {entry.dropIn ? (
-                      <span className={styles.replayMeta}>{describeDropInSummary(entry.dropIn)}</span>
-                    ) : null}
-                    {entry.reason ? (
-                      <span className={styles.replayMetaReason}>{entry.reason}</span>
-                    ) : null}
-                  </div>
-                </div>
-                <div className={styles.replayActions}>
-                  <button type="button" className={styles.replayButton} onClick={() => handleDownloadReplay(entry)}>
-                    JSON 저장
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {sharedReplays.length ? (
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>공유 세션 베틀로그</h2>
-            <span className={styles.sectionBadge}>{sharedReplays.length}</span>
-          </div>
-          <ul className={styles.replayList}>
-            {sharedReplays.map((entry) => (
-              <li key={entry.id} className={styles.replayItem}>
-                <div>
-                  <div className={styles.replayHeaderRow}>
-                    <span className={styles.replayLabel}>{entry.label}</span>
-                    <span className={styles.replayResult}>{(entry.result || 'unknown').toUpperCase()}</span>
-                  </div>
-                  <div className={styles.replayMetaRow}>
-                    {entry.generatedAt ? (
-                      <span className={styles.replayMeta}>
-                        생성 {formatDate(entry.generatedAt)}
-                      </span>
-                    ) : null}
-                    {Number.isFinite(entry.turnCount) ? (
-                      <span className={styles.replayMeta}>턴 {entry.turnCount}</span>
-                    ) : null}
-                    {Number.isFinite(entry.timelineCount) ? (
-                      <span className={styles.replayMeta}>타임라인 {entry.timelineCount}</span>
-                    ) : null}
-                    {entry.dropIn ? (
-                      <span className={styles.replayMeta}>{describeDropInSummary(entry.dropIn)}</span>
-                    ) : null}
-                    {entry.reason ? (
-                      <span className={styles.replayMetaReason}>{entry.reason}</span>
-                    ) : null}
-                  </div>
-                </div>
-                <div className={styles.replayActions}>
-                  <button type="button" className={styles.replayButton} onClick={() => handleDownloadReplay(entry)}>
-                    JSON 저장
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <GameRoomHistoryPane
+        spectatorTimeline={spectatorTimeline}
+        spectatorTimelineCollapsed={spectatorTimelineCollapsed}
+        onToggleSpectatorTimeline={toggleSpectatorTimeline}
+        personalTimeline={personalTimeline}
+        personalTimelineCollapsed={personalTimelineCollapsed}
+        onTogglePersonalTimeline={togglePersonalTimeline}
+        personalReplays={personalReplays}
+        sharedReplays={sharedReplays}
+        onDownloadReplay={handleDownloadReplay}
+      />
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
@@ -3016,8 +2471,59 @@ export default function GameRoomView({
     ranking: rankingPanelContent,
   }
 
+  const roomClassName = joinClassNames(styles.room, isCompactLayout && styles.compactLayout)
+  const summaryCardClassName = joinClassNames(
+    styles.summaryCard,
+    isCompactLayout && styles.summaryCardCompact,
+  )
+
+  const summaryCard = (
+    <section
+      id="game-room-compact-info"
+      className={summaryCardClassName}
+      aria-labelledby={summaryTitleId}
+      aria-describedby={summaryDescriptionId}
+    >
+      {isCompactLayout && (
+        <button
+          type="button"
+          className={styles.compactInfoCloseButton}
+          onClick={handleCompactInfoClose}
+        >
+          닫기
+        </button>
+      )}
+      <div className={styles.gameHeader}>
+        <div className={styles.gameText}>
+          <span className={styles.gameBadge}>랭크 게임</span>
+          <h1 id={summaryTitleId} className={styles.gameTitle}>
+            {game.name || '이름 없는 게임'}
+          </h1>
+          <p id={summaryDescriptionId} className={styles.gameDescription}>
+            {game.description?.trim() || '소개 문구가 아직 준비되지 않았습니다.'}
+          </p>
+          <div className={styles.metaRow}>
+            {realtimeEnabled && <span className={styles.metaChip}>{realtimeChipLabel} 매칭</span>}
+            {createdAt && <span className={styles.metaChip}>등록 {createdAt}</span>}
+            {updatedAt && <span className={styles.metaChip}>갱신 {updatedAt}</span>}
+            <button type="button" className={styles.linkButton} onClick={onOpenLeaderboard}>
+              리더보드 보기
+            </button>
+          </div>
+        </div>
+        <div className={styles.coverFrame}>
+          {coverImage ? (
+            <img src={coverImage} alt={game.name || '게임 대표 이미지'} loading="lazy" />
+          ) : (
+            <div className={styles.coverPlaceholder}>대표 이미지가 등록되지 않았습니다.</div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+
   return (
-    <div className={styles.room}>
+    <div className={roomClassName}>
       {backgroundImage ? (
         <div className={styles.backdrop} style={{ backgroundImage: `url(${backgroundImage})` }} aria-hidden />
       ) : (
@@ -3032,54 +2538,44 @@ export default function GameRoomView({
           </button>
         )}
 
-        <section className={styles.summaryCard}>
-          <div className={styles.gameHeader}>
-            <div className={styles.gameText}>
-              <span className={styles.gameBadge}>랭크 게임</span>
-              <h1 className={styles.gameTitle}>{game.name || '이름 없는 게임'}</h1>
-              <p className={styles.gameDescription}>
-                {game.description?.trim() || '소개 문구가 아직 준비되지 않았습니다.'}
-              </p>
-              <div className={styles.metaRow}>
-                {realtimeEnabled && (
-                  <span className={styles.metaChip}>{realtimeChipLabel} 매칭</span>
-                )}
-                {createdAt && <span className={styles.metaChip}>등록 {createdAt}</span>}
-                {updatedAt && <span className={styles.metaChip}>갱신 {updatedAt}</span>}
-                <button type="button" className={styles.linkButton} onClick={onOpenLeaderboard}>
-                  리더보드 보기
-                </button>
-              </div>
-            </div>
-            <div className={styles.coverFrame}>
-              {coverImage ? (
-                <img src={coverImage} alt={game.name || '게임 대표 이미지'} loading="lazy" />
-              ) : (
-                <div className={styles.coverPlaceholder}>대표 이미지가 등록되지 않았습니다.</div>
-              )}
-            </div>
+        {isCompactLayout ? (
+          <div className={styles.compactInfoToggleRow}>
+            <button
+              type="button"
+              className={styles.compactInfoButton}
+              onClick={handleCompactInfoToggle}
+              aria-expanded={compactInfoOpen}
+              aria-controls="game-room-compact-info"
+            >
+              <span className={styles.compactInfoButtonLabel}>게임 정보</span>
+              <span className={styles.compactInfoButtonMeta}>{participantCountLabel}</span>
+            </button>
           </div>
-        </section>
+        ) : (
+          summaryCard
+        )}
 
-        <div className={styles.tabBar} role="tablist" aria-label="랭크 게임 탭">
-          {TABS.map((tab, index) => {
-            const selected = resolvedActiveIndex === index
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                id={tabButtonId(tab.key)}
-                aria-controls={tabPanelId(tab.key)}
-                aria-selected={selected}
-                className={`${styles.tabButton} ${selected ? styles.tabButtonActive : ''}`}
-                onClick={() => setActiveTab(tab.key)}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
+        {!isCompactLayout && (
+          <div className={styles.tabBar} role="tablist" aria-label="랭크 게임 탭">
+            {TABS.map((tab, index) => {
+              const selected = resolvedActiveIndex === index
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  id={tabButtonId(tab.key)}
+                  aria-controls={tabPanelId(tab.key)}
+                  aria-selected={selected}
+                  className={`${styles.tabButton} ${selected ? styles.tabButtonActive : ''}`}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         <div
           className={styles.panels}
@@ -3105,6 +2601,50 @@ export default function GameRoomView({
           })}
         </div>
       </div>
+
+      {isCompactLayout && (
+        <>
+          <div className={styles.compactActionBar} role="tablist" aria-label="랭크 게임 패널">
+            {TABS.map((tab, index) => {
+              const selected = resolvedActiveIndex === index
+              return (
+                <button
+                  key={`compact-${tab.key}`}
+                  type="button"
+                  role="tab"
+                  id={`compact-${tabButtonId(tab.key)}`}
+                  aria-controls={tabPanelId(tab.key)}
+                  aria-selected={selected}
+                  className={joinClassNames(
+                    styles.compactActionButton,
+                    selected && styles.compactActionButtonActive,
+                  )}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {compactInfoOpen && (
+            <div
+              className={styles.compactInfoBackdrop}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={summaryTitleId}
+              onClick={handleCompactInfoClose}
+            >
+              <div
+                className={styles.compactInfoCardWrapper}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {summaryCard}
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {activeProfileEntry && (
         <div
