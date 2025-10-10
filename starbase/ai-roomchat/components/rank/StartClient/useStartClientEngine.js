@@ -1125,7 +1125,14 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
-  setTurnCallbackRef.current = setTurn
+  useEffect(() => {
+    setTurnCallbackRef.current = setTurn
+    return () => {
+      if (setTurnCallbackRef.current === setTurn) {
+        setTurnCallbackRef.current = null
+      }
+    }
+  }, [setTurn])
   const setLogs = useCallback(
     (value) => {
       if (typeof value === 'function') {
@@ -1177,7 +1184,14 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
-  setLastDropInTurnCallbackRef.current = setLastDropInTurn
+  useEffect(() => {
+    setLastDropInTurnCallbackRef.current = setLastDropInTurn
+    return () => {
+      if (setLastDropInTurnCallbackRef.current === setLastDropInTurn) {
+        setLastDropInTurnCallbackRef.current = null
+      }
+    }
+  }, [setLastDropInTurn])
   const setViewerId = useCallback(
     (value) => {
       patchEngineState({ viewerId: value })
@@ -1195,7 +1209,14 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
-  setTurnDeadlineCallbackRef.current = setTurnDeadline
+  useEffect(() => {
+    setTurnDeadlineCallbackRef.current = setTurnDeadline
+    return () => {
+      if (setTurnDeadlineCallbackRef.current === setTurnDeadline) {
+        setTurnDeadlineCallbackRef.current = null
+      }
+    }
+  }, [setTurnDeadline])
   const setTimeRemaining = useCallback(
     (value) => {
       if (typeof value === 'function') {
@@ -1207,7 +1228,14 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
-  setTimeRemainingCallbackRef.current = setTimeRemaining
+  useEffect(() => {
+    setTimeRemainingCallbackRef.current = setTimeRemaining
+    return () => {
+      if (setTimeRemainingCallbackRef.current === setTimeRemaining) {
+        setTimeRemainingCallbackRef.current = null
+      }
+    }
+  }, [setTimeRemaining])
   const recordTurnState = useCallback(
     (patch = {}, options = {}) => {
       if (preflight) return
