@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 
+import { normalizeRoleName } from '@/lib/rank/roleLayoutLoader'
 import { normalizeTimelineStatus } from '@/lib/rank/timelineEvents'
 
 import { deriveParticipantOwnerId } from './engine/participants'
@@ -172,12 +173,19 @@ export default function RosterPanel({
   participants = [],
   realtimePresence = null,
   dropInSnapshot = null,
+  showDetails = true,
+  viewerOwnerId = '',
+  normalizedHostRole = '',
+  normalizedViewerRole = '',
 }) {
   const presenceMap = useMemo(() => buildPresenceMap(realtimePresence), [realtimePresence])
   const roleMap = useMemo(() => buildRoleMap(dropInSnapshot), [dropInSnapshot])
   const snapshotTurn = Number.isFinite(Number(dropInSnapshot?.turn))
     ? Number(dropInSnapshot.turn)
     : null
+  const viewerKey = viewerOwnerId ? String(viewerOwnerId).trim() : ''
+  const hostRoleKey = normalizeRoleName(normalizedHostRole)
+  const viewerRoleKey = normalizeRoleName(normalizedViewerRole)
 
   return (
     <section
@@ -207,6 +215,39 @@ export default function RosterPanel({
             roleStats,
             snapshotTurn,
           })
+          const normalizedRole = normalizeRoleName(participant.role || '')
+          const isViewerSeat = Boolean(viewerKey && ownerId && String(ownerId).trim() === viewerKey)
+          const isHostRoleSeat = Boolean(hostRoleKey && normalizedRole === hostRoleKey)
+          const revealDetails = showDetails || isViewerSeat
+          const heroName = revealDetails
+            ? participant.hero?.name || '이름 없음'
+            : '비공개 참가자'
+          const heroImage = revealDetails ? participant.hero?.image_url || '' : ''
+          const scoreText = revealDetails
+            ? Number.isFinite(Number(participant.score))
+              ? Number(participant.score)
+              : '정보 없음'
+            : isViewerSeat
+            ? Number.isFinite(Number(participant.score))
+              ? Number(participant.score)
+              : '정보 없음'
+            : '숨김'
+          const battlesText = revealDetails
+            ? formatBattles(participant.battles ?? participant.total_battles)
+            : isViewerSeat
+            ? formatBattles(participant.battles ?? participant.total_battles)
+            : '숨김'
+          const winRateText = revealDetails
+            ? `승률 ${formatWinRate(participant.win_rate ?? participant.winRate)}`
+            : isViewerSeat
+            ? `승률 ${formatWinRate(participant.win_rate ?? participant.winRate)}`
+            : '승률 숨김'
+          const abilityTexts = revealDetails
+            ? [1, 2, 3, 4]
+                .map((index) => participant.hero?.[`ability${index}`])
+                .filter(Boolean)
+            : []
+          const descriptionText = revealDetails ? participant.hero?.description || '' : ''
 
           return (
             <div
@@ -222,114 +263,153 @@ export default function RosterPanel({
                 border: '1px solid rgba(148, 163, 184, 0.28)',
               }}
             >
-            {participant.hero?.image_url ? (
-              <img
-                src={participant.hero.image_url}
-                alt={participant.hero?.name || '참여자 이미지'}
-                style={{
-                  width: 68,
-                  height: 68,
-                  borderRadius: 16,
-                  objectFit: 'cover',
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: 68,
-                  height: 68,
-                  borderRadius: 16,
-                  background: 'rgba(148, 163, 184, 0.22)',
-                }}
-              />
-            )}
-            <div style={{ display: 'grid', gap: 8 }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>
-                      {participant.hero?.name || '이름 없음'}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.75)' }}>
-                      역할: {participant.role || '미지정'} · 상태:{' '}
-                      {formatStatusText(status || participant.status)}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      textAlign: 'right',
-                      fontSize: 12,
-                      color: 'rgba(148, 163, 184, 0.9)',
-                      display: 'grid',
-                      gap: 2,
-                    }}
-                  >
-                    <span>
-                      점수{' '}
-                      {Number.isFinite(Number(participant.score))
-                        ? Number(participant.score)
-                        : '정보 없음'}
-                    </span>
-                    <span>{formatBattles(participant.battles ?? participant.total_battles)}</span>
-                    <span>승률 {formatWinRate(participant.win_rate ?? participant.winRate)}</span>
-                  </div>
+              {heroImage ? (
+                <img
+                  src={heroImage}
+                  alt={heroName || '참여자 이미지'}
+                  style={{
+                    width: 68,
+                    height: 68,
+                    borderRadius: 16,
+                    objectFit: 'cover',
+                    filter: revealDetails ? 'none' : 'blur(6px)',
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 68,
+                    height: 68,
+                    borderRadius: 16,
+                    background: revealDetails
+                      ? 'rgba(148, 163, 184, 0.22)'
+                      : 'rgba(51, 65, 85, 0.45)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    fontSize: 11,
+                    color: 'rgba(226, 232, 240, 0.7)',
+                  }}
+                >
+                  {revealDetails ? '이미지 없음' : '비공개'}
                 </div>
-                {badges.length ? (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: 6,
-                      marginTop: 4,
-                    }}
-                  >
-                    {badges.map((badge, index) => (
-                      <span
-                        key={`${badge.key}-${index}`}
-                        title={badge.title || undefined}
-                        style={{
-                          padding: '2px 10px',
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          background: badge.background,
-                          color: badge.color,
-                          border: `1px solid ${badge.border}`,
-                          letterSpacing: 0.2,
-                        }}
-                      >
-                        {badge.label}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: 'rgba(226, 232, 240, 0.7)',
-                  display: 'grid',
-                  gap: 4,
-                  padding: 10,
-                  borderRadius: 12,
-                  background: 'rgba(15, 23, 42, 0.45)',
-                  border: '1px solid rgba(148, 163, 184, 0.18)',
-                }}
-              >
-                {[1, 2, 3, 4]
-                  .map((index) => participant.hero?.[`ability${index}`])
-                  .filter(Boolean)
-                  .map((text, idx) => (
-                    <div key={idx} style={{ lineHeight: 1.45 }}>
-                      능력 {idx + 1}: {text}
+              )}
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>
+                        {heroName}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.75)' }}>
+                        역할: {participant.role || '미지정'} · 상태{' '}
+                        {formatStatusText(status || participant.status)}
+                      </div>
+                      {(isViewerSeat || isHostRoleSeat || (viewerRoleKey && normalizedRole === viewerRoleKey)) && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                          {isViewerSeat ? (
+                            <span
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: 'rgba(59, 130, 246, 0.25)',
+                                color: '#bfdbfe',
+                              }}
+                            >
+                              내 좌석
+                            </span>
+                          ) : null}
+                          {isHostRoleSeat ? (
+                            <span
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: 'rgba(250, 204, 21, 0.22)',
+                                color: '#facc15',
+                              }}
+                            >
+                              호스트 역할
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                {participant.hero?.description ? (
-                  <div style={{ lineHeight: 1.45 }}>설명: {participant.hero.description}</div>
-                ) : null}
+                    <div
+                      style={{
+                        textAlign: 'right',
+                        fontSize: 12,
+                        color: 'rgba(148, 163, 184, 0.9)',
+                        display: 'grid',
+                        gap: 2,
+                      }}
+                    >
+                      <span>점수 {scoreText}</span>
+                      <span>{battlesText}</span>
+                      <span>{winRateText}</span>
+                    </div>
+                  </div>
+                  {badges.length ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                        marginTop: 4,
+                      }}
+                    >
+                      {badges.map((badge, index) => (
+                        <span
+                          key={`${badge.key}-${index}`}
+                          title={badge.title || undefined}
+                          style={{
+                            padding: '2px 10px',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: badge.background,
+                            color: badge.color,
+                            border: `1px solid ${badge.border}`,
+                            letterSpacing: 0.2,
+                          }}
+                        >
+                          {badge.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: 'rgba(226, 232, 240, 0.7)',
+                    display: 'grid',
+                    gap: 4,
+                    padding: 10,
+                    borderRadius: 12,
+                    background: 'rgba(15, 23, 42, 0.45)',
+                    border: '1px solid rgba(148, 163, 184, 0.18)',
+                  }}
+                >
+                  {abilityTexts.length
+                    ? abilityTexts.map((text, idx) => (
+                        <div key={idx} style={{ lineHeight: 1.45 }}>
+                          능력 {idx + 1}: {text}
+                        </div>
+                      ))
+                    : (
+                        <div style={{ lineHeight: 1.45, color: 'rgba(148, 163, 184, 0.85)' }}>
+                          상세 능력 정보는 현재 비공개 상태입니다.
+                        </div>
+                      )}
+                  {descriptionText ? (
+                    <div style={{ lineHeight: 1.45 }}>설명: {descriptionText}</div>
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
           )
         })}
         {participants.length === 0 && (
