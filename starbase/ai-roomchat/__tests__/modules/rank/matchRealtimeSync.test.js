@@ -7,8 +7,30 @@ jest.mock('@/lib/supabaseTables', () => ({
 import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync'
 
 describe('fetchLatestSessionRow', () => {
+  const originalWindow = global.window
+  const originalFetch = global.fetch
+
   beforeEach(() => {
     mockWithTable.mockReset()
+    if (typeof global.fetch !== 'undefined') {
+      global.fetch = originalFetch
+    }
+    if (typeof global.window !== 'undefined') {
+      delete global.window
+    }
+  })
+
+  afterAll(() => {
+    if (typeof originalWindow !== 'undefined') {
+      global.window = originalWindow
+    } else {
+      delete global.window
+    }
+    if (typeof originalFetch !== 'undefined') {
+      global.fetch = originalFetch
+    } else {
+      delete global.fetch
+    }
   })
 
   it('returns the RPC payload when available', async () => {
@@ -114,5 +136,57 @@ describe('fetchLatestSessionRow', () => {
     expect(supabaseClient.rpc).toHaveBeenCalledWith('fetch_latest_rank_session_v2', {
       p_game_id: 'game-2',
     })
+  })
+
+  it('uses the latest-session API in the browser', async () => {
+    const supabaseClient = { rpc: jest.fn() }
+
+    const originalWindow = global.window
+    const originalFetch = global.fetch
+
+    const mockResponse = {
+      ok: true,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            session: {
+              id: 'session-browser',
+              status: 'ready',
+              owner_id: 'owner-browser',
+              created_at: '2025-03-01T12:00:00Z',
+              updated_at: '2025-03-01T12:05:00Z',
+              match_mode: 'pulse',
+            },
+          }),
+        ),
+    }
+
+    global.fetch = jest.fn(() => Promise.resolve(mockResponse))
+    global.window = { document: {}, fetch: global.fetch }
+
+    const result = await fetchLatestSessionRow(supabaseClient, 'game-browser', {
+      ownerId: 'owner-browser',
+    })
+
+    expect(result).toEqual({
+      id: 'session-browser',
+      status: 'ready',
+      owner_id: 'owner-browser',
+      ownerId: 'owner-browser',
+      created_at: '2025-03-01T12:00:00Z',
+      updated_at: '2025-03-01T12:05:00Z',
+      mode: 'pulse',
+      match_mode: 'pulse',
+    })
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/rank/latest-session',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    )
+    expect(supabaseClient.rpc).not.toHaveBeenCalled()
+
+    global.window = originalWindow
+    global.fetch = originalFetch
   })
 })

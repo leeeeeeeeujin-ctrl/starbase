@@ -1,5 +1,18 @@
 import { withTable } from '@/lib/supabaseTables'
 
+function isBrowserEnvironment() {
+  return typeof window !== 'undefined' && typeof window.document !== 'undefined'
+}
+
+function safeJsonParse(payload) {
+  if (!payload) return null
+  try {
+    return JSON.parse(payload)
+  } catch (error) {
+    return null
+  }
+}
+
 function toTrimmed(value) {
   if (value === null || value === undefined) return ''
   const trimmed = String(value).trim()
@@ -187,6 +200,38 @@ function formatSessionRow(row) {
   }
 }
 
+async function fetchSessionViaApi(gameId, ownerId) {
+  if (!isBrowserEnvironment() || typeof fetch !== 'function') return null
+  const body = { game_id: gameId }
+  if (ownerId) {
+    body.owner_id = ownerId
+  }
+
+  try {
+    const response = await fetch('/api/rank/latest-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    const text = await response.text()
+    const data = safeJsonParse(text) || {}
+
+    if (!response.ok) {
+      console.warn('[matchRealtimeSync] latest-session API failed:', data?.error || response.status)
+      return null
+    }
+
+    if (data?.session) {
+      return formatSessionRow(data.session)
+    }
+  } catch (error) {
+    console.warn('[matchRealtimeSync] latest-session API threw:', error)
+  }
+
+  return null
+}
+
 function isRpcMissing(error) {
   if (!error) return false
   const code = String(error.code || '').toUpperCase()
@@ -204,6 +249,14 @@ export async function fetchLatestSessionRow(supabaseClient, gameId, options = {}
   }
 
   const ownerId = options.ownerId ? toTrimmed(options.ownerId) : null
+
+  if (isBrowserEnvironment()) {
+    const viaApi = await fetchSessionViaApi(trimmedGameId, ownerId)
+    if (viaApi) {
+      return viaApi
+    }
+    return null
+  }
 
   const rpcPayload = ownerId
     ? { p_game_id: trimmedGameId, p_owner_id: ownerId }
