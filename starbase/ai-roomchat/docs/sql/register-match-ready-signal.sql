@@ -27,10 +27,10 @@ begin
       and p.tablename = 'rank_session_ready_signals'
       and p.policyname = 'rank_session_ready_signals_service_role'
   ) then
-    execute $$create policy rank_session_ready_signals_service_role on public.rank_session_ready_signals
-      for all
-      using (auth.role() = 'service_role')
-      with check (auth.role() = 'service_role')$$;
+    execute 'create policy rank_session_ready_signals_service_role on public.rank_session_ready_signals '
+         || 'for all '
+         || 'using (auth.role() = ''service_role'') '
+         || 'with check (auth.role() = ''service_role'')';
   end if;
 end;
 $$;
