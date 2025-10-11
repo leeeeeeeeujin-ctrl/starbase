@@ -9,10 +9,10 @@ import {
 
 import styles from './DebugOverlay.module.css'
 
-const ACTIVATION_KEYS = ['d', 'b', 'g']
-const ACTIVATION_SEQUENCE = ['d', 'b', 'g']
+const ACTIVATION_KEYS = ['d', 'b']
+const ACTIVATION_SEQUENCE = ['d', 'b']
 const ACTIVATION_WINDOW_MS = 1000
-const ACTIVATION_LABEL = 'Press D + B + G'
+const ACTIVATION_LABEL = 'Press D + B'
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return ''
