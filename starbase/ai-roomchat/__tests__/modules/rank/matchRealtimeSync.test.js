@@ -189,11 +189,55 @@ describe('fetchLatestSessionRow', () => {
     global.window = originalWindow
     global.fetch = originalFetch
   })
+
+  it('emits diagnostics when the browser API fails', async () => {
+    const supabaseClient = { rpc: jest.fn() }
+
+    const originalWindow = global.window
+    const originalFetch = global.fetch
+
+    const failurePayload = {
+      error: 'rpc_failed',
+      supabaseError: { code: '42883', message: 'function does not exist' },
+    }
+
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 502,
+        text: () => Promise.resolve(JSON.stringify(failurePayload)),
+      }),
+    )
+    global.window = { document: {}, fetch: global.fetch }
+
+    const diagnostics = jest.fn()
+
+    const result = await fetchLatestSessionRow(supabaseClient, 'game-missing', {
+      onDiagnostics: diagnostics,
+    })
+
+    expect(result).toBeNull()
+    expect(diagnostics).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'latest-session-api',
+        hint: expect.stringContaining('fetch_latest_rank_session_v2'),
+      }),
+    )
+
+    global.window = originalWindow
+    global.fetch = originalFetch
+  })
 })
 
 describe('loadMatchFlowSnapshot', () => {
   beforeEach(() => {
     mockWithTable.mockReset()
+    if (typeof global.window !== 'undefined') {
+      delete global.window
+    }
+    if (typeof global.fetch !== 'undefined') {
+      delete global.fetch
+    }
   })
 
   it('throws an ordered-set aggregate error when the snapshot RPC fails without WITHIN GROUP', async () => {
@@ -338,5 +382,37 @@ describe('loadMatchFlowSnapshot', () => {
     })
     expect(snapshot.matchSnapshot?.match?.roles?.[0]?.role).toBe('전략가')
     expect(mockWithTable).not.toHaveBeenCalled()
+  })
+
+  it('raises a latest-session hint when the RPC is unavailable', async () => {
+    mockWithTable.mockImplementation(() => Promise.resolve({ data: null, error: null }))
+
+    const supabaseClient = {
+      rpc: jest.fn((fnName) => {
+        if (fnName === 'fetch_rank_match_ready_snapshot') {
+          return Promise.resolve({
+            data: {
+              roster: [],
+              room: null,
+              session: null,
+              session_meta: null,
+            },
+            error: null,
+          })
+        }
+        if (fnName === 'fetch_latest_rank_session_v2') {
+          return Promise.resolve({
+            data: null,
+            error: { code: '42883', message: 'function does not exist' },
+          })
+        }
+        return Promise.resolve({ data: null, error: null })
+      }),
+    }
+
+    await expect(loadMatchFlowSnapshot(supabaseClient, 'game-latest-missing')).rejects.toMatchObject({
+      code: 'latest_session_unavailable',
+      hint: expect.stringContaining('fetch_latest_rank_session_v2'),
+    })
   })
 })

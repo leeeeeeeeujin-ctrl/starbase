@@ -87,6 +87,66 @@ async function fetchViaTable(gameId, ownerId) {
   return { row: formatSessionRow(result.data), table: result.table || null }
 }
 
+function isMissingRpc(error) {
+  if (!error) return false
+  const code = String(error.code || '').toUpperCase()
+  if (code && ['42883', '42P01', 'PGRST204', 'PGRST301'].includes(code)) {
+    return true
+  }
+  const merged = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`
+    .toLowerCase()
+    .trim()
+  if (!merged) return false
+  if (merged.includes('does not exist') && merged.includes('function')) {
+    return true
+  }
+  return merged.includes('missing') && merged.includes('fetch_latest_rank_session_v2')
+}
+
+function isPermissionError(error) {
+  if (!error) return false
+  const code = String(error.code || '').toUpperCase()
+  if (['42501', 'PGRST301', 'PGRST302'].includes(code)) {
+    return true
+  }
+  const merged = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`
+    .toLowerCase()
+    .trim()
+  if (!merged) return false
+  if (merged.includes('permission') && merged.includes('denied')) return true
+  if (merged.includes('not authorised') || merged.includes('not authorized')) return true
+  if (merged.includes('no api key')) return true
+  if (merged.includes('jwterror') || merged.includes('jwt expired')) return true
+  return false
+}
+
+function buildRpcHint(error) {
+  if (!error) {
+    return [
+      'fetch_latest_rank_session_v2 RPC 호출이 실패했습니다. Supabase SQL Editor에서 `docs/sql/fetch-latest-rank-session.sql` 스크립트를 다시 실행해 함수 정의와 권한이 최신인지 확인하세요.',
+    ].join(' ')
+  }
+
+  if (isMissingRpc(error)) {
+    return [
+      'fetch_latest_rank_session_v2 RPC가 배포되어 있지 않습니다.',
+      'Supabase SQL Editor에서 `docs/sql/fetch-latest-rank-session.sql` 파일의 전체 내용을 붙여넣어 함수를 생성하고, service_role과 authenticated 역할에 GRANT 문을 실행하세요.',
+    ].join(' ')
+  }
+
+  if (isPermissionError(error)) {
+    return [
+      'fetch_latest_rank_session_v2 RPC에 접근할 권한이 없습니다.',
+      'Supabase Dashboard에서 해당 함수에 service_role 및 authenticated 역할이 EXECUTE 권한을 갖고 있는지 확인하고, 누락 시 GRANT 문을 다시 실행하세요.',
+    ].join(' ')
+  }
+
+  return [
+    'fetch_latest_rank_session_v2 RPC 호출이 실패했습니다.',
+    'Supabase SQL Editor에서 RPC 정의와 권한을 재배포하고, PostgREST 로그에 추가 오류가 없는지 확인하세요.',
+  ].join(' ')
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
@@ -107,20 +167,34 @@ export default async function handler(req, res) {
     const { row, error } = await fetchViaRpc(payload)
     if (error) {
       const code = String(error?.code || '').toUpperCase()
-      if (code === '42809') {
+      if (code === '42809' || isMissingRpc(error) || isPermissionError(error)) {
         const fallback = await fetchViaTable(payload.p_game_id, payload.p_owner_id || null)
         if (fallback.error) {
           return res
             .status(502)
-            .json({ error: 'rpc_failed', supabaseError: error, fallbackError: fallback.error, table: fallback.table })
+            .json({
+              error: 'rpc_failed',
+              supabaseError: error,
+              fallbackError: fallback.error,
+              table: fallback.table,
+              hint: buildRpcHint(error),
+            })
         }
-        return res.status(200).json({ session: fallback.row, supabaseError: error, via: 'table' })
+        return res
+          .status(200)
+          .json({ session: fallback.row, supabaseError: error, via: 'table', hint: buildRpcHint(error) })
       }
-      return res.status(502).json({ error: 'rpc_failed', supabaseError: error })
+      return res
+        .status(502)
+        .json({ error: 'rpc_failed', supabaseError: error, hint: buildRpcHint(error) })
     }
 
     return res.status(200).json({ session: row || null })
   } catch (error) {
-    return res.status(500).json({ error: 'rpc_exception', detail: String(error?.message || error) })
+    return res.status(500).json({
+      error: 'rpc_exception',
+      detail: String(error?.message || error),
+      hint: 'Supabase RPC 요청 처리 중 예외가 발생했습니다. 서버 로그를 확인하고 fetch_latest_rank_session_v2 정의를 재배포하세요.',
+    })
   }
 }

@@ -65,6 +65,59 @@ function parseTimestamp(value) {
   return Number.isFinite(coerced) ? Math.trunc(coerced) : null
 }
 
+function deriveLatestSessionHint(payload = {}) {
+  const sourceError = payload.supabaseError || payload.error || null
+  const status = Number(payload.status)
+  const code = String(sourceError?.code || '').toUpperCase()
+  const merged = `${sourceError?.message || ''} ${sourceError?.details || ''} ${
+    sourceError?.hint || ''
+  }`
+    .toLowerCase()
+    .trim()
+
+  if (status === 401 || status === 403) {
+    return '세션을 불러오려면 Supabase 인증 토큰이 필요합니다. 브라우저에서 다시 로그인하거나 세션을 새로고침한 뒤 시도하세요.'
+  }
+
+  if (!code && !merged && payload?.hint) {
+    return payload.hint
+  }
+
+  if (payload?.hint) {
+    return payload.hint
+  }
+
+  if (code === '42883' || code === '42P01' || merged.includes('does not exist')) {
+    return [
+      'fetch_latest_rank_session_v2 RPC가 배포되어 있지 않습니다.',
+      'Supabase SQL Editor에서 `docs/sql/fetch-latest-rank-session.sql` 스크립트를 실행해 함수를 생성하고 GRANT 문으로 service_role과 authenticated 역할에 EXECUTE 권한을 부여하세요.',
+    ].join(' ')
+  }
+
+  if (code === '42501' || merged.includes('permission denied')) {
+    return [
+      'fetch_latest_rank_session_v2 RPC 권한이 부족합니다.',
+      'Supabase Dashboard에서 함수 권한을 확인하고 service_role 및 authenticated 역할에 EXECUTE 권한이 있는지 검증하세요.',
+    ].join(' ')
+  }
+
+  if (code === 'PGRST301' || merged.includes('jwterror') || merged.includes('jwt expired')) {
+    return [
+      'Supabase 서비스 키 혹은 사용자 토큰이 유효하지 않아 최신 세션을 불러오지 못했습니다.',
+      '환경 변수가 최신 anon/service 키를 가리키는지 확인하고, 필요한 경우 Supabase에서 키를 재발급해 배포하세요.',
+    ].join(' ')
+  }
+
+  if (status === 502 || status === 500) {
+    return [
+      'Supabase RPC가 5xx 오류를 반환했습니다.',
+      'Supabase SQL Editor에서 fetch_latest_rank_session_v2를 재배포하고, PostgREST 로그에서 추가 오류를 확인한 뒤 다시 시도하세요.',
+    ].join(' ')
+  }
+
+  return null
+}
+
 function normalizeRosterRow(row, fallbackIndex = 0) {
   const slotIndex = toNumber(row?.slot_index, fallbackIndex)
   const ownerId = toOptionalTrimmed(row?.owner_id)
@@ -218,15 +271,17 @@ async function fetchSessionViaApi(gameId, ownerId) {
     const text = await response.text()
     const data = safeJsonParse(text) || {}
 
+    const failure = {
+      status: response.status,
+      error: data?.error,
+      message: data?.message,
+      details: data?.details,
+      hint: data?.hint,
+      supabaseError: data?.supabaseError,
+    }
+
     if (!response.ok) {
-      const failure = {
-        status: response.status,
-        error: data?.error,
-        message: data?.message,
-        details: data?.details,
-        hint: data?.hint,
-        supabaseError: data?.supabaseError,
-      }
+      const derivedHint = deriveLatestSessionHint(failure)
 
       console.warn('[matchRealtimeSync] latest-session API failed:', failure)
 
@@ -236,13 +291,27 @@ async function fetchSessionViaApi(gameId, ownerId) {
         status: response.status,
         error: data?.supabaseError || data,
         payload: { request: body, response: failure },
+        hint: derivedHint || null,
       })
-      return null
+
+      return { session: null, error: failure, hint: derivedHint }
     }
 
-    if (data?.session) {
-      return formatSessionRow(data.session)
+    const formatted = data?.session ? formatSessionRow(data.session) : null
+    const derivedHint = deriveLatestSessionHint(failure)
+
+    if (derivedHint) {
+      addSupabaseDebugEvent({
+        source: 'latest-session-api',
+        operation: 'fetch_latest_rank_session_v2',
+        status: response.status,
+        error: null,
+        payload: { request: body, response: failure },
+        hint: derivedHint,
+      })
     }
+
+    return { session: formatted, error: null, hint: derivedHint }
   } catch (error) {
     console.warn('[matchRealtimeSync] latest-session API threw:', error)
     addDebugEvent({
@@ -251,9 +320,10 @@ async function fetchSessionViaApi(gameId, ownerId) {
       message: 'Latest session API request threw an exception',
       details: { message: error?.message || 'unknown_error' },
     })
+    return { session: null, error, hint: deriveLatestSessionHint({ error }) }
   }
 
-  return null
+  return { session: null, error: null, hint: null }
 }
 
 function isRpcMissing(error) {
@@ -273,11 +343,26 @@ export async function fetchLatestSessionRow(supabaseClient, gameId, options = {}
   }
 
   const ownerId = options.ownerId ? toTrimmed(options.ownerId) : null
+  const emitDiagnostics = typeof options.onDiagnostics === 'function' ? options.onDiagnostics : null
+  const report = (payload) => {
+    if (!emitDiagnostics) return
+    try {
+      emitDiagnostics(payload)
+    } catch (error) {
+      console.warn('[matchRealtimeSync] latest-session diagnostics handler failed:', error)
+    }
+  }
 
   if (isBrowserEnvironment()) {
     const viaApi = await fetchSessionViaApi(trimmedGameId, ownerId)
-    if (viaApi) {
-      return viaApi
+    if (viaApi?.session) {
+      if (viaApi.hint) {
+        report({ source: 'latest-session-api', hint: viaApi.hint, error: null })
+      }
+      return viaApi.session
+    }
+    if (viaApi?.hint || viaApi?.error) {
+      report({ source: 'latest-session-api', hint: viaApi?.hint || null, error: viaApi?.error || null })
     }
     return null
   }
@@ -309,14 +394,27 @@ export async function fetchLatestSessionRow(supabaseClient, gameId, options = {}
       } else if (!isRpcMissing(rpcError)) {
         console.warn('[matchRealtimeSync] fetch_latest_rank_session_v2 RPC failed:', rpcError)
       }
+
+      const hint = deriveLatestSessionHint({ supabaseError: rpcError })
+      if (hint) {
+        report({ source: 'fetch_latest_rank_session_v2', hint, error: rpcError })
+      }
     } catch (rpcException) {
       console.warn('[matchRealtimeSync] fetch_latest_rank_session_v2 RPC threw:', rpcException)
+      const hint = deriveLatestSessionHint({ error: rpcException })
+      if (hint) {
+        report({ source: 'fetch_latest_rank_session_v2', hint, error: rpcException })
+      }
     }
   }
 
   console.warn(
     '[matchRealtimeSync] fetch_latest_rank_session_v2 RPC unavailable; returning null to avoid legacy rank_sessions query',
   )
+  const fallbackHint = deriveLatestSessionHint({})
+  if (fallbackHint) {
+    report({ source: 'fetch_latest_rank_session_v2', hint: fallbackHint, error: null })
+  }
   return null
 }
 
@@ -587,6 +685,41 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
   }
 
   if (!Array.isArray(rosterData) || rosterData.length === 0) {
+    const sessionDiagnostics = {
+      hint: null,
+      error: null,
+      source: null,
+    }
+
+    const fallbackSession = await fetchLatestSessionRow(supabaseClient, trimmedGameId, {
+      onDiagnostics: (info) => {
+        if (!info || typeof info !== 'object') return
+        const derivedHint = info.hint || deriveLatestSessionHint(info) || null
+        if (derivedHint && !sessionDiagnostics.hint) {
+          sessionDiagnostics.hint = derivedHint
+        }
+        if (info.error && !sessionDiagnostics.error) {
+          sessionDiagnostics.error = info.error
+        }
+        if (info.source && !sessionDiagnostics.source) {
+          sessionDiagnostics.source = info.source
+        }
+      },
+    })
+
+    if (!fallbackSession && (sessionDiagnostics.hint || sessionDiagnostics.error)) {
+      const fallbackHint =
+        sessionDiagnostics.hint ||
+        deriveLatestSessionHint({ error: sessionDiagnostics.error, supabaseError: sessionDiagnostics.error }) ||
+        'fetch_latest_rank_session_v2 RPC를 호출하지 못했습니다. Supabase SQL Editor에서 함수를 재배포하고 권한을 확인하세요.'
+      const exception = new Error('매치 세션 정보를 불러오지 못했습니다.')
+      exception.code = 'latest_session_unavailable'
+      exception.hint = fallbackHint
+      exception.supabaseError = sessionDiagnostics.error || null
+      exception.source = sessionDiagnostics.source || 'latest-session'
+      throw exception
+    }
+
     return {
       roster: [],
       participantPool: [],
@@ -603,7 +736,7 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
       slotTemplateUpdatedAt: null,
       matchInstanceId: null,
       roomId: null,
-      sessionId: null,
+      sessionId: fallbackSession?.id || null,
     }
   }
 
@@ -737,7 +870,40 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
     sessionRow = formatSessionRow(sessionEnvelope)
   }
   if (!sessionRow) {
-    sessionRow = await fetchLatestSessionRow(supabaseClient, trimmedGameId)
+    const sessionDiagnostics = {
+      hint: null,
+      error: null,
+      source: null,
+    }
+
+    sessionRow = await fetchLatestSessionRow(supabaseClient, trimmedGameId, {
+      onDiagnostics: (info) => {
+        if (!info || typeof info !== 'object') return
+        const derivedHint = info.hint || deriveLatestSessionHint(info) || null
+        if (derivedHint && !sessionDiagnostics.hint) {
+          sessionDiagnostics.hint = derivedHint
+        }
+        if (info.error && !sessionDiagnostics.error) {
+          sessionDiagnostics.error = info.error
+        }
+        if (info.source && !sessionDiagnostics.source) {
+          sessionDiagnostics.source = info.source
+        }
+      },
+    })
+
+    if (!sessionRow && (sessionDiagnostics.hint || sessionDiagnostics.error)) {
+      const fallbackHint =
+        sessionDiagnostics.hint ||
+        deriveLatestSessionHint({ error: sessionDiagnostics.error, supabaseError: sessionDiagnostics.error }) ||
+        'fetch_latest_rank_session_v2 RPC를 호출하지 못했습니다. Supabase SQL Editor에서 함수를 재배포하고 권한을 확인하세요.'
+      const exception = new Error('매치 세션 정보를 불러오지 못했습니다.')
+      exception.code = 'latest_session_unavailable'
+      exception.hint = fallbackHint
+      exception.supabaseError = sessionDiagnostics.error || null
+      exception.source = sessionDiagnostics.source || 'latest-session'
+      throw exception
+    }
   }
 
   let sessionMeta = null
