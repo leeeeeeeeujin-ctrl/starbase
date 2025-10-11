@@ -1001,10 +1001,30 @@ export default function RoomDetailPage() {
     [keyringSnapshot, viewer.userId],
   )
 
+  const roomOwnerId = useMemo(() => {
+    if (!room?.ownerId) return ''
+    return String(room.ownerId).trim()
+  }, [room?.ownerId])
+
+  const viewerOwnerId = useMemo(() => {
+    if (!viewer.ownerId) return ''
+    return String(viewer.ownerId).trim()
+  }, [viewer.ownerId])
+
+  const viewerUserId = useMemo(() => {
+    if (!viewer.userId) return ''
+    return String(viewer.userId).trim()
+  }, [viewer.userId])
+
   const isHost = useMemo(() => {
-    if (!room?.ownerId || !viewer.ownerId) return false
-    return room.ownerId === viewer.ownerId
-  }, [room?.ownerId, viewer.ownerId])
+    if (!roomOwnerId) return false
+    return roomOwnerId === viewerOwnerId || roomOwnerId === viewerUserId
+  }, [roomOwnerId, viewerOwnerId, viewerUserId])
+
+  const canSyncRoomCounters = useMemo(() => {
+    if (!roomOwnerId || !viewerUserId) return false
+    return roomOwnerId === viewerUserId
+  }, [roomOwnerId, viewerUserId])
   const loadViewerHero = useCallback(
     async (explicitHeroId) => {
       setViewerLoading(true)
@@ -1368,7 +1388,7 @@ export default function RoomDetailPage() {
             ? Number(roomRow.host_role_limit) !== numericHostLimit
             : roomRow.host_role_limit !== null)
 
-        if (needsUpdate && isHost) {
+        if (needsUpdate && canSyncRoomCounters) {
           try {
             await withTable(supabase, 'rank_rooms', (table) =>
               supabase
@@ -1386,8 +1406,8 @@ export default function RoomDetailPage() {
           } catch (updateError) {
             console.warn('[RoomDetail] Failed to sync room counters:', updateError)
           }
-        } else if (needsUpdate && !isHost) {
-          console.debug('[RoomDetail] Skipping counter sync for non-host viewer')
+        } else if (needsUpdate && !canSyncRoomCounters) {
+          console.debug('[RoomDetail] Skipping counter sync for viewer without host session access')
         }
 
         const resolvedRoom = {
@@ -1443,7 +1463,7 @@ export default function RoomDetailPage() {
         }
       }
     },
-    [roomId, isHost],
+    [roomId, canSyncRoomCounters, isHost],
   )
 
   useEffect(() => {
