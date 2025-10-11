@@ -47,6 +47,7 @@ function createInitialDiagnostics() {
     lastRefreshAt: null,
     lastRefreshSource: '',
     lastRefreshError: null,
+    lastRefreshHint: null,
     lastRefreshRequestedAt: null,
     pendingRefresh: false,
     realtime: {
@@ -138,6 +139,7 @@ function useMatchReadyState(gameId) {
         ...createInitialDiagnostics(),
         lastSnapshotAt: Date.now(),
         lastRefreshError: prev.lastRefreshError,
+        lastRefreshHint: prev.lastRefreshHint,
       }))
       return empty
     }
@@ -192,6 +194,7 @@ function useMatchReadyState(gameId) {
         lastRefreshAt: Date.now(),
         lastRefreshSource: 'reset',
         lastRefreshError: null,
+        lastRefreshHint: null,
       }))
       return empty
     }
@@ -252,6 +255,7 @@ function useMatchReadyState(gameId) {
           lastRefreshAt: Date.now(),
           lastRefreshSource: 'snapshot',
           lastRefreshError: null,
+          lastRefreshHint: null,
         }))
       }
     } catch (error) {
@@ -261,6 +265,7 @@ function useMatchReadyState(gameId) {
         lastRefreshAt: Date.now(),
         lastRefreshSource: 'snapshot',
         lastRefreshError: error?.message || 'load_failed',
+        lastRefreshHint: error?.hint || prev.lastRefreshHint,
       }))
       addDebugEvent({
         level: 'error',
@@ -1123,6 +1128,9 @@ export default function MatchReadyClient({ gameId }) {
             </dl>
             {diagnostics?.lastRefreshError && (
               <p className={styles.diagnosticsError}>마지막 새로고침 오류: {diagnostics.lastRefreshError}</p>
+            )}
+            {diagnostics?.lastRefreshHint && (
+              <p className={styles.diagnosticsHint}>{diagnostics.lastRefreshHint}</p>
             )}
             {diagnostics?.realtime?.lastError && (
               <p className={styles.diagnosticsError}>

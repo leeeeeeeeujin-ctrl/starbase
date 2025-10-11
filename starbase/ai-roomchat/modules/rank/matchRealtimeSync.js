@@ -373,25 +373,118 @@ function mapSessionMeta(row) {
   }
 }
 
+function isOrderedSetAggregateError(error) {
+  if (!error) return false
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase()
+  return message.includes('ordered-set') && message.includes('within group')
+}
+
+function createOrderedSetAggregateException(error, context = {}) {
+  const exception = new Error(
+    'ordered-set 집계를 사용하는 Supabase 함수에 WITHIN GROUP 절이 빠져 있어 매치 준비 스냅샷을 불러오지 못했습니다.',
+  )
+  exception.code = 'ordered_set_aggregate'
+  exception.supabaseError = error || null
+  exception.hint = [
+    'Supabase SQL에서 percentile, mode와 같은 ordered-set 집계를 호출할 때는 `WITHIN GROUP (ORDER BY ...)` 절이 필요합니다.',
+    'fetch_rank_match_ready_snapshot 혹은 관련 RPC/뷰에서 누락된 WITHIN GROUP 절을 추가한 뒤 다시 시도하세요.',
+  ].join(' ')
+  exception.context = context
+  return exception
+}
+
+function normaliseSnapshotEnvelope(envelope) {
+  if (!envelope) return null
+  const payload = Array.isArray(envelope) ? envelope[0] : envelope
+  if (!payload || typeof payload !== 'object') return null
+  return payload
+}
+
 export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
   const trimmedGameId = toTrimmed(gameId)
   if (!trimmedGameId) {
     return null
   }
 
-  const {
-    data: rosterData,
-    error: rosterError,
-  } = await withTable(supabaseClient, 'rank_match_roster', (table) =>
-    supabaseClient
-      .from(table)
-      .select(
-        'id, match_instance_id, room_id, slot_index, slot_id, role, owner_id, hero_id, hero_name, hero_summary, ready, joined_at, slot_template_version, slot_template_source, slot_template_updated_at, updated_at',
+  let rosterData = null
+  let rosterError = null
+  let rosterEnvelope = null
+  let slotTemplateVersionOverride = null
+  let slotTemplateUpdatedAtOverride = null
+  let slotTemplateSourceOverride = null
+  let roomEnvelope = null
+  let sessionEnvelope = null
+  let sessionMetaEnvelope = null
+
+  if (typeof supabaseClient?.rpc === 'function') {
+    try {
+      const { data: rpcData, error: rpcError } = await supabaseClient.rpc(
+        'fetch_rank_match_ready_snapshot',
+        { p_game_id: trimmedGameId },
       )
-      .eq('game_id', trimmedGameId)
-      .order('slot_template_version', { ascending: false })
-      .order('slot_index', { ascending: true }),
-  )
+
+      if (rpcError) {
+        if (isOrderedSetAggregateError(rpcError)) {
+          addSupabaseDebugEvent({
+            source: 'match-ready-snapshot',
+            operation: 'fetch_rank_match_ready_snapshot',
+            error: rpcError,
+            level: 'error',
+          })
+          throw createOrderedSetAggregateException(rpcError, {
+            operation: 'fetch_rank_match_ready_snapshot',
+          })
+        }
+
+        addSupabaseDebugEvent({
+          source: 'match-ready-snapshot',
+          operation: 'fetch_rank_match_ready_snapshot',
+          error: rpcError,
+        })
+      }
+
+      const envelope = normaliseSnapshotEnvelope(rpcData)
+      if (envelope) {
+        rosterEnvelope = envelope
+        rosterData = Array.isArray(envelope.roster) ? envelope.roster : []
+        slotTemplateVersionOverride = envelope.slot_template_version ?? null
+        slotTemplateUpdatedAtOverride = envelope.slot_template_updated_at ?? null
+        slotTemplateSourceOverride = envelope.slot_template_source ?? null
+        roomEnvelope = envelope.room || null
+        sessionEnvelope = envelope.session || null
+        sessionMetaEnvelope = envelope.session_meta || null
+      }
+    } catch (rpcException) {
+      if (isOrderedSetAggregateError(rpcException)) {
+        throw createOrderedSetAggregateException(rpcException, {
+          operation: 'fetch_rank_match_ready_snapshot',
+        })
+      }
+      addSupabaseDebugEvent({
+        source: 'match-ready-snapshot',
+        operation: 'fetch_rank_match_ready_snapshot',
+        error: rpcException,
+        level: 'error',
+        message: 'Snapshot RPC threw an exception',
+      })
+    }
+  }
+
+  if (!rosterData) {
+    const result = await withTable(supabaseClient, 'rank_match_roster', (table) =>
+      supabaseClient
+        .from(table)
+        .select(
+          'id, match_instance_id, room_id, slot_index, slot_id, role, owner_id, hero_id, hero_name, hero_summary, ready, joined_at, slot_template_version, slot_template_source, slot_template_updated_at, updated_at, created_at, game_id, score, rating, battles, win_rate, status, standin, match_source',
+        )
+        .eq('game_id', trimmedGameId)
+        .order('slot_template_version', { ascending: false })
+        .order('slot_index', { ascending: true }),
+    )
+
+    rosterData = result.data
+    rosterError = result.error
+  }
 
   if (rosterError) {
     throw rosterError
@@ -418,7 +511,8 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
     }
   }
 
-  let bestVersion = -Infinity
+  let bestVersion =
+    slotTemplateVersionOverride != null ? Number(slotTemplateVersionOverride) || 0 : -Infinity
   rosterData.forEach((row) => {
     const version = Number(row?.slot_template_version) || 0
     if (version > bestVersion) {
@@ -460,7 +554,9 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
     targetRoomId = toOptionalTrimmed(targetRows[0]?.room_id) || null
     targetUpdatedAt = targetRows.reduce((acc, row) => {
       const timestamp =
-        parseTimestamp(row?.slot_template_updated_at) ?? parseTimestamp(row?.updated_at) ?? parseTimestamp(row?.created_at)
+        parseTimestamp(row?.slot_template_updated_at) ??
+        parseTimestamp(row?.updated_at) ??
+        parseTimestamp(row?.created_at)
       return Math.max(acc, timestamp != null ? timestamp : -Infinity)
     }, -Infinity)
   }
@@ -483,13 +579,17 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
   const slotLayout = buildSlotLayoutFromRoster(normalizedRoster)
 
   const slotTemplateVersion = bestVersion
-  const slotTemplateSource = targetRows[0]?.slot_template_source || 'room-stage'
+  const slotTemplateSource = slotTemplateSourceOverride || targetRows[0]?.slot_template_source || 'room-stage'
   const slotTemplateUpdatedAt =
-    targetUpdatedAt !== -Infinity && targetUpdatedAt !== null ? targetUpdatedAt : Date.now()
+    slotTemplateUpdatedAtOverride != null
+      ? parseTimestamp(slotTemplateUpdatedAtOverride) || Date.now()
+      : targetUpdatedAt !== -Infinity && targetUpdatedAt !== null
+        ? targetUpdatedAt
+        : Date.now()
   const matchInstanceId = toOptionalTrimmed(targetRows[0]?.match_instance_id)
 
-  let roomRow = null
-  if (targetRoomId) {
+  let roomRow = roomEnvelope || null
+  if (!roomRow && targetRoomId) {
     const { data: directRoom, error: directError } = await withTable(
       supabaseClient,
       'rank_rooms',
@@ -508,33 +608,48 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
   }
 
   if (!roomRow) {
-    const { data: fallbackRooms, error: fallbackError } = await withTable(
-      supabaseClient,
-      'rank_rooms',
-      (table) =>
-        supabaseClient
-          .from(table)
-          .select(
-            'id, owner_id, code, status, mode, realtime_mode, host_role_limit, blind_mode, score_window, updated_at, game_id',
-          )
-          .eq('game_id', trimmedGameId)
-          .order('updated_at', { ascending: false })
-          .limit(1),
-    )
-    if (!fallbackError && Array.isArray(fallbackRooms) && fallbackRooms.length) {
-      roomRow = fallbackRooms[0]
-      if (!targetRoomId) {
-        targetRoomId = toOptionalTrimmed(roomRow?.id) || null
+    if (roomEnvelope) {
+      roomRow = roomEnvelope
+      targetRoomId = toOptionalTrimmed(roomEnvelope?.id) || targetRoomId
+    } else {
+      const { data: fallbackRooms, error: fallbackError } = await withTable(
+        supabaseClient,
+        'rank_rooms',
+        (table) =>
+          supabaseClient
+            .from(table)
+            .select(
+              'id, owner_id, code, status, mode, realtime_mode, host_role_limit, blind_mode, score_window, updated_at, game_id',
+            )
+            .eq('game_id', trimmedGameId)
+            .order('updated_at', { ascending: false })
+            .limit(1),
+      )
+      if (!fallbackError && Array.isArray(fallbackRooms) && fallbackRooms.length) {
+        roomRow = fallbackRooms[0]
+        if (!targetRoomId) {
+          targetRoomId = toOptionalTrimmed(roomRow?.id) || null
+        }
       }
     }
   }
 
   const formattedRoom = formatRoom(roomRow)
 
-  const sessionRow = await fetchLatestSessionRow(supabaseClient, trimmedGameId)
+  let sessionRow = null
+  if (sessionEnvelope) {
+    sessionRow = formatSessionRow(sessionEnvelope)
+  }
+  if (!sessionRow) {
+    sessionRow = await fetchLatestSessionRow(supabaseClient, trimmedGameId)
+  }
 
   let sessionMeta = null
-  if (sessionRow?.id) {
+  if (sessionMetaEnvelope) {
+    sessionMeta = mapSessionMeta(sessionMetaEnvelope)
+  }
+
+  if (!sessionMeta && sessionRow?.id) {
     const { data: metaRow, error: metaError } = await withTable(
       supabaseClient,
       'rank_session_meta',
