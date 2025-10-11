@@ -30,6 +30,13 @@ function normaliseRpcPayload({ gameId, ownerId }) {
   return payload
 }
 
+function isOrderedSetAggregateError(error) {
+  if (!error) return false
+  const message = `${error.message || ''} ${error.details || ''}`.toLowerCase()
+  if (!message.trim()) return false
+  return message.includes('ordered-set') && message.includes('within group')
+}
+
 function formatSessionRow(row) {
   if (!row || typeof row !== 'object') return null
   const id = toOptionalUuid(row.id)
@@ -127,6 +134,13 @@ function buildRpcHint(error) {
     ].join(' ')
   }
 
+  if (isOrderedSetAggregateError(error) || String(error.code || '').toUpperCase() === '42809') {
+    return [
+      'fetch_latest_rank_session_v2 RPC에 ordered-set 집계를 사용할 때 WITHIN GROUP 절이 빠져 있습니다.',
+      'Supabase SQL Editor에서 percentile, mode와 같은 ordered-set 집계를 호출하는 구문에 `WITHIN GROUP (ORDER BY ...)` 절을 추가하고, docs/sql/fetch-latest-rank-session.sql 최신 버전을 재배포하세요.',
+    ].join(' ')
+  }
+
   if (isMissingRpc(error)) {
     return [
       'fetch_latest_rank_session_v2 RPC가 배포되어 있지 않습니다.',
@@ -167,7 +181,8 @@ export default async function handler(req, res) {
     const { row, error } = await fetchViaRpc(payload)
     if (error) {
       const code = String(error?.code || '').toUpperCase()
-      if (code === '42809' || isMissingRpc(error) || isPermissionError(error)) {
+      const orderedSetError = code === '42809' || isOrderedSetAggregateError(error)
+      if (orderedSetError || isMissingRpc(error) || isPermissionError(error)) {
         const fallback = await fetchViaTable(payload.p_game_id, payload.p_owner_id || null)
         if (fallback.error) {
           return res

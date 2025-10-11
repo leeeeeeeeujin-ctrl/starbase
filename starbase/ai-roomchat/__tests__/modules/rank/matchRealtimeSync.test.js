@@ -227,6 +227,48 @@ describe('fetchLatestSessionRow', () => {
     global.window = originalWindow
     global.fetch = originalFetch
   })
+
+  it('emits an ordered-set hint when the browser API reports a WITHIN GROUP error', async () => {
+    const supabaseClient = { rpc: jest.fn() }
+
+    const originalWindow = global.window
+    const originalFetch = global.fetch
+
+    const failurePayload = {
+      error: 'rpc_failed',
+      supabaseError: {
+        code: '42809',
+        message: 'WITHIN GROUP is required for ordered-set aggregate mode',
+        details: 'ordered-set aggregate needs WITHIN GROUP',
+      },
+    }
+
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 502,
+        text: () => Promise.resolve(JSON.stringify(failurePayload)),
+      }),
+    )
+    global.window = { document: {}, fetch: global.fetch }
+
+    const diagnostics = jest.fn()
+
+    const result = await fetchLatestSessionRow(supabaseClient, 'game-ordered-set', {
+      onDiagnostics: diagnostics,
+    })
+
+    expect(result).toBeNull()
+    expect(diagnostics).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'latest-session-api',
+        hint: expect.stringContaining('WITHIN GROUP'),
+      }),
+    )
+
+    global.window = originalWindow
+    global.fetch = originalFetch
+  })
 })
 
 describe('loadMatchFlowSnapshot', () => {
@@ -413,6 +455,42 @@ describe('loadMatchFlowSnapshot', () => {
     await expect(loadMatchFlowSnapshot(supabaseClient, 'game-latest-missing')).rejects.toMatchObject({
       code: 'latest_session_unavailable',
       hint: expect.stringContaining('fetch_latest_rank_session_v2'),
+    })
+  })
+
+  it('raises an ordered-set hint when the latest-session RPC is missing WITHIN GROUP', async () => {
+    mockWithTable.mockImplementation(() => Promise.resolve({ data: null, error: null }))
+
+    const supabaseClient = {
+      rpc: jest.fn((fnName) => {
+        if (fnName === 'fetch_rank_match_ready_snapshot') {
+          return Promise.resolve({
+            data: {
+              roster: [],
+              room: null,
+              session: null,
+              session_meta: null,
+            },
+            error: null,
+          })
+        }
+        if (fnName === 'fetch_latest_rank_session_v2') {
+          return Promise.resolve({
+            data: null,
+            error: {
+              code: '42809',
+              message: 'WITHIN GROUP is required for ordered-set aggregate mode',
+              details: 'ordered-set aggregate needs WITHIN GROUP',
+            },
+          })
+        }
+        return Promise.resolve({ data: null, error: null })
+      }),
+    }
+
+    await expect(loadMatchFlowSnapshot(supabaseClient, 'game-latest-ordered-set')).rejects.toMatchObject({
+      code: 'latest_session_unavailable',
+      hint: expect.stringContaining('WITHIN GROUP'),
     })
   })
 })

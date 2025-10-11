@@ -75,6 +75,13 @@ function deriveLatestSessionHint(payload = {}) {
     .toLowerCase()
     .trim()
 
+  if (code === '42809' || isOrderedSetAggregateError(sourceError)) {
+    return [
+      'fetch_latest_rank_session_v2 RPC에 ordered-set 집계를 사용할 때 WITHIN GROUP 절이 누락되어 있습니다.',
+      'Supabase SQL Editor에서 percentile, mode와 같은 ordered-set 집계를 호출하는 구문에 `WITHIN GROUP (ORDER BY ...)` 절을 추가하고 docs/sql/fetch-latest-rank-session.sql 최신 버전을 재배포하세요.',
+    ].join(' ')
+  }
+
   if (status === 401 || status === 403) {
     return '세션을 불러오려면 Supabase 인증 토큰이 필요합니다. 브라우저에서 다시 로그인하거나 세션을 새로고침한 뒤 시도하세요.'
   }
