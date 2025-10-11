@@ -37,6 +37,39 @@ function isOrderedSetAggregateError(error) {
   return message.includes('ordered-set') && message.includes('within group')
 }
 
+function serializeSupabaseError(error) {
+  if (!error) return null
+  if (typeof error === 'string') {
+    const trimmed = error.trim()
+    return trimmed ? { message: trimmed } : null
+  }
+
+  const payload = {}
+  const assign = (key, value) => {
+    if (value === null || value === undefined) return
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (!trimmed) return
+      payload[key] = trimmed
+      return
+    }
+    payload[key] = value
+  }
+
+  assign('code', error.code)
+  assign('status', error.status)
+  assign('name', error.name)
+  assign('message', error.message)
+  assign('details', error.details)
+  assign('hint', error.hint)
+
+  if (!Object.keys(payload).length) {
+    return { message: String(error) }
+  }
+
+  return payload
+}
+
 function formatSessionRow(row) {
   if (!row || typeof row !== 'object') return null
   const id = toOptionalUuid(row.id)
@@ -229,34 +262,50 @@ export default async function handler(req, res) {
       const orderedSetError = code === '42809' || isOrderedSetAggregateError(error)
       if (orderedSetError || isMissingRpc(error) || isPermissionError(error)) {
         const fallback = await fetchViaTable(payload.p_game_id, payload.p_owner_id || null)
-        const baseResponse = {
+        const supabaseError = serializeSupabaseError(error)
+        const fallbackError = fallback.error || fallback.orderedSetError || null
+        const serializedFallbackError = serializeSupabaseError(fallbackError)
+        const hint = buildRpcHint(error)
+        const responsePayload = {
           session: fallback.row || null,
           error: 'rpc_failed',
-          supabaseError: error,
-          hint: buildRpcHint(error),
+          supabaseError,
+          hint,
           via: fallback.via,
         }
 
-        if (fallback.error) {
-          baseResponse.fallbackError = fallback.error
-        } else if (fallback.orderedSetError) {
-          baseResponse.fallbackError = fallback.orderedSetError
+        if (fallback.table) {
+          responsePayload.table = fallback.table
         }
 
-        if (fallback.table) {
-          baseResponse.table = fallback.table
+        if (serializedFallbackError) {
+          responsePayload.fallbackError = serializedFallbackError
         }
 
         if (fallback.orderedSetRecovered) {
-          baseResponse.orderedSetRecovered = true
+          responsePayload.orderedSetRecovered = true
         }
 
-        return res.status(200).json(baseResponse)
+        responsePayload.diagnostics = {
+          error: 'rpc_failed',
+          supabaseError,
+          fallbackError: serializedFallbackError,
+          hint,
+          via: fallback.via,
+          table: fallback.table || null,
+          orderedSetRecovered: Boolean(fallback.orderedSetRecovered),
+        }
+
+        return res.status(200).json(responsePayload)
       }
 
       return res
         .status(502)
-        .json({ error: 'rpc_failed', supabaseError: error, hint: buildRpcHint(error) })
+        .json({
+          error: 'rpc_failed',
+          supabaseError: serializeSupabaseError(error),
+          hint: buildRpcHint(error),
+        })
     }
 
     return res.status(200).json({ session: row || null })

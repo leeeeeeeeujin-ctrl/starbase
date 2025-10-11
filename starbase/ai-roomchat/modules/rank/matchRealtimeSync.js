@@ -289,7 +289,56 @@ async function fetchSessionViaApi(gameId, ownerId) {
       via: data?.via,
     }
 
+    const diagnostics =
+      data?.diagnostics && typeof data.diagnostics === 'object' ? { ...data.diagnostics } : null
+
     const formatted = data?.session ? formatSessionRow(data.session) : null
+    const mergedVia = diagnostics?.via || failure.via
+    const fallbackSuccess =
+      response.ok &&
+      Boolean(formatted) &&
+      typeof mergedVia === 'string' &&
+      mergedVia.toLowerCase().startsWith('table')
+
+    if (fallbackSuccess) {
+      const mergedDiagnostics = {
+        ...failure,
+        ...(diagnostics || {}),
+        via: mergedVia,
+      }
+      const derivedHint = deriveLatestSessionHint(mergedDiagnostics)
+      if (
+        failure.error ||
+        failure.supabaseError ||
+        failure.fallbackError ||
+        failure.hint ||
+        diagnostics?.hint
+      ) {
+        if (typeof console !== 'undefined' && typeof console.info === 'function') {
+          console.info(
+            '[matchRealtimeSync] latest-session API recovered via table fallback:',
+            mergedDiagnostics,
+          )
+        }
+        addSupabaseDebugEvent({
+          source: 'latest-session-api',
+          operation: 'fetch_latest_rank_session_v2',
+          status: response.status,
+          error: mergedDiagnostics.supabaseError || mergedDiagnostics.error || null,
+          payload: { request: body, response: mergedDiagnostics },
+          hint: derivedHint || mergedDiagnostics.hint || null,
+          level: 'info',
+        })
+      }
+
+      return {
+        session: formatted,
+        error: null,
+        hint: derivedHint || mergedDiagnostics.hint || null,
+        diagnostics: mergedDiagnostics,
+      }
+    }
+
     const hasDiagnostics =
       !response.ok ||
       Boolean(failure.error) ||
