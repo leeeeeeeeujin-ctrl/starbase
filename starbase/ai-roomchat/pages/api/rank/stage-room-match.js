@@ -32,6 +32,13 @@ function toOptionalTrimmedString(value) {
   return trimmed ? trimmed : null
 }
 
+function toNumericOrNull(value) {
+  if (value === null || value === undefined) return null
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return numeric
+}
+
 function toNumericVersion(value, fallback) {
   if (value === null || value === undefined) return fallback
   if (typeof value === 'number') {
@@ -97,6 +104,21 @@ function normalizeRosterEntries(entries = []) {
       const heroName = toTrimmedString(entry.heroName ?? entry.hero_name)
       const ready = Boolean(entry.ready ?? entry.isReady ?? entry.occupantReady)
       const joinedAt = entry.joinedAt ?? entry.joined_at ?? null
+      const standin = entry.standin === true || entry.isStandin === true
+      const matchSource =
+        toOptionalTrimmedString(entry.matchSource ?? entry.match_source) ||
+        (standin ? 'async_standin' : null)
+      const score = toNumericOrNull(entry.score ?? entry.standinScore)
+      const rating = toNumericOrNull(entry.rating ?? entry.standinRating)
+      const battles = toNumericOrNull(entry.battles ?? entry.standinBattles)
+      const winRateRaw = entry.winRate ?? entry.win_rate ?? entry.standinWinRate
+      const winRate =
+        winRateRaw !== null && winRateRaw !== undefined && Number.isFinite(Number(winRateRaw))
+          ? Number(winRateRaw)
+          : null
+      const status =
+        toOptionalTrimmedString(entry.status ?? entry.standinStatus) ||
+        (standin ? 'standin' : null)
 
       return {
         slotIndex,
@@ -107,6 +129,13 @@ function normalizeRosterEntries(entries = []) {
         heroName: heroName || null,
         ready,
         joinedAt,
+        standin,
+        matchSource,
+        score,
+        rating,
+        battles,
+        winRate,
+        status,
       }
     })
     .filter((entry) => entry && entry.slotIndex != null)
@@ -253,6 +282,21 @@ export default async function handler(req, res) {
     const stats = participantMap.get(entry.ownerId || '') || {}
     const heroMeta = heroSummaryMap.get(entry.heroId || '') || heroMap[entry.heroId || ''] || null
     const heroName = heroMeta?.name || entry.heroName || null
+    const entryStandin = entry.standin === true
+    const entryMatchSource = entry.matchSource || (entryStandin ? 'async_standin' : null)
+    const entryScore = toNumericOrNull(entry.score)
+    const entryRating = toNumericOrNull(entry.rating)
+    const entryBattles = toNumericOrNull(entry.battles)
+    const entryWinRate = entry.winRate !== undefined && entry.winRate !== null ? Number(entry.winRate) : null
+    const entryStatus = entry.status || (entryStandin ? 'standin' : null)
+    const derivedMatchSource =
+      toOptionalTrimmedString(stats.match_source) ||
+      toOptionalTrimmedString(entryMatchSource) ||
+      null
+    const derivedStatus =
+      toOptionalTrimmedString(stats.status) ||
+      toOptionalTrimmedString(entryStatus) ||
+      (entryStandin ? 'standin' : null)
 
     return {
       match_instance_id: matchInstanceId,
@@ -267,13 +311,13 @@ export default async function handler(req, res) {
       hero_summary: heroMeta,
       ready: entry.ready,
       joined_at: entry.joinedAt,
-      score: stats.score,
-      rating: stats.rating,
-      battles: stats.battles,
-      win_rate: stats.win_rate,
-      status: stats.status,
-      standin: stats.standin || false,
-      match_source: stats.match_source,
+      score: stats.score ?? entryScore ?? null,
+      rating: stats.rating ?? entryRating ?? null,
+      battles: stats.battles ?? entryBattles ?? null,
+      win_rate: stats.win_rate ?? (Number.isFinite(entryWinRate) ? entryWinRate : null),
+      status: derivedStatus,
+      standin: stats.standin === true || entryStandin,
+      match_source: derivedMatchSource,
       created_at: now,
       updated_at: now,
     }
