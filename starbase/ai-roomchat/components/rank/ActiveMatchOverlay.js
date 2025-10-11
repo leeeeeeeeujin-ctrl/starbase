@@ -10,6 +10,7 @@ import {
 } from '@/lib/rank/activeSessionStorage'
 import { withTable } from '@/lib/supabaseTables'
 import { supabase } from '@/lib/supabase'
+import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync'
 
 const styles = {
   root: {
@@ -224,21 +225,12 @@ export default function ActiveMatchOverlay() {
 
       let sessionRow = null
       if (!invalid) {
-        const { data, error } = await supabase
-          .from('rank_sessions')
-          .select('id, status, owner_id, game_id')
-          .eq('game_id', gameId)
-          .eq('owner_id', viewer.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        if (error) {
+        try {
+          sessionRow = await fetchLatestSessionRow(supabase, gameId, { ownerId: viewer.id })
+        } catch (error) {
           console.warn('활성 세션 확인 중 세션 정보를 불러오지 못했습니다:', error)
           return
         }
-
-        sessionRow = data || null
 
         if (!sessionRow?.id) {
           invalid = true

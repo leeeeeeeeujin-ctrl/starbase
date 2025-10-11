@@ -1,12 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
 import styles from './MatchReadyClient.module.css'
 import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow'
 import {
+  setGameMatchParticipation,
+  setGameMatchSlotTemplate,
+  setGameMatchSnapshot,
   setGameMatchSessionMeta,
   subscribeGameMatchData,
 } from '../../modules/rank/matchDataStore'
@@ -17,6 +20,9 @@ import {
   sanitizeTurnTimerVote,
   buildTurnTimerVotePatch,
 } from '../../lib/rank/turnTimerMeta'
+import { supabase } from '../../lib/supabase'
+import { loadMatchFlowSnapshot } from '../../modules/rank/matchRealtimeSync'
+import { requestMatchReadySignal } from '../../lib/rank/readyCheckClient'
 
 const StartClient = dynamic(() => import('./StartClient'), {
   ssr: false,
@@ -28,32 +34,204 @@ const StartClient = dynamic(() => import('./StartClient'), {
 })
 
 function useMatchReadyState(gameId) {
-  const [state, setState] = useState(() => createEmptyMatchFlowState())
+  const [state, setState] = useState(() => ({
+    ...createEmptyMatchFlowState(),
+    sessionId: null,
+    roomId: null,
+  }))
+  const refreshPromiseRef = useRef(null)
+  const latestRef = useRef({
+    slotTemplateVersion: null,
+    slotTemplateUpdatedAt: null,
+    sessionId: null,
+    roomId: null,
+  })
+  const refreshTimeoutRef = useRef(null)
 
-  const refresh = useCallback(() => {
+  const applySnapshot = useCallback(() => {
     if (!gameId && gameId !== 0) {
-      const empty = createEmptyMatchFlowState()
+      const empty = {
+        ...createEmptyMatchFlowState(),
+        sessionId: null,
+        roomId: null,
+      }
       setState(empty)
       return empty
     }
     const snapshot = readMatchFlowState(gameId)
-    setState(snapshot)
-    return snapshot
+    const augmented = {
+      ...snapshot,
+      sessionId: latestRef.current.sessionId,
+      roomId: latestRef.current.roomId,
+    }
+    setState(augmented)
+    return augmented
   }, [gameId])
 
+  const syncFromRemote = useCallback(async () => {
+    if (!gameId && gameId !== 0) {
+      latestRef.current = {
+        slotTemplateVersion: null,
+        slotTemplateUpdatedAt: null,
+        sessionId: null,
+        roomId: null,
+      }
+      const empty = {
+        ...createEmptyMatchFlowState(),
+        sessionId: null,
+        roomId: null,
+      }
+      setState(empty)
+      return empty
+    }
+
+    try {
+      const payload = await loadMatchFlowSnapshot(supabase, gameId)
+      if (payload) {
+        if (Array.isArray(payload.roster) && payload.roster.length) {
+          setGameMatchParticipation(gameId, {
+            roster: payload.roster,
+            participantPool: payload.participantPool,
+            heroOptions: payload.heroOptions,
+            heroMap: payload.heroMap,
+            realtimeMode: payload.realtimeMode,
+            hostOwnerId: payload.hostOwnerId,
+            hostRoleLimit: payload.hostRoleLimit,
+          })
+        }
+
+        if (payload.slotTemplate) {
+          setGameMatchSlotTemplate(gameId, payload.slotTemplate)
+        }
+
+        if (payload.matchSnapshot) {
+          setGameMatchSnapshot(gameId, payload.matchSnapshot)
+        }
+
+        if (payload.sessionMeta) {
+          setGameMatchSessionMeta(gameId, payload.sessionMeta)
+        }
+
+        latestRef.current = {
+          slotTemplateVersion:
+            payload.slotTemplateVersion != null
+              ? payload.slotTemplateVersion
+              : latestRef.current.slotTemplateVersion,
+          slotTemplateUpdatedAt:
+            payload.slotTemplateUpdatedAt != null
+              ? payload.slotTemplateUpdatedAt
+              : latestRef.current.slotTemplateUpdatedAt,
+          sessionId:
+            payload.sessionId != null ? String(payload.sessionId).trim() : latestRef.current.sessionId,
+          roomId: payload.roomId != null ? String(payload.roomId).trim() : latestRef.current.roomId,
+        }
+      }
+    } catch (error) {
+      console.warn('[MatchReadyClient] 실시간 매치 데이터를 불러오지 못했습니다:', error)
+    }
+
+    return applySnapshot()
+  }, [gameId, applySnapshot])
+
+  const refresh = useCallback(() => {
+    if (refreshPromiseRef.current) {
+      return refreshPromiseRef.current
+    }
+    const promise = syncFromRemote().finally(() => {
+      refreshPromiseRef.current = null
+    })
+    refreshPromiseRef.current = promise
+    return promise
+  }, [syncFromRemote])
+
   useEffect(() => {
+    latestRef.current = {
+      slotTemplateVersion: null,
+      slotTemplateUpdatedAt: null,
+      sessionId: null,
+      roomId: null,
+    }
     refresh()
   }, [refresh])
 
   useEffect(() => {
     if (!gameId && gameId !== 0) return undefined
     const unsubscribe = subscribeGameMatchData(gameId, () => {
-      refresh()
+      applySnapshot()
     })
     return () => {
       if (typeof unsubscribe === 'function') {
         unsubscribe()
       }
+    }
+  }, [gameId, applySnapshot])
+
+  useEffect(() => {
+    if (!gameId && gameId !== 0) return undefined
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) return
+      refreshTimeoutRef.current = setTimeout(() => {
+        refreshTimeoutRef.current = null
+        refresh()
+      }, 250)
+    }
+
+    const channel = supabase.channel(`match-ready-sync:${gameId}`, {
+      config: { broadcast: { ack: true } },
+    })
+
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rank_match_roster', filter: `game_id=eq.${gameId}` },
+      scheduleRefresh,
+    )
+
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rank_sessions', filter: `game_id=eq.${gameId}` },
+      scheduleRefresh,
+    )
+
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rank_rooms', filter: `game_id=eq.${gameId}` },
+      scheduleRefresh,
+    )
+
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'rank_session_meta' }, (payload) => {
+      const sessionId = latestRef.current.sessionId
+      if (!sessionId) return
+      const record = payload?.new || payload?.record || null
+      if (!record || typeof record !== 'object') return
+      const incoming = record.session_id ?? record.sessionId ?? null
+      if (!incoming) return
+      if (String(incoming).trim() !== String(sessionId).trim()) return
+      scheduleRefresh()
+    })
+
+    try {
+      const subscription = channel.subscribe()
+      if (subscription && typeof subscription.then === 'function') {
+        subscription.catch((error) => {
+          console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
+        })
+      }
+    } catch (error) {
+      console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
+    }
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+        refreshTimeoutRef.current = null
+      }
+      try {
+        channel.unsubscribe()
+      } catch (error) {
+        console.warn('[MatchReadyClient] 실시간 채널 해제 실패:', error)
+      }
+      supabase.removeChannel(channel)
     }
   }, [gameId, refresh])
 
@@ -193,6 +371,11 @@ export default function MatchReadyClient({ gameId }) {
   const { state, refresh, allowStart, missingKey } = useMatchReadyState(gameId)
   const [showGame, setShowGame] = useState(false)
   const [voteNotice, setVoteNotice] = useState('')
+  const [readyBusy, setReadyBusy] = useState(false)
+  const [readyError, setReadyError] = useState('')
+  const [readyCountdownMs, setReadyCountdownMs] = useState(null)
+  const readySignalControllerRef = useRef(null)
+  const autoOpenRef = useRef(false)
 
   const metaLines = useMemo(() => buildMetaLines(state), [state])
   const asyncFillInfo = useMemo(() => state?.sessionMeta?.asyncFill || null, [state?.sessionMeta?.asyncFill])
@@ -219,6 +402,59 @@ export default function MatchReadyClient({ gameId }) {
   }, [asyncFillInfo])
 
   const viewerIdentity = useMemo(() => getViewerIdentity(state), [state])
+  const viewerOwnerId = useMemo(() => {
+    if (state?.viewer?.ownerId !== null && state?.viewer?.ownerId !== undefined) {
+      const trimmed = String(state.viewer.ownerId).trim()
+      if (trimmed) return trimmed
+    }
+    return ''
+  }, [state?.viewer?.ownerId])
+
+  const sessionId = useMemo(() => {
+    if (state?.sessionId !== null && state?.sessionId !== undefined) {
+      const trimmed = String(state.sessionId).trim()
+      if (trimmed) return trimmed
+    }
+    return ''
+  }, [state?.sessionId])
+
+  const matchInstanceId = useMemo(() => {
+    if (state?.matchInstanceId !== null && state?.matchInstanceId !== undefined) {
+      const trimmed = String(state.matchInstanceId).trim()
+      if (trimmed) return trimmed
+    }
+    if (state?.snapshot?.match?.matchInstanceId) {
+      const trimmed = String(state.snapshot.match.matchInstanceId).trim()
+      if (trimmed) return trimmed
+    }
+    if (state?.snapshot?.match?.match_instance_id) {
+      const trimmed = String(state.snapshot.match.match_instance_id).trim()
+      if (trimmed) return trimmed
+    }
+    return ''
+  }, [state?.matchInstanceId, state?.snapshot?.match?.matchInstanceId, state?.snapshot?.match?.match_instance_id])
+
+  const readyCheck = state?.sessionMeta?.extras?.readyCheck || null
+  const readyStatus = typeof readyCheck?.status === 'string' ? readyCheck.status : 'idle'
+  const readyWindowActive = readyStatus === 'pending' || readyStatus === 'ready'
+  const readyExpiresAtMsRaw = Number(readyCheck?.expiresAtMs)
+  const readyExpiresAtMs = Number.isFinite(readyExpiresAtMsRaw) ? readyExpiresAtMsRaw : null
+  const readyReadyIds = Array.isArray(readyCheck?.readyOwnerIds)
+    ? readyCheck.readyOwnerIds.map((id) => String(id))
+    : []
+  const readyMissingIds = Array.isArray(readyCheck?.missingOwnerIds)
+    ? readyCheck.missingOwnerIds.map((id) => String(id))
+    : []
+  const viewerReady = viewerOwnerId ? readyReadyIds.includes(viewerOwnerId) : false
+  const totalReady = Number.isFinite(Number(readyCheck?.readyCount))
+    ? Number(readyCheck.readyCount)
+    : readyReadyIds.length
+  const totalCount = Number.isFinite(Number(readyCheck?.totalCount))
+    ? Number(readyCheck.totalCount)
+    : readyReadyIds.length + readyMissingIds.length
+  const readyProgressLabel = totalCount > 0 ? `${Math.min(totalReady, totalCount)}/${totalCount}` : ''
+  const readyCountdownSeconds =
+    readyCountdownMs != null ? Math.max(0, Math.ceil(readyCountdownMs / 1000)) : null
 
   const appliedTurnTimerSeconds = useMemo(() => {
     const metaSeconds = Number(state?.sessionMeta?.turnTimer?.baseSeconds)
@@ -250,10 +486,76 @@ export default function MatchReadyClient({ gameId }) {
     router.push('/rooms').catch(() => {})
   }, [router, state?.room?.id])
 
+  const handleReadySignal = useCallback(async () => {
+    if (!allowStart || readyBusy) return
+    if (!sessionId) {
+      setReadyError('세션 정보가 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.')
+      return
+    }
+
+    if (readySignalControllerRef.current) {
+      try {
+        readySignalControllerRef.current.abort()
+      } catch (error) {
+        // ignore abort failures
+      }
+    }
+
+    const controller = new AbortController()
+    readySignalControllerRef.current = controller
+    setReadyBusy(true)
+    setReadyError('')
+
+    try {
+      const response = await requestMatchReadySignal({
+        sessionId,
+        gameId,
+        matchInstanceId: matchInstanceId || null,
+        windowSeconds: 15,
+        signal: controller.signal,
+      })
+
+      if (response?.readyCheck) {
+        const currentExtras =
+          state?.sessionMeta?.extras && typeof state.sessionMeta.extras === 'object'
+            ? state.sessionMeta.extras
+            : {}
+        const mergedExtras = { ...currentExtras, readyCheck: response.readyCheck }
+        setGameMatchSessionMeta(gameId, {
+          extras: mergedExtras,
+          source: 'match-ready-ready-check',
+        })
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        console.warn('[MatchReadyClient] 준비 신호 전송 실패:', error)
+        const supabaseMessage =
+          error?.payload?.supabaseError?.message ||
+          error?.payload?.supabaseError?.details ||
+          error?.payload?.error ||
+          error?.message
+        setReadyError(
+          supabaseMessage
+            ? `준비 신호 실패: ${supabaseMessage}`
+            : '준비 신호를 전송하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        )
+      }
+    } finally {
+      if (readySignalControllerRef.current === controller) {
+        readySignalControllerRef.current = null
+      }
+      setReadyBusy(false)
+    }
+  }, [allowStart, readyBusy, sessionId, gameId, matchInstanceId, state?.sessionMeta?.extras])
+
   const handleStart = useCallback(() => {
     if (!gameId) return
-    setShowGame(true)
-  }, [gameId])
+    if (readyStatus === 'ready' && viewerReady) {
+      setShowGame(true)
+      return
+    }
+    handleReadySignal()
+  }, [gameId, readyStatus, viewerReady, handleReadySignal])
 
   useEffect(() => {
     if (showGame) {
@@ -279,6 +581,52 @@ export default function MatchReadyClient({ gameId }) {
     }, 2800)
     return () => clearTimeout(timer)
   }, [voteNotice])
+
+  useEffect(() => {
+    if (!readyWindowActive || !readyExpiresAtMs) {
+      setReadyCountdownMs(null)
+      return undefined
+    }
+    const update = () => {
+      setReadyCountdownMs(Math.max(0, readyExpiresAtMs - Date.now()))
+    }
+    update()
+    const timer = setInterval(update, 250)
+    return () => clearInterval(timer)
+  }, [readyWindowActive, readyExpiresAtMs])
+
+  useEffect(() => {
+    if (!allowStart) {
+      autoOpenRef.current = false
+      return
+    }
+    if (readyStatus === 'ready') {
+      if (viewerReady && !autoOpenRef.current) {
+        autoOpenRef.current = true
+        setShowGame(true)
+      }
+    } else {
+      autoOpenRef.current = false
+    }
+  }, [allowStart, readyStatus, viewerReady])
+
+  useEffect(() => {
+    if (!readyWindowActive) {
+      setReadyError('')
+      setReadyCountdownMs(null)
+    }
+  }, [readyWindowActive])
+
+  useEffect(() => () => {
+    if (readySignalControllerRef.current) {
+      try {
+        readySignalControllerRef.current.abort()
+      } catch (error) {
+        // ignore abort failures
+      }
+      readySignalControllerRef.current = null
+    }
+  }, [])
 
   const handleVoteSelection = useCallback(
     (seconds) => {
@@ -314,6 +662,66 @@ export default function MatchReadyClient({ gameId }) {
       .sort((a, b) => b.count - a.count || a.option - b.option)
     return entries
   }, [voteSnapshot.selections])
+
+  const readyHint = useMemo(() => {
+    if (readyError) return readyError
+    if (readyStatus === 'ready') {
+      if (viewerReady) {
+        return readyProgressLabel
+          ? `모든 참가자가 준비되었습니다 (${readyProgressLabel}). 본게임 화면을 여는 중입니다.`
+          : '모든 참가자가 준비되었습니다. 본게임 화면을 여는 중입니다.'
+      }
+      return readyProgressLabel
+        ? `모든 참가자가 준비되었습니다 (${readyProgressLabel}).`
+        : '모든 참가자가 준비되었습니다.'
+    }
+    if (readyWindowActive) {
+      if (viewerReady) {
+        if (readyCountdownSeconds != null) {
+          return readyProgressLabel
+            ? `다른 참가자를 기다리는 중… (${readyProgressLabel}) 남은 시간 ${readyCountdownSeconds}초`
+            : `다른 참가자를 기다리는 중… 남은 시간 ${readyCountdownSeconds}초`
+        }
+        return readyProgressLabel
+          ? `다른 참가자를 기다리는 중입니다. (${readyProgressLabel})`
+          : '다른 참가자를 기다리는 중입니다.'
+      }
+      if (readyCountdownSeconds != null) {
+        return readyProgressLabel
+          ? `준비 버튼을 눌러 주세요 (${readyProgressLabel}). 남은 시간 ${readyCountdownSeconds}초`
+          : `준비 버튼을 눌러 주세요. 남은 시간 ${readyCountdownSeconds}초`
+      }
+      return '게임 화면을 열기 전에 준비 버튼을 눌러 주세요.'
+    }
+    return ''
+  }, [
+    readyError,
+    readyStatus,
+    readyWindowActive,
+    viewerReady,
+    readyCountdownSeconds,
+    readyProgressLabel,
+  ])
+
+  const readyHintClassName = useMemo(() => {
+    if (!readyHint) return ''
+    if (readyError) return styles.readyHintError
+    if (readyStatus === 'ready') return styles.readyHintSuccess
+    return styles.readyHint
+  }, [readyHint, readyError, readyStatus])
+
+  const startButtonLabel = useMemo(() => {
+    if (!allowStart) return '게임 화면 열기'
+    if (readyStatus === 'ready') return '게임 화면 열기'
+    if (readyWindowActive) {
+      if (viewerReady) return '대기 중…'
+      return readyBusy ? '준비 중…' : '준비하기'
+    }
+    return readyBusy ? '준비 중…' : '게임 화면 열기'
+  }, [allowStart, readyStatus, readyWindowActive, viewerReady, readyBusy])
+
+  const disableStartButton =
+    !allowStart || readyBusy || (readyWindowActive && viewerReady && readyStatus !== 'ready')
 
   return (
     <div className={styles.page}>
@@ -456,10 +864,13 @@ export default function MatchReadyClient({ gameId }) {
             type="button"
             className={styles.primaryButton}
             onClick={handleStart}
-            disabled={!allowStart}
+            disabled={disableStartButton}
           >
-            게임 화면 열기
+            {startButtonLabel}
           </button>
+          {readyHint ? (
+            <p className={`${styles.footerHint} ${readyHintClassName}`}>{readyHint}</p>
+          ) : null}
           {!allowStart && state?.snapshot && (
             <p className={styles.footerHint}>
               {!state.hasActiveKey
@@ -473,7 +884,9 @@ export default function MatchReadyClient({ gameId }) {
         <div className={styles.overlayRoot}>
           <div className={styles.overlayBackdrop} />
           <div className={styles.overlayContent}>
-            <StartClient gameId={gameId} onRequestClose={() => setShowGame(false)} />
+            <div className={styles.overlayScrollArea}>
+              <StartClient gameId={gameId} onRequestClose={() => setShowGame(false)} />
+            </div>
           </div>
         </div>
       ) : null}

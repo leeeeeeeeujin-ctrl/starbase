@@ -1,3 +1,5 @@
+'use client'
+
 import { useCallback, useMemo, useState } from 'react'
 
 import TimelineSection from '../Timeline/TimelineSection'
@@ -79,7 +81,15 @@ function normalizeLogEntry(entry, index) {
   const actionLabel = formatActionLabel(entry.action)
   const actionKey = typeof entry.action === 'string' ? entry.action.trim().toLowerCase() : ''
   const outcome = typeof entry.outcome === 'string' ? entry.outcome.trim() : ''
-  const response = typeof entry.response === 'string' ? entry.response : ''
+  const visibleResponse =
+    typeof entry.visibleResponse === 'string'
+      ? entry.visibleResponse
+      : typeof entry.displayResponse === 'string'
+        ? entry.displayResponse
+        : typeof entry.response === 'string'
+          ? entry.response
+          : ''
+  const response = typeof entry.response === 'string' ? entry.response : visibleResponse
   const prompt = typeof entry.prompt === 'string' ? entry.prompt : ''
   const key = Number.isFinite(turn)
     ? `log-${turn}-${nodeId ?? index}`
@@ -97,6 +107,7 @@ function normalizeLogEntry(entry, index) {
     actionKey,
     outcome,
     response,
+    visibleResponse,
     prompt,
   }
 }
@@ -114,34 +125,6 @@ function normalizeMemoryEntry(entry, index) {
   }
 }
 
-function normalizePlayerHistory(player, index) {
-  const name =
-    player.heroName ||
-    player.hero_name ||
-    player.name ||
-    player.hero?.name ||
-    `슬롯 ${index + 1}`
-  const role = player.role || ''
-  const entries = Array.isArray(player.entries) ? player.entries.slice(-4) : []
-  const normalizedEntries = entries.map((entry, entryIndex) => {
-    const roleLabel = formatRoleLabel(entry.role)
-    const content = typeof entry.content === 'string' ? entry.content : ''
-    const actors = dedupeStrings(entry.meta?.actors)
-    return {
-      key: `player-${index}-${entry.index ?? entryIndex}`,
-      roleLabel,
-      content,
-      actors,
-    }
-  })
-
-  return {
-    key: `player-${index}`,
-    name,
-    role,
-    entries: normalizedEntries,
-  }
-}
 
 function formatTimelineReason(reason) {
   if (!reason) return ''
@@ -178,10 +161,53 @@ export default function LogsPanel({
     [aiMemory],
   )
 
-  const normalizedPlayers = useMemo(
-    () => playerHistories.map(normalizePlayerHistory).filter(Boolean),
-    [playerHistories],
-  )
+  const normalizedPlayers = useMemo(() => {
+    if (!Array.isArray(playerHistories) || playerHistories.length === 0) {
+      return []
+    }
+
+    return playerHistories
+      .map((player, index) => {
+        if (!player || typeof player !== 'object') {
+          return null
+        }
+
+        const name =
+          player.heroName ||
+          player.hero_name ||
+          player.name ||
+          player.hero?.name ||
+          `슬롯 ${index + 1}`
+        const role = player.role || ''
+        const entries = Array.isArray(player.entries) ? player.entries.slice(-4) : []
+        const normalizedEntries = entries
+          .map((entry, entryIndex) => {
+            if (!entry || typeof entry !== 'object') {
+              return null
+            }
+
+            const roleLabel = formatRoleLabel(entry.role)
+            const content = typeof entry.content === 'string' ? entry.content : ''
+            const actors = dedupeStrings(entry.meta?.actors)
+
+            return {
+              key: `player-${index}-${entry.index ?? entryIndex}`,
+              roleLabel,
+              content,
+              actors,
+            }
+          })
+          .filter(Boolean)
+
+        return {
+          key: `player-${index}`,
+          name,
+          role,
+          entries: normalizedEntries,
+        }
+      })
+      .filter(Boolean)
+  }, [playerHistories])
 
   const timelineEvents = useMemo(() => {
     if (!Array.isArray(realtimeEvents)) return []
@@ -303,6 +329,7 @@ export default function LogsPanel({
         entry.summary?.promptPreview,
         entry.summary?.outcomeLine,
         entry.summary?.role,
+        entry.visibleResponse,
         entry.response,
         entry.prompt,
         entry.outcome,
@@ -537,10 +564,12 @@ export default function LogsPanel({
                   ) : null}
 
                   <div className={styles.logBody}>
-                    {entry.response ? (
+                    {(entry.visibleResponse || entry.response) ? (
                       <div>
                         <div className={styles.bodyLabel}>응답</div>
-                        <p className={styles.bodyText}>{highlightText(entry.response, searchTokens)}</p>
+                        <p className={styles.bodyText}>
+                          {highlightText(entry.visibleResponse || entry.response, searchTokens)}
+                        </p>
                       </div>
                     ) : null}
                     {entry.prompt ? (

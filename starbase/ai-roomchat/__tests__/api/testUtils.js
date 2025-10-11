@@ -5,6 +5,13 @@ let mockSupabaseRpcImplementation
 
 jest.mock('@/lib/supabaseAdmin', () => ({
   __esModule: true,
+  createSupabaseAuthConfig: jest.fn((url, { apikey, authorization } = {}) => ({
+    headers: {
+      ...(apikey ? { apikey } : {}),
+      ...(authorization ? { Authorization: authorization } : {}),
+    },
+    fetch: jest.fn((input, init) => Promise.resolve({ input, init })),
+  })),
   supabaseAdmin: {
     from: (...args) => {
       if (typeof mockSupabaseFromImplementation !== 'function') {

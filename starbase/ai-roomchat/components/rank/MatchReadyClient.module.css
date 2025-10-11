@@ -324,6 +324,18 @@
   color: rgba(148, 163, 184, 0.9);
 }
 
+.readyHint {
+  color: rgba(96, 165, 250, 0.92);
+}
+
+.readyHintSuccess {
+  color: rgba(134, 239, 172, 0.95);
+}
+
+.readyHintError {
+  color: rgba(248, 113, 113, 0.95);
+}
+
 .overlayRoot {
   position: fixed;
   inset: 0;
@@ -347,7 +359,65 @@
   max-height: calc(100vh - 80px);
   border-radius: 28px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 18px 48px rgba(15, 23, 42, 0.55);
+}
+
+.overlayScrollArea {
+  position: relative;
+  flex: 1 1 auto;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  border-radius: inherit;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+  --start-client-min-height: calc(100vh - 80px);
+  background: transparent;
+  scrollbar-gutter: stable;
+}
+
+.overlayScrollArea::-webkit-scrollbar {
+  width: 10px;
+}
+
+.overlayScrollArea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overlayScrollArea::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  border: 2px solid transparent;
+}
+
+.overlayScrollArea::-webkit-scrollbar-thumb:hover {
+  background: rgba(191, 219, 254, 0.45);
+}
+
+@media (max-width: 768px) {
+  .overlayContent {
+    margin: 28px 12px;
+    border-radius: 24px;
+  }
+
+  .overlayScrollArea {
+    max-height: calc(100vh - 56px);
+    --start-client-min-height: calc(100vh - 56px);
+  }
+}
+
+@media (max-width: 480px) {
+  .overlayContent {
+    margin: 16px 8px;
+    border-radius: 20px;
+  }
+
+  .overlayScrollArea {
+    max-height: calc(100vh - 32px);
+    --start-client-min-height: calc(100vh - 32px);
+  }
 }
 
 .overlayLoading {

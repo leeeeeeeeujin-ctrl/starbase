@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { sanitizeSupabaseUrl } from './supabaseEnv'
+import { createSupabaseAuthConfig } from './supabaseAuthConfig'
+
+export { createSupabaseAuthConfig } from './supabaseAuthConfig'
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const key =
@@ -8,12 +11,15 @@ const key =
 
 if (!url || !key) throw new Error('Missing SUPABASE envs')
 
+const serviceAuthConfig = createSupabaseAuthConfig(url, {
+  apikey: key,
+  authorization: `Bearer ${key}`,
+})
+
 export const supabaseAdmin = createClient(url, key, {
-  auth: { persistSession: false },
+  auth: { persistSession: false, autoRefreshToken: false },
   global: {
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-    },
+    headers: { ...serviceAuthConfig.headers },
+    fetch: serviceAuthConfig.fetch,
   },
 })

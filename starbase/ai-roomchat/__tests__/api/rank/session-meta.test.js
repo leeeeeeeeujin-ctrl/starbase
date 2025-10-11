@@ -37,6 +37,7 @@ describe('POST /api/rank/session-meta', () => {
   let sessionSelectMock
   let sessionEqMock
   let sessionMaybeSingleMock
+  let userRpcMock
   let roomSlotSelectMock
   let roomSlotFirstEqMock
   let roomSlotSecondEqMock
@@ -44,6 +45,10 @@ describe('POST /api/rank/session-meta', () => {
   let roomSelectMock
   let roomEqMock
   let roomMaybeSingleMock
+  let matchmakingSelectMock
+  let matchmakingEqMock
+  let matchmakingOrderMock
+  let matchmakingLimitMock
   let rosterSelectMock
   let rosterFirstEqMock
   let rosterSecondEqMock
@@ -52,6 +57,8 @@ describe('POST /api/rank/session-meta', () => {
   let participantGameEqMock
   let participantOwnerEqMock
   let participantMaybeSingleMock
+  let sessionMetaUpsertMock
+  let sessionMetaUpsertSelectMock
 
   beforeEach(() => {
     jest.resetModules()
@@ -81,6 +88,7 @@ describe('POST /api/rank/session-meta', () => {
               select: () => ({ maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }) }),
             }
           },
+          rpc: userRpcMock,
         }
       }
 
@@ -88,6 +96,7 @@ describe('POST /api/rank/session-meta', () => {
     })
 
     rpcMock = jest.fn().mockResolvedValue({ data: [{ session_id: 'session-1' }], error: null })
+    userRpcMock = jest.fn().mockResolvedValue({ data: [{ session_id: 'session-1' }], error: null })
     timelineUpsertMock = jest.fn().mockResolvedValue({ data: null, error: null })
     sessionMaybeSingleMock = jest
       .fn()
@@ -102,8 +111,23 @@ describe('POST /api/rank/session-meta', () => {
     roomSlotFirstEqMock = jest.fn(() => ({ eq: roomSlotSecondEqMock, maybeSingle: roomSlotMaybeSingleMock }))
     roomSlotSelectMock = jest.fn(() => ({ eq: roomSlotFirstEqMock }))
     roomMaybeSingleMock = jest.fn().mockResolvedValue({ data: null, error: null })
-    roomEqMock = jest.fn(() => ({ maybeSingle: roomMaybeSingleMock }))
-    roomSelectMock = jest.fn(() => ({ eq: roomEqMock }))
+    const roomQueryApi = {
+      eq: jest.fn(),
+      maybeSingle: roomMaybeSingleMock,
+    }
+    roomEqMock = roomQueryApi.eq.mockImplementation(() => roomQueryApi)
+    roomSelectMock = jest.fn(() => roomQueryApi)
+    matchmakingLimitMock = jest.fn().mockResolvedValue({ data: [], error: null })
+    matchmakingEqMock = jest.fn()
+    matchmakingOrderMock = jest.fn()
+    const matchmakingQueryApi = {
+      eq: jest.fn(),
+      order: jest.fn(),
+      limit: matchmakingLimitMock,
+    }
+    matchmakingEqMock = matchmakingQueryApi.eq.mockImplementation(() => matchmakingQueryApi)
+    matchmakingOrderMock = matchmakingQueryApi.order.mockImplementation(() => matchmakingQueryApi)
+    matchmakingSelectMock = jest.fn(() => matchmakingQueryApi)
     rosterMaybeSingleMock = jest.fn().mockResolvedValue({ data: null, error: null })
     rosterSecondEqMock = jest.fn(() => ({ maybeSingle: rosterMaybeSingleMock }))
     rosterFirstEqMock = jest.fn(() => ({ eq: rosterSecondEqMock, maybeSingle: rosterMaybeSingleMock }))
@@ -112,6 +136,11 @@ describe('POST /api/rank/session-meta', () => {
     participantOwnerEqMock = jest.fn(() => ({ maybeSingle: participantMaybeSingleMock }))
     participantGameEqMock = jest.fn(() => ({ eq: participantOwnerEqMock, maybeSingle: participantMaybeSingleMock }))
     participantSelectMock = jest.fn(() => ({ eq: participantGameEqMock }))
+    sessionMetaUpsertSelectMock = jest.fn().mockResolvedValue({
+      data: [{ session_id: 'session-1' }],
+      error: null,
+    })
+    sessionMetaUpsertMock = jest.fn(() => ({ select: sessionMetaUpsertSelectMock }))
     fromMock = jest.fn((table) => {
       if (table === 'rank_sessions') {
         return { select: sessionSelectMock }
@@ -122,11 +151,17 @@ describe('POST /api/rank/session-meta', () => {
       if (table === 'rank_rooms') {
         return { select: roomSelectMock }
       }
+      if (table === 'rank_matchmaking_logs') {
+        return { select: matchmakingSelectMock }
+      }
       if (table === 'rank_match_roster') {
         return { select: rosterSelectMock }
       }
       if (table === 'rank_participants') {
         return { select: participantSelectMock }
+      }
+      if (table === 'rank_session_meta') {
+        return { upsert: sessionMetaUpsertMock }
       }
       if (table === 'rank_session_timeline_events') {
         return { upsert: timelineUpsertMock }
@@ -275,6 +310,7 @@ describe('POST /api/rank/session-meta', () => {
         context: expect.objectContaining({ bonusSeconds: 30 }),
       }),
     )
+    expect(userRpcMock).not.toHaveBeenCalled()
   })
 
   it('returns 404 when session is not found', async () => {
@@ -316,9 +352,77 @@ describe('POST /api/rank/session-meta', () => {
     expect(rpcMock).not.toHaveBeenCalled()
   })
 
+  it('falls back to user RPC when service role auth fails', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'No API key found in request', status: 401 },
+    })
+    const handler = loadHandler()
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: { selected_time_limit_seconds: 90 },
+      },
+    })
+
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toMatchObject({ ok: true })
+    expect(rpcMock).toHaveBeenCalledTimes(1)
+    expect(userRpcMock).toHaveBeenCalledWith(
+      'upsert_match_session_meta',
+      expect.objectContaining({ p_session_id: 'session-1' }),
+    )
+  })
+
+  it('returns 500 when both service role and fallback RPC calls fail', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'No API key found in request', status: 401 },
+    })
+    userRpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'permission denied', code: '42501' },
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: {},
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(500)
+    expect(res.body).toEqual({
+      error: 'upsert_failed',
+      supabaseError: { message: 'permission denied', code: '42501' },
+    })
+    expect(rpcMock).toHaveBeenCalledTimes(1)
+    expect(userRpcMock).toHaveBeenCalledWith(
+      'upsert_match_session_meta',
+      expect.objectContaining({ p_session_id: 'session-1' }),
+    )
+  })
+
   it('allows session collaborators occupying the room to update meta', async () => {
     sessionMaybeSingleMock.mockResolvedValueOnce({
       data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
+      error: null,
+    })
+    matchmakingLimitMock.mockResolvedValueOnce({
+      data: [{ room_id: 'room-1' }],
       error: null,
     })
     roomSlotMaybeSingleMock.mockResolvedValueOnce({
@@ -326,7 +430,7 @@ describe('POST /api/rank/session-meta', () => {
       error: null,
     })
     roomMaybeSingleMock.mockResolvedValueOnce({
-      data: { id: 'room-1', game_id: 'game-1' },
+      data: { id: 'room-1', owner_id: 'owner-99', game_id: 'game-1' },
       error: null,
     })
 
@@ -351,6 +455,47 @@ describe('POST /api/rank/session-meta', () => {
     expect(roomSlotSecondEqMock).toHaveBeenCalledWith('occupant_owner_id', 'user-1')
     expect(roomSelectMock).toHaveBeenCalled()
     expect(roomEqMock).toHaveBeenCalledWith('id', 'room-1')
+    expect(matchmakingSelectMock).toHaveBeenCalled()
+    expect(matchmakingEqMock).toHaveBeenCalledWith('session_id', 'session-1')
+    expect(res.statusCode).toBe(200)
+    expect(rpcMock).toHaveBeenCalled()
+  })
+
+  it('allows collaborators when logs are missing but room belongs to session owner', async () => {
+    sessionMaybeSingleMock.mockResolvedValueOnce({
+      data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
+      error: null,
+    })
+    matchmakingLimitMock.mockResolvedValueOnce({ data: [], error: null })
+    roomMaybeSingleMock
+      .mockResolvedValueOnce({ data: { id: 'room-1', owner_id: 'owner-99' }, error: null })
+      .mockResolvedValueOnce({
+        data: { id: 'room-1', owner_id: 'owner-99', game_id: 'game-1' },
+        error: null,
+      })
+    roomSlotMaybeSingleMock.mockResolvedValueOnce({
+      data: { occupant_owner_id: 'user-1', room_id: 'room-1' },
+      error: null,
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        game_id: 'game-1',
+        room_id: 'room-1',
+        collaborators: ['user-1'],
+        meta: { selected_time_limit_seconds: 30 },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(matchmakingSelectMock).toHaveBeenCalled()
+    expect(roomEqMock).toHaveBeenCalledWith('owner_id', 'owner-99')
     expect(res.statusCode).toBe(200)
     expect(rpcMock).toHaveBeenCalled()
   })
@@ -360,12 +505,16 @@ describe('POST /api/rank/session-meta', () => {
       data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
       error: null,
     })
+    matchmakingLimitMock.mockResolvedValueOnce({
+      data: [{ room_id: 'room-2' }],
+      error: null,
+    })
     roomSlotMaybeSingleMock.mockResolvedValueOnce({
       data: { occupant_owner_id: 'user-1', room_id: 'room-2' },
       error: null,
     })
     roomMaybeSingleMock.mockResolvedValueOnce({
-      data: { id: 'room-2', game_id: 'other-game' },
+      data: { id: 'room-2', owner_id: 'owner-99', game_id: 'other-game' },
       error: null,
     })
 
@@ -387,6 +536,113 @@ describe('POST /api/rank/session-meta', () => {
 
     expect(roomSlotSelectMock).toHaveBeenCalled()
     expect(roomSelectMock).toHaveBeenCalled()
+    expect(matchmakingSelectMock).toHaveBeenCalled()
+    expect(roomSlotFirstEqMock).toHaveBeenCalledWith('room_id', 'room-2')
+    expect(res.statusCode).toBe(403)
+    expect(res.body).toEqual({ error: 'forbidden' })
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects room collaborators when room owner differs from session owner', async () => {
+    sessionMaybeSingleMock.mockResolvedValueOnce({
+      data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
+      error: null,
+    })
+    matchmakingLimitMock.mockResolvedValueOnce({
+      data: [{ room_id: 'room-2' }],
+      error: null,
+    })
+    roomSlotMaybeSingleMock.mockResolvedValueOnce({
+      data: { occupant_owner_id: 'user-1', room_id: 'room-2' },
+      error: null,
+    })
+    roomMaybeSingleMock.mockResolvedValueOnce({
+      data: { id: 'room-2', owner_id: 'other-owner', game_id: 'game-1' },
+      error: null,
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        game_id: 'game-1',
+        room_id: 'room-2',
+        collaborators: ['user-1'],
+        meta: {},
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(roomSelectMock).toHaveBeenCalled()
+    expect(res.statusCode).toBe(403)
+    expect(res.body).toEqual({ error: 'forbidden' })
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects room collaborators when session room differs from payload', async () => {
+    sessionMaybeSingleMock.mockResolvedValueOnce({
+      data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
+      error: null,
+    })
+    matchmakingLimitMock.mockResolvedValueOnce({
+      data: [{ room_id: 'room-99' }],
+      error: null,
+    })
+    roomSlotMaybeSingleMock.mockResolvedValueOnce({ data: null, error: null })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        game_id: 'game-1',
+        room_id: 'room-1',
+        collaborators: ['user-1'],
+        meta: {},
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(matchmakingSelectMock).toHaveBeenCalled()
+    expect(roomSlotFirstEqMock).toHaveBeenCalledWith('room_id', 'room-99')
+    expect(res.statusCode).toBe(403)
+    expect(res.body).toEqual({ error: 'forbidden' })
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects collaborators when fallback room is owned by someone else', async () => {
+    sessionMaybeSingleMock.mockResolvedValueOnce({
+      data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
+      error: null,
+    })
+    matchmakingLimitMock.mockResolvedValueOnce({ data: [], error: null })
+    roomMaybeSingleMock.mockResolvedValueOnce({ data: null, error: null })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        game_id: 'game-1',
+        room_id: 'room-2',
+        collaborators: ['user-1'],
+        meta: {},
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(matchmakingSelectMock).toHaveBeenCalled()
+    expect(roomEqMock).toHaveBeenCalledWith('owner_id', 'owner-99')
     expect(res.statusCode).toBe(403)
     expect(res.body).toEqual({ error: 'forbidden' })
     expect(rpcMock).not.toHaveBeenCalled()
@@ -427,6 +683,10 @@ describe('POST /api/rank/session-meta', () => {
   it('rejects collaborators without active seats or roster entries', async () => {
     sessionMaybeSingleMock.mockResolvedValueOnce({
       data: { id: 'session-1', owner_id: 'owner-99', game_id: 'game-1' },
+      error: null,
+    })
+    matchmakingLimitMock.mockResolvedValueOnce({
+      data: [{ room_id: 'room-2' }],
       error: null,
     })
 
@@ -505,7 +765,10 @@ describe('POST /api/rank/session-meta', () => {
     await handler(req, res)
 
     expect(res.statusCode).toBe(500)
-    expect(res.body).toEqual({ error: 'upsert_failed' })
+    expect(res.body).toEqual({
+      error: 'upsert_failed',
+      supabaseError: { message: 'failed' },
+    })
   })
 
   it('continues when turn-state event RPC fails', async () => {
@@ -530,5 +793,126 @@ describe('POST /api/rank/session-meta', () => {
     expect(res.statusCode).toBe(200)
     expect(res.body).toMatchObject({ ok: true, meta: expect.any(Object) })
     expect(timelineUpsertMock).not.toHaveBeenCalled()
+  })
+
+  it('falls back to direct table upsert when session meta RPC is missing', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'function upsert_match_session_meta(uuid) does not exist', code: '42883' },
+    })
+    sessionMetaUpsertSelectMock.mockResolvedValueOnce({
+      data: [
+        {
+          session_id: 'session-1',
+          selected_time_limit_seconds: 120,
+          realtime_mode: 'standard',
+        },
+      ],
+      error: null,
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: { selected_time_limit_seconds: 120, realtime_mode: 'standard' },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(sessionMetaUpsertMock).toHaveBeenCalledTimes(1)
+    expect(res.body.meta).toMatchObject({ selected_time_limit_seconds: 120, realtime_mode: 'standard' })
+  })
+
+  it('falls back to direct table upsert when session meta RPC reports an ambiguous session_id', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: '42702',
+        message: 'column reference "session_id" is ambiguous',
+        details: 'It could refer to either a PL/pgSQL variable or a table column.',
+      },
+    })
+    sessionMetaUpsertSelectMock.mockResolvedValueOnce({
+      data: [
+        {
+          session_id: 'session-1',
+          selected_time_limit_seconds: 75,
+        },
+      ],
+      error: null,
+    })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: { selected_time_limit_seconds: 75 },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(sessionMetaUpsertMock).toHaveBeenCalledTimes(1)
+    expect(res.body.meta).toMatchObject({
+      session_id: 'session-1',
+      selected_time_limit_seconds: 75,
+    })
+  })
+
+  it('omits missing legacy columns when falling back to the table upsert', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'function upsert_match_session_meta does not exist', code: '42883' },
+    })
+    sessionMetaUpsertSelectMock
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          message: 'column "async_fill_snapshot" does not exist',
+          code: '42703',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            session_id: 'session-1',
+            turn_state: { turnNumber: 1 },
+          },
+        ],
+        error: null,
+      })
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: {
+          async_fill_snapshot: { foo: 'bar' },
+          turn_state: { turnNumber: 1 },
+        },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(sessionMetaUpsertMock).toHaveBeenCalledTimes(2)
+    const firstPayload = sessionMetaUpsertMock.mock.calls[0][0][0]
+    const secondPayload = sessionMetaUpsertMock.mock.calls[1][0][0]
+    expect(firstPayload).toHaveProperty('async_fill_snapshot')
+    expect(secondPayload).not.toHaveProperty('async_fill_snapshot')
   })
 })

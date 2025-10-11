@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { supabase } from '@/lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
+import { addSupabaseDebugEvent } from '@/lib/debugCollector'
 import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import {
   HERO_ID_KEY,
@@ -1001,10 +1002,44 @@ export default function RoomDetailPage() {
     [keyringSnapshot, viewer.userId],
   )
 
+  const roomOwnerId = useMemo(() => {
+    if (!room?.ownerId) return ''
+    return String(room.ownerId).trim()
+  }, [room?.ownerId])
+
+  const viewerOwnerId = useMemo(() => {
+    if (!viewer.ownerId) return ''
+    return String(viewer.ownerId).trim()
+  }, [viewer.ownerId])
+
+  const viewerUserId = useMemo(() => {
+    if (!viewer.userId) return ''
+    return String(viewer.userId).trim()
+  }, [viewer.userId])
+
   const isHost = useMemo(() => {
-    if (!room?.ownerId || !viewer.ownerId) return false
-    return room.ownerId === viewer.ownerId
-  }, [room?.ownerId, viewer.ownerId])
+    if (!roomOwnerId) return false
+    return roomOwnerId === viewerOwnerId || roomOwnerId === viewerUserId
+  }, [roomOwnerId, viewerOwnerId, viewerUserId])
+
+  const canSyncRoomCounters = useMemo(() => {
+    if (!roomOwnerId || !viewerUserId) return false
+    return roomOwnerId === viewerUserId
+  }, [roomOwnerId, viewerUserId])
+
+  const resolveAccessToken = useCallback(async () => {
+    const storedToken = storedAuthSnapshot?.accessToken?.trim?.()
+    if (storedToken) {
+      return storedToken
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) {
+      throw sessionError
+    }
+
+    return sessionData?.session?.access_token || ''
+  }, [storedAuthSnapshot?.accessToken, supabase])
   const loadViewerHero = useCallback(
     async (explicitHeroId) => {
       setViewerLoading(true)
@@ -1368,24 +1403,79 @@ export default function RoomDetailPage() {
             ? Number(roomRow.host_role_limit) !== numericHostLimit
             : roomRow.host_role_limit !== null)
 
-        if (needsUpdate) {
+        if (needsUpdate && canSyncRoomCounters) {
           try {
-            await withTable(supabase, 'rank_rooms', (table) =>
-              supabase
-                .from(table)
-                .update({
-                  slot_count: slotCount,
-                  filled_count: filledCount,
-                  ready_count: readyCount,
+            const token = await resolveAccessToken()
+            if (!token) {
+              throw new Error('missing_access_token')
+            }
+
+            const response = await fetch('/api/rank/sync-room-counters', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                room_id: roomId,
+                slot_count: slotCount,
+                filled_count: filledCount,
+                ready_count: readyCount,
+                status: nextStatus,
+                host_role_limit: baseRoom.realtimeMode === 'pulse' ? numericHostLimit : null,
+              }),
+            })
+
+            if (!response.ok) {
+              let detail = null
+              try {
+                detail = await response.json()
+              } catch (parseError) {
+                detail = null
+              }
+
+              const supabaseError = detail?.supabaseError || detail || null
+              const messageCandidates = [
+                detail?.error,
+                detail?.message,
+                supabaseError?.code,
+                supabaseError?.message,
+                supabaseError?.hint,
+                supabaseError?.details,
+              ].filter(Boolean)
+              const normalizedMessage = messageCandidates.join(' | ') || 'room_counter_sync_failed'
+
+              addSupabaseDebugEvent({
+                source: 'room-counter-sync',
+                operation: 'update_rank_room_counters',
+                status: response.status,
+                error: supabaseError,
+                message: normalizedMessage,
+                payload: {
+                  roomId,
+                  slotCount,
+                  filledCount,
+                  readyCount,
                   status: nextStatus,
-                  host_role_limit: baseRoom.realtimeMode === 'pulse' ? numericHostLimit : null,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', roomId),
-            )
+                  hostRoleLimit: baseRoom.realtimeMode === 'pulse' ? numericHostLimit : null,
+                },
+              })
+
+              const error = new Error(normalizedMessage)
+              error.payload = detail
+              if (supabaseError) {
+                error.supabaseError = supabaseError
+                if (!error.code && supabaseError.code) {
+                  error.code = supabaseError.code
+                }
+              }
+              throw error
+            }
           } catch (updateError) {
             console.warn('[RoomDetail] Failed to sync room counters:', updateError)
           }
+        } else if (needsUpdate && !canSyncRoomCounters) {
+          console.debug('[RoomDetail] Skipping counter sync for viewer without host session access')
         }
 
         const resolvedRoom = {
@@ -1441,7 +1531,7 @@ export default function RoomDetailPage() {
         }
       }
     },
-    [roomId],
+    [roomId, canSyncRoomCounters, isHost, resolveAccessToken],
   )
 
   useEffect(() => {

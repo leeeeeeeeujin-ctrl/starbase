@@ -44,6 +44,12 @@ import {
   patchMainGameState,
   replaceMainGameLogs,
 } from './engine/mainGameMachine'
+import {
+  createOutcomeLedger,
+  syncOutcomeLedger,
+  recordOutcomeLedger,
+  buildOutcomeSnapshot,
+} from './engine/outcomeLedger'
 import { isApiKeyError } from './engine/apiKeyUtils'
 import { createTurnTimerService } from './services/turnTimerService'
 import {
@@ -70,6 +76,7 @@ import {
   hydrateGameMatchData,
   setGameMatchSessionMeta,
 } from '../../../modules/rank/matchDataStore'
+import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync'
 import {
   START_SESSION_KEYS,
   readStartSessionValue,
@@ -147,6 +154,65 @@ function sanitizeDropInArrivals(arrivals) {
       return normalized
     })
     .filter(Boolean)
+}
+
+function stripOutcomeFooter(text = '') {
+  if (!text) return { body: '', footer: [] }
+  const working = String(text).split(/\r?\n/)
+  const footer = []
+  let captured = 0
+  let index = working.length - 1
+
+  while (index >= 0 && captured < 3) {
+    const candidate = working[index]
+    if (!candidate.trim()) {
+      working.splice(index, 1)
+      index -= 1
+      continue
+    }
+    footer.unshift(candidate)
+    working.splice(index, 1)
+    captured += 1
+
+    while (index - 1 >= 0 && !working[index - 1].trim()) {
+      working.splice(index - 1, 1)
+      index -= 1
+    }
+
+    index = working.length - 1
+  }
+
+  while (working.length && !working[working.length - 1].trim()) {
+    working.pop()
+  }
+
+  return { body: working.join('\n'), footer }
+}
+
+function buildOutcomeStatusMessage(snapshot) {
+  if (!snapshot) {
+    return '모든 역할군 결과가 확정되어 세션을 종료합니다.'
+  }
+  const summaries = Array.isArray(snapshot.roleSummaries) ? snapshot.roleSummaries : []
+  const wins = summaries.filter((entry) => entry.status === 'won').length
+  const losses = summaries.filter((entry) => entry.status === 'lost').length
+  const baseLabel = (() => {
+    switch (snapshot.overallResult) {
+      case 'won':
+        return '승리'
+      case 'lost':
+        return '패배'
+      case 'draw':
+        return '무승부'
+      default:
+        return '종료'
+    }
+  })()
+  const pieces = []
+  if (wins) pieces.push(`${wins}승`)
+  if (losses) pieces.push(`${losses}패`)
+  const summary = pieces.length ? ` (${pieces.join(' · ')})` : ''
+  return `모든 역할군 결과가 확정되어 세션을 ${baseLabel}로 마무리했습니다.${summary}`
 }
 
 function buildDropInMetaPayload({
@@ -667,7 +733,15 @@ function buildParticipantsFromRoster(roster = []) {
     })
 }
 
-export function useStartClientEngine(gameId) {
+export function useStartClientEngine(gameId, options = {}) {
+  const hostOwnerIdOption = options?.hostOwnerId ?? ''
+  const normalizedHostOwnerId = useMemo(() => {
+    if (hostOwnerIdOption === null || hostOwnerIdOption === undefined) {
+      return ''
+    }
+    const trimmed = String(hostOwnerIdOption).trim()
+    return trimmed
+  }, [hostOwnerIdOption])
   const storedStartConfig =
     typeof window === 'undefined'
       ? {}
@@ -850,6 +924,14 @@ export function useStartClientEngine(gameId) {
   const [startingSession, setStartingSession] = useState(false)
   const [gameVoided, setGameVoided] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
+  const remoteSessionAdoptedRef = useRef(false)
+  const bootLocalSessionRef = useRef(null)
+  const remoteSessionFetchRef = useRef({ running: false, lastFetchedAt: 0 })
+  const outcomeLedgerRef = useRef(createOutcomeLedger())
+  const [sessionOutcome, setSessionOutcome] = useState(() =>
+    buildOutcomeSnapshot(outcomeLedgerRef.current),
+  )
+  const sessionFinalizedRef = useRef(false)
 
   const realtimeMode = useMemo(
     () => normalizeRealtimeMode(game?.realtime_match),
@@ -869,6 +951,21 @@ export function useStartClientEngine(gameId) {
   const lastRealtimeTurnEventRef = useRef({ id: null, emittedAt: 0, turnNumber: 0 })
   const turnEventBackfillAbortRef = useRef(null)
   const lastBattleLogSignatureRef = useRef(null)
+  const setTurnCallbackRef = useRef(null)
+  const setTurnDeadlineCallbackRef = useRef(null)
+  const setTimeRemainingCallbackRef = useRef(null)
+  const setLastDropInTurnCallbackRef = useRef(null)
+
+  useEffect(() => {
+    remoteSessionAdoptedRef.current = false
+    remoteSessionFetchRef.current = { running: false, lastFetchedAt: 0 }
+  }, [gameId])
+
+  useEffect(() => {
+    if (!sessionInfo?.id) {
+      remoteSessionAdoptedRef.current = false
+    }
+  }, [sessionInfo?.id])
   const applyTurnStateChange = useCallback(
     (change, { commitTimestamp } = {}) => {
       if (!change || typeof change !== 'object') {
@@ -952,16 +1049,16 @@ export function useStartClientEngine(gameId) {
         ? Math.max(0, Math.floor(Number(state.turnNumber)))
         : null
       if (numericTurn !== null) {
-        setTurn(numericTurn)
+        setTurnCallbackRef.current?.(numericTurn)
       }
 
       const resolvedDeadline = Number(state.deadline)
       const deadlineMillis =
         Number.isFinite(resolvedDeadline) && resolvedDeadline > 0 ? Math.floor(resolvedDeadline) : 0
       if (deadlineMillis) {
-        setTurnDeadline(deadlineMillis)
+        setTurnDeadlineCallbackRef.current?.(deadlineMillis)
       } else {
-        setTurnDeadline(null)
+        setTurnDeadlineCallbackRef.current?.(null)
       }
 
       const remainingFromState = Number(state.remainingSeconds)
@@ -976,14 +1073,14 @@ export function useStartClientEngine(gameId) {
         }
       }
       if (Number.isFinite(resolvedRemaining)) {
-        setTimeRemaining(Math.max(0, resolvedRemaining))
+        setTimeRemainingCallbackRef.current?.(Math.max(0, resolvedRemaining))
       } else {
-        setTimeRemaining(null)
+        setTimeRemainingCallbackRef.current?.(null)
       }
 
       const dropInTurn = Number(state.dropInBonusTurn)
       if (Number.isFinite(dropInTurn) && dropInTurn > 0) {
-        setLastDropInTurn(Math.floor(dropInTurn))
+        setLastDropInTurnCallbackRef.current?.(Math.floor(dropInTurn))
       }
 
       lastBroadcastTurnStateRef.current = {
@@ -995,10 +1092,10 @@ export function useStartClientEngine(gameId) {
       sessionInfo?.id,
       gameId,
       setGameMatchSessionMeta,
-      setTurn,
-      setTurnDeadline,
-      setTimeRemaining,
-      setLastDropInTurn,
+      setTurnCallbackRef,
+      setTurnDeadlineCallbackRef,
+      setTimeRemainingCallbackRef,
+      setLastDropInTurnCallbackRef,
     ],
   )
   const backfillTurnEvents = useCallback(async () => {
@@ -1121,6 +1218,14 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  useEffect(() => {
+    setTurnCallbackRef.current = setTurn
+    return () => {
+      if (setTurnCallbackRef.current === setTurn) {
+        setTurnCallbackRef.current = null
+      }
+    }
+  }, [setTurn])
   const setLogs = useCallback(
     (value) => {
       if (typeof value === 'function') {
@@ -1172,6 +1277,14 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  useEffect(() => {
+    setLastDropInTurnCallbackRef.current = setLastDropInTurn
+    return () => {
+      if (setLastDropInTurnCallbackRef.current === setLastDropInTurn) {
+        setLastDropInTurnCallbackRef.current = null
+      }
+    }
+  }, [setLastDropInTurn])
   const setViewerId = useCallback(
     (value) => {
       patchEngineState({ viewerId: value })
@@ -1189,6 +1302,14 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  useEffect(() => {
+    setTurnDeadlineCallbackRef.current = setTurnDeadline
+    return () => {
+      if (setTurnDeadlineCallbackRef.current === setTurnDeadline) {
+        setTurnDeadlineCallbackRef.current = null
+      }
+    }
+  }, [setTurnDeadline])
   const setTimeRemaining = useCallback(
     (value) => {
       if (typeof value === 'function') {
@@ -1200,6 +1321,14 @@ export function useStartClientEngine(gameId) {
     },
     [patchEngineState],
   )
+  useEffect(() => {
+    setTimeRemainingCallbackRef.current = setTimeRemaining
+    return () => {
+      if (setTimeRemainingCallbackRef.current === setTimeRemaining) {
+        setTimeRemainingCallbackRef.current = null
+      }
+    }
+  }, [setTimeRemaining])
   const recordTurnState = useCallback(
     (patch = {}, options = {}) => {
       if (preflight) return
@@ -1330,10 +1459,21 @@ export function useStartClientEngine(gameId) {
   }, [logs])
 
   useEffect(() => {
-    participantsRef.current = Array.isArray(participants)
-      ? participants
-      : []
+    const list = Array.isArray(participants) ? participants : []
+    participantsRef.current = list
+    if (outcomeLedgerRef.current) {
+      const changed = syncOutcomeLedger(outcomeLedgerRef.current, { participants: list })
+      if (changed) {
+        setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current))
+      }
+    }
   }, [participants])
+
+  useEffect(() => {
+    outcomeLedgerRef.current = createOutcomeLedger({ participants: participantsRef.current })
+    setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current))
+    sessionFinalizedRef.current = false
+  }, [gameId])
 
   useEffect(() => {
     currentNodeIdRef.current = currentNodeId ?? null
@@ -1450,6 +1590,248 @@ export function useStartClientEngine(gameId) {
     setTurnDeadline,
     setTimeRemaining,
   })
+
+  const adoptRemoteSession = useCallback(
+    async (sessionRow) => {
+      if (!sessionRow || typeof sessionRow !== 'object') {
+        return false
+      }
+
+      const sessionId = sessionRow.id || sessionRow.session_id || sessionRow.sessionId
+      if (!sessionId) {
+        return false
+      }
+
+      if (remoteSessionAdoptedRef.current && sessionInfo?.id === sessionId) {
+        return false
+      }
+
+      const statusToken = sessionRow.status ? String(sessionRow.status).trim().toLowerCase() : 'active'
+      if (statusToken && statusToken !== 'active') {
+        return false
+      }
+
+      const ownerSource =
+        sessionRow.owner_id ??
+        sessionRow.ownerId ??
+        sessionRow.ownerID ??
+        (sessionRow.owner && typeof sessionRow.owner === 'object' ? sessionRow.owner.id : null)
+      const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : ''
+      if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) {
+        return false
+      }
+
+      if (!preflight) {
+        if (!sessionInfo?.id) {
+          setSessionInfo({
+            id: sessionId,
+            status: sessionRow.status || 'active',
+            createdAt: sessionRow.created_at || sessionRow.createdAt || null,
+            reused: true,
+          })
+        }
+        return false
+      }
+
+      if (!participants || participants.length === 0) {
+        return false
+      }
+
+      setSessionInfo({
+        id: sessionId,
+        status: sessionRow.status || 'active',
+        createdAt: sessionRow.created_at || sessionRow.createdAt || null,
+        reused: true,
+      })
+
+      remoteSessionAdoptedRef.current = true
+
+      let sessionParticipants = participants
+      try {
+        const { participants: sanitized, removed } = reconcileParticipantsForGame({
+          participants,
+          slotLayout,
+          matchingMetadata,
+        })
+
+        if (!sanitized || sanitized.length === 0) {
+          remoteSessionAdoptedRef.current = false
+          setStatusMessage('참가자 구성이 유효하지 않아 게임에 참여할 수 없습니다.')
+          return false
+        }
+
+        sessionParticipants = sanitized
+
+        if (removed.length) {
+          const summary = formatPreflightSummary(removed)
+          if (summary) {
+            console.warn('[StartClient] 원격 후보정 제외 참가자:\n' + summary)
+            setPromptMetaWarning((prev) => {
+              const trimmed = prev ? String(prev).trim() : ''
+              const notice = `[후보정] 제외된 참가자:\n${summary}`
+              return trimmed ? `${trimmed}\n\n${notice}` : notice
+            })
+          }
+        }
+      } catch (error) {
+        remoteSessionAdoptedRef.current = false
+        console.error('[StartClient] 원격 세션 검증 실패:', error)
+        setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        return false
+      }
+
+      setStatusMessage('호스트가 게임을 시작했습니다. 전투에 합류합니다.')
+      const bootSession =
+        typeof bootLocalSessionRef.current === 'function' ? bootLocalSessionRef.current : null
+      if (!bootSession) {
+        remoteSessionAdoptedRef.current = false
+        console.warn('[StartClient] 로컬 세션 부팅 콜백이 초기화되지 않았습니다.')
+        setStatusMessage('게임 화면을 초기화하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.')
+        return false
+      }
+
+      bootSession(sessionParticipants)
+      return true
+    },
+    [
+      preflight,
+      participants,
+      slotLayout,
+      matchingMetadata,
+      setPromptMetaWarning,
+      setStatusMessage,
+      sessionInfo?.id,
+      normalizedHostOwnerId,
+      setSessionInfo,
+    ],
+  )
+
+  useEffect(() => {
+    if (!gameId) return undefined
+    if (sessionInfo?.id) return undefined
+    if (!preflight) return undefined
+    if (startingSession) return undefined
+    if (remoteSessionAdoptedRef.current) return undefined
+    if (!participants || participants.length === 0) return undefined
+
+    const now = Date.now()
+    if (remoteSessionFetchRef.current.running) {
+      return undefined
+    }
+    if (now - remoteSessionFetchRef.current.lastFetchedAt < 2000) {
+      return undefined
+    }
+
+    let cancelled = false
+    remoteSessionFetchRef.current.running = true
+
+    ;(async () => {
+      try {
+        let sessionRow = await fetchLatestSessionRow(supabase, gameId, {
+          ownerId: normalizedHostOwnerId || null,
+        })
+
+        if (cancelled) {
+          return
+        }
+
+        if (!sessionRow && normalizedHostOwnerId) {
+          sessionRow = await fetchLatestSessionRow(supabase, gameId)
+        }
+
+        if (cancelled) {
+          return
+        }
+
+        if (sessionRow) {
+          adoptRemoteSession(sessionRow)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[StartClient] 원격 세션 조회 중 오류:', error)
+        }
+      } finally {
+        remoteSessionFetchRef.current.running = false
+        remoteSessionFetchRef.current.lastFetchedAt = Date.now()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    gameId,
+    sessionInfo?.id,
+    preflight,
+    startingSession,
+    participants,
+    adoptRemoteSession,
+    normalizedHostOwnerId,
+  ])
+
+  useEffect(() => {
+    if (!gameId) return undefined
+
+    const channel = supabase.channel(`rank-session-watch:${gameId}`, {
+      config: { broadcast: { ack: true } },
+    })
+
+    const handleChange = (payload) => {
+      const eventType = payload?.eventType || payload?.type || ''
+      if (eventType === 'DELETE') {
+        return
+      }
+
+      const record = payload?.new || payload?.record || null
+      if (!record || typeof record !== 'object') {
+        return
+      }
+
+      const recordGameId = record.game_id ?? record.gameId ?? null
+      if (recordGameId && String(recordGameId).trim() !== String(gameId).trim()) {
+        return
+      }
+
+      const statusToken = record.status ? String(record.status).trim().toLowerCase() : 'active'
+      if (statusToken && statusToken !== 'active') {
+        return
+      }
+
+      const ownerSource =
+        record.owner_id ??
+        record.ownerId ??
+        record.ownerID ??
+        (record.owner && typeof record.owner === 'object' ? record.owner.id : null)
+      const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : ''
+      if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) {
+        return
+      }
+
+      adoptRemoteSession(record)
+    }
+
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'rank_sessions',
+        filter: `game_id=eq.${gameId}`,
+      },
+      handleChange,
+    )
+
+    channel.subscribe()
+
+    return () => {
+      try {
+        channel.unsubscribe()
+      } catch (error) {
+        console.warn('[StartClient] 세션 감시 채널 해제 실패:', error)
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [gameId, adoptRemoteSession, normalizedHostOwnerId])
 
 
   const logTurnEntries = useCallback(
@@ -2381,6 +2763,48 @@ export function useStartClientEngine(gameId) {
     persistBattleLogDraft(battleLogDraft)
   }, [battleLogDraft, persistBattleLogDraft, sessionInfo?.id])
 
+  const finalizeSessionRemotely = useCallback(
+    async ({ snapshot, reason, responseText, turnNumber }) => {
+      if (!sessionInfo?.id || !gameId) return
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+        const token = sessionData?.session?.access_token
+        if (!token) {
+          throw new Error('세션 토큰을 확인하지 못했습니다.')
+        }
+
+        const payload = {
+          sessionId: sessionInfo.id,
+          gameId,
+          turnNumber,
+          reason: reason || 'roles_resolved',
+          outcome: snapshot || buildOutcomeSnapshot(outcomeLedgerRef.current),
+          finalResponse: responseText || '',
+        }
+
+        const response = await fetch('/api/rank/complete-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        })
+
+        if (!response.ok) {
+          const detail = await response.text().catch(() => '')
+          throw new Error(detail || '세션 결과 정산 요청에 실패했습니다.')
+        }
+      } catch (error) {
+        console.warn('[StartClient] 세션 결과 정산 요청 실패:', error)
+      }
+    },
+    [sessionInfo?.id, gameId],
+  )
+
   const {
     apiKey,
     setApiKey,
@@ -2694,6 +3118,7 @@ export function useStartClientEngine(gameId) {
       applyRealtimeSnapshot,
     ],
   )
+  bootLocalSessionRef.current = bootLocalSession
 
   const handleStart = useCallback(async () => {
     if (graph.nodes.length === 0) {
@@ -3281,6 +3706,11 @@ export function useStartClientEngine(gameId) {
         bumpHistoryVersion()
 
         const outcome = parseOutcome(responseText)
+        const outcomeVariables = outcome.variables || []
+        const { body: visibleResponse } = stripOutcomeFooter(responseText)
+        const triggeredEnd = endConditionVariable
+          ? outcomeVariables.includes(endConditionVariable)
+          : false
         const resolvedActorNames =
           outcome.actors && outcome.actors.length ? outcome.actors : fallbackActorNames
         updateHeroAssets(resolvedActorNames, actorContext)
@@ -3297,7 +3727,7 @@ export function useStartClientEngine(gameId) {
         let fallbackSummary = null
         if (!loggedByServer) {
           fallbackSummary = {
-            preview: responseText.slice(0, 240),
+            preview: visibleResponse.slice(0, 240),
             promptPreview: promptText.slice(0, 240),
             outcome: {
               lastLine: outcome.lastLine || undefined,
@@ -3341,7 +3771,7 @@ export function useStartClientEngine(gameId) {
           })
         }
 
-        setActiveLocal(outcome.variables || [])
+        setActiveLocal(outcomeVariables)
         setActiveGlobal(nextActiveGlobal)
 
         const context = createBridgeContext({
@@ -3351,7 +3781,7 @@ export function useStartClientEngine(gameId) {
           visitedSlotIds: visitedSlotIds.current,
           participantsStatus,
           activeGlobalNames: nextActiveGlobal,
-          activeLocalNames: outcome.variables || [],
+          activeLocalNames: outcomeVariables,
           currentRole:
             actorContext?.participant?.role || actorContext?.heroSlot?.role || null,
           sessionFlags: {
@@ -3380,8 +3810,9 @@ export function useStartClientEngine(gameId) {
               responseAudience: slotBinding.responseAudience,
               prompt: promptText,
               response: responseText,
+              visibleResponse,
               outcome: outcome.lastLine || '',
-              variables: outcome.variables || [],
+              variables: outcomeVariables,
               next: chosenEdge?.to || null,
               action: chosenEdge?.data?.action || 'continue',
               actors: resolvedActorNames,
@@ -3393,6 +3824,49 @@ export function useStartClientEngine(gameId) {
         })
 
         clearManualResponse()
+
+        if (outcomeLedgerRef.current) {
+          const recordResult = recordOutcomeLedger(outcomeLedgerRef.current, {
+            turn,
+            slotIndex,
+            resultLine: outcome.lastLine || '',
+            variables: outcomeVariables,
+            actors: resolvedActorNames,
+            participantsSnapshot: participantsRef.current,
+            brawlEnabled,
+          })
+
+          if (recordResult.changed) {
+            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
+            setSessionOutcome(snapshot)
+
+            if (recordResult.completed && !sessionFinalizedRef.current) {
+              sessionFinalizedRef.current = true
+              const statusMessageText = buildOutcomeStatusMessage(snapshot)
+              setStatusMessage(statusMessageText)
+              finalizeRealtimeTurn('roles_resolved')
+              setCurrentNodeId(null)
+              setTurnDeadline(null)
+              setTimeRemaining(null)
+              captureBattleLog(
+                snapshot.overallResult === 'won'
+                  ? 'win'
+                  : snapshot.overallResult === 'lost'
+                    ? 'lose'
+                    : 'draw',
+                { reason: 'roles_resolved', turnNumber: turn },
+              )
+              clearSessionRecord()
+              void finalizeSessionRemotely({
+                snapshot,
+                reason: 'roles_resolved',
+                responseText,
+                turnNumber: turn,
+              })
+              return
+            }
+          }
+        }
 
         if (!chosenEdge) {
           finalizeRealtimeTurn('no-bridge')
@@ -3408,10 +3882,7 @@ export function useStartClientEngine(gameId) {
         const action = chosenEdge.data?.action || 'continue'
         const nextNodeId = chosenEdge.to != null ? String(chosenEdge.to) : null
 
-        const outcomeVariables = outcome.variables || []
-        const triggeredEnd = endConditionVariable
-          ? outcomeVariables.includes(endConditionVariable)
-          : false
+
 
         if (action === 'win') {
           const upcomingWin = winCount + 1
@@ -3431,6 +3902,24 @@ export function useStartClientEngine(gameId) {
             setTurnDeadline(null)
             setTimeRemaining(null)
             captureBattleLog('win', { reason: 'win', turnNumber: turn })
+            sessionFinalizedRef.current = true
+            if (outcomeLedgerRef.current) {
+              const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
+              setSessionOutcome(snapshot)
+              void finalizeSessionRemotely({
+                snapshot,
+                reason: 'win',
+                responseText,
+                turnNumber: turn,
+              })
+            } else {
+              void finalizeSessionRemotely({
+                snapshot: null,
+                reason: 'win',
+                responseText,
+                turnNumber: turn,
+              })
+            }
             clearSessionRecord()
             return
           }
@@ -3445,6 +3934,24 @@ export function useStartClientEngine(gameId) {
           setTurnDeadline(null)
           setTimeRemaining(null)
           captureBattleLog('lose', { reason: 'lose', turnNumber: turn })
+          sessionFinalizedRef.current = true
+          if (outcomeLedgerRef.current) {
+            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
+            setSessionOutcome(snapshot)
+            void finalizeSessionRemotely({
+              snapshot,
+              reason: 'lose',
+              responseText,
+              turnNumber: turn,
+            })
+          } else {
+            void finalizeSessionRemotely({
+              snapshot: null,
+              reason: 'lose',
+              responseText,
+              turnNumber: turn,
+            })
+          }
           if (viewerId && actingOwnerId === viewerId) {
             markSessionDefeated()
           } else {
@@ -3458,6 +3965,24 @@ export function useStartClientEngine(gameId) {
           setTurnDeadline(null)
           setTimeRemaining(null)
           captureBattleLog('draw', { reason: 'draw', turnNumber: turn })
+          sessionFinalizedRef.current = true
+          if (outcomeLedgerRef.current) {
+            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
+            setSessionOutcome(snapshot)
+            void finalizeSessionRemotely({
+              snapshot,
+              reason: 'draw',
+              responseText,
+              turnNumber: turn,
+            })
+          } else {
+            void finalizeSessionRemotely({
+              snapshot: null,
+              reason: 'draw',
+              responseText,
+              turnNumber: turn,
+            })
+          }
           clearSessionRecord()
           return
         }
@@ -3873,6 +4398,7 @@ export function useStartClientEngine(gameId) {
     realtimeEvents,
     dropInSnapshot,
     connectionRoster,
+    sessionOutcome,
     sharedTurn: {
       owners: managedOwnerIds,
       roster: sharedTurnRoster,
