@@ -1,6 +1,8 @@
 -- fetches the newest active/preparing/ready session for a given game
+-- renamed with _v2 suffix to avoid PostgREST overload ambiguity when legacy
+-- single-argument versions remain deployed.
 
-create or replace function public.fetch_latest_rank_session(
+create or replace function public.fetch_latest_rank_session_v2(
   p_game_id uuid,
   p_owner_id uuid default null
 )
@@ -35,5 +37,8 @@ begin
 end;
 $$;
 
-grant execute on function public.fetch_latest_rank_session(uuid, uuid) to service_role;
-grant execute on function public.fetch_latest_rank_session(uuid, uuid) to authenticated;
+grant execute on function public.fetch_latest_rank_session_v2(uuid, uuid) to service_role;
+grant execute on function public.fetch_latest_rank_session_v2(uuid, uuid) to authenticated;
+
+-- optional: drop the legacy overloaded helper once all clients migrate.
+-- drop function if exists public.fetch_latest_rank_session(uuid, uuid);
