@@ -9,8 +9,8 @@ import {
 
 import styles from './DebugOverlay.module.css'
 
-const ACTIVATION_SEQUENCE = ['d', 'b', 'g']
-const ACTIVATION_LABEL = 'Ctrl + D, B, G'
+const ACTIVATION_KEYS = ['d', 'b', 'g']
+const ACTIVATION_LABEL = 'Press D + B + G'
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return ''
@@ -62,39 +62,25 @@ export default function DebugOverlay() {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
 
-    const sequence = []
-
-    const resetSequence = () => {
-      sequence.splice(0, sequence.length)
-    }
+    const pressedKeys = new Set()
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         setIsOpen(false)
-        resetSequence()
-        return
-      }
-
-      if (!(event.ctrlKey || event.metaKey)) {
-        resetSequence()
+        pressedKeys.clear()
         return
       }
 
       const key = String(event.key || '').toLowerCase()
       if (!key) return
 
-      if (key === ACTIVATION_SEQUENCE[sequence.length]) {
-        sequence.push(key)
-        if (sequence.length === ACTIVATION_SEQUENCE.length) {
+      if (ACTIVATION_KEYS.includes(key)) {
+        pressedKeys.add(key)
+        if (ACTIVATION_KEYS.every((activationKey) => pressedKeys.has(activationKey))) {
           event.preventDefault()
           setIsOpen(true)
-          resetSequence()
+          pressedKeys.clear()
         }
-        return
-      }
-
-      if (key === ACTIVATION_SEQUENCE[0]) {
-        sequence.splice(0, sequence.length, key)
         return
       }
 
@@ -102,13 +88,19 @@ export default function DebugOverlay() {
         return
       }
 
-      resetSequence()
+      pressedKeys.clear()
     }
 
     const handleKeyUp = (event) => {
       const key = String(event.key || '').toLowerCase()
+      if (!key) return
+      if (ACTIVATION_KEYS.includes(key)) {
+        pressedKeys.delete(key)
+        return
+      }
+
       if (key === 'control' || key === 'meta') {
-        resetSequence()
+        pressedKeys.clear()
       }
     }
 
