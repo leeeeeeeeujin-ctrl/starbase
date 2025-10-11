@@ -783,6 +783,160 @@ describe('loadMatchFlowSnapshot', () => {
     expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(0)
   })
 
+  it('hydrates async fill queue via the async stand-in API when the snapshot queue is empty', async () => {
+    const rpcPayload = {
+      roster: [
+        {
+          id: 'roster-host',
+          match_instance_id: 'match-async',
+          room_id: 'room-async',
+          game_id: 'game-async',
+          slot_id: 'slot-0',
+          slot_index: 0,
+          role: '전략가',
+          owner_id: 'host-owner',
+          hero_id: 'hero-host',
+          hero_name: '호스트',
+          ready: true,
+          joined_at: '2025-02-01T00:00:00Z',
+          slot_template_version: 9,
+          slot_template_source: 'room-stage',
+          slot_template_updated_at: '2025-02-01T00:00:00Z',
+          created_at: '2025-02-01T00:00:00Z',
+          updated_at: '2025-02-01T00:00:00Z',
+        },
+        {
+          id: 'roster-pending',
+          match_instance_id: 'match-async',
+          room_id: 'room-async',
+          game_id: 'game-async',
+          slot_id: 'slot-1',
+          slot_index: 1,
+          role: '전략가',
+          owner_id: null,
+          hero_id: null,
+          hero_name: null,
+          ready: false,
+          joined_at: null,
+          slot_template_version: 9,
+          slot_template_source: 'room-stage',
+          slot_template_updated_at: '2025-02-01T00:00:00Z',
+          created_at: '2025-02-01T00:00:00Z',
+          updated_at: '2025-02-01T00:00:00Z',
+        },
+      ],
+      room: {
+        id: 'room-async',
+        owner_id: 'host-owner',
+        code: 'ASYNC-ROOM',
+        status: 'ready',
+        mode: 'standard',
+        realtime_mode: 'off',
+        host_role_limit: 2,
+        blind_mode: false,
+        score_window: 30,
+        updated_at: '2025-02-01T00:00:00Z',
+        game_id: 'game-async',
+      },
+      session: {
+        id: 'session-async',
+        status: 'active',
+        owner_id: 'host-owner',
+        mode: 'standard',
+        match_mode: 'standard',
+        created_at: '2025-02-01T00:00:00Z',
+        updated_at: '2025-02-01T00:05:00Z',
+      },
+      session_meta: {
+        session_id: 'session-async',
+        async_fill_snapshot: {
+          mode: 'off',
+          hostOwnerId: 'host-owner',
+          hostRole: '전략가',
+          seatLimit: { allowed: 2, total: 2 },
+          seatIndexes: [0, 1],
+          pendingSeatIndexes: [1],
+          assigned: [
+            {
+              slotIndex: 0,
+              slotId: 'slot-0',
+              ownerId: 'host-owner',
+              heroId: 'hero-host',
+              heroName: '호스트',
+              ready: true,
+              joinedAt: '2025-02-01T00:00:00Z',
+            },
+          ],
+          fillQueue: [],
+          poolSize: 0,
+          generatedAt: 1700000000000,
+        },
+        updated_at: '2025-02-01T00:05:00Z',
+      },
+      slot_template_version: 9,
+      slot_template_source: 'room-stage',
+      slot_template_updated_at: '2025-02-01T00:00:00Z',
+    }
+
+    const supabaseClient = {
+      rpc: jest.fn((fnName) => {
+        if (fnName === 'fetch_rank_match_ready_snapshot') {
+          return Promise.resolve({ data: rpcPayload, error: null })
+        }
+        return Promise.resolve({ data: null, error: null })
+      }),
+    }
+
+    const fetchResponse = {
+      ok: true,
+      status: 200,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            queue: [
+              {
+                ownerId: 'async-standin',
+                heroId: 'hero-standin',
+                heroName: '원격 대역',
+                role: '전략가',
+                score: 1180,
+                rating: 1495,
+                status: 'active',
+                joinedAt: '2025-02-01T00:03:00Z',
+              },
+            ],
+          }),
+        ),
+    }
+
+    global.window = { document: {} }
+    global.fetch = jest.fn(() => Promise.resolve(fetchResponse))
+
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async')
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/rank/async-standins',
+      expect.objectContaining({ method: 'POST' }),
+    )
+
+    const fetchBody = JSON.parse(global.fetch.mock.calls[0][1].body)
+    expect(fetchBody.seat_requests).toEqual(
+      expect.arrayContaining([expect.objectContaining({ slotIndex: 1, role: '전략가' })]),
+    )
+
+    expect(snapshot.roster).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ownerId: 'async-standin', standin: true }),
+      ]),
+    )
+    expect(snapshot.sessionMeta?.asyncFill?.assigned).toEqual(
+      expect.arrayContaining([expect.objectContaining({ ownerId: 'async-standin', slotIndex: 1 })]),
+    )
+
+    delete global.window
+    delete global.fetch
+  })
+
   it('assigns stand-ins even when initial roster is empty', async () => {
     const rpcPayload = {
       roster: [],

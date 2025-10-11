@@ -319,6 +319,176 @@ function normalizeAsyncFillCandidate(candidate, index = 0) {
   }
 }
 
+function deriveAsyncFillVacancyIndexes(asyncFill, rosterList = []) {
+  if (!asyncFill) return []
+
+  const rosterIndexMap = new Map()
+  rosterList.forEach((entry) => {
+    if (!entry || entry.slotIndex == null) return
+    rosterIndexMap.set(Number(entry.slotIndex), entry)
+  })
+
+  const vacancySet = new Set(
+    Array.isArray(asyncFill.pendingSeatIndexes)
+      ? asyncFill.pendingSeatIndexes
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value >= 0)
+      : [],
+  )
+
+  if (Array.isArray(asyncFill.seatIndexes)) {
+    asyncFill.seatIndexes
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value >= 0)
+      .forEach((seatIndex) => {
+        const seat = rosterIndexMap.get(seatIndex)
+        const occupiedOwner = toOptionalTrimmed(seat?.ownerId)
+        if (!occupiedOwner) {
+          vacancySet.add(seatIndex)
+        }
+      })
+  }
+
+  return Array.from(vacancySet).sort((a, b) => a - b)
+}
+
+function buildRoleAverages(rosterList = []) {
+  const aggregates = new Map()
+  rosterList.forEach((entry) => {
+    if (!entry) return
+    const roleKey = toRoleKey(entry.role)
+    const ownerId = toOptionalTrimmed(entry.ownerId)
+    if (!roleKey || !ownerId) return
+    if (!aggregates.has(roleKey)) {
+      aggregates.set(roleKey, {
+        scoreTotal: 0,
+        scoreCount: 0,
+        ratingTotal: 0,
+        ratingCount: 0,
+      })
+    }
+    const aggregate = aggregates.get(roleKey)
+    const score = entry.score !== undefined && entry.score !== null ? toNumber(entry.score, null) : null
+    if (score !== null) {
+      aggregate.scoreTotal += score
+      aggregate.scoreCount += 1
+    }
+    const rating = entry.rating !== undefined && entry.rating !== null ? toNumber(entry.rating, null) : null
+    if (rating !== null) {
+      aggregate.ratingTotal += rating
+      aggregate.ratingCount += 1
+    }
+  })
+  return aggregates
+}
+
+function buildAsyncFillSeatRequests({ rosterList = [], asyncFill = null, hostRole = '' }) {
+  if (!asyncFill) return []
+  const vacancies = deriveAsyncFillVacancyIndexes(asyncFill, rosterList)
+  if (!vacancies.length) return []
+
+  const rosterIndexMap = new Map()
+  rosterList.forEach((entry) => {
+    if (!entry || entry.slotIndex == null) return
+    rosterIndexMap.set(Number(entry.slotIndex), entry)
+  })
+
+  const roleAverages = buildRoleAverages(rosterList)
+
+  return vacancies.map((seatIndex) => {
+    const seatEntry = rosterIndexMap.get(seatIndex) || null
+    const seatRoleRaw = seatEntry?.role || asyncFill.hostRole || hostRole || '역할 미지정'
+    const seatRoleKey = toRoleKey(seatRoleRaw)
+    const referenceScore =
+      seatEntry && seatEntry.score !== undefined && seatEntry.score !== null
+        ? toNumber(seatEntry.score, null)
+        : seatRoleKey && roleAverages.has(seatRoleKey)
+          ? (() => {
+              const aggregate = roleAverages.get(seatRoleKey)
+              if (!aggregate || !aggregate.scoreCount) return null
+              return Math.round(aggregate.scoreTotal / aggregate.scoreCount)
+            })()
+          : null
+    const referenceRating =
+      seatEntry && seatEntry.rating !== undefined && seatEntry.rating !== null
+        ? toNumber(seatEntry.rating, null)
+        : seatRoleKey && roleAverages.has(seatRoleKey)
+          ? (() => {
+              const aggregate = roleAverages.get(seatRoleKey)
+              if (!aggregate || !aggregate.ratingCount) return null
+              return Math.round(aggregate.ratingTotal / aggregate.ratingCount)
+            })()
+          : null
+
+    return {
+      slotIndex: seatIndex,
+      role: seatRoleRaw,
+      score: referenceScore,
+      rating: referenceRating,
+    }
+  })
+}
+
+async function fetchAsyncStandinQueueViaApi({
+  gameId,
+  roomId,
+  seatRequests,
+  excludeOwnerIds,
+}) {
+  if (typeof fetch !== 'function') {
+    return null
+  }
+
+  const payload = {
+    game_id: gameId,
+    room_id: roomId || null,
+    seat_requests: seatRequests,
+  }
+
+  if (Array.isArray(excludeOwnerIds) && excludeOwnerIds.length) {
+    payload.exclude_owner_ids = excludeOwnerIds
+  }
+
+  try {
+    const response = await fetch('/api/rank/async-standins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    const text = await response.text().catch(() => '')
+    const data = safeJsonParse(text) || {}
+
+    if (!response.ok) {
+      addDebugEvent({
+        level: 'warn',
+        source: 'async-standin-api',
+        message: 'Async stand-in API request failed',
+        details: {
+          status: response.status,
+          error: data?.error || null,
+          hint: data?.hint || null,
+        },
+      })
+      return null
+    }
+
+    if (Array.isArray(data.queue) && data.queue.length) {
+      return data.queue
+    }
+
+    return []
+  } catch (error) {
+    addDebugEvent({
+      level: 'error',
+      source: 'async-standin-api',
+      message: 'Async stand-in API request threw',
+      details: { message: error?.message || 'unknown_error' },
+    })
+    return null
+  }
+}
+
 function buildStandinPriority(seatEntry, candidate) {
   const seatRoleKey = toRoleKey(seatEntry?.role)
   const candidateRoleKey = toRoleKey(candidate?.role)
@@ -1337,6 +1507,54 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
     normalizedRoster = standinResult.roster
     heroMap = standinResult.heroMap
     sessionMeta = standinResult.sessionMeta
+  } else {
+    const asyncFillInfo = sessionMeta?.asyncFill || null
+    const asyncMode = toTrimmed(asyncFillInfo?.mode).toLowerCase()
+    const queueEmpty = !Array.isArray(asyncFillInfo?.fillQueue) || asyncFillInfo.fillQueue.length === 0
+
+    if (asyncFillInfo && (asyncMode === 'off' || !asyncMode) && queueEmpty) {
+      const seatRequests = buildAsyncFillSeatRequests({
+        rosterList: normalizedRoster,
+        asyncFill: asyncFillInfo,
+        hostRole: asyncFillInfo?.hostRole || '',
+      })
+
+      if (seatRequests.length) {
+        const excludeOwnerIds = normalizedRoster
+          .map((entry) => toOptionalTrimmed(entry?.ownerId))
+          .filter(Boolean)
+
+        const apiQueue = await fetchAsyncStandinQueueViaApi({
+          gameId: trimmedGameId,
+          roomId: targetRoomId,
+          seatRequests,
+          excludeOwnerIds,
+        })
+
+        if (Array.isArray(apiQueue) && apiQueue.length) {
+          const patchedAsyncFill = cloneJson(asyncFillInfo) || {}
+          patchedAsyncFill.fillQueue = apiQueue
+
+          const patchedSessionMeta = sessionMeta
+            ? { ...sessionMeta, asyncFill: patchedAsyncFill }
+            : { asyncFill: patchedAsyncFill }
+
+          const reapplied = applyAsyncFillStandins({
+            roster: normalizedRoster,
+            sessionMeta: patchedSessionMeta,
+            heroMap,
+          })
+
+          if (reapplied?.applied) {
+            normalizedRoster = reapplied.roster
+            heroMap = reapplied.heroMap
+            sessionMeta = reapplied.sessionMeta
+          } else {
+            sessionMeta = patchedSessionMeta
+          }
+        }
+      }
+    }
   }
 
   const participantPool = buildParticipantPool(normalizedRoster)
