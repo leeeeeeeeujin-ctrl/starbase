@@ -156,4 +156,84 @@ describe('POST /api/rank/async-standins', () => {
       }),
     )
   })
+
+  it('falls back to any role when role-specific results are empty', async () => {
+    const rpcMock = jest
+      .fn()
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            owner_id: 'fallback-owner',
+            hero_id: 'hero-fallback',
+            hero_name: 'AI Fallback',
+            role: '지원',
+            score: 1100,
+            rating: 1400,
+            updated_at: '2025-01-01T00:10:00Z',
+            score_gap: 20,
+            rating_gap: 30,
+          },
+        ],
+        error: null,
+      })
+
+    registerSupabaseAdminMock(jest.fn(), rpcMock)
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      body: {
+        game_id: 'game-async',
+        seat_requests: [{ slotIndex: 5, role: '전략가', score: 1180, rating: 1500 }],
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.queue).toEqual(
+      expect.arrayContaining([expect.objectContaining({ ownerId: 'fallback-owner' })]),
+    )
+    expect(res.body.diagnostics).toMatchObject({ roleFallbacks: 1 })
+
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      1,
+      'fetch_rank_async_standin_pool',
+      expect.objectContaining({ p_role: '전략가' }),
+    )
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      2,
+      'fetch_rank_async_standin_pool',
+      expect.objectContaining({ p_role: null }),
+    )
+  })
+
+  it('normalizes generic role labels to null before querying', async () => {
+    const rpcMock = jest.fn().mockResolvedValue({ data: [], error: null })
+    registerSupabaseAdminMock(jest.fn(), rpcMock)
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      body: {
+        game_id: 'game-async',
+        seat_requests: [
+          { slotIndex: 1, role: '역할 미지정' },
+          { slotIndex: 2, role: 'Unassigned' },
+          { slotIndex: 3, role: 'ANY' },
+        ],
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(rpcMock).toHaveBeenCalled()
+    rpcMock.mock.calls.forEach(([, params]) => {
+      expect(params.p_role).toBeNull()
+    })
+  })
 })

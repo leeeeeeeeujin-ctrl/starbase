@@ -399,6 +399,14 @@ function buildAsyncFillSeatRequests({ rosterList = [], asyncFill = null, hostRol
     const seatEntry = rosterIndexMap.get(seatIndex) || null
     const seatRoleRaw = seatEntry?.role || asyncFill.hostRole || hostRole || '역할 미지정'
     const seatRoleKey = toRoleKey(seatRoleRaw)
+    const isGenericRole =
+      !seatRoleKey ||
+      seatRoleKey === '역할 미지정' ||
+      seatRoleKey === '미지정' ||
+      seatRoleKey === 'unassigned' ||
+      seatRoleKey === 'none' ||
+      seatRoleKey === 'any'
+    const seatRoleForRpc = isGenericRole ? null : seatRoleRaw
     const referenceScore =
       seatEntry && seatEntry.score !== undefined && seatEntry.score !== null
         ? toNumber(seatEntry.score, null)
@@ -422,7 +430,7 @@ function buildAsyncFillSeatRequests({ rosterList = [], asyncFill = null, hostRol
 
     return {
       slotIndex: seatIndex,
-      role: seatRoleRaw,
+      role: seatRoleForRpc,
       score: referenceScore,
       rating: referenceRating,
     }

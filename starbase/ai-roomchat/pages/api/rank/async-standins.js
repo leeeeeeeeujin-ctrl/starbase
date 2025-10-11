@@ -25,7 +25,16 @@ function sanitizeSeatRequests(rawList) {
       if (!entry || typeof entry !== 'object') return null
       const slotIndex = toNumber(entry.slotIndex ?? entry.slot_index)
       if (slotIndex === null || slotIndex < 0) return null
-      const role = toTrimmed(entry.role)
+      const roleRaw = toTrimmed(entry.role)
+      const roleKey = roleRaw.toLowerCase()
+      const isGenericRole =
+        !roleKey ||
+        roleKey === '역할 미지정' ||
+        roleKey === '미지정' ||
+        roleKey === 'unassigned' ||
+        roleKey === 'none' ||
+        roleKey === 'any'
+      const role = isGenericRole ? null : roleRaw
       const score = toNumber(entry.score)
       const rating = toNumber(entry.rating)
       const exclusionList = Array.isArray(entry.excludeOwnerIds ?? entry.exclude_owner_ids)
@@ -119,6 +128,36 @@ export default async function handler(req, res) {
     requestedSeats: seatRequests.length,
     rpcCalls: 0,
     roomId: roomId || null,
+    roleFallbacks: 0,
+  }
+
+  async function executeStandinRpc(params) {
+    let rpcResult
+    try {
+      rpcResult = await supabaseAdmin.rpc('fetch_rank_async_standin_pool', params)
+      diagnostics.rpcCalls += 1
+    } catch (rpcError) {
+      return {
+        error: {
+          error: 'rpc_failed',
+          hint: buildRpcHint(),
+          supabaseError: { message: rpcError?.message || 'rpc_exception' },
+        },
+      }
+    }
+
+    if (rpcResult?.error) {
+      return {
+        error: {
+          error: 'rpc_failed',
+          hint: buildRpcHint(),
+          supabaseError: rpcResult.error,
+        },
+      }
+    }
+
+    const candidates = Array.isArray(rpcResult?.data) ? rpcResult.data : []
+    return { data: candidates }
   }
 
   for (const seat of seatRequests) {
@@ -135,29 +174,27 @@ export default async function handler(req, res) {
       params.p_excluded_owner_ids = Array.from(ownersToExclude)
     }
 
-    let rpcResult
-    try {
-      rpcResult = await supabaseAdmin.rpc('fetch_rank_async_standin_pool', params)
-      diagnostics.rpcCalls += 1
-    } catch (rpcError) {
-      return res.status(500).json({
-        error: 'rpc_failed',
-        hint: buildRpcHint(),
-        supabaseError: { message: rpcError?.message || 'rpc_exception' },
-      })
+    const primaryResult = await executeStandinRpc(params)
+    if (primaryResult.error) {
+      return res.status(500).json(primaryResult.error)
     }
 
-    if (rpcResult?.error) {
-      return res.status(500).json({
-        error: 'rpc_failed',
-        hint: buildRpcHint(),
-        supabaseError: rpcResult.error,
-      })
-    }
-
-    const candidates = Array.isArray(rpcResult?.data) ? rpcResult.data : []
+    let candidates = primaryResult.data
     if (!candidates.length) {
-      continue
+      if (params.p_role) {
+        const fallbackParams = { ...params, p_role: null }
+        const fallbackResult = await executeStandinRpc(fallbackParams)
+        if (fallbackResult.error) {
+          return res.status(500).json(fallbackResult.error)
+        }
+        candidates = fallbackResult.data
+        if (candidates.length) {
+          diagnostics.roleFallbacks += 1
+        }
+      }
+      if (!candidates.length) {
+        continue
+      }
     }
 
     const chosen = candidates.find((row) => {
