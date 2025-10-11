@@ -1,89 +1,11 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
-
-function toTrimmed(value) {
-  if (value === null || value === undefined) return ''
-  return String(value).trim()
-}
-
-function toOptionalUuid(value) {
-  const trimmed = toTrimmed(value)
-  if (!trimmed) return null
-  return trimmed
-}
-
-function toNumber(value) {
-  if (value === null || value === undefined) return null
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return null
-  return numeric
-}
-
-function sanitizeSeatRequests(rawList) {
-  if (!Array.isArray(rawList) || rawList.length === 0) return []
-  return rawList
-    .map((entry) => {
-      if (!entry || typeof entry !== 'object') return null
-      const slotIndex = toNumber(entry.slotIndex ?? entry.slot_index)
-      if (slotIndex === null || slotIndex < 0) return null
-      const roleRaw = toTrimmed(entry.role)
-      const roleKey = roleRaw.toLowerCase()
-      const isGenericRole =
-        !roleKey ||
-        roleKey === '역할 미지정' ||
-        roleKey === '미지정' ||
-        roleKey === 'unassigned' ||
-        roleKey === 'none' ||
-        roleKey === 'any'
-      const role = isGenericRole ? null : roleRaw
-      const score = toNumber(entry.score)
-      const rating = toNumber(entry.rating)
-      const exclusionList = Array.isArray(entry.excludeOwnerIds ?? entry.exclude_owner_ids)
-        ? entry.excludeOwnerIds ?? entry.exclude_owner_ids
-        : []
-      return {
-        slotIndex,
-        role: role || null,
-        score: score !== null ? Math.floor(score) : null,
-        rating: rating !== null ? Math.floor(rating) : null,
-        excludeOwnerIds: exclusionList
-          .map((value) => toOptionalUuid(value))
-          .filter((value) => typeof value === 'string'),
-      }
-    })
-    .filter(Boolean)
-}
-
-function formatCandidate(row) {
-  if (!row || typeof row !== 'object') return null
-  const ownerId = toOptionalUuid(row.owner_id ?? row.ownerId)
-  const heroId = toOptionalUuid(row.hero_id ?? row.heroId)
-  const heroName = toTrimmed(row.hero_name ?? row.heroName)
-  const role = toTrimmed(row.role)
-  const score = toNumber(row.score)
-  const rating = toNumber(row.rating)
-  const battles = toNumber(row.battles)
-  const winRate = row.win_rate !== undefined && row.win_rate !== null ? Number(row.win_rate) : null
-  const status = toTrimmed(row.status)
-  const updatedAt = row.updated_at || null
-  const scoreGap = toNumber(row.score_gap)
-  const ratingGap = toNumber(row.rating_gap)
-
-  return {
-    ownerId,
-    heroId,
-    heroName,
-    role,
-    score: score !== null ? score : null,
-    rating: rating !== null ? rating : null,
-    battles: battles !== null ? battles : null,
-    winRate: winRate !== null && Number.isFinite(winRate) ? winRate : null,
-    status: status || 'standin',
-    updatedAt,
-    scoreGap: scoreGap !== null ? scoreGap : null,
-    ratingGap: ratingGap !== null ? ratingGap : null,
-    matchSource: 'participant_pool',
-  }
-}
+import {
+  formatCandidate,
+  normalizeExcludeOwnerIds,
+  sanitizeSeatRequests,
+  toNumber,
+  toOptionalUuid,
+} from '@/lib/rank/asyncStandinUtils'
 
 function buildRpcHint() {
   return [
@@ -110,11 +32,7 @@ export default async function handler(req, res) {
   const gameId = toOptionalUuid(body.game_id ?? body.gameId)
   const roomId = toOptionalUuid(body.room_id ?? body.roomId)
   const seatRequests = sanitizeSeatRequests(body.seat_requests ?? body.seatRequests)
-  const excludeOwnerIds = Array.isArray(body.exclude_owner_ids ?? body.excludeOwnerIds)
-    ? (body.exclude_owner_ids ?? body.excludeOwnerIds)
-        .map((value) => toOptionalUuid(value))
-        .filter((value) => typeof value === 'string')
-    : []
+  const excludeOwnerIds = normalizeExcludeOwnerIds(body.exclude_owner_ids ?? body.excludeOwnerIds)
 
   if (!gameId || seatRequests.length === 0) {
     return res.status(400).json({ error: 'invalid_payload' })
