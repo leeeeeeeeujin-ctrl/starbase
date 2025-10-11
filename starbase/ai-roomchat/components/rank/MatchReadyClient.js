@@ -831,11 +831,29 @@ export default function MatchReadyClient({ gameId }) {
           error?.payload?.supabaseError?.details ||
           error?.payload?.error ||
           error?.message
-        setReadyError(
-          supabaseMessage
-            ? `준비 신호 실패: ${supabaseMessage}`
-            : '준비 신호를 전송하지 못했습니다. 잠시 후 다시 시도해 주세요.',
-        )
+        const payloadError =
+          error?.payload?.error ||
+          error?.payload?.code ||
+          error?.payload?.supabaseError?.code ||
+          error?.payload?.supabaseError?.error ||
+          ''
+        const normalizedError = typeof payloadError === 'string' ? payloadError.trim() : ''
+
+        if (normalizedError === 'missing_access_token' || normalizedError === 'unauthorized') {
+          setReadyError('세션 인증이 만료되었습니다. 페이지를 새로고침하거나 다시 로그인해 주세요.')
+          refresh().catch(() => {})
+        } else if (normalizedError === 'forbidden') {
+          setReadyError('이 매치에 참여할 권한이 없습니다. 매치 초대 상태를 확인해 주세요.')
+        } else if (normalizedError === 'session_not_found') {
+          setReadyError('세션을 찾지 못했습니다. 새로고침 후 다시 시도해 주세요.')
+          refresh().catch(() => {})
+        } else {
+          setReadyError(
+            supabaseMessage
+              ? `준비 신호 실패: ${supabaseMessage}`
+              : '준비 신호를 전송하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+          )
+        }
       }
     } finally {
       if (readySignalControllerRef.current === controller) {
@@ -843,7 +861,16 @@ export default function MatchReadyClient({ gameId }) {
       }
       setReadyBusy(false)
     }
-  }, [allowStart, readyBusy, sessionId, gameId, matchInstanceId, state?.sessionMeta?.extras])
+  }, [
+    allowStart,
+    readyBusy,
+    sessionId,
+    gameId,
+    matchInstanceId,
+    state?.sessionMeta?.extras,
+    refresh,
+    viewerOwnerId,
+  ])
 
   const handleStart = useCallback(() => {
     if (!gameId) return
