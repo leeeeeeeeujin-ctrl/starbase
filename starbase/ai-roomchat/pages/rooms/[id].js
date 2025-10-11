@@ -1025,6 +1025,20 @@ export default function RoomDetailPage() {
     if (!roomOwnerId || !viewerUserId) return false
     return roomOwnerId === viewerUserId
   }, [roomOwnerId, viewerUserId])
+
+  const resolveAccessToken = useCallback(async () => {
+    const storedToken = storedAuthSnapshot?.accessToken?.trim?.()
+    if (storedToken) {
+      return storedToken
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) {
+      throw sessionError
+    }
+
+    return sessionData?.session?.access_token || ''
+  }, [storedAuthSnapshot?.accessToken, supabase])
   const loadViewerHero = useCallback(
     async (explicitHeroId) => {
       setViewerLoading(true)
@@ -1390,19 +1404,38 @@ export default function RoomDetailPage() {
 
         if (needsUpdate && canSyncRoomCounters) {
           try {
-            await withTable(supabase, 'rank_rooms', (table) =>
-              supabase
-                .from(table)
-                .update({
-                  slot_count: slotCount,
-                  filled_count: filledCount,
-                  ready_count: readyCount,
-                  status: nextStatus,
-                  host_role_limit: baseRoom.realtimeMode === 'pulse' ? numericHostLimit : null,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', roomId),
-            )
+            const token = await resolveAccessToken()
+            if (!token) {
+              throw new Error('missing_access_token')
+            }
+
+            const response = await fetch('/api/rank/sync-room-counters', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                room_id: roomId,
+                slot_count: slotCount,
+                filled_count: filledCount,
+                ready_count: readyCount,
+                status: nextStatus,
+                host_role_limit: baseRoom.realtimeMode === 'pulse' ? numericHostLimit : null,
+              }),
+            })
+
+            if (!response.ok) {
+              let detail = null
+              try {
+                detail = await response.json()
+              } catch (parseError) {
+                detail = null
+              }
+              const error = new Error(detail?.error || 'room_counter_sync_failed')
+              error.payload = detail
+              throw error
+            }
           } catch (updateError) {
             console.warn('[RoomDetail] Failed to sync room counters:', updateError)
           }
@@ -1463,7 +1496,7 @@ export default function RoomDetailPage() {
         }
       }
     },
-    [roomId, canSyncRoomCounters, isHost],
+    [roomId, canSyncRoomCounters, isHost, resolveAccessToken],
   )
 
   useEffect(() => {
