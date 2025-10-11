@@ -184,21 +184,25 @@ export default async function handler(req, res) {
       const orderedSetError = code === '42809' || isOrderedSetAggregateError(error)
       if (orderedSetError || isMissingRpc(error) || isPermissionError(error)) {
         const fallback = await fetchViaTable(payload.p_game_id, payload.p_owner_id || null)
-        if (fallback.error) {
-          return res
-            .status(502)
-            .json({
-              error: 'rpc_failed',
-              supabaseError: error,
-              fallbackError: fallback.error,
-              table: fallback.table,
-              hint: buildRpcHint(error),
-            })
+        const baseResponse = {
+          session: fallback.row || null,
+          error: 'rpc_failed',
+          supabaseError: error,
+          hint: buildRpcHint(error),
+          via: fallback.error ? 'table-error' : 'table',
         }
-        return res
-          .status(200)
-          .json({ session: fallback.row, supabaseError: error, via: 'table', hint: buildRpcHint(error) })
+
+        if (fallback.error) {
+          baseResponse.fallbackError = fallback.error
+        }
+
+        if (fallback.table) {
+          baseResponse.table = fallback.table
+        }
+
+        return res.status(200).json(baseResponse)
       }
+
       return res
         .status(502)
         .json({ error: 'rpc_failed', supabaseError: error, hint: buildRpcHint(error) })

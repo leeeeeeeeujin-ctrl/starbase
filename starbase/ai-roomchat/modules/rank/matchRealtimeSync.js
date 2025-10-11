@@ -285,9 +285,19 @@ async function fetchSessionViaApi(gameId, ownerId) {
       details: data?.details,
       hint: data?.hint,
       supabaseError: data?.supabaseError,
+      fallbackError: data?.fallbackError,
+      via: data?.via,
     }
 
-    if (!response.ok) {
+    const formatted = data?.session ? formatSessionRow(data.session) : null
+    const hasDiagnostics =
+      !response.ok ||
+      Boolean(failure.error) ||
+      Boolean(failure.supabaseError) ||
+      Boolean(failure.fallbackError) ||
+      Boolean(failure.hint)
+
+    if (hasDiagnostics) {
       const derivedHint = deriveLatestSessionHint(failure)
 
       console.warn('[matchRealtimeSync] latest-session API failed:', failure)
@@ -296,29 +306,15 @@ async function fetchSessionViaApi(gameId, ownerId) {
         source: 'latest-session-api',
         operation: 'fetch_latest_rank_session_v2',
         status: response.status,
-        error: data?.supabaseError || data,
+        error: failure.supabaseError || failure.error || data,
         payload: { request: body, response: failure },
-        hint: derivedHint || null,
+        hint: derivedHint || failure.hint || null,
       })
 
-      return { session: null, error: failure, hint: derivedHint }
+      return { session: formatted, error: failure, hint: derivedHint || failure.hint || null }
     }
 
-    const formatted = data?.session ? formatSessionRow(data.session) : null
-    const derivedHint = deriveLatestSessionHint(failure)
-
-    if (derivedHint) {
-      addSupabaseDebugEvent({
-        source: 'latest-session-api',
-        operation: 'fetch_latest_rank_session_v2',
-        status: response.status,
-        error: null,
-        payload: { request: body, response: failure },
-        hint: derivedHint,
-      })
-    }
-
-    return { session: formatted, error: null, hint: derivedHint }
+    return { session: formatted, error: null, hint: null }
   } catch (error) {
     console.warn('[matchRealtimeSync] latest-session API threw:', error)
     addDebugEvent({
