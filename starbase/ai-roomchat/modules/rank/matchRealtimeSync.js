@@ -370,10 +370,6 @@ function compareStandinPriority(a, b) {
 
 function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
   const rosterList = Array.isArray(roster) ? roster.map((entry) => ({ ...entry })) : []
-  if (!rosterList.length) {
-    return { roster, sessionMeta, heroMap, applied: false }
-  }
-
   const asyncFill = sessionMeta?.asyncFill
   const mode = toTrimmed(asyncFill?.mode).toLowerCase()
   if (!asyncFill || (mode && mode !== 'off')) {
@@ -385,13 +381,18 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
         .map((value) => Number(value))
         .filter((value) => Number.isFinite(value) && value >= 0)
     : []
+  const seatIndexes = Array.isArray(asyncFill.seatIndexes)
+    ? asyncFill.seatIndexes
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value >= 0)
+    : []
   const queueCandidates = Array.isArray(asyncFill.fillQueue)
     ? asyncFill.fillQueue
         .map((candidate, index) => normalizeAsyncFillCandidate(candidate, index))
         .filter((candidate) => candidate && (candidate.ownerId || candidate.heroId || candidate.heroName))
     : []
 
-  if (!pendingSeatIndexes.length || !queueCandidates.length) {
+  if (!queueCandidates.length) {
     return { roster, sessionMeta, heroMap, applied: false }
   }
 
@@ -400,19 +401,42 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
     rosterIndexMap.set(entry.slotIndex, { entry, listIndex })
   })
 
+  const vacancySet = new Set(pendingSeatIndexes)
+  seatIndexes.forEach((seatIndex) => {
+    const seat = rosterIndexMap.get(seatIndex)
+    const occupiedOwner = toOptionalTrimmed(seat?.entry?.ownerId)
+    if (!occupiedOwner) {
+      vacancySet.add(seatIndex)
+    }
+  })
+
+  if (!vacancySet.size) {
+    return { roster, sessionMeta, heroMap, applied: false }
+  }
+
   const heroMapClone = heroMap ? { ...heroMap } : {}
   const usedQueueIndexes = new Set()
   const assignedSeats = []
   const assignedEntries = []
+  const collaboratorIds = new Set()
+
+  rosterList.forEach((entry) => {
+    const ownerId = toOptionalTrimmed(entry?.ownerId)
+    if (ownerId) {
+      collaboratorIds.add(ownerId)
+    }
+  })
 
   const hostRole = toTrimmed(asyncFill.hostRole) || '역할 미지정'
 
-  pendingSeatIndexes.forEach((seatIndexRaw) => {
-    const seatIndex = Number(seatIndexRaw)
-    if (!Number.isFinite(seatIndex) || seatIndex < 0) return
-    let seat = rosterIndexMap.get(seatIndex)
+  Array.from(vacancySet)
+    .sort((a, b) => a - b)
+    .forEach((seatIndexRaw) => {
+      const seatIndex = Number(seatIndexRaw)
+      if (!Number.isFinite(seatIndex) || seatIndex < 0) return
+      let seat = rosterIndexMap.get(seatIndex)
 
-    if (!seat) {
+      if (!seat) {
       const placeholderEntry = {
         slotId: null,
         slotIndex: seatIndex,
@@ -453,6 +477,9 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
 
     usedQueueIndexes.add(candidate.index)
     assignedSeats.push(seatIndex)
+    if (candidate.ownerId) {
+      collaboratorIds.add(candidate.ownerId)
+    }
 
     const updatedEntry = {
       ...seat.entry,
@@ -506,6 +533,7 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
           .filter((value) => Number.isFinite(value) && value >= 0)
       : [],
   )
+  vacancySet.forEach((seatIndex) => pendingSet.add(seatIndex))
   assignedSeats.forEach((seatIndex) => pendingSet.delete(seatIndex))
   asyncFillClone.pendingSeatIndexes = Array.from(pendingSet).sort((a, b) => a - b)
 
@@ -545,6 +573,7 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
     sessionMeta: updatedSessionMeta,
     heroMap: heroMapClone,
     applied: true,
+    collaborators: Array.from(collaboratorIds),
   }
 }
 
@@ -1060,6 +1089,7 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
     throw rosterError
   }
 
+  let fallbackSessionRow = null
   if (!Array.isArray(rosterData) || rosterData.length === 0) {
     const sessionDiagnostics = {
       hint: null,
@@ -1067,7 +1097,7 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
       source: null,
     }
 
-    const fallbackSession = await fetchLatestSessionRow(supabaseClient, trimmedGameId, {
+    fallbackSessionRow = await fetchLatestSessionRow(supabaseClient, trimmedGameId, {
       onDiagnostics: (info) => {
         if (!info || typeof info !== 'object') return
         const derivedHint = info.hint || deriveLatestSessionHint(info) || null
@@ -1083,37 +1113,43 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
       },
     })
 
-    if (!fallbackSession && (sessionDiagnostics.hint || sessionDiagnostics.error)) {
-      const fallbackHint =
-        sessionDiagnostics.hint ||
-        deriveLatestSessionHint({ error: sessionDiagnostics.error, supabaseError: sessionDiagnostics.error }) ||
-        'fetch_latest_rank_session_v2 RPC를 호출하지 못했습니다. Supabase SQL Editor에서 함수를 재배포하고 권한을 확인하세요.'
-      const exception = new Error('매치 세션 정보를 불러오지 못했습니다.')
-      exception.code = 'latest_session_unavailable'
-      exception.hint = fallbackHint
-      exception.supabaseError = sessionDiagnostics.error || null
-      exception.source = sessionDiagnostics.source || 'latest-session'
-      throw exception
+    const hasAsyncFill = Boolean(sessionMetaEnvelope?.async_fill_snapshot)
+
+    if (!hasAsyncFill) {
+      if (!fallbackSessionRow && (sessionDiagnostics.hint || sessionDiagnostics.error)) {
+        const fallbackHint =
+          sessionDiagnostics.hint ||
+          deriveLatestSessionHint({ error: sessionDiagnostics.error, supabaseError: sessionDiagnostics.error }) ||
+          'fetch_latest_rank_session_v2 RPC를 호출하지 못했습니다. Supabase SQL Editor에서 함수를 재배포하고 권한을 확인하세요.'
+        const exception = new Error('매치 세션 정보를 불러오지 못했습니다.')
+        exception.code = 'latest_session_unavailable'
+        exception.hint = fallbackHint
+        exception.supabaseError = sessionDiagnostics.error || null
+        exception.source = sessionDiagnostics.source || 'latest-session'
+        throw exception
+      }
+
+      return {
+        roster: [],
+        participantPool: [],
+        heroOptions: [],
+        heroMap: {},
+        slotTemplate: null,
+        matchSnapshot: null,
+        sessionMeta: null,
+        hostOwnerId: null,
+        hostRoleLimit: null,
+        realtimeMode: null,
+        matchMode: '',
+        slotTemplateVersion: null,
+        slotTemplateUpdatedAt: null,
+        matchInstanceId: null,
+        roomId: null,
+        sessionId: fallbackSessionRow?.id || null,
+      }
     }
 
-    return {
-      roster: [],
-      participantPool: [],
-      heroOptions: [],
-      heroMap: {},
-      slotTemplate: null,
-      matchSnapshot: null,
-      sessionMeta: null,
-      hostOwnerId: null,
-      hostRoleLimit: null,
-      realtimeMode: null,
-      matchMode: '',
-      slotTemplateVersion: null,
-      slotTemplateUpdatedAt: null,
-      matchInstanceId: null,
-      roomId: null,
-      sessionId: fallbackSession?.id || null,
-    }
+    rosterData = []
   }
 
   let bestVersion =
@@ -1227,7 +1263,7 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
 
   const formattedRoom = formatRoom(roomRow)
 
-  let sessionRow = null
+  let sessionRow = fallbackSessionRow || null
   if (sessionEnvelope) {
     sessionRow = formatSessionRow(sessionEnvelope)
   }
