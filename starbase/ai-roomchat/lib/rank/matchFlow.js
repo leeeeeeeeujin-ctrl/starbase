@@ -150,6 +150,13 @@ function sanitizeRoster(roster) {
         heroName: entry.heroName || '',
         ready: !!entry.ready,
         joinedAt: entry.joinedAt || null,
+        standin: entry.standin === true,
+        matchSource:
+          entry.matchSource != null
+            ? String(entry.matchSource).trim()
+            : entry.standin
+              ? 'participant_pool'
+              : '',
       }
     })
     .filter(Boolean)
@@ -169,6 +176,13 @@ function sanitizeAssignments(assignments) {
             heroName: member?.heroName || '',
             ready: !!member?.ready,
             slotIndex: toNumber(member?.slotIndex) ?? memberIndex,
+            standin: member?.standin === true,
+            matchSource:
+              member?.matchSource != null
+                ? String(member.matchSource).trim()
+                : member?.standin
+                  ? 'participant_pool'
+                  : '',
           }))
         : []
       return {

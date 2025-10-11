@@ -277,6 +277,7 @@ describe('POST /api/rank/session-meta', () => {
         p_selected_time_limit: 120,
         p_drop_in_bonus_seconds: 30,
         p_realtime_mode: 'standard',
+        p_extras: null,
       }),
     )
     expect(rpcMock).toHaveBeenNthCalledWith(
@@ -311,6 +312,36 @@ describe('POST /api/rank/session-meta', () => {
       }),
     )
     expect(userRpcMock).not.toHaveBeenCalled()
+  })
+
+  it('passes extras payload to the RPC when provided', async () => {
+    const handler = loadHandler()
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: {
+        session_id: 'session-1',
+        meta: {
+          realtime_mode: 'pulse',
+          extras: { difficulty: 'hard', modifiers: { fog: true } },
+        },
+      },
+    })
+
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(rpcMock).toHaveBeenCalledWith(
+      'upsert_match_session_meta',
+      expect.objectContaining({
+        p_session_id: 'session-1',
+        p_realtime_mode: 'pulse',
+        p_extras: expect.objectContaining({ difficulty: 'hard', modifiers: { fog: true } }),
+      }),
+    )
   })
 
   it('returns 404 when session is not found', async () => {
