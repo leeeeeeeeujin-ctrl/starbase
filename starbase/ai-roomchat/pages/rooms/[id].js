@@ -41,6 +41,7 @@ import {
   RANK_KEYRING_STORAGE_KEY,
   readRankKeyringSnapshot,
 } from '@/lib/rank/keyringStorage'
+import { createPlaceholderCandidate } from '@/lib/rank/asyncStandinUtils'
 
 const ROOM_EXIT_DELAY_MS = 5000
 const HOST_CLEANUP_DELAY_MS = ROOM_EXIT_DELAY_MS
@@ -452,6 +453,7 @@ function injectStandinsIntoSlots(slots = [], assignments = [], seatMap = new Map
       standinBattles: bundle.candidate.battles,
       standinWinRate: bundle.candidate.winRate,
       standinStatus: bundle.candidate.status || 'standin',
+      standinPlaceholder: bundle.candidate.placeholder === true,
     }
   })
 
@@ -506,6 +508,37 @@ function injectStandinsIntoSlots(slots = [], assignments = [], seatMap = new Map
   return { slots: merged, applied: true, assigned }
 }
 
+function buildPlaceholderStandinAssignments(seatMap, assignments = []) {
+  if (!(seatMap instanceof Map)) {
+    return []
+  }
+
+  const reservedSlots = new Set()
+  assignments.forEach((assignment) => {
+    const rawIndex = assignment?.slotIndex ?? assignment?.slot_index
+    const slotIndex = Number.isFinite(Number(rawIndex)) ? Number(rawIndex) : null
+    if (slotIndex !== null) {
+      reservedSlots.add(slotIndex)
+    }
+  })
+
+  const placeholders = []
+  seatMap.forEach((seat, slotIndex) => {
+    if (reservedSlots.has(slotIndex)) {
+      return
+    }
+
+    const candidate = createPlaceholderCandidate(seat, slotIndex)
+    if (!candidate || !candidate.ownerId) {
+      return
+    }
+
+    placeholders.push({ slotIndex, candidate })
+  })
+
+  return placeholders
+}
+
 async function fulfillAsyncStandinsForSlots({ room, slots, token }) {
   const { seatMap, seatRequests } = buildStandinSeatRequests(slots)
   if (!seatRequests.length) {
@@ -540,23 +573,48 @@ async function fulfillAsyncStandinsForSlots({ room, slots, token }) {
     throw error
   }
 
-  const assignments = Array.isArray(payload?.assignments) ? payload.assignments : []
-  const injection = injectStandinsIntoSlots(slots, assignments, seatMap)
+  let assignments = Array.isArray(payload?.assignments) ? payload.assignments : []
+  let injection = injectStandinsIntoSlots(slots, assignments, seatMap)
+  let placeholderAssignments = []
+
+  if (!injection.applied) {
+    placeholderAssignments = buildPlaceholderStandinAssignments(seatMap, assignments)
+    if (placeholderAssignments.length) {
+      assignments = [...assignments, ...placeholderAssignments]
+      injection = injectStandinsIntoSlots(slots, assignments, seatMap)
+    }
+  }
+
   if (!injection.applied) {
     const error = new Error('async_standin_unavailable')
     error.payload = payload
     throw error
   }
 
-  if (payload?.diagnostics && typeof console !== 'undefined' && console.info) {
+  let diagnostics = null
+  if (payload?.diagnostics && typeof payload.diagnostics === 'object') {
+    diagnostics = { ...payload.diagnostics }
+  }
+
+  if (placeholderAssignments.length) {
+    diagnostics = {
+      ...(diagnostics || {}),
+      placeholders: placeholderAssignments.length,
+      placeholderSlotIndexes: placeholderAssignments.map((entry) => entry.slotIndex),
+    }
+  }
+
+  if (diagnostics && typeof console !== 'undefined' && console.info) {
+    console.info('[RoomDetail] async stand-in diagnostics:', diagnostics)
+  } else if (payload?.diagnostics && typeof console !== 'undefined' && console.info) {
     console.info('[RoomDetail] async stand-in diagnostics:', payload.diagnostics)
   }
 
   return {
     slots: injection.slots,
     applied: true,
-    assignments: injection.assigned,
-    diagnostics: payload?.diagnostics || null,
+    assignments,
+    diagnostics,
   }
 }
 

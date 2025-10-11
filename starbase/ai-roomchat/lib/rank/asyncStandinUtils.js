@@ -8,6 +8,8 @@ const GENERIC_ROLE_KEYS = new Set([
   'generic',
 ])
 
+const STANDIN_HERO_NAME = 'AI 자동 대역'
+
 export function toTrimmed(value) {
   if (value === null || value === undefined) return ''
   return String(value).trim()
@@ -25,6 +27,53 @@ export function toNumber(value) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return null
   return numeric
+}
+
+export function createSyntheticStandinOwnerId(slotIndex = 0) {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return crypto.randomUUID()
+    } catch (error) {
+      // ignore and fall through to fallback implementation
+    }
+  }
+
+  const template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+  let iteration = 0
+  return template.replace(/[xy]/g, (char) => {
+    // eslint-disable-next-line no-bitwise
+    const random = Math.random() * 16 || ((slotIndex + iteration++) % 16)
+    const value = char === 'x' ? random : (random & 0x3) | 0x8
+    return Math.floor(value).toString(16)
+  })
+}
+
+export function createPlaceholderCandidate(seat = {}, slotIndex = 0) {
+  const ownerId = createSyntheticStandinOwnerId(slotIndex)
+  const roleValue = seat?.role
+  const scoreValue = seat?.score
+  const ratingValue = seat?.rating
+
+  const role = toTrimmed(roleValue) || '역할 미지정'
+  const scoreNumeric = toNumber(scoreValue)
+  const ratingNumeric = toNumber(ratingValue)
+
+  return {
+    ownerId,
+    heroId: null,
+    heroName: STANDIN_HERO_NAME,
+    role,
+    score: scoreNumeric !== null ? scoreNumeric : null,
+    rating: ratingNumeric !== null ? ratingNumeric : null,
+    battles: null,
+    winRate: null,
+    status: 'standin',
+    updatedAt: new Date().toISOString(),
+    scoreGap: null,
+    ratingGap: null,
+    matchSource: 'async_standin_placeholder',
+    placeholder: true,
+  }
 }
 
 function normalizeRole(role) {

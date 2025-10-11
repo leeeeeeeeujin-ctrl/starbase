@@ -1,5 +1,6 @@
 import {
   buildDebugSeatExample,
+  createPlaceholderCandidate,
   parseSeatRequestsInput,
   sanitizeSeatRequests,
   toSeatRequestsPayload,
@@ -54,5 +55,18 @@ describe('asyncStandinUtils', () => {
     example.forEach((seat) => {
       expect(typeof seat.slotIndex).toBe('number')
     })
+  })
+
+  test('createPlaceholderCandidate returns normalized stand-in details', () => {
+    const candidate = createPlaceholderCandidate({ role: '딜러', score: '1520', rating: 2100 }, 2)
+
+    expect(candidate.placeholder).toBe(true)
+    expect(candidate.role).toBe('딜러')
+    expect(candidate.score).toBe(1520)
+    expect(candidate.rating).toBe(2100)
+    expect(candidate.heroName).toBe('AI 자동 대역')
+    expect(typeof candidate.ownerId).toBe('string')
+    expect(candidate.ownerId).toHaveLength(36)
+    expect(candidate.matchSource).toBe('async_standin_placeholder')
   })
 })
