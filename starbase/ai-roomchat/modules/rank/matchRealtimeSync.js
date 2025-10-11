@@ -1,3 +1,4 @@
+import { addDebugEvent, addSupabaseDebugEvent } from '@/lib/debugCollector'
 import { withTable } from '@/lib/supabaseTables'
 
 function isBrowserEnvironment() {
@@ -218,13 +219,23 @@ async function fetchSessionViaApi(gameId, ownerId) {
     const data = safeJsonParse(text) || {}
 
     if (!response.ok) {
-      console.warn('[matchRealtimeSync] latest-session API failed:', {
+      const failure = {
         status: response.status,
         error: data?.error,
         message: data?.message,
         details: data?.details,
         hint: data?.hint,
         supabaseError: data?.supabaseError,
+      }
+
+      console.warn('[matchRealtimeSync] latest-session API failed:', failure)
+
+      addSupabaseDebugEvent({
+        source: 'latest-session-api',
+        operation: 'fetch_latest_rank_session_v2',
+        status: response.status,
+        error: data?.supabaseError || data,
+        payload: { request: body, response: failure },
       })
       return null
     }
@@ -234,6 +245,12 @@ async function fetchSessionViaApi(gameId, ownerId) {
     }
   } catch (error) {
     console.warn('[matchRealtimeSync] latest-session API threw:', error)
+    addDebugEvent({
+      level: 'error',
+      source: 'latest-session-api',
+      message: 'Latest session API request threw an exception',
+      details: { message: error?.message || 'unknown_error' },
+    })
   }
 
   return null

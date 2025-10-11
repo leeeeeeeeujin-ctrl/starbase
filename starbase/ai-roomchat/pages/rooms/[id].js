@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { supabase } from '@/lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
+import { addSupabaseDebugEvent } from '@/lib/debugCollector'
 import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import {
   HERO_ID_KEY,
@@ -1443,6 +1444,22 @@ export default function RoomDetailPage() {
                 supabaseError?.details,
               ].filter(Boolean)
               const normalizedMessage = messageCandidates.join(' | ') || 'room_counter_sync_failed'
+
+              addSupabaseDebugEvent({
+                source: 'room-counter-sync',
+                operation: 'update_rank_room_counters',
+                status: response.status,
+                error: supabaseError,
+                message: normalizedMessage,
+                payload: {
+                  roomId,
+                  slotCount,
+                  filledCount,
+                  readyCount,
+                  status: nextStatus,
+                  hostRoleLimit: baseRoom.realtimeMode === 'pulse' ? numericHostLimit : null,
+                },
+              })
 
               const error = new Error(normalizedMessage)
               error.payload = detail

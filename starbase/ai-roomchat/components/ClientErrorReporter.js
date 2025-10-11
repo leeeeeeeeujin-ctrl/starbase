@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 
+import { addClientErrorDebugEvent } from '@/lib/debugCollector'
+
 const MIN_DISPATCH_INTERVAL_MS = 8_000
 const MAX_QUEUE_SIZE = 8
 const DEDUPE_WINDOW_MS = 15_000
@@ -136,14 +138,22 @@ export default function ClientErrorReporter() {
         colno: event.colno || null,
       }
 
-      enqueue({
+      const payload = {
         sessionId,
         message,
         stack,
         context: { ...context, type: 'error' },
         path: window.location?.href || null,
         severity: 'error',
+      }
+
+      addClientErrorDebugEvent(message, {
+        details: context,
+        payload,
+        meta: { origin: 'window-error' },
       })
+
+      enqueue(payload)
     }
 
     const handleRejection = (event) => {
@@ -152,14 +162,22 @@ export default function ClientErrorReporter() {
       const message = typeof reason === 'string' ? reason : reason?.message || 'Unhandled rejection'
       const stack = reason?.stack || normaliseStack(reason)
 
-      enqueue({
+      const payload = {
         sessionId,
         message: String(message).slice(0, 1024),
         stack,
         context: { type: 'unhandledrejection' },
         path: window.location?.href || null,
         severity: 'error',
+      }
+
+      addClientErrorDebugEvent(String(message).slice(0, 1024), {
+        details: { stack },
+        payload,
+        meta: { origin: 'unhandledrejection' },
       })
+
+      enqueue(payload)
     }
 
     window.addEventListener('error', handleError)
