@@ -50,6 +50,64 @@
   gap: 10px;
 }
 
+.headerControls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.diagnosticsToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.diagnosticsToggle {
+  padding: 8px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(94, 234, 212, 0.45);
+  background: rgba(15, 118, 110, 0.28);
+  color: #ccfbf1;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.diagnosticsToggle:hover,
+.diagnosticsToggle:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(45, 212, 191, 0.9);
+  background: rgba(13, 148, 136, 0.38);
+}
+
+.diagnosticsSummary {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.55);
+  min-width: 90px;
+}
+
+.diagnosticsSummaryLabel {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.8);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.diagnosticsSummaryValue {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.94);
+  font-weight: 600;
+  word-break: break-all;
+}
+
 .meta {
   display: flex;
   flex-direction: column;
@@ -60,6 +118,54 @@
 
 .metaLine {
   margin: 0;
+}
+
+.diagnosticsPanel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.76) 0%, rgba(15, 23, 42, 0.6) 100%);
+}
+
+.diagnosticsTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #bfdbfe;
+}
+
+.diagnosticsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px 18px;
+  margin: 0;
+}
+
+.diagnosticsItem {
+  display: grid;
+  gap: 4px;
+}
+
+.diagnosticsItem dt {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.78);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.diagnosticsItem dd {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.95);
+  word-break: break-word;
+}
+
+.diagnosticsError {
+  margin: 0;
+  font-size: 12px;
+  color: #fbbf24;
 }
 
 .bannerWarning {

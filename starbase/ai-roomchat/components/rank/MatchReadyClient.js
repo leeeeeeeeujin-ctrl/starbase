@@ -23,6 +23,7 @@ import {
 import { supabase } from '../../lib/supabase'
 import { loadMatchFlowSnapshot } from '../../modules/rank/matchRealtimeSync'
 import { requestMatchReadySignal } from '../../lib/rank/readyCheckClient'
+import { addDebugEvent } from '../../lib/debugCollector'
 
 const StartClient = dynamic(() => import('./StartClient'), {
   ssr: false,
@@ -33,12 +34,37 @@ const StartClient = dynamic(() => import('./StartClient'), {
   ),
 })
 
+function createInitialDiagnostics() {
+  return {
+    sessionId: '',
+    roomId: '',
+    rosterCount: 0,
+    readyCount: 0,
+    hasActiveKey: false,
+    sessionMetaUpdatedAt: null,
+    turnStateVersion: null,
+    lastSnapshotAt: null,
+    lastRefreshAt: null,
+    lastRefreshSource: '',
+    lastRefreshError: null,
+    lastRefreshRequestedAt: null,
+    pendingRefresh: false,
+    realtime: {
+      status: 'idle',
+      updatedAt: null,
+      lastEvent: null,
+      lastError: null,
+    },
+  }
+}
+
 function useMatchReadyState(gameId) {
   const [state, setState] = useState(() => ({
     ...createEmptyMatchFlowState(),
     sessionId: null,
     roomId: null,
   }))
+  const [diagnostics, setDiagnostics] = useState(() => createInitialDiagnostics())
   const refreshPromiseRef = useRef(null)
   const latestRef = useRef({
     slotTemplateVersion: null,
@@ -56,6 +82,11 @@ function useMatchReadyState(gameId) {
         roomId: null,
       }
       setState(empty)
+      setDiagnostics((prev) => ({
+        ...createInitialDiagnostics(),
+        lastSnapshotAt: Date.now(),
+        lastRefreshError: prev.lastRefreshError,
+      }))
       return empty
     }
     const snapshot = readMatchFlowState(gameId)
@@ -65,6 +96,27 @@ function useMatchReadyState(gameId) {
       roomId: latestRef.current.roomId,
     }
     setState(augmented)
+    setDiagnostics((prev) => {
+      const roster = Array.isArray(augmented?.roster) ? augmented.roster : []
+      const readyCount = roster.filter((entry) => entry?.ready).length
+      return {
+        ...prev,
+        sessionId: augmented?.sessionId ? String(augmented.sessionId).trim() : prev.sessionId,
+        roomId: augmented?.room?.id ? String(augmented.room.id).trim() : prev.roomId,
+        rosterCount: roster.length,
+        readyCount,
+        hasActiveKey: !!augmented?.hasActiveKey,
+        sessionMetaUpdatedAt:
+          augmented?.sessionMeta?.updatedAt != null
+            ? augmented.sessionMeta.updatedAt
+            : prev.sessionMetaUpdatedAt,
+        turnStateVersion:
+          augmented?.sessionMeta?.turnState?.version != null
+            ? augmented.sessionMeta.turnState.version
+            : prev.turnStateVersion,
+        lastSnapshotAt: Date.now(),
+      }
+    })
     return augmented
   }, [gameId])
 
@@ -82,6 +134,13 @@ function useMatchReadyState(gameId) {
         roomId: null,
       }
       setState(empty)
+      setDiagnostics((prev) => ({
+        ...createInitialDiagnostics(),
+        lastSnapshotAt: Date.now(),
+        lastRefreshAt: Date.now(),
+        lastRefreshSource: 'reset',
+        lastRefreshError: null,
+      }))
       return empty
     }
 
@@ -125,9 +184,41 @@ function useMatchReadyState(gameId) {
             payload.sessionId != null ? String(payload.sessionId).trim() : latestRef.current.sessionId,
           roomId: payload.roomId != null ? String(payload.roomId).trim() : latestRef.current.roomId,
         }
+        setDiagnostics((prev) => ({
+          ...prev,
+          sessionId:
+            payload.sessionId != null ? String(payload.sessionId).trim() : prev.sessionId,
+          roomId: payload.roomId != null ? String(payload.roomId).trim() : prev.roomId,
+          sessionMetaUpdatedAt:
+            payload.sessionMeta?.updatedAt != null
+              ? payload.sessionMeta.updatedAt
+              : prev.sessionMetaUpdatedAt,
+          turnStateVersion:
+            payload.sessionMeta?.turnState?.version != null
+              ? payload.sessionMeta.turnState.version
+              : prev.turnStateVersion,
+          lastRefreshAt: Date.now(),
+          lastRefreshSource: 'snapshot',
+          lastRefreshError: null,
+        }))
       }
     } catch (error) {
       console.warn('[MatchReadyClient] 실시간 매치 데이터를 불러오지 못했습니다:', error)
+      setDiagnostics((prev) => ({
+        ...prev,
+        lastRefreshAt: Date.now(),
+        lastRefreshSource: 'snapshot',
+        lastRefreshError: error?.message || 'load_failed',
+      }))
+      addDebugEvent({
+        level: 'error',
+        source: 'match-ready-sync',
+        message: 'Failed to load match flow snapshot',
+        details: {
+          gameId,
+          error: error?.message || 'unknown_error',
+        },
+      })
     }
 
     return applySnapshot()
@@ -137,8 +228,17 @@ function useMatchReadyState(gameId) {
     if (refreshPromiseRef.current) {
       return refreshPromiseRef.current
     }
+    setDiagnostics((prev) => ({
+      ...prev,
+      pendingRefresh: true,
+      lastRefreshRequestedAt: Date.now(),
+    }))
     const promise = syncFromRemote().finally(() => {
       refreshPromiseRef.current = null
+      setDiagnostics((prev) => ({
+        ...prev,
+        pendingRefresh: false,
+      }))
     })
     refreshPromiseRef.current = promise
     return promise
@@ -169,8 +269,25 @@ function useMatchReadyState(gameId) {
   useEffect(() => {
     if (!gameId && gameId !== 0) return undefined
 
-    const scheduleRefresh = () => {
+    const scheduleRefresh = (payload) => {
       if (refreshTimeoutRef.current) return
+      const eventType = payload?.eventType || payload?.event || null
+      const tableName = payload?.table || null
+      const schemaName = payload?.schema || null
+      const commitTimestamp = payload?.commit_timestamp || null
+      setDiagnostics((prev) => ({
+        ...prev,
+        realtime: {
+          ...prev.realtime,
+          lastEvent: {
+            event: eventType,
+            table: tableName,
+            schema: schemaName,
+            commitTimestamp,
+            receivedAt: Date.now(),
+          },
+        },
+      }))
       refreshTimeoutRef.current = setTimeout(() => {
         refreshTimeoutRef.current = null
         refresh()
@@ -180,6 +297,16 @@ function useMatchReadyState(gameId) {
     const channel = supabase.channel(`match-ready-sync:${gameId}`, {
       config: { broadcast: { ack: true } },
     })
+
+    setDiagnostics((prev) => ({
+      ...prev,
+      realtime: {
+        ...prev.realtime,
+        status: 'connecting',
+        updatedAt: Date.now(),
+        lastError: null,
+      },
+    }))
 
     channel.on(
       'postgres_changes',
@@ -207,18 +334,69 @@ function useMatchReadyState(gameId) {
       const incoming = record.session_id ?? record.sessionId ?? null
       if (!incoming) return
       if (String(incoming).trim() !== String(sessionId).trim()) return
-      scheduleRefresh()
+      scheduleRefresh(payload)
+    })
+
+    channel.on('system', { event: 'SUBSCRIPTION_ERROR' }, (payload) => {
+      setDiagnostics((prev) => ({
+        ...prev,
+        realtime: {
+          ...prev.realtime,
+          status: 'error',
+          updatedAt: Date.now(),
+          lastError: payload || null,
+        },
+      }))
+    })
+
+    channel.on('system', { event: 'CHANNEL_ERROR' }, (payload) => {
+      setDiagnostics((prev) => ({
+        ...prev,
+        realtime: {
+          ...prev.realtime,
+          status: 'error',
+          updatedAt: Date.now(),
+          lastError: payload || null,
+        },
+      }))
     })
 
     try {
-      const subscription = channel.subscribe()
+      const subscription = channel.subscribe((status) => {
+        setDiagnostics((prev) => ({
+          ...prev,
+          realtime: {
+            ...prev.realtime,
+            status,
+            updatedAt: Date.now(),
+          },
+        }))
+      })
       if (subscription && typeof subscription.then === 'function') {
         subscription.catch((error) => {
           console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
+          setDiagnostics((prev) => ({
+            ...prev,
+            realtime: {
+              ...prev.realtime,
+              status: 'error',
+              updatedAt: Date.now(),
+              lastError: { message: error?.message || 'subscription_failed' },
+            },
+          }))
         })
       }
     } catch (error) {
       console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
+      setDiagnostics((prev) => ({
+        ...prev,
+        realtime: {
+          ...prev.realtime,
+          status: 'error',
+          updatedAt: Date.now(),
+          lastError: { message: error?.message || 'subscription_failed' },
+        },
+      }))
     }
 
     return () => {
@@ -232,6 +410,14 @@ function useMatchReadyState(gameId) {
         console.warn('[MatchReadyClient] 실시간 채널 해제 실패:', error)
       }
       supabase.removeChannel(channel)
+      setDiagnostics((prev) => ({
+        ...prev,
+        realtime: {
+          ...prev.realtime,
+          status: 'closed',
+          updatedAt: Date.now(),
+        },
+      }))
     }
   }, [gameId, refresh])
 
@@ -242,7 +428,7 @@ function useMatchReadyState(gameId) {
 
   const missingKey = Boolean(state?.snapshot && !state?.hasActiveKey)
 
-  return { state, refresh, allowStart, missingKey }
+  return { state, refresh, allowStart, missingKey, diagnostics }
 }
 
 function getViewerIdentity(state) {
@@ -252,6 +438,29 @@ function getViewerIdentity(state) {
   if (viewerId) return viewerId
   const authId = state?.authSnapshot?.userId
   return authId ? String(authId).trim() : ''
+}
+
+function formatDiagnosticsTimestamp(value) {
+  if (!value) return '—'
+  const numeric = Number(value)
+  const date = Number.isFinite(numeric) ? new Date(numeric) : new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return typeof value === 'string' ? value : String(value)
+  }
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
+}
+
+function formatRealtimeStatus(realtime) {
+  if (!realtime) return 'idle'
+  return realtime.status || 'idle'
+}
+
+function formatRealtimeEventSummary(event) {
+  if (!event) return '없음'
+  const schema = event.schema || 'public'
+  const table = event.table || '*'
+  const type = event.event || 'unknown'
+  return `${schema}.${table} · ${type}`
 }
 
 function buildMetaLines(state) {
@@ -368,7 +577,7 @@ function buildRosterDisplay(roster, viewer, blindMode, asyncFill) {
 
 export default function MatchReadyClient({ gameId }) {
   const router = useRouter()
-  const { state, refresh, allowStart, missingKey } = useMatchReadyState(gameId)
+  const { state, refresh, allowStart, missingKey, diagnostics } = useMatchReadyState(gameId)
   const [showGame, setShowGame] = useState(false)
   const [voteNotice, setVoteNotice] = useState('')
   const [readyBusy, setReadyBusy] = useState(false)
@@ -376,6 +585,7 @@ export default function MatchReadyClient({ gameId }) {
   const [readyCountdownMs, setReadyCountdownMs] = useState(null)
   const readySignalControllerRef = useRef(null)
   const autoOpenRef = useRef(false)
+  const [showDiagnostics, setShowDiagnostics] = useState(false)
 
   const metaLines = useMemo(() => buildMetaLines(state), [state])
   const asyncFillInfo = useMemo(() => state?.sessionMeta?.asyncFill || null, [state?.sessionMeta?.asyncFill])
@@ -456,6 +666,18 @@ export default function MatchReadyClient({ gameId }) {
   const readyCountdownSeconds =
     readyCountdownMs != null ? Math.max(0, Math.ceil(readyCountdownMs / 1000)) : null
 
+  const diagnosticsRosterLabel = useMemo(() => {
+    if (!diagnostics?.rosterCount) return '0'
+    if (!Number.isFinite(Number(diagnostics.readyCount))) {
+      return String(diagnostics.rosterCount)
+    }
+    return `${diagnostics.readyCount}/${diagnostics.rosterCount}`
+  }, [diagnostics?.readyCount, diagnostics?.rosterCount])
+
+  const handleToggleDiagnostics = useCallback(() => {
+    setShowDiagnostics((prev) => !prev)
+  }, [])
+
   const appliedTurnTimerSeconds = useMemo(() => {
     const metaSeconds = Number(state?.sessionMeta?.turnTimer?.baseSeconds)
     if (Number.isFinite(metaSeconds) && metaSeconds > 0) {
@@ -490,6 +712,17 @@ export default function MatchReadyClient({ gameId }) {
     if (!allowStart || readyBusy) return
     if (!sessionId) {
       setReadyError('세션 정보가 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.')
+      addDebugEvent({
+        level: 'warn',
+        source: 'match-ready',
+        message: 'Ready signal blocked: missing sessionId',
+        details: {
+          gameId,
+          matchInstanceId: matchInstanceId || null,
+          viewerOwnerId,
+        },
+      })
+      refresh().catch(() => {})
       return
     }
 
@@ -735,13 +968,40 @@ export default function MatchReadyClient({ gameId }) {
                 : '방 정보를 확인하고 있습니다.'}
             </p>
           </div>
-          <div className={styles.actionsInline}>
-            <button type="button" className={styles.secondaryButton} onClick={handleRefresh}>
-              정보 새로고침
-            </button>
-            <button type="button" className={styles.secondaryButton} onClick={handleReturnToRoom}>
-              방으로 돌아가기
-            </button>
+          <div className={styles.headerControls}>
+            <div className={styles.actionsInline}>
+              <button type="button" className={styles.secondaryButton} onClick={handleRefresh}>
+                정보 새로고침
+              </button>
+              <button type="button" className={styles.secondaryButton} onClick={handleReturnToRoom}>
+                방으로 돌아가기
+              </button>
+            </div>
+            <div className={styles.diagnosticsToolbar}>
+              <button
+                type="button"
+                className={styles.diagnosticsToggle}
+                onClick={handleToggleDiagnostics}
+              >
+                {showDiagnostics ? '디버그 닫기' : '디버그 보기'}
+              </button>
+              <div className={styles.diagnosticsSummary}>
+                <span className={styles.diagnosticsSummaryLabel}>세션</span>
+                <span className={styles.diagnosticsSummaryValue}>
+                  {diagnostics?.sessionId ? diagnostics.sessionId : '없음'}
+                </span>
+              </div>
+              <div className={styles.diagnosticsSummary}>
+                <span className={styles.diagnosticsSummaryLabel}>실시간</span>
+                <span className={styles.diagnosticsSummaryValue}>
+                  {formatRealtimeStatus(diagnostics?.realtime)}
+                </span>
+              </div>
+              <div className={styles.diagnosticsSummary}>
+                <span className={styles.diagnosticsSummaryLabel}>착석</span>
+                <span className={styles.diagnosticsSummaryValue}>{diagnosticsRosterLabel}</span>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -752,6 +1012,65 @@ export default function MatchReadyClient({ gameId }) {
                 {line}
               </p>
             ))}
+          </section>
+        )}
+
+        {showDiagnostics && (
+          <section className={styles.diagnosticsPanel} data-testid="match-ready-diagnostics">
+            <h2 className={styles.diagnosticsTitle}>진단 정보</h2>
+            <dl className={styles.diagnosticsGrid}>
+              <div className={styles.diagnosticsItem}>
+                <dt>세션 ID</dt>
+                <dd>{diagnostics?.sessionId || '없음'}</dd>
+              </div>
+              <div className={styles.diagnosticsItem}>
+                <dt>룸 ID</dt>
+                <dd>{diagnostics?.roomId || '없음'}</dd>
+              </div>
+              <div className={styles.diagnosticsItem}>
+                <dt>마지막 스냅샷</dt>
+                <dd>{formatDiagnosticsTimestamp(diagnostics?.lastSnapshotAt)}</dd>
+              </div>
+              <div className={styles.diagnosticsItem}>
+                <dt>마지막 새로고침</dt>
+                <dd>{formatDiagnosticsTimestamp(diagnostics?.lastRefreshAt)}</dd>
+              </div>
+              <div className={styles.diagnosticsItem}>
+                <dt>요청 상태</dt>
+                <dd>{diagnostics?.pendingRefresh ? '진행 중' : '대기'}</dd>
+              </div>
+              <div className={styles.diagnosticsItem}>
+                <dt>실시간 상태</dt>
+                <dd>{formatRealtimeStatus(diagnostics?.realtime)}</dd>
+              </div>
+              <div className={styles.diagnosticsItem}>
+                <dt>실시간 최신 이벤트</dt>
+                <dd>{formatRealtimeEventSummary(diagnostics?.realtime?.lastEvent)}</dd>
+              </div>
+              <div className={styles.diagnosticsItem}>
+                <dt>세션 메타 업데이트</dt>
+                <dd>{formatDiagnosticsTimestamp(diagnostics?.sessionMetaUpdatedAt)}</dd>
+              </div>
+              <div className={styles.diagnosticsItem}>
+                <dt>턴 상태 버전</dt>
+                <dd>
+                  {diagnostics?.turnStateVersion != null ? diagnostics.turnStateVersion : '알 수 없음'}
+                </dd>
+              </div>
+              <div className={styles.diagnosticsItem}>
+                <dt>활성 키 보유</dt>
+                <dd>{diagnostics?.hasActiveKey ? '예' : '아니요'}</dd>
+              </div>
+            </dl>
+            {diagnostics?.lastRefreshError && (
+              <p className={styles.diagnosticsError}>마지막 새로고침 오류: {diagnostics.lastRefreshError}</p>
+            )}
+            {diagnostics?.realtime?.lastError && (
+              <p className={styles.diagnosticsError}>
+                실시간 채널 오류:{' '}
+                {diagnostics.realtime.lastError?.message || 'unknown_error'}
+              </p>
+            )}
           </section>
         )}
 
