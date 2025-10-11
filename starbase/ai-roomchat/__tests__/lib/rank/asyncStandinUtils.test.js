@@ -67,6 +67,7 @@ describe('asyncStandinUtils', () => {
     expect(candidate.heroName).toBe('AI 자동 대역')
     expect(typeof candidate.ownerId).toBe('string')
     expect(candidate.ownerId).toHaveLength(36)
+    expect(candidate.placeholderOwnerId).toBe(candidate.ownerId)
     expect(candidate.matchSource).toBe('async_standin_placeholder')
   })
 })

@@ -89,14 +89,25 @@ function normalizeRosterEntries(entries = []) {
   return entries
     .map((entry, index) => {
       if (!entry) return null
+      const standinPlaceholder =
+        entry.standinPlaceholder === true ||
+        entry.standin_placeholder === true ||
+        entry.placeholder === true ||
+        (typeof entry.matchSource === 'string' && entry.matchSource.trim() === 'async_standin_placeholder')
+
+      const placeholderOwnerId = toOptionalTrimmedString(
+        entry.placeholderOwnerId ?? entry.placeholder_owner_id ?? null,
+      )
       const slotIndex = toSlotIndex(
         entry.slotIndex ?? entry.slot_index ?? entry.slotNo ?? entry.slot_no,
         index,
       )
       const role = toTrimmedString(entry.role ?? entry.roleName)
-      const ownerId = toOptionalTrimmedString(
-        entry.ownerId ?? entry.owner_id ?? entry.occupantOwnerId ?? entry.ownerID,
-      )
+      const ownerIdRaw =
+        entry.ownerId ?? entry.owner_id ?? entry.occupantOwnerId ?? entry.ownerID
+      const ownerId = standinPlaceholder
+        ? null
+        : toOptionalTrimmedString(ownerIdRaw)
       const heroId = toOptionalTrimmedString(
         entry.heroId ?? entry.hero_id ?? entry.occupantHeroId ?? entry.heroID,
       )
@@ -125,12 +136,14 @@ function normalizeRosterEntries(entries = []) {
         slotId,
         role: role || '역할 미지정',
         ownerId,
+        placeholderOwnerId,
         heroId,
         heroName: heroName || null,
         ready,
         joinedAt,
         standin,
         matchSource,
+        standinPlaceholder,
         score,
         rating,
         battles,

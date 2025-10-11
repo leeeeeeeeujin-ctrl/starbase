@@ -49,7 +49,7 @@ export function createSyntheticStandinOwnerId(slotIndex = 0) {
 }
 
 export function createPlaceholderCandidate(seat = {}, slotIndex = 0) {
-  const ownerId = createSyntheticStandinOwnerId(slotIndex)
+  const placeholderOwnerId = createSyntheticStandinOwnerId(slotIndex)
   const roleValue = seat?.role
   const scoreValue = seat?.score
   const ratingValue = seat?.rating
@@ -59,7 +59,8 @@ export function createPlaceholderCandidate(seat = {}, slotIndex = 0) {
   const ratingNumeric = toNumber(ratingValue)
 
   return {
-    ownerId,
+    ownerId: placeholderOwnerId,
+    placeholderOwnerId,
     heroId: null,
     heroName: STANDIN_HERO_NAME,
     role,

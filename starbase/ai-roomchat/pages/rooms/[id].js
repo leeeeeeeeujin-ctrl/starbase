@@ -161,6 +161,11 @@ function buildRosterFromSlots(slots) {
     const standin = slot?.standin === true
     const matchSource =
       toStringOrNull(slot?.matchSource) || (standin ? 'participant_pool' : null)
+    const standinPlaceholder =
+      slot?.standinPlaceholder === true || matchSource === 'async_standin_placeholder'
+    const placeholderOwnerId = standinPlaceholder
+      ? toStringOrNull(slot?.placeholderOwnerId || slot?.occupantOwnerId)
+      : toStringOrNull(slot?.placeholderOwnerId || null)
     const score = toNumberOrNull(
       slot?.standinScore ?? slot?.score ?? slot?.expectedScore ?? null,
     )
@@ -187,12 +192,14 @@ function buildRosterFromSlots(slots) {
       role:
         typeof slot?.role === 'string' && slot.role.trim() ? slot.role.trim() : '역할 미지정',
       ownerId: toStringOrNull(slot?.occupantOwnerId),
+      placeholderOwnerId,
       heroId: toStringOrNull(slot?.occupantHeroId),
       heroName: typeof slot?.occupantHeroName === 'string' ? slot.occupantHeroName : '',
       ready: !!slot?.occupantReady,
       joinedAt: slot?.joinedAt || null,
       standin,
       matchSource,
+      standinPlaceholder,
       score,
       rating,
       battles,
@@ -346,6 +353,10 @@ function sanitizeStandinCandidate(candidate) {
     typeof statusRaw === 'string' && statusRaw.trim()
       ? statusRaw.trim()
       : 'standin'
+  const placeholderOwnerId = toStringOrNull(
+    candidate.placeholderOwnerId ?? candidate.placeholder_owner_id ?? null,
+  )
+  const placeholder = candidate.placeholder === true
 
   return {
     ownerId,
@@ -358,6 +369,8 @@ function sanitizeStandinCandidate(candidate) {
     winRate,
     matchSource,
     status,
+    placeholderOwnerId,
+    placeholder,
   }
 }
 
@@ -441,6 +454,7 @@ function injectStandinsIntoSlots(slots = [], assignments = [], seatMap = new Map
       ...base,
       role,
       occupantOwnerId: bundle.candidate.ownerId,
+      placeholderOwnerId: bundle.candidate.placeholderOwnerId || null,
       occupantHeroId: bundle.candidate.heroId || null,
       occupantHeroName:
         bundle.candidate.heroName || base.occupantHeroName || '비실시간 대역',
@@ -469,6 +483,7 @@ function injectStandinsIntoSlots(slots = [], assignments = [], seatMap = new Map
       slotIndex,
       role,
       occupantOwnerId: bundle.candidate.ownerId,
+      placeholderOwnerId: bundle.candidate.placeholderOwnerId || null,
       occupantHeroId: bundle.candidate.heroId || null,
       occupantHeroName: bundle.candidate.heroName || '비실시간 대역',
       occupantReady: true,

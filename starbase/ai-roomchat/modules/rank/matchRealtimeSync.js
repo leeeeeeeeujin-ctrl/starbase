@@ -297,6 +297,11 @@ function normalizeAsyncFillCandidate(candidate, index = 0) {
         : joinedRaw != null && Number.isFinite(Number(joinedRaw))
           ? new Date(Number(joinedRaw)).toISOString()
           : null
+  const matchSource = toTrimmed(candidate.matchSource ?? candidate.match_source)
+  const placeholderOwnerId = toOptionalTrimmed(
+    candidate.placeholderOwnerId ?? candidate.placeholder_owner_id,
+  )
+  const placeholder = candidate.placeholder === true
 
   return {
     ownerId,
@@ -314,6 +319,9 @@ function normalizeAsyncFillCandidate(candidate, index = 0) {
           ? Number(candidate.win_rate)
           : null,
     status: toTrimmed(candidate.status),
+    matchSource,
+    placeholderOwnerId,
+    placeholder,
     index,
     raw: cloneJson(candidate),
   }
@@ -655,25 +663,37 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
 
     usedQueueIndexes.add(candidate.index)
     assignedSeats.push(seatIndex)
-    if (candidate.ownerId) {
+    const isPlaceholder = candidate.placeholder === true
+    const resolvedOwnerId =
+      candidate.ownerId && !isPlaceholder
+        ? candidate.ownerId
+        : toOptionalTrimmed(seat.entry.ownerId) || null
+
+    if (candidate.ownerId && !isPlaceholder) {
       collaboratorIds.add(candidate.ownerId)
     }
 
+    const resolvedMatchSource = isPlaceholder
+      ? 'async_standin_placeholder'
+      : candidate.matchSource || 'participant_pool'
+
     const updatedEntry = {
       ...seat.entry,
-      ownerId: candidate.ownerId || seat.entry.ownerId || `standin-${seatIndex}`,
+      ownerId: resolvedOwnerId || candidate.placeholderOwnerId || seat.entry.placeholderOwnerId || null,
+      placeholderOwnerId: candidate.placeholderOwnerId || seat.entry.placeholderOwnerId || (isPlaceholder ? candidate.ownerId : null) || null,
       heroId: candidate.heroId || seat.entry.heroId || '',
       heroName: candidate.heroName || seat.entry.heroName || '비실시간 대역',
       role: seat.entry.role || candidate.role || '역할 미지정',
       ready: true,
       joinedAt: candidate.joinedAt || seat.entry.joinedAt || null,
       standin: true,
-      matchSource: 'participant_pool',
+      matchSource: resolvedMatchSource,
       score: candidate.score ?? seat.entry.score ?? null,
       rating: candidate.rating ?? seat.entry.rating ?? null,
       battles: candidate.battles ?? seat.entry.battles ?? null,
       winRate: candidate.winRate ?? seat.entry.winRate ?? null,
       status: candidate.status || seat.entry.status || 'standin',
+      standinPlaceholder: isPlaceholder || seat.entry.standinPlaceholder === true,
     }
 
     rosterList[seat.listIndex] = updatedEntry
@@ -688,6 +708,7 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
       slotIndex: seatIndex,
       slotId: updatedEntry.slotId || null,
       ownerId: updatedEntry.ownerId || null,
+      placeholderOwnerId: updatedEntry.placeholderOwnerId || null,
       heroId: updatedEntry.heroId || null,
       heroName: updatedEntry.heroName || null,
       role: updatedEntry.role || null,
@@ -696,6 +717,7 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
       score: updatedEntry.score ?? null,
       rating: updatedEntry.rating ?? null,
       matchSource: updatedEntry.matchSource || null,
+      placeholder: updatedEntry.standinPlaceholder === true,
     })
   })
 

@@ -343,6 +343,90 @@ describe('POST /api/rank/stage-room-match', () => {
     })
   })
 
+  it('clears placeholder owner IDs before syncing roster rows', async () => {
+    const handler = loadHandler()
+
+    const roster = [
+      {
+        slotIndex: 2,
+        role: '탱커',
+        ownerId: 'placeholder-owner',
+        placeholderOwnerId: 'placeholder-owner',
+        heroId: null,
+        heroName: 'AI 자동 대역',
+        ready: true,
+        standin: true,
+        standinPlaceholder: true,
+        matchSource: 'async_standin_placeholder',
+        score: null,
+        rating: null,
+        battles: null,
+        winRate: null,
+        status: 'standin',
+      },
+    ]
+
+    mockWithTableQuery
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+
+    rpcMock
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            inserted_count: 1,
+            slot_template_version: 77,
+            slot_template_updated_at: '2025-02-05T00:00:00Z',
+          },
+        ],
+        error: null,
+      })
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer standin' },
+      body: {
+        match_instance_id: 'match-placeholder',
+        room_id: 'room-placeholder',
+        game_id: 'game-placeholder',
+        roster,
+        slot_template: {
+          version: 11,
+          source: 'room-stage',
+          updated_at: '2025-02-05T00:00:00Z',
+          slots: [{ slot_index: 2, role: '탱커', active: true }],
+          roles: [{ name: '탱커', slot_count: 1 }],
+        },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      2,
+      'sync_rank_match_roster',
+      expect.objectContaining({
+        p_roster: expect.arrayContaining([
+          expect.objectContaining({
+            slot_index: 2,
+            owner_id: null,
+            match_source: 'async_standin_placeholder',
+            standin: true,
+          }),
+        ]),
+      }),
+    )
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual({
+      ok: true,
+      staged: 1,
+      slot_template_version: 77,
+      slot_template_updated_at: '2025-02-05T00:00:00Z',
+    })
+  })
+
   it('propagates verification errors from the RPC', async () => {
     const handler = loadHandler()
 
