@@ -405,11 +405,38 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
   const assignedSeats = []
   const assignedEntries = []
 
+  const hostRole = toTrimmed(asyncFill.hostRole) || '역할 미지정'
+
   pendingSeatIndexes.forEach((seatIndexRaw) => {
     const seatIndex = Number(seatIndexRaw)
     if (!Number.isFinite(seatIndex) || seatIndex < 0) return
-    const seat = rosterIndexMap.get(seatIndex)
-    if (!seat) return
+    let seat = rosterIndexMap.get(seatIndex)
+
+    if (!seat) {
+      const placeholderEntry = {
+        slotId: null,
+        slotIndex: seatIndex,
+        role: hostRole,
+        ownerId: '',
+        heroId: '',
+        heroName: '',
+        ready: false,
+        joinedAt: null,
+        heroSummary: null,
+        standin: false,
+        matchSource: '',
+        score: null,
+        rating: null,
+        battles: null,
+        winRate: null,
+        status: 'vacant',
+      }
+
+      rosterList.push(placeholderEntry)
+      seat = { entry: placeholderEntry, listIndex: rosterList.length - 1 }
+      rosterIndexMap.set(seatIndex, seat)
+    }
+
     if (seat.entry.ownerId) return
     let bestCandidate = null
     let bestPriority = null
@@ -491,6 +518,23 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
     .filter((candidate) => !usedQueueIndexes.has(candidate.index))
     .map((candidate) => candidate.raw || null)
     .filter(Boolean)
+
+  rosterList.sort((left, right) => {
+    const leftIndex = Number.isFinite(left.slotIndex) ? left.slotIndex : Number.MAX_SAFE_INTEGER
+    const rightIndex = Number.isFinite(right.slotIndex) ? right.slotIndex : Number.MAX_SAFE_INTEGER
+    if (leftIndex !== rightIndex) {
+      return leftIndex - rightIndex
+    }
+
+    const leftJoined = toTrimmed(left.joinedAt)
+    const rightJoined = toTrimmed(right.joinedAt)
+    if (leftJoined && rightJoined) {
+      return leftJoined.localeCompare(rightJoined)
+    }
+    if (leftJoined) return -1
+    if (rightJoined) return 1
+    return 0
+  })
 
   const updatedSessionMeta = sessionMeta
     ? { ...sessionMeta, asyncFill: asyncFillClone }
