@@ -68,30 +68,75 @@ async function fetchViaRpc(payload) {
   return { row: formatSessionRow(data), raw: data }
 }
 
+async function runLatestSessionQuery(gameId, ownerId, columns) {
+  return withTableQuery(supabaseAdmin, 'rank_sessions', (from, tableName) => {
+    let query = from
+      .select(columns)
+      .eq('game_id', gameId)
+      .in('status', ['active', 'preparing', 'ready'])
+      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+    if (ownerId) {
+      query = query.eq('owner_id', ownerId)
+    }
+    return query.maybeSingle().then((result) => ({ ...result, table: tableName }))
+  })
+}
+
 async function fetchViaTable(gameId, ownerId) {
-  const result = await withTableQuery(
-    supabaseAdmin,
-    'rank_sessions',
-    (from) => {
-      let query = from
-        .select('id, status, owner_id, created_at, updated_at, mode')
-        .eq('game_id', gameId)
-        .in('status', ['active', 'preparing', 'ready'])
-        .order('updated_at', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-      if (ownerId) {
-        query = query.eq('owner_id', ownerId)
-      }
-      return query.maybeSingle()
-    },
+  const primary = await runLatestSessionQuery(
+    gameId,
+    ownerId,
+    'id, status, owner_id, created_at, updated_at, mode',
   )
 
-  if (result.error) {
-    return { error: result.error, table: result.table || null }
+  if (!primary.error) {
+    return {
+      row: formatSessionRow(primary.data),
+      table: primary.table || null,
+      via: 'table',
+      orderedSetError: null,
+      orderedSetRecovered: false,
+    }
   }
 
-  return { row: formatSessionRow(result.data), table: result.table || null }
+  const code = String(primary.error?.code || '').toUpperCase()
+  const orderedSetFailure = code === '42809' || isOrderedSetAggregateError(primary.error)
+
+  if (!orderedSetFailure) {
+    return {
+      error: primary.error,
+      table: primary.table || null,
+      via: 'table-error',
+      orderedSetError: null,
+      orderedSetRecovered: false,
+    }
+  }
+
+  const fallback = await runLatestSessionQuery(
+    gameId,
+    ownerId,
+    'id, status, owner_id, created_at, updated_at',
+  )
+
+  if (!fallback.error) {
+    return {
+      row: formatSessionRow(fallback.data),
+      table: fallback.table || primary.table || null,
+      via: 'table-ordered-set-recovery',
+      orderedSetError: primary.error,
+      orderedSetRecovered: true,
+    }
+  }
+
+  return {
+    error: fallback.error || primary.error,
+    table: fallback.table || primary.table || null,
+    via: 'table-error',
+    orderedSetError: primary.error,
+    orderedSetRecovered: false,
+  }
 }
 
 function isMissingRpc(error) {
@@ -189,15 +234,21 @@ export default async function handler(req, res) {
           error: 'rpc_failed',
           supabaseError: error,
           hint: buildRpcHint(error),
-          via: fallback.error ? 'table-error' : 'table',
+          via: fallback.via,
         }
 
         if (fallback.error) {
           baseResponse.fallbackError = fallback.error
+        } else if (fallback.orderedSetError) {
+          baseResponse.fallbackError = fallback.orderedSetError
         }
 
         if (fallback.table) {
           baseResponse.table = fallback.table
+        }
+
+        if (fallback.orderedSetRecovered) {
+          baseResponse.orderedSetRecovered = true
         }
 
         return res.status(200).json(baseResponse)

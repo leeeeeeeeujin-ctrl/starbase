@@ -14,9 +14,10 @@ WITHIN GROUP is required for ordered-set aggregate mode
 
 This indicates at least one ordered-set aggregate (for example `percentile_disc`, `mode`, or `ranked` helpers) inside the function body is missing a `WITHIN GROUP (ORDER BY ...)` clause. When this happens the API now:
 
-1. Returns a 502 response with `supabaseError.code = '42809'`.
-2. Emits a targeted hint guiding operators to fix the SQL definition instead of silently falling back.
-3. Surfaces the same hint through the Match Ready diagnostics pipeline so browser operators know the Supabase definition must be patched.
+1. Calls `fetch_latest_rank_session_v2` and records the Supabase 42809 failure.
+2. Falls back to a pared-down table query that omits ordered-set fields so the client can keep operating with a best-effort session snapshot.
+3. Returns HTTP 200 containing both the recovered session (when available) and structured diagnostics (`supabaseError`, `fallbackError`, `hint`, `via`) so operators still see the misconfiguration.
+4. Surfaces the same hint through the Match Ready diagnostics pipeline so browser operators know the Supabase definition must be patched.
 
 ## Remediation steps
 1. Open Supabase SQL Editor for the affected project.
@@ -31,6 +32,10 @@ This indicates at least one ordered-set aggregate (for example `percentile_disc`
 
 ## Validation checklist
 - [ ] Trigger the Match Ready diagnostics panel and confirm the latest-session hint no longer mentions `WITHIN GROUP`.
-- [ ] Verify `/api/rank/latest-session` returns HTTP 200 with a session payload for the affected game IDs.
+- [ ] Verify `/api/rank/latest-session` returns HTTP 200 with a session payload for the affected game IDs. If the response reports `via: "table-ordered-set-recovery"`, double-check that the RPC has been redeployed so the fallback is no longer required.
 - [ ] Ensure staging and production environments run the same SQL revision by committing the script to your migration/IaC pipeline.
+
+## Fallback snapshot limitations
+- The ordered-set recovery path removes the `mode`/`match_mode` fields because the legacy Supabase definition cannot produce them without the correct `WITHIN GROUP` clauses.
+- The Match Ready UI continues with the degraded snapshot but will keep surfacing diagnostics until the RPC is redeployed with the script in `docs/sql/fetch-latest-rank-session.sql`.
 

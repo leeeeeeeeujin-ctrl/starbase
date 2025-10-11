@@ -273,6 +273,65 @@ describe('fetchLatestSessionRow', () => {
     global.fetch = originalFetch
   })
 
+  it('returns a session row when the browser API recovers from an ordered-set error', async () => {
+    const supabaseClient = { rpc: jest.fn() }
+
+    const originalWindow = global.window
+    const originalFetch = global.fetch
+
+    const payload = {
+      error: 'rpc_failed',
+      supabaseError: {
+        code: '42809',
+        message: 'WITHIN GROUP is required for ordered-set aggregate mode',
+      },
+      fallbackError: {
+        code: '42809',
+        message: 'WITHIN GROUP is required for ordered-set aggregate mode',
+      },
+      hint: 'ordered-set aggregate requires WITHIN GROUP',
+      session: {
+        id: 'session-ordered-set',
+        status: 'ready',
+        owner_id: 'owner-ordered',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-02T00:00:00Z',
+      },
+      via: 'table-ordered-set-recovery',
+      orderedSetRecovered: true,
+    }
+
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify(payload)),
+      }),
+    )
+    global.window = { document: {}, fetch: global.fetch }
+
+    const diagnostics = jest.fn()
+
+    const result = await fetchLatestSessionRow(supabaseClient, 'game-ordered-set', {
+      onDiagnostics: diagnostics,
+    })
+
+    expect(result).toMatchObject({
+      id: 'session-ordered-set',
+      status: 'ready',
+      ownerId: 'owner-ordered',
+    })
+    expect(diagnostics).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'latest-session-api',
+        hint: expect.stringContaining('WITHIN GROUP'),
+      }),
+    )
+
+    global.window = originalWindow
+    global.fetch = originalFetch
+  })
+
   it('emits an ordered-set hint when the browser API reports a WITHIN GROUP error', async () => {
     const supabaseClient = { rpc: jest.fn() }
 
