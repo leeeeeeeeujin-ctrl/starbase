@@ -290,6 +290,36 @@ function deepClone(value) {
   }
 }
 
+function buildHistorySeedEntries(sessionHistory) {
+  if (!sessionHistory || typeof sessionHistory !== 'object') {
+    return []
+  }
+
+  const turns = Array.isArray(sessionHistory.turns) ? sessionHistory.turns : []
+  return turns
+    .filter((turn) => typeof turn?.content === 'string' && turn.content.trim())
+    .map((turn, index) => {
+      const role = typeof turn.role === 'string' && turn.role.trim() ? turn.role.trim() : 'assistant'
+      const isVisible = turn.isVisible !== false
+      const isPublic = turn.public !== false && isVisible
+      const meta = { seeded: true }
+      const idxValue = Number(turn.idx)
+      if (Number.isFinite(idxValue)) {
+        meta.turnIdx = Math.floor(idxValue)
+      }
+      if (turn.createdAt) {
+        meta.createdAt = turn.createdAt
+      }
+      return {
+        role,
+        content: String(turn.content),
+        public: isPublic,
+        includeInAi: isVisible,
+        meta,
+      }
+    })
+}
+
 function parseSlotIndex(value, fallback = null) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return fallback
@@ -828,6 +858,14 @@ export function useStartClientEngine(gameId, options = {}) {
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
   const [frontMatchData] = useState(initialFrontMatchData)
+  const historySeeds = useMemo(
+    () => buildHistorySeedEntries(frontMatchData?.sessionHistory),
+    [frontMatchData],
+  )
+  const historySeedRef = useRef(historySeeds)
+  useEffect(() => {
+    historySeedRef.current = historySeeds
+  }, [historySeeds])
   const matchSnapshotSeed = frontMatchData?.matchSnapshot?.match || null
   const matchInstanceId = useMemo(() => {
     if (!matchSnapshotSeed) return ''
@@ -3028,7 +3066,14 @@ export function useStartClientEngine(gameId, options = {}) {
       const startNode = graph.nodes.find((node) => node.is_start) || graph.nodes[0]
       history.beginSession()
       bumpHistoryVersion()
-      if (systemPrompt) {
+      const seeds = Array.isArray(historySeedRef.current) ? historySeedRef.current : []
+      if (seeds.length) {
+        const hasSystemSeed = seeds.some((entry) => entry.role === 'system')
+        if (!hasSystemSeed && systemPrompt) {
+          history.push({ role: 'system', content: systemPrompt, public: false, includeInAi: true, meta: { seeded: true } })
+        }
+        seeds.forEach((seed) => history.push(seed))
+      } else if (systemPrompt) {
         history.push({ role: 'system', content: systemPrompt, public: false })
       }
 

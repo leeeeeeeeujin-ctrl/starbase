@@ -5,6 +5,8 @@ function isBrowserEnvironment() {
   return typeof window !== 'undefined' && typeof window.document !== 'undefined'
 }
 
+const SESSION_HISTORY_LIMIT = 80
+
 function safeJsonParse(payload) {
   if (!payload) return null
   try {
@@ -54,6 +56,111 @@ function cloneJson(value) {
   } catch (error) {
     return null
   }
+}
+
+function normalizeHistoryRow(row, fallbackIdx = 0) {
+  if (!row) return null
+
+  const idx = toNumber(row?.idx, fallbackIdx)
+  const role = toTrimmed(row?.role) || 'system'
+  const content = typeof row?.content === 'string' ? row.content : ''
+  const summaryPayload =
+    row?.summary_payload && typeof row.summary_payload === 'object'
+      ? row.summary_payload
+      : null
+
+  return {
+    id:
+      row?.id != null
+        ? String(row.id).trim() || null
+        : row?.turn_id != null
+        ? String(row.turn_id).trim() || null
+        : null,
+    idx: idx != null ? idx : fallbackIdx,
+    role,
+    content,
+    public: row?.public !== false,
+    isVisible: row?.is_visible !== false && row?.isVisible !== false,
+    createdAt: row?.created_at || row?.createdAt || null,
+    summaryPayload: summaryPayload ? cloneJson(summaryPayload) : null,
+  }
+}
+
+async function fetchSessionHistorySnapshot(supabaseClient, sessionId, { limit = SESSION_HISTORY_LIMIT } = {}) {
+  const payload = {
+    sessionId: sessionId || null,
+    turns: [],
+    totalCount: 0,
+    publicCount: 0,
+    hiddenCount: 0,
+    suppressedCount: 0,
+    truncated: false,
+    lastIdx: null,
+    updatedAt: Date.now(),
+    source: 'rank_turns',
+    diagnostics: null,
+  }
+
+  if (!sessionId) {
+    payload.diagnostics = { error: 'missing_session_id' }
+    return payload
+  }
+
+  if (typeof supabaseClient?.from !== 'function') {
+    payload.diagnostics = { error: 'supabase_from_unavailable' }
+    return payload
+  }
+
+  const { data, error, table } = await withTable(
+    supabaseClient,
+    'rank_turns',
+    (tableName) =>
+      supabaseClient
+        .from(tableName)
+        .select('id, session_id, idx, role, public, is_visible, content, summary_payload, created_at')
+        .eq('session_id', sessionId)
+        .order('idx', { ascending: true })
+        .limit(limit + 1),
+  )
+
+  if (error) {
+    addSupabaseDebugEvent({
+      source: 'match-ready-history',
+      operation: 'rank_turns',
+      error,
+      level: 'error',
+    })
+    payload.diagnostics = {
+      error,
+      source: table || 'rank_turns',
+    }
+    return payload
+  }
+
+  const rows = Array.isArray(data) ? data : []
+  const truncated = rows.length > limit
+  const limitedRows = truncated ? rows.slice(-limit) : rows
+  const turns = limitedRows
+    .map((row, index) => normalizeHistoryRow(row, index))
+    .filter(Boolean)
+
+  payload.turns = turns
+  payload.totalCount = rows.length
+  payload.publicCount = rows.filter((row) => row?.public !== false).length
+  payload.hiddenCount = rows.filter((row) => row?.public === false).length
+  payload.suppressedCount = rows.filter((row) => row?.public !== false && row?.is_visible === false).length
+  payload.truncated = truncated
+  payload.lastIdx = turns.length ? turns[turns.length - 1].idx : null
+
+  if (truncated) {
+    payload.diagnostics = {
+      truncated: true,
+      limit,
+      fetched: rows.length,
+    }
+  }
+
+  return payload
 }
 
 function parseTimestamp(value) {
@@ -1505,6 +1612,7 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
   }
 
   let sessionMeta = null
+  let sessionHistory = null
   if (sessionMetaEnvelope) {
     sessionMeta = mapSessionMeta(sessionMetaEnvelope)
   }
@@ -1525,6 +1633,12 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
     if (!metaError && metaRow) {
       sessionMeta = mapSessionMeta(metaRow)
     }
+  }
+
+  if (sessionRow?.id && typeof supabaseClient?.from === 'function') {
+    sessionHistory = await fetchSessionHistorySnapshot(supabaseClient, sessionRow.id, {
+      limit: SESSION_HISTORY_LIMIT,
+    })
   }
 
   const standinResult = applyAsyncFillStandins({
@@ -1658,6 +1772,7 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
     slotTemplate,
     matchSnapshot,
     sessionMeta,
+    sessionHistory,
     hostOwnerId: formattedRoom?.ownerId || null,
     hostRoleLimit: formattedRoom?.hostRoleLimit ?? null,
     realtimeMode: formattedRoom?.realtimeMode || null,

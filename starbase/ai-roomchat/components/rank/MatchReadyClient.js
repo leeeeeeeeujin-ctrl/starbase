@@ -11,6 +11,7 @@ import {
   setGameMatchSlotTemplate,
   setGameMatchSnapshot,
   setGameMatchSessionMeta,
+  setGameMatchSessionHistory,
   subscribeGameMatchData,
 } from '../../modules/rank/matchDataStore'
 import {
@@ -224,6 +225,10 @@ function useMatchReadyState(gameId) {
 
         if (payload.sessionMeta) {
           setGameMatchSessionMeta(gameId, payload.sessionMeta)
+        }
+
+        if (payload.sessionHistory !== undefined) {
+          setGameMatchSessionHistory(gameId, payload.sessionHistory)
         }
 
         latestRef.current = {

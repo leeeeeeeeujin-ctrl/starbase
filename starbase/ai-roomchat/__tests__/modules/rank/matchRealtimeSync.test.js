@@ -65,6 +65,125 @@ describe('fetchLatestSessionRow', () => {
     expect(mockWithTable).not.toHaveBeenCalled()
   })
 
+  it('returns session history when rank_turns rows exist', async () => {
+    const rpcPayload = {
+      roster: [
+        {
+          id: 'roster-hist',
+          match_instance_id: 'match-hist',
+          room_id: 'room-hist',
+          game_id: 'game-hist',
+          slot_id: 'slot-0',
+          slot_index: 0,
+          role: '전략가',
+          owner_id: 'owner-hist',
+          hero_id: 'hero-hist',
+          hero_name: '호스트',
+          ready: true,
+          joined_at: '2025-02-01T00:00:00Z',
+          slot_template_version: 1,
+          slot_template_source: 'room-stage',
+          slot_template_updated_at: '2025-02-01T00:00:00Z',
+          created_at: '2025-02-01T00:00:00Z',
+          updated_at: '2025-02-01T00:00:00Z',
+        },
+      ],
+      room: {
+        id: 'room-hist',
+        owner_id: 'owner-hist',
+        code: 'HIST',
+        status: 'ready',
+        mode: 'standard',
+        realtime_mode: 'off',
+        host_role_limit: 2,
+        blind_mode: false,
+        score_window: 30,
+        updated_at: '2025-02-01T00:00:00Z',
+        game_id: 'game-hist',
+      },
+      session: {
+        id: 'session-hist',
+        status: 'active',
+        owner_id: 'owner-hist',
+        mode: 'standard',
+        match_mode: 'standard',
+        created_at: '2025-02-01T00:00:00Z',
+        updated_at: '2025-02-01T00:10:00Z',
+      },
+      session_meta: {
+        session_id: 'session-hist',
+        async_fill_snapshot: null,
+        updated_at: '2025-02-01T00:10:00Z',
+      },
+      slot_template_version: 1,
+      slot_template_source: 'room-stage',
+      slot_template_updated_at: '2025-02-01T00:00:00Z',
+    }
+
+    const historyRows = [
+      {
+        id: 'turn-1',
+        session_id: 'session-hist',
+        idx: 0,
+        role: 'system',
+        content: '시스템 요약',
+        public: true,
+        is_visible: true,
+        created_at: '2025-02-01T00:00:00Z',
+      },
+      {
+        id: 'turn-2',
+        session_id: 'session-hist',
+        idx: 1,
+        role: 'assistant',
+        content: '첫 응답',
+        public: true,
+        is_visible: true,
+        created_at: '2025-02-01T00:05:00Z',
+      },
+    ]
+
+    const createQueryBuilder = (rows) => {
+      const builder = {
+        select: jest.fn(() => builder),
+        eq: jest.fn(() => builder),
+        order: jest.fn(() => builder),
+        limit: jest.fn(() => Promise.resolve({ data: rows, error: null })),
+      }
+      return builder
+    }
+
+    const supabaseClient = {
+      rpc: jest.fn(() => Promise.resolve({ data: rpcPayload, error: null })),
+      from: jest.fn((table) =>
+        table === 'rank_turns' ? createQueryBuilder(historyRows) : createQueryBuilder([]),
+      ),
+    }
+
+    mockWithTable.mockImplementation((_client, logicalName, executor) => {
+      if (logicalName === 'rank_turns') {
+        return executor('rank_turns')
+      }
+      return Promise.resolve({ data: [], error: null })
+    })
+
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-hist')
+
+    expect(snapshot.sessionHistory).toMatchObject({
+      sessionId: 'session-hist',
+      totalCount: 2,
+      publicCount: 2,
+      hiddenCount: 0,
+      truncated: false,
+    })
+    expect(snapshot.sessionHistory.turns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'system', content: '시스템 요약' }),
+        expect.objectContaining({ role: 'assistant', content: '첫 응답' }),
+      ]),
+    )
+  })
+
   it('passes the owner filter when provided', async () => {
     const supabaseClient = {
       rpc: jest.fn(() =>
