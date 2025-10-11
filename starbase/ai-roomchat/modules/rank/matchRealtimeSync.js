@@ -417,6 +417,34 @@ function createSnapshotReturnTypeMismatchException(error, context = {}) {
   return exception
 }
 
+function isSnapshotSyntaxError(error) {
+  if (!error) return false
+  const code = typeof error.code === 'string' ? error.code.toUpperCase() : ''
+  if (code === '42601') {
+    return true
+  }
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase()
+  if (!message.includes('syntax error')) {
+    return false
+  }
+  return message.includes('near') || message.includes('line')
+}
+
+function createSnapshotSyntaxException(error, context = {}) {
+  const exception = new Error(
+    'fetch_rank_match_ready_snapshot RPC SQL 정의에 문법 오류가 있어 매치 준비 스냅샷을 불러오지 못했습니다.',
+  )
+  exception.code = 'snapshot_sql_syntax_error'
+  exception.supabaseError = error || null
+  exception.hint = [
+    'Supabase SQL Editor에서 RPC 본문이 잘렸거나 붙여넣기 도중 문법이 손상되지 않았는지 확인하세요.',
+    '`docs/sql/fetch-rank-match-ready-snapshot.sql` 파일의 전체 내용을 그대로 복사해 붙여넣고, `...` 같은 플레이스홀더가 포함되지 않았는지 검증하세요.',
+    '배포 후 RPC를 다시 호출해 SUBSCRIBED 상태와 스냅샷 수신이 정상인지 Match Ready 진단 패널에서 확인하세요.',
+  ].join(' ')
+  exception.context = context
+  return exception
+}
+
 function normaliseSnapshotEnvelope(envelope) {
   if (!envelope) return null
   const payload = Array.isArray(envelope) ? envelope[0] : envelope
@@ -460,6 +488,18 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
           })
         }
 
+        if (isSnapshotSyntaxError(rpcError)) {
+          addSupabaseDebugEvent({
+            source: 'match-ready-snapshot',
+            operation: 'fetch_rank_match_ready_snapshot',
+            error: rpcError,
+            level: 'error',
+          })
+          throw createSnapshotSyntaxException(rpcError, {
+            operation: 'fetch_rank_match_ready_snapshot',
+          })
+        }
+
         if (isOrderedSetAggregateError(rpcError)) {
           addSupabaseDebugEvent({
             source: 'match-ready-snapshot',
@@ -491,7 +531,11 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
         sessionMetaEnvelope = envelope.session_meta || null
       }
     } catch (rpcException) {
-      if (rpcException?.code === 'ordered_set_aggregate' || rpcException?.code === 'snapshot_return_type_mismatch') {
+      if (
+        rpcException?.code === 'ordered_set_aggregate' ||
+        rpcException?.code === 'snapshot_return_type_mismatch' ||
+        rpcException?.code === 'snapshot_sql_syntax_error'
+      ) {
         throw rpcException
       }
 
@@ -503,6 +547,12 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
 
       if (isSnapshotReturnTypeMismatch(rpcException)) {
         throw createSnapshotReturnTypeMismatchException(rpcException, {
+          operation: 'fetch_rank_match_ready_snapshot',
+        })
+      }
+
+      if (isSnapshotSyntaxError(rpcException)) {
+        throw createSnapshotSyntaxException(rpcException, {
           operation: 'fetch_rank_match_ready_snapshot',
         })
       }

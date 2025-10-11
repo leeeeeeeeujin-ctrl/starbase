@@ -238,6 +238,27 @@ describe('loadMatchFlowSnapshot', () => {
     expect(mockWithTable).not.toHaveBeenCalled()
   })
 
+  it('throws a snapshot SQL syntax error when the RPC was pasted with placeholders', async () => {
+    const supabaseClient = {
+      rpc: jest.fn(() =>
+        Promise.resolve({
+          data: null,
+          error: {
+            code: '42601',
+            message: 'syntax error at or near ".."',
+            details: "LINE 15: 'roster', coalesce( ... )",
+          },
+        }),
+      ),
+    }
+
+    await expect(loadMatchFlowSnapshot(supabaseClient, 'game-syntax-error')).rejects.toMatchObject({
+      code: 'snapshot_sql_syntax_error',
+      hint: expect.stringContaining('docs/sql/fetch-rank-match-ready-snapshot.sql'),
+    })
+    expect(mockWithTable).not.toHaveBeenCalled()
+  })
+
   it('maps the RPC snapshot payload into the match-ready structure', async () => {
     const rpcPayload = {
       roster: [

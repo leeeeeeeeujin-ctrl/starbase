@@ -4,6 +4,7 @@
 - Introduced `fetch_rank_match_ready_snapshot` RPC to centralise roster, room, session, and readiness metadata.
 - Catch `WITHIN GROUP` ordered-set aggregate errors and surface actionable hints in the Match Ready diagnostics panel.
 - Detect Supabase SQL function return-type mismatches (42P13) and direct operators to redeploy the PL/pgSQL snapshot RPC.
+- Guard against Supabase SQL syntax errors (42601) caused by truncated snippets (예: `...`) and guide operators to paste the full script from `docs/sql/fetch-rank-match-ready-snapshot.sql`.
 - Match Ready client now resets refresh hints and renders RPC-derived troubleshooting details.
 
 ## Flow after refactor
@@ -27,5 +28,6 @@
 
 ## Next steps for backend
 - Deploy the new RPC via `docs/sql/fetch-rank-match-ready-snapshot.sql`.
+- 붙여넣기 시 `...` 같은 플레이스홀더가 남지 않았는지 확인하고, SQL Editor 저장 후 즉시 RPC를 호출해 syntax error가 없는지 점검하세요.
 - Audit existing Supabase functions using ordered-set aggregates (percentile, mode, ranked arrays) and ensure they specify `WITHIN GROUP`.
 - Consider wiring the ready-signal payload into `MatchReadyClient`’s extras to unlock richer readiness analytics in a follow-up iteration.
