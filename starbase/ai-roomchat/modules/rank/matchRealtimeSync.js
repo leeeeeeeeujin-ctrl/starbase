@@ -218,7 +218,14 @@ async function fetchSessionViaApi(gameId, ownerId) {
     const data = safeJsonParse(text) || {}
 
     if (!response.ok) {
-      console.warn('[matchRealtimeSync] latest-session API failed:', data?.error || response.status)
+      console.warn('[matchRealtimeSync] latest-session API failed:', {
+        status: response.status,
+        error: data?.error,
+        message: data?.message,
+        details: data?.details,
+        hint: data?.hint,
+        supabaseError: data?.supabaseError,
+      })
       return null
     }
 
