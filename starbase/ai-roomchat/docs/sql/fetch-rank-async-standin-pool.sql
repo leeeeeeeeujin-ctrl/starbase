@@ -1,4 +1,3 @@
--- Supabase RPC to select stand-in candidates for async match fill.
 -- Returns participants from rank_participants filtered by role and ranked by
 -- closeness to the desired score/rating so the client can auto-fill seats.
 --
@@ -10,9 +9,38 @@
 --   p_reference_rating     - Optional rating to measure distance against.
 --   p_excluded_owner_ids   - Optional array of owner ids to exclude.
 --
--- Usage: paste this file into the Supabase SQL editor and execute. Grant
 -- `EXECUTE` to `service_role` and `authenticated` so both server-side code and
 -- authenticated clients can call the RPC.
+
+do $$
+declare
+  type_exists boolean;
+begin
+  select exists (
+    select 1
+    from pg_type
+    where typname = 'rank_async_standins'
+      and pg_type.typnamespace = 'public'::regnamespace
+  ) into type_exists;
+
+  if not type_exists then
+    create type public.rank_async_standins as (
+      owner_id uuid,
+      hero_id uuid,
+      hero_name text,
+      role text,
+      score integer,
+      rating integer,
+      battles integer,
+      win_rate numeric,
+      status text,
+      updated_at timestamptz,
+      score_gap integer,
+      rating_gap integer
+    );
+  end if;
+end
+$$;
 
 create or replace function public.fetch_rank_async_standin_pool(
   p_game_id uuid,
@@ -22,20 +50,7 @@ create or replace function public.fetch_rank_async_standin_pool(
   p_reference_rating integer default null,
   p_excluded_owner_ids uuid[] default null
 )
-returns table (
-  owner_id uuid,
-  hero_id uuid,
-  hero_name text,
-  role text,
-  score integer,
-  rating integer,
-  battles integer,
-  win_rate numeric,
-  status text,
-  updated_at timestamptz,
-  score_gap integer,
-  rating_gap integer
-)
+returns setof public.rank_async_standins
 language sql
 security definer
 set search_path = public
