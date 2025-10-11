@@ -66,6 +66,10 @@ function parseTimestamp(value) {
 }
 
 function deriveLatestSessionHint(payload = {}) {
+  if (payload?.hintSuppressed) {
+    return null
+  }
+
   const sourceError = payload.supabaseError || payload.error || null
   const status = Number(payload.status)
   const code = String(sourceError?.code || '').toUpperCase()

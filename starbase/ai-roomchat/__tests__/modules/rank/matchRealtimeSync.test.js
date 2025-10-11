@@ -280,16 +280,6 @@ describe('fetchLatestSessionRow', () => {
     const originalFetch = global.fetch
 
     const payload = {
-      error: 'rpc_failed',
-      supabaseError: {
-        code: '42809',
-        message: 'WITHIN GROUP is required for ordered-set aggregate mode',
-      },
-      fallbackError: {
-        code: '42809',
-        message: 'WITHIN GROUP is required for ordered-set aggregate mode',
-      },
-      hint: 'ordered-set aggregate requires WITHIN GROUP',
       session: {
         id: 'session-ordered-set',
         status: 'ready',
@@ -299,6 +289,11 @@ describe('fetchLatestSessionRow', () => {
       },
       via: 'table-ordered-set-recovery',
       orderedSetRecovered: true,
+      diagnostics: {
+        via: 'table-ordered-set-recovery',
+        orderedSetRecovered: true,
+        hintSuppressed: true,
+      },
     }
 
     global.fetch = jest.fn(() =>
@@ -321,12 +316,7 @@ describe('fetchLatestSessionRow', () => {
       status: 'ready',
       ownerId: 'owner-ordered',
     })
-    expect(diagnostics).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: 'latest-session-api',
-        hint: expect.stringContaining('WITHIN GROUP'),
-      }),
-    )
+    expect(diagnostics).not.toHaveBeenCalled()
 
     global.window = originalWindow
     global.fetch = originalFetch

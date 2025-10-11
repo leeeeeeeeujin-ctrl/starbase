@@ -101,8 +101,15 @@ describe('POST /api/rank/latest-session', () => {
         remainingMs: expect.any(Number),
         hint: expect.stringContaining('WITHIN GROUP'),
       },
-      diagnostics: expect.objectContaining({ via: 'table-ordered-set-recovery' }),
+      diagnostics: expect.objectContaining({
+        via: 'table-ordered-set-recovery',
+        hintSuppressed: true,
+        error: null,
+      }),
     })
+    expect(res.body).not.toHaveProperty('error')
+    expect(res.body).not.toHaveProperty('hint')
+    expect(res.body).not.toHaveProperty('supabaseError')
     expect(rpcMock).toHaveBeenCalledTimes(1)
     expect(mockWithTableQuery).toHaveBeenCalledTimes(2)
 
@@ -135,7 +142,11 @@ describe('POST /api/rank/latest-session', () => {
       },
       via: 'table',
       circuitBreaker: expect.objectContaining({ active: true }),
+      diagnostics: expect.objectContaining({ hintSuppressed: true }),
     })
+    expect(res2.body).not.toHaveProperty('error')
+    expect(res2.body).not.toHaveProperty('hint')
+    expect(res2.body).not.toHaveProperty('supabaseError')
     expect(rpcMock).not.toHaveBeenCalled()
     expect(mockWithTableQuery).toHaveBeenCalledTimes(1)
 

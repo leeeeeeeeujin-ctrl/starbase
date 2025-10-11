@@ -249,33 +249,29 @@ function buildFallbackResponse({
 }) {
   const serializedSupabaseError = serializeSupabaseError(supabaseError)
   const serializedFallbackError = serializeSupabaseError(fallbackError)
+  const succeeded = Boolean(fallback.row)
+  const via = fallback.via || (succeeded ? 'table' : 'table-error')
 
   const responsePayload = {
     session: fallback.row || null,
-    error: fallback.error ? 'rpc_failed' : fallback.via === 'table' ? null : 'rpc_failed',
-    supabaseError: serializedSupabaseError,
-    hint: hint || null,
-    via: fallback.via,
-  }
-
-  if (!responsePayload.error) {
-    delete responsePayload.error
-  }
-
-  if (!responsePayload.hint) {
-    delete responsePayload.hint
-  }
-
-  if (!responsePayload.supabaseError) {
-    delete responsePayload.supabaseError
+    via,
   }
 
   if (fallback.table) {
     responsePayload.table = fallback.table
   }
 
-  if (serializedFallbackError) {
-    responsePayload.fallbackError = serializedFallbackError
+  if (!succeeded) {
+    if (serializedSupabaseError) {
+      responsePayload.supabaseError = serializedSupabaseError
+    }
+    if (serializedFallbackError) {
+      responsePayload.fallbackError = serializedFallbackError
+    }
+    if (hint) {
+      responsePayload.hint = hint
+    }
+    responsePayload.error = 'rpc_failed'
   }
 
   if (fallback.orderedSetRecovered) {
@@ -283,24 +279,31 @@ function buildFallbackResponse({
   }
 
   const diagnostics = {
-    error: fallback.error ? 'rpc_failed' : responsePayload.error || null,
-    supabaseError: serializedSupabaseError,
-    fallbackError: serializedFallbackError,
-    hint: hint || null,
-    via: fallback.via,
+    error: succeeded ? null : 'rpc_failed',
+    supabaseError: succeeded ? null : serializedSupabaseError,
+    fallbackError: succeeded ? null : serializedFallbackError,
+    hint: succeeded ? null : hint || null,
+    via,
     table: fallback.table || null,
     orderedSetRecovered: Boolean(fallback.orderedSetRecovered),
+    hintSuppressed: succeeded,
+  }
+
+  if (succeeded && serializedSupabaseError) {
+    diagnostics.suppressedSupabaseError = serializedSupabaseError
+  }
+
+  if (succeeded && serializedFallbackError) {
+    diagnostics.suppressedFallbackError = serializedFallbackError
   }
 
   if (includeCircuit) {
-    diagnostics.circuitBreaker = getCircuitDiagnostics()
+    const circuit = getCircuitDiagnostics()
+    diagnostics.circuitBreaker = circuit
+    responsePayload.circuitBreaker = circuit
   }
 
   responsePayload.diagnostics = diagnostics
-
-  if (includeCircuit) {
-    responsePayload.circuitBreaker = getCircuitDiagnostics()
-  }
 
   return responsePayload
 }
