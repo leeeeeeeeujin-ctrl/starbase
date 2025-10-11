@@ -12,6 +12,18 @@
 -- `EXECUTE` to `service_role` and `authenticated` so both server-side code and
 -- authenticated clients can call the RPC.
 
+-- Ensure the composite type exists before redefining the RPC. Dropping the existing
+-- function prevents return-type conflicts when upgrading from older jsonb versions.
+
+drop function if exists public.fetch_rank_async_standin_pool(
+  uuid,
+  text,
+  integer,
+  integer,
+  integer,
+  uuid[]
+);
+
 do $$
 declare
   type_exists boolean;
