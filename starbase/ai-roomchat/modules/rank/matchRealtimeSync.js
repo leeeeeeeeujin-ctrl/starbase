@@ -379,6 +379,16 @@ function isOrderedSetAggregateError(error) {
   return message.includes('ordered-set') && message.includes('within group')
 }
 
+function isSnapshotReturnTypeMismatch(error) {
+  if (!error) return false
+  const code = typeof error.code === 'string' ? error.code.toUpperCase() : ''
+  if (code === '42P13') {
+    return true
+  }
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase()
+  return message.includes('return type mismatch') && message.includes('jsonb')
+}
+
 function createOrderedSetAggregateException(error, context = {}) {
   const exception = new Error(
     'ordered-set 집계를 사용하는 Supabase 함수에 WITHIN GROUP 절이 빠져 있어 매치 준비 스냅샷을 불러오지 못했습니다.',
@@ -388,6 +398,20 @@ function createOrderedSetAggregateException(error, context = {}) {
   exception.hint = [
     'Supabase SQL에서 percentile, mode와 같은 ordered-set 집계를 호출할 때는 `WITHIN GROUP (ORDER BY ...)` 절이 필요합니다.',
     'fetch_rank_match_ready_snapshot 혹은 관련 RPC/뷰에서 누락된 WITHIN GROUP 절을 추가한 뒤 다시 시도하세요.',
+  ].join(' ')
+  exception.context = context
+  return exception
+}
+
+function createSnapshotReturnTypeMismatchException(error, context = {}) {
+  const exception = new Error(
+    'fetch_rank_match_ready_snapshot RPC 본문이 jsonb를 반환하지 않아 매치 준비 스냅샷을 불러오지 못했습니다.',
+  )
+  exception.code = 'snapshot_return_type_mismatch'
+  exception.supabaseError = error || null
+  exception.hint = [
+    'Supabase 함수의 마지막 구문이 jsonb를 반환하는 SELECT가 아니어서 42P13 오류가 발생했습니다.',
+    '`docs/sql/fetch-rank-match-ready-snapshot.sql`에 있는 최신 PL/pgSQL 버전을 배포하고 GRANT 문까지 실행했는지 확인하세요.',
   ].join(' ')
   exception.context = context
   return exception
@@ -424,6 +448,18 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
       )
 
       if (rpcError) {
+        if (isSnapshotReturnTypeMismatch(rpcError)) {
+          addSupabaseDebugEvent({
+            source: 'match-ready-snapshot',
+            operation: 'fetch_rank_match_ready_snapshot',
+            error: rpcError,
+            level: 'error',
+          })
+          throw createSnapshotReturnTypeMismatchException(rpcError, {
+            operation: 'fetch_rank_match_ready_snapshot',
+          })
+        }
+
         if (isOrderedSetAggregateError(rpcError)) {
           addSupabaseDebugEvent({
             source: 'match-ready-snapshot',
@@ -455,8 +491,18 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
         sessionMetaEnvelope = envelope.session_meta || null
       }
     } catch (rpcException) {
+      if (rpcException?.code === 'ordered_set_aggregate' || rpcException?.code === 'snapshot_return_type_mismatch') {
+        throw rpcException
+      }
+
       if (isOrderedSetAggregateError(rpcException)) {
         throw createOrderedSetAggregateException(rpcException, {
+          operation: 'fetch_rank_match_ready_snapshot',
+        })
+      }
+
+      if (isSnapshotReturnTypeMismatch(rpcException)) {
+        throw createSnapshotReturnTypeMismatchException(rpcException, {
           operation: 'fetch_rank_match_ready_snapshot',
         })
       }

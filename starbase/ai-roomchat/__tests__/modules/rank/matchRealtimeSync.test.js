@@ -217,6 +217,27 @@ describe('loadMatchFlowSnapshot', () => {
     expect(mockWithTable).not.toHaveBeenCalled()
   })
 
+  it('throws a snapshot return type mismatch error when the RPC body is misconfigured', async () => {
+    const supabaseClient = {
+      rpc: jest.fn(() =>
+        Promise.resolve({
+          data: null,
+          error: {
+            code: '42P13',
+            message: 'return type mismatch in function declared to return jsonb',
+            details: 'Function\'s final statement must be SELECT',
+          },
+        }),
+      ),
+    }
+
+    await expect(loadMatchFlowSnapshot(supabaseClient, 'game-return-error')).rejects.toMatchObject({
+      code: 'snapshot_return_type_mismatch',
+      hint: expect.stringContaining('PL/pgSQL'),
+    })
+    expect(mockWithTable).not.toHaveBeenCalled()
+  })
+
   it('maps the RPC snapshot payload into the match-ready structure', async () => {
     const rpcPayload = {
       roster: [

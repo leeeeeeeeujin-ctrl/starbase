@@ -6,11 +6,14 @@ create or replace function public.fetch_rank_match_ready_snapshot(
   p_game_id uuid
 )
 returns jsonb
-language sql
+language plpgsql
 security definer
 set search_path = public
 stable
 as $$
+declare
+  result jsonb;
+begin
 with roster_source as (
   select
     r.*,
@@ -150,7 +153,23 @@ select jsonb_build_object(
   'session', (select data from resolved_session),
   'session_meta', (select data from session_meta_payload),
   'ready_signals', (select data from ready_payload)
-);
+) into result;
+
+if result is null then
+  result := jsonb_build_object(
+    'roster', '[]'::jsonb,
+    'slot_template_version', null,
+    'slot_template_source', null,
+    'slot_template_updated_at', null,
+    'room', null,
+    'session', null,
+    'session_meta', null,
+    'ready_signals', '[]'::jsonb
+  );
+end if;
+
+return result;
+end;
 $$;
 
 grant execute on function public.fetch_rank_match_ready_snapshot(uuid) to service_role;

@@ -3,6 +3,7 @@
 ## Overview
 - Introduced `fetch_rank_match_ready_snapshot` RPC to centralise roster, room, session, and readiness metadata.
 - Catch `WITHIN GROUP` ordered-set aggregate errors and surface actionable hints in the Match Ready diagnostics panel.
+- Detect Supabase SQL function return-type mismatches (42P13) and direct operators to redeploy the PL/pgSQL snapshot RPC.
 - Match Ready client now resets refresh hints and renders RPC-derived troubleshooting details.
 
 ## Flow after refactor
@@ -21,6 +22,7 @@
 ## Why WITHIN GROUP matters
 - Postgres treats percentile, mode, and other ordered-set aggregates as requiring `WITHIN GROUP (ORDER BY ...)` clauses.
 - A missing clause produces the database error: `WITHIN GROUP is required for ordered-set aggregate mode`.
+- A misconfigured SQL body that does not end with a jsonb `SELECT` now surfaces `snapshot_return_type_mismatch` with guidance to run the updated script.
 - The new loader intercepts this signal to prevent silent fallback and instead raises a targeted hint so operators can fix the offending SQL function.
 
 ## Next steps for backend
