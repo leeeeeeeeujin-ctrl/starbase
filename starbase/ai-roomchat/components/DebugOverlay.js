@@ -10,6 +10,8 @@ import {
 import styles from './DebugOverlay.module.css'
 
 const ACTIVATION_KEYS = ['d', 'b', 'g']
+const ACTIVATION_SEQUENCE = ['d', 'b', 'g']
+const ACTIVATION_WINDOW_MS = 1000
 const ACTIVATION_LABEL = 'Press D + B + G'
 
 function formatTimestamp(timestamp) {
@@ -63,11 +65,19 @@ export default function DebugOverlay() {
     if (typeof window === 'undefined') return undefined
 
     const pressedKeys = new Set()
+    let sequenceIndex = 0
+    let lastSequenceAt = 0
+
+    const resetSequence = () => {
+      sequenceIndex = 0
+      lastSequenceAt = 0
+    }
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         setIsOpen(false)
         pressedKeys.clear()
+        resetSequence()
         return
       }
 
@@ -76,11 +86,36 @@ export default function DebugOverlay() {
 
       if (ACTIVATION_KEYS.includes(key)) {
         pressedKeys.add(key)
+        const now = Date.now()
+
         if (ACTIVATION_KEYS.every((activationKey) => pressedKeys.has(activationKey))) {
           event.preventDefault()
           setIsOpen(true)
           pressedKeys.clear()
+          resetSequence()
+          return
         }
+
+        const expectedKey = ACTIVATION_SEQUENCE[sequenceIndex]
+        const withinWindow =
+          sequenceIndex === 0 || (lastSequenceAt && now - lastSequenceAt <= ACTIVATION_WINDOW_MS)
+
+        if (key === expectedKey && withinWindow) {
+          sequenceIndex += 1
+          lastSequenceAt = now
+          if (sequenceIndex === ACTIVATION_SEQUENCE.length) {
+            event.preventDefault()
+            setIsOpen(true)
+            pressedKeys.clear()
+            resetSequence()
+          }
+        } else if (key === ACTIVATION_SEQUENCE[0]) {
+          sequenceIndex = 1
+          lastSequenceAt = now
+        } else {
+          resetSequence()
+        }
+
         return
       }
 
@@ -89,6 +124,7 @@ export default function DebugOverlay() {
       }
 
       pressedKeys.clear()
+      resetSequence()
     }
 
     const handleKeyUp = (event) => {
@@ -101,6 +137,7 @@ export default function DebugOverlay() {
 
       if (key === 'control' || key === 'meta') {
         pressedKeys.clear()
+        resetSequence()
       }
     }
 

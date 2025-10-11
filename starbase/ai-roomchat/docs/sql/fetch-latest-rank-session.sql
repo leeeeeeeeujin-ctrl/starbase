@@ -6,21 +6,15 @@ create or replace function public.fetch_latest_rank_session_v2(
   p_game_id uuid,
   p_owner_id uuid default null
 )
-returns table (
-  id uuid,
-  status text,
-  owner_id uuid,
-  created_at timestamptz,
-  updated_at timestamptz,
-  match_mode text
-)
+returns jsonb
 language plpgsql
 security definer
 set search_path = public
 stable
 as $$
+declare
+  v_row record;
 begin
-  return query
   select
     s.id,
     s.status,
@@ -28,12 +22,26 @@ begin
     s.created_at,
     s.updated_at,
     s.mode as match_mode
+  into v_row
   from public.rank_sessions as s
   where s.game_id = p_game_id
     and (p_owner_id is null or s.owner_id = p_owner_id)
     and s.status in ('active', 'preparing', 'ready')
   order by s.updated_at desc, s.created_at desc
   limit 1;
+
+  if not found then
+    return null;
+  end if;
+
+  return jsonb_build_object(
+    'id', v_row.id,
+    'status', v_row.status,
+    'owner_id', v_row.owner_id,
+    'created_at', v_row.created_at,
+    'updated_at', v_row.updated_at,
+    'match_mode', v_row.match_mode
+  );
 end;
 $$;
 

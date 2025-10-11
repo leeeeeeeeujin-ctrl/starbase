@@ -58,12 +58,11 @@ async function fetchViaRpc(payload) {
   if (error) {
     return { error }
   }
-  const row = Array.isArray(data) ? data[0] : data
-  return { row: formatSessionRow(row) }
+  return { row: formatSessionRow(data), raw: data }
 }
 
 async function fetchViaTable(gameId, ownerId) {
-  const { data, error } = await withTableQuery(
+  const result = await withTableQuery(
     supabaseAdmin,
     'rank_sessions',
     (from) => {
@@ -81,11 +80,11 @@ async function fetchViaTable(gameId, ownerId) {
     },
   )
 
-  if (error) {
-    return { error }
+  if (result.error) {
+    return { error: result.error, table: result.table || null }
   }
 
-  return { row: formatSessionRow(data) }
+  return { row: formatSessionRow(result.data), table: result.table || null }
 }
 
 export default async function handler(req, res) {
@@ -107,12 +106,15 @@ export default async function handler(req, res) {
   try {
     const { row, error } = await fetchViaRpc(payload)
     if (error) {
-      if (String(error?.code || '').toUpperCase() === '42809') {
+      const code = String(error?.code || '').toUpperCase()
+      if (code === '42809') {
         const fallback = await fetchViaTable(payload.p_game_id, payload.p_owner_id || null)
         if (fallback.error) {
-          return res.status(502).json({ error: 'rpc_failed', supabaseError: error })
+          return res
+            .status(502)
+            .json({ error: 'rpc_failed', supabaseError: error, fallbackError: fallback.error, table: fallback.table })
         }
-        return res.status(200).json({ session: fallback.row })
+        return res.status(200).json({ session: fallback.row, supabaseError: error, via: 'table' })
       }
       return res.status(502).json({ error: 'rpc_failed', supabaseError: error })
     }
