@@ -58,6 +58,35 @@ function sanitizeWindowSeconds(value) {
   return rounded
 }
 
+function toOptionalParticipantId(value) {
+  if (value === null || value === undefined) return null
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null
+    if (!Number.isSafeInteger(value)) {
+      return String(Math.trunc(value))
+    }
+    return Math.trunc(value)
+  }
+
+  if (typeof value === 'bigint') {
+    return value.toString()
+  }
+
+  const trimmed = toTrimmedString(value)
+  if (!trimmed) return null
+
+  if (/^-?\d+$/.test(trimmed)) {
+    const numeric = Number(trimmed)
+    if (Number.isSafeInteger(numeric)) {
+      return numeric
+    }
+    return trimmed
+  }
+
+  return null
+}
+
 function isServiceRoleAuthError(error) {
   if (!error) return false
   const code = String(error.code || '').trim().toUpperCase()
@@ -106,7 +135,8 @@ export default async function handler(req, res) {
   const matchInstanceId = toOptionalUuid(
     payload.match_instance_id ?? payload.matchInstanceId,
   )
-  const participantHint = toOptionalUuid(payload.participant_id ?? payload.participantId)
+  const participantHintRaw = payload.participant_id ?? payload.participantId
+  const participantHint = toOptionalParticipantId(participantHintRaw)
   const windowSeconds = sanitizeWindowSeconds(payload.window_seconds ?? payload.windowSeconds)
 
   const userClientAuth = createSupabaseAuthConfig(url, {
@@ -183,7 +213,7 @@ export default async function handler(req, res) {
       )
       if (participantRow) {
         authorized = true
-        participantId = toOptionalUuid(participantRow.id)
+        participantId = toOptionalParticipantId(participantRow.id)
       }
     } catch (participantError) {
       console.warn('[ready-check] participant lookup failed:', participantError)
