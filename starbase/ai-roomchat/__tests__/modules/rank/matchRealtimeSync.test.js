@@ -520,6 +520,157 @@ describe('loadMatchFlowSnapshot', () => {
     expect(mockWithTable).not.toHaveBeenCalled()
   })
 
+  it('fills pending async seats with stand-in candidates', async () => {
+    const rpcPayload = {
+      roster: [
+        {
+          id: 'roster-host',
+          match_instance_id: 'match-async',
+          room_id: 'room-async',
+          game_id: 'game-async',
+          slot_id: 'slot-0',
+          slot_index: 0,
+          role: '전략가',
+          owner_id: 'host-owner',
+          hero_id: 'hero-host',
+          hero_name: '호스트',
+          ready: true,
+          joined_at: '2025-02-01T00:00:00Z',
+          slot_template_version: 9,
+          slot_template_source: 'room-stage',
+          slot_template_updated_at: '2025-02-01T00:00:00Z',
+          created_at: '2025-02-01T00:00:00Z',
+          updated_at: '2025-02-01T00:00:00Z',
+        },
+        {
+          id: 'roster-pending',
+          match_instance_id: 'match-async',
+          room_id: 'room-async',
+          game_id: 'game-async',
+          slot_id: 'slot-1',
+          slot_index: 1,
+          role: '전략가',
+          owner_id: null,
+          hero_id: null,
+          hero_name: null,
+          ready: false,
+          joined_at: null,
+          slot_template_version: 9,
+          slot_template_source: 'room-stage',
+          slot_template_updated_at: '2025-02-01T00:00:00Z',
+          created_at: '2025-02-01T00:00:00Z',
+          updated_at: '2025-02-01T00:00:00Z',
+        },
+      ],
+      room: {
+        id: 'room-async',
+        owner_id: 'host-owner',
+        code: 'ASYNC-ROOM',
+        status: 'ready',
+        mode: 'standard',
+        realtime_mode: 'off',
+        host_role_limit: 2,
+        blind_mode: false,
+        score_window: 30,
+        updated_at: '2025-02-01T00:00:00Z',
+        game_id: 'game-async',
+      },
+      session: {
+        id: 'session-async',
+        status: 'active',
+        owner_id: 'host-owner',
+        mode: 'standard',
+        match_mode: 'standard',
+        created_at: '2025-02-01T00:00:00Z',
+        updated_at: '2025-02-01T00:05:00Z',
+      },
+      session_meta: {
+        session_id: 'session-async',
+        async_fill_snapshot: {
+          mode: 'off',
+          hostOwnerId: 'host-owner',
+          hostRole: '전략가',
+          seatLimit: { allowed: 2, total: 2 },
+          seatIndexes: [0, 1],
+          pendingSeatIndexes: [1],
+          assigned: [
+            {
+              slotIndex: 0,
+              slotId: 'slot-0',
+              ownerId: 'host-owner',
+              heroId: 'hero-host',
+              heroName: '호스트',
+              ready: true,
+              joinedAt: '2025-02-01T00:00:00Z',
+            },
+          ],
+          fillQueue: [
+            {
+              ownerId: 'standin-owner',
+              heroId: 'hero-standin',
+              heroName: '대역 AI',
+              score: 1234,
+              rating: 1500,
+              winRate: 52.5,
+              battles: 88,
+              status: 'waiting',
+              joinedAt: '2025-02-01T00:02:00Z',
+            },
+          ],
+          poolSize: 1,
+          generatedAt: 1700000000000,
+        },
+        updated_at: '2025-02-01T00:05:00Z',
+      },
+      slot_template_version: 9,
+      slot_template_source: 'room-stage',
+      slot_template_updated_at: '2025-02-01T00:00:00Z',
+    }
+
+    const supabaseClient = {
+      rpc: jest.fn((fnName) => {
+        if (fnName === 'fetch_rank_match_ready_snapshot') {
+          return Promise.resolve({ data: rpcPayload, error: null })
+        }
+        return Promise.resolve({ data: null, error: null })
+      }),
+    }
+
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async')
+
+    expect(snapshot.roster).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ownerId: 'host-owner', standin: false }),
+        expect.objectContaining({
+          ownerId: 'standin-owner',
+          standin: true,
+          heroId: 'hero-standin',
+          matchSource: 'participant_pool',
+        }),
+      ]),
+    )
+    expect(snapshot.participantPool).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ownerId: 'standin-owner', standin: true }),
+      ]),
+    )
+    expect(snapshot.sessionMeta?.asyncFill?.pendingSeatIndexes).toEqual([])
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(0)
+    expect(snapshot.sessionMeta?.asyncFill?.assigned).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ownerId: 'standin-owner', slotIndex: 1 }),
+      ]),
+    )
+    expect(snapshot.matchSnapshot?.match?.roles?.[0]?.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ownerId: 'standin-owner', standin: true }),
+      ]),
+    )
+    expect(snapshot.heroMap).toMatchObject({
+      'hero-standin': expect.objectContaining({ name: '대역 AI' }),
+    })
+  })
+
   it('raises a latest-session hint when the RPC is unavailable', async () => {
     mockWithTable.mockImplementation(() => Promise.resolve({ data: null, error: null }))
 

@@ -42,6 +42,15 @@ function toNumber(value, fallback = null) {
   return numeric
 }
 
+function cloneJson(value) {
+  if (value === null || value === undefined) return null
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch (error) {
+    return null
+  }
+}
+
 function parseTimestamp(value) {
   if (!value && value !== 0) return null
   if (typeof value === 'number') {
@@ -141,6 +150,18 @@ function normalizeRosterRow(row, fallbackIndex = 0) {
   const heroName =
     toTrimmed(row?.hero_name) ||
     (heroSummary && typeof heroSummary.name === 'string' ? heroSummary.name : '')
+  const matchSource = toTrimmed(row?.match_source)
+  const standin = row?.standin === true || matchSource === 'participant_pool'
+
+  const score =
+    row?.score !== undefined && row?.score !== null ? toNumber(row.score, null) : null
+  const rating =
+    row?.rating !== undefined && row?.rating !== null ? toNumber(row.rating, null) : null
+  const battles =
+    row?.battles !== undefined && row?.battles !== null ? toNumber(row.battles, null) : null
+  const winRate =
+    row?.win_rate !== undefined && row?.win_rate !== null ? Number(row.win_rate) : null
+  const status = toTrimmed(row?.status)
 
   return {
     slotId: toOptionalTrimmed(row?.slot_id),
@@ -152,6 +173,13 @@ function normalizeRosterRow(row, fallbackIndex = 0) {
     ready: row?.ready === true,
     joinedAt: row?.joined_at || null,
     heroSummary,
+    standin,
+    matchSource: matchSource || '',
+    score,
+    rating,
+    battles,
+    winRate,
+    status,
   }
 }
 
@@ -192,6 +220,8 @@ function buildRoleGroups(roster = []) {
       ready: entry.ready,
       slotIndex: entry.slotIndex,
       joinedAt: entry.joinedAt,
+      standin: entry.standin === true,
+      matchSource: entry.matchSource || '',
     })
   })
   return groups
@@ -231,6 +261,178 @@ function buildSlotLayoutFromRoster(roster = []) {
     occupant_joined_at: entry.joinedAt || null,
     active: true,
   }))
+}
+
+function buildParticipantPool(roster = []) {
+  return roster.map((entry) => ({
+    slotIndex: entry.slotIndex,
+    role: entry.role,
+    ownerId: entry.ownerId,
+    heroId: entry.heroId,
+    heroName: entry.heroName,
+    ready: entry.ready,
+    joinedAt: entry.joinedAt,
+    standin: entry.standin === true,
+    matchSource: entry.matchSource || (entry.standin ? 'participant_pool' : ''),
+  }))
+}
+
+function normalizeAsyncFillCandidate(candidate, index = 0) {
+  if (!candidate || typeof candidate !== 'object') return null
+  const ownerId = toOptionalTrimmed(candidate.ownerId ?? candidate.owner_id)
+  const heroId = toOptionalTrimmed(candidate.heroId ?? candidate.hero_id)
+  const heroName = toTrimmed(candidate.heroName ?? candidate.hero_name)
+  const role = toTrimmed(candidate.role ?? candidate.roleName)
+  const joinedRaw = candidate.joinedAt ?? candidate.joined_at ?? null
+  const joinedAt =
+    typeof joinedRaw === 'string' && joinedRaw
+      ? joinedRaw
+      : joinedRaw instanceof Date
+        ? new Date(joinedRaw).toISOString()
+        : joinedRaw != null && Number.isFinite(Number(joinedRaw))
+          ? new Date(Number(joinedRaw)).toISOString()
+          : null
+
+  return {
+    ownerId,
+    heroId,
+    heroName,
+    role,
+    joinedAt,
+    score: candidate.score !== undefined ? toNumber(candidate.score, null) : null,
+    rating: candidate.rating !== undefined ? toNumber(candidate.rating, null) : null,
+    battles: candidate.battles !== undefined ? toNumber(candidate.battles, null) : null,
+    winRate:
+      candidate.winRate !== undefined && candidate.winRate !== null
+        ? Number(candidate.winRate)
+        : candidate.win_rate !== undefined && candidate.win_rate !== null
+          ? Number(candidate.win_rate)
+          : null,
+    status: toTrimmed(candidate.status),
+    index,
+    raw: cloneJson(candidate),
+  }
+}
+
+function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
+  const rosterList = Array.isArray(roster) ? roster.map((entry) => ({ ...entry })) : []
+  if (!rosterList.length) {
+    return { roster, sessionMeta, heroMap, applied: false }
+  }
+
+  const asyncFill = sessionMeta?.asyncFill
+  const mode = toTrimmed(asyncFill?.mode).toLowerCase()
+  if (!asyncFill || (mode && mode !== 'off')) {
+    return { roster, sessionMeta, heroMap, applied: false }
+  }
+
+  const pendingSeatIndexes = Array.isArray(asyncFill.pendingSeatIndexes)
+    ? asyncFill.pendingSeatIndexes
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value >= 0)
+    : []
+  const queueCandidates = Array.isArray(asyncFill.fillQueue)
+    ? asyncFill.fillQueue
+        .map((candidate, index) => normalizeAsyncFillCandidate(candidate, index))
+        .filter((candidate) => candidate && (candidate.ownerId || candidate.heroId || candidate.heroName))
+    : []
+
+  if (!pendingSeatIndexes.length || !queueCandidates.length) {
+    return { roster, sessionMeta, heroMap, applied: false }
+  }
+
+  const rosterIndexMap = new Map()
+  rosterList.forEach((entry, listIndex) => {
+    rosterIndexMap.set(entry.slotIndex, { entry, listIndex })
+  })
+
+  const heroMapClone = heroMap ? { ...heroMap } : {}
+  const usedQueueIndexes = new Set()
+  const assignedSeats = []
+  const assignedEntries = []
+
+  pendingSeatIndexes.forEach((seatIndexRaw) => {
+    const seatIndex = Number(seatIndexRaw)
+    if (!Number.isFinite(seatIndex) || seatIndex < 0) return
+    const seat = rosterIndexMap.get(seatIndex)
+    if (!seat) return
+    if (seat.entry.ownerId) return
+    const candidate = queueCandidates.find((item) => !usedQueueIndexes.has(item.index))
+    if (!candidate) return
+
+    usedQueueIndexes.add(candidate.index)
+    assignedSeats.push(seatIndex)
+
+    const updatedEntry = {
+      ...seat.entry,
+      ownerId: candidate.ownerId || seat.entry.ownerId || `standin-${seatIndex}`,
+      heroId: candidate.heroId || seat.entry.heroId || '',
+      heroName: candidate.heroName || seat.entry.heroName || '비실시간 대역',
+      ready: true,
+      joinedAt: candidate.joinedAt || seat.entry.joinedAt || null,
+      standin: true,
+      matchSource: 'participant_pool',
+      score: candidate.score ?? seat.entry.score ?? null,
+      rating: candidate.rating ?? seat.entry.rating ?? null,
+      battles: candidate.battles ?? seat.entry.battles ?? null,
+      winRate: candidate.winRate ?? seat.entry.winRate ?? null,
+      status: candidate.status || seat.entry.status || 'standin',
+    }
+
+    rosterList[seat.listIndex] = updatedEntry
+    rosterIndexMap.set(seatIndex, { entry: updatedEntry, listIndex: seat.listIndex })
+
+    if (candidate.heroId && candidate.heroName) {
+      const existing = heroMapClone[candidate.heroId] || {}
+      heroMapClone[candidate.heroId] = { ...existing, name: existing.name || candidate.heroName }
+    }
+
+    assignedEntries.push({
+      slotIndex: seatIndex,
+      slotId: updatedEntry.slotId || null,
+      ownerId: updatedEntry.ownerId || null,
+      heroId: updatedEntry.heroId || null,
+      heroName: updatedEntry.heroName || null,
+      ready: true,
+      joinedAt: updatedEntry.joinedAt || null,
+    })
+  })
+
+  if (!assignedEntries.length) {
+    return { roster, sessionMeta, heroMap, applied: false }
+  }
+
+  const asyncFillClone = cloneJson(asyncFill) || {}
+  const pendingSet = new Set(
+    Array.isArray(asyncFillClone.pendingSeatIndexes)
+      ? asyncFillClone.pendingSeatIndexes
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value >= 0)
+      : [],
+  )
+  assignedSeats.forEach((seatIndex) => pendingSet.delete(seatIndex))
+  asyncFillClone.pendingSeatIndexes = Array.from(pendingSet).sort((a, b) => a - b)
+
+  const existingAssigned = Array.isArray(asyncFillClone.assigned)
+    ? asyncFillClone.assigned.filter((entry) => entry && typeof entry === 'object')
+    : []
+  asyncFillClone.assigned = existingAssigned.concat(assignedEntries)
+
+  asyncFillClone.fillQueue = queueCandidates
+    .filter((candidate) => !usedQueueIndexes.has(candidate.index))
+    .map((candidate) => candidate.raw || null)
+    .filter(Boolean)
+
+  const updatedSessionMeta = sessionMeta
+    ? { ...sessionMeta, asyncFill: asyncFillClone }
+    : { asyncFill: asyncFillClone, source: 'async-fill-standin' }
+
+  return {
+    roster: rosterList,
+    sessionMeta: updatedSessionMeta,
+    heroMap: heroMapClone,
+    applied: true,
+  }
 }
 
 function formatRoom(row) {
@@ -851,22 +1053,8 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
     }, -Infinity)
   }
 
-  const normalizedRoster = targetRows.map((row, index) => normalizeRosterRow(row, index))
-  const heroMap = buildHeroMap(targetRows)
-  const heroOptions = Array.from(new Set(normalizedRoster.map((entry) => entry.heroId).filter(Boolean)))
-  const participantPool = normalizedRoster.map((entry) => ({
-    slotIndex: entry.slotIndex,
-    role: entry.role,
-    ownerId: entry.ownerId,
-    heroId: entry.heroId,
-    heroName: entry.heroName,
-    ready: entry.ready,
-    joinedAt: entry.joinedAt,
-  }))
-  const groups = buildRoleGroups(normalizedRoster)
-  const assignments = buildAssignmentsFromGroups(groups)
-  const roles = buildRolesFromGroups(groups)
-  const slotLayout = buildSlotLayoutFromRoster(normalizedRoster)
+  let normalizedRoster = targetRows.map((row, index) => normalizeRosterRow(row, index))
+  let heroMap = buildHeroMap(targetRows)
 
   const slotTemplateVersion = bestVersion
   const slotTemplateSource = slotTemplateSourceOverride || targetRows[0]?.slot_template_source || 'room-stage'
@@ -989,6 +1177,25 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
       sessionMeta = mapSessionMeta(metaRow)
     }
   }
+
+  const standinResult = applyAsyncFillStandins({
+    roster: normalizedRoster,
+    sessionMeta,
+    heroMap,
+  })
+
+  if (standinResult?.applied) {
+    normalizedRoster = standinResult.roster
+    heroMap = standinResult.heroMap
+    sessionMeta = standinResult.sessionMeta
+  }
+
+  const participantPool = buildParticipantPool(normalizedRoster)
+  const heroOptions = Array.from(new Set(normalizedRoster.map((entry) => entry.heroId).filter(Boolean)))
+  const groups = buildRoleGroups(normalizedRoster)
+  const assignments = buildAssignmentsFromGroups(groups)
+  const roles = buildRolesFromGroups(groups)
+  const slotLayout = buildSlotLayoutFromRoster(normalizedRoster)
 
   const matchRooms = formattedRoom ? [formattedRoom] : []
 
