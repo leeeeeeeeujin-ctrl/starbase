@@ -21,7 +21,7 @@ describe('fetchLatestSessionRow', () => {
             owner_id: 'owner-1',
             created_at: '2025-01-01T00:00:00Z',
             updated_at: '2025-01-01T00:00:00Z',
-            mode: 'standard',
+            match_mode: 'standard',
           },
           error: null,
         }),
@@ -38,6 +38,7 @@ describe('fetchLatestSessionRow', () => {
       created_at: '2025-01-01T00:00:00Z',
       updated_at: '2025-01-01T00:00:00Z',
       mode: 'standard',
+      match_mode: 'standard',
     })
     expect(mockWithTable).not.toHaveBeenCalled()
   })
@@ -53,7 +54,7 @@ describe('fetchLatestSessionRow', () => {
               owner_id: 'owner-2',
               created_at: null,
               updated_at: '2025-01-02T00:00:00Z',
-              mode: 'standard',
+              match_mode: 'standard',
             },
           ],
           error: null,
@@ -71,6 +72,7 @@ describe('fetchLatestSessionRow', () => {
       created_at: null,
       updated_at: '2025-01-02T00:00:00Z',
       mode: 'standard',
+      match_mode: 'standard',
     })
     expect(supabaseClient.rpc).toHaveBeenCalledWith(
       'fetch_latest_rank_session_v2',
@@ -93,7 +95,7 @@ describe('fetchLatestSessionRow', () => {
             owner_id: 'owner-3',
             created_at: '2025-01-03T00:00:00Z',
             updated_at: '2025-01-03T00:00:00Z',
-            mode: 'pulse',
+            match_mode: 'pulse',
           },
           error: null,
         }),
@@ -109,6 +111,7 @@ describe('fetchLatestSessionRow', () => {
       created_at: '2025-01-03T00:00:00Z',
       updated_at: '2025-01-03T00:00:00Z',
       mode: 'pulse',
+      match_mode: 'pulse',
     })
     expect(mockWithTable).not.toHaveBeenCalled()
   })

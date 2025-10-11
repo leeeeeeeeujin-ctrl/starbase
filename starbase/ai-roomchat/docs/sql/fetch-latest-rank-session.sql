@@ -12,7 +12,7 @@ returns table (
   owner_id uuid,
   created_at timestamptz,
   updated_at timestamptz,
-  mode text
+  match_mode text
 )
 language plpgsql
 security definer
@@ -27,7 +27,7 @@ begin
     s.owner_id,
     s.created_at,
     s.updated_at,
-    s.mode
+    s.mode as match_mode
   from public.rank_sessions as s
   where s.game_id = p_game_id
     and (p_owner_id is null or s.owner_id = p_owner_id)

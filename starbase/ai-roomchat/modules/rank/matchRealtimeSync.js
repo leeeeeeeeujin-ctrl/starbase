@@ -174,6 +174,7 @@ function formatSessionRow(row) {
   const id = toOptionalTrimmed(row.id)
   if (!id) return null
   const ownerId = toOptionalTrimmed(row.owner_id ?? row.ownerId)
+  const matchMode = toTrimmed(row.match_mode ?? row.matchMode ?? row.mode)
   return {
     id,
     status: toTrimmed(row.status),
@@ -181,7 +182,8 @@ function formatSessionRow(row) {
     ownerId,
     created_at: row.created_at ?? row.createdAt ?? null,
     updated_at: row.updated_at ?? row.updatedAt ?? null,
-    mode: toTrimmed(row.mode),
+    mode: matchMode,
+    match_mode: matchMode,
   }
 }
 
