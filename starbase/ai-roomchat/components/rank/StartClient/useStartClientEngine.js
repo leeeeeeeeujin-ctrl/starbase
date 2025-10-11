@@ -76,6 +76,7 @@ import {
   hydrateGameMatchData,
   setGameMatchSessionMeta,
 } from '../../../modules/rank/matchDataStore'
+import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync'
 import {
   START_SESSION_KEYS,
   readStartSessionValue,
@@ -1726,41 +1727,24 @@ export function useStartClientEngine(gameId, options = {}) {
 
     ;(async () => {
       try {
-        const { data, error } = await supabase
-          .from('rank_sessions')
-          .select('id, status, owner_id, game_id, created_at, updated_at')
-          .eq('game_id', gameId)
-          .eq('status', 'active')
-          .order('updated_at', { ascending: false })
-          .limit(5)
+        let sessionRow = await fetchLatestSessionRow(supabase, gameId, {
+          ownerId: normalizedHostOwnerId || null,
+        })
 
         if (cancelled) {
           return
         }
 
-        if (error) {
-          console.warn('[StartClient] 원격 세션 조회 실패:', error)
+        if (!sessionRow && normalizedHostOwnerId) {
+          sessionRow = await fetchLatestSessionRow(supabase, gameId)
+        }
+
+        if (cancelled) {
           return
         }
 
-        if (!Array.isArray(data) || data.length === 0) {
-          return
-        }
-
-        let candidate = null
-        if (normalizedHostOwnerId) {
-          candidate = data.find((row) => {
-            const owner = row?.owner_id !== null && row?.owner_id !== undefined ? String(row.owner_id).trim() : ''
-            return owner && owner === normalizedHostOwnerId
-          })
-        }
-
-        if (!candidate) {
-          candidate = data[0] || null
-        }
-
-        if (candidate) {
-          adoptRemoteSession(candidate)
+        if (sessionRow) {
+          adoptRemoteSession(sessionRow)
         }
       } catch (error) {
         if (!cancelled) {

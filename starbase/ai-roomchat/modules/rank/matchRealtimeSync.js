@@ -179,6 +179,7 @@ function formatSessionRow(row) {
     status: toTrimmed(row.status),
     owner_id: ownerId,
     ownerId,
+    created_at: row.created_at ?? row.createdAt ?? null,
     updated_at: row.updated_at ?? row.updatedAt ?? null,
     mode: toTrimmed(row.mode),
   }
@@ -194,17 +195,19 @@ function isRpcMissing(error) {
   return ['42883', '42P01', 'PGRST100', 'PGRST204', 'PGRST301'].includes(code)
 }
 
-export async function fetchLatestSessionRow(supabaseClient, gameId) {
+export async function fetchLatestSessionRow(supabaseClient, gameId, options = {}) {
   const trimmedGameId = toTrimmed(gameId)
   if (!trimmedGameId) {
     return null
   }
 
+  const ownerId = options.ownerId ? toTrimmed(options.ownerId) : null
+
   if (typeof supabaseClient?.rpc === 'function') {
     try {
       const { data: rpcData, error: rpcError } = await supabaseClient.rpc(
         'fetch_latest_rank_session',
-        { p_game_id: trimmedGameId },
+        ownerId ? { p_game_id: trimmedGameId, p_owner_id: ownerId } : { p_game_id: trimmedGameId },
       )
       if (!rpcError && rpcData) {
         const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
