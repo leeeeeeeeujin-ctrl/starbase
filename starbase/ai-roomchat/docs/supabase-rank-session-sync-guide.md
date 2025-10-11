@@ -6,6 +6,7 @@
 1. `rank_sessions` 테이블에 슬롯 버전 컬럼을 추가하고, 세션 정보를 확인하는 `validate_session` RPC를 교체한다.
 2. 매치 방 스테이징에서 사용할 슬롯 캐시 테이블과 잠금 RPC(`claim_rank_room_slot`)를 생성한다.
 3. 제한시간 투표·난입 보너스 등 메타 정보를 저장하는 `rank_session_meta` 테이블과 `upsert_match_session_meta`·`refresh_match_session_async_fill` RPC를 만든다.
+4. 메인 게임 진입 전 준비 신호를 집계하는 `register_match_ready_signal` RPC와 `rank_session_ready_signals` 테이블을 배포해 15초 준비 창을 실시간으로 동기화한다.
 4. 드롭인 보너스/매칭 타임라인을 저장하고 방송할 `rank_session_timeline_events` 테이블과 관련 정책을 생성한다.
 5. 방 상세 페이지가 호출하는 `stage-room-match`용 `sync_rank_match_roster` RPC를 배포해 슬롯 버전 충돌을 서버에서 차단한다.
 6. 게임 등록을 서버에서 일괄 처리할 `register_rank_game` RPC를 적용해 역할·슬롯 저장을 RPC 경유로 전환한다. 이 스니펫은 `rank_game_slots`의 `(game_id, slot_index)` 유니크 제약도 함께 보강해 중복 슬롯 업서트 에러를 방지한다.

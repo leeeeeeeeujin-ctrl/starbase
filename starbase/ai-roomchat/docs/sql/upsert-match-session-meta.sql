@@ -11,6 +11,7 @@ create table if not exists public.rank_session_meta (
   drop_in_bonus_seconds integer default 0,
   turn_state jsonb,
   async_fill_snapshot jsonb,
+  extras jsonb,
   updated_at timestamptz not null default now()
 );
 
@@ -21,6 +22,7 @@ alter table public.rank_session_meta
   add column if not exists drop_in_bonus_seconds integer,
   add column if not exists turn_state jsonb,
   add column if not exists async_fill_snapshot jsonb,
+  add column if not exists extras jsonb,
   add column if not exists updated_at timestamptz;
 
 alter table public.rank_session_meta
@@ -46,7 +48,8 @@ create or replace function public.upsert_match_session_meta(
   p_drop_in_bonus_seconds integer default 0,
   p_turn_state jsonb default null,
   p_async_fill_snapshot jsonb default null,
-  p_realtime_mode text default null
+  p_realtime_mode text default null,
+  p_extras jsonb default null
 )
 returns table (
   session_id uuid,
@@ -56,6 +59,7 @@ returns table (
   turn_state jsonb,
   async_fill_snapshot jsonb,
   realtime_mode text,
+  extras jsonb,
   updated_at timestamptz
 )
 language plpgsql
@@ -80,6 +84,7 @@ begin
     turn_state,
     async_fill_snapshot,
     realtime_mode,
+    extras,
     updated_at
   ) values (
     p_session_id,
@@ -89,6 +94,10 @@ begin
     p_turn_state,
     p_async_fill_snapshot,
     v_mode,
+    case
+      when p_extras is null then null
+      else p_extras
+    end,
     v_now
   )
   on conflict (session_id)
@@ -99,6 +108,7 @@ begin
     turn_state = excluded.turn_state,
     async_fill_snapshot = excluded.async_fill_snapshot,
     realtime_mode = excluded.realtime_mode,
+    extras = case when p_extras is null then m.extras else p_extras end,
     updated_at = v_now
   returning * into v_row;
 
@@ -110,6 +120,7 @@ begin
     v_row.turn_state,
     v_row.async_fill_snapshot,
     v_row.realtime_mode,
+    v_row.extras,
     v_row.updated_at;
 end;
 $$;
@@ -121,7 +132,8 @@ grant execute on function public.upsert_match_session_meta(
   integer,
   jsonb,
   jsonb,
-  text
+  text,
+  jsonb
 ) to service_role;
 
 grant execute on function public.upsert_match_session_meta(
@@ -131,5 +143,6 @@ grant execute on function public.upsert_match_session_meta(
   integer,
   jsonb,
   jsonb,
-  text
+  text,
+  jsonb
 ) to authenticated;

@@ -11,6 +11,10 @@ jest.mock('@/modules/rank/matchRealtimeSync', () => ({
   loadMatchFlowSnapshot: jest.fn(() => Promise.resolve(null)),
 }))
 
+jest.mock('@/lib/rank/readyCheckClient', () => ({
+  requestMatchReadySignal: jest.fn(() => Promise.resolve({ readyCheck: null })),
+}))
+
 import MatchReadyClient from '@/components/rank/MatchReadyClient'
 import {
   clearGameMatchData,
@@ -163,7 +167,9 @@ describe('MatchReadyClient store integration', () => {
   const gameId = 'match-ready-test'
 
   beforeEach(() => {
-    seedMatchData(gameId)
+    act(() => {
+      seedMatchData(gameId)
+    })
   })
 
   afterEach(() => {
@@ -210,5 +216,34 @@ describe('MatchReadyClient store integration', () => {
     const updatedText = extractText(renderer)
     expect(updatedText).toContain('현재 적용된 제한시간: 2분')
     expect(updatedText).toContain('2분 3표')
+  })
+
+  it('shows a waiting hint when the ready check is pending', async () => {
+    const now = Date.now()
+    await act(async () => {
+      setGameMatchSessionMeta(gameId, {
+        extras: {
+          readyCheck: {
+            status: 'pending',
+            windowSeconds: 15,
+            startedAtMs: now,
+            expiresAtMs: now + 15000,
+            readyOwnerIds: ['owner-1'],
+            missingOwnerIds: ['owner-2'],
+            readyCount: 1,
+            totalCount: 2,
+          },
+        },
+      })
+    })
+
+    let renderer
+    await act(async () => {
+      renderer = create(<MatchReadyClient gameId={gameId} />)
+      await Promise.resolve()
+    })
+
+    const text = extractText(renderer)
+    expect(text).toContain('다른 참가자를 기다리는 중')
   })
 })
