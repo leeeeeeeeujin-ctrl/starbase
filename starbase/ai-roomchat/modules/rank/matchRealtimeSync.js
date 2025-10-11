@@ -90,6 +90,10 @@ function deriveLatestSessionHint(payload = {}) {
     return payload.hint
   }
 
+  if (payload?.circuitBreaker?.hint) {
+    return payload.circuitBreaker.hint
+  }
+
   if (payload?.hint) {
     return payload.hint
   }
@@ -287,6 +291,7 @@ async function fetchSessionViaApi(gameId, ownerId) {
       supabaseError: data?.supabaseError,
       fallbackError: data?.fallbackError,
       via: data?.via,
+      circuitBreaker: data?.circuitBreaker || (data?.diagnostics?.circuitBreaker ?? null),
     }
 
     const diagnostics =

@@ -1,6 +1,74 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { withTableQuery } from '@/lib/supabaseTables'
 
+const CIRCUIT_COOLDOWN_MS = 5 * 60 * 1000
+const CIRCUIT_REASONS = {
+  ORDERED_SET: 'ordered_set_failure',
+  MISSING: 'missing_rpc',
+  PERMISSION: 'permission_error',
+  GENERIC: 'rpc_failure',
+}
+
+let rpcCircuit = {
+  disabledUntil: 0,
+  reason: null,
+  lastSupabaseError: null,
+  lastHint: null,
+}
+
+function now() {
+  return Date.now()
+}
+
+function isCircuitActive() {
+  return rpcCircuit.disabledUntil > now()
+}
+
+function remainingCircuitMs() {
+  if (!isCircuitActive()) return 0
+  return Math.max(0, rpcCircuit.disabledUntil - now())
+}
+
+function getCircuitDiagnostics() {
+  if (!isCircuitActive()) {
+    return {
+      active: false,
+      reason: null,
+      disabledUntil: null,
+      remainingMs: 0,
+      supabaseError: null,
+      hint: null,
+    }
+  }
+
+  return {
+    active: true,
+    reason: rpcCircuit.reason || CIRCUIT_REASONS.GENERIC,
+    disabledUntil: rpcCircuit.disabledUntil,
+    remainingMs: remainingCircuitMs(),
+    supabaseError: rpcCircuit.lastSupabaseError || null,
+    hint: rpcCircuit.lastHint || null,
+  }
+}
+
+function tripCircuit({ reason, supabaseError, hint }) {
+  rpcCircuit = {
+    disabledUntil: now() + CIRCUIT_COOLDOWN_MS,
+    reason: reason || CIRCUIT_REASONS.GENERIC,
+    lastSupabaseError: supabaseError || null,
+    lastHint: hint || null,
+  }
+}
+
+function resetCircuit() {
+  rpcCircuit = {
+    disabledUntil: 0,
+    reason: null,
+    lastSupabaseError: null,
+    lastHint: null,
+  }
+}
+
 function parseBody(req) {
   if (!req?.body) return {}
   if (typeof req.body === 'object') return req.body
@@ -172,6 +240,71 @@ async function fetchViaTable(gameId, ownerId) {
   }
 }
 
+function buildFallbackResponse({
+  fallback,
+  supabaseError = null,
+  fallbackError = null,
+  hint = null,
+  includeCircuit = false,
+}) {
+  const serializedSupabaseError = serializeSupabaseError(supabaseError)
+  const serializedFallbackError = serializeSupabaseError(fallbackError)
+
+  const responsePayload = {
+    session: fallback.row || null,
+    error: fallback.error ? 'rpc_failed' : fallback.via === 'table' ? null : 'rpc_failed',
+    supabaseError: serializedSupabaseError,
+    hint: hint || null,
+    via: fallback.via,
+  }
+
+  if (!responsePayload.error) {
+    delete responsePayload.error
+  }
+
+  if (!responsePayload.hint) {
+    delete responsePayload.hint
+  }
+
+  if (!responsePayload.supabaseError) {
+    delete responsePayload.supabaseError
+  }
+
+  if (fallback.table) {
+    responsePayload.table = fallback.table
+  }
+
+  if (serializedFallbackError) {
+    responsePayload.fallbackError = serializedFallbackError
+  }
+
+  if (fallback.orderedSetRecovered) {
+    responsePayload.orderedSetRecovered = true
+  }
+
+  const diagnostics = {
+    error: fallback.error ? 'rpc_failed' : responsePayload.error || null,
+    supabaseError: serializedSupabaseError,
+    fallbackError: serializedFallbackError,
+    hint: hint || null,
+    via: fallback.via,
+    table: fallback.table || null,
+    orderedSetRecovered: Boolean(fallback.orderedSetRecovered),
+  }
+
+  if (includeCircuit) {
+    diagnostics.circuitBreaker = getCircuitDiagnostics()
+  }
+
+  responsePayload.diagnostics = diagnostics
+
+  if (includeCircuit) {
+    responsePayload.circuitBreaker = getCircuitDiagnostics()
+  }
+
+  return responsePayload
+}
+
 function isMissingRpc(error) {
   if (!error) return false
   const code = String(error.code || '').toUpperCase()
@@ -255,6 +388,25 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'missing_game_id' })
   }
 
+  const ownerId = payload.p_owner_id || null
+
+  if (isCircuitActive()) {
+    const circuit = getCircuitDiagnostics()
+    const fallback = await fetchViaTable(payload.p_game_id, ownerId)
+    const fallbackError = fallback.error || fallback.orderedSetError || null
+    const responsePayload = buildFallbackResponse({
+      fallback,
+      supabaseError: circuit.supabaseError,
+      fallbackError,
+      hint: circuit.hint,
+      includeCircuit: true,
+    })
+
+    const statusCode = fallback.error ? 502 : 200
+
+    return res.status(statusCode).json(responsePayload)
+  }
+
   try {
     const { row, error } = await fetchViaRpc(payload)
     if (error) {
@@ -264,39 +416,29 @@ export default async function handler(req, res) {
         const fallback = await fetchViaTable(payload.p_game_id, payload.p_owner_id || null)
         const supabaseError = serializeSupabaseError(error)
         const fallbackError = fallback.error || fallback.orderedSetError || null
-        const serializedFallbackError = serializeSupabaseError(fallbackError)
         const hint = buildRpcHint(error)
-        const responsePayload = {
-          session: fallback.row || null,
-          error: 'rpc_failed',
+
+        tripCircuit({
+          reason: orderedSetError
+            ? CIRCUIT_REASONS.ORDERED_SET
+            : isMissingRpc(error)
+            ? CIRCUIT_REASONS.MISSING
+            : isPermissionError(error)
+            ? CIRCUIT_REASONS.PERMISSION
+            : CIRCUIT_REASONS.GENERIC,
           supabaseError,
           hint,
-          via: fallback.via,
-        }
+        })
 
-        if (fallback.table) {
-          responsePayload.table = fallback.table
-        }
-
-        if (serializedFallbackError) {
-          responsePayload.fallbackError = serializedFallbackError
-        }
-
-        if (fallback.orderedSetRecovered) {
-          responsePayload.orderedSetRecovered = true
-        }
-
-        responsePayload.diagnostics = {
-          error: 'rpc_failed',
+        const responsePayload = buildFallbackResponse({
+          fallback,
           supabaseError,
-          fallbackError: serializedFallbackError,
+          fallbackError,
           hint,
-          via: fallback.via,
-          table: fallback.table || null,
-          orderedSetRecovered: Boolean(fallback.orderedSetRecovered),
-        }
+          includeCircuit: true,
+        })
 
-        return res.status(200).json(responsePayload)
+        return res.status(fallback.error ? 502 : 200).json(responsePayload)
       }
 
       return res
@@ -308,7 +450,8 @@ export default async function handler(req, res) {
         })
     }
 
-    return res.status(200).json({ session: row || null })
+    resetCircuit()
+    return res.status(200).json({ session: row || null, circuitBreaker: getCircuitDiagnostics() })
   } catch (error) {
     return res.status(500).json({
       error: 'rpc_exception',
