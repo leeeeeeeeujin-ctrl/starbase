@@ -6,7 +6,7 @@
 create table if not exists public.rank_session_ready_signals (
   session_id uuid not null references public.rank_sessions(id) on delete cascade,
   owner_id uuid not null references auth.users(id) on delete cascade,
-  participant_id uuid references public.rank_participants(id) on delete set null,
+  participant_id uuid,
   game_id uuid references public.rank_games(id) on delete set null,
   match_instance_id uuid,
   pressed_at timestamptz not null default now(),
@@ -18,10 +18,22 @@ create table if not exists public.rank_session_ready_signals (
 
 alter table public.rank_session_ready_signals enable row level security;
 
-create policy if not exists rank_session_ready_signals_service_role on public.rank_session_ready_signals
-  for all
-  using (auth.role() = 'service_role')
-  with check (auth.role() = 'service_role');
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies p
+    where p.schemaname = 'public'
+      and p.tablename = 'rank_session_ready_signals'
+      and p.policyname = 'rank_session_ready_signals_service_role'
+  ) then
+    execute $$create policy rank_session_ready_signals_service_role on public.rank_session_ready_signals
+      for all
+      using (auth.role() = 'service_role')
+      with check (auth.role() = 'service_role')$$;
+  end if;
+end;
+$$;
 
 create index if not exists rank_session_ready_signals_session_idx
   on public.rank_session_ready_signals (session_id, expires_at desc);
@@ -33,7 +45,7 @@ create or replace function public.register_match_ready_signal(
   p_owner_id uuid,
   p_game_id uuid default null,
   p_match_instance_id uuid default null,
-  p_participant_id uuid default null,
+  p_participant_id public.rank_participants.id%TYPE default null,
   p_window_seconds integer default 15
 )
 returns jsonb
@@ -174,7 +186,7 @@ begin
     select coalesce(array_agg(value), array[]::uuid[])
       into v_missing_ids
     from unnest(v_required_ids) as value
-    where value is distinct from all (coalesce(v_ready_ids, array[]::uuid[]));
+    where not (value = any (coalesce(v_ready_ids, array[]::uuid[])));
   else
     v_missing_ids := array[]::uuid[];
   end if;
@@ -236,6 +248,46 @@ begin
   end if;
 
   return v_result;
+end;
+$$;
+
+do $$
+declare
+  v_participant_type text;
+  v_constraint_name text := 'rank_session_ready_signals_participant_id_fkey';
+begin
+  select data_type
+    into v_participant_type
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name = 'rank_participants'
+    and column_name = 'id';
+
+  if v_participant_type = 'bigint' then
+    begin
+      execute 'alter table public.rank_session_ready_signals alter column participant_id type bigint using participant_id::bigint';
+    exception when undefined_column then
+      null;
+    end;
+  elsif v_participant_type = 'uuid' then
+    begin
+      execute 'alter table public.rank_session_ready_signals alter column participant_id type uuid using participant_id::uuid';
+    exception when undefined_column then
+      null;
+    end;
+  end if;
+
+  if v_participant_type in ('bigint', 'uuid') and not exists (
+    select 1
+    from pg_constraint c
+    join pg_class t on t.oid = c.conrelid
+    join pg_namespace n on n.oid = t.relnamespace
+    where n.nspname = 'public'
+      and t.relname = 'rank_session_ready_signals'
+      and c.conname = v_constraint_name
+  ) then
+    execute 'alter table public.rank_session_ready_signals add constraint ' || quote_ident(v_constraint_name) || ' foreign key (participant_id) references public.rank_participants(id) on delete set null';
+  end if;
 end;
 $$;
 
