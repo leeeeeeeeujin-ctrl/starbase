@@ -169,6 +169,104 @@ function formatRoom(row) {
   }
 }
 
+function formatSessionRow(row) {
+  if (!row || typeof row !== 'object') return null
+  const id = toOptionalTrimmed(row.id)
+  if (!id) return null
+  const ownerId = toOptionalTrimmed(row.owner_id ?? row.ownerId)
+  return {
+    id,
+    status: toTrimmed(row.status),
+    owner_id: ownerId,
+    ownerId,
+    updated_at: row.updated_at ?? row.updatedAt ?? null,
+    mode: toTrimmed(row.mode),
+  }
+}
+
+function isRpcMissing(error) {
+  if (!error) return false
+  const code = String(error.code || '').toUpperCase()
+  if (!code || code === 'NULL') {
+    const merged = `${error.message || ''} ${error.details || ''}`.toLowerCase()
+    return merged.includes('not exist') || merged.includes('missing')
+  }
+  return ['42883', '42P01', 'PGRST100', 'PGRST204', 'PGRST301'].includes(code)
+}
+
+function isBadRequest(error) {
+  if (!error) return false
+  const code = String(error.code || '').toUpperCase()
+  if (code === '400' || code === 'PGRST100') return true
+  const merged = `${error.message || ''} ${error.details || ''}`.toLowerCase()
+  return merged.includes('syntax') || merged.includes('bad request')
+}
+
+export async function fetchLatestSessionRow(supabaseClient, gameId) {
+  const trimmedGameId = toTrimmed(gameId)
+  if (!trimmedGameId) {
+    return null
+  }
+
+  if (typeof supabaseClient?.rpc === 'function') {
+    try {
+      const { data: rpcData, error: rpcError } = await supabaseClient.rpc(
+        'fetch_latest_rank_session',
+        { p_game_id: trimmedGameId },
+      )
+      if (!rpcError && rpcData) {
+        const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
+        const formatted = formatSessionRow(payload)
+        if (formatted) {
+          return formatted
+        }
+      }
+      if (rpcError && !isRpcMissing(rpcError)) {
+        console.warn('[matchRealtimeSync] fetch_latest_rank_session RPC failed:', rpcError)
+      }
+    } catch (rpcException) {
+      console.warn('[matchRealtimeSync] fetch_latest_rank_session RPC threw:', rpcException)
+    }
+  }
+
+  const statuses = ['active', 'preparing', 'ready']
+  const selectColumns = 'id, status, owner_id, updated_at, mode'
+
+  const applyBaseFilters = (builder) =>
+    builder.eq('game_id', trimmedGameId).order('updated_at', { ascending: false }).limit(1).maybeSingle()
+
+  const firstAttempt = await withTable(supabaseClient, 'rank_sessions', (table) =>
+    applyBaseFilters(
+      supabaseClient.from(table).select(selectColumns).in('status', statuses),
+    ),
+  )
+
+  if (!firstAttempt?.error) {
+    return formatSessionRow(firstAttempt?.data)
+  }
+
+  if (!isBadRequest(firstAttempt.error)) {
+    console.warn('[matchRealtimeSync] rank_sessions query failed:', firstAttempt.error)
+    return null
+  }
+
+  const fallbackAttempt = await withTable(supabaseClient, 'rank_sessions', (table) =>
+    applyBaseFilters(
+      supabaseClient
+        .from(table)
+        .select(selectColumns)
+        .or(statuses.map((status) => `status.eq.${status}`).join(',')),
+    ),
+  )
+
+  if (fallbackAttempt?.error) {
+    console.warn('[matchRealtimeSync] rank_sessions fallback query failed:', fallbackAttempt.error)
+    return null
+  }
+
+  return formatSessionRow(fallbackAttempt?.data)
+}
+
 function mapSessionMeta(row) {
   if (!row || typeof row !== 'object') return null
   const payload = {}
@@ -380,23 +478,7 @@ export async function loadMatchFlowSnapshot(supabaseClient, gameId) {
 
   const formattedRoom = formatRoom(roomRow)
 
-  let sessionRow = null
-  const { data: sessionRows, error: sessionError } = await withTable(
-    supabaseClient,
-    'rank_sessions',
-    (table) =>
-      supabaseClient
-        .from(table)
-        .select('id, status, owner_id, updated_at, mode')
-        .eq('game_id', trimmedGameId)
-        .in('status', ['active', 'preparing', 'ready'])
-        .order('updated_at', { ascending: false })
-        .limit(1),
-  )
-
-  if (!sessionError && Array.isArray(sessionRows) && sessionRows.length) {
-    sessionRow = sessionRows[0]
-  }
+  const sessionRow = await fetchLatestSessionRow(supabaseClient, trimmedGameId)
 
   let sessionMeta = null
   if (sessionRow?.id) {
