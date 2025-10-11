@@ -40,7 +40,7 @@ describe('fetchLatestSessionRow', () => {
     expect(mockWithTable).not.toHaveBeenCalled()
   })
 
-  it('falls back to the table query when the RPC is unavailable', async () => {
+  it('returns null when the RPC is unavailable to avoid legacy table queries', async () => {
     const supabaseClient = {
       rpc: jest.fn(() =>
         Promise.resolve({
@@ -50,34 +50,9 @@ describe('fetchLatestSessionRow', () => {
       ),
     }
 
-    mockWithTable
-      .mockImplementationOnce(async () => ({
-        data: null,
-        error: { code: 'PGRST100', message: 'Bad request' },
-        table: 'rank_sessions',
-      }))
-      .mockImplementationOnce(async () => ({
-        data: {
-          id: 'session-2',
-          status: 'ready',
-          owner_id: 'owner-9',
-          updated_at: '2025-02-02T00:00:00Z',
-          mode: 'pulse',
-        },
-        error: null,
-        table: 'rank_sessions',
-      }))
-
     const result = await fetchLatestSessionRow(supabaseClient, 'game-2')
 
-    expect(result).toEqual({
-      id: 'session-2',
-      status: 'ready',
-      owner_id: 'owner-9',
-      ownerId: 'owner-9',
-      updated_at: '2025-02-02T00:00:00Z',
-      mode: 'pulse',
-    })
-    expect(mockWithTable).toHaveBeenCalledTimes(2)
+    expect(result).toBeNull()
+    expect(mockWithTable).not.toHaveBeenCalled()
   })
 })

@@ -194,14 +194,6 @@ function isRpcMissing(error) {
   return ['42883', '42P01', 'PGRST100', 'PGRST204', 'PGRST301'].includes(code)
 }
 
-function isBadRequest(error) {
-  if (!error) return false
-  const code = String(error.code || '').toUpperCase()
-  if (code === '400' || code === 'PGRST100') return true
-  const merged = `${error.message || ''} ${error.details || ''}`.toLowerCase()
-  return merged.includes('syntax') || merged.includes('bad request')
-}
-
 export async function fetchLatestSessionRow(supabaseClient, gameId) {
   const trimmedGameId = toTrimmed(gameId)
   if (!trimmedGameId) {
@@ -229,42 +221,10 @@ export async function fetchLatestSessionRow(supabaseClient, gameId) {
     }
   }
 
-  const statuses = ['active', 'preparing', 'ready']
-  const selectColumns = 'id, status, owner_id, updated_at, mode'
-
-  const applyBaseFilters = (builder) =>
-    builder.eq('game_id', trimmedGameId).order('updated_at', { ascending: false }).limit(1).maybeSingle()
-
-  const firstAttempt = await withTable(supabaseClient, 'rank_sessions', (table) =>
-    applyBaseFilters(
-      supabaseClient.from(table).select(selectColumns).in('status', statuses),
-    ),
+  console.warn(
+    '[matchRealtimeSync] fetch_latest_rank_session RPC unavailable; returning null to avoid legacy rank_sessions query',
   )
-
-  if (!firstAttempt?.error) {
-    return formatSessionRow(firstAttempt?.data)
-  }
-
-  if (!isBadRequest(firstAttempt.error)) {
-    console.warn('[matchRealtimeSync] rank_sessions query failed:', firstAttempt.error)
-    return null
-  }
-
-  const fallbackAttempt = await withTable(supabaseClient, 'rank_sessions', (table) =>
-    applyBaseFilters(
-      supabaseClient
-        .from(table)
-        .select(selectColumns)
-        .or(statuses.map((status) => `status.eq.${status}`).join(',')),
-    ),
-  )
-
-  if (fallbackAttempt?.error) {
-    console.warn('[matchRealtimeSync] rank_sessions fallback query failed:', fallbackAttempt.error)
-    return null
-  }
-
-  return formatSessionRow(fallbackAttempt?.data)
+  return null
 }
 
 function mapSessionMeta(row) {
