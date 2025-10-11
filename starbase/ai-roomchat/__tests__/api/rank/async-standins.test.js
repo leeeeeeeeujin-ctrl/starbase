@@ -17,6 +17,10 @@ describe('POST /api/rank/async-standins', () => {
     jest.clearAllMocks()
   })
 
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
   it('returns 400 when the payload is invalid', async () => {
     const rpcMock = jest.fn()
     registerSupabaseAdminMock(jest.fn(), rpcMock)
@@ -53,6 +57,11 @@ describe('POST /api/rank/async-standins', () => {
   })
 
   it('assigns stand-in candidates across multiple seats', async () => {
+    jest
+      .spyOn(Math, 'random')
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.9)
+
     const rpcMock = jest
       .fn()
       .mockResolvedValueOnce({
@@ -155,6 +164,9 @@ describe('POST /api/rank/async-standins', () => {
         p_reference_score: 1190,
       }),
     )
+    expect(res.body.diagnostics).toMatchObject({
+      randomizedAssignments: 0,
+    })
   })
 
   it('falls back to any role when role-specific results are empty', async () => {
@@ -235,5 +247,77 @@ describe('POST /api/rank/async-standins', () => {
     rpcMock.mock.calls.forEach(([, params]) => {
       expect(params.p_role).toBeNull()
     })
+  })
+
+  it('selects a random candidate within tolerance pool', async () => {
+    jest
+      .spyOn(Math, 'random')
+      .mockReturnValueOnce(0.8)
+
+    const rpcMock = jest.fn().mockResolvedValue({
+      data: [
+        { owner_id: 'candidate-1', score_gap: 5, rating_gap: 10 },
+        { owner_id: 'candidate-2', score_gap: 7, rating_gap: 12 },
+        { owner_id: 'candidate-3', score_gap: 9, rating_gap: 14 },
+      ],
+      error: null,
+    })
+
+    registerSupabaseAdminMock(jest.fn(), rpcMock)
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      body: {
+        game_id: 'game-async',
+        seat_requests: [{ slotIndex: 3, role: '전략가', score: 1200, rating: 1500 }],
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.queue).toHaveLength(1)
+    expect(res.body.queue[0]).toMatchObject({ ownerId: 'candidate-3' })
+    expect(res.body.diagnostics.randomizedAssignments).toBe(1)
+  })
+
+  it('widens score tolerance before falling back to generic role', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.5)
+
+    const rpcMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        data: [
+          { owner_id: 'tight-role', score_gap: 240, rating_gap: 300 },
+        ],
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [
+          { owner_id: 'fallback-role', score_gap: 20, rating_gap: 25 },
+        ],
+        error: null,
+      })
+
+    registerSupabaseAdminMock(jest.fn(), rpcMock)
+
+    const handler = loadHandler()
+    const req = createApiRequest({
+      method: 'POST',
+      body: {
+        game_id: 'game-async',
+        seat_requests: [{ slotIndex: 7, role: '전략가', score: 1180 }],
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.queue[0]).toMatchObject({ ownerId: 'tight-role' })
+    expect(res.body.diagnostics.roleFallbacks).toBe(0)
+    expect(res.body.diagnostics.scoreToleranceExpansions).toBeGreaterThan(0)
   })
 })

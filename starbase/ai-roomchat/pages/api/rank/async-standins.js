@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import {
   formatCandidate,
   normalizeExcludeOwnerIds,
+  pickRandomCandidateForSeat,
   sanitizeSeatRequests,
   toNumber,
   toOptionalUuid,
@@ -47,6 +48,9 @@ export default async function handler(req, res) {
     rpcCalls: 0,
     roomId: roomId || null,
     roleFallbacks: 0,
+    scoreToleranceExpansions: 0,
+    scoreToleranceMax: 0,
+    randomizedAssignments: 0,
   }
 
   async function executeStandinRpc(params) {
@@ -98,41 +102,63 @@ export default async function handler(req, res) {
     }
 
     let candidates = primaryResult.data
-    if (!candidates.length) {
-      if (params.p_role) {
-        const fallbackParams = { ...params, p_role: null }
-        const fallbackResult = await executeStandinRpc(fallbackParams)
-        if (fallbackResult.error) {
-          return res.status(500).json(fallbackResult.error)
-        }
-        candidates = fallbackResult.data
-        if (candidates.length) {
-          diagnostics.roleFallbacks += 1
-        }
+
+    let selection = pickRandomCandidateForSeat({
+      candidates,
+      seat,
+      excludedOwners,
+    })
+
+    if (!selection && params.p_role) {
+      const fallbackParams = { ...params, p_role: null }
+      const fallbackResult = await executeStandinRpc(fallbackParams)
+      if (fallbackResult.error) {
+        return res.status(500).json(fallbackResult.error)
       }
-      if (!candidates.length) {
-        continue
+      candidates = fallbackResult.data
+      if (candidates.length) {
+        diagnostics.roleFallbacks += 1
+        selection = pickRandomCandidateForSeat({
+          candidates,
+          seat,
+          excludedOwners,
+        })
       }
     }
 
-    const chosen = candidates.find((row) => {
-      const ownerId = toOptionalUuid(row?.owner_id)
-      if (!ownerId) return false
-      return !excludedOwners.has(ownerId)
-    })
-
-    if (!chosen) {
+    if (!selection) {
       continue
     }
 
-    const normalized = formatCandidate(chosen)
+    const normalized = formatCandidate(selection.row)
     if (!normalized?.ownerId) {
       continue
     }
 
     excludedOwners.add(normalized.ownerId)
+    if (selection.tolerance !== null && selection.tolerance !== undefined) {
+      diagnostics.scoreToleranceMax = Math.max(
+        diagnostics.scoreToleranceMax,
+        selection.tolerance,
+      )
+    }
+    if (selection.iteration > 0) {
+      diagnostics.scoreToleranceExpansions += selection.iteration
+    }
+    if (selection.poolSize > 1) {
+      diagnostics.randomizedAssignments += 1
+    }
+
     queue.push(normalized)
-    assignments.push({ slotIndex: seat.slotIndex, candidate: normalized })
+    assignments.push({
+      slotIndex: seat.slotIndex,
+      candidate: normalized,
+      selection: {
+        tolerance: selection.tolerance,
+        iteration: selection.iteration,
+        poolSize: selection.poolSize,
+      },
+    })
   }
 
   return res.status(200).json({

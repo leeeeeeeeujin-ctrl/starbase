@@ -1,6 +1,9 @@
 import {
   buildDebugSeatExample,
   createPlaceholderCandidate,
+  DEFAULT_SCORE_TOLERANCE_STEPS,
+  deriveGapForSeat,
+  pickRandomCandidateForSeat,
   parseSeatRequestsInput,
   sanitizeSeatRequests,
   toSeatRequestsPayload,
@@ -69,5 +72,58 @@ describe('asyncStandinUtils', () => {
     expect(candidate.ownerId).toHaveLength(36)
     expect(candidate.placeholderOwnerId).toBe(candidate.ownerId)
     expect(candidate.matchSource).toBe('async_standin_placeholder')
+  })
+
+  test('deriveGapForSeat prefers score gap when seat has score reference', () => {
+    const gap = deriveGapForSeat(
+      { score_gap: 45, rating_gap: 12 },
+      { score: 1500, rating: 2000 },
+    )
+
+    expect(gap).toBe(45)
+  })
+
+  test('deriveGapForSeat falls back to rating gap', () => {
+    const gap = deriveGapForSeat(
+      { rating_gap: 30 },
+      { rating: 2100 },
+    )
+
+    expect(gap).toBe(30)
+  })
+
+  test('pickRandomCandidateForSeat widens tolerance when needed', () => {
+    const candidates = [
+      { owner_id: 'a', score_gap: 200 },
+      { owner_id: 'b', score_gap: 90 },
+    ]
+
+    const randomSpy = jest.fn(() => 0.6)
+    const result = pickRandomCandidateForSeat({
+      candidates,
+      seat: { score: 1500 },
+      excludedOwners: new Set(),
+      toleranceSteps: DEFAULT_SCORE_TOLERANCE_STEPS,
+      randomFn: randomSpy,
+    })
+
+    expect(result.ownerId).toBe('b')
+    expect(result.tolerance).toBeGreaterThanOrEqual(80)
+    expect(result.iteration).toBeGreaterThan(0)
+    expect(result.poolSize).toBe(1)
+  })
+
+  test('pickRandomCandidateForSeat returns null when candidates are all excluded', () => {
+    const result = pickRandomCandidateForSeat({
+      candidates: [
+        { owner_id: 'a', score_gap: 10 },
+        { owner_id: 'b', score_gap: 20 },
+      ],
+      seat: { score: 1500 },
+      excludedOwners: new Set(['a', 'b']),
+      randomFn: () => 0.4,
+    })
+
+    expect(result).toBeNull()
   })
 })

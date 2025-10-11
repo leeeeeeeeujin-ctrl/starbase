@@ -10,6 +10,8 @@ const GENERIC_ROLE_KEYS = new Set([
 
 const STANDIN_HERO_NAME = 'AI 자동 대역'
 
+export const DEFAULT_SCORE_TOLERANCE_STEPS = [25, 50, 80, 120, 160, 220, 300, 380]
+
 export function toTrimmed(value) {
   if (value === null || value === undefined) return ''
   return String(value).trim()
@@ -231,4 +233,113 @@ export function isGenericRole(role) {
 
 export function createEmptySeatRow() {
   return { slotIndex: '', role: '', score: '', rating: '', excludeOwnerIds: '' }
+}
+
+export function deriveGapForSeat(candidate, seat = {}) {
+  if (!candidate || typeof candidate !== 'object') return null
+
+  const scoreGap = toNumber(candidate.score_gap ?? candidate.scoreGap)
+  const ratingGap = toNumber(candidate.rating_gap ?? candidate.ratingGap)
+  const hasScoreReference = seat?.score !== null && seat?.score !== undefined
+  const hasRatingReference = seat?.rating !== null && seat?.rating !== undefined
+
+  if (hasScoreReference && scoreGap !== null) {
+    return Math.abs(scoreGap)
+  }
+
+  if (hasRatingReference && ratingGap !== null) {
+    return Math.abs(ratingGap)
+  }
+
+  if (scoreGap !== null) {
+    return Math.abs(scoreGap)
+  }
+
+  if (ratingGap !== null) {
+    return Math.abs(ratingGap)
+  }
+
+  return null
+}
+
+function clampRandom(randomValue) {
+  if (!Number.isFinite(randomValue) || randomValue < 0) {
+    return 0
+  }
+  if (randomValue >= 1) {
+    return 0.999999
+  }
+  return randomValue
+}
+
+export function pickRandomCandidateForSeat({
+  candidates,
+  seat,
+  excludedOwners,
+  toleranceSteps = DEFAULT_SCORE_TOLERANCE_STEPS,
+  randomFn = Math.random,
+}) {
+  const owners = excludedOwners instanceof Set ? excludedOwners : new Set(excludedOwners || [])
+
+  const normalizedCandidates = (Array.isArray(candidates) ? candidates : [])
+    .map((row) => {
+      const ownerId = toOptionalUuid(row?.owner_id ?? row?.ownerId)
+      if (!ownerId || owners.has(ownerId)) {
+        return null
+      }
+
+      const gap = deriveGapForSeat(row, seat)
+      return {
+        row,
+        ownerId,
+        gap,
+      }
+    })
+    .filter(Boolean)
+
+  if (!normalizedCandidates.length) {
+    return null
+  }
+
+  const hasScoreReference = seat && seat.score !== null && seat.score !== undefined
+  const hasRatingReference = seat && seat.rating !== null && seat.rating !== undefined
+  const toleranceList = hasScoreReference || hasRatingReference ? toleranceSteps : []
+
+  for (let index = 0; index < toleranceList.length; index += 1) {
+    const tolerance = toleranceList[index]
+    const pool = normalizedCandidates.filter((candidate) => {
+      if (candidate.gap === null || candidate.gap === undefined) return true
+      return candidate.gap <= tolerance
+    })
+
+    if (!pool.length) {
+      continue
+    }
+
+    const randomValue = typeof randomFn === 'function' ? randomFn() : Math.random()
+    const clamped = clampRandom(randomValue)
+    const randomIndex = Math.floor(clamped * pool.length)
+    return {
+      ...pool[randomIndex],
+      tolerance,
+      iteration: index,
+      poolSize: pool.length,
+    }
+  }
+
+  const fallbackPool = normalizedCandidates
+  if (!fallbackPool.length) {
+    return null
+  }
+
+  const randomValue = typeof randomFn === 'function' ? randomFn() : Math.random()
+  const clamped = clampRandom(randomValue)
+  const randomIndex = Math.floor(clamped * fallbackPool.length)
+
+  return {
+    ...fallbackPool[randomIndex],
+    tolerance: null,
+    iteration: toleranceList.length,
+    poolSize: fallbackPool.length,
+  }
 }
