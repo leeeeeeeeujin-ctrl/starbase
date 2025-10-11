@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import clsx from 'clsx'
 
 import {
   addDebugEvent,
@@ -215,7 +214,7 @@ export default function DebugOverlay() {
                   <span>{event.level?.toUpperCase?.() || 'INFO'}</span>
                   {event.source ? <span>{event.source}</span> : null}
                 </div>
-                <div className={clsx(styles.eventMessage)}>{event.message || '(no message)'}</div>
+                <div className={styles.eventMessage}>{event.message || '(no message)'}</div>
                 {event.serializedDetails ? (
                   <pre className={styles.eventDetails}>{event.serializedDetails}</pre>
                 ) : null}
