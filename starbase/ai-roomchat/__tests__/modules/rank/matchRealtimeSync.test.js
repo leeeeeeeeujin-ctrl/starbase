@@ -671,6 +671,296 @@ describe('loadMatchFlowSnapshot', () => {
     })
   })
 
+  it('prefers stand-in candidates that match the pending seat role', async () => {
+    const rpcPayload = {
+      roster: [
+        {
+          id: 'roster-host',
+          match_instance_id: 'match-async-role',
+          room_id: 'room-async-role',
+          game_id: 'game-async-role',
+          slot_id: 'slot-0',
+          slot_index: 0,
+          role: '전략가',
+          owner_id: 'host-owner',
+          hero_id: 'hero-host',
+          hero_name: '호스트',
+          ready: true,
+          joined_at: '2025-02-01T00:00:00Z',
+          score: 1800,
+          rating: 1480,
+          slot_template_version: 4,
+          slot_template_source: 'room-stage',
+          slot_template_updated_at: '2025-02-01T00:00:00Z',
+          created_at: '2025-02-01T00:00:00Z',
+          updated_at: '2025-02-01T00:00:00Z',
+        },
+        {
+          id: 'roster-pending',
+          match_instance_id: 'match-async-role',
+          room_id: 'room-async-role',
+          game_id: 'game-async-role',
+          slot_id: 'slot-1',
+          slot_index: 1,
+          role: '수호자',
+          owner_id: null,
+          hero_id: null,
+          hero_name: null,
+          ready: false,
+          joined_at: null,
+          score: 1725,
+          rating: 1520,
+          slot_template_version: 4,
+          slot_template_source: 'room-stage',
+          slot_template_updated_at: '2025-02-01T00:00:00Z',
+          created_at: '2025-02-01T00:00:00Z',
+          updated_at: '2025-02-01T00:00:00Z',
+        },
+      ],
+      room: {
+        id: 'room-async-role',
+        owner_id: 'host-owner',
+        code: 'ASYNC-ROLE',
+        status: 'ready',
+        mode: 'standard',
+        realtime_mode: 'off',
+        host_role_limit: 2,
+        blind_mode: false,
+        score_window: 30,
+        updated_at: '2025-02-01T00:00:00Z',
+        game_id: 'game-async-role',
+      },
+      session: {
+        id: 'session-async-role',
+        status: 'active',
+        owner_id: 'host-owner',
+        mode: 'standard',
+        match_mode: 'standard',
+        created_at: '2025-02-01T00:00:00Z',
+        updated_at: '2025-02-01T00:05:00Z',
+      },
+      session_meta: {
+        session_id: 'session-async-role',
+        async_fill_snapshot: {
+          mode: 'off',
+          hostOwnerId: 'host-owner',
+          hostRole: '전략가',
+          seatLimit: { allowed: 2, total: 2 },
+          seatIndexes: [0, 1],
+          pendingSeatIndexes: [1],
+          assigned: [
+            {
+              slotIndex: 0,
+              slotId: 'slot-0',
+              ownerId: 'host-owner',
+              heroId: 'hero-host',
+              heroName: '호스트',
+              ready: true,
+              joinedAt: '2025-02-01T00:00:00Z',
+            },
+          ],
+          fillQueue: [
+            {
+              ownerId: 'queue-mismatch',
+              heroId: 'hero-mismatch',
+              heroName: '역할 불일치',
+              role: '지원가',
+              score: 1900,
+              rating: 1700,
+              status: 'waiting',
+              joinedAt: '2025-02-01T00:01:00Z',
+            },
+            {
+              ownerId: 'queue-match',
+              heroId: 'hero-standin',
+              heroName: '대역 수호자',
+              role: '수호자',
+              score: 1720,
+              rating: 1510,
+              status: 'waiting',
+              joinedAt: '2025-02-01T00:02:00Z',
+            },
+          ],
+          poolSize: 2,
+          generatedAt: 1700000500000,
+        },
+        updated_at: '2025-02-01T00:05:00Z',
+      },
+      slot_template_version: 4,
+      slot_template_source: 'room-stage',
+      slot_template_updated_at: '2025-02-01T00:00:00Z',
+    }
+
+    const supabaseClient = {
+      rpc: jest.fn((fnName) => {
+        if (fnName === 'fetch_rank_match_ready_snapshot') {
+          return Promise.resolve({ data: rpcPayload, error: null })
+        }
+        return Promise.resolve({ data: null, error: null })
+      }),
+    }
+
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async-role')
+
+    const standinSeat = snapshot.roster.find((entry) => entry.slotIndex === 1)
+    expect(standinSeat).toMatchObject({ ownerId: 'queue-match', standin: true, role: '수호자' })
+    expect(standinSeat.rating).toBe(1510)
+
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(1)
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue?.[0]).toMatchObject({ ownerId: 'queue-mismatch' })
+    const assigned = snapshot.sessionMeta?.asyncFill?.assigned || []
+    expect(assigned).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ownerId: 'queue-match', slotIndex: 1, role: '수호자', rating: 1510 }),
+      ]),
+    )
+  })
+
+  it('chooses the closest rating stand-in when multiple candidates share the role', async () => {
+    const rpcPayload = {
+      roster: [
+        {
+          id: 'roster-host',
+          match_instance_id: 'match-async-rating',
+          room_id: 'room-async-rating',
+          game_id: 'game-async-rating',
+          slot_id: 'slot-0',
+          slot_index: 0,
+          role: '전략가',
+          owner_id: 'host-owner',
+          hero_id: 'hero-host',
+          hero_name: '호스트',
+          ready: true,
+          joined_at: '2025-02-01T00:00:00Z',
+          score: 1820,
+          rating: 1490,
+          slot_template_version: 5,
+          slot_template_source: 'room-stage',
+          slot_template_updated_at: '2025-02-01T00:00:00Z',
+          created_at: '2025-02-01T00:00:00Z',
+          updated_at: '2025-02-01T00:00:00Z',
+        },
+        {
+          id: 'roster-pending',
+          match_instance_id: 'match-async-rating',
+          room_id: 'room-async-rating',
+          game_id: 'game-async-rating',
+          slot_id: 'slot-1',
+          slot_index: 1,
+          role: '수호자',
+          owner_id: null,
+          hero_id: null,
+          hero_name: null,
+          ready: false,
+          joined_at: null,
+          score: 1750,
+          rating: 1500,
+          slot_template_version: 5,
+          slot_template_source: 'room-stage',
+          slot_template_updated_at: '2025-02-01T00:00:00Z',
+          created_at: '2025-02-01T00:00:00Z',
+          updated_at: '2025-02-01T00:00:00Z',
+        },
+      ],
+      room: {
+        id: 'room-async-rating',
+        owner_id: 'host-owner',
+        code: 'ASYNC-RATING',
+        status: 'ready',
+        mode: 'standard',
+        realtime_mode: 'off',
+        host_role_limit: 2,
+        blind_mode: false,
+        score_window: 30,
+        updated_at: '2025-02-01T00:00:00Z',
+        game_id: 'game-async-rating',
+      },
+      session: {
+        id: 'session-async-rating',
+        status: 'active',
+        owner_id: 'host-owner',
+        mode: 'standard',
+        match_mode: 'standard',
+        created_at: '2025-02-01T00:00:00Z',
+        updated_at: '2025-02-01T00:05:00Z',
+      },
+      session_meta: {
+        session_id: 'session-async-rating',
+        async_fill_snapshot: {
+          mode: 'off',
+          hostOwnerId: 'host-owner',
+          hostRole: '전략가',
+          seatLimit: { allowed: 2, total: 2 },
+          seatIndexes: [0, 1],
+          pendingSeatIndexes: [1],
+          assigned: [
+            {
+              slotIndex: 0,
+              slotId: 'slot-0',
+              ownerId: 'host-owner',
+              heroId: 'hero-host',
+              heroName: '호스트',
+              ready: true,
+              joinedAt: '2025-02-01T00:00:00Z',
+            },
+          ],
+          fillQueue: [
+            {
+              ownerId: 'queue-distant',
+              heroId: 'hero-distant',
+              heroName: '멀리 있는 수호자',
+              role: '수호자',
+              score: 2100,
+              rating: 1800,
+              status: 'waiting',
+              joinedAt: '2025-02-01T00:01:00Z',
+            },
+            {
+              ownerId: 'queue-close',
+              heroId: 'hero-close',
+              heroName: '근접 수호자',
+              role: '수호자',
+              score: 1760,
+              rating: 1515,
+              status: 'waiting',
+              joinedAt: '2025-02-01T00:02:00Z',
+            },
+          ],
+          poolSize: 2,
+          generatedAt: 1700000600000,
+        },
+        updated_at: '2025-02-01T00:05:00Z',
+      },
+      slot_template_version: 5,
+      slot_template_source: 'room-stage',
+      slot_template_updated_at: '2025-02-01T00:00:00Z',
+    }
+
+    const supabaseClient = {
+      rpc: jest.fn((fnName) => {
+        if (fnName === 'fetch_rank_match_ready_snapshot') {
+          return Promise.resolve({ data: rpcPayload, error: null })
+        }
+        return Promise.resolve({ data: null, error: null })
+      }),
+    }
+
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async-rating')
+
+    const standinSeat = snapshot.roster.find((entry) => entry.slotIndex === 1)
+    expect(standinSeat).toMatchObject({ ownerId: 'queue-close', standin: true })
+    expect(standinSeat.rating).toBe(1515)
+
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(1)
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue?.[0]).toMatchObject({ ownerId: 'queue-distant' })
+    const assigned = snapshot.sessionMeta?.asyncFill?.assigned || []
+    expect(assigned).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ownerId: 'queue-close', slotIndex: 1, rating: 1515 }),
+      ]),
+    )
+  })
+
   it('raises a latest-session hint when the RPC is unavailable', async () => {
     mockWithTable.mockImplementation(() => Promise.resolve({ data: null, error: null }))
 

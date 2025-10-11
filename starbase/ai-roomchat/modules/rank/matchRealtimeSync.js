@@ -25,6 +25,11 @@ function toOptionalTrimmed(value) {
   return trimmed ? trimmed : null
 }
 
+function toRoleKey(value) {
+  const trimmed = toTrimmed(value)
+  return trimmed ? trimmed.toLowerCase() : ''
+}
+
 function toBoolean(value) {
   if (value === true || value === false) return value
   if (value === null || value === undefined) return false
@@ -314,6 +319,55 @@ function normalizeAsyncFillCandidate(candidate, index = 0) {
   }
 }
 
+function buildStandinPriority(seatEntry, candidate) {
+  const seatRoleKey = toRoleKey(seatEntry?.role)
+  const candidateRoleKey = toRoleKey(candidate?.role)
+
+  let rolePenalty = 0
+  if (seatRoleKey) {
+    if (!candidateRoleKey) {
+      rolePenalty = 2
+    } else if (candidateRoleKey !== seatRoleKey) {
+      rolePenalty = 1
+    }
+  }
+
+  const seatRating =
+    seatEntry?.rating !== undefined && seatEntry?.rating !== null ? toNumber(seatEntry.rating, null) : null
+  const candidateRating =
+    candidate?.rating !== undefined && candidate?.rating !== null ? toNumber(candidate.rating, null) : null
+  const seatScore =
+    seatEntry?.score !== undefined && seatEntry?.score !== null ? toNumber(seatEntry.score, null) : null
+  const candidateScore =
+    candidate?.score !== undefined && candidate?.score !== null ? toNumber(candidate.score, null) : null
+
+  let statsPenalty = 2
+  let diffValue = Number.POSITIVE_INFINITY
+  if (seatRating != null && candidateRating != null) {
+    statsPenalty = 0
+    diffValue = Math.abs(seatRating - candidateRating)
+  } else if (seatScore != null && candidateScore != null) {
+    statsPenalty = 1
+    diffValue = Math.abs(seatScore - candidateScore)
+  }
+
+  const queueIndex = candidate?.index != null ? candidate.index : Number.MAX_SAFE_INTEGER
+
+  return [rolePenalty, statsPenalty, diffValue, queueIndex]
+}
+
+function compareStandinPriority(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return 0
+  const normalize = (value) => (Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER)
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    const left = normalize(a[i] ?? Number.MAX_SAFE_INTEGER)
+    const right = normalize(b[i] ?? Number.MAX_SAFE_INTEGER)
+    if (left < right) return -1
+    if (left > right) return 1
+  }
+  return 0
+}
+
 function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
   const rosterList = Array.isArray(roster) ? roster.map((entry) => ({ ...entry })) : []
   if (!rosterList.length) {
@@ -357,7 +411,17 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
     const seat = rosterIndexMap.get(seatIndex)
     if (!seat) return
     if (seat.entry.ownerId) return
-    const candidate = queueCandidates.find((item) => !usedQueueIndexes.has(item.index))
+    let bestCandidate = null
+    let bestPriority = null
+    queueCandidates.forEach((candidate) => {
+      if (usedQueueIndexes.has(candidate.index)) return
+      const priority = buildStandinPriority(seat.entry, candidate)
+      if (!bestCandidate || compareStandinPriority(priority, bestPriority) < 0) {
+        bestCandidate = candidate
+        bestPriority = priority
+      }
+    })
+    const candidate = bestCandidate
     if (!candidate) return
 
     usedQueueIndexes.add(candidate.index)
@@ -368,6 +432,7 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
       ownerId: candidate.ownerId || seat.entry.ownerId || `standin-${seatIndex}`,
       heroId: candidate.heroId || seat.entry.heroId || '',
       heroName: candidate.heroName || seat.entry.heroName || '비실시간 대역',
+      role: seat.entry.role || candidate.role || '역할 미지정',
       ready: true,
       joinedAt: candidate.joinedAt || seat.entry.joinedAt || null,
       standin: true,
@@ -393,8 +458,12 @@ function applyAsyncFillStandins({ roster, sessionMeta, heroMap }) {
       ownerId: updatedEntry.ownerId || null,
       heroId: updatedEntry.heroId || null,
       heroName: updatedEntry.heroName || null,
+      role: updatedEntry.role || null,
       ready: true,
       joinedAt: updatedEntry.joinedAt || null,
+      score: updatedEntry.score ?? null,
+      rating: updatedEntry.rating ?? null,
+      matchSource: updatedEntry.matchSource || null,
     })
   })
 
