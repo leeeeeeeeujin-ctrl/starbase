@@ -310,6 +310,7 @@ export function buildSessionMetaRequest({ state }) {
   const timeVote = sanitizeTimeVote(sessionMeta.vote)
   const dropInBonus = sanitizeDropInBonus(sessionMeta.dropIn, turnState)
   const dropInMeta = sanitizeDropInMeta(sessionMeta.dropIn)
+  const metaExtras = safeClone(sessionMeta.extras ?? sessionMeta.extra)
   const turnTimerSeconds = sanitizeSelectedLimit(sessionMeta?.turnTimer?.baseSeconds)
   const realtimeMode = sanitizeRealtime(state?.room?.realtimeMode)
 
@@ -320,6 +321,7 @@ export function buildSessionMetaRequest({ state }) {
     turn_state: turnState,
     async_fill_snapshot: asyncFill,
     realtime_mode: realtimeMode,
+    extras: metaExtras || null,
   })
 
   const roomId = typeof state?.room?.id === 'string' ? state.room.id.trim() : ''
