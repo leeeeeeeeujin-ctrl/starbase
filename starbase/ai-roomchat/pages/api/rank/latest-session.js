@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { withTableQuery } from '@/lib/supabaseTables'
 
 function parseBody(req) {
   if (!req?.body) return {}
@@ -52,6 +53,41 @@ function formatSessionRow(row) {
   }
 }
 
+async function fetchViaRpc(payload) {
+  const { data, error } = await supabaseAdmin.rpc('fetch_latest_rank_session_v2', payload)
+  if (error) {
+    return { error }
+  }
+  const row = Array.isArray(data) ? data[0] : data
+  return { row: formatSessionRow(row) }
+}
+
+async function fetchViaTable(gameId, ownerId) {
+  const { data, error } = await withTableQuery(
+    supabaseAdmin,
+    'rank_sessions',
+    (from) => {
+      let query = from
+        .select('id, status, owner_id, created_at, updated_at, mode')
+        .eq('game_id', gameId)
+        .in('status', ['active', 'preparing', 'ready'])
+        .order('updated_at', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (ownerId) {
+        query = query.eq('owner_id', ownerId)
+      }
+      return query.maybeSingle()
+    },
+  )
+
+  if (error) {
+    return { error }
+  }
+
+  return { row: formatSessionRow(data) }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
@@ -69,14 +105,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin.rpc('fetch_latest_rank_session_v2', payload)
+    const { row, error } = await fetchViaRpc(payload)
     if (error) {
+      if (String(error?.code || '').toUpperCase() === '42809') {
+        const fallback = await fetchViaTable(payload.p_game_id, payload.p_owner_id || null)
+        if (fallback.error) {
+          return res.status(502).json({ error: 'rpc_failed', supabaseError: error })
+        }
+        return res.status(200).json({ session: fallback.row })
+      }
       return res.status(502).json({ error: 'rpc_failed', supabaseError: error })
     }
 
-    const row = Array.isArray(data) ? data[0] : data
-    const session = formatSessionRow(row)
-    return res.status(200).json({ session })
+    return res.status(200).json({ session: row || null })
   } catch (error) {
     return res.status(500).json({ error: 'rpc_exception', detail: String(error?.message || error) })
   }

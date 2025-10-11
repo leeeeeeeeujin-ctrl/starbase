@@ -21,6 +21,21 @@ function normalizeHeaders(input) {
   return {}
 }
 
+function stripApiKeyQuery(targetUrl, baseUrl) {
+  if (!targetUrl) return targetUrl
+
+  try {
+    const parsed = new URL(targetUrl, baseUrl || undefined)
+    if (!parsed.searchParams.has('apikey')) {
+      return targetUrl
+    }
+    parsed.searchParams.delete('apikey')
+    return parsed.toString()
+  } catch (error) {
+    return targetUrl
+  }
+}
+
 function createAuthEnsurer(supabaseUrl, { apikey, authorization } = {}) {
   try {
     sanitizeSupabaseUrl(supabaseUrl)
@@ -60,15 +75,42 @@ export function createSupabaseAuthConfig(supabaseUrl, { apikey, authorization } 
   const fetchWithAuth = async (input, init = {}) => {
     const applyHeaders = (headers) => ensureHeaders(headers)
 
+    const sanitiseRequest = (url, options = {}) => {
+      const headers = applyHeaders(options.headers)
+      const nextInit = { ...options, headers }
+      const rawUrl =
+        typeof url === 'string'
+          ? url
+          : url && typeof url.toString === 'function'
+          ? url.toString()
+          : url
+      const strippedUrl = stripApiKeyQuery(rawUrl, supabaseUrl)
+      return { url: strippedUrl, init: nextInit }
+    }
+
     if (typeof Request !== 'undefined' && input instanceof Request) {
-      const headers = applyHeaders(init.headers || input.headers)
-      const request = new Request(input, { ...init, headers })
+      const { url, init: nextInit } = sanitiseRequest(input.url, {
+        method: input.method,
+        headers: init.headers || input.headers,
+        body: init.body ?? input.body,
+        mode: init.mode ?? input.mode,
+        credentials: init.credentials ?? input.credentials,
+        cache: init.cache ?? input.cache,
+        redirect: init.redirect ?? input.redirect,
+        referrer: init.referrer ?? input.referrer,
+        referrerPolicy: init.referrerPolicy ?? input.referrerPolicy,
+        integrity: init.integrity ?? input.integrity,
+        keepalive: init.keepalive ?? input.keepalive,
+        signal: init.signal ?? input.signal,
+      })
+
+      const request = new Request(url, nextInit)
       return fetch(request)
     }
 
-    const headers = applyHeaders(init.headers)
-    const finalInit = { ...init, headers }
-    return fetch(input, finalInit)
+    const target = typeof input === 'string' ? input : input?.url
+    const { url, init: nextInit } = sanitiseRequest(target || input, init)
+    return fetch(url, nextInit)
   }
 
   return {
