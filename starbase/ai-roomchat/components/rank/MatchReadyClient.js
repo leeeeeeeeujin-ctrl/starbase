@@ -58,6 +58,58 @@ function createInitialDiagnostics() {
   }
 }
 
+function deriveRealtimeErrorHint(message = '') {
+  if (typeof message !== 'string') return null
+  if (message.includes('Unable to subscribe to changes with given parameters')) {
+    return [
+      'Supabase Realtime이 해당 테이블을 전파하도록 설정되어 있는지 확인하세요.',
+      '다음 SQL을 실행해 rank_match_roster, rank_sessions, rank_rooms, rank_session_meta를 supabase_realtime 게시에 추가한 뒤 대시보드에서 Realtime을 활성화해야 합니다.',
+      'alter publication supabase_realtime add table public.rank_match_roster, public.rank_sessions, public.rank_rooms, public.rank_session_meta;',
+    ].join(' ')
+  }
+  return null
+}
+
+function normalizeRealtimeError(error) {
+  if (!error) {
+    return { message: 'unknown_error', hint: null }
+  }
+
+  if (typeof error === 'string') {
+    return { message: error, hint: deriveRealtimeErrorHint(error) }
+  }
+
+  if (error instanceof Error) {
+    const message = error.message || 'unknown_error'
+    return { message, hint: deriveRealtimeErrorHint(message) }
+  }
+
+  if (error?.payload) {
+    return normalizeRealtimeError(error.payload)
+  }
+
+  const message =
+    error?.message ||
+    error?.msg ||
+    error?.reason ||
+    error?.error ||
+    error?.code ||
+    'unknown_error'
+
+  const combined = [
+    error?.message,
+    error?.msg,
+    error?.hint,
+    error?.details,
+    error?.code,
+    error?.status,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return { message, hint: deriveRealtimeErrorHint(combined || message) }
+}
+
 function useMatchReadyState(gameId) {
   const [state, setState] = useState(() => ({
     ...createEmptyMatchFlowState(),
@@ -338,25 +390,28 @@ function useMatchReadyState(gameId) {
     })
 
     channel.on('system', { event: 'SUBSCRIPTION_ERROR' }, (payload) => {
+      const normalized = normalizeRealtimeError(payload)
       setDiagnostics((prev) => ({
         ...prev,
         realtime: {
           ...prev.realtime,
           status: 'error',
           updatedAt: Date.now(),
-          lastError: payload || null,
+          lastError: normalized,
         },
       }))
+      refresh().catch(() => {})
     })
 
     channel.on('system', { event: 'CHANNEL_ERROR' }, (payload) => {
+      const normalized = normalizeRealtimeError(payload)
       setDiagnostics((prev) => ({
         ...prev,
         realtime: {
           ...prev.realtime,
           status: 'error',
           updatedAt: Date.now(),
-          lastError: payload || null,
+          lastError: normalized,
         },
       }))
     })
@@ -374,6 +429,7 @@ function useMatchReadyState(gameId) {
       })
       if (subscription && typeof subscription.then === 'function') {
         subscription.catch((error) => {
+          const normalized = normalizeRealtimeError(error)
           console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
           setDiagnostics((prev) => ({
             ...prev,
@@ -381,12 +437,14 @@ function useMatchReadyState(gameId) {
               ...prev.realtime,
               status: 'error',
               updatedAt: Date.now(),
-              lastError: { message: error?.message || 'subscription_failed' },
+              lastError: normalized,
             },
           }))
+          refresh().catch(() => {})
         })
       }
     } catch (error) {
+      const normalized = normalizeRealtimeError(error)
       console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
       setDiagnostics((prev) => ({
         ...prev,
@@ -394,9 +452,10 @@ function useMatchReadyState(gameId) {
           ...prev.realtime,
           status: 'error',
           updatedAt: Date.now(),
-          lastError: { message: error?.message || 'subscription_failed' },
+          lastError: normalized,
         },
       }))
+      refresh().catch(() => {})
     }
 
     return () => {
@@ -1070,6 +1129,9 @@ export default function MatchReadyClient({ gameId }) {
                 실시간 채널 오류:{' '}
                 {diagnostics.realtime.lastError?.message || 'unknown_error'}
               </p>
+            )}
+            {diagnostics?.realtime?.lastError?.hint && (
+              <p className={styles.diagnosticsHint}>{diagnostics.realtime.lastError.hint}</p>
             )}
           </section>
         )}
