@@ -159,10 +159,14 @@ begin
     v_expires_at := v_now + make_interval(secs => v_window);
   end if;
 
-  select coalesce(array_agg(owner_id order by pressed_at), array[]::uuid[])
+  select coalesce(array_agg(owner_id), array[]::uuid[])
     into v_ready_ids
-  from public.rank_session_ready_signals
-  where session_id = p_session_id;
+  from (
+    select owner_id
+    from public.rank_session_ready_signals
+    where session_id = p_session_id
+    order by pressed_at
+  ) as ordered_ready;
 
   v_total := coalesce(array_length(v_required_ids, 1), 0);
 
@@ -177,20 +181,21 @@ begin
 
   v_ready_count := coalesce(array_length(v_ready_ids, 1), 0);
 
-  select jsonb_agg(
-      jsonb_build_object(
+  select coalesce(jsonb_agg(signal_row), '[]'::jsonb)
+    into v_ready_snapshot
+  from (
+    select jsonb_build_object(
         'ownerId', owner_id,
         'participantId', participant_id,
         'matchInstanceId', match_instance_id,
         'pressedAt', to_char(pressed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
         'pressedAtMs', floor(extract(epoch from pressed_at) * 1000),
         'expiresAtMs', floor(extract(epoch from expires_at) * 1000)
-      )
-      order by pressed_at
-    )
-    into v_ready_snapshot
-  from public.rank_session_ready_signals
-  where session_id = p_session_id;
+      ) as signal_row
+    from public.rank_session_ready_signals
+    where session_id = p_session_id
+    order by pressed_at
+  ) as ordered_signals;
 
   v_result := jsonb_build_object(
     'status', case when coalesce(array_length(v_missing_ids, 1), 0) = 0 and v_total > 0 then 'ready' else 'pending' end,
