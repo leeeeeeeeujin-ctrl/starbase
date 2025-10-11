@@ -1432,8 +1432,26 @@ export default function RoomDetailPage() {
               } catch (parseError) {
                 detail = null
               }
-              const error = new Error(detail?.error || 'room_counter_sync_failed')
+
+              const supabaseError = detail?.supabaseError || detail || null
+              const messageCandidates = [
+                detail?.error,
+                detail?.message,
+                supabaseError?.code,
+                supabaseError?.message,
+                supabaseError?.hint,
+                supabaseError?.details,
+              ].filter(Boolean)
+              const normalizedMessage = messageCandidates.join(' | ') || 'room_counter_sync_failed'
+
+              const error = new Error(normalizedMessage)
               error.payload = detail
+              if (supabaseError) {
+                error.supabaseError = supabaseError
+                if (!error.code && supabaseError.code) {
+                  error.code = supabaseError.code
+                }
+              }
               throw error
             }
           } catch (updateError) {
