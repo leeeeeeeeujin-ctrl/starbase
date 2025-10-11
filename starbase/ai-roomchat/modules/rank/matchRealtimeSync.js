@@ -210,43 +210,35 @@ export async function fetchLatestSessionRow(supabaseClient, gameId, options = {}
     : { p_game_id: trimmedGameId }
 
   if (typeof supabaseClient?.rpc === 'function') {
-    const rpcCandidates = ['fetch_latest_rank_session_v2', 'fetch_latest_rank_session']
+    try {
+      const { data: rpcData, error: rpcError } = await supabaseClient.rpc(
+        'fetch_latest_rank_session_v2',
+        rpcPayload,
+      )
 
-    for (const rpcName of rpcCandidates) {
-      try {
-        const { data: rpcData, error: rpcError } = await supabaseClient.rpc(rpcName, rpcPayload)
-
-        if (!rpcError && rpcData) {
-          const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
-          const formatted = formatSessionRow(payload)
-          if (formatted) {
-            return formatted
-          }
+      if (!rpcError && rpcData) {
+        const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
+        const formatted = formatSessionRow(payload)
+        if (formatted) {
+          return formatted
         }
-
-        if (!rpcError) {
-          continue
-        }
-
-        if (rpcError?.code === 'PGRST203') {
-          console.warn(
-            `[matchRealtimeSync] ${rpcName} RPC ambiguous (PGRST203); attempting next candidate`,
-            rpcError,
-          )
-          continue
-        }
-
-        if (!isRpcMissing(rpcError)) {
-          console.warn(`[matchRealtimeSync] ${rpcName} RPC failed:`, rpcError)
-        }
-      } catch (rpcException) {
-        console.warn(`[matchRealtimeSync] ${rpcName} RPC threw:`, rpcException)
       }
+
+      if (rpcError?.code === 'PGRST203') {
+        console.warn(
+          '[matchRealtimeSync] fetch_latest_rank_session_v2 RPC ambiguous (PGRST203); please drop legacy overloads',
+          rpcError,
+        )
+      } else if (!isRpcMissing(rpcError)) {
+        console.warn('[matchRealtimeSync] fetch_latest_rank_session_v2 RPC failed:', rpcError)
+      }
+    } catch (rpcException) {
+      console.warn('[matchRealtimeSync] fetch_latest_rank_session_v2 RPC threw:', rpcException)
     }
   }
 
   console.warn(
-    '[matchRealtimeSync] fetch_latest_rank_session RPCs unavailable; returning null to avoid legacy rank_sessions query',
+    '[matchRealtimeSync] fetch_latest_rank_session_v2 RPC unavailable; returning null to avoid legacy rank_sessions query',
   )
   return null
 }

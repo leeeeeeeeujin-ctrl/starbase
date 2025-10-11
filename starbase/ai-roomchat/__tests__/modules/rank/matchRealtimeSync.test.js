@@ -80,43 +80,25 @@ describe('fetchLatestSessionRow', () => {
     )
   })
 
-  it('falls back to the legacy RPC name when v2 is ambiguous', async () => {
+  it('returns null when the RPC reports ambiguity', async () => {
     const supabaseClient = {
-      rpc: jest
-        .fn()
-        .mockResolvedValueOnce({
+      rpc: jest.fn(() =>
+        Promise.resolve({
           data: null,
           error: { code: 'PGRST203', message: 'ambiguous overload' },
-        })
-        .mockResolvedValueOnce({
-          data: {
-            id: 'session-3',
-            status: 'ready',
-            owner_id: 'owner-3',
-            created_at: '2025-01-03T00:00:00Z',
-            updated_at: '2025-01-03T00:00:00Z',
-            match_mode: 'pulse',
-          },
-          error: null,
         }),
+      ),
     }
 
     const result = await fetchLatestSessionRow(supabaseClient, 'game-4')
 
-    expect(result).toEqual({
-      id: 'session-3',
-      status: 'ready',
-      owner_id: 'owner-3',
-      ownerId: 'owner-3',
-      created_at: '2025-01-03T00:00:00Z',
-      updated_at: '2025-01-03T00:00:00Z',
-      mode: 'pulse',
-      match_mode: 'pulse',
+    expect(result).toBeNull()
+    expect(supabaseClient.rpc).toHaveBeenCalledWith('fetch_latest_rank_session_v2', {
+      p_game_id: 'game-4',
     })
-    expect(mockWithTable).not.toHaveBeenCalled()
   })
 
-  it('returns null when all RPC attempts fail', async () => {
+  it('returns null when the RPC is missing', async () => {
     const supabaseClient = {
       rpc: jest.fn(() =>
         Promise.resolve({
@@ -129,6 +111,8 @@ describe('fetchLatestSessionRow', () => {
     const result = await fetchLatestSessionRow(supabaseClient, 'game-2')
 
     expect(result).toBeNull()
-    expect(mockWithTable).not.toHaveBeenCalled()
+    expect(supabaseClient.rpc).toHaveBeenCalledWith('fetch_latest_rank_session_v2', {
+      p_game_id: 'game-2',
+    })
   })
 })

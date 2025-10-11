@@ -22,18 +22,11 @@ function normalizeHeaders(input) {
 }
 
 function createAuthEnsurer(supabaseUrl, { apikey, authorization } = {}) {
-  const parsedUrl = (() => {
-    try {
-      const sanitised = sanitizeSupabaseUrl(supabaseUrl)
-      return sanitised ? new URL(sanitised) : null
-    } catch (error) {
-      console.warn('[supabaseAuthConfig] Invalid Supabase URL supplied:', error)
-      return null
-    }
-  })()
-
-  const supabaseOrigin = parsedUrl?.origin ?? null
-  const supabaseHost = parsedUrl?.host ?? null
+  try {
+    sanitizeSupabaseUrl(supabaseUrl)
+  } catch (error) {
+    console.warn('[supabaseAuthConfig] Invalid Supabase URL supplied:', error)
+  }
 
   const ensureHeaders = (headers = {}) => {
     const normalised = normalizeHeaders(headers)
@@ -58,48 +51,23 @@ function createAuthEnsurer(supabaseUrl, { apikey, authorization } = {}) {
     return normalised
   }
 
-  const ensureUrl = (rawUrl) => {
-    if (!apikey || !rawUrl) return rawUrl
-    if (!supabaseOrigin || !supabaseHost) return rawUrl
-
-    try {
-      const resolved = new URL(typeof rawUrl === 'string' ? rawUrl : rawUrl.toString(), supabaseOrigin)
-      if (resolved.host !== supabaseHost) {
-        return rawUrl
-      }
-      if (!resolved.searchParams.has('apikey')) {
-        resolved.searchParams.append('apikey', apikey)
-      }
-      return resolved.toString()
-    } catch (error) {
-      return rawUrl
-    }
-  }
-
-  return { ensureHeaders, ensureUrl }
+  return { ensureHeaders }
 }
 
 export function createSupabaseAuthConfig(supabaseUrl, { apikey, authorization } = {}) {
-  const { ensureHeaders, ensureUrl } = createAuthEnsurer(supabaseUrl, { apikey, authorization })
+  const { ensureHeaders } = createAuthEnsurer(supabaseUrl, { apikey, authorization })
 
   const fetchWithAuth = async (input, init = {}) => {
+    const applyHeaders = (headers) => ensureHeaders(headers)
+
     if (typeof Request !== 'undefined' && input instanceof Request) {
-      const headers = ensureHeaders(init.headers || input.headers)
-      const finalInit = { ...init, headers }
-      return fetch(input, finalInit)
+      const headers = applyHeaders(init.headers || input.headers)
+      const request = new Request(input, { ...init, headers })
+      return fetch(request)
     }
 
-    const headers = ensureHeaders(init.headers)
+    const headers = applyHeaders(init.headers)
     const finalInit = { ...init, headers }
-
-    if (typeof input === 'string') {
-      return fetch(ensureUrl(input), finalInit)
-    }
-
-    if (input instanceof URL) {
-      return fetch(ensureUrl(input.toString()), finalInit)
-    }
-
     return fetch(input, finalInit)
   }
 
