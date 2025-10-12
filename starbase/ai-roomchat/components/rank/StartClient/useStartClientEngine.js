@@ -64,6 +64,7 @@ import {
   normalizeTimelineStatus,
 } from '@/lib/rank/timelineEvents'
 import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline'
+import { prepareHistoryPayload } from '@/lib/rank/chatHistory'
 import { useHistoryBuffer } from './hooks/useHistoryBuffer'
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
 import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
@@ -3566,6 +3567,7 @@ export function useStartClientEngine(gameId, options = {}) {
         })
 
         const promptText = compiled.text
+        const historyPayload = prepareHistoryPayload(aiMemory, { limit: 32 })
         if (compiled.pickedSlot != null) {
           visitedSlotIds.current.add(String(compiled.pickedSlot))
         }
@@ -3648,6 +3650,7 @@ export function useStartClientEngine(gameId, options = {}) {
               prompt_role: 'system',
               response_role: historyRole,
               response_public: true,
+              history: historyPayload,
             }),
           })
 
@@ -4079,6 +4082,7 @@ export function useStartClientEngine(gameId, options = {}) {
       graph.edges,
       slots,
       history,
+      aiMemory,
       activeGlobal,
       activeLocal,
       manualResponse,

@@ -7,6 +7,7 @@ import { buildTurnSummaryPayload } from '@/lib/rank/turnSummary'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { withTableQuery } from '@/lib/supabaseTables'
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv'
+import { sanitizeHistoryForProvider } from '@/lib/rank/chatHistory'
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -79,7 +80,10 @@ export default async function handler(req, res) {
     prompt_role: promptRoleInput,
     response_role: responseRoleInput,
     response_public: responsePublicInput,
+    history: historyInput,
   } = payload || {}
+
+  const historyEntries = sanitizeHistoryForProvider(historyInput, { limit: 32 })
 
   if (!sessionId || typeof sessionId !== 'string') {
     return res.status(400).json({ error: 'missing_session_id' })
@@ -167,6 +171,7 @@ export default async function handler(req, res) {
     system: typeof system === 'string' ? system : '',
     user: prompt,
     apiVersion: effectiveApiVersion || 'gemini',
+    history: historyEntries,
     providerOptions:
       (effectiveApiVersion || 'gemini') === 'gemini'
         ? { geminiMode: effectiveGeminiMode, geminiModel: effectiveGeminiModel }
