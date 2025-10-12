@@ -18,6 +18,54 @@ alter publication supabase_realtime add table
   public.rank_session_meta;
 ```
 
+> 이미 게시에 포함된 테이블이 있으면 PostgreSQL이 `42710` 오류를 반환합니다. 이는 중복 추가를 시도했다는 의미일 뿐이므로, 아래처럼
+> `pg_publication_tables`에서 존재 여부를 확인하거나 예외를 무시하는 DO 블록을 실행하면 매번 안전하게 적용할 수 있습니다.
+
+```sql
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_match_roster'
+  ) then
+    alter publication supabase_realtime add table public.rank_match_roster;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_sessions'
+  ) then
+    alter publication supabase_realtime add table public.rank_sessions;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_rooms'
+  ) then
+    alter publication supabase_realtime add table public.rank_rooms;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_session_meta'
+  ) then
+    alter publication supabase_realtime add table public.rank_session_meta;
+  end if;
+end $$;
+```
+
 2. Supabase Dashboard → Database → Replication → Realtime 탭으로 이동해 위 테이블들이 모두 활성화되었는지 확인합니다. 비활성화된 항목이 있다면 스위치를 켜주세요.
 
 3. 실시간 채널이 다시 연결되는지 확인하려면 매치 준비 화면에서 진단 패널을 열어 `실시간 채널 오류`가 사라졌는지, `실시간 상태`가 `SUBSCRIBED` 혹은 `CONNECTED`로 전환되었는지 확인합니다.

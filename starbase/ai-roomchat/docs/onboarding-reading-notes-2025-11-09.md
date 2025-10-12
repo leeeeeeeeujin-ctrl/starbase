@@ -67,6 +67,54 @@ alter publication supabase_realtime add table
   public.rank_session_meta;
 ```
 
+- 이미 게시에 포함된 테이블이 있으면 PostgreSQL이 `42710: relation "..." is already member of publication` 오류를 반환한다. 이 경우는 정상
+  상태이므로 아래처럼 존재 여부를 먼저 확인하거나, `alter publication` 문을 예외 처리 블록으로 감싼 스크립트를 사용하는 편이 안전하다.
+
+```sql
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_rooms'
+  ) then
+    alter publication supabase_realtime add table public.rank_rooms;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_match_roster'
+  ) then
+    alter publication supabase_realtime add table public.rank_match_roster;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_sessions'
+  ) then
+    alter publication supabase_realtime add table public.rank_sessions;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_session_meta'
+  ) then
+    alter publication supabase_realtime add table public.rank_session_meta;
+  end if;
+end $$;
+```
+
 - 매치 준비 화면의 401 오류는 클라이언트가 Supabase 액세스 토큰 없이 `/api/rank/ready-check`를 호출한 탓이다. `requestMatchReadySignal`
   전에 `supabase.auth.getSession()`을 호출해 토큰을 확보하고 `Authorization` 헤더를 주입해야 한다.
 - 실시간 채널/Ready-check가 정상화됐는지는 진단 패널의 구독 상태와 최신 이벤트 타임스탬프로 검증한다. 복구가 지연되면 RLS 정책에
