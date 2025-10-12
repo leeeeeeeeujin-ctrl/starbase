@@ -899,14 +899,24 @@ alter table public.rank_match_roster
   alter column slot_template_source set default 'room-stage',
   alter column slot_template_updated_at set default now();
 
+drop function if exists public.sync_rank_match_roster(
+  uuid,
+  uuid,
+  uuid,
+  bigint,
+  text,
+  timestamptz,
+  jsonb
+);
+
 create or replace function public.sync_rank_match_roster(
   p_room_id uuid,
   p_game_id uuid,
   p_match_instance_id uuid,
-  p_slot_template_version bigint,
+  p_roster jsonb,
+  p_slot_template_version bigint default null,
   p_slot_template_source text default null,
-  p_slot_template_updated_at timestamptz default null,
-  p_roster jsonb
+  p_slot_template_updated_at timestamptz default null
 )
 returns table (
   inserted_count integer,
@@ -1030,10 +1040,10 @@ grant execute on function public.sync_rank_match_roster(
   uuid,
   uuid,
   uuid,
+  jsonb,
   bigint,
   text,
-  timestamptz,
-  jsonb
+  timestamptz
 ) to service_role;
 
 -- =========================================
@@ -1374,7 +1384,7 @@ grant execute on function public.bump_rank_session_slot_version(uuid) to service
 grant execute on function public.claim_rank_room_slot(uuid, integer, text, uuid, integer) to service_role;
 grant execute on function public.upsert_match_session_meta(uuid, integer, jsonb, integer, jsonb, jsonb, text) to service_role;
 grant execute on function public.refresh_match_session_async_fill(uuid, uuid, integer, integer) to service_role;
-grant execute on function public.sync_rank_match_roster(uuid, uuid, uuid, bigint, text, timestamptz, jsonb) to service_role;
+grant execute on function public.sync_rank_match_roster(uuid, uuid, uuid, jsonb, bigint, text, timestamptz) to service_role;
 
 -- =========================================
 --  Turn state realtime sync
