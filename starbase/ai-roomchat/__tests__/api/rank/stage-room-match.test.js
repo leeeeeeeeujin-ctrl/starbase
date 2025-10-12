@@ -256,6 +256,177 @@ describe('POST /api/rank/stage-room-match', () => {
     })
   })
 
+  it('propagates stand-in metadata when participant stats are missing', async () => {
+    const handler = loadHandler()
+
+    const roster = [
+      {
+        slotIndex: 0,
+        role: '딜러',
+        ownerId: 'standin-owner',
+        heroId: 'standin-hero',
+        heroName: '스탠딘',
+        ready: true,
+        standin: true,
+        matchSource: 'async_standin',
+        score: 1777,
+        rating: 1550,
+        battles: 123,
+        winRate: 0.66,
+        status: 'standin',
+      },
+    ]
+
+    mockWithTableQuery
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+
+    rpcMock
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            inserted_count: 1,
+            slot_template_version: 99,
+            slot_template_updated_at: '2025-02-04T00:00:00Z',
+          },
+        ],
+        error: null,
+      })
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer session-token' },
+      body: {
+        match_instance_id: 'match-standin',
+        room_id: 'room-standin',
+        game_id: 'game-standin',
+        roster,
+        slot_template: {
+          version: 42,
+          source: 'room-stage',
+          updated_at: '2025-02-04T00:00:00Z',
+          slots: [{ slot_index: 0, role: '딜러', active: true }],
+          roles: [{ name: '딜러', slot_count: 1 }],
+        },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      2,
+      'sync_rank_match_roster',
+      expect.objectContaining({
+        p_roster: expect.arrayContaining([
+          expect.objectContaining({
+            slot_index: 0,
+            owner_id: 'standin-owner',
+            standin: true,
+            match_source: 'async_standin',
+            score: 1777,
+            rating: 1550,
+            battles: 123,
+            win_rate: 0.66,
+            status: 'standin',
+          }),
+        ]),
+      }),
+    )
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual({
+      ok: true,
+      staged: 1,
+      slot_template_version: 99,
+      slot_template_updated_at: '2025-02-04T00:00:00Z',
+    })
+  })
+
+  it('clears placeholder owner IDs before syncing roster rows', async () => {
+    const handler = loadHandler()
+
+    const roster = [
+      {
+        slotIndex: 2,
+        role: '탱커',
+        ownerId: 'placeholder-owner',
+        placeholderOwnerId: 'placeholder-owner',
+        heroId: null,
+        heroName: 'AI 자동 대역',
+        ready: true,
+        standin: true,
+        standinPlaceholder: true,
+        matchSource: 'async_standin_placeholder',
+        score: null,
+        rating: null,
+        battles: null,
+        winRate: null,
+        status: 'standin',
+      },
+    ]
+
+    mockWithTableQuery
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+
+    rpcMock
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            inserted_count: 1,
+            slot_template_version: 77,
+            slot_template_updated_at: '2025-02-05T00:00:00Z',
+          },
+        ],
+        error: null,
+      })
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer standin' },
+      body: {
+        match_instance_id: 'match-placeholder',
+        room_id: 'room-placeholder',
+        game_id: 'game-placeholder',
+        roster,
+        slot_template: {
+          version: 11,
+          source: 'room-stage',
+          updated_at: '2025-02-05T00:00:00Z',
+          slots: [{ slot_index: 2, role: '탱커', active: true }],
+          roles: [{ name: '탱커', slot_count: 1 }],
+        },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      2,
+      'sync_rank_match_roster',
+      expect.objectContaining({
+        p_roster: expect.arrayContaining([
+          expect.objectContaining({
+            slot_index: 2,
+            owner_id: null,
+            match_source: 'async_standin_placeholder',
+            standin: true,
+          }),
+        ]),
+      }),
+    )
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual({
+      ok: true,
+      staged: 1,
+      slot_template_version: 77,
+      slot_template_updated_at: '2025-02-05T00:00:00Z',
+    })
+  })
+
   it('propagates verification errors from the RPC', async () => {
     const handler = loadHandler()
 

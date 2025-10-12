@@ -58,6 +58,75 @@ function sanitizeWindowSeconds(value) {
   return rounded
 }
 
+function toOptionalParticipantId(value) {
+  if (value === null || value === undefined) return null
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null
+    if (!Number.isSafeInteger(value)) {
+      return String(Math.trunc(value))
+    }
+    return Math.trunc(value)
+  }
+
+  if (typeof value === 'bigint') {
+    return value.toString()
+  }
+
+  const trimmed = toTrimmedString(value)
+  if (!trimmed) return null
+
+  if (/^-?\d+$/.test(trimmed)) {
+    const numeric = Number(trimmed)
+    if (Number.isSafeInteger(numeric)) {
+      return numeric
+    }
+    return trimmed
+  }
+
+  return null
+}
+
+function formatSessionRow(row) {
+  if (!row || typeof row !== 'object') return null
+  const id = toOptionalUuid(row.id ?? row.session_id)
+  if (!id) return null
+  const ownerId = toOptionalUuid(row.owner_id ?? row.ownerId)
+  const gameId = toOptionalUuid(row.game_id ?? row.gameId)
+  return {
+    id,
+    owner_id: ownerId,
+    game_id: gameId,
+    status: toTrimmedString(row.status ?? row.session_status) || null,
+  }
+}
+
+async function fetchLatestSessionViaRpc(client, { gameId, ownerId }) {
+  if (!client || typeof client.rpc !== 'function') {
+    return { session: null, error: new Error('supabase_client_unavailable') }
+  }
+
+  const trimmedGameId = toOptionalUuid(gameId)
+  if (!trimmedGameId) {
+    return { session: null, error: null }
+  }
+
+  const payload = ownerId
+    ? { p_game_id: trimmedGameId, p_owner_id: ownerId }
+    : { p_game_id: trimmedGameId }
+
+  try {
+    const { data, error } = await client.rpc('fetch_latest_rank_session_v2', payload)
+    if (error) {
+      return { session: null, error }
+    }
+    const formatted = formatSessionRow(Array.isArray(data) ? data[0] : data)
+    return { session: formatted, error: null }
+  } catch (error) {
+    return { session: null, error }
+  }
+}
+
 function isServiceRoleAuthError(error) {
   if (!error) return false
   const code = String(error.code || '').trim().toUpperCase()
@@ -106,7 +175,8 @@ export default async function handler(req, res) {
   const matchInstanceId = toOptionalUuid(
     payload.match_instance_id ?? payload.matchInstanceId,
   )
-  const participantHint = toOptionalUuid(payload.participant_id ?? payload.participantId)
+  const participantHintRaw = payload.participant_id ?? payload.participantId
+  const participantHint = toOptionalParticipantId(participantHintRaw)
   const windowSeconds = sanitizeWindowSeconds(payload.window_seconds ?? payload.windowSeconds)
 
   const userClientAuth = createSupabaseAuthConfig(url, {
@@ -133,12 +203,89 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'session_lookup_failed' })
   }
 
-  if (!sessionRow) {
-    return res.status(404).json({ error: 'session_not_found' })
+  let resolvedSession = sessionRow
+  const sessionDiagnostics = {
+    recovered: false,
+    via: null,
+    error: null,
   }
 
-  const sessionOwnerId = toOptionalUuid(sessionRow.owner_id)
-  const sessionGameId = toOptionalUuid(sessionRow.game_id)
+  if (!resolvedSession && sessionId) {
+    try {
+      const { data: adminSession, error: adminError } = await withTableQuery(
+        supabaseAdmin,
+        'rank_sessions',
+        (from) => from.select('id, owner_id, game_id').eq('id', sessionId).maybeSingle(),
+      )
+
+      if (adminError) {
+        sessionDiagnostics.error = sessionDiagnostics.error || adminError
+      } else if (adminSession) {
+        resolvedSession = adminSession
+        sessionDiagnostics.recovered = true
+        sessionDiagnostics.via = 'service-role-table'
+      }
+    } catch (adminException) {
+      sessionDiagnostics.error = sessionDiagnostics.error || adminException
+    }
+  }
+
+  if (!resolvedSession && gameId) {
+    const { session, error } = await fetchLatestSessionViaRpc(supabaseAdmin, {
+      gameId,
+      ownerId: userId,
+    })
+
+    if (session) {
+      resolvedSession = session
+      sessionDiagnostics.recovered = true
+      sessionDiagnostics.via = 'service-role'
+    } else if (error) {
+      sessionDiagnostics.error = error
+      if (isServiceRoleAuthError(error)) {
+        const userResult = await fetchLatestSessionViaRpc(userClient, {
+          gameId,
+          ownerId: userId,
+        })
+        if (userResult.session) {
+          resolvedSession = userResult.session
+          sessionDiagnostics.recovered = true
+          sessionDiagnostics.via = 'user-token'
+          sessionDiagnostics.error = null
+        } else if (userResult.error) {
+          sessionDiagnostics.error = userResult.error
+        }
+      }
+    }
+  }
+
+  if (!resolvedSession) {
+    const errorPayload = { error: 'session_not_found' }
+    if (sessionDiagnostics.error) {
+      errorPayload.diagnostics = {
+        code: sessionDiagnostics.error.code || null,
+        message: sessionDiagnostics.error.message || null,
+      }
+    }
+    return res.status(404).json(errorPayload)
+  }
+
+  let normalizedSessionId = toOptionalUuid(resolvedSession.id)
+  if (!normalizedSessionId) {
+    normalizedSessionId = sessionId
+  }
+
+  if (!gameId) {
+    gameId = toOptionalUuid(resolvedSession.game_id) || gameId
+  }
+
+  if (normalizedSessionId && normalizedSessionId !== sessionId) {
+    sessionDiagnostics.recovered = true
+    sessionDiagnostics.via = sessionDiagnostics.via || 'service-role'
+  }
+
+  const sessionOwnerId = toOptionalUuid(resolvedSession.owner_id)
+  const sessionGameId = toOptionalUuid(resolvedSession.game_id)
   if (!gameId && sessionGameId) {
     gameId = sessionGameId
   }
@@ -183,7 +330,7 @@ export default async function handler(req, res) {
       )
       if (participantRow) {
         authorized = true
-        participantId = toOptionalUuid(participantRow.id)
+        participantId = toOptionalParticipantId(participantRow.id)
       }
     } catch (participantError) {
       console.warn('[ready-check] participant lookup failed:', participantError)
@@ -195,7 +342,7 @@ export default async function handler(req, res) {
   }
 
   const rpcPayload = {
-    p_session_id: sessionId,
+    p_session_id: normalizedSessionId,
     p_owner_id: userId,
     p_game_id: gameId,
     p_match_instance_id: matchInstanceId,
@@ -243,10 +390,16 @@ export default async function handler(req, res) {
   }
 
   return res.status(200).json({
-    sessionId,
+    sessionId: normalizedSessionId,
     gameId,
     matchInstanceId,
     participantId,
     readyCheck: readyCheck || null,
+    diagnostics: sessionDiagnostics.recovered
+      ? {
+          sessionRecovered: true,
+          via: sessionDiagnostics.via,
+        }
+      : undefined,
   })
 }
