@@ -85,4 +85,9 @@ alter publication supabase_realtime add table
 - 실시간 큐 튜닝과 운영 자동화를 위해 `docs/matchmaking-supabase-handbook.md`, `docs/rank-session-ttl-cleanup-cron.md` 등 유지보수
   문서를 순차로 읽어 빠진 CRON/락 전략을 보완한다.
 
+## 11. 방 준비 투표 & 세션 정합성 보강 (2025-11-09)
+- `/rooms/[id]`는 정원이 채워지는 즉시 15초 준비 투표를 열어 착석자 전원이 `occupant_ready`를 켤 때만 `stageMatch`가 실행되도록 변경됐다. 만료 시에는 경고가 뜨고 방장이 한 번 더 투표를 시작할 수 있는 버튼이 제공된다.【F:pages/rooms/[id].js†L2094-L2187】【F:pages/rooms/[id].js†L3325-L3427】
+- 매치가 `battle`/`in_progress`로 전환되면 참가자 정리 타이머를 비활성화하고, 비호스트도 방 상태 변화를 감지해 `match-ready` 화면으로 즉시 이동한다. 방과 본게임 간 세션 브리지가 끊기지 않도록 최신 수정 사항을 확인하자.【F:pages/rooms/[id].js†L2306-L2331】【F:pages/rooms/[id].js†L3158-L3194】
+- 운영 관점에서는 준비 투표 흐름이 Supabase 테이블(RPC) 기반으로 동작하므로, `rank_room_slots`의 업데이트 이벤트와 `sync-room-counters` RPC가 정상 배포되어 있는지 반드시 점검해야 한다. 투표 타이머가 열리지 않거나 상태가 즉시 battle로 전환되지 않으면 관련 RPC 권한/퍼블리케이션을 재검증하자.【F:pages/rooms/[id].js†L1752-L1868】【F:pages/api/rank/sync-room-counters.js†L1-L176】
+
 > 추가로 확인하면 좋을 주제나 최신화해야 할 문서가 생기면 이 노트를 업데이트하거나 `docs/` 디렉터리에 보완 자료를 추가해 주세요.
