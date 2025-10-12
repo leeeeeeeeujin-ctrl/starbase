@@ -901,7 +901,8 @@ alter table public.rank_match_roster
 
 -- Drop legacy signatures first so the redeploy is idempotent. Older installs
 -- placed the JSONB payload last, so we clear that version as well as the new
--- preferred signature before recreating the function.
+-- preferred signature before recreating the function. Copy this block exactly –
+-- the body below intentionally contains no "..." placeholders.
 drop function if exists public.sync_rank_match_roster(
   uuid,
   uuid,
