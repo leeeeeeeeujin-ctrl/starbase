@@ -28,6 +28,12 @@
   에 의해 새 ID로 정규화된다. Maker 서버 Edge Function을 도입할 때 이 스키마 정의를 그대로 재사용하면 클라이언트/서버 검증 메시지를 맞출 수 있다.
 - 신규 슬롯 필드를 추가할 때는 JSON 스키마, `prompt_slots` DDL, Supabase RPC(`insertPromptSetBundle`)의 파라미터를 한 번에 갱신해야 한다. 누락되면
   브리지가 깨지거나 슬롯 정렬이 꼬이므로, SQL 마이그레이션에 `alter table public.prompt_slots add column ...`와 동시 반영이 필요하다.
+- `readPromptSetBundle()`과 `insertPromptSetBundle()`이 모두 `sanitizeVariableRules()`와 `normalizeSlotPayload()` 경로를 공유하므로,
+  Edge Function/서버리스 계층에서도 동일한 `zod` 스키마 팩토리를 npm 패키지로 분리해 재사용한다. 업로드 직후 `prompt_set_bundle_validate(json)`
+  같은 RPC를 호출해 DB에서 2차 검증을 수행하면 Maker UI와 서버 측 검사가 동일한 오류 메시지·필드 포맷을 노출한다.
+- 읽기는 `readPromptSetBundle()` RPC가 생성한 최신 번들을 곧바로 캐시에 저장하고, 쓰기는 `insertPromptSetBundle()` RPC의 트랜잭션에 맡겨
+  `prompt_sets`/`prompt_slots`/`prompt_bridges`를 동시에 갱신한다. 클라이언트는 업로드/다운로드 스트림만 담당하고, 상태/동시성은 DB 락과
+  Realtime 이벤트로 정합성을 유지하는 구성을 목표로 한다.
 
 ## 7. 실시간 드롭인 파이프라인 핵심
 - `docs/rank-realtime-dropin-blueprint.md`는 `/api/rank/match`가 실시간 난입 대상 탐색 → 표본 축소 → 비실시간 보강 순으로 동작하도록
@@ -66,7 +72,14 @@ alter publication supabase_realtime add table
 - 실시간 채널/Ready-check가 정상화됐는지는 진단 패널의 구독 상태와 최신 이벤트 타임스탬프로 검증한다. 복구가 지연되면 RLS 정책에
   `enable_realtime` 규칙이 추가되었는지, 서비스 롤 토큰이 만료되지 않았는지 함께 점검한다.
 
-## 9. 다음 학습 제안
+## 9. 큐 자동화 & TTL 유지보수 핵심
+- `docs/matchmaking-supabase-handbook.md`는 `rank_match_queue`·`rank_rooms`·`rank_room_slots`·`rank_participants`의 필드, 인덱스, RLS 정책을
+  일괄 검토할 수 있게 정리되어 있다. 실시간 큐가 꼬이면 이 문서의 테이블/인덱스/정책 체크리스트를 따라가며 DB 스키마와 서비스 롤 권한을 빠르게 재검증한다.
+- `docs/rank-session-ttl-cleanup-cron.md`는 `rank-session-ttl-cleanup` Edge Function을 배포하고 `--schedule` 또는 `supabase functions schedule create`
+  명령으로 Cron을 고정하는 방법을 안내한다. 실행 결과는 `rank_game_logs`에서 `session_ttl_cleanup_*` 이벤트로 확인할 수 있으므로, TTL 정리 실패 시 Slack/Webhook 알림을 붙여 즉시 대응한다.
+- 자동화 워크로드는 읽기/쓰기 RPC를 짧게 유지하고, 세션 만료·큐 잠금 등 상태 관리는 DB 락·TTL·Realtime 조합으로 수행한다. Edge Function은 `supabase.functions deploy ... --schedule` 구성으로 재배포해도 스케줄이 유지되도록 IaC 스크립트에 포함한다.
+
+## 10. 다음 학습 제안
 - Maker Edge Function 도입과 Supabase RPC를 조합해 읽기/쓰기 흐름을 짧고 결정적으로 만드는 방안을 모색할 때, 위 메이커 JSON 스키마와
   Supabase RPC 패턴(`insertPromptSetBundle`, `readPromptSetBundle`)을 참고하라.
 - 실시간 큐 튜닝과 운영 자동화를 위해 `docs/matchmaking-supabase-handbook.md`, `docs/rank-session-ttl-cleanup-cron.md` 등 유지보수
