@@ -954,10 +954,10 @@ begin
     raise exception 'empty_roster';
   end if;
 
-  select max(slot_template_version)
+  select max(r.slot_template_version)
   into v_current_version
-  from public.rank_match_roster
-  where room_id = p_room_id;
+  from public.rank_match_roster as r
+  where r.room_id = p_room_id;
 
   if v_current_version is not null and v_version < v_current_version then
     raise exception 'slot_version_conflict';
