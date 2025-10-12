@@ -1232,7 +1232,7 @@ export default function RoomBrowserPage() {
 
   const ensureGameMeta = useCallback(
     async (gameId) => {
-      if (!gameId) {
+      if (!gameId || gameId === 'all') {
         setSelectedGameMeta(null)
         return null
       }

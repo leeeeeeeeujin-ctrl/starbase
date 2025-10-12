@@ -108,6 +108,7 @@ function sanitizeRealtimeMode(value) {
 
 function sanitizeMeta(rawMeta = {}) {
   const meta = typeof rawMeta === 'object' && rawMeta !== null ? rawMeta : {}
+  const extras = safeClone(meta.extras ?? meta.extra)
   const selected =
     toOptionalInteger(
       meta.selected_time_limit_seconds ?? meta.selectedTimeLimitSeconds ?? meta.turnTimerSeconds,
@@ -129,6 +130,7 @@ function sanitizeMeta(rawMeta = {}) {
     time_vote: timeVote,
     turn_state: turnState,
     async_fill_snapshot: asyncFill,
+    extras: extras || null,
   }
 }
 
@@ -659,6 +661,7 @@ export default async function handler(req, res) {
     p_turn_state: metaPayload.turn_state,
     p_async_fill_snapshot: metaPayload.async_fill_snapshot,
     p_realtime_mode: metaPayload.realtime_mode,
+    p_extras: metaPayload.extras ?? null,
   }
 
   let metaResult = null

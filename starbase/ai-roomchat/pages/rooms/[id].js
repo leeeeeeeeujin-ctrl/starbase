@@ -41,6 +41,8 @@ import {
   RANK_KEYRING_STORAGE_KEY,
   readRankKeyringSnapshot,
 } from '@/lib/rank/keyringStorage'
+import { createPlaceholderCandidate } from '@/lib/rank/asyncStandinUtils'
+import { shouldDeferRoomCleanup } from '@/lib/rank/roomCleanupGuards'
 
 const ROOM_EXIT_DELAY_MS = 5000
 const HOST_CLEANUP_DELAY_MS = ROOM_EXIT_DELAY_MS
@@ -156,17 +158,56 @@ function createMatchInstanceId() {
 
 function buildRosterFromSlots(slots) {
   if (!Array.isArray(slots) || !slots.length) return []
-  return slots.map((slot) => ({
-    slotId: slot?.id || null,
-    slotIndex: Number.isFinite(Number(slot?.slotIndex)) ? Number(slot.slotIndex) : 0,
-    role:
-      typeof slot?.role === 'string' && slot.role.trim() ? slot.role.trim() : '역할 미지정',
-    ownerId: toStringOrNull(slot?.occupantOwnerId),
-    heroId: toStringOrNull(slot?.occupantHeroId),
-    heroName: typeof slot?.occupantHeroName === 'string' ? slot.occupantHeroName : '',
-    ready: !!slot?.occupantReady,
-    joinedAt: slot?.joinedAt || null,
-  }))
+  return slots.map((slot) => {
+    const standin = slot?.standin === true
+    const matchSource =
+      toStringOrNull(slot?.matchSource) || (standin ? 'participant_pool' : null)
+    const standinPlaceholder =
+      slot?.standinPlaceholder === true || matchSource === 'async_standin_placeholder'
+    const placeholderOwnerId = standinPlaceholder
+      ? toStringOrNull(slot?.placeholderOwnerId || slot?.occupantOwnerId)
+      : toStringOrNull(slot?.placeholderOwnerId || null)
+    const score = toNumberOrNull(
+      slot?.standinScore ?? slot?.score ?? slot?.expectedScore ?? null,
+    )
+    const rating = toNumberOrNull(
+      slot?.standinRating ?? slot?.rating ?? slot?.expectedRating ?? null,
+    )
+    const battles = toNumberOrNull(slot?.standinBattles ?? slot?.battles ?? null)
+    const winRateRaw =
+      slot?.standinWinRate ?? slot?.winRate ?? slot?.expectedWinRate ?? null
+    const winRate =
+      winRateRaw !== null && winRateRaw !== undefined && Number.isFinite(Number(winRateRaw))
+        ? Number(winRateRaw)
+        : null
+    const statusRaw =
+      typeof slot?.standinStatus === 'string'
+        ? slot.standinStatus.trim()
+        : typeof slot?.status === 'string'
+        ? slot.status.trim()
+        : ''
+
+    return {
+      slotId: slot?.id || null,
+      slotIndex: Number.isFinite(Number(slot?.slotIndex)) ? Number(slot.slotIndex) : 0,
+      role:
+        typeof slot?.role === 'string' && slot.role.trim() ? slot.role.trim() : '역할 미지정',
+      ownerId: toStringOrNull(slot?.occupantOwnerId),
+      placeholderOwnerId,
+      heroId: toStringOrNull(slot?.occupantHeroId),
+      heroName: typeof slot?.occupantHeroName === 'string' ? slot.occupantHeroName : '',
+      ready: !!slot?.occupantReady,
+      joinedAt: slot?.joinedAt || null,
+      standin,
+      matchSource,
+      standinPlaceholder,
+      score,
+      rating,
+      battles,
+      winRate,
+      status: statusRaw || (standin ? 'standin' : null),
+    }
+  })
 }
 
 function buildHeroMapFromRoster(roster) {
@@ -273,6 +314,324 @@ function buildSlotLayoutFromRoster(roster) {
       ready: !!entry.ready,
       joinedAt: entry.joinedAt || null,
     }))
+}
+
+function safeJsonParse(text) {
+  if (typeof text !== 'string' || !text) return null
+  try {
+    return JSON.parse(text)
+  } catch (error) {
+    return null
+  }
+}
+
+function sanitizeStandinCandidate(candidate) {
+  if (!candidate || typeof candidate !== 'object') return null
+  const ownerId = toStringOrNull(candidate.ownerId ?? candidate.owner_id)
+  if (!ownerId) return null
+  const heroId = toStringOrNull(candidate.heroId ?? candidate.hero_id)
+  const heroNameRaw = candidate.heroName ?? candidate.hero_name
+  const heroName =
+    typeof heroNameRaw === 'string' && heroNameRaw.trim()
+      ? heroNameRaw.trim()
+      : '비실시간 대역'
+  const roleRaw = candidate.role ?? candidate.roleName
+  const role =
+    typeof roleRaw === 'string' && roleRaw.trim() ? roleRaw.trim() : '역할 미지정'
+  const score = toNumberOrNull(candidate.score ?? candidate.ratingScore ?? null)
+  const rating = toNumberOrNull(candidate.rating ?? candidate.mmr ?? null)
+  const battles = toNumberOrNull(candidate.battles ?? null)
+  const winRateSource =
+    candidate.winRate ?? candidate.win_rate ?? candidate.matchWinRate ?? null
+  const winRate =
+    winRateSource !== null && winRateSource !== undefined && Number.isFinite(Number(winRateSource))
+      ? Number(winRateSource)
+      : null
+  const matchSource =
+    toStringOrNull(candidate.matchSource ?? candidate.match_source) || null
+  const statusRaw = candidate.status ?? candidate.participantStatus
+  const status =
+    typeof statusRaw === 'string' && statusRaw.trim()
+      ? statusRaw.trim()
+      : 'standin'
+  const placeholderOwnerId = toStringOrNull(
+    candidate.placeholderOwnerId ?? candidate.placeholder_owner_id ?? null,
+  )
+  const placeholder = candidate.placeholder === true
+
+  return {
+    ownerId,
+    heroId,
+    heroName,
+    role,
+    score,
+    rating,
+    battles,
+    winRate,
+    matchSource,
+    status,
+    placeholderOwnerId,
+    placeholder,
+  }
+}
+
+function buildStandinSeatRequests(slots = []) {
+  const seatMap = new Map()
+  const seatRequests = []
+
+  slots.forEach((slot) => {
+    if (!slot || typeof slot !== 'object') return
+    const slotIndex = Number.isFinite(Number(slot.slotIndex))
+      ? Number(slot.slotIndex)
+      : null
+    if (slotIndex === null || slotIndex < 0) return
+    const role =
+      typeof slot.role === 'string' && slot.role.trim() ? slot.role.trim() : '역할 미지정'
+    if (toStringOrNull(slot.occupantOwnerId)) {
+      return
+    }
+
+    const score = toNumberOrNull(slot.score ?? slot.expectedScore ?? null)
+    const rating = toNumberOrNull(slot.rating ?? slot.expectedRating ?? null)
+
+    const request = {
+      slotIndex,
+      role,
+      score,
+      rating,
+    }
+
+    seatMap.set(slotIndex, request)
+    seatRequests.push(request)
+  })
+
+  return { seatMap, seatRequests }
+}
+
+function injectStandinsIntoSlots(slots = [], assignments = [], seatMap = new Map()) {
+  if (!Array.isArray(assignments) || assignments.length === 0) {
+    return { slots: slots.map((slot) => ({ ...slot })), applied: false, assigned: [] }
+  }
+
+  const assignmentMap = new Map()
+  const assigned = []
+
+  assignments.forEach((assignment) => {
+    if (!assignment || typeof assignment !== 'object') return
+    const rawIndex = assignment.slotIndex ?? assignment.slot_index
+    const slotIndex = Number.isFinite(Number(rawIndex)) ? Number(rawIndex) : null
+    if (slotIndex === null || slotIndex < 0) return
+    const candidate = sanitizeStandinCandidate(assignment.candidate ?? assignment)
+    if (!candidate) return
+    assignmentMap.set(slotIndex, { candidate, seat: seatMap.get(slotIndex) || null })
+    assigned.push({ slotIndex, candidate })
+  })
+
+  if (!assignmentMap.size) {
+    return { slots: slots.map((slot) => ({ ...slot })), applied: false, assigned: [] }
+  }
+
+  const assignedAt = new Date().toISOString()
+  const merged = slots.map((slot) => {
+    const base = slot && typeof slot === 'object' ? { ...slot } : {}
+    const slotIndex = Number.isFinite(Number(base.slotIndex)) ? Number(base.slotIndex) : null
+    if (slotIndex === null) {
+      return base
+    }
+
+    if (toStringOrNull(base.occupantOwnerId)) {
+      return base
+    }
+
+    const bundle = assignmentMap.get(slotIndex)
+    if (!bundle) {
+      return base
+    }
+
+    const role =
+      bundle.seat?.role || base.role || bundle.candidate.role || '역할 미지정'
+
+    return {
+      ...base,
+      role,
+      occupantOwnerId: bundle.candidate.ownerId,
+      placeholderOwnerId: bundle.candidate.placeholderOwnerId || null,
+      occupantHeroId: bundle.candidate.heroId || null,
+      occupantHeroName:
+        bundle.candidate.heroName || base.occupantHeroName || '비실시간 대역',
+      occupantReady: true,
+      joinedAt: base.joinedAt || assignedAt,
+      standin: true,
+      matchSource: bundle.candidate.matchSource || 'async_standin',
+      standinScore: bundle.candidate.score,
+      standinRating: bundle.candidate.rating,
+      standinBattles: bundle.candidate.battles,
+      standinWinRate: bundle.candidate.winRate,
+      standinStatus: bundle.candidate.status || 'standin',
+      standinPlaceholder: bundle.candidate.placeholder === true,
+    }
+  })
+
+  assignmentMap.forEach((bundle, slotIndex) => {
+    const hasSlot = merged.some(
+      (slot) => Number.isFinite(Number(slot.slotIndex)) && Number(slot.slotIndex) === slotIndex,
+    )
+    if (hasSlot) return
+    const role =
+      bundle.seat?.role || bundle.candidate.role || '역할 미지정'
+    merged.push({
+      id: null,
+      slotIndex,
+      role,
+      occupantOwnerId: bundle.candidate.ownerId,
+      placeholderOwnerId: bundle.candidate.placeholderOwnerId || null,
+      occupantHeroId: bundle.candidate.heroId || null,
+      occupantHeroName: bundle.candidate.heroName || '비실시간 대역',
+      occupantReady: true,
+      joinedAt: assignedAt,
+      standin: true,
+      matchSource: bundle.candidate.matchSource || 'async_standin',
+      standinScore: bundle.candidate.score,
+      standinRating: bundle.candidate.rating,
+      standinBattles: bundle.candidate.battles,
+      standinWinRate: bundle.candidate.winRate,
+      standinStatus: bundle.candidate.status || 'standin',
+    })
+  })
+
+  merged.sort((left, right) => {
+    const leftIndex = Number.isFinite(Number(left.slotIndex)) ? Number(left.slotIndex) : 0
+    const rightIndex = Number.isFinite(Number(right.slotIndex)) ? Number(right.slotIndex) : 0
+    return leftIndex - rightIndex
+  })
+
+  const unresolved = []
+  seatMap.forEach((_, slotIndex) => {
+    const resolved = merged.some((slot) => {
+      if (!Number.isFinite(Number(slot.slotIndex))) return false
+      if (Number(slot.slotIndex) !== Number(slotIndex)) return false
+      return Boolean(toStringOrNull(slot.occupantOwnerId))
+    })
+    if (!resolved) {
+      unresolved.push(slotIndex)
+    }
+  })
+
+  if (unresolved.length) {
+    return { slots: slots.map((slot) => ({ ...slot })), applied: false, assigned: [] }
+  }
+
+  return { slots: merged, applied: true, assigned }
+}
+
+function buildPlaceholderStandinAssignments(seatMap, assignments = []) {
+  if (!(seatMap instanceof Map)) {
+    return []
+  }
+
+  const reservedSlots = new Set()
+  assignments.forEach((assignment) => {
+    const rawIndex = assignment?.slotIndex ?? assignment?.slot_index
+    const slotIndex = Number.isFinite(Number(rawIndex)) ? Number(rawIndex) : null
+    if (slotIndex !== null) {
+      reservedSlots.add(slotIndex)
+    }
+  })
+
+  const placeholders = []
+  seatMap.forEach((seat, slotIndex) => {
+    if (reservedSlots.has(slotIndex)) {
+      return
+    }
+
+    const candidate = createPlaceholderCandidate(seat, slotIndex)
+    if (!candidate || !candidate.ownerId) {
+      return
+    }
+
+    placeholders.push({ slotIndex, candidate })
+  })
+
+  return placeholders
+}
+
+async function fulfillAsyncStandinsForSlots({ room, slots, token }) {
+  const { seatMap, seatRequests } = buildStandinSeatRequests(slots)
+  if (!seatRequests.length) {
+    return { slots: slots.map((slot) => ({ ...slot })), applied: false, assignments: [] }
+  }
+
+  const excludeOwnerIds = slots
+    .map((slot) => toStringOrNull(slot?.occupantOwnerId))
+    .filter(Boolean)
+
+  const response = await fetch('/api/rank/async-standins', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      game_id: room?.gameId || room?.game_id || null,
+      room_id: room?.id || null,
+      seat_requests: seatRequests,
+      exclude_owner_ids: excludeOwnerIds,
+    }),
+  })
+
+  const text = await response.text()
+  const payload = safeJsonParse(text) || {}
+
+  if (!response.ok) {
+    const message = payload?.error || 'async_standin_failed'
+    const error = new Error(message)
+    error.payload = payload
+    throw error
+  }
+
+  let assignments = Array.isArray(payload?.assignments) ? payload.assignments : []
+  let injection = injectStandinsIntoSlots(slots, assignments, seatMap)
+  let placeholderAssignments = []
+
+  if (!injection.applied) {
+    placeholderAssignments = buildPlaceholderStandinAssignments(seatMap, assignments)
+    if (placeholderAssignments.length) {
+      assignments = [...assignments, ...placeholderAssignments]
+      injection = injectStandinsIntoSlots(slots, assignments, seatMap)
+    }
+  }
+
+  if (!injection.applied) {
+    const error = new Error('async_standin_unavailable')
+    error.payload = payload
+    throw error
+  }
+
+  let diagnostics = null
+  if (payload?.diagnostics && typeof payload.diagnostics === 'object') {
+    diagnostics = { ...payload.diagnostics }
+  }
+
+  if (placeholderAssignments.length) {
+    diagnostics = {
+      ...(diagnostics || {}),
+      placeholders: placeholderAssignments.length,
+      placeholderSlotIndexes: placeholderAssignments.map((entry) => entry.slotIndex),
+    }
+  }
+
+  if (diagnostics && typeof console !== 'undefined' && console.info) {
+    console.info('[RoomDetail] async stand-in diagnostics:', diagnostics)
+  } else if (payload?.diagnostics && typeof console !== 'undefined' && console.info) {
+    console.info('[RoomDetail] async stand-in diagnostics:', payload.diagnostics)
+  }
+
+  return {
+    slots: injection.slots,
+    applied: true,
+    assignments,
+    diagnostics,
+  }
 }
 
 function buildMatchTransferPayload(room, slots) {
@@ -1756,9 +2115,20 @@ export default function RoomDetailPage() {
     }
   }, [])
 
+  const hostCleanupLocked = useMemo(
+    () => shouldDeferRoomCleanup({ room, slots, isHost }),
+    [room, slots, isHost],
+  )
+
   const deleteRoom = useCallback(
     async ({ silent = false, skipNavigate = false } = {}) => {
       if (!room?.id || !isHost) return
+      if (hostCleanupLocked) {
+        if (!silent) {
+          alert('게임이 진행 중이라 방을 삭제할 수 없습니다. 결과 정산이 끝난 뒤 다시 시도해 주세요.')
+        }
+        return
+      }
       cancelHostCleanup()
       if (!silent) {
         setDeletePending(true)
@@ -1787,11 +2157,20 @@ export default function RoomDetailPage() {
         }
       }
     },
-    [cancelHostCleanup, isHost, room?.id, router],
+    [cancelHostCleanup, hostCleanupLocked, isHost, room?.id, router],
   )
 
   const requestHostCleanup = useCallback(() => {
     if (!isHost || !room?.id) return
+    if (hostCleanupLocked) {
+      if (typeof console !== 'undefined' && console.info) {
+        console.info('[RoomDetail] Skipping host cleanup while room is active.', {
+          roomId: room?.id || null,
+          status: room?.status || null,
+        })
+      }
+      return
+    }
     if (typeof window === 'undefined') {
       deleteRoom({ silent: true, skipNavigate: true })
       return
@@ -1802,12 +2181,18 @@ export default function RoomDetailPage() {
       cancelHostCleanup()
       deleteRoom({ silent: true, skipNavigate: true })
     }, HOST_CLEANUP_DELAY_MS)
-  }, [cancelHostCleanup, deleteRoom, isHost, room?.id])
+  }, [cancelHostCleanup, deleteRoom, hostCleanupLocked, isHost, room?.id, room?.status])
 
   const requestHostCleanupRef = useRef(requestHostCleanup)
   useEffect(() => {
     requestHostCleanupRef.current = requestHostCleanup
   }, [requestHostCleanup])
+
+  useEffect(() => {
+    if (hostCleanupLocked) {
+      cancelHostCleanup()
+    }
+  }, [hostCleanupLocked, cancelHostCleanup])
 
   useEffect(() => {
     latestPresenceRef.current = {
@@ -2173,18 +2558,54 @@ export default function RoomDetailPage() {
         throw new Error('not_joined')
       }
 
-      const payload = buildMatchTransferPayload(room, slots)
-      if (!payload) {
-        throw new Error('stage_payload_unavailable')
-      }
-
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
       if (sessionError) {
         throw sessionError
       }
-      const token = sessionData?.session?.access_token
+
+      let token = sessionData?.session?.access_token || ''
+      if (!token) {
+        token = await resolveAccessToken()
+      }
       if (!token) {
         throw new Error('세션 토큰을 확인할 수 없습니다.')
+      }
+
+      let stageSlots = slots.map((slot) => ({ ...slot }))
+      let standinAssignments = []
+      let standinDiagnostics = null
+
+      if (allowPartialStart && occupancy.total && occupancy.filled < occupancy.total) {
+        const standinResult = await fulfillAsyncStandinsForSlots({
+          room,
+          slots: stageSlots,
+          token,
+        })
+        if (standinResult?.applied) {
+          stageSlots = standinResult.slots
+          standinAssignments = Array.isArray(standinResult.assignments)
+            ? standinResult.assignments
+            : []
+          standinDiagnostics = standinResult.diagnostics || null
+        }
+      }
+
+      const payload = buildMatchTransferPayload(room, stageSlots)
+      if (!payload) {
+        throw new Error('stage_payload_unavailable')
+      }
+
+      if (standinAssignments.length || standinDiagnostics) {
+        const asyncFillMeta = {
+          ...(payload.match?.asyncFillMeta || {}),
+        }
+        if (standinAssignments.length) {
+          asyncFillMeta.assignedStandins = standinAssignments
+        }
+        if (standinDiagnostics) {
+          asyncFillMeta.diagnostics = standinDiagnostics
+        }
+        payload.match = { ...payload.match, asyncFillMeta }
       }
 
       const stageResponse = await fetch('/api/rank/stage-room-match', {
@@ -2297,6 +2718,7 @@ export default function RoomDetailPage() {
       router,
       slots,
       supabase,
+      resolveAccessToken,
       viewer.heroId,
       viewer.heroName,
       viewer.ownerId,

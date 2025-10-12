@@ -15,6 +15,10 @@ jest.mock('@/lib/rank/readyCheckClient', () => ({
   requestMatchReadySignal: jest.fn(() => Promise.resolve({ readyCheck: null })),
 }))
 
+jest.mock('@/lib/debugCollector', () => ({
+  addDebugEvent: jest.fn(),
+}))
+
 import MatchReadyClient from '@/components/rank/MatchReadyClient'
 import {
   clearGameMatchData,
@@ -245,5 +249,32 @@ describe('MatchReadyClient store integration', () => {
 
     const text = extractText(renderer)
     expect(text).toContain('다른 참가자를 기다리는 중')
+  })
+
+  it('opens diagnostics panel when the toggle button is clicked', async () => {
+    let renderer
+
+    await act(async () => {
+      renderer = create(<MatchReadyClient gameId={gameId} />)
+      await Promise.resolve()
+    })
+
+    const toggleButtons = renderer.root.findAll(
+      (node) => node.type === 'button' && node.props.children === '디버그 보기',
+    )
+    expect(toggleButtons.length).toBeGreaterThan(0)
+
+    expect(
+      renderer.root.findAllByProps({ 'data-testid': 'match-ready-diagnostics' }).length,
+    ).toBe(0)
+
+    await act(async () => {
+      toggleButtons[0].props.onClick()
+      await Promise.resolve()
+    })
+
+    expect(
+      renderer.root.findAllByProps({ 'data-testid': 'match-ready-diagnostics' }).length,
+    ).toBe(1)
   })
 })

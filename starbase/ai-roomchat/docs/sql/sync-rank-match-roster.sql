@@ -22,14 +22,38 @@ alter table public.rank_match_roster
   alter column slot_template_source set default 'room-stage',
   alter column slot_template_updated_at set default now();
 
+-- Drop legacy signatures first so the redeploy is idempotent. Older installs
+-- placed the JSONB payload last, so we clear that version as well as the new
+-- preferred signature before recreating the function. Copy this file exactly –
+-- there are no "..." placeholders in the body.
+drop function if exists public.sync_rank_match_roster(
+  uuid,
+  uuid,
+  uuid,
+  bigint,
+  text,
+  timestamptz,
+  jsonb
+);
+
+drop function if exists public.sync_rank_match_roster(
+  uuid,
+  uuid,
+  uuid,
+  jsonb,
+  bigint,
+  text,
+  timestamptz
+);
+
 create or replace function public.sync_rank_match_roster(
   p_room_id uuid,
   p_game_id uuid,
   p_match_instance_id uuid,
-  p_slot_template_version bigint,
+  p_roster jsonb,
+  p_slot_template_version bigint default null,
   p_slot_template_source text default null,
-  p_slot_template_updated_at timestamptz default null,
-  p_roster jsonb
+  p_slot_template_updated_at timestamptz default null
 )
 returns table (
   inserted_count integer,
@@ -54,10 +78,10 @@ begin
     raise exception 'empty_roster';
   end if;
 
-  select max(slot_template_version)
+  select max(r.slot_template_version)
   into v_current_version
-  from public.rank_match_roster
-  where room_id = p_room_id;
+  from public.rank_match_roster as r
+  where r.room_id = p_room_id;
 
   if v_current_version is not null and v_version < v_current_version then
     raise exception 'slot_version_conflict';
@@ -143,7 +167,7 @@ begin
     returning 1
   )
   select
-    (select count(*) from inserted) as inserted_count,
+    (select count(*)::integer from inserted) as inserted_count,
     v_version as slot_template_version,
     v_updated_at as slot_template_updated_at;
 end;
@@ -153,8 +177,8 @@ grant execute on function public.sync_rank_match_roster(
   uuid,
   uuid,
   uuid,
+  jsonb,
   bigint,
   text,
-  timestamptz,
-  jsonb
+  timestamptz
 ) to service_role;

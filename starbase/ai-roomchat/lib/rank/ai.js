@@ -6,6 +6,7 @@ import {
   normalizeGeminiMode,
   normalizeGeminiModelId,
 } from './geminiConfig'
+import { sanitizeHistoryForProvider } from './chatHistory'
 
 function safeParseJson(value) {
   if (!value) return null
@@ -39,6 +40,22 @@ async function getRuntimeFetch() {
 function buildNetworkError(error) {
   const detail = error?.message ? sanitizeDetail(error.message) : ''
   return detail ? { error: 'ai_network_error', detail } : { error: 'ai_network_error' }
+}
+
+function mapHistoryEntries(history = []) {
+  if (!Array.isArray(history) || history.length === 0) {
+    return []
+  }
+
+  return history
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null
+      const content = typeof entry.content === 'string' ? entry.content : ''
+      if (!content) return null
+      const role = entry.role === 'assistant' ? 'assistant' : 'user'
+      return { role, content }
+    })
+    .filter(Boolean)
 }
 
 function deriveGoogleError(status, rawBody) {
@@ -79,7 +96,7 @@ function deriveGoogleError(status, rawBody) {
   return { error: 'ai_failed', detail: message }
 }
 
-async function callGemini({ apiKey, system, prompt, mode, model }) {
+async function callGemini({ apiKey, system, prompt, mode, model, history = [] }) {
   const runtimeFetch = await getRuntimeFetch()
   const preparedPrompt = typeof prompt === 'string' ? prompt : ''
   const trimmedSystem = typeof system === 'string' ? system.trim() : ''
@@ -105,18 +122,23 @@ async function callGemini({ apiKey, system, prompt, mode, model }) {
   let lastFailure = null
 
   for (const endpoint of endpoints) {
-    const combinedPrompt =
+    const historyMessages = mapHistoryEntries(history)
+    const finalPrompt =
       endpoint.supportsSystemInstruction || !trimmedSystem
         ? preparedPrompt
-        : preparedPrompt
+        : trimmedSystem
         ? `${trimmedSystem}\n\n${preparedPrompt}`
         : trimmedSystem
 
     const body = {
       contents: [
+        ...historyMessages.map((entry) => ({
+          role: entry.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: entry.content }],
+        })),
         {
           role: 'user',
-          parts: [{ text: combinedPrompt }],
+          parts: [{ text: finalPrompt }],
         },
       ],
     }
@@ -198,12 +220,14 @@ function deriveOpenAIError(status, rawBody) {
   return { error: 'ai_failed', detail: message }
 }
 
-async function callOpenAIResponses({ apiKey, system, prompt }) {
+async function callOpenAIResponses({ apiKey, system, prompt, history = [] }) {
   const runtimeFetch = await getRuntimeFetch()
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
   }
+
+  const historyMessages = mapHistoryEntries(history)
 
   const input = []
   if (system) {
@@ -212,6 +236,12 @@ async function callOpenAIResponses({ apiKey, system, prompt }) {
       content: [{ type: 'text', text: system }],
     })
   }
+  historyMessages.forEach((entry) => {
+    input.push({
+      role: entry.role,
+      content: [{ type: 'text', text: entry.content }],
+    })
+  })
   input.push({
     role: 'user',
     content: [{ type: 'text', text: prompt }],
@@ -258,12 +288,14 @@ async function callOpenAIResponses({ apiKey, system, prompt }) {
   return { text: typeof value === 'string' ? value : '' }
 }
 
-async function callOpenAIChat({ apiKey, system, prompt }) {
+async function callOpenAIChat({ apiKey, system, prompt, history = [] }) {
   const runtimeFetch = await getRuntimeFetch()
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
   }
+
+  const historyMessages = mapHistoryEntries(history)
 
   let resp
   try {
@@ -274,6 +306,7 @@ async function callOpenAIChat({ apiKey, system, prompt }) {
         model: 'gpt-4o-mini',
         messages: [
           ...(system ? [{ role: 'system', content: system }] : []),
+          ...historyMessages.map((entry) => ({ role: entry.role, content: entry.content })),
           { role: 'user', content: prompt },
         ],
         temperature: 0.7,
@@ -302,6 +335,7 @@ export async function callChat({
   userApiKey,
   system,
   user,
+  history = [],
   apiVersion = 'gemini',
   providerOptions = {},
 }) {
@@ -317,6 +351,8 @@ export async function callChat({
 
   const trimmedSystem = typeof system === 'string' ? system.trim() : ''
 
+  const normalizedHistory = sanitizeHistoryForProvider(history, { limit: 48 })
+
   try {
     if (apiVersion === 'gemini') {
       return await callGemini({
@@ -325,6 +361,7 @@ export async function callChat({
         prompt: trimmedPrompt,
         mode: providerOptions.geminiMode || providerOptions.mode,
         model: providerOptions.geminiModel || providerOptions.model,
+        history: normalizedHistory,
       })
     }
 
@@ -333,6 +370,7 @@ export async function callChat({
         apiKey: trimmedKey,
         system: trimmedSystem,
         prompt: trimmedPrompt,
+        history: normalizedHistory,
       })
     }
 
@@ -340,6 +378,7 @@ export async function callChat({
       apiKey: trimmedKey,
       system: trimmedSystem,
       prompt: trimmedPrompt,
+      history: normalizedHistory,
     })
   } catch (error) {
     return { error: 'ai_network_error' }

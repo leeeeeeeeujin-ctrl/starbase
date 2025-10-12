@@ -57,14 +57,14 @@ export default function TurnInfoPanel({
     if (typeof window === 'undefined') return
     if (!isCriticalTimer) return
     if (typeof timeRemaining !== 'number' || timeRemaining < 0) return
-    const vibrate = typeof navigator !== 'undefined' ? navigator.vibrate : undefined
-    if (typeof vibrate !== 'function') return
+    const nav = typeof navigator !== 'undefined' ? navigator : undefined
+    if (!nav || typeof nav.vibrate !== 'function') return
 
     const lastValue = lastVibrationRef.current
     if (lastValue === timeRemaining) return
 
     try {
-      vibrate(200)
+      nav.vibrate.call(nav, 200)
       lastVibrationRef.current = timeRemaining
     } catch (error) {
       console.warn('[TurnInfoPanel] 진동 알림 실패:', error)
