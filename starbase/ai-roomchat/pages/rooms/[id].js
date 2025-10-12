@@ -42,6 +42,7 @@ import {
   readRankKeyringSnapshot,
 } from '@/lib/rank/keyringStorage'
 import { createPlaceholderCandidate } from '@/lib/rank/asyncStandinUtils'
+import { shouldDeferRoomCleanup } from '@/lib/rank/roomCleanupGuards'
 
 const ROOM_EXIT_DELAY_MS = 5000
 const HOST_CLEANUP_DELAY_MS = ROOM_EXIT_DELAY_MS
@@ -2114,9 +2115,20 @@ export default function RoomDetailPage() {
     }
   }, [])
 
+  const hostCleanupLocked = useMemo(
+    () => shouldDeferRoomCleanup({ room, slots, isHost }),
+    [room, slots, isHost],
+  )
+
   const deleteRoom = useCallback(
     async ({ silent = false, skipNavigate = false } = {}) => {
       if (!room?.id || !isHost) return
+      if (hostCleanupLocked) {
+        if (!silent) {
+          alert('게임이 진행 중이라 방을 삭제할 수 없습니다. 결과 정산이 끝난 뒤 다시 시도해 주세요.')
+        }
+        return
+      }
       cancelHostCleanup()
       if (!silent) {
         setDeletePending(true)
@@ -2145,11 +2157,20 @@ export default function RoomDetailPage() {
         }
       }
     },
-    [cancelHostCleanup, isHost, room?.id, router],
+    [cancelHostCleanup, hostCleanupLocked, isHost, room?.id, router],
   )
 
   const requestHostCleanup = useCallback(() => {
     if (!isHost || !room?.id) return
+    if (hostCleanupLocked) {
+      if (typeof console !== 'undefined' && console.info) {
+        console.info('[RoomDetail] Skipping host cleanup while room is active.', {
+          roomId: room?.id || null,
+          status: room?.status || null,
+        })
+      }
+      return
+    }
     if (typeof window === 'undefined') {
       deleteRoom({ silent: true, skipNavigate: true })
       return
@@ -2160,12 +2181,18 @@ export default function RoomDetailPage() {
       cancelHostCleanup()
       deleteRoom({ silent: true, skipNavigate: true })
     }, HOST_CLEANUP_DELAY_MS)
-  }, [cancelHostCleanup, deleteRoom, isHost, room?.id])
+  }, [cancelHostCleanup, deleteRoom, hostCleanupLocked, isHost, room?.id, room?.status])
 
   const requestHostCleanupRef = useRef(requestHostCleanup)
   useEffect(() => {
     requestHostCleanupRef.current = requestHostCleanup
   }, [requestHostCleanup])
+
+  useEffect(() => {
+    if (hostCleanupLocked) {
+      cancelHostCleanup()
+    }
+  }, [hostCleanupLocked, cancelHostCleanup])
 
   useEffect(() => {
     latestPresenceRef.current = {
