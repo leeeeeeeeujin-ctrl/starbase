@@ -1735,7 +1735,7 @@ export default function RoomDetailPage() {
         const readyCount = normalizedSlots.filter((slot) => !!slot.occupantReady).length
         const allFilled = slotCount && filledCount >= slotCount
         const anyOccupied = filledCount > 0
-        const nextStatus = (() => {
+        const slotStatus = (() => {
           if (baseRoom.dropInEnabled) {
             if (allFilled || anyOccupied) {
               return 'brawl'
@@ -1748,6 +1748,12 @@ export default function RoomDetailPage() {
           return 'open'
         })()
 
+        const currentStatus = typeof roomRow.status === 'string' ? roomRow.status.trim() : ''
+        const normalizedCurrentStatus = currentStatus.toLowerCase()
+        const slotDrivenStatuses = new Set(['', 'open', 'brawl'])
+        const preservedStatus =
+          currentStatus && !slotDrivenStatuses.has(normalizedCurrentStatus) ? currentStatus : slotStatus
+
         const normalizedHostLimit = baseRoom.realtimeMode === 'pulse' ? baseRoom.hostRoleLimit : null
         const numericHostLimit = Number.isFinite(Number(normalizedHostLimit))
           ? Math.max(1, Math.floor(Number(normalizedHostLimit)))
@@ -1757,7 +1763,7 @@ export default function RoomDetailPage() {
           Number(roomRow.slot_count) !== slotCount ||
           Number(roomRow.filled_count) !== filledCount ||
           Number(roomRow.ready_count) !== readyCount ||
-          (roomRow.status || '') !== nextStatus ||
+          (roomRow.status || '') !== preservedStatus ||
           (baseRoom.realtimeMode === 'pulse'
             ? Number(roomRow.host_role_limit) !== numericHostLimit
             : roomRow.host_role_limit !== null)
@@ -1780,7 +1786,7 @@ export default function RoomDetailPage() {
                 slot_count: slotCount,
                 filled_count: filledCount,
                 ready_count: readyCount,
-                status: nextStatus,
+                status: preservedStatus,
                 host_role_limit: baseRoom.realtimeMode === 'pulse' ? numericHostLimit : null,
               }),
             })
@@ -1815,7 +1821,7 @@ export default function RoomDetailPage() {
                   slotCount,
                   filledCount,
                   readyCount,
-                  status: nextStatus,
+                  status: preservedStatus,
                   hostRoleLimit: baseRoom.realtimeMode === 'pulse' ? numericHostLimit : null,
                 },
               })
@@ -1839,7 +1845,7 @@ export default function RoomDetailPage() {
 
         const resolvedRoom = {
           ...baseRoom,
-          status: nextStatus,
+          status: preservedStatus,
           gameName,
           hostRating,
         }
