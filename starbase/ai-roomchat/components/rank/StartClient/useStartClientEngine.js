@@ -65,6 +65,7 @@ import {
 } from '@/lib/rank/timelineEvents'
 import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline'
 import { prepareHistoryPayload } from '@/lib/rank/chatHistory'
+import { buildHistorySeedEntries } from '@/lib/rank/historySeeds'
 import { useHistoryBuffer } from './hooks/useHistoryBuffer'
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
 import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
@@ -289,36 +290,6 @@ function deepClone(value) {
   } catch (error) {
     return null
   }
-}
-
-function buildHistorySeedEntries(sessionHistory) {
-  if (!sessionHistory || typeof sessionHistory !== 'object') {
-    return []
-  }
-
-  const turns = Array.isArray(sessionHistory.turns) ? sessionHistory.turns : []
-  return turns
-    .filter((turn) => typeof turn?.content === 'string' && turn.content.trim())
-    .map((turn, index) => {
-      const role = typeof turn.role === 'string' && turn.role.trim() ? turn.role.trim() : 'assistant'
-      const isVisible = turn.isVisible !== false
-      const isPublic = turn.public !== false && isVisible
-      const meta = { seeded: true }
-      const idxValue = Number(turn.idx)
-      if (Number.isFinite(idxValue)) {
-        meta.turnIdx = Math.floor(idxValue)
-      }
-      if (turn.createdAt) {
-        meta.createdAt = turn.createdAt
-      }
-      return {
-        role,
-        content: String(turn.content),
-        public: isPublic,
-        includeInAi: isVisible,
-        meta,
-      }
-    })
 }
 
 function parseSlotIndex(value, fallback = null) {
