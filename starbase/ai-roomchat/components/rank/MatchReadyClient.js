@@ -112,6 +112,15 @@ function normalizeRealtimeError(error) {
   return { message, hint: deriveRealtimeErrorHint(combined || message) }
 }
 
+function safeJsonParse(value) {
+  if (!value) return null
+  try {
+    return JSON.parse(value)
+  } catch (error) {
+    return null
+  }
+}
+
 function useMatchReadyState(gameId) {
   const [state, setState] = useState(() => ({
     ...createEmptyMatchFlowState(),
@@ -652,7 +661,9 @@ export default function MatchReadyClient({ gameId }) {
   const [readyBusy, setReadyBusy] = useState(false)
   const [readyError, setReadyError] = useState('')
   const [readyCountdownMs, setReadyCountdownMs] = useState(null)
+  const [readyTimeoutBusy, setReadyTimeoutBusy] = useState(false)
   const readySignalControllerRef = useRef(null)
+  const readyTimeoutTriggeredRef = useRef(false)
   const autoOpenRef = useRef(false)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
 
@@ -769,6 +780,21 @@ export default function MatchReadyClient({ gameId }) {
     refresh()
   }, [refresh])
 
+  const resolveAccessToken = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.auth.getSession()
+      if (!error) {
+        const tokenValue = data?.session?.access_token
+        if (tokenValue) {
+          return String(tokenValue).trim()
+        }
+      }
+    } catch (error) {
+      // ignore session resolution failures
+    }
+    return ''
+  }, [])
+
   const handleReturnToRoom = useCallback(() => {
     if (state?.room?.id) {
       router.push(`/rooms/${state.room.id}`).catch(() => {})
@@ -877,6 +903,122 @@ export default function MatchReadyClient({ gameId }) {
     viewerOwnerId,
   ])
 
+  const handleReadyTimeoutReplacement = useCallback(async () => {
+    if (readyTimeoutBusy) return
+    if (!allowStart) return
+    if (!matchInstanceId) return
+    if (!gameId) return
+    if (!readyMissingIds.length) return
+
+    setReadyTimeoutBusy(true)
+
+    try {
+      const token = await resolveAccessToken()
+      if (!token) {
+        setReadyError('세션 인증이 만료되었습니다. 페이지를 새로고침한 뒤 다시 로그인해 주세요.')
+        readyTimeoutTriggeredRef.current = false
+        return
+      }
+
+      const response = await fetch('/api/rank/ready-timeout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          match_instance_id: matchInstanceId,
+          game_id: gameId,
+          room_id: state?.room?.id || null,
+          missing_owner_ids: readyMissingIds,
+        }),
+      })
+
+      const text = await response.text().catch(() => '')
+      const data = safeJsonParse(text) || {}
+
+      if (!response.ok) {
+        const message = data?.error || 'ready_timeout_failed'
+        setReadyError('준비하지 않은 참가자를 대역으로 교체하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        addDebugEvent({
+          level: 'warn',
+          source: 'ready-timeout',
+          message: 'Ready timeout stand-in request failed',
+          details: {
+            status: response.status,
+            error: message,
+            hint: data?.hint || null,
+          },
+        })
+        readyTimeoutTriggeredRef.current = false
+        return
+      }
+
+      const currentExtras =
+        state?.sessionMeta?.extras && typeof state.sessionMeta.extras === 'object'
+          ? state.sessionMeta.extras
+          : {}
+
+      const mergedExtras = {
+        ...currentExtras,
+        readyTimeout: {
+          triggeredAt: Date.now(),
+          assignments: Array.isArray(data.assignments) ? data.assignments : [],
+          placeholders: Number.isFinite(Number(data.placeholders)) ? Number(data.placeholders) : 0,
+          diagnostics: data.diagnostics || null,
+        },
+      }
+
+      if (currentExtras.readyCheck) {
+        mergedExtras.readyCheck = currentExtras.readyCheck
+      }
+      if (readyCheck) {
+        mergedExtras.readyCheck = readyCheck
+      }
+
+      setGameMatchSessionMeta(gameId, {
+        extras: mergedExtras,
+        source: 'match-ready-timeout',
+      })
+
+      addDebugEvent({
+        level: 'info',
+        source: 'ready-timeout',
+        message: 'Ready timeout stand-in triggered',
+        details: {
+          assignments: Array.isArray(data.assignments) ? data.assignments.length : 0,
+          placeholders: Number.isFinite(Number(data.placeholders)) ? Number(data.placeholders) : 0,
+        },
+      })
+
+      readyTimeoutTriggeredRef.current = false
+      refresh().catch(() => {})
+    } catch (error) {
+      console.error('[MatchReadyClient] ready-timeout replacement failed:', error)
+      setReadyError('준비하지 않은 참가자를 대역으로 교체하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      addDebugEvent({
+        level: 'error',
+        source: 'ready-timeout',
+        message: 'Ready timeout replacement threw',
+        details: { message: error?.message || 'unknown_error' },
+      })
+      readyTimeoutTriggeredRef.current = false
+    } finally {
+      setReadyTimeoutBusy(false)
+    }
+  }, [
+    readyTimeoutBusy,
+    allowStart,
+    matchInstanceId,
+    gameId,
+    readyMissingIds,
+    resolveAccessToken,
+    state?.room?.id,
+    state?.sessionMeta?.extras,
+    readyCheck,
+    refresh,
+  ])
+
   const handleStart = useCallback(() => {
     if (!gameId) return
     if (readyStatus === 'ready' && viewerReady) {
@@ -923,6 +1065,38 @@ export default function MatchReadyClient({ gameId }) {
     const timer = setInterval(update, 250)
     return () => clearInterval(timer)
   }, [readyWindowActive, readyExpiresAtMs])
+
+  useEffect(() => {
+    if (!readyWindowActive || readyStatus === 'ready') {
+      readyTimeoutTriggeredRef.current = false
+      return
+    }
+
+    if (readyTimeoutBusy) {
+      return
+    }
+
+    if (!readyMissingIds.length) {
+      readyTimeoutTriggeredRef.current = false
+      return
+    }
+
+    if (readyCountdownSeconds != null && readyCountdownSeconds <= 0) {
+      if (!readyTimeoutTriggeredRef.current) {
+        readyTimeoutTriggeredRef.current = true
+        handleReadyTimeoutReplacement()
+      }
+    } else {
+      readyTimeoutTriggeredRef.current = false
+    }
+  }, [
+    readyWindowActive,
+    readyStatus,
+    readyCountdownSeconds,
+    readyMissingIds,
+    handleReadyTimeoutReplacement,
+    readyTimeoutBusy,
+  ])
 
   useEffect(() => {
     if (!allowStart) {
@@ -1040,17 +1214,36 @@ export default function MatchReadyClient({ gameId }) {
   }, [readyHint, readyError, readyStatus])
 
   const startButtonLabel = useMemo(() => {
-    if (!allowStart) return '게임 화면 열기'
+    if (readyTimeoutBusy) return '대역 교체 중…'
+
+    const countdownSuffix =
+      readyWindowActive && readyCountdownSeconds != null
+        ? ` (${Math.max(0, readyCountdownSeconds)}초)`
+        : ''
+
+    if (!allowStart) return `게임 화면 열기${countdownSuffix}`
     if (readyStatus === 'ready') return '게임 화면 열기'
     if (readyWindowActive) {
-      if (viewerReady) return '대기 중…'
-      return readyBusy ? '준비 중…' : '준비하기'
+      if (viewerReady) return `대기 중${countdownSuffix}`
+      const baseLabel = readyBusy ? '준비 중…' : '준비하기'
+      return `${baseLabel}${countdownSuffix}`
     }
     return readyBusy ? '준비 중…' : '게임 화면 열기'
-  }, [allowStart, readyStatus, readyWindowActive, viewerReady, readyBusy])
+  }, [
+    allowStart,
+    readyStatus,
+    readyWindowActive,
+    viewerReady,
+    readyBusy,
+    readyCountdownSeconds,
+    readyTimeoutBusy,
+  ])
 
   const disableStartButton =
-    !allowStart || readyBusy || (readyWindowActive && viewerReady && readyStatus !== 'ready')
+    !allowStart ||
+    readyBusy ||
+    readyTimeoutBusy ||
+    (readyWindowActive && viewerReady && readyStatus !== 'ready')
 
   return (
     <div className={styles.page}>
