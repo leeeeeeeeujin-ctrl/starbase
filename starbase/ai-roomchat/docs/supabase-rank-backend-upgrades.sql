@@ -1043,7 +1043,7 @@ begin
     returning 1
   )
   select
-    (select count(*) from inserted) as inserted_count,
+    (select count(*)::integer from inserted) as inserted_count,
     v_version as slot_template_version,
     v_updated_at as slot_template_updated_at;
 end;
