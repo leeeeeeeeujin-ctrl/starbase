@@ -22,6 +22,9 @@ alter table public.rank_match_roster
   alter column slot_template_source set default 'room-stage',
   alter column slot_template_updated_at set default now();
 
+-- Drop legacy signatures first so the redeploy is idempotent. Older installs
+-- placed the JSONB payload last, so we clear that version as well as the new
+-- preferred signature before recreating the function.
 drop function if exists public.sync_rank_match_roster(
   uuid,
   uuid,
@@ -30,6 +33,16 @@ drop function if exists public.sync_rank_match_roster(
   text,
   timestamptz,
   jsonb
+);
+
+drop function if exists public.sync_rank_match_roster(
+  uuid,
+  uuid,
+  uuid,
+  jsonb,
+  bigint,
+  text,
+  timestamptz
 );
 
 create or replace function public.sync_rank_match_roster(
