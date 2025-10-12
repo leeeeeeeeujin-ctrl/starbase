@@ -51,4 +51,19 @@ describe('buildSessionMetaRequest', () => {
     })
     expect(turnStateSignature).toContain('"dropIn"')
   })
+
+  it('passes extras from session meta into the meta payload', () => {
+    const { metaPayload } = buildSessionMetaRequest({
+      state: {
+        sessionMeta: {
+          extras: {
+            betaFeature: true,
+            nested: { difficulty: 'hard' },
+          },
+        },
+      },
+    })
+
+    expect(metaPayload?.extras).toEqual({ betaFeature: true, nested: { difficulty: 'hard' } })
+  })
 })

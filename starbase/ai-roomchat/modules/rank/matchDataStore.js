@@ -42,6 +42,136 @@ function createEmptySessionMeta() {
   }
 }
 
+function createEmptySessionHistory() {
+  return {
+    sessionId: null,
+    turns: [],
+    totalCount: 0,
+    publicCount: 0,
+    hiddenCount: 0,
+    suppressedCount: 0,
+    truncated: false,
+    lastIdx: null,
+    updatedAt: 0,
+    source: '',
+    diagnostics: null,
+  }
+}
+
+function sanitizeHistoryTurn(turn, index) {
+  if (!turn || typeof turn !== 'object') return null
+
+  const idxValue = Number(turn.idx)
+  const roleRaw = typeof turn.role === 'string' ? turn.role.trim() : ''
+  const content = typeof turn.content === 'string' ? turn.content : ''
+  const createdAt = turn.createdAt || turn.created_at || null
+  const summaryPayload =
+    turn.summaryPayload ||
+    turn.summary_payload ||
+    (turn.summary && typeof turn.summary === 'object' ? turn.summary : null)
+  const metadata =
+    turn.metadata && typeof turn.metadata === 'object'
+      ? safeClone(turn.metadata)
+      : null
+
+  return {
+    id:
+      turn.id != null
+        ? String(turn.id).trim() || null
+        : turn.turn_id != null
+        ? String(turn.turn_id).trim() || null
+        : null,
+    idx: Number.isFinite(idxValue) ? idxValue : index,
+    role: roleRaw || 'system',
+    content,
+    public: turn.public !== false,
+    isVisible: turn.isVisible !== false && turn.is_visible !== false,
+    createdAt,
+    summaryPayload: summaryPayload != null ? safeClone(summaryPayload) : null,
+    metadata,
+  }
+}
+
+function sanitizeHistoryTurns(turns = []) {
+  if (!Array.isArray(turns)) return []
+  return turns
+    .map((turn, index) => sanitizeHistoryTurn(turn, index))
+    .filter(Boolean)
+}
+
+function sanitizeSessionHistoryPayload(patch, previous) {
+  if (patch === null) {
+    const cleared = createEmptySessionHistory()
+    cleared.updatedAt = Date.now()
+    return cleared
+  }
+
+  const base = previous ? safeClone(previous) || createEmptySessionHistory() : createEmptySessionHistory()
+  const next = { ...createEmptySessionHistory(), ...base }
+
+  if (patch && typeof patch === 'object') {
+    if (patch.sessionId !== undefined) {
+      const sessionId = patch.sessionId != null ? String(patch.sessionId).trim() : ''
+      next.sessionId = sessionId || null
+    }
+
+    if (patch.turns !== undefined) {
+      next.turns = sanitizeHistoryTurns(patch.turns)
+    }
+
+    if (patch.totalCount !== undefined) {
+      const total = Number(patch.totalCount)
+      next.totalCount = Number.isFinite(total) && total >= 0 ? Math.floor(total) : 0
+    }
+
+    if (patch.publicCount !== undefined) {
+      const publicCount = Number(patch.publicCount)
+      next.publicCount = Number.isFinite(publicCount) && publicCount >= 0 ? Math.floor(publicCount) : 0
+    }
+
+    if (patch.hiddenCount !== undefined) {
+      const hiddenCount = Number(patch.hiddenCount)
+      next.hiddenCount = Number.isFinite(hiddenCount) && hiddenCount >= 0 ? Math.floor(hiddenCount) : 0
+    }
+
+    if (patch.suppressedCount !== undefined) {
+      const suppressedCount = Number(patch.suppressedCount)
+      next.suppressedCount = Number.isFinite(suppressedCount) && suppressedCount >= 0 ? Math.floor(suppressedCount) : 0
+    }
+
+    if (patch.truncated !== undefined) {
+      next.truncated = Boolean(patch.truncated)
+    }
+
+    if (patch.lastIdx !== undefined) {
+      const lastIdx = Number(patch.lastIdx)
+      next.lastIdx = Number.isFinite(lastIdx) ? Math.floor(lastIdx) : null
+    }
+
+    if (patch.updatedAt !== undefined) {
+      const updatedAt = Number(patch.updatedAt)
+      if (Number.isFinite(updatedAt) && updatedAt > 0) {
+        next.updatedAt = Math.floor(updatedAt)
+      }
+    }
+
+    if (patch.source !== undefined) {
+      next.source = typeof patch.source === 'string' ? patch.source.trim() : next.source || ''
+    }
+
+    if (patch.diagnostics !== undefined) {
+      const diagnostics = safeClone(patch.diagnostics)
+      next.diagnostics = diagnostics === undefined ? null : diagnostics
+    }
+  }
+
+  if (!next.updatedAt) {
+    next.updatedAt = Date.now()
+  }
+
+  return next
+}
+
 function createEmptyState() {
   return {
     updatedAt: 0,
@@ -58,6 +188,7 @@ function createEmptyState() {
     confirmation: null,
     slotTemplate: createEmptySlotTemplate(),
     sessionMeta: createEmptySessionMeta(),
+    sessionHistory: createEmptySessionHistory(),
   }
 }
 
@@ -746,6 +877,12 @@ export function setGameMatchSlotTemplate(gameId, payload = {}) {
 export function setGameMatchSessionMeta(gameId, payload = {}) {
   return updateEntry(gameId, (entry) => {
     entry.sessionMeta = sanitizeSessionMetaPatch(payload, entry.sessionMeta)
+  })
+}
+
+export function setGameMatchSessionHistory(gameId, payload = {}) {
+  return updateEntry(gameId, (entry) => {
+    entry.sessionHistory = sanitizeSessionHistoryPayload(payload, entry.sessionHistory)
   })
 }
 

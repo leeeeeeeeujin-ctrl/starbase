@@ -43,6 +43,20 @@ const EMPTY_SESSION_META = Object.freeze({
   updatedAt: 0,
 })
 
+const EMPTY_SESSION_HISTORY = Object.freeze({
+  sessionId: null,
+  turns: [],
+  totalCount: 0,
+  publicCount: 0,
+  hiddenCount: 0,
+  suppressedCount: 0,
+  truncated: false,
+  lastIdx: null,
+  updatedAt: 0,
+  source: '',
+  diagnostics: null,
+})
+
 const EMPTY_MATCH_FLOW_STATE = {
   snapshot: null,
   roster: [],
@@ -67,6 +81,7 @@ const EMPTY_MATCH_FLOW_STATE = {
   slotTemplateVersion: 0,
   slotTemplateUpdatedAt: 0,
   sessionMeta: EMPTY_SESSION_META,
+  sessionHistory: EMPTY_SESSION_HISTORY,
 }
 
 export function createEmptyMatchFlowState(overrides = {}) {
@@ -75,6 +90,7 @@ export function createEmptyMatchFlowState(overrides = {}) {
     keyringSnapshot: overrideKeyring,
     slotTemplate: overrideSlotTemplate,
     sessionMeta: overrideSessionMeta,
+    sessionHistory: overrideSessionHistory,
     slotTemplateVersion: overrideSlotVersion,
     slotTemplateUpdatedAt: overrideSlotUpdatedAt,
     ...rest
@@ -103,6 +119,9 @@ export function createEmptyMatchFlowState(overrides = {}) {
     overrideSlotVersion != null ? overrideSlotVersion : slotTemplate.version || 0
   const slotTemplateUpdatedAt =
     overrideSlotUpdatedAt != null ? overrideSlotUpdatedAt : slotTemplate.updatedAt || 0
+  const sessionHistory = overrideSessionHistory
+    ? { ...EMPTY_SESSION_HISTORY, ...overrideSessionHistory }
+    : { ...EMPTY_SESSION_HISTORY }
 
   return {
     ...EMPTY_MATCH_FLOW_STATE,
@@ -112,6 +131,7 @@ export function createEmptyMatchFlowState(overrides = {}) {
     slotTemplateVersion,
     slotTemplateUpdatedAt,
     sessionMeta,
+    sessionHistory,
     ...rest,
   }
 }
@@ -150,6 +170,13 @@ function sanitizeRoster(roster) {
         heroName: entry.heroName || '',
         ready: !!entry.ready,
         joinedAt: entry.joinedAt || null,
+        standin: entry.standin === true,
+        matchSource:
+          entry.matchSource != null
+            ? String(entry.matchSource).trim()
+            : entry.standin
+              ? 'participant_pool'
+              : '',
       }
     })
     .filter(Boolean)
@@ -169,6 +196,13 @@ function sanitizeAssignments(assignments) {
             heroName: member?.heroName || '',
             ready: !!member?.ready,
             slotIndex: toNumber(member?.slotIndex) ?? memberIndex,
+            standin: member?.standin === true,
+            matchSource:
+              member?.matchSource != null
+                ? String(member.matchSource).trim()
+                : member?.standin
+                  ? 'participant_pool'
+                  : '',
           }))
         : []
       return {
@@ -340,6 +374,111 @@ function normalizeSessionMeta(rawSessionMeta, snapshot) {
   return base
 }
 
+function normalizeHistoryTurn(turn, index) {
+  if (!turn || typeof turn !== 'object') {
+    return {
+      id: null,
+      idx: index,
+      role: 'system',
+      content: '',
+      public: true,
+      isVisible: true,
+      createdAt: null,
+      summaryPayload: null,
+      metadata: null,
+    }
+  }
+
+  const idxValue = Number(turn.idx)
+  const role = turn.role != null ? String(turn.role).trim() : ''
+  const content = turn.content != null ? String(turn.content) : ''
+  const summaryPayload =
+    turn.summaryPayload != null
+      ? deepClone(turn.summaryPayload)
+      : turn.summary_payload != null
+      ? deepClone(turn.summary_payload)
+      : null
+  const metadata = turn.metadata != null ? deepClone(turn.metadata) : null
+
+  return {
+    id:
+      turn.id != null
+        ? String(turn.id).trim() || null
+        : turn.turn_id != null
+        ? String(turn.turn_id).trim() || null
+        : null,
+    idx: Number.isFinite(idxValue) ? idxValue : index,
+    role: role || 'system',
+    content,
+    public: turn.public !== false,
+    isVisible: turn.isVisible !== false && turn.is_visible !== false,
+    createdAt: turn.createdAt || turn.created_at || null,
+    summaryPayload,
+    metadata,
+  }
+}
+
+function normalizeSessionHistory(rawHistory) {
+  if (!rawHistory || typeof rawHistory !== 'object') {
+    return { ...EMPTY_SESSION_HISTORY }
+  }
+
+  const base = { ...EMPTY_SESSION_HISTORY }
+  const turns = Array.isArray(rawHistory.turns) ? rawHistory.turns : []
+  base.turns = turns.map((turn, index) => normalizeHistoryTurn(turn, index))
+
+  if (rawHistory.sessionId !== undefined) {
+    const sessionId = String(rawHistory.sessionId || '').trim()
+    base.sessionId = sessionId || null
+  }
+
+  if (rawHistory.totalCount !== undefined) {
+    const total = Number(rawHistory.totalCount)
+    base.totalCount = Number.isFinite(total) && total >= 0 ? Math.floor(total) : 0
+  }
+
+  if (rawHistory.publicCount !== undefined) {
+    const publicCount = Number(rawHistory.publicCount)
+    base.publicCount = Number.isFinite(publicCount) && publicCount >= 0 ? Math.floor(publicCount) : 0
+  }
+
+  if (rawHistory.hiddenCount !== undefined) {
+    const hiddenCount = Number(rawHistory.hiddenCount)
+    base.hiddenCount = Number.isFinite(hiddenCount) && hiddenCount >= 0 ? Math.floor(hiddenCount) : 0
+  }
+
+  if (rawHistory.suppressedCount !== undefined) {
+    const suppressedCount = Number(rawHistory.suppressedCount)
+    base.suppressedCount =
+      Number.isFinite(suppressedCount) && suppressedCount >= 0 ? Math.floor(suppressedCount) : 0
+  }
+
+  if (rawHistory.truncated !== undefined) {
+    base.truncated = Boolean(rawHistory.truncated)
+  }
+
+  if (rawHistory.lastIdx !== undefined) {
+    const lastIdx = Number(rawHistory.lastIdx)
+    base.lastIdx = Number.isFinite(lastIdx) ? Math.floor(lastIdx) : null
+  }
+
+  if (rawHistory.updatedAt !== undefined) {
+    const updatedAt = Number(rawHistory.updatedAt)
+    base.updatedAt = Number.isFinite(updatedAt) && updatedAt > 0 ? Math.floor(updatedAt) : 0
+  }
+
+  if (rawHistory.source !== undefined) {
+    base.source = typeof rawHistory.source === 'string' ? rawHistory.source.trim() : ''
+  }
+
+  if (rawHistory.diagnostics !== undefined) {
+    const diagnostics = deepClone(rawHistory.diagnostics)
+    base.diagnostics = diagnostics === undefined ? null : diagnostics
+  }
+
+  return base
+}
+
 function normalizeTurnState(rawTurnState) {
   const normalized = { ...EMPTY_TURN_STATE }
   if (!rawTurnState || typeof rawTurnState !== 'object') {
@@ -420,6 +559,7 @@ export function readMatchFlowState(gameId) {
   const assignments = sanitizeAssignments(snapshot?.match?.assignments)
   const slotTemplate = normalizeSlotTemplate(raw?.slotTemplate, snapshot)
   const sessionMeta = normalizeSessionMeta(raw?.sessionMeta, snapshot)
+  const sessionHistory = normalizeSessionHistory(raw?.sessionHistory)
 
   const heroSelection = raw?.heroSelection || {}
   const viewer = {
@@ -472,6 +612,7 @@ export function readMatchFlowState(gameId) {
     slotTemplateVersion: slotTemplate?.version || 0,
     slotTemplateUpdatedAt: slotTemplate?.updatedAt || 0,
     sessionMeta,
+    sessionHistory,
   }
 }
 

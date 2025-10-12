@@ -64,6 +64,8 @@ import {
   normalizeTimelineStatus,
 } from '@/lib/rank/timelineEvents'
 import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline'
+import { prepareHistoryPayload } from '@/lib/rank/chatHistory'
+import { buildHistorySeedEntries } from '@/lib/rank/historySeeds'
 import { useHistoryBuffer } from './hooks/useHistoryBuffer'
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
 import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
@@ -828,6 +830,14 @@ export function useStartClientEngine(gameId, options = {}) {
   const startMatchMetaRef = useRef(initialMatchMeta)
   const [startMatchMeta] = useState(initialMatchMeta)
   const [frontMatchData] = useState(initialFrontMatchData)
+  const historySeeds = useMemo(
+    () => buildHistorySeedEntries(frontMatchData?.sessionHistory),
+    [frontMatchData],
+  )
+  const historySeedRef = useRef(historySeeds)
+  useEffect(() => {
+    historySeedRef.current = historySeeds
+  }, [historySeeds])
   const matchSnapshotSeed = frontMatchData?.matchSnapshot?.match || null
   const matchInstanceId = useMemo(() => {
     if (!matchSnapshotSeed) return ''
@@ -3028,7 +3038,14 @@ export function useStartClientEngine(gameId, options = {}) {
       const startNode = graph.nodes.find((node) => node.is_start) || graph.nodes[0]
       history.beginSession()
       bumpHistoryVersion()
-      if (systemPrompt) {
+      const seeds = Array.isArray(historySeedRef.current) ? historySeedRef.current : []
+      if (seeds.length) {
+        const hasSystemSeed = seeds.some((entry) => entry.role === 'system')
+        if (!hasSystemSeed && systemPrompt) {
+          history.push({ role: 'system', content: systemPrompt, public: false, includeInAi: true, meta: { seeded: true } })
+        }
+        seeds.forEach((seed) => history.push(seed))
+      } else if (systemPrompt) {
         history.push({ role: 'system', content: systemPrompt, public: false })
       }
 
@@ -3521,6 +3538,7 @@ export function useStartClientEngine(gameId, options = {}) {
         })
 
         const promptText = compiled.text
+        const historyPayload = prepareHistoryPayload(aiMemory, { limit: 32 })
         if (compiled.pickedSlot != null) {
           visitedSlotIds.current.add(String(compiled.pickedSlot))
         }
@@ -3603,6 +3621,7 @@ export function useStartClientEngine(gameId, options = {}) {
               prompt_role: 'system',
               response_role: historyRole,
               response_public: true,
+              history: historyPayload,
             }),
           })
 
@@ -4034,6 +4053,7 @@ export function useStartClientEngine(gameId, options = {}) {
       graph.edges,
       slots,
       history,
+      aiMemory,
       activeGlobal,
       activeLocal,
       manualResponse,
