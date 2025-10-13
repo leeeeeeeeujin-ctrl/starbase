@@ -251,7 +251,6 @@ const styles = {
     overflow: 'hidden',
     border: '1px solid rgba(148, 163, 184, 0.28)',
   },
-}
   gameCard: (selected) => ({
     borderRadius: 18,
     border: selected
