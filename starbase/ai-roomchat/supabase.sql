@@ -1946,6 +1946,126 @@ $$;
 grant execute on function public.fetch_rank_lobby_snapshot(text, integer)
   to authenticated, service_role;
 
+create or replace function public.fetch_rank_lobby_games(
+  p_limit integer default 24
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_limit integer := greatest(coalesce(p_limit, 24), 1);
+  v_games jsonb := '[]'::jsonb;
+begin
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_games
+  from (
+    select
+      g.id,
+      g.name,
+      g.description,
+      g.realtime_match as realtime_mode,
+      g.prompt_set_id,
+      g.play_count,
+      g.likes_count,
+      g.updated_at,
+      coalesce((
+        select bool_or(flag)
+        from jsonb_each(coalesce(g.rules, '{}'::jsonb)) as rule(key, value)
+        cross join lateral (
+          select case
+            when jsonb_typeof(value) = 'boolean' then value::boolean
+            when jsonb_typeof(value) = 'number' then (value::numeric) <> 0
+            when jsonb_typeof(value) = 'string' then lower(trim(both '"' from value::text)) in (
+              'true', '1', 'yes', 'on', 'allow', 'allow-drop-in', 'enable', 'enabled', 'realtime', 'live'
+            )
+            when jsonb_typeof(value) = 'object' and value ? 'value' and jsonb_typeof(value->'value') = 'boolean'
+              then (value->>'value')::boolean
+            when jsonb_typeof(value) = 'object' and value ? 'value' and jsonb_typeof(value->'value') = 'number'
+              then (value->>'value')::numeric <> 0
+            when jsonb_typeof(value) = 'object' and value ? 'value' and jsonb_typeof(value->'value') = 'string'
+              then lower(trim(both '"' from (value->>'value'))) in (
+                'true', '1', 'yes', 'on', 'allow', 'allow-drop-in', 'enable', 'enabled', 'realtime', 'live'
+              )
+            else null
+          end as flag
+        ) as parsed
+        where lower(rule.key) in ('drop_in', 'allow_drop_in', 'dropin', 'allowdropin', 'enable_drop_in', 'drop_in_enabled')
+      ), false) as drop_in_enabled,
+      case when ps.id is not null then jsonb_build_object(
+        'id', ps.id,
+        'name', ps.name,
+        'description', ps.description
+      ) else null end as prompt_set,
+      coalesce(slot_metrics.active_slot_count, 0) as slot_count,
+      coalesce(slot_metrics.slots, '[]'::jsonb) as slots,
+      coalesce(prompt_metrics.slots, '[]'::jsonb) as prompt_slots,
+      coalesce(participant_samples.samples, '[]'::jsonb) as participants
+    from public.rank_games g
+    left join public.prompt_sets ps on ps.id = g.prompt_set_id
+    left join lateral (
+      select
+        count(*) filter (where coalesce(s.active, true)) as active_slot_count,
+        coalesce(jsonb_agg(
+          jsonb_build_object(
+            'slot_index', s.slot_index,
+            'role', s.role,
+            'active', coalesce(s.active, true),
+            'hero_id', s.hero_id,
+            'hero_owner_id', s.hero_owner_id,
+            'updated_at', s.updated_at
+          )
+          order by s.slot_index
+        ), '[]'::jsonb) as slots
+      from public.rank_game_slots s
+      where s.game_id = g.id
+    ) as slot_metrics on true
+    left join lateral (
+      select coalesce(jsonb_agg(
+          jsonb_build_object(
+            'slot_no', p.slot_no,
+            'slot_type', p.slot_type,
+            'is_start', p.is_start,
+            'invisible', p.invisible
+          )
+          order by p.slot_no
+        ), '[]'::jsonb) as slots
+      from public.prompt_slots p
+      where p.set_id = g.prompt_set_id
+    ) as prompt_metrics on true
+    left join lateral (
+      select coalesce(jsonb_agg(
+          jsonb_build_object(
+            'owner_id', rp.owner_id,
+            'hero_id', rp.hero_id,
+            'role', rp.role,
+            'rating', rp.rating,
+            'score', rp.score,
+            'status', rp.status,
+            'updated_at', rp.updated_at
+          )
+          order by rp.updated_at desc
+        ), '[]'::jsonb) as samples
+      from (
+        select *
+        from public.rank_participants
+        where game_id = g.id
+        order by updated_at desc
+        limit 6
+      ) rp
+    ) as participant_samples on true
+    order by g.updated_at desc
+    limit v_limit
+  ) as row;
+
+  return jsonb_build_object('games', v_games);
+end;
+$$;
+
+grant execute on function public.fetch_rank_lobby_games(integer)
+  to authenticated, service_role;
+
 create or replace function public.cancel_rank_queue_ticket(
   queue_ticket_id uuid
 )
