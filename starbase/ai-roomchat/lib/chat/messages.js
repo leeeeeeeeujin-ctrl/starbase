@@ -1,5 +1,6 @@
 "use client"
 
+import { subscribeToBroadcastTopics } from '../realtime/broadcast'
 import { supabase } from '../supabase'
 
 export const MESSAGE_LIMIT = 30
@@ -82,85 +83,71 @@ export async function insertMessage(payload, context = {}) {
   return data || null
 }
 
-let sharedMessageChannel = null
-let sharedChannelSubscribed = false
-let sharedSubscriberCount = 0
-
-function getOrCreateMessageChannel() {
-  if (!sharedMessageChannel) {
-    sharedMessageChannel = supabase.channel('realtime:public:messages')
-    sharedChannelSubscribed = false
+function normalizeIdentifier(value) {
+  if (value === null || value === undefined) {
+    return null
   }
 
-  return sharedMessageChannel
+  const token = String(value).trim()
+  return token.length ? token : null
 }
 
-function subscribeSharedChannel(channel, filters, handler) {
-  if (!channel || !filters.length) {
-    return () => {}
-  }
+function buildMessageTopics({
+  sessionId,
+  matchInstanceId,
+  gameId,
+  roomId,
+  heroId,
+  ownerId,
+  userId,
+}) {
+  const topics = new Set()
 
-  const listeners = []
-  const wrappedHandler = (payload, listenerState) => {
-    if (!listenerState.active) {
-      return
-    }
+  topics.add('messages:global')
 
-    if (typeof handler === 'function' && payload?.new) {
-      handler(payload.new)
-    }
-  }
-
-  filters.forEach((filter) => {
-    const signature = `${filter}`.trim()
-    if (!signature) {
-      return
-    }
-
-    const listenerState = { active: true }
-    channel.on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'messages', filter: signature },
-      (payload) => wrappedHandler(payload, listenerState),
-    )
-
-    listeners.push(listenerState)
+  ;['lobby', 'system', 'main', 'role', 'whisper'].forEach((channelType) => {
+    topics.add(`messages:channel:${channelType}`)
   })
 
-  if (!sharedChannelSubscribed) {
-    channel.subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        console.error('채팅 실시간 채널을 구독하지 못했습니다.', {
-          channel: channel.topic,
-          filters,
-        })
-      }
-    })
+  const normalizedSession = normalizeIdentifier(sessionId)
+  const normalizedMatch = normalizeIdentifier(matchInstanceId)
+  const normalizedGame = normalizeIdentifier(gameId)
+  const normalizedRoom = normalizeIdentifier(roomId)
+  const normalizedHero = normalizeIdentifier(heroId)
+  const normalizedOwner = normalizeIdentifier(ownerId)
+  const normalizedUser = normalizeIdentifier(userId)
 
-    sharedChannelSubscribed = true
+  if (normalizedSession) {
+    topics.add(`messages:session:${normalizedSession}`)
   }
 
-  sharedSubscriberCount += 1
-
-  return () => {
-    listeners.forEach((listenerState) => {
-      listenerState.active = false
-    })
-
-    sharedSubscriberCount = Math.max(sharedSubscriberCount - 1, 0)
-
-    if (sharedSubscriberCount === 0 && sharedMessageChannel) {
-      try {
-        sharedMessageChannel.unsubscribe()
-        supabase.removeChannel(sharedMessageChannel)
-      } catch (error) {
-        console.error('채팅 실시간 채널을 해제하지 못했습니다.', error)
-      } finally {
-        sharedMessageChannel = null
-        sharedChannelSubscribed = false
-      }
-    }
+  if (normalizedMatch) {
+    topics.add(`messages:match:${normalizedMatch}`)
   }
+
+  if (normalizedGame) {
+    topics.add(`messages:game:${normalizedGame}`)
+  }
+
+  if (normalizedRoom) {
+    topics.add(`messages:room:${normalizedRoom}`)
+  }
+
+  if (normalizedOwner) {
+    topics.add(`messages:owner:${normalizedOwner}`)
+    topics.add(`messages:target-owner:${normalizedOwner}`)
+  }
+
+  if (normalizedUser && normalizedUser !== normalizedOwner) {
+    topics.add(`messages:user:${normalizedUser}`)
+  }
+
+  if (normalizedHero) {
+    topics.add(`messages:hero:${normalizedHero}`)
+    topics.add(`messages:target-hero:${normalizedHero}`)
+  }
+
+  return Array.from(topics)
 }
 
 export function subscribeToMessages({
@@ -174,48 +161,32 @@ export function subscribeToMessages({
   userId = null,
 } = {}) {
   const handler = typeof onInsert === 'function' ? onInsert : () => {}
-  const channel = getOrCreateMessageChannel()
-  const filters = []
-  const normalizedOwnerId = ownerId || userId || null
-  const normalizedHeroId = heroId || null
+  const topics = buildMessageTopics({
+    sessionId,
+    matchInstanceId,
+    gameId,
+    roomId,
+    heroId,
+    ownerId,
+    userId,
+  })
 
-  filters.push('channel_type=eq.lobby')
-  filters.push('channel_type=eq.system')
-  filters.push('channel_type=eq.main')
-  filters.push('channel_type=eq.role')
-  filters.push('channel_type=eq.whisper')
-
-  if (sessionId) {
-    filters.push(`session_id=eq.${sessionId}`)
-  }
-
-  if (matchInstanceId) {
-    filters.push(`match_instance_id=eq.${matchInstanceId}`)
-  }
-
-  if (gameId) {
-    filters.push(`game_id=eq.${gameId}`)
-  }
-
-  if (roomId) {
-    filters.push(`room_id=eq.${roomId}`)
-  }
-
-  if (normalizedOwnerId) {
-    filters.push(`owner_id=eq.${normalizedOwnerId}`)
-    filters.push(`target_owner_id=eq.${normalizedOwnerId}`)
-  }
-
-  if (normalizedHeroId) {
-    filters.push(`hero_id=eq.${normalizedHeroId}`)
-    filters.push(`target_hero_id=eq.${normalizedHeroId}`)
-  }
-
-  const uniqueFilters = Array.from(new Set(filters.filter(Boolean)))
-
-  if (!uniqueFilters.length) {
+  if (!topics.length) {
     return () => {}
   }
 
-  return subscribeSharedChannel(channel, uniqueFilters, handler)
+  return subscribeToBroadcastTopics(
+    topics,
+    (change) => {
+      if (!change || change.eventType === 'DELETE') {
+        return
+      }
+
+      const record = change.new
+      if (record && typeof handler === 'function') {
+        handler(record, change)
+      }
+    },
+    { events: ['INSERT', 'UPDATE'] },
+  )
 }

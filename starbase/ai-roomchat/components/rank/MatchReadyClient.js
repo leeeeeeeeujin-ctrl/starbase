@@ -21,6 +21,7 @@ import {
   sanitizeTurnTimerVote,
   buildTurnTimerVotePatch,
 } from '../../lib/rank/turnTimerMeta'
+import { subscribeToBroadcastTopic } from '../../lib/realtime/broadcast'
 import { supabase } from '../../lib/supabase'
 import { loadMatchFlowSnapshot } from '../../modules/rank/matchRealtimeSync'
 import { requestMatchReadySignal } from '../../lib/rank/readyCheckClient'
@@ -371,16 +372,23 @@ function useMatchReadyState(gameId) {
   useEffect(() => {
     if (!gameId && gameId !== 0) return undefined
 
+    let alive = true
+
     const scheduleRefresh = (payload) => {
-      if (refreshTimeoutRef.current) return
+      if (!alive || refreshTimeoutRef.current) return
+
       const eventType = payload?.eventType || payload?.event || null
       const tableName = payload?.table || null
       const schemaName = payload?.schema || null
       const commitTimestamp = payload?.commit_timestamp || null
+
       setDiagnostics((prev) => ({
         ...prev,
         realtime: {
           ...prev.realtime,
+          status: 'connected',
+          updatedAt: Date.now(),
+          lastError: null,
           lastEvent: {
             event: eventType,
             table: tableName,
@@ -390,15 +398,41 @@ function useMatchReadyState(gameId) {
           },
         },
       }))
+
       refreshTimeoutRef.current = setTimeout(() => {
         refreshTimeoutRef.current = null
         refresh()
       }, 250)
     }
 
-    const channel = supabase.channel(`match-ready-sync:${gameId}`, {
-      config: { broadcast: { ack: true } },
-    })
+    const handleStatusUpdate = (status, context = {}) => {
+      if (!alive) return
+
+      const normalizedStatus =
+        status === 'SUBSCRIBED'
+          ? 'connected'
+          : status === 'SUBSCRIBING'
+            ? 'connecting'
+            : status === 'CLOSED'
+              ? 'closed'
+              : String(status || '').toLowerCase()
+
+      const errorPayload = context?.error ? normalizeRealtimeError(context.error) : null
+
+      setDiagnostics((prev) => ({
+        ...prev,
+        realtime: {
+          ...prev.realtime,
+          status: normalizedStatus || prev.realtime.status,
+          updatedAt: Date.now(),
+          lastError: status === 'CHANNEL_ERROR' ? errorPayload || { topic: context.topic || null } : prev.realtime.lastError,
+        },
+      }))
+
+      if (status === 'CHANNEL_ERROR') {
+        refresh().catch(() => {})
+      }
+    }
 
     setDiagnostics((prev) => ({
       ...prev,
@@ -410,123 +444,59 @@ function useMatchReadyState(gameId) {
       },
     }))
 
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'rank_match_roster', filter: `game_id=eq.${gameId}` },
-      scheduleRefresh,
-    )
-
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'rank_sessions', filter: `game_id=eq.${gameId}` },
-      scheduleRefresh,
-    )
-
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'rank_rooms', filter: `game_id=eq.${gameId}` },
-      scheduleRefresh,
-    )
-
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'rank_session_meta' }, (payload) => {
-      const sessionId = latestRef.current.sessionId
-      if (!sessionId) return
-      const record = payload?.new || payload?.record || null
-      if (!record || typeof record !== 'object') return
-      const incoming = record.session_id ?? record.sessionId ?? null
-      if (!incoming) return
-      if (String(incoming).trim() !== String(sessionId).trim()) return
-      scheduleRefresh(payload)
-    })
-
-    channel.on('system', { event: 'SUBSCRIPTION_ERROR' }, (payload) => {
-      const normalized = normalizeRealtimeError(payload)
-      setDiagnostics((prev) => ({
-        ...prev,
-        realtime: {
-          ...prev.realtime,
-          status: 'error',
-          updatedAt: Date.now(),
-          lastError: normalized,
+    const unsubscribers = [
+      subscribeToBroadcastTopic(
+        `rank_match_roster:game:${gameId}`,
+        (change) => {
+          if (!alive) return
+          scheduleRefresh(change)
         },
-      }))
-      refresh().catch(() => {})
-    })
-
-    channel.on('system', { event: 'CHANNEL_ERROR' }, (payload) => {
-      const normalized = normalizeRealtimeError(payload)
-      setDiagnostics((prev) => ({
-        ...prev,
-        realtime: {
-          ...prev.realtime,
-          status: 'error',
-          updatedAt: Date.now(),
-          lastError: normalized,
+        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate },
+      ),
+      subscribeToBroadcastTopic(
+        `rank_sessions:game:${gameId}`,
+        (change) => {
+          if (!alive) return
+          scheduleRefresh(change)
         },
-      }))
-    })
-
-    try {
-      const subscription = channel.subscribe((status) => {
-        setDiagnostics((prev) => ({
-          ...prev,
-          realtime: {
-            ...prev.realtime,
-            status,
-            updatedAt: Date.now(),
-          },
-        }))
-      })
-      if (subscription && typeof subscription.then === 'function') {
-        subscription.catch((error) => {
-          const normalized = normalizeRealtimeError(error)
-          console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
-          setDiagnostics((prev) => ({
-            ...prev,
-            realtime: {
-              ...prev.realtime,
-              status: 'error',
-              updatedAt: Date.now(),
-              lastError: normalized,
-            },
-          }))
-          refresh().catch(() => {})
-        })
-      }
-    } catch (error) {
-      const normalized = normalizeRealtimeError(error)
-      console.warn('[MatchReadyClient] 실시간 채널 구독 실패:', error)
-      setDiagnostics((prev) => ({
-        ...prev,
-        realtime: {
-          ...prev.realtime,
-          status: 'error',
-          updatedAt: Date.now(),
-          lastError: normalized,
+        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate },
+      ),
+      subscribeToBroadcastTopic(
+        `rank_rooms:game:${gameId}`,
+        (change) => {
+          if (!alive) return
+          scheduleRefresh(change)
         },
-      }))
-      refresh().catch(() => {})
-    }
+        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate },
+      ),
+      subscribeToBroadcastTopic(
+        `rank_session_meta:game:${gameId}`,
+        (change) => {
+          if (!alive) return
+          const sessionId = latestRef.current.sessionId
+          if (!sessionId) return
+          const record = change?.new || null
+          if (!record || typeof record !== 'object') return
+          const incoming = record.session_id ?? record.sessionId ?? null
+          if (!incoming) return
+          if (String(incoming).trim() !== String(sessionId).trim()) return
+          scheduleRefresh(change)
+        },
+        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate },
+      ),
+    ]
 
     return () => {
+      alive = false
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current)
         refreshTimeoutRef.current = null
       }
-      try {
-        channel.unsubscribe()
-      } catch (error) {
-        console.warn('[MatchReadyClient] 실시간 채널 해제 실패:', error)
-      }
-      supabase.removeChannel(channel)
-      setDiagnostics((prev) => ({
-        ...prev,
-        realtime: {
-          ...prev.realtime,
-          status: 'closed',
-          updatedAt: Date.now(),
-        },
-      }))
+      unsubscribers.forEach((unsubscribe) => {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe()
+        }
+      })
     }
   }, [gameId, refresh])
 
