@@ -186,7 +186,7 @@ grant execute on function public.upsert_rank_session_async_fill(uuid, jsonb)
 ```
 
 ### 3.5 세션 채팅 조회 RPC (신규)
-메인 게임 공용 채팅이 `rank_turns` 테이블에서 세션별 히스토리를 스트리밍할 수 있도록, 뷰어 가시성 필터와 숨김 슬롯 정보를 함께 반환하는 RPC를 추가합니다. 클라이언트는 이 함수가 없을 경우 기존 테이블 쿼리로 폴백하지만, 운영 환경에서는 아래 함수를 반드시 배포해야 합니다.
+메인 게임 공용 채팅이 `rank_turns` 테이블에서 세션별 히스토리를 스트리밍할 수 있도록, 뷰어 가시성 필터와 숨김 슬롯 정보를 함께 반환하는 RPC를 추가합니다. StartClient는 더 이상 테이블 쿼리로 폴백하지 않으므로, 아래 함수를 배포하지 않으면 세션 채팅이 곧바로 오류를 표시합니다.
 
 ```sql
 create or replace function public.fetch_rank_session_turns(

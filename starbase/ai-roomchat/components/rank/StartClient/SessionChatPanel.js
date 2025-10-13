@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import styles from './SessionChatPanel.module.css'
 import { supabase } from '@/lib/supabase'
-import { withTable } from '@/lib/supabaseTables'
 
 const TURN_LIMIT = 120
 const POLL_INTERVAL_MS = 7000
@@ -258,17 +257,6 @@ async function fetchTurnsViaRpc(sessionId, { limit = TURN_LIMIT } = {}) {
   return { data, error }
 }
 
-async function fetchTurnsViaTable(sessionId, { limit = TURN_LIMIT } = {}) {
-  return withTable(supabase, 'rank_turns', (table) =>
-    supabase
-      .from(table)
-      .select('id, session_id, idx, role, content, public, is_visible, summary_payload, metadata, created_at')
-      .eq('session_id', sessionId)
-      .order('idx', { ascending: true })
-      .limit(limit),
-  )
-}
-
 export default function SessionChatPanel({
   sessionId,
   sessionHistory,
@@ -321,10 +309,7 @@ export default function SessionChatPanel({
       }
 
       try {
-        let payload = await fetchTurnsViaRpc(sessionId, { limit: TURN_LIMIT })
-        if (payload.error && detectMissingRpc(payload.error)) {
-          payload = await fetchTurnsViaTable(sessionId, { limit: TURN_LIMIT })
-        }
+        const payload = await fetchTurnsViaRpc(sessionId, { limit: TURN_LIMIT })
 
         if (payload.error) {
           throw payload.error
@@ -335,6 +320,16 @@ export default function SessionChatPanel({
         setEntries((prev) => mergeTurns(prev, normalized))
         setError(null)
       } catch (fetchError) {
+        if (detectMissingRpc(fetchError)) {
+          const wrappedError = new Error(
+            'fetch_rank_session_turns RPC가 배포되지 않아 세션 채팅을 불러오지 못했습니다. Supabase 마이그레이션을 적용해 주세요.',
+          )
+          wrappedError.cause = fetchError
+          console.error('[SessionChatPanel] 세션 채팅 RPC 누락', fetchError)
+          setError(wrappedError)
+          return
+        }
+
         console.error('[SessionChatPanel] 세션 채팅을 불러오지 못했습니다.', fetchError)
         setError(fetchError)
       } finally {
