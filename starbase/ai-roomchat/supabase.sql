@@ -1888,6 +1888,7 @@ begin
       r.slot_count,
       r.filled_count,
       r.ready_count,
+      r.host_role_limit,
       r.host_last_active_at,
       r.updated_at,
       coalesce((
@@ -1947,6 +1948,7 @@ grant execute on function public.fetch_rank_lobby_snapshot(text, integer)
   to authenticated, service_role;
 
 create or replace function public.fetch_rank_lobby_games(
+  p_hero_id uuid,
   p_limit integer default 24
 )
 returns jsonb
@@ -1958,6 +1960,10 @@ declare
   v_limit integer := greatest(coalesce(p_limit, 24), 1);
   v_games jsonb := '[]'::jsonb;
 begin
+  if p_hero_id is null then
+    return jsonb_build_object('games', '[]'::jsonb);
+  end if;
+
   select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
     into v_games
   from (
@@ -1965,6 +1971,7 @@ begin
       g.id,
       g.name,
       g.description,
+      g.image_url,
       g.realtime_match as realtime_mode,
       g.prompt_set_id,
       g.play_count,
@@ -2001,8 +2008,28 @@ begin
       coalesce(slot_metrics.active_slot_count, 0) as slot_count,
       coalesce(slot_metrics.slots, '[]'::jsonb) as slots,
       coalesce(prompt_metrics.slots, '[]'::jsonb) as prompt_slots,
-      coalesce(participant_samples.samples, '[]'::jsonb) as participants
+      coalesce(participant_samples.samples, '[]'::jsonb) as participants,
+      part.role as hero_role,
+      part.slot_no as hero_slot_no,
+      part.rating as hero_rating,
+      part.score as hero_score,
+      hero_role_meta.score_delta_min as hero_role_delta_min,
+      hero_role_meta.score_delta_max as hero_role_delta_max,
+      case
+        when part.score is not null and hero_role_meta.score_delta_max is not null then
+          part.score - hero_role_meta.score_delta_max
+        else null
+      end as hero_score_min,
+      case
+        when part.score is not null and hero_role_meta.score_delta_max is not null then
+          part.score + hero_role_meta.score_delta_max
+        else null
+      end as hero_score_max,
+      coalesce(role_catalog.roles, '[]'::jsonb) as role_catalog
     from public.rank_games g
+    join public.rank_participants part
+      on part.game_id = g.id
+     and part.hero_id = p_hero_id
     left join public.prompt_sets ps on ps.id = g.prompt_set_id
     left join lateral (
       select
@@ -2034,6 +2061,10 @@ begin
       from public.prompt_slots p
       where p.set_id = g.prompt_set_id
     ) as prompt_metrics on true
+    left join public.rank_game_roles hero_role_meta
+      on hero_role_meta.game_id = g.id
+     and part.role is not null
+     and lower(hero_role_meta.name) = lower(part.role)
     left join lateral (
       select coalesce(jsonb_agg(
           jsonb_build_object(
@@ -2055,6 +2086,20 @@ begin
         limit 6
       ) rp
     ) as participant_samples on true
+    left join lateral (
+      select coalesce(jsonb_agg(
+          jsonb_build_object(
+            'name', rgr.name,
+            'slot_count', rgr.slot_count,
+            'active', rgr.active,
+            'score_delta_min', rgr.score_delta_min,
+            'score_delta_max', rgr.score_delta_max
+          )
+          order by rgr.name
+        ), '[]'::jsonb) as roles
+      from public.rank_game_roles rgr
+      where rgr.game_id = g.id
+    ) as role_catalog on true
     order by g.updated_at desc
     limit v_limit
   ) as row;
@@ -2063,7 +2108,7 @@ begin
 end;
 $$;
 
-grant execute on function public.fetch_rank_lobby_games(integer)
+grant execute on function public.fetch_rank_lobby_games(uuid, integer)
   to authenticated, service_role;
 
 create or replace function public.cancel_rank_queue_ticket(

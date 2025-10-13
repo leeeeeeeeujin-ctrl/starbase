@@ -12,13 +12,6 @@ import { persistRankAuthSession, persistRankAuthUser } from '@/lib/rank/rankAuth
 import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import { persistRankKeyringSnapshot, readRankKeyringSnapshot } from '@/lib/rank/keyringStorage'
 
-const QUEUE_ROLE_OPTIONS = [
-  { key: 'flex', label: '플렉스' },
-  { key: 'damage', label: '딜러' },
-  { key: 'support', label: '서포터' },
-  { key: 'tank', label: '탱커' },
-]
-
 const MATCH_MODE_OPTIONS = [
   { key: 'rank', label: '랭크' },
   { key: 'casual', label: '캐주얼' },
@@ -167,6 +160,13 @@ const styles = {
     display: 'grid',
     gap: 4,
   },
+  heroGameMeta: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    fontSize: 12,
+    color: '#94a3b8',
+  },
   gameControls: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -231,6 +231,34 @@ const styles = {
     alignItems: 'flex-start',
     gap: 12,
   },
+  gameHeaderMain: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 14,
+    flex: 1,
+  },
+  gameThumbnail: {
+    width: 88,
+    height: 88,
+    borderRadius: 18,
+    objectFit: 'cover',
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.6)',
+  },
+  gameThumbnailFallback: {
+    width: 88,
+    height: 88,
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.32)',
+    background: 'rgba(15, 23, 42, 0.7)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#94a3b8',
+    fontWeight: 700,
+    fontSize: 18,
+    textTransform: 'uppercase',
+  },
   gameTitle: {
     margin: 0,
     fontSize: 17,
@@ -242,6 +270,14 @@ const styles = {
     fontSize: 13,
     color: '#94a3b8',
     lineHeight: 1.6,
+  },
+  gameHeroMeta: {
+    marginTop: 8,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    fontSize: 12,
+    color: '#bfdbfe',
   },
   gameActionButton: (selected, busy) => ({
     padding: '10px 14px',
@@ -297,6 +333,33 @@ const styles = {
     border: '1px solid rgba(59, 130, 246, 0.4)',
     background: 'rgba(30, 64, 175, 0.28)',
   },
+  selectionSummaryContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+  },
+  selectionSummaryImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+    objectFit: 'cover',
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(15, 23, 42, 0.65)',
+  },
+  selectionSummaryImageFallback: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#94a3b8',
+    fontWeight: 700,
+    fontSize: 18,
+    textTransform: 'uppercase',
+  },
   selectionSummaryTitle: {
     margin: 0,
     fontSize: 15,
@@ -310,6 +373,41 @@ const styles = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 12,
+  },
+  selectionSummaryHeroMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#e0f2fe',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  heroRolePill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 10px',
+    borderRadius: 12,
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    background: 'rgba(37, 99, 235, 0.22)',
+    color: '#dbeafe',
+    fontWeight: 600,
+  },
+  heroScorePill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 10px',
+    borderRadius: 12,
+    border: '1px solid rgba(14, 165, 233, 0.45)',
+    background: 'rgba(14, 116, 233, 0.18)',
+    color: '#bae6fd',
+    fontWeight: 600,
+  },
+  roleWarning: {
+    fontSize: 12,
+    color: '#fbbf24',
+    margin: '4px 0 0',
   },
   subtleText: {
     fontSize: 12,
@@ -429,6 +527,22 @@ const styles = {
     background: 'rgba(15, 23, 42, 0.6)',
     color: '#e2e8f0',
     fontSize: 14,
+  },
+  roleDisplay: {
+    padding: '10px 12px',
+    borderRadius: 14,
+    border: '1px dashed rgba(59, 130, 246, 0.45)',
+    background: 'rgba(30, 64, 175, 0.18)',
+    color: '#dbeafe',
+    fontSize: 14,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+    alignItems: 'center',
+  },
+  roleDisplayEmpty: {
+    color: '#fbbf24',
+    fontWeight: 600,
   },
   formActions: {
     display: 'flex',
@@ -656,6 +770,7 @@ function normalizeRoom(row) {
     : []
   return {
     id: row.id || null,
+    gameId: row.game_id || null,
     code: row.code || null,
     status: (row.status || '').toLowerCase() || 'open',
     mode: row.mode || null,
@@ -663,6 +778,7 @@ function normalizeRoom(row) {
     slotCount: Number.isFinite(row.slot_count) ? Number(row.slot_count) : null,
     readyCount: Number.isFinite(row.ready_count) ? Number(row.ready_count) : null,
     filledCount: Number.isFinite(row.filled_count) ? Number(row.filled_count) : null,
+    hostRoleLimit: Number.isFinite(row.host_role_limit) ? Number(row.host_role_limit) : null,
     hostLastActiveAt: row.host_last_active_at || null,
     updatedAt: row.updated_at || null,
     slots,
@@ -887,6 +1003,17 @@ function normalizeParticipantEntry(row) {
   }
 }
 
+function normalizeRoleCatalogEntry(row) {
+  if (!row) return null
+  return {
+    name: row.name || '',
+    slotCount: Number.isFinite(Number(row.slot_count)) ? Number(row.slot_count) : null,
+    active: row.active !== false,
+    scoreDeltaMin: Number.isFinite(Number(row.score_delta_min)) ? Number(row.score_delta_min) : null,
+    scoreDeltaMax: Number.isFinite(Number(row.score_delta_max)) ? Number(row.score_delta_max) : null,
+  }
+}
+
 function normalizeGameRow(row) {
   if (!row) return null
   const slots = Array.isArray(row.slots) ? row.slots.map(normalizeGameSlot).filter(Boolean) : []
@@ -895,6 +1022,9 @@ function normalizeGameRow(row) {
     : []
   const participants = Array.isArray(row.participants)
     ? row.participants.map(normalizeParticipantEntry).filter(Boolean)
+    : []
+  const roleCatalog = Array.isArray(row.role_catalog)
+    ? row.role_catalog.map(normalizeRoleCatalogEntry).filter(Boolean)
     : []
   const promptSet = isObject(row.prompt_set)
     ? {
@@ -907,11 +1037,21 @@ function normalizeGameRow(row) {
   const slotCount = Number.isFinite(Number(row.slot_count))
     ? Number(row.slot_count)
     : activeSlotCount
+  const heroScoreMin = Number.isFinite(Number(row.hero_score_min))
+    ? Number(row.hero_score_min)
+    : null
+  const heroScoreMax = Number.isFinite(Number(row.hero_score_max))
+    ? Number(row.hero_score_max)
+    : null
+  const heroScoreRange = heroScoreMin !== null || heroScoreMax !== null
+    ? { min: heroScoreMin, max: heroScoreMax }
+    : null
 
   return {
     id: row.id || null,
     name: row.name || '이름 없는 게임',
     description: row.description || '',
+    imageUrl: row.image_url || row.imageUrl || null,
     realtimeMode: row.realtime_mode || row.realtimeMode || REALTIME_MODES.OFF,
     dropInEnabled: row.drop_in_enabled === true || row.dropInEnabled === true,
     promptSet,
@@ -922,6 +1062,18 @@ function normalizeGameRow(row) {
     likesCount: Number.isFinite(Number(row.likes_count)) ? Number(row.likes_count) : null,
     updatedAt: row.updated_at || null,
     participants,
+    roleCatalog,
+    heroRole: row.hero_role || row.heroRole || null,
+    heroSlotNo: Number.isFinite(Number(row.hero_slot_no)) ? Number(row.hero_slot_no) : null,
+    heroRating: Number.isFinite(Number(row.hero_rating)) ? Number(row.hero_rating) : null,
+    heroScore: Number.isFinite(Number(row.hero_score)) ? Number(row.hero_score) : null,
+    heroScoreRange,
+    heroRoleDeltaMin: Number.isFinite(Number(row.hero_role_delta_min))
+      ? Number(row.hero_role_delta_min)
+      : null,
+    heroRoleDeltaMax: Number.isFinite(Number(row.hero_role_delta_max))
+      ? Number(row.hero_role_delta_max)
+      : null,
   }
 }
 
@@ -939,6 +1091,22 @@ function formatRealtimeModeLabel(mode) {
 
 function formatDropInLabel(flag) {
   return flag ? '난입 허용' : '난입 제한'
+}
+
+function formatScoreRange(range) {
+  if (!range) return '—'
+  const min = Number.isFinite(range?.min) ? Number(range.min) : null
+  const max = Number.isFinite(range?.max) ? Number(range.max) : null
+  if (min !== null && max !== null) {
+    return `${min}~${max}`
+  }
+  if (min !== null) {
+    return `${min}+`
+  }
+  if (max !== null) {
+    return `≤${max}`
+  }
+  return '—'
 }
 
 function formatProviderLabel(provider) {
@@ -1033,11 +1201,12 @@ function describeRealtimeEvent(event) {
 }
 
 function buildQueuePayload(hero, joinForm, heroStats, selectedGame) {
+  const heroRole = selectedGame?.heroRole || joinForm.role || 'flex'
   const payload = {
     hero_id: hero?.hero_id || null,
     hero_name: hero?.name || null,
     owner_id: hero?.owner_id || hero?.user_id || null,
-    role: joinForm.role || 'flex',
+    role: heroRole,
     mode: joinForm.mode || 'rank',
     queue_mode: joinForm.mode || 'rank',
   }
@@ -1062,7 +1231,7 @@ function buildQueuePayload(hero, joinForm, heroStats, selectedGame) {
   }
 
   payload.async_fill_meta = {
-    preferred_role: joinForm.role || 'flex',
+    preferred_role: heroRole,
     requested_at: new Date().toISOString(),
   }
 
@@ -1088,6 +1257,32 @@ function buildQueuePayload(hero, joinForm, heroStats, selectedGame) {
       properties.selected_game_slots = selectedGame.slotCount
     }
   }
+  if (selectedGame?.heroRole) {
+    properties.hero_role = selectedGame.heroRole
+  }
+  if (Number.isFinite(selectedGame?.heroSlotNo)) {
+    properties.hero_slot_no = selectedGame.heroSlotNo
+  }
+  if (Number.isFinite(selectedGame?.heroRating)) {
+    properties.hero_rating = selectedGame.heroRating
+  }
+  if (Number.isFinite(selectedGame?.heroScore)) {
+    properties.hero_score = selectedGame.heroScore
+  }
+  if (selectedGame?.heroScoreRange) {
+    if (Number.isFinite(selectedGame.heroScoreRange.min)) {
+      properties.hero_score_min = selectedGame.heroScoreRange.min
+    }
+    if (Number.isFinite(selectedGame.heroScoreRange.max)) {
+      properties.hero_score_max = selectedGame.heroScoreRange.max
+    }
+  }
+  if (Number.isFinite(selectedGame?.heroRoleDeltaMin)) {
+    properties.hero_role_delta_min = selectedGame.heroRoleDeltaMin
+  }
+  if (Number.isFinite(selectedGame?.heroRoleDeltaMax)) {
+    properties.hero_role_delta_max = selectedGame.heroRoleDeltaMax
+  }
   if (Object.keys(properties).length) {
     payload.properties = properties
   }
@@ -1107,6 +1302,15 @@ function buildQueuePayload(hero, joinForm, heroStats, selectedGame) {
             active: slot?.active !== false,
           }))
         : [],
+    }
+    if (Array.isArray(selectedGame.roleCatalog) && selectedGame.roleCatalog.length) {
+      payload.game_preferences.role_catalog = selectedGame.roleCatalog.map((role) => ({
+        name: role.name || '',
+        slot_count: Number.isFinite(role.slotCount) ? role.slotCount : null,
+        active: role.active !== false,
+        score_delta_min: Number.isFinite(role.scoreDeltaMin) ? role.scoreDeltaMin : null,
+        score_delta_max: Number.isFinite(role.scoreDeltaMax) ? role.scoreDeltaMax : null,
+      }))
     }
   }
 
@@ -1148,6 +1352,9 @@ function computeHeroStats(participations = []) {
         name: entry.game.name || '이름 없는 게임',
         sessions,
         mode: entry.primaryMode || null,
+        role: entry.role || null,
+        rating: Number.isFinite(entry?.rating) ? entry.rating : null,
+        score: Number.isFinite(entry?.score) ? entry.score : null,
       })
     }
   })
@@ -1213,9 +1420,11 @@ export default function RoomsLobbyPage() {
   const [participations, setParticipations] = useState([])
   const [heroLoading, setHeroLoading] = useState(false)
 
+  const heroId = viewerHero?.hero_id || null
+
   const [joinForm, setJoinForm] = useState({
     mode: 'rank',
-    role: 'flex',
+    role: '',
     roomId: '',
     note: '',
     gameId: initialSelection.gameId || '',
@@ -1238,12 +1447,20 @@ export default function RoomsLobbyPage() {
   const filteredGames = useMemo(() => {
     const search = gameSearch.trim().toLowerCase()
     return gameCatalog.filter((game) => {
+      if (!game.heroRole) return false
       if (realtimeFilter === 'realtime' && !isRealtimeEnabled(game.realtimeMode)) return false
       if (realtimeFilter === 'async' && isRealtimeEnabled(game.realtimeMode)) return false
       if (dropInFilter === 'allow' && !game.dropInEnabled) return false
       if (dropInFilter === 'deny' && game.dropInEnabled) return false
       if (search) {
-        const haystack = [game.name, game.description, game.promptSet?.name]
+        const haystack = [
+          game.name,
+          game.description,
+          game.promptSet?.name,
+          game.heroRole,
+          Number.isFinite(game.heroScore) ? `score:${game.heroScore}` : null,
+          Number.isFinite(game.heroRating) ? `rating:${game.heroRating}` : null,
+        ]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -1284,7 +1501,11 @@ export default function RoomsLobbyPage() {
       }
       setGameCatalogError(null)
       try {
-        const raw = await ensureRpc('fetch_rank_lobby_games', { p_limit: 48 })
+        if (!heroId) {
+          setGameCatalog([])
+          return
+        }
+        const raw = await ensureRpc('fetch_rank_lobby_games', { p_hero_id: heroId, p_limit: 48 })
         if (!mountedRef.current) return
         setGameCatalog(normalizeGameCatalog(raw))
       } catch (error) {
@@ -1301,7 +1522,7 @@ export default function RoomsLobbyPage() {
         }
       }
     },
-    [],
+    [heroId],
   )
 
   const loadKeyring = useCallback(async () => {
@@ -1446,6 +1667,11 @@ export default function RoomsLobbyPage() {
   }, [loadGames])
 
   useEffect(() => {
+    if (heroId) return
+    setSelectedGameId('')
+  }, [heroId])
+
+  useEffect(() => {
     if (!selectedGameId) return
     if (!gameCatalog.length) return
     const exists = gameCatalog.some((game) => game.id === selectedGameId)
@@ -1456,11 +1682,23 @@ export default function RoomsLobbyPage() {
 
   useEffect(() => {
     const nextGameId = selectedGame?.id || ''
+    const nextRole = selectedGame?.heroRole || ''
     setJoinForm((prev) => {
-      if ((prev.gameId || '') === nextGameId) return prev
-      return { ...prev, gameId: nextGameId }
+      const prevGameId = prev.gameId || ''
+      const prevRole = prev.role || ''
+      if (prevGameId === nextGameId && prevRole === nextRole) return prev
+      return { ...prev, gameId: nextGameId, role: nextRole }
     })
   }, [selectedGame])
+
+  useEffect(() => {
+    if (selectedGameId) return
+    if (!gameCatalog.length) return
+    const fallback = gameCatalog[0]
+    if (fallback?.id) {
+      setSelectedGameId(fallback.id)
+    }
+  }, [gameCatalog, selectedGameId])
 
   useEffect(() => {
     if (!viewerUserId) return
@@ -1677,6 +1915,10 @@ export default function RoomsLobbyPage() {
       setQueueError(new Error('큐에 합류하기 전에 게임을 선택해 주세요.'))
       return
     }
+    if (!selectedGame?.heroRole) {
+      setQueueError(new Error('이 게임에서 사용할 수 있는 역할이 확인되지 않았습니다.'))
+      return
+    }
     if (!hasActiveKey) {
       setQueueError(new Error('AI API 키를 최소 하나 이상 사용 상태로 전환해 주세요.'))
       return
@@ -1756,12 +1998,51 @@ export default function RoomsLobbyPage() {
 
   const heroGames = useMemo(() => {
     const games = Array.isArray(heroStats.games) ? heroStats.games.slice(0, 4) : []
-    return games
+    return games.map((game) => ({
+      ...game,
+      rating: Number.isFinite(game?.rating) ? Number(game.rating) : null,
+      score: Number.isFinite(game?.score) ? Number(game.score) : null,
+    }))
   }, [heroStats.games])
 
   const queuePreview = useMemo(() => snapshot.queue.slice(0, 6), [snapshot.queue])
   const sessionPreview = useMemo(() => snapshot.sessions.slice(0, 5), [snapshot.sessions])
-  const roomPreview = useMemo(() => snapshot.rooms.slice(0, 5), [snapshot.rooms])
+  const accessibleRooms = useMemo(() => {
+    if (!selectedGame?.id || !selectedGame?.heroRole) return []
+    const min = Number.isFinite(selectedGame.heroScoreRange?.min)
+      ? Number(selectedGame.heroScoreRange.min)
+      : null
+    const max = Number.isFinite(selectedGame.heroScoreRange?.max)
+      ? Number(selectedGame.heroScoreRange.max)
+      : null
+    return snapshot.rooms.filter((room) => {
+      if (room.gameId && selectedGame.id && room.gameId !== selectedGame.id) return false
+      const hasRoleVacancy = Array.isArray(room.slots)
+        ? room.slots.some((slot) => slot.role === selectedGame.heroRole && !slot.ownerId)
+        : false
+      if (!hasRoleVacancy) return false
+      if (!Number.isFinite(room.hostRoleLimit)) return true
+      if (min !== null && room.hostRoleLimit < min) return false
+      if (max !== null && room.hostRoleLimit > max) return false
+      return true
+    })
+  }, [snapshot.rooms, selectedGame])
+  const roomPreview = useMemo(() => accessibleRooms.slice(0, 5), [accessibleRooms])
+  const canJoinQueue = Boolean(
+    selectedGame?.id &&
+      joinForm.gameId &&
+      selectedGame?.heroRole &&
+      hasActiveKey,
+  )
+
+  useEffect(() => {
+    setJoinForm((prev) => {
+      if (!prev.roomId) return prev
+      const stillValid = accessibleRooms.some((room) => room.id === prev.roomId)
+      if (stillValid) return prev
+      return { ...prev, roomId: '' }
+    })
+  }, [accessibleRooms])
   return (
     <>
       <Head>
@@ -1842,6 +2123,11 @@ export default function RoomsLobbyPage() {
                             <span style={{ color: '#94a3b8', fontSize: 12 }}>
                               세션 {game.sessions || 0}회 · 모드 {game.mode ? translateMode(game.mode) : '미정'}
                             </span>
+                            <div style={styles.heroGameMeta}>
+                              {game.role ? <span>역할 {game.role}</span> : null}
+                              {Number.isFinite(game.rating) ? <span>레이팅 {game.rating}</span> : null}
+                              {Number.isFinite(game.score) ? <span>점수 {game.score}</span> : null}
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -1901,13 +2187,56 @@ export default function RoomsLobbyPage() {
                 ) : null}
                 {selectedGame ? (
                   <div style={styles.selectionSummary}>
-                    <h3 style={styles.selectionSummaryTitle}>{selectedGame.name}</h3>
-                    <p style={styles.selectionSummaryMeta}>
-                      <span>{formatRealtimeModeLabel(selectedGame.realtimeMode)}</span>
-                      <span>{formatDropInLabel(selectedGame.dropInEnabled)}</span>
-                      {selectedGame.promptSet?.name ? <span>프롬프트 {selectedGame.promptSet.name}</span> : null}
-                      <span>슬롯 {selectedGame.slotCount ?? 0}개</span>
-                    </p>
+                    <div style={styles.selectionSummaryContainer}>
+                      {selectedGame.imageUrl ? (
+                        <img
+                          src={selectedGame.imageUrl}
+                          alt={`${selectedGame.name} 이미지`}
+                          style={styles.selectionSummaryImage}
+                        />
+                      ) : (
+                        <div style={styles.selectionSummaryImageFallback}>
+                          {(selectedGame.name || '게임')[0]}
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <h3 style={styles.selectionSummaryTitle}>{selectedGame.name}</h3>
+                        <p style={styles.selectionSummaryMeta}>
+                          <span>{formatRealtimeModeLabel(selectedGame.realtimeMode)}</span>
+                          <span>{formatDropInLabel(selectedGame.dropInEnabled)}</span>
+                          {selectedGame.promptSet?.name ? (
+                            <span>프롬프트 {selectedGame.promptSet.name}</span>
+                          ) : null}
+                          <span>슬롯 {selectedGame.slotCount ?? 0}개</span>
+                        </p>
+                        <p style={styles.selectionSummaryHeroMeta}>
+                          <span style={styles.heroRolePill}>
+                            내 역할 {selectedGame.heroRole || '미등록'}
+                          </span>
+                          {Number.isFinite(selectedGame.heroSlotNo) ? (
+                            <span style={styles.heroScorePill}>
+                              슬롯 #{Number(selectedGame.heroSlotNo) + 1}
+                            </span>
+                          ) : null}
+                          {Number.isFinite(selectedGame.heroScore) ? (
+                            <span style={styles.heroScorePill}>점수 {selectedGame.heroScore}</span>
+                          ) : null}
+                          {Number.isFinite(selectedGame.heroRating) ? (
+                            <span style={styles.heroScorePill}>레이팅 {selectedGame.heroRating}</span>
+                          ) : null}
+                          {selectedGame.heroScoreRange ? (
+                            <span style={styles.heroScorePill}>
+                              허용 점수 {formatScoreRange(selectedGame.heroScoreRange)}
+                            </span>
+                          ) : null}
+                        </p>
+                      </div>
+                    </div>
+                    {!selectedGame.heroRole ? (
+                      <p style={styles.roleWarning}>
+                        캐릭터가 이 게임에 등록된 역할이 없어 매칭에 사용할 수 없습니다.
+                      </p>
+                    ) : null}
                   </div>
                 ) : (
                   <p style={styles.warningText}>큐에 참가하기 전에 사용할 게임을 선택해 주세요.</p>
@@ -1921,9 +2250,39 @@ export default function RoomsLobbyPage() {
                     return (
                       <li key={game.id} style={styles.gameItem(isSelected)}>
                         <div style={styles.gameHeader}>
-                          <div>
-                            <h3 style={styles.gameTitle}>{game.name}</h3>
-                            <p style={styles.gameDescription}>{game.description || '설명 없음'}</p>
+                          <div style={styles.gameHeaderMain}>
+                            {game.imageUrl ? (
+                              <img
+                                src={game.imageUrl}
+                                alt={`${game.name} 이미지`}
+                                style={styles.gameThumbnail}
+                              />
+                            ) : (
+                              <div style={styles.gameThumbnailFallback}>
+                                {(game.name || '게임')[0]}
+                              </div>
+                            )}
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              <h3 style={styles.gameTitle}>{game.name}</h3>
+                              <p style={styles.gameDescription}>{game.description || '설명 없음'}</p>
+                              <div style={styles.gameHeroMeta}>
+                                <span style={styles.heroRolePill}>내 역할 {game.heroRole || '미등록'}</span>
+                                {Number.isFinite(game.heroSlotNo) ? (
+                                  <span style={styles.heroScorePill}>슬롯 #{Number(game.heroSlotNo) + 1}</span>
+                                ) : null}
+                                {Number.isFinite(game.heroScore) ? (
+                                  <span style={styles.heroScorePill}>점수 {game.heroScore}</span>
+                                ) : null}
+                                {Number.isFinite(game.heroRating) ? (
+                                  <span style={styles.heroScorePill}>레이팅 {game.heroRating}</span>
+                                ) : null}
+                                {game.heroScoreRange ? (
+                                  <span style={styles.heroScorePill}>
+                                    허용 점수 {formatScoreRange(game.heroScoreRange)}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
                           </div>
                           <button
                             type="button"
@@ -1983,12 +2342,19 @@ export default function RoomsLobbyPage() {
                             ))}
                           </div>
                         ) : null}
+                        {!game.heroRole ? (
+                          <p style={styles.roleWarning}>캐릭터가 이 게임에 등록된 역할이 없어 매칭에 사용할 수 없습니다.</p>
+                        ) : null}
                       </li>
                     )
                   })}
                 </ul>
                 {filteredGames.length === 0 && !(gameCatalogLoading || gameCatalogRefreshing) ? (
-                  <p style={styles.empty}>조건에 맞는 게임이 없습니다.</p>
+                  <p style={styles.empty}>
+                    {heroId
+                      ? '참여 중인 게임이 없거나 선택 조건과 일치하는 게임이 없습니다.'
+                      : '캐릭터 정보를 불러오는 중입니다.'}
+                  </p>
                 ) : null}
               </section>
 
@@ -2108,13 +2474,56 @@ export default function RoomsLobbyPage() {
                 </header>
                 {selectedGame ? (
                   <div style={styles.selectionSummary}>
-                    <h3 style={styles.selectionSummaryTitle}>{selectedGame.name}</h3>
-                    <p style={styles.selectionSummaryMeta}>
-                      <span>{formatRealtimeModeLabel(selectedGame.realtimeMode)}</span>
-                      <span>{formatDropInLabel(selectedGame.dropInEnabled)}</span>
-                      {selectedGame.promptSet?.name ? <span>프롬프트 {selectedGame.promptSet.name}</span> : null}
-                      <span>슬롯 {selectedGame.slotCount ?? 0}개</span>
-                    </p>
+                    <div style={styles.selectionSummaryContainer}>
+                      {selectedGame.imageUrl ? (
+                        <img
+                          src={selectedGame.imageUrl}
+                          alt={`${selectedGame.name} 이미지`}
+                          style={styles.selectionSummaryImage}
+                        />
+                      ) : (
+                        <div style={styles.selectionSummaryImageFallback}>
+                          {(selectedGame.name || '게임')[0]}
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <h3 style={styles.selectionSummaryTitle}>{selectedGame.name}</h3>
+                        <p style={styles.selectionSummaryMeta}>
+                          <span>{formatRealtimeModeLabel(selectedGame.realtimeMode)}</span>
+                          <span>{formatDropInLabel(selectedGame.dropInEnabled)}</span>
+                          {selectedGame.promptSet?.name ? (
+                            <span>프롬프트 {selectedGame.promptSet.name}</span>
+                          ) : null}
+                          <span>슬롯 {selectedGame.slotCount ?? 0}개</span>
+                        </p>
+                        <p style={styles.selectionSummaryHeroMeta}>
+                          <span style={styles.heroRolePill}>
+                            내 역할 {selectedGame.heroRole || '미등록'}
+                          </span>
+                          {Number.isFinite(selectedGame.heroSlotNo) ? (
+                            <span style={styles.heroScorePill}>
+                              슬롯 #{Number(selectedGame.heroSlotNo) + 1}
+                            </span>
+                          ) : null}
+                          {Number.isFinite(selectedGame.heroScore) ? (
+                            <span style={styles.heroScorePill}>점수 {selectedGame.heroScore}</span>
+                          ) : null}
+                          {Number.isFinite(selectedGame.heroRating) ? (
+                            <span style={styles.heroScorePill}>레이팅 {selectedGame.heroRating}</span>
+                          ) : null}
+                          {selectedGame.heroScoreRange ? (
+                            <span style={styles.heroScorePill}>
+                              허용 점수 {formatScoreRange(selectedGame.heroScoreRange)}
+                            </span>
+                          ) : null}
+                        </p>
+                      </div>
+                    </div>
+                    {!selectedGame.heroRole ? (
+                      <p style={styles.roleWarning}>
+                        캐릭터가 이 게임에서 맡을 수 있는 역할이 없어 큐 참가가 제한됩니다.
+                      </p>
+                    ) : null}
                   </div>
                 ) : (
                   <p style={styles.warningText}>큐에 합류하려면 상단에서 게임을 선택해 주세요.</p>
@@ -2152,21 +2561,34 @@ export default function RoomsLobbyPage() {
                     </select>
                   </div>
                   <div style={styles.formRow}>
-                    <label htmlFor="queueRole" style={styles.label}>
-                      선호 역할
-                    </label>
-                    <select
-                      id="queueRole"
-                      value={joinForm.role}
-                      onChange={(event) => setJoinForm((prev) => ({ ...prev, role: event.target.value }))}
-                      style={styles.select}
-                    >
-                      {QUEUE_ROLE_OPTIONS.map((option) => (
-                        <option key={option.key} value={option.key}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                    <span style={styles.label}>내 역할</span>
+                    <div style={styles.roleDisplay}>
+                      {selectedGame?.heroRole ? (
+                        <>
+                          <span style={styles.heroRolePill}>역할 {selectedGame.heroRole}</span>
+                          {Number.isFinite(selectedGame?.heroSlotNo) ? (
+                            <span style={styles.heroScorePill}>
+                              슬롯 #{Number(selectedGame.heroSlotNo) + 1}
+                            </span>
+                          ) : null}
+                          {Number.isFinite(selectedGame?.heroScore) ? (
+                            <span style={styles.heroScorePill}>점수 {selectedGame.heroScore}</span>
+                          ) : null}
+                          {Number.isFinite(selectedGame?.heroRating) ? (
+                            <span style={styles.heroScorePill}>레이팅 {selectedGame.heroRating}</span>
+                          ) : null}
+                          {selectedGame?.heroScoreRange ? (
+                            <span style={styles.heroScorePill}>
+                              허용 점수 {formatScoreRange(selectedGame.heroScoreRange)}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span style={styles.roleDisplayEmpty}>
+                          역할이 없어 큐에 참가할 수 없습니다.
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div style={styles.formRow}>
                     <label htmlFor="queueRoom" style={styles.label}>
@@ -2185,6 +2607,9 @@ export default function RoomsLobbyPage() {
                         </option>
                       ))}
                     </select>
+                    {selectedGame?.heroRole && accessibleRooms.length === 0 ? (
+                      <p style={styles.cardHint}>역할·점수 조건에 맞는 방이 없습니다.</p>
+                    ) : null}
                   </div>
                   <div style={styles.formRow}>
                     <label htmlFor="queueNote" style={styles.label}>
@@ -2201,9 +2626,9 @@ export default function RoomsLobbyPage() {
                   <div style={styles.formActions}>
                     <button
                       type="button"
-                      style={styles.primaryButton(joinBusy || !joinForm.gameId || !hasActiveKey)}
+                      style={styles.primaryButton(joinBusy || !canJoinQueue)}
                       onClick={handleJoinQueue}
-                      disabled={joinBusy || !joinForm.gameId || !hasActiveKey}
+                      disabled={joinBusy || !canJoinQueue}
                     >
                       {joinBusy ? '큐 참가 중…' : '큐 참가'}
                     </button>
