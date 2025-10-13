@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 
-const SLOT_COLUMNS = 'id,game_id,hero_id,slot_no,role'
+const SLOT_COLUMNS = 'id,game_id,hero_id,slot_index,role'
 const GAME_COLUMNS = 'id,name,cover_path,description,owner_id,created_at'
 const SESSION_COLUMNS = 'id,game_id,created_at,mode,started_by,version_id'
 const HERO_LOOKUP_COLUMNS = 'id,name,image_url,ability1,ability2,ability3,ability4,owner_id'
@@ -26,7 +26,7 @@ function normaliseSlot(row) {
     id: row.id || null,
     game_id: row.game_id || null,
     hero_id: row.hero_id || null,
-    slot_no: row.slot_no != null ? row.slot_no : null,
+    slot_no: row.slot_index != null ? row.slot_index : null,
     role: row.role || null,
   }
 }
@@ -80,8 +80,10 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     }
   }
 
-  const { data: heroSlotsRaw, error: heroSlotsError } = await withTable(supabase, 'game_slots', (table) =>
-    supabase.from(table).select(SLOT_COLUMNS).eq('hero_id', heroId),
+  const { data: heroSlotsRaw, error: heroSlotsError } = await withTable(
+    supabase,
+    'rank_game_slots',
+    (table) => supabase.from(table).select(SLOT_COLUMNS).eq('hero_id', heroId),
   )
 
   if (heroSlotsError) {
@@ -100,7 +102,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
   }
 
   const [allSlotsResult, gamesResult, sessionsResult, participantsResult] = await Promise.all([
-    withTable(supabase, 'game_slots', (table) =>
+    withTable(supabase, 'rank_game_slots', (table) =>
       supabase.from(table).select(SLOT_COLUMNS).in('game_id', gameIds),
     ),
     withTable(supabase, 'games', (table) =>
