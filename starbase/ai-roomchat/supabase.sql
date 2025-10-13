@@ -1475,6 +1475,54 @@ create table if not exists public.rank_session_meta (
   updated_at timestamptz not null default now()
 );
 
+alter table public.rank_session_meta
+  add column if not exists turn_limit integer;
+
+alter table public.rank_session_meta
+  add column if not exists selected_time_limit_seconds integer;
+
+alter table public.rank_session_meta
+  add column if not exists time_vote jsonb;
+
+alter table public.rank_session_meta
+  add column if not exists realtime_mode text;
+
+alter table public.rank_session_meta
+  alter column realtime_mode set default 'off';
+
+alter table public.rank_session_meta
+  add column if not exists drop_in_bonus_seconds integer;
+
+alter table public.rank_session_meta
+  alter column drop_in_bonus_seconds set default 0;
+
+alter table public.rank_session_meta
+  add column if not exists turn_state jsonb;
+
+alter table public.rank_session_meta
+  add column if not exists async_fill_snapshot jsonb;
+
+alter table public.rank_session_meta
+  add column if not exists occupant_owner_id uuid;
+
+alter table public.rank_session_meta
+  add column if not exists occupant_hero_name text;
+
+alter table public.rank_session_meta
+  add column if not exists score_delta integer;
+
+alter table public.rank_session_meta
+  add column if not exists final_score integer;
+
+alter table public.rank_session_meta
+  add column if not exists extras jsonb;
+
+alter table public.rank_session_meta
+  add column if not exists updated_at timestamptz;
+
+alter table public.rank_session_meta
+  alter column updated_at set default now();
+
 alter table public.rank_session_meta enable row level security;
 
 drop policy if exists rank_session_meta_service_all on public.rank_session_meta;
