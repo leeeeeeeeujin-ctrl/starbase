@@ -1835,6 +1835,25 @@ export default function RoomDetailPage() {
       source: 'auto',
       reason: '',
     })
+    setSlots((prev) => {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        return prev
+      }
+
+      let changed = false
+      const nextSlots = prev.map((slot) => {
+        if (!slot?.occupantOwnerId || slot?.occupantReady === false) {
+          return slot
+        }
+        changed = true
+        return {
+          ...slot,
+          occupantReady: false,
+        }
+      })
+
+      return changed ? nextSlots : prev
+    })
     setReadyCountdown(Math.ceil(READY_POLL_DURATION_MS / 1000))
     resetRoomReadyStates(signature).catch(() => {})
   }, [
