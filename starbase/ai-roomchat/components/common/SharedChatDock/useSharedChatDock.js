@@ -714,10 +714,25 @@ function useSharedChatDockInternal({
     }
 
     const contextSnapshot = chatContextRef.current || {}
+    const activeSessionId = contextSnapshot.sessionId || sessionId || null
+    const activeMatchId = contextSnapshot.matchInstanceId || matchInstanceId || null
+    const activeGameId = contextSnapshot.gameId || gameId || null
+    const activeRoomId = contextSnapshot.roomId || roomId || null
+    const viewerProfile = viewerProfileRef.current || me || {}
+    const realtimeHeroId =
+      viewerHeroRef.current || viewerProfile.hero_id || viewerHero?.hero_id || heroId || null
+    const realtimeOwnerId =
+      viewerProfile.owner_id || viewerProfile.user_id || viewerHero?.owner_id || null
+
     const unsubscribe = subscribeToMessages({
       channelName: 'messages-shared-dock',
-      sessionId: contextSnapshot.sessionId || sessionId || null,
-      matchInstanceId: contextSnapshot.matchInstanceId || matchInstanceId || null,
+      sessionId: activeSessionId,
+      matchInstanceId: activeMatchId,
+      gameId: activeGameId,
+      roomId: activeRoomId,
+      heroId: realtimeHeroId,
+      ownerId: realtimeOwnerId,
+      userId: viewerProfile.user_id || null,
       onInsert: (message) => {
         handleInsert(message)
       },
@@ -727,7 +742,27 @@ function useSharedChatDockInternal({
       alive = false
       unsubscribe()
     }
-  }, [fetchAndHydrateMessages, heroId, hydrateSingle, viewerHero, hintProfile, replaceMessages, scrollToBottom, onNotify, sessionId, matchInstanceId, chatContext.matchInstanceId, chatContext.sessionId])
+  }, [
+    fetchAndHydrateMessages,
+    heroId,
+    hydrateSingle,
+    viewerHero,
+    hintProfile,
+    replaceMessages,
+    scrollToBottom,
+    onNotify,
+    sessionId,
+    matchInstanceId,
+    chatContext.matchInstanceId,
+    chatContext.sessionId,
+    chatContext.gameId,
+    chatContext.roomId,
+    gameId,
+    roomId,
+    me?.hero_id,
+    me?.owner_id,
+    me?.user_id,
+  ])
 
   const handleSetScope = useCallback(
     (nextScope) => {

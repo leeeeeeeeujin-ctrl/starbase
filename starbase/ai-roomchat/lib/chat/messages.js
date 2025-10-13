@@ -82,22 +82,167 @@ export async function insertMessage(payload, context = {}) {
   return data || null
 }
 
+function toChannelSuffix(key) {
+  return String(key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9:_-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function registerChannel({ prefix, key, filter, handler, registry }) {
+  if (!filter) return null
+
+  const signature = `${filter}`.trim()
+  if (!signature || registry.filters.has(signature)) {
+    return null
+  }
+
+  registry.filters.add(signature)
+
+  const suffix = toChannelSuffix(key || signature)
+  const channel = supabase
+    .channel(`${prefix}:${suffix}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'messages', filter: signature },
+      (payload) => {
+        if (typeof handler === 'function' && payload?.new) {
+          handler(payload.new)
+        }
+      },
+    )
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') {
+        console.error('채팅 실시간 채널을 구독하지 못했습니다.', {
+          prefix,
+          key: suffix,
+          filter: signature,
+        })
+      }
+    })
+
+  registry.channels.push(channel)
+  return channel
+}
+
 export function subscribeToMessages({
   onInsert,
   channelName = 'rank-chat-stream',
   sessionId = null,
   matchInstanceId = null,
+  gameId = null,
+  roomId = null,
+  heroId = null,
+  ownerId = null,
+  userId = null,
 } = {}) {
-  const channel = supabase
-    .channel(channelName)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-      if (typeof onInsert === 'function' && payload?.new) {
-        onInsert(payload.new)
-      }
+  const handler = typeof onInsert === 'function' ? onInsert : () => {}
+  const prefix = channelName || 'rank-chat-stream'
+  const registry = { channels: [], filters: new Set() }
+
+  const normalizedOwnerId = ownerId || userId || null
+  const normalizedHeroId = heroId || null
+
+  registerChannel({
+    prefix,
+    key: 'lobby',
+    filter: 'channel_type=eq.lobby',
+    handler,
+    registry,
+  })
+
+  registerChannel({
+    prefix,
+    key: 'system',
+    filter: 'channel_type=eq.system',
+    handler,
+    registry,
+  })
+
+  if (sessionId) {
+    registerChannel({
+      prefix,
+      key: `session-${sessionId}`,
+      filter: `session_id=eq.${sessionId}`,
+      handler,
+      registry,
     })
-    .subscribe()
+  }
+
+  if (matchInstanceId) {
+    registerChannel({
+      prefix,
+      key: `match-${matchInstanceId}`,
+      filter: `match_instance_id=eq.${matchInstanceId}`,
+      handler,
+      registry,
+    })
+  }
+
+  if (gameId) {
+    registerChannel({
+      prefix,
+      key: `game-${gameId}`,
+      filter: `game_id=eq.${gameId}`,
+      handler,
+      registry,
+    })
+  }
+
+  if (roomId) {
+    registerChannel({
+      prefix,
+      key: `room-${roomId}`,
+      filter: `room_id=eq.${roomId}`,
+      handler,
+      registry,
+    })
+  }
+
+  if (normalizedOwnerId) {
+    registerChannel({
+      prefix,
+      key: `owner-${normalizedOwnerId}`,
+      filter: `owner_id=eq.${normalizedOwnerId}`,
+      handler,
+      registry,
+    })
+
+    registerChannel({
+      prefix,
+      key: `target-owner-${normalizedOwnerId}`,
+      filter: `target_owner_id=eq.${normalizedOwnerId}`,
+      handler,
+      registry,
+    })
+  }
+
+  if (normalizedHeroId) {
+    registerChannel({
+      prefix,
+      key: `hero-${normalizedHeroId}`,
+      filter: `hero_id=eq.${normalizedHeroId}`,
+      handler,
+      registry,
+    })
+
+    registerChannel({
+      prefix,
+      key: `target-hero-${normalizedHeroId}`,
+      filter: `target_hero_id=eq.${normalizedHeroId}`,
+      handler,
+      registry,
+    })
+  }
 
   return () => {
-    supabase.removeChannel(channel)
+    for (const channel of registry.channels) {
+      try {
+        supabase.removeChannel(channel)
+      } catch (error) {
+        console.error('채팅 실시간 채널을 해제하지 못했습니다.', error)
+      }
+    }
   }
 }
