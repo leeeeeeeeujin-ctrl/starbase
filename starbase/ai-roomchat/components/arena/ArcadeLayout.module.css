@@ -29,16 +29,38 @@
   font-size: 14px;
 }
 
+.navStacks {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .navGroup {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+.navLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(245, 247, 250, 0.55);
+}
+
 .nav {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.primaryNav a {
+  color: #ffffff;
+}
+
+.arenaNav a {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .nav a {
@@ -51,10 +73,13 @@
   color: #76e4ff;
 }
 
+.secondaryGroup {
+  opacity: 0.85;
+}
+
 .secondaryNav {
   font-size: 14px;
   gap: 12px;
-  opacity: 0.85;
 }
 
 .secondaryNav a {
