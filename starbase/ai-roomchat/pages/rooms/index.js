@@ -8,7 +8,12 @@ import { fetchHeroParticipationBundle } from '@/modules/character/participation'
 import { ensureRpc } from '@/modules/arena/rpcClient'
 import { subscribeToQueue } from '@/modules/arena/realtimeChannels'
 import { persistTicket, readTicket } from '@/modules/arena/ticketStorage'
-import { persistRankAuthSession, persistRankAuthUser } from '@/lib/rank/rankAuthStorage'
+import {
+  persistRankAuthSession,
+  persistRankAuthUser,
+  readRankAuthSnapshot,
+  RANK_AUTH_STORAGE_EVENT,
+} from '@/lib/rank/rankAuthStorage'
 import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import { persistRankKeyringSnapshot, readRankKeyringSnapshot } from '@/lib/rank/keyringStorage'
 
@@ -922,11 +927,30 @@ function persistGameSelection(selection) {
   }
 }
 
-async function requestUserApiKeyring(method, payload) {
-  const options = { method, headers: {} }
+function normalizeUserHeaderValue(value) {
+  if (value === undefined || value === null) return ''
+  const trimmed = typeof value === 'string' ? value.trim() : String(value).trim()
+  return trimmed
+}
+
+async function requestUserApiKeyring(method, payload, context = {}) {
+  const options = { method, headers: {}, credentials: 'include' }
   if (method !== 'GET') {
     options.headers['Content-Type'] = 'application/json'
     options.body = JSON.stringify(payload ?? {})
+  }
+
+  const snapshot = readRankAuthSnapshot()
+  const headerUserId = normalizeUserHeaderValue(context?.userId || snapshot?.userId)
+  const headerAccessToken = normalizeUserHeaderValue(context?.accessToken || snapshot?.accessToken)
+
+  if (headerAccessToken) {
+    options.headers.Authorization = `Bearer ${headerAccessToken}`
+  }
+
+  if (headerUserId) {
+    options.headers['x-rank-user-id'] = headerUserId
+    options.headers['x-user-id'] = headerUserId
   }
 
   const response = await fetch('/api/rank/user-api-keyring', options)
@@ -1384,6 +1408,11 @@ function buildSeatSummary(ticket) {
 export default function RoomsLobbyPage() {
   const mountedRef = useRef(false)
   const refreshTimerRef = useRef(null)
+  const initialAuthSnapshotRef = useRef(null)
+
+  if (!initialAuthSnapshotRef.current) {
+    initialAuthSnapshotRef.current = readRankAuthSnapshot()
+  }
 
   const initialSelection = useMemo(() => getInitialGameSelection(), [])
   const [selectedGameId, setSelectedGameId] = useState(initialSelection.gameId)
@@ -1415,8 +1444,11 @@ export default function RoomsLobbyPage() {
   const [refreshingSnapshot, setRefreshingSnapshot] = useState(false)
   const [refreshRequested, setRefreshRequested] = useState(false)
 
+  const [authSnapshot, setAuthSnapshot] = useState(initialAuthSnapshotRef.current)
   const [viewerHero, setViewerHero] = useState(null)
-  const [viewerUserId, setViewerUserId] = useState(null)
+  const [viewerUserId, setViewerUserId] = useState(
+    initialAuthSnapshotRef.current?.userId ? initialAuthSnapshotRef.current.userId : null,
+  )
   const [participations, setParticipations] = useState([])
   const [heroLoading, setHeroLoading] = useState(false)
 
@@ -1472,6 +1504,9 @@ export default function RoomsLobbyPage() {
 
   const heroStats = useMemo(() => computeHeroStats(participations), [participations])
 
+  const authUserId = (authSnapshot?.userId || '').trim()
+  const authAccessToken = (authSnapshot?.accessToken || '').trim()
+
   const activeKeyCount = useMemo(
     () => keyringEntries.filter((entry) => entry.isActive).length,
     [keyringEntries],
@@ -1481,14 +1516,15 @@ export default function RoomsLobbyPage() {
   const applyKeyringEntries = useCallback(
     (entries) => {
       setKeyringEntries(entries)
-      if (viewerUserId) {
+      const storageUserId = viewerUserId || authUserId
+      if (storageUserId) {
         persistRankKeyringSnapshot({
-          userId: viewerUserId,
+          userId: storageUserId,
           entries: entries.map(sanitizeKeyringStorageEntry),
         })
       }
     },
-    [viewerUserId],
+    [viewerUserId, authUserId],
   )
 
   const loadGames = useCallback(
@@ -1527,9 +1563,20 @@ export default function RoomsLobbyPage() {
 
   const loadKeyring = useCallback(async () => {
     setKeyringError(null)
+    const targetUserId = viewerUserId || authUserId
+    const token = authAccessToken
+
+    if (!targetUserId && !token) {
+      setKeyringLoading(false)
+      return
+    }
+
     setKeyringLoading(true)
     try {
-      const payload = await requestUserApiKeyring('GET')
+      const payload = await requestUserApiKeyring('GET', null, {
+        userId: targetUserId,
+        accessToken: token,
+      })
       if (!mountedRef.current) return
       const entries = Array.isArray(payload.keys)
         ? payload.keys.map(normalizeKeyringEntry).filter(Boolean)
@@ -1547,7 +1594,7 @@ export default function RoomsLobbyPage() {
         setKeyringLoading(false)
       }
     }
-  }, [applyKeyringEntries])
+  }, [applyKeyringEntries, viewerUserId, authUserId, authAccessToken])
 
   const handleAddApiKey = useCallback(async () => {
     const trimmed = newApiKey.trim()
@@ -1559,7 +1606,14 @@ export default function RoomsLobbyPage() {
     setKeyringMessage('')
     setKeyringSubmitting(true)
     try {
-      const payload = await requestUserApiKeyring('POST', { apiKey: trimmed, activate: activateOnSave })
+      const payload = await requestUserApiKeyring(
+        'POST',
+        { apiKey: trimmed, activate: activateOnSave },
+        {
+          userId: viewerUserId || authUserId,
+          accessToken: authAccessToken,
+        },
+      )
       const entry = normalizeKeyringEntry(payload.entry)
       if (entry) {
         const nextEntries = mergeKeyringEntries(keyringEntries, entry, payload?.activated !== false)
@@ -1581,7 +1635,15 @@ export default function RoomsLobbyPage() {
     } finally {
       setKeyringSubmitting(false)
     }
-  }, [newApiKey, activateOnSave, keyringEntries, applyKeyringEntries])
+  }, [
+    newApiKey,
+    activateOnSave,
+    keyringEntries,
+    applyKeyringEntries,
+    viewerUserId,
+    authUserId,
+    authAccessToken,
+  ])
 
   const handleActivateKey = useCallback(
     async (entry) => {
@@ -1590,7 +1652,14 @@ export default function RoomsLobbyPage() {
       setKeyringMessage('')
       setKeyMutation({ type: 'activate', id: entry.id })
       try {
-        const payload = await requestUserApiKeyring('PATCH', { id: entry.id })
+        const payload = await requestUserApiKeyring(
+          'PATCH',
+          { id: entry.id },
+          {
+            userId: viewerUserId || authUserId,
+            accessToken: authAccessToken,
+          },
+        )
         const updated = normalizeKeyringEntry(payload.entry)
         const nextEntries = mergeKeyringEntries(keyringEntries, updated, true)
         applyKeyringEntries(nextEntries)
@@ -1600,8 +1669,8 @@ export default function RoomsLobbyPage() {
       } finally {
         setKeyMutation({ type: null, id: null })
       }
-    },
-    [keyringEntries, applyKeyringEntries],
+  },
+    [keyringEntries, applyKeyringEntries, viewerUserId, authUserId, authAccessToken],
   )
 
   const handleDeactivateKey = useCallback(
@@ -1611,7 +1680,14 @@ export default function RoomsLobbyPage() {
       setKeyringMessage('')
       setKeyMutation({ type: 'deactivate', id: entry.id })
       try {
-        const payload = await requestUserApiKeyring('PATCH', { id: entry.id, action: 'deactivate' })
+        const payload = await requestUserApiKeyring(
+          'PATCH',
+          { id: entry.id, action: 'deactivate' },
+          {
+            userId: viewerUserId || authUserId,
+            accessToken: authAccessToken,
+          },
+        )
         const updated = normalizeKeyringEntry(payload.entry)
         const nextEntries = keyringEntries.map((item) =>
           item.id === updated.id
@@ -1625,8 +1701,8 @@ export default function RoomsLobbyPage() {
       } finally {
         setKeyMutation({ type: null, id: null })
       }
-    },
-    [keyringEntries, applyKeyringEntries],
+  },
+    [keyringEntries, applyKeyringEntries, viewerUserId, authUserId, authAccessToken],
   )
 
   const handleDeleteKey = useCallback(
@@ -1636,7 +1712,14 @@ export default function RoomsLobbyPage() {
       setKeyringMessage('')
       setKeyMutation({ type: 'delete', id: entry.id })
       try {
-        await requestUserApiKeyring('DELETE', { id: entry.id })
+        await requestUserApiKeyring(
+          'DELETE',
+          { id: entry.id },
+          {
+            userId: viewerUserId || authUserId,
+            accessToken: authAccessToken,
+          },
+        )
         const nextEntries = keyringEntries.filter((item) => item.id !== entry.id)
         applyKeyringEntries(nextEntries)
         setKeyringMessage('API 키를 삭제했습니다.')
@@ -1645,8 +1728,8 @@ export default function RoomsLobbyPage() {
       } finally {
         setKeyMutation({ type: null, id: null })
       }
-    },
-    [keyringEntries, applyKeyringEntries],
+  },
+    [keyringEntries, applyKeyringEntries, viewerUserId, authUserId, authAccessToken],
   )
 
   const handleRefreshGames = useCallback(() => {
@@ -1661,6 +1744,23 @@ export default function RoomsLobbyPage() {
       search: gameSearch,
     })
   }, [selectedGameId, realtimeFilter, dropInFilter, gameSearch])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleAuthRefresh = () => {
+      const snapshot = readRankAuthSnapshot()
+      setAuthSnapshot(snapshot)
+      const nextUserId = snapshot?.userId ? snapshot.userId : null
+      setViewerUserId((prev) => {
+        if (prev === nextUserId) return prev
+        return nextUserId
+      })
+    }
+    window.addEventListener(RANK_AUTH_STORAGE_EVENT, handleAuthRefresh)
+    return () => {
+      window.removeEventListener(RANK_AUTH_STORAGE_EVENT, handleAuthRefresh)
+    }
+  }, [])
 
   useEffect(() => {
     loadGames('initial')
@@ -1701,17 +1801,18 @@ export default function RoomsLobbyPage() {
   }, [gameCatalog, selectedGameId])
 
   useEffect(() => {
-    if (!viewerUserId) return
+    if (!viewerUserId && !authUserId && !authAccessToken) return
     loadKeyring()
-  }, [viewerUserId, loadKeyring])
+  }, [viewerUserId, authUserId, authAccessToken, loadKeyring])
 
   useEffect(() => {
-    if (!viewerUserId) return
+    const targetUserId = viewerUserId || authUserId
+    if (!targetUserId) return
     persistRankKeyringSnapshot({
-      userId: viewerUserId,
+      userId: targetUserId,
       entries: keyringEntries.map(sanitizeKeyringStorageEntry),
     })
-  }, [viewerUserId])
+  }, [viewerUserId, authUserId, keyringEntries])
 
   useEffect(() => {
     mountedRef.current = true
@@ -1825,9 +1926,13 @@ export default function RoomsLobbyPage() {
           }
         }
 
+        const nextAuthSnapshot = readRankAuthSnapshot()
+
         if (cancelled || !mountedRef.current) return
 
-        setViewerUserId(user?.id || null)
+        setAuthSnapshot(nextAuthSnapshot)
+        const resolvedUserId = user?.id || nextAuthSnapshot?.userId || null
+        setViewerUserId(resolvedUserId)
         if (!user) {
           setViewerHero(null)
           setParticipations([])
