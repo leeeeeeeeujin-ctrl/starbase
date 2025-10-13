@@ -3,6 +3,7 @@ import React from 'react'
 export function InputBar({
   scope,
   setScope,
+  scopeOptions = [],
   whisperTarget,
   setWhisperTarget,
   availableTargets,
@@ -36,8 +37,17 @@ export function InputBar({
             color: '#0f172a',
           }}
         >
-          <option value="global">전체 공개</option>
-          <option value="whisper">귓속말</option>
+          {(scopeOptions.length
+            ? scopeOptions
+            : [
+                { value: 'global', label: '전체 공개', disabled: false },
+                { value: 'whisper', label: '귓속말', disabled: false },
+              ]
+          ).map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))}
         </select>
         {scope === 'whisper' && (
           <select

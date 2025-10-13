@@ -39,7 +39,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
     () => ({
       openThread: (heroId) => {
         if (!heroId) return
-        setExternalThread(heroId)
+        setExternalThread(`whisper:${heroId}`)
       },
       resetThread: () => setExternalThread('global'),
     }),
@@ -95,7 +95,7 @@ const ChatOverlay = forwardRef(function ChatOverlay(
 
   const handleWhisper = useCallback(() => {
     if (!selectedHero?.heroId) return
-    setExternalThread(selectedHero.heroId)
+    setExternalThread(`whisper:${selectedHero.heroId}`)
     setSheetOpen(false)
   }, [selectedHero])
 

@@ -2876,22 +2876,609 @@ with check (auth.role() = 'service_role');
 --  공용 채팅 테이블
 -- =========================================
 create table if not exists public.messages (
-  id bigserial primary key,
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  scope text not null default 'global',
+  channel_type text not null default 'lobby',
+  session_id uuid references public.rank_sessions(id) on delete set null,
+  match_instance_id uuid,
+  game_id uuid references public.rank_games(id) on delete set null,
+  room_id uuid references public.rank_rooms(id) on delete set null,
   user_id uuid references auth.users(id) on delete set null,
+  owner_id uuid references auth.users(id) on delete set null,
+  hero_id uuid references public.heroes(id) on delete set null,
   username text not null,
   avatar_url text,
+  role text,
+  target_hero_id uuid references public.heroes(id) on delete set null,
+  target_owner_id uuid references auth.users(id) on delete set null,
+  target_role text,
   text text not null check (length(text) between 1 and 2000),
-  created_at timestamptz not null default now()
+  metadata jsonb not null default '{}'::jsonb,
+  visible_owner_ids uuid[] default null,
+  thread_hint text
 );
 
 alter table public.messages enable row level security;
 
+alter table public.messages
+  add column if not exists created_at timestamptz not null default timezone('utc', now());
+
+alter table public.messages
+  add column if not exists updated_at timestamptz not null default timezone('utc', now());
+
+alter table public.messages
+  add column if not exists scope text not null default 'global';
+
+alter table public.messages
+  add column if not exists channel_type text not null default 'lobby';
+
+alter table public.messages
+  add column if not exists session_id uuid references public.rank_sessions(id) on delete set null;
+
+alter table public.messages
+  add column if not exists match_instance_id uuid;
+
+alter table public.messages
+  add column if not exists game_id uuid references public.rank_games(id) on delete set null;
+
+alter table public.messages
+  add column if not exists room_id uuid references public.rank_rooms(id) on delete set null;
+
+alter table public.messages
+  add column if not exists user_id uuid references auth.users(id) on delete set null;
+
+alter table public.messages
+  add column if not exists owner_id uuid references auth.users(id) on delete set null;
+
+alter table public.messages
+  add column if not exists hero_id uuid references public.heroes(id) on delete set null;
+
+alter table public.messages
+  add column if not exists role text;
+
+alter table public.messages
+  add column if not exists target_hero_id uuid references public.heroes(id) on delete set null;
+
+alter table public.messages
+  add column if not exists target_owner_id uuid references auth.users(id) on delete set null;
+
+alter table public.messages
+  add column if not exists target_role text;
+
+alter table public.messages
+  add column if not exists metadata jsonb not null default '{}'::jsonb;
+
+alter table public.messages
+  add column if not exists visible_owner_ids uuid[] default null;
+
+alter table public.messages
+  add column if not exists thread_hint text;
+
+alter table public.messages
+  alter column created_at set default timezone('utc', now());
+
+alter table public.messages
+  alter column updated_at set default timezone('utc', now());
+
+alter table public.messages
+  alter column scope set default 'global';
+
+alter table public.messages
+  alter column channel_type set default 'lobby';
+
+alter table public.messages
+  alter column metadata set default '{}'::jsonb;
+
+alter table public.messages
+  add constraint if not exists messages_channel_type_check
+  check (channel_type in ('lobby', 'main', 'role', 'whisper', 'system'));
+
+create index if not exists messages_created_at_idx
+  on public.messages (created_at desc);
+
+create index if not exists messages_scope_created_at_idx
+  on public.messages (scope, created_at desc);
+
+create index if not exists messages_session_scope_idx
+  on public.messages (session_id, scope, created_at desc);
+
+create index if not exists messages_match_instance_idx
+  on public.messages (match_instance_id, created_at desc);
+
+create index if not exists messages_owner_scope_idx
+  on public.messages (owner_id, scope, created_at desc);
+
+create or replace function public.touch_messages_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := timezone('utc', now());
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_messages_set_updated_at on public.messages;
+create trigger trg_messages_set_updated_at
+before update on public.messages
+for each row
+execute function public.touch_messages_updated_at();
+
 drop policy if exists messages_select_public on public.messages;
 create policy messages_select_public
-on public.messages for select using (true);
+on public.messages for select
+using (
+  auth.role() = 'service_role'
+  or scope = 'global'
+  or visible_owner_ids is null
+  or auth.uid() = owner_id
+  or auth.uid() = user_id
+  or (visible_owner_ids is not null and auth.uid() = any(visible_owner_ids))
+);
 
 drop policy if exists messages_insert_auth on public.messages;
-create policy messages_insert_auth
-on public.messages for insert to authenticated with check (auth.uid() = user_id);
+create policy messages_insert_service_role
+on public.messages for insert
+with check (auth.role() = 'service_role');
+
+drop policy if exists messages_update_service_role on public.messages;
+create policy messages_update_service_role
+on public.messages for update
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
+drop policy if exists messages_delete_service_role on public.messages;
+create policy messages_delete_service_role
+on public.messages for delete
+using (auth.role() = 'service_role');
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime add table public.messages;
+  end if;
+end;
+$$;
+
+create or replace function public.send_rank_chat_message(
+  p_scope text default 'global',
+  p_text text,
+  p_session_id uuid default null,
+  p_match_instance_id uuid default null,
+  p_game_id uuid default null,
+  p_room_id uuid default null,
+  p_hero_id uuid default null,
+  p_target_hero_id uuid default null,
+  p_target_role text default null,
+  p_metadata jsonb default null,
+  p_user_id uuid default null
+)
+returns public.messages
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_owner_id uuid := null;
+  v_scope text := lower(coalesce(p_scope, 'global'));
+  v_channel text := 'lobby';
+  v_text text := coalesce(trim(p_text), '');
+  v_session_id uuid := p_session_id;
+  v_match_instance_id uuid := p_match_instance_id;
+  v_game_id uuid := p_game_id;
+  v_room_id uuid := p_room_id;
+  v_hero_id uuid := p_hero_id;
+  v_username text := null;
+  v_avatar text := null;
+  v_role text := null;
+  v_target_hero uuid := p_target_hero_id;
+  v_target_owner uuid := null;
+  v_target_role text := case when p_target_role is not null then trim(p_target_role) else null end;
+  v_metadata jsonb := coalesce(p_metadata, '{}'::jsonb);
+  v_visible uuid[] := null;
+  v_roster_owner_ids uuid[] := null;
+  v_thread_hint text := null;
+  v_message public.messages%rowtype;
+begin
+  if v_user_id is null and p_user_id is not null then
+    v_user_id := p_user_id;
+  end if;
+
+  if v_user_id is null then
+    raise exception 'missing_user_id' using errcode = 'P0001';
+  end if;
+
+  if v_text = '' then
+    raise exception 'empty_message' using errcode = 'P0001';
+  end if;
+
+  if v_scope not in ('global', 'main', 'role', 'whisper', 'system') then
+    v_scope := 'global';
+  end if;
+
+  v_channel := case v_scope
+    when 'main' then 'main'
+    when 'role' then 'role'
+    when 'whisper' then 'whisper'
+    when 'system' then 'system'
+    else 'lobby'
+  end;
+
+  if v_hero_id is not null then
+    select h.owner_id, h.name, h.image_url
+      into v_owner_id, v_username, v_avatar
+    from public.heroes as h
+    where h.id = v_hero_id
+    limit 1;
+  end if;
+
+  if v_owner_id is null then
+    v_owner_id := v_user_id;
+  end if;
+
+  if v_username is null then
+    v_username := '익명';
+  end if;
+
+  if v_scope in ('main', 'role', 'whisper') then
+    if v_match_instance_id is null and v_session_id is not null then
+      select public.try_cast_uuid(
+          coalesce(
+            sm.extras->>'matchInstanceId',
+            sm.extras->>'match_instance_id',
+            sm.async_fill_snapshot->>'matchInstanceId',
+            sm.async_fill_snapshot->>'match_instance_id'
+          )
+        ),
+        s.game_id,
+        s.room_id
+        into v_match_instance_id, v_game_id, v_room_id
+      from public.rank_sessions as s
+      left join public.rank_session_meta as sm on sm.session_id = s.id
+      where s.id = v_session_id
+      limit 1;
+    end if;
+  end if;
+
+  if v_scope in ('main', 'role') and v_match_instance_id is null then
+    raise exception 'missing_match_instance' using errcode = 'P0001';
+  end if;
+
+  if v_scope in ('main', 'role') then
+    select array_agg(distinct owner_id) filter (where owner_id is not null),
+           max(game_id),
+           max(room_id)
+      into v_roster_owner_ids, v_game_id, v_room_id
+    from public.rank_match_roster
+    where match_instance_id = v_match_instance_id;
+
+    if v_roster_owner_ids is null or array_length(v_roster_owner_ids, 1) = 0 then
+      raise exception 'missing_roster' using errcode = 'P0001';
+    end if;
+
+    select r.role
+      into v_role
+    from public.rank_match_roster as r
+    where r.match_instance_id = v_match_instance_id
+      and r.owner_id = v_owner_id
+    order by r.updated_at desc
+    limit 1;
+  end if;
+
+  if v_scope = 'role' then
+    v_role := coalesce(v_target_role, v_role);
+    if v_role is null then
+      raise exception 'missing_role_for_channel' using errcode = 'P0001';
+    end if;
+    v_target_role := v_role;
+    select array_agg(distinct owner_id) filter (where owner_id is not null)
+      into v_visible
+    from public.rank_match_roster
+    where match_instance_id = v_match_instance_id
+      and lower(coalesce(role, '')) = lower(v_role);
+    if v_visible is null or array_length(v_visible, 1) = 0 then
+      v_visible := v_roster_owner_ids;
+    end if;
+    v_thread_hint := 'role:' || lower(v_role);
+  elsif v_scope = 'main' then
+    v_visible := v_roster_owner_ids;
+    v_thread_hint := 'main';
+  elsif v_scope = 'whisper' then
+    if v_target_hero is null then
+      raise exception 'missing_target_hero' using errcode = 'P0001';
+    end if;
+    select h.owner_id
+      into v_target_owner
+    from public.heroes as h
+    where h.id = v_target_hero
+    limit 1;
+    if v_target_owner is null then
+      raise exception 'missing_target_owner' using errcode = 'P0001';
+    end if;
+    v_visible := array_remove(array[coalesce(v_owner_id, v_user_id), v_target_owner], null);
+    v_thread_hint := 'whisper:' || coalesce(v_target_hero::text, v_target_owner::text);
+  elsif v_scope = 'system' then
+    v_thread_hint := 'system';
+  else
+    v_thread_hint := 'global';
+  end if;
+
+  if v_visible is not null then
+    select array_agg(distinct elem)
+      into v_visible
+    from unnest(v_visible) as elem;
+    if v_visible is not null and array_length(v_visible, 1) = 0 then
+      v_visible := null;
+    end if;
+  end if;
+
+  insert into public.messages (
+    scope,
+    channel_type,
+    session_id,
+    match_instance_id,
+    game_id,
+    room_id,
+    user_id,
+    owner_id,
+    hero_id,
+    username,
+    avatar_url,
+    role,
+    target_hero_id,
+    target_owner_id,
+    target_role,
+    text,
+    metadata,
+    visible_owner_ids,
+    thread_hint
+  )
+  values (
+    v_scope,
+    v_channel,
+    v_session_id,
+    v_match_instance_id,
+    v_game_id,
+    v_room_id,
+    v_user_id,
+    v_owner_id,
+    v_hero_id,
+    v_username,
+    v_avatar,
+    v_role,
+    v_target_hero,
+    v_target_owner,
+    v_target_role,
+    v_text,
+    v_metadata,
+    v_visible,
+    v_thread_hint
+  )
+  returning * into v_message;
+
+  return v_message;
+end;
+$$;
+
+grant execute on function public.send_rank_chat_message(
+  text,
+  text,
+  uuid,
+  uuid,
+  uuid,
+  uuid,
+  uuid,
+  uuid,
+  text,
+  jsonb,
+  uuid
+)
+to authenticated,
+   service_role;
+
+create or replace function public.fetch_rank_chat_threads(
+  p_session_id uuid default null,
+  p_match_instance_id uuid default null,
+  p_limit integer default 120
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_session_id uuid := p_session_id;
+  v_match_instance_id uuid := p_match_instance_id;
+  v_limit integer := greatest(coalesce(p_limit, 120), 10);
+  v_game_id uuid := null;
+  v_role text := null;
+  v_messages jsonb := '[]'::jsonb;
+begin
+  if v_match_instance_id is null and v_session_id is not null then
+    select public.try_cast_uuid(
+        coalesce(
+          sm.extras->>'matchInstanceId',
+          sm.extras->>'match_instance_id',
+          sm.async_fill_snapshot->>'matchInstanceId',
+          sm.async_fill_snapshot->>'match_instance_id'
+        )
+      ),
+      s.game_id
+      into v_match_instance_id, v_game_id
+    from public.rank_sessions as s
+    left join public.rank_session_meta as sm on sm.session_id = s.id
+    where s.id = v_session_id
+    limit 1;
+  end if;
+
+  if v_match_instance_id is not null then
+    select max(game_id)
+      into v_game_id
+    from public.rank_match_roster
+    where match_instance_id = v_match_instance_id;
+  end if;
+
+  if v_owner_id is not null and v_match_instance_id is not null then
+    select r.role
+      into v_role
+    from public.rank_match_roster as r
+    where r.match_instance_id = v_match_instance_id
+      and r.owner_id = v_owner_id
+    order by r.updated_at desc
+    limit 1;
+  end if;
+
+  with global_messages as (
+    select m.*, 'global'::text as thread_scope, 'global'::text as thread_id, '전체'::text as thread_label
+    from public.messages as m
+    where m.scope = 'global'
+    order by m.created_at desc
+    limit v_limit
+  ),
+  main_messages as (
+    select m.*, 'main'::text as thread_scope, 'main'::text as thread_id, '메인 게임'::text as thread_label
+    from public.messages as m
+    where m.scope in ('main', 'system')
+      and (
+        (v_match_instance_id is not null and m.match_instance_id = v_match_instance_id)
+        or (v_session_id is not null and m.session_id = v_session_id)
+      )
+    order by m.created_at desc
+    limit v_limit
+  ),
+  role_messages as (
+    select
+      m.*,
+      'role'::text as thread_scope,
+      'role'::text as thread_id,
+      coalesce(
+        case
+          when m.target_role is not null then format('역할 (%s)', m.target_role)
+          when v_role is not null then format('역할 (%s)', v_role)
+          else '역할 채팅'
+        end,
+        '역할 채팅'
+      )::text as thread_label
+    from public.messages as m
+    where m.scope = 'role'
+      and (
+        (v_match_instance_id is not null and m.match_instance_id = v_match_instance_id)
+        or (v_session_id is not null and m.session_id = v_session_id)
+      )
+      and (
+        v_role is null
+        or m.target_role is null
+        or lower(m.target_role) = lower(v_role)
+        or lower(m.role) = lower(v_role)
+      )
+    order by m.created_at desc
+    limit v_limit
+  ),
+  whisper_messages as (
+    select
+      m.*,
+      'whisper'::text as thread_scope,
+      (
+        'whisper:' || coalesce(
+          case
+            when v_owner_id is not null and v_owner_id = m.owner_id then coalesce(m.target_hero_id::text, m.target_owner_id::text, m.id::text)
+            when v_owner_id is not null and v_owner_id = m.target_owner_id then coalesce(m.owner_id::text, m.hero_id::text, m.id::text)
+            else m.id::text
+          end,
+          m.id::text
+        )
+      )::text as thread_id,
+      coalesce(m.thread_hint, '귓속말')::text as thread_label
+    from public.messages as m
+    where m.scope = 'whisper'
+      and (
+        v_owner_id is null
+        or v_owner_id = m.owner_id
+        or v_owner_id = m.user_id
+        or (m.visible_owner_ids is not null and v_owner_id = any(m.visible_owner_ids))
+      )
+    order by m.created_at desc
+    limit v_limit
+  ),
+  combined as (
+    select * from global_messages
+    union all
+    select * from main_messages
+    union all
+    select * from role_messages
+    union all
+    select * from whisper_messages
+  )
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_messages
+  from (
+    select
+      c.id,
+      c.created_at,
+      c.updated_at,
+      c.scope,
+      c.channel_type,
+      c.session_id,
+      c.match_instance_id,
+      c.game_id,
+      c.room_id,
+      c.user_id,
+      c.owner_id,
+      c.hero_id,
+      c.username,
+      c.avatar_url,
+      c.role,
+      c.target_hero_id,
+      c.target_owner_id,
+      c.target_role,
+      c.text,
+      c.metadata,
+      c.visible_owner_ids,
+      c.thread_hint,
+      c.thread_scope,
+      case
+        when c.thread_scope = 'role' and v_role is not null then 'role:' || lower(v_role)
+        when c.thread_scope = 'main' then 'main'
+        when c.thread_scope = 'global' then 'global'
+        else c.thread_id
+      end as thread_id,
+      case
+        when c.thread_scope = 'role' and v_role is not null then format('역할 (%s)', v_role)
+        when c.thread_scope = 'main' then '메인 게임'
+        when c.thread_scope = 'global' then '전체'
+        else c.thread_label
+      end as thread_label
+    from combined as c
+    order by c.created_at asc, c.id
+  ) as row;
+
+  return jsonb_build_object(
+    'messages', v_messages,
+    'viewerRole', v_role,
+    'sessionId', v_session_id,
+    'matchInstanceId', v_match_instance_id,
+    'gameId', v_game_id
+  );
+end;
+$$;
+
+grant execute on function public.fetch_rank_chat_threads(
+  uuid,
+  uuid,
+  integer
+)
+to authenticated,
+   service_role,
+   anon;
 
 --

@@ -592,6 +592,104 @@ function normalizeLobbySnapshot(raw = {}) {
   return { queue, sessions }
 }
 
+function extractActiveHeroIds(turnState) {
+  const ids = new Set()
+  if (!turnState || typeof turnState !== 'object') {
+    return ids
+  }
+
+  const addCandidate = (value) => {
+    if (!value) return
+    if (typeof value === 'string' || typeof value === 'number') {
+      ids.add(String(value))
+      return
+    }
+    if (typeof value === 'object') {
+      const candidate =
+        value.heroId ?? value.hero_id ?? value.id ?? value.hero ?? value
+      if (candidate) {
+        ids.add(String(candidate))
+      }
+    }
+  }
+
+  const directCandidates = [
+    turnState.heroId,
+    turnState.hero_id,
+    turnState.activeHeroId,
+    turnState.activeHero?.heroId,
+    turnState.activeHero?.hero_id,
+    turnState.activeHero?.id,
+    turnState.currentHeroId,
+    turnState.currentHero?.heroId,
+    turnState.currentHero?.id,
+    turnState.current?.heroId,
+    turnState.current?.hero_id,
+    turnState.current?.id,
+    turnState.turn?.heroId,
+    turnState.turn?.hero_id,
+    turnState.turn?.id,
+  ]
+
+  directCandidates.forEach(addCandidate)
+
+  const arrayCandidates = [
+    turnState.activeHeroes,
+    turnState.activeSlots,
+    turnState.turnHeroes,
+    turnState.turn?.heroes,
+    turnState.participants,
+  ]
+
+  for (const list of arrayCandidates) {
+    if (!Array.isArray(list)) continue
+    for (const entry of list) {
+      addCandidate(entry)
+    }
+  }
+
+  return ids
+}
+
+function deriveMatchChatContext(session, viewerHeroId) {
+  const normalizedHeroId = viewerHeroId ? String(viewerHeroId) : null
+  const context = {
+    matchInstanceId: session?.matchInstanceId || null,
+    viewerRole: null,
+    allowMainInput: true,
+  }
+
+  if (!session) {
+    return context
+  }
+
+  const roster = Array.isArray(session.roster) ? session.roster : []
+  if (normalizedHeroId) {
+    const rosterEntry = roster.find((slot) => {
+      if (!slot) return false
+      const slotHeroId = slot.heroId || slot.hero_id || null
+      return slotHeroId && String(slotHeroId) === normalizedHeroId
+    })
+    if (rosterEntry?.role) {
+      context.viewerRole = rosterEntry.role
+    }
+  }
+
+  if (!context.matchInstanceId) {
+    const rosterMatch = roster.find((slot) => slot?.matchInstanceId || slot?.match_instance_id)
+    if (rosterMatch) {
+      context.matchInstanceId = rosterMatch.matchInstanceId || rosterMatch.match_instance_id || null
+    }
+  }
+
+  const activeIds = extractActiveHeroIds(session.turnState)
+  if (activeIds.size > 0) {
+    context.allowMainInput = normalizedHeroId ? activeIds.has(normalizedHeroId) : false
+  }
+
+  return context
+}
+
 function normalizeGameSlot(row) {
   if (!row) return null
   const slotIndex = Number.isFinite(Number(row.slot_index))
@@ -1414,6 +1512,11 @@ export default function MatchPage() {
     '매칭이 성사되었습니다. 턴 제한시간을 선택해주세요.',
     '제한시간 내에 선택하지 않으면 매칭이 취소됩니다. 반복된 매칭 취소는 불이익을 받을 수 있습니다.',
   ]
+  const viewerHeroId = viewerHero?.hero_id || null
+  const matchChatContext = useMemo(
+    () => deriveMatchChatContext(session, viewerHeroId),
+    [session, viewerHeroId],
+  )
   const renderKeyringSection = () => (
     <section style={styles.section}>
       <div style={styles.sectionHeader}>
@@ -1695,9 +1798,14 @@ export default function MatchPage() {
               <div style={styles.chatDock}>
                 <SharedChatDock
                   sessionId={session?.id || null}
+                  matchInstanceId={matchChatContext.matchInstanceId || session?.matchInstanceId || null}
+                  gameId={session?.gameId || null}
+                  roomId={session?.roomId || null}
                   roster={session?.roster || []}
-                  heroId={viewerHero?.hero_id || null}
-                  heroName={viewerHero?.name || ''}
+                  viewerRole={matchChatContext.viewerRole}
+                  allowMainInput={matchChatContext.allowMainInput}
+                  heroId={viewerHeroId}
+                  viewerHero={viewerHero}
                 />
               </div>
             </section>

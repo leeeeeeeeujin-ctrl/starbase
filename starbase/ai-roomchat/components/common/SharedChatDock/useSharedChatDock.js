@@ -141,6 +141,13 @@ function useSharedChatDockInternal({
   extraWhisperTargets = [],
   blockedHeroes: externalBlockedHeroes,
   viewerHero = null,
+  sessionId = null,
+  matchInstanceId = null,
+  gameId = null,
+  roomId = null,
+  roster = [],
+  viewerRole: viewerRoleHint = null,
+  allowMainInput = true,
   onSend,
   onNotify,
   pollingEnabled = false,
@@ -149,6 +156,28 @@ function useSharedChatDockInternal({
   const activeThreadRef = useRef('global')
   const viewerHeroRef = useRef(null)
   const messageIdSetRef = useRef(new Set())
+  const [chatContext, setChatContext] = useState({
+    sessionId: sessionId || null,
+    matchInstanceId: matchInstanceId || null,
+    gameId: gameId || null,
+    roomId: roomId || null,
+    viewerRole: viewerRoleHint || null,
+  })
+  const chatContextRef = useRef(chatContext)
+
+  useEffect(() => {
+    chatContextRef.current = chatContext
+  }, [chatContext])
+
+  useEffect(() => {
+    setChatContext((prev) => ({
+      sessionId: sessionId ?? prev.sessionId,
+      matchInstanceId: matchInstanceId ?? prev.matchInstanceId,
+      gameId: gameId ?? prev.gameId,
+      roomId: roomId ?? prev.roomId,
+      viewerRole: viewerRoleHint || prev.viewerRole || null,
+    }))
+  }, [sessionId, matchInstanceId, gameId, roomId, viewerRoleHint])
 
   const hintProfile = useMemo(() => deriveViewerFromHint(viewerHero), [viewerHero])
   const initialViewerState = useMemo(
@@ -175,6 +204,13 @@ function useSharedChatDockInternal({
   const viewerProfileRef = useRef(initialViewerState)
 
   const blockedHeroSet = useMemo(() => new Set(blockedHeroes), [blockedHeroes])
+
+  const viewerRoleValue = chatContext.viewerRole || viewerRoleHint || null
+  const viewerRoleLower = useMemo(
+    () => (viewerRoleValue ? viewerRoleValue.toLowerCase() : null),
+    [viewerRoleValue],
+  )
+  const viewerRoleLabel = useMemo(() => viewerRoleValue || null, [viewerRoleValue])
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
@@ -225,6 +261,34 @@ function useSharedChatDockInternal({
   useEffect(() => {
     viewerHeroRef.current = viewerHeroId
   }, [viewerHeroId])
+
+  useEffect(() => {
+    if (chatContextRef.current.viewerRole) return
+    if (!Array.isArray(roster) || roster.length === 0) return
+
+    const currentHeroId = viewerHeroRef.current || viewerHero?.hero_id || heroId || null
+    const ownerId = me?.owner_id || me?.user_id || null
+
+    const match = roster.find((slot) => {
+      if (!slot) return false
+      if (slot.heroId && currentHeroId && slot.heroId === currentHeroId) {
+        return true
+      }
+      if (slot.ownerId && ownerId && slot.ownerId === ownerId) {
+        return true
+      }
+      return false
+    })
+
+    if (match?.role) {
+      setChatContext((prev) => {
+        if (prev.viewerRole === match.role) {
+          return prev
+        }
+        return { ...prev, viewerRole: match.role }
+      })
+    }
+  }, [heroId, me, roster, viewerHero])
 
   useEffect(() => {
     viewerProfileRef.current = me
@@ -287,9 +351,26 @@ function useSharedChatDockInternal({
   )
 
   const fetchAndHydrateMessages = useCallback(async () => {
-    const data = await fetchRecentMessages({ limit: MESSAGE_LIMIT })
-    return hydrateBatch(data)
-  }, [hydrateBatch])
+    const contextSnapshot = chatContextRef.current || {}
+    const result = await fetchRecentMessages({
+      limit: MESSAGE_LIMIT,
+      sessionId: contextSnapshot.sessionId || sessionId || null,
+      matchInstanceId: contextSnapshot.matchInstanceId || matchInstanceId || null,
+    })
+
+    setChatContext((prev) => {
+      const next = {
+        sessionId: result.sessionId ?? prev.sessionId,
+        matchInstanceId: result.matchInstanceId ?? prev.matchInstanceId,
+        gameId: result.gameId ?? prev.gameId,
+        roomId: prev.roomId,
+        viewerRole: prev.viewerRole || result.viewerRole || null,
+      }
+      return next
+    })
+
+    return hydrateBatch(result.messages)
+  }, [hydrateBatch, sessionId, matchInstanceId])
 
   const hydrateSingle = useCallback(
     async (rawMessage) => {
@@ -346,13 +427,16 @@ function useSharedChatDockInternal({
     if (!viewerHeroId) return []
     const map = new Map()
     for (const message of messages) {
-      if (message?.scope !== 'whisper') continue
+      const messageScope = message?.scope || message?.thread_scope || 'global'
+      if (messageScope !== 'whisper') continue
       if (message.hero_id !== viewerHeroId && message.target_hero_id !== viewerHeroId) continue
       const counterpart = message.hero_id === viewerHeroId ? message.target_hero_id : message.hero_id
       if (!counterpart) continue
       const meta = heroDirectory.get(counterpart)
-      const existing = map.get(counterpart) || {
+      const threadId = `whisper:${counterpart}`
+      const existing = map.get(threadId) || {
         heroId: counterpart,
+        threadId,
         heroName: meta?.username || '알 수 없는 영웅',
         ownerId: meta?.ownerId || null,
         lastMessageAt: message.created_at,
@@ -366,7 +450,7 @@ function useSharedChatDockInternal({
       if (meta?.ownerId) {
         existing.ownerId = meta.ownerId
       }
-      map.set(counterpart, existing)
+      map.set(threadId, existing)
     }
     const list = Array.from(map.values())
     list.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
@@ -396,32 +480,71 @@ function useSharedChatDockInternal({
     return list
   }, [extraWhisperTargets, heroDirectory, viewerHeroId])
 
+  const scopeOptions = useMemo(() => {
+    const options = [{ value: 'global', label: '전체 공개', disabled: false }]
+    if (chatContext.matchInstanceId || chatContext.sessionId) {
+      options.push({ value: 'main', label: '메인 게임', disabled: !allowMainInput })
+    }
+    if (viewerRoleLabel) {
+      options.push({ value: 'role', label: `역할 (${viewerRoleLabel})`, disabled: false })
+    }
+    options.push({ value: 'whisper', label: '귓속말', disabled: availableTargets.length === 0 })
+    return options
+  }, [allowMainInput, availableTargets.length, chatContext.matchInstanceId, chatContext.sessionId, viewerRoleLabel])
+
+  const primaryThreads = useMemo(() => {
+    const threads = [{ id: 'global', label: '전체', closable: false }]
+    if (chatContext.matchInstanceId || chatContext.sessionId) {
+      threads.push({ id: 'main', label: '메인', closable: false })
+    }
+    if (viewerRoleLabel) {
+      threads.push({ id: 'role', label: `역할 (${viewerRoleLabel})`, closable: false })
+    }
+    return threads
+  }, [chatContext.matchInstanceId, chatContext.sessionId, viewerRoleLabel])
+
   const visibleMessages = useMemo(() => {
     return messages.filter((message) => {
+      const messageScope = (message?.scope || message?.thread_scope || 'global').toLowerCase()
       if (message?.hero_id && blockedHeroSet.has(message.hero_id) && message.hero_id !== viewerHeroId) {
         return false
       }
-      if (message?.scope === 'blocked') {
+      if (messageScope === 'blocked') {
         return false
       }
       if (activeThread === 'global') {
-        return message?.scope !== 'whisper'
+        return messageScope === 'global' || messageScope === 'system'
       }
-      if (message?.scope !== 'whisper') return false
-      if (!viewerHeroId) return false
-      if (message.hero_id !== viewerHeroId && message.target_hero_id !== viewerHeroId) {
-        return false
+      if (activeThread === 'main') {
+        return messageScope === 'main' || messageScope === 'system'
       }
-      const counterpart = message.hero_id === viewerHeroId ? message.target_hero_id : message.hero_id
-      return counterpart === activeThread
+      if (activeThread === 'role') {
+        if (messageScope !== 'role') return false
+        if (!viewerRoleLower) return true
+        const targetRole = (message?.target_role || message?.role || '').toLowerCase()
+        return !targetRole || targetRole === viewerRoleLower
+      }
+      if (activeThread.startsWith('whisper:')) {
+        if (messageScope !== 'whisper') return false
+        if (!viewerHeroId) return false
+        if (message.hero_id !== viewerHeroId && message.target_hero_id !== viewerHeroId) {
+          return false
+        }
+        const counterpart = message.hero_id === viewerHeroId ? message.target_hero_id : message.hero_id
+        const threadTarget = activeThread.split(':')[1] || ''
+        return counterpart && threadTarget && String(counterpart) === threadTarget
+      }
+      return false
     })
-  }, [activeThread, blockedHeroSet, messages, viewerHeroId])
+  }, [activeThread, blockedHeroSet, messages, viewerHeroId, viewerRoleLower])
 
   const canSend = useMemo(() => {
     if (!input.trim()) return false
     if (scope === 'whisper' && !whisperTarget) return false
+    if (scope === 'main' && !allowMainInput) return false
+    if (scope === 'role' && !viewerRoleLower) return false
     return true
-  }, [input, scope, whisperTarget])
+  }, [allowMainInput, input, scope, viewerRoleLower, whisperTarget])
 
   useEffect(() => {
     persistBlockedHeroes(blockedHeroes)
@@ -431,12 +554,19 @@ function useSharedChatDockInternal({
     (thread) => {
       const normalized = thread || 'global'
       setActiveThreadState(normalized)
-      if (normalized === 'global') {
-        setScopeInternal('global')
+      if (normalized.startsWith('whisper:')) {
+        const target = normalized.split(':')[1] || null
+        setScopeInternal('whisper')
+        setWhisperTargetInternal(target)
+      } else if (normalized === 'main') {
+        setScopeInternal('main')
+        setWhisperTargetInternal(null)
+      } else if (normalized === 'role') {
+        setScopeInternal('role')
         setWhisperTargetInternal(null)
       } else {
-        setScopeInternal('whisper')
-        setWhisperTargetInternal(normalized)
+        setScopeInternal('global')
+        setWhisperTargetInternal(null)
       }
     },
     [setActiveThreadState, setScopeInternal, setWhisperTargetInternal],
@@ -539,16 +669,36 @@ function useSharedChatDockInternal({
         })
 
         const viewerId = viewerHeroRef.current
-        if (hydrated?.scope === 'whisper' && viewerId) {
+        const scope = hydrated?.scope || hydrated?.thread_scope || 'global'
+        let threadKey = 'global'
+
+        if (scope === 'whisper' && viewerId) {
           const isParticipant =
             hydrated.hero_id === viewerId || hydrated.target_hero_id === viewerId
           const isSelf = hydrated.hero_id === viewerId
-          const threadId =
+          const counterpart =
             hydrated.hero_id === viewerId ? hydrated.target_hero_id : hydrated.hero_id
-          if (isParticipant && !isSelf && threadId && threadId !== activeThreadRef.current) {
+          threadKey = counterpart ? `whisper:${counterpart}` : 'global'
+          if (isParticipant && !isSelf && threadKey && threadKey !== activeThreadRef.current) {
             setUnreadThreads((prev) => ({
               ...prev,
-              [threadId]: (prev[threadId] || 0) + 1,
+              [threadKey]: (prev[threadKey] || 0) + 1,
+            }))
+          }
+        } else if (scope === 'main') {
+          threadKey = 'main'
+          if (threadKey !== activeThreadRef.current) {
+            setUnreadThreads((prev) => ({
+              ...prev,
+              [threadKey]: (prev[threadKey] || 0) + 1,
+            }))
+          }
+        } else if (scope === 'role') {
+          threadKey = 'role'
+          if (threadKey !== activeThreadRef.current) {
+            setUnreadThreads((prev) => ({
+              ...prev,
+              [threadKey]: (prev[threadKey] || 0) + 1,
             }))
           }
         }
@@ -556,24 +706,18 @@ function useSharedChatDockInternal({
         scrollToBottom()
 
         if (typeof onNotify === 'function') {
-          const scope = hydrated?.scope || 'global'
-          let threadId = 'global'
-          if (scope === 'whisper' && viewerId) {
-            if (hydrated.hero_id === viewerId) {
-              threadId = hydrated.target_hero_id || 'global'
-            } else {
-              threadId = hydrated.hero_id || 'global'
-            }
-          }
-          onNotify({ message: hydrated, scope, threadId })
+          onNotify({ message: hydrated, scope, threadId: threadKey })
         }
       } catch (error) {
         console.error('실시간 메시지를 처리하지 못했습니다.', error)
       }
     }
 
+    const contextSnapshot = chatContextRef.current || {}
     const unsubscribe = subscribeToMessages({
       channelName: 'messages-shared-dock',
+      sessionId: contextSnapshot.sessionId || sessionId || null,
+      matchInstanceId: contextSnapshot.matchInstanceId || matchInstanceId || null,
       onInsert: (message) => {
         handleInsert(message)
       },
@@ -583,26 +727,33 @@ function useSharedChatDockInternal({
       alive = false
       unsubscribe()
     }
-  }, [fetchAndHydrateMessages, heroId, hydrateSingle, viewerHero, hintProfile, replaceMessages, scrollToBottom, onNotify])
+  }, [fetchAndHydrateMessages, heroId, hydrateSingle, viewerHero, hintProfile, replaceMessages, scrollToBottom, onNotify, sessionId, matchInstanceId, chatContext.matchInstanceId, chatContext.sessionId])
 
   const handleSetScope = useCallback(
     (nextScope) => {
-      if (nextScope === 'global') {
-        setActiveThread('global')
-      } else {
+      const normalized = nextScope || 'global'
+      if (normalized === 'main') {
+        setActiveThread('main')
+      } else if (normalized === 'role') {
+        setActiveThread('role')
+      } else if (normalized === 'whisper') {
         setScopeInternal('whisper')
         if (whisperTarget) {
-          setActiveThreadState(whisperTarget)
+          setActiveThread(`whisper:${whisperTarget}`)
+        } else {
+          setWhisperTargetInternal(null)
         }
+      } else {
+        setActiveThread('global')
       }
     },
-    [setActiveThread, whisperTarget],
+    [setActiveThread, setScopeInternal, setWhisperTargetInternal, whisperTarget],
   )
 
   const handleSetWhisperTarget = useCallback(
     (target) => {
       if (target) {
-        setActiveThread(target)
+        setActiveThread(`whisper:${target}`)
       } else {
         setActiveThread('global')
       }
@@ -613,13 +764,16 @@ function useSharedChatDockInternal({
   const clearThread = useCallback(
     (threadId) => {
       if (!threadId || threadId === 'global') return
+      if (!threadId.startsWith('whisper:')) return
+      const targetHeroId = threadId.split(':')[1] || null
 
       setMessages((prev) => {
         const filtered = prev.filter((message) => {
           if (message?.scope !== 'whisper') return true
-          if (message.hero_id === threadId) return false
-          if (message.target_hero_id === threadId) return false
-          return true
+          const viewerId = viewerHeroRef.current
+          if (!viewerId) return true
+          const counterpart = message.hero_id === viewerId ? message.target_hero_id : message.hero_id
+          return String(counterpart || '') !== String(targetHeroId || '')
         })
         return limitMessages(filtered)
       })
@@ -637,7 +791,7 @@ function useSharedChatDockInternal({
         setScopeInternal('global')
         setWhisperTargetInternal(null)
       } else {
-        setWhisperTargetInternal((prev) => (prev === threadId ? null : prev))
+        setWhisperTargetInternal((prev) => (prev === targetHeroId ? null : prev))
       }
     },
     [limitMessages, setActiveThreadState, setScopeInternal, setWhisperTargetInternal],
@@ -669,24 +823,24 @@ function useSharedChatDockInternal({
 
       setInput('')
 
-      const fallbackOwnerId = hintProfile?.owner_id || hintProfile?.user_id || user.id
       const fallbackHeroId = hintProfile?.hero_id || null
-      const fallbackName = hintProfile?.name || DEFAULT_VIEWER.name
-      const fallbackAvatar = hintProfile?.avatar_url ?? null
 
       const payload = {
-        user_id: user.id,
-        owner_id: me.owner_id || fallbackOwnerId,
-        username:
-          me.name && me.name !== DEFAULT_VIEWER.name ? me.name : fallbackName,
-        avatar_url: me.avatar_url ?? fallbackAvatar,
         hero_id: activeHeroId || fallbackHeroId,
         scope,
         target_hero_id: scope === 'whisper' ? whisperTarget : null,
+        target_role: scope === 'role' ? viewerRoleValue || null : null,
         text,
       }
 
-      await insertMessage(payload)
+      const contextSnapshot = chatContextRef.current || {}
+
+      await insertMessage(payload, {
+        sessionId: contextSnapshot.sessionId || sessionId || null,
+        matchInstanceId: contextSnapshot.matchInstanceId || matchInstanceId || null,
+        gameId: contextSnapshot.gameId || gameId || null,
+        roomId: contextSnapshot.roomId || roomId || null,
+      })
 
       try {
         const hydrated = await fetchAndHydrateMessages()
@@ -725,7 +879,9 @@ function useSharedChatDockInternal({
     listRef,
     me,
     messages,
+    primaryThreads,
     scope,
+    scopeOptions,
     send,
     setActiveThread,
     setBlockedHeroes,

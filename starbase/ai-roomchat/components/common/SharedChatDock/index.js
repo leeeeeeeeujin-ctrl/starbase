@@ -13,6 +13,13 @@ export default function SharedChatDock({
   extraWhisperTargets = [],
   blockedHeroes: externalBlockedHeroes,
   viewerHero = null,
+  sessionId = null,
+  matchInstanceId = null,
+  gameId = null,
+  roomId = null,
+  roster = [],
+  viewerRole = null,
+  allowMainInput = true,
   onSelectHero,
   onUnreadChange,
   onBlockedHeroesChange,
@@ -33,7 +40,9 @@ export default function SharedChatDock({
     input,
     listRef,
     me,
+    primaryThreads,
     scope,
+    scopeOptions,
     send,
     setActiveThread: setActiveThreadInternal,
     setBlockedHeroes,
@@ -52,6 +61,13 @@ export default function SharedChatDock({
     extraWhisperTargets,
     blockedHeroes: externalBlockedHeroes,
     viewerHero,
+    sessionId,
+    matchInstanceId,
+    gameId,
+    roomId,
+    roster,
+    viewerRole,
+    allowMainInput,
     onSend: onUserSend,
     onNotify: onMessageAlert,
     pollingEnabled,
@@ -84,17 +100,25 @@ export default function SharedChatDock({
   }
 
   const threadTabs = React.useMemo(() => {
-    const items = [
-      { id: 'global', label: '전체', unread: 0, closable: false },
-      ...threadList.map((thread) => ({
-        id: thread.heroId,
+    const items = primaryThreads.map((thread) => ({
+      id: thread.id,
+      label: thread.label,
+      unread: unreadThreads[thread.id] || 0,
+      closable: false,
+    }))
+
+    for (const thread of threadList) {
+      const threadId = thread.threadId || (thread.heroId ? `whisper:${thread.heroId}` : 'whisper')
+      items.push({
+        id: threadId,
         label: thread.heroName,
-        unread: unreadThreads[thread.heroId] || 0,
+        unread: unreadThreads[threadId] || 0,
         closable: true,
-      })),
-    ]
+      })
+    }
+
     return items
-  }, [threadList, unreadThreads])
+  }, [primaryThreads, threadList, unreadThreads])
 
   const setActiveThread = React.useCallback(
     (next) => {
@@ -144,6 +168,7 @@ export default function SharedChatDock({
       <InputBar
         scope={scope}
         setScope={setScope}
+        scopeOptions={scopeOptions}
         whisperTarget={whisperTarget}
         setWhisperTarget={setWhisperTarget}
         availableTargets={availableTargets}

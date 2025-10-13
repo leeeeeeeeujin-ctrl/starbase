@@ -1,7 +1,6 @@
 "use client"
 
 import { supabase } from '../supabase'
-import { withTable } from '../supabaseTables'
 
 export const MESSAGE_LIMIT = 30
 
@@ -18,90 +17,77 @@ export async function getCurrentUser() {
   return user || null
 }
 
-const MESSAGE_COLUMN_CANDIDATES = [
-  '*',
-  'id,created_at,text,scope,target_hero_id,hero_id,owner_id,user_id,username,avatar_url',
-  'id,created_at,text,scope,hero_id,owner_id,username,avatar_url',
-  'id,created_at,text,hero_id,owner_id,username',
-  'id,created_at,text,username',
-  'id,created_at,text',
-]
+export async function fetchRecentMessages({
+  limit = MESSAGE_LIMIT,
+  sessionId = null,
+  matchInstanceId = null,
+} = {}) {
+  const cappedLimit = Math.max(1, Math.min(limit, 500))
+  const { data, error } = await supabase.rpc('fetch_rank_chat_threads', {
+    p_limit: cappedLimit,
+    p_session_id: sessionId,
+    p_match_instance_id: matchInstanceId,
+  })
 
-export async function fetchRecentMessages({ limit = MESSAGE_LIMIT } = {}) {
-  const cappedLimit = Math.max(1, Math.min(limit, MESSAGE_LIMIT))
-  let lastError = null
+  if (error) {
+    throw error
+  }
 
-  for (const columnSet of MESSAGE_COLUMN_CANDIDATES) {
-    const { data, error } = await withTable(supabase, 'messages', (table) =>
-      supabase
-        .from(table)
-        .select(columnSet)
-        .order('created_at', { ascending: true })
-        .limit(cappedLimit),
-    )
-
-    if (!error) {
-      return Array.isArray(data) ? data : []
-    }
-
-    lastError = error
-    if (!isMissingColumnError(error)) {
-      break
+  if (!data || typeof data !== 'object') {
+    return {
+      messages: [],
+      viewerRole: null,
+      sessionId: sessionId || null,
+      matchInstanceId: matchInstanceId || null,
+      gameId: null,
     }
   }
 
-  if (lastError) {
-    throw lastError
-  }
+  const messages = Array.isArray(data.messages) ? data.messages : []
 
-  return []
-}
-
-function isMissingColumnError(error) {
-  if (!error) return false
-  if (error.code === '42703') return true
-  const merged = `${error.message || ''} ${error.details || ''}`.toLowerCase()
-  if (!merged.trim()) return false
-  if (merged.includes('column') && merged.includes('does not exist')) return true
-  if (merged.includes('column') && merged.includes('not exist')) return true
-  if (merged.includes('missing required column')) return true
-  return false
-}
-
-function buildLegacyPayload(payload) {
-  const ownerId = payload.owner_id || payload.user_id || null
   return {
-    owner_id: ownerId,
-    username: payload.username,
-    avatar_url: payload.avatar_url ?? null,
-    text: payload.text,
+    messages,
+    viewerRole: data.viewerRole || null,
+    sessionId: data.sessionId || sessionId || null,
+    matchInstanceId: data.matchInstanceId || matchInstanceId || null,
+    gameId: data.gameId || null,
   }
 }
 
-export async function insertMessage(payload) {
-  const firstAttempt = await withTable(supabase, 'messages', (table) =>
-    supabase.from(table).insert(payload),
-  )
-
-  if (!firstAttempt.error) {
-    return
+export async function insertMessage(payload, context = {}) {
+  const text = typeof payload?.text === 'string' ? payload.text.trim() : ''
+  if (!text) {
+    throw new Error('메시지가 비어 있습니다.')
   }
 
-  if (!isMissingColumnError(firstAttempt.error)) {
-    throw firstAttempt.error
+  const scope = payload?.scope || 'global'
+  const metadata = payload?.metadata && typeof payload.metadata === 'object' ? payload.metadata : null
+  const { data, error } = await supabase.rpc('send_rank_chat_message', {
+    p_scope: scope,
+    p_text: text,
+    p_session_id: context.sessionId || null,
+    p_match_instance_id: context.matchInstanceId || null,
+    p_game_id: context.gameId || null,
+    p_room_id: context.roomId || null,
+    p_hero_id: payload?.hero_id || null,
+    p_target_hero_id: payload?.target_hero_id || null,
+    p_target_role: payload?.target_role || null,
+    p_metadata: metadata,
+  })
+
+  if (error) {
+    throw error
   }
 
-  const legacyPayload = buildLegacyPayload(payload)
-  const fallback = await withTable(supabase, 'messages', (table) =>
-    supabase.from(table).insert(legacyPayload),
-  )
-
-  if (fallback.error) {
-    throw fallback.error
-  }
+  return data || null
 }
 
-export function subscribeToMessages({ onInsert, channelName = 'messages-stream' }) {
+export function subscribeToMessages({
+  onInsert,
+  channelName = 'rank-chat-stream',
+  sessionId = null,
+  matchInstanceId = null,
+} = {}) {
   const channel = supabase
     .channel(channelName)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
