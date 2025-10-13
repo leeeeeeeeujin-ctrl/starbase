@@ -1525,6 +1525,19 @@ alter table public.rank_session_meta
 
 alter table public.rank_session_meta enable row level security;
 
+drop policy if exists rank_session_meta_select on public.rank_session_meta;
+create policy rank_session_meta_select
+on public.rank_session_meta for select
+using (
+  auth.role() = 'service_role'
+  or occupant_owner_id = auth.uid()
+  or exists (
+    select 1 from public.rank_sessions s
+    where s.id = session_id
+      and (s.owner_id is null or s.owner_id = auth.uid())
+  )
+);
+
 drop policy if exists rank_session_meta_service_all on public.rank_session_meta;
 create policy rank_session_meta_service_all
 on public.rank_session_meta for all
