@@ -139,3 +139,7 @@ end $$;
 - 준비 투표 → 세션 생성 → 난입 메타 동기화를 서버에서도 동일하게 강제하려면 `docs/rank-room-rpc-hardening-plan-2025-11-10.md`를 따라 `assert_room_ready`·`ensure_rank_session_for_room`·`upsert_rank_session_async_fill` RPC를 배포하고 API/클라이언트를 재연동한다.
 
 > 추가로 확인하면 좋을 주제나 최신화해야 할 문서가 생기면 이 노트를 업데이트하거나 `docs/` 디렉터리에 보완 자료를 추가해 주세요.
+
+## 11. Rank Arcade 오버홀
+- `/arena/*` 여섯 개 페이지가 방 중심 UI를 대체하며, 큐→준비→세션→정산을 Supabase RPC 기반으로 단순화한다. 새 흐름과 RPC 목록은 `docs/refactor-blueprint-2025-11-12.md`와 `docs/arena-rpc-reference-2025-11-12.md`를 참고하라.
+- 홈(`/`)은 Rank Arcade 허브로 변경되었고, 기존 방 상세 페이지는 단계적으로 제거 예정이다. 운영/개발자는 이제 큐 티켓과 세션 ID만으로 상태를 추적하면 된다.

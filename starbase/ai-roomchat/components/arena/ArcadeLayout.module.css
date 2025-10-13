@@ -1,0 +1,47 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #1f2430, #0f1115);
+  color: #f5f7fa;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 24px;
+}
+
+.subtitle {
+  margin-top: 4px;
+  color: rgba(245, 247, 250, 0.7);
+  font-size: 14px;
+}
+
+.nav {
+  display: flex;
+  gap: 16px;
+}
+
+.nav a {
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.nav a:hover {
+  color: #76e4ff;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.main {
+  flex: 1;
+  padding: 32px;
+}
