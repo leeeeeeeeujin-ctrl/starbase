@@ -989,7 +989,6 @@ export default function RoomDetailPage() {
   const [readyResetPending, setReadyResetPending] = useState(false)
   const [readyActionError, setReadyActionError] = useState('')
   const [manualStagePending, setManualStagePending] = useState(false)
-  const [readyLaunchPending, setReadyLaunchPending] = useState(false)
   const [creationFeedback, setCreationFeedback] = useState(null)
   const [deletePending, setDeletePending] = useState(false)
   const [activeTab, setActiveTab] = useState('participants')
@@ -1050,11 +1049,8 @@ export default function RoomDetailPage() {
     return slots.every((slot) => slot.occupantOwnerId && slot.occupantReady)
   }, [hasFullRoster, slots])
 
-  const readyLaunchAvailable = useMemo(() => {
-    if (!readyWindow?.active) return false
-    if (!allReady) return false
-    return readyCountdown === 0
-  }, [readyWindow?.active, readyCountdown, allReady])
+  const readyLaunchTrackerRef = useRef({ signature: '', launching: false })
+  const readyTimeoutTrackerRef = useRef({ signature: '', completed: false })
 
   const readyResetKey = useMemo(() => buildReadyResetKey(slots), [slots])
 
@@ -2507,6 +2503,69 @@ export default function RoomDetailPage() {
     handleReadyVoteRef.current = handleReadyVote
   }, [handleReadyVote])
 
+  const evictUnreadyParticipants = useCallback(
+    async ({ reason = 'timeout' } = {}) => {
+      if (!isHost) return
+      if (!Array.isArray(slots) || !slots.length) return
+
+      const targets = slots
+        .map((slot) => {
+          const ownerId = toStringOrNull(slot?.occupantOwnerId)
+          if (!ownerId) return null
+          if (slot?.occupantReady) return null
+          if (!slot?.id) return null
+          return { slotId: slot.id, ownerId }
+        })
+        .filter(Boolean)
+
+      if (!targets.length) {
+        return
+      }
+
+      try {
+        const results = await Promise.all(
+          targets.map(({ slotId, ownerId }) =>
+            withTable(supabase, 'rank_room_slots', (table) =>
+              supabase
+                .from(table)
+                .update({
+                  occupant_owner_id: null,
+                  occupant_hero_id: null,
+                  occupant_ready: false,
+                  joined_at: null,
+                })
+                .eq('id', slotId)
+                .eq('occupant_owner_id', ownerId)
+                .select('id')
+                .maybeSingle(),
+            ),
+          ),
+        )
+
+        const unexpectedError = results.find(
+          (result) => result?.error && result.error.code !== 'PGRST116',
+        )?.error
+
+        if (unexpectedError) {
+          throw unexpectedError
+        }
+
+        await loadRoom('refresh')
+      } catch (evictError) {
+        console.error(
+          `[RoomDetail] Failed to evict unready participants (${reason}):`,
+          evictError,
+        )
+        if (mountedRef.current) {
+          setReadyActionError(
+            '준비하지 않은 참가자를 내보내는 중 오류가 발생했습니다. 다시 시도해 주세요.',
+          )
+        }
+      }
+    },
+    [isHost, loadRoom, slots],
+  )
+
   const handleRestartReadyPoll = useCallback(async () => {
     if (!isHost) return
     if (!hasFullRoster) return
@@ -2602,6 +2661,47 @@ export default function RoomDetailPage() {
     readyPending,
     setSlots,
   ])
+
+  useEffect(() => {
+    if (!readyWindow) return
+
+    if (readyWindow.active) {
+      const signature = readyWindow.signature || ''
+      readyTimeoutTrackerRef.current = { signature, completed: false }
+      return
+    }
+
+    if (!isHost) return
+    if (readyWindow.reason !== 'timeout') return
+
+    const signature = readyWindow.signature || ''
+    if (
+      readyTimeoutTrackerRef.current.completed &&
+      readyTimeoutTrackerRef.current.signature === signature
+    ) {
+      return
+    }
+
+    const hasUnready = Array.isArray(slots)
+      ? slots.some((slot) => {
+          const ownerId = toStringOrNull(slot?.occupantOwnerId)
+          return ownerId && slot?.occupantReady !== true
+        })
+      : false
+
+    readyTimeoutTrackerRef.current = { signature, completed: true }
+
+    if (!hasUnready) {
+      return
+    }
+
+    evictUnreadyParticipants({ reason: 'timeout' }).catch((error) => {
+      console.error(
+        '[RoomDetail] Failed to evict unready participants after timeout:',
+        error,
+      )
+    })
+  }, [evictUnreadyParticipants, isHost, readyWindow, slots])
 
   const handleRefresh = useCallback(() => {
     loadRoom('refresh')
@@ -2857,7 +2957,7 @@ export default function RoomDetailPage() {
         if (!readyWindow?.active) {
           throw new Error('ready_window_inactive')
         }
-        if (readyCountdown > 0) {
+        if (readyCountdown > 0 && !allReady) {
           throw new Error('ready_countdown_incomplete')
         }
         if (!allReady) {
@@ -3182,45 +3282,58 @@ export default function RoomDetailPage() {
     isHost,
   ])
 
-  const handleReadyLaunch = useCallback(async () => {
-    if (!isHost) return
-    if (readyLaunchPending) return
-    if (!readyLaunchAvailable) {
-      setReadyActionError('아직 카운트다운이 끝나지 않았습니다.')
+  useEffect(() => {
+    if (!readyWindow?.active) {
+      const signature = readyWindow?.signature || ''
+      readyLaunchTrackerRef.current = { signature, launching: false }
       return
     }
 
+    if (!isHost) {
+      return
+    }
+
+    const signature = readyWindow.signature || ''
+
+    if (!allReady) {
+      readyLaunchTrackerRef.current = { signature, launching: false }
+      return
+    }
+
+    if (
+      readyLaunchTrackerRef.current.launching &&
+      readyLaunchTrackerRef.current.signature === signature
+    ) {
+      return
+    }
+
+    readyLaunchTrackerRef.current = { signature, launching: true }
     autoRedirectRef.current = true
     setReadyActionError('')
     setActionError('')
-    setReadyLaunchPending(true)
 
-    try {
-      await stageMatch({ allowPartialStart: false })
-    } catch (launchError) {
-      console.error('[RoomDetail] Failed to launch match after ready poll:', launchError)
-      autoRedirectRef.current = false
-      if (mountedRef.current) {
-        const message = resolveErrorMessage(launchError)
-        if (message === 'ready_countdown_incomplete') {
-          setReadyActionError('카운트다운이 끝난 뒤에 시작할 수 있습니다.')
-        } else if (message === 'ready_check_incomplete') {
-          setReadyActionError('모든 참가자가 준비 완료해야 시작할 수 있습니다.')
-        } else {
-          setReadyActionError(message || '본게임 시작에 실패했습니다. 다시 시도해 주세요.')
+    ;(async () => {
+      try {
+        await stageMatch({ allowPartialStart: false })
+      } catch (launchError) {
+        console.error('[RoomDetail] Failed to auto-launch match after ready poll:', launchError)
+        autoRedirectRef.current = false
+        if (mountedRef.current) {
+          readyLaunchTrackerRef.current = { signature, launching: false }
+          const message = resolveErrorMessage(launchError)
+          if (message === 'ready_countdown_incomplete') {
+            setReadyActionError('카운트다운이 끝날 때까지 기다려 주세요.')
+          } else if (message === 'ready_check_incomplete') {
+            setReadyActionError('모든 참가자가 준비 완료 상태를 유지해야 합니다.')
+          } else {
+            setReadyActionError(
+              message || '본게임으로 이동하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+            )
+          }
         }
       }
-    } finally {
-      if (mountedRef.current) {
-        setReadyLaunchPending(false)
-      }
-    }
-  }, [
-    isHost,
-    readyLaunchPending,
-    readyLaunchAvailable,
-    stageMatch,
-  ])
+    })()
+  }, [allReady, isHost, readyWindow?.active, readyWindow?.signature, stageMatch])
 
   const allowAsyncStart =
     isHost &&
@@ -3230,25 +3343,6 @@ export default function RoomDetailPage() {
     occupancy.filled < occupancy.total
 
   const asyncStartDisabled = !allowAsyncStart || manualStagePending
-
-  const readyLaunchButtonDisabled =
-    readyLaunchPending || !readyWindow?.active || !allReady || readyCountdown > 0
-
-  const readyLaunchLabel = (() => {
-    if (readyLaunchPending) {
-      return '본게임 이동 중...'
-    }
-    if (!readyWindow?.active) {
-      return '준비 투표를 시작해 주세요'
-    }
-    if (!allReady) {
-      return '모든 인원 준비 대기'
-    }
-    if (readyCountdown > 0) {
-      return '카운트다운 진행 중'
-    }
-    return '본게임 시작'
-  })()
 
   return (
     <div style={styles.page}>
@@ -3334,21 +3428,22 @@ export default function RoomDetailPage() {
           {readyWindow?.active ? (
             <div style={styles.readyNotice}>
               <div style={styles.readyNoticeHeader}>
-                <strong>게임 시작 준비 투표 진행 중</strong>
+                <strong>매칭 완료 준비 투표 진행 중</strong>
                 <span style={styles.readyNoticeTimer}>{readyCountdown}초 남음</span>
               </div>
               <p style={styles.readyNoticeBody}>
                 {allReady
-                  ? readyCountdown === 0
-                    ? '카운트다운이 끝났습니다. 방장이 본게임 시작 버튼을 누르면 모두 함께 이동합니다.'
-                    : '모든 참가자가 준비를 마쳤습니다. 카운트다운이 끝나면 방장이 본게임 시작 버튼을 눌러 주세요.'
-                  : '모든 참가자가 준비 완료 버튼을 눌러야 본게임 시작 버튼이 활성화됩니다.'}
+                  ? '모든 참가자가 준비 완료를 눌렀습니다. 곧 본게임으로 이동합니다.'
+                  : '슬롯이 모두 찼습니다. 제한 시간 안에 준비 완료를 눌러 주세요. 준비하지 않은 참가자는 시간이 끝나면 방에서 퇴장됩니다.'}
               </p>
             </div>
           ) : null}
           {!readyWindow?.active && readyWindow?.reason === 'timeout' ? (
             <div style={styles.readyNoticeWarning}>
-              준비 투표가 만료되었습니다. {isHost ? '투표를 다시 시작해 주세요.' : '방장이 투표를 다시 시작할 때까지 기다려 주세요.'}
+              준비 투표가 만료되었습니다. 준비하지 않은 참가자를 방에서 내보냈으며 빈 슬롯이 채워질 때까지 기다리는 중입니다.
+              {isHost
+                ? ' 빈 슬롯에 새로운 참가자가 들어오면 투표가 자동으로 다시 시작됩니다.'
+                : ' 새로운 참가자가 착석하면 투표가 다시 시작됩니다.'}
             </div>
           ) : null}
           {!hasActiveApiKey ? (
@@ -3422,16 +3517,6 @@ export default function RoomDetailPage() {
                   : viewerReady
                   ? '준비 취소'
                   : '준비 완료'}
-              </button>
-            ) : null}
-            {isHost && hasFullRoster ? (
-              <button
-                type="button"
-                onClick={handleReadyLaunch}
-                style={styles.primaryButton(readyLaunchButtonDisabled)}
-                disabled={readyLaunchButtonDisabled}
-              >
-                {readyLaunchLabel}
               </button>
             ) : null}
             {isHost && hasFullRoster && !readyWindow?.active ? (

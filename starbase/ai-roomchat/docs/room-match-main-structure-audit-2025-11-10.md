@@ -1,9 +1,9 @@
 # 방 → 매칭 → 메인게임 구조 불일치 점검 (2025-11-10)
 
 ## 1. 요약
-- 방 화면(`/rooms/[id]`)은 모든 슬롯이 준비 완료인지 확인한 뒤에만 `stageMatch`를 호출하지만, 서버의 `/api/rank/stage-room-match`는 해당 조건을 검증하지 않아 직접 호출이나 경쟁 상황에서 준비 상태가 무시될 수 있습니다.【F:pages/rooms/[id].js†L2867-L2944】【F:pages/api/rank/stage-room-match.js†L214-L336】
-- 수동으로 방을 통해 본게임을 여는 흐름은 `/api/rank/start-session`을 호출하지 않아 `MatchReady` 단계의 준비 투표가 세션 ID 없이 진행되며, `ready-check` RPC가 즉시 `missing_session_id` 오류를 반환합니다.【F:pages/rooms/[id].js†L2922-L3089】【F:components/rank/MatchReadyClient.js†L806-L856】【F:pages/api/rank/ready-check.js†L146-L219】
-- `stageMatch`가 난입/비어 있는 슬롯을 채우며 생성한 `asyncFillMeta`는 로컬 스토어에만 저장되고 Supabase에 영속화되지 않아, `MatchReady`가 `fetch_rank_match_ready_snapshot`으로 다시 동기화하면 해당 메타 정보가 사라집니다.【F:pages/rooms/[id].js†L2922-L3078】【F:lib/rank/matchFlow.js†L320-L368】【F:modules/rank/matchRealtimeSync.js†L1140-L1456】
+- 방 화면(`/rooms/[id]`)은 모든 슬롯이 준비 완료인지 확인한 뒤에만 `stageMatch`를 호출하지만, 서버의 `/api/rank/stage-room-match`는 해당 조건을 검증하지 않아 직접 호출이나 경쟁 상황에서 준비 상태가 무시될 수 있습니다.【F:pages/rooms/[id].js†L2936-L2965】【F:pages/api/rank/stage-room-match.js†L214-L336】
+- 수동으로 방을 통해 본게임을 여는 흐름은 `/api/rank/start-session`을 호출하지 않아 `MatchReady` 단계의 준비 투표가 세션 ID 없이 진행되며, `ready-check` RPC가 즉시 `missing_session_id` 오류를 반환합니다.【F:pages/rooms/[id].js†L3099-L3177】【F:components/rank/MatchReadyClient.js†L806-L856】【F:pages/api/rank/ready-check.js†L146-L219】
+- `stageMatch`가 난입/비어 있는 슬롯을 채우며 생성한 `asyncFillMeta`는 로컬 스토어에만 저장되고 Supabase에 영속화되지 않아, `MatchReady`가 `fetch_rank_match_ready_snapshot`으로 다시 동기화하면 해당 메타 정보가 사라집니다.【F:pages/rooms/[id].js†L3099-L3177】【F:lib/rank/matchFlow.js†L320-L368】【F:modules/rank/matchRealtimeSync.js†L1140-L1456】
 
 ## 2. 불일치 상세 및 제안
 
@@ -116,10 +116,9 @@
 - **개선**: 슬롯별 `(slotId, ownerId, readyFlag)` 조합으로 `readyResetKey`를 계산하고, 모든 인원이 `occupant_ready=false` 상태가 되면 자동으로 새 타이머를 열도록 리셋 키와 단계 머신(`roomPhase`)을 추가했습니다. 호스트가 다시 시작 버튼을 눌러도 같은 키가 재계산되기 때문에 참가자도 동일하게 새로운 투표를 보게 됩니다.【F:pages/rooms/[id].js†L78-L140】【F:pages/rooms/[id].js†L972-L2005】【F:pages/rooms/[id].js†L3154-L3228】
 - **효과**: 준비 투표 → 본게임 흐름이 `recruiting → staging → ready-poll → battle → cleanup` 단계로 명확히 나뉘고, 슬롯 변화·준비 상태 리셋이 실시간으로 일관되게 전파됩니다. 이제 호스트가 투표를 재개하면 참가자도 즉시 버튼이 다시 활성화됩니다.【F:pages/rooms/[id].js†L972-L2005】【F:pages/rooms/[id].js†L3147-L3230】
 
-### 2.5 15초 카운트다운 이후 수동 시작 버튼
-- **변경**: 모든 좌석이 준비 완료 상태가 되더라도 즉시 `stageMatch`를 호출하지 않고, 15초 카운트다운이 0초에 도달한 뒤 호스트가 명시적으로 “본게임 시작” 버튼을 눌러야 `/api/rank/stage-room-match`가 실행되도록 UI를 조정했습니다. 준비 투표가 진행 중일 때 버튼은 진행 상황에 맞춰 `모든 인원 준비 대기 → 카운트다운 진행 중 → 본게임 시작`으로 상태를 바꾸고, 참가자는 호스트가 누르기 전까지 방에 머무릅니다.【F:pages/rooms/[id].js†L2879-L3078】【F:pages/rooms/[id].js†L3294-L3421】
-- **의도**: 실시간 동기화 지연이나 호스트가 아닌 참가자가 먼저 본게임으로 넘어가는 문제를 막고, 준비 투표가 끝난 뒤에도 참가자가 준비 해제를 통해 다시 의견을 모을 수 있도록 했습니다. 카운트다운이 끝나지 않았거나 누군가 준비를 해제하면 버튼이 비활성화됩니다.
-- **운영 체크리스트**: 카운트다운이 종료된 뒤 호스트가 버튼을 누르면 `rank_rooms.status`가 `battle`로 전환되고, 비호스트는 준비 투표가 닫힐 때까지 방에 남아 있는지 실환경에서 확인하세요. 서버도 동일한 검증을 하도록 `assert_room_ready` RPC 연동을 병행해야 합니다.【F:pages/rooms/[id].js†L2879-L3078】
+- **변경**: 좌석이 모두 찬 상태에서 준비 투표가 열리면 호스트가 별도 버튼을 누르지 않아도 모든 참가자가 준비 완료를 누르는 즉시 `stageMatch`가 실행됩니다. 카운트다운이 끝났는데 준비하지 않은 인원이 남아 있으면 호스트 클라이언트가 해당 슬롯을 비우고 인원이 다시 찰 때까지 대기합니다.【F:pages/rooms/[id].js†L3285-L3336】【F:pages/rooms/[id].js†L2506-L2704】
+- **의도**: 방-매칭-본게임 구간을 단순화해 “슬롯 충원 → 15초 내 준비 투표 → 전원 준비 시 자동 시작”으로 일관되게 동작하도록 만들고, 준비 투표에 참여하지 않은 인원은 바로 방에서 내보내 매치 진행을 지연시키지 않도록 했습니다.
+- **운영 체크리스트**: 실환경에서 전원 준비 시 즉시 매치가 시작되는지, 시간 초과 시 미준비 참가자가 제거되고 빈 슬롯이 실시간으로 반영되는지 확인하세요. 서버도 `assert_room_ready`로 동일한 검증을 수행해야 하며, 퇴장된 인원이 다시 합류할 경우 준비 투표가 자동으로 재시작되는지 모니터링합니다.【F:pages/rooms/[id].js†L3285-L3336】【F:pages/rooms/[id].js†L2506-L2704】
 
 ## 3. 다음 단계
 1. `docs/rank-room-rpc-hardening-plan-2025-11-10.md`에 정리한 순서대로 `assert_room_ready`·`ensure_rank_session_for_room`·`upsert_rank_session_async_fill` RPC를 배포하고 `/api/rank/stage-room-match` 경로에 통합합니다.

@@ -23,11 +23,12 @@
      1. 기존 로직 시작부에 `select public.assert_room_ready(room_id);` 추가.
      2. 매치 스테이징 성공 후 `ensure_rank_session_for_room`를 호출해 세션 ID를 확보하고 응답 페이로드에 포함.
      3. 난입 자동 채움 메타가 존재하면 `upsert_rank_session_async_fill`을 호출.
-   - `/api/rank/ready-check`
-     - 세션 ID 미존재 시 반환하던 `missing_session_id` 에러를, 위에서 채운 세션 ID로 대체하여 정상 진행.
+ - `/api/rank/ready-check`
+   - 세션 ID 미존재 시 반환하던 `missing_session_id` 에러를, 위에서 채운 세션 ID로 대체하여 정상 진행.
 4. **클라이언트 업데이트**:
    - `stageMatch` 호출 이후 응답으로 받은 `sessionId`를 `MatchReadyClient`에 전달.
    - 난입 메타(`asyncFillMeta`)를 서버 호출로 동시에 전송하도록 수정.
+   - `/rooms/[id]`는 전원이 준비되면 즉시 `stageMatch`를 호출하고, 타임아웃 시 미준비 좌석을 비우므로 API는 중복 호출·인원 변동에 대비해 멱등성을 유지해야 한다.
 5. **운영 점검**: Realtime publication(`rank_room_slots`, `rank_rooms`, `rank_sessions`, `rank_session_meta`)이 등록되어 있는지 확인.
 
 ---
