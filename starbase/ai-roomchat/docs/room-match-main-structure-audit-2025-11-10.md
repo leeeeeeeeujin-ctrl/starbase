@@ -116,6 +116,11 @@
 - **개선**: 슬롯별 `(slotId, ownerId, readyFlag)` 조합으로 `readyResetKey`를 계산하고, 모든 인원이 `occupant_ready=false` 상태가 되면 자동으로 새 타이머를 열도록 리셋 키와 단계 머신(`roomPhase`)을 추가했습니다. 호스트가 다시 시작 버튼을 눌러도 같은 키가 재계산되기 때문에 참가자도 동일하게 새로운 투표를 보게 됩니다.【F:pages/rooms/[id].js†L78-L140】【F:pages/rooms/[id].js†L972-L2005】【F:pages/rooms/[id].js†L3154-L3228】
 - **효과**: 준비 투표 → 본게임 흐름이 `recruiting → staging → ready-poll → battle → cleanup` 단계로 명확히 나뉘고, 슬롯 변화·준비 상태 리셋이 실시간으로 일관되게 전파됩니다. 이제 호스트가 투표를 재개하면 참가자도 즉시 버튼이 다시 활성화됩니다.【F:pages/rooms/[id].js†L972-L2005】【F:pages/rooms/[id].js†L3147-L3230】
 
+### 2.5 15초 카운트다운 이후 수동 시작 버튼
+- **변경**: 모든 좌석이 준비 완료 상태가 되더라도 즉시 `stageMatch`를 호출하지 않고, 15초 카운트다운이 0초에 도달한 뒤 호스트가 명시적으로 “본게임 시작” 버튼을 눌러야 `/api/rank/stage-room-match`가 실행되도록 UI를 조정했습니다. 준비 투표가 진행 중일 때 버튼은 진행 상황에 맞춰 `모든 인원 준비 대기 → 카운트다운 진행 중 → 본게임 시작`으로 상태를 바꾸고, 참가자는 호스트가 누르기 전까지 방에 머무릅니다.【F:pages/rooms/[id].js†L2879-L3078】【F:pages/rooms/[id].js†L3294-L3421】
+- **의도**: 실시간 동기화 지연이나 호스트가 아닌 참가자가 먼저 본게임으로 넘어가는 문제를 막고, 준비 투표가 끝난 뒤에도 참가자가 준비 해제를 통해 다시 의견을 모을 수 있도록 했습니다. 카운트다운이 끝나지 않았거나 누군가 준비를 해제하면 버튼이 비활성화됩니다.
+- **운영 체크리스트**: 카운트다운이 종료된 뒤 호스트가 버튼을 누르면 `rank_rooms.status`가 `battle`로 전환되고, 비호스트는 준비 투표가 닫힐 때까지 방에 남아 있는지 실환경에서 확인하세요. 서버도 동일한 검증을 하도록 `assert_room_ready` RPC 연동을 병행해야 합니다.【F:pages/rooms/[id].js†L2879-L3078】
+
 ## 3. 다음 단계
 1. `docs/rank-room-rpc-hardening-plan-2025-11-10.md`에 정리한 순서대로 `assert_room_ready`·`ensure_rank_session_for_room`·`upsert_rank_session_async_fill` RPC를 배포하고 `/api/rank/stage-room-match` 경로에 통합합니다.
 2. `stageMatch`가 세션 ID와 난입 메타를 서버에 전달하도록 수정하고, `MatchReady`는 Supabase 스냅샷이 준비될 때까지 준비 투표 UI를 지연시킵니다.

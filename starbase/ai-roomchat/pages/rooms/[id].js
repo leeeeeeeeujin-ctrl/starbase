@@ -989,6 +989,7 @@ export default function RoomDetailPage() {
   const [readyResetPending, setReadyResetPending] = useState(false)
   const [readyActionError, setReadyActionError] = useState('')
   const [manualStagePending, setManualStagePending] = useState(false)
+  const [readyLaunchPending, setReadyLaunchPending] = useState(false)
   const [creationFeedback, setCreationFeedback] = useState(null)
   const [deletePending, setDeletePending] = useState(false)
   const [activeTab, setActiveTab] = useState('participants')
@@ -1048,6 +1049,12 @@ export default function RoomDetailPage() {
     if (!slots.length) return false
     return slots.every((slot) => slot.occupantOwnerId && slot.occupantReady)
   }, [hasFullRoster, slots])
+
+  const readyLaunchAvailable = useMemo(() => {
+    if (!readyWindow?.active) return false
+    if (!allReady) return false
+    return readyCountdown === 0
+  }, [readyWindow?.active, readyCountdown, allReady])
 
   const readyResetKey = useMemo(() => buildReadyResetKey(slots), [slots])
 
@@ -2431,7 +2438,7 @@ export default function RoomDetailPage() {
         setReadyActionError('준비 투표가 진행 중이 아닙니다.')
         return
       }
-      if (readyWindow.expiresAt <= Date.now()) {
+      if (readyWindow.reason === 'timeout') {
         setReadyActionError('준비 투표 시간이 만료되었습니다. 다시 시작해 주세요.')
         return
       }
@@ -2490,7 +2497,7 @@ export default function RoomDetailPage() {
       activeSlotId,
       viewer?.ownerId,
       readyWindow?.active,
-      readyWindow?.expiresAt,
+      readyCountdown,
       supabase,
     ],
   )
@@ -2850,8 +2857,8 @@ export default function RoomDetailPage() {
         if (!readyWindow?.active) {
           throw new Error('ready_window_inactive')
         }
-        if (readyWindow.expiresAt <= Date.now()) {
-          throw new Error('ready_window_expired')
+        if (readyCountdown > 0) {
+          throw new Error('ready_countdown_incomplete')
         }
         if (!allReady) {
           throw new Error('ready_check_incomplete')
@@ -3081,46 +3088,6 @@ export default function RoomDetailPage() {
 
   useEffect(() => {
     if (autoRedirectRef.current) return
-    if (!isHost) return
-    if (typeof window === 'undefined') return
-    if (!room?.gameId) return
-    if (!matchReadyMode) return
-    if (!Array.isArray(slots) || !slots.length) return
-    if (!occupancy.total || occupancy.filled !== occupancy.total) return
-    if (!joined) return
-    if (!readyWindow?.active) return
-    if (readyWindow.expiresAt <= Date.now()) return
-    if (!allReady) return
-
-    autoRedirectRef.current = true
-
-    ;(async () => {
-      try {
-        await stageMatch({ allowPartialStart: false })
-      } catch (stageError) {
-        console.error('[RoomDetail] Failed to stage match data before redirect:', stageError)
-        autoRedirectRef.current = false
-        if (mountedRef.current) {
-          setActionError(resolveErrorMessage(stageError))
-        }
-      }
-    })()
-  }, [
-    allReady,
-    joined,
-    matchReadyMode,
-    occupancy.filled,
-    occupancy.total,
-    readyWindow?.active,
-    readyWindow?.expiresAt,
-    room?.gameId,
-    slots,
-    stageMatch,
-    isHost,
-  ])
-
-  useEffect(() => {
-    if (autoRedirectRef.current) return
     if (isHost) return
     if (!joined) return
     if (!room?.gameId) return
@@ -3215,6 +3182,46 @@ export default function RoomDetailPage() {
     isHost,
   ])
 
+  const handleReadyLaunch = useCallback(async () => {
+    if (!isHost) return
+    if (readyLaunchPending) return
+    if (!readyLaunchAvailable) {
+      setReadyActionError('아직 카운트다운이 끝나지 않았습니다.')
+      return
+    }
+
+    autoRedirectRef.current = true
+    setReadyActionError('')
+    setActionError('')
+    setReadyLaunchPending(true)
+
+    try {
+      await stageMatch({ allowPartialStart: false })
+    } catch (launchError) {
+      console.error('[RoomDetail] Failed to launch match after ready poll:', launchError)
+      autoRedirectRef.current = false
+      if (mountedRef.current) {
+        const message = resolveErrorMessage(launchError)
+        if (message === 'ready_countdown_incomplete') {
+          setReadyActionError('카운트다운이 끝난 뒤에 시작할 수 있습니다.')
+        } else if (message === 'ready_check_incomplete') {
+          setReadyActionError('모든 참가자가 준비 완료해야 시작할 수 있습니다.')
+        } else {
+          setReadyActionError(message || '본게임 시작에 실패했습니다. 다시 시도해 주세요.')
+        }
+      }
+    } finally {
+      if (mountedRef.current) {
+        setReadyLaunchPending(false)
+      }
+    }
+  }, [
+    isHost,
+    readyLaunchPending,
+    readyLaunchAvailable,
+    stageMatch,
+  ])
+
   const allowAsyncStart =
     isHost &&
     !isRealtimeEnabled(room?.realtimeMode) &&
@@ -3223,6 +3230,25 @@ export default function RoomDetailPage() {
     occupancy.filled < occupancy.total
 
   const asyncStartDisabled = !allowAsyncStart || manualStagePending
+
+  const readyLaunchButtonDisabled =
+    readyLaunchPending || !readyWindow?.active || !allReady || readyCountdown > 0
+
+  const readyLaunchLabel = (() => {
+    if (readyLaunchPending) {
+      return '본게임 이동 중...'
+    }
+    if (!readyWindow?.active) {
+      return '준비 투표를 시작해 주세요'
+    }
+    if (!allReady) {
+      return '모든 인원 준비 대기'
+    }
+    if (readyCountdown > 0) {
+      return '카운트다운 진행 중'
+    }
+    return '본게임 시작'
+  })()
 
   return (
     <div style={styles.page}>
@@ -3313,8 +3339,10 @@ export default function RoomDetailPage() {
               </div>
               <p style={styles.readyNoticeBody}>
                 {allReady
-                  ? '모든 참가자가 준비 완료했습니다. 곧 본게임으로 이동합니다.'
-                  : '모든 참가자가 준비 완료 버튼을 눌러야 본게임으로 이동합니다.'}
+                  ? readyCountdown === 0
+                    ? '카운트다운이 끝났습니다. 방장이 본게임 시작 버튼을 누르면 모두 함께 이동합니다.'
+                    : '모든 참가자가 준비를 마쳤습니다. 카운트다운이 끝나면 방장이 본게임 시작 버튼을 눌러 주세요.'
+                  : '모든 참가자가 준비 완료 버튼을 눌러야 본게임 시작 버튼이 활성화됩니다.'}
               </p>
             </div>
           ) : null}
@@ -3394,6 +3422,16 @@ export default function RoomDetailPage() {
                   : viewerReady
                   ? '준비 취소'
                   : '준비 완료'}
+              </button>
+            ) : null}
+            {isHost && hasFullRoster ? (
+              <button
+                type="button"
+                onClick={handleReadyLaunch}
+                style={styles.primaryButton(readyLaunchButtonDisabled)}
+                disabled={readyLaunchButtonDisabled}
+              >
+                {readyLaunchLabel}
               </button>
             ) : null}
             {isHost && hasFullRoster && !readyWindow?.active ? (
