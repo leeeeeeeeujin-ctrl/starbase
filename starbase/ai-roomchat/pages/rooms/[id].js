@@ -1858,11 +1858,15 @@ export default function RoomDetailPage() {
           const nextOwner = newRow?.occupant_owner_id || null
           const prevHero = oldRow?.occupant_hero_id || null
           const nextHero = newRow?.occupant_hero_id || null
+          const prevReady = oldRow?.occupant_ready === true
+          const nextReady = newRow?.occupant_ready === true
+
           const occupantChanged =
             eventType === 'DELETE' ||
             eventType === 'INSERT' ||
             prevOwner !== nextOwner ||
-            prevHero !== nextHero
+            prevHero !== nextHero ||
+            prevReady !== nextReady
 
           if (!occupantChanged) {
             return
@@ -2386,17 +2390,38 @@ export default function RoomDetailPage() {
       setReadyPending(true)
       setReadyActionError('')
       try {
-        const { error } = await withTable(supabase, 'rank_room_slots', (table) =>
-          supabase
-            .from(table)
-            .update({ occupant_ready: nextReady })
-            .eq('id', activeSlotId)
-            .eq('occupant_owner_id', viewer.ownerId)
-            .select('id')
-            .maybeSingle(),
+        const { data: updatedRow, error } = await withTable(
+          supabase,
+          'rank_room_slots',
+          (table) =>
+            supabase
+              .from(table)
+              .update({ occupant_ready: nextReady })
+              .eq('id', activeSlotId)
+              .eq('occupant_owner_id', viewer.ownerId)
+              .select('id, occupant_ready')
+              .maybeSingle(),
         )
         if (error && error.code !== 'PGRST116') {
           throw error
+        }
+        if (updatedRow?.id) {
+          const resolvedReady = updatedRow?.occupant_ready === true
+          setSlots((prev) => {
+            if (!Array.isArray(prev) || !prev.length) return prev
+            let changed = false
+            const nextSlots = prev.map((slot) => {
+              if (!slot || slot.id !== updatedRow.id) {
+                return slot
+              }
+              if (slot.occupantReady === resolvedReady) {
+                return slot
+              }
+              changed = true
+              return { ...slot, occupantReady: resolvedReady }
+            })
+            return changed ? nextSlots : prev
+          })
         }
       } catch (readyError) {
         console.error('[RoomDetail] Failed to update ready state:', readyError)
