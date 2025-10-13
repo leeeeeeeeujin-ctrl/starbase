@@ -1166,6 +1166,9 @@ create table if not exists public.rank_room_slots (
 create index if not exists rank_room_slots_role_vacancy_idx
 on public.rank_room_slots (room_id, role, occupant_owner_id);
 
+create index if not exists idx_rank_room_slots_room_occupant
+on public.rank_room_slots (room_id, occupant_owner_id);
+
 create table if not exists public.rank_queue_tickets (
   id uuid primary key default gen_random_uuid(),
   queue_id text not null,
@@ -1339,6 +1342,9 @@ on public.rank_match_roster (room_id);
 create index if not exists rank_match_roster_game_idx
 on public.rank_match_roster (game_id);
 
+create index if not exists idx_rank_match_roster_match_owner
+on public.rank_match_roster (match_instance_id, owner_id);
+
 alter table public.rank_match_roster enable row level security;
 
 drop policy if exists rank_match_roster_select on public.rank_match_roster;
@@ -1444,6 +1450,9 @@ alter table public.rank_sessions
 create index if not exists rank_sessions_status_recent_idx
 on public.rank_sessions (status, game_id, updated_at desc);
 
+create index if not exists idx_rank_sessions_id_owner
+on public.rank_sessions (id, owner_id);
+
 alter table public.rank_sessions enable row level security;
 
 drop policy if exists rank_sessions_select on public.rank_sessions;
@@ -1528,21 +1537,37 @@ alter table public.rank_session_meta enable row level security;
 drop policy if exists rank_session_meta_select on public.rank_session_meta;
 create policy rank_session_meta_select
 on public.rank_session_meta for select
+to authenticated
 using (
-  auth.role() = 'service_role'
-  or occupant_owner_id = auth.uid()
+  occupant_owner_id = auth.uid()
   or exists (
     select 1 from public.rank_sessions s
     where s.id = session_id
       and (s.owner_id is null or s.owner_id = auth.uid())
   )
+  or exists (
+    select 1
+    from public.rank_match_roster r
+    where r.match_instance_id = public.try_cast_uuid(
+      coalesce(
+        extras->>'matchInstanceId',
+        extras->>'match_instance_id',
+        async_fill_snapshot->>'matchInstanceId',
+        async_fill_snapshot->>'match_instance_id'
+      )
+    )
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1
+    from public.rank_sessions s
+    join public.rank_room_slots rs on rs.room_id = s.room_id
+    where s.id = session_id
+      and rs.occupant_owner_id = auth.uid()
+  )
 );
 
 drop policy if exists rank_session_meta_service_all on public.rank_session_meta;
-create policy rank_session_meta_service_all
-on public.rank_session_meta for all
-using (auth.role() = 'service_role')
-with check (auth.role() = 'service_role');
 
 create table if not exists public.rank_turns (
   id uuid primary key default gen_random_uuid(),
