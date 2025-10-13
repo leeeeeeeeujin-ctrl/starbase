@@ -3051,6 +3051,134 @@ begin
 end;
 $$;
 
+do $$
+begin
+  if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'rank_queue_tickets'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_queue_tickets'
+  ) then
+    alter publication supabase_realtime add table public.rank_queue_tickets;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'rank_rooms'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_rooms'
+  ) then
+    alter publication supabase_realtime add table public.rank_rooms;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'rank_room_slots'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_room_slots'
+  ) then
+    alter publication supabase_realtime add table public.rank_room_slots;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'rank_sessions'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_sessions'
+  ) then
+    alter publication supabase_realtime add table public.rank_sessions;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'rank_session_meta'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_session_meta'
+  ) then
+    alter publication supabase_realtime add table public.rank_session_meta;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'rank_match_roster'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_match_roster'
+  ) then
+    alter publication supabase_realtime add table public.rank_match_roster;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'rank_turns'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_turns'
+  ) then
+    alter publication supabase_realtime add table public.rank_turns;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'rank_turn_state_events'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_turn_state_events'
+  ) then
+    alter publication supabase_realtime add table public.rank_turn_state_events;
+  end if;
+end;
+$$;
+
 create or replace function public.send_rank_chat_message(
   p_scope text default 'global',
   p_text text default null,
