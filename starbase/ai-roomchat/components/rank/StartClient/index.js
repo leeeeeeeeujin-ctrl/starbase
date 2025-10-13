@@ -227,7 +227,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       router.push(`/rank/${gameId}`).catch(() => {})
       return
     }
-    router.push('/rooms').catch(() => {})
+    router.push('/match').catch(() => {})
   }, [router, matchState?.room?.id, gameId, onRequestClose])
 
   const statusMessages = useMemo(() => {

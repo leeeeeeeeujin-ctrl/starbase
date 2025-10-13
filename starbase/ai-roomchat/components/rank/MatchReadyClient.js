@@ -835,7 +835,7 @@ export default function MatchReadyClient({ gameId }) {
       router.push(`/rooms/${state.room.id}`).catch(() => {})
       return
     }
-    router.push('/rooms').catch(() => {})
+    router.push('/match').catch(() => {})
   }, [router, state?.room?.id])
 
   const handleReadySignal = useCallback(async () => {
