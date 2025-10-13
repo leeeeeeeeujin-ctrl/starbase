@@ -24,16 +24,20 @@ create table if not exists public.heroes (
 
 alter table public.heroes enable row level security;
 
-create policy if not exists heroes_select_owner
+drop policy if exists heroes_select_owner on public.heroes;
+create policy heroes_select_owner
 on public.heroes for select using (auth.uid() = owner_id);
 
-create policy if not exists heroes_insert_owner
+drop policy if exists heroes_insert_owner on public.heroes;
+create policy heroes_insert_owner
 on public.heroes for insert with check (auth.uid() = owner_id);
 
-create policy if not exists heroes_update_owner
+drop policy if exists heroes_update_owner on public.heroes;
+create policy heroes_update_owner
 on public.heroes for update using (auth.uid() = owner_id);
 
-create policy if not exists heroes_delete_owner
+drop policy if exists heroes_delete_owner on public.heroes;
+create policy heroes_delete_owner
 on public.heroes for delete using (auth.uid() = owner_id);
 
 drop view if exists public.rank_heroes;
@@ -44,28 +48,34 @@ grant select on public.rank_heroes to authenticated;
 grant select on public.rank_heroes to anon;
 
 -- 스토리지 버킷 'heroes' 접근 정책
-create policy if not exists storage_heroes_select
+drop policy if exists storage_heroes_select on storage.objects;
+create policy storage_heroes_select
 on storage.objects for select
 using (bucket_id = 'heroes');
 
-create policy if not exists storage_heroes_insert
+drop policy if exists storage_heroes_insert on storage.objects;
+create policy storage_heroes_insert
 on storage.objects for insert to authenticated
 with check (bucket_id = 'heroes');
 
-create policy if not exists storage_heroes_update
+drop policy if exists storage_heroes_update on storage.objects;
+create policy storage_heroes_update
 on storage.objects for update to authenticated
 using (bucket_id = 'heroes')
 with check (bucket_id = 'heroes');
 
-create policy if not exists storage_title_backgrounds_select
+drop policy if exists storage_title_backgrounds_select on storage.objects;
+create policy storage_title_backgrounds_select
 on storage.objects for select
 using (bucket_id = 'title-backgrounds');
 
-create policy if not exists storage_title_backgrounds_insert
+drop policy if exists storage_title_backgrounds_insert on storage.objects;
+create policy storage_title_backgrounds_insert
 on storage.objects for insert to authenticated
 with check (bucket_id = 'title-backgrounds' and auth.role() = 'service_role');
 
-create policy if not exists storage_title_backgrounds_update
+drop policy if exists storage_title_backgrounds_update on storage.objects;
+create policy storage_title_backgrounds_update
 on storage.objects for update to authenticated
 using (bucket_id = 'title-backgrounds' and auth.role() = 'service_role')
 with check (bucket_id = 'title-backgrounds' and auth.role() = 'service_role');
@@ -85,16 +95,20 @@ create table if not exists public.prompt_sets (
 
 alter table public.prompt_sets enable row level security;
 
-create policy if not exists prompt_sets_select
+drop policy if exists prompt_sets_select on public.prompt_sets;
+create policy prompt_sets_select
 on public.prompt_sets for select using (auth.uid() = owner_id or is_public);
 
-create policy if not exists prompt_sets_insert
+drop policy if exists prompt_sets_insert on public.prompt_sets;
+create policy prompt_sets_insert
 on public.prompt_sets for insert with check (auth.uid() = owner_id);
 
-create policy if not exists prompt_sets_update
+drop policy if exists prompt_sets_update on public.prompt_sets;
+create policy prompt_sets_update
 on public.prompt_sets for update using (auth.uid() = owner_id);
 
-create policy if not exists prompt_sets_delete
+drop policy if exists prompt_sets_delete on public.prompt_sets;
+create policy prompt_sets_delete
 on public.prompt_sets for delete using (auth.uid() = owner_id);
 
 create table if not exists public.prompt_slots (
@@ -117,28 +131,32 @@ create table if not exists public.prompt_slots (
 
 alter table public.prompt_slots enable row level security;
 
-create policy if not exists prompt_slots_select
+drop policy if exists prompt_slots_select on public.prompt_slots;
+create policy prompt_slots_select
 on public.prompt_slots for select
 using (exists (
   select 1 from public.prompt_sets s
   where s.id = prompt_slots.set_id and (s.owner_id = auth.uid() or s.is_public)
 ));
 
-create policy if not exists prompt_slots_insert
+drop policy if exists prompt_slots_insert on public.prompt_slots;
+create policy prompt_slots_insert
 on public.prompt_slots for insert
 with check (exists (
   select 1 from public.prompt_sets s
   where s.id = prompt_slots.set_id and s.owner_id = auth.uid()
 ));
 
-create policy if not exists prompt_slots_update
+drop policy if exists prompt_slots_update on public.prompt_slots;
+create policy prompt_slots_update
 on public.prompt_slots for update
 using (exists (
   select 1 from public.prompt_sets s
   where s.id = prompt_slots.set_id and s.owner_id = auth.uid()
 ));
 
-create policy if not exists prompt_slots_delete
+drop policy if exists prompt_slots_delete on public.prompt_slots;
+create policy prompt_slots_delete
 on public.prompt_slots for delete
 using (exists (
   select 1 from public.prompt_sets s
@@ -162,28 +180,32 @@ create table if not exists public.prompt_bridges (
 
 alter table public.prompt_bridges enable row level security;
 
-create policy if not exists prompt_bridges_select
+drop policy if exists prompt_bridges_select on public.prompt_bridges;
+create policy prompt_bridges_select
 on public.prompt_bridges for select
 using (exists (
   select 1 from public.prompt_sets s
   where s.id = prompt_bridges.from_set and (s.owner_id = auth.uid() or s.is_public)
 ));
 
-create policy if not exists prompt_bridges_insert
+drop policy if exists prompt_bridges_insert on public.prompt_bridges;
+create policy prompt_bridges_insert
 on public.prompt_bridges for insert
 with check (exists (
   select 1 from public.prompt_sets s
   where s.id = prompt_bridges.from_set and s.owner_id = auth.uid()
 ));
 
-create policy if not exists prompt_bridges_update
+drop policy if exists prompt_bridges_update on public.prompt_bridges;
+create policy prompt_bridges_update
 on public.prompt_bridges for update
 using (exists (
   select 1 from public.prompt_sets s
   where s.id = prompt_bridges.from_set and s.owner_id = auth.uid()
 ));
 
-create policy if not exists prompt_bridges_delete
+drop policy if exists prompt_bridges_delete on public.prompt_bridges;
+create policy prompt_bridges_delete
 on public.prompt_bridges for delete
 using (exists (
   select 1 from public.prompt_sets s
@@ -204,11 +226,13 @@ create table if not exists public.prompt_library_entries (
 
 alter table public.prompt_library_entries enable row level security;
 
-create policy if not exists prompt_library_entries_select
+drop policy if exists prompt_library_entries_select on public.prompt_library_entries;
+create policy prompt_library_entries_select
 on public.prompt_library_entries for select
 using (true);
 
-create policy if not exists prompt_library_entries_insert
+drop policy if exists prompt_library_entries_insert on public.prompt_library_entries;
+create policy prompt_library_entries_insert
 on public.prompt_library_entries for insert
 with check (auth.uid() = owner_id);
 
@@ -237,7 +261,8 @@ create index if not exists rank_user_error_reports_severity_idx
 
 alter table public.rank_user_error_reports enable row level security;
 
-create policy if not exists prompt_library_entries_update
+drop policy if exists prompt_library_entries_update on public.prompt_library_entries;
+create policy prompt_library_entries_update
 on public.prompt_library_entries for update
 using (auth.uid() = owner_id)
 with check (auth.uid() = owner_id);
@@ -303,20 +328,24 @@ create index if not exists rank_audio_preferences_owner_updated
 
 alter table public.rank_audio_preferences enable row level security;
 
-create policy if not exists rank_audio_preferences_select_owner
+drop policy if exists rank_audio_preferences_select_owner on public.rank_audio_preferences;
+create policy rank_audio_preferences_select_owner
 on public.rank_audio_preferences for select
 using (auth.uid() = owner_id);
 
-create policy if not exists rank_audio_preferences_insert_owner
+drop policy if exists rank_audio_preferences_insert_owner on public.rank_audio_preferences;
+create policy rank_audio_preferences_insert_owner
 on public.rank_audio_preferences for insert to authenticated
 with check (auth.uid() = owner_id);
 
-create policy if not exists rank_audio_preferences_update_owner
+drop policy if exists rank_audio_preferences_update_owner on public.rank_audio_preferences;
+create policy rank_audio_preferences_update_owner
 on public.rank_audio_preferences for update to authenticated
 using (auth.uid() = owner_id)
 with check (auth.uid() = owner_id);
 
-create policy if not exists rank_audio_preferences_delete_owner
+drop policy if exists rank_audio_preferences_delete_owner on public.rank_audio_preferences;
+create policy rank_audio_preferences_delete_owner
 on public.rank_audio_preferences for delete to authenticated
 using (auth.uid() = owner_id);
 
@@ -457,11 +486,13 @@ $$;
 
 alter table public.rank_audio_events enable row level security;
 
-create policy if not exists rank_audio_events_select_owner
+drop policy if exists rank_audio_events_select_owner on public.rank_audio_events;
+create policy rank_audio_events_select_owner
 on public.rank_audio_events for select
 using (auth.uid() = owner_id);
 
-create policy if not exists rank_audio_events_insert_owner
+drop policy if exists rank_audio_events_insert_owner on public.rank_audio_events;
+create policy rank_audio_events_insert_owner
 on public.rank_audio_events for insert to authenticated
 with check (auth.uid() = owner_id);
 
@@ -497,7 +528,8 @@ create index if not exists rank_audio_monitor_rules_type_sort
 
 alter table public.rank_audio_monitor_rules enable row level security;
 
-create policy if not exists rank_audio_monitor_rules_service_only
+drop policy if exists rank_audio_monitor_rules_service_only on public.rank_audio_monitor_rules;
+create policy rank_audio_monitor_rules_service_only
 on public.rank_audio_monitor_rules for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
@@ -531,20 +563,24 @@ execute function public.touch_rank_title_settings_updated_at();
 
 alter table public.rank_title_settings enable row level security;
 
-create policy if not exists rank_title_settings_select_public
+drop policy if exists rank_title_settings_select_public on public.rank_title_settings;
+create policy rank_title_settings_select_public
 on public.rank_title_settings for select
 using (true);
 
-create policy if not exists rank_title_settings_insert_service_role
+drop policy if exists rank_title_settings_insert_service_role on public.rank_title_settings;
+create policy rank_title_settings_insert_service_role
 on public.rank_title_settings for insert
 with check (auth.role() = 'service_role');
 
-create policy if not exists rank_title_settings_update_service_role
+drop policy if exists rank_title_settings_update_service_role on public.rank_title_settings;
+create policy rank_title_settings_update_service_role
 on public.rank_title_settings for update
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
-create policy if not exists rank_title_settings_delete_service_role
+drop policy if exists rank_title_settings_delete_service_role on public.rank_title_settings;
+create policy rank_title_settings_delete_service_role
 on public.rank_title_settings for delete
 using (auth.role() = 'service_role');
 
@@ -578,20 +614,24 @@ execute function public.touch_rank_announcements_updated_at();
 
 alter table public.rank_announcements enable row level security;
 
-create policy if not exists rank_announcements_select_public
+drop policy if exists rank_announcements_select_public on public.rank_announcements;
+create policy rank_announcements_select_public
 on public.rank_announcements for select
 using (true);
 
-create policy if not exists rank_announcements_insert_service_role
+drop policy if exists rank_announcements_insert_service_role on public.rank_announcements;
+create policy rank_announcements_insert_service_role
 on public.rank_announcements for insert
 with check (auth.role() = 'service_role');
 
-create policy if not exists rank_announcements_update_service_role
+drop policy if exists rank_announcements_update_service_role on public.rank_announcements;
+create policy rank_announcements_update_service_role
 on public.rank_announcements for update
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
-create policy if not exists rank_announcements_delete_service_role
+drop policy if exists rank_announcements_delete_service_role on public.rank_announcements;
+create policy rank_announcements_delete_service_role
 on public.rank_announcements for delete
 using (auth.role() = 'service_role');
 
@@ -645,20 +685,24 @@ execute function public.touch_rank_api_key_cooldowns_updated_at();
 
 alter table public.rank_api_key_cooldowns enable row level security;
 
-create policy if not exists rank_api_key_cooldowns_service_select
+drop policy if exists rank_api_key_cooldowns_service_select on public.rank_api_key_cooldowns;
+create policy rank_api_key_cooldowns_service_select
 on public.rank_api_key_cooldowns for select
 using (auth.role() = 'service_role');
 
-create policy if not exists rank_api_key_cooldowns_service_insert
+drop policy if exists rank_api_key_cooldowns_service_insert on public.rank_api_key_cooldowns;
+create policy rank_api_key_cooldowns_service_insert
 on public.rank_api_key_cooldowns for insert
 with check (auth.role() = 'service_role');
 
-create policy if not exists rank_api_key_cooldowns_service_update
+drop policy if exists rank_api_key_cooldowns_service_update on public.rank_api_key_cooldowns;
+create policy rank_api_key_cooldowns_service_update
 on public.rank_api_key_cooldowns for update
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
-create policy if not exists rank_api_key_cooldowns_service_delete
+drop policy if exists rank_api_key_cooldowns_service_delete on public.rank_api_key_cooldowns;
+create policy rank_api_key_cooldowns_service_delete
 on public.rank_api_key_cooldowns for delete
 using (auth.role() = 'service_role');
 
@@ -681,7 +725,8 @@ create index if not exists rank_api_key_audit_cooldown_inserted_idx
 
 alter table public.rank_api_key_audit enable row level security;
 
-create policy if not exists rank_api_key_audit_service_all
+drop policy if exists rank_api_key_audit_service_all on public.rank_api_key_audit;
+create policy rank_api_key_audit_service_all
 on public.rank_api_key_audit for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
@@ -747,7 +792,8 @@ execute function public.touch_rank_user_api_keys_updated_at();
 
 alter table public.rank_user_api_keys enable row level security;
 
-create policy if not exists rank_user_api_keys_service_all
+drop policy if exists rank_user_api_keys_service_all on public.rank_user_api_keys;
+create policy rank_user_api_keys_service_all
 on public.rank_user_api_keys for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
@@ -770,7 +816,8 @@ execute function public.touch_rank_user_api_keyring_updated_at();
 
 alter table public.rank_user_api_keyring enable row level security;
 
-create policy if not exists rank_user_api_keyring_service_all
+drop policy if exists rank_user_api_keyring_service_all on public.rank_user_api_keyring;
+create policy rank_user_api_keyring_service_all
 on public.rank_user_api_keyring for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
@@ -797,7 +844,8 @@ create index if not exists rank_cooldown_timeline_uploads_uploaded_idx
 
 alter table public.rank_cooldown_timeline_uploads enable row level security;
 
-create policy if not exists rank_cooldown_timeline_uploads_service_all
+drop policy if exists rank_cooldown_timeline_uploads_service_all on public.rank_cooldown_timeline_uploads;
+create policy rank_cooldown_timeline_uploads_service_all
 on public.rank_cooldown_timeline_uploads for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
@@ -824,16 +872,20 @@ create table if not exists public.rank_games (
 
 alter table public.rank_games enable row level security;
 
-create policy if not exists rank_games_select_public
+drop policy if exists rank_games_select_public on public.rank_games;
+create policy rank_games_select_public
 on public.rank_games for select using (true);
 
-create policy if not exists rank_games_insert_owner
+drop policy if exists rank_games_insert_owner on public.rank_games;
+create policy rank_games_insert_owner
 on public.rank_games for insert with check (auth.uid() = owner_id);
 
-create policy if not exists rank_games_update_owner
+drop policy if exists rank_games_update_owner on public.rank_games;
+create policy rank_games_update_owner
 on public.rank_games for update using (auth.uid() = owner_id);
 
-create policy if not exists rank_games_delete_owner
+drop policy if exists rank_games_delete_owner on public.rank_games;
+create policy rank_games_delete_owner
 on public.rank_games for delete using (auth.uid() = owner_id);
 
 create table if not exists public.rank_game_roles (
@@ -849,10 +901,12 @@ create table if not exists public.rank_game_roles (
 
 alter table public.rank_game_roles enable row level security;
 
-create policy if not exists rank_game_roles_select
+drop policy if exists rank_game_roles_select on public.rank_game_roles;
+create policy rank_game_roles_select
 on public.rank_game_roles for select using (true);
 
-create policy if not exists rank_game_roles_mutate
+drop policy if exists rank_game_roles_mutate on public.rank_game_roles;
+create policy rank_game_roles_mutate
 on public.rank_game_roles for all
 using (exists (
   select 1 from public.rank_games g
@@ -873,10 +927,12 @@ create table if not exists public.rank_game_tags (
 
 alter table public.rank_game_tags enable row level security;
 
-create policy if not exists rank_game_tags_select
+drop policy if exists rank_game_tags_select on public.rank_game_tags;
+create policy rank_game_tags_select
 on public.rank_game_tags for select using (true);
 
-create policy if not exists rank_game_tags_mutate
+drop policy if exists rank_game_tags_mutate on public.rank_game_tags;
+create policy rank_game_tags_mutate
 on public.rank_game_tags for all
 using (exists (
   select 1 from public.rank_games g
@@ -901,10 +957,12 @@ create table if not exists public.rank_game_seasons (
 
 alter table public.rank_game_seasons enable row level security;
 
-create policy if not exists rank_game_seasons_select
+drop policy if exists rank_game_seasons_select on public.rank_game_seasons;
+create policy rank_game_seasons_select
 on public.rank_game_seasons for select using (true);
 
-create policy if not exists rank_game_seasons_mutate
+drop policy if exists rank_game_seasons_mutate on public.rank_game_seasons;
+create policy rank_game_seasons_mutate
 on public.rank_game_seasons for all
 using (exists (
   select 1 from public.rank_games g
@@ -930,10 +988,12 @@ create table if not exists public.rank_game_slots (
 
 alter table public.rank_game_slots enable row level security;
 
-create policy if not exists rank_game_slots_select
+drop policy if exists rank_game_slots_select on public.rank_game_slots;
+create policy rank_game_slots_select
 on public.rank_game_slots for select using (true);
 
-create policy if not exists rank_game_slots_mutate
+drop policy if exists rank_game_slots_mutate on public.rank_game_slots;
+create policy rank_game_slots_mutate
 on public.rank_game_slots for all
 using (exists (
   select 1 from public.rank_games g
@@ -973,17 +1033,21 @@ create unique index if not exists rank_participants_slot_unique
 
 alter table public.rank_participants enable row level security;
 
-create policy if not exists rank_participants_select
+drop policy if exists rank_participants_select on public.rank_participants;
+create policy rank_participants_select
 on public.rank_participants for select using (true);
 
-create policy if not exists rank_participants_insert
+drop policy if exists rank_participants_insert on public.rank_participants;
+create policy rank_participants_insert
 on public.rank_participants for insert
 with check (auth.uid() = owner_id);
 
-create policy if not exists rank_participants_update
+drop policy if exists rank_participants_update on public.rank_participants;
+create policy rank_participants_update
 on public.rank_participants for update using (auth.uid() = owner_id);
 
-create policy if not exists rank_participants_delete
+drop policy if exists rank_participants_delete on public.rank_participants;
+create policy rank_participants_delete
 on public.rank_participants for delete using (auth.uid() = owner_id);
 
 create index if not exists rank_participants_active_by_role
@@ -1004,10 +1068,12 @@ create table if not exists public.rank_battles (
 
 alter table public.rank_battles enable row level security;
 
-create policy if not exists rank_battles_select
+drop policy if exists rank_battles_select on public.rank_battles;
+create policy rank_battles_select
 on public.rank_battles for select using (true);
 
-create policy if not exists rank_battles_insert
+drop policy if exists rank_battles_insert on public.rank_battles;
+create policy rank_battles_insert
 on public.rank_battles for insert to authenticated with check (true);
 
 create table if not exists public.rank_battle_logs (
@@ -1093,20 +1159,24 @@ on public.rank_queue_tickets (room_id, created_at desc);
 
 alter table public.rank_queue_tickets enable row level security;
 
-create policy if not exists rank_queue_tickets_select
+drop policy if exists rank_queue_tickets_select on public.rank_queue_tickets;
+create policy rank_queue_tickets_select
 on public.rank_queue_tickets for select
 using (auth.uid() = owner_id or auth.role() = 'service_role');
 
-create policy if not exists rank_queue_tickets_insert
+drop policy if exists rank_queue_tickets_insert on public.rank_queue_tickets;
+create policy rank_queue_tickets_insert
 on public.rank_queue_tickets for insert to authenticated
 with check (auth.uid() = owner_id or owner_id is null or auth.role() = 'service_role');
 
-create policy if not exists rank_queue_tickets_update
+drop policy if exists rank_queue_tickets_update on public.rank_queue_tickets;
+create policy rank_queue_tickets_update
 on public.rank_queue_tickets for update
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
-create policy if not exists rank_queue_tickets_delete
+drop policy if exists rank_queue_tickets_delete on public.rank_queue_tickets;
+create policy rank_queue_tickets_delete
 on public.rank_queue_tickets for delete
 using (auth.role() = 'service_role');
 
@@ -1133,13 +1203,16 @@ on public.rank_match_queue (game_id, mode, owner_id, status);
 
 alter table public.rank_rooms enable row level security;
 
-create policy if not exists rank_rooms_select
+drop policy if exists rank_rooms_select on public.rank_rooms;
+create policy rank_rooms_select
 on public.rank_rooms for select using (true);
 
-create policy if not exists rank_rooms_insert
+drop policy if exists rank_rooms_insert on public.rank_rooms;
+create policy rank_rooms_insert
 on public.rank_rooms for insert to authenticated with check (auth.uid() = owner_id);
 
-create policy if not exists rank_rooms_update
+drop policy if exists rank_rooms_update on public.rank_rooms;
+create policy rank_rooms_update
 on public.rank_rooms for update
 using (
   auth.uid() = owner_id
@@ -1160,10 +1233,12 @@ with check (
 
 alter table public.rank_room_slots enable row level security;
 
-create policy if not exists rank_room_slots_select
+drop policy if exists rank_room_slots_select on public.rank_room_slots;
+create policy rank_room_slots_select
 on public.rank_room_slots for select using (true);
 
-create policy if not exists rank_room_slots_insert
+drop policy if exists rank_room_slots_insert on public.rank_room_slots;
+create policy rank_room_slots_insert
 on public.rank_room_slots for insert to authenticated
 with check (
   exists (
@@ -1173,7 +1248,8 @@ with check (
   )
 );
 
-create policy if not exists rank_room_slots_update
+drop policy if exists rank_room_slots_update on public.rank_room_slots;
+create policy rank_room_slots_update
 on public.rank_room_slots for update
 using (
   occupant_owner_id is null
@@ -1233,33 +1309,39 @@ on public.rank_match_roster (game_id);
 
 alter table public.rank_match_roster enable row level security;
 
-create policy if not exists rank_match_roster_select
+drop policy if exists rank_match_roster_select on public.rank_match_roster;
+create policy rank_match_roster_select
 on public.rank_match_roster for select using (true);
 
-create policy if not exists rank_match_roster_service_write
+drop policy if exists rank_match_roster_service_write on public.rank_match_roster;
+create policy rank_match_roster_service_write
 on public.rank_match_roster for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
 alter table public.rank_match_queue enable row level security;
 
-create policy if not exists rank_match_queue_select
+drop policy if exists rank_match_queue_select on public.rank_match_queue;
+create policy rank_match_queue_select
 on public.rank_match_queue for select
 using (
   status = 'waiting'
   or owner_id = auth.uid()
 );
 
-create policy if not exists rank_match_queue_insert
+drop policy if exists rank_match_queue_insert on public.rank_match_queue;
+create policy rank_match_queue_insert
 on public.rank_match_queue for insert to authenticated
 with check (auth.uid() = owner_id);
 
-create policy if not exists rank_match_queue_update
+drop policy if exists rank_match_queue_update on public.rank_match_queue;
+create policy rank_match_queue_update
 on public.rank_match_queue for update to authenticated
 using (auth.uid() = owner_id)
 with check (auth.uid() = owner_id);
 
-create policy if not exists rank_match_queue_delete
+drop policy if exists rank_match_queue_delete on public.rank_match_queue;
+create policy rank_match_queue_delete
 on public.rank_match_queue for delete to authenticated
 using (auth.uid() = owner_id);
 
@@ -1287,20 +1369,24 @@ on public.rank_matchmaking_logs (stage);
 
 alter table public.rank_matchmaking_logs enable row level security;
 
-create policy if not exists rank_matchmaking_logs_service_insert
+drop policy if exists rank_matchmaking_logs_service_insert on public.rank_matchmaking_logs;
+create policy rank_matchmaking_logs_service_insert
 on public.rank_matchmaking_logs for insert
 with check (auth.role() = 'service_role');
 
-create policy if not exists rank_matchmaking_logs_service_select
+drop policy if exists rank_matchmaking_logs_service_select on public.rank_matchmaking_logs;
+create policy rank_matchmaking_logs_service_select
 on public.rank_matchmaking_logs for select
 using (auth.role() = 'service_role');
 
 alter table public.rank_battle_logs enable row level security;
 
-create policy if not exists rank_battle_logs_select
+drop policy if exists rank_battle_logs_select on public.rank_battle_logs;
+create policy rank_battle_logs_select
 on public.rank_battle_logs for select using (true);
 
-create policy if not exists rank_battle_logs_insert
+drop policy if exists rank_battle_logs_insert on public.rank_battle_logs;
+create policy rank_battle_logs_insert
 on public.rank_battle_logs for insert to authenticated with check (true);
 
 create table if not exists public.rank_sessions (
@@ -1325,13 +1411,16 @@ on public.rank_sessions (status, game_id, updated_at desc);
 
 alter table public.rank_sessions enable row level security;
 
-create policy if not exists rank_sessions_select
+drop policy if exists rank_sessions_select on public.rank_sessions;
+create policy rank_sessions_select
 on public.rank_sessions for select using (auth.uid() = owner_id or owner_id is null);
 
-create policy if not exists rank_sessions_insert
+drop policy if exists rank_sessions_insert on public.rank_sessions;
+create policy rank_sessions_insert
 on public.rank_sessions for insert to authenticated with check (auth.uid() = owner_id or owner_id is null);
 
-create policy if not exists rank_sessions_update
+drop policy if exists rank_sessions_update on public.rank_sessions;
+create policy rank_sessions_update
 on public.rank_sessions for update using (auth.uid() = owner_id or owner_id is null);
 
 create table if not exists public.rank_session_meta (
@@ -1353,7 +1442,8 @@ create table if not exists public.rank_session_meta (
 
 alter table public.rank_session_meta enable row level security;
 
-create policy if not exists rank_session_meta_service_all
+drop policy if exists rank_session_meta_service_all on public.rank_session_meta;
+create policy rank_session_meta_service_all
 on public.rank_session_meta for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
@@ -1370,10 +1460,12 @@ create table if not exists public.rank_turns (
 
 alter table public.rank_turns enable row level security;
 
-create policy if not exists rank_turns_select
+drop policy if exists rank_turns_select on public.rank_turns;
+create policy rank_turns_select
 on public.rank_turns for select using (true);
 
-create policy if not exists rank_turns_insert
+drop policy if exists rank_turns_insert on public.rank_turns;
+create policy rank_turns_insert
 on public.rank_turns for insert to authenticated with check (true);
 
 create table if not exists public.rank_session_timeline_events (
@@ -1403,10 +1495,12 @@ on public.rank_session_timeline_events (session_id, event_timestamp desc);
 
 alter table public.rank_session_timeline_events enable row level security;
 
-create policy if not exists rank_session_timeline_events_select
+drop policy if exists rank_session_timeline_events_select on public.rank_session_timeline_events;
+create policy rank_session_timeline_events_select
 on public.rank_session_timeline_events for select using (true);
 
-create policy if not exists rank_session_timeline_events_insert
+drop policy if exists rank_session_timeline_events_insert on public.rank_session_timeline_events;
+create policy rank_session_timeline_events_insert
 on public.rank_session_timeline_events for insert
 with check (auth.role() = 'service_role');
 
@@ -1433,14 +1527,17 @@ on public.rank_session_battle_logs (owner_id, created_at desc);
 
 alter table public.rank_session_battle_logs enable row level security;
 
-create policy if not exists rank_session_battle_logs_select
+drop policy if exists rank_session_battle_logs_select on public.rank_session_battle_logs;
+create policy rank_session_battle_logs_select
 on public.rank_session_battle_logs for select using (true);
 
-create policy if not exists rank_session_battle_logs_insert
+drop policy if exists rank_session_battle_logs_insert on public.rank_session_battle_logs;
+create policy rank_session_battle_logs_insert
 on public.rank_session_battle_logs for insert
 with check (auth.role() = 'service_role');
 
-create policy if not exists rank_session_battle_logs_update
+drop policy if exists rank_session_battle_logs_update on public.rank_session_battle_logs;
+create policy rank_session_battle_logs_update
 on public.rank_session_battle_logs for update
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
@@ -2312,10 +2409,12 @@ on public.rank_edge_function_deployments (environment, created_at desc);
 
 alter table public.rank_edge_function_deployments enable row level security;
 
-create policy if not exists rank_edge_function_deployments_select
+drop policy if exists rank_edge_function_deployments_select on public.rank_edge_function_deployments;
+create policy rank_edge_function_deployments_select
 on public.rank_edge_function_deployments for select using (true);
 
-create policy if not exists rank_edge_function_deployments_insert
+drop policy if exists rank_edge_function_deployments_insert on public.rank_edge_function_deployments;
+create policy rank_edge_function_deployments_insert
 on public.rank_edge_function_deployments for insert
 with check (auth.role() = 'service_role');
 
@@ -2333,10 +2432,12 @@ create table if not exists public.messages (
 
 alter table public.messages enable row level security;
 
-create policy if not exists messages_select_public
+drop policy if exists messages_select_public on public.messages;
+create policy messages_select_public
 on public.messages for select using (true);
 
-create policy if not exists messages_insert_auth
+drop policy if exists messages_insert_auth on public.messages;
+create policy messages_insert_auth
 on public.messages for insert to authenticated with check (auth.uid() = user_id);
 
 --
