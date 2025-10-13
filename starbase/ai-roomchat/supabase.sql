@@ -1068,6 +1068,48 @@ create table if not exists public.rank_room_slots (
 create index if not exists rank_room_slots_role_vacancy_idx
 on public.rank_room_slots (room_id, role, occupant_owner_id);
 
+create table if not exists public.rank_queue_tickets (
+  id uuid primary key default gen_random_uuid(),
+  queue_id text not null,
+  game_id uuid references public.rank_games(id) on delete cascade,
+  room_id uuid references public.rank_rooms(id) on delete cascade,
+  owner_id uuid references auth.users(id) on delete set null,
+  mode text,
+  status text not null default 'queued',
+  payload jsonb not null default '{}'::jsonb,
+  ready_vote jsonb,
+  async_fill_meta jsonb,
+  seat_map jsonb not null default '[]'::jsonb,
+  ready_expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists rank_queue_tickets_queue_idx
+on public.rank_queue_tickets (queue_id, created_at desc);
+
+create index if not exists rank_queue_tickets_room_idx
+on public.rank_queue_tickets (room_id, created_at desc);
+
+alter table public.rank_queue_tickets enable row level security;
+
+create policy if not exists rank_queue_tickets_select
+on public.rank_queue_tickets for select
+using (auth.uid() = owner_id or auth.role() = 'service_role');
+
+create policy if not exists rank_queue_tickets_insert
+on public.rank_queue_tickets for insert to authenticated
+with check (auth.uid() = owner_id or owner_id is null or auth.role() = 'service_role');
+
+create policy if not exists rank_queue_tickets_update
+on public.rank_queue_tickets for update
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
+create policy if not exists rank_queue_tickets_delete
+on public.rank_queue_tickets for delete
+using (auth.role() = 'service_role');
+
 create table if not exists public.rank_match_queue (
   id uuid primary key default gen_random_uuid(),
   game_id uuid not null references public.rank_games(id) on delete cascade,
@@ -1173,6 +1215,9 @@ create table if not exists public.rank_match_roster (
   status text,
   standin boolean default false,
   match_source text,
+  slot_template_version bigint,
+  slot_template_source text,
+  slot_template_updated_at timestamptz,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
@@ -1271,6 +1316,10 @@ create table if not exists public.rank_sessions (
 alter table public.rank_sessions
   add column if not exists rating_hint integer;
 
+alter table public.rank_sessions
+  add column if not exists mode text,
+  add column if not exists vote_snapshot jsonb default '{}'::jsonb;
+
 create index if not exists rank_sessions_status_recent_idx
 on public.rank_sessions (status, game_id, updated_at desc);
 
@@ -1284,6 +1333,30 @@ on public.rank_sessions for insert to authenticated with check (auth.uid() = own
 
 create policy if not exists rank_sessions_update
 on public.rank_sessions for update using (auth.uid() = owner_id or owner_id is null);
+
+create table if not exists public.rank_session_meta (
+  session_id uuid primary key references public.rank_sessions(id) on delete cascade,
+  turn_limit integer,
+  selected_time_limit_seconds integer,
+  time_vote jsonb,
+  realtime_mode text default 'off',
+  drop_in_bonus_seconds integer default 0,
+  turn_state jsonb,
+  async_fill_snapshot jsonb,
+  occupant_owner_id uuid,
+  occupant_hero_name text,
+  score_delta integer,
+  final_score integer,
+  extras jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.rank_session_meta enable row level security;
+
+create policy if not exists rank_session_meta_service_all
+on public.rank_session_meta for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
 
 create table if not exists public.rank_turns (
   id uuid primary key default gen_random_uuid(),
@@ -1397,6 +1470,842 @@ on public.rank_edge_function_deployments (function_name, created_at desc);
 
 create index if not exists rank_edge_function_deployments_status_idx
 on public.rank_edge_function_deployments (status, created_at desc);
+
+-- =========================================
+--  Arena queue & session RPCs
+-- =========================================
+
+create or replace function public.verify_rank_roles_and_slots(
+  p_roles jsonb default '[]'::jsonb,
+  p_slots jsonb default '[]'::jsonb
+)
+returns table (
+  role_name text,
+  declared_slot_count integer,
+  active_slot_count integer
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_roles jsonb := coalesce(p_roles, '[]'::jsonb);
+  v_slots jsonb := coalesce(p_slots, '[]'::jsonb);
+  v_role_names text[] := array[]::text[];
+  v_slot_indices integer[] := array[]::integer[];
+  v_slot_counts jsonb := '{}'::jsonb;
+  v_active_slots integer := 0;
+  v_role record;
+  v_slot record;
+  v_slot_role record;
+  v_active_for_role integer;
+begin
+  if jsonb_typeof(v_slots) is distinct from 'array' then
+    raise exception 'invalid_slots' using detail = 'slots_must_be_array';
+  end if;
+
+  for v_slot in
+    select
+      coalesce(nullif(value->>'slot_index', '')::integer, ordinality - 1) as slot_index,
+      coalesce(nullif(trim(value->>'role'), ''), '') as role,
+      coalesce((value->>'active')::boolean, true) as active
+    from jsonb_array_elements(v_slots) with ordinality as slot(value, ordinality)
+  loop
+    if v_slot.slot_index < 0 then
+      raise exception 'invalid_slots' using detail = 'slot_index_negative';
+    end if;
+
+    if v_slot.slot_index = any(v_slot_indices) then
+      raise exception 'invalid_slots' using detail = 'duplicate_slot_index';
+    end if;
+
+    v_slot_indices := array_append(v_slot_indices, v_slot.slot_index);
+
+    if v_slot.active then
+      if v_slot.role = '' then
+        raise exception 'invalid_slots' using detail = 'active_slot_missing_role';
+      end if;
+
+      v_active_slots := v_active_slots + 1;
+      v_slot_counts :=
+        v_slot_counts || jsonb_build_object(
+          v_slot.role,
+          coalesce((v_slot_counts ->> v_slot.role)::integer, 0) + 1
+        );
+    end if;
+  end loop;
+
+  if v_active_slots = 0 then
+    raise exception 'invalid_slots' using detail = 'no_active_slots';
+  end if;
+
+  if jsonb_typeof(v_roles) is distinct from 'array' then
+    raise exception 'invalid_roles' using detail = 'roles_must_be_array';
+  end if;
+
+  if jsonb_array_length(v_roles) = 0 then
+    raise exception 'invalid_roles' using detail = 'no_roles_defined';
+  end if;
+
+  for v_role in
+    select
+      coalesce(nullif(trim(r.name), ''), '') as role_name,
+      greatest(coalesce(r.slot_count, 0), 0) as declared_slot_count
+    from jsonb_to_recordset(v_roles) as r(
+      name text,
+      slot_count integer,
+      score_delta_min integer,
+      score_delta_max integer,
+      active boolean
+    )
+  loop
+    if v_role.role_name = '' then
+      raise exception 'invalid_roles' using detail = 'role_name_required';
+    end if;
+
+    if v_role.role_name = any(v_role_names) then
+      raise exception 'invalid_roles' using detail = 'duplicate_role_name';
+    end if;
+
+    v_role_names := array_append(v_role_names, v_role.role_name);
+    v_active_for_role := coalesce((v_slot_counts ->> v_role.role_name)::integer, 0);
+
+    if v_active_for_role <> v_role.declared_slot_count then
+      raise exception 'invalid_roles'
+        using detail = format('slot_count_mismatch:%s', v_role.role_name);
+    end if;
+
+    role_name := v_role.role_name;
+    declared_slot_count := v_role.declared_slot_count;
+    active_slot_count := v_active_for_role;
+    return next;
+  end loop;
+
+  for v_slot_role in select key, value from jsonb_each(v_slot_counts) loop
+    if coalesce(v_slot_role.key, '') <> '' and not (v_slot_role.key = any(v_role_names)) then
+      raise exception 'invalid_roles'
+        using detail = format('slot_role_missing_declaration:%s', v_slot_role.key);
+    end if;
+  end loop;
+end;
+$$;
+
+grant execute on function public.verify_rank_roles_and_slots(jsonb, jsonb) to service_role;
+
+create or replace function public.join_rank_queue(
+  queue_id text,
+  payload jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ticket record;
+  v_payload jsonb := coalesce(payload, '{}'::jsonb);
+  v_now timestamptz := now();
+  v_room_id uuid;
+  v_game_id uuid;
+  v_owner_id uuid;
+  v_mode text;
+  v_status text;
+  v_ready_vote jsonb;
+  v_async_fill jsonb;
+  v_seat_map jsonb := '[]'::jsonb;
+begin
+  if queue_id is null then
+    raise exception 'missing_queue_id';
+  end if;
+
+  begin
+    v_room_id := nullif(trim(coalesce(v_payload->>'room_id', v_payload->>'roomId')), '')::uuid;
+  exception when others then
+    v_room_id := null;
+  end;
+
+  begin
+    v_game_id := nullif(trim(coalesce(v_payload->>'game_id', v_payload->>'gameId')), '')::uuid;
+  exception when others then
+    v_game_id := null;
+  end;
+
+  begin
+    v_owner_id := nullif(trim(coalesce(v_payload->>'owner_id', v_payload->>'ownerId')), '')::uuid;
+  exception when others then
+    v_owner_id := null;
+  end;
+
+  v_mode := lower(trim(coalesce(
+    v_payload->>'mode',
+    v_payload->>'queue_mode',
+    v_payload->>'match_mode',
+    ''
+  )));
+  if v_mode = '' then
+    v_mode := null;
+  end if;
+
+  v_status := lower(trim(coalesce(v_payload->>'status', 'queued')));
+  if v_status = '' then
+    v_status := 'queued';
+  end if;
+
+  if jsonb_typeof(v_payload->'ready_vote') = 'object' then
+    v_ready_vote := v_payload->'ready_vote';
+  elsif jsonb_typeof(v_payload->'readyVote') = 'object' then
+    v_ready_vote := v_payload->'readyVote';
+  else
+    v_ready_vote := null;
+  end if;
+
+  if jsonb_typeof(v_payload->'async_fill_meta') = 'object' then
+    v_async_fill := v_payload->'async_fill_meta';
+  elsif jsonb_typeof(v_payload->'asyncFillMeta') = 'object' then
+    v_async_fill := v_payload->'asyncFillMeta';
+  else
+    v_async_fill := null;
+  end if;
+
+  if jsonb_typeof(v_payload->'seat_map') = 'array' then
+    v_seat_map := v_payload->'seat_map';
+  elsif jsonb_typeof(v_payload->'seatMap') = 'array' then
+    v_seat_map := v_payload->'seatMap';
+  end if;
+
+  insert into public.rank_queue_tickets (
+    queue_id,
+    game_id,
+    room_id,
+    owner_id,
+    mode,
+    status,
+    payload,
+    ready_vote,
+    async_fill_meta,
+    seat_map,
+    created_at,
+    updated_at
+  ) values (
+    queue_id,
+    v_game_id,
+    v_room_id,
+    coalesce(v_owner_id, auth.uid()),
+    v_mode,
+    v_status,
+    v_payload,
+    v_ready_vote,
+    v_async_fill,
+    coalesce(v_seat_map, '[]'::jsonb),
+    v_now,
+    v_now
+  )
+  returning * into v_ticket;
+
+  return row_to_json(v_ticket)::jsonb;
+end;
+$$;
+
+grant execute on function public.join_rank_queue(text, jsonb)
+  to authenticated, service_role;
+
+create or replace function public.assert_room_ready(p_room_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_required integer;
+  v_ready integer;
+  v_locked integer;
+begin
+  if p_room_id is null then
+    raise exception 'missing_room_id';
+  end if;
+
+  select count(*),
+         count(*) filter (where occupant_ready),
+         count(*) filter (where seat_locked)
+    into v_required, v_ready, v_locked
+  from public.rank_room_slots
+  where room_id = p_room_id;
+
+  if v_required = 0 then
+    raise exception 'room_empty';
+  end if;
+
+  if v_locked > 0 then
+    raise exception 'room_locked';
+  end if;
+
+  if v_ready < v_required then
+    raise exception 'ready_check_incomplete';
+  end if;
+end;
+$$;
+
+grant execute on function public.assert_room_ready(uuid)
+  to authenticated, service_role;
+
+create or replace function public.ensure_rank_session_for_room(
+  p_room_id uuid,
+  p_game_id uuid,
+  p_owner_id uuid,
+  p_mode text,
+  p_vote jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_session_id uuid;
+  v_turn_limit integer;
+  v_vote_payload jsonb;
+begin
+  if p_room_id is null then
+    raise exception 'missing_room_id';
+  end if;
+
+  v_turn_limit := coalesce((p_vote->>'turn_limit')::integer, 0);
+  v_vote_payload := coalesce(p_vote, '{}'::jsonb);
+
+  select id
+    into v_session_id
+  from public.rank_sessions
+  where room_id = p_room_id
+    and status = 'active'
+  order by updated_at desc
+  limit 1;
+
+  if v_session_id is null then
+    insert into public.rank_sessions (
+      room_id,
+      game_id,
+      owner_id,
+      status,
+      turn,
+      mode,
+      vote_snapshot
+    )
+    values (
+      p_room_id,
+      p_game_id,
+      p_owner_id,
+      'active',
+      0,
+      p_mode,
+      v_vote_payload
+    )
+    returning id into v_session_id;
+  else
+    update public.rank_sessions
+       set updated_at = now(),
+           mode = coalesce(p_mode, mode),
+           vote_snapshot = v_vote_payload
+     where id = v_session_id;
+  end if;
+
+  if v_turn_limit > 0 then
+    update public.rank_session_meta
+       set turn_limit = v_turn_limit,
+           selected_time_limit_seconds = v_turn_limit,
+           updated_at = now()
+     where session_id = v_session_id;
+
+    if not found then
+      insert into public.rank_session_meta (session_id, turn_limit, selected_time_limit_seconds)
+      values (v_session_id, v_turn_limit, v_turn_limit);
+    end if;
+  end if;
+
+  return v_session_id;
+end;
+$$;
+
+grant execute on function public.ensure_rank_session_for_room(uuid, uuid, uuid, text, jsonb)
+  to authenticated, service_role;
+
+create or replace function public.upsert_rank_session_async_fill(
+  p_session_id uuid,
+  p_async_fill jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.rank_session_meta
+     set async_fill_snapshot = p_async_fill,
+         updated_at = now()
+   where session_id = p_session_id;
+
+  if not found then
+    insert into public.rank_session_meta (
+      session_id,
+      async_fill_snapshot
+    )
+    values (
+      p_session_id,
+      p_async_fill
+    );
+  end if;
+end;
+$$;
+
+grant execute on function public.upsert_rank_session_async_fill(uuid, jsonb)
+  to authenticated, service_role;
+
+create or replace function public.stage_rank_match(
+  queue_ticket_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ticket record;
+  v_session_id uuid;
+  v_ready_expires_at timestamptz;
+  v_seats jsonb;
+begin
+  if queue_ticket_id is null then
+    raise exception 'missing_queue_ticket';
+  end if;
+
+  select * into v_ticket
+  from public.rank_queue_tickets
+  where id = queue_ticket_id;
+
+  if not found then
+    raise exception 'queue_ticket_not_found';
+  end if;
+
+  perform public.assert_room_ready(v_ticket.room_id);
+
+  v_session_id := public.ensure_rank_session_for_room(
+    v_ticket.room_id,
+    v_ticket.game_id,
+    v_ticket.owner_id,
+    v_ticket.mode,
+    v_ticket.ready_vote
+  );
+
+  perform public.upsert_rank_session_async_fill(v_session_id, v_ticket.async_fill_meta);
+
+  v_ready_expires_at := now() + interval '15 seconds';
+
+  v_seats := (
+    select jsonb_agg(
+      jsonb_build_object(
+        'index', slot.slot_index,
+        'owner_id', slot.occupant_owner_id,
+        'hero_name', slot.occupant_hero_name,
+        'ready', slot.occupant_ready
+      )
+      order by slot.slot_index
+    )
+    from public.rank_room_slots slot
+    where slot.room_id = v_ticket.room_id
+  );
+
+  update public.rank_queue_tickets
+     set seat_map = coalesce(v_seats, '[]'::jsonb),
+         ready_expires_at = v_ready_expires_at,
+         status = 'staging',
+         updated_at = now()
+   where id = queue_ticket_id;
+
+  return jsonb_build_object(
+    'session_id', v_session_id,
+    'ready_expires_at', v_ready_expires_at,
+    'seats', coalesce(v_seats, '[]'::jsonb)
+  );
+end;
+$$;
+
+grant execute on function public.stage_rank_match(uuid)
+  to authenticated, service_role;
+
+create or replace function public.evict_unready_participant(
+  queue_ticket_id uuid,
+  seat_index integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_room_id uuid;
+  v_seats jsonb;
+begin
+  if queue_ticket_id is null then
+    raise exception 'missing_queue_ticket';
+  end if;
+
+  select room_id into v_room_id
+  from public.rank_queue_tickets
+  where id = queue_ticket_id;
+
+  if v_room_id is null then
+    raise exception 'queue_ticket_not_found';
+  end if;
+
+  update public.rank_room_slots
+     set occupant_owner_id = null,
+         occupant_ready = false,
+         occupant_hero_id = null,
+         joined_at = null
+   where room_id = v_room_id
+     and slot_index = seat_index;
+
+  v_seats := (
+    select jsonb_agg(
+      jsonb_build_object(
+        'index', slot.slot_index,
+        'owner_id', slot.occupant_owner_id,
+        'hero_name', slot.occupant_hero_name,
+        'ready', slot.occupant_ready
+      )
+      order by slot.slot_index
+    )
+    from public.rank_room_slots slot
+    where slot.room_id = v_room_id
+  );
+
+  update public.rank_queue_tickets
+     set seat_map = coalesce(v_seats, '[]'::jsonb),
+         status = 'evicted',
+         updated_at = now()
+   where id = queue_ticket_id;
+end;
+$$;
+
+grant execute on function public.evict_unready_participant(uuid, integer)
+  to authenticated, service_role;
+
+create or replace function public.fetch_rank_session_turns(
+  p_session_id uuid,
+  p_limit integer default 120
+)
+returns table (
+  id bigint,
+  session_id uuid,
+  idx integer,
+  role text,
+  content text,
+  public boolean,
+  is_visible boolean,
+  summary_payload jsonb,
+  metadata jsonb,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_session_id is null then
+    raise exception 'missing_session_id';
+  end if;
+
+  return query
+  select
+    t.id,
+    t.session_id,
+    t.idx,
+    t.role,
+    t.content,
+    t.public,
+    coalesce(t.is_visible, true) as is_visible,
+    t.summary_payload,
+    t.metadata,
+    t.created_at
+  from public.rank_turns t
+  where t.session_id = p_session_id
+  order by t.idx asc, t.created_at asc
+  limit coalesce(p_limit, 120);
+end;
+$$;
+
+grant execute on function public.fetch_rank_session_turns(uuid, integer)
+  to authenticated, service_role;
+
+create or replace function public.finalize_rank_session(
+  p_session_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_session public.rank_sessions;
+  v_participants jsonb;
+begin
+  select * into v_session from public.rank_sessions where id = p_session_id;
+  if not found then
+    raise exception 'session_not_found';
+  end if;
+
+  v_participants := (
+    select jsonb_agg(
+      jsonb_build_object(
+        'owner_id', slot.occupant_owner_id,
+        'hero_name', slot.occupant_hero_name,
+        'score_delta', slot.score_delta,
+        'final_score', slot.final_score
+      )
+    )
+    from public.rank_session_meta slot
+    where slot.session_id = p_session_id
+  );
+
+  return jsonb_build_object(
+    'session_id', p_session_id,
+    'status', v_session.status,
+    'completed_at', v_session.completed_at,
+    'participants', coalesce(v_participants, '[]'::jsonb)
+  );
+end;
+$$;
+
+grant execute on function public.finalize_rank_session(uuid)
+  to authenticated, service_role;
+
+create or replace function public.upsert_match_session_meta(
+  p_session_id uuid,
+  p_selected_time_limit integer default null,
+  p_time_vote jsonb default null,
+  p_drop_in_bonus_seconds integer default 0,
+  p_turn_state jsonb default null,
+  p_async_fill_snapshot jsonb default null,
+  p_realtime_mode text default null,
+  p_extras jsonb default null
+)
+returns table (
+  session_id uuid,
+  selected_time_limit_seconds integer,
+  time_vote jsonb,
+  drop_in_bonus_seconds integer,
+  turn_state jsonb,
+  async_fill_snapshot jsonb,
+  realtime_mode text,
+  extras jsonb,
+  updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_now timestamptz := now();
+  v_mode text;
+  v_row record;
+begin
+  v_mode := lower(coalesce(p_realtime_mode, 'off'));
+  if v_mode not in ('off', 'standard', 'pulse') then
+    v_mode := 'off';
+  end if;
+
+  insert into public.rank_session_meta as m (
+    session_id,
+    selected_time_limit_seconds,
+    time_vote,
+    drop_in_bonus_seconds,
+    turn_state,
+    async_fill_snapshot,
+    realtime_mode,
+    extras,
+    updated_at
+  ) values (
+    p_session_id,
+    p_selected_time_limit,
+    p_time_vote,
+    p_drop_in_bonus_seconds,
+    p_turn_state,
+    p_async_fill_snapshot,
+    v_mode,
+    case when p_extras is null then null else p_extras end,
+    v_now
+  )
+  on conflict (session_id)
+  do update set
+    selected_time_limit_seconds = excluded.selected_time_limit_seconds,
+    time_vote = excluded.time_vote,
+    drop_in_bonus_seconds = excluded.drop_in_bonus_seconds,
+    turn_state = excluded.turn_state,
+    async_fill_snapshot = excluded.async_fill_snapshot,
+    realtime_mode = excluded.realtime_mode,
+    extras = case when p_extras is null then m.extras else p_extras end,
+    updated_at = v_now
+  returning * into v_row;
+
+  return query select
+    v_row.session_id,
+    v_row.selected_time_limit_seconds,
+    v_row.time_vote,
+    v_row.drop_in_bonus_seconds,
+    v_row.turn_state,
+    v_row.async_fill_snapshot,
+    v_row.realtime_mode,
+    v_row.extras,
+    v_row.updated_at;
+end;
+$$;
+
+grant execute on function public.upsert_match_session_meta(
+  uuid,
+  integer,
+  jsonb,
+  integer,
+  jsonb,
+  jsonb,
+  text,
+  jsonb
+) to service_role;
+
+create or replace function public.sync_rank_match_roster(
+  p_room_id uuid,
+  p_game_id uuid,
+  p_match_instance_id uuid,
+  p_roster jsonb,
+  p_slot_template_version bigint default null,
+  p_slot_template_source text default null,
+  p_slot_template_updated_at timestamptz default null
+)
+returns table (
+  inserted_count integer,
+  slot_template_version bigint,
+  slot_template_updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_now timestamptz := now();
+  v_version bigint := coalesce(p_slot_template_version, (extract(epoch from v_now) * 1000)::bigint);
+  v_updated_at timestamptz := coalesce(p_slot_template_updated_at, v_now);
+  v_current_version bigint;
+begin
+  if p_room_id is null or p_game_id is null or p_match_instance_id is null then
+    raise exception 'missing_identifiers';
+  end if;
+
+  if p_roster is null or jsonb_typeof(p_roster) <> 'array' or jsonb_array_length(p_roster) = 0 then
+    raise exception 'empty_roster';
+  end if;
+
+  select max(r.slot_template_version)
+  into v_current_version
+  from public.rank_match_roster as r
+  where r.room_id = p_room_id;
+
+  if v_current_version is not null and v_version < v_current_version then
+    raise exception 'slot_version_conflict';
+  end if;
+
+  delete from public.rank_match_roster
+  where room_id = p_room_id;
+
+  return query
+  with payload as (
+    select
+      (entry->>'slot_id')::uuid as slot_id,
+      coalesce((entry->>'slot_index')::integer, (ord::int - 1)) as slot_index,
+      coalesce(nullif(entry->>'role', ''), '역할 미지정') as role,
+      (entry->>'owner_id')::uuid as owner_id,
+      (entry->>'hero_id')::uuid as hero_id,
+      nullif(entry->>'hero_name', '') as hero_name,
+      coalesce(entry->'hero_summary', '{}'::jsonb) as hero_summary,
+      coalesce((entry->>'ready')::boolean, false) as ready,
+      (entry->>'joined_at')::timestamptz as joined_at,
+      (entry->>'score')::integer as score,
+      (entry->>'rating')::integer as rating,
+      (entry->>'battles')::integer as battles,
+      (entry->>'win_rate')::numeric as win_rate,
+      nullif(entry->>'status', '') as status,
+      coalesce((entry->>'standin')::boolean, false) as standin,
+      nullif(entry->>'match_source', '') as match_source
+    from jsonb_array_elements(p_roster) with ordinality as entries(entry, ord)
+  ), inserted as (
+    insert into public.rank_match_roster (
+      match_instance_id,
+      room_id,
+      game_id,
+      slot_id,
+      slot_index,
+      role,
+      owner_id,
+      hero_id,
+      hero_name,
+      hero_summary,
+      ready,
+      joined_at,
+      score,
+      rating,
+      battles,
+      win_rate,
+      status,
+      standin,
+      match_source,
+      slot_template_version,
+      slot_template_source,
+      slot_template_updated_at,
+      created_at,
+      updated_at
+    )
+    select
+      p_match_instance_id,
+      p_room_id,
+      p_game_id,
+      payload.slot_id,
+      payload.slot_index,
+      payload.role,
+      payload.owner_id,
+      payload.hero_id,
+      payload.hero_name,
+      payload.hero_summary,
+      payload.ready,
+      payload.joined_at,
+      payload.score,
+      payload.rating,
+      payload.battles,
+      payload.win_rate,
+      payload.status,
+      payload.standin,
+      payload.match_source,
+      v_version,
+      coalesce(nullif(p_slot_template_source, ''), 'room-stage'),
+      v_updated_at,
+      v_now,
+      v_now
+    from payload
+    order by payload.slot_index
+    returning 1
+  )
+  select
+    (select count(*)::integer from inserted) as inserted_count,
+    v_version as slot_template_version,
+    v_updated_at as slot_template_updated_at;
+end;
+$$;
+
+grant execute on function public.sync_rank_match_roster(
+  uuid,
+  uuid,
+  uuid,
+  jsonb,
+  bigint,
+  text,
+  timestamptz
+) to service_role;
 
 create index if not exists rank_edge_function_deployments_env_idx
 on public.rank_edge_function_deployments (environment, created_at desc);
