@@ -1269,6 +1269,11 @@ export default function RoomDetailPage() {
     return { total, filled }
   }, [slots])
 
+  const normalizedRoomStatus = useMemo(() => {
+    if (typeof room?.status !== 'string') return ''
+    return room.status.trim().toLowerCase()
+  }, [room?.status])
+
   const readyCount = useMemo(() => {
     return slots.filter((slot) => slot.occupantOwnerId && slot.occupantReady).length
   }, [slots])
@@ -1300,6 +1305,8 @@ export default function RoomDetailPage() {
     const slot = slots.find((entry) => entry?.occupantOwnerId === viewer.ownerId)
     return slot?.occupantReady ?? false
   }, [slots, viewer?.ownerId])
+
+  const joined = !!activeSlotId
 
   const roleSummaries = useMemo(() => {
     if (!slots.length) return []
@@ -2702,7 +2709,6 @@ export default function RoomDetailPage() {
     }
   }, [cancelHostCleanup, isHost, room?.id])
 
-  const joined = !!activeSlotId
   const matchReadyMode = useMemo(() => resolveMatchReadyMode(room?.mode), [room?.mode])
   const hostRatingText = Number.isFinite(room?.hostRating)
     ? `${room.hostRating}점`
@@ -2713,10 +2719,6 @@ export default function RoomDetailPage() {
     if (room.realtimeMode === 'pulse') return 'Pulse 실시간'
     return '실시간'
   }, [room])
-  const normalizedRoomStatus = useMemo(() => {
-    if (typeof room?.status !== 'string') return ''
-    return room.status.trim().toLowerCase()
-  }, [room?.status])
   const statusLabel = useMemo(() => {
     const normalized = typeof room?.status === 'string' ? room.status.trim() : ''
     if (normalized === 'brawl') return '난전'
