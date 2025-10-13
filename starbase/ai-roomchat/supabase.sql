@@ -1,6 +1,25 @@
 -- 초기 확장 설정
 create extension if not exists "pgcrypto";
 
+create or replace function public.try_cast_uuid(input text)
+returns uuid
+language plpgsql
+immutable
+as $$
+begin
+  if input is null then
+    return null;
+  end if;
+
+  begin
+    return trim(input)::uuid;
+  exception
+    when others then
+      return null;
+  end;
+end;
+$$;
+
 -- =========================================
 --  영웅 기본 테이블 및 스토리지 정책
 -- =========================================
@@ -1413,6 +1432,9 @@ create table if not exists public.rank_sessions (
 );
 
 alter table public.rank_sessions
+  add column if not exists room_id uuid references public.rank_rooms(id) on delete set null;
+
+alter table public.rank_sessions
   add column if not exists rating_hint integer;
 
 alter table public.rank_sessions
@@ -1917,6 +1939,7 @@ begin
     select
       s.id,
       s.game_id,
+      s.room_id,
       s.owner_id,
       s.status,
       s.mode,
@@ -1924,8 +1947,47 @@ begin
       s.rating_hint,
       s.vote_snapshot,
       s.created_at,
-      s.updated_at
+      s.updated_at,
+      sm.realtime_mode,
+      sm.turn_state,
+      sm.async_fill_snapshot,
+      sm.extras,
+      sm.turn_limit,
+      sm.selected_time_limit_seconds,
+      sm.drop_in_bonus_seconds,
+      derived.match_instance_id,
+      coalesce((
+        select jsonb_agg(
+          jsonb_build_object(
+            'slot_index', roster.slot_index,
+            'role', roster.role,
+            'owner_id', roster.owner_id,
+            'hero_id', roster.hero_id,
+            'hero_name', roster.hero_name,
+            'hero_summary', roster.hero_summary,
+            'ready', roster.ready,
+            'standin', roster.standin,
+            'match_source', roster.match_source,
+            'score', roster.score,
+            'rating', roster.rating
+          )
+          order by roster.slot_index
+        )
+        from public.rank_match_roster roster
+        where roster.match_instance_id = derived.match_instance_id
+      ), '[]'::jsonb) as roster
     from public.rank_sessions s
+    left join public.rank_session_meta sm on sm.session_id = s.id
+    left join lateral (
+      select public.try_cast_uuid(
+        coalesce(
+          sm.extras->>'matchInstanceId',
+          sm.extras->>'match_instance_id',
+          sm.async_fill_snapshot->>'matchInstanceId',
+          sm.async_fill_snapshot->>'match_instance_id'
+        )
+      ) as match_instance_id
+    ) as derived on true
     where coalesce(s.status, '') not in ('complete', 'archived')
       and (
         s.owner_id is null

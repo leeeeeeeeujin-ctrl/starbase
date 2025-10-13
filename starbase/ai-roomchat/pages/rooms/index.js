@@ -1,8 +1,10 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
+import SharedChatDock, { SharedChatDockProvider } from '@/components/common/SharedChatDock'
 import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { fetchHeroParticipationBundle } from '@/modules/character/participation'
 import { ensureRpc } from '@/modules/arena/rpcClient'
@@ -32,6 +34,20 @@ const KEY_PROVIDER_LABELS = {
   gemini: 'Google Gemini',
   unknown: '기타 모델',
 }
+
+const MATCH_READY_LOADING_STYLE = {
+  padding: '48px 16px',
+  textAlign: 'center',
+  color: '#94a3b8',
+  fontSize: 16,
+}
+
+const MatchReadyClient = dynamic(() => import('@/components/rank/MatchReadyClient'), {
+  ssr: false,
+  loading: () => (
+    <div style={MATCH_READY_LOADING_STYLE}>메인 게임 클라이언트를 불러오는 중…</div>
+  ),
+})
 
 const styles = {
   page: {
@@ -93,9 +109,86 @@ const styles = {
     display: 'grid',
     gap: 24,
   },
+  viewToggleBar: {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: 16,
+  },
+  viewToggleButton: (active, disabled) => ({
+    padding: '10px 18px',
+    borderRadius: 999,
+    border: active
+      ? '1px solid rgba(59, 130, 246, 0.6)'
+      : '1px solid rgba(148, 163, 184, 0.35)',
+    background: disabled
+      ? 'rgba(30, 41, 59, 0.45)'
+      : active
+      ? 'rgba(37, 99, 235, 0.28)'
+      : 'rgba(15, 23, 42, 0.55)',
+    color: disabled ? '#64748b' : active ? '#bfdbfe' : '#cbd5f5',
+    fontWeight: 700,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    transition: 'background 0.2s ease',
+  }),
+  viewToggleHint: {
+    color: '#94a3b8',
+    fontSize: 13,
+  },
+  mainGameLayout: {
+    display: 'grid',
+    gap: 24,
+  },
+  mainGameSummaryGrid: {
+    display: 'grid',
+    gap: 24,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+  },
+  mainGameClientShell: {
+    borderRadius: 28,
+    border: '1px solid rgba(148, 163, 184, 0.28)',
+    overflow: 'hidden',
+    background: 'rgba(15, 23, 42, 0.78)',
+  },
+  mainGameSplit: {
+    display: 'grid',
+    gap: 24,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+  },
   cardsColumn: {
     display: 'grid',
     gap: 24,
+  },
+  chatDockWrapper: {
+    borderRadius: 24,
+    border: '1px solid rgba(148, 163, 184, 0.32)',
+    overflow: 'hidden',
+    background: '#ffffff',
+  },
+  rosterList: {
+    display: 'grid',
+    gap: 10,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  rosterItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '10px 14px',
+    borderRadius: 14,
+    border: '1px solid rgba(148, 163, 184, 0.24)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    fontSize: 13,
+  },
+  rosterMeta: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    color: '#cbd5f5',
+    fontSize: 12,
   },
   card: {
     background: 'rgba(15, 23, 42, 0.82)',
@@ -724,6 +817,10 @@ const styles = {
     fontWeight: 700,
     color: ready ? '#4ade80' : '#f87171',
   }),
+  rosterReady: (ready) => ({
+    fontWeight: 700,
+    color: ready ? '#4ade80' : '#f87171',
+  }),
 }
 
 function normalizeLobbySnapshot(raw = {}) {
@@ -792,8 +889,23 @@ function normalizeRoom(row) {
 
 function normalizeSession(row) {
   if (!row) return null
+  const roster = Array.isArray(row.roster)
+    ? row.roster.map(normalizeRosterEntry).filter(Boolean)
+    : []
+  const extras = isObject(row.extras) ? row.extras : null
+  const rawMatchInstanceId =
+    row.match_instance_id ||
+    row.matchInstanceId ||
+    (extras && (extras.matchInstanceId || extras.match_instance_id)) ||
+    null
+  const matchInstanceId = rawMatchInstanceId
+    ? String(rawMatchInstanceId).trim() || null
+    : null
   return {
     id: row.id || null,
+    gameId: row.game_id || row.gameId || null,
+    roomId: row.room_id || row.roomId || null,
+    ownerId: row.owner_id || row.ownerId || null,
     status: (row.status || '').toLowerCase() || 'active',
     mode: row.mode || null,
     turn: Number.isFinite(row.turn) ? Number(row.turn) : 0,
@@ -801,6 +913,19 @@ function normalizeSession(row) {
     voteSnapshot: isObject(row.vote_snapshot) ? row.vote_snapshot : null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
+    realtimeMode: row.realtime_mode || row.realtimeMode || null,
+    turnState: isObject(row.turn_state) ? row.turn_state : null,
+    asyncFillSnapshot: isObject(row.async_fill_snapshot) ? row.async_fill_snapshot : null,
+    extras,
+    turnLimit: Number.isFinite(row.turn_limit) ? Number(row.turn_limit) : null,
+    timeLimitSeconds: Number.isFinite(row.selected_time_limit_seconds)
+      ? Number(row.selected_time_limit_seconds)
+      : null,
+    dropInBonusSeconds: Number.isFinite(row.drop_in_bonus_seconds)
+      ? Number(row.drop_in_bonus_seconds)
+      : null,
+    roster,
+    matchInstanceId,
   }
 }
 
@@ -820,6 +945,29 @@ function normalizeSeatEntry(entry) {
       entry.ready ?? entry.is_ready ?? entry.occupant_ready ?? false,
     ),
     updatedAt: entry.updated_at || null,
+  }
+}
+
+function normalizeRosterEntry(entry) {
+  if (!entry) return null
+  const index = Number.isFinite(entry.slot_index)
+    ? Number(entry.slot_index)
+    : Number.isFinite(entry.slotIndex)
+    ? Number(entry.slotIndex)
+    : null
+  const heroSummary = isObject(entry.hero_summary) ? entry.hero_summary : null
+  return {
+    index,
+    role: entry.role || '',
+    ownerId: entry.owner_id || entry.ownerId || null,
+    heroId: entry.hero_id || entry.heroId || null,
+    heroName: entry.hero_name || entry.heroName || (entry.role ? `${entry.role} 슬롯` : ''),
+    heroSummary,
+    ready: entry.ready === true,
+    standin: entry.standin === true,
+    matchSource: entry.match_source || entry.matchSource || '',
+    score: Number.isFinite(entry.score) ? Number(entry.score) : null,
+    rating: Number.isFinite(entry.rating) ? Number(entry.rating) : null,
   }
 }
 
@@ -1463,6 +1611,7 @@ export default function RoomsLobbyPage() {
   })
   const [ticket, setTicket] = useState(null)
   const [stageInfo, setStageInfo] = useState(null)
+  const [activeView, setActiveView] = useState('lobby')
 
   const [joinBusy, setJoinBusy] = useState(false)
   const [leaveBusy, setLeaveBusy] = useState(false)
@@ -2140,6 +2289,359 @@ export default function RoomsLobbyPage() {
       hasActiveKey,
   )
 
+  const heroSummaryCard = (
+    <section style={styles.card}>
+      <header style={styles.cardHeader}>
+        <h2 style={styles.cardTitle}>플레이어 &amp; 영웅</h2>
+        <p style={styles.cardHint}>
+          Tinode Presence에서 가져온 아이디어로 활동량을 큐 속성에 함께 남깁니다.
+        </p>
+      </header>
+      <div style={styles.heroGrid}>
+        <span style={styles.heroBadge}>
+          {viewerHero?.name || '익명 플레이어'}
+          {viewerHero?.hero_id ? ` · ${shortId(viewerHero.hero_id)}` : ''}
+        </span>
+        <div style={styles.heroStatsRow}>
+          <span style={styles.heroStatBadge}>총 세션 {heroStats.totalSessions || 0}회</span>
+          <span style={styles.heroStatBadge}>
+            선호 모드 {heroStats.favouriteMode ? translateMode(heroStats.favouriteMode) : '데이터 없음'}
+          </span>
+          <span style={styles.heroStatBadge}>
+            최근 플레이 {heroStats.lastPlayedAt ? formatRelativeTime(heroStats.lastPlayedAt) : '기록 없음'}
+          </span>
+          {viewerUserId ? <span style={styles.heroStatBadge}>User {shortId(viewerUserId)}</span> : null}
+        </div>
+        <div>
+          <h3 style={{ ...styles.cardTitle, fontSize: 16 }}>최근 참가 게임</h3>
+          {heroLoading ? (
+            <p style={styles.cardHint}>영웅 활동을 불러오는 중…</p>
+          ) : heroGames.length ? (
+            <ul style={styles.heroGamesList}>
+              {heroGames.map((game) => (
+                <li key={game.id} style={styles.heroGameItem}>
+                  <strong>{game.name}</strong>
+                  <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                    세션 {game.sessions || 0}회 · 모드 {game.mode ? translateMode(game.mode) : '미정'}
+                  </span>
+                  <div style={styles.heroGameMeta}>
+                    {game.role ? <span>역할 {game.role}</span> : null}
+                    {Number.isFinite(game.rating) ? <span>레이팅 {game.rating}</span> : null}
+                    {Number.isFinite(game.score) ? <span>점수 {game.score}</span> : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p style={styles.cardHint}>참여한 게임 정보가 없습니다.</p>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+
+  const stageInfoSection = stageInfo ? (
+    <section style={styles.card}>
+      <header style={styles.cardHeader}>
+        <h2 style={styles.cardTitle}>스테이징 정보</h2>
+        <p style={styles.cardHint}>
+          Open Match MMF가 제안한 좌석을 `stage_rank_match` RPC로 복원합니다.
+        </p>
+      </header>
+      <div style={styles.badgeRow}>
+        <span style={styles.badge}>
+          세션 {stageInfo.sessionId ? shortId(stageInfo.sessionId) : '생성중'}
+        </span>
+        <span style={styles.badge}>
+          레디 마감 {stageInfo.readyExpiresAt ? formatRelativeTime(stageInfo.readyExpiresAt) : '—'}
+        </span>
+        {stageInfo.sessionId ? (
+          <Link href={`/arena/staging?sessionId=${stageInfo.sessionId}`} style={styles.linkButton}>
+            스테이징 화면 열기
+          </Link>
+        ) : null}
+      </div>
+      <ul style={styles.stageSeats}>
+        {stageInfo.seats?.length ? (
+          stageInfo.seats.map((seat) => (
+            <li key={seat.index ?? Math.random()} style={styles.stageSeatItem}>
+              <span>
+                슬롯 {seat.index != null ? seat.index + 1 : '?'} · {seat.role || '역할 미정'} ·{' '}
+                {seat.ownerId ? shortId(seat.ownerId) : '빈자리'}
+              </span>
+              <span style={styles.seatReady(seat.ready)}>{seat.ready ? 'READY' : 'WAITING'}</span>
+            </li>
+          ))
+        ) : (
+          <li style={{ color: '#94a3b8', fontSize: 13 }}>좌석 데이터가 아직 없습니다.</li>
+        )}
+      </ul>
+    </section>
+  ) : null
+
+  const activeSession = useMemo(() => {
+    const sessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : []
+    const stageSessionId = stageInfo?.sessionId ? String(stageInfo.sessionId).trim() : null
+    if (stageSessionId) {
+      const matched = sessions.find((session) => {
+        const candidate = session?.id ? String(session.id).trim() : null
+        return candidate && candidate === stageSessionId
+      })
+      if (matched) return matched
+    }
+    const selectedGameId = selectedGame?.id ? String(selectedGame.id).trim() : null
+    if (selectedGameId) {
+      const matchedByGame = sessions.find((session) => {
+        const candidate = session?.gameId ? String(session.gameId).trim() : null
+        return candidate && candidate === selectedGameId
+      })
+      if (matchedByGame) return matchedByGame
+    }
+    return sessions[0] || null
+  }, [snapshot.sessions, stageInfo?.sessionId, selectedGame?.id])
+
+  const viewerSlotIndex = useMemo(() => {
+    if (!activeSession?.roster?.length) return null
+    const ownerId = viewerHero?.owner_id ? String(viewerHero.owner_id).trim() : null
+    const heroId = viewerHero?.hero_id ? String(viewerHero.hero_id).trim() : null
+    const matched = activeSession.roster.find((slot) => {
+      const slotOwner = slot.ownerId ? String(slot.ownerId).trim() : null
+      const slotHero = slot.heroId ? String(slot.heroId).trim() : null
+      if (ownerId && slotOwner && slotOwner === ownerId) return true
+      if (heroId && slotHero && slotHero === heroId) return true
+      return false
+    })
+    return matched && matched.index != null ? Number(matched.index) : null
+  }, [activeSession?.roster, viewerHero?.owner_id, viewerHero?.hero_id])
+
+  const viewerSlot = useMemo(() => {
+    if (viewerSlotIndex == null || !activeSession?.roster?.length) return null
+    return activeSession.roster.find((slot) => slot.index === viewerSlotIndex) || null
+  }, [activeSession?.roster, viewerSlotIndex])
+
+  const extraWhisperTargets = useMemo(() => {
+    if (!activeSession?.roster?.length) return []
+    const seen = new Set()
+    const targets = []
+    activeSession.roster.forEach((slot) => {
+      const heroId = slot.heroId ? String(slot.heroId).trim() : null
+      const ownerId = slot.ownerId ? String(slot.ownerId).trim() : null
+      if (!heroId && !ownerId) return
+      const key = `${heroId || ''}:${ownerId || ''}`
+      if (seen.has(key)) return
+      seen.add(key)
+      const summary = isObject(slot.heroSummary) ? slot.heroSummary : {}
+      const avatarUrl =
+        summary.avatar_url ||
+        summary.avatarUrl ||
+        summary.image_url ||
+        summary.imageUrl ||
+        null
+      targets.push({
+        heroId,
+        heroName: slot.heroName || slot.role || '참가자',
+        ownerId,
+        userId: ownerId,
+        avatar_url: avatarUrl || null,
+      })
+    })
+    return targets
+  }, [activeSession?.roster])
+
+  const canShowMainGame = useMemo(
+    () => Boolean(selectedGame?.id && hasActiveKey),
+    [selectedGame?.id, hasActiveKey],
+  )
+
+  const activeSessionCard = (
+    <section style={styles.card}>
+      <header style={styles.cardHeader}>
+        <h2 style={styles.cardTitle}>메인 게임 세션</h2>
+        <p style={styles.cardHint}>
+          Open Match 파이프라인이 만든 세션과 좌석 정보를 확인하고 현재 차례와 역할을 점검하세요.
+        </p>
+      </header>
+      {activeSession ? (
+        <>
+          <div style={styles.badgeRow}>
+            <span style={styles.badge}>세션 {shortId(activeSession.id)}</span>
+            <span style={styles.badge}>{translateStatus(activeSession.status)}</span>
+            {activeSession.mode ? <span style={styles.badge}>모드 {translateMode(activeSession.mode)}</span> : null}
+            {Number.isFinite(activeSession.turn) ? (
+              <span style={styles.badge}>턴 {activeSession.turn}</span>
+            ) : null}
+            {activeSession.realtimeMode ? (
+              <span style={styles.badge}>{formatRealtimeModeLabel(activeSession.realtimeMode)}</span>
+            ) : null}
+            {viewerSlot ? (
+              <span style={styles.badge}>
+                내 슬롯 #{Number(viewerSlot.index) + 1} · {viewerSlot.role || '역할 미정'}
+              </span>
+            ) : null}
+          </div>
+          <ul style={styles.rosterList}>
+            {activeSession.roster.length ? (
+              activeSession.roster.map((slot) => {
+                const key = `${slot.index ?? ''}:${slot.heroId ?? ''}:${slot.ownerId ?? Math.random()}`
+                return (
+                  <li key={key} style={styles.rosterItem}>
+                    <div>
+                      <strong>{slot.role || '역할 미정'}</strong>
+                      <div style={styles.rosterMeta}>
+                        {slot.heroName ? <span>{slot.heroName}</span> : null}
+                        {slot.heroId ? <span>Hero {shortId(slot.heroId)}</span> : null}
+                        {slot.ownerId ? <span>Owner {shortId(slot.ownerId)}</span> : null}
+                        {slot.standin ? <span>스탠딩</span> : null}
+                        {slot.matchSource ? <span>{slot.matchSource}</span> : null}
+                        {Number.isFinite(slot.rating) ? <span>레이팅 {slot.rating}</span> : null}
+                        {Number.isFinite(slot.score) ? <span>점수 {slot.score}</span> : null}
+                        {viewerSlotIndex === slot.index ? <span>내 슬롯</span> : null}
+                      </div>
+                    </div>
+                    <span style={styles.rosterReady(slot.ready)}>{slot.ready ? 'READY' : 'WAIT'}</span>
+                  </li>
+                )
+              })
+            ) : (
+              <li style={{ color: '#94a3b8', fontSize: 13 }}>로스터 데이터를 찾지 못했습니다.</li>
+            )}
+          </ul>
+        </>
+      ) : (
+        <p style={styles.cardHint}>활성 세션 정보가 아직 없습니다. 큐에 참가해 매치를 생성해 보세요.</p>
+      )}
+    </section>
+  )
+
+  const ticketCard = (
+    <section style={styles.card}>
+      <header style={styles.cardHeader}>
+        <h2 style={styles.cardTitle}>큐 티켓</h2>
+        <p style={styles.cardHint}>
+          현재 큐 참가 상태와 좌석 배정 요약을 확인하세요. 필요 시 즉시 취소하거나 재시도할 수 있습니다.
+        </p>
+      </header>
+      {ticket ? (
+        <>
+          <div style={styles.badgeRow}>
+            <span style={styles.badge}>티켓 {shortId(ticket.id)}</span>
+            <span style={styles.badge}>{translateStatus(ticket.status)}</span>
+            {ticket.readyExpiresAt ? (
+              <span style={styles.badge}>
+                레디 마감 {formatRelativeTime(ticket.readyExpiresAt)}
+              </span>
+            ) : null}
+            {ticket.roomId ? <span style={styles.badge}>방 {shortId(ticket.roomId)}</span> : null}
+          </div>
+          <p style={styles.cardHint}>{buildSeatSummary(ticket)}</p>
+        </>
+      ) : (
+        <p style={styles.cardHint}>큐 티켓이 없습니다. 게임을 선택하고 큐에 합류해 보세요.</p>
+      )}
+    </section>
+  )
+
+  const selectedGameSummaryCard = (
+    <section style={styles.card}>
+      <header style={styles.cardHeader}>
+        <h2 style={styles.cardTitle}>선택한 게임</h2>
+        <p style={styles.cardHint}>
+          큐에 사용할 게임과 슬롯 정보를 요약합니다. 다른 게임을 선택하려면 로비 탭에서 검색해 주세요.
+        </p>
+      </header>
+      {selectedGame ? (
+        <div style={styles.selectionSummary}>
+          <div style={styles.selectionSummaryContainer}>
+            {selectedGame.imageUrl ? (
+              <img
+                src={selectedGame.imageUrl}
+                alt={`${selectedGame.name} 이미지`}
+                style={styles.selectionSummaryImage}
+              />
+            ) : (
+              <div style={styles.selectionSummaryImageFallback}>
+                {(selectedGame.name || '게임')[0]}
+              </div>
+            )}
+            <div style={{ display: 'grid', gap: 6 }}>
+              <h3 style={styles.selectionSummaryTitle}>{selectedGame.name}</h3>
+              <p style={styles.selectionSummaryMeta}>
+                <span>{formatRealtimeModeLabel(selectedGame.realtimeMode)}</span>
+                <span>{formatDropInLabel(selectedGame.dropInEnabled)}</span>
+                {selectedGame.promptSet?.name ? <span>프롬프트 {selectedGame.promptSet.name}</span> : null}
+                <span>슬롯 {selectedGame.slotCount ?? 0}개</span>
+              </p>
+              <p style={styles.selectionSummaryHeroMeta}>
+                <span style={styles.heroRolePill}>내 역할 {selectedGame.heroRole || '미등록'}</span>
+                {Number.isFinite(selectedGame.heroSlotNo) ? (
+                  <span style={styles.heroScorePill}>슬롯 #{Number(selectedGame.heroSlotNo) + 1}</span>
+                ) : null}
+                {Number.isFinite(selectedGame.heroScore) ? (
+                  <span style={styles.heroScorePill}>점수 {selectedGame.heroScore}</span>
+                ) : null}
+                {Number.isFinite(selectedGame.heroRating) ? (
+                  <span style={styles.heroScorePill}>레이팅 {selectedGame.heroRating}</span>
+                ) : null}
+                {selectedGame.heroScoreRange ? (
+                  <span style={styles.heroScorePill}>
+                    허용 점수 {formatScoreRange(selectedGame.heroScoreRange)}
+                  </span>
+                ) : null}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p style={styles.cardHint}>아직 선택된 게임이 없습니다. 로비에서 게임을 선택해 주세요.</p>
+      )}
+    </section>
+  )
+
+  const sharedChatSection = (
+    <section style={styles.card}>
+      <header style={styles.cardHeader}>
+        <h2 style={styles.cardTitle}>세션 서브 채팅</h2>
+        <p style={styles.cardHint}>
+          역할군별/귓속말 채널을 지원하는 공용 채팅 독입니다. 참여자와 협력하거나 사설 대화를 나눌 수 있습니다.
+        </p>
+      </header>
+      <div style={styles.chatDockWrapper}>
+        <SharedChatDockProvider
+          heroId={viewerHero?.hero_id || null}
+          viewerHero={viewerHero}
+          extraWhisperTargets={extraWhisperTargets}
+        >
+          <SharedChatDock
+            heroId={viewerHero?.hero_id || null}
+            viewerHero={viewerHero}
+            extraWhisperTargets={extraWhisperTargets}
+            height="min(60vh, 520px)"
+          />
+        </SharedChatDockProvider>
+      </div>
+    </section>
+  )
+
+  const mainGameView = (
+    <section style={styles.mainGameLayout}>
+      <div style={styles.mainGameSummaryGrid}>
+        {heroSummaryCard}
+        {selectedGameSummaryCard}
+        {ticketCard}
+        {stageInfoSection}
+      </div>
+      <div style={styles.mainGameClientShell}>
+        {selectedGame?.id ? (
+          <MatchReadyClient gameId={selectedGame.id} mode={joinForm.mode || 'rank'} />
+        ) : (
+          <div style={MATCH_READY_LOADING_STYLE}>메인 게임에 사용할 게임을 먼저 선택해 주세요.</div>
+        )}
+      </div>
+      {activeSessionCard}
+      {sharedChatSection}
+    </section>
+  )
+
   useEffect(() => {
     setJoinForm((prev) => {
       if (!prev.roomId) return prev
@@ -2148,6 +2650,12 @@ export default function RoomsLobbyPage() {
       return { ...prev, roomId: '' }
     })
   }, [accessibleRooms])
+
+  useEffect(() => {
+    if (!canShowMainGame && activeView === 'main-game') {
+      setActiveView('lobby')
+    }
+  }, [canShowMainGame, activeView])
   return (
     <>
       <Head>
@@ -2192,56 +2700,33 @@ export default function RoomsLobbyPage() {
             </p>
           ) : null}
 
-          <section style={styles.layout}>
-            <div style={styles.columns}>
-              <section style={styles.card}>
-                <header style={styles.cardHeader}>
-                  <h2 style={styles.cardTitle}>플레이어 &amp; 영웅</h2>
-                  <p style={styles.cardHint}>
-                    Tinode Presence에서 가져온 아이디어로 활동량을 큐 속성에 함께 남깁니다.
-                  </p>
-                </header>
-                <div style={styles.heroGrid}>
-                  <span style={styles.heroBadge}>
-                    {viewerHero?.name || '익명 플레이어'}
-                    {viewerHero?.hero_id ? ` · ${shortId(viewerHero.hero_id)}` : ''}
-                  </span>
-                  <div style={styles.heroStatsRow}>
-                    <span style={styles.heroStatBadge}>총 세션 {heroStats.totalSessions || 0}회</span>
-                    <span style={styles.heroStatBadge}>
-                      선호 모드 {heroStats.favouriteMode ? translateMode(heroStats.favouriteMode) : '데이터 없음'}
-                    </span>
-                    <span style={styles.heroStatBadge}>
-                      최근 플레이 {heroStats.lastPlayedAt ? formatRelativeTime(heroStats.lastPlayedAt) : '기록 없음'}
-                    </span>
-                    {viewerUserId ? <span style={styles.heroStatBadge}>User {shortId(viewerUserId)}</span> : null}
-                  </div>
-                  <div>
-                    <h3 style={{ ...styles.cardTitle, fontSize: 16 }}>최근 참가 게임</h3>
-                    {heroLoading ? (
-                      <p style={styles.cardHint}>영웅 활동을 불러오는 중…</p>
-                    ) : heroGames.length ? (
-                      <ul style={styles.heroGamesList}>
-                        {heroGames.map((game) => (
-                          <li key={game.id} style={styles.heroGameItem}>
-                            <strong>{game.name}</strong>
-                            <span style={{ color: '#94a3b8', fontSize: 12 }}>
-                              세션 {game.sessions || 0}회 · 모드 {game.mode ? translateMode(game.mode) : '미정'}
-                            </span>
-                            <div style={styles.heroGameMeta}>
-                              {game.role ? <span>역할 {game.role}</span> : null}
-                              {Number.isFinite(game.rating) ? <span>레이팅 {game.rating}</span> : null}
-                              {Number.isFinite(game.score) ? <span>점수 {game.score}</span> : null}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p style={styles.cardHint}>참여한 게임 정보가 없습니다.</p>
-                    )}
-                  </div>
-                </div>
-              </section>
+          <div style={styles.viewToggleBar}>
+            <button
+              type="button"
+              style={styles.viewToggleButton(activeView === 'lobby', false)}
+              onClick={() => setActiveView('lobby')}
+            >
+              매칭 로비
+            </button>
+            <button
+              type="button"
+              style={styles.viewToggleButton(activeView === 'main-game', !canShowMainGame)}
+              onClick={() => setActiveView('main-game')}
+              disabled={!canShowMainGame}
+            >
+              메인 게임
+            </button>
+            {!canShowMainGame ? (
+              <span style={styles.viewToggleHint}>
+                게임을 선택하고 AI 키를 활성화하면 메인 게임 탭이 열립니다.
+              </span>
+            ) : null}
+          </div>
+
+          {activeView === 'lobby' ? (
+            <section style={styles.layout}>
+              <div style={styles.columns}>
+                {heroSummaryCard}
 
               <section style={styles.card}>
                 <header style={styles.cardHeader}>
@@ -2766,49 +3251,7 @@ export default function RoomsLobbyPage() {
                 </div>
               </section>
 
-              {stageInfo ? (
-                <section style={styles.card}>
-                  <header style={styles.cardHeader}>
-                    <h2 style={styles.cardTitle}>스테이징 정보</h2>
-                    <p style={styles.cardHint}>
-                      Open Match MMF가 제안한 좌석을 `stage_rank_match` RPC로 복원합니다.
-                    </p>
-                  </header>
-                  <div style={styles.badgeRow}>
-                    <span style={styles.badge}>
-                      세션 {stageInfo.sessionId ? shortId(stageInfo.sessionId) : '생성중'}
-                    </span>
-                    <span style={styles.badge}>
-                      레디 마감 {stageInfo.readyExpiresAt ? formatRelativeTime(stageInfo.readyExpiresAt) : '—'}
-                    </span>
-                    {stageInfo.sessionId ? (
-                      <Link
-                        href={`/arena/staging?sessionId=${stageInfo.sessionId}`}
-                        style={styles.linkButton}
-                      >
-                        스테이징 화면 열기
-                      </Link>
-                    ) : null}
-                  </div>
-                  <ul style={styles.stageSeats}>
-                    {stageInfo.seats?.length ? (
-                      stageInfo.seats.map((seat) => (
-                        <li key={seat.index ?? Math.random()} style={styles.stageSeatItem}>
-                          <span>
-                            슬롯 {seat.index != null ? seat.index + 1 : '?'} · {seat.role || '역할 미정'} ·{' '}
-                            {seat.ownerId ? shortId(seat.ownerId) : '빈자리'}
-                          </span>
-                          <span style={styles.seatReady(seat.ready)}>
-                            {seat.ready ? 'READY' : 'WAITING'}
-                          </span>
-                        </li>
-                      ))
-                    ) : (
-                      <li style={{ color: '#94a3b8', fontSize: 13 }}>좌석 데이터가 아직 없습니다.</li>
-                    )}
-                  </ul>
-                </section>
-              ) : null}
+              {stageInfoSection}
             </div>
 
             <div style={styles.cardsColumn}>
@@ -2931,6 +3374,9 @@ export default function RoomsLobbyPage() {
               </section>
             </div>
           </section>
+        ) : (
+          mainGameView
+        )}
         </div>
       </main>
     </>
