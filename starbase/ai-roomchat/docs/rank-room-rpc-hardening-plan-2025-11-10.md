@@ -185,6 +185,57 @@ grant execute on function public.upsert_rank_session_async_fill(uuid, jsonb)
   to authenticated, service_role;
 ```
 
+### 3.5 세션 채팅 조회 RPC (신규)
+메인 게임 공용 채팅이 `rank_turns` 테이블에서 세션별 히스토리를 스트리밍할 수 있도록, 뷰어 가시성 필터와 숨김 슬롯 정보를 함께 반환하는 RPC를 추가합니다. 클라이언트는 이 함수가 없을 경우 기존 테이블 쿼리로 폴백하지만, 운영 환경에서는 아래 함수를 반드시 배포해야 합니다.
+
+```sql
+create or replace function public.fetch_rank_session_turns(
+  p_session_id uuid,
+  p_limit integer default 120
+)
+returns table (
+  id bigint,
+  session_id uuid,
+  idx integer,
+  role text,
+  content text,
+  public boolean,
+  is_visible boolean,
+  summary_payload jsonb,
+  metadata jsonb,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_session_id is null then
+    raise exception 'missing_session_id';
+  end if;
+
+  return query
+  select
+    t.id,
+    t.session_id,
+    t.idx,
+    t.role,
+    t.content,
+    t.public,
+    coalesce(t.is_visible, true) as is_visible,
+    t.summary_payload,
+    t.metadata,
+    t.created_at
+  from public.rank_turns t
+  where t.session_id = p_session_id
+  order by t.idx asc, t.created_at asc
+  limit coalesce(p_limit, 120);
+end;
+$$;
+
+grant execute on function public.fetch_rank_session_turns(uuid, integer) to authenticated, service_role;
+```
+
 ---
 
 ## 4. API/클라이언트 연동 체크리스트

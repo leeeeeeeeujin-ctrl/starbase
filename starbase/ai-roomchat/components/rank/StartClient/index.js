@@ -11,6 +11,7 @@ import TurnInfoPanel from './TurnInfoPanel'
 import TurnSummaryPanel from './TurnSummaryPanel'
 import ManualResponsePanel from './ManualResponsePanel'
 import StatusBanner from './StatusBanner'
+import SessionChatPanel from './SessionChatPanel'
 import {
   clearMatchFlow,
   createEmptyMatchFlowState,
@@ -341,6 +342,21 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     const raw = matchState?.viewer?.ownerId || matchState?.viewer?.viewerId
     return raw ? String(raw).trim() : ''
   }, [matchState?.viewer?.ownerId, matchState?.viewer?.viewerId])
+  const viewerSlotIndex = useMemo(() => {
+    if (!viewerOwnerId) return null
+    if (!Array.isArray(participants) || !participants.length) return null
+    const index = participants.findIndex((participant) => {
+      if (!participant) return false
+      const ownerId =
+        (participant.owner_id != null && String(participant.owner_id).trim()) ||
+        (participant.ownerId != null && String(participant.ownerId).trim()) ||
+        (participant.ownerID != null && String(participant.ownerID).trim()) ||
+        (participant.owner?.id != null && String(participant.owner.id).trim()) ||
+        ''
+      return ownerId && ownerId === viewerOwnerId
+    })
+    return index >= 0 ? index : null
+  }, [participants, viewerOwnerId])
   const hostRoleName = useMemo(() => {
     if (typeof asyncFillInfo?.hostRole === 'string' && asyncFillInfo.hostRole.trim()) {
       return asyncFillInfo.hostRole.trim()
@@ -570,6 +586,13 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           aiMemory={aiMemory}
           playerHistories={playerHistories}
           realtimeEvents={realtimeEvents}
+        />
+
+        <SessionChatPanel
+          sessionId={sessionInfo?.id || null}
+          sessionHistory={matchState?.sessionHistory || null}
+          viewerSlotIndex={viewerSlotIndex}
+          participants={participants}
         />
       </div>
     </div>
