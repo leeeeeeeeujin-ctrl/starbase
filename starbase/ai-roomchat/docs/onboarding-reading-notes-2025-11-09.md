@@ -141,5 +141,5 @@ end $$;
 > 추가로 확인하면 좋을 주제나 최신화해야 할 문서가 생기면 이 노트를 업데이트하거나 `docs/` 디렉터리에 보완 자료를 추가해 주세요.
 
 ## 11. Rank Arcade 오버홀
-- `/arena/*` 여섯 개 페이지가 방 중심 UI를 대체하며, 큐→준비→세션→정산을 Supabase RPC 기반으로 단순화한다. 새 흐름과 RPC 목록은 `docs/refactor-blueprint-2025-11-12.md`, `docs/arena-rpc-reference-2025-11-12.md`, `docs/arena-supabase-migration-2025-11-12.md`를 참고하라.
-- 홈(`/`)은 Rank Arcade 허브로 변경되었고, 기존 방 상세 페이지는 단계적으로 제거 예정이다. 운영/개발자는 이제 큐 티켓과 세션 ID만으로 상태를 추적하면 된다.
+- `/arena/*` 여섯 개 페이지가 세션 중심 흐름을 제시하지만, 로비(`/lobby`), 방 목록(`/rooms`), 로스터(`/roster`), 메이커(`/maker`), 메인룸(`/play`) 등 기존 페이지는 그대로 유지된다. 새 흐름과 RPC 목록은 `docs/refactor-blueprint-2025-11-12.md`, `docs/arena-rpc-reference-2025-11-12.md`, `docs/arena-supabase-migration-2025-11-12.md`를 참고하라.
+- 홈(`/`)과 `ArcadeLayout` 헤더에 기존 페이지 링크를 함께 노출해 Arena 세션 모델과 방 기반 UI를 자유롭게 오가며 비교할 수 있다. 운영/개발자는 큐 티켓·세션 ID 중심의 새 모델과 기존 방 데이터 모델을 병행 확인할 수 있다.

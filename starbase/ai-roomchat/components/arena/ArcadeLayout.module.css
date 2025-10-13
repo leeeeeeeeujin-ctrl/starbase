@@ -9,10 +9,18 @@
 .header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 24px 32px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   gap: 24px;
+  flex-wrap: wrap;
+}
+
+.titleColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 260px;
 }
 
 .subtitle {
@@ -21,9 +29,16 @@
   font-size: 14px;
 }
 
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .nav {
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .nav a {
@@ -34,6 +49,20 @@
 
 .nav a:hover {
   color: #76e4ff;
+}
+
+.secondaryNav {
+  font-size: 14px;
+  gap: 12px;
+  opacity: 0.85;
+}
+
+.secondaryNav a {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.secondaryNav a:hover {
+  color: #9bf6ff;
 }
 
 .actions {

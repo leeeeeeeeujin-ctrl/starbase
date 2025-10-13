@@ -5,6 +5,23 @@
   max-width: 720px;
 }
 
+.section {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.sectionHeader {
+  display: grid;
+  gap: 6px;
+}
+
+.sectionHeader p {
+  color: rgba(245, 247, 250, 0.75);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .grid {
   display: grid;
   gap: 20px;
@@ -19,6 +36,10 @@
   color: inherit;
   text-decoration: none;
   transition: transform 150ms ease, border-color 150ms ease;
+}
+
+.card h4 {
+  margin-bottom: 6px;
 }
 
 .card:hover {

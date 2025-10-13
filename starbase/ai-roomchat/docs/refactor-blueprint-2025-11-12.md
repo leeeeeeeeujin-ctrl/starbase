@@ -25,6 +25,13 @@
 6. `/arena/control` – **운영/디버그 콘솔**
    - 큐 리셋, 세션 재동기화, publication 검사 등을 수행.
 
+### 기존 페이지 접근성 유지
+- 로비(`/lobby`), 방 목록(`/rooms`), 로스터(`/roster`), 메이커(`/maker`), 메인룸(`/play`) 등 기존 기능은 그대로
+  유지한다.
+- `/` 허브와 `ArcadeLayout` 네비게이션에 동일 링크를 배치해 Arena 흐름과 레거시 방 시스템을 동시에 비교하거나
+  빠르게 오갈 수 있다.
+- 문서/데모 작성 시 Arena 구조와 기존 방 구조를 병렬로 서술해 팀원별로 점진적으로 전환할 수 있도록 한다.
+
 ## 모듈 구조
 - `modules/arena/rpcClient.js`
   - Supabase 클라이언트를 래핑해 RPC 호출, 에러 표준화, 타임아웃 처리.
@@ -70,7 +77,7 @@
   - 세션 TTL 정리, 큐 정리 크론 재점검.
 
 ## 후속 작업
-- 기존 `rooms/` 페이지는 `/arena/*` 플로우로 완전히 대체 후 삭제 예정.
-- MatchReadyClient는 `/arena/staging`에서만 사용하도록 축소.
-- 세션 채팅/리플레이 기능은 `/arena/sessions/[sessionId]` 내에서만 노출.
+- Arena 흐름과 기존 방 UI를 병행 운영하면서, 세션 중심 모델이 안정화되면 페이지/컴포넌트 레벨에서 중복을 정리한다.
+- MatchReadyClient는 `/arena/staging` 중심으로 재사용하되, 필요 시 방 상세 화면에서도 RPC 검증 로직을 공유할 수 있도록 준비한다.
+- 세션 채팅/리플레이 기능은 `/arena/sessions/[sessionId]` 내에서 기본 제공하지만, 기존 메인룸과도 연동 경로를 검토한다.
 
