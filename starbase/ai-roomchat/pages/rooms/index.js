@@ -1,839 +1,792 @@
+import Head from 'next/head'
 import Link from 'next/link'
-import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
 import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
-import { withTable } from '@/lib/supabaseTables'
-import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes'
 import { fetchHeroParticipationBundle } from '@/modules/character/participation'
-import { RoomFiltersSection } from '@/components/rank/rooms/RoomFiltersSection'
-import { RoomResultsSection } from '@/components/rank/rooms/RoomResultsSection'
-import {
-  HERO_ID_KEY,
-  HERO_OWNER_KEY,
-  clearHeroSelection,
-  persistHeroOwner,
-  persistHeroSelection,
-  readHeroSelection,
-} from '@/lib/heroes/selectedHeroStorage'
-import {
-  AUTH_ACCESS_EXPIRES_AT_KEY,
-  AUTH_ACCESS_TOKEN_KEY,
-  AUTH_REFRESH_TOKEN_KEY,
-  AUTH_USER_ID_KEY,
-  createEmptyRankAuthSnapshot,
-  persistRankAuthSession,
-  persistRankAuthUser,
-  readRankAuthSnapshot,
-  RANK_AUTH_STORAGE_EVENT,
-} from '@/lib/rank/rankAuthStorage'
-import { persistRankKeyringSnapshot } from '@/lib/rank/keyringStorage'
+import { ensureRpc } from '@/modules/arena/rpcClient'
+import { subscribeToQueue } from '@/modules/arena/realtimeChannels'
+import { persistTicket, readTicket } from '@/modules/arena/ticketStorage'
+import { persistRankAuthSession, persistRankAuthUser } from '@/lib/rank/rankAuthStorage'
 
-const MODE_TABS = [
+const QUEUE_ROLE_OPTIONS = [
+  { key: 'flex', label: '플렉스' },
+  { key: 'damage', label: '딜러' },
+  { key: 'support', label: '서포터' },
+  { key: 'tank', label: '탱커' },
+]
+
+const MATCH_MODE_OPTIONS = [
   { key: 'rank', label: '랭크' },
   { key: 'casual', label: '캐주얼' },
+  { key: 'event', label: '이벤트' },
 ]
-
-const SCORE_WINDOWS = [
-  { key: 'off', label: '점수 제한 없음', value: null },
-  { key: '80', label: '±80', value: 80 },
-  { key: '120', label: '±120', value: 120 },
-  { key: '160', label: '±160', value: 160 },
-  { key: '200', label: '±200', value: 200 },
-]
-
-const RANK_SCORE_WINDOWS = SCORE_WINDOWS.filter((option) => option.value !== null)
-const DEFAULT_RANK_SCORE_WINDOW = RANK_SCORE_WINDOWS[0]?.value ?? 80
-
-const LAST_CREATED_ROOM_KEY = 'rooms:lastCreatedHostFeedback'
-const ROOM_BROWSER_AUTO_REFRESH_INTERVAL_MS = 5000
-
-const FLEXIBLE_ROLE_KEYS = new Set([
-  '',
-  '역할 미지정',
-  '미정',
-  '자유',
-  '자유 선택',
-  'any',
-  'all',
-  'flex',
-  'flexible',
-])
-
-function normalizeRole(value) {
-  return typeof value === 'string' ? value.trim().toLowerCase() : ''
-}
-
-function isFlexibleRole(role) {
-  const normalized = normalizeRole(role)
-  return FLEXIBLE_ROLE_KEYS.has(normalized)
-}
-
-const CASUAL_MODE_TOKENS = ['casual', '캐주얼', 'normal']
-
-function isCasualModeLabel(value) {
-  if (typeof value !== 'string') return false
-  const normalized = value.trim().toLowerCase()
-  if (!normalized) return false
-  return CASUAL_MODE_TOKENS.some((token) => normalized.includes(token))
-}
-
-const MAX_PULSE_ROLE_LIMIT = 3
-
-function buildPulseLimitOptions(maxSlots) {
-  const numeric = Number.isFinite(Number(maxSlots)) ? Math.floor(Number(maxSlots)) : null
-  const limit = numeric && numeric > 0 ? Math.min(MAX_PULSE_ROLE_LIMIT, numeric) : MAX_PULSE_ROLE_LIMIT
-  return Array.from({ length: limit }, (_, index) => index + 1)
-}
-
-const HERO_PARTICIPATION_NOTICE_ID = 'hero-participation-error'
-const HERO_CONTEXT_NOTICE_ID = 'hero-context-error'
-const PARTICIPANT_GAMES_NOTICE_ID = 'participant-games-error'
-
-function parseBrawlRule(raw) {
-  if (!raw) return 'banish-on-loss'
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim()
-    if (!trimmed) return 'banish-on-loss'
-    return trimmed
-  }
-  if (typeof raw === 'object' && typeof raw.brawl_rule === 'string') {
-    const trimmed = raw.brawl_rule.trim()
-    return trimmed || 'banish-on-loss'
-  }
-  return 'banish-on-loss'
-}
-
-function isDropInEnabled({ realtimeMode, brawlRule }) {
-  return isRealtimeEnabled(realtimeMode) && parseBrawlRule(brawlRule) === 'allow-brawl'
-}
 
 const styles = {
   page: {
     minHeight: '100vh',
     background: '#020617',
     color: '#e2e8f0',
-    padding: '32px 16px 96px',
+    padding: '40px 16px 120px',
     boxSizing: 'border-box',
   },
-  shell: {
-    maxWidth: 960,
+  container: {
+    maxWidth: 1160,
     margin: '0 auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 24,
+    display: 'grid',
+    gap: 28,
   },
   header: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-  },
-  titleRow: {
     display: 'flex',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 16,
+    gap: 18,
   },
-  actionGroup: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  titleBlock: {
+  headerTitle: {
     display: 'grid',
     gap: 8,
   },
   title: {
     margin: 0,
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: 800,
   },
   subtitle: {
     margin: 0,
     color: '#94a3b8',
     fontSize: 15,
-    lineHeight: 1.6,
+    lineHeight: 1.7,
   },
-  createButton: (disabled) => ({
-    padding: '12px 18px',
-    borderRadius: 14,
-    border: '1px solid rgba(148, 163, 184, 0.45)',
-    background: disabled ? 'rgba(30, 41, 59, 0.55)' : 'rgba(59, 130, 246, 0.85)',
-    color: disabled ? '#94a3b8' : '#f8fafc',
-    fontWeight: 700,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'background 0.2s ease',
-  }),
-  secondaryButton: (active) => ({
-    padding: '11px 18px',
-    borderRadius: 14,
-    border: '1px solid rgba(148, 163, 184, 0.4)',
-    background: active ? 'rgba(45, 212, 191, 0.22)' : 'rgba(15, 23, 42, 0.55)',
-    color: active ? '#5eead4' : '#cbd5f5',
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'background 0.2s ease',
-  }),
-  helperRow: {
+  actionRow: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 12,
-    fontSize: 13,
+    gap: 10,
+    alignItems: 'center',
   },
-  helperLink: {
-    color: '#38bdf8',
-    fontWeight: 600,
-    textDecoration: 'none',
-  },
-  keyManagerCard: {
-    background: 'rgba(15, 23, 42, 0.84)',
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    borderRadius: 22,
-    padding: '20px 22px',
+  refreshButton: (loading) => ({
+    padding: '10px 16px',
+    borderRadius: 999,
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: loading ? 'rgba(30, 41, 59, 0.6)' : 'rgba(59, 130, 246, 0.8)',
+    color: loading ? '#94a3b8' : '#f8fafc',
+    fontWeight: 700,
+    cursor: loading ? 'not-allowed' : 'pointer',
+    transition: 'background 0.2s ease',
+  }),
+  layout: {
     display: 'grid',
-    gap: 16,
+    gap: 24,
   },
-  keyManagerHeader: {
+  columns: {
+    display: 'grid',
+    gap: 24,
+  },
+  cardsColumn: {
+    display: 'grid',
+    gap: 24,
+  },
+  card: {
+    background: 'rgba(15, 23, 42, 0.82)',
+    border: '1px solid rgba(148, 163, 184, 0.32)',
+    borderRadius: 26,
+    padding: '24px 26px',
+    display: 'grid',
+    gap: 18,
+  },
+  cardHeader: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
     flexWrap: 'wrap',
     gap: 12,
   },
-  keyManagerTitle: {
+  cardTitle: {
     margin: 0,
     fontSize: 20,
     fontWeight: 700,
-    color: '#f8fafc',
   },
-  keyManagerHint: {
+  cardHint: {
     margin: 0,
-    fontSize: 13,
     color: '#94a3b8',
-  },
-  keyManagerLimit: {
     fontSize: 13,
-    fontWeight: 700,
-    color: '#5eead4',
-    background: 'rgba(45, 212, 191, 0.18)',
-    borderRadius: 999,
-    padding: '6px 12px',
-    alignSelf: 'flex-start',
   },
-  keyManagerForm: {
-    display: 'grid',
-    gap: 10,
-  },
-  keyManagerInputRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  keyManagerInput: {
-    flex: '1 1 260px',
-    minWidth: 220,
-    padding: '10px 12px',
-    borderRadius: 12,
-    border: '1px solid rgba(148, 163, 184, 0.45)',
-    background: 'rgba(15, 23, 42, 0.6)',
-    color: '#e2e8f0',
-    fontSize: 14,
-  },
-  keyManagerCheckboxRow: {
-    display: 'flex',
+  heroBadge: {
+    display: 'inline-flex',
     alignItems: 'center',
     gap: 8,
+    padding: '10px 14px',
+    borderRadius: 18,
+    border: '1px solid rgba(56, 189, 248, 0.35)',
+    background: 'rgba(56, 189, 248, 0.18)',
+    color: '#bae6fd',
+    fontWeight: 700,
+  },
+  heroGrid: {
+    display: 'grid',
+    gap: 16,
+  },
+  heroStatsRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 12,
     fontSize: 13,
     color: '#cbd5f5',
   },
-  keyManagerStatus: {
-    margin: 0,
-    fontSize: 13,
-    color: '#5eead4',
+  heroStatBadge: {
+    padding: '6px 10px',
+    borderRadius: 12,
+    background: 'rgba(148, 163, 184, 0.16)',
+    border: '1px solid rgba(148, 163, 184, 0.25)',
+    fontWeight: 600,
   },
-  keyManagerError: {
-    margin: 0,
-    fontSize: 13,
-    color: '#fca5a5',
-  },
-  keyManagerList: {
-    listStyle: 'none',
+  heroGamesList: {
+    display: 'grid',
+    gap: 10,
     margin: 0,
     padding: 0,
+    listStyle: 'none',
+  },
+  heroGameItem: {
+    padding: '10px 14px',
+    borderRadius: 16,
+    background: 'rgba(15, 23, 42, 0.68)',
+    border: '1px solid rgba(148, 163, 184, 0.24)',
     display: 'grid',
-    gap: 12,
+    gap: 4,
   },
-  keyManagerItem: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-    borderRadius: 18,
-    border: '1px solid rgba(148, 163, 184, 0.3)',
-    background: 'rgba(15, 23, 42, 0.6)',
-    padding: '14px 16px',
-  },
-  keyManagerMeta: {
-    display: 'grid',
-    gap: 6,
-    minWidth: 200,
-  },
-  keyManagerSampleRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    fontWeight: 700,
-    color: '#f8fafc',
-  },
-  keyManagerBadge: (active) => ({
-    fontSize: 11,
-    fontWeight: 700,
-    color: active ? '#172554' : '#e0f2fe',
-    background: active ? '#5eead4' : 'rgba(125, 211, 252, 0.25)',
-    padding: '4px 8px',
-    borderRadius: 999,
-  }),
-  keyManagerDetail: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  keyManagerActions: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'center',
-  },
-  keyManagerActionButton: (variant, disabled) => {
-    const base = {
-      padding: '8px 12px',
-      borderRadius: 10,
-      fontSize: 12,
-      fontWeight: 600,
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      opacity: disabled ? 0.6 : 1,
-      transition: 'background 0.2s ease',
-    }
-    if (variant === 'primary') {
-      return {
-        ...base,
-        border: '1px solid rgba(59, 130, 246, 0.55)',
-        background: disabled ? 'rgba(30, 64, 175, 0.4)' : 'rgba(37, 99, 235, 0.4)',
-        color: '#bfdbfe',
-      }
-    }
-    if (variant === 'secondary') {
-      return {
-        ...base,
-        border: '1px solid rgba(148, 163, 184, 0.35)',
-        background: disabled ? 'rgba(30, 41, 59, 0.5)' : 'rgba(71, 85, 105, 0.35)',
-        color: '#cbd5f5',
-      }
-    }
-    return {
-      ...base,
-      border: '1px solid rgba(248, 113, 113, 0.4)',
-      background: disabled ? 'rgba(127, 29, 29, 0.35)' : 'rgba(190, 24, 93, 0.4)',
-      color: '#fecaca',
-    }
-  },
-  keyManagerEmpty: {
-    margin: 0,
-    fontSize: 13,
-    color: '#94a3b8',
-  },
-  fieldLabel: {
-    margin: 0,
-    fontSize: 14,
-    fontWeight: 700,
-    color: '#e2e8f0',
-  },
-  formHint: {
-    margin: '6px 0 0',
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  errorCard: {
-    background: 'rgba(248, 113, 113, 0.12)',
-    border: '1px solid rgba(248, 113, 113, 0.35)',
-    borderRadius: 18,
-    padding: '18px 20px',
-    display: 'grid',
-    gap: 12,
-    color: '#fecaca',
-  },
-  errorTitle: {
-    margin: 0,
-    fontSize: 16,
-    fontWeight: 700,
-  },
-  errorText: {
-    margin: 0,
-    fontSize: 13,
-    lineHeight: 1.6,
-  },
-  retryButton: {
-    justifySelf: 'flex-start',
-    padding: '8px 14px',
-    borderRadius: 10,
-    border: '1px solid rgba(248, 113, 113, 0.55)',
-    background: 'rgba(127, 29, 29, 0.6)',
-    color: '#fff1f2',
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  heroSummary: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 10,
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  createPanel: {
-    background: 'rgba(15, 23, 42, 0.78)',
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    borderRadius: 18,
-    padding: '18px 20px',
+  formGrid: {
     display: 'grid',
     gap: 14,
   },
   formRow: {
     display: 'grid',
-    gap: 8,
+    gap: 6,
   },
-  checkboxRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-  },
-  checkboxInput: {
-    width: 18,
-    height: 18,
-    accentColor: '#38bdf8',
-  },
-  checkboxLabel: {
+  label: {
     fontSize: 13,
-    color: 'rgba(226, 232, 240, 0.82)',
+    fontWeight: 700,
+    color: '#cbd5f5',
   },
-  select: {
-    padding: '10px 14px',
-    borderRadius: 12,
-    border: '1px solid rgba(148, 163, 184, 0.4)',
-    background: 'rgba(15, 23, 42, 0.62)',
+  input: {
+    padding: '10px 12px',
+    borderRadius: 14,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: 'rgba(15, 23, 42, 0.6)',
     color: '#e2e8f0',
     fontSize: 14,
   },
-  submitButton: (disabled) => ({
-    padding: '10px 18px',
+  textarea: {
+    padding: '12px 14px',
+    borderRadius: 16,
+    minHeight: 88,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#e2e8f0',
+    fontSize: 14,
+    resize: 'vertical',
+  },
+  select: {
+    padding: '10px 12px',
+    borderRadius: 14,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#e2e8f0',
+    fontSize: 14,
+  },
+  formActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+    alignItems: 'center',
+  },
+  primaryButton: (busy) => ({
+    padding: '12px 18px',
+    borderRadius: 16,
+    border: '1px solid rgba(56, 189, 248, 0.45)',
+    background: busy ? 'rgba(30, 41, 59, 0.55)' : 'rgba(59, 130, 246, 0.85)',
+    color: busy ? '#94a3b8' : '#f8fafc',
+    fontWeight: 700,
+    cursor: busy ? 'not-allowed' : 'pointer',
+    transition: 'background 0.2s ease',
+  }),
+  dangerButton: (busy) => ({
+    padding: '12px 18px',
+    borderRadius: 16,
+    border: '1px solid rgba(248, 113, 113, 0.35)',
+    background: busy ? 'rgba(30, 41, 59, 0.55)' : 'rgba(248, 113, 113, 0.25)',
+    color: busy ? '#f87171' : '#fecaca',
+    fontWeight: 700,
+    cursor: busy ? 'not-allowed' : 'pointer',
+    transition: 'background 0.2s ease',
+  }),
+  secondaryButton: (busy) => ({
+    padding: '11px 16px',
+    borderRadius: 14,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: busy ? 'rgba(30, 41, 59, 0.55)' : 'rgba(15, 23, 42, 0.65)',
+    color: busy ? '#94a3b8' : '#cbd5f5',
+    fontWeight: 600,
+    cursor: busy ? 'not-allowed' : 'pointer',
+    transition: 'background 0.2s ease',
+  }),
+  errorText: {
+    color: '#fca5a5',
+    fontSize: 13,
+    margin: 0,
+  },
+  statusBadge: (status) => {
+    const palette = {
+      queued: ['rgba(56, 189, 248, 0.16)', 'rgba(56, 189, 248, 0.45)', '#bae6fd'],
+      staging: ['rgba(192, 132, 252, 0.18)', 'rgba(192, 132, 252, 0.45)', '#e9d5ff'],
+      ready: ['rgba(34, 197, 94, 0.18)', 'rgba(34, 197, 94, 0.42)', '#bbf7d0'],
+      battle: ['rgba(251, 191, 36, 0.18)', 'rgba(251, 191, 36, 0.45)', '#fef08a'],
+      evicted: ['rgba(248, 113, 113, 0.18)', 'rgba(248, 113, 113, 0.45)', '#fecaca'],
+      default: ['rgba(148, 163, 184, 0.14)', 'rgba(148, 163, 184, 0.35)', '#e2e8f0'],
+    }
+    const [bg, border, text] = palette[status] || palette.default
+    return {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '6px 12px',
+      borderRadius: 999,
+      border: `1px solid ${border}`,
+      background: bg,
+      color: text,
+      fontWeight: 700,
+      fontSize: 12,
+      textTransform: 'uppercase',
+      letterSpacing: '0.04em',
+    }
+  },
+  list: {
+    display: 'grid',
+    gap: 12,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  listItem: {
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.28)',
+    background: 'rgba(15, 23, 42, 0.62)',
+    padding: '14px 16px',
+    display: 'grid',
+    gap: 8,
+  },
+  listRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  listTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#f8fafc',
+  },
+  listMeta: {
+    margin: 0,
+    color: '#94a3b8',
+    fontSize: 13,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  linkButton: {
+    padding: '8px 12px',
     borderRadius: 12,
     border: '1px solid rgba(148, 163, 184, 0.35)',
-    background: disabled ? 'rgba(30, 41, 59, 0.55)' : 'rgba(34, 197, 94, 0.7)',
-    color: disabled ? '#94a3b8' : '#f0fdf4',
-    fontWeight: 700,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-  }),
-  createError: {
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#38bdf8',
+    fontWeight: 600,
+    textDecoration: 'none',
+  },
+  empty: {
+    padding: '20px 10px',
+    textAlign: 'center',
+    color: '#64748b',
+    fontSize: 14,
+  },
+  badgeRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  badge: {
+    padding: '4px 10px',
+    borderRadius: 10,
+    background: 'rgba(148, 163, 184, 0.18)',
+    border: '1px solid rgba(148, 163, 184, 0.3)',
+    fontWeight: 600,
+  },
+  timeline: {
+    display: 'grid',
+    gap: 10,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  timelineItem: {
+    borderLeft: '2px solid rgba(56, 189, 248, 0.4)',
+    paddingLeft: 12,
+    display: 'grid',
+    gap: 4,
+  },
+  timelineTitle: {
     margin: 0,
     fontSize: 13,
-    color: '#fca5a5',
+    fontWeight: 700,
+    color: '#bae6fd',
   },
+  timelineMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  stageSeats: {
+    display: 'grid',
+    gap: 8,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  stageSeatItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 12px',
+    borderRadius: 12,
+    background: 'rgba(15, 23, 42, 0.68)',
+    border: '1px solid rgba(148, 163, 184, 0.24)',
+    fontSize: 13,
+  },
+  seatReady: (ready) => ({
+    fontWeight: 700,
+    color: ready ? '#4ade80' : '#f87171',
+  }),
+}
+
+function normalizeLobbySnapshot(raw = {}) {
+  const queue = Array.isArray(raw.queue)
+    ? raw.queue.map(normalizeQueueTicket).filter(Boolean)
+    : []
+  const rooms = Array.isArray(raw.rooms)
+    ? raw.rooms.map(normalizeRoom).filter(Boolean)
+    : []
+  const sessions = Array.isArray(raw.sessions)
+    ? raw.sessions.map(normalizeSession).filter(Boolean)
+    : []
+  return { queue, rooms, sessions }
+}
+
+function normalizeQueueTicket(row) {
+  if (!row) return null
+  const seatMap = Array.isArray(row.seat_map)
+    ? row.seat_map.map(normalizeSeatEntry).filter(Boolean)
+    : []
+  return {
+    id: row.id || null,
+    queueId: row.queue_id || row.queueId || null,
+    status: (row.status || '').toLowerCase() || 'queued',
+    mode: row.mode || null,
+    ownerId: row.owner_id || null,
+    gameId: row.game_id || null,
+    roomId: row.room_id || null,
+    readyExpiresAt: row.ready_expires_at || null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+    readyVote: isObject(row.ready_vote) ? row.ready_vote : null,
+    asyncFillMeta: isObject(row.async_fill_meta) ? row.async_fill_meta : null,
+    payload: isObject(row.payload) ? row.payload : {},
+    seatMap,
+    occupiedSlots: Number.isFinite(row.occupied_slots)
+      ? Number(row.occupied_slots)
+      : seatMap.filter((seat) => seat?.ownerId).length,
+    totalSlots: Number.isFinite(row.total_slots)
+      ? Number(row.total_slots)
+      : seatMap.length || null,
+  }
+}
+
+function normalizeRoom(row) {
+  if (!row) return null
+  const slots = Array.isArray(row.slots)
+    ? row.slots.map(normalizeSeatEntry).filter(Boolean)
+    : []
+  return {
+    id: row.id || null,
+    code: row.code || null,
+    status: (row.status || '').toLowerCase() || 'open',
+    mode: row.mode || null,
+    realtimeMode: row.realtime_mode || null,
+    slotCount: Number.isFinite(row.slot_count) ? Number(row.slot_count) : null,
+    readyCount: Number.isFinite(row.ready_count) ? Number(row.ready_count) : null,
+    filledCount: Number.isFinite(row.filled_count) ? Number(row.filled_count) : null,
+    hostLastActiveAt: row.host_last_active_at || null,
+    updatedAt: row.updated_at || null,
+    slots,
+  }
+}
+
+function normalizeSession(row) {
+  if (!row) return null
+  return {
+    id: row.id || null,
+    status: (row.status || '').toLowerCase() || 'active',
+    mode: row.mode || null,
+    turn: Number.isFinite(row.turn) ? Number(row.turn) : 0,
+    ratingHint: Number.isFinite(row.rating_hint) ? Number(row.rating_hint) : null,
+    voteSnapshot: isObject(row.vote_snapshot) ? row.vote_snapshot : null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  }
+}
+
+function normalizeSeatEntry(entry) {
+  if (!entry) return null
+  const index = Number.isFinite(entry.index)
+    ? Number(entry.index)
+    : Number.isFinite(entry.slot_index)
+    ? Number(entry.slot_index)
+    : null
+  return {
+    index,
+    role: entry.role || entry.slot_role || '',
+    ownerId: entry.owner_id || entry.occupant_owner_id || null,
+    heroName: entry.hero_name || entry.occupant_hero_name || null,
+    ready: Boolean(
+      entry.ready ?? entry.is_ready ?? entry.occupant_ready ?? false,
+    ),
+    updatedAt: entry.updated_at || null,
+  }
+}
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function shortId(value) {
+  if (!value) return '—'
+  const str = String(value)
+  if (str.length <= 8) return str
+  return `${str.slice(0, 4)}…${str.slice(-2)}`
+}
+
+function translateStatus(status) {
+  switch ((status || '').toLowerCase()) {
+    case 'queued':
+      return '대기중'
+    case 'staging':
+      return '준비 중'
+    case 'ready':
+      return '레디 완료'
+    case 'battle':
+    case 'in_progress':
+      return '전투 중'
+    case 'evicted':
+      return '퇴출'
+    case 'complete':
+      return '종료'
+    default:
+      return status || '미정'
+  }
+}
+
+function translateMode(mode) {
+  if (!mode) return '기본'
+  const lowered = mode.toLowerCase()
+  if (lowered === 'rank') return '랭크'
+  if (lowered === 'casual') return '캐주얼'
+  if (lowered === 'event') return '이벤트'
+  return mode
 }
 
 function formatRelativeTime(value) {
-  if (!value) return '시간 정보 없음'
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return '시간 정보 없음'
-  const diff = Date.now() - date.getTime()
-  if (!Number.isFinite(diff)) return '시간 정보 없음'
-  const minute = 60 * 1000
-  const hour = 60 * minute
-  const day = 24 * hour
-  if (diff < minute) return '방금 전'
-  if (diff < hour) return `${Math.floor(diff / minute)}분 전`
-  if (diff < day) return `${Math.floor(diff / hour)}시간 전`
-  const y = date.getFullYear()
-  const m = `${date.getMonth() + 1}`.padStart(2, '0')
-  const d = `${date.getDate()}`.padStart(2, '0')
-  const hh = `${date.getHours()}`.padStart(2, '0')
-  const mm = `${date.getMinutes()}`.padStart(2, '0')
-  return `${y}-${m}-${d} ${hh}:${mm}`
+  if (!value && value !== 0) return '방금 전'
+  const timestamp = typeof value === 'number' ? value : Date.parse(value)
+  if (!Number.isFinite(timestamp)) return '알 수 없음'
+  const diff = Date.now() - timestamp
+  const abs = Math.abs(diff)
+  const suffix = diff >= 0 ? '전' : '후'
+  if (abs < 45 * 1000) return diff >= 0 ? '방금 전' : '곧'
+  if (abs < 90 * 1000) return `1분 ${suffix}`
+  const minutes = Math.round(abs / 60000)
+  if (minutes < 60) return `${minutes}분 ${suffix}`
+  const hours = Math.round(abs / 3600000)
+  if (hours < 24) return `${hours}시간 ${suffix}`
+  const days = Math.round(abs / 86400000)
+  if (days < 7) return `${days}일 ${suffix}`
+  const weeks = Math.round(days / 7)
+  if (weeks < 5) return `${weeks}주 ${suffix}`
+  const months = Math.round(days / 30)
+  if (months < 12) return `${months}개월 ${suffix}`
+  const years = Math.round(days / 365)
+  return `${years}년 ${suffix}`
 }
 
-function resolveErrorMessage(error) {
-  if (!error) return '알 수 없는 오류가 발생했습니다.'
-  if (typeof error === 'string') return error
-  if (typeof error.message === 'string' && error.message.trim()) return error.message
-  if (typeof error.details === 'string' && error.details.trim()) return error.details
-  if (typeof error.hint === 'string' && error.hint.trim()) return error.hint
-  return '알 수 없는 오류가 발생했습니다.'
-}
+function describeRealtimeEvent(event) {
+  if (!event?.payload) return null
+  const { payload } = event
+  const table = payload.table || 'unknown'
+  const eventType = (payload.eventType || payload.event || 'update').toLowerCase()
+  const record = payload.new || payload.old || {}
+  const id = record.id || record.queue_ticket_id || record.session_id || null
+  const status = record.status || record.mode || null
+  let summary = ''
 
-function resolveKeyringError(code, detail) {
-  if (detail && typeof detail === 'string') {
-    return detail
+  if (table === 'rank_queue_tickets') {
+    summary = `큐 티켓 ${shortId(id)} → ${translateStatus(status)}`
+  } else if (table === 'rank_rooms') {
+    summary = `방 ${record.code ? record.code : shortId(id)} → ${translateStatus(status)}`
+  } else if (table === 'rank_sessions') {
+    summary = `세션 ${shortId(id)} → ${translateStatus(status)}`
+  } else {
+    summary = `${table} ${eventType}`
   }
-  switch (code) {
-    case 'keyring_limit_reached':
-      return '등록 가능한 최대 개수를 초과했습니다. 기존 키를 정리한 뒤 다시 시도해 주세요.'
-    case 'missing_user_api_key':
-    case 'missing_api_key':
-      return 'API 키를 입력해 주세요.'
-    case 'invalid_user_api_key':
-      return 'API 키가 올바르지 않습니다. 키를 다시 확인해 주세요.'
-    case 'quota_exhausted':
-      return 'API 키 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.'
-    case 'ai_network_error':
-      return 'API 제공자에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.'
-    case 'unrecognized_api_key':
-      return 'API 키 종류를 확인하지 못했습니다. 키를 다시 확인해 주세요.'
-    case 'detect_failed':
-      return 'API 키 정보를 확인하지 못했습니다.'
-    case 'list_models_failed':
-      return 'API 키 모델 정보를 불러오지 못했습니다.'
-    case 'failed_to_store_api_key':
-      return 'API 키를 저장하지 못했습니다.'
-    case 'failed_to_activate_api_key':
-      return 'API 키를 활성화하지 못했습니다.'
-    case 'failed_to_deactivate_api_key':
-      return 'API 키 사용을 해제하지 못했습니다.'
-    case 'failed_to_delete_api_key':
-      return 'API 키를 삭제하지 못했습니다.'
-    case 'failed_to_load_keyring':
-      return 'API 키 목록을 불러오지 못했습니다.'
-    case 'missing_user_id':
-      return '사용자 정보를 확인하지 못했습니다. 캐릭터를 다시 선택한 뒤 시도해 주세요.'
-    case 'user_not_found':
-      return 'Supabase 계정을 찾을 수 없습니다. 다시 로그인하거나 계정 생성을 확인해 주세요.'
-    case 'forbidden':
-      return '서비스 권한이 없는 요청입니다. 서버에서 service key를 사용하도록 설정해 주세요.'
-    case 'schema_mismatch':
-      return 'Supabase 스키마가 최신 버전과 일치하지 않습니다. 최신 마이그레이션을 적용해 주세요.'
-    case 'unauthorized':
-      return '로그인 세션이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.'
-    case 'api_key_entry_not_active':
-      return '이미 사용 중이 아닌 키입니다. 새로고침 후 다시 확인해 주세요.'
-    case 'api_key_entry_not_found':
-      return '선택한 API 키를 찾을 수 없습니다. 목록을 새로고침해 주세요.'
-    default:
-      return 'API 키 요청을 처리하지 못했습니다.'
+
+  return {
+    id: `${table}:${id || payload.commit_timestamp || Date.now()}`,
+    table,
+    eventType,
+    summary,
+    status: status || null,
+    createdAt: Date.now(),
   }
 }
 
-function generateRoomCode(existing = []) {
-  const used = new Set(existing.map((value) => value?.toUpperCase?.() ?? ''))
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  for (let attempt = 0; attempt < 64; attempt += 1) {
-    let code = ''
-    for (let i = 0; i < 6; i += 1) {
-      code += alphabet[Math.floor(Math.random() * alphabet.length)]
+function buildQueuePayload(hero, joinForm, heroStats) {
+  const payload = {
+    hero_id: hero?.hero_id || null,
+    hero_name: hero?.name || null,
+    owner_id: hero?.owner_id || hero?.user_id || null,
+    role: joinForm.role || 'flex',
+    mode: joinForm.mode || 'rank',
+    queue_mode: joinForm.mode || 'rank',
+  }
+
+  if (joinForm.roomId) {
+    payload.room_id = joinForm.roomId
+  }
+  if (joinForm.note) {
+    payload.note = joinForm.note
+  }
+
+  payload.ready_vote = {
+    ready: true,
+    hero_id: hero?.hero_id || null,
+    owner_id: hero?.owner_id || hero?.user_id || null,
+  }
+
+  payload.async_fill_meta = {
+    preferred_role: joinForm.role || 'flex',
+    requested_at: new Date().toISOString(),
+  }
+
+  const properties = {}
+  if (Number.isFinite(heroStats?.totalSessions)) {
+    properties.sessions_played = heroStats.totalSessions
+  }
+  if (heroStats?.favouriteMode) {
+    properties.favourite_mode = heroStats.favouriteMode
+  }
+  if (heroStats?.lastPlayedAt) {
+    properties.last_played_at = heroStats.lastPlayedAt
+  }
+  if (Object.keys(properties).length) {
+    payload.properties = properties
+  }
+
+  return payload
+}
+
+function computeHeroStats(participations = []) {
+  if (!Array.isArray(participations) || participations.length === 0) {
+    return {
+      totalSessions: 0,
+      favouriteMode: null,
+      lastPlayedAt: null,
+      games: [],
     }
-    if (!used.has(code)) {
-      return code
-    }
   }
-  return `ROOM-${Date.now().toString(36).toUpperCase()}`
-}
 
-export default function RoomBrowserPage() {
-  const router = useRouter()
-  const heroQuery = router.query.hero
-  const gameQuery = router.query.game
+  let totalSessions = 0
+  let lastPlayedAt = null
+  const modeFrequency = new Map()
+  const games = []
 
-  const heroId = useMemo(() => {
-    if (Array.isArray(heroQuery)) return heroQuery[0] || ''
-    return heroQuery || ''
-  }, [heroQuery])
-
-  const initialGameId = useMemo(() => {
-    if (Array.isArray(gameQuery)) return gameQuery[0] || 'all'
-    return gameQuery || 'all'
-  }, [gameQuery])
-
-  const mountedRef = useRef(true)
-
-  const [storedAuthSnapshot, setStoredAuthSnapshot] = useState(() => createEmptyRankAuthSnapshot())
-  const [viewerUserId, setViewerUserId] = useState('')
-  const [storedHeroId, setStoredHeroId] = useState('')
-  const [storedHeroOwnerId, setStoredHeroOwnerId] = useState('')
-  const [viewerHeroProfile, setViewerHeroProfile] = useState(null)
-  const [rooms, setRooms] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState('')
-  const [roomNotices, setRoomNotices] = useState([])
-
-  const upsertRoomNotice = useCallback((nextNotice) => {
-    if (!nextNotice || !nextNotice.id) return
-    setRoomNotices((prev) => {
-      const filtered = prev.filter((notice) => notice.id !== nextNotice.id)
-      return [...filtered, nextNotice]
-    })
-  }, [])
-
-  const clearRoomNotice = useCallback((id) => {
-    if (!id) return
-    setRoomNotices((prev) => prev.filter((notice) => notice.id !== id))
-  }, [])
-
-  const clearRoomNotices = useCallback((ids) => {
-    if (!Array.isArray(ids) || !ids.length) return
-    setRoomNotices((prev) => prev.filter((notice) => !ids.includes(notice.id)))
-  }, [])
-  const [lastLoadedAt, setLastLoadedAt] = useState(null)
-  const [nextAutoRefreshAt, setNextAutoRefreshAt] = useState(null)
-  const [autoRefreshCountdown, setAutoRefreshCountdown] = useState(null)
-
-  const [modeTab, setModeTab] = useState('rank')
-  const [participations, setParticipations] = useState([])
-  const [selectedGameId, setSelectedGameId] = useState('all')
-  const [scoreWindow, setScoreWindow] = useState(null)
-  const [heroSummary, setHeroSummary] = useState({ heroName: '', ownerId: null })
-  const [heroRatings, setHeroRatings] = useState({})
-  const [heroLoading, setHeroLoading] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [createState, setCreateState] = useState({
-    mode: 'rank',
-    gameId: '',
-    scoreWindow: DEFAULT_RANK_SCORE_WINDOW,
-    pulseLimit: MAX_PULSE_ROLE_LIMIT,
-    blindMode: false,
+  participations.forEach((entry) => {
+    const sessions = Number(entry?.sessionCount) || 0
+    totalSessions += sessions
+    const mode = entry?.primaryMode || null
+    if (mode) {
+      const key = mode.toLowerCase()
+      modeFrequency.set(key, (modeFrequency.get(key) || 0) + sessions || 1)
+    }
+    const latest = entry?.latestSessionAt ? Date.parse(entry.latestSessionAt) : null
+    if (Number.isFinite(latest)) {
+      if (!Number.isFinite(lastPlayedAt) || latest > lastPlayedAt) {
+        lastPlayedAt = latest
+      }
+    }
+    if (entry?.game?.id) {
+      games.push({
+        id: entry.game.id,
+        name: entry.game.name || '이름 없는 게임',
+        sessions,
+        mode: entry.primaryMode || null,
+      })
+    }
   })
-  const [createPending, setCreatePending] = useState(false)
-  const [createError, setCreateError] = useState('')
-  const [selectedGameMeta, setSelectedGameMeta] = useState(null)
-  const pulseLimitOptions = useMemo(() => {
-    if (!selectedGameMeta || selectedGameMeta.realtimeMode !== REALTIME_MODES.PULSE) {
-      return buildPulseLimitOptions(MAX_PULSE_ROLE_LIMIT)
-    }
-    const metaLimit = Number.isFinite(Number(selectedGameMeta.pulseLimitMax))
-      ? Math.floor(Number(selectedGameMeta.pulseLimitMax))
-      : null
-    const activeSlots = Number.isFinite(Number(selectedGameMeta.activeSlotCount))
-      ? Math.floor(Number(selectedGameMeta.activeSlotCount))
-      : null
-    const source = metaLimit || activeSlots || MAX_PULSE_ROLE_LIMIT
-    return buildPulseLimitOptions(source)
-  }, [selectedGameMeta])
-  const [keyManagerOpen, setKeyManagerOpen] = useState(false)
-  const [keyringEntries, setKeyringEntries] = useState([])
-  const [keyringLimit, setKeyringLimit] = useState(5)
-  const [keyringLoading, setKeyringLoading] = useState(false)
-  const [keyringError, setKeyringError] = useState('')
-  const [keyringStatus, setKeyringStatus] = useState('')
-  const [keyringInput, setKeyringInput] = useState('')
-  const [keyringActivate, setKeyringActivate] = useState(true)
-  const [keyringBusy, setKeyringBusy] = useState(false)
-  const [keyringAction, setKeyringAction] = useState(null)
-  const lastKeyringUserIdRef = useRef('')
-  const gameMetaCacheRef = useRef(new Map())
+
+  games.sort((a, b) => (b.sessions || 0) - (a.sessions || 0))
+
+  let favouriteMode = null
+  if (modeFrequency.size) {
+    favouriteMode = Array.from(modeFrequency.entries()).sort((a, b) => b[1] - a[1])[0][0]
+  }
+
+  return {
+    totalSessions,
+    favouriteMode,
+    lastPlayedAt,
+    games,
+  }
+}
+
+function buildSeatSummary(ticket) {
+  if (!ticket?.seatMap?.length) {
+    return '좌석 정보 없음'
+  }
+  const readyCount = ticket.seatMap.filter((seat) => seat.ready).length
+  return `${readyCount}/${ticket.seatMap.length} 준비 완료`
+}
+export default function RoomsLobbyPage() {
+  const mountedRef = useRef(false)
+  const refreshTimerRef = useRef(null)
+
+  const [queueId, setQueueId] = useState('rank-default')
+  const [snapshot, setSnapshot] = useState({ queue: [], rooms: [], sessions: [] })
+  const [snapshotError, setSnapshotError] = useState(null)
+  const [loadingSnapshot, setLoadingSnapshot] = useState(true)
+  const [refreshingSnapshot, setRefreshingSnapshot] = useState(false)
+  const [refreshRequested, setRefreshRequested] = useState(false)
+
+  const [viewerHero, setViewerHero] = useState(null)
+  const [viewerUserId, setViewerUserId] = useState(null)
+  const [participations, setParticipations] = useState([])
+  const [heroLoading, setHeroLoading] = useState(false)
+
+  const [joinForm, setJoinForm] = useState({ mode: 'rank', role: 'flex', roomId: '', note: '' })
+  const [ticket, setTicket] = useState(null)
+  const [stageInfo, setStageInfo] = useState(null)
+
+  const [joinBusy, setJoinBusy] = useState(false)
+  const [leaveBusy, setLeaveBusy] = useState(false)
+  const [stageBusy, setStageBusy] = useState(false)
+  const [queueError, setQueueError] = useState(null)
+
+  const [eventLog, setEventLog] = useState([])
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-    }
-  }, [])
-
-  useEffect(() => {
-    if (createState.mode !== 'rank') return
-    if (
-      createState.scoreWindow === null ||
-      !RANK_SCORE_WINDOWS.some((option) => option.value === createState.scoreWindow)
-    ) {
-      const fallback = DEFAULT_RANK_SCORE_WINDOW
-      setCreateState((prev) => {
-        if (prev.mode !== 'rank') return prev
-        if (prev.scoreWindow === fallback) return prev
-        return { ...prev, scoreWindow: fallback }
-      })
-    }
-  }, [createState.mode, createState.scoreWindow])
-
-  useEffect(() => {
-    if (!selectedGameMeta || selectedGameMeta.realtimeMode !== REALTIME_MODES.PULSE) {
-      return
-    }
-    const numericCurrent = Number(createState.pulseLimit)
-    const options = pulseLimitOptions
-    const fallback = options[options.length - 1] || 1
-    if (!options.includes(numericCurrent)) {
-      setCreateState((prev) => {
-        if (prev.mode !== 'rank') return prev
-        if (Number(prev.pulseLimit) === fallback) return prev
-        return { ...prev, pulseLimit: fallback }
-      })
-    }
-  }, [createState.mode, createState.pulseLimit, pulseLimitOptions, selectedGameMeta])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined
-
-    const syncStoredAuth = () => {
-      setStoredAuthSnapshot(readRankAuthSnapshot())
-    }
-
-    const handleStorage = (event) => {
-      if (
-        event?.key &&
-        event.key !== AUTH_ACCESS_TOKEN_KEY &&
-        event.key !== AUTH_REFRESH_TOKEN_KEY &&
-        event.key !== AUTH_ACCESS_EXPIRES_AT_KEY &&
-        event.key !== AUTH_USER_ID_KEY
-      ) {
-        return
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current)
       }
-      syncStoredAuth()
-    }
-
-    syncStoredAuth()
-
-    window.addEventListener('storage', handleStorage)
-    window.addEventListener(RANK_AUTH_STORAGE_EVENT, syncStoredAuth)
-
-    return () => {
-      window.removeEventListener('storage', handleStorage)
-      window.removeEventListener(RANK_AUTH_STORAGE_EVENT, syncStoredAuth)
     }
   }, [])
 
   useEffect(() => {
-    if (!storedAuthSnapshot?.userId) return
-    setViewerUserId((prev) => (prev ? prev : storedAuthSnapshot.userId))
-  }, [storedAuthSnapshot?.userId])
+    if (typeof window === 'undefined') return
+    const stored = readTicket()
+    if (stored) {
+      setTicket(normalizeQueueTicket(stored))
+    }
+  }, [])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined
+  const heroStats = useMemo(() => computeHeroStats(participations), [participations])
 
-    const syncStoredHero = () => {
+  const fetchSnapshot = useCallback(
+    async (reason = 'manual') => {
+      if (!queueId) return
+      if (reason === 'initial') {
+        setLoadingSnapshot(true)
+      } else {
+        setRefreshingSnapshot(true)
+      }
+      setSnapshotError(null)
       try {
-        const selection = readHeroSelection()
-        const nextHeroId = selection?.heroId || ''
-        const selectionOwner = selection?.ownerId || ''
-        const viewerOwner = viewerUserId ? String(viewerUserId) : ''
-
-        if (viewerOwner && selectionOwner && selectionOwner !== viewerOwner) {
-          clearHeroSelection()
-          setStoredHeroId('')
-          setStoredHeroOwnerId('')
-          setViewerHeroProfile((prev) => {
-            if (!prev) return prev
-            return null
-          })
-          return
-        }
-
-        if (nextHeroId && viewerOwner && !selectionOwner) {
-          persistHeroSelection({ id: nextHeroId }, viewerOwner)
-        }
-
-        setStoredHeroOwnerId((prev) => {
-          if (prev === selectionOwner) return prev
-          return selectionOwner
+        const raw = await ensureRpc('fetch_rank_lobby_snapshot', {
+          queue_id: queueId,
+          limit: 24,
         })
-
-        setStoredHeroId((prev) => {
-          if (prev === nextHeroId) return prev
-          return nextHeroId
+        if (!mountedRef.current) return
+        const normalized = normalizeLobbySnapshot(raw)
+        setSnapshot(normalized)
+        setTicket((prev) => {
+          if (!prev?.id) return prev
+          const updated = normalized.queue.find((entry) => entry.id === prev.id)
+          if (updated) {
+            persistTicket(updated)
+            return updated
+          }
+          return prev
         })
-
-        if (!nextHeroId) {
-          setViewerHeroProfile((prev) => {
-            if (!prev) return prev
-            return null
-          })
-          setStoredHeroOwnerId((prev) => {
-            if (!prev) return prev
-            return ''
-          })
+      } catch (error) {
+        console.error('[RankLobby] snapshot fetch failed', error)
+        if (mountedRef.current) {
+          setSnapshotError(error)
         }
-      } catch (storageError) {
-        console.error('[RoomBrowser] Failed to sync hero selection:', storageError)
+      } finally {
+        if (mountedRef.current) {
+          setLoadingSnapshot(false)
+          setRefreshingSnapshot(false)
+          setRefreshRequested(false)
+        }
       }
+    },
+    [queueId],
+  )
+
+  useEffect(() => {
+    fetchSnapshot('initial')
+  }, [fetchSnapshot])
+
+  useEffect(() => {
+    if (!refreshRequested) return
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current)
     }
-
-    syncStoredHero()
-
-    const handleStorage = (event) => {
-      if (!event) return
-      if (event.key && event.key !== HERO_ID_KEY && event.key !== HERO_OWNER_KEY) {
-        return
-      }
-      syncStoredHero()
-    }
-
-    window.addEventListener('storage', handleStorage)
-    window.addEventListener('hero-overlay:refresh', syncStoredHero)
-
+    refreshTimerRef.current = setTimeout(() => {
+      fetchSnapshot('realtime')
+    }, 220)
     return () => {
-      window.removeEventListener('storage', handleStorage)
-      window.removeEventListener('hero-overlay:refresh', syncStoredHero)
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current)
+      }
     }
-  }, [viewerUserId])
+  }, [refreshRequested, fetchSnapshot])
 
   useEffect(() => {
-    if (!viewerUserId) return
-    persistHeroOwner(viewerUserId)
-    persistRankAuthUser(viewerUserId)
-    setStoredHeroOwnerId((prev) => {
-      if (prev === viewerUserId) return prev
-      return viewerUserId
-    })
-  }, [viewerUserId])
-
-  const resolvedHeroId = viewerHeroProfile?.hero_id || ''
-  const effectiveHeroId = heroId || storedHeroId || resolvedHeroId
-
-  const viewerHeroSeed = useMemo(() => {
-    if (!viewerHeroProfile?.hero_id) return null
-    return {
-      id: viewerHeroProfile.hero_id,
-      name: viewerHeroProfile.name || '이름 없는 영웅',
-      owner_id: viewerHeroProfile.owner_id || viewerHeroProfile.user_id || null,
-    }
-  }, [viewerHeroProfile?.hero_id, viewerHeroProfile?.name, viewerHeroProfile?.owner_id, viewerHeroProfile?.user_id])
-
-  const effectiveUserId = useMemo(() => {
-    const viewerOwner = viewerUserId ? String(viewerUserId).trim() : ''
-    const storedOwner = storedHeroOwnerId ? String(storedHeroOwnerId).trim() : ''
-    const summaryOwner = heroSummary?.ownerId ? String(heroSummary.ownerId).trim() : ''
-    const storedAuthOwner = storedAuthSnapshot?.userId
-      ? String(storedAuthSnapshot.userId).trim()
-      : ''
-    return viewerOwner || storedOwner || summaryOwner || storedAuthOwner || ''
-  }, [
-    heroSummary?.ownerId,
-    storedAuthSnapshot?.userId,
-    storedHeroOwnerId,
-    viewerUserId,
-  ])
+    const interval = setInterval(() => {
+      fetchSnapshot('interval')
+    }, 20000)
+    return () => clearInterval(interval)
+  }, [fetchSnapshot])
 
   useEffect(() => {
-    if (!effectiveUserId) return
-    persistRankAuthUser(effectiveUserId)
-    persistHeroOwner(effectiveUserId)
-  }, [effectiveUserId])
-
-  const resolvingViewerHeroRef = useRef(false)
-
-  useEffect(() => {
-    if (heroId || storedHeroId || viewerHeroProfile?.hero_id) {
-      return
-    }
-    if (resolvingViewerHeroRef.current) return
-
     let cancelled = false
-    resolvingViewerHeroRef.current = true
 
-    const resolveHeroProfile = async () => {
+    const loadViewer = async () => {
       try {
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
         if (sessionError) throw sessionError
-
         const session = sessionData?.session || null
         if (session) {
           persistRankAuthSession(session)
@@ -852,1970 +805,549 @@ export default function RoomBrowserPage() {
           }
         }
 
-        if (!cancelled && mountedRef.current) {
-          setViewerUserId(user?.id || '')
-        }
+        if (cancelled || !mountedRef.current) return
 
+        setViewerUserId(user?.id || null)
         if (!user) {
-          if (!cancelled && mountedRef.current) {
-            setViewerHeroProfile(null)
-          }
+          setViewerHero(null)
+          setParticipations([])
           return
         }
 
         const profile = await resolveViewerProfile(user, null)
-        if (!cancelled && mountedRef.current) {
-          const resolvedOwner = profile?.owner_id || profile?.user_id || user.id || ''
-          setViewerUserId(resolvedOwner || user.id || '')
-          if (profile?.hero_id) {
-            setViewerHeroProfile(profile)
-            setStoredHeroId((prev) => (prev ? prev : profile.hero_id))
-          } else {
-            setViewerHeroProfile(null)
+        if (cancelled || !mountedRef.current) return
+
+        setViewerHero(profile)
+        if (profile?.hero_id) {
+          setHeroLoading(true)
+          try {
+            const bundle = await fetchHeroParticipationBundle(profile.hero_id, {
+              heroSeed: {
+                id: profile.hero_id,
+                name: profile.name,
+                owner_id: profile.owner_id || profile.user_id || user.id,
+              },
+            })
+            if (!cancelled && mountedRef.current) {
+              setParticipations(Array.isArray(bundle?.participations) ? bundle.participations : [])
+            }
+          } catch (participationError) {
+            console.warn('[RankLobby] failed to load participation bundle', participationError)
+            if (!cancelled && mountedRef.current) {
+              setParticipations([])
+            }
+          } finally {
+            if (!cancelled && mountedRef.current) {
+              setHeroLoading(false)
+            }
           }
+        } else {
+          setParticipations([])
         }
-      } catch (profileError) {
-        console.error('[RoomBrowser] Failed to resolve viewer hero profile:', profileError)
+      } catch (error) {
+        console.error('[RankLobby] failed to resolve viewer profile', error)
         if (!cancelled && mountedRef.current) {
-          setViewerHeroProfile(null)
-          setViewerUserId('')
+          setViewerHero(null)
+          setParticipations([])
         }
-      } finally {
-        resolvingViewerHeroRef.current = false
       }
     }
 
-    resolveHeroProfile()
+    loadViewer()
 
     return () => {
       cancelled = true
     }
-  }, [heroId, storedHeroId, viewerHeroProfile?.hero_id])
+  }, [])
 
-  const loadHeroContext = useCallback(async (targetHeroId) => {
-    clearRoomNotices([
-      HERO_PARTICIPATION_NOTICE_ID,
-      HERO_CONTEXT_NOTICE_ID,
-      PARTICIPANT_GAMES_NOTICE_ID,
-    ])
-
-    const normalizedHeroId = typeof targetHeroId === 'string' ? targetHeroId.trim() : ''
-
-    if (!normalizedHeroId) {
-      setHeroSummary({ heroName: '', ownerId: null })
-      setParticipations([])
-      setHeroRatings({})
-      setSelectedGameId('all')
-      setCreateState((prev) => ({ ...prev, gameId: '' }))
-      return
+  const handleRealtimeEvent = useCallback((event) => {
+    const entry = describeRealtimeEvent(event)
+    if (entry) {
+      setEventLog((prev) => [entry, ...prev].slice(0, 25))
     }
-
-    setHeroLoading(true)
-    const fallbackSeed =
-      viewerHeroSeed?.id === normalizedHeroId
-        ? {
-            id: viewerHeroSeed.id,
-            name: viewerHeroSeed.name || '이름 없는 영웅',
-            owner_id: viewerHeroSeed.owner_id || null,
-          }
-        : null
-
-    try {
-      const { data: heroRow, error: heroError } = await withTable(supabase, 'heroes', (table) =>
-        supabase
-          .from(table)
-          .select('id, name, owner_id')
-          .eq('id', normalizedHeroId)
-          .maybeSingle(),
-      )
-
-      if (heroError && heroError.code !== 'PGRST116') {
-        throw heroError
-      }
-
-      const heroName =
-        heroRow?.name?.trim?.() || fallbackSeed?.name || viewerHeroProfile?.name || '이름 없는 영웅'
-      const ownerId =
-        heroRow?.owner_id ?? fallbackSeed?.owner_id ?? viewerHeroProfile?.owner_id ?? viewerHeroProfile?.user_id ?? null
-
-      const viewerOwnerKey = viewerUserId ? String(viewerUserId) : ''
-      const resolvedOwnerKey = ownerId != null ? String(ownerId) : ''
-
-      if (viewerOwnerKey && resolvedOwnerKey && resolvedOwnerKey !== viewerOwnerKey) {
-        clearHeroSelection()
-        setStoredHeroId('')
-        setHeroSummary({ heroName: '', ownerId: null })
-        setParticipations([])
-        setHeroRatings({})
-        setSelectedGameId('all')
-        setCreateState((prev) => ({ ...prev, gameId: '' }))
-        setHeroLoading(false)
-        return
-      }
-
-      const effectiveOwnerId = resolvedOwnerKey || viewerOwnerKey || null
-
-      if (normalizedHeroId && effectiveOwnerId) {
-        persistHeroSelection({ id: normalizedHeroId }, effectiveOwnerId)
-      }
-
-      const participationPromise = fetchHeroParticipationBundle(normalizedHeroId, {
-        heroSeed: heroRow
-          ? {
-              id: heroRow.id,
-              name: heroName,
-              owner_id: effectiveOwnerId,
-            }
-          : fallbackSeed || undefined,
-      })
-
-      const participantGamesPromise = withTable(supabase, 'rank_participants', (table) =>
-        supabase
-          .from(table)
-          .select('game_id')
-          .eq('hero_id', normalizedHeroId),
-      )
-
-      const [bundleOutcome, participantOutcome] = await Promise.allSettled([
-        participationPromise,
-        participantGamesPromise,
-      ])
-
-      if (!mountedRef.current) return
-
-      let bundle = null
-      if (bundleOutcome.status === 'fulfilled') {
-        bundle = bundleOutcome.value
-        clearRoomNotice(HERO_PARTICIPATION_NOTICE_ID)
-      } else {
-        console.warn('[RoomBrowser] Failed to load hero participation bundle:', bundleOutcome.reason)
-        const retryHeroId = normalizedHeroId
-        upsertRoomNotice({
-          id: HERO_PARTICIPATION_NOTICE_ID,
-          type: 'error',
-          message: '영웅 참여 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
-          actionLabel: '다시 시도',
-          onAction: () => loadHeroContext(retryHeroId),
-        })
-      }
-
-      const participationsList = Array.isArray(bundle?.participations) ? bundle.participations : []
-      const hydratedParticipations = participationsList.map((entry) => {
-        const existingGame = entry?.game
-        const existingId = existingGame?.id
-        const fallbackId = entry?.game_id || null
-
-        if (existingId) {
-          const normalisedName = existingGame?.name?.trim?.() || '이름 없는 게임'
-          return {
-            ...entry,
-            game: {
-              ...existingGame,
-              id: existingId,
-              name: normalisedName,
-            },
-          }
-        }
-
-        if (!fallbackId) {
-          return entry
-        }
-
-        return {
-          ...entry,
-          game: {
-            id: fallbackId,
-            name: '이름 없는 게임',
-            cover_path: null,
-            description: '',
-            owner_id: null,
-            created_at: null,
-            image_url: null,
-          },
-        }
-      })
-      const gameEntries = []
-      const seenGameIds = new Set()
-
-      hydratedParticipations.forEach((entry) => {
-        const gameId = entry?.game?.id
-        if (!gameId || seenGameIds.has(gameId)) return
-        seenGameIds.add(gameId)
-        gameEntries.push(entry)
-      })
-
-      let rankParticipantGames = []
-      if (participantOutcome.status === 'fulfilled') {
-        const participantResult = participantOutcome.value
-        if (participantResult?.error && participantResult.error.code !== 'PGRST116') {
-          console.warn('[RoomBrowser] Failed to load rank participant games:', participantResult.error)
-          const retryHeroId = normalizedHeroId
-          upsertRoomNotice({
-            id: PARTICIPANT_GAMES_NOTICE_ID,
-            type: 'error',
-            message: '참여 기록을 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
-            actionLabel: '다시 시도',
-            onAction: () => loadHeroContext(retryHeroId),
-          })
-        } else if (Array.isArray(participantResult?.data)) {
-          rankParticipantGames = participantResult.data
-            .map((row) => row?.game_id)
-            .filter((gameId) => typeof gameId === 'string' && gameId.trim() !== '')
-          clearRoomNotice(PARTICIPANT_GAMES_NOTICE_ID)
-        }
-      } else {
-        console.warn('[RoomBrowser] Failed to query rank participant games:', participantOutcome.reason)
-        const retryHeroId = normalizedHeroId
-        upsertRoomNotice({
-          id: PARTICIPANT_GAMES_NOTICE_ID,
-          type: 'error',
-          message: '참여 기록을 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
-          actionLabel: '다시 시도',
-          onAction: () => loadHeroContext(retryHeroId),
-        })
-      }
-
-      const missingGameIds = Array.from(new Set(rankParticipantGames)).filter(
-        (gameId) => !seenGameIds.has(gameId),
-      )
-
-      if (missingGameIds.length) {
-        const { data: fallbackGameRows, error: fallbackGameError } = await withTable(
-          supabase,
-          'rank_games',
-          (table) =>
-            supabase
-              .from(table)
-              .select('id, name, cover_path, description, owner_id, created_at, image_url')
-              .in('id', missingGameIds),
-        )
-
-        if (fallbackGameError && fallbackGameError.code !== 'PGRST116') {
-          throw fallbackGameError
-        }
-
-        const fallbackGameMap = new Map(
-          (Array.isArray(fallbackGameRows) ? fallbackGameRows : [])
-            .filter((row) => row?.id)
-            .map((row) => [
-              row.id,
-              {
-                id: row.id,
-                name: row.name?.trim?.() || '이름 없는 게임',
-                cover_path: row.cover_path || null,
-                description: row.description || '',
-                owner_id: row.owner_id || null,
-                created_at: row.created_at || null,
-                image_url: row.cover_path || row.image_url || null,
-              },
-            ]),
-        )
-
-        missingGameIds.forEach((gameId) => {
-          if (seenGameIds.has(gameId)) return
-
-          const fallbackGame =
-            fallbackGameMap.get(gameId) ||
-            {
-              id: gameId,
-              name: '이름 없는 게임',
-              cover_path: null,
-              description: '',
-              owner_id: null,
-              created_at: null,
-              image_url: null,
-            }
-
-          gameEntries.push({
-            id: `rank-participant:${gameId}`,
-            game_id: gameId,
-            hero_id: normalizedHeroId,
-            slot_no: null,
-            role: '',
-            sessionCount: null,
-            latestSessionAt: null,
-            firstSessionAt: null,
-            primaryMode: null,
-            game: fallbackGame,
-          })
-          seenGameIds.add(gameId)
-        })
-      }
-
-      const uniqueGames = gameEntries
-
-      setHeroSummary({ heroName, ownerId: effectiveOwnerId })
-      setParticipations(uniqueGames)
-
-      const defaultGame = uniqueGames.find((entry) => entry.game?.id === initialGameId)
-        ? initialGameId
-        : uniqueGames[0]?.game?.id || 'all'
-
-      setSelectedGameId(defaultGame || 'all')
-      setCreateState((prev) => ({ ...prev, gameId: defaultGame || '' }))
-
-      const ratingOwnerId = effectiveOwnerId
-      if (ratingOwnerId && uniqueGames.length) {
-        const gameIds = uniqueGames.map((entry) => entry.game.id)
-        const { data: ratingRows, error: ratingError } = await withTable(
-          supabase,
-          'rank_participants',
-          (table) =>
-            supabase
-              .from(table)
-              .select('game_id, rating')
-              .eq('owner_id', ratingOwnerId)
-              .in('game_id', gameIds),
-        )
-
-        if (ratingError && ratingError.code !== 'PGRST116') {
-          throw ratingError
-        }
-
-        const ratingMap = {}
-        if (Array.isArray(ratingRows)) {
-          ratingRows.forEach((row) => {
-            if (!row?.game_id) return
-            if (!Number.isFinite(Number(row.rating))) return
-            ratingMap[row.game_id] = Number(row.rating)
-          })
-        }
-
-        if (mountedRef.current) {
-          setHeroRatings(ratingMap)
-        }
-      } else {
-        setHeroRatings({})
-      }
-    } catch (heroLoadError) {
-      console.error('[RoomBrowser] Failed to load hero context:', heroLoadError)
-      if (mountedRef.current) {
-        const fallbackName = fallbackSeed?.name || viewerHeroProfile?.name || ''
-        const fallbackOwner =
-          fallbackSeed?.owner_id ?? viewerHeroProfile?.owner_id ?? viewerHeroProfile?.user_id ?? null
-        setHeroSummary({ heroName: fallbackName, ownerId: fallbackOwner })
-        setParticipations([])
-        setHeroRatings({})
-        const retryHeroId = normalizedHeroId || (typeof targetHeroId === 'string' ? targetHeroId : '')
-        if (retryHeroId) {
-          upsertRoomNotice({
-            id: HERO_CONTEXT_NOTICE_ID,
-            type: 'error',
-            message: '영웅 정보를 불러오는 중 오류가 발생했습니다. 다시 시도해주세요.',
-            actionLabel: '다시 시도',
-            onAction: () => loadHeroContext(retryHeroId),
-          })
-        }
-      }
-    } finally {
-      if (mountedRef.current) {
-        setHeroLoading(false)
-      }
-    }
-  }, [
-    initialGameId,
-    viewerHeroProfile?.name,
-    viewerHeroProfile?.owner_id,
-    viewerHeroProfile?.user_id,
-    viewerHeroSeed?.id,
-    viewerHeroSeed?.name,
-    viewerHeroSeed?.owner_id,
-    viewerUserId,
-    clearRoomNotice,
-    clearRoomNotices,
-    upsertRoomNotice,
-  ])
+    setRefreshRequested(true)
+  }, [])
 
   useEffect(() => {
-    loadHeroContext(effectiveHeroId)
-  }, [effectiveHeroId, loadHeroContext])
-
-  const ensureGameMeta = useCallback(
-    async (gameId) => {
-      if (!gameId || gameId === 'all') {
-        setSelectedGameMeta(null)
-        return null
-      }
-      const cache = gameMetaCacheRef.current
-      if (cache.has(gameId)) {
-        const cached = cache.get(gameId)
-        setSelectedGameMeta(cached)
-        return cached
-      }
-
-      try {
-        const gameResult = await withTable(supabase, 'rank_games', (table) =>
-          supabase.from(table).select('id, realtime_match, rules').eq('id', gameId).maybeSingle(),
-        )
-
-        if (gameResult.error && gameResult.error.code !== 'PGRST116') {
-          throw gameResult.error
-        }
-
-        const rawRules = gameResult.data?.rules
-        let parsedRules = null
-        if (rawRules && typeof rawRules === 'object') {
-          parsedRules = rawRules
-        } else if (typeof rawRules === 'string') {
-          try {
-            parsedRules = JSON.parse(rawRules)
-          } catch (parseError) {
-            parsedRules = null
-          }
-        }
-
-        let activeSlotCount = null
-        try {
-          const slotResult = await withTable(supabase, 'rank_game_slots', (table) =>
-            supabase
-              .from(table)
-              .select('slot_index, active')
-              .eq('game_id', gameId)
-              .order('slot_index', { ascending: true }),
-          )
-
-          if (slotResult.error && slotResult.error.code !== 'PGRST116') {
-            throw slotResult.error
-          }
-
-          const templates = Array.isArray(slotResult.data) ? slotResult.data : []
-          const activeTemplates = templates.filter((template) =>
-            template?.active ?? true,
-          )
-          activeSlotCount = activeTemplates.length
-        } catch (slotError) {
-          console.warn('[RoomBrowser] Failed to load game slot templates:', slotError)
-        }
-
-        const activeLimit =
-          activeSlotCount != null
-            ? Math.max(1, Math.min(MAX_PULSE_ROLE_LIMIT, activeSlotCount))
-            : null
-
-        const meta = {
-          id: gameId,
-          realtimeMode: normalizeRealtimeMode(gameResult.data?.realtime_match),
-          brawlRule: parseBrawlRule(parsedRules || rawRules),
-          rules: parsedRules,
-          activeSlotCount,
-          pulseLimitMax: activeLimit,
-        }
-
-        cache.set(gameId, meta)
-        setSelectedGameMeta(meta)
-        return meta
-      } catch (metaError) {
-        console.error('[RoomBrowser] Failed to load game metadata:', metaError)
-        const fallback = {
-          id: gameId,
-          realtimeMode: 'off',
-          brawlRule: 'banish-on-loss',
-          rules: null,
-          activeSlotCount: null,
-          pulseLimitMax: null,
-        }
-        cache.set(gameId, fallback)
-        setSelectedGameMeta(fallback)
-        return fallback
-      }
-    },
-    [],
-  )
-
-  useEffect(() => {
-    if (!createState.gameId) {
-      setSelectedGameMeta(null)
-      return
-    }
-    ensureGameMeta(createState.gameId)
-  }, [createState.gameId, ensureGameMeta])
-
-  const loadRooms = useCallback(
-    async (mode = 'initial') => {
-      if (!mountedRef.current) return
-      if (mode === 'refresh') {
-        setRefreshing(true)
-      } else if (mode === 'initial') {
-        setLoading(true)
-      }
-      setError('')
-
-      try {
-        const roomsResult = await withTable(supabase, 'rank_rooms', (table) =>
-          supabase
-            .from(table)
-            .select(
-              [
-                'id',
-                'game_id',
-                'owner_id',
-                'code',
-                'mode',
-                'status',
-                'realtime_mode',
-                'slot_count',
-                'filled_count',
-                'ready_count',
-                'host_role_limit',
-                'brawl_rule',
-                'blind_mode',
-                'score_window',
-                'created_at',
-                'updated_at',
-              ].join(','),
-            )
-            .order('updated_at', { ascending: false })
-            .limit(120),
-        )
-
-        if (roomsResult.error && roomsResult.error.code !== 'PGRST116') {
-          throw roomsResult.error
-        }
-
-        const roomRows = Array.isArray(roomsResult.data) ? roomsResult.data : []
-        const roomIds = roomRows.map((row) => row.id).filter(Boolean)
-
-        let slotRows = []
-        if (roomIds.length) {
-          const slotResult = await withTable(supabase, 'rank_room_slots', (table) =>
-            supabase
-              .from(table)
-              .select('room_id, role, occupant_owner_id, occupant_ready')
-              .in('room_id', roomIds),
-          )
-
-          if (slotResult.error && slotResult.error.code !== 'PGRST116') {
-            console.warn('[RoomBrowser] Failed to load room slots:', slotResult.error)
-          } else {
-            slotRows = Array.isArray(slotResult.data) ? slotResult.data : []
-          }
-        }
-
-        const slotMap = new Map()
-        const occupantOwners = new Set()
-        slotRows.forEach((row) => {
-          const roomId = row?.room_id
-          if (!roomId) return
-          if (!slotMap.has(roomId)) {
-            slotMap.set(roomId, [])
-          }
-          slotMap.get(roomId).push({
-            role: typeof row?.role === 'string' ? row.role : '',
-            ownerId: row?.occupant_owner_id || null,
-            ready: !!row?.occupant_ready,
-          })
-          if (row?.occupant_owner_id) {
-            occupantOwners.add(row.occupant_owner_id)
-          }
-        })
-
-        roomRows.forEach((row) => {
-          if (row?.owner_id) {
-            occupantOwners.add(row.owner_id)
-          }
-        })
-
-        const gameIds = Array.from(new Set(roomRows.map((row) => row.game_id).filter(Boolean)))
-        let gameMap = new Map()
-        if (gameIds.length) {
-          const gamesResult = await withTable(supabase, 'rank_games', (table) =>
-            supabase.from(table).select('id, name').in('id', gameIds),
-          )
-
-          if (gamesResult.error && gamesResult.error.code !== 'PGRST116') {
-            console.warn('[RoomBrowser] Failed to load games:', gamesResult.error)
-          } else {
-            const gameRows = Array.isArray(gamesResult.data) ? gamesResult.data : []
-            gameMap = new Map(gameRows.map((row) => [row.id, row]))
-          }
-        }
-
-        let participantRatings = new Map()
-        if (gameIds.length && occupantOwners.size) {
-          const participantResult = await withTable(supabase, 'rank_participants', (table) =>
-            supabase
-              .from(table)
-              .select('game_id, owner_id, rating')
-              .in('game_id', gameIds)
-              .in('owner_id', Array.from(occupantOwners)),
-          )
-
-          if (participantResult.error && participantResult.error.code !== 'PGRST116') {
-            console.warn('[RoomBrowser] Failed to load participant ratings:', participantResult.error)
-          } else {
-            const participantRows = Array.isArray(participantResult.data) ? participantResult.data : []
-            participantRatings = participantRows.reduce((map, row) => {
-              if (!row?.game_id || !row?.owner_id) return map
-              const ratingValue = Number(row?.rating)
-              if (!Number.isFinite(ratingValue)) return map
-              map.set(`${row.game_id}:${row.owner_id}`, ratingValue)
-              return map
-            }, new Map())
-          }
-        }
-
-        const normalized = roomRows.map((row) => {
-          const slotEntries = slotMap.get(row.id) || []
-          const roleMap = new Map()
-          const occupantRatings = []
-          slotEntries.forEach((slot) => {
-            const roleName = slot.role?.trim?.() || '역할 미지정'
-            const stats = roleMap.get(roleName) || { total: 0, occupied: 0, ready: 0 }
-            stats.total += 1
-            if (slot.ownerId) stats.occupied += 1
-            if (slot.ready) stats.ready += 1
-            roleMap.set(roleName, stats)
-
-            if (slot.ownerId) {
-              const ratingValue = participantRatings.get(`${row.game_id}:${slot.ownerId}`)
-              if (Number.isFinite(ratingValue)) {
-                occupantRatings.push(ratingValue)
-              }
-            }
-          })
-
-          const roles = Array.from(roleMap.entries())
-            .map(([role, stats]) => ({
-              role,
-              total: stats.total,
-              occupied: stats.occupied,
-              ready: stats.ready,
-            }))
-            .sort((a, b) => a.role.localeCompare(b.role, 'ko', { sensitivity: 'base' }))
-
-          const slotCount = Number.isFinite(Number(row.slot_count))
-            ? Number(row.slot_count)
-            : roles.reduce((acc, role) => acc + role.total, 0)
-          const filledCount = Number.isFinite(Number(row.filled_count))
-            ? Number(row.filled_count)
-            : roles.reduce((acc, role) => acc + role.occupied, 0)
-          const readyCount = Number.isFinite(Number(row.ready_count))
-            ? Number(row.ready_count)
-            : roles.reduce((acc, role) => acc + role.ready, 0)
-
-          const mode = typeof row.mode === 'string' ? row.mode : ''
-          const modeLabel = mode.trim() || '모드 미지정'
-
-          const scoreWindow = Number.isFinite(Number(row.score_window))
-            ? Number(row.score_window)
-            : null
-
-          const realtimeMode = normalizeRealtimeMode(row.realtime_mode)
-          const hostRoleLimit = Number.isFinite(Number(row.host_role_limit))
-            ? Math.max(1, Math.floor(Number(row.host_role_limit)))
-            : null
-          const brawlRule = parseBrawlRule(row.brawl_rule)
-          const dropInEnabled = isDropInEnabled({ realtimeMode, brawlRule })
-
-          const hostRating = row.owner_id
-            ? participantRatings.get(`${row.game_id}:${row.owner_id}`) ?? null
-            : null
-
-          const ratingSamples = occupantRatings.length
-            ? occupantRatings
-            : Number.isFinite(hostRating)
-            ? [hostRating]
-            : []
-
-          let ratingStats = null
-          if (ratingSamples.length) {
-            const sum = ratingSamples.reduce((acc, value) => acc + value, 0)
-            ratingStats = {
-              count: ratingSamples.length,
-              min: Math.min(...ratingSamples),
-              max: Math.max(...ratingSamples),
-              average: Math.round(sum / ratingSamples.length),
-            }
-          }
-
-          return {
-            id: row.id,
-            gameId: row.game_id || '',
-            gameName: (gameMap.get(row.game_id)?.name || '알 수 없는 게임').trim() || '알 수 없는 게임',
-            code: row.code || '미지정',
-            status: row.status || 'unknown',
-            mode: modeLabel,
-            slotCount,
-            filledCount,
-            readyCount,
-            roles,
-            rating: ratingStats,
-            scoreWindow,
-            hostRating,
-            ownerId: row.owner_id || null,
-            updatedAt: row.updated_at || row.created_at || null,
-            realtimeMode,
-            hostRoleLimit,
-            brawlRule,
-            dropInEnabled,
-            blindMode: row.blind_mode === true,
-          }
-        })
-
-        if (!mountedRef.current) return
-
-        setRooms(normalized)
-        setLastLoadedAt(new Date())
-      } catch (loadError) {
-        console.error('[RoomBrowser] Failed to load rooms:', loadError)
-        if (mountedRef.current) {
-          setError(resolveErrorMessage(loadError))
-        }
-      } finally {
-        if (!mountedRef.current) return
-        setNextAutoRefreshAt(Date.now() + ROOM_BROWSER_AUTO_REFRESH_INTERVAL_MS)
-        if (mode === 'initial') {
-          setLoading(false)
-          setRefreshing(false)
-        } else if (mode === 'refresh') {
-          setRefreshing(false)
-        } else {
-          setRefreshing(false)
-        }
-      }
-    },
-    [],
-  )
-
-  useEffect(() => {
-    loadRooms('initial')
-  }, [loadRooms])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined
-    const intervalId = window.setInterval(() => {
-      loadRooms('auto')
-    }, ROOM_BROWSER_AUTO_REFRESH_INTERVAL_MS)
-    return () => {
-      clearInterval(intervalId)
-    }
-  }, [loadRooms])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      setAutoRefreshCountdown(null)
-      return undefined
-    }
-    if (!nextAutoRefreshAt) {
-      setAutoRefreshCountdown(null)
-      return undefined
-    }
-
-    const updateCountdown = () => {
-      const diffMs = nextAutoRefreshAt - Date.now()
-      const seconds = diffMs > 0 ? Math.round(diffMs / 1000) : 0
-      if (!mountedRef.current) return
-      setAutoRefreshCountdown(seconds)
-    }
-
-    updateCountdown()
-    const intervalId = window.setInterval(updateCountdown, 1000)
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [nextAutoRefreshAt])
-
-  const handleRefresh = useCallback(() => {
-    loadRooms('refresh')
-  }, [loadRooms])
-
-  const participationFilter = useMemo(() => {
-    const set = new Set()
-    participations.forEach((entry) => {
-      const gameId = entry?.game?.id
-      if (gameId) {
-        set.add(gameId)
-      }
-    })
-    return { set }
-  }, [participations])
-
-  const heroRatingForSelection = useMemo(() => {
-    if (!selectedGameId || selectedGameId === 'all') return null
-    const rating = heroRatings[selectedGameId]
-    if (!Number.isFinite(rating)) return null
-    return rating
-  }, [heroRatings, selectedGameId])
-
-  const { filteredRooms, filterDiagnostics } = useMemo(() => {
-    const participationSet = participationFilter.set
-    const enforceParticipation = !heroLoading
-    const hasComparableRatings = rooms.some(
-      (room) => Number.isFinite(room?.rating?.average) || Number.isFinite(room?.hostRating),
+    const unsubscribeQueue = subscribeToQueue(queueId, handleRealtimeEvent)
+    const channel = supabase.channel(`rank-lobby:${queueId}`)
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rank_rooms' },
+      (payload) => handleRealtimeEvent({ type: 'room', payload }),
     )
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rank_sessions' },
+      (payload) => handleRealtimeEvent({ type: 'session', payload }),
+    )
+    channel.subscribe()
 
-    const stats = {
-      total: rooms.length,
-      participationRequired: enforceParticipation,
-      participationMissing: enforceParticipation && participationSet.size === 0,
-      participationExcluded: 0,
-      modeExcluded: 0,
-      gameExcluded: 0,
-      scoreExcluded: 0,
-      scoreMissing: 0,
-      scoreFilterActive:
-        Boolean(scoreWindow) &&
-        Number.isFinite(heroRatingForSelection) &&
-        hasComparableRatings,
-      scoreExamples: [],
+    return () => {
+      unsubscribeQueue?.()
+      supabase.removeChannel(channel)
     }
+  }, [queueId, handleRealtimeEvent])
 
-    const result = []
-
-    rooms.forEach((room) => {
-      const isCasualRoom = isCasualModeLabel(room.mode || '')
-      const inModeTab =
-        modeTab === 'rank' ? !isCasualRoom : isCasualRoom
-
-      if (!inModeTab) {
-        stats.modeExcluded += 1
-        return
-      }
-
-      if (enforceParticipation) {
-        if (!participationSet.size || !participationSet.has(room.gameId)) {
-          stats.participationExcluded += 1
-          return
-        }
-      }
-
-      const matchesGame =
-        !selectedGameId || selectedGameId === 'all' || room.gameId === selectedGameId
-
-      if (!matchesGame) {
-        stats.gameExcluded += 1
-        return
-      }
-
-      if (stats.scoreFilterActive) {
-        const comparisonRating = Number.isFinite(room.rating?.average)
-          ? room.rating.average
-          : Number.isFinite(room.hostRating)
-          ? room.hostRating
-          : null
-
-        if (Number.isFinite(comparisonRating)) {
-          const roomWindow = Number.isFinite(room.scoreWindow) ? room.scoreWindow : null
-          const allowedWindow = roomWindow ? Math.min(scoreWindow, roomWindow) : scoreWindow
-          const delta = Math.abs(comparisonRating - heroRatingForSelection)
-
-          if (delta > allowedWindow) {
-            stats.scoreExcluded += 1
-            if (stats.scoreExamples.length < 3) {
-              stats.scoreExamples.push({
-                roomName: room.gameName,
-                hostRating: comparisonRating,
-                delta,
-                allowed: allowedWindow,
-              })
-            }
-            return
-          }
-        } else {
-          stats.scoreMissing += 1
-        }
-      }
-
-      result.push(room)
-    })
-
-    return { filteredRooms: result, filterDiagnostics: stats }
-  }, [
-    heroLoading,
-    heroRatingForSelection,
-    modeTab,
-    participationFilter,
-    rooms,
-    scoreWindow,
-    selectedGameId,
-  ])
-
-  const filterMessages = useMemo(() => {
-    if (!filterDiagnostics) return []
-    const messages = []
-
-    if (filterDiagnostics.participationRequired) {
-      if (filterDiagnostics.participationMissing) {
-        messages.push(
-          '참여한 게임이 없어 표시할 방이 없습니다. 먼저 해당 게임에 참가하거나 최근 선택한 캐릭터를 확인해 주세요.',
-        )
-      } else if (filterDiagnostics.participationExcluded) {
-        messages.push(
-          `참여 기록이 없는 게임의 방 ${filterDiagnostics.participationExcluded}개는 제외했습니다.`,
-        )
-      }
-    }
-
-    if (filterDiagnostics.modeExcluded) {
-      const label = modeTab === 'rank' ? '랭크' : '캐주얼'
-      messages.push(
-        `${label} 모드 방 ${filterDiagnostics.modeExcluded}개는 현재 탭에서 제외되었습니다.`,
-      )
-    }
-
-    if (filterDiagnostics.gameExcluded) {
-      messages.push(
-        `선택한 게임과 다른 방 ${filterDiagnostics.gameExcluded}개는 표시되지 않았습니다.`,
-      )
-    }
-
-    if (filterDiagnostics.scoreFilterActive && filterDiagnostics.scoreExcluded) {
-      const [example] = filterDiagnostics.scoreExamples
-      const detail = example
-        ? ` 예: ${example.roomName} 방은 호스트 ${example.hostRating}점으로 내 점수와 ±${Math.round(
-            example.delta,
-          )} 차이가 나서 허용 범위(±${example.allowed}) 밖입니다.`
-        : ''
-      messages.push(
-        `점수 범위 조건으로 제외된 방이 ${filterDiagnostics.scoreExcluded}개 있습니다.${detail}`,
-      )
-    }
-
-    if (filterDiagnostics.scoreFilterActive && filterDiagnostics.scoreMissing) {
-      messages.push(
-        `점수 비교 정보가 없는 방 ${filterDiagnostics.scoreMissing}개는 조건 확인 없이 함께 표시했습니다.`,
-      )
-    }
-
-    return messages
-  }, [filterDiagnostics, modeTab])
-
-  const keyringCount = keyringEntries.length
-
-  const getAuthToken = useCallback(async () => {
+  const handleJoinQueue = useCallback(async () => {
+    if (!queueId) return
+    setQueueError(null)
+    setJoinBusy(true)
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) {
-        throw sessionError
-      }
-
-      const session = sessionData?.session || null
-      if (session) {
-        persistRankAuthSession(session)
-        if (session.user?.id) {
-          persistRankAuthUser(session.user)
-          setViewerUserId((prev) => (prev ? prev : session.user.id))
-        }
-        const token = session.access_token || session.accessToken || null
-        if (token) {
-          return token
-        }
-      }
-
-      const { data: userData, error: userError } = await supabase.auth.getUser()
-      if (userError) {
-        throw userError
-      }
-
-      const user = userData?.user || null
-      if (user?.id) {
-        persistRankAuthUser(user)
-        setViewerUserId((prev) => (prev ? prev : user.id))
-      }
-    } catch (sessionError) {
-      console.warn('[RoomBrowser] Failed to resolve session token:', sessionError)
-    }
-
-    if (storedAuthSnapshot?.userId) {
-      setViewerUserId((prev) => (prev ? prev : storedAuthSnapshot.userId))
-    }
-
-    return storedAuthSnapshot?.accessToken || null
-  }, [storedAuthSnapshot?.accessToken, storedAuthSnapshot?.userId])
-
-  const loadKeyring = useCallback(async () => {
-    setKeyringLoading(true)
-    setKeyringError('')
-    setKeyringAction(null)
-    try {
-      const token = await getAuthToken()
-      const latestAuth = readRankAuthSnapshot()
-      const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
-      const headers = {}
-      if (token) {
-        headers.Authorization = `Bearer ${token}`
-      }
-      if (resolvedUserId) {
-        headers['X-Rank-User-Id'] = resolvedUserId
-      }
-      if (!token && !resolvedUserId) {
-        throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
-          code: 'missing_user_id',
-        })
-      }
-      const endpoint = resolvedUserId
-        ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
-        : '/api/rank/user-api-keyring'
-      const response = await fetch(endpoint, { headers })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        const message = resolveKeyringError(payload?.error, payload?.detail)
-        const error = new Error(message)
-        error.code = payload?.error
-        throw error
-      }
-
-      setKeyringEntries(Array.isArray(payload?.keys) ? payload.keys : [])
-      if (typeof payload?.limit === 'number' && Number.isFinite(payload.limit)) {
-        setKeyringLimit(payload.limit)
-      }
-    } catch (loadError) {
-      console.error('[RoomBrowser] Failed to load API keyring:', loadError)
-      setKeyringError(loadError?.message || 'API 키 목록을 불러오지 못했습니다.')
-    } finally {
-      setKeyringLoading(false)
-    }
-  }, [effectiveUserId, getAuthToken])
-
-  useEffect(() => {
-    if (!keyManagerOpen) return undefined
-
-    loadKeyring()
-
-    return undefined
-  }, [keyManagerOpen, loadKeyring])
-
-  useEffect(() => {
-    const targetUserId = effectiveUserId || storedAuthSnapshot?.userId || ''
-    if (!targetUserId) {
-      if (lastKeyringUserIdRef.current) {
-        lastKeyringUserIdRef.current = ''
-        setKeyringEntries([])
-        persistRankKeyringSnapshot({ userId: '', entries: [] })
-      }
-      return
-    }
-
-    if (lastKeyringUserIdRef.current === targetUserId) {
-      return
-    }
-
-    lastKeyringUserIdRef.current = targetUserId
-    loadKeyring()
-  }, [effectiveUserId, loadKeyring, storedAuthSnapshot?.userId])
-
-  useEffect(() => {
-    const userId = effectiveUserId || storedAuthSnapshot?.userId || ''
-    persistRankKeyringSnapshot({ userId, entries: keyringEntries })
-  }, [effectiveUserId, keyringEntries, storedAuthSnapshot?.userId])
-
-  const handleToggleKeyManager = useCallback(() => {
-    setKeyManagerOpen((prev) => {
-      const next = !prev
-      if (!next) {
-        setKeyringError('')
-        setKeyringStatus('')
-        setKeyringAction(null)
-      }
-      return next
-    })
-  }, [])
-
-  const handleKeyringSubmit = useCallback(async () => {
-    const trimmed = typeof keyringInput === 'string' ? keyringInput.trim() : ''
-    if (!trimmed) {
-      setKeyringError('API 키를 입력해 주세요.')
-      return
-    }
-
-    if (keyringCount >= keyringLimit) {
-      setKeyringError('등록 가능한 최대 개수를 초과했습니다.')
-      return
-    }
-
-    setKeyringBusy(true)
-    setKeyringError('')
-    setKeyringStatus('')
-
-    try {
-      const token = await getAuthToken()
-      const latestAuth = readRankAuthSnapshot()
-      const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
-      const headers = { 'Content-Type': 'application/json' }
-      if (token) {
-        headers.Authorization = `Bearer ${token}`
-      }
-      if (resolvedUserId) {
-        headers['X-Rank-User-Id'] = resolvedUserId
-      }
-      if (!token && !resolvedUserId) {
-        throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
-          code: 'missing_user_id',
-        })
-      }
-      const endpoint = resolvedUserId
-        ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
-        : '/api/rank/user-api-keyring'
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          apiKey: trimmed,
-          activate: keyringActivate,
-          userId: resolvedUserId || undefined,
-        }),
+      const payload = buildQueuePayload(viewerHero, joinForm, heroStats)
+      const data = await ensureRpc('join_rank_queue', {
+        queue_id: queueId,
+        payload,
       })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        const message = resolveKeyringError(payload?.error, payload?.detail)
-        const error = new Error(message)
-        error.code = payload?.error
-        throw error
+      const normalized = normalizeQueueTicket(data)
+      if (normalized) {
+        setTicket(normalized)
+        persistTicket(normalized)
+        setStageInfo(null)
       }
-
-      const providerLabel =
-        payload?.detection?.provider === 'gemini'
-          ? 'Gemini'
-          : payload?.detection?.provider === 'openai'
-          ? 'OpenAI'
-          : '사용자 지정'
-      const modelLabel = payload?.detection?.modelLabel
-      const fallbackDetail =
-        payload?.detection?.fallback && payload?.detection?.detail
-          ? ` ${payload.detection.detail}`
-          : ''
-      const statusMessage = `${providerLabel} 키를 등록했습니다.${
-        modelLabel ? ` (${modelLabel})` : ''
-      }${fallbackDetail}`
-      setKeyringStatus(statusMessage)
-      setKeyringInput('')
-      setKeyringActivate(true)
-      await loadKeyring()
-    } catch (submitError) {
-      console.error('[RoomBrowser] Failed to store API key:', submitError)
-      setKeyringError(submitError?.message || 'API 키를 저장하지 못했습니다.')
+      fetchSnapshot('manual')
+    } catch (error) {
+      console.error('[RankLobby] join queue failed', error)
+      setQueueError(error)
     } finally {
-      setKeyringBusy(false)
+      setJoinBusy(false)
     }
-  }, [
-    effectiveUserId,
-    getAuthToken,
-    keyringActivate,
-    keyringCount,
-    keyringInput,
-    keyringLimit,
-    loadKeyring,
-  ])
+  }, [queueId, viewerHero, joinForm, heroStats, fetchSnapshot])
 
-  const handleKeyringActivate = useCallback(
-    async (entryId) => {
-      if (!entryId) return
+  const handleLeaveQueue = useCallback(async () => {
+    if (!ticket?.id) {
+      setTicket(null)
+      persistTicket(null)
+      setStageInfo(null)
+      return
+    }
+    setQueueError(null)
+    setLeaveBusy(true)
+    try {
+      await ensureRpc('cancel_rank_queue_ticket', {
+        queue_ticket_id: ticket.id,
+      })
+      setTicket(null)
+      persistTicket(null)
+      setStageInfo(null)
+      fetchSnapshot('manual')
+    } catch (error) {
+      console.error('[RankLobby] cancel queue ticket failed', error)
+      setQueueError(error)
+    } finally {
+      setLeaveBusy(false)
+    }
+  }, [ticket, fetchSnapshot])
 
-      setKeyringAction({ id: entryId, type: 'activate' })
-      setKeyringError('')
-      setKeyringStatus('')
+  const handleStageMatch = useCallback(async () => {
+    if (!ticket?.id) return
+    setQueueError(null)
+    setStageBusy(true)
+    try {
+      const data = await ensureRpc('stage_rank_match', {
+        queue_ticket_id: ticket.id,
+      })
+      const seats = Array.isArray(data?.seats)
+        ? data.seats.map(normalizeSeatEntry).filter(Boolean)
+        : []
+      setStageInfo({
+        sessionId: data?.session_id || null,
+        readyExpiresAt: data?.ready_expires_at || null,
+        seats,
+      })
+      fetchSnapshot('manual')
+    } catch (error) {
+      console.error('[RankLobby] stage match failed', error)
+      setQueueError(error)
+    } finally {
+      setStageBusy(false)
+    }
+  }, [ticket, fetchSnapshot])
 
-      try {
-        const token = await getAuthToken()
-        const latestAuth = readRankAuthSnapshot()
-        const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
-        const headers = { 'Content-Type': 'application/json' }
-        if (token) {
-          headers.Authorization = `Bearer ${token}`
-        }
-        if (resolvedUserId) {
-          headers['X-Rank-User-Id'] = resolvedUserId
-        }
-        if (!token && !resolvedUserId) {
-          throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
-            code: 'missing_user_id',
-          })
-        }
-        const endpoint = resolvedUserId
-          ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
-          : '/api/rank/user-api-keyring'
-        const response = await fetch(endpoint, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({ id: entryId, userId: resolvedUserId || undefined }),
-        })
-        const payload = await response.json().catch(() => ({}))
-        if (!response.ok) {
-          const message = resolveKeyringError(payload?.error, payload?.detail)
-          const error = new Error(message)
-          error.code = payload?.error
-          throw error
-        }
+  const heroGames = useMemo(() => {
+    const games = Array.isArray(heroStats.games) ? heroStats.games.slice(0, 4) : []
+    return games
+  }, [heroStats.games])
 
-        setKeyringStatus('선택한 API 키를 활성화했습니다.')
-        await loadKeyring()
-      } catch (activateError) {
-        console.error('[RoomBrowser] Failed to activate API key:', activateError)
-        setKeyringError(activateError?.message || 'API 키를 활성화하지 못했습니다.')
-      } finally {
-        setKeyringAction(null)
-      }
-    },
-    [effectiveUserId, getAuthToken, loadKeyring],
-  )
-
-  const handleKeyringDeactivate = useCallback(
-    async (entryId) => {
-      if (!entryId) return
-
-      setKeyringAction({ id: entryId, type: 'deactivate' })
-      setKeyringError('')
-      setKeyringStatus('')
-
-      try {
-        const token = await getAuthToken()
-        const latestAuth = readRankAuthSnapshot()
-        const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
-        const headers = { 'Content-Type': 'application/json' }
-        if (token) {
-          headers.Authorization = `Bearer ${token}`
-        }
-        if (resolvedUserId) {
-          headers['X-Rank-User-Id'] = resolvedUserId
-        }
-        if (!token && !resolvedUserId) {
-          throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
-            code: 'missing_user_id',
-          })
-        }
-        const endpoint = resolvedUserId
-          ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
-          : '/api/rank/user-api-keyring'
-        const response = await fetch(endpoint, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({
-            id: entryId,
-            action: 'deactivate',
-            userId: resolvedUserId || undefined,
-          }),
-        })
-        const payload = await response.json().catch(() => ({}))
-        if (!response.ok) {
-          const message = resolveKeyringError(payload?.error, payload?.detail)
-          const error = new Error(message)
-          error.code = payload?.error
-          throw error
-        }
-
-        setKeyringStatus('선택한 API 키 사용을 해제했습니다.')
-        await loadKeyring()
-      } catch (deactivateError) {
-        console.error('[RoomBrowser] Failed to deactivate API key:', deactivateError)
-        setKeyringError(
-          deactivateError?.message || 'API 키 사용을 해제하지 못했습니다.',
-        )
-      } finally {
-        setKeyringAction(null)
-      }
-    },
-    [effectiveUserId, getAuthToken, loadKeyring],
-  )
-
-  const handleKeyringDelete = useCallback(
-    async (entryId) => {
-      if (!entryId) return
-
-      setKeyringAction({ id: entryId, type: 'delete' })
-      setKeyringError('')
-      setKeyringStatus('')
-
-      try {
-        const token = await getAuthToken()
-        const latestAuth = readRankAuthSnapshot()
-        const resolvedUserId = effectiveUserId || latestAuth?.userId || ''
-        const headers = { 'Content-Type': 'application/json' }
-        if (token) {
-          headers.Authorization = `Bearer ${token}`
-        }
-        if (resolvedUserId) {
-          headers['X-Rank-User-Id'] = resolvedUserId
-        }
-        if (!token && !resolvedUserId) {
-          throw Object.assign(new Error('사용자 정보를 확인하지 못했습니다.'), {
-            code: 'missing_user_id',
-          })
-        }
-        const endpoint = resolvedUserId
-          ? `/api/rank/user-api-keyring?userId=${encodeURIComponent(resolvedUserId)}`
-          : '/api/rank/user-api-keyring'
-        const response = await fetch(endpoint, {
-          method: 'DELETE',
-          headers,
-          body: JSON.stringify({ id: entryId, userId: resolvedUserId || undefined }),
-        })
-        const payload = await response.json().catch(() => ({}))
-        if (!response.ok) {
-          const message = resolveKeyringError(payload?.error, payload?.detail)
-          const error = new Error(message)
-          error.code = payload?.error
-          throw error
-        }
-
-        setKeyringStatus('API 키를 삭제했습니다.')
-        await loadKeyring()
-      } catch (deleteError) {
-        console.error('[RoomBrowser] Failed to delete API key:', deleteError)
-        setKeyringError(deleteError?.message || 'API 키를 삭제하지 못했습니다.')
-      } finally {
-        setKeyringAction(null)
-      }
-    },
-    [effectiveUserId, getAuthToken, loadKeyring],
-  )
-
-  const handleModeChange = useCallback((nextMode) => {
-    setModeTab(nextMode)
-  }, [])
-
-  const handleGameFilter = useCallback((gameId) => {
-    setSelectedGameId(gameId)
-    setCreateState((prev) => ({ ...prev, gameId: gameId === 'all' ? '' : gameId }))
-  }, [])
-
-  const handleScoreWindowChange = useCallback((windowValue) => {
-    setScoreWindow(windowValue)
-    setCreateState((prev) => ({ ...prev, scoreWindow: windowValue }))
-  }, [])
-
-  const handleToggleCreate = useCallback(() => {
-    setCreateOpen((prev) => !prev)
-    setCreateError('')
-  }, [])
-
-  const handleCreateSubmit = useCallback(
-    async (event) => {
-      event.preventDefault()
-      const roomOwnerId = heroSummary.ownerId || viewerUserId || null
-      if (!roomOwnerId) {
-        setCreateError('로그인이 필요합니다.')
-        return
-      }
-      const targetGameId = createState.gameId || (selectedGameId !== 'all' ? selectedGameId : '')
-      if (!targetGameId) {
-        setCreateError('먼저 게임을 선택해 주세요.')
-        return
-      }
-
-      setCreatePending(true)
-      setCreateError('')
-
-      try {
-        const existingCodes = rooms.map((room) => room.code)
-        const code = generateRoomCode(existingCodes)
-        const modeValue = createState.mode === 'casual' ? 'casual' : 'solo'
-        const meta = await ensureGameMeta(targetGameId)
-        const metaPulseLimit = Number.isFinite(Number(meta?.pulseLimitMax))
-          ? Math.floor(Number(meta.pulseLimitMax))
-          : null
-        const realtimeMode = meta?.realtimeMode || 'off'
-        const brawlRule = meta?.brawlRule || 'banish-on-loss'
-
-        const insertResult = await withTable(supabase, 'rank_rooms', (table) =>
-          supabase
-            .from(table)
-            .insert({
-              game_id: targetGameId,
-              owner_id: roomOwnerId,
-              code,
-              mode: modeValue,
-              status: 'open',
-              realtime_mode: realtimeMode,
-              slot_count: 0,
-              filled_count: 0,
-              ready_count: 0,
-              host_role_limit: null,
-              brawl_rule: brawlRule,
-              blind_mode: !!createState.blindMode,
-              score_window:
-                createState.mode === 'casual'
-                  ? createState.scoreWindow ?? null
-                  : createState.scoreWindow ?? DEFAULT_RANK_SCORE_WINDOW,
-            })
-            .select('id')
-            .single(),
-        )
-
-        if (insertResult.error) {
-          throw insertResult.error
-        }
-
-        const roomId = insertResult.data?.id
-        if (!roomId) {
-          throw new Error('생성된 방 정보를 확인하지 못했습니다.')
-        }
-
-        const templateResult = await withTable(supabase, 'rank_game_slots', (table) =>
-          supabase
-            .from(table)
-            .select('slot_index, role')
-            .eq('game_id', targetGameId)
-            .eq('active', true)
-            .order('slot_index', { ascending: true }),
-        )
-
-        if (templateResult.error && templateResult.error.code !== 'PGRST116') {
-          throw templateResult.error
-        }
-
-        const templates = Array.isArray(templateResult.data) ? templateResult.data : []
-
-        let hostSeated = false
-        let participantRow = null
-        let hostRoleLimitValue = null
-
-        if (templates.length) {
-          const slotPayload = templates.map((template) => ({
-            room_id: roomId,
-            slot_index: template.slot_index ?? 0,
-            role: template.role || '역할 미지정',
-            occupant_owner_id: null,
-            occupant_hero_id: null,
-            occupant_ready: false,
-          }))
-
-          const slotInsert = await withTable(supabase, 'rank_room_slots', (table) =>
-            supabase.from(table).insert(slotPayload),
-          )
-
-          if (slotInsert.error && slotInsert.error.code !== 'PGRST116') {
-            throw slotInsert.error
-          }
-
-          let normalizedHostRole = ''
-
-          if (roomOwnerId && targetGameId) {
-            if (effectiveHeroId) {
-              const byHero = await withTable(supabase, 'rank_participants', (table) =>
-                supabase
-                  .from(table)
-                  .select('role, rating')
-                  .eq('game_id', targetGameId)
-                  .eq('hero_id', effectiveHeroId)
-                  .order('updated_at', { ascending: false })
-                  .limit(1)
-                  .maybeSingle(),
-              )
-
-              if (byHero.error && byHero.error.code !== 'PGRST116') {
-                throw byHero.error
-              }
-
-              if (byHero.data) {
-                participantRow = byHero.data
-              }
-            }
-
-            if (!participantRow) {
-              const byOwner = await withTable(supabase, 'rank_participants', (table) =>
-                supabase
-                  .from(table)
-                  .select('role, rating')
-                  .eq('game_id', targetGameId)
-                  .eq('owner_id', roomOwnerId)
-                  .order('updated_at', { ascending: false })
-                  .limit(1)
-                  .maybeSingle(),
-              )
-
-              if (byOwner.error && byOwner.error.code !== 'PGRST116') {
-                throw byOwner.error
-              }
-
-              if (byOwner.data) {
-                participantRow = byOwner.data
-              }
-            }
-
-            normalizedHostRole = normalizeRole(participantRow?.role)
-
-            const roleMatch = normalizedHostRole
-              ? templates.find((template) => normalizeRole(template.role) === normalizedHostRole)
-              : null
-            const flexibleMatch = templates.find((template) => isFlexibleRole(template.role))
-            const fallbackMatch = templates[0]
-            const targetTemplate = roleMatch || flexibleMatch || fallbackMatch
-
-            if (targetTemplate) {
-              const seatResult = await withTable(supabase, 'rank_room_slots', (table) =>
-                supabase
-                  .from(table)
-                  .update({
-                    occupant_owner_id: roomOwnerId,
-                    occupant_hero_id: effectiveHeroId || null,
-                    occupant_ready: false,
-                    joined_at: new Date().toISOString(),
-                  })
-                  .eq('room_id', roomId)
-                  .eq('slot_index', targetTemplate.slot_index ?? 0)
-                  .is('occupant_owner_id', null)
-                  .select('id')
-                  .maybeSingle(),
-              )
-
-              if (seatResult.error && seatResult.error.code !== 'PGRST116') {
-                throw seatResult.error
-              }
-
-              if (!seatResult.error && seatResult.data) {
-                hostSeated = true
-              }
-            }
-          }
-
-          if (realtimeMode === 'pulse') {
-            const selectedLimit = Number(createState.pulseLimit)
-            const normalizedSelection = Number.isFinite(selectedLimit) && selectedLimit > 0
-              ? Math.min(MAX_PULSE_ROLE_LIMIT, Math.floor(selectedLimit))
-              : 1
-            const matchingSlots = normalizedHostRole
-              ? templates.filter((template) => normalizeRole(template.role) === normalizedHostRole).length
-              : 0
-            const capacity = matchingSlots || templates.length || 1
-            const cappedCapacity = Math.max(1, Math.min(MAX_PULSE_ROLE_LIMIT, capacity))
-            const metaCap = metaPulseLimit ? Math.max(1, Math.min(metaPulseLimit, MAX_PULSE_ROLE_LIMIT)) : null
-            const effectiveCap = metaCap ? Math.min(metaCap, cappedCapacity) : cappedCapacity
-            hostRoleLimitValue = Math.max(1, Math.min(normalizedSelection, effectiveCap))
-          }
-        }
-
-        const nowIso = new Date().toISOString()
-
-        await withTable(supabase, 'rank_rooms', (table) =>
-          supabase
-            .from(table)
-            .update({
-              slot_count: templates.length,
-              filled_count: hostSeated ? 1 : 0,
-              ready_count: 0,
-              host_role_limit: realtimeMode === 'pulse' ? hostRoleLimitValue : null,
-              host_last_active_at: nowIso,
-            })
-            .eq('id', roomId),
-        )
-
-        if (mountedRef.current) {
-          setCreateOpen(false)
-          setCreateState((prev) => ({ ...prev, gameId: targetGameId }))
-        }
-
-        const nextRoute = {
-          pathname: '/rooms/[id]',
-          query: { id: roomId },
-        }
-
-        if (effectiveHeroId) {
-          nextRoute.query.hero = effectiveHeroId
-        }
-
-        if (typeof window !== 'undefined') {
-          const ratingValue = Number(participantRow?.rating)
-          const hostRating = Number.isFinite(ratingValue) ? ratingValue : null
-          const feedbackPayload = {
-            roomId,
-            hostSeated,
-            hostRating,
-            timestamp: Date.now(),
-          }
-          try {
-            window.sessionStorage.setItem(
-              LAST_CREATED_ROOM_KEY,
-              JSON.stringify(feedbackPayload),
-            )
-          } catch (storageError) {
-            console.warn('[RoomBrowser] Failed to persist creation feedback:', storageError)
-          }
-        }
-
-        await router.push(nextRoute)
-        return
-      } catch (createFailure) {
-        console.error('[RoomBrowser] Failed to create room:', createFailure)
-        setCreateError(resolveErrorMessage(createFailure))
-      } finally {
-        setCreatePending(false)
-      }
-    },
-    [
-      createState.mode,
-      createState.scoreWindow,
-      createState.pulseLimit,
-      ensureGameMeta,
-      effectiveHeroId,
-      heroSummary.ownerId,
-      viewerUserId,
-      rooms,
-      router,
-      selectedGameId,
-    ],
-  )
-
-  const createScoreWindowOptions = useMemo(
-    () => (createState.mode === 'casual' ? SCORE_WINDOWS : RANK_SCORE_WINDOWS),
-    [createState.mode],
-  )
-
-  const gameFilters = useMemo(() => {
-    const unique = participations
-      .filter((entry) => entry?.game?.id)
-      .map((entry) => ({ id: entry.game.id, name: entry.game.name || '이름 없는 게임' }))
-    const seen = new Set()
-    const deduped = unique.filter((entry) => {
-      if (seen.has(entry.id)) return false
-      seen.add(entry.id)
-      return true
-    })
-    return deduped
-  }, [participations])
-
-  const canAddKey = keyringCount < keyringLimit
-
+  const queuePreview = useMemo(() => snapshot.queue.slice(0, 6), [snapshot.queue])
+  const sessionPreview = useMemo(() => snapshot.sessions.slice(0, 5), [snapshot.sessions])
+  const roomPreview = useMemo(() => snapshot.rooms.slice(0, 5), [snapshot.rooms])
   return (
-    <div style={styles.page}>
-      <div style={styles.shell}>
-        <header style={styles.header}>
-          <div style={styles.titleRow}>
-            <div style={styles.titleBlock}>
-              <h1 style={styles.title}>방 찾기</h1>
+    <>
+      <Head>
+        <title>랭크 매칭 로비</title>
+      </Head>
+      <main style={styles.page}>
+        <div style={styles.container}>
+          <header style={styles.header}>
+            <div style={styles.headerTitle}>
+              <h1 style={styles.title}>랭크 매칭 로비</h1>
               <p style={styles.subtitle}>
-                참여했던 게임을 기준으로 필터링하고, 점수 차이를 지정해 원하는 방을 탐색하세요.
+                Open Match 참조 데이터를 Supabase RPC/Realtime 구조로 재해석했습니다. 큐 티켓·방·세션을 한 화면에서 살피고 즉시 액션을 취해보세요.
               </p>
             </div>
-            <div style={styles.actionGroup}>
+            <div style={styles.actionRow}>
               <button
                 type="button"
-                onClick={handleToggleKeyManager}
-                style={styles.secondaryButton(keyManagerOpen)}
+                style={styles.refreshButton(loadingSnapshot || refreshingSnapshot)}
+                onClick={() => fetchSnapshot('manual')}
+                disabled={loadingSnapshot || refreshingSnapshot}
               >
-                {keyManagerOpen ? '키 관리 닫기' : 'AI API 키 관리'}
+                {loadingSnapshot || refreshingSnapshot ? '새로고침 중…' : '즉시 새로고침'}
               </button>
-              <button
-                type="button"
-                onClick={handleToggleCreate}
-                style={styles.createButton(createPending)}
-                disabled={createPending}
-              >
-                {createPending ? '생성 중...' : createOpen ? '생성 닫기' : '방 만들기'}
-              </button>
+              <Link href="/arena/queue" style={styles.linkButton}>
+                큐 실험실 열기
+              </Link>
+              <Link href="/arena/staging" style={styles.linkButton}>
+                스테이징 대시보드
+              </Link>
             </div>
-          </div>
-          <div style={styles.helperRow}>
-            <Link href="/lobby" style={styles.helperLink} prefetch>
-              로비로 돌아가기
-            </Link>
-            <Link href="/roster" style={styles.helperLink} prefetch>
-              캐릭터 선택으로 이동
-            </Link>
-          </div>
-          <div style={styles.heroSummary}>
-            {effectiveHeroId ? (
-              <>
-                <span>
-                  선택한 캐릭터: <strong>{heroSummary.heroName || '알 수 없는 영웅'}</strong>
-                </span>
-                {heroLoading ? <span>참여 기록을 불러오는 중...</span> : null}
-              </>
-            ) : (
-              <span>특정 캐릭터 없이 전체 방을 살펴보는 중입니다.</span>
-            )}
-            {heroRatingForSelection && selectedGameId !== 'all' ? (
-              <span>
-                내 점수: <strong>{heroRatingForSelection}</strong>
-              </span>
-            ) : null}
-            {lastLoadedAt ? <span>마지막 새로고침: {formatRelativeTime(lastLoadedAt)}</span> : null}
-          </div>
-        </header>
+          </header>
 
-        {keyManagerOpen ? (
-          <section style={styles.keyManagerCard}>
-            <div style={styles.keyManagerHeader}>
-              <div>
-                <h2 style={styles.keyManagerTitle}>AI API 키 관리</h2>
-                <p style={styles.keyManagerHint}>
-                  최대 {keyringLimit}개의 키를 저장해 상황에 맞게 전환할 수 있습니다.
-                </p>
-              </div>
-              <span style={styles.keyManagerLimit}>
-                {keyringCount} / {keyringLimit}
-              </span>
-            </div>
-            {keyringError ? <p style={styles.keyManagerError}>{keyringError}</p> : null}
-            {keyringStatus ? <p style={styles.keyManagerStatus}>{keyringStatus}</p> : null}
-            {!canAddKey && !keyringError ? (
-              <p style={styles.keyManagerHint}>
-                등록 가능한 최대 개수에 도달했습니다. 사용하지 않는 키를 삭제한 뒤 다시 시도해 주세요.
-              </p>
-            ) : null}
-            <div style={styles.keyManagerForm}>
-              <div style={styles.keyManagerInputRow}>
-                <input
-                  type="text"
-                  placeholder="API 키를 입력하세요"
-                  value={keyringInput}
-                  onChange={(event) => setKeyringInput(event.target.value)}
-                  style={styles.keyManagerInput}
-                  disabled={!canAddKey || keyringBusy || keyringLoading}
-                />
-                <button
-                  type="button"
-                  onClick={handleKeyringSubmit}
-                  style={styles.createButton(keyringBusy || !canAddKey)}
-                  disabled={keyringBusy || !canAddKey || keyringLoading}
-                >
-                  {keyringBusy ? '등록 중...' : canAddKey ? '등록' : '제한 도달'}
-                </button>
-              </div>
-              <label style={styles.keyManagerCheckboxRow}>
-                <input
-                  type="checkbox"
-                  checked={keyringActivate}
-                  onChange={(event) => setKeyringActivate(event.target.checked)}
-                  disabled={keyringBusy}
-                />
-                등록 후 바로 사용
-              </label>
-            </div>
-            {keyringLoading ? (
-              <p style={styles.keyManagerHint}>키 정보를 불러오는 중입니다...</p>
-            ) : keyringEntries.length ? (
-              <ul style={styles.keyManagerList}>
-                {keyringEntries.map((entry) => {
-                  const providerLabel =
-                    entry.provider === 'gemini'
-                      ? 'Gemini'
-                      : entry.provider === 'openai'
-                      ? 'OpenAI'
-                      : '알 수 없음'
-                  const updatedLabel = entry.updatedAt ? formatRelativeTime(entry.updatedAt) : null
-                  const actionInFlight = Boolean(keyringAction)
-                  const isCurrentAction = keyringAction?.id === entry.id
-                  const isDeleteAction = isCurrentAction && keyringAction?.type === 'delete'
-                  const isDeactivateAction =
-                    isCurrentAction && keyringAction?.type === 'deactivate'
-                  const disableActivate =
-                    entry.isActive || actionInFlight || keyringLoading || keyringBusy
-                  const disableDeactivate =
-                    !entry.isActive || actionInFlight || keyringLoading || keyringBusy
-                  const disableDelete = actionInFlight || keyringLoading || keyringBusy
-                  const activateLabel = entry.isActive
-                    ? '사용 중'
-                    : isCurrentAction && keyringAction?.type === 'activate'
-                    ? '처리 중...'
-                    : '활성화'
-                  const deactivateLabel = entry.isActive
-                    ? isDeactivateAction
-                      ? '해제 중...'
-                      : '사용 해제'
-                    : '해제 불가'
-                  const deleteLabel = isDeleteAction ? '삭제 중...' : '삭제'
+          {snapshotError ? (
+            <p style={styles.errorText}>
+              로비 스냅샷을 불러오는 중 오류가 발생했습니다: {snapshotError.message || '알 수 없는 오류'}
+            </p>
+          ) : null}
 
-                  return (
-                    <li key={entry.id} style={styles.keyManagerItem}>
-                      <div style={styles.keyManagerMeta}>
-                        <div style={styles.keyManagerSampleRow}>
-                          <span>{entry.keySample || '알 수 없는 키'}</span>
-                          {entry.isActive ? (
-                            <span style={styles.keyManagerBadge(true)}>사용 중</span>
-                          ) : null}
-                        </div>
-                        <div style={styles.keyManagerDetail}>
-                          <span>{providerLabel}</span>
-                          {entry.modelLabel ? <span>모델: {entry.modelLabel}</span> : null}
-                          {entry.provider === 'gemini' && entry.geminiMode ? (
-                            <span>모드: {entry.geminiMode}</span>
-                          ) : null}
-                          {entry.apiVersion ? <span>버전: {entry.apiVersion}</span> : null}
-                          {updatedLabel ? <span>업데이트: {updatedLabel}</span> : null}
-                        </div>
-                      </div>
-                      <div style={styles.keyManagerActions}>
-                        <button
-                          type="button"
-                          style={styles.keyManagerActionButton('primary', disableActivate)}
-                          disabled={disableActivate}
-                          onClick={() => handleKeyringActivate(entry.id)}
-                        >
-                          {activateLabel}
-                        </button>
-                        <button
-                          type="button"
-                          style={styles.keyManagerActionButton('secondary', disableDeactivate)}
-                          disabled={disableDeactivate}
-                          onClick={() => handleKeyringDeactivate(entry.id)}
-                        >
-                          {deactivateLabel}
-                        </button>
-                        <button
-                          type="button"
-                          style={styles.keyManagerActionButton('danger', disableDelete)}
-                          disabled={disableDelete}
-                          onClick={() => handleKeyringDelete(entry.id)}
-                        >
-                          {deleteLabel}
-                        </button>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : (
-              <p style={styles.keyManagerEmpty}>등록된 API 키가 없습니다.</p>
-            )}
-          </section>
-        ) : null}
+          {queueError ? (
+            <p style={styles.errorText}>
+              큐 작업 오류: {queueError.message || '알 수 없는 오류'}
+            </p>
+          ) : null}
 
-        <RoomFiltersSection
-          modeTab={modeTab}
-          modeTabs={MODE_TABS}
-          onModeChange={handleModeChange}
-          gameFilters={gameFilters}
-          selectedGameId={selectedGameId}
-          onSelectGame={handleGameFilter}
-          scoreOptions={SCORE_WINDOWS}
-          scoreWindow={scoreWindow}
-          onScoreWindowChange={handleScoreWindowChange}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-        />
-
-        {createOpen ? (
-          <section style={styles.createPanel}>
-            <form onSubmit={handleCreateSubmit}>
-              <div style={styles.formRow}>
-                <label style={styles.fieldLabel} htmlFor="room-mode-select">
-                  방 유형
-                </label>
-                <select
-                  id="room-mode-select"
-                  value={createState.mode}
-                  onChange={(event) =>
-                    setCreateState((prev) => ({ ...prev, mode: event.target.value === 'casual' ? 'casual' : 'rank' }))
-                  }
-                  style={styles.select}
-                >
-                  <option value="rank">랭크</option>
-                  <option value="casual">캐주얼</option>
-                </select>
-              </div>
-
-              <div style={styles.formRow}>
-                <label style={styles.fieldLabel} htmlFor="room-game-select">
-                  대상 게임
-                </label>
-                <select
-                  id="room-game-select"
-                  value={createState.gameId || ''}
-                  onChange={(event) => setCreateState((prev) => ({ ...prev, gameId: event.target.value }))}
-                  style={styles.select}
-                >
-                  <option value="">게임 선택</option>
-                  {gameFilters.map((game) => (
-                    <option key={game.id} value={game.id}>
-                      {game.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={styles.formRow}>
-                <label style={styles.fieldLabel} htmlFor="room-score-select">
-                  점수 범위 지정 (선택)
-                </label>
-                <select
-                  id="room-score-select"
-                  value={createState.scoreWindow === null ? '' : String(createState.scoreWindow)}
-                  onChange={(event) => {
-                    const value = event.target.value ? Number(event.target.value) : null
-                    setCreateState((prev) => ({ ...prev, scoreWindow: value }))
-                  }}
-                  style={styles.select}
-                >
-                  {createScoreWindowOptions.map((option) => (
-                    <option
-                      key={option.key}
-                      value={option.value === null ? '' : String(option.value)}
-                    >
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedGameMeta?.realtimeMode === 'pulse' ? (
-                <div style={styles.formRow}>
-                  <label style={styles.fieldLabel} htmlFor="room-pulse-limit-select">
-                    같은 역할군 허용 인원
-                  </label>
-                  <select
-                    id="room-pulse-limit-select"
-                    value={String(createState.pulseLimit)}
-                    onChange={(event) => {
-                      const value = Number(event.target.value)
-                      setCreateState((prev) => ({ ...prev, pulseLimit: value || 1 }))
-                    }}
-                    style={styles.select}
-                  >
-                    {pulseLimitOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}명까지 허용
-                      </option>
-                    ))}
-                  </select>
-                  <p style={styles.formHint}>
-                    방장과 같은 역할군은 최대 {Math.max(1, createState.pulseLimit || 1)}명까지
-                    입장할 수 있도록 제한합니다.
+          <section style={styles.layout}>
+            <div style={styles.columns}>
+              <section style={styles.card}>
+                <header style={styles.cardHeader}>
+                  <h2 style={styles.cardTitle}>플레이어 &amp; 영웅</h2>
+                  <p style={styles.cardHint}>
+                    Tinode Presence에서 가져온 아이디어로 활동량을 큐 속성에 함께 남깁니다.
                   </p>
-                </div>
-              ) : null}
-
-              <div style={styles.formRow}>
-                <label style={styles.fieldLabel} htmlFor="room-blind-toggle">
-                  블라인드 모드
-                </label>
-                <div style={styles.checkboxRow}>
-                  <input
-                    id="room-blind-toggle"
-                    type="checkbox"
-                    checked={createState.blindMode}
-                    onChange={(event) =>
-                      setCreateState((prev) => ({ ...prev, blindMode: event.target.checked }))
-                    }
-                    style={styles.checkboxInput}
-                  />
-                  <span style={styles.checkboxLabel}>
-                    게임이 시작되기 전까지 참가자 목록과 캐릭터 이름을 서로에게 숨깁니다.
+                </header>
+                <div style={styles.heroGrid}>
+                  <span style={styles.heroBadge}>
+                    {viewerHero?.name || '익명 플레이어'}
+                    {viewerHero?.hero_id ? ` · ${shortId(viewerHero.hero_id)}` : ''}
                   </span>
+                  <div style={styles.heroStatsRow}>
+                    <span style={styles.heroStatBadge}>총 세션 {heroStats.totalSessions || 0}회</span>
+                    <span style={styles.heroStatBadge}>
+                      선호 모드 {heroStats.favouriteMode ? translateMode(heroStats.favouriteMode) : '데이터 없음'}
+                    </span>
+                    <span style={styles.heroStatBadge}>
+                      최근 플레이 {heroStats.lastPlayedAt ? formatRelativeTime(heroStats.lastPlayedAt) : '기록 없음'}
+                    </span>
+                    {viewerUserId ? <span style={styles.heroStatBadge}>User {shortId(viewerUserId)}</span> : null}
+                  </div>
+                  <div>
+                    <h3 style={{ ...styles.cardTitle, fontSize: 16 }}>최근 참가 게임</h3>
+                    {heroLoading ? (
+                      <p style={styles.cardHint}>영웅 활동을 불러오는 중…</p>
+                    ) : heroGames.length ? (
+                      <ul style={styles.heroGamesList}>
+                        {heroGames.map((game) => (
+                          <li key={game.id} style={styles.heroGameItem}>
+                            <strong>{game.name}</strong>
+                            <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                              세션 {game.sessions || 0}회 · 모드 {game.mode ? translateMode(game.mode) : '미정'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p style={styles.cardHint}>참여한 게임 정보가 없습니다.</p>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </section>
 
-              {createError ? <p style={styles.createError}>{createError}</p> : null}
+              <section style={styles.card}>
+                <header style={styles.cardHeader}>
+                  <h2 style={styles.cardTitle}>큐 합류</h2>
+                  <p style={styles.cardHint}>
+                    Open Match Frontend가 하던 일을 Postgres RPC (`join_rank_queue`)로 짧게 마무리합니다.
+                  </p>
+                </header>
+                <div style={styles.formGrid}>
+                  <div style={styles.formRow}>
+                    <label htmlFor="queueId" style={styles.label}>
+                      큐 ID
+                    </label>
+                    <input
+                      id="queueId"
+                      value={queueId}
+                      onChange={(event) => setQueueId(event.target.value)}
+                      style={styles.input}
+                    />
+                  </div>
+                  <div style={styles.formRow}>
+                    <label htmlFor="queueMode" style={styles.label}>
+                      매치 모드
+                    </label>
+                    <select
+                      id="queueMode"
+                      value={joinForm.mode}
+                      onChange={(event) => setJoinForm((prev) => ({ ...prev, mode: event.target.value }))}
+                      style={styles.select}
+                    >
+                      {MATCH_MODE_OPTIONS.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={styles.formRow}>
+                    <label htmlFor="queueRole" style={styles.label}>
+                      선호 역할
+                    </label>
+                    <select
+                      id="queueRole"
+                      value={joinForm.role}
+                      onChange={(event) => setJoinForm((prev) => ({ ...prev, role: event.target.value }))}
+                      style={styles.select}
+                    >
+                      {QUEUE_ROLE_OPTIONS.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={styles.formRow}>
+                    <label htmlFor="queueRoom" style={styles.label}>
+                      연결할 방 (선택)
+                    </label>
+                    <select
+                      id="queueRoom"
+                      value={joinForm.roomId}
+                      onChange={(event) => setJoinForm((prev) => ({ ...prev, roomId: event.target.value }))}
+                      style={styles.select}
+                    >
+                      <option value="">자동 지정</option>
+                      {roomPreview.map((room) => (
+                        <option key={room.id || room.code} value={room.id || ''}>
+                          {room.code ? `${room.code} · ${translateMode(room.mode)}` : shortId(room.id)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={styles.formRow}>
+                    <label htmlFor="queueNote" style={styles.label}>
+                      추가 메모
+                    </label>
+                    <textarea
+                      id="queueNote"
+                      value={joinForm.note}
+                      onChange={(event) => setJoinForm((prev) => ({ ...prev, note: event.target.value }))}
+                      style={styles.textarea}
+                      placeholder="희망 포지션, 파티 키 등 Open Match 속성으로 남겨보세요."
+                    />
+                  </div>
+                  <div style={styles.formActions}>
+                    <button
+                      type="button"
+                      style={styles.primaryButton(joinBusy)}
+                      onClick={handleJoinQueue}
+                      disabled={joinBusy}
+                    >
+                      {joinBusy ? '큐 참가 중…' : '큐 참가'}
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.dangerButton(leaveBusy)}
+                      onClick={handleLeaveQueue}
+                      disabled={leaveBusy}
+                    >
+                      {leaveBusy ? '정리 중…' : '큐 티켓 삭제'}
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.secondaryButton(stageBusy || !ticket?.id)}
+                      onClick={handleStageMatch}
+                      disabled={stageBusy || !ticket?.id}
+                    >
+                      {stageBusy ? '스테이징…' : '준비 상태 확인'}
+                    </button>
+                    {ticket?.id ? (
+                      <span style={{ fontSize: 13, color: '#cbd5f5' }}>
+                        현재 티켓 {shortId(ticket.id)} · {translateStatus(ticket.status)} · {buildSeatSummary(ticket)}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 13, color: '#94a3b8' }}>큐 티켓이 생성되면 여기에서 상태를 볼 수 있습니다.</span>
+                    )}
+                  </div>
+                </div>
+              </section>
 
-              <button type="submit" style={styles.submitButton(createPending)} disabled={createPending}>
-                {createPending ? '생성 중...' : '방 생성하기'}
-              </button>
-            </form>
+              {stageInfo ? (
+                <section style={styles.card}>
+                  <header style={styles.cardHeader}>
+                    <h2 style={styles.cardTitle}>스테이징 정보</h2>
+                    <p style={styles.cardHint}>
+                      Open Match MMF가 제안한 좌석을 `stage_rank_match` RPC로 복원합니다.
+                    </p>
+                  </header>
+                  <div style={styles.badgeRow}>
+                    <span style={styles.badge}>
+                      세션 {stageInfo.sessionId ? shortId(stageInfo.sessionId) : '생성중'}
+                    </span>
+                    <span style={styles.badge}>
+                      레디 마감 {stageInfo.readyExpiresAt ? formatRelativeTime(stageInfo.readyExpiresAt) : '—'}
+                    </span>
+                    {stageInfo.sessionId ? (
+                      <Link
+                        href={`/arena/staging?sessionId=${stageInfo.sessionId}`}
+                        style={styles.linkButton}
+                      >
+                        스테이징 화면 열기
+                      </Link>
+                    ) : null}
+                  </div>
+                  <ul style={styles.stageSeats}>
+                    {stageInfo.seats?.length ? (
+                      stageInfo.seats.map((seat) => (
+                        <li key={seat.index ?? Math.random()} style={styles.stageSeatItem}>
+                          <span>
+                            슬롯 {seat.index != null ? seat.index + 1 : '?'} · {seat.role || '역할 미정'} ·{' '}
+                            {seat.ownerId ? shortId(seat.ownerId) : '빈자리'}
+                          </span>
+                          <span style={styles.seatReady(seat.ready)}>
+                            {seat.ready ? 'READY' : 'WAITING'}
+                          </span>
+                        </li>
+                      ))
+                    ) : (
+                      <li style={{ color: '#94a3b8', fontSize: 13 }}>좌석 데이터가 아직 없습니다.</li>
+                    )}
+                  </ul>
+                </section>
+              ) : null}
+            </div>
+
+            <div style={styles.cardsColumn}>
+              <section style={styles.card}>
+                <header style={styles.cardHeader}>
+                  <h2 style={styles.cardTitle}>큐 티켓 스트림</h2>
+                  <p style={styles.cardHint}>
+                    `rank_queue_tickets` 테이블을 직접 구독해 대기열 변화를 실시간으로 확인합니다.
+                  </p>
+                </header>
+                {queuePreview.length ? (
+                  <ul style={styles.list}>
+                    {queuePreview.map((entry) => (
+                      <li key={entry.id} style={styles.listItem}>
+                        <div style={styles.listRow}>
+                          <h3 style={styles.listTitle}>티켓 {shortId(entry.id)}</h3>
+                          <span style={styles.statusBadge(entry.status)}>{translateStatus(entry.status)}</span>
+                        </div>
+                        <p style={styles.listMeta}>
+                          <span>모드 {translateMode(entry.mode)}</span>
+                          {entry.roomId ? <span>방 {shortId(entry.roomId)}</span> : null}
+                          <span>좌석 {entry.occupiedSlots}/{entry.totalSlots ?? '—'}</span>
+                          <span>업데이트 {formatRelativeTime(entry.updatedAt)}</span>
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={styles.empty}>표시할 큐 티켓이 없습니다.</p>
+                )}
+              </section>
+
+              <section style={styles.card}>
+                <header style={styles.cardHeader}>
+                  <h2 style={styles.cardTitle}>진행 중인 세션</h2>
+                  <p style={styles.cardHint}>
+                    Open Match Backend 참고: `rank_sessions`의 활성을 감시해 난입·관전을 준비합니다.
+                  </p>
+                </header>
+                {sessionPreview.length ? (
+                  <ul style={styles.list}>
+                    {sessionPreview.map((session) => (
+                      <li key={session.id} style={styles.listItem}>
+                        <div style={styles.listRow}>
+                          <h3 style={styles.listTitle}>세션 {shortId(session.id)}</h3>
+                          <span style={styles.statusBadge(session.status)}>{translateStatus(session.status)}</span>
+                        </div>
+                        <p style={styles.listMeta}>
+                          <span>모드 {translateMode(session.mode)}</span>
+                          <span>턴 {session.turn}</span>
+                          <span>갱신 {formatRelativeTime(session.updatedAt)}</span>
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={styles.empty}>활성 세션이 없습니다.</p>
+                )}
+              </section>
+
+              <section style={styles.card}>
+                <header style={styles.cardHeader}>
+                  <h2 style={styles.cardTitle}>방 현황</h2>
+                  <p style={styles.cardHint}>
+                    기존 방 브라우저 대신 Open Match 룸 컨셉에 맞춘 요약 정보를 제공합니다.
+                  </p>
+                </header>
+                {roomPreview.length ? (
+                  <ul style={styles.list}>
+                    {roomPreview.map((room) => (
+                      <li key={room.id} style={styles.listItem}>
+                        <div style={styles.listRow}>
+                          <h3 style={styles.listTitle}>{room.code || `방 ${shortId(room.id)}`}</h3>
+                          <span style={styles.statusBadge(room.status)}>{translateStatus(room.status)}</span>
+                        </div>
+                        <p style={styles.listMeta}>
+                          <span>모드 {translateMode(room.mode)}</span>
+                          <span>
+                            좌석 {room.readyCount ?? 0}/{room.slotCount ?? '—'} 준비 · {room.filledCount ?? 0} 착석
+                          </span>
+                          <span>갱신 {formatRelativeTime(room.updatedAt)}</span>
+                        </p>
+                        {room.id ? (
+                          <div style={styles.badgeRow}>
+                            <Link href={`/rooms/${room.id}`} style={styles.linkButton}>
+                              방 상세 보기
+                            </Link>
+                            <span style={styles.badge}>호스트 활동 {formatRelativeTime(room.hostLastActiveAt)}</span>
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={styles.empty}>활성 방이 없습니다.</p>
+                )}
+              </section>
+
+              <section style={styles.card}>
+                <header style={styles.cardHeader}>
+                  <h2 style={styles.cardTitle}>Realtime 이벤트 로그</h2>
+                  <p style={styles.cardHint}>
+                    Tinode의 activity feed처럼 큐/방/세션 변화를 한눈에 파악합니다.
+                  </p>
+                </header>
+                {eventLog.length ? (
+                  <ul style={styles.timeline}>
+                    {eventLog.map((entry) => (
+                      <li key={entry.id} style={styles.timelineItem}>
+                        <h4 style={styles.timelineTitle}>{entry.summary}</h4>
+                        <p style={styles.timelineMeta}>
+                          {entry.table} · {entry.eventType} · {formatRelativeTime(entry.createdAt)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={styles.empty}>아직 수신된 이벤트가 없습니다.</p>
+                )}
+              </section>
+            </div>
           </section>
-        ) : null}
-
-        {error ? (
-          <section style={styles.errorCard}>
-            <h2 style={styles.errorTitle}>방 목록을 불러오지 못했습니다.</h2>
-            <p style={styles.errorText}>{error}</p>
-            <button type="button" onClick={handleRefresh} style={styles.retryButton}>
-              다시 시도
-            </button>
-          </section>
-        ) : null}
-
-        <RoomResultsSection
-          loading={loading}
-          refreshing={refreshing}
-          filteredRooms={filteredRooms}
-          filterDiagnostics={filterDiagnostics}
-          filterMessages={filterMessages}
-          effectiveHeroId={effectiveHeroId}
-          heroRatingForSelection={heroRatingForSelection}
-          autoRefreshCountdown={autoRefreshCountdown}
-          notices={roomNotices}
-          formatRelativeTime={formatRelativeTime}
-        />
-      </div>
-    </div>
+        </div>
+      </main>
+    </>
   )
 }

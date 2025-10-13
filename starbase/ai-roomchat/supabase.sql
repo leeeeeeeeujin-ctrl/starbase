@@ -1806,6 +1806,172 @@ $$;
 grant execute on function public.join_rank_queue(text, jsonb)
   to authenticated, service_role;
 
+create or replace function public.fetch_rank_lobby_snapshot(
+  p_queue_id text default null,
+  p_limit integer default 12
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_queue jsonb := '[]'::jsonb;
+  v_sessions jsonb := '[]'::jsonb;
+  v_rooms jsonb := '[]'::jsonb;
+  v_limit integer := greatest(coalesce(p_limit, 12), 1);
+begin
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_queue
+  from (
+    select
+      t.id,
+      t.queue_id,
+      t.status,
+      t.mode,
+      t.owner_id,
+      t.game_id,
+      t.room_id,
+      t.ready_expires_at,
+      t.created_at,
+      t.updated_at,
+      t.ready_vote,
+      t.async_fill_meta,
+      t.seat_map,
+      t.payload,
+      coalesce((
+        select count(*)
+        from public.rank_room_slots slots
+        where slots.room_id = t.room_id
+          and slots.occupant_owner_id is not null
+      ), 0) as occupied_slots,
+      coalesce((
+        select count(*)
+        from public.rank_room_slots slots
+        where slots.room_id = t.room_id
+      ), 0) as total_slots
+    from public.rank_queue_tickets t
+    where (p_queue_id is null or t.queue_id = p_queue_id)
+      and (
+        t.owner_id is null
+        or t.owner_id = auth.uid()
+        or auth.role() = 'service_role'
+      )
+    order by t.updated_at desc
+    limit v_limit
+  ) as row;
+
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_rooms
+  from (
+    select
+      r.id,
+      r.game_id,
+      r.owner_id,
+      r.code,
+      r.mode,
+      r.realtime_mode,
+      r.status,
+      r.slot_count,
+      r.filled_count,
+      r.ready_count,
+      r.host_last_active_at,
+      r.updated_at,
+      coalesce((
+        select jsonb_agg(
+          jsonb_build_object(
+            'slot_index', slots.slot_index,
+            'role', slots.role,
+            'occupant_owner_id', slots.occupant_owner_id,
+            'occupant_ready', slots.occupant_ready,
+            'updated_at', slots.updated_at
+          )
+          order by slots.slot_index
+        )
+        from public.rank_room_slots slots
+        where slots.room_id = r.id
+      ), '[]'::jsonb) as slots
+    from public.rank_rooms r
+    where r.status not in ('closed', 'archived')
+    order by r.updated_at desc
+    limit v_limit
+  ) as row;
+
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_sessions
+  from (
+    select
+      s.id,
+      s.game_id,
+      s.owner_id,
+      s.status,
+      s.mode,
+      s.turn,
+      s.rating_hint,
+      s.vote_snapshot,
+      s.created_at,
+      s.updated_at
+    from public.rank_sessions s
+    where coalesce(s.status, '') not in ('complete', 'archived')
+      and (
+        s.owner_id is null
+        or s.owner_id = auth.uid()
+        or auth.role() = 'service_role'
+      )
+    order by s.updated_at desc
+    limit v_limit
+  ) as row;
+
+  return jsonb_build_object(
+    'queue', v_queue,
+    'rooms', v_rooms,
+    'sessions', v_sessions
+  );
+end;
+$$;
+
+grant execute on function public.fetch_rank_lobby_snapshot(text, integer)
+  to authenticated, service_role;
+
+create or replace function public.cancel_rank_queue_ticket(
+  queue_ticket_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ticket record;
+begin
+  if queue_ticket_id is null then
+    raise exception 'missing_queue_ticket';
+  end if;
+
+  select * into v_ticket
+  from public.rank_queue_tickets
+  where id = queue_ticket_id;
+
+  if not found then
+    return jsonb_build_object('removed', false, 'reason', 'not_found');
+  end if;
+
+  if v_ticket.owner_id is not null
+     and v_ticket.owner_id <> auth.uid()
+     and auth.role() <> 'service_role' then
+    raise exception 'forbidden_queue_ticket';
+  end if;
+
+  delete from public.rank_queue_tickets
+   where id = queue_ticket_id;
+
+  return jsonb_build_object('removed', true);
+end;
+$$;
+
+grant execute on function public.cancel_rank_queue_ticket(uuid)
+  to authenticated, service_role;
+
 create or replace function public.assert_room_ready(p_room_id uuid)
 returns void
 language plpgsql
