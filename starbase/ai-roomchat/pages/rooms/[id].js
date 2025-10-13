@@ -2327,6 +2327,11 @@ export default function RoomDetailPage() {
     ],
   )
 
+  const handleReadyVoteRef = useRef(handleReadyVote)
+  useEffect(() => {
+    handleReadyVoteRef.current = handleReadyVote
+  }, [handleReadyVote])
+
   const handleRestartReadyPoll = useCallback(async () => {
     if (!isHost) return
     if (!hasFullRoster) return
@@ -2363,6 +2368,54 @@ export default function RoomDetailPage() {
     hasFullRoster,
     occupantSignature,
     resetRoomReadyStates,
+  ])
+
+  const hostReadyAutoRef = useRef({ startedAt: 0 })
+
+  useEffect(() => {
+    if (!readyWindow?.active) {
+      hostReadyAutoRef.current = { startedAt: 0 }
+      return
+    }
+    if (!isHost) return
+    if (!joined || !activeSlotId || !viewer?.ownerId) return
+    if (viewerReady) return
+    if (readyPending) return
+    const startedAt = readyWindow.startedAt || 0
+    if (!startedAt) return
+    if (hostReadyAutoRef.current.startedAt === startedAt) return
+
+    hostReadyAutoRef.current = { startedAt }
+
+    setSlots((prev) => {
+      if (!Array.isArray(prev) || !prev.length) return prev
+      let changed = false
+      const next = prev.map((slot) => {
+        if (!slot?.occupantOwnerId || slot.occupantOwnerId !== viewer.ownerId) {
+          return slot
+        }
+        if (slot.occupantReady) {
+          return slot
+        }
+        changed = true
+        return { ...slot, occupantReady: true }
+      })
+      return changed ? next : prev
+    })
+
+    Promise.resolve()
+      .then(() => handleReadyVoteRef.current?.(true))
+      .catch(() => {})
+  }, [
+    readyWindow?.active,
+    readyWindow?.startedAt,
+    isHost,
+    joined,
+    activeSlotId,
+    viewer?.ownerId,
+    viewerReady,
+    readyPending,
+    setSlots,
   ])
 
   const handleRefresh = useCallback(() => {
@@ -2895,6 +2948,20 @@ export default function RoomDetailPage() {
       return
     }
 
+    const requiresReadyConsensus = hasFullRoster
+    if (requiresReadyConsensus) {
+      const readyWindowBlocking = readyWindow?.active && readyWindow?.reason !== 'complete'
+      if (readyWindowBlocking) {
+        return
+      }
+      if (!allReady) {
+        return
+      }
+      if (!viewerReady) {
+        return
+      }
+    }
+
     autoRedirectRef.current = true
     skipRoomCleanupRef.current = true
     cancelParticipantCleanup()
@@ -2919,6 +2986,11 @@ export default function RoomDetailPage() {
     normalizedRoomStatus,
     room?.gameId,
     router,
+    hasFullRoster,
+    readyWindow?.active,
+    readyWindow?.reason,
+    allReady,
+    viewerReady,
   ])
 
   const handleAsyncStart = useCallback(async () => {
