@@ -90,8 +90,8 @@ function toChannelSuffix(key) {
     .replace(/^-+|-+$/g, '')
 }
 
-function registerChannel({ prefix, key, filter, handler, registry }) {
-  if (!filter) return null
+function registerChannel({ channel, filter, handler, registry }) {
+  if (!channel || !filter) return null
 
   const signature = `${filter}`.trim()
   if (!signature || registry.filters.has(signature)) {
@@ -100,29 +100,16 @@ function registerChannel({ prefix, key, filter, handler, registry }) {
 
   registry.filters.add(signature)
 
-  const suffix = toChannelSuffix(key || signature)
-  const channel = supabase
-    .channel(`${prefix}:${suffix}`)
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'messages', filter: signature },
-      (payload) => {
-        if (typeof handler === 'function' && payload?.new) {
-          handler(payload.new)
-        }
-      },
-    )
-    .subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        console.error('채팅 실시간 채널을 구독하지 못했습니다.', {
-          prefix,
-          key: suffix,
-          filter: signature,
-        })
+  channel.on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'messages', filter: signature },
+    (payload) => {
+      if (typeof handler === 'function' && payload?.new) {
+        handler(payload.new)
       }
-    })
+    },
+  )
 
-  registry.channels.push(channel)
   return channel
 }
 
@@ -138,32 +125,21 @@ export function subscribeToMessages({
   userId = null,
 } = {}) {
   const handler = typeof onInsert === 'function' ? onInsert : () => {}
-  const prefix = channelName || 'rank-chat-stream'
-  const registry = { channels: [], filters: new Set() }
+  const baseName = channelName || 'rank-chat-stream'
+  const channelSuffix = toChannelSuffix(`${baseName}-${Date.now().toString(36)}`)
+  const channel = supabase.channel(`realtime:public:messages:${channelSuffix}`)
+  const registry = { filters: new Set() }
 
   const normalizedOwnerId = ownerId || userId || null
   const normalizedHeroId = heroId || null
 
-  registerChannel({
-    prefix,
-    key: 'lobby',
-    filter: 'channel_type=eq.lobby',
-    handler,
-    registry,
-  })
+  registerChannel({ channel, filter: 'channel_type=eq.lobby', handler, registry })
 
-  registerChannel({
-    prefix,
-    key: 'system',
-    filter: 'channel_type=eq.system',
-    handler,
-    registry,
-  })
+  registerChannel({ channel, filter: 'channel_type=eq.system', handler, registry })
 
   if (sessionId) {
     registerChannel({
-      prefix,
-      key: `session-${sessionId}`,
+      channel,
       filter: `session_id=eq.${sessionId}`,
       handler,
       registry,
@@ -172,8 +148,7 @@ export function subscribeToMessages({
 
   if (matchInstanceId) {
     registerChannel({
-      prefix,
-      key: `match-${matchInstanceId}`,
+      channel,
       filter: `match_instance_id=eq.${matchInstanceId}`,
       handler,
       registry,
@@ -182,8 +157,7 @@ export function subscribeToMessages({
 
   if (gameId) {
     registerChannel({
-      prefix,
-      key: `game-${gameId}`,
+      channel,
       filter: `game_id=eq.${gameId}`,
       handler,
       registry,
@@ -192,8 +166,7 @@ export function subscribeToMessages({
 
   if (roomId) {
     registerChannel({
-      prefix,
-      key: `room-${roomId}`,
+      channel,
       filter: `room_id=eq.${roomId}`,
       handler,
       registry,
@@ -202,16 +175,14 @@ export function subscribeToMessages({
 
   if (normalizedOwnerId) {
     registerChannel({
-      prefix,
-      key: `owner-${normalizedOwnerId}`,
+      channel,
       filter: `owner_id=eq.${normalizedOwnerId}`,
       handler,
       registry,
     })
 
     registerChannel({
-      prefix,
-      key: `target-owner-${normalizedOwnerId}`,
+      channel,
       filter: `target_owner_id=eq.${normalizedOwnerId}`,
       handler,
       registry,
@@ -220,29 +191,39 @@ export function subscribeToMessages({
 
   if (normalizedHeroId) {
     registerChannel({
-      prefix,
-      key: `hero-${normalizedHeroId}`,
+      channel,
       filter: `hero_id=eq.${normalizedHeroId}`,
       handler,
       registry,
     })
 
     registerChannel({
-      prefix,
-      key: `target-hero-${normalizedHeroId}`,
+      channel,
       filter: `target_hero_id=eq.${normalizedHeroId}`,
       handler,
       registry,
     })
   }
 
+  if (!registry.filters.size) {
+    supabase.removeChannel(channel)
+    return () => {}
+  }
+
+  channel.subscribe((status) => {
+    if (status === 'CHANNEL_ERROR') {
+      console.error('채팅 실시간 채널을 구독하지 못했습니다.', {
+        channel: channel.topic,
+        filters: Array.from(registry.filters.values()),
+      })
+    }
+  })
+
   return () => {
-    for (const channel of registry.channels) {
-      try {
-        supabase.removeChannel(channel)
-      } catch (error) {
-        console.error('채팅 실시간 채널을 해제하지 못했습니다.', error)
-      }
+    try {
+      supabase.removeChannel(channel)
+    } catch (error) {
+      console.error('채팅 실시간 채널을 해제하지 못했습니다.', error)
     }
   }
 }
