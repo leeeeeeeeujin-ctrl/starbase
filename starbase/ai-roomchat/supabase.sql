@@ -2972,7 +2972,10 @@ alter table public.messages
   alter column metadata set default '{}'::jsonb;
 
 alter table public.messages
-  add constraint if not exists messages_channel_type_check
+  drop constraint if exists messages_channel_type_check;
+
+alter table public.messages
+  add constraint messages_channel_type_check
   check (channel_type in ('lobby', 'main', 'role', 'whisper', 'system'));
 
 create index if not exists messages_created_at_idx
