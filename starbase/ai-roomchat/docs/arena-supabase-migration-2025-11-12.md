@@ -63,7 +63,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_ticket record;
+  v_ticket record; -- record avoids 42704 errors when the composite type is missing during initial migrations
 begin
   if queue_id is null then
     raise exception 'missing_queue_id';
@@ -231,7 +231,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_ticket public.rank_queue_tickets;
+  v_ticket record; -- record avoids 42704 errors when the composite type is missing during initial migrations
   v_session_id uuid;
   v_ready_expires_at timestamptz;
   v_seats jsonb;
