@@ -1118,6 +1118,19 @@ alter table public.rank_rooms
 alter table public.rank_rooms
   add column if not exists blind_mode boolean not null default false;
 
+alter table public.rank_rooms
+  add column if not exists host_last_active_at timestamptz;
+
+alter table public.rank_rooms
+  alter column host_last_active_at set default now();
+
+update public.rank_rooms
+   set host_last_active_at = coalesce(host_last_active_at, updated_at, created_at, now())
+ where host_last_active_at is null;
+
+alter table public.rank_rooms
+  alter column host_last_active_at set not null;
+
 create table if not exists public.rank_room_slots (
   id uuid primary key default gen_random_uuid(),
   room_id uuid not null references public.rank_rooms(id) on delete cascade,
