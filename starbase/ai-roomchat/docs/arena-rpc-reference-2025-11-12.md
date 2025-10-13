@@ -1,5 +1,7 @@
 # Arena RPC Reference (2025-11-12)
 
+모든 Rank Arcade 페이지와 `/api/rank/stage-room-match`가 사용하는 RPC 목록이다. 함수별 설명과 함께 SQL 정의를 제공하며, 전체를 한 번에 배포하려면 `docs/arena-supabase-migration-2025-11-12.md`의 통합 스크립트를 사용하면 된다.
+
 ## join_rank_queue
 ```sql
 create or replace function public.join_rank_queue(

@@ -13,7 +13,7 @@
 
 ## 2. 배포 전 실행 순서
 
-1. **SQL 배포**: 아래 3개 함수를 `supabase/sql` 또는 DB 마이그레이션 스크립트로 추가합니다.
+1. **SQL 배포**: 아래 3개 함수를 `supabase/sql` 또는 DB 마이그레이션 스크립트로 추가합니다. Arena 전용 RPC까지 한 번에 배포하려면 `docs/arena-supabase-migration-2025-11-12.md`의 통합 스크립트를 그대로 사용하세요.
    - `public.assert_room_ready(p_room_id uuid)`
    - `public.ensure_rank_session_for_room(p_room_id uuid, p_game_id uuid, p_owner_id uuid, p_mode text, p_vote jsonb)`
    - `public.upsert_rank_session_async_fill(p_session_id uuid, p_async_fill jsonb)`
