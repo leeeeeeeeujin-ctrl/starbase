@@ -82,40 +82,89 @@ export async function insertMessage(payload, context = {}) {
   return data || null
 }
 
-function toChannelSuffix(key) {
-  return String(key || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9:_-]+/gi, '-')
-    .replace(/^-+|-+$/g, '')
-}
+let sharedMessageChannel = null
+let sharedChannelSubscribed = false
+let sharedSubscriberCount = 0
 
-function registerChannel({ channel, filter, handler, registry }) {
-  if (!channel || !filter) return null
-
-  const signature = `${filter}`.trim()
-  if (!signature || registry.filters.has(signature)) {
-    return null
+function getOrCreateMessageChannel() {
+  if (!sharedMessageChannel) {
+    sharedMessageChannel = supabase.channel('realtime:public:messages')
+    sharedChannelSubscribed = false
   }
 
-  registry.filters.add(signature)
+  return sharedMessageChannel
+}
 
-  channel.on(
-    'postgres_changes',
-    { event: 'INSERT', schema: 'public', table: 'messages', filter: signature },
-    (payload) => {
-      if (typeof handler === 'function' && payload?.new) {
-        handler(payload.new)
+function subscribeSharedChannel(channel, filters, handler) {
+  if (!channel || !filters.length) {
+    return () => {}
+  }
+
+  const listeners = []
+  const wrappedHandler = (payload, listenerState) => {
+    if (!listenerState.active) {
+      return
+    }
+
+    if (typeof handler === 'function' && payload?.new) {
+      handler(payload.new)
+    }
+  }
+
+  filters.forEach((filter) => {
+    const signature = `${filter}`.trim()
+    if (!signature) {
+      return
+    }
+
+    const listenerState = { active: true }
+    channel.on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'messages', filter: signature },
+      (payload) => wrappedHandler(payload, listenerState),
+    )
+
+    listeners.push(listenerState)
+  })
+
+  if (!sharedChannelSubscribed) {
+    channel.subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') {
+        console.error('채팅 실시간 채널을 구독하지 못했습니다.', {
+          channel: channel.topic,
+          filters,
+        })
       }
-    },
-  )
+    })
 
-  return channel
+    sharedChannelSubscribed = true
+  }
+
+  sharedSubscriberCount += 1
+
+  return () => {
+    listeners.forEach((listenerState) => {
+      listenerState.active = false
+    })
+
+    sharedSubscriberCount = Math.max(sharedSubscriberCount - 1, 0)
+
+    if (sharedSubscriberCount === 0 && sharedMessageChannel) {
+      try {
+        sharedMessageChannel.unsubscribe()
+        supabase.removeChannel(sharedMessageChannel)
+      } catch (error) {
+        console.error('채팅 실시간 채널을 해제하지 못했습니다.', error)
+      } finally {
+        sharedMessageChannel = null
+        sharedChannelSubscribed = false
+      }
+    }
+  }
 }
 
 export function subscribeToMessages({
   onInsert,
-  channelName = 'rank-chat-stream',
   sessionId = null,
   matchInstanceId = null,
   gameId = null,
@@ -125,105 +174,48 @@ export function subscribeToMessages({
   userId = null,
 } = {}) {
   const handler = typeof onInsert === 'function' ? onInsert : () => {}
-  const baseName = channelName || 'rank-chat-stream'
-  const channelSuffix = toChannelSuffix(`${baseName}-${Date.now().toString(36)}`)
-  const channel = supabase.channel(`realtime:public:messages:${channelSuffix}`)
-  const registry = { filters: new Set() }
-
+  const channel = getOrCreateMessageChannel()
+  const filters = []
   const normalizedOwnerId = ownerId || userId || null
   const normalizedHeroId = heroId || null
 
-  registerChannel({ channel, filter: 'channel_type=eq.lobby', handler, registry })
-
-  registerChannel({ channel, filter: 'channel_type=eq.system', handler, registry })
+  filters.push('channel_type=eq.lobby')
+  filters.push('channel_type=eq.system')
+  filters.push('channel_type=eq.main')
+  filters.push('channel_type=eq.role')
+  filters.push('channel_type=eq.whisper')
 
   if (sessionId) {
-    registerChannel({
-      channel,
-      filter: `session_id=eq.${sessionId}`,
-      handler,
-      registry,
-    })
+    filters.push(`session_id=eq.${sessionId}`)
   }
 
   if (matchInstanceId) {
-    registerChannel({
-      channel,
-      filter: `match_instance_id=eq.${matchInstanceId}`,
-      handler,
-      registry,
-    })
+    filters.push(`match_instance_id=eq.${matchInstanceId}`)
   }
 
   if (gameId) {
-    registerChannel({
-      channel,
-      filter: `game_id=eq.${gameId}`,
-      handler,
-      registry,
-    })
+    filters.push(`game_id=eq.${gameId}`)
   }
 
   if (roomId) {
-    registerChannel({
-      channel,
-      filter: `room_id=eq.${roomId}`,
-      handler,
-      registry,
-    })
+    filters.push(`room_id=eq.${roomId}`)
   }
 
   if (normalizedOwnerId) {
-    registerChannel({
-      channel,
-      filter: `owner_id=eq.${normalizedOwnerId}`,
-      handler,
-      registry,
-    })
-
-    registerChannel({
-      channel,
-      filter: `target_owner_id=eq.${normalizedOwnerId}`,
-      handler,
-      registry,
-    })
+    filters.push(`owner_id=eq.${normalizedOwnerId}`)
+    filters.push(`target_owner_id=eq.${normalizedOwnerId}`)
   }
 
   if (normalizedHeroId) {
-    registerChannel({
-      channel,
-      filter: `hero_id=eq.${normalizedHeroId}`,
-      handler,
-      registry,
-    })
-
-    registerChannel({
-      channel,
-      filter: `target_hero_id=eq.${normalizedHeroId}`,
-      handler,
-      registry,
-    })
+    filters.push(`hero_id=eq.${normalizedHeroId}`)
+    filters.push(`target_hero_id=eq.${normalizedHeroId}`)
   }
 
-  if (!registry.filters.size) {
-    supabase.removeChannel(channel)
+  const uniqueFilters = Array.from(new Set(filters.filter(Boolean)))
+
+  if (!uniqueFilters.length) {
     return () => {}
   }
 
-  channel.subscribe((status) => {
-    if (status === 'CHANNEL_ERROR') {
-      console.error('채팅 실시간 채널을 구독하지 못했습니다.', {
-        channel: channel.topic,
-        filters: Array.from(registry.filters.values()),
-      })
-    }
-  })
-
-  return () => {
-    try {
-      supabase.removeChannel(channel)
-    } catch (error) {
-      console.error('채팅 실시간 채널을 해제하지 못했습니다.', error)
-    }
-  }
+  return subscribeSharedChannel(channel, uniqueFilters, handler)
 }
