@@ -79,6 +79,40 @@
   letter-spacing: 0.04em;
 }
 
+.arenaNotice {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 40px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: rgba(20, 30, 68, 0.58);
+  border: 1px solid rgba(114, 153, 255, 0.22);
+  color: rgba(221, 229, 255, 0.9);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.arenaNoticeLabel {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(165, 191, 255, 0.88);
+}
+
+.arenaNotice a {
+  color: #7dd3fc;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: rgba(125, 211, 252, 0.4);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.arenaNoticeHint {
+  color: rgba(184, 203, 255, 0.72);
+  font-size: 13px;
+}
+
 .sections {
   display: grid;
   gap: 28px;
