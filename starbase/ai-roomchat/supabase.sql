@@ -3053,7 +3053,7 @@ $$;
 
 create or replace function public.send_rank_chat_message(
   p_scope text default 'global',
-  p_text text,
+  p_text text default null,
   p_session_id uuid default null,
   p_match_instance_id uuid default null,
   p_game_id uuid default null,
