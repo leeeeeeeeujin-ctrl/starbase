@@ -1478,7 +1478,7 @@ create table if not exists public.rank_session_timeline_events (
   reason text,
   strike integer,
   remaining integer,
-  limit integer,
+  limit_remaining integer,
   status text,
   turn integer,
   event_timestamp timestamptz not null default now(),
