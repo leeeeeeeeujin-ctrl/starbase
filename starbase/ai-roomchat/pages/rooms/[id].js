@@ -216,7 +216,16 @@ function buildReadyResetKey(slots = [], { overrideReady = null } = {}) {
           : '0'
         : 'x'
 
-      return `${stableId}:${ownerId}:${readyState}`
+      const updatedSource = slot?.updatedAt || slot?.updated_at || null
+      let updateVersion = '0'
+      if (updatedSource) {
+        const timestamp = new Date(updatedSource).getTime()
+        if (Number.isFinite(timestamp) && timestamp > 0) {
+          updateVersion = timestamp.toString(36)
+        }
+      }
+
+      return `${stableId}:${ownerId}:${readyState}:${updateVersion}`
     })
     .join('|')
 }
@@ -1007,6 +1016,12 @@ export default function RoomDetailPage() {
   const skipRoomCleanupRef = useRef(false)
   const stageInFlightRef = useRef(false)
   const readyResetTrackerRef = useRef({ signature: '', timestamp: 0 })
+  const readyCycleRef = useRef({
+    baselineKey: '',
+    lastKey: '',
+    seenDivergence: false,
+    signature: '',
+  })
 
   const occupancy = useMemo(() => {
     const total = slots.length
@@ -1036,6 +1051,18 @@ export default function RoomDetailPage() {
 
   const readyResetKey = useMemo(() => buildReadyResetKey(slots), [slots])
 
+  useEffect(() => {
+    const tracker = readyCycleRef.current
+    const normalizedKey = readyResetKey || ''
+    if (tracker.lastKey === normalizedKey) {
+      return
+    }
+    if (tracker.baselineKey && normalizedKey && tracker.baselineKey !== normalizedKey) {
+      tracker.seenDivergence = true
+    }
+    tracker.lastKey = normalizedKey
+  }, [readyResetKey])
+
   const everyoneUnready = useMemo(() => {
     if (!hasFullRoster) return false
     return allFilledSlotsUnready(slots)
@@ -1051,6 +1078,17 @@ export default function RoomDetailPage() {
       })
       .join('|')
   }, [slots])
+
+  useEffect(() => {
+    const tracker = readyCycleRef.current
+    const normalizedSignature = occupantSignature || ''
+    if (tracker.signature === normalizedSignature) {
+      return
+    }
+    tracker.signature = normalizedSignature
+    tracker.baselineKey = ''
+    tracker.seenDivergence = false
+  }, [occupantSignature])
 
   const roomPhase = useMemo(() => {
     if (!room) return 'loading'
@@ -1520,7 +1558,9 @@ export default function RoomDetailPage() {
         const slotResult = await withTable(supabase, 'rank_room_slots', (table) =>
           supabase
             .from(table)
-            .select('id, slot_index, role, occupant_owner_id, occupant_hero_id, occupant_ready, joined_at')
+            .select(
+              'id, slot_index, role, occupant_owner_id, occupant_hero_id, occupant_ready, joined_at, updated_at',
+            )
             .eq('room_id', roomId)
             .order('slot_index', { ascending: true }),
         )
@@ -1621,6 +1661,7 @@ export default function RoomDetailPage() {
                 heroRow?.name?.trim?.() || (occupantHeroId ? '이름 없는 영웅' : '비어 있음'),
               occupantReady: !!row?.occupant_ready,
               joinedAt: row?.joined_at || null,
+              updatedAt: row?.updated_at || null,
             }
           })
           .sort((a, b) => a.slotIndex - b.slotIndex)
@@ -1811,8 +1852,12 @@ export default function RoomDetailPage() {
       readyResetTrackerRef.current = { signature: normalizedSignature, timestamp: now }
 
       try {
+        const updatedAt = new Date().toISOString()
         const { error } = await withTable(supabase, 'rank_room_slots', (table) =>
-          supabase.from(table).update({ occupant_ready: false }).eq('room_id', room.id),
+          supabase
+            .from(table)
+            .update({ occupant_ready: false, updated_at: updatedAt })
+            .eq('room_id', room.id),
         )
         if (error && error.code !== 'PGRST116') {
           throw error
@@ -1860,13 +1905,16 @@ export default function RoomDetailPage() {
           const nextHero = newRow?.occupant_hero_id || null
           const prevReady = oldRow?.occupant_ready === true
           const nextReady = newRow?.occupant_ready === true
+          const prevUpdatedAt = oldRow?.updated_at || null
+          const nextUpdatedAt = newRow?.updated_at || null
 
           const occupantChanged =
             eventType === 'DELETE' ||
             eventType === 'INSERT' ||
             prevOwner !== nextOwner ||
             prevHero !== nextHero ||
-            prevReady !== nextReady
+            prevReady !== nextReady ||
+            prevUpdatedAt !== nextUpdatedAt
 
           if (!occupantChanged) {
             return
@@ -1906,58 +1954,59 @@ export default function RoomDetailPage() {
   }, [slots, viewer.ownerId])
 
   useEffect(() => {
-    if (!hasFullRoster) {
+    const tracker = readyCycleRef.current
+    if (
+      !hasFullRoster ||
+      normalizedRoomStatus === 'battle' ||
+      normalizedRoomStatus === 'in_progress'
+    ) {
+      tracker.baselineKey = ''
+      tracker.lastKey = readyResetKey || ''
+      tracker.seenDivergence = false
       setReadyWindow(null)
       setReadyCountdown(0)
-      return
     }
-
-    if (normalizedRoomStatus === 'battle' || normalizedRoomStatus === 'in_progress') {
-      setReadyWindow(null)
-      setReadyCountdown(0)
-    }
-  }, [hasFullRoster, normalizedRoomStatus])
+  }, [hasFullRoster, normalizedRoomStatus, readyResetKey])
 
   useEffect(() => {
     if (!hasFullRoster) return
     if (normalizedRoomStatus === 'battle' || normalizedRoomStatus === 'in_progress') return
     if (!everyoneUnready) return
-
-    const signature = occupantSignature
-    if (!signature) return
     if (!readyResetKey) return
 
-    if (readyWindow?.active && readyWindow?.resetKey === readyResetKey) {
+    const tracker = readyCycleRef.current
+    const signature = occupantSignature || ''
+    const firstStart = !tracker.baselineKey
+    const keyChanged = tracker.baselineKey && tracker.baselineKey !== readyResetKey
+    const divergence = tracker.seenDivergence
+
+    if (!firstStart && !keyChanged && !divergence) {
       return
     }
 
     const startedAt = Date.now()
-    const resetSignature = `ready:${readyResetKey}`
-    setReadyWindow((prev) => {
-      if (prev?.active && prev?.resetKey === readyResetKey) {
-        return prev
-      }
-      const source = prev ? 'auto-restart' : 'auto'
-      return {
-        active: true,
-        startedAt,
-        expiresAt: startedAt + READY_POLL_DURATION_MS,
-        signature,
-        resetKey: readyResetKey,
-        source,
-        reason: '',
-      }
+    const source = firstStart ? 'auto' : 'restart'
+    tracker.baselineKey = readyResetKey
+    tracker.seenDivergence = false
+    tracker.lastKey = readyResetKey
+
+    setReadyWindow({
+      active: true,
+      startedAt,
+      expiresAt: startedAt + READY_POLL_DURATION_MS,
+      signature,
+      resetKey: readyResetKey,
+      source,
+      reason: '',
     })
     setReadyCountdown(Math.ceil(READY_POLL_DURATION_MS / 1000))
-    resetRoomReadyStates(resetSignature).catch(() => {})
+    resetRoomReadyStates(`ready:${readyResetKey}`).catch(() => {})
   }, [
     hasFullRoster,
     normalizedRoomStatus,
     everyoneUnready,
     occupantSignature,
     readyResetKey,
-    readyWindow?.active,
-    readyWindow?.resetKey,
     resetRoomReadyStates,
   ])
 
@@ -2399,7 +2448,7 @@ export default function RoomDetailPage() {
               .update({ occupant_ready: nextReady })
               .eq('id', activeSlotId)
               .eq('occupant_owner_id', viewer.ownerId)
-              .select('id, occupant_ready')
+              .select('id, occupant_ready, updated_at')
               .maybeSingle(),
         )
         if (error && error.code !== 'PGRST116') {
@@ -2407,6 +2456,7 @@ export default function RoomDetailPage() {
         }
         if (updatedRow?.id) {
           const resolvedReady = updatedRow?.occupant_ready === true
+          const resolvedUpdatedAt = updatedRow?.updated_at || new Date().toISOString()
           setSlots((prev) => {
             if (!Array.isArray(prev) || !prev.length) return prev
             let changed = false
@@ -2418,7 +2468,7 @@ export default function RoomDetailPage() {
                 return slot
               }
               changed = true
-              return { ...slot, occupantReady: resolvedReady }
+              return { ...slot, occupantReady: resolvedReady, updatedAt: resolvedUpdatedAt }
             })
             return changed ? nextSlots : prev
           })
@@ -2517,6 +2567,7 @@ export default function RoomDetailPage() {
     setSlots((prev) => {
       if (!Array.isArray(prev) || !prev.length) return prev
       let changed = false
+      const updatedAt = new Date().toISOString()
       const next = prev.map((slot) => {
         if (!slot?.occupantOwnerId || slot.occupantOwnerId !== viewer.ownerId) {
           return slot
@@ -2525,7 +2576,7 @@ export default function RoomDetailPage() {
           return slot
         }
         changed = true
-        return { ...slot, occupantReady: true }
+        return { ...slot, occupantReady: true, updatedAt }
       })
       return changed ? next : prev
     })
