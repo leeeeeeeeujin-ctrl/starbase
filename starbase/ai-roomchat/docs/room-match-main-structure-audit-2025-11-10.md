@@ -111,6 +111,11 @@
   ```
   클라이언트는 `stageMatch` 완료 후 세션 ID를 확보한 뒤 위 함수를 호출해 난입 메타를 저장하도록 조정합니다.
 
+### 2.4 준비 투표 리셋 키 도입
+- **문제**: 준비 투표를 호스트가 다시 시작해도 참가자 클라이언트에서는 새로운 타이머가 열리지 않아 버튼이 비활성화되는 현상이 반복되었습니다. 모든 클라이언트가 동일한 리셋 신호를 계산할 수단이 없어 로컬 상태가 어긋난 것이 원인입니다.【F:pages/rooms/[id].js†L939-L3219】
+- **개선**: 슬롯별 `(slotId, ownerId, readyFlag)` 조합으로 `readyResetKey`를 계산하고, 모든 인원이 `occupant_ready=false` 상태가 되면 자동으로 새 타이머를 열도록 리셋 키와 단계 머신(`roomPhase`)을 추가했습니다. 호스트가 다시 시작 버튼을 눌러도 같은 키가 재계산되기 때문에 참가자도 동일하게 새로운 투표를 보게 됩니다.【F:pages/rooms/[id].js†L78-L140】【F:pages/rooms/[id].js†L972-L2005】【F:pages/rooms/[id].js†L3154-L3228】
+- **효과**: 준비 투표 → 본게임 흐름이 `recruiting → staging → ready-poll → battle → cleanup` 단계로 명확히 나뉘고, 슬롯 변화·준비 상태 리셋이 실시간으로 일관되게 전파됩니다. 이제 호스트가 투표를 재개하면 참가자도 즉시 버튼이 다시 활성화됩니다.【F:pages/rooms/[id].js†L972-L2005】【F:pages/rooms/[id].js†L3147-L3230】
+
 ## 3. 다음 단계
 1. `docs/rank-room-rpc-hardening-plan-2025-11-10.md`에 정리한 순서대로 `assert_room_ready`·`ensure_rank_session_for_room`·`upsert_rank_session_async_fill` RPC를 배포하고 `/api/rank/stage-room-match` 경로에 통합합니다.
 2. `stageMatch`가 세션 ID와 난입 메타를 서버에 전달하도록 수정하고, `MatchReady`는 Supabase 스냅샷이 준비될 때까지 준비 투표 UI를 지연시킵니다.

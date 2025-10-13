@@ -189,6 +189,44 @@ function buildStandinSeatRequests(slots = []) {
   return { seatMap, seatRequests }
 }
 
+function resolveSlotStableId(slot, index) {
+  if (!slot || typeof slot !== 'object') return `slot:${index}`
+  if (slot.id) return `id:${slot.id}`
+  if (Number.isFinite(slot.slotIndex)) return `index:${slot.slotIndex}`
+  if (Number.isFinite(slot.slot_index)) return `index:${slot.slot_index}`
+  return `slot:${index}`
+}
+
+function buildReadyResetKey(slots = [], { overrideReady = null } = {}) {
+  if (!Array.isArray(slots) || !slots.length) return ''
+
+  return slots
+    .map((slot, index) => {
+      const stableId = resolveSlotStableId(slot, index)
+      const ownerId = slot?.occupantOwnerId || slot?.occupant_owner_id || '_'
+
+      const readyBoolean =
+        overrideReady === null
+          ? slot?.occupantReady === true || slot?.occupant_ready === true
+          : !!overrideReady
+
+      const readyState = ownerId && ownerId !== '_'
+        ? readyBoolean
+          ? '1'
+          : '0'
+        : 'x'
+
+      return `${stableId}:${ownerId}:${readyState}`
+    })
+    .join('|')
+}
+
+function allFilledSlotsUnready(slots = []) {
+  if (!Array.isArray(slots) || !slots.length) return false
+
+  return slots.every((slot) => slot?.occupantOwnerId && !slot?.occupantReady)
+}
+
 function injectStandinsIntoSlots(slots = [], assignments = [], seatMap = new Map()) {
   if (!Array.isArray(assignments) || assignments.length === 0) {
     return { slots: slots.map((slot) => ({ ...slot })), applied: false, assigned: [] }
@@ -996,6 +1034,13 @@ export default function RoomDetailPage() {
     return slots.every((slot) => slot.occupantOwnerId && slot.occupantReady)
   }, [hasFullRoster, slots])
 
+  const readyResetKey = useMemo(() => buildReadyResetKey(slots), [slots])
+
+  const everyoneUnready = useMemo(() => {
+    if (!hasFullRoster) return false
+    return allFilledSlotsUnready(slots)
+  }, [hasFullRoster, slots])
+
   const occupantSignature = useMemo(() => {
     if (!slots.length) return ''
     return slots
@@ -1006,6 +1051,57 @@ export default function RoomDetailPage() {
       })
       .join('|')
   }, [slots])
+
+  const roomPhase = useMemo(() => {
+    if (!room) return 'loading'
+    if (normalizedRoomStatus === 'battle' || normalizedRoomStatus === 'in_progress') {
+      return 'battle'
+    }
+    if (readyWindow?.active) {
+      return 'ready-poll'
+    }
+    if (hasFullRoster) {
+      return 'staging'
+    }
+    if (occupancy.filled > 0) {
+      return 'recruiting-partial'
+    }
+    return 'recruiting'
+  }, [room, normalizedRoomStatus, readyWindow?.active, hasFullRoster, occupancy.filled])
+
+  const phaseLabel = useMemo(() => {
+    switch (roomPhase) {
+      case 'ready-poll':
+        return '준비 투표 중'
+      case 'battle':
+        return '본게임 진행 중'
+      case 'staging':
+        return '매치 준비 단계'
+      case 'recruiting-partial':
+        return '참가자 모집 중'
+      case 'recruiting':
+        return '대기 중'
+      default:
+        return '정보 수집 중'
+    }
+  }, [roomPhase])
+
+  const phaseHint = useMemo(() => {
+    switch (roomPhase) {
+      case 'ready-poll':
+        return '15초 안에 모든 참가자가 준비 완료를 누르면 본게임으로 이동합니다.'
+      case 'battle':
+        return '본게임이 진행 중이며 결과 정산이 끝나면 방이 자동으로 정리됩니다.'
+      case 'staging':
+        return '모든 슬롯이 찼으니 준비 투표가 곧 열립니다.'
+      case 'recruiting-partial':
+        return '빈 슬롯을 채우면 준비 투표가 자동으로 시작됩니다.'
+      case 'recruiting':
+        return '참가자를 모으는 중입니다.'
+      default:
+        return '방 단계를 확인하는 중입니다.'
+    }
+  }, [roomPhase])
 
   const viewerReady = useMemo(() => {
     if (!viewer?.ownerId) return false
@@ -1821,46 +1917,43 @@ export default function RoomDetailPage() {
   useEffect(() => {
     if (!hasFullRoster) return
     if (normalizedRoomStatus === 'battle' || normalizedRoomStatus === 'in_progress') return
-    if (readyWindow?.active) return
+    if (!everyoneUnready) return
 
     const signature = occupantSignature
     if (!signature) return
+    if (!readyResetKey) return
+
+    if (readyWindow?.active && readyWindow?.resetKey === readyResetKey) {
+      return
+    }
 
     const startedAt = Date.now()
-    setReadyWindow({
-      active: true,
-      startedAt,
-      expiresAt: startedAt + READY_POLL_DURATION_MS,
-      signature,
-      source: 'auto',
-      reason: '',
-    })
-    setSlots((prev) => {
-      if (!Array.isArray(prev) || prev.length === 0) {
+    const resetSignature = `ready:${readyResetKey}`
+    setReadyWindow((prev) => {
+      if (prev?.active && prev?.resetKey === readyResetKey) {
         return prev
       }
-
-      let changed = false
-      const nextSlots = prev.map((slot) => {
-        if (!slot?.occupantOwnerId || slot?.occupantReady === false) {
-          return slot
-        }
-        changed = true
-        return {
-          ...slot,
-          occupantReady: false,
-        }
-      })
-
-      return changed ? nextSlots : prev
+      const source = prev ? 'auto-restart' : 'auto'
+      return {
+        active: true,
+        startedAt,
+        expiresAt: startedAt + READY_POLL_DURATION_MS,
+        signature,
+        resetKey: readyResetKey,
+        source,
+        reason: '',
+      }
     })
     setReadyCountdown(Math.ceil(READY_POLL_DURATION_MS / 1000))
-    resetRoomReadyStates(signature).catch(() => {})
+    resetRoomReadyStates(resetSignature).catch(() => {})
   }, [
     hasFullRoster,
     normalizedRoomStatus,
-    readyWindow?.active,
+    everyoneUnready,
     occupantSignature,
+    readyResetKey,
+    readyWindow?.active,
+    readyWindow?.resetKey,
     resetRoomReadyStates,
   ])
 
@@ -2336,23 +2429,32 @@ export default function RoomDetailPage() {
     if (!isHost) return
     if (!hasFullRoster) return
 
-    const signature = occupantSignature
-    if (!signature) return
+    const resetKey = buildReadyResetKey(slots, { overrideReady: false })
+    if (!resetKey) return
 
-    const startedAt = Date.now()
-    setReadyWindow({
-      active: true,
-      startedAt,
-      expiresAt: startedAt + READY_POLL_DURATION_MS,
-      signature,
-      source: 'manual',
-      reason: '',
+    setSlots((prev) => {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        return prev
+      }
+
+      let changed = false
+      const nextSlots = prev.map((slot) => {
+        if (!slot?.occupantOwnerId || !slot?.occupantReady) {
+          return slot
+        }
+        changed = true
+        return {
+          ...slot,
+          occupantReady: false,
+        }
+      })
+
+      return changed ? nextSlots : prev
     })
-    setReadyCountdown(Math.ceil(READY_POLL_DURATION_MS / 1000))
     setReadyActionError('')
     setReadyResetPending(true)
     try {
-      await resetRoomReadyStates(signature, { force: true })
+      await resetRoomReadyStates(`ready:${resetKey}`, { force: true })
     } catch (resetError) {
       console.error('[RoomDetail] Failed to restart ready poll:', resetError)
       if (mountedRef.current) {
@@ -2366,7 +2468,7 @@ export default function RoomDetailPage() {
   }, [
     isHost,
     hasFullRoster,
-    occupantSignature,
+    slots,
     resetRoomReadyStates,
   ])
 
@@ -2528,6 +2630,11 @@ export default function RoomDetailPage() {
             {occupancy.filled}/{occupancy.total}
           </span>
           <span style={styles.overviewSubtle}>준비 완료 {readyCount}명</span>
+        </div>
+        <div style={styles.overviewCard}>
+          <span style={styles.overviewLabel}>현재 단계</span>
+          <span style={styles.overviewValue}>{phaseLabel}</span>
+          <span style={styles.overviewSubtle}>{phaseHint}</span>
         </div>
         <div style={styles.overviewCard}>
           <span style={styles.overviewLabel}>방장</span>
