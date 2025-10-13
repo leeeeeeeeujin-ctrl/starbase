@@ -112,6 +112,6 @@
   클라이언트는 `stageMatch` 완료 후 세션 ID를 확보한 뒤 위 함수를 호출해 난입 메타를 저장하도록 조정합니다.
 
 ## 3. 다음 단계
-1. `assert_room_ready`와 `ensure_rank_session_for_room` 같은 RPC를 배포한 뒤 `/api/rank/stage-room-match` 경로에 통합합니다.
+1. `docs/rank-room-rpc-hardening-plan-2025-11-10.md`에 정리한 순서대로 `assert_room_ready`·`ensure_rank_session_for_room`·`upsert_rank_session_async_fill` RPC를 배포하고 `/api/rank/stage-room-match` 경로에 통합합니다.
 2. `stageMatch`가 세션 ID와 난입 메타를 서버에 전달하도록 수정하고, `MatchReady`는 Supabase 스냅샷이 준비될 때까지 준비 투표 UI를 지연시킵니다.
 3. 운영 환경에서 준비 투표 → 본게임 전환을 재검증해 `ready-check`/`async_fill_snapshot`이 모두 채워지는지 확인합니다.
