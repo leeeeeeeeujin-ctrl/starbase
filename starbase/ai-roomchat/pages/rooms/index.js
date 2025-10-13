@@ -723,8 +723,9 @@ export default function RoomsLobbyPage() {
       setSnapshotError(null)
       try {
         const raw = await ensureRpc('fetch_rank_lobby_snapshot', {
-          queue_id: queueId,
-          limit: 24,
+          // Parameter names must match the Supabase function signature (p_queue_id, p_limit).
+          p_queue_id: queueId,
+          p_limit: 24,
         })
         if (!mountedRef.current) return
         const normalized = normalizeLobbySnapshot(raw)
