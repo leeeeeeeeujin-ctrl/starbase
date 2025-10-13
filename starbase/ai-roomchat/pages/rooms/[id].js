@@ -21,6 +21,7 @@ import {
   setGameMatchSnapshot,
   setGameMatchSlotTemplate,
   setGameMatchSessionMeta,
+  setGameMatchSessionHistory,
 } from '@/modules/rank/matchDataStore'
 import {
   AUTH_ACCESS_EXPIRES_AT_KEY,
@@ -3025,31 +3026,60 @@ export default function RoomDetailPage() {
         payload.match = { ...payload.match, asyncFillMeta }
       }
 
+        const asyncFillMeta = payload.match?.asyncFillMeta || null
+        const stageRequestPayload = {
+          match_instance_id: payload.matchInstanceId,
+          room_id: room.id,
+          game_id: room.gameId,
+          roster: payload.roster,
+          hero_map: payload.heroMap,
+          slot_template: payload.slotTemplate,
+          match_mode: matchReadyMode || normalizeRoomMode(room.mode),
+          room_owner_id: room.ownerId || null,
+          allow_partial: allowPartialStart,
+        }
+
+        if (asyncFillMeta) {
+          stageRequestPayload.async_fill_meta = asyncFillMeta
+        }
+
         const stageResponse = await fetch('/api/rank/stage-room-match', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            match_instance_id: payload.matchInstanceId,
-            room_id: room.id,
-            game_id: room.gameId,
-            roster: payload.roster,
-            hero_map: payload.heroMap,
-            slot_template: payload.slotTemplate,
-          }),
+          body: JSON.stringify(stageRequestPayload),
         })
 
+        let stageResult = null
+        try {
+          stageResult = await stageResponse.json()
+        } catch (parseError) {
+          stageResult = null
+        }
+
         if (!stageResponse.ok) {
-          let detail = null
-          try {
-            detail = await stageResponse.json()
-          } catch (parseError) {
-            detail = null
-          }
+          const detail = stageResult
           const message = detail?.error || 'match_roster_stage_failed'
           throw new Error(message)
+        }
+
+        if (stageResult?.session_id || stageResult?.sessionId) {
+          const sessionIdValue = stageResult.session_id || stageResult.sessionId
+          setGameMatchSessionHistory(room.gameId, {
+            sessionId: sessionIdValue,
+            source: 'room-stage',
+          })
+        }
+
+        if (stageResult?.ready_vote || stageResult?.readyVote) {
+          setGameMatchSessionMeta(room.gameId, {
+            extras: {
+              readyVote: stageResult.ready_vote || stageResult.readyVote,
+            },
+            source: 'room-stage-ready',
+          })
         }
 
         if (canSyncRoomCounters) {

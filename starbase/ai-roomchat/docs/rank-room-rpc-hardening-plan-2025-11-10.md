@@ -186,6 +186,13 @@ grant execute on function public.upsert_rank_session_async_fill(uuid, jsonb)
   to authenticated, service_role;
 ```
 
+---
+
+## 4. 현재 구현 상태 체크
+- `/api/rank/stage-room-match`는 이제 `assert_room_ready` → `sync_rank_match_roster` → `ensure_rank_session_for_room` → `upsert_rank_session_async_fill` 순으로 RPC를 호출하며, 함수가 배포되어 있지 않으면 명시적인 오류를 반환합니다.【F:pages/api/rank/stage-room-match.js†L337-L523】
+- 방 상세 화면은 스테이징 응답으로 전달받은 `session_id`를 즉시 `matchDataStore`에 기록해 Match Ready가 세션 ID 없이 열리지 않도록 했습니다.【F:pages/rooms/[id].js†L3048-L3073】
+- Match Ready 클라이언트는 로컬 스냅샷에서도 세션 ID를 회수하고, 세션 ID가 없으면 `allowStart`를 비활성화합니다.【F:components/rank/MatchReadyClient.js†L140-L210】【F:components/rank/MatchReadyClient.js†L500-L520】
+
 ### 3.5 세션 채팅 조회 RPC (신규)
 메인 게임 공용 채팅이 `rank_turns` 테이블에서 세션별 히스토리를 스트리밍할 수 있도록, 뷰어 가시성 필터와 숨김 슬롯 정보를 함께 반환하는 RPC를 추가합니다. StartClient는 더 이상 테이블 쿼리로 폴백하지 않으므로, 아래 함수를 배포하지 않으면 세션 채팅이 곧바로 오류를 표시합니다.
 
