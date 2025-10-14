@@ -76,7 +76,7 @@ function normalizeBroadcastPayload(payload, topic, fallbackEvent) {
 export function subscribeToBroadcastTopic(
   topic,
   handler,
-  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = false, onStatus } = {},
+  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = true, onStatus } = {},
 ) {
   const normalizedTopic = normalizeTopicName(topic)
   if (!normalizedTopic) {
@@ -88,9 +88,13 @@ export function subscribeToBroadcastTopic(
 
   let entry = channelRegistry.get(normalizedTopic)
   if (!entry) {
-    const channelOptions = { config: { broadcast: { ack: ack || false } } }
-    if (privateChannel) {
-      channelOptions.private = true
+    const channelOptions = {
+      config: {
+        private: privateChannel,
+        broadcast: {
+          ack: ack || false,
+        },
+      },
     }
 
     const channel = supabase.channel(normalizedTopic, channelOptions)

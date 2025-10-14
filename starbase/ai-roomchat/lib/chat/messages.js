@@ -200,20 +200,6 @@ function eqFilter(column, value) {
   return `${safeColumn}=eq.${safeValue}`
 }
 
-function csFilter(column, value) {
-  const safeValue = escapeFilterValue(value)
-  if (!safeValue) {
-    return null
-  }
-
-  const safeColumn = String(column || '').trim()
-  if (!safeColumn) {
-    return null
-  }
-
-  return `${safeColumn}=cs.{${safeValue}}`
-}
-
 function buildMessageFilters({
   sessionId,
   matchInstanceId,
@@ -249,12 +235,6 @@ function buildMessageFilters({
   pushEq('user_id', userId)
   pushEq('owner_id', ownerId)
   pushEq('target_owner_id', ownerId)
-  if (ownerId) {
-    const containsFilter = csFilter('visible_owner_ids', ownerId)
-    if (containsFilter) {
-      filters.add(containsFilter)
-    }
-  }
   pushEq('hero_id', heroId)
   pushEq('target_hero_id', heroId)
 
