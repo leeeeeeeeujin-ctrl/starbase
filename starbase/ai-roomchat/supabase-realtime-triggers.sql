@@ -674,6 +674,57 @@ create trigger trg_rank_turns_broadcast
 after insert or update or delete on public.rank_turns
 for each row execute function public.broadcast_rank_turns();
 
+create or replace function public.broadcast_rank_turn_state_events()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event text := TG_OP;
+  v_session uuid := null;
+  v_match uuid := null;
+  v_topics text[];
+  v_new jsonb := null;
+  v_old jsonb := null;
+begin
+  if TG_OP = 'DELETE' then
+    v_session := OLD.session_id;
+    v_match := OLD.match_instance_id;
+  elsif TG_OP = 'INSERT' then
+    v_session := NEW.session_id;
+    v_match := NEW.match_instance_id;
+  else
+    v_session := coalesce(NEW.session_id, OLD.session_id);
+    v_match := coalesce(NEW.match_instance_id, OLD.match_instance_id);
+  end if;
+
+  if TG_OP in ('INSERT', 'UPDATE') then
+    v_new := to_jsonb(NEW);
+  end if;
+
+  if TG_OP in ('UPDATE', 'DELETE') then
+    v_old := to_jsonb(OLD);
+  end if;
+
+  v_topics := array[
+    case when v_session is not null then 'rank_turn_state_events:session:' || v_session::text end,
+    case when v_match is not null then 'rank_turn_state_events:match:' || v_match::text end
+  ];
+
+  perform public.emit_realtime_payload(
+    v_topics,
+    v_event,
+    TG_TABLE_NAME,
+    TG_TABLE_SCHEMA,
+    v_new,
+    v_old
+  );
+
+  return null;
+end;
+$$;
+
 -- Optional: rank_turn_state_events (if the table exists)
 do $$
 begin
@@ -683,57 +734,6 @@ begin
     where table_schema = 'public'
       and table_name = 'rank_turn_state_events'
   ) then
-    create or replace function public.broadcast_rank_turn_state_events()
-    returns trigger
-    language plpgsql
-    security definer
-    set search_path = public
-    as $$
-    declare
-      v_event text := TG_OP;
-      v_session uuid := null;
-      v_match uuid := null;
-      v_topics text[];
-      v_new jsonb := null;
-      v_old jsonb := null;
-    begin
-      if TG_OP = 'DELETE' then
-        v_session := OLD.session_id;
-        v_match := OLD.match_instance_id;
-      elsif TG_OP = 'INSERT' then
-        v_session := NEW.session_id;
-        v_match := NEW.match_instance_id;
-      else
-        v_session := coalesce(NEW.session_id, OLD.session_id);
-        v_match := coalesce(NEW.match_instance_id, OLD.match_instance_id);
-      end if;
-
-      if TG_OP in ('INSERT', 'UPDATE') then
-        v_new := to_jsonb(NEW);
-      end if;
-
-      if TG_OP in ('UPDATE', 'DELETE') then
-        v_old := to_jsonb(OLD);
-      end if;
-
-      v_topics := array[
-        case when v_session is not null then 'rank_turn_state_events:session:' || v_session::text end,
-        case when v_match is not null then 'rank_turn_state_events:match:' || v_match::text end
-      ];
-
-      perform public.emit_realtime_payload(
-        v_topics,
-        v_event,
-        TG_TABLE_NAME,
-        TG_TABLE_SCHEMA,
-        v_new,
-        v_old
-      );
-
-      return null;
-    end;
-    $$;
-
     execute 'drop trigger if exists trg_rank_turn_state_events_broadcast on public.rank_turn_state_events';
     execute 'create trigger trg_rank_turn_state_events_broadcast after insert or update or delete on public.rank_turn_state_events for each row execute function public.broadcast_rank_turn_state_events()';
   end if;
