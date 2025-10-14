@@ -9,7 +9,7 @@ function buildChannelName(schema, table) {
   const baseSchema = schema && String(schema).trim().length ? schema.trim() : 'public'
   const baseTable = table && String(table).trim().length ? table.trim() : 'unknown'
   channelCounter += 1
-  return `postgres:${baseSchema}:${baseTable}:${channelCounter}`
+  return ['pgchanges', baseSchema, baseTable, channelCounter].join('_')
 }
 
 function normalizeEventName(event) {
