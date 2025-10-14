@@ -110,6 +110,7 @@ export function subscribeToBroadcastTopic(
       refCount: 0,
       statusHandlers: new Set(),
       lastStatus: null,
+      lastError: null,
       subscriptionPromise: null,
     }
     channelRegistry.set(normalizedTopic, entry)
@@ -117,28 +118,64 @@ export function subscribeToBroadcastTopic(
     const subscribeToChannel = async () => {
       try {
         await ensureRealtimeAuth()
-        await new Promise((resolve) => {
-          channel.subscribe((status) => {
-            entry.lastStatus = status
+        await new Promise((resolve, reject) => {
+          const subscription = channel.subscribe((status, err) => {
+            const normalizedStatus = status || 'CHANNEL_ERROR'
+            const context = {
+              topic: normalizedTopic,
+              error: err || null,
+              params: channel.params || null,
+              connectionState:
+                typeof channel.socket?.connectionState === 'function'
+                  ? channel.socket.connectionState()
+                  : null,
+            }
+
+            entry.lastStatus = normalizedStatus
+            entry.lastError = err || null
+
             entry.statusHandlers.forEach((listener) => {
               try {
-                listener(status, { topic: normalizedTopic })
+                listener(normalizedStatus, context)
               } catch (error) {
                 console.warn('[realtime] 상태 콜백 실행 중 오류가 발생했습니다.', error)
               }
             })
-            if (status === 'SUBSCRIBED') {
-              resolve()
+
+            if (normalizedStatus === 'SUBSCRIBED') {
+              resolve(subscription)
+              return
             }
-            if (status === 'CHANNEL_ERROR') {
-              console.error('[realtime] 채널 구독 중 오류가 발생했습니다.', {
-                topic: normalizedTopic,
+
+            if (normalizedStatus === 'TIMED_OUT') {
+              const timeoutError =
+                err || new Error('Supabase realtime channel subscription timed out.')
+              console.error('[realtime] 채널 구독이 제한 시간 내에 완료되지 않았습니다.', {
+                ...context,
               })
+              reject(timeoutError)
+              return
+            }
+
+            if (normalizedStatus === 'CHANNEL_ERROR') {
+              console.error('[realtime] 채널 구독 중 오류가 발생했습니다.', {
+                ...context,
+              })
+              reject(err || new Error('Supabase realtime channel returned CHANNEL_ERROR.'))
+              return
+            }
+
+            if (normalizedStatus === 'CLOSED') {
+              console.warn('[realtime] 채널이 서버에 의해 종료되었습니다.', {
+                ...context,
+              })
+              reject(err || new Error('Supabase realtime channel closed before subscribing.'))
             }
           })
         })
       } catch (error) {
         entry.lastStatus = 'CHANNEL_ERROR'
+        entry.lastError = error
         entry.statusHandlers.forEach((listener) => {
           try {
             listener('CHANNEL_ERROR', { topic: normalizedTopic, error })
@@ -161,7 +198,15 @@ export function subscribeToBroadcastTopic(
     entry.statusHandlers.add(statusHandler)
     if (entry.lastStatus) {
       try {
-        onStatus(entry.lastStatus, { topic: normalizedTopic })
+        onStatus(entry.lastStatus, {
+          topic: normalizedTopic,
+          error: entry.lastError,
+          params: entry.channel?.params || null,
+          connectionState:
+            typeof entry.channel?.socket?.connectionState === 'function'
+              ? entry.channel.socket.connectionState()
+              : null,
+        })
       } catch (error) {
         console.warn('[realtime] 상태 핸들러 실행에 실패했습니다.', error)
       }
