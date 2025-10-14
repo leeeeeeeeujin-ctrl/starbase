@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 
 let realtimeToken = null
 let authPromise = null
+let authListener = null
 const channelRegistry = new Map()
 
 const BROADCAST_PREFIXES = ['topic:', 'broadcast:', 'realtime:']
@@ -23,7 +24,36 @@ function normalizeTopicName(topic) {
   return `topic:${trimmed}`
 }
 
+async function applyRealtimeToken(nextToken) {
+  const normalizedToken = nextToken || null
+  if (normalizedToken === realtimeToken) {
+    return realtimeToken
+  }
+
+  await supabase.realtime.setAuth(normalizedToken)
+  realtimeToken = normalizedToken
+  return realtimeToken
+}
+
+function ensureAuthListener() {
+  if (authListener) {
+    return
+  }
+
+  const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    try {
+      await applyRealtimeToken(session?.access_token || null)
+    } catch (error) {
+      console.error('[realtime] 인증 토큰을 동기화하지 못했습니다.', error)
+    }
+  })
+
+  authListener = data?.subscription || null
+}
+
 export async function ensureRealtimeAuth() {
+  ensureAuthListener()
+
   if (authPromise) {
     return authPromise
   }
@@ -39,12 +69,7 @@ export async function ensureRealtimeAuth() {
         throw error
       }
 
-      const token = session?.access_token || null
-
-      if (token !== realtimeToken) {
-        await supabase.realtime.setAuth(token || null)
-        realtimeToken = token
-      }
+      return await applyRealtimeToken(session?.access_token || null)
     } finally {
       authPromise = null
     }
@@ -83,7 +108,7 @@ function normalizeBroadcastPayload(payload, topic, fallbackEvent) {
 export function subscribeToBroadcastTopic(
   topic,
   handler,
-  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = false, onStatus } = {},
+  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = true, onStatus } = {},
 ) {
   const normalizedTopic = normalizeTopicName(topic)
   if (!normalizedTopic) {
@@ -115,10 +140,43 @@ export function subscribeToBroadcastTopic(
     }
     channelRegistry.set(normalizedTopic, entry)
 
+    const cleanupChannel = () => {
+      try {
+        entry.channel?.unsubscribe()
+      } catch (error) {
+        console.warn('[realtime] 채널 구독을 해제하지 못했습니다.', { error, topic: normalizedTopic })
+      }
+      if (entry.channel) {
+        supabase.removeChannel(entry.channel)
+      }
+      entry.refCount = 0
+      channelRegistry.delete(normalizedTopic)
+    }
+
     const subscribeToChannel = async () => {
       try {
-        await ensureRealtimeAuth()
+        const token = await ensureRealtimeAuth()
+
+        if (privateChannel && !token) {
+          const missingAuthError = new Error('Supabase realtime private 채널 구독에 필요한 인증 정보를 찾지 못했습니다.')
+          console.warn('[realtime] 인증 세션이 없어 private 채널 구독을 건너뜁니다.', {
+            topic: normalizedTopic,
+          })
+          entry.lastStatus = 'CHANNEL_ERROR'
+          entry.lastError = missingAuthError
+          entry.statusHandlers.forEach((listener) => {
+            try {
+              listener('CHANNEL_ERROR', { topic: normalizedTopic, error: missingAuthError })
+            } catch (handlerError) {
+              console.warn('[realtime] 상태 콜백 오류를 처리하지 못했습니다.', handlerError)
+            }
+          })
+          cleanupChannel()
+          return
+        }
+
         await new Promise((resolve, reject) => {
+          let resolved = false
           const subscription = channel.subscribe((status, err) => {
             const normalizedStatus = status || 'CHANNEL_ERROR'
             const context = {
@@ -143,6 +201,7 @@ export function subscribeToBroadcastTopic(
             })
 
             if (normalizedStatus === 'SUBSCRIBED') {
+              resolved = true
               resolve(subscription)
               return
             }
@@ -161,7 +220,11 @@ export function subscribeToBroadcastTopic(
               console.error('[realtime] 채널 구독 중 오류가 발생했습니다.', {
                 ...context,
               })
-              reject(err || new Error('Supabase realtime channel returned CHANNEL_ERROR.'))
+              if (!resolved) {
+                reject(err || new Error('Supabase realtime channel returned CHANNEL_ERROR.'))
+              } else {
+                cleanupChannel()
+              }
               return
             }
 
@@ -169,7 +232,11 @@ export function subscribeToBroadcastTopic(
               console.warn('[realtime] 채널이 서버에 의해 종료되었습니다.', {
                 ...context,
               })
-              reject(err || new Error('Supabase realtime channel closed before subscribing.'))
+              if (!resolved) {
+                reject(err || new Error('Supabase realtime channel closed before subscribing.'))
+              } else {
+                cleanupChannel()
+              }
             }
           })
         })
@@ -183,6 +250,7 @@ export function subscribeToBroadcastTopic(
             console.warn('[realtime] 상태 콜백 오류를 처리하지 못했습니다.', handlerError)
           }
         })
+        cleanupChannel()
         throw error
       }
     }
@@ -243,13 +311,15 @@ export function subscribeToBroadcastTopic(
     entry.refCount = Math.max(0, entry.refCount - 1)
 
     if (entry.refCount === 0) {
-      channelRegistry.delete(normalizedTopic)
       try {
-        entry.channel.unsubscribe()
+        entry.channel?.unsubscribe()
       } catch (error) {
         console.warn('[realtime] 채널 구독을 해제하지 못했습니다.', { error, topic: normalizedTopic })
       }
-      supabase.removeChannel(entry.channel)
+      if (entry.channel) {
+        supabase.removeChannel(entry.channel)
+      }
+      channelRegistry.delete(normalizedTopic)
     }
   }
 }

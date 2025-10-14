@@ -290,7 +290,7 @@ export function subscribeToMessages({
           handler(record, change)
         }
       },
-      { events: ['INSERT', 'UPDATE'] },
+      { events: ['INSERT', 'UPDATE'], privateChannel: true },
     ),
   )
 
