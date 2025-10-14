@@ -83,7 +83,7 @@ function normalizeBroadcastPayload(payload, topic, fallbackEvent) {
 export function subscribeToBroadcastTopic(
   topic,
   handler,
-  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = true, onStatus } = {},
+  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = false, onStatus } = {},
 ) {
   const normalizedTopic = normalizeTopicName(topic)
   if (!normalizedTopic) {
@@ -97,9 +97,9 @@ export function subscribeToBroadcastTopic(
   if (!entry) {
     const channelOptions = {
       config: {
-        private: privateChannel,
+        private: Boolean(privateChannel),
         broadcast: {
-          ack: ack || false,
+          ack: Boolean(ack),
         },
       },
     }
