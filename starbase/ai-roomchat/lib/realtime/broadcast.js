@@ -76,7 +76,7 @@ function normalizeBroadcastPayload(payload, topic, fallbackEvent) {
 export function subscribeToBroadcastTopic(
   topic,
   handler,
-  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = true, onStatus } = {},
+  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = false, onStatus } = {},
 ) {
   const normalizedTopic = normalizeTopicName(topic)
   if (!normalizedTopic) {
@@ -88,12 +88,12 @@ export function subscribeToBroadcastTopic(
 
   let entry = channelRegistry.get(normalizedTopic)
   if (!entry) {
-    const channelConfig = { broadcast: { ack: ack || false } }
+    const channelOptions = { config: { broadcast: { ack: ack || false } } }
     if (privateChannel) {
-      channelConfig.private = true
+      channelOptions.private = true
     }
 
-    const channel = supabase.channel(normalizedTopic, { config: channelConfig })
+    const channel = supabase.channel(normalizedTopic, channelOptions)
     entry = {
       channel,
       refCount: 0,
@@ -120,7 +120,9 @@ export function subscribeToBroadcastTopic(
               resolve()
             }
             if (status === 'CHANNEL_ERROR') {
-              console.error('[realtime] 채널 구독 중 오류가 발생했습니다.', { topic: normalizedTopic })
+              console.error('[realtime] 채널 구독 중 오류가 발생했습니다.', {
+                topic: normalizedTopic,
+              })
             }
           })
         })

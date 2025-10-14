@@ -23,6 +23,7 @@ export function subscribeToPostgresChanges({
   table,
   event = '*',
   filter = null,
+  filters = null,
   handler,
   onStatus,
 } = {}) {
@@ -35,6 +36,22 @@ export function subscribeToPostgresChanges({
   const channelName = buildChannelName(schema, table)
   const channel = supabase.channel(channelName)
   const statusHandlers = new Set()
+  const delivered = new Map()
+
+  const normalizeFilter = (value) => {
+    if (value === null || value === undefined) {
+      return null
+    }
+
+    const token = String(value).trim()
+    return token.length ? token : null
+  }
+
+  const filterList = Array.isArray(filters) && filters?.length ? filters : [filter]
+  const normalizedFilters = Array.from(
+    new Set(filterList.map((item) => normalizeFilter(item)).filter((item) => item !== null)),
+  )
+  const filterEntries = normalizedFilters.length ? normalizedFilters : [null]
 
   if (typeof onStatus === 'function') {
     statusHandlers.add(onStatus)
@@ -43,23 +60,66 @@ export function subscribeToPostgresChanges({
   let active = true
   let subscribed = false
 
-  channel.on(
-    'postgres_changes',
-    {
-      event: normalizedEvent === '*' ? '*' : normalizedEvent,
-      schema,
-      table,
-      filter: filter && String(filter).trim().length ? filter : undefined,
-    },
-    (payload) => {
-      if (!active) return
-      try {
-        safeHandler(payload)
-      } catch (error) {
-        console.warn('[realtime] Postgres 변경 이벤트 처리 중 오류가 발생했습니다.', error)
+  const listeners = []
+
+  const shouldDeliver = (payload) => {
+    if (!payload || typeof payload !== 'object') {
+      return true
+    }
+
+    const record = payload.new || payload.record || null
+    const eventType = payload.eventType || payload.type || normalizedEvent
+    const identifier = record?.id || payload.commit_timestamp || payload.timestamp || null
+
+    if (!identifier) {
+      return true
+    }
+
+    const key = `${eventType || '*'}:${identifier}`
+    const now = Date.now()
+    const previous = delivered.get(key) || 0
+
+    if (now - previous < 1000) {
+      return false
+    }
+
+    delivered.set(key, now)
+    if (delivered.size > 1024) {
+      const threshold = now - 1000
+      for (const [entryKey, timestamp] of delivered.entries()) {
+        if (timestamp < threshold) {
+          delivered.delete(entryKey)
+        }
       }
-    },
-  )
+    }
+
+    return true
+  }
+
+  filterEntries.forEach((filterToken) => {
+    const listenerState = { active: true }
+    channel.on(
+      'postgres_changes',
+      {
+        event: normalizedEvent === '*' ? '*' : normalizedEvent,
+        schema,
+        table,
+        filter: filterToken || undefined,
+      },
+      (payload) => {
+        if (!active || !listenerState.active) return
+        if (!shouldDeliver(payload)) {
+          return
+        }
+        try {
+          safeHandler(payload)
+        } catch (error) {
+          console.warn('[realtime] Postgres 변경 이벤트 처리 중 오류가 발생했습니다.', error)
+        }
+      },
+    )
+    listeners.push(listenerState)
+  })
 
   const subscribePromise = (async () => {
     try {
@@ -97,7 +157,12 @@ export function subscribeToPostgresChanges({
       return
     }
     active = false
+    delivered.clear()
     statusHandlers.clear()
+
+    listeners.forEach((listener) => {
+      listener.active = false
+    })
 
     try {
       if (subscribed) {
