@@ -6,14 +6,21 @@ let realtimeToken = null
 let authPromise = null
 const channelRegistry = new Map()
 
+const BROADCAST_PREFIXES = ['topic:', 'broadcast:', 'realtime:']
+
 function normalizeTopicName(topic) {
   if (!topic) return null
   const trimmed = String(topic).trim()
   if (!trimmed) return null
-  if (trimmed.startsWith('realtime:') || trimmed.startsWith('topic:')) {
+
+  const lowered = trimmed.toLowerCase()
+  const hasPrefix = BROADCAST_PREFIXES.some((prefix) => lowered.startsWith(prefix))
+
+  if (hasPrefix) {
     return trimmed
   }
-  return `realtime:public:${trimmed}`
+
+  return `topic:${trimmed}`
 }
 
 export async function ensureRealtimeAuth() {

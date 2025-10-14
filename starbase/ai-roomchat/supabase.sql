@@ -3117,10 +3117,10 @@ begin
       continue;
     end if;
 
-    if left(v_topic, 9) = 'realtime:' or left(v_topic, 6) = 'topic:' then
+    if left(v_topic, 6) = 'topic:' or left(v_topic, 10) = 'broadcast:' or left(v_topic, 9) = 'realtime:' then
       v_final_topic := v_topic;
     else
-      v_final_topic := 'realtime:public:' || v_topic;
+      v_final_topic := 'topic:' || v_topic;
     end if;
 
     begin
@@ -3215,6 +3215,7 @@ begin
   end if;
 
   v_topics := array[
+    'broadcast_messages_changes',
     'messages:global',
     case when v_scope is not null and trim(both from v_scope) <> '' then 'messages:scope:' || lower(trim(both from v_scope)) end,
     case when v_channel is not null and trim(both from v_channel) <> '' then 'messages:channel:' || lower(trim(both from v_channel)) end,
