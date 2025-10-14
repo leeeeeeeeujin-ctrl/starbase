@@ -1,6 +1,7 @@
 "use client"
 
 import { subscribeToBroadcastTopics } from '../realtime/broadcast'
+import { subscribeToPostgresChanges } from '../realtime/postgres'
 import { supabase } from '../supabase'
 import { createDraftyFromText, inspectDrafty } from './drafty'
 
@@ -163,6 +164,87 @@ function buildMessageTopics({
   return Array.from(topics)
 }
 
+function toComparable(value) {
+  if (value === null || value === undefined) {
+    return null
+  }
+  const token = String(value).trim()
+  return token.length ? token.toLowerCase() : null
+}
+
+function listIncludesIdentifier(list, identifier) {
+  if (!identifier) return false
+  if (!Array.isArray(list) || !list.length) return false
+  const target = toComparable(identifier)
+  if (!target) return false
+  return list.some((entry) => toComparable(entry) === target)
+}
+
+function messageMatchesContext(record, context) {
+  if (!record) {
+    return false
+  }
+
+  const {
+    sessionId,
+    matchInstanceId,
+    gameId,
+    roomId,
+    heroId,
+    ownerId,
+    userId,
+  } = context
+
+  const recordSession = toComparable(record.session_id)
+  const recordMatch = toComparable(record.match_instance_id)
+  const recordGame = toComparable(record.game_id)
+  const recordRoom = toComparable(record.room_id)
+  const recordHero = toComparable(record.hero_id)
+  const recordTargetHero = toComparable(record.target_hero_id)
+  const recordOwner = toComparable(record.owner_id)
+  const recordTargetOwner = toComparable(record.target_owner_id)
+  const recordUser = toComparable(record.user_id)
+  const viewerSession = toComparable(sessionId)
+  const viewerMatch = toComparable(matchInstanceId)
+  const viewerGame = toComparable(gameId)
+  const viewerRoom = toComparable(roomId)
+  const viewerHero = toComparable(heroId)
+  const viewerOwner = toComparable(ownerId)
+  const viewerUser = toComparable(userId)
+
+  const matchesSession = !viewerSession || !recordSession || viewerSession === recordSession
+  const matchesMatch = !viewerMatch || !recordMatch || viewerMatch === recordMatch
+  const matchesGame = !viewerGame || !recordGame || viewerGame === recordGame
+  const matchesRoom = !viewerRoom || !recordRoom || viewerRoom === recordRoom
+
+  const heroAllowed =
+    !viewerHero || recordHero === viewerHero || recordTargetHero === viewerHero
+
+  const ownerAllowed =
+    !viewerOwner || recordOwner === viewerOwner || recordTargetOwner === viewerOwner
+
+  const userAllowed = !viewerUser || recordUser === viewerUser
+
+  const visibility = Array.isArray(record.visible_owner_ids)
+    ? record.visible_owner_ids
+    : []
+  const visibilityAllowed =
+    !visibility.length ||
+    (viewerOwner && listIncludesIdentifier(visibility, viewerOwner)) ||
+    (viewerUser && listIncludesIdentifier(visibility, viewerUser))
+
+  return (
+    matchesSession &&
+    matchesMatch &&
+    matchesGame &&
+    matchesRoom &&
+    heroAllowed &&
+    ownerAllowed &&
+    userAllowed &&
+    visibilityAllowed
+  )
+}
+
 export function subscribeToMessages({
   onInsert,
   sessionId = null,
@@ -184,22 +266,71 @@ export function subscribeToMessages({
     userId,
   })
 
-  if (!topics.length) {
-    return () => {}
+  const context = {
+    sessionId,
+    matchInstanceId,
+    gameId,
+    roomId,
+    heroId,
+    ownerId,
+    userId,
   }
 
-  return subscribeToBroadcastTopics(
-    topics,
-    (change) => {
-      if (!change || change.eventType === 'DELETE') {
-        return
-      }
+  const unsubscribers = []
 
-      const record = change.new
-      if (record && typeof handler === 'function') {
-        handler(record, change)
-      }
-    },
-    { events: ['INSERT', 'UPDATE'] },
+  unsubscribers.push(
+    subscribeToBroadcastTopics(
+      topics,
+      (change) => {
+        if (!change || change.eventType === 'DELETE') {
+          return
+        }
+
+        const record = change.new
+        if (record && typeof handler === 'function') {
+          handler(record, change)
+        }
+      },
+      { events: ['INSERT', 'UPDATE'] },
+    ),
   )
+
+  unsubscribers.push(
+    subscribeToPostgresChanges({
+      schema: 'public',
+      table: 'messages',
+      event: 'INSERT',
+      handler: (change) => {
+        const record = change?.new || change?.record || change || null
+        if (!record || !messageMatchesContext(record, context)) {
+          return
+        }
+
+        if (typeof handler === 'function') {
+          handler(record, {
+            eventType: 'INSERT',
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            new: record,
+            old: change?.old || null,
+            payload: change,
+            topic: 'postgres:public:messages',
+          })
+        }
+      },
+    }),
+  )
+
+  return () => {
+    unsubscribers.forEach((unsubscribe) => {
+      if (typeof unsubscribe === 'function') {
+        try {
+          unsubscribe()
+        } catch (error) {
+          console.warn('[realtime] 메시지 구독 해제 중 오류가 발생했습니다.', error)
+        }
+      }
+    })
+  }
 }

@@ -16,7 +16,7 @@ function normalizeTopicName(topic) {
   return `realtime:public:${trimmed}`
 }
 
-async function ensureRealtimeAuth() {
+export async function ensureRealtimeAuth() {
   if (authPromise) {
     return authPromise
   }
