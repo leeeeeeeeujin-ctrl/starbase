@@ -1,7 +1,6 @@
 "use client"
 
 import { subscribeToBroadcastTopics } from '../realtime/broadcast'
-import { subscribeToPostgresChanges } from '../realtime/postgres'
 import { supabase } from '../supabase'
 import { createDraftyFromText, inspectDrafty } from './drafty'
 
@@ -164,83 +163,6 @@ function buildMessageTopics({
   return Array.from(topics)
 }
 
-function normalizeFilterValue(value) {
-  if (value === null || value === undefined) {
-    return null
-  }
-
-  const token = String(value).trim()
-  return token.length ? token : null
-}
-
-function escapeFilterValue(value) {
-  const normalized = normalizeFilterValue(value)
-  if (!normalized) {
-    return null
-  }
-
-  if (/[\s,()]/.test(normalized)) {
-    return `"${normalized.replace(/"/g, '""')}"`
-  }
-
-  return normalized
-}
-
-function eqFilter(column, value) {
-  const safeValue = escapeFilterValue(value)
-  if (!safeValue) {
-    return null
-  }
-
-  const safeColumn = String(column || '').trim()
-  if (!safeColumn) {
-    return null
-  }
-
-  return `${safeColumn}=eq.${safeValue}`
-}
-
-function buildMessageFilters({
-  sessionId,
-  matchInstanceId,
-  gameId,
-  roomId,
-  heroId,
-  ownerId,
-  userId,
-} = {}) {
-  const filters = new Set()
-
-  const addFilter = (filter) => {
-    const normalized = normalizeFilterValue(filter)
-    if (normalized) {
-      filters.add(normalized)
-    }
-  }
-
-  addFilter('scope=eq.global')
-  addFilter('scope=eq.system')
-
-  const pushEq = (column, value) => {
-    const filter = eqFilter(column, value)
-    if (filter) {
-      filters.add(filter)
-    }
-  }
-
-  pushEq('session_id', sessionId)
-  pushEq('match_instance_id', matchInstanceId)
-  pushEq('game_id', gameId)
-  pushEq('room_id', roomId)
-  pushEq('user_id', userId)
-  pushEq('owner_id', ownerId)
-  pushEq('target_owner_id', ownerId)
-  pushEq('hero_id', heroId)
-  pushEq('target_hero_id', heroId)
-
-  return Array.from(filters)
-}
-
 function toComparable(value) {
   if (value === null || value === undefined) {
     return null
@@ -354,7 +276,6 @@ export function subscribeToMessages({
   }
 
   const unsubscribers = []
-  const filters = buildMessageFilters(context)
 
   unsubscribers.push(
     subscribeToBroadcastTopics(
@@ -371,34 +292,6 @@ export function subscribeToMessages({
       },
       { events: ['INSERT', 'UPDATE'] },
     ),
-  )
-
-  unsubscribers.push(
-    subscribeToPostgresChanges({
-      schema: 'public',
-      table: 'messages',
-      event: 'INSERT',
-      filters,
-      handler: (change) => {
-        const record = change?.new || change?.record || change || null
-        if (!record || !messageMatchesContext(record, context)) {
-          return
-        }
-
-        if (typeof handler === 'function') {
-          handler(record, {
-            eventType: 'INSERT',
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            new: record,
-            old: change?.old || null,
-            payload: change,
-            topic: 'postgres:public:messages',
-          })
-        }
-      },
-    }),
   )
 
   return () => {
