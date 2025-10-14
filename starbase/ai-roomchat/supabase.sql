@@ -3059,6 +3059,7 @@ using (
   or (visible_owner_ids is not null and auth.uid() = any(visible_owner_ids))
 );
 
+drop policy if exists messages_insert_service_role on public.messages;
 drop policy if exists messages_insert_auth on public.messages;
 create policy messages_insert_service_role
 on public.messages for insert
@@ -3099,6 +3100,8 @@ set search_path = public
 as $$
 declare
   topic text;
+  v_topic text;
+  v_final_topic text;
 begin
   if p_topics is null then
     return;
@@ -3109,9 +3112,20 @@ begin
     from unnest(p_topics) as entries(value)
     where trim(both from value) <> ''
   loop
+    v_topic := trim(both from topic);
+    if v_topic is null or v_topic = '' then
+      continue;
+    end if;
+
+    if left(v_topic, 9) = 'realtime:' or left(v_topic, 6) = 'topic:' then
+      v_final_topic := v_topic;
+    else
+      v_final_topic := 'realtime:public:' || v_topic;
+    end if;
+
     begin
       perform realtime.broadcast_changes(
-        topic,
+        v_final_topic,
         coalesce(p_event, 'UPDATE'),
         coalesce(p_event, 'UPDATE'),
         coalesce(p_table, 'unknown'),

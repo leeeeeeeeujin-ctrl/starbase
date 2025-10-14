@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useMemo } from 'react'
+import { createDraftyFromText, renderDraftySegments } from '@/lib/chat/drafty'
 
 export function MessageItem({
   message,
@@ -33,6 +34,22 @@ export function MessageItem({
     if (!heroPayload || typeof onSelectHero !== 'function') return
     onSelectHero(heroPayload)
   }
+
+  const draftySource = useMemo(() => {
+    if (message?.drafty) return message.drafty
+    if (message?.metadata?.drafty) return message.metadata.drafty
+    return createDraftyFromText(message?.text || '')
+  }, [message])
+
+  const messageContent = useMemo(() => {
+    const nodes = renderDraftySegments(draftySource, {
+      keyPrefix: `message-${message?.id || 'local'}`,
+    })
+    if (!nodes?.length) {
+      return message?.text || ''
+    }
+    return nodes
+  }, [draftySource, message?.id, message?.text])
 
   return (
     <div
@@ -83,11 +100,53 @@ export function MessageItem({
               귓속말{targetName ? ` → ${targetName}` : ''}
             </span>
           )}
+          {message.has_links && (
+            <span
+              style={{
+                fontSize: 11,
+                color: '#0369a1',
+                border: '1px solid #bae6fd',
+                borderRadius: 999,
+                padding: '0 6px',
+                background: '#e0f2fe',
+              }}
+            >
+              링크
+            </span>
+          )}
+          {message.has_mentions && (
+            <span
+              style={{
+                fontSize: 11,
+                color: '#2563eb',
+                border: '1px solid #bfdbfe',
+                borderRadius: 999,
+                padding: '0 6px',
+                background: '#dbeafe',
+              }}
+            >
+              멘션
+            </span>
+          )}
+          {message.has_hashtags && (
+            <span
+              style={{
+                fontSize: 11,
+                color: '#047857',
+                border: '1px solid #bbf7d0',
+                borderRadius: 999,
+                padding: '0 6px',
+                background: '#dcfce7',
+              }}
+            >
+              태그
+            </span>
+          )}
           {blocked && (
             <span style={{ fontSize: 11, color: '#ef4444' }}>차단됨</span>
           )}
         </div>
-        <div style={{ marginTop: 2, whiteSpace: 'pre-wrap', color: '#1f2937' }}>{message.text}</div>
+        <div style={{ marginTop: 2, color: '#1f2937', lineHeight: 1.5 }}>{messageContent}</div>
       </div>
     </div>
   )

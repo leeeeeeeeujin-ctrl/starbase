@@ -2,6 +2,7 @@
 
 import { subscribeToBroadcastTopics } from '../realtime/broadcast'
 import { supabase } from '../supabase'
+import { createDraftyFromText, inspectDrafty } from './drafty'
 
 export const MESSAGE_LIMIT = 30
 
@@ -62,7 +63,19 @@ export async function insertMessage(payload, context = {}) {
   }
 
   const scope = payload?.scope || 'global'
-  const metadata = payload?.metadata && typeof payload.metadata === 'object' ? payload.metadata : null
+  const draftyDoc = createDraftyFromText(text)
+  const summary = inspectDrafty(draftyDoc)
+  const metadataBase = payload?.metadata && typeof payload.metadata === 'object' ? { ...payload.metadata } : {}
+  metadataBase.drafty = metadataBase.drafty || draftyDoc
+  metadataBase.plain_text = metadataBase.plain_text || summary.plainText || text
+  if (!metadataBase.summary) {
+    metadataBase.summary = {
+      has_links: summary.hasLinks,
+      has_mentions: summary.hasMentions,
+      has_hashtags: summary.hasHashtags,
+    }
+  }
+
   const { data, error } = await supabase.rpc('send_rank_chat_message', {
     p_scope: scope,
     p_text: text,
@@ -73,7 +86,7 @@ export async function insertMessage(payload, context = {}) {
     p_hero_id: payload?.hero_id || null,
     p_target_hero_id: payload?.target_hero_id || null,
     p_target_role: payload?.target_role || null,
-    p_metadata: metadata,
+    p_metadata: metadataBase,
   })
 
   if (error) {

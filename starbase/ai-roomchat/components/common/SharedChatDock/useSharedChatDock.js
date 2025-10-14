@@ -13,6 +13,7 @@ import {
   hydrateIncomingMessage,
   hydrateMessageList,
 } from '../../../lib/chat/hydrateMessages'
+import { createDraftyFromText, inspectDrafty } from '../../../lib/chat/drafty'
 import { resolveViewerProfile } from '../../../lib/heroes/resolveViewerProfile'
 
 const BLOCKED_STORAGE_KEY = 'starbase_blocked_heroes'
@@ -866,6 +867,18 @@ function useSharedChatDockInternal({
         target_hero_id: scope === 'whisper' ? whisperTarget : null,
         target_role: scope === 'role' ? viewerRoleValue || null : null,
         text,
+      }
+
+      const draftyDoc = createDraftyFromText(text)
+      const draftySummary = inspectDrafty(draftyDoc)
+      payload.metadata = {
+        drafty: draftyDoc,
+        plain_text: draftySummary.plainText || text,
+        summary: {
+          has_links: draftySummary.hasLinks,
+          has_mentions: draftySummary.hasMentions,
+          has_hashtags: draftySummary.hasHashtags,
+        },
       }
 
       const contextSnapshot = chatContextRef.current || {}

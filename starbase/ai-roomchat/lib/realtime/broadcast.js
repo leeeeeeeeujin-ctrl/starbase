@@ -4,6 +4,17 @@ import { supabase } from '@/lib/supabase'
 
 let realtimeToken = null
 let authPromise = null
+const channelRegistry = new Map()
+
+function normalizeTopicName(topic) {
+  if (!topic) return null
+  const trimmed = String(topic).trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith('realtime:') || trimmed.startsWith('topic:')) {
+    return trimmed
+  }
+  return `realtime:public:${trimmed}`
+}
 
 async function ensureRealtimeAuth() {
   if (authPromise) {
@@ -35,10 +46,11 @@ async function ensureRealtimeAuth() {
   return authPromise
 }
 
-function normalizeBroadcastPayload(payload, topic) {
+function normalizeBroadcastPayload(payload, topic, fallbackEvent) {
   const basePayload = payload?.payload && typeof payload.payload === 'object' ? payload.payload : payload || {}
   const eventTypeRaw = payload?.event || payload?.type || basePayload?.event || ''
-  const eventType = eventTypeRaw ? String(eventTypeRaw).toUpperCase() : 'INSERT'
+  const fallback = fallbackEvent ? String(fallbackEvent).toUpperCase() : 'INSERT'
+  const eventType = eventTypeRaw ? String(eventTypeRaw).toUpperCase() : fallback
   const schema = basePayload?.schema || basePayload?.schema_name || null
   const table = basePayload?.table || basePayload?.table_name || null
   const commitTimestamp =
@@ -66,52 +78,121 @@ export function subscribeToBroadcastTopic(
   handler,
   { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = true, onStatus } = {},
 ) {
-  if (!topic) {
+  const normalizedTopic = normalizeTopicName(topic)
+  if (!normalizedTopic) {
     return () => {}
   }
-
-  const channelConfig = { broadcast: { ack } }
-  if (privateChannel) {
-    channelConfig.private = true
-  }
-
-  const channel = supabase.channel(topic, { config: channelConfig })
 
   const safeHandler = typeof handler === 'function' ? handler : () => {}
   const normalizedEvents = Array.from(new Set((Array.isArray(events) ? events : [events]).filter(Boolean)))
 
+  let entry = channelRegistry.get(normalizedTopic)
+  if (!entry) {
+    const channelConfig = { broadcast: { ack: ack || false } }
+    if (privateChannel) {
+      channelConfig.private = true
+    }
+
+    const channel = supabase.channel(normalizedTopic, { config: channelConfig })
+    entry = {
+      channel,
+      refCount: 0,
+      statusHandlers: new Set(),
+      lastStatus: null,
+      subscriptionPromise: null,
+    }
+    channelRegistry.set(normalizedTopic, entry)
+
+    const subscribeToChannel = async () => {
+      try {
+        await ensureRealtimeAuth()
+        await new Promise((resolve) => {
+          channel.subscribe((status) => {
+            entry.lastStatus = status
+            entry.statusHandlers.forEach((listener) => {
+              try {
+                listener(status, { topic: normalizedTopic })
+              } catch (error) {
+                console.warn('[realtime] 상태 콜백 실행 중 오류가 발생했습니다.', error)
+              }
+            })
+            if (status === 'SUBSCRIBED') {
+              resolve()
+            }
+            if (status === 'CHANNEL_ERROR') {
+              console.error('[realtime] 채널 구독 중 오류가 발생했습니다.', { topic: normalizedTopic })
+            }
+          })
+        })
+      } catch (error) {
+        entry.lastStatus = 'CHANNEL_ERROR'
+        entry.statusHandlers.forEach((listener) => {
+          try {
+            listener('CHANNEL_ERROR', { topic: normalizedTopic, error })
+          } catch (handlerError) {
+            console.warn('[realtime] 상태 콜백 오류를 처리하지 못했습니다.', handlerError)
+          }
+        })
+        throw error
+      }
+    }
+
+    entry.subscriptionPromise = subscribeToChannel()
+  }
+
+  entry.refCount += 1
+
+  let statusHandler = null
+  if (typeof onStatus === 'function') {
+    statusHandler = (status, context) => onStatus(status, context)
+    entry.statusHandlers.add(statusHandler)
+    if (entry.lastStatus) {
+      try {
+        onStatus(entry.lastStatus, { topic: normalizedTopic })
+      } catch (error) {
+        console.warn('[realtime] 상태 핸들러 실행에 실패했습니다.', error)
+      }
+    }
+  }
+
+  const listeners = []
+
   normalizedEvents.forEach((event) => {
     const eventName = typeof event === 'string' && event.trim() ? event.trim().toUpperCase() : 'INSERT'
-    channel.on('broadcast', { event: eventName }, (payload) => {
-      safeHandler(normalizeBroadcastPayload(payload, topic))
-    })
+    const listenerState = { active: true }
+    const listener = (payload) => {
+      if (!listenerState.active) return
+      safeHandler(normalizeBroadcastPayload(payload, normalizedTopic, eventName))
+    }
+    entry.channel.on('broadcast', { event: eventName }, listener)
+    listeners.push({ listener, state: listenerState })
   })
 
-  ensureRealtimeAuth()
-    .then(() =>
-      channel.subscribe((status) => {
-        if (typeof onStatus === 'function') {
-          onStatus(status, { topic })
-        }
-        if (status === 'CHANNEL_ERROR') {
-          console.error('[realtime] 채널 구독 중 오류가 발생했습니다.', { topic })
-        }
-      }),
-    )
-    .catch((error) => {
-      console.error('[realtime] 인증 토큰을 갱신하지 못했습니다.', { error, topic })
-      if (typeof onStatus === 'function') {
-        onStatus('CHANNEL_ERROR', { topic, error })
-      }
+  if (entry.subscriptionPromise) {
+    entry.subscriptionPromise.catch((error) => {
+      console.error('[realtime] 채널 구독에 실패했습니다.', { error, topic: normalizedTopic })
     })
+  }
 
   return () => {
-    try {
-      channel.unsubscribe()
-    } catch (error) {
-      console.warn('[realtime] 채널 구독을 해제하지 못했습니다.', { error, topic })
+    listeners.forEach(({ state }) => {
+      state.active = false
+    })
+
+    if (statusHandler) {
+      entry.statusHandlers.delete(statusHandler)
     }
-    supabase.removeChannel(channel)
+    entry.refCount = Math.max(0, entry.refCount - 1)
+
+    if (entry.refCount === 0) {
+      channelRegistry.delete(normalizedTopic)
+      try {
+        entry.channel.unsubscribe()
+      } catch (error) {
+        console.warn('[realtime] 채널 구독을 해제하지 못했습니다.', { error, topic: normalizedTopic })
+      }
+      supabase.removeChannel(entry.channel)
+    }
   }
 }
 
@@ -120,7 +201,9 @@ export function subscribeToBroadcastTopics(topics, handler, options = {}) {
     return () => {}
   }
 
-  const uniqueTopics = Array.from(new Set(topics.filter((topic) => typeof topic === 'string' && topic.trim().length)))
+  const uniqueTopics = Array.from(
+    new Set(topics.map((topic) => normalizeTopicName(topic)).filter((topic) => typeof topic === 'string' && topic.trim().length)),
+  )
   if (!uniqueTopics.length) {
     return () => {}
   }
