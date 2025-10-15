@@ -3045,6 +3045,10 @@ on public.chat_room_members for insert to authenticated
 with check (owner_id = auth.uid());
 
 drop policy if exists chat_room_members_update on public.chat_room_members;
+drop policy if exists chat_room_members_delete on public.chat_room_members;
+
+drop function if exists public.is_chat_room_moderator(uuid, uuid);
+
 create policy chat_room_members_update
 on public.chat_room_members for update
 using (
@@ -3080,7 +3084,6 @@ with check (
   )
 );
 
-drop policy if exists chat_room_members_delete on public.chat_room_members;
 create policy chat_room_members_delete
 on public.chat_room_members for delete
 using (
