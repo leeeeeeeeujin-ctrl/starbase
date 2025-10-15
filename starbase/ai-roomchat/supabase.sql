@@ -2913,6 +2913,135 @@ with check (auth.role() = 'service_role');
 -- =========================================
 --  공용 채팅 테이블
 -- =========================================
+create table if not exists public.chat_rooms (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id) on delete set null,
+  hero_id uuid references public.heroes(id) on delete set null,
+  name text not null,
+  description text not null default '',
+  visibility text not null default 'public' check (visibility in ('public', 'private')),
+  capacity integer not null default 50 check (capacity between 2 and 500),
+  allow_ai boolean not null default true,
+  require_approval boolean not null default false,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.chat_room_members (
+  room_id uuid not null references public.chat_rooms(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  hero_id uuid references public.heroes(id) on delete set null,
+  role text,
+  status text not null default 'active',
+  is_moderator boolean not null default false,
+  joined_at timestamptz not null default timezone('utc', now()),
+  last_active_at timestamptz not null default timezone('utc', now()),
+  primary key (room_id, owner_id)
+);
+
+alter table public.chat_rooms enable row level security;
+alter table public.chat_room_members enable row level security;
+
+drop policy if exists chat_rooms_select on public.chat_rooms;
+create policy chat_rooms_select
+on public.chat_rooms for select
+using (
+  visibility = 'public'
+  or owner_id = auth.uid()
+  or exists (
+    select 1
+    from public.chat_room_members m
+    where m.room_id = chat_rooms.id
+      and m.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_rooms_insert on public.chat_rooms;
+create policy chat_rooms_insert
+on public.chat_rooms for insert to authenticated
+with check (auth.uid() = owner_id);
+
+drop policy if exists chat_rooms_update on public.chat_rooms;
+create policy chat_rooms_update
+on public.chat_rooms for update
+using (auth.uid() = owner_id)
+with check (auth.uid() = owner_id);
+
+drop policy if exists chat_rooms_delete on public.chat_rooms;
+create policy chat_rooms_delete
+on public.chat_rooms for delete
+using (auth.uid() = owner_id);
+
+drop policy if exists chat_room_members_select on public.chat_room_members;
+create policy chat_room_members_select
+on public.chat_room_members for select
+using (
+  owner_id = auth.uid()
+  or exists (
+    select 1
+    from public.chat_rooms r
+    where r.id = chat_room_members.room_id
+      and (r.owner_id = auth.uid() or r.visibility = 'public')
+  )
+);
+
+drop policy if exists chat_room_members_insert on public.chat_room_members;
+create policy chat_room_members_insert
+on public.chat_room_members for insert to authenticated
+with check (owner_id = auth.uid());
+
+drop policy if exists chat_room_members_update on public.chat_room_members;
+create policy chat_room_members_update
+on public.chat_room_members for update
+using (owner_id = auth.uid() or is_moderator)
+with check (owner_id = auth.uid() or is_moderator);
+
+drop policy if exists chat_room_members_delete on public.chat_room_members;
+create policy chat_room_members_delete
+on public.chat_room_members for delete
+using (owner_id = auth.uid() or is_moderator);
+
+create index if not exists chat_rooms_visibility_idx
+  on public.chat_rooms (visibility, updated_at desc);
+
+create index if not exists chat_room_members_owner_idx
+  on public.chat_room_members (owner_id, room_id);
+
+create index if not exists chat_room_members_room_idx
+  on public.chat_room_members (room_id, last_active_at desc);
+
+create or replace function public.touch_chat_room_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := timezone('utc', now());
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_chat_rooms_set_updated_at on public.chat_rooms;
+create trigger trg_chat_rooms_set_updated_at
+before update on public.chat_rooms
+for each row
+execute function public.touch_chat_room_updated_at();
+
+create or replace function public.touch_chat_room_member_activity()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.last_active_at := timezone('utc', now());
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_chat_room_members_touch on public.chat_room_members;
+create trigger trg_chat_room_members_touch
+before update on public.chat_room_members
+for each row
+execute function public.touch_chat_room_member_activity();
+
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default timezone('utc', now()),
@@ -2923,6 +3052,7 @@ create table if not exists public.messages (
   match_instance_id uuid,
   game_id uuid references public.rank_games(id) on delete set null,
   room_id uuid references public.rank_rooms(id) on delete set null,
+  chat_room_id uuid references public.chat_rooms(id) on delete set null,
   user_id uuid references auth.users(id) on delete set null,
   owner_id uuid references auth.users(id) on delete set null,
   hero_id uuid references public.heroes(id) on delete set null,
@@ -2963,6 +3093,9 @@ alter table public.messages
 
 alter table public.messages
   add column if not exists room_id uuid references public.rank_rooms(id) on delete set null;
+
+alter table public.messages
+  add column if not exists chat_room_id uuid references public.chat_rooms(id) on delete set null;
 
 alter table public.messages
   add column if not exists user_id uuid references auth.users(id) on delete set null;
@@ -3014,7 +3147,7 @@ alter table public.messages
 
 alter table public.messages
   add constraint messages_channel_type_check
-  check (channel_type in ('lobby', 'main', 'role', 'whisper', 'system'));
+  check (channel_type in ('lobby', 'main', 'role', 'whisper', 'system', 'room'));
 
 create index if not exists messages_created_at_idx
   on public.messages (created_at desc);
@@ -3030,6 +3163,9 @@ create index if not exists messages_match_instance_idx
 
 create index if not exists messages_owner_scope_idx
   on public.messages (owner_id, scope, created_at desc);
+
+create index if not exists messages_chat_room_idx
+  on public.messages (chat_room_id, created_at desc);
 
 create or replace function public.touch_messages_updated_at()
 returns trigger
@@ -3050,13 +3186,57 @@ execute function public.touch_messages_updated_at();
 drop policy if exists messages_select_public on public.messages;
 create policy messages_select_public
 on public.messages for select
+to authenticated
 using (
-  auth.role() = 'service_role'
-  or scope = 'global'
+  scope = 'global'
   or visible_owner_ids is null
   or auth.uid() = owner_id
   or auth.uid() = user_id
   or (visible_owner_ids is not null and auth.uid() = any(visible_owner_ids))
+  or (
+    chat_room_id is not null
+    and exists (
+      select 1
+      from public.chat_room_members crm
+      where crm.room_id = messages.chat_room_id
+        and crm.owner_id = auth.uid()
+    )
+  )
+  or (
+    room_id is not null
+    and exists (
+      select 1
+      from public.rank_room_slots rrs
+      where rrs.room_id = messages.room_id
+        and rrs.occupant_owner_id = auth.uid()
+    )
+  )
+  or (
+    match_instance_id is not null
+    and exists (
+      select 1
+      from public.rank_match_roster rmr
+      where rmr.match_instance_id = messages.match_instance_id
+        and rmr.owner_id = auth.uid()
+    )
+  )
+  or (
+    session_id is not null
+    and exists (
+      select 1
+      from public.rank_sessions rs
+      where rs.id = messages.session_id
+        and (
+          rs.owner_id = auth.uid()
+          or exists (
+            select 1
+            from public.rank_match_roster rmr2
+            where rmr2.session_id = rs.id
+              and rmr2.owner_id = auth.uid()
+          )
+        )
+    )
+  )
 );
 
 drop policy if exists messages_insert_service_role on public.messages;
@@ -3155,6 +3335,7 @@ declare
   v_match uuid := null;
   v_game uuid := null;
   v_room uuid := null;
+  v_chat_room uuid := null;
   v_owner uuid := null;
   v_user uuid := null;
   v_hero uuid := null;
@@ -3172,6 +3353,7 @@ begin
     v_match := OLD.match_instance_id;
     v_game := OLD.game_id;
     v_room := OLD.room_id;
+    v_chat_room := OLD.chat_room_id;
     v_owner := OLD.owner_id;
     v_user := OLD.user_id;
     v_hero := OLD.hero_id;
@@ -3185,6 +3367,7 @@ begin
     v_match := NEW.match_instance_id;
     v_game := NEW.game_id;
     v_room := NEW.room_id;
+    v_chat_room := NEW.chat_room_id;
     v_owner := NEW.owner_id;
     v_user := NEW.user_id;
     v_hero := NEW.hero_id;
@@ -3198,6 +3381,7 @@ begin
     v_match := coalesce(NEW.match_instance_id, OLD.match_instance_id);
     v_game := coalesce(NEW.game_id, OLD.game_id);
     v_room := coalesce(NEW.room_id, OLD.room_id);
+    v_chat_room := coalesce(NEW.chat_room_id, OLD.chat_room_id);
     v_owner := coalesce(NEW.owner_id, OLD.owner_id);
     v_user := coalesce(NEW.user_id, OLD.user_id);
     v_hero := coalesce(NEW.hero_id, OLD.hero_id);
@@ -3223,6 +3407,7 @@ begin
     case when v_match is not null then 'messages:match:' || v_match::text end,
     case when v_game is not null then 'messages:game:' || v_game::text end,
     case when v_room is not null then 'messages:room:' || v_room::text end,
+    case when v_chat_room is not null then 'messages:chat-room:' || v_chat_room::text end,
     case when v_owner is not null then 'messages:owner:' || v_owner::text end,
     case when v_user is not null then 'messages:user:' || v_user::text end,
     case when v_hero is not null then 'messages:hero:' || v_hero::text end,
@@ -3847,6 +4032,38 @@ $$;
 do $$
 begin
   if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'chat_rooms'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_rooms'
+  ) then
+    alter publication supabase_realtime add table public.chat_rooms;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_tables where schemaname = 'public' and tablename = 'chat_room_members'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_room_members'
+  ) then
+    alter publication supabase_realtime add table public.chat_room_members;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
     select 1 from pg_tables where schemaname = 'public' and tablename = 'rank_session_meta'
   ) and not exists (
     select 1
@@ -3915,6 +4132,7 @@ create or replace function public.send_rank_chat_message(
   p_match_instance_id uuid default null,
   p_game_id uuid default null,
   p_room_id uuid default null,
+  p_chat_room_id uuid default null,
   p_hero_id uuid default null,
   p_target_hero_id uuid default null,
   p_target_role text default null,
@@ -3936,6 +4154,9 @@ declare
   v_match_instance_id uuid := p_match_instance_id;
   v_game_id uuid := p_game_id;
   v_room_id uuid := p_room_id;
+  v_chat_room_id uuid := p_chat_room_id;
+  v_chat_member_ids uuid[] := null;
+  v_has_chat_access boolean := false;
   v_hero_id uuid := p_hero_id;
   v_username text := null;
   v_avatar text := null;
@@ -3961,7 +4182,7 @@ begin
     raise exception 'empty_message' using errcode = 'P0001';
   end if;
 
-  if v_scope not in ('global', 'main', 'role', 'whisper', 'system') then
+  if v_scope not in ('global', 'main', 'role', 'whisper', 'system', 'room') then
     v_scope := 'global';
   end if;
 
@@ -3970,6 +4191,7 @@ begin
     when 'role' then 'role'
     when 'whisper' then 'whisper'
     when 'system' then 'system'
+    when 'room' then 'room'
     else 'lobby'
   end;
 
@@ -3989,7 +4211,34 @@ begin
     v_username := '익명';
   end if;
 
-  if v_scope in ('main', 'role', 'whisper') then
+  if v_scope = 'room' then
+    if v_chat_room_id is null then
+      v_chat_room_id := p_chat_room_id;
+    end if;
+
+    if v_chat_room_id is null then
+      raise exception 'missing_chat_room_id' using errcode = 'P0001';
+    end if;
+
+    select
+      array_agg(owner_id) filter (where status = 'active'),
+      bool_or(owner_id = v_user_id)
+      into v_chat_member_ids, v_has_chat_access
+    from public.chat_room_members
+    where room_id = v_chat_room_id;
+
+    if not coalesce(v_has_chat_access, false) then
+      raise exception 'chat_room_forbidden' using errcode = 'P0001';
+    end if;
+
+    if v_chat_member_ids is null or array_length(v_chat_member_ids, 1) = 0 then
+      v_chat_member_ids := array[v_user_id];
+    end if;
+
+    v_visible := v_chat_member_ids;
+    v_thread_hint := 'chat-room:' || v_chat_room_id::text;
+
+  elsif v_scope in ('main', 'role', 'whisper') then
     if v_match_instance_id is null and v_session_id is not null then
       select public.try_cast_uuid(
           coalesce(
@@ -4088,6 +4337,7 @@ begin
     match_instance_id,
     game_id,
     room_id,
+    chat_room_id,
     user_id,
     owner_id,
     hero_id,
@@ -4109,6 +4359,7 @@ begin
     v_match_instance_id,
     v_game_id,
     v_room_id,
+    v_chat_room_id,
     v_user_id,
     v_owner_id,
     v_hero_id,
@@ -4138,6 +4389,7 @@ grant execute on function public.send_rank_chat_message(
   uuid,
   uuid,
   uuid,
+  uuid,
   text,
   jsonb,
   uuid
@@ -4148,7 +4400,9 @@ to authenticated,
 create or replace function public.fetch_rank_chat_threads(
   p_session_id uuid default null,
   p_match_instance_id uuid default null,
-  p_limit integer default 120
+  p_limit integer default 120,
+  p_chat_room_id uuid default null,
+  p_scope text default null
 )
 returns jsonb
 language plpgsql
@@ -4162,6 +4416,10 @@ declare
   v_limit integer := greatest(coalesce(p_limit, 120), 10);
   v_game_id uuid := null;
   v_role text := null;
+  v_chat_room_id uuid := p_chat_room_id;
+  v_requested_scope text := lower(coalesce(p_scope, ''));
+  v_chat_room_label text := null;
+  v_chat_room_member boolean := false;
   v_messages jsonb := '[]'::jsonb;
 begin
   if v_match_instance_id is null and v_session_id is not null then
@@ -4179,6 +4437,24 @@ begin
     left join public.rank_session_meta as sm on sm.session_id = s.id
     where s.id = v_session_id
     limit 1;
+  end if;
+
+  if v_chat_room_id is not null then
+    select
+      coalesce(r.name, ''),
+      bool_or(m.owner_id = v_owner_id)
+      into v_chat_room_label, v_chat_room_member
+    from public.chat_rooms r
+    left join public.chat_room_members m
+      on m.room_id = r.id
+     and coalesce(m.status, 'active') = 'active'
+    where r.id = v_chat_room_id
+    group by r.id, r.name;
+
+    if not coalesce(v_chat_room_member, false) then
+      v_chat_room_id := null;
+      v_chat_room_label := null;
+    end if;
   end if;
 
   if v_match_instance_id is not null then
@@ -4202,6 +4478,17 @@ begin
     select m.*, 'global'::text as thread_scope, 'global'::text as thread_id, '전체'::text as thread_label
     from public.messages as m
     where m.scope = 'global'
+    order by m.created_at desc
+    limit v_limit
+  ),
+  chat_room_messages as (
+    select
+      m.*, 'room'::text as thread_scope,
+      coalesce('chat-room:' || m.chat_room_id::text, 'room')::text as thread_id,
+      coalesce(v_chat_room_label, '대화방')::text as thread_label
+    from public.messages as m
+    where v_chat_room_id is not null
+      and m.chat_room_id = v_chat_room_id
     order by m.created_at desc
     limit v_limit
   ),
@@ -4246,7 +4533,7 @@ begin
   ),
   whisper_messages as (
     select
-      m.*,
+      m.*, 
       'whisper'::text as thread_scope,
       (
         'whisper:' || coalesce(
@@ -4273,6 +4560,8 @@ begin
   combined as (
     select * from global_messages
     union all
+    select * from chat_room_messages
+    union all
     select * from main_messages
     union all
     select * from role_messages
@@ -4292,6 +4581,7 @@ begin
       c.match_instance_id,
       c.game_id,
       c.room_id,
+      c.chat_room_id,
       c.user_id,
       c.owner_id,
       c.hero_id,
@@ -4316,9 +4606,18 @@ begin
         when c.thread_scope = 'role' and v_role is not null then format('역할 (%s)', v_role)
         when c.thread_scope = 'main' then '메인 게임'
         when c.thread_scope = 'global' then '전체'
+        when c.thread_scope = 'room' then coalesce(v_chat_room_label, '대화방')
         else c.thread_label
-      end as thread_label
+      end as thread_label,
+      coalesce(h.name, c.username) as hero_name,
+      h.image_url as hero_image_url,
+      cr.name as chat_room_name,
+      th.name as target_hero_name,
+      th.image_url as target_hero_image_url
     from combined as c
+    left join public.heroes as h on h.id = c.hero_id
+    left join public.heroes as th on th.id = c.target_hero_id
+    left join public.chat_rooms as cr on cr.id = c.chat_room_id
     order by c.created_at asc, c.id
   ) as row;
 
@@ -4335,10 +4634,422 @@ $$;
 grant execute on function public.fetch_rank_chat_threads(
   uuid,
   uuid,
-  integer
+  integer,
+  uuid,
+  text
 )
 to authenticated,
    service_role,
    anon;
+
+create or replace function public.create_chat_room(
+  p_name text,
+  p_description text default '',
+  p_visibility text default 'private',
+  p_capacity integer default 20,
+  p_allow_ai boolean default true,
+  p_require_approval boolean default false,
+  p_hero_id uuid default null
+)
+returns public.chat_rooms
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_name text := coalesce(trim(p_name), '');
+  v_description text := coalesce(trim(p_description), '');
+  v_visibility text := case
+    when lower(coalesce(p_visibility, '')) = 'public' then 'public'
+    else 'private'
+  end;
+  v_capacity integer := greatest(2, least(coalesce(p_capacity, 20), 500));
+  v_room public.chat_rooms%rowtype;
+begin
+  if v_owner_id is null then
+    raise exception 'missing_user_id' using errcode = 'P0001';
+  end if;
+
+  if v_name = '' then
+    raise exception 'missing_room_name' using errcode = 'P0001';
+  end if;
+
+  insert into public.chat_rooms (
+    owner_id,
+    hero_id,
+    name,
+    description,
+    visibility,
+    capacity,
+    allow_ai,
+    require_approval
+  )
+  values (
+    v_owner_id,
+    p_hero_id,
+    v_name,
+    v_description,
+    v_visibility,
+    v_capacity,
+    coalesce(p_allow_ai, true),
+    coalesce(p_require_approval, false)
+  )
+  returning * into v_room;
+
+  insert into public.chat_room_members (room_id, owner_id, hero_id, role, status, is_moderator)
+  values (v_room.id, v_owner_id, p_hero_id, null, 'active', true)
+  on conflict (room_id, owner_id) do update
+    set hero_id = excluded.hero_id,
+        status = 'active',
+        is_moderator = true,
+        last_active_at = timezone('utc', now());
+
+  return v_room;
+end;
+$$;
+
+grant execute on function public.create_chat_room(
+  text,
+  text,
+  text,
+  integer,
+  boolean,
+  boolean,
+  uuid
+)
+to authenticated;
+
+create or replace function public.join_chat_room(
+  p_room_id uuid,
+  p_hero_id uuid default null
+)
+returns public.chat_room_members
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_membership public.chat_room_members%rowtype;
+begin
+  if v_owner_id is null then
+    raise exception 'missing_user_id' using errcode = 'P0001';
+  end if;
+
+  if p_room_id is null then
+    raise exception 'missing_room_id' using errcode = 'P0001';
+  end if;
+
+  insert into public.chat_room_members (room_id, owner_id, hero_id, status)
+  values (p_room_id, v_owner_id, p_hero_id, 'active')
+  on conflict (room_id, owner_id) do update
+    set hero_id = excluded.hero_id,
+        status = 'active',
+        last_active_at = timezone('utc', now())
+  returning * into v_membership;
+
+  return v_membership;
+end;
+$$;
+
+grant execute on function public.join_chat_room(
+  uuid,
+  uuid
+)
+to authenticated;
+
+create or replace function public.leave_chat_room(
+  p_room_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_deleted integer := 0;
+begin
+  if v_owner_id is null then
+    raise exception 'missing_user_id' using errcode = 'P0001';
+  end if;
+
+  if p_room_id is null then
+    raise exception 'missing_room_id' using errcode = 'P0001';
+  end if;
+
+  delete from public.chat_room_members
+  where room_id = p_room_id
+    and owner_id = v_owner_id
+  returning 1 into v_deleted;
+
+  return v_deleted > 0;
+end;
+$$;
+
+grant execute on function public.leave_chat_room(uuid)
+to authenticated;
+
+create or replace function public.fetch_chat_rooms(
+  p_search text default null,
+  p_limit integer default 24
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_limit integer := greatest(coalesce(p_limit, 24), 5);
+  v_query text := coalesce(trim(p_search), '');
+  v_joined jsonb := '[]'::jsonb;
+  v_available jsonb := '[]'::jsonb;
+begin
+  if v_owner_id is null then
+    return jsonb_build_object('joined', '[]'::jsonb, 'available', '[]'::jsonb);
+  end if;
+
+  with member_rooms as (
+    select
+      r.id,
+      r.name,
+      r.description,
+      r.visibility,
+      r.capacity,
+      r.allow_ai,
+      r.require_approval,
+      r.owner_id,
+      r.hero_id,
+      r.created_at,
+      r.updated_at,
+      count(m_all.owner_id) as member_count,
+      bool_or(m_all.owner_id = v_owner_id) as is_member
+    from public.chat_rooms r
+    left join public.chat_room_members m_all
+      on m_all.room_id = r.id
+     and coalesce(m_all.status, 'active') = 'active'
+    group by r.id
+  )
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_joined
+  from (
+    select
+      mr.id,
+      mr.name,
+      mr.description,
+      mr.visibility,
+      mr.capacity,
+      mr.allow_ai,
+      mr.require_approval,
+      mr.owner_id,
+      mr.hero_id,
+      mr.member_count,
+      mr.created_at,
+      mr.updated_at
+    from member_rooms mr
+    where mr.is_member
+    order by mr.updated_at desc
+    limit v_limit
+  ) as row;
+
+  with available_rooms as (
+    select
+      r.id,
+      r.name,
+      r.description,
+      r.visibility,
+      r.capacity,
+      r.allow_ai,
+      r.require_approval,
+      r.owner_id,
+      r.hero_id,
+      r.created_at,
+      r.updated_at,
+      count(m_all.owner_id) as member_count
+    from public.chat_rooms r
+    left join public.chat_room_members m_self
+      on m_self.room_id = r.id
+     and m_self.owner_id = v_owner_id
+    left join public.chat_room_members m_all
+      on m_all.room_id = r.id
+     and coalesce(m_all.status, 'active') = 'active'
+    where (m_self.owner_id is null or coalesce(m_self.status, 'active') <> 'active')
+      and (r.visibility = 'public' or r.owner_id = v_owner_id)
+      and (
+        v_query = ''
+        or lower(r.name) like lower('%' || v_query || '%')
+        or lower(r.description) like lower('%' || v_query || '%')
+      )
+    group by r.id
+  )
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_available
+  from (
+    select *
+    from available_rooms
+    order by updated_at desc
+    limit v_limit
+  ) as row;
+
+  return jsonb_build_object(
+    'joined', coalesce(v_joined, '[]'::jsonb),
+    'available', coalesce(v_available, '[]'::jsonb)
+  );
+end;
+$$;
+
+grant execute on function public.fetch_chat_rooms(text, integer)
+to authenticated;
+
+create or replace function public.fetch_chat_dashboard(
+  p_limit integer default 24
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_limit integer := greatest(coalesce(p_limit, 24), 8);
+  v_rooms jsonb := '{}'::jsonb;
+  v_joined jsonb := '[]'::jsonb;
+  v_public jsonb := '[]'::jsonb;
+  v_heroes jsonb := '[]'::jsonb;
+  v_sessions jsonb := '[]'::jsonb;
+  v_contacts jsonb := '[]'::jsonb;
+begin
+  if v_owner_id is null then
+    return jsonb_build_object(
+      'heroes', '[]'::jsonb,
+      'rooms', '[]'::jsonb,
+      'publicRooms', '[]'::jsonb,
+      'sessions', '[]'::jsonb,
+      'contacts', '[]'::jsonb
+    );
+  end if;
+
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_heroes
+  from (
+    select
+      h.id,
+      h.name,
+      h.description,
+      h.image_url,
+      h.created_at,
+      h.updated_at
+    from public.heroes h
+    where h.owner_id = v_owner_id
+    order by h.updated_at desc
+    limit v_limit
+  ) as row;
+
+  v_rooms := public.fetch_chat_rooms(null, v_limit);
+  v_joined := coalesce(v_rooms->'joined', '[]'::jsonb);
+  v_public := coalesce(v_rooms->'available', '[]'::jsonb);
+
+  with my_roster as (
+    select
+      r.session_id,
+      coalesce(r.match_instance_id, public.try_cast_uuid(sm.extras->>'matchInstanceId')) as match_instance_id,
+      r.role,
+      r.updated_at,
+      row_number() over (order by coalesce(s.updated_at, r.updated_at) desc) as rn
+    from public.rank_match_roster r
+    left join public.rank_sessions s on s.id = r.session_id
+    left join public.rank_session_meta sm on sm.session_id = r.session_id
+    where r.owner_id = v_owner_id
+  )
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_sessions
+  from (
+    select
+      s.id as session_id,
+      s.status,
+      s.game_id,
+      g.name as game_name,
+      g.description as game_description,
+      g.image_url as game_image_url,
+      mr.match_instance_id,
+      mr.role as viewer_role,
+      sm.turn_limit,
+      sm.selected_time_limit_seconds,
+      sm.drop_in_bonus_seconds,
+      sm.turn_state,
+      s.updated_at,
+      (
+        select coalesce(jsonb_agg(to_jsonb(participant_row)), '[]'::jsonb)
+        from (
+          select
+            rp.owner_id,
+            rp.hero_id,
+            rp.role,
+            rp.standin,
+            rp.score,
+            rp.rating,
+            rp.slot_index,
+            rp.updated_at,
+            h.name as hero_name,
+            h.image_url as hero_image_url
+          from public.rank_match_roster rp
+          left join public.heroes h on h.id = rp.hero_id
+          where rp.match_instance_id = mr.match_instance_id
+          order by coalesce(rp.slot_index, 0) asc, rp.updated_at desc
+          limit 12
+        ) as participant_row
+      ) as participants
+    from my_roster mr
+    join public.rank_sessions s on s.id = mr.session_id
+    left join public.rank_session_meta sm on sm.session_id = s.id
+    left join public.rank_games g on g.id = s.game_id
+    where mr.rn <= v_limit
+    order by s.updated_at desc
+  ) as row;
+
+  with contact_candidates as (
+    select distinct on (rp.owner_id, rp.hero_id)
+      rp.owner_id,
+      rp.hero_id,
+      rp.role,
+      rp.match_instance_id,
+      rp.updated_at
+    from public.rank_match_roster rp
+    join my_roster mr on mr.match_instance_id = rp.match_instance_id
+    where rp.owner_id is not null
+      and rp.owner_id <> v_owner_id
+    order by rp.owner_id, rp.hero_id, rp.updated_at desc
+  )
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_contacts
+  from (
+    select
+      cc.owner_id,
+      cc.hero_id,
+      cc.role,
+      cc.match_instance_id,
+      cc.updated_at,
+      h.name as hero_name,
+      h.image_url as hero_image_url
+    from contact_candidates cc
+    left join public.heroes h on h.id = cc.hero_id
+    order by cc.updated_at desc
+    limit v_limit
+  ) as row;
+
+  return jsonb_build_object(
+    'heroes', coalesce(v_heroes, '[]'::jsonb),
+    'rooms', coalesce(v_joined, '[]'::jsonb),
+    'publicRooms', coalesce(v_public, '[]'::jsonb),
+    'sessions', coalesce(v_sessions, '[]'::jsonb),
+    'contacts', coalesce(v_contacts, '[]'::jsonb)
+  );
+end;
+$$;
+
+grant execute on function public.fetch_chat_dashboard(integer)
+to authenticated;
 
 --

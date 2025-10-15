@@ -22,12 +22,16 @@ export async function fetchRecentMessages({
   limit = MESSAGE_LIMIT,
   sessionId = null,
   matchInstanceId = null,
+  chatRoomId = null,
+  scope = null,
 } = {}) {
   const cappedLimit = Math.max(1, Math.min(limit, 500))
   const { data, error } = await supabase.rpc('fetch_rank_chat_threads', {
     p_limit: cappedLimit,
     p_session_id: sessionId,
     p_match_instance_id: matchInstanceId,
+    p_chat_room_id: chatRoomId,
+    p_scope: scope || null,
   })
 
   if (error) {
@@ -52,6 +56,7 @@ export async function fetchRecentMessages({
     sessionId: data.sessionId || sessionId || null,
     matchInstanceId: data.matchInstanceId || matchInstanceId || null,
     gameId: data.gameId || null,
+    chatRoomId: chatRoomId || null,
   }
 }
 
@@ -82,6 +87,7 @@ export async function insertMessage(payload, context = {}) {
     p_match_instance_id: context.matchInstanceId || null,
     p_game_id: context.gameId || null,
     p_room_id: context.roomId || null,
+    p_chat_room_id: context.chatRoomId || null,
     p_hero_id: payload?.hero_id || null,
     p_target_hero_id: payload?.target_hero_id || null,
     p_target_role: payload?.target_role || null,
@@ -121,6 +127,7 @@ function messageMatchesContext(record, context) {
     matchInstanceId,
     gameId,
     roomId,
+    chatRoomId,
     heroId,
     ownerId,
     userId,
@@ -130,6 +137,7 @@ function messageMatchesContext(record, context) {
   const recordMatch = toComparable(record.match_instance_id)
   const recordGame = toComparable(record.game_id)
   const recordRoom = toComparable(record.room_id)
+  const recordChatRoom = toComparable(record.chat_room_id)
   const recordHero = toComparable(record.hero_id)
   const recordTargetHero = toComparable(record.target_hero_id)
   const recordOwner = toComparable(record.owner_id)
@@ -139,6 +147,7 @@ function messageMatchesContext(record, context) {
   const viewerMatch = toComparable(matchInstanceId)
   const viewerGame = toComparable(gameId)
   const viewerRoom = toComparable(roomId)
+  const viewerChatRoom = toComparable(chatRoomId)
   const viewerHero = toComparable(heroId)
   const viewerOwner = toComparable(ownerId)
   const viewerUser = toComparable(userId)
@@ -147,6 +156,7 @@ function messageMatchesContext(record, context) {
   const matchesMatch = !viewerMatch || !recordMatch || viewerMatch === recordMatch
   const matchesGame = !viewerGame || !recordGame || viewerGame === recordGame
   const matchesRoom = !viewerRoom || !recordRoom || viewerRoom === recordRoom
+  const matchesChatRoom = !viewerChatRoom || !recordChatRoom || viewerChatRoom === recordChatRoom
 
   const heroAllowed =
     !viewerHero || recordHero === viewerHero || recordTargetHero === viewerHero
@@ -169,6 +179,7 @@ function messageMatchesContext(record, context) {
     matchesMatch &&
     matchesGame &&
     matchesRoom &&
+    matchesChatRoom &&
     heroAllowed &&
     ownerAllowed &&
     userAllowed &&
@@ -182,6 +193,7 @@ export function subscribeToMessages({
   matchInstanceId = null,
   gameId = null,
   roomId = null,
+  chatRoomId = null,
   heroId = null,
   ownerId = null,
   userId = null,
@@ -194,6 +206,7 @@ export function subscribeToMessages({
     matchInstanceId,
     gameId,
     roomId,
+    chatRoomId,
     heroId,
     ownerId,
     userId,
@@ -221,8 +234,25 @@ export function subscribeToMessages({
     }
   }
 
-  channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, forwardChange)
-  channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, forwardChange)
+  const baseFilter = {}
+  if (chatRoomId) {
+    baseFilter.filter = `chat_room_id=eq.${chatRoomId}`
+  } else if (sessionId) {
+    baseFilter.filter = `session_id=eq.${sessionId}`
+  } else if (matchInstanceId) {
+    baseFilter.filter = `match_instance_id=eq.${matchInstanceId}`
+  }
+
+  channel.on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'messages', ...baseFilter },
+    forwardChange,
+  )
+  channel.on(
+    'postgres_changes',
+    { event: 'UPDATE', schema: 'public', table: 'messages', ...baseFilter },
+    forwardChange,
+  )
 
   let active = true
 

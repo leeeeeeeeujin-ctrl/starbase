@@ -2,392 +2,924 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { fetchRecentMessages, insertMessage, MESSAGE_LIMIT } from '@/lib/chat/messages'
-import { subscribeToBroadcastTopic } from '@/lib/realtime/broadcast'
+import { createChatRoom, fetchChatDashboard, fetchChatRooms, joinChatRoom, leaveChatRoom } from '@/lib/chat/rooms'
+import { fetchRecentMessages, getCurrentUser, insertMessage, subscribeToMessages } from '@/lib/chat/messages'
+import { readRankKeyringSnapshot } from '@/lib/rank/keyringStorage'
+import { supabase } from '@/lib/supabase'
 
-const styles = {
+const LAYOUT = {
   page: {
     minHeight: '100vh',
-    background: 'linear-gradient(180deg, #020617 0%, #0f172a 80%, #111827 100%)',
+    background: 'radial-gradient(circle at top, rgba(15,23,42,0.95) 0%, rgba(2,6,23,0.94) 58%, rgba(2,6,23,1) 100%)',
     color: '#e2e8f0',
-    padding: '48px 16px 120px',
+    padding: '48px 24px 96px',
     boxSizing: 'border-box',
   },
-  container: {
-    maxWidth: 960,
+  shell: {
+    maxWidth: 1280,
     margin: '0 auto',
     display: 'grid',
-    gap: 28,
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
+    gridTemplateColumns: '320px 1fr 320px',
+    gap: 24,
     alignItems: 'flex-start',
-    gap: 16,
-    flexWrap: 'wrap',
   },
-  title: {
-    margin: 0,
-    fontSize: 34,
-    fontWeight: 800,
-  },
-  subtitle: {
-    margin: '6px 0 0',
-    fontSize: 15,
-    color: '#94a3b8',
-  },
-  backLink: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '10px 16px',
-    borderRadius: 999,
-    background: 'rgba(15, 23, 42, 0.65)',
-    border: '1px solid rgba(148, 163, 184, 0.32)',
-    color: '#cbd5f5',
-    textDecoration: 'none',
-    fontWeight: 600,
-  },
-  chatShell: {
-    display: 'grid',
-    gap: 18,
-    padding: '24px 26px',
-    borderRadius: 28,
-    border: '1px solid rgba(148, 163, 184, 0.28)',
+  panel: {
     background: 'rgba(15, 23, 42, 0.82)',
-    boxShadow: '0 24px 64px -40px rgba(15, 23, 42, 0.8)',
+    borderRadius: 28,
+    border: '1px solid rgba(148, 163, 184, 0.22)',
+    boxShadow: '0 32px 80px -48px rgba(15, 23, 42, 0.9)',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    minHeight: 480,
   },
-  statusRow: {
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    margin: 0,
+    color: '#cbd5f5',
+  },
+  sectionHeader: {
+    padding: '20px 24px 12px',
+    borderBottom: '1px solid rgba(148, 163, 184, 0.16)',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
-    flexWrap: 'wrap',
   },
-  statusBadge: (status) => ({
-    padding: '6px 12px',
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    background:
-      status === 'SUBSCRIBED'
-        ? 'rgba(34, 197, 94, 0.18)'
-        : status === 'CHANNEL_ERROR'
-        ? 'rgba(248, 113, 113, 0.16)'
-        : 'rgba(59, 130, 246, 0.16)',
-    border:
-      status === 'SUBSCRIBED'
-        ? '1px solid rgba(34, 197, 94, 0.32)'
-        : status === 'CHANNEL_ERROR'
-        ? '1px solid rgba(248, 113, 113, 0.32)'
-        : '1px solid rgba(59, 130, 246, 0.32)',
-    color:
-      status === 'SUBSCRIBED'
-        ? '#bbf7d0'
-        : status === 'CHANNEL_ERROR'
-        ? '#fecaca'
-        : '#bfdbfe',
-  }),
-  messageList: {
-    listStyle: 'none',
+  sectionBody: {
+    padding: '16px 24px 24px',
+    overflowY: 'auto',
+    maxHeight: 'calc(100vh - 220px)',
+  },
+  list: {
+    display: 'grid',
+    gap: 12,
     margin: 0,
     padding: 0,
-    display: 'grid',
-    gap: 14,
-    maxHeight: '52vh',
+    listStyle: 'none',
+  },
+  contextButton: (active) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '12px 14px',
+    borderRadius: 14,
+    background: active ? 'rgba(59, 130, 246, 0.22)' : 'rgba(15, 23, 42, 0.55)',
+    border: active ? '1px solid rgba(147, 197, 253, 0.45)' : '1px solid rgba(148, 163, 184, 0.16)',
+    color: active ? '#f8fafc' : '#cbd5f5',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  }),
+  badge: {
+    marginLeft: 'auto',
+    padding: '2px 8px',
+    borderRadius: 999,
+    background: 'rgba(148, 163, 184, 0.18)',
+    color: '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  messageList: {
+    flex: 1,
     overflowY: 'auto',
-    paddingRight: 6,
+    padding: '24px 28px',
+    display: 'grid',
+    gap: 18,
+    background: 'rgba(8, 11, 20, 0.45)',
   },
   messageItem: {
+    borderRadius: 20,
+    padding: '18px 20px',
+    border: '1px solid rgba(148, 163, 184, 0.18)',
+    background: 'rgba(15, 23, 42, 0.72)',
     display: 'grid',
-    gap: 6,
-    padding: '14px 16px',
-    borderRadius: 16,
-    background: 'rgba(15, 23, 42, 0.66)',
-    border: '1px solid rgba(148, 163, 184, 0.22)',
+    gap: 10,
   },
   messageHeader: {
     display: 'flex',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     gap: 12,
     flexWrap: 'wrap',
-    fontSize: 13,
-    color: '#cbd5f5',
   },
-  messageBody: {
-    margin: 0,
-    fontSize: 15,
-    lineHeight: 1.55,
-    color: '#f8fafc',
-    wordBreak: 'break-word',
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: '50%',
+    overflow: 'hidden',
+    flex: '0 0 auto',
+    background: 'rgba(30, 41, 59, 0.66)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: 700,
   },
   messageMeta: {
     display: 'flex',
     gap: 10,
-    flexWrap: 'wrap',
-    fontSize: 12,
+    fontSize: 13,
     color: '#94a3b8',
+    flexWrap: 'wrap',
   },
-  inputForm: {
+  messageContent: {
+    margin: 0,
+    fontSize: 15,
+    lineHeight: 1.6,
+    color: '#f8fafc',
+    wordBreak: 'break-word',
+  },
+  composerShell: {
+    borderTop: '1px solid rgba(148, 163, 184, 0.16)',
+    padding: '18px 24px',
+    display: 'grid',
+    gap: 14,
+    background: 'rgba(10, 16, 29, 0.82)',
+  },
+  composerRow: {
     display: 'flex',
     gap: 12,
     flexWrap: 'wrap',
   },
-  inputField: {
+  textInput: {
     flex: '1 1 260px',
-    minWidth: 220,
-    padding: '12px 14px',
-    borderRadius: 18,
-    border: '1px solid rgba(148, 163, 184, 0.32)',
-    background: 'rgba(15, 23, 42, 0.65)',
+    minHeight: 48,
+    padding: '12px 16px',
+    borderRadius: 16,
+    border: '1px solid rgba(148, 163, 184, 0.28)',
+    background: 'rgba(15, 23, 42, 0.75)',
     color: '#f8fafc',
-    fontSize: 14,
+    fontSize: 15,
   },
-  submitButton: (disabled) => ({
-    padding: '12px 20px',
-    borderRadius: 999,
-    border: 'none',
-    fontWeight: 700,
-    fontSize: 14,
-    background: disabled ? 'rgba(30, 41, 59, 0.45)' : 'rgba(59, 130, 246, 0.82)',
-    color: disabled ? '#64748b' : '#f8fafc',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-  }),
-  errorText: {
-    margin: 0,
-    color: '#f87171',
+  button: (variant = 'primary', disabled = false) => {
+    const palette = {
+      primary: {
+        background: disabled ? 'rgba(59, 130, 246, 0.24)' : 'rgba(59, 130, 246, 0.85)',
+        color: disabled ? '#94a3b8' : '#f8fafc',
+      },
+      subtle: {
+        background: 'rgba(15, 23, 42, 0.6)',
+        color: '#cbd5f5',
+      },
+      danger: {
+        background: 'rgba(248, 113, 113, 0.18)',
+        color: '#fecaca',
+      },
+    }
+    const tone = palette[variant] || palette.primary
+    return {
+      padding: '12px 18px',
+      borderRadius: 999,
+      border: 'none',
+      fontWeight: 700,
+      fontSize: 14,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      background: tone.background,
+      color: tone.color,
+      transition: 'all 0.2s ease',
+    }
+  },
+  tabGroup: {
+    display: 'flex',
+    gap: 10,
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  tabButton: (active) => ({
+    padding: '6px 14px',
+    borderRadius: 14,
+    border: active ? '1px solid rgba(147, 197, 253, 0.45)' : '1px solid rgba(148, 163, 184, 0.18)',
+    background: active ? 'rgba(59, 130, 246, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+    color: active ? '#f8fafc' : '#cbd5f5',
     fontSize: 13,
-  },
+    fontWeight: 700,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  }),
   emptyState: {
-    margin: 0,
-    color: '#94a3b8',
-    fontSize: 14,
+    padding: '48px 0',
     textAlign: 'center',
-    padding: '32px 0',
+    color: '#94a3b8',
+    fontSize: 15,
   },
 }
 
-function normalizeMessage(record) {
-  if (!record) return null
+const DEFAULT_CONTEXT = {
+  type: 'global',
+  scope: 'global',
+  label: '전체 채팅',
+}
+
+function buildRoomContext(room) {
+  if (!room) return null
   return {
-    id: record.id || record.message_id || null,
-    text: record.text || record.metadata?.plain_text || '',
-    created_at: record.created_at || record.inserted_at || record.timestamp || null,
-    username: record.username || record.author || '익명',
-    role: record.role || record.scope || 'global',
-    scope: record.scope || 'global',
-    channel_type: record.channel_type || 'lobby',
-    metadata: record.metadata || {},
+    type: 'chatRoom',
+    scope: 'room',
+    chatRoomId: room.id,
+    label: room.name || '대화방',
+    description: room.description || '',
+    memberCount: room.member_count || 0,
+    visibility: room.visibility || 'public',
   }
 }
 
-function formatTimestamp(value) {
-  if (!value) return '방금 전'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return '방금 전'
+function buildSessionContext(session, variant = 'main') {
+  if (!session) return null
+  const base = {
+    type: variant === 'role' ? 'session-role' : 'session-main',
+    scope: variant === 'role' ? 'role' : 'main',
+    sessionId: session.session_id,
+    matchInstanceId: session.match_instance_id,
+    gameId: session.game_id,
+    label:
+      variant === 'role'
+        ? `${session.game_name || '세션'} · 역할`
+        : `${session.game_name || '세션'} · 메인`,
+    viewerRole: session.viewer_role || null,
   }
+  return base
+}
+
+function buildWhisperContext(contact) {
+  if (!contact) return null
+  return {
+    type: 'whisper',
+    scope: 'whisper',
+    label: contact.hero_name ? `${contact.hero_name} 님과 대화` : '귓속말',
+    targetHeroId: contact.hero_id || null,
+    targetOwnerId: contact.owner_id || null,
+    matchInstanceId: contact.match_instance_id || null,
+  }
+}
+
+function formatTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
   return `${date.getHours().toString().padStart(2, '0')}:${date
     .getMinutes()
     .toString()
     .padStart(2, '0')}`
 }
 
-function mergeMessages(existing, incoming, limit = MESSAGE_LIMIT) {
-  const map = new Map()
-  existing.forEach((message) => {
-    if (message?.id) {
-      map.set(message.id, message)
-    }
-  })
-  incoming.forEach((message) => {
-    if (message?.id) {
-      map.set(message.id, message)
-    }
-  })
-  const sorted = Array.from(map.values()).sort((a, b) => {
-    const left = new Date(a.created_at || 0).getTime()
-    const right = new Date(b.created_at || 0).getTime()
-    return left - right
-  })
-  return sorted.slice(-limit)
+function resolveAvatar(message) {
+  if (message?.hero_image_url) {
+    return { type: 'image', url: message.hero_image_url }
+  }
+  if (message?.avatar_url) {
+    return { type: 'image', url: message.avatar_url }
+  }
+  const label = (message?.hero_name || message?.username || '익명').trim()
+  return { type: 'initials', text: label ? label[0].toUpperCase() : '?' }
 }
 
 export default function ChatPage() {
+  const [viewer, setViewer] = useState(null)
+  const [dashboard, setDashboard] = useState({ heroes: [], rooms: [], publicRooms: [], sessions: [], contacts: [] })
+  const [context, setContext] = useState(DEFAULT_CONTEXT)
   const [messages, setMessages] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [input, setInput] = useState('')
-  const [sending, setSending] = useState(false)
-  const [channelStatus, setChannelStatus] = useState('SUBSCRIBING')
-  const listRef = useRef(null)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [composerText, setComposerText] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [roomSearch, setRoomSearch] = useState('')
+  const [roomResults, setRoomResults] = useState([])
+  const [searchBusy, setSearchBusy] = useState(false)
+  const [createState, setCreateState] = useState({ open: false, name: '', description: '', visibility: 'private', capacity: 12 })
+  const [hasActiveKey, setHasActiveKey] = useState(false)
+  const subscriptionRef = useRef(null)
+  const messageListRef = useRef(null)
 
-  useEffect(() => {
-    let active = true
-    const load = async () => {
-      setLoading(true)
-      setError(null)
+  const refreshDashboard = useCallback(async () => {
+    try {
+      const snapshot = await fetchChatDashboard({ limit: 36 })
+      setDashboard(snapshot)
+      return snapshot
+    } catch (error) {
+      console.error('[chat] 대시보드 로드 실패:', error)
+      throw error
+    }
+  }, [])
+
+  const loadMessages = useCallback(
+    async (targetContext) => {
+      const current = targetContext || context
+      if (!current) return
+      setLoadingMessages(true)
       try {
-        const { messages: initialMessages } = await fetchRecentMessages({ limit: 120 })
-        if (!active) return
-        const normalized = Array.isArray(initialMessages)
-          ? initialMessages
-              .map(normalizeMessage)
-              .filter(Boolean)
-              .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+        const response = await fetchRecentMessages({
+          limit: 200,
+          sessionId: current.sessionId || null,
+          matchInstanceId: current.matchInstanceId || null,
+          chatRoomId: current.chatRoomId || null,
+          scope: current.scope || null,
+        })
+        const prepared = Array.isArray(response.messages)
+          ? response.messages.map((msg) => ({
+              ...msg,
+              hero_name: msg.hero_name || msg.username || '익명',
+            }))
           : []
-        setMessages(normalized.slice(-MESSAGE_LIMIT))
-      } catch (err) {
-        if (!active) return
-        console.error('[Chat] failed to load history', err)
-        setError(err)
+        setMessages(prepared)
+        setTimeout(() => {
+          if (messageListRef.current) {
+            messageListRef.current.scrollTop = messageListRef.current.scrollHeight
+          }
+        }, 80)
+      } catch (error) {
+        console.error('[chat] 메시지 로드 실패:', error)
       } finally {
-        if (active) {
-          setLoading(false)
-        }
-      }
-    }
-    load()
-    return () => {
-      active = false
-    }
-  }, [])
-
-  useEffect(() => {
-    const unsubscribe = subscribeToBroadcastTopic(
-      'messages:scope:global',
-      (change) => {
-        const { eventType, record, old } = change || {}
-        if (eventType === 'INSERT') {
-          const message = normalizeMessage(record)
-          if (!message) return
-          setMessages((prev) => mergeMessages(prev, [message]))
-        } else if (eventType === 'UPDATE') {
-          const message = normalizeMessage(record)
-          if (!message) return
-          setMessages((prev) => mergeMessages(prev, [message]))
-        } else if (eventType === 'DELETE') {
-          const targetId = old?.id || record?.id
-          if (!targetId) return
-          setMessages((prev) => prev.filter((entry) => entry.id !== targetId))
-        }
-      },
-      {
-        events: ['INSERT', 'UPDATE', 'DELETE'],
-        onStatus: (status) => {
-          setChannelStatus(status)
-        },
-      },
-    )
-
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe()
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!listRef.current) return
-    listRef.current.scrollTop = listRef.current.scrollHeight
-  }, [messages])
-
-  const handleSubmit = useCallback(
-    async (event) => {
-      event.preventDefault()
-      const text = input.trim()
-      if (!text || sending) return
-      setSending(true)
-      setError(null)
-      try {
-        await insertMessage({ text, scope: 'global' })
-        setInput('')
-      } catch (err) {
-        console.error('[Chat] failed to send message', err)
-        setError(err)
-      } finally {
-        setSending(false)
+        setLoadingMessages(false)
       }
     },
-    [input, sending],
+    [context],
   )
 
-  const statusLabel = useMemo(() => {
-    switch (channelStatus) {
-      case 'SUBSCRIBED':
-        return 'realtime connected'
-      case 'CHANNEL_ERROR':
-        return 'channel error'
-      case 'TIMED_OUT':
-        return 'subscription timeout'
-      default:
-        return 'connecting'
+  const setupSubscription = useCallback(
+    (targetContext) => {
+      if (subscriptionRef.current) {
+        subscriptionRef.current()
+        subscriptionRef.current = null
+      }
+      const current = targetContext || context
+      if (!current) return
+      const unsubscribe = subscribeToMessages({
+        onInsert: (record) => {
+          setMessages((prev) => {
+            if (prev.some((item) => item.id === record.id)) {
+              return prev
+            }
+            const next = [...prev, { ...record, hero_name: record.hero_name || record.username || '익명' }]
+            return next
+          })
+        },
+        sessionId: current.sessionId || null,
+        matchInstanceId: current.matchInstanceId || null,
+        gameId: current.gameId || null,
+        roomId: current.roomId || null,
+        chatRoomId: current.chatRoomId || null,
+        heroId: null,
+        ownerId: viewer?.id || null,
+        userId: viewer?.id || null,
+      })
+      subscriptionRef.current = unsubscribe
+    },
+    [context, viewer],
+  )
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const [user] = await Promise.all([getCurrentUser().catch(() => null), refreshDashboard()])
+        if (user) {
+          setViewer({ id: user.id, email: user.email })
+        }
+        const snapshot = readRankKeyringSnapshot()
+        setHasActiveKey(snapshot?.entries?.some((entry) => entry.isActive) || false)
+      } catch (error) {
+        console.warn('[chat] 초기화 실패:', error)
+      }
+    })()
+    return () => {
+      if (subscriptionRef.current) {
+        subscriptionRef.current()
+        subscriptionRef.current = null
+      }
     }
-  }, [channelStatus])
+  }, [refreshDashboard])
+
+  useEffect(() => {
+    loadMessages(context)
+    setupSubscription(context)
+  }, [context, loadMessages, setupSubscription])
+
+  const handleSelectContext = useCallback((nextContext) => {
+    if (!nextContext) return
+    setContext(nextContext)
+  }, [])
+
+  const handleSendMessage = useCallback(
+    async (event) => {
+      event?.preventDefault?.()
+      const text = composerText.trim()
+      if (!text || !context) return
+      try {
+        await insertMessage(
+          {
+            text,
+            scope: context.scope || 'global',
+            hero_id: context.heroId || null,
+            target_hero_id: context.targetHeroId || null,
+            target_role: context.scope === 'role' ? context.viewerRole || context.targetRole || null : null,
+          },
+          {
+            sessionId: context.sessionId || null,
+            matchInstanceId: context.matchInstanceId || null,
+            gameId: context.gameId || null,
+            roomId: context.roomId || null,
+            chatRoomId: context.chatRoomId || null,
+          },
+        )
+        setComposerText('')
+      } catch (error) {
+        console.error('[chat] 메시지 전송 실패:', error)
+      }
+    },
+    [composerText, context],
+  )
+
+  const handleSendAiMessage = useCallback(
+    async () => {
+      const text = composerText.trim()
+      if (!text || !context) return
+      setAiBusy(true)
+      try {
+        const { data: session } = await supabase.auth.getSession()
+        const token = session?.session?.access_token
+        if (!token) {
+          throw new Error('세션 정보를 불러오지 못했습니다.')
+        }
+        const response = await fetch('/api/chat/ai-proxy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            prompt: text,
+            scope: context.scope,
+            sessionId: context.sessionId || null,
+            matchInstanceId: context.matchInstanceId || null,
+            chatRoomId: context.chatRoomId || null,
+          }),
+        })
+        if (!response.ok) {
+          const detail = await response.json().catch(() => ({}))
+          throw new Error(detail?.detail || 'AI 응답 요청에 실패했습니다.')
+        }
+        const payload = await response.json()
+        const aiText = typeof payload?.text === 'string' ? payload.text.trim() : ''
+        if (aiText) {
+          await insertMessage(
+            {
+              text: aiText,
+              scope: context.scope || 'global',
+              metadata: { origin: 'ai' },
+            },
+            {
+              sessionId: context.sessionId || null,
+              matchInstanceId: context.matchInstanceId || null,
+              gameId: context.gameId || null,
+              roomId: context.roomId || null,
+              chatRoomId: context.chatRoomId || null,
+            },
+          )
+        }
+        setComposerText('')
+      } catch (error) {
+        console.error('[chat] AI 응답 실패:', error)
+      } finally {
+        setAiBusy(false)
+      }
+    },
+    [composerText, context],
+  )
+
+  const handleCreateRoom = useCallback(
+    async (event) => {
+      event?.preventDefault?.()
+      const { name, description, visibility, capacity } = createState
+      try {
+        const room = await createChatRoom({ name, description, visibility, capacity })
+        await refreshDashboard()
+        handleSelectContext(buildRoomContext(room))
+        setCreateState({ open: false, name: '', description: '', visibility: 'private', capacity: 12 })
+      } catch (error) {
+        console.error('[chat] 방 생성 실패:', error)
+      }
+    },
+    [createState, handleSelectContext, refreshDashboard],
+  )
+
+  const handleJoinRoom = useCallback(
+    async (roomId) => {
+      if (!roomId) return
+      try {
+        await joinChatRoom({ roomId })
+        const snapshot = await refreshDashboard()
+        const room = (snapshot.rooms || []).find((entry) => entry.id === roomId)
+        handleSelectContext(buildRoomContext(room || { id: roomId }))
+      } catch (error) {
+        console.error('[chat] 방 참가 실패:', error)
+      }
+    },
+    [handleSelectContext, refreshDashboard],
+  )
+
+  const handleLeaveRoom = useCallback(
+    async (roomId) => {
+      if (!roomId) return
+      try {
+        await leaveChatRoom({ roomId })
+        await refreshDashboard()
+        handleSelectContext(DEFAULT_CONTEXT)
+      } catch (error) {
+        console.error('[chat] 방 나가기 실패:', error)
+      }
+    },
+    [refreshDashboard, handleSelectContext],
+  )
+
+  const runRoomSearch = useCallback(
+    async (event) => {
+      event?.preventDefault?.()
+      setSearchBusy(true)
+      try {
+        const result = await fetchChatRooms({ search: roomSearch, limit: 24 })
+        setRoomResults(result.available || [])
+      } catch (error) {
+        console.error('[chat] 방 검색 실패:', error)
+      } finally {
+        setSearchBusy(false)
+      }
+    },
+    [roomSearch],
+  )
+
+  const availableContexts = useMemo(() => {
+    const contexts = [DEFAULT_CONTEXT]
+    const joinedRooms = (dashboard.rooms || []).map((room) => ({
+      kind: 'room',
+      data: buildRoomContext(room),
+    }))
+    const sessions = (dashboard.sessions || []).flatMap((session) => [
+      { kind: 'session', data: buildSessionContext(session, 'main') },
+      session.viewer_role ? { kind: 'session', data: buildSessionContext(session, 'role') } : null,
+    ])
+    const contacts = (dashboard.contacts || []).map((contact) => ({
+      kind: 'contact',
+      data: buildWhisperContext(contact),
+    }))
+
+    return {
+      global: DEFAULT_CONTEXT,
+      rooms: joinedRooms.filter(Boolean).map((entry) => entry.data),
+      sessions: sessions.filter(Boolean).map((entry) => entry.data),
+      contacts: contacts.filter(Boolean).map((entry) => entry.data),
+    }
+  }, [dashboard])
+
+  const messageComposerDisabled = useMemo(() => {
+    if (!context) return true
+    if (context.scope === 'role' && !context.viewerRole) return true
+    if (context.scope === 'whisper' && !context.targetHeroId) return true
+    return false
+  }, [context])
 
   return (
-    <>
+    <div style={LAYOUT.page}>
       <Head>
-        <title>공용 채팅 · Starbase</title>
+        <title>커뮤니티 채팅 라운지</title>
       </Head>
-      <main style={styles.page}>
-        <div style={styles.container}>
-          <header style={styles.header}>
-            <div>
-              <h1 style={styles.title}>공용 채팅</h1>
-              <p style={styles.subtitle}>
-                게임 준비와 매칭에 참여 중인 모든 사용자가 메시지를 나누는 글로벌 채널입니다.
-              </p>
-            </div>
-            <Link href="/match" style={styles.backLink}>
-              매칭 센터로 돌아가기
-            </Link>
-          </header>
-          <section style={styles.chatShell}>
-            <div style={styles.statusRow}>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>실시간 스트림</h2>
-              <span style={styles.statusBadge(channelStatus)}>{statusLabel}</span>
-            </div>
-            {error ? (
-              <p style={styles.errorText}>{error.message || '채팅 내역을 불러오지 못했습니다.'}</p>
-            ) : null}
-            <ul ref={listRef} style={styles.messageList}>
-              {loading ? (
-                <li style={styles.emptyState}>메시지를 불러오는 중…</li>
-              ) : messages.length ? (
-                messages.map((message) => (
-                  <li key={message.id || message.created_at} style={styles.messageItem}>
-                    <div style={styles.messageHeader}>
-                      <strong>{message.username || '익명'}</strong>
-                      <span>{formatTimestamp(message.created_at)}</span>
-                    </div>
-                    <p style={styles.messageBody}>{message.text || '(내용 없음)'}</p>
-                    <div style={styles.messageMeta}>
-                      <span>scope: {message.scope || 'global'}</span>
-                      <span>channel: {message.channel_type || 'lobby'}</span>
-                    </div>
-                  </li>
-                ))
-              ) : (
-                <li style={styles.emptyState}>아직 메시지가 없습니다. 첫 메시지를 남겨보세요!</li>
-              )}
-            </ul>
-            <form style={styles.inputForm} onSubmit={handleSubmit}>
-              <input
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                style={styles.inputField}
-                placeholder="공용 메시지를 입력하세요"
-              />
-              <button type="submit" style={styles.submitButton(sending || !input.trim())} disabled={sending || !input.trim()}>
-                {sending ? '전송 중…' : '전송'}
-              </button>
-            </form>
-          </section>
+      <div style={{ maxWidth: 1280, margin: '0 auto 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 36, fontWeight: 800 }}>커뮤니티 채팅 라운지</h1>
+          <p style={{ margin: '8px 0 0', color: '#94a3b8' }}>
+            게임 세션, 역할별 대화, 사설 대화방까지 하나의 화면에서 관리할 수 있습니다.
+          </p>
         </div>
-      </main>
-    </>
+        <Link href="/match" style={{ ...LAYOUT.button('subtle'), textDecoration: 'none' }}>
+          매칭 로비로 이동
+        </Link>
+      </div>
+      <div style={LAYOUT.shell}>
+        <aside style={LAYOUT.panel}>
+          <div style={LAYOUT.sectionHeader}>
+            <h2 style={LAYOUT.sectionTitle}>대화 맵</h2>
+            <button
+              type="button"
+              style={LAYOUT.button('primary')}
+              onClick={() => setCreateState((prev) => ({ ...prev, open: true }))}
+            >
+              새 방 만들기
+            </button>
+          </div>
+          <div style={LAYOUT.sectionBody}>
+            <div>
+              <h3 style={{ ...LAYOUT.sectionTitle, fontSize: 15, marginBottom: 8 }}>기본</h3>
+              <div style={LAYOUT.list}>
+                <button
+                  type="button"
+                  onClick={() => handleSelectContext(DEFAULT_CONTEXT)}
+                  style={LAYOUT.contextButton(context.type === 'global')}
+                >
+                  전체 채팅
+                </button>
+              </div>
+            </div>
+            <div style={{ marginTop: 24 }}>
+              <h3 style={{ ...LAYOUT.sectionTitle, fontSize: 15, marginBottom: 8 }}>내 방</h3>
+              <div style={LAYOUT.list}>
+                {(availableContexts.rooms.length &&
+                  availableContexts.rooms.map((room) => (
+                    <button
+                      key={room.chatRoomId}
+                      type="button"
+                      onClick={() => handleSelectContext(room)}
+                      style={LAYOUT.contextButton(context.chatRoomId === room.chatRoomId)}
+                    >
+                      <span>{room.label}</span>
+                      <span style={LAYOUT.badge}>{room.memberCount ?? 0}명</span>
+                    </button>
+                  ))) || (
+                  <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>참여 중인 대화방이 없습니다.</p>
+                )}
+              </div>
+            </div>
+            <div style={{ marginTop: 24 }}>
+              <h3 style={{ ...LAYOUT.sectionTitle, fontSize: 15, marginBottom: 8 }}>게임 세션</h3>
+              <div style={LAYOUT.list}>
+                {(availableContexts.sessions.length &&
+                  availableContexts.sessions.map((entry) => (
+                    <button
+                      key={`${entry.scope}-${entry.sessionId}`}
+                      type="button"
+                      onClick={() => handleSelectContext(entry)}
+                      style={LAYOUT.contextButton(
+                        context.sessionId === entry.sessionId && context.scope === entry.scope,
+                      )}
+                    >
+                      <span>{entry.label}</span>
+                      {entry.scope === 'role' && entry.viewerRole ? (
+                        <span style={LAYOUT.badge}>{entry.viewerRole}</span>
+                      ) : null}
+                    </button>
+                  ))) || (
+                  <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>참여 중인 세션이 없습니다.</p>
+                )}
+              </div>
+            </div>
+            <div style={{ marginTop: 24 }}>
+              <h3 style={{ ...LAYOUT.sectionTitle, fontSize: 15, marginBottom: 8 }}>연락처</h3>
+              <div style={LAYOUT.list}>
+                {(availableContexts.contacts.length &&
+                  availableContexts.contacts.map((entry) => (
+                    <button
+                      key={`${entry.targetHeroId}-${entry.matchInstanceId}`}
+                      type="button"
+                      onClick={() => handleSelectContext(entry)}
+                      style={LAYOUT.contextButton(
+                        context.scope === 'whisper' && context.targetHeroId === entry.targetHeroId,
+                      )}
+                    >
+                      <span>{entry.label}</span>
+                    </button>
+                  ))) || (
+                  <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>최근 대화한 상대가 없습니다.</p>
+                )}
+              </div>
+            </div>
+            <form onSubmit={runRoomSearch} style={{ marginTop: 28, display: 'grid', gap: 12 }}>
+              <input
+                type="text"
+                placeholder="공개 방 검색"
+                value={roomSearch}
+                onChange={(event) => setRoomSearch(event.target.value)}
+                style={{ ...LAYOUT.textInput, minHeight: 40 }}
+              />
+              <button type="submit" style={LAYOUT.button('subtle')} disabled={searchBusy}>
+                {searchBusy ? '검색 중…' : '검색'}
+              </button>
+              {roomResults.length ? (
+                <div style={{ borderTop: '1px solid rgba(148, 163, 184, 0.16)', paddingTop: 12 }}>
+                  <h4 style={{ margin: '0 0 8px', fontSize: 13, color: '#94a3b8' }}>검색 결과</h4>
+                  <div style={LAYOUT.list}>
+                    {roomResults.map((room) => (
+                      <button
+                        key={room.id}
+                        type="button"
+                        onClick={() => handleJoinRoom(room.id)}
+                        style={LAYOUT.contextButton(false)}
+                      >
+                        <span>{room.name}</span>
+                        <span style={LAYOUT.badge}>{room.member_count ?? 0}명</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </form>
+          </div>
+        </aside>
+        <section style={{ ...LAYOUT.panel, minHeight: 600 }}>
+          <div style={LAYOUT.sectionHeader}>
+            <div>
+              <h2 style={LAYOUT.sectionTitle}>{context?.label || '대화'}</h2>
+              <div style={LAYOUT.messageMeta}>
+                {context?.scope === 'room' && (
+                  <span>{context.visibility === 'public' ? '공개 방' : '비공개 방'}</span>
+                )}
+                {context?.scope === 'role' && context.viewerRole ? <span>{context.viewerRole}</span> : null}
+              </div>
+            </div>
+            {context?.type === 'chatRoom' && context.chatRoomId ? (
+              <button
+                type="button"
+                onClick={() => handleLeaveRoom(context.chatRoomId)}
+                style={LAYOUT.button('danger')}
+              >
+                방 나가기
+              </button>
+            ) : null}
+          </div>
+          <div ref={messageListRef} style={LAYOUT.messageList}>
+            {loadingMessages ? (
+              <p style={LAYOUT.emptyState}>메시지를 불러오는 중입니다…</p>
+            ) : messages.length ? (
+              messages.map((message) => {
+                const avatar = resolveAvatar(message)
+                return (
+                  <article key={message.id} style={LAYOUT.messageItem}>
+                    <header style={LAYOUT.messageHeader}>
+                      <div style={LAYOUT.avatar}>
+                        {avatar.type === 'image' ? (
+                          <img
+                            src={avatar.url}
+                            alt={message.hero_name || message.username}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          avatar.text
+                        )}
+                      </div>
+                      <div style={{ display: 'grid', gap: 2 }}>
+                        <strong style={{ fontSize: 15 }}>{message.hero_name || message.username || '익명'}</strong>
+                        <span style={{ color: '#94a3b8', fontSize: 12 }}>{formatTime(message.created_at)}</span>
+                      </div>
+                      {message.thread_label && message.thread_scope !== 'global' ? (
+                        <span style={LAYOUT.badge}>{message.thread_label}</span>
+                      ) : null}
+                    </header>
+                    <p style={LAYOUT.messageContent}>{message.text}</p>
+                  </article>
+                )
+              })
+            ) : (
+              <p style={LAYOUT.emptyState}>첫 메시지를 남겨보세요.</p>
+            )}
+          </div>
+          <form onSubmit={handleSendMessage} style={LAYOUT.composerShell}>
+            <textarea
+              style={LAYOUT.textInput}
+              placeholder={messageComposerDisabled ? '이 대화에서는 지금 메시지를 보낼 수 없습니다.' : '메시지를 입력하세요.'}
+              value={composerText}
+              onChange={(event) => setComposerText(event.target.value)}
+              disabled={messageComposerDisabled}
+            />
+            <div style={LAYOUT.composerRow}>
+              <button
+                type="submit"
+                style={LAYOUT.button('primary', messageComposerDisabled || !composerText.trim())}
+                disabled={messageComposerDisabled || !composerText.trim()}
+              >
+                전송
+              </button>
+              <button
+                type="button"
+                style={LAYOUT.button('subtle', !hasActiveKey || aiBusy || !composerText.trim())}
+                disabled={!hasActiveKey || aiBusy || !composerText.trim()}
+                onClick={handleSendAiMessage}
+              >
+                {aiBusy ? 'AI 응답 생성 중…' : 'AI에게 응답 요청'}
+              </button>
+            </div>
+          </form>
+        </section>
+        <aside style={LAYOUT.panel}>
+          <div style={LAYOUT.sectionHeader}>
+            <h2 style={LAYOUT.sectionTitle}>정보</h2>
+          </div>
+          <div style={LAYOUT.sectionBody}>
+            <section>
+              <h3 style={{ ...LAYOUT.sectionTitle, fontSize: 15, marginBottom: 8 }}>내 캐릭터</h3>
+              {(dashboard.heroes || []).length ? (
+                <ul style={LAYOUT.list}>
+                  {dashboard.heroes.map((hero) => (
+                    <li key={hero.id} style={{ padding: '10px 12px', borderRadius: 12, background: 'rgba(15, 23, 42, 0.55)', border: '1px solid rgba(148, 163, 184, 0.16)' }}>
+                      <strong style={{ display: 'block', color: '#f8fafc' }}>{hero.name}</strong>
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>{hero.description || '설명 없음'}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>등록된 캐릭터가 없습니다.</p>
+              )}
+            </section>
+            <section style={{ marginTop: 32 }}>
+              <h3 style={{ ...LAYOUT.sectionTitle, fontSize: 15, marginBottom: 8 }}>추천 공개 방</h3>
+              {(dashboard.publicRooms || []).length ? (
+                <div style={LAYOUT.list}>
+                  {dashboard.publicRooms.map((room) => (
+                    <button
+                      key={room.id}
+                      type="button"
+                      onClick={() => handleJoinRoom(room.id)}
+                      style={LAYOUT.contextButton(false)}
+                    >
+                      <span>{room.name}</span>
+                      <span style={LAYOUT.badge}>{room.member_count ?? 0}명</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>추천할 공개 방이 없습니다.</p>
+              )}
+            </section>
+          </div>
+        </aside>
+      </div>
+
+      {createState.open ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(2, 6, 23, 0.82)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+          }}
+        >
+          <form
+            onSubmit={handleCreateRoom}
+            style={{
+              width: '100%',
+              maxWidth: 440,
+              borderRadius: 24,
+              padding: 28,
+              background: 'rgba(15, 23, 42, 0.96)',
+              border: '1px solid rgba(148, 163, 184, 0.24)',
+              display: 'grid',
+              gap: 16,
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#f8fafc' }}>새 대화방 만들기</h3>
+            <input
+              type="text"
+              placeholder="방 이름"
+              value={createState.name}
+              onChange={(event) => setCreateState((prev) => ({ ...prev, name: event.target.value }))}
+              style={LAYOUT.textInput}
+              required
+            />
+            <textarea
+              placeholder="방 설명"
+              value={createState.description}
+              onChange={(event) => setCreateState((prev) => ({ ...prev, description: event.target.value }))}
+              style={{ ...LAYOUT.textInput, minHeight: 100 }}
+            />
+            <div style={{ display: 'flex', gap: 12 }}>
+              <label style={{ fontSize: 14, color: '#cbd5f5', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                공개 여부
+                <select
+                  value={createState.visibility}
+                  onChange={(event) => setCreateState((prev) => ({ ...prev, visibility: event.target.value }))}
+                  style={{ ...LAYOUT.textInput, minHeight: 42 }}
+                >
+                  <option value="private">비공개</option>
+                  <option value="public">공개</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 14, color: '#cbd5f5', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                정원
+                <input
+                  type="number"
+                  min={2}
+                  max={500}
+                  value={createState.capacity}
+                  onChange={(event) =>
+                    setCreateState((prev) => ({ ...prev, capacity: Number(event.target.value) }))
+                  }
+                  style={{ ...LAYOUT.textInput, minHeight: 42 }}
+                />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                style={LAYOUT.button('subtle')}
+                onClick={() => setCreateState({ open: false, name: '', description: '', visibility: 'private', capacity: 12 })}
+              >
+                취소
+              </button>
+              <button type="submit" style={LAYOUT.button('primary', !createState.name.trim())}>
+                생성
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </div>
   )
 }
