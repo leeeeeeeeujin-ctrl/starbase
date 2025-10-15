@@ -4599,15 +4599,27 @@ begin
     limit v_limit
   ),
   combined as (
-    select * from global_messages
+    select *
+    from chat_room_messages
+    where v_chat_room_id is not null
+      and (v_requested_scope is null or v_requested_scope in ('', 'room'))
     union all
-    select * from chat_room_messages
+    select *
+    from main_messages
+    where v_requested_scope in ('', 'main', 'system')
     union all
-    select * from main_messages
+    select *
+    from role_messages
+    where v_requested_scope in ('', 'role')
     union all
-    select * from role_messages
+    select *
+    from whisper_messages
+    where v_requested_scope in ('', 'whisper')
     union all
-    select * from whisper_messages
+    select *
+    from global_messages
+    where v_chat_room_id is null
+      and v_requested_scope in ('', 'global')
   )
   select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
     into v_messages

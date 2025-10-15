@@ -82,33 +82,57 @@ const LAYOUT = {
     flex: 1,
     overflowY: 'auto',
     display: 'grid',
-    gap: 16,
-    paddingRight: 6,
-  },
-  messageCard: {
-    borderRadius: 20,
-    border: '1px solid rgba(148, 163, 184, 0.16)',
-    background: 'rgba(15, 23, 42, 0.72)',
-    padding: '18px 20px',
-    display: 'grid',
-    gap: 8,
-  },
-  messageHeader: {
-    display: 'flex',
     gap: 12,
-    alignItems: 'center',
+    padding: '0 6px 12px',
   },
-  avatar: {
-    width: 40,
-    height: 40,
+  messageRow: (mine = false) => ({
+    display: 'flex',
+    justifyContent: mine ? 'flex-end' : 'flex-start',
+    alignItems: 'flex-end',
+    gap: 10,
+  }),
+  messageBubble: (mine = false) => ({
+    maxWidth: '75%',
+    background: mine ? 'rgba(59, 130, 246, 0.28)' : 'rgba(15, 23, 42, 0.78)',
+    color: '#f8fafc',
+    borderRadius: mine ? '18px 4px 18px 18px' : '4px 18px 18px 18px',
+    padding: '12px 16px',
+    border: mine ? '1px solid rgba(96, 165, 250, 0.45)' : '1px solid rgba(148, 163, 184, 0.24)',
+    display: 'grid',
+    gap: 6,
+    boxShadow: mine ? '0 18px 40px -32px rgba(59, 130, 246, 0.75)' : '0 18px 40px -32px rgba(15, 23, 42, 0.75)',
+  }),
+  messageMeta: (mine = false) => ({
+    display: 'flex',
+    justifyContent: mine ? 'flex-end' : 'flex-start',
+    gap: 8,
+    fontSize: 11,
+    color: mine ? '#bfdbfe' : '#94a3b8',
+  }),
+  messageName: (mine = false) => ({
+    fontWeight: 700,
+    color: mine ? '#e0f2fe' : '#f8fafc',
+  }),
+  messageTime: {
+    fontWeight: 500,
+  },
+  messageText: {
+    fontSize: 13,
+    lineHeight: 1.6,
+    margin: 0,
+    whiteSpace: 'pre-wrap',
+  },
+  bubbleAvatar: {
+    width: 36,
+    height: 36,
     borderRadius: '50%',
-    overflow: 'hidden',
+    background: 'rgba(30, 41, 59, 0.8)',
+    color: '#bae6fd',
+    fontWeight: 700,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'rgba(30, 41, 59, 0.7)',
-    color: '#cbd5f5',
-    fontWeight: 700,
+    overflow: 'hidden',
   },
   composer: {
     marginTop: 16,
@@ -520,6 +544,27 @@ function resolveAvatar(message) {
   return { type: 'initials', text: label ? label[0].toUpperCase() : '?' }
 }
 
+function extractMessageText(message) {
+  if (!message) return ''
+  const metadata = message.metadata && typeof message.metadata === 'object' ? message.metadata : null
+  if (metadata) {
+    if (metadata.plain_text) {
+      return String(metadata.plain_text)
+    }
+    if (metadata.text) {
+      return String(metadata.text)
+    }
+    const drafty = metadata.drafty && typeof metadata.drafty === 'object' ? metadata.drafty : null
+    if (drafty?.txt) {
+      return String(drafty.txt)
+    }
+  }
+  if (typeof message.text === 'string') {
+    return message.text
+  }
+  return ''
+}
+
 export default function ChatPage() {
   const [viewer, setViewer] = useState({ id: null, ownerId: null, email: null, heroId: null })
   const [dashboard, setDashboard] = useState({ heroes: [], rooms: [], publicRooms: [], sessions: [], contacts: [] })
@@ -561,6 +606,8 @@ export default function ChatPage() {
     () => computeSessionSpeakWindow(activeSession, viewer, context),
     [activeSession, viewer, context],
   )
+
+  const viewerToken = useMemo(() => normalizeId(viewer?.ownerId || viewer?.id), [viewer])
 
   const subscriptionKey = useMemo(() => {
     if (!context) return 'messages-global'
@@ -767,6 +814,10 @@ export default function ChatPage() {
         return
       }
       try {
+        const rankRoomId =
+          context && (context.scope === 'main' || context.scope === 'role')
+            ? context.rankRoomId || null
+            : null
         await insertMessage(
           {
             text,
@@ -779,7 +830,7 @@ export default function ChatPage() {
             sessionId: context.sessionId || null,
             matchInstanceId: context.matchInstanceId || null,
             gameId: context.gameId || null,
-            roomId: context.rankRoomId || null,
+            roomId: rankRoomId,
             chatRoomId: context.chatRoomId || null,
           },
         )
@@ -825,6 +876,10 @@ export default function ChatPage() {
       const payload = await response.json()
       const aiText = typeof payload?.text === 'string' ? payload.text.trim() : ''
       if (aiText) {
+        const rankRoomId =
+          context && (context.scope === 'main' || context.scope === 'role')
+            ? context.rankRoomId || null
+            : null
         await insertMessage(
           {
             text: aiText,
@@ -836,7 +891,7 @@ export default function ChatPage() {
             sessionId: context.sessionId || null,
             matchInstanceId: context.matchInstanceId || null,
             gameId: context.gameId || null,
-            roomId: context.rankRoomId || null,
+            roomId: rankRoomId,
             chatRoomId: context.chatRoomId || null,
           },
         )
@@ -1330,27 +1385,35 @@ export default function ChatPage() {
                   ) : messages.length ? (
                     messages.map((message) => {
                       const avatar = resolveAvatar(message)
+                      const text = extractMessageText(message)
+                      const createdAt = formatTime(message.created_at)
+                      const ownerToken = normalizeId(message.owner_id || message.user_id)
+                      const mine = viewerToken && ownerToken && viewerToken === ownerToken
                       return (
-                        <article key={message.id} style={LAYOUT.messageCard}>
-                          <header style={LAYOUT.messageHeader}>
-                            <div style={LAYOUT.avatar}>
+                        <div key={message.id} style={LAYOUT.messageRow(mine)}>
+                          {!mine ? (
+                            <div style={LAYOUT.bubbleAvatar}>
                               {avatar.type === 'image' ? (
                                 <img
                                   src={avatar.url}
-                                  alt={message.hero_name || message.username}
+                                  alt={message.hero_name || message.username || 'avatar'}
                                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                 />
                               ) : (
                                 avatar.text
                               )}
                             </div>
-                            <div style={{ display: 'grid', gap: 2 }}>
-                              <strong style={{ fontSize: 15 }}>{message.hero_name || message.username || '익명'}</strong>
-                              <span style={{ color: '#94a3b8', fontSize: 12 }}>{formatTime(message.created_at)}</span>
+                          ) : null}
+                          <div style={LAYOUT.messageBubble(mine)}>
+                            <div style={LAYOUT.messageMeta(mine)}>
+                              <span style={LAYOUT.messageName(mine)}>
+                                {message.hero_name || message.username || '익명'}
+                              </span>
+                              <span style={LAYOUT.messageTime}>{createdAt}</span>
                             </div>
-                          </header>
-                          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: '#f8fafc' }}>{message.text}</p>
-                        </article>
+                            <p style={LAYOUT.messageText}>{text || ' '}</p>
+                          </div>
+                        </div>
                       )
                     })
                   ) : (

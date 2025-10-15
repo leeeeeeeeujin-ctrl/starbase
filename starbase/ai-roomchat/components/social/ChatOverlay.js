@@ -132,46 +132,57 @@ const overlayStyles = {
     flex: 1,
     overflowY: 'auto',
     display: 'grid',
-    gap: 10,
-    paddingRight: 6,
+    gap: 12,
+    padding: '0 6px 12px',
   },
-  messageCard: {
-    borderRadius: 16,
-    border: '1px solid rgba(148, 163, 184, 0.22)',
-    background: 'rgba(15, 23, 42, 0.82)',
-    padding: '12px 14px',
+  messageRow: (mine = false) => ({
+    display: 'flex',
+    justifyContent: mine ? 'flex-end' : 'flex-start',
+    alignItems: 'flex-end',
+    gap: 10,
+  }),
+  bubble: (mine = false) => ({
+    maxWidth: '75%',
+    background: mine ? 'rgba(59, 130, 246, 0.28)' : 'rgba(15, 23, 42, 0.78)',
+    borderRadius: mine ? '18px 4px 18px 18px' : '4px 18px 18px 18px',
+    border: mine ? '1px solid rgba(96, 165, 250, 0.45)' : '1px solid rgba(148, 163, 184, 0.26)',
+    padding: '12px 16px',
     display: 'grid',
     gap: 6,
-  },
-  messageHeader: {
+    boxShadow: mine ? '0 18px 44px -36px rgba(59, 130, 246, 0.75)' : '0 18px 44px -36px rgba(15, 23, 42, 0.85)',
+    color: '#f8fafc',
+  }),
+  bubbleMeta: (mine = false) => ({
     display: 'flex',
-    alignItems: 'center',
-    gap: 10,
+    justifyContent: mine ? 'flex-end' : 'flex-start',
+    gap: 8,
+    fontSize: 11,
+    color: mine ? '#bfdbfe' : '#94a3b8',
+  }),
+  bubbleName: (mine = false) => ({
+    fontWeight: 700,
+    color: mine ? '#e0f2fe' : '#f1f5f9',
+  }),
+  bubbleTime: {
+    fontWeight: 500,
   },
-  avatar: {
+  bubbleText: {
+    fontSize: 13,
+    lineHeight: 1.6,
+    margin: 0,
+    whiteSpace: 'pre-wrap',
+  },
+  bubbleAvatar: {
     width: 34,
     height: 34,
     borderRadius: '50%',
-    background: 'rgba(30, 41, 59, 0.8)',
+    background: 'rgba(30, 41, 59, 0.82)',
     color: '#bae6fd',
     fontWeight: 700,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 14,
-  },
-  messageMeta: {
-    display: 'grid',
-    gap: 2,
-  },
-  messageName: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: '#e2e8f0',
-  },
-  messageTime: {
-    fontSize: 11,
-    color: '#94a3b8',
+    overflow: 'hidden',
   },
   composer: {
     display: 'flex',
@@ -231,6 +242,24 @@ function derivePreviewText(record) {
   return ''
 }
 
+function extractMessageText(message) {
+  if (!message) return ''
+  const metadata = message.metadata && typeof message.metadata === 'object' ? message.metadata : null
+  if (metadata?.plain_text) {
+    return String(metadata.plain_text)
+  }
+  if (metadata?.text) {
+    return String(metadata.text)
+  }
+  if (metadata?.drafty?.txt) {
+    return String(metadata.drafty.txt)
+  }
+  if (typeof message.text === 'string') {
+    return message.text
+  }
+  return ''
+}
+
 function formatTime(value) {
   if (!value) return ''
   try {
@@ -280,6 +309,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const activeRoomId = context?.type === 'chat-room' ? context.chatRoomId : null
   const viewingGlobal = context?.type === 'global'
   const activeSessionId = context?.type === 'session' ? context.sessionId : null
+
+  const viewerToken = useMemo(() => normalizeId(viewer?.id || viewer?.owner_id), [viewer])
 
   useEffect(() => {
     if (!open) {
@@ -433,6 +464,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       scope: 'main',
       sessionId: session.session_id || session.id,
       matchInstanceId: session.match_instance_id || session.matchInstanceId || null,
+      rankRoomId: session.room_id || null,
       label: session.game_name || '세션 채팅',
       focused: true,
     })
@@ -531,13 +563,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setSending(true)
       setSendError(null)
       try {
+        const rankRoomId =
+          context && (context.scope === 'main' || context.scope === 'role')
+            ? context.rankRoomId || null
+            : null
         await insertMessage(
           { text, scope: context.scope || 'global', hero_id: selectedHero || null },
           {
             sessionId: context.sessionId || null,
             matchInstanceId: context.matchInstanceId || null,
             chatRoomId: context.chatRoomId || null,
-            roomId: null,
+            roomId: rankRoomId,
           },
         )
         setMessageInput('')
@@ -777,28 +813,37 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             <span style={{ fontSize: 12, color: '#94a3b8' }}>메시지를 불러오는 중...</span>
           ) : messages.length ? (
             messages.map((message) => {
-              const preview = derivePreviewText(message)
+              const text = extractMessageText(message)
               const created = formatTime(message.created_at)
+              const ownerToken = normalizeId(message.owner_id || message.user_id)
+              const mine = viewerToken && ownerToken && viewerToken === ownerToken
+              const preview = text || derivePreviewText(message)
+              const initials = (message.username || '익명').slice(0, 2)
               return (
-                <div key={message.id || `${message.created_at}-${Math.random()}`} style={overlayStyles.messageCard}>
-                  <div style={overlayStyles.messageHeader}>
-                    <div style={overlayStyles.avatar}>
+                <div
+                  key={message.id || `${message.created_at}-${Math.random()}`}
+                  style={overlayStyles.messageRow(mine)}
+                >
+                  {!mine ? (
+                    <div style={overlayStyles.bubbleAvatar}>
                       {message.avatar_url ? (
                         <img
                           src={message.avatar_url}
                           alt={message.username || 'avatar'}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       ) : (
-                        (message.username || '익명').slice(0, 2)
+                        initials
                       )}
                     </div>
-                    <div style={overlayStyles.messageMeta}>
-                      <span style={overlayStyles.messageName}>{message.username || '알 수 없음'}</span>
-                      <span style={overlayStyles.messageTime}>{created}</span>
+                  ) : null}
+                  <div style={overlayStyles.bubble(mine)}>
+                    <div style={overlayStyles.bubbleMeta(mine)}>
+                      <span style={overlayStyles.bubbleName(mine)}>{message.username || '알 수 없음'}</span>
+                      <span style={overlayStyles.bubbleTime}>{created}</span>
                     </div>
+                    <p style={overlayStyles.bubbleText}>{preview || ' '}</p>
                   </div>
-                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>{preview}</p>
                 </div>
               )
             })
