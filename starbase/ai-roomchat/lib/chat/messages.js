@@ -1,6 +1,5 @@
 "use client"
 
-import { subscribeToBroadcastTopics } from '../realtime/broadcast'
 import { supabase } from '../supabase'
 import { createDraftyFromText, inspectDrafty } from './drafty'
 
@@ -96,73 +95,6 @@ export async function insertMessage(payload, context = {}) {
   return data || null
 }
 
-function normalizeIdentifier(value) {
-  if (value === null || value === undefined) {
-    return null
-  }
-
-  const token = String(value).trim()
-  return token.length ? token : null
-}
-
-function buildMessageTopics({
-  sessionId,
-  matchInstanceId,
-  gameId,
-  roomId,
-  heroId,
-  ownerId,
-  userId,
-}) {
-  const topics = new Set()
-
-  topics.add('messages:global')
-
-  ;['lobby', 'system', 'main', 'role', 'whisper'].forEach((channelType) => {
-    topics.add(`messages:channel:${channelType}`)
-  })
-
-  const normalizedSession = normalizeIdentifier(sessionId)
-  const normalizedMatch = normalizeIdentifier(matchInstanceId)
-  const normalizedGame = normalizeIdentifier(gameId)
-  const normalizedRoom = normalizeIdentifier(roomId)
-  const normalizedHero = normalizeIdentifier(heroId)
-  const normalizedOwner = normalizeIdentifier(ownerId)
-  const normalizedUser = normalizeIdentifier(userId)
-
-  if (normalizedSession) {
-    topics.add(`messages:session:${normalizedSession}`)
-  }
-
-  if (normalizedMatch) {
-    topics.add(`messages:match:${normalizedMatch}`)
-  }
-
-  if (normalizedGame) {
-    topics.add(`messages:game:${normalizedGame}`)
-  }
-
-  if (normalizedRoom) {
-    topics.add(`messages:room:${normalizedRoom}`)
-  }
-
-  if (normalizedOwner) {
-    topics.add(`messages:owner:${normalizedOwner}`)
-    topics.add(`messages:target-owner:${normalizedOwner}`)
-  }
-
-  if (normalizedUser && normalizedUser !== normalizedOwner) {
-    topics.add(`messages:user:${normalizedUser}`)
-  }
-
-  if (normalizedHero) {
-    topics.add(`messages:hero:${normalizedHero}`)
-    topics.add(`messages:target-hero:${normalizedHero}`)
-  }
-
-  return Array.from(topics)
-}
-
 function toComparable(value) {
   if (value === null || value === undefined) {
     return null
@@ -255,15 +187,6 @@ export function subscribeToMessages({
   userId = null,
 } = {}) {
   const handler = typeof onInsert === 'function' ? onInsert : () => {}
-  const topics = buildMessageTopics({
-    sessionId,
-    matchInstanceId,
-    gameId,
-    roomId,
-    heroId,
-    ownerId,
-    userId,
-  })
 
   const context = {
     sessionId,
@@ -275,34 +198,65 @@ export function subscribeToMessages({
     userId,
   }
 
-  const unsubscribers = []
+  const channelName = `pgchanges:messages:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+  const channel = supabase.channel(channelName)
 
-  unsubscribers.push(
-    subscribeToBroadcastTopics(
-      topics,
-      (change) => {
-        if (!change || change.eventType === 'DELETE') {
-          return
-        }
+  const forwardChange = (payload) => {
+    if (!payload || !payload.new) {
+      return
+    }
 
-        const record = change.new
-        if (record && typeof handler === 'function') {
-          handler(record, change)
-        }
-      },
-      { events: ['INSERT', 'UPDATE'], privateChannel: true },
-    ),
-  )
+    const record = payload.new
+    if (!messageMatchesContext(record, context)) {
+      return
+    }
 
-  return () => {
-    unsubscribers.forEach((unsubscribe) => {
-      if (typeof unsubscribe === 'function') {
-        try {
-          unsubscribe()
-        } catch (error) {
-          console.warn('[realtime] 메시지 구독 해제 중 오류가 발생했습니다.', error)
-        }
+    try {
+      handler(record, payload)
+    } catch (error) {
+      console.error('[realtime] 메시지 핸들러 실행 중 오류가 발생했습니다.', error)
+    }
+  }
+
+  channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, forwardChange)
+  channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, forwardChange)
+
+  let active = true
+
+  channel
+    .subscribe((status, err) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('[realtime] 메시지 채널 상태 이상이 감지되었습니다.', {
+          topic: channelName,
+          status,
+          error: err || null,
+        })
+      }
+
+      if (status === 'CLOSED') {
+        console.info('[realtime] 메시지 채널이 종료되었습니다.', { topic: channelName })
       }
     })
+    .catch((error) => {
+      console.error('[realtime] 메시지 채널 구독에 실패했습니다.', { topic: channelName, error })
+    })
+
+  return () => {
+    if (!active) {
+      return
+    }
+    active = false
+
+    try {
+      channel.unsubscribe()
+    } catch (error) {
+      console.warn('[realtime] 메시지 채널 구독 해제에 실패했습니다.', { topic: channelName, error })
+    }
+
+    try {
+      supabase.removeChannel(channel)
+    } catch (error) {
+      console.warn('[realtime] 메시지 채널 제거 중 오류가 발생했습니다.', { topic: channelName, error })
+    }
   }
 }
