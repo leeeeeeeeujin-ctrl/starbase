@@ -33,31 +33,6 @@ create table if not exists public.chat_room_members (
 alter table public.chat_rooms enable row level security;
 alter table public.chat_room_members enable row level security;
 
-create or replace function public.is_chat_room_moderator(
-  p_room_id uuid,
-  p_owner_id uuid
-)
-returns boolean
-language plpgsql
-security definer
-stable
-set search_path = public
-as $$
-begin
-  if p_room_id is null or p_owner_id is null then
-    return false;
-  end if;
-
-  return exists (
-    select 1
-    from public.chat_room_members m
-    where m.room_id = p_room_id
-      and m.owner_id = p_owner_id
-      and m.is_moderator
-  );
-end;
-$$;
-
 -- Room policies -------------------------------------------------------------
 drop policy if exists chat_rooms_select on public.chat_rooms;
 create policy chat_rooms_select
@@ -112,7 +87,13 @@ create policy chat_room_members_update
 on public.chat_room_members for update
 using (
   auth.uid() = owner_id
-  or public.is_chat_room_moderator(chat_room_members.room_id, auth.uid())
+  or exists (
+    select 1
+    from public.chat_room_members m
+    where m.room_id = chat_room_members.room_id
+      and m.owner_id = auth.uid()
+      and m.is_moderator
+  )
   or exists (
     select 1
     from public.chat_rooms r
@@ -122,7 +103,13 @@ using (
 )
 with check (
   auth.uid() = owner_id
-  or public.is_chat_room_moderator(chat_room_members.room_id, auth.uid())
+  or exists (
+    select 1
+    from public.chat_room_members m
+    where m.room_id = chat_room_members.room_id
+      and m.owner_id = auth.uid()
+      and m.is_moderator
+  )
   or exists (
     select 1
     from public.chat_rooms r
@@ -136,7 +123,13 @@ create policy chat_room_members_delete
 on public.chat_room_members for delete
 using (
   auth.uid() = owner_id
-  or public.is_chat_room_moderator(chat_room_members.room_id, auth.uid())
+  or exists (
+    select 1
+    from public.chat_room_members m
+    where m.room_id = chat_room_members.room_id
+      and m.owner_id = auth.uid()
+      and m.is_moderator
+  )
   or exists (
     select 1
     from public.chat_rooms r
