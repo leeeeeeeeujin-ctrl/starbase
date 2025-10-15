@@ -20,6 +20,60 @@ begin
 end;
 $$;
 
+create or replace function public.is_rank_session_owner_or_roster(
+  p_session_id uuid,
+  p_owner_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_match_instance uuid := null;
+begin
+  if p_session_id is null or p_owner_id is null then
+    return false;
+  end if;
+
+  -- Host check
+  if exists (
+    select 1
+    from public.rank_sessions rs
+    where rs.id = p_session_id
+      and (rs.owner_id is null or rs.owner_id = p_owner_id)
+  ) then
+    return true;
+  end if;
+
+  select public.try_cast_uuid(
+           coalesce(
+             rsm.extras->>'matchInstanceId',
+             rsm.extras->>'match_instance_id',
+             rsm.async_fill_snapshot->>'matchInstanceId',
+             rsm.async_fill_snapshot->>'match_instance_id'
+           )
+         )
+    into v_match_instance
+  from public.rank_session_meta rsm
+  where rsm.session_id = p_session_id
+  order by rsm.updated_at desc
+  limit 1;
+
+  if v_match_instance is null then
+    return false;
+  end if;
+
+  return exists (
+    select 1
+    from public.rank_match_roster rmr
+    where rmr.match_instance_id = v_match_instance
+      and rmr.owner_id = p_owner_id
+  );
+end;
+$$;
+
 -- =========================================
 --  영웅 기본 테이블 및 스토리지 정책
 -- =========================================
@@ -3222,34 +3276,7 @@ using (
   )
   or (
     session_id is not null
-    and exists (
-      select 1
-      from public.rank_sessions rs
-      left join public.rank_session_meta rsm on rsm.session_id = rs.id
-      left join lateral (
-        select public.try_cast_uuid(
-          coalesce(
-            rsm.extras->>'matchInstanceId',
-            rsm.extras->>'match_instance_id',
-            rsm.async_fill_snapshot->>'matchInstanceId',
-            rsm.async_fill_snapshot->>'match_instance_id'
-          )
-        ) as match_instance_id
-      ) derived on true
-      where rs.id = messages.session_id
-        and (
-          rs.owner_id = auth.uid()
-          or (
-            derived.match_instance_id is not null
-            and exists (
-              select 1
-              from public.rank_match_roster rmr2
-              where rmr2.match_instance_id = derived.match_instance_id
-                and rmr2.owner_id = auth.uid()
-            )
-          )
-        )
-    )
+    and public.is_rank_session_owner_or_roster(messages.session_id, auth.uid())
   )
 );
 
