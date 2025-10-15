@@ -135,7 +135,6 @@ create trigger trg_chat_room_members_touch
 before update on public.chat_room_members
 for each row execute function public.touch_chat_room_member_activity();
 
--- 2. Messages table & RLS ----------------------------------------------------
 alter table public.messages
   alter column created_at set default timezone('utc', now());
 alter table public.messages
@@ -188,6 +187,24 @@ drop trigger if exists trg_messages_set_updated_at on public.messages;
 create trigger trg_messages_set_updated_at
 before update on public.messages
 for each row execute function public.touch_messages_updated_at();
+
+-- Reset every SELECT policy on public.messages so legacy entries do not clash
+-- with the canonical `messages_select_public` policy below.
+do $$
+declare
+  policy_record record;
+begin
+  for policy_record in
+    select policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'messages'
+      and cmd = 'SELECT'
+  loop
+    execute format('drop policy %I on public.messages', policy_record.policyname);
+  end loop;
+end;
+$$;
 
 create or replace function public.is_rank_session_owner_or_roster(
   p_session_id uuid,
