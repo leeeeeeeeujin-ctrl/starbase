@@ -18,13 +18,68 @@ import {
 } from '@/lib/chat/messages'
 import { supabase } from '@/lib/supabase'
 
+const normalizeMessageRecord = (record) => {
+  if (!record || typeof record !== 'object') {
+    return null
+  }
+
+  const createdAt = record.created_at || record.createdAt || null
+  return {
+    ...record,
+    created_at: createdAt,
+    hero_name: record.hero_name || record.username || '익명',
+  }
+}
+
+const toChrono = (value) => {
+  if (!value) return 0
+  const parsed = new Date(value).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const upsertMessageList = (current, incoming) => {
+  const next = Array.isArray(current) ? [...current] : []
+  const payload = Array.isArray(incoming) ? incoming : [incoming]
+
+  for (const candidate of payload) {
+    const normalized = normalizeMessageRecord(candidate)
+    if (!normalized) continue
+    const identifier = normalized.id || normalized.local_id || normalized.created_at
+    if (!identifier) continue
+
+    const index = next.findIndex((item) => {
+      if (!item) return false
+      if (item.id && normalized.id) {
+        return String(item.id) === String(normalized.id)
+      }
+      if (item.local_id && normalized.local_id) {
+        return String(item.local_id) === String(normalized.local_id)
+      }
+      if (item.created_at && normalized.created_at) {
+        return String(item.created_at) === String(normalized.created_at)
+      }
+      return false
+    })
+
+    if (index >= 0) {
+      next[index] = { ...next[index], ...normalized }
+    } else {
+      next.push(normalized)
+    }
+  }
+
+  return next
+    .filter(Boolean)
+    .sort((a, b) => toChrono(a?.created_at) - toChrono(b?.created_at))
+}
+
 const overlayStyles = {
   container: {
     display: 'flex',
     flexDirection: 'column',
     gap: 20,
-    minHeight: '78vh',
-    maxHeight: '86vh',
+    minHeight: '84vh',
+    maxHeight: '92vh',
     width: '100%',
     boxSizing: 'border-box',
   },
@@ -132,8 +187,8 @@ const overlayStyles = {
     flex: 1,
     overflowY: 'auto',
     display: 'grid',
-    gap: 8,
-    padding: '0 4px 12px',
+    gap: 6,
+    padding: '2px 4px 14px',
   },
   messageRow: (mine = false) => ({
     display: 'flex',
@@ -379,7 +434,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           scope: context.scope || null,
         })
         if (cancelled) return
-        setMessages(result.messages || [])
+        setMessages(upsertMessageList([], result.messages || []))
         if (onUnreadChange) {
           onUnreadChange(0)
         }
@@ -391,7 +446,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
         unsubscribeRef.current = subscribeToMessages({
           onInsert: (record) => {
-            setMessages((prev) => [...prev, record])
+            setMessages((prev) => upsertMessageList(prev, record))
             const hidden = typeof document !== 'undefined' ? document.hidden : false
             if (onUnreadChange && (!context.focused || hidden)) {
               onUnreadChange((prevUnread) => Math.min(999, (prevUnread || 0) + 1))
@@ -567,7 +622,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           context && (context.scope === 'main' || context.scope === 'role')
             ? context.rankRoomId || null
             : null
-        await insertMessage(
+        const inserted = await insertMessage(
           { text, scope: context.scope || 'global', hero_id: selectedHero || null },
           {
             sessionId: context.sessionId || null,
@@ -576,6 +631,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             roomId: rankRoomId,
           },
         )
+        if (inserted) {
+          setMessages((prev) => upsertMessageList(prev, inserted))
+        }
         setMessageInput('')
       } catch (error) {
         console.error('[chat] 메시지를 보낼 수 없습니다.', error)

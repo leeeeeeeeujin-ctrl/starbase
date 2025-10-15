@@ -17,6 +17,59 @@ import {
 import { readRankKeyringSnapshot } from '@/lib/rank/keyringStorage'
 import { supabase } from '@/lib/supabase'
 
+const normalizeMessageRecord = (record) => {
+  if (!record || typeof record !== 'object') {
+    return null
+  }
+
+  const createdAt = record.created_at || record.createdAt || null
+  return {
+    ...record,
+    created_at: createdAt,
+    hero_name: record.hero_name || record.username || '익명',
+  }
+}
+
+const toChrono = (value) => {
+  if (!value) return 0
+  const parsed = new Date(value).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const upsertMessageList = (current, incoming) => {
+  const base = Array.isArray(current) ? [...current] : []
+  const payload = Array.isArray(incoming) ? incoming : [incoming]
+
+  for (const candidate of payload) {
+    const normalized = normalizeMessageRecord(candidate)
+    if (!normalized) continue
+    const identifier = normalized.id || normalized.local_id || normalized.created_at
+    if (!identifier) continue
+
+    const index = base.findIndex((item) => {
+      if (!item) return false
+      if (item.id && normalized.id) {
+        return String(item.id) === String(normalized.id)
+      }
+      if (item.local_id && normalized.local_id) {
+        return String(item.local_id) === String(normalized.local_id)
+      }
+      if (item.created_at && normalized.created_at) {
+        return String(item.created_at) === String(normalized.created_at)
+      }
+      return false
+    })
+
+    if (index >= 0) {
+      base[index] = { ...base[index], ...normalized }
+    } else {
+      base.push(normalized)
+    }
+  }
+
+  return base.filter(Boolean).sort((a, b) => toChrono(a?.created_at) - toChrono(b?.created_at))
+}
+
 const LAYOUT = {
   page: {
     minHeight: '100vh',
@@ -646,12 +699,7 @@ export default function ChatPage() {
           chatRoomId: current.chatRoomId || null,
           scope: current.scope || null,
         })
-        const prepared = Array.isArray(response.messages)
-          ? response.messages.map((msg) => ({
-              ...msg,
-              hero_name: msg.hero_name || msg.username || '익명',
-            }))
-          : []
+        const prepared = upsertMessageList([], response.messages || [])
         setMessages(prepared)
         setTimeout(() => {
           if (messageListRef.current) {
@@ -684,18 +732,7 @@ export default function ChatPage() {
         heroId: current.heroId || selectedHeroId || viewer?.heroId || null,
         channelName: subscriptionKey,
         onInsert: (record) => {
-          setMessages((prev) => {
-            if (prev.some((item) => item.id === record.id)) {
-              return prev
-            }
-            return [
-              ...prev,
-              {
-                ...record,
-                hero_name: record.hero_name || record.username || '익명',
-              },
-            ]
-          })
+          setMessages((prev) => upsertMessageList(prev, record))
           setTimeout(() => {
             if (messageListRef.current) {
               messageListRef.current.scrollTop = messageListRef.current.scrollHeight
@@ -818,7 +855,7 @@ export default function ChatPage() {
           context && (context.scope === 'main' || context.scope === 'role')
             ? context.rankRoomId || null
             : null
-        await insertMessage(
+        const inserted = await insertMessage(
           {
             text,
             scope: context.scope || 'global',
@@ -834,6 +871,9 @@ export default function ChatPage() {
             chatRoomId: context.chatRoomId || null,
           },
         )
+        if (inserted) {
+          setMessages((prev) => upsertMessageList(prev, inserted))
+        }
         setComposerText('')
       } catch (error) {
         console.error('[chat] 메시지 전송 실패:', error)

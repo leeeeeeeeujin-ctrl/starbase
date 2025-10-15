@@ -23,3 +23,97 @@
 3. Realtime 로그에 `topic:messages:*` 이벤트가 올라오는지 살펴보고, 필요 시 클라이언트가 사용하는 토픽과 일치하는지 점검합니다.
 
 스크립트는 재실행해도 안전하도록 `drop ... if exists` / `create ... if not exists` 패턴을 사용합니다.
+
+## 자주 묻는 항목 요약
+
+실시간 채팅이 동작하려면 다음 SQL 조각이 반드시 적용돼 있어야 합니다. 이미 `/supabase/chat_realtime_backend.sql`에 포함되어 있지만,
+ 필요한 블록만 다시 실행하고 싶을 때 참고하세요.
+
+```sql
+-- 메시지 RLS
+drop policy if exists messages_select_public on public.messages;
+create policy messages_select_public
+on public.messages for select
+to authenticated
+using (
+  scope = 'global'
+  or visible_owner_ids is null
+  or auth.uid() = owner_id
+  or auth.uid() = user_id
+  or (visible_owner_ids is not null and auth.uid() = any(visible_owner_ids))
+  or (
+    chat_room_id is not null
+    and exists (
+      select 1 from public.chat_room_members crm
+      where crm.room_id = messages.chat_room_id
+        and crm.owner_id = auth.uid()
+    )
+  )
+  or (
+    match_instance_id is not null
+    and exists (
+      select 1 from public.rank_match_roster rmr
+      where rmr.match_instance_id = messages.match_instance_id
+        and rmr.owner_id = auth.uid()
+    )
+  )
+  or (
+    session_id is not null
+    and public.is_rank_session_owner_or_roster(messages.session_id, auth.uid())
+  )
+);
+
+-- 실시간 브로드캐스트 트리거
+create or replace function public.broadcast_messages_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event text := TG_OP;
+  v_topics text[];
+  v_new jsonb := null;
+  v_old jsonb := null;
+begin
+  if TG_OP in ('INSERT','UPDATE') then
+    v_new := to_jsonb(NEW);
+  end if;
+  if TG_OP in ('UPDATE','DELETE') then
+    v_old := to_jsonb(OLD);
+  end if;
+
+  v_topics := array[
+    'broadcast_messages_changes',
+    'messages:global',
+    case when coalesce(NEW.scope, OLD.scope) is not null
+      then 'messages:scope:' || lower(coalesce(NEW.scope, OLD.scope)) end,
+    case when coalesce(NEW.chat_room_id, OLD.chat_room_id) is not null
+      then 'messages:room:' || coalesce(NEW.chat_room_id, OLD.chat_room_id)::text end
+  ];
+
+  perform public.emit_realtime_payload(
+    v_topics,
+    v_event,
+    TG_TABLE_NAME,
+    TG_TABLE_SCHEMA,
+    v_new,
+    v_old
+  );
+
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_messages_broadcast on public.messages;
+create trigger trg_messages_broadcast
+after insert or update or delete on public.messages
+for each row execute function public.broadcast_messages_changes();
+
+-- Postgres Changes 퍼블리케이션
+alter publication supabase_realtime add table public.messages;
+alter publication supabase_realtime add table public.chat_rooms;
+alter publication supabase_realtime add table public.chat_room_members;
+```
+
+위 코드만 실행해도 메시지 테이블 RLS, 브로드캐스트 트리거, 퍼블리케이션 연결이 복구됩니다.
