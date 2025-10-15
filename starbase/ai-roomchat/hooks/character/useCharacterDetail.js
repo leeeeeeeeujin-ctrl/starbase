@@ -39,7 +39,7 @@ function normaliseAppearance(row, gamesById) {
   return {
     id: row.id || null,
     gameId: row.game_id || null,
-    slotNo: row.slot_no ?? null,
+    slotNo: row.slot_index ?? null,
     gameName: game?.name || '비공개 게임',
     gameCreatedAt: game?.created_at || null,
   }
@@ -173,10 +173,10 @@ export function useCharacterDetail(heroId) {
       const {
         data: slotRows,
         error: slotsError,
-      } = await withTable(supabase, 'game_slots', (table) =>
+      } = await withTable(supabase, 'rank_game_slots', (table) =>
         supabase
           .from(table)
-          .select('id, game_id, slot_no')
+          .select('id, game_id, slot_index')
           .eq('hero_id', heroId)
           .order('id', { ascending: false })
           .limit(6),

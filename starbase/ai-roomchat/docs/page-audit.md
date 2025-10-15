@@ -68,7 +68,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 ## Ranking Ecosystem
 
 ### `pages/rank/index.js`
-- Rank hub listing page that fetches total game count via Supabase (exact count query) and renders `GameListPanel` plus persistent `SharedChatDock`. Provides quick link to `/rank/new` for game registration.【F:pages/rank/index.js†L1-L35】
+- Rank hub listing page that fetches total game count via Supabase (exact count query) and renders `GameListPanel`. A top-right button jumps to the dedicated `/chat` experience instead of embedding the dock inline.【F:pages/rank/index.js†L1-L37】
 
 ### `pages/rank/new.js`
 - Uses `next/dynamic` to import `RankNewClient` with `ssr: false`, ensuring heavy client-only editors are loaded on demand.【F:pages/rank/new.js†L1-L11】
