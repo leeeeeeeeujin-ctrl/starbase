@@ -13,6 +13,7 @@ import {
   getCurrentUser,
   insertMessage,
   subscribeToMessages,
+  MESSAGE_LIMIT as BASE_MESSAGE_LIMIT,
 } from '@/lib/chat/messages'
 import { readRankKeyringSnapshot } from '@/lib/rank/keyringStorage'
 import { supabase } from '@/lib/supabase'
@@ -69,6 +70,8 @@ const upsertMessageList = (current, incoming) => {
 
   return base.filter(Boolean).sort((a, b) => toChrono(a?.created_at) - toChrono(b?.created_at))
 }
+
+const THREAD_FETCH_LIMIT = Math.min(BASE_MESSAGE_LIMIT ?? 100, 100)
 
 const LAYOUT = {
   page: {
@@ -137,6 +140,7 @@ const LAYOUT = {
     display: 'grid',
     gap: 8,
     padding: '0 4px 16px',
+    overflowAnchor: 'none',
   },
   messageRow: (mine = false) => ({
     display: 'flex',
@@ -168,6 +172,8 @@ const LAYOUT = {
     lineHeight: 1.45,
     margin: 0,
     whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    overflowWrap: 'anywhere',
   },
   messageAvatar: {
     width: 30,
@@ -693,7 +699,7 @@ export default function ChatPage() {
       setLoadingMessages(true)
       try {
         const response = await fetchRecentMessages({
-          limit: 200,
+          limit: THREAD_FETCH_LIMIT,
           sessionId: current.sessionId || null,
           matchInstanceId: current.matchInstanceId || null,
           chatRoomId: current.chatRoomId || null,

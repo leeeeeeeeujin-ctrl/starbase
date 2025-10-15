@@ -4,7 +4,7 @@ import { supabase } from '../supabase'
 import { ensureRealtimeAuth } from '../realtime/auth'
 import { createDraftyFromText, inspectDrafty } from './drafty'
 
-export const MESSAGE_LIMIT = 30
+export const MESSAGE_LIMIT = 100
 
 export async function getCurrentUser() {
   const {

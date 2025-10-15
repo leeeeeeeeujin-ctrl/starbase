@@ -15,6 +15,7 @@ import {
   getCurrentUser,
   insertMessage,
   subscribeToMessages,
+  MESSAGE_LIMIT as BASE_MESSAGE_LIMIT,
 } from '@/lib/chat/messages'
 import { supabase } from '@/lib/supabase'
 
@@ -73,13 +74,15 @@ const upsertMessageList = (current, incoming) => {
     .sort((a, b) => toChrono(a?.created_at) - toChrono(b?.created_at))
 }
 
+const MESSAGE_LIMIT = Math.min(BASE_MESSAGE_LIMIT ?? 100, 100)
+
 const overlayStyles = {
   container: {
     display: 'flex',
     flexDirection: 'column',
     gap: 20,
-    minHeight: '88vh',
-    maxHeight: '96vh',
+    minHeight: 'min(92vh, 980px)',
+    maxHeight: 'calc(100vh - 32px)',
     width: '100%',
     boxSizing: 'border-box',
   },
@@ -189,6 +192,7 @@ const overlayStyles = {
     display: 'grid',
     gap: 6,
     padding: '2px 4px 14px',
+    overflowAnchor: 'none',
   },
   messageRow: (mine = false) => ({
     display: 'flex',
@@ -220,6 +224,8 @@ const overlayStyles = {
     lineHeight: 1.45,
     margin: 0,
     whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    overflowWrap: 'anywhere',
   },
   messageAvatar: {
     width: 30,
@@ -286,8 +292,6 @@ const TABS = [
   { key: 'private', label: '일반채팅' },
   { key: 'open', label: '오픈채팅' },
 ]
-
-const MESSAGE_LIMIT = 60
 
 function derivePreviewText(record) {
   if (!record) return ''
