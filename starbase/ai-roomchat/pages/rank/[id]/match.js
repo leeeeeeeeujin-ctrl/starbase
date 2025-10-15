@@ -3,7 +3,7 @@ export async function getServerSideProps(context) {
   const rawMode = context?.query?.mode
   const mode = typeof rawMode === 'string' && rawMode.trim().length > 0 ? rawMode : null
 
-  const destinationBase = id ? `/rank/${id}/match-ready` : '/rooms'
+  const destinationBase = id ? `/rank/${id}/match-ready` : '/match'
   const destination = mode ? `${destinationBase}?mode=${encodeURIComponent(mode)}` : destinationBase
 
   return {

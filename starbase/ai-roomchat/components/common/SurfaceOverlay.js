@@ -43,25 +43,25 @@ export default function SurfaceOverlay({
           pointerEvents: open ? 'auto' : 'none',
         }}
       >
-        <div
-          style={{
-            borderRadius: 24,
-            overflow: 'hidden',
-            border: '1px solid rgba(148, 163, 184, 0.35)',
-            background: 'rgba(15, 23, 42, 0.92)',
-            boxShadow: '0 50px 120px -50px rgba(15, 23, 42, 0.9)',
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: 0,
-            maxHeight: '80vh',
-          }}
+          <div
+            style={{
+              borderRadius: 26,
+              overflow: 'hidden',
+              border: '1px solid rgba(148, 163, 184, 0.35)',
+              background: 'rgba(15, 23, 42, 0.92)',
+              boxShadow: '0 60px 150px -60px rgba(15, 23, 42, 0.92)',
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+              maxHeight: '98vh',
+            }}
         >
           <header
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '14px 18px',
+              padding: '18px 22px',
               borderBottom: '1px solid rgba(148, 163, 184, 0.2)',
               color: '#e2e8f0',
               background: 'rgba(15, 23, 42, 0.9)',
@@ -86,7 +86,7 @@ export default function SurfaceOverlay({
           </header>
           <div
             style={{
-              padding: 16,
+              padding: 22,
               overflowY: 'auto',
               background: 'rgba(15, 23, 42, 0.75)',
               ...contentStyle,
