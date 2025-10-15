@@ -85,13 +85,40 @@ with check (auth.uid() = owner_id);
 drop policy if exists chat_room_members_update on public.chat_room_members;
 create policy chat_room_members_update
 on public.chat_room_members for update
-using (auth.uid() = owner_id or is_moderator)
-with check (auth.uid() = owner_id or is_moderator);
+using (
+  auth.uid() = owner_id
+  or exists (
+    select 1
+    from public.chat_room_members m
+    where m.room_id = chat_room_members.room_id
+      and m.owner_id = auth.uid()
+      and m.is_moderator
+  )
+)
+with check (
+  auth.uid() = owner_id
+  or exists (
+    select 1
+    from public.chat_room_members m
+    where m.room_id = chat_room_members.room_id
+      and m.owner_id = auth.uid()
+      and m.is_moderator
+  )
+);
 
 drop policy if exists chat_room_members_delete on public.chat_room_members;
 create policy chat_room_members_delete
 on public.chat_room_members for delete
-using (auth.uid() = owner_id or is_moderator);
+using (
+  auth.uid() = owner_id
+  or exists (
+    select 1
+    from public.chat_room_members m
+    where m.room_id = chat_room_members.room_id
+      and m.owner_id = auth.uid()
+      and m.is_moderator
+  )
+);
 
 create index if not exists chat_rooms_visibility_idx
   on public.chat_rooms (visibility, updated_at desc);
