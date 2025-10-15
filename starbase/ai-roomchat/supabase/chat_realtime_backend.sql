@@ -259,7 +259,22 @@ begin
 end;
 $$;
 
-drop policy if exists messages_select_public on public.messages;
+do $$
+declare
+  policy_record record;
+begin
+  for policy_record in
+    select policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'messages'
+      and cmd = 'SELECT'
+  loop
+    execute format('drop policy %I on public.messages', policy_record.policyname);
+  end loop;
+end;
+$$;
+
 create policy messages_select_public
 on public.messages for select
 to authenticated

@@ -24,6 +24,21 @@
 
 스크립트는 재실행해도 안전하도록 `drop ... if exists` / `create ... if not exists` 패턴을 사용합니다.
 
+### 핵심 정책 · 트리거 이름
+
+| 분류 | 객체 이름 | 설명 |
+| --- | --- | --- |
+| SELECT RLS | `messages_select_public` | 인증 사용자가 글로벌·방·세션·귓속말 메시지를 열람할 수 있도록 허용합니다. 스크립트는 적용 전에 기존 SELECT 정책을 모두 제거합니다. |
+| INSERT RLS | `messages_insert_service_role` | 서비스 롤만 직접 INSERT할 수 있게 제한합니다. |
+| UPDATE RLS | `messages_update_service_role` | 서비스 롤만 UPDATE를 수행할 수 있게 제한합니다. |
+| DELETE RLS | `messages_delete_service_role` | 서비스 롤만 DELETE를 수행할 수 있게 제한합니다. |
+| Realtime RLS | `realtime_messages_select_authenticated` | `realtime.messages` 뷰에서 인증 사용자가 브로드캐스트 메시지를 받을 수 있도록 허용합니다. |
+| 함수 | `public.emit_realtime_payload` | 브로드캐스트 토픽 배열을 순회하며 `realtime.broadcast_changes`에 전달합니다. |
+| 함수 | `public.broadcast_messages_changes` | `messages` 테이블 변경을 토픽별로 가공하고 `emit_realtime_payload`를 호출합니다. |
+| 트리거 | `trg_messages_broadcast` | `messages` 테이블 변경 시 `broadcast_messages_changes` 함수를 실행합니다. |
+
+퍼블리케이션은 `alter publication supabase_realtime add table ...` 구문으로 `messages`, `chat_rooms`, `chat_room_members`가 등록되어 있어야 합니다.
+
 ## 자주 묻는 항목 요약
 
 실시간 채팅이 동작하려면 다음 SQL 조각이 반드시 적용돼 있어야 합니다. 이미 `/supabase/chat_realtime_backend.sql`에 포함되어 있지만, 필요한 블록만 다시 실행하고 싶을 때 참고하세요.
