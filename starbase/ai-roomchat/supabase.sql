@@ -4456,6 +4456,14 @@ grant execute on function public.send_rank_chat_message(
 to authenticated,
    service_role;
 
+drop function if exists public.fetch_rank_chat_threads(
+  uuid,
+  uuid,
+  integer,
+  uuid,
+  text
+);
+
 create or replace function public.fetch_rank_chat_threads(
   p_session_id uuid default null,
   p_match_instance_id uuid default null,
