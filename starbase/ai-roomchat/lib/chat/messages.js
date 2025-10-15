@@ -248,25 +248,14 @@ export function subscribeToMessages({
     }
   }
 
-  const baseFilter = {}
-  if (chatRoomId) {
-    baseFilter.filter = `chat_room_id=eq.${chatRoomId}`
-  } else if (sessionId) {
-    baseFilter.filter = `session_id=eq.${sessionId}`
-  } else if (matchInstanceId) {
-    baseFilter.filter = `match_instance_id=eq.${matchInstanceId}`
-  } else if (scope) {
-    baseFilter.filter = `scope=eq.${String(scope).toLowerCase()}`
-  }
-
   channel.on(
     'postgres_changes',
-    { event: 'INSERT', schema: 'public', table: 'messages', ...baseFilter },
+    { event: 'INSERT', schema: 'public', table: 'messages' },
     forwardChange,
   )
   channel.on(
     'postgres_changes',
-    { event: 'UPDATE', schema: 'public', table: 'messages', ...baseFilter },
+    { event: 'UPDATE', schema: 'public', table: 'messages' },
     forwardChange,
   )
 
