@@ -4593,6 +4593,7 @@ begin
     select m.*, 'global'::text as thread_scope, 'global'::text as thread_id, '전체'::text as thread_label
     from public.messages as m
     where m.scope = 'global'
+      and v_requested_scope = 'global'
     order by m.created_at desc
     limit v_limit
   ),
@@ -4693,7 +4694,7 @@ begin
     select *
     from global_messages
     where v_chat_room_id is null
-      and v_requested_scope in ('', 'global')
+      and v_requested_scope = 'global'
   )
   select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
     into v_messages

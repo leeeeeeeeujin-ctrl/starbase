@@ -1005,6 +1005,13 @@ export default function ChatPage() {
     [refreshDashboard],
   )
 
+  const openCreateTab = useCallback(() => {
+    setContext(null)
+    setMessages([])
+    setComposerText('')
+    setActiveTab('open-create')
+  }, [])
+
   const runRoomSearch = useCallback(
     async (event) => {
       event?.preventDefault?.()
@@ -1121,16 +1128,7 @@ export default function ChatPage() {
                   ))}
                 </select>
               </div>
-              <button
-                type="button"
-                style={LAYOUT.button('ghost')}
-                onClick={() => {
-                  setContext(null)
-                  setMessages([])
-                  setComposerText('')
-                  setActiveTab('open-create')
-                }}
-              >
+              <button type="button" style={LAYOUT.button('ghost')} onClick={openCreateTab}>
                 오픈채팅 만들기
               </button>
             </div>
@@ -1396,8 +1394,21 @@ export default function ChatPage() {
 
                   {activeTab === 'open-search' ? (
                     <>
-                      <form onSubmit={runRoomSearch} style={{ ...LAYOUT.card, display: 'grid', gap: 12 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 12,
+                          marginBottom: 12,
+                        }}
+                      >
                         <strong style={{ fontSize: 14 }}>오픈채팅 검색</strong>
+                        <button type="button" style={LAYOUT.button('ghost')} onClick={openCreateTab}>
+                          새 오픈채팅 만들기
+                        </button>
+                      </div>
+                      <form onSubmit={runRoomSearch} style={{ ...LAYOUT.card, display: 'grid', gap: 12 }}>
                         <input
                           type="text"
                           value={roomSearch}
@@ -1570,7 +1581,6 @@ export default function ChatPage() {
                     <div style={{ display: 'grid', gap: 4 }}>
                       <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{context?.label || '대화'}</h2>
                       <div style={{ display: 'flex', gap: 12, color: '#94a3b8', fontSize: 12, flexWrap: 'wrap' }}>
-                        {context?.scope === 'global' ? <span>전체 채널</span> : null}
                         {context?.scope === 'room' ? (
                           <span>{context?.visibility === 'public' ? '공개 방' : '비공개 방'}</span>
                         ) : null}
