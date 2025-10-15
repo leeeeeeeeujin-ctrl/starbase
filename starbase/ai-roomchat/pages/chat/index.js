@@ -75,58 +75,52 @@ const LAYOUT = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    padding: '24px 28px 20px',
+    padding: '28px 32px 24px',
     minHeight: 0,
   },
   messageList: {
     flex: 1,
     overflowY: 'auto',
     display: 'grid',
-    gap: 12,
-    padding: '0 6px 12px',
+    gap: 8,
+    padding: '0 4px 16px',
   },
   messageRow: (mine = false) => ({
     display: 'flex',
     justifyContent: mine ? 'flex-end' : 'flex-start',
-    alignItems: 'flex-end',
-    gap: 10,
+    alignItems: 'center',
+    gap: 12,
   }),
-  messageBubble: (mine = false) => ({
-    maxWidth: '75%',
-    background: mine ? 'rgba(59, 130, 246, 0.28)' : 'rgba(15, 23, 42, 0.78)',
-    color: '#f8fafc',
-    borderRadius: mine ? '18px 4px 18px 18px' : '4px 18px 18px 18px',
-    padding: '12px 16px',
-    border: mine ? '1px solid rgba(96, 165, 250, 0.45)' : '1px solid rgba(148, 163, 184, 0.24)',
+  messageContent: (mine = false) => ({
     display: 'grid',
-    gap: 6,
-    boxShadow: mine ? '0 18px 40px -32px rgba(59, 130, 246, 0.75)' : '0 18px 40px -32px rgba(15, 23, 42, 0.75)',
-  }),
-  messageMeta: (mine = false) => ({
-    display: 'flex',
-    justifyContent: mine ? 'flex-end' : 'flex-start',
-    gap: 8,
-    fontSize: 11,
-    color: mine ? '#bfdbfe' : '#94a3b8',
+    gap: 4,
+    maxWidth: '72%',
+    textAlign: mine ? 'right' : 'left',
   }),
   messageName: (mine = false) => ({
+    fontSize: 11,
     fontWeight: 700,
-    color: mine ? '#e0f2fe' : '#f8fafc',
+    color: mine ? '#cfe1ff' : '#f1f5f9',
   }),
-  messageTime: {
-    fontWeight: 500,
-  },
+  messageBubble: (mine = false) => ({
+    background: mine ? 'rgba(59, 130, 246, 0.24)' : 'rgba(15, 23, 42, 0.82)',
+    color: '#f8fafc',
+    borderRadius: mine ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+    padding: '8px 12px',
+    border: mine ? '1px solid rgba(96, 165, 250, 0.45)' : '1px solid rgba(148, 163, 184, 0.22)',
+    boxShadow: mine ? '0 14px 36px -28px rgba(59, 130, 246, 0.7)' : '0 14px 36px -28px rgba(15, 23, 42, 0.7)',
+  }),
   messageText: {
     fontSize: 13,
-    lineHeight: 1.6,
+    lineHeight: 1.45,
     margin: 0,
     whiteSpace: 'pre-wrap',
   },
-  bubbleAvatar: {
-    width: 36,
-    height: 36,
+  messageAvatar: {
+    width: 30,
+    height: 30,
     borderRadius: '50%',
-    background: 'rgba(30, 41, 59, 0.8)',
+    background: 'rgba(30, 41, 59, 0.85)',
     color: '#bae6fd',
     fontWeight: 700,
     display: 'flex',
@@ -134,6 +128,12 @@ const LAYOUT = {
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  messageTimestamp: (mine = false) => ({
+    fontSize: 11,
+    color: 'rgba(148, 163, 184, 0.85)',
+    minWidth: 58,
+    textAlign: mine ? 'right' : 'left',
+  }),
   composer: {
     marginTop: 16,
     paddingTop: 18,
@@ -1389,30 +1389,34 @@ export default function ChatPage() {
                       const createdAt = formatTime(message.created_at)
                       const ownerToken = normalizeId(message.owner_id || message.user_id)
                       const mine = viewerToken && ownerToken && viewerToken === ownerToken
+                      const displayName = message.hero_name || message.username || '익명'
+                      const avatarNode = (
+                        <div style={LAYOUT.messageAvatar}>
+                          {avatar.type === 'image' ? (
+                            <img
+                              src={avatar.url}
+                              alt={displayName}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            avatar.text
+                          )}
+                        </div>
+                      )
                       return (
                         <div key={message.id} style={LAYOUT.messageRow(mine)}>
-                          {!mine ? (
-                            <div style={LAYOUT.bubbleAvatar}>
-                              {avatar.type === 'image' ? (
-                                <img
-                                  src={avatar.url}
-                                  alt={message.hero_name || message.username || 'avatar'}
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                />
-                              ) : (
-                                avatar.text
-                              )}
+                          {mine ? (
+                            <span style={LAYOUT.messageTimestamp(true)}>{createdAt}</span>
+                          ) : (
+                            avatarNode
+                          )}
+                          <div style={LAYOUT.messageContent(mine)}>
+                            <span style={LAYOUT.messageName(mine)}>{displayName}</span>
+                            <div style={LAYOUT.messageBubble(mine)}>
+                              <p style={LAYOUT.messageText}>{text || ' '}</p>
                             </div>
-                          ) : null}
-                          <div style={LAYOUT.messageBubble(mine)}>
-                            <div style={LAYOUT.messageMeta(mine)}>
-                              <span style={LAYOUT.messageName(mine)}>
-                                {message.hero_name || message.username || '익명'}
-                              </span>
-                              <span style={LAYOUT.messageTime}>{createdAt}</span>
-                            </div>
-                            <p style={LAYOUT.messageText}>{text || ' '}</p>
                           </div>
+                          {mine ? avatarNode : <span style={LAYOUT.messageTimestamp(false)}>{createdAt}</span>}
                         </div>
                       )
                     })

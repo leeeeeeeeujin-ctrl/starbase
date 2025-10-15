@@ -22,9 +22,9 @@ const overlayStyles = {
   container: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
-    minHeight: '60vh',
-    maxHeight: '65vh',
+    gap: 20,
+    minHeight: '70vh',
+    maxHeight: '78vh',
     width: '100%',
     boxSizing: 'border-box',
   },
@@ -132,51 +132,45 @@ const overlayStyles = {
     flex: 1,
     overflowY: 'auto',
     display: 'grid',
-    gap: 12,
-    padding: '0 6px 12px',
+    gap: 8,
+    padding: '0 4px 12px',
   },
   messageRow: (mine = false) => ({
     display: 'flex',
     justifyContent: mine ? 'flex-end' : 'flex-start',
-    alignItems: 'flex-end',
-    gap: 10,
+    alignItems: 'center',
+    gap: 12,
   }),
-  bubble: (mine = false) => ({
-    maxWidth: '75%',
-    background: mine ? 'rgba(59, 130, 246, 0.28)' : 'rgba(15, 23, 42, 0.78)',
-    borderRadius: mine ? '18px 4px 18px 18px' : '4px 18px 18px 18px',
-    border: mine ? '1px solid rgba(96, 165, 250, 0.45)' : '1px solid rgba(148, 163, 184, 0.26)',
-    padding: '12px 16px',
+  messageContent: (mine = false) => ({
     display: 'grid',
-    gap: 6,
-    boxShadow: mine ? '0 18px 44px -36px rgba(59, 130, 246, 0.75)' : '0 18px 44px -36px rgba(15, 23, 42, 0.85)',
-    color: '#f8fafc',
+    gap: 4,
+    maxWidth: '70%',
+    textAlign: mine ? 'right' : 'left',
   }),
-  bubbleMeta: (mine = false) => ({
-    display: 'flex',
-    justifyContent: mine ? 'flex-end' : 'flex-start',
-    gap: 8,
+  messageName: (mine = false) => ({
     fontSize: 11,
-    color: mine ? '#bfdbfe' : '#94a3b8',
-  }),
-  bubbleName: (mine = false) => ({
     fontWeight: 700,
-    color: mine ? '#e0f2fe' : '#f1f5f9',
+    color: mine ? '#cfe1ff' : '#f1f5f9',
   }),
-  bubbleTime: {
-    fontWeight: 500,
-  },
-  bubbleText: {
+  messageBubble: (mine = false) => ({
+    background: mine ? 'rgba(59, 130, 246, 0.24)' : 'rgba(15, 23, 42, 0.82)',
+    borderRadius: mine ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+    border: mine ? '1px solid rgba(96, 165, 250, 0.45)' : '1px solid rgba(148, 163, 184, 0.22)',
+    padding: '8px 12px',
+    color: '#f8fafc',
+    boxShadow: mine ? '0 14px 36px -28px rgba(59, 130, 246, 0.7)' : '0 14px 36px -28px rgba(15, 23, 42, 0.7)',
+  }),
+  messageText: {
     fontSize: 13,
-    lineHeight: 1.6,
+    lineHeight: 1.45,
     margin: 0,
     whiteSpace: 'pre-wrap',
   },
-  bubbleAvatar: {
-    width: 34,
-    height: 34,
+  messageAvatar: {
+    width: 30,
+    height: 30,
     borderRadius: '50%',
-    background: 'rgba(30, 41, 59, 0.82)',
+    background: 'rgba(30, 41, 59, 0.85)',
     color: '#bae6fd',
     fontWeight: 700,
     display: 'flex',
@@ -184,6 +178,12 @@ const overlayStyles = {
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  messageTimestamp: (mine = false) => ({
+    fontSize: 11,
+    color: 'rgba(148, 163, 184, 0.85)',
+    minWidth: 54,
+    textAlign: mine ? 'right' : 'left',
+  }),
   composer: {
     display: 'flex',
     gap: 8,
@@ -818,32 +818,38 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               const ownerToken = normalizeId(message.owner_id || message.user_id)
               const mine = viewerToken && ownerToken && viewerToken === ownerToken
               const preview = text || derivePreviewText(message)
-              const initials = (message.username || '익명').slice(0, 2)
+              const displayName = message.username || '알 수 없음'
+              const initials = displayName.slice(0, 2)
+              const avatarNode = (
+                <div style={overlayStyles.messageAvatar}>
+                  {message.avatar_url ? (
+                    <img
+                      src={message.avatar_url}
+                      alt={displayName}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    initials
+                  )}
+                </div>
+              )
               return (
                 <div
                   key={message.id || `${message.created_at}-${Math.random()}`}
                   style={overlayStyles.messageRow(mine)}
                 >
-                  {!mine ? (
-                    <div style={overlayStyles.bubbleAvatar}>
-                      {message.avatar_url ? (
-                        <img
-                          src={message.avatar_url}
-                          alt={message.username || 'avatar'}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        initials
-                      )}
+                  {mine ? (
+                    <span style={overlayStyles.messageTimestamp(true)}>{created}</span>
+                  ) : (
+                    avatarNode
+                  )}
+                  <div style={overlayStyles.messageContent(mine)}>
+                    <span style={overlayStyles.messageName(mine)}>{displayName}</span>
+                    <div style={overlayStyles.messageBubble(mine)}>
+                      <p style={overlayStyles.messageText}>{preview || ' '}</p>
                     </div>
-                  ) : null}
-                  <div style={overlayStyles.bubble(mine)}>
-                    <div style={overlayStyles.bubbleMeta(mine)}>
-                      <span style={overlayStyles.bubbleName(mine)}>{message.username || '알 수 없음'}</span>
-                      <span style={overlayStyles.bubbleTime}>{created}</span>
-                    </div>
-                    <p style={overlayStyles.bubbleText}>{preview || ' '}</p>
                   </div>
+                  {mine ? avatarNode : <span style={overlayStyles.messageTimestamp(false)}>{created}</span>}
                 </div>
               )
             })
