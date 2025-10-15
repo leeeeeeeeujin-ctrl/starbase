@@ -108,7 +108,7 @@ function normalizeBroadcastPayload(payload, topic, fallbackEvent) {
 export function subscribeToBroadcastTopic(
   topic,
   handler,
-  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = true, onStatus } = {},
+  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = false, onStatus } = {},
 ) {
   const normalizedTopic = normalizeTopicName(topic)
   if (!normalizedTopic) {
@@ -155,24 +155,28 @@ export function subscribeToBroadcastTopic(
 
     const subscribeToChannel = async () => {
       try {
-        const token = await ensureRealtimeAuth()
+        if (privateChannel) {
+          const token = await ensureRealtimeAuth()
 
-        if (privateChannel && !token) {
-          const missingAuthError = new Error('Supabase realtime private 채널 구독에 필요한 인증 정보를 찾지 못했습니다.')
-          console.warn('[realtime] 인증 세션이 없어 private 채널 구독을 건너뜁니다.', {
-            topic: normalizedTopic,
-          })
-          entry.lastStatus = 'CHANNEL_ERROR'
-          entry.lastError = missingAuthError
-          entry.statusHandlers.forEach((listener) => {
-            try {
-              listener('CHANNEL_ERROR', { topic: normalizedTopic, error: missingAuthError })
-            } catch (handlerError) {
-              console.warn('[realtime] 상태 콜백 오류를 처리하지 못했습니다.', handlerError)
-            }
-          })
-          cleanupChannel()
-          return
+          if (!token) {
+            const missingAuthError = new Error(
+              'Supabase realtime private 채널 구독에 필요한 인증 정보를 찾지 못했습니다.',
+            )
+            console.warn('[realtime] 인증 세션이 없어 private 채널 구독을 건너뜁니다.', {
+              topic: normalizedTopic,
+            })
+            entry.lastStatus = 'CHANNEL_ERROR'
+            entry.lastError = missingAuthError
+            entry.statusHandlers.forEach((listener) => {
+              try {
+                listener('CHANNEL_ERROR', { topic: normalizedTopic, error: missingAuthError })
+              } catch (handlerError) {
+                console.warn('[realtime] 상태 콜백 오류를 처리하지 못했습니다.', handlerError)
+              }
+            })
+            cleanupChannel()
+            return
+          }
         }
 
         await new Promise((resolve, reject) => {

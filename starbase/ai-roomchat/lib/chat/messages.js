@@ -185,6 +185,7 @@ export function subscribeToMessages({
   heroId = null,
   ownerId = null,
   userId = null,
+  channelName = null,
 } = {}) {
   const handler = typeof onInsert === 'function' ? onInsert : () => {}
 
@@ -198,8 +199,10 @@ export function subscribeToMessages({
     userId,
   }
 
-  const channelName = `pgchanges:messages:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
-  const channel = supabase.channel(channelName)
+  const topic = channelName
+    ? String(channelName)
+    : `pgchanges:messages:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+  const channel = supabase.channel(topic)
 
   const forwardChange = (payload) => {
     if (!payload || !payload.new) {
@@ -223,23 +226,19 @@ export function subscribeToMessages({
 
   let active = true
 
-  channel
-    .subscribe((status, err) => {
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.warn('[realtime] 메시지 채널 상태 이상이 감지되었습니다.', {
-          topic: channelName,
-          status,
-          error: err || null,
-        })
-      }
+  channel.subscribe((status, err) => {
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      console.warn('[realtime] 메시지 채널 상태 이상이 감지되었습니다.', {
+        topic,
+        status,
+        error: err || null,
+      })
+    }
 
-      if (status === 'CLOSED') {
-        console.info('[realtime] 메시지 채널이 종료되었습니다.', { topic: channelName })
-      }
-    })
-    .catch((error) => {
-      console.error('[realtime] 메시지 채널 구독에 실패했습니다.', { topic: channelName, error })
-    })
+    if (status === 'CLOSED') {
+      console.info('[realtime] 메시지 채널이 종료되었습니다.', { topic })
+    }
+  })
 
   return () => {
     if (!active) {
