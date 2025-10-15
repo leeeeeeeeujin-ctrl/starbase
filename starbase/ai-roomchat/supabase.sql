@@ -3225,14 +3225,28 @@ using (
     and exists (
       select 1
       from public.rank_sessions rs
+      left join public.rank_session_meta rsm on rsm.session_id = rs.id
+      left join lateral (
+        select public.try_cast_uuid(
+          coalesce(
+            rsm.extras->>'matchInstanceId',
+            rsm.extras->>'match_instance_id',
+            rsm.async_fill_snapshot->>'matchInstanceId',
+            rsm.async_fill_snapshot->>'match_instance_id'
+          )
+        ) as match_instance_id
+      ) derived on true
       where rs.id = messages.session_id
         and (
           rs.owner_id = auth.uid()
-          or exists (
-            select 1
-            from public.rank_match_roster rmr2
-            where rmr2.session_id = rs.id
-              and rmr2.owner_id = auth.uid()
+          or (
+            derived.match_instance_id is not null
+            and exists (
+              select 1
+              from public.rank_match_roster rmr2
+              where rmr2.match_instance_id = derived.match_instance_id
+                and rmr2.owner_id = auth.uid()
+            )
           )
         )
     )
