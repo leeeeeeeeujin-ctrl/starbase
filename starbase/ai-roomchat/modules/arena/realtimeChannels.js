@@ -1,30 +1,42 @@
-import { supabase } from '@/lib/supabase'
+import { subscribeToBroadcastTopic } from '@/lib/realtime/broadcast'
 
 export function subscribeToQueue(queueId, handler) {
   if (!queueId) return () => {}
-  const channel = supabase.channel(`arena-queue:${queueId}`)
-  channel.on(
-    'postgres_changes',
-    { event: '*', schema: 'public', table: 'rank_queue_tickets', filter: `queue_id=eq.${queueId}` },
-    (payload) => handler?.({ type: 'queue', payload }),
+
+  return subscribeToBroadcastTopic(
+    `rank_queue_tickets:queue:${queueId}`,
+    (change) => {
+      handler?.({ type: 'queue', payload: change })
+    },
+    { events: ['INSERT', 'UPDATE', 'DELETE'] },
   )
-  channel.subscribe()
-  return () => supabase.removeChannel(channel)
 }
 
 export function subscribeToSession(sessionId, handler) {
   if (!sessionId) return () => {}
-  const channel = supabase.channel(`arena-session:${sessionId}`)
-  channel.on(
-    'postgres_changes',
-    { event: '*', schema: 'public', table: 'rank_sessions', filter: `id=eq.${sessionId}` },
-    (payload) => handler?.({ type: 'session', payload }),
-  )
-  channel.on(
-    'postgres_changes',
-    { event: '*', schema: 'public', table: 'rank_turns', filter: `session_id=eq.${sessionId}` },
-    (payload) => handler?.({ type: 'turn', payload }),
-  )
-  channel.subscribe()
-  return () => supabase.removeChannel(channel)
+
+  const unsubscribers = [
+    subscribeToBroadcastTopic(
+      `rank_sessions:session:${sessionId}`,
+      (change) => {
+        handler?.({ type: 'session', payload: change })
+      },
+      { events: ['INSERT', 'UPDATE', 'DELETE'] },
+    ),
+    subscribeToBroadcastTopic(
+      `rank_turns:session:${sessionId}`,
+      (change) => {
+        handler?.({ type: 'turn', payload: change })
+      },
+      { events: ['INSERT', 'UPDATE', 'DELETE'] },
+    ),
+  ]
+
+  return () => {
+    unsubscribers.forEach((unsubscribe) => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
+    })
+  }
 }
