@@ -5,7 +5,7 @@
 ## 포함 사항
 
 1. **채팅방 테이블과 RLS**
-   `chat_rooms`, `chat_room_members`, `chat_room_moderators`를 생성하고 선택/삽입/수정/삭제 정책을 등록합니다. 각 테이블은 `updated_at`/`last_active_at`을 자동으로 갱신하는 트리거를 가집니다. 운영자 멤버십은 `chat_room_members` 트리거가 `chat_room_moderators` 캐시로 동기화되어 RLS 평가 중 동일 테이블을 재귀 조회하지 않아도 됩니다.
+   `chat_rooms`, `chat_room_members`, `chat_room_moderators`를 생성하고 선택/삽입/수정/삭제 정책을 등록합니다. 각 테이블은 `updated_at`/`last_active_at`을 자동으로 갱신하는 트리거를 가집니다. 운영자 멤버십은 `chat_room_members` 트리거가 `chat_room_moderators` 캐시로 동기화하고, 동시에 `room_owner_id`·`room_visibility` 메타데이터를 미리 채워 RLS 평가 중 `chat_rooms` ↔ `chat_room_members`가 서로 재귀 호출되지 않도록 분리합니다.
 
 2. **`messages` 테이블 기본값 및 정책**
    메시지의 기본값·제약·인덱스를 정리하고, 기존 SELECT 정책을 모두 제거한 뒤 `messages_select_public` 단일 정책만 남겨 글로벌/방/세션/귓속말 노출을 제어하도록 구성합니다. 세션 판별을 위해 `is_rank_session_owner_or_roster` 함수도 함께 배포됩니다.
@@ -38,6 +38,8 @@
 | 함수 | `public.sync_chat_room_moderators` | `chat_room_members` 변동을 감지해 `chat_room_moderators` 캐시를 최신으로 유지합니다. |
 | 트리거 | `trg_messages_broadcast` | `messages` 테이블 변경 시 `broadcast_messages_changes` 함수를 실행합니다. |
 | 트리거 | `trg_chat_room_members_sync_moderators` | 운영자 승격/강등 시 `chat_room_moderators` 캐시를 갱신합니다. |
+| 트리거 | `trg_chat_room_members_room_metadata` | 멤버십 행 삽입/갱신 시 방 소유자·공개 여부를 미리 채워 순환 RLS를 방지합니다. |
+| 트리거 | `trg_chat_rooms_refresh_member_metadata` | 방 소유자나 공개 여부가 변경되면 모든 멤버 행의 캐시를 갱신합니다. |
 
 퍼블리케이션은 `alter publication supabase_realtime add table ...` 구문으로 `messages`, `chat_rooms`, `chat_room_members`가 등록되어 있어야 합니다.
 

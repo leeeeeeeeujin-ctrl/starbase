@@ -25,10 +25,18 @@ create table if not exists public.chat_room_members (
   role text,
   status text not null default 'active',
   is_moderator boolean not null default false,
+  room_owner_id uuid,
+  room_visibility text,
   last_active_at timestamptz not null default timezone('utc', now()),
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.chat_room_members
+  add column if not exists room_owner_id uuid;
+
+alter table public.chat_room_members
+  add column if not exists room_visibility text;
 
 create table if not exists public.chat_room_moderators (
   room_id uuid not null references public.chat_rooms(id) on delete cascade,
@@ -75,11 +83,13 @@ create policy chat_room_members_select
 on public.chat_room_members for select
 using (
   owner_id = auth.uid()
+  or room_owner_id = auth.uid()
+  or room_visibility = 'public'
   or exists (
     select 1
-    from public.chat_rooms r
-    where r.id = chat_room_members.room_id
-      and (r.owner_id = auth.uid() or r.visibility = 'public')
+    from public.chat_room_moderators m
+    where m.room_id = chat_room_members.room_id
+      and m.owner_id = auth.uid()
   )
 );
 
@@ -103,12 +113,7 @@ using (
     where m.room_id = chat_room_members.room_id
       and m.owner_id = auth.uid()
   )
-  or exists (
-    select 1
-    from public.chat_rooms r
-    where r.id = chat_room_members.room_id
-      and r.owner_id = auth.uid()
-  )
+  or room_owner_id = auth.uid()
 )
 with check (
   auth.uid() = owner_id
@@ -118,12 +123,7 @@ with check (
     where m.room_id = chat_room_members.room_id
       and m.owner_id = auth.uid()
   )
-  or exists (
-    select 1
-    from public.chat_rooms r
-    where r.id = chat_room_members.room_id
-      and r.owner_id = auth.uid()
-  )
+  or room_owner_id = auth.uid()
 );
 
 create policy chat_room_members_delete
@@ -136,12 +136,7 @@ using (
     where m.room_id = chat_room_members.room_id
       and m.owner_id = auth.uid()
   )
-  or exists (
-    select 1
-    from public.chat_rooms r
-    where r.id = chat_room_members.room_id
-      and r.owner_id = auth.uid()
-  )
+  or room_owner_id = auth.uid()
 );
 
 create index if not exists chat_rooms_visibility_idx
@@ -158,6 +153,61 @@ create index if not exists chat_room_moderators_owner_idx
 
 create index if not exists chat_room_moderators_room_idx
   on public.chat_room_moderators (room_id, owner_id);
+
+create or replace function public.populate_chat_room_member_room_metadata()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_owner_id uuid;
+  v_visibility text;
+begin
+  if new.room_id is null then
+    new.room_owner_id := null;
+    new.room_visibility := null;
+    return new;
+  end if;
+
+  select r.owner_id, r.visibility
+    into v_owner_id, v_visibility
+  from public.chat_rooms r
+  where r.id = new.room_id;
+
+  new.room_owner_id := v_owner_id;
+  new.room_visibility := v_visibility;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_chat_room_members_room_metadata on public.chat_room_members;
+create trigger trg_chat_room_members_room_metadata
+before insert or update on public.chat_room_members
+for each row execute function public.populate_chat_room_member_room_metadata();
+
+create or replace function public.refresh_chat_room_members_room_metadata()
+returns trigger
+language plpgsql
+as $$
+begin
+  if (old.owner_id is not distinct from new.owner_id)
+     and (old.visibility is not distinct from new.visibility) then
+    return new;
+  end if;
+
+  update public.chat_room_members m
+  set room_owner_id = new.owner_id,
+      room_visibility = new.visibility
+  where m.room_id = new.id;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_chat_rooms_refresh_member_metadata on public.chat_rooms;
+create trigger trg_chat_rooms_refresh_member_metadata
+after update on public.chat_rooms
+for each row execute function public.refresh_chat_room_members_room_metadata();
 
 create or replace function public.touch_chat_room_updated_at()
 returns trigger
@@ -242,6 +292,12 @@ from public.chat_room_members m
 where coalesce(m.is_moderator, false)
   and coalesce(m.status, 'active') = 'active'
 on conflict (room_id, owner_id) do nothing;
+
+update public.chat_room_members m
+set room_owner_id = r.owner_id,
+    room_visibility = r.visibility
+from public.chat_rooms r
+where r.id = m.room_id;
 
 create or replace function public.guard_chat_room_member_moderators()
 returns trigger
