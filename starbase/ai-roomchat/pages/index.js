@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/router'
 
 import AuthButton from '../components/AuthButton'
@@ -307,6 +308,17 @@ export default function Home() {
         <div className={styles.cta}>
           <AuthButton />
           <span className={styles.ctaHint}>Google 계정으로 즉시 접속</span>
+        </div>
+        <div className={styles.arenaNotice}>
+          <strong className={styles.arenaNoticeLabel}>방 검색 안내</strong>
+          <p>
+            빠른 매칭이 필요할 때는 <Link href="/arena/queue">Rank Arena</Link>에서 큐 대기 → 준비 투표
+            → 본게임 흐름을 따라 주세요. Arena는 Supabase RPC와 Realtime만으로 방 검색을 대체하며
+            기존 방 목록은 비교용으로 남겨 두었습니다.
+          </p>
+          <p className={styles.arenaNoticeHint}>
+            운영 포털에서 타이틀 UI를 조정하더라도 이 안내는 최신 Arena 흐름을 가리키도록 유지됩니다.
+          </p>
         </div>
         <section className={styles.sections}>
           <div className={styles.featureBlock}>

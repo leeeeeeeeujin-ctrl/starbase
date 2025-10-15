@@ -154,10 +154,19 @@ function useMatchReadyState(gameId) {
       return empty
     }
     const snapshot = readMatchFlowState(gameId)
+    const storedSessionId = snapshot?.sessionHistory?.sessionId || null
+    if (storedSessionId && !latestRef.current.sessionId) {
+      const trimmed = String(storedSessionId).trim()
+      latestRef.current.sessionId = trimmed || latestRef.current.sessionId
+    }
+    const effectiveSessionId =
+      latestRef.current.sessionId || (storedSessionId ? String(storedSessionId).trim() || null : null)
+    const effectiveRoomId =
+      latestRef.current.roomId || (snapshot?.room?.id ? String(snapshot.room.id).trim() || null : null)
     const augmented = {
       ...snapshot,
-      sessionId: latestRef.current.sessionId,
-      roomId: latestRef.current.roomId,
+      sessionId: effectiveSessionId,
+      roomId: effectiveRoomId,
     }
     setState(augmented)
     setDiagnostics((prev) => {
@@ -166,7 +175,11 @@ function useMatchReadyState(gameId) {
       return {
         ...prev,
         sessionId: augmented?.sessionId ? String(augmented.sessionId).trim() : prev.sessionId,
-        roomId: augmented?.room?.id ? String(augmented.room.id).trim() : prev.roomId,
+        roomId: augmented?.room?.id
+          ? String(augmented.room.id).trim()
+          : effectiveRoomId
+          ? String(effectiveRoomId).trim()
+          : prev.roomId,
         rosterCount: roster.length,
         readyCount,
         hasActiveKey: !!augmented?.hasActiveKey,
@@ -316,14 +329,32 @@ function useMatchReadyState(gameId) {
   }, [syncFromRemote])
 
   useEffect(() => {
+    let storedSessionId = null
+    let storedRoomId = null
+    if (gameId || gameId === 0) {
+      const storedState = readMatchFlowState(gameId)
+      if (storedState?.sessionHistory?.sessionId) {
+        const trimmed = String(storedState.sessionHistory.sessionId).trim()
+        if (trimmed) {
+          storedSessionId = trimmed
+        }
+      }
+      if (storedState?.room?.id) {
+        const trimmedRoom = String(storedState.room.id).trim()
+        if (trimmedRoom) {
+          storedRoomId = trimmedRoom
+        }
+      }
+    }
+
     latestRef.current = {
       slotTemplateVersion: null,
       slotTemplateUpdatedAt: null,
-      sessionId: null,
-      roomId: null,
+      sessionId: storedSessionId,
+      roomId: storedRoomId,
     }
     refresh()
-  }, [refresh])
+  }, [gameId, refresh])
 
   useEffect(() => {
     if (!gameId && gameId !== 0) return undefined
@@ -500,8 +531,8 @@ function useMatchReadyState(gameId) {
   }, [gameId, refresh])
 
   const allowStart = useMemo(
-    () => Boolean(gameId && state?.snapshot && state?.hasActiveKey),
-    [gameId, state?.snapshot, state?.hasActiveKey],
+    () => Boolean(gameId && state?.snapshot && state?.hasActiveKey && state?.sessionId),
+    [gameId, state?.snapshot, state?.hasActiveKey, state?.sessionId],
   )
 
   const missingKey = Boolean(state?.snapshot && !state?.hasActiveKey)
@@ -705,8 +736,12 @@ export default function MatchReadyClient({ gameId }) {
       const trimmed = String(state.sessionId).trim()
       if (trimmed) return trimmed
     }
+    if (state?.sessionHistory?.sessionId) {
+      const trimmed = String(state.sessionHistory.sessionId).trim()
+      if (trimmed) return trimmed
+    }
     return ''
-  }, [state?.sessionId])
+  }, [state?.sessionId, state?.sessionHistory?.sessionId])
 
   const matchInstanceId = useMemo(() => {
     if (state?.matchInstanceId !== null && state?.matchInstanceId !== undefined) {

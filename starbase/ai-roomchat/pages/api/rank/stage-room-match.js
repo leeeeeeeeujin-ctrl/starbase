@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { withTableQuery } from '@/lib/supabaseTables'
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv'
+import { addSupabaseDebugEvent } from '@/lib/debugCollector'
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -216,6 +217,19 @@ export default async function handler(req, res) {
   const gameId = toOptionalTrimmedString(payload.game_id || payload.gameId)
   const rosterEntries = normalizeRosterEntries(payload.roster)
   const heroMap = payload.hero_map && typeof payload.hero_map === 'object' ? payload.hero_map : {}
+  const allowPartial = payload.allow_partial === true || payload.allow_partial === 'true'
+  const asyncFillMeta =
+    payload.async_fill_meta && typeof payload.async_fill_meta === 'object'
+      ? payload.async_fill_meta
+      : null
+  const readyVotePayload =
+    payload.ready_vote && typeof payload.ready_vote === 'object'
+      ? payload.ready_vote
+      : null
+  const bodyOwnerId = toOptionalTrimmedString(
+    payload.room_owner_id || payload.host_owner_id || payload.owner_id || null,
+  )
+  const bodyMatchMode = toOptionalTrimmedString(payload.match_mode || payload.mode || null)
 
   if (!matchInstanceId) {
     return res.status(400).json({ error: 'missing_match_instance_id' })
@@ -229,6 +243,23 @@ export default async function handler(req, res) {
   if (!rosterEntries.length) {
     return res.status(400).json({ error: 'empty_roster' })
   }
+
+  const { data: roomRow, error: roomError } = await withTableQuery(
+    supabaseAdmin,
+    'rank_rooms',
+    (from) => from.select('id, owner_id, mode').eq('id', roomId).maybeSingle(),
+  )
+
+  if (roomError) {
+    return res.status(400).json({ error: roomError.message, supabaseError: roomError })
+  }
+
+  if (!roomRow) {
+    return res.status(404).json({ error: 'room_not_found' })
+  }
+
+  const roomOwnerId = bodyOwnerId || toOptionalTrimmedString(roomRow.owner_id)
+  const roomMode = bodyMatchMode || toOptionalTrimmedString(roomRow.mode)
 
   const ownerIds = Array.from(new Set(rosterEntries.map((entry) => entry.ownerId).filter(Boolean)))
   const heroIds = Array.from(new Set(rosterEntries.map((entry) => entry.heroId).filter(Boolean)))
@@ -404,6 +435,27 @@ export default async function handler(req, res) {
     p_roster: insertRows,
   }
 
+  if (!allowPartial) {
+    const { error: readinessError } = await supabaseAdmin.rpc('assert_room_ready', {
+      p_room_id: roomId,
+    })
+
+    if (readinessError) {
+      if (isMissingRpcError(readinessError, 'assert_room_ready')) {
+        return res.status(500).json({
+          error: 'missing_assert_room_ready',
+          hint:
+            'Supabase에 assert_room_ready(uuid) 함수를 배포하고 authenticated/service_role에 실행 권한을 부여하세요.',
+          supabaseError: readinessError,
+        })
+      }
+      return res.status(400).json({
+        error: readinessError.message || 'ready_check_failed',
+        supabaseError: readinessError,
+      })
+    }
+  }
+
   const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('sync_rank_match_roster', rpcPayload)
 
   if (rpcError) {
@@ -419,10 +471,79 @@ export default async function handler(req, res) {
 
   const summary = Array.isArray(rpcData) && rpcData.length ? rpcData[0] : null
 
+  let sessionId = null
+  const ensurePayload = {
+    p_room_id: roomId,
+    p_game_id: gameId,
+    p_owner_id: roomOwnerId,
+    p_mode: roomMode,
+    p_vote: readyVotePayload,
+  }
+
+  if (!roomOwnerId) {
+    return res.status(400).json({ error: 'missing_room_owner_id' })
+  }
+
+  const { data: ensureData, error: ensureError } = await supabaseAdmin.rpc(
+    'ensure_rank_session_for_room',
+    ensurePayload,
+  )
+
+  if (ensureError) {
+    if (isMissingRpcError(ensureError, 'ensure_rank_session_for_room')) {
+      return res.status(500).json({
+        error: 'missing_ensure_rank_session_for_room',
+        hint:
+          'Supabase에 ensure_rank_session_for_room(uuid, uuid, uuid, text, jsonb) 함수를 배포하고 권한을 부여하세요.',
+        supabaseError: ensureError,
+      })
+    }
+    return res.status(400).json({
+      error: ensureError.message || 'session_sync_failed',
+      supabaseError: ensureError,
+    })
+  }
+
+  if (Array.isArray(ensureData) && ensureData.length) {
+    sessionId = toOptionalTrimmedString(ensureData[0])
+  } else if (typeof ensureData === 'string') {
+    sessionId = toOptionalTrimmedString(ensureData)
+  } else if (ensureData && typeof ensureData === 'object' && ensureData.session_id) {
+    sessionId = toOptionalTrimmedString(ensureData.session_id)
+  }
+
+  if (!sessionId) {
+    return res.status(500).json({
+      error: 'session_id_unavailable',
+      hint:
+        'ensure_rank_session_for_room가 세션 ID를 반환하도록 Supabase 함수를 점검하세요. 반환값이 uuid가 되도록 SQL을 확인해야 합니다.',
+    })
+  }
+
+  if (sessionId && asyncFillMeta) {
+    const { error: asyncFillError } = await supabaseAdmin.rpc('upsert_rank_session_async_fill', {
+      p_session_id: sessionId,
+      p_async_fill: asyncFillMeta,
+    })
+
+    if (asyncFillError && !isMissingRpcError(asyncFillError, 'upsert_rank_session_async_fill')) {
+      addSupabaseDebugEvent({
+        source: 'stage-room-match',
+        operation: 'upsert_rank_session_async_fill',
+        error: asyncFillError,
+        payload: {
+          sessionId,
+        },
+      })
+    }
+  }
+
   return res.status(200).json({
     ok: true,
     staged: summary?.inserted_count ?? insertRows.length,
     slot_template_version: summary?.slot_template_version ?? slotTemplateVersion,
     slot_template_updated_at: summary?.slot_template_updated_at ?? slotTemplateUpdatedAt,
+    session_id: sessionId,
+    ready_vote: readyVotePayload,
   })
 }
