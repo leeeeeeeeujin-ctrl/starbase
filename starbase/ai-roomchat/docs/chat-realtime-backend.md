@@ -43,6 +43,19 @@
 
 실시간 채팅이 동작하려면 다음 SQL 조각이 반드시 적용돼 있어야 합니다. 이미 `/supabase/chat_realtime_backend.sql`에 포함되어 있지만, 필요한 블록만 다시 실행하고 싶을 때 참고하세요.
 
+### 어떤 Realtime 채널을 쓰나요?
+
+클라이언트는 `supabase.channel(...).on('postgres_changes', ...)`를 통해 **Postgres Changes** 스트림을 직접 구독합니다. `lib/chat/messages.js`의 `subscribeToMessages` 훅이 `public.messages` 테이블에 대한 `INSERT/UPDATE` 이벤트를 받아 채팅 목록을 즉시 갱신하죠.【F:starbase/ai-roomchat/lib/chat/messages.js†L211-L274】
+
+백엔드는 같은 변경을 `public.broadcast_messages_changes` 트리거로 `realtime.broadcast_changes`에 중계해 `messages:global`, `messages:room:<id>` 등 토픽으로 흘려보냅니다.【F:starbase/ai-roomchat/supabase/chat_realtime_backend.sql†L491-L548】 이 브로드캐스트 경로는 랭크 전용 클라이언트나 외부 워커가 필요한 토픽만 선택 구독할 수 있도록 준비된 옵션 채널입니다. 그러나 현재 대시보드 채팅 UI는 별도의 broadcast API 없이 Postgres Changes 피드만 사용합니다.
+
+요약하면:
+
+* **대시보드 채팅** → Postgres Changes(`pgchanges`) 구독.
+* **브로드캐스트 토픽** → 동일한 변경을 선택적으로 청취해야 하는 다른 클라이언트(랭크 매칭 등)가 사용할 수 있도록 백엔드에서 함께 내보내는 보조 채널.
+
+실제 배포에서는 두 경로 모두 동일한 `messages` 변경을 바라보므로, 한쪽이 장애가 나더라도 다른 경로로 재구성하기 쉽도록 유지하고 있습니다.
+
 ```sql
 -- 메시지 RLS: 먼저 기존 SELECT 정책을 모두 제거합니다.
 do $$
