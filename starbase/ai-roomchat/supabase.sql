@@ -5081,7 +5081,50 @@ begin
     order by s.updated_at desc
   ) as row;
 
-  with contact_candidates as (
+  with session_map as (
+    select
+      s.id as session_id,
+      s.room_id,
+      public.try_cast_uuid(
+        coalesce(
+          sm.extras->>'matchInstanceId',
+          sm.extras->>'match_instance_id',
+          sm.async_fill_snapshot->>'matchInstanceId',
+          sm.async_fill_snapshot->>'match_instance_id'
+        )
+      ) as match_instance_id,
+      s.updated_at as session_updated_at
+    from public.rank_sessions s
+    left join public.rank_session_meta sm on sm.session_id = s.id
+  ),
+  my_roster as (
+    select
+      session_lookup.session_id,
+      r.match_instance_id,
+      r.role,
+      r.updated_at,
+      row_number() over (
+        order by coalesce(session_lookup.session_updated_at, r.updated_at) desc
+      ) as rn
+    from public.rank_match_roster r
+    left join lateral (
+      select sm.session_id, sm.session_updated_at
+      from session_map sm
+      where (
+        sm.match_instance_id is not null
+        and sm.match_instance_id = r.match_instance_id
+      )
+         or (
+           sm.match_instance_id is null
+           and sm.room_id is not null
+           and sm.room_id = r.room_id
+         )
+      order by sm.session_updated_at desc
+      limit 1
+    ) as session_lookup on true
+    where r.owner_id = v_owner_id
+  ),
+  contact_candidates as (
     select distinct on (rp.owner_id, rp.hero_id)
       rp.owner_id,
       rp.hero_id,
