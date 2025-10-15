@@ -359,44 +359,6 @@
   transition: border-color 0.2s ease, color 0.2s ease;
 }
 
-.chatSection {
-  display: grid;
-  gap: 16px;
-  padding: 20px 22px;
-  border-radius: 22px;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: rgba(15, 23, 42, 0.72);
-}
-
-.chatHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.chatSubtitle {
-  margin: 6px 0 0;
-  font-size: 13px;
-  color: rgba(148, 163, 184, 0.82);
-  max-width: 540px;
-}
-
-.chatHint {
-  margin: 0;
-  font-size: 12px;
-  color: rgba(148, 163, 184, 0.75);
-}
-
-.chatDock {
-  border-radius: 18px;
-  overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: rgba(15, 23, 42, 0.9);
-  box-shadow: 0 22px 48px -32px rgba(15, 23, 42, 0.6);
-}
-
 .secondaryButton:hover,
 .secondaryButton:focus-visible {
   border-color: rgba(148, 163, 184, 0.6);

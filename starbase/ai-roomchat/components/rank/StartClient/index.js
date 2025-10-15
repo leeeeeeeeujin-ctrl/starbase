@@ -11,7 +11,6 @@ import TurnInfoPanel from './TurnInfoPanel'
 import TurnSummaryPanel from './TurnSummaryPanel'
 import ManualResponsePanel from './ManualResponsePanel'
 import StatusBanner from './StatusBanner'
-import SharedChatDock from '../../common/SharedChatDock'
 import {
   clearMatchFlow,
   createEmptyMatchFlowState,
@@ -561,32 +560,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       null
     )
   }, [sessionInfo])
-  const chatMatchInstanceId = useMemo(() => {
-    return (
-      toTrimmedId(matchState?.matchInstanceId) ||
-      asyncMatchInstanceId ||
-      sessionInfoMatchInstanceId ||
-      extrasMatchInstanceId ||
-      null
-    )
-  }, [asyncMatchInstanceId, extrasMatchInstanceId, matchState?.matchInstanceId, sessionInfoMatchInstanceId])
-  const chatSessionId = useMemo(() => {
-    return (
-      toTrimmedId(sessionInfo?.id) ||
-      toTrimmedId(matchState?.sessionId) ||
-      toTrimmedId(matchState?.sessionHistory?.sessionId) ||
-      null
-    )
-  }, [matchState?.sessionHistory?.sessionId, matchState?.sessionId, sessionInfo?.id])
-  const chatRoomId = useMemo(() => {
-    return (
-      toTrimmedId(matchState?.room?.id) ||
-      toTrimmedId(sessionInfo?.roomId) ||
-      toTrimmedId(sessionInfo?.room_id) ||
-      null
-    )
-  }, [matchState?.room?.id, sessionInfo?.roomId, sessionInfo?.room_id])
-  const chatGameId = useMemo(() => toTrimmedId(gameId), [gameId])
   const hostRoleName = useMemo(() => {
     if (typeof asyncFillInfo?.hostRole === 'string' && asyncFillInfo.hostRole.trim()) {
       return asyncFillInfo.hostRole.trim()
@@ -604,10 +577,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     () => normalizeRoleName(matchState?.viewer?.role || ''),
     [matchState?.viewer?.role],
   )
-  const chatViewerRole = useMemo(
-    () => matchState?.viewer?.role || normalizedViewerRole || null,
-    [matchState?.viewer?.role, normalizedViewerRole],
-  )
   const restrictedContext = blindMode || isAsyncMode
   const viewerIsHostOwner = Boolean(hostOwnerId && viewerOwnerId && viewerOwnerId === hostOwnerId)
   const viewerMatchesHostRole = Boolean(
@@ -616,7 +585,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   const viewerMaySeeFull = !restrictedContext || viewerIsHostOwner || viewerMatchesHostRole
   const viewerCanToggleDetails = restrictedContext && (viewerIsHostOwner || viewerMatchesHostRole)
   const [showRosterDetails, setShowRosterDetails] = useState(() => viewerMaySeeFull)
-  const allowMainChatInput = Boolean(canSubmitAction)
 
   useEffect(() => {
     setShowRosterDetails(viewerMaySeeFull)
@@ -823,34 +791,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           realtimeEvents={realtimeEvents}
         />
 
-        <section className={styles.chatSection}>
-          <div className={styles.chatHeader}>
-            <div>
-              <h2 className={styles.sectionTitle}>공유 채널</h2>
-              <p className={styles.chatSubtitle}>
-                글로벌·메인·역할·귓속말 메시지를 한곳에서 확인하고 차례에 맞춰 발화하세요.
-              </p>
-            </div>
-            <p className={styles.chatHint}>
-              {allowMainChatInput
-                ? '현재 차례입니다. 메인 채널 입력이 활성화되었습니다.'
-                : '다른 참가자의 차례입니다. 메인 채널은 읽기 전용으로 전환되었습니다.'}
-            </p>
-          </div>
-          <div className={styles.chatDock}>
-            <SharedChatDock
-              heroId={viewerHeroId}
-              viewerHero={viewerHeroProfile}
-              sessionId={chatSessionId}
-              matchInstanceId={chatMatchInstanceId}
-              gameId={chatGameId}
-              roomId={chatRoomId}
-              roster={chatRoster}
-              viewerRole={chatViewerRole}
-              allowMainInput={allowMainChatInput}
-            />
-          </div>
-        </section>
       </div>
     </div>
   )

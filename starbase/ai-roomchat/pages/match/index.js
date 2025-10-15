@@ -1,9 +1,9 @@
 import Head from 'next/head'
+import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 
-import SharedChatDock, { SharedChatDockProvider } from '@/components/common/SharedChatDock'
 import { supabase } from '@/lib/supabase'
 import { resolveViewerProfile } from '@/lib/heroes/resolveViewerProfile'
 import { fetchHeroParticipationBundle } from '@/modules/character/participation'
@@ -77,6 +77,27 @@ const styles = {
   layout: {
     display: 'grid',
     gap: 28,
+  },
+  chatButtonRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 4,
+  },
+  chatLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '10px 16px',
+    borderRadius: 999,
+    background: 'rgba(56, 189, 248, 0.18)',
+    border: '1px solid rgba(56, 189, 248, 0.4)',
+    color: '#bae6fd',
+    fontWeight: 700,
+    textDecoration: 'none',
+    fontSize: 14,
+    transition: 'background 0.2s ease',
   },
   section: {
     display: 'grid',
@@ -246,11 +267,6 @@ const styles = {
     fontWeight: 700,
     cursor: 'pointer',
   }),
-  chatDock: {
-    borderRadius: 26,
-    overflow: 'hidden',
-    border: '1px solid rgba(148, 163, 184, 0.28)',
-  },
   gameCard: (selected) => ({
     borderRadius: 18,
     border: selected
@@ -362,11 +378,6 @@ const styles = {
     fontWeight: 700,
     cursor: 'pointer',
   }),
-  chatDock: {
-    borderRadius: 26,
-    overflow: 'hidden',
-    border: '1px solid rgba(148, 163, 184, 0.28)',
-  },
 }
 
 function normalizeUserHeaderValue(value) {
@@ -590,104 +601,6 @@ function normalizeLobbySnapshot(raw = {}) {
     ? raw.sessions.map(normalizeSession).filter(Boolean)
     : []
   return { queue, sessions }
-}
-
-function extractActiveHeroIds(turnState) {
-  const ids = new Set()
-  if (!turnState || typeof turnState !== 'object') {
-    return ids
-  }
-
-  const addCandidate = (value) => {
-    if (!value) return
-    if (typeof value === 'string' || typeof value === 'number') {
-      ids.add(String(value))
-      return
-    }
-    if (typeof value === 'object') {
-      const candidate =
-        value.heroId ?? value.hero_id ?? value.id ?? value.hero ?? value
-      if (candidate) {
-        ids.add(String(candidate))
-      }
-    }
-  }
-
-  const directCandidates = [
-    turnState.heroId,
-    turnState.hero_id,
-    turnState.activeHeroId,
-    turnState.activeHero?.heroId,
-    turnState.activeHero?.hero_id,
-    turnState.activeHero?.id,
-    turnState.currentHeroId,
-    turnState.currentHero?.heroId,
-    turnState.currentHero?.id,
-    turnState.current?.heroId,
-    turnState.current?.hero_id,
-    turnState.current?.id,
-    turnState.turn?.heroId,
-    turnState.turn?.hero_id,
-    turnState.turn?.id,
-  ]
-
-  directCandidates.forEach(addCandidate)
-
-  const arrayCandidates = [
-    turnState.activeHeroes,
-    turnState.activeSlots,
-    turnState.turnHeroes,
-    turnState.turn?.heroes,
-    turnState.participants,
-  ]
-
-  for (const list of arrayCandidates) {
-    if (!Array.isArray(list)) continue
-    for (const entry of list) {
-      addCandidate(entry)
-    }
-  }
-
-  return ids
-}
-
-function deriveMatchChatContext(session, viewerHeroId) {
-  const normalizedHeroId = viewerHeroId ? String(viewerHeroId) : null
-  const context = {
-    matchInstanceId: session?.matchInstanceId || null,
-    viewerRole: null,
-    allowMainInput: true,
-  }
-
-  if (!session) {
-    return context
-  }
-
-  const roster = Array.isArray(session.roster) ? session.roster : []
-  if (normalizedHeroId) {
-    const rosterEntry = roster.find((slot) => {
-      if (!slot) return false
-      const slotHeroId = slot.heroId || slot.hero_id || null
-      return slotHeroId && String(slotHeroId) === normalizedHeroId
-    })
-    if (rosterEntry?.role) {
-      context.viewerRole = rosterEntry.role
-    }
-  }
-
-  if (!context.matchInstanceId) {
-    const rosterMatch = roster.find((slot) => slot?.matchInstanceId || slot?.match_instance_id)
-    if (rosterMatch) {
-      context.matchInstanceId = rosterMatch.matchInstanceId || rosterMatch.match_instance_id || null
-    }
-  }
-
-  const activeIds = extractActiveHeroIds(session.turnState)
-  if (activeIds.size > 0) {
-    context.allowMainInput = normalizedHeroId ? activeIds.has(normalizedHeroId) : false
-  }
-
-  return context
 }
 
 function normalizeGameSlot(row) {
@@ -1512,11 +1425,6 @@ export default function MatchPage() {
     '매칭이 성사되었습니다. 턴 제한시간을 선택해주세요.',
     '제한시간 내에 선택하지 않으면 매칭이 취소됩니다. 반복된 매칭 취소는 불이익을 받을 수 있습니다.',
   ]
-  const viewerHeroId = viewerHero?.hero_id || null
-  const matchChatContext = useMemo(
-    () => deriveMatchChatContext(session, viewerHeroId),
-    [session, viewerHeroId],
-  )
   const renderKeyringSection = () => (
     <section style={styles.section}>
       <div style={styles.sectionHeader}>
@@ -1769,7 +1677,7 @@ export default function MatchPage() {
   )
 
   return (
-    <SharedChatDockProvider>
+    <>
       <Head>
         <title>매칭 센터 · Starbase</title>
       </Head>
@@ -1780,6 +1688,11 @@ export default function MatchPage() {
             <p style={styles.subtitle}>
               API 키를 활성화하고 게임을 선택한 뒤 매칭 버튼만 누르면 자동으로 큐·방·메인 게임까지 연결됩니다.
             </p>
+            <div style={styles.chatButtonRow}>
+              <Link href="/chat" style={styles.chatLink}>
+                공용 채팅 페이지 열기
+              </Link>
+            </div>
           </header>
           <div style={styles.layout}>
             {renderKeyringSection()}
@@ -1793,25 +1706,9 @@ export default function MatchPage() {
                 </div>
               </section>
             ) : null}
-            <section style={styles.section}>
-              <h2 style={styles.sectionTitle}>공유 채팅</h2>
-              <div style={styles.chatDock}>
-                <SharedChatDock
-                  sessionId={session?.id || null}
-                  matchInstanceId={matchChatContext.matchInstanceId || session?.matchInstanceId || null}
-                  gameId={session?.gameId || null}
-                  roomId={session?.roomId || null}
-                  roster={session?.roster || []}
-                  viewerRole={matchChatContext.viewerRole}
-                  allowMainInput={matchChatContext.allowMainInput}
-                  heroId={viewerHeroId}
-                  viewerHero={viewerHero}
-                />
-              </div>
-            </section>
           </div>
         </div>
       </main>
-    </SharedChatDockProvider>
+    </>
   )
 }
