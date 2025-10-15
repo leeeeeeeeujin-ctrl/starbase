@@ -162,21 +162,28 @@ function messageMatchesContext(record, context) {
   const matchesRoom = !viewerRoom || viewerRoom === recordRoom
   const matchesChatRoom = !viewerChatRoom || viewerChatRoom === recordChatRoom
 
-  const heroAllowed =
-    !viewerHero || recordHero === viewerHero || recordTargetHero === viewerHero
-
-  const ownerAllowed =
-    !viewerOwner || recordOwner === viewerOwner || recordTargetOwner === viewerOwner
-
-  const userAllowed = !viewerUser || recordUser === viewerUser
-
   const visibility = Array.isArray(record.visible_owner_ids)
     ? record.visible_owner_ids
     : []
-  const visibilityAllowed =
+  const visibilityAllowsViewer =
     !visibility.length ||
     (viewerOwner && listIncludesIdentifier(visibility, viewerOwner)) ||
     (viewerUser && listIncludesIdentifier(visibility, viewerUser))
+
+  const heroAllowed =
+    !viewerHero ||
+    recordHero === viewerHero ||
+    recordTargetHero === viewerHero ||
+    visibilityAllowsViewer
+
+  const ownerAllowed =
+    !viewerOwner ||
+    recordOwner === viewerOwner ||
+    recordTargetOwner === viewerOwner ||
+    visibilityAllowsViewer
+
+  const userAllowed =
+    !viewerUser || recordUser === viewerUser || visibilityAllowsViewer
 
   return (
     matchesScope &&
@@ -188,7 +195,7 @@ function messageMatchesContext(record, context) {
     heroAllowed &&
     ownerAllowed &&
     userAllowed &&
-    visibilityAllowed
+    visibilityAllowsViewer
   )
 }
 
