@@ -17,7 +17,7 @@ const ARENA_LINKS = [
 const SUPPORT_LINKS = [
   { href: '/play', label: '메인룸' },
   { href: '/maker', label: '게임 제작' },
-  { href: '/rooms', label: '레거시 방 목록' },
+  { href: '/match', label: '매칭 센터' },
 ]
 
 export function ArcadeLayout({ title, actions = [], children }) {

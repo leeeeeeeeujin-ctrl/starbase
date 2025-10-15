@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
+import { subscribeToBroadcastTopic } from '../../../lib/realtime/broadcast'
 import { supabase } from '../../../lib/supabase'
 import { withTable } from '../../../lib/supabaseTables'
 import {
@@ -1782,64 +1783,48 @@ export function useStartClientEngine(gameId, options = {}) {
   useEffect(() => {
     if (!gameId) return undefined
 
-    const channel = supabase.channel(`rank-session-watch:${gameId}`, {
-      config: { broadcast: { ack: true } },
-    })
+    const unsubscribe = subscribeToBroadcastTopic(
+      `rank_sessions:game:${gameId}`,
+      (change) => {
+        const eventType = change?.eventType || change?.event || ''
+        if (eventType === 'DELETE') {
+          return
+        }
 
-    const handleChange = (payload) => {
-      const eventType = payload?.eventType || payload?.type || ''
-      if (eventType === 'DELETE') {
-        return
-      }
+        const record = change?.new || null
+        if (!record || typeof record !== 'object') {
+          return
+        }
 
-      const record = payload?.new || payload?.record || null
-      if (!record || typeof record !== 'object') {
-        return
-      }
+        const recordGameId = record.game_id ?? record.gameId ?? null
+        if (recordGameId && String(recordGameId).trim() !== String(gameId).trim()) {
+          return
+        }
 
-      const recordGameId = record.game_id ?? record.gameId ?? null
-      if (recordGameId && String(recordGameId).trim() !== String(gameId).trim()) {
-        return
-      }
+        const statusToken = record.status ? String(record.status).trim().toLowerCase() : 'active'
+        if (statusToken && statusToken !== 'active') {
+          return
+        }
 
-      const statusToken = record.status ? String(record.status).trim().toLowerCase() : 'active'
-      if (statusToken && statusToken !== 'active') {
-        return
-      }
+        const ownerSource =
+          record.owner_id ??
+          record.ownerId ??
+          record.ownerID ??
+          (record.owner && typeof record.owner === 'object' ? record.owner.id : null)
+        const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : ''
+        if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) {
+          return
+        }
 
-      const ownerSource =
-        record.owner_id ??
-        record.ownerId ??
-        record.ownerID ??
-        (record.owner && typeof record.owner === 'object' ? record.owner.id : null)
-      const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : ''
-      if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) {
-        return
-      }
-
-      adoptRemoteSession(record)
-    }
-
-    channel.on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'rank_sessions',
-        filter: `game_id=eq.${gameId}`,
+        adoptRemoteSession(record)
       },
-      handleChange,
+      { events: ['INSERT', 'UPDATE', 'DELETE'] },
     )
 
-    channel.subscribe()
-
     return () => {
-      try {
-        channel.unsubscribe()
-      } catch (error) {
-        console.warn('[StartClient] 세션 감시 채널 해제 실패:', error)
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
       }
-      supabase.removeChannel(channel)
     }
   }, [gameId, adoptRemoteSession, normalizedHostOwnerId])
 
@@ -4252,23 +4237,7 @@ export function useStartClientEngine(gameId, options = {}) {
       setRealtimeEvents((prev) => mergeTimelineEvents(prev, events))
     }
 
-    const handleTurnStateEvent = (payload) => {
-      const change = payload?.new || payload?.payload || null
-      const commitTimestamp = payload?.commit_timestamp || payload?.commitTimestamp || null
-      applyTurnStateChange(change, { commitTimestamp })
-    }
-
     channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)
-    channel.on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'rank_turn_state_events',
-        filter: `session_id=eq.${sessionId}`,
-      },
-      handleTurnStateEvent,
-    )
 
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
@@ -4283,6 +4252,16 @@ export function useStartClientEngine(gameId, options = {}) {
       }
     })
 
+    const unsubscribeTurnEvents = subscribeToBroadcastTopic(
+      `rank_turn_state_events:session:${sessionId}`,
+      (change) => {
+        const changePayload = change?.new || change?.payload || null
+        const commitTimestamp = change?.commit_timestamp || change?.payload?.commit_timestamp || null
+        applyTurnStateChange(changePayload, { commitTimestamp })
+      },
+      { events: ['INSERT', 'UPDATE', 'DELETE'] },
+    )
+
     return () => {
       try {
         channel.unsubscribe()
@@ -4294,6 +4273,9 @@ export function useStartClientEngine(gameId, options = {}) {
         turnEventBackfillAbortRef.current = null
       }
       supabase.removeChannel(channel)
+      if (typeof unsubscribeTurnEvents === 'function') {
+        unsubscribeTurnEvents()
+      }
     }
   }, [
     sessionInfo?.id,

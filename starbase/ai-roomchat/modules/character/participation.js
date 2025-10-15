@@ -1,10 +1,11 @@
 import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 
-const SLOT_COLUMNS = 'id,game_id,hero_id,slot_no'
+const SLOT_COLUMNS = 'id,game_id,hero_id,slot_index,role'
 const GAME_COLUMNS = 'id,name,cover_path,description,owner_id,created_at'
 const SESSION_COLUMNS = 'id,game_id,created_at,mode,started_by,version_id'
 const HERO_LOOKUP_COLUMNS = 'id,name,image_url,ability1,ability2,ability3,ability4,owner_id'
+const PARTICIPANT_COLUMNS = 'id,game_id,hero_id,owner_id,slot_no,role,rating,score,created_at,updated_at'
 
 function normaliseGame(row) {
   if (!row) return null
@@ -25,7 +26,8 @@ function normaliseSlot(row) {
     id: row.id || null,
     game_id: row.game_id || null,
     hero_id: row.hero_id || null,
-    slot_no: row.slot_no != null ? row.slot_no : null,
+    slot_no: row.slot_index != null ? row.slot_index : null,
+    role: row.role || null,
   }
 }
 
@@ -78,8 +80,10 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     }
   }
 
-  const { data: heroSlotsRaw, error: heroSlotsError } = await withTable(supabase, 'game_slots', (table) =>
-    supabase.from(table).select(SLOT_COLUMNS).eq('hero_id', heroId),
+  const { data: heroSlotsRaw, error: heroSlotsError } = await withTable(
+    supabase,
+    'rank_game_slots',
+    (table) => supabase.from(table).select(SLOT_COLUMNS).eq('hero_id', heroId),
   )
 
   if (heroSlotsError) {
@@ -97,8 +101,8 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     }
   }
 
-  const [allSlotsResult, gamesResult, sessionsResult] = await Promise.all([
-    withTable(supabase, 'game_slots', (table) =>
+  const [allSlotsResult, gamesResult, sessionsResult, participantsResult] = await Promise.all([
+    withTable(supabase, 'rank_game_slots', (table) =>
       supabase.from(table).select(SLOT_COLUMNS).in('game_id', gameIds),
     ),
     withTable(supabase, 'games', (table) =>
@@ -110,6 +114,13 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
         .select(SESSION_COLUMNS)
         .in('game_id', gameIds)
         .order('created_at', { ascending: false }),
+    ),
+    withTable(supabase, 'rank_participants', (table) =>
+      supabase
+        .from(table)
+        .select(PARTICIPANT_COLUMNS)
+        .eq('hero_id', heroId)
+        .in('game_id', gameIds),
     ),
   ])
 
@@ -126,6 +137,11 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
   const { data: sessionsRaw, error: sessionsError } = sessionsResult
   if (sessionsError) {
     throw sessionsError
+  }
+
+  const { data: participantsRaw, error: participantsError } = participantsResult
+  if (participantsError) {
+    throw participantsError
   }
 
   const allSlots = (Array.isArray(allSlotsRaw) ? allSlotsRaw : []).map(normaliseSlot)
@@ -147,12 +163,26 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     sessionsByGame.get(normalised.game_id).push(normalised)
   })
 
+  const participantsByGame = new Map()
+  ;(Array.isArray(participantsRaw) ? participantsRaw : []).forEach((participant) => {
+    if (!participant?.game_id) return
+    participantsByGame.set(participant.game_id, {
+      id: participant.id || null,
+      role: participant.role || null,
+      rating: participant.rating != null ? Number(participant.rating) : null,
+      score: participant.score != null ? Number(participant.score) : null,
+      slot_no: participant.slot_no != null ? participant.slot_no : null,
+      owner_id: participant.owner_id || null,
+    })
+  })
+
   const scoreboardMap = {}
   const heroIds = new Set(heroSeed?.id ? [heroSeed.id] : [])
 
   allSlots.forEach((slot) => {
     if (!slot?.game_id) return
     const sessions = sessionsByGame.get(slot.game_id) || []
+    const participant = participantsByGame.get(slot.game_id) || null
     if (!scoreboardMap[slot.game_id]) {
       scoreboardMap[slot.game_id] = []
     }
@@ -161,8 +191,9 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
       game_id: slot.game_id,
       hero_id: slot.hero_id,
       slot_no: slot.slot_no,
-      role: slot.slot_no != null ? `슬롯 ${slot.slot_no}` : '',
-      rating: slot.slot_no != null ? slot.slot_no + 1 : null,
+      role: participant?.role || slot.role || (slot.slot_no != null ? `슬롯 ${slot.slot_no}` : ''),
+      rating: participant?.rating != null ? participant.rating : slot.slot_no != null ? slot.slot_no + 1 : null,
+      score: participant?.score != null ? participant.score : null,
       battles: sessions.length || null,
     })
     if (slot.hero_id) {
@@ -196,13 +227,18 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     const latestSession = sessions[0]?.created_at || null
     const oldestSession = sessions.length ? sessions[sessions.length - 1]?.created_at : null
     const primaryMode = buildModeFrequency(sessions)
+    const participant = participantsByGame.get(slot.game_id) || null
+    const effectiveRole = participant?.role || slot.role || (slot.slot_no != null ? `슬롯 ${slot.slot_no}` : '')
+    const slotNumber = participant?.slot_no != null ? participant.slot_no : slot.slot_no
 
     return {
       id: slot.id,
       game_id: slot.game_id,
       hero_id: slot.hero_id,
-      slot_no: slot.slot_no,
-      role: slot.slot_no != null ? `슬롯 ${slot.slot_no}` : '',
+      slot_no: slotNumber,
+      role: effectiveRole,
+      rating: participant?.rating != null ? participant.rating : null,
+      score: participant?.score != null ? participant.score : null,
       sessionCount,
       latestSessionAt: latestSession,
       firstSessionAt: oldestSession,
