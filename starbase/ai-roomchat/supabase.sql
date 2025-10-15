@@ -4651,7 +4651,6 @@ begin
       c.session_id,
       c.match_instance_id,
       c.game_id,
-      c.room_id,
       c.chat_room_id,
       c.user_id,
       c.owner_id,
