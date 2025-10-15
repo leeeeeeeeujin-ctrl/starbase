@@ -2,356 +2,337 @@
 
 import { supabase } from '@/lib/supabase'
 
-let realtimeToken = null
-let authPromise = null
-let authListener = null
-const channelRegistry = new Map()
+const DEFAULT_EVENTS = ['INSERT', 'UPDATE', 'DELETE']
 
-const BROADCAST_PREFIXES = ['topic:', 'broadcast:', 'realtime:']
+function normaliseEvent(event) {
+  if (!event) return null
+  const token = String(event).trim().toUpperCase()
+  return token ? token : null
+}
 
-function normalizeTopicName(topic) {
+function normaliseTopic(topic) {
   if (!topic) return null
   const trimmed = String(topic).trim()
   if (!trimmed) return null
-
-  const lowered = trimmed.toLowerCase()
-  const hasPrefix = BROADCAST_PREFIXES.some((prefix) => lowered.startsWith(prefix))
-
-  if (hasPrefix) {
-    return trimmed
-  }
-
-  return `topic:${trimmed}`
+  return trimmed.startsWith('topic:') ? trimmed.slice(6) : trimmed
 }
 
-async function applyRealtimeToken(nextToken) {
-  const normalizedToken = nextToken || null
-  if (normalizedToken === realtimeToken) {
-    return realtimeToken
-  }
-
-  await supabase.realtime.setAuth(normalizedToken)
-  realtimeToken = normalizedToken
-  return realtimeToken
+function buildEqFilter(column, value) {
+  if (!column) return null
+  if (value === null || value === undefined) return null
+  const token = String(value).trim()
+  if (!token) return null
+  return `${column}=eq.${token}`
 }
 
-function ensureAuthListener() {
-  if (authListener) {
-    return
+function describeMessageTopic(segments) {
+  if (!segments.length) {
+    return [{ table: 'messages', filter: null }]
   }
 
-  const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
-    try {
-      await applyRealtimeToken(session?.access_token || null)
-    } catch (error) {
-      console.error('[realtime] 인증 토큰을 동기화하지 못했습니다.', error)
+  const [qualifier, rawValue] = segments
+  switch (qualifier) {
+    case 'global':
+      return [{ table: 'messages', filter: null }]
+    case 'scope':
+      return [{ table: 'messages', filter: buildEqFilter('scope', rawValue) }]
+    case 'channel':
+      return [{ table: 'messages', filter: buildEqFilter('channel_type', rawValue) }]
+    case 'session':
+      return [{ table: 'messages', filter: buildEqFilter('session_id', rawValue) }]
+    case 'match':
+      return [{ table: 'messages', filter: buildEqFilter('match_instance_id', rawValue) }]
+    case 'game':
+      return [{ table: 'messages', filter: buildEqFilter('game_id', rawValue) }]
+    case 'room':
+      return [{ table: 'messages', filter: buildEqFilter('room_id', rawValue) }]
+    case 'owner': {
+      const filter = buildEqFilter('owner_id', rawValue)
+      const targetFilter = buildEqFilter('target_owner_id', rawValue)
+      return [
+        { table: 'messages', filter },
+        { table: 'messages', filter: targetFilter },
+      ].filter((descriptor) => descriptor.filter)
     }
-  })
-
-  authListener = data?.subscription || null
-}
-
-export async function ensureRealtimeAuth() {
-  ensureAuthListener()
-
-  if (authPromise) {
-    return authPromise
-  }
-
-  authPromise = (async () => {
-    try {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession()
-
-      if (error) {
-        throw error
-      }
-
-      return await applyRealtimeToken(session?.access_token || null)
-    } finally {
-      authPromise = null
+    case 'target-owner':
+      return [{ table: 'messages', filter: buildEqFilter('target_owner_id', rawValue) }]
+    case 'hero': {
+      const filter = buildEqFilter('hero_id', rawValue)
+      const targetFilter = buildEqFilter('target_hero_id', rawValue)
+      return [
+        { table: 'messages', filter },
+        { table: 'messages', filter: targetFilter },
+      ].filter((descriptor) => descriptor.filter)
     }
-  })()
-
-  return authPromise
+    case 'target-hero':
+      return [{ table: 'messages', filter: buildEqFilter('target_hero_id', rawValue) }]
+    case 'thread':
+      return [{ table: 'messages', filter: buildEqFilter('thread_hint', rawValue) }]
+    case 'user':
+      return [{ table: 'messages', filter: buildEqFilter('user_id', rawValue) }]
+    default:
+      return [{ table: 'messages', filter: null }]
+  }
 }
 
-function normalizeBroadcastPayload(payload, topic, fallbackEvent) {
-  const basePayload = payload?.payload && typeof payload.payload === 'object' ? payload.payload : payload || {}
-  const eventTypeRaw = payload?.event || payload?.type || basePayload?.event || ''
-  const fallback = fallbackEvent ? String(fallbackEvent).toUpperCase() : 'INSERT'
-  const eventType = eventTypeRaw ? String(eventTypeRaw).toUpperCase() : fallback
-  const schema = basePayload?.schema || basePayload?.schema_name || null
-  const table = basePayload?.table || basePayload?.table_name || null
-  const commitTimestamp =
-    basePayload?.commit_timestamp || basePayload?.commitTimestamp || basePayload?.timestamp || null
-  const newRecord = basePayload?.new || basePayload?.record || null
-  const oldRecord = basePayload?.old || null
+function describeRankQueueTopic(segments) {
+  if (!segments.length) return [{ table: 'rank_queue_tickets', filter: null }]
+  const [qualifier, value] = segments
+  switch (qualifier) {
+    case 'queue':
+      return [{ table: 'rank_queue_tickets', filter: buildEqFilter('queue_id', value) }]
+    case 'ticket':
+      return [{ table: 'rank_queue_tickets', filter: buildEqFilter('id', value) }]
+    case 'owner':
+      return [{ table: 'rank_queue_tickets', filter: buildEqFilter('owner_id', value) }]
+    case 'game':
+      return [{ table: 'rank_queue_tickets', filter: buildEqFilter('game_id', value) }]
+    case 'room':
+      return [{ table: 'rank_queue_tickets', filter: buildEqFilter('room_id', value) }]
+    default:
+      return [{ table: 'rank_queue_tickets', filter: null }]
+  }
+}
 
+function describeRankRoomsTopic(segments) {
+  if (!segments.length) return [{ table: 'rank_rooms', filter: null }]
+  const [qualifier, value] = segments
+  switch (qualifier) {
+    case 'game':
+      return [{ table: 'rank_rooms', filter: buildEqFilter('game_id', value) }]
+    case 'room':
+      return [{ table: 'rank_rooms', filter: buildEqFilter('id', value) }]
+    case 'owner':
+      return [{ table: 'rank_rooms', filter: buildEqFilter('owner_id', value) }]
+    default:
+      return [{ table: 'rank_rooms', filter: null }]
+  }
+}
+
+function describeRankSessionsTopic(segments) {
+  if (!segments.length) return [{ table: 'rank_sessions', filter: null }]
+  const [qualifier, value] = segments
+  switch (qualifier) {
+    case 'game':
+      return [{ table: 'rank_sessions', filter: buildEqFilter('game_id', value) }]
+    case 'session':
+      return [{ table: 'rank_sessions', filter: buildEqFilter('id', value) }]
+    case 'owner':
+      return [{ table: 'rank_sessions', filter: buildEqFilter('owner_id', value) }]
+    case 'room':
+      return [{ table: 'rank_sessions', filter: buildEqFilter('room_id', value) }]
+    case 'match':
+      return [{ table: 'rank_sessions', filter: buildEqFilter('match_instance_id', value) }]
+    default:
+      return [{ table: 'rank_sessions', filter: null }]
+  }
+}
+
+function describeRankSessionMetaTopic(segments) {
+  if (!segments.length) return [{ table: 'rank_session_meta', filter: null }]
+  const [qualifier, value] = segments
+  switch (qualifier) {
+    case 'session':
+      return [{ table: 'rank_session_meta', filter: buildEqFilter('session_id', value) }]
+    case 'owner':
+      return [{ table: 'rank_session_meta', filter: buildEqFilter('occupant_owner_id', value) }]
+    default:
+      return [{ table: 'rank_session_meta', filter: null }]
+  }
+}
+
+function describeRankMatchRosterTopic(segments) {
+  if (!segments.length) return [{ table: 'rank_match_roster', filter: null }]
+  const [qualifier, value] = segments
+  switch (qualifier) {
+    case 'game':
+      return [{ table: 'rank_match_roster', filter: buildEqFilter('game_id', value) }]
+    case 'match':
+      return [{ table: 'rank_match_roster', filter: buildEqFilter('match_instance_id', value) }]
+    case 'room':
+      return [{ table: 'rank_match_roster', filter: buildEqFilter('room_id', value) }]
+    case 'owner':
+      return [{ table: 'rank_match_roster', filter: buildEqFilter('owner_id', value) }]
+    case 'session':
+      return [{ table: 'rank_match_roster', filter: buildEqFilter('session_id', value) }]
+    default:
+      return [{ table: 'rank_match_roster', filter: null }]
+  }
+}
+
+function describeRankTurnsTopic(segments) {
+  if (!segments.length) return [{ table: 'rank_turns', filter: null }]
+  const [qualifier, value] = segments
+  switch (qualifier) {
+    case 'session':
+      return [{ table: 'rank_turns', filter: buildEqFilter('session_id', value) }]
+    case 'match':
+      return [{ table: 'rank_turns', filter: buildEqFilter('match_instance_id', value) }]
+    default:
+      return [{ table: 'rank_turns', filter: null }]
+  }
+}
+
+function describeRankTurnStateEventsTopic(segments) {
+  if (!segments.length) return [{ table: 'rank_turn_state_events', filter: null }]
+  const [qualifier, value] = segments
+  switch (qualifier) {
+    case 'session':
+      return [{ table: 'rank_turn_state_events', filter: buildEqFilter('session_id', value) }]
+    case 'match':
+      return [{ table: 'rank_turn_state_events', filter: buildEqFilter('match_instance_id', value) }]
+    default:
+      return [{ table: 'rank_turn_state_events', filter: null }]
+  }
+}
+
+function parseTopicDescriptors(topic) {
+  const raw = normaliseTopic(topic)
+  if (!raw) return []
+  const segments = raw.split(':').filter(Boolean)
+  if (!segments.length) return []
+  const root = segments.shift()
+
+  switch (root) {
+    case 'messages':
+      return describeMessageTopic(segments)
+    case 'rank_queue_tickets':
+      return describeRankQueueTopic(segments)
+    case 'rank_rooms':
+      return describeRankRoomsTopic(segments)
+    case 'rank_sessions':
+      return describeRankSessionsTopic(segments)
+    case 'rank_session_meta':
+      return describeRankSessionMetaTopic(segments)
+    case 'rank_match_roster':
+      return describeRankMatchRosterTopic(segments)
+    case 'rank_turns':
+      return describeRankTurnsTopic(segments)
+    case 'rank_turn_state_events':
+      return describeRankTurnStateEventsTopic(segments)
+    default:
+      return []
+  }
+}
+
+function normaliseChangePayload(payload, topic, fallbackEvent) {
+  const eventType = normaliseEvent(payload?.eventType || payload?.event || fallbackEvent) || 'INSERT'
   return {
     topic,
     eventType,
     event: eventType,
-    schema,
-    table,
-    new: newRecord,
-    old: oldRecord,
-    record: newRecord,
-    payload: basePayload,
-    commit_timestamp: commitTimestamp,
-    raw: payload,
+    schema: payload?.schema || payload?.schema_name || null,
+    table: payload?.table || payload?.table_name || null,
+    new: payload?.new ?? null,
+    old: payload?.old ?? null,
+    record: payload?.new ?? null,
+    payload,
+    commit_timestamp: payload?.commit_timestamp || null,
   }
 }
 
-export function subscribeToBroadcastTopic(
-  topic,
-  handler,
-  { events = ['INSERT', 'UPDATE', 'DELETE'], ack = false, privateChannel = false, onStatus } = {},
-) {
-  const normalizedTopic = normalizeTopicName(topic)
-  if (!normalizedTopic) {
+export function subscribeToBroadcastTopic(topic, handler, options = {}) {
+  const descriptors = parseTopicDescriptors(topic)
+  if (!descriptors.length) {
+    console.warn('[realtime] 지원되지 않는 토픽으로 인해 구독을 건너뜁니다.', { topic })
     return () => {}
   }
 
+  const events = Array.from(
+    new Set((Array.isArray(options.events) ? options.events : [options.events]).map(normaliseEvent).filter(Boolean)),
+  )
+  const effectiveEvents = events.length ? events : DEFAULT_EVENTS
   const safeHandler = typeof handler === 'function' ? handler : () => {}
-  const normalizedEvents = Array.from(new Set((Array.isArray(events) ? events : [events]).filter(Boolean)))
+  const channelName = `pg:${normaliseTopic(topic)}:${Math.random().toString(36).slice(2, 10)}`
+  const channel = supabase.channel(channelName)
 
-  let entry = channelRegistry.get(normalizedTopic)
-  if (!entry) {
-    const channelOptions = {
-      config: {
-        private: Boolean(privateChannel),
-        broadcast: {
-          ack: Boolean(ack),
-        },
-      },
-    }
-
-    const channel = supabase.channel(normalizedTopic, channelOptions)
-    entry = {
-      channel,
-      refCount: 0,
-      statusHandlers: new Set(),
-      lastStatus: null,
-      lastError: null,
-      subscriptionPromise: null,
-    }
-    channelRegistry.set(normalizedTopic, entry)
-
-    const cleanupChannel = () => {
-      try {
-        entry.channel?.unsubscribe()
-      } catch (error) {
-        console.warn('[realtime] 채널 구독을 해제하지 못했습니다.', { error, topic: normalizedTopic })
+  descriptors.forEach(({ table, filter }) => {
+    effectiveEvents.forEach((eventName) => {
+      const params = {
+        event: eventName,
+        schema: 'public',
+        table,
       }
-      if (entry.channel) {
-        supabase.removeChannel(entry.channel)
+      if (filter) {
+        params.filter = filter
       }
-      entry.refCount = 0
-      channelRegistry.delete(normalizedTopic)
-    }
 
-    const subscribeToChannel = async () => {
-      try {
-        if (privateChannel) {
-          const token = await ensureRealtimeAuth()
-
-          if (!token) {
-            const missingAuthError = new Error(
-              'Supabase realtime private 채널 구독에 필요한 인증 정보를 찾지 못했습니다.',
-            )
-            console.warn('[realtime] 인증 세션이 없어 private 채널 구독을 건너뜁니다.', {
-              topic: normalizedTopic,
-            })
-            entry.lastStatus = 'CHANNEL_ERROR'
-            entry.lastError = missingAuthError
-            entry.statusHandlers.forEach((listener) => {
-              try {
-                listener('CHANNEL_ERROR', { topic: normalizedTopic, error: missingAuthError })
-              } catch (handlerError) {
-                console.warn('[realtime] 상태 콜백 오류를 처리하지 못했습니다.', handlerError)
-              }
-            })
-            cleanupChannel()
-            return
-          }
+      channel.on('postgres_changes', params, (payload) => {
+        try {
+          safeHandler(normaliseChangePayload(payload, topic, eventName))
+        } catch (error) {
+          console.error('[realtime] 변경 이벤트 핸들러 실행 중 오류가 발생했습니다.', error)
         }
+      })
+    })
+  })
 
-        await new Promise((resolve, reject) => {
-          let resolved = false
-          const subscription = channel.subscribe((status, err) => {
-            const normalizedStatus = status || 'CHANNEL_ERROR'
-            const context = {
-              topic: normalizedTopic,
-              error: err || null,
-              params: channel.params || null,
-              connectionState:
-                typeof channel.socket?.connectionState === 'function'
-                  ? channel.socket.connectionState()
-                  : null,
-            }
-
-            entry.lastStatus = normalizedStatus
-            entry.lastError = err || null
-
-            entry.statusHandlers.forEach((listener) => {
-              try {
-                listener(normalizedStatus, context)
-              } catch (error) {
-                console.warn('[realtime] 상태 콜백 실행 중 오류가 발생했습니다.', error)
-              }
-            })
-
-            if (normalizedStatus === 'SUBSCRIBED') {
-              resolved = true
-              resolve(subscription)
-              return
-            }
-
-            if (normalizedStatus === 'TIMED_OUT') {
-              const timeoutError =
-                err || new Error('Supabase realtime channel subscription timed out.')
-              console.error('[realtime] 채널 구독이 제한 시간 내에 완료되지 않았습니다.', {
-                ...context,
-              })
-              reject(timeoutError)
-              return
-            }
-
-            if (normalizedStatus === 'CHANNEL_ERROR') {
-              console.error('[realtime] 채널 구독 중 오류가 발생했습니다.', {
-                ...context,
-              })
-              if (!resolved) {
-                reject(err || new Error('Supabase realtime channel returned CHANNEL_ERROR.'))
-              } else {
-                cleanupChannel()
-              }
-              return
-            }
-
-            if (normalizedStatus === 'CLOSED') {
-              console.warn('[realtime] 채널이 서버에 의해 종료되었습니다.', {
-                ...context,
-              })
-              if (!resolved) {
-                reject(err || new Error('Supabase realtime channel closed before subscribing.'))
-              } else {
-                cleanupChannel()
-              }
-            }
-          })
-        })
-      } catch (error) {
-        entry.lastStatus = 'CHANNEL_ERROR'
-        entry.lastError = error
-        entry.statusHandlers.forEach((listener) => {
-          try {
-            listener('CHANNEL_ERROR', { topic: normalizedTopic, error })
-          } catch (handlerError) {
-            console.warn('[realtime] 상태 콜백 오류를 처리하지 못했습니다.', handlerError)
-          }
-        })
-        cleanupChannel()
-        throw error
-      }
-    }
-
-    entry.subscriptionPromise = subscribeToChannel()
-  }
-
-  entry.refCount += 1
-
-  let statusHandler = null
-  if (typeof onStatus === 'function') {
-    statusHandler = (status, context) => onStatus(status, context)
-    entry.statusHandlers.add(statusHandler)
-    if (entry.lastStatus) {
+  channel.subscribe((status, err) => {
+    if (typeof options.onStatus === 'function') {
       try {
-        onStatus(entry.lastStatus, {
-          topic: normalizedTopic,
-          error: entry.lastError,
-          params: entry.channel?.params || null,
+        options.onStatus(status, {
+          topic,
+          error: err || null,
+          params: channel.params || null,
           connectionState:
-            typeof entry.channel?.socket?.connectionState === 'function'
-              ? entry.channel.socket.connectionState()
+            typeof channel.socket?.connectionState === 'function'
+              ? channel.socket.connectionState()
               : null,
         })
       } catch (error) {
-        console.warn('[realtime] 상태 핸들러 실행에 실패했습니다.', error)
+        console.warn('[realtime] 상태 콜백 실행 중 오류가 발생했습니다.', error)
       }
     }
-  }
 
-  const listeners = []
-
-  normalizedEvents.forEach((event) => {
-    const eventName = typeof event === 'string' && event.trim() ? event.trim().toUpperCase() : 'INSERT'
-    const listenerState = { active: true }
-    const listener = (payload) => {
-      if (!listenerState.active) return
-      safeHandler(normalizeBroadcastPayload(payload, normalizedTopic, eventName))
+    if (status === 'CHANNEL_ERROR') {
+      console.error('[realtime] Postgres 변경 채널 구독 중 오류가 발생했습니다.', { topic, error: err || null })
     }
-    entry.channel.on('broadcast', { event: eventName }, listener)
-    listeners.push({ listener, state: listenerState })
+
+    if (status === 'TIMED_OUT') {
+      console.error('[realtime] Postgres 변경 채널 구독이 제한 시간 내에 완료되지 않았습니다.', {
+        topic,
+        error: err || null,
+      })
+    }
+
+    if (status === 'CLOSED') {
+      console.info('[realtime] Postgres 변경 채널이 종료되었습니다.', { topic })
+    }
   })
 
-  if (entry.subscriptionPromise) {
-    entry.subscriptionPromise.catch((error) => {
-      console.error('[realtime] 채널 구독에 실패했습니다.', { error, topic: normalizedTopic })
-    })
-  }
-
   return () => {
-    listeners.forEach(({ state }) => {
-      state.active = false
-    })
-
-    if (statusHandler) {
-      entry.statusHandlers.delete(statusHandler)
+    try {
+      channel.unsubscribe()
+    } catch (error) {
+      console.warn('[realtime] Postgres 채널 구독 해제 중 오류가 발생했습니다.', { topic, error })
     }
-    entry.refCount = Math.max(0, entry.refCount - 1)
 
-    if (entry.refCount === 0) {
-      try {
-        entry.channel?.unsubscribe()
-      } catch (error) {
-        console.warn('[realtime] 채널 구독을 해제하지 못했습니다.', { error, topic: normalizedTopic })
-      }
-      if (entry.channel) {
-        supabase.removeChannel(entry.channel)
-      }
-      channelRegistry.delete(normalizedTopic)
+    try {
+      supabase.removeChannel(channel)
+    } catch (error) {
+      console.warn('[realtime] Postgres 채널 제거 중 오류가 발생했습니다.', { topic, error })
     }
   }
 }
 
 export function subscribeToBroadcastTopics(topics, handler, options = {}) {
-  if (!Array.isArray(topics) || !topics.length) {
-    return () => {}
-  }
-
-  const uniqueTopics = Array.from(
-    new Set(topics.map((topic) => normalizeTopicName(topic)).filter((topic) => typeof topic === 'string' && topic.trim().length)),
-  )
-  if (!uniqueTopics.length) {
-    return () => {}
-  }
-
+  const uniqueTopics = Array.from(new Set((Array.isArray(topics) ? topics : [topics]).filter(Boolean)))
   const unsubscribers = uniqueTopics.map((topic) => subscribeToBroadcastTopic(topic, handler, options))
 
   return () => {
     unsubscribers.forEach((unsubscribe) => {
-      try {
-        if (typeof unsubscribe === 'function') {
+      if (typeof unsubscribe === 'function') {
+        try {
           unsubscribe()
+        } catch (error) {
+          console.warn('[realtime] Postgres 채널 정리 중 오류가 발생했습니다.', error)
         }
-      } catch (error) {
-        console.warn('[realtime] 다중 채널 구독 해제 중 오류가 발생했습니다.', { error, topic })
       }
     })
   }
 }
 
+export async function ensureRealtimeAuth() {
+  // Postgres 변경 구독에는 별도의 인증 토큰 동기화가 필요하지 않습니다.
+  return null
+}
