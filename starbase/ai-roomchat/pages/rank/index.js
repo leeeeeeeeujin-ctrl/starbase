@@ -2,7 +2,6 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import SharedChatDock from '../../components/common/SharedChatDock'
 import GameListPanel from '../../components/rank/GameListPanel' // ← 추가
 
 export default function RankHub() {
@@ -34,8 +33,11 @@ export default function RankHub() {
       {/* 본문: 모바일 세로 최적화 스크롤 패널 */}
       <GameListPanel />
 
-      {/* 하단 공유 채팅은 그대로 */}
-      <SharedChatDock height={320} />
+      <div style={{ display:'flex', justifyContent:'flex-end' }}>
+        <Link href="/chat" style={{ padding:'10px 18px', borderRadius:999, background:'#0f172a', color:'#bae6fd', fontWeight:700, border:'1px solid rgba(56, 189, 248, 0.4)', textDecoration:'none' }}>
+          공용 채팅 페이지로 이동
+        </Link>
+      </div>
     </div>
   )
 }

@@ -48,6 +48,15 @@ const styles = {
     boxSizing: 'border-box',
     pointerEvents: 'auto',
   },
+  collapsedSurface: {
+    width: '100%',
+    maxWidth: 640,
+    padding: '0 16px 24px',
+    boxSizing: 'border-box',
+    pointerEvents: 'auto',
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
   hudSection: {
     borderRadius: 22,
     background: 'rgba(15,23,42,0.82)',
@@ -123,11 +132,31 @@ const styles = {
     cursor: 'pointer',
     fontWeight: 600,
   },
-  dockToggleRow: {
+  expandButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.78)',
+    color: '#e2e8f0',
+    fontWeight: 700,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 20px 60px -40px rgba(15,23,42,0.85)',
+  },
+  dock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  collapseHandleRow: {
     display: 'flex',
     justifyContent: 'flex-end',
+    marginBottom: 16,
   },
-  dockToggleButton: {
+  collapseHandleButton: {
     padding: '8px 16px',
     borderRadius: 999,
     border: '1px solid rgba(148,163,184,0.35)',
@@ -135,11 +164,6 @@ const styles = {
     color: '#e2e8f0',
     fontWeight: 600,
     cursor: 'pointer',
-  },
-  dock: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
   },
   dockHeader: {
     display: 'flex',
@@ -1295,84 +1319,100 @@ export default function SharedHeroOverlay() {
   return (
     <>
       <div style={styles.container}>
-        <div style={styles.surface}>
-          {bgmEnabled && activeBgmUrl ? (
-            <div style={styles.hudSection}>
-              <div style={styles.playerShell}>
-                <div style={styles.playerHeader}>
-                  <div style={styles.playerHeaderLeft}>
-                    <button
-                      type="button"
-                      style={styles.collapseButton}
-                      onClick={() => setPlayerCollapsed((prev) => !prev)}
-                    >
-                      {playerCollapsed ? '▲' : '▼'}
-                    </button>
-                    <span style={styles.playerTitle}>캐릭터 브금</span>
-                  </div>
-                  {!playerCollapsed ? (
-                    <>
-                      <div style={styles.progressBar} role="presentation" onClick={handleSeek}>
-                        <div style={styles.progressFill(duration ? progress / duration : 0)} />
+        <div style={dockCollapsed ? styles.collapsedSurface : styles.surface}>
+          {dockCollapsed ? (
+            <button
+              type="button"
+              style={styles.expandButton}
+              onClick={() => setDockCollapsed(false)}
+              aria-label="패널 펼치기"
+            >
+              ▲
+            </button>
+          ) : (
+            <>
+              <div style={styles.collapseHandleRow}>
+                <button
+                  type="button"
+                  style={styles.collapseHandleButton}
+                  onClick={() => setDockCollapsed(true)}
+                  aria-label="패널 접기"
+                >
+                  ▼ 패널 접기
+                </button>
+              </div>
+
+              {bgmEnabled && activeBgmUrl ? (
+                <div style={styles.hudSection}>
+                  <div style={styles.playerShell}>
+                    <div style={styles.playerHeader}>
+                      <div style={styles.playerHeaderLeft}>
+                        <button
+                          type="button"
+                          style={styles.collapseButton}
+                          onClick={() => setPlayerCollapsed((prev) => !prev)}
+                        >
+                          {playerCollapsed ? '▲' : '▼'}
+                        </button>
+                        <span style={styles.playerTitle}>캐릭터 브금</span>
                       </div>
-                      <span style={styles.listMeta}>{`${formatTime(progress)} / ${formatTime(duration)}`}</span>
-                    </>
-                  ) : null}
-                </div>
-                {!playerCollapsed ? (
-                  <div style={styles.playerControls}>
-                    <button type="button" style={styles.playerButton} onClick={togglePlayback}>
-                      {isPlaying ? '일시정지' : '재생'}
-                    </button>
-                    <button type="button" style={styles.playerButton} onClick={stopPlayback}>
-                      처음으로
-                    </button>
+                      {!playerCollapsed ? (
+                        <>
+                          <div style={styles.progressBar} role="presentation" onClick={handleSeek}>
+                            <div style={styles.progressFill(duration ? progress / duration : 0)} />
+                          </div>
+                          <span style={styles.listMeta}>{`${formatTime(progress)} / ${formatTime(duration)}`}</span>
+                        </>
+                      ) : null}
+                    </div>
+                    {!playerCollapsed ? (
+                      <div style={styles.playerControls}>
+                        <button type="button" style={styles.playerButton} onClick={togglePlayback}>
+                          {isPlaying ? '일시정지' : '재생'}
+                        </button>
+                        <button type="button" style={styles.playerButton} onClick={stopPlayback}>
+                          처음으로
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
+                </div>
+              ) : null}
 
-          <div style={styles.hudSection}>
-            <div style={styles.dockToggleRow}>
-              <button type="button" style={styles.dockToggleButton} onClick={() => setDockCollapsed((prev) => !prev)}>
-                {dockCollapsed ? '▲ 패널 펼치기' : '▼ 패널 접기'}
-              </button>
-            </div>
-
-            {!dockCollapsed ? (
-              <div style={styles.dock}>
-                <div style={styles.dockHeader}>
-                  <div style={styles.dockTabs}>
-                    {overlayTabs.map((tab, index) => (
-                      <button
-                        key={tab.key}
-                        type="button"
-                        style={styles.dockTabButton(index === activeTab)}
-                        onClick={() => setActiveTab(index)}
-                      >
-                        {tab.label}
+              <div style={styles.hudSection}>
+                <div style={styles.dock}>
+                  <div style={styles.dockHeader}>
+                    <div style={styles.dockTabs}>
+                      {overlayTabs.map((tab, index) => (
+                        <button
+                          key={tab.key}
+                          type="button"
+                          style={styles.dockTabButton(index === activeTab)}
+                          onClick={() => setActiveTab(index)}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={styles.headerActions}>
+                      <button type="button" style={styles.headerActionButton} onClick={() => setFriendOpen(true)}>
+                        친구창 열기
                       </button>
-                    ))}
+                      <button
+                        type="button"
+                        style={styles.headerActionButton}
+                        onClick={() => currentHero?.id && router.push(`/character/${currentHero.id}`)}
+                      >
+                        캐릭터 화면
+                      </button>
+                    </div>
                   </div>
-                  <div style={styles.headerActions}>
-                    <button type="button" style={styles.headerActionButton} onClick={() => setFriendOpen(true)}>
-                      친구창 열기
-                    </button>
-                    <button
-                      type="button"
-                      style={styles.headerActionButton}
-                      onClick={() => currentHero?.id && router.push(`/character/${currentHero.id}`)}
-                    >
-                      캐릭터 화면
-                    </button>
-                  </div>
-                </div>
 
-                {overlayBody}
+                  {overlayBody}
+                </div>
               </div>
-            ) : null}
-          </div>
+            </>
+          )}
         </div>
       </div>
 
