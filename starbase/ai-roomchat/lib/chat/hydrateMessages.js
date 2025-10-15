@@ -1,5 +1,9 @@
 import { supabase } from '../supabase'
 import { withTable } from '../supabaseTables'
+import {
+  createDraftyFromText,
+  inspectDrafty,
+} from './drafty'
 
 function normaliseHint(raw) {
   if (!raw) return null
@@ -243,6 +247,38 @@ export async function hydrateMessageList(rawMessages, {
 
   for (const message of processed) {
     applyCaches(message, heroCache, ownerCache)
+
+    const metadata = message.metadata && typeof message.metadata === 'object' ? { ...message.metadata } : {}
+    const rawDrafty = metadata.drafty ?? metadata.drafty_doc ?? null
+    let draftySummary = inspectDrafty(rawDrafty)
+    if (!draftySummary.doc) {
+      const synthesized = createDraftyFromText(message.text || '')
+      draftySummary = inspectDrafty(synthesized)
+    }
+
+    message.drafty = draftySummary.doc
+    message.plain_text = draftySummary.plainText || message.text || ''
+    message.has_links = draftySummary.hasLinks
+    message.has_mentions = draftySummary.hasMentions
+    message.has_hashtags = draftySummary.hasHashtags
+
+    if (!message.text && message.plain_text) {
+      message.text = message.plain_text
+    }
+
+    metadata.drafty = metadata.drafty || draftySummary.doc
+    if (!metadata.plain_text) {
+      metadata.plain_text = message.plain_text
+    }
+    if (!metadata.summary) {
+      metadata.summary = {
+        has_links: draftySummary.hasLinks,
+        has_mentions: draftySummary.hasMentions,
+        has_hashtags: draftySummary.hasHashtags,
+      }
+    }
+
+    message.metadata = metadata
   }
 
   return { messages: processed, heroCache, ownerCache }
