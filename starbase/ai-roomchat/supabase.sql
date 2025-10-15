@@ -3273,6 +3273,9 @@ create index if not exists messages_match_instance_idx
 create index if not exists messages_owner_scope_idx
   on public.messages (owner_id, scope, created_at desc);
 
+create index if not exists messages_room_idx
+  on public.messages (room_id, created_at desc);
+
 create index if not exists messages_chat_room_idx
   on public.messages (chat_room_id, created_at desc);
 
@@ -3325,6 +3328,23 @@ using (
       from public.chat_room_members crm
       where crm.room_id = messages.chat_room_id
         and crm.owner_id = auth.uid()
+    )
+  )
+  or (
+    room_id is not null
+    and (
+      exists (
+        select 1
+        from public.rank_room_slots rrs
+        where rrs.room_id = messages.room_id
+          and rrs.occupant_owner_id = auth.uid()
+      )
+      or exists (
+        select 1
+        from public.rank_rooms rr
+        where rr.id = messages.room_id
+          and rr.owner_id = auth.uid()
+      )
     )
   )
   or (

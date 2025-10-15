@@ -92,6 +92,21 @@ using (
     )
   )
   or (
+    room_id is not null
+    and (
+      exists (
+        select 1 from public.rank_room_slots rrs
+        where rrs.room_id = messages.room_id
+          and rrs.occupant_owner_id = auth.uid()
+      )
+      or exists (
+        select 1 from public.rank_rooms rr
+        where rr.id = messages.room_id
+          and rr.owner_id = auth.uid()
+      )
+    )
+  )
+  or (
     match_instance_id is not null
     and exists (
       select 1 from public.rank_match_roster rmr
