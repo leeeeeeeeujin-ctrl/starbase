@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 
 import SharedHeroOverlay from '@/components/character/SharedHeroOverlay'
 import ActiveMatchOverlay from '@/components/rank/ActiveMatchOverlay'
+import GlobalChatLauncher from '@/components/social/GlobalChatLauncher'
 import DebugOverlay from '@/components/DebugOverlay'
 import ClientErrorReporter from '@/components/ClientErrorReporter'
 
@@ -18,6 +19,7 @@ function OverlayAwareShell({ children }) {
     <>
       {children}
       {!hideOverlay ? <SharedHeroOverlay /> : null}
+      <GlobalChatLauncher />
       <ActiveMatchOverlay />
     </>
   )
