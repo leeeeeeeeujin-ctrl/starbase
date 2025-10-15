@@ -4,8 +4,8 @@
 
 ## 포함 사항
 
-1. **채팅방 테이블과 RLS**  
-   `chat_rooms`, `chat_room_members`를 생성하고 선택/삽입/수정/삭제 정책을 등록합니다. 각 테이블은 `updated_at`/`last_active_at`을 자동으로 갱신하는 트리거를 가집니다.
+1. **채팅방 테이블과 RLS**
+   `chat_rooms`, `chat_room_members`, `chat_room_moderators`를 생성하고 선택/삽입/수정/삭제 정책을 등록합니다. 각 테이블은 `updated_at`/`last_active_at`을 자동으로 갱신하는 트리거를 가집니다. 운영자 멤버십은 `chat_room_members` 트리거가 `chat_room_moderators` 캐시로 동기화되어 RLS 평가 중 동일 테이블을 재귀 조회하지 않아도 됩니다.
 
 2. **`messages` 테이블 기본값 및 정책**
    메시지의 기본값·제약·인덱스를 정리하고, 기존 SELECT 정책을 모두 제거한 뒤 `messages_select_public` 단일 정책만 남겨 글로벌/방/세션/귓속말 노출을 제어하도록 구성합니다. 세션 판별을 위해 `is_rank_session_owner_or_roster` 함수도 함께 배포됩니다.
@@ -35,7 +35,9 @@
 | Realtime RLS | `realtime_messages_select_authenticated` | `realtime.messages` 뷰에서 인증 사용자가 브로드캐스트 메시지를 받을 수 있도록 허용합니다. |
 | 함수 | `public.emit_realtime_payload` | 브로드캐스트 토픽 배열을 순회하며 `realtime.broadcast_changes`에 전달합니다. |
 | 함수 | `public.broadcast_messages_changes` | `messages` 테이블 변경을 토픽별로 가공하고 `emit_realtime_payload`를 호출합니다. |
+| 함수 | `public.sync_chat_room_moderators` | `chat_room_members` 변동을 감지해 `chat_room_moderators` 캐시를 최신으로 유지합니다. |
 | 트리거 | `trg_messages_broadcast` | `messages` 테이블 변경 시 `broadcast_messages_changes` 함수를 실행합니다. |
+| 트리거 | `trg_chat_room_members_sync_moderators` | 운영자 승격/강등 시 `chat_room_moderators` 캐시를 갱신합니다. |
 
 퍼블리케이션은 `alter publication supabase_realtime add table ...` 구문으로 `messages`, `chat_rooms`, `chat_room_members`가 등록되어 있어야 합니다.
 
@@ -171,6 +173,7 @@ for each row execute function public.broadcast_messages_changes();
 alter publication supabase_realtime add table public.messages;
 alter publication supabase_realtime add table public.chat_rooms;
 alter publication supabase_realtime add table public.chat_room_members;
+alter publication supabase_realtime add table public.chat_room_moderators;
 ```
 
 위 코드만 실행해도 메시지 테이블 RLS, 브로드캐스트 트리거, 퍼블리케이션 연결이 복구됩니다.

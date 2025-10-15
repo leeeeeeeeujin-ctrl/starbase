@@ -2993,6 +2993,12 @@ create table if not exists public.chat_room_members (
   primary key (room_id, owner_id)
 );
 
+create table if not exists public.chat_room_moderators (
+  room_id uuid not null references public.chat_rooms(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  primary key (room_id, owner_id)
+);
+
 alter table public.chat_rooms enable row level security;
 alter table public.chat_room_members enable row level security;
 
@@ -3055,10 +3061,9 @@ using (
   auth.uid() = owner_id
   or exists (
     select 1
-    from public.chat_room_members m
+    from public.chat_room_moderators m
     where m.room_id = chat_room_members.room_id
       and m.owner_id = auth.uid()
-      and m.is_moderator
   )
   or exists (
     select 1
@@ -3071,10 +3076,9 @@ with check (
   auth.uid() = owner_id
   or exists (
     select 1
-    from public.chat_room_members m
+    from public.chat_room_moderators m
     where m.room_id = chat_room_members.room_id
       and m.owner_id = auth.uid()
-      and m.is_moderator
   )
   or exists (
     select 1
@@ -3090,10 +3094,9 @@ using (
   auth.uid() = owner_id
   or exists (
     select 1
-    from public.chat_room_members m
+    from public.chat_room_moderators m
     where m.room_id = chat_room_members.room_id
       and m.owner_id = auth.uid()
-      and m.is_moderator
   )
   or exists (
     select 1
@@ -3111,6 +3114,12 @@ create index if not exists chat_room_members_owner_idx
 
 create index if not exists chat_room_members_room_idx
   on public.chat_room_members (room_id, last_active_at desc);
+
+create index if not exists chat_room_moderators_owner_idx
+  on public.chat_room_moderators (owner_id, room_id);
+
+create index if not exists chat_room_moderators_room_idx
+  on public.chat_room_moderators (room_id, owner_id);
 
 create or replace function public.touch_chat_room_updated_at()
 returns trigger
@@ -3143,6 +3152,57 @@ create trigger trg_chat_room_members_touch
 before update on public.chat_room_members
 for each row
 execute function public.touch_chat_room_member_activity();
+
+create or replace function public.sync_chat_room_moderators()
+returns trigger
+language plpgsql
+as $$
+begin
+  if TG_OP = 'DELETE' then
+    delete from public.chat_room_moderators
+    where room_id = old.room_id
+      and owner_id = old.owner_id;
+    return null;
+  end if;
+
+  if TG_OP = 'UPDATE' then
+    if (old.room_id, old.owner_id) is distinct from (new.room_id, new.owner_id)
+       or not coalesce(new.is_moderator, false)
+       or coalesce(new.status, 'active') <> 'active' then
+      delete from public.chat_room_moderators
+      where room_id = old.room_id
+        and owner_id = old.owner_id;
+    end if;
+  end if;
+
+  if TG_OP in ('INSERT', 'UPDATE') then
+    if coalesce(new.is_moderator, false)
+       and coalesce(new.status, 'active') = 'active' then
+      insert into public.chat_room_moderators (room_id, owner_id)
+      values (new.room_id, new.owner_id)
+      on conflict (room_id, owner_id) do nothing;
+    else
+      delete from public.chat_room_moderators
+      where room_id = new.room_id
+        and owner_id = new.owner_id;
+    end if;
+  end if;
+
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_chat_room_members_sync_moderators on public.chat_room_members;
+create trigger trg_chat_room_members_sync_moderators
+after insert or update or delete on public.chat_room_members
+for each row execute function public.sync_chat_room_moderators();
+
+insert into public.chat_room_moderators (room_id, owner_id)
+select m.room_id, m.owner_id
+from public.chat_room_members m
+where coalesce(m.is_moderator, false)
+  and coalesce(m.status, 'active') = 'active'
+on conflict (room_id, owner_id) do nothing;
 
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
