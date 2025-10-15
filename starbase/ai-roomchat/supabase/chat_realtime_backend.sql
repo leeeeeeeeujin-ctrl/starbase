@@ -375,15 +375,6 @@ using (
     )
   )
   or (
-    room_id is not null
-    and exists (
-      select 1
-      from public.rank_room_slots rrs
-      where rrs.room_id = messages.room_id
-        and rrs.occupant_owner_id = auth.uid()
-    )
-  )
-  or (
     match_instance_id is not null
     and exists (
       select 1
