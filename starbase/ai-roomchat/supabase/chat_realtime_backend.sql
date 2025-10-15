@@ -94,6 +94,12 @@ using (
       and m.owner_id = auth.uid()
       and m.is_moderator
   )
+  or exists (
+    select 1
+    from public.chat_rooms r
+    where r.id = chat_room_members.room_id
+      and r.owner_id = auth.uid()
+  )
 )
 with check (
   auth.uid() = owner_id
@@ -103,6 +109,12 @@ with check (
     where m.room_id = chat_room_members.room_id
       and m.owner_id = auth.uid()
       and m.is_moderator
+  )
+  or exists (
+    select 1
+    from public.chat_rooms r
+    where r.id = chat_room_members.room_id
+      and r.owner_id = auth.uid()
   )
 );
 
@@ -117,6 +129,12 @@ using (
     where m.room_id = chat_room_members.room_id
       and m.owner_id = auth.uid()
       and m.is_moderator
+  )
+  or exists (
+    select 1
+    from public.chat_rooms r
+    where r.id = chat_room_members.room_id
+      and r.owner_id = auth.uid()
   )
 );
 
@@ -161,6 +179,42 @@ drop trigger if exists trg_chat_room_members_touch on public.chat_room_members;
 create trigger trg_chat_room_members_touch
 before update on public.chat_room_members
 for each row execute function public.touch_chat_room_member_activity();
+
+create or replace function public.guard_chat_room_member_moderators()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  acting_user uuid := auth.uid();
+begin
+  if TG_OP = 'UPDATE' then
+    if new.is_moderator and not coalesce(old.is_moderator, false) then
+      if acting_user is null then
+        raise exception '운영자 권한을 변경하려면 인증이 필요합니다.';
+      end if;
+
+      if old.owner_id = acting_user then
+        if not exists (
+          select 1
+          from public.chat_rooms r
+          where r.id = new.room_id
+            and r.owner_id = acting_user
+        ) then
+          raise exception '채팅방에서 자신을 운영자로 승격할 수 없습니다.';
+        end if;
+      end if;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_chat_room_members_guard on public.chat_room_members;
+create trigger trg_chat_room_members_guard
+before update on public.chat_room_members
+for each row execute function public.guard_chat_room_member_moderators();
 
 alter table public.messages
   alter column created_at set default timezone('utc', now());
