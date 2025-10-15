@@ -11,7 +11,6 @@ import TurnInfoPanel from './TurnInfoPanel'
 import TurnSummaryPanel from './TurnSummaryPanel'
 import ManualResponsePanel from './ManualResponsePanel'
 import StatusBanner from './StatusBanner'
-import SessionChatPanel from './SessionChatPanel'
 import {
   clearMatchFlow,
   createEmptyMatchFlowState,
@@ -22,6 +21,118 @@ import { normalizeRoleName } from '../../../lib/rank/roleLayoutLoader'
 import { useStartClientEngine } from './useStartClientEngine'
 import { supabase } from '../../../lib/supabase'
 import { buildSessionMetaRequest, postSessionMeta } from '../../../lib/rank/sessionMetaClient'
+
+function toTrimmedId(value) {
+  if (value === null || value === undefined) return null
+  const trimmed = String(value).trim()
+  return trimmed ? trimmed : null
+}
+
+function toSlotIndex(value, fallback) {
+  const numeric = Number(value)
+  if (Number.isFinite(numeric)) return numeric
+  return fallback
+}
+
+function buildParticipantRoster(participants) {
+  if (!Array.isArray(participants)) return []
+  return participants
+    .map((participant, index) => {
+      if (!participant) return null
+      const hero = participant.hero || {}
+      const heroId =
+        toTrimmedId(participant.heroId ?? participant.hero_id ?? participant.heroID ?? hero.id) || null
+      const ownerId =
+        toTrimmedId(
+          participant.ownerId ??
+            participant.owner_id ??
+            participant.ownerID ??
+            participant.owner?.id ??
+            participant.user_id ??
+            participant.userId,
+        ) || null
+      const slotIndex = toSlotIndex(participant.slotIndex ?? participant.slot_index, index)
+      const role = participant.role || participant.role_name || ''
+      const heroName =
+        hero.name ??
+        participant.hero_name ??
+        participant.heroName ??
+        participant.displayName ??
+        ''
+      const avatarUrl =
+        hero.avatar_url ??
+        hero.image_url ??
+        participant.hero_avatar_url ??
+        participant.avatar_url ??
+        participant.avatarUrl ??
+        null
+      return {
+        slotIndex,
+        role,
+        heroId,
+        ownerId,
+        heroName,
+        avatarUrl,
+        ready: participant.ready === true,
+      }
+    })
+    .filter(Boolean)
+}
+
+function buildMatchRoster(roster) {
+  if (!Array.isArray(roster)) return []
+  return roster
+    .map((entry, index) => {
+      if (!entry) return null
+      const heroId = toTrimmedId(entry.heroId ?? entry.hero_id)
+      const ownerId = toTrimmedId(entry.ownerId ?? entry.owner_id)
+      const slotIndex = toSlotIndex(entry.slotIndex ?? entry.slot_index, index)
+      return {
+        slotIndex,
+        role: entry.role || '',
+        heroId,
+        ownerId,
+        heroName: entry.heroName || entry.hero_name || '',
+        avatarUrl: entry.avatarUrl ?? entry.avatar_url ?? null,
+        ready: entry.ready === true,
+      }
+    })
+    .filter(Boolean)
+}
+
+function mergeRosterEntries(primary, fallback) {
+  if (!primary.length) return fallback
+  return primary.map((entry) => {
+    const candidate = fallback.find((target) => {
+      if (!target) return false
+      if (entry.heroId && target.heroId && entry.heroId === target.heroId) return true
+      if (entry.ownerId && target.ownerId && entry.ownerId === target.ownerId) return true
+      return false
+    })
+    if (!candidate) {
+      return entry
+    }
+    return {
+      ...entry,
+      role: entry.role || candidate.role || '',
+      heroName: entry.heroName || candidate.heroName || '',
+      avatarUrl: entry.avatarUrl || candidate.avatarUrl || null,
+      ready: entry.ready || candidate.ready || false,
+    }
+  })
+}
+
+function findRosterEntry(roster, { heroId = null, ownerId = null } = {}) {
+  if (!Array.isArray(roster) || roster.length === 0) return null
+  return (
+    roster.find((entry) => {
+      if (!entry) return false
+      if (heroId && entry.heroId && entry.heroId === heroId) return true
+      if (ownerId && entry.ownerId && entry.ownerId === ownerId) return true
+      return false
+    }) || null
+  )
+}
 
 const LogsPanel = dynamic(() => import('./LogsPanel'), {
   loading: () => <div className={styles.logsLoading}>로그 패널을 불러오는 중…</div>,
@@ -227,7 +338,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       router.push(`/rank/${gameId}`).catch(() => {})
       return
     }
-    router.push('/rooms').catch(() => {})
+    router.push('/match').catch(() => {})
   }, [router, matchState?.room?.id, gameId, onRequestClose])
 
   const statusMessages = useMemo(() => {
@@ -335,28 +446,120 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   }, [consensus?.active, consensus?.viewerEligible, consensus?.count, consensus?.required])
 
   const asyncFillInfo = matchState?.sessionMeta?.asyncFill || null
+  const sessionExtras = matchState?.sessionMeta?.extras || null
   const isAsyncMode = asyncFillInfo?.mode === 'off'
   const blindMode = Boolean(matchState?.room?.blindMode)
   const rosterEntries = Array.isArray(matchState?.roster) ? matchState.roster : []
+  const matchRosterForChat = useMemo(
+    () => buildMatchRoster(matchState?.roster),
+    [matchState?.roster],
+  )
+  const participantRosterForChat = useMemo(
+    () => buildParticipantRoster(participants),
+    [participants],
+  )
+  const chatRoster = useMemo(
+    () => mergeRosterEntries(matchRosterForChat, participantRosterForChat),
+    [matchRosterForChat, participantRosterForChat],
+  )
   const viewerOwnerId = useMemo(() => {
     const raw = matchState?.viewer?.ownerId || matchState?.viewer?.viewerId
     return raw ? String(raw).trim() : ''
   }, [matchState?.viewer?.ownerId, matchState?.viewer?.viewerId])
-  const viewerSlotIndex = useMemo(() => {
-    if (!viewerOwnerId) return null
-    if (!Array.isArray(participants) || !participants.length) return null
-    const index = participants.findIndex((participant) => {
-      if (!participant) return false
-      const ownerId =
-        (participant.owner_id != null && String(participant.owner_id).trim()) ||
-        (participant.ownerId != null && String(participant.ownerId).trim()) ||
-        (participant.ownerID != null && String(participant.ownerID).trim()) ||
-        (participant.owner?.id != null && String(participant.owner.id).trim()) ||
-        ''
-      return ownerId && ownerId === viewerOwnerId
+  const viewerHeroId = useMemo(() => {
+    const direct =
+      toTrimmedId(
+        matchState?.viewer?.heroId ??
+          matchState?.viewer?.hero_id ??
+          matchState?.viewer?.hero?.id,
+      ) || null
+    if (direct) return direct
+    const ownerCandidate =
+      toTrimmedId(matchState?.viewer?.ownerId ?? matchState?.viewer?.viewerId) ||
+      (viewerOwnerId ? viewerOwnerId : null)
+    if (ownerCandidate) {
+      const entry = findRosterEntry(chatRoster, { ownerId: ownerCandidate })
+      if (entry?.heroId) {
+        return entry.heroId
+      }
+    }
+    return null
+  }, [
+    chatRoster,
+    matchState?.viewer?.hero?.id,
+    matchState?.viewer?.heroId,
+    matchState?.viewer?.hero_id,
+    matchState?.viewer?.ownerId,
+    matchState?.viewer?.viewerId,
+    viewerOwnerId,
+  ])
+  const viewerHeroProfile = useMemo(() => {
+    const ownerCandidate =
+      toTrimmedId(matchState?.viewer?.ownerId ?? matchState?.viewer?.viewerId) ||
+      (viewerOwnerId ? viewerOwnerId : null)
+    const rosterEntry = findRosterEntry(chatRoster, {
+      heroId: viewerHeroId,
+      ownerId: ownerCandidate,
     })
-    return index >= 0 ? index : null
-  }, [participants, viewerOwnerId])
+    const heroName =
+      matchState?.viewer?.heroName ??
+      matchState?.viewer?.hero?.name ??
+      rosterEntry?.heroName ??
+      ''
+    const avatarUrl =
+      matchState?.viewer?.hero?.avatar_url ??
+      matchState?.viewer?.avatarUrl ??
+      matchState?.viewer?.avatar_url ??
+      rosterEntry?.avatarUrl ??
+      null
+
+    if (!viewerHeroId && !ownerCandidate && !heroName && !avatarUrl) {
+      return null
+    }
+
+    return {
+      hero_id: viewerHeroId,
+      owner_id: ownerCandidate,
+      user_id: ownerCandidate || null,
+      name: heroName || (viewerHeroId ? `캐릭터 #${viewerHeroId}` : '익명 참가자'),
+      avatar_url: avatarUrl || null,
+    }
+  }, [
+    chatRoster,
+    matchState?.viewer?.avatarUrl,
+    matchState?.viewer?.avatar_url,
+    matchState?.viewer?.hero?.avatar_url,
+    matchState?.viewer?.hero?.name,
+    matchState?.viewer?.heroName,
+    matchState?.viewer?.ownerId,
+    matchState?.viewer?.viewerId,
+    viewerHeroId,
+    viewerOwnerId,
+  ])
+  const asyncMatchInstanceId = useMemo(() => {
+    if (!asyncFillInfo) return null
+    return (
+      toTrimmedId(asyncFillInfo.matchInstanceId) ||
+      toTrimmedId(asyncFillInfo.match_instance_id) ||
+      null
+    )
+  }, [asyncFillInfo])
+  const extrasMatchInstanceId = useMemo(() => {
+    if (!sessionExtras) return null
+    return (
+      toTrimmedId(sessionExtras.matchInstanceId) ||
+      toTrimmedId(sessionExtras.match_instance_id) ||
+      null
+    )
+  }, [sessionExtras])
+  const sessionInfoMatchInstanceId = useMemo(() => {
+    if (!sessionInfo) return null
+    return (
+      toTrimmedId(sessionInfo.matchInstanceId) ||
+      toTrimmedId(sessionInfo.match_instance_id) ||
+      null
+    )
+  }, [sessionInfo])
   const hostRoleName = useMemo(() => {
     if (typeof asyncFillInfo?.hostRole === 'string' && asyncFillInfo.hostRole.trim()) {
       return asyncFillInfo.hostRole.trim()
@@ -588,12 +791,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           realtimeEvents={realtimeEvents}
         />
 
-        <SessionChatPanel
-          sessionId={sessionInfo?.id || null}
-          sessionHistory={matchState?.sessionHistory || null}
-          viewerSlotIndex={viewerSlotIndex}
-          participants={participants}
-        />
       </div>
     </div>
   )
