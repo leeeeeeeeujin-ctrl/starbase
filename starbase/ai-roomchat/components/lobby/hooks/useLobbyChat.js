@@ -188,9 +188,9 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
 
     const bootstrapMessages = async () => {
       try {
-        const data = await fetchRecentMessages({ limit: 100 })
+        const payload = (await fetchRecentMessages({ limit: 100 })) ?? {}
         if (!alive) return
-        const hydrated = await hydrateBatch(data)
+        const hydrated = await hydrateBatch(payload.messages ?? [])
         if (!alive) return
         setMessages(hydrated)
         setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
