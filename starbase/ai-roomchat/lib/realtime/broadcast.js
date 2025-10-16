@@ -45,7 +45,10 @@ function describeMessageTopic(segments) {
     case 'game':
       return [{ table: 'messages', filter: buildEqFilter('game_id', rawValue) }]
     case 'room':
-      return [{ table: 'messages', filter: buildEqFilter('room_id', rawValue) }]
+      return [
+        { table: 'messages', filter: buildEqFilter('chat_room_id', rawValue) },
+        { table: 'messages', filter: buildEqFilter('room_id', rawValue) },
+      ].filter((descriptor) => descriptor.filter)
     case 'owner': {
       const filter = buildEqFilter('owner_id', rawValue)
       const targetFilter = buildEqFilter('target_owner_id', rawValue)

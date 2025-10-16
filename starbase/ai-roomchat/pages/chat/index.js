@@ -108,6 +108,7 @@ const LAYOUT = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
+    minHeight: 0,
   },
   sidePanel: {
     flex: 1,
@@ -116,6 +117,7 @@ const LAYOUT = {
     padding: '24px 20px 16px',
     gap: 18,
     overflow: 'hidden',
+    minHeight: 0,
   },
   scrollStack: {
     flex: 1,
@@ -123,6 +125,7 @@ const LAYOUT = {
     paddingRight: 4,
     display: 'grid',
     gap: 16,
+    minHeight: 0,
   },
   messagePanel: {
     flex: 1,
@@ -130,14 +133,55 @@ const LAYOUT = {
     flexDirection: 'column',
     padding: '28px 32px 24px',
     minHeight: 0,
+    gap: 18,
   },
-  messageList: {
+  messageHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  messageViewportShell: {
     flex: 1,
-    overflowY: 'auto',
-    display: 'grid',
-    gap: 8,
-    padding: '0 4px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 0,
   },
+  messageViewport: (height = null) => ({
+    flex: height ? '0 0 auto' : '1 1 auto',
+    height: height ? `${Math.round(height)}px` : '100%',
+    minHeight: 220,
+    maxHeight: '100%',
+    overflowY: 'auto',
+    padding: '0 4px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    minWidth: 0,
+    minHeight: 0,
+  }),
+  messageResizer: (active = false) => ({
+    height: 18,
+    margin: '4px -4px 0',
+    padding: '4px 0',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    cursor: 'ns-resize',
+    touchAction: 'none',
+    userSelect: 'none',
+    borderRadius: 12,
+    border: active ? '1px solid rgba(148, 163, 184, 0.45)' : '1px solid rgba(148, 163, 184, 0.18)',
+    background: active ? 'rgba(59, 130, 246, 0.12)' : 'rgba(15, 23, 42, 0.45)',
+    transition: 'background 0.2s ease, border 0.2s ease',
+  }),
+  messageResizerGrip: (active = false) => ({
+    width: 64,
+    height: 6,
+    borderRadius: 999,
+    background: active ? 'rgba(191, 219, 254, 0.9)' : 'rgba(148, 163, 184, 0.4)',
+    transition: 'background 0.2s ease',
+  }),
   messageRow: (mine = false) => ({
     display: 'flex',
     justifyContent: mine ? 'flex-end' : 'flex-start',
@@ -188,7 +232,6 @@ const LAYOUT = {
     textAlign: mine ? 'right' : 'left',
   }),
   composer: {
-    marginTop: 16,
     paddingTop: 18,
     borderTop: '1px solid rgba(148, 163, 184, 0.16)',
     display: 'grid',
@@ -311,8 +354,9 @@ const LAYOUT = {
 
 const TABS = [
   { id: 'info', label: '정보' },
-  { id: 'private', label: '일반채팅' },
-  { id: 'open', label: '오픈채팅' },
+  { id: 'my-rooms', label: '내 방' },
+  { id: 'open-search', label: '오픈채팅 검색' },
+  { id: 'open-create', label: '오픈채팅 만들기' },
 ]
 
 const INITIAL_CREATE_STATE = {
@@ -326,18 +370,28 @@ const INITIAL_CREATE_STATE = {
   heroId: '',
 }
 
+const INITIAL_PRIVATE_ROOM_STATE = {
+  ...INITIAL_CREATE_STATE,
+  visibility: 'private',
+}
+
+const INITIAL_OPEN_ROOM_STATE = {
+  ...INITIAL_CREATE_STATE,
+  visibility: 'public',
+  requireApproval: false,
+}
+
 function normalizeId(value) {
   if (value === null || value === undefined) return null
   const token = String(value).trim()
   return token.length ? token.toLowerCase() : null
 }
 
-const GLOBAL_ROOM_CARD = {
-  id: 'global-chat-channel',
-  name: '전체 채팅',
-  description: '모든 플레이어가 참여하는 기본 채널',
-  visibility: 'public',
-  builtin: 'global',
+function clamp(value, min, max) {
+  if (Number.isNaN(value)) return min
+  const lower = min ?? Number.NEGATIVE_INFINITY
+  const upper = max ?? Number.POSITIVE_INFINITY
+  return Math.min(Math.max(value, lower), upper)
 }
 
 function buildRoomContext(room) {
@@ -351,17 +405,6 @@ function buildRoomContext(room) {
     description: room.description || '',
     memberCount: room.member_count || 0,
     visibility: room.visibility || 'private',
-  }
-}
-
-function buildGlobalContext() {
-  return {
-    type: 'global',
-    scope: 'global',
-    label: '전체 채팅',
-    description: '모두와 대화하세요.',
-    memberCount: null,
-    visibility: 'public',
   }
 }
 
@@ -630,12 +673,15 @@ export default function ChatPage() {
   const [roomSearch, setRoomSearch] = useState('')
   const [roomResults, setRoomResults] = useState([])
   const [searchBusy, setSearchBusy] = useState(false)
-  const [createState, setCreateState] = useState({ ...INITIAL_CREATE_STATE })
-  const [showCreate, setShowCreate] = useState(false)
+  const [privateCreateState, setPrivateCreateState] = useState({ ...INITIAL_PRIVATE_ROOM_STATE })
+  const [openCreateState, setOpenCreateState] = useState({ ...INITIAL_OPEN_ROOM_STATE })
   const [hasActiveKey, setHasActiveKey] = useState(false)
   const [selectedHeroId, setSelectedHeroId] = useState('')
+  const [viewportHeight, setViewportHeight] = useState(null)
+  const [resizingViewport, setResizingViewport] = useState(false)
   const subscriptionRef = useRef(null)
   const messageListRef = useRef(null)
+  const viewportResizeStateRef = useRef({ teardown: null })
 
   const sessionLookup = useMemo(() => {
     const map = new Map()
@@ -745,6 +791,57 @@ export default function ChatPage() {
     [context, viewer, subscriptionKey, selectedHeroId],
   )
 
+  const beginViewportResize = useCallback(
+    (event) => {
+      if (typeof window === 'undefined') return
+      event.preventDefault()
+      event.stopPropagation()
+      const viewportEl = messageListRef.current
+      if (!viewportEl) return
+
+      if (viewportResizeStateRef.current?.teardown) {
+        viewportResizeStateRef.current.teardown()
+      }
+
+      const shell = viewportEl.parentElement
+      const panel = shell?.parentElement
+      const composerEstimate = 140
+      const shellHeight = shell?.offsetHeight || viewportEl.offsetHeight || 0
+      const panelHeight = panel?.offsetHeight || shellHeight + composerEstimate
+      const minHeight = 220
+      const maxHeight = Math.max(minHeight, panelHeight - composerEstimate)
+      const startHeight = viewportHeight ?? shellHeight
+      const startY = event.clientY
+
+      setResizingViewport(true)
+      document.body.style.userSelect = 'none'
+      document.body.style.cursor = 'ns-resize'
+
+      const handlePointerMove = (moveEvent) => {
+        const delta = moveEvent.clientY - startY
+        const nextHeight = clamp(startHeight + delta, minHeight, maxHeight)
+        setViewportHeight(nextHeight)
+      }
+
+      const stopResize = () => {
+        window.removeEventListener('pointermove', handlePointerMove)
+        window.removeEventListener('pointerup', stopResize)
+        window.removeEventListener('pointercancel', stopResize)
+        document.body.style.userSelect = ''
+        document.body.style.cursor = ''
+        setResizingViewport(false)
+        viewportResizeStateRef.current.teardown = null
+      }
+
+      viewportResizeStateRef.current.teardown = stopResize
+
+      window.addEventListener('pointermove', handlePointerMove)
+      window.addEventListener('pointerup', stopResize)
+      window.addEventListener('pointercancel', stopResize)
+    },
+    [viewportHeight],
+  )
+
   useEffect(() => {
     ;(async () => {
       try {
@@ -787,6 +884,14 @@ export default function ChatPage() {
     loadMessages(context)
     setupSubscription(context)
   }, [context, loadMessages, setupSubscription])
+
+  useEffect(() => {
+    return () => {
+      if (viewportResizeStateRef.current?.teardown) {
+        viewportResizeStateRef.current.teardown()
+      }
+    }
+  }, [])
 
   const handleSelectContext = useCallback((nextContext, tabHint = null) => {
     if (!nextContext) return
@@ -945,12 +1050,18 @@ export default function ChatPage() {
   }, [composerText, context, effectiveHeroId, sessionWindow])
 
   const handleCreateRoom = useCallback(
-    async (event) => {
+    async (event, formState, resetForm, tabHint = 'my-rooms') => {
       event?.preventDefault?.()
-      const { name, description, visibility, capacity, allowAi, requireApproval, heroId } = createState
+      if (!formState) return
+      const { name, description, visibility, capacity, allowAi, requireApproval, heroId } = formState
+      const trimmedName = typeof name === 'string' ? name.trim() : ''
+      if (!trimmedName) {
+        console.warn('[chat] 방 이름이 필요합니다.')
+        return
+      }
       try {
         const room = await createChatRoom({
-          name,
+          name: trimmedName,
           description,
           visibility,
           capacity,
@@ -960,18 +1071,19 @@ export default function ChatPage() {
         })
         const snapshot = await refreshDashboard()
         const roomSnapshot = (snapshot.rooms || []).find((entry) => entry.id === room.id) || room
-        handleSelectContext(buildRoomContext(roomSnapshot), 'private')
-        setCreateState({ ...INITIAL_CREATE_STATE })
-        setShowCreate(false)
+        handleSelectContext(buildRoomContext(roomSnapshot), tabHint)
+        if (typeof resetForm === 'function') {
+          resetForm()
+        }
       } catch (error) {
         console.error('[chat] 방 생성 실패:', error)
       }
     },
-    [createState, handleSelectContext, refreshDashboard, selectedHeroId],
+    [handleSelectContext, refreshDashboard, selectedHeroId],
   )
 
   const handleJoinRoom = useCallback(
-    async (roomId, tabHint = 'open') => {
+    async (roomId, tabHint = 'open-search') => {
       if (!roomId) return
       try {
         await joinChatRoom({ roomId })
@@ -986,7 +1098,7 @@ export default function ChatPage() {
   )
 
   const handleLeaveRoom = useCallback(
-    async (roomId, nextTab = 'info') => {
+    async (roomId, nextTab = 'my-rooms') => {
       if (!roomId) return
       try {
         await leaveChatRoom({ roomId })
@@ -1001,6 +1113,13 @@ export default function ChatPage() {
     },
     [refreshDashboard],
   )
+
+  const openCreateTab = useCallback(() => {
+    setContext(null)
+    setMessages([])
+    setComposerText('')
+    setActiveTab('open-create')
+  }, [])
 
   const runRoomSearch = useCallback(
     async (event) => {
@@ -1018,15 +1137,32 @@ export default function ChatPage() {
     [roomSearch],
   )
 
-  const privateRooms = useMemo(() => {
+  const ownedRooms = useMemo(() => {
     const rooms = Array.isArray(dashboard.rooms) ? dashboard.rooms : []
-    return rooms.filter((room) => (room.visibility || 'private') !== 'public')
-  }, [dashboard.rooms])
+    const ownerToken = viewerToken
+    return rooms.filter((room) => {
+      if (!room || room.builtin === 'global') return false
+      if (!ownerToken) return false
+      return normalizeId(room.owner_id) === ownerToken
+    })
+  }, [dashboard.rooms, viewerToken])
+
+  const joinedRooms = useMemo(() => {
+    const rooms = Array.isArray(dashboard.rooms) ? dashboard.rooms : []
+    return rooms.filter((room) => {
+      if (!room || room.builtin === 'global') return false
+      if (!viewerToken) return true
+      return normalizeId(room.owner_id) !== viewerToken
+    })
+  }, [dashboard.rooms, viewerToken])
+
+  const joinedPrivateRooms = useMemo(() => {
+    return joinedRooms.filter((room) => (room.visibility || 'private') !== 'public')
+  }, [joinedRooms])
 
   const joinedPublicRooms = useMemo(() => {
-    const rooms = Array.isArray(dashboard.rooms) ? dashboard.rooms : []
-    return rooms.filter((room) => (room.visibility || 'private') === 'public')
-  }, [dashboard.rooms])
+    return joinedRooms.filter((room) => (room.visibility || 'private') === 'public')
+  }, [joinedRooms])
 
   const infoSessions = useMemo(() => {
     return Array.isArray(dashboard.sessions) ? dashboard.sessions : []
@@ -1036,19 +1172,30 @@ export default function ChatPage() {
     return Array.isArray(dashboard.contacts) ? dashboard.contacts : []
   }, [dashboard.contacts])
 
-  const publicRooms = useMemo(() => {
+  const recommendedPublicRooms = useMemo(() => {
     const rooms = Array.isArray(dashboard.publicRooms) ? dashboard.publicRooms : []
-    const filtered = rooms.filter((room) => {
-      const roomId = normalizeId(room?.id)
-      return roomId && roomId !== normalizeId(GLOBAL_ROOM_CARD.id)
+    const joinedIds = new Set(
+      (Array.isArray(dashboard.rooms) ? dashboard.rooms : [])
+        .filter((room) => room && room.builtin !== 'global')
+        .map((room) => normalizeId(room.id))
+        .filter(Boolean),
+    )
+    return rooms.filter((room) => {
+      if (!room || room.builtin === 'global') return false
+      const roomId = normalizeId(room.id)
+      if (!roomId) return false
+      if (joinedIds.has(roomId)) return false
+      return true
     })
-    return [GLOBAL_ROOM_CARD, ...filtered]
-  }, [dashboard.publicRooms])
+  }, [dashboard.publicRooms, dashboard.rooms])
 
   const activeHero = useMemo(() => {
     const heroes = Array.isArray(dashboard.heroes) ? dashboard.heroes : []
     return heroes.find((hero) => hero.id === selectedHeroId) || null
   }, [dashboard.heroes, selectedHeroId])
+
+  const privateCreateDisabled = !String(privateCreateState.name || '').trim()
+  const openCreateDisabled = !String(openCreateState.name || '').trim()
 
   return (
     <>
@@ -1090,15 +1237,8 @@ export default function ChatPage() {
                   ))}
                 </select>
               </div>
-              <button
-                type="button"
-                style={LAYOUT.button('ghost')}
-                onClick={() => {
-                  setShowCreate((prev) => !prev)
-                  setActiveTab('private')
-                }}
-              >
-                새 방 만들기
+              <button type="button" style={LAYOUT.button('ghost')} onClick={openCreateTab}>
+                오픈채팅 만들기
               </button>
             </div>
           </header>
@@ -1192,124 +1332,192 @@ export default function ChatPage() {
                     </>
                   ) : null}
 
-                  {activeTab === 'private' ? (
+                  {activeTab === 'my-rooms' ? (
                     <>
-                      {showCreate ? (
-                        <form onSubmit={handleCreateRoom} style={LAYOUT.card}>
-                          <strong style={{ fontSize: 14, marginBottom: 6 }}>새 비공개 방</strong>
-                          <input
-                            type="text"
-                            placeholder="방 이름"
-                            value={createState.name}
-                            onChange={(event) => setCreateState((prev) => ({ ...prev, name: event.target.value }))}
-                            style={{ ...LAYOUT.textInput, minHeight: 44 }}
-                          />
-                          <textarea
-                            placeholder="설명"
-                            value={createState.description}
-                            onChange={(event) =>
-                              setCreateState((prev) => ({ ...prev, description: event.target.value }))
-                            }
-                            style={{
-                              ...LAYOUT.textInput,
-                              minHeight: 88,
-                              resize: 'vertical',
-                              padding: '12px 16px',
-                            }}
-                          />
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <button type="submit" style={LAYOUT.button('primary')}>
-                              생성
-                            </button>
-                            <button
-                              type="button"
-                              style={LAYOUT.button('ghost')}
-                              onClick={() => {
-                                setShowCreate(false)
-                                setCreateState({ ...INITIAL_CREATE_STATE })
-                              }}
-                            >
-                              취소
-                            </button>
-                          </div>
-                        </form>
-                      ) : null}
-                      {privateRooms.length ? (
-                        privateRooms.map((room) => (
-                          <article key={room.id} style={LAYOUT.card}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <strong style={{ fontSize: 14 }}>{room.name}</strong>
-                              <span style={LAYOUT.badge}>{room.member_count ?? 0}명</span>
-                            </div>
-                            <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>
-                              {room.description || '설명 없음'}
-                            </p>
-                            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                              <button
-                                type="button"
-                                style={LAYOUT.smallButton(
-                                  context?.chatRoomId === room.id && context?.scope === 'room',
-                                )}
-                                onClick={() => handleSelectContext(buildRoomContext(room), 'private')}
-                              >
-                                대화 열기
-                              </button>
-                              <button
-                                type="button"
-                                style={LAYOUT.smallButton(false)}
-                                onClick={() => handleLeaveRoom(room.id, 'private')}
-                              >
-                                나가기
-                              </button>
-                            </div>
-                          </article>
-                        ))
-                      ) : (
-                        <p style={LAYOUT.empty}>참여 중인 비공개 방이 없습니다.</p>
-                      )}
-                    </>
-                  ) : null}
+                      <form
+                        onSubmit={(event) =>
+                          handleCreateRoom(
+                            event,
+                            privateCreateState,
+                            () => setPrivateCreateState({ ...INITIAL_PRIVATE_ROOM_STATE }),
+                            'my-rooms',
+                          )
+                        }
+                        style={{ ...LAYOUT.card, display: 'grid', gap: 12 }}
+                      >
+                        <strong style={{ fontSize: 14 }}>새 비공개 방</strong>
+                        <input
+                          type="text"
+                          placeholder="방 이름"
+                          value={privateCreateState.name}
+                          onChange={(event) =>
+                            setPrivateCreateState((prev) => ({ ...prev, name: event.target.value }))
+                          }
+                          style={{ ...LAYOUT.textInput, minHeight: 44 }}
+                        />
+                        <textarea
+                          placeholder="설명"
+                          value={privateCreateState.description}
+                          onChange={(event) =>
+                            setPrivateCreateState((prev) => ({ ...prev, description: event.target.value }))
+                          }
+                          style={{
+                            ...LAYOUT.textInput,
+                            minHeight: 88,
+                            resize: 'vertical',
+                            padding: '12px 16px',
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button
+                            type="submit"
+                            style={LAYOUT.button('primary', privateCreateDisabled)}
+                            disabled={privateCreateDisabled}
+                          >
+                            생성
+                          </button>
+                          <button
+                            type="button"
+                            style={LAYOUT.button('ghost')}
+                            onClick={() => setPrivateCreateState({ ...INITIAL_PRIVATE_ROOM_STATE })}
+                          >
+                            초기화
+                          </button>
+                        </div>
+                      </form>
 
-                  {activeTab === 'open' ? (
-                    <>
-                      {joinedPublicRooms.length ? (
-                        <section style={{ display: 'grid', gap: 12 }}>
-                          <h3 style={{ margin: '0 0 0', fontSize: 13, color: '#94a3b8', fontWeight: 700 }}>
-                            참여 중인 공개 방
-                          </h3>
-                          {joinedPublicRooms.map((room) => (
+                      <section style={{ display: 'grid', gap: 12 }}>
+                        <h3 style={{ margin: '0 0 0', fontSize: 13, color: '#94a3b8', fontWeight: 700 }}>
+                          내가 만든 방
+                        </h3>
+                        {ownedRooms.length ? (
+                          ownedRooms.map((room) => (
                             <article key={room.id} style={LAYOUT.card}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                <strong style={{ fontSize: 14 }}>{room.name}</strong>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  <span style={LAYOUT.badge}>{room.visibility === 'public' ? '공개' : '비공개'}</span>
+                                  <span style={LAYOUT.badge}>{room.member_count ?? 0}명</span>
+                                </div>
+                              </div>
+                              <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>
+                                {room.description || '설명 없음'}
+                              </p>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  style={LAYOUT.smallButton(
+                                    context?.chatRoomId === room.id && context?.scope === 'room',
+                                  )}
+                                  onClick={() => handleSelectContext(buildRoomContext(room), 'my-rooms')}
+                                >
+                                  대화 열기
+                                </button>
+                              </div>
+                            </article>
+                          ))
+                        ) : (
+                          <p style={LAYOUT.empty}>아직 만든 방이 없습니다.</p>
+                        )}
+                      </section>
+
+                      <section style={{ display: 'grid', gap: 12 }}>
+                        <h3 style={{ margin: '0 0 0', fontSize: 13, color: '#94a3b8', fontWeight: 700 }}>
+                          참여 중인 비공개 방
+                        </h3>
+                        {joinedPrivateRooms.length ? (
+                          joinedPrivateRooms.map((room) => (
+                            <article key={room.id} style={LAYOUT.card}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                                 <strong style={{ fontSize: 14 }}>{room.name}</strong>
                                 <span style={LAYOUT.badge}>{room.member_count ?? 0}명</span>
                               </div>
                               <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>
                                 {room.description || '설명 없음'}
                               </p>
-                              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                                 <button
                                   type="button"
                                   style={LAYOUT.smallButton(
                                     context?.chatRoomId === room.id && context?.scope === 'room',
                                   )}
-                                  onClick={() => handleSelectContext(buildRoomContext(room), 'open')}
+                                  onClick={() => handleSelectContext(buildRoomContext(room), 'my-rooms')}
                                 >
                                   대화 열기
                                 </button>
                                 <button
                                   type="button"
                                   style={LAYOUT.smallButton(false)}
-                                  onClick={() => handleLeaveRoom(room.id, 'open')}
+                                  onClick={() => handleLeaveRoom(room.id, 'my-rooms')}
                                 >
                                   나가기
                                 </button>
                               </div>
                             </article>
-                          ))}
-                        </section>
-                      ) : null}
-                      <form onSubmit={runRoomSearch} style={LAYOUT.card}>
-                        <strong style={{ fontSize: 14, marginBottom: 6 }}>공개 방 검색</strong>
+                          ))
+                        ) : (
+                          <p style={LAYOUT.empty}>참여 중인 비공개 방이 없습니다.</p>
+                        )}
+                      </section>
+
+                      <section style={{ display: 'grid', gap: 12 }}>
+                        <h3 style={{ margin: '0 0 0', fontSize: 13, color: '#94a3b8', fontWeight: 700 }}>
+                          참여 중인 오픈채팅
+                        </h3>
+                        {joinedPublicRooms.length ? (
+                          joinedPublicRooms.map((room) => (
+                            <article key={room.id} style={LAYOUT.card}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                <strong style={{ fontSize: 14 }}>{room.name}</strong>
+                                <span style={LAYOUT.badge}>{room.member_count ?? 0}명</span>
+                              </div>
+                              <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>
+                                {room.description || '설명 없음'}
+                              </p>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  style={LAYOUT.smallButton(
+                                    context?.chatRoomId === room.id && context?.scope === 'room',
+                                  )}
+                                  onClick={() => handleSelectContext(buildRoomContext(room), 'my-rooms')}
+                                >
+                                  대화 열기
+                                </button>
+                                <button
+                                  type="button"
+                                  style={LAYOUT.smallButton(false)}
+                                  onClick={() => handleLeaveRoom(room.id, 'my-rooms')}
+                                >
+                                  나가기
+                                </button>
+                              </div>
+                            </article>
+                          ))
+                        ) : (
+                          <p style={LAYOUT.empty}>참여 중인 오픈채팅이 없습니다.</p>
+                        )}
+                      </section>
+                    </>
+                  ) : null}
+
+                  {activeTab === 'open-search' ? (
+                    <>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 12,
+                          marginBottom: 12,
+                        }}
+                      >
+                        <strong style={{ fontSize: 14 }}>오픈채팅 검색</strong>
+                        <button type="button" style={LAYOUT.button('ghost')} onClick={openCreateTab}>
+                          새 오픈채팅 만들기
+                        </button>
+                      </div>
+                      <form onSubmit={runRoomSearch} style={{ ...LAYOUT.card, display: 'grid', gap: 12 }}>
                         <input
                           type="text"
                           value={roomSearch}
@@ -1317,7 +1525,7 @@ export default function ChatPage() {
                           placeholder="방 이름 또는 설명"
                           style={{ ...LAYOUT.textInput, minHeight: 44 }}
                         />
-                        <button type="submit" style={LAYOUT.button('primary')} disabled={searchBusy}>
+                        <button type="submit" style={LAYOUT.button('primary', searchBusy)} disabled={searchBusy}>
                           {searchBusy ? '검색 중…' : '검색'}
                         </button>
                         {roomResults.length ? (
@@ -1327,7 +1535,7 @@ export default function ChatPage() {
                                 key={room.id}
                                 type="button"
                                 style={LAYOUT.smallButton(false)}
-                                onClick={() => handleJoinRoom(room.id, 'open')}
+                                onClick={() => handleJoinRoom(room.id, 'open-search')}
                               >
                                 <span>{room.name}</span>
                                 <span style={{ fontSize: 12, color: '#94a3b8' }}>{room.member_count ?? 0}명</span>
@@ -1336,43 +1544,125 @@ export default function ChatPage() {
                           </div>
                         ) : null}
                       </form>
+
                       <section style={{ display: 'grid', gap: 12 }}>
                         <h3 style={{ margin: '0 0 0', fontSize: 13, color: '#94a3b8', fontWeight: 700 }}>
-                          추천 공개 방
+                          추천 오픈채팅
                         </h3>
-                        {publicRooms.length ? (
-                          publicRooms.map((room) => {
-                            const isGlobal =
-                              room?.builtin === 'global' ||
-                              normalizeId(room?.id) === normalizeId(GLOBAL_ROOM_CARD.id)
-                            const memberLabel = isGlobal ? '전체' : `${room.member_count ?? 0}명`
-                            const description = room.description || (isGlobal ? '모두가 참여하는 기본 채널입니다.' : '설명 없음')
-                            return (
-                              <article key={room.id} style={LAYOUT.card}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <strong style={{ fontSize: 14 }}>{room.name}</strong>
-                                  <span style={LAYOUT.badge}>{memberLabel}</span>
-                                </div>
-                                <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>{description}</p>
-                                <button
-                                  type="button"
-                                  style={{ ...LAYOUT.smallButton(false), marginTop: 8 }}
-                                  onClick={() =>
-                                    isGlobal
-                                      ? handleSelectContext(buildGlobalContext(), 'open')
-                                      : handleJoinRoom(room.id, 'open')
-                                  }
-                                >
-                                  {isGlobal ? '입장하기' : '참가하기'}
-                                </button>
-                              </article>
-                            )
-                          })
+                        {recommendedPublicRooms.length ? (
+                          recommendedPublicRooms.map((room) => (
+                            <article key={room.id} style={LAYOUT.card}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                <strong style={{ fontSize: 14 }}>{room.name}</strong>
+                                <span style={LAYOUT.badge}>{room.member_count ?? 0}명</span>
+                              </div>
+                              <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>
+                                {room.description || '설명 없음'}
+                              </p>
+                              <button
+                                type="button"
+                                style={{ ...LAYOUT.smallButton(false), marginTop: 8 }}
+                                onClick={() => handleJoinRoom(room.id, 'open-search')}
+                              >
+                                참가하기
+                              </button>
+                            </article>
+                          ))
                         ) : (
-                          <p style={LAYOUT.empty}>추천할 공개 방이 없습니다.</p>
+                          <p style={LAYOUT.empty}>추천할 오픈채팅이 없습니다.</p>
                         )}
                       </section>
                     </>
+                  ) : null}
+
+                  {activeTab === 'open-create' ? (
+                    <form
+                      onSubmit={(event) =>
+                        handleCreateRoom(
+                          event,
+                          { ...openCreateState, visibility: 'public' },
+                          () => setOpenCreateState({ ...INITIAL_OPEN_ROOM_STATE }),
+                          'my-rooms',
+                        )
+                      }
+                      style={{ ...LAYOUT.card, display: 'grid', gap: 12 }}
+                    >
+                      <strong style={{ fontSize: 14 }}>새 오픈채팅 만들기</strong>
+                      <input
+                        type="text"
+                        placeholder="방 이름"
+                        value={openCreateState.name}
+                        onChange={(event) =>
+                          setOpenCreateState((prev) => ({ ...prev, name: event.target.value }))
+                        }
+                        style={{ ...LAYOUT.textInput, minHeight: 44 }}
+                      />
+                      <textarea
+                        placeholder="설명"
+                        value={openCreateState.description}
+                        onChange={(event) =>
+                          setOpenCreateState((prev) => ({ ...prev, description: event.target.value }))
+                        }
+                        style={{
+                          ...LAYOUT.textInput,
+                          minHeight: 112,
+                          resize: 'vertical',
+                          padding: '12px 16px',
+                        }}
+                      />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5f5' }}>
+                        <input
+                          type="checkbox"
+                          checked={openCreateState.allowAi}
+                          onChange={(event) =>
+                            setOpenCreateState((prev) => ({ ...prev, allowAi: event.target.checked }))
+                          }
+                        />
+                        AI 응답 허용
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5f5' }}>
+                        <input
+                          type="checkbox"
+                          checked={openCreateState.requireApproval}
+                          onChange={(event) =>
+                            setOpenCreateState((prev) => ({ ...prev, requireApproval: event.target.checked }))
+                          }
+                        />
+                        입장 승인 필요
+                      </label>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>최대 인원</span>
+                        <input
+                          type="number"
+                          min={2}
+                          max={500}
+                          value={openCreateState.capacity}
+                          onChange={(event) =>
+                            setOpenCreateState((prev) => ({
+                              ...prev,
+                              capacity: Number(event.target.value) || prev.capacity,
+                            }))
+                          }
+                          style={{ ...LAYOUT.textInput, minHeight: 44 }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="submit"
+                          style={LAYOUT.button('primary', openCreateDisabled)}
+                          disabled={openCreateDisabled}
+                        >
+                          만들기
+                        </button>
+                        <button
+                          type="button"
+                          style={LAYOUT.button('ghost')}
+                          onClick={() => setOpenCreateState({ ...INITIAL_OPEN_ROOM_STATE })}
+                        >
+                          초기화
+                        </button>
+                      </div>
+                    </form>
                   ) : null}
                 </div>
               </div>
@@ -1380,15 +1670,7 @@ export default function ChatPage() {
             ) : null}
             {isChatActive ? (
               <section style={LAYOUT.messagePanel}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 12,
-                    gap: 12,
-                  }}
-                >
+                <div style={LAYOUT.messageHeader}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <button
                       type="button"
@@ -1400,7 +1682,6 @@ export default function ChatPage() {
                     <div style={{ display: 'grid', gap: 4 }}>
                       <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{context?.label || '대화'}</h2>
                       <div style={{ display: 'flex', gap: 12, color: '#94a3b8', fontSize: 12, flexWrap: 'wrap' }}>
-                        {context?.scope === 'global' ? <span>전체 채널</span> : null}
                         {context?.scope === 'room' ? (
                           <span>{context?.visibility === 'public' ? '공개 방' : '비공개 방'}</span>
                         ) : null}
@@ -1412,59 +1693,75 @@ export default function ChatPage() {
                   {context?.type === 'chatRoom' && context?.chatRoomId ? (
                     <button
                       type="button"
-                      onClick={() => handleLeaveRoom(context.chatRoomId, context?.visibility === 'public' ? 'open' : 'private')}
+                      onClick={() =>
+                        handleLeaveRoom(
+                          context.chatRoomId,
+                          context?.visibility === 'public' ? 'open-search' : 'my-rooms',
+                        )
+                      }
                       style={LAYOUT.button('danger')}
                     >
                       방 나가기
                     </button>
                   ) : null}
                 </div>
-                <div ref={messageListRef} style={LAYOUT.messageList}>
-                  {loadingMessages ? (
-                    <p style={LAYOUT.empty}>메시지를 불러오는 중입니다…</p>
-                  ) : messages.length ? (
-                    messages.map((message) => {
-                      const avatar = resolveAvatar(message)
-                      const text = extractMessageText(message)
-                      const createdAt = formatTime(message.created_at)
-                      const ownerToken = normalizeId(message.owner_id || message.user_id)
-                      const mine = viewerToken && ownerToken && viewerToken === ownerToken
-                      const displayName = message.hero_name || message.username || '익명'
-                      const avatarNode = (
-                        <div style={LAYOUT.messageAvatar}>
-                          {avatar.type === 'image' ? (
-                            <img
-                              src={avatar.url}
-                              alt={displayName}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
-                          ) : (
-                            avatar.text
-                          )}
-                        </div>
-                      )
-                      return (
-                        <div key={message.id} style={LAYOUT.messageRow(mine)}>
-                          {mine ? (
-                            <span style={LAYOUT.messageTimestamp(true)}>{createdAt}</span>
-                          ) : (
-                            avatarNode
-                          )}
-                          <div style={LAYOUT.messageContent(mine)}>
-                            <span style={LAYOUT.messageName(mine)}>{displayName}</span>
-                            <div style={LAYOUT.messageBubble(mine)}>
-                              <p style={LAYOUT.messageText}>{text || ' '}</p>
-                            </div>
+                <div style={LAYOUT.messageViewportShell}>
+                  <div ref={messageListRef} style={LAYOUT.messageViewport(viewportHeight)}>
+                    {loadingMessages ? (
+                      <p style={LAYOUT.empty}>메시지를 불러오는 중입니다…</p>
+                    ) : messages.length ? (
+                      messages.map((message) => {
+                        const avatar = resolveAvatar(message)
+                        const text = extractMessageText(message)
+                        const createdAt = formatTime(message.created_at)
+                        const ownerToken = normalizeId(message.owner_id || message.user_id)
+                        const mine = viewerToken && ownerToken && viewerToken === ownerToken
+                        const displayName = message.hero_name || message.username || '익명'
+                        const avatarNode = (
+                          <div style={LAYOUT.messageAvatar}>
+                            {avatar.type === 'image' ? (
+                              <img
+                                src={avatar.url}
+                                alt={displayName}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              avatar.text
+                            )}
                           </div>
-                          {mine ? avatarNode : <span style={LAYOUT.messageTimestamp(false)}>{createdAt}</span>}
-                        </div>
-                      )
-                    })
-                  ) : (
-                    <p style={LAYOUT.empty}>아직 메시지가 없습니다.</p>
-                  )}
+                        )
+                        return (
+                          <div key={message.id} style={LAYOUT.messageRow(mine)}>
+                            {mine ? (
+                              <span style={LAYOUT.messageTimestamp(true)}>{createdAt}</span>
+                            ) : (
+                              avatarNode
+                            )}
+                            <div style={LAYOUT.messageContent(mine)}>
+                              <span style={LAYOUT.messageName(mine)}>{displayName}</span>
+                              <div style={LAYOUT.messageBubble(mine)}>
+                                <p style={LAYOUT.messageText}>{text || ' '}</p>
+                              </div>
+                            </div>
+                            {mine ? avatarNode : <span style={LAYOUT.messageTimestamp(false)}>{createdAt}</span>}
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <p style={LAYOUT.empty}>아직 메시지가 없습니다.</p>
+                    )}
+                  </div>
+                  <div
+                    role="separator"
+                    aria-label="채팅 높이 조절"
+                    aria-orientation="horizontal"
+                    onPointerDown={beginViewportResize}
+                    style={LAYOUT.messageResizer(resizingViewport)}
+                  >
+                    <span style={LAYOUT.messageResizerGrip(resizingViewport)} />
+                  </div>
                 </div>
-                <div style={LAYOUT.composer}>
+                <div style={LAYOUT.composer} data-composer-anchor>
                   {composerNotice ? (
                     <div style={LAYOUT.notice(composerNotice.active)}>
                       <span>{composerNotice.text}</span>
