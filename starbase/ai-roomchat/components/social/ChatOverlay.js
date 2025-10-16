@@ -74,49 +74,53 @@ const upsertMessageList = (current, incoming) => {
 }
 
 const overlayStyles = {
-  container: {
+  container: (focused) => ({
     display: 'flex',
     flexDirection: 'column',
-    gap: 20,
-    minHeight: '84vh',
-    maxHeight: '92vh',
+    gap: focused ? 12 : 16,
+    minHeight: '78vh',
+    maxHeight: '90vh',
     width: '100%',
     boxSizing: 'border-box',
-  },
+  }),
   tabBar: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 8,
   },
   tabButton: (active) => ({
-    borderRadius: 14,
-    border: '1px solid rgba(148, 163, 184, 0.28)',
-    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(148, 163, 184, 0.24)',
+    padding: '8px 12px',
     fontSize: 13,
     fontWeight: 700,
     cursor: 'pointer',
-    background: active ? 'rgba(59, 130, 246, 0.25)' : 'rgba(15, 23, 42, 0.72)',
+    background: active ? 'rgba(59, 130, 246, 0.28)' : 'rgba(15, 23, 42, 0.68)',
     color: active ? '#dbeafe' : '#cbd5f5',
     transition: 'all 0.2s ease',
   }),
-  body: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
+  body: (focused) => ({
     flex: 1,
+    display: 'flex',
+    flexDirection: focused ? 'column' : 'row',
+    gap: focused ? 12 : 18,
     overflow: 'hidden',
-  },
+    minHeight: 0,
+    alignItems: 'stretch',
+  }),
   listColumn: {
-    width: 280,
-    minWidth: 240,
+    flex: '0 0 320px',
+    minWidth: 280,
+    maxWidth: 360,
     maxHeight: '100%',
     borderRadius: 18,
     border: '1px solid rgba(148, 163, 184, 0.25)',
-    background: 'rgba(15, 23, 42, 0.6)',
+    background: 'rgba(15, 23, 42, 0.62)',
     padding: '16px 14px',
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
+    minHeight: 0,
   },
   listScroll: {
     flex: 1,
@@ -124,11 +128,12 @@ const overlayStyles = {
     display: 'grid',
     gap: 10,
     paddingRight: 4,
+    minHeight: 0,
   },
   card: (active) => ({
     borderRadius: 14,
     border: active ? '1px solid rgba(59, 130, 246, 0.55)' : '1px solid rgba(148, 163, 184, 0.18)',
-    background: active ? 'rgba(59, 130, 246, 0.18)' : 'rgba(15, 23, 42, 0.72)',
+    background: active ? 'rgba(59, 130, 246, 0.2)' : 'rgba(15, 23, 42, 0.7)',
     padding: '12px 14px',
     display: 'grid',
     gap: 6,
@@ -144,29 +149,31 @@ const overlayStyles = {
     fontSize: 12,
     color: '#94a3b8',
   },
-  messageColumn: {
+  messageColumn: (focused) => ({
     flex: 1,
-    minWidth: 320,
+    minWidth: 0,
     borderRadius: 18,
     border: '1px solid rgba(148, 163, 184, 0.25)',
-    background: 'rgba(15, 23, 42, 0.7)',
-    padding: '18px 18px 16px',
+    background: 'rgba(15, 23, 42, 0.78)',
+    padding: focused ? '16px 20px 14px' : '18px 20px 16px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 14,
-  },
+    gap: focused ? 12 : 14,
+    minHeight: 0,
+  }),
   placeholder: {
     flex: 1,
-    borderRadius: 18,
+    borderRadius: 14,
     border: '1px dashed rgba(148, 163, 184, 0.35)',
-    background: 'rgba(15, 23, 42, 0.4)',
+    background: 'rgba(15, 23, 42, 0.45)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     color: '#94a3b8',
-    fontSize: 14,
-    padding: '24px 18px',
+    fontSize: 13,
+    padding: '20px 16px',
     textAlign: 'center',
+    minHeight: 0,
   },
   heroSelector: {
     display: 'flex',
@@ -188,7 +195,8 @@ const overlayStyles = {
     overflowY: 'auto',
     display: 'grid',
     gap: 6,
-    padding: '2px 4px 14px',
+    padding: '4px 6px 12px',
+    minHeight: 0,
   },
   messageRow: (mine = false) => ({
     display: 'flex',
@@ -196,10 +204,10 @@ const overlayStyles = {
     alignItems: 'center',
     gap: 12,
   }),
-  messageContent: (mine = false) => ({
+  messageContent: (mine = false, focused = false) => ({
     display: 'grid',
     gap: 4,
-    maxWidth: '70%',
+    maxWidth: focused ? '88%' : '80%',
     textAlign: mine ? 'right' : 'left',
   }),
   messageName: (mine = false) => ({
@@ -211,7 +219,7 @@ const overlayStyles = {
     background: mine ? 'rgba(59, 130, 246, 0.24)' : 'rgba(15, 23, 42, 0.82)',
     borderRadius: mine ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
     border: mine ? '1px solid rgba(96, 165, 250, 0.45)' : '1px solid rgba(148, 163, 184, 0.22)',
-    padding: '8px 12px',
+    padding: '9px 14px',
     color: '#f8fafc',
     boxShadow: mine ? '0 14px 36px -28px rgba(59, 130, 246, 0.7)' : '0 14px 36px -28px rgba(15, 23, 42, 0.7)',
   }),
@@ -241,19 +249,22 @@ const overlayStyles = {
   }),
   composer: {
     display: 'flex',
-    gap: 8,
+    gap: 10,
     alignItems: 'flex-end',
     flexWrap: 'wrap',
+    paddingTop: 4,
   },
   textarea: {
-    flex: '1 1 240px',
-    minHeight: 64,
+    flex: '1 1 260px',
+    minHeight: 52,
+    maxHeight: 180,
     borderRadius: 16,
     border: '1px solid rgba(148, 163, 184, 0.3)',
-    background: 'rgba(15, 23, 42, 0.75)',
+    background: 'rgba(15, 23, 42, 0.78)',
     color: '#f8fafc',
     padding: '12px 14px',
     fontSize: 14,
+    lineHeight: 1.45,
     resize: 'vertical',
   },
   actionButton: (variant = 'primary', disabled = false) => {
@@ -830,11 +841,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const renderMessageColumn = () => {
     if (!context) {
-      return <div style={overlayStyles.placeholder}>채팅방 또는 세션을 선택해 주세요.</div>
+      return (
+        <div style={overlayStyles.messageColumn(false)}>
+          <div style={overlayStyles.placeholder}>채팅방 또는 세션을 선택해 주세요.</div>
+        </div>
+      )
     }
 
     return (
-      <div style={overlayStyles.messageColumn}>
+      <div style={overlayStyles.messageColumn(true)}>
         <header
           style={{
             display: 'flex',
@@ -901,7 +916,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   ) : (
                     avatarNode
                   )}
-                  <div style={overlayStyles.messageContent(mine)}>
+                  <div style={overlayStyles.messageContent(mine, true)}>
                     <span style={overlayStyles.messageName(mine)}>{displayName}</span>
                     <div style={overlayStyles.messageBubble(mine)}>
                       <p style={overlayStyles.messageText}>{preview || ' '}</p>
@@ -939,29 +954,35 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     )
   }
 
+  const focused = Boolean(context)
+  const showTabs = !focused
+
   return (
     <SurfaceOverlay
       open={open}
       onClose={onClose}
       title="채팅"
-      width={960}
-      contentStyle={{ padding: 20, background: 'rgba(15, 23, 42, 0.85)' }}
+      width="min(1120px, 95vw)"
+      contentStyle={{ padding: 18, background: 'rgba(15, 23, 42, 0.85)' }}
     >
-      <div style={overlayStyles.container}>
-        <nav style={overlayStyles.tabBar}>
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              style={overlayStyles.tabButton(activeTab === tab.key)}
-              onClick={() => setActiveTab(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-        <div style={overlayStyles.body}>
-          {context ? renderMessageColumn() : renderListColumn()}
+      <div style={overlayStyles.container(focused)}>
+        {showTabs ? (
+          <nav style={overlayStyles.tabBar}>
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                style={overlayStyles.tabButton(activeTab === tab.key)}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        ) : null}
+        <div style={overlayStyles.body(focused)}>
+          {!focused ? renderListColumn() : null}
+          {renderMessageColumn()}
         </div>
       </div>
     </SurfaceOverlay>
