@@ -36,15 +36,18 @@ insert into storage.buckets (id, name, public)
 values ('chat-attachments', 'chat-attachments', false)
 on conflict (id) do nothing;
 
-create policy if not exists chat_attachments_select
+drop policy if exists chat_attachments_select on storage.objects;
+create policy chat_attachments_select
 on storage.objects for select to authenticated
 using (bucket_id = 'chat-attachments');
 
-create policy if not exists chat_attachments_insert
+drop policy if exists chat_attachments_insert on storage.objects;
+create policy chat_attachments_insert
 on storage.objects for insert to authenticated
 with check (bucket_id = 'chat-attachments');
 
-create policy if not exists chat_attachments_delete
+drop policy if exists chat_attachments_delete on storage.objects;
+create policy chat_attachments_delete
 on storage.objects for delete to authenticated
 using (bucket_id = 'chat-attachments');
 ```
