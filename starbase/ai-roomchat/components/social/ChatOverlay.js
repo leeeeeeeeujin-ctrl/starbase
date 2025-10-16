@@ -42,6 +42,7 @@ const ATTACHMENT_ICONS = {
 }
 
 const AI_ASSISTANT_NAME = 'AI 어시스턴트'
+const DEFAULT_VIEWPORT = { width: 1280, height: 800 }
 
 function getAttachmentCacheKey(attachment) {
   if (!attachment) return ''
@@ -74,6 +75,16 @@ function formatDuration(seconds) {
   const minutes = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
+
+function getViewportSnapshot() {
+  if (typeof window === 'undefined') {
+    return { ...DEFAULT_VIEWPORT }
+  }
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }
 }
 
 function getFriendDisplayName(friend) {
@@ -414,17 +425,32 @@ const overlayStyles = {
     cursor: 'pointer',
     zIndex: 5,
   },
-  root: (focused) => ({
-    display: 'grid',
-    gridTemplateColumns: focused ? 'minmax(250px, 300px) minmax(0, 1fr)' : 'minmax(0, 1fr)',
-    gap: 18,
-    height: 'min(90vh, 800px)',
-    minHeight: 600,
-    width: '100%',
-    maxWidth: '100%',
-    padding: 0,
-    boxSizing: 'border-box',
-  }),
+  root: (focused, compact = false, viewportHeight = null) => {
+    const numericHeight =
+      typeof viewportHeight === 'number' && Number.isFinite(viewportHeight) ? viewportHeight : null
+    const effectiveHeight = compact && numericHeight ? Math.max(numericHeight - 48, 320) : null
+
+    return {
+      display: 'grid',
+      gridTemplateColumns:
+        focused && !compact ? 'minmax(260px, 300px) minmax(0, 1fr)' : 'minmax(0, 1fr)',
+      gap: compact ? 12 : 18,
+      height: compact
+        ? effectiveHeight
+          ? `${effectiveHeight}px`
+          : 'calc(100vh - 48px)'
+        : 'min(90vh, 800px)',
+      minHeight: compact
+        ? effectiveHeight
+          ? Math.max(effectiveHeight, 420)
+          : 'min(560px, 92vh)'
+        : 600,
+      width: '100%',
+      maxWidth: '100%',
+      padding: 0,
+      boxSizing: 'border-box',
+    }
+  },
   sidePanel: {
     display: 'grid',
     gridTemplateRows: 'auto 1fr auto',
@@ -1659,6 +1685,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const aiPendingMessageRef = useRef(null)
   const lastMarkedRef = useRef(null)
   const roomMetadataRef = useRef(new Map())
+  const [viewport, setViewport] = useState(() => getViewportSnapshot())
+  const isCompactLayout = viewport.width <= 900
+  const isUltraCompactLayout = viewport.width <= 640
 
   const heroes = useMemo(() => (dashboard?.heroes ? dashboard.heroes : []), [dashboard])
 
@@ -1708,6 +1737,26 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   useEffect(() => {
     roomsRef.current = rooms
   }, [rooms])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handleResize = () => {
+      setViewport(getViewportSnapshot())
+    }
+
+    handleResize()
+
+    window.addEventListener('resize', handleResize)
+    window.addEventListener('orientationchange', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('orientationchange', handleResize)
+    }
+  }, [])
 
   const applyRoomOverrides = useCallback((collections) => {
     if (!collections) {
@@ -1793,10 +1842,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     if (overrides) {
       const previous = overrides.get(normalizedRoomId) || {}
       const nextOverride = { ...previous, ...patch }
-      if (!('unread_count' in patch) && !('unreadCount' in patch)) {
-        delete nextOverride.unread_count
-        delete nextOverride.unreadCount
-      }
       if (Object.keys(nextOverride).length === 0) {
         overrides.delete(normalizedRoomId)
       } else {
@@ -3688,6 +3733,143 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     )
   }
 
+  const frameStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.frame
+    }
+
+    const numericHeight =
+      typeof viewport.height === 'number' && Number.isFinite(viewport.height)
+        ? viewport.height
+        : null
+
+    return {
+      ...overlayStyles.frame,
+      borderRadius: isUltraCompactLayout ? 0 : 22,
+      padding: isUltraCompactLayout ? '12px 10px 16px' : '18px 16px 24px',
+      minHeight: numericHeight ? `${numericHeight}px` : '100vh',
+      height: numericHeight ? `${numericHeight}px` : '100vh',
+      width: '100%',
+      maxWidth: '100%',
+      alignItems: 'stretch',
+    }
+  }, [isCompactLayout, isUltraCompactLayout, viewport.height])
+
+  const closeButtonStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.closeButton
+    }
+    return {
+      ...overlayStyles.closeButton,
+      top: isUltraCompactLayout ? 6 : 10,
+      right: isUltraCompactLayout ? 12 : 16,
+      padding: isUltraCompactLayout ? '5px 12px' : '6px 12px',
+    }
+  }, [isCompactLayout, isUltraCompactLayout])
+
+  const sidePanelStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.sidePanel
+    }
+    return {
+      ...overlayStyles.sidePanel,
+      borderRadius: isUltraCompactLayout ? 14 : 20,
+      minHeight: 0,
+    }
+  }, [isCompactLayout, isUltraCompactLayout])
+
+  const sideActionsStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.sideActions
+    }
+    return {
+      ...overlayStyles.sideActions,
+      padding: '10px 12px 6px',
+    }
+  }, [isCompactLayout])
+
+  const sideContentStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.sideContent
+    }
+    return {
+      ...overlayStyles.sideContent,
+      padding: '0 12px 16px',
+    }
+  }, [isCompactLayout])
+
+  const tabBarStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.tabBar
+    }
+    return {
+      ...overlayStyles.tabBar,
+      padding: '10px 12px 12px',
+      gap: 8,
+    }
+  }, [isCompactLayout])
+
+  const conversationStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.conversation
+    }
+    return {
+      ...overlayStyles.conversation,
+      borderRadius: isUltraCompactLayout ? 0 : 20,
+    }
+  }, [isCompactLayout, isUltraCompactLayout])
+
+  const conversationHeaderStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.conversationHeader
+    }
+    return {
+      ...overlayStyles.conversationHeader,
+      padding: '12px 16px',
+    }
+  }, [isCompactLayout])
+
+  const messageViewportStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.messageViewport
+    }
+    return {
+      ...overlayStyles.messageViewport,
+      padding: '16px 4px 18px',
+    }
+  }, [isCompactLayout])
+
+  const composerContainerStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.composerContainer
+    }
+    return {
+      ...overlayStyles.composerContainer,
+      borderTop: '1px solid rgba(71, 85, 105, 0.45)',
+    }
+  }, [isCompactLayout])
+
+  const composerStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.composer
+    }
+    return {
+      ...overlayStyles.composer,
+      padding: '9px 12px 10px',
+      gap: 8,
+    }
+  }, [isCompactLayout])
+
+  const attachmentStripStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.attachmentStrip
+    }
+    return {
+      ...overlayStyles.attachmentStrip,
+      padding: '8px 12px 0',
+    }
+  }, [isCompactLayout])
+
   const renderListColumn = () => {
     const visibility = activeTab === 'open' ? 'open' : activeTab === 'private' ? 'private' : null
 
@@ -3757,8 +3939,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
 
     return (
-      <aside style={overlayStyles.sidePanel}>
-        <div style={overlayStyles.sideActions}>
+      <aside style={sidePanelStyle}>
+        <div style={sideActionsStyle}>
           {actions.length ? (
             actions.map((action) => (
               <button
@@ -3775,8 +3957,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             <span style={{ flex: 1 }} />
           )}
         </div>
-        <div style={overlayStyles.sideContent}>{content}</div>
-        <div style={overlayStyles.tabBar}>
+        <div style={sideContentStyle}>{content}</div>
+        <div style={tabBarStyle}>
           {TABS.map((tab) => (
             <button
               key={tab.key}
@@ -3817,8 +3999,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       : null
 
     return (
-      <section style={overlayStyles.conversation}>
-        <header style={overlayStyles.conversationHeader}>
+      <section style={conversationStyle}>
+        <header style={conversationHeaderStyle}>
           <div style={overlayStyles.headerLeft}>
             {hasContext ? (
               <button
@@ -3848,7 +4030,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             ) : null}
           </div>
         </header>
-        <div ref={messageListRef} style={overlayStyles.messageViewport}>
+        <div ref={messageListRef} style={messageViewportStyle}>
           {hasContext ? (
             loadingMessages ? (
               <span style={overlayStyles.mutedText}>메시지를 불러오는 중...</span>
@@ -3973,9 +4155,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             <div style={overlayStyles.placeholder}>채팅방 또는 세션을 선택해 주세요.</div>
           )}
         </div>
-        <div style={overlayStyles.composerContainer}>
+        <div style={composerContainerStyle}>
           {composerAttachments.length ? (
-            <div style={overlayStyles.attachmentStrip}>
+            <div style={attachmentStripStyle}>
               {composerAttachments.map((attachment) => {
                 const status = attachment.status || 'ready'
                 const baseStyle = overlayStyles.attachmentPreview
@@ -4091,7 +4273,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               </div>
             </div>
           ) : null}
-          <div style={overlayStyles.composer}>
+          <div style={composerStyle}>
             <button
               ref={composerToggleRef}
               type="button"
@@ -4131,6 +4313,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }
 
   const focused = Boolean(context)
+
+  const rootStyle = useMemo(
+    () => overlayStyles.root(focused, isCompactLayout, viewport.height),
+    [focused, isCompactLayout, viewport.height],
+  )
 
   const detailAttachments = expandedMessage ? getMessageAttachments(expandedMessage) : []
   const mediaSelectionCount = mediaLibrary.selection?.size || 0
@@ -4597,13 +4784,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         contentStyle={{ padding: 0, background: 'transparent' }}
         frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
       >
-        <div style={overlayStyles.frame}>
+        <div style={frameStyle}>
           {!focused ? (
-            <button type="button" style={overlayStyles.closeButton} onClick={onClose}>
+            <button type="button" style={closeButtonStyle} onClick={onClose}>
               닫기
             </button>
           ) : null}
-          <div style={overlayStyles.root(focused)}>
+          <div style={rootStyle}>
             {!focused ? renderListColumn() : null}
             {focused ? renderMessageColumn() : null}
           </div>
