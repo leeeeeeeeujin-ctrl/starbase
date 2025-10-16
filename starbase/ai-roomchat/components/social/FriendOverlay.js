@@ -36,6 +36,7 @@ export default function FriendOverlay({
   onAcceptRequest,
   onDeclineRequest,
   onCancelRequest,
+  overlayZIndex,
 }) {
   const [input, setInput] = useState('')
   const [activeTab, setActiveTab] = useState('friends')
@@ -253,6 +254,7 @@ export default function FriendOverlay({
       title="친구 관리"
       width={460}
       contentStyle={{ background: 'transparent', padding: 0 }}
+      zIndex={overlayZIndex}
     >
       <div style={styles.container}>
         {viewerHeroId ? (
