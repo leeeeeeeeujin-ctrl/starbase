@@ -911,7 +911,65 @@ begin
     limit v_limit
   ) as row;
 
-  with available_rooms as (
+  with base_rooms as (
+    select
+      r.id,
+      r.name,
+      r.description,
+      r.visibility,
+      r.capacity,
+      r.allow_ai,
+      r.require_approval,
+      r.owner_id,
+      r.hero_id,
+      r.created_at,
+      r.updated_at,
+      counts.member_count,
+      m_self.owner_id as member_owner_id,
+      coalesce(m_self.status, 'active') as member_status,
+      m_self.last_read_message_at,
+      m_self.last_read_message_id,
+      m_self.joined_at,
+      hero.image_url as cover_url
+    from public.chat_rooms r
+    left join public.chat_room_members m_self
+      on m_self.room_id = r.id
+     and m_self.owner_id = v_owner_id
+    left join (
+      select room_id, count(*) filter (where coalesce(status, 'active') = 'active') as member_count
+      from public.chat_room_members
+      group by room_id
+    ) counts on counts.room_id = r.id
+    left join public.heroes hero on hero.id = r.hero_id
+  ),
+  last_messages as (
+    select
+      lm.chat_room_id,
+      lm.created_at,
+      jsonb_build_object(
+        'id', lm.id,
+        'text', lm.text,
+        'metadata', lm.metadata,
+        'created_at', lm.created_at,
+        'owner_id', lm.owner_id,
+        'username', lm.username
+      ) as payload
+    from (
+      select
+        m.chat_room_id,
+        m.id,
+        m.text,
+        m.metadata,
+        m.created_at,
+        m.owner_id,
+        m.username,
+        row_number() over (partition by m.chat_room_id order by m.created_at desc, m.id desc) as rn
+      from public.messages m
+      where m.chat_room_id is not null
+    ) lm
+    where lm.rn = 1
+  ),
+  available_rooms as (
     select
       br.id,
       br.name,
