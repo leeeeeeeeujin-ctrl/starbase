@@ -292,10 +292,28 @@ const overlayStyles = {
   },
   messageViewport: {
     overflowY: 'auto',
-    padding: '12px 18px',
-    display: 'grid',
-    gap: 8,
+    padding: '18px 0 20px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
     background: 'rgba(4, 10, 28, 0.4)',
+  },
+  dateDividerWrapper: {
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  dateDivider: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '4px 14px',
+    borderRadius: 999,
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    background: 'rgba(15, 23, 42, 0.82)',
+    color: '#dbeafe',
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: 0.2,
   },
   placeholder: {
     display: 'flex',
@@ -307,11 +325,11 @@ const overlayStyles = {
     textAlign: 'center',
     padding: '32px 20px',
   },
-  messageRow: (mine = false) => ({
+  messageGroup: (mine = false) => ({
     display: 'flex',
     justifyContent: mine ? 'flex-end' : 'flex-start',
-    alignItems: 'flex-end',
-    gap: 12,
+    alignItems: 'flex-start',
+    gap: mine ? 10 : 12,
   }),
   messageAvatar: {
     width: 32,
@@ -328,8 +346,8 @@ const overlayStyles = {
   },
   messageContent: (mine = false) => ({
     display: 'grid',
-    gap: 4,
-    maxWidth: '85%',
+    gap: mine ? 6 : 4,
+    maxWidth: '88%',
     textAlign: mine ? 'right' : 'left',
   }),
   messageName: (mine = false) => ({
@@ -337,16 +355,27 @@ const overlayStyles = {
     fontWeight: 700,
     color: mine ? '#bfdbfe' : '#f8fafc',
   }),
+  messageStack: (mine = false) => ({
+    display: 'grid',
+    gap: 3,
+    justifyItems: mine ? 'end' : 'start',
+  }),
+  messageItem: (mine = false) => ({
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: mine ? 'flex-end' : 'flex-start',
+    gap: 5,
+  }),
   messageBubble: (mine = false) => ({
-    borderRadius: 14,
+    borderRadius: 12,
     border: mine ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid rgba(71, 85, 105, 0.45)',
     background: mine ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.8)',
-    padding: '6px 14px',
+    padding: '4px 12px',
     color: '#f8fafc',
   }),
   messageText: {
     fontSize: 13,
-    lineHeight: 1.45,
+    lineHeight: 1.38,
     margin: 0,
     whiteSpace: 'pre-wrap',
   },
@@ -495,10 +524,40 @@ function formatTime(value) {
   }
 }
 
+function formatDateLabel(value) {
+  if (!value) return '알 수 없는 날짜'
+  try {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return '알 수 없는 날짜'
+    return date.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'short',
+    })
+  } catch (error) {
+    return '알 수 없는 날짜'
+  }
+}
+
 function normalizeId(value) {
   if (value === null || value === undefined) return null
   const token = String(value).trim()
   return token.length ? token.toLowerCase() : null
+}
+
+function getDayKey(value) {
+  if (!value) return null
+  try {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return null
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  } catch (error) {
+    return null
+  }
 }
 
 const GLOBAL_ROOM = {
@@ -538,6 +597,53 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const activeSessionId = context?.type === 'session' ? context.sessionId : null
 
   const viewerToken = useMemo(() => normalizeId(viewer?.id || viewer?.owner_id), [viewer])
+
+  const timelineEntries = useMemo(() => {
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return []
+    }
+
+    const entries = []
+    let currentGroup = null
+    let lastDayKey = null
+
+    messages.forEach((message, index) => {
+      const dayKey = getDayKey(message.created_at)
+      if (dayKey && dayKey !== lastDayKey) {
+        entries.push({
+          type: 'date',
+          key: `date-${dayKey}-${index}`,
+          label: formatDateLabel(message.created_at),
+        })
+        lastDayKey = dayKey
+        currentGroup = null
+      }
+
+      const ownerToken = normalizeId(message.owner_id || message.user_id)
+      const mine = Boolean(viewerToken && ownerToken && viewerToken === ownerToken)
+      const actorToken = ownerToken || normalizeId(message.username) || `system-${index}`
+      const groupKey = `${lastDayKey || dayKey || 'unknown'}::${actorToken}::${mine ? 'me' : 'peer'}`
+
+      if (!currentGroup || currentGroup.groupKey !== groupKey) {
+        const displayName = message.username || '알 수 없음'
+        currentGroup = {
+          type: 'group',
+          key: `group-${groupKey}-${message.id || message.local_id || index}`,
+          groupKey,
+          mine,
+          displayName,
+          avatarUrl: message.avatar_url || null,
+          initials: displayName.slice(0, 2),
+          messages: [],
+        }
+        entries.push(currentGroup)
+      }
+
+      currentGroup.messages.push(message)
+    })
+
+    return entries
+  }, [messages, viewerToken])
 
   useEffect(() => {
     if (!open) {
@@ -1117,20 +1223,22 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           {hasContext ? (
             loadingMessages ? (
               <span style={overlayStyles.mutedText}>메시지를 불러오는 중...</span>
-            ) : messages.length ? (
-              messages.map((message) => {
-                const text = extractMessageText(message)
-                const created = formatTime(message.created_at)
-                const ownerToken = normalizeId(message.owner_id || message.user_id)
-                const mine = viewerToken && ownerToken && viewerToken === ownerToken
-                const preview = text || derivePreviewText(message)
-                const displayName = message.username || '알 수 없음'
-                const initials = displayName.slice(0, 2)
-                const avatarNode = (
+            ) : timelineEntries.length ? (
+              timelineEntries.map((entry) => {
+                if (entry.type === 'date') {
+                  return (
+                    <div key={entry.key} style={overlayStyles.dateDividerWrapper}>
+                      <span style={overlayStyles.dateDivider}>{entry.label}</span>
+                    </div>
+                  )
+                }
+
+                const { mine, displayName, avatarUrl, initials, messages: groupMessages } = entry
+                const avatarNode = !mine ? (
                   <div style={overlayStyles.messageAvatar}>
-                    {message.avatar_url ? (
+                    {avatarUrl ? (
                       <img
-                        src={message.avatar_url}
+                        src={avatarUrl}
                         alt={displayName}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
@@ -1138,24 +1246,38 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       initials
                     )}
                   </div>
-                )
+                ) : null
+
                 return (
-                  <div
-                    key={message.id || `${message.created_at}-${Math.random()}`}
-                    style={overlayStyles.messageRow(mine)}
-                  >
-                    {mine ? (
-                      <span style={overlayStyles.messageTimestamp(true)}>{created}</span>
-                    ) : (
-                      avatarNode
-                    )}
+                  <div key={entry.key} style={overlayStyles.messageGroup(mine)}>
+                    {avatarNode}
                     <div style={overlayStyles.messageContent(mine)}>
-                      <span style={overlayStyles.messageName(mine)}>{displayName}</span>
-                      <div style={overlayStyles.messageBubble(mine)}>
-                        <p style={overlayStyles.messageText}>{preview || ' '}</p>
+                      {!mine ? (
+                        <span style={overlayStyles.messageName(false)}>{displayName}</span>
+                      ) : null}
+                      <div style={overlayStyles.messageStack(mine)}>
+                        {groupMessages.map((message, index) => {
+                          const text = extractMessageText(message)
+                          const created = formatTime(message.created_at)
+                          const preview = text || derivePreviewText(message)
+                          return (
+                            <div
+                              key={
+                                message.id
+                                  || message.local_id
+                                  || `${message.created_at || 'message'}-${index}`
+                              }
+                              style={overlayStyles.messageItem(mine)}
+                            >
+                              <div style={overlayStyles.messageBubble(mine)}>
+                                <p style={overlayStyles.messageText}>{preview || ' '}</p>
+                              </div>
+                              <span style={overlayStyles.messageTimestamp(mine)}>{created}</span>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
-                    {mine ? avatarNode : <span style={overlayStyles.messageTimestamp(false)}>{created}</span>}
                   </div>
                 )
               })
