@@ -864,7 +864,7 @@ const overlayStyles = {
     position: 'absolute',
     inset: compact ? 0 : '8px 0 8px 8px',
     background: compact ? 'rgba(8, 15, 30, 0.72)' : 'transparent',
-    pointerEvents: open && compact ? 'auto' : 'none',
+    pointerEvents: open ? 'auto' : 'none',
     opacity: open && compact ? 1 : 0,
     transition: 'opacity 0.2s ease',
     borderRadius: compact ? 0 : 18,
@@ -884,6 +884,31 @@ const overlayStyles = {
     pointerEvents: open ? 'auto' : 'none',
     zIndex: 12,
   }),
+  drawerHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    justifyContent: 'flex-start',
+  },
+  drawerCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'rgba(15, 23, 42, 0.7)',
+    color: '#e2e8f0',
+    fontSize: 16,
+    fontWeight: 700,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerHeaderLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: 600,
+  },
   drawerPanel: {
     background: 'rgba(10, 16, 35, 0.96)',
     border: '1px solid rgba(71, 85, 105, 0.5)',
@@ -2196,6 +2221,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMediaLimit, setDrawerMediaLimit] = useState(20)
   const [drawerFileLimit, setDrawerFileLimit] = useState(20)
+
+  useEffect(() => {
+    drawerOpenRef.current = drawerOpen
+    if (!drawerOpen) {
+      drawerGestureRef.current = {
+        tracking: false,
+        pointerId: null,
+        startX: 0,
+        startY: 0,
+        moved: false,
+        triggered: false,
+        openOnStart: false,
+      }
+    }
+  }, [drawerOpen])
   const [profileSheet, setProfileSheet] = useState({ open: false, participant: null, busy: false, error: null })
   const [settingsOverlayOpen, setSettingsOverlayOpen] = useState(false)
   const [roomBans, setRoomBans] = useState([])
@@ -2269,6 +2309,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [showMediaPicker, setShowMediaPicker] = useState(false)
   const unsubscribeRef = useRef(null)
   const messageListRef = useRef(null)
+  const conversationRef = useRef(null)
   const composerPanelRef = useRef(null)
   const composerToggleRef = useRef(null)
   const announcementTextareaRef = useRef(null)
@@ -2280,6 +2321,16 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const aiPendingMessageRef = useRef(null)
   const lastMarkedRef = useRef(null)
   const roomMetadataRef = useRef(new Map())
+  const drawerOpenRef = useRef(false)
+  const drawerGestureRef = useRef({
+    tracking: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    moved: false,
+    triggered: false,
+    openOnStart: false,
+  })
   const [viewport, setViewport] = useState(() => getViewportSnapshot())
   const isCompactLayout = viewport.width <= 900
   const isUltraCompactLayout = viewport.width <= 640
@@ -2374,6 +2425,109 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     setDrawerMediaLimit(20)
     setDrawerFileLimit(20)
+  }, [context?.chatRoomId])
+
+  useEffect(() => {
+    const node = conversationRef.current
+    if (!node || typeof window === 'undefined') {
+      return
+    }
+
+    const resetGesture = () => {
+      drawerGestureRef.current = {
+        tracking: false,
+        pointerId: null,
+        startX: 0,
+        startY: 0,
+        moved: false,
+        triggered: false,
+        openOnStart: false,
+      }
+    }
+
+    const handlePointerDown = (event) => {
+      if (!context?.chatRoomId) return
+      if (event.pointerType === 'mouse' && event.buttons !== 1) return
+      if (event.target?.closest('button, a, input, textarea, select, [data-ignore-drawer-gesture="true"]')) {
+        return
+      }
+
+      const rect = node.getBoundingClientRect()
+      const openOnStart = !!drawerOpenRef.current
+
+      if (!openOnStart) {
+        const edgeThreshold = Math.min(140, rect.width * 0.28)
+        if (event.clientX < rect.right - edgeThreshold) {
+          return
+        }
+      }
+
+      drawerGestureRef.current = {
+        tracking: true,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+        triggered: false,
+        openOnStart,
+      }
+    }
+
+    const handlePointerMove = (event) => {
+      const gesture = drawerGestureRef.current
+      if (!gesture.tracking || gesture.pointerId !== event.pointerId) {
+        return
+      }
+
+      const dx = event.clientX - gesture.startX
+      const dy = event.clientY - gesture.startY
+
+      if (!gesture.moved) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+          return
+        }
+        if (Math.abs(dy) > Math.abs(dx)) {
+          resetGesture()
+          return
+        }
+        gesture.moved = true
+      }
+
+      if (gesture.triggered) {
+        return
+      }
+
+      const threshold = Math.max(48, Math.min(120, node.getBoundingClientRect().width * 0.18))
+
+      if (!gesture.openOnStart && dx <= -threshold) {
+        setDrawerOpen(true)
+        gesture.triggered = true
+      } else if (gesture.openOnStart && dx >= threshold) {
+        setDrawerOpen(false)
+        gesture.triggered = true
+      }
+    }
+
+    const handlePointerEnd = (event) => {
+      if (drawerGestureRef.current.pointerId !== event.pointerId) {
+        return
+      }
+      resetGesture()
+    }
+
+    node.addEventListener('pointerdown', handlePointerDown, { passive: true })
+    node.addEventListener('pointermove', handlePointerMove)
+    node.addEventListener('pointerup', handlePointerEnd)
+    node.addEventListener('pointercancel', handlePointerEnd)
+    node.addEventListener('pointerleave', handlePointerEnd)
+
+    return () => {
+      node.removeEventListener('pointerdown', handlePointerDown)
+      node.removeEventListener('pointermove', handlePointerMove)
+      node.removeEventListener('pointerup', handlePointerEnd)
+      node.removeEventListener('pointercancel', handlePointerEnd)
+      node.removeEventListener('pointerleave', handlePointerEnd)
+    }
   }, [context?.chatRoomId])
 
   useEffect(() => {
@@ -5595,7 +5749,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       : []
 
     return (
-      <section style={conversationStyle}>
+      <section ref={conversationRef} style={conversationStyle}>
         <header style={conversationHeaderStyle}>
           <div style={overlayStyles.headerLeft}>
             {hasContext ? (
@@ -5967,9 +6121,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             <div
               style={overlayStyles.drawerScrim(drawerOpen, isCompactLayout)}
               onClick={handleCloseDrawer}
+              role="presentation"
             />
             <aside style={overlayStyles.drawerContainer(drawerOpen, isCompactLayout)}>
               <div style={overlayStyles.drawerPanel}>
+                <div style={overlayStyles.drawerHeader}>
+                  <button
+                    type="button"
+                    onClick={handleCloseDrawer}
+                    style={overlayStyles.drawerCloseButton}
+                    aria-label="서랍 닫기"
+                  >
+                    ×
+                  </button>
+                  <span style={overlayStyles.drawerHeaderLabel}>패널 닫기</span>
+                </div>
                 <div style={overlayStyles.drawerCover}>
                   {coverImage ? (
                     <img src={coverImage} alt="채팅방 커버" style={overlayStyles.drawerCoverImage} />
