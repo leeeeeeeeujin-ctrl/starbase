@@ -22,6 +22,8 @@ const CHAT_ATTACHMENT_BUCKET = 'chat-attachments'
 const ATTACHMENT_SIZE_LIMIT = 50 * 1024 * 1024
 const MAX_VIDEO_DURATION = 4 * 60
 const MAX_MESSAGE_PREVIEW_LENGTH = 240
+const MEDIA_LOAD_LIMIT = 120
+const LONG_PRESS_THRESHOLD = 400
 const ATTACHMENT_ICONS = {
   image: '🖼️',
   video: '🎬',
@@ -138,6 +140,106 @@ async function createImageAttachmentDraft(file) {
   } finally {
     URL.revokeObjectURL(url)
   }
+}
+
+function isFileSupportedByAction(file, action) {
+  if (!file) return false
+  if (action === 'photo') {
+    return file.type?.startsWith('image/')
+  }
+  if (action === 'video') {
+    return file.type?.startsWith('video/')
+  }
+  return true
+}
+
+async function enumerateMediaEntries(directoryHandle, action) {
+  const entries = []
+  if (!directoryHandle) return entries
+
+  for await (const [name, handle] of directoryHandle.entries()) {
+    if (entries.length >= MEDIA_LOAD_LIMIT) break
+    if (handle.kind !== 'file') continue
+    try {
+      const file = await handle.getFile()
+      if (!isFileSupportedByAction(file, action)) continue
+      entries.push({
+        id: `${handle.name}-${file.lastModified}-${file.size}`,
+        name,
+        handle,
+        type: file.type,
+        size: file.size,
+        lastModified: file.lastModified || Date.now(),
+        file,
+      })
+    } catch (error) {
+      console.warn('[chat] 미디어 항목을 불러오지 못했습니다.', error)
+    }
+  }
+
+  entries.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0))
+  return entries
+}
+
+async function createThumbnailForEntry(entry) {
+  if (!entry?.file) return entry
+  const file = entry.file
+  let previewUrl = ''
+  try {
+    if (file.type?.startsWith('image/')) {
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => resolve(img)
+        img.onerror = reject
+        img.src = URL.createObjectURL(file)
+      })
+      const canvas = document.createElement('canvas')
+      const maxSize = 280
+      const scale = Math.min(1, maxSize / Math.max(image.width, image.height))
+      canvas.width = Math.max(1, Math.round(image.width * scale))
+      canvas.height = Math.max(1, Math.round(image.height * scale))
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+      previewUrl = canvas.toDataURL('image/webp', 0.82)
+      URL.revokeObjectURL(image.src)
+    } else if (file.type?.startsWith('video/')) {
+      const video = document.createElement('video')
+      const tempUrl = URL.createObjectURL(file)
+      video.preload = 'metadata'
+      video.src = tempUrl
+      await new Promise((resolve) => {
+        video.onloadeddata = resolve
+        video.onloadedmetadata = resolve
+      })
+      video.currentTime = Math.min(video.duration || 1, (video.duration || 1) / 2)
+      await new Promise((resolve) => {
+        video.onseeked = resolve
+      })
+      const canvas = document.createElement('canvas')
+      const maxSize = 320
+      const scale = Math.min(1, maxSize / Math.max(video.videoWidth, video.videoHeight))
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      previewUrl = canvas.toDataURL('image/webp', 0.75)
+      URL.revokeObjectURL(tempUrl)
+    }
+  } catch (error) {
+    console.warn('[chat] 미디어 썸네일 생성 실패', error)
+  }
+
+  return { ...entry, previewUrl }
+}
+
+async function ensureHandleReadPermission(handle) {
+  if (!handle) return false
+  if (!handle.queryPermission || !handle.requestPermission) return true
+  const status = await handle.queryPermission({ mode: 'read' })
+  if (status === 'granted') return true
+  if (status === 'denied') return false
+  const requested = await handle.requestPermission({ mode: 'read' })
+  return requested === 'granted'
 }
 
 async function loadVideoMetadata(file) {
@@ -679,6 +781,11 @@ const overlayStyles = {
     display: 'grid',
     gap: 8,
   },
+  messageAttachmentsGrid: {
+    display: 'grid',
+    gap: 8,
+    gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+  },
   messageAttachment: (mine = false) => ({
     borderRadius: 12,
     overflow: 'hidden',
@@ -689,16 +796,40 @@ const overlayStyles = {
     display: 'grid',
     gap: 0,
   }),
+  messageAttachmentGrid: (mine = false) => ({
+    borderRadius: 12,
+    overflow: 'hidden',
+    border: mine ? '1px solid rgba(96, 165, 250, 0.6)' : '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(15, 23, 42, 0.92)',
+    width: 120,
+    height: 120,
+    cursor: 'pointer',
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }),
   messageAttachmentPreviewWrapper: {
     position: 'relative',
     width: '100%',
     overflow: 'hidden',
     background: 'rgba(15, 23, 42, 0.8)',
   },
+  messageAttachmentGridPreviewWrapper: {
+    position: 'absolute',
+    inset: 0,
+    overflow: 'hidden',
+    background: 'rgba(15, 23, 42, 0.82)',
+  },
   messageAttachmentPreview: {
     width: '100%',
     height: 'auto',
     display: 'block',
+  },
+  messageAttachmentGridPreview: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
   },
   messageAttachmentMeta: {
     padding: '6px 10px',
@@ -708,6 +839,17 @@ const overlayStyles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
+  },
+  messageAttachmentChip: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    background: 'rgba(15, 23, 42, 0.88)',
+    color: '#e2e8f0',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '4px 6px',
+    borderRadius: 8,
   },
   composerContainer: {
     position: 'relative',
@@ -877,6 +1019,129 @@ const overlayStyles = {
     flexDirection: 'column',
     gap: 4,
   },
+  mediaPickerBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(4, 10, 28, 0.78)',
+    backdropFilter: 'blur(12px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    zIndex: 2200,
+  },
+  mediaPickerPanel: {
+    width: 'min(680px, 96vw)',
+    maxHeight: '85vh',
+    borderRadius: 24,
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    background: 'rgba(10, 16, 35, 0.96)',
+    display: 'grid',
+    gridTemplateRows: 'auto 1fr',
+    overflow: 'hidden',
+    boxShadow: '0 30px 60px rgba(2, 6, 23, 0.65)',
+  },
+  mediaPickerHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '14px 18px',
+    borderBottom: '1px solid rgba(71, 85, 105, 0.5)',
+    color: '#e2e8f0',
+    fontWeight: 600,
+    fontSize: 14,
+  },
+  mediaPickerClose: {
+    borderRadius: 10,
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.75)',
+    color: '#e2e8f0',
+    padding: '6px 12px',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  mediaPickerHint: {
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  mediaPickerAction: (disabled = false) => ({
+    borderRadius: 10,
+    border: '1px solid rgba(59, 130, 246, 0.6)',
+    background: disabled ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.8)',
+    color: disabled ? '#94a3b8' : '#f8fafc',
+    padding: '6px 12px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: 12,
+    fontWeight: 600,
+  }),
+  mediaPickerSecondary: {
+    borderRadius: 10,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: 'rgba(15, 23, 42, 0.7)',
+    color: '#cbd5f5',
+    padding: '6px 12px',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  mediaPickerBody: {
+    padding: 18,
+    overflowY: 'auto',
+  },
+  mediaPickerStatus: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#cbd5f5',
+    fontSize: 13,
+    minHeight: 220,
+  },
+  mediaPickerGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+    gap: 12,
+  },
+  mediaPickerItem: (selected = false) => ({
+    position: 'relative',
+    borderRadius: 16,
+    border: selected ? '2px solid rgba(59, 130, 246, 0.85)' : '1px solid rgba(71, 85, 105, 0.6)',
+    overflow: 'hidden',
+    padding: 0,
+    aspectRatio: '1 / 1',
+    background: 'rgba(15, 23, 42, 0.85)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }),
+  mediaPickerThumb: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  mediaPickerPlaceholder: {
+    fontSize: 32,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+    color: '#cbd5f5',
+  },
+  mediaPickerMeta: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    background: 'rgba(15, 23, 42, 0.85)',
+    color: '#f1f5f9',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '3px 6px',
+    borderRadius: 8,
+  },
 }
 
 const modalStyles = {
@@ -989,6 +1254,7 @@ function getMessageAttachments(message) {
         name: item.name || '첨부 파일',
         preview_url: item.preview_url || item.preview || null,
         encoding: item.encoding || 'none',
+        layoutHint: item.layout_hint || item.layoutHint || null,
       }
     })
     .filter((attachment) => attachment && (attachment.path || attachment.preview_url))
@@ -1071,6 +1337,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [viewerAttachment, setViewerAttachment] = useState(null)
   const [expandedMessage, setExpandedMessage] = useState(null)
   const [videoControlsVisible, setVideoControlsVisible] = useState(true)
+  const [mediaLibrary, setMediaLibrary] = useState({
+    status: 'idle',
+    entries: [],
+    action: null,
+    error: null,
+    multiSelect: false,
+    selection: new Map(),
+  })
+  const [showMediaPicker, setShowMediaPicker] = useState(false)
   const unsubscribeRef = useRef(null)
   const messageListRef = useRef(null)
   const composerPanelRef = useRef(null)
@@ -1079,6 +1354,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const longPressTimerRef = useRef(null)
   const longPressActiveRef = useRef(false)
   const videoControlTimerRef = useRef(null)
+  const mediaDirectoryHandleRef = useRef(null)
+  const mediaPreviewCacheRef = useRef(new Map())
+  const mediaPickerLongPressRef = useRef({ timer: null, active: false, id: null })
 
   const heroes = useMemo(() => (dashboard?.heroes ? dashboard.heroes : []), [dashboard])
 
@@ -1145,6 +1423,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setMessages([])
       setMessageInput('')
       setShowComposerPanel(false)
+      setShowMediaPicker(false)
       setComposerAttachments([])
       setAttachmentError(null)
       setExpandedMessage(null)
@@ -1303,6 +1582,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         }
       })
       attachmentCacheRef.current.clear()
+      mediaPreviewCacheRef.current.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url)
+        } catch (error) {
+          console.warn('[chat] 미디어 라이브러리 URL 해제 실패', error)
+        }
+      })
+      mediaPreviewCacheRef.current.clear()
     }
   }, [])
 
@@ -1518,6 +1805,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               width: attachment.width || null,
               height: attachment.height || null,
               duration: attachment.duration || null,
+              layout_hint: attachment.layoutHint || null,
               created_at: new Date().toISOString(),
             })
           }
@@ -1594,19 +1882,45 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     )
   }, [])
 
-  const handleAttachmentAction = useCallback(
+  const prepareDraftsFromFiles = useCallback(
+    async (files, action, { layoutHint } = {}) => {
+      if (!files || !files.length) return
+      const drafts = []
+      let errorMessage = null
+
+      for (const file of files) {
+        if (!file) continue
+        if (file.size > ATTACHMENT_SIZE_LIMIT) {
+          errorMessage = '50MB 이하의 파일만 업로드할 수 있습니다.'
+          continue
+        }
+
+        try {
+          let draft
+          if (action === 'photo') {
+            draft = await createImageAttachmentDraft(file)
+          } else if (action === 'video') {
+            draft = await createVideoAttachmentDraft(file)
+          } else {
+            draft = await createFileAttachmentDraft(file)
+          }
+          drafts.push({ ...draft, status: 'ready', layoutHint: layoutHint || null })
+        } catch (error) {
+          console.error('[chat] 첨부 파일 준비 실패', error)
+          errorMessage = error?.message || '첨부 파일을 준비할 수 없습니다.'
+        }
+      }
+
+      if (drafts.length) {
+        setComposerAttachments((prev) => [...prev, ...drafts])
+      }
+      setAttachmentError(errorMessage)
+    },
+    [],
+  )
+
+  const openFileDialogFallback = useCallback(
     (action) => {
-      if (action === 'ai') {
-        handleAiReply()
-        return
-      }
-
-      if (!context) {
-        setAttachmentError('먼저 채팅을 선택해 주세요.')
-        return
-      }
-
-      setShowComposerPanel(false)
       const input = document.createElement('input')
       input.type = 'file'
       if (action === 'photo') {
@@ -1623,41 +1937,274 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       input.onchange = async (event) => {
         const files = event.target?.files
         if (!files || !files.length) return
-        const selected = Array.from(files)
-        const drafts = []
-        let errorMessage = null
-
-        for (const file of selected) {
-          if (!file) continue
-          if (file.size > ATTACHMENT_SIZE_LIMIT) {
-            errorMessage = '50MB 이하의 파일만 업로드할 수 있습니다.'
-            continue
-          }
-
-          try {
-            if (action === 'photo') {
-              drafts.push({ ...(await createImageAttachmentDraft(file)), status: 'ready' })
-            } else if (action === 'video') {
-              drafts.push({ ...(await createVideoAttachmentDraft(file)), status: 'ready' })
-            } else {
-              drafts.push({ ...(await createFileAttachmentDraft(file)), status: 'ready' })
-            }
-          } catch (error) {
-            console.error('[chat] 첨부 파일 준비 실패', error)
-            errorMessage = error?.message || '첨부 파일을 준비할 수 없습니다.'
-          }
-        }
-
-        if (drafts.length) {
-          setComposerAttachments((prev) => [...prev, ...drafts])
-        }
-        setAttachmentError(errorMessage)
+        await prepareDraftsFromFiles(Array.from(files), action, {
+          layoutHint: action === 'photo' && files.length > 1 ? 'grid' : null,
+        })
         input.value = ''
       }
 
       input.click()
     },
-    [context, handleAiReply],
+    [prepareDraftsFromFiles],
+  )
+
+  const loadMediaLibrary = useCallback(
+    async (action) => {
+      if (typeof window === 'undefined') {
+        throw new Error('이 환경에서는 미디어 라이브러리를 열 수 없습니다.')
+      }
+
+      let directoryHandle = mediaDirectoryHandleRef.current
+      if (!directoryHandle) {
+        if (!window.showDirectoryPicker) {
+          throw new Error('미디어 라이브러리를 지원하지 않는 브라우저입니다.')
+        }
+        directoryHandle = await window.showDirectoryPicker({ id: 'chat-media', mode: 'read' })
+        mediaDirectoryHandleRef.current = directoryHandle
+      }
+
+      const granted = await ensureHandleReadPermission(directoryHandle)
+      if (!granted) {
+        throw new Error('미디어 라이브러리에 접근할 수 있도록 권한을 허용해 주세요.')
+      }
+
+      const items = await enumerateMediaEntries(directoryHandle, action)
+      const enriched = await Promise.all(
+        items.map(async (entry) => {
+          if (!(entry.type?.startsWith('image/') || entry.type?.startsWith('video/'))) {
+            return entry
+          }
+          const cached = mediaPreviewCacheRef.current.get(entry.id)
+          if (cached) {
+            return { ...entry, previewUrl: cached }
+          }
+          const withPreview = await createThumbnailForEntry(entry)
+          if (withPreview.previewUrl) {
+            mediaPreviewCacheRef.current.set(entry.id, withPreview.previewUrl)
+          }
+          return withPreview
+        }),
+      )
+
+      setMediaLibrary({
+        status: enriched.length ? 'ready' : 'empty',
+        entries: enriched,
+        action,
+        error: enriched.length ? null : '표시할 수 있는 항목이 없습니다.',
+        multiSelect: false,
+        selection: new Map(),
+      })
+    },
+    [],
+  )
+
+  const clearMediaPickerTimer = useCallback(() => {
+    const ref = mediaPickerLongPressRef.current
+    if (ref.timer) {
+      clearTimeout(ref.timer)
+      ref.timer = null
+    }
+    ref.active = false
+    ref.id = null
+  }, [])
+
+  const closeMediaPicker = useCallback(() => {
+    setShowMediaPicker(false)
+    setMediaLibrary((prev) => ({
+      ...prev,
+      multiSelect: false,
+      selection: new Map(),
+    }))
+    clearMediaPickerTimer()
+  }, [clearMediaPickerTimer])
+
+  const handleMediaEntryPointerDown = useCallback(
+    (entry) => {
+      clearMediaPickerTimer()
+      if (!entry?.id) return
+      const ref = mediaPickerLongPressRef.current
+      ref.id = entry.id
+      ref.timer = setTimeout(() => {
+        ref.active = true
+        setMediaLibrary((prev) => {
+          const nextSelection = new Map(prev.selection)
+          nextSelection.set(entry.id, true)
+          return {
+            ...prev,
+            multiSelect: true,
+            selection: nextSelection,
+          }
+        })
+      }, LONG_PRESS_THRESHOLD)
+    },
+    [clearMediaPickerTimer],
+  )
+
+  const handleMediaEntryPointerLeave = useCallback(() => {
+    const ref = mediaPickerLongPressRef.current
+    if (ref.timer) {
+      clearTimeout(ref.timer)
+      ref.timer = null
+    }
+    ref.active = false
+    ref.id = null
+  }, [])
+
+  const handleMediaEntryPointerUp = useCallback(
+    async (entry) => {
+      const ref = mediaPickerLongPressRef.current
+      const isLongPress = ref.active && ref.id === entry?.id
+      if (ref.timer) {
+        clearTimeout(ref.timer)
+        ref.timer = null
+      }
+      ref.active = false
+      ref.id = null
+
+      if (!entry?.id || isLongPress) {
+        return
+      }
+
+      if (mediaLibrary.multiSelect) {
+        setMediaLibrary((prev) => {
+          const nextSelection = new Map(prev.selection)
+          if (nextSelection.has(entry.id)) {
+            nextSelection.delete(entry.id)
+          } else {
+            nextSelection.set(entry.id, true)
+          }
+          return {
+            ...prev,
+            selection: nextSelection,
+          }
+        })
+        return
+      }
+
+      try {
+        const file = entry.handle?.getFile ? await entry.handle.getFile() : entry.file
+        await prepareDraftsFromFiles(file ? [file] : [], mediaLibrary.action, { layoutHint: null })
+      } catch (error) {
+        console.error('[chat] 미디어 첨부 준비 실패', error)
+        setAttachmentError(error?.message || '첨부 파일을 준비할 수 없습니다.')
+      } finally {
+        closeMediaPicker()
+      }
+    },
+    [mediaLibrary.multiSelect, mediaLibrary.action, prepareDraftsFromFiles, closeMediaPicker],
+  )
+
+  const handleMediaPickerConfirm = useCallback(async () => {
+    const selectedIds = Array.from(mediaLibrary.selection.keys())
+    if (!selectedIds.length) {
+      closeMediaPicker()
+      return
+    }
+    try {
+      const selectedEntries = mediaLibrary.entries.filter((entry) => selectedIds.includes(entry.id))
+      const files = await Promise.all(
+        selectedEntries.map(async (entry) =>
+          entry.handle?.getFile ? await entry.handle.getFile() : entry.file,
+        ),
+      )
+      await prepareDraftsFromFiles(
+        files.filter(Boolean),
+        mediaLibrary.action,
+        {
+          layoutHint:
+            mediaLibrary.action === 'photo' && selectedEntries.length > 1 ? 'grid' : null,
+        },
+      )
+    } catch (error) {
+      console.error('[chat] 여러 미디어 준비 실패', error)
+      setAttachmentError(error?.message || '첨부 파일을 준비할 수 없습니다.')
+    } finally {
+      closeMediaPicker()
+    }
+  }, [mediaLibrary, prepareDraftsFromFiles, closeMediaPicker])
+
+  const handleMediaPickerCancel = useCallback(() => {
+    closeMediaPicker()
+  }, [closeMediaPicker])
+
+  const handleExitMultiSelect = useCallback(() => {
+    setMediaLibrary((prev) => ({
+      ...prev,
+      multiSelect: false,
+      selection: new Map(),
+    }))
+  }, [])
+
+  const handleReloadMediaLibrary = useCallback(() => {
+    if (!mediaLibrary.action) return
+    setMediaLibrary((prev) => ({
+      ...prev,
+      status: 'loading',
+      error: null,
+    }))
+    loadMediaLibrary(mediaLibrary.action).catch((error) => {
+      console.error('[chat] 미디어 라이브러리 재시도 실패', error)
+      setMediaLibrary((prev) => ({
+        ...prev,
+        status: 'error',
+        error: error?.message || '미디어를 불러올 수 없습니다.',
+      }))
+    })
+  }, [mediaLibrary.action, loadMediaLibrary])
+
+  const handleAttachmentAction = useCallback(
+    (action) => {
+      if (action === 'ai') {
+        handleAiReply()
+        return
+      }
+
+      if (!context) {
+        setAttachmentError('먼저 채팅을 선택해 주세요.')
+        return
+      }
+
+      setShowComposerPanel(false)
+
+      if (action === 'photo' || action === 'video') {
+        if (typeof window === 'undefined' || (!window.showDirectoryPicker && !window.showOpenFilePicker)) {
+          openFileDialogFallback(action)
+          return
+        }
+
+        setShowMediaPicker(true)
+        setMediaLibrary((prev) => ({
+          ...prev,
+          status: 'loading',
+          action,
+          error: null,
+          multiSelect: false,
+          selection: new Map(),
+        }))
+
+        loadMediaLibrary(action).catch((error) => {
+          console.error('[chat] 미디어 라이브러리 로드 실패', error)
+          if (error?.name === 'AbortError') {
+            setShowMediaPicker(false)
+            return
+          }
+          setMediaLibrary((prev) => ({
+            ...prev,
+            status: 'error',
+            error: error?.message || '미디어를 불러올 수 없습니다.',
+          }))
+          if (!window.showDirectoryPicker) {
+            setShowMediaPicker(false)
+            openFileDialogFallback(action)
+          }
+        })
+
+        return
+      }
+
+      openFileDialogFallback(action)
+    },
+    [context, handleAiReply, loadMediaLibrary, openFileDialogFallback],
   )
 
   const handleDownloadAttachment = useCallback(async (attachment) => {
@@ -1795,11 +2342,16 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       if (!attachment) return null
       const sizeLabel = formatBytes(attachment.original_size || attachment.size || 0)
       const icon = ATTACHMENT_ICONS[attachment.type] || '📎'
-      const hasPreview = Boolean(attachment.preview_url)
+      const previewUrl = attachment.preview_url || attachment.previewUrl || null
+      const hasPreview = Boolean(previewUrl)
+      const gridLayout = attachment.layoutHint === 'grid'
+      const containerStyle = gridLayout
+        ? overlayStyles.messageAttachmentGrid(mine)
+        : overlayStyles.messageAttachment(mine)
       return (
         <div
           key={attachment.id}
-          style={overlayStyles.messageAttachment(mine)}
+          style={containerStyle}
           role="button"
           tabIndex={0}
           onPointerDown={(event) => {
@@ -1819,36 +2371,60 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           }}
           onClick={(event) => event.preventDefault()}
         >
-          <div style={overlayStyles.messageAttachmentPreviewWrapper}>
-            {hasPreview ? (
-              <img
-                src={attachment.preview_url}
-                alt={attachment.name}
-                style={overlayStyles.messageAttachmentPreview}
-              />
-            ) : (
-              <div
-                style={{
-                  ...overlayStyles.attachmentThumb,
-                  width: '100%',
-                  height: 160,
-                  fontSize: 28,
-                  borderRadius: 0,
-                }}
-              >
-                {icon}
+          {gridLayout ? (
+            <>
+              <div style={overlayStyles.messageAttachmentGridPreviewWrapper}>
+                {hasPreview ? (
+                  <img
+                    src={previewUrl}
+                    alt={attachment.name}
+                    style={overlayStyles.messageAttachmentGridPreview}
+                  />
+                ) : (
+                  <div style={overlayStyles.mediaPickerPlaceholder}>{icon}</div>
+                )}
               </div>
-            )}
-            {attachment.type === 'video' && Number.isFinite(attachment.duration) ? (
-              <span style={{ ...overlayStyles.attachmentDuration, right: 12, bottom: 10 }}>
-                {formatDuration(attachment.duration)}
-              </span>
-            ) : null}
-          </div>
-          <div style={overlayStyles.messageAttachmentMeta}>
-            <span style={{ fontWeight: 600 }}>{attachment.name}</span>
-            <span style={{ fontSize: 11, color: '#cbd5f5' }}>{sizeLabel}</span>
-          </div>
+              <span style={overlayStyles.messageAttachmentChip}>{sizeLabel}</span>
+              {attachment.type === 'video' && Number.isFinite(attachment.duration) ? (
+                <span style={{ ...overlayStyles.attachmentDuration, left: 8, right: 'auto' }}>
+                  {formatDuration(attachment.duration)}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <div style={overlayStyles.messageAttachmentPreviewWrapper}>
+                {hasPreview ? (
+                  <img
+                    src={previewUrl}
+                    alt={attachment.name}
+                    style={overlayStyles.messageAttachmentPreview}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      ...overlayStyles.attachmentThumb,
+                      width: '100%',
+                      height: 160,
+                      fontSize: 28,
+                      borderRadius: 0,
+                    }}
+                  >
+                    {icon}
+                  </div>
+                )}
+                {attachment.type === 'video' && Number.isFinite(attachment.duration) ? (
+                  <span style={{ ...overlayStyles.attachmentDuration, right: 12, bottom: 10 }}>
+                    {formatDuration(attachment.duration)}
+                  </span>
+                ) : null}
+              </div>
+              <div style={overlayStyles.messageAttachmentMeta}>
+                <span style={{ fontWeight: 600 }}>{attachment.name}</span>
+                <span style={{ fontSize: 11, color: '#cbd5f5' }}>{sizeLabel}</span>
+              </div>
+            </>
+          )}
         </div>
       )
     },
@@ -2135,7 +2711,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                               {mine && showTimestamp ? timestampNode : null}
                               <div style={overlayStyles.messageBubble(mine)}>
                                 {attachments.length ? (
-                                  <div style={overlayStyles.messageAttachments}>
+                                  <div
+                                    style={
+                                      attachments.every((item) => item.layoutHint === 'grid')
+                                        ? overlayStyles.messageAttachmentsGrid
+                                        : overlayStyles.messageAttachments
+                                    }
+                                  >
                                     {attachments.map((attachment) =>
                                       renderAttachmentPreview(message, attachment, mine),
                                     )}
@@ -2314,6 +2896,88 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const focused = Boolean(context)
 
   const detailAttachments = expandedMessage ? getMessageAttachments(expandedMessage) : []
+  const mediaSelectionCount = mediaLibrary.selection?.size || 0
+  const mediaPickerTitle = mediaLibrary.action === 'video' ? '최근 동영상' : '최근 사진'
+  const mediaPickerOverlay = showMediaPicker ? (
+    <div style={overlayStyles.mediaPickerBackdrop} onClick={handleMediaPickerCancel}>
+      <div
+        style={overlayStyles.mediaPickerPanel}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header style={overlayStyles.mediaPickerHeader}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button type="button" style={overlayStyles.mediaPickerClose} onClick={handleMediaPickerCancel}>
+              닫기
+            </button>
+            <strong>{mediaPickerTitle}</strong>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {mediaLibrary.multiSelect ? (
+              <>
+                <span style={overlayStyles.mediaPickerHint}>{mediaSelectionCount}개 선택됨</span>
+                <button
+                  type="button"
+                  style={overlayStyles.mediaPickerAction(mediaSelectionCount === 0)}
+                  disabled={mediaSelectionCount === 0}
+                  onClick={handleMediaPickerConfirm}
+                >
+                  보내기
+                </button>
+                <button type="button" style={overlayStyles.mediaPickerSecondary} onClick={handleExitMultiSelect}>
+                  선택 취소
+                </button>
+              </>
+            ) : (
+              <span style={overlayStyles.mediaPickerHint}>길게 눌러 여러 항목을 선택할 수 있어요.</span>
+            )}
+          </div>
+        </header>
+        <div style={overlayStyles.mediaPickerBody}>
+          {mediaLibrary.status === 'loading' ? (
+            <span style={overlayStyles.mediaPickerStatus}>미디어를 불러오는 중...</span>
+          ) : mediaLibrary.status === 'error' ? (
+            <div style={overlayStyles.mediaPickerStatus}>
+              <span style={{ color: '#fca5a5', fontWeight: 600 }}>{mediaLibrary.error || '미디어를 불러올 수 없습니다.'}</span>
+              <button type="button" style={overlayStyles.mediaPickerSecondary} onClick={handleReloadMediaLibrary}>
+                다시 시도
+              </button>
+            </div>
+          ) : mediaLibrary.status === 'empty' ? (
+            <span style={overlayStyles.mediaPickerStatus}>표시할 항목이 없습니다.</span>
+          ) : (
+            <div style={overlayStyles.mediaPickerGrid}>
+              {mediaLibrary.entries.map((entry) => {
+                const selected = mediaLibrary.selection?.has(entry.id)
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    style={overlayStyles.mediaPickerItem(selected)}
+                    onPointerDown={() => handleMediaEntryPointerDown(entry)}
+                    onPointerUp={() => handleMediaEntryPointerUp(entry)}
+                    onPointerLeave={handleMediaEntryPointerLeave}
+                  >
+                    {entry.previewUrl ? (
+                      <img
+                        src={entry.previewUrl}
+                        alt={entry.name}
+                        style={overlayStyles.mediaPickerThumb}
+                      />
+                    ) : (
+                      <div style={overlayStyles.mediaPickerPlaceholder}>
+                        {entry.type?.startsWith('video/') ? '🎬' : '🖼️'}
+                      </div>
+                    )}
+                    <span style={overlayStyles.mediaPickerMeta}>{formatBytes(entry.size)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null
   const expandedMessageOverlay = expandedMessage ? (
     <div style={modalStyles.backdrop} onClick={handleCloseExpandedMessage}>
       <div
@@ -2407,6 +3071,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   return (
     <>
+      {mediaPickerOverlay}
       {expandedMessageOverlay}
       {attachmentViewerOverlay}
       <SurfaceOverlay
