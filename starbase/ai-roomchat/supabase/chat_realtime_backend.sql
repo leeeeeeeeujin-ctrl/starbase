@@ -120,6 +120,19 @@ create table if not exists public.chat_room_member_preferences (
   primary key (room_id, owner_id)
 );
 
+create table if not exists public.chat_room_search_terms (
+  query text primary key,
+  search_count bigint not null default 0,
+  last_searched_at timestamptz not null default timezone('utc', now()),
+  last_owner_id uuid
+);
+
+create index if not exists chat_room_search_terms_count_idx
+  on public.chat_room_search_terms (search_count desc, last_searched_at desc);
+
+create index if not exists chat_room_search_terms_last_idx
+  on public.chat_room_search_terms (last_searched_at desc);
+
 alter table public.chat_rooms enable row level security;
 alter table public.chat_room_members enable row level security;
 alter table public.chat_room_bans enable row level security;
@@ -1177,9 +1190,30 @@ declare
   v_query text := coalesce(trim(p_search), '');
   v_joined jsonb := '[]'::jsonb;
   v_available jsonb := '[]'::jsonb;
+  v_trending jsonb := '[]'::jsonb;
+  v_suggestions jsonb := '[]'::jsonb;
+  v_now timestamptz := timezone('utc', now());
+  v_search_key text := null;
 begin
   if v_owner_id is null then
-    return jsonb_build_object('joined', '[]'::jsonb, 'available', '[]'::jsonb);
+    return jsonb_build_object(
+      'joined', '[]'::jsonb,
+      'available', '[]'::jsonb,
+      'trendingKeywords', '[]'::jsonb,
+      'suggestedKeywords', '[]'::jsonb
+    );
+  end if;
+
+  if v_query <> '' then
+    v_search_key := left(lower(v_query), 120);
+    if v_search_key is not null and v_search_key <> '' then
+      insert into public.chat_room_search_terms as terms (query, search_count, last_searched_at, last_owner_id)
+      values (v_search_key, 1, v_now, v_owner_id)
+      on conflict (query) do update
+        set search_count = terms.search_count + 1,
+            last_searched_at = v_now,
+            last_owner_id = v_owner_id;
+    end if;
   end if;
 
   with base_rooms as (
@@ -1341,7 +1375,7 @@ begin
     where lm.rn = 1
   ),
   available_rooms as (
-    select
+    select distinct on (br.id)
       br.id,
       br.name,
       br.description,
@@ -1366,6 +1400,7 @@ begin
         or lower(br.name) like lower('%' || v_query || '%')
         or lower(br.description) like lower('%' || v_query || '%')
       )
+    order by br.id, coalesce(lm.created_at, br.updated_at) desc nulls last
   )
   select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
     into v_available
@@ -1376,9 +1411,47 @@ begin
     limit v_limit
   ) as row;
 
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'keyword', t.query,
+      'search_count', t.search_count,
+      'last_searched_at', t.last_searched_at
+    )), '[]'::jsonb)
+    into v_trending
+  from (
+    select t.query, t.search_count, t.last_searched_at
+    from public.chat_room_search_terms t
+    order by t.search_count desc, t.last_searched_at desc, t.query asc
+    limit 25
+  ) as t;
+
+  if v_query <> '' then
+    select coalesce(jsonb_agg(jsonb_build_object(
+        'keyword', t.query,
+        'search_count', t.search_count,
+        'last_searched_at', t.last_searched_at
+      )), '[]'::jsonb)
+      into v_suggestions
+    from (
+      select t.query, t.search_count, t.last_searched_at
+      from public.chat_room_search_terms t
+      where lower(t.query) like lower(v_query || '%')
+         or lower(t.query) like lower('%' || v_query || '%')
+      order by
+        case when lower(t.query) like lower(v_query || '%') then 0 else 1 end,
+        t.search_count desc,
+        t.last_searched_at desc,
+        t.query asc
+      limit 25
+    ) as t;
+  else
+    v_suggestions := '[]'::jsonb;
+  end if;
+
   return jsonb_build_object(
     'joined', coalesce(v_joined, '[]'::jsonb),
-    'available', coalesce(v_available, '[]'::jsonb)
+    'available', coalesce(v_available, '[]'::jsonb),
+    'trendingKeywords', coalesce(v_trending, '[]'::jsonb),
+    'suggestedKeywords', coalesce(v_suggestions, '[]'::jsonb)
   );
 end;
 $$;

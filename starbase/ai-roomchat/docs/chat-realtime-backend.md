@@ -19,7 +19,7 @@
 5. **채팅방 읽음/첨부 파일 전송 경로**
    `send_rank_chat_message` 함수가 `metadata.attachments` 배열을 수용하도록 확장되어 텍스트 없이도 압축된 파일 첨부를 게시할 수 있습니다. 클라이언트는 Supabase Storage `chat-attachments` 버킷에 업로드 후 서명 URL을 통해 내려받습니다.
     `mark_chat_room_read(room_id, message_id)` RPC는 사용자가 특정 채팅방을 읽은 시각을 저장해 카드 뷰의 안 읽은 메시지 배지를 계산합니다.
-    `fetch_chat_rooms(search, limit)` / `fetch_chat_dashboard(limit)` RPC는 `joined`·`available` 목록에 `latest_message`, `unread_count`, `cover_url`, `last_message_at`, `last_read_message_at` 등 카드 UI가 요구하는 필드를 함께 반환합니다.
+    `fetch_chat_rooms(search, limit)` / `fetch_chat_dashboard(limit)` RPC는 `joined`·`available` 목록에 `latest_message`, `unread_count`, `cover_url`, `last_message_at`, `last_read_message_at` 등 카드 UI가 요구하는 필드를 함께 반환합니다. 동시에 `chat_room_search_terms` 캐시 테이블에 검색어를 기록해 상위 5개 실시간 키워드와 검색어 기반 추천을 `trendingKeywords` / `suggestedKeywords` 배열로 제공합니다.
 
 ### `fetch_chat_rooms` / `fetch_chat_dashboard` 응답 형식
 
@@ -41,7 +41,21 @@
       }
     }
   ],
-  "available": [ /* 공개 방 목록, joined와 동일 구조 */ ]
+  "available": [ /* 공개 방 목록, joined와 동일 구조 */ ],
+  "trendingKeywords": [
+    {
+      "keyword": "마피아",        // 최근 검색이 많은 키워드 (소문자로 정규화)
+      "search_count": 42,
+      "last_searched_at": "2024-05-27T00:30:00Z"
+    }
+  ],
+  "suggestedKeywords": [
+    {
+      "keyword": "마피아 레이드", // 입력 중인 검색어와 유사한 추천 키워드
+      "search_count": 7,
+      "last_searched_at": "2024-05-27T00:28:00Z"
+    }
+  ]
 }
 ```
 
