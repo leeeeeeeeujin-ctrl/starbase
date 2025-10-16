@@ -67,6 +67,7 @@ The chat client compresses and uploads attachments to Supabase Storage after rec
    - Android 10–12: `READ_EXTERNAL_STORAGE` (respect scoped storage rules).
    - Offer the system Photo Picker as a fallback if the user denies full access.
 2. Query `MediaStore.Images.Media.EXTERNAL_CONTENT_URI` or `MediaStore.Video.Media.EXTERNAL_CONTENT_URI` with a projection that includes `_ID`, `DATE_TAKEN`, `DATE_ADDED`, `RELATIVE_PATH`, `MIME_TYPE`, `WIDTH`, `HEIGHT`, `DURATION`, `SIZE`.
+   - Avoid manually scanning filesystem directories; rely on MediaStore so results respect scoped storage and user privacy controls.
 3. Sort by `DATE_TAKEN DESC`, falling back to `DATE_ADDED DESC` when metadata is missing.
 4. De-duplicate obvious copies (downloads/screenshots) by size + timestamp heuristics if required.
 5. Build thumbnails via `ThumbnailUtils`/`ContentResolver` or a library such as Coil/Glide. Cache them on disk.
@@ -82,7 +83,7 @@ The chat client compresses and uploads attachments to Supabase Storage after rec
 ## Failure handling
 
 - Respond with `{ error: 'message' }` or throw to reject a request. The chat UI will surface the message and keep previous results.
-- If the bridge goes offline, omit the object from `window`; the UI will fall back to curated filesystem buckets. The picker asks for read access once and then scans common Android directories (DCIM/Camera, Screenshots, Download, KakaoTalk 등) or iOS DCIM buckets to rebuild a recent timeline without relying on the system picker.
+- If the bridge goes offline, omit the object from `window`; the UI will fall back to the basic file input dialog so attachments can still be uploaded, but the rich gallery experience will be unavailable.
 - When permissions are revoked, return `{ status: 'denied' }` from `requestPermission` so the chat overlay can guide the user back to settings.
 
 ## Testing checklist

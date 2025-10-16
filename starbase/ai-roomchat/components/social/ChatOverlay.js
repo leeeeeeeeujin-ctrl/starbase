@@ -30,215 +30,6 @@ const ATTACHMENT_SIZE_LIMIT = 50 * 1024 * 1024
 const MAX_VIDEO_DURATION = 4 * 60
 const MAX_MESSAGE_PREVIEW_LENGTH = 240
 const MEDIA_LOAD_LIMIT = 120
-const FALLBACK_MAX_MEDIA_AGE_MS = 90 * 24 * 60 * 60 * 1000
-const FALLBACK_SOURCE_LIMIT = 6
-
-const ANDROID_MEDIA_SOURCES = [
-  {
-    id: 'dcim-camera',
-    label: '카메라',
-    paths: [
-      ['DCIM', 'Camera'],
-      ['DCIM', '100MEDIA'],
-      ['DCIM', '100ANDRO'],
-    ],
-  },
-  {
-    id: 'screenshots',
-    label: '스크린샷',
-    paths: [
-      ['Pictures', 'Screenshots'],
-      ['DCIM', 'Screenshots'],
-    ],
-  },
-  {
-    id: 'downloads',
-    label: '다운로드',
-    paths: [['Download']],
-  },
-  {
-    id: 'kakaotalk',
-    label: '카카오톡',
-    paths: [
-      ['KakaoTalk', 'Media', 'KakaoTalk Images'],
-      ['KakaoTalk', 'Media', 'KakaoTalk Videos'],
-    ],
-  },
-  {
-    id: 'telegram',
-    label: '텔레그램',
-    paths: [
-      ['Telegram', 'Telegram Images'],
-      ['Telegram', 'Telegram Video'],
-    ],
-  },
-  {
-    id: 'line',
-    label: '라인',
-    paths: [
-      ['LINE', 'LINE_Album'],
-      ['LINE', 'Images'],
-    ],
-  },
-  {
-    id: 'whatsapp',
-    label: 'WhatsApp',
-    paths: [
-      ['WhatsApp', 'Media', 'WhatsApp Images'],
-      ['WhatsApp', 'Media', 'WhatsApp Video'],
-    ],
-  },
-  {
-    id: 'discord',
-    label: '디스코드',
-    paths: [
-      ['Discord'],
-      ['Pictures', 'Discord'],
-    ],
-  },
-  {
-    id: 'bluetooth',
-    label: '블루투스',
-    paths: [['Bluetooth']],
-  },
-]
-
-const IOS_MEDIA_SOURCES = [
-  {
-    id: 'photos',
-    label: '사진',
-    paths: [
-      ['DCIM'],
-      ['DCIM', '100APPLE'],
-      ['DCIM', '101APPLE'],
-    ],
-  },
-]
-
-const GENERIC_MEDIA_SOURCES = [
-  {
-    id: 'pictures',
-    label: '사진',
-    paths: [['Pictures']],
-  },
-  {
-    id: 'downloads',
-    label: '다운로드',
-    paths: [['Download']],
-  },
-]
-
-function detectFallbackPlatform() {
-  if (typeof navigator === 'undefined') {
-    return 'generic'
-  }
-  const ua = navigator.userAgent || navigator.platform || ''
-  if (/android/i.test(ua)) return 'android'
-  if (/iphone|ipad|ipod/i.test(ua)) return 'ios'
-  return 'generic'
-}
-
-function getFallbackSources() {
-  const platform = detectFallbackPlatform()
-  if (platform === 'android') return ANDROID_MEDIA_SOURCES
-  if (platform === 'ios') return IOS_MEDIA_SOURCES
-  return GENERIC_MEDIA_SOURCES
-}
-
-async function findDirectoryByName(parentHandle, segment) {
-  if (!parentHandle) return null
-  const lower = segment.toLowerCase()
-  try {
-    return await parentHandle.getDirectoryHandle(segment)
-  } catch (error) {
-    // continue to scan entries
-  }
-  try {
-    for await (const [name, handle] of parentHandle.entries()) {
-      if (handle?.kind === 'directory' && name.toLowerCase() === lower) {
-        return handle
-      }
-    }
-  } catch (error) {
-    console.warn('[chat] 하위 디렉터리를 찾을 수 없습니다.', error)
-  }
-  return null
-}
-
-async function resolveDirectoryFromRoot(rootHandle, segments) {
-  if (!rootHandle || !segments?.length) return null
-  let current = rootHandle
-  let startIndex = 0
-  const rootName = (current.name || '').toLowerCase()
-  if (segments.length && rootName === segments[0].toLowerCase()) {
-    startIndex = 1
-  }
-
-  for (let i = startIndex; i < segments.length; i += 1) {
-    const segment = segments[i]
-    const next = await findDirectoryByName(current, segment)
-    if (!next) {
-      return null
-    }
-    current = next
-  }
-  return current
-}
-
-function shouldIncludeEntry(entry) {
-  if (!entry) return false
-  if (!(entry.type?.startsWith('image/') || entry.type?.startsWith('video/'))) {
-    return false
-  }
-  const cutoff = Date.now() - FALLBACK_MAX_MEDIA_AGE_MS
-  if (entry.lastModified && entry.lastModified < cutoff) {
-    return false
-  }
-  return true
-}
-
-async function collectFallbackMediaEntries(rootHandle, action) {
-  if (!rootHandle) return []
-  const granted = await ensureHandleReadPermission(rootHandle)
-  if (!granted) {
-    throw new Error('미디어 라이브러리에 접근할 수 있도록 권한을 허용해 주세요.')
-  }
-
-  const sources = getFallbackSources()
-  const seen = new Map()
-  const results = []
-
-  for (const source of sources.slice(0, FALLBACK_SOURCE_LIMIT)) {
-    let directoryHandle = null
-    for (const path of source.paths) {
-      directoryHandle = await resolveDirectoryFromRoot(rootHandle, path)
-      if (!directoryHandle && rootHandle.name) {
-        // allow resolving when root is already within the path
-        directoryHandle = await resolveDirectoryFromRoot(rootHandle, path.slice(1))
-      }
-      if (directoryHandle) break
-    }
-    if (!directoryHandle) continue
-    const permitted = await ensureHandleReadPermission(directoryHandle)
-    if (!permitted) continue
-
-    const entries = await enumerateMediaEntries(directoryHandle, action)
-    for (const entry of entries) {
-      if (!shouldIncludeEntry(entry)) continue
-      const key = `${source.id}:${entry.name}:${entry.lastModified || 0}:${entry.size || 0}`
-      if (seen.has(key)) continue
-      seen.set(key, true)
-      results.push({ ...entry, bucketId: source.id, bucketLabel: source.label })
-    }
-
-    if (results.length >= MEDIA_LOAD_LIMIT) {
-      break
-    }
-  }
-
-  results.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0))
-  return results.slice(0, MEDIA_LOAD_LIMIT)
-}
 const LONG_PRESS_THRESHOLD = 400
 const ATTACHMENT_ICONS = {
   image: '🖼️',
@@ -369,95 +160,6 @@ function isFileSupportedByAction(file, action) {
     return file.type?.startsWith('video/')
   }
   return true
-}
-
-async function enumerateMediaEntries(directoryHandle, action) {
-  const entries = []
-  if (!directoryHandle) return entries
-
-  for await (const [name, handle] of directoryHandle.entries()) {
-    if (entries.length >= MEDIA_LOAD_LIMIT) break
-    if (handle.kind !== 'file') continue
-    try {
-      const file = await handle.getFile()
-      if (!isFileSupportedByAction(file, action)) continue
-      entries.push({
-        id: `${handle.name}-${file.lastModified}-${file.size}`,
-        name,
-        handle,
-        type: file.type,
-        size: file.size,
-        lastModified: file.lastModified || Date.now(),
-        file,
-      })
-    } catch (error) {
-      console.warn('[chat] 미디어 항목을 불러오지 못했습니다.', error)
-    }
-  }
-
-  entries.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0))
-  return entries
-}
-
-async function createThumbnailForEntry(entry) {
-  if (!entry?.file) return entry
-  const file = entry.file
-  let previewUrl = ''
-  try {
-    if (file.type?.startsWith('image/')) {
-      const image = await new Promise((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => resolve(img)
-        img.onerror = reject
-        img.src = URL.createObjectURL(file)
-      })
-      const canvas = document.createElement('canvas')
-      const maxSize = 280
-      const scale = Math.min(1, maxSize / Math.max(image.width, image.height))
-      canvas.width = Math.max(1, Math.round(image.width * scale))
-      canvas.height = Math.max(1, Math.round(image.height * scale))
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
-      previewUrl = canvas.toDataURL('image/webp', 0.82)
-      URL.revokeObjectURL(image.src)
-    } else if (file.type?.startsWith('video/')) {
-      const video = document.createElement('video')
-      const tempUrl = URL.createObjectURL(file)
-      video.preload = 'metadata'
-      video.src = tempUrl
-      await new Promise((resolve) => {
-        video.onloadeddata = resolve
-        video.onloadedmetadata = resolve
-      })
-      video.currentTime = Math.min(video.duration || 1, (video.duration || 1) / 2)
-      await new Promise((resolve) => {
-        video.onseeked = resolve
-      })
-      const canvas = document.createElement('canvas')
-      const maxSize = 320
-      const scale = Math.min(1, maxSize / Math.max(video.videoWidth, video.videoHeight))
-      canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
-      canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      previewUrl = canvas.toDataURL('image/webp', 0.75)
-      URL.revokeObjectURL(tempUrl)
-    }
-  } catch (error) {
-    console.warn('[chat] 미디어 썸네일 생성 실패', error)
-  }
-
-  return { ...entry, previewUrl }
-}
-
-async function ensureHandleReadPermission(handle) {
-  if (!handle) return false
-  if (!handle.queryPermission || !handle.requestPermission) return true
-  const status = await handle.queryPermission({ mode: 'read' })
-  if (status === 'granted') return true
-  if (status === 'denied') return false
-  const requested = await handle.requestPermission({ mode: 'read' })
-  return requested === 'granted'
 }
 
 async function loadVideoMetadata(file) {
@@ -1708,8 +1410,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const longPressTimerRef = useRef(null)
   const longPressActiveRef = useRef(false)
   const videoControlTimerRef = useRef(null)
-  const mediaDirectoryHandleRef = useRef(null)
-  const mediaPreviewCacheRef = useRef(new Map())
   const mediaPickerLongPressRef = useRef({ timer: null, active: false, id: null })
   const aiPendingMessageRef = useRef(null)
 
@@ -1950,14 +1650,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         }
       })
       attachmentCacheRef.current.clear()
-      mediaPreviewCacheRef.current.forEach((url) => {
-        try {
-          URL.revokeObjectURL(url)
-        } catch (error) {
-          console.warn('[chat] 미디어 라이브러리 URL 해제 실패', error)
-        }
-      })
-      mediaPreviewCacheRef.current.clear()
     }
   }, [])
 
@@ -2311,90 +2003,50 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       const targetAction = action || mediaLibrary.action
       if (!targetAction) return
 
+      const nativeAvailable = hasNativeMediaBridge()
+      if (!nativeAvailable) {
+        const error = new Error(
+          '네이티브 갤러리 브릿지가 활성화되어 있지 않습니다. 권한을 허용한 뒤 다시 시도해 주세요.',
+        )
+        error.code = 'bridge-missing'
+        throw error
+      }
+
+      const permission = await requestNativeMediaPermission('read')
+      if (permission.status === 'denied') {
+        const error = new Error('사진/동영상 접근 권한을 허용해 주세요.')
+        error.code = 'permission-denied'
+        throw error
+      }
+
       const mediaType = targetAction === 'video' ? 'video' : 'image'
-      if (hasNativeMediaBridge()) {
-        const permission = await requestNativeMediaPermission('read')
-        if (permission.status === 'denied') {
-          const error = new Error('사진/동영상 접근 권한을 허용해 주세요.')
-          error.code = 'permission-denied'
-          throw error
+      const cursor = append ? cursorOverride ?? mediaLibrary.cursor ?? null : null
+      const timeline = await fetchNativeMediaTimeline({
+        mediaType,
+        cursor,
+        limit: MEDIA_LOAD_LIMIT,
+      })
+
+      setMediaLibrary((prev) => {
+        const baseEntries = append ? prev.entries : []
+        const map = new Map()
+        baseEntries.forEach((entry) => map.set(entry.id, entry))
+        timeline.entries.forEach((entry) => map.set(entry.id, entry))
+        const merged = Array.from(map.values())
+        return {
+          ...prev,
+          status: merged.length ? 'ready' : 'empty',
+          entries: merged,
+          action: targetAction,
+          error: merged.length ? null : '표시할 수 있는 항목이 없습니다.',
+          errorCode: null,
+          multiSelect: append ? prev.multiSelect : false,
+          selection: append ? new Map(prev.selection) : new Map(),
+          cursor: timeline.cursor || null,
+          hasMore: Boolean(timeline.hasMore),
+          source: 'native',
+          loadingMore: false,
         }
-
-        const cursor = append ? cursorOverride ?? mediaLibrary.cursor ?? null : null
-        const timeline = await fetchNativeMediaTimeline({
-          mediaType,
-          cursor,
-          limit: MEDIA_LOAD_LIMIT,
-        })
-
-        setMediaLibrary((prev) => {
-          const baseEntries = append ? prev.entries : []
-          const map = new Map()
-          baseEntries.forEach((entry) => map.set(entry.id, entry))
-          timeline.entries.forEach((entry) => map.set(entry.id, entry))
-          const merged = Array.from(map.values())
-          return {
-            ...prev,
-            status: merged.length ? 'ready' : 'empty',
-            entries: merged,
-            action: targetAction,
-            error: merged.length ? null : '표시할 수 있는 항목이 없습니다.',
-            errorCode: null,
-            multiSelect: append ? prev.multiSelect : false,
-            selection: append ? new Map(prev.selection) : new Map(),
-            cursor: timeline.cursor || null,
-            hasMore: Boolean(timeline.hasMore),
-            source: 'native',
-            loadingMore: false,
-          }
-        })
-        return
-      }
-
-      if (typeof window === 'undefined') {
-        throw new Error('이 환경에서는 미디어 라이브러리를 열 수 없습니다.')
-      }
-
-      if (!window.showDirectoryPicker) {
-        throw new Error('미디어 라이브러리를 지원하지 않는 브라우저입니다.')
-      }
-
-      let directoryHandle = mediaDirectoryHandleRef.current
-      if (!directoryHandle) {
-        directoryHandle = await window.showDirectoryPicker({ id: 'chat-media-root', mode: 'read' })
-        mediaDirectoryHandleRef.current = directoryHandle
-      }
-
-      const items = await collectFallbackMediaEntries(directoryHandle, targetAction)
-      const enriched = await Promise.all(
-        items.map(async (entry) => {
-          if (!(entry.type?.startsWith('image/') || entry.type?.startsWith('video/'))) {
-            return entry
-          }
-          const cached = mediaPreviewCacheRef.current.get(entry.id)
-          if (cached) {
-            return { ...entry, previewUrl: cached }
-          }
-          const withPreview = await createThumbnailForEntry(entry)
-          if (withPreview.previewUrl) {
-            mediaPreviewCacheRef.current.set(entry.id, withPreview.previewUrl)
-          }
-          return withPreview
-        }),
-      )
-
-      setMediaLibrary({
-        status: enriched.length ? 'ready' : 'empty',
-        entries: enriched,
-        action: targetAction,
-        error: enriched.length ? null : '표시할 수 있는 항목이 없습니다.',
-        errorCode: null,
-        multiSelect: false,
-        selection: new Map(),
-        cursor: null,
-        hasMore: false,
-        source: 'filesystem',
-        loadingMore: false,
       })
     },
     [mediaLibrary.action, mediaLibrary.cursor],
@@ -2710,11 +2362,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setShowComposerPanel(false)
 
       if (action === 'photo' || action === 'video') {
-        const nativeAvailable = hasNativeMediaBridge()
-        if (!nativeAvailable && (typeof window === 'undefined' || !window.showDirectoryPicker)) {
-          setAttachmentError(
-            '이 기기에서는 갤러리를 직접 열 수 없습니다. 네이티브 브릿지를 구성하거나 지원되는 브라우저에서 이용해 주세요.',
-          )
+        if (!hasNativeMediaBridge()) {
+          openFileDialogFallback(action)
           return
         }
 
@@ -2729,7 +2378,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           selection: new Map(),
           cursor: null,
           hasMore: false,
-          source: nativeAvailable ? 'native' : 'filesystem',
+          source: 'native',
           loadingMore: false,
         }))
 
