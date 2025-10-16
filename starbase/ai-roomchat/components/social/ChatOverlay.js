@@ -15,6 +15,7 @@ import {
   fetchChatMemberPreferences,
   joinChatRoom,
   leaveChatRoom,
+  deleteChatRoom,
   manageChatRoomRole,
   markChatRoomRead,
   createChatRoomAnnouncement,
@@ -913,18 +914,20 @@ const overlayStyles = {
     background: 'rgba(10, 16, 35, 0.96)',
     border: '1px solid rgba(71, 85, 105, 0.5)',
     borderRadius: 22,
-    padding: '18px 18px 20px',
+    padding: '18px 18px 16px',
     display: 'grid',
-    gridTemplateRows: 'auto auto auto 1fr auto',
+    gridTemplateRows: 'auto auto 1fr auto',
     gap: 16,
     height: '100%',
     overflow: 'hidden',
+    position: 'relative',
   },
   drawerScrollArea: {
     overflowY: 'auto',
     display: 'grid',
     gap: 16,
     paddingRight: 6,
+    paddingBottom: 12,
   },
   drawerSection: {
     display: 'grid',
@@ -1185,11 +1188,16 @@ const overlayStyles = {
     color: '#e2e8f0',
   },
   drawerFooter: {
+    position: 'sticky',
+    bottom: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    paddingTop: 4,
+    padding: '12px 6px 0',
+    background: 'linear-gradient(180deg, rgba(10, 16, 35, 0) 0%, rgba(10, 16, 35, 0.95) 38%, rgba(10, 16, 35, 0.98) 100%)',
+    backdropFilter: 'blur(12px)',
+    margin: '0 -6px',
   },
   drawerFooterButton: (variant = 'ghost') => ({
     flex: 1,
@@ -1208,6 +1216,10 @@ const overlayStyles = {
     cursor: 'pointer',
     padding: '10px 12px',
     transition: 'all 0.18s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   }),
   messageViewport: {
     overflowY: 'auto',
@@ -3410,26 +3422,54 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   )
 
   const handleLeaveRoom = useCallback(
-    async (room) => {
-      if (!room?.id) return
-      const isGlobal = room.builtin === 'global' || normalizeId(room.id) === normalizeId(GLOBAL_ROOM.id)
+    async (room, options = {}) => {
+      if (!room) return false
+      const roomId = normalizeId(room.id || room.chat_room_id || room.chatRoomId)
+      if (!roomId) return false
+
+      const isGlobal =
+        room.builtin === 'global' || normalizeId(roomId) === normalizeId(GLOBAL_ROOM.id)
       if (isGlobal) {
         setContext((current) => (current?.type === 'global' ? null : current))
         setMessages([])
-        return
+        return true
       }
-      const confirmLeave = window.confirm('이 채팅방에서 나가시겠습니까?')
-      if (!confirmLeave) return
+
+      const asOwner = options.asOwner === true
+      const confirmMessage = asOwner
+        ? '방을 삭제하면 대화 기록과 설정이 모두 사라집니다. 계속하시겠습니까?'
+        : '이 채팅방에서 나가시겠습니까?'
+      const confirmed = window.confirm(confirmMessage)
+      if (!confirmed) {
+        return false
+      }
+
       try {
-        await leaveChatRoom({ roomId: room.id })
+        if (asOwner) {
+          await deleteChatRoom({ roomId })
+        } else {
+          await leaveChatRoom({ roomId })
+        }
+
         await refreshRooms()
-        if (context?.type === 'chat-room' && context.chatRoomId === room.id) {
+
+        if (context?.type === 'chat-room' && normalizeId(context.chatRoomId) === roomId) {
           setContext(null)
           setMessages([])
         }
+
+        return true
       } catch (error) {
-        console.error('[chat] 채팅방 나가기 실패', error)
-        alert('채팅방을 나갈 수 없습니다.')
+        console.error(
+          asOwner ? '[chat] 채팅방 삭제 실패' : '[chat] 채팅방 나가기 실패',
+          error,
+        )
+        alert(
+          asOwner
+            ? '채팅방을 삭제할 수 없습니다. 잠시 후 다시 시도해 주세요.'
+            : '채팅방을 나갈 수 없습니다. 잠시 후 다시 시도해 주세요.',
+        )
+        return false
       }
     },
     [context, refreshRooms],
@@ -6342,15 +6382,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   <button
                     type="button"
                     style={overlayStyles.drawerFooterButton(viewerIsOwner ? 'danger' : 'ghost')}
-                    onClick={() => {
-                      handleCloseDrawer()
-                      handleLeaveRoom({
-                        id: context?.chatRoomId,
-                        visibility: context?.visibility || 'private',
-                      })
+                    onClick={async () => {
+                      const success = await handleLeaveRoom(
+                        currentRoom || {
+                          id: context?.chatRoomId,
+                          visibility: context?.visibility || 'private',
+                          builtin: context?.builtin,
+                        },
+                        { asOwner: viewerIsOwner },
+                      )
+                      if (success) {
+                        handleCloseDrawer()
+                      }
                     }}
                   >
-                    {viewerIsOwner ? '방 삭제' : '나가기'}
+                    {viewerIsOwner ? '🗑 방 삭제' : '나가기'}
                   </button>
                   <button
                     type="button"
@@ -6360,7 +6406,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       handleOpenSettings()
                     }}
                   >
-                    설정
+                    ⚙️ 설정
                   </button>
                 </div>
               </div>

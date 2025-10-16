@@ -1116,6 +1116,88 @@ on public.messages
 for each row execute function public.broadcast_messages_changes();
 
 -- 3. Room helpers -----------------------------------------------------------
+drop function if exists public.leave_chat_room(uuid);
+create or replace function public.leave_chat_room(
+  p_room_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_deleted integer := 0;
+begin
+  if v_owner_id is null then
+    raise exception 'missing_user_id' using errcode = 'P0001';
+  end if;
+
+  if p_room_id is null then
+    raise exception 'missing_room_id' using errcode = 'P0001';
+  end if;
+
+  delete from public.chat_room_members
+  where room_id = p_room_id
+    and owner_id = v_owner_id
+  returning 1 into v_deleted;
+
+  return v_deleted > 0;
+end;
+$$;
+
+grant execute on function public.leave_chat_room(uuid)
+to authenticated;
+
+drop function if exists public.delete_chat_room(uuid);
+create or replace function public.delete_chat_room(
+  p_room_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_room record;
+begin
+  if v_owner_id is null then
+    raise exception 'missing_user_id' using errcode = 'P0001';
+  end if;
+
+  if p_room_id is null then
+    raise exception 'missing_room_id' using errcode = 'P0001';
+  end if;
+
+  select *
+    into v_room
+  from public.chat_rooms
+  where id = p_room_id
+  for update;
+
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  if coalesce(v_room.is_system, false) then
+    raise exception 'cannot_delete_system_room' using errcode = 'P0001';
+  end if;
+
+  if v_room.owner_id <> v_owner_id then
+    raise exception 'not_room_owner' using errcode = 'P0001';
+  end if;
+
+  delete from public.chat_rooms
+  where id = p_room_id;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.delete_chat_room(uuid)
+to authenticated;
+
 drop function if exists public.mark_chat_room_read(uuid, uuid);
 create or replace function public.mark_chat_room_read(
   p_room_id uuid,

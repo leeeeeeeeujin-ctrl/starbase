@@ -92,6 +92,22 @@ export async function leaveChatRoom({ roomId }) {
   return !!data
 }
 
+export async function deleteChatRoom({ roomId }) {
+  if (!roomId) {
+    throw new Error('roomId가 필요합니다.')
+  }
+
+  const { data, error } = await supabase.rpc('delete_chat_room', {
+    p_room_id: roomId,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data || { ok: true }
+}
+
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
