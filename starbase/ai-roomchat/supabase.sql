@@ -3009,6 +3009,12 @@ alter table public.chat_room_members
 alter table public.chat_room_members
   add column if not exists last_read_message_id uuid;
 
+alter table public.chat_room_members
+  add column if not exists created_at timestamptz not null default timezone('utc', now());
+
+alter table public.chat_room_members
+  add column if not exists updated_at timestamptz not null default timezone('utc', now());
+
 create table if not exists public.chat_room_moderators (
   room_id uuid not null references public.chat_rooms(id) on delete cascade,
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -3206,7 +3212,10 @@ returns trigger
 language plpgsql
 as $$
 begin
-  new.last_active_at := timezone('utc', now());
+  new.updated_at := timezone('utc', now());
+  if new.status = 'active' then
+    new.last_active_at := timezone('utc', now());
+  end if;
   return new;
 end;
 $$;
