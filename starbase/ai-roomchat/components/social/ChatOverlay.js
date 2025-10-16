@@ -30,6 +30,8 @@ const ATTACHMENT_ICONS = {
   file: '📄',
 }
 
+const AI_ASSISTANT_NAME = 'AI 어시스턴트'
+
 function getAttachmentCacheKey(attachment) {
   if (!attachment) return ''
   const bucket = attachment.bucket || CHAT_ATTACHMENT_BUCKET
@@ -725,8 +727,8 @@ const overlayStyles = {
   },
   messageContent: (mine = false) => ({
     display: 'grid',
-    gap: mine ? 6 : 4,
-    maxWidth: '88%',
+    gap: 4,
+    maxWidth: '94%',
     textAlign: mine ? 'right' : 'left',
   }),
   messageName: (mine = false) => ({
@@ -736,29 +738,73 @@ const overlayStyles = {
   }),
   messageStack: (mine = false) => ({
     display: 'grid',
-    gap: 3,
+    gap: 2,
     justifyItems: mine ? 'end' : 'start',
   }),
   messageItem: (mine = false) => ({
     display: 'flex',
     alignItems: 'flex-end',
     justifyContent: mine ? 'flex-end' : 'flex-start',
-    gap: 5,
+    gap: 4,
   }),
-  messageBubble: (mine = false) => ({
-    borderRadius: 12,
-    border: mine ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid rgba(71, 85, 105, 0.45)',
-    background: mine ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.8)',
-    padding: '6px 12px 8px',
-    color: '#f8fafc',
-    display: 'grid',
-    gap: 6,
+  messageBubble: (mine = false, variant = 'default') => {
+    const variants = {
+      default: {
+        border: mine
+          ? '1px solid rgba(59, 130, 246, 0.45)'
+          : '1px solid rgba(71, 85, 105, 0.45)',
+        background: mine ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+      },
+      aiPrompt: {
+        border: '1px solid rgba(96, 165, 250, 0.7)',
+        background: 'rgba(37, 99, 235, 0.22)',
+      },
+      aiResponse: {
+        border: '1px solid rgba(248, 113, 113, 0.7)',
+        background: 'rgba(239, 68, 68, 0.16)',
+      },
+      aiPending: {
+        border: '1px dashed rgba(248, 113, 113, 0.65)',
+        background: 'rgba(248, 113, 113, 0.12)',
+      },
+      aiError: {
+        border: '1px solid rgba(248, 113, 113, 0.85)',
+        background: 'rgba(127, 29, 29, 0.2)',
+      },
+    }
+    const tone = variants[variant] || variants.default
+    return {
+      borderRadius: 12,
+      border: tone.border,
+      background: tone.background,
+      padding: '4px 12px 6px',
+      color: '#f8fafc',
+      display: 'grid',
+      gap: 4,
+      minWidth: 0,
+    }
+  },
+  messageLabel: (variant = 'prompt') => ({
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+    color:
+      variant === 'response'
+        ? 'rgba(248, 181, 181, 0.95)'
+        : variant === 'error'
+          ? 'rgba(248, 113, 113, 0.95)'
+          : 'rgba(191, 219, 254, 0.95)',
   }),
   messageText: {
     fontSize: 13,
-    lineHeight: 1.38,
+    lineHeight: 1.34,
     margin: 0,
     whiteSpace: 'pre-wrap',
+  },
+  messagePendingText: {
+    fontSize: 12,
+    color: '#fca5a5',
   },
   viewMoreButton: {
     border: 'none',
@@ -868,6 +914,44 @@ const overlayStyles = {
     gap: 12,
     padding: '10px 16px 0',
     overflowX: 'auto',
+  },
+  aiRequestBanner: {
+    margin: '8px 16px 0',
+    padding: '10px 14px',
+    borderRadius: 14,
+    border: '1px solid rgba(96, 165, 250, 0.55)',
+    background: 'rgba(37, 99, 235, 0.18)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  aiRequestLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#bfdbfe',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  aiRequestPreview: {
+    fontSize: 12,
+    color: '#e2e8f0',
+    maxWidth: 'calc(100% - 28px)',
+    lineHeight: 1.4,
+    wordBreak: 'break-word',
+  },
+  aiRequestCancel: {
+    width: 26,
+    height: 26,
+    borderRadius: '50%',
+    border: '1px solid rgba(96, 165, 250, 0.6)',
+    background: 'rgba(15, 23, 42, 0.85)',
+    color: '#bfdbfe',
+    cursor: 'pointer',
+    fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   attachmentPreview: {
     position: 'relative',
@@ -1260,6 +1344,31 @@ function getMessageAttachments(message) {
     .filter((attachment) => attachment && (attachment.path || attachment.preview_url))
 }
 
+function getAiMetadata(message) {
+  if (!message || !message.metadata) return null
+  const metadata = typeof message.metadata === 'object' ? message.metadata : null
+  if (!metadata || !metadata.ai) return null
+  const aiMeta = typeof metadata.ai === 'object' ? metadata.ai : null
+  if (!aiMeta) return null
+  return {
+    type: aiMeta.type || aiMeta.kind || null,
+    status: aiMeta.status || 'complete',
+    requestId: aiMeta.requestId || aiMeta.request_id || null,
+    prompt: aiMeta.prompt || metadata.prompt || metadata.plain_text || '',
+    source: aiMeta.source || null,
+  }
+}
+
+function isAiPrompt(message) {
+  const aiMeta = getAiMetadata(message)
+  return Boolean(aiMeta && aiMeta.type === 'prompt')
+}
+
+function isAiResponse(message) {
+  const aiMeta = getAiMetadata(message)
+  return Boolean(aiMeta && aiMeta.type === 'response')
+}
+
 function formatTime(value) {
   if (!value) return ''
   try {
@@ -1334,6 +1443,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [showComposerPanel, setShowComposerPanel] = useState(false)
   const [composerAttachments, setComposerAttachments] = useState([])
   const [attachmentError, setAttachmentError] = useState(null)
+  const [aiRequest, setAiRequest] = useState(null)
   const [viewerAttachment, setViewerAttachment] = useState(null)
   const [expandedMessage, setExpandedMessage] = useState(null)
   const [videoControlsVisible, setVideoControlsVisible] = useState(true)
@@ -1357,6 +1467,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const mediaDirectoryHandleRef = useRef(null)
   const mediaPreviewCacheRef = useRef(new Map())
   const mediaPickerLongPressRef = useRef({ timer: null, active: false, id: null })
+  const aiPendingMessageRef = useRef(null)
 
   const heroes = useMemo(() => (dashboard?.heroes ? dashboard.heroes : []), [dashboard])
 
@@ -1387,21 +1498,33 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         currentGroup = null
       }
 
-      const ownerToken = normalizeId(message.owner_id || message.user_id)
-      const mine = Boolean(viewerToken && ownerToken && viewerToken === ownerToken)
-      const actorToken = ownerToken || normalizeId(message.username) || `system-${index}`
+      const aiMeta = getAiMetadata(message)
+      let ownerToken = normalizeId(message.owner_id || message.user_id)
+      let mine = Boolean(viewerToken && ownerToken && viewerToken === ownerToken)
+      let actorToken = ownerToken || normalizeId(message.username) || `system-${index}`
+      let displayName = message.username || '알 수 없음'
+      let avatarUrl = message.avatar_url || null
+      let initials = displayName.slice(0, 2)
+
+      if (aiMeta?.type === 'response') {
+        mine = false
+        actorToken = `ai::${aiMeta.requestId || actorToken}`
+        displayName = AI_ASSISTANT_NAME
+        avatarUrl = null
+        initials = 'AI'
+      }
+
       const groupKey = `${lastDayKey || dayKey || 'unknown'}::${actorToken}::${mine ? 'me' : 'peer'}`
 
       if (!currentGroup || currentGroup.groupKey !== groupKey) {
-        const displayName = message.username || '알 수 없음'
         currentGroup = {
           type: 'group',
           key: `group-${groupKey}-${message.id || message.local_id || index}`,
           groupKey,
           mine,
           displayName,
-          avatarUrl: message.avatar_url || null,
-          initials: displayName.slice(0, 2),
+          avatarUrl,
+          initials,
           messages: [],
         }
         entries.push(currentGroup)
@@ -1426,6 +1549,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setShowMediaPicker(false)
       setComposerAttachments([])
       setAttachmentError(null)
+      setAiRequest(null)
       setExpandedMessage(null)
       setViewerAttachment(null)
       attachmentCacheRef.current.clear()
@@ -1660,6 +1784,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setActiveTab('info')
     setComposerAttachments([])
     setAttachmentError(null)
+    setAiRequest(null)
   }, [])
 
   const handleSelectRoom = useCallback((room, visibility) => {
@@ -1689,6 +1814,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     })
     setComposerAttachments([])
     setAttachmentError(null)
+    setAiRequest(null)
   }, [])
 
   const handleCreateRoom = useCallback(async () => {
@@ -1751,21 +1877,28 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const handleSendMessage = useCallback(
     async (options = {}) => {
-      if (!context) return
-      const text = typeof options.text === 'string' ? options.text.trim() : messageInput.trim()
-      const pendingAttachments = composerAttachments.filter((attachment) => attachment?.status === 'ready')
+      if (!context) return null
+      const textSource = typeof options.text === 'string' ? options.text : messageInput
+      const text = (textSource || '').trim()
+      const attachmentsSource = Array.isArray(options.attachments)
+        ? options.attachments
+        : composerAttachments
+      const usingComposerAttachments = !Array.isArray(options.attachments)
+      const pendingAttachments = attachmentsSource.filter((attachment) => attachment?.status === 'ready')
+      const metadataOverride = options.metadata && typeof options.metadata === 'object' ? options.metadata : null
+      const shouldResetComposer = options.resetComposer !== false && usingComposerAttachments
+
       if (!text && pendingAttachments.length === 0) {
-        return
+        return null
       }
 
       setSending(true)
       setSendError(null)
 
       const updateAttachmentStatus = (statusUpdater) => {
+        if (!usingComposerAttachments) return
         setComposerAttachments((prev) =>
-          prev.map((attachment) =>
-            statusUpdater(attachment) || attachment,
-          ),
+          prev.map((attachment) => statusUpdater(attachment) || attachment),
         )
       }
 
@@ -1817,6 +1950,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             scope: context.scope || 'global',
             hero_id: selectedHero || null,
             attachments: uploadedAttachments,
+            metadata: metadataOverride || undefined,
           },
           {
             sessionId: context.sessionId || null,
@@ -1830,15 +1964,20 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           setMessages((prev) => upsertMessageList(prev, inserted))
         }
 
-        setMessageInput('')
-        setComposerAttachments([])
-        setAttachmentError(null)
+        if (shouldResetComposer) {
+          setMessageInput('')
+          setComposerAttachments([])
+          setAttachmentError(null)
+        }
+
+        return inserted || null
       } catch (error) {
         console.error('[chat] 메시지를 보낼 수 없습니다.', error)
         setSendError(error)
         updateAttachmentStatus((attachment) =>
           pendingAttachments.includes(attachment) ? { ...attachment, status: 'error' } : null,
         )
+        return null
       } finally {
         setSending(false)
       }
@@ -1846,41 +1985,16 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [composerAttachments, context, messageInput, selectedHero],
   )
 
-  const handleAiReply = useCallback(async () => {
-    setShowComposerPanel(false)
-    const prompt = window.prompt('AI에게 전달할 프롬프트를 입력해 주세요.')
-    if (!prompt) return
-    try {
-      const session = await supabase.auth.getSession()
-      const token = session?.data?.session?.access_token
-      if (!token) {
-        alert('로그인 세션을 확인할 수 없습니다.')
-        return
-      }
-      const response = await fetch('/api/chat/ai-proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ prompt }),
-      })
-      const payload = await response.json()
-      if (!response.ok || !payload?.text) {
-        throw new Error(payload?.error || 'AI 응답을 받을 수 없습니다.')
-      }
-      await handleSendMessage({ text: payload.text })
-    } catch (error) {
-      console.error('[chat] AI 응답 요청 실패', error)
-      alert('AI 응답을 불러올 수 없습니다.')
-    }
-  }, [handleSendMessage])
-
   const handleRemoveAttachment = useCallback((id) => {
     setComposerAttachments((prev) =>
       prev.filter((attachment) => attachment.id !== id || attachment.status === 'uploading'),
     )
   }, [])
+
+  const handleCancelAiRequest = useCallback(() => {
+    setAiRequest(null)
+    setAttachmentError(null)
+  }, [setAttachmentError])
 
   const prepareDraftsFromFiles = useCallback(
     async (files, action, { layoutHint } = {}) => {
@@ -2155,7 +2269,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const handleAttachmentAction = useCallback(
     (action) => {
       if (action === 'ai') {
-        handleAiReply()
+        if (!context) {
+          setAttachmentError('먼저 채팅을 선택해 주세요.')
+          return
+        }
+        setShowComposerPanel(false)
+        setAttachmentError(null)
+        setAiRequest({
+          active: true,
+          status: 'idle',
+          prompt: messageInput,
+          requestId: null,
+          error: null,
+        })
         return
       }
 
@@ -2167,8 +2293,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setShowComposerPanel(false)
 
       if (action === 'photo' || action === 'video') {
-        if (typeof window === 'undefined' || (!window.showDirectoryPicker && !window.showOpenFilePicker)) {
-          openFileDialogFallback(action)
+        if (typeof window === 'undefined' || !window.showDirectoryPicker) {
+          setAttachmentError('미디어 라이브러리를 지원하지 않는 브라우저입니다.')
           return
         }
 
@@ -2193,10 +2319,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             status: 'error',
             error: error?.message || '미디어를 불러올 수 없습니다.',
           }))
-          if (!window.showDirectoryPicker) {
-            setShowMediaPicker(false)
-            openFileDialogFallback(action)
-          }
         })
 
         return
@@ -2204,8 +2326,175 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
       openFileDialogFallback(action)
     },
-    [context, handleAiReply, loadMediaLibrary, openFileDialogFallback],
+    [context, loadMediaLibrary, messageInput, openFileDialogFallback, setAiRequest, setAttachmentError],
   )
+
+  const handleSubmitAiRequest = useCallback(async () => {
+    if (!context) return
+    const promptText = messageInput.trim()
+    if (!promptText) {
+      setAttachmentError('AI 응답을 받을 내용을 입력해 주세요.')
+      return
+    }
+
+    const requestId = createLocalId('ai-request')
+    setAiRequest({ active: true, status: 'loading', prompt: promptText, requestId, error: null })
+
+    try {
+      await handleSendMessage({
+        text: promptText,
+        metadata: {
+          ai: {
+            type: 'prompt',
+            status: 'submitted',
+            requestId,
+            prompt: promptText,
+          },
+        },
+      })
+    } catch (error) {
+      console.error('[chat] 프롬프트 전송 실패', error)
+      setAiRequest({ active: false, status: 'error', prompt: promptText, requestId, error })
+      setAttachmentError(error?.message || 'AI 프롬프트를 보낼 수 없습니다.')
+      return
+    }
+
+    setAiRequest(null)
+
+    const placeholderId = createLocalId('ai-response')
+    aiPendingMessageRef.current = placeholderId
+    const pendingMessage = {
+      local_id: placeholderId,
+      created_at: new Date().toISOString(),
+      username: AI_ASSISTANT_NAME,
+      hero_name: AI_ASSISTANT_NAME,
+      metadata: {
+        ai: {
+          type: 'response',
+          status: 'pending',
+          requestId,
+          prompt: promptText,
+        },
+      },
+      text: '',
+    }
+    setMessages((prev) => upsertMessageList(prev, pendingMessage))
+
+    const rankRoomId =
+      context && (context.scope === 'main' || context.scope === 'role')
+        ? context.rankRoomId || null
+        : null
+
+    try {
+      const session = await supabase.auth.getSession()
+      const token = session?.data?.session?.access_token
+      if (!token) {
+        throw new Error('로그인 세션을 확인할 수 없습니다.')
+      }
+
+      const response = await fetch('/api/chat/ai-proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          prompt: promptText,
+          context: {
+            scope: context.scope || 'global',
+            sessionId: context.sessionId || null,
+            matchInstanceId: context.matchInstanceId || null,
+            chatRoomId: context.chatRoomId || null,
+          },
+        }),
+      })
+
+      const payload = await response.json()
+      if (!response.ok || !payload?.text) {
+        throw new Error(payload?.error || 'AI 응답을 받을 수 없습니다.')
+      }
+
+      const aiText = String(payload.text || '')
+      const inserted = await insertMessage(
+        {
+          text: aiText,
+          scope: context.scope || 'global',
+          hero_id: selectedHero || null,
+          attachments: [],
+          metadata: {
+            ai: {
+              type: 'response',
+              status: 'complete',
+              requestId,
+              prompt: promptText,
+              source: payload.source || 'ai-proxy',
+            },
+          },
+        },
+        {
+          sessionId: context.sessionId || null,
+          matchInstanceId: context.matchInstanceId || null,
+          chatRoomId: context.chatRoomId || null,
+          roomId: rankRoomId,
+        },
+      )
+
+      setMessages((prev) => prev.filter((message) => message.local_id !== placeholderId))
+      if (inserted) {
+        setMessages((prev) => upsertMessageList(prev, inserted))
+      }
+    } catch (error) {
+      console.error('[chat] AI 응답 수신 실패', error)
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.local_id === placeholderId
+            ? {
+                ...message,
+                metadata: {
+                  ai: {
+                    type: 'response',
+                    status: 'error',
+                    requestId,
+                    prompt: promptText,
+                  },
+                },
+                text: 'AI 응답을 불러올 수 없습니다.',
+              }
+            : message,
+        ),
+      )
+      setAttachmentError(error?.message || 'AI 응답을 불러올 수 없습니다.')
+    } finally {
+      if (aiPendingMessageRef.current === placeholderId) {
+        aiPendingMessageRef.current = null
+      }
+    }
+  }, [
+    context,
+    handleSendMessage,
+    insertMessage,
+    messageInput,
+    selectedHero,
+    setAttachmentError,
+    setAiRequest,
+    setMessages,
+    supabase,
+  ])
+
+  const handleMessageInputChange = useCallback((event) => {
+    const value = event.target.value
+    setMessageInput(value)
+    setAiRequest((prev) => (prev?.active ? { ...prev, prompt: value } : prev))
+  }, [])
+
+  const handleComposerSubmit = useCallback(() => {
+    if (!context) return
+    if (aiRequest?.active) {
+      handleSubmitAiRequest()
+      return
+    }
+    handleSendMessage()
+  }, [aiRequest?.active, context, handleSendMessage, handleSubmitAiRequest])
 
   const handleDownloadAttachment = useCallback(async (attachment) => {
     if (!attachment) return
@@ -2627,7 +2916,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       : '좌측에서 채팅방을 선택해 주세요.'
 
     const hasReadyAttachment = composerAttachments.some((attachment) => attachment?.status === 'ready')
-    const disableSend = !hasContext || sending || (!messageInput.trim() && !hasReadyAttachment)
+    const aiActive = Boolean(aiRequest?.active)
+    const disableSend =
+      !hasContext ||
+      sending ||
+      (aiActive ? !messageInput.trim() : !messageInput.trim() && !hasReadyAttachment)
+    const promptPreview = aiActive
+      ? truncateText((aiRequest?.prompt ?? messageInput || '').trim(), 120)
+      : null
 
     return (
       <section style={overlayStyles.conversation}>
@@ -2696,8 +2992,33 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                           const attachments = getMessageAttachments(message)
                           const text = extractMessageText(message)
                           const { text: truncatedText, truncated } = truncateText(text)
-                          const displayText = truncatedText
-                          const showViewMore = truncated
+                          let displayText = truncatedText
+                          let showViewMore = truncated
+                          const aiMeta = getAiMetadata(message)
+                          let bubbleVariant = 'default'
+                          let labelVariant = 'prompt'
+                          let labelText = null
+
+                          if (aiMeta?.type === 'prompt') {
+                            bubbleVariant = 'aiPrompt'
+                            labelVariant = 'prompt'
+                            labelText = '프롬프트'
+                          } else if (aiMeta?.type === 'response') {
+                            labelVariant = aiMeta.status === 'error' ? 'error' : 'response'
+                            if (aiMeta.status === 'pending') {
+                              bubbleVariant = 'aiPending'
+                              labelText = 'AI 응답'
+                              displayText = '응답 생성 중...'
+                              showViewMore = false
+                            } else if (aiMeta.status === 'error') {
+                              bubbleVariant = 'aiError'
+                              labelText = 'AI 응답 실패'
+                            } else {
+                              bubbleVariant = 'aiResponse'
+                              labelText = 'AI 응답'
+                            }
+                          }
+
                           const created = formatTime(message.created_at)
                           const showTimestamp =
                             index === 0 || !sameMinute(message.created_at, groupMessages[index - 1]?.created_at)
@@ -2709,7 +3030,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                           return (
                             <div key={messageKey} style={overlayStyles.messageItem(mine)}>
                               {mine && showTimestamp ? timestampNode : null}
-                              <div style={overlayStyles.messageBubble(mine)}>
+                              <div style={overlayStyles.messageBubble(mine, bubbleVariant)}>
+                                {labelText ? (
+                                  <span style={overlayStyles.messageLabel(labelVariant)}>{labelText}</span>
+                                ) : null}
                                 {attachments.length ? (
                                   <div
                                     style={
@@ -2725,6 +3049,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                                 ) : null}
                                 {displayText ? (
                                   <p style={overlayStyles.messageText}>{displayText || ' '}</p>
+                                ) : aiMeta?.status === 'pending' ? (
+                                  <span style={overlayStyles.messagePendingText}>응답을 생성하고 있습니다…</span>
                                 ) : null}
                                 {showViewMore ? (
                                   <button
@@ -2809,6 +3135,22 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               })}
             </div>
           ) : null}
+          {aiActive ? (
+            <div style={overlayStyles.aiRequestBanner}>
+              <div style={{ display: 'grid', gap: 2 }}>
+                <span style={overlayStyles.aiRequestLabel}>AI 응답 요청</span>
+                <span style={overlayStyles.aiRequestPreview}>
+                  {promptPreview && promptPreview.text
+                    ? promptPreview.text
+                    : '입력창에 작성한 문장이 프롬프트로 전달됩니다.'}
+                  {promptPreview?.truncated ? '…' : ''}
+                </span>
+              </div>
+              <button type="button" style={overlayStyles.aiRequestCancel} onClick={handleCancelAiRequest}>
+                ×
+              </button>
+            </div>
+          ) : null}
           {showComposerPanel ? (
             <div ref={composerPanelRef} style={overlayStyles.attachmentPanel}>
               <strong style={overlayStyles.attachmentPanelTitle}>빠른 작업</strong>
@@ -2868,14 +3210,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             </button>
             <textarea
               value={messageInput}
-              onChange={(event) => setMessageInput(event.target.value)}
+              onChange={handleMessageInputChange}
               placeholder="메시지를 입력하세요"
               style={overlayStyles.textarea}
               disabled={!hasContext || sending}
             />
             <button
               type="button"
-              onClick={() => handleSendMessage()}
+              onClick={handleComposerSubmit}
               disabled={disableSend}
               style={overlayStyles.actionButton('primary', disableSend)}
             >
