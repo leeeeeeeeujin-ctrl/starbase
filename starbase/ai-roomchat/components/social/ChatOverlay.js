@@ -74,71 +74,102 @@ const upsertMessageList = (current, incoming) => {
 }
 
 const overlayStyles = {
-  container: (focused) => ({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: focused ? 12 : 16,
-    minHeight: '78vh',
-    maxHeight: '90vh',
+  frame: {
+    background: 'rgba(15, 23, 42, 0.92)',
+    borderRadius: 28,
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    padding: 20,
+    minHeight: 'min(82vh, 720px)',
+    display: 'grid',
     width: '100%',
     boxSizing: 'border-box',
+  },
+  root: (focused) => ({
+    display: 'grid',
+    gridTemplateColumns: focused ? 'minmax(0, 1fr)' : '280px minmax(0, 1fr)',
+    gap: focused ? 20 : 16,
+    height: 'min(78vh, 680px)',
+    minHeight: 520,
   }),
-  tabBar: {
+  sidePanel: {
+    display: 'grid',
+    gridTemplateRows: 'auto 1fr',
+    background: 'rgba(12, 20, 45, 0.92)',
+    borderRadius: 22,
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    overflow: 'hidden',
+  },
+  sideTabs: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 8,
+    padding: '16px 16px 12px',
+    background: 'rgba(15, 23, 42, 0.96)',
   },
-  tabButton: (active) => ({
-    borderRadius: 12,
-    border: '1px solid rgba(148, 163, 184, 0.24)',
-    padding: '8px 12px',
-    fontSize: 13,
-    fontWeight: 700,
+  sideTabButton: (active) => ({
+    borderRadius: 10,
+    border: active
+      ? '1px solid rgba(59, 130, 246, 0.6)'
+      : '1px solid rgba(71, 85, 105, 0.5)',
+    background: active ? 'rgba(37, 99, 235, 0.28)' : 'rgba(15, 23, 42, 0.7)',
+    color: active ? '#e0f2fe' : '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '10px 12px',
     cursor: 'pointer',
-    background: active ? 'rgba(59, 130, 246, 0.28)' : 'rgba(15, 23, 42, 0.68)',
-    color: active ? '#dbeafe' : '#cbd5f5',
-    transition: 'all 0.2s ease',
+    transition: 'all 0.15s ease',
   }),
-  body: (focused) => ({
-    flex: 1,
-    display: 'flex',
-    flexDirection: focused ? 'column' : 'row',
-    gap: focused ? 12 : 18,
-    overflow: 'hidden',
-    minHeight: 0,
-    alignItems: 'stretch',
-  }),
-  listColumn: {
-    flex: '0 0 320px',
-    minWidth: 280,
-    maxWidth: 360,
-    maxHeight: '100%',
-    borderRadius: 18,
-    border: '1px solid rgba(148, 163, 184, 0.25)',
-    background: 'rgba(15, 23, 42, 0.62)',
-    padding: '16px 14px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    minHeight: 0,
-  },
-  listScroll: {
-    flex: 1,
+  sideContent: {
+    padding: '0 16px 18px',
     overflowY: 'auto',
     display: 'grid',
-    gap: 10,
-    paddingRight: 4,
-    minHeight: 0,
+    gap: 18,
+    background: 'rgba(10, 16, 35, 0.65)',
   },
-  card: (active) => ({
-    borderRadius: 14,
-    border: active ? '1px solid rgba(59, 130, 246, 0.55)' : '1px solid rgba(148, 163, 184, 0.18)',
-    background: active ? 'rgba(59, 130, 246, 0.2)' : 'rgba(15, 23, 42, 0.7)',
+  section: {
+    display: 'grid',
+    gap: 12,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#cbd5f5',
+  },
+  mutedText: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  heroSelector: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  heroPill: (active) => ({
+    borderRadius: 999,
+    border: active
+      ? '1px solid rgba(59, 130, 246, 0.6)'
+      : '1px solid rgba(71, 85, 105, 0.5)',
+    background: active ? 'rgba(37, 99, 235, 0.2)' : 'rgba(15, 23, 42, 0.7)',
+    padding: '8px 14px',
+    fontSize: 12,
+    fontWeight: 600,
+    color: active ? '#e0f2fe' : '#cbd5f5',
+    cursor: 'pointer',
+  }),
+  roomList: {
+    display: 'grid',
+    gap: 10,
+  },
+  roomCard: (active) => ({
+    borderRadius: 16,
+    border: active
+      ? '1px solid rgba(59, 130, 246, 0.55)'
+      : '1px solid rgba(71, 85, 105, 0.45)',
+    background: active ? 'rgba(30, 64, 175, 0.32)' : 'rgba(15, 23, 42, 0.6)',
     padding: '12px 14px',
     display: 'grid',
     gap: 6,
     cursor: 'pointer',
-    transition: 'all 0.2s ease',
   }),
   cardTitle: {
     fontSize: 14,
@@ -149,79 +180,165 @@ const overlayStyles = {
     fontSize: 12,
     color: '#94a3b8',
   },
-  messageColumn: (focused) => ({
-    flex: 1,
-    minWidth: 0,
-    borderRadius: 18,
-    border: '1px solid rgba(148, 163, 184, 0.25)',
-    background: 'rgba(15, 23, 42, 0.78)',
-    padding: focused ? '16px 20px 14px' : '18px 20px 16px',
+  listHeader: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: focused ? 12 : 14,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  actionButton: (variant = 'primary', disabled = false) => {
+    const palette = {
+      primary: {
+        background: disabled ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.85)',
+        color: disabled ? '#94a3b8' : '#f8fafc',
+        border: '1px solid rgba(59, 130, 246, 0.6)',
+      },
+      ghost: {
+        background: 'rgba(15, 23, 42, 0.7)',
+        color: '#cbd5f5',
+        border: '1px solid rgba(71, 85, 105, 0.5)',
+      },
+    }
+    const tone = palette[variant] || palette.primary
+    return {
+      borderRadius: 12,
+      border: tone.border,
+      padding: '9px 14px',
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      background: tone.background,
+      color: tone.color,
+      transition: 'all 0.15s ease',
+    }
+  },
+  conversation: {
+    display: 'grid',
+    gridTemplateRows: 'auto 1fr auto',
+    borderRadius: 24,
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+    background: 'rgba(11, 18, 40, 0.96)',
     minHeight: 0,
-  }),
+    overflow: 'hidden',
+  },
+  conversationHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '16px 20px',
+    borderBottom: '1px solid rgba(71, 85, 105, 0.5)',
+    background: 'rgba(12, 20, 45, 0.98)',
+  },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    minWidth: 0,
+  },
+  headerMeta: {
+    display: 'grid',
+    gap: 4,
+    minWidth: 0,
+  },
+  headerTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#f1f5f9',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: '#94a3b8',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  headerButtons: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerButton: (variant = 'ghost', disabled = false) => {
+    const palette = {
+      ghost: {
+        background: 'rgba(15, 23, 42, 0.7)',
+        color: disabled ? '#64748b' : '#cbd5f5',
+        border: '1px solid rgba(71, 85, 105, 0.5)',
+      },
+      primary: {
+        background: 'rgba(59, 130, 246, 0.85)',
+        color: '#f8fafc',
+        border: '1px solid rgba(59, 130, 246, 0.6)',
+      },
+    }
+    const tone = palette[variant] || palette.ghost
+    return {
+      borderRadius: 10,
+      border: tone.border,
+      padding: '8px 14px',
+      fontSize: 12,
+      fontWeight: 600,
+      background: tone.background,
+      color: tone.color,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.7 : 1,
+    }
+  },
+  messageViewport: {
+    overflowY: 'auto',
+    padding: '18px 22px',
+    display: 'grid',
+    gap: 10,
+    background: 'rgba(4, 10, 28, 0.4)',
+  },
   placeholder: {
-    flex: 1,
-    borderRadius: 14,
-    border: '1px dashed rgba(148, 163, 184, 0.35)',
-    background: 'rgba(15, 23, 42, 0.45)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     color: '#94a3b8',
     fontSize: 13,
-    padding: '20px 16px',
+    minHeight: '100%',
     textAlign: 'center',
-    minHeight: 0,
-  },
-  heroSelector: {
-    display: 'flex',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  heroPill: (active) => ({
-    borderRadius: 999,
-    border: active ? '1px solid rgba(59, 130, 246, 0.6)' : '1px solid rgba(148, 163, 184, 0.28)',
-    background: active ? 'rgba(59, 130, 246, 0.18)' : 'rgba(15, 23, 42, 0.68)',
-    padding: '8px 14px',
-    fontSize: 12,
-    fontWeight: 600,
-    color: active ? '#dbeafe' : '#cbd5f5',
-    cursor: 'pointer',
-  }),
-  messageList: {
-    flex: 1,
-    overflowY: 'auto',
-    display: 'grid',
-    gap: 6,
-    padding: '4px 6px 12px',
-    minHeight: 0,
+    padding: '32px 20px',
   },
   messageRow: (mine = false) => ({
     display: 'flex',
     justifyContent: mine ? 'flex-end' : 'flex-start',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: 12,
   }),
-  messageContent: (mine = false, focused = false) => ({
+  messageAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    background: 'rgba(15, 23, 42, 0.8)',
+    color: '#bae6fd',
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  messageContent: (mine = false) => ({
     display: 'grid',
     gap: 4,
-    maxWidth: focused ? '88%' : '80%',
+    maxWidth: '85%',
     textAlign: mine ? 'right' : 'left',
   }),
   messageName: (mine = false) => ({
     fontSize: 11,
     fontWeight: 700,
-    color: mine ? '#cfe1ff' : '#f1f5f9',
+    color: mine ? '#bfdbfe' : '#f8fafc',
   }),
   messageBubble: (mine = false) => ({
-    background: mine ? 'rgba(59, 130, 246, 0.24)' : 'rgba(15, 23, 42, 0.82)',
-    borderRadius: mine ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
-    border: mine ? '1px solid rgba(96, 165, 250, 0.45)' : '1px solid rgba(148, 163, 184, 0.22)',
-    padding: '9px 14px',
+    borderRadius: 14,
+    border: mine ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid rgba(71, 85, 105, 0.45)',
+    background: mine ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+    padding: '10px 14px',
     color: '#f8fafc',
-    boxShadow: mine ? '0 14px 36px -28px rgba(59, 130, 246, 0.7)' : '0 14px 36px -28px rgba(15, 23, 42, 0.7)',
   }),
   messageText: {
     fontSize: 13,
@@ -229,66 +346,37 @@ const overlayStyles = {
     margin: 0,
     whiteSpace: 'pre-wrap',
   },
-  messageAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: '50%',
-    background: 'rgba(30, 41, 59, 0.85)',
-    color: '#bae6fd',
-    fontWeight: 700,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
   messageTimestamp: (mine = false) => ({
     fontSize: 11,
     color: 'rgba(148, 163, 184, 0.85)',
-    minWidth: 54,
+    minWidth: 56,
     textAlign: mine ? 'right' : 'left',
   }),
   composer: {
-    display: 'flex',
-    gap: 10,
-    alignItems: 'flex-end',
-    flexWrap: 'wrap',
-    paddingTop: 4,
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    gap: 12,
+    padding: '14px 20px 18px',
+    borderTop: '1px solid rgba(71, 85, 105, 0.5)',
+    background: 'rgba(12, 20, 45, 0.98)',
   },
   textarea: {
-    flex: '1 1 260px',
-    minHeight: 52,
-    maxHeight: 180,
-    borderRadius: 16,
-    border: '1px solid rgba(148, 163, 184, 0.3)',
-    background: 'rgba(15, 23, 42, 0.78)',
+    width: '100%',
+    minHeight: 56,
+    maxHeight: 160,
+    borderRadius: 14,
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+    background: 'rgba(2, 6, 23, 0.6)',
     color: '#f8fafc',
     padding: '12px 14px',
     fontSize: 14,
     lineHeight: 1.45,
     resize: 'vertical',
   },
-  actionButton: (variant = 'primary', disabled = false) => {
-    const palette = {
-      primary: {
-        background: disabled ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.85)',
-        color: disabled ? '#94a3b8' : '#f8fafc',
-      },
-      ghost: {
-        background: 'rgba(15, 23, 42, 0.6)',
-        color: '#cbd5f5',
-      },
-    }
-    const tone = palette[variant] || palette.primary
-    return {
-      borderRadius: 14,
-      border: 'none',
-      padding: '10px 16px',
-      fontSize: 13,
-      fontWeight: 700,
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      background: tone.background,
-      color: tone.color,
-    }
+  errorText: {
+    fontSize: 12,
+    color: '#fca5a5',
+    padding: '0 20px 14px',
   },
 }
 
@@ -685,56 +773,54 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
   }, [handleSendMessage])
 
-  const renderInfoTab = () => {
-    return (
-      <div style={{ display: 'grid', gap: 18 }}>
-        <div>
-          <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: '#cbd5f5' }}>사용할 캐릭터</h3>
-          <div style={overlayStyles.heroSelector}>
-            {heroes.length ? (
-              heroes.map((hero) => (
-                <button
-                  key={hero.id}
-                  type="button"
-                  onClick={() => handleSelectHero(hero.id)}
-                  style={overlayStyles.heroPill(selectedHero === hero.id)}
-                >
-                  {hero.name || '이름 없는 캐릭터'}
-                </button>
-              ))
-            ) : (
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>등록된 캐릭터가 없습니다.</span>
-            )}
-          </div>
+  const renderInfoTab = () => (
+    <div style={{ display: 'grid', gap: 18 }}>
+      <section style={overlayStyles.section}>
+        <h3 style={overlayStyles.sectionTitle}>사용할 캐릭터</h3>
+        <div style={overlayStyles.heroSelector}>
+          {heroes.length ? (
+            heroes.map((hero) => (
+              <button
+                key={hero.id}
+                type="button"
+                onClick={() => handleSelectHero(hero.id)}
+                style={overlayStyles.heroPill(selectedHero === hero.id)}
+              >
+                {hero.name || '이름 없는 캐릭터'}
+              </button>
+            ))
+          ) : (
+            <span style={overlayStyles.mutedText}>등록된 캐릭터가 없습니다.</span>
+          )}
         </div>
-        <div>
-          <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: '#cbd5f5' }}>참여중인 세션</h3>
-          <div style={overlayStyles.listScroll}>
-            {(dashboard?.sessions || []).map((session) => {
-              const key = session.session_id || session.id
-              const active = activeSessionId && key === activeSessionId
-              const latest = derivePreviewText(session.latestMessage || null)
-              return (
-                <div
-                  key={key}
-                  style={overlayStyles.card(active)}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleSelectSession(session)}
-                >
-                  <span style={overlayStyles.cardTitle}>{session.game_name || '매치 세션'}</span>
-                  <span style={overlayStyles.cardSubtitle}>{latest || '메시지를 불러옵니다.'}</span>
-                </div>
-              )
-            })}
-            {!(dashboard?.sessions || []).length ? (
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>참여중인 세션이 없습니다.</span>
-            ) : null}
-          </div>
+      </section>
+      <section style={overlayStyles.section}>
+        <h3 style={overlayStyles.sectionTitle}>참여중인 세션</h3>
+        <div style={overlayStyles.roomList}>
+          {(dashboard?.sessions || []).map((session) => {
+            const key = session.session_id || session.id
+            const active = activeSessionId && key === activeSessionId
+            const latest = derivePreviewText(session.latestMessage || null)
+            return (
+              <div
+                key={key}
+                style={overlayStyles.roomCard(active)}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleSelectSession(session)}
+              >
+                <span style={overlayStyles.cardTitle}>{session.game_name || '매치 세션'}</span>
+                <span style={overlayStyles.cardSubtitle}>{latest || '메시지를 불러옵니다.'}</span>
+              </div>
+            )
+          })}
+          {!(dashboard?.sessions || []).length ? (
+            <span style={overlayStyles.mutedText}>참여중인 세션이 없습니다.</span>
+          ) : null}
         </div>
-      </div>
-    )
-  }
+      </section>
+    </div>
+  )
 
   const renderRoomList = (visibility) => {
     let list = visibility === 'open' ? rooms.available || [] : rooms.joined || []
@@ -746,188 +832,222 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
 
     if (!list.length) {
-      return <span style={{ fontSize: 12, color: '#94a3b8' }}>표시할 채팅방이 없습니다.</span>
+      return <span style={overlayStyles.mutedText}>표시할 채팅방이 없습니다.</span>
     }
-
-    return list.map((room) => {
-      const roomId = normalizeId(room.id)
-      const isGlobal = room.builtin === 'global' || roomId === normalizeId(GLOBAL_ROOM.id)
-      const active = isGlobal ? viewingGlobal : activeRoomId === room.id
-      const latest = derivePreviewText(room.latestMessage || null)
-      return (
-        <div
-          key={room.id}
-          style={overlayStyles.card(active)}
-          role="button"
-          tabIndex={0}
-          onClick={() => handleSelectRoom(room, visibility)}
-        >
-          <span style={overlayStyles.cardTitle}>{room.name || '채팅방'}</span>
-          <span style={overlayStyles.cardSubtitle}>{latest || '최근 메시지가 없습니다.'}</span>
-          {visibility === 'open' ? (
-            isGlobal ? (
-              <span style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>기본 채널</span>
-            ) : (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  handleJoinRoom(room)
-                }}
-                style={{ ...overlayStyles.actionButton('ghost'), marginTop: 6 }}
-              >
-                참여하기
-              </button>
-            )
-          ) : (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                handleLeaveRoom(room)
-              }}
-              style={{ ...overlayStyles.actionButton('ghost'), marginTop: 6 }}
-            >
-              나가기
-            </button>
-          )}
-        </div>
-      )
-    })
-  }
-
-  const renderListColumn = () => {
-    if (activeTab === 'info') {
-      return (
-        <div style={{ ...overlayStyles.listColumn, gap: 18 }}>
-          {loadingDashboard ? (
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>정보를 불러오는 중...</span>
-          ) : dashboardError ? (
-            <span style={{ fontSize: 12, color: '#fca5a5' }}>대시보드를 불러오지 못했습니다.</span>
-          ) : (
-            renderInfoTab()
-          )}
-        </div>
-      )
-    }
-
-    const visibility = activeTab === 'open' ? 'open' : 'private'
 
     return (
-      <div style={overlayStyles.listColumn}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-          <strong style={{ fontSize: 13, color: '#cbd5f5' }}>
-            {visibility === 'open' ? '공개 채팅' : '비공개 채팅'}
-          </strong>
-          {visibility === 'private' ? (
-            <button type="button" onClick={handleCreateRoom} style={overlayStyles.actionButton('ghost')}>
-              새 방
-            </button>
-          ) : null}
-        </div>
-        {roomError ? (
-          <span style={{ fontSize: 12, color: '#fca5a5' }}>채팅방을 불러올 수 없습니다.</span>
-        ) : null}
-        <div style={overlayStyles.listScroll}>
-          {loadingRooms ? (
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>채팅방을 불러오는 중...</span>
-          ) : (
-            renderRoomList(visibility)
-          )}
-        </div>
+      <div style={overlayStyles.roomList}>
+        {list.map((room) => {
+          const roomId = normalizeId(room.id)
+          const isGlobal = room.builtin === 'global' || roomId === normalizeId(GLOBAL_ROOM.id)
+          const active = isGlobal ? viewingGlobal : activeRoomId === room.id
+          const latest = derivePreviewText(room.latestMessage || null)
+          return (
+            <div
+              key={room.id}
+              style={overlayStyles.roomCard(active)}
+              role="button"
+              tabIndex={0}
+              onClick={() => handleSelectRoom(room, visibility)}
+            >
+              <span style={overlayStyles.cardTitle}>{room.name || '채팅방'}</span>
+              <span style={overlayStyles.cardSubtitle}>{latest || '최근 메시지가 없습니다.'}</span>
+              {visibility === 'open' ? (
+                isGlobal ? (
+                  <span style={{ ...overlayStyles.mutedText, marginTop: 6 }}>기본 채널</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleJoinRoom(room)
+                    }}
+                    style={{ ...overlayStyles.actionButton('ghost'), marginTop: 6 }}
+                  >
+                    참여하기
+                  </button>
+                )
+              ) : (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleLeaveRoom(room)
+                  }}
+                  style={{ ...overlayStyles.actionButton('ghost'), marginTop: 6 }}
+                >
+                  나가기
+                </button>
+              )}
+            </div>
+          )
+        })}
       </div>
     )
   }
 
-  const renderMessageColumn = () => {
-    if (!context) {
-      return (
-        <div style={overlayStyles.messageColumn(false)}>
-          <div style={overlayStyles.placeholder}>채팅방 또는 세션을 선택해 주세요.</div>
+  const renderListColumn = () => {
+    const visibility = activeTab === 'open' ? 'open' : activeTab === 'private' ? 'private' : null
+
+    let content
+    if (activeTab === 'info') {
+      content = loadingDashboard ? (
+        <span style={overlayStyles.mutedText}>정보를 불러오는 중...</span>
+      ) : dashboardError ? (
+        <span style={{ ...overlayStyles.mutedText, color: '#fca5a5' }}>
+          대시보드를 불러오지 못했습니다.
+        </span>
+      ) : (
+        renderInfoTab()
+      )
+    } else {
+      content = (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={overlayStyles.listHeader}>
+            <strong style={overlayStyles.sectionTitle}>
+              {visibility === 'open' ? '공개 채팅' : '비공개 채팅'}
+            </strong>
+            {visibility === 'private' ? (
+              <button type="button" onClick={handleCreateRoom} style={overlayStyles.actionButton('ghost')}>
+                새 방
+              </button>
+            ) : null}
+          </div>
+          {roomError ? (
+            <span style={{ ...overlayStyles.mutedText, color: '#fca5a5' }}>
+              채팅방을 불러올 수 없습니다.
+            </span>
+          ) : loadingRooms ? (
+            <span style={overlayStyles.mutedText}>채팅방을 불러오는 중...</span>
+          ) : (
+            renderRoomList(visibility)
+          )}
         </div>
       )
     }
 
     return (
-      <div style={overlayStyles.messageColumn(true)}>
-        <header
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button type="button" onClick={() => setContext(null)} style={overlayStyles.actionButton('ghost')}>
-              ← 목록
+      <aside style={overlayStyles.sidePanel}>
+        <div style={overlayStyles.sideTabs}>
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              style={overlayStyles.sideTabButton(activeTab === tab.key)}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
             </button>
-            <div style={{ display: 'grid', gap: 4 }}>
-              <strong style={{ fontSize: 15, color: '#f1f5f9' }}>{context.label || '채팅'}</strong>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                {context.type === 'session'
-                  ? '세션 채팅'
-                  : context.type === 'global'
-                    ? '전체 채널'
-                    : context.visibility === 'open'
-                      ? '공개 채팅방'
-                      : '비공개 채팅방'}
-              </span>
+          ))}
+        </div>
+        <div style={overlayStyles.sideContent}>{content}</div>
+      </aside>
+    )
+  }
+
+  const renderMessageColumn = () => {
+    const hasContext = Boolean(context)
+
+    const label = hasContext ? context.label || '채팅' : '채팅'
+    const subtitle = hasContext
+      ? context.type === 'session'
+        ? '세션 채팅'
+        : context.type === 'global'
+          ? '전체 채널'
+          : context.visibility === 'open'
+            ? '공개 채팅방'
+            : '비공개 채팅방'
+      : '좌측에서 채팅방을 선택해 주세요.'
+
+    const disableSend = !hasContext || sending || !messageInput.trim()
+
+    return (
+      <section style={overlayStyles.conversation}>
+        <header style={overlayStyles.conversationHeader}>
+          <div style={overlayStyles.headerLeft}>
+            {hasContext ? (
+              <button
+                type="button"
+                onClick={() => setContext(null)}
+                style={overlayStyles.headerButton('ghost')}
+              >
+                ← 목록
+              </button>
+            ) : null}
+            <div style={overlayStyles.headerMeta}>
+              <span style={overlayStyles.headerTitle}>{label}</span>
+              <span style={overlayStyles.headerSubtitle}>{subtitle}</span>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={handleAiReply} style={overlayStyles.actionButton('ghost')}>
+          <div style={overlayStyles.headerButtons}>
+            <button
+              type="button"
+              onClick={handleAiReply}
+              disabled={!hasContext}
+              style={overlayStyles.headerButton('ghost', !hasContext)}
+            >
               AI 응답
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              style={overlayStyles.headerButton('primary')}
+            >
+              닫기
             </button>
           </div>
         </header>
-        <div ref={messageListRef} style={overlayStyles.messageList}>
-          {loadingMessages ? (
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>메시지를 불러오는 중...</span>
-          ) : messages.length ? (
-            messages.map((message) => {
-              const text = extractMessageText(message)
-              const created = formatTime(message.created_at)
-              const ownerToken = normalizeId(message.owner_id || message.user_id)
-              const mine = viewerToken && ownerToken && viewerToken === ownerToken
-              const preview = text || derivePreviewText(message)
-              const displayName = message.username || '알 수 없음'
-              const initials = displayName.slice(0, 2)
-              const avatarNode = (
-                <div style={overlayStyles.messageAvatar}>
-                  {message.avatar_url ? (
-                    <img
-                      src={message.avatar_url}
-                      alt={displayName}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    initials
-                  )}
-                </div>
-              )
-              return (
-                <div
-                  key={message.id || `${message.created_at}-${Math.random()}`}
-                  style={overlayStyles.messageRow(mine)}
-                >
-                  {mine ? (
-                    <span style={overlayStyles.messageTimestamp(true)}>{created}</span>
-                  ) : (
-                    avatarNode
-                  )}
-                  <div style={overlayStyles.messageContent(mine, true)}>
-                    <span style={overlayStyles.messageName(mine)}>{displayName}</span>
-                    <div style={overlayStyles.messageBubble(mine)}>
-                      <p style={overlayStyles.messageText}>{preview || ' '}</p>
-                    </div>
+        <div ref={messageListRef} style={overlayStyles.messageViewport}>
+          {hasContext ? (
+            loadingMessages ? (
+              <span style={overlayStyles.mutedText}>메시지를 불러오는 중...</span>
+            ) : messages.length ? (
+              messages.map((message) => {
+                const text = extractMessageText(message)
+                const created = formatTime(message.created_at)
+                const ownerToken = normalizeId(message.owner_id || message.user_id)
+                const mine = viewerToken && ownerToken && viewerToken === ownerToken
+                const preview = text || derivePreviewText(message)
+                const displayName = message.username || '알 수 없음'
+                const initials = displayName.slice(0, 2)
+                const avatarNode = (
+                  <div style={overlayStyles.messageAvatar}>
+                    {message.avatar_url ? (
+                      <img
+                        src={message.avatar_url}
+                        alt={displayName}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      initials
+                    )}
                   </div>
-                  {mine ? avatarNode : <span style={overlayStyles.messageTimestamp(false)}>{created}</span>}
-                </div>
-              )
-            })
+                )
+                return (
+                  <div
+                    key={message.id || `${message.created_at}-${Math.random()}`}
+                    style={overlayStyles.messageRow(mine)}
+                  >
+                    {mine ? (
+                      <span style={overlayStyles.messageTimestamp(true)}>{created}</span>
+                    ) : (
+                      avatarNode
+                    )}
+                    <div style={overlayStyles.messageContent(mine)}>
+                      <span style={overlayStyles.messageName(mine)}>{displayName}</span>
+                      <div style={overlayStyles.messageBubble(mine)}>
+                        <p style={overlayStyles.messageText}>{preview || ' '}</p>
+                      </div>
+                    </div>
+                    {mine ? avatarNode : <span style={overlayStyles.messageTimestamp(false)}>{created}</span>}
+                  </div>
+                )
+              })
+            ) : (
+              <span style={overlayStyles.mutedText}>아직 메시지가 없습니다.</span>
+            )
           ) : (
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>아직 메시지가 없습니다.</span>
+            <div style={overlayStyles.placeholder}>채팅방 또는 세션을 선택해 주세요.</div>
           )}
         </div>
         <div style={overlayStyles.composer}>
@@ -936,51 +1056,38 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             onChange={(event) => setMessageInput(event.target.value)}
             placeholder="메시지를 입력하세요"
             style={overlayStyles.textarea}
-            disabled={!context || sending}
+            disabled={!hasContext || sending}
           />
           <button
             type="button"
             onClick={() => handleSendMessage()}
-            disabled={!context || sending || !messageInput.trim()}
-            style={overlayStyles.actionButton('primary', sending || !messageInput.trim())}
+            disabled={disableSend}
+            style={overlayStyles.actionButton('primary', disableSend)}
           >
             보내기
           </button>
         </div>
         {sendError ? (
-          <span style={{ fontSize: 12, color: '#fca5a5' }}>메시지를 전송할 수 없습니다.</span>
+          <div style={overlayStyles.errorText}>메시지를 전송할 수 없습니다.</div>
         ) : null}
-      </div>
+      </section>
     )
   }
 
   const focused = Boolean(context)
-  const showTabs = !focused
 
   return (
     <SurfaceOverlay
       open={open}
       onClose={onClose}
       title="채팅"
-      width="min(1120px, 95vw)"
-      contentStyle={{ padding: 18, background: 'rgba(15, 23, 42, 0.85)' }}
+      width="min(1100px, 95vw)"
+      hideHeader
+      contentStyle={{ padding: 0, background: 'transparent', display: 'flex', justifyContent: 'center' }}
+      frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
     >
-      <div style={overlayStyles.container(focused)}>
-        {showTabs ? (
-          <nav style={overlayStyles.tabBar}>
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                style={overlayStyles.tabButton(activeTab === tab.key)}
-                onClick={() => setActiveTab(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        ) : null}
-        <div style={overlayStyles.body(focused)}>
+      <div style={overlayStyles.frame}>
+        <div style={overlayStyles.root(focused)}>
           {!focused ? renderListColumn() : null}
           {renderMessageColumn()}
         </div>
