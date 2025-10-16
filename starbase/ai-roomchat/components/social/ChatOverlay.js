@@ -17,6 +17,13 @@ import {
   subscribeToMessages,
 } from '@/lib/chat/messages'
 import { supabase } from '@/lib/supabase'
+import {
+  fetchNativeMediaAsset,
+  fetchNativeMediaTimeline,
+  hasNativeMediaBridge,
+  openNativeMediaSettings,
+  requestNativeMediaPermission,
+} from '@/lib/native/mediaLibrary'
 
 const CHAT_ATTACHMENT_BUCKET = 'chat-attachments'
 const ATTACHMENT_SIZE_LIMIT = 50 * 1024 * 1024
@@ -1226,6 +1233,29 @@ const overlayStyles = {
     padding: '3px 6px',
     borderRadius: 8,
   },
+  mediaPickerFooterRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 16,
+  },
+  mediaPickerInlineError: {
+    color: '#fca5a5',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  mediaPickerLoadMore: (disabled = false) => ({
+    borderRadius: 10,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: disabled ? 'rgba(15, 23, 42, 0.5)' : 'rgba(15, 23, 42, 0.85)',
+    color: disabled ? '#94a3b8' : '#e2e8f0',
+    padding: '6px 14px',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    transition: 'all 0.15s ease',
+  }),
 }
 
 const modalStyles = {
@@ -1452,8 +1482,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     entries: [],
     action: null,
     error: null,
+    errorCode: null,
     multiSelect: false,
     selection: new Map(),
+    cursor: null,
+    hasMore: false,
+    source: null,
+    loadingMore: false,
   })
   const [showMediaPicker, setShowMediaPicker] = useState(false)
   const unsubscribeRef = useRef(null)
@@ -2063,16 +2098,60 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   )
 
   const loadMediaLibrary = useCallback(
-    async (action) => {
+    async (action, { append = false, cursor: cursorOverride } = {}) => {
+      const targetAction = action || mediaLibrary.action
+      if (!targetAction) return
+
+      const mediaType = targetAction === 'video' ? 'video' : 'image'
+      if (hasNativeMediaBridge()) {
+        const permission = await requestNativeMediaPermission('read')
+        if (permission.status === 'denied') {
+          const error = new Error('사진/동영상 접근 권한을 허용해 주세요.')
+          error.code = 'permission-denied'
+          throw error
+        }
+
+        const cursor = append ? cursorOverride ?? mediaLibrary.cursor ?? null : null
+        const timeline = await fetchNativeMediaTimeline({
+          mediaType,
+          cursor,
+          limit: MEDIA_LOAD_LIMIT,
+        })
+
+        setMediaLibrary((prev) => {
+          const baseEntries = append ? prev.entries : []
+          const map = new Map()
+          baseEntries.forEach((entry) => map.set(entry.id, entry))
+          timeline.entries.forEach((entry) => map.set(entry.id, entry))
+          const merged = Array.from(map.values())
+          return {
+            ...prev,
+            status: merged.length ? 'ready' : 'empty',
+            entries: merged,
+            action: targetAction,
+            error: merged.length ? null : '표시할 수 있는 항목이 없습니다.',
+            errorCode: null,
+            multiSelect: append ? prev.multiSelect : false,
+            selection: append ? new Map(prev.selection) : new Map(),
+            cursor: timeline.cursor || null,
+            hasMore: Boolean(timeline.hasMore),
+            source: 'native',
+            loadingMore: false,
+          }
+        })
+        return
+      }
+
       if (typeof window === 'undefined') {
         throw new Error('이 환경에서는 미디어 라이브러리를 열 수 없습니다.')
       }
 
+      if (!window.showDirectoryPicker) {
+        throw new Error('미디어 라이브러리를 지원하지 않는 브라우저입니다.')
+      }
+
       let directoryHandle = mediaDirectoryHandleRef.current
       if (!directoryHandle) {
-        if (!window.showDirectoryPicker) {
-          throw new Error('미디어 라이브러리를 지원하지 않는 브라우저입니다.')
-        }
         directoryHandle = await window.showDirectoryPicker({ id: 'chat-media', mode: 'read' })
         mediaDirectoryHandleRef.current = directoryHandle
       }
@@ -2082,7 +2161,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         throw new Error('미디어 라이브러리에 접근할 수 있도록 권한을 허용해 주세요.')
       }
 
-      const items = await enumerateMediaEntries(directoryHandle, action)
+      const items = await enumerateMediaEntries(directoryHandle, targetAction)
       const enriched = await Promise.all(
         items.map(async (entry) => {
           if (!(entry.type?.startsWith('image/') || entry.type?.startsWith('video/'))) {
@@ -2103,13 +2182,18 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setMediaLibrary({
         status: enriched.length ? 'ready' : 'empty',
         entries: enriched,
-        action,
+        action: targetAction,
         error: enriched.length ? null : '표시할 수 있는 항목이 없습니다.',
+        errorCode: null,
         multiSelect: false,
         selection: new Map(),
+        cursor: null,
+        hasMore: false,
+        source: 'filesystem',
+        loadingMore: false,
       })
     },
-    [],
+    [mediaLibrary.action, mediaLibrary.cursor],
   )
 
   const clearMediaPickerTimer = useCallback(() => {
@@ -2122,12 +2206,81 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     ref.id = null
   }, [])
 
+  const resolveFilesFromEntries = useCallback(async (entries, action) => {
+    const files = []
+    const failures = []
+    if (!Array.isArray(entries) || !entries.length) {
+      return { files, failures }
+    }
+
+    for (const entry of entries) {
+      if (!entry) continue
+      try {
+        if (entry.source === 'native') {
+          const asset = await fetchNativeMediaAsset({
+            id: entry.id,
+            mediaType: action === 'video' ? 'video' : 'image',
+            quality: action === 'photo' ? 'high' : 'original',
+          })
+          const extensionGuess =
+            asset.mimeType?.split('/')?.[1] ||
+            (entry.displayType === 'video'
+              ? 'mp4'
+              : entry.displayType === 'image'
+              ? 'jpg'
+              : 'bin')
+          const baseName = sanitizeFileName(asset.name || entry.name || entry.id)
+          const fileName = baseName && baseName.includes('.')
+            ? baseName
+            : `${baseName || entry.id}.${extensionGuess}`
+          const file = new File([asset.blob], fileName, {
+            type: asset.mimeType || 'application/octet-stream',
+            lastModified: Date.now(),
+          })
+          files.push(file)
+          continue
+        }
+
+        if (entry.file instanceof File) {
+          files.push(entry.file)
+          continue
+        }
+
+        if (entry.handle?.getFile) {
+          const file = await entry.handle.getFile()
+          if (file) {
+            files.push(file)
+            continue
+          }
+        }
+
+        if (entry.blob instanceof Blob) {
+          const blobName = sanitizeFileName(entry.name || `${entry.id}.bin`)
+          const derived = new File([entry.blob], blobName, {
+            type: entry.type || 'application/octet-stream',
+            lastModified: Date.now(),
+          })
+          files.push(derived)
+          continue
+        }
+
+        throw new Error('선택한 항목을 불러올 수 없습니다.')
+      } catch (error) {
+        console.error('[chat] 미디어 항목 가져오기 실패', error)
+        failures.push(entry.name || entry.id)
+      }
+    }
+
+    return { files, failures }
+  }, [])
+
   const closeMediaPicker = useCallback(() => {
     setShowMediaPicker(false)
     setMediaLibrary((prev) => ({
       ...prev,
       multiSelect: false,
       selection: new Map(),
+      loadingMore: false,
     }))
     clearMediaPickerTimer()
   }, [clearMediaPickerTimer])
@@ -2196,8 +2349,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
 
       try {
-        const file = entry.handle?.getFile ? await entry.handle.getFile() : entry.file
-        await prepareDraftsFromFiles(file ? [file] : [], mediaLibrary.action, { layoutHint: null })
+        const { files, failures } = await resolveFilesFromEntries([entry], mediaLibrary.action)
+        if (!files.length) {
+          if (failures.length) {
+            setAttachmentError('선택한 미디어를 불러올 수 없습니다.')
+          }
+        } else {
+          await prepareDraftsFromFiles(files, mediaLibrary.action, { layoutHint: null })
+          if (failures.length) {
+            setAttachmentError('일부 항목을 불러올 수 없습니다.')
+          }
+        }
       } catch (error) {
         console.error('[chat] 미디어 첨부 준비 실패', error)
         setAttachmentError(error?.message || '첨부 파일을 준비할 수 없습니다.')
@@ -2205,7 +2367,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         closeMediaPicker()
       }
     },
-    [mediaLibrary.multiSelect, mediaLibrary.action, prepareDraftsFromFiles, closeMediaPicker],
+    [
+      mediaLibrary.multiSelect,
+      mediaLibrary.action,
+      prepareDraftsFromFiles,
+      closeMediaPicker,
+      resolveFilesFromEntries,
+    ],
   )
 
   const handleMediaPickerConfirm = useCallback(async () => {
@@ -2216,26 +2384,28 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     try {
       const selectedEntries = mediaLibrary.entries.filter((entry) => selectedIds.includes(entry.id))
-      const files = await Promise.all(
-        selectedEntries.map(async (entry) =>
-          entry.handle?.getFile ? await entry.handle.getFile() : entry.file,
-        ),
-      )
-      await prepareDraftsFromFiles(
-        files.filter(Boolean),
-        mediaLibrary.action,
-        {
-          layoutHint:
-            mediaLibrary.action === 'photo' && selectedEntries.length > 1 ? 'grid' : null,
-        },
-      )
+      const { files, failures } = await resolveFilesFromEntries(selectedEntries, mediaLibrary.action)
+      const layoutHint =
+        mediaLibrary.action === 'photo' && selectedEntries.length > 1 ? 'grid' : null
+      if (!files.length) {
+        setAttachmentError(
+          failures.length
+            ? '선택한 미디어를 불러올 수 없습니다.'
+            : '첨부할 수 있는 항목을 찾지 못했습니다.',
+        )
+      } else {
+        await prepareDraftsFromFiles(files, mediaLibrary.action, { layoutHint })
+        if (failures.length) {
+          setAttachmentError('일부 항목을 불러올 수 없습니다.')
+        }
+      }
     } catch (error) {
       console.error('[chat] 여러 미디어 준비 실패', error)
       setAttachmentError(error?.message || '첨부 파일을 준비할 수 없습니다.')
     } finally {
       closeMediaPicker()
     }
-  }, [mediaLibrary, prepareDraftsFromFiles, closeMediaPicker])
+  }, [mediaLibrary, prepareDraftsFromFiles, closeMediaPicker, resolveFilesFromEntries])
 
   const handleMediaPickerCancel = useCallback(() => {
     closeMediaPicker()
@@ -2255,6 +2425,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       ...prev,
       status: 'loading',
       error: null,
+      errorCode: null,
+      loadingMore: false,
     }))
     loadMediaLibrary(mediaLibrary.action).catch((error) => {
       console.error('[chat] 미디어 라이브러리 재시도 실패', error)
@@ -2262,9 +2434,50 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         ...prev,
         status: 'error',
         error: error?.message || '미디어를 불러올 수 없습니다.',
+        errorCode: error?.code || null,
       }))
     })
   }, [mediaLibrary.action, loadMediaLibrary])
+
+  const handleLoadMoreMediaLibrary = useCallback(() => {
+    if (!mediaLibrary.action || !mediaLibrary.hasMore || mediaLibrary.loadingMore) {
+      return
+    }
+
+    setMediaLibrary((prev) => ({
+      ...prev,
+      loadingMore: true,
+      error: null,
+      errorCode: null,
+    }))
+
+    loadMediaLibrary(mediaLibrary.action, {
+      append: true,
+      cursor: mediaLibrary.cursor,
+    }).catch((error) => {
+      console.error('[chat] 미디어 추가 로드 실패', error)
+      setMediaLibrary((prev) => ({
+        ...prev,
+        loadingMore: false,
+        status: prev.entries?.length ? prev.status : 'error',
+        error: error?.message || '추가 미디어를 불러올 수 없습니다.',
+        errorCode: error?.code || null,
+      }))
+    })
+  }, [
+    mediaLibrary.action,
+    mediaLibrary.hasMore,
+    mediaLibrary.loadingMore,
+    mediaLibrary.cursor,
+    loadMediaLibrary,
+  ])
+
+  const handleOpenNativeMediaSettings = useCallback(() => {
+    openNativeMediaSettings().catch((error) => {
+      console.error('[chat] 미디어 설정을 열 수 없습니다.', error)
+      setAttachmentError(error?.message || '설정을 열 수 없습니다.')
+    })
+  }, [setAttachmentError])
 
   const handleAttachmentAction = useCallback(
     (action) => {
@@ -2293,8 +2506,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setShowComposerPanel(false)
 
       if (action === 'photo' || action === 'video') {
-        if (typeof window === 'undefined' || !window.showDirectoryPicker) {
-          setAttachmentError('미디어 라이브러리를 지원하지 않는 브라우저입니다.')
+        const nativeAvailable = hasNativeMediaBridge()
+        if (!nativeAvailable && (typeof window === 'undefined' || !window.showDirectoryPicker)) {
+          setAttachmentError(
+            '이 기기에서는 갤러리를 직접 열 수 없습니다. 네이티브 브릿지를 구성하거나 지원되는 브라우저에서 이용해 주세요.',
+          )
           return
         }
 
@@ -2304,8 +2520,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           status: 'loading',
           action,
           error: null,
+          errorCode: null,
           multiSelect: false,
           selection: new Map(),
+          cursor: null,
+          hasMore: false,
+          source: nativeAvailable ? 'native' : 'filesystem',
+          loadingMore: false,
         }))
 
         loadMediaLibrary(action).catch((error) => {
@@ -2318,6 +2539,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             ...prev,
             status: 'error',
             error: error?.message || '미디어를 불러올 수 없습니다.',
+            errorCode: error?.code || null,
+            loadingMore: false,
           }))
         })
 
@@ -3280,41 +3503,75 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           ) : mediaLibrary.status === 'error' ? (
             <div style={overlayStyles.mediaPickerStatus}>
               <span style={{ color: '#fca5a5', fontWeight: 600 }}>{mediaLibrary.error || '미디어를 불러올 수 없습니다.'}</span>
-              <button type="button" style={overlayStyles.mediaPickerSecondary} onClick={handleReloadMediaLibrary}>
-                다시 시도
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" style={overlayStyles.mediaPickerSecondary} onClick={handleReloadMediaLibrary}>
+                  다시 시도
+                </button>
+                {mediaLibrary.errorCode === 'permission-denied' ? (
+                  <button
+                    type="button"
+                    style={overlayStyles.mediaPickerSecondary}
+                    onClick={handleOpenNativeMediaSettings}
+                  >
+                    설정 열기
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : mediaLibrary.status === 'empty' ? (
             <span style={overlayStyles.mediaPickerStatus}>표시할 항목이 없습니다.</span>
           ) : (
-            <div style={overlayStyles.mediaPickerGrid}>
-              {mediaLibrary.entries.map((entry) => {
-                const selected = mediaLibrary.selection?.has(entry.id)
-                return (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    style={overlayStyles.mediaPickerItem(selected)}
-                    onPointerDown={() => handleMediaEntryPointerDown(entry)}
-                    onPointerUp={() => handleMediaEntryPointerUp(entry)}
-                    onPointerLeave={handleMediaEntryPointerLeave}
-                  >
-                    {entry.previewUrl ? (
-                      <img
-                        src={entry.previewUrl}
-                        alt={entry.name}
-                        style={overlayStyles.mediaPickerThumb}
-                      />
-                    ) : (
-                      <div style={overlayStyles.mediaPickerPlaceholder}>
-                        {entry.type?.startsWith('video/') ? '🎬' : '🖼️'}
-                      </div>
-                    )}
-                    <span style={overlayStyles.mediaPickerMeta}>{formatBytes(entry.size)}</span>
-                  </button>
-                )
-              })}
-            </div>
+            <>
+              <div style={overlayStyles.mediaPickerGrid}>
+                {mediaLibrary.entries.map((entry) => {
+                  const selected = mediaLibrary.selection?.has(entry.id)
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      style={overlayStyles.mediaPickerItem(selected)}
+                      onPointerDown={() => handleMediaEntryPointerDown(entry)}
+                      onPointerUp={() => handleMediaEntryPointerUp(entry)}
+                      onPointerLeave={handleMediaEntryPointerLeave}
+                    >
+                      {entry.previewUrl ? (
+                        <img
+                          src={entry.previewUrl}
+                          alt={entry.name}
+                          style={overlayStyles.mediaPickerThumb}
+                        />
+                      ) : (
+                        <div style={overlayStyles.mediaPickerPlaceholder}>
+                          {entry.type?.startsWith('video/') ? '🎬' : '🖼️'}
+                        </div>
+                      )}
+                      <span style={overlayStyles.mediaPickerMeta}>{formatBytes(entry.size)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              {mediaLibrary.hasMore || (mediaLibrary.error && mediaLibrary.status === 'ready') ? (
+                <div style={overlayStyles.mediaPickerFooterRow}>
+                  {mediaLibrary.error && mediaLibrary.status === 'ready' ? (
+                    <span style={{ ...overlayStyles.mediaPickerInlineError, flex: 1 }}>
+                      {mediaLibrary.error}
+                    </span>
+                  ) : (
+                    <span style={{ flex: 1 }} />
+                  )}
+                  {mediaLibrary.hasMore ? (
+                    <button
+                      type="button"
+                      style={overlayStyles.mediaPickerLoadMore(mediaLibrary.loadingMore)}
+                      onClick={handleLoadMoreMediaLibrary}
+                      disabled={mediaLibrary.loadingMore}
+                    >
+                      {mediaLibrary.loadingMore ? '불러오는 중…' : '더 불러오기'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </div>
