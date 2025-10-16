@@ -91,3 +91,20 @@ export async function leaveChatRoom({ roomId }) {
 
   return !!data
 }
+
+export async function markChatRoomRead({ roomId, messageId = null }) {
+  if (!roomId) {
+    throw new Error('roomId가 필요합니다.')
+  }
+
+  const { data, error } = await supabase.rpc('mark_chat_room_read', {
+    p_room_id: roomId,
+    p_message_id: messageId || null,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data || { ok: true }
+}

@@ -10,6 +10,7 @@ import {
   fetchChatRooms,
   joinChatRoom,
   leaveChatRoom,
+  markChatRoomRead,
 } from '@/lib/chat/rooms'
 import {
   fetchRecentMessages,
@@ -391,20 +392,21 @@ const overlayStyles = {
     background: 'rgba(15, 23, 42, 0.94)',
     borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
-    padding: '40px 0',
+    padding: '32px',
     minHeight: 'min(92vh, 820px)',
     display: 'flex',
     width: '100%',
     boxSizing: 'border-box',
-    justifyContent: 'center',
+    alignItems: 'stretch',
   },
   root: (focused) => ({
     display: 'grid',
-    gridTemplateColumns: focused ? 'minmax(0, 1fr)' : 'minmax(0, 360px)',
+    gridTemplateColumns: 'minmax(0, 1fr)',
     gap: 16,
     height: 'min(88vh, 760px)',
     minHeight: 560,
     width: '100%',
+    maxWidth: '100%',
     padding: 0,
     boxSizing: 'border-box',
   }),
@@ -1538,6 +1540,75 @@ function normalizeId(value) {
   return token.length ? token.toLowerCase() : null
 }
 
+function normalizeRoomEntry(room) {
+  if (!room || typeof room !== 'object') {
+    return null
+  }
+
+  const base = { ...room }
+  const latestRaw =
+    base.latestMessage !== undefined
+      ? base.latestMessage
+      : base.latest_message !== undefined
+        ? base.latest_message
+        : base.latest
+  const latestMessage = latestRaw && latestRaw.payload ? latestRaw.payload : latestRaw || null
+
+  const derivedTimestamp = latestMessage
+    ? latestMessage.created_at || latestMessage.createdAt || null
+    : null
+  const lastMessageAt =
+    base.lastMessageAt !== undefined
+      ? base.lastMessageAt
+      : base.last_message_at !== undefined
+        ? base.last_message_at
+        : derivedTimestamp
+
+  const unreadRaw =
+    base.unread_count !== undefined
+      ? base.unread_count
+      : base.unreadCount !== undefined
+        ? base.unreadCount
+        : base.unread
+  const unreadCount = Number.isFinite(Number(unreadRaw)) ? Number(unreadRaw) : 0
+
+  const coverUrl = base.coverUrl || base.cover_url || null
+
+  return {
+    ...base,
+    latestMessage,
+    latest_message: latestMessage,
+    lastMessageAt,
+    last_message_at: lastMessageAt,
+    unreadCount,
+    unread_count: unreadCount,
+    coverUrl,
+    cover_url: coverUrl,
+  }
+}
+
+function normalizeRoomCollections(snapshot = {}) {
+  const resolveList = (primary, fallback) => {
+    if (Array.isArray(primary)) return primary
+    if (Array.isArray(fallback)) return fallback
+    return []
+  }
+
+  const joinedSource = resolveList(
+    snapshot.joined,
+    snapshot.rooms || (snapshot.roomSummary && snapshot.roomSummary.joined),
+  )
+  const availableSource = resolveList(
+    snapshot.available,
+    snapshot.publicRooms || (snapshot.roomSummary && snapshot.roomSummary.available),
+  )
+
+  return {
+    joined: joinedSource.map((room) => normalizeRoomEntry(room)).filter(Boolean),
+    available: availableSource.map((room) => normalizeRoomEntry(room)).filter(Boolean),
+  }
+}
+
 function getDayKey(value) {
   if (!value) return null
   try {
@@ -1563,7 +1634,7 @@ const GLOBAL_ROOM = {
 export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [activeTab, setActiveTab] = useState('info')
   const [dashboard, setDashboard] = useState(null)
-  const [rooms, setRooms] = useState({ joined: [], available: [] })
+  const [rooms, setRooms] = useState(() => normalizeRoomCollections())
   const [loadingDashboard, setLoadingDashboard] = useState(false)
   const [loadingRooms, setLoadingRooms] = useState(false)
   const [dashboardError, setDashboardError] = useState(null)
@@ -1613,6 +1684,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const mediaPickerLongPressRef = useRef({ timer: null, active: false, id: null })
   const aiPendingMessageRef = useRef(null)
   const openSearchInputRef = useRef(null)
+  const lastMarkedRef = useRef(null)
 
   const heroes = useMemo(() => (dashboard?.heroes ? dashboard.heroes : []), [dashboard])
 
@@ -1647,6 +1719,96 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const activeRoomId = context?.type === 'chat-room' ? context.chatRoomId : null
   const viewingGlobal = context?.type === 'global'
   const activeSessionId = context?.type === 'session' ? context.sessionId : null
+
+  const updateRoomMetadata = useCallback((roomId, updates = {}) => {
+    if (!roomId || !updates || typeof updates !== 'object') {
+      return
+    }
+
+    const normalizedRoomId = normalizeId(roomId)
+    if (!normalizedRoomId) {
+      return
+    }
+
+    const patch = { ...updates }
+    if (patch.latestMessage && !patch.latest_message) {
+      patch.latest_message = patch.latestMessage
+    }
+    if (
+      patch.latest_message &&
+      patch.lastMessageAt === undefined &&
+      patch.last_message_at === undefined
+    ) {
+      const createdAt = patch.latest_message.created_at || patch.latest_message.createdAt || null
+      if (createdAt) {
+        patch.lastMessageAt = createdAt
+        patch.last_message_at = createdAt
+      }
+    }
+    if (patch.lastMessageAt && !patch.last_message_at) {
+      patch.last_message_at = patch.lastMessageAt
+    }
+    if (patch.last_message_at && !patch.lastMessageAt) {
+      patch.lastMessageAt = patch.last_message_at
+    }
+    if (patch.unread_count !== undefined || patch.unreadCount !== undefined) {
+      const unread = patch.unread_count !== undefined ? patch.unread_count : patch.unreadCount
+      const parsed = Number.isFinite(Number(unread)) ? Number(unread) : 0
+      patch.unread_count = parsed
+      patch.unreadCount = parsed
+    }
+
+    const applyCollection = (collection) => {
+      if (!Array.isArray(collection)) {
+        return collection
+      }
+      let changed = false
+      const next = collection.map((room) => {
+        if (normalizeId(room.id) !== normalizedRoomId) {
+          return room
+        }
+        changed = true
+        return { ...room, ...patch }
+      })
+      return changed ? next : collection
+    }
+
+    setRooms((prev) => {
+      if (!prev) return prev
+      const nextJoined = applyCollection(prev.joined)
+      const nextAvailable = applyCollection(prev.available)
+      if (nextJoined === prev.joined && nextAvailable === prev.available) {
+        return prev
+      }
+      return { joined: nextJoined, available: nextAvailable }
+    })
+
+    setDashboard((prev) => {
+      if (!prev) return prev
+      const nextRooms = applyCollection(prev.rooms)
+      const nextPublic = applyCollection(prev.publicRooms)
+      const nextSummary = prev.roomSummary
+        ? {
+            ...prev.roomSummary,
+            joined: applyCollection(prev.roomSummary.joined),
+            available: applyCollection(prev.roomSummary.available),
+          }
+        : prev.roomSummary
+      if (
+        nextRooms === prev.rooms &&
+        nextPublic === prev.publicRooms &&
+        nextSummary === prev.roomSummary
+      ) {
+        return prev
+      }
+      return {
+        ...prev,
+        rooms: nextRooms,
+        publicRooms: nextPublic,
+        roomSummary: nextSummary,
+      }
+    })
+  }, [])
 
   const viewerToken = useMemo(() => normalizeId(viewer?.id || viewer?.owner_id), [viewer])
 
@@ -1723,24 +1885,25 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setComposerAttachments([])
       setAttachmentError(null)
       setAiRequest(null)
-      setExpandedMessage(null)
-      setViewerAttachment(null)
-      attachmentCacheRef.current.clear()
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current)
+    setExpandedMessage(null)
+    setViewerAttachment(null)
+    attachmentCacheRef.current.clear()
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
         longPressTimerRef.current = null
       }
       longPressActiveRef.current = false
-      if (videoControlTimerRef.current) {
-        clearTimeout(videoControlTimerRef.current)
-        videoControlTimerRef.current = null
-      }
-      setVideoControlsVisible(true)
-      if (onUnreadChange) {
-        onUnreadChange(0)
-      }
-      return
+    if (videoControlTimerRef.current) {
+      clearTimeout(videoControlTimerRef.current)
+      videoControlTimerRef.current = null
     }
+    setVideoControlsVisible(true)
+    lastMarkedRef.current = null
+    if (onUnreadChange) {
+      onUnreadChange(0)
+    }
+    return
+  }
 
     let mounted = true
 
@@ -1750,10 +1913,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       try {
         const [snapshot, user] = await Promise.all([fetchChatDashboard({ limit: 24 }), getCurrentUser()])
         if (!mounted) return
-        setDashboard(snapshot)
+        const normalizedRoomState = normalizeRoomCollections({
+          joined: snapshot?.roomSummary?.joined || snapshot?.rooms,
+          available: snapshot?.roomSummary?.available || snapshot?.publicRooms,
+        })
+        setDashboard({
+          ...snapshot,
+          rooms: normalizedRoomState.joined,
+          publicRooms: normalizedRoomState.available,
+          roomSummary: normalizedRoomState,
+        })
         setViewer(user)
         setSelectedHero((snapshot.heroes && snapshot.heroes[0]?.id) || null)
-        setRooms({ joined: snapshot.rooms || [], available: snapshot.publicRooms || [] })
+        setRooms(normalizedRoomState)
       } catch (error) {
         if (!mounted) return
         console.error('[chat] 대시보드 로드 실패:', error)
@@ -1794,7 +1966,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           scope: context.scope || null,
         })
         if (cancelled) return
-        setMessages(upsertMessageList([], result.messages || []))
+        const nextMessages = Array.isArray(result.messages) ? result.messages : []
+        setMessages(upsertMessageList([], nextMessages))
+        if (context?.type === 'chat-room' && context.chatRoomId && nextMessages.length) {
+          const latestRecord = nextMessages[nextMessages.length - 1]
+          if (latestRecord?.id) {
+            updateRoomMetadata(context.chatRoomId, { latestMessage: latestRecord })
+          }
+        }
         if (onUnreadChange) {
           onUnreadChange(0)
         }
@@ -1807,6 +1986,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         unsubscribeRef.current = subscribeToMessages({
           onInsert: (record) => {
             setMessages((prev) => upsertMessageList(prev, record))
+            if (record?.chat_room_id || record?.room_id || context?.chatRoomId) {
+              const recordRoomId = normalizeId(record.chat_room_id || record.room_id || null)
+              if (
+                context?.type === 'chat-room' &&
+                normalizeId(context.chatRoomId) === (recordRoomId || normalizeId(context.chatRoomId))
+              ) {
+                updateRoomMetadata(context.chatRoomId, { latestMessage: record })
+              } else if (recordRoomId) {
+                updateRoomMetadata(recordRoomId, { latestMessage: record })
+              }
+            }
             const hidden = typeof document !== 'undefined' ? document.hidden : false
             if (onUnreadChange && (!context.focused || hidden)) {
               onUnreadChange((prevUnread) => Math.min(999, (prevUnread || 0) + 1))
@@ -1835,7 +2025,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       cancelled = true
     }
-  }, [open, context, viewer, onUnreadChange])
+  }, [open, context, viewer, onUnreadChange, updateRoomMetadata])
 
   useEffect(() => {
     if (!open) return
@@ -1843,6 +2033,43 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     if (!node) return
     node.scrollTop = node.scrollHeight
   }, [messages, open])
+
+  useEffect(() => {
+    if (!open) return
+    if (!context || context.type !== 'chat-room') return
+    const roomId = context.chatRoomId
+    if (!roomId) return
+    const normalizedRoomId = normalizeId(roomId)
+    if (!normalizedRoomId) return
+
+    const relevantMessages = messages.filter((message) =>
+      normalizeId(message?.chat_room_id || message?.room_id) === normalizedRoomId,
+    )
+    if (!relevantMessages.length) return
+
+    const latest = relevantMessages[relevantMessages.length - 1]
+    if (!latest?.id) return
+
+    const cacheKey = `${normalizedRoomId}:${latest.id}`
+    if (lastMarkedRef.current === cacheKey) {
+      return
+    }
+
+    lastMarkedRef.current = cacheKey
+    markChatRoomRead({ roomId, messageId: latest.id })
+      .then(() => {
+        updateRoomMetadata(roomId, {
+          unread_count: 0,
+          unreadCount: 0,
+          last_read_message_id: latest.id,
+          last_read_message_at:
+            latest.created_at || latest.createdAt || new Date().toISOString(),
+        })
+      })
+      .catch((error) => {
+        console.error('[chat] 읽음 상태 업데이트 실패:', error)
+      })
+  }, [open, context, messages, updateRoomMetadata])
 
   useEffect(() => {
     if (!showComposerPanel) return
@@ -1913,7 +2140,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setRoomError(null)
       try {
         const snapshot = await fetchChatRooms({ search })
-        setRooms(snapshot)
+        const normalized = normalizeRoomCollections(snapshot)
+        setRooms(normalized)
+        setDashboard((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            rooms: normalized.joined,
+            publicRooms: normalized.available,
+            roomSummary: normalized,
+          }
+        })
       } catch (error) {
         console.error('[chat] 방 목록을 불러오지 못했습니다.', error)
         setRoomError(error)
@@ -1986,6 +2223,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
+    lastMarkedRef.current = null
     setContext({
       type: 'chat-room',
       scope: 'room',
@@ -1994,23 +2232,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       visibility: visibility || room.visibility || 'private',
       focused: true,
     })
-    setRooms((prev) => {
-      if (!prev) return prev
-      const normalizeCollection = (collection) =>
-        Array.isArray(collection)
-          ? collection.map((item) =>
-              normalizeId(item.id) === roomId ? { ...item, unread_count: 0 } : item,
-            )
-          : collection
-      return {
-        joined: normalizeCollection(prev.joined),
-        available: normalizeCollection(prev.available),
-      }
-    })
+    updateRoomMetadata(room.id, { unread_count: 0, unreadCount: 0 })
     setComposerAttachments([])
     setAttachmentError(null)
     setAiRequest(null)
-  }, [])
+  }, [updateRoomMetadata])
 
   const handleCreateRoom = useCallback(async () => {
     const name = window.prompt('새 비공개 채팅방 이름을 입력해 주세요.')
