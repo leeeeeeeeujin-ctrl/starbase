@@ -2865,66 +2865,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     })
   }, [viewport])
 
-  useEffect(() => {
-    const node = rootRef.current
-    if (!node || typeof window === 'undefined') {
-      return undefined
-    }
-    if (!open || miniOverlay.active) {
-      return undefined
-    }
-
-    const handleTouchStart = (event) => {
-      if (event.touches.length === 2) {
-        const [first, second] = event.touches
-        const distance = distanceBetweenTouches(first, second)
-        pinchStateRef.current = { initialDistance: distance, triggered: false }
-      } else {
-        pinchStateRef.current = { initialDistance: null, triggered: false }
-      }
-    }
-
-    const handleTouchMove = (event) => {
-      const state = pinchStateRef.current
-      if (state.triggered) {
-        return
-      }
-      if (event.touches.length !== 2) {
-        return
-      }
-      const [first, second] = event.touches
-      const distance = distanceBetweenTouches(first, second)
-      if (!state.initialDistance) {
-        pinchStateRef.current = { initialDistance: distance, triggered: false }
-        return
-      }
-      const delta = state.initialDistance - distance
-      if (delta > PINCH_MIN_DELTA && distance / state.initialDistance <= PINCH_TRIGGER_RATIO) {
-        pinchStateRef.current = { initialDistance: null, triggered: true }
-        if (event.cancelable) {
-          event.preventDefault()
-        }
-        handleEnterMiniOverlay()
-      }
-    }
-
-    const handleTouchEnd = () => {
-      pinchStateRef.current = { initialDistance: null, triggered: false }
-    }
-
-    node.addEventListener('touchstart', handleTouchStart, { passive: true })
-    node.addEventListener('touchmove', handleTouchMove, { passive: false })
-    node.addEventListener('touchend', handleTouchEnd)
-    node.addEventListener('touchcancel', handleTouchEnd)
-
-    return () => {
-      node.removeEventListener('touchstart', handleTouchStart)
-      node.removeEventListener('touchmove', handleTouchMove)
-      node.removeEventListener('touchend', handleTouchEnd)
-      node.removeEventListener('touchcancel', handleTouchEnd)
-    }
-  }, [handleEnterMiniOverlay, miniOverlay.active, open])
-
   const applyRoomOverrides = useCallback((collections) => {
     if (!collections) {
       return collections
@@ -4587,6 +4527,66 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     miniOverlayDragRef.current = { pointerId: null, originX: 0, originY: 0, startX: 0, startY: 0 }
   }, [])
+
+  useEffect(() => {
+    const node = rootRef.current
+    if (!node || typeof window === 'undefined') {
+      return undefined
+    }
+    if (!open || miniOverlay.active) {
+      return undefined
+    }
+
+    const handleTouchStart = (event) => {
+      if (event.touches.length === 2) {
+        const [first, second] = event.touches
+        const distance = distanceBetweenTouches(first, second)
+        pinchStateRef.current = { initialDistance: distance, triggered: false }
+      } else {
+        pinchStateRef.current = { initialDistance: null, triggered: false }
+      }
+    }
+
+    const handleTouchMove = (event) => {
+      const state = pinchStateRef.current
+      if (state.triggered) {
+        return
+      }
+      if (event.touches.length !== 2) {
+        return
+      }
+      const [first, second] = event.touches
+      const distance = distanceBetweenTouches(first, second)
+      if (!state.initialDistance) {
+        pinchStateRef.current = { initialDistance: distance, triggered: false }
+        return
+      }
+      const delta = state.initialDistance - distance
+      if (delta > PINCH_MIN_DELTA && distance / state.initialDistance <= PINCH_TRIGGER_RATIO) {
+        pinchStateRef.current = { initialDistance: null, triggered: true }
+        if (event.cancelable) {
+          event.preventDefault()
+        }
+        handleEnterMiniOverlay()
+      }
+    }
+
+    const handleTouchEnd = () => {
+      pinchStateRef.current = { initialDistance: null, triggered: false }
+    }
+
+    node.addEventListener('touchstart', handleTouchStart, { passive: true })
+    node.addEventListener('touchmove', handleTouchMove, { passive: false })
+    node.addEventListener('touchend', handleTouchEnd)
+    node.addEventListener('touchcancel', handleTouchEnd)
+
+    return () => {
+      node.removeEventListener('touchstart', handleTouchStart)
+      node.removeEventListener('touchmove', handleTouchMove)
+      node.removeEventListener('touchend', handleTouchEnd)
+      node.removeEventListener('touchcancel', handleTouchEnd)
+    }
+  }, [handleEnterMiniOverlay, miniOverlay.active, open])
 
   const handleLoadMoreMedia = useCallback(() => {
     setDrawerMediaLimit((value) => value + 20)
