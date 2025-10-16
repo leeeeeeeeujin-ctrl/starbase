@@ -92,14 +92,28 @@ export async function leaveChatRoom({ roomId }) {
   return !!data
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function normalizeMessageId(value) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+  return UUID_REGEX.test(trimmed) ? trimmed : null
+}
+
 export async function markChatRoomRead({ roomId, messageId = null }) {
   if (!roomId) {
     throw new Error('roomId가 필요합니다.')
   }
 
+  const normalizedMessageId = normalizeMessageId(messageId)
+
   const { data, error } = await supabase.rpc('mark_chat_room_read', {
     p_room_id: roomId,
-    p_message_id: messageId || null,
+    p_message_id: normalizedMessageId,
   })
 
   if (error) {
