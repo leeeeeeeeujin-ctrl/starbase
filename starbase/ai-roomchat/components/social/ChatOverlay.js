@@ -2188,6 +2188,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [roomError, setRoomError] = useState(null)
   const [selectedHero, setSelectedHero] = useState(null)
   const [viewer, setViewer] = useState(null)
+  const [viewerReady, setViewerReady] = useState(false)
   const [context, setContext] = useState(null)
   const [messages, setMessages] = useState([])
   const [messageInput, setMessageInput] = useState('')
@@ -2693,7 +2694,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     })
   }, [])
 
-  const viewerToken = useMemo(() => normalizeId(viewer?.id || viewer?.owner_id), [viewer])
+  const viewerId = useMemo(() => viewer?.id || viewer?.owner_id || null, [viewer])
+  const viewerToken = useMemo(() => normalizeId(viewerId), [viewerId])
 
   const timelineEntries = useMemo(() => {
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -2955,6 +2957,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
       setVideoControlsVisible(true)
       lastMarkedRef.current = null
+      setViewerReady(false)
       if (onUnreadChange) {
         onUnreadChange(0)
       }
@@ -2990,6 +2993,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       } finally {
         if (mounted) {
           setLoadingDashboard(false)
+          setViewerReady(true)
         }
       }
     }
@@ -3589,11 +3593,35 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     refreshRoomStatsData,
   ])
 
+  const buildApiKeyHeaders = useCallback(
+    (extra = {}) => {
+      const headers = { ...extra }
+      if (viewerId) {
+        headers['x-rank-user-id'] = viewerId
+      }
+      return headers
+    },
+    [viewerId],
+  )
+
   const refreshApiKeyring = useCallback(async () => {
+    if (!viewerId) {
+      setApiKeys([])
+      if (viewerReady) {
+        setApiKeyError('API 키는 로그인한 사용자만 관리할 수 있습니다.')
+      } else {
+        setApiKeyError(null)
+      }
+      setApiKeysLoading(false)
+      return
+    }
+
     setApiKeysLoading(true)
     setApiKeyError(null)
     try {
-      const response = await fetch('/api/rank/user-api-keyring')
+      const response = await fetch('/api/rank/user-api-keyring', {
+        headers: buildApiKeyHeaders(),
+      })
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
         throw new Error(payload?.detail || '키 목록을 불러올 수 없습니다.')
@@ -3606,7 +3634,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     } finally {
       setApiKeysLoading(false)
     }
-  }, [])
+  }, [buildApiKeyHeaders, viewerId, viewerReady])
 
   const handleAddApiKey = useCallback(async () => {
     const trimmed = apiKeyInput.trim()
@@ -3614,12 +3642,16 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setApiKeyError('API 키를 입력해 주세요.')
       return
     }
+    if (!viewerId) {
+      setApiKeyError('로그인 후 API 키를 추가할 수 있습니다.')
+      return
+    }
     setApiKeySubmitting(true)
     setApiKeyError(null)
     try {
       const response = await fetch('/api/rank/user-api-keyring', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildApiKeyHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ apiKey: trimmed, activate: true }),
       })
       const payload = await response.json().catch(() => ({}))
@@ -3634,15 +3666,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     } finally {
       setApiKeySubmitting(false)
     }
-  }, [apiKeyInput, refreshApiKeyring])
+  }, [apiKeyInput, buildApiKeyHeaders, refreshApiKeyring, viewerId])
 
   const handleDeleteApiKey = useCallback(
     async (entryId) => {
       if (!entryId) return
+      if (!viewerId) {
+        setApiKeyError('로그인 후 API 키를 삭제할 수 있습니다.')
+        return
+      }
       try {
         const response = await fetch('/api/rank/user-api-keyring', {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: buildApiKeyHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ id: entryId }),
         })
         const payload = await response.json().catch(() => ({}))
@@ -3655,7 +3691,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setApiKeyError(error?.message || 'API 키를 삭제할 수 없습니다.')
       }
     },
-    [refreshApiKeyring],
+    [buildApiKeyHeaders, refreshApiKeyring, viewerId],
   )
 
   useEffect(() => {
