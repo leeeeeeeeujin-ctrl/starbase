@@ -11,13 +11,14 @@ export default function SurfaceOverlay({
   contentStyle,
   hideHeader = false,
   frameStyle,
+  zIndex = 1500,
 }) {
   return (
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1500,
+        zIndex,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

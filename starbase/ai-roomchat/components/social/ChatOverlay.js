@@ -389,6 +389,7 @@ const upsertMessageList = (current, incoming) => {
 
 const overlayStyles = {
   frame: {
+    position: 'relative',
     background: 'rgba(15, 23, 42, 0.94)',
     borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
@@ -399,9 +400,22 @@ const overlayStyles = {
     boxSizing: 'border-box',
     alignItems: 'stretch',
   },
+  closeButton: {
+    position: 'absolute',
+    top: 18,
+    right: 22,
+    borderRadius: 999,
+    border: '1px solid rgba(148, 163, 184, 0.5)',
+    background: 'rgba(15, 23, 42, 0.75)',
+    color: '#cbd5f5',
+    padding: '6px 14px',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
   root: (focused) => ({
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr)',
+    gridTemplateColumns: focused ? 'minmax(280px, 360px) minmax(0, 1fr)' : 'minmax(0, 1fr)',
     gap: 16,
     height: 'min(88vh, 760px)',
     minHeight: 560,
@@ -557,14 +571,23 @@ const overlayStyles = {
     color: '#e2e8f0',
   },
   roomList: {
-    display: 'grid',
-    gap: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  roomListScroll: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    maxHeight: 'min(420px, 55vh)',
+    overflowY: 'auto',
+    paddingRight: 4,
   },
   roomCard: (active) => ({
     position: 'relative',
     borderRadius: 18,
     overflow: 'hidden',
-    minHeight: 96,
+    minHeight: 74,
     cursor: 'pointer',
     border: active
       ? '1px solid rgba(59, 130, 246, 0.65)'
@@ -587,8 +610,8 @@ const overlayStyles = {
   roomCardBody: {
     position: 'relative',
     display: 'grid',
-    gap: 8,
-    padding: '12px 14px',
+    gap: 6,
+    padding: '10px 12px',
     minHeight: 0,
   },
   roomCardHeader: {
@@ -618,73 +641,18 @@ const overlayStyles = {
     justifyContent: 'center',
     padding: '0 8px',
   },
-  roomCardMeta: {
-    fontSize: 12,
-    color: '#cbd5f5',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  roomCardFooter: {
+  roomCardStats: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
     fontSize: 11,
     color: '#a5b4fc',
-  },
-  roomCardButton: {
-    borderRadius: 999,
-    border: '1px solid rgba(59, 130, 246, 0.65)',
-    background: 'rgba(37, 99, 235, 0.25)',
-    color: '#dbeafe',
-    fontSize: 11,
-    fontWeight: 600,
-    padding: '5px 10px',
-    cursor: 'pointer',
   },
   listHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-  },
-  searchBar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '10px 12px',
-    borderRadius: 14,
-    background: 'rgba(15, 23, 42, 0.7)',
-    border: '1px solid rgba(71, 85, 105, 0.5)',
-  },
-  searchInput: {
-    flex: 1,
-    border: 'none',
-    background: 'transparent',
-    color: '#e2e8f0',
-    fontSize: 13,
-    outline: 'none',
-  },
-  searchSubmit: {
-    borderRadius: 10,
-    border: '1px solid rgba(59, 130, 246, 0.6)',
-    background: 'rgba(37, 99, 235, 0.4)',
-    color: '#f8fafc',
-    fontSize: 12,
-    fontWeight: 600,
-    padding: '6px 12px',
-    cursor: 'pointer',
-  },
-  searchReset: {
-    borderRadius: 10,
-    border: '1px solid rgba(148, 163, 184, 0.5)',
-    background: 'rgba(15, 23, 42, 0.6)',
-    color: '#cbd5f5',
-    fontSize: 12,
-    fontWeight: 600,
-    padding: '6px 10px',
-    cursor: 'pointer',
   },
   actionButton: (variant = 'primary', disabled = false) => {
     const palette = {
@@ -1430,14 +1398,6 @@ const TABS = [
 
 const MESSAGE_LIMIT = 60
 
-function derivePreviewText(record) {
-  if (!record) return ''
-  if (record.metadata?.plain_text) return record.metadata.plain_text
-  if (record.text) return record.text
-  if (record.metadata?.drafty?.txt) return record.metadata.drafty.txt
-  return ''
-}
-
 function extractMessageText(message) {
   if (!message) return ''
   const metadata = message.metadata && typeof message.metadata === 'object' ? message.metadata : null
@@ -1656,9 +1616,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [videoControlsVisible, setVideoControlsVisible] = useState(true)
   const [infoHeroFocus, setInfoHeroFocus] = useState(null)
   const [friendOverlayOpen, setFriendOverlayOpen] = useState(false)
-  const [openSearchActive, setOpenSearchActive] = useState(false)
-  const [openSearchQuery, setOpenSearchQuery] = useState('')
-  const [openRoomsFilter, setOpenRoomsFilter] = useState('')
+  const [createModal, setCreateModal] = useState({ open: false, visibility: 'private' })
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    description: '',
+    allowAi: false,
+    requireApproval: false,
+  })
+  const [createSubmitting, setCreateSubmitting] = useState(false)
+  const [createError, setCreateError] = useState(null)
+  const [searchModalOpen, setSearchModalOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState(null)
+  const [searchPerformed, setSearchPerformed] = useState(false)
   const [mediaLibrary, setMediaLibrary] = useState({
     status: 'idle',
     entries: [],
@@ -1683,7 +1655,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const videoControlTimerRef = useRef(null)
   const mediaPickerLongPressRef = useRef({ timer: null, active: false, id: null })
   const aiPendingMessageRef = useRef(null)
-  const openSearchInputRef = useRef(null)
   const lastMarkedRef = useRef(null)
 
   const heroes = useMemo(() => (dashboard?.heroes ? dashboard.heroes : []), [dashboard])
@@ -1719,6 +1690,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const activeRoomId = context?.type === 'chat-room' ? context.chatRoomId : null
   const viewingGlobal = context?.type === 'global'
   const activeSessionId = context?.type === 'session' ? context.sessionId : null
+  const joinedRoomIds = useMemo(() => {
+    const identifiers = new Set()
+    const joined = Array.isArray(rooms?.joined) ? rooms.joined : []
+    for (const room of joined) {
+      const id = normalizeId(room?.id)
+      if (id) {
+        identifiers.add(id)
+      }
+    }
+    return identifiers
+  }, [rooms])
 
   const updateRoomMetadata = useCallback((roomId, updates = {}) => {
     if (!roomId || !updates || typeof updates !== 'object') {
@@ -2163,25 +2145,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   useEffect(() => {
     if (!open) return
-    if (activeTab === 'private') {
+    if (activeTab === 'private' || activeTab === 'open') {
       refreshRooms()
-    } else if (activeTab === 'open') {
-      refreshRooms(openRoomsFilter)
     }
-  }, [activeTab, open, openRoomsFilter, refreshRooms])
-
-  useEffect(() => {
-    if (activeTab !== 'open') {
-      setOpenSearchActive(false)
-      setOpenSearchQuery('')
-    }
-  }, [activeTab])
-
-  useEffect(() => {
-    if (openSearchActive && openSearchInputRef.current) {
-      openSearchInputRef.current.focus()
-    }
-  }, [openSearchActive])
+  }, [activeTab, open, refreshRooms])
 
   const handleSelectHero = useCallback((heroId) => {
     if (!heroId) return
@@ -2238,17 +2205,66 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setAiRequest(null)
   }, [updateRoomMetadata])
 
-  const handleCreateRoom = useCallback(async () => {
-    const name = window.prompt('새 비공개 채팅방 이름을 입력해 주세요.')
-    if (!name) return
-    try {
-      await createChatRoom({ name, visibility: 'private', heroId: selectedHero || null })
-      await refreshRooms()
-    } catch (error) {
-      console.error('[chat] 채팅방 생성 실패', error)
-      alert('채팅방을 만들 수 없습니다. 잠시 후 다시 시도해 주세요.')
-    }
-  }, [refreshRooms, selectedHero])
+  const handleOpenCreateRoom = useCallback(
+    (visibility = 'private') => {
+      setCreateModal({ open: true, visibility })
+      setCreateForm({
+        name: '',
+        description: '',
+        allowAi: visibility === 'public',
+        requireApproval: false,
+      })
+      setCreateError(null)
+    },
+    [],
+  )
+
+  const handleCloseCreateRoom = useCallback(() => {
+    setCreateModal({ open: false, visibility: 'private' })
+    setCreateError(null)
+    setCreateSubmitting(false)
+  }, [])
+
+  const handleChangeCreateField = useCallback((field, value) => {
+    setCreateForm((prev) => ({ ...prev, [field]: value }))
+  }, [])
+
+  const handleSubmitCreateRoom = useCallback(
+    async (event) => {
+      if (event?.preventDefault) {
+        event.preventDefault()
+      }
+
+      const trimmedName = (createForm.name || '').trim()
+      if (!trimmedName) {
+        setCreateError('채팅방 이름을 입력해 주세요.')
+        return
+      }
+
+      const payload = {
+        name: trimmedName,
+        description: (createForm.description || '').trim() || null,
+        visibility: createModal.visibility === 'public' ? 'public' : 'private',
+        allowAi: Boolean(createForm.allowAi),
+        requireApproval: Boolean(createForm.requireApproval),
+        heroId: selectedHero || null,
+      }
+
+      setCreateSubmitting(true)
+      setCreateError(null)
+      try {
+        await createChatRoom(payload)
+        await refreshRooms()
+        handleCloseCreateRoom()
+      } catch (error) {
+        console.error('[chat] 채팅방 생성 실패', error)
+        setCreateError('채팅방을 만들 수 없습니다. 잠시 후 다시 시도해 주세요.')
+      } finally {
+        setCreateSubmitting(false)
+      }
+    },
+    [createForm, createModal.visibility, handleCloseCreateRoom, refreshRooms, selectedHero],
+  )
 
   const handleJoinRoom = useCallback(
     async (room) => {
@@ -2262,6 +2278,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         await joinChatRoom({ roomId: room.id, heroId: selectedHero || null })
         await refreshRooms()
         handleSelectRoom(room, room.visibility)
+        setSearchModalOpen(false)
+        setSearchResults([])
+        setSearchQuery('')
+        setSearchPerformed(false)
+        setSearchError(null)
       } catch (error) {
         console.error('[chat] 채팅방 참여 실패', error)
         alert('채팅방에 참여할 수 없습니다.')
@@ -2296,27 +2317,65 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [context, refreshRooms],
   )
 
-  const handleToggleOpenSearch = useCallback(() => {
-    setOpenSearchActive((prev) => {
-      if (!prev) {
-        setOpenSearchQuery((value) => value || openRoomsFilter || '')
-      }
-      return !prev
-    })
-  }, [openRoomsFilter])
+  const handleOpenSearchOverlay = useCallback(() => {
+    setSearchModalOpen(true)
+    setSearchQuery('')
+    setSearchResults([])
+    setSearchError(null)
+    setSearchPerformed(false)
+    setSearchLoading(false)
+  }, [])
 
-  const handleSubmitOpenSearch = useCallback(
-    (event) => {
-      event.preventDefault()
-      setOpenRoomsFilter(openSearchQuery.trim())
+  const handleCloseSearchOverlay = useCallback(() => {
+    setSearchModalOpen(false)
+    setSearchLoading(false)
+    setSearchError(null)
+    setSearchResults([])
+    setSearchPerformed(false)
+  }, [])
+
+  const performRoomSearch = useCallback(
+    async (query) => {
+      const trimmed = (query || '').trim()
+      if (!trimmed) {
+        setSearchResults([])
+        setSearchPerformed(true)
+        setSearchLoading(false)
+        setSearchError(null)
+        return
+      }
+
+      setSearchLoading(true)
+      setSearchError(null)
+      try {
+        const snapshot = await fetchChatRooms({ search: trimmed })
+        const normalized = normalizeRoomCollections(snapshot)
+        const available = Array.isArray(normalized.available) ? normalized.available : []
+        const filtered = available.filter((room) => {
+          const id = normalizeId(room?.id)
+          if (!id) return false
+          return id !== normalizeId(GLOBAL_ROOM.id)
+        })
+        setSearchResults(filtered)
+      } catch (error) {
+        console.error('[chat] 채팅방 검색 실패', error)
+        setSearchError('채팅방을 검색할 수 없습니다. 잠시 후 다시 시도해 주세요.')
+        setSearchResults([])
+      } finally {
+        setSearchLoading(false)
+        setSearchPerformed(true)
+      }
     },
-    [openSearchQuery],
+    [],
   )
 
-  const handleResetOpenSearch = useCallback(() => {
-    setOpenSearchQuery('')
-    setOpenRoomsFilter('')
-  }, [])
+  const handleSubmitSearch = useCallback(
+    (event) => {
+      event.preventDefault()
+      performRoomSearch(searchQuery)
+    },
+    [performRoomSearch, searchQuery],
+  )
 
   const handleOpenFriends = useCallback(() => {
     setFriendOverlayOpen(true)
@@ -3421,7 +3480,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             {(dashboard?.sessions || []).map((session) => {
               const key = session.session_id || session.id
               const active = activeSessionId && key === activeSessionId
-              const latest = derivePreviewText(session.latestMessage || null)
+              const latestAt =
+                session.latestMessage?.created_at || session.latest_message_at || session.updated_at
+              const timeLabel = latestAt ? formatTime(latestAt) : ''
               return (
                 <div
                   key={key}
@@ -3434,7 +3495,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                     <div style={overlayStyles.roomCardHeader}>
                       <span style={overlayStyles.roomCardTitle}>{session.game_name || '매치 세션'}</span>
                     </div>
-                    <span style={overlayStyles.roomCardMeta}>{latest || '메시지를 불러옵니다.'}</span>
+                    <div style={overlayStyles.roomCardStats}>
+                      <span>{timeLabel}</span>
+                      <span>세션 채팅</span>
+                    </div>
                   </div>
                 </div>
               )
@@ -3449,32 +3513,65 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }
 
   const renderRoomList = (visibility) => {
-    let list = visibility === 'open' ? rooms.available || [] : rooms.joined || []
+    const joined = Array.isArray(rooms.joined) ? rooms.joined : []
+    const globalId = normalizeId(GLOBAL_ROOM.id)
+
+    let filtered = joined.filter((room) => {
+      const roomId = normalizeId(room?.id)
+      const isGlobal = room?.builtin === 'global' || roomId === globalId
+      const roomVisibility = (room?.visibility || '').toLowerCase()
+      if (visibility === 'open') {
+        return isGlobal || roomVisibility === 'public' || roomVisibility === 'open'
+      }
+      if (visibility === 'private') {
+        return !isGlobal && roomVisibility !== 'public' && roomVisibility !== 'open'
+      }
+      return true
+    })
+
     if (visibility === 'open') {
-      const filtered = list.filter(
-        (room) => normalizeId(room.id) !== normalizeId(GLOBAL_ROOM.id),
-      )
-      list = [GLOBAL_ROOM, ...filtered]
+      const hasGlobal = filtered.some((room) => {
+        const roomId = normalizeId(room?.id)
+        return room?.builtin === 'global' || roomId === globalId
+      })
+      if (!hasGlobal) {
+        filtered = [{ ...GLOBAL_ROOM }, ...filtered]
+      }
     }
 
-    if (!list.length) {
+    if (!filtered.length) {
       return <span style={overlayStyles.mutedText}>표시할 채팅방이 없습니다.</span>
     }
 
+    const sorted = [...filtered].sort((a, b) => {
+      const aId = normalizeId(a?.id)
+      const bId = normalizeId(b?.id)
+      const aGlobal = a?.builtin === 'global' || aId === globalId
+      const bGlobal = b?.builtin === 'global' || bId === globalId
+      if (aGlobal !== bGlobal) {
+        return aGlobal ? -1 : 1
+      }
+      const aTime = toChrono(a?.last_message_at || a?.updated_at || a?.created_at)
+      const bTime = toChrono(b?.last_message_at || b?.updated_at || b?.created_at)
+      return bTime - aTime
+    })
+
     return (
-      <div style={overlayStyles.roomList}>
-        {list.map((room) => {
+      <div style={overlayStyles.roomListScroll}>
+        {sorted.map((room) => {
           const roomId = normalizeId(room.id)
-          const isGlobal = room.builtin === 'global' || roomId === normalizeId(GLOBAL_ROOM.id)
+          const isGlobal = room.builtin === 'global' || roomId === globalId
           const active = isGlobal ? viewingGlobal : activeRoomId === room.id
-          const latest = derivePreviewText(room.latestMessage || null)
           const cover = room.cover_url || room.coverUrl || null
           const unread = Number(room.unread_count) || 0
           const latestAt = room.last_message_at || room.updated_at || room.created_at || null
           const timeLabel = latestAt ? formatTime(latestAt) : ''
+          const memberCount = Number(room.member_count) || 0
+          const joinedStatus = joinedRoomIds.has(roomId)
+
           return (
             <div
-              key={room.id}
+              key={room.id || roomId}
               style={overlayStyles.roomCard(active)}
               role="button"
               tabIndex={0}
@@ -3489,38 +3586,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                     <span style={overlayStyles.unreadBadge}>{unread > 99 ? '99+' : unread}</span>
                   ) : null}
                 </div>
-                <span style={overlayStyles.roomCardMeta}>{latest || '최근 메시지가 없습니다.'}</span>
-                <div style={overlayStyles.roomCardFooter}>
+                <div style={overlayStyles.roomCardStats}>
                   <span>{timeLabel}</span>
-                  {visibility === 'open' ? (
-                    isGlobal ? (
-                      <span style={{ fontSize: 11, color: '#cbd5f5' }}>기본 채널</span>
-                    ) : (
-                      <button
-                        type="button"
-                        style={overlayStyles.roomCardButton}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleJoinRoom(room)
-                        }}
-                      >
-                        참여하기
-                      </button>
-                    )
-                  ) : isGlobal ? (
-                    <span style={{ fontSize: 11, color: '#cbd5f5' }}>기본 채널</span>
-                  ) : (
-                    <button
-                      type="button"
-                      style={overlayStyles.roomCardButton}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handleLeaveRoom(room)
-                      }}
-                    >
-                      나가기
-                    </button>
-                  )}
+                  {memberCount ? <span>{memberCount}명</span> : null}
+                  {joinedStatus ? <span>참여중</span> : null}
                 </div>
               </div>
             </div>
@@ -3552,24 +3621,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               {visibility === 'open' ? '공개 채팅' : '비공개 채팅'}
             </strong>
           </div>
-          {visibility === 'open' && openSearchActive ? (
-            <form style={overlayStyles.searchBar} onSubmit={handleSubmitOpenSearch}>
-              <input
-                ref={openSearchInputRef}
-                value={openSearchQuery}
-                onChange={(event) => setOpenSearchQuery(event.target.value)}
-                placeholder="오픈채팅 검색"
-                style={overlayStyles.searchInput}
-              />
-              <button type="submit" style={overlayStyles.searchSubmit}>
-                검색
-              </button>
-              {(openRoomsFilter && openRoomsFilter.length) || (openSearchQuery && openSearchQuery.length) ? (
-                <button type="button" style={overlayStyles.searchReset} onClick={handleResetOpenSearch}>
-                  초기화
-                </button>
-              ) : null}
-            </form>
+          {visibility === 'open' ? (
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+              검색과 방 만들기는 상단 아이콘을 이용해 주세요.
+            </span>
           ) : null}
           {roomError ? (
             <span style={{ ...overlayStyles.mutedText, color: '#fca5a5' }}>
@@ -3589,17 +3644,27 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       actions.push({ key: 'friends', icon: '👥', label: '친구 관리', onClick: handleOpenFriends })
     }
     if (activeTab === 'private') {
-      actions.push({ key: 'create-private', icon: '＋', label: '방 만들기', onClick: handleCreateRoom })
+      actions.push({
+        key: 'create-private',
+        icon: '＋',
+        label: '방 만들기',
+        onClick: () => handleOpenCreateRoom('private'),
+      })
     }
     if (activeTab === 'open') {
       actions.push({
         key: 'search',
         icon: '🔍',
         label: '방 검색',
-        onClick: handleToggleOpenSearch,
-        active: openSearchActive || Boolean(openRoomsFilter),
+        onClick: handleOpenSearchOverlay,
+        active: searchModalOpen,
       })
-      actions.push({ key: 'create-open', icon: '＋', label: '방 만들기', onClick: handleCreateRoom })
+      actions.push({
+        key: 'create-open',
+        icon: '＋',
+        label: '방 만들기',
+        onClick: () => handleOpenCreateRoom('public'),
+      })
     }
 
     return (
@@ -3681,6 +3746,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             </div>
           </div>
           <div style={overlayStyles.headerButtons}>
+            {context?.type === 'chat-room' ? (
+              <button
+                type="button"
+                onClick={() =>
+                  handleLeaveRoom({ id: context.chatRoomId, visibility: context.visibility || 'private' })
+                }
+                style={overlayStyles.headerButton('ghost')}
+              >
+                나가기
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -4182,6 +4258,228 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     </div>
   ) : null
 
+  const createRoomOverlay = (
+    <SurfaceOverlay
+      open={createModal.open}
+      onClose={handleCloseCreateRoom}
+      title={createModal.visibility === 'public' ? '오픈채팅 만들기' : '채팅방 만들기'}
+      width={420}
+      zIndex={1510}
+    >
+      <form onSubmit={handleSubmitCreateRoom} style={{ display: 'grid', gap: 14 }}>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>방 이름</span>
+          <input
+            type="text"
+            value={createForm.name}
+            onChange={(event) => handleChangeCreateField('name', event.target.value)}
+            placeholder="채팅방 이름"
+            required
+            style={{
+              borderRadius: 12,
+              border: '1px solid rgba(71, 85, 105, 0.6)',
+              background: 'rgba(15, 23, 42, 0.75)',
+              padding: '10px 12px',
+              color: '#f8fafc',
+              fontSize: 13,
+            }}
+          />
+        </label>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>설명 (선택)</span>
+          <textarea
+            value={createForm.description}
+            onChange={(event) => handleChangeCreateField('description', event.target.value)}
+            placeholder="방 소개를 입력해 주세요."
+            rows={3}
+            style={{
+              borderRadius: 12,
+              border: '1px solid rgba(71, 85, 105, 0.6)',
+              background: 'rgba(15, 23, 42, 0.75)',
+              padding: '10px 12px',
+              color: '#f8fafc',
+              fontSize: 13,
+              resize: 'vertical',
+            }}
+          />
+        </label>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5f5' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(createForm.allowAi)}
+              onChange={(event) => handleChangeCreateField('allowAi', event.target.checked)}
+            />
+            AI 응답 허용
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5f5' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(createForm.requireApproval)}
+              onChange={(event) => handleChangeCreateField('requireApproval', event.target.checked)}
+            />
+            참여 승인 필요
+          </label>
+        </div>
+        {createError ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{createError}</span> : null}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button
+            type="button"
+            onClick={handleCloseCreateRoom}
+            style={{
+              borderRadius: 12,
+              border: '1px solid rgba(148, 163, 184, 0.45)',
+              background: 'rgba(15, 23, 42, 0.7)',
+              color: '#cbd5f5',
+              padding: '8px 14px',
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            취소
+          </button>
+          <button
+            type="submit"
+            disabled={createSubmitting}
+            style={{
+              borderRadius: 12,
+              border: '1px solid rgba(59, 130, 246, 0.7)',
+              background: createSubmitting ? 'rgba(59, 130, 246, 0.35)' : 'rgba(59, 130, 246, 0.85)',
+              color: '#f8fafc',
+              padding: '8px 18px',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: createSubmitting ? 'progress' : 'pointer',
+            }}
+          >
+            {createSubmitting ? '생성 중…' : '생성하기'}
+          </button>
+        </div>
+      </form>
+    </SurfaceOverlay>
+  )
+
+  const searchOverlay = (
+    <SurfaceOverlay
+      open={searchModalOpen}
+      onClose={handleCloseSearchOverlay}
+      title="오픈채팅 검색"
+      width={520}
+      zIndex={1505}
+    >
+      <div style={{ display: 'grid', gap: 16 }}>
+        <form onSubmit={handleSubmitSearch} style={{ display: 'flex', gap: 10 }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="채팅방 이름 또는 설명 검색"
+            style={{
+              flex: 1,
+              borderRadius: 12,
+              border: '1px solid rgba(71, 85, 105, 0.6)',
+              background: 'rgba(15, 23, 42, 0.75)',
+              padding: '10px 12px',
+              color: '#f8fafc',
+              fontSize: 13,
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              borderRadius: 12,
+              border: '1px solid rgba(59, 130, 246, 0.7)',
+              background: 'rgba(59, 130, 246, 0.85)',
+              color: '#f8fafc',
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            검색
+          </button>
+        </form>
+        {searchError ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{searchError}</span> : null}
+        {searchLoading ? (
+          <span style={overlayStyles.mutedText}>검색 중입니다…</span>
+        ) : searchPerformed ? (
+          searchResults.length ? (
+            <div style={{ display: 'grid', gap: 12 }}>
+              {searchResults.map((room) => {
+                const roomId = normalizeId(room.id)
+                const joined = joinedRoomIds.has(roomId)
+                const memberCount = Number(room.member_count) || 0
+                return (
+                  <div
+                    key={room.id || roomId}
+                    style={{
+                      ...overlayStyles.roomCard(false),
+                      border: '1px solid rgba(59, 130, 246, 0.35)',
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      if (joined) {
+                        handleSelectRoom(room, 'open')
+                        handleCloseSearchOverlay()
+                      }
+                    }}
+                  >
+                    <div style={overlayStyles.roomCardBody}>
+                      <div style={overlayStyles.roomCardHeader}>
+                        <span style={overlayStyles.roomCardTitle}>{room.name || '채팅방'}</span>
+                        {joined ? (
+                          <span style={{ fontSize: 11, color: '#cbd5f5' }}>참여중</span>
+                        ) : null}
+                      </div>
+                      {room.description ? (
+                        <span style={{ fontSize: 12, color: '#cbd5f5' }}>
+                          {truncateText(room.description, 80)}
+                        </span>
+                      ) : null}
+                      <div style={overlayStyles.roomCardStats}>
+                        <span>{memberCount ? `${memberCount}명` : '새 채팅방'}</span>
+                        <button
+                          type="button"
+                          disabled={joined}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            if (!joined) {
+                              handleJoinRoom(room)
+                            }
+                          }}
+                          style={{
+                            borderRadius: 999,
+                            border: '1px solid rgba(59, 130, 246, 0.65)',
+                            background: joined
+                              ? 'rgba(37, 99, 235, 0.25)'
+                              : 'rgba(59, 130, 246, 0.8)',
+                            color: '#e0f2fe',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: '5px 12px',
+                            cursor: joined ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {joined ? '참여중' : '참여하기'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <span style={overlayStyles.mutedText}>검색 결과가 없습니다.</span>
+          )
+        ) : (
+          <span style={overlayStyles.mutedText}>검색어를 입력해 오픈채팅을 찾아보세요.</span>
+        )}
+      </div>
+    </SurfaceOverlay>
+  )
+
   const friendOverlay = (
     <FriendOverlay
       open={friendOverlayOpen}
@@ -4196,11 +4494,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       onAcceptRequest={acceptFriendRequest}
       onDeclineRequest={declineFriendRequest}
       onCancelRequest={cancelFriendRequest}
+      overlayZIndex={1525}
     />
   )
 
   return (
     <>
+      {createRoomOverlay}
+      {searchOverlay}
       {mediaPickerOverlay}
       {expandedMessageOverlay}
       {attachmentViewerOverlay}
@@ -4215,6 +4516,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
       >
         <div style={overlayStyles.frame}>
+          <button type="button" style={overlayStyles.closeButton} onClick={onClose}>
+            닫기
+          </button>
           <div style={overlayStyles.root(focused)}>
             {!focused ? renderListColumn() : null}
             {focused ? renderMessageColumn() : null}
