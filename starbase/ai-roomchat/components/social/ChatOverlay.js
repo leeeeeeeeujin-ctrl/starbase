@@ -18,6 +18,283 @@ import {
 } from '@/lib/chat/messages'
 import { supabase } from '@/lib/supabase'
 
+const CHAT_ATTACHMENT_BUCKET = 'chat-attachments'
+const ATTACHMENT_SIZE_LIMIT = 50 * 1024 * 1024
+const MAX_VIDEO_DURATION = 4 * 60
+const MAX_MESSAGE_PREVIEW_LENGTH = 240
+const ATTACHMENT_ICONS = {
+  image: '🖼️',
+  video: '🎬',
+  file: '📄',
+}
+
+function getAttachmentCacheKey(attachment) {
+  if (!attachment) return ''
+  const bucket = attachment.bucket || CHAT_ATTACHMENT_BUCKET
+  const path = attachment.path || attachment.id || ''
+  return `${bucket}/${path}`
+}
+
+function createLocalId(prefix = 'local') {
+  if (typeof crypto !== 'undefined' && crypto?.randomUUID) {
+    return `${prefix}-${crypto.randomUUID()}`
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function sanitizeFileName(name = '') {
+  return name.replace(/[^a-zA-Z0-9_.-]/g, '_')
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / 1024 ** exponent
+  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
+}
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds)) return '00:00'
+  const minutes = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
+
+async function blobFromCanvas(canvas, type = 'image/webp', quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob)
+      } else {
+        reject(new Error('이미지 데이터를 생성할 수 없습니다.'))
+      }
+    }, type, quality)
+  })
+}
+
+async function compressBlob(blob, encoding = 'gzip') {
+  if (typeof CompressionStream === 'undefined') {
+    return { blob, encoding: 'none' }
+  }
+  const stream = blob.stream().pipeThrough(new CompressionStream(encoding))
+  const compressed = await new Response(stream).blob()
+  return { blob: compressed, encoding }
+}
+
+async function decompressBlob(blob, encoding) {
+  if (!encoding || encoding === 'none') {
+    return blob
+  }
+  if (typeof DecompressionStream === 'undefined') {
+    return blob
+  }
+  const stream = blob.stream().pipeThrough(new DecompressionStream(encoding))
+  return new Response(stream).blob()
+}
+
+async function createImageAttachmentDraft(file) {
+  const url = URL.createObjectURL(file)
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = url
+    })
+
+    const maxDimension = 1600
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(image.width * scale))
+    canvas.height = Math.max(1, Math.round(image.height * scale))
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+    const processedBlob = await blobFromCanvas(canvas)
+    const { blob: compressedBlob, encoding } = await compressBlob(processedBlob)
+
+    const previewCanvas = document.createElement('canvas')
+    const previewMax = 360
+    const previewScale = Math.min(1, previewMax / Math.max(image.width, image.height))
+    previewCanvas.width = Math.max(1, Math.round(image.width * previewScale))
+    previewCanvas.height = Math.max(1, Math.round(image.height * previewScale))
+    const previewCtx = previewCanvas.getContext('2d')
+    previewCtx.drawImage(image, 0, 0, previewCanvas.width, previewCanvas.height)
+    const previewUrl = previewCanvas.toDataURL('image/webp', 0.82)
+
+    return {
+      id: createLocalId('image'),
+      type: 'image',
+      name: file.name,
+      originalSize: file.size,
+      size: compressedBlob.size,
+      encoding,
+      blob: compressedBlob,
+      contentType: 'image/webp',
+      width: canvas.width,
+      height: canvas.height,
+      previewUrl,
+    }
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+async function loadVideoMetadata(file) {
+  const url = URL.createObjectURL(file)
+  try {
+    const meta = await new Promise((resolve, reject) => {
+      const video = document.createElement('video')
+      video.preload = 'metadata'
+      video.onloadedmetadata = () => {
+        resolve({ duration: video.duration, width: video.videoWidth, height: video.videoHeight })
+      }
+      video.onerror = (event) => reject(event?.error || new Error('동영상 정보를 불러오지 못했습니다.'))
+      video.src = url
+    })
+    return meta
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+async function createVideoAttachmentDraft(file) {
+  const { duration, width, height } = await loadVideoMetadata(file)
+  if (Number.isFinite(duration) && duration > MAX_VIDEO_DURATION) {
+    throw new Error('4분을 초과하는 동영상은 업로드할 수 없습니다.')
+  }
+
+  const { blob: compressedBlob, encoding } = await compressBlob(file)
+
+  let previewUrl = ''
+  const videoUrl = URL.createObjectURL(file)
+  try {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.src = videoUrl
+    await new Promise((resolve) => {
+      video.onloadeddata = resolve
+      video.onloadedmetadata = resolve
+    })
+    video.currentTime = Math.min(1, Math.max(0, duration / 2))
+    await new Promise((resolve) => {
+      video.onseeked = resolve
+    })
+    const canvas = document.createElement('canvas')
+    const scale = Math.min(1, 480 / Math.max(video.videoWidth, video.videoHeight))
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    previewUrl = canvas.toDataURL('image/webp', 0.82)
+  } catch (error) {
+    console.warn('[chat] 동영상 미리보기를 생성할 수 없습니다.', error)
+  } finally {
+    URL.revokeObjectURL(videoUrl)
+  }
+
+  return {
+    id: createLocalId('video'),
+    type: 'video',
+    name: file.name,
+    originalSize: file.size,
+    size: compressedBlob.size,
+    encoding,
+    blob: compressedBlob,
+    contentType: file.type || 'video/mp4',
+    previewUrl,
+    duration,
+    width,
+    height,
+  }
+}
+
+async function createFileAttachmentDraft(file) {
+  const { blob: compressedBlob, encoding } = await compressBlob(file)
+  return {
+    id: createLocalId('file'),
+    type: 'file',
+    name: file.name,
+    originalSize: file.size,
+    size: compressedBlob.size,
+    encoding,
+    blob: compressedBlob,
+    contentType: file.type || 'application/octet-stream',
+  }
+}
+
+function truncateText(value = '', limit = MAX_MESSAGE_PREVIEW_LENGTH) {
+  if (!value) return { text: '', truncated: false }
+  if (value.length <= limit) {
+    return { text: value, truncated: false }
+  }
+  return { text: `${value.slice(0, limit)}…`, truncated: true }
+}
+
+function sameMinute(a, b) {
+  if (!a || !b) return false
+  try {
+    const first = new Date(a)
+    const second = new Date(b)
+    if (Number.isNaN(first.getTime()) || Number.isNaN(second.getTime())) return false
+    return (
+      first.getFullYear() === second.getFullYear() &&
+      first.getMonth() === second.getMonth() &&
+      first.getDate() === second.getDate() &&
+      first.getHours() === second.getHours() &&
+      first.getMinutes() === second.getMinutes()
+    )
+  } catch (error) {
+    return false
+  }
+}
+
+async function uploadAttachmentDraft({ blob, name, encoding, contentType }) {
+  const safeName = sanitizeFileName(name)
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}.gz`
+  const { error } = await supabase.storage
+    .from(CHAT_ATTACHMENT_BUCKET)
+    .upload(path, blob, {
+      cacheControl: '3600',
+      contentType: 'application/octet-stream',
+      upsert: false,
+    })
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    bucket: CHAT_ATTACHMENT_BUCKET,
+    path,
+    encoding,
+    content_type: contentType,
+    name,
+    size: blob.size,
+  }
+}
+
+async function fetchAttachmentBlob(attachment) {
+  const bucket = attachment.bucket || CHAT_ATTACHMENT_BUCKET
+  const path = attachment.path
+  if (!bucket || !path) {
+    throw new Error('첨부 파일 위치를 확인할 수 없습니다.')
+  }
+
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60)
+  if (error || !data?.signedUrl) {
+    throw error || new Error('첨부 파일 URL을 생성하지 못했습니다.')
+  }
+
+  const response = await fetch(data.signedUrl)
+  if (!response.ok) {
+    throw new Error('첨부 파일을 다운로드할 수 없습니다.')
+  }
+
+  const blob = await response.blob()
+  return decompressBlob(blob, attachment.encoding)
+}
+
 const normalizeMessageRecord = (record) => {
   if (!record || typeof record !== 'object') {
     return null
@@ -370,8 +647,10 @@ const overlayStyles = {
     borderRadius: 12,
     border: mine ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid rgba(71, 85, 105, 0.45)',
     background: mine ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.8)',
-    padding: '4px 12px',
+    padding: '6px 12px 8px',
     color: '#f8fafc',
+    display: 'grid',
+    gap: 6,
   }),
   messageText: {
     fontSize: 13,
@@ -379,12 +658,57 @@ const overlayStyles = {
     margin: 0,
     whiteSpace: 'pre-wrap',
   },
+  viewMoreButton: {
+    border: 'none',
+    background: 'transparent',
+    color: '#bae6fd',
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+    textDecoration: 'underline',
+    padding: 0,
+    justifySelf: 'start',
+  },
   messageTimestamp: (mine = false) => ({
     fontSize: 11,
     color: 'rgba(148, 163, 184, 0.85)',
     minWidth: 56,
     textAlign: mine ? 'right' : 'left',
   }),
+  messageAttachments: {
+    display: 'grid',
+    gap: 8,
+  },
+  messageAttachment: (mine = false) => ({
+    borderRadius: 12,
+    overflow: 'hidden',
+    border: mine ? '1px solid rgba(96, 165, 250, 0.6)' : '1px solid rgba(148, 163, 184, 0.5)',
+    background: 'rgba(15, 23, 42, 0.92)',
+    maxWidth: 320,
+    cursor: 'pointer',
+    display: 'grid',
+    gap: 0,
+  }),
+  messageAttachmentPreviewWrapper: {
+    position: 'relative',
+    width: '100%',
+    overflow: 'hidden',
+    background: 'rgba(15, 23, 42, 0.8)',
+  },
+  messageAttachmentPreview: {
+    width: '100%',
+    height: 'auto',
+    display: 'block',
+  },
+  messageAttachmentMeta: {
+    padding: '6px 10px',
+    fontSize: 12,
+    color: '#e2e8f0',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
   composerContainer: {
     position: 'relative',
     borderTop: '1px solid rgba(71, 85, 105, 0.5)',
@@ -396,6 +720,82 @@ const overlayStyles = {
     alignItems: 'center',
     gap: 10,
     padding: '10px 16px 12px',
+  },
+  attachmentStrip: {
+    display: 'flex',
+    gap: 12,
+    padding: '10px 16px 0',
+    overflowX: 'auto',
+  },
+  attachmentPreview: {
+    position: 'relative',
+    flex: '0 0 auto',
+    width: 96,
+    borderRadius: 14,
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    background: 'rgba(15, 23, 42, 0.8)',
+    padding: 8,
+    display: 'grid',
+    gap: 6,
+    justifyItems: 'center',
+    color: '#e2e8f0',
+  },
+  attachmentRemove: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 20,
+    height: 20,
+    borderRadius: '50%',
+    background: 'rgba(15, 23, 42, 0.9)',
+    color: '#e2e8f0',
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+    cursor: 'pointer',
+  },
+  attachmentThumb: {
+    width: 72,
+    height: 54,
+    borderRadius: 10,
+    background: 'rgba(30, 41, 59, 0.9)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    fontSize: 22,
+    position: 'relative',
+  },
+  attachmentDuration: {
+    position: 'absolute',
+    bottom: 6,
+    right: 10,
+    background: 'rgba(15, 23, 42, 0.85)',
+    color: '#e2e8f0',
+    fontSize: 10,
+    fontWeight: 600,
+    padding: '2px 6px',
+    borderRadius: 999,
+  },
+  attachmentInfo: {
+    display: 'grid',
+    justifyItems: 'center',
+    gap: 2,
+  },
+  attachmentName: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#e2e8f0',
+    textAlign: 'center',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  attachmentMeta: {
+    fontSize: 10,
+    color: '#94a3b8',
   },
   composerToggle: (active = false, disabled = false) => ({
     width: 36,
@@ -479,6 +879,62 @@ const overlayStyles = {
   },
 }
 
+const modalStyles = {
+  backdrop: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(4, 10, 28, 0.72)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2000,
+    padding: 24,
+  },
+  panel: {
+    background: 'rgba(12, 20, 45, 0.98)',
+    borderRadius: 24,
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    maxWidth: 'min(640px, 94vw)',
+    width: '100%',
+    maxHeight: '85vh',
+    display: 'grid',
+    gap: 18,
+    padding: '20px 24px',
+    color: '#f8fafc',
+    boxShadow: '0 24px 60px rgba(2, 6, 23, 0.6)',
+    overflow: 'auto',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  closeButton: {
+    borderRadius: 10,
+    border: '1px solid rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.8)',
+    color: '#e2e8f0',
+    padding: '6px 12px',
+    cursor: 'pointer',
+    fontWeight: 600,
+    fontSize: 12,
+  },
+  body: {
+    display: 'grid',
+    gap: 12,
+    fontSize: 14,
+    lineHeight: 1.6,
+  },
+  footer: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+}
+
 const TABS = [
   { key: 'info', label: '정보' },
   { key: 'private', label: '일반채팅' },
@@ -511,6 +967,31 @@ function extractMessageText(message) {
     return message.text
   }
   return ''
+}
+
+function getMessageAttachments(message) {
+  if (!message || !message.metadata) return []
+  const metadata = typeof message.metadata === 'object' ? message.metadata : null
+  if (!metadata) return []
+  const attachments = Array.isArray(metadata.attachments) ? metadata.attachments : []
+  return attachments
+    .map((item, index) => {
+      if (!item || typeof item !== 'object') return null
+      const bucket = item.bucket || CHAT_ATTACHMENT_BUCKET
+      const path = item.path || null
+      const id = item.id || `${message.id || message.local_id || 'attachment'}-${index}`
+      return {
+        ...item,
+        id,
+        bucket,
+        path,
+        type: item.type || 'file',
+        name: item.name || '첨부 파일',
+        preview_url: item.preview_url || item.preview || null,
+        encoding: item.encoding || 'none',
+      }
+    })
+    .filter((attachment) => attachment && (attachment.path || attachment.preview_url))
 }
 
 function formatTime(value) {
@@ -585,10 +1066,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [sendError, setSendError] = useState(null)
   const [sending, setSending] = useState(false)
   const [showComposerPanel, setShowComposerPanel] = useState(false)
+  const [composerAttachments, setComposerAttachments] = useState([])
+  const [attachmentError, setAttachmentError] = useState(null)
+  const [viewerAttachment, setViewerAttachment] = useState(null)
+  const [expandedMessage, setExpandedMessage] = useState(null)
+  const [videoControlsVisible, setVideoControlsVisible] = useState(true)
   const unsubscribeRef = useRef(null)
   const messageListRef = useRef(null)
   const composerPanelRef = useRef(null)
   const composerToggleRef = useRef(null)
+  const attachmentCacheRef = useRef(new Map())
+  const longPressTimerRef = useRef(null)
+  const longPressActiveRef = useRef(false)
+  const videoControlTimerRef = useRef(null)
 
   const heroes = useMemo(() => (dashboard?.heroes ? dashboard.heroes : []), [dashboard])
 
@@ -655,6 +1145,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setMessages([])
       setMessageInput('')
       setShowComposerPanel(false)
+      setComposerAttachments([])
+      setAttachmentError(null)
+      setExpandedMessage(null)
+      setViewerAttachment(null)
+      attachmentCacheRef.current.clear()
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
+        longPressTimerRef.current = null
+      }
+      longPressActiveRef.current = false
+      if (videoControlTimerRef.current) {
+        clearTimeout(videoControlTimerRef.current)
+        videoControlTimerRef.current = null
+      }
+      setVideoControlsVisible(true)
       if (onUnreadChange) {
         onUnreadChange(0)
       }
@@ -786,6 +1291,46 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setShowComposerPanel(false)
   }, [context])
 
+  useEffect(() => {
+    return () => {
+      attachmentCacheRef.current.forEach((entry) => {
+        if (entry?.url) {
+          try {
+            URL.revokeObjectURL(entry.url)
+          } catch (error) {
+            console.warn('[chat] 첨부 미리보기 URL 해제 실패', error)
+          }
+        }
+      })
+      attachmentCacheRef.current.clear()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (viewerAttachment?.attachment?.type === 'video' && viewerAttachment.status === 'ready') {
+      setVideoControlsVisible(true)
+      if (videoControlTimerRef.current) {
+        clearTimeout(videoControlTimerRef.current)
+      }
+      videoControlTimerRef.current = setTimeout(() => {
+        setVideoControlsVisible(false)
+      }, 3000)
+    } else {
+      if (videoControlTimerRef.current) {
+        clearTimeout(videoControlTimerRef.current)
+        videoControlTimerRef.current = null
+      }
+      setVideoControlsVisible(true)
+    }
+
+    return () => {
+      if (videoControlTimerRef.current) {
+        clearTimeout(videoControlTimerRef.current)
+        videoControlTimerRef.current = null
+      }
+    }
+  }, [viewerAttachment])
+
   const refreshRooms = useCallback(
     async (search = '') => {
       setLoadingRooms(true)
@@ -826,6 +1371,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       focused: true,
     })
     setActiveTab('info')
+    setComposerAttachments([])
+    setAttachmentError(null)
   }, [])
 
   const handleSelectRoom = useCallback((room, visibility) => {
@@ -840,6 +1387,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         visibility: 'public',
         focused: true,
       })
+      setComposerAttachments([])
+      setAttachmentError(null)
       return
     }
 
@@ -851,6 +1400,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       visibility: visibility || room.visibility || 'private',
       focused: true,
     })
+    setComposerAttachments([])
+    setAttachmentError(null)
   }, [])
 
   const handleCreateRoom = useCallback(async () => {
@@ -915,17 +1466,70 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     async (options = {}) => {
       if (!context) return
       const text = typeof options.text === 'string' ? options.text.trim() : messageInput.trim()
-      if (!text) return
+      const pendingAttachments = composerAttachments.filter((attachment) => attachment?.status === 'ready')
+      if (!text && pendingAttachments.length === 0) {
+        return
+      }
 
       setSending(true)
       setSendError(null)
+
+      const updateAttachmentStatus = (statusUpdater) => {
+        setComposerAttachments((prev) =>
+          prev.map((attachment) =>
+            statusUpdater(attachment) || attachment,
+          ),
+        )
+      }
+
       try {
         const rankRoomId =
           context && (context.scope === 'main' || context.scope === 'role')
             ? context.rankRoomId || null
             : null
+
+        const uploadedAttachments = []
+        if (pendingAttachments.length) {
+          updateAttachmentStatus((attachment) =>
+            pendingAttachments.includes(attachment)
+              ? { ...attachment, status: 'uploading' }
+              : null,
+          )
+
+          for (const attachment of pendingAttachments) {
+            const uploaded = await uploadAttachmentDraft({
+              blob: attachment.blob,
+              name: attachment.name,
+              encoding: attachment.encoding,
+              contentType: attachment.contentType,
+            })
+
+            uploadedAttachments.push({
+              id: attachment.id,
+              type: attachment.type,
+              name: attachment.name,
+              bucket: uploaded.bucket,
+              path: uploaded.path,
+              encoding: uploaded.encoding,
+              content_type: uploaded.content_type,
+              size: uploaded.size,
+              original_size: attachment.originalSize,
+              preview_url: attachment.previewUrl || null,
+              width: attachment.width || null,
+              height: attachment.height || null,
+              duration: attachment.duration || null,
+              created_at: new Date().toISOString(),
+            })
+          }
+        }
+
         const inserted = await insertMessage(
-          { text, scope: context.scope || 'global', hero_id: selectedHero || null },
+          {
+            text,
+            scope: context.scope || 'global',
+            hero_id: selectedHero || null,
+            attachments: uploadedAttachments,
+          },
           {
             sessionId: context.sessionId || null,
             matchInstanceId: context.matchInstanceId || null,
@@ -933,18 +1537,25 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             roomId: rankRoomId,
           },
         )
+
         if (inserted) {
           setMessages((prev) => upsertMessageList(prev, inserted))
         }
+
         setMessageInput('')
+        setComposerAttachments([])
+        setAttachmentError(null)
       } catch (error) {
         console.error('[chat] 메시지를 보낼 수 없습니다.', error)
         setSendError(error)
+        updateAttachmentStatus((attachment) =>
+          pendingAttachments.includes(attachment) ? { ...attachment, status: 'error' } : null,
+        )
       } finally {
         setSending(false)
       }
     },
-    [context, messageInput, selectedHero],
+    [composerAttachments, context, messageInput, selectedHero],
   )
 
   const handleAiReply = useCallback(async () => {
@@ -977,10 +1588,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
   }, [handleSendMessage])
 
+  const handleRemoveAttachment = useCallback((id) => {
+    setComposerAttachments((prev) =>
+      prev.filter((attachment) => attachment.id !== id || attachment.status === 'uploading'),
+    )
+  }, [])
+
   const handleAttachmentAction = useCallback(
     (action) => {
       if (action === 'ai') {
         handleAiReply()
+        return
+      }
+
+      if (!context) {
+        setAttachmentError('먼저 채팅을 선택해 주세요.')
         return
       }
 
@@ -989,19 +1611,258 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       input.type = 'file'
       if (action === 'photo') {
         input.accept = 'image/*'
+        input.multiple = true
       } else if (action === 'video') {
         input.accept = 'video/*'
+        input.multiple = false
+      } else {
+        input.accept = '*/*'
+        input.multiple = true
       }
-      input.multiple = action === 'file'
-      input.onchange = (event) => {
+
+      input.onchange = async (event) => {
         const files = event.target?.files
         if (!files || !files.length) return
-        console.info('[chat] 첨부 파일 선택:', action, files)
+        const selected = Array.from(files)
+        const drafts = []
+        let errorMessage = null
+
+        for (const file of selected) {
+          if (!file) continue
+          if (file.size > ATTACHMENT_SIZE_LIMIT) {
+            errorMessage = '50MB 이하의 파일만 업로드할 수 있습니다.'
+            continue
+          }
+
+          try {
+            if (action === 'photo') {
+              drafts.push({ ...(await createImageAttachmentDraft(file)), status: 'ready' })
+            } else if (action === 'video') {
+              drafts.push({ ...(await createVideoAttachmentDraft(file)), status: 'ready' })
+            } else {
+              drafts.push({ ...(await createFileAttachmentDraft(file)), status: 'ready' })
+            }
+          } catch (error) {
+            console.error('[chat] 첨부 파일 준비 실패', error)
+            errorMessage = error?.message || '첨부 파일을 준비할 수 없습니다.'
+          }
+        }
+
+        if (drafts.length) {
+          setComposerAttachments((prev) => [...prev, ...drafts])
+        }
+        setAttachmentError(errorMessage)
+        input.value = ''
       }
+
       input.click()
     },
-    [handleAiReply],
+    [context, handleAiReply],
   )
+
+  const handleDownloadAttachment = useCallback(async (attachment) => {
+    if (!attachment) return
+    const key = getAttachmentCacheKey(attachment)
+    try {
+      let cached = attachmentCacheRef.current.get(key)
+      if (!cached) {
+        const blob = await fetchAttachmentBlob(attachment)
+        const url = URL.createObjectURL(blob)
+        cached = { url, blob }
+        attachmentCacheRef.current.set(key, cached)
+      }
+
+      const blob = cached.blob
+      const url = cached.url || (blob ? URL.createObjectURL(blob) : null)
+      if (!url) {
+        throw new Error('첨부 파일 URL을 준비할 수 없습니다.')
+      }
+
+      const link = document.createElement('a')
+      link.href = url
+      link.download = attachment.name || 'attachment'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (error) {
+      console.error('[chat] 첨부 파일 다운로드 실패', error)
+      alert('첨부 파일을 다운로드할 수 없습니다.')
+    }
+  }, [])
+
+  const handleOpenAttachment = useCallback(
+    async (message, attachment) => {
+      if (!attachment) return
+      const key = getAttachmentCacheKey(attachment)
+      setViewerAttachment({
+        messageId: message?.id || message?.local_id || null,
+        attachment,
+        status: 'loading',
+        url: null,
+        error: null,
+      })
+
+      try {
+        let cached = attachmentCacheRef.current.get(key)
+        if (!cached) {
+          const blob = await fetchAttachmentBlob(attachment)
+          const url = URL.createObjectURL(blob)
+          cached = { url, blob }
+          attachmentCacheRef.current.set(key, cached)
+        }
+
+        setViewerAttachment({
+          messageId: message?.id || message?.local_id || null,
+          attachment,
+          status: 'ready',
+          url: cached.url,
+          error: null,
+        })
+      } catch (error) {
+        console.error('[chat] 첨부 파일 열기 실패', error)
+        setViewerAttachment({
+          messageId: message?.id || message?.local_id || null,
+          attachment,
+          status: 'error',
+          url: null,
+          error,
+        })
+      }
+    },
+    [],
+  )
+
+  const handleAttachmentPointerDown = useCallback(
+    (attachment) => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
+      }
+      longPressActiveRef.current = false
+      longPressTimerRef.current = setTimeout(async () => {
+        longPressActiveRef.current = true
+        try {
+          await handleDownloadAttachment(attachment)
+        } finally {
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current)
+            longPressTimerRef.current = null
+          }
+        }
+      }, 600)
+    },
+    [handleDownloadAttachment],
+  )
+
+  const handleAttachmentPointerUp = useCallback(
+    (message, attachment) => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
+        longPressTimerRef.current = null
+      }
+      const triggered = longPressActiveRef.current
+      longPressActiveRef.current = false
+      if (!triggered) {
+        handleOpenAttachment(message, attachment)
+      }
+    },
+    [handleOpenAttachment],
+  )
+
+  const handleAttachmentPointerLeave = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+    longPressActiveRef.current = false
+  }, [])
+
+  const handleCloseViewer = useCallback(() => {
+    setViewerAttachment(null)
+  }, [])
+
+  const handleVideoInteraction = useCallback(() => {
+    setVideoControlsVisible(true)
+    if (videoControlTimerRef.current) {
+      clearTimeout(videoControlTimerRef.current)
+    }
+    videoControlTimerRef.current = setTimeout(() => {
+      setVideoControlsVisible(false)
+    }, 3000)
+  }, [])
+
+  const renderAttachmentPreview = useCallback(
+    (message, attachment, mine = false) => {
+      if (!attachment) return null
+      const sizeLabel = formatBytes(attachment.original_size || attachment.size || 0)
+      const icon = ATTACHMENT_ICONS[attachment.type] || '📎'
+      const hasPreview = Boolean(attachment.preview_url)
+      return (
+        <div
+          key={attachment.id}
+          style={overlayStyles.messageAttachment(mine)}
+          role="button"
+          tabIndex={0}
+          onPointerDown={(event) => {
+            event.preventDefault()
+            handleAttachmentPointerDown(attachment)
+          }}
+          onPointerUp={(event) => {
+            event.preventDefault()
+            handleAttachmentPointerUp(message, attachment)
+          }}
+          onPointerLeave={handleAttachmentPointerLeave}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              handleOpenAttachment(message, attachment)
+            }
+          }}
+          onClick={(event) => event.preventDefault()}
+        >
+          <div style={overlayStyles.messageAttachmentPreviewWrapper}>
+            {hasPreview ? (
+              <img
+                src={attachment.preview_url}
+                alt={attachment.name}
+                style={overlayStyles.messageAttachmentPreview}
+              />
+            ) : (
+              <div
+                style={{
+                  ...overlayStyles.attachmentThumb,
+                  width: '100%',
+                  height: 160,
+                  fontSize: 28,
+                  borderRadius: 0,
+                }}
+              >
+                {icon}
+              </div>
+            )}
+            {attachment.type === 'video' && Number.isFinite(attachment.duration) ? (
+              <span style={{ ...overlayStyles.attachmentDuration, right: 12, bottom: 10 }}>
+                {formatDuration(attachment.duration)}
+              </span>
+            ) : null}
+          </div>
+          <div style={overlayStyles.messageAttachmentMeta}>
+            <span style={{ fontWeight: 600 }}>{attachment.name}</span>
+            <span style={{ fontSize: 11, color: '#cbd5f5' }}>{sizeLabel}</span>
+          </div>
+        </div>
+      )
+    },
+    [
+      handleAttachmentPointerDown,
+      handleAttachmentPointerLeave,
+      handleAttachmentPointerUp,
+      handleOpenAttachment,
+    ],
+  )
+
+  const handleCloseExpandedMessage = useCallback(() => {
+    setExpandedMessage(null)
+  }, [])
 
   const renderInfoTab = () => (
     <div style={{ display: 'grid', gap: 18 }}>
@@ -1189,7 +2050,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             : '비공개 채팅방'
       : '좌측에서 채팅방을 선택해 주세요.'
 
-    const disableSend = !hasContext || sending || !messageInput.trim()
+    const hasReadyAttachment = composerAttachments.some((attachment) => attachment?.status === 'ready')
+    const disableSend = !hasContext || sending || (!messageInput.trim() && !hasReadyAttachment)
 
     return (
       <section style={overlayStyles.conversation}>
@@ -1252,27 +2114,47 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   <div key={entry.key} style={overlayStyles.messageGroup(mine)}>
                     {avatarNode}
                     <div style={overlayStyles.messageContent(mine)}>
-                      {!mine ? (
-                        <span style={overlayStyles.messageName(false)}>{displayName}</span>
-                      ) : null}
+                      <span style={overlayStyles.messageName(mine)}>{displayName}</span>
                       <div style={overlayStyles.messageStack(mine)}>
                         {groupMessages.map((message, index) => {
+                          const attachments = getMessageAttachments(message)
                           const text = extractMessageText(message)
+                          const { text: truncatedText, truncated } = truncateText(text)
+                          const displayText = truncatedText
+                          const showViewMore = truncated
                           const created = formatTime(message.created_at)
-                          const preview = text || derivePreviewText(message)
+                          const showTimestamp =
+                            index === 0 || !sameMinute(message.created_at, groupMessages[index - 1]?.created_at)
+                          const timestampNode = created ? (
+                            <span style={overlayStyles.messageTimestamp(mine)}>{created}</span>
+                          ) : null
+                          const messageKey =
+                            message.id || message.local_id || `${message.created_at || 'message'}-${index}`
                           return (
-                            <div
-                              key={
-                                message.id
-                                  || message.local_id
-                                  || `${message.created_at || 'message'}-${index}`
-                              }
-                              style={overlayStyles.messageItem(mine)}
-                            >
+                            <div key={messageKey} style={overlayStyles.messageItem(mine)}>
+                              {mine && showTimestamp ? timestampNode : null}
                               <div style={overlayStyles.messageBubble(mine)}>
-                                <p style={overlayStyles.messageText}>{preview || ' '}</p>
+                                {attachments.length ? (
+                                  <div style={overlayStyles.messageAttachments}>
+                                    {attachments.map((attachment) =>
+                                      renderAttachmentPreview(message, attachment, mine),
+                                    )}
+                                  </div>
+                                ) : null}
+                                {displayText ? (
+                                  <p style={overlayStyles.messageText}>{displayText || ' '}</p>
+                                ) : null}
+                                {showViewMore ? (
+                                  <button
+                                    type="button"
+                                    style={overlayStyles.viewMoreButton}
+                                    onClick={() => setExpandedMessage(message)}
+                                  >
+                                    전체보기
+                                  </button>
+                                ) : null}
                               </div>
-                              <span style={overlayStyles.messageTimestamp(mine)}>{created}</span>
+                              {!mine && showTimestamp ? timestampNode : null}
                             </div>
                           )
                         })}
@@ -1289,6 +2171,62 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           )}
         </div>
         <div style={overlayStyles.composerContainer}>
+          {composerAttachments.length ? (
+            <div style={overlayStyles.attachmentStrip}>
+              {composerAttachments.map((attachment) => {
+                const status = attachment.status || 'ready'
+                const baseStyle = overlayStyles.attachmentPreview
+                const tone =
+                  status === 'uploading'
+                    ? '1px solid rgba(59, 130, 246, 0.75)'
+                    : status === 'error'
+                      ? '1px solid rgba(248, 113, 113, 0.85)'
+                      : '1px solid rgba(59, 130, 246, 0.45)'
+                return (
+                  <div key={attachment.id} style={{ ...baseStyle, border: tone }}>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAttachment(attachment.id)}
+                      style={{
+                        ...overlayStyles.attachmentRemove,
+                        cursor: status === 'uploading' ? 'not-allowed' : 'pointer',
+                        opacity: status === 'uploading' ? 0.6 : 1,
+                      }}
+                      disabled={status === 'uploading'}
+                    >
+                      ×
+                    </button>
+                    <div style={overlayStyles.attachmentThumb}>
+                      {attachment.previewUrl ? (
+                        <img
+                          src={attachment.previewUrl}
+                          alt={attachment.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        ATTACHMENT_ICONS[attachment.type] || '📎'
+                      )}
+                      {attachment.type === 'video' && Number.isFinite(attachment.duration) ? (
+                        <span style={overlayStyles.attachmentDuration}>
+                          {formatDuration(attachment.duration)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div style={overlayStyles.attachmentInfo}>
+                      <span style={overlayStyles.attachmentName}>{attachment.name || '첨부'}</span>
+                      <span style={overlayStyles.attachmentMeta}>
+                        {status === 'uploading'
+                          ? '업로드 중'
+                          : status === 'error'
+                            ? '실패'
+                            : formatBytes(attachment.originalSize || attachment.size || 0)}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
           {showComposerPanel ? (
             <div ref={composerPanelRef} style={overlayStyles.attachmentPanel}>
               <strong style={overlayStyles.attachmentPanelTitle}>빠른 작업</strong>
@@ -1362,6 +2300,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               보내기
             </button>
           </div>
+          {attachmentError ? (
+            <div style={{ ...overlayStyles.errorText, paddingTop: 8 }}>{attachmentError}</div>
+          ) : null}
         </div>
         {sendError ? (
           <div style={overlayStyles.errorText}>메시지를 전송할 수 없습니다.</div>
@@ -1372,22 +2313,118 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const focused = Boolean(context)
 
-  return (
-    <SurfaceOverlay
-      open={open}
-      onClose={onClose}
-      title="채팅"
-      width="min(1200px, 98vw)"
-      hideHeader
-      contentStyle={{ padding: 0, background: 'transparent' }}
-      frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
-    >
-      <div style={overlayStyles.frame}>
-        <div style={overlayStyles.root(focused)}>
-          {!focused ? renderListColumn() : null}
-          {renderMessageColumn()}
+  const detailAttachments = expandedMessage ? getMessageAttachments(expandedMessage) : []
+  const expandedMessageOverlay = expandedMessage ? (
+    <div style={modalStyles.backdrop} onClick={handleCloseExpandedMessage}>
+      <div
+        style={{ ...modalStyles.panel, maxWidth: 'min(540px, 92vw)' }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div style={modalStyles.header}>
+          <strong style={{ fontSize: 16 }}>전체 메시지</strong>
+          <button type="button" style={modalStyles.closeButton} onClick={handleCloseExpandedMessage}>
+            닫기
+          </button>
+        </div>
+        <div style={modalStyles.body}>
+          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{extractMessageText(expandedMessage) || ' '}</p>
+          {detailAttachments.length ? (
+            <div style={{ display: 'grid', gap: 12 }}>
+              {detailAttachments.map((attachment) =>
+                renderAttachmentPreview(expandedMessage, attachment, false),
+              )}
+            </div>
+          ) : null}
+        </div>
+        <div style={modalStyles.footer}>
+          <span>{formatDateLabel(expandedMessage.created_at)}</span>
+          <span>{formatTime(expandedMessage.created_at)}</span>
         </div>
       </div>
-    </SurfaceOverlay>
+    </div>
+  ) : null
+
+  const attachmentViewerOverlay = viewerAttachment ? (
+    <div style={modalStyles.backdrop} onClick={handleCloseViewer}>
+      <div
+        style={{ ...modalStyles.panel, maxWidth: 'min(720px, 96vw)', gap: 16 }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div style={modalStyles.header}>
+          <strong style={{ fontSize: 16 }}>{viewerAttachment.attachment?.name || '첨부 파일'}</strong>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              style={{ ...modalStyles.closeButton, background: 'rgba(37, 99, 235, 0.3)' }}
+              onClick={() => handleDownloadAttachment(viewerAttachment.attachment)}
+            >
+              다운로드
+            </button>
+            <button type="button" style={modalStyles.closeButton} onClick={handleCloseViewer}>
+              닫기
+            </button>
+          </div>
+        </div>
+        <div style={{ ...modalStyles.body, alignItems: 'center' }}>
+          {viewerAttachment.status === 'loading' ? (
+            <span style={{ color: '#cbd5f5' }}>불러오는 중...</span>
+          ) : viewerAttachment.status === 'error' ? (
+            <span style={{ color: '#fca5a5' }}>첨부 파일을 열 수 없습니다.</span>
+          ) : viewerAttachment.attachment?.type === 'image' ? (
+            <img
+              src={viewerAttachment.url}
+              alt={viewerAttachment.attachment?.name}
+              style={{ maxWidth: '100%', maxHeight: '65vh', borderRadius: 18 }}
+            />
+          ) : viewerAttachment.attachment?.type === 'video' ? (
+            <video
+              src={viewerAttachment.url}
+              controls={videoControlsVisible}
+              onPlay={handleVideoInteraction}
+              onPause={handleVideoInteraction}
+              onClick={handleVideoInteraction}
+              onPointerMove={handleVideoInteraction}
+              style={{ width: '100%', maxHeight: '65vh', borderRadius: 18, background: '#000' }}
+            />
+          ) : viewerAttachment.url ? (
+            <a
+              href={viewerAttachment.url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: '#93c5fd', fontWeight: 600 }}
+            >
+              파일 열기
+            </a>
+          ) : null}
+        </div>
+        <div style={modalStyles.footer}>
+          <span>{formatBytes(viewerAttachment.attachment?.original_size || viewerAttachment.attachment?.size || 0)}</span>
+          <span>{formatTime(viewerAttachment.attachment?.created_at || expandedMessage?.created_at)}</span>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  return (
+    <>
+      {expandedMessageOverlay}
+      {attachmentViewerOverlay}
+      <SurfaceOverlay
+        open={open}
+        onClose={onClose}
+        title="채팅"
+        width="min(1200px, 98vw)"
+        hideHeader
+        contentStyle={{ padding: 0, background: 'transparent' }}
+        frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
+      >
+        <div style={overlayStyles.frame}>
+          <div style={overlayStyles.root(focused)}>
+            {!focused ? renderListColumn() : null}
+            {renderMessageColumn()}
+          </div>
+        </div>
+      </SurfaceOverlay>
+    </>
   )
 }

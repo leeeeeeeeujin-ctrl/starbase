@@ -10,11 +10,14 @@
 2. **`messages` 테이블 기본값 및 정책**
    메시지의 기본값·제약·인덱스를 정리하고, 기존 SELECT 정책을 모두 제거한 뒤 `messages_select_public` 단일 정책만 남겨 글로벌/방/세션/귓속말 노출을 제어하도록 구성합니다. 세션 판별을 위해 `is_rank_session_owner_or_roster` 함수도 함께 배포됩니다.
 
-3. **Realtime 권한 및 브로드캐스트**  
+3. **Realtime 권한 및 브로드캐스트**
    `realtime.messages` 스키마에 인증 사용자용 SELECT 정책을 추가하고, `emit_realtime_payload` + `broadcast_messages_changes` 트리거가 `messages:*` 토픽으로 브로드캐스트하도록 설정합니다.
 
-4. **퍼블리케이션 연결**  
+4. **퍼블리케이션 연결**
    `supabase_realtime` 퍼블리케이션에 `messages`, `chat_rooms`, `chat_room_members`가 포함되어 Postgres Changes 스트림이 즉시 구독됩니다.
+
+5. **첨부 파일 전송 경로**
+   `send_rank_chat_message` 함수가 `metadata.attachments` 배열을 수용하도록 확장되어 텍스트 없이도 압축된 파일 첨부를 게시할 수 있습니다. 클라이언트는 Supabase Storage `chat-attachments` 버킷에 업로드 후 서명 URL을 통해 내려받습니다.
 
 ## 사용 방법
 
@@ -23,6 +26,30 @@
 3. Realtime 로그에 `topic:messages:*` 이벤트가 올라오는지 살펴보고, 필요 시 클라이언트가 사용하는 토픽과 일치하는지 점검합니다.
 
 스크립트는 재실행해도 안전하도록 `drop ... if exists` / `create ... if not exists` 패턴을 사용합니다.
+
+### 첨부 파일 버킷 준비
+
+채팅 첨부는 Supabase Storage `chat-attachments` 버킷을 사용합니다. 아래 SQL을 프로젝트에 적용해 버킷과 인증 사용자 전용 정책을 준비하세요.
+
+```sql
+insert into storage.buckets (id, name, public)
+values ('chat-attachments', 'chat-attachments', false)
+on conflict (id) do nothing;
+
+create policy if not exists chat_attachments_select
+on storage.objects for select to authenticated
+using (bucket_id = 'chat-attachments');
+
+create policy if not exists chat_attachments_insert
+on storage.objects for insert to authenticated
+with check (bucket_id = 'chat-attachments');
+
+create policy if not exists chat_attachments_delete
+on storage.objects for delete to authenticated
+using (bucket_id = 'chat-attachments');
+```
+
+버킷 권한을 적용한 뒤, 클라이언트는 `storage.from('chat-attachments')` API로 업로드하고 만료 60초의 서명 URL로 다운로드합니다.【F:starbase/ai-roomchat/components/social/ChatOverlay.js†L82-L144】【F:starbase/ai-roomchat/components/social/ChatOverlay.js†L1165-L1350】
 
 ### 핵심 정책 · 트리거 이름
 

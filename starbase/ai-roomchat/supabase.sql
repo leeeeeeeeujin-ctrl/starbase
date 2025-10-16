@@ -4408,6 +4408,8 @@ declare
   v_roster_owner_ids uuid[] := null;
   v_thread_hint text := null;
   v_message public.messages%rowtype;
+  v_attachments jsonb := null;
+  v_has_attachments boolean := false;
 begin
   if v_user_id is null and p_user_id is not null then
     v_user_id := p_user_id;
@@ -4417,7 +4419,14 @@ begin
     raise exception 'missing_user_id' using errcode = 'P0001';
   end if;
 
-  if v_text = '' then
+  if v_metadata ? 'attachments' then
+    v_attachments := v_metadata -> 'attachments';
+    if jsonb_typeof(v_attachments) = 'array' then
+      v_has_attachments := coalesce(jsonb_array_length(v_attachments), 0) > 0;
+    end if;
+  end if;
+
+  if v_text = '' and not coalesce(v_has_attachments, false) then
     raise exception 'empty_message' using errcode = 'P0001';
   end if;
 

@@ -62,7 +62,10 @@ export async function fetchRecentMessages({
 
 export async function insertMessage(payload, context = {}) {
   const text = typeof payload?.text === 'string' ? payload.text.trim() : ''
-  if (!text) {
+  const attachments = Array.isArray(payload?.attachments) ? payload.attachments.filter(Boolean) : []
+  const hasAttachments = attachments.length > 0
+
+  if (!text && !hasAttachments) {
     throw new Error('메시지가 비어 있습니다.')
   }
 
@@ -71,13 +74,17 @@ export async function insertMessage(payload, context = {}) {
   const summary = inspectDrafty(draftyDoc)
   const metadataBase = payload?.metadata && typeof payload.metadata === 'object' ? { ...payload.metadata } : {}
   metadataBase.drafty = metadataBase.drafty || draftyDoc
-  metadataBase.plain_text = metadataBase.plain_text || summary.plainText || text
+  metadataBase.plain_text = metadataBase.plain_text || summary.plainText || text || ''
   if (!metadataBase.summary) {
     metadataBase.summary = {
       has_links: summary.hasLinks,
       has_mentions: summary.hasMentions,
       has_hashtags: summary.hasHashtags,
     }
+  }
+
+  if (hasAttachments) {
+    metadataBase.attachments = attachments.map((attachment) => ({ ...attachment }))
   }
 
   const { data, error } = await supabase.rpc('send_rank_chat_message', {
