@@ -17,6 +17,10 @@ import {
   leaveChatRoom,
   deleteChatRoom,
   manageChatRoomRole,
+  ensureDirectChatRoom,
+  fetchChatUserBlocks,
+  blockChatUser,
+  unblockChatUser,
   markChatRoomRead,
   createChatRoomAnnouncement,
   deleteChatRoomAnnouncement,
@@ -1011,6 +1015,9 @@ const overlayStyles = {
     cursor: 'pointer',
     fontSize: 11,
     color: '#e2e8f0',
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    userSelect: 'none',
   },
   drawerParticipants: {
     display: 'grid',
@@ -1035,6 +1042,9 @@ const overlayStyles = {
           ? 'rgba(236, 72, 153, 0.18)'
           : 'rgba(15, 23, 42, 0.6)',
     cursor: 'pointer',
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    userSelect: 'none',
   }),
   drawerParticipantAvatar: (role) => ({
     width: 30,
@@ -1274,6 +1284,9 @@ const overlayStyles = {
     justifyContent: 'center',
     overflow: 'hidden',
     flexShrink: 0,
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    userSelect: 'none',
   },
   messageContent: (mine = false) => ({
     display: 'grid',
@@ -1285,6 +1298,8 @@ const overlayStyles = {
     fontSize: 11,
     fontWeight: 700,
     color: mine ? '#bfdbfe' : '#f8fafc',
+    WebkitTapHighlightColor: 'transparent',
+    userSelect: 'none',
   }),
   messageStack: (mine = false) => ({
     display: 'grid',
@@ -2013,6 +2028,22 @@ function normalizeId(value) {
   return token.length ? token.toLowerCase() : null
 }
 
+function extractOwnerId(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return null
+  }
+
+  return (
+    entry.ownerToken ||
+    entry.owner_id ||
+    entry.ownerId ||
+    entry.user_id ||
+    entry.userId ||
+    entry.owner ||
+    null
+  )
+}
+
 function normalizeRoomEntry(room) {
   if (!room || typeof room !== 'object') {
     return null
@@ -2234,6 +2265,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMediaLimit, setDrawerMediaLimit] = useState(20)
   const [drawerFileLimit, setDrawerFileLimit] = useState(20)
+  const [blockedOwners, setBlockedOwners] = useState(() => new Set())
+  const [blocksLoading, setBlocksLoading] = useState(false)
+  const [blockListError, setBlockListError] = useState(null)
 
   useEffect(() => {
     drawerOpenRef.current = drawerOpen
@@ -2249,6 +2283,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
     }
   }, [drawerOpen])
+
   const [profileSheet, setProfileSheet] = useState({ open: false, participant: null, busy: false, error: null })
   const [settingsOverlayOpen, setSettingsOverlayOpen] = useState(false)
   const [roomBans, setRoomBans] = useState([])
@@ -2709,65 +2744,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const viewerId = useMemo(() => viewer?.id || viewer?.owner_id || null, [viewer])
   const viewerToken = useMemo(() => normalizeId(viewerId), [viewerId])
 
-  const timelineEntries = useMemo(() => {
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return []
-    }
-
-    const entries = []
-    let currentGroup = null
-    let lastDayKey = null
-
-    messages.forEach((message, index) => {
-      const dayKey = getDayKey(message.created_at)
-      if (dayKey && dayKey !== lastDayKey) {
-        entries.push({
-          type: 'date',
-          key: `date-${dayKey}-${index}`,
-          label: formatDateLabel(message.created_at),
-        })
-        lastDayKey = dayKey
-        currentGroup = null
-      }
-
-      const aiMeta = getAiMetadata(message)
-      let ownerToken = normalizeId(message.owner_id || message.user_id)
-      let mine = Boolean(viewerToken && ownerToken && viewerToken === ownerToken)
-      let actorToken = ownerToken || normalizeId(message.username) || `system-${index}`
-      let displayName = message.username || '알 수 없음'
-      let avatarUrl = message.avatar_url || null
-      let initials = displayName.slice(0, 2)
-
-      if (aiMeta?.type === 'response') {
-        mine = false
-        actorToken = `ai::${aiMeta.requestId || actorToken}`
-        displayName = AI_ASSISTANT_NAME
-        avatarUrl = null
-        initials = 'AI'
-      }
-
-      const groupKey = `${lastDayKey || dayKey || 'unknown'}::${actorToken}::${mine ? 'me' : 'peer'}`
-
-      if (!currentGroup || currentGroup.groupKey !== groupKey) {
-        currentGroup = {
-          type: 'group',
-          key: `group-${groupKey}-${message.id || message.local_id || index}`,
-          groupKey,
-          mine,
-          displayName,
-          avatarUrl,
-          initials,
-          messages: [],
-        }
-        entries.push(currentGroup)
-      }
-
-      currentGroup.messages.push(message)
-    })
-
-    return entries
-  }, [messages, viewerToken])
-
   const currentRoom = useMemo(() => {
     if (context?.type !== 'chat-room') {
       return null
@@ -2830,6 +2806,126 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return set
   }, [currentRoom])
 
+  const { participantIndex, participantList } = useMemo(() => {
+    if (context?.type !== 'chat-room' || !Array.isArray(messages) || messages.length === 0) {
+      return { participantIndex: new Map(), participantList: [] }
+    }
+
+    const latestByOwner = new Map()
+
+    messages.forEach((message) => {
+      const rawOwnerId = message.owner_id || message.user_id || null
+      const ownerToken = normalizeId(rawOwnerId)
+      if (!ownerToken) return
+
+      const createdAt = message.created_at || null
+      const existing = latestByOwner.get(ownerToken)
+      const shouldReplace =
+        !existing || toChrono(createdAt) >= toChrono(existing.lastMessageAt)
+
+      if (shouldReplace) {
+        latestByOwner.set(ownerToken, {
+          ownerToken,
+          ownerId: rawOwnerId || existing?.ownerId || null,
+          heroId: message.hero_id || message.heroId || existing?.heroId || null,
+          displayName: message.username || message.hero_name || existing?.displayName || '알 수 없음',
+          avatarUrl: message.avatar_url || message.hero_image_url || existing?.avatarUrl || null,
+          lastMessageAt: createdAt,
+          message,
+        })
+      }
+    })
+
+    const unsorted = []
+    latestByOwner.forEach((value, key) => {
+      let role = 'member'
+      if (roomOwnerToken && key === roomOwnerToken) {
+        role = 'owner'
+      } else if (moderatorTokenSet.has(key)) {
+        role = 'moderator'
+      }
+      unsorted.push({ ...value, role })
+    })
+
+    const rolePriority = { owner: 0, moderator: 1, member: 2 }
+    unsorted.sort((a, b) => {
+      const roleDiff = (rolePriority[a.role] || 9) - (rolePriority[b.role] || 9)
+      if (roleDiff !== 0) return roleDiff
+      const timeDiff = toChrono(b.lastMessageAt) - toChrono(a.lastMessageAt)
+      if (timeDiff !== 0) return timeDiff
+      return (a.displayName || '').localeCompare(b.displayName || '', 'ko')
+    })
+
+    const index = new Map()
+    unsorted.forEach((entry) => {
+      index.set(entry.ownerToken, entry)
+    })
+
+    return { participantIndex: index, participantList: unsorted }
+  }, [context?.type, context?.chatRoomId, messages, moderatorTokenSet, roomOwnerToken])
+
+  const timelineEntries = useMemo(() => {
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return []
+    }
+
+    const entries = []
+    let currentGroup = null
+    let lastDayKey = null
+
+    messages.forEach((message, index) => {
+      const dayKey = getDayKey(message.created_at)
+      if (dayKey && dayKey !== lastDayKey) {
+        entries.push({
+          type: 'date',
+          key: `date-${dayKey}-${index}`,
+          label: formatDateLabel(message.created_at),
+        })
+        lastDayKey = dayKey
+        currentGroup = null
+      }
+
+      const aiMeta = getAiMetadata(message)
+      const ownerToken = normalizeId(message.owner_id || message.user_id)
+      let mine = Boolean(viewerToken && ownerToken && viewerToken === ownerToken)
+      let actorToken = ownerToken || normalizeId(message.username) || `system-${index}`
+      let participant = ownerToken ? participantIndex.get(ownerToken) || null : null
+      let displayName = participant?.displayName || message.username || '알 수 없음'
+      let avatarUrl = participant?.avatarUrl || message.avatar_url || null
+      let initials = (participant?.displayName || message.username || '알 수 없음').slice(0, 2)
+
+      if (aiMeta?.type === 'response') {
+        mine = false
+        actorToken = `ai::${aiMeta.requestId || actorToken}`
+        participant = null
+        displayName = AI_ASSISTANT_NAME
+        avatarUrl = null
+        initials = 'AI'
+      }
+
+      const groupKey = `${lastDayKey || dayKey || 'unknown'}::${actorToken}::${mine ? 'me' : 'peer'}`
+
+      if (!currentGroup || currentGroup.groupKey !== groupKey) {
+        currentGroup = {
+          type: 'group',
+          key: `group-${groupKey}-${message.id || message.local_id || index}`,
+          groupKey,
+          mine,
+          displayName,
+          avatarUrl,
+          initials,
+          participant,
+          messages: [],
+        }
+        entries.push(currentGroup)
+      }
+
+      currentGroup.messages.push(message)
+    })
+
+    return entries
+  }, [messages, participantIndex, viewerToken])
+
   const viewerOwnsRoom = useMemo(
     () =>
       Boolean(
@@ -2883,59 +2979,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return { media, files }
   }, [context?.type, context?.chatRoomId, messages])
 
-  const participantList = useMemo(() => {
-    if (context?.type !== 'chat-room') {
-      return []
-    }
-
-    const map = new Map()
-
-    messages.forEach((message) => {
-      const ownerToken = normalizeId(message.owner_id || message.user_id)
-      if (!ownerToken) return
-      const createdAt = message.created_at || null
-      const existing = map.get(ownerToken) || {
-        ownerToken,
-        heroId: message.hero_id || message.heroId || null,
-        displayName: message.username || message.hero_name || '알 수 없음',
-        avatarUrl: message.avatar_url || message.hero_image_url || null,
-        lastMessageAt: null,
-        message,
-      }
-
-      if (!existing.lastMessageAt || toChrono(createdAt) >= toChrono(existing.lastMessageAt)) {
-        existing.heroId = message.hero_id || message.heroId || existing.heroId
-        existing.displayName = message.username || message.hero_name || existing.displayName
-        existing.avatarUrl = message.avatar_url || message.hero_image_url || existing.avatarUrl
-        existing.lastMessageAt = createdAt
-        existing.message = message
-      }
-
-      map.set(ownerToken, existing)
-    })
-
-    const entries = Array.from(map.values()).map((entry) => {
-      let role = 'member'
-      if (roomOwnerToken && entry.ownerToken === roomOwnerToken) {
-        role = 'owner'
-      } else if (moderatorTokenSet.has(entry.ownerToken)) {
-        role = 'moderator'
-      }
-      return { ...entry, role }
-    })
-
-    const rolePriority = { owner: 0, moderator: 1, member: 2 }
-    entries.sort((a, b) => {
-      const roleDiff = (rolePriority[a.role] || 9) - (rolePriority[b.role] || 9)
-      if (roleDiff !== 0) return roleDiff
-      const timeDiff = toChrono(b.lastMessageAt) - toChrono(a.lastMessageAt)
-      if (timeDiff !== 0) return timeDiff
-      return (a.displayName || '').localeCompare(b.displayName || '', 'ko')
-    })
-
-    return entries
-  }, [context?.type, context?.chatRoomId, messages, moderatorTokenSet, roomOwnerToken])
-
   useEffect(() => {
     if (!open) {
       if (unsubscribeRef.current) {
@@ -2970,6 +3013,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setVideoControlsVisible(true)
       lastMarkedRef.current = null
       setViewerReady(false)
+      setBlockListError(null)
       if (onUnreadChange) {
         onUnreadChange(0)
       }
@@ -3273,12 +3317,39 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [applyRoomOverrides],
   )
 
+  const refreshBlockedOwners = useCallback(async () => {
+    setBlocksLoading(true)
+    try {
+      const payload = await fetchChatUserBlocks()
+      const entries = Array.isArray(payload?.blocks) ? payload.blocks : []
+      const next = new Set(
+        entries
+          .map((entry) => normalizeId(entry?.target_owner_id || entry?.targetOwnerId))
+          .filter(Boolean),
+      )
+      setBlockedOwners(next)
+      setBlockListError(null)
+    } catch (error) {
+      console.error('[chat] 차단 목록을 불러오는 중 오류', error)
+      setBlockListError(error?.message || '차단 목록을 불러올 수 없습니다.')
+    } finally {
+      setBlocksLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     if (activeTab === 'private' || activeTab === 'open') {
       refreshRooms()
     }
   }, [activeTab, open, refreshRooms])
+
+  useEffect(() => {
+    if (!open || !viewerReady) {
+      return
+    }
+    refreshBlockedOwners()
+  }, [open, viewerReady, refreshBlockedOwners])
 
   const handleSelectHero = useCallback((heroId) => {
     if (!heroId) return
@@ -4098,9 +4169,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }, [])
 
   const handleRequestFriendFromProfile = useCallback(async () => {
+    if (profileSheet.busy) return
     const target = profileSheet.participant
     if (!target?.heroId) {
-      alert('이 참여자의 캐릭터 정보를 찾을 수 없습니다.')
+      setProfileSheet((prev) => ({ ...prev, error: '이 참여자의 캐릭터 정보를 찾을 수 없습니다.' }))
       return
     }
     setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
@@ -4114,15 +4186,105 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       console.error('[chat] 친구 요청 실패', error)
       setProfileSheet((prev) => ({ ...prev, busy: false, error: error?.message || '친구 요청을 보낼 수 없습니다.' }))
     }
-  }, [addFriend, profileSheet.participant])
+  }, [addFriend, profileSheet.busy, profileSheet.participant])
 
-  const handleStartDirectMessage = useCallback(() => {
-    alert('1대1 대화는 곧 지원될 예정입니다.')
-  }, [])
+  const handleStartDirectMessage = useCallback(async () => {
+    if (profileSheet.busy) return
+    const participant = profileSheet.participant
+    const ownerId = extractOwnerId(participant)
+    if (!ownerId) {
+      setProfileSheet((prev) => ({ ...prev, error: '참여자 식별자를 찾을 수 없습니다.' }))
+      return
+    }
 
-  const handleBlockParticipant = useCallback(() => {
-    alert('차단 기능은 곧 제공될 예정입니다.')
-  }, [])
+    setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
+    try {
+      const result = await ensureDirectChatRoom({ targetOwnerId: ownerId })
+      if (!result?.ok || !result?.room?.id) {
+        throw new Error(result?.error || '1대1 대화를 시작할 수 없습니다.')
+      }
+
+      const fallbackName =
+        result.room.name ||
+        (participant?.displayName ? `${participant.displayName}와의 대화` : '1대1 대화')
+
+      const directRoom = {
+        ...result.room,
+        kind: result.room.kind || 'direct',
+        visibility: result.room.visibility || 'private',
+        name: fallbackName,
+      }
+
+      updateRoomMetadata(directRoom.id, {
+        ...normalizeRoomEntry(directRoom),
+        kind: directRoom.kind,
+        visibility: directRoom.visibility,
+      })
+
+      handleSelectRoom(directRoom, directRoom.visibility)
+      setProfileSheet({ open: false, participant: null, busy: false, error: null })
+    } catch (error) {
+      console.error('[chat] 1대1 대화 시작 실패', error)
+      setProfileSheet((prev) => ({
+        ...prev,
+        busy: false,
+        error: error?.message || '1대1 대화를 시작할 수 없습니다.',
+      }))
+    }
+  }, [ensureDirectChatRoom, handleSelectRoom, profileSheet.busy, profileSheet.participant, updateRoomMetadata])
+
+  const handleBlockParticipant = useCallback(async () => {
+    if (profileSheet.busy) return
+    const participant = profileSheet.participant
+    const ownerId = extractOwnerId(participant)
+    if (!ownerId) {
+      setProfileSheet((prev) => ({ ...prev, error: '참여자 식별자를 찾을 수 없습니다.' }))
+      return
+    }
+
+    const normalizedOwnerId = normalizeId(ownerId)
+    if (!normalizedOwnerId) {
+      setProfileSheet((prev) => ({ ...prev, error: '참여자 정보를 확인할 수 없습니다.' }))
+      return
+    }
+
+    const alreadyBlocked = blockedOwners.has(normalizedOwnerId)
+    setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
+    try {
+      if (alreadyBlocked) {
+        const result = await unblockChatUser({ targetOwnerId: ownerId })
+        if (!result?.ok) {
+          throw new Error(result?.error || '차단을 해제할 수 없습니다.')
+        }
+        setBlockedOwners((prev) => {
+          const next = new Set(prev)
+          next.delete(normalizedOwnerId)
+          return next
+        })
+      } else {
+        const result = await blockChatUser({ targetOwnerId: ownerId })
+        if (!result?.ok) {
+          throw new Error(result?.error || '차단할 수 없습니다.')
+        }
+        setBlockedOwners((prev) => {
+          const next = new Set(prev)
+          next.add(normalizedOwnerId)
+          return next
+        })
+      }
+      setBlockListError(null)
+      setProfileSheet((prev) => ({ ...prev, busy: false, error: null }))
+    } catch (error) {
+      console.error('[chat] 차단 처리 실패', error)
+      setProfileSheet((prev) => ({
+        ...prev,
+        busy: false,
+        error:
+          error?.message ||
+          (alreadyBlocked ? '차단을 해제할 수 없습니다.' : '차단할 수 없습니다.'),
+      }))
+    }
+  }, [blockedOwners, blockChatUser, profileSheet.busy, profileSheet.participant, unblockChatUser])
 
   const handleBanParticipant = useCallback(() => {
     if (!context?.chatRoomId || !profileSheet.participant) {
@@ -5928,9 +6090,26 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   )
                 }
 
-                const { mine, displayName, avatarUrl, initials, messages: groupMessages } = entry
+                const { mine, displayName, avatarUrl, initials, participant, messages: groupMessages } = entry
+                const participantInteractive = !mine && participant
+                  ? () => handleOpenParticipantProfile(participant)
+                  : null
                 const avatarNode = !mine ? (
-                  <div style={overlayStyles.messageAvatar}>
+                  <div
+                    style={{
+                      ...overlayStyles.messageAvatar,
+                      cursor: participantInteractive ? 'pointer' : 'default',
+                    }}
+                    role={participantInteractive ? 'button' : undefined}
+                    tabIndex={participantInteractive ? 0 : undefined}
+                    onClick={participantInteractive || undefined}
+                    onKeyDown={participantInteractive ? (event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        participantInteractive()
+                      }
+                    } : undefined}
+                  >
                     {avatarUrl ? (
                       <img
                         src={avatarUrl}
@@ -5947,7 +6126,23 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   <div key={entry.key} style={overlayStyles.messageGroup(mine)}>
                     {avatarNode}
                     <div style={overlayStyles.messageContent(mine)}>
-                      <span style={overlayStyles.messageName(mine)}>{displayName}</span>
+                      <span
+                        style={{
+                          ...overlayStyles.messageName(mine),
+                          cursor: participantInteractive ? 'pointer' : 'default',
+                        }}
+                        role={participantInteractive ? 'button' : undefined}
+                        tabIndex={participantInteractive ? 0 : undefined}
+                        onClick={participantInteractive || undefined}
+                        onKeyDown={participantInteractive ? (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            participantInteractive()
+                          }
+                        } : undefined}
+                      >
+                        {displayName}
+                      </span>
                       <div style={overlayStyles.messageStack(mine)}>
                         {groupMessages.map((message, index) => {
                           const attachments = getMessageAttachments(message)
@@ -6918,12 +7113,24 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     />
   )
 
+  const participantBlocked = useMemo(() => {
+    if (!profileSheet.participant) {
+      return false
+    }
+    const normalized = normalizeId(extractOwnerId(profileSheet.participant))
+    if (!normalized) {
+      return false
+    }
+    return blockedOwners.has(normalized)
+  }, [blockedOwners, profileSheet.participant])
+
   const participantOverlay = (
     <SurfaceOverlay
       open={profileSheet.open}
       onClose={handleCloseParticipantProfile}
       title="참여자 정보"
       width="min(420px, 92vw)"
+      zIndex={1600}
     >
       {profileSheet.participant ? (
         <div style={{ display: 'grid', gap: 16 }}>
@@ -6969,10 +7176,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   캐릭터 ID: {profileSheet.participant.heroId}
                 </span>
               ) : null}
+              {participantBlocked ? (
+                <span style={{ fontSize: 11, color: '#fca5a5' }}>현재 차단된 사용자</span>
+              ) : null}
             </div>
           </div>
           {profileSheet.error ? (
             <span style={{ fontSize: 12, color: '#fca5a5' }}>{profileSheet.error}</span>
+          ) : null}
+          {!profileSheet.error && blockListError ? (
+            <span style={{ fontSize: 12, color: '#fca5a5' }}>{blockListError}</span>
+          ) : null}
+          {blocksLoading ? (
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>차단 정보를 불러오는 중입니다…</span>
           ) : null}
           <div style={{ display: 'grid', gap: 10 }}>
             <button
@@ -6993,11 +7209,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             </button>
             <button
               type="button"
-              style={overlayStyles.actionButton('ghost', profileSheet.busy)}
-              disabled={profileSheet.busy}
+              style={overlayStyles.actionButton('ghost', profileSheet.busy || blocksLoading)}
+              disabled={profileSheet.busy || blocksLoading}
               onClick={handleBlockParticipant}
             >
-              차단하기
+              {participantBlocked ? '차단 해제' : '차단하기'}
             </button>
             {viewerOwnsRoom && profileSheet.participant.role !== 'owner' ? (
               <>
@@ -7568,6 +7784,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       onClose={handleCloseBanModal}
       title="참여자 추방"
       width="min(420px, 90vw)"
+      zIndex={1535}
     >
       {banModal.participant ? (
         <div style={{ display: 'grid', gap: 12 }}>

@@ -108,6 +108,22 @@ export async function deleteChatRoom({ roomId }) {
   return data || { ok: true }
 }
 
+export async function ensureDirectChatRoom({ targetOwnerId }) {
+  if (!targetOwnerId) {
+    throw new Error('targetOwnerId가 필요합니다.')
+  }
+
+  const { data, error } = await supabase.rpc('ensure_direct_chat_room', {
+    p_target_owner: targetOwnerId,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data || { ok: false }
+}
+
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -158,6 +174,49 @@ export async function manageChatRoomRole({
     p_action: action,
     p_duration_minutes: duration,
     p_reason: typeof reason === 'string' ? reason.trim() || null : null,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data || { ok: true }
+}
+
+export async function fetchChatUserBlocks() {
+  const { data, error } = await supabase.rpc('fetch_chat_user_blocks')
+
+  if (error) {
+    throw error
+  }
+
+  return data || { blocks: [] }
+}
+
+export async function blockChatUser({ targetOwnerId, reason = null }) {
+  if (!targetOwnerId) {
+    throw new Error('targetOwnerId가 필요합니다.')
+  }
+
+  const { data, error } = await supabase.rpc('block_chat_user', {
+    p_target_owner: targetOwnerId,
+    p_reason: typeof reason === 'string' ? reason.trim() || null : null,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data || { ok: true }
+}
+
+export async function unblockChatUser({ targetOwnerId }) {
+  if (!targetOwnerId) {
+    throw new Error('targetOwnerId가 필요합니다.')
+  }
+
+  const { data, error } = await supabase.rpc('unblock_chat_user', {
+    p_target_owner: targetOwnerId,
   })
 
   if (error) {

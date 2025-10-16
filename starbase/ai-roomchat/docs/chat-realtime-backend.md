@@ -14,13 +14,18 @@
    `realtime.messages` 스키마에 인증 사용자용 SELECT 정책을 추가하고, `emit_realtime_payload` + `broadcast_messages_changes` 트리거가 `messages:*` 토픽으로 브로드캐스트하도록 설정합니다.
 
 4. **퍼블리케이션 연결**
-   `supabase_realtime` 퍼블리케이션에 `messages`, `chat_rooms`, `chat_room_members`가 포함되어 Postgres Changes 스트림이 즉시 구독됩니다.
+   `supabase_realtime` 퍼블리케이션에 `messages`, `chat_rooms`, `chat_room_members`, `chat_user_blocks`가 포함되어 Postgres Changes 스트림이 즉시 구독됩니다.
 
 5. **채팅방 읽음/첨부 파일 전송 경로**
    `send_rank_chat_message` 함수가 `metadata.attachments` 배열을 수용하도록 확장되어 텍스트 없이도 압축된 파일 첨부를 게시할 수 있습니다. 클라이언트는 Supabase Storage `chat-attachments` 버킷에 업로드 후 서명 URL을 통해 내려받습니다.
    `leave_chat_room(room_id)` RPC는 사용자가 자발적으로 방을 나갈 때 멤버십과 활동 지표를 정리하며, `delete_chat_room(room_id)` RPC는 방장이 소유한 방과 연관 데이터를 일괄 삭제합니다.
    `mark_chat_room_read(room_id, message_id)` RPC는 사용자가 특정 채팅방을 읽은 시각을 저장해 카드 뷰의 안 읽은 메시지 배지를 계산합니다.
    `fetch_chat_rooms(search, limit)` / `fetch_chat_dashboard(limit)` RPC는 `joined`·`available` 목록에 `latest_message`, `unread_count`, `cover_url`, `last_message_at`, `last_read_message_at` 등 카드 UI가 요구하는 필드를 함께 반환합니다. 동시에 `chat_room_search_terms` 캐시 테이블에 검색어를 기록해 상위 5개 실시간 키워드와 검색어 기반 추천을 `trendingKeywords` / `suggestedKeywords` 배열로 제공합니다.
+
+6. **1:1 채팅 및 사용자 차단 흐름**
+   `chat_rooms` 테이블은 `kind` 컬럼으로 일반 방(`group`)과 1:1 방(`direct`)을 구분합니다. `ensure_direct_chat_room(target_owner_id)` RPC는 특정 사용자와의 개인 채팅방을 생성하거나 재사용하며, 필요한 멤버십과 기본 설정을 함께 채웁니다.
+   `chat_user_blocks` 테이블은 차단 정보를 저장하고 `fetch_chat_user_blocks()`, `block_chat_user(target_owner_id, reason)`, `unblock_chat_user(target_owner_id)` RPC가 차단 목록을 조회·갱신합니다.
+   차단/해제는 트리거가 `updated_at`을 갱신하고 `supabase_realtime` 퍼블리케이션을 통해 실시간으로 전파되므로, 클라이언트가 블록 상태를 즉시 반영할 수 있습니다. Direct/Block 관련 RLS 정책과 권한이 모두 스크립트에 포함됩니다.
 
 ### `fetch_chat_rooms` / `fetch_chat_dashboard` 응답 형식
 

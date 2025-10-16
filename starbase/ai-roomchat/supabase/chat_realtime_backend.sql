@@ -20,6 +20,29 @@ create table if not exists public.chat_rooms (
 );
 
 alter table public.chat_rooms
+  add column if not exists kind text not null default 'group';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.constraint_column_usage
+    where table_schema = 'public'
+      and table_name = 'chat_rooms'
+      and constraint_name = 'chat_rooms_kind_check'
+  ) then
+    alter table public.chat_rooms
+      add constraint chat_rooms_kind_check
+      check (kind in ('group', 'direct'));
+  end if;
+end;
+$$;
+
+update public.chat_rooms
+set kind = 'group'
+where kind is null;
+
+alter table public.chat_rooms
   add column if not exists default_background_url text;
 
 alter table public.chat_rooms
@@ -81,6 +104,15 @@ create table if not exists public.chat_room_bans (
   primary key (room_id, owner_id)
 );
 
+create table if not exists public.chat_user_blocks (
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  target_owner_id uuid not null references auth.users(id) on delete cascade,
+  reason text,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  primary key (owner_id, target_owner_id)
+);
+
 create table if not exists public.chat_room_announcements (
   id uuid primary key default gen_random_uuid(),
   room_id uuid not null references public.chat_rooms(id) on delete cascade,
@@ -136,6 +168,7 @@ create index if not exists chat_room_search_terms_last_idx
 alter table public.chat_rooms enable row level security;
 alter table public.chat_room_members enable row level security;
 alter table public.chat_room_bans enable row level security;
+alter table public.chat_user_blocks enable row level security;
 alter table public.chat_room_announcements enable row level security;
 alter table public.chat_room_announcement_reactions enable row level security;
 alter table public.chat_room_announcement_comments enable row level security;
@@ -277,6 +310,17 @@ with check (
       and m.owner_id = auth.uid()
   )
 );
+
+drop policy if exists chat_user_blocks_select on public.chat_user_blocks;
+create policy chat_user_blocks_select
+on public.chat_user_blocks for select
+using (auth.uid() = owner_id);
+
+drop policy if exists chat_user_blocks_mutate on public.chat_user_blocks;
+create policy chat_user_blocks_mutate
+on public.chat_user_blocks for all
+using (auth.uid() = owner_id)
+with check (auth.uid() = owner_id);
 
 drop policy if exists chat_room_announcements_select on public.chat_room_announcements;
 create policy chat_room_announcements_select
@@ -501,6 +545,12 @@ create index if not exists chat_room_bans_room_idx
 create index if not exists chat_room_bans_owner_idx
   on public.chat_room_bans (owner_id, room_id);
 
+create index if not exists chat_user_blocks_owner_idx
+  on public.chat_user_blocks (owner_id, target_owner_id);
+
+create index if not exists chat_user_blocks_target_idx
+  on public.chat_user_blocks (target_owner_id, owner_id);
+
 create index if not exists chat_room_announcements_room_idx
   on public.chat_room_announcements (room_id, created_at desc);
 
@@ -618,6 +668,21 @@ drop trigger if exists trg_chat_room_bans_touch on public.chat_room_bans;
 create trigger trg_chat_room_bans_touch
 before update on public.chat_room_bans
 for each row execute function public.touch_chat_room_ban();
+
+create or replace function public.touch_chat_user_block()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := timezone('utc', now());
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_chat_user_blocks_touch on public.chat_user_blocks;
+create trigger trg_chat_user_blocks_touch
+before update on public.chat_user_blocks
+for each row execute function public.touch_chat_user_block();
 
 create or replace function public.touch_chat_room_announcement()
 returns trigger
@@ -1328,6 +1393,7 @@ begin
       group by room_id
     ) counts on counts.room_id = r.id
     left join public.heroes hero on hero.id = r.hero_id
+    where coalesce(r.kind, 'group') = 'group'
   ),
   last_messages as (
     select
@@ -1428,6 +1494,7 @@ begin
       group by room_id
     ) counts on counts.room_id = r.id
     left join public.heroes hero on hero.id = r.hero_id
+    where coalesce(r.kind, 'group') = 'group'
   ),
   last_messages as (
     select
@@ -1961,7 +2028,215 @@ end;
 $$;
 
 grant execute on function public.manage_chat_room_role(uuid, uuid, text, integer, text)
-to authenticated;
+  to authenticated;
+
+drop function if exists public.ensure_direct_chat_room(uuid);
+create or replace function public.ensure_direct_chat_room(
+  p_target_owner uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_target uuid := p_target_owner;
+  v_room record;
+  v_membership record;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  if v_target is null then
+    return jsonb_build_object('ok', false, 'error', 'missing_target');
+  end if;
+
+  if v_target = v_actor then
+    return jsonb_build_object('ok', false, 'error', 'self_not_allowed');
+  end if;
+
+  select r.*
+    into v_room
+  from public.chat_rooms r
+  join public.chat_room_members m_actor
+    on m_actor.room_id = r.id
+   and m_actor.owner_id = v_actor
+  join public.chat_room_members m_target
+    on m_target.room_id = r.id
+   and m_target.owner_id = v_target
+  where coalesce(r.kind, 'group') = 'direct'
+  order by r.created_at desc
+  limit 1;
+
+  if not found then
+    insert into public.chat_rooms (
+      name,
+      description,
+      owner_id,
+      visibility,
+      capacity,
+      default_background_url,
+      default_ban_minutes,
+      is_system,
+      metadata,
+      allow_ai,
+      require_approval,
+      kind
+    )
+    values (
+      '1:1 대화',
+      '',
+      v_actor,
+      'private',
+      2,
+      null,
+      0,
+      false,
+      '{}'::jsonb,
+      false,
+      true,
+      'direct'
+    )
+    returning * into v_room;
+
+    insert into public.chat_room_members (room_id, owner_id, status, is_moderator)
+    values (v_room.id, v_actor, 'active', true)
+    on conflict (room_id, owner_id) do update
+      set status = 'active',
+          is_moderator = true;
+
+    insert into public.chat_room_members (room_id, owner_id, status, is_moderator)
+    values (v_room.id, v_target, 'active', false)
+    on conflict (room_id, owner_id) do update
+      set status = 'active',
+          is_moderator = false;
+  end if;
+
+  select *
+    into v_membership
+  from public.chat_room_members
+  where room_id = v_room.id
+    and owner_id = v_actor;
+
+  return jsonb_build_object(
+    'ok', true,
+    'room', row_to_json(v_room),
+    'membership', coalesce(row_to_json(v_membership), '{}'::jsonb)
+  );
+end;
+$$;
+
+grant execute on function public.ensure_direct_chat_room(uuid)
+  to authenticated;
+
+drop function if exists public.fetch_chat_user_blocks();
+create or replace function public.fetch_chat_user_blocks()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+begin
+  if v_actor is null then
+    return jsonb_build_object('blocks', '[]'::jsonb);
+  end if;
+
+  return jsonb_build_object(
+    'blocks',
+    coalesce((
+      select jsonb_agg(to_jsonb(row))
+      from (
+        select
+          b.target_owner_id,
+          b.reason,
+          b.created_at,
+          b.updated_at
+        from public.chat_user_blocks b
+        where b.owner_id = v_actor
+        order by b.updated_at desc
+      ) as row
+    ), '[]'::jsonb)
+  );
+end;
+$$;
+
+grant execute on function public.fetch_chat_user_blocks()
+  to authenticated;
+
+drop function if exists public.block_chat_user(uuid, text);
+create or replace function public.block_chat_user(
+  p_target_owner uuid,
+  p_reason text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_reason text := nullif(trim(coalesce(p_reason, '')), '');
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  if p_target_owner is null then
+    return jsonb_build_object('ok', false, 'error', 'missing_target');
+  end if;
+
+  if p_target_owner = v_actor then
+    return jsonb_build_object('ok', false, 'error', 'self_not_allowed');
+  end if;
+
+  insert into public.chat_user_blocks (owner_id, target_owner_id, reason)
+  values (v_actor, p_target_owner, v_reason)
+  on conflict (owner_id, target_owner_id) do update
+    set reason = excluded.reason;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.block_chat_user(uuid, text)
+  to authenticated;
+
+drop function if exists public.unblock_chat_user(uuid);
+create or replace function public.unblock_chat_user(
+  p_target_owner uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_deleted integer := 0;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  if p_target_owner is null then
+    return jsonb_build_object('ok', false, 'error', 'missing_target');
+  end if;
+
+  delete from public.chat_user_blocks
+  where owner_id = v_actor
+    and target_owner_id = p_target_owner
+  returning 1 into v_deleted;
+
+  return jsonb_build_object('ok', v_deleted > 0);
+end;
+$$;
+
+grant execute on function public.unblock_chat_user(uuid)
+  to authenticated;
 
 drop function if exists public.fetch_chat_room_bans(uuid);
 create or replace function public.fetch_chat_room_bans(
@@ -2854,6 +3129,19 @@ begin
       and tablename = 'chat_room_bans'
   ) then
     alter publication supabase_realtime add table public.chat_room_bans;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_user_blocks'
+  ) then
+    alter publication supabase_realtime add table public.chat_user_blocks;
   end if;
 end;
 $$;
