@@ -9,13 +9,16 @@ export default function SurfaceOverlay({
   width = 420,
   children,
   contentStyle,
+  hideHeader = false,
+  frameStyle,
+  zIndex = 1500,
 }) {
   return (
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1500,
+        zIndex,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -45,48 +48,51 @@ export default function SurfaceOverlay({
       >
         <div
           style={{
-            borderRadius: 24,
+            borderRadius: 26,
             overflow: 'hidden',
             border: '1px solid rgba(148, 163, 184, 0.35)',
             background: 'rgba(15, 23, 42, 0.92)',
-            boxShadow: '0 50px 120px -50px rgba(15, 23, 42, 0.9)',
+            boxShadow: '0 60px 150px -60px rgba(15, 23, 42, 0.92)',
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
-            maxHeight: '80vh',
+            maxHeight: '94vh',
+            ...frameStyle,
           }}
         >
-          <header
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '14px 18px',
-              borderBottom: '1px solid rgba(148, 163, 184, 0.2)',
-              color: '#e2e8f0',
-              background: 'rgba(15, 23, 42, 0.9)',
-            }}
-          >
-            <strong style={{ fontSize: 15 }}>{title}</strong>
-            <button
-              type="button"
-              onClick={onClose}
+          {hideHeader ? null : (
+            <header
               style={{
-                border: '1px solid rgba(148, 163, 184, 0.45)',
-                borderRadius: 999,
-                padding: '6px 12px',
-                background: 'rgba(15, 23, 42, 0.6)',
-                color: '#cbd5f5',
-                fontSize: 12,
-                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '18px 22px',
+                borderBottom: '1px solid rgba(148, 163, 184, 0.2)',
+                color: '#e2e8f0',
+                background: 'rgba(15, 23, 42, 0.9)',
               }}
             >
-              닫기
-            </button>
-          </header>
+              <strong style={{ fontSize: 15 }}>{title}</strong>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  border: '1px solid rgba(148, 163, 184, 0.45)',
+                  borderRadius: 999,
+                  padding: '6px 12px',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  color: '#cbd5f5',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                닫기
+              </button>
+            </header>
+          )}
           <div
             style={{
-              padding: 16,
+              padding: hideHeader ? 0 : 22,
               overflowY: 'auto',
               background: 'rgba(15, 23, 42, 0.75)',
               ...contentStyle,

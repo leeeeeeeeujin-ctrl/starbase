@@ -188,9 +188,9 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
 
     const bootstrapMessages = async () => {
       try {
-        const data = await fetchRecentMessages({ limit: 100 })
+        const payload = (await fetchRecentMessages({ limit: 100 })) ?? {}
         if (!alive) return
-        const hydrated = await hydrateBatch(data)
+        const hydrated = await hydrateBatch(payload.messages ?? [])
         if (!alive) return
         setMessages(hydrated)
         setTimeout(() => listRef.current?.scrollTo(0, 1e9), 0)
@@ -215,8 +215,16 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
 
     bootstrapMessages()
 
+    const viewerSnapshot = viewerRef.current || viewer
+    const activeHeroId = viewerSnapshot?.hero_id || heroId || null
+    const activeOwnerId = viewerSnapshot?.owner_id || viewerSnapshot?.user_id || null
+
     const unsubscribe = subscribeToMessages({
       channelName: 'lobby-chat-stream',
+      heroId: activeHeroId,
+      ownerId: activeOwnerId,
+      userId: viewerSnapshot?.user_id || null,
+      scope: 'global',
       onInsert: (message) => {
         handleInsert(message)
       },
@@ -226,7 +234,14 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
       alive = false
       unsubscribe?.()
     }
-  }, [hydrateBatch, hydrateSingle])
+  }, [
+    hydrateBatch,
+    hydrateSingle,
+    viewer?.hero_id,
+    viewer?.owner_id,
+    viewer?.user_id,
+    heroId,
+  ])
 
   const ensureViewer = useCallback(async () => {
     const cached = viewerRef.current
