@@ -2888,22 +2888,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setDrawerFileLimit((value) => value + 20)
   }, [])
 
-  const handleDrawerMediaSelect = useCallback(
-    (entry) => {
-      if (!entry) return
-      handleOpenAttachment(entry.message || { id: entry.messageId }, entry)
-    },
-    [handleOpenAttachment],
-  )
-
-  const handleDrawerFileSelect = useCallback(
-    (entry) => {
-      if (!entry) return
-      handleDownloadAttachment(entry)
-    },
-    [handleDownloadAttachment],
-  )
-
   const handleOpenParticipantProfile = useCallback((participant) => {
     if (!participant) return
     setProfileSheet({ open: true, participant })
@@ -3887,6 +3871,22 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const handleCloseViewer = useCallback(() => {
     setViewerAttachment(null)
   }, [])
+
+  const handleDrawerMediaSelect = useCallback(
+    (entry) => {
+      if (!entry) return
+      handleOpenAttachment(entry.message || { id: entry.messageId }, entry)
+    },
+    [handleOpenAttachment],
+  )
+
+  const handleDrawerFileSelect = useCallback(
+    (entry) => {
+      if (!entry) return
+      handleDownloadAttachment(entry)
+    },
+    [handleDownloadAttachment],
+  )
 
   const handleVideoInteraction = useCallback(() => {
     setVideoControlsVisible(true)
