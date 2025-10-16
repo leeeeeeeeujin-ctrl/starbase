@@ -2146,20 +2146,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }, [rooms])
 
   useEffect(() => {
-    if (context?.type === 'chat-room' && context.chatRoomId) {
-      refreshRoomAnnouncements(context.chatRoomId)
-      refreshRoomBans(context.chatRoomId)
-      refreshRoomStatsData(context.chatRoomId)
-      refreshRoomPreferences(context.chatRoomId)
-    } else {
-      refreshRoomAnnouncements(null)
-      refreshRoomBans(null)
-      refreshRoomStatsData(null)
-      refreshRoomPreferences(null)
-    }
-  }, [context?.chatRoomId, context?.type, refreshRoomAnnouncements, refreshRoomBans, refreshRoomPreferences, refreshRoomStatsData])
-
-  useEffect(() => {
     if (context?.type !== 'chat-room') {
       setDrawerOpen(false)
       setProfileSheet({ open: false, participant: null })
@@ -2812,28 +2798,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }, [context])
 
   useEffect(() => {
-    if (!settingsOverlayOpen) {
-      setSettingsMessage(null)
-      setSettingsError(null)
-      setPreferencesError(null)
-      setAnnouncementError(null)
-      return
-    }
-
-    setSettingsTab(viewerOwnsRoom ? 'owner' : 'preferences')
-
-    if (context?.type === 'chat-room' && context.chatRoomId) {
-      refreshRoomPreferences(context.chatRoomId)
-      refreshRoomStatsData(context.chatRoomId)
-      if (viewerIsModerator) {
-        refreshRoomBans(context.chatRoomId)
-      }
-    }
-
-    refreshApiKeyring()
-  }, [context?.chatRoomId, context?.type, refreshApiKeyring, refreshRoomBans, refreshRoomPreferences, refreshRoomStatsData, settingsOverlayOpen, viewerIsModerator, viewerOwnsRoom])
-
-  useEffect(() => {
     return () => {
       attachmentCacheRef.current.forEach((entry) => {
         if (entry?.url) {
@@ -3195,6 +3159,27 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [],
   )
 
+  useEffect(() => {
+    if (context?.type === 'chat-room' && context.chatRoomId) {
+      refreshRoomAnnouncements(context.chatRoomId)
+      refreshRoomBans(context.chatRoomId)
+      refreshRoomStatsData(context.chatRoomId)
+      refreshRoomPreferences(context.chatRoomId)
+    } else {
+      refreshRoomAnnouncements(null)
+      refreshRoomBans(null)
+      refreshRoomStatsData(null)
+      refreshRoomPreferences(null)
+    }
+  }, [
+    context?.chatRoomId,
+    context?.type,
+    refreshRoomAnnouncements,
+    refreshRoomBans,
+    refreshRoomPreferences,
+    refreshRoomStatsData,
+  ])
+
   const refreshApiKeyring = useCallback(async () => {
     setApiKeysLoading(true)
     setApiKeyError(null)
@@ -3263,6 +3248,38 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     },
     [refreshApiKeyring],
   )
+
+  useEffect(() => {
+    if (!settingsOverlayOpen) {
+      setSettingsMessage(null)
+      setSettingsError(null)
+      setPreferencesError(null)
+      setAnnouncementError(null)
+      return
+    }
+
+    setSettingsTab(viewerOwnsRoom ? 'owner' : 'preferences')
+
+    if (context?.type === 'chat-room' && context.chatRoomId) {
+      refreshRoomPreferences(context.chatRoomId)
+      refreshRoomStatsData(context.chatRoomId)
+      if (viewerIsModerator) {
+        refreshRoomBans(context.chatRoomId)
+      }
+    }
+
+    refreshApiKeyring()
+  }, [
+    context?.chatRoomId,
+    context?.type,
+    refreshApiKeyring,
+    refreshRoomBans,
+    refreshRoomPreferences,
+    refreshRoomStatsData,
+    settingsOverlayOpen,
+    viewerIsModerator,
+    viewerOwnsRoom,
+  ])
 
   const handleLoadMoreAnnouncements = useCallback(() => {
     if (!context?.chatRoomId || !roomAnnouncementsHasMore || !roomAnnouncementCursor) {
