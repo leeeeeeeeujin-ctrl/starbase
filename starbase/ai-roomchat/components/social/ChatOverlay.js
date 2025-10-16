@@ -24,6 +24,7 @@ import {
   createChatRoomAnnouncementComment,
   saveChatMemberPreferences,
   updateChatRoomSettings,
+  updateChatRoomBan,
 } from '@/lib/chat/rooms'
 import {
   fetchRecentMessages,
@@ -46,6 +47,7 @@ const CHAT_ATTACHMENT_BUCKET = 'chat-attachments'
 const ATTACHMENT_SIZE_LIMIT = 50 * 1024 * 1024
 const MAX_VIDEO_DURATION = 4 * 60
 const MAX_MESSAGE_PREVIEW_LENGTH = 240
+const ANNOUNCEMENT_PREVIEW_LENGTH = 160
 const MEDIA_LOAD_LIMIT = 120
 const LONG_PRESS_THRESHOLD = 400
 const ATTACHMENT_ICONS = {
@@ -88,6 +90,31 @@ function formatDuration(seconds) {
   const minutes = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
+
+function normalizeColor(value) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const hexMatch = /^#([0-9a-f]{3,8})$/i
+  const functionalMatch = /^(rgba?|hsla?)\(/i
+  if (hexMatch.test(trimmed) || functionalMatch.test(trimmed)) {
+    return trimmed
+  }
+  return null
+}
+
+function normalizeBackgroundUrl(value) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
+    return trimmed
+  }
+  if (trimmed.startsWith('/')) {
+    return trimmed
+  }
+  return null
 }
 
 function getViewportSnapshot() {
@@ -771,7 +798,7 @@ const overlayStyles = {
   },
   conversation: {
     display: 'grid',
-    gridTemplateRows: 'auto 1fr auto',
+    gridTemplateRows: 'auto 1fr auto auto',
     borderRadius: 24,
     border: '1px solid rgba(71, 85, 105, 0.5)',
     background: 'rgba(11, 18, 40, 0.96)',
@@ -779,6 +806,16 @@ const overlayStyles = {
     overflow: 'hidden',
     position: 'relative',
   },
+  conversationBackground: (url) => ({
+    position: 'absolute',
+    inset: 0,
+    backgroundImage: `linear-gradient(180deg, rgba(6, 10, 25, 0.9) 0%, rgba(6, 10, 25, 0.75) 100%), url(${url})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    opacity: 0.85,
+    zIndex: 0,
+    pointerEvents: 'none',
+  }),
   conversationHeader: {
     display: 'flex',
     alignItems: 'center',
@@ -786,6 +823,8 @@ const overlayStyles = {
     padding: '14px 22px',
     borderBottom: '1px solid rgba(71, 85, 105, 0.5)',
     background: 'rgba(12, 20, 45, 0.98)',
+    position: 'relative',
+    zIndex: 1,
   },
   headerLeft: {
     display: 'flex',
@@ -1142,6 +1181,8 @@ const overlayStyles = {
     display: 'grid',
     gap: 8,
     padding: '0 12px 12px',
+    position: 'relative',
+    zIndex: 1,
   },
   announcementHeader: {
     display: 'flex',
@@ -1163,6 +1204,12 @@ const overlayStyles = {
     border: '1px solid rgba(71, 85, 105, 0.45)',
     gap: 12,
   },
+  banListActions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
   statList: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
@@ -1170,6 +1217,39 @@ const overlayStyles = {
     fontSize: 12,
     color: '#cbd5f5',
   },
+  statContributionList: {
+    display: 'grid',
+    gap: 10,
+    marginTop: 6,
+  },
+  statContributionItem: {
+    display: 'grid',
+    gap: 6,
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.4)',
+    background: 'rgba(15, 23, 42, 0.6)',
+  },
+  statContributionLabel: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  statContributionBar: {
+    height: 6,
+    borderRadius: 999,
+    background: 'rgba(59, 130, 246, 0.25)',
+    overflow: 'hidden',
+  },
+  statContributionBarFill: (percent = 0) => ({
+    width: `${Math.max(0, Math.min(100, Number(percent) || 0))}%`,
+    height: '100%',
+    background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.85) 0%, rgba(96, 165, 250, 0.95) 100%)',
+  }),
   apiKeyList: {
     listStyle: 'none',
     padding: 0,
@@ -1180,12 +1260,71 @@ const overlayStyles = {
   apiKeyItem: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     borderRadius: 12,
     padding: '10px 12px',
     background: 'rgba(15, 23, 42, 0.7)',
     border: '1px solid rgba(71, 85, 105, 0.45)',
     color: '#e2e8f0',
+    gap: 12,
+  },
+  apiKeyStatusBadge: (active = false) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '2px 8px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 600,
+    color: active ? '#bbf7d0' : '#cbd5f5',
+    background: active ? 'rgba(34, 197, 94, 0.28)' : 'rgba(71, 85, 105, 0.45)',
+    border: active ? '1px solid rgba(74, 222, 128, 0.5)' : '1px solid rgba(71, 85, 105, 0.55)',
+  }),
+  apiKeyActions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  conversationFooter: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'flex',
+    gap: 12,
+    padding: '12px 18px 16px',
+    borderTop: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'linear-gradient(180deg, rgba(10, 16, 35, 0.7) 0%, rgba(10, 16, 35, 0.92) 90%)',
+  },
+  conversationFooterButton: (variant = 'ghost', disabled = false) => {
+    const palette = {
+      danger: {
+        background: 'rgba(248, 113, 113, 0.18)',
+        border: '1px solid rgba(248, 113, 113, 0.6)',
+        color: '#fecaca',
+      },
+      ghost: {
+        background: 'rgba(15, 23, 42, 0.72)',
+        border: '1px solid rgba(71, 85, 105, 0.55)',
+        color: '#cbd5f5',
+      },
+    }
+    const tone = palette[variant] || palette.ghost
+    return {
+      flex: 1,
+      borderRadius: 12,
+      border: tone.border,
+      background: tone.background,
+      color: disabled ? '#64748b' : tone.color,
+      fontSize: 12,
+      fontWeight: 600,
+      padding: '10px 14px',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      transition: 'all 0.18s ease',
+    }
   },
   drawerFooter: {
     position: 'sticky',
@@ -1228,6 +1367,8 @@ const overlayStyles = {
     flexDirection: 'column',
     gap: 12,
     background: 'rgba(4, 10, 28, 0.4)',
+    position: 'relative',
+    zIndex: 1,
   },
   dateDividerWrapper: {
     display: 'flex',
@@ -2879,6 +3020,34 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [context?.type, moderatorTokenSet, viewerOwnsRoom, viewerToken],
   )
 
+  const roomTheme = useMemo(() => {
+    const bubbleColor = normalizeColor(roomPreferences?.bubble_color)
+    const textColor = normalizeColor(roomPreferences?.text_color)
+    const personalBackground = normalizeBackgroundUrl(roomPreferences?.background_url)
+    const defaultBackground = normalizeBackgroundUrl(
+      currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl,
+    )
+    const shouldUseRoomBackground = roomPreferences ? roomPreferences.use_room_background !== false : true
+
+    let backgroundUrl = null
+    if (personalBackground) {
+      backgroundUrl = personalBackground
+    } else if (shouldUseRoomBackground && defaultBackground) {
+      backgroundUrl = defaultBackground
+    }
+
+    return {
+      bubbleColor,
+      textColor,
+      backgroundUrl,
+    }
+  }, [currentRoom, roomPreferences])
+
+  const messageTextStyle = useMemo(
+    () => (roomTheme.textColor ? { ...overlayStyles.messageText, color: roomTheme.textColor } : overlayStyles.messageText),
+    [roomTheme.textColor],
+  )
+
   const roomAssets = useMemo(() => {
     if (context?.type !== 'chat-room') {
       return { media: [], files: [] }
@@ -3509,6 +3678,37 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [context, refreshRooms],
   )
 
+  const handleLeaveCurrentContext = useCallback(
+    async (options = {}) => {
+      if (!context) return false
+      const isRoom = context.type === 'chat-room'
+      const isGlobal = context.type === 'global'
+      if (!isRoom && !isGlobal) {
+        return false
+      }
+
+      const baseRoom =
+        currentRoom ||
+        (isRoom
+          ? {
+              id: context.chatRoomId,
+              visibility: context.visibility || 'private',
+              builtin: context.builtin,
+            }
+          : {
+              id: context.chatRoomId,
+              builtin: 'global',
+            })
+
+      const success = await handleLeaveRoom(baseRoom, options)
+      if (success) {
+        setDrawerOpen(false)
+      }
+      return success
+    },
+    [context, currentRoom, handleLeaveRoom],
+  )
+
   const handleOpenSearchOverlay = useCallback(() => {
     setSearchModalOpen(true)
     setSearchQuery('')
@@ -3701,7 +3901,12 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         throw new Error(payload?.detail || '키 목록을 불러올 수 없습니다.')
       }
       const payload = await response.json()
-      setApiKeys(Array.isArray(payload?.entries) ? payload.entries : [])
+      const entries = Array.isArray(payload?.keys)
+        ? payload.keys
+        : Array.isArray(payload?.entries)
+          ? payload.entries
+          : []
+      setApiKeys(entries)
     } catch (error) {
       console.error('[chat] API 키 목록 로드 실패', error)
       setApiKeyError(error?.message || 'API 키 목록을 불러올 수 없습니다.')
@@ -3733,6 +3938,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         throw new Error(payload?.detail || payload?.error || 'API 키를 저장할 수 없습니다.')
       }
       setApiKeyInput('')
+      setSettingsMessage('API 키를 추가했습니다.')
       await refreshApiKeyring()
     } catch (error) {
       console.error('[chat] API 키 추가 실패', error)
@@ -3759,10 +3965,42 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         if (!response.ok) {
           throw new Error(payload?.detail || payload?.error || 'API 키를 삭제할 수 없습니다.')
         }
+        setSettingsMessage('API 키를 삭제했습니다.')
         await refreshApiKeyring()
       } catch (error) {
         console.error('[chat] API 키 삭제 실패', error)
         setApiKeyError(error?.message || 'API 키를 삭제할 수 없습니다.')
+      }
+    },
+    [buildApiKeyHeaders, refreshApiKeyring, viewerId],
+  )
+
+  const handleToggleApiKey = useCallback(
+    async (entry, action) => {
+      if (!entry?.id) return
+      if (!viewerId) {
+        setApiKeyError('로그인 후 API 키를 변경할 수 있습니다.')
+        return
+      }
+
+      const verb = action === 'deactivate' ? 'deactivate' : 'activate'
+      try {
+        const response = await fetch('/api/rank/user-api-keyring', {
+          method: 'PATCH',
+          headers: buildApiKeyHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ id: entry.id, action: verb }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(payload?.detail || payload?.error || 'API 키 상태를 변경할 수 없습니다.')
+        }
+        setSettingsMessage(
+          verb === 'deactivate' ? 'API 키 사용을 해제했습니다.' : 'API 키를 기본값으로 설정했습니다.',
+        )
+        await refreshApiKeyring()
+      } catch (error) {
+        console.error('[chat] API 키 상태 변경 실패', error)
+        setApiKeyError(error?.message || 'API 키 상태를 변경할 수 없습니다.')
       }
     },
     [buildApiKeyHeaders, refreshApiKeyring, viewerId],
@@ -4120,6 +4358,48 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
     },
     [context?.chatRoomId, manageChatRoomRole, refreshRoomBans, refreshRooms],
+  )
+
+  const handleAdjustBanEntry = useCallback(
+    async (ban) => {
+      if (!viewerOwnsRoom) {
+        setSettingsError('추방 기간을 변경할 권한이 없습니다.')
+        return
+      }
+      if (!ban || !context?.chatRoomId) return
+      const ownerId = ban.owner_id || ban.ownerId
+      if (!ownerId) return
+
+      const promptLabel =
+        '새 추방 기간(분)을 입력해 주세요. 0을 입력하면 영구 차단으로 유지됩니다.'
+      const input = window.prompt(promptLabel, '')
+      if (input === null) {
+        return
+      }
+      const trimmed = input.trim()
+      if (!trimmed) {
+        return
+      }
+      const minutes = Number(trimmed)
+      if (!Number.isFinite(minutes) || minutes < 0) {
+        alert('0 이상의 숫자를 입력해 주세요.')
+        return
+      }
+
+      try {
+        await updateChatRoomBan({
+          roomId: context.chatRoomId,
+          ownerId,
+          durationMinutes: minutes,
+        })
+        await refreshRoomBans(context.chatRoomId)
+        setSettingsMessage('추방 기간을 업데이트했습니다.')
+      } catch (error) {
+        console.error('[chat] 추방 기간 조정 실패', error)
+        setSettingsError(error?.message || '추방 기간을 변경할 수 없습니다.')
+      }
+    },
+    [context?.chatRoomId, refreshRoomBans, updateChatRoomBan, viewerOwnsRoom],
   )
 
   const handleOpenParticipantProfile = useCallback((participant) => {
@@ -5707,6 +5987,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
   }, [isCompactLayout])
 
+  const conversationFooterStyle = useMemo(() => {
+    if (!isCompactLayout) {
+      return overlayStyles.conversationFooter
+    }
+    return {
+      ...overlayStyles.conversationFooter,
+      padding: '12px 12px 14px',
+      gap: 10,
+    }
+  }, [isCompactLayout])
+
   const renderListColumn = () => {
     const visibility = activeTab === 'open' ? 'open' : activeTab === 'private' ? 'private' : null
 
@@ -5857,9 +6148,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const announcementList = showAnnouncements
       ? roomAnnouncements.filter((item) => !pinnedAnnouncement || item.id !== pinnedAnnouncement.id)
       : []
+    const themeBubbleColor = roomTheme.bubbleColor
+    const themeTextColor = roomTheme.textColor
+    const themeBackgroundUrl = roomTheme.backgroundUrl
+    const canLeaveRoom = context?.type === 'chat-room' || context?.type === 'global'
+    const canOpenSettings = context?.type === 'chat-room'
 
     return (
       <section ref={conversationRef} style={conversationStyle}>
+        {themeBackgroundUrl ? (
+          <div style={overlayStyles.conversationBackground(themeBackgroundUrl)} />
+        ) : null}
         <header style={conversationHeaderStyle}>
           <div style={overlayStyles.headerLeft}>
             {hasContext ? (
@@ -5924,7 +6223,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   style={overlayStyles.announcementListItem(true)}
                   onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
                 >
-                  <strong>📌 {truncateText(pinnedAnnouncement.content || '').text}</strong>
+                  <strong>
+                    📌 {truncateText(pinnedAnnouncement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                  </strong>
                   <span style={overlayStyles.announcementMeta}>
                     최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)}
                   </span>
@@ -5938,7 +6239,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                     style={overlayStyles.announcementListItem(false)}
                     onClick={() => handleOpenAnnouncementDetail(announcement)}
                   >
-                    <span>{truncateText(announcement.content || '').text}</span>
+                    <span>
+                      {truncateText(announcement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                    </span>
                     <span style={overlayStyles.announcementMeta}>
                       ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
                     </span>
@@ -6061,38 +6364,52 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                           return (
                             <div key={messageKey} style={overlayStyles.messageItem(mine)}>
                               {mine && showTimestamp ? timestampNode : null}
-                              <div style={overlayStyles.messageBubble(mine, bubbleVariant)}>
-                                {labelText ? (
-                                  <span style={overlayStyles.messageLabel(labelVariant)}>{labelText}</span>
-                                ) : null}
-                                {attachments.length ? (
-                                  <div
-                                    style={
-                                      attachments.every((item) => item.layoutHint === 'grid')
-                                        ? overlayStyles.messageAttachmentsGrid
-                                        : overlayStyles.messageAttachments
-                                    }
-                                  >
-                                    {attachments.map((attachment) =>
-                                      renderAttachmentPreview(message, attachment, mine),
-                                    )}
+                              {(() => {
+                                const bubbleStyle = overlayStyles.messageBubble(mine, bubbleVariant)
+                                if (bubbleVariant === 'default') {
+                                  if (themeBubbleColor) {
+                                    bubbleStyle.background = themeBubbleColor
+                                    bubbleStyle.border = '1px solid rgba(71, 85, 105, 0.35)'
+                                  }
+                                  if (themeTextColor) {
+                                    bubbleStyle.color = themeTextColor
+                                  }
+                                }
+                                return (
+                                  <div style={bubbleStyle}>
+                                    {labelText ? (
+                                      <span style={overlayStyles.messageLabel(labelVariant)}>{labelText}</span>
+                                    ) : null}
+                                    {attachments.length ? (
+                                      <div
+                                        style={
+                                          attachments.every((item) => item.layoutHint === 'grid')
+                                            ? overlayStyles.messageAttachmentsGrid
+                                            : overlayStyles.messageAttachments
+                                        }
+                                      >
+                                        {attachments.map((attachment) =>
+                                          renderAttachmentPreview(message, attachment, mine),
+                                        )}
+                                      </div>
+                                    ) : null}
+                                    {displayText ? (
+                                      <p style={messageTextStyle}>{displayText || ' '}</p>
+                                    ) : aiMeta?.status === 'pending' ? (
+                                      <span style={overlayStyles.messagePendingText}>응답을 생성하고 있습니다…</span>
+                                    ) : null}
+                                    {showViewMore ? (
+                                      <button
+                                        type="button"
+                                        style={overlayStyles.viewMoreButton}
+                                        onClick={() => setExpandedMessage(message)}
+                                      >
+                                        전체보기
+                                      </button>
+                                    ) : null}
                                   </div>
-                                ) : null}
-                                {displayText ? (
-                                  <p style={overlayStyles.messageText}>{displayText || ' '}</p>
-                                ) : aiMeta?.status === 'pending' ? (
-                                  <span style={overlayStyles.messagePendingText}>응답을 생성하고 있습니다…</span>
-                                ) : null}
-                                {showViewMore ? (
-                                  <button
-                                    type="button"
-                                    style={overlayStyles.viewMoreButton}
-                                    onClick={() => setExpandedMessage(message)}
-                                  >
-                                    전체보기
-                                  </button>
-                                ) : null}
-                              </div>
+                                )
+                              })()}
                               {!mine && showTimestamp ? timestampNode : null}
                             </div>
                           )
@@ -6258,6 +6575,25 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           {attachmentError ? (
             <div style={{ ...overlayStyles.errorText, paddingTop: 8 }}>{attachmentError}</div>
           ) : null}
+        </div>
+        <div style={conversationFooterStyle}>
+          <button
+            type="button"
+            style={overlayStyles.conversationFooterButton(viewerIsOwner ? 'danger' : 'ghost', !canLeaveRoom)}
+            onClick={() => canLeaveRoom && handleLeaveCurrentContext({ asOwner: viewerIsOwner })}
+            disabled={!canLeaveRoom}
+          >
+            {viewerIsOwner ? '🗑 방 삭제' : '나가기'}
+          </button>
+          <button
+            type="button"
+            style={overlayStyles.conversationFooterButton('ghost', !canOpenSettings)}
+            onClick={() => canOpenSettings && handleOpenSettings()}
+            disabled={!canOpenSettings}
+            title={canOpenSettings ? '채팅방 설정 열기' : '채팅방을 선택하면 설정을 열 수 있습니다.'}
+          >
+            ⚙️ 설정
+          </button>
         </div>
         {sendError ? (
           <div style={overlayStyles.errorText}>메시지를 전송할 수 없습니다.</div>
@@ -7218,7 +7554,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   style={overlayStyles.announcementListItem(true)}
                   onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
                 >
-                  <strong>📌 {truncateText(pinnedAnnouncement.content || '').text}</strong>
+                  <strong>
+                    📌 {truncateText(pinnedAnnouncement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                  </strong>
                   <span style={overlayStyles.announcementMeta}>
                     최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)}
                   </span>
@@ -7233,7 +7571,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       style={overlayStyles.announcementListItem(false)}
                       onClick={() => handleOpenAnnouncementDetail(announcement)}
                     >
-                      <span>{truncateText(announcement.content || '').text}</span>
+                      <span>
+                        {truncateText(announcement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                      </span>
                       <span style={overlayStyles.announcementMeta}>
                         ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
                       </span>
@@ -7259,16 +7599,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 <div style={overlayStyles.banList}>
                   {roomBans.map((ban) => (
                     <div key={`${ban.room_id}-${ban.owner_id}`} style={overlayStyles.banListItem}>
-                      <div>
-                        <strong>{ban.owner_id}</strong>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <strong>{ban.owner_name || ban.owner_id}</strong>
                         <div style={overlayStyles.announcementMeta}>
                           {ban.expires_at ? `만료: ${formatDateLabel(ban.expires_at)}` : '영구 차단'}
                         </div>
                         {ban.reason ? <div style={{ fontSize: 12, color: '#cbd5f5' }}>{ban.reason}</div> : null}
                       </div>
-                      <button type="button" style={overlayStyles.secondaryButton} onClick={() => handleUnbanEntry(ban)}>
-                        추방 해제
-                      </button>
+                      <div style={overlayStyles.banListActions}>
+                        <button type="button" style={overlayStyles.secondaryButton} onClick={() => handleAdjustBanEntry(ban)}>
+                          기간 조정
+                        </button>
+                        <button type="button" style={overlayStyles.secondaryButton} onClick={() => handleUnbanEntry(ban)}>
+                          추방 해제
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -7281,32 +7626,57 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               {roomStatsLoading ? (
                 <span style={overlayStyles.mutedText}>통계를 불러오는 중...</span>
               ) : roomStats ? (
-                <dl style={overlayStyles.statList}>
-                  <div>
-                    <dt>총 메시지</dt>
-                    <dd>{roomStats.messageCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>최근 24시간</dt>
-                    <dd>{roomStats.messagesLast24h ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>첨부 수</dt>
-                    <dd>{roomStats.attachmentCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>참여자</dt>
-                    <dd>{roomStats.participantCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>부방장</dt>
-                    <dd>{roomStats.moderatorCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>마지막 메시지</dt>
-                    <dd>{roomStats.lastMessageAt ? formatDateLabel(roomStats.lastMessageAt) : '정보 없음'}</dd>
-                  </div>
-                </dl>
+                <>
+                  <dl style={overlayStyles.statList}>
+                    <div>
+                      <dt>총 메시지</dt>
+                      <dd>{roomStats.messageCount ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>최근 24시간</dt>
+                      <dd>{roomStats.messagesLast24h ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>첨부 수</dt>
+                      <dd>{roomStats.attachmentCount ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>참여자</dt>
+                      <dd>{roomStats.participantCount ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>부방장</dt>
+                      <dd>{roomStats.moderatorCount ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>마지막 메시지</dt>
+                      <dd>{roomStats.lastMessageAt ? formatDateLabel(roomStats.lastMessageAt) : '정보 없음'}</dd>
+                    </div>
+                  </dl>
+                  {Array.isArray(roomStats.contributions) && roomStats.contributions.length ? (
+                    <div style={overlayStyles.statContributionList}>
+                      {roomStats.contributions.map((entry, index) => (
+                        <div
+                          key={entry.ownerId || `${entry.displayName || 'member'}-${index}`}
+                          style={overlayStyles.statContributionItem}
+                        >
+                          <div style={overlayStyles.statContributionLabel}>
+                            <span>{entry.displayName || entry.ownerId || '참여자'}</span>
+                            <span style={overlayStyles.announcementMeta}>
+                              {(entry.messageCount ?? 0).toLocaleString()}개 ·{' '}
+                              {Number.isFinite(entry.share) ? `${entry.share}%` : '0%'}
+                            </span>
+                          </div>
+                          <div style={overlayStyles.statContributionBar}>
+                            <div style={overlayStyles.statContributionBarFill(entry.share)} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={overlayStyles.mutedText}>참여자별 통계를 확인할 수 없습니다.</span>
+                  )}
+                </>
               ) : (
                 <span style={overlayStyles.mutedText}>통계 정보를 확인할 수 없습니다.</span>
               )}
@@ -7422,19 +7792,36 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               <ul style={overlayStyles.apiKeyList}>
                 {apiKeys.map((entry) => (
                   <li key={entry.id} style={overlayStyles.apiKeyItem}>
-                    <div>
-                      <strong>{entry.label || entry.provider || '사용자 키'}</strong>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <strong>{entry.label || entry.modelLabel || entry.provider || '사용자 키'}</strong>
+                        <span style={overlayStyles.apiKeyStatusBadge(entry.isActive)}>
+                          {entry.isActive ? '사용중' : '미사용'}
+                        </span>
+                      </div>
+                      <div style={overlayStyles.announcementMeta}>
+                        {(entry.provider || 'custom').toUpperCase()} · {entry.keySample || '샘플 없음'}
+                      </div>
                       <div style={overlayStyles.announcementMeta}>
                         등록: {entry.createdAt ? formatDateLabel(entry.createdAt) : '알 수 없음'}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      style={overlayStyles.secondaryButton}
-                      onClick={() => handleDeleteApiKey(entry.id)}
-                    >
-                      삭제
-                    </button>
+                    <div style={overlayStyles.apiKeyActions}>
+                      <button
+                        type="button"
+                        style={overlayStyles.secondaryButton}
+                        onClick={() => handleToggleApiKey(entry, entry.isActive ? 'deactivate' : 'activate')}
+                      >
+                        {entry.isActive ? '사용 해제' : '사용하기'}
+                      </button>
+                      <button
+                        type="button"
+                        style={overlayStyles.secondaryButton}
+                        onClick={() => handleDeleteApiKey(entry.id)}
+                      >
+                        삭제
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>

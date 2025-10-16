@@ -2011,9 +2011,16 @@ begin
       b.created_at,
       b.updated_at,
       u.email as banned_by_email,
-      u.raw_user_meta_data->>'full_name' as banned_by_name
+      u.raw_user_meta_data->>'full_name' as banned_by_name,
+      coalesce(
+        u_owner.raw_user_meta_data->>'full_name',
+        u_owner.email,
+        b.owner_id::text
+      ) as owner_name,
+      u_owner.email as owner_email
     from public.chat_room_bans b
     left join auth.users u on u.id = b.banned_by
+    left join auth.users u_owner on u_owner.id = b.owner_id
     where b.room_id = p_room_id
     order by b.created_at desc
   ) as row;
@@ -2023,6 +2030,86 @@ end;
 $$;
 
 grant execute on function public.fetch_chat_room_bans(uuid)
+to authenticated;
+
+drop function if exists public.update_chat_room_ban(uuid, uuid, integer, text);
+create or replace function public.update_chat_room_ban(
+  p_room_id uuid,
+  p_owner_id uuid,
+  p_duration_minutes integer default null,
+  p_reason text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_is_owner boolean := false;
+  v_new_expires_at timestamptz := null;
+  v_reason text := null;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  select coalesce(r.owner_id = v_actor, false)
+    into v_is_owner
+  from public.chat_rooms r
+  where r.id = p_room_id;
+
+  if not v_is_owner then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  if p_duration_minutes is not null then
+    if p_duration_minutes < 0 then
+      return jsonb_build_object('ok', false, 'error', 'invalid_duration');
+    end if;
+    if p_duration_minutes = 0 then
+      v_new_expires_at := null;
+    else
+      v_new_expires_at := timezone('utc', now()) + make_interval(mins => p_duration_minutes);
+    end if;
+  end if;
+
+  if p_reason is not null then
+    v_reason := nullif(trim(p_reason), '');
+  end if;
+
+  update public.chat_room_bans
+  set
+    expires_at = coalesce(v_new_expires_at, expires_at),
+    reason = coalesce(v_reason, reason),
+    updated_at = timezone('utc', now())
+  where room_id = p_room_id
+    and owner_id = p_owner_id;
+
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'ban_not_found');
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'ban', (
+      select to_jsonb(b) || jsonb_build_object(
+        'banned_by_email', u.email,
+        'banned_by_name', u.raw_user_meta_data->>'full_name',
+        'owner_name', coalesce(u_owner.raw_user_meta_data->>'full_name', u_owner.email, b.owner_id::text),
+        'owner_email', u_owner.email
+      )
+      from public.chat_room_bans b
+      left join auth.users u on u.id = b.banned_by
+      left join auth.users u_owner on u_owner.id = b.owner_id
+      where b.room_id = p_room_id
+        and b.owner_id = p_owner_id
+    )
+  );
+end;
+$$;
+
+grant execute on function public.update_chat_room_ban(uuid, uuid, integer, text)
 to authenticated;
 
 drop function if exists public.fetch_chat_room_announcements(uuid, integer, timestamptz);
@@ -2542,7 +2629,13 @@ as $$
 declare
   v_actor uuid := auth.uid();
   v_can_view boolean := false;
-  v_stats jsonb := '{}'::jsonb;
+  v_total_messages bigint := 0;
+  v_messages_24h bigint := 0;
+  v_attachment_count bigint := 0;
+  v_last_message timestamptz := null;
+  v_participant_count bigint := 0;
+  v_moderator_count bigint := 0;
+  v_contributions jsonb := '[]'::jsonb;
 begin
   if v_actor is null then
     return jsonb_build_object('ok', false, 'error', 'not_authenticated');
@@ -2570,28 +2663,78 @@ begin
     return jsonb_build_object('ok', false, 'error', 'forbidden');
   end if;
 
-  select jsonb_build_object(
-      'messageCount', coalesce(count(*), 0),
-      'messagesLast24h', coalesce(count(*) filter (where created_at >= timezone('utc', now()) - interval '24 hours'), 0),
-      'attachmentCount', coalesce(sum(jsonb_array_length(coalesce(metadata->'attachments', '[]'::jsonb))), 0),
-      'participantCount', (
-        select count(*)
-        from public.chat_room_members mem
-        where mem.room_id = p_room_id
-          and coalesce(mem.status, 'active') = 'active'
-      ),
-      'moderatorCount', (
-        select count(*)
-        from public.chat_room_moderators m
-        where m.room_id = p_room_id
-      ),
-      'lastMessageAt', max(created_at)
-    )
-    into v_stats
+  select
+    coalesce(count(*), 0),
+    coalesce(count(*) filter (where created_at >= timezone('utc', now()) - interval '24 hours'), 0),
+    coalesce(sum(jsonb_array_length(coalesce(metadata->'attachments', '[]'::jsonb))), 0),
+    max(created_at)
+  into
+    v_total_messages,
+    v_messages_24h,
+    v_attachment_count,
+    v_last_message
   from public.messages
   where chat_room_id = p_room_id;
 
-  return jsonb_build_object('ok', true, 'stats', coalesce(v_stats, '{}'::jsonb));
+  select coalesce(count(*), 0)
+    into v_participant_count
+  from public.chat_room_members mem
+  where mem.room_id = p_room_id
+    and coalesce(mem.status, 'active') = 'active';
+
+  select coalesce(count(*), 0)
+    into v_moderator_count
+  from public.chat_room_moderators m
+  where m.room_id = p_room_id;
+
+  select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'ownerId', stats.owner_id,
+          'displayName', stats.display_name,
+          'messageCount', stats.message_count,
+          'share', case
+            when v_total_messages > 0 then round((stats.message_count::numeric * 100) / v_total_messages, 2)
+            else 0
+          end,
+          'lastMessageAt', stats.last_message_at
+        )
+        order by stats.message_count desc, stats.display_name
+      ),
+      '[]'::jsonb
+    )
+    into v_contributions
+  from (
+    select
+      base.owner_id,
+      base.message_count,
+      base.last_message_at,
+      coalesce(base.last_username, u_owner.raw_user_meta_data->>'full_name', u_owner.email, base.owner_id::text) as display_name
+    from (
+      select
+        msg.owner_id,
+        count(*) as message_count,
+        max(msg.created_at) as last_message_at,
+        max(msg.username) filter (where msg.username is not null) as last_username
+      from public.messages msg
+      where msg.chat_room_id = p_room_id
+      group by msg.owner_id
+    ) as base
+    left join auth.users u_owner on u_owner.id = base.owner_id
+  ) as stats;
+
+  return jsonb_build_object(
+    'ok', true,
+    'stats', jsonb_build_object(
+      'messageCount', v_total_messages,
+      'messagesLast24h', v_messages_24h,
+      'attachmentCount', v_attachment_count,
+      'participantCount', v_participant_count,
+      'moderatorCount', v_moderator_count,
+      'lastMessageAt', v_last_message,
+      'contributions', v_contributions
+    )
+  );
 end;
 $$;
 

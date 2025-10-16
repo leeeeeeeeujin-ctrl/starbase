@@ -183,7 +183,34 @@ export async function fetchChatRoomBans({ roomId }) {
   return (data?.bans && Array.isArray(data.bans) ? data.bans : []).map((ban) => ({
     ...ban,
     expires_at: ban?.expires_at || null,
+    owner_name: ban?.owner_name || null,
+    owner_email: ban?.owner_email || null,
   }))
+}
+
+export async function updateChatRoomBan({ roomId, ownerId, durationMinutes = null, reason = null }) {
+  if (!roomId) {
+    throw new Error('roomId가 필요합니다.')
+  }
+  if (!ownerId) {
+    throw new Error('ownerId가 필요합니다.')
+  }
+
+  const payload = {
+    p_room_id: roomId,
+    p_owner_id: ownerId,
+    p_duration_minutes:
+      durationMinutes === null || durationMinutes === undefined ? null : Number(durationMinutes),
+    p_reason: reason ?? null,
+  }
+
+  const { data, error } = await supabase.rpc('update_chat_room_ban', payload)
+
+  if (error) {
+    throw error
+  }
+
+  return data?.ban || null
 }
 
 export async function fetchChatRoomAnnouncements({
