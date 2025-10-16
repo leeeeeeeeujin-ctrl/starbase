@@ -2992,6 +2992,8 @@ create table if not exists public.chat_room_members (
   room_visibility text,
   joined_at timestamptz not null default timezone('utc', now()),
   last_active_at timestamptz not null default timezone('utc', now()),
+  last_read_message_at timestamptz,
+  last_read_message_id uuid,
   primary key (room_id, owner_id)
 );
 
@@ -3000,6 +3002,12 @@ alter table public.chat_room_members
 
 alter table public.chat_room_members
   add column if not exists room_visibility text;
+
+alter table public.chat_room_members
+  add column if not exists last_read_message_at timestamptz;
+
+alter table public.chat_room_members
+  add column if not exists last_read_message_id uuid;
 
 create table if not exists public.chat_room_moderators (
   room_id uuid not null references public.chat_rooms(id) on delete cascade,
@@ -3113,6 +3121,9 @@ create index if not exists chat_room_members_room_idx
 create index if not exists chat_room_moderators_owner_idx
   on public.chat_room_moderators (owner_id, room_id);
 
+create index if not exists chat_room_members_last_read_idx
+  on public.chat_room_members (room_id, last_read_message_at desc);
+
 create index if not exists chat_room_moderators_room_idx
   on public.chat_room_moderators (room_id, owner_id);
 
@@ -3137,6 +3148,9 @@ begin
 
   new.room_owner_id := v_owner_id;
   new.room_visibility := v_visibility;
+  if new.last_read_message_at is null then
+    new.last_read_message_at := new.joined_at;
+  end if;
 
   return new;
 end;
@@ -3256,7 +3270,8 @@ on conflict (room_id, owner_id) do nothing;
 
 update public.chat_room_members m
 set room_owner_id = r.owner_id,
-    room_visibility = r.visibility
+    room_visibility = r.visibility,
+    last_read_message_at = coalesce(m.last_read_message_at, m.joined_at)
 from public.chat_rooms r
 where r.id = m.room_id;
 
@@ -5063,6 +5078,63 @@ $$;
 grant execute on function public.leave_chat_room(uuid)
 to authenticated;
 
+create or replace function public.mark_chat_room_read(
+  p_room_id uuid,
+  p_message_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_last_id uuid := p_message_id;
+  v_last_at timestamptz := null;
+begin
+  if v_owner_id is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  if p_room_id is null then
+    return jsonb_build_object('ok', false, 'error', 'missing_room_id');
+  end if;
+
+  if v_last_id is not null then
+    select created_at
+      into v_last_at
+    from public.messages
+    where id = v_last_id
+      and chat_room_id = p_room_id
+    limit 1;
+  end if;
+
+  if v_last_id is null or v_last_at is null then
+    select id, created_at
+      into v_last_id, v_last_at
+    from public.messages
+    where chat_room_id = p_room_id
+    order by created_at desc, id desc
+    limit 1;
+  end if;
+
+  update public.chat_room_members
+  set last_read_message_id = coalesce(v_last_id, last_read_message_id),
+      last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
+  where room_id = p_room_id
+    and owner_id = v_owner_id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'roomId', p_room_id,
+    'lastReadAt', coalesce(v_last_at, timezone('utc', now()))
+  );
+end;
+$$;
+
+grant execute on function public.mark_chat_room_read(uuid, uuid)
+to authenticated;
+
 create or replace function public.fetch_chat_rooms(
   p_search text default null,
   p_limit integer default 24
@@ -5083,7 +5155,7 @@ begin
     return jsonb_build_object('joined', '[]'::jsonb, 'available', '[]'::jsonb);
   end if;
 
-  with member_rooms as (
+  with base_rooms as (
     select
       r.id,
       r.name,
@@ -5096,72 +5168,126 @@ begin
       r.hero_id,
       r.created_at,
       r.updated_at,
-      count(m_all.owner_id) as member_count,
-      bool_or(m_all.owner_id = v_owner_id) as is_member
+      counts.member_count,
+      m_self.owner_id as member_owner_id,
+      coalesce(m_self.status, 'active') as member_status,
+      m_self.last_read_message_at,
+      m_self.last_read_message_id,
+      m_self.joined_at,
+      hero.image_url as cover_url
     from public.chat_rooms r
-    left join public.chat_room_members m_all
-      on m_all.room_id = r.id
-     and coalesce(m_all.status, 'active') = 'active'
-    group by r.id
+    left join public.chat_room_members m_self
+      on m_self.room_id = r.id
+     and m_self.owner_id = v_owner_id
+    left join (
+      select room_id, count(*) filter (where coalesce(status, 'active') = 'active') as member_count
+      from public.chat_room_members
+      group by room_id
+    ) counts on counts.room_id = r.id
+    left join public.heroes hero on hero.id = r.hero_id
+  ),
+  last_messages as (
+    select
+      lm.chat_room_id,
+      lm.created_at,
+      jsonb_build_object(
+        'id', lm.id,
+        'text', lm.text,
+        'metadata', lm.metadata,
+        'created_at', lm.created_at,
+        'owner_id', lm.owner_id,
+        'username', lm.username
+      ) as payload
+    from (
+      select
+        m.chat_room_id,
+        m.id,
+        m.text,
+        m.metadata,
+        m.created_at,
+        m.owner_id,
+        m.username,
+        row_number() over (partition by m.chat_room_id order by m.created_at desc, m.id desc) as rn
+      from public.messages m
+      where m.chat_room_id is not null
+    ) lm
+    where lm.rn = 1
+  ),
+  unread_counts as (
+    select
+      m.chat_room_id,
+      count(*)::integer as unread_count
+    from public.messages m
+    join public.chat_room_members mem
+      on mem.room_id = m.chat_room_id
+     and mem.owner_id = v_owner_id
+    where m.chat_room_id is not null
+      and coalesce(mem.status, 'active') = 'active'
+      and m.created_at > coalesce(mem.last_read_message_at, mem.joined_at)
+    group by m.chat_room_id
   )
   select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
     into v_joined
   from (
     select
-      mr.id,
-      mr.name,
-      mr.description,
-      mr.visibility,
-      mr.capacity,
-      mr.allow_ai,
-      mr.require_approval,
-      mr.owner_id,
-      mr.hero_id,
-      mr.member_count,
-      mr.created_at,
-      mr.updated_at
-    from member_rooms mr
-    where mr.is_member
-    order by mr.updated_at desc
+      br.id,
+      br.name,
+      br.description,
+      br.visibility,
+      br.capacity,
+      br.allow_ai,
+      br.require_approval,
+      br.owner_id,
+      br.hero_id,
+      br.member_count,
+      br.cover_url,
+      br.created_at,
+      br.updated_at,
+      lm.payload as latest_message,
+      lm.created_at as last_message_at,
+      coalesce(un.unread_count, 0) as unread_count
+    from base_rooms br
+    left join last_messages lm on lm.chat_room_id = br.id
+    left join unread_counts un on un.chat_room_id = br.id
+    where br.member_owner_id = v_owner_id
+      and br.member_status = 'active'
+    order by coalesce(lm.created_at, br.updated_at) desc nulls last
     limit v_limit
   ) as row;
 
   with available_rooms as (
     select
-      r.id,
-      r.name,
-      r.description,
-      r.visibility,
-      r.capacity,
-      r.allow_ai,
-      r.require_approval,
-      r.owner_id,
-      r.hero_id,
-      r.created_at,
-      r.updated_at,
-      count(m_all.owner_id) as member_count
-    from public.chat_rooms r
-    left join public.chat_room_members m_self
-      on m_self.room_id = r.id
-     and m_self.owner_id = v_owner_id
-    left join public.chat_room_members m_all
-      on m_all.room_id = r.id
-     and coalesce(m_all.status, 'active') = 'active'
-    where (m_self.owner_id is null or coalesce(m_self.status, 'active') <> 'active')
-      and (r.visibility = 'public' or r.owner_id = v_owner_id)
+      br.id,
+      br.name,
+      br.description,
+      br.visibility,
+      br.capacity,
+      br.allow_ai,
+      br.require_approval,
+      br.owner_id,
+      br.hero_id,
+      br.member_count,
+      br.cover_url,
+      br.created_at,
+      br.updated_at,
+      lm.payload as latest_message,
+      lm.created_at as last_message_at
+    from base_rooms br
+    left join last_messages lm on lm.chat_room_id = br.id
+    where (br.member_owner_id is null or br.member_status <> 'active')
+      and (br.visibility = 'public' or br.owner_id = v_owner_id)
       and (
         v_query = ''
-        or lower(r.name) like lower('%' || v_query || '%')
-        or lower(r.description) like lower('%' || v_query || '%')
+        or lower(br.name) like lower('%' || v_query || '%')
+        or lower(br.description) like lower('%' || v_query || '%')
       )
-    group by r.id
   )
   select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
     into v_available
   from (
     select *
     from available_rooms
-    order by updated_at desc
+    order by coalesce(last_message_at, updated_at) desc nulls last
     limit v_limit
   ) as row;
 
@@ -5389,6 +5515,10 @@ begin
     'heroes', coalesce(v_heroes, '[]'::jsonb),
     'rooms', coalesce(v_joined, '[]'::jsonb),
     'publicRooms', coalesce(v_public, '[]'::jsonb),
+    'roomSummary', jsonb_build_object(
+      'joined', coalesce(v_joined, '[]'::jsonb),
+      'available', coalesce(v_public, '[]'::jsonb)
+    ),
     'sessions', coalesce(v_sessions, '[]'::jsonb),
     'contacts', coalesce(v_contacts, '[]'::jsonb)
   );

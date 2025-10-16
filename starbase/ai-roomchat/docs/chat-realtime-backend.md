@@ -5,7 +5,7 @@
 ## 포함 사항
 
 1. **채팅방 테이블과 RLS**
-   `chat_rooms`, `chat_room_members`, `chat_room_moderators`를 생성하고 선택/삽입/수정/삭제 정책을 등록합니다. 각 테이블은 `updated_at`/`last_active_at`을 자동으로 갱신하는 트리거를 가집니다. 운영자 멤버십은 `chat_room_members` 트리거가 `chat_room_moderators` 캐시로 동기화하고, 동시에 `room_owner_id`·`room_visibility` 메타데이터를 미리 채워 RLS 평가 중 `chat_rooms` ↔ `chat_room_members`가 서로 재귀 호출되지 않도록 분리합니다.
+   `chat_rooms`, `chat_room_members`, `chat_room_moderators`를 생성하고 선택/삽입/수정/삭제 정책을 등록합니다. 각 테이블은 `updated_at`/`last_active_at`을 자동으로 갱신하는 트리거를 가집니다. 운영자 멤버십은 `chat_room_members` 트리거가 `chat_room_moderators` 캐시로 동기화하고, 동시에 `room_owner_id`·`room_visibility` 메타데이터를 미리 채워 RLS 평가 중 `chat_rooms` ↔ `chat_room_members`가 서로 재귀 호출되지 않도록 분리합니다. 추가로 멤버 행에는 `joined_at`, `last_read_message_at`, `last_read_message_id` 컬럼을 포함해 클라이언트가 읽지 않은 메시지 수를 계산할 수 있습니다.
 
 2. **`messages` 테이블 기본값 및 정책**
    메시지의 기본값·제약·인덱스를 정리하고, 기존 SELECT 정책을 모두 제거한 뒤 `messages_select_public` 단일 정책만 남겨 글로벌/방/세션/귓속말 노출을 제어하도록 구성합니다. 세션 판별을 위해 `is_rank_session_owner_or_roster` 함수도 함께 배포됩니다.
@@ -16,8 +16,36 @@
 4. **퍼블리케이션 연결**
    `supabase_realtime` 퍼블리케이션에 `messages`, `chat_rooms`, `chat_room_members`가 포함되어 Postgres Changes 스트림이 즉시 구독됩니다.
 
-5. **첨부 파일 전송 경로**
+5. **채팅방 읽음/첨부 파일 전송 경로**
    `send_rank_chat_message` 함수가 `metadata.attachments` 배열을 수용하도록 확장되어 텍스트 없이도 압축된 파일 첨부를 게시할 수 있습니다. 클라이언트는 Supabase Storage `chat-attachments` 버킷에 업로드 후 서명 URL을 통해 내려받습니다.
+    `mark_chat_room_read(room_id, message_id)` RPC는 사용자가 특정 채팅방을 읽은 시각을 저장해 카드 뷰의 안 읽은 메시지 배지를 계산합니다.
+    `fetch_chat_rooms(search, limit)` / `fetch_chat_dashboard(limit)` RPC는 `joined`·`available` 목록에 `latest_message`, `unread_count`, `cover_url`, `last_message_at`, `last_read_message_at` 등 카드 UI가 요구하는 필드를 함께 반환합니다.
+
+### `fetch_chat_rooms` / `fetch_chat_dashboard` 응답 형식
+
+```jsonc
+{
+  "joined": [
+    {
+      "id": "…",
+      "name": "방 제목",
+      "cover_url": "https://…/hero.png",
+      "member_count": 4,
+      "unread_count": 2,
+      "last_message_at": "2024-05-26T15:00:00Z",
+      "latest_message": {
+        "id": "…",
+        "text": "최근 대화",
+        "created_at": "2024-05-26T15:00:00Z",
+        "owner_id": "…"
+      }
+    }
+  ],
+  "available": [ /* 공개 방 목록, joined와 동일 구조 */ ]
+}
+```
+
+`fetch_chat_dashboard`는 위 구조를 `roomSummary.joined` / `roomSummary.available`로 포함하면서 `rooms`(가입한 방)·`publicRooms`(추천 공개 방) 배열을 평탄화해 제공합니다.
 
 ## 사용 방법
 

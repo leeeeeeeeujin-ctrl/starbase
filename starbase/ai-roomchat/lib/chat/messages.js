@@ -105,7 +105,18 @@ export async function insertMessage(payload, context = {}) {
     throw error
   }
 
-  return data || null
+  if (!data) {
+    return null
+  }
+
+  return {
+    ...data,
+    hero_name:
+      data.hero_name ||
+      data.username ||
+      (payload?.hero_name || payload?.username) ||
+      '익명',
+  }
 }
 
 function toComparable(value) {
