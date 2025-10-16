@@ -404,7 +404,7 @@ const overlayStyles = {
     background: 'rgba(15, 23, 42, 0.94)',
     borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
-    padding: '48px 32px 28px',
+    padding: '52px 32px 28px',
     minHeight: 'min(92vh, 860px)',
     display: 'flex',
     flexDirection: 'column',
@@ -414,16 +414,15 @@ const overlayStyles = {
   },
   topBar: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    top: 4,
+    left: 20,
+    right: 20,
     height: 40,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '0 18px',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    padding: '0 12px',
+    borderRadius: 14,
     borderBottom: '1px solid rgba(71, 85, 105, 0.45)',
     background: 'rgba(8, 13, 28, 0.92)',
     boxSizing: 'border-box',
@@ -2381,24 +2380,23 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setSettingsOverlayOpen(false)
       setExpandedMessage(null)
       setViewerAttachment(null)
-    attachmentCacheRef.current.clear()
-    roomMetadataRef.current.clear()
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
+      attachmentCacheRef.current.clear()
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
         longPressTimerRef.current = null
       }
       longPressActiveRef.current = false
-    if (videoControlTimerRef.current) {
-      clearTimeout(videoControlTimerRef.current)
-      videoControlTimerRef.current = null
+      if (videoControlTimerRef.current) {
+        clearTimeout(videoControlTimerRef.current)
+        videoControlTimerRef.current = null
+      }
+      setVideoControlsVisible(true)
+      lastMarkedRef.current = null
+      if (onUnreadChange) {
+        onUnreadChange(0)
+      }
+      return
     }
-    setVideoControlsVisible(true)
-    lastMarkedRef.current = null
-    if (onUnreadChange) {
-      onUnreadChange(0)
-    }
-    return
-  }
 
     let mounted = true
 
