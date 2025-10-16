@@ -75,21 +75,25 @@ const upsertMessageList = (current, incoming) => {
 
 const overlayStyles = {
   frame: {
-    background: 'rgba(15, 23, 42, 0.92)',
-    borderRadius: 28,
+    background: 'rgba(15, 23, 42, 0.94)',
+    borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
-    padding: 20,
-    minHeight: 'min(82vh, 720px)',
-    display: 'grid',
+    padding: '40px 0',
+    minHeight: 'min(92vh, 820px)',
+    display: 'flex',
     width: '100%',
     boxSizing: 'border-box',
+    justifyContent: 'center',
   },
   root: (focused) => ({
     display: 'grid',
-    gridTemplateColumns: focused ? 'minmax(0, 1fr)' : '280px minmax(0, 1fr)',
-    gap: focused ? 20 : 16,
-    height: 'min(78vh, 680px)',
-    minHeight: 520,
+    gridTemplateColumns: focused ? 'minmax(0, 1fr)' : '300px minmax(0, 1fr)',
+    gap: focused ? 14 : 16,
+    height: 'min(88vh, 760px)',
+    minHeight: 560,
+    width: '100%',
+    padding: 0,
+    boxSizing: 'border-box',
   }),
   sidePanel: {
     display: 'grid',
@@ -103,7 +107,7 @@ const overlayStyles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 8,
-    padding: '16px 16px 12px',
+    padding: '10px 12px 8px',
     background: 'rgba(15, 23, 42, 0.96)',
   },
   sideTabButton: (active) => ({
@@ -115,15 +119,15 @@ const overlayStyles = {
     color: active ? '#e0f2fe' : '#cbd5f5',
     fontSize: 12,
     fontWeight: 600,
-    padding: '10px 12px',
+    padding: '8px 10px',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   }),
   sideContent: {
-    padding: '0 16px 18px',
+    padding: '0 14px 16px',
     overflowY: 'auto',
     display: 'grid',
-    gap: 18,
+    gap: 16,
     background: 'rgba(10, 16, 35, 0.65)',
   },
   section: {
@@ -225,7 +229,7 @@ const overlayStyles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '16px 20px',
+    padding: '12px 18px',
     borderBottom: '1px solid rgba(71, 85, 105, 0.5)',
     background: 'rgba(12, 20, 45, 0.98)',
   },
@@ -277,7 +281,7 @@ const overlayStyles = {
     return {
       borderRadius: 10,
       border: tone.border,
-      padding: '8px 14px',
+      padding: '6px 12px',
       fontSize: 12,
       fontWeight: 600,
       background: tone.background,
@@ -288,9 +292,9 @@ const overlayStyles = {
   },
   messageViewport: {
     overflowY: 'auto',
-    padding: '18px 22px',
+    padding: '12px 18px',
     display: 'grid',
-    gap: 10,
+    gap: 8,
     background: 'rgba(4, 10, 28, 0.4)',
   },
   placeholder: {
@@ -337,7 +341,7 @@ const overlayStyles = {
     borderRadius: 14,
     border: mine ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid rgba(71, 85, 105, 0.45)',
     background: mine ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.8)',
-    padding: '10px 14px',
+    padding: '6px 14px',
     color: '#f8fafc',
   }),
   messageText: {
@@ -352,23 +356,50 @@ const overlayStyles = {
     minWidth: 56,
     textAlign: mine ? 'right' : 'left',
   }),
-  composer: {
-    display: 'grid',
-    gridTemplateColumns: '1fr auto',
-    gap: 12,
-    padding: '14px 20px 18px',
+  composerContainer: {
+    position: 'relative',
     borderTop: '1px solid rgba(71, 85, 105, 0.5)',
     background: 'rgba(12, 20, 45, 0.98)',
   },
+  composer: {
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr auto',
+    alignItems: 'center',
+    gap: 10,
+    padding: '10px 16px 12px',
+  },
+  composerToggle: (active = false, disabled = false) => ({
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    border: disabled
+      ? '1px solid rgba(71, 85, 105, 0.35)'
+      : active
+        ? '1px solid rgba(59, 130, 246, 0.6)'
+        : '1px solid rgba(71, 85, 105, 0.5)',
+    background: disabled
+      ? 'rgba(15, 23, 42, 0.45)'
+      : active
+        ? 'rgba(37, 99, 235, 0.24)'
+        : 'rgba(15, 23, 42, 0.7)',
+    color: disabled ? '#64748b' : '#e2e8f0',
+    fontSize: 22,
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.65 : 1,
+  }),
   textarea: {
     width: '100%',
-    minHeight: 56,
+    minHeight: 52,
     maxHeight: 160,
     borderRadius: 14,
     border: '1px solid rgba(71, 85, 105, 0.5)',
     background: 'rgba(2, 6, 23, 0.6)',
     color: '#f8fafc',
-    padding: '12px 14px',
+    padding: '10px 12px',
     fontSize: 14,
     lineHeight: 1.45,
     resize: 'vertical',
@@ -376,7 +407,46 @@ const overlayStyles = {
   errorText: {
     fontSize: 12,
     color: '#fca5a5',
-    padding: '0 20px 14px',
+    padding: '0 18px 12px',
+  },
+  attachmentPanel: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: '100%',
+    marginBottom: 8,
+    borderRadius: 16,
+    border: '1px solid rgba(59, 130, 246, 0.4)',
+    background: 'rgba(8, 15, 35, 0.95)',
+    boxShadow: '0 18px 40px -18px rgba(2, 6, 23, 0.8)',
+    padding: 12,
+    display: 'grid',
+    gap: 8,
+    zIndex: 5,
+  },
+  attachmentPanelTitle: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#cbd5f5',
+  },
+  attachmentActions: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+    gap: 8,
+  },
+  attachmentButton: {
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '10px 12px',
+    textAlign: 'left',
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
   },
 }
 
@@ -455,8 +525,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendError, setSendError] = useState(null)
   const [sending, setSending] = useState(false)
+  const [showComposerPanel, setShowComposerPanel] = useState(false)
   const unsubscribeRef = useRef(null)
   const messageListRef = useRef(null)
+  const composerPanelRef = useRef(null)
+  const composerToggleRef = useRef(null)
 
   const heroes = useMemo(() => (dashboard?.heroes ? dashboard.heroes : []), [dashboard])
 
@@ -475,6 +548,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setContext(null)
       setMessages([])
       setMessageInput('')
+      setShowComposerPanel(false)
       if (onUnreadChange) {
         onUnreadChange(0)
       }
@@ -582,6 +656,29 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     if (!node) return
     node.scrollTop = node.scrollHeight
   }, [messages, open])
+
+  useEffect(() => {
+    if (!showComposerPanel) return
+
+    const handlePointerDown = (event) => {
+      if (
+        (composerPanelRef.current && composerPanelRef.current.contains(event.target)) ||
+        (composerToggleRef.current && composerToggleRef.current.contains(event.target))
+      ) {
+        return
+      }
+      setShowComposerPanel(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+    }
+  }, [showComposerPanel])
+
+  useEffect(() => {
+    setShowComposerPanel(false)
+  }, [context])
 
   const refreshRooms = useCallback(
     async (search = '') => {
@@ -745,6 +842,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   )
 
   const handleAiReply = useCallback(async () => {
+    setShowComposerPanel(false)
     const prompt = window.prompt('AI에게 전달할 프롬프트를 입력해 주세요.')
     if (!prompt) return
     try {
@@ -772,6 +870,32 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       alert('AI 응답을 불러올 수 없습니다.')
     }
   }, [handleSendMessage])
+
+  const handleAttachmentAction = useCallback(
+    (action) => {
+      if (action === 'ai') {
+        handleAiReply()
+        return
+      }
+
+      setShowComposerPanel(false)
+      const input = document.createElement('input')
+      input.type = 'file'
+      if (action === 'photo') {
+        input.accept = 'image/*'
+      } else if (action === 'video') {
+        input.accept = 'video/*'
+      }
+      input.multiple = action === 'file'
+      input.onchange = (event) => {
+        const files = event.target?.files
+        if (!files || !files.length) return
+        console.info('[chat] 첨부 파일 선택:', action, files)
+      }
+      input.click()
+    },
+    [handleAiReply],
+  )
 
   const renderInfoTab = () => (
     <div style={{ display: 'grid', gap: 18 }}>
@@ -982,14 +1106,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           <div style={overlayStyles.headerButtons}>
             <button
               type="button"
-              onClick={handleAiReply}
-              disabled={!hasContext}
-              style={overlayStyles.headerButton('ghost', !hasContext)}
-            >
-              AI 응답
-            </button>
-            <button
-              type="button"
               onClick={onClose}
               style={overlayStyles.headerButton('primary')}
             >
@@ -1050,22 +1166,80 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             <div style={overlayStyles.placeholder}>채팅방 또는 세션을 선택해 주세요.</div>
           )}
         </div>
-        <div style={overlayStyles.composer}>
-          <textarea
-            value={messageInput}
-            onChange={(event) => setMessageInput(event.target.value)}
-            placeholder="메시지를 입력하세요"
-            style={overlayStyles.textarea}
-            disabled={!hasContext || sending}
-          />
-          <button
-            type="button"
-            onClick={() => handleSendMessage()}
-            disabled={disableSend}
-            style={overlayStyles.actionButton('primary', disableSend)}
-          >
-            보내기
-          </button>
+        <div style={overlayStyles.composerContainer}>
+          {showComposerPanel ? (
+            <div ref={composerPanelRef} style={overlayStyles.attachmentPanel}>
+              <strong style={overlayStyles.attachmentPanelTitle}>빠른 작업</strong>
+              <div style={overlayStyles.attachmentActions}>
+                <button
+                  type="button"
+                  style={overlayStyles.attachmentButton}
+                  onClick={() => handleAttachmentAction('photo')}
+                >
+                  <span>📷 사진 첨부</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>이미지를 업로드합니다.</span>
+                </button>
+                <button
+                  type="button"
+                  style={overlayStyles.attachmentButton}
+                  onClick={() => handleAttachmentAction('file')}
+                >
+                  <span>📎 파일 공유</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>문서나 기타 파일을 첨부합니다.</span>
+                </button>
+                <button
+                  type="button"
+                  style={overlayStyles.attachmentButton}
+                  onClick={() => handleAttachmentAction('video')}
+                >
+                  <span>🎞️ 동영상 전송</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>클립이나 녹화를 공유합니다.</span>
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...overlayStyles.attachmentButton,
+                    opacity: hasContext ? 1 : 0.55,
+                    cursor: hasContext ? 'pointer' : 'not-allowed',
+                  }}
+                  onClick={() => hasContext && handleAttachmentAction('ai')}
+                >
+                  <span>🤖 AI 응답 요청</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>
+                    현재 대화에 대한 AI 제안을 받아요.
+                  </span>
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div style={overlayStyles.composer}>
+            <button
+              ref={composerToggleRef}
+              type="button"
+              onClick={() => hasContext && setShowComposerPanel((prev) => !prev)}
+              style={overlayStyles.composerToggle(showComposerPanel, !hasContext)}
+              aria-expanded={hasContext && showComposerPanel}
+              aria-label="추가 옵션"
+              disabled={!hasContext}
+            >
+              +
+            </button>
+            <textarea
+              value={messageInput}
+              onChange={(event) => setMessageInput(event.target.value)}
+              placeholder="메시지를 입력하세요"
+              style={overlayStyles.textarea}
+              disabled={!hasContext || sending}
+            />
+            <button
+              type="button"
+              onClick={() => handleSendMessage()}
+              disabled={disableSend}
+              style={overlayStyles.actionButton('primary', disableSend)}
+            >
+              보내기
+            </button>
+          </div>
         </div>
         {sendError ? (
           <div style={overlayStyles.errorText}>메시지를 전송할 수 없습니다.</div>
@@ -1081,9 +1255,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       open={open}
       onClose={onClose}
       title="채팅"
-      width="min(1100px, 95vw)"
+      width="min(1200px, 98vw)"
       hideHeader
-      contentStyle={{ padding: 0, background: 'transparent', display: 'flex', justifyContent: 'center' }}
+      contentStyle={{ padding: 0, background: 'transparent' }}
       frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
     >
       <div style={overlayStyles.frame}>
