@@ -404,26 +404,42 @@ const overlayStyles = {
     background: 'rgba(15, 23, 42, 0.94)',
     borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
-    padding: '28px 32px',
+    padding: '48px 32px 28px',
     minHeight: 'min(92vh, 860px)',
     display: 'flex',
+    flexDirection: 'column',
     width: '100%',
     boxSizing: 'border-box',
     alignItems: 'stretch',
   },
-  closeButton: {
+  topBar: {
     position: 'absolute',
-    top: 12,
-    right: 26,
-    borderRadius: 999,
-    border: '1px solid rgba(148, 163, 184, 0.5)',
-    background: 'rgba(15, 23, 42, 0.75)',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 40,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0 18px',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderBottom: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(8, 13, 28, 0.92)',
+    boxSizing: 'border-box',
+    zIndex: 6,
+  },
+  topBarButton: {
+    appearance: 'none',
+    background: 'transparent',
+    border: 'none',
     color: '#cbd5f5',
-    padding: '6px 14px',
-    fontSize: 12,
-    fontWeight: 600,
+    fontSize: 16,
+    fontWeight: 700,
     cursor: 'pointer',
-    zIndex: 5,
+    padding: '6px 10px',
+    borderRadius: 10,
+    transition: 'background 0.15s ease',
   },
   root: (focused, compact = false, viewportHeight = null) => {
     const numericHeight =
@@ -715,6 +731,7 @@ const overlayStyles = {
     background: 'rgba(11, 18, 40, 0.96)',
     minHeight: 0,
     overflow: 'hidden',
+    position: 'relative',
   },
   conversationHeader: {
     display: 'flex',
@@ -755,6 +772,23 @@ const overlayStyles = {
     alignItems: 'center',
     gap: 8,
   },
+  headerIconButton: (active = false) => ({
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    border: active
+      ? '1px solid rgba(59, 130, 246, 0.7)'
+      : '1px solid rgba(71, 85, 105, 0.5)',
+    background: active ? 'rgba(37, 99, 235, 0.28)' : 'rgba(15, 23, 42, 0.65)',
+    color: '#e2e8f0',
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.15s ease',
+  }),
   headerButton: (variant = 'ghost', disabled = false) => {
     const palette = {
       ghost: {
@@ -781,6 +815,216 @@ const overlayStyles = {
       opacity: disabled ? 0.7 : 1,
     }
   },
+  drawerScrim: (open, compact = false) => ({
+    position: 'absolute',
+    inset: compact ? 0 : '8px 0 8px 8px',
+    background: compact ? 'rgba(8, 15, 30, 0.72)' : 'transparent',
+    pointerEvents: open && compact ? 'auto' : 'none',
+    opacity: open && compact ? 1 : 0,
+    transition: 'opacity 0.2s ease',
+    borderRadius: compact ? 0 : 18,
+    zIndex: 8,
+  }),
+  drawerContainer: (open, compact = false) => ({
+    position: 'absolute',
+    top: compact ? 0 : 12,
+    right: compact ? 0 : 12,
+    bottom: compact ? 0 : 12,
+    width: compact ? '100%' : 340,
+    maxWidth: compact ? '100%' : 360,
+    transform: open ? 'translateX(0)' : 'translateX(108%)',
+    transition: 'transform 0.24s ease',
+    display: 'flex',
+    flexDirection: 'column',
+    pointerEvents: open ? 'auto' : 'none',
+    zIndex: 12,
+  }),
+  drawerPanel: {
+    background: 'rgba(10, 16, 35, 0.96)',
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+    borderRadius: 22,
+    padding: '18px 18px 20px',
+    display: 'grid',
+    gridTemplateRows: 'auto auto auto 1fr auto',
+    gap: 16,
+    height: '100%',
+    overflow: 'hidden',
+  },
+  drawerScrollArea: {
+    overflowY: 'auto',
+    display: 'grid',
+    gap: 16,
+    paddingRight: 6,
+  },
+  drawerSection: {
+    display: 'grid',
+    gap: 10,
+  },
+  drawerSectionTitle: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#cbd5f5',
+    letterSpacing: 0.2,
+  },
+  drawerCover: {
+    width: '100%',
+    height: 150,
+    borderRadius: 18,
+    overflow: 'hidden',
+    background: 'rgba(15, 23, 42, 0.82)',
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+  },
+  drawerCoverImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  drawerMediaGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(58px, 1fr))',
+    gap: 8,
+  },
+  drawerMediaItem: {
+    width: '100%',
+    aspectRatio: '1 / 1',
+    borderRadius: 14,
+    overflow: 'hidden',
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    cursor: 'pointer',
+    position: 'relative',
+    background: 'rgba(15, 23, 42, 0.82)',
+  },
+  drawerMediaThumb: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  drawerMediaBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    fontSize: 10,
+    padding: '2px 6px',
+    borderRadius: 999,
+    background: 'rgba(15, 23, 42, 0.8)',
+    color: '#e2e8f0',
+    fontWeight: 600,
+  },
+  drawerMoreButton: {
+    border: '1px dashed rgba(71, 85, 105, 0.6)',
+    borderRadius: 14,
+    padding: '8px 10px',
+    background: 'rgba(8, 15, 30, 0.6)',
+    color: '#cbd5f5',
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  drawerFileList: {
+    display: 'grid',
+    gap: 6,
+  },
+  drawerFileItem: {
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    padding: '8px 10px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    cursor: 'pointer',
+    fontSize: 11,
+    color: '#e2e8f0',
+  },
+  drawerParticipants: {
+    display: 'grid',
+    gap: 10,
+  },
+  drawerParticipant: (role) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '6px 8px',
+    borderRadius: 12,
+    border:
+      role === 'owner'
+        ? '1px solid rgba(59, 130, 246, 0.75)'
+        : role === 'moderator'
+          ? '1px solid rgba(244, 114, 182, 0.75)'
+          : '1px solid rgba(71, 85, 105, 0.45)',
+    background:
+      role === 'owner'
+        ? 'rgba(37, 99, 235, 0.22)'
+        : role === 'moderator'
+          ? 'rgba(236, 72, 153, 0.18)'
+          : 'rgba(15, 23, 42, 0.6)',
+    cursor: 'pointer',
+  }),
+  drawerParticipantAvatar: (role) => ({
+    width: 30,
+    height: 30,
+    borderRadius: '50%',
+    overflow: 'hidden',
+    flexShrink: 0,
+    border:
+      role === 'owner'
+        ? '2px solid rgba(59, 130, 246, 0.8)'
+        : role === 'moderator'
+          ? '2px solid rgba(244, 114, 182, 0.8)'
+          : '2px solid rgba(148, 163, 184, 0.6)',
+    background: 'rgba(15, 23, 42, 0.8)',
+    color: '#f8fafc',
+    fontSize: 12,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }),
+  drawerParticipantMeta: {
+    display: 'grid',
+    gap: 2,
+    minWidth: 0,
+  },
+  drawerParticipantName: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#f8fafc',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  drawerParticipantSub: {
+    fontSize: 10,
+    color: '#cbd5f5',
+  },
+  drawerFooter: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingTop: 4,
+  },
+  drawerFooterButton: (variant = 'ghost') => ({
+    flex: 1,
+    borderRadius: 12,
+    border:
+      variant === 'danger'
+        ? '1px solid rgba(248, 113, 113, 0.7)'
+        : '1px solid rgba(71, 85, 105, 0.55)',
+    background:
+      variant === 'danger'
+        ? 'rgba(248, 113, 113, 0.16)'
+        : 'rgba(15, 23, 42, 0.7)',
+    color: variant === 'danger' ? '#fecaca' : '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    padding: '10px 12px',
+    transition: 'all 0.18s ease',
+  }),
   messageViewport: {
     overflowY: 'auto',
     padding: '22px 6px 26px',
@@ -1659,6 +1903,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState(null)
   const [searchPerformed, setSearchPerformed] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerMediaLimit, setDrawerMediaLimit] = useState(20)
+  const [drawerFileLimit, setDrawerFileLimit] = useState(20)
+  const [profileSheet, setProfileSheet] = useState({ open: false, participant: null })
+  const [settingsOverlayOpen, setSettingsOverlayOpen] = useState(false)
   const [mediaLibrary, setMediaLibrary] = useState({
     status: 'idle',
     entries: [],
@@ -1737,6 +1986,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   useEffect(() => {
     roomsRef.current = rooms
   }, [rooms])
+
+  useEffect(() => {
+    if (context?.type !== 'chat-room') {
+      setDrawerOpen(false)
+      setProfileSheet({ open: false, participant: null })
+    }
+    setDrawerMediaLimit(20)
+    setDrawerFileLimit(20)
+  }, [context?.chatRoomId, context?.type])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1962,6 +2220,146 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return entries
   }, [messages, viewerToken])
 
+  const currentRoom = useMemo(() => {
+    if (context?.type !== 'chat-room') {
+      return null
+    }
+    const identifier = normalizeId(context.chatRoomId)
+    if (!identifier) return null
+    const joined = Array.isArray(rooms?.joined) ? rooms.joined : []
+    const available = Array.isArray(rooms?.available) ? rooms.available : []
+    return [...joined, ...available].find((room) => normalizeId(room?.id) === identifier) || null
+  }, [context, rooms])
+
+  const roomOwnerToken = useMemo(
+    () => normalizeId(currentRoom?.owner_id || currentRoom?.ownerId),
+    [currentRoom],
+  )
+
+  const moderatorTokenSet = useMemo(() => {
+    if (!currentRoom) return new Set()
+    const candidates =
+      currentRoom.moderators ||
+      currentRoom.moderator_ids ||
+      currentRoom.moderatorIds ||
+      currentRoom.moderatorOwners ||
+      []
+    const set = new Set()
+    if (Array.isArray(candidates)) {
+      candidates.forEach((candidate) => {
+        if (!candidate) return
+        const token = normalizeId(
+          typeof candidate === 'string'
+            ? candidate
+            : candidate.owner_id || candidate.ownerId || candidate.id,
+        )
+        if (token) {
+          set.add(token)
+        }
+      })
+    }
+    return set
+  }, [currentRoom])
+
+  const viewerOwnsRoom = useMemo(
+    () =>
+      Boolean(
+        context?.type === 'chat-room' && roomOwnerToken && viewerToken && roomOwnerToken === viewerToken,
+      ),
+    [context?.type, roomOwnerToken, viewerToken],
+  )
+
+  const roomAssets = useMemo(() => {
+    if (context?.type !== 'chat-room') {
+      return { media: [], files: [] }
+    }
+
+    const media = []
+    const files = []
+
+    messages.forEach((message) => {
+      const attachments = getMessageAttachments(message)
+      const createdAt = message.created_at || null
+      attachments.forEach((attachment) => {
+        const mime = (attachment.mime_type || attachment.mime || '').toLowerCase()
+        const type = attachment.type || (mime.startsWith('video/') ? 'video' : mime.startsWith('image/') ? 'image' : 'file')
+        const entry = {
+          ...attachment,
+          message,
+          messageId: message.id || message.local_id || null,
+          createdAt,
+          ownerToken: normalizeId(message.owner_id || message.user_id),
+          kind: type,
+        }
+        if (type === 'image' || type === 'video') {
+          media.push(entry)
+        } else {
+          files.push(entry)
+        }
+      })
+    })
+
+    const sortByTimeDesc = (a, b) => toChrono(b?.createdAt) - toChrono(a?.createdAt)
+
+    media.sort(sortByTimeDesc)
+    files.sort(sortByTimeDesc)
+
+    return { media, files }
+  }, [context?.type, context?.chatRoomId, messages])
+
+  const participantList = useMemo(() => {
+    if (context?.type !== 'chat-room') {
+      return []
+    }
+
+    const map = new Map()
+
+    messages.forEach((message) => {
+      const ownerToken = normalizeId(message.owner_id || message.user_id)
+      if (!ownerToken) return
+      const createdAt = message.created_at || null
+      const existing = map.get(ownerToken) || {
+        ownerToken,
+        heroId: message.hero_id || message.heroId || null,
+        displayName: message.username || message.hero_name || '알 수 없음',
+        avatarUrl: message.avatar_url || message.hero_image_url || null,
+        lastMessageAt: null,
+        message,
+      }
+
+      if (!existing.lastMessageAt || toChrono(createdAt) >= toChrono(existing.lastMessageAt)) {
+        existing.heroId = message.hero_id || message.heroId || existing.heroId
+        existing.displayName = message.username || message.hero_name || existing.displayName
+        existing.avatarUrl = message.avatar_url || message.hero_image_url || existing.avatarUrl
+        existing.lastMessageAt = createdAt
+        existing.message = message
+      }
+
+      map.set(ownerToken, existing)
+    })
+
+    const entries = Array.from(map.values()).map((entry) => {
+      let role = 'member'
+      if (roomOwnerToken && entry.ownerToken === roomOwnerToken) {
+        role = 'owner'
+      } else if (moderatorTokenSet.has(entry.ownerToken)) {
+        role = 'moderator'
+      }
+      return { ...entry, role }
+    })
+
+    const rolePriority = { owner: 0, moderator: 1, member: 2 }
+    entries.sort((a, b) => {
+      const roleDiff = (rolePriority[a.role] || 9) - (rolePriority[b.role] || 9)
+      if (roleDiff !== 0) return roleDiff
+      const timeDiff = toChrono(b.lastMessageAt) - toChrono(a.lastMessageAt)
+      if (timeDiff !== 0) return timeDiff
+      return (a.displayName || '').localeCompare(b.displayName || '', 'ko')
+    })
+
+    return entries
+  }, [context?.type, context?.chatRoomId, messages, moderatorTokenSet, roomOwnerToken])
+
   useEffect(() => {
     if (!open) {
       if (unsubscribeRef.current) {
@@ -1976,8 +2374,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setComposerAttachments([])
       setAttachmentError(null)
       setAiRequest(null)
-    setExpandedMessage(null)
-    setViewerAttachment(null)
+      setDrawerOpen(false)
+      setDrawerMediaLimit(20)
+      setDrawerFileLimit(20)
+      setProfileSheet({ open: false, participant: null })
+      setSettingsOverlayOpen(false)
+      setExpandedMessage(null)
+      setViewerAttachment(null)
     attachmentCacheRef.current.clear()
     roomMetadataRef.current.clear()
     if (longPressTimerRef.current) {
@@ -2466,6 +2869,88 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setSearchError(null)
     setSearchResults([])
     setSearchPerformed(false)
+  }, [])
+
+  const handleToggleDrawer = useCallback(() => {
+    if (context?.type !== 'chat-room') return
+    setDrawerOpen((value) => !value)
+  }, [context?.type])
+
+  const handleCloseDrawer = useCallback(() => {
+    setDrawerOpen(false)
+  }, [])
+
+  const handleLoadMoreMedia = useCallback(() => {
+    setDrawerMediaLimit((value) => value + 20)
+  }, [])
+
+  const handleLoadMoreFiles = useCallback(() => {
+    setDrawerFileLimit((value) => value + 20)
+  }, [])
+
+  const handleDrawerMediaSelect = useCallback(
+    (entry) => {
+      if (!entry) return
+      handleOpenAttachment(entry.message || { id: entry.messageId }, entry)
+    },
+    [handleOpenAttachment],
+  )
+
+  const handleDrawerFileSelect = useCallback(
+    (entry) => {
+      if (!entry) return
+      handleDownloadAttachment(entry)
+    },
+    [handleDownloadAttachment],
+  )
+
+  const handleOpenParticipantProfile = useCallback((participant) => {
+    if (!participant) return
+    setProfileSheet({ open: true, participant })
+  }, [])
+
+  const handleCloseParticipantProfile = useCallback(() => {
+    setProfileSheet({ open: false, participant: null })
+  }, [])
+
+  const handleRequestFriendFromProfile = useCallback(async () => {
+    const target = profileSheet.participant
+    if (!target?.heroId) {
+      alert('이 참여자의 캐릭터 정보를 찾을 수 없습니다.')
+      return
+    }
+    const result = await addFriend({ heroId: target.heroId })
+    if (!result?.ok) {
+      alert(result?.error || '친구 요청을 보낼 수 없습니다.')
+    }
+  }, [addFriend, profileSheet.participant])
+
+  const handleStartDirectMessage = useCallback(() => {
+    alert('1대1 대화는 곧 지원될 예정입니다.')
+  }, [])
+
+  const handleBlockParticipant = useCallback(() => {
+    alert('차단 기능은 곧 제공될 예정입니다.')
+  }, [])
+
+  const handleBanParticipant = useCallback(() => {
+    alert('추방 기능은 백엔드 연동 후 제공될 예정입니다.')
+  }, [])
+
+  const handlePromoteModerator = useCallback(() => {
+    alert('부방장 임명 기능은 곧 제공될 예정입니다.')
+  }, [])
+
+  const handleDemoteModerator = useCallback(() => {
+    alert('부방장 해제 기능은 곧 제공될 예정입니다.')
+  }, [])
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsOverlayOpen(true)
+  }, [])
+
+  const handleCloseSettings = useCallback(() => {
+    setSettingsOverlayOpen(false)
   }, [])
 
   const performRoomSearch = useCallback(
@@ -3746,7 +4231,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return {
       ...overlayStyles.frame,
       borderRadius: isUltraCompactLayout ? 0 : 22,
-      padding: isUltraCompactLayout ? '12px 10px 16px' : '18px 16px 24px',
+      padding: isUltraCompactLayout ? '44px 10px 18px' : '48px 16px 24px',
       minHeight: numericHeight ? `${numericHeight}px` : '100vh',
       height: numericHeight ? `${numericHeight}px` : '100vh',
       width: '100%',
@@ -3754,18 +4239,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       alignItems: 'stretch',
     }
   }, [isCompactLayout, isUltraCompactLayout, viewport.height])
-
-  const closeButtonStyle = useMemo(() => {
-    if (!isCompactLayout) {
-      return overlayStyles.closeButton
-    }
-    return {
-      ...overlayStyles.closeButton,
-      top: isUltraCompactLayout ? 6 : 10,
-      right: isUltraCompactLayout ? 12 : 16,
-      padding: isUltraCompactLayout ? '5px 12px' : '6px 12px',
-    }
-  }, [isCompactLayout, isUltraCompactLayout])
 
   const sidePanelStyle = useMemo(() => {
     if (!isCompactLayout) {
@@ -3997,6 +4470,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const promptPreview = aiActive
       ? truncateText(((aiRequest?.prompt ?? messageInput) || '').trim(), 120)
       : null
+    const showDrawer = context?.type === 'chat-room'
+    const mediaItems = showDrawer ? roomAssets.media.slice(0, drawerMediaLimit) : []
+    const fileItems = showDrawer ? roomAssets.files.slice(0, drawerFileLimit) : []
+    const hasMoreMedia = showDrawer && roomAssets.media.length > mediaItems.length
+    const hasMoreFiles = showDrawer && roomAssets.files.length > fileItems.length
+    const drawerParticipants = showDrawer ? participantList : []
+    const coverImage = showDrawer ? currentRoom?.cover_url || currentRoom?.coverUrl || null : null
+    const viewerIsOwner = Boolean(showDrawer && viewerOwnsRoom)
 
     return (
       <section style={conversationStyle}>
@@ -4017,15 +4498,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             </div>
           </div>
           <div style={overlayStyles.headerButtons}>
-            {context?.type === 'chat-room' ? (
+            {showDrawer ? (
               <button
                 type="button"
-                onClick={() =>
-                  handleLeaveRoom({ id: context.chatRoomId, visibility: context.visibility || 'private' })
-                }
-                style={overlayStyles.headerButton('ghost')}
+                onClick={handleToggleDrawer}
+                style={overlayStyles.headerIconButton(drawerOpen)}
+                aria-label="채팅방 패널 열기"
               >
-                나가기
+                ☰
               </button>
             ) : null}
           </div>
@@ -4307,6 +4787,209 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         </div>
         {sendError ? (
           <div style={overlayStyles.errorText}>메시지를 전송할 수 없습니다.</div>
+        ) : null}
+        {showDrawer ? (
+          <>
+            <div
+              style={overlayStyles.drawerScrim(drawerOpen, isCompactLayout)}
+              onClick={handleCloseDrawer}
+            />
+            <aside style={overlayStyles.drawerContainer(drawerOpen, isCompactLayout)}>
+              <div style={overlayStyles.drawerPanel}>
+                <div style={overlayStyles.drawerCover}>
+                  {coverImage ? (
+                    <img src={coverImage} alt="채팅방 커버" style={overlayStyles.drawerCoverImage} />
+                  ) : (
+                    <span style={{ color: '#64748b', fontSize: 12 }}>커버 이미지가 없습니다.</span>
+                  )}
+                </div>
+                <div style={overlayStyles.drawerScrollArea}>
+                  <section style={overlayStyles.drawerSection}>
+                    <h4 style={overlayStyles.drawerSectionTitle}>사진 · 동영상</h4>
+                    {mediaItems.length ? (
+                      <>
+                        <div style={overlayStyles.drawerMediaGrid}>
+                          {mediaItems.map((item) => {
+                            const key = item.id || `${item.messageId || 'media'}-${item.path || item.preview_url}`
+                            const label = item.kind === 'video' ? '동영상' : '사진'
+                            return (
+                              <div
+                                key={key}
+                                style={overlayStyles.drawerMediaItem}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => handleDrawerMediaSelect(item)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    handleDrawerMediaSelect(item)
+                                  }
+                                }}
+                              >
+                                {item.preview_url ? (
+                                  <img
+                                    src={item.preview_url}
+                                    alt={item.name || label}
+                                    style={overlayStyles.drawerMediaThumb}
+                                  />
+                                ) : (
+                                  <span style={{ fontSize: 18, color: '#94a3b8' }}>
+                                    {item.kind === 'video' ? '🎬' : '🖼️'}
+                                  </span>
+                                )}
+                                {item.kind === 'video' ? (
+                                  <span style={overlayStyles.drawerMediaBadge}>VIDEO</span>
+                                ) : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {hasMoreMedia ? (
+                          <button
+                            type="button"
+                            style={overlayStyles.drawerMoreButton}
+                            onClick={handleLoadMoreMedia}
+                          >
+                            더 보기
+                          </button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <span style={overlayStyles.mutedText}>첨부된 미디어가 없습니다.</span>
+                    )}
+                  </section>
+                  <section style={overlayStyles.drawerSection}>
+                    <h4 style={overlayStyles.drawerSectionTitle}>파일</h4>
+                    {fileItems.length ? (
+                      <>
+                        <div style={overlayStyles.drawerFileList}>
+                          {fileItems.map((item) => {
+                            const key = item.id || `${item.messageId || 'file'}-${item.path || item.name}`
+                            return (
+                              <div
+                                key={key}
+                                style={overlayStyles.drawerFileItem}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => handleDrawerFileSelect(item)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    handleDrawerFileSelect(item)
+                                  }
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {item.name || '첨부 파일'}
+                                </span>
+                                <span>{formatBytes(item.size || 0)}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {hasMoreFiles ? (
+                          <button
+                            type="button"
+                            style={overlayStyles.drawerMoreButton}
+                            onClick={handleLoadMoreFiles}
+                          >
+                            더 보기
+                          </button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <span style={overlayStyles.mutedText}>공유된 파일이 없습니다.</span>
+                    )}
+                  </section>
+                  <section style={overlayStyles.drawerSection}>
+                    <h4 style={overlayStyles.drawerSectionTitle}>참여자</h4>
+                    {drawerParticipants.length ? (
+                      <div style={overlayStyles.drawerParticipants}>
+                        {drawerParticipants.map((participant) => {
+                          const name = participant.displayName || '참여자'
+                          const initials = name.slice(0, 2)
+                          const timeLabel = participant.lastMessageAt ? formatTime(participant.lastMessageAt) : ''
+                          const roleLabel =
+                            participant.role === 'owner'
+                              ? '방장'
+                              : participant.role === 'moderator'
+                                ? '부방장'
+                                : '참여자'
+                          return (
+                            <div
+                              key={participant.ownerToken || `${name}-${timeLabel}`}
+                              style={overlayStyles.drawerParticipant(participant.role)}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => handleOpenParticipantProfile(participant)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault()
+                                  handleOpenParticipantProfile(participant)
+                                }
+                              }}
+                            >
+                              <div style={overlayStyles.drawerParticipantAvatar(participant.role)}>
+                                {participant.avatarUrl ? (
+                                  <img
+                                    src={participant.avatarUrl}
+                                    alt={name}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                ) : (
+                                  initials
+                                )}
+                              </div>
+                              <div style={overlayStyles.drawerParticipantMeta}>
+                                <span style={overlayStyles.drawerParticipantName}>{name}</span>
+                                <span style={overlayStyles.drawerParticipantSub}>
+                                  {roleLabel}
+                                  {timeLabel ? ` · ${timeLabel}` : ''}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <span style={overlayStyles.mutedText}>아직 대화한 참여자가 없습니다.</span>
+                    )}
+                  </section>
+                </div>
+                <div style={overlayStyles.drawerFooter}>
+                  <button
+                    type="button"
+                    style={overlayStyles.drawerFooterButton(viewerIsOwner ? 'danger' : 'ghost')}
+                    onClick={() => {
+                      handleCloseDrawer()
+                      handleLeaveRoom({
+                        id: context?.chatRoomId,
+                        visibility: context?.visibility || 'private',
+                      })
+                    }}
+                  >
+                    {viewerIsOwner ? '방 삭제' : '나가기'}
+                  </button>
+                  <button
+                    type="button"
+                    style={overlayStyles.drawerFooterButton('ghost')}
+                    onClick={() => {
+                      handleCloseDrawer()
+                      handleOpenSettings()
+                    }}
+                  >
+                    설정
+                  </button>
+                </div>
+              </div>
+            </aside>
+          </>
         ) : null}
       </section>
     )
@@ -4767,6 +5450,121 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     />
   )
 
+  const participantOverlay = (
+    <SurfaceOverlay
+      open={profileSheet.open}
+      onClose={handleCloseParticipantProfile}
+      title="참여자 정보"
+      width="min(420px, 92vw)"
+    >
+      {profileSheet.participant ? (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 24,
+                overflow: 'hidden',
+                background: 'rgba(15, 23, 42, 0.8)',
+                border: '1px solid rgba(71, 85, 105, 0.45)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 20,
+                color: '#cbd5f5',
+              }}
+            >
+              {profileSheet.participant.avatarUrl ? (
+                <img
+                  src={profileSheet.participant.avatarUrl}
+                  alt={profileSheet.participant.displayName || '참여자'}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                (profileSheet.participant.displayName || '참여자').slice(0, 2)
+              )}
+            </div>
+            <div style={{ display: 'grid', gap: 4 }}>
+              <strong style={{ fontSize: 16, color: '#f1f5f9' }}>
+                {profileSheet.participant.displayName || '참여자'}
+              </strong>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                {profileSheet.participant.role === 'owner'
+                  ? '방장'
+                  : profileSheet.participant.role === 'moderator'
+                    ? '부방장'
+                    : '참여자'}
+              </span>
+              {profileSheet.participant.heroId ? (
+                <span style={{ fontSize: 11, color: '#cbd5f5' }}>
+                  캐릭터 ID: {profileSheet.participant.heroId}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleRequestFriendFromProfile}>
+              친구 요청 보내기
+            </button>
+            <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleStartDirectMessage}>
+              1대1 대화 시작
+            </button>
+            <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleBlockParticipant}>
+              차단하기
+            </button>
+            {viewerOwnsRoom && profileSheet.participant.role !== 'owner' ? (
+              <>
+                <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleBanParticipant}>
+                  추방하기
+                </button>
+                {profileSheet.participant.role === 'moderator' ? (
+                  <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleDemoteModerator}>
+                    부방장 해제
+                  </button>
+                ) : (
+                  <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handlePromoteModerator}>
+                    부방장 임명
+                  </button>
+                )}
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <span style={overlayStyles.mutedText}>참여자 정보를 불러오지 못했습니다.</span>
+      )}
+    </SurfaceOverlay>
+  )
+
+  const settingsOverlay = (
+    <SurfaceOverlay
+      open={settingsOverlayOpen}
+      onClose={handleCloseSettings}
+      title="채팅방 설정"
+      width="min(520px, 94vw)"
+    >
+      <div style={{ display: 'grid', gap: 18 }}>
+        {viewerOwnsRoom ? (
+          <section style={overlayStyles.section}>
+            <h3 style={overlayStyles.sectionTitle}>방장 전용</h3>
+            <p style={{ fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
+              추방 기간 관리, 기본 배경 변경, 공지 등록 등의 기능은 Supabase RPC와 Storage 규칙이
+              준비된 뒤 연동됩니다. 현재 화면은 자리 표시자로, 운영자 정책이 확정되면 연결해 주세요.
+            </p>
+          </section>
+        ) : null}
+        <section style={overlayStyles.section}>
+          <h3 style={overlayStyles.sectionTitle}>개인 설정</h3>
+          <p style={{ fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
+            말풍선/글자색, 개인 배경, AI API 키 관리는 현재 구현 중입니다. 해당 기능이 준비되면 이
+            영역에서 직접 변경할 수 있도록 할 예정입니다.
+          </p>
+        </section>
+      </div>
+    </SurfaceOverlay>
+  )
+
   return (
     <>
       {createRoomOverlay}
@@ -4775,6 +5573,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       {expandedMessageOverlay}
       {attachmentViewerOverlay}
       {friendOverlay}
+      {participantOverlay}
+      {settingsOverlay}
       <SurfaceOverlay
         open={open}
         onClose={onClose}
@@ -4785,11 +5585,12 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
       >
         <div style={frameStyle}>
-          {!focused ? (
-            <button type="button" style={closeButtonStyle} onClick={onClose}>
-              닫기
+          <div style={overlayStyles.topBar}>
+            <button type="button" style={overlayStyles.topBarButton} onClick={onClose}>
+              ×
             </button>
-          ) : null}
+            <span />
+          </div>
           <div style={rootStyle}>
             {!focused ? renderListColumn() : null}
             {focused ? renderMessageColumn() : null}
