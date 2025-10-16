@@ -8,9 +8,21 @@ import {
   createChatRoom,
   fetchChatDashboard,
   fetchChatRooms,
+  fetchChatRoomAnnouncementDetail,
+  fetchChatRoomAnnouncements,
+  fetchChatRoomBans,
+  fetchChatRoomStats,
+  fetchChatMemberPreferences,
   joinChatRoom,
   leaveChatRoom,
+  manageChatRoomRole,
   markChatRoomRead,
+  createChatRoomAnnouncement,
+  deleteChatRoomAnnouncement,
+  toggleChatRoomAnnouncementReaction,
+  createChatRoomAnnouncementComment,
+  saveChatMemberPreferences,
+  updateChatRoomSettings,
 } from '@/lib/chat/rooms'
 import {
   fetchRecentMessages,
@@ -722,6 +734,16 @@ const overlayStyles = {
       transition: 'all 0.15s ease',
     }
   },
+  secondaryButton: {
+    borderRadius: 10,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    color: '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 12px',
+    cursor: 'pointer',
+  },
   conversation: {
     display: 'grid',
     gridTemplateRows: 'auto 1fr auto',
@@ -998,6 +1020,88 @@ const overlayStyles = {
   drawerParticipantSub: {
     fontSize: 10,
     color: '#cbd5f5',
+  },
+  settingsTabs: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+  },
+  settingsTabButton: (active = false) => ({
+    flex: '0 0 auto',
+    borderRadius: 999,
+    border: active ? '1px solid rgba(59, 130, 246, 0.8)' : '1px solid rgba(71, 85, 105, 0.55)',
+    background: active ? 'rgba(37, 99, 235, 0.32)' : 'rgba(15, 23, 42, 0.75)',
+    color: active ? '#e0f2fe' : '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 14px',
+    cursor: 'pointer',
+  }),
+  announcementListItem: (pinned = false) => ({
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: pinned ? '1px solid rgba(59, 130, 246, 0.65)' : '1px solid rgba(71, 85, 105, 0.45)',
+    background: pinned ? 'rgba(37, 99, 235, 0.18)' : 'rgba(15, 23, 42, 0.72)',
+    color: '#e2e8f0',
+    cursor: 'pointer',
+    textAlign: 'left',
+  }),
+  announcementMeta: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  announcementStack: {
+    display: 'grid',
+    gap: 8,
+    padding: '0 12px 12px',
+  },
+  announcementHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  banList: {
+    display: 'grid',
+    gap: 10,
+  },
+  banListItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: '10px 12px',
+    background: 'rgba(15, 23, 42, 0.7)',
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    gap: 12,
+  },
+  statList: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+    gap: 12,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  apiKeyList: {
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+    display: 'grid',
+    gap: 10,
+  },
+  apiKeyItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: '10px 12px',
+    background: 'rgba(15, 23, 42, 0.7)',
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    color: '#e2e8f0',
   },
   drawerFooter: {
     display: 'flex',
@@ -1905,8 +2009,63 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMediaLimit, setDrawerMediaLimit] = useState(20)
   const [drawerFileLimit, setDrawerFileLimit] = useState(20)
-  const [profileSheet, setProfileSheet] = useState({ open: false, participant: null })
+  const [profileSheet, setProfileSheet] = useState({ open: false, participant: null, busy: false, error: null })
   const [settingsOverlayOpen, setSettingsOverlayOpen] = useState(false)
+  const [roomBans, setRoomBans] = useState([])
+  const [roomBansLoading, setRoomBansLoading] = useState(false)
+  const [roomAnnouncements, setRoomAnnouncements] = useState([])
+  const [roomAnnouncementCursor, setRoomAnnouncementCursor] = useState(null)
+  const [roomAnnouncementsHasMore, setRoomAnnouncementsHasMore] = useState(false)
+  const [pinnedAnnouncement, setPinnedAnnouncement] = useState(null)
+  const [announcementComposer, setAnnouncementComposer] = useState({
+    open: false,
+    content: '',
+    pinned: false,
+    submitting: false,
+    error: null,
+  })
+  const [announcementDetail, setAnnouncementDetail] = useState({
+    open: false,
+    loading: false,
+    announcementId: null,
+    announcement: null,
+    comments: [],
+    commentInput: '',
+    error: null,
+  })
+  const [announcementError, setAnnouncementError] = useState(null)
+  const [roomStats, setRoomStats] = useState(null)
+  const [roomStatsLoading, setRoomStatsLoading] = useState(false)
+  const [roomPreferences, setRoomPreferences] = useState(null)
+  const [preferencesDraft, setPreferencesDraft] = useState({
+    bubbleColor: '',
+    textColor: '',
+    backgroundUrl: '',
+    useRoomBackground: true,
+    metadata: {},
+  })
+  const [savingPreferences, setSavingPreferences] = useState(false)
+  const [preferencesError, setPreferencesError] = useState(null)
+  const [settingsMessage, setSettingsMessage] = useState(null)
+  const [settingsError, setSettingsError] = useState(null)
+  const [settingsTab, setSettingsTab] = useState('owner')
+  const [banModal, setBanModal] = useState({
+    open: false,
+    participant: null,
+    duration: '60',
+    reason: '',
+    submitting: false,
+    error: null,
+  })
+  const [apiKeys, setApiKeys] = useState([])
+  const [apiKeysLoading, setApiKeysLoading] = useState(false)
+  const [apiKeyError, setApiKeyError] = useState(null)
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [apiKeySubmitting, setApiKeySubmitting] = useState(false)
+  const [roomSettingsDraft, setRoomSettingsDraft] = useState({
+    defaultBackgroundUrl: '',
+    defaultBanMinutes: '',
+  })
   const [mediaLibrary, setMediaLibrary] = useState({
     status: 'idle',
     entries: [],
@@ -1985,6 +2144,20 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   useEffect(() => {
     roomsRef.current = rooms
   }, [rooms])
+
+  useEffect(() => {
+    if (context?.type === 'chat-room' && context.chatRoomId) {
+      refreshRoomAnnouncements(context.chatRoomId)
+      refreshRoomBans(context.chatRoomId)
+      refreshRoomStatsData(context.chatRoomId)
+      refreshRoomPreferences(context.chatRoomId)
+    } else {
+      refreshRoomAnnouncements(null)
+      refreshRoomBans(null)
+      refreshRoomStatsData(null)
+      refreshRoomPreferences(null)
+    }
+  }, [context?.chatRoomId, context?.type, refreshRoomAnnouncements, refreshRoomBans, refreshRoomPreferences, refreshRoomStatsData])
 
   useEffect(() => {
     if (context?.type !== 'chat-room') {
@@ -2230,6 +2403,27 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return [...joined, ...available].find((room) => normalizeId(room?.id) === identifier) || null
   }, [context, rooms])
 
+  useEffect(() => {
+    if (!settingsOverlayOpen || context?.type !== 'chat-room') {
+      return
+    }
+
+    const background =
+      currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl || ''
+    const banMinutesRaw =
+      currentRoom?.default_ban_minutes !== undefined
+        ? currentRoom?.default_ban_minutes
+        : currentRoom?.defaultBanMinutes
+
+    setRoomSettingsDraft({
+      defaultBackgroundUrl: background || '',
+      defaultBanMinutes:
+        banMinutesRaw !== undefined && banMinutesRaw !== null && banMinutesRaw !== ''
+          ? String(banMinutesRaw)
+          : '',
+    })
+  }, [context?.type, context?.chatRoomId, currentRoom, settingsOverlayOpen])
+
   const roomOwnerToken = useMemo(
     () => normalizeId(currentRoom?.owner_id || currentRoom?.ownerId),
     [currentRoom],
@@ -2266,6 +2460,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         context?.type === 'chat-room' && roomOwnerToken && viewerToken && roomOwnerToken === viewerToken,
       ),
     [context?.type, roomOwnerToken, viewerToken],
+  )
+
+  const viewerIsModerator = useMemo(
+    () =>
+      viewerOwnsRoom ||
+      (context?.type === 'chat-room' && viewerToken && moderatorTokenSet.has(viewerToken)),
+    [context?.type, moderatorTokenSet, viewerOwnsRoom, viewerToken],
   )
 
   const roomAssets = useMemo(() => {
@@ -2611,6 +2812,28 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }, [context])
 
   useEffect(() => {
+    if (!settingsOverlayOpen) {
+      setSettingsMessage(null)
+      setSettingsError(null)
+      setPreferencesError(null)
+      setAnnouncementError(null)
+      return
+    }
+
+    setSettingsTab(viewerOwnsRoom ? 'owner' : 'preferences')
+
+    if (context?.type === 'chat-room' && context.chatRoomId) {
+      refreshRoomPreferences(context.chatRoomId)
+      refreshRoomStatsData(context.chatRoomId)
+      if (viewerIsModerator) {
+        refreshRoomBans(context.chatRoomId)
+      }
+    }
+
+    refreshApiKeyring()
+  }, [context?.chatRoomId, context?.type, refreshApiKeyring, refreshRoomBans, refreshRoomPreferences, refreshRoomStatsData, settingsOverlayOpen, viewerIsModerator, viewerOwnsRoom])
+
+  useEffect(() => {
     return () => {
       attachmentCacheRef.current.forEach((entry) => {
         if (entry?.url) {
@@ -2869,6 +3092,364 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setSearchPerformed(false)
   }, [])
 
+  const refreshRoomAnnouncements = useCallback(
+    async (roomId, { append = false, cursor = null } = {}) => {
+      if (!roomId) {
+        setRoomAnnouncements([])
+        setPinnedAnnouncement(null)
+        setRoomAnnouncementsHasMore(false)
+        setRoomAnnouncementCursor(null)
+        return
+      }
+
+      try {
+        const result = await fetchChatRoomAnnouncements({ roomId, limit: 20, cursor })
+        const nextAnnouncements = Array.isArray(result.announcements) ? result.announcements : []
+
+        setPinnedAnnouncement(result.pinned || null)
+
+        setRoomAnnouncements((current) => {
+          if (append) {
+            const existingIds = new Set((current || []).map((item) => item.id))
+            const merged = [...(current || [])]
+            nextAnnouncements.forEach((item) => {
+              if (item && !existingIds.has(item.id)) {
+                merged.push(item)
+              }
+            })
+            return merged
+          }
+          return nextAnnouncements
+        })
+
+        const last = nextAnnouncements[nextAnnouncements.length - 1]
+        setRoomAnnouncementCursor(last?.created_at || cursor || null)
+        setRoomAnnouncementsHasMore(Boolean(result.hasMore))
+      } catch (error) {
+        console.error('[chat] 공지사항 로드 실패', error)
+        setAnnouncementError('공지사항을 불러올 수 없습니다.')
+      }
+    },
+    [],
+  )
+
+  const refreshRoomBans = useCallback(
+    async (roomId) => {
+      if (!roomId || !viewerIsModerator) {
+        setRoomBans([])
+        return
+      }
+
+      setRoomBansLoading(true)
+      try {
+        const bans = await fetchChatRoomBans({ roomId })
+        setRoomBans(bans)
+      } catch (error) {
+        console.error('[chat] 채팅방 차단 목록 로드 실패', error)
+      } finally {
+        setRoomBansLoading(false)
+      }
+    },
+    [viewerIsModerator],
+  )
+
+  const refreshRoomStatsData = useCallback(
+    async (roomId) => {
+      if (!roomId) {
+        setRoomStats(null)
+        return
+      }
+      setRoomStatsLoading(true)
+      try {
+        const stats = await fetchChatRoomStats({ roomId })
+        setRoomStats(stats || {})
+      } catch (error) {
+        console.error('[chat] 채팅방 통계 로드 실패', error)
+      } finally {
+        setRoomStatsLoading(false)
+      }
+    },
+    [],
+  )
+
+  const refreshRoomPreferences = useCallback(
+    async (roomId) => {
+      if (!roomId) {
+        setRoomPreferences(null)
+        return
+      }
+      try {
+        const prefs = await fetchChatMemberPreferences({ roomId })
+        setRoomPreferences(prefs)
+        setPreferencesDraft({
+          bubbleColor: prefs?.bubble_color || '',
+          textColor: prefs?.text_color || '',
+          backgroundUrl: prefs?.background_url || '',
+          useRoomBackground: prefs?.use_room_background !== false,
+          metadata: prefs?.metadata || {},
+        })
+      } catch (error) {
+        console.error('[chat] 개인 설정 로드 실패', error)
+      }
+    },
+    [],
+  )
+
+  const refreshApiKeyring = useCallback(async () => {
+    setApiKeysLoading(true)
+    setApiKeyError(null)
+    try {
+      const response = await fetch('/api/rank/user-api-keyring')
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload?.detail || '키 목록을 불러올 수 없습니다.')
+      }
+      const payload = await response.json()
+      setApiKeys(Array.isArray(payload?.entries) ? payload.entries : [])
+    } catch (error) {
+      console.error('[chat] API 키 목록 로드 실패', error)
+      setApiKeyError(error?.message || 'API 키 목록을 불러올 수 없습니다.')
+    } finally {
+      setApiKeysLoading(false)
+    }
+  }, [])
+
+  const handleAddApiKey = useCallback(async () => {
+    const trimmed = apiKeyInput.trim()
+    if (!trimmed) {
+      setApiKeyError('API 키를 입력해 주세요.')
+      return
+    }
+    setApiKeySubmitting(true)
+    setApiKeyError(null)
+    try {
+      const response = await fetch('/api/rank/user-api-keyring', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: trimmed, activate: true }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.detail || payload?.error || 'API 키를 저장할 수 없습니다.')
+      }
+      setApiKeyInput('')
+      await refreshApiKeyring()
+    } catch (error) {
+      console.error('[chat] API 키 추가 실패', error)
+      setApiKeyError(error?.message || 'API 키를 추가할 수 없습니다.')
+    } finally {
+      setApiKeySubmitting(false)
+    }
+  }, [apiKeyInput, refreshApiKeyring])
+
+  const handleDeleteApiKey = useCallback(
+    async (entryId) => {
+      if (!entryId) return
+      try {
+        const response = await fetch('/api/rank/user-api-keyring', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: entryId }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(payload?.detail || payload?.error || 'API 키를 삭제할 수 없습니다.')
+        }
+        await refreshApiKeyring()
+      } catch (error) {
+        console.error('[chat] API 키 삭제 실패', error)
+        setApiKeyError(error?.message || 'API 키를 삭제할 수 없습니다.')
+      }
+    },
+    [refreshApiKeyring],
+  )
+
+  const handleLoadMoreAnnouncements = useCallback(() => {
+    if (!context?.chatRoomId || !roomAnnouncementsHasMore || !roomAnnouncementCursor) {
+      return
+    }
+    refreshRoomAnnouncements(context.chatRoomId, {
+      append: true,
+      cursor: roomAnnouncementCursor,
+    })
+  }, [context?.chatRoomId, refreshRoomAnnouncements, roomAnnouncementCursor, roomAnnouncementsHasMore])
+
+  const handleOpenAnnouncementComposer = useCallback(() => {
+    if (!context?.chatRoomId) return
+    if (!viewerIsModerator) {
+      setAnnouncementError('공지 작성 권한이 없습니다.')
+      return
+    }
+    setAnnouncementComposer({ open: true, content: '', pinned: false, submitting: false, error: null })
+  }, [context?.chatRoomId, viewerIsModerator])
+
+  const handleCloseAnnouncementComposer = useCallback(() => {
+    setAnnouncementComposer({ open: false, content: '', pinned: false, submitting: false, error: null })
+  }, [])
+
+  const handleAnnouncementComposerChange = useCallback((value) => {
+    setAnnouncementComposer((prev) => ({ ...prev, content: value }))
+  }, [])
+
+  const handleAnnouncementComposerTogglePinned = useCallback(() => {
+    setAnnouncementComposer((prev) => ({ ...prev, pinned: !prev.pinned }))
+  }, [])
+
+  const handleSubmitAnnouncement = useCallback(async () => {
+    if (!context?.chatRoomId) return
+    const content = (announcementComposer.content || '').trim()
+    if (!content) {
+      setAnnouncementComposer((prev) => ({ ...prev, error: '공지 내용을 입력해 주세요.' }))
+      return
+    }
+    setAnnouncementComposer((prev) => ({ ...prev, submitting: true, error: null }))
+    try {
+      await createChatRoomAnnouncement({
+        roomId: context.chatRoomId,
+        content,
+        pinned: announcementComposer.pinned,
+      })
+      handleCloseAnnouncementComposer()
+      await refreshRoomAnnouncements(context.chatRoomId)
+    } catch (error) {
+      console.error('[chat] 공지 등록 실패', error)
+      setAnnouncementComposer((prev) => ({
+        ...prev,
+        submitting: false,
+        error: error?.message || '공지를 등록할 수 없습니다.',
+      }))
+    }
+  }, [announcementComposer.content, announcementComposer.pinned, context?.chatRoomId, handleCloseAnnouncementComposer, refreshRoomAnnouncements])
+
+  const handleOpenAnnouncementDetail = useCallback(
+    async (announcement) => {
+      if (!announcement?.id) return
+      setAnnouncementDetail({
+        open: true,
+        loading: true,
+        announcementId: announcement.id,
+        announcement,
+        comments: [],
+        commentInput: '',
+        error: null,
+      })
+      try {
+        const detail = await fetchChatRoomAnnouncementDetail({ announcementId: announcement.id })
+        setAnnouncementDetail((prev) => ({
+          ...prev,
+          loading: false,
+          announcement: detail.announcement || prev.announcement,
+          comments: detail.comments || [],
+          error: null,
+        }))
+      } catch (error) {
+        console.error('[chat] 공지 상세 불러오기 실패', error)
+        setAnnouncementDetail((prev) => ({
+          ...prev,
+          loading: false,
+          error: error?.message || '공지 상세를 불러올 수 없습니다.',
+        }))
+      }
+    },
+    [],
+  )
+
+  const handleCloseAnnouncementDetail = useCallback(() => {
+    setAnnouncementDetail({
+      open: false,
+      loading: false,
+      announcementId: null,
+      announcement: null,
+      comments: [],
+      commentInput: '',
+      error: null,
+    })
+  }, [])
+
+  const handleToggleAnnouncementReaction = useCallback(async () => {
+    if (!announcementDetail.announcementId) return
+    try {
+      await toggleChatRoomAnnouncementReaction({ announcementId: announcementDetail.announcementId })
+      if (announcementDetail.announcementId) {
+        const detail = await fetchChatRoomAnnouncementDetail({ announcementId: announcementDetail.announcementId })
+        setAnnouncementDetail((prev) => ({
+          ...prev,
+          announcement: detail.announcement || prev.announcement,
+          comments: detail.comments || prev.comments,
+        }))
+      }
+      if (context?.chatRoomId) {
+        refreshRoomAnnouncements(context.chatRoomId)
+      }
+    } catch (error) {
+      console.error('[chat] 공지 반응 토글 실패', error)
+      setAnnouncementDetail((prev) => ({
+        ...prev,
+        error: error?.message || '하트를 추가/제거할 수 없습니다.',
+      }))
+    }
+  }, [announcementDetail.announcementId, context?.chatRoomId, refreshRoomAnnouncements])
+
+  const handleAnnouncementCommentChange = useCallback((value) => {
+    setAnnouncementDetail((prev) => ({ ...prev, commentInput: value }))
+  }, [])
+
+  const handleSubmitAnnouncementComment = useCallback(async () => {
+    if (!announcementDetail.announcementId) return
+    const text = (announcementDetail.commentInput || '').trim()
+    if (!text) {
+      setAnnouncementDetail((prev) => ({ ...prev, error: '댓글을 입력해 주세요.' }))
+      return
+    }
+    setAnnouncementDetail((prev) => ({ ...prev, loading: true, error: null }))
+    try {
+      await createChatRoomAnnouncementComment({
+        announcementId: announcementDetail.announcementId,
+        content: text,
+      })
+      const detail = await fetchChatRoomAnnouncementDetail({ announcementId: announcementDetail.announcementId })
+      setAnnouncementDetail((prev) => ({
+        ...prev,
+        loading: false,
+        commentInput: '',
+        announcement: detail.announcement || prev.announcement,
+        comments: detail.comments || [],
+      }))
+      if (context?.chatRoomId) {
+        refreshRoomAnnouncements(context.chatRoomId)
+      }
+    } catch (error) {
+      console.error('[chat] 공지 댓글 작성 실패', error)
+      setAnnouncementDetail((prev) => ({
+        ...prev,
+        loading: false,
+        error: error?.message || '댓글을 저장할 수 없습니다.',
+      }))
+    }
+  }, [announcementDetail.announcementId, announcementDetail.commentInput, context?.chatRoomId, refreshRoomAnnouncements])
+
+  const handleDeleteAnnouncement = useCallback(
+    async (announcement) => {
+      const identifier = announcement?.id || announcementDetail.announcementId
+      if (!identifier) return
+      const confirmDelete = window.confirm('이 공지를 삭제하시겠습니까?')
+      if (!confirmDelete) return
+      try {
+        await deleteChatRoomAnnouncement({ announcementId: identifier })
+        if (context?.chatRoomId) {
+          refreshRoomAnnouncements(context.chatRoomId)
+        }
+        if (announcementDetail.open && announcementDetail.announcementId === identifier) {
+          handleCloseAnnouncementDetail()
+        }
+      } catch (error) {
+        console.error('[chat] 공지 삭제 실패', error)
+        setAnnouncementError(error?.message || '공지를 삭제할 수 없습니다.')
+      }
+    },
+    [announcementDetail.announcementId, announcementDetail.open, context?.chatRoomId, handleCloseAnnouncementDetail, refreshRoomAnnouncements],
+  )
+
   const handleToggleDrawer = useCallback(() => {
     if (context?.type !== 'chat-room') return
     setDrawerOpen((value) => !value)
@@ -2886,13 +3467,89 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setDrawerFileLimit((value) => value + 20)
   }, [])
 
+  const handleBanDurationChange = useCallback((value) => {
+    setBanModal((prev) => ({ ...prev, duration: value }))
+  }, [])
+
+  const handleBanReasonChange = useCallback((value) => {
+    setBanModal((prev) => ({ ...prev, reason: value }))
+  }, [])
+
+  const handleCloseBanModal = useCallback(() => {
+    setBanModal({ open: false, participant: null, duration: '60', reason: '', submitting: false, error: null })
+  }, [])
+
+  const handleConfirmBan = useCallback(async () => {
+    if (!context?.chatRoomId || !banModal.participant) {
+      return
+    }
+
+    const ownerId =
+      banModal.participant.ownerToken ||
+      banModal.participant.owner_id ||
+      banModal.participant.ownerId ||
+      banModal.participant.user_id ||
+      banModal.participant.userId
+
+    if (!ownerId) {
+      setBanModal((prev) => ({ ...prev, error: '참여자 정보를 확인할 수 없습니다.' }))
+      return
+    }
+
+    const parsedDuration = parseInt(banModal.duration, 10)
+    const durationMinutes = Number.isFinite(parsedDuration) ? Math.max(parsedDuration, 0) : null
+
+    setBanModal((prev) => ({ ...prev, submitting: true, error: null }))
+    try {
+      await manageChatRoomRole({
+        roomId: context.chatRoomId,
+        targetOwnerId: ownerId,
+        action: 'ban',
+        durationMinutes: durationMinutes && durationMinutes > 0 ? durationMinutes : null,
+        reason: banModal.reason,
+      })
+      await refreshRoomBans(context.chatRoomId)
+      await refreshRooms()
+      handleCloseBanModal()
+      setProfileSheet((prev) => ({ ...prev, open: false, participant: null, busy: false, error: null }))
+    } catch (error) {
+      console.error('[chat] 참여자 추방 실패', error)
+      setBanModal((prev) => ({
+        ...prev,
+        submitting: false,
+        error: error?.message || '추방을 진행할 수 없습니다.',
+      }))
+    }
+  }, [banModal.duration, banModal.participant, banModal.reason, context?.chatRoomId, handleCloseBanModal, manageChatRoomRole, refreshRoomBans, refreshRooms])
+
+  const handleUnbanEntry = useCallback(
+    async (ban) => {
+      if (!ban || !context?.chatRoomId) return
+      const ownerId = ban.owner_id || ban.ownerId
+      if (!ownerId) return
+      try {
+        await manageChatRoomRole({
+          roomId: context.chatRoomId,
+          targetOwnerId: ownerId,
+          action: 'unban',
+        })
+        await refreshRoomBans(context.chatRoomId)
+        await refreshRooms()
+      } catch (error) {
+        console.error('[chat] 추방 해제 실패', error)
+        setSettingsError(error?.message || '추방을 해제할 수 없습니다.')
+      }
+    },
+    [context?.chatRoomId, manageChatRoomRole, refreshRoomBans, refreshRooms],
+  )
+
   const handleOpenParticipantProfile = useCallback((participant) => {
     if (!participant) return
-    setProfileSheet({ open: true, participant })
+    setProfileSheet({ open: true, participant, busy: false, error: null })
   }, [])
 
   const handleCloseParticipantProfile = useCallback(() => {
-    setProfileSheet({ open: false, participant: null })
+    setProfileSheet({ open: false, participant: null, busy: false, error: null })
   }, [])
 
   const handleRequestFriendFromProfile = useCallback(async () => {
@@ -2901,9 +3558,16 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       alert('이 참여자의 캐릭터 정보를 찾을 수 없습니다.')
       return
     }
-    const result = await addFriend({ heroId: target.heroId })
-    if (!result?.ok) {
-      alert(result?.error || '친구 요청을 보낼 수 없습니다.')
+    setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
+    try {
+      const result = await addFriend({ heroId: target.heroId })
+      if (!result?.ok) {
+        throw new Error(result?.error || '친구 요청을 보낼 수 없습니다.')
+      }
+      setProfileSheet((prev) => ({ ...prev, busy: false, error: null }))
+    } catch (error) {
+      console.error('[chat] 친구 요청 실패', error)
+      setProfileSheet((prev) => ({ ...prev, busy: false, error: error?.message || '친구 요청을 보낼 수 없습니다.' }))
     }
   }, [addFriend, profileSheet.participant])
 
@@ -2916,16 +3580,115 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }, [])
 
   const handleBanParticipant = useCallback(() => {
-    alert('추방 기능은 백엔드 연동 후 제공될 예정입니다.')
-  }, [])
+    if (!context?.chatRoomId || !profileSheet.participant) {
+      return
+    }
+    if (!viewerIsModerator) {
+      setProfileSheet((prev) => ({ ...prev, error: '추방 권한이 없습니다.' }))
+      return
+    }
 
-  const handlePromoteModerator = useCallback(() => {
-    alert('부방장 임명 기능은 곧 제공될 예정입니다.')
-  }, [])
+    const defaultDuration =
+      currentRoom?.default_ban_minutes ?? currentRoom?.defaultBanMinutes ?? 60
 
-  const handleDemoteModerator = useCallback(() => {
-    alert('부방장 해제 기능은 곧 제공될 예정입니다.')
-  }, [])
+    setBanModal({
+      open: true,
+      participant: profileSheet.participant,
+      duration: String(defaultDuration || ''),
+      reason: '',
+      submitting: false,
+      error: null,
+    })
+    setProfileSheet((prev) => ({ ...prev, busy: false, error: null }))
+  }, [context?.chatRoomId, currentRoom?.defaultBanMinutes, currentRoom?.default_ban_minutes, profileSheet.participant, viewerIsModerator])
+
+  const handlePromoteModerator = useCallback(async () => {
+    const participant = profileSheet.participant
+    if (!participant || !context?.chatRoomId) return
+    if (!viewerOwnsRoom) {
+      setProfileSheet((prev) => ({ ...prev, error: '방장만 부방장을 임명할 수 있습니다.' }))
+      return
+    }
+    const ownerId =
+      participant.ownerToken ||
+      participant.owner_id ||
+      participant.ownerId ||
+      participant.user_id ||
+      participant.userId
+    if (!ownerId) {
+      setProfileSheet((prev) => ({ ...prev, error: '참여자 식별자를 찾을 수 없습니다.' }))
+      return
+    }
+
+    setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
+    try {
+      await manageChatRoomRole({
+        roomId: context.chatRoomId,
+        targetOwnerId: ownerId,
+        action: 'promote',
+      })
+      await refreshRooms()
+      setProfileSheet((prev) => ({
+        ...prev,
+        busy: false,
+        error: null,
+        participant: prev.participant
+          ? { ...prev.participant, role: 'moderator' }
+          : prev.participant,
+      }))
+    } catch (error) {
+      console.error('[chat] 부방장 임명 실패', error)
+      setProfileSheet((prev) => ({
+        ...prev,
+        busy: false,
+        error: error?.message || '부방장을 임명할 수 없습니다.',
+      }))
+    }
+  }, [context?.chatRoomId, manageChatRoomRole, profileSheet.participant, refreshRooms, viewerOwnsRoom])
+
+  const handleDemoteModerator = useCallback(async () => {
+    const participant = profileSheet.participant
+    if (!participant || !context?.chatRoomId) return
+    if (!viewerOwnsRoom) {
+      setProfileSheet((prev) => ({ ...prev, error: '방장만 부방장을 해제할 수 있습니다.' }))
+      return
+    }
+    const ownerId =
+      participant.ownerToken ||
+      participant.owner_id ||
+      participant.ownerId ||
+      participant.user_id ||
+      participant.userId
+    if (!ownerId) {
+      setProfileSheet((prev) => ({ ...prev, error: '참여자 식별자를 찾을 수 없습니다.' }))
+      return
+    }
+
+    setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
+    try {
+      await manageChatRoomRole({
+        roomId: context.chatRoomId,
+        targetOwnerId: ownerId,
+        action: 'demote',
+      })
+      await refreshRooms()
+      setProfileSheet((prev) => ({
+        ...prev,
+        busy: false,
+        error: null,
+        participant: prev.participant
+          ? { ...prev.participant, role: 'member' }
+          : prev.participant,
+      }))
+    } catch (error) {
+      console.error('[chat] 부방장 해제 실패', error)
+      setProfileSheet((prev) => ({
+        ...prev,
+        busy: false,
+        error: error?.message || '부방장 해제에 실패했습니다.',
+      }))
+    }
+  }, [context?.chatRoomId, manageChatRoomRole, profileSheet.participant, refreshRooms, viewerOwnsRoom])
 
   const handleOpenSettings = useCallback(() => {
     setSettingsOverlayOpen(true)
@@ -4476,6 +5239,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const drawerParticipants = showDrawer ? participantList : []
     const coverImage = showDrawer ? currentRoom?.cover_url || currentRoom?.coverUrl || null : null
     const viewerIsOwner = Boolean(showDrawer && viewerOwnsRoom)
+    const showAnnouncements = context?.type === 'chat-room'
+    const announcementList = showAnnouncements
+      ? roomAnnouncements.filter((item) => !pinnedAnnouncement || item.id !== pinnedAnnouncement.id)
+      : []
 
     return (
       <section style={conversationStyle}>
@@ -4509,6 +5276,65 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           </div>
         </header>
         <div ref={messageListRef} style={messageViewportStyle}>
+          {showAnnouncements ? (
+            <div style={overlayStyles.announcementStack}>
+              <div style={overlayStyles.announcementHeader}>
+                <strong style={{ fontSize: 12, color: '#cbd5f5' }}>공지</strong>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {viewerIsModerator ? (
+                    <button
+                      type="button"
+                      style={overlayStyles.secondaryButton}
+                      onClick={handleOpenAnnouncementComposer}
+                    >
+                      새 공지
+                    </button>
+                  ) : null}
+                  {roomAnnouncementsHasMore ? (
+                    <button
+                      type="button"
+                      style={overlayStyles.secondaryButton}
+                      onClick={handleLoadMoreAnnouncements}
+                    >
+                      더 보기
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {announcementError ? (
+                <span style={{ fontSize: 11, color: '#fca5a5' }}>{announcementError}</span>
+              ) : null}
+              {pinnedAnnouncement ? (
+                <button
+                  type="button"
+                  style={overlayStyles.announcementListItem(true)}
+                  onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+                >
+                  <strong>📌 {truncateText(pinnedAnnouncement.content || '').text}</strong>
+                  <span style={overlayStyles.announcementMeta}>
+                    최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)}
+                  </span>
+                </button>
+              ) : null}
+              {announcementList.length ? (
+                announcementList.map((announcement) => (
+                  <button
+                    key={announcement.id}
+                    type="button"
+                    style={overlayStyles.announcementListItem(false)}
+                    onClick={() => handleOpenAnnouncementDetail(announcement)}
+                  >
+                    <span>{truncateText(announcement.content || '').text}</span>
+                    <span style={overlayStyles.announcementMeta}>
+                      ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
+                    </span>
+                  </button>
+                ))
+              ) : !pinnedAnnouncement ? (
+                <span style={overlayStyles.mutedText}>아직 등록된 공지가 없습니다.</span>
+              ) : null}
+            </div>
+          ) : null}
           {hasContext ? (
             loadingMessages ? (
               <span style={overlayStyles.mutedText}>메시지를 불러오는 중...</span>
@@ -5501,27 +6327,60 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               ) : null}
             </div>
           </div>
+          {profileSheet.error ? (
+            <span style={{ fontSize: 12, color: '#fca5a5' }}>{profileSheet.error}</span>
+          ) : null}
           <div style={{ display: 'grid', gap: 10 }}>
-            <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleRequestFriendFromProfile}>
+            <button
+              type="button"
+              style={overlayStyles.actionButton('ghost', profileSheet.busy)}
+              disabled={profileSheet.busy}
+              onClick={handleRequestFriendFromProfile}
+            >
               친구 요청 보내기
             </button>
-            <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleStartDirectMessage}>
+            <button
+              type="button"
+              style={overlayStyles.actionButton('ghost', profileSheet.busy)}
+              disabled={profileSheet.busy}
+              onClick={handleStartDirectMessage}
+            >
               1대1 대화 시작
             </button>
-            <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleBlockParticipant}>
+            <button
+              type="button"
+              style={overlayStyles.actionButton('ghost', profileSheet.busy)}
+              disabled={profileSheet.busy}
+              onClick={handleBlockParticipant}
+            >
               차단하기
             </button>
             {viewerOwnsRoom && profileSheet.participant.role !== 'owner' ? (
               <>
-                <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleBanParticipant}>
+                <button
+                  type="button"
+                  style={overlayStyles.actionButton('ghost', profileSheet.busy)}
+                  disabled={profileSheet.busy}
+                  onClick={handleBanParticipant}
+                >
                   추방하기
                 </button>
                 {profileSheet.participant.role === 'moderator' ? (
-                  <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handleDemoteModerator}>
+                  <button
+                    type="button"
+                    style={overlayStyles.actionButton('ghost', profileSheet.busy)}
+                    disabled={profileSheet.busy}
+                    onClick={handleDemoteModerator}
+                  >
                     부방장 해제
                   </button>
                 ) : (
-                  <button type="button" style={overlayStyles.actionButton('ghost')} onClick={handlePromoteModerator}>
+                  <button
+                    type="button"
+                    style={overlayStyles.actionButton('ghost', profileSheet.busy)}
+                    disabled={profileSheet.busy}
+                    onClick={handlePromoteModerator}
+                  >
                     부방장 임명
                   </button>
                 )}
@@ -5540,26 +6399,529 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       open={settingsOverlayOpen}
       onClose={handleCloseSettings}
       title="채팅방 설정"
-      width="min(520px, 94vw)"
+      width="min(640px, 96vw)"
     >
       <div style={{ display: 'grid', gap: 18 }}>
-        {viewerOwnsRoom ? (
+        <nav style={overlayStyles.settingsTabs}>
+          {viewerOwnsRoom ? (
+            <button
+              type="button"
+              style={overlayStyles.settingsTabButton(settingsTab === 'owner')}
+              onClick={() => setSettingsTab('owner')}
+            >
+              방장 도구
+            </button>
+          ) : null}
+          <button
+            type="button"
+            style={overlayStyles.settingsTabButton(settingsTab === 'preferences')}
+            onClick={() => setSettingsTab('preferences')}
+          >
+            개인 설정
+          </button>
+          <button
+            type="button"
+            style={overlayStyles.settingsTabButton(settingsTab === 'api')}
+            onClick={() => setSettingsTab('api')}
+          >
+            AI API 키
+          </button>
+        </nav>
+        {settingsMessage ? <span style={{ fontSize: 12, color: '#34d399' }}>{settingsMessage}</span> : null}
+        {settingsError ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{settingsError}</span> : null}
+        {settingsTab === 'owner' && viewerOwnsRoom ? (
+          <div style={{ display: 'grid', gap: 18 }}>
+            <section style={overlayStyles.section}>
+              <h3 style={overlayStyles.sectionTitle}>방 기본 설정</h3>
+              <label style={overlayStyles.fieldLabel}>
+                기본 배경 URL
+                <input
+                  type="url"
+                  value={roomSettingsDraft.defaultBackgroundUrl}
+                  onChange={(event) =>
+                    setRoomSettingsDraft((prev) => ({ ...prev, defaultBackgroundUrl: event.target.value }))
+                  }
+                  placeholder="https://example.com/background.jpg"
+                  style={overlayStyles.input}
+                />
+              </label>
+              <label style={overlayStyles.fieldLabel}>
+                기본 추방 시간(분)
+                <input
+                  type="number"
+                  min="0"
+                  value={roomSettingsDraft.defaultBanMinutes}
+                  onChange={(event) =>
+                    setRoomSettingsDraft((prev) => ({ ...prev, defaultBanMinutes: event.target.value }))
+                  }
+                  style={overlayStyles.input}
+                />
+              </label>
+              <button
+                type="button"
+                style={overlayStyles.actionButton('primary')}
+                onClick={async () => {
+                  if (!context?.chatRoomId) return
+                  setSettingsMessage(null)
+                  setSettingsError(null)
+                  try {
+                    const settings = await updateChatRoomSettings({
+                      roomId: context.chatRoomId,
+                      settings: {
+                        defaultBackgroundUrl: (roomSettingsDraft.defaultBackgroundUrl || '').trim() || null,
+                        defaultBanMinutes: roomSettingsDraft.defaultBanMinutes
+                          ? Number(roomSettingsDraft.defaultBanMinutes)
+                          : null,
+                      },
+                    })
+                    setSettingsMessage('방 기본 설정을 저장했습니다.')
+                    if (settings) {
+                      updateRoomMetadata(context.chatRoomId, settings)
+                    }
+                  } catch (error) {
+                    console.error('[chat] 방 설정 저장 실패', error)
+                    setSettingsError(error?.message || '방 설정을 저장할 수 없습니다.')
+                  }
+                }}
+              >
+                저장하기
+              </button>
+            </section>
+            <section style={overlayStyles.section}>
+              <header style={overlayStyles.sectionHeader}>
+                <h3 style={overlayStyles.sectionTitle}>공지 관리</h3>
+                <button type="button" style={overlayStyles.secondaryButton} onClick={handleOpenAnnouncementComposer}>
+                  새 공지 작성
+                </button>
+              </header>
+              {announcementError ? (
+                <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementError}</span>
+              ) : null}
+              {pinnedAnnouncement ? (
+                <button
+                  type="button"
+                  style={overlayStyles.announcementListItem(true)}
+                  onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+                >
+                  <strong>📌 {truncateText(pinnedAnnouncement.content || '').text}</strong>
+                  <span style={overlayStyles.announcementMeta}>
+                    최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)}
+                  </span>
+                </button>
+              ) : null}
+              {roomAnnouncements.length ? (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {roomAnnouncements.map((announcement) => (
+                    <button
+                      key={announcement.id}
+                      type="button"
+                      style={overlayStyles.announcementListItem(false)}
+                      onClick={() => handleOpenAnnouncementDetail(announcement)}
+                    >
+                      <span>{truncateText(announcement.content || '').text}</span>
+                      <span style={overlayStyles.announcementMeta}>
+                        ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
+                      </span>
+                    </button>
+                  ))}
+                  {roomAnnouncementsHasMore ? (
+                    <button type="button" style={overlayStyles.drawerMoreButton} onClick={handleLoadMoreAnnouncements}>
+                      더 보기
+                    </button>
+                  ) : null}
+                </div>
+              ) : !pinnedAnnouncement ? (
+                <span style={overlayStyles.mutedText}>등록된 공지가 없습니다.</span>
+              ) : null}
+            </section>
+            <section style={overlayStyles.section}>
+              <header style={overlayStyles.sectionHeader}>
+                <h3 style={overlayStyles.sectionTitle}>추방된 참여자</h3>
+              </header>
+              {roomBansLoading ? (
+                <span style={overlayStyles.mutedText}>차단 목록을 불러오는 중...</span>
+              ) : roomBans.length ? (
+                <div style={overlayStyles.banList}>
+                  {roomBans.map((ban) => (
+                    <div key={`${ban.room_id}-${ban.owner_id}`} style={overlayStyles.banListItem}>
+                      <div>
+                        <strong>{ban.owner_id}</strong>
+                        <div style={overlayStyles.announcementMeta}>
+                          {ban.expires_at ? `만료: ${formatDateLabel(ban.expires_at)}` : '영구 차단'}
+                        </div>
+                        {ban.reason ? <div style={{ fontSize: 12, color: '#cbd5f5' }}>{ban.reason}</div> : null}
+                      </div>
+                      <button type="button" style={overlayStyles.secondaryButton} onClick={() => handleUnbanEntry(ban)}>
+                        추방 해제
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span style={overlayStyles.mutedText}>추방된 참여자가 없습니다.</span>
+              )}
+            </section>
+            <section style={overlayStyles.section}>
+              <h3 style={overlayStyles.sectionTitle}>채팅 통계</h3>
+              {roomStatsLoading ? (
+                <span style={overlayStyles.mutedText}>통계를 불러오는 중...</span>
+              ) : roomStats ? (
+                <dl style={overlayStyles.statList}>
+                  <div>
+                    <dt>총 메시지</dt>
+                    <dd>{roomStats.messageCount ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>최근 24시간</dt>
+                    <dd>{roomStats.messagesLast24h ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>첨부 수</dt>
+                    <dd>{roomStats.attachmentCount ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>참여자</dt>
+                    <dd>{roomStats.participantCount ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>부방장</dt>
+                    <dd>{roomStats.moderatorCount ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>마지막 메시지</dt>
+                    <dd>{roomStats.lastMessageAt ? formatDateLabel(roomStats.lastMessageAt) : '정보 없음'}</dd>
+                  </div>
+                </dl>
+              ) : (
+                <span style={overlayStyles.mutedText}>통계 정보를 확인할 수 없습니다.</span>
+              )}
+            </section>
+          </div>
+        ) : null}
+        {settingsTab === 'preferences' ? (
           <section style={overlayStyles.section}>
-            <h3 style={overlayStyles.sectionTitle}>방장 전용</h3>
-            <p style={{ fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
-              추방 기간 관리, 기본 배경 변경, 공지 등록 등의 기능은 Supabase RPC와 Storage 규칙이
-              준비된 뒤 연동됩니다. 현재 화면은 자리 표시자로, 운영자 정책이 확정되면 연결해 주세요.
-            </p>
+            <h3 style={overlayStyles.sectionTitle}>개인 설정</h3>
+            {preferencesError ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{preferencesError}</span> : null}
+            <label style={overlayStyles.fieldLabel}>
+              말풍선 색상
+              <input
+                type="text"
+                value={preferencesDraft.bubbleColor}
+                onChange={(event) =>
+                  setPreferencesDraft((prev) => ({ ...prev, bubbleColor: event.target.value }))
+                }
+                placeholder="#1f2937"
+                style={overlayStyles.input}
+              />
+            </label>
+            <label style={overlayStyles.fieldLabel}>
+              글자 색상
+              <input
+                type="text"
+                value={preferencesDraft.textColor}
+                onChange={(event) =>
+                  setPreferencesDraft((prev) => ({ ...prev, textColor: event.target.value }))
+                }
+                placeholder="#f8fafc"
+                style={overlayStyles.input}
+              />
+            </label>
+            <label style={overlayStyles.fieldLabel}>
+              개인 배경 URL
+              <input
+                type="url"
+                value={preferencesDraft.backgroundUrl}
+                onChange={(event) =>
+                  setPreferencesDraft((prev) => ({ ...prev, backgroundUrl: event.target.value }))
+                }
+                placeholder="https://example.com/background.jpg"
+                style={overlayStyles.input}
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#cbd5f5', fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={preferencesDraft.useRoomBackground}
+                onChange={(event) =>
+                  setPreferencesDraft((prev) => ({ ...prev, useRoomBackground: event.target.checked }))
+                }
+              />
+              방 기본 배경 사용
+            </label>
+            <button
+              type="button"
+              style={overlayStyles.actionButton('primary', savingPreferences)}
+              disabled={savingPreferences}
+              onClick={async () => {
+                if (!context?.chatRoomId) return
+                setPreferencesError(null)
+                setSavingPreferences(true)
+                try {
+                  const preferences = await saveChatMemberPreferences({
+                    roomId: context.chatRoomId,
+                    preferences: {
+                      bubble_color: preferencesDraft.bubbleColor || null,
+                      text_color: preferencesDraft.textColor || null,
+                      background_url: preferencesDraft.backgroundUrl || null,
+                      use_room_background: preferencesDraft.useRoomBackground,
+                    },
+                  })
+                  setRoomPreferences(preferences)
+                  setSettingsMessage('개인 설정을 저장했습니다.')
+                } catch (error) {
+                  console.error('[chat] 개인 설정 저장 실패', error)
+                  setPreferencesError(error?.message || '개인 설정을 저장할 수 없습니다.')
+                } finally {
+                  setSavingPreferences(false)
+                }
+              }}
+            >
+              개인 설정 저장
+            </button>
           </section>
         ) : null}
-        <section style={overlayStyles.section}>
-          <h3 style={overlayStyles.sectionTitle}>개인 설정</h3>
-          <p style={{ fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
-            말풍선/글자색, 개인 배경, AI API 키 관리는 현재 구현 중입니다. 해당 기능이 준비되면 이
-            영역에서 직접 변경할 수 있도록 할 예정입니다.
-          </p>
-        </section>
+        {settingsTab === 'api' ? (
+          <section style={overlayStyles.section}>
+            <h3 style={overlayStyles.sectionTitle}>AI API 키 관리</h3>
+            {apiKeyError ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{apiKeyError}</span> : null}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="text"
+                value={apiKeyInput}
+                onChange={(event) => setApiKeyInput(event.target.value)}
+                placeholder="API 키를 입력해 주세요"
+                style={{ ...overlayStyles.input, flex: 1 }}
+              />
+              <button
+                type="button"
+                style={overlayStyles.actionButton('primary', apiKeySubmitting)}
+                disabled={apiKeySubmitting}
+                onClick={handleAddApiKey}
+              >
+                추가
+              </button>
+            </div>
+            {apiKeysLoading ? (
+              <span style={overlayStyles.mutedText}>API 키를 불러오는 중...</span>
+            ) : apiKeys.length ? (
+              <ul style={overlayStyles.apiKeyList}>
+                {apiKeys.map((entry) => (
+                  <li key={entry.id} style={overlayStyles.apiKeyItem}>
+                    <div>
+                      <strong>{entry.label || entry.provider || '사용자 키'}</strong>
+                      <div style={overlayStyles.announcementMeta}>
+                        등록: {entry.createdAt ? formatDateLabel(entry.createdAt) : '알 수 없음'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      style={overlayStyles.secondaryButton}
+                      onClick={() => handleDeleteApiKey(entry.id)}
+                    >
+                      삭제
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span style={overlayStyles.mutedText}>등록된 API 키가 없습니다.</span>
+            )}
+          </section>
+        ) : null}
       </div>
+    </SurfaceOverlay>
+  )
+
+  const announcementComposerOverlay = (
+    <SurfaceOverlay
+      open={announcementComposer.open}
+      onClose={handleCloseAnnouncementComposer}
+      title="새 공지 작성"
+      width="min(520px, 92vw)"
+    >
+      <div style={{ display: 'grid', gap: 16 }}>
+        <textarea
+          rows={6}
+          value={announcementComposer.content}
+          onChange={(event) => handleAnnouncementComposerChange(event.target.value)}
+          placeholder="공지 내용을 입력해 주세요."
+          style={overlayStyles.textarea}
+        />
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#cbd5f5', fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={announcementComposer.pinned}
+            onChange={handleAnnouncementComposerTogglePinned}
+          />
+          공지를 상단에 고정하기
+        </label>
+        {announcementComposer.error ? (
+          <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementComposer.error}</span>
+        ) : null}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" style={overlayStyles.secondaryButton} onClick={handleCloseAnnouncementComposer}>
+            취소
+          </button>
+          <button
+            type="button"
+            style={overlayStyles.actionButton('primary', announcementComposer.submitting)}
+            disabled={announcementComposer.submitting}
+            onClick={handleSubmitAnnouncement}
+          >
+            등록
+          </button>
+        </div>
+      </div>
+    </SurfaceOverlay>
+  )
+
+  const announcementDetailOverlay = (
+    <SurfaceOverlay
+      open={announcementDetail.open}
+      onClose={handleCloseAnnouncementDetail}
+      title="공지 상세"
+      width="min(520px, 92vw)"
+    >
+      {announcementDetail.loading ? (
+        <span style={overlayStyles.mutedText}>공지 내용을 불러오는 중...</span>
+      ) : announcementDetail.announcement ? (
+        <div style={{ display: 'grid', gap: 14 }}>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <strong style={{ color: '#e2e8f0', fontSize: 14 }}>
+              {truncateText(announcementDetail.announcement.content || '').text}
+            </strong>
+            <span style={overlayStyles.announcementMeta}>
+              작성: {announcementDetail.announcement.author_name || '알 수 없음'} ·{' '}
+              {formatDateLabel(announcementDetail.announcement.created_at)}
+            </span>
+            <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, color: '#cbd5f5', fontSize: 13 }}>
+              {announcementDetail.announcement.content}
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button type="button" style={overlayStyles.secondaryButton} onClick={handleToggleAnnouncementReaction}>
+              {announcementDetail.announcement.viewer_reacted ? '하트 취소' : '하트 남기기'}
+            </button>
+            <span style={overlayStyles.announcementMeta}>
+              ♥ {announcementDetail.announcement.heart_count || 0} · 💬{' '}
+              {announcementDetail.announcement.comment_count || 0}
+            </span>
+            {viewerIsModerator ? (
+              <button
+                type="button"
+                style={overlayStyles.secondaryButton}
+                onClick={() => handleDeleteAnnouncement(announcementDetail.announcement)}
+              >
+                삭제
+              </button>
+            ) : null}
+          </div>
+          <section style={{ display: 'grid', gap: 8 }}>
+            <h4 style={{ fontSize: 12, color: '#cbd5f5' }}>댓글</h4>
+            {announcementDetail.comments.length ? (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 10 }}>
+                {announcementDetail.comments.map((comment) => (
+                  <li
+                    key={comment.id}
+                    style={{
+                      borderRadius: 12,
+                      border: '1px solid rgba(71, 85, 105, 0.5)',
+                      padding: '8px 12px',
+                      background: 'rgba(15, 23, 42, 0.7)',
+                      display: 'grid',
+                      gap: 4,
+                    }}
+                  >
+                    <strong style={{ fontSize: 12, color: '#e2e8f0' }}>
+                      {comment.owner_name || '참여자'}
+                    </strong>
+                    <span style={overlayStyles.announcementMeta}>
+                      {formatDateLabel(comment.created_at)}
+                    </span>
+                    <p style={{ color: '#cbd5f5', fontSize: 13, whiteSpace: 'pre-wrap' }}>{comment.content}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span style={overlayStyles.mutedText}>아직 댓글이 없습니다.</span>
+            )}
+            <div style={{ display: 'grid', gap: 8 }}>
+              <textarea
+                rows={3}
+                value={announcementDetail.commentInput}
+                onChange={(event) => handleAnnouncementCommentChange(event.target.value)}
+                placeholder="댓글을 입력해 주세요."
+                style={overlayStyles.textarea}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button
+                  type="button"
+                  style={overlayStyles.actionButton('primary', announcementDetail.loading)}
+                  disabled={announcementDetail.loading}
+                  onClick={handleSubmitAnnouncementComment}
+                >
+                  댓글 등록
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : (
+        <span style={overlayStyles.mutedText}>공지 정보를 찾을 수 없습니다.</span>
+      )}
+    </SurfaceOverlay>
+  )
+
+  const banOverlay = (
+    <SurfaceOverlay
+      open={banModal.open}
+      onClose={handleCloseBanModal}
+      title="참여자 추방"
+      width="min(420px, 90vw)"
+    >
+      {banModal.participant ? (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <p style={{ color: '#cbd5f5', fontSize: 13 }}>
+            <strong>{banModal.participant.displayName || '참여자'}</strong> 님을 추방합니다.
+          </p>
+          <label style={overlayStyles.fieldLabel}>
+            추방 기간 (분)
+            <input
+              type="number"
+              min="0"
+              value={banModal.duration}
+              onChange={(event) => handleBanDurationChange(event.target.value)}
+              style={overlayStyles.input}
+            />
+          </label>
+          <label style={overlayStyles.fieldLabel}>
+            추방 사유
+            <textarea
+              rows={3}
+              value={banModal.reason}
+              onChange={(event) => handleBanReasonChange(event.target.value)}
+              placeholder="선택 사항"
+              style={overlayStyles.textarea}
+            />
+          </label>
+          {banModal.error ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{banModal.error}</span> : null}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" style={overlayStyles.secondaryButton} onClick={handleCloseBanModal}>
+              취소
+            </button>
+            <button
+              type="button"
+              style={overlayStyles.actionButton('primary', banModal.submitting)}
+              disabled={banModal.submitting}
+              onClick={handleConfirmBan}
+            >
+              추방하기
+            </button>
+          </div>
+        </div>
+      ) : (
+        <span style={overlayStyles.mutedText}>참여자 정보를 불러오지 못했습니다.</span>
+      )}
     </SurfaceOverlay>
   )
 
@@ -5571,6 +6933,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       {expandedMessageOverlay}
       {attachmentViewerOverlay}
       {friendOverlay}
+      {announcementComposerOverlay}
+      {announcementDetailOverlay}
+      {banOverlay}
       {participantOverlay}
       {settingsOverlay}
       <SurfaceOverlay

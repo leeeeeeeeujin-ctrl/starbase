@@ -13,9 +13,17 @@ create table if not exists public.chat_rooms (
   hero_id uuid references public.heroes(id) on delete set null,
   visibility text not null default 'public',
   capacity integer,
+  default_background_url text,
+  default_ban_minutes integer not null default 0,
   is_system boolean not null default false,
   metadata jsonb not null default '{}'::jsonb
 );
+
+alter table public.chat_rooms
+  add column if not exists default_background_url text;
+
+alter table public.chat_rooms
+  add column if not exists default_ban_minutes integer not null default 0;
 
 create table if not exists public.chat_room_members (
   id uuid primary key default gen_random_uuid(),
@@ -62,8 +70,63 @@ create table if not exists public.chat_room_moderators (
   primary key (room_id, owner_id)
 );
 
+create table if not exists public.chat_room_bans (
+  room_id uuid not null references public.chat_rooms(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  banned_by uuid references auth.users(id) on delete set null,
+  reason text,
+  expires_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  primary key (room_id, owner_id)
+);
+
+create table if not exists public.chat_room_announcements (
+  id uuid primary key default gen_random_uuid(),
+  room_id uuid not null references public.chat_rooms(id) on delete cascade,
+  author_id uuid not null references auth.users(id) on delete cascade,
+  content text not null,
+  pinned boolean not null default false,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.chat_room_announcement_reactions (
+  announcement_id uuid not null references public.chat_room_announcements(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  reaction text not null default 'heart',
+  created_at timestamptz not null default timezone('utc', now()),
+  primary key (announcement_id, owner_id)
+);
+
+create table if not exists public.chat_room_announcement_comments (
+  id uuid primary key default gen_random_uuid(),
+  announcement_id uuid not null references public.chat_room_announcements(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  content text not null,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.chat_room_member_preferences (
+  room_id uuid not null references public.chat_rooms(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  bubble_color text,
+  text_color text,
+  background_url text,
+  use_room_background boolean not null default true,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  primary key (room_id, owner_id)
+);
+
 alter table public.chat_rooms enable row level security;
 alter table public.chat_room_members enable row level security;
+alter table public.chat_room_bans enable row level security;
+alter table public.chat_room_announcements enable row level security;
+alter table public.chat_room_announcement_reactions enable row level security;
+alter table public.chat_room_announcement_comments enable row level security;
+alter table public.chat_room_member_preferences enable row level security;
 
 -- Room policies -------------------------------------------------------------
 drop policy if exists chat_rooms_select on public.chat_rooms;
@@ -157,6 +220,250 @@ using (
   or room_owner_id = auth.uid()
 );
 
+drop policy if exists chat_room_bans_select on public.chat_room_bans;
+create policy chat_room_bans_select
+on public.chat_room_bans for select
+using (
+  auth.uid() = owner_id
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = chat_room_bans.room_id
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = chat_room_bans.room_id
+      and m.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_bans_mutate on public.chat_room_bans;
+create policy chat_room_bans_mutate
+on public.chat_room_bans for all
+using (
+  exists (
+    select 1 from public.chat_rooms r
+    where r.id = chat_room_bans.room_id
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = chat_room_bans.room_id
+      and m.owner_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1 from public.chat_rooms r
+    where r.id = chat_room_bans.room_id
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = chat_room_bans.room_id
+      and m.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcements_select on public.chat_room_announcements;
+create policy chat_room_announcements_select
+on public.chat_room_announcements for select
+using (
+  exists (
+    select 1
+    from public.chat_room_members mem
+    where mem.room_id = chat_room_announcements.room_id
+      and mem.owner_id = auth.uid()
+      and coalesce(mem.status, 'active') = 'active'
+  )
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = chat_room_announcements.room_id
+      and r.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcements_mutate on public.chat_room_announcements;
+create policy chat_room_announcements_mutate
+on public.chat_room_announcements for all
+using (
+  exists (
+    select 1 from public.chat_rooms r
+    where r.id = chat_room_announcements.room_id
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = chat_room_announcements.room_id
+      and m.owner_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1 from public.chat_rooms r
+    where r.id = chat_room_announcements.room_id
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = chat_room_announcements.room_id
+      and m.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcement_reactions_select on public.chat_room_announcement_reactions;
+create policy chat_room_announcement_reactions_select
+on public.chat_room_announcement_reactions for select
+using (
+  exists (
+    select 1
+    from public.chat_room_announcements a
+    join public.chat_room_members mem
+      on mem.room_id = a.room_id
+     and mem.owner_id = auth.uid()
+    where a.id = chat_room_announcement_reactions.announcement_id
+      and coalesce(mem.status, 'active') = 'active'
+  )
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_reactions.announcement_id
+    )
+      and r.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcement_reactions_mutate on public.chat_room_announcement_reactions;
+create policy chat_room_announcement_reactions_mutate
+on public.chat_room_announcement_reactions for all
+using (
+  auth.uid() = owner_id
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_reactions.announcement_id
+    )
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_reactions.announcement_id
+    )
+      and m.owner_id = auth.uid()
+  )
+)
+with check (
+  auth.uid() = owner_id
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_reactions.announcement_id
+    )
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_reactions.announcement_id
+    )
+      and m.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcement_comments_select on public.chat_room_announcement_comments;
+create policy chat_room_announcement_comments_select
+on public.chat_room_announcement_comments for select
+using (
+  exists (
+    select 1
+    from public.chat_room_announcements a
+    join public.chat_room_members mem
+      on mem.room_id = a.room_id
+     and mem.owner_id = auth.uid()
+    where a.id = chat_room_announcement_comments.announcement_id
+      and coalesce(mem.status, 'active') = 'active'
+  )
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_comments.announcement_id
+    )
+      and r.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcement_comments_mutate on public.chat_room_announcement_comments;
+create policy chat_room_announcement_comments_mutate
+on public.chat_room_announcement_comments for all
+using (
+  auth.uid() = owner_id
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_comments.announcement_id
+    )
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_comments.announcement_id
+    )
+      and m.owner_id = auth.uid()
+  )
+)
+with check (
+  auth.uid() = owner_id
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_comments.announcement_id
+    )
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_comments.announcement_id
+    )
+      and m.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_member_preferences_select on public.chat_room_member_preferences;
+create policy chat_room_member_preferences_select
+on public.chat_room_member_preferences for select
+using (
+  auth.uid() = owner_id
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = chat_room_member_preferences.room_id
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = chat_room_member_preferences.room_id
+      and m.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_member_preferences_mutate on public.chat_room_member_preferences;
+create policy chat_room_member_preferences_mutate
+on public.chat_room_member_preferences for all
+using (auth.uid() = owner_id)
+with check (auth.uid() = owner_id);
+
 create index if not exists chat_rooms_visibility_idx
   on public.chat_rooms (visibility, updated_at desc);
 
@@ -174,6 +481,24 @@ create index if not exists chat_room_members_last_read_idx
 
 create index if not exists chat_room_moderators_room_idx
   on public.chat_room_moderators (room_id, owner_id);
+
+create index if not exists chat_room_bans_room_idx
+  on public.chat_room_bans (room_id, expires_at desc);
+
+create index if not exists chat_room_bans_owner_idx
+  on public.chat_room_bans (owner_id, room_id);
+
+create index if not exists chat_room_announcements_room_idx
+  on public.chat_room_announcements (room_id, created_at desc);
+
+create index if not exists chat_room_announcement_comments_ann_idx
+  on public.chat_room_announcement_comments (announcement_id, created_at desc);
+
+create index if not exists chat_room_announcement_reactions_ann_idx
+  on public.chat_room_announcement_reactions (announcement_id, owner_id);
+
+create index if not exists chat_room_member_preferences_owner_idx
+  on public.chat_room_member_preferences (owner_id, room_id);
 
 create or replace function public.populate_chat_room_member_room_metadata()
 returns trigger
@@ -265,6 +590,51 @@ drop trigger if exists trg_chat_room_members_touch on public.chat_room_members;
 create trigger trg_chat_room_members_touch
 before update on public.chat_room_members
 for each row execute function public.touch_chat_room_member_activity();
+
+create or replace function public.touch_chat_room_ban()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := timezone('utc', now());
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_chat_room_bans_touch on public.chat_room_bans;
+create trigger trg_chat_room_bans_touch
+before update on public.chat_room_bans
+for each row execute function public.touch_chat_room_ban();
+
+create or replace function public.touch_chat_room_announcement()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := timezone('utc', now());
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_chat_room_announcements_touch on public.chat_room_announcements;
+create trigger trg_chat_room_announcements_touch
+before update on public.chat_room_announcements
+for each row execute function public.touch_chat_room_announcement();
+
+create or replace function public.touch_chat_room_member_preferences()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := timezone('utc', now());
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_chat_room_member_preferences_touch on public.chat_room_member_preferences;
+create trigger trg_chat_room_member_preferences_touch
+before update on public.chat_room_member_preferences
+for each row execute function public.touch_chat_room_member_preferences();
 
 create or replace function public.sync_chat_room_moderators()
 returns trigger
@@ -521,6 +891,7 @@ using (
       from public.chat_room_members crm
       where crm.room_id = messages.chat_room_id
         and crm.owner_id = auth.uid()
+        and coalesce(crm.status, 'active') = 'active'
     )
   )
   or (
@@ -1244,6 +1615,1031 @@ $$;
 grant execute on function public.fetch_chat_dashboard(integer)
 to authenticated;
 
+drop function if exists public.manage_chat_room_role(uuid, uuid, text, integer, text);
+create or replace function public.manage_chat_room_role(
+  p_room_id uuid,
+  p_target_owner uuid,
+  p_action text,
+  p_duration_minutes integer default null,
+  p_reason text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_room record;
+  v_is_owner boolean := false;
+  v_is_moderator boolean := false;
+  v_target_membership public.chat_room_members%rowtype;
+  v_existing_ban public.chat_room_bans%rowtype;
+  v_now timestamptz := timezone('utc', now());
+  v_expires timestamptz := null;
+  v_duration integer := null;
+  v_moderator_count integer := 0;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  if p_room_id is null or p_target_owner is null then
+    return jsonb_build_object('ok', false, 'error', 'missing_parameter');
+  end if;
+
+  select id, owner_id
+    into v_room
+  from public.chat_rooms
+  where id = p_room_id;
+
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'room_not_found');
+  end if;
+
+  v_is_owner := (v_room.owner_id = v_actor);
+
+  if not v_is_owner then
+    select count(*)
+      into v_moderator_count
+    from public.chat_room_moderators
+    where room_id = p_room_id
+      and owner_id = v_actor;
+
+    if v_moderator_count = 0 then
+      return jsonb_build_object('ok', false, 'error', 'forbidden');
+    end if;
+
+    v_is_moderator := true;
+  else
+    v_is_moderator := true;
+  end if;
+
+  if p_action is null then
+    return jsonb_build_object('ok', false, 'error', 'missing_action');
+  end if;
+
+  if p_action = 'promote' then
+    if not v_is_owner then
+      return jsonb_build_object('ok', false, 'error', 'owner_only');
+    end if;
+
+    if p_target_owner = v_room.owner_id then
+      return jsonb_build_object('ok', false, 'error', 'invalid_target');
+    end if;
+
+    select count(*)
+      into v_moderator_count
+    from public.chat_room_moderators
+    where room_id = p_room_id;
+
+    if v_moderator_count >= 5 then
+      return jsonb_build_object('ok', false, 'error', 'moderator_limit');
+    end if;
+
+    update public.chat_room_members
+    set is_moderator = true,
+        status = 'active'
+    where room_id = p_room_id
+      and owner_id = p_target_owner
+    returning * into v_target_membership;
+
+    if not found then
+      insert into public.chat_room_members (room_id, owner_id, status, is_moderator)
+      values (p_room_id, p_target_owner, 'active', true)
+      on conflict (room_id, owner_id) do update
+        set is_moderator = true,
+            status = 'active'
+      returning * into v_target_membership;
+    end if;
+
+    return jsonb_build_object(
+      'ok', true,
+      'action', 'promote',
+      'membership', row_to_json(v_target_membership)
+    );
+  elsif p_action = 'demote' then
+    if not v_is_owner then
+      return jsonb_build_object('ok', false, 'error', 'owner_only');
+    end if;
+
+    update public.chat_room_members
+    set is_moderator = false
+    where room_id = p_room_id
+      and owner_id = p_target_owner
+    returning * into v_target_membership;
+
+    return jsonb_build_object(
+      'ok', true,
+      'action', 'demote',
+      'membership', row_to_json(v_target_membership)
+    );
+  elsif p_action = 'ban' then
+    if not v_is_moderator then
+      return jsonb_build_object('ok', false, 'error', 'forbidden');
+    end if;
+
+    if p_target_owner = v_room.owner_id then
+      return jsonb_build_object('ok', false, 'error', 'cannot_ban_owner');
+    end if;
+
+    if p_target_owner = v_actor then
+      return jsonb_build_object('ok', false, 'error', 'cannot_ban_self');
+    end if;
+
+    if p_duration_minutes is not null and p_duration_minutes > 0 then
+      v_duration := greatest(p_duration_minutes, 1);
+      v_expires := v_now + make_interval(mins => v_duration);
+    end if;
+
+    insert into public.chat_room_bans (room_id, owner_id, banned_by, reason, expires_at)
+    values (
+      p_room_id,
+      p_target_owner,
+      v_actor,
+      nullif(trim(coalesce(p_reason, '')), ''),
+      v_expires
+    )
+    on conflict (room_id, owner_id) do update
+      set banned_by = excluded.banned_by,
+          reason = excluded.reason,
+          expires_at = excluded.expires_at,
+          updated_at = timezone('utc', now())
+    returning * into v_existing_ban;
+
+    update public.chat_room_members
+    set status = 'banned',
+        is_moderator = false
+    where room_id = p_room_id
+      and owner_id = p_target_owner
+    returning * into v_target_membership;
+
+    return jsonb_build_object(
+      'ok', true,
+      'action', 'ban',
+      'ban', row_to_json(v_existing_ban),
+      'membership', row_to_json(v_target_membership)
+    );
+  elsif p_action = 'unban' then
+    delete from public.chat_room_bans
+    where room_id = p_room_id
+      and owner_id = p_target_owner
+    returning * into v_existing_ban;
+
+    update public.chat_room_members
+    set status = 'inactive',
+        is_moderator = false
+    where room_id = p_room_id
+      and owner_id = p_target_owner
+    returning * into v_target_membership;
+
+    return jsonb_build_object(
+      'ok', true,
+      'action', 'unban',
+      'ban', row_to_json(v_existing_ban),
+      'membership', row_to_json(v_target_membership)
+    );
+  else
+    return jsonb_build_object('ok', false, 'error', 'unknown_action');
+  end if;
+end;
+$$;
+
+grant execute on function public.manage_chat_room_role(uuid, uuid, text, integer, text)
+to authenticated;
+
+drop function if exists public.fetch_chat_room_bans(uuid);
+create or replace function public.fetch_chat_room_bans(
+  p_room_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_allowed boolean := false;
+  v_bans jsonb := '[]'::jsonb;
+begin
+  if v_actor is null then
+    return jsonb_build_object('bans', '[]'::jsonb);
+  end if;
+
+  select exists (
+    select 1
+    from public.chat_rooms r
+    where r.id = p_room_id
+      and r.owner_id = v_actor
+  )
+  or exists (
+    select 1
+    from public.chat_room_moderators m
+    where m.room_id = p_room_id
+      and m.owner_id = v_actor
+  )
+    into v_allowed;
+
+  if not v_allowed then
+    return jsonb_build_object('bans', '[]'::jsonb);
+  end if;
+
+  select coalesce(jsonb_agg(to_jsonb(row)), '[]'::jsonb)
+    into v_bans
+  from (
+    select
+      b.room_id,
+      b.owner_id,
+      b.banned_by,
+      b.reason,
+      b.expires_at,
+      b.created_at,
+      b.updated_at,
+      u.email as banned_by_email,
+      u.raw_user_meta_data->>'full_name' as banned_by_name
+    from public.chat_room_bans b
+    left join auth.users u on u.id = b.banned_by
+    where b.room_id = p_room_id
+    order by b.created_at desc
+  ) as row;
+
+  return jsonb_build_object('bans', v_bans);
+end;
+$$;
+
+grant execute on function public.fetch_chat_room_bans(uuid)
+to authenticated;
+
+drop function if exists public.fetch_chat_room_announcements(uuid, integer, timestamptz);
+create or replace function public.fetch_chat_room_announcements(
+  p_room_id uuid,
+  p_limit integer default 20,
+  p_cursor timestamptz default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_can_view boolean := false;
+  v_limit integer := greatest(5, least(coalesce(p_limit, 20), 100));
+  v_cursor timestamptz := p_cursor;
+  v_pinned jsonb := null;
+  v_announcements jsonb := '[]'::jsonb;
+  v_has_more boolean := false;
+begin
+  if v_actor is null then
+    return jsonb_build_object('announcements', '[]'::jsonb, 'pinned', null, 'hasMore', false);
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = p_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = p_room_id
+        and m.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_members mem
+      where mem.room_id = p_room_id
+        and mem.owner_id = v_actor
+        and coalesce(mem.status, 'active') = 'active'
+    )
+    into v_can_view;
+
+  if not v_can_view then
+    return jsonb_build_object('announcements', '[]'::jsonb, 'pinned', null, 'hasMore', false);
+  end if;
+
+  select to_jsonb(row)
+    into v_pinned
+  from (
+    select
+      a.id,
+      a.room_id,
+      a.content,
+      a.pinned,
+      a.created_at,
+      a.updated_at,
+      a.author_id,
+      u.raw_user_meta_data->>'full_name' as author_name,
+      u.email as author_email,
+      (select count(*) from public.chat_room_announcement_reactions r where r.announcement_id = a.id) as heart_count,
+      (select count(*) from public.chat_room_announcement_comments c where c.announcement_id = a.id) as comment_count,
+      exists (
+        select 1
+        from public.chat_room_announcement_reactions r
+        where r.announcement_id = a.id
+          and r.owner_id = v_actor
+      ) as viewer_reacted
+    from public.chat_room_announcements a
+    left join auth.users u on u.id = a.author_id
+    where a.room_id = p_room_id
+      and a.pinned
+    order by a.updated_at desc, a.id desc
+    limit 1
+  ) as row;
+
+  with candidate as (
+    select
+      a.id,
+      a.room_id,
+      a.content,
+      a.pinned,
+      a.created_at,
+      a.updated_at,
+      a.author_id,
+      u.raw_user_meta_data->>'full_name' as author_name,
+      u.email as author_email,
+      (select count(*) from public.chat_room_announcement_reactions r where r.announcement_id = a.id) as heart_count,
+      (select count(*) from public.chat_room_announcement_comments c where c.announcement_id = a.id) as comment_count,
+      exists (
+        select 1
+        from public.chat_room_announcement_reactions r
+        where r.announcement_id = a.id
+          and r.owner_id = v_actor
+      ) as viewer_reacted
+    from public.chat_room_announcements a
+    left join auth.users u on u.id = a.author_id
+    where a.room_id = p_room_id
+      and (v_cursor is null or a.created_at < v_cursor)
+    order by a.created_at desc, a.id desc
+    limit v_limit + 1
+  ),
+  limited as (
+    select *
+    from candidate
+    order by created_at desc, id desc
+    limit v_limit
+  )
+  select
+    coalesce(jsonb_agg(to_jsonb(limited)), '[]'::jsonb),
+    (select count(*) from candidate) > v_limit
+  into v_announcements, v_has_more
+  from limited;
+
+  return jsonb_build_object(
+    'announcements', v_announcements,
+    'pinned', v_pinned,
+    'hasMore', coalesce(v_has_more, false)
+  );
+end;
+$$;
+
+grant execute on function public.fetch_chat_room_announcements(uuid, integer, timestamptz)
+to authenticated;
+
+drop function if exists public.fetch_chat_room_announcement_detail(uuid);
+create or replace function public.fetch_chat_room_announcement_detail(
+  p_announcement_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_room_id uuid;
+  v_can_view boolean := false;
+  v_announcement jsonb := null;
+  v_comments jsonb := '[]'::jsonb;
+begin
+  if v_actor is null then
+    return jsonb_build_object('announcement', null, 'comments', '[]'::jsonb);
+  end if;
+
+  select room_id
+    into v_room_id
+  from public.chat_room_announcements
+  where id = p_announcement_id;
+
+  if v_room_id is null then
+    return jsonb_build_object('announcement', null, 'comments', '[]'::jsonb);
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = v_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = v_room_id
+        and m.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_members mem
+      where mem.room_id = v_room_id
+        and mem.owner_id = v_actor
+        and coalesce(mem.status, 'active') = 'active'
+    )
+    into v_can_view;
+
+  if not v_can_view then
+    return jsonb_build_object('announcement', null, 'comments', '[]'::jsonb);
+  end if;
+
+  select to_jsonb(row)
+    into v_announcement
+  from (
+    select
+      a.id,
+      a.room_id,
+      a.content,
+      a.pinned,
+      a.created_at,
+      a.updated_at,
+      a.author_id,
+      u.raw_user_meta_data->>'full_name' as author_name,
+      u.email as author_email,
+      (select count(*) from public.chat_room_announcement_reactions r where r.announcement_id = a.id) as heart_count,
+      (select count(*) from public.chat_room_announcement_comments c where c.announcement_id = a.id) as comment_count,
+      exists (
+        select 1
+        from public.chat_room_announcement_reactions r
+        where r.announcement_id = a.id
+          and r.owner_id = v_actor
+      ) as viewer_reacted
+    from public.chat_room_announcements a
+    left join auth.users u on u.id = a.author_id
+    where a.id = p_announcement_id
+  ) as row;
+
+  with comment_rows as (
+    select
+      c.id,
+      c.announcement_id,
+      c.owner_id,
+      c.content,
+      c.created_at,
+      u.raw_user_meta_data->>'full_name' as owner_name,
+      u.email as owner_email
+    from public.chat_room_announcement_comments c
+    left join auth.users u on u.id = c.owner_id
+    where c.announcement_id = p_announcement_id
+    order by c.created_at asc, c.id asc
+    limit 200
+  )
+  select coalesce(jsonb_agg(to_jsonb(comment_rows)), '[]'::jsonb)
+    into v_comments
+  from comment_rows;
+
+  return jsonb_build_object('announcement', v_announcement, 'comments', v_comments);
+end;
+$$;
+
+grant execute on function public.fetch_chat_room_announcement_detail(uuid)
+to authenticated;
+
+drop function if exists public.create_chat_room_announcement(uuid, text, boolean);
+create or replace function public.create_chat_room_announcement(
+  p_room_id uuid,
+  p_content text,
+  p_pinned boolean default false
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_can_manage boolean := false;
+  v_content text := coalesce(p_content, '');
+  v_row jsonb := null;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  v_content := trim(v_content);
+  if v_content = '' then
+    return jsonb_build_object('ok', false, 'error', 'missing_content');
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = p_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = p_room_id
+        and m.owner_id = v_actor
+    )
+    into v_can_manage;
+
+  if not v_can_manage then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  insert into public.chat_room_announcements (room_id, author_id, content, pinned)
+  values (p_room_id, v_actor, v_content, coalesce(p_pinned, false))
+  returning jsonb_build_object(
+    'id', id,
+    'room_id', room_id,
+    'author_id', author_id,
+    'content', content,
+    'pinned', pinned,
+    'created_at', created_at,
+    'updated_at', updated_at
+  ) into v_row;
+
+  if p_pinned then
+    update public.chat_room_announcements
+    set pinned = false
+    where room_id = p_room_id
+      and id <> (v_row->>'id')::uuid
+      and pinned;
+  end if;
+
+  return jsonb_build_object('ok', true, 'announcement', v_row);
+end;
+$$;
+
+grant execute on function public.create_chat_room_announcement(uuid, text, boolean)
+to authenticated;
+
+drop function if exists public.delete_chat_room_announcement(uuid);
+create or replace function public.delete_chat_room_announcement(
+  p_announcement_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_room_id uuid;
+  v_author_id uuid;
+  v_can_manage boolean := false;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  select room_id, author_id
+    into v_room_id, v_author_id
+  from public.chat_room_announcements
+  where id = p_announcement_id;
+
+  if v_room_id is null then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = v_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = v_room_id
+        and m.owner_id = v_actor
+    )
+    or v_actor = v_author_id
+    into v_can_manage;
+
+  if not v_can_manage then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  delete from public.chat_room_announcement_reactions
+  where announcement_id = p_announcement_id;
+
+  delete from public.chat_room_announcement_comments
+  where announcement_id = p_announcement_id;
+
+  delete from public.chat_room_announcements
+  where id = p_announcement_id;
+
+  return jsonb_build_object('ok', true, 'deletedId', p_announcement_id);
+end;
+$$;
+
+grant execute on function public.delete_chat_room_announcement(uuid)
+to authenticated;
+
+drop function if exists public.toggle_chat_room_announcement_reaction(uuid);
+create or replace function public.toggle_chat_room_announcement_reaction(
+  p_announcement_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_room_id uuid;
+  v_can_view boolean := false;
+  v_reacted boolean := false;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  select room_id
+    into v_room_id
+  from public.chat_room_announcements
+  where id = p_announcement_id;
+
+  if v_room_id is null then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = v_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = v_room_id
+        and m.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_members mem
+      where mem.room_id = v_room_id
+        and mem.owner_id = v_actor
+        and coalesce(mem.status, 'active') = 'active'
+    )
+    into v_can_view;
+
+  if not v_can_view then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  if exists (
+    select 1
+    from public.chat_room_announcement_reactions r
+    where r.announcement_id = p_announcement_id
+      and r.owner_id = v_actor
+  ) then
+    delete from public.chat_room_announcement_reactions
+    where announcement_id = p_announcement_id
+      and owner_id = v_actor;
+    v_reacted := false;
+  else
+    insert into public.chat_room_announcement_reactions (announcement_id, owner_id)
+    values (p_announcement_id, v_actor)
+    on conflict do nothing;
+    v_reacted := true;
+  end if;
+
+  return jsonb_build_object('ok', true, 'reacted', v_reacted);
+end;
+$$;
+
+grant execute on function public.toggle_chat_room_announcement_reaction(uuid)
+to authenticated;
+
+drop function if exists public.create_chat_room_announcement_comment(uuid, text);
+create or replace function public.create_chat_room_announcement_comment(
+  p_announcement_id uuid,
+  p_content text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_room_id uuid;
+  v_can_view boolean := false;
+  v_content text := coalesce(p_content, '');
+  v_comment jsonb := null;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  v_content := trim(v_content);
+  if v_content = '' then
+    return jsonb_build_object('ok', false, 'error', 'missing_content');
+  end if;
+
+  select room_id
+    into v_room_id
+  from public.chat_room_announcements
+  where id = p_announcement_id;
+
+  if v_room_id is null then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = v_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = v_room_id
+        and m.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_members mem
+      where mem.room_id = v_room_id
+        and mem.owner_id = v_actor
+        and coalesce(mem.status, 'active') = 'active'
+    )
+    into v_can_view;
+
+  if not v_can_view then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  insert into public.chat_room_announcement_comments (announcement_id, owner_id, content)
+  values (p_announcement_id, v_actor, v_content)
+  returning jsonb_build_object(
+    'id', id,
+    'announcement_id', announcement_id,
+    'owner_id', owner_id,
+    'content', content,
+    'created_at', created_at
+  ) into v_comment;
+
+  return jsonb_build_object('ok', true, 'comment', v_comment);
+end;
+$$;
+
+grant execute on function public.create_chat_room_announcement_comment(uuid, text)
+to authenticated;
+
+drop function if exists public.fetch_chat_room_stats(uuid);
+create or replace function public.fetch_chat_room_stats(
+  p_room_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_can_view boolean := false;
+  v_stats jsonb := '{}'::jsonb;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = p_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = p_room_id
+        and m.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_members mem
+      where mem.room_id = p_room_id
+        and mem.owner_id = v_actor
+        and coalesce(mem.status, 'active') = 'active'
+    )
+    into v_can_view;
+
+  if not v_can_view then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  select jsonb_build_object(
+      'messageCount', coalesce(count(*), 0),
+      'messagesLast24h', coalesce(count(*) filter (where created_at >= timezone('utc', now()) - interval '24 hours'), 0),
+      'attachmentCount', coalesce(sum(jsonb_array_length(coalesce(metadata->'attachments', '[]'::jsonb))), 0),
+      'participantCount', (
+        select count(*)
+        from public.chat_room_members mem
+        where mem.room_id = p_room_id
+          and coalesce(mem.status, 'active') = 'active'
+      ),
+      'moderatorCount', (
+        select count(*)
+        from public.chat_room_moderators m
+        where m.room_id = p_room_id
+      ),
+      'lastMessageAt', max(created_at)
+    )
+    into v_stats
+  from public.messages
+  where chat_room_id = p_room_id;
+
+  return jsonb_build_object('ok', true, 'stats', coalesce(v_stats, '{}'::jsonb));
+end;
+$$;
+
+grant execute on function public.fetch_chat_room_stats(uuid)
+to authenticated;
+
+drop function if exists public.fetch_chat_member_preferences(uuid);
+create or replace function public.fetch_chat_member_preferences(
+  p_room_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_row jsonb := null;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  select to_jsonb(row)
+    into v_row
+  from (
+    select
+      pref.room_id,
+      pref.owner_id,
+      pref.bubble_color,
+      pref.text_color,
+      pref.background_url,
+      pref.use_room_background,
+      pref.metadata,
+      pref.updated_at
+    from public.chat_room_member_preferences pref
+    where pref.room_id = p_room_id
+      and pref.owner_id = v_actor
+  ) as row;
+
+  return jsonb_build_object(
+    'ok', true,
+    'preferences', coalesce(v_row, jsonb_build_object(
+      'room_id', p_room_id,
+      'owner_id', v_actor,
+      'bubble_color', null,
+      'text_color', null,
+      'background_url', null,
+      'use_room_background', true,
+      'metadata', '{}'::jsonb
+    ))
+  );
+end;
+$$;
+
+grant execute on function public.fetch_chat_member_preferences(uuid)
+to authenticated;
+
+drop function if exists public.upsert_chat_member_preferences(uuid, jsonb);
+create or replace function public.upsert_chat_member_preferences(
+  p_room_id uuid,
+  p_preferences jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_bubble text := null;
+  v_text text := null;
+  v_background text := null;
+  v_use_room boolean := true;
+  v_metadata jsonb := '{}'::jsonb;
+  v_row jsonb := null;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  if p_preferences ? 'bubbleColor' then
+    v_bubble := nullif(trim(coalesce(p_preferences->>'bubbleColor', '')), '');
+  end if;
+
+  if p_preferences ? 'textColor' then
+    v_text := nullif(trim(coalesce(p_preferences->>'textColor', '')), '');
+  end if;
+
+  if p_preferences ? 'backgroundUrl' then
+    v_background := nullif(trim(coalesce(p_preferences->>'backgroundUrl', '')), '');
+  end if;
+
+  if p_preferences ? 'useRoomBackground' then
+    v_use_room := coalesce((p_preferences->>'useRoomBackground')::boolean, true);
+  end if;
+
+  if p_preferences ? 'metadata' then
+    v_metadata := coalesce(p_preferences->'metadata', '{}'::jsonb);
+  end if;
+
+  insert into public.chat_room_member_preferences (
+    room_id,
+    owner_id,
+    bubble_color,
+    text_color,
+    background_url,
+    use_room_background,
+    metadata
+  )
+  values (
+    p_room_id,
+    v_actor,
+    v_bubble,
+    v_text,
+    v_background,
+    v_use_room,
+    v_metadata
+  )
+  on conflict (room_id, owner_id) do update
+    set bubble_color = v_bubble,
+        text_color = v_text,
+        background_url = v_background,
+        use_room_background = v_use_room,
+        metadata = v_metadata
+  returning jsonb_build_object(
+    'room_id', room_id,
+    'owner_id', owner_id,
+    'bubble_color', bubble_color,
+    'text_color', text_color,
+    'background_url', background_url,
+    'use_room_background', use_room_background,
+    'metadata', metadata,
+    'updated_at', updated_at
+  ) into v_row;
+
+  return jsonb_build_object('ok', true, 'preferences', v_row);
+end;
+$$;
+
+grant execute on function public.upsert_chat_member_preferences(uuid, jsonb)
+to authenticated;
+
+drop function if exists public.update_chat_room_settings(uuid, jsonb);
+create or replace function public.update_chat_room_settings(
+  p_room_id uuid,
+  p_settings jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_background text := null;
+  v_default_ban integer := null;
+  v_row jsonb := null;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  if not exists (
+    select 1 from public.chat_rooms r
+    where r.id = p_room_id
+      and r.owner_id = v_actor
+  ) then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  if p_settings ? 'defaultBackgroundUrl' then
+    v_background := nullif(trim(coalesce(p_settings->>'defaultBackgroundUrl', '')), '');
+  end if;
+
+  if p_settings ? 'defaultBanMinutes' then
+    begin
+      v_default_ban := greatest(0, coalesce((p_settings->>'defaultBanMinutes')::integer, 0));
+    exception when others then
+      v_default_ban := 0;
+    end;
+  end if;
+
+  update public.chat_rooms
+  set default_background_url = coalesce(v_background, default_background_url),
+      default_ban_minutes = coalesce(v_default_ban, default_ban_minutes)
+  where id = p_room_id
+  returning jsonb_build_object(
+    'id', id,
+    'default_background_url', default_background_url,
+    'default_ban_minutes', default_ban_minutes,
+    'updated_at', updated_at
+  ) into v_row;
+
+  return jsonb_build_object('ok', true, 'settings', v_row);
+end;
+$$;
+
+grant execute on function public.update_chat_room_settings(uuid, jsonb)
+to authenticated;
+
+
+
 -- 4. Publication wiring -----------------------------------------------------
 do $$
 begin
@@ -1290,6 +2686,71 @@ begin
       and tablename = 'chat_room_members'
   ) then
     alter publication supabase_realtime add table public.chat_room_members;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_room_bans'
+  ) then
+    alter publication supabase_realtime add table public.chat_room_bans;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_room_announcements'
+  ) then
+    alter publication supabase_realtime add table public.chat_room_announcements;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_room_announcement_comments'
+  ) then
+    alter publication supabase_realtime add table public.chat_room_announcement_comments;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_room_announcement_reactions'
+  ) then
+    alter publication supabase_realtime add table public.chat_room_announcement_reactions;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_room_member_preferences'
+  ) then
+    alter publication supabase_realtime add table public.chat_room_member_preferences;
   end if;
 end;
 $$;
