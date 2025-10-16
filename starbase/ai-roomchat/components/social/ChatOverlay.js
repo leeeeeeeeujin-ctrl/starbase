@@ -30,6 +30,215 @@ const ATTACHMENT_SIZE_LIMIT = 50 * 1024 * 1024
 const MAX_VIDEO_DURATION = 4 * 60
 const MAX_MESSAGE_PREVIEW_LENGTH = 240
 const MEDIA_LOAD_LIMIT = 120
+const FALLBACK_MAX_MEDIA_AGE_MS = 90 * 24 * 60 * 60 * 1000
+const FALLBACK_SOURCE_LIMIT = 6
+
+const ANDROID_MEDIA_SOURCES = [
+  {
+    id: 'dcim-camera',
+    label: '카메라',
+    paths: [
+      ['DCIM', 'Camera'],
+      ['DCIM', '100MEDIA'],
+      ['DCIM', '100ANDRO'],
+    ],
+  },
+  {
+    id: 'screenshots',
+    label: '스크린샷',
+    paths: [
+      ['Pictures', 'Screenshots'],
+      ['DCIM', 'Screenshots'],
+    ],
+  },
+  {
+    id: 'downloads',
+    label: '다운로드',
+    paths: [['Download']],
+  },
+  {
+    id: 'kakaotalk',
+    label: '카카오톡',
+    paths: [
+      ['KakaoTalk', 'Media', 'KakaoTalk Images'],
+      ['KakaoTalk', 'Media', 'KakaoTalk Videos'],
+    ],
+  },
+  {
+    id: 'telegram',
+    label: '텔레그램',
+    paths: [
+      ['Telegram', 'Telegram Images'],
+      ['Telegram', 'Telegram Video'],
+    ],
+  },
+  {
+    id: 'line',
+    label: '라인',
+    paths: [
+      ['LINE', 'LINE_Album'],
+      ['LINE', 'Images'],
+    ],
+  },
+  {
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    paths: [
+      ['WhatsApp', 'Media', 'WhatsApp Images'],
+      ['WhatsApp', 'Media', 'WhatsApp Video'],
+    ],
+  },
+  {
+    id: 'discord',
+    label: '디스코드',
+    paths: [
+      ['Discord'],
+      ['Pictures', 'Discord'],
+    ],
+  },
+  {
+    id: 'bluetooth',
+    label: '블루투스',
+    paths: [['Bluetooth']],
+  },
+]
+
+const IOS_MEDIA_SOURCES = [
+  {
+    id: 'photos',
+    label: '사진',
+    paths: [
+      ['DCIM'],
+      ['DCIM', '100APPLE'],
+      ['DCIM', '101APPLE'],
+    ],
+  },
+]
+
+const GENERIC_MEDIA_SOURCES = [
+  {
+    id: 'pictures',
+    label: '사진',
+    paths: [['Pictures']],
+  },
+  {
+    id: 'downloads',
+    label: '다운로드',
+    paths: [['Download']],
+  },
+]
+
+function detectFallbackPlatform() {
+  if (typeof navigator === 'undefined') {
+    return 'generic'
+  }
+  const ua = navigator.userAgent || navigator.platform || ''
+  if (/android/i.test(ua)) return 'android'
+  if (/iphone|ipad|ipod/i.test(ua)) return 'ios'
+  return 'generic'
+}
+
+function getFallbackSources() {
+  const platform = detectFallbackPlatform()
+  if (platform === 'android') return ANDROID_MEDIA_SOURCES
+  if (platform === 'ios') return IOS_MEDIA_SOURCES
+  return GENERIC_MEDIA_SOURCES
+}
+
+async function findDirectoryByName(parentHandle, segment) {
+  if (!parentHandle) return null
+  const lower = segment.toLowerCase()
+  try {
+    return await parentHandle.getDirectoryHandle(segment)
+  } catch (error) {
+    // continue to scan entries
+  }
+  try {
+    for await (const [name, handle] of parentHandle.entries()) {
+      if (handle?.kind === 'directory' && name.toLowerCase() === lower) {
+        return handle
+      }
+    }
+  } catch (error) {
+    console.warn('[chat] 하위 디렉터리를 찾을 수 없습니다.', error)
+  }
+  return null
+}
+
+async function resolveDirectoryFromRoot(rootHandle, segments) {
+  if (!rootHandle || !segments?.length) return null
+  let current = rootHandle
+  let startIndex = 0
+  const rootName = (current.name || '').toLowerCase()
+  if (segments.length && rootName === segments[0].toLowerCase()) {
+    startIndex = 1
+  }
+
+  for (let i = startIndex; i < segments.length; i += 1) {
+    const segment = segments[i]
+    const next = await findDirectoryByName(current, segment)
+    if (!next) {
+      return null
+    }
+    current = next
+  }
+  return current
+}
+
+function shouldIncludeEntry(entry) {
+  if (!entry) return false
+  if (!(entry.type?.startsWith('image/') || entry.type?.startsWith('video/'))) {
+    return false
+  }
+  const cutoff = Date.now() - FALLBACK_MAX_MEDIA_AGE_MS
+  if (entry.lastModified && entry.lastModified < cutoff) {
+    return false
+  }
+  return true
+}
+
+async function collectFallbackMediaEntries(rootHandle, action) {
+  if (!rootHandle) return []
+  const granted = await ensureHandleReadPermission(rootHandle)
+  if (!granted) {
+    throw new Error('미디어 라이브러리에 접근할 수 있도록 권한을 허용해 주세요.')
+  }
+
+  const sources = getFallbackSources()
+  const seen = new Map()
+  const results = []
+
+  for (const source of sources.slice(0, FALLBACK_SOURCE_LIMIT)) {
+    let directoryHandle = null
+    for (const path of source.paths) {
+      directoryHandle = await resolveDirectoryFromRoot(rootHandle, path)
+      if (!directoryHandle && rootHandle.name) {
+        // allow resolving when root is already within the path
+        directoryHandle = await resolveDirectoryFromRoot(rootHandle, path.slice(1))
+      }
+      if (directoryHandle) break
+    }
+    if (!directoryHandle) continue
+    const permitted = await ensureHandleReadPermission(directoryHandle)
+    if (!permitted) continue
+
+    const entries = await enumerateMediaEntries(directoryHandle, action)
+    for (const entry of entries) {
+      if (!shouldIncludeEntry(entry)) continue
+      const key = `${source.id}:${entry.name}:${entry.lastModified || 0}:${entry.size || 0}`
+      if (seen.has(key)) continue
+      seen.set(key, true)
+      results.push({ ...entry, bucketId: source.id, bucketLabel: source.label })
+    }
+
+    if (results.length >= MEDIA_LOAD_LIMIT) {
+      break
+    }
+  }
+
+  results.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0))
+  return results.slice(0, MEDIA_LOAD_LIMIT)
+}
 const LONG_PRESS_THRESHOLD = 400
 const ATTACHMENT_ICONS = {
   image: '🖼️',
@@ -2152,16 +2361,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
       let directoryHandle = mediaDirectoryHandleRef.current
       if (!directoryHandle) {
-        directoryHandle = await window.showDirectoryPicker({ id: 'chat-media', mode: 'read' })
+        directoryHandle = await window.showDirectoryPicker({ id: 'chat-media-root', mode: 'read' })
         mediaDirectoryHandleRef.current = directoryHandle
       }
 
-      const granted = await ensureHandleReadPermission(directoryHandle)
-      if (!granted) {
-        throw new Error('미디어 라이브러리에 접근할 수 있도록 권한을 허용해 주세요.')
-      }
-
-      const items = await enumerateMediaEntries(directoryHandle, targetAction)
+      const items = await collectFallbackMediaEntries(directoryHandle, targetAction)
       const enriched = await Promise.all(
         items.map(async (entry) => {
           if (!(entry.type?.startsWith('image/') || entry.type?.startsWith('video/'))) {

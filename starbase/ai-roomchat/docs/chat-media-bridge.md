@@ -82,7 +82,7 @@ The chat client compresses and uploads attachments to Supabase Storage after rec
 ## Failure handling
 
 - Respond with `{ error: 'message' }` or throw to reject a request. The chat UI will surface the message and keep previous results.
-- If the bridge goes offline, omit the object from `window`; the UI will fall back to web-based directory picking where supported.
+- If the bridge goes offline, omit the object from `window`; the UI will fall back to curated filesystem buckets. The picker asks for read access once and then scans common Android directories (DCIM/Camera, Screenshots, Download, KakaoTalk 등) or iOS DCIM buckets to rebuild a recent timeline without relying on the system picker.
 - When permissions are revoked, return `{ status: 'denied' }` from `requestPermission` so the chat overlay can guide the user back to settings.
 
 ## Testing checklist
