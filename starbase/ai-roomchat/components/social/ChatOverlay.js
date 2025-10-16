@@ -393,8 +393,8 @@ const overlayStyles = {
     background: 'rgba(15, 23, 42, 0.94)',
     borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
-    padding: '32px',
-    minHeight: 'min(92vh, 820px)',
+    padding: '28px 32px',
+    minHeight: 'min(92vh, 860px)',
     display: 'flex',
     width: '100%',
     boxSizing: 'border-box',
@@ -402,8 +402,8 @@ const overlayStyles = {
   },
   closeButton: {
     position: 'absolute',
-    top: 18,
-    right: 22,
+    top: 12,
+    right: 26,
     borderRadius: 999,
     border: '1px solid rgba(148, 163, 184, 0.5)',
     background: 'rgba(15, 23, 42, 0.75)',
@@ -412,13 +412,14 @@ const overlayStyles = {
     fontSize: 12,
     fontWeight: 600,
     cursor: 'pointer',
+    zIndex: 5,
   },
   root: (focused) => ({
     display: 'grid',
-    gridTemplateColumns: focused ? 'minmax(280px, 360px) minmax(0, 1fr)' : 'minmax(0, 1fr)',
-    gap: 16,
-    height: 'min(88vh, 760px)',
-    minHeight: 560,
+    gridTemplateColumns: focused ? 'minmax(250px, 300px) minmax(0, 1fr)' : 'minmax(0, 1fr)',
+    gap: 18,
+    height: 'min(90vh, 800px)',
+    minHeight: 600,
     width: '100%',
     maxWidth: '100%',
     padding: 0,
@@ -693,7 +694,7 @@ const overlayStyles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '12px 18px',
+    padding: '14px 22px',
     borderBottom: '1px solid rgba(71, 85, 105, 0.5)',
     background: 'rgba(12, 20, 45, 0.98)',
   },
@@ -756,7 +757,7 @@ const overlayStyles = {
   },
   messageViewport: {
     overflowY: 'auto',
-    padding: '18px 0 20px',
+    padding: '22px 6px 26px',
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
@@ -1595,6 +1596,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [activeTab, setActiveTab] = useState('info')
   const [dashboard, setDashboard] = useState(null)
   const [rooms, setRooms] = useState(() => normalizeRoomCollections())
+  const roomsRef = useRef(rooms)
   const [loadingDashboard, setLoadingDashboard] = useState(false)
   const [loadingRooms, setLoadingRooms] = useState(false)
   const [dashboardError, setDashboardError] = useState(null)
@@ -1656,6 +1658,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const mediaPickerLongPressRef = useRef({ timer: null, active: false, id: null })
   const aiPendingMessageRef = useRef(null)
   const lastMarkedRef = useRef(null)
+  const roomMetadataRef = useRef(new Map())
 
   const heroes = useMemo(() => (dashboard?.heroes ? dashboard.heroes : []), [dashboard])
 
@@ -1702,6 +1705,52 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return identifiers
   }, [rooms])
 
+  useEffect(() => {
+    roomsRef.current = rooms
+  }, [rooms])
+
+  const applyRoomOverrides = useCallback((collections) => {
+    if (!collections) {
+      return collections
+    }
+
+    const overrides = roomMetadataRef.current
+    if (!overrides || overrides.size === 0) {
+      return collections
+    }
+
+    const apply = (list) => {
+      if (!Array.isArray(list) || list.length === 0) {
+        return list
+      }
+
+      let changed = false
+      const next = list.map((room) => {
+        const id = normalizeId(room?.id)
+        if (!id) return room
+        const override = overrides.get(id)
+        if (!override) return room
+        changed = true
+        return { ...room, ...override }
+      })
+
+      return changed ? next : list
+    }
+
+    const nextJoined = apply(collections.joined)
+    const nextAvailable = apply(collections.available)
+
+    if (nextJoined === collections.joined && nextAvailable === collections.available) {
+      return collections
+    }
+
+    return {
+      ...collections,
+      joined: nextJoined,
+      available: nextAvailable,
+    }
+  }, [])
+
   const updateRoomMetadata = useCallback((roomId, updates = {}) => {
     if (!roomId || !updates || typeof updates !== 'object') {
       return
@@ -1738,6 +1787,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       const parsed = Number.isFinite(Number(unread)) ? Number(unread) : 0
       patch.unread_count = parsed
       patch.unreadCount = parsed
+    }
+
+    const overrides = roomMetadataRef.current
+    if (overrides) {
+      const previous = overrides.get(normalizedRoomId) || {}
+      const nextOverride = { ...previous, ...patch }
+      if (!('unread_count' in patch) && !('unreadCount' in patch)) {
+        delete nextOverride.unread_count
+        delete nextOverride.unreadCount
+      }
+      if (Object.keys(nextOverride).length === 0) {
+        overrides.delete(normalizedRoomId)
+      } else {
+        overrides.set(normalizedRoomId, nextOverride)
+      }
     }
 
     const applyCollection = (collection) => {
@@ -1870,6 +1934,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setExpandedMessage(null)
     setViewerAttachment(null)
     attachmentCacheRef.current.clear()
+    roomMetadataRef.current.clear()
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current)
         longPressTimerRef.current = null
@@ -1899,15 +1964,16 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           joined: snapshot?.roomSummary?.joined || snapshot?.rooms,
           available: snapshot?.roomSummary?.available || snapshot?.publicRooms,
         })
+        const patchedRoomState = applyRoomOverrides(normalizedRoomState)
         setDashboard({
           ...snapshot,
-          rooms: normalizedRoomState.joined,
-          publicRooms: normalizedRoomState.available,
-          roomSummary: normalizedRoomState,
+          rooms: patchedRoomState.joined,
+          publicRooms: patchedRoomState.available,
+          roomSummary: patchedRoomState,
         })
         setViewer(user)
         setSelectedHero((snapshot.heroes && snapshot.heroes[0]?.id) || null)
-        setRooms(normalizedRoomState)
+        setRooms(patchedRoomState)
       } catch (error) {
         if (!mounted) return
         console.error('[chat] 대시보드 로드 실패:', error)
@@ -1924,7 +1990,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       mounted = false
     }
-  }, [open])
+  }, [open, applyRoomOverrides])
 
   useEffect(() => {
     if (!open || !context) {
@@ -1968,19 +2034,41 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         unsubscribeRef.current = subscribeToMessages({
           onInsert: (record) => {
             setMessages((prev) => upsertMessageList(prev, record))
-            if (record?.chat_room_id || record?.room_id || context?.chatRoomId) {
-              const recordRoomId = normalizeId(record.chat_room_id || record.room_id || null)
-              if (
-                context?.type === 'chat-room' &&
-                normalizeId(context.chatRoomId) === (recordRoomId || normalizeId(context.chatRoomId))
-              ) {
+            const recordRoomId = normalizeId(record?.chat_room_id || record?.room_id || null)
+            const messageOwnerId = normalizeId(record?.owner_id || record?.user_id)
+            const fromSelf = Boolean(viewerToken && messageOwnerId && viewerToken === messageOwnerId)
+
+            if (recordRoomId) {
+              if (context?.type === 'chat-room' && normalizeId(context.chatRoomId) === recordRoomId) {
                 updateRoomMetadata(context.chatRoomId, { latestMessage: record })
-              } else if (recordRoomId) {
-                updateRoomMetadata(recordRoomId, { latestMessage: record })
+              } else {
+                let existing = null
+                const snapshot = roomsRef.current
+                if (snapshot) {
+                  if (Array.isArray(snapshot.joined)) {
+                    existing =
+                      snapshot.joined.find((room) => normalizeId(room?.id) === recordRoomId) || null
+                  }
+                  if (!existing && Array.isArray(snapshot.available)) {
+                    existing =
+                      snapshot.available.find((room) => normalizeId(room?.id) === recordRoomId) || null
+                  }
+                }
+                const currentUnread = existing?.unread_count ?? existing?.unreadCount ?? 0
+                const parsedUnread = Number.isFinite(Number(currentUnread))
+                  ? Number(currentUnread)
+                  : 0
+                const nextUnread = fromSelf ? parsedUnread : parsedUnread + 1
+                const patch = { latestMessage: record }
+                if (!fromSelf) {
+                  patch.unread_count = nextUnread
+                  patch.unreadCount = nextUnread
+                }
+                updateRoomMetadata(recordRoomId, patch)
               }
             }
             const hidden = typeof document !== 'undefined' ? document.hidden : false
-            if (onUnreadChange && (!context.focused || hidden)) {
+            if (onUnreadChange && (!context?.focused || hidden) && !fromSelf) {
               onUnreadChange((prevUnread) => Math.min(999, (prevUnread || 0) + 1))
             }
           },
@@ -2007,7 +2095,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       cancelled = true
     }
-  }, [open, context, viewer, onUnreadChange, updateRoomMetadata])
+  }, [open, context, viewer, viewerToken, onUnreadChange, updateRoomMetadata])
 
   useEffect(() => {
     if (!open) return
@@ -2123,14 +2211,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       try {
         const snapshot = await fetchChatRooms({ search })
         const normalized = normalizeRoomCollections(snapshot)
-        setRooms(normalized)
+        const patched = applyRoomOverrides(normalized)
+        setRooms(patched)
         setDashboard((prev) => {
           if (!prev) return prev
           return {
             ...prev,
-            rooms: normalized.joined,
-            publicRooms: normalized.available,
-            roomSummary: normalized,
+            rooms: patched.joined,
+            publicRooms: patched.available,
+            roomSummary: patched,
           }
         })
       } catch (error) {
@@ -2140,7 +2229,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setLoadingRooms(false)
       }
     },
-    [],
+    [applyRoomOverrides],
   )
 
   useEffect(() => {
@@ -2349,7 +2438,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setSearchError(null)
       try {
         const snapshot = await fetchChatRooms({ search: trimmed })
-        const normalized = normalizeRoomCollections(snapshot)
+        const normalized = applyRoomOverrides(normalizeRoomCollections(snapshot))
         const available = Array.isArray(normalized.available) ? normalized.available : []
         const filtered = available.filter((room) => {
           const id = normalizeId(room?.id)
@@ -2366,7 +2455,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setSearchPerformed(true)
       }
     },
-    [],
+    [applyRoomOverrides],
   )
 
   const handleSubmitSearch = useCallback(
@@ -3757,13 +3846,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 나가기
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={onClose}
-              style={overlayStyles.headerButton('primary')}
-            >
-              닫기
-            </button>
           </div>
         </header>
         <div ref={messageListRef} style={overlayStyles.messageViewport}>
@@ -4510,15 +4592,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         open={open}
         onClose={onClose}
         title="채팅"
-        width="min(1200px, 98vw)"
+        width="min(1320px, 98vw)"
         hideHeader
         contentStyle={{ padding: 0, background: 'transparent' }}
         frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
       >
         <div style={overlayStyles.frame}>
-          <button type="button" style={overlayStyles.closeButton} onClick={onClose}>
-            닫기
-          </button>
+          {!focused ? (
+            <button type="button" style={overlayStyles.closeButton} onClick={onClose}>
+              닫기
+            </button>
+          ) : null}
           <div style={overlayStyles.root(focused)}>
             {!focused ? renderListColumn() : null}
             {focused ? renderMessageColumn() : null}
