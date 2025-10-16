@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import SurfaceOverlay from '@/components/common/SurfaceOverlay'
+import FriendOverlay from '@/components/social/FriendOverlay'
 import {
   createChatRoom,
   fetchChatDashboard,
@@ -17,6 +18,8 @@ import {
   subscribeToMessages,
 } from '@/lib/chat/messages'
 import { supabase } from '@/lib/supabase'
+import { useHeroSocialBootstrap } from '@/hooks/social/useHeroSocialBootstrap'
+import { useFriendActions } from '@/hooks/social/useFriendActions'
 import {
   fetchNativeMediaAsset,
   fetchNativeMediaTimeline,
@@ -70,6 +73,17 @@ function formatDuration(seconds) {
   const minutes = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
+
+function getFriendDisplayName(friend) {
+  if (!friend) return '친구'
+  return (
+    friend.friendHeroName ||
+    friend.currentHeroName ||
+    friend.displayName ||
+    friend.username ||
+    '친구'
+  )
 }
 
 async function blobFromCanvas(canvas, type = 'image/webp', quality = 0.82) {
@@ -386,8 +400,8 @@ const overlayStyles = {
   },
   root: (focused) => ({
     display: 'grid',
-    gridTemplateColumns: focused ? 'minmax(0, 1fr)' : '300px minmax(0, 1fr)',
-    gap: focused ? 14 : 16,
+    gridTemplateColumns: focused ? 'minmax(0, 1fr)' : 'minmax(0, 360px)',
+    gap: 16,
     height: 'min(88vh, 760px)',
     minHeight: 560,
     width: '100%',
@@ -396,39 +410,64 @@ const overlayStyles = {
   }),
   sidePanel: {
     display: 'grid',
-    gridTemplateRows: 'auto 1fr',
+    gridTemplateRows: 'auto 1fr auto',
     background: 'rgba(12, 20, 45, 0.92)',
     borderRadius: 22,
     border: '1px solid rgba(71, 85, 105, 0.45)',
     overflow: 'hidden',
+    minHeight: 0,
   },
-  sideTabs: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    gap: 8,
-    padding: '10px 12px 8px',
+  sideActions: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 12,
+    padding: '14px 16px 10px',
     background: 'rgba(15, 23, 42, 0.96)',
   },
-  sideTabButton: (active) => ({
-    borderRadius: 10,
+  actionIconButton: (active = false) => ({
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     border: active
-      ? '1px solid rgba(59, 130, 246, 0.6)'
-      : '1px solid rgba(71, 85, 105, 0.5)',
-    background: active ? 'rgba(37, 99, 235, 0.28)' : 'rgba(15, 23, 42, 0.7)',
-    color: active ? '#e0f2fe' : '#cbd5f5',
-    fontSize: 12,
-    fontWeight: 600,
-    padding: '8px 10px',
+      ? '1px solid rgba(59, 130, 246, 0.7)'
+      : '1px solid rgba(71, 85, 105, 0.55)',
+    background: active ? 'rgba(37, 99, 235, 0.32)' : 'rgba(15, 23, 42, 0.7)',
+    color: '#e0f2fe',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 18,
     cursor: 'pointer',
-    transition: 'all 0.15s ease',
+    transition: 'all 0.18s ease',
   }),
   sideContent: {
-    padding: '0 14px 16px',
+    padding: '0 16px 18px',
     overflowY: 'auto',
     display: 'grid',
-    gap: 16,
+    gap: 18,
     background: 'rgba(10, 16, 35, 0.65)',
   },
+  tabBar: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 10,
+    padding: '12px 16px 14px',
+    background: 'rgba(15, 23, 42, 0.96)',
+  },
+  tabButton: (active) => ({
+    borderRadius: 12,
+    border: active
+      ? '1px solid rgba(59, 130, 246, 0.7)'
+      : '1px solid rgba(71, 85, 105, 0.45)',
+    background: active ? 'rgba(37, 99, 235, 0.3)' : 'rgba(15, 23, 42, 0.7)',
+    color: active ? '#e0f2fe' : '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 700,
+    padding: '9px 0',
+    cursor: 'pointer',
+    transition: 'all 0.18s ease',
+  }),
   section: {
     display: 'grid',
     gap: 12,
@@ -442,52 +481,208 @@ const overlayStyles = {
     fontSize: 12,
     color: '#94a3b8',
   },
-  heroSelector: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  heroPill: (active) => ({
-    borderRadius: 999,
-    border: active
-      ? '1px solid rgba(59, 130, 246, 0.6)'
-      : '1px solid rgba(71, 85, 105, 0.5)',
-    background: active ? 'rgba(37, 99, 235, 0.2)' : 'rgba(15, 23, 42, 0.7)',
-    padding: '8px 14px',
-    fontSize: 12,
-    fontWeight: 600,
-    color: active ? '#e0f2fe' : '#cbd5f5',
-    cursor: 'pointer',
-  }),
-  roomList: {
+  heroGrid: {
     display: 'grid',
-    gap: 10,
+    gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))',
+    gap: 12,
   },
-  roomCard: (active) => ({
+  heroCard: (active) => ({
+    position: 'relative',
     borderRadius: 16,
+    overflow: 'hidden',
     border: active
-      ? '1px solid rgba(59, 130, 246, 0.55)'
+      ? '1px solid rgba(59, 130, 246, 0.7)'
       : '1px solid rgba(71, 85, 105, 0.45)',
-    background: active ? 'rgba(30, 64, 175, 0.32)' : 'rgba(15, 23, 42, 0.6)',
+    height: 120,
+    cursor: 'pointer',
+    background: 'rgba(15, 23, 42, 0.7)',
+  }),
+  heroCardImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  heroCardOverlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.1) 0%, rgba(15, 23, 42, 0.82) 100%)',
+    display: 'flex',
+    alignItems: 'flex-end',
+    padding: '10px 12px',
+    color: '#f8fafc',
+    fontWeight: 700,
+    fontSize: 13,
+  },
+  heroCardDetails: {
+    marginTop: 8,
+    borderRadius: 14,
+    border: '1px solid rgba(59, 130, 246, 0.4)',
+    background: 'rgba(12, 20, 45, 0.8)',
     padding: '12px 14px',
     display: 'grid',
     gap: 6,
-    cursor: 'pointer',
-  }),
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: 700,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  friendList: {
+    display: 'grid',
+    gap: 10,
+  },
+  friendItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '8px 12px',
+    borderRadius: 14,
+    background: 'rgba(15, 23, 42, 0.7)',
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+  },
+  friendAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: '50%',
+    background: 'rgba(30, 64, 175, 0.35)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 16,
+    color: '#bfdbfe',
+    overflow: 'hidden',
+  },
+  friendName: {
+    fontSize: 13,
+    fontWeight: 600,
     color: '#e2e8f0',
   },
-  cardSubtitle: {
+  roomList: {
+    display: 'grid',
+    gap: 12,
+  },
+  roomCard: (active) => ({
+    position: 'relative',
+    borderRadius: 18,
+    overflow: 'hidden',
+    minHeight: 96,
+    cursor: 'pointer',
+    border: active
+      ? '1px solid rgba(59, 130, 246, 0.65)'
+      : '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(15, 23, 42, 0.65)',
+  }),
+  roomCardBackdrop: (coverUrl) => ({
+    position: 'absolute',
+    inset: 0,
+    background: coverUrl
+      ? `url(${coverUrl}) center/cover no-repeat`
+      : 'linear-gradient(135deg, rgba(30, 64, 175, 0.45), rgba(30, 27, 75, 0.65))',
+    filter: 'brightness(0.55)',
+  }),
+  roomCardScrim: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(180deg, rgba(10, 19, 35, 0.1) 0%, rgba(10, 19, 35, 0.92) 100%)',
+  },
+  roomCardBody: {
+    position: 'relative',
+    display: 'grid',
+    gap: 8,
+    padding: '12px 14px',
+    minHeight: 0,
+  },
+  roomCardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  roomCardTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#f8fafc',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  unreadBadge: {
+    minWidth: 26,
+    height: 22,
+    borderRadius: 11,
+    background: 'rgba(248, 113, 113, 0.92)',
+    color: '#fff7ed',
+    fontWeight: 700,
+    fontSize: 11,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 8px',
+  },
+  roomCardMeta: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: '#cbd5f5',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  roomCardFooter: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    fontSize: 11,
+    color: '#a5b4fc',
+  },
+  roomCardButton: {
+    borderRadius: 999,
+    border: '1px solid rgba(59, 130, 246, 0.65)',
+    background: 'rgba(37, 99, 235, 0.25)',
+    color: '#dbeafe',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '5px 10px',
+    cursor: 'pointer',
   },
   listHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
+  },
+  searchBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '10px 12px',
+    borderRadius: 14,
+    background: 'rgba(15, 23, 42, 0.7)',
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+  },
+  searchInput: {
+    flex: 1,
+    border: 'none',
+    background: 'transparent',
+    color: '#e2e8f0',
+    fontSize: 13,
+    outline: 'none',
+  },
+  searchSubmit: {
+    borderRadius: 10,
+    border: '1px solid rgba(59, 130, 246, 0.6)',
+    background: 'rgba(37, 99, 235, 0.4)',
+    color: '#f8fafc',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 12px',
+    cursor: 'pointer',
+  },
+  searchReset: {
+    borderRadius: 10,
+    border: '1px solid rgba(148, 163, 184, 0.5)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 10px',
+    cursor: 'pointer',
   },
   actionButton: (variant = 'primary', disabled = false) => {
     const palette = {
@@ -1388,6 +1583,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [viewerAttachment, setViewerAttachment] = useState(null)
   const [expandedMessage, setExpandedMessage] = useState(null)
   const [videoControlsVisible, setVideoControlsVisible] = useState(true)
+  const [infoHeroFocus, setInfoHeroFocus] = useState(null)
+  const [friendOverlayOpen, setFriendOverlayOpen] = useState(false)
+  const [openSearchActive, setOpenSearchActive] = useState(false)
+  const [openSearchQuery, setOpenSearchQuery] = useState('')
+  const [openRoomsFilter, setOpenRoomsFilter] = useState('')
   const [mediaLibrary, setMediaLibrary] = useState({
     status: 'idle',
     entries: [],
@@ -1412,8 +1612,37 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const videoControlTimerRef = useRef(null)
   const mediaPickerLongPressRef = useRef({ timer: null, active: false, id: null })
   const aiPendingMessageRef = useRef(null)
+  const openSearchInputRef = useRef(null)
 
   const heroes = useMemo(() => (dashboard?.heroes ? dashboard.heroes : []), [dashboard])
+
+  const heroViewerHint = useMemo(() => {
+    if (!Array.isArray(heroes) || heroes.length === 0) return null
+    const normalizedSelected = normalizeId(selectedHero)
+    const hero =
+      heroes.find((item) => normalizeId(item.id) === normalizedSelected) || heroes[0]
+    if (!hero) return null
+    return {
+      heroId: hero.id,
+      hero_id: hero.id,
+      owner_id: hero.owner_id,
+      heroName: hero.name,
+      name: hero.name,
+      avatar_url: hero.image_url,
+    }
+  }, [heroes, selectedHero])
+
+  const {
+    viewer: socialViewer,
+    friends,
+    friendRequests,
+    loading: friendLoading,
+    error: friendError,
+    refreshSocial,
+  } = useHeroSocialBootstrap(selectedHero, heroViewerHint)
+
+  const { addFriend, removeFriend, acceptFriendRequest, declineFriendRequest, cancelFriendRequest } =
+    useFriendActions(socialViewer, refreshSocial)
 
   const activeRoomId = context?.type === 'chat-room' ? context.chatRoomId : null
   const viewingGlobal = context?.type === 'global'
@@ -1697,13 +1926,30 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   useEffect(() => {
     if (!open) return
-    if (activeTab === 'private' || activeTab === 'open') {
+    if (activeTab === 'private') {
       refreshRooms()
+    } else if (activeTab === 'open') {
+      refreshRooms(openRoomsFilter)
     }
-  }, [activeTab, open, refreshRooms])
+  }, [activeTab, open, openRoomsFilter, refreshRooms])
+
+  useEffect(() => {
+    if (activeTab !== 'open') {
+      setOpenSearchActive(false)
+      setOpenSearchQuery('')
+    }
+  }, [activeTab])
+
+  useEffect(() => {
+    if (openSearchActive && openSearchInputRef.current) {
+      openSearchInputRef.current.focus()
+    }
+  }, [openSearchActive])
 
   const handleSelectHero = useCallback((heroId) => {
+    if (!heroId) return
     setSelectedHero(heroId)
+    setInfoHeroFocus((current) => (current === heroId ? null : heroId))
   }, [])
 
   const handleSelectSession = useCallback((session) => {
@@ -1747,6 +1993,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       label: room.name || '채팅방',
       visibility: visibility || room.visibility || 'private',
       focused: true,
+    })
+    setRooms((prev) => {
+      if (!prev) return prev
+      const normalizeCollection = (collection) =>
+        Array.isArray(collection)
+          ? collection.map((item) =>
+              normalizeId(item.id) === roomId ? { ...item, unread_count: 0 } : item,
+            )
+          : collection
+      return {
+        joined: normalizeCollection(prev.joined),
+        available: normalizeCollection(prev.available),
+      }
     })
     setComposerAttachments([])
     setAttachmentError(null)
@@ -1810,6 +2069,39 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     },
     [context, refreshRooms],
   )
+
+  const handleToggleOpenSearch = useCallback(() => {
+    setOpenSearchActive((prev) => {
+      if (!prev) {
+        setOpenSearchQuery((value) => value || openRoomsFilter || '')
+      }
+      return !prev
+    })
+  }, [openRoomsFilter])
+
+  const handleSubmitOpenSearch = useCallback(
+    (event) => {
+      event.preventDefault()
+      setOpenRoomsFilter(openSearchQuery.trim())
+    },
+    [openSearchQuery],
+  )
+
+  const handleResetOpenSearch = useCallback(() => {
+    setOpenSearchQuery('')
+    setOpenRoomsFilter('')
+  }, [])
+
+  const handleOpenFriends = useCallback(() => {
+    setFriendOverlayOpen(true)
+    if (typeof refreshSocial === 'function') {
+      refreshSocial()
+    }
+  }, [refreshSocial])
+
+  const handleCloseFriends = useCallback(() => {
+    setFriendOverlayOpen(false)
+  }, [])
 
   const handleSendMessage = useCallback(
     async (options = {}) => {
@@ -2805,54 +3097,130 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setExpandedMessage(null)
   }, [])
 
-  const renderInfoTab = () => (
-    <div style={{ display: 'grid', gap: 18 }}>
-      <section style={overlayStyles.section}>
-        <h3 style={overlayStyles.sectionTitle}>사용할 캐릭터</h3>
-        <div style={overlayStyles.heroSelector}>
+  const renderInfoTab = () => {
+    const focusedHeroId = infoHeroFocus || selectedHero || (heroes[0]?.id ?? null)
+    const focusedHero = heroes.find((hero) => hero.id === focusedHeroId) || null
+    const friendPreview = Array.isArray(friends) ? friends.slice(0, 4) : []
+
+    return (
+      <div style={{ display: 'grid', gap: 18 }}>
+        <section style={overlayStyles.section}>
+          <h3 style={overlayStyles.sectionTitle}>내 캐릭터</h3>
           {heroes.length ? (
-            heroes.map((hero) => (
-              <button
-                key={hero.id}
-                type="button"
-                onClick={() => handleSelectHero(hero.id)}
-                style={overlayStyles.heroPill(selectedHero === hero.id)}
-              >
-                {hero.name || '이름 없는 캐릭터'}
-              </button>
-            ))
+            <>
+              <div style={overlayStyles.heroGrid}>
+                {heroes.map((hero) => {
+                  const active = focusedHeroId === hero.id
+                  const name = hero.name || '이름 없는 캐릭터'
+                  const cover = hero.image_url || hero.avatar_url || null
+                  return (
+                    <button
+                      key={hero.id}
+                      type="button"
+                      onClick={() => handleSelectHero(hero.id)}
+                      style={overlayStyles.heroCard(active)}
+                    >
+                      {cover ? (
+                        <img src={cover} alt={name} style={overlayStyles.heroCardImage} />
+                      ) : null}
+                      <span style={overlayStyles.heroCardOverlay}>{name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              {focusedHero ? (
+                <div style={overlayStyles.heroCardDetails}>
+                  <span style={{ fontWeight: 700, color: '#f1f5f9' }}>
+                    {focusedHero.name || '이름 없는 캐릭터'}
+                  </span>
+                  {focusedHero.role ? (
+                    <span>{`역할: ${focusedHero.role}`}</span>
+                  ) : null}
+                  {focusedHero.description ? (
+                    <span>{focusedHero.description}</span>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
           ) : (
             <span style={overlayStyles.mutedText}>등록된 캐릭터가 없습니다.</span>
           )}
-        </div>
-      </section>
-      <section style={overlayStyles.section}>
-        <h3 style={overlayStyles.sectionTitle}>참여중인 세션</h3>
-        <div style={overlayStyles.roomList}>
-          {(dashboard?.sessions || []).map((session) => {
-            const key = session.session_id || session.id
-            const active = activeSessionId && key === activeSessionId
-            const latest = derivePreviewText(session.latestMessage || null)
-            return (
-              <div
-                key={key}
-                style={overlayStyles.roomCard(active)}
-                role="button"
-                tabIndex={0}
-                onClick={() => handleSelectSession(session)}
-              >
-                <span style={overlayStyles.cardTitle}>{session.game_name || '매치 세션'}</span>
-                <span style={overlayStyles.cardSubtitle}>{latest || '메시지를 불러옵니다.'}</span>
-              </div>
-            )
-          })}
-          {!(dashboard?.sessions || []).length ? (
-            <span style={overlayStyles.mutedText}>참여중인 세션이 없습니다.</span>
-          ) : null}
-        </div>
-      </section>
-    </div>
-  )
+        </section>
+        <section style={overlayStyles.section}>
+          <h3 style={overlayStyles.sectionTitle}>친구</h3>
+          {friendError ? (
+            <span style={{ ...overlayStyles.mutedText, color: '#fca5a5' }}>{friendError}</span>
+          ) : friendLoading ? (
+            <span style={overlayStyles.mutedText}>친구 정보를 불러오는 중입니다…</span>
+          ) : friendPreview.length ? (
+            <div style={overlayStyles.friendList}>
+              {friendPreview.map((friend) => {
+                const name = getFriendDisplayName(friend)
+                const avatar =
+                  friend?.friendHeroAvatar ||
+                  friend?.currentHeroAvatar ||
+                  friend?.avatarUrl ||
+                  friend?.avatar_url ||
+                  null
+                return (
+                  <div key={friend?.friendOwnerId || friend?.ownerId || name} style={overlayStyles.friendItem}>
+                    <div style={overlayStyles.friendAvatar}>
+                      {avatar ? (
+                        <img
+                          src={avatar}
+                          alt={name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        name.slice(0, 2)
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gap: 2 }}>
+                      <span style={overlayStyles.friendName}>{name}</span>
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                        {friend?.online ? '온라인' : '오프라인'}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <span style={overlayStyles.mutedText}>친구 목록이 비어 있습니다.</span>
+          )}
+        </section>
+        <section style={overlayStyles.section}>
+          <h3 style={overlayStyles.sectionTitle}>참여중인 세션</h3>
+          <div style={overlayStyles.roomList}>
+            {(dashboard?.sessions || []).map((session) => {
+              const key = session.session_id || session.id
+              const active = activeSessionId && key === activeSessionId
+              const latest = derivePreviewText(session.latestMessage || null)
+              return (
+                <div
+                  key={key}
+                  style={overlayStyles.roomCard(active)}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleSelectSession(session)}
+                >
+                  <div style={overlayStyles.roomCardBody}>
+                    <div style={overlayStyles.roomCardHeader}>
+                      <span style={overlayStyles.roomCardTitle}>{session.game_name || '매치 세션'}</span>
+                    </div>
+                    <span style={overlayStyles.roomCardMeta}>{latest || '메시지를 불러옵니다.'}</span>
+                  </div>
+                </div>
+              )
+            })}
+            {!(dashboard?.sessions || []).length ? (
+              <span style={overlayStyles.mutedText}>참여중인 세션이 없습니다.</span>
+            ) : null}
+          </div>
+        </section>
+      </div>
+    )
+  }
 
   const renderRoomList = (visibility) => {
     let list = visibility === 'open' ? rooms.available || [] : rooms.joined || []
@@ -2874,6 +3242,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           const isGlobal = room.builtin === 'global' || roomId === normalizeId(GLOBAL_ROOM.id)
           const active = isGlobal ? viewingGlobal : activeRoomId === room.id
           const latest = derivePreviewText(room.latestMessage || null)
+          const cover = room.cover_url || room.coverUrl || null
+          const unread = Number(room.unread_count) || 0
+          const latestAt = room.last_message_at || room.updated_at || room.created_at || null
+          const timeLabel = latestAt ? formatTime(latestAt) : ''
           return (
             <div
               key={room.id}
@@ -2882,35 +3254,49 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               tabIndex={0}
               onClick={() => handleSelectRoom(room, visibility)}
             >
-              <span style={overlayStyles.cardTitle}>{room.name || '채팅방'}</span>
-              <span style={overlayStyles.cardSubtitle}>{latest || '최근 메시지가 없습니다.'}</span>
-              {visibility === 'open' ? (
-                isGlobal ? (
-                  <span style={{ ...overlayStyles.mutedText, marginTop: 6 }}>기본 채널</span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      handleJoinRoom(room)
-                    }}
-                    style={{ ...overlayStyles.actionButton('ghost'), marginTop: 6 }}
-                  >
-                    참여하기
-                  </button>
-                )
-              ) : (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    handleLeaveRoom(room)
-                  }}
-                  style={{ ...overlayStyles.actionButton('ghost'), marginTop: 6 }}
-                >
-                  나가기
-                </button>
-              )}
+              <div style={overlayStyles.roomCardBackdrop(cover)} />
+              <div style={overlayStyles.roomCardScrim} />
+              <div style={overlayStyles.roomCardBody}>
+                <div style={overlayStyles.roomCardHeader}>
+                  <span style={overlayStyles.roomCardTitle}>{room.name || '채팅방'}</span>
+                  {unread > 0 ? (
+                    <span style={overlayStyles.unreadBadge}>{unread > 99 ? '99+' : unread}</span>
+                  ) : null}
+                </div>
+                <span style={overlayStyles.roomCardMeta}>{latest || '최근 메시지가 없습니다.'}</span>
+                <div style={overlayStyles.roomCardFooter}>
+                  <span>{timeLabel}</span>
+                  {visibility === 'open' ? (
+                    isGlobal ? (
+                      <span style={{ fontSize: 11, color: '#cbd5f5' }}>기본 채널</span>
+                    ) : (
+                      <button
+                        type="button"
+                        style={overlayStyles.roomCardButton}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleJoinRoom(room)
+                        }}
+                      >
+                        참여하기
+                      </button>
+                    )
+                  ) : isGlobal ? (
+                    <span style={{ fontSize: 11, color: '#cbd5f5' }}>기본 채널</span>
+                  ) : (
+                    <button
+                      type="button"
+                      style={overlayStyles.roomCardButton}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleLeaveRoom(room)
+                      }}
+                    >
+                      나가기
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           )
         })}
@@ -2939,12 +3325,26 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             <strong style={overlayStyles.sectionTitle}>
               {visibility === 'open' ? '공개 채팅' : '비공개 채팅'}
             </strong>
-            {visibility === 'private' ? (
-              <button type="button" onClick={handleCreateRoom} style={overlayStyles.actionButton('ghost')}>
-                새 방
-              </button>
-            ) : null}
           </div>
+          {visibility === 'open' && openSearchActive ? (
+            <form style={overlayStyles.searchBar} onSubmit={handleSubmitOpenSearch}>
+              <input
+                ref={openSearchInputRef}
+                value={openSearchQuery}
+                onChange={(event) => setOpenSearchQuery(event.target.value)}
+                placeholder="오픈채팅 검색"
+                style={overlayStyles.searchInput}
+              />
+              <button type="submit" style={overlayStyles.searchSubmit}>
+                검색
+              </button>
+              {(openRoomsFilter && openRoomsFilter.length) || (openSearchQuery && openSearchQuery.length) ? (
+                <button type="button" style={overlayStyles.searchReset} onClick={handleResetOpenSearch}>
+                  초기화
+                </button>
+              ) : null}
+            </form>
+          ) : null}
           {roomError ? (
             <span style={{ ...overlayStyles.mutedText, color: '#fca5a5' }}>
               채팅방을 불러올 수 없습니다.
@@ -2958,21 +3358,56 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       )
     }
 
+    const actions = []
+    if (activeTab === 'info') {
+      actions.push({ key: 'friends', icon: '👥', label: '친구 관리', onClick: handleOpenFriends })
+    }
+    if (activeTab === 'private') {
+      actions.push({ key: 'create-private', icon: '＋', label: '방 만들기', onClick: handleCreateRoom })
+    }
+    if (activeTab === 'open') {
+      actions.push({
+        key: 'search',
+        icon: '🔍',
+        label: '방 검색',
+        onClick: handleToggleOpenSearch,
+        active: openSearchActive || Boolean(openRoomsFilter),
+      })
+      actions.push({ key: 'create-open', icon: '＋', label: '방 만들기', onClick: handleCreateRoom })
+    }
+
     return (
       <aside style={overlayStyles.sidePanel}>
-        <div style={overlayStyles.sideTabs}>
+        <div style={overlayStyles.sideActions}>
+          {actions.length ? (
+            actions.map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                title={action.label}
+                style={overlayStyles.actionIconButton(action.active)}
+                onClick={action.onClick}
+              >
+                {action.icon}
+              </button>
+            ))
+          ) : (
+            <span style={{ flex: 1 }} />
+          )}
+        </div>
+        <div style={overlayStyles.sideContent}>{content}</div>
+        <div style={overlayStyles.tabBar}>
           {TABS.map((tab) => (
             <button
               key={tab.key}
               type="button"
-              style={overlayStyles.sideTabButton(activeTab === tab.key)}
+              style={overlayStyles.tabButton(activeTab === tab.key)}
               onClick={() => setActiveTab(tab.key)}
             >
               {tab.label}
             </button>
           ))}
         </div>
-        <div style={overlayStyles.sideContent}>{content}</div>
       </aside>
     )
   }
@@ -3521,11 +3956,29 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     </div>
   ) : null
 
+  const friendOverlay = (
+    <FriendOverlay
+      open={friendOverlayOpen}
+      onClose={handleCloseFriends}
+      viewer={socialViewer || heroViewerHint || {}}
+      friends={friends}
+      friendRequests={friendRequests}
+      loading={friendLoading}
+      error={friendError}
+      onAddFriend={addFriend}
+      onRemoveFriend={removeFriend}
+      onAcceptRequest={acceptFriendRequest}
+      onDeclineRequest={declineFriendRequest}
+      onCancelRequest={cancelFriendRequest}
+    />
+  )
+
   return (
     <>
       {mediaPickerOverlay}
       {expandedMessageOverlay}
       {attachmentViewerOverlay}
+      {friendOverlay}
       <SurfaceOverlay
         open={open}
         onClose={onClose}
@@ -3538,7 +3991,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         <div style={overlayStyles.frame}>
           <div style={overlayStyles.root(focused)}>
             {!focused ? renderListColumn() : null}
-            {renderMessageColumn()}
+            {focused ? renderMessageColumn() : null}
           </div>
         </div>
       </SurfaceOverlay>
