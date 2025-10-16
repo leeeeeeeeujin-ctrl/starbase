@@ -2922,7 +2922,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       sending ||
       (aiActive ? !messageInput.trim() : !messageInput.trim() && !hasReadyAttachment)
     const promptPreview = aiActive
-      ? truncateText((aiRequest?.prompt ?? messageInput || '').trim(), 120)
+      ? truncateText(((aiRequest?.prompt ?? messageInput) || '').trim(), 120)
       : null
 
     return (
