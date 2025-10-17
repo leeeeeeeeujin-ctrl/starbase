@@ -67,6 +67,8 @@ const ATTACHMENT_ICONS = {
 
 const AI_ASSISTANT_NAME = 'AI 어시스턴트'
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 }
+const UNREAD_COOKIE_PREFIX = 'chat-unread-stack'
+const UNREAD_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 
 function getAttachmentCacheKey(attachment) {
   if (!attachment) return ''
@@ -124,6 +126,77 @@ function normalizeBackgroundUrl(value) {
     return trimmed
   }
   return null
+}
+
+function readCookie(name) {
+  if (typeof document === 'undefined' || !name) return null
+  const entries = document.cookie ? document.cookie.split(';') : []
+  for (const entry of entries) {
+    const token = entry.trim()
+    if (!token) continue
+    if (token.startsWith(`${name}=`)) {
+      try {
+        return decodeURIComponent(token.slice(name.length + 1))
+      } catch (error) {
+        console.error('[chat] 쿠키 해석 실패:', error)
+        return null
+      }
+    }
+  }
+  return null
+}
+
+function writeCookie(name, value, maxAge = UNREAD_COOKIE_MAX_AGE) {
+  if (typeof document === 'undefined' || !name) return
+  const segments = [`${name}=${encodeURIComponent(value)}`, 'path=/', `max-age=${Math.max(0, maxAge)}`]
+  document.cookie = segments.join('; ')
+}
+
+function deleteCookie(name) {
+  if (typeof document === 'undefined' || !name) return
+  document.cookie = `${name}=; path=/; max-age=0`
+}
+
+function serializeUnreadCounts(counts) {
+  if (!(counts instanceof Map)) {
+    return ''
+  }
+  const pairs = []
+  counts.forEach((value, key) => {
+    if (!key) return
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return
+    const parsed = Math.max(0, Math.trunc(numeric))
+    if (parsed > 0) {
+      pairs.push(`${key}:${parsed}`)
+    }
+  })
+  if (pairs.length === 0) {
+    return ''
+  }
+  pairs.sort()
+  return pairs.join('|')
+}
+
+function parseUnreadCookie(value) {
+  const map = new Map()
+  if (typeof value !== 'string' || !value) {
+    return map
+  }
+  const pairs = value.split('|')
+  for (const pair of pairs) {
+    if (!pair) continue
+    const [rawId, rawCount] = pair.split(':')
+    const roomId = (rawId || '').trim()
+    if (!roomId) continue
+    const numeric = Number(rawCount)
+    if (!Number.isFinite(numeric)) continue
+    const parsed = Math.max(0, Math.trunc(numeric))
+    if (parsed > 0) {
+      map.set(roomId, parsed)
+    }
+  }
+  return map
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -2722,7 +2795,12 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const aiPendingMessageRef = useRef(null)
   const lastMarkedRef = useRef(null)
   const roomMetadataRef = useRef(new Map())
-  const unreadStateRef = useRef({ counts: new Map() })
+  const unreadStateRef = useRef({
+    counts: new Map(),
+    cookieKey: null,
+    lastSerialized: '',
+    suspendWrite: false,
+  })
   const drawerOpenRef = useRef(false)
   const drawerGestureRef = useRef({
     tracking: false,
@@ -2819,6 +2897,123 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return total
   }, [onUnreadChange])
 
+  const persistUnreadCounts = useCallback(() => {
+    const store = unreadStateRef.current
+    if (!store || store.suspendWrite) {
+      return
+    }
+
+    let counts = store.counts
+    if (!(counts instanceof Map)) {
+      counts = new Map()
+      store.counts = counts
+    }
+
+    const key = store.cookieKey
+    if (!key || typeof document === 'undefined') {
+      return
+    }
+
+    const serialized = serializeUnreadCounts(counts)
+    if (serialized === store.lastSerialized) {
+      return
+    }
+
+    if (!serialized) {
+      deleteCookie(key)
+    } else {
+      writeCookie(key, serialized, UNREAD_COOKIE_MAX_AGE)
+    }
+
+    store.lastSerialized = serialized
+  }, [])
+
+  const applyUnreadCountsToState = useCallback(() => {
+    const store = unreadStateRef.current
+    if (!store) return
+
+    let counts = store.counts
+    if (!(counts instanceof Map)) {
+      counts = new Map()
+      store.counts = counts
+    }
+
+    const coerce = (value) => {
+      const numeric = Number(value)
+      return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0
+    }
+
+    const apply = (collection) => {
+      if (!Array.isArray(collection) || collection.length === 0) {
+        return collection
+      }
+      let changed = false
+      const next = collection.map((room) => {
+        const roomId = normalizeId(room?.id)
+        if (!roomId) {
+          return room
+        }
+        const target = counts.has(roomId) ? coerce(counts.get(roomId)) : 0
+        const currentSource =
+          room?.unread_count !== undefined
+            ? room.unread_count
+            : room?.unreadCount !== undefined
+              ? room.unreadCount
+              : room?.unread
+        const existing = coerce(currentSource)
+        if (existing === target) {
+          return room
+        }
+        changed = true
+        return { ...room, unread_count: target, unreadCount: target, unread: target }
+      })
+      return changed ? next : collection
+    }
+
+    setRooms((prev) => {
+      if (!prev) return prev
+      const nextJoined = apply(prev.joined)
+      const nextAvailable = apply(prev.available)
+      if (nextJoined === prev.joined && nextAvailable === prev.available) {
+        return prev
+      }
+      return { joined: nextJoined, available: nextAvailable }
+    })
+
+    setDashboard((prev) => {
+      if (!prev) return prev
+      const nextRooms = apply(prev.rooms)
+      const nextPublic = apply(prev.publicRooms)
+      const nextSummary = prev.roomSummary
+        ? {
+            ...prev.roomSummary,
+            joined: apply(prev.roomSummary.joined),
+            available: apply(prev.roomSummary.available),
+          }
+        : prev.roomSummary
+      if (nextRooms === prev.rooms && nextPublic === prev.publicRooms && nextSummary === prev.roomSummary) {
+        return prev
+      }
+      return {
+        ...prev,
+        rooms: nextRooms,
+        publicRooms: nextPublic,
+        roomSummary: nextSummary,
+      }
+    })
+  }, [])
+
+  const commitUnreadState = useCallback(
+    ({ apply = false } = {}) => {
+      persistUnreadCounts()
+      broadcastUnreadTotal()
+      if (apply) {
+        applyUnreadCountsToState()
+      }
+    },
+    [broadcastUnreadTotal, persistUnreadCounts, applyUnreadCountsToState],
+  )
+
   const syncUnreadFromCollections = useCallback(
     (collections, { replace = false } = {}) => {
       const store = unreadStateRef.current
@@ -2832,6 +3027,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         store.counts = counts
       }
 
+      const seen = new Set()
       if (replace) {
         counts.clear()
       }
@@ -2843,6 +3039,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         list.forEach((room) => {
           const roomId = normalizeId(room?.id)
           if (!roomId) return
+          seen.add(roomId)
           const unreadSource =
             room?.unread_count !== undefined
               ? room.unread_count
@@ -2851,8 +3048,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 : room?.unread
           const numeric = Number(unreadSource)
           const parsed = Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0
-          if (parsed > 0) {
-            counts.set(roomId, parsed)
+          const existing = counts.has(roomId) ? Math.max(0, Math.trunc(Number(counts.get(roomId)))) : 0
+          const nextCount = Math.max(existing, parsed)
+          if (nextCount > 0) {
+            counts.set(roomId, nextCount)
           } else {
             counts.delete(roomId)
           }
@@ -2862,9 +3061,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       apply(collections?.joined)
       apply(collections?.available)
 
-      broadcastUnreadTotal()
+      if (replace && seen.size > 0) {
+        counts.forEach((_, key) => {
+          if (!seen.has(key)) {
+            counts.delete(key)
+          }
+        })
+      }
+
+      commitUnreadState({ apply: true })
     },
-    [broadcastUnreadTotal],
+    [commitUnreadState],
   )
 
   const resolvedSearchKeywords = useMemo(() => {
@@ -2899,9 +3106,12 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   useEffect(() => {
     const store = unreadStateRef.current
-    const counts = store?.counts
+    let counts = store?.counts
     if (!(counts instanceof Map)) {
-      return
+      counts = new Map()
+      if (store) {
+        store.counts = counts
+      }
     }
 
     const active = new Set()
@@ -2927,9 +3137,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     })
 
     if (mutated) {
-      broadcastUnreadTotal()
+      commitUnreadState({ apply: true })
+    } else {
+      applyUnreadCountsToState()
     }
-  }, [rooms, broadcastUnreadTotal])
+  }, [rooms, commitUnreadState, applyUnreadCountsToState])
 
   useEffect(() => {
     if (!context?.chatRoomId) {
@@ -3242,12 +3454,55 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     })
 
     if (unreadTouched) {
-      broadcastUnreadTotal()
+      commitUnreadState()
     }
-  }, [broadcastUnreadTotal])
+  }, [commitUnreadState])
 
   const viewerId = useMemo(() => viewer?.id || viewer?.owner_id || null, [viewer])
   const viewerToken = useMemo(() => normalizeId(viewerId), [viewerId])
+
+  useEffect(() => {
+    const store = unreadStateRef.current
+    if (!store) {
+      return
+    }
+
+    const previousKey = store.cookieKey
+    const previousCounts = store.counts instanceof Map ? store.counts : null
+    const cookieKey = viewerToken ? `${UNREAD_COOKIE_PREFIX}-${viewerToken}` : `${UNREAD_COOKIE_PREFIX}-anon`
+    store.cookieKey = cookieKey
+
+    store.suspendWrite = true
+    try {
+      const cookieValue = readCookie(cookieKey)
+      const parsed = parseUnreadCookie(cookieValue)
+      const merged = new Map(parsed)
+      if (previousCounts instanceof Map) {
+        const shouldMerge = !previousKey || previousKey === cookieKey || (previousKey || '').endsWith('-anon')
+        if (shouldMerge) {
+          previousCounts.forEach((value, key) => {
+            if (!key) return
+            const numeric = Number(value)
+            if (!Number.isFinite(numeric)) return
+            const parsedValue = Math.max(0, Math.trunc(numeric))
+            if (parsedValue <= 0) return
+            const existing = merged.has(key)
+              ? Math.max(0, Math.trunc(Number(merged.get(key))))
+              : 0
+            if (parsedValue > existing) {
+              merged.set(key, parsedValue)
+            }
+          })
+        }
+      }
+      store.counts = merged
+      store.lastSerialized = serializeUnreadCounts(merged)
+    } finally {
+      store.suspendWrite = false
+    }
+
+    commitUnreadState({ apply: true })
+  }, [viewerToken, commitUnreadState])
 
   const currentRoom = useMemo(() => {
     if (context?.type !== 'chat-room') {
@@ -3588,7 +3843,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setVideoControlsVisible(true)
       lastMarkedRef.current = null
       setViewerReady(false)
-      broadcastUnreadTotal()
+      commitUnreadState()
       return
     }
 
@@ -3632,7 +3887,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       mounted = false
     }
-  }, [open, applyRoomOverrides, broadcastUnreadTotal, syncUnreadFromCollections])
+  }, [open, applyRoomOverrides, commitUnreadState, syncUnreadFromCollections])
 
   useEffect(() => {
     if (!open || !context) {
