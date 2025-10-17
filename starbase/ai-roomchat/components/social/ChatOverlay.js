@@ -154,6 +154,29 @@ function normalizeThemeBackground(value) {
   return normalizeBackgroundUrl(trimmed)
 }
 
+function getColorPickerValue(input, fallback = '#1f2937') {
+  const sanitize = (value) => {
+    const normalized = normalizeColor(value)
+    if (!normalized) return null
+    const fullHex = normalized.match(/^#([0-9a-f]{6})$/i)
+    if (fullHex) {
+      return `#${fullHex[1].toLowerCase()}`
+    }
+    const shortHex = normalized.match(/^#([0-9a-f]{3})$/i)
+    if (shortHex) {
+      const [r, g, b] = shortHex[1].toLowerCase().split('')
+      return `#${r}${r}${g}${g}${b}${b}`
+    }
+    const hexWithAlpha = normalized.match(/^#([0-9a-f]{8})$/i)
+    if (hexWithAlpha) {
+      return `#${hexWithAlpha[1].slice(0, 6).toLowerCase()}`
+    }
+    return null
+  }
+
+  return sanitize(input) || sanitize(fallback) || '#1f2937'
+}
+
 function classifyBackground(value, fallbackSample = '#1f2937') {
   const normalized = normalizeThemeBackground(value)
   if (!normalized) {
@@ -1099,6 +1122,35 @@ const overlayStyles = {
     display: 'grid',
     gap: 12,
   },
+  input: {
+    appearance: 'none',
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'linear-gradient(135deg, rgba(14, 22, 45, 0.92), rgba(10, 16, 35, 0.92))',
+    color: '#e2e8f0',
+    padding: '10px 12px',
+    fontSize: 13,
+    lineHeight: 1.45,
+    outline: 'none',
+    transition: 'border 0.2s ease, box-shadow 0.2s ease, background 0.2s ease',
+    boxShadow: '0 0 0 0 rgba(59, 130, 246, 0.28)',
+  },
+  colorRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  colorInput: (disabled = false) => ({
+    width: 46,
+    height: 34,
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'rgba(8, 13, 30, 0.9)',
+    padding: 0,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.55 : 1,
+  }),
   sectionTitle: {
     fontSize: 13,
     fontWeight: 700,
@@ -1634,6 +1686,85 @@ const overlayStyles = {
     display: 'flex',
     gap: 8,
     alignItems: 'center',
+  },
+  imageUploadTile: (hasImage = false) => ({
+    position: 'relative',
+    borderRadius: 20,
+    border: hasImage
+      ? '1px solid rgba(59, 130, 246, 0.5)'
+      : '1px dashed rgba(148, 163, 184, 0.55)',
+    background: hasImage ? 'rgba(8, 13, 30, 0.85)' : 'rgba(8, 13, 30, 0.6)',
+    minHeight: 190,
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }),
+  imageUploadPreview: (url) => ({
+    position: 'absolute',
+    inset: 0,
+    backgroundImage: `linear-gradient(180deg, rgba(8, 13, 30, 0.15) 0%, rgba(8, 13, 30, 0.75) 100%), url(${url})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    filter: 'saturate(1.05)',
+  }),
+  imageUploadPlaceholder: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'grid',
+    gap: 6,
+    justifyItems: 'center',
+    textAlign: 'center',
+    color: '#94a3b8',
+    fontSize: 12,
+    lineHeight: 1.6,
+    padding: '0 18px',
+  },
+  imageUploadActions: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 14,
+    zIndex: 2,
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    padding: '8px 12px',
+    borderRadius: 999,
+    background: 'rgba(8, 13, 30, 0.82)',
+    boxShadow: '0 18px 48px -18px rgba(8, 15, 30, 0.85)',
+  },
+  imageUploadButton: (variant = 'primary', disabled = false) => {
+    const palette = {
+      primary: {
+        background: disabled ? 'rgba(59, 130, 246, 0.35)' : 'rgba(59, 130, 246, 0.88)',
+        color: '#f8fafc',
+        border: '1px solid rgba(59, 130, 246, 0.55)',
+      },
+      ghost: {
+        background: 'rgba(15, 23, 42, 0.72)',
+        color: '#cbd5f5',
+        border: '1px solid rgba(148, 163, 184, 0.45)',
+      },
+    }
+    const tone = palette[variant] || palette.primary
+    return {
+      borderRadius: 999,
+      border: tone.border,
+      padding: '8px 16px',
+      fontSize: 12,
+      fontWeight: 600,
+      background: tone.background,
+      color: tone.color,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+    }
+  },
+  imageUploadHint: {
+    fontSize: 11,
+    color: '#94a3b8',
+    lineHeight: 1.6,
+    wordBreak: 'break-all',
   },
   settingsTabButton: (active = false) => ({
     flex: '0 0 auto',
@@ -4138,6 +4269,46 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     preferencesDraft,
   ])
 
+  const ownerBackgroundColorValue = useMemo(
+    () => getColorPickerValue(roomSettingsDraft.themeBackgroundColor, ownerThemePreview.sampleColor || DEFAULT_THEME_CONFIG.backgroundColor),
+    [ownerThemePreview.sampleColor, roomSettingsDraft.themeBackgroundColor],
+  )
+
+  const ownerAccentPickerValue = useMemo(
+    () => getColorPickerValue(roomSettingsDraft.accentColor, ownerThemePreview.accentColor || DEFAULT_THEME_CONFIG.accentColor),
+    [ownerThemePreview.accentColor, roomSettingsDraft.accentColor],
+  )
+
+  const ownerBubblePickerValue = useMemo(
+    () => getColorPickerValue(roomSettingsDraft.bubbleColor, ownerThemePreview.bubbleColor || DEFAULT_THEME_CONFIG.bubbleColor),
+    [ownerThemePreview.bubbleColor, roomSettingsDraft.bubbleColor],
+  )
+
+  const ownerTextPickerValue = useMemo(
+    () => getColorPickerValue(roomSettingsDraft.textColor, ownerThemePreview.textColor || DEFAULT_THEME_CONFIG.textColor),
+    [ownerThemePreview.textColor, roomSettingsDraft.textColor],
+  )
+
+  const personalBackgroundColorValue = useMemo(
+    () => getColorPickerValue(preferencesDraft.backgroundColor, personalThemePreview.sampleColor || DEFAULT_THEME_CONFIG.backgroundColor),
+    [personalThemePreview.sampleColor, preferencesDraft.backgroundColor],
+  )
+
+  const personalAccentPickerValue = useMemo(
+    () => getColorPickerValue(preferencesDraft.accentColor, personalThemePreview.accentColor || DEFAULT_THEME_CONFIG.accentColor),
+    [personalThemePreview.accentColor, preferencesDraft.accentColor],
+  )
+
+  const personalBubblePickerValue = useMemo(
+    () => getColorPickerValue(preferencesDraft.bubbleColor, personalThemePreview.bubbleColor || DEFAULT_THEME_CONFIG.bubbleColor),
+    [personalThemePreview.bubbleColor, preferencesDraft.bubbleColor],
+  )
+
+  const personalTextPickerValue = useMemo(
+    () => getColorPickerValue(preferencesDraft.textColor, personalThemePreview.textColor || DEFAULT_THEME_CONFIG.textColor),
+    [personalThemePreview.textColor, preferencesDraft.textColor],
+  )
+
   const roomTheme = useMemo(() => {
     const metadataTheme = roomPreferences?.metadata?.theme || {}
     const storedBubble = normalizeColor(roomPreferences?.bubble_color)
@@ -4319,6 +4490,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [handleOwnerBackgroundUpload],
   )
 
+  const handleOwnerBackgroundClear = useCallback(() => {
+    updateOwnerThemeDraft(
+      {
+        themeBackgroundUrl: '',
+        themeMode: 'image',
+      },
+      true,
+    )
+    setSettingsMessage('배경 이미지를 제거했습니다.')
+  }, [updateOwnerThemeDraft])
+
   const handleMemberThemeModeChange = useCallback(
     (mode) => {
       const normalized = ['preset', 'color', 'image', 'none'].includes(mode) ? mode : 'preset'
@@ -4431,6 +4613,18 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     },
     [handleMemberBackgroundUpload],
   )
+
+  const handleMemberBackgroundClear = useCallback(() => {
+    updateMemberThemeDraft(
+      {
+        backgroundUrl: '',
+        themeMode: 'image',
+        useRoomBackground: false,
+      },
+      true,
+    )
+    setSettingsMessage('개인 배경 이미지를 제거했습니다.')
+  }, [updateMemberThemeDraft])
 
   const handleMemberUseRoomBackgroundChange = useCallback(
     (checked) => {
@@ -9262,14 +9456,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 <div style={{ display: 'grid', gap: 8 }}>
                   <label style={overlayStyles.fieldLabel}>
                     배경 색상
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={overlayStyles.colorRow}>
                       <input
                         type="color"
-                        value={roomSettingsDraft.themeBackgroundColor || '#0f172a'}
+                        value={ownerBackgroundColorValue}
                         onChange={(event) =>
                           updateOwnerThemeDraft({ themeBackgroundColor: event.target.value }, true)
                         }
-                        style={{ width: 42, height: 28, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                        style={overlayStyles.colorInput()}
                       />
                       <input
                         type="text"
@@ -9285,36 +9479,50 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 </div>
               ) : null}
               {roomSettingsDraft.themeMode === 'image' ? (
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <label style={overlayStyles.fieldLabel}>
-                    배경 이미지 URL
-                    <input
-                      type="url"
-                      value={roomSettingsDraft.themeBackgroundUrl}
-                      onChange={(event) =>
-                        updateOwnerThemeDraft({ themeBackgroundUrl: event.target.value }, true)
-                      }
-                      placeholder="https://example.com/background.jpg"
-                      style={overlayStyles.input}
-                    />
-                  </label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      type="button"
-                      style={overlayStyles.secondaryButton}
-                      onClick={() => roomBackgroundInputRef.current?.click()}
-                      disabled={roomThemeUploadBusy}
-                    >
-                      {roomThemeUploadBusy ? '업로드 중…' : '이미지 업로드'}
-                    </button>
-                    <input
-                      ref={roomBackgroundInputRef}
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={handleOwnerBackgroundFileChange}
-                    />
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <span style={overlayStyles.fieldLabel}>배경 이미지</span>
+                  <div style={overlayStyles.imageUploadTile(Boolean(roomSettingsDraft.themeBackgroundUrl))}>
+                    {roomSettingsDraft.themeBackgroundUrl ? (
+                      <div style={overlayStyles.imageUploadPreview(roomSettingsDraft.themeBackgroundUrl)} />
+                    ) : (
+                      <div style={overlayStyles.imageUploadPlaceholder}>
+                        <strong style={{ color: '#cbd5f5', fontSize: 12 }}>이미지를 업로드해 주세요</strong>
+                        <span>최대 50MB 이미지 파일을 사용할 수 있어요.</span>
+                      </div>
+                    )}
+                    <div style={overlayStyles.imageUploadActions}>
+                      <button
+                        type="button"
+                        style={overlayStyles.imageUploadButton('primary', roomThemeUploadBusy)}
+                        onClick={() => roomBackgroundInputRef.current?.click()}
+                        disabled={roomThemeUploadBusy}
+                      >
+                        {roomThemeUploadBusy ? '업로드 중…' : '이미지 선택'}
+                      </button>
+                      {roomSettingsDraft.themeBackgroundUrl ? (
+                        <button
+                          type="button"
+                          style={overlayStyles.imageUploadButton('ghost', roomThemeUploadBusy)}
+                          onClick={handleOwnerBackgroundClear}
+                          disabled={roomThemeUploadBusy}
+                        >
+                          제거
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
+                  {roomSettingsDraft.themeBackgroundUrl ? (
+                    <span style={overlayStyles.imageUploadHint}>{roomSettingsDraft.themeBackgroundUrl}</span>
+                  ) : (
+                    <span style={overlayStyles.imageUploadHint}>Supabase 저장소에 업로드된 이미지를 바로 사용할 수 있습니다.</span>
+                  )}
+                  <input
+                    ref={roomBackgroundInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleOwnerBackgroundFileChange}
+                  />
                 </div>
               ) : null}
               <div>
@@ -9332,6 +9540,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                     />
                   ))}
                 </div>
+                <div style={overlayStyles.colorRow}>
+                  <input
+                    type="color"
+                    value={ownerAccentPickerValue}
+                    onChange={(event) => handleOwnerAccentChange(event.target.value)}
+                    style={overlayStyles.colorInput()}
+                  />
                 <input
                   type="text"
                   value={roomSettingsDraft.accentColor}
@@ -9339,6 +9554,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   placeholder="#38bdf8"
                   style={overlayStyles.input}
                 />
+                </div>
               </div>
               <label style={overlayStyles.themeAutoRow}>
                 <input
@@ -9350,25 +9566,43 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               </label>
               <label style={overlayStyles.fieldLabel}>
                 말풍선 색상
-                <input
-                  type="text"
-                  value={roomSettingsDraft.bubbleColor}
-                  onChange={(event) => handleOwnerBubbleInput(event.target.value)}
-                  placeholder="#1f2937"
-                  style={overlayStyles.input}
-                  disabled={roomSettingsDraft.autoContrast}
-                />
+                <div style={overlayStyles.colorRow}>
+                  <input
+                    type="color"
+                    value={ownerBubblePickerValue}
+                    onChange={(event) => handleOwnerBubbleInput(event.target.value)}
+                    style={overlayStyles.colorInput(roomSettingsDraft.autoContrast)}
+                    disabled={roomSettingsDraft.autoContrast}
+                  />
+                  <input
+                    type="text"
+                    value={roomSettingsDraft.bubbleColor}
+                    onChange={(event) => handleOwnerBubbleInput(event.target.value)}
+                    placeholder="#1f2937"
+                    style={overlayStyles.input}
+                    disabled={roomSettingsDraft.autoContrast}
+                  />
+                </div>
               </label>
               <label style={overlayStyles.fieldLabel}>
                 글자 색상
-                <input
-                  type="text"
-                  value={roomSettingsDraft.textColor}
-                  onChange={(event) => handleOwnerTextInput(event.target.value)}
-                  placeholder="#f8fafc"
-                  style={overlayStyles.input}
-                  disabled={roomSettingsDraft.autoContrast}
-                />
+                <div style={overlayStyles.colorRow}>
+                  <input
+                    type="color"
+                    value={ownerTextPickerValue}
+                    onChange={(event) => handleOwnerTextInput(event.target.value)}
+                    style={overlayStyles.colorInput(roomSettingsDraft.autoContrast)}
+                    disabled={roomSettingsDraft.autoContrast}
+                  />
+                  <input
+                    type="text"
+                    value={roomSettingsDraft.textColor}
+                    onChange={(event) => handleOwnerTextInput(event.target.value)}
+                    placeholder="#f8fafc"
+                    style={overlayStyles.input}
+                    disabled={roomSettingsDraft.autoContrast}
+                  />
+                </div>
               </label>
               <div style={{ display: 'grid', gap: 8 }}>
                 <span style={overlayStyles.fieldLabel}>기본 추방 시간(분)</span>
@@ -9667,14 +9901,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               <div style={{ display: 'grid', gap: 8 }}>
                 <label style={overlayStyles.fieldLabel}>
                   배경 색상
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={overlayStyles.colorRow}>
                     <input
                       type="color"
-                      value={preferencesDraft.backgroundColor || '#0f172a'}
+                      value={personalBackgroundColorValue}
                       onChange={(event) =>
                         updateMemberThemeDraft({ backgroundColor: event.target.value }, true)
                       }
-                      style={{ width: 42, height: 28, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                      style={overlayStyles.colorInput()}
                     />
                     <input
                       type="text"
@@ -9690,34 +9924,50 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               </div>
             ) : null}
             {!preferencesDraft.useRoomBackground && preferencesDraft.themeMode === 'image' ? (
-              <div style={{ display: 'grid', gap: 8 }}>
-                <label style={overlayStyles.fieldLabel}>
-                  개인 배경 URL
-                  <input
-                    type="url"
-                    value={preferencesDraft.backgroundUrl}
-                    onChange={(event) => updateMemberThemeDraft({ backgroundUrl: event.target.value }, true)}
-                    placeholder="https://example.com/background.jpg"
-                    style={overlayStyles.input}
-                  />
-                </label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    type="button"
-                    style={overlayStyles.secondaryButton}
-                    onClick={() => memberBackgroundInputRef.current?.click()}
-                    disabled={memberThemeUploadBusy}
-                  >
-                    {memberThemeUploadBusy ? '업로드 중…' : '이미지 업로드'}
-                  </button>
-                  <input
-                    ref={memberBackgroundInputRef}
-                    type="file"
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    onChange={handleMemberBackgroundFileChange}
-                  />
+              <div style={{ display: 'grid', gap: 10 }}>
+                <span style={overlayStyles.fieldLabel}>개인 배경 이미지</span>
+                <div style={overlayStyles.imageUploadTile(Boolean(preferencesDraft.backgroundUrl))}>
+                  {preferencesDraft.backgroundUrl ? (
+                    <div style={overlayStyles.imageUploadPreview(preferencesDraft.backgroundUrl)} />
+                  ) : (
+                    <div style={overlayStyles.imageUploadPlaceholder}>
+                      <strong style={{ color: '#cbd5f5', fontSize: 12 }}>내 화면에서 사용할 이미지를 선택하세요</strong>
+                      <span>방을 나가기 전까지 개인 배경이 유지됩니다.</span>
+                    </div>
+                  )}
+                  <div style={overlayStyles.imageUploadActions}>
+                    <button
+                      type="button"
+                      style={overlayStyles.imageUploadButton('primary', memberThemeUploadBusy)}
+                      onClick={() => memberBackgroundInputRef.current?.click()}
+                      disabled={memberThemeUploadBusy}
+                    >
+                      {memberThemeUploadBusy ? '업로드 중…' : '이미지 선택'}
+                    </button>
+                    {preferencesDraft.backgroundUrl ? (
+                      <button
+                        type="button"
+                        style={overlayStyles.imageUploadButton('ghost', memberThemeUploadBusy)}
+                        onClick={handleMemberBackgroundClear}
+                        disabled={memberThemeUploadBusy}
+                      >
+                        제거
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
+                {preferencesDraft.backgroundUrl ? (
+                  <span style={overlayStyles.imageUploadHint}>{preferencesDraft.backgroundUrl}</span>
+                ) : (
+                  <span style={overlayStyles.imageUploadHint}>업로드한 이미지는 Supabase 저장소에 개인 영역으로 보관됩니다.</span>
+                )}
+                <input
+                  ref={memberBackgroundInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleMemberBackgroundFileChange}
+                />
               </div>
             ) : null}
             <div>
@@ -9735,13 +9985,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   />
                 ))}
               </div>
-              <input
-                type="text"
-                value={preferencesDraft.accentColor}
-                onChange={(event) => handleMemberAccentChange(event.target.value)}
-                placeholder="#38bdf8"
-                style={overlayStyles.input}
-              />
+              <div style={overlayStyles.colorRow}>
+                <input
+                  type="color"
+                  value={personalAccentPickerValue}
+                  onChange={(event) => handleMemberAccentChange(event.target.value)}
+                  style={overlayStyles.colorInput()}
+                />
+                <input
+                  type="text"
+                  value={preferencesDraft.accentColor}
+                  onChange={(event) => handleMemberAccentChange(event.target.value)}
+                  placeholder="#38bdf8"
+                  style={overlayStyles.input}
+                />
+              </div>
             </div>
             <label style={overlayStyles.themeAutoRow}>
               <input
@@ -9753,25 +10011,43 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             </label>
             <label style={overlayStyles.fieldLabel}>
               말풍선 색상
-              <input
-                type="text"
-                value={preferencesDraft.bubbleColor}
-                onChange={(event) => handleMemberBubbleInput(event.target.value)}
-                placeholder="#1f2937"
-                style={overlayStyles.input}
-                disabled={preferencesDraft.autoContrast}
-              />
+              <div style={overlayStyles.colorRow}>
+                <input
+                  type="color"
+                  value={personalBubblePickerValue}
+                  onChange={(event) => handleMemberBubbleInput(event.target.value)}
+                  style={overlayStyles.colorInput(preferencesDraft.autoContrast)}
+                  disabled={preferencesDraft.autoContrast}
+                />
+                <input
+                  type="text"
+                  value={preferencesDraft.bubbleColor}
+                  onChange={(event) => handleMemberBubbleInput(event.target.value)}
+                  placeholder="#1f2937"
+                  style={overlayStyles.input}
+                  disabled={preferencesDraft.autoContrast}
+                />
+              </div>
             </label>
             <label style={overlayStyles.fieldLabel}>
               글자 색상
-              <input
-                type="text"
-                value={preferencesDraft.textColor}
-                onChange={(event) => handleMemberTextInput(event.target.value)}
-                placeholder="#f8fafc"
-                style={overlayStyles.input}
-                disabled={preferencesDraft.autoContrast}
-              />
+              <div style={overlayStyles.colorRow}>
+                <input
+                  type="color"
+                  value={personalTextPickerValue}
+                  onChange={(event) => handleMemberTextInput(event.target.value)}
+                  style={overlayStyles.colorInput(preferencesDraft.autoContrast)}
+                  disabled={preferencesDraft.autoContrast}
+                />
+                <input
+                  type="text"
+                  value={preferencesDraft.textColor}
+                  onChange={(event) => handleMemberTextInput(event.target.value)}
+                  placeholder="#f8fafc"
+                  style={overlayStyles.input}
+                  disabled={preferencesDraft.autoContrast}
+                />
+              </div>
             </label>
             <button
               type="button"
