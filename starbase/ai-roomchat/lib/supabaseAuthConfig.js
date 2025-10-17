@@ -48,16 +48,15 @@ function createAuthEnsurer(supabaseUrl, { apikey, authorization } = {}) {
 
     const ensure = (name, value) => {
       if (!value) return
+      const canonicalValue = `${value}`
       const existingKey = Object.keys(normalised).find(
         (headerKey) => headerKey && headerKey.toLowerCase() === name.toLowerCase(),
       )
       if (existingKey) {
-        if (!normalised[existingKey]) {
-          normalised[existingKey] = value
-        }
+        normalised[existingKey] = canonicalValue
         return
       }
-      normalised[name] = value
+      normalised[name] = canonicalValue
     }
 
     ensure('apikey', apikey)
