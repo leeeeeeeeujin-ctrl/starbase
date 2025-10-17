@@ -489,10 +489,10 @@ begin
     select
       a.id,
       a.room_id,
-      a.title,
+      nullif(to_jsonb(a)->>'title', '') as title,
       a.content,
-      a.image_url,
-      a.pinned,
+      nullif(to_jsonb(a)->>'image_url', '') as image_url,
+      coalesce((to_jsonb(a)->>'pinned')::boolean, false) as pinned,
       a.created_at,
       a.updated_at,
       a.author_id,
@@ -509,7 +509,7 @@ begin
     from public.chat_room_announcements a
     left join auth.users u on u.id = a.author_id
     where a.room_id = p_room_id
-      and a.pinned
+      and coalesce((to_jsonb(a)->>'pinned')::boolean, false)
     order by a.updated_at desc, a.created_at desc
     limit 1
   ) as row;
@@ -526,10 +526,10 @@ begin
     select
       a.id,
       a.room_id,
-      a.title,
+      nullif(to_jsonb(a)->>'title', '') as title,
       a.content,
-      a.image_url,
-      a.pinned,
+      nullif(to_jsonb(a)->>'image_url', '') as image_url,
+      coalesce((to_jsonb(a)->>'pinned')::boolean, false) as pinned,
       a.created_at,
       a.updated_at,
       a.author_id,
@@ -546,7 +546,11 @@ begin
     from public.chat_room_announcements a
     left join auth.users u on u.id = a.author_id
     where a.room_id = p_room_id
-      and (not a.pinned or v_pinned is null or a.id <> (v_pinned->>'id')::uuid)
+      and (
+        not coalesce((to_jsonb(a)->>'pinned')::boolean, false)
+        or v_pinned is null
+        or a.id <> (v_pinned->>'id')::uuid
+      )
       and a.updated_at <= v_cursor
     order by a.updated_at desc, a.created_at desc
     limit v_limit + 1
@@ -628,10 +632,10 @@ begin
     select
       a.id,
       a.room_id,
-      a.title,
+      nullif(to_jsonb(a)->>'title', '') as title,
       a.content,
-      a.image_url,
-      a.pinned,
+      nullif(to_jsonb(a)->>'image_url', '') as image_url,
+      coalesce((to_jsonb(a)->>'pinned')::boolean, false) as pinned,
       a.created_at,
       a.updated_at,
       a.author_id,

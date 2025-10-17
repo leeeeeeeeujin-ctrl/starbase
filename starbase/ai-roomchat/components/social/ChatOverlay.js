@@ -8364,6 +8364,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
     const marginTopValue = Math.round(Math.max(offsetTop, safeTop))
     const marginBottomValue = Math.round(safeBottom)
+    const extraBottomSpacing = isCompactLayout ? 24 : 36
 
     const style = {
       alignSelf: 'flex-start',
@@ -8379,8 +8380,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       style.marginBottom = `${marginBottomValue}px`
     }
 
+    style.paddingBottom = `${marginBottomValue + extraBottomSpacing}px`
+
     return style
-  }, [viewport.offsetTop, viewport.safeAreaTop, viewport.safeAreaBottom])
+  }, [
+    isCompactLayout,
+    viewport.offsetTop,
+    viewport.safeAreaTop,
+    viewport.safeAreaBottom,
+  ])
 
   const sidePanelStyle = useMemo(() => {
     if (!isCompactLayout) {
@@ -11446,7 +11454,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           justifyContent: 'center',
           overflow: 'hidden',
         }}
-        frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
+        frameStyle={{
+          border: 'none',
+          background: 'transparent',
+          boxShadow: 'none',
+          maxHeight: 'none',
+          height: 'auto',
+          minHeight: 'auto',
+        }}
+        verticalAlign="flex-start"
         containerStyle={overlayContainerStyle}
       >
         <div ref={rootRef} style={frameStyle}>
