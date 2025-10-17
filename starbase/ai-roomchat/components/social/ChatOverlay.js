@@ -81,6 +81,7 @@ const ANNOUNCEMENT_TOOLBAR_SIZES = [
   { id: 'large', label: '크게', scale: 1.15, command: '5' },
   { id: 'xlarge', label: '아주 크게', scale: 1.3, command: '6' },
 ]
+const ANNOUNCEMENT_TOOLBAR_OVERLAY_SAFE_PADDING = 184
 const ANNOUNCEMENT_SIZE_SCALE = ANNOUNCEMENT_TOOLBAR_SIZES.reduce((acc, item) => {
   acc[item.id] = item.scale
   return acc
@@ -2523,48 +2524,67 @@ const overlayStyles = {
     fontSize: 11,
     color: '#94a3b8',
   },
-  announcementToolbar: {
+  announcementToolbarOverlay: (visible = false) => ({
+    position: 'fixed',
+    left: 0,
+    right: 0,
+    bottom: 0,
     display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
+    gap: 10,
+    paddingTop: 12,
+    paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 16px)',
+    paddingRight: 'calc(env(safe-area-inset-right, 0px) + 16px)',
+    paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+    background: 'linear-gradient(180deg, rgba(4, 7, 18, 0.05) 0%, rgba(4, 7, 18, 0.88) 35%, rgba(4, 7, 18, 0.96) 100%)',
+    boxShadow: '0 -28px 48px rgba(2, 6, 23, 0.78)',
+    zIndex: 1540,
+    pointerEvents: visible ? 'auto' : 'none',
+    opacity: visible ? 1 : 0,
+    transform: visible ? 'translateY(0)' : 'translateY(16px)',
+    transition: 'opacity 180ms ease, transform 200ms ease',
+  }),
+  announcementToolbarRow: {
+    display: 'flex',
     gap: 8,
-    padding: '8px 10px',
-    borderRadius: 14,
-    border: '1px solid rgba(71, 85, 105, 0.45)',
-    background: 'rgba(8, 15, 30, 0.65)',
+    overflowX: 'auto',
+    paddingBottom: 4,
+    WebkitOverflowScrolling: 'touch',
   },
-  announcementToolbarGroup: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  },
-  announcementToolbarButton: (active = false) => ({
+  announcementToolbarItem: (active = false) => ({
     display: 'inline-flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    gap: 8,
+    flex: '0 0 auto',
+    padding: '10px 14px',
+    borderRadius: 18,
     border: active ? '1px solid rgba(59, 130, 246, 0.75)' : '1px solid rgba(71, 85, 105, 0.55)',
-    background: active ? 'rgba(37, 99, 235, 0.32)' : 'rgba(15, 23, 42, 0.74)',
+    background: active ? 'rgba(37, 99, 235, 0.32)' : 'rgba(15, 23, 42, 0.78)',
     color: '#e0f2fe',
-    fontSize: 0,
+    fontSize: 13,
+    lineHeight: 1.2,
+    whiteSpace: 'nowrap',
     cursor: 'pointer',
   }),
-  announcementToolbarIcon: {
-    fontSize: 18,
+  announcementToolbarItemIcon: {
+    fontSize: 17,
     lineHeight: 1,
   },
-  announcementToolbarPalette: {
+  announcementToolbarItemLabel: {
+    fontSize: 13,
+    lineHeight: 1.2,
+  },
+  announcementToolbarPaletteRow: {
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-    padding: '6px 2px 0',
+    gap: 10,
+    overflowX: 'auto',
+    padding: '4px 4px 0',
+    WebkitOverflowScrolling: 'touch',
   },
   announcementToolbarColorButton: (color, active = false) => ({
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     border: active
       ? '2px solid rgba(59, 130, 246, 0.85)'
       : color === '#f8fafc'
@@ -2572,28 +2592,32 @@ const overlayStyles = {
         : '1px solid rgba(148, 163, 184, 0.5)',
     background: color,
     cursor: 'pointer',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: active ? '0 0 0 1px rgba(37, 99, 235, 0.55)' : '0 0 0 1px rgba(15, 23, 42, 0.4)',
+    flex: '0 0 auto',
+    boxShadow: active ? '0 0 0 1px rgba(37, 99, 235, 0.45)' : '0 0 0 1px rgba(15, 23, 42, 0.4)',
   }),
   announcementToolbarSizeRow: {
     display: 'flex',
     gap: 8,
-    paddingTop: 6,
+    overflowX: 'auto',
+    padding: '2px 4px 0',
+    WebkitOverflowScrolling: 'touch',
   },
   announcementToolbarSizeButton: (active = false) => ({
-    borderRadius: 10,
+    flex: '0 0 auto',
+    borderRadius: 12,
     border: active ? '1px solid rgba(59, 130, 246, 0.7)' : '1px solid rgba(71, 85, 105, 0.6)',
-    background: active ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.7)',
+    background: active ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.74)',
     color: '#e2e8f0',
     fontSize: 12,
-    padding: '6px 10px',
+    padding: '7px 12px',
     cursor: 'pointer',
   }),
-  announcementToolbarStatus: {
+  announcementToolbarStatusRow: {
     fontSize: 11,
     color: '#94a3b8',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
   },
   announcementCommentActions: {
     display: 'flex',
@@ -2643,7 +2667,7 @@ const overlayStyles = {
     gap: 8,
     alignItems: 'center',
   },
-  announcementHint: {
+  announcementToolbarHint: {
     fontSize: 11,
     color: '#94a3b8',
   },
@@ -12101,6 +12125,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       title="새 공지 작성"
       width="min(680px, 96vw)"
       zIndex={1520}
+      contentStyle={{
+        paddingBottom: `calc(${ANNOUNCEMENT_TOOLBAR_OVERLAY_SAFE_PADDING}px + env(safe-area-inset-bottom, 0px))`,
+      }}
     >
       <div style={{ display: 'grid', gap: 16 }}>
         <div style={{ display: 'grid', gap: 8 }}>
@@ -12179,129 +12206,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             onChange={(event) => handleAnnouncementAttachmentSelect(event, 'video')}
           />
         </div>
-        <div style={overlayStyles.announcementToolbar}>
-          <div style={overlayStyles.announcementToolbarGroup}>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(false)}
-              onClick={() => handleAnnouncementAttachmentTrigger('image')}
-              disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
-              aria-label="이미지 첨부"
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>🖼️</span>
-            </button>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(false)}
-              onClick={() => handleAnnouncementAttachmentTrigger('video')}
-              disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
-              aria-label="동영상 첨부"
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>🎬</span>
-            </button>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(false)}
-              onClick={handleAnnouncementYoutubeOpen}
-              aria-label="유튜브 첨부"
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>📺</span>
-            </button>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(false)}
-              onClick={handleAnnouncementPollOpen}
-              aria-label="투표 만들기"
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>🗳️</span>
-            </button>
-          </div>
-          <div style={overlayStyles.announcementToolbarGroup}>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(announcementToolbarState.bold)}
-              onClick={() => handleAnnouncementToolbarCommand('bold')}
-              aria-label="굵게"
-              aria-pressed={announcementToolbarState.bold}
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>𝐁</span>
-            </button>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(announcementToolbarState.italic)}
-              onClick={() => handleAnnouncementToolbarCommand('italic')}
-              aria-label="기울임"
-              aria-pressed={announcementToolbarState.italic}
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>𝑰</span>
-            </button>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(announcementToolbarState.highlight)}
-              onClick={() => handleAnnouncementToolbarCommand('highlight')}
-              aria-label="강조"
-              aria-pressed={announcementToolbarState.highlight}
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>✨</span>
-            </button>
-          </div>
-          <div style={overlayStyles.announcementToolbarGroup}>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(announcementToolbarState.panel === 'color')}
-              onClick={() => handleAnnouncementToolbarPanelToggle('color')}
-              aria-label="글자색 선택"
-              aria-expanded={announcementToolbarState.panel === 'color'}
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>🎨</span>
-            </button>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(announcementToolbarState.panel === 'size')}
-              onClick={() => handleAnnouncementToolbarPanelToggle('size')}
-              aria-label="글자 크기 선택"
-              aria-expanded={announcementToolbarState.panel === 'size'}
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>🔠</span>
-            </button>
-          </div>
-        </div>
-        {announcementToolbarState.panel === 'color' ? (
-          <div style={overlayStyles.announcementToolbarPalette}>
-            {ANNOUNCEMENT_TOOLBAR_COLORS.map((color) => (
-              <button
-                key={color}
-                type="button"
-                style={overlayStyles.announcementToolbarColorButton(
-                  color,
-                  getColorPickerValue(color, color) === (announcementToolbarState.color || ''),
-                )}
-                onClick={() => handleAnnouncementColorPick(color)}
-                aria-label={`글자색 ${color}`}
-              />
-            ))}
-          </div>
-        ) : null}
-        {announcementToolbarState.panel === 'size' ? (
-          <div style={overlayStyles.announcementToolbarSizeRow}>
-            {ANNOUNCEMENT_TOOLBAR_SIZES.map((size) => (
-              <button
-                key={size.id}
-                type="button"
-                style={overlayStyles.announcementToolbarSizeButton(announcementToolbarState.size === size.id)}
-                onClick={() => handleAnnouncementSizePick(size.id)}
-              >
-                {size.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {announcementComposer.attachmentUploading ? (
-          <span style={overlayStyles.announcementToolbarStatus}>첨부 파일을 업로드하는 중입니다…</span>
-        ) : null}
-        <span style={overlayStyles.announcementHint}>
-          아이콘을 눌러 서식을 토글하면 입력하는 동안 바로 적용됩니다.
-        </span>
         <div style={overlayStyles.announcementEditorWrapper}>
           {!getAnnouncementPlainText(announcementComposer.content || '') ? (
             <span style={overlayStyles.announcementEditorPlaceholder}>
@@ -12346,6 +12250,138 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       </div>
     </SurfaceOverlay>
   )
+
+  const announcementToolbarOverlayNode = announcementComposer.open ? (
+    <div
+      style={overlayStyles.announcementToolbarOverlay(true)}
+      aria-hidden={!announcementComposer.open}
+    >
+      <div
+        style={overlayStyles.announcementToolbarRow}
+        role="toolbar"
+        aria-label="공지 서식 도구"
+      >
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(false)}
+          onClick={() => handleAnnouncementAttachmentTrigger('image')}
+          disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>🖼️</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>이미지 첨부</span>
+        </button>
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(false)}
+          onClick={() => handleAnnouncementAttachmentTrigger('video')}
+          disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>🎬</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>동영상 첨부</span>
+        </button>
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(false)}
+          onClick={handleAnnouncementYoutubeOpen}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>📺</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>유튜브</span>
+        </button>
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(false)}
+          onClick={handleAnnouncementPollOpen}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>🗳️</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>투표</span>
+        </button>
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(announcementToolbarState.bold)}
+          onClick={() => handleAnnouncementToolbarCommand('bold')}
+          aria-pressed={announcementToolbarState.bold}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>𝐁</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>굵게</span>
+        </button>
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(announcementToolbarState.italic)}
+          onClick={() => handleAnnouncementToolbarCommand('italic')}
+          aria-pressed={announcementToolbarState.italic}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>𝑰</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>기울임</span>
+        </button>
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(announcementToolbarState.highlight)}
+          onClick={() => handleAnnouncementToolbarCommand('highlight')}
+          aria-pressed={announcementToolbarState.highlight}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>✨</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>강조</span>
+        </button>
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(announcementToolbarState.panel === 'color')}
+          onClick={() => handleAnnouncementToolbarPanelToggle('color')}
+          aria-expanded={announcementToolbarState.panel === 'color'}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>🎨</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>글자색</span>
+        </button>
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(announcementToolbarState.panel === 'size')}
+          onClick={() => handleAnnouncementToolbarPanelToggle('size')}
+          aria-expanded={announcementToolbarState.panel === 'size'}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>🔠</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>글자 크기</span>
+        </button>
+      </div>
+      {announcementToolbarState.panel === 'color' ? (
+        <div style={overlayStyles.announcementToolbarPaletteRow} role="group" aria-label="글자색 선택">
+          {ANNOUNCEMENT_TOOLBAR_COLORS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              style={overlayStyles.announcementToolbarColorButton(
+                color,
+                getColorPickerValue(color, color) === (announcementToolbarState.color || ''),
+              )}
+              onClick={() => handleAnnouncementColorPick(color)}
+              aria-label={`글자색 ${color}`}
+            />
+          ))}
+        </div>
+      ) : null}
+      {announcementToolbarState.panel === 'size' ? (
+        <div style={overlayStyles.announcementToolbarSizeRow} role="group" aria-label="글자 크기 선택">
+          {ANNOUNCEMENT_TOOLBAR_SIZES.map((size) => (
+            <button
+              key={size.id}
+              type="button"
+              style={overlayStyles.announcementToolbarSizeButton(announcementToolbarState.size === size.id)}
+              onClick={() => handleAnnouncementSizePick(size.id)}
+            >
+              {size.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div style={overlayStyles.announcementToolbarStatusRow}>
+        {announcementComposer.attachmentUploading ? (
+          <span>첨부 파일을 업로드하는 중입니다…</span>
+        ) : (
+          <span style={overlayStyles.announcementToolbarHint}>
+            아이콘을 눌러 서식을 토글하면 입력하는 동안 바로 적용됩니다.
+          </span>
+        )}
+      </div>
+    </div>
+  ) : null
 
   const announcementYoutubeOverlayNode = (
     <SurfaceOverlay
@@ -12674,6 +12710,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       {friendOverlay}
       {announcementListOverlay}
       {announcementComposerOverlay}
+      {announcementToolbarOverlayNode}
       {announcementYoutubeOverlayNode}
       {announcementPollOverlayNode}
       {announcementDetailOverlay}
