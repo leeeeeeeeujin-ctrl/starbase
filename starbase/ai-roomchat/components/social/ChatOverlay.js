@@ -66,16 +66,6 @@ const MEMBER_BACKGROUND_FOLDER = 'member-backgrounds'
 const ANNOUNCEMENT_MEDIA_FOLDER = 'room-announcements'
 const ANNOUNCEMENT_IMAGE_SIZE_LIMIT = 20 * 1024 * 1024
 const ANNOUNCEMENT_VIDEO_SIZE_LIMIT = 200 * 1024 * 1024
-const ANNOUNCEMENT_TOOLBAR_COLORS = [
-  '#f97316',
-  '#facc15',
-  '#10b981',
-  '#0ea5e9',
-  '#6366f1',
-  '#ec4899',
-  '#f8fafc',
-  '#1e293b',
-]
 const ANNOUNCEMENT_TOOLBAR_SIZES = [
   { id: 'small', label: '작게', scale: 0.9, command: '3' },
   { id: 'normal', label: '보통', scale: 1, command: '4' },
@@ -91,7 +81,6 @@ const ANNOUNCEMENT_FONT_SIZE_BY_COMMAND = ANNOUNCEMENT_TOOLBAR_SIZES.reduce((acc
   acc[item.command] = item.id
   return acc
 }, {})
-const ANNOUNCEMENT_HIGHLIGHT_COLOR = '#facc15'
 const ANNOUNCEMENT_POLL_MIN_OPTIONS = 2
 const ANNOUNCEMENT_POLL_MAX_OPTIONS = 6
 const ATTACHMENT_ICONS = {
@@ -2620,44 +2609,6 @@ const overlayStyles = {
     fontSize: 13,
     lineHeight: 1.2,
   },
-  announcementToolbarPaletteRow: {
-    display: 'flex',
-    gap: 10,
-    overflowX: 'auto',
-    padding: '4px 4px 0',
-    WebkitOverflowScrolling: 'touch',
-  },
-  announcementToolbarColorButton: (color, active = false) => ({
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    border: active
-      ? '2px solid rgba(59, 130, 246, 0.85)'
-      : color === '#f8fafc'
-        ? '1px solid rgba(15, 23, 42, 0.6)'
-        : '1px solid rgba(148, 163, 184, 0.5)',
-    background: color,
-    cursor: 'pointer',
-    flex: '0 0 auto',
-    boxShadow: active ? '0 0 0 1px rgba(37, 99, 235, 0.45)' : '0 0 0 1px rgba(15, 23, 42, 0.4)',
-  }),
-  announcementToolbarSizeRow: {
-    display: 'flex',
-    gap: 8,
-    overflowX: 'auto',
-    padding: '2px 4px 0',
-    WebkitOverflowScrolling: 'touch',
-  },
-  announcementToolbarSizeButton: (active = false) => ({
-    flex: '0 0 auto',
-    borderRadius: 12,
-    border: active ? '1px solid rgba(59, 130, 246, 0.7)' : '1px solid rgba(71, 85, 105, 0.6)',
-    background: active ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.74)',
-    color: '#e2e8f0',
-    fontSize: 12,
-    padding: '7px 12px',
-    cursor: 'pointer',
-  }),
   announcementToolbarStatusRow: {
     fontSize: 11,
     color: '#94a3b8',
@@ -4392,14 +4343,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [announcementListOpen, setAnnouncementListOpen] = useState(false)
   const [announcementError, setAnnouncementError] = useState(null)
   const [announcementPinningId, setAnnouncementPinningId] = useState(null)
-  const [announcementToolbarState, setAnnouncementToolbarState] = useState({
-    panel: null,
-    bold: false,
-    italic: false,
-    highlight: false,
-    color: null,
-    size: 'normal',
-  })
   const [announcementYoutubeOverlay, setAnnouncementYoutubeOverlay] = useState({
     open: false,
     query: '',
@@ -6744,14 +6687,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       submitting: false,
       error: null,
     })
-    setAnnouncementToolbarState({
-      panel: null,
-      bold: false,
-      italic: false,
-      highlight: false,
-      color: null,
-      size: 'normal',
-    })
     setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
     setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [context?.chatRoomId, viewerIsModerator])
@@ -6776,14 +6711,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       submitting: false,
       error: null,
     })
-    setAnnouncementToolbarState({
-      panel: null,
-      bold: false,
-      italic: false,
-      highlight: false,
-      color: null,
-      size: 'normal',
-    })
     setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
     setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [])
@@ -6801,19 +6728,26 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
   }, [])
 
-  const syncAnnouncementToolbarState = useCallback(() => {
+  const cacheAnnouncementSelection = useCallback(() => {
     const editor = announcementEditorRef.current
     if (!editor) return
     const selection = document.getSelection()
-    if (!selection || selection.rangeCount === 0 || !selection.anchorNode || !editor.contains(selection.anchorNode)) {
+    if (!selection || selection.rangeCount === 0) {
       announcementSelectionRef.current = null
-      setAnnouncementToolbarState((prev) => ({ ...prev, bold: false, italic: false, highlight: false }))
       return
     }
-    const anchorElement =
-      selection.anchorNode.nodeType === Node.ELEMENT_NODE
-        ? selection.anchorNode
-        : selection.anchorNode.parentElement
+    const anchorNode = selection.anchorNode
+    if (!anchorNode || (anchorNode.nodeType === Node.ELEMENT_NODE && !editor.contains(anchorNode))) {
+      announcementSelectionRef.current = null
+      return
+    }
+    if (anchorNode.nodeType !== Node.ELEMENT_NODE) {
+      const parent = anchorNode.parentElement
+      if (!parent || !editor.contains(parent)) {
+        announcementSelectionRef.current = null
+        return
+      }
+    }
     try {
       const range = selection.getRangeAt(0)
       if (range && editor.contains(range.commonAncestorContainer)) {
@@ -6822,74 +6756,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     } catch (error) {
       announcementSelectionRef.current = null
     }
-    const findInlineStyle = (property) => {
-      let current = anchorElement
-      while (current && current !== editor) {
-        if (current.nodeType === Node.ELEMENT_NODE && current.style && current.style[property]) {
-          return current.style[property]
-        }
-        current = current.parentElement
-      }
-      return null
-    }
-    const boldActive = document.queryCommandState('bold')
-    const italicActive = document.queryCommandState('italic')
-    let highlightActive = false
-    try {
-      const hilite = document.queryCommandValue('hiliteColor') || document.queryCommandValue('backColor')
-      const inlineBackground = findInlineStyle('backgroundColor')
-      if (inlineBackground) {
-        const normalized = getColorPickerValue(inlineBackground, ANNOUNCEMENT_HIGHLIGHT_COLOR)
-        highlightActive = normalized.toLowerCase() === getColorPickerValue(ANNOUNCEMENT_HIGHLIGHT_COLOR)
-      } else if (typeof hilite === 'string') {
-        const normalized = getColorPickerValue(hilite, ANNOUNCEMENT_HIGHLIGHT_COLOR)
-        highlightActive = normalized.toLowerCase() === getColorPickerValue(ANNOUNCEMENT_HIGHLIGHT_COLOR)
-      }
-    } catch (error) {
-      highlightActive = false
-    }
-    let colorValue = null
-    try {
-      const commandColor = document.queryCommandValue('foreColor')
-      const inlineColor = findInlineStyle('color')
-      if (inlineColor) {
-        colorValue = getColorPickerValue(inlineColor, inlineColor)
-      } else if (typeof commandColor === 'string') {
-        const normalized = getColorPickerValue(commandColor, commandColor)
-        if (!['#000000', '#000'].includes(normalized.toLowerCase())) {
-          colorValue = normalized
-        }
-      }
-    } catch (error) {
-      colorValue = null
-    }
-    let sizeValue = 'normal'
-    try {
-      const inlineSize = findInlineStyle('fontSize')
-      if (inlineSize) {
-        const match = ANNOUNCEMENT_TOOLBAR_SIZES.find((entry) => {
-          const emSize = `${ANNOUNCEMENT_SIZE_SCALE[entry.id]}em`
-          return inlineSize === emSize || inlineSize === `${ANNOUNCEMENT_SIZE_SCALE[entry.id] * 16}px`
-        })
-        if (match) {
-          sizeValue = match.id
-        }
-      }
-      const commandSize = document.queryCommandValue('fontSize')
-      if (commandSize && ANNOUNCEMENT_FONT_SIZE_BY_COMMAND[commandSize]) {
-        sizeValue = ANNOUNCEMENT_FONT_SIZE_BY_COMMAND[commandSize]
-      }
-    } catch (error) {
-      sizeValue = 'normal'
-    }
-    setAnnouncementToolbarState((prev) => ({
-      ...prev,
-      bold: !!boldActive,
-      italic: !!italicActive,
-      highlight: !!highlightActive,
-      color: colorValue,
-      size: sizeValue,
-    }))
   }, [])
 
   const syncAnnouncementContentFromEditor = useCallback(() => {
@@ -6930,14 +6796,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       requestAnimationFrame(() => {
         if (!announcementComposingRef.current) {
           syncAnnouncementContentFromEditor()
-          syncAnnouncementToolbarState()
+          cacheAnnouncementSelection()
         }
       })
       return
     }
     syncAnnouncementContentFromEditor()
-    syncAnnouncementToolbarState()
-  }, [syncAnnouncementContentFromEditor, syncAnnouncementToolbarState])
+    cacheAnnouncementSelection()
+  }, [syncAnnouncementContentFromEditor, cacheAnnouncementSelection])
 
   const handleAnnouncementEditorCompositionStart = useCallback(() => {
     announcementComposingRef.current = true
@@ -6947,9 +6813,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     announcementComposingRef.current = false
     requestAnimationFrame(() => {
       syncAnnouncementContentFromEditor()
-      syncAnnouncementToolbarState()
+      cacheAnnouncementSelection()
     })
-  }, [syncAnnouncementContentFromEditor, syncAnnouncementToolbarState])
+  }, [syncAnnouncementContentFromEditor, cacheAnnouncementSelection])
 
   const handleAnnouncementEditorPaste = useCallback(
     (event) => {
@@ -6972,58 +6838,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       restoreAnnouncementSelection()
       requestAnimationFrame(() => {
         syncAnnouncementContentFromEditor()
-        syncAnnouncementToolbarState()
+        cacheAnnouncementSelection()
       })
     },
-    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
+    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, cacheAnnouncementSelection],
   )
-
-  const applyAnnouncementCommand = useCallback(
-    (command, value = null) => {
-      const editor = announcementEditorRef.current
-      if (!editor) return
-      focusAnnouncementEditor()
-      restoreAnnouncementSelection()
-      try {
-        document.execCommand('styleWithCSS', false, true)
-      } catch (error) {
-        // ignore
-      }
-      if (command === 'hiliteColor' && value === null) {
-        document.execCommand('removeFormat')
-      } else {
-        document.execCommand(command, false, value)
-      }
-      restoreAnnouncementSelection()
-      requestAnimationFrame(() => {
-        syncAnnouncementContentFromEditor()
-        syncAnnouncementToolbarState()
-      })
-    },
-    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
-  )
-
-  const handleAnnouncementToolbarCommand = useCallback(
-    (command) => {
-      if (command === 'bold' || command === 'italic') {
-        applyAnnouncementCommand(command)
-      } else if (command === 'highlight') {
-        if (announcementToolbarState.highlight) {
-          applyAnnouncementCommand('hiliteColor', 'transparent')
-        } else {
-          applyAnnouncementCommand('hiliteColor', ANNOUNCEMENT_HIGHLIGHT_COLOR)
-        }
-      }
-    },
-    [announcementToolbarState.highlight, applyAnnouncementCommand],
-  )
-
-  const handleAnnouncementToolbarPanelToggle = useCallback((panel) => {
-    setAnnouncementToolbarState((prev) => ({
-      ...prev,
-      panel: prev.panel === panel ? null : panel,
-    }))
-  }, [])
 
   const handleAnnouncementToolbarMouseDown = useCallback(
     (event) => {
@@ -7039,25 +6858,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     restoreAnnouncementSelection()
   }, [focusAnnouncementEditor, restoreAnnouncementSelection])
 
-  const handleAnnouncementColorPick = useCallback(
-    (color) => {
-      const normalized = getColorPickerValue(color, color)
-      applyAnnouncementCommand('foreColor', normalized)
-      setAnnouncementToolbarState((prev) => ({ ...prev, panel: null, color: normalized }))
-    },
-    [applyAnnouncementCommand],
-  )
-
-  const handleAnnouncementSizePick = useCallback(
-    (sizeId) => {
-      const size = ANNOUNCEMENT_TOOLBAR_SIZES.find((entry) => entry.id === sizeId)
-      if (!size) return
-      applyAnnouncementCommand('fontSize', size.command)
-      setAnnouncementToolbarState((prev) => ({ ...prev, panel: null, size: size.id }))
-    },
-    [applyAnnouncementCommand],
-  )
-
   const insertAnnouncementHtml = useCallback(
     (html) => {
       const editor = announcementEditorRef.current
@@ -7072,10 +6872,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       restoreAnnouncementSelection()
       requestAnimationFrame(() => {
         syncAnnouncementContentFromEditor()
-        syncAnnouncementToolbarState()
+        cacheAnnouncementSelection()
       })
     },
-    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
+    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, cacheAnnouncementSelection],
   )
 
   const handleAnnouncementAttachmentTrigger = useCallback(
@@ -7147,25 +6947,25 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
     }
     requestAnimationFrame(() => {
-      syncAnnouncementToolbarState()
+      cacheAnnouncementSelection()
     })
-  }, [announcementComposer.content, announcementComposer.open, syncAnnouncementToolbarState])
+  }, [announcementComposer.content, announcementComposer.open, cacheAnnouncementSelection])
 
   useEffect(() => {
     if (!announcementComposer.open) return undefined
     const handler = () => {
       if (!announcementComposer.open) return
-      syncAnnouncementToolbarState()
+      cacheAnnouncementSelection()
     }
     document.addEventListener('selectionchange', handler)
     requestAnimationFrame(() => {
       focusAnnouncementEditor()
-      syncAnnouncementToolbarState()
+      cacheAnnouncementSelection()
     })
     return () => {
       document.removeEventListener('selectionchange', handler)
     }
-  }, [announcementComposer.open, focusAnnouncementEditor, syncAnnouncementToolbarState])
+  }, [announcementComposer.open, focusAnnouncementEditor, cacheAnnouncementSelection])
 
   const handleAnnouncementYoutubeOpen = useCallback(() => {
     setAnnouncementYoutubeOverlay({ open: true, query: '', results: [], loading: false, error: null })
@@ -12528,7 +12328,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       <div
         style={overlayStyles.announcementToolbarRow}
         role="toolbar"
-        aria-label="공지 서식 도구"
+        aria-label="공지 추가 도구"
       >
         <button
           type="button"
@@ -12572,102 +12372,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           <span style={overlayStyles.announcementToolbarItemIcon}>🗳️</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>투표</span>
         </button>
-        <button
-          type="button"
-          style={overlayStyles.announcementToolbarItem(announcementToolbarState.bold)}
-          onClick={() => handleAnnouncementToolbarCommand('bold')}
-          aria-pressed={announcementToolbarState.bold}
-          onMouseDown={handleAnnouncementToolbarMouseDown}
-          onTouchStart={handleAnnouncementToolbarTouchStart}
-        >
-          <span style={overlayStyles.announcementToolbarItemIcon}>𝐁</span>
-          <span style={overlayStyles.announcementToolbarItemLabel}>굵게</span>
-        </button>
-        <button
-          type="button"
-          style={overlayStyles.announcementToolbarItem(announcementToolbarState.italic)}
-          onClick={() => handleAnnouncementToolbarCommand('italic')}
-          aria-pressed={announcementToolbarState.italic}
-          onMouseDown={handleAnnouncementToolbarMouseDown}
-          onTouchStart={handleAnnouncementToolbarTouchStart}
-        >
-          <span style={overlayStyles.announcementToolbarItemIcon}>𝑰</span>
-          <span style={overlayStyles.announcementToolbarItemLabel}>기울임</span>
-        </button>
-        <button
-          type="button"
-          style={overlayStyles.announcementToolbarItem(announcementToolbarState.highlight)}
-          onClick={() => handleAnnouncementToolbarCommand('highlight')}
-          aria-pressed={announcementToolbarState.highlight}
-          onMouseDown={handleAnnouncementToolbarMouseDown}
-          onTouchStart={handleAnnouncementToolbarTouchStart}
-        >
-          <span style={overlayStyles.announcementToolbarItemIcon}>✨</span>
-          <span style={overlayStyles.announcementToolbarItemLabel}>강조</span>
-        </button>
-        <button
-          type="button"
-          style={overlayStyles.announcementToolbarItem(announcementToolbarState.panel === 'color')}
-          onClick={() => handleAnnouncementToolbarPanelToggle('color')}
-          aria-expanded={announcementToolbarState.panel === 'color'}
-          onMouseDown={handleAnnouncementToolbarMouseDown}
-          onTouchStart={handleAnnouncementToolbarTouchStart}
-        >
-          <span style={overlayStyles.announcementToolbarItemIcon}>🎨</span>
-          <span style={overlayStyles.announcementToolbarItemLabel}>글자색</span>
-        </button>
-        <button
-          type="button"
-          style={overlayStyles.announcementToolbarItem(announcementToolbarState.panel === 'size')}
-          onClick={() => handleAnnouncementToolbarPanelToggle('size')}
-          aria-expanded={announcementToolbarState.panel === 'size'}
-          onMouseDown={handleAnnouncementToolbarMouseDown}
-          onTouchStart={handleAnnouncementToolbarTouchStart}
-        >
-          <span style={overlayStyles.announcementToolbarItemIcon}>🔠</span>
-          <span style={overlayStyles.announcementToolbarItemLabel}>글자 크기</span>
-        </button>
       </div>
-      {announcementToolbarState.panel === 'color' ? (
-        <div style={overlayStyles.announcementToolbarPaletteRow} role="group" aria-label="글자색 선택">
-          {ANNOUNCEMENT_TOOLBAR_COLORS.map((color) => (
-            <button
-              key={color}
-              type="button"
-              style={overlayStyles.announcementToolbarColorButton(
-                color,
-                getColorPickerValue(color, color) === (announcementToolbarState.color || ''),
-              )}
-              onClick={() => handleAnnouncementColorPick(color)}
-              aria-label={`글자색 ${color}`}
-              onMouseDown={handleAnnouncementToolbarMouseDown}
-              onTouchStart={handleAnnouncementToolbarTouchStart}
-            />
-          ))}
-        </div>
-      ) : null}
-      {announcementToolbarState.panel === 'size' ? (
-        <div style={overlayStyles.announcementToolbarSizeRow} role="group" aria-label="글자 크기 선택">
-          {ANNOUNCEMENT_TOOLBAR_SIZES.map((size) => (
-            <button
-              key={size.id}
-              type="button"
-              style={overlayStyles.announcementToolbarSizeButton(announcementToolbarState.size === size.id)}
-              onClick={() => handleAnnouncementSizePick(size.id)}
-              onMouseDown={handleAnnouncementToolbarMouseDown}
-              onTouchStart={handleAnnouncementToolbarTouchStart}
-            >
-              {size.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
       <div style={overlayStyles.announcementToolbarStatusRow}>
         {announcementComposer.attachmentUploading ? (
           <span>첨부 파일을 업로드하는 중입니다…</span>
         ) : (
           <span style={overlayStyles.announcementToolbarHint}>
-            아이콘을 눌러 서식을 토글하면 입력하는 동안 바로 적용됩니다.
+            아이콘을 눌러 첨부 파일, 유튜브 영상, 투표를 바로 추가할 수 있습니다.
           </span>
         )}
       </div>
