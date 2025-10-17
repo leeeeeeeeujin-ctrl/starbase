@@ -125,6 +125,14 @@ function normalizeBackgroundUrl(value) {
   return null
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function isValidUuid(value) {
+  if (value === null || value === undefined) return false
+  const token = String(value).trim()
+  return UUID_PATTERN.test(token)
+}
+
 function distanceBetweenTouches(touchA, touchB) {
   if (!touchA || !touchB) return 0
   const dx = (touchA.clientX || 0) - (touchB.clientX || 0)
@@ -497,15 +505,15 @@ const overlayStyles = {
     background: 'rgba(15, 23, 42, 0.94)',
     borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
-    padding: '28px 28px 48px',
-    minHeight: 'min(92vh, 860px)',
+    padding: '28px 28px calc(48px + env(safe-area-inset-bottom, 16px))',
+    minHeight: 'min(96dvh, 860px)',
+    maxHeight: 'min(100dvh, 920px)',
     display: 'flex',
     flexDirection: 'column',
     width: '100%',
     boxSizing: 'border-box',
     alignItems: 'stretch',
     flex: 1,
-    maxHeight: '100%',
     overflow: 'hidden',
   },
   root: (focused, compact = false, viewportHeight = null) => {
@@ -521,13 +529,13 @@ const overlayStyles = {
       height: compact
         ? effectiveHeight
           ? `${effectiveHeight}px`
-          : 'calc(100vh - 48px)'
-        : 'min(90vh, 800px)',
+          : 'calc(100dvh - 48px)'
+        : 'min(90dvh, 800px)',
       minHeight: compact
         ? effectiveHeight
           ? Math.max(effectiveHeight, 420)
-          : 'min(560px, 92vh)'
-        : 600,
+          : 'min(560px, 92dvh)'
+        : 'min(600px, 88dvh)',
       width: '100%',
       maxWidth: '100%',
       padding: 0,
@@ -1569,46 +1577,6 @@ const overlayStyles = {
     color: '#cbd5f5',
     fontSize: 14,
     cursor: 'pointer',
-  },
-  bottomActionBar: {
-    position: 'absolute',
-    left: 28,
-    right: 28,
-    bottom: 16,
-    display: 'flex',
-    gap: 12,
-    justifyContent: 'flex-end',
-    zIndex: 6,
-  },
-  bottomActionButton: (variant = 'ghost', disabled = false) => {
-    const palette = {
-      danger: {
-        background: 'rgba(248, 113, 113, 0.18)',
-        border: '1px solid rgba(248, 113, 113, 0.6)',
-        color: '#fecaca',
-      },
-      ghost: {
-        background: 'rgba(15, 23, 42, 0.78)',
-        border: '1px solid rgba(71, 85, 105, 0.55)',
-        color: '#cbd5f5',
-      },
-    }
-    const tone = palette[variant] || palette.ghost
-    return {
-      borderRadius: 14,
-      border: tone.border,
-      background: tone.background,
-      color: disabled ? '#64748b' : tone.color,
-      fontSize: 12,
-      fontWeight: 600,
-      padding: '11px 18px',
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      boxShadow: '0 12px 30px -18px rgba(15, 23, 42, 0.9)',
-    }
   },
   messageViewport: {
     overflowY: 'auto',
@@ -3916,8 +3884,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         handleSelectRoom({ ...GLOBAL_ROOM, ...room }, room.visibility || 'public')
         return
       }
+      const roomId = normalizeId(room.id)
+      if (!isValidUuid(roomId)) {
+        console.warn('[chat] joinChatRoom: invalid room id', roomId)
+        alert('채팅방 정보를 확인할 수 없습니다.')
+        return
+      }
       try {
-        await joinChatRoom({ roomId: room.id, heroId: selectedHero || null })
+        await joinChatRoom({ roomId, heroId: selectedHero || null })
         await refreshRooms()
         handleSelectRoom(room, room.visibility)
         setSearchModalOpen(false)
@@ -3945,6 +3919,12 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setContext((current) => (current?.type === 'global' ? null : current))
         setMessages([])
         return true
+      }
+
+      if (!isValidUuid(roomId)) {
+        console.warn('[chat] leaveChatRoom: invalid room id', roomId)
+        alert('채팅방 정보를 확인할 수 없습니다.')
+        return false
       }
 
       const asOwner = options.asOwner === true
@@ -4923,14 +4903,24 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
+    if (!isValidUuid(context.chatRoomId)) {
+      setBanModal((prev) => ({ ...prev, error: '채팅방 정보를 확인할 수 없습니다.' }))
+      return
+    }
+
+    if (!isValidUuid(ownerId)) {
+      setBanModal((prev) => ({ ...prev, error: '참여자 식별자가 올바르지 않습니다.' }))
+      return
+    }
+
     const parsedDuration = parseInt(banModal.duration, 10)
     const durationMinutes = Number.isFinite(parsedDuration) ? Math.max(parsedDuration, 0) : null
 
     setBanModal((prev) => ({ ...prev, submitting: true, error: null }))
     try {
       await manageChatRoomRole({
-        roomId: context.chatRoomId,
-        targetOwnerId: ownerId,
+        roomId: String(context.chatRoomId).trim(),
+        targetOwnerId: String(ownerId).trim(),
         action: 'ban',
         durationMinutes: durationMinutes && durationMinutes > 0 ? durationMinutes : null,
         reason: banModal.reason,
@@ -4954,10 +4944,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       if (!ban || !context?.chatRoomId) return
       const ownerId = ban.owner_id || ban.ownerId
       if (!ownerId) return
+      if (!isValidUuid(context.chatRoomId) || !isValidUuid(ownerId)) {
+        setSettingsError('추방 정보를 확인할 수 없습니다.')
+        return
+      }
       try {
         await manageChatRoomRole({
-          roomId: context.chatRoomId,
-          targetOwnerId: ownerId,
+          roomId: String(context.chatRoomId).trim(),
+          targetOwnerId: String(ownerId).trim(),
           action: 'unban',
         })
         await refreshRoomBans(context.chatRoomId)
@@ -4979,6 +4973,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       if (!ban || !context?.chatRoomId) return
       const ownerId = ban.owner_id || ban.ownerId
       if (!ownerId) return
+      if (!isValidUuid(context.chatRoomId) || !isValidUuid(ownerId)) {
+        setSettingsError('추방 정보를 확인할 수 없습니다.')
+        return
+      }
 
       const promptLabel =
         '새 추방 기간(분)을 입력해 주세요. 0을 입력하면 영구 차단으로 유지됩니다.'
@@ -4998,8 +4996,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
       try {
         await updateChatRoomBan({
-          roomId: context.chatRoomId,
-          ownerId,
+          roomId: String(context.chatRoomId).trim(),
+          ownerId: String(ownerId).trim(),
           durationMinutes: minutes,
         })
         await refreshRoomBans(context.chatRoomId)
@@ -5089,11 +5087,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
+    if (!isValidUuid(context.chatRoomId)) {
+      setProfileSheet((prev) => ({ ...prev, error: '채팅방 정보를 확인할 수 없습니다.' }))
+      return
+    }
+
+    if (!isValidUuid(ownerId)) {
+      setProfileSheet((prev) => ({ ...prev, error: '참여자 식별자가 올바르지 않습니다.' }))
+      return
+    }
+
     setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
     try {
       await manageChatRoomRole({
-        roomId: context.chatRoomId,
-        targetOwnerId: ownerId,
+        roomId: String(context.chatRoomId).trim(),
+        targetOwnerId: String(ownerId).trim(),
         action: 'promote',
       })
       await refreshRooms()
@@ -5133,11 +5141,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
+    if (!isValidUuid(context.chatRoomId)) {
+      setProfileSheet((prev) => ({ ...prev, error: '채팅방 정보를 확인할 수 없습니다.' }))
+      return
+    }
+
+    if (!isValidUuid(ownerId)) {
+      setProfileSheet((prev) => ({ ...prev, error: '참여자 식별자가 올바르지 않습니다.' }))
+      return
+    }
+
     setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
     try {
       await manageChatRoomRole({
-        roomId: context.chatRoomId,
-        targetOwnerId: ownerId,
+        roomId: String(context.chatRoomId).trim(),
+        targetOwnerId: String(ownerId).trim(),
         action: 'demote',
       })
       await refreshRooms()
@@ -6482,12 +6500,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         ? viewport.height
         : null
 
+    const paddingBottom = isUltraCompactLayout
+      ? 'calc(32px + env(safe-area-inset-bottom, 16px))'
+      : 'calc(34px + env(safe-area-inset-bottom, 18px))'
+    const compactPadding = isUltraCompactLayout
+      ? `24px 10px ${paddingBottom}`
+      : `26px 14px ${paddingBottom}`
+    const fallbackHeight = numericHeight ? `${numericHeight}px` : '100dvh'
+
     return {
       ...overlayStyles.frame,
       borderRadius: isUltraCompactLayout ? 0 : 22,
-      padding: isUltraCompactLayout ? '24px 10px 32px' : '26px 14px 34px',
-      minHeight: numericHeight ? `${numericHeight}px` : '100vh',
-      height: numericHeight ? `${numericHeight}px` : '100vh',
+      padding: compactPadding,
+      minHeight: fallbackHeight,
+      height: fallbackHeight,
+      maxHeight: fallbackHeight,
       width: '100%',
       maxWidth: '100%',
       alignItems: 'stretch',
@@ -7498,10 +7525,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           miniOverlay.mode,
         )
       : null
-  const canLeaveCurrent = context?.type === 'chat-room' || context?.type === 'global'
-  const leaveButtonLabel =
-    context?.type === 'chat-room' && viewerOwnsRoom ? '🗑 방 삭제' : '나가기'
-  const canOpenSettings = context?.type === 'chat-room'
   const mediaPickerOverlay = showMediaPicker ? (
     <div style={overlayStyles.mediaPickerBackdrop} onClick={handleMediaPickerCancel}>
       <div
@@ -8120,7 +8143,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       onClose={handleCloseSettings}
       title="채팅방 설정"
       width="min(640px, 96vw)"
-      zIndex={1530}
+      zIndex={1800}
     >
       <div style={{ display: 'grid', gap: 18 }}>
         <nav style={overlayStyles.settingsTabs}>
@@ -8911,24 +8934,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           <div style={rootStyle}>
             {!focused ? renderListColumn() : null}
             {focused ? renderMessageColumn() : null}
-          </div>
-          <div style={overlayStyles.bottomActionBar}>
-            <button
-              type="button"
-              style={overlayStyles.bottomActionButton(viewerOwnsRoom ? 'danger' : 'ghost', !canLeaveCurrent)}
-              onClick={() => canLeaveCurrent && handleLeaveCurrentContext({ asOwner: viewerOwnsRoom })}
-              disabled={!canLeaveCurrent}
-            >
-              {leaveButtonLabel}
-            </button>
-            <button
-              type="button"
-              style={overlayStyles.bottomActionButton('ghost', !canOpenSettings)}
-              onClick={() => canOpenSettings && handleOpenSettings()}
-              disabled={!canOpenSettings}
-            >
-              ⚙️ 설정
-            </button>
           </div>
         </div>
       </SurfaceOverlay>
