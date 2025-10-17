@@ -2722,6 +2722,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const aiPendingMessageRef = useRef(null)
   const lastMarkedRef = useRef(null)
   const roomMetadataRef = useRef(new Map())
+  const unreadStateRef = useRef({ counts: new Map() })
   const drawerOpenRef = useRef(false)
   const drawerGestureRef = useRef({
     tracking: false,
@@ -2793,6 +2794,79 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const trimmedSearchQuery = useMemo(() => (searchQuery || '').trim(), [searchQuery])
 
+  const broadcastUnreadTotal = useCallback(() => {
+    const store = unreadStateRef.current
+    const counts = store?.counts
+    if (!(counts instanceof Map)) {
+      if (onUnreadChange) {
+        onUnreadChange(0)
+      }
+      return 0
+    }
+
+    let total = 0
+    counts.forEach((value) => {
+      const numeric = Number(value)
+      if (Number.isFinite(numeric) && numeric > 0) {
+        total += Math.trunc(numeric)
+      }
+    })
+
+    if (onUnreadChange) {
+      onUnreadChange(total)
+    }
+
+    return total
+  }, [onUnreadChange])
+
+  const syncUnreadFromCollections = useCallback(
+    (collections, { replace = false } = {}) => {
+      const store = unreadStateRef.current
+      if (!store) {
+        return
+      }
+
+      let counts = store.counts
+      if (!(counts instanceof Map)) {
+        counts = new Map()
+        store.counts = counts
+      }
+
+      if (replace) {
+        counts.clear()
+      }
+
+      const apply = (list) => {
+        if (!Array.isArray(list)) {
+          return
+        }
+        list.forEach((room) => {
+          const roomId = normalizeId(room?.id)
+          if (!roomId) return
+          const unreadSource =
+            room?.unread_count !== undefined
+              ? room.unread_count
+              : room?.unreadCount !== undefined
+                ? room.unreadCount
+                : room?.unread
+          const numeric = Number(unreadSource)
+          const parsed = Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0
+          if (parsed > 0) {
+            counts.set(roomId, parsed)
+          } else {
+            counts.delete(roomId)
+          }
+        })
+      }
+
+      apply(collections?.joined)
+      apply(collections?.available)
+
+      broadcastUnreadTotal()
+    },
+    [broadcastUnreadTotal],
+  )
+
   const resolvedSearchKeywords = useMemo(() => {
     const source = trimmedSearchQuery
       ? roomSearchMeta.suggestions
@@ -2822,6 +2896,40 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   useEffect(() => {
     roomsRef.current = rooms
   }, [rooms])
+
+  useEffect(() => {
+    const store = unreadStateRef.current
+    const counts = store?.counts
+    if (!(counts instanceof Map)) {
+      return
+    }
+
+    const active = new Set()
+    const collect = (list) => {
+      if (!Array.isArray(list)) return
+      list.forEach((room) => {
+        const roomId = normalizeId(room?.id)
+        if (roomId) {
+          active.add(roomId)
+        }
+      })
+    }
+
+    collect(rooms?.joined)
+    collect(rooms?.available)
+
+    let mutated = false
+    counts.forEach((_, key) => {
+      if (!active.has(key)) {
+        counts.delete(key)
+        mutated = true
+      }
+    })
+
+    if (mutated) {
+      broadcastUnreadTotal()
+    }
+  }, [rooms, broadcastUnreadTotal])
 
   useEffect(() => {
     if (!context?.chatRoomId) {
@@ -3048,11 +3156,27 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     if (patch.last_message_at && !patch.lastMessageAt) {
       patch.lastMessageAt = patch.last_message_at
     }
+    let unreadTouched = false
     if (patch.unread_count !== undefined || patch.unreadCount !== undefined) {
       const unread = patch.unread_count !== undefined ? patch.unread_count : patch.unreadCount
-      const parsed = Number.isFinite(Number(unread)) ? Number(unread) : 0
+      const numeric = Number(unread)
+      const parsed = Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0
       patch.unread_count = parsed
       patch.unreadCount = parsed
+      unreadTouched = true
+      const store = unreadStateRef.current
+      if (store) {
+        let counts = store.counts
+        if (!(counts instanceof Map)) {
+          counts = new Map()
+          store.counts = counts
+        }
+        if (parsed > 0) {
+          counts.set(normalizedRoomId, parsed)
+        } else {
+          counts.delete(normalizedRoomId)
+        }
+      }
     }
 
     const overrides = roomMetadataRef.current
@@ -3116,7 +3240,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         roomSummary: nextSummary,
       }
     })
-  }, [])
+
+    if (unreadTouched) {
+      broadcastUnreadTotal()
+    }
+  }, [broadcastUnreadTotal])
 
   const viewerId = useMemo(() => viewer?.id || viewer?.owner_id || null, [viewer])
   const viewerToken = useMemo(() => normalizeId(viewerId), [viewerId])
@@ -3460,9 +3588,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setVideoControlsVisible(true)
       lastMarkedRef.current = null
       setViewerReady(false)
-      if (onUnreadChange) {
-        onUnreadChange(0)
-      }
+      broadcastUnreadTotal()
       return
     }
 
@@ -3488,6 +3614,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setViewer(user)
         setSelectedHero((snapshot.heroes && snapshot.heroes[0]?.id) || null)
         setRooms(patchedRoomState)
+        syncUnreadFromCollections(patchedRoomState, { replace: true })
       } catch (error) {
         if (!mounted) return
         console.error('[chat] 대시보드 로드 실패:', error)
@@ -3505,7 +3632,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       mounted = false
     }
-  }, [open, applyRoomOverrides])
+  }, [open, applyRoomOverrides, broadcastUnreadTotal, syncUnreadFromCollections])
 
   useEffect(() => {
     if (!open || !context) {
@@ -3531,14 +3658,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         if (cancelled) return
         const nextMessages = Array.isArray(result.messages) ? result.messages : []
         setMessages(upsertMessageList([], nextMessages))
-        if (context?.type === 'chat-room' && context.chatRoomId && nextMessages.length) {
-          const latestRecord = nextMessages[nextMessages.length - 1]
+        if (context?.type === 'chat-room' && context.chatRoomId) {
+          const latestRecord = nextMessages.length ? nextMessages[nextMessages.length - 1] : null
+          const patch = {}
           if (latestRecord?.id) {
-            updateRoomMetadata(context.chatRoomId, { latestMessage: latestRecord })
+            patch.latestMessage = latestRecord
           }
-        }
-        if (onUnreadChange) {
-          onUnreadChange(0)
+          patch.unread_count = 0
+          patch.unreadCount = 0
+          updateRoomMetadata(context.chatRoomId, patch)
         }
 
         if (unsubscribeRef.current) {
@@ -3557,23 +3685,39 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               if (context?.type === 'chat-room' && normalizeId(context.chatRoomId) === recordRoomId) {
                 updateRoomMetadata(context.chatRoomId, { latestMessage: record })
               } else {
-                let existing = null
-                const snapshot = roomsRef.current
-                if (snapshot) {
-                  if (Array.isArray(snapshot.joined)) {
-                    existing =
-                      snapshot.joined.find((room) => normalizeId(room?.id) === recordRoomId) || null
+                let currentUnread = 0
+                const store = unreadStateRef.current
+                const counts = store?.counts
+                if (counts instanceof Map && counts.has(recordRoomId)) {
+                  const storedValue = counts.get(recordRoomId)
+                  const numeric = Number(storedValue)
+                  if (Number.isFinite(numeric)) {
+                    currentUnread = Math.max(0, Math.trunc(numeric))
                   }
-                  if (!existing && Array.isArray(snapshot.available)) {
-                    existing =
-                      snapshot.available.find((room) => normalizeId(room?.id) === recordRoomId) || null
+                } else {
+                  const snapshot = roomsRef.current
+                  if (snapshot) {
+                    const searchLists = [snapshot.joined, snapshot.available]
+                    for (const list of searchLists) {
+                      if (!Array.isArray(list)) continue
+                      const match = list.find((room) => normalizeId(room?.id) === recordRoomId)
+                      if (match) {
+                        const fallback =
+                          match.unread_count !== undefined
+                            ? match.unread_count
+                            : match.unreadCount !== undefined
+                              ? match.unreadCount
+                              : match.unread
+                        const numeric = Number(fallback)
+                        if (Number.isFinite(numeric)) {
+                          currentUnread = Math.max(0, Math.trunc(numeric))
+                        }
+                        break
+                      }
+                    }
                   }
                 }
-                const currentUnread = existing?.unread_count ?? existing?.unreadCount ?? 0
-                const parsedUnread = Number.isFinite(Number(currentUnread))
-                  ? Number(currentUnread)
-                  : 0
-                const nextUnread = fromSelf ? parsedUnread : parsedUnread + 1
+                const nextUnread = fromSelf ? currentUnread : currentUnread + 1
                 const patch = { latestMessage: record }
                 if (!fromSelf) {
                   patch.unread_count = nextUnread
@@ -3581,10 +3725,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 }
                 updateRoomMetadata(recordRoomId, patch)
               }
-            }
-            const hidden = typeof document !== 'undefined' ? document.hidden : false
-            if (onUnreadChange && (!context?.focused || hidden) && !fromSelf) {
-              onUnreadChange((prevUnread) => Math.min(999, (prevUnread || 0) + 1))
             }
           },
           sessionId: context.sessionId || null,
@@ -3610,7 +3750,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       cancelled = true
     }
-  }, [open, context, viewer, viewerToken, onUnreadChange, updateRoomMetadata])
+  }, [open, context, viewer, viewerToken, updateRoomMetadata])
 
   useEffect(() => {
     if (!viewingConversation) return
@@ -3734,6 +3874,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         const normalized = normalizeRoomCollections(snapshot)
         const patched = applyRoomOverrides(normalized)
         setRooms(patched)
+        syncUnreadFromCollections(patched, { replace: true })
         setRoomSearchMeta((prev) => {
           const trending =
             Array.isArray(normalized.trendingKeywords) && normalized.trendingKeywords.length
@@ -3766,7 +3907,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setLoadingRooms(false)
       }
     },
-    [applyRoomOverrides],
+    [applyRoomOverrides, syncUnreadFromCollections],
   )
 
   useEffect(() => {
