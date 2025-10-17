@@ -1160,7 +1160,8 @@ set search_path = public
 as $$
 declare
   v_owner_id uuid := auth.uid();
-  v_room record;
+  v_room_owner_id uuid := null;
+  v_room_is_system boolean := false;
 begin
   if v_owner_id is null then
     raise exception 'missing_user_id' using errcode = 'P0001';
@@ -1170,21 +1171,30 @@ begin
     raise exception 'missing_room_id' using errcode = 'P0001';
   end if;
 
-  select *
-    into v_room
-  from public.chat_rooms
-  where id = p_room_id
+  select r.owner_id,
+         coalesce(
+           case
+             when to_jsonb(r) ? 'is_system'
+               then nullif(to_jsonb(r)->>'is_system', '')::boolean
+             else null
+           end,
+           false
+         )
+    into v_room_owner_id,
+         v_room_is_system
+  from public.chat_rooms r
+  where r.id = p_room_id
   for update;
 
   if not found then
     return jsonb_build_object('ok', false, 'error', 'not_found');
   end if;
 
-  if coalesce(v_room.is_system, false) then
+  if coalesce(v_room_is_system, false) then
     raise exception 'cannot_delete_system_room' using errcode = 'P0001';
   end if;
 
-  if v_room.owner_id <> v_owner_id then
+  if v_room_owner_id <> v_owner_id then
     raise exception 'not_room_owner' using errcode = 'P0001';
   end if;
 
