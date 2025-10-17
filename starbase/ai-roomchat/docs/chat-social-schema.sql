@@ -29,11 +29,13 @@ create table if not exists public.messages (
 
 alter table public.messages enable row level security;
 
-create policy if not exists messages_select_public
+drop policy if exists messages_select_public on public.messages;
+create policy messages_select_public
 on public.messages for select
 using (true);
 
-create policy if not exists messages_insert_auth
+drop policy if exists messages_insert_auth on public.messages;
+create policy messages_insert_auth
 on public.messages for insert to authenticated
 with check (
   auth.uid() = user_id
@@ -66,20 +68,24 @@ create unique index if not exists friend_requests_unique_pending
 
 alter table public.friend_requests enable row level security;
 
-create policy if not exists friend_requests_select_participants
+drop policy if exists friend_requests_select_participants on public.friend_requests;
+create policy friend_requests_select_participants
 on public.friend_requests for select
 using (auth.uid() in (requester_id, addressee_id));
 
-create policy if not exists friend_requests_insert_requester
+drop policy if exists friend_requests_insert_requester on public.friend_requests;
+create policy friend_requests_insert_requester
 on public.friend_requests for insert to authenticated
 with check (auth.uid() = requester_id);
 
-create policy if not exists friend_requests_update_participants
+drop policy if exists friend_requests_update_participants on public.friend_requests;
+create policy friend_requests_update_participants
 on public.friend_requests for update to authenticated
 using (auth.uid() in (requester_id, addressee_id))
 with check (auth.uid() in (requester_id, addressee_id));
 
-create policy if not exists friend_requests_delete_participants
+drop policy if exists friend_requests_delete_participants on public.friend_requests;
+create policy friend_requests_delete_participants
 on public.friend_requests for delete to authenticated
 using (auth.uid() in (requester_id, addressee_id));
 
@@ -100,15 +106,18 @@ create index if not exists friendships_user_b on public.friendships (user_id_b);
 
 alter table public.friendships enable row level security;
 
-create policy if not exists friendships_select_participants
+drop policy if exists friendships_select_participants on public.friendships;
+create policy friendships_select_participants
 on public.friendships for select
 using (auth.uid() in (user_id_a, user_id_b));
 
-create policy if not exists friendships_insert_participants
+drop policy if exists friendships_insert_participants on public.friendships;
+create policy friendships_insert_participants
 on public.friendships for insert to authenticated
 with check (auth.uid() in (user_id_a, user_id_b));
 
-create policy if not exists friendships_delete_participants
+drop policy if exists friendships_delete_participants on public.friendships;
+create policy friendships_delete_participants
 on public.friendships for delete to authenticated
 using (auth.uid() in (user_id_a, user_id_b));
 
