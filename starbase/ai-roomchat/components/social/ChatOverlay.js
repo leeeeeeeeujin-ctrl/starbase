@@ -21,6 +21,7 @@ import {
   deleteChatRoomAnnouncement,
   toggleChatRoomAnnouncementReaction,
   createChatRoomAnnouncementComment,
+  deleteChatRoomAnnouncementComment,
   markChatRoomRead,
   saveChatMemberPreferences,
   updateChatRoomSettings,
@@ -63,6 +64,29 @@ const ROOM_BACKGROUND_FOLDER = 'room-backgrounds'
 const MEMBER_BACKGROUND_FOLDER = 'member-backgrounds'
 const ANNOUNCEMENT_MEDIA_FOLDER = 'room-announcements'
 const ANNOUNCEMENT_IMAGE_SIZE_LIMIT = 20 * 1024 * 1024
+const ANNOUNCEMENT_VIDEO_SIZE_LIMIT = 200 * 1024 * 1024
+const ANNOUNCEMENT_TOOLBAR_COLORS = [
+  '#f97316',
+  '#facc15',
+  '#10b981',
+  '#0ea5e9',
+  '#6366f1',
+  '#ec4899',
+  '#f8fafc',
+  '#1e293b',
+]
+const ANNOUNCEMENT_TOOLBAR_SIZES = [
+  { id: 'small', label: '작게', scale: 0.9 },
+  { id: 'normal', label: '보통', scale: 1 },
+  { id: 'large', label: '크게', scale: 1.15 },
+  { id: 'xlarge', label: '아주 크게', scale: 1.3 },
+]
+const ANNOUNCEMENT_SIZE_SCALE = ANNOUNCEMENT_TOOLBAR_SIZES.reduce((acc, item) => {
+  acc[item.id] = item.scale
+  return acc
+}, {})
+const ANNOUNCEMENT_POLL_MIN_OPTIONS = 2
+const ANNOUNCEMENT_POLL_MAX_OPTIONS = 6
 const ATTACHMENT_ICONS = {
   image: '🖼️',
   video: '🎬',
@@ -502,6 +526,53 @@ async function uploadAnnouncementImage({ file, roomId = null }) {
   return data.publicUrl
 }
 
+async function uploadAnnouncementMedia({ file, roomId = null, kind = 'image' }) {
+  if (!file) {
+    throw new Error('업로드할 파일을 선택해 주세요.')
+  }
+
+  const sizeLimit = kind === 'video' ? ANNOUNCEMENT_VIDEO_SIZE_LIMIT : ANNOUNCEMENT_IMAGE_SIZE_LIMIT
+  if (file.size > sizeLimit) {
+    if (kind === 'video') {
+      throw new Error('동영상은 200MB 이하로 업로드해 주세요.')
+    }
+    throw new Error('이미지는 20MB 이하로 업로드해 주세요.')
+  }
+
+  const extensionMatch = (file.name || '').match(/\.([a-z0-9]+)$/i)
+  const extension = extensionMatch ? extensionMatch[1].toLowerCase() : kind === 'video' ? 'mp4' : 'webp'
+  const sanitizedName = sanitizeFileName(file.name || `${kind}.${extension}`)
+  const segments = [ANNOUNCEMENT_MEDIA_FOLDER]
+  if (roomId) {
+    segments.push(roomId)
+  } else {
+    segments.push('shared')
+  }
+  segments.push('inline', kind)
+
+  const objectPath = `${segments.join('/')}/${Date.now()}-${createLocalId(kind)}-${sanitizedName}`
+
+  const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(objectPath, file, {
+    contentType: file.type || (kind === 'video' ? 'video/mp4' : 'image/webp'),
+    cacheControl: '3600',
+    upsert: false,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  const { data } = supabase.storage.from(CHAT_ATTACHMENT_BUCKET).getPublicUrl(objectPath)
+  if (!data?.publicUrl) {
+    throw new Error('업로드한 파일의 공개 URL을 생성할 수 없습니다.')
+  }
+
+  return {
+    url: data.publicUrl,
+    path: objectPath,
+  }
+}
+
 const DEFAULT_THEME_CONFIG = {
   mode: 'preset',
   presetId: DEFAULT_THEME_PRESET.id,
@@ -927,6 +998,61 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;')
 }
 
+function decodeHtmlEntities(value = '') {
+  if (!value) return ''
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
+function sanitizeExternalUrl(value = '') {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  try {
+    const url = new URL(trimmed)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return ''
+    }
+    return url.href
+  } catch (error) {
+    return ''
+  }
+}
+
+function sanitizeYoutubeId(value = '') {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const direct = trimmed.match(/^[a-zA-Z0-9_-]{6,15}$/)
+  if (direct) {
+    return trimmed
+  }
+  try {
+    const parsed = new URL(trimmed)
+    const host = parsed.hostname.replace(/^www\./, '')
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.replace(/^\//, '')
+      return id.match(/^[a-zA-Z0-9_-]{6,15}$/) ? id : null
+    }
+    if (host.endsWith('youtube.com')) {
+      const id = parsed.searchParams.get('v') || parsed.pathname.split('/').pop()
+      return id && id.match(/^[a-zA-Z0-9_-]{6,15}$/) ? id : null
+    }
+  } catch (error) {
+    return null
+  }
+  return null
+}
+
+function getYoutubeEmbedUrl(id = '') {
+  if (!id) return ''
+  return `https://www.youtube.com/embed/${id}`
+}
+
 function formatAnnouncementPreview(value = '') {
   if (!value) return ''
   let html = escapeHtml(value)
@@ -936,6 +1062,93 @@ function formatAnnouncementPreview(value = '') {
   html = html.replace(/_(.+?)_/gs, '<em>$1</em>')
   html = html.replace(/~~(.+?)~~/gs, '<mark>$1</mark>')
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+
+  html = html.replace(/!&#91;(.*?)&#93;\((https?:[^)]+)\)/gi, (match, rawAlt, rawUrl) => {
+    const url = sanitizeExternalUrl(decodeHtmlEntities(rawUrl))
+    if (!url) return match
+    const alt = escapeHtml(decodeHtmlEntities(rawAlt || '첨부 이미지'))
+    return `
+<figure style="margin: 12px 0; border-radius: 12px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
+  <img src="${url}" alt="${alt}" style="display: block; width: 100%; height: auto;" loading="lazy" />
+  <figcaption style="padding: 6px 10px; font-size: 12px; color: #cbd5f5;">${alt}</figcaption>
+</figure>`
+  })
+
+  html = html.replace(/&#91;color=([^&#]+)&#93;(.*?)&#91;\/color&#93;/gis, (match, rawColor, inner) => {
+    const color = normalizeColor(decodeHtmlEntities(rawColor))
+    if (!color) return match
+    return `<span style="color: ${color}">${inner}</span>`
+  })
+
+  html = html.replace(/&#91;size=([^&#]+)&#93;(.*?)&#91;\/size&#93;/gis, (match, rawSize, inner) => {
+    const sizeId = decodeHtmlEntities(rawSize || '').trim().toLowerCase()
+    const scale = ANNOUNCEMENT_SIZE_SCALE[sizeId] || 1
+    return `<span style="display: inline-block; font-size: ${scale}em">${inner}</span>`
+  })
+
+  html = html.replace(/&#91;video([^&#]*)&#93;/gi, (match, rawAttrs) => {
+    const attrs = decodeHtmlEntities(rawAttrs || '')
+    const srcMatch = attrs.match(/src="([^"]+)"/i)
+    const posterMatch = attrs.match(/poster="([^"]+)"/i)
+    const url = sanitizeExternalUrl(srcMatch ? srcMatch[1] : '')
+    if (!url) return ''
+    const poster = sanitizeExternalUrl(posterMatch ? posterMatch[1] : '')
+    const posterAttr = poster ? ` poster="${poster}"` : ''
+    return `
+<div style="margin: 12px 0; border-radius: 12px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
+  <video src="${url}" controls playsinline style="display: block; width: 100%; max-height: 320px; background: #000;"${posterAttr}></video>
+</div>`
+  })
+
+  html = html.replace(/&#91;youtube([^&#]*)&#93;/gi, (match, rawAttrs) => {
+    const attrs = decodeHtmlEntities(rawAttrs || '')
+    const idMatch = attrs.match(/id="([^"]+)"/i)
+    const urlMatch = attrs.match(/url="([^"]+)"/i)
+    const titleMatch = attrs.match(/title="([^"]*)"/i)
+    const thumbnailMatch = attrs.match(/thumbnail="([^"]*)"/i)
+    const youtubeId = sanitizeYoutubeId(idMatch ? idMatch[1] : urlMatch ? urlMatch[1] : '')
+    if (!youtubeId) return ''
+    const title = escapeHtml(decodeHtmlEntities(titleMatch ? titleMatch[1] : 'YouTube 영상'))
+    const embedUrl = getYoutubeEmbedUrl(youtubeId)
+    const thumbUrl = sanitizeExternalUrl(thumbnailMatch ? thumbnailMatch[1] : '')
+    const preview = thumbUrl
+      ? `<img src="${thumbUrl}" alt="${title}" style="display:block;width:100%;height:auto;" loading="lazy" />`
+      : `<iframe src="${embedUrl}" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" style="width:100%;min-height:220px;border:0;border-radius:12px;"></iframe>`
+    const footer = thumbUrl
+      ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span style="background:rgba(15,23,42,0.75);color:#f8fafc;padding:8px 14px;border-radius:999px;font-size:13px;">▶ ${title}</span></div>`
+      : ''
+    return `
+<div style="position: relative; margin: 12px 0; border-radius: 14px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
+  ${preview}
+  ${footer}
+  <div style="padding: 8px 12px; font-size: 12px; color: #cbd5f5;">${title}</div>
+  ${thumbUrl ? `<iframe src="${embedUrl}" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" style="position:absolute; inset:0; opacity:0;" tabindex="-1"></iframe>` : ''}
+</div>`
+  })
+
+  html = html.replace(/&#91;poll([^&#]*)&#93;([\s\S]*?)&#91;\/poll&#93;/gi, (match, rawAttrs, rawBody) => {
+    const attrs = decodeHtmlEntities(rawAttrs || '')
+    const questionMatch = attrs.match(/question="([^"]*)"/i)
+    const decodedQuestion = questionMatch ? questionMatch[1] : ''
+    const question = escapeHtml(decodedQuestion || '투표')
+    const lines = rawBody.split(/\r?\n/)
+    const options = []
+    lines.forEach((line) => {
+      const decoded = decodeHtmlEntities(line.trim())
+      const matchOption = decoded.match(/^[-•]\s*(.+)$/)
+      if (matchOption && matchOption[1]) {
+        options.push(escapeHtml(matchOption[1]))
+      }
+    })
+    if (!options.length) {
+      return `<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);"><strong style="display:block;font-size:13px;color:#e2e8f0;">${question}</strong><span style="font-size:12px;color:#94a3b8;">옵션이 없는 투표</span></div>`
+    }
+    const optionsHtml = options
+      .map((option) => `<li style="padding: 8px 10px; border-radius: 10px; background: rgba(15,23,42,0.55); margin-top: 6px; color: #e2e8f0; font-size: 13px;">${option}</li>`)
+      .join('')
+    return `<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);"><strong style="display:block;font-size:13px;color:#e2e8f0;">${question}</strong><ul style="list-style:none;padding:0;margin:6px 0 0;">${optionsHtml}</ul></div>`
+  })
+
   html = html.replace(/\n/g, '<br />')
   return html
 }
@@ -2068,18 +2281,120 @@ const overlayStyles = {
   },
   announcementToolbar: {
     display: 'flex',
-    gap: 8,
+    alignItems: 'center',
     flexWrap: 'wrap',
+    gap: 8,
+    padding: '8px 10px',
+    borderRadius: 14,
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(8, 15, 30, 0.65)',
   },
-  announcementToolbarButton: {
-    borderRadius: 10,
-    border: '1px solid rgba(59, 130, 246, 0.55)',
-    background: 'rgba(37, 99, 235, 0.25)',
+  announcementToolbarGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  announcementToolbarButton: (active = false) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 999,
+    border: active ? '1px solid rgba(59, 130, 246, 0.7)' : '1px solid rgba(71, 85, 105, 0.6)',
+    background: active ? 'rgba(37, 99, 235, 0.28)' : 'rgba(15, 23, 42, 0.72)',
     color: '#e0f2fe',
     fontSize: 12,
     fontWeight: 600,
+    padding: '6px 12px',
+    cursor: 'pointer',
+  }),
+  announcementToolbarIcon: {
+    fontSize: 15,
+    lineHeight: 1,
+  },
+  announcementToolbarPalette: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    padding: '6px 2px 0',
+  },
+  announcementToolbarColorButton: (color) => ({
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    border: color === '#f8fafc' ? '1px solid rgba(15, 23, 42, 0.6)' : '1px solid rgba(148, 163, 184, 0.5)',
+    background: color,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 0 0 1px rgba(15, 23, 42, 0.4)',
+  }),
+  announcementToolbarSizeRow: {
+    display: 'flex',
+    gap: 8,
+    paddingTop: 6,
+  },
+  announcementToolbarSizeButton: (active = false) => ({
+    borderRadius: 10,
+    border: active ? '1px solid rgba(59, 130, 246, 0.7)' : '1px solid rgba(71, 85, 105, 0.6)',
+    background: active ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.7)',
+    color: '#e2e8f0',
+    fontSize: 12,
     padding: '6px 10px',
     cursor: 'pointer',
+  }),
+  announcementToolbarStatus: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  announcementCommentActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 6,
+  },
+  announcementCommentDelete: {
+    borderRadius: 8,
+    border: '1px solid rgba(244, 114, 182, 0.6)',
+    background: 'rgba(244, 114, 182, 0.18)',
+    color: '#fbcfe8',
+    fontSize: 11,
+    padding: '4px 8px',
+    cursor: 'pointer',
+  },
+  announcementYoutubeResult: {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center',
+    borderRadius: 14,
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(15, 23, 42, 0.7)',
+    padding: '8px 12px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    color: '#e2e8f0',
+  },
+  announcementYoutubeThumb: {
+    width: 84,
+    height: 48,
+    borderRadius: 10,
+    objectFit: 'cover',
+    background: 'rgba(15, 23, 42, 0.85)',
+    flexShrink: 0,
+  },
+  announcementYoutubeInfo: {
+    display: 'grid',
+    gap: 4,
+    minWidth: 0,
+  },
+  announcementPollOptionList: {
+    display: 'grid',
+    gap: 8,
+  },
+  announcementPollOptionRow: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
   },
   announcementHint: {
     fontSize: 11,
@@ -3717,6 +4032,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     pinned: false,
     imageUrl: '',
     uploading: false,
+    attachmentUploading: false,
     submitting: false,
     error: null,
   })
@@ -3731,6 +4047,23 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   })
   const [announcementListOpen, setAnnouncementListOpen] = useState(false)
   const [announcementError, setAnnouncementError] = useState(null)
+  const [announcementToolbarState, setAnnouncementToolbarState] = useState({
+    color: false,
+    size: false,
+  })
+  const [announcementYoutubeOverlay, setAnnouncementYoutubeOverlay] = useState({
+    open: false,
+    query: '',
+    results: [],
+    loading: false,
+    error: null,
+  })
+  const [announcementPollOverlay, setAnnouncementPollOverlay] = useState({
+    open: false,
+    question: '',
+    options: ['', ''],
+    error: null,
+  })
   const [roomStats, setRoomStats] = useState(null)
   const [roomStatsLoading, setRoomStatsLoading] = useState(false)
   const [roomPreferences, setRoomPreferences] = useState(null)
@@ -3800,6 +4133,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const composerToggleRef = useRef(null)
   const announcementTextareaRef = useRef(null)
   const announcementImageInputRef = useRef(null)
+  const announcementAttachmentInputRef = useRef(null)
+  const announcementVideoInputRef = useRef(null)
+  const youtubeSearchAbortRef = useRef(null)
   const attachmentCacheRef = useRef(new Map())
   const longPressTimerRef = useRef(null)
   const longPressActiveRef = useRef(false)
@@ -4318,6 +4654,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }, [commitUnreadState])
 
   const viewerId = useMemo(() => viewer?.id || viewer?.owner_id || null, [viewer])
+  const normalizedViewerId = useMemo(() => normalizeId(viewerId), [viewerId])
   const viewerToken = useMemo(() => normalizeId(viewerId), [viewerId])
 
   const currentRoom = useMemo(() => {
@@ -6047,9 +6384,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       pinned: false,
       imageUrl: '',
       uploading: false,
+      attachmentUploading: false,
       submitting: false,
       error: null,
     })
+    setAnnouncementToolbarState({ color: false, size: false })
+    setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
+    setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [context?.chatRoomId, viewerIsModerator])
 
   const handleCloseAnnouncementComposer = useCallback(() => {
@@ -6063,9 +6404,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       pinned: false,
       imageUrl: '',
       uploading: false,
+      attachmentUploading: false,
       submitting: false,
       error: null,
     })
+    setAnnouncementToolbarState({ color: false, size: false })
+    setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
+    setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [])
 
   const handleAnnouncementTitleChange = useCallback((value) => {
@@ -6076,18 +6421,53 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setAnnouncementComposer((prev) => ({ ...prev, content: value }))
   }, [])
 
-  const handleAnnouncementComposerFormat = useCallback(
-    (format) => {
+  const insertAnnouncementMarkup = useCallback((text, options = {}) => {
+    const textarea = announcementTextareaRef.current
+    if (!textarea) return
+    const value = textarea.value || ''
+    const start =
+      options.selectionStart !== undefined && options.selectionStart !== null
+        ? options.selectionStart
+        : textarea.selectionStart ?? value.length
+    const end =
+      options.selectionEnd !== undefined && options.selectionEnd !== null
+        ? options.selectionEnd
+        : textarea.selectionEnd ?? value.length
+    const nextValue = `${value.slice(0, start)}${text}${value.slice(end)}`
+    const selectStartOffset = options.selectStartOffset ?? text.length
+    const selectEndOffset = options.selectEndOffset ?? text.length
+    setAnnouncementComposer((prev) => ({ ...prev, content: nextValue }))
+    requestAnimationFrame(() => {
+      const node = announcementTextareaRef.current
+      if (node) {
+        const baseStart = start + selectStartOffset
+        const baseEnd = start + selectEndOffset
+        node.focus()
+        node.setSelectionRange(baseStart, baseEnd)
+      }
+    })
+  }, [])
+
+  const applyAnnouncementComposerWrap = useCallback(
+    (prefix, suffix, placeholder = '') => {
       const textarea = announcementTextareaRef.current
       if (!textarea) return
       const { selectionStart = 0, selectionEnd = 0, value = '' } = textarea
       const selection = value.slice(selectionStart, selectionEnd)
-      const placeholders = {
-        bold: '굵은 글자',
-        italic: '기울임 글자',
-        highlight: '강조할 문장',
-        code: '코드 조각',
-      }
+      const content = selection || placeholder
+      const replacement = `${prefix}${content}${suffix}`
+      insertAnnouncementMarkup(replacement, {
+        selectionStart,
+        selectionEnd,
+        selectStartOffset: prefix.length,
+        selectEndOffset: prefix.length + content.length,
+      })
+    },
+    [insertAnnouncementMarkup],
+  )
+
+  const handleAnnouncementComposerFormat = useCallback(
+    (format) => {
       const wrappers = {
         bold: ['**', '**'],
         italic: ['*', '*'],
@@ -6096,22 +6476,281 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
       const pair = wrappers[format]
       if (!pair) return
-      const [prefix, suffix] = pair
-      const content = selection || placeholders[format] || ''
-      const replacement = `${prefix}${content}${suffix}`
-      const nextValue = `${value.slice(0, selectionStart)}${replacement}${value.slice(selectionEnd)}`
-      const selectionOffsetStart = selectionStart + prefix.length
-      const selectionOffsetEnd = selectionOffsetStart + content.length
-      setAnnouncementComposer((prev) => ({ ...prev, content: nextValue }))
-      requestAnimationFrame(() => {
-        const node = announcementTextareaRef.current
-        if (node) {
-          node.focus()
-          node.setSelectionRange(selectionOffsetStart, selectionOffsetEnd)
+      applyAnnouncementComposerWrap(pair[0], pair[1], '')
+    },
+    [applyAnnouncementComposerWrap],
+  )
+
+  const handleAnnouncementToolbarToggle = useCallback((panel) => {
+    setAnnouncementToolbarState((prev) => ({
+      color: panel === 'color' ? !prev.color : false,
+      size: panel === 'size' ? !prev.size : false,
+    }))
+  }, [])
+
+  const handleAnnouncementColorPick = useCallback(
+    (color) => {
+      const normalized = getColorPickerValue(color, color)
+      applyAnnouncementComposerWrap(`[color=${normalized}]`, '[/color]', '')
+      setAnnouncementToolbarState((prev) => ({ ...prev, color: false }))
+    },
+    [applyAnnouncementComposerWrap],
+  )
+
+  const handleAnnouncementSizePick = useCallback(
+    (sizeId) => {
+      const size = ANNOUNCEMENT_TOOLBAR_SIZES.find((entry) => entry.id === sizeId)
+      if (!size) return
+      applyAnnouncementComposerWrap(`[size=${size.id}]`, '[/size]', '')
+      setAnnouncementToolbarState((prev) => ({ ...prev, size: false }))
+    },
+    [applyAnnouncementComposerWrap],
+  )
+
+  const handleAnnouncementAttachmentTrigger = useCallback(
+    (type) => {
+      if (announcementComposer.attachmentUploading || announcementComposer.submitting) return
+      const target = type === 'video' ? announcementVideoInputRef.current : announcementAttachmentInputRef.current
+      if (target) {
+        target.click()
+      }
+    },
+    [announcementComposer.attachmentUploading, announcementComposer.submitting],
+  )
+
+  const handleAnnouncementAttachmentSelect = useCallback(
+    async (event, type) => {
+      if (!context?.chatRoomId) return
+      const file = event.target?.files?.[0]
+      if (event.target) {
+        event.target.value = ''
+      }
+      if (!file) return
+      setAnnouncementComposer((prev) => ({ ...prev, attachmentUploading: true, error: null }))
+      try {
+        const { url } = await uploadAnnouncementMedia({
+          file,
+          roomId: context.chatRoomId,
+          kind: type,
+        })
+        if (!url) {
+          throw new Error('업로드된 파일 URL을 확인할 수 없습니다.')
         }
-      })
+        if (type === 'image') {
+          const alt = file.name ? file.name.replace(/\s+/g, ' ') : '첨부 이미지'
+          const snippet = `\n![${alt}](${url})\n`
+          insertAnnouncementMarkup(snippet, {
+            selectStartOffset: snippet.length,
+            selectEndOffset: snippet.length,
+          })
+        } else if (type === 'video') {
+          const snippet = `\n[video src="${url}"]\n`
+          insertAnnouncementMarkup(snippet, {
+            selectStartOffset: snippet.length,
+            selectEndOffset: snippet.length,
+          })
+        }
+      } catch (error) {
+        console.error('[chat] 공지 첨부 업로드 실패', error)
+        setAnnouncementComposer((prev) => ({
+          ...prev,
+          error: error?.message || '첨부 파일을 업로드할 수 없습니다.',
+        }))
+      } finally {
+        setAnnouncementComposer((prev) => ({ ...prev, attachmentUploading: false }))
+      }
+    },
+    [context?.chatRoomId, insertAnnouncementMarkup],
+  )
+
+  const handleAnnouncementYoutubeOpen = useCallback(() => {
+    setAnnouncementYoutubeOverlay({ open: true, query: '', results: [], loading: false, error: null })
+  }, [])
+
+  const handleAnnouncementYoutubeClose = useCallback(() => {
+    if (youtubeSearchAbortRef.current) {
+      youtubeSearchAbortRef.current.abort()
+      youtubeSearchAbortRef.current = null
+    }
+    setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
+  }, [])
+
+  const handleAnnouncementYoutubeQueryChange = useCallback((value) => {
+    setAnnouncementYoutubeOverlay((prev) => ({ ...prev, query: value }))
+  }, [])
+
+  const handleAnnouncementYoutubeSearch = useCallback(
+    async (queryInput) => {
+      const query = (queryInput || '').trim()
+      if (!query) {
+        setAnnouncementYoutubeOverlay((prev) => ({ ...prev, error: '검색어를 입력해 주세요.' }))
+        return
+      }
+      if (youtubeSearchAbortRef.current) {
+        youtubeSearchAbortRef.current.abort()
+        youtubeSearchAbortRef.current = null
+      }
+      const controller = new AbortController()
+      youtubeSearchAbortRef.current = controller
+      setAnnouncementYoutubeOverlay((prev) => ({ ...prev, loading: true, error: null }))
+      try {
+        const response = await fetch(`/api/chat/youtube-search?q=${encodeURIComponent(query)}&limit=12`, {
+          signal: controller.signal,
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload?.error || '유튜브 검색에 실패했습니다.')
+        }
+        const payload = await response.json()
+        const results = Array.isArray(payload?.results) ? payload.results : []
+        setAnnouncementYoutubeOverlay((prev) => ({
+          ...prev,
+          loading: false,
+          results,
+          error: results.length ? null : '검색 결과가 없습니다.',
+        }))
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          return
+        }
+        console.error('[chat] 유튜브 검색 실패', error)
+        setAnnouncementYoutubeOverlay((prev) => ({
+          ...prev,
+          loading: false,
+          error: error?.message || '유튜브 검색을 수행할 수 없습니다.',
+        }))
+      } finally {
+        youtubeSearchAbortRef.current = null
+      }
     },
     [],
+  )
+
+  const handleAnnouncementYoutubeSelect = useCallback(
+    (video) => {
+      if (!video) return
+      const candidateId = video.id || video.videoId || video.url || ''
+      const youtubeId = sanitizeYoutubeId(candidateId)
+      if (!youtubeId) {
+        setAnnouncementYoutubeOverlay((prev) => ({ ...prev, error: '선택한 영상 ID를 확인할 수 없습니다.' }))
+        return
+      }
+      const titleSource = typeof video.title === 'string' ? video.title.trim() : ''
+      const title = titleSource ? titleSource.replace(/"/g, "'") : 'YouTube 영상'
+      const thumb = sanitizeExternalUrl(video.thumbnail || video.thumbnailUrl || '')
+      const attributes = [`id="${youtubeId}"`, `title="${title}"`]
+      if (thumb) {
+        attributes.push(`thumbnail="${thumb}"`)
+      }
+      const snippet = `\n[youtube ${attributes.join(' ')}]\n`
+      insertAnnouncementMarkup(snippet, {
+        selectStartOffset: snippet.length,
+        selectEndOffset: snippet.length,
+      })
+      handleAnnouncementYoutubeClose()
+    },
+    [handleAnnouncementYoutubeClose, insertAnnouncementMarkup],
+  )
+
+  const handleAnnouncementPollOpen = useCallback(() => {
+    setAnnouncementPollOverlay({ open: true, question: '', options: ['', ''], error: null })
+  }, [])
+
+  const handleAnnouncementPollClose = useCallback(() => {
+    setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
+  }, [])
+
+  const handleAnnouncementPollQuestionChange = useCallback((value) => {
+    setAnnouncementPollOverlay((prev) => ({ ...prev, question: value }))
+  }, [])
+
+  const handleAnnouncementPollOptionChange = useCallback((index, value) => {
+    setAnnouncementPollOverlay((prev) => {
+      const next = [...prev.options]
+      next[index] = value
+      return { ...prev, options: next }
+    })
+  }, [])
+
+  const handleAnnouncementPollAddOption = useCallback(() => {
+    setAnnouncementPollOverlay((prev) => {
+      if (prev.options.length >= ANNOUNCEMENT_POLL_MAX_OPTIONS) {
+        return {
+          ...prev,
+          error: `최대 ${ANNOUNCEMENT_POLL_MAX_OPTIONS}개까지 선택지를 추가할 수 있습니다.`,
+        }
+      }
+      return { ...prev, options: [...prev.options, ''], error: null }
+    })
+  }, [])
+
+  const handleAnnouncementPollRemoveOption = useCallback((index) => {
+    setAnnouncementPollOverlay((prev) => {
+      if (prev.options.length <= ANNOUNCEMENT_POLL_MIN_OPTIONS) {
+        return {
+          ...prev,
+          error: `최소 ${ANNOUNCEMENT_POLL_MIN_OPTIONS}개 이상의 선택지가 필요합니다.`,
+        }
+      }
+      const next = prev.options.filter((_, optionIndex) => optionIndex !== index)
+      return { ...prev, options: next, error: null }
+    })
+  }, [])
+
+  const handleAnnouncementPollSubmit = useCallback(() => {
+    setAnnouncementPollOverlay((prev) => {
+      const question = (prev.question || '').trim()
+      const options = prev.options.map((option) => option.trim()).filter(Boolean)
+      if (!question) {
+        return { ...prev, error: '투표 제목을 입력해 주세요.' }
+      }
+      if (options.length < ANNOUNCEMENT_POLL_MIN_OPTIONS) {
+        return {
+          ...prev,
+          error: `최소 ${ANNOUNCEMENT_POLL_MIN_OPTIONS}개의 선택지가 필요합니다.`,
+        }
+      }
+      const safeQuestion = question.replace(/\n/g, ' ').replace(/"/g, "'")
+      const safeOptions = options.map((option) => option.replace(/\n/g, ' ').replace(/"/g, "'"))
+      const lines = safeOptions.map((option) => `- ${option}`)
+      const snippet = `\n[poll question="${safeQuestion}"]\n${lines.join('\n')}\n[/poll]\n`
+      insertAnnouncementMarkup(snippet, {
+        selectStartOffset: snippet.length,
+        selectEndOffset: snippet.length,
+      })
+      return { open: false, question: '', options: ['', ''], error: null }
+    })
+  }, [insertAnnouncementMarkup])
+
+  const handleDeleteAnnouncementComment = useCallback(
+    async (comment) => {
+      const commentId = comment?.id
+      if (!commentId) return
+      const confirmDelete = window.confirm('이 댓글을 삭제하시겠습니까?')
+      if (!confirmDelete) return
+      setAnnouncementDetail((prev) => ({ ...prev, loading: true, error: null }))
+      try {
+        await deleteChatRoomAnnouncementComment({ commentId })
+        const detail = await fetchChatRoomAnnouncementDetail({ announcementId: announcementDetail.announcementId })
+        setAnnouncementDetail((prev) => ({
+          ...prev,
+          loading: false,
+          announcement: detail.announcement || prev.announcement,
+          comments: detail.comments || [],
+        }))
+        if (context?.chatRoomId) {
+          refreshRoomAnnouncements(context.chatRoomId)
+        }
+      } catch (error) {
+        console.error('[chat] 공지 댓글 삭제 실패', error)
+        setAnnouncementDetail((prev) => ({
+          ...prev,
+          loading: false,
+          error: error?.message || '댓글을 삭제할 수 없습니다.',
+        }))
+      }
+    },
+    [announcementDetail.announcementId, context?.chatRoomId, refreshRoomAnnouncements],
   )
 
   const handleAnnouncementComposerTogglePinned = useCallback(() => {
@@ -6171,6 +6810,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const announcementPreviewHtml = useMemo(
     () => formatAnnouncementPreview(announcementComposer.content || ''),
     [announcementComposer.content],
+  )
+
+  const announcementDetailHtml = useMemo(
+    () => formatAnnouncementPreview(announcementDetail.announcement?.content || ''),
+    [announcementDetail.announcement?.content],
   )
 
   const handleSubmitAnnouncement = useCallback(async () => {
@@ -11063,39 +11707,143 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             style={{ display: 'none' }}
             onChange={handleAnnouncementImageSelect}
           />
+          <input
+            ref={announcementAttachmentInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(event) => handleAnnouncementAttachmentSelect(event, 'image')}
+          />
+          <input
+            ref={announcementVideoInputRef}
+            type="file"
+            accept="video/*"
+            style={{ display: 'none' }}
+            onChange={(event) => handleAnnouncementAttachmentSelect(event, 'video')}
+          />
         </div>
         <div style={overlayStyles.announcementToolbar}>
-          <button
-            type="button"
-            style={overlayStyles.announcementToolbarButton}
-            onClick={() => handleAnnouncementComposerFormat('bold')}
-          >
-            굵게
-          </button>
-          <button
-            type="button"
-            style={overlayStyles.announcementToolbarButton}
-            onClick={() => handleAnnouncementComposerFormat('italic')}
-          >
-            기울임
-          </button>
-          <button
-            type="button"
-            style={overlayStyles.announcementToolbarButton}
-            onClick={() => handleAnnouncementComposerFormat('highlight')}
-          >
-            강조
-          </button>
-          <button
-            type="button"
-            style={overlayStyles.announcementToolbarButton}
-            onClick={() => handleAnnouncementComposerFormat('code')}
-          >
-            코드
-          </button>
+          <div style={overlayStyles.announcementToolbarGroup}>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(false)}
+              onClick={() => handleAnnouncementAttachmentTrigger('image')}
+              disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>🖼️</span>
+              이미지
+            </button>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(false)}
+              onClick={() => handleAnnouncementAttachmentTrigger('video')}
+              disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>🎬</span>
+              동영상
+            </button>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(false)}
+              onClick={handleAnnouncementYoutubeOpen}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>📺</span>
+              유튜브
+            </button>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(false)}
+              onClick={handleAnnouncementPollOpen}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>🗳️</span>
+              투표
+            </button>
+          </div>
+          <div style={overlayStyles.announcementToolbarGroup}>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(false)}
+              onClick={() => handleAnnouncementComposerFormat('bold')}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>𝐁</span>
+              굵게
+            </button>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(false)}
+              onClick={() => handleAnnouncementComposerFormat('italic')}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>𝑰</span>
+              기울임
+            </button>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(false)}
+              onClick={() => handleAnnouncementComposerFormat('highlight')}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>✨</span>
+              강조
+            </button>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(false)}
+              onClick={() => handleAnnouncementComposerFormat('code')}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>⌘</span>
+              코드
+            </button>
+          </div>
+          <div style={overlayStyles.announcementToolbarGroup}>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(announcementToolbarState.color)}
+              onClick={() => handleAnnouncementToolbarToggle('color')}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>🎨</span>
+              글자색
+            </button>
+            <button
+              type="button"
+              style={overlayStyles.announcementToolbarButton(announcementToolbarState.size)}
+              onClick={() => handleAnnouncementToolbarToggle('size')}
+            >
+              <span style={overlayStyles.announcementToolbarIcon}>🔠</span>
+              글자크기
+            </button>
+          </div>
         </div>
+        {announcementToolbarState.color ? (
+          <div style={overlayStyles.announcementToolbarPalette}>
+            {ANNOUNCEMENT_TOOLBAR_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                style={overlayStyles.announcementToolbarColorButton(color)}
+                onClick={() => handleAnnouncementColorPick(color)}
+                aria-label={`글자색 ${color}`}
+              />
+            ))}
+          </div>
+        ) : null}
+        {announcementToolbarState.size ? (
+          <div style={overlayStyles.announcementToolbarSizeRow}>
+            {ANNOUNCEMENT_TOOLBAR_SIZES.map((size) => (
+              <button
+                key={size.id}
+                type="button"
+                style={overlayStyles.announcementToolbarSizeButton(false)}
+                onClick={() => handleAnnouncementSizePick(size.id)}
+              >
+                {size.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {announcementComposer.attachmentUploading ? (
+          <span style={overlayStyles.announcementToolbarStatus}>첨부 파일을 업로드하는 중입니다…</span>
+        ) : null}
         <span style={overlayStyles.announcementHint}>
-          **굵게**, *기울임*, ~~강조~~, `코드` 표기와 줄바꿈 미리보기를 지원합니다.
+          **굵게**, *기울임*, ~~강조~~, `코드` 표기와 색상, 크기, 첨부 미리보기를 지원합니다.
         </span>
         <textarea
           rows={6}
@@ -11146,12 +11894,150 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     </SurfaceOverlay>
   )
 
+  const announcementYoutubeOverlayNode = (
+    <SurfaceOverlay
+      open={announcementYoutubeOverlay.open}
+      onClose={handleAnnouncementYoutubeClose}
+      title="유튜브 영상 추가"
+      width="min(520px, 92vw)"
+      zIndex={1635}
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            value={announcementYoutubeOverlay.query}
+            onChange={(event) => handleAnnouncementYoutubeQueryChange(event.target.value)}
+            placeholder="영상 제목이나 채널을 입력해 주세요"
+            style={overlayStyles.input}
+            disabled={announcementYoutubeOverlay.loading}
+          />
+          <button
+            type="button"
+            style={overlayStyles.secondaryButton}
+            onClick={() => handleAnnouncementYoutubeSearch(announcementYoutubeOverlay.query)}
+            disabled={announcementYoutubeOverlay.loading}
+          >
+            {announcementYoutubeOverlay.loading ? '검색 중…' : '검색'}
+          </button>
+        </div>
+        {announcementYoutubeOverlay.error ? (
+          <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementYoutubeOverlay.error}</span>
+        ) : null}
+        <div style={{ display: 'grid', gap: 10 }}>
+          {announcementYoutubeOverlay.results.map((video) => {
+            const thumb = video.thumbnail || video.thumbnailUrl || (Array.isArray(video.thumbnails) ? video.thumbnails[0]?.url : null)
+            return (
+              <button
+                key={video.id || video.videoId || video.url || `${video.title}-${video.publishedAt || ''}`}
+                type="button"
+                style={overlayStyles.announcementYoutubeResult}
+                onClick={() => handleAnnouncementYoutubeSelect(video)}
+              >
+                {thumb ? (
+                  <img
+                    src={thumb}
+                    alt={video.title || '유튜브 썸네일'}
+                    style={overlayStyles.announcementYoutubeThumb}
+                  />
+                ) : (
+                  <div style={{ ...overlayStyles.announcementYoutubeThumb, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12 }}>
+                    썸네일 없음
+                  </div>
+                )}
+                <div style={overlayStyles.announcementYoutubeInfo}>
+                  <strong style={{ fontSize: 13, color: '#f8fafc' }}>
+                    {video.title || '제목 없는 영상'}
+                  </strong>
+                  {video.author ? (
+                    <span style={overlayStyles.announcementMeta}>{video.author}</span>
+                  ) : null}
+                  {video.duration ? (
+                    <span style={overlayStyles.announcementMeta}>{video.duration}</span>
+                  ) : null}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </SurfaceOverlay>
+  )
+
+  const announcementPollOverlayNode = (
+    <SurfaceOverlay
+      open={announcementPollOverlay.open}
+      onClose={handleAnnouncementPollClose}
+      title="투표 만들기"
+      width="min(480px, 88vw)"
+      zIndex={1630}
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <label style={overlayStyles.fieldLabel}>
+          투표 제목
+          <input
+            type="text"
+            value={announcementPollOverlay.question}
+            onChange={(event) => handleAnnouncementPollQuestionChange(event.target.value)}
+            placeholder="예: 다음 이벤트 날짜를 골라주세요"
+            style={overlayStyles.input}
+          />
+        </label>
+        <div style={overlayStyles.announcementPollOptionList}>
+          {announcementPollOverlay.options.map((option, index) => (
+            <div key={`poll-option-${index}`} style={overlayStyles.announcementPollOptionRow}>
+              <input
+                type="text"
+                value={option}
+                onChange={(event) => handleAnnouncementPollOptionChange(index, event.target.value)}
+                placeholder={`선택지 ${index + 1}`}
+                style={{ ...overlayStyles.input, flex: 1 }}
+              />
+              <button
+                type="button"
+                style={overlayStyles.secondaryButton}
+                onClick={() => handleAnnouncementPollRemoveOption(index)}
+                disabled={announcementPollOverlay.options.length <= ANNOUNCEMENT_POLL_MIN_OPTIONS}
+              >
+                제거
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            style={overlayStyles.secondaryButton}
+            onClick={handleAnnouncementPollAddOption}
+            disabled={announcementPollOverlay.options.length >= ANNOUNCEMENT_POLL_MAX_OPTIONS}
+          >
+            선택지 추가
+          </button>
+        </div>
+        {announcementPollOverlay.error ? (
+          <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementPollOverlay.error}</span>
+        ) : null}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" style={overlayStyles.secondaryButton} onClick={handleAnnouncementPollClose}>
+            취소
+          </button>
+          <button
+            type="button"
+            style={overlayStyles.actionButton('primary', false)}
+            onClick={handleAnnouncementPollSubmit}
+          >
+            삽입
+          </button>
+        </div>
+      </div>
+    </SurfaceOverlay>
+  )
+
   const announcementDetailOverlay = (
     <SurfaceOverlay
       open={announcementDetail.open}
       onClose={handleCloseAnnouncementDetail}
       title="공지 상세"
       width="min(520px, 92vw)"
+      zIndex={1650}
     >
       {announcementDetail.loading ? (
         <span style={overlayStyles.mutedText}>공지 내용을 불러오는 중...</span>
@@ -11176,9 +12062,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 />
               </div>
             ) : null}
-            <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, color: '#cbd5f5', fontSize: 13 }}>
-              {announcementDetail.announcement.content}
-            </p>
+            <div
+              style={overlayStyles.announcementPreviewBody}
+              dangerouslySetInnerHTML={{
+                __html:
+                  announcementDetailHtml ||
+                  '<span style="color:#94a3b8;">공지 내용이 비어 있습니다.</span>',
+              }}
+            />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button type="button" style={overlayStyles.secondaryButton} onClick={handleToggleAnnouncementReaction}>
@@ -11221,6 +12112,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       {formatDateLabel(comment.created_at)}
                     </span>
                     <p style={{ color: '#cbd5f5', fontSize: 13, whiteSpace: 'pre-wrap' }}>{comment.content}</p>
+                    {(viewerIsModerator ||
+                      (normalizedViewerId &&
+                        normalizedViewerId === normalizeId(comment.owner_id || comment.ownerId))) ? (
+                      <div style={overlayStyles.announcementCommentActions}>
+                        <button
+                          type="button"
+                          style={overlayStyles.announcementCommentDelete}
+                          onClick={() => handleDeleteAnnouncementComment(comment)}
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -11317,6 +12221,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       {friendOverlay}
       {announcementListOverlay}
       {announcementComposerOverlay}
+      {announcementYoutubeOverlayNode}
+      {announcementPollOverlayNode}
       {announcementDetailOverlay}
       {banOverlay}
       {participantOverlay}

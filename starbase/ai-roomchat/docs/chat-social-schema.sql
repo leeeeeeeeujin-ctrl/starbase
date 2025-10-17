@@ -989,3 +989,57 @@ $$;
 
 grant execute on function public.create_chat_room_announcement_comment(uuid, text)
 to authenticated;
+
+drop function if exists public.delete_chat_room_announcement_comment(uuid);
+create or replace function public.delete_chat_room_announcement_comment(
+  p_comment_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_room_id uuid := null;
+  v_owner_id uuid := null;
+  v_can_delete boolean := false;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  if p_comment_id is null then
+    return jsonb_build_object('ok', false, 'error', 'missing_comment_id');
+  end if;
+
+  select c.owner_id, a.room_id
+    into v_owner_id, v_room_id
+  from public.chat_room_announcement_comments c
+  join public.chat_room_announcements a on a.id = c.announcement_id
+  where c.id = p_comment_id
+  limit 1;
+
+  if v_room_id is null then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  select
+    v_actor = v_owner_id
+    or exists (select 1 from public.chat_rooms r where r.id = v_room_id and r.owner_id = v_actor)
+    or exists (select 1 from public.chat_room_moderators m where m.room_id = v_room_id and m.owner_id = v_actor)
+    into v_can_delete;
+
+  if not v_can_delete then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  delete from public.chat_room_announcement_comments
+  where id = p_comment_id;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.delete_chat_room_announcement_comment(uuid)
+to authenticated;

@@ -348,6 +348,22 @@ export async function createChatRoomAnnouncementComment({ announcementId, conten
   return data?.comment || null
 }
 
+export async function deleteChatRoomAnnouncementComment({ commentId }) {
+  if (!commentId) {
+    throw new Error('commentId가 필요합니다.')
+  }
+
+  const { error } = await supabase.rpc('delete_chat_room_announcement_comment', {
+    p_comment_id: commentId,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return { ok: true }
+}
+
 export async function fetchChatRoomStats({ roomId }) {
   if (!roomId) {
     throw new Error('roomId가 필요합니다.')
