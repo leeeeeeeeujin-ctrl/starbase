@@ -3048,7 +3048,9 @@ create table if not exists public.chat_room_announcements (
   id uuid primary key default gen_random_uuid(),
   room_id uuid not null references public.chat_rooms(id) on delete cascade,
   author_id uuid not null references auth.users(id) on delete cascade,
+  title text,
   content text not null,
+  image_url text,
   pinned boolean not null default false,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
@@ -6648,7 +6650,9 @@ begin
     select
       a.id,
       a.room_id,
+      a.title,
       a.content,
+      a.image_url,
       a.pinned,
       a.created_at,
       a.updated_at,
@@ -6675,7 +6679,9 @@ begin
     select
       a.id,
       a.room_id,
+      a.title,
       a.content,
+      a.image_url,
       a.pinned,
       a.created_at,
       a.updated_at,
@@ -6777,7 +6783,9 @@ begin
     select
       a.id,
       a.room_id,
+      a.title,
       a.content,
+      a.image_url,
       a.pinned,
       a.created_at,
       a.updated_at,
@@ -6824,9 +6832,13 @@ grant execute on function public.fetch_chat_room_announcement_detail(uuid)
 to authenticated;
 
 drop function if exists public.create_chat_room_announcement(uuid, text, boolean);
+drop function if exists public.create_chat_room_announcement(uuid, text, text, boolean);
+drop function if exists public.create_chat_room_announcement(uuid, text, text, text, boolean);
 create or replace function public.create_chat_room_announcement(
   p_room_id uuid,
+  p_title text default null,
   p_content text,
+  p_image_url text default null,
   p_pinned boolean default false
 )
 returns jsonb
@@ -6837,7 +6849,9 @@ as $$
 declare
   v_actor uuid := auth.uid();
   v_can_manage boolean := false;
+  v_title text := null;
   v_content text := coalesce(p_content, '');
+  v_image text := null;
   v_row jsonb := null;
 begin
   if v_actor is null then
@@ -6848,6 +6862,9 @@ begin
   if v_content = '' then
     return jsonb_build_object('ok', false, 'error', 'missing_content');
   end if;
+
+  v_title := nullif(trim(coalesce(p_title, '')), '');
+  v_image := nullif(trim(coalesce(p_image_url, '')), '');
 
   select exists (
       select 1 from public.chat_rooms r
@@ -6865,13 +6882,15 @@ begin
     return jsonb_build_object('ok', false, 'error', 'forbidden');
   end if;
 
-  insert into public.chat_room_announcements (room_id, author_id, content, pinned)
-  values (p_room_id, v_actor, v_content, coalesce(p_pinned, false))
+  insert into public.chat_room_announcements (room_id, author_id, title, content, image_url, pinned)
+  values (p_room_id, v_actor, v_title, v_content, v_image, coalesce(p_pinned, false))
   returning jsonb_build_object(
     'id', id,
     'room_id', room_id,
     'author_id', author_id,
+    'title', title,
     'content', content,
+    'image_url', image_url,
     'pinned', pinned,
     'created_at', created_at,
     'updated_at', updated_at
@@ -6889,7 +6908,7 @@ begin
 end;
 $$;
 
-grant execute on function public.create_chat_room_announcement(uuid, text, boolean)
+grant execute on function public.create_chat_room_announcement(uuid, text, text, text, boolean)
 to authenticated;
 
 drop function if exists public.delete_chat_room_announcement(uuid);

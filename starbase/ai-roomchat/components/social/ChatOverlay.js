@@ -61,6 +61,8 @@ const PINCH_TRIGGER_RATIO = 0.7
 const PINCH_MIN_DELTA = 28
 const ROOM_BACKGROUND_FOLDER = 'room-backgrounds'
 const MEMBER_BACKGROUND_FOLDER = 'member-backgrounds'
+const ANNOUNCEMENT_MEDIA_FOLDER = 'room-announcements'
+const ANNOUNCEMENT_IMAGE_SIZE_LIMIT = 20 * 1024 * 1024
 const ATTACHMENT_ICONS = {
   image: '🖼️',
   video: '🎬',
@@ -461,6 +463,45 @@ async function uploadBackgroundImage({ file, roomId = null, ownerToken = null })
   return data.publicUrl
 }
 
+async function uploadAnnouncementImage({ file, roomId = null }) {
+  if (!file) {
+    throw new Error('업로드할 이미지를 선택해 주세요.')
+  }
+
+  if (file.size > ANNOUNCEMENT_IMAGE_SIZE_LIMIT) {
+    throw new Error('공지 이미지는 20MB 이하로 선택해 주세요.')
+  }
+
+  const extensionMatch = (file.name || '').match(/\.([a-z0-9]+)$/i)
+  const extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'webp'
+  const sanitizedName = sanitizeFileName(file.name || `announcement.${extension}`)
+  const segments = [ANNOUNCEMENT_MEDIA_FOLDER]
+  if (roomId) {
+    segments.push(roomId)
+  } else {
+    segments.push('shared')
+  }
+
+  const objectPath = `${segments.join('/')}/${createLocalId('notice')}-${sanitizedName}`
+
+  const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(objectPath, file, {
+    contentType: file.type || 'image/webp',
+    cacheControl: '3600',
+    upsert: false,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  const { data } = supabase.storage.from(CHAT_ATTACHMENT_BUCKET).getPublicUrl(objectPath)
+  if (!data?.publicUrl) {
+    throw new Error('업로드한 공지 이미지를 확인할 수 없습니다.')
+  }
+
+  return data.publicUrl
+}
+
 const DEFAULT_THEME_CONFIG = {
   mode: 'preset',
   presetId: DEFAULT_THEME_PRESET.id,
@@ -651,11 +692,37 @@ function clampMiniOverlayPosition(
 
 function getViewportSnapshot() {
   if (typeof window === 'undefined') {
-    return { ...DEFAULT_VIEWPORT }
+    return {
+      ...DEFAULT_VIEWPORT,
+      innerWidth: DEFAULT_VIEWPORT.width,
+      innerHeight: DEFAULT_VIEWPORT.height,
+      offsetTop: 0,
+      offsetLeft: 0,
+      safeAreaTop: 0,
+      safeAreaBottom: 0,
+      scale: 1,
+    }
   }
+
+  const { innerWidth, innerHeight, visualViewport } = window
+  const viewportWidth = visualViewport?.width ?? innerWidth
+  const viewportHeight = visualViewport?.height ?? innerHeight
+  const offsetTop = visualViewport?.offsetTop ?? 0
+  const offsetLeft = visualViewport?.offsetLeft ?? 0
+  const scale = visualViewport?.scale ?? 1
+  const safeAreaTop = Math.max(0, offsetTop)
+  const safeAreaBottom = Math.max(0, innerHeight - offsetTop - viewportHeight)
+
   return {
-    width: window.innerWidth,
-    height: window.innerHeight,
+    width: viewportWidth,
+    height: viewportHeight,
+    innerWidth,
+    innerHeight,
+    offsetTop,
+    offsetLeft,
+    safeAreaTop,
+    safeAreaBottom,
+    scale,
   }
 }
 
@@ -998,9 +1065,9 @@ const overlayStyles = {
     background: 'rgba(15, 23, 42, 0.94)',
     borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
-    padding: '28px 28px calc(48px + env(safe-area-inset-bottom, 16px))',
-    minHeight: 'min(96dvh, 860px)',
-    maxHeight: 'min(100dvh, 920px)',
+    padding: '28px 28px calc(48px + var(--chat-overlay-safe-bottom, env(safe-area-inset-bottom, 16px)))',
+    minHeight: 'min(var(--chat-overlay-viewport-height, 96dvh), 860px)',
+    maxHeight: 'min(var(--chat-overlay-viewport-height, 100dvh), 920px)',
     display: 'flex',
     flexDirection: 'column',
     width: '100%',
@@ -1008,6 +1075,7 @@ const overlayStyles = {
     alignItems: 'stretch',
     flex: 1,
     overflow: 'hidden',
+    transition: 'min-height 0.2s ease, max-height 0.2s ease',
   },
   root: (focused, compact = false, viewportHeight = null) => {
     const numericHeight =
@@ -1818,6 +1886,169 @@ const overlayStyles = {
     padding: '6px 14px',
     cursor: 'pointer',
   }),
+  pinnedAnnouncementContainer: {
+    position: 'sticky',
+    top: -8,
+    zIndex: 5,
+    display: 'grid',
+    gap: 12,
+    margin: '0 -6px 18px',
+    padding: '16px 6px 10px',
+    isolation: 'isolate',
+  },
+  pinnedAnnouncementBackdrop: {
+    position: 'absolute',
+    inset: '-18px -6px -12px',
+    borderRadius: 30,
+    background:
+      'linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(15, 23, 42, 0.72) 55%, rgba(15, 23, 42, 0) 100%)',
+    backdropFilter: 'blur(24px)',
+    pointerEvents: 'none',
+  },
+  pinnedAnnouncementContent: {
+    position: 'relative',
+    display: 'grid',
+    gap: 12,
+    zIndex: 1,
+  },
+  pinnedAnnouncementCard: (hasImage = false) => ({
+    display: 'grid',
+    gridTemplateColumns: hasImage ? 'minmax(0, 1fr) minmax(120px, 168px)' : 'minmax(0, 1fr)',
+    gap: 14,
+    padding: '14px 18px',
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.38)',
+    background: 'rgba(15, 23, 42, 0.7)',
+    backdropFilter: 'blur(22px)',
+    boxShadow: '0 18px 42px -18px rgba(2, 6, 23, 0.7)',
+  }),
+  pinnedAnnouncementHeaderRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  pinnedAnnouncementBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '4px 10px',
+    borderRadius: 999,
+    background: 'rgba(59, 130, 246, 0.18)',
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    color: '#e0f2fe',
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.01em',
+    textTransform: 'uppercase',
+  },
+  pinnedAnnouncementTimestamp: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  pinnedAnnouncementText: {
+    display: 'grid',
+    gap: 6,
+    color: '#e2e8f0',
+  },
+  pinnedAnnouncementTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#f8fafc',
+    lineHeight: 1.4,
+  },
+  pinnedAnnouncementPreview: {
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#cbd5f5',
+    wordBreak: 'break-word',
+  },
+  pinnedAnnouncementImageWrapper: {
+    position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(15, 23, 42, 0.72)',
+  },
+  pinnedAnnouncementImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  pinnedAnnouncementImageButton: {
+    padding: 0,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+  },
+  pinnedAnnouncementActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 6,
+  },
+  pinnedAnnouncementActionButton: (variant = 'secondary') => ({
+    borderRadius: 999,
+    padding: '6px 14px',
+    fontSize: 12,
+    fontWeight: 600,
+    border:
+      variant === 'primary'
+        ? '1px solid rgba(59, 130, 246, 0.7)'
+        : '1px solid rgba(148, 163, 184, 0.5)',
+    background:
+      variant === 'primary'
+        ? 'rgba(37, 99, 235, 0.28)'
+        : 'rgba(15, 23, 42, 0.68)',
+    color: variant === 'primary' ? '#e0f2fe' : '#cbd5f5',
+    cursor: 'pointer',
+  }),
+  pinnedAnnouncementEmpty: {
+    padding: '14px 18px',
+    borderRadius: 18,
+    border: '1px dashed rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#94a3b8',
+    fontSize: 13,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  announcementImagePreview: {
+    position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(15, 23, 42, 0.68)',
+  },
+  announcementImagePreviewImage: {
+    width: '100%',
+    maxHeight: 220,
+    objectFit: 'cover',
+    display: 'block',
+  },
+  announcementImageRemoveButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    borderRadius: 999,
+    border: '1px solid rgba(148, 163, 184, 0.6)',
+    background: 'rgba(15, 23, 42, 0.82)',
+    color: '#f8fafc',
+    fontSize: 11,
+    padding: '4px 10px',
+    cursor: 'pointer',
+  },
+  announcementImageUploadRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
   announcementListItem: (pinned = false) => ({
     display: 'flex',
     flexDirection: 'column',
@@ -3471,10 +3702,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [roomAnnouncementCursor, setRoomAnnouncementCursor] = useState(null)
   const [roomAnnouncementsHasMore, setRoomAnnouncementsHasMore] = useState(false)
   const [pinnedAnnouncement, setPinnedAnnouncement] = useState(null)
+  const nonPinnedAnnouncements = useMemo(() => {
+    const list = Array.isArray(roomAnnouncements) ? roomAnnouncements : []
+    const pinnedId = pinnedAnnouncement?.id
+    if (!pinnedId) {
+      return list
+    }
+    return list.filter((item) => item && item.id !== pinnedId)
+  }, [roomAnnouncements, pinnedAnnouncement])
   const [announcementComposer, setAnnouncementComposer] = useState({
     open: false,
+    title: '',
     content: '',
     pinned: false,
+    imageUrl: '',
+    uploading: false,
     submitting: false,
     error: null,
   })
@@ -3487,6 +3729,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     commentInput: '',
     error: null,
   })
+  const [announcementListOpen, setAnnouncementListOpen] = useState(false)
   const [announcementError, setAnnouncementError] = useState(null)
   const [roomStats, setRoomStats] = useState(null)
   const [roomStatsLoading, setRoomStatsLoading] = useState(false)
@@ -3556,6 +3799,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const memberBackgroundInputRef = useRef(null)
   const composerToggleRef = useRef(null)
   const announcementTextareaRef = useRef(null)
+  const announcementImageInputRef = useRef(null)
   const attachmentCacheRef = useRef(new Map())
   const longPressTimerRef = useRef(null)
   const longPressActiveRef = useRef(false)
@@ -3870,14 +4114,24 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setViewport(getViewportSnapshot())
     }
 
+    const visual = window.visualViewport
+
     handleResize()
 
     window.addEventListener('resize', handleResize)
     window.addEventListener('orientationchange', handleResize)
+    if (visual) {
+      visual.addEventListener('resize', handleResize)
+      visual.addEventListener('scroll', handleResize)
+    }
 
     return () => {
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('orientationchange', handleResize)
+      if (visual) {
+        visual.removeEventListener('resize', handleResize)
+        visual.removeEventListener('scroll', handleResize)
+      }
     }
   }, [])
 
@@ -3889,6 +4143,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       })
     }
   }, [open])
+
+  useEffect(() => {
+    setAnnouncementListOpen(false)
+  }, [context?.chatRoomId])
 
   useEffect(() => {
     setMiniOverlay((prev) => {
@@ -5779,11 +6037,39 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setAnnouncementError('공지 작성 권한이 없습니다.')
       return
     }
-    setAnnouncementComposer({ open: true, content: '', pinned: false, submitting: false, error: null })
+    if (announcementImageInputRef.current) {
+      announcementImageInputRef.current.value = ''
+    }
+    setAnnouncementComposer({
+      open: true,
+      title: '',
+      content: '',
+      pinned: false,
+      imageUrl: '',
+      uploading: false,
+      submitting: false,
+      error: null,
+    })
   }, [context?.chatRoomId, viewerIsModerator])
 
   const handleCloseAnnouncementComposer = useCallback(() => {
-    setAnnouncementComposer({ open: false, content: '', pinned: false, submitting: false, error: null })
+    if (announcementImageInputRef.current) {
+      announcementImageInputRef.current.value = ''
+    }
+    setAnnouncementComposer({
+      open: false,
+      title: '',
+      content: '',
+      pinned: false,
+      imageUrl: '',
+      uploading: false,
+      submitting: false,
+      error: null,
+    })
+  }, [])
+
+  const handleAnnouncementTitleChange = useCallback((value) => {
+    setAnnouncementComposer((prev) => ({ ...prev, title: value }))
   }, [])
 
   const handleAnnouncementComposerChange = useCallback((value) => {
@@ -5832,6 +6118,56 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setAnnouncementComposer((prev) => ({ ...prev, pinned: !prev.pinned }))
   }, [])
 
+  const handleAnnouncementImageTrigger = useCallback(() => {
+    if (announcementComposer.uploading) return
+    const node = announcementImageInputRef.current
+    if (node) {
+      node.click()
+    }
+  }, [announcementComposer.uploading])
+
+  const handleAnnouncementImageSelect = useCallback(
+    async (event) => {
+      if (!context?.chatRoomId) return
+      const file = event.target?.files?.[0]
+      if (event.target) {
+        event.target.value = ''
+      }
+      if (!file) {
+        return
+      }
+      setAnnouncementComposer((prev) => ({ ...prev, uploading: true, error: null }))
+      try {
+        const url = await uploadAnnouncementImage({ file, roomId: context.chatRoomId })
+        setAnnouncementComposer((prev) => ({ ...prev, imageUrl: url, uploading: false }))
+      } catch (error) {
+        console.error('[chat] 공지 이미지 업로드 실패', error)
+        setAnnouncementComposer((prev) => ({
+          ...prev,
+          uploading: false,
+          error: error?.message || '공지 이미지를 업로드할 수 없습니다.',
+        }))
+      }
+    },
+    [context?.chatRoomId],
+  )
+
+  const handleAnnouncementImageClear = useCallback(() => {
+    if (announcementImageInputRef.current) {
+      announcementImageInputRef.current.value = ''
+    }
+    setAnnouncementComposer((prev) => ({ ...prev, imageUrl: '' }))
+  }, [])
+
+  const handleOpenAnnouncementList = useCallback(() => {
+    if (!context?.chatRoomId) return
+    setAnnouncementListOpen(true)
+  }, [context?.chatRoomId])
+
+  const handleCloseAnnouncementList = useCallback(() => {
+    setAnnouncementListOpen(false)
+  }, [])
+
   const announcementPreviewHtml = useMemo(
     () => formatAnnouncementPreview(announcementComposer.content || ''),
     [announcementComposer.content],
@@ -5839,6 +6175,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const handleSubmitAnnouncement = useCallback(async () => {
     if (!context?.chatRoomId) return
+    if (announcementComposer.uploading) {
+      setAnnouncementComposer((prev) => ({
+        ...prev,
+        error: '이미지 업로드가 완료될 때까지 기다려 주세요.',
+      }))
+      return
+    }
+    const title = (announcementComposer.title || '').trim()
     const content = (announcementComposer.content || '').trim()
     if (!content) {
       setAnnouncementComposer((prev) => ({ ...prev, error: '공지 내용을 입력해 주세요.' }))
@@ -5848,7 +6192,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     try {
       await createChatRoomAnnouncement({
         roomId: context.chatRoomId,
+        title,
         content,
+        imageUrl: announcementComposer.imageUrl || null,
         pinned: announcementComposer.pinned,
       })
       handleCloseAnnouncementComposer()
@@ -5861,7 +6207,16 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         error: error?.message || '공지를 등록할 수 없습니다.',
       }))
     }
-  }, [announcementComposer.content, announcementComposer.pinned, context?.chatRoomId, handleCloseAnnouncementComposer, refreshRoomAnnouncements])
+  }, [
+    announcementComposer.content,
+    announcementComposer.imageUrl,
+    announcementComposer.pinned,
+    announcementComposer.title,
+    announcementComposer.uploading,
+    context?.chatRoomId,
+    handleCloseAnnouncementComposer,
+    refreshRoomAnnouncements,
+  ])
 
   const handleOpenAnnouncementDetail = useCallback(
     async (announcement) => {
@@ -7960,24 +8315,29 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }
 
   const frameStyle = useMemo(() => {
+    const safeTop = Math.max(0, Number.isFinite(viewport.safeAreaTop) ? viewport.safeAreaTop : 0)
+    const safeBottom = Math.max(0, Number.isFinite(viewport.safeAreaBottom) ? viewport.safeAreaBottom : 0)
+    const numericHeight =
+      typeof viewport.height === 'number' && Number.isFinite(viewport.height) ? viewport.height : null
+    const viewportHeightValue = numericHeight ? Math.max(240, Math.round(numericHeight + safeTop)) : null
+
     if (!isCompactLayout) {
-      return overlayStyles.frame
+      const style = {
+        ...overlayStyles.frame,
+        padding: `${28 + Math.round(safeTop)}px 28px calc(48px + var(--chat-overlay-safe-bottom, env(safe-area-inset-bottom, 16px)))`,
+        '--chat-overlay-safe-bottom': `${Math.round(safeBottom)}px`,
+      }
+      if (viewportHeightValue) {
+        style['--chat-overlay-viewport-height'] = `${viewportHeightValue}px`
+      }
+      return style
     }
 
-    const numericHeight =
-      typeof viewport.height === 'number' && Number.isFinite(viewport.height)
-        ? viewport.height
-        : null
+    const compactTop = (isUltraCompactLayout ? 24 : 26) + Math.round(safeTop)
+    const compactPadding = `${compactTop}px 14px calc(${isUltraCompactLayout ? 32 : 34}px + var(--chat-overlay-safe-bottom, env(safe-area-inset-bottom, 16px)))`
+    const fallbackHeight = viewportHeightValue ? `${viewportHeightValue}px` : '100dvh'
 
-    const paddingBottom = isUltraCompactLayout
-      ? 'calc(32px + env(safe-area-inset-bottom, 16px))'
-      : 'calc(34px + env(safe-area-inset-bottom, 18px))'
-    const compactPadding = isUltraCompactLayout
-      ? `24px 10px ${paddingBottom}`
-      : `26px 14px ${paddingBottom}`
-    const fallbackHeight = numericHeight ? `${numericHeight}px` : '100dvh'
-
-    return {
+    const style = {
       ...overlayStyles.frame,
       borderRadius: isUltraCompactLayout ? 0 : 22,
       padding: compactPadding,
@@ -7987,8 +8347,40 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       width: '100%',
       maxWidth: '100%',
       alignItems: 'stretch',
+      '--chat-overlay-safe-bottom': `${Math.round(safeBottom)}px`,
     }
-  }, [isCompactLayout, isUltraCompactLayout, viewport.height])
+
+    if (viewportHeightValue) {
+      style['--chat-overlay-viewport-height'] = `${viewportHeightValue}px`
+    }
+
+    return style
+  }, [isCompactLayout, isUltraCompactLayout, viewport.height, viewport.safeAreaBottom, viewport.safeAreaTop])
+
+  const overlayContainerStyle = useMemo(() => {
+    const offsetTop = Math.max(0, Number.isFinite(viewport.offsetTop) ? viewport.offsetTop : 0)
+    const safeTop = Math.max(0, Number.isFinite(viewport.safeAreaTop) ? viewport.safeAreaTop : 0)
+    const safeBottom = Math.max(0, Number.isFinite(viewport.safeAreaBottom) ? viewport.safeAreaBottom : 0)
+
+    const marginTopValue = Math.round(Math.max(offsetTop, safeTop))
+    const marginBottomValue = Math.round(safeBottom)
+
+    const style = {
+      alignSelf: 'flex-start',
+      width: '100%',
+      transition: 'margin 0.2s ease',
+    }
+
+    if (marginTopValue > 0) {
+      style.marginTop = `${marginTopValue}px`
+    }
+
+    if (marginBottomValue > 0) {
+      style.marginBottom = `${marginBottomValue}px`
+    }
+
+    return style
+  }, [viewport.offsetTop, viewport.safeAreaTop, viewport.safeAreaBottom])
 
   const sidePanelStyle = useMemo(() => {
     if (!isCompactLayout) {
@@ -8228,9 +8620,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const coverImage = showDrawer ? currentRoom?.cover_url || currentRoom?.coverUrl || null : null
     const viewerIsOwner = Boolean(isRoomContext && viewerOwnsRoom)
     const showAnnouncements = isRoomContext
-    const announcementList = showAnnouncements
-      ? roomAnnouncements.filter((item) => !pinnedAnnouncement || item.id !== pinnedAnnouncement.id)
-      : []
+    const announcementList = showAnnouncements ? nonPinnedAnnouncements : []
     const themeBubbleColor = roomTheme.bubbleColor
     const themeTextColor = roomTheme.textColor
     const themeBackgroundValue = roomTheme.backgroundValue
@@ -8268,68 +8658,112 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         </header>
         <div ref={messageListRef} style={messageViewportStyle}>
           {showAnnouncements ? (
-            <div style={overlayStyles.announcementStack}>
-              <div style={overlayStyles.announcementHeader}>
-                <strong style={{ fontSize: 12, color: '#cbd5f5' }}>공지</strong>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {viewerIsModerator ? (
+            <div style={overlayStyles.pinnedAnnouncementContainer}>
+              <div style={overlayStyles.pinnedAnnouncementBackdrop} aria-hidden />
+              <div style={overlayStyles.pinnedAnnouncementContent}>
+                {announcementError ? (
+                  <span style={{ fontSize: 11, color: '#fca5a5' }}>{announcementError}</span>
+                ) : null}
+                {pinnedAnnouncement ? (
+                <div style={overlayStyles.pinnedAnnouncementCard(Boolean(pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl))}>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={overlayStyles.pinnedAnnouncementHeaderRow}>
+                      <span style={overlayStyles.pinnedAnnouncementBadge}>📌 공지</span>
+                      <span style={overlayStyles.pinnedAnnouncementTimestamp}>
+                        {pinnedAnnouncement.updated_at
+                          ? `${formatTime(pinnedAnnouncement.updated_at)} 업데이트`
+                          : pinnedAnnouncement.created_at
+                            ? `${formatTime(pinnedAnnouncement.created_at)} 등록`
+                            : '방장이 고정했습니다.'}
+                      </span>
+                    </div>
+                    <div style={overlayStyles.pinnedAnnouncementText}>
+                      {pinnedAnnouncement.title ? (
+                        <strong style={overlayStyles.pinnedAnnouncementTitle}>
+                          {pinnedAnnouncement.title}
+                        </strong>
+                      ) : null}
+                      <span style={overlayStyles.pinnedAnnouncementPreview}>
+                        {
+                          truncateText(
+                            pinnedAnnouncement.content || '',
+                            ANNOUNCEMENT_PREVIEW_LENGTH,
+                          ).text || '내용 없음'
+                        }
+                      </span>
+                    </div>
+                    <div style={overlayStyles.pinnedAnnouncementActions}>
+                      <button
+                        type="button"
+                        style={overlayStyles.pinnedAnnouncementActionButton('primary')}
+                        onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+                      >
+                        상세 보기
+                      </button>
+                      {(announcementList.length || roomAnnouncementsHasMore) ? (
+                        <button
+                          type="button"
+                          style={overlayStyles.pinnedAnnouncementActionButton()}
+                          onClick={handleOpenAnnouncementList}
+                        >
+                          공지 목록
+                        </button>
+                      ) : null}
+                      {viewerIsModerator ? (
+                        <button
+                          type="button"
+                          style={overlayStyles.pinnedAnnouncementActionButton()}
+                          onClick={handleOpenAnnouncementComposer}
+                        >
+                          새 공지
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl ? (
                     <button
                       type="button"
-                      style={overlayStyles.secondaryButton}
-                      onClick={handleOpenAnnouncementComposer}
+                      style={overlayStyles.pinnedAnnouncementImageButton}
+                      onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
                     >
-                      새 공지
-                    </button>
-                  ) : null}
-                  {roomAnnouncementsHasMore ? (
-                    <button
-                      type="button"
-                      style={overlayStyles.secondaryButton}
-                      onClick={handleLoadMoreAnnouncements}
-                    >
-                      더 보기
+                      <div style={overlayStyles.pinnedAnnouncementImageWrapper}>
+                        <img
+                          src={pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl}
+                          alt={pinnedAnnouncement.title ? `${pinnedAnnouncement.title} 이미지` : '공지 이미지'}
+                          style={overlayStyles.pinnedAnnouncementImage}
+                        />
+                      </div>
                     </button>
                   ) : null}
                 </div>
-              </div>
-              {announcementError ? (
-                <span style={{ fontSize: 11, color: '#fca5a5' }}>{announcementError}</span>
-              ) : null}
-              {pinnedAnnouncement ? (
-                <button
-                  type="button"
-                  style={overlayStyles.announcementListItem(true)}
-                  onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
-                >
-                  <strong>
-                    📌 {truncateText(pinnedAnnouncement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
-                  </strong>
-                  <span style={overlayStyles.announcementMeta}>
-                    최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)}
-                  </span>
-                </button>
-              ) : null}
-              {announcementList.length ? (
-                announcementList.map((announcement) => (
-                  <button
-                    key={announcement.id}
-                    type="button"
-                    style={overlayStyles.announcementListItem(false)}
-                    onClick={() => handleOpenAnnouncementDetail(announcement)}
-                  >
-                    <span>
-                      {truncateText(announcement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
-                    </span>
-                    <span style={overlayStyles.announcementMeta}>
-                      ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
-                    </span>
-                  </button>
-                ))
-              ) : !pinnedAnnouncement ? (
-                <span style={overlayStyles.mutedText}>아직 등록된 공지가 없습니다.</span>
-              ) : null}
+              ) : (
+                <div style={overlayStyles.pinnedAnnouncementEmpty}>
+                  <span>{viewerIsModerator ? '고정된 공지가 없습니다.' : '현재 고정된 공지가 없습니다.'}</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(announcementList.length || roomAnnouncementsHasMore) ? (
+                      <button
+                        type="button"
+                        style={overlayStyles.pinnedAnnouncementActionButton()}
+                        onClick={handleOpenAnnouncementList}
+                      >
+                        공지 목록
+                      </button>
+                    ) : null}
+                    {viewerIsModerator ? (
+                      <button
+                        type="button"
+                        style={overlayStyles.pinnedAnnouncementActionButton('primary')}
+                        onClick={handleOpenAnnouncementComposer}
+                      >
+                        공지 작성
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              )}
             </div>
-          ) : null}
+          </div>
+        ) : null}
           {hasContext ? (
             loadingMessages ? (
               <span style={overlayStyles.mutedText}>메시지를 불러오는 중...</span>
@@ -9970,10 +10404,16 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
                 >
                   <strong>
-                    📌 {truncateText(pinnedAnnouncement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                    📌 {pinnedAnnouncement.title || truncateText(pinnedAnnouncement.content || '', 80).text || '제목 없는 공지'}
                   </strong>
+                  {pinnedAnnouncement.title && pinnedAnnouncement.content ? (
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                      {truncateText(pinnedAnnouncement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                    </span>
+                  ) : null}
                   <span style={overlayStyles.announcementMeta}>
-                    최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)}
+                    최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)} · ♥ {pinnedAnnouncement.heart_count || 0} · 💬{' '}
+                    {pinnedAnnouncement.comment_count || 0}
                   </span>
                 </button>
               ) : null}
@@ -9986,9 +10426,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       style={overlayStyles.announcementListItem(false)}
                       onClick={() => handleOpenAnnouncementDetail(announcement)}
                     >
-                      <span>
-                        {truncateText(announcement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
-                      </span>
+                      <strong>
+                        {announcement.title || truncateText(announcement.content || '', 80).text || '제목 없는 공지'}
+                      </strong>
+                      {announcement.title && announcement.content ? (
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                          {truncateText(announcement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                        </span>
+                      ) : null}
                       <span style={overlayStyles.announcementMeta}>
                         ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
                       </span>
@@ -10454,6 +10899,76 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     </SurfaceOverlay>
   )
 
+  const announcementListOverlay = (
+    <SurfaceOverlay
+      open={announcementListOpen}
+      onClose={handleCloseAnnouncementList}
+      title="공지 목록"
+      width="min(520px, 96vw)"
+      zIndex={1512}
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>최근 공지를 한눈에 확인할 수 있습니다.</span>
+          {viewerIsModerator ? (
+            <button type="button" style={overlayStyles.secondaryButton} onClick={handleOpenAnnouncementComposer}>
+              새 공지 작성
+            </button>
+          ) : null}
+        </div>
+        {announcementError ? (
+          <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementError}</span>
+        ) : null}
+        {pinnedAnnouncement ? (
+          <button
+            type="button"
+            style={overlayStyles.announcementListItem(true)}
+            onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+          >
+            <strong>
+              📌 {pinnedAnnouncement.title || truncateText(pinnedAnnouncement.content || '', 80).text || '제목 없는 공지'}
+            </strong>
+            {pinnedAnnouncement.title && pinnedAnnouncement.content ? (
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                {truncateText(pinnedAnnouncement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+              </span>
+            ) : null}
+            <span style={overlayStyles.announcementMeta}>
+              ♥ {pinnedAnnouncement.heart_count || 0} · 💬 {pinnedAnnouncement.comment_count || 0}
+            </span>
+          </button>
+        ) : null}
+        {nonPinnedAnnouncements.length ? (
+          nonPinnedAnnouncements.map((announcement) => (
+            <button
+              key={announcement.id}
+              type="button"
+              style={overlayStyles.announcementListItem(false)}
+              onClick={() => handleOpenAnnouncementDetail(announcement)}
+            >
+              <strong>{announcement.title || truncateText(announcement.content || '', 80).text || '제목 없는 공지'}</strong>
+              {announcement.title && announcement.content ? (
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                  {truncateText(announcement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                </span>
+              ) : null}
+              <span style={overlayStyles.announcementMeta}>
+                ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
+              </span>
+            </button>
+          ))
+        ) : !pinnedAnnouncement ? (
+          <span style={overlayStyles.mutedText}>등록된 공지가 없습니다.</span>
+        ) : null}
+        {roomAnnouncementsHasMore ? (
+          <button type="button" style={overlayStyles.drawerMoreButton} onClick={handleLoadMoreAnnouncements}>
+            더 보기
+          </button>
+        ) : null}
+      </div>
+    </SurfaceOverlay>
+  )
+
   const announcementComposerOverlay = (
     <SurfaceOverlay
       open={announcementComposer.open}
@@ -10463,6 +10978,68 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       zIndex={1520}
     >
       <div style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <label style={overlayStyles.fieldLabel}>공지 제목 (선택)</label>
+          <input
+            type="text"
+            value={announcementComposer.title}
+            onChange={(event) => handleAnnouncementTitleChange(event.target.value)}
+            placeholder="예: 업데이트 안내"
+            style={overlayStyles.input}
+            disabled={announcementComposer.submitting}
+          />
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <span style={overlayStyles.fieldLabel}>공지 이미지 (선택)</span>
+          {announcementComposer.imageUrl ? (
+            <div style={overlayStyles.announcementImagePreview}>
+              <img
+                src={announcementComposer.imageUrl}
+                alt={announcementComposer.title ? `${announcementComposer.title} 이미지` : '공지 이미지 미리보기'}
+                style={overlayStyles.announcementImagePreviewImage}
+              />
+              <button
+                type="button"
+                style={overlayStyles.announcementImageRemoveButton}
+                onClick={handleAnnouncementImageClear}
+                disabled={announcementComposer.uploading || announcementComposer.submitting}
+              >
+                이미지 제거
+              </button>
+            </div>
+          ) : (
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>
+              공지와 함께 보여줄 이미지를 선택할 수 있습니다. 최대 20MB까지 업로드할 수 있습니다.
+            </span>
+          )}
+          <div style={overlayStyles.announcementImageUploadRow}>
+            <button
+              type="button"
+              style={overlayStyles.imageUploadButton('primary', announcementComposer.uploading || announcementComposer.submitting)}
+              onClick={handleAnnouncementImageTrigger}
+              disabled={announcementComposer.uploading || announcementComposer.submitting}
+            >
+              {announcementComposer.uploading ? '업로드 중…' : '이미지 업로드'}
+            </button>
+            {announcementComposer.imageUrl ? (
+              <button
+                type="button"
+                style={overlayStyles.imageUploadButton('ghost', announcementComposer.uploading || announcementComposer.submitting)}
+                onClick={handleAnnouncementImageClear}
+                disabled={announcementComposer.uploading || announcementComposer.submitting}
+              >
+                제거
+              </button>
+            ) : null}
+          </div>
+          <input
+            ref={announcementImageInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleAnnouncementImageSelect}
+          />
+        </div>
         <div style={overlayStyles.announcementToolbar}>
           <button
             type="button"
@@ -10503,12 +11080,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           ref={announcementTextareaRef}
           placeholder="공지 내용을 입력해 주세요."
           style={overlayStyles.textarea}
+          disabled={announcementComposer.submitting}
         />
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#cbd5f5', fontSize: 13 }}>
           <input
             type="checkbox"
             checked={announcementComposer.pinned}
             onChange={handleAnnouncementComposerTogglePinned}
+            disabled={announcementComposer.submitting}
           />
           공지를 상단에 고정하기
         </label>
@@ -10554,14 +11133,25 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         <span style={overlayStyles.mutedText}>공지 내용을 불러오는 중...</span>
       ) : announcementDetail.announcement ? (
         <div style={{ display: 'grid', gap: 14 }}>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <strong style={{ color: '#e2e8f0', fontSize: 14 }}>
-              {truncateText(announcementDetail.announcement.content || '').text}
-            </strong>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {announcementDetail.announcement.title ? (
+              <strong style={{ color: '#e2e8f0', fontSize: 16 }}>
+                {announcementDetail.announcement.title}
+              </strong>
+            ) : null}
             <span style={overlayStyles.announcementMeta}>
               작성: {announcementDetail.announcement.author_name || '알 수 없음'} ·{' '}
               {formatDateLabel(announcementDetail.announcement.created_at)}
             </span>
+            {announcementDetail.announcement.image_url ? (
+              <div style={overlayStyles.announcementImagePreview}>
+                <img
+                  src={announcementDetail.announcement.image_url}
+                  alt={announcementDetail.announcement.title ? `${announcementDetail.announcement.title} 이미지` : '공지 이미지'}
+                  style={overlayStyles.announcementImagePreviewImage}
+                />
+              </div>
+            ) : null}
             <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, color: '#cbd5f5', fontSize: 13 }}>
               {announcementDetail.announcement.content}
             </p>
@@ -10701,6 +11291,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       {expandedMessageOverlay}
       {attachmentViewerOverlay}
       {friendOverlay}
+      {announcementListOverlay}
       {announcementComposerOverlay}
       {announcementDetailOverlay}
       {banOverlay}
@@ -10856,6 +11447,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           overflow: 'hidden',
         }}
         frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
+        containerStyle={overlayContainerStyle}
       >
         <div ref={rootRef} style={frameStyle}>
           <div style={rootStyle}>

@@ -260,19 +260,30 @@ export async function fetchChatRoomAnnouncementDetail({ announcementId }) {
   }
 }
 
-export async function createChatRoomAnnouncement({ roomId, content, pinned = false }) {
+export async function createChatRoomAnnouncement({
+  roomId,
+  title = '',
+  content,
+  imageUrl = null,
+  pinned = false,
+}) {
   if (!roomId) {
     throw new Error('roomId가 필요합니다.')
   }
 
+  const safeTitle = typeof title === 'string' ? title.trim() : ''
   const text = typeof content === 'string' ? content.trim() : ''
   if (!text) {
     throw new Error('공지 내용을 입력해 주세요.')
   }
 
+  const image = typeof imageUrl === 'string' ? imageUrl.trim() : ''
+
   const { data, error } = await supabase.rpc('create_chat_room_announcement', {
     p_room_id: roomId,
+    p_title: safeTitle || null,
     p_content: text,
+    p_image_url: image || null,
     p_pinned: pinned === true,
   })
 

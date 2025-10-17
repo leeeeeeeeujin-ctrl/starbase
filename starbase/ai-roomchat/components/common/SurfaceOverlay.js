@@ -12,6 +12,7 @@ export default function SurfaceOverlay({
   hideHeader = false,
   frameStyle,
   zIndex = 1500,
+  containerStyle = {},
 }) {
   const handleBackdropClick = (event) => {
     if (!open || !onClose) return
@@ -55,6 +56,7 @@ export default function SurfaceOverlay({
           opacity: open ? 1 : 0,
           transition: 'opacity 180ms ease, transform 180ms ease',
           pointerEvents: open ? 'auto' : 'none',
+          ...containerStyle,
         }}
       >
         <div
