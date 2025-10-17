@@ -2977,6 +2977,7 @@ create table if not exists public.chat_rooms (
   capacity integer not null default 50 check (capacity between 2 and 500),
   default_background_url text,
   default_ban_minutes integer not null default 0,
+  default_theme jsonb,
   allow_ai boolean not null default true,
   require_approval boolean not null default false,
   created_at timestamptz not null default timezone('utc', now()),
@@ -2988,6 +2989,9 @@ alter table public.chat_rooms
 
 alter table public.chat_rooms
   add column if not exists default_ban_minutes integer not null default 0;
+
+alter table public.chat_rooms
+  add column if not exists default_theme jsonb;
 
 create table if not exists public.chat_room_members (
   room_id uuid not null references public.chat_rooms(id) on delete cascade,
@@ -5685,6 +5689,9 @@ begin
       r.hero_id,
       r.created_at,
       r.updated_at,
+      r.default_background_url,
+      r.default_ban_minutes,
+      r.default_theme,
       counts.member_count,
       m_self.owner_id as member_owner_id,
       coalesce(m_self.status, 'active') as member_status,
@@ -5760,6 +5767,9 @@ begin
       br.cover_url,
       br.created_at,
       br.updated_at,
+      br.default_background_url,
+      br.default_ban_minutes,
+      br.default_theme,
       lm.payload as latest_message,
       lm.created_at as last_message_at,
       coalesce(un.unread_count, 0) as unread_count
@@ -5785,6 +5795,9 @@ begin
       r.hero_id,
       r.created_at,
       r.updated_at,
+      r.default_background_url,
+      r.default_ban_minutes,
+      r.default_theme,
       counts.member_count,
       m_self.owner_id as member_owner_id,
       coalesce(m_self.status, 'active') as member_status,
@@ -5845,6 +5858,9 @@ begin
       br.cover_url,
       br.created_at,
       br.updated_at,
+      br.default_background_url,
+      br.default_ban_minutes,
+      br.default_theme,
       lm.payload as latest_message,
       lm.created_at as last_message_at
     from base_rooms br
@@ -7264,6 +7280,15 @@ declare
   v_actor uuid := auth.uid();
   v_background text := null;
   v_default_ban integer := null;
+  v_theme jsonb := null;
+  v_theme_mode text := null;
+  v_theme_preset text := null;
+  v_theme_background text := null;
+  v_theme_color text := null;
+  v_theme_accent text := null;
+  v_theme_bubble text := null;
+  v_theme_text text := null;
+  v_theme_auto boolean := true;
   v_row jsonb := null;
 begin
   if v_actor is null then
@@ -7278,10 +7303,6 @@ begin
     return jsonb_build_object('ok', false, 'error', 'forbidden');
   end if;
 
-  if p_settings ? 'defaultBackgroundUrl' then
-    v_background := nullif(trim(coalesce(p_settings->>'defaultBackgroundUrl', '')), '');
-  end if;
-
   if p_settings ? 'defaultBanMinutes' then
     begin
       v_default_ban := greatest(0, coalesce((p_settings->>'defaultBanMinutes')::integer, 0));
@@ -7290,14 +7311,62 @@ begin
     end;
   end if;
 
+  if p_settings ? 'defaultTheme' then
+    v_theme := coalesce(p_settings->'defaultTheme', '{}'::jsonb);
+    v_theme_mode := nullif(trim(coalesce(v_theme->>'mode', '')), '');
+    if v_theme_mode not in ('preset', 'color', 'image', 'none') then
+      v_theme_mode := 'preset';
+    end if;
+    v_theme_preset := nullif(trim(coalesce(v_theme->>'presetId', '')), '');
+    v_theme_background := nullif(trim(coalesce(v_theme->>'backgroundUrl', '')), '');
+    v_theme_color := nullif(trim(coalesce(v_theme->>'backgroundColor', '')), '');
+    v_theme_accent := nullif(trim(coalesce(v_theme->>'accentColor', '')), '');
+    v_theme_bubble := nullif(trim(coalesce(v_theme->>'bubbleColor', '')), '');
+    v_theme_text := nullif(trim(coalesce(v_theme->>'textColor', '')), '');
+    begin
+      v_theme_auto := coalesce((v_theme->>'autoContrast')::boolean, true);
+    exception when others then
+      v_theme_auto := true;
+    end;
+
+    v_theme := jsonb_strip_nulls(
+      jsonb_build_object(
+        'mode', coalesce(v_theme_mode, 'preset'),
+        'presetId', v_theme_preset,
+        'backgroundUrl', case when coalesce(v_theme_mode, 'preset') = 'image' then v_theme_background else null end,
+        'backgroundColor', case when coalesce(v_theme_mode, 'preset') = 'color' then v_theme_color else null end,
+        'accentColor', v_theme_accent,
+        'bubbleColor', v_theme_bubble,
+        'textColor', v_theme_text,
+        'autoContrast', v_theme_auto
+      )
+    );
+
+    if coalesce(v_theme_mode, 'preset') = 'image' and v_background is null then
+      v_background := v_theme_background;
+    elsif coalesce(v_theme_mode, 'preset') <> 'image' and v_background is null then
+      v_background := null;
+    end if;
+  end if;
+
+  if p_settings ? 'defaultBackgroundUrl' then
+    v_background := nullif(trim(coalesce(p_settings->>'defaultBackgroundUrl', '')), '');
+  end if;
+
   update public.chat_rooms
-  set default_background_url = coalesce(v_background, default_background_url),
-      default_ban_minutes = coalesce(v_default_ban, default_ban_minutes)
+  set default_background_url = case
+        when v_background is not null then v_background
+        when v_theme is not null and coalesce(v_theme->>'mode', 'preset') <> 'image' then null
+        else default_background_url
+      end,
+      default_ban_minutes = coalesce(v_default_ban, default_ban_minutes),
+      default_theme = coalesce(v_theme, default_theme)
   where id = p_room_id
   returning jsonb_build_object(
     'id', id,
     'default_background_url', default_background_url,
     'default_ban_minutes', default_ban_minutes,
+    'default_theme', default_theme,
     'updated_at', updated_at
   ) into v_row;
 

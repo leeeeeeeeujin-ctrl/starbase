@@ -58,6 +58,8 @@ const MINI_OVERLAY_MARGIN = 18
 const MINI_OVERLAY_VISIBLE_MARGIN = 12
 const PINCH_TRIGGER_RATIO = 0.7
 const PINCH_MIN_DELTA = 28
+const ROOM_BACKGROUND_FOLDER = 'room-backgrounds'
+const MEMBER_BACKGROUND_FOLDER = 'member-backgrounds'
 const ATTACHMENT_ICONS = {
   image: '🖼️',
   video: '🎬',
@@ -124,6 +126,466 @@ function normalizeBackgroundUrl(value) {
   }
   return null
 }
+
+function isGradientValue(value) {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim().toLowerCase()
+  if (!trimmed) return false
+  return trimmed.startsWith('linear-gradient') || trimmed.startsWith('radial-gradient')
+}
+
+function isColorValue(value) {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim().toLowerCase()
+  if (!trimmed) return false
+  if (trimmed.startsWith('#')) {
+    return /^#([0-9a-f]{3,8})$/i.test(trimmed)
+  }
+  return trimmed.startsWith('rgb(') || trimmed.startsWith('rgba(') || trimmed.startsWith('hsl(') || trimmed.startsWith('hsla(')
+}
+
+function normalizeThemeBackground(value) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (isGradientValue(trimmed) || isColorValue(trimmed)) {
+    return trimmed
+  }
+  return normalizeBackgroundUrl(trimmed)
+}
+
+function classifyBackground(value, fallbackSample = '#1f2937') {
+  const normalized = normalizeThemeBackground(value)
+  if (!normalized) {
+    return { type: 'none', value: '', sampleColor: fallbackSample }
+  }
+  if (isGradientValue(normalized)) {
+    return { type: 'gradient', value: normalized, sampleColor: extractPrimaryColorFromGradient(normalized) || fallbackSample }
+  }
+  if (isColorValue(normalized)) {
+    return { type: 'color', value: normalized, sampleColor: normalized }
+  }
+  return { type: 'image', value: normalized, sampleColor: fallbackSample }
+}
+
+function parseHexColor(input) {
+  if (typeof input !== 'string') return null
+  const hex = input.trim().replace(/^#/, '')
+  if (!hex) return null
+  if (hex.length === 3) {
+    const [r, g, b] = hex.split('').map((char) => parseInt(char + char, 16))
+    if ([r, g, b].some((channel) => Number.isNaN(channel))) return null
+    return { r, g, b, a: 1 }
+  }
+  if (hex.length === 6 || hex.length === 8) {
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    if ([r, g, b].some((channel) => Number.isNaN(channel))) return null
+    let a = 1
+    if (hex.length === 8) {
+      a = parseInt(hex.slice(6, 8), 16) / 255
+    }
+    return { r, g, b, a }
+  }
+  return null
+}
+
+function parseColor(value) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith('#')) {
+    return parseHexColor(trimmed)
+  }
+  const rgbMatch = trimmed.match(/rgba?\(([^)]+)\)/i)
+  if (rgbMatch) {
+    const parts = rgbMatch[1]
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean)
+    if (parts.length < 3) return null
+    const r = parseFloat(parts[0])
+    const g = parseFloat(parts[1])
+    const b = parseFloat(parts[2])
+    const a = parts[3] !== undefined ? parseFloat(parts[3]) : 1
+    if ([r, g, b, a].some((channel) => Number.isNaN(channel))) return null
+    return { r, g, b, a }
+  }
+  return parseHexColor(trimmed)
+}
+
+function clampColorValue(value) {
+  return Math.min(255, Math.max(0, Math.round(value)))
+}
+
+function rgbToHex({ r, g, b }) {
+  const toHex = (channel) => clampColorValue(channel).toString(16).padStart(2, '0')
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+function mixColors(colorA, colorB, ratio = 0.5) {
+  const first = parseColor(colorA)
+  const second = parseColor(colorB)
+  if (!first || !second) {
+    return colorA || colorB || '#1f2937'
+  }
+  const mixRatio = Math.min(1, Math.max(0, Number(ratio)))
+  const inv = 1 - mixRatio
+  return rgbToHex({
+    r: first.r * mixRatio + second.r * inv,
+    g: first.g * mixRatio + second.g * inv,
+    b: first.b * mixRatio + second.b * inv,
+  })
+}
+
+function adjustColorLuminance(color, delta = 0) {
+  const parsed = parseColor(color)
+  if (!parsed) {
+    return color
+  }
+  const factor = 1 + delta
+  return rgbToHex({ r: parsed.r * factor, g: parsed.g * factor, b: parsed.b * factor })
+}
+
+function getRelativeLuminance(color) {
+  const parsed = parseColor(color)
+  if (!parsed) {
+    return 0
+  }
+  const transform = (channel) => {
+    const c = channel / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const r = transform(parsed.r)
+  const g = transform(parsed.g)
+  const b = transform(parsed.b)
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+function getContrastRatio(foreground, background) {
+  const lumA = getRelativeLuminance(foreground)
+  const lumB = getRelativeLuminance(background)
+  const brightest = Math.max(lumA, lumB)
+  const darkest = Math.min(lumA, lumB)
+  return (brightest + 0.05) / (darkest + 0.05)
+}
+
+function pickReadableTextColor(background) {
+  const light = '#f8fafc'
+  const dark = '#0f172a'
+  const contrastWithLight = getContrastRatio(light, background)
+  const contrastWithDark = getContrastRatio(dark, background)
+  if (contrastWithLight >= 4.5 && contrastWithLight >= contrastWithDark) {
+    return light
+  }
+  if (contrastWithDark >= 4.5 && contrastWithDark > contrastWithLight) {
+    return dark
+  }
+  return contrastWithLight > contrastWithDark ? light : dark
+}
+
+function ensureAccentContrast(accent, bubble) {
+  const desired = getContrastRatio(accent, bubble) >= 3
+  if (desired) {
+    return accent
+  }
+  const bubbleLum = getRelativeLuminance(bubble)
+  const adjustment = bubbleLum > 0.5 ? -0.35 : 0.35
+  return adjustColorLuminance(accent, adjustment)
+}
+
+function deriveAutoPalette({ background, accent, bubble, text }) {
+  const sampleBackground = background || '#0f172a'
+  let bubbleColor = bubble || mixColors(sampleBackground, '#0f172a', 0.72)
+  const backgroundLum = getRelativeLuminance(sampleBackground)
+  if (backgroundLum > 0.55) {
+    bubbleColor = adjustColorLuminance(sampleBackground, -0.4)
+  } else if (backgroundLum < 0.15) {
+    bubbleColor = adjustColorLuminance(sampleBackground, 0.45)
+  }
+  const textColor = pickReadableTextColor(bubbleColor || sampleBackground)
+  const accentColor = ensureAccentContrast(accent || '#38bdf8', bubbleColor || sampleBackground)
+  return { bubbleColor: bubbleColor || '#1f2937', textColor: textColor || text, accentColor }
+}
+
+function extractPrimaryColorFromGradient(value) {
+  if (typeof value !== 'string') return null
+  const hexMatch = value.match(/#([0-9a-f]{3,8})/i)
+  if (hexMatch) {
+    return `#${hexMatch[1]}`
+  }
+  const rgbMatch = value.match(/rgba?\([^\)]+\)/i)
+  if (rgbMatch) {
+    return rgbMatch[0]
+  }
+  return null
+}
+
+const ROOM_THEME_LIBRARY = [
+  {
+    id: 'aurora-midnight',
+    label: '오로라 미드나잇',
+    value: 'linear-gradient(135deg, #0f172a 0%, #1e293b 45%, #38bdf8 100%)',
+    sampleColor: '#172554',
+    recommended: {
+      accentColor: '#38bdf8',
+      bubbleColor: '#1f2937',
+      textColor: '#f8fafc',
+    },
+  },
+  {
+    id: 'sunset-blend',
+    label: '선셋 블렌드',
+    value: 'linear-gradient(130deg, #f97316 0%, #ef4444 40%, #312e81 100%)',
+    sampleColor: '#7c2d12',
+    recommended: {
+      accentColor: '#f97316',
+      bubbleColor: '#1e1b4b',
+      textColor: '#f8fafc',
+    },
+  },
+  {
+    id: 'forest-dawn',
+    label: '포레스트 던',
+    value: 'linear-gradient(140deg, #064e3b 0%, #1e3a8a 100%)',
+    sampleColor: '#0f3c2d',
+    recommended: {
+      accentColor: '#22d3ee',
+      bubbleColor: '#083344',
+      textColor: '#ecfeff',
+    },
+  },
+  {
+    id: 'neon-grid',
+    label: '네온 그리드',
+    value: 'linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(15, 15, 42, 0.7) 45%, rgba(59, 130, 246, 0.45) 100%)',
+    sampleColor: '#1e3a8a',
+    recommended: {
+      accentColor: '#60a5fa',
+      bubbleColor: '#1e293b',
+      textColor: '#f1f5f9',
+    },
+  },
+  {
+    id: 'violet-mist',
+    label: '바이올렛 미스트',
+    value: 'linear-gradient(135deg, #312e81 0%, #7c3aed 50%, #f472b6 100%)',
+    sampleColor: '#312e81',
+    recommended: {
+      accentColor: '#f472b6',
+      bubbleColor: '#1e1b4b',
+      textColor: '#fdf4ff',
+    },
+  },
+  {
+    id: 'oceanic-glow',
+    label: '오셔닉 글로우',
+    value: 'linear-gradient(135deg, #082f49 0%, #0ea5e9 60%, #38bdf8 100%)',
+    sampleColor: '#0f3f5b',
+    recommended: {
+      accentColor: '#0ea5e9',
+      bubbleColor: '#082f49',
+      textColor: '#e0f2fe',
+    },
+  },
+]
+
+const DEFAULT_THEME_PRESET = ROOM_THEME_LIBRARY[0]
+
+function getThemePreset(presetId) {
+  if (!presetId) return DEFAULT_THEME_PRESET
+  return ROOM_THEME_LIBRARY.find((preset) => preset.id === presetId) || DEFAULT_THEME_PRESET
+}
+
+async function uploadBackgroundImage({ file, roomId = null, ownerToken = null }) {
+  if (!file) {
+    throw new Error('업로드할 이미지를 선택해 주세요.')
+  }
+  if (file.size > ATTACHMENT_SIZE_LIMIT) {
+    throw new Error('배경 이미지는 50MB 이하로 선택해 주세요.')
+  }
+
+  const extensionMatch = (file.name || '').match(/\.([a-z0-9]+)$/i)
+  const extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'webp'
+  const sanitizedName = sanitizeFileName(file.name || `background.${extension}`)
+  const segments = [ROOM_BACKGROUND_FOLDER]
+  if (roomId) {
+    segments.push(roomId)
+  } else if (ownerToken) {
+    segments.push(`owner-${ownerToken}`)
+  } else {
+    segments.push('shared')
+  }
+  const objectPath = `${segments.join('/')}/${createLocalId('bg')}-${sanitizedName}`
+
+  const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(objectPath, file, {
+    contentType: file.type || 'image/webp',
+    cacheControl: '3600',
+    upsert: false,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  const { data } = supabase.storage.from(CHAT_ATTACHMENT_BUCKET).getPublicUrl(objectPath)
+  if (!data?.publicUrl) {
+    throw new Error('업로드한 배경의 공개 URL을 생성할 수 없습니다.')
+  }
+
+  return data.publicUrl
+}
+
+const DEFAULT_THEME_CONFIG = {
+  mode: 'preset',
+  presetId: DEFAULT_THEME_PRESET.id,
+  backgroundUrl: '',
+  backgroundColor: DEFAULT_THEME_PRESET.sampleColor,
+  accentColor: DEFAULT_THEME_PRESET.recommended.accentColor,
+  bubbleColor: DEFAULT_THEME_PRESET.recommended.bubbleColor,
+  textColor: DEFAULT_THEME_PRESET.recommended.textColor,
+  autoContrast: true,
+}
+
+function normalizeThemeConfig(theme, fallback = DEFAULT_THEME_CONFIG) {
+  const base = { ...DEFAULT_THEME_CONFIG, ...fallback }
+  const source = theme && typeof theme === 'object' ? theme : {}
+  const allowedModes = new Set(['preset', 'color', 'image', 'none'])
+  const mode = allowedModes.has(source.mode) ? source.mode : base.mode
+  const preset = getThemePreset(source.presetId || base.presetId)
+  const accentColor = normalizeColor(source.accentColor) || normalizeColor(base.accentColor) || preset.recommended.accentColor
+  const bubbleColor = normalizeColor(source.bubbleColor) || normalizeColor(base.bubbleColor) || preset.recommended.bubbleColor
+  const textColor = normalizeColor(source.textColor) || normalizeColor(base.textColor) || preset.recommended.textColor
+  const backgroundColor = normalizeColor(source.backgroundColor) || normalizeColor(base.backgroundColor) || preset.sampleColor
+  const backgroundUrl = typeof source.backgroundUrl === 'string' ? source.backgroundUrl.trim() : base.backgroundUrl || ''
+  const autoContrast = source.autoContrast === false ? false : true
+  return {
+    mode,
+    presetId: preset.id,
+    backgroundUrl,
+    backgroundColor,
+    accentColor,
+    bubbleColor,
+    textColor,
+    autoContrast,
+  }
+}
+
+function deriveThemePalette(config) {
+  const preset = getThemePreset(config.presetId)
+  let backgroundValue = ''
+  if (config.mode === 'preset') {
+    backgroundValue = preset.value
+  } else if (config.mode === 'color') {
+    backgroundValue = config.backgroundColor || preset.sampleColor || preset.recommended.bubbleColor
+  } else if (config.mode === 'image') {
+    backgroundValue = config.backgroundUrl || ''
+  } else {
+    backgroundValue = ''
+  }
+
+  const descriptor = classifyBackground(backgroundValue, preset.sampleColor || preset.recommended.bubbleColor)
+  const sampleColor = config.mode === 'color' && config.backgroundColor ? config.backgroundColor : descriptor.sampleColor
+  let accentColor = config.accentColor || preset.recommended.accentColor
+  let bubbleColor = config.bubbleColor || preset.recommended.bubbleColor
+  let textColor = config.textColor || preset.recommended.textColor
+
+  if (config.autoContrast !== false) {
+    const auto = deriveAutoPalette({
+      background: sampleColor || preset.sampleColor || preset.recommended.bubbleColor,
+      accent: accentColor,
+      bubble: bubbleColor,
+      text: textColor,
+    })
+    bubbleColor = auto.bubbleColor
+    textColor = auto.textColor
+    accentColor = auto.accentColor
+  }
+
+  return {
+    mode: config.mode,
+    presetId: preset.id,
+    backgroundValue,
+    backgroundColor: config.backgroundColor,
+    backgroundUrl: config.backgroundUrl,
+    bubbleColor,
+    textColor,
+    accentColor,
+    autoContrast: config.autoContrast !== false,
+    descriptor,
+    sampleColor: sampleColor || descriptor.sampleColor,
+  }
+}
+
+function buildThemePaletteFromDraft(draft, options = {}) {
+  const normalized = normalizeThemeConfig(
+    {
+      mode: draft.themeMode,
+      presetId: draft.themePresetId,
+      backgroundUrl: draft.themeBackgroundUrl || draft.backgroundUrl,
+      backgroundColor: draft.themeBackgroundColor || draft.backgroundColor,
+      accentColor: draft.accentColor,
+      bubbleColor: draft.bubbleColor,
+      textColor: draft.textColor,
+      autoContrast: draft.autoContrast,
+    },
+    options.fallback || {
+      ...DEFAULT_THEME_CONFIG,
+      presetId: draft.themePresetId || DEFAULT_THEME_PRESET.id,
+      mode: draft.themeMode || DEFAULT_THEME_CONFIG.mode,
+      backgroundUrl: draft.themeBackgroundUrl || draft.backgroundUrl || options.fallbackBackgroundUrl || '',
+      backgroundColor: draft.themeBackgroundColor || draft.backgroundColor || DEFAULT_THEME_CONFIG.backgroundColor,
+      accentColor: draft.accentColor || DEFAULT_THEME_CONFIG.accentColor,
+      bubbleColor: draft.bubbleColor || DEFAULT_THEME_CONFIG.bubbleColor,
+      textColor: draft.textColor || DEFAULT_THEME_CONFIG.textColor,
+      autoContrast: draft.autoContrast !== false,
+    },
+  )
+  return deriveThemePalette(normalized)
+}
+
+function mergeThemePalettes(roomPalette, memberPalette, useRoomBackground = true) {
+  const backgroundSource = useRoomBackground ? roomPalette : memberPalette
+  const fallbackSample = roomPalette.sampleColor || memberPalette.sampleColor || DEFAULT_THEME_PRESET.sampleColor
+  const backgroundValue = backgroundSource.backgroundValue || roomPalette.backgroundValue
+  const descriptor = classifyBackground(backgroundValue, fallbackSample)
+  const bubbleColor = memberPalette.bubbleColor || roomPalette.bubbleColor
+  const textColor = memberPalette.textColor || roomPalette.textColor
+  const accentColor = memberPalette.accentColor || roomPalette.accentColor
+  return {
+    mode: backgroundSource.mode,
+    presetId: backgroundSource.presetId,
+    backgroundValue,
+    bubbleColor,
+    textColor,
+    accentColor,
+    autoContrast: backgroundSource.autoContrast !== false,
+    descriptor,
+    sampleColor: descriptor.sampleColor || fallbackSample,
+  }
+}
+
+const ACCENT_SWATCHES = [
+  '#38bdf8',
+  '#f97316',
+  '#22d3ee',
+  '#f472b6',
+  '#22c55e',
+  '#eab308',
+  '#a855f7',
+  '#f43f5e',
+]
+
+const BAN_DURATION_PRESETS = [
+  { label: '즉시 해제', minutes: 0 },
+  { label: '30분', minutes: 30 },
+  { label: '1시간', minutes: 60 },
+  { label: '6시간', minutes: 360 },
+  { label: '1일', minutes: 1440 },
+  { label: '3일', minutes: 4320 },
+  { label: '영구', minutes: null },
+]
 
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -842,16 +1304,36 @@ const overlayStyles = {
     overflow: 'hidden',
     position: 'relative',
   },
-  conversationBackground: (url) => ({
-    position: 'absolute',
-    inset: 0,
-    backgroundImage: `linear-gradient(180deg, rgba(6, 10, 25, 0.9) 0%, rgba(6, 10, 25, 0.75) 100%), url(${url})`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    opacity: 0.85,
-    zIndex: 0,
-    pointerEvents: 'none',
-  }),
+  conversationBackground: (value) => {
+    const base = {
+      position: 'absolute',
+      inset: 0,
+      background: 'linear-gradient(180deg, rgba(6, 10, 25, 0.9) 0%, rgba(6, 10, 25, 0.75) 100%)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      opacity: 0.88,
+      zIndex: 0,
+      pointerEvents: 'none',
+    }
+
+    if (!value) {
+      return base
+    }
+
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    if (isGradientValue(trimmed) || isColorValue(trimmed)) {
+      return {
+        ...base,
+        background: `linear-gradient(180deg, rgba(6, 10, 25, 0.68) 0%, rgba(6, 10, 25, 0.7) 35%, rgba(6, 10, 25, 0.88) 100%), ${trimmed}`,
+        backgroundImage: undefined,
+      }
+    }
+
+    return {
+      ...base,
+      backgroundImage: `linear-gradient(180deg, rgba(6, 10, 25, 0.88) 0%, rgba(6, 10, 25, 0.75) 100%), url(${trimmed})`,
+    }
+  },
   conversationHeader: {
     display: 'flex',
     alignItems: 'center',
@@ -1322,6 +1804,130 @@ const overlayStyles = {
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
   },
+  themeModeTabs: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  themeModeButton: (active = false) => ({
+    appearance: 'none',
+    borderRadius: 12,
+    border: active ? '1px solid rgba(59, 130, 246, 0.65)' : '1px solid rgba(71, 85, 105, 0.45)',
+    background: active ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.75)',
+    color: active ? '#e0f2fe' : '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 12px',
+    cursor: 'pointer',
+    transition: 'all 0.18s ease',
+  }),
+  themePresetGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+    gap: 12,
+  },
+  themePresetButton: (active = false) => ({
+    appearance: 'none',
+    borderRadius: 16,
+    border: active ? '1px solid rgba(59, 130, 246, 0.7)' : '1px solid rgba(71, 85, 105, 0.45)',
+    padding: 0,
+    overflow: 'hidden',
+    cursor: 'pointer',
+    background: 'rgba(15, 23, 42, 0.6)',
+    display: 'grid',
+    gridTemplateRows: '120px auto',
+    transition: 'border 0.2s ease, transform 0.2s ease',
+    transform: active ? 'translateY(-2px)' : 'translateY(0)',
+  }),
+  themePresetPreview: (background) => ({
+    height: 120,
+    width: '100%',
+    background: background || 'linear-gradient(135deg, #1e293b, #0f172a)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  }),
+  themePresetLabel: {
+    padding: '10px 12px',
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#e2e8f0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  themeAccentPalette: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  themeAccentSwatch: (color, active = false) => ({
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    background: color,
+    border: active ? '2px solid #e0f2fe' : '2px solid rgba(15, 23, 42, 0.9)',
+    cursor: 'pointer',
+    boxShadow: active ? '0 0 0 2px rgba(59, 130, 246, 0.45)' : 'none',
+  }),
+  themePreview: (background) => ({
+    borderRadius: 16,
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+    padding: 16,
+    display: 'grid',
+    gap: 12,
+    background: isGradientValue(background) || isColorValue(background)
+      ? `linear-gradient(135deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.8)), ${background}`
+      : 'rgba(15, 23, 42, 0.8)',
+    backgroundImage: !background || isGradientValue(background) || isColorValue(background)
+      ? undefined
+      : `linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.72)), url(${background})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  }),
+  themePreviewMessage: (bubbleColor, textColor) => ({
+    borderRadius: 12,
+    border: `1px solid ${adjustColorLuminance(bubbleColor || '#1f2937', 0.35)}`,
+    background: bubbleColor || 'rgba(15, 23, 42, 0.8)',
+    color: textColor || '#f8fafc',
+    padding: '10px 14px',
+    fontSize: 12,
+    fontWeight: 500,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  }),
+  themePreviewAccent: (accent) => ({
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
+    background: accent || '#38bdf8',
+    boxShadow: '0 0 0 2px rgba(15, 23, 42, 0.75)',
+  }),
+  themeAutoRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  banPresetGrid: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  banPresetButton: (active = false) => ({
+    appearance: 'none',
+    borderRadius: 10,
+    border: active ? '1px solid rgba(59, 130, 246, 0.7)' : '1px solid rgba(71, 85, 105, 0.5)',
+    background: active ? 'rgba(37, 99, 235, 0.3)' : 'rgba(15, 23, 42, 0.7)',
+    color: active ? '#e0f2fe' : '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 10px',
+    cursor: 'pointer',
+  }),
   conversationFooter: {
     position: 'relative',
     zIndex: 1,
@@ -1648,10 +2254,10 @@ const overlayStyles = {
     maxWidth: '94%',
     textAlign: mine ? 'right' : 'left',
   }),
-  messageName: (mine = false, clickable = false) => ({
+  messageName: (mine = false, clickable = false, accent = '#bfdbfe') => ({
     fontSize: 11,
     fontWeight: 700,
-    color: mine ? '#bfdbfe' : '#f8fafc',
+    color: mine ? accent || '#bfdbfe' : '#f8fafc',
     cursor: clickable ? 'pointer' : 'default',
   }),
   messageStack: (mine = false) => ({
@@ -1665,7 +2271,7 @@ const overlayStyles = {
     justifyContent: mine ? 'flex-end' : 'flex-start',
     gap: 4,
   }),
-  messageBubble: (mine = false, variant = 'default') => {
+  messageBubble: (mine = false, variant = 'default', theme = null) => {
     const variants = {
       default: {
         border: mine
@@ -1691,12 +2297,22 @@ const overlayStyles = {
       },
     }
     const tone = variants[variant] || variants.default
+    const bubbleColor = theme?.bubbleColor
+    const background = bubbleColor
+      ? mine
+        ? adjustColorLuminance(bubbleColor, 0.12)
+        : bubbleColor
+      : tone.background
+    const borderColor = bubbleColor
+      ? `1px solid ${adjustColorLuminance(bubbleColor, mine ? 0.35 : 0.18)}`
+      : tone.border
+    const resolvedText = theme?.textColor || '#f8fafc'
     return {
       borderRadius: 12,
-      border: tone.border,
-      background: tone.background,
+      border: borderColor,
+      background,
       padding: '4px 12px 6px',
-      color: '#f8fafc',
+      color: variant.startsWith('ai') ? tone.color || '#f8fafc' : resolvedText,
       display: 'grid',
       gap: 4,
       minWidth: 0,
@@ -2647,10 +3263,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [roomStatsLoading, setRoomStatsLoading] = useState(false)
   const [roomPreferences, setRoomPreferences] = useState(null)
   const [preferencesDraft, setPreferencesDraft] = useState({
-    bubbleColor: '',
-    textColor: '',
+    bubbleColor: DEFAULT_THEME_CONFIG.bubbleColor,
+    textColor: DEFAULT_THEME_CONFIG.textColor,
     backgroundUrl: '',
+    backgroundColor: DEFAULT_THEME_CONFIG.backgroundColor,
     useRoomBackground: true,
+    themeMode: DEFAULT_THEME_CONFIG.mode,
+    themePresetId: DEFAULT_THEME_CONFIG.presetId,
+    accentColor: DEFAULT_THEME_CONFIG.accentColor,
+    autoContrast: true,
     metadata: {},
   })
   const [savingPreferences, setSavingPreferences] = useState(false)
@@ -2672,9 +3293,18 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [apiKeySubmitting, setApiKeySubmitting] = useState(false)
   const [roomSettingsDraft, setRoomSettingsDraft] = useState({
-    defaultBackgroundUrl: '',
     defaultBanMinutes: '',
+    themeMode: DEFAULT_THEME_CONFIG.mode,
+    themePresetId: DEFAULT_THEME_CONFIG.presetId,
+    themeBackgroundUrl: '',
+    themeBackgroundColor: DEFAULT_THEME_CONFIG.backgroundColor,
+    accentColor: DEFAULT_THEME_CONFIG.accentColor,
+    bubbleColor: DEFAULT_THEME_CONFIG.bubbleColor,
+    textColor: DEFAULT_THEME_CONFIG.textColor,
+    autoContrast: true,
   })
+  const [roomThemeUploadBusy, setRoomThemeUploadBusy] = useState(false)
+  const [memberThemeUploadBusy, setMemberThemeUploadBusy] = useState(false)
   const [mediaLibrary, setMediaLibrary] = useState({
     status: 'idle',
     entries: [],
@@ -2693,6 +3323,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const messageListRef = useRef(null)
   const conversationRef = useRef(null)
   const composerPanelRef = useRef(null)
+  const roomBackgroundInputRef = useRef(null)
+  const memberBackgroundInputRef = useRef(null)
   const composerToggleRef = useRef(null)
   const announcementTextareaRef = useRef(null)
   const attachmentCacheRef = useRef(new Map())
@@ -3344,19 +3976,33 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
-    const background =
-      currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl || ''
+    const rawTheme = normalizeThemeConfig(
+      currentRoom?.default_theme || currentRoom?.defaultTheme || {},
+      {
+        ...DEFAULT_THEME_CONFIG,
+        backgroundUrl:
+          currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl || '',
+      },
+    )
+    const palette = deriveThemePalette(rawTheme)
     const banMinutesRaw =
       currentRoom?.default_ban_minutes !== undefined
         ? currentRoom?.default_ban_minutes
         : currentRoom?.defaultBanMinutes
 
     setRoomSettingsDraft({
-      defaultBackgroundUrl: background || '',
       defaultBanMinutes:
         banMinutesRaw !== undefined && banMinutesRaw !== null && banMinutesRaw !== ''
           ? String(banMinutesRaw)
           : '',
+      themeMode: rawTheme.mode,
+      themePresetId: rawTheme.presetId,
+      themeBackgroundUrl: rawTheme.backgroundUrl || '',
+      themeBackgroundColor: rawTheme.backgroundColor || DEFAULT_THEME_CONFIG.backgroundColor,
+      accentColor: palette.accentColor,
+      bubbleColor: palette.bubbleColor,
+      textColor: palette.textColor,
+      autoContrast: rawTheme.autoContrast !== false,
     })
   }, [context?.type, context?.chatRoomId, currentRoom, settingsOverlayOpen])
 
@@ -3375,28 +4021,423 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [context?.type, moderatorTokenSet, viewerOwnsRoom, viewerToken],
   )
 
-  const roomTheme = useMemo(() => {
-    const bubbleColor = normalizeColor(roomPreferences?.bubble_color)
-    const textColor = normalizeColor(roomPreferences?.text_color)
-    const personalBackground = normalizeBackgroundUrl(roomPreferences?.background_url)
-    const defaultBackground = normalizeBackgroundUrl(
-      currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl,
+  useEffect(() => {
+    if (context?.type !== 'chat-room') {
+      setPreferencesDraft({
+        bubbleColor: DEFAULT_THEME_CONFIG.bubbleColor,
+        textColor: DEFAULT_THEME_CONFIG.textColor,
+        backgroundUrl: '',
+        backgroundColor: DEFAULT_THEME_CONFIG.backgroundColor,
+        useRoomBackground: true,
+        themeMode: DEFAULT_THEME_CONFIG.mode,
+        themePresetId: DEFAULT_THEME_CONFIG.presetId,
+        accentColor: DEFAULT_THEME_CONFIG.accentColor,
+        autoContrast: true,
+        metadata: {},
+      })
+      return
+    }
+
+    const baseThemeConfig = normalizeThemeConfig(
+      currentRoom?.default_theme || currentRoom?.defaultTheme || {},
+      {
+        ...DEFAULT_THEME_CONFIG,
+        backgroundUrl:
+          currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl || '',
+      },
     )
-    const shouldUseRoomBackground = roomPreferences ? roomPreferences.use_room_background !== false : true
+    const basePalette = deriveThemePalette(baseThemeConfig)
+    const storedBubble = normalizeColor(roomPreferences?.bubble_color)
+    const storedText = normalizeColor(roomPreferences?.text_color)
+    const personalBackgroundUrl = roomPreferences?.background_url || ''
+    const metadataTheme = roomPreferences?.metadata?.theme || {}
+    const personalThemeConfig = normalizeThemeConfig(metadataTheme, {
+      ...baseThemeConfig,
+      bubbleColor: storedBubble || basePalette.bubbleColor,
+      textColor: storedText || basePalette.textColor,
+      backgroundUrl: personalBackgroundUrl || baseThemeConfig.backgroundUrl,
+    })
+    const personalPalette = deriveThemePalette(personalThemeConfig)
+    const useRoomBackground = roomPreferences ? roomPreferences.use_room_background !== false : true
+    const mergedPalette = mergeThemePalettes(basePalette, personalPalette, useRoomBackground)
+    const activeThemeConfig = useRoomBackground ? baseThemeConfig : personalThemeConfig
 
-    let backgroundUrl = null
-    if (personalBackground) {
-      backgroundUrl = personalBackground
-    } else if (shouldUseRoomBackground && defaultBackground) {
-      backgroundUrl = defaultBackground
+    setPreferencesDraft({
+      bubbleColor: storedBubble || mergedPalette.bubbleColor,
+      textColor: storedText || mergedPalette.textColor,
+      backgroundUrl: useRoomBackground ? '' : personalThemeConfig.backgroundUrl || '',
+      backgroundColor: activeThemeConfig.backgroundColor || DEFAULT_THEME_CONFIG.backgroundColor,
+      useRoomBackground,
+      themeMode: activeThemeConfig.mode,
+      themePresetId: activeThemeConfig.presetId,
+      accentColor: mergedPalette.accentColor,
+      autoContrast: activeThemeConfig.autoContrast !== false,
+      metadata: roomPreferences?.metadata || {},
+    })
+  }, [context?.type, currentRoom, roomPreferences])
+
+  const ownerThemeFallback = useMemo(
+    () =>
+      normalizeThemeConfig(currentRoom?.default_theme || currentRoom?.defaultTheme || {}, {
+        ...DEFAULT_THEME_CONFIG,
+        backgroundUrl:
+          currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl || '',
+      }),
+    [currentRoom],
+  )
+
+  const ownerThemePreview = useMemo(
+    () =>
+      buildThemePaletteFromDraft(roomSettingsDraft, {
+        fallback: ownerThemeFallback,
+        fallbackBackgroundUrl: ownerThemeFallback.backgroundUrl,
+      }),
+    [ownerThemeFallback, roomSettingsDraft],
+  )
+
+  const basePalette = useMemo(() => deriveThemePalette(ownerThemeFallback), [ownerThemeFallback])
+
+  const memberThemeFallback = useMemo(
+    () =>
+      normalizeThemeConfig(roomPreferences?.metadata?.theme || {}, {
+        ...ownerThemeFallback,
+        backgroundUrl: roomPreferences?.background_url || ownerThemeFallback.backgroundUrl,
+        bubbleColor: roomPreferences?.bubble_color || ownerThemeFallback.bubbleColor,
+        textColor: roomPreferences?.text_color || ownerThemeFallback.textColor,
+      }),
+    [ownerThemeFallback, roomPreferences],
+  )
+
+  const personalThemePreview = useMemo(() => {
+    const preview = buildThemePaletteFromDraft(
+      {
+        themeMode: preferencesDraft.themeMode,
+        themePresetId: preferencesDraft.themePresetId,
+        themeBackgroundUrl: preferencesDraft.backgroundUrl,
+        themeBackgroundColor: preferencesDraft.backgroundColor,
+        accentColor: preferencesDraft.accentColor,
+        bubbleColor: preferencesDraft.bubbleColor,
+        textColor: preferencesDraft.textColor,
+        autoContrast: preferencesDraft.autoContrast,
+      },
+      {
+        fallback: memberThemeFallback,
+        fallbackBackgroundUrl: memberThemeFallback.backgroundUrl || ownerThemeFallback.backgroundUrl,
+      },
+    )
+
+    if (preferencesDraft.useRoomBackground) {
+      return mergeThemePalettes(basePalette, preview, true)
     }
 
-    return {
-      bubbleColor,
-      textColor,
-      backgroundUrl,
-    }
-  }, [currentRoom, roomPreferences])
+    return preview
+  }, [
+    basePalette,
+    memberThemeFallback,
+    ownerThemeFallback.backgroundUrl,
+    preferencesDraft,
+  ])
+
+  const roomTheme = useMemo(() => {
+    const metadataTheme = roomPreferences?.metadata?.theme || {}
+    const storedBubble = normalizeColor(roomPreferences?.bubble_color)
+    const storedText = normalizeColor(roomPreferences?.text_color)
+    const personalThemeConfig = normalizeThemeConfig(metadataTheme, {
+      ...ownerThemeFallback,
+      bubbleColor: storedBubble || basePalette.bubbleColor,
+      textColor: storedText || basePalette.textColor,
+      backgroundUrl: roomPreferences?.background_url || ownerThemeFallback.backgroundUrl,
+    })
+    const personalPalette = deriveThemePalette(personalThemeConfig)
+    const useRoomBackground = roomPreferences ? roomPreferences.use_room_background !== false : true
+    return mergeThemePalettes(basePalette, personalPalette, useRoomBackground)
+  }, [basePalette, ownerThemeFallback, roomPreferences])
+
+  const updateOwnerThemeDraft = useCallback(
+    (patch, recompute = false) => {
+      setRoomSettingsDraft((prev) => {
+        const next = { ...prev, ...patch }
+        const shouldRecompute = recompute || next.autoContrast
+        if (shouldRecompute) {
+          const preview = buildThemePaletteFromDraft(next, {
+            fallback: ownerThemeFallback,
+            fallbackBackgroundUrl: ownerThemeFallback.backgroundUrl,
+          })
+          next.accentColor = preview.accentColor
+          next.bubbleColor = preview.bubbleColor
+          next.textColor = preview.textColor
+        }
+        return next
+      })
+    },
+    [ownerThemeFallback],
+  )
+
+  const updateMemberThemeDraft = useCallback(
+    (patch, recompute = false) => {
+      setPreferencesDraft((prev) => {
+        const next = { ...prev, ...patch }
+        const shouldRecompute = recompute || next.autoContrast
+        if (shouldRecompute) {
+          const preview = buildThemePaletteFromDraft(
+            {
+              themeMode: next.themeMode,
+              themePresetId: next.themePresetId,
+              themeBackgroundUrl: next.backgroundUrl,
+              themeBackgroundColor: next.backgroundColor,
+              accentColor: next.accentColor,
+              bubbleColor: next.bubbleColor,
+              textColor: next.textColor,
+              autoContrast: next.autoContrast,
+            },
+            {
+              fallback: memberThemeFallback,
+              fallbackBackgroundUrl: memberThemeFallback.backgroundUrl || ownerThemeFallback.backgroundUrl,
+            },
+          )
+          next.accentColor = preview.accentColor
+          next.bubbleColor = preview.bubbleColor
+          next.textColor = preview.textColor
+        }
+        return next
+      })
+    },
+    [memberThemeFallback, ownerThemeFallback],
+  )
+
+  const handleOwnerThemeModeChange = useCallback(
+    (mode) => {
+      const normalized = ['preset', 'color', 'image', 'none'].includes(mode) ? mode : 'preset'
+      updateOwnerThemeDraft(
+        {
+          themeMode: normalized,
+          themePresetId:
+            normalized === 'preset'
+              ? roomSettingsDraft.themePresetId || DEFAULT_THEME_PRESET.id
+              : roomSettingsDraft.themePresetId,
+          themeBackgroundColor:
+            normalized === 'color'
+              ? roomSettingsDraft.themeBackgroundColor || ownerThemeFallback.backgroundColor
+              : roomSettingsDraft.themeBackgroundColor,
+          themeBackgroundUrl: normalized === 'image' ? roomSettingsDraft.themeBackgroundUrl : '',
+        },
+        true,
+      )
+    },
+    [ownerThemeFallback.backgroundColor, roomSettingsDraft.themeBackgroundColor, roomSettingsDraft.themeBackgroundUrl, roomSettingsDraft.themePresetId, updateOwnerThemeDraft],
+  )
+
+  const handleOwnerSelectPreset = useCallback(
+    (presetId) => {
+      const preset = getThemePreset(presetId)
+      updateOwnerThemeDraft(
+        {
+          themeMode: 'preset',
+          themePresetId: preset.id,
+          accentColor: preset.recommended.accentColor,
+          bubbleColor: preset.recommended.bubbleColor,
+          textColor: preset.recommended.textColor,
+        },
+        true,
+      )
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerAccentChange = useCallback(
+    (value) => {
+      const normalized = normalizeColor(value) || value
+      updateOwnerThemeDraft(
+        {
+          accentColor: normalized || DEFAULT_THEME_CONFIG.accentColor,
+        },
+        true,
+      )
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerAutoContrastToggle = useCallback(
+    (checked) => {
+      updateOwnerThemeDraft({ autoContrast: checked }, true)
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerBubbleInput = useCallback(
+    (value) => {
+      updateOwnerThemeDraft({ bubbleColor: value }, false)
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerTextInput = useCallback(
+    (value) => {
+      updateOwnerThemeDraft({ textColor: value }, false)
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerBackgroundUpload = useCallback(
+    async (file) => {
+      if (!file) return
+      if (!context?.chatRoomId) {
+        setSettingsError('채팅방을 찾을 수 없습니다.')
+        return
+      }
+      setRoomThemeUploadBusy(true)
+      setSettingsError(null)
+      try {
+        const publicUrl = await uploadBackgroundImage({ file, roomId: context.chatRoomId })
+        updateOwnerThemeDraft(
+          {
+            themeMode: 'image',
+            themeBackgroundUrl: publicUrl,
+          },
+          true,
+        )
+        setSettingsMessage('배경 이미지를 업로드했습니다.')
+      } catch (error) {
+        console.error('[chat] 방 배경 업로드 실패', error)
+        setSettingsError(error?.message || '배경 이미지를 업로드할 수 없습니다.')
+      } finally {
+        setRoomThemeUploadBusy(false)
+      }
+    },
+    [context?.chatRoomId, updateOwnerThemeDraft],
+  )
+
+  const handleOwnerBackgroundFileChange = useCallback(
+    async (event) => {
+      const file = event.target?.files?.[0] || null
+      if (event.target) {
+        event.target.value = ''
+      }
+      if (!file) return
+      await handleOwnerBackgroundUpload(file)
+    },
+    [handleOwnerBackgroundUpload],
+  )
+
+  const handleMemberThemeModeChange = useCallback(
+    (mode) => {
+      const normalized = ['preset', 'color', 'image', 'none'].includes(mode) ? mode : 'preset'
+      updateMemberThemeDraft(
+        {
+          themeMode: normalized,
+          themePresetId:
+            normalized === 'preset'
+              ? preferencesDraft.themePresetId || DEFAULT_THEME_PRESET.id
+              : preferencesDraft.themePresetId,
+          backgroundColor:
+            normalized === 'color'
+              ? preferencesDraft.backgroundColor || ownerThemeFallback.backgroundColor
+              : preferencesDraft.backgroundColor,
+          backgroundUrl: normalized === 'image' ? preferencesDraft.backgroundUrl : '',
+          useRoomBackground: false,
+        },
+        true,
+      )
+    },
+    [ownerThemeFallback.backgroundColor, preferencesDraft.backgroundColor, preferencesDraft.backgroundUrl, preferencesDraft.themePresetId, updateMemberThemeDraft],
+  )
+
+  const handleMemberSelectPreset = useCallback(
+    (presetId) => {
+      const preset = getThemePreset(presetId)
+      updateMemberThemeDraft(
+        {
+          themeMode: 'preset',
+          themePresetId: preset.id,
+          accentColor: preset.recommended.accentColor,
+          bubbleColor: preset.recommended.bubbleColor,
+          textColor: preset.recommended.textColor,
+          useRoomBackground: false,
+        },
+        true,
+      )
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberAccentChange = useCallback(
+    (value) => {
+      const normalized = normalizeColor(value) || value
+      updateMemberThemeDraft(
+        {
+          accentColor: normalized || DEFAULT_THEME_CONFIG.accentColor,
+        },
+        true,
+      )
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberAutoContrastToggle = useCallback(
+    (checked) => {
+      updateMemberThemeDraft({ autoContrast: checked }, true)
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberBubbleInput = useCallback(
+    (value) => {
+      updateMemberThemeDraft({ bubbleColor: value }, false)
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberTextInput = useCallback(
+    (value) => {
+      updateMemberThemeDraft({ textColor: value }, false)
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberBackgroundUpload = useCallback(
+    async (file) => {
+      if (!file) return
+      setMemberThemeUploadBusy(true)
+      setPreferencesError(null)
+      try {
+        const publicUrl = await uploadBackgroundImage({ file, ownerToken: viewerToken || 'viewer' })
+        updateMemberThemeDraft(
+          {
+            themeMode: 'image',
+            backgroundUrl: publicUrl,
+            useRoomBackground: false,
+          },
+          true,
+        )
+        setSettingsMessage('개인 배경 이미지를 업로드했습니다.')
+      } catch (error) {
+        console.error('[chat] 개인 배경 업로드 실패', error)
+        setPreferencesError(error?.message || '배경 이미지를 업로드할 수 없습니다.')
+      } finally {
+        setMemberThemeUploadBusy(false)
+      }
+    },
+    [updateMemberThemeDraft, viewerToken],
+  )
+
+  const handleMemberBackgroundFileChange = useCallback(
+    async (event) => {
+      const file = event.target?.files?.[0] || null
+      if (event.target) {
+        event.target.value = ''
+      }
+      if (!file) return
+      await handleMemberBackgroundUpload(file)
+    },
+    [handleMemberBackgroundUpload],
+  )
+
+  const handleMemberUseRoomBackgroundChange = useCallback(
+    (checked) => {
+      updateMemberThemeDraft({ useRoomBackground: checked }, true)
+    },
+    [updateMemberThemeDraft],
+  )
 
   const messageTextStyle = useMemo(
     () => (roomTheme.textColor ? { ...overlayStyles.messageText, color: roomTheme.textColor } : overlayStyles.messageText),
@@ -4135,13 +5176,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       try {
         const prefs = await fetchChatMemberPreferences({ roomId })
         setRoomPreferences(prefs)
-        setPreferencesDraft({
-          bubbleColor: prefs?.bubble_color || '',
-          textColor: prefs?.text_color || '',
-          backgroundUrl: prefs?.background_url || '',
-          useRoomBackground: prefs?.use_room_background !== false,
-          metadata: prefs?.metadata || {},
-        })
       } catch (error) {
         console.error('[chat] 개인 설정 로드 실패', error)
       }
@@ -6777,12 +7811,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       : []
     const themeBubbleColor = roomTheme.bubbleColor
     const themeTextColor = roomTheme.textColor
-    const themeBackgroundUrl = roomTheme.backgroundUrl
+    const themeBackgroundValue = roomTheme.backgroundValue
     return (
       <section ref={conversationRef} style={conversationStyle}>
-        {themeBackgroundUrl ? (
-          <div style={overlayStyles.conversationBackground(themeBackgroundUrl)} />
-        ) : null}
+        <div style={overlayStyles.conversationBackground(themeBackgroundValue)} />
         <header style={conversationHeaderStyle}>
           <div style={overlayStyles.headerLeft}>
             {hasContext ? (
@@ -6932,7 +7964,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                     {avatarNode}
                     <div style={overlayStyles.messageContent(mine)}>
                       <span
-                        style={overlayStyles.messageName(mine, participantClickable)}
+                        style={overlayStyles.messageName(mine, participantClickable, roomTheme.accentColor)}
                         role={participantClickable ? 'button' : undefined}
                         tabIndex={participantClickable ? 0 : undefined}
                         onClick={openParticipantProfile}
@@ -6989,7 +8021,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                             <div key={messageKey} style={overlayStyles.messageItem(mine)}>
                               {mine && showTimestamp ? timestampNode : null}
                               {(() => {
-                                const bubbleStyle = overlayStyles.messageBubble(mine, bubbleVariant)
+                                const bubbleStyle = overlayStyles.messageBubble(mine, bubbleVariant, roomTheme)
                                 if (bubbleVariant === 'default') {
                                   if (themeBubbleColor) {
                                     bubbleStyle.background = themeBubbleColor
@@ -8176,21 +9208,192 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         {settingsTab === 'owner' && viewerOwnsRoom ? (
           <div style={{ display: 'grid', gap: 18 }}>
             <section style={overlayStyles.section}>
-              <h3 style={overlayStyles.sectionTitle}>방 기본 설정</h3>
-              <label style={overlayStyles.fieldLabel}>
-                기본 배경 URL
+              <h3 style={overlayStyles.sectionTitle}>방 테마</h3>
+              <div style={overlayStyles.themePreview(ownerThemePreview.backgroundValue)}>
+                <div
+                  style={overlayStyles.themePreviewMessage(
+                    ownerThemePreview.bubbleColor,
+                    ownerThemePreview.textColor,
+                  )}
+                >
+                  <span>이런 느낌으로 보여요</span>
+                  <span style={overlayStyles.themePreviewAccent(ownerThemePreview.accentColor)} />
+                </div>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                  기본 배경과 말풍선/글자색이 테마에 맞춰 보정됩니다.
+                </span>
+              </div>
+              <div style={overlayStyles.themeModeTabs}>
+                {[
+                  { key: 'preset', label: '추천 테마' },
+                  { key: 'color', label: '단색 배경' },
+                  { key: 'image', label: '이미지 업로드' },
+                  { key: 'none', label: '배경 없음' },
+                ].map((entry) => (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    style={overlayStyles.themeModeButton(roomSettingsDraft.themeMode === entry.key)}
+                    onClick={() => handleOwnerThemeModeChange(entry.key)}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+              {roomSettingsDraft.themeMode === 'preset' ? (
+                <div style={overlayStyles.themePresetGrid}>
+                  {ROOM_THEME_LIBRARY.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      style={overlayStyles.themePresetButton(roomSettingsDraft.themePresetId === preset.id)}
+                      onClick={() => handleOwnerSelectPreset(preset.id)}
+                    >
+                      <div style={overlayStyles.themePresetPreview(preset.value)} />
+                      <div style={overlayStyles.themePresetLabel}>
+                        <span>{preset.label}</span>
+                        <span style={overlayStyles.themePreviewAccent(preset.recommended.accentColor)} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {roomSettingsDraft.themeMode === 'color' ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <label style={overlayStyles.fieldLabel}>
+                    배경 색상
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="color"
+                        value={roomSettingsDraft.themeBackgroundColor || '#0f172a'}
+                        onChange={(event) =>
+                          updateOwnerThemeDraft({ themeBackgroundColor: event.target.value }, true)
+                        }
+                        style={{ width: 42, height: 28, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                      />
+                      <input
+                        type="text"
+                        value={roomSettingsDraft.themeBackgroundColor}
+                        onChange={(event) =>
+                          updateOwnerThemeDraft({ themeBackgroundColor: event.target.value }, true)
+                        }
+                        placeholder="#0f172a"
+                        style={overlayStyles.input}
+                      />
+                    </div>
+                  </label>
+                </div>
+              ) : null}
+              {roomSettingsDraft.themeMode === 'image' ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <label style={overlayStyles.fieldLabel}>
+                    배경 이미지 URL
+                    <input
+                      type="url"
+                      value={roomSettingsDraft.themeBackgroundUrl}
+                      onChange={(event) =>
+                        updateOwnerThemeDraft({ themeBackgroundUrl: event.target.value }, true)
+                      }
+                      placeholder="https://example.com/background.jpg"
+                      style={overlayStyles.input}
+                    />
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      style={overlayStyles.secondaryButton}
+                      onClick={() => roomBackgroundInputRef.current?.click()}
+                      disabled={roomThemeUploadBusy}
+                    >
+                      {roomThemeUploadBusy ? '업로드 중…' : '이미지 업로드'}
+                    </button>
+                    <input
+                      ref={roomBackgroundInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleOwnerBackgroundFileChange}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <div>
+                <span style={overlayStyles.fieldLabel}>포인트 색상</span>
+                <div style={overlayStyles.themeAccentPalette}>
+                  {ACCENT_SWATCHES.map((swatch) => (
+                    <button
+                      key={swatch}
+                      type="button"
+                      style={overlayStyles.themeAccentSwatch(
+                        swatch,
+                        swatch.toLowerCase() === (roomSettingsDraft.accentColor || '').toLowerCase(),
+                      )}
+                      onClick={() => handleOwnerAccentChange(swatch)}
+                    />
+                  ))}
+                </div>
                 <input
-                  type="url"
-                  value={roomSettingsDraft.defaultBackgroundUrl}
-                  onChange={(event) =>
-                    setRoomSettingsDraft((prev) => ({ ...prev, defaultBackgroundUrl: event.target.value }))
-                  }
-                  placeholder="https://example.com/background.jpg"
+                  type="text"
+                  value={roomSettingsDraft.accentColor}
+                  onChange={(event) => handleOwnerAccentChange(event.target.value)}
+                  placeholder="#38bdf8"
                   style={overlayStyles.input}
+                />
+              </div>
+              <label style={overlayStyles.themeAutoRow}>
+                <input
+                  type="checkbox"
+                  checked={roomSettingsDraft.autoContrast}
+                  onChange={(event) => handleOwnerAutoContrastToggle(event.target.checked)}
+                />
+                자동 대비 및 가독성 보정
+              </label>
+              <label style={overlayStyles.fieldLabel}>
+                말풍선 색상
+                <input
+                  type="text"
+                  value={roomSettingsDraft.bubbleColor}
+                  onChange={(event) => handleOwnerBubbleInput(event.target.value)}
+                  placeholder="#1f2937"
+                  style={overlayStyles.input}
+                  disabled={roomSettingsDraft.autoContrast}
                 />
               </label>
               <label style={overlayStyles.fieldLabel}>
-                기본 추방 시간(분)
+                글자 색상
+                <input
+                  type="text"
+                  value={roomSettingsDraft.textColor}
+                  onChange={(event) => handleOwnerTextInput(event.target.value)}
+                  placeholder="#f8fafc"
+                  style={overlayStyles.input}
+                  disabled={roomSettingsDraft.autoContrast}
+                />
+              </label>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <span style={overlayStyles.fieldLabel}>기본 추방 시간(분)</span>
+                <div style={overlayStyles.banPresetGrid}>
+                  {BAN_DURATION_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      style={overlayStyles.banPresetButton(
+                        preset.minutes === null
+                          ? roomSettingsDraft.defaultBanMinutes === ''
+                          : Number(roomSettingsDraft.defaultBanMinutes || '0') === preset.minutes,
+                      )}
+                      onClick={() =>
+                        setRoomSettingsDraft((prev) => ({
+                          ...prev,
+                          defaultBanMinutes:
+                            preset.minutes === null ? '' : String(Math.max(0, preset.minutes)),
+                        }))
+                      }
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="number"
                   min="0"
@@ -8198,9 +9401,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   onChange={(event) =>
                     setRoomSettingsDraft((prev) => ({ ...prev, defaultBanMinutes: event.target.value }))
                   }
+                  placeholder="예: 60"
                   style={overlayStyles.input}
                 />
-              </label>
+              </div>
               <button
                 type="button"
                 style={overlayStyles.actionButton('primary')}
@@ -8209,16 +9413,37 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   setSettingsMessage(null)
                   setSettingsError(null)
                   try {
+                    const palette = buildThemePaletteFromDraft(roomSettingsDraft, {
+                      fallback: ownerThemeFallback,
+                      fallbackBackgroundUrl: ownerThemeFallback.backgroundUrl,
+                    })
                     const settings = await updateChatRoomSettings({
                       roomId: context.chatRoomId,
                       settings: {
-                        defaultBackgroundUrl: (roomSettingsDraft.defaultBackgroundUrl || '').trim() || null,
                         defaultBanMinutes: roomSettingsDraft.defaultBanMinutes
                           ? Number(roomSettingsDraft.defaultBanMinutes)
                           : null,
+                        defaultBackgroundUrl:
+                          palette.descriptor.type === 'image' ? palette.backgroundValue : null,
+                        defaultTheme: {
+                          mode: roomSettingsDraft.themeMode,
+                          presetId: palette.presetId,
+                          backgroundUrl:
+                            roomSettingsDraft.themeMode === 'image'
+                              ? roomSettingsDraft.themeBackgroundUrl || null
+                              : null,
+                          backgroundColor:
+                            roomSettingsDraft.themeMode === 'color'
+                              ? roomSettingsDraft.themeBackgroundColor || null
+                              : null,
+                          accentColor: palette.accentColor,
+                          bubbleColor: palette.bubbleColor,
+                          textColor: palette.textColor,
+                          autoContrast: roomSettingsDraft.autoContrast !== false,
+                        },
                       },
                     })
-                    setSettingsMessage('방 기본 설정을 저장했습니다.')
+                    setSettingsMessage('방 테마를 저장했습니다.')
                     if (settings) {
                       updateRoomMetadata(context.chatRoomId, settings)
                     }
@@ -8380,16 +9605,161 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           <section style={overlayStyles.section}>
             <h3 style={overlayStyles.sectionTitle}>개인 설정</h3>
             {preferencesError ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{preferencesError}</span> : null}
+            <div style={overlayStyles.themePreview(personalThemePreview.backgroundValue)}>
+              <div
+                style={overlayStyles.themePreviewMessage(
+                  personalThemePreview.bubbleColor,
+                  personalThemePreview.textColor,
+                )}
+              >
+                <span>내 화면에 이렇게 보입니다</span>
+                <span style={overlayStyles.themePreviewAccent(personalThemePreview.accentColor)} />
+              </div>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                방을 나가기 전까지 개인 테마가 유지됩니다.
+              </span>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#cbd5f5', fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={preferencesDraft.useRoomBackground}
+                onChange={(event) => handleMemberUseRoomBackgroundChange(event.target.checked)}
+              />
+              방 기본 배경 사용
+            </label>
+            <div style={overlayStyles.themeModeTabs}>
+              {[
+                { key: 'preset', label: '추천 테마' },
+                { key: 'color', label: '단색 배경' },
+                { key: 'image', label: '이미지 업로드' },
+                { key: 'none', label: '배경 없음' },
+              ].map((entry) => (
+                <button
+                  key={entry.key}
+                  type="button"
+                  style={overlayStyles.themeModeButton(preferencesDraft.themeMode === entry.key)}
+                  onClick={() => handleMemberThemeModeChange(entry.key)}
+                  disabled={preferencesDraft.useRoomBackground}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
+            {!preferencesDraft.useRoomBackground && preferencesDraft.themeMode === 'preset' ? (
+              <div style={overlayStyles.themePresetGrid}>
+                {ROOM_THEME_LIBRARY.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    style={overlayStyles.themePresetButton(preferencesDraft.themePresetId === preset.id)}
+                    onClick={() => handleMemberSelectPreset(preset.id)}
+                  >
+                    <div style={overlayStyles.themePresetPreview(preset.value)} />
+                    <div style={overlayStyles.themePresetLabel}>
+                      <span>{preset.label}</span>
+                      <span style={overlayStyles.themePreviewAccent(preset.recommended.accentColor)} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {!preferencesDraft.useRoomBackground && preferencesDraft.themeMode === 'color' ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <label style={overlayStyles.fieldLabel}>
+                  배경 색상
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="color"
+                      value={preferencesDraft.backgroundColor || '#0f172a'}
+                      onChange={(event) =>
+                        updateMemberThemeDraft({ backgroundColor: event.target.value }, true)
+                      }
+                      style={{ width: 42, height: 28, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                    />
+                    <input
+                      type="text"
+                      value={preferencesDraft.backgroundColor}
+                      onChange={(event) =>
+                        updateMemberThemeDraft({ backgroundColor: event.target.value }, true)
+                      }
+                      placeholder="#0f172a"
+                      style={overlayStyles.input}
+                    />
+                  </div>
+                </label>
+              </div>
+            ) : null}
+            {!preferencesDraft.useRoomBackground && preferencesDraft.themeMode === 'image' ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <label style={overlayStyles.fieldLabel}>
+                  개인 배경 URL
+                  <input
+                    type="url"
+                    value={preferencesDraft.backgroundUrl}
+                    onChange={(event) => updateMemberThemeDraft({ backgroundUrl: event.target.value }, true)}
+                    placeholder="https://example.com/background.jpg"
+                    style={overlayStyles.input}
+                  />
+                </label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    style={overlayStyles.secondaryButton}
+                    onClick={() => memberBackgroundInputRef.current?.click()}
+                    disabled={memberThemeUploadBusy}
+                  >
+                    {memberThemeUploadBusy ? '업로드 중…' : '이미지 업로드'}
+                  </button>
+                  <input
+                    ref={memberBackgroundInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleMemberBackgroundFileChange}
+                  />
+                </div>
+              </div>
+            ) : null}
+            <div>
+              <span style={overlayStyles.fieldLabel}>포인트 색상</span>
+              <div style={overlayStyles.themeAccentPalette}>
+                {ACCENT_SWATCHES.map((swatch) => (
+                  <button
+                    key={swatch}
+                    type="button"
+                    style={overlayStyles.themeAccentSwatch(
+                      swatch,
+                      swatch.toLowerCase() === (preferencesDraft.accentColor || '').toLowerCase(),
+                    )}
+                    onClick={() => handleMemberAccentChange(swatch)}
+                  />
+                ))}
+              </div>
+              <input
+                type="text"
+                value={preferencesDraft.accentColor}
+                onChange={(event) => handleMemberAccentChange(event.target.value)}
+                placeholder="#38bdf8"
+                style={overlayStyles.input}
+              />
+            </div>
+            <label style={overlayStyles.themeAutoRow}>
+              <input
+                type="checkbox"
+                checked={preferencesDraft.autoContrast}
+                onChange={(event) => handleMemberAutoContrastToggle(event.target.checked)}
+              />
+              자동 대비 및 가독성 보정
+            </label>
             <label style={overlayStyles.fieldLabel}>
               말풍선 색상
               <input
                 type="text"
                 value={preferencesDraft.bubbleColor}
-                onChange={(event) =>
-                  setPreferencesDraft((prev) => ({ ...prev, bubbleColor: event.target.value }))
-                }
+                onChange={(event) => handleMemberBubbleInput(event.target.value)}
                 placeholder="#1f2937"
                 style={overlayStyles.input}
+                disabled={preferencesDraft.autoContrast}
               />
             </label>
             <label style={overlayStyles.fieldLabel}>
@@ -8397,34 +9767,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               <input
                 type="text"
                 value={preferencesDraft.textColor}
-                onChange={(event) =>
-                  setPreferencesDraft((prev) => ({ ...prev, textColor: event.target.value }))
-                }
+                onChange={(event) => handleMemberTextInput(event.target.value)}
                 placeholder="#f8fafc"
                 style={overlayStyles.input}
+                disabled={preferencesDraft.autoContrast}
               />
-            </label>
-            <label style={overlayStyles.fieldLabel}>
-              개인 배경 URL
-              <input
-                type="url"
-                value={preferencesDraft.backgroundUrl}
-                onChange={(event) =>
-                  setPreferencesDraft((prev) => ({ ...prev, backgroundUrl: event.target.value }))
-                }
-                placeholder="https://example.com/background.jpg"
-                style={overlayStyles.input}
-              />
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#cbd5f5', fontSize: 13 }}>
-              <input
-                type="checkbox"
-                checked={preferencesDraft.useRoomBackground}
-                onChange={(event) =>
-                  setPreferencesDraft((prev) => ({ ...prev, useRoomBackground: event.target.checked }))
-                }
-              />
-              방 기본 배경 사용
             </label>
             <button
               type="button"
@@ -8435,13 +9782,54 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 setPreferencesError(null)
                 setSavingPreferences(true)
                 try {
+                  const palette = buildThemePaletteFromDraft(
+                    {
+                      themeMode: preferencesDraft.themeMode,
+                      themePresetId: preferencesDraft.themePresetId,
+                      themeBackgroundUrl: preferencesDraft.backgroundUrl,
+                      themeBackgroundColor: preferencesDraft.backgroundColor,
+                      accentColor: preferencesDraft.accentColor,
+                      bubbleColor: preferencesDraft.bubbleColor,
+                      textColor: preferencesDraft.textColor,
+                      autoContrast: preferencesDraft.autoContrast,
+                    },
+                    {
+                      fallback: memberThemeFallback,
+                      fallbackBackgroundUrl: memberThemeFallback.backgroundUrl || ownerThemeFallback.backgroundUrl,
+                    },
+                  )
+                  const personalBackgroundUrl =
+                    preferencesDraft.useRoomBackground
+                      ? null
+                      : preferencesDraft.themeMode === 'image'
+                        ? preferencesDraft.backgroundUrl || null
+                        : null
                   const preferences = await saveChatMemberPreferences({
                     roomId: context.chatRoomId,
                     preferences: {
-                      bubble_color: preferencesDraft.bubbleColor || null,
-                      text_color: preferencesDraft.textColor || null,
-                      background_url: preferencesDraft.backgroundUrl || null,
+                      bubble_color: palette.bubbleColor || null,
+                      text_color: palette.textColor || null,
+                      background_url: personalBackgroundUrl,
                       use_room_background: preferencesDraft.useRoomBackground,
+                      metadata: {
+                        ...(preferencesDraft.metadata || {}),
+                        theme: {
+                          mode: preferencesDraft.themeMode,
+                          presetId: palette.presetId,
+                          backgroundUrl:
+                            preferencesDraft.themeMode === 'image'
+                              ? preferencesDraft.backgroundUrl || null
+                              : null,
+                          backgroundColor:
+                            preferencesDraft.themeMode === 'color'
+                              ? preferencesDraft.backgroundColor || null
+                              : null,
+                          accentColor: palette.accentColor,
+                          bubbleColor: palette.bubbleColor,
+                          textColor: palette.textColor,
+                          autoContrast: preferencesDraft.autoContrast !== false,
+                        },
+                      },
                     },
                   })
                   setRoomPreferences(preferences)
