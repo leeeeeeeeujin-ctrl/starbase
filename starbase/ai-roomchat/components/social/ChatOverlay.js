@@ -76,15 +76,20 @@ const ANNOUNCEMENT_TOOLBAR_COLORS = [
   '#1e293b',
 ]
 const ANNOUNCEMENT_TOOLBAR_SIZES = [
-  { id: 'small', label: '작게', scale: 0.9 },
-  { id: 'normal', label: '보통', scale: 1 },
-  { id: 'large', label: '크게', scale: 1.15 },
-  { id: 'xlarge', label: '아주 크게', scale: 1.3 },
+  { id: 'small', label: '작게', scale: 0.9, command: '3' },
+  { id: 'normal', label: '보통', scale: 1, command: '4' },
+  { id: 'large', label: '크게', scale: 1.15, command: '5' },
+  { id: 'xlarge', label: '아주 크게', scale: 1.3, command: '6' },
 ]
 const ANNOUNCEMENT_SIZE_SCALE = ANNOUNCEMENT_TOOLBAR_SIZES.reduce((acc, item) => {
   acc[item.id] = item.scale
   return acc
 }, {})
+const ANNOUNCEMENT_FONT_SIZE_BY_COMMAND = ANNOUNCEMENT_TOOLBAR_SIZES.reduce((acc, item) => {
+  acc[item.command] = item.id
+  return acc
+}, {})
+const ANNOUNCEMENT_HIGHLIGHT_COLOR = '#facc15'
 const ANNOUNCEMENT_POLL_MIN_OPTIONS = 2
 const ANNOUNCEMENT_POLL_MAX_OPTIONS = 6
 const ATTACHMENT_ICONS = {
@@ -981,12 +986,248 @@ async function createFileAttachmentDraft(file) {
   }
 }
 
+function isLikelyHtml(value = '') {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  return /<([a-z][^>]*|!--)/i.test(trimmed)
+}
+
+function sanitizeStyleValue(property, raw) {
+  const value = raw.trim()
+  if (!value) return null
+  const allowedColors = new Set(['color', 'background-color'])
+  if (allowedColors.has(property)) {
+    const normalized = normalizeColor(value)
+    return normalized
+  }
+  if (property === 'font-size') {
+    const numericMatch = value.match(/^(\d+(?:\.\d+)?)px$/i)
+    if (numericMatch) {
+      const pixels = Math.min(Math.max(parseFloat(numericMatch[1]), 8), 64)
+      return `${pixels}px`
+    }
+  }
+  if (property === 'font-weight') {
+    if (value === 'bold' || value === '700') {
+      return '700'
+    }
+  }
+  if (property === 'font-style') {
+    if (value === 'italic') {
+      return 'italic'
+    }
+  }
+  if (property === 'text-decoration') {
+    if (value === 'underline' || value === 'line-through') {
+      return value
+    }
+  }
+  return null
+}
+
+function sanitizeAnnouncementHtml(value = '') {
+  if (!value) return ''
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return String(value)
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+      .replace(/ on[a-z]+="[^"]*"/gi, '')
+  }
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<!doctype html><body>${value}</body>`, 'text/html')
+  const allowedTags = new Set([
+    'div',
+    'p',
+    'br',
+    'strong',
+    'em',
+    'mark',
+    'span',
+    'figure',
+    'figcaption',
+    'img',
+    'video',
+    'source',
+    'ul',
+    'ol',
+    'li',
+    'iframe',
+    'a',
+  ])
+  const attributeAllowList = {
+    img: new Set(['src', 'alt', 'loading']),
+    video: new Set(['src', 'controls', 'playsinline', 'poster', 'loop', 'muted']),
+    source: new Set(['src', 'type']),
+    iframe: new Set(['src', 'allow', 'allowfullscreen', 'loading', 'title']),
+    a: new Set(['href', 'target', 'rel']),
+    div: new Set(['data-announcement-poll', 'data-poll-question']),
+    span: new Set(['data-font-size']),
+  }
+
+  const sanitizeNode = (node) => {
+    if (!node) return
+    const { nodeType } = node
+    if (nodeType === Node.COMMENT_NODE) {
+      node.remove()
+      return
+    }
+    if (nodeType === Node.TEXT_NODE) {
+      return
+    }
+    if (nodeType !== Node.ELEMENT_NODE) {
+      node.remove()
+      return
+    }
+
+    let tagName = node.tagName.toLowerCase()
+    if (tagName === 'b') {
+      const strong = doc.createElement('strong')
+      while (node.firstChild) {
+        strong.appendChild(node.firstChild)
+      }
+      node.replaceWith(strong)
+      node = strong
+      tagName = 'strong'
+    } else if (tagName === 'i') {
+      const em = doc.createElement('em')
+      while (node.firstChild) {
+        em.appendChild(node.firstChild)
+      }
+      node.replaceWith(em)
+      node = em
+      tagName = 'em'
+    } else if (tagName === 'font') {
+      const span = doc.createElement('span')
+      const fontColor = node.getAttribute('color')
+      const fontSize = node.getAttribute('size')
+      if (fontColor) {
+        const safe = normalizeColor(fontColor)
+        if (safe) {
+          span.style.color = safe
+        }
+      }
+      if (fontSize) {
+        const mapped = ANNOUNCEMENT_FONT_SIZE_BY_COMMAND[fontSize]
+        if (mapped && ANNOUNCEMENT_SIZE_SCALE[mapped]) {
+          span.style.fontSize = `${ANNOUNCEMENT_SIZE_SCALE[mapped]}em`
+          span.dataset.fontSize = mapped
+        }
+      }
+      while (node.firstChild) {
+        span.appendChild(node.firstChild)
+      }
+      node.replaceWith(span)
+      node = span
+      tagName = 'span'
+    }
+
+    if (!allowedTags.has(tagName)) {
+      if (node.childNodes.length) {
+        const fragment = doc.createDocumentFragment()
+        while (node.firstChild) {
+          fragment.appendChild(node.firstChild)
+        }
+        node.replaceWith(fragment)
+      } else {
+        node.remove()
+      }
+      return
+    }
+
+    const allowedAttributes = attributeAllowList[tagName] || new Set()
+    const attributes = Array.from(node.attributes || [])
+    attributes.forEach((attr) => {
+      const name = attr.name.toLowerCase()
+      const value = attr.value
+      if (name === 'style') {
+        const parts = value.split(';')
+        const sanitized = []
+        parts.forEach((part) => {
+          const [rawProperty, rawValue] = part.split(':')
+          if (!rawProperty || !rawValue) return
+          const property = rawProperty.trim().toLowerCase()
+          const safeValue = sanitizeStyleValue(property, rawValue)
+          if (safeValue) {
+            sanitized.push(`${property}: ${safeValue}`)
+          }
+        })
+        if (sanitized.length) {
+          node.setAttribute('style', sanitized.join('; '))
+        } else {
+          node.removeAttribute('style')
+        }
+        return
+      }
+
+      if (allowedAttributes.has(name)) {
+        if (name === 'src' || name === 'href' || name === 'poster') {
+          const safeUrl = sanitizeExternalUrl(value)
+          if (safeUrl) {
+            node.setAttribute(name, safeUrl)
+          } else {
+            node.removeAttribute(name)
+          }
+          if (tagName === 'a' && name === 'href') {
+            node.setAttribute('target', '_blank')
+            node.setAttribute('rel', 'noopener noreferrer')
+          }
+          return
+        }
+        if (name === 'loading') {
+          node.setAttribute('loading', 'lazy')
+          return
+        }
+        if (name === 'allow') {
+          node.setAttribute(
+            'allow',
+            'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
+          )
+          return
+        }
+        if (name === 'allowfullscreen') {
+          node.setAttribute('allowfullscreen', '')
+          return
+        }
+        return
+      }
+
+      if (name.startsWith('data-')) {
+        return
+      }
+
+      node.removeAttribute(name)
+    })
+
+    Array.from(node.childNodes).forEach(sanitizeNode)
+  }
+
+  Array.from(doc.body.childNodes).forEach(sanitizeNode)
+  return doc.body.innerHTML
+}
+
+function getAnnouncementPlainText(value = '') {
+  if (!value) return ''
+  const html = formatAnnouncementPreview(value)
+  if (!html) return ''
+  if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<!doctype html><body>${html}</body>`, 'text/html')
+    return (doc.body.textContent || '').replace(/\s+/g, ' ').trim()
+  }
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 function truncateText(value = '', limit = MAX_MESSAGE_PREVIEW_LENGTH) {
   if (!value) return { text: '', truncated: false }
-  if (value.length <= limit) {
-    return { text: value, truncated: false }
+  const plain = getAnnouncementPlainText(value)
+  if (!plain) {
+    return { text: '', truncated: false }
   }
-  return { text: `${value.slice(0, limit)}…`, truncated: true }
+  if (plain.length <= limit) {
+    return { text: plain, truncated: false }
+  }
+  return { text: `${plain.slice(0, limit)}…`, truncated: true }
 }
 
 function escapeHtml(value = '') {
@@ -1055,6 +1296,9 @@ function getYoutubeEmbedUrl(id = '') {
 
 function formatAnnouncementPreview(value = '') {
   if (!value) return ''
+  if (isLikelyHtml(value)) {
+    return sanitizeAnnouncementHtml(value)
+  }
   let html = escapeHtml(value)
   html = html.replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>')
   html = html.replace(/__(.+?)__/gs, '<strong>$1</strong>')
@@ -1083,7 +1327,7 @@ function formatAnnouncementPreview(value = '') {
   html = html.replace(/&#91;size=([^&#]+)&#93;(.*?)&#91;\/size&#93;/gis, (match, rawSize, inner) => {
     const sizeId = decodeHtmlEntities(rawSize || '').trim().toLowerCase()
     const scale = ANNOUNCEMENT_SIZE_SCALE[sizeId] || 1
-    return `<span style="display: inline-block; font-size: ${scale}em">${inner}</span>`
+    return `<span style="display: inline-block; font-size: ${scale}em" data-font-size="${sizeId}">${inner}</span>`
   })
 
   html = html.replace(/&#91;video([^&#]*)&#93;/gi, (match, rawAttrs) => {
@@ -1146,11 +1390,11 @@ function formatAnnouncementPreview(value = '') {
     const optionsHtml = options
       .map((option) => `<li style="padding: 8px 10px; border-radius: 10px; background: rgba(15,23,42,0.55); margin-top: 6px; color: #e2e8f0; font-size: 13px;">${option}</li>`)
       .join('')
-    return `<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);"><strong style="display:block;font-size:13px;color:#e2e8f0;">${question}</strong><ul style="list-style:none;padding:0;margin:6px 0 0;">${optionsHtml}</ul></div>`
+    return `<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);" data-announcement-poll="true" data-poll-question="${question}"><strong style="display:block;font-size:13px;color:#e2e8f0;">${question}</strong><ul style="list-style:none;padding:0;margin:6px 0 0;">${optionsHtml}</ul></div>`
   })
 
   html = html.replace(/\n/g, '<br />')
-  return html
+  return sanitizeAnnouncementHtml(html)
 }
 
 function sameMinute(a, b) {
@@ -2298,18 +2542,17 @@ const overlayStyles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    borderRadius: 999,
-    border: active ? '1px solid rgba(59, 130, 246, 0.7)' : '1px solid rgba(71, 85, 105, 0.6)',
-    background: active ? 'rgba(37, 99, 235, 0.28)' : 'rgba(15, 23, 42, 0.72)',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    border: active ? '1px solid rgba(59, 130, 246, 0.75)' : '1px solid rgba(71, 85, 105, 0.55)',
+    background: active ? 'rgba(37, 99, 235, 0.32)' : 'rgba(15, 23, 42, 0.74)',
     color: '#e0f2fe',
-    fontSize: 12,
-    fontWeight: 600,
-    padding: '6px 12px',
+    fontSize: 0,
     cursor: 'pointer',
   }),
   announcementToolbarIcon: {
-    fontSize: 15,
+    fontSize: 18,
     lineHeight: 1,
   },
   announcementToolbarPalette: {
@@ -2318,17 +2561,21 @@ const overlayStyles = {
     gap: 8,
     padding: '6px 2px 0',
   },
-  announcementToolbarColorButton: (color) => ({
+  announcementToolbarColorButton: (color, active = false) => ({
     width: 32,
     height: 32,
     borderRadius: 16,
-    border: color === '#f8fafc' ? '1px solid rgba(15, 23, 42, 0.6)' : '1px solid rgba(148, 163, 184, 0.5)',
+    border: active
+      ? '2px solid rgba(59, 130, 246, 0.85)'
+      : color === '#f8fafc'
+        ? '1px solid rgba(15, 23, 42, 0.6)'
+        : '1px solid rgba(148, 163, 184, 0.5)',
     background: color,
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 0 0 1px rgba(15, 23, 42, 0.4)',
+    boxShadow: active ? '0 0 0 1px rgba(37, 99, 235, 0.55)' : '0 0 0 1px rgba(15, 23, 42, 0.4)',
   }),
   announcementToolbarSizeRow: {
     display: 'flex',
@@ -2399,6 +2646,33 @@ const overlayStyles = {
   announcementHint: {
     fontSize: 11,
     color: '#94a3b8',
+  },
+  announcementEditorWrapper: {
+    position: 'relative',
+    borderRadius: 16,
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(8, 15, 30, 0.58)',
+    minHeight: 220,
+  },
+  announcementEditor: {
+    minHeight: 220,
+    maxHeight: 420,
+    overflowY: 'auto',
+    padding: '16px 18px',
+    fontSize: 14,
+    lineHeight: 1.65,
+    color: '#f8fafc',
+    wordBreak: 'break-word',
+    outline: 'none',
+  },
+  announcementEditorPlaceholder: {
+    position: 'absolute',
+    inset: 0,
+    padding: '16px 18px',
+    fontSize: 14,
+    lineHeight: 1.65,
+    color: '#94a3b8',
+    pointerEvents: 'none',
   },
   announcementPreview: {
     display: 'grid',
@@ -4048,8 +4322,12 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [announcementListOpen, setAnnouncementListOpen] = useState(false)
   const [announcementError, setAnnouncementError] = useState(null)
   const [announcementToolbarState, setAnnouncementToolbarState] = useState({
-    color: false,
-    size: false,
+    panel: null,
+    bold: false,
+    italic: false,
+    highlight: false,
+    color: null,
+    size: 'normal',
   })
   const [announcementYoutubeOverlay, setAnnouncementYoutubeOverlay] = useState({
     open: false,
@@ -4131,7 +4409,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const roomBackgroundInputRef = useRef(null)
   const memberBackgroundInputRef = useRef(null)
   const composerToggleRef = useRef(null)
-  const announcementTextareaRef = useRef(null)
+  const announcementEditorRef = useRef(null)
   const announcementImageInputRef = useRef(null)
   const announcementAttachmentInputRef = useRef(null)
   const announcementVideoInputRef = useRef(null)
@@ -6388,7 +6666,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       submitting: false,
       error: null,
     })
-    setAnnouncementToolbarState({ color: false, size: false })
+    setAnnouncementToolbarState({
+      panel: null,
+      bold: false,
+      italic: false,
+      highlight: false,
+      color: null,
+      size: 'normal',
+    })
     setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
     setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [context?.chatRoomId, viewerIsModerator])
@@ -6396,6 +6681,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const handleCloseAnnouncementComposer = useCallback(() => {
     if (announcementImageInputRef.current) {
       announcementImageInputRef.current.value = ''
+    }
+    if (announcementEditorRef.current) {
+      announcementEditorRef.current.innerHTML = ''
     }
     setAnnouncementComposer({
       open: false,
@@ -6417,94 +6705,214 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setAnnouncementComposer((prev) => ({ ...prev, title: value }))
   }, [])
 
-  const handleAnnouncementComposerChange = useCallback((value) => {
-    setAnnouncementComposer((prev) => ({ ...prev, content: value }))
+  const focusAnnouncementEditor = useCallback(() => {
+    const node = announcementEditorRef.current
+    if (!node) return
+    node.focus({ preventScroll: true })
+    if (document.activeElement !== node) {
+      node.focus()
+    }
   }, [])
 
-  const insertAnnouncementMarkup = useCallback((text, options = {}) => {
-    const textarea = announcementTextareaRef.current
-    if (!textarea) return
-    const value = textarea.value || ''
-    const start =
-      options.selectionStart !== undefined && options.selectionStart !== null
-        ? options.selectionStart
-        : textarea.selectionStart ?? value.length
-    const end =
-      options.selectionEnd !== undefined && options.selectionEnd !== null
-        ? options.selectionEnd
-        : textarea.selectionEnd ?? value.length
-    const nextValue = `${value.slice(0, start)}${text}${value.slice(end)}`
-    const selectStartOffset = options.selectStartOffset ?? text.length
-    const selectEndOffset = options.selectEndOffset ?? text.length
-    setAnnouncementComposer((prev) => ({ ...prev, content: nextValue }))
-    requestAnimationFrame(() => {
-      const node = announcementTextareaRef.current
-      if (node) {
-        const baseStart = start + selectStartOffset
-        const baseEnd = start + selectEndOffset
-        node.focus()
-        node.setSelectionRange(baseStart, baseEnd)
+  const syncAnnouncementToolbarState = useCallback(() => {
+    const editor = announcementEditorRef.current
+    if (!editor) return
+    const selection = document.getSelection()
+    if (!selection || !selection.anchorNode || !editor.contains(selection.anchorNode)) {
+      setAnnouncementToolbarState((prev) => ({ ...prev, bold: false, italic: false, highlight: false }))
+      return
+    }
+    const anchorElement =
+      selection.anchorNode.nodeType === Node.ELEMENT_NODE
+        ? selection.anchorNode
+        : selection.anchorNode.parentElement
+    const findInlineStyle = (property) => {
+      let current = anchorElement
+      while (current && current !== editor) {
+        if (current.nodeType === Node.ELEMENT_NODE && current.style && current.style[property]) {
+          return current.style[property]
+        }
+        current = current.parentElement
       }
-    })
+      return null
+    }
+    const boldActive = document.queryCommandState('bold')
+    const italicActive = document.queryCommandState('italic')
+    let highlightActive = false
+    try {
+      const hilite = document.queryCommandValue('hiliteColor') || document.queryCommandValue('backColor')
+      const inlineBackground = findInlineStyle('backgroundColor')
+      if (inlineBackground) {
+        const normalized = getColorPickerValue(inlineBackground, ANNOUNCEMENT_HIGHLIGHT_COLOR)
+        highlightActive = normalized.toLowerCase() === getColorPickerValue(ANNOUNCEMENT_HIGHLIGHT_COLOR)
+      } else if (typeof hilite === 'string') {
+        const normalized = getColorPickerValue(hilite, ANNOUNCEMENT_HIGHLIGHT_COLOR)
+        highlightActive = normalized.toLowerCase() === getColorPickerValue(ANNOUNCEMENT_HIGHLIGHT_COLOR)
+      }
+    } catch (error) {
+      highlightActive = false
+    }
+    let colorValue = null
+    try {
+      const commandColor = document.queryCommandValue('foreColor')
+      const inlineColor = findInlineStyle('color')
+      if (inlineColor) {
+        colorValue = getColorPickerValue(inlineColor, inlineColor)
+      } else if (typeof commandColor === 'string') {
+        const normalized = getColorPickerValue(commandColor, commandColor)
+        if (!['#000000', '#000'].includes(normalized.toLowerCase())) {
+          colorValue = normalized
+        }
+      }
+    } catch (error) {
+      colorValue = null
+    }
+    let sizeValue = 'normal'
+    try {
+      const inlineSize = findInlineStyle('fontSize')
+      if (inlineSize) {
+        const match = ANNOUNCEMENT_TOOLBAR_SIZES.find((entry) => {
+          const emSize = `${ANNOUNCEMENT_SIZE_SCALE[entry.id]}em`
+          return inlineSize === emSize || inlineSize === `${ANNOUNCEMENT_SIZE_SCALE[entry.id] * 16}px`
+        })
+        if (match) {
+          sizeValue = match.id
+        }
+      }
+      const commandSize = document.queryCommandValue('fontSize')
+      if (commandSize && ANNOUNCEMENT_FONT_SIZE_BY_COMMAND[commandSize]) {
+        sizeValue = ANNOUNCEMENT_FONT_SIZE_BY_COMMAND[commandSize]
+      }
+    } catch (error) {
+      sizeValue = 'normal'
+    }
+    setAnnouncementToolbarState((prev) => ({
+      ...prev,
+      bold: !!boldActive,
+      italic: !!italicActive,
+      highlight: !!highlightActive,
+      color: colorValue,
+      size: sizeValue,
+    }))
   }, [])
 
-  const applyAnnouncementComposerWrap = useCallback(
-    (prefix, suffix, placeholder = '') => {
-      const textarea = announcementTextareaRef.current
-      if (!textarea) return
-      const { selectionStart = 0, selectionEnd = 0, value = '' } = textarea
-      const selection = value.slice(selectionStart, selectionEnd)
-      const content = selection || placeholder
-      const replacement = `${prefix}${content}${suffix}`
-      insertAnnouncementMarkup(replacement, {
-        selectionStart,
-        selectionEnd,
-        selectStartOffset: prefix.length,
-        selectEndOffset: prefix.length + content.length,
+  const syncAnnouncementContentFromEditor = useCallback(() => {
+    const node = announcementEditorRef.current
+    if (!node) return ''
+    const sanitized = sanitizeAnnouncementHtml(node.innerHTML || '')
+    setAnnouncementComposer((prev) => (prev.content === sanitized ? prev : { ...prev, content: sanitized }))
+    return sanitized
+  }, [])
+
+  const handleAnnouncementEditorInput = useCallback(() => {
+    syncAnnouncementContentFromEditor()
+    syncAnnouncementToolbarState()
+  }, [syncAnnouncementContentFromEditor, syncAnnouncementToolbarState])
+
+  const handleAnnouncementEditorPaste = useCallback(
+    (event) => {
+      event.preventDefault()
+      const editor = announcementEditorRef.current
+      if (!editor) return
+      const clipboard = event.clipboardData
+      const html = clipboard?.getData('text/html')
+      const text = clipboard?.getData('text/plain')
+      const snippet = html
+        ? sanitizeAnnouncementHtml(html)
+        : escapeHtml(text || '').replace(/\n/g, '<br />')
+      try {
+        document.execCommand('insertHTML', false, snippet)
+      } catch (error) {
+        editor.insertAdjacentHTML('beforeend', snippet)
+      }
+      requestAnimationFrame(() => {
+        syncAnnouncementContentFromEditor()
+        syncAnnouncementToolbarState()
       })
     },
-    [insertAnnouncementMarkup],
+    [syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
   )
 
-  const handleAnnouncementComposerFormat = useCallback(
-    (format) => {
-      const wrappers = {
-        bold: ['**', '**'],
-        italic: ['*', '*'],
-        highlight: ['~~', '~~'],
-        code: ['`', '`'],
+  const applyAnnouncementCommand = useCallback(
+    (command, value = null) => {
+      const editor = announcementEditorRef.current
+      if (!editor) return
+      focusAnnouncementEditor()
+      try {
+        document.execCommand('styleWithCSS', false, true)
+      } catch (error) {
+        // ignore
       }
-      const pair = wrappers[format]
-      if (!pair) return
-      applyAnnouncementComposerWrap(pair[0], pair[1], '')
+      if (command === 'hiliteColor' && value === null) {
+        document.execCommand('removeFormat')
+      } else {
+        document.execCommand(command, false, value)
+      }
+      requestAnimationFrame(() => {
+        syncAnnouncementContentFromEditor()
+        syncAnnouncementToolbarState()
+      })
     },
-    [applyAnnouncementComposerWrap],
+    [focusAnnouncementEditor, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
   )
 
-  const handleAnnouncementToolbarToggle = useCallback((panel) => {
+  const handleAnnouncementToolbarCommand = useCallback(
+    (command) => {
+      if (command === 'bold' || command === 'italic') {
+        applyAnnouncementCommand(command)
+      } else if (command === 'highlight') {
+        if (announcementToolbarState.highlight) {
+          applyAnnouncementCommand('hiliteColor', 'transparent')
+        } else {
+          applyAnnouncementCommand('hiliteColor', ANNOUNCEMENT_HIGHLIGHT_COLOR)
+        }
+      }
+    },
+    [announcementToolbarState.highlight, applyAnnouncementCommand],
+  )
+
+  const handleAnnouncementToolbarPanelToggle = useCallback((panel) => {
     setAnnouncementToolbarState((prev) => ({
-      color: panel === 'color' ? !prev.color : false,
-      size: panel === 'size' ? !prev.size : false,
+      ...prev,
+      panel: prev.panel === panel ? null : panel,
     }))
   }, [])
 
   const handleAnnouncementColorPick = useCallback(
     (color) => {
       const normalized = getColorPickerValue(color, color)
-      applyAnnouncementComposerWrap(`[color=${normalized}]`, '[/color]', '')
-      setAnnouncementToolbarState((prev) => ({ ...prev, color: false }))
+      applyAnnouncementCommand('foreColor', normalized)
+      setAnnouncementToolbarState((prev) => ({ ...prev, panel: null, color: normalized }))
     },
-    [applyAnnouncementComposerWrap],
+    [applyAnnouncementCommand],
   )
 
   const handleAnnouncementSizePick = useCallback(
     (sizeId) => {
       const size = ANNOUNCEMENT_TOOLBAR_SIZES.find((entry) => entry.id === sizeId)
       if (!size) return
-      applyAnnouncementComposerWrap(`[size=${size.id}]`, '[/size]', '')
-      setAnnouncementToolbarState((prev) => ({ ...prev, size: false }))
+      applyAnnouncementCommand('fontSize', size.command)
+      setAnnouncementToolbarState((prev) => ({ ...prev, panel: null, size: size.id }))
     },
-    [applyAnnouncementComposerWrap],
+    [applyAnnouncementCommand],
+  )
+
+  const insertAnnouncementHtml = useCallback(
+    (html) => {
+      const editor = announcementEditorRef.current
+      if (!editor) return
+      focusAnnouncementEditor()
+      try {
+        document.execCommand('insertHTML', false, html)
+      } catch (error) {
+        editor.insertAdjacentHTML('beforeend', html)
+      }
+      requestAnimationFrame(() => {
+        syncAnnouncementContentFromEditor()
+        syncAnnouncementToolbarState()
+      })
+    },
+    [focusAnnouncementEditor, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
   )
 
   const handleAnnouncementAttachmentTrigger = useCallback(
@@ -6537,18 +6945,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           throw new Error('업로드된 파일 URL을 확인할 수 없습니다.')
         }
         if (type === 'image') {
-          const alt = file.name ? file.name.replace(/\s+/g, ' ') : '첨부 이미지'
-          const snippet = `\n![${alt}](${url})\n`
-          insertAnnouncementMarkup(snippet, {
-            selectStartOffset: snippet.length,
-            selectEndOffset: snippet.length,
-          })
+          const alt = escapeHtml(file.name ? file.name.replace(/\s+/g, ' ') : '첨부 이미지')
+          const snippet = `
+<figure style="margin: 12px 0; border-radius: 12px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
+  <img src="${url}" alt="${alt}" style="display:block;width:100%;height:auto;" loading="lazy" />
+  <figcaption style="padding: 6px 10px; font-size: 12px; color: #cbd5f5;">${alt}</figcaption>
+</figure>`
+          insertAnnouncementHtml(snippet)
         } else if (type === 'video') {
-          const snippet = `\n[video src="${url}"]\n`
-          insertAnnouncementMarkup(snippet, {
-            selectStartOffset: snippet.length,
-            selectEndOffset: snippet.length,
-          })
+          const snippet = `
+<div style="margin: 12px 0; border-radius: 12px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
+  <video src="${url}" controls playsinline style="display:block;width:100%;max-height:320px;background:#000;"></video>
+</div>`
+          insertAnnouncementHtml(snippet)
         }
       } catch (error) {
         console.error('[chat] 공지 첨부 업로드 실패', error)
@@ -6560,8 +6969,40 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setAnnouncementComposer((prev) => ({ ...prev, attachmentUploading: false }))
       }
     },
-    [context?.chatRoomId, insertAnnouncementMarkup],
+    [context?.chatRoomId, insertAnnouncementHtml],
   )
+
+  useEffect(() => {
+    if (!announcementComposer.open) {
+      return
+    }
+    const node = announcementEditorRef.current
+    if (node) {
+      const safeHtml = sanitizeAnnouncementHtml(announcementComposer.content || '')
+      if (node.innerHTML !== safeHtml) {
+        node.innerHTML = safeHtml
+      }
+    }
+    requestAnimationFrame(() => {
+      syncAnnouncementToolbarState()
+    })
+  }, [announcementComposer.content, announcementComposer.open, syncAnnouncementToolbarState])
+
+  useEffect(() => {
+    if (!announcementComposer.open) return undefined
+    const handler = () => {
+      if (!announcementComposer.open) return
+      syncAnnouncementToolbarState()
+    }
+    document.addEventListener('selectionchange', handler)
+    requestAnimationFrame(() => {
+      focusAnnouncementEditor()
+      syncAnnouncementToolbarState()
+    })
+    return () => {
+      document.removeEventListener('selectionchange', handler)
+    }
+  }, [announcementComposer.open, focusAnnouncementEditor, syncAnnouncementToolbarState])
 
   const handleAnnouncementYoutubeOpen = useCallback(() => {
     setAnnouncementYoutubeOverlay({ open: true, query: '', results: [], loading: false, error: null })
@@ -6642,14 +7083,26 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       if (thumb) {
         attributes.push(`thumbnail="${thumb}"`)
       }
-      const snippet = `\n[youtube ${attributes.join(' ')}]\n`
-      insertAnnouncementMarkup(snippet, {
-        selectStartOffset: snippet.length,
-        selectEndOffset: snippet.length,
-      })
+      const preview = thumb
+        ? `<img src="${thumb}" alt="${escapeHtml(title)}" style="display:block;width:100%;height:auto;" loading="lazy" />`
+        : `<iframe src="${getYoutubeEmbedUrl(youtubeId)}" title="${escapeHtml(title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" style="width:100%;min-height:220px;border:0;border-radius:12px;"></iframe>`
+      const overlay = thumb
+        ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span style="background:rgba(15,23,42,0.75);color:#f8fafc;padding:8px 14px;border-radius:999px;font-size:13px;">▶ ${escapeHtml(title)}</span></div>`
+        : ''
+      const hiddenEmbed = thumb
+        ? `<iframe src="${getYoutubeEmbedUrl(youtubeId)}" title="${escapeHtml(title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" style="position:absolute; inset:0; opacity:0;" tabindex="-1"></iframe>`
+        : ''
+      const snippet = `
+<div style="position: relative; margin: 12px 0; border-radius: 14px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
+  ${preview}
+  ${overlay}
+  <div style="padding: 8px 12px; font-size: 12px; color: #cbd5f5;">${escapeHtml(title)}</div>
+  ${hiddenEmbed}
+</div>`
+      insertAnnouncementHtml(snippet)
       handleAnnouncementYoutubeClose()
     },
-    [handleAnnouncementYoutubeClose, insertAnnouncementMarkup],
+    [handleAnnouncementYoutubeClose, insertAnnouncementHtml],
   )
 
   const handleAnnouncementPollOpen = useCallback(() => {
@@ -6710,17 +7163,23 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           error: `최소 ${ANNOUNCEMENT_POLL_MIN_OPTIONS}개의 선택지가 필요합니다.`,
         }
       }
-      const safeQuestion = question.replace(/\n/g, ' ').replace(/"/g, "'")
-      const safeOptions = options.map((option) => option.replace(/\n/g, ' ').replace(/"/g, "'"))
-      const lines = safeOptions.map((option) => `- ${option}`)
-      const snippet = `\n[poll question="${safeQuestion}"]\n${lines.join('\n')}\n[/poll]\n`
-      insertAnnouncementMarkup(snippet, {
-        selectStartOffset: snippet.length,
-        selectEndOffset: snippet.length,
-      })
+      const safeQuestion = escapeHtml(question.replace(/\n/g, ' '))
+      const safeOptions = options.map((option) => escapeHtml(option.replace(/\n/g, ' ')))
+      const optionsHtml = safeOptions
+        .map(
+          (option) =>
+            `<li style="padding: 8px 10px; border-radius: 10px; background: rgba(15,23,42,0.55); margin-top: 6px; color: #e2e8f0; font-size: 13px;">${option}</li>`,
+        )
+        .join('')
+      const snippet = `
+<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);" data-announcement-poll="true" data-poll-question="${safeQuestion}">
+  <strong style="display:block;font-size:13px;color:#e2e8f0;">${safeQuestion}</strong>
+  <ul style="list-style:none;padding:0;margin:6px 0 0;">${optionsHtml}</ul>
+</div>`
+      insertAnnouncementHtml(snippet)
       return { open: false, question: '', options: ['', ''], error: null }
     })
-  }, [insertAnnouncementMarkup])
+  }, [insertAnnouncementHtml])
 
   const handleDeleteAnnouncementComment = useCallback(
     async (comment) => {
@@ -6807,10 +7266,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setAnnouncementListOpen(false)
   }, [])
 
-  const announcementPreviewHtml = useMemo(
-    () => formatAnnouncementPreview(announcementComposer.content || ''),
-    [announcementComposer.content],
-  )
 
   const announcementDetailHtml = useMemo(
     () => formatAnnouncementPreview(announcementDetail.announcement?.content || ''),
@@ -6827,8 +7282,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
     const title = (announcementComposer.title || '').trim()
-    const content = (announcementComposer.content || '').trim()
-    if (!content) {
+    const rawContent = announcementComposer.content || ''
+    const content = sanitizeAnnouncementHtml(rawContent)
+    const plain = getAnnouncementPlainText(content)
+    if (!plain) {
       setAnnouncementComposer((prev) => ({ ...prev, error: '공지 내용을 입력해 주세요.' }))
       return
     }
@@ -11729,109 +12186,109 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               style={overlayStyles.announcementToolbarButton(false)}
               onClick={() => handleAnnouncementAttachmentTrigger('image')}
               disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
+              aria-label="이미지 첨부"
             >
               <span style={overlayStyles.announcementToolbarIcon}>🖼️</span>
-              이미지
             </button>
             <button
               type="button"
               style={overlayStyles.announcementToolbarButton(false)}
               onClick={() => handleAnnouncementAttachmentTrigger('video')}
               disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
+              aria-label="동영상 첨부"
             >
               <span style={overlayStyles.announcementToolbarIcon}>🎬</span>
-              동영상
             </button>
             <button
               type="button"
               style={overlayStyles.announcementToolbarButton(false)}
               onClick={handleAnnouncementYoutubeOpen}
+              aria-label="유튜브 첨부"
             >
               <span style={overlayStyles.announcementToolbarIcon}>📺</span>
-              유튜브
             </button>
             <button
               type="button"
               style={overlayStyles.announcementToolbarButton(false)}
               onClick={handleAnnouncementPollOpen}
+              aria-label="투표 만들기"
             >
               <span style={overlayStyles.announcementToolbarIcon}>🗳️</span>
-              투표
             </button>
           </div>
           <div style={overlayStyles.announcementToolbarGroup}>
             <button
               type="button"
-              style={overlayStyles.announcementToolbarButton(false)}
-              onClick={() => handleAnnouncementComposerFormat('bold')}
+              style={overlayStyles.announcementToolbarButton(announcementToolbarState.bold)}
+              onClick={() => handleAnnouncementToolbarCommand('bold')}
+              aria-label="굵게"
+              aria-pressed={announcementToolbarState.bold}
             >
               <span style={overlayStyles.announcementToolbarIcon}>𝐁</span>
-              굵게
             </button>
             <button
               type="button"
-              style={overlayStyles.announcementToolbarButton(false)}
-              onClick={() => handleAnnouncementComposerFormat('italic')}
+              style={overlayStyles.announcementToolbarButton(announcementToolbarState.italic)}
+              onClick={() => handleAnnouncementToolbarCommand('italic')}
+              aria-label="기울임"
+              aria-pressed={announcementToolbarState.italic}
             >
               <span style={overlayStyles.announcementToolbarIcon}>𝑰</span>
-              기울임
             </button>
             <button
               type="button"
-              style={overlayStyles.announcementToolbarButton(false)}
-              onClick={() => handleAnnouncementComposerFormat('highlight')}
+              style={overlayStyles.announcementToolbarButton(announcementToolbarState.highlight)}
+              onClick={() => handleAnnouncementToolbarCommand('highlight')}
+              aria-label="강조"
+              aria-pressed={announcementToolbarState.highlight}
             >
               <span style={overlayStyles.announcementToolbarIcon}>✨</span>
-              강조
-            </button>
-            <button
-              type="button"
-              style={overlayStyles.announcementToolbarButton(false)}
-              onClick={() => handleAnnouncementComposerFormat('code')}
-            >
-              <span style={overlayStyles.announcementToolbarIcon}>⌘</span>
-              코드
             </button>
           </div>
           <div style={overlayStyles.announcementToolbarGroup}>
             <button
               type="button"
-              style={overlayStyles.announcementToolbarButton(announcementToolbarState.color)}
-              onClick={() => handleAnnouncementToolbarToggle('color')}
+              style={overlayStyles.announcementToolbarButton(announcementToolbarState.panel === 'color')}
+              onClick={() => handleAnnouncementToolbarPanelToggle('color')}
+              aria-label="글자색 선택"
+              aria-expanded={announcementToolbarState.panel === 'color'}
             >
               <span style={overlayStyles.announcementToolbarIcon}>🎨</span>
-              글자색
             </button>
             <button
               type="button"
-              style={overlayStyles.announcementToolbarButton(announcementToolbarState.size)}
-              onClick={() => handleAnnouncementToolbarToggle('size')}
+              style={overlayStyles.announcementToolbarButton(announcementToolbarState.panel === 'size')}
+              onClick={() => handleAnnouncementToolbarPanelToggle('size')}
+              aria-label="글자 크기 선택"
+              aria-expanded={announcementToolbarState.panel === 'size'}
             >
               <span style={overlayStyles.announcementToolbarIcon}>🔠</span>
-              글자크기
             </button>
           </div>
         </div>
-        {announcementToolbarState.color ? (
+        {announcementToolbarState.panel === 'color' ? (
           <div style={overlayStyles.announcementToolbarPalette}>
             {ANNOUNCEMENT_TOOLBAR_COLORS.map((color) => (
               <button
                 key={color}
                 type="button"
-                style={overlayStyles.announcementToolbarColorButton(color)}
+                style={overlayStyles.announcementToolbarColorButton(
+                  color,
+                  getColorPickerValue(color, color) === (announcementToolbarState.color || ''),
+                )}
                 onClick={() => handleAnnouncementColorPick(color)}
                 aria-label={`글자색 ${color}`}
               />
             ))}
           </div>
         ) : null}
-        {announcementToolbarState.size ? (
+        {announcementToolbarState.panel === 'size' ? (
           <div style={overlayStyles.announcementToolbarSizeRow}>
             {ANNOUNCEMENT_TOOLBAR_SIZES.map((size) => (
               <button
                 key={size.id}
                 type="button"
-                style={overlayStyles.announcementToolbarSizeButton(false)}
+                style={overlayStyles.announcementToolbarSizeButton(announcementToolbarState.size === size.id)}
                 onClick={() => handleAnnouncementSizePick(size.id)}
               >
                 {size.label}
@@ -11843,17 +12300,24 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           <span style={overlayStyles.announcementToolbarStatus}>첨부 파일을 업로드하는 중입니다…</span>
         ) : null}
         <span style={overlayStyles.announcementHint}>
-          **굵게**, *기울임*, ~~강조~~, `코드` 표기와 색상, 크기, 첨부 미리보기를 지원합니다.
+          아이콘을 눌러 서식을 토글하면 입력하는 동안 바로 적용됩니다.
         </span>
-        <textarea
-          rows={6}
-          value={announcementComposer.content}
-          onChange={(event) => handleAnnouncementComposerChange(event.target.value)}
-          ref={announcementTextareaRef}
-          placeholder="공지 내용을 입력해 주세요."
-          style={overlayStyles.textarea}
-          disabled={announcementComposer.submitting}
-        />
+        <div style={overlayStyles.announcementEditorWrapper}>
+          {!getAnnouncementPlainText(announcementComposer.content || '') ? (
+            <span style={overlayStyles.announcementEditorPlaceholder}>
+              공지 내용을 입력해 주세요. 이미지와 동영상, 유튜브, 투표를 바로 삽입할 수 있습니다.
+            </span>
+          ) : null}
+          <div
+            ref={announcementEditorRef}
+            contentEditable
+            suppressContentEditableWarning
+            style={overlayStyles.announcementEditor}
+            onInput={handleAnnouncementEditorInput}
+            onPaste={handleAnnouncementEditorPaste}
+            data-placeholder="공지 내용을 입력해 주세요."
+          />
+        </div>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#cbd5f5', fontSize: 13 }}>
           <input
             type="checkbox"
@@ -11863,17 +12327,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           />
           공지를 상단에 고정하기
         </label>
-        <div style={overlayStyles.announcementPreview}>
-          <strong style={{ fontSize: 12, color: '#cbd5f5' }}>미리보기</strong>
-          <div
-            style={overlayStyles.announcementPreviewBody}
-            dangerouslySetInnerHTML={{
-              __html:
-                announcementPreviewHtml ||
-                '<span style="color:#94a3b8;">내용을 입력하면 미리보기가 표시됩니다.</span>',
-            }}
-          />
-        </div>
         {announcementComposer.error ? (
           <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementComposer.error}</span>
         ) : null}
