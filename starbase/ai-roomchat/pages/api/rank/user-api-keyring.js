@@ -125,6 +125,15 @@ function normalizeRouteError(error, fallbackCode) {
     }
   }
 
+  if (lowered.includes('no api key found in request')) {
+    return {
+      error: 'supabase_service_key_missing',
+      detail:
+        'Supabase 서비스 롤 키가 누락되었습니다. 서버 환경 변수 SUPABASE_SERVICE_ROLE(또는 SUPABASE_SERVICE_ROLE_KEY)을 설정해 주세요.',
+      status: 500,
+    }
+  }
+
   if (combined) {
     return { error: fallbackCode, detail: combined }
   }
@@ -242,7 +251,7 @@ async function handleList(req, res, user) {
     })
   } catch (error) {
     const payload = normalizeRouteError(error, 'failed_to_load_keyring')
-    return res.status(400).json(payload)
+    return res.status(payload.status || 400).json(payload)
   }
 }
 
@@ -487,7 +496,7 @@ async function handleCreate(req, res, user) {
   } catch (error) {
     console.error('[user-api-keyring] Failed to store API key:', error)
     const payload = normalizeRouteError(error, 'failed_to_store_api_key')
-    return res.status(400).json(payload)
+    return res.status(payload.status || 400).json(payload)
   }
 }
 
@@ -532,7 +541,7 @@ async function handleActivate(req, res, user) {
     } catch (error) {
       console.error('[user-api-keyring] Failed to deactivate API key:', error)
       const payload = normalizeRouteError(error, 'failed_to_deactivate_api_key')
-      return res.status(400).json(payload)
+      return res.status(payload.status || 400).json(payload)
     }
   }
 
@@ -554,7 +563,7 @@ async function handleActivate(req, res, user) {
   } catch (error) {
     console.error('[user-api-keyring] Failed to activate API key:', error)
     const payload = normalizeRouteError(error, 'failed_to_activate_api_key')
-    return res.status(400).json(payload)
+    return res.status(payload.status || 400).json(payload)
   }
 }
 
@@ -591,7 +600,7 @@ async function handleDelete(req, res, user) {
   } catch (error) {
     console.error('[user-api-keyring] Failed to delete API key:', error)
     const payload = normalizeRouteError(error, 'failed_to_delete_api_key')
-    return res.status(400).json(payload)
+    return res.status(payload.status || 400).json(payload)
   }
 }
 

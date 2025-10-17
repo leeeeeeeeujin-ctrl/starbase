@@ -56,6 +56,7 @@ const MINI_OVERLAY_MIN_HEIGHT = 240
 const MINI_OVERLAY_MAX_HEIGHT = 640
 const MINI_OVERLAY_BAR_HEIGHT = 56
 const MINI_OVERLAY_MARGIN = 18
+const MINI_OVERLAY_VISIBLE_MARGIN = 24
 const PINCH_TRIGGER_RATIO = 0.7
 const PINCH_MIN_DELTA = 28
 const ATTACHMENT_ICONS = {
@@ -146,13 +147,19 @@ function clampMiniOverlayPosition(
   width = MINI_OVERLAY_WIDTH,
   height = MINI_OVERLAY_HEIGHT,
   margin = MINI_OVERLAY_MARGIN,
+  visibleEdge = MINI_OVERLAY_VISIBLE_MARGIN,
 ) {
   const safeWidth = Math.max(Number(viewport?.width) || DEFAULT_VIEWPORT.width || width, width + margin * 2)
   const safeHeight = Math.max(Number(viewport?.height) || DEFAULT_VIEWPORT.height || height, height + margin * 2)
   const nextX = typeof position?.x === 'number' ? position.x : safeWidth - width - margin
   const nextY = typeof position?.y === 'number' ? position.y : safeHeight - height - margin
-  const clampedX = Math.min(Math.max(margin, nextX), safeWidth - width - margin)
-  const clampedY = Math.min(Math.max(margin, nextY), safeHeight - height - margin)
+  const edge = Math.max(visibleEdge, margin)
+  const minX = edge - width
+  const maxX = safeWidth - edge
+  const minY = edge - height
+  const maxY = safeHeight - edge
+  const clampedX = Math.min(Math.max(minX, nextX), maxX)
+  const clampedY = Math.min(Math.max(minY, nextY), maxY)
   return { x: clampedX, y: clampedY }
 }
 
@@ -1416,7 +1423,7 @@ const overlayStyles = {
       zIndex: 1525,
       overflow: 'hidden',
       userSelect: 'none',
-      touchAction: 'auto',
+      touchAction: mode === 'bar' ? 'none' : 'auto',
     }
 
     if (mode === 'bar') {
@@ -1429,6 +1436,7 @@ const overlayStyles = {
         justifyContent: 'space-between',
         gap: 12,
         padding: '10px 16px',
+        touchAction: 'none',
       }
     }
 
@@ -1448,6 +1456,7 @@ const overlayStyles = {
     padding: '14px 18px 12px',
     background: 'rgba(10, 16, 35, 0.82)',
     cursor: 'grab',
+    touchAction: 'none',
   },
   miniOverlayHeaderActions: {
     display: 'flex',
@@ -3615,7 +3624,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const roomId = context.chatRoomId
     if (!roomId) return
     const normalizedRoomId = normalizeId(roomId)
-    if (!normalizedRoomId) return
+    if (!normalizedRoomId || !isValidUuid(normalizedRoomId)) return
 
     const relevantMessages = messages.filter((message) =>
       normalizeId(message?.chat_room_id || message?.room_id) === normalizedRoomId,
@@ -3631,9 +3640,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
 
     lastMarkedRef.current = cacheKey
-    markChatRoomRead({ roomId, messageId: latest.id })
+    markChatRoomRead({ roomId: normalizedRoomId, messageId: latest.id })
       .then(() => {
-        updateRoomMetadata(roomId, {
+        updateRoomMetadata(normalizedRoomId, {
           unread_count: 0,
           unreadCount: 0,
           last_read_message_id: latest.id,
