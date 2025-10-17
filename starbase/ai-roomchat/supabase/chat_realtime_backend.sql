@@ -2484,8 +2484,8 @@ drop function if exists public.create_chat_room_announcement(uuid, text, text, b
 drop function if exists public.create_chat_room_announcement(uuid, text, text, text, boolean);
 create or replace function public.create_chat_room_announcement(
   p_room_id uuid,
-  p_title text default null,
   p_content text,
+  p_title text default null,
   p_image_url text default null,
   p_pinned boolean default false
 )
