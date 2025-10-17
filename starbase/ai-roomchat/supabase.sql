@@ -5300,11 +5300,25 @@ begin
       h.image_url as hero_image_url,
       cr.name as chat_room_name,
       th.name as target_hero_name,
-      th.image_url as target_hero_image_url
+      th.image_url as target_hero_image_url,
+      coalesce(read_stats.total_members, 0)::integer as room_member_total,
+      coalesce(read_stats.unread_members, 0)::integer as room_unread_count
     from combined as c
     left join public.heroes as h on h.id = c.hero_id
     left join public.heroes as th on th.id = c.target_hero_id
     left join public.chat_rooms as cr on cr.id = c.chat_room_id
+    left join lateral (
+      select
+        count(*) filter (where coalesce(mem.status, 'active') = 'active') as total_members,
+        count(*) filter (
+          where coalesce(mem.status, 'active') = 'active'
+            and coalesce(mem.last_read_message_at, mem.joined_at, timestamptz 'epoch') < c.created_at
+            and (mem.owner_id is null or mem.owner_id <> c.owner_id)
+        ) as unread_members
+      from public.chat_room_members mem
+      where c.chat_room_id is not null
+        and mem.room_id = c.chat_room_id
+    ) as read_stats on true
     order by c.created_at asc, c.id
   ) as row;
 

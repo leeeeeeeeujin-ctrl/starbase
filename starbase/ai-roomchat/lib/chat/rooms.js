@@ -2,6 +2,19 @@
 
 import { supabase } from '@/lib/supabase'
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function normalizeUuid(value) {
+  if (!value && value !== 0) {
+    return null
+  }
+  const token = String(value).trim()
+  if (!token || !UUID_PATTERN.test(token)) {
+    return null
+  }
+  return token
+}
+
 export async function fetchChatDashboard({ limit = 24 } = {}) {
   const { data, error } = await supabase.rpc('fetch_chat_dashboard', {
     p_limit: Math.max(8, Math.min(limit || 24, 120)),
@@ -31,6 +44,26 @@ export async function fetchChatRooms({ search = '', limit = 24 } = {}) {
   }
 
   return data || { joined: [], available: [] }
+}
+
+export async function markChatRoomRead({ roomId, messageId = null } = {}) {
+  const normalizedRoomId = normalizeUuid(roomId)
+  if (!normalizedRoomId) {
+    return { ok: false, skipped: true, reason: 'invalid_room_id' }
+  }
+
+  const normalizedMessageId = normalizeUuid(messageId)
+
+  const { data, error } = await supabase.rpc('mark_chat_room_read', {
+    p_room_id: normalizedRoomId,
+    p_message_id: normalizedMessageId,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data || { ok: true }
 }
 
 export async function createChatRoom(payload) {
