@@ -2524,26 +2524,35 @@ const overlayStyles = {
     fontSize: 11,
     color: '#94a3b8',
   },
-  announcementToolbarOverlay: (visible = false) => ({
-    position: 'fixed',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-    paddingTop: 12,
-    paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 16px)',
-    paddingRight: 'calc(env(safe-area-inset-right, 0px) + 16px)',
-    paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
-    background: 'linear-gradient(180deg, rgba(4, 7, 18, 0.05) 0%, rgba(4, 7, 18, 0.88) 35%, rgba(4, 7, 18, 0.96) 100%)',
-    boxShadow: '0 -28px 48px rgba(2, 6, 23, 0.78)',
-    zIndex: 1540,
-    pointerEvents: visible ? 'auto' : 'none',
-    opacity: visible ? 1 : 0,
-    transform: visible ? 'translateY(0)' : 'translateY(16px)',
-    transition: 'opacity 180ms ease, transform 200ms ease',
-  }),
+  announcementToolbarOverlay: (visible = false, viewport = null) => {
+    const safeBottom = Math.max(0, Math.round(viewport?.safeAreaBottom || 0))
+    const offsetTop = Math.max(0, Math.round(viewport?.offsetTop || 0))
+    const visualHeight = Math.max(0, Math.round(viewport?.height || 0))
+    const innerHeight = Math.max(0, Math.round(viewport?.innerHeight || visualHeight))
+    const rawGap = Math.max(0, innerHeight - (offsetTop + visualHeight))
+    const keyboardHeight = Math.max(0, rawGap - safeBottom)
+
+    return {
+      position: 'fixed',
+      left: 0,
+      right: 0,
+      bottom: keyboardHeight,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 10,
+      paddingTop: 12,
+      paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 16px)',
+      paddingRight: 'calc(env(safe-area-inset-right, 0px) + 16px)',
+      paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+      background: 'linear-gradient(180deg, rgba(4, 7, 18, 0.05) 0%, rgba(4, 7, 18, 0.88) 35%, rgba(4, 7, 18, 0.96) 100%)',
+      boxShadow: '0 -28px 48px rgba(2, 6, 23, 0.78)',
+      zIndex: 1540,
+      pointerEvents: visible ? 'auto' : 'none',
+      opacity: visible ? 1 : 0,
+      transform: visible ? 'translateY(0)' : 'translateY(16px)',
+      transition: 'opacity 180ms ease, transform 200ms ease',
+    }
+  },
   announcementToolbarRow: {
     display: 'flex',
     gap: 8,
@@ -4434,6 +4443,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const memberBackgroundInputRef = useRef(null)
   const composerToggleRef = useRef(null)
   const announcementEditorRef = useRef(null)
+  const announcementSelectionRef = useRef(null)
+  const announcementComposingRef = useRef(false)
   const announcementImageInputRef = useRef(null)
   const announcementAttachmentInputRef = useRef(null)
   const announcementVideoInputRef = useRef(null)
@@ -6679,6 +6690,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     if (announcementImageInputRef.current) {
       announcementImageInputRef.current.value = ''
     }
+    if (announcementEditorRef.current) {
+      announcementEditorRef.current.innerHTML = ''
+    }
+    announcementSelectionRef.current = null
+    announcementComposingRef.current = false
     setAnnouncementComposer({
       open: true,
       title: '',
@@ -6709,6 +6725,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     if (announcementEditorRef.current) {
       announcementEditorRef.current.innerHTML = ''
     }
+    announcementSelectionRef.current = null
+    announcementComposingRef.current = false
     setAnnouncementComposer({
       open: false,
       title: '',
@@ -6720,7 +6738,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       submitting: false,
       error: null,
     })
-    setAnnouncementToolbarState({ color: false, size: false })
+    setAnnouncementToolbarState({
+      panel: null,
+      bold: false,
+      italic: false,
+      highlight: false,
+      color: null,
+      size: 'normal',
+    })
     setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
     setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [])
@@ -6742,7 +6767,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const editor = announcementEditorRef.current
     if (!editor) return
     const selection = document.getSelection()
-    if (!selection || !selection.anchorNode || !editor.contains(selection.anchorNode)) {
+    if (!selection || selection.rangeCount === 0 || !selection.anchorNode || !editor.contains(selection.anchorNode)) {
+      announcementSelectionRef.current = null
       setAnnouncementToolbarState((prev) => ({ ...prev, bold: false, italic: false, highlight: false }))
       return
     }
@@ -6750,6 +6776,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       selection.anchorNode.nodeType === Node.ELEMENT_NODE
         ? selection.anchorNode
         : selection.anchorNode.parentElement
+    try {
+      const range = selection.getRangeAt(0)
+      if (range && editor.contains(range.commonAncestorContainer)) {
+        announcementSelectionRef.current = range.cloneRange()
+      }
+    } catch (error) {
+      announcementSelectionRef.current = null
+    }
     const findInlineStyle = (property) => {
       let current = anchorElement
       while (current && current !== editor) {
@@ -6828,9 +6862,55 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return sanitized
   }, [])
 
+  const restoreAnnouncementSelection = useCallback(() => {
+    const editor = announcementEditorRef.current
+    const cached = announcementSelectionRef.current
+    if (!editor || !cached) return
+    if (
+      !cached.startContainer ||
+      !cached.endContainer ||
+      !editor.contains(cached.startContainer) ||
+      !editor.contains(cached.endContainer)
+    ) {
+      announcementSelectionRef.current = null
+      return
+    }
+    const selection = document.getSelection()
+    if (!selection) return
+    const range = cached.cloneRange()
+    selection.removeAllRanges()
+    selection.addRange(range)
+    try {
+      announcementSelectionRef.current = range.cloneRange()
+    } catch (error) {
+      announcementSelectionRef.current = range
+    }
+  }, [])
+
   const handleAnnouncementEditorInput = useCallback(() => {
+    if (announcementComposingRef.current) {
+      requestAnimationFrame(() => {
+        if (!announcementComposingRef.current) {
+          syncAnnouncementContentFromEditor()
+          syncAnnouncementToolbarState()
+        }
+      })
+      return
+    }
     syncAnnouncementContentFromEditor()
     syncAnnouncementToolbarState()
+  }, [syncAnnouncementContentFromEditor, syncAnnouncementToolbarState])
+
+  const handleAnnouncementEditorCompositionStart = useCallback(() => {
+    announcementComposingRef.current = true
+  }, [])
+
+  const handleAnnouncementEditorCompositionEnd = useCallback(() => {
+    announcementComposingRef.current = false
+    requestAnimationFrame(() => {
+      syncAnnouncementContentFromEditor()
+      syncAnnouncementToolbarState()
+    })
   }, [syncAnnouncementContentFromEditor, syncAnnouncementToolbarState])
 
   const handleAnnouncementEditorPaste = useCallback(
@@ -6838,6 +6918,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       event.preventDefault()
       const editor = announcementEditorRef.current
       if (!editor) return
+      focusAnnouncementEditor()
+      restoreAnnouncementSelection()
       const clipboard = event.clipboardData
       const html = clipboard?.getData('text/html')
       const text = clipboard?.getData('text/plain')
@@ -6849,12 +6931,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       } catch (error) {
         editor.insertAdjacentHTML('beforeend', snippet)
       }
+      restoreAnnouncementSelection()
       requestAnimationFrame(() => {
         syncAnnouncementContentFromEditor()
         syncAnnouncementToolbarState()
       })
     },
-    [syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
+    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
   )
 
   const applyAnnouncementCommand = useCallback(
@@ -6862,6 +6945,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       const editor = announcementEditorRef.current
       if (!editor) return
       focusAnnouncementEditor()
+      restoreAnnouncementSelection()
       try {
         document.execCommand('styleWithCSS', false, true)
       } catch (error) {
@@ -6872,12 +6956,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       } else {
         document.execCommand(command, false, value)
       }
+      restoreAnnouncementSelection()
       requestAnimationFrame(() => {
         syncAnnouncementContentFromEditor()
         syncAnnouncementToolbarState()
       })
     },
-    [focusAnnouncementEditor, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
+    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
   )
 
   const handleAnnouncementToolbarCommand = useCallback(
@@ -6901,6 +6986,20 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       panel: prev.panel === panel ? null : panel,
     }))
   }, [])
+
+  const handleAnnouncementToolbarMouseDown = useCallback(
+    (event) => {
+      event.preventDefault()
+      focusAnnouncementEditor()
+      restoreAnnouncementSelection()
+    },
+    [focusAnnouncementEditor, restoreAnnouncementSelection],
+  )
+
+  const handleAnnouncementToolbarTouchStart = useCallback(() => {
+    focusAnnouncementEditor()
+    restoreAnnouncementSelection()
+  }, [focusAnnouncementEditor, restoreAnnouncementSelection])
 
   const handleAnnouncementColorPick = useCallback(
     (color) => {
@@ -6926,17 +7025,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       const editor = announcementEditorRef.current
       if (!editor) return
       focusAnnouncementEditor()
+      restoreAnnouncementSelection()
       try {
         document.execCommand('insertHTML', false, html)
       } catch (error) {
         editor.insertAdjacentHTML('beforeend', html)
       }
+      restoreAnnouncementSelection()
       requestAnimationFrame(() => {
         syncAnnouncementContentFromEditor()
         syncAnnouncementToolbarState()
       })
     },
-    [focusAnnouncementEditor, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
+    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, syncAnnouncementToolbarState],
   )
 
   const handleAnnouncementAttachmentTrigger = useCallback(
@@ -12219,6 +12320,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             style={overlayStyles.announcementEditor}
             onInput={handleAnnouncementEditorInput}
             onPaste={handleAnnouncementEditorPaste}
+            onCompositionStart={handleAnnouncementEditorCompositionStart}
+            onCompositionEnd={handleAnnouncementEditorCompositionEnd}
             data-placeholder="공지 내용을 입력해 주세요."
           />
         </div>
@@ -12253,7 +12356,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const announcementToolbarOverlayNode = announcementComposer.open ? (
     <div
-      style={overlayStyles.announcementToolbarOverlay(true)}
+      style={overlayStyles.announcementToolbarOverlay(true, viewport)}
       aria-hidden={!announcementComposer.open}
     >
       <div
@@ -12266,6 +12369,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           style={overlayStyles.announcementToolbarItem(false)}
           onClick={() => handleAnnouncementAttachmentTrigger('image')}
           disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>🖼️</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>이미지 첨부</span>
@@ -12275,6 +12380,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           style={overlayStyles.announcementToolbarItem(false)}
           onClick={() => handleAnnouncementAttachmentTrigger('video')}
           disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>🎬</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>동영상 첨부</span>
@@ -12283,6 +12390,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           type="button"
           style={overlayStyles.announcementToolbarItem(false)}
           onClick={handleAnnouncementYoutubeOpen}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>📺</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>유튜브</span>
@@ -12291,6 +12400,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           type="button"
           style={overlayStyles.announcementToolbarItem(false)}
           onClick={handleAnnouncementPollOpen}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>🗳️</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>투표</span>
@@ -12300,6 +12411,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           style={overlayStyles.announcementToolbarItem(announcementToolbarState.bold)}
           onClick={() => handleAnnouncementToolbarCommand('bold')}
           aria-pressed={announcementToolbarState.bold}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>𝐁</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>굵게</span>
@@ -12309,6 +12422,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           style={overlayStyles.announcementToolbarItem(announcementToolbarState.italic)}
           onClick={() => handleAnnouncementToolbarCommand('italic')}
           aria-pressed={announcementToolbarState.italic}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>𝑰</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>기울임</span>
@@ -12318,6 +12433,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           style={overlayStyles.announcementToolbarItem(announcementToolbarState.highlight)}
           onClick={() => handleAnnouncementToolbarCommand('highlight')}
           aria-pressed={announcementToolbarState.highlight}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>✨</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>강조</span>
@@ -12327,6 +12444,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           style={overlayStyles.announcementToolbarItem(announcementToolbarState.panel === 'color')}
           onClick={() => handleAnnouncementToolbarPanelToggle('color')}
           aria-expanded={announcementToolbarState.panel === 'color'}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>🎨</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>글자색</span>
@@ -12336,6 +12455,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           style={overlayStyles.announcementToolbarItem(announcementToolbarState.panel === 'size')}
           onClick={() => handleAnnouncementToolbarPanelToggle('size')}
           aria-expanded={announcementToolbarState.panel === 'size'}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>🔠</span>
           <span style={overlayStyles.announcementToolbarItemLabel}>글자 크기</span>
@@ -12353,6 +12474,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               )}
               onClick={() => handleAnnouncementColorPick(color)}
               aria-label={`글자색 ${color}`}
+              onMouseDown={handleAnnouncementToolbarMouseDown}
+              onTouchStart={handleAnnouncementToolbarTouchStart}
             />
           ))}
         </div>
@@ -12365,6 +12488,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               type="button"
               style={overlayStyles.announcementToolbarSizeButton(announcementToolbarState.size === size.id)}
               onClick={() => handleAnnouncementSizePick(size.id)}
+              onMouseDown={handleAnnouncementToolbarMouseDown}
+              onTouchStart={handleAnnouncementToolbarTouchStart}
             >
               {size.label}
             </button>
