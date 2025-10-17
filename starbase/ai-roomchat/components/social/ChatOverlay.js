@@ -50,8 +50,11 @@ const MAX_MESSAGE_PREVIEW_LENGTH = 240
 const ANNOUNCEMENT_PREVIEW_LENGTH = 160
 const MEDIA_LOAD_LIMIT = 120
 const LONG_PRESS_THRESHOLD = 400
-const MINI_OVERLAY_WIDTH = 280
-const MINI_OVERLAY_HEIGHT = 180
+const MINI_OVERLAY_WIDTH = 320
+const MINI_OVERLAY_HEIGHT = 420
+const MINI_OVERLAY_MIN_HEIGHT = 240
+const MINI_OVERLAY_MAX_HEIGHT = 640
+const MINI_OVERLAY_BAR_HEIGHT = 56
 const MINI_OVERLAY_MARGIN = 18
 const PINCH_TRIGGER_RATIO = 0.7
 const PINCH_MIN_DELTA = 28
@@ -494,7 +497,7 @@ const overlayStyles = {
     background: 'rgba(15, 23, 42, 0.94)',
     borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
-    padding: '28px 28px 24px',
+    padding: '28px 28px 48px',
     minHeight: 'min(92vh, 860px)',
     display: 'flex',
     flexDirection: 'column',
@@ -1391,32 +1394,57 @@ const overlayStyles = {
     justifyContent: 'center',
     gap: 8,
   }),
-  miniOverlay: (x, y, width = MINI_OVERLAY_WIDTH, height = MINI_OVERLAY_HEIGHT) => ({
-    position: 'fixed',
-    top: y,
-    left: x,
-    width,
-    height,
-    borderRadius: 20,
-    border: '1px solid rgba(71, 85, 105, 0.55)',
-    background: 'rgba(12, 20, 45, 0.92)',
-    boxShadow: '0 40px 120px -40px rgba(8, 15, 30, 0.85)',
-    backdropFilter: 'blur(18px)',
-    color: '#e2e8f0',
-    zIndex: 1525,
-    display: 'grid',
-    gridTemplateRows: 'auto 1fr auto',
-    overflow: 'hidden',
-    touchAction: 'none',
-    userSelect: 'none',
-  }),
+  miniOverlayShell: (x, y, width = MINI_OVERLAY_WIDTH, height = MINI_OVERLAY_HEIGHT, mode = 'reading') => {
+    const base = {
+      position: 'fixed',
+      top: y,
+      left: x,
+      width,
+      height,
+      border: '1px solid rgba(71, 85, 105, 0.55)',
+      boxShadow: '0 40px 120px -40px rgba(8, 15, 30, 0.85)',
+      backdropFilter: 'blur(18px)',
+      color: '#e2e8f0',
+      zIndex: 1525,
+      overflow: 'hidden',
+      userSelect: 'none',
+      touchAction: 'auto',
+    }
+
+    if (mode === 'bar') {
+      return {
+        ...base,
+        borderRadius: 999,
+        background: 'rgba(15, 23, 42, 0.9)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        padding: '10px 16px',
+      }
+    }
+
+    return {
+      ...base,
+      borderRadius: 22,
+      background: 'rgba(12, 20, 45, 0.95)',
+      display: 'grid',
+      gridTemplateRows: 'auto 1fr auto auto',
+    }
+  },
   miniOverlayHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    padding: '12px 16px 10px',
+    padding: '14px 18px 12px',
+    background: 'rgba(10, 16, 35, 0.82)',
     cursor: 'grab',
+  },
+  miniOverlayHeaderActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
   },
   miniOverlayTitle: {
     fontSize: 13,
@@ -1428,62 +1456,159 @@ const overlayStyles = {
   },
   miniOverlayBadge: {
     borderRadius: 999,
-    background: 'rgba(59, 130, 246, 0.28)',
-    color: '#bfdbfe',
+    background: 'rgba(37, 99, 235, 0.3)',
+    color: '#dbeafe',
     fontSize: 11,
     fontWeight: 700,
     padding: '2px 8px',
   },
-  miniOverlayClose: {
-    width: 32,
+  miniOverlayAction: {
+    minWidth: 32,
     height: 32,
     borderRadius: 12,
     border: '1px solid rgba(71, 85, 105, 0.55)',
-    background: 'rgba(15, 23, 42, 0.7)',
+    background: 'rgba(15, 23, 42, 0.72)',
     color: '#cbd5f5',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 700,
     cursor: 'pointer',
   },
-  miniOverlayBody: {
-    padding: '10px 16px',
+  miniOverlayMessages: {
+    padding: '12px 18px 10px',
     display: 'grid',
-    gap: 8,
-    alignContent: 'start',
-    fontSize: 12,
-    color: '#cbd5f5',
+    gap: 10,
+    overflowY: 'auto',
+    touchAction: 'pan-y',
+    WebkitOverflowScrolling: 'touch',
+    background: 'rgba(8, 13, 30, 0.55)',
   },
-  miniOverlayPreview: {
-    fontSize: 12,
-    color: '#94a3b8',
-    lineHeight: 1.45,
-    overflow: 'hidden',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-  },
-  miniOverlayHint: {
-    fontSize: 11,
-    color: '#64748b',
-  },
-  miniOverlayFooter: {
+  miniOverlayMessageRow: (mine = false) => ({
+    display: 'grid',
+    gap: 4,
+    justifyItems: mine ? 'end' : 'start',
+  }),
+  miniOverlayMessageMeta: {
     display: 'flex',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  miniOverlayMessageAuthor: (mine = false) => ({
+    fontWeight: 600,
+    color: mine ? '#38bdf8' : '#e2e8f0',
+  }),
+  miniOverlayMessageBody: {
+    maxWidth: '100%',
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: '#cbd5f5',
+    background: 'rgba(15, 23, 42, 0.72)',
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.4)',
+    padding: '8px 12px',
+  },
+  miniOverlayComposer: {
+    display: 'flex',
     alignItems: 'center',
     gap: 10,
-    padding: '10px 16px 14px',
+    padding: '12px 16px 14px',
     borderTop: '1px solid rgba(71, 85, 105, 0.45)',
-    background: 'rgba(10, 16, 35, 0.78)',
+    background: 'rgba(10, 16, 35, 0.88)',
   },
-  miniOverlayFooterButton: {
-    borderRadius: 12,
-    border: '1px solid rgba(59, 130, 246, 0.55)',
-    background: 'rgba(37, 99, 235, 0.22)',
-    color: '#dbeafe',
+  miniOverlayComposerInput: {
+    flex: 1,
+    minHeight: 44,
+    resize: 'none',
+    borderRadius: 14,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    color: '#e2e8f0',
+    padding: '8px 12px',
+    fontSize: 12,
+    lineHeight: 1.45,
+  },
+  miniOverlayResizeHandle: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '12px 0 10px',
+    borderTop: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(7, 12, 26, 0.9)',
+    cursor: 'ns-resize',
+    touchAction: 'none',
+  },
+  miniOverlayResizeBar: {
+    width: 48,
+    height: 4,
+    borderRadius: 999,
+    background: 'rgba(148, 163, 184, 0.55)',
+  },
+  miniOverlayBarLabel: {
     fontSize: 12,
     fontWeight: 600,
-    padding: '7px 14px',
+    color: '#e2e8f0',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  miniOverlayBarBadge: {
+    borderRadius: 999,
+    background: 'rgba(37, 99, 235, 0.35)',
+    color: '#dbeafe',
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '3px 8px',
+  },
+  miniOverlayBarClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    color: '#cbd5f5',
+    fontSize: 14,
     cursor: 'pointer',
+  },
+  bottomActionBar: {
+    position: 'absolute',
+    left: 28,
+    right: 28,
+    bottom: 16,
+    display: 'flex',
+    gap: 12,
+    justifyContent: 'flex-end',
+    zIndex: 6,
+  },
+  bottomActionButton: (variant = 'ghost', disabled = false) => {
+    const palette = {
+      danger: {
+        background: 'rgba(248, 113, 113, 0.18)',
+        border: '1px solid rgba(248, 113, 113, 0.6)',
+        color: '#fecaca',
+      },
+      ghost: {
+        background: 'rgba(15, 23, 42, 0.78)',
+        border: '1px solid rgba(71, 85, 105, 0.55)',
+        color: '#cbd5f5',
+      },
+    }
+    const tone = palette[variant] || palette.ghost
+    return {
+      borderRadius: 14,
+      border: tone.border,
+      background: tone.background,
+      color: disabled ? '#64748b' : tone.color,
+      fontSize: 12,
+      fontWeight: 600,
+      padding: '11px 18px',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      boxShadow: '0 12px 30px -18px rgba(15, 23, 42, 0.9)',
+    }
   },
   messageViewport: {
     overflowY: 'auto',
@@ -2512,7 +2637,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMediaLimit, setDrawerMediaLimit] = useState(20)
   const [drawerFileLimit, setDrawerFileLimit] = useState(20)
-  const [miniOverlay, setMiniOverlay] = useState({ active: false, position: null })
+  const [miniOverlay, setMiniOverlay] = useState({
+    active: false,
+    mode: 'reading',
+    position: null,
+    size: { width: MINI_OVERLAY_WIDTH, height: MINI_OVERLAY_HEIGHT },
+  })
+  const viewingConversation = open && (!miniOverlay.active || miniOverlay.mode === 'reading')
 
   useEffect(() => {
     drawerOpenRef.current = drawerOpen
@@ -2626,6 +2757,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const rootRef = useRef(null)
   const pinchStateRef = useRef({ initialDistance: null, triggered: false })
   const miniOverlayDragRef = useRef({ pointerId: null, originX: 0, originY: 0, startX: 0, startY: 0 })
+  const miniOverlayResizeRef = useRef({ pointerId: null, originHeight: MINI_OVERLAY_HEIGHT, startY: 0 })
   const [viewport, setViewport] = useState(() => getViewportSnapshot())
   const isCompactLayout = viewport.width <= 900
   const isUltraCompactLayout = viewport.width <= 640
@@ -3133,6 +3265,34 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return entries
   }, [messages, moderatorTokenSet, roomOwnerToken, viewerToken])
 
+  const hasContext = Boolean(context)
+  const aiActive = Boolean(aiRequest?.active)
+  const hasReadyAttachment = useMemo(
+    () => composerAttachments.some((attachment) => attachment?.status === 'ready'),
+    [composerAttachments],
+  )
+  const trimmedMessage = messageInput.trim()
+  const disableSend = useMemo(() => {
+    if (!hasContext || sending) {
+      return true
+    }
+    if (aiActive) {
+      return trimmedMessage.length === 0
+    }
+    return trimmedMessage.length === 0 && !hasReadyAttachment
+  }, [aiActive, hasContext, hasReadyAttachment, sending, trimmedMessage])
+  const promptPreview = useMemo(() => {
+    if (!aiActive) {
+      return null
+    }
+    const promptSource = aiRequest?.prompt ?? messageInput
+    const source = (promptSource || '').trim()
+    if (!source) {
+      return null
+    }
+    return truncateText(source, 120)
+  }, [aiActive, aiRequest?.prompt, messageInput])
+
   useEffect(() => {
     if (!settingsOverlayOpen || context?.type !== 'chat-room') {
       return
@@ -3475,14 +3635,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }, [open, context, viewer, viewerToken, onUnreadChange, updateRoomMetadata])
 
   useEffect(() => {
-    if (!open) return
+    if (!viewingConversation) return
     const node = messageListRef.current
     if (!node) return
     node.scrollTop = node.scrollHeight
-  }, [messages, open])
+  }, [messages, viewingConversation])
 
   useEffect(() => {
-    if (!open) return
+    if (!viewingConversation) return
     if (!context || context.type !== 'chat-room') return
     const roomId = context.chatRoomId
     if (!roomId) return
@@ -3516,7 +3676,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       .catch((error) => {
         console.error('[chat] 읽음 상태 업데이트 실패:', error)
       })
-  }, [open, context, messages, updateRoomMetadata])
+  }, [viewingConversation, context, messages, updateRoomMetadata])
 
   useEffect(() => {
     if (!showComposerPanel) return
@@ -4427,14 +4587,27 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const handleEnterMiniOverlay = useCallback(() => {
     setMiniOverlay((prev) => {
-      const position = clampMiniOverlayPosition(prev.position, viewport)
+      const width = prev.size?.width || MINI_OVERLAY_WIDTH
+      const height = prev.size?.height || MINI_OVERLAY_HEIGHT
+      const position = clampMiniOverlayPosition(prev.position, viewport, width, height)
       if (prev.active) {
-        if (!prev.position || prev.position.x !== position.x || prev.position.y !== position.y) {
-          return { ...prev, position }
+        const next = { ...prev, position }
+        if (prev.mode !== 'reading') {
+          next.mode = 'reading'
         }
-        return prev
+        if (!prev.size || prev.size.width !== width || prev.size.height !== height) {
+          next.size = { width, height }
+        }
+        return next
       }
-      return { active: true, position }
+      return {
+        active: true,
+        mode: 'reading',
+        position,
+        size: prev.size?.width
+          ? { width: prev.size.width, height: prev.size.height }
+          : { width: MINI_OVERLAY_WIDTH, height: MINI_OVERLAY_HEIGHT },
+      }
     })
     setShowComposerPanel(false)
     setFriendOverlayOpen(false)
@@ -4451,30 +4624,66 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     pinchStateRef.current = { initialDistance: null, triggered: true }
   }, [handleCloseDrawer, viewport])
 
-  const handleExpandMiniOverlay = useCallback(() => {
+  const handleRestoreToFullOverlay = useCallback(() => {
     setMiniOverlay((prev) => {
       if (!prev.active) return prev
-      return { ...prev, active: false }
+      return { ...prev, active: false, mode: 'reading' }
     })
   }, [])
 
   const handleCloseMiniOverlay = useCallback(() => {
     setMiniOverlay((prev) => {
       if (!prev.active) return prev
-      return { ...prev, active: false }
+      return { ...prev, active: false, mode: 'reading' }
     })
     if (open && typeof onClose === 'function') {
       onClose()
     }
   }, [onClose, open])
 
+  const handleCollapseMiniOverlay = useCallback(() => {
+    setMiniOverlay((prev) => {
+      if (!prev.active || prev.mode === 'bar') {
+        return prev
+      }
+      const width = prev.size?.width || MINI_OVERLAY_WIDTH
+      const position = clampMiniOverlayPosition(prev.position, viewport, width, MINI_OVERLAY_BAR_HEIGHT)
+      return { ...prev, mode: 'bar', position }
+    })
+  }, [viewport])
+
+  const handleResumeMiniOverlay = useCallback(() => {
+    setMiniOverlay((prev) => {
+      if (!prev.active) {
+        return prev
+      }
+      const width = prev.size?.width || MINI_OVERLAY_WIDTH
+      const height = prev.size?.height || MINI_OVERLAY_HEIGHT
+      const position = clampMiniOverlayPosition(prev.position, viewport, width, height)
+      if (prev.mode === 'reading' && prev.position && prev.position.x === position.x && prev.position.y === position.y) {
+        return prev
+      }
+      return { ...prev, mode: 'reading', position, size: { width, height } }
+    })
+  }, [viewport])
+
   const handleMiniOverlayPointerDown = useCallback(
     (event) => {
       if (!miniOverlay.active) return
-      const basePosition = clampMiniOverlayPosition(miniOverlay.position, viewport)
+      const width = miniOverlay.size?.width || MINI_OVERLAY_WIDTH
+      const height =
+        miniOverlay.mode === 'bar'
+          ? MINI_OVERLAY_BAR_HEIGHT
+          : miniOverlay.size?.height || MINI_OVERLAY_HEIGHT
+      const basePosition = clampMiniOverlayPosition(miniOverlay.position, viewport, width, height)
       setMiniOverlay((prev) => {
         if (!prev.active) return prev
-        if (!prev.position || prev.position.x !== basePosition.x || prev.position.y !== basePosition.y) {
+        if (
+          !prev.position ||
+          prev.position.x !== basePosition.x ||
+          prev.position.y !== basePosition.y ||
+          (prev.mode === 'bar' && miniOverlay.mode !== 'bar')
+        ) {
           return { ...prev, position: basePosition }
         }
         return prev
@@ -4492,7 +4701,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         // ignore capture errors
       }
     },
-    [miniOverlay.active, miniOverlay.position, viewport],
+    [miniOverlay.active, miniOverlay.mode, miniOverlay.position, miniOverlay.size, viewport],
   )
 
   const handleMiniOverlayPointerMove = useCallback(
@@ -4505,7 +4714,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       const nextY = drag.originY + (event.clientY - drag.startY)
       setMiniOverlay((prev) => {
         if (!prev.active) return prev
-        const position = clampMiniOverlayPosition({ x: nextX, y: nextY }, viewport)
+        const width = prev.size?.width || MINI_OVERLAY_WIDTH
+        const height = prev.mode === 'bar' ? MINI_OVERLAY_BAR_HEIGHT : prev.size?.height || MINI_OVERLAY_HEIGHT
+        const position = clampMiniOverlayPosition({ x: nextX, y: nextY }, viewport, width, height)
         if (!prev.position || prev.position.x !== position.x || prev.position.y !== position.y) {
           return { ...prev, position }
         }
@@ -4527,6 +4738,93 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     miniOverlayDragRef.current = { pointerId: null, originX: 0, originY: 0, startX: 0, startY: 0 }
   }, [])
+
+  const handleMiniOverlayResizeStart = useCallback(
+    (event) => {
+      if (!miniOverlay.active || miniOverlay.mode !== 'reading') {
+        return
+      }
+      miniOverlayResizeRef.current = {
+        pointerId: event.pointerId,
+        originHeight: miniOverlay.size?.height || MINI_OVERLAY_HEIGHT,
+        startY: event.clientY,
+      }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch (error) {
+        // ignore capture errors
+      }
+    },
+    [miniOverlay.active, miniOverlay.mode, miniOverlay.size?.height],
+  )
+
+  const handleMiniOverlayResizeMove = useCallback(
+    (event) => {
+      const state = miniOverlayResizeRef.current
+      if (!state || state.pointerId !== event.pointerId) {
+        return
+      }
+      const delta = event.clientY - state.startY
+      setMiniOverlay((prev) => {
+        if (!prev.active || prev.mode !== 'reading') {
+          return prev
+        }
+        const width = prev.size?.width || MINI_OVERLAY_WIDTH
+        const proposed = state.originHeight + delta
+        const nextHeight = Math.max(
+          MINI_OVERLAY_MIN_HEIGHT,
+          Math.min(MINI_OVERLAY_MAX_HEIGHT, proposed),
+        )
+        const position = clampMiniOverlayPosition(prev.position, viewport, width, nextHeight)
+        if (
+          prev.size?.height === nextHeight &&
+          prev.position &&
+          prev.position.x === position.x &&
+          prev.position.y === position.y
+        ) {
+          return prev
+        }
+        return {
+          ...prev,
+          size: { width, height: nextHeight },
+          position,
+        }
+      })
+    },
+    [viewport],
+  )
+
+  const handleMiniOverlayResizeEnd = useCallback((event) => {
+    const state = miniOverlayResizeRef.current
+    if (!state || state.pointerId !== event.pointerId) {
+      return
+    }
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch (error) {
+      // ignore release errors
+    }
+    miniOverlayResizeRef.current = { pointerId: null, originHeight: MINI_OVERLAY_HEIGHT, startY: 0 }
+  }, [])
+
+  useEffect(() => {
+    if (!miniOverlay.active || !miniOverlay.position) {
+      return
+    }
+    const width = miniOverlay.size?.width || MINI_OVERLAY_WIDTH
+    const height =
+      miniOverlay.mode === 'bar'
+        ? MINI_OVERLAY_BAR_HEIGHT
+        : miniOverlay.size?.height || MINI_OVERLAY_HEIGHT
+    const position = clampMiniOverlayPosition(miniOverlay.position, viewport, width, height)
+    if (position.x === miniOverlay.position.x && position.y === miniOverlay.position.y) {
+      return
+    }
+    setMiniOverlay((prev) => ({
+      ...prev,
+      position,
+    }))
+  }, [miniOverlay.active, miniOverlay.mode, miniOverlay.position, miniOverlay.size, viewport])
 
   useEffect(() => {
     const node = rootRef.current
@@ -6187,7 +6485,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return {
       ...overlayStyles.frame,
       borderRadius: isUltraCompactLayout ? 0 : 22,
-      padding: isUltraCompactLayout ? '24px 10px 18px' : '26px 14px 22px',
+      padding: isUltraCompactLayout ? '24px 10px 32px' : '26px 14px 34px',
       minHeight: numericHeight ? `${numericHeight}px` : '100vh',
       height: numericHeight ? `${numericHeight}px` : '100vh',
       width: '100%',
@@ -6296,17 +6594,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return {
       ...overlayStyles.attachmentStrip,
       padding: '8px 12px 0',
-    }
-  }, [isCompactLayout])
-
-  const conversationFooterStyle = useMemo(() => {
-    if (!isCompactLayout) {
-      return overlayStyles.conversationFooter
-    }
-    return {
-      ...overlayStyles.conversationFooter,
-      padding: '12px 12px 14px',
-      gap: 10,
     }
   }, [isCompactLayout])
 
@@ -6425,8 +6712,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }
 
   const renderMessageColumn = () => {
-    const hasContext = Boolean(context)
-
     const label = hasContext ? context.label || '채팅' : '채팅'
     const subtitle = hasContext
       ? context.type === 'session'
@@ -6437,16 +6722,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             ? '공개 채팅방'
             : '비공개 채팅방'
       : '좌측에서 채팅방을 선택해 주세요.'
-
-    const hasReadyAttachment = composerAttachments.some((attachment) => attachment?.status === 'ready')
-    const aiActive = Boolean(aiRequest?.active)
-    const disableSend =
-      !hasContext ||
-      sending ||
-      (aiActive ? !messageInput.trim() : !messageInput.trim() && !hasReadyAttachment)
-    const promptPreview = aiActive
-      ? truncateText(((aiRequest?.prompt ?? messageInput) || '').trim(), 120)
-      : null
     const showDrawer = context?.type === 'chat-room' && Boolean(context.chatRoomId || currentRoom)
     const isRoomContext = context?.type === 'chat-room'
     const mediaItems = showDrawer ? roomAssets.media.slice(0, drawerMediaLimit) : []
@@ -6463,9 +6738,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const themeBubbleColor = roomTheme.bubbleColor
     const themeTextColor = roomTheme.textColor
     const themeBackgroundUrl = roomTheme.backgroundUrl
-    const canLeaveRoom = context?.type === 'chat-room' || context?.type === 'global'
-    const canOpenSettings = context?.type === 'chat-room'
-
     return (
       <section ref={conversationRef} style={conversationStyle}>
         {themeBackgroundUrl ? (
@@ -6888,25 +7160,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             <div style={{ ...overlayStyles.errorText, paddingTop: 8 }}>{attachmentError}</div>
           ) : null}
         </div>
-        <div style={conversationFooterStyle}>
-          <button
-            type="button"
-            style={overlayStyles.conversationFooterButton(viewerIsOwner ? 'danger' : 'ghost', !canLeaveRoom)}
-            onClick={() => canLeaveRoom && handleLeaveCurrentContext({ asOwner: viewerIsOwner })}
-            disabled={!canLeaveRoom}
-          >
-            {viewerIsOwner ? '🗑 방 삭제' : '나가기'}
-          </button>
-          <button
-            type="button"
-            style={overlayStyles.conversationFooterButton('ghost', !canOpenSettings)}
-            onClick={() => canOpenSettings && handleOpenSettings()}
-            disabled={!canOpenSettings}
-            title={canOpenSettings ? '채팅방 설정 열기' : '채팅방을 선택하면 설정을 열 수 있습니다.'}
-          >
-            ⚙️ 설정
-          </button>
-        </div>
         {sendError ? (
           <div style={overlayStyles.errorText}>메시지를 전송할 수 없습니다.</div>
         ) : null}
@@ -7142,22 +7395,66 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return '채팅'
   }, [context?.label, context?.type])
 
-  const miniOverlayPreview = useMemo(() => {
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return '최근 메시지가 없습니다.'
+  const miniOverlayFeed = useMemo(() => {
+    if (!timelineEntries.length) {
+      return []
     }
-    const last = messages[messages.length - 1]
-    const text = extractMessageText(last)
-    const { text: snippet } = truncateText(text || '', 90)
-    if (snippet) {
-      return snippet
+    const feed = []
+    timelineEntries.forEach((entry) => {
+      if (entry.type === 'date') {
+        feed.push({ type: 'date', key: entry.key, label: entry.label })
+        return
+      }
+      entry.messages.forEach((message, index) => {
+        const attachments = getMessageAttachments(message)
+        const baseText = extractMessageText(message).trim()
+        const aiMeta = getAiMetadata(message)
+        let text = baseText ? truncateText(baseText, 140).text : ''
+        if (!text && aiMeta?.type === 'response') {
+          if (aiMeta.status === 'error') {
+            text = 'AI 응답 실패'
+          } else if (aiMeta.status === 'pending') {
+            text = 'AI 응답 생성 중...'
+          } else {
+            text = 'AI 응답'
+          }
+        }
+        if (!text && attachments.length) {
+          text = attachments.length === 1 ? '첨부 1개' : `첨부 ${attachments.length}개`
+        }
+        if (!text) {
+          text = '메시지 내용이 없습니다.'
+        }
+        feed.push({
+          type: 'message',
+          key: `${entry.key}-${message.id || message.local_id || index}`,
+          mine: entry.mine,
+          author: entry.mine ? '나' : entry.displayName || '알 수 없음',
+          timestamp: formatTime(message.created_at),
+          text,
+        })
+      })
+    })
+    return feed.slice(-80)
+  }, [timelineEntries])
+
+  const miniOverlayLatest = useMemo(() => {
+    for (let index = miniOverlayFeed.length - 1; index >= 0; index -= 1) {
+      const entry = miniOverlayFeed[index]
+      if (entry?.type === 'message') {
+        return entry
+      }
     }
-    const attachments = getMessageAttachments(last)
-    if (attachments.length > 0) {
-      return '첨부 파일이 전송되었습니다.'
+    return null
+  }, [miniOverlayFeed])
+
+  const miniOverlayBarSnippet = useMemo(() => {
+    if (!miniOverlayLatest) {
+      return '최근 메시지 없음'
     }
-    return '최근 메시지가 없습니다.'
-  }, [messages])
+    const { text } = truncateText(miniOverlayLatest.text || '', 60)
+    return text || '최근 메시지 없음'
+  }, [miniOverlayLatest])
 
   const miniOverlayUnread = useMemo(() => {
     if (!context) return 0
@@ -7186,10 +7483,25 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const mediaPickerTitle = mediaLibrary.action === 'video' ? '최근 동영상' : '최근 사진'
   const overlayOpen = open && !miniOverlay.active
   const miniOverlayBadge = miniOverlayUnread > 99 ? '99+' : miniOverlayUnread > 0 ? String(miniOverlayUnread) : null
+  const miniOverlayWidth = miniOverlay.size?.width || MINI_OVERLAY_WIDTH
+  const miniOverlayHeight =
+    miniOverlay.mode === 'bar'
+      ? MINI_OVERLAY_BAR_HEIGHT
+      : miniOverlay.size?.height || MINI_OVERLAY_HEIGHT
   const miniOverlayStyle =
     miniOverlay.active && miniOverlay.position
-      ? overlayStyles.miniOverlay(miniOverlay.position.x, miniOverlay.position.y)
+      ? overlayStyles.miniOverlayShell(
+          miniOverlay.position.x,
+          miniOverlay.position.y,
+          miniOverlayWidth,
+          miniOverlayHeight,
+          miniOverlay.mode,
+        )
       : null
+  const canLeaveCurrent = context?.type === 'chat-room' || context?.type === 'global'
+  const leaveButtonLabel =
+    context?.type === 'chat-room' && viewerOwnsRoom ? '🗑 방 삭제' : '나가기'
+  const canOpenSettings = context?.type === 'chat-room'
   const mediaPickerOverlay = showMediaPicker ? (
     <div style={overlayStyles.mediaPickerBackdrop} onClick={handleMediaPickerCancel}>
       <div
@@ -7808,6 +8120,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       onClose={handleCloseSettings}
       title="채팅방 설정"
       width="min(640px, 96vw)"
+      zIndex={1530}
     >
       <div style={{ display: 'grid', gap: 18 }}>
         <nav style={overlayStyles.settingsTabs}>
@@ -8444,43 +8757,139 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       {participantOverlay}
       {settingsOverlay}
       {miniOverlay.active && miniOverlayStyle ? (
-        <div style={miniOverlayStyle} role="dialog" aria-label="채팅 미리보기">
+        miniOverlay.mode === 'bar' ? (
           <div
-            style={overlayStyles.miniOverlayHeader}
+            style={miniOverlayStyle}
+            role="button"
+            tabIndex={0}
+            aria-label="간소화된 채팅 바"
+            onClick={handleResumeMiniOverlay}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleResumeMiniOverlay()
+              }
+            }}
             onPointerDown={handleMiniOverlayPointerDown}
             onPointerMove={handleMiniOverlayPointerMove}
             onPointerUp={handleMiniOverlayPointerEnd}
             onPointerCancel={handleMiniOverlayPointerEnd}
           >
-            <span style={overlayStyles.miniOverlayTitle}>{miniOverlayLabel}</span>
+            <span style={overlayStyles.miniOverlayBarLabel}>
+              {miniOverlayLabel} · {miniOverlayBarSnippet}
+            </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {miniOverlayBadge ? <span style={overlayStyles.miniOverlayBadge}>{miniOverlayBadge}</span> : null}
-              <button type="button" style={overlayStyles.miniOverlayClose} onClick={handleCloseMiniOverlay} aria-label="채팅 닫기">
+              {miniOverlayBadge ? <span style={overlayStyles.miniOverlayBarBadge}>{miniOverlayBadge}</span> : null}
+              <button
+                type="button"
+                style={overlayStyles.miniOverlayBarClose}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  handleCloseMiniOverlay()
+                }}
+                aria-label="채팅 닫기"
+              >
                 ×
               </button>
             </div>
           </div>
-          <div
-            style={overlayStyles.miniOverlayBody}
-            role="button"
-            tabIndex={0}
-            onClick={handleExpandMiniOverlay}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                handleExpandMiniOverlay()
-              }
-            }}
-          >
-            <span style={overlayStyles.miniOverlayPreview}>{miniOverlayPreview}</span>
-            <span style={overlayStyles.miniOverlayHint}>탭하면 전체 채팅으로 돌아갑니다.</span>
+        ) : (
+          <div style={miniOverlayStyle} role="dialog" aria-label="간소화된 채팅창">
+            <div
+              style={overlayStyles.miniOverlayHeader}
+              onPointerDown={(event) => {
+                const target = event.target
+                if (target && typeof target.closest === 'function' && target.closest('button')) {
+                  return
+                }
+                handleMiniOverlayPointerDown(event)
+              }}
+              onPointerMove={handleMiniOverlayPointerMove}
+              onPointerUp={handleMiniOverlayPointerEnd}
+              onPointerCancel={handleMiniOverlayPointerEnd}
+            >
+              <span style={overlayStyles.miniOverlayTitle}>{miniOverlayLabel}</span>
+              <div style={overlayStyles.miniOverlayHeaderActions}>
+                {miniOverlayBadge ? <span style={overlayStyles.miniOverlayBadge}>{miniOverlayBadge}</span> : null}
+                <button
+                  type="button"
+                  style={overlayStyles.miniOverlayAction}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={handleCollapseMiniOverlay}
+                  aria-label="채팅 바 형태로 접기"
+                >
+                  ⬇
+                </button>
+                <button
+                  type="button"
+                  style={overlayStyles.miniOverlayAction}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={handleRestoreToFullOverlay}
+                  aria-label="전체 채팅 열기"
+                >
+                  ↗
+                </button>
+                <button
+                  type="button"
+                  style={overlayStyles.miniOverlayAction}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={handleCloseMiniOverlay}
+                  aria-label="채팅 닫기"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div style={overlayStyles.miniOverlayMessages}>
+              {miniOverlayFeed.length ? (
+                miniOverlayFeed.map((entry) =>
+                  entry.type === 'date' ? (
+                    <span key={entry.key} style={{ fontSize: 10, color: '#64748b', textAlign: 'center' }}>
+                      {entry.label}
+                    </span>
+                  ) : (
+                    <div key={entry.key} style={overlayStyles.miniOverlayMessageRow(entry.mine)}>
+                      <div style={overlayStyles.miniOverlayMessageMeta}>
+                        <span style={overlayStyles.miniOverlayMessageAuthor(entry.mine)}>{entry.author}</span>
+                        {entry.timestamp ? <span>{entry.timestamp}</span> : null}
+                      </div>
+                      <div style={overlayStyles.miniOverlayMessageBody}>{entry.text}</div>
+                    </div>
+                  ),
+                )
+              ) : (
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>최근 메시지가 없습니다.</span>
+              )}
+            </div>
+            <div style={overlayStyles.miniOverlayComposer}>
+              <textarea
+                value={messageInput}
+                onChange={handleMessageInputChange}
+                placeholder={hasContext ? '메시지를 입력하세요' : '채팅방이 선택되지 않았습니다.'}
+                style={overlayStyles.miniOverlayComposerInput}
+                disabled={!hasContext || sending}
+              />
+              <button
+                type="button"
+                onClick={handleComposerSubmit}
+                disabled={disableSend}
+                style={overlayStyles.actionButton('primary', disableSend)}
+              >
+                보내기
+              </button>
+            </div>
+            <div
+              style={overlayStyles.miniOverlayResizeHandle}
+              onPointerDown={handleMiniOverlayResizeStart}
+              onPointerMove={handleMiniOverlayResizeMove}
+              onPointerUp={handleMiniOverlayResizeEnd}
+              onPointerCancel={handleMiniOverlayResizeEnd}
+            >
+              <div style={overlayStyles.miniOverlayResizeBar} />
+            </div>
           </div>
-          <div style={overlayStyles.miniOverlayFooter}>
-            <button type="button" style={overlayStyles.miniOverlayFooterButton} onClick={handleExpandMiniOverlay}>
-              다시 열기
-            </button>
-          </div>
-        </div>
+        )
       ) : null}
       <SurfaceOverlay
         open={overlayOpen}
@@ -8502,6 +8911,24 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           <div style={rootStyle}>
             {!focused ? renderListColumn() : null}
             {focused ? renderMessageColumn() : null}
+          </div>
+          <div style={overlayStyles.bottomActionBar}>
+            <button
+              type="button"
+              style={overlayStyles.bottomActionButton(viewerOwnsRoom ? 'danger' : 'ghost', !canLeaveCurrent)}
+              onClick={() => canLeaveCurrent && handleLeaveCurrentContext({ asOwner: viewerOwnsRoom })}
+              disabled={!canLeaveCurrent}
+            >
+              {leaveButtonLabel}
+            </button>
+            <button
+              type="button"
+              style={overlayStyles.bottomActionButton('ghost', !canOpenSettings)}
+              onClick={() => canOpenSettings && handleOpenSettings()}
+              disabled={!canOpenSettings}
+            >
+              ⚙️ 설정
+            </button>
           </div>
         </div>
       </SurfaceOverlay>
