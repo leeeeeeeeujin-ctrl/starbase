@@ -5581,8 +5581,13 @@ as $$
 declare
   v_owner_id uuid := auth.uid();
   v_room_id uuid := null;
-  v_last_id uuid := null;
+  v_last_id_text text := null;
+  v_last_uuid uuid := null;
+  v_last_bigint bigint := null;
   v_last_at timestamptz := null;
+  v_candidate text := null;
+  v_message_id_type text := null;
+  v_member_id_type text := null;
 begin
   if v_owner_id is null then
     return jsonb_build_object('ok', false, 'error', 'not_authenticated');
@@ -5605,35 +5610,70 @@ begin
     return jsonb_build_object('ok', false, 'error', 'missing_room_id');
   end if;
 
+  select c.data_type
+    into v_message_id_type
+  from information_schema.columns c
+  where c.table_schema = 'public'
+    and c.table_name = 'messages'
+    and c.column_name = 'id'
+  limit 1;
+
+  select c.data_type
+    into v_member_id_type
+  from information_schema.columns c
+  where c.table_schema = 'public'
+    and c.table_name = 'chat_room_members'
+    and c.column_name = 'last_read_message_id'
+  limit 1;
+
   if p_message_id is not null and trim(p_message_id) <> '' then
+    v_candidate := trim(p_message_id);
+  end if;
+
+  if v_candidate is not null then
+    select id::text, created_at
+      into v_last_id_text, v_last_at
+    from public.messages
+    where chat_room_id = v_room_id
+      and id::text = v_candidate
+    order by created_at desc
+    limit 1;
+  end if;
+
+  if v_last_id_text is null or v_last_at is null then
+    select id::text, created_at
+      into v_last_id_text, v_last_at
+    from public.messages
+    where chat_room_id = v_room_id
+    order by created_at desc
+    limit 1;
+  end if;
+
+  if v_last_id_text is not null then
     begin
-      v_last_id := trim(p_message_id)::uuid;
+      v_last_uuid := v_last_id_text::uuid;
     exception
       when others then
-        v_last_id := null;
+        v_last_uuid := null;
+    end;
+
+    begin
+      v_last_bigint := v_last_id_text::bigint;
+    exception
+      when others then
+        v_last_bigint := null;
     end;
   end if;
 
-  if v_last_id is not null then
-    select created_at
-      into v_last_at
-    from public.messages
-    where id = v_last_id
-      and chat_room_id = v_room_id
-    limit 1;
-  end if;
-
-  if v_last_id is null or v_last_at is null then
-    select id, created_at
-      into v_last_id, v_last_at
-    from public.messages
-    where chat_room_id = v_room_id
-    order by created_at desc, id desc
-    limit 1;
-  end if;
-
   update public.chat_room_members
-  set last_read_message_id = coalesce(v_last_id, last_read_message_id),
+  set last_read_message_id = case
+        when v_last_id_text is null then last_read_message_id
+        when coalesce(v_member_id_type, 'uuid') in ('uuid', 'USER-DEFINED') and v_last_uuid is not null then v_last_uuid
+        when v_member_id_type in ('bigint', 'integer', 'numeric') and v_last_bigint is not null then v_last_bigint
+        when v_member_id_type in ('text', 'character varying', 'character') and v_last_id_text is not null then v_last_id_text
+        when v_member_id_type like 'character varying%' and v_last_id_text is not null then v_last_id_text
+        else last_read_message_id
+      end,
       last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
   where room_id = v_room_id
     and owner_id = v_owner_id;
@@ -5641,7 +5681,8 @@ begin
   return jsonb_build_object(
     'ok', true,
     'roomId', v_room_id,
-    'lastReadAt', coalesce(v_last_at, timezone('utc', now()))
+    'lastReadAt', coalesce(v_last_at, timezone('utc', now())),
+    'lastReadMessageId', v_last_id_text
   );
 end;
 $$;
