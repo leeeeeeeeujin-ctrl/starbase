@@ -56,7 +56,7 @@ const MINI_OVERLAY_MIN_HEIGHT = 240
 const MINI_OVERLAY_MAX_HEIGHT = 640
 const MINI_OVERLAY_BAR_HEIGHT = 56
 const MINI_OVERLAY_MARGIN = 18
-const MINI_OVERLAY_VISIBLE_MARGIN = 24
+const MINI_OVERLAY_VISIBLE_MARGIN = 12
 const PINCH_TRIGGER_RATIO = 0.7
 const PINCH_MIN_DELTA = 28
 const ATTACHMENT_ICONS = {
@@ -1457,6 +1457,7 @@ const overlayStyles = {
     background: 'rgba(10, 16, 35, 0.82)',
     cursor: 'grab',
     touchAction: 'none',
+    userSelect: 'none',
   },
   miniOverlayHeaderActions: {
     display: 'flex',
@@ -3641,7 +3642,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
     lastMarkedRef.current = cacheKey
     markChatRoomRead({ roomId: normalizedRoomId, messageId: latest.id })
-      .then(() => {
+      .then((result) => {
+        if (!result || result.ok === false) {
+          if (result?.error && result.error !== 'not_authenticated') {
+            console.warn('[chat] 읽음 상태 업데이트가 건너뛰어졌습니다:', result)
+          }
+          return
+        }
         updateRoomMetadata(normalizedRoomId, {
           unread_count: 0,
           unreadCount: 0,
@@ -4658,6 +4665,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const handleMiniOverlayPointerDown = useCallback(
     (event) => {
+      if (typeof event?.preventDefault === 'function') {
+        event.preventDefault()
+      }
       if (!miniOverlay.active) return
       const width = miniOverlay.size?.width || MINI_OVERLAY_WIDTH
       const height =

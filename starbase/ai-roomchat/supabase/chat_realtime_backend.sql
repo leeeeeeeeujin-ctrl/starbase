@@ -1199,9 +1199,10 @@ grant execute on function public.delete_chat_room(uuid)
 to authenticated;
 
 drop function if exists public.mark_chat_room_read(uuid, uuid);
+drop function if exists public.mark_chat_room_read(text, text);
 create or replace function public.mark_chat_room_read(
-  p_room_id uuid,
-  p_message_id uuid default null
+  p_room_id text,
+  p_message_id text default null
 )
 returns jsonb
 language plpgsql
@@ -1210,15 +1211,38 @@ set search_path = public
 as $$
 declare
   v_owner_id uuid := auth.uid();
-  v_last_id uuid := p_message_id;
+  v_room_id uuid := null;
+  v_last_id uuid := null;
   v_last_at timestamptz := null;
 begin
   if v_owner_id is null then
     return jsonb_build_object('ok', false, 'error', 'not_authenticated');
   end if;
 
-  if p_room_id is null then
+  begin
+    if p_room_id is not null and trim(p_room_id) <> '' then
+      v_room_id := trim(p_room_id)::uuid;
+    end if;
+  exception
+    when others then
+      return jsonb_build_object(
+        'ok', false,
+        'error', 'invalid_room_id',
+        'detail', coalesce(nullif(trim(p_room_id), ''), 'null')
+      );
+  end;
+
+  if v_room_id is null then
     return jsonb_build_object('ok', false, 'error', 'missing_room_id');
+  end if;
+
+  if p_message_id is not null and trim(p_message_id) <> '' then
+    begin
+      v_last_id := trim(p_message_id)::uuid;
+    exception
+      when others then
+        v_last_id := null;
+    end;
   end if;
 
   if v_last_id is not null then
@@ -1226,7 +1250,7 @@ begin
       into v_last_at
     from public.messages
     where id = v_last_id
-      and chat_room_id = p_room_id
+      and chat_room_id = v_room_id
     limit 1;
   end if;
 
@@ -1234,7 +1258,7 @@ begin
     select id, created_at
       into v_last_id, v_last_at
     from public.messages
-    where chat_room_id = p_room_id
+    where chat_room_id = v_room_id
     order by created_at desc, id desc
     limit 1;
   end if;
@@ -1242,18 +1266,18 @@ begin
   update public.chat_room_members
   set last_read_message_id = coalesce(v_last_id, last_read_message_id),
       last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
-  where room_id = p_room_id
+  where room_id = v_room_id
     and owner_id = v_owner_id;
 
   return jsonb_build_object(
     'ok', true,
-    'roomId', p_room_id,
+    'roomId', v_room_id,
     'lastReadAt', coalesce(v_last_at, timezone('utc', now()))
   );
 end;
 $$;
 
-grant execute on function public.mark_chat_room_read(uuid, uuid)
+grant execute on function public.mark_chat_room_read(text, text)
 to authenticated;
 
 drop function if exists public.fetch_chat_rooms(text, integer);

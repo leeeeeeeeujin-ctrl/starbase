@@ -138,11 +138,15 @@ export async function markChatRoomRead({ roomId, messageId = null }) {
 
   const { data, error } = await supabase.rpc('mark_chat_room_read', {
     p_room_id: normalizedRoomId,
-    p_message_id: normalizedMessageId,
+    p_message_id: normalizedMessageId || null,
   })
 
   if (error) {
     throw error
+  }
+
+  if (data && typeof data === 'object' && data.ok === false) {
+    return data
   }
 
   return data || { ok: true }
