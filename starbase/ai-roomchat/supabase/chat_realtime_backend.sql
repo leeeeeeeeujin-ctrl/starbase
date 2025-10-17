@@ -1233,6 +1233,8 @@ declare
   v_candidate text := null;
   v_message_id_type text := null;
   v_member_id_type text := null;
+  v_last_integer integer := null;
+  v_last_numeric numeric := null;
 begin
   if v_owner_id is null then
     return jsonb_build_object('ok', false, 'error', 'not_authenticated');
@@ -1308,20 +1310,59 @@ begin
       when others then
         v_last_bigint := null;
     end;
+
+    begin
+      v_last_integer := v_last_id_text::integer;
+    exception
+      when others then
+        v_last_integer := null;
+    end;
+
+    begin
+      v_last_numeric := v_last_id_text::numeric;
+    exception
+      when others then
+        v_last_numeric := null;
+    end;
   end if;
 
-  update public.chat_room_members
-  set last_read_message_id = case
-        when v_last_id_text is null then last_read_message_id
-        when coalesce(v_member_id_type, 'uuid') in ('uuid', 'USER-DEFINED') and v_last_uuid is not null then v_last_uuid
-        when v_member_id_type in ('bigint', 'integer', 'numeric') and v_last_bigint is not null then v_last_bigint
-        when v_member_id_type in ('text', 'character varying', 'character') and v_last_id_text is not null then v_last_id_text
-        when v_member_id_type like 'character varying%' and v_last_id_text is not null then v_last_id_text
-        else last_read_message_id
-      end,
-      last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
-  where room_id = v_room_id
-    and owner_id = v_owner_id;
+  if coalesce(v_member_id_type, 'uuid') in ('uuid', 'USER-DEFINED') then
+    update public.chat_room_members
+    set last_read_message_id = coalesce(v_last_uuid, last_read_message_id),
+        last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
+    where room_id = v_room_id
+      and owner_id = v_owner_id;
+  elsif v_member_id_type = 'bigint' then
+    update public.chat_room_members
+    set last_read_message_id = coalesce(v_last_bigint, last_read_message_id),
+        last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
+    where room_id = v_room_id
+      and owner_id = v_owner_id;
+  elsif v_member_id_type = 'integer' then
+    update public.chat_room_members
+    set last_read_message_id = coalesce(v_last_integer, last_read_message_id),
+        last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
+    where room_id = v_room_id
+      and owner_id = v_owner_id;
+  elsif v_member_id_type = 'numeric' then
+    update public.chat_room_members
+    set last_read_message_id = coalesce(v_last_numeric, last_read_message_id),
+        last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
+    where room_id = v_room_id
+      and owner_id = v_owner_id;
+  elsif v_member_id_type in ('text', 'character varying', 'character')
+        or v_member_id_type like 'character varying%' then
+    update public.chat_room_members
+    set last_read_message_id = coalesce(v_last_id_text, last_read_message_id::text)::text,
+        last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
+    where room_id = v_room_id
+      and owner_id = v_owner_id;
+  else
+    update public.chat_room_members
+    set last_read_message_at = coalesce(v_last_at, timezone('utc', now()))
+    where room_id = v_room_id
+      and owner_id = v_owner_id;
+  end if;
 
   return jsonb_build_object(
     'ok', true,
