@@ -17,7 +17,6 @@ import {
   leaveChatRoom,
   deleteChatRoom,
   manageChatRoomRole,
-  markChatRoomRead,
   createChatRoomAnnouncement,
   deleteChatRoomAnnouncement,
   toggleChatRoomAnnouncementReaction,
@@ -2702,7 +2701,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const videoControlTimerRef = useRef(null)
   const mediaPickerLongPressRef = useRef({ timer: null, active: false, id: null })
   const aiPendingMessageRef = useRef(null)
-  const lastMarkedRef = useRef(null)
   const roomMetadataRef = useRef(new Map())
   const drawerOpenRef = useRef(false)
   const drawerGestureRef = useRef({
@@ -3528,7 +3526,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         videoControlTimerRef.current = null
       }
       setVideoControlsVisible(true)
-      lastMarkedRef.current = null
       setViewerReady(false)
       commitUnreadState()
       return
@@ -3662,49 +3659,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     if (!node) return
     node.scrollTop = node.scrollHeight
   }, [messages, viewingConversation])
-
-  useEffect(() => {
-    if (!viewingConversation) return
-    if (!context || context.type !== 'chat-room') return
-    const roomId = context.chatRoomId
-    if (!roomId) return
-    const normalizedRoomId = normalizeId(roomId)
-    if (!normalizedRoomId || !isValidUuid(normalizedRoomId)) return
-
-    const relevantMessages = messages.filter((message) =>
-      normalizeId(message?.chat_room_id || message?.room_id) === normalizedRoomId,
-    )
-    if (!relevantMessages.length) return
-
-    const latest = relevantMessages[relevantMessages.length - 1]
-    if (!latest?.id) return
-
-    const cacheKey = `${normalizedRoomId}:${latest.id}`
-    if (lastMarkedRef.current === cacheKey) {
-      return
-    }
-
-    lastMarkedRef.current = cacheKey
-    markChatRoomRead({ roomId: normalizedRoomId, messageId: latest.id })
-      .then((result) => {
-        if (!result || result.ok === false) {
-          if (result?.error && result.error !== 'not_authenticated') {
-            console.warn('[chat] 읽음 상태 업데이트가 건너뛰어졌습니다:', result)
-          }
-          return
-        }
-        updateRoomMetadata(normalizedRoomId, {
-          unread_count: 0,
-          unreadCount: 0,
-          last_read_message_id: latest.id,
-          last_read_message_at:
-            latest.created_at || latest.createdAt || new Date().toISOString(),
-        })
-      })
-      .catch((error) => {
-        console.error('[chat] 읽음 상태 업데이트 실패:', error)
-      })
-  }, [viewingConversation, context, messages, updateRoomMetadata])
 
   useEffect(() => {
     if (!showComposerPanel) return
@@ -3861,7 +3815,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
-    lastMarkedRef.current = null
     setContext({
       type: 'chat-room',
       scope: 'room',

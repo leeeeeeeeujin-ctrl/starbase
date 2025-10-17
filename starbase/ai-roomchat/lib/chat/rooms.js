@@ -108,50 +108,6 @@ export async function deleteChatRoom({ roomId }) {
   return data || { ok: true }
 }
 
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-function normalizeUuid(value) {
-  if (value === null || value === undefined) {
-    return null
-  }
-
-  const token = typeof value === 'string' ? value.trim() : String(value).trim()
-  if (!token) {
-    return null
-  }
-
-  return UUID_REGEX.test(token) ? token : null
-}
-
-function normalizeMessageId(value) {
-  return normalizeUuid(value)
-}
-
-export async function markChatRoomRead({ roomId, messageId = null }) {
-  const normalizedRoomId = normalizeUuid(roomId)
-  if (!normalizedRoomId) {
-    console.warn('[chat] markChatRoomRead skipped due to invalid roomId:', roomId)
-    return { ok: false, skipped: 'invalid_room_id' }
-  }
-  const normalizedMessageId = normalizeMessageId(messageId)
-
-  const { data, error } = await supabase.rpc('mark_chat_room_read', {
-    p_room_id: normalizedRoomId,
-    p_message_id: normalizedMessageId || null,
-  })
-
-  if (error) {
-    throw error
-  }
-
-  if (data && typeof data === 'object' && data.ok === false) {
-    return data
-  }
-
-  return data || { ok: true }
-}
-
 export async function manageChatRoomRole({
   roomId,
   targetOwnerId,
