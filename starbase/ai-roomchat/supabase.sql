@@ -6944,6 +6944,85 @@ $$;
 grant execute on function public.create_chat_room_announcement(uuid, text, text, text, boolean)
 to authenticated;
 
+drop function if exists public.update_chat_room_announcement_pin(uuid, boolean);
+create or replace function public.update_chat_room_announcement_pin(
+  p_announcement_id uuid,
+  p_pinned boolean default false
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_row jsonb := null;
+  v_room_id uuid := null;
+  v_can_manage boolean := false;
+  v_target_pinned boolean := coalesce(p_pinned, false);
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  select room_id
+    into v_room_id
+  from public.chat_room_announcements
+  where id = p_announcement_id
+  for update;
+
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = v_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = v_room_id
+        and m.owner_id = v_actor
+    )
+    into v_can_manage;
+
+  if not v_can_manage then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  update public.chat_room_announcements
+  set pinned = v_target_pinned,
+      updated_at = timezone('utc', now())
+  where id = p_announcement_id
+  returning jsonb_build_object(
+    'id', id,
+    'room_id', room_id,
+    'author_id', author_id,
+    'title', title,
+    'content', content,
+    'image_url', image_url,
+    'pinned', pinned,
+    'created_at', created_at,
+    'updated_at', updated_at
+  )
+  into v_row;
+
+  if v_target_pinned then
+    update public.chat_room_announcements
+    set pinned = false
+    where room_id = v_room_id
+      and id <> p_announcement_id
+      and pinned;
+  end if;
+
+  return jsonb_build_object('ok', true, 'announcement', v_row);
+end;
+$$;
+
+grant execute on function public.update_chat_room_announcement_pin(uuid, boolean)
+to authenticated;
+
 drop function if exists public.delete_chat_room_announcement(uuid);
 create or replace function public.delete_chat_room_announcement(
   p_announcement_id uuid

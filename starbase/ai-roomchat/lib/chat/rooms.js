@@ -294,6 +294,23 @@ export async function createChatRoomAnnouncement({
   return data?.announcement || null
 }
 
+export async function updateChatRoomAnnouncementPin({ announcementId, pinned }) {
+  if (!announcementId) {
+    throw new Error('announcementId가 필요합니다.')
+  }
+
+  const { data, error } = await supabase.rpc('update_chat_room_announcement_pin', {
+    p_announcement_id: announcementId,
+    p_pinned: pinned === true,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data?.announcement || null
+}
+
 export async function deleteChatRoomAnnouncement({ announcementId }) {
   if (!announcementId) {
     throw new Error('announcementId가 필요합니다.')
