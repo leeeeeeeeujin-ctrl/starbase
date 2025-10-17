@@ -67,8 +67,6 @@ const ATTACHMENT_ICONS = {
 
 const AI_ASSISTANT_NAME = 'AI 어시스턴트'
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 }
-const UNREAD_COOKIE_PREFIX = 'chat-unread-stack'
-const UNREAD_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 
 function getAttachmentCacheKey(attachment) {
   if (!attachment) return ''
@@ -128,76 +126,6 @@ function normalizeBackgroundUrl(value) {
   return null
 }
 
-function readCookie(name) {
-  if (typeof document === 'undefined' || !name) return null
-  const entries = document.cookie ? document.cookie.split(';') : []
-  for (const entry of entries) {
-    const token = entry.trim()
-    if (!token) continue
-    if (token.startsWith(`${name}=`)) {
-      try {
-        return decodeURIComponent(token.slice(name.length + 1))
-      } catch (error) {
-        console.error('[chat] 쿠키 해석 실패:', error)
-        return null
-      }
-    }
-  }
-  return null
-}
-
-function writeCookie(name, value, maxAge = UNREAD_COOKIE_MAX_AGE) {
-  if (typeof document === 'undefined' || !name) return
-  const segments = [`${name}=${encodeURIComponent(value)}`, 'path=/', `max-age=${Math.max(0, maxAge)}`]
-  document.cookie = segments.join('; ')
-}
-
-function deleteCookie(name) {
-  if (typeof document === 'undefined' || !name) return
-  document.cookie = `${name}=; path=/; max-age=0`
-}
-
-function serializeUnreadCounts(counts) {
-  if (!(counts instanceof Map)) {
-    return ''
-  }
-  const pairs = []
-  counts.forEach((value, key) => {
-    if (!key) return
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric)) return
-    const parsed = Math.max(0, Math.trunc(numeric))
-    if (parsed > 0) {
-      pairs.push(`${key}:${parsed}`)
-    }
-  })
-  if (pairs.length === 0) {
-    return ''
-  }
-  pairs.sort()
-  return pairs.join('|')
-}
-
-function parseUnreadCookie(value) {
-  const map = new Map()
-  if (typeof value !== 'string' || !value) {
-    return map
-  }
-  const pairs = value.split('|')
-  for (const pair of pairs) {
-    if (!pair) continue
-    const [rawId, rawCount] = pair.split(':')
-    const roomId = (rawId || '').trim()
-    if (!roomId) continue
-    const numeric = Number(rawCount)
-    if (!Number.isFinite(numeric)) continue
-    const parsed = Math.max(0, Math.trunc(numeric))
-    if (parsed > 0) {
-      map.set(roomId, parsed)
-    }
-  }
-  return map
-}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -849,19 +777,6 @@ const overlayStyles = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-  },
-  unreadBadge: {
-    minWidth: 26,
-    height: 22,
-    borderRadius: 11,
-    background: 'rgba(248, 113, 113, 0.92)',
-    color: '#fff7ed',
-    fontWeight: 700,
-    fontSize: 11,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '0 8px',
   },
   roomCardStats: {
     display: 'flex',
@@ -2491,13 +2406,7 @@ function normalizeRoomEntry(room) {
         ? base.last_message_at
         : derivedTimestamp
 
-  const unreadRaw =
-    base.unread_count !== undefined
-      ? base.unread_count
-      : base.unreadCount !== undefined
-        ? base.unreadCount
-        : base.unread
-  const unreadCount = Number.isFinite(Number(unreadRaw)) ? Number(unreadRaw) : 0
+  const unreadCount = 0
 
   const coverUrl = base.coverUrl || base.cover_url || null
 
@@ -2795,12 +2704,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const aiPendingMessageRef = useRef(null)
   const lastMarkedRef = useRef(null)
   const roomMetadataRef = useRef(new Map())
-  const unreadStateRef = useRef({
-    counts: new Map(),
-    cookieKey: null,
-    lastSerialized: '',
-    suspendWrite: false,
-  })
   const drawerOpenRef = useRef(false)
   const drawerGestureRef = useRef({
     tracking: false,
@@ -2872,108 +2775,34 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const trimmedSearchQuery = useMemo(() => (searchQuery || '').trim(), [searchQuery])
 
-  const broadcastUnreadTotal = useCallback(() => {
-    const store = unreadStateRef.current
-    const counts = store?.counts
-    if (!(counts instanceof Map)) {
-      if (onUnreadChange) {
-        onUnreadChange(0)
-      }
-      return 0
-    }
-
-    let total = 0
-    counts.forEach((value) => {
-      const numeric = Number(value)
-      if (Number.isFinite(numeric) && numeric > 0) {
-        total += Math.trunc(numeric)
-      }
-    })
-
-    if (onUnreadChange) {
-      onUnreadChange(total)
-    }
-
-    return total
-  }, [onUnreadChange])
-
-  const persistUnreadCounts = useCallback(() => {
-    const store = unreadStateRef.current
-    if (!store || store.suspendWrite) {
-      return
-    }
-
-    let counts = store.counts
-    if (!(counts instanceof Map)) {
-      counts = new Map()
-      store.counts = counts
-    }
-
-    const key = store.cookieKey
-    if (!key || typeof document === 'undefined') {
-      return
-    }
-
-    const serialized = serializeUnreadCounts(counts)
-    if (serialized === store.lastSerialized) {
-      return
-    }
-
-    if (!serialized) {
-      deleteCookie(key)
-    } else {
-      writeCookie(key, serialized, UNREAD_COOKIE_MAX_AGE)
-    }
-
-    store.lastSerialized = serialized
-  }, [])
-
-  const applyUnreadCountsToState = useCallback(() => {
-    const store = unreadStateRef.current
-    if (!store) return
-
-    let counts = store.counts
-    if (!(counts instanceof Map)) {
-      counts = new Map()
-      store.counts = counts
-    }
-
-    const coerce = (value) => {
-      const numeric = Number(value)
-      return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0
-    }
-
-    const apply = (collection) => {
+  const clearUnreadIndicators = useCallback(() => {
+    const resetCollection = (collection) => {
       if (!Array.isArray(collection) || collection.length === 0) {
         return collection
       }
       let changed = false
       const next = collection.map((room) => {
-        const roomId = normalizeId(room?.id)
-        if (!roomId) {
+        if (!room || typeof room !== 'object') {
           return room
         }
-        const target = counts.has(roomId) ? coerce(counts.get(roomId)) : 0
-        const currentSource =
-          room?.unread_count !== undefined
-            ? room.unread_count
-            : room?.unreadCount !== undefined
-              ? room.unreadCount
-              : room?.unread
-        const existing = coerce(currentSource)
-        if (existing === target) {
+        const values = [room.unread_count, room.unreadCount, room.unread]
+        const hasPositive = values.some((value) => {
+          const numeric = Number(value)
+          return Number.isFinite(numeric) && numeric > 0
+        })
+        if (!hasPositive) {
           return room
         }
         changed = true
-        return { ...room, unread_count: target, unreadCount: target, unread: target }
+        return { ...room, unread_count: 0, unreadCount: 0, unread: 0 }
       })
       return changed ? next : collection
     }
 
     setRooms((prev) => {
       if (!prev) return prev
-      const nextJoined = apply(prev.joined)
-      const nextAvailable = apply(prev.available)
+      const nextJoined = resetCollection(prev.joined)
+      const nextAvailable = resetCollection(prev.available)
       if (nextJoined === prev.joined && nextAvailable === prev.available) {
         return prev
       }
@@ -2982,13 +2811,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
     setDashboard((prev) => {
       if (!prev) return prev
-      const nextRooms = apply(prev.rooms)
-      const nextPublic = apply(prev.publicRooms)
+      const nextRooms = resetCollection(prev.rooms)
+      const nextPublic = resetCollection(prev.publicRooms)
       const nextSummary = prev.roomSummary
         ? {
             ...prev.roomSummary,
-            joined: apply(prev.roomSummary.joined),
-            available: apply(prev.roomSummary.available),
+            joined: resetCollection(prev.roomSummary.joined),
+            available: resetCollection(prev.roomSummary.available),
           }
         : prev.roomSummary
       if (nextRooms === prev.rooms && nextPublic === prev.publicRooms && nextSummary === prev.roomSummary) {
@@ -3001,78 +2830,31 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         roomSummary: nextSummary,
       }
     })
-  }, [])
+
+    if (onUnreadChange) {
+      onUnreadChange(0)
+    }
+  }, [onUnreadChange])
 
   const commitUnreadState = useCallback(
-    ({ apply = false } = {}) => {
-      persistUnreadCounts()
-      broadcastUnreadTotal()
-      if (apply) {
-        applyUnreadCountsToState()
-      }
+    () => {
+      clearUnreadIndicators()
     },
-    [broadcastUnreadTotal, persistUnreadCounts, applyUnreadCountsToState],
+    [clearUnreadIndicators],
   )
 
   const syncUnreadFromCollections = useCallback(
-    (collections, { replace = false } = {}) => {
-      const store = unreadStateRef.current
-      if (!store) {
-        return
-      }
-
-      let counts = store.counts
-      if (!(counts instanceof Map)) {
-        counts = new Map()
-        store.counts = counts
-      }
-
-      const seen = new Set()
-      if (replace) {
-        counts.clear()
-      }
-
-      const apply = (list) => {
-        if (!Array.isArray(list)) {
-          return
-        }
-        list.forEach((room) => {
-          const roomId = normalizeId(room?.id)
-          if (!roomId) return
-          seen.add(roomId)
-          const unreadSource =
-            room?.unread_count !== undefined
-              ? room.unread_count
-              : room?.unreadCount !== undefined
-                ? room.unreadCount
-                : room?.unread
-          const numeric = Number(unreadSource)
-          const parsed = Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0
-          const existing = counts.has(roomId) ? Math.max(0, Math.trunc(Number(counts.get(roomId)))) : 0
-          const nextCount = Math.max(existing, parsed)
-          if (nextCount > 0) {
-            counts.set(roomId, nextCount)
-          } else {
-            counts.delete(roomId)
-          }
-        })
-      }
-
-      apply(collections?.joined)
-      apply(collections?.available)
-
-      if (replace && seen.size > 0) {
-        counts.forEach((_, key) => {
-          if (!seen.has(key)) {
-            counts.delete(key)
-          }
-        })
-      }
-
-      commitUnreadState({ apply: true })
+    () => {
+      clearUnreadIndicators()
     },
-    [commitUnreadState],
+    [clearUnreadIndicators],
   )
+
+  useEffect(() => {
+    if (onUnreadChange) {
+      onUnreadChange(0)
+    }
+  }, [onUnreadChange])
 
   const resolvedSearchKeywords = useMemo(() => {
     const source = trimmedSearchQuery
@@ -3103,45 +2885,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   useEffect(() => {
     roomsRef.current = rooms
   }, [rooms])
-
-  useEffect(() => {
-    const store = unreadStateRef.current
-    let counts = store?.counts
-    if (!(counts instanceof Map)) {
-      counts = new Map()
-      if (store) {
-        store.counts = counts
-      }
-    }
-
-    const active = new Set()
-    const collect = (list) => {
-      if (!Array.isArray(list)) return
-      list.forEach((room) => {
-        const roomId = normalizeId(room?.id)
-        if (roomId) {
-          active.add(roomId)
-        }
-      })
-    }
-
-    collect(rooms?.joined)
-    collect(rooms?.available)
-
-    let mutated = false
-    counts.forEach((_, key) => {
-      if (!active.has(key)) {
-        counts.delete(key)
-        mutated = true
-      }
-    })
-
-    if (mutated) {
-      commitUnreadState({ apply: true })
-    } else {
-      applyUnreadCountsToState()
-    }
-  }, [rooms, commitUnreadState, applyUnreadCountsToState])
 
   useEffect(() => {
     if (!context?.chatRoomId) {
@@ -3376,19 +3119,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       patch.unread_count = parsed
       patch.unreadCount = parsed
       unreadTouched = true
-      const store = unreadStateRef.current
-      if (store) {
-        let counts = store.counts
-        if (!(counts instanceof Map)) {
-          counts = new Map()
-          store.counts = counts
-        }
-        if (parsed > 0) {
-          counts.set(normalizedRoomId, parsed)
-        } else {
-          counts.delete(normalizedRoomId)
-        }
-      }
     }
 
     const overrides = roomMetadataRef.current
@@ -3460,49 +3190,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const viewerId = useMemo(() => viewer?.id || viewer?.owner_id || null, [viewer])
   const viewerToken = useMemo(() => normalizeId(viewerId), [viewerId])
-
-  useEffect(() => {
-    const store = unreadStateRef.current
-    if (!store) {
-      return
-    }
-
-    const previousKey = store.cookieKey
-    const previousCounts = store.counts instanceof Map ? store.counts : null
-    const cookieKey = viewerToken ? `${UNREAD_COOKIE_PREFIX}-${viewerToken}` : `${UNREAD_COOKIE_PREFIX}-anon`
-    store.cookieKey = cookieKey
-
-    store.suspendWrite = true
-    try {
-      const cookieValue = readCookie(cookieKey)
-      const parsed = parseUnreadCookie(cookieValue)
-      const merged = new Map(parsed)
-      if (previousCounts instanceof Map) {
-        const shouldMerge = !previousKey || previousKey === cookieKey || (previousKey || '').endsWith('-anon')
-        if (shouldMerge) {
-          previousCounts.forEach((value, key) => {
-            if (!key) return
-            const numeric = Number(value)
-            if (!Number.isFinite(numeric)) return
-            const parsedValue = Math.max(0, Math.trunc(numeric))
-            if (parsedValue <= 0) return
-            const existing = merged.has(key)
-              ? Math.max(0, Math.trunc(Number(merged.get(key))))
-              : 0
-            if (parsedValue > existing) {
-              merged.set(key, parsedValue)
-            }
-          })
-        }
-      }
-      store.counts = merged
-      store.lastSerialized = serializeUnreadCounts(merged)
-    } finally {
-      store.suspendWrite = false
-    }
-
-    commitUnreadState({ apply: true })
-  }, [viewerToken, commitUnreadState])
 
   const currentRoom = useMemo(() => {
     if (context?.type !== 'chat-room') {
@@ -3940,45 +3627,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               if (context?.type === 'chat-room' && normalizeId(context.chatRoomId) === recordRoomId) {
                 updateRoomMetadata(context.chatRoomId, { latestMessage: record })
               } else {
-                let currentUnread = 0
-                const store = unreadStateRef.current
-                const counts = store?.counts
-                if (counts instanceof Map && counts.has(recordRoomId)) {
-                  const storedValue = counts.get(recordRoomId)
-                  const numeric = Number(storedValue)
-                  if (Number.isFinite(numeric)) {
-                    currentUnread = Math.max(0, Math.trunc(numeric))
-                  }
-                } else {
-                  const snapshot = roomsRef.current
-                  if (snapshot) {
-                    const searchLists = [snapshot.joined, snapshot.available]
-                    for (const list of searchLists) {
-                      if (!Array.isArray(list)) continue
-                      const match = list.find((room) => normalizeId(room?.id) === recordRoomId)
-                      if (match) {
-                        const fallback =
-                          match.unread_count !== undefined
-                            ? match.unread_count
-                            : match.unreadCount !== undefined
-                              ? match.unreadCount
-                              : match.unread
-                        const numeric = Number(fallback)
-                        if (Number.isFinite(numeric)) {
-                          currentUnread = Math.max(0, Math.trunc(numeric))
-                        }
-                        break
-                      }
-                    }
-                  }
-                }
-                const nextUnread = fromSelf ? currentUnread : currentUnread + 1
-                const patch = { latestMessage: record }
-                if (!fromSelf) {
-                  patch.unread_count = nextUnread
-                  patch.unreadCount = nextUnread
-                }
-                updateRoomMetadata(recordRoomId, patch)
+                updateRoomMetadata(recordRoomId, { latestMessage: record })
               }
             }
           },
@@ -6867,7 +6516,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           const isGlobal = room.builtin === 'global' || roomId === globalId
           const active = isGlobal ? viewingGlobal : activeRoomId === room.id
           const cover = room.cover_url || room.coverUrl || null
-          const unread = Number(room.unread_count) || 0
           const latestAt = room.last_message_at || room.updated_at || room.created_at || null
           const timeLabel = formatRelativeLastActivity(latestAt)
           const memberCount = Number(room.member_count) || 0
@@ -6886,9 +6534,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               <div style={overlayStyles.roomCardBody}>
                 <div style={overlayStyles.roomCardHeader}>
                   <span style={overlayStyles.roomCardTitle}>{room.name || '채팅방'}</span>
-                  {unread > 0 ? (
-                    <span style={overlayStyles.unreadBadge}>{unread > 99 ? '99+' : unread}</span>
-                  ) : null}
                 </div>
                 <div style={overlayStyles.roomCardStats}>
                   <span>{timeLabel || '최근 채팅 없음'}</span>
@@ -7898,20 +7543,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return text || '최근 메시지 없음'
   }, [miniOverlayLatest])
 
-  const miniOverlayUnread = useMemo(() => {
-    if (!context) return 0
-    const fromContext = Number(context.unreadCount ?? context.unread_count)
-    if (Number.isFinite(fromContext) && fromContext > 0) {
-      return fromContext
-    }
-    if (context.type === 'chat-room' && currentRoom) {
-      const fromRoom = Number(currentRoom.unreadCount ?? currentRoom.unread_count)
-      if (Number.isFinite(fromRoom) && fromRoom > 0) {
-        return fromRoom
-      }
-    }
-    return 0
-  }, [context, currentRoom])
+  const miniOverlayUnread = 0
 
   const focused = Boolean(context)
 
@@ -7924,7 +7556,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const mediaSelectionCount = mediaLibrary.selection?.size || 0
   const mediaPickerTitle = mediaLibrary.action === 'video' ? '최근 동영상' : '최근 사진'
   const overlayOpen = open && !miniOverlay.active
-  const miniOverlayBadge = miniOverlayUnread > 99 ? '99+' : miniOverlayUnread > 0 ? String(miniOverlayUnread) : null
+  const miniOverlayBadge = null
   const miniOverlayWidth = miniOverlay.size?.width || MINI_OVERLAY_WIDTH
   const miniOverlayHeight =
     miniOverlay.mode === 'bar'
