@@ -36,6 +36,37 @@ function stripApiKeyQuery(targetUrl, baseUrl) {
   }
 }
 
+async function logSupabaseFailure(response, { url } = {}) {
+  try {
+    const clone = response.clone?.() ?? response
+    const contentType = clone.headers?.get?.('content-type') || ''
+    if (contentType.includes('application/json')) {
+      const payload = await clone.json()
+      console.error('[supabase] request failed', {
+        url,
+        status: response.status,
+        payload,
+      })
+      return
+    }
+
+    const text = await clone.text?.()
+    if (text) {
+      console.error('[supabase] request failed', {
+        url,
+        status: response.status,
+        payload: text,
+      })
+    }
+  } catch (error) {
+    console.error('[supabase] request failed', {
+      url,
+      status: response.status,
+      error,
+    })
+  }
+}
+
 function createAuthEnsurer(supabaseUrl, { apikey, authorization } = {}) {
   try {
     sanitizeSupabaseUrl(supabaseUrl)
@@ -109,7 +140,13 @@ export function createSupabaseAuthConfig(supabaseUrl, { apikey, authorization } 
 
     const target = typeof input === 'string' ? input : input?.url
     const { url, init: nextInit } = sanitiseRequest(target || input, init)
-    return fetch(url, nextInit)
+    const response = await fetch(url, nextInit)
+
+    if (!response.ok) {
+      await logSupabaseFailure(response, { url })
+    }
+
+    return response
   }
 
   return {
