@@ -14,6 +14,7 @@ export default function SurfaceOverlay({
   zIndex = 1500,
   containerStyle = {},
   verticalAlign = 'center',
+  viewportHeight = null,
 }) {
   const handleBackdropClick = (event) => {
     if (!open || !onClose) return
@@ -26,8 +27,8 @@ export default function SurfaceOverlay({
       style={{
         position: 'fixed',
         inset: 0,
-        minHeight: '100vh',
-        height: '100dvh',
+        minHeight: viewportHeight || '100vh',
+        height: viewportHeight || '100dvh',
         zIndex,
         display: 'flex',
         alignItems: verticalAlign,

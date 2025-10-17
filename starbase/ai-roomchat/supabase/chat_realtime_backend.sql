@@ -97,6 +97,34 @@ create table if not exists public.chat_room_announcements (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+alter table public.chat_room_announcements
+  add column if not exists title text;
+
+alter table public.chat_room_announcements
+  add column if not exists image_url text;
+
+alter table public.chat_room_announcements
+  add column if not exists pinned boolean not null default false;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'chat_room_announcements'
+      and column_name = 'pinned'
+  ) then
+    alter table public.chat_room_announcements
+      alter column pinned set default false;
+    update public.chat_room_announcements
+      set pinned = false
+      where pinned is null;
+    alter table public.chat_room_announcements
+      alter column pinned set not null;
+  end if;
+end $$;
+
 create table if not exists public.chat_room_announcement_reactions (
   announcement_id uuid not null references public.chat_room_announcements(id) on delete cascade,
   owner_id uuid not null references auth.users(id) on delete cascade,

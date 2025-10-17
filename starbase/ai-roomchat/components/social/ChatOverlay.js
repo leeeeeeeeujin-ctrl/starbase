@@ -8319,7 +8319,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const safeBottom = Math.max(0, Number.isFinite(viewport.safeAreaBottom) ? viewport.safeAreaBottom : 0)
     const numericHeight =
       typeof viewport.height === 'number' && Number.isFinite(viewport.height) ? viewport.height : null
-    const viewportHeightValue = numericHeight ? Math.max(240, Math.round(numericHeight + safeTop)) : null
+    const viewportHeightValue = numericHeight ? Math.max(240, Math.round(numericHeight)) : null
 
     if (!isCompactLayout) {
       const style = {
@@ -8361,6 +8361,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const offsetTop = Math.max(0, Number.isFinite(viewport.offsetTop) ? viewport.offsetTop : 0)
     const safeTop = Math.max(0, Number.isFinite(viewport.safeAreaTop) ? viewport.safeAreaTop : 0)
     const safeBottom = Math.max(0, Number.isFinite(viewport.safeAreaBottom) ? viewport.safeAreaBottom : 0)
+    const numericHeight =
+      typeof viewport.height === 'number' && Number.isFinite(viewport.height) ? viewport.height : null
 
     const marginTopValue = Math.round(Math.max(offsetTop, safeTop))
     const marginBottomValue = Math.round(safeBottom)
@@ -8382,13 +8384,27 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
     style.paddingBottom = `${marginBottomValue + extraBottomSpacing}px`
 
+    if (numericHeight) {
+      style.minHeight = `${Math.max(260, Math.round(numericHeight + marginTopValue + marginBottomValue))}px`
+    }
+
     return style
   }, [
     isCompactLayout,
     viewport.offsetTop,
     viewport.safeAreaTop,
     viewport.safeAreaBottom,
+    viewport.height,
   ])
+
+  const overlayViewportHeight = useMemo(() => {
+    const numericHeight =
+      typeof viewport.height === 'number' && Number.isFinite(viewport.height) ? viewport.height : null
+    if (!numericHeight) {
+      return null
+    }
+    return `${Math.max(260, Math.round(numericHeight))}px`
+  }, [viewport.height])
 
   const sidePanelStyle = useMemo(() => {
     if (!isCompactLayout) {
@@ -11464,6 +11480,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         }}
         verticalAlign="flex-start"
         containerStyle={overlayContainerStyle}
+        viewportHeight={overlayViewportHeight}
       >
         <div ref={rootRef} style={frameStyle}>
           <div style={rootStyle}>
