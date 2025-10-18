@@ -271,14 +271,15 @@ const styles = {
     width: '100%',
     display: 'flex',
     overflow: 'hidden',
+    padding: '2px 0 4px',
   },
   playCarouselTrack: {
     flex: '1 1 auto',
     minWidth: 0,
     display: 'flex',
-    gap: 16,
+    gap: 14,
     overflowX: 'auto',
-    padding: '6px 4px 6px 0',
+    padding: '4px 2px 8px 0',
     width: '100%',
     scrollSnapType: 'x mandatory',
     WebkitOverflowScrolling: 'touch',
@@ -286,16 +287,16 @@ const styles = {
   },
   playCarouselCard: (active) => ({
     position: 'relative',
-    flex: '0 0 min(82%, 320px)',
-    minWidth: 240,
-    borderRadius: 26,
+    flex: '0 0 min(78%, 300px)',
+    minWidth: 232,
+    borderRadius: 22,
     border: active ? '1px solid rgba(56,189,248,0.65)' : '1px solid rgba(148,163,184,0.35)',
     background: 'rgba(15,23,42,0.72)',
-    minHeight: 180,
-    padding: '18px 20px',
+    minHeight: 150,
+    padding: '14px 18px',
     overflow: 'hidden',
     display: 'grid',
-    gap: 10,
+    gap: 8,
     cursor: 'pointer',
     boxShadow: active
       ? '0 28px 80px -40px rgba(56,189,248,0.65)'
@@ -309,7 +310,7 @@ const styles = {
   playCarouselBackdrop: (imageUrl) => ({
     position: 'absolute',
     inset: 0,
-    borderRadius: 24,
+    borderRadius: 20,
     backgroundImage: imageUrl
       ? `linear-gradient(135deg, rgba(2,6,23,0.16) 0%, rgba(2,6,23,0.78) 100%), url(${imageUrl})`
       : 'linear-gradient(135deg, rgba(2,6,23,0.32) 0%, rgba(2,6,23,0.78) 100%)',
@@ -326,7 +327,7 @@ const styles = {
   },
   playCarouselCardTitle: {
     margin: 0,
-    fontSize: 21,
+    fontSize: 24,
     fontWeight: 800,
     lineHeight: 1.35,
     letterSpacing: '-0.015em',
@@ -993,14 +994,14 @@ const styles = {
   infoSliderPlaySlide: {
     justifySelf: 'start',
     width: '100%',
-    maxWidth: 280,
-    margin: '0 auto 0 0',
+    maxWidth: 360,
+    margin: '0',
   },
   infoSliderInfoSlide: {
     justifySelf: 'start',
     width: '100%',
-    maxWidth: 448,
-    margin: '0 auto 0 0',
+    maxWidth: 360,
+    margin: '0',
   },
   infoSliderIndicators: {
     display: 'flex',
@@ -1627,10 +1628,6 @@ export default function CharacterBasicView({ hero }) {
     progress,
     duration,
     volume: bgmVolume,
-    speedEnabled,
-    speed,
-    pitchEnabled,
-    pitch,
     eqEnabled,
     equalizer,
     reverbEnabled,
@@ -1846,44 +1843,24 @@ export default function CharacterBasicView({ hero }) {
     return parts.join(' · ') || '참여 기록 없음'
   }, [])
 
-  const handlePrevGame = useCallback(() => {
-    if (!carouselEntries.length || !selectedGameId) return
-    const currentIndex = carouselEntries.findIndex((entry) => entry.game_id === selectedGameId)
-    if (currentIndex <= 0) return
-    const next = carouselEntries[currentIndex - 1]
-    if (!next) return
-    setSelectedGameId(next.game_id)
-  }, [carouselEntries, selectedGameId, setSelectedGameId])
-
-  const handleNextGame = useCallback(() => {
-    if (!carouselEntries.length || !selectedGameId) return
-    const currentIndex = carouselEntries.findIndex((entry) => entry.game_id === selectedGameId)
-    if (currentIndex < 0 || currentIndex >= carouselEntries.length - 1) return
-    const next = carouselEntries[currentIndex + 1]
-    if (!next) return
-    setSelectedGameId(next.game_id)
-  }, [carouselEntries, selectedGameId, setSelectedGameId])
-
   const handleIndicatorClick = useCallback(
     (gameId) => {
       if (!gameId) return
       setSelectedGameId(gameId)
+      const node = carouselItemRefs.current.get(gameId)
+      if (node && typeof node.scrollIntoView === 'function') {
+        node.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+      }
     },
     [setSelectedGameId],
   )
 
-  const carouselSwipeHandledRef = useRef(false)
-  const carouselTouchStartRef = useRef(null)
   const carouselItemRefs = useRef(new Map())
   const infoSliderTouchStartRef = useRef(null)
 
   const handleCarouselCardClick = useCallback(
     (gameId) => {
       if (!gameId) return
-      if (carouselSwipeHandledRef.current) {
-        carouselSwipeHandledRef.current = false
-        return
-      }
       setSelectedGameId(gameId)
       setOverlayHeroStep(0)
       setDetailOpen(true)
@@ -1915,52 +1892,6 @@ export default function CharacterBasicView({ hero }) {
       handleTopHeroCardClick()
     },
     [handleTopHeroCardClick],
-  )
-
-  const handleCarouselTouchStart = useCallback((event) => {
-    carouselSwipeHandledRef.current = false
-    if (!event.touches?.length) return
-    carouselTouchStartRef.current = event.touches[0].clientX
-  }, [])
-
-  const handleCarouselTouchEnd = useCallback(
-    (event) => {
-      if (!event.changedTouches?.length) return
-      const startX = carouselTouchStartRef.current
-      carouselTouchStartRef.current = null
-      if (typeof startX !== 'number') return
-      const delta = event.changedTouches[0].clientX - startX
-      if (Math.abs(delta) < 40) return
-      carouselSwipeHandledRef.current = true
-      if (delta > 0) {
-        handlePrevGame()
-      } else {
-        handleNextGame()
-      }
-    },
-    [handleNextGame, handlePrevGame],
-  )
-
-  const handleCarouselPointerDown = useCallback((event) => {
-    carouselSwipeHandledRef.current = false
-    carouselTouchStartRef.current = event.clientX
-  }, [])
-
-  const handleCarouselPointerUp = useCallback(
-    (event) => {
-      const startX = carouselTouchStartRef.current
-      carouselTouchStartRef.current = null
-      if (typeof startX !== 'number') return
-      const delta = event.clientX - startX
-      if (Math.abs(delta) < 40) return
-      carouselSwipeHandledRef.current = true
-      if (delta > 0) {
-        handlePrevGame()
-      } else {
-        handleNextGame()
-      }
-    },
-    [handleNextGame, handlePrevGame],
   )
 
   const handleInfoSliderTouchStart = useCallback((event) => {
@@ -2038,18 +1969,6 @@ export default function CharacterBasicView({ hero }) {
           high: Number.isFinite(parsed.equalizer.high) ? parsed.equalizer.high : undefined,
         })
       }
-      if (typeof parsed.speedEnabled === 'boolean') {
-        audioManager.setSpeedEnabled(parsed.speedEnabled)
-      }
-      if (Number.isFinite(parsed.speed)) {
-        audioManager.setSpeed(parsed.speed)
-      }
-      if (typeof parsed.pitchEnabled === 'boolean') {
-        audioManager.setPitchEnabled(parsed.pitchEnabled)
-      }
-      if (Number.isFinite(parsed.pitch)) {
-        audioManager.setPitch(parsed.pitch)
-      }
       if (typeof parsed.reverbEnabled === 'boolean') {
         audioManager.setReverbEnabled(parsed.reverbEnabled)
       }
@@ -2081,12 +2000,8 @@ export default function CharacterBasicView({ hero }) {
 
   useEffect(() => {
     const payload = {
-      speedEnabled: audioState.speedEnabled,
-      speed: audioState.speed,
-      pitchEnabled: audioState.pitchEnabled,
       eqEnabled: audioState.eqEnabled,
       equalizer: audioState.equalizer,
-      pitch: audioState.pitch,
       reverbEnabled: audioState.reverbEnabled,
       reverbDetail: audioState.reverbDetail,
       compressorEnabled: audioState.compressorEnabled,
@@ -2095,13 +2010,9 @@ export default function CharacterBasicView({ hero }) {
     writeCookie(AUDIO_SETTINGS_COOKIE, JSON.stringify(payload))
   }, [
     audioState.eqEnabled,
-    audioState.speedEnabled,
-    audioState.speed,
     audioState.equalizer.low,
     audioState.equalizer.mid,
     audioState.equalizer.high,
-    audioState.pitchEnabled,
-    audioState.pitch,
     audioState.reverbEnabled,
     audioState.reverbDetail.mix,
     audioState.reverbDetail.decay,
@@ -2779,64 +2690,6 @@ export default function CharacterBasicView({ hero }) {
 
             <div style={styles.settingsGroup}>
               <div style={styles.effectToggleRow}>
-                <p style={styles.effectTitle}>배속 조절</p>
-                <button
-                  type="button"
-                  style={styles.togglePill(speedEnabled)}
-                  onClick={() => audioManager.setSpeedEnabled(!speedEnabled)}
-                >
-                  {speedEnabled ? '켜짐' : '꺼짐'}
-                </button>
-              </div>
-              <p style={styles.sectionHint}>음정은 그대로 두고 재생 속도만 바꿔 보세요.</p>
-              <div style={styles.sliderRow}>
-                <label style={styles.sliderLabel}>
-                  배속
-                  <span>{`${speed.toFixed(2)}x`}</span>
-                </label>
-                <input
-                  type="range"
-                  min={50}
-                  max={150}
-                  value={Math.round(speed * 100)}
-                  onChange={(event) => audioManager.setSpeed(Number(event.target.value) / 100)}
-                  style={styles.rangeInput}
-                  disabled={!speedEnabled}
-                />
-              </div>
-            </div>
-
-            <div style={styles.settingsGroup}>
-              <div style={styles.effectToggleRow}>
-                <p style={styles.effectTitle}>피치 조절</p>
-                <button
-                  type="button"
-                  style={styles.togglePill(pitchEnabled)}
-                  onClick={() => audioManager.setPitchEnabled(!pitchEnabled)}
-                >
-                  {pitchEnabled ? '켜짐' : '꺼짐'}
-                </button>
-              </div>
-              <p style={styles.sectionHint}>재생 속도는 그대로 두고 음정만 올리거나 내립니다.</p>
-              <div style={styles.sliderRow}>
-                <label style={styles.sliderLabel}>
-                  피치
-                  <span>{`${pitch.toFixed(2)}x`}</span>
-                </label>
-                <input
-                  type="range"
-                  min={50}
-                  max={150}
-                  value={Math.round(pitch * 100)}
-                  onChange={(event) => audioManager.setPitch(Number(event.target.value) / 100)}
-                  style={styles.rangeInput}
-                  disabled={!pitchEnabled}
-                />
-              </div>
-            </div>
-
-            <div style={styles.settingsGroup}>
-              <div style={styles.effectToggleRow}>
                 <p style={styles.effectTitle}>이퀄라이저</p>
                 <button
                   type="button"
@@ -3178,13 +3031,7 @@ export default function CharacterBasicView({ hero }) {
         </div>
       ) : carouselEntries.length ? (
         <>
-          <div
-            style={styles.playCarouselFrame}
-            onTouchStart={handleCarouselTouchStart}
-            onTouchEnd={handleCarouselTouchEnd}
-            onPointerDown={handleCarouselPointerDown}
-            onPointerUp={handleCarouselPointerUp}
-          >
+          <div style={styles.playCarouselFrame}>
             <div style={styles.playCarouselTrack}>
               {carouselEntries.map((entry) => {
                 const active = entry.game_id === selectedGameId
