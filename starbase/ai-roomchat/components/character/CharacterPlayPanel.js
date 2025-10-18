@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ensureRpc } from '@/modules/arena/rpcClient'
+import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes'
 import { formatPlayNumber } from '@/utils/characterPlayFormatting'
 
 const panelStyles = {
@@ -312,14 +313,15 @@ function MatchingOverlay({
 }) {
   if (!open) return null
 
-  const status = phase || 'search'
+  const status = phase || 'queue'
   const ready = status === 'ready'
   const failed = status === 'error'
-  const inFlight = status === 'search' || status === 'staging'
+  const inFlight = status === 'queue' || status === 'awaiting-room' || status === 'staging'
 
   const headline = (() => {
     if (ready) return '매칭이 준비됐어요'
     if (failed) return '매칭을 준비하지 못했습니다'
+    if (status === 'awaiting-room') return '방을 준비하는 중'
     if (status === 'staging') return '매칭 구성 중'
     return '대기열에 참가하는 중'
   })()
@@ -333,6 +335,9 @@ function MatchingOverlay({
     }
     if (status === 'staging') {
       return message || `${gameName} 방을 준비하고 있어요.`
+    }
+    if (status === 'awaiting-room') {
+      return message || `${gameName} 방을 확보하고 있어요. 잠시만 기다려 주세요.`
     }
     return message || `${heroName}이(가) ${gameName} 참가자를 찾는 중입니다.`
   })()
@@ -406,6 +411,46 @@ function MatchingOverlay({
 }
 
 const QUEUE_ID = 'rank-default'
+const QUEUE_POLL_INTERVAL_MS = 1500
+const QUEUE_POLL_LIMIT = 40
+
+function normalizeQueueTicket(row) {
+  if (!row || typeof row !== 'object') return null
+  const payload =
+    row.payload && typeof row.payload === 'object' && !Array.isArray(row.payload)
+      ? row.payload
+      : row.payload_json && typeof row.payload_json === 'object'
+      ? row.payload_json
+      : null
+
+  const seatMapRaw = row.seat_map ?? row.seatMap
+  let seatMap = null
+  if (Array.isArray(seatMapRaw)) {
+    seatMap = seatMapRaw
+  } else if (typeof seatMapRaw === 'string') {
+    try {
+      const parsed = JSON.parse(seatMapRaw)
+      if (Array.isArray(parsed)) {
+        seatMap = parsed
+      }
+    } catch (error) {
+      seatMap = null
+    }
+  }
+
+  return {
+    id: row.id || row.ticket_id || null,
+    queueId: row.queue_id || row.queueId || null,
+    gameId: row.game_id || row.gameId || (payload?.game_id ?? null),
+    roomId: row.room_id || row.roomId || null,
+    ownerId: row.owner_id || row.ownerId || (payload?.owner_id ?? null),
+    mode: row.mode || row.match_mode || null,
+    status: row.status || row.queue_status || null,
+    readyExpiresAt: row.ready_expires_at || row.readyExpiresAt || null,
+    seatMap,
+    payload,
+  }
+}
 
 export default function CharacterPlayPanel({ hero, playData }) {
 
@@ -429,10 +474,15 @@ export default function CharacterPlayPanel({ hero, playData }) {
     message: '',
     error: '',
     ticketId: null,
+    ticketStatus: null,
     sessionId: null,
     readyExpiresAt: null,
   })
   const matchTaskRef = useRef(null)
+  const queuePollRef = useRef(null)
+  const queuePollAttemptsRef = useRef(0)
+  const stagingInProgressRef = useRef(false)
+  const latestTicketRef = useRef(null)
 
   const heroName = useMemo(() => {
     const raw = hero?.name
@@ -450,20 +500,21 @@ export default function CharacterPlayPanel({ hero, playData }) {
 
   useEffect(() => {
     if (!matchingState.open) return undefined
-    if (!['search', 'staging'].includes(matchingState.phase)) return undefined
+    if (!['queue', 'awaiting-room', 'staging'].includes(matchingState.phase)) return undefined
 
     let cancelled = false
     const timer = setInterval(() => {
       setMatchingState((prev) => {
         if (!prev.open || cancelled) return prev
-        if (!['search', 'staging'].includes(prev.phase)) return prev
-        const ceiling = prev.phase === 'staging' ? 95 : 85
-        const increment = prev.phase === 'staging' ? 6 : 8
+        if (!['queue', 'awaiting-room', 'staging'].includes(prev.phase)) return prev
+        const ceiling =
+          prev.phase === 'staging' ? 96 : prev.phase === 'awaiting-room' ? 90 : 82
+        const increment = prev.phase === 'staging' ? 6 : prev.phase === 'awaiting-room' ? 5 : 4
         const nextProgress = Math.min(ceiling, Math.max(0, prev.progress) + increment)
         if (nextProgress === prev.progress) return prev
         return { ...prev, progress: nextProgress }
       })
-    }, 260)
+    }, 280)
 
     return () => {
       cancelled = true
@@ -471,7 +522,203 @@ export default function CharacterPlayPanel({ hero, playData }) {
     }
   }, [matchingState.open, matchingState.phase])
 
+  useEffect(() => {
+    if (!matchingState.open) return undefined
+    if (!matchingState.ticketId) return undefined
+    if (['ready', 'error'].includes(matchingState.phase)) return undefined
+
+    let cancelled = false
+    queuePollAttemptsRef.current = 0
+    stagingInProgressRef.current = false
+
+    const poll = async () => {
+      if (cancelled) return
+      queuePollAttemptsRef.current += 1
+
+      let data
+      try {
+        data = await ensureRpc('fetch_rank_queue_ticket', {
+          queue_ticket_id: matchingState.ticketId,
+        })
+      } catch (error) {
+        if (cancelled) return
+        const code = error?.code || error?.message || error?.details || ''
+        const normalized = typeof code === 'string' ? code.toLowerCase() : ''
+        if (normalized.includes('queue_ticket_not_found')) {
+          setMatchingState({
+            open: true,
+            phase: 'error',
+            progress: 0,
+            message: '',
+            error: '대기열 정보를 찾을 수 없습니다. 다시 시도해 주세요.',
+            ticketId: null,
+            ticketStatus: null,
+            sessionId: null,
+            readyExpiresAt: null,
+          })
+          if (queuePollRef.current) {
+            clearInterval(queuePollRef.current)
+            queuePollRef.current = null
+          }
+          cancelled = true
+        }
+        return
+      }
+
+      if (cancelled) return
+
+      const ticket = normalizeQueueTicket(data)
+      if (!ticket) return
+      latestTicketRef.current = ticket
+
+      setMatchingState((prev) => {
+        let changed = false
+        const nextStatus = ticket.status || prev.ticketStatus || null
+        const nextState = { ...prev }
+        if (nextStatus !== prev.ticketStatus) {
+          nextState.ticketStatus = nextStatus
+          changed = true
+        }
+        if (!ticket.roomId && nextStatus === 'staging' && prev.phase === 'queue') {
+          nextState.phase = 'awaiting-room'
+          if (!prev.message) {
+            nextState.message = '방을 구성 중입니다…'
+          }
+          changed = true
+        }
+        if (!changed) return prev
+        return nextState
+      })
+
+      if (ticket.roomId && ticket.id && !stagingInProgressRef.current) {
+        stagingInProgressRef.current = true
+        setMatchingState((prev) => ({
+          ...prev,
+          phase: 'staging',
+          progress: Math.max(prev.progress, 62),
+          message: '매칭을 준비하는 중…',
+          ticketId: ticket.id,
+        }))
+
+        try {
+          const stageResult = await ensureRpc('stage_rank_match', { queue_ticket_id: ticket.id })
+          if (cancelled) return
+
+          setMatchingState((prev) => ({
+            ...prev,
+            phase: 'ready',
+            progress: 100,
+            message: '매칭 준비가 완료되었습니다. 곧 전투가 시작됩니다.',
+            error: '',
+            sessionId: stageResult?.session_id || null,
+            readyExpiresAt: stageResult?.ready_expires_at || null,
+          }))
+
+          if (typeof refreshParticipations === 'function') {
+            try {
+              await refreshParticipations()
+            } catch (refreshError) {
+              console.warn('[CharacterPlayPanel] 매칭 후 참가 정보를 새로고침하지 못했습니다:', refreshError)
+            }
+          }
+
+          if (queuePollRef.current) {
+            clearInterval(queuePollRef.current)
+            queuePollRef.current = null
+          }
+          stagingInProgressRef.current = false
+          cancelled = true
+          return
+        } catch (error) {
+          stagingInProgressRef.current = false
+          if (cancelled) return
+          const detail = error?.message || error?.details || ''
+          const normalized = typeof detail === 'string' ? detail.toLowerCase() : ''
+          if (normalized.includes('missing_room_id')) {
+            setMatchingState((prev) => ({
+              ...prev,
+              phase: 'awaiting-room',
+              message: '방 정보를 기다리는 중입니다…',
+              error: '',
+            }))
+            queuePollAttemptsRef.current = Math.max(queuePollAttemptsRef.current - 1, 0)
+            return
+          }
+
+          const friendly =
+            detail ||
+            (typeof error === 'string'
+              ? error
+              : '매칭을 준비하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.')
+
+          setMatchingState({
+            open: true,
+            phase: 'error',
+            progress: 0,
+            message: '',
+            error: friendly,
+            ticketId: null,
+            ticketStatus: null,
+            sessionId: null,
+            readyExpiresAt: null,
+          })
+
+          if (queuePollRef.current) {
+            clearInterval(queuePollRef.current)
+            queuePollRef.current = null
+          }
+          cancelled = true
+          return
+        }
+      }
+
+      if (!ticket.roomId && queuePollAttemptsRef.current >= QUEUE_POLL_LIMIT) {
+        setMatchingState({
+          open: true,
+          phase: 'error',
+          progress: 0,
+          message: '',
+          error: '매칭이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.',
+          ticketId: null,
+          ticketStatus: null,
+          sessionId: null,
+          readyExpiresAt: null,
+        })
+
+        if (queuePollRef.current) {
+          clearInterval(queuePollRef.current)
+          queuePollRef.current = null
+        }
+        cancelled = true
+      }
+    }
+
+    const interval = setInterval(poll, QUEUE_POLL_INTERVAL_MS)
+    queuePollRef.current = interval
+    poll()
+
+    return () => {
+      cancelled = true
+      if (queuePollRef.current) {
+        clearInterval(queuePollRef.current)
+        queuePollRef.current = null
+      }
+      stagingInProgressRef.current = false
+    }
+  }, [matchingState.open, matchingState.ticketId, matchingState.phase, refreshParticipations])
+
+  const clearQueueWatch = useCallback(() => {
+    if (queuePollRef.current) {
+      clearInterval(queuePollRef.current)
+      queuePollRef.current = null
+    }
+    queuePollAttemptsRef.current = 0
+    stagingInProgressRef.current = false
+  }, [])
+
   const resetMatchingState = useCallback(() => {
+    clearQueueWatch()
+    latestTicketRef.current = null
     setMatchingState({
       open: false,
       phase: 'idle',
@@ -479,18 +726,31 @@ export default function CharacterPlayPanel({ hero, playData }) {
       message: '',
       error: '',
       ticketId: null,
+      ticketStatus: null,
       sessionId: null,
       readyExpiresAt: null,
     })
-  }, [])
+  }, [clearQueueWatch])
 
-  const handleCancelMatching = useCallback(() => {
+  const handleCancelMatching = useCallback(async () => {
     if (matchTaskRef.current) {
       matchTaskRef.current.cancelled = true
       matchTaskRef.current = null
     }
+
+    const activeTicketId = matchingState.ticketId || latestTicketRef.current?.id || null
+    if (activeTicketId) {
+      try {
+        await ensureRpc('cancel_rank_queue_ticket', { queue_ticket_id: activeTicketId })
+      } catch (error) {
+        console.warn('[CharacterPlayPanel] 매칭 취소 RPC 실패:', error)
+      }
+    }
+
     resetMatchingState()
-  }, [resetMatchingState])
+  }, [matchingState.ticketId, resetMatchingState])
+
+  useEffect(() => () => clearQueueWatch(), [clearQueueWatch])
 
   const handleProceedMatching = useCallback(() => {
     resetMatchingState()
@@ -509,26 +769,27 @@ export default function CharacterPlayPanel({ hero, playData }) {
       }
       return
     }
-    if (matchTaskRef.current) {
-      return
-    }
-
     const ownerId = hero?.owner_id || null
     const roleLabel =
       typeof selectedEntry?.role === 'string' && selectedEntry.role.trim()
         ? selectedEntry.role.trim()
         : 'flex'
 
-    const task = { cancelled: false }
-    matchTaskRef.current = task
+    const realtimeMode = normalizeRealtimeMode(selectedGame?.realtime_match)
+    const realtimeEnabled = isRealtimeEnabled(realtimeMode)
+    const queueMessage = realtimeEnabled
+      ? '실시간 매칭 대기열에 참가했습니다.'
+      : '비실시간 매칭 준비를 시작했어요.'
 
+    clearQueueWatch()
     setMatchingState({
       open: true,
-      phase: 'search',
+      phase: 'queue',
       progress: 8,
-      message: '대기열에 참가하는 중…',
+      message: queueMessage,
       error: '',
       ticketId: null,
+      ticketStatus: null,
       sessionId: null,
       readyExpiresAt: null,
     })
@@ -542,16 +803,23 @@ export default function CharacterPlayPanel({ hero, playData }) {
         role: roleLabel,
         mode: 'rank',
         queue_mode: 'rank',
+        queue_mode_detail: realtimeEnabled ? 'realtime' : 'async',
         ready_vote: {
           ready: true,
           hero_id: hero.id,
           owner_id: ownerId,
           role: roleLabel,
+          realtime_mode: realtimeMode,
         },
         async_fill_meta: {
           preferred_role: roleLabel,
           requested_at: new Date().toISOString(),
           hero_id: hero.id,
+          realtime_mode: realtimeMode,
+        },
+        match_preferences: {
+          realtime_mode: realtimeMode,
+          mode: realtimeEnabled ? 'realtime' : 'async',
         },
       }
 
@@ -574,46 +842,32 @@ export default function CharacterPlayPanel({ hero, playData }) {
       if (Number.isFinite(Number(selectedEntry?.win_rate))) {
         properties.hero_win_rate = Number(selectedEntry.win_rate)
       }
+      if (selectedGame?.realtime_match != null) {
+        properties.selected_game_realtime_mode = realtimeMode
+      }
       if (Object.keys(properties).length) {
         payload.properties = properties
       }
 
       const ticket = await ensureRpc('join_rank_queue', { queue_id: QUEUE_ID, payload })
-      if (task.cancelled) return
-      if (!ticket?.id) {
+      const normalizedTicket = normalizeQueueTicket(ticket)
+      if (!normalizedTicket?.id) {
         throw new Error('큐 티켓을 확보하지 못했습니다.')
       }
 
+      latestTicketRef.current = normalizedTicket
       setMatchingState((prev) => ({
         ...prev,
-        phase: 'staging',
-        progress: Math.max(prev.progress, 45),
-        message: '매칭을 준비하는 중…',
-        ticketId: ticket.id,
+        phase:
+          normalizedTicket.status === 'staging' && !normalizedTicket.roomId
+            ? 'awaiting-room'
+            : 'queue',
+        progress: Math.max(prev.progress, normalizedTicket.roomId ? 55 : 18),
+        message: prev.message || queueMessage,
+        ticketId: normalizedTicket.id,
+        ticketStatus: normalizedTicket.status || null,
       }))
-
-      const stageResult = await ensureRpc('stage_rank_match', { queue_ticket_id: ticket.id })
-      if (task.cancelled) return
-
-      setMatchingState((prev) => ({
-        ...prev,
-        phase: 'ready',
-        progress: 100,
-        message: '매칭 준비가 완료되었습니다. 곧 전투가 시작됩니다.',
-        error: '',
-        sessionId: stageResult?.session_id || null,
-        readyExpiresAt: stageResult?.ready_expires_at || null,
-      }))
-
-      if (typeof refreshParticipations === 'function') {
-        try {
-          await refreshParticipations()
-        } catch (refreshError) {
-          console.warn('[CharacterPlayPanel] 매칭 후 참가 정보를 새로고침하지 못했습니다:', refreshError)
-        }
-      }
     } catch (error) {
-      if (task.cancelled) return
       const friendlyError =
         error?.message || error?.details || (typeof error === 'string' ? error : '매칭 중 오류가 발생했습니다.')
       setMatchingState({
@@ -623,20 +877,30 @@ export default function CharacterPlayPanel({ hero, playData }) {
         message: '',
         error: friendlyError,
         ticketId: null,
+        ticketStatus: null,
         sessionId: null,
         readyExpiresAt: null,
       })
     } finally {
       matchTaskRef.current = null
     }
-  }, [hero?.id, hero?.owner_id, heroName, refreshParticipations, selectedEntry, selectedGameId])
+  }, [
+    clearQueueWatch,
+    hero?.id,
+    hero?.owner_id,
+    heroName,
+    selectedEntry,
+    selectedGame?.realtime_match,
+    selectedGameId,
+  ])
 
   const visibleBattleRows = useMemo(
     () => battleDetails.slice(0, visibleBattles || battleDetails.length),
     [battleDetails, visibleBattles],
   )
 
-  const isMatchingBusy = matchingState.open && ['search', 'staging'].includes(matchingState.phase)
+  const isMatchingBusy =
+    matchingState.open && ['queue', 'awaiting-room', 'staging'].includes(matchingState.phase)
 
   const startButton = (
     <section style={panelStyles.section}>

@@ -4,7 +4,7 @@
 
 ## 1. 실행 순서 요약
 1. `rank_queue_tickets`, `rank_sessions`, `rank_session_meta`, `rank_turns` 테이블이 `supabase_realtime` publication에 포함되어 있는지 확인하고, 누락 시 추가합니다.
-2. 큐 진입·스테이징·타임아웃·세션 조회·정산에 쓰이는 RPC 다섯 개(`join_rank_queue`, `stage_rank_match`, `evict_unready_participant`, `fetch_rank_session_turns`, `finalize_rank_session`)를 생성합니다.
+2. 큐 진입·스테이징·타임아웃·세션 조회·정산에 쓰이는 RPC 여섯 개(`join_rank_queue`, `fetch_rank_queue_ticket`, `stage_rank_match`, `evict_unready_participant`, `fetch_rank_session_turns`, `finalize_rank_session`)를 생성합니다.
 3. 기존 방 스테이징 보강 RPC 세 개(`assert_room_ready`, `ensure_rank_session_for_room`, `upsert_rank_session_async_fill`)를 함께 재적용해 `/api/rank/stage-room-match`가 호출하는 전 체인을 확보합니다.
 4. 모든 함수에 `authenticated`, `service_role` 권한을 부여합니다.
 
@@ -78,6 +78,38 @@ end;
 $$;
 
 grant execute on function public.join_rank_queue(text, jsonb)
+  to authenticated, service_role;
+
+-- fetch_rank_queue_ticket
+create or replace function public.fetch_rank_queue_ticket(
+  queue_ticket_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ticket record;
+begin
+  if queue_ticket_id is null then
+    raise exception 'missing_queue_ticket';
+  end if;
+
+  select *
+    into v_ticket
+  from public.rank_queue_tickets
+  where id = queue_ticket_id;
+
+  if not found then
+    raise exception 'queue_ticket_not_found';
+  end if;
+
+  return row_to_json(v_ticket)::jsonb;
+end;
+$$;
+
+grant execute on function public.fetch_rank_queue_ticket(uuid)
   to authenticated, service_role;
 
 -- 3) Match staging RPC chain

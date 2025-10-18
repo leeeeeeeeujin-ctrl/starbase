@@ -1981,6 +1981,37 @@ $$;
 grant execute on function public.join_rank_queue(text, jsonb)
   to authenticated, service_role;
 
+create or replace function public.fetch_rank_queue_ticket(
+  queue_ticket_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ticket record;
+begin
+  if queue_ticket_id is null then
+    raise exception 'missing_queue_ticket';
+  end if;
+
+  select *
+    into v_ticket
+  from public.rank_queue_tickets
+  where id = queue_ticket_id;
+
+  if not found then
+    raise exception 'queue_ticket_not_found';
+  end if;
+
+  return row_to_json(v_ticket)::jsonb;
+end;
+$$;
+
+grant execute on function public.fetch_rank_queue_ticket(uuid)
+  to authenticated, service_role;
+
 create or replace function public.fetch_rank_lobby_snapshot(
   p_queue_id text default null,
   p_limit integer default 12

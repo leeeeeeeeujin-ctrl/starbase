@@ -2,7 +2,7 @@ import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 
 const SLOT_COLUMNS = 'id,game_id,hero_id,slot_index,role'
-const GAME_COLUMNS = 'id,name,image_url,description,owner_id,created_at'
+const GAME_COLUMNS = 'id,name,image_url,description,owner_id,created_at,realtime_match'
 const SESSION_COLUMNS = 'id,game_id,created_at,mode,started_by,version_id'
 const HERO_LOOKUP_COLUMNS =
   'id,name,image_url,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_mime,bgm_duration_seconds,owner_id'
@@ -21,6 +21,7 @@ function normaliseGame(row) {
     owner_id: row.owner_id || null,
     created_at: row.created_at || null,
     image_url: row.image_url || row.cover_path || null,
+    realtime_match: row.realtime_match || null,
   }
 }
 
