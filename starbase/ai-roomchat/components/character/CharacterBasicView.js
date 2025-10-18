@@ -89,6 +89,8 @@ const searchSortOptions = [
   { key: 'plays', label: '게임횟수' },
 ]
 
+const EDGE_PANEL_MAX_WIDTH = 420
+
 const styles = {
   stage: {
     width: '100%',
@@ -203,6 +205,276 @@ const styles = {
     height: 4,
     borderRadius: '50%',
     background: 'rgba(226,232,240,0.78)',
+  },
+  edgePanelScrim: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(15,23,42,0.38)',
+    border: 'none',
+    padding: 0,
+    margin: 0,
+    cursor: 'pointer',
+    zIndex: 38,
+  },
+  edgePanel: (side, open) => ({
+    position: 'fixed',
+    top: 0,
+    bottom: 0,
+    width: 'min(420px, 88vw)',
+    maxWidth: EDGE_PANEL_MAX_WIDTH,
+    [side]: 0,
+    transform:
+      side === 'left'
+        ? open
+          ? 'translateX(0)'
+          : 'translateX(calc(-100% - 28px))'
+        : open
+          ? 'translateX(0)'
+          : 'translateX(calc(100% + 28px))',
+    transition: 'transform 0.3s ease',
+    zIndex: 39,
+    pointerEvents: open ? 'auto' : 'none',
+    display: 'flex',
+    alignItems: 'stretch',
+    justifyContent: 'stretch',
+  }),
+  edgePanelCard: {
+    flex: 1,
+    background: 'rgba(15,23,42,0.94)',
+    border: '1px solid rgba(94, 234, 212, 0.14)',
+    borderRadius: 24,
+    padding: '26px 22px 30px',
+    boxSizing: 'border-box',
+    boxShadow: '0 42px 120px -70px rgba(15,23,42,0.8)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+    overflowY: 'auto',
+    color: '#e2e8f0',
+  },
+  edgePanelHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  edgePanelTitle: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: '-0.02em',
+    color: '#f8fafc',
+  },
+  edgePanelSubtitle: {
+    margin: 0,
+    fontSize: 13,
+    color: 'rgba(186,230,253,0.88)',
+  },
+  edgePanelClose: {
+    appearance: 'none',
+    border: '1px solid rgba(148,163,184,0.45)',
+    borderRadius: 999,
+    padding: '6px 12px',
+    fontSize: 12,
+    fontWeight: 700,
+    background: 'rgba(30,41,59,0.62)',
+    color: '#e2e8f0',
+    cursor: 'pointer',
+  },
+  edgePanelBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  edgePanelList: {
+    display: 'grid',
+    gap: 12,
+  },
+  edgePanelListItem: (active) => ({
+    appearance: 'none',
+    borderRadius: 18,
+    border: active ? '1px solid rgba(56,189,248,0.8)' : '1px solid rgba(148,163,184,0.35)',
+    background: active ? 'rgba(14,116,144,0.45)' : 'rgba(30,41,59,0.72)',
+    padding: '14px 16px',
+    display: 'grid',
+    gap: 8,
+    textAlign: 'left',
+    color: '#f8fafc',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  }),
+  edgePanelListTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+    letterSpacing: '-0.01em',
+  },
+  edgePanelListMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  edgePanelBadgeRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  edgePanelBadge: {
+    padding: '3px 8px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 600,
+    background: 'rgba(56,189,248,0.25)',
+    color: '#f0f9ff',
+  },
+  edgeSearchInput: {
+    width: '100%',
+    padding: '12px 14px',
+    borderRadius: 14,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.68)',
+    color: '#f8fafc',
+    fontSize: 14,
+    outline: 'none',
+  },
+  edgeSortRow: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  edgeSortButton: (active) => ({
+    appearance: 'none',
+    borderRadius: 999,
+    padding: '7px 12px',
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    border: active ? '1px solid rgba(56,189,248,0.85)' : '1px solid rgba(148,163,184,0.35)',
+    background: active ? 'rgba(56,189,248,0.22)' : 'rgba(30,41,59,0.72)',
+    color: active ? '#0f172a' : '#e2e8f0',
+    cursor: 'pointer',
+    transition: 'all 0.18s ease',
+  }),
+  edgeEmptyState: {
+    padding: '18px 16px',
+    borderRadius: 16,
+    border: '1px dashed rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.58)',
+    fontSize: 13,
+    color: '#cbd5f5',
+    textAlign: 'center',
+  },
+  edgePanelStatsGrid: {
+    display: 'grid',
+    gap: 12,
+  },
+  edgePanelStatCard: {
+    borderRadius: 16,
+    border: '1px solid rgba(96,165,250,0.32)',
+    background: 'rgba(15,23,42,0.72)',
+    padding: '12px 14px',
+    display: 'grid',
+    gap: 6,
+  },
+  edgePanelStatLabel: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  edgePanelStatValue: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+  },
+  edgePanelStatMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.78)',
+  },
+  edgePanelScoreboard: {
+    display: 'grid',
+    gap: 10,
+  },
+  edgePanelScoreboardRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '10px 12px',
+    borderRadius: 14,
+    background: 'rgba(30,41,59,0.72)',
+    border: '1px solid rgba(51,65,85,0.6)',
+  },
+  edgePanelScoreAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    overflow: 'hidden',
+    background: 'rgba(15,23,42,0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 700,
+    fontSize: 14,
+    color: '#38bdf8',
+  },
+  edgePanelScoreInfo: {
+    flex: 1,
+    display: 'grid',
+    gap: 4,
+  },
+  edgePanelScoreName: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  edgePanelScoreMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  edgePanelActionRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
+  edgePanelLinkButton: {
+    appearance: 'none',
+    borderRadius: 12,
+    padding: '8px 14px',
+    background: 'linear-gradient(135deg, #38bdf8 0%, #22d3ee 100%)',
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: 700,
+    textDecoration: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  edgeHandle: (side, open) => ({
+    position: 'fixed',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    [side]: open ? 'calc(min(420px, 88vw) - 18px)' : '-2px',
+    width: 42,
+    height: 150,
+    borderRadius: side === 'left' ? '0 20px 20px 0' : '20px 0 0 20px',
+    background: 'rgba(15,23,42,0.82)',
+    border: '1px solid rgba(148,163,184,0.45)',
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 1,
+    writingMode: 'vertical-rl',
+    textOrientation: 'upright',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    zIndex: 40,
+    backgroundImage: 'linear-gradient(180deg, rgba(30,64,175,0.6) 0%, rgba(15,23,42,0.86) 100%)',
+  }),
+  edgeHandleDisabled: {
+    opacity: 0.45,
+    cursor: 'not-allowed',
   },
   playSliderSection: {
     width: '100%',
@@ -980,6 +1252,8 @@ export default function CharacterBasicView({ hero }) {
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [searchSort, setSearchSort] = useState('latest')
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false)
+  const [rightPanelOpen, setRightPanelOpen] = useState(false)
 
   const participationState = useHeroParticipations({ hero: currentHero })
   const battleState = useHeroBattles({ hero: currentHero, selectedGameId: participationState.selectedGameId })
@@ -992,6 +1266,7 @@ export default function CharacterBasicView({ hero }) {
     selectedGame,
     selectedGameId,
     selectedScoreboard,
+    heroLookup,
     setSelectedGameId,
     refresh: refreshParticipations,
   } = participationState
@@ -1031,6 +1306,31 @@ export default function CharacterBasicView({ hero }) {
     return null
   }, [battleSummary?.total, selectedEntry?.sessionCount])
 
+  const scoreboardRows = useMemo(() => {
+    if (!Array.isArray(selectedScoreboard)) return []
+    return selectedScoreboard.map((row, index) => {
+      const heroEntry = row?.hero_id ? heroLookup?.[row.hero_id] : null
+      const heroName =
+        (heroEntry?.name && heroEntry.name.trim()) ||
+        (row?.role && row.role.trim()) ||
+        (row?.slot_no != null ? `슬롯 ${row.slot_no + 1}` : `참가자 ${index + 1}`)
+
+      const roleLabel = row?.role && row.role.trim() ? row.role.trim() : null
+
+      return {
+        key:
+          row?.id ||
+          (row?.hero_id ? `hero-${row.hero_id}` : row?.slot_no != null ? `slot-${row.slot_no}` : `row-${index}`),
+        heroName,
+        roleLabel,
+        score: Number.isFinite(Number(row?.score)) ? Number(row.score) : null,
+        rating: Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null,
+        battles: Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null,
+        imageUrl: heroEntry?.image_url || null,
+      }
+    })
+  }, [heroLookup, selectedScoreboard])
+
   const audioManager = useMemo(() => getHeroAudioManager(), [])
   const [audioState, setAudioState] = useState(() => audioManager.getState())
   const {
@@ -1054,6 +1354,7 @@ export default function CharacterBasicView({ hero }) {
   const imageObjectUrlRef = useRef(null)
   const backgroundObjectUrlRef = useRef(null)
   const lastLoadedHeroKeyRef = useRef(null)
+  const swipeGestureRef = useRef(null)
 
   useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
 
@@ -1099,6 +1400,73 @@ export default function CharacterBasicView({ hero }) {
       console.error(error)
     }
   }, [audioManager])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const threshold = 60
+    const edgeLimit = 36
+    const panelGuard = EDGE_PANEL_MAX_WIDTH + 60
+
+    const handleTouchStart = (event) => {
+      if (!event.touches || event.touches.length === 0) return
+      const touch = event.touches[0]
+      if (!touch) return
+
+      const viewportWidth = window.innerWidth || 0
+      const startX = touch.clientX
+
+      let intent = null
+      if (startX <= edgeLimit) {
+        intent = 'left-open'
+      } else if (startX >= viewportWidth - edgeLimit) {
+        intent = 'right-open'
+      } else if (leftPanelOpen && startX <= Math.min(viewportWidth * 0.4, panelGuard)) {
+        intent = 'left-close'
+      } else if (
+        rightPanelOpen &&
+        startX >= Math.max(viewportWidth * 0.6, viewportWidth - panelGuard)
+      ) {
+        intent = 'right-close'
+      }
+
+      if (intent) {
+        swipeGestureRef.current = { side: intent, startX }
+      } else {
+        swipeGestureRef.current = null
+      }
+    }
+
+    const handleTouchEnd = (event) => {
+      const context = swipeGestureRef.current
+      swipeGestureRef.current = null
+      if (!context || !event.changedTouches || event.changedTouches.length === 0) return
+
+      const touch = event.changedTouches[0]
+      if (!touch) return
+      const deltaX = touch.clientX - context.startX
+
+      if (context.side === 'left-open' && deltaX > threshold) {
+        setLeftPanelOpen(true)
+      } else if (context.side === 'left-close' && deltaX < -threshold) {
+        setLeftPanelOpen(false)
+      } else if (context.side === 'right-open' && deltaX < -threshold) {
+        if (selectedGameId) {
+          setRightPanelOpen(true)
+        }
+      } else if (context.side === 'right-close' && deltaX > threshold) {
+        setRightPanelOpen(false)
+      }
+    }
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchend', handleTouchEnd)
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [leftPanelOpen, rightPanelOpen, selectedGameId])
 
   useEffect(() => {
     const payload = {
@@ -2287,6 +2655,187 @@ export default function CharacterBasicView({ hero }) {
     </section>
   )
 
+  const leftPanelContent = (
+    <div style={styles.edgePanelCard}>
+      <div style={styles.edgePanelHeader}>
+        <div style={{ display: 'grid', gap: 4 }}>
+          <p style={styles.edgePanelTitle}>게임 검색</p>
+          <p style={styles.edgePanelSubtitle}>로비에서 즐길 수 있는 게임을 찾아보세요.</p>
+        </div>
+        <button type="button" style={styles.edgePanelClose} onClick={() => setLeftPanelOpen(false)}>
+          닫기
+        </button>
+      </div>
+      <div style={styles.edgePanelBody}>
+        <input
+          style={styles.edgeSearchInput}
+          placeholder="게임 이름이나 태그를 입력하세요"
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+        />
+        <div style={styles.edgeSortRow}>
+          {searchSortOptions.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              style={styles.edgeSortButton(searchSort === option.key)}
+              onClick={() => setSearchSort(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        {filteredGames.length ? (
+          <div style={styles.edgePanelList}>
+            {filteredGames.map((game) => {
+              const playerCount = Number.isFinite(Number(game.players))
+                ? Number(game.players)
+                : null
+              const likeCount = Number.isFinite(Number(game.likes)) ? Number(game.likes) : null
+              const metaParts = []
+              if (playerCount != null) metaParts.push(`${playerCount}인`)
+              if (likeCount != null) metaParts.push(`좋아요 ${likeCount.toLocaleString('ko-KR')}개`)
+
+              return (
+                <button
+                  key={game.id}
+                  type="button"
+                  style={styles.edgePanelListItem(game.id === selectedGameId)}
+                  onClick={() => {
+                    setSelectedGameId(game.id)
+                    setRightPanelOpen(true)
+                  }}
+                >
+                  <h4 style={styles.edgePanelListTitle}>{game.title}</h4>
+                  <p style={styles.edgePanelListMeta}>
+                    {metaParts.length ? metaParts.join(' · ') : '정보 없음'}
+                  </p>
+                  <div style={styles.edgePanelBadgeRow}>
+                    {(Array.isArray(game.tags) ? game.tags : []).map((tag) => (
+                      <span key={`${game.id}-${tag}`} style={styles.edgePanelBadge}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <div style={styles.edgeEmptyState}>조건에 맞는 게임을 찾지 못했습니다.</div>
+        )}
+      </div>
+    </div>
+  )
+
+  const rightPanelContent = !selectedGame ? (
+    <div style={styles.edgePanelCard}>
+      <div style={styles.edgePanelHeader}>
+        <div style={{ display: 'grid', gap: 4 }}>
+          <p style={styles.edgePanelTitle}>게임 정보</p>
+          <p style={styles.edgePanelSubtitle}>게임을 선택하면 메인 룸 요약을 볼 수 있어요.</p>
+        </div>
+        <button type="button" style={styles.edgePanelClose} onClick={() => setRightPanelOpen(false)}>
+          닫기
+        </button>
+      </div>
+      <div style={styles.edgePanelBody}>
+        <div style={styles.edgeEmptyState}>선택된 게임이 없습니다.</div>
+      </div>
+    </div>
+  ) : (
+    <div style={styles.edgePanelCard}>
+      <div style={styles.edgePanelHeader}>
+        <div style={{ display: 'grid', gap: 4 }}>
+          <p style={styles.edgePanelTitle}>{selectedGame.name}</p>
+          <p style={styles.edgePanelSubtitle}>메인 룸 미리보기</p>
+        </div>
+        <button type="button" style={styles.edgePanelClose} onClick={() => setRightPanelOpen(false)}>
+          닫기
+        </button>
+      </div>
+      <div style={styles.edgePanelBody}>
+        {selectedGame.description ? (
+          <p style={{ ...styles.edgePanelSubtitle, lineHeight: 1.6 }}>{selectedGame.description}</p>
+        ) : null}
+        <div style={styles.edgePanelStatsGrid}>
+          <div style={styles.edgePanelStatCard}>
+            <p style={styles.edgePanelStatLabel}>참여 횟수</p>
+            <p style={styles.edgePanelStatValue}>
+              {selectedEntry?.sessionCount != null
+                ? `${selectedEntry.sessionCount.toLocaleString('ko-KR')}회`
+                : '기록 없음'}
+            </p>
+            <p style={styles.edgePanelStatMeta}>최근 세션: {selectedEntry?.latestSessionAt || '없음'}</p>
+          </div>
+          <div style={styles.edgePanelStatCard}>
+            <p style={styles.edgePanelStatLabel}>주요 모드</p>
+            <p style={styles.edgePanelStatValue}>{selectedEntry?.primaryMode || '집계 중'}</p>
+            <p style={styles.edgePanelStatMeta}>
+              첫 참가일: {selectedEntry?.firstSessionAt || '기록 없음'}
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <p style={styles.edgePanelSubtitle}>참가자 현황</p>
+          {scoreboardRows.length ? (
+            <div style={styles.edgePanelScoreboard}>
+              {scoreboardRows.map((row) => {
+                const metaParts = []
+                if (row.roleLabel) metaParts.push(row.roleLabel)
+                if (row.score != null) {
+                  metaParts.push(`점수 ${row.score.toLocaleString('ko-KR')}`)
+                } else if (row.rating != null) {
+                  metaParts.push(`레이팅 ${row.rating}`)
+                }
+                if (row.battles != null) {
+                  metaParts.push(`${row.battles}회 전투`)
+                }
+
+                return (
+                  <div key={row.key} style={styles.edgePanelScoreboardRow}>
+                    <div style={styles.edgePanelScoreAvatar}>
+                      {row.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={row.imageUrl}
+                          alt={row.heroName}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        row.heroName.slice(0, 2)
+                      )}
+                    </div>
+                    <div style={styles.edgePanelScoreInfo}>
+                      <p style={styles.edgePanelScoreName}>{row.heroName}</p>
+                      <p style={styles.edgePanelScoreMeta}>
+                        {metaParts.length ? metaParts.join(' · ') : '기록 없음'}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div style={styles.edgeEmptyState}>참가자가 아직 없습니다.</div>
+          )}
+        </div>
+        <div style={styles.edgePanelActionRow}>
+          <Link href={`/rank/${selectedGame.id}`} style={styles.edgePanelLinkButton}>
+            메인 룸으로 이동
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+
+  const closeAllSidePanels = useCallback(() => {
+    setLeftPanelOpen(false)
+    setRightPanelOpen(false)
+  }, [])
+
+  const showSidePanelScrim = leftPanelOpen || rightPanelOpen
+
   const heroSlide = (
     <div style={styles.heroCardShell}>
       <div
@@ -2409,6 +2958,39 @@ export default function CharacterBasicView({ hero }) {
 
   return (
     <div style={backgroundStyle}>
+      {showSidePanelScrim ? (
+        <button
+          type="button"
+          style={styles.edgePanelScrim}
+          onClick={closeAllSidePanels}
+          aria-label="사이드 패널 닫기"
+        />
+      ) : null}
+      <button
+        type="button"
+        style={styles.edgeHandle('left', leftPanelOpen)}
+        onClick={() => setLeftPanelOpen((prev) => !prev)}
+        aria-expanded={leftPanelOpen}
+      >
+        게임 검색
+      </button>
+      <button
+        type="button"
+        style={{
+          ...styles.edgeHandle('right', rightPanelOpen),
+          ...(!selectedGame && !rightPanelOpen ? styles.edgeHandleDisabled : {}),
+        }}
+        onClick={() => {
+          if (!selectedGame && !rightPanelOpen) return
+          setRightPanelOpen((prev) => !prev)
+        }}
+        aria-expanded={rightPanelOpen}
+        aria-disabled={!selectedGame && !rightPanelOpen}
+      >
+        게임 룸
+      </button>
+      <div style={styles.edgePanel('left', leftPanelOpen)}>{leftPanelContent}</div>
+      <div style={styles.edgePanel('right', rightPanelOpen)}>{rightPanelContent}</div>
       <div style={styles.stage}>
         {playSliderSection}
         {heroSlide}
