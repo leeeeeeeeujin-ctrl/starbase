@@ -172,13 +172,32 @@ const styles = {
     position: 'absolute',
     left: '10%',
     right: '10%',
-    top: '12%',
-    bottom: 'auto',
+    top: '24%',
+    bottom: '20%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    pointerEvents: 'auto',
+  },
+  overlayContent: {
+    width: '100%',
+    maxHeight: '100%',
+    padding: '12px 10px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 12,
-    pointerEvents: 'none',
+    overflowY: 'auto',
+  },
+  overlayHeading: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: '-0.02em',
+    color: '#e0f2fe',
+    textShadow: '0 2px 12px rgba(15,23,42,0.72)',
   },
   overlayTextBlock: {
     margin: 0,
@@ -2959,7 +2978,10 @@ export default function CharacterBasicView({ hero }) {
 
         {currentOverlayMode === 'description' ? (
           <div style={styles.overlaySurface}>
-            <p style={styles.overlayTextBlock}>{description}</p>
+            <div style={styles.overlayContent}>
+              <p style={styles.overlayHeading}>설명</p>
+              <p style={styles.overlayTextBlock}>{description}</p>
+            </div>
           </div>
         ) : null}
 
@@ -2969,12 +2991,17 @@ export default function CharacterBasicView({ hero }) {
               const index = Number.parseInt(currentOverlayMode.split('-')[1] || '0', 10)
               const entry = abilityEntries[index]
               if (!entry) {
-                return <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
+                return (
+                  <div style={styles.overlayContent}>
+                    <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
+                  </div>
+                )
               }
               return (
-                <p key={entry.label} style={styles.overlayTextBlock}>
-                  {`${entry.label}:\n${entry.description}`}
-                </p>
+                <div key={entry.label} style={styles.overlayContent}>
+                  <p style={styles.overlayHeading}>{entry.label}</p>
+                  <p style={styles.overlayTextBlock}>{entry.description}</p>
+                </div>
               )
             })()}
           </div>
@@ -2982,7 +3009,9 @@ export default function CharacterBasicView({ hero }) {
 
         {currentOverlayMode === 'ability-empty' ? (
           <div style={styles.overlaySurface}>
-            <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
+            <div style={styles.overlayContent}>
+              <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
+            </div>
           </div>
         ) : null}
 
