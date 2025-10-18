@@ -125,6 +125,30 @@ begin
   end if;
 end $$;
 
+create table if not exists public.chat_room_announcement_polls (
+  id uuid primary key default gen_random_uuid(),
+  announcement_id uuid not null references public.chat_room_announcements(id) on delete cascade,
+  question text not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.chat_room_announcement_poll_options (
+  id uuid primary key default gen_random_uuid(),
+  poll_id uuid not null references public.chat_room_announcement_polls(id) on delete cascade,
+  label text not null,
+  position integer not null default 0,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.chat_room_announcement_poll_votes (
+  poll_id uuid not null references public.chat_room_announcement_polls(id) on delete cascade,
+  option_id uuid not null references public.chat_room_announcement_poll_options(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default timezone('utc', now()),
+  primary key (poll_id, owner_id)
+);
+
 create table if not exists public.chat_room_announcement_reactions (
   announcement_id uuid not null references public.chat_room_announcements(id) on delete cascade,
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -173,6 +197,9 @@ alter table public.chat_room_bans enable row level security;
 alter table public.chat_room_announcements enable row level security;
 alter table public.chat_room_announcement_reactions enable row level security;
 alter table public.chat_room_announcement_comments enable row level security;
+alter table public.chat_room_announcement_polls enable row level security;
+alter table public.chat_room_announcement_poll_options enable row level security;
+alter table public.chat_room_announcement_poll_votes enable row level security;
 alter table public.chat_room_member_preferences enable row level security;
 
 -- Room policies -------------------------------------------------------------
@@ -485,6 +512,121 @@ with check (
       where a.id = chat_room_announcement_comments.announcement_id
     )
       and m.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcement_polls_select on public.chat_room_announcement_polls;
+create policy chat_room_announcement_polls_select
+on public.chat_room_announcement_polls for select
+using (
+  exists (
+    select 1
+    from public.chat_room_announcements a
+    join public.chat_room_members mem
+      on mem.room_id = a.room_id
+     and mem.owner_id = auth.uid()
+    where a.id = chat_room_announcement_polls.announcement_id
+      and coalesce(mem.status, 'active') = 'active'
+  )
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_polls.announcement_id
+    )
+      and r.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcement_polls_mutate on public.chat_room_announcement_polls;
+create policy chat_room_announcement_polls_mutate
+on public.chat_room_announcement_polls for all
+using (
+  exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_polls.announcement_id
+    )
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_polls.announcement_id
+    )
+      and m.owner_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_polls.announcement_id
+    )
+      and r.owner_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.chat_room_moderators m
+    where m.room_id = (
+      select a.room_id from public.chat_room_announcements a
+      where a.id = chat_room_announcement_polls.announcement_id
+    )
+      and m.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcement_poll_options_select on public.chat_room_announcement_poll_options;
+create policy chat_room_announcement_poll_options_select
+on public.chat_room_announcement_poll_options for select
+using (
+  exists (
+    select 1
+    from public.chat_room_announcement_polls p
+    join public.chat_room_announcements a on a.id = p.announcement_id
+    join public.chat_room_members mem
+      on mem.room_id = a.room_id
+     and mem.owner_id = auth.uid()
+    where p.id = chat_room_announcement_poll_options.poll_id
+      and coalesce(mem.status, 'active') = 'active'
+  )
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id
+      from public.chat_room_announcement_polls p
+      join public.chat_room_announcements a on a.id = p.announcement_id
+      where p.id = chat_room_announcement_poll_options.poll_id
+    )
+      and r.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists chat_room_announcement_poll_votes_select on public.chat_room_announcement_poll_votes;
+create policy chat_room_announcement_poll_votes_select
+on public.chat_room_announcement_poll_votes for select
+using (
+  exists (
+    select 1
+    from public.chat_room_announcement_polls p
+    join public.chat_room_announcements a on a.id = p.announcement_id
+    join public.chat_room_members mem
+      on mem.room_id = a.room_id
+     and mem.owner_id = auth.uid()
+    where p.id = chat_room_announcement_poll_votes.poll_id
+      and coalesce(mem.status, 'active') = 'active'
+  )
+  or exists (
+    select 1 from public.chat_rooms r
+    where r.id = (
+      select a.room_id
+      from public.chat_room_announcement_polls p
+      join public.chat_room_announcements a on a.id = p.announcement_id
+      where p.id = chat_room_announcement_poll_votes.poll_id
+    )
+      and r.owner_id = auth.uid()
   )
 );
 
@@ -2342,9 +2484,42 @@ begin
         from public.chat_room_announcement_reactions r
         where r.announcement_id = a.id
           and r.owner_id = v_actor
-      ) as viewer_reacted
+      ) as viewer_reacted,
+      polls_data.polls
     from public.chat_room_announcements a
     left join auth.users u on u.id = a.author_id
+    left join lateral (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', poll.id,
+        'question', poll.question,
+        'totalVotes', coalesce(option_data.total_votes, 0),
+        'viewerOptionId', viewer_vote.option_id,
+        'options', coalesce(option_data.options, '[]'::jsonb)
+      ) order by poll.created_at asc, poll.id asc), '[]'::jsonb) as polls
+      from public.chat_room_announcement_polls poll
+      left join public.chat_room_announcement_poll_votes viewer_vote
+        on viewer_vote.poll_id = poll.id
+       and viewer_vote.owner_id = v_actor
+      left join lateral (
+        select
+          coalesce(jsonb_agg(jsonb_build_object(
+            'id', opt.id,
+            'label', opt.label,
+            'position', opt.position,
+            'voteCount', coalesce(counts.vote_count, 0),
+            'viewerVoted', viewer_vote.option_id is not null and viewer_vote.option_id = opt.id
+          ) order by opt.position, opt.id), '[]'::jsonb) as options,
+          coalesce(sum(counts.vote_count), 0)::integer as total_votes
+        from public.chat_room_announcement_poll_options opt
+        left join lateral (
+          select count(*)::integer as vote_count
+          from public.chat_room_announcement_poll_votes v_opt
+          where v_opt.option_id = opt.id
+        ) counts on true
+        where opt.poll_id = poll.id
+      ) option_data on true
+      where poll.announcement_id = a.id
+    ) polls_data on true
     where a.room_id = p_room_id
       and coalesce((to_jsonb(a)->>'pinned')::boolean, false)
     order by a.updated_at desc, a.id desc
@@ -2371,9 +2546,42 @@ begin
         from public.chat_room_announcement_reactions r
         where r.announcement_id = a.id
           and r.owner_id = v_actor
-      ) as viewer_reacted
+      ) as viewer_reacted,
+      polls_data.polls
     from public.chat_room_announcements a
     left join auth.users u on u.id = a.author_id
+    left join lateral (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', poll.id,
+        'question', poll.question,
+        'totalVotes', coalesce(option_data.total_votes, 0),
+        'viewerOptionId', viewer_vote.option_id,
+        'options', coalesce(option_data.options, '[]'::jsonb)
+      ) order by poll.created_at asc, poll.id asc), '[]'::jsonb) as polls
+      from public.chat_room_announcement_polls poll
+      left join public.chat_room_announcement_poll_votes viewer_vote
+        on viewer_vote.poll_id = poll.id
+       and viewer_vote.owner_id = v_actor
+      left join lateral (
+        select
+          coalesce(jsonb_agg(jsonb_build_object(
+            'id', opt.id,
+            'label', opt.label,
+            'position', opt.position,
+            'voteCount', coalesce(counts.vote_count, 0),
+            'viewerVoted', viewer_vote.option_id is not null and viewer_vote.option_id = opt.id
+          ) order by opt.position, opt.id), '[]'::jsonb) as options,
+          coalesce(sum(counts.vote_count), 0)::integer as total_votes
+        from public.chat_room_announcement_poll_options opt
+        left join lateral (
+          select count(*)::integer as vote_count
+          from public.chat_room_announcement_poll_votes v_opt
+          where v_opt.option_id = opt.id
+        ) counts on true
+        where opt.poll_id = poll.id
+      ) option_data on true
+      where poll.announcement_id = a.id
+    ) polls_data on true
     where a.room_id = p_room_id
       and (
         not coalesce((to_jsonb(a)->>'pinned')::boolean, false)
@@ -2480,9 +2688,42 @@ begin
         from public.chat_room_announcement_reactions r
         where r.announcement_id = a.id
           and r.owner_id = v_actor
-      ) as viewer_reacted
+      ) as viewer_reacted,
+      polls_data.polls
     from public.chat_room_announcements a
     left join auth.users u on u.id = a.author_id
+    left join lateral (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', poll.id,
+        'question', poll.question,
+        'totalVotes', coalesce(option_data.total_votes, 0),
+        'viewerOptionId', viewer_vote.option_id,
+        'options', coalesce(option_data.options, '[]'::jsonb)
+      ) order by poll.created_at asc, poll.id asc), '[]'::jsonb) as polls
+      from public.chat_room_announcement_polls poll
+      left join public.chat_room_announcement_poll_votes viewer_vote
+        on viewer_vote.poll_id = poll.id
+       and viewer_vote.owner_id = v_actor
+      left join lateral (
+        select
+          coalesce(jsonb_agg(jsonb_build_object(
+            'id', opt.id,
+            'label', opt.label,
+            'position', opt.position,
+            'voteCount', coalesce(counts.vote_count, 0),
+            'viewerVoted', viewer_vote.option_id is not null and viewer_vote.option_id = opt.id
+          ) order by opt.position, opt.id), '[]'::jsonb) as options,
+          coalesce(sum(counts.vote_count), 0)::integer as total_votes
+        from public.chat_room_announcement_poll_options opt
+        left join lateral (
+          select count(*)::integer as vote_count
+          from public.chat_room_announcement_poll_votes v_opt
+          where v_opt.option_id = opt.id
+        ) counts on true
+        where opt.poll_id = poll.id
+      ) option_data on true
+      where poll.announcement_id = a.id
+    ) polls_data on true
     where a.id = p_announcement_id
   ) as row;
 
@@ -2590,6 +2831,233 @@ end;
 $$;
 
 grant execute on function public.create_chat_room_announcement(uuid, text, text, text, boolean)
+to authenticated;
+
+drop function if exists public.sync_chat_room_announcement_polls(uuid, jsonb);
+create or replace function public.sync_chat_room_announcement_polls(
+  p_announcement_id uuid,
+  p_polls jsonb default '[]'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_room_id uuid := null;
+  v_can_manage boolean := false;
+  v_poll_records jsonb := coalesce(p_polls, '[]'::jsonb);
+  v_poll jsonb;
+  v_option jsonb;
+  v_poll_id uuid;
+  v_option_id uuid;
+  v_question text;
+  v_position integer;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  select room_id
+    into v_room_id
+  from public.chat_room_announcements
+  where id = p_announcement_id;
+
+  if v_room_id is null then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = v_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = v_room_id
+        and m.owner_id = v_actor
+    )
+    into v_can_manage;
+
+  if not v_can_manage then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  delete from public.chat_room_announcement_poll_votes
+  where poll_id in (
+    select id from public.chat_room_announcement_polls
+    where announcement_id = p_announcement_id
+  );
+
+  delete from public.chat_room_announcement_poll_options
+  where poll_id in (
+    select id from public.chat_room_announcement_polls
+    where announcement_id = p_announcement_id
+  );
+
+  delete from public.chat_room_announcement_polls
+  where announcement_id = p_announcement_id;
+
+  if jsonb_typeof(v_poll_records) <> 'array' then
+    v_poll_records := '[]'::jsonb;
+  end if;
+
+  for v_poll in select * from jsonb_array_elements(v_poll_records)
+  loop
+    v_poll_id := null;
+    v_question := nullif(trim(coalesce(v_poll->>'question', '')), '');
+
+    if v_question is null then
+      continue;
+    end if;
+
+    begin
+      v_poll_id := (v_poll->>'id')::uuid;
+    exception
+      when others then
+        v_poll_id := null;
+    end;
+
+    if v_poll_id is null then
+      v_poll_id := gen_random_uuid();
+    end if;
+
+    insert into public.chat_room_announcement_polls (id, announcement_id, question)
+    values (v_poll_id, p_announcement_id, v_question)
+    on conflict (id) do update
+      set question = excluded.question,
+          updated_at = timezone('utc', now());
+
+    if v_poll ? 'options' and jsonb_typeof(v_poll->'options') = 'array' then
+      v_position := 0;
+      for v_option in select * from jsonb_array_elements(v_poll->'options')
+      loop
+        v_position := v_position + 1;
+        begin
+          v_option_id := (v_option->>'id')::uuid;
+        exception
+          when others then
+            v_option_id := null;
+        end;
+
+        if v_option_id is null then
+          v_option_id := gen_random_uuid();
+        end if;
+
+        insert into public.chat_room_announcement_poll_options (id, poll_id, label, position)
+        values (
+          v_option_id,
+          v_poll_id,
+          coalesce(nullif(v_option->>'label', ''), format('옵션 %s', v_position)),
+          v_position
+        )
+        on conflict (id) do update
+          set label = excluded.label,
+              position = excluded.position;
+      end loop;
+    end if;
+  end loop;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.sync_chat_room_announcement_polls(uuid, jsonb)
+to authenticated;
+
+drop function if exists public.vote_chat_room_announcement_poll(uuid, uuid);
+create or replace function public.vote_chat_room_announcement_poll(
+  p_poll_id uuid,
+  p_option_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_announcement_id uuid := null;
+  v_room_id uuid := null;
+  v_can_vote boolean := false;
+  v_option_exists boolean := false;
+begin
+  if v_actor is null then
+    return jsonb_build_object('ok', false, 'error', 'not_authenticated');
+  end if;
+
+  select announcement_id
+    into v_announcement_id
+  from public.chat_room_announcement_polls
+  where id = p_poll_id;
+
+  if v_announcement_id is null then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  select room_id
+    into v_room_id
+  from public.chat_room_announcements
+  where id = v_announcement_id;
+
+  if v_room_id is null then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  select exists (
+      select 1 from public.chat_rooms r
+      where r.id = v_room_id
+        and r.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_moderators m
+      where m.room_id = v_room_id
+        and m.owner_id = v_actor
+    )
+    or exists (
+      select 1 from public.chat_room_members mem
+      where mem.room_id = v_room_id
+        and mem.owner_id = v_actor
+        and coalesce(mem.status, 'active') = 'active'
+    )
+    into v_can_vote;
+
+  if not v_can_vote then
+    return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  if p_option_id is not null then
+    select exists (
+      select 1
+      from public.chat_room_announcement_poll_options opt
+      where opt.id = p_option_id
+        and opt.poll_id = p_poll_id
+    )
+    into v_option_exists;
+
+    if not v_option_exists then
+      return jsonb_build_object('ok', false, 'error', 'invalid_option');
+    end if;
+  end if;
+
+  if p_option_id is null then
+    delete from public.chat_room_announcement_poll_votes
+    where poll_id = p_poll_id
+      and owner_id = v_actor;
+  else
+    insert into public.chat_room_announcement_poll_votes (poll_id, option_id, owner_id)
+    values (p_poll_id, p_option_id, v_actor)
+    on conflict (poll_id, owner_id) do update
+      set option_id = excluded.option_id,
+          created_at = timezone('utc', now());
+  end if;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.vote_chat_room_announcement_poll(uuid, uuid)
 to authenticated;
 
 drop function if exists public.update_chat_room_announcement_pin(uuid, boolean);

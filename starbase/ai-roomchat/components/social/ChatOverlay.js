@@ -23,6 +23,8 @@ import {
   createChatRoomAnnouncementComment,
   deleteChatRoomAnnouncementComment,
   updateChatRoomAnnouncementPin,
+  syncChatRoomAnnouncementPolls,
+  voteChatRoomAnnouncementPoll,
   markChatRoomRead,
   saveChatMemberPreferences,
   updateChatRoomSettings,
@@ -50,6 +52,9 @@ const ATTACHMENT_SIZE_LIMIT = 50 * 1024 * 1024
 const MAX_VIDEO_DURATION = 4 * 60
 const MAX_MESSAGE_PREVIEW_LENGTH = 240
 const ANNOUNCEMENT_PREVIEW_LENGTH = 120
+const PINNED_ANNOUNCEMENT_STAGE_DEFAULT = 'collapsed'
+const PINNED_ANNOUNCEMENT_STAGE_KEY_PREFIX = 'chat:pinned-stage:'
+const PINNED_ANNOUNCEMENT_STAGE_VALUES = new Set(['expanded', 'collapsed', 'hidden'])
 const MEDIA_LOAD_LIMIT = 120
 const LONG_PRESS_THRESHOLD = 400
 const MINI_OVERLAY_WIDTH = 320
@@ -104,6 +109,14 @@ function createLocalId(prefix = 'local') {
     return `${prefix}-${crypto.randomUUID()}`
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function generateUuid() {
+  if (typeof crypto !== 'undefined' && crypto?.randomUUID) {
+    return crypto.randomUUID()
+  }
+  const segment = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).slice(1)
+  return `${segment()}${segment()}-${segment()}-${segment()}-${segment()}-${segment()}${segment()}${segment()}`
 }
 
 function sanitizeFileName(name = '') {
@@ -1052,7 +1065,8 @@ function sanitizeAnnouncementHtml(value = '') {
     source: new Set(['src', 'type']),
     iframe: new Set(['src', 'allow', 'allowfullscreen', 'loading', 'title']),
     a: new Set(['href', 'target', 'rel']),
-    div: new Set(['data-announcement-poll', 'data-poll-question']),
+    div: new Set(['data-announcement-poll', 'data-poll-question', 'data-poll-id']),
+    li: new Set(['data-poll-option-id', 'data-poll-option-position']),
     span: new Set(['data-font-size']),
   }
 
@@ -1386,6 +1400,71 @@ function formatAnnouncementPreview(value = '') {
 
   html = html.replace(/\n/g, '<br />')
   return sanitizeAnnouncementHtml(html)
+}
+
+function stripAnnouncementPollHtml(html = '') {
+  if (!html) return ''
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return String(html)
+  }
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<!doctype html><body>${html}</body>`, 'text/html')
+    doc.body.querySelectorAll('[data-announcement-poll]').forEach((node) => node.remove())
+    return doc.body.innerHTML
+  } catch (error) {
+    return html
+  }
+}
+
+function getAnnouncementPreviewText(announcement, limit = ANNOUNCEMENT_PREVIEW_LENGTH) {
+  if (!announcement || typeof announcement !== 'object') {
+    return ''
+  }
+  const source = typeof announcement.content === 'string' ? announcement.content : ''
+  if (!source) {
+    return ''
+  }
+  const sanitized = stripAnnouncementPollHtml(formatAnnouncementPreview(source))
+  const { text } = truncateText(sanitized, limit)
+  return text
+}
+
+function extractPollDefinitionsFromHtml(html = '') {
+  if (!html) return []
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return []
+  }
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<!doctype html><body>${html}</body>`, 'text/html')
+    const polls = []
+    doc.body.querySelectorAll('[data-announcement-poll]').forEach((element, pollIndex) => {
+      const questionAttr = element.getAttribute('data-poll-question') || ''
+      const textQuestion = questionAttr || element.textContent || ''
+      const question = textQuestion.trim()
+      if (!question) {
+        return
+      }
+      const pollId = element.getAttribute('data-poll-id') || generateUuid()
+      const options = []
+      element.querySelectorAll('[data-poll-option-id]').forEach((optionNode, optionIndex) => {
+        const optionText = optionNode.textContent || ''
+        const label = optionText.trim()
+        if (!label) {
+          return
+        }
+        const optionId = optionNode.getAttribute('data-poll-option-id') || generateUuid()
+        options.push({ id: optionId, label, position: optionIndex + 1 })
+      })
+      if (options.length >= 2) {
+        polls.push({ id: pollId, question, options, position: pollIndex })
+      }
+    })
+    return polls
+  } catch (error) {
+    return []
+  }
 }
 
 function sameMinute(a, b) {
@@ -2359,11 +2438,12 @@ const overlayStyles = {
     gap: 12,
     zIndex: 1,
   },
-  pinnedAnnouncementCard: (hasImage = false) => ({
+  pinnedAnnouncementCard: (stage = PINNED_ANNOUNCEMENT_STAGE_DEFAULT, hasImage = false) => ({
     display: 'grid',
-    gridTemplateColumns: hasImage ? 'minmax(0, 1fr) minmax(120px, 168px)' : 'minmax(0, 1fr)',
-    gap: 14,
-    padding: '14px 18px',
+    gridTemplateColumns:
+      stage === 'collapsed' && hasImage ? 'minmax(0, 1fr) minmax(120px, 168px)' : 'minmax(0, 1fr)',
+    gap: stage === 'collapsed' ? 14 : 16,
+    padding: stage === 'collapsed' ? '14px 18px' : '16px 18px',
     borderRadius: 18,
     border: '1px solid rgba(148, 163, 184, 0.38)',
     background: 'rgba(15, 23, 42, 0.7)',
@@ -2378,6 +2458,46 @@ const overlayStyles = {
     fontSize: 12,
     color: '#cbd5f5',
   },
+  pinnedAnnouncementHeaderGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  pinnedAnnouncementStageActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  pinnedAnnouncementStageButton: (variant = 'default', disabled = false) => ({
+    borderRadius: 999,
+    border:
+      variant === 'danger'
+        ? '1px solid rgba(248, 113, 113, 0.5)'
+        : '1px solid rgba(59, 130, 246, 0.45)',
+    background:
+      variant === 'danger'
+        ? 'rgba(248, 113, 113, 0.16)'
+        : variant === 'ghost'
+          ? 'rgba(15, 23, 42, 0.6)'
+          : 'rgba(59, 130, 246, 0.16)',
+    color:
+      variant === 'danger'
+        ? '#fca5a5'
+        : variant === 'ghost'
+          ? '#cbd5f5'
+          : '#e0f2fe',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '3px 9px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    transition: 'background 0.15s ease, border-color 0.15s ease',
+  }),
   pinnedAnnouncementBadge: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -2401,6 +2521,11 @@ const overlayStyles = {
     gap: 6,
     color: '#e2e8f0',
   },
+  pinnedAnnouncementCollapsedBody: {
+    display: 'grid',
+    gap: 6,
+    color: '#e2e8f0',
+  },
   pinnedAnnouncementTitle: {
     fontSize: 15,
     fontWeight: 700,
@@ -2417,6 +2542,19 @@ const overlayStyles = {
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+  },
+  pinnedAnnouncementExpandedBody: {
+    display: 'grid',
+    gap: 12,
+    maxHeight: 280,
+    overflowY: 'auto',
+    paddingRight: 4,
+  },
+  pinnedAnnouncementHtml: {
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#e2e8f0',
+    wordBreak: 'break-word',
   },
   pinnedAnnouncementImageWrapper: {
     position: 'relative',
@@ -2442,6 +2580,20 @@ const overlayStyles = {
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 6,
+  },
+  pinnedAnnouncementHiddenToggle: {
+    borderRadius: 999,
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    color: '#e0f2fe',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 14px',
+    cursor: 'pointer',
+    alignSelf: 'flex-start',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
   },
   pinnedAnnouncementActionButton: (variant = 'secondary', disabled = false) => {
     const isPrimary = variant === 'primary'
@@ -2545,6 +2697,18 @@ const overlayStyles = {
     flexWrap: 'wrap',
     gap: 6,
     marginTop: 2,
+  },
+  announcementListMedia: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(15, 23, 42, 0.6)',
+  },
+  announcementListMediaImage: {
+    width: '100%',
+    maxHeight: 180,
+    objectFit: 'cover',
+    display: 'block',
   },
   announcementMeta: {
     fontSize: 11,
@@ -2663,6 +2827,78 @@ const overlayStyles = {
     display: 'flex',
     gap: 8,
     alignItems: 'center',
+  },
+  announcementPollStack: {
+    display: 'grid',
+    gap: 12,
+  },
+  announcementPollCard: {
+    borderRadius: 16,
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+    background: 'rgba(15, 23, 42, 0.7)',
+    padding: '12px 14px',
+    display: 'grid',
+    gap: 10,
+  },
+  announcementPollQuestion: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#f8fafc',
+    lineHeight: 1.5,
+  },
+  announcementPollOptionButton: (selected = false, disabled = false) => ({
+    borderRadius: 12,
+    border: selected
+      ? '1px solid rgba(59, 130, 246, 0.7)'
+      : '1px solid rgba(71, 85, 105, 0.55)',
+    background: selected ? 'rgba(37, 99, 235, 0.22)' : 'rgba(15, 23, 42, 0.6)',
+    color: '#e2e8f0',
+    padding: '10px 12px',
+    display: 'grid',
+    gap: 6,
+    textAlign: 'left',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.6 : 1,
+  }),
+  announcementPollOptionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    fontSize: 13,
+    lineHeight: 1.45,
+  },
+  announcementPollOptionMeta: {
+    fontSize: 12,
+    color: '#cbd5f5',
+    flexShrink: 0,
+  },
+  announcementPollOptionBadge: {
+    fontSize: 11,
+    color: '#e0f2fe',
+    background: 'rgba(59, 130, 246, 0.25)',
+    borderRadius: 999,
+    padding: '2px 8px',
+    marginLeft: 8,
+  },
+  announcementPollOptionProgressTrack: {
+    height: 6,
+    borderRadius: 999,
+    background: 'rgba(148, 163, 184, 0.28)',
+    overflow: 'hidden',
+  },
+  announcementPollOptionProgressFill: (selected = false, percent = 0) => ({
+    height: '100%',
+    width: `${Math.min(100, Math.max(0, percent))}%`,
+    background: selected ? 'rgba(59, 130, 246, 0.8)' : 'rgba(96, 165, 250, 0.6)',
+  }),
+  announcementPollFooter: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  announcementPollError: {
+    fontSize: 12,
+    color: '#fca5a5',
   },
   announcementToolbarHint: {
     fontSize: 11,
@@ -3278,6 +3514,36 @@ const overlayStyles = {
     gap: 2,
     justifyItems: mine ? 'end' : 'start',
   }),
+  systemEventRow: {
+    display: 'grid',
+    gap: 4,
+    justifyItems: 'center',
+    padding: '6px 0 14px',
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+  systemEventBadge: (event = 'member_join') => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    border:
+      event === 'member_leave'
+        ? '1px solid rgba(248, 113, 113, 0.45)'
+        : '1px solid rgba(34, 197, 94, 0.45)',
+    background:
+      event === 'member_leave'
+        ? 'rgba(248, 113, 113, 0.18)'
+        : 'rgba(34, 197, 94, 0.18)',
+    color: event === 'member_leave' ? '#fecaca' : '#bbf7d0',
+    fontWeight: 700,
+    fontSize: 11,
+    padding: '4px 12px',
+  }),
+  systemEventMeta: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
   messageItem: (mine = false) => ({
     display: 'flex',
     alignItems: 'flex-end',
@@ -4304,6 +4570,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
     }
   }, [drawerOpen])
+
   const [profileSheet, setProfileSheet] = useState({ open: false, participant: null, busy: false, error: null })
   const [settingsOverlayOpen, setSettingsOverlayOpen] = useState(false)
   const [roomBans, setRoomBans] = useState([])
@@ -4312,6 +4579,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [roomAnnouncementCursor, setRoomAnnouncementCursor] = useState(null)
   const [roomAnnouncementsHasMore, setRoomAnnouncementsHasMore] = useState(false)
   const [pinnedAnnouncement, setPinnedAnnouncement] = useState(null)
+  const [pinnedAnnouncementStage, setPinnedAnnouncementStage] = useState('collapsed')
+  const pinnedStageKeyRef = useRef(null)
+  const [pollVotingState, setPollVotingState] = useState({})
   const nonPinnedAnnouncements = useMemo(() => {
     const list = Array.isArray(roomAnnouncements) ? roomAnnouncements : []
     const pinnedId = pinnedAnnouncement?.id
@@ -4320,6 +4590,63 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     return list.filter((item) => item && item.id !== pinnedId)
   }, [roomAnnouncements, pinnedAnnouncement])
+
+  const commitPinnedAnnouncementStage = useCallback(
+    (nextStage) => {
+      const stage = PINNED_ANNOUNCEMENT_STAGE_VALUES.has(nextStage)
+        ? nextStage
+        : PINNED_ANNOUNCEMENT_STAGE_DEFAULT
+      setPinnedAnnouncementStage(stage)
+      if (typeof window !== 'undefined' && pinnedStageKeyRef.current) {
+        try {
+          window.localStorage.setItem(pinnedStageKeyRef.current, stage)
+        } catch (error) {
+          console.warn('[chat] pinned stage save failed', error)
+        }
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (context?.type === 'chat-room' && context.chatRoomId) {
+      const storageKey = `${PINNED_ANNOUNCEMENT_STAGE_KEY_PREFIX}${context.chatRoomId}`
+      pinnedStageKeyRef.current = storageKey
+      if (typeof window !== 'undefined') {
+        try {
+          const storedStage = window.localStorage.getItem(storageKey)
+          if (storedStage && PINNED_ANNOUNCEMENT_STAGE_VALUES.has(storedStage)) {
+            setPinnedAnnouncementStage(storedStage)
+            return
+          }
+        } catch (error) {
+          console.warn('[chat] pinned stage load failed', error)
+        }
+      }
+      setPinnedAnnouncementStage(PINNED_ANNOUNCEMENT_STAGE_DEFAULT)
+    } else {
+      pinnedStageKeyRef.current = null
+      setPinnedAnnouncementStage(PINNED_ANNOUNCEMENT_STAGE_DEFAULT)
+    }
+  }, [context?.chatRoomId, context?.type])
+
+  const pinnedAnnouncementHtml = useMemo(() => {
+    if (!pinnedAnnouncement?.content) {
+      return ''
+    }
+    const sanitized = formatAnnouncementPreview(pinnedAnnouncement.content || '')
+    return stripAnnouncementPollHtml(sanitized)
+  }, [pinnedAnnouncement?.content])
+
+  const pinnedAnnouncementPreview = useMemo(
+    () => truncateText(pinnedAnnouncementHtml || '', ANNOUNCEMENT_PREVIEW_LENGTH),
+    [pinnedAnnouncementHtml],
+  )
+
+  useEffect(() => {
+    setPollVotingState({})
+  }, [context?.chatRoomId])
+
   const [announcementComposer, setAnnouncementComposer] = useState({
     open: false,
     title: '',
@@ -5011,6 +5338,26 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         })
         lastDayKey = dayKey
         currentGroup = null
+      }
+
+      const metadata = message && typeof message.metadata === 'object' ? message.metadata : null
+      const eventType = metadata?.event
+      if (eventType === 'member_join' || eventType === 'member_leave') {
+        const memberName = metadata?.member_name || message.username || '참여자'
+        const text =
+          message.text ||
+          `${memberName} 님이 ${eventType === 'member_join' ? '참여했습니다.' : '나갔습니다.'}`
+        entries.push({
+          type: 'system',
+          key: `system-${message.id || message.local_id || index}`,
+          text,
+          event: eventType,
+          memberName,
+          memberCount: parseUnreadValue(metadata?.room_member_total),
+          createdAt: message.created_at,
+        })
+        currentGroup = null
+        return
       }
 
       const aiMeta = getAiMetadata(message)
@@ -7128,14 +7475,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
       const safeQuestion = escapeHtml(question.replace(/\n/g, ' '))
       const safeOptions = options.map((option) => escapeHtml(option.replace(/\n/g, ' ')))
+      const pollId = generateUuid()
       const optionsHtml = safeOptions
-        .map(
-          (option) =>
-            `<li style="padding: 8px 10px; border-radius: 10px; background: rgba(15,23,42,0.55); margin-top: 6px; color: #e2e8f0; font-size: 13px;">${option}</li>`,
-        )
+        .map((option, optionIndex) => {
+          const optionId = generateUuid()
+          return `<li style="padding: 8px 10px; border-radius: 10px; background: rgba(15,23,42,0.55); margin-top: 6px; color: #e2e8f0; font-size: 13px;" data-poll-option-id="${optionId}" data-poll-option-position="${optionIndex + 1}">${option}</li>`
+        })
         .join('')
       const snippet = `
-<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);" data-announcement-poll="true" data-poll-question="${safeQuestion}">
+<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);" data-announcement-poll="true" data-poll-id="${pollId}" data-poll-question="${safeQuestion}">
   <strong style="display:block;font-size:13px;color:#e2e8f0;">${safeQuestion}</strong>
   <ul style="list-style:none;padding:0;margin:6px 0 0;">${optionsHtml}</ul>
 </div>`
@@ -7231,7 +7579,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
 
   const announcementDetailHtml = useMemo(
-    () => formatAnnouncementPreview(announcementDetail.announcement?.content || ''),
+    () =>
+      stripAnnouncementPollHtml(
+        formatAnnouncementPreview(announcementDetail.announcement?.content || ''),
+      ),
     [announcementDetail.announcement?.content],
   )
 
@@ -7247,6 +7598,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const title = (announcementComposer.title || '').trim()
     const rawContent = announcementComposer.content || ''
     const content = sanitizeAnnouncementHtml(rawContent)
+    const pollDefinitions = extractPollDefinitionsFromHtml(content)
     const plain = getAnnouncementPlainText(content)
     if (!plain) {
       setAnnouncementComposer((prev) => ({ ...prev, error: '공지 내용을 입력해 주세요.' }))
@@ -7254,13 +7606,23 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     setAnnouncementComposer((prev) => ({ ...prev, submitting: true, error: null }))
     try {
-      await createChatRoomAnnouncement({
+      const announcement = await createChatRoomAnnouncement({
         roomId: context.chatRoomId,
         title,
         content,
         imageUrl: announcementComposer.imageUrl || null,
         pinned: announcementComposer.pinned,
       })
+      if (announcement?.id && pollDefinitions.length) {
+        try {
+          await syncChatRoomAnnouncementPolls({
+            announcementId: announcement.id,
+            polls: pollDefinitions,
+          })
+        } catch (error) {
+          console.error('[chat] 공지 투표 동기화 실패', error)
+        }
+      }
       handleCloseAnnouncementComposer()
       await refreshRoomAnnouncements(context.chatRoomId)
     } catch (error) {
@@ -7350,6 +7712,140 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }))
     }
   }, [announcementDetail.announcementId, context?.chatRoomId, refreshRoomAnnouncements])
+
+  const handleVoteAnnouncementPoll = useCallback(
+    async (announcement, poll, optionId) => {
+      const rawPollId = poll?.id || poll?.poll_id
+      if (!rawPollId) {
+        return
+      }
+      const pollId = String(rawPollId)
+      const announcementId = announcement?.id || announcementDetail.announcementId
+      const targetOptionId = optionId ? String(optionId) : null
+
+      setPollVotingState((prev) => ({
+        ...prev,
+        [pollId]: { submitting: true, error: null },
+      }))
+
+      try {
+        await voteChatRoomAnnouncementPoll({ pollId, optionId: targetOptionId })
+
+        if (announcementId && announcementDetail.announcementId === announcementId) {
+          const detail = await fetchChatRoomAnnouncementDetail({ announcementId })
+          setAnnouncementDetail((prev) => ({
+            ...prev,
+            announcement: detail.announcement || prev.announcement,
+            comments: detail.comments || prev.comments,
+          }))
+        }
+
+        if (context?.chatRoomId) {
+          await refreshRoomAnnouncements(context.chatRoomId)
+        }
+
+        setPollVotingState((prev) => {
+          const next = { ...prev }
+          delete next[pollId]
+          return next
+        })
+      } catch (error) {
+        console.error('[chat] 공지 투표 실패', error)
+        setPollVotingState((prev) => ({
+          ...prev,
+          [pollId]: {
+            submitting: false,
+            error: error?.message || '투표에 실패했습니다.',
+          },
+        }))
+      }
+    },
+    [announcementDetail.announcementId, context?.chatRoomId, refreshRoomAnnouncements],
+  )
+
+  const renderAnnouncementPolls = (announcement, variant = 'detail') => {
+    const polls = Array.isArray(announcement?.polls) ? announcement.polls : []
+    if (!polls.length) {
+      return null
+    }
+
+    const stackStyle = {
+      ...overlayStyles.announcementPollStack,
+      ...(variant === 'pinned' ? { marginTop: 6 } : {}),
+    }
+
+    return (
+      <div style={stackStyle}>
+        {polls.map((poll) => {
+          const pollId = poll?.id ? String(poll.id) : null
+          const options = Array.isArray(poll?.options) ? poll.options : []
+          if (!pollId || options.length === 0) {
+            return null
+          }
+          const state = pollVotingState[pollId] || {}
+          let totalVotes = Number(poll.totalVotes)
+          if (!Number.isFinite(totalVotes) || totalVotes < 0) {
+            totalVotes = options.reduce((sum, option) => sum + (Number(option.voteCount) || 0), 0)
+          }
+          const viewerSelection = poll.viewerOptionId ? String(poll.viewerOptionId) : null
+
+          return (
+            <div key={pollId} style={overlayStyles.announcementPollCard}>
+              <span style={overlayStyles.announcementPollQuestion}>{poll.question || '투표'}</span>
+              <div style={overlayStyles.announcementPollOptionList}>
+                {options.map((option) => {
+                  const optionId = option?.id ? String(option.id) : null
+                  if (!optionId) {
+                    return null
+                  }
+                  const votes = Number(option.voteCount) || 0
+                  const percent = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
+                  const selected = viewerSelection === optionId
+                  return (
+                    <button
+                      key={optionId}
+                      type="button"
+                      style={overlayStyles.announcementPollOptionButton(selected, state.submitting)}
+                      onClick={() =>
+                        handleVoteAnnouncementPoll(
+                          announcement,
+                          poll,
+                          selected ? null : optionId,
+                        )
+                      }
+                      disabled={state.submitting}
+                      aria-pressed={selected}
+                    >
+                      <div style={overlayStyles.announcementPollOptionHeader}>
+                        <span>
+                          {option.label}
+                          {selected ? (
+                            <span style={overlayStyles.announcementPollOptionBadge}>내 선택</span>
+                          ) : null}
+                        </span>
+                        <span style={overlayStyles.announcementPollOptionMeta}>
+                          {votes}표{totalVotes ? ` · ${percent}%` : ''}
+                        </span>
+                      </div>
+                      <div style={overlayStyles.announcementPollOptionProgressTrack}>
+                        <div
+                          style={overlayStyles.announcementPollOptionProgressFill(selected, percent)}
+                        />
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={overlayStyles.announcementPollFooter}>총 {totalVotes}표 참여</div>
+              {state.error ? (
+                <span style={overlayStyles.announcementPollError}>{state.error}</span>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   const handleAnnouncementCommentChange = useCallback((value) => {
     setAnnouncementDetail((prev) => ({ ...prev, commentInput: value }))
@@ -9792,94 +10288,175 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   <span style={{ fontSize: 11, color: '#fca5a5' }}>{announcementError}</span>
                 ) : null}
                 {pinnedAnnouncement ? (
-                <div style={overlayStyles.pinnedAnnouncementCard(Boolean(pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl))}>
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    <div style={overlayStyles.pinnedAnnouncementHeaderRow}>
-                      <span style={overlayStyles.pinnedAnnouncementBadge}>📌 공지</span>
-                      <span style={overlayStyles.pinnedAnnouncementTimestamp}>
-                        {pinnedAnnouncement.updated_at
-                          ? `${formatTime(pinnedAnnouncement.updated_at)} 업데이트`
-                          : pinnedAnnouncement.created_at
-                            ? `${formatTime(pinnedAnnouncement.created_at)} 등록`
-                            : '방장이 고정했습니다.'}
-                      </span>
-                    </div>
-                    <div style={overlayStyles.pinnedAnnouncementText}>
-                      {pinnedAnnouncement.title ? (
-                        <strong style={overlayStyles.pinnedAnnouncementTitle}>
-                          {pinnedAnnouncement.title}
-                        </strong>
-                      ) : null}
-                      <span style={overlayStyles.pinnedAnnouncementPreview}>
-                        {
-                          truncateText(
-                            pinnedAnnouncement.content || '',
-                            ANNOUNCEMENT_PREVIEW_LENGTH,
-                          ).text || '내용 없음'
-                        }
-                      </span>
-                    </div>
-                    <div style={overlayStyles.pinnedAnnouncementActions}>
-                      <button
-                        type="button"
-                        style={overlayStyles.pinnedAnnouncementActionButton('primary')}
-                        onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
-                      >
-                        상세 보기
-                      </button>
-                      {viewerIsModerator ? (
-                        <button
-                          type="button"
-                          style={overlayStyles.pinnedAnnouncementActionButton(
-                            'ghost',
-                            announcementPinningId === pinnedAnnouncement.id,
-                          )}
-                          onClick={() => handleToggleAnnouncementPin(pinnedAnnouncement, false)}
-                          disabled={announcementPinningId === pinnedAnnouncement.id}
-                        >
-                          고정 해제
-                        </button>
-                      ) : null}
-                      {(announcementList.length || roomAnnouncementsHasMore) ? (
-                        <button
-                          type="button"
-                          style={overlayStyles.pinnedAnnouncementActionButton()}
-                          onClick={handleOpenAnnouncementList}
-                        >
-                          공지 목록
-                        </button>
-                      ) : null}
-                      {viewerIsModerator ? (
-                        <button
-                          type="button"
-                          style={overlayStyles.pinnedAnnouncementActionButton()}
-                          onClick={handleOpenAnnouncementComposer}
-                        >
-                          새 공지
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                  {pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl ? (
+                  pinnedAnnouncementStage === 'hidden' ? (
                     <button
                       type="button"
-                      style={overlayStyles.pinnedAnnouncementImageButton}
-                      onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+                      style={overlayStyles.pinnedAnnouncementHiddenToggle}
+                      onClick={() => commitPinnedAnnouncementStage('collapsed')}
                     >
-                      <div style={overlayStyles.pinnedAnnouncementImageWrapper}>
-                        <img
-                          src={pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl}
-                          alt={pinnedAnnouncement.title ? `${pinnedAnnouncement.title} 이미지` : '공지 이미지'}
-                          style={overlayStyles.pinnedAnnouncementImage}
-                        />
-                      </div>
+                      📌 공지 보기
                     </button>
-                  ) : null}
-                </div>
-              ) : (
-                <div style={overlayStyles.pinnedAnnouncementEmpty}>
-                  <span>{viewerIsModerator ? '고정된 공지가 없습니다.' : '현재 고정된 공지가 없습니다.'}</span>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  ) : (
+                    <div
+                      style={overlayStyles.pinnedAnnouncementCard(
+                        pinnedAnnouncementStage,
+                        Boolean(pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl),
+                      )}
+                    >
+                      <div style={{ display: 'grid', gap: 12 }}>
+                        <div style={overlayStyles.pinnedAnnouncementHeaderRow}>
+                          <div style={overlayStyles.pinnedAnnouncementHeaderGroup}>
+                            <span style={overlayStyles.pinnedAnnouncementBadge}>📌 공지</span>
+                            <span style={overlayStyles.pinnedAnnouncementTimestamp}>
+                              {pinnedAnnouncement.updated_at
+                                ? `${formatTime(pinnedAnnouncement.updated_at)} 업데이트`
+                                : pinnedAnnouncement.created_at
+                                  ? `${formatTime(pinnedAnnouncement.created_at)} 등록`
+                                  : '방장이 고정했습니다.'}
+                            </span>
+                          </div>
+                          <div style={overlayStyles.pinnedAnnouncementStageActions}>
+                            {pinnedAnnouncementStage === 'expanded' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  style={overlayStyles.pinnedAnnouncementStageButton('default')}
+                                  onClick={() => commitPinnedAnnouncementStage('collapsed')}
+                                >
+                                  접기
+                                </button>
+                                <button
+                                  type="button"
+                                  style={overlayStyles.pinnedAnnouncementStageButton('danger')}
+                                  onClick={() => commitPinnedAnnouncementStage('hidden')}
+                                >
+                                  숨기기
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  style={overlayStyles.pinnedAnnouncementStageButton('default')}
+                                  onClick={() => commitPinnedAnnouncementStage('expanded')}
+                                >
+                                  펼치기
+                                </button>
+                                <button
+                                  type="button"
+                                  style={overlayStyles.pinnedAnnouncementStageButton('danger')}
+                                  onClick={() => commitPinnedAnnouncementStage('hidden')}
+                                >
+                                  숨기기
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {pinnedAnnouncement.title ? (
+                          <strong style={overlayStyles.pinnedAnnouncementTitle}>
+                            {pinnedAnnouncement.title}
+                          </strong>
+                        ) : null}
+                        {pinnedAnnouncementStage === 'collapsed' ? (
+                          <div style={overlayStyles.pinnedAnnouncementCollapsedBody}>
+                            <span style={overlayStyles.pinnedAnnouncementPreview}>
+                              {pinnedAnnouncementPreview.text || '내용 없음'}
+                            </span>
+                          </div>
+                        ) : (
+                          <div style={overlayStyles.pinnedAnnouncementExpandedBody}>
+                            {pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl ? (
+                              <div style={overlayStyles.pinnedAnnouncementImageWrapper}>
+                                <img
+                                  src={pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl}
+                                  alt={
+                                    pinnedAnnouncement.title
+                                      ? `${pinnedAnnouncement.title} 이미지`
+                                      : '공지 이미지'
+                                  }
+                                  style={overlayStyles.pinnedAnnouncementImage}
+                                />
+                              </div>
+                            ) : null}
+                            <div
+                              style={overlayStyles.pinnedAnnouncementHtml}
+                              dangerouslySetInnerHTML={{
+                                __html:
+                                  pinnedAnnouncementHtml ||
+                                  '<span style="color:#94a3b8;">공지 내용이 비어 있습니다.</span>',
+                              }}
+                            />
+                            {renderAnnouncementPolls(pinnedAnnouncement, 'pinned')}
+                          </div>
+                        )}
+                        <div style={overlayStyles.pinnedAnnouncementActions}>
+                          <button
+                            type="button"
+                            style={overlayStyles.pinnedAnnouncementActionButton('primary')}
+                            onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+                          >
+                            상세 보기
+                          </button>
+                          {viewerIsModerator ? (
+                            <button
+                              type="button"
+                              style={overlayStyles.pinnedAnnouncementActionButton(
+                                'ghost',
+                                announcementPinningId === pinnedAnnouncement.id,
+                              )}
+                              onClick={() => handleToggleAnnouncementPin(pinnedAnnouncement, false)}
+                              disabled={announcementPinningId === pinnedAnnouncement.id}
+                            >
+                              고정 해제
+                            </button>
+                          ) : null}
+                          {(announcementList.length || roomAnnouncementsHasMore) ? (
+                            <button
+                              type="button"
+                              style={overlayStyles.pinnedAnnouncementActionButton()}
+                              onClick={handleOpenAnnouncementList}
+                            >
+                              공지 목록
+                            </button>
+                          ) : null}
+                          {viewerIsModerator ? (
+                            <button
+                              type="button"
+                              style={overlayStyles.pinnedAnnouncementActionButton()}
+                              onClick={handleOpenAnnouncementComposer}
+                            >
+                              새 공지
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      {pinnedAnnouncementStage === 'collapsed' &&
+                      (pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl) ? (
+                        <button
+                          type="button"
+                          style={overlayStyles.pinnedAnnouncementImageButton}
+                          onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+                        >
+                          <div style={overlayStyles.pinnedAnnouncementImageWrapper}>
+                            <img
+                              src={pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl}
+                              alt={
+                                pinnedAnnouncement.title
+                                  ? `${pinnedAnnouncement.title} 이미지`
+                                  : '공지 이미지'
+                              }
+                              style={overlayStyles.pinnedAnnouncementImage}
+                            />
+                          </div>
+                        </button>
+                      ) : null}
+                    </div>
+                  )
+                ) : (
+                  <div style={overlayStyles.pinnedAnnouncementEmpty}>
+                    <span>{viewerIsModerator ? '고정된 공지가 없습니다.' : '현재 고정된 공지가 없습니다.'}</span>
+                    <div style={{ display: 'flex', gap: 8 }}>
                     {(announcementList.length || roomAnnouncementsHasMore) ? (
                       <button
                         type="button"
@@ -9913,6 +10490,25 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   return (
                     <div key={entry.key} style={overlayStyles.dateDividerWrapper}>
                       <span style={overlayStyles.dateDivider}>{entry.label}</span>
+                    </div>
+                  )
+                }
+
+                if (entry.type === 'system') {
+                  const eventLabel = entry.event === 'member_leave' ? '나갔습니다.' : '참여했습니다.'
+                  const icon = entry.event === 'member_leave' ? '➖' : '➕'
+                  const timestamp = entry.createdAt ? formatTime(entry.createdAt) : ''
+                  const memberCountText = entry.memberCount ? `현재 ${entry.memberCount}명 참여 중` : ''
+                  const metaParts = [memberCountText, timestamp].filter(Boolean)
+                  const metaText = metaParts.join(' · ')
+                  return (
+                    <div key={entry.key} style={overlayStyles.systemEventRow}>
+                      <span style={overlayStyles.systemEventBadge(entry.event)}>
+                        {icon} {entry.memberName || '참여자'} 님이 {eventLabel}
+                      </span>
+                      {metaText ? (
+                        <span style={overlayStyles.systemEventMeta}>{metaText}</span>
+                      ) : null}
                     </div>
                   )
                 }
@@ -11544,11 +12140,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
                 >
                   <strong>
-                    📌 {pinnedAnnouncement.title || truncateText(pinnedAnnouncement.content || '', 80).text || '제목 없는 공지'}
+                    {'📌 '}
+                    {pinnedAnnouncement.title ||
+                      getAnnouncementPreviewText(pinnedAnnouncement, 80) ||
+                      '제목 없는 공지'}
                   </strong>
                   {pinnedAnnouncement.title && pinnedAnnouncement.content ? (
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                      {truncateText(pinnedAnnouncement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                      {getAnnouncementPreviewText(pinnedAnnouncement, ANNOUNCEMENT_PREVIEW_LENGTH) || '내용 없음'}
                     </span>
                   ) : null}
                   <span style={overlayStyles.announcementMeta}>
@@ -11567,11 +12166,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       onClick={() => handleOpenAnnouncementDetail(announcement)}
                     >
                       <strong>
-                        {announcement.title || truncateText(announcement.content || '', 80).text || '제목 없는 공지'}
+                        {announcement.title ||
+                          getAnnouncementPreviewText(announcement, 80) ||
+                          '제목 없는 공지'}
                       </strong>
                       {announcement.title && announcement.content ? (
                         <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                          {truncateText(announcement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text}
+                          {getAnnouncementPreviewText(announcement, ANNOUNCEMENT_PREVIEW_LENGTH) || '내용 없음'}
                         </span>
                       ) : null}
                       <span style={overlayStyles.announcementMeta}>
@@ -12072,12 +12673,27 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               }
             }}
           >
+            {pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl ? (
+              <div style={overlayStyles.announcementListMedia}>
+                <img
+                  src={pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl}
+                  alt={
+                    pinnedAnnouncement.title ? `${pinnedAnnouncement.title} 이미지` : '공지 이미지'
+                  }
+                  style={overlayStyles.announcementListMediaImage}
+                />
+              </div>
+            ) : null}
             <div style={overlayStyles.announcementListHeader}>
               <strong>
-                📌 {pinnedAnnouncement.title || truncateText(pinnedAnnouncement.content || '', 80).text || '제목 없는 공지'}
+                {'📌 '}
+                {pinnedAnnouncement.title ||
+                  pinnedAnnouncementPreview.text ||
+                  getAnnouncementPreviewText(pinnedAnnouncement, 80) ||
+                  '제목 없는 공지'}
               </strong>
               <span style={overlayStyles.announcementListPreview}>
-                {truncateText(pinnedAnnouncement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text || '내용 없음'}
+                {pinnedAnnouncementPreview.text || '내용 없음'}
               </span>
               <span style={overlayStyles.announcementMeta}>
                 ♥ {pinnedAnnouncement.heart_count || 0} · 💬 {pinnedAnnouncement.comment_count || 0}
@@ -12130,12 +12746,23 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 }
               }}
             >
+              {announcement.image_url || announcement.imageUrl ? (
+                <div style={overlayStyles.announcementListMedia}>
+                  <img
+                    src={announcement.image_url || announcement.imageUrl}
+                    alt={announcement.title ? `${announcement.title} 이미지` : '공지 이미지'}
+                    style={overlayStyles.announcementListMediaImage}
+                  />
+                </div>
+              ) : null}
               <div style={overlayStyles.announcementListHeader}>
                 <strong>
-                  {announcement.title || truncateText(announcement.content || '', 80).text || '제목 없는 공지'}
+                  {announcement.title ||
+                    getAnnouncementPreviewText(announcement, 80) ||
+                    '제목 없는 공지'}
                 </strong>
                 <span style={overlayStyles.announcementListPreview}>
-                  {truncateText(announcement.content || '', ANNOUNCEMENT_PREVIEW_LENGTH).text || '내용 없음'}
+                  {getAnnouncementPreviewText(announcement, ANNOUNCEMENT_PREVIEW_LENGTH) || '내용 없음'}
                 </span>
                 <span style={overlayStyles.announcementMeta}>
                   ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
@@ -12561,6 +13188,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   '<span style="color:#94a3b8;">공지 내용이 비어 있습니다.</span>',
               }}
             />
+            {renderAnnouncementPolls(announcementDetail.announcement, 'detail')}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button type="button" style={overlayStyles.secondaryButton} onClick={handleToggleAnnouncementReaction}>
