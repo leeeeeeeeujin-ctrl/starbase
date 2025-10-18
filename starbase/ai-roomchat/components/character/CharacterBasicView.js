@@ -1710,6 +1710,8 @@ export default function CharacterBasicView({ hero }) {
   )
 
   const carouselSwipeHandledRef = useRef(false)
+  const carouselTouchStartRef = useRef(null)
+  const infoSliderTouchStartRef = useRef(null)
 
   const handleCarouselCardClick = useCallback(
     (gameId) => {
@@ -1866,8 +1868,6 @@ export default function CharacterBasicView({ hero }) {
   const imageObjectUrlRef = useRef(null)
   const backgroundObjectUrlRef = useRef(null)
   const lastLoadedHeroKeyRef = useRef(null)
-  const carouselTouchStartRef = useRef(null)
-  const infoSliderTouchStartRef = useRef(null)
 
   useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
 
