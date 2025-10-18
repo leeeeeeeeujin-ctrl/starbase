@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/router'
 
-import CharacterPlayView from '@/components/character/CharacterPlayView'
+import CharacterBasicView from '@/components/character/CharacterBasicView'
 import { useCharacterDetail } from '@/hooks/character/useCharacterDetail'
 import { persistHeroSelection } from '@/lib/heroes/selectedHeroStorage'
 
@@ -61,7 +61,7 @@ export default function CharacterDetailPage() {
   useEffect(() => {
     if (!router.isReady) return
     router.prefetch('/roster').catch(() => {})
-    router.prefetch('/match').catch(() => {})
+    router.prefetch('/rooms').catch(() => {})
   }, [router])
 
   useEffect(() => {
@@ -124,5 +124,5 @@ export default function CharacterDetailPage() {
     )
   }
 
-  return <CharacterPlayView hero={hero} />
+  return <CharacterBasicView hero={hero} />
 }

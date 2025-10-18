@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 import { sanitizeFileName } from '@/utils/characterAssets'
+import CharacterPlayPanel from './CharacterPlayPanel'
 import {
   clearSharedBackgroundUrl,
   writeSharedBackgroundUrl,
@@ -72,6 +73,7 @@ const pageStyles = {
 
 const overlayTabs = [
   { key: 'character', label: '캐릭터' },
+  { key: 'play', label: '플레이' },
   { key: 'search', label: '게임 검색' },
   { key: 'create', label: '게임 제작' },
   { key: 'register', label: '게임 등록' },
@@ -1524,6 +1526,14 @@ export default function CharacterBasicView({ hero }) {
   const progressRatio = duration ? progress / duration : 0
 
   const overlayBody = (() => {
+    if (activeTabKey === 'play') {
+      return (
+        <div style={styles.tabContent}>
+          <CharacterPlayPanel hero={hero} />
+        </div>
+      )
+    }
+
     if (activeTabKey === 'search') {
       return (
         <div style={styles.tabContent}>
