@@ -1539,6 +1539,23 @@ export default function CharacterBasicView({ hero }) {
     ? '이미지를 탭하면 설명과 능력을 확인할 수 있어요.'
     : '등록된 설명과 능력이 없습니다.'
 
+  const audioManager = useMemo(() => getHeroAudioManager(), [])
+  const [audioState, setAudioState] = useState(() => audioManager.getState())
+  const {
+    enabled: bgmEnabled,
+    isPlaying,
+    progress,
+    duration,
+    volume: bgmVolume,
+    pitch,
+    eqEnabled,
+    equalizer,
+    reverbEnabled,
+    reverbDetail,
+    compressorEnabled,
+    compressorDetail,
+  } = audioState
+
   useEffect(() => {
     if (!detailOpen) return
     setOverlayHeroStep(0)
@@ -1843,23 +1860,6 @@ export default function CharacterBasicView({ hero }) {
   const handleInfoIndicatorClick = useCallback((index) => {
     setInfoPanelIndex(index)
   }, [])
-
-  const audioManager = useMemo(() => getHeroAudioManager(), [])
-  const [audioState, setAudioState] = useState(() => audioManager.getState())
-  const {
-    enabled: bgmEnabled,
-    isPlaying,
-    progress,
-    duration,
-    volume: bgmVolume,
-    pitch,
-    eqEnabled,
-    equalizer,
-    reverbEnabled,
-    reverbDetail,
-    compressorEnabled,
-    compressorDetail,
-  } = audioState
 
   const imageInputRef = useRef(null)
   const backgroundInputRef = useRef(null)
