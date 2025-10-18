@@ -1427,44 +1427,41 @@ export default function CharacterBasicView({ hero }) {
     const threshold = 60
     const edgeLimit = 36
 
-    const handleTouchStart = (event) => {
-      if (!event.touches || event.touches.length === 0) return
-      const touch = event.touches[0]
-      if (!touch) return
-
+    const resolveIntent = (startX) => {
       const viewportWidth = window.innerWidth || 0
       const panelGuard = Math.max(180, viewportWidth * 0.5)
-      const startX = touch.clientX
 
-      let intent = null
       if (startX <= edgeLimit) {
-        intent = 'left-open'
-      } else if (startX >= viewportWidth - edgeLimit) {
-        intent = 'right-open'
-      } else if (leftPanelOpen && startX <= Math.min(viewportWidth * 0.4, panelGuard)) {
-        intent = 'left-close'
-      } else if (
-        rightPanelOpen &&
-        startX >= Math.max(viewportWidth * 0.6, viewportWidth - panelGuard)
-      ) {
-        intent = 'right-close'
+        return 'left-open'
       }
+      if (startX >= viewportWidth - edgeLimit) {
+        return 'right-open'
+      }
+      if (leftPanelOpen && startX <= Math.min(viewportWidth * 0.4, panelGuard)) {
+        return 'left-close'
+      }
+      if (rightPanelOpen && startX >= Math.max(viewportWidth * 0.6, viewportWidth - panelGuard)) {
+        return 'right-close'
+      }
+      return null
+    }
 
+    const beginGesture = ({ startX, pointerId = null }) => {
+      const intent = resolveIntent(startX)
       if (intent) {
-        swipeGestureRef.current = { side: intent, startX }
+        swipeGestureRef.current = { side: intent, startX, pointerId }
       } else {
         swipeGestureRef.current = null
       }
     }
 
-    const handleTouchEnd = (event) => {
+    const finishGesture = ({ endX, pointerId = null }) => {
       const context = swipeGestureRef.current
-      swipeGestureRef.current = null
-      if (!context || !event.changedTouches || event.changedTouches.length === 0) return
+      if (!context) return
+      if (pointerId != null && context.pointerId != null && context.pointerId !== pointerId) return
 
-      const touch = event.changedTouches[0]
-      if (!touch) return
-      const deltaX = touch.clientX - context.startX
+      swipeGestureRef.current = null
+      const deltaX = endX - context.startX
 
       if (context.side === 'left-open' && deltaX > threshold) {
         setLeftPanelOpen(true)
@@ -1481,13 +1478,67 @@ export default function CharacterBasicView({ hero }) {
       }
     }
 
-    window.addEventListener('touchstart', handleTouchStart, { passive: true })
-    window.addEventListener('touchend', handleTouchEnd)
+    let cleanup = () => {}
 
-    return () => {
-      window.removeEventListener('touchstart', handleTouchStart)
-      window.removeEventListener('touchend', handleTouchEnd)
+    if (window.PointerEvent) {
+      const handlePointerDown = (event) => {
+        if (event.isPrimary === false) return
+        if (event.pointerType === 'mouse' && event.button !== 0) return
+        beginGesture({ startX: event.clientX, pointerId: event.pointerId })
+      }
+
+      const handlePointerUp = (event) => {
+        if (event.isPrimary === false) return
+        finishGesture({ endX: event.clientX, pointerId: event.pointerId })
+      }
+
+      const handlePointerCancel = (event) => {
+        const context = swipeGestureRef.current
+        if (context && context.pointerId === event.pointerId) {
+          swipeGestureRef.current = null
+        }
+      }
+
+      window.addEventListener('pointerdown', handlePointerDown, { passive: true })
+      window.addEventListener('pointerup', handlePointerUp)
+      window.addEventListener('pointercancel', handlePointerCancel)
+
+      cleanup = () => {
+        window.removeEventListener('pointerdown', handlePointerDown)
+        window.removeEventListener('pointerup', handlePointerUp)
+        window.removeEventListener('pointercancel', handlePointerCancel)
+      }
+    } else {
+      const handleTouchStart = (event) => {
+        if (!event.touches || event.touches.length === 0) return
+        const touch = event.touches[0]
+        if (!touch) return
+        beginGesture({ startX: touch.clientX })
+      }
+
+      const handleTouchEnd = (event) => {
+        if (!event.changedTouches || event.changedTouches.length === 0) return
+        const touch = event.changedTouches[0]
+        if (!touch) return
+        finishGesture({ endX: touch.clientX })
+      }
+
+      const handleTouchCancel = () => {
+        swipeGestureRef.current = null
+      }
+
+      window.addEventListener('touchstart', handleTouchStart, { passive: true })
+      window.addEventListener('touchend', handleTouchEnd)
+      window.addEventListener('touchcancel', handleTouchCancel)
+
+      cleanup = () => {
+        window.removeEventListener('touchstart', handleTouchStart)
+        window.removeEventListener('touchend', handleTouchEnd)
+        window.removeEventListener('touchcancel', handleTouchCancel)
+      }
     }
+
+    return cleanup
   }, [leftPanelOpen, rightPanelOpen, selectedGameId])
 
   useEffect(() => {
