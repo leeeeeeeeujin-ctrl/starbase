@@ -39,6 +39,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useHeroSocialBootstrap } from '@/hooks/social/useHeroSocialBootstrap'
 import { useFriendActions } from '@/hooks/social/useFriendActions'
+import { readHeroSelection } from '@/lib/heroes/selectedHeroStorage'
 import {
   fetchNativeMediaAsset,
   fetchNativeMediaTimeline,
@@ -1929,7 +1930,7 @@ const overlayStyles = {
     gridTemplateRows: 'auto 1fr auto auto',
     borderRadius: 24,
     border: '1px solid rgba(71, 85, 105, 0.5)',
-    background: 'rgba(11, 18, 40, 0.78)',
+    background: 'rgba(11, 18, 40, 0.64)',
     minHeight: 0,
     overflow: 'hidden',
     position: 'relative',
@@ -1938,10 +1939,10 @@ const overlayStyles = {
     const base = {
       position: 'absolute',
       inset: 0,
-      background: 'linear-gradient(180deg, rgba(6, 10, 25, 0.78) 0%, rgba(6, 10, 25, 0.68) 100%)',
+      background: 'linear-gradient(180deg, rgba(12, 23, 55, 0.45) 0%, rgba(12, 23, 55, 0.6) 100%)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
-      opacity: 0.76,
+      opacity: 0.58,
       zIndex: 0,
       pointerEvents: 'none',
     }
@@ -1954,14 +1955,14 @@ const overlayStyles = {
     if (isGradientValue(trimmed) || isColorValue(trimmed)) {
       return {
         ...base,
-        background: `linear-gradient(180deg, rgba(6, 10, 25, 0.62) 0%, rgba(6, 10, 25, 0.64) 35%, rgba(6, 10, 25, 0.8) 100%), ${trimmed}`,
+        background: `linear-gradient(180deg, rgba(12, 23, 55, 0.5) 0%, rgba(12, 23, 55, 0.62) 100%), ${trimmed}`,
         backgroundImage: undefined,
       }
     }
 
     return {
       ...base,
-      backgroundImage: `linear-gradient(180deg, rgba(6, 10, 25, 0.82) 0%, rgba(6, 10, 25, 0.68) 100%), url(${trimmed})`,
+      backgroundImage: `linear-gradient(180deg, rgba(12, 23, 55, 0.62) 0%, rgba(12, 23, 55, 0.5) 100%), url(${trimmed})`,
     }
   },
   conversationHeader: {
@@ -6127,7 +6128,20 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           roomSummary: patchedRoomState,
         })
         setViewer(user)
-        setSelectedHero((snapshot.heroes && snapshot.heroes[0]?.id) || null)
+        const heroList = Array.isArray(snapshot?.heroes) ? snapshot.heroes : []
+        const matchHeroId = (candidate) => {
+          const normalized = normalizeId(candidate)
+          if (!normalized) return null
+          const hero = heroList.find((item) => normalizeId(item?.id) === normalized)
+          return hero ? hero.id : null
+        }
+        const storedSelection = readHeroSelection()
+        const storedHeroId = storedSelection
+          ? matchHeroId(storedSelection.heroId || storedSelection.hero_id || storedSelection.id)
+          : null
+        const viewerHeroId = matchHeroId(snapshot?.viewer?.hero_id || snapshot?.viewerHeroId)
+        const fallbackHeroId = heroList[0]?.id || null
+        setSelectedHero(storedHeroId || viewerHeroId || fallbackHeroId)
         setRooms(patchedRoomState)
         syncUnreadFromCollections(patchedRoomState, { replace: true })
       } catch (error) {

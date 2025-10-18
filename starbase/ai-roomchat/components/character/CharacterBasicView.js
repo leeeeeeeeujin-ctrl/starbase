@@ -96,21 +96,21 @@ const SEARCH_TAB_INDEX = overlayTabs.findIndex((tab) => tab.key === 'search')
 const styles = {
   stage: {
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 480,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 18,
+    gap: 16,
   },
   heroCardShell: {
     width: '100%',
-    maxWidth: 460,
+    maxWidth: 420,
     position: 'relative',
   },
   heroCard: {
     position: 'relative',
     width: '100%',
-    paddingTop: '138%',
+    paddingTop: '124%',
     borderRadius: 30,
     overflow: 'hidden',
     border: '1px solid rgba(96,165,250,0.32)',

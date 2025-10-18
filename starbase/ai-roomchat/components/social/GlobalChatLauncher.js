@@ -7,7 +7,7 @@ import ChatOverlay from '@/components/social/ChatOverlay'
 const launcherStyles = {
   wrapper: {
     position: 'fixed',
-    top: 36,
+    top: 64,
     right: 20,
     zIndex: 1400,
     display: 'flex',
@@ -31,6 +31,8 @@ const launcherStyles = {
     fontWeight: 700,
     transition: 'all 0.2s ease',
     position: 'relative',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
   }),
   badge: {
     position: 'absolute',
