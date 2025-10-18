@@ -83,7 +83,6 @@ const pageStyles = {
 
 const overlayTabs = [
   { key: 'character', label: '캐릭터' },
-  { key: 'play', label: '플레이' },
   { key: 'search', label: '게임 검색' },
   { key: 'create', label: '게임 제작' },
   { key: 'register', label: '게임 등록' },
@@ -618,6 +617,33 @@ const styles = {
   playStatMeta: {
     margin: 0,
     fontSize: 12,
+    color: '#94a3b8',
+  },
+  playDetailsSection: {
+    width: '100%',
+    display: 'grid',
+    gap: 18,
+    padding: '20px 20px 22px',
+    borderRadius: 26,
+    border: '1px solid rgba(148,163,184,0.32)',
+    background: 'rgba(15,23,42,0.7)',
+    boxShadow: '0 36px 80px -60px rgba(15,23,42,0.9)',
+  },
+  playDetailsHeader: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  playDetailsTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+  },
+  playDetailsMeta: {
+    margin: 0,
+    fontSize: 13,
     color: '#94a3b8',
   },
   dock: {
@@ -1306,6 +1332,20 @@ export default function CharacterBasicView({ hero }) {
   )
 
   const currentRole = selectedEntry?.role || '슬롯 정보 없음'
+
+  const playDetailsMeta = useMemo(() => {
+    if (battleSummary?.total != null) {
+      const total = Number(battleSummary.total)
+      if (Number.isFinite(total)) {
+        return `${total.toLocaleString('ko-KR')}회 전투 기록`
+      }
+      return '전투 기록을 불러왔습니다.'
+    }
+    if (selectedGame?.name) {
+      return selectedGame.name
+    }
+    return '게임을 선택해 로그를 확인하세요.'
+  }, [battleSummary?.total, selectedGame?.name])
 
   const heroRank = useMemo(() => {
     if (!Array.isArray(selectedScoreboard) || !currentHero?.id) return null
@@ -2122,14 +2162,6 @@ export default function CharacterBasicView({ hero }) {
   )
 
   const overlayBody = (() => {
-    if (activeTabKey === 'play') {
-      return (
-        <div style={styles.tabContent}>
-          <CharacterPlayPanel hero={hero} playData={playPanelData} />
-        </div>
-      )
-    }
-
     if (activeTabKey === 'search') {
       return (
         <div style={styles.tabContent}>
@@ -2674,6 +2706,16 @@ export default function CharacterBasicView({ hero }) {
     </section>
   )
 
+  const playDetailsSection = (
+    <section style={styles.playDetailsSection}>
+      <div style={styles.playDetailsHeader}>
+        <h3 style={styles.playDetailsTitle}>게임 플레이 & 베틀 로그</h3>
+        <p style={styles.playDetailsMeta}>{playDetailsMeta}</p>
+      </div>
+      <CharacterPlayPanel hero={currentHero} playData={playPanelData} />
+    </section>
+  )
+
   const handleEnterGame = useCallback(
     (game, role) => {
       if (!game) return
@@ -3132,6 +3174,7 @@ export default function CharacterBasicView({ hero }) {
         {playSliderSection}
         {heroSlide}
         {playStatsSection}
+        {playDetailsSection}
       </div>
 
       <div style={styles.hudContainer}>

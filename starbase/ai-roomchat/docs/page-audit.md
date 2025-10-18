@@ -122,6 +122,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 - Supabase table helpers (`withTable`) abstract table name prefix differences across environments—most hooks and API routes rely on them for multi-tenant support.
 - `rank_audio_preferences`와 `rank_audio_events` 테이블이 추가돼 브금 프리셋 선택과 변경 로그가 Supabase에 저장되며, `GameRoomView`는 `withTable`을 통해 동일 스키마를 읽고/쓰기 합니다.【F:supabase.sql†L1-L120】【F:components/rank/GameRoomView.js†L780-L1160】
 - 로스터 화면의 공지·캐릭터·프로필 인터랙션에서 iOS 탭 하이라이트를 제거해 파란 번쩍임 없이도 터치 피드백이 매끄럽게 유지됩니다. 캐릭터 상세 페이지의 글로벌 채팅 런처는 조금 더 아래로 내려 시야를 가리지 않도록 하고, 영웅 카드의 최대 폭·비율을 축소해 주인공 이미지가 무대에 비해 덜 부담스럽게 자리 잡습니다. 채팅 오버레이 대화 영역은 배경 투명도를 높여 업로드한 이미지·색상이 또렷하게 보이며, 정보 탭 기본 선택 영웅은 최근 탐색한 캐릭터를 우선시합니다. 능력 단계는 여전히 1~4까지 개별로 노출되며 Supabase 스키마나 RPC는 변경되지 않았습니다.
+- 캐릭터 상세 페이지에서는 게임 통계 바로 아래에 플레이 매칭·베틀 로그 패널을 배치해 하단 오버레이 없이도 선택한 게임을 시작하고 10개 단위로 로그를 확장할 수 있으며, 하단 도크의 플레이 탭은 제거돼 관련 정보가 한 화면에서 이어집니다.
 - Several UI shells (create, roster, maker) defer most logic to component containers; reviewing those components is recommended for full domain context beyond this page-oriented audit.
 - Ensure environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, etc.) are set for server APIs like `finalize-session` to work outside local mocks.【F:pages/api/rank/finalize-session.js†L1-L8】
 
