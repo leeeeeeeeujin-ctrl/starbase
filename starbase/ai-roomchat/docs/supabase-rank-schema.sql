@@ -1083,6 +1083,7 @@ create table if not exists public.rank_match_queue (
   hero_id uuid references public.heroes(id) on delete set null,
   role text not null,
   score integer not null default 1000,
+  simulated boolean not null default false,
   party_key text,
   status text not null default 'waiting',
   joined_at timestamptz not null default now(),

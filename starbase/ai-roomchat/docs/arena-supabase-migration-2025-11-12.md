@@ -52,6 +52,10 @@ begin
   end if;
 end $$;
 
+-- Ensure queue rows expose the simulated stand-in flag used by the client overlay.
+alter table if exists public.rank_match_queue
+  add column if not exists simulated boolean not null default false;
+
 -- join_rank_queue
 create or replace function public.join_rank_queue(
   queue_id text,
