@@ -965,6 +965,7 @@ const styles = {
     width: '200%',
     height: '100%',
     transition: 'transform 220ms ease',
+    justifyItems: 'center',
   },
   infoSliderSlide: {
     boxSizing: 'border-box',
@@ -974,6 +975,16 @@ const styles = {
     alignContent: 'start',
     minHeight: '100%',
     overflowY: 'auto',
+  },
+  infoSliderPlaySlide: {
+    justifySelf: 'center',
+    width: '100%',
+    maxWidth: 280,
+  },
+  infoSliderInfoSlide: {
+    justifySelf: 'center',
+    width: '100%',
+    maxWidth: 448,
   },
   infoSliderIndicators: {
     display: 'flex',
@@ -3141,10 +3152,10 @@ export default function CharacterBasicView({ hero }) {
             onPointerDown={handleInfoSliderPointerDown}
             onPointerUp={handleInfoSliderPointerUp}
           >
-            <div style={styles.infoSliderSlide}>
+            <div style={{ ...styles.infoSliderSlide, ...styles.infoSliderPlaySlide }}>
               <CharacterPlayPanel hero={currentHero} playData={playPanelData} />
             </div>
-            <div style={styles.infoSliderSlide}>{heroInfoSlide}</div>
+            <div style={{ ...styles.infoSliderSlide, ...styles.infoSliderInfoSlide }}>{heroInfoSlide}</div>
           </div>
         </div>
         <div style={styles.infoSliderIndicators}>
