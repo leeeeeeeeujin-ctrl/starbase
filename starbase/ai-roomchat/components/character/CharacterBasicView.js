@@ -18,7 +18,7 @@ import {
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
 const DEFAULT_DESCRIPTION =
-  '소개가 아직 준비되지 않았습니다. 이미지를 한 번 더 탭하면 능력을 볼 수 있어요.'
+  '소개가 아직 준비되지 않았습니다. 이미지를 한 번 더 탭하면 전투 통계를 확인할 수 있어요.'
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024
 const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024
@@ -83,7 +83,7 @@ const overlayTabs = [
 const styles = {
   stage: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 340,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -91,7 +91,7 @@ const styles = {
   },
   heroCardShell: {
     width: '100%',
-    maxWidth: 280,
+    maxWidth: 188,
     position: 'relative',
   },
   heroCard: {
@@ -150,7 +150,7 @@ const styles = {
     borderRadius: 999,
     background: 'rgba(15,23,42,0.72)',
     color: '#bae6fd',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 600,
     letterSpacing: 0.4,
     boxShadow: '0 18px 40px -32px rgba(15,23,42,0.9)',
@@ -159,8 +159,8 @@ const styles = {
     position: 'absolute',
     left: '10%',
     right: '10%',
-    top: '24%',
-    bottom: '20%',
+    top: '18%',
+    bottom: '14%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -180,7 +180,7 @@ const styles = {
   },
   overlayHeading: {
     margin: 0,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 800,
     letterSpacing: '-0.02em',
     color: '#e0f2fe',
@@ -195,6 +195,36 @@ const styles = {
     textShadow: '0 2px 12px rgba(15,23,42,0.72)',
     whiteSpace: 'pre-line',
     textAlign: 'center',
+  },
+  overlayStatsGrid: {
+    width: '100%',
+    display: 'grid',
+    gap: 12,
+  },
+  overlayStatsRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+    gap: 12,
+  },
+  overlayStatCard: {
+    borderRadius: 18,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.65)',
+    padding: 16,
+    display: 'grid',
+    gap: 6,
+    textAlign: 'center',
+  },
+  overlayStatLabel: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  overlayStatValue: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: '-0.01em',
   },
   cornerIcon: {
     position: 'absolute',
@@ -223,12 +253,6 @@ const styles = {
     gap: 14,
   },
   playCarouselHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  playCarouselHeaderLeft: {
     display: 'grid',
     gap: 4,
   },
@@ -242,39 +266,18 @@ const styles = {
     fontSize: 13,
     color: '#cbd5f5',
   },
-  playCarouselRole: {
-    margin: 0,
-    fontSize: 12,
-    color: '#94a3b8',
-  },
   playCarouselFrame: {
-    display: 'grid',
-    gridTemplateColumns: 'auto 1fr auto',
-    alignItems: 'stretch',
-    gap: 12,
-  },
-  playCarouselNavButton: (disabled) => ({
-    width: 42,
-    height: 120,
-    borderRadius: 18,
-    border: '1px solid rgba(148,163,184,0.35)',
-    background: disabled ? 'rgba(15,23,42,0.32)' : 'rgba(15,23,42,0.7)',
-    color: disabled ? 'rgba(148,163,184,0.45)' : '#f8fafc',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    fontSize: 24,
-    fontWeight: 700,
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'center',
-    transition: 'background 160ms ease, color 160ms ease',
-  }),
+  },
   playCarouselCard: {
     position: 'relative',
     borderRadius: 24,
     border: '1px solid rgba(148,163,184,0.38)',
     background: 'rgba(15,23,42,0.7)',
-    minHeight: 120,
-    padding: 18,
+    minHeight: 72,
+    padding: 16,
     overflow: 'hidden',
     display: 'grid',
     gap: 12,
@@ -298,18 +301,32 @@ const styles = {
     position: 'relative',
     zIndex: 1,
     display: 'grid',
-    gap: 10,
+    gap: 8,
   },
   playCarouselCardTitle: {
     margin: 0,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 800,
     lineHeight: 1.35,
   },
   playCarouselCardMeta: {
     margin: 0,
-    fontSize: 13,
+    fontSize: 12,
     color: '#cbd5f5',
+  },
+  playCarouselBadgeRow: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  playCarouselBadge: {
+    padding: '4px 10px',
+    borderRadius: 999,
+    border: '1px solid rgba(148,163,184,0.35)',
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#e2e8f0',
+    background: 'rgba(15,23,42,0.58)',
   },
   playCarouselHint: {
     margin: 0,
@@ -356,11 +373,11 @@ const styles = {
   },
   playDetailPanel: {
     display: 'grid',
-    gap: 16,
+    gap: 18,
     borderRadius: 26,
     border: '1px solid rgba(148,163,184,0.32)',
-    background: 'rgba(15,23,42,0.78)',
-    padding: 20,
+    background: 'rgba(15,23,42,0.86)',
+    padding: 22,
     boxShadow: '0 30px 90px -60px rgba(15,23,42,0.8)',
   },
   playDetailHeader: {
@@ -387,109 +404,36 @@ const styles = {
   playDetailBody: {
     display: 'grid',
     gap: 18,
-    gridTemplateColumns: 'minmax(0, 1fr)',
   },
-  playDetailColumns: {
-    display: 'grid',
-    gap: 18,
-    gridTemplateColumns: 'minmax(0, 220px) minmax(0, 1fr)',
-  },
-  gameListColumn: {
-    display: 'grid',
+  playRankingFilterRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
+    flexWrap: 'wrap',
   },
-  gameListHeader: {
-    margin: 0,
-    fontSize: 15,
-    fontWeight: 700,
-  },
-  gameList: {
-    display: 'grid',
-    gap: 10,
-    maxHeight: 220,
-    overflowY: 'auto',
-    paddingRight: 4,
-  },
-  gameListButton: (active) => ({
-    display: 'grid',
-    gap: 4,
-    padding: 14,
-    borderRadius: 18,
-    border: active ? '1px solid rgba(56,189,248,0.6)' : '1px solid rgba(148,163,184,0.28)',
-    background: active ? 'rgba(37, 99, 235, 0.22)' : 'rgba(15,23,42,0.65)',
-    color: '#f8fafc',
-    cursor: 'pointer',
-    textAlign: 'left',
-    transition: 'border 160ms ease, background 160ms ease',
-  }),
-  gameListName: {
-    margin: 0,
-    fontSize: 14,
-    fontWeight: 700,
-  },
-  gameListMeta: {
+  playRankingFilterLabel: {
     margin: 0,
     fontSize: 12,
     color: '#cbd5f5',
+    fontWeight: 600,
   },
-  playRankingColumn: {
-    display: 'grid',
-    gap: 16,
-  },
-  playRankingHeader: {
-    margin: 0,
-    fontSize: 15,
-    fontWeight: 700,
-  },
-  playRankingHighlight: {
-    position: 'relative',
-    borderRadius: 22,
-    overflow: 'hidden',
-    border: '1px solid rgba(96,165,250,0.32)',
-    background: 'linear-gradient(135deg, rgba(15,23,42,0.75) 0%, rgba(30,64,175,0.35) 100%)',
-    minHeight: 120,
-    display: 'grid',
-    gridTemplateColumns: '120px 1fr',
-    alignItems: 'stretch',
-  },
-  playRankingHighlightImage: {
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  playRankingHighlightImageInner: (url) => ({
-    position: 'absolute',
-    inset: 0,
-    backgroundImage: url
-      ? `linear-gradient(180deg, rgba(15,23,42,0.15) 0%, rgba(15,23,42,0.65) 100%), url(${url})`
-      : 'linear-gradient(180deg, rgba(15,23,42,0.2) 0%, rgba(15,23,42,0.65) 100%)',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-  }),
-  playRankingHighlightInfo: {
-    position: 'relative',
-    padding: 18,
-    display: 'grid',
-    gap: 6,
-  },
-  playRankingHighlightBadge: {
-    margin: 0,
-    fontSize: 12,
-    fontWeight: 700,
-    color: '#bae6fd',
-  },
-  playRankingHighlightName: {
-    margin: 0,
-    fontSize: 20,
-    fontWeight: 800,
-  },
-  playRankingHighlightMeta: {
-    margin: 0,
-    fontSize: 12,
-    color: '#cbd5f5',
+  playRankingFilterSelect: {
+    flex: '0 0 auto',
+    minWidth: 140,
+    padding: '8px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.65)',
+    color: '#e2e8f0',
+    fontSize: 13,
   },
   playRankingList: {
     display: 'grid',
     gap: 10,
+    maxHeight: 320,
+    overflowY: 'auto',
+    paddingRight: 4,
   },
   playRankingRow: {
     display: 'grid',
@@ -536,6 +480,11 @@ const styles = {
     border: '1px dashed rgba(148,163,184,0.35)',
     textAlign: 'center',
     color: '#cbd5f5',
+  },
+  playDetailHint: {
+    margin: 0,
+    fontSize: 12,
+    color: '#94a3b8',
   },
   playStatsSection: {
     width: '100%',
@@ -833,6 +782,50 @@ const styles = {
     margin: 0,
     fontSize: 13,
     color: '#e2e8f0',
+  },
+  infoSliderSection: {
+    display: 'grid',
+    gap: 12,
+  },
+  infoSliderShell: {
+    borderRadius: 26,
+    border: '1px solid rgba(94,234,212,0.22)',
+    background: 'rgba(15,23,42,0.7)',
+    overflow: 'hidden',
+    position: 'relative',
+    touchAction: 'pan-y',
+  },
+  infoSliderTrack: {
+    display: 'flex',
+    width: '200%',
+    transition: 'transform 220ms ease',
+  },
+  infoSliderSlide: {
+    flex: '0 0 100%',
+    boxSizing: 'border-box',
+    padding: 20,
+    display: 'grid',
+    gap: 16,
+  },
+  infoSliderIndicators: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  infoSliderIndicator: (active) => ({
+    width: active ? 28 : 12,
+    height: 10,
+    borderRadius: 999,
+    border: 'none',
+    background: active ? 'rgba(94,234,212,0.85)' : 'rgba(148,163,184,0.4)',
+    cursor: 'pointer',
+    transition: 'all 160ms ease',
+  }),
+  infoSliderHint: {
+    margin: 0,
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.75)',
+    textAlign: 'center',
   },
   hudContainer: {
     position: 'fixed',
@@ -1230,6 +1223,8 @@ export default function CharacterBasicView({ hero }) {
   const [playerCollapsed, setPlayerCollapsed] = useState(true)
   const [dockCollapsed, setDockCollapsed] = useState(true)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [rankingFilter, setRankingFilter] = useState('all')
+  const [infoPanelIndex, setInfoPanelIndex] = useState(0)
   const [selectedBgmName, setSelectedBgmName] = useState('')
   const [customBgmUrl, setCustomBgmUrl] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -1319,6 +1314,27 @@ export default function CharacterBasicView({ hero }) {
       }))
   }, [heroLookup, selectedScoreboard])
 
+  const rankingRoleOptions = useMemo(() => {
+    const options = [{ value: 'all', label: '전체' }]
+    const seen = new Set()
+    rankingRows.forEach((row) => {
+      const normalized = row.roleLabel && row.roleLabel.trim()
+      const key = normalized || '__none__'
+      if (seen.has(key)) return
+      seen.add(key)
+      options.push({ value: key, label: normalized || '역할 없음' })
+    })
+    return options
+  }, [rankingRows])
+
+  const filteredRankingRows = useMemo(() => {
+    if (rankingFilter === 'all') return rankingRows
+    if (rankingFilter === '__none__') {
+      return rankingRows.filter((row) => !row.roleLabel)
+    }
+    return rankingRows.filter((row) => row.roleLabel === rankingFilter)
+  }, [rankingFilter, rankingRows])
+
   const currentRole = selectedEntry?.role ? selectedEntry.role : null
 
   const selectedCarouselIndex = useMemo(() => {
@@ -1345,10 +1361,6 @@ export default function CharacterBasicView({ hero }) {
     if (selectedEntry?.sessionCount != null) return selectedEntry.sessionCount
     return null
   }, [battleSummary?.total, selectedEntry?.sessionCount])
-
-  const topRanking = rankingRows[0] || null
-  const canGoPrev = selectedCarouselIndex > 0
-  const canGoNext = carouselEntries.length > 0 && selectedCarouselIndex < carouselEntries.length - 1
 
   const formatParticipationMeta = useCallback((entry) => {
     if (!entry) return '참여 기록 없음'
@@ -1406,16 +1418,13 @@ export default function CharacterBasicView({ hero }) {
     [setSelectedGameId],
   )
 
-  const handleGameListSelect = useCallback(
-    (gameId) => {
-      if (!gameId) return
-      setSelectedGameId(gameId)
-    },
-    [setSelectedGameId],
-  )
-
   const handleDetailClose = useCallback(() => {
     setDetailOpen(false)
+  }, [])
+
+  const handleRankingFilterChange = useCallback((event) => {
+    const value = event?.target?.value ?? 'all'
+    setRankingFilter(value)
   }, [])
 
   const handleCarouselTouchStart = useCallback((event) => {
@@ -1464,6 +1473,51 @@ export default function CharacterBasicView({ hero }) {
     [handleNextGame, handlePrevGame],
   )
 
+  const handleInfoSliderTouchStart = useCallback((event) => {
+    if (!event.touches?.length) return
+    infoSliderTouchStartRef.current = event.touches[0].clientX
+  }, [])
+
+  const handleInfoSliderTouchEnd = useCallback(
+    (event) => {
+      if (!event.changedTouches?.length) return
+      const startX = infoSliderTouchStartRef.current
+      infoSliderTouchStartRef.current = null
+      if (typeof startX !== 'number') return
+      const delta = event.changedTouches[0].clientX - startX
+      if (Math.abs(delta) < 40) return
+      if (delta > 0) {
+        setInfoPanelIndex((prev) => Math.max(0, prev - 1))
+      } else {
+        setInfoPanelIndex((prev) => Math.min(1, prev + 1))
+      }
+    },
+    [],
+  )
+
+  const handleInfoSliderPointerDown = useCallback((event) => {
+    if (event.pointerType === 'mouse') return
+    infoSliderTouchStartRef.current = event.clientX
+  }, [])
+
+  const handleInfoSliderPointerUp = useCallback((event) => {
+    if (event.pointerType === 'mouse') return
+    const startX = infoSliderTouchStartRef.current
+    infoSliderTouchStartRef.current = null
+    if (typeof startX !== 'number') return
+    const delta = event.clientX - startX
+    if (Math.abs(delta) < 40) return
+    if (delta > 0) {
+      setInfoPanelIndex((prev) => Math.max(0, prev - 1))
+    } else {
+      setInfoPanelIndex((prev) => Math.min(1, prev + 1))
+    }
+  }, [])
+
+  const handleInfoIndicatorClick = useCallback((index) => {
+    setInfoPanelIndex(index)
+  }, [])
+
   const audioManager = useMemo(() => getHeroAudioManager(), [])
   const [audioState, setAudioState] = useState(() => audioManager.getState())
   const {
@@ -1488,6 +1542,7 @@ export default function CharacterBasicView({ hero }) {
   const backgroundObjectUrlRef = useRef(null)
   const lastLoadedHeroKeyRef = useRef(null)
   const carouselTouchStartRef = useRef(null)
+  const infoSliderTouchStartRef = useRef(null)
 
   useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
 
@@ -1566,6 +1621,7 @@ export default function CharacterBasicView({ hero }) {
     setSelectedBgmName('')
     setCustomBgmUrl(null)
     setIsEditing(false)
+    setInfoPanelIndex(0)
     setDraftHero(
       hero
         ? {
@@ -1611,6 +1667,16 @@ export default function CharacterBasicView({ hero }) {
       setDetailOpen(false)
     }
   }, [carouselEntries.length])
+
+  useEffect(() => {
+    setRankingFilter('all')
+  }, [selectedGameId])
+
+  useEffect(() => {
+    if (!detailOpen) {
+      setRankingFilter('all')
+    }
+  }, [detailOpen])
 
   useEffect(() => {
     if (previousCustomUrl.current && previousCustomUrl.current !== customBgmUrl) {
@@ -1680,17 +1746,7 @@ export default function CharacterBasicView({ hero }) {
     }
   }, [currentHero?.background_url])
 
-  const overlayModes = useMemo(() => {
-    const modes = ['name', 'description']
-    if (!abilityEntries.length) {
-      modes.push('ability-empty')
-    } else {
-      abilityEntries.forEach((_, index) => {
-        modes.push(`ability-${index}`)
-      })
-    }
-    return modes
-  }, [abilityEntries])
+  const overlayModes = useMemo(() => ['name', 'stats'], [])
 
   const currentOverlayMode = overlayModes[viewMode] || 'name'
 
@@ -2549,16 +2605,10 @@ export default function CharacterBasicView({ hero }) {
   const playSliderSection = (
     <section style={styles.playCarouselSection}>
       <div style={styles.playCarouselHeader}>
-        <div style={styles.playCarouselHeaderLeft}>
-          <h3 style={styles.playCarouselTitle}>참여한 게임</h3>
-          {selectedEntry?.game?.name ? (
-            <p style={styles.playCarouselSubtitle}>{selectedEntry.game.name}</p>
-          ) : !participationLoading && carouselEntries.length ? (
-            <p style={styles.playCarouselSubtitle}>{`총 ${carouselEntries.length.toLocaleString('ko-KR')}개 참여`}</p>
-          ) : null}
-          {currentRole ? <p style={styles.playCarouselRole}>{currentRole}</p> : null}
-        </div>
-        {heroRank ? <p style={styles.playCarouselRole}>{`현재 순위 ${heroRank}위`}</p> : null}
+        <h3 style={styles.playCarouselTitle}>참여한 게임</h3>
+        {!participationLoading && carouselEntries.length ? (
+          <p style={styles.playCarouselSubtitle}>{`총 ${carouselEntries.length.toLocaleString('ko-KR')}개 참여`}</p>
+        ) : null}
       </div>
       {participationLoading ? (
         <div style={styles.playSliderEmpty}>참여한 게임을 불러오는 중입니다…</div>
@@ -2582,15 +2632,6 @@ export default function CharacterBasicView({ hero }) {
           >
             <button
               type="button"
-              style={styles.playCarouselNavButton(!canGoPrev)}
-              onClick={handlePrevGame}
-              disabled={!canGoPrev}
-              aria-label="이전 게임 보기"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
               style={styles.playCarouselCard}
               onClick={() => handleCarouselCardClick(selectedEntry?.game_id)}
             >
@@ -2602,17 +2643,12 @@ export default function CharacterBasicView({ hero }) {
               <div style={styles.playCarouselContent}>
                 <h4 style={styles.playCarouselCardTitle}>{selectedEntry?.game?.name || '이름 없는 게임'}</h4>
                 <p style={styles.playCarouselCardMeta}>{formatParticipationMeta(selectedEntry)}</p>
-                <p style={styles.playCarouselHint}>탭해서 게임 목록과 랭킹 보기</p>
+                <div style={styles.playCarouselBadgeRow}>
+                  {currentRole ? <span style={styles.playCarouselBadge}>{currentRole}</span> : null}
+                  {heroRank ? <span style={styles.playCarouselBadge}>{`현재 순위 #${heroRank}`}</span> : null}
+                </div>
+                <p style={styles.playCarouselHint}>탭해서 랭킹 보기</p>
               </div>
-            </button>
-            <button
-              type="button"
-              style={styles.playCarouselNavButton(!canGoNext)}
-              onClick={handleNextGame}
-              disabled={!canGoNext}
-              aria-label="다음 게임 보기"
-            >
-              ›
             </button>
           </div>
           {carouselEntries.length > 1 ? (
@@ -2631,92 +2667,62 @@ export default function CharacterBasicView({ hero }) {
           {detailOpen && selectedEntry ? (
             <div style={styles.playDetailPanel}>
               <div style={styles.playDetailHeader}>
-                <h4 style={styles.playDetailTitle}>{selectedEntry.game?.name || '게임 정보'}</h4>
+                <h4 style={styles.playDetailTitle}>{selectedEntry.game?.name || '게임 랭킹'}</h4>
                 <button type="button" style={styles.playDetailClose} onClick={handleDetailClose}>
                   닫기
                 </button>
               </div>
               <div style={styles.playDetailBody}>
-                <div style={styles.playDetailColumns}>
-                  <div style={styles.gameListColumn}>
-                    <h5 style={styles.gameListHeader}>게임 목록</h5>
-                    <div style={styles.gameList}>
-                      {carouselEntries.map((entry) => {
-                        const active = entry.game_id === selectedGameId
-                        return (
-                          <button
-                            key={entry.game_id}
-                            type="button"
-                            style={styles.gameListButton(active)}
-                            onClick={() => handleGameListSelect(entry.game_id)}
-                          >
-                            <p style={styles.gameListName}>{entry.game?.name || '이름 없는 게임'}</p>
-                            <p style={styles.gameListMeta}>{formatParticipationMeta(entry)}</p>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                  <div style={styles.playRankingColumn}>
-                    <h5 style={styles.playRankingHeader}>랭킹</h5>
-                    {rankingRows.length ? (
-                      <>
-                        <div style={styles.playRankingHighlight}>
-                          <div style={styles.playRankingHighlightImage}>
-                            <div style={styles.playRankingHighlightImageInner(topRanking?.heroImage || null)} />
-                          </div>
-                          <div style={styles.playRankingHighlightInfo}>
-                            <p style={styles.playRankingHighlightBadge}>현재 1위</p>
-                            <p style={styles.playRankingHighlightName}>{topRanking?.heroName || '랭커 없음'}</p>
-                            <p style={styles.playRankingHighlightMeta}>
-                              {[
-                                topRanking?.roleLabel ? `역할 ${topRanking.roleLabel}` : null,
-                                topRanking?.value != null
-                                  ? `${topRanking.value.toLocaleString('ko-KR')} ${topRanking.valueLabel || ''}`.trim()
-                                  : null,
-                                topRanking?.battles != null ? `${topRanking.battles}전` : null,
-                              ]
-                                .filter(Boolean)
-                                .join(' · ') || '데이터 없음'}
-                            </p>
-                          </div>
-                        </div>
-                        <div style={styles.playRankingList}>
-                          {rankingRows.slice(0, 10).map((row) => {
-                            const highlight = row.heroId === currentHero?.id
-                            return (
-                              <div
-                                key={row.key}
-                                style={{
-                                  ...styles.playRankingRow,
-                                  background: highlight
-                                    ? 'rgba(56,189,248,0.22)'
-                                    : styles.playRankingRow.background,
-                                  border: highlight
-                                    ? '1px solid rgba(56,189,248,0.55)'
-                                    : styles.playRankingRow.border,
-                                }}
-                              >
-                                <span style={styles.playRankingIndex}>{row.rank}</span>
-                                <div style={styles.playRankingHeroInfo}>
-                                  <p style={styles.playRankingHeroName}>{row.heroName}</p>
-                                  <p style={styles.playRankingHeroRole}>{row.roleLabel || '—'}</p>
-                                </div>
-                                <p style={styles.playRankingScore}>
-                                  {row.value != null
-                                    ? `${row.value.toLocaleString('ko-KR')} ${row.valueLabel || ''}`.trim()
-                                    : '—'}
-                                </p>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </>
-                    ) : (
-                      <div style={styles.playRankingEmpty}>선택한 게임의 랭킹 데이터가 없습니다.</div>
-                    )}
-                  </div>
+                <div style={styles.playRankingFilterRow}>
+                  <p style={styles.playRankingFilterLabel}>역할 필터</p>
+                  <select
+                    style={styles.playRankingFilterSelect}
+                    value={rankingFilter}
+                    onChange={handleRankingFilterChange}
+                    disabled={rankingRoleOptions.length <= 1}
+                  >
+                    {rankingRoleOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+                {filteredRankingRows.length ? (
+                  <div style={styles.playRankingList}>
+                    {filteredRankingRows.map((row) => {
+                      const highlight = row.heroId === currentHero?.id
+                      return (
+                        <div
+                          key={row.key}
+                          style={{
+                            ...styles.playRankingRow,
+                            background: highlight
+                              ? 'rgba(56,189,248,0.22)'
+                              : styles.playRankingRow.background,
+                            border: highlight
+                              ? '1px solid rgba(56,189,248,0.55)'
+                              : styles.playRankingRow.border,
+                          }}
+                        >
+                          <span style={styles.playRankingIndex}>{row.rank}</span>
+                          <div style={styles.playRankingHeroInfo}>
+                            <p style={styles.playRankingHeroName}>{row.heroName}</p>
+                            <p style={styles.playRankingHeroRole}>{row.roleLabel || '역할 없음'}</p>
+                          </div>
+                          <p style={styles.playRankingScore}>
+                            {row.value != null
+                              ? `${row.value.toLocaleString('ko-KR')} ${row.valueLabel || ''}`.trim()
+                              : '—'}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div style={styles.playRankingEmpty}>선택한 조건의 랭킹 데이터가 없습니다.</div>
+                )}
+                <p style={styles.playDetailHint}>역할 전체 · 역할군별 랭킹을 전환하려면 드롭다운을 변경하세요.</p>
               </div>
             </div>
           ) : null}
@@ -2758,9 +2764,53 @@ export default function CharacterBasicView({ hero }) {
     </section>
   )
 
+  const heroInfoSlide = (
+    <div style={styles.infoBlock}>
+      <p style={styles.infoTitle}>{heroName}</p>
+      <p style={styles.infoText}>{description}</p>
+      {abilityEntries.map((entry) => (
+        <div key={entry.label}>
+          <p style={{ ...styles.infoTitle, marginTop: 12 }}>{entry.label}</p>
+          <p style={styles.infoText}>{entry.description}</p>
+        </div>
+      ))}
+      {!abilityEntries.length ? <p style={styles.listMeta}>등록된 능력이 없습니다.</p> : null}
+    </div>
+  )
+
   const playDetailsSection = (
     <section style={styles.playDetailsSection}>
-      <CharacterPlayPanel hero={currentHero} playData={playPanelData} />
+      <div style={styles.infoSliderSection}>
+        <div style={styles.infoSliderShell}>
+          <div
+            style={{
+              ...styles.infoSliderTrack,
+              transform: `translateX(-${infoPanelIndex * 100}%)`,
+            }}
+            onTouchStart={handleInfoSliderTouchStart}
+            onTouchEnd={handleInfoSliderTouchEnd}
+            onPointerDown={handleInfoSliderPointerDown}
+            onPointerUp={handleInfoSliderPointerUp}
+          >
+            <div style={styles.infoSliderSlide}>
+              <CharacterPlayPanel hero={currentHero} playData={playPanelData} />
+            </div>
+            <div style={styles.infoSliderSlide}>{heroInfoSlide}</div>
+          </div>
+        </div>
+        <div style={styles.infoSliderIndicators}>
+          {[0, 1].map((index) => (
+            <button
+              key={`info-indicator-${index}`}
+              type="button"
+              style={styles.infoSliderIndicator(infoPanelIndex === index)}
+              onClick={() => handleInfoIndicatorClick(index)}
+              aria-label={index === 0 ? '게임 시작 패널 보기' : '캐릭터 정보 보기'}
+            />
+          ))}
+        </div>
+        <p style={styles.infoSliderHint}>옆으로 밀어 게임 패널과 캐릭터 정보를 전환하세요.</p>
+      </div>
     </section>
   )
 
@@ -2876,47 +2926,34 @@ export default function CharacterBasicView({ hero }) {
           </div>
         ) : null}
 
-        {currentOverlayMode === 'description' ? (
+        {currentOverlayMode === 'stats' ? (
           <div style={styles.overlaySurface}>
             <div style={styles.overlayContent}>
-              <p style={styles.overlayHeading}>설명</p>
-              <p style={styles.overlayTextBlock}>{description}</p>
-            </div>
-          </div>
-        ) : null}
-
-        {currentOverlayMode.startsWith('ability-') ? (
-          <div style={styles.overlaySurface}>
-            {(() => {
-              const index = Number.parseInt(currentOverlayMode.split('-')[1] || '0', 10)
-              const entry = abilityEntries[index]
-              if (!entry) {
-                return (
-                  <div style={styles.overlayContent}>
-                    <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
+              <p style={styles.overlayHeading}>전투 통계</p>
+              <div style={styles.overlayStatsGrid}>
+                <div style={styles.overlayStatsRow}>
+                  <div style={styles.overlayStatCard}>
+                    <p style={styles.overlayStatLabel}>전체 승률</p>
+                    <p style={styles.overlayStatValue}>{formatPlayWinRate(battleSummary)}</p>
                   </div>
-                )
-              }
-              return (
-                <div key={entry.label} style={styles.overlayContent}>
-                  <p style={styles.overlayHeading}>{entry.label}</p>
-                  <p style={styles.overlayTextBlock}>{entry.description}</p>
+                  <div style={styles.overlayStatCard}>
+                    <p style={styles.overlayStatLabel}>전체 전투 수</p>
+                    <p style={styles.overlayStatValue}>
+                      {matchCount != null ? formatPlayNumber(matchCount) : '—'}
+                    </p>
+                  </div>
+                  <div style={styles.overlayStatCard}>
+                    <p style={styles.overlayStatLabel}>현재 최고 랭킹</p>
+                    <p style={styles.overlayStatValue}>{heroRank ? `#${heroRank}` : '—'}</p>
+                  </div>
                 </div>
-              )
-            })()}
-          </div>
-        ) : null}
-
-        {currentOverlayMode === 'ability-empty' ? (
-          <div style={styles.overlaySurface}>
-            <div style={styles.overlayContent}>
-              <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
+              </div>
             </div>
           </div>
         ) : null}
 
         <div style={styles.tapHint} aria-hidden="true">
-          탭해서 정보 보기
+          {currentOverlayMode === 'name' ? '탭해서 통계 보기' : '탭해서 카드 보기'}
         </div>
       </div>
     </div>
