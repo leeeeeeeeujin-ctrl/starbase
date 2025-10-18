@@ -2,9 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useRouter } from 'next/router'
 
+import { supabase } from '@/lib/supabase'
 import { ensureRpc } from '@/modules/arena/rpcClient'
 import { createQueueRealtimeWatcher } from '@/modules/arena/matchQueueFlow'
+import {
+  hydrateGameMatchData,
+  setGameMatchParticipation,
+  setGameMatchSessionHistory,
+  setGameMatchSessionMeta,
+  setGameMatchSlotTemplate,
+  setGameMatchSnapshot,
+} from '@/modules/rank/matchDataStore'
+import { loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync'
+import { readActiveSession, subscribeActiveSession } from '@/lib/rank/activeSessionStorage'
 import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes'
 import { formatPlayNumber } from '@/utils/characterPlayFormatting'
 
@@ -107,6 +119,41 @@ const panelStyles = {
     opacity: 0.4,
     cursor: 'not-allowed',
     boxShadow: 'none',
+  },
+  lockedNotice: {
+    marginTop: 12,
+    padding: '12px 14px',
+    borderRadius: 14,
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.72)',
+    display: 'grid',
+    gap: 8,
+  },
+  lockedText: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#f8fafc',
+  },
+  lockedGame: {
+    margin: 0,
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.9)',
+  },
+  lockedActions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  lockedButton: {
+    padding: '8px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.85)',
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
   },
   statsGrid: {
     display: 'grid',
@@ -367,6 +414,19 @@ const overlayStyles = {
   },
 }
 
+const SESSION_ENDED_STATUSES = new Set([
+  'complete',
+  'completed',
+  'finished',
+  'defeated',
+  'retired',
+  'abandoned',
+  'cancelled',
+  'canceled',
+  'closed',
+  'ended',
+])
+
 function MatchingOverlay({
   open,
   heroName,
@@ -599,6 +659,8 @@ function normalizeQueueTicket(row) {
 
 export default function CharacterPlayPanel({ hero, playData }) {
 
+  const router = useRouter()
+
   const {
     selectedEntry = null,
     selectedGame = null,
@@ -611,6 +673,62 @@ export default function CharacterPlayPanel({ hero, playData }) {
     showMoreBattles = () => {},
     refreshParticipations = () => {},
   } = playData || {}
+
+  const [activeSession, setActiveSession] = useState(() => readActiveSession())
+
+  useEffect(() => {
+    const unsubscribe = subscribeActiveSession((payload) => {
+      setActiveSession(payload)
+    })
+    setActiveSession(readActiveSession())
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
+
+  const activeSessionInfo = useMemo(() => {
+    if (!activeSession || typeof activeSession !== 'object') {
+      return null
+    }
+    const statusRaw =
+      typeof activeSession.status === 'string' ? activeSession.status.trim().toLowerCase() : ''
+    const gameIdValue = activeSession.gameId || activeSession.game_id || null
+    const sessionIdValue = activeSession.sessionId || activeSession.session_id || null
+    const hrefValue = typeof activeSession.href === 'string' ? activeSession.href : null
+    const nameValue = typeof activeSession.gameName === 'string' ? activeSession.gameName : ''
+    return {
+      status: statusRaw,
+      rawStatus: activeSession.status || '',
+      gameId: gameIdValue ? String(gameIdValue) : null,
+      sessionId: sessionIdValue ? String(sessionIdValue) : null,
+      gameName: nameValue,
+      href: hrefValue,
+    }
+  }, [activeSession])
+
+  const hasBlockingActiveSession = useMemo(() => {
+    if (!activeSessionInfo) return false
+    if (!activeSessionInfo.status) return true
+    return !SESSION_ENDED_STATUSES.has(activeSessionInfo.status)
+  }, [activeSessionInfo])
+
+  const activeSessionBlockMessage = useMemo(() => {
+    if (!hasBlockingActiveSession) return ''
+    const base = activeSessionInfo?.gameName
+      ? `${activeSessionInfo.gameName} 전투가 진행 중입니다.`
+      : '진행 중인 전투가 있습니다.'
+    return `${base} 현재 전투를 마친 후 다시 시도해 주세요.`
+  }, [activeSessionInfo?.gameName, hasBlockingActiveSession])
+
+  const handleResumeActiveSession = useCallback(() => {
+    if (activeSessionInfo?.href) {
+      router.push(activeSessionInfo.href)
+      return
+    }
+    if (activeSessionInfo?.gameId) {
+      router.push(`/rank/${activeSessionInfo.gameId}/start`)
+    }
+  }, [activeSessionInfo, router])
 
   const [matchingState, setMatchingState] = useState({
     open: false,
@@ -630,6 +748,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
   const queueRealtimeRef = useRef(null)
   const queuePollAttemptsRef = useRef(0)
   const stagingInProgressRef = useRef(false)
+  const autoLaunchRef = useRef(false)
+  const proceedInFlightRef = useRef(false)
   const latestTicketRef = useRef(null)
   const debugEntriesRef = useRef([])
   const debugIndexRef = useRef(0)
@@ -658,6 +778,105 @@ export default function CharacterPlayPanel({ hero, playData }) {
     debugEntriesRef.current = []
     setDebugEntries([])
   }, [])
+
+  const applyMatchSnapshot = useCallback((gameId, payload) => {
+    if (!gameId) return null
+    hydrateGameMatchData(gameId)
+    if (payload && typeof payload === 'object') {
+      const {
+        roster,
+        participantPool,
+        heroOptions,
+        heroMap,
+        realtimeMode,
+        hostOwnerId,
+        hostRoleLimit,
+        slotTemplate,
+        matchSnapshot,
+        sessionMeta,
+        sessionHistory,
+      } = payload
+
+      if (roster || participantPool || heroOptions || heroMap) {
+        setGameMatchParticipation(gameId, {
+          roster: roster || [],
+          participantPool: participantPool || [],
+          heroOptions: heroOptions || [],
+          heroMap: heroMap || null,
+          realtimeMode: realtimeMode ?? payload.mode ?? null,
+          hostOwnerId: hostOwnerId ?? null,
+          hostRoleLimit: hostRoleLimit ?? null,
+        })
+      }
+
+      if (slotTemplate) {
+        setGameMatchSlotTemplate(gameId, slotTemplate)
+      }
+
+      if (matchSnapshot) {
+        setGameMatchSnapshot(gameId, matchSnapshot)
+      }
+
+      if (sessionMeta !== undefined) {
+        setGameMatchSessionMeta(gameId, sessionMeta || null)
+      }
+
+      if (sessionHistory !== undefined) {
+        setGameMatchSessionHistory(gameId, sessionHistory || null)
+      }
+    }
+
+    return payload || null
+  }, [])
+
+  const fetchAndStoreMatchSnapshot = useCallback(
+    async (gameId, { attempts = 3, delayMs = 500 } = {}) => {
+      if (!gameId) {
+        throw new Error('게임 정보를 찾을 수 없습니다.')
+      }
+
+      let snapshot = null
+      let lastError = null
+
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        appendDebug('overlay:snapshot-attempt', { attempt: attempt + 1 })
+        try {
+          const payload = await loadMatchFlowSnapshot(supabase, gameId)
+          if (payload) {
+            snapshot = payload
+            applyMatchSnapshot(gameId, payload)
+            if (payload.sessionId || payload.session?.id) {
+              return payload
+            }
+          } else {
+            applyMatchSnapshot(gameId, null)
+          }
+          lastError = null
+        } catch (error) {
+          lastError = error
+          appendDebug('overlay:snapshot-error', {
+            attempt: attempt + 1,
+            error: error?.message || String(error),
+          })
+        }
+
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs))
+        }
+      }
+
+      if (snapshot) {
+        return snapshot
+      }
+
+      if (lastError) {
+        throw lastError
+      }
+
+      throw new Error('전투 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
+    },
+    [appendDebug, applyMatchSnapshot],
+  )
 
   const heroName = useMemo(() => {
     const raw = hero?.name
@@ -982,6 +1201,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
   const resetMatchingState = useCallback(() => {
     clearQueueWatch()
     latestTicketRef.current = null
+    autoLaunchRef.current = false
+    proceedInFlightRef.current = false
     setMatchingState({
       open: false,
       phase: 'idle',
@@ -1020,10 +1241,104 @@ export default function CharacterPlayPanel({ hero, playData }) {
 
   useEffect(() => () => clearQueueWatch(), [clearQueueWatch])
 
-  const handleProceedMatching = useCallback(() => {
+  const handleProceedMatching = useCallback(async () => {
     appendDebug('overlay:confirm', { phase: matchingState.phase })
-    resetMatchingState()
-  }, [appendDebug, matchingState.phase, resetMatchingState])
+
+    if (matchingState.phase !== 'ready') {
+      resetMatchingState()
+      return
+    }
+
+    if (matchingState.queueMode !== 'realtime') {
+      resetMatchingState()
+      return
+    }
+
+    if (!selectedGameId) {
+      setMatchingState((prev) => ({
+        ...prev,
+        open: true,
+        phase: 'error',
+        progress: 0,
+        message: '',
+        error: '게임 정보를 찾을 수 없습니다. 다시 시도해 주세요.',
+      }))
+      return
+    }
+
+    if (proceedInFlightRef.current) {
+      appendDebug('overlay:launch-skipped', { reason: 'in-flight' })
+      return
+    }
+
+    proceedInFlightRef.current = true
+
+    setMatchingState((prev) => ({
+      ...prev,
+      message: '전투 화면으로 이동 중…',
+      error: '',
+    }))
+
+    try {
+      const snapshot = await fetchAndStoreMatchSnapshot(selectedGameId)
+      const sessionId =
+        matchingState.sessionId || snapshot?.sessionId || snapshot?.session?.id || null
+
+      appendDebug('overlay:launch-success', {
+        gameId: selectedGameId,
+        sessionId,
+      })
+
+      resetMatchingState()
+
+      const query = sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''
+      router.push(`/rank/${selectedGameId}/start${query}`)
+    } catch (error) {
+      const friendly =
+        error?.message || '전투 화면을 여는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+      appendDebug('overlay:launch-error', { error: friendly })
+      setMatchingState((prev) => ({
+        ...prev,
+        open: true,
+        phase: 'error',
+        progress: 0,
+        message: '',
+        error: friendly,
+      }))
+    } finally {
+      proceedInFlightRef.current = false
+    }
+  }, [
+    appendDebug,
+    fetchAndStoreMatchSnapshot,
+    matchingState.phase,
+    matchingState.queueMode,
+    matchingState.sessionId,
+    resetMatchingState,
+    router,
+    selectedGameId,
+  ])
+
+  useEffect(() => {
+    if (!matchingState.open) {
+      autoLaunchRef.current = false
+      return
+    }
+    if (matchingState.phase !== 'ready') return
+    if (matchingState.queueMode !== 'realtime') return
+    if (proceedInFlightRef.current) return
+    if (autoLaunchRef.current) return
+
+    autoLaunchRef.current = true
+
+    const timer = setTimeout(() => {
+      handleProceedMatching()
+    }, 900)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [handleProceedMatching, matchingState.open, matchingState.phase, matchingState.queueMode])
 
   const runAsyncMatchFlow = useCallback(async (hostPayload = null) => {
     if (!selectedGameId) {
@@ -1068,6 +1383,29 @@ export default function CharacterPlayPanel({ hero, playData }) {
   }, [appendDebug, selectedGameId])
 
   const runAutoMatch = useCallback(async () => {
+    if (hasBlockingActiveSession) {
+      appendDebug('queue:block-active-session', {
+        status: activeSessionInfo?.rawStatus || null,
+        gameId: activeSessionInfo?.gameId || null,
+      })
+      setMatchingState((prev) => ({
+        ...prev,
+        open: true,
+        phase: 'error',
+        progress: 0,
+        message: '',
+        error:
+          activeSessionBlockMessage ||
+          '진행 중인 전투가 있어 새로운 매칭을 시작할 수 없습니다. 현재 전투를 마친 뒤 다시 시도해 주세요.',
+        ticketId: null,
+        ticketStatus: null,
+        sessionId: null,
+        readyExpiresAt: null,
+        matchCode: null,
+      }))
+      return
+    }
+
     if (!selectedGameId) {
       if (typeof window !== 'undefined') {
         window.alert('먼저 게임을 선택하세요.')
@@ -1345,6 +1683,9 @@ export default function CharacterPlayPanel({ hero, playData }) {
     startQueueRealtime,
     runAsyncMatchFlow,
     refreshParticipations,
+    hasBlockingActiveSession,
+    activeSessionInfo,
+    activeSessionBlockMessage,
   ])
 
   const visibleBattleRows = useMemo(
@@ -1355,6 +1696,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
   const isMatchingBusy =
     matchingState.open &&
     ['queue', 'awaiting-room', 'staging', 'sampling', 'assembling'].includes(matchingState.phase)
+
+  const startButtonDisabled = !selectedGameId || isMatchingBusy || hasBlockingActiveSession
 
   const startButton = (
     <section style={panelStyles.section}>
@@ -1367,13 +1710,26 @@ export default function CharacterPlayPanel({ hero, playData }) {
         type="button"
         style={{
           ...panelStyles.buttonPrimary,
-          ...(!selectedGameId || isMatchingBusy ? panelStyles.buttonDisabled : {}),
+          ...(startButtonDisabled ? panelStyles.buttonDisabled : {}),
         }}
-        onClick={!selectedGameId || isMatchingBusy ? undefined : runAutoMatch}
-        disabled={!selectedGameId || isMatchingBusy}
+        onClick={startButtonDisabled ? undefined : runAutoMatch}
+        disabled={startButtonDisabled}
       >
         게임 시작
       </button>
+      {hasBlockingActiveSession ? (
+        <div style={panelStyles.lockedNotice}>
+          <p style={panelStyles.lockedText}>{activeSessionBlockMessage}</p>
+          {activeSessionInfo?.gameName ? (
+            <p style={panelStyles.lockedGame}>현재 전투: {activeSessionInfo.gameName}</p>
+          ) : null}
+          <div style={panelStyles.lockedActions}>
+            <button type="button" style={panelStyles.lockedButton} onClick={handleResumeActiveSession}>
+              전투로 이동
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 
