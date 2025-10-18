@@ -7,7 +7,7 @@ import ChatOverlay from '@/components/social/ChatOverlay'
 const launcherStyles = {
   wrapper: {
     position: 'fixed',
-    top: 64,
+    top: 36,
     right: 20,
     zIndex: 1400,
     display: 'flex',

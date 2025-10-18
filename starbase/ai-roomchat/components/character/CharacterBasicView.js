@@ -11,7 +11,7 @@ import { sanitizeFileName } from '@/utils/characterAssets'
 import CharacterPlayPanel from './CharacterPlayPanel'
 import useHeroParticipations from '@/hooks/character/useHeroParticipations'
 import useHeroBattles from '@/hooks/character/useHeroBattles'
-import { formatPlayNumber, formatPlayWinRate } from '@/utils/characterPlayFormatting'
+import { formatPlayNumber, formatPlayWinRate, formatWinRateValue } from '@/utils/characterPlayFormatting'
 import {
   clearSharedBackgroundUrl,
   writeSharedBackgroundUrl,
@@ -876,6 +876,12 @@ const styles = {
     flexDirection: 'column',
     gap: 12,
     pointerEvents: 'auto',
+    transition: 'background 180ms ease, border-color 180ms ease, opacity 180ms ease',
+  },
+  playerShellCollapsed: {
+    background: 'rgba(8,47,73,0.32)',
+    border: '1px solid rgba(45,212,191,0.22)',
+    opacity: 0.55,
   },
   playerHeader: {
     display: 'flex',
@@ -901,10 +907,17 @@ const styles = {
     fontSize: 14,
     fontWeight: 700,
   },
+  collapseButtonCollapsed: {
+    background: 'rgba(15,23,42,0.4)',
+    color: '#7dd3fc',
+  },
   playerTitle: {
     fontSize: 13,
     fontWeight: 600,
     color: '#e0f2fe',
+  },
+  playerTitleCollapsed: {
+    color: 'rgba(148,163,184,0.68)',
   },
   progressBar: {
     position: 'relative',
@@ -965,7 +978,7 @@ const styles = {
     width: '200%',
     height: '100%',
     transition: 'transform 220ms ease',
-    justifyItems: 'center',
+    justifyItems: 'start',
   },
   infoSliderSlide: {
     boxSizing: 'border-box',
@@ -975,21 +988,25 @@ const styles = {
     alignContent: 'start',
     minHeight: '100%',
     overflowY: 'auto',
+    justifyItems: 'start',
   },
   infoSliderPlaySlide: {
-    justifySelf: 'center',
+    justifySelf: 'start',
     width: '100%',
     maxWidth: 280,
+    margin: '0 auto 0 0',
   },
   infoSliderInfoSlide: {
-    justifySelf: 'center',
+    justifySelf: 'start',
     width: '100%',
     maxWidth: 448,
+    margin: '0 auto 0 0',
   },
   infoSliderIndicators: {
     display: 'flex',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     gap: 8,
+    paddingLeft: 4,
   },
   infoSliderIndicator: (active) => ({
     width: active ? 28 : 12,
@@ -1004,7 +1021,7 @@ const styles = {
     margin: 0,
     fontSize: 12,
     color: 'rgba(148,163,184,0.75)',
-    textAlign: 'center',
+    textAlign: 'left',
   },
   hudContainer: {
     position: 'fixed',
@@ -1610,6 +1627,9 @@ export default function CharacterBasicView({ hero }) {
     progress,
     duration,
     volume: bgmVolume,
+    speedEnabled,
+    speed,
+    pitchEnabled,
     pitch,
     eqEnabled,
     equalizer,
@@ -1739,6 +1759,77 @@ export default function CharacterBasicView({ hero }) {
     if (selectedEntry?.sessionCount != null) return selectedEntry.sessionCount
     return null
   }, [battleSummary, selectedEntry])
+
+  const overallHeroStats = useMemo(() => {
+    if (!currentHero?.id || !scoreboardMap) {
+      return {
+        bestRank: null,
+        bestScore: null,
+        averageWinRate: null,
+        totalBattles: null,
+      }
+    }
+
+    let bestRank = null
+    let bestScore = null
+    let totalBattles = 0
+    let winRateSum = 0
+    let winRateSamples = 0
+    let eligibleGames = 0
+
+    const rowsByGame = Object.values(scoreboardMap)
+
+    const resolveValue = (row) => {
+      if (row?.score != null && Number.isFinite(Number(row.score))) return Number(row.score)
+      if (row?.rating != null && Number.isFinite(Number(row.rating))) return Number(row.rating)
+      if (row?.battles != null && Number.isFinite(Number(row.battles))) return Number(row.battles)
+      return Number.NEGATIVE_INFINITY
+    }
+
+    rowsByGame.forEach((rows) => {
+      if (!Array.isArray(rows) || rows.length < 10) return
+      const sorted = [...rows].sort((a, b) => {
+        const valueDiff = resolveValue(b) - resolveValue(a)
+        if (valueDiff !== 0) return valueDiff
+        const battleDiff = (b?.battles ?? -Infinity) - (a?.battles ?? -Infinity)
+        if (battleDiff !== 0) return battleDiff
+        const left = typeof a?.role === 'string' ? a.role : ''
+        const right = typeof b?.role === 'string' ? b.role : ''
+        return left.localeCompare(right)
+      })
+      const heroIndex = sorted.findIndex((row) => row?.hero_id === currentHero.id)
+      if (heroIndex < 0) return
+
+      eligibleGames += 1
+      const heroRow = sorted[heroIndex]
+      const rankValue = heroIndex + 1
+      bestRank = bestRank == null ? rankValue : Math.min(bestRank, rankValue)
+
+      const scoreValue = Number.isFinite(Number(heroRow?.score)) ? Number(heroRow.score) : null
+      if (scoreValue != null) {
+        bestScore = bestScore == null ? scoreValue : Math.max(bestScore, scoreValue)
+      }
+
+      const battlesValue = Number.isFinite(Number(heroRow?.battles)) ? Number(heroRow.battles) : null
+      if (battlesValue != null) {
+        totalBattles += battlesValue
+      }
+
+      const winRateRaw = Number.isFinite(Number(heroRow?.win_rate)) ? Number(heroRow.win_rate) : null
+      if (winRateRaw != null) {
+        const normalized = winRateRaw <= 1 ? winRateRaw * 100 : winRateRaw
+        winRateSum += normalized
+        winRateSamples += 1
+      }
+    })
+
+    return {
+      bestRank,
+      bestScore,
+      averageWinRate: winRateSamples ? winRateSum / winRateSamples : null,
+      totalBattles: eligibleGames ? totalBattles : null,
+    }
+  }, [currentHero?.id, scoreboardMap])
 
   const formatParticipationMeta = useCallback((entry) => {
     if (!entry) return '참여 기록 없음'
@@ -1947,6 +2038,15 @@ export default function CharacterBasicView({ hero }) {
           high: Number.isFinite(parsed.equalizer.high) ? parsed.equalizer.high : undefined,
         })
       }
+      if (typeof parsed.speedEnabled === 'boolean') {
+        audioManager.setSpeedEnabled(parsed.speedEnabled)
+      }
+      if (Number.isFinite(parsed.speed)) {
+        audioManager.setSpeed(parsed.speed)
+      }
+      if (typeof parsed.pitchEnabled === 'boolean') {
+        audioManager.setPitchEnabled(parsed.pitchEnabled)
+      }
       if (Number.isFinite(parsed.pitch)) {
         audioManager.setPitch(parsed.pitch)
       }
@@ -1981,6 +2081,9 @@ export default function CharacterBasicView({ hero }) {
 
   useEffect(() => {
     const payload = {
+      speedEnabled: audioState.speedEnabled,
+      speed: audioState.speed,
+      pitchEnabled: audioState.pitchEnabled,
       eqEnabled: audioState.eqEnabled,
       equalizer: audioState.equalizer,
       pitch: audioState.pitch,
@@ -1992,9 +2095,12 @@ export default function CharacterBasicView({ hero }) {
     writeCookie(AUDIO_SETTINGS_COOKIE, JSON.stringify(payload))
   }, [
     audioState.eqEnabled,
+    audioState.speedEnabled,
+    audioState.speed,
     audioState.equalizer.low,
     audioState.equalizer.mid,
     audioState.equalizer.high,
+    audioState.pitchEnabled,
     audioState.pitch,
     audioState.reverbEnabled,
     audioState.reverbDetail.mix,
@@ -2671,19 +2777,62 @@ export default function CharacterBasicView({ hero }) {
               />
             </div>
 
-            <div style={styles.sliderRow}>
-              <label style={styles.sliderLabel}>
-                피치
-                <span>{`${pitch.toFixed(2)}x`}</span>
-              </label>
-              <input
-                type="range"
-                min={50}
-                max={150}
-                value={Math.round(pitch * 100)}
-                onChange={(event) => audioManager.setPitch(Number(event.target.value) / 100)}
-                style={styles.rangeInput}
-              />
+            <div style={styles.settingsGroup}>
+              <div style={styles.effectToggleRow}>
+                <p style={styles.effectTitle}>배속 조절</p>
+                <button
+                  type="button"
+                  style={styles.togglePill(speedEnabled)}
+                  onClick={() => audioManager.setSpeedEnabled(!speedEnabled)}
+                >
+                  {speedEnabled ? '켜짐' : '꺼짐'}
+                </button>
+              </div>
+              <p style={styles.sectionHint}>음정은 그대로 두고 재생 속도만 바꿔 보세요.</p>
+              <div style={styles.sliderRow}>
+                <label style={styles.sliderLabel}>
+                  배속
+                  <span>{`${speed.toFixed(2)}x`}</span>
+                </label>
+                <input
+                  type="range"
+                  min={50}
+                  max={150}
+                  value={Math.round(speed * 100)}
+                  onChange={(event) => audioManager.setSpeed(Number(event.target.value) / 100)}
+                  style={styles.rangeInput}
+                  disabled={!speedEnabled}
+                />
+              </div>
+            </div>
+
+            <div style={styles.settingsGroup}>
+              <div style={styles.effectToggleRow}>
+                <p style={styles.effectTitle}>피치 조절</p>
+                <button
+                  type="button"
+                  style={styles.togglePill(pitchEnabled)}
+                  onClick={() => audioManager.setPitchEnabled(!pitchEnabled)}
+                >
+                  {pitchEnabled ? '켜짐' : '꺼짐'}
+                </button>
+              </div>
+              <p style={styles.sectionHint}>재생 속도는 그대로 두고 음정만 올리거나 내립니다.</p>
+              <div style={styles.sliderRow}>
+                <label style={styles.sliderLabel}>
+                  피치
+                  <span>{`${pitch.toFixed(2)}x`}</span>
+                </label>
+                <input
+                  type="range"
+                  min={50}
+                  max={150}
+                  value={Math.round(pitch * 100)}
+                  onChange={(event) => audioManager.setPitch(Number(event.target.value) / 100)}
+                  style={styles.rangeInput}
+                  disabled={!pitchEnabled}
+                />
+              </div>
             </div>
 
             <div style={styles.settingsGroup}>
@@ -3415,18 +3564,36 @@ export default function CharacterBasicView({ hero }) {
               <div style={styles.overlayStatsGrid}>
                 <div style={styles.overlayStatsRow}>
                   <div style={styles.overlayStatCard}>
-                    <p style={styles.overlayStatLabel}>전체 승률</p>
-                    <p style={styles.overlayStatValue}>{formatPlayWinRate(battleSummary)}</p>
+                    <p style={styles.overlayStatLabel}>전체 최고 랭킹</p>
+                    <p style={styles.overlayStatValue}>
+                      {overallHeroStats.bestRank != null ? `#${overallHeroStats.bestRank}` : '—'}
+                    </p>
+                  </div>
+                  <div style={styles.overlayStatCard}>
+                    <p style={styles.overlayStatLabel}>전체 최고 점수</p>
+                    <p style={styles.overlayStatValue}>
+                      {overallHeroStats.bestScore != null
+                        ? formatPlayNumber(overallHeroStats.bestScore)
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+                <div style={styles.overlayStatsRow}>
+                  <div style={styles.overlayStatCard}>
+                    <p style={styles.overlayStatLabel}>전체 평균 승률</p>
+                    <p style={styles.overlayStatValue}>
+                      {overallHeroStats.averageWinRate != null
+                        ? formatWinRateValue(overallHeroStats.averageWinRate)
+                        : '—'}
+                    </p>
                   </div>
                   <div style={styles.overlayStatCard}>
                     <p style={styles.overlayStatLabel}>전체 전투 수</p>
                     <p style={styles.overlayStatValue}>
-                      {matchCount != null ? formatPlayNumber(matchCount) : '—'}
+                      {overallHeroStats.totalBattles != null
+                        ? formatPlayNumber(overallHeroStats.totalBattles)
+                        : '—'}
                     </p>
-                  </div>
-                  <div style={styles.overlayStatCard}>
-                    <p style={styles.overlayStatLabel}>현재 최고 랭킹</p>
-                    <p style={styles.overlayStatValue}>{heroRank ? `#${heroRank}` : '—'}</p>
                   </div>
                 </div>
               </div>
@@ -3445,18 +3612,33 @@ export default function CharacterBasicView({ hero }) {
 
   const bgmBar = !showBgmBar ? null : (
     <div style={{ ...styles.hudSection }}>
-      <div style={styles.playerShell}>
+      <div
+        style={{
+          ...styles.playerShell,
+          ...(playerCollapsed ? styles.playerShellCollapsed : {}),
+        }}
+      >
         <div style={styles.playerHeader}>
           <div style={styles.playerHeaderLeft}>
             <button
               type="button"
-              style={styles.collapseButton}
+              style={{
+                ...styles.collapseButton,
+                ...(playerCollapsed ? styles.collapseButtonCollapsed : {}),
+              }}
               onClick={() => setPlayerCollapsed((prev) => !prev)}
               aria-label={playerCollapsed ? '재생바 펼치기' : '재생바 접기'}
             >
               {playerCollapsed ? '▲' : '▼'}
             </button>
-            <span style={styles.playerTitle}>캐릭터 브금</span>
+            <span
+              style={{
+                ...styles.playerTitle,
+                ...(playerCollapsed ? styles.playerTitleCollapsed : {}),
+              }}
+            >
+              캐릭터 브금
+            </span>
           </div>
           {!playerCollapsed && activeBgmUrl ? (
             <>

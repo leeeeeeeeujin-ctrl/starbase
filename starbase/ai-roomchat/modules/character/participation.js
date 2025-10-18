@@ -7,9 +7,9 @@ const SESSION_COLUMNS = 'id,game_id,created_at,mode,started_by,version_id'
 const HERO_LOOKUP_COLUMNS =
   'id,name,image_url,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_mime,bgm_duration_seconds,owner_id'
 const PARTICIPANT_COLUMNS =
-  'id,game_id,hero_id,owner_id,slot_no,role,rating,score,battles,created_at,updated_at'
+  'id,game_id,hero_id,owner_id,slot_no,role,rating,score,battles,win_rate,created_at,updated_at'
 const SCOREBOARD_PARTICIPANT_COLUMNS =
-  'id,game_id,hero_id,owner_id,slot_no,role,rating,score,battles,created_at,updated_at'
+  'id,game_id,hero_id,owner_id,slot_no,role,rating,score,battles,win_rate,created_at,updated_at'
 
 function normaliseGame(row) {
   if (!row) return null
@@ -59,6 +59,10 @@ function normaliseParticipant(row) {
     rating: row.rating != null ? Number(row.rating) : null,
     score: row.score != null ? Number(row.score) : null,
     battles: row.battles != null ? Number(row.battles) : null,
+    win_rate:
+      row.win_rate != null && Number.isFinite(Number(row.win_rate))
+        ? Number(row.win_rate)
+        : null,
     created_at: row.created_at || null,
     updated_at: row.updated_at || null,
   }
@@ -310,6 +314,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
       rating: participant?.rating != null ? participant.rating : null,
       score: participant?.score != null ? participant.score : null,
       battles: battleCount,
+      win_rate: participant?.win_rate != null ? participant.win_rate : null,
     })
     if (slot.hero_id) {
       heroIds.add(slot.hero_id)
@@ -341,6 +346,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
         rating: participant.rating != null ? participant.rating : null,
         score: participant.score != null ? participant.score : null,
         battles: battleCount,
+        win_rate: participant.win_rate != null ? participant.win_rate : null,
       })
       if (participant.hero_id) {
         heroIds.add(participant.hero_id)
@@ -390,6 +396,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
       role: effectiveRole,
       rating: participant?.rating != null ? participant.rating : null,
       score: participant?.score != null ? participant.score : null,
+      win_rate: participant?.win_rate != null ? participant.win_rate : null,
       sessionCount,
       latestSessionAt: latestSession,
       firstSessionAt: oldestSession,

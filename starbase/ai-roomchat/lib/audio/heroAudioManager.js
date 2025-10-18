@@ -10,6 +10,9 @@ const DEFAULT_STATE = {
   duration: 0,
   loop: true,
   volume: 0.72,
+  speedEnabled: false,
+  speed: 1,
+  pitchEnabled: false,
   pitch: 1,
   eqEnabled: false,
   equalizer: { low: 0, mid: 0, high: 0 },
@@ -41,6 +44,8 @@ class HeroAudioManager {
     this.reverbDryGain = null
     this.reverbMerge = null
     this.compressorNode = null
+    this.processorNode = null
+    this.processorLoading = null
 
     this.handleLoaded = this.handleLoaded.bind(this)
     this.handleTimeUpdate = this.handleTimeUpdate.bind(this)
@@ -71,22 +76,56 @@ class HeroAudioManager {
   }
 
   setState(patch) {
-    const pitch = Number.isFinite(patch?.pitch) ? patch.pitch : this.state.pitch
     const next = {
       ...this.state,
       ...patch,
-      pitch,
       equalizer: patch.equalizer ? { ...patch.equalizer } : { ...this.state.equalizer },
       reverbDetail: patch.reverbDetail ? { ...patch.reverbDetail } : { ...this.state.reverbDetail },
       compressorDetail: patch.compressorDetail
         ? { ...patch.compressorDetail }
         : { ...this.state.compressorDetail },
     }
-    this.state = next
-    if (this.audio) {
-      this.audio.playbackRate = next.pitch
+
+    if (patch.pitch !== undefined) {
+      const numericPitch = Number(patch.pitch)
+      next.pitch = Number.isFinite(numericPitch)
+        ? Math.min(Math.max(numericPitch, 0.5), 2)
+        : this.state.pitch
+    } else {
+      next.pitch = this.state.pitch
     }
+
+    if (patch.speed !== undefined) {
+      const numericSpeed = Number(patch.speed)
+      next.speed = Number.isFinite(numericSpeed)
+        ? Math.min(Math.max(numericSpeed, 0.5), 2)
+        : this.state.speed
+    } else {
+      next.speed = this.state.speed
+    }
+
+    if (patch.pitchEnabled !== undefined) {
+      next.pitchEnabled = Boolean(patch.pitchEnabled)
+    } else {
+      next.pitchEnabled = this.state.pitchEnabled
+    }
+
+    if (patch.speedEnabled !== undefined) {
+      next.speedEnabled = Boolean(patch.speedEnabled)
+    } else {
+      next.speedEnabled = this.state.speedEnabled
+    }
+
+    this.state = next
+    this.updatePlaybackRate()
+    this.syncProcessorConfig()
     this.emit()
+  }
+
+  updatePlaybackRate() {
+    if (!this.audio) return
+    const rate = this.state.pitchEnabled ? this.state.pitch : 1
+    this.audio.playbackRate = rate
   }
 
   ensureAudioElement() {
@@ -95,7 +134,7 @@ class HeroAudioManager {
       this.audio = new Audio()
       this.audio.crossOrigin = 'anonymous'
       this.audio.loop = this.state.loop
-      this.audio.playbackRate = this.state.pitch
+      this.audio.playbackRate = this.state.pitchEnabled ? this.state.pitch : 1
       this.audio.addEventListener('loadedmetadata', this.handleLoaded)
       this.audio.addEventListener('timeupdate', this.handleTimeUpdate)
       this.audio.addEventListener('ended', this.handleEnded)
@@ -111,6 +150,64 @@ class HeroAudioManager {
       this.audioContext = new AudioContextClass()
     }
     return this.audioContext
+  }
+
+  ensureProcessorNode() {
+    const context = this.audioContext
+    if (!context || !context.audioWorklet) return
+    if (this.processorNode || this.processorLoading) return
+    try {
+      const moduleUrl = new URL('./worklets/heroAudioProcessor.js', import.meta.url)
+      this.processorLoading = context.audioWorklet
+        .addModule(moduleUrl)
+        .then(() => {
+          this.processorNode = new AudioWorkletNode(context, 'hero-audio-processor', {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            channelCount: 2,
+          })
+          this.syncProcessorConfig()
+          this.connectGraph()
+        })
+        .catch((error) => {
+          console.error('Failed to initialise hero audio processor:', error)
+          this.processorLoading = null
+        })
+    } catch (error) {
+      console.error('Failed to load hero audio processor module:', error)
+      this.processorLoading = null
+    }
+  }
+
+  syncProcessorConfig() {
+    const requiresProcessor = this.state.pitchEnabled || this.state.speedEnabled
+    if (requiresProcessor) {
+      this.ensureProcessorNode()
+    }
+
+    if (this.processorLoading && !this.processorNode) {
+      this.processorLoading
+        .then(() => this.syncProcessorConfig())
+        .catch(() => {})
+      return
+    }
+
+    if (!this.processorNode) return
+
+    const targetTempo = this.state.speedEnabled ? this.state.speed : 1
+    const sourceRate = this.state.pitchEnabled ? this.state.pitch : 1
+    let stretch = sourceRate / (targetTempo || 1)
+    if (!Number.isFinite(stretch) || stretch <= 0) {
+      stretch = 1
+    }
+    const deviation = Math.abs(stretch - 1)
+    const bwe = requiresProcessor ? Math.min(0.6, 0.25 + deviation * 0.45) : 0
+
+    this.processorNode.port.postMessage({
+      stretch,
+      bypass: !requiresProcessor || deviation < 1e-3,
+      bwe,
+    })
   }
 
   disconnectNode(node) {
@@ -169,6 +266,10 @@ class HeroAudioManager {
       this.compressorNode = context.createDynamicsCompressor()
       this.compressorNode.attack.value = 0.003
     }
+
+    if (this.state.pitchEnabled || this.state.speedEnabled) {
+      this.ensureProcessorNode()
+    }
   }
 
   refreshReverbBuffer() {
@@ -189,6 +290,7 @@ class HeroAudioManager {
   }
 
   disconnectGraph() {
+    this.disconnectNode(this.processorNode)
     this.eqNodes.forEach((node) => this.disconnectNode(node))
     this.disconnectNode(this.reverbNode)
     this.disconnectNode(this.reverbWetGain)
@@ -204,6 +306,11 @@ class HeroAudioManager {
     this.disconnectGraph()
 
     let cursor = this.sourceNode
+
+    if (this.processorNode) {
+      cursor.connect(this.processorNode)
+      cursor = this.processorNode
+    }
 
     if (this.eqNodes.length) {
       const values = [this.state.equalizer.low, this.state.equalizer.mid, this.state.equalizer.high]
@@ -279,7 +386,6 @@ class HeroAudioManager {
     this.setState({ heroId: heroId || null, heroName: heroName || '', trackUrl: url, loop, duration })
 
     audio.loop = loop
-    audio.playbackRate = this.state.pitch
 
     if (!url) {
       if (this.state.enabled) {
@@ -410,9 +516,21 @@ class HeroAudioManager {
     if (!Number.isFinite(numeric)) return
     const clamped = Math.min(Math.max(numeric, 0.5), 2)
     this.setState({ pitch: clamped })
-    if (this.audio) {
-      this.audio.playbackRate = clamped
-    }
+  }
+
+  setPitchEnabled(flag) {
+    this.setState({ pitchEnabled: Boolean(flag) })
+  }
+
+  setSpeed(value) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return
+    const clamped = Math.min(Math.max(numeric, 0.5), 2)
+    this.setState({ speed: clamped })
+  }
+
+  setSpeedEnabled(flag) {
+    this.setState({ speedEnabled: Boolean(flag) })
   }
 
   setLoop(flag) {
