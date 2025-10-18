@@ -12,6 +12,7 @@ import {
   loadHeroesByIds,
   loadOwnerParticipantRoster,
   loadQueueEntries,
+  normalizeQueueEntry,
   removeQueueEntry,
 } from '../../../lib/rank/matchmakingService'
 import { guessOwnerParticipant, normalizeHeroIdValue } from '../../../lib/rank/participantUtils'
@@ -27,8 +28,127 @@ import {
   persistHeroSelection,
   readHeroSelection,
 } from '../../../lib/heroes/selectedHeroStorage'
+import { getQueueModes } from '../../../lib/rank/matchModes'
 
 const POLL_INTERVAL_MS = 4000
+const REALTIME_PROBE_DELAY_MS = 240
+
+function normalizeModeToken(value) {
+  if (value == null) {
+    return ''
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? trimmed.toLowerCase() : ''
+  }
+  const stringValue = String(value)
+  const trimmed = stringValue.trim()
+  return trimmed ? trimmed.toLowerCase() : ''
+}
+
+function buildQueueModeSet(mode) {
+  const derived = getQueueModes(mode)
+  const source = Array.isArray(derived) && derived.length ? derived : [mode]
+  const set = new Set()
+  source.forEach((token) => {
+    const normalized = normalizeModeToken(token)
+    if (normalized) {
+      set.add(normalized)
+    }
+  })
+  return set
+}
+
+function parseQueueTimestamp(value) {
+  if (value == null) {
+    return Number.NaN
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : Number.NaN
+  }
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.getTime() : Number.NaN
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return Number.NaN
+    }
+    const numeric = Number(trimmed)
+    if (Number.isFinite(numeric) && trimmed.replace(/\.0+$/, '') === String(numeric)) {
+      return numeric
+    }
+    const parsed = Date.parse(trimmed)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return Number.NaN
+}
+
+function resolveQueueTimestamp(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return Number.POSITIVE_INFINITY
+  }
+  const candidates = [
+    entry.joined_at,
+    entry.joinedAt,
+    entry.created_at,
+    entry.createdAt,
+    entry.updated_at,
+    entry.updatedAt,
+  ]
+  for (const candidate of candidates) {
+    const parsed = parseQueueTimestamp(candidate)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return Number.POSITIVE_INFINITY
+}
+
+function sortQueueEntries(entries = []) {
+  if (!Array.isArray(entries)) {
+    return []
+  }
+  return entries
+    .slice()
+    .sort((a, b) => {
+      const left = resolveQueueTimestamp(a)
+      const right = resolveQueueTimestamp(b)
+      if (left === right) {
+        const leftId = a?.id ? String(a.id) : ''
+        const rightId = b?.id ? String(b.id) : ''
+        return leftId.localeCompare(rightId)
+      }
+      return left - right
+    })
+}
+
+function applyQueueRealtimeChange(current, entry, eventType) {
+  const list = Array.isArray(current) ? [...current] : []
+  const id = entry?.id ? String(entry.id) : ''
+  if (!id) {
+    return list
+  }
+
+  const waiting = (entry?.status || 'waiting') === 'waiting'
+  const index = list.findIndex((item) => (item?.id ? String(item.id) : '') === id)
+
+  if (!waiting || eventType === 'DELETE') {
+    if (index !== -1) {
+      list.splice(index, 1)
+    }
+    return list
+  }
+
+  if (index !== -1) {
+    list[index] = { ...list[index], ...entry }
+  } else {
+    list.push(entry)
+  }
+  return list
+}
 
 function extractRoleName(entry) {
   if (!entry) return ''
@@ -385,6 +505,12 @@ export default function useMatchQueue({
   const [viewerId, setViewerId] = useState('')
   const [heroId, setHeroId] = useState(() => (initialHeroId ? String(initialHeroId) : ''))
   const heroIdRef = useRef(heroId || '')
+  const queueModeSet = useMemo(() => buildQueueModeSet(mode), [mode])
+  const queueChannelSuffix = useMemo(
+    () => (queueModeSet.size ? Array.from(queueModeSet).sort().join('|') : 'all'),
+    [queueModeSet],
+  )
+  const gameIdKey = useMemo(() => (gameId ? String(gameId).trim() : ''), [gameId])
   const updateHeroSelection = useCallback(
     (value, { ownerId: ownerIdOverride, persistOwner = true } = {}) => {
       const normalized = value != null ? String(value).trim() : ''
@@ -423,9 +549,46 @@ export default function useMatchQueue({
   useEffect(() => {
     heroIdRef.current = heroId || ''
   }, [heroId])
+  useEffect(() => {
+    queueModeSetRef.current = queueModeSet
+  }, [queueModeSet])
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
+  useEffect(() => {
+    return () => {
+      const state = realtimeProbeRef.current
+      if (state?.timer) {
+        clearTimeout(state.timer)
+        state.timer = null
+      }
+      if (state) {
+        state.pending = false
+      }
+    }
+  }, [])
+  const scheduleRealtimeProbe = useCallback(() => {
+    const state = realtimeProbeRef.current
+    if (!state || state.pending) {
+      return
+    }
+    state.pending = true
+    state.timer = setTimeout(() => {
+      state.pending = false
+      state.timer = null
+      if (typeof probeRef.current === 'function') {
+        try {
+          probeRef.current()
+        } catch (error) {
+          console.warn('[MatchQueue] 실시간 매칭 재조회 실패:', error)
+        }
+      }
+    }, REALTIME_PROBE_DELAY_MS)
+  }, [])
   const [roles, setRoles] = useState([])
   const [queue, setQueue] = useState([])
   const [status, setStatus] = useState('idle')
+  const statusRef = useRef('idle')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [score, setScore] = useState(1000)
@@ -478,6 +641,8 @@ export default function useMatchQueue({
   }, [roles, slotLayout])
   const pollRef = useRef(null)
   const probeRef = useRef(null)
+  const queueModeSetRef = useRef(queueModeSet)
+  const realtimeProbeRef = useRef({ timer: null, pending: false })
 
   useEffect(() => {
     if (!viewerId) return
@@ -659,7 +824,7 @@ export default function useMatchQueue({
       const { freshEntries } = filterStaleQueueEntries(queueRowsRaw, {
         staleThresholdMs: QUEUE_STALE_THRESHOLD_MS,
       })
-      setQueue(freshEntries)
+      setQueue(sortQueueEntries(freshEntries))
 
       const response = await fetch('/api/rank/match', {
         method: 'POST',
@@ -788,6 +953,78 @@ export default function useMatchQueue({
   useEffect(() => {
     probeRef.current = runMatchProbe
   }, [runMatchProbe])
+
+  useEffect(() => {
+    if (!enabled) {
+      return undefined
+    }
+    if (!gameIdKey) {
+      return undefined
+    }
+
+    const filter = `game_id=eq.${gameIdKey}`
+    const channelName = `rank-match-queue:${gameIdKey}:${queueChannelSuffix}`
+    const channel = supabase.channel(channelName)
+
+    const handleChange = (payload) => {
+      if (!payload) {
+        return
+      }
+      const eventType = payload.eventType || payload.type || payload.event || ''
+      const raw = payload.new ?? payload.old
+      if (!raw) {
+        return
+      }
+      const normalized = normalizeQueueEntry(raw)
+      if (!normalized) {
+        return
+      }
+      const rowGameId = normalized.game_id ?? normalized.gameId
+      const normalizedGameId = rowGameId ? String(rowGameId).trim() : ''
+      if (!normalizedGameId || normalizedGameId !== gameIdKey) {
+        return
+      }
+      const allowedModes = queueModeSetRef.current
+      const entryMode = normalizeModeToken(normalized.mode)
+      if (allowedModes.size && entryMode && !allowedModes.has(entryMode)) {
+        return
+      }
+      setQueue((prev) => {
+        const next = applyQueueRealtimeChange(prev, normalized, eventType)
+        const { freshEntries } = filterStaleQueueEntries(next, {
+          staleThresholdMs: QUEUE_STALE_THRESHOLD_MS,
+        })
+        return sortQueueEntries(freshEntries)
+      })
+      if (statusRef.current === 'queued') {
+        scheduleRealtimeProbe()
+      }
+    }
+
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'rank_match_queue', filter }, handleChange)
+
+    channel.subscribe((status, err) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('[MatchQueue] 실시간 채널 상태 이상', {
+          channel: channelName,
+          status,
+          error: err || null,
+        })
+      }
+    })
+
+    return () => {
+      try {
+        channel.unsubscribe()
+      } catch (error) {
+        console.warn('[MatchQueue] 실시간 채널 구독 해제 실패', {
+          channel: channelName,
+          error,
+        })
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [enabled, gameIdKey, queueChannelSuffix, scheduleRealtimeProbe])
 
   useEffect(() => {
     if (!enabled || status !== 'queued') return

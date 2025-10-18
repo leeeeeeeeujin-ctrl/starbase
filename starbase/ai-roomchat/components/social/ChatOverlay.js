@@ -17,13 +17,18 @@ import {
   leaveChatRoom,
   deleteChatRoom,
   manageChatRoomRole,
-  markChatRoomRead,
   createChatRoomAnnouncement,
   deleteChatRoomAnnouncement,
   toggleChatRoomAnnouncementReaction,
   createChatRoomAnnouncementComment,
+  deleteChatRoomAnnouncementComment,
+  updateChatRoomAnnouncementPin,
+  syncChatRoomAnnouncementPolls,
+  voteChatRoomAnnouncementPoll,
+  markChatRoomRead,
   saveChatMemberPreferences,
   updateChatRoomSettings,
+  updateChatRoomBan,
 } from '@/lib/chat/rooms'
 import {
   fetchRecentMessages,
@@ -46,8 +51,40 @@ const CHAT_ATTACHMENT_BUCKET = 'chat-attachments'
 const ATTACHMENT_SIZE_LIMIT = 50 * 1024 * 1024
 const MAX_VIDEO_DURATION = 4 * 60
 const MAX_MESSAGE_PREVIEW_LENGTH = 240
+const ANNOUNCEMENT_PREVIEW_LENGTH = 120
+const PINNED_ANNOUNCEMENT_STAGE_DEFAULT = 'collapsed'
+const PINNED_ANNOUNCEMENT_STAGE_KEY_PREFIX = 'chat:pinned-stage:'
+const PINNED_ANNOUNCEMENT_STAGE_VALUES = new Set(['collapsed', 'hidden'])
 const MEDIA_LOAD_LIMIT = 120
 const LONG_PRESS_THRESHOLD = 400
+const MINI_OVERLAY_WIDTH = 320
+const MINI_OVERLAY_HEIGHT = 420
+const MINI_OVERLAY_MIN_HEIGHT = 240
+const MINI_OVERLAY_MAX_HEIGHT = 640
+const MINI_OVERLAY_BAR_HEIGHT = 56
+const MINI_OVERLAY_MARGIN = 18
+const MINI_OVERLAY_VISIBLE_MARGIN = 12
+const PINCH_TRIGGER_RATIO = 0.7
+const PINCH_MIN_DELTA = 28
+const ROOM_BACKGROUND_FOLDER = 'room-backgrounds'
+const MEMBER_BACKGROUND_FOLDER = 'member-backgrounds'
+const ANNOUNCEMENT_TOOLBAR_SIZES = [
+  { id: 'small', label: '작게', scale: 0.9, command: '3' },
+  { id: 'normal', label: '보통', scale: 1, command: '4' },
+  { id: 'large', label: '크게', scale: 1.15, command: '5' },
+  { id: 'xlarge', label: '아주 크게', scale: 1.3, command: '6' },
+]
+const ANNOUNCEMENT_TOOLBAR_OVERLAY_SAFE_PADDING = 140
+const ANNOUNCEMENT_SIZE_SCALE = ANNOUNCEMENT_TOOLBAR_SIZES.reduce((acc, item) => {
+  acc[item.id] = item.scale
+  return acc
+}, {})
+const ANNOUNCEMENT_FONT_SIZE_BY_COMMAND = ANNOUNCEMENT_TOOLBAR_SIZES.reduce((acc, item) => {
+  acc[item.command] = item.id
+  return acc
+}, {})
+const ANNOUNCEMENT_POLL_MIN_OPTIONS = 2
+const ANNOUNCEMENT_POLL_MAX_OPTIONS = 6
 const ATTACHMENT_ICONS = {
   image: '🖼️',
   video: '🎬',
@@ -71,6 +108,14 @@ function createLocalId(prefix = 'local') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function generateUuid() {
+  if (typeof crypto !== 'undefined' && crypto?.randomUUID) {
+    return crypto.randomUUID()
+  }
+  const segment = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).slice(1)
+  return `${segment()}${segment()}-${segment()}-${segment()}-${segment()}-${segment()}${segment()}${segment()}`
+}
+
 function sanitizeFileName(name = '') {
   return name.replace(/[^a-zA-Z0-9_.-]/g, '_')
 }
@@ -90,13 +135,616 @@ function formatDuration(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
+function normalizeColor(value) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const hexMatch = /^#([0-9a-f]{3,8})$/i
+  const functionalMatch = /^(rgba?|hsla?)\(/i
+  if (hexMatch.test(trimmed) || functionalMatch.test(trimmed)) {
+    return trimmed
+  }
+  return null
+}
+
+function normalizeBackgroundUrl(value) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
+    return trimmed
+  }
+  if (trimmed.startsWith('/')) {
+    return trimmed
+  }
+  return null
+}
+
+function isGradientValue(value) {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim().toLowerCase()
+  if (!trimmed) return false
+  return trimmed.startsWith('linear-gradient') || trimmed.startsWith('radial-gradient')
+}
+
+function isColorValue(value) {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim().toLowerCase()
+  if (!trimmed) return false
+  if (trimmed.startsWith('#')) {
+    return /^#([0-9a-f]{3,8})$/i.test(trimmed)
+  }
+  return trimmed.startsWith('rgb(') || trimmed.startsWith('rgba(') || trimmed.startsWith('hsl(') || trimmed.startsWith('hsla(')
+}
+
+function normalizeThemeBackground(value) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (isGradientValue(trimmed) || isColorValue(trimmed)) {
+    return trimmed
+  }
+  return normalizeBackgroundUrl(trimmed)
+}
+
+function getColorPickerValue(input, fallback = '#1f2937') {
+  const sanitize = (value) => {
+    const normalized = normalizeColor(value)
+    if (!normalized) return null
+    const fullHex = normalized.match(/^#([0-9a-f]{6})$/i)
+    if (fullHex) {
+      return `#${fullHex[1].toLowerCase()}`
+    }
+    const shortHex = normalized.match(/^#([0-9a-f]{3})$/i)
+    if (shortHex) {
+      const [r, g, b] = shortHex[1].toLowerCase().split('')
+      return `#${r}${r}${g}${g}${b}${b}`
+    }
+    const hexWithAlpha = normalized.match(/^#([0-9a-f]{8})$/i)
+    if (hexWithAlpha) {
+      return `#${hexWithAlpha[1].slice(0, 6).toLowerCase()}`
+    }
+    return null
+  }
+
+  return sanitize(input) || sanitize(fallback) || '#1f2937'
+}
+
+function classifyBackground(value, fallbackSample = '#1f2937') {
+  const normalized = normalizeThemeBackground(value)
+  if (!normalized) {
+    return { type: 'none', value: '', sampleColor: fallbackSample }
+  }
+  if (isGradientValue(normalized)) {
+    return { type: 'gradient', value: normalized, sampleColor: extractPrimaryColorFromGradient(normalized) || fallbackSample }
+  }
+  if (isColorValue(normalized)) {
+    return { type: 'color', value: normalized, sampleColor: normalized }
+  }
+  return { type: 'image', value: normalized, sampleColor: fallbackSample }
+}
+
+function parseHexColor(input) {
+  if (typeof input !== 'string') return null
+  const hex = input.trim().replace(/^#/, '')
+  if (!hex) return null
+  if (hex.length === 3) {
+    const [r, g, b] = hex.split('').map((char) => parseInt(char + char, 16))
+    if ([r, g, b].some((channel) => Number.isNaN(channel))) return null
+    return { r, g, b, a: 1 }
+  }
+  if (hex.length === 6 || hex.length === 8) {
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    if ([r, g, b].some((channel) => Number.isNaN(channel))) return null
+    let a = 1
+    if (hex.length === 8) {
+      a = parseInt(hex.slice(6, 8), 16) / 255
+    }
+    return { r, g, b, a }
+  }
+  return null
+}
+
+function parseColor(value) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith('#')) {
+    return parseHexColor(trimmed)
+  }
+  const rgbMatch = trimmed.match(/rgba?\(([^)]+)\)/i)
+  if (rgbMatch) {
+    const parts = rgbMatch[1]
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean)
+    if (parts.length < 3) return null
+    const r = parseFloat(parts[0])
+    const g = parseFloat(parts[1])
+    const b = parseFloat(parts[2])
+    const a = parts[3] !== undefined ? parseFloat(parts[3]) : 1
+    if ([r, g, b, a].some((channel) => Number.isNaN(channel))) return null
+    return { r, g, b, a }
+  }
+  return parseHexColor(trimmed)
+}
+
+function clampColorValue(value) {
+  return Math.min(255, Math.max(0, Math.round(value)))
+}
+
+function rgbToHex({ r, g, b }) {
+  const toHex = (channel) => clampColorValue(channel).toString(16).padStart(2, '0')
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+function mixColors(colorA, colorB, ratio = 0.5) {
+  const first = parseColor(colorA)
+  const second = parseColor(colorB)
+  if (!first || !second) {
+    return colorA || colorB || '#1f2937'
+  }
+  const mixRatio = Math.min(1, Math.max(0, Number(ratio)))
+  const inv = 1 - mixRatio
+  return rgbToHex({
+    r: first.r * mixRatio + second.r * inv,
+    g: first.g * mixRatio + second.g * inv,
+    b: first.b * mixRatio + second.b * inv,
+  })
+}
+
+function adjustColorLuminance(color, delta = 0) {
+  const parsed = parseColor(color)
+  if (!parsed) {
+    return color
+  }
+  const factor = 1 + delta
+  return rgbToHex({ r: parsed.r * factor, g: parsed.g * factor, b: parsed.b * factor })
+}
+
+function getRelativeLuminance(color) {
+  const parsed = parseColor(color)
+  if (!parsed) {
+    return 0
+  }
+  const transform = (channel) => {
+    const c = channel / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const r = transform(parsed.r)
+  const g = transform(parsed.g)
+  const b = transform(parsed.b)
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+function getContrastRatio(foreground, background) {
+  const lumA = getRelativeLuminance(foreground)
+  const lumB = getRelativeLuminance(background)
+  const brightest = Math.max(lumA, lumB)
+  const darkest = Math.min(lumA, lumB)
+  return (brightest + 0.05) / (darkest + 0.05)
+}
+
+function pickReadableTextColor(background) {
+  const light = '#f8fafc'
+  const dark = '#0f172a'
+  const contrastWithLight = getContrastRatio(light, background)
+  const contrastWithDark = getContrastRatio(dark, background)
+  if (contrastWithLight >= 4.5 && contrastWithLight >= contrastWithDark) {
+    return light
+  }
+  if (contrastWithDark >= 4.5 && contrastWithDark > contrastWithLight) {
+    return dark
+  }
+  return contrastWithLight > contrastWithDark ? light : dark
+}
+
+function ensureAccentContrast(accent, bubble) {
+  const desired = getContrastRatio(accent, bubble) >= 3
+  if (desired) {
+    return accent
+  }
+  const bubbleLum = getRelativeLuminance(bubble)
+  const adjustment = bubbleLum > 0.5 ? -0.35 : 0.35
+  return adjustColorLuminance(accent, adjustment)
+}
+
+function deriveAutoPalette({ background, accent, bubble, text }) {
+  const sampleBackground = background || '#0f172a'
+  let bubbleColor = bubble || mixColors(sampleBackground, '#0f172a', 0.72)
+  const backgroundLum = getRelativeLuminance(sampleBackground)
+  if (backgroundLum > 0.55) {
+    bubbleColor = adjustColorLuminance(sampleBackground, -0.4)
+  } else if (backgroundLum < 0.15) {
+    bubbleColor = adjustColorLuminance(sampleBackground, 0.45)
+  }
+  const textColor = pickReadableTextColor(bubbleColor || sampleBackground)
+  const accentColor = ensureAccentContrast(accent || '#38bdf8', bubbleColor || sampleBackground)
+  return { bubbleColor: bubbleColor || '#1f2937', textColor: textColor || text, accentColor }
+}
+
+function extractPrimaryColorFromGradient(value) {
+  if (typeof value !== 'string') return null
+  const hexMatch = value.match(/#([0-9a-f]{3,8})/i)
+  if (hexMatch) {
+    return `#${hexMatch[1]}`
+  }
+  const rgbMatch = value.match(/rgba?\([^\)]+\)/i)
+  if (rgbMatch) {
+    return rgbMatch[0]
+  }
+  return null
+}
+
+const ROOM_THEME_LIBRARY = [
+  {
+    id: 'aurora-midnight',
+    label: '오로라 미드나잇',
+    value: 'linear-gradient(135deg, #0f172a 0%, #1e293b 45%, #38bdf8 100%)',
+    sampleColor: '#172554',
+    recommended: {
+      accentColor: '#38bdf8',
+      bubbleColor: '#1f2937',
+      textColor: '#f8fafc',
+    },
+  },
+  {
+    id: 'sunset-blend',
+    label: '선셋 블렌드',
+    value: 'linear-gradient(130deg, #f97316 0%, #ef4444 40%, #312e81 100%)',
+    sampleColor: '#7c2d12',
+    recommended: {
+      accentColor: '#f97316',
+      bubbleColor: '#1e1b4b',
+      textColor: '#f8fafc',
+    },
+  },
+  {
+    id: 'forest-dawn',
+    label: '포레스트 던',
+    value: 'linear-gradient(140deg, #064e3b 0%, #1e3a8a 100%)',
+    sampleColor: '#0f3c2d',
+    recommended: {
+      accentColor: '#22d3ee',
+      bubbleColor: '#083344',
+      textColor: '#ecfeff',
+    },
+  },
+  {
+    id: 'neon-grid',
+    label: '네온 그리드',
+    value: 'linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(15, 15, 42, 0.7) 45%, rgba(59, 130, 246, 0.45) 100%)',
+    sampleColor: '#1e3a8a',
+    recommended: {
+      accentColor: '#60a5fa',
+      bubbleColor: '#1e293b',
+      textColor: '#f1f5f9',
+    },
+  },
+  {
+    id: 'violet-mist',
+    label: '바이올렛 미스트',
+    value: 'linear-gradient(135deg, #312e81 0%, #7c3aed 50%, #f472b6 100%)',
+    sampleColor: '#312e81',
+    recommended: {
+      accentColor: '#f472b6',
+      bubbleColor: '#1e1b4b',
+      textColor: '#fdf4ff',
+    },
+  },
+  {
+    id: 'oceanic-glow',
+    label: '오셔닉 글로우',
+    value: 'linear-gradient(135deg, #082f49 0%, #0ea5e9 60%, #38bdf8 100%)',
+    sampleColor: '#0f3f5b',
+    recommended: {
+      accentColor: '#0ea5e9',
+      bubbleColor: '#082f49',
+      textColor: '#e0f2fe',
+    },
+  },
+]
+
+const DEFAULT_THEME_PRESET = ROOM_THEME_LIBRARY[0]
+
+function getThemePreset(presetId) {
+  if (!presetId) return DEFAULT_THEME_PRESET
+  return ROOM_THEME_LIBRARY.find((preset) => preset.id === presetId) || DEFAULT_THEME_PRESET
+}
+
+async function uploadBackgroundImage({ file, roomId = null, ownerToken = null }) {
+  if (!file) {
+    throw new Error('업로드할 이미지를 선택해 주세요.')
+  }
+  if (file.size > ATTACHMENT_SIZE_LIMIT) {
+    throw new Error('배경 이미지는 50MB 이하로 선택해 주세요.')
+  }
+
+  const extensionMatch = (file.name || '').match(/\.([a-z0-9]+)$/i)
+  const extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'webp'
+  const sanitizedName = sanitizeFileName(file.name || `background.${extension}`)
+  const segments = [ROOM_BACKGROUND_FOLDER]
+  if (roomId) {
+    segments.push(roomId)
+  } else if (ownerToken) {
+    segments.push(`owner-${ownerToken}`)
+  } else {
+    segments.push('shared')
+  }
+  const objectPath = `${segments.join('/')}/${createLocalId('bg')}-${sanitizedName}`
+
+  let uploaded = false
+  let lastError = null
+
+  try {
+    const { data: signed, error: signingError } = await supabase.storage
+      .from(CHAT_ATTACHMENT_BUCKET)
+      .createSignedUploadUrl(objectPath, 60, { upsert: false })
+
+    if (!signingError && signed?.path && signed?.token) {
+      const { error: uploadError } = await supabase.storage
+        .from(CHAT_ATTACHMENT_BUCKET)
+        .uploadToSignedUrl(signed.path, signed.token, file, {
+          contentType: file.type || 'image/webp',
+          cacheControl: '3600',
+          upsert: false,
+        })
+
+      if (!uploadError) {
+        uploaded = true
+      } else {
+        lastError = uploadError
+      }
+    } else {
+      lastError = signingError || null
+    }
+  } catch (error) {
+    lastError = error
+  }
+
+  if (!uploaded) {
+    const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(objectPath, file, {
+      contentType: file.type || 'image/webp',
+      cacheControl: '3600',
+      upsert: false,
+    })
+
+    if (error) {
+      throw error || lastError || new Error('배경 이미지를 업로드할 수 없습니다.')
+    }
+  }
+
+  const { data } = supabase.storage.from(CHAT_ATTACHMENT_BUCKET).getPublicUrl(objectPath)
+  if (!data?.publicUrl) {
+    throw new Error('업로드한 배경의 공개 URL을 생성할 수 없습니다.')
+  }
+
+  return data.publicUrl
+}
+
+const DEFAULT_THEME_CONFIG = {
+  mode: 'preset',
+  presetId: DEFAULT_THEME_PRESET.id,
+  backgroundUrl: '',
+  backgroundColor: DEFAULT_THEME_PRESET.sampleColor,
+  accentColor: DEFAULT_THEME_PRESET.recommended.accentColor,
+  bubbleColor: DEFAULT_THEME_PRESET.recommended.bubbleColor,
+  textColor: DEFAULT_THEME_PRESET.recommended.textColor,
+  autoContrast: true,
+}
+
+function normalizeThemeConfig(theme, fallback = DEFAULT_THEME_CONFIG) {
+  const base = { ...DEFAULT_THEME_CONFIG, ...fallback }
+  const source = theme && typeof theme === 'object' ? theme : {}
+  const allowedModes = new Set(['preset', 'color', 'image', 'none'])
+  const mode = allowedModes.has(source.mode) ? source.mode : base.mode
+  const preset = getThemePreset(source.presetId || base.presetId)
+  const accentColor = normalizeColor(source.accentColor) || normalizeColor(base.accentColor) || preset.recommended.accentColor
+  const bubbleColor = normalizeColor(source.bubbleColor) || normalizeColor(base.bubbleColor) || preset.recommended.bubbleColor
+  const textColor = normalizeColor(source.textColor) || normalizeColor(base.textColor) || preset.recommended.textColor
+  const backgroundColor = normalizeColor(source.backgroundColor) || normalizeColor(base.backgroundColor) || preset.sampleColor
+  const backgroundUrl = typeof source.backgroundUrl === 'string' ? source.backgroundUrl.trim() : base.backgroundUrl || ''
+  const autoContrast = source.autoContrast === false ? false : true
+  return {
+    mode,
+    presetId: preset.id,
+    backgroundUrl,
+    backgroundColor,
+    accentColor,
+    bubbleColor,
+    textColor,
+    autoContrast,
+  }
+}
+
+function deriveThemePalette(config) {
+  const preset = getThemePreset(config.presetId)
+  let backgroundValue = ''
+  if (config.mode === 'preset') {
+    backgroundValue = preset.value
+  } else if (config.mode === 'color') {
+    backgroundValue = config.backgroundColor || preset.sampleColor || preset.recommended.bubbleColor
+  } else if (config.mode === 'image') {
+    backgroundValue = config.backgroundUrl || ''
+  } else {
+    backgroundValue = ''
+  }
+
+  const descriptor = classifyBackground(backgroundValue, preset.sampleColor || preset.recommended.bubbleColor)
+  const sampleColor = config.mode === 'color' && config.backgroundColor ? config.backgroundColor : descriptor.sampleColor
+  let accentColor = config.accentColor || preset.recommended.accentColor
+  let bubbleColor = config.bubbleColor || preset.recommended.bubbleColor
+  let textColor = config.textColor || preset.recommended.textColor
+
+  if (config.autoContrast !== false) {
+    const auto = deriveAutoPalette({
+      background: sampleColor || preset.sampleColor || preset.recommended.bubbleColor,
+      accent: accentColor,
+      bubble: bubbleColor,
+      text: textColor,
+    })
+    bubbleColor = auto.bubbleColor
+    textColor = auto.textColor
+    accentColor = auto.accentColor
+  }
+
+  return {
+    mode: config.mode,
+    presetId: preset.id,
+    backgroundValue,
+    backgroundColor: config.backgroundColor,
+    backgroundUrl: config.backgroundUrl,
+    bubbleColor,
+    textColor,
+    accentColor,
+    autoContrast: config.autoContrast !== false,
+    descriptor,
+    sampleColor: sampleColor || descriptor.sampleColor,
+  }
+}
+
+function buildThemePaletteFromDraft(draft, options = {}) {
+  const normalized = normalizeThemeConfig(
+    {
+      mode: draft.themeMode,
+      presetId: draft.themePresetId,
+      backgroundUrl: draft.themeBackgroundUrl || draft.backgroundUrl,
+      backgroundColor: draft.themeBackgroundColor || draft.backgroundColor,
+      accentColor: draft.accentColor,
+      bubbleColor: draft.bubbleColor,
+      textColor: draft.textColor,
+      autoContrast: draft.autoContrast,
+    },
+    options.fallback || {
+      ...DEFAULT_THEME_CONFIG,
+      presetId: draft.themePresetId || DEFAULT_THEME_PRESET.id,
+      mode: draft.themeMode || DEFAULT_THEME_CONFIG.mode,
+      backgroundUrl: draft.themeBackgroundUrl || draft.backgroundUrl || options.fallbackBackgroundUrl || '',
+      backgroundColor: draft.themeBackgroundColor || draft.backgroundColor || DEFAULT_THEME_CONFIG.backgroundColor,
+      accentColor: draft.accentColor || DEFAULT_THEME_CONFIG.accentColor,
+      bubbleColor: draft.bubbleColor || DEFAULT_THEME_CONFIG.bubbleColor,
+      textColor: draft.textColor || DEFAULT_THEME_CONFIG.textColor,
+      autoContrast: draft.autoContrast !== false,
+    },
+  )
+  return deriveThemePalette(normalized)
+}
+
+function mergeThemePalettes(roomPalette, memberPalette, useRoomBackground = true) {
+  const backgroundSource = useRoomBackground ? roomPalette : memberPalette
+  const fallbackSample = roomPalette.sampleColor || memberPalette.sampleColor || DEFAULT_THEME_PRESET.sampleColor
+  const backgroundValue = backgroundSource.backgroundValue || roomPalette.backgroundValue
+  const descriptor = classifyBackground(backgroundValue, fallbackSample)
+  const bubbleColor = memberPalette.bubbleColor || roomPalette.bubbleColor
+  const textColor = memberPalette.textColor || roomPalette.textColor
+  const accentColor = memberPalette.accentColor || roomPalette.accentColor
+  return {
+    mode: backgroundSource.mode,
+    presetId: backgroundSource.presetId,
+    backgroundValue,
+    bubbleColor,
+    textColor,
+    accentColor,
+    autoContrast: backgroundSource.autoContrast !== false,
+    descriptor,
+    sampleColor: descriptor.sampleColor || fallbackSample,
+  }
+}
+
+const ACCENT_SWATCHES = [
+  '#38bdf8',
+  '#f97316',
+  '#22d3ee',
+  '#f472b6',
+  '#22c55e',
+  '#eab308',
+  '#a855f7',
+  '#f43f5e',
+]
+
+const BAN_DURATION_PRESETS = [
+  { label: '즉시 해제', minutes: 0 },
+  { label: '30분', minutes: 30 },
+  { label: '1시간', minutes: 60 },
+  { label: '6시간', minutes: 360 },
+  { label: '1일', minutes: 1440 },
+  { label: '3일', minutes: 4320 },
+  { label: '영구', minutes: null },
+]
+
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function isValidUuid(value) {
+  if (value === null || value === undefined) return false
+  const token = String(value).trim()
+  return UUID_PATTERN.test(token)
+}
+
+function distanceBetweenTouches(touchA, touchB) {
+  if (!touchA || !touchB) return 0
+  const dx = (touchA.clientX || 0) - (touchB.clientX || 0)
+  const dy = (touchA.clientY || 0) - (touchB.clientY || 0)
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
+function clampMiniOverlayPosition(
+  position,
+  viewport,
+  width = MINI_OVERLAY_WIDTH,
+  height = MINI_OVERLAY_HEIGHT,
+  margin = MINI_OVERLAY_MARGIN,
+  visibleEdge = MINI_OVERLAY_VISIBLE_MARGIN,
+) {
+  const safeWidth = Math.max(Number(viewport?.width) || DEFAULT_VIEWPORT.width || width, width + margin * 2)
+  const safeHeight = Math.max(Number(viewport?.height) || DEFAULT_VIEWPORT.height || height, height + margin * 2)
+  const nextX = typeof position?.x === 'number' ? position.x : safeWidth - width - margin
+  const nextY = typeof position?.y === 'number' ? position.y : safeHeight - height - margin
+  const edge = Math.max(visibleEdge, margin)
+  const minX = edge - width
+  const maxX = safeWidth - edge
+  const minY = edge - height
+  const maxY = safeHeight - edge
+  const clampedX = Math.min(Math.max(minX, nextX), maxX)
+  const clampedY = Math.min(Math.max(minY, nextY), maxY)
+  return { x: clampedX, y: clampedY }
+}
+
 function getViewportSnapshot() {
   if (typeof window === 'undefined') {
-    return { ...DEFAULT_VIEWPORT }
+    return {
+      ...DEFAULT_VIEWPORT,
+      innerWidth: DEFAULT_VIEWPORT.width,
+      innerHeight: DEFAULT_VIEWPORT.height,
+      offsetTop: 0,
+      offsetLeft: 0,
+      safeAreaTop: 0,
+      safeAreaBottom: 0,
+      scale: 1,
+    }
   }
+
+  const { innerWidth, innerHeight, visualViewport } = window
+  const viewportWidth = visualViewport?.width ?? innerWidth
+  const viewportHeight = visualViewport?.height ?? innerHeight
+  const offsetTop = visualViewport?.offsetTop ?? 0
+  const offsetLeft = visualViewport?.offsetLeft ?? 0
+  const scale = visualViewport?.scale ?? 1
+  const safeAreaTop = Math.max(0, offsetTop)
+  const safeAreaBottom = Math.max(0, innerHeight - offsetTop - viewportHeight)
+
   return {
-    width: window.innerWidth,
-    height: window.innerHeight,
+    width: viewportWidth,
+    height: viewportHeight,
+    innerWidth,
+    innerHeight,
+    offsetTop,
+    offsetLeft,
+    safeAreaTop,
+    safeAreaBottom,
+    scale,
   }
 }
 
@@ -284,12 +932,249 @@ async function createFileAttachmentDraft(file) {
   }
 }
 
+function isLikelyHtml(value = '') {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  return /<([a-z][^>]*|!--)/i.test(trimmed)
+}
+
+function sanitizeStyleValue(property, raw) {
+  const value = raw.trim()
+  if (!value) return null
+  const allowedColors = new Set(['color', 'background-color'])
+  if (allowedColors.has(property)) {
+    const normalized = normalizeColor(value)
+    return normalized
+  }
+  if (property === 'font-size') {
+    const numericMatch = value.match(/^(\d+(?:\.\d+)?)px$/i)
+    if (numericMatch) {
+      const pixels = Math.min(Math.max(parseFloat(numericMatch[1]), 8), 64)
+      return `${pixels}px`
+    }
+  }
+  if (property === 'font-weight') {
+    if (value === 'bold' || value === '700') {
+      return '700'
+    }
+  }
+  if (property === 'font-style') {
+    if (value === 'italic') {
+      return 'italic'
+    }
+  }
+  if (property === 'text-decoration') {
+    if (value === 'underline' || value === 'line-through') {
+      return value
+    }
+  }
+  return null
+}
+
+function sanitizeAnnouncementHtml(value = '') {
+  if (!value) return ''
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return String(value)
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+      .replace(/ on[a-z]+="[^"]*"/gi, '')
+  }
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<!doctype html><body>${value}</body>`, 'text/html')
+  const allowedTags = new Set([
+    'div',
+    'p',
+    'br',
+    'strong',
+    'em',
+    'mark',
+    'span',
+    'figure',
+    'figcaption',
+    'img',
+    'video',
+    'source',
+    'ul',
+    'ol',
+    'li',
+    'iframe',
+    'a',
+  ])
+  const attributeAllowList = {
+    img: new Set(['src', 'alt', 'loading']),
+    video: new Set(['src', 'controls', 'playsinline', 'poster', 'loop', 'muted']),
+    source: new Set(['src', 'type']),
+    iframe: new Set(['src', 'allow', 'allowfullscreen', 'loading', 'title']),
+    a: new Set(['href', 'target', 'rel']),
+    div: new Set(['data-announcement-poll', 'data-poll-question', 'data-poll-id']),
+    li: new Set(['data-poll-option-id', 'data-poll-option-position']),
+    span: new Set(['data-font-size']),
+  }
+
+  const sanitizeNode = (node) => {
+    if (!node) return
+    const { nodeType } = node
+    if (nodeType === Node.COMMENT_NODE) {
+      node.remove()
+      return
+    }
+    if (nodeType === Node.TEXT_NODE) {
+      return
+    }
+    if (nodeType !== Node.ELEMENT_NODE) {
+      node.remove()
+      return
+    }
+
+    let tagName = node.tagName.toLowerCase()
+    if (tagName === 'b') {
+      const strong = doc.createElement('strong')
+      while (node.firstChild) {
+        strong.appendChild(node.firstChild)
+      }
+      node.replaceWith(strong)
+      node = strong
+      tagName = 'strong'
+    } else if (tagName === 'i') {
+      const em = doc.createElement('em')
+      while (node.firstChild) {
+        em.appendChild(node.firstChild)
+      }
+      node.replaceWith(em)
+      node = em
+      tagName = 'em'
+    } else if (tagName === 'font') {
+      const span = doc.createElement('span')
+      const fontColor = node.getAttribute('color')
+      const fontSize = node.getAttribute('size')
+      if (fontColor) {
+        const safe = normalizeColor(fontColor)
+        if (safe) {
+          span.style.color = safe
+        }
+      }
+      if (fontSize) {
+        const mapped = ANNOUNCEMENT_FONT_SIZE_BY_COMMAND[fontSize]
+        if (mapped && ANNOUNCEMENT_SIZE_SCALE[mapped]) {
+          span.style.fontSize = `${ANNOUNCEMENT_SIZE_SCALE[mapped]}em`
+          span.dataset.fontSize = mapped
+        }
+      }
+      while (node.firstChild) {
+        span.appendChild(node.firstChild)
+      }
+      node.replaceWith(span)
+      node = span
+      tagName = 'span'
+    }
+
+    if (!allowedTags.has(tagName)) {
+      if (node.childNodes.length) {
+        const fragment = doc.createDocumentFragment()
+        while (node.firstChild) {
+          fragment.appendChild(node.firstChild)
+        }
+        node.replaceWith(fragment)
+      } else {
+        node.remove()
+      }
+      return
+    }
+
+    const allowedAttributes = attributeAllowList[tagName] || new Set()
+    const attributes = Array.from(node.attributes || [])
+    attributes.forEach((attr) => {
+      const name = attr.name.toLowerCase()
+      const value = attr.value
+      if (name === 'style') {
+        const parts = value.split(';')
+        const sanitized = []
+        parts.forEach((part) => {
+          const [rawProperty, rawValue] = part.split(':')
+          if (!rawProperty || !rawValue) return
+          const property = rawProperty.trim().toLowerCase()
+          const safeValue = sanitizeStyleValue(property, rawValue)
+          if (safeValue) {
+            sanitized.push(`${property}: ${safeValue}`)
+          }
+        })
+        if (sanitized.length) {
+          node.setAttribute('style', sanitized.join('; '))
+        } else {
+          node.removeAttribute('style')
+        }
+        return
+      }
+
+      if (allowedAttributes.has(name)) {
+        if (name === 'src' || name === 'href' || name === 'poster') {
+          const safeUrl = sanitizeExternalUrl(value)
+          if (safeUrl) {
+            node.setAttribute(name, safeUrl)
+          } else {
+            node.removeAttribute(name)
+          }
+          if (tagName === 'a' && name === 'href') {
+            node.setAttribute('target', '_blank')
+            node.setAttribute('rel', 'noopener noreferrer')
+          }
+          return
+        }
+        if (name === 'loading') {
+          node.setAttribute('loading', 'lazy')
+          return
+        }
+        if (name === 'allow') {
+          node.setAttribute(
+            'allow',
+            'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
+          )
+          return
+        }
+        if (name === 'allowfullscreen') {
+          node.setAttribute('allowfullscreen', '')
+          return
+        }
+        return
+      }
+
+      if (name.startsWith('data-')) {
+        return
+      }
+
+      node.removeAttribute(name)
+    })
+
+    Array.from(node.childNodes).forEach(sanitizeNode)
+  }
+
+  Array.from(doc.body.childNodes).forEach(sanitizeNode)
+  return doc.body.innerHTML
+}
+
+function getAnnouncementPlainText(value = '') {
+  if (!value) return ''
+  const html = formatAnnouncementPreview(value)
+  if (!html) return ''
+  if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<!doctype html><body>${html}</body>`, 'text/html')
+    return (doc.body.textContent || '').replace(/\s+/g, ' ').trim()
+  }
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 function truncateText(value = '', limit = MAX_MESSAGE_PREVIEW_LENGTH) {
   if (!value) return { text: '', truncated: false }
-  if (value.length <= limit) {
-    return { text: value, truncated: false }
+  const plain = getAnnouncementPlainText(value)
+  if (!plain) {
+    return { text: '', truncated: false }
   }
-  return { text: `${value.slice(0, limit)}…`, truncated: true }
+  if (plain.length <= limit) {
+    return { text: plain, truncated: false }
+  }
+  return { text: `${plain.slice(0, limit)}…`, truncated: true }
 }
 
 function escapeHtml(value = '') {
@@ -301,8 +1186,66 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;')
 }
 
+function decodeHtmlEntities(value = '') {
+  if (!value) return ''
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
+function sanitizeExternalUrl(value = '') {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  try {
+    const url = new URL(trimmed)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return ''
+    }
+    return url.href
+  } catch (error) {
+    return ''
+  }
+}
+
+function sanitizeYoutubeId(value = '') {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const direct = trimmed.match(/^[a-zA-Z0-9_-]{6,15}$/)
+  if (direct) {
+    return trimmed
+  }
+  try {
+    const parsed = new URL(trimmed)
+    const host = parsed.hostname.replace(/^www\./, '')
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.replace(/^\//, '')
+      return id.match(/^[a-zA-Z0-9_-]{6,15}$/) ? id : null
+    }
+    if (host.endsWith('youtube.com')) {
+      const id = parsed.searchParams.get('v') || parsed.pathname.split('/').pop()
+      return id && id.match(/^[a-zA-Z0-9_-]{6,15}$/) ? id : null
+    }
+  } catch (error) {
+    return null
+  }
+  return null
+}
+
+function getYoutubeEmbedUrl(id = '') {
+  if (!id) return ''
+  return `https://www.youtube.com/embed/${id}`
+}
+
 function formatAnnouncementPreview(value = '') {
   if (!value) return ''
+  if (isLikelyHtml(value)) {
+    return sanitizeAnnouncementHtml(value)
+  }
   let html = escapeHtml(value)
   html = html.replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>')
   html = html.replace(/__(.+?)__/gs, '<strong>$1</strong>')
@@ -310,8 +1253,160 @@ function formatAnnouncementPreview(value = '') {
   html = html.replace(/_(.+?)_/gs, '<em>$1</em>')
   html = html.replace(/~~(.+?)~~/gs, '<mark>$1</mark>')
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+
+  html = html.replace(/!&#91;(.*?)&#93;\((https?:[^)]+)\)/gi, (match, rawAlt, rawUrl) => {
+    const url = sanitizeExternalUrl(decodeHtmlEntities(rawUrl))
+    if (!url) return match
+    const alt = escapeHtml(decodeHtmlEntities(rawAlt || '첨부 이미지'))
+    return `
+<figure style="margin: 12px 0; border-radius: 12px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
+  <img src="${url}" alt="${alt}" style="display: block; width: 100%; height: auto;" loading="lazy" />
+  <figcaption style="padding: 6px 10px; font-size: 12px; color: #cbd5f5;">${alt}</figcaption>
+</figure>`
+  })
+
+  html = html.replace(/&#91;color=([^&#]+)&#93;(.*?)&#91;\/color&#93;/gis, (match, rawColor, inner) => {
+    const color = normalizeColor(decodeHtmlEntities(rawColor))
+    if (!color) return match
+    return `<span style="color: ${color}">${inner}</span>`
+  })
+
+  html = html.replace(/&#91;size=([^&#]+)&#93;(.*?)&#91;\/size&#93;/gis, (match, rawSize, inner) => {
+    const sizeId = decodeHtmlEntities(rawSize || '').trim().toLowerCase()
+    const scale = ANNOUNCEMENT_SIZE_SCALE[sizeId] || 1
+    return `<span style="display: inline-block; font-size: ${scale}em" data-font-size="${sizeId}">${inner}</span>`
+  })
+
+  html = html.replace(/&#91;video([^&#]*)&#93;/gi, (match, rawAttrs) => {
+    const attrs = decodeHtmlEntities(rawAttrs || '')
+    const srcMatch = attrs.match(/src="([^"]+)"/i)
+    const posterMatch = attrs.match(/poster="([^"]+)"/i)
+    const url = sanitizeExternalUrl(srcMatch ? srcMatch[1] : '')
+    if (!url) return ''
+    const poster = sanitizeExternalUrl(posterMatch ? posterMatch[1] : '')
+    const posterAttr = poster ? ` poster="${poster}"` : ''
+    return `
+<div style="margin: 12px 0; border-radius: 12px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
+  <video src="${url}" controls playsinline style="display: block; width: 100%; max-height: 320px; background: #000;"${posterAttr}></video>
+</div>`
+  })
+
+  html = html.replace(/&#91;youtube([^&#]*)&#93;/gi, (match, rawAttrs) => {
+    const attrs = decodeHtmlEntities(rawAttrs || '')
+    const idMatch = attrs.match(/id="([^"]+)"/i)
+    const urlMatch = attrs.match(/url="([^"]+)"/i)
+    const titleMatch = attrs.match(/title="([^"]*)"/i)
+    const thumbnailMatch = attrs.match(/thumbnail="([^"]*)"/i)
+    const youtubeId = sanitizeYoutubeId(idMatch ? idMatch[1] : urlMatch ? urlMatch[1] : '')
+    if (!youtubeId) return ''
+    const title = escapeHtml(decodeHtmlEntities(titleMatch ? titleMatch[1] : 'YouTube 영상'))
+    const embedUrl = getYoutubeEmbedUrl(youtubeId)
+    const thumbUrl = sanitizeExternalUrl(thumbnailMatch ? thumbnailMatch[1] : '')
+    const preview = thumbUrl
+      ? `<img src="${thumbUrl}" alt="${title}" style="display:block;width:100%;height:auto;" loading="lazy" />`
+      : `<iframe src="${embedUrl}" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" style="width:100%;min-height:220px;border:0;border-radius:12px;"></iframe>`
+    const footer = thumbUrl
+      ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span style="background:rgba(15,23,42,0.75);color:#f8fafc;padding:8px 14px;border-radius:999px;font-size:13px;">▶ ${title}</span></div>`
+      : ''
+    return `
+<div style="position: relative; margin: 12px 0; border-radius: 14px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
+  ${preview}
+  ${footer}
+  <div style="padding: 8px 12px; font-size: 12px; color: #cbd5f5;">${title}</div>
+  ${thumbUrl ? `<iframe src="${embedUrl}" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" style="position:absolute; inset:0; opacity:0;" tabindex="-1"></iframe>` : ''}
+</div>`
+  })
+
+  html = html.replace(/&#91;poll([^&#]*)&#93;([\s\S]*?)&#91;\/poll&#93;/gi, (match, rawAttrs, rawBody) => {
+    const attrs = decodeHtmlEntities(rawAttrs || '')
+    const questionMatch = attrs.match(/question="([^"]*)"/i)
+    const decodedQuestion = questionMatch ? questionMatch[1] : ''
+    const question = escapeHtml(decodedQuestion || '투표')
+    const lines = rawBody.split(/\r?\n/)
+    const options = []
+    lines.forEach((line) => {
+      const decoded = decodeHtmlEntities(line.trim())
+      const matchOption = decoded.match(/^[-•]\s*(.+)$/)
+      if (matchOption && matchOption[1]) {
+        options.push(escapeHtml(matchOption[1]))
+      }
+    })
+    if (!options.length) {
+      return `<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);"><strong style="display:block;font-size:13px;color:#e2e8f0;">${question}</strong><span style="font-size:12px;color:#94a3b8;">옵션이 없는 투표</span></div>`
+    }
+    const optionsHtml = options
+      .map((option) => `<li style="padding: 8px 10px; border-radius: 10px; background: rgba(15,23,42,0.55); margin-top: 6px; color: #e2e8f0; font-size: 13px;">${option}</li>`)
+      .join('')
+    return `<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);" data-announcement-poll="true" data-poll-question="${question}"><strong style="display:block;font-size:13px;color:#e2e8f0;">${question}</strong><ul style="list-style:none;padding:0;margin:6px 0 0;">${optionsHtml}</ul></div>`
+  })
+
   html = html.replace(/\n/g, '<br />')
-  return html
+  return sanitizeAnnouncementHtml(html)
+}
+
+function stripAnnouncementPollHtml(html = '') {
+  if (!html) return ''
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return String(html)
+  }
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<!doctype html><body>${html}</body>`, 'text/html')
+    doc.body.querySelectorAll('[data-announcement-poll]').forEach((node) => node.remove())
+    return doc.body.innerHTML
+  } catch (error) {
+    return html
+  }
+}
+
+function getAnnouncementPreviewText(announcement, limit = ANNOUNCEMENT_PREVIEW_LENGTH) {
+  if (!announcement || typeof announcement !== 'object') {
+    return ''
+  }
+  const source = typeof announcement.content === 'string' ? announcement.content : ''
+  if (!source) {
+    return ''
+  }
+  const sanitized = stripAnnouncementPollHtml(formatAnnouncementPreview(source))
+  const { text } = truncateText(sanitized, limit)
+  return text
+}
+
+function extractPollDefinitionsFromHtml(html = '') {
+  if (!html) return []
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return []
+  }
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<!doctype html><body>${html}</body>`, 'text/html')
+    const polls = []
+    doc.body.querySelectorAll('[data-announcement-poll]').forEach((element, pollIndex) => {
+      const questionAttr = element.getAttribute('data-poll-question') || ''
+      const textQuestion = questionAttr || element.textContent || ''
+      const question = textQuestion.trim()
+      if (!question) {
+        return
+      }
+      const pollId = element.getAttribute('data-poll-id') || generateUuid()
+      const options = []
+      element.querySelectorAll('[data-poll-option-id]').forEach((optionNode, optionIndex) => {
+        const optionText = optionNode.textContent || ''
+        const label = optionText.trim()
+        if (!label) {
+          return
+        }
+        const optionId = optionNode.getAttribute('data-poll-option-id') || generateUuid()
+        options.push({ id: optionId, label, position: optionIndex + 1 })
+      })
+      if (options.length >= 2) {
+        polls.push({ id: pollId, question, options, position: pollIndex })
+      }
+    })
+    return polls
+  } catch (error) {
+    return []
+  }
 }
 
 function sameMinute(a, b) {
@@ -439,13 +1534,17 @@ const overlayStyles = {
     background: 'rgba(15, 23, 42, 0.94)',
     borderRadius: 30,
     border: '1px solid rgba(71, 85, 105, 0.45)',
-    padding: '28px 28px 24px',
-    minHeight: 'min(92vh, 860px)',
+    padding: '28px 28px calc(48px + var(--chat-overlay-safe-bottom, env(safe-area-inset-bottom, 16px)))',
+    minHeight: 'min(var(--chat-overlay-viewport-height, 96dvh), 860px)',
+    maxHeight: 'min(var(--chat-overlay-viewport-height, 100dvh), 920px)',
     display: 'flex',
     flexDirection: 'column',
     width: '100%',
     boxSizing: 'border-box',
     alignItems: 'stretch',
+    flex: 1,
+    overflow: 'hidden',
+    transition: 'min-height 0.2s ease, max-height 0.2s ease',
   },
   root: (focused, compact = false, viewportHeight = null) => {
     const numericHeight =
@@ -460,13 +1559,13 @@ const overlayStyles = {
       height: compact
         ? effectiveHeight
           ? `${effectiveHeight}px`
-          : 'calc(100vh - 48px)'
-        : 'min(90vh, 800px)',
+          : 'calc(100dvh - 48px)'
+        : 'min(90dvh, 800px)',
       minHeight: compact
         ? effectiveHeight
           ? Math.max(effectiveHeight, 420)
-          : 'min(560px, 92vh)'
-        : 600,
+          : 'min(560px, 92dvh)'
+        : 'min(600px, 88dvh)',
       width: '100%',
       maxWidth: '100%',
       padding: 0,
@@ -561,6 +1660,35 @@ const overlayStyles = {
     display: 'grid',
     gap: 12,
   },
+  input: {
+    appearance: 'none',
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'linear-gradient(135deg, rgba(14, 22, 45, 0.92), rgba(10, 16, 35, 0.92))',
+    color: '#e2e8f0',
+    padding: '10px 12px',
+    fontSize: 13,
+    lineHeight: 1.45,
+    outline: 'none',
+    transition: 'border 0.2s ease, box-shadow 0.2s ease, background 0.2s ease',
+    boxShadow: '0 0 0 0 rgba(59, 130, 246, 0.28)',
+  },
+  colorRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  colorInput: (disabled = false) => ({
+    width: 46,
+    height: 34,
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'rgba(8, 13, 30, 0.9)',
+    padding: 0,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.55 : 1,
+  }),
   sectionTitle: {
     fontSize: 13,
     fontWeight: 700,
@@ -701,18 +1829,45 @@ const overlayStyles = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  unreadBadge: {
-    minWidth: 26,
-    height: 22,
-    borderRadius: 11,
-    background: 'rgba(248, 113, 113, 0.92)',
-    color: '#fff7ed',
-    fontWeight: 700,
-    fontSize: 11,
-    display: 'flex',
+  roomCardUnreadBadge: {
+    display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '0 8px',
+    minWidth: 24,
+    padding: '2px 8px',
+    borderRadius: 999,
+    background: 'rgba(248, 113, 113, 0.82)',
+    color: '#0f172a',
+    fontSize: 11,
+    fontWeight: 700,
+    boxShadow: '0 2px 6px rgba(15, 23, 42, 0.4)',
+  },
+  roomCardPreview: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 6,
+    fontSize: 11,
+    color: '#e2e8f0',
+    minHeight: 16,
+    overflow: 'hidden',
+  },
+  roomCardPreviewAuthor: {
+    fontWeight: 600,
+    color: '#cbd5f5',
+    maxWidth: '35%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  roomCardPreviewText: {
+    flex: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  roomCardPreviewPlaceholder: {
+    color: 'rgba(203, 213, 225, 0.7)',
+    fontStyle: 'italic',
   },
   roomCardStats: {
     display: 'flex',
@@ -771,13 +1926,43 @@ const overlayStyles = {
   },
   conversation: {
     display: 'grid',
-    gridTemplateRows: 'auto 1fr auto',
+    gridTemplateRows: 'auto 1fr auto auto',
     borderRadius: 24,
     border: '1px solid rgba(71, 85, 105, 0.5)',
-    background: 'rgba(11, 18, 40, 0.96)',
+    background: 'rgba(11, 18, 40, 0.78)',
     minHeight: 0,
     overflow: 'hidden',
     position: 'relative',
+  },
+  conversationBackground: (value) => {
+    const base = {
+      position: 'absolute',
+      inset: 0,
+      background: 'linear-gradient(180deg, rgba(6, 10, 25, 0.78) 0%, rgba(6, 10, 25, 0.68) 100%)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      opacity: 0.76,
+      zIndex: 0,
+      pointerEvents: 'none',
+    }
+
+    if (!value) {
+      return base
+    }
+
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    if (isGradientValue(trimmed) || isColorValue(trimmed)) {
+      return {
+        ...base,
+        background: `linear-gradient(180deg, rgba(6, 10, 25, 0.62) 0%, rgba(6, 10, 25, 0.64) 35%, rgba(6, 10, 25, 0.8) 100%), ${trimmed}`,
+        backgroundImage: undefined,
+      }
+    }
+
+    return {
+      ...base,
+      backgroundImage: `linear-gradient(180deg, rgba(6, 10, 25, 0.82) 0%, rgba(6, 10, 25, 0.68) 100%), url(${trimmed})`,
+    }
   },
   conversationHeader: {
     display: 'flex',
@@ -786,6 +1971,8 @@ const overlayStyles = {
     padding: '14px 22px',
     borderBottom: '1px solid rgba(71, 85, 105, 0.5)',
     background: 'rgba(12, 20, 45, 0.98)',
+    position: 'relative',
+    zIndex: 1,
   },
   headerLeft: {
     display: 'flex',
@@ -939,6 +2126,32 @@ const overlayStyles = {
     color: '#cbd5f5',
     letterSpacing: 0.2,
   },
+  drawerAnnouncementRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  drawerAnnouncementButton: {
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 12px',
+    borderRadius: 999,
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(148, 163, 184, 0.12)',
+    color: '#e2e8f0',
+    cursor: 'pointer',
+    transition: 'background 140ms ease, border 140ms ease, color 140ms ease',
+  },
+  drawerAnnouncementHint: {
+    fontSize: 12,
+    color: '#94a3b8',
+    lineHeight: 1.5,
+  },
+  drawerAnnouncementEmpty: {
+    fontSize: 12,
+    color: '#64748b',
+  },
   drawerCover: {
     width: '100%',
     height: 150,
@@ -1078,6 +2291,85 @@ const overlayStyles = {
     gap: 8,
     alignItems: 'center',
   },
+  imageUploadTile: (hasImage = false) => ({
+    position: 'relative',
+    borderRadius: 20,
+    border: hasImage
+      ? '1px solid rgba(59, 130, 246, 0.5)'
+      : '1px dashed rgba(148, 163, 184, 0.55)',
+    background: hasImage ? 'rgba(8, 13, 30, 0.85)' : 'rgba(8, 13, 30, 0.6)',
+    minHeight: 190,
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }),
+  imageUploadPreview: (url) => ({
+    position: 'absolute',
+    inset: 0,
+    backgroundImage: `linear-gradient(180deg, rgba(8, 13, 30, 0.15) 0%, rgba(8, 13, 30, 0.75) 100%), url(${url})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    filter: 'saturate(1.05)',
+  }),
+  imageUploadPlaceholder: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'grid',
+    gap: 6,
+    justifyItems: 'center',
+    textAlign: 'center',
+    color: '#94a3b8',
+    fontSize: 12,
+    lineHeight: 1.6,
+    padding: '0 18px',
+  },
+  imageUploadActions: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 14,
+    zIndex: 2,
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    padding: '8px 12px',
+    borderRadius: 999,
+    background: 'rgba(8, 13, 30, 0.82)',
+    boxShadow: '0 18px 48px -18px rgba(8, 15, 30, 0.85)',
+  },
+  imageUploadButton: (variant = 'primary', disabled = false) => {
+    const palette = {
+      primary: {
+        background: disabled ? 'rgba(59, 130, 246, 0.35)' : 'rgba(59, 130, 246, 0.88)',
+        color: '#f8fafc',
+        border: '1px solid rgba(59, 130, 246, 0.55)',
+      },
+      ghost: {
+        background: 'rgba(15, 23, 42, 0.72)',
+        color: '#cbd5f5',
+        border: '1px solid rgba(148, 163, 184, 0.45)',
+      },
+    }
+    const tone = palette[variant] || palette.primary
+    return {
+      borderRadius: 999,
+      border: tone.border,
+      padding: '8px 16px',
+      fontSize: 12,
+      fontWeight: 600,
+      background: tone.background,
+      color: tone.color,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+    }
+  },
+  imageUploadHint: {
+    fontSize: 11,
+    color: '#94a3b8',
+    lineHeight: 1.6,
+    wordBreak: 'break-all',
+  },
   settingsTabButton: (active = false) => ({
     flex: '0 0 auto',
     borderRadius: 999,
@@ -1089,11 +2381,260 @@ const overlayStyles = {
     padding: '6px 14px',
     cursor: 'pointer',
   }),
+  pinnedAnnouncementContainer: {
+    position: 'sticky',
+    top: -8,
+    zIndex: 5,
+    display: 'grid',
+    gap: 12,
+    margin: '0 -6px 18px',
+    padding: '16px 6px 10px',
+    isolation: 'isolate',
+  },
+  pinnedAnnouncementBackdrop: {
+    position: 'absolute',
+    inset: '-18px -6px -12px',
+    borderRadius: 30,
+    background:
+      'linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(15, 23, 42, 0.72) 55%, rgba(15, 23, 42, 0) 100%)',
+    backdropFilter: 'blur(24px)',
+    pointerEvents: 'none',
+  },
+  pinnedAnnouncementContent: {
+    position: 'relative',
+    display: 'grid',
+    gap: 12,
+    zIndex: 1,
+  },
+  pinnedAnnouncementCard: (stage = PINNED_ANNOUNCEMENT_STAGE_DEFAULT, hasImage = false) => ({
+    display: 'grid',
+    gridTemplateColumns:
+      stage === 'collapsed' && hasImage ? 'minmax(0, 1fr) minmax(120px, 168px)' : 'minmax(0, 1fr)',
+    gap: stage === 'collapsed' ? 14 : 16,
+    padding: stage === 'collapsed' ? '14px 18px' : '16px 18px',
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.38)',
+    background: 'rgba(15, 23, 42, 0.7)',
+    backdropFilter: 'blur(22px)',
+    boxShadow: '0 18px 42px -18px rgba(2, 6, 23, 0.7)',
+  }),
+  pinnedAnnouncementHeaderRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  pinnedAnnouncementHeaderGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  pinnedAnnouncementStageActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  pinnedAnnouncementStageButton: (variant = 'default', disabled = false) => ({
+    borderRadius: 999,
+    border:
+      variant === 'danger'
+        ? '1px solid rgba(248, 113, 113, 0.5)'
+        : '1px solid rgba(59, 130, 246, 0.45)',
+    background:
+      variant === 'danger'
+        ? 'rgba(248, 113, 113, 0.16)'
+        : variant === 'ghost'
+          ? 'rgba(15, 23, 42, 0.6)'
+          : 'rgba(59, 130, 246, 0.16)',
+    color:
+      variant === 'danger'
+        ? '#fca5a5'
+        : variant === 'ghost'
+          ? '#cbd5f5'
+          : '#e0f2fe',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '3px 9px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    transition: 'background 0.15s ease, border-color 0.15s ease',
+  }),
+  pinnedAnnouncementBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '4px 10px',
+    borderRadius: 999,
+    background: 'rgba(59, 130, 246, 0.18)',
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    color: '#e0f2fe',
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.01em',
+    textTransform: 'uppercase',
+  },
+  pinnedAnnouncementTimestamp: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  pinnedAnnouncementText: {
+    display: 'grid',
+    gap: 6,
+    color: '#e2e8f0',
+  },
+  pinnedAnnouncementCollapsedBody: {
+    display: 'grid',
+    gap: 6,
+    color: '#e2e8f0',
+  },
+  pinnedAnnouncementTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#f8fafc',
+    lineHeight: 1.4,
+  },
+  pinnedAnnouncementPreview: {
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#cbd5f5',
+    wordBreak: 'break-word',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  pinnedAnnouncementExpandedBody: {
+    display: 'grid',
+    gap: 12,
+    maxHeight: 280,
+    overflowY: 'auto',
+    paddingRight: 4,
+  },
+  pinnedAnnouncementHtml: {
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#e2e8f0',
+    wordBreak: 'break-word',
+  },
+  pinnedAnnouncementImageWrapper: {
+    position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(15, 23, 42, 0.72)',
+  },
+  pinnedAnnouncementImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  pinnedAnnouncementImageButton: {
+    padding: 0,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+  },
+  pinnedAnnouncementActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 6,
+  },
+  pinnedAnnouncementHiddenToggle: {
+    borderRadius: 999,
+    border: '1px solid rgba(59, 130, 246, 0.45)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    color: '#e0f2fe',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 14px',
+    cursor: 'pointer',
+    alignSelf: 'flex-start',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pinnedAnnouncementActionButton: (variant = 'secondary', disabled = false) => {
+    const isPrimary = variant === 'primary'
+    const isGhost = variant === 'ghost'
+    return {
+      borderRadius: 999,
+      padding: '6px 14px',
+      fontSize: 12,
+      fontWeight: 600,
+      border: isPrimary
+        ? '1px solid rgba(59, 130, 246, 0.7)'
+        : isGhost
+          ? '1px solid rgba(148, 163, 184, 0.2)'
+          : '1px solid rgba(148, 163, 184, 0.5)',
+      background: isPrimary
+        ? 'rgba(37, 99, 235, 0.28)'
+        : isGhost
+          ? 'rgba(15, 23, 42, 0.4)'
+          : 'rgba(15, 23, 42, 0.68)',
+      color: isPrimary ? '#e0f2fe' : '#cbd5f5',
+      cursor: disabled ? 'default' : 'pointer',
+      opacity: disabled ? 0.55 : 1,
+      pointerEvents: disabled ? 'none' : 'auto',
+    }
+  },
+  pinnedAnnouncementEmpty: {
+    padding: '14px 18px',
+    borderRadius: 18,
+    border: '1px dashed rgba(148, 163, 184, 0.4)',
+    background: 'rgba(15, 23, 42, 0.6)',
+    color: '#94a3b8',
+    fontSize: 13,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  announcementImagePreview: {
+    position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(15, 23, 42, 0.68)',
+  },
+  announcementImagePreviewImage: {
+    width: '100%',
+    maxHeight: 220,
+    objectFit: 'cover',
+    display: 'block',
+  },
+  announcementImageRemoveButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    borderRadius: 999,
+    border: '1px solid rgba(148, 163, 184, 0.6)',
+    background: 'rgba(15, 23, 42, 0.82)',
+    color: '#f8fafc',
+    fontSize: 11,
+    padding: '4px 10px',
+    cursor: 'pointer',
+  },
+  announcementImageUploadRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
   announcementListItem: (pinned = false) => ({
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 4,
+    alignItems: 'stretch',
+    gap: 6,
     padding: '10px 12px',
     borderRadius: 12,
     border: pinned ? '1px solid rgba(59, 130, 246, 0.65)' : '1px solid rgba(71, 85, 105, 0.45)',
@@ -1101,29 +2642,262 @@ const overlayStyles = {
     color: '#e2e8f0',
     cursor: 'pointer',
     textAlign: 'left',
+    userSelect: 'none',
   }),
+  announcementListHeader: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  announcementListPreview: {
+    fontSize: 12,
+    color: '#94a3b8',
+    lineHeight: 1.55,
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    wordBreak: 'break-word',
+  },
+  announcementListActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  announcementListMedia: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(15, 23, 42, 0.6)',
+  },
+  announcementListMediaImage: {
+    width: '100%',
+    maxHeight: 180,
+    objectFit: 'cover',
+    display: 'block',
+  },
   announcementMeta: {
     fontSize: 11,
     color: '#94a3b8',
   },
-  announcementToolbar: {
+  announcementToolbarOverlay: (visible = false, viewport = null) => {
+    const safeBottom = Math.max(0, Math.round(viewport?.safeAreaBottom || 0))
+    const offsetTop = Math.max(0, Math.round(viewport?.offsetTop || 0))
+    const visualHeight = Math.max(0, Math.round(viewport?.height || 0))
+    const innerHeight = Math.max(0, Math.round(viewport?.innerHeight || visualHeight))
+    const rawGap = Math.max(0, innerHeight - (offsetTop + visualHeight))
+    const keyboardHeight = Math.max(0, rawGap - safeBottom)
+
+    return {
+      position: 'fixed',
+      left: 0,
+      right: 0,
+      bottom: keyboardHeight,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 10,
+      paddingTop: 12,
+      paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 16px)',
+      paddingRight: 'calc(env(safe-area-inset-right, 0px) + 16px)',
+      paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+      background: 'linear-gradient(180deg, rgba(4, 7, 18, 0.05) 0%, rgba(4, 7, 18, 0.88) 35%, rgba(4, 7, 18, 0.96) 100%)',
+      boxShadow: '0 -28px 48px rgba(2, 6, 23, 0.78)',
+      zIndex: 1540,
+      pointerEvents: visible ? 'auto' : 'none',
+      opacity: visible ? 1 : 0,
+      transform: visible ? 'translateY(0)' : 'translateY(16px)',
+      transition: 'opacity 180ms ease, transform 200ms ease',
+    }
+  },
+  announcementToolbarRow: {
     display: 'flex',
     gap: 8,
-    flexWrap: 'wrap',
+    overflowX: 'auto',
+    paddingBottom: 4,
+    WebkitOverflowScrolling: 'touch',
   },
-  announcementToolbarButton: {
-    borderRadius: 10,
-    border: '1px solid rgba(59, 130, 246, 0.55)',
-    background: 'rgba(37, 99, 235, 0.25)',
+  announcementToolbarItem: (active = false) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    flex: '0 0 auto',
+    padding: '10px 14px',
+    borderRadius: 18,
+    border: active ? '1px solid rgba(59, 130, 246, 0.75)' : '1px solid rgba(71, 85, 105, 0.55)',
+    background: active ? 'rgba(37, 99, 235, 0.32)' : 'rgba(15, 23, 42, 0.78)',
     color: '#e0f2fe',
-    fontSize: 12,
-    fontWeight: 600,
-    padding: '6px 10px',
+    fontSize: 13,
+    lineHeight: 1.2,
+    whiteSpace: 'nowrap',
     cursor: 'pointer',
+  }),
+  announcementToolbarItemIcon: {
+    fontSize: 17,
+    lineHeight: 1,
   },
-  announcementHint: {
+  announcementToolbarItemLabel: {
+    fontSize: 13,
+    lineHeight: 1.2,
+  },
+  announcementToolbarStatusRow: {
     fontSize: 11,
     color: '#94a3b8',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  announcementCommentActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 6,
+  },
+  announcementCommentDelete: {
+    borderRadius: 8,
+    border: '1px solid rgba(244, 114, 182, 0.6)',
+    background: 'rgba(244, 114, 182, 0.18)',
+    color: '#fbcfe8',
+    fontSize: 11,
+    padding: '4px 8px',
+    cursor: 'pointer',
+  },
+  announcementYoutubeResult: {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center',
+    borderRadius: 14,
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(15, 23, 42, 0.7)',
+    padding: '8px 12px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    color: '#e2e8f0',
+  },
+  announcementYoutubeThumb: {
+    width: 84,
+    height: 48,
+    borderRadius: 10,
+    objectFit: 'cover',
+    background: 'rgba(15, 23, 42, 0.85)',
+    flexShrink: 0,
+  },
+  announcementYoutubeInfo: {
+    display: 'grid',
+    gap: 4,
+    minWidth: 0,
+  },
+  announcementPollOptionList: {
+    display: 'grid',
+    gap: 8,
+  },
+  announcementPollOptionRow: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+  },
+  announcementPollStack: {
+    display: 'grid',
+    gap: 12,
+  },
+  announcementPollCard: {
+    borderRadius: 16,
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+    background: 'rgba(15, 23, 42, 0.7)',
+    padding: '12px 14px',
+    display: 'grid',
+    gap: 10,
+  },
+  announcementPollQuestion: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#f8fafc',
+    lineHeight: 1.5,
+  },
+  announcementPollOptionButton: (selected = false, disabled = false) => ({
+    borderRadius: 12,
+    border: selected
+      ? '1px solid rgba(59, 130, 246, 0.7)'
+      : '1px solid rgba(71, 85, 105, 0.55)',
+    background: selected ? 'rgba(37, 99, 235, 0.22)' : 'rgba(15, 23, 42, 0.6)',
+    color: '#e2e8f0',
+    padding: '10px 12px',
+    display: 'grid',
+    gap: 6,
+    textAlign: 'left',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.6 : 1,
+  }),
+  announcementPollOptionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    fontSize: 13,
+    lineHeight: 1.45,
+  },
+  announcementPollOptionMeta: {
+    fontSize: 12,
+    color: '#cbd5f5',
+    flexShrink: 0,
+  },
+  announcementPollOptionBadge: {
+    fontSize: 11,
+    color: '#e0f2fe',
+    background: 'rgba(59, 130, 246, 0.25)',
+    borderRadius: 999,
+    padding: '2px 8px',
+    marginLeft: 8,
+  },
+  announcementPollOptionProgressTrack: {
+    height: 6,
+    borderRadius: 999,
+    background: 'rgba(148, 163, 184, 0.28)',
+    overflow: 'hidden',
+  },
+  announcementPollOptionProgressFill: (selected = false, percent = 0) => ({
+    height: '100%',
+    width: `${Math.min(100, Math.max(0, percent))}%`,
+    background: selected ? 'rgba(59, 130, 246, 0.8)' : 'rgba(96, 165, 250, 0.6)',
+  }),
+  announcementPollFooter: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  announcementPollError: {
+    fontSize: 12,
+    color: '#fca5a5',
+  },
+  announcementToolbarHint: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  announcementEditorWrapper: {
+    position: 'relative',
+    borderRadius: 16,
+    border: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(8, 15, 30, 0.58)',
+    minHeight: 220,
+  },
+  announcementEditor: {
+    minHeight: 220,
+    maxHeight: 420,
+    overflowY: 'auto',
+    padding: '16px 18px',
+    fontSize: 14,
+    lineHeight: 1.65,
+    color: '#f8fafc',
+    wordBreak: 'break-word',
+    outline: 'none',
+  },
+  announcementEditorPlaceholder: {
+    position: 'absolute',
+    inset: 0,
+    padding: '16px 18px',
+    fontSize: 14,
+    lineHeight: 1.65,
+    color: '#94a3b8',
+    pointerEvents: 'none',
   },
   announcementPreview: {
     display: 'grid',
@@ -1142,6 +2916,8 @@ const overlayStyles = {
     display: 'grid',
     gap: 8,
     padding: '0 12px 12px',
+    position: 'relative',
+    zIndex: 1,
   },
   announcementHeader: {
     display: 'flex',
@@ -1163,6 +2939,12 @@ const overlayStyles = {
     border: '1px solid rgba(71, 85, 105, 0.45)',
     gap: 12,
   },
+  banListActions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
   statList: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
@@ -1170,6 +2952,39 @@ const overlayStyles = {
     fontSize: 12,
     color: '#cbd5f5',
   },
+  statContributionList: {
+    display: 'grid',
+    gap: 10,
+    marginTop: 6,
+  },
+  statContributionItem: {
+    display: 'grid',
+    gap: 6,
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.4)',
+    background: 'rgba(15, 23, 42, 0.6)',
+  },
+  statContributionLabel: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  statContributionBar: {
+    height: 6,
+    borderRadius: 999,
+    background: 'rgba(59, 130, 246, 0.25)',
+    overflow: 'hidden',
+  },
+  statContributionBarFill: (percent = 0) => ({
+    width: `${Math.max(0, Math.min(100, Number(percent) || 0))}%`,
+    height: '100%',
+    background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.85) 0%, rgba(96, 165, 250, 0.95) 100%)',
+  }),
   apiKeyList: {
     listStyle: 'none',
     padding: 0,
@@ -1180,12 +2995,195 @@ const overlayStyles = {
   apiKeyItem: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     borderRadius: 12,
     padding: '10px 12px',
     background: 'rgba(15, 23, 42, 0.7)',
     border: '1px solid rgba(71, 85, 105, 0.45)',
     color: '#e2e8f0',
+    gap: 12,
+  },
+  apiKeyStatusBadge: (active = false) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '2px 8px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 600,
+    color: active ? '#bbf7d0' : '#cbd5f5',
+    background: active ? 'rgba(34, 197, 94, 0.28)' : 'rgba(71, 85, 105, 0.45)',
+    border: active ? '1px solid rgba(74, 222, 128, 0.5)' : '1px solid rgba(71, 85, 105, 0.55)',
+  }),
+  apiKeyActions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  themeModeTabs: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  themeModeButton: (active = false) => ({
+    appearance: 'none',
+    borderRadius: 12,
+    border: active ? '1px solid rgba(59, 130, 246, 0.65)' : '1px solid rgba(71, 85, 105, 0.45)',
+    background: active ? 'rgba(37, 99, 235, 0.25)' : 'rgba(15, 23, 42, 0.75)',
+    color: active ? '#e0f2fe' : '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 12px',
+    cursor: 'pointer',
+    transition: 'all 0.18s ease',
+  }),
+  themePresetGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+    gap: 12,
+  },
+  themePresetButton: (active = false) => ({
+    appearance: 'none',
+    borderRadius: 16,
+    border: active ? '1px solid rgba(59, 130, 246, 0.7)' : '1px solid rgba(71, 85, 105, 0.45)',
+    padding: 0,
+    overflow: 'hidden',
+    cursor: 'pointer',
+    background: 'rgba(15, 23, 42, 0.6)',
+    display: 'grid',
+    gridTemplateRows: '120px auto',
+    transition: 'border 0.2s ease, transform 0.2s ease',
+    transform: active ? 'translateY(-2px)' : 'translateY(0)',
+  }),
+  themePresetPreview: (background) => ({
+    height: 120,
+    width: '100%',
+    background: background || 'linear-gradient(135deg, #1e293b, #0f172a)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  }),
+  themePresetLabel: {
+    padding: '10px 12px',
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#e2e8f0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  themeAccentPalette: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  themeAccentSwatch: (color, active = false) => ({
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    background: color,
+    border: active ? '2px solid #e0f2fe' : '2px solid rgba(15, 23, 42, 0.9)',
+    cursor: 'pointer',
+    boxShadow: active ? '0 0 0 2px rgba(59, 130, 246, 0.45)' : 'none',
+  }),
+  themePreview: (background) => ({
+    borderRadius: 16,
+    border: '1px solid rgba(71, 85, 105, 0.5)',
+    padding: 16,
+    display: 'grid',
+    gap: 12,
+    background: isGradientValue(background) || isColorValue(background)
+      ? `linear-gradient(135deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.8)), ${background}`
+      : 'rgba(15, 23, 42, 0.8)',
+    backgroundImage: !background || isGradientValue(background) || isColorValue(background)
+      ? undefined
+      : `linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.72)), url(${background})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  }),
+  themePreviewMessage: (bubbleColor, textColor) => ({
+    borderRadius: 12,
+    border: `1px solid ${adjustColorLuminance(bubbleColor || '#1f2937', 0.35)}`,
+    background: bubbleColor || 'rgba(15, 23, 42, 0.8)',
+    color: textColor || '#f8fafc',
+    padding: '10px 14px',
+    fontSize: 12,
+    fontWeight: 500,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  }),
+  themePreviewAccent: (accent) => ({
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
+    background: accent || '#38bdf8',
+    boxShadow: '0 0 0 2px rgba(15, 23, 42, 0.75)',
+  }),
+  themeAutoRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  banPresetGrid: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  banPresetButton: (active = false) => ({
+    appearance: 'none',
+    borderRadius: 10,
+    border: active ? '1px solid rgba(59, 130, 246, 0.7)' : '1px solid rgba(71, 85, 105, 0.5)',
+    background: active ? 'rgba(37, 99, 235, 0.3)' : 'rgba(15, 23, 42, 0.7)',
+    color: active ? '#e0f2fe' : '#cbd5f5',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 10px',
+    cursor: 'pointer',
+  }),
+  conversationFooter: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'flex',
+    gap: 12,
+    padding: '12px 18px 16px',
+    borderTop: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'linear-gradient(180deg, rgba(10, 16, 35, 0.7) 0%, rgba(10, 16, 35, 0.92) 90%)',
+  },
+  conversationFooterButton: (variant = 'ghost', disabled = false) => {
+    const palette = {
+      danger: {
+        background: 'rgba(248, 113, 113, 0.18)',
+        border: '1px solid rgba(248, 113, 113, 0.6)',
+        color: '#fecaca',
+      },
+      ghost: {
+        background: 'rgba(15, 23, 42, 0.72)',
+        border: '1px solid rgba(71, 85, 105, 0.55)',
+        color: '#cbd5f5',
+      },
+    }
+    const tone = palette[variant] || palette.ghost
+    return {
+      flex: 1,
+      borderRadius: 12,
+      border: tone.border,
+      background: tone.background,
+      color: disabled ? '#64748b' : tone.color,
+      fontSize: 12,
+      fontWeight: 600,
+      padding: '10px 14px',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      transition: 'all 0.18s ease',
+    }
   },
   drawerFooter: {
     position: 'sticky',
@@ -1221,6 +3219,185 @@ const overlayStyles = {
     justifyContent: 'center',
     gap: 8,
   }),
+  miniOverlayShell: (x, y, width = MINI_OVERLAY_WIDTH, height = MINI_OVERLAY_HEIGHT, mode = 'reading') => {
+    const base = {
+      position: 'fixed',
+      top: y,
+      left: x,
+      width,
+      height,
+      border: '1px solid rgba(71, 85, 105, 0.55)',
+      boxShadow: '0 40px 120px -40px rgba(8, 15, 30, 0.85)',
+      backdropFilter: 'blur(18px)',
+      color: '#e2e8f0',
+      zIndex: 1525,
+      overflow: 'hidden',
+      userSelect: 'none',
+      touchAction: mode === 'bar' ? 'none' : 'auto',
+    }
+
+    if (mode === 'bar') {
+      return {
+        ...base,
+        borderRadius: 999,
+        background: 'rgba(15, 23, 42, 0.9)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        padding: '10px 16px',
+        touchAction: 'none',
+      }
+    }
+
+    return {
+      ...base,
+      borderRadius: 22,
+      background: 'rgba(12, 20, 45, 0.95)',
+      display: 'grid',
+      gridTemplateRows: 'auto 1fr auto auto',
+    }
+  },
+  miniOverlayHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: '14px 18px 12px',
+    background: 'rgba(10, 16, 35, 0.82)',
+    cursor: 'grab',
+    touchAction: 'none',
+    userSelect: 'none',
+  },
+  miniOverlayHeaderActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  miniOverlayTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#f1f5f9',
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
+  },
+  miniOverlayBadge: {
+    borderRadius: 999,
+    background: 'rgba(37, 99, 235, 0.3)',
+    color: '#dbeafe',
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '2px 8px',
+  },
+  miniOverlayAction: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    color: '#cbd5f5',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  miniOverlayMessages: {
+    padding: '12px 18px 10px',
+    display: 'grid',
+    gap: 10,
+    overflowY: 'auto',
+    touchAction: 'pan-y',
+    WebkitOverflowScrolling: 'touch',
+    background: 'rgba(8, 13, 30, 0.55)',
+  },
+  miniOverlayMessageRow: (mine = false) => ({
+    display: 'grid',
+    gap: 4,
+    justifyItems: mine ? 'end' : 'start',
+  }),
+  miniOverlayMessageMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  miniOverlayMessageAuthor: (mine = false) => ({
+    fontWeight: 600,
+    color: mine ? '#38bdf8' : '#e2e8f0',
+  }),
+  miniOverlayMessageBody: {
+    maxWidth: '100%',
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: '#cbd5f5',
+    background: 'rgba(15, 23, 42, 0.72)',
+    borderRadius: 12,
+    border: '1px solid rgba(71, 85, 105, 0.4)',
+    padding: '8px 12px',
+  },
+  miniOverlayComposer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '12px 16px 14px',
+    borderTop: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(10, 16, 35, 0.88)',
+  },
+  miniOverlayComposerInput: {
+    flex: 1,
+    minHeight: 44,
+    resize: 'none',
+    borderRadius: 14,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    color: '#e2e8f0',
+    padding: '8px 12px',
+    fontSize: 12,
+    lineHeight: 1.45,
+  },
+  miniOverlayResizeHandle: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '12px 0 10px',
+    borderTop: '1px solid rgba(71, 85, 105, 0.45)',
+    background: 'rgba(7, 12, 26, 0.9)',
+    cursor: 'ns-resize',
+    touchAction: 'none',
+  },
+  miniOverlayResizeBar: {
+    width: 48,
+    height: 4,
+    borderRadius: 999,
+    background: 'rgba(148, 163, 184, 0.55)',
+  },
+  miniOverlayBarLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#e2e8f0',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  miniOverlayBarBadge: {
+    borderRadius: 999,
+    background: 'rgba(37, 99, 235, 0.35)',
+    color: '#dbeafe',
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '3px 8px',
+  },
+  miniOverlayBarClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    border: '1px solid rgba(71, 85, 105, 0.55)',
+    background: 'rgba(15, 23, 42, 0.72)',
+    color: '#cbd5f5',
+    fontSize: 14,
+    cursor: 'pointer',
+  },
   messageViewport: {
     overflowY: 'auto',
     padding: '22px 6px 26px',
@@ -1228,6 +3405,8 @@ const overlayStyles = {
     flexDirection: 'column',
     gap: 12,
     background: 'rgba(4, 10, 28, 0.4)',
+    position: 'relative',
+    zIndex: 1,
   },
   dateDividerWrapper: {
     display: 'flex',
@@ -1292,10 +3471,10 @@ const overlayStyles = {
     maxWidth: '94%',
     textAlign: mine ? 'right' : 'left',
   }),
-  messageName: (mine = false, clickable = false) => ({
+  messageName: (mine = false, clickable = false, accent = '#bfdbfe') => ({
     fontSize: 11,
     fontWeight: 700,
-    color: mine ? '#bfdbfe' : '#f8fafc',
+    color: mine ? accent || '#bfdbfe' : '#f8fafc',
     cursor: clickable ? 'pointer' : 'default',
   }),
   messageStack: (mine = false) => ({
@@ -1303,13 +3482,43 @@ const overlayStyles = {
     gap: 2,
     justifyItems: mine ? 'end' : 'start',
   }),
+  systemEventRow: {
+    display: 'grid',
+    gap: 4,
+    justifyItems: 'center',
+    padding: '6px 0 14px',
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+  systemEventBadge: (event = 'member_join') => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    border:
+      event === 'member_leave'
+        ? '1px solid rgba(248, 113, 113, 0.45)'
+        : '1px solid rgba(34, 197, 94, 0.45)',
+    background:
+      event === 'member_leave'
+        ? 'rgba(248, 113, 113, 0.18)'
+        : 'rgba(34, 197, 94, 0.18)',
+    color: event === 'member_leave' ? '#fecaca' : '#bbf7d0',
+    fontWeight: 700,
+    fontSize: 11,
+    padding: '4px 12px',
+  }),
+  systemEventMeta: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
   messageItem: (mine = false) => ({
     display: 'flex',
     alignItems: 'flex-end',
     justifyContent: mine ? 'flex-end' : 'flex-start',
     gap: 4,
   }),
-  messageBubble: (mine = false, variant = 'default') => {
+  messageBubble: (mine = false, variant = 'default', theme = null) => {
     const variants = {
       default: {
         border: mine
@@ -1335,17 +3544,49 @@ const overlayStyles = {
       },
     }
     const tone = variants[variant] || variants.default
+    const bubbleColor = theme?.bubbleColor
+    const background = bubbleColor
+      ? mine
+        ? adjustColorLuminance(bubbleColor, 0.12)
+        : bubbleColor
+      : tone.background
+    const borderColor = bubbleColor
+      ? `1px solid ${adjustColorLuminance(bubbleColor, mine ? 0.35 : 0.18)}`
+      : tone.border
+    const resolvedText = theme?.textColor || '#f8fafc'
     return {
       borderRadius: 12,
-      border: tone.border,
-      background: tone.background,
+      border: borderColor,
+      background,
       padding: '4px 12px 6px',
-      color: '#f8fafc',
+      color: variant.startsWith('ai') ? tone.color || '#f8fafc' : resolvedText,
       display: 'grid',
       gap: 4,
       minWidth: 0,
     }
   },
+  messageUnreadRow: (mine = false) => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: mine ? 'flex-end' : 'flex-start',
+    gap: 6,
+    marginTop: 4,
+  }),
+  messageUnreadDot: (mine = false) => ({
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    background: mine ? 'rgba(96, 165, 250, 0.85)' : 'rgba(251, 191, 36, 0.95)',
+    flexShrink: 0,
+    boxShadow: mine
+      ? '0 0 6px rgba(96, 165, 250, 0.4)'
+      : '0 0 6px rgba(251, 191, 36, 0.35)',
+  }),
+  messageUnreadText: (mine = false) => ({
+    fontSize: 10,
+    color: mine ? '#dbeafe' : '#f8fafc',
+    opacity: 0.85,
+  }),
   messageLabel: (variant = 'prompt') => ({
     fontSize: 10,
     fontWeight: 700,
@@ -2054,8 +4295,11 @@ function normalizeRoomEntry(room) {
       ? base.unread_count
       : base.unreadCount !== undefined
         ? base.unreadCount
-        : base.unread
-  const unreadCount = Number.isFinite(Number(unreadRaw)) ? Number(unreadRaw) : 0
+        : base.unread !== undefined
+          ? base.unread
+          : 0
+  const unreadNumeric = Number(unreadRaw)
+  const unreadCount = Number.isFinite(unreadNumeric) ? Math.max(0, Math.trunc(unreadNumeric)) : 0
 
   const coverUrl = base.coverUrl || base.cover_url || null
 
@@ -2113,6 +4357,32 @@ function normalizeSearchKeyword(entry) {
             : null
 
   return { keyword, searchCount, lastSearchedAt }
+}
+
+function parseUnreadValue(value) {
+  if (value === null || value === undefined) {
+    return 0
+  }
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return 0
+  }
+  return Math.max(0, Math.trunc(numeric))
+}
+
+function resolveRoomUnread(room) {
+  if (!room || typeof room !== 'object') {
+    return 0
+  }
+  const candidates = [room.unread_count, room.unreadCount, room.unread]
+  let resolved = 0
+  for (const candidate of candidates) {
+    const parsed = parseUnreadValue(candidate)
+    if (parsed > resolved) {
+      resolved = parsed
+    }
+  }
+  return resolved
 }
 
 function normalizeRoomCollections(snapshot = {}) {
@@ -2246,6 +4516,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMediaLimit, setDrawerMediaLimit] = useState(20)
   const [drawerFileLimit, setDrawerFileLimit] = useState(20)
+  const [miniOverlay, setMiniOverlay] = useState({
+    active: false,
+    mode: 'reading',
+    position: null,
+    size: { width: MINI_OVERLAY_WIDTH, height: MINI_OVERLAY_HEIGHT },
+  })
+  const viewingConversation = open && (!miniOverlay.active || miniOverlay.mode === 'reading')
 
   useEffect(() => {
     drawerOpenRef.current = drawerOpen
@@ -2261,6 +4538,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
     }
   }, [drawerOpen])
+
   const [profileSheet, setProfileSheet] = useState({ open: false, participant: null, busy: false, error: null })
   const [settingsOverlayOpen, setSettingsOverlayOpen] = useState(false)
   const [roomBans, setRoomBans] = useState([])
@@ -2269,8 +4547,77 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [roomAnnouncementCursor, setRoomAnnouncementCursor] = useState(null)
   const [roomAnnouncementsHasMore, setRoomAnnouncementsHasMore] = useState(false)
   const [pinnedAnnouncement, setPinnedAnnouncement] = useState(null)
+  const [pinnedAnnouncementStage, setPinnedAnnouncementStage] = useState('collapsed')
+  const pinnedStageKeyRef = useRef(null)
+  const [pollVotingState, setPollVotingState] = useState({})
+  const nonPinnedAnnouncements = useMemo(() => {
+    const list = Array.isArray(roomAnnouncements) ? roomAnnouncements : []
+    const pinnedId = pinnedAnnouncement?.id
+    if (!pinnedId) {
+      return list
+    }
+    return list.filter((item) => item && item.id !== pinnedId)
+  }, [roomAnnouncements, pinnedAnnouncement])
+
+  const commitPinnedAnnouncementStage = useCallback(
+    (nextStage) => {
+      const stage = PINNED_ANNOUNCEMENT_STAGE_VALUES.has(nextStage)
+        ? nextStage
+        : PINNED_ANNOUNCEMENT_STAGE_DEFAULT
+      setPinnedAnnouncementStage(stage)
+      if (typeof window !== 'undefined' && pinnedStageKeyRef.current) {
+        try {
+          window.localStorage.setItem(pinnedStageKeyRef.current, stage)
+        } catch (error) {
+          console.warn('[chat] pinned stage save failed', error)
+        }
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (context?.type === 'chat-room' && context.chatRoomId) {
+      const storageKey = `${PINNED_ANNOUNCEMENT_STAGE_KEY_PREFIX}${context.chatRoomId}`
+      pinnedStageKeyRef.current = storageKey
+      if (typeof window !== 'undefined') {
+        try {
+          const storedStage = window.localStorage.getItem(storageKey)
+          if (storedStage && PINNED_ANNOUNCEMENT_STAGE_VALUES.has(storedStage)) {
+            setPinnedAnnouncementStage(storedStage)
+            return
+          }
+        } catch (error) {
+          console.warn('[chat] pinned stage load failed', error)
+        }
+      }
+      setPinnedAnnouncementStage(PINNED_ANNOUNCEMENT_STAGE_DEFAULT)
+    } else {
+      pinnedStageKeyRef.current = null
+      setPinnedAnnouncementStage(PINNED_ANNOUNCEMENT_STAGE_DEFAULT)
+    }
+  }, [context?.chatRoomId, context?.type])
+
+  const pinnedAnnouncementHtml = useMemo(() => {
+    if (!pinnedAnnouncement?.content) {
+      return ''
+    }
+    const sanitized = formatAnnouncementPreview(pinnedAnnouncement.content || '')
+    return stripAnnouncementPollHtml(sanitized)
+  }, [pinnedAnnouncement?.content])
+
+  const pinnedAnnouncementPreview = useMemo(
+    () => truncateText(pinnedAnnouncementHtml || '', ANNOUNCEMENT_PREVIEW_LENGTH),
+    [pinnedAnnouncementHtml],
+  )
+
+  useEffect(() => {
+    setPollVotingState({})
+  }, [context?.chatRoomId])
+
   const [announcementComposer, setAnnouncementComposer] = useState({
     open: false,
+    title: '',
     content: '',
     pinned: false,
     submitting: false,
@@ -2285,15 +4632,28 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     commentInput: '',
     error: null,
   })
+  const [announcementListOpen, setAnnouncementListOpen] = useState(false)
   const [announcementError, setAnnouncementError] = useState(null)
+  const [announcementPinningId, setAnnouncementPinningId] = useState(null)
+  const [announcementPollOverlay, setAnnouncementPollOverlay] = useState({
+    open: false,
+    question: '',
+    options: ['', ''],
+    error: null,
+  })
   const [roomStats, setRoomStats] = useState(null)
   const [roomStatsLoading, setRoomStatsLoading] = useState(false)
   const [roomPreferences, setRoomPreferences] = useState(null)
   const [preferencesDraft, setPreferencesDraft] = useState({
-    bubbleColor: '',
-    textColor: '',
+    bubbleColor: DEFAULT_THEME_CONFIG.bubbleColor,
+    textColor: DEFAULT_THEME_CONFIG.textColor,
     backgroundUrl: '',
+    backgroundColor: DEFAULT_THEME_CONFIG.backgroundColor,
     useRoomBackground: true,
+    themeMode: DEFAULT_THEME_CONFIG.mode,
+    themePresetId: DEFAULT_THEME_CONFIG.presetId,
+    accentColor: DEFAULT_THEME_CONFIG.accentColor,
+    autoContrast: true,
     metadata: {},
   })
   const [savingPreferences, setSavingPreferences] = useState(false)
@@ -2315,9 +4675,18 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [apiKeySubmitting, setApiKeySubmitting] = useState(false)
   const [roomSettingsDraft, setRoomSettingsDraft] = useState({
-    defaultBackgroundUrl: '',
     defaultBanMinutes: '',
+    themeMode: DEFAULT_THEME_CONFIG.mode,
+    themePresetId: DEFAULT_THEME_CONFIG.presetId,
+    themeBackgroundUrl: '',
+    themeBackgroundColor: DEFAULT_THEME_CONFIG.backgroundColor,
+    accentColor: DEFAULT_THEME_CONFIG.accentColor,
+    bubbleColor: DEFAULT_THEME_CONFIG.bubbleColor,
+    textColor: DEFAULT_THEME_CONFIG.textColor,
+    autoContrast: true,
   })
+  const [roomThemeUploadBusy, setRoomThemeUploadBusy] = useState(false)
+  const [memberThemeUploadBusy, setMemberThemeUploadBusy] = useState(false)
   const [mediaLibrary, setMediaLibrary] = useState({
     status: 'idle',
     entries: [],
@@ -2336,16 +4705,20 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const messageListRef = useRef(null)
   const conversationRef = useRef(null)
   const composerPanelRef = useRef(null)
+  const roomBackgroundInputRef = useRef(null)
+  const memberBackgroundInputRef = useRef(null)
   const composerToggleRef = useRef(null)
-  const announcementTextareaRef = useRef(null)
+  const announcementEditorRef = useRef(null)
+  const announcementSelectionRef = useRef(null)
+  const announcementComposingRef = useRef(false)
   const attachmentCacheRef = useRef(new Map())
   const longPressTimerRef = useRef(null)
   const longPressActiveRef = useRef(false)
   const videoControlTimerRef = useRef(null)
   const mediaPickerLongPressRef = useRef({ timer: null, active: false, id: null })
   const aiPendingMessageRef = useRef(null)
-  const lastMarkedRef = useRef(null)
   const roomMetadataRef = useRef(new Map())
+  const lastMarkedReadRef = useRef({ roomId: null, messageId: null })
   const drawerOpenRef = useRef(false)
   const drawerGestureRef = useRef({
     tracking: false,
@@ -2356,6 +4729,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     triggered: false,
     openOnStart: false,
   })
+  const rootRef = useRef(null)
+  const pinchStateRef = useRef({ initialDistance: null, triggered: false })
+  const miniOverlayDragRef = useRef({ pointerId: null, originX: 0, originY: 0, startX: 0, startY: 0 })
+  const miniOverlayResizeRef = useRef({ pointerId: null, originHeight: MINI_OVERLAY_HEIGHT, startY: 0 })
   const [viewport, setViewport] = useState(() => getViewportSnapshot())
   const isCompactLayout = viewport.width <= 900
   const isUltraCompactLayout = viewport.width <= 640
@@ -2413,6 +4790,86 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const trimmedSearchQuery = useMemo(() => (searchQuery || '').trim(), [searchQuery])
 
+  const getCollectionUnreadTotal = useCallback((collection) => {
+    if (!Array.isArray(collection) || collection.length === 0) {
+      return 0
+    }
+    return collection.reduce((sum, room) => sum + resolveRoomUnread(room), 0)
+  }, [])
+
+  const commitUnreadState = useCallback(
+    (collections = null) => {
+      const snapshot = collections || roomsRef.current
+      if (!snapshot) {
+        if (onUnreadChange) {
+          onUnreadChange(0)
+        }
+        return
+      }
+
+      const total = getCollectionUnreadTotal(snapshot.joined)
+      if (onUnreadChange) {
+        onUnreadChange(total)
+      }
+    },
+    [getCollectionUnreadTotal, onUnreadChange],
+  )
+
+  const syncUnreadFromCollections = useCallback(
+    (collections, _options = {}) => {
+      if (collections) {
+        commitUnreadState(collections)
+      } else {
+        commitUnreadState()
+      }
+    },
+    [commitUnreadState],
+  )
+
+  const getRoomUnreadCount = useCallback((roomId) => {
+    const normalized = normalizeId(roomId)
+    if (!normalized) {
+      return 0
+    }
+
+    const overrides = roomMetadataRef.current
+    if (overrides && overrides.has(normalized)) {
+      const override = overrides.get(normalized)
+      const overrideValue = resolveRoomUnread(override)
+      if (overrideValue > 0 || parseUnreadValue(override?.unread_count) === 0) {
+        return overrideValue
+      }
+    }
+
+    const snapshot = roomsRef.current
+    if (!snapshot) {
+      return 0
+    }
+
+    const findInCollection = (collection) => {
+      if (!Array.isArray(collection)) {
+        return null
+      }
+      return collection.find((room) => normalizeId(room?.id) === normalized) || null
+    }
+
+    const target =
+      findInCollection(snapshot.joined) ||
+      findInCollection(snapshot.available) ||
+      (snapshot.roomSummary
+        ? findInCollection(snapshot.roomSummary.joined) ||
+          findInCollection(snapshot.roomSummary.available)
+        : null)
+
+    return resolveRoomUnread(target)
+  }, [])
+
+  useEffect(() => {
+    if (onUnreadChange) {
+      onUnreadChange(0)
+    }
+  }, [onUnreadChange])
+
   const resolvedSearchKeywords = useMemo(() => {
     const source = trimmedSearchQuery
       ? roomSearchMeta.suggestions
@@ -2442,6 +4899,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   useEffect(() => {
     roomsRef.current = rooms
   }, [rooms])
+
+  useEffect(() => {
+    commitUnreadState(rooms)
+  }, [rooms, commitUnreadState])
 
   useEffect(() => {
     if (!context?.chatRoomId) {
@@ -2564,16 +5025,50 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setViewport(getViewportSnapshot())
     }
 
+    const visual = window.visualViewport
+
     handleResize()
 
     window.addEventListener('resize', handleResize)
     window.addEventListener('orientationchange', handleResize)
+    if (visual) {
+      visual.addEventListener('resize', handleResize)
+      visual.addEventListener('scroll', handleResize)
+    }
 
     return () => {
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('orientationchange', handleResize)
+      if (visual) {
+        visual.removeEventListener('resize', handleResize)
+        visual.removeEventListener('scroll', handleResize)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    if (!open) {
+      setMiniOverlay((prev) => {
+        if (!prev.active) return prev
+        return { ...prev, active: false }
+      })
+    }
+  }, [open])
+
+  useEffect(() => {
+    setAnnouncementListOpen(false)
+  }, [context?.chatRoomId])
+
+  useEffect(() => {
+    setMiniOverlay((prev) => {
+      if (!prev.active) return prev
+      const position = clampMiniOverlayPosition(prev.position, viewport)
+      if (!prev.position || prev.position.x !== position.x || prev.position.y !== position.y) {
+        return { ...prev, position }
+      }
+      return prev
+    })
+  }, [viewport])
 
   const applyRoomOverrides = useCallback((collections) => {
     if (!collections) {
@@ -2648,11 +5143,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     if (patch.last_message_at && !patch.lastMessageAt) {
       patch.lastMessageAt = patch.last_message_at
     }
+    let unreadTouched = false
     if (patch.unread_count !== undefined || patch.unreadCount !== undefined) {
       const unread = patch.unread_count !== undefined ? patch.unread_count : patch.unreadCount
-      const parsed = Number.isFinite(Number(unread)) ? Number(unread) : 0
+      const numeric = Number(unread)
+      const parsed = Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0
       patch.unread_count = parsed
       patch.unreadCount = parsed
+      unreadTouched = true
     }
 
     const overrides = roomMetadataRef.current
@@ -2681,14 +5179,22 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return changed ? next : collection
     }
 
+    let nextCollectionsSnapshot = null
+
     setRooms((prev) => {
-      if (!prev) return prev
+      if (!prev) {
+        nextCollectionsSnapshot = null
+        return prev
+      }
       const nextJoined = applyCollection(prev.joined)
       const nextAvailable = applyCollection(prev.available)
       if (nextJoined === prev.joined && nextAvailable === prev.available) {
+        nextCollectionsSnapshot = prev
         return prev
       }
-      return { joined: nextJoined, available: nextAvailable }
+      const nextState = { ...prev, joined: nextJoined, available: nextAvailable }
+      nextCollectionsSnapshot = nextState
+      return nextState
     })
 
     setDashboard((prev) => {
@@ -2716,9 +5222,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         roomSummary: nextSummary,
       }
     })
-  }, [])
+
+    if (unreadTouched) {
+      commitUnreadState(nextCollectionsSnapshot || roomsRef.current)
+    }
+  }, [commitUnreadState])
 
   const viewerId = useMemo(() => viewer?.id || viewer?.owner_id || null, [viewer])
+  const normalizedViewerId = useMemo(() => normalizeId(viewerId), [viewerId])
   const viewerToken = useMemo(() => normalizeId(viewerId), [viewerId])
 
   const currentRoom = useMemo(() => {
@@ -2783,6 +5294,26 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         currentGroup = null
       }
 
+      const metadata = message && typeof message.metadata === 'object' ? message.metadata : null
+      const eventType = metadata?.event
+      if (eventType === 'member_join' || eventType === 'member_leave') {
+        const memberName = metadata?.member_name || message.username || '참여자'
+        const text =
+          message.text ||
+          `${memberName} 님이 ${eventType === 'member_join' ? '참여했습니다.' : '나갔습니다.'}`
+        entries.push({
+          type: 'system',
+          key: `system-${message.id || message.local_id || index}`,
+          text,
+          event: eventType,
+          memberName,
+          memberCount: parseUnreadValue(metadata?.room_member_total),
+          createdAt: message.created_at,
+        })
+        currentGroup = null
+        return
+      }
+
       const aiMeta = getAiMetadata(message)
       const ownerId = message.owner_id || message.user_id || null
       const ownerToken = normalizeId(ownerId)
@@ -2843,24 +5374,66 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return entries
   }, [messages, moderatorTokenSet, roomOwnerToken, viewerToken])
 
+  const hasContext = Boolean(context)
+  const aiActive = Boolean(aiRequest?.active)
+  const hasReadyAttachment = useMemo(
+    () => composerAttachments.some((attachment) => attachment?.status === 'ready'),
+    [composerAttachments],
+  )
+  const trimmedMessage = messageInput.trim()
+  const disableSend = useMemo(() => {
+    if (!hasContext || sending) {
+      return true
+    }
+    if (aiActive) {
+      return trimmedMessage.length === 0
+    }
+    return trimmedMessage.length === 0 && !hasReadyAttachment
+  }, [aiActive, hasContext, hasReadyAttachment, sending, trimmedMessage])
+  const promptPreview = useMemo(() => {
+    if (!aiActive) {
+      return null
+    }
+    const promptSource = aiRequest?.prompt ?? messageInput
+    const source = (promptSource || '').trim()
+    if (!source) {
+      return null
+    }
+    return truncateText(source, 120)
+  }, [aiActive, aiRequest?.prompt, messageInput])
+
   useEffect(() => {
     if (!settingsOverlayOpen || context?.type !== 'chat-room') {
       return
     }
 
-    const background =
-      currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl || ''
+    const rawTheme = normalizeThemeConfig(
+      currentRoom?.default_theme || currentRoom?.defaultTheme || {},
+      {
+        ...DEFAULT_THEME_CONFIG,
+        backgroundUrl:
+          currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl || '',
+      },
+    )
+    const palette = deriveThemePalette(rawTheme)
     const banMinutesRaw =
       currentRoom?.default_ban_minutes !== undefined
         ? currentRoom?.default_ban_minutes
         : currentRoom?.defaultBanMinutes
 
     setRoomSettingsDraft({
-      defaultBackgroundUrl: background || '',
       defaultBanMinutes:
         banMinutesRaw !== undefined && banMinutesRaw !== null && banMinutesRaw !== ''
           ? String(banMinutesRaw)
           : '',
+      themeMode: rawTheme.mode,
+      themePresetId: rawTheme.presetId,
+      themeBackgroundUrl: rawTheme.backgroundUrl || '',
+      themeBackgroundColor: rawTheme.backgroundColor || DEFAULT_THEME_CONFIG.backgroundColor,
+      accentColor: palette.accentColor,
+      bubbleColor: palette.bubbleColor,
+      textColor: palette.textColor,
+      autoContrast: rawTheme.autoContrast !== false,
     })
   }, [context?.type, context?.chatRoomId, currentRoom, settingsOverlayOpen])
 
@@ -2877,6 +5450,533 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       viewerOwnsRoom ||
       (context?.type === 'chat-room' && viewerToken && moderatorTokenSet.has(viewerToken)),
     [context?.type, moderatorTokenSet, viewerOwnsRoom, viewerToken],
+  )
+
+  useEffect(() => {
+    if (context?.type !== 'chat-room') {
+      setPreferencesDraft({
+        bubbleColor: DEFAULT_THEME_CONFIG.bubbleColor,
+        textColor: DEFAULT_THEME_CONFIG.textColor,
+        backgroundUrl: '',
+        backgroundColor: DEFAULT_THEME_CONFIG.backgroundColor,
+        useRoomBackground: true,
+        themeMode: DEFAULT_THEME_CONFIG.mode,
+        themePresetId: DEFAULT_THEME_CONFIG.presetId,
+        accentColor: DEFAULT_THEME_CONFIG.accentColor,
+        autoContrast: true,
+        metadata: {},
+      })
+      return
+    }
+
+    const baseThemeConfig = normalizeThemeConfig(
+      currentRoom?.default_theme || currentRoom?.defaultTheme || {},
+      {
+        ...DEFAULT_THEME_CONFIG,
+        backgroundUrl:
+          currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl || '',
+      },
+    )
+    const basePalette = deriveThemePalette(baseThemeConfig)
+    const storedBubble = normalizeColor(roomPreferences?.bubble_color)
+    const storedText = normalizeColor(roomPreferences?.text_color)
+    const personalBackgroundUrl = roomPreferences?.background_url || ''
+    const metadataTheme = roomPreferences?.metadata?.theme || {}
+    const personalThemeConfig = normalizeThemeConfig(metadataTheme, {
+      ...baseThemeConfig,
+      bubbleColor: storedBubble || basePalette.bubbleColor,
+      textColor: storedText || basePalette.textColor,
+      backgroundUrl: personalBackgroundUrl || baseThemeConfig.backgroundUrl,
+    })
+    const personalPalette = deriveThemePalette(personalThemeConfig)
+    const useRoomBackground = roomPreferences ? roomPreferences.use_room_background !== false : true
+    const mergedPalette = mergeThemePalettes(basePalette, personalPalette, useRoomBackground)
+    const activeThemeConfig = useRoomBackground ? baseThemeConfig : personalThemeConfig
+
+    setPreferencesDraft({
+      bubbleColor: storedBubble || mergedPalette.bubbleColor,
+      textColor: storedText || mergedPalette.textColor,
+      backgroundUrl: useRoomBackground ? '' : personalThemeConfig.backgroundUrl || '',
+      backgroundColor: activeThemeConfig.backgroundColor || DEFAULT_THEME_CONFIG.backgroundColor,
+      useRoomBackground,
+      themeMode: activeThemeConfig.mode,
+      themePresetId: activeThemeConfig.presetId,
+      accentColor: mergedPalette.accentColor,
+      autoContrast: activeThemeConfig.autoContrast !== false,
+      metadata: roomPreferences?.metadata || {},
+    })
+  }, [context?.type, currentRoom, roomPreferences])
+
+  const ownerThemeFallback = useMemo(
+    () =>
+      normalizeThemeConfig(currentRoom?.default_theme || currentRoom?.defaultTheme || {}, {
+        ...DEFAULT_THEME_CONFIG,
+        backgroundUrl:
+          currentRoom?.default_background_url || currentRoom?.defaultBackgroundUrl || '',
+      }),
+    [currentRoom],
+  )
+
+  const ownerThemePreview = useMemo(
+    () =>
+      buildThemePaletteFromDraft(roomSettingsDraft, {
+        fallback: ownerThemeFallback,
+        fallbackBackgroundUrl: ownerThemeFallback.backgroundUrl,
+      }),
+    [ownerThemeFallback, roomSettingsDraft],
+  )
+
+  const basePalette = useMemo(() => deriveThemePalette(ownerThemeFallback), [ownerThemeFallback])
+
+  const memberThemeFallback = useMemo(
+    () =>
+      normalizeThemeConfig(roomPreferences?.metadata?.theme || {}, {
+        ...ownerThemeFallback,
+        backgroundUrl: roomPreferences?.background_url || ownerThemeFallback.backgroundUrl,
+        bubbleColor: roomPreferences?.bubble_color || ownerThemeFallback.bubbleColor,
+        textColor: roomPreferences?.text_color || ownerThemeFallback.textColor,
+      }),
+    [ownerThemeFallback, roomPreferences],
+  )
+
+  const personalThemePreview = useMemo(() => {
+    const preview = buildThemePaletteFromDraft(
+      {
+        themeMode: preferencesDraft.themeMode,
+        themePresetId: preferencesDraft.themePresetId,
+        themeBackgroundUrl: preferencesDraft.backgroundUrl,
+        themeBackgroundColor: preferencesDraft.backgroundColor,
+        accentColor: preferencesDraft.accentColor,
+        bubbleColor: preferencesDraft.bubbleColor,
+        textColor: preferencesDraft.textColor,
+        autoContrast: preferencesDraft.autoContrast,
+      },
+      {
+        fallback: memberThemeFallback,
+        fallbackBackgroundUrl: memberThemeFallback.backgroundUrl || ownerThemeFallback.backgroundUrl,
+      },
+    )
+
+    if (preferencesDraft.useRoomBackground) {
+      return mergeThemePalettes(basePalette, preview, true)
+    }
+
+    return preview
+  }, [
+    basePalette,
+    memberThemeFallback,
+    ownerThemeFallback.backgroundUrl,
+    preferencesDraft,
+  ])
+
+  const ownerBackgroundColorValue = useMemo(
+    () => getColorPickerValue(roomSettingsDraft.themeBackgroundColor, ownerThemePreview.sampleColor || DEFAULT_THEME_CONFIG.backgroundColor),
+    [ownerThemePreview.sampleColor, roomSettingsDraft.themeBackgroundColor],
+  )
+
+  const ownerAccentPickerValue = useMemo(
+    () => getColorPickerValue(roomSettingsDraft.accentColor, ownerThemePreview.accentColor || DEFAULT_THEME_CONFIG.accentColor),
+    [ownerThemePreview.accentColor, roomSettingsDraft.accentColor],
+  )
+
+  const ownerBubblePickerValue = useMemo(
+    () => getColorPickerValue(roomSettingsDraft.bubbleColor, ownerThemePreview.bubbleColor || DEFAULT_THEME_CONFIG.bubbleColor),
+    [ownerThemePreview.bubbleColor, roomSettingsDraft.bubbleColor],
+  )
+
+  const ownerTextPickerValue = useMemo(
+    () => getColorPickerValue(roomSettingsDraft.textColor, ownerThemePreview.textColor || DEFAULT_THEME_CONFIG.textColor),
+    [ownerThemePreview.textColor, roomSettingsDraft.textColor],
+  )
+
+  const personalBackgroundColorValue = useMemo(
+    () => getColorPickerValue(preferencesDraft.backgroundColor, personalThemePreview.sampleColor || DEFAULT_THEME_CONFIG.backgroundColor),
+    [personalThemePreview.sampleColor, preferencesDraft.backgroundColor],
+  )
+
+  const personalAccentPickerValue = useMemo(
+    () => getColorPickerValue(preferencesDraft.accentColor, personalThemePreview.accentColor || DEFAULT_THEME_CONFIG.accentColor),
+    [personalThemePreview.accentColor, preferencesDraft.accentColor],
+  )
+
+  const personalBubblePickerValue = useMemo(
+    () => getColorPickerValue(preferencesDraft.bubbleColor, personalThemePreview.bubbleColor || DEFAULT_THEME_CONFIG.bubbleColor),
+    [personalThemePreview.bubbleColor, preferencesDraft.bubbleColor],
+  )
+
+  const personalTextPickerValue = useMemo(
+    () => getColorPickerValue(preferencesDraft.textColor, personalThemePreview.textColor || DEFAULT_THEME_CONFIG.textColor),
+    [personalThemePreview.textColor, preferencesDraft.textColor],
+  )
+
+  const roomTheme = useMemo(() => {
+    const metadataTheme = roomPreferences?.metadata?.theme || {}
+    const storedBubble = normalizeColor(roomPreferences?.bubble_color)
+    const storedText = normalizeColor(roomPreferences?.text_color)
+    const personalThemeConfig = normalizeThemeConfig(metadataTheme, {
+      ...ownerThemeFallback,
+      bubbleColor: storedBubble || basePalette.bubbleColor,
+      textColor: storedText || basePalette.textColor,
+      backgroundUrl: roomPreferences?.background_url || ownerThemeFallback.backgroundUrl,
+    })
+    const personalPalette = deriveThemePalette(personalThemeConfig)
+    const useRoomBackground = roomPreferences ? roomPreferences.use_room_background !== false : true
+    return mergeThemePalettes(basePalette, personalPalette, useRoomBackground)
+  }, [basePalette, ownerThemeFallback, roomPreferences])
+
+  const frameThemeBackgroundStyle = useMemo(() => {
+    const value = roomTheme?.backgroundValue
+    if (!value) {
+      return {}
+    }
+
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    if (!trimmed) {
+      return {}
+    }
+
+    const overlay =
+      'linear-gradient(135deg, rgba(4, 7, 18, 0.94) 0%, rgba(7, 13, 30, 0.82) 40%, rgba(8, 16, 35, 0.78) 100%)'
+
+    if (isGradientValue(trimmed)) {
+      return {
+        backgroundColor: '#020617',
+        backgroundImage: `${overlay}, ${trimmed}`,
+        backgroundRepeat: 'no-repeat, no-repeat',
+        backgroundSize: 'cover, cover',
+        backgroundPosition: 'center, center',
+      }
+    }
+
+    if (isColorValue(trimmed)) {
+      return {
+        background: `${overlay}, ${trimmed}`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    }
+
+    return {
+      backgroundColor: '#020617',
+      backgroundImage: `${overlay}, url(${trimmed})`,
+      backgroundRepeat: 'no-repeat, no-repeat',
+      backgroundSize: 'cover, cover',
+      backgroundPosition: 'center, center',
+    }
+  }, [roomTheme?.backgroundValue])
+
+  const updateOwnerThemeDraft = useCallback(
+    (patch, recompute = false) => {
+      setRoomSettingsDraft((prev) => {
+        const next = { ...prev, ...patch }
+        const shouldRecompute = recompute || next.autoContrast
+        if (shouldRecompute) {
+          const preview = buildThemePaletteFromDraft(next, {
+            fallback: ownerThemeFallback,
+            fallbackBackgroundUrl: ownerThemeFallback.backgroundUrl,
+          })
+          next.accentColor = preview.accentColor
+          next.bubbleColor = preview.bubbleColor
+          next.textColor = preview.textColor
+        }
+        return next
+      })
+    },
+    [ownerThemeFallback],
+  )
+
+  const updateMemberThemeDraft = useCallback(
+    (patch, recompute = false) => {
+      setPreferencesDraft((prev) => {
+        const next = { ...prev, ...patch }
+        const shouldRecompute = recompute || next.autoContrast
+        if (shouldRecompute) {
+          const preview = buildThemePaletteFromDraft(
+            {
+              themeMode: next.themeMode,
+              themePresetId: next.themePresetId,
+              themeBackgroundUrl: next.backgroundUrl,
+              themeBackgroundColor: next.backgroundColor,
+              accentColor: next.accentColor,
+              bubbleColor: next.bubbleColor,
+              textColor: next.textColor,
+              autoContrast: next.autoContrast,
+            },
+            {
+              fallback: memberThemeFallback,
+              fallbackBackgroundUrl: memberThemeFallback.backgroundUrl || ownerThemeFallback.backgroundUrl,
+            },
+          )
+          next.accentColor = preview.accentColor
+          next.bubbleColor = preview.bubbleColor
+          next.textColor = preview.textColor
+        }
+        return next
+      })
+    },
+    [memberThemeFallback, ownerThemeFallback],
+  )
+
+  const handleOwnerThemeModeChange = useCallback(
+    (mode) => {
+      const normalized = ['preset', 'color', 'image', 'none'].includes(mode) ? mode : 'preset'
+      updateOwnerThemeDraft(
+        {
+          themeMode: normalized,
+          themePresetId:
+            normalized === 'preset'
+              ? roomSettingsDraft.themePresetId || DEFAULT_THEME_PRESET.id
+              : roomSettingsDraft.themePresetId,
+          themeBackgroundColor:
+            normalized === 'color'
+              ? roomSettingsDraft.themeBackgroundColor || ownerThemeFallback.backgroundColor
+              : roomSettingsDraft.themeBackgroundColor,
+          themeBackgroundUrl: normalized === 'image' ? roomSettingsDraft.themeBackgroundUrl : '',
+        },
+        true,
+      )
+    },
+    [ownerThemeFallback.backgroundColor, roomSettingsDraft.themeBackgroundColor, roomSettingsDraft.themeBackgroundUrl, roomSettingsDraft.themePresetId, updateOwnerThemeDraft],
+  )
+
+  const handleOwnerSelectPreset = useCallback(
+    (presetId) => {
+      const preset = getThemePreset(presetId)
+      updateOwnerThemeDraft(
+        {
+          themeMode: 'preset',
+          themePresetId: preset.id,
+          accentColor: preset.recommended.accentColor,
+          bubbleColor: preset.recommended.bubbleColor,
+          textColor: preset.recommended.textColor,
+        },
+        true,
+      )
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerAccentChange = useCallback(
+    (value) => {
+      const normalized = normalizeColor(value) || value
+      updateOwnerThemeDraft(
+        {
+          accentColor: normalized || DEFAULT_THEME_CONFIG.accentColor,
+        },
+        true,
+      )
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerAutoContrastToggle = useCallback(
+    (checked) => {
+      updateOwnerThemeDraft({ autoContrast: checked }, true)
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerBubbleInput = useCallback(
+    (value) => {
+      updateOwnerThemeDraft({ bubbleColor: value }, false)
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerTextInput = useCallback(
+    (value) => {
+      updateOwnerThemeDraft({ textColor: value }, false)
+    },
+    [updateOwnerThemeDraft],
+  )
+
+  const handleOwnerBackgroundUpload = useCallback(
+    async (file) => {
+      if (!file) return
+      if (!context?.chatRoomId) {
+        setSettingsError('채팅방을 찾을 수 없습니다.')
+        return
+      }
+      setRoomThemeUploadBusy(true)
+      setSettingsError(null)
+      try {
+        const publicUrl = await uploadBackgroundImage({ file, roomId: context.chatRoomId })
+        updateOwnerThemeDraft(
+          {
+            themeMode: 'image',
+            themeBackgroundUrl: publicUrl,
+          },
+          true,
+        )
+        setSettingsMessage('배경 이미지를 업로드했습니다.')
+      } catch (error) {
+        console.error('[chat] 방 배경 업로드 실패', error)
+        setSettingsError(error?.message || '배경 이미지를 업로드할 수 없습니다.')
+      } finally {
+        setRoomThemeUploadBusy(false)
+      }
+    },
+    [context?.chatRoomId, updateOwnerThemeDraft],
+  )
+
+  const handleOwnerBackgroundFileChange = useCallback(
+    async (event) => {
+      const file = event.target?.files?.[0] || null
+      if (event.target) {
+        event.target.value = ''
+      }
+      if (!file) return
+      await handleOwnerBackgroundUpload(file)
+    },
+    [handleOwnerBackgroundUpload],
+  )
+
+  const handleOwnerBackgroundClear = useCallback(() => {
+    updateOwnerThemeDraft(
+      {
+        themeBackgroundUrl: '',
+        themeMode: 'image',
+      },
+      true,
+    )
+    setSettingsMessage('배경 이미지를 제거했습니다.')
+  }, [updateOwnerThemeDraft])
+
+  const handleMemberThemeModeChange = useCallback(
+    (mode) => {
+      const normalized = ['preset', 'color', 'image', 'none'].includes(mode) ? mode : 'preset'
+      updateMemberThemeDraft(
+        {
+          themeMode: normalized,
+          themePresetId:
+            normalized === 'preset'
+              ? preferencesDraft.themePresetId || DEFAULT_THEME_PRESET.id
+              : preferencesDraft.themePresetId,
+          backgroundColor:
+            normalized === 'color'
+              ? preferencesDraft.backgroundColor || ownerThemeFallback.backgroundColor
+              : preferencesDraft.backgroundColor,
+          backgroundUrl: normalized === 'image' ? preferencesDraft.backgroundUrl : '',
+          useRoomBackground: false,
+        },
+        true,
+      )
+    },
+    [ownerThemeFallback.backgroundColor, preferencesDraft.backgroundColor, preferencesDraft.backgroundUrl, preferencesDraft.themePresetId, updateMemberThemeDraft],
+  )
+
+  const handleMemberSelectPreset = useCallback(
+    (presetId) => {
+      const preset = getThemePreset(presetId)
+      updateMemberThemeDraft(
+        {
+          themeMode: 'preset',
+          themePresetId: preset.id,
+          accentColor: preset.recommended.accentColor,
+          bubbleColor: preset.recommended.bubbleColor,
+          textColor: preset.recommended.textColor,
+          useRoomBackground: false,
+        },
+        true,
+      )
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberAccentChange = useCallback(
+    (value) => {
+      const normalized = normalizeColor(value) || value
+      updateMemberThemeDraft(
+        {
+          accentColor: normalized || DEFAULT_THEME_CONFIG.accentColor,
+        },
+        true,
+      )
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberAutoContrastToggle = useCallback(
+    (checked) => {
+      updateMemberThemeDraft({ autoContrast: checked }, true)
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberBubbleInput = useCallback(
+    (value) => {
+      updateMemberThemeDraft({ bubbleColor: value }, false)
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberTextInput = useCallback(
+    (value) => {
+      updateMemberThemeDraft({ textColor: value }, false)
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const handleMemberBackgroundUpload = useCallback(
+    async (file) => {
+      if (!file) return
+      setMemberThemeUploadBusy(true)
+      setPreferencesError(null)
+      try {
+        const publicUrl = await uploadBackgroundImage({ file, ownerToken: viewerToken || 'viewer' })
+        updateMemberThemeDraft(
+          {
+            themeMode: 'image',
+            backgroundUrl: publicUrl,
+            useRoomBackground: false,
+          },
+          true,
+        )
+        setSettingsMessage('개인 배경 이미지를 업로드했습니다.')
+      } catch (error) {
+        console.error('[chat] 개인 배경 업로드 실패', error)
+        setPreferencesError(error?.message || '배경 이미지를 업로드할 수 없습니다.')
+      } finally {
+        setMemberThemeUploadBusy(false)
+      }
+    },
+    [updateMemberThemeDraft, viewerToken],
+  )
+
+  const handleMemberBackgroundFileChange = useCallback(
+    async (event) => {
+      const file = event.target?.files?.[0] || null
+      if (event.target) {
+        event.target.value = ''
+      }
+      if (!file) return
+      await handleMemberBackgroundUpload(file)
+    },
+    [handleMemberBackgroundUpload],
+  )
+
+  const handleMemberBackgroundClear = useCallback(() => {
+    updateMemberThemeDraft(
+      {
+        backgroundUrl: '',
+        themeMode: 'image',
+        useRoomBackground: false,
+      },
+      true,
+    )
+    setSettingsMessage('개인 배경 이미지를 제거했습니다.')
+  }, [updateMemberThemeDraft])
+
+  const handleMemberUseRoomBackgroundChange = useCallback(
+    (checked) => {
+      updateMemberThemeDraft({ useRoomBackground: checked }, true)
+    },
+    [updateMemberThemeDraft],
+  )
+
+  const messageTextStyle = useMemo(
+    () => (roomTheme.textColor ? { ...overlayStyles.messageText, color: roomTheme.textColor } : overlayStyles.messageText),
+    [roomTheme.textColor],
   )
 
   const roomAssets = useMemo(() => {
@@ -3002,11 +6102,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         videoControlTimerRef.current = null
       }
       setVideoControlsVisible(true)
-      lastMarkedRef.current = null
       setViewerReady(false)
-      if (onUnreadChange) {
-        onUnreadChange(0)
-      }
+      commitUnreadState()
       return
     }
 
@@ -3032,6 +6129,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setViewer(user)
         setSelectedHero((snapshot.heroes && snapshot.heroes[0]?.id) || null)
         setRooms(patchedRoomState)
+        syncUnreadFromCollections(patchedRoomState, { replace: true })
       } catch (error) {
         if (!mounted) return
         console.error('[chat] 대시보드 로드 실패:', error)
@@ -3049,7 +6147,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       mounted = false
     }
-  }, [open, applyRoomOverrides])
+  }, [open, applyRoomOverrides, commitUnreadState, syncUnreadFromCollections])
 
   useEffect(() => {
     if (!open || !context) {
@@ -3075,14 +6173,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         if (cancelled) return
         const nextMessages = Array.isArray(result.messages) ? result.messages : []
         setMessages(upsertMessageList([], nextMessages))
-        if (context?.type === 'chat-room' && context.chatRoomId && nextMessages.length) {
-          const latestRecord = nextMessages[nextMessages.length - 1]
+        if (context?.type === 'chat-room' && context.chatRoomId) {
+          const latestRecord = nextMessages.length ? nextMessages[nextMessages.length - 1] : null
+          const patch = {}
           if (latestRecord?.id) {
-            updateRoomMetadata(context.chatRoomId, { latestMessage: latestRecord })
+            patch.latestMessage = latestRecord
           }
-        }
-        if (onUnreadChange) {
-          onUnreadChange(0)
+          patch.unread_count = 0
+          patch.unreadCount = 0
+          updateRoomMetadata(context.chatRoomId, patch)
         }
 
         if (unsubscribeRef.current) {
@@ -3097,38 +6196,36 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             const messageOwnerId = normalizeId(record?.owner_id || record?.user_id)
             const fromSelf = Boolean(viewerToken && messageOwnerId && viewerToken === messageOwnerId)
 
-            if (recordRoomId) {
-              if (context?.type === 'chat-room' && normalizeId(context.chatRoomId) === recordRoomId) {
-                updateRoomMetadata(context.chatRoomId, { latestMessage: record })
-              } else {
-                let existing = null
-                const snapshot = roomsRef.current
-                if (snapshot) {
-                  if (Array.isArray(snapshot.joined)) {
-                    existing =
-                      snapshot.joined.find((room) => normalizeId(room?.id) === recordRoomId) || null
-                  }
-                  if (!existing && Array.isArray(snapshot.available)) {
-                    existing =
-                      snapshot.available.find((room) => normalizeId(room?.id) === recordRoomId) || null
-                  }
-                }
-                const currentUnread = existing?.unread_count ?? existing?.unreadCount ?? 0
-                const parsedUnread = Number.isFinite(Number(currentUnread))
-                  ? Number(currentUnread)
-                  : 0
-                const nextUnread = fromSelf ? parsedUnread : parsedUnread + 1
-                const patch = { latestMessage: record }
-                if (!fromSelf) {
-                  patch.unread_count = nextUnread
-                  patch.unreadCount = nextUnread
-                }
-                updateRoomMetadata(recordRoomId, patch)
-              }
+            if (!recordRoomId) {
+              return
             }
-            const hidden = typeof document !== 'undefined' ? document.hidden : false
-            if (onUnreadChange && (!context?.focused || hidden) && !fromSelf) {
-              onUnreadChange((prevUnread) => Math.min(999, (prevUnread || 0) + 1))
+
+            const isActiveRoom =
+              context?.type === 'chat-room' && normalizeId(context.chatRoomId) === recordRoomId
+
+            if (isActiveRoom) {
+              const totalMembers = parseUnreadValue(record.room_member_total)
+                ? parseUnreadValue(record.room_member_total)
+                : parseUnreadValue(roomStats?.participantCount)
+              if (!parseUnreadValue(record.room_member_total) && totalMembers > 0) {
+                record.room_member_total = totalMembers
+              }
+              if (record.room_unread_count === undefined) {
+                const baseTotal = parseUnreadValue(record.room_member_total)
+                if (baseTotal > 0) {
+                  record.room_unread_count = Math.max(0, baseTotal - 1)
+                }
+              }
+              updateRoomMetadata(context.chatRoomId, { latestMessage: record })
+            } else {
+              const currentUnread = getRoomUnreadCount(recordRoomId)
+              const nextUnread = fromSelf ? currentUnread : currentUnread + 1
+              const patch = { latestMessage: record }
+              if (!fromSelf) {
+                patch.unread_count = nextUnread
+                patch.unreadCount = nextUnread
+              }
+              updateRoomMetadata(recordRoomId, patch)
             }
           },
           sessionId: context.sessionId || null,
@@ -3154,51 +6251,74 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       cancelled = true
     }
-  }, [open, context, viewer, viewerToken, onUnreadChange, updateRoomMetadata])
+  }, [
+    open,
+    context,
+    viewer,
+    viewerToken,
+    roomStats?.participantCount,
+    getRoomUnreadCount,
+    updateRoomMetadata,
+  ])
 
   useEffect(() => {
-    if (!open) return
+    if (!viewingConversation) return
     const node = messageListRef.current
     if (!node) return
     node.scrollTop = node.scrollHeight
-  }, [messages, open])
+  }, [messages, viewingConversation])
 
   useEffect(() => {
     if (!open) return
-    if (!context || context.type !== 'chat-room') return
+    if (context?.type !== 'chat-room') return
+    if (!viewingConversation) return
+
     const roomId = context.chatRoomId
     if (!roomId) return
-    const normalizedRoomId = normalizeId(roomId)
-    if (!normalizedRoomId) return
 
-    const relevantMessages = messages.filter((message) =>
-      normalizeId(message?.chat_room_id || message?.room_id) === normalizedRoomId,
-    )
-    if (!relevantMessages.length) return
+    const latestPersisted = [...messages]
+      .slice()
+      .reverse()
+      .find((message) => message && message.id)
+    const messageId = latestPersisted?.id || null
 
-    const latest = relevantMessages[relevantMessages.length - 1]
-    if (!latest?.id) return
-
-    const cacheKey = `${normalizedRoomId}:${latest.id}`
-    if (lastMarkedRef.current === cacheKey) {
+    const previous = lastMarkedReadRef.current
+    if (previous.roomId === roomId && previous.messageId === (messageId || null)) {
       return
     }
 
-    lastMarkedRef.current = cacheKey
-    markChatRoomRead({ roomId, messageId: latest.id })
-      .then(() => {
-        updateRoomMetadata(roomId, {
-          unread_count: 0,
-          unreadCount: 0,
-          last_read_message_id: latest.id,
-          last_read_message_at:
-            latest.created_at || latest.createdAt || new Date().toISOString(),
-        })
-      })
-      .catch((error) => {
+    let cancelled = false
+
+    const run = async () => {
+      try {
+        const result = await markChatRoomRead({ roomId, messageId })
+        if (cancelled) return
+        if (result?.ok) {
+          lastMarkedReadRef.current = { roomId, messageId: messageId || null }
+          updateRoomMetadata(roomId, { unread_count: 0, unreadCount: 0 })
+        } else if (result?.skipped) {
+          lastMarkedReadRef.current = { roomId, messageId: messageId || null }
+        }
+      } catch (error) {
+        if (cancelled) return
         console.error('[chat] 읽음 상태 업데이트 실패:', error)
-      })
-  }, [open, context, messages, updateRoomMetadata])
+      }
+    }
+
+    run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    open,
+    context?.type,
+    context?.chatRoomId,
+    messages,
+    viewingConversation,
+    markChatRoomRead,
+    updateRoomMetadata,
+  ])
 
   useEffect(() => {
     if (!showComposerPanel) return
@@ -3272,6 +6392,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         const normalized = normalizeRoomCollections(snapshot)
         const patched = applyRoomOverrides(normalized)
         setRooms(patched)
+        syncUnreadFromCollections(patched, { replace: true })
         setRoomSearchMeta((prev) => {
           const trending =
             Array.isArray(normalized.trendingKeywords) && normalized.trendingKeywords.length
@@ -3304,7 +6425,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setLoadingRooms(false)
       }
     },
-    [applyRoomOverrides],
+    [applyRoomOverrides, syncUnreadFromCollections],
   )
 
   useEffect(() => {
@@ -3354,7 +6475,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
-    lastMarkedRef.current = null
     setContext({
       type: 'chat-room',
       scope: 'room',
@@ -3438,8 +6558,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         handleSelectRoom({ ...GLOBAL_ROOM, ...room }, room.visibility || 'public')
         return
       }
+      const roomId = normalizeId(room.id)
+      if (!isValidUuid(roomId)) {
+        console.warn('[chat] joinChatRoom: invalid room id', roomId)
+        alert('채팅방 정보를 확인할 수 없습니다.')
+        return
+      }
       try {
-        await joinChatRoom({ roomId: room.id, heroId: selectedHero || null })
+        await joinChatRoom({ roomId, heroId: selectedHero || null })
         await refreshRooms()
         handleSelectRoom(room, room.visibility)
         setSearchModalOpen(false)
@@ -3467,6 +6593,12 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setContext((current) => (current?.type === 'global' ? null : current))
         setMessages([])
         return true
+      }
+
+      if (!isValidUuid(roomId)) {
+        console.warn('[chat] leaveChatRoom: invalid room id', roomId)
+        alert('채팅방 정보를 확인할 수 없습니다.')
+        return false
       }
 
       const asOwner = options.asOwner === true
@@ -3507,6 +6639,37 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
     },
     [context, refreshRooms],
+  )
+
+  const handleLeaveCurrentContext = useCallback(
+    async (options = {}) => {
+      if (!context) return false
+      const isRoom = context.type === 'chat-room'
+      const isGlobal = context.type === 'global'
+      if (!isRoom && !isGlobal) {
+        return false
+      }
+
+      const baseRoom =
+        currentRoom ||
+        (isRoom
+          ? {
+              id: context.chatRoomId,
+              visibility: context.visibility || 'private',
+              builtin: context.builtin,
+            }
+          : {
+              id: context.chatRoomId,
+              builtin: 'global',
+            })
+
+      const success = await handleLeaveRoom(baseRoom, options)
+      if (success) {
+        setDrawerOpen(false)
+      }
+      return success
+    },
+    [context, currentRoom, handleLeaveRoom],
   )
 
   const handleOpenSearchOverlay = useCallback(() => {
@@ -3632,13 +6795,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       try {
         const prefs = await fetchChatMemberPreferences({ roomId })
         setRoomPreferences(prefs)
-        setPreferencesDraft({
-          bubbleColor: prefs?.bubble_color || '',
-          textColor: prefs?.text_color || '',
-          backgroundUrl: prefs?.background_url || '',
-          useRoomBackground: prefs?.use_room_background !== false,
-          metadata: prefs?.metadata || {},
-        })
       } catch (error) {
         console.error('[chat] 개인 설정 로드 실패', error)
       }
@@ -3701,7 +6857,12 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         throw new Error(payload?.detail || '키 목록을 불러올 수 없습니다.')
       }
       const payload = await response.json()
-      setApiKeys(Array.isArray(payload?.entries) ? payload.entries : [])
+      const entries = Array.isArray(payload?.keys)
+        ? payload.keys
+        : Array.isArray(payload?.entries)
+          ? payload.entries
+          : []
+      setApiKeys(entries)
     } catch (error) {
       console.error('[chat] API 키 목록 로드 실패', error)
       setApiKeyError(error?.message || 'API 키 목록을 불러올 수 없습니다.')
@@ -3733,6 +6894,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         throw new Error(payload?.detail || payload?.error || 'API 키를 저장할 수 없습니다.')
       }
       setApiKeyInput('')
+      setSettingsMessage('API 키를 추가했습니다.')
       await refreshApiKeyring()
     } catch (error) {
       console.error('[chat] API 키 추가 실패', error)
@@ -3759,10 +6921,42 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         if (!response.ok) {
           throw new Error(payload?.detail || payload?.error || 'API 키를 삭제할 수 없습니다.')
         }
+        setSettingsMessage('API 키를 삭제했습니다.')
         await refreshApiKeyring()
       } catch (error) {
         console.error('[chat] API 키 삭제 실패', error)
         setApiKeyError(error?.message || 'API 키를 삭제할 수 없습니다.')
+      }
+    },
+    [buildApiKeyHeaders, refreshApiKeyring, viewerId],
+  )
+
+  const handleToggleApiKey = useCallback(
+    async (entry, action) => {
+      if (!entry?.id) return
+      if (!viewerId) {
+        setApiKeyError('로그인 후 API 키를 변경할 수 있습니다.')
+        return
+      }
+
+      const verb = action === 'deactivate' ? 'deactivate' : 'activate'
+      try {
+        const response = await fetch('/api/rank/user-api-keyring', {
+          method: 'PATCH',
+          headers: buildApiKeyHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ id: entry.id, action: verb }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(payload?.detail || payload?.error || 'API 키 상태를 변경할 수 없습니다.')
+        }
+        setSettingsMessage(
+          verb === 'deactivate' ? 'API 키 사용을 해제했습니다.' : 'API 키를 기본값으로 설정했습니다.',
+        )
+        await refreshApiKeyring()
+      } catch (error) {
+        console.error('[chat] API 키 상태 변경 실패', error)
+        setApiKeyError(error?.message || 'API 키 상태를 변경할 수 없습니다.')
       }
     },
     [buildApiKeyHeaders, refreshApiKeyring, viewerId],
@@ -3816,78 +7010,393 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setAnnouncementError('공지 작성 권한이 없습니다.')
       return
     }
-    setAnnouncementComposer({ open: true, content: '', pinned: false, submitting: false, error: null })
+    if (announcementEditorRef.current) {
+      announcementEditorRef.current.innerHTML = ''
+    }
+    announcementSelectionRef.current = null
+    announcementComposingRef.current = false
+    setAnnouncementComposer({
+      open: true,
+      title: '',
+      content: '',
+      pinned: false,
+      submitting: false,
+      error: null,
+    })
+    setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [context?.chatRoomId, viewerIsModerator])
 
   const handleCloseAnnouncementComposer = useCallback(() => {
-    setAnnouncementComposer({ open: false, content: '', pinned: false, submitting: false, error: null })
+    if (announcementEditorRef.current) {
+      announcementEditorRef.current.innerHTML = ''
+    }
+    announcementSelectionRef.current = null
+    announcementComposingRef.current = false
+    setAnnouncementComposer({
+      open: false,
+      title: '',
+      content: '',
+      pinned: false,
+      submitting: false,
+      error: null,
+    })
+    setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [])
 
-  const handleAnnouncementComposerChange = useCallback((value) => {
-    setAnnouncementComposer((prev) => ({ ...prev, content: value }))
+  const handleAnnouncementTitleChange = useCallback((value) => {
+    setAnnouncementComposer((prev) => ({ ...prev, title: value }))
   }, [])
 
-  const handleAnnouncementComposerFormat = useCallback(
-    (format) => {
-      const textarea = announcementTextareaRef.current
-      if (!textarea) return
-      const { selectionStart = 0, selectionEnd = 0, value = '' } = textarea
-      const selection = value.slice(selectionStart, selectionEnd)
-      const placeholders = {
-        bold: '굵은 글자',
-        italic: '기울임 글자',
-        highlight: '강조할 문장',
-        code: '코드 조각',
+  const focusAnnouncementEditor = useCallback(() => {
+    const node = announcementEditorRef.current
+    if (!node) return
+    node.focus({ preventScroll: true })
+    if (document.activeElement !== node) {
+      node.focus()
+    }
+  }, [])
+
+  const cacheAnnouncementSelection = useCallback(() => {
+    const editor = announcementEditorRef.current
+    if (!editor) return
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) {
+      announcementSelectionRef.current = null
+      return
+    }
+    const anchorNode = selection.anchorNode
+    if (!anchorNode || (anchorNode.nodeType === Node.ELEMENT_NODE && !editor.contains(anchorNode))) {
+      announcementSelectionRef.current = null
+      return
+    }
+    if (anchorNode.nodeType !== Node.ELEMENT_NODE) {
+      const parent = anchorNode.parentElement
+      if (!parent || !editor.contains(parent)) {
+        announcementSelectionRef.current = null
+        return
       }
-      const wrappers = {
-        bold: ['**', '**'],
-        italic: ['*', '*'],
-        highlight: ['~~', '~~'],
-        code: ['`', '`'],
+    }
+    try {
+      const range = selection.getRangeAt(0)
+      if (range && editor.contains(range.commonAncestorContainer)) {
+        announcementSelectionRef.current = range.cloneRange()
       }
-      const pair = wrappers[format]
-      if (!pair) return
-      const [prefix, suffix] = pair
-      const content = selection || placeholders[format] || ''
-      const replacement = `${prefix}${content}${suffix}`
-      const nextValue = `${value.slice(0, selectionStart)}${replacement}${value.slice(selectionEnd)}`
-      const selectionOffsetStart = selectionStart + prefix.length
-      const selectionOffsetEnd = selectionOffsetStart + content.length
-      setAnnouncementComposer((prev) => ({ ...prev, content: nextValue }))
+    } catch (error) {
+      announcementSelectionRef.current = null
+    }
+  }, [])
+
+  const syncAnnouncementContentFromEditor = useCallback(() => {
+    const node = announcementEditorRef.current
+    if (!node) return ''
+    const sanitized = sanitizeAnnouncementHtml(node.innerHTML || '')
+    setAnnouncementComposer((prev) => (prev.content === sanitized ? prev : { ...prev, content: sanitized }))
+    return sanitized
+  }, [])
+
+  const restoreAnnouncementSelection = useCallback(() => {
+    const editor = announcementEditorRef.current
+    const cached = announcementSelectionRef.current
+    if (!editor || !cached) return
+    if (
+      !cached.startContainer ||
+      !cached.endContainer ||
+      !editor.contains(cached.startContainer) ||
+      !editor.contains(cached.endContainer)
+    ) {
+      announcementSelectionRef.current = null
+      return
+    }
+    const selection = document.getSelection()
+    if (!selection) return
+    const range = cached.cloneRange()
+    selection.removeAllRanges()
+    selection.addRange(range)
+    try {
+      announcementSelectionRef.current = range.cloneRange()
+    } catch (error) {
+      announcementSelectionRef.current = range
+    }
+  }, [])
+
+  const handleAnnouncementEditorInput = useCallback(() => {
+    if (announcementComposingRef.current) {
       requestAnimationFrame(() => {
-        const node = announcementTextareaRef.current
-        if (node) {
-          node.focus()
-          node.setSelectionRange(selectionOffsetStart, selectionOffsetEnd)
+        if (!announcementComposingRef.current) {
+          syncAnnouncementContentFromEditor()
+          cacheAnnouncementSelection()
         }
       })
+      return
+    }
+    syncAnnouncementContentFromEditor()
+    cacheAnnouncementSelection()
+  }, [syncAnnouncementContentFromEditor, cacheAnnouncementSelection])
+
+  const handleAnnouncementEditorCompositionStart = useCallback(() => {
+    announcementComposingRef.current = true
+  }, [])
+
+  const handleAnnouncementEditorCompositionEnd = useCallback(() => {
+    announcementComposingRef.current = false
+    requestAnimationFrame(() => {
+      syncAnnouncementContentFromEditor()
+      cacheAnnouncementSelection()
+    })
+  }, [syncAnnouncementContentFromEditor, cacheAnnouncementSelection])
+
+  const handleAnnouncementEditorPaste = useCallback(
+    (event) => {
+      event.preventDefault()
+      const editor = announcementEditorRef.current
+      if (!editor) return
+      focusAnnouncementEditor()
+      restoreAnnouncementSelection()
+      const clipboard = event.clipboardData
+      const html = clipboard?.getData('text/html')
+      const text = clipboard?.getData('text/plain')
+      const snippet = html
+        ? sanitizeAnnouncementHtml(html)
+        : escapeHtml(text || '').replace(/\n/g, '<br />')
+      try {
+        document.execCommand('insertHTML', false, snippet)
+      } catch (error) {
+        editor.insertAdjacentHTML('beforeend', snippet)
+      }
+      restoreAnnouncementSelection()
+      requestAnimationFrame(() => {
+        syncAnnouncementContentFromEditor()
+        cacheAnnouncementSelection()
+      })
     },
-    [],
+    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, cacheAnnouncementSelection],
+  )
+
+  const handleAnnouncementToolbarMouseDown = useCallback(
+    (event) => {
+      event.preventDefault()
+      focusAnnouncementEditor()
+      restoreAnnouncementSelection()
+    },
+    [focusAnnouncementEditor, restoreAnnouncementSelection],
+  )
+
+  const handleAnnouncementToolbarTouchStart = useCallback(() => {
+    focusAnnouncementEditor()
+    restoreAnnouncementSelection()
+  }, [focusAnnouncementEditor, restoreAnnouncementSelection])
+
+  const insertAnnouncementHtml = useCallback(
+    (html) => {
+      const editor = announcementEditorRef.current
+      if (!editor) return
+      focusAnnouncementEditor()
+      restoreAnnouncementSelection()
+      try {
+        document.execCommand('insertHTML', false, html)
+      } catch (error) {
+        editor.insertAdjacentHTML('beforeend', html)
+      }
+      restoreAnnouncementSelection()
+      requestAnimationFrame(() => {
+        syncAnnouncementContentFromEditor()
+        cacheAnnouncementSelection()
+      })
+    },
+    [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, cacheAnnouncementSelection],
+  )
+
+  useEffect(() => {
+    if (!announcementComposer.open) {
+      return
+    }
+    const node = announcementEditorRef.current
+    if (node) {
+      const safeHtml = sanitizeAnnouncementHtml(announcementComposer.content || '')
+      if (node.innerHTML !== safeHtml) {
+        node.innerHTML = safeHtml
+      }
+    }
+    requestAnimationFrame(() => {
+      cacheAnnouncementSelection()
+    })
+  }, [announcementComposer.content, announcementComposer.open, cacheAnnouncementSelection])
+
+  useEffect(() => {
+    if (!announcementComposer.open) return undefined
+    const handler = () => {
+      if (!announcementComposer.open) return
+      cacheAnnouncementSelection()
+    }
+    document.addEventListener('selectionchange', handler)
+    requestAnimationFrame(() => {
+      focusAnnouncementEditor()
+      cacheAnnouncementSelection()
+    })
+    return () => {
+      document.removeEventListener('selectionchange', handler)
+    }
+  }, [announcementComposer.open, focusAnnouncementEditor, cacheAnnouncementSelection])
+
+  const handleAnnouncementPollOpen = useCallback(() => {
+    setAnnouncementPollOverlay({ open: true, question: '', options: ['', ''], error: null })
+  }, [])
+
+  const handleAnnouncementPollClose = useCallback(() => {
+    setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
+  }, [])
+
+  const handleAnnouncementPollQuestionChange = useCallback((value) => {
+    setAnnouncementPollOverlay((prev) => ({ ...prev, question: value }))
+  }, [])
+
+  const handleAnnouncementPollOptionChange = useCallback((index, value) => {
+    setAnnouncementPollOverlay((prev) => {
+      const next = [...prev.options]
+      next[index] = value
+      return { ...prev, options: next }
+    })
+  }, [])
+
+  const handleAnnouncementPollAddOption = useCallback(() => {
+    setAnnouncementPollOverlay((prev) => {
+      if (prev.options.length >= ANNOUNCEMENT_POLL_MAX_OPTIONS) {
+        return {
+          ...prev,
+          error: `최대 ${ANNOUNCEMENT_POLL_MAX_OPTIONS}개까지 선택지를 추가할 수 있습니다.`,
+        }
+      }
+      return { ...prev, options: [...prev.options, ''], error: null }
+    })
+  }, [])
+
+  const handleAnnouncementPollRemoveOption = useCallback((index) => {
+    setAnnouncementPollOverlay((prev) => {
+      if (prev.options.length <= ANNOUNCEMENT_POLL_MIN_OPTIONS) {
+        return {
+          ...prev,
+          error: `최소 ${ANNOUNCEMENT_POLL_MIN_OPTIONS}개 이상의 선택지가 필요합니다.`,
+        }
+      }
+      const next = prev.options.filter((_, optionIndex) => optionIndex !== index)
+      return { ...prev, options: next, error: null }
+    })
+  }, [])
+
+  const handleAnnouncementPollSubmit = useCallback(() => {
+    setAnnouncementPollOverlay((prev) => {
+      const question = (prev.question || '').trim()
+      const options = prev.options.map((option) => option.trim()).filter(Boolean)
+      if (!question) {
+        return { ...prev, error: '투표 제목을 입력해 주세요.' }
+      }
+      if (options.length < ANNOUNCEMENT_POLL_MIN_OPTIONS) {
+        return {
+          ...prev,
+          error: `최소 ${ANNOUNCEMENT_POLL_MIN_OPTIONS}개의 선택지가 필요합니다.`,
+        }
+      }
+      const safeQuestion = escapeHtml(question.replace(/\n/g, ' '))
+      const safeOptions = options.map((option) => escapeHtml(option.replace(/\n/g, ' ')))
+      const pollId = generateUuid()
+      const optionsHtml = safeOptions
+        .map((option, optionIndex) => {
+          const optionId = generateUuid()
+          return `<li style="padding: 8px 10px; border-radius: 10px; background: rgba(15,23,42,0.55); margin-top: 6px; color: #e2e8f0; font-size: 13px;" data-poll-option-id="${optionId}" data-poll-option-position="${optionIndex + 1}">${option}</li>`
+        })
+        .join('')
+      const snippet = `
+<div style="margin: 12px 0; padding: 12px; border-radius: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148,163,184,0.35);" data-announcement-poll="true" data-poll-id="${pollId}" data-poll-question="${safeQuestion}">
+  <strong style="display:block;font-size:13px;color:#e2e8f0;">${safeQuestion}</strong>
+  <ul style="list-style:none;padding:0;margin:6px 0 0;">${optionsHtml}</ul>
+</div>`
+      insertAnnouncementHtml(snippet)
+      return { open: false, question: '', options: ['', ''], error: null }
+    })
+  }, [insertAnnouncementHtml])
+
+  const handleDeleteAnnouncementComment = useCallback(
+    async (comment) => {
+      const commentId = comment?.id
+      if (!commentId) return
+      const confirmDelete = window.confirm('이 댓글을 삭제하시겠습니까?')
+      if (!confirmDelete) return
+      setAnnouncementDetail((prev) => ({ ...prev, loading: true, error: null }))
+      try {
+        await deleteChatRoomAnnouncementComment({ commentId })
+        const detail = await fetchChatRoomAnnouncementDetail({ announcementId: announcementDetail.announcementId })
+        setAnnouncementDetail((prev) => ({
+          ...prev,
+          loading: false,
+          announcement: detail.announcement || prev.announcement,
+          comments: detail.comments || [],
+        }))
+        if (context?.chatRoomId) {
+          refreshRoomAnnouncements(context.chatRoomId)
+        }
+      } catch (error) {
+        console.error('[chat] 공지 댓글 삭제 실패', error)
+        setAnnouncementDetail((prev) => ({
+          ...prev,
+          loading: false,
+          error: error?.message || '댓글을 삭제할 수 없습니다.',
+        }))
+      }
+    },
+    [announcementDetail.announcementId, context?.chatRoomId, refreshRoomAnnouncements],
   )
 
   const handleAnnouncementComposerTogglePinned = useCallback(() => {
     setAnnouncementComposer((prev) => ({ ...prev, pinned: !prev.pinned }))
   }, [])
 
-  const announcementPreviewHtml = useMemo(
-    () => formatAnnouncementPreview(announcementComposer.content || ''),
-    [announcementComposer.content],
+  const handleOpenAnnouncementList = useCallback(() => {
+    if (!context?.chatRoomId) return
+    setAnnouncementListOpen(true)
+  }, [context?.chatRoomId])
+
+  const handleCloseAnnouncementList = useCallback(() => {
+    setAnnouncementListOpen(false)
+  }, [])
+
+
+  const announcementDetailHtml = useMemo(
+    () =>
+      stripAnnouncementPollHtml(
+        formatAnnouncementPreview(announcementDetail.announcement?.content || ''),
+      ),
+    [announcementDetail.announcement?.content],
   )
 
   const handleSubmitAnnouncement = useCallback(async () => {
     if (!context?.chatRoomId) return
-    const content = (announcementComposer.content || '').trim()
-    if (!content) {
+    const title = (announcementComposer.title || '').trim()
+    const rawContent = announcementComposer.content || ''
+    const content = sanitizeAnnouncementHtml(rawContent)
+    const pollDefinitions = extractPollDefinitionsFromHtml(content)
+    const plain = getAnnouncementPlainText(content)
+    if (!plain) {
       setAnnouncementComposer((prev) => ({ ...prev, error: '공지 내용을 입력해 주세요.' }))
       return
     }
     setAnnouncementComposer((prev) => ({ ...prev, submitting: true, error: null }))
     try {
-      await createChatRoomAnnouncement({
+      const announcement = await createChatRoomAnnouncement({
         roomId: context.chatRoomId,
+        title,
         content,
         pinned: announcementComposer.pinned,
       })
+      if (announcement?.id && pollDefinitions.length) {
+        try {
+          await syncChatRoomAnnouncementPolls({
+            announcementId: announcement.id,
+            polls: pollDefinitions,
+          })
+        } catch (error) {
+          console.error('[chat] 공지 투표 동기화 실패', error)
+        }
+      }
       handleCloseAnnouncementComposer()
       await refreshRoomAnnouncements(context.chatRoomId)
     } catch (error) {
@@ -3898,7 +7407,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         error: error?.message || '공지를 등록할 수 없습니다.',
       }))
     }
-  }, [announcementComposer.content, announcementComposer.pinned, context?.chatRoomId, handleCloseAnnouncementComposer, refreshRoomAnnouncements])
+  }, [
+    announcementComposer.content,
+    announcementComposer.pinned,
+    announcementComposer.title,
+    context?.chatRoomId,
+    handleCloseAnnouncementComposer,
+    refreshRoomAnnouncements,
+  ])
 
   const handleOpenAnnouncementDetail = useCallback(
     async (announcement) => {
@@ -3969,6 +7485,140 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
   }, [announcementDetail.announcementId, context?.chatRoomId, refreshRoomAnnouncements])
 
+  const handleVoteAnnouncementPoll = useCallback(
+    async (announcement, poll, optionId) => {
+      const rawPollId = poll?.id || poll?.poll_id
+      if (!rawPollId) {
+        return
+      }
+      const pollId = String(rawPollId)
+      const announcementId = announcement?.id || announcementDetail.announcementId
+      const targetOptionId = optionId ? String(optionId) : null
+
+      setPollVotingState((prev) => ({
+        ...prev,
+        [pollId]: { submitting: true, error: null },
+      }))
+
+      try {
+        await voteChatRoomAnnouncementPoll({ pollId, optionId: targetOptionId })
+
+        if (announcementId && announcementDetail.announcementId === announcementId) {
+          const detail = await fetchChatRoomAnnouncementDetail({ announcementId })
+          setAnnouncementDetail((prev) => ({
+            ...prev,
+            announcement: detail.announcement || prev.announcement,
+            comments: detail.comments || prev.comments,
+          }))
+        }
+
+        if (context?.chatRoomId) {
+          await refreshRoomAnnouncements(context.chatRoomId)
+        }
+
+        setPollVotingState((prev) => {
+          const next = { ...prev }
+          delete next[pollId]
+          return next
+        })
+      } catch (error) {
+        console.error('[chat] 공지 투표 실패', error)
+        setPollVotingState((prev) => ({
+          ...prev,
+          [pollId]: {
+            submitting: false,
+            error: error?.message || '투표에 실패했습니다.',
+          },
+        }))
+      }
+    },
+    [announcementDetail.announcementId, context?.chatRoomId, refreshRoomAnnouncements],
+  )
+
+  const renderAnnouncementPolls = (announcement, variant = 'detail') => {
+    const polls = Array.isArray(announcement?.polls) ? announcement.polls : []
+    if (!polls.length) {
+      return null
+    }
+
+    const stackStyle = {
+      ...overlayStyles.announcementPollStack,
+      ...(variant === 'pinned' ? { marginTop: 6 } : {}),
+    }
+
+    return (
+      <div style={stackStyle}>
+        {polls.map((poll) => {
+          const pollId = poll?.id ? String(poll.id) : null
+          const options = Array.isArray(poll?.options) ? poll.options : []
+          if (!pollId || options.length === 0) {
+            return null
+          }
+          const state = pollVotingState[pollId] || {}
+          let totalVotes = Number(poll.totalVotes)
+          if (!Number.isFinite(totalVotes) || totalVotes < 0) {
+            totalVotes = options.reduce((sum, option) => sum + (Number(option.voteCount) || 0), 0)
+          }
+          const viewerSelection = poll.viewerOptionId ? String(poll.viewerOptionId) : null
+
+          return (
+            <div key={pollId} style={overlayStyles.announcementPollCard}>
+              <span style={overlayStyles.announcementPollQuestion}>{poll.question || '투표'}</span>
+              <div style={overlayStyles.announcementPollOptionList}>
+                {options.map((option) => {
+                  const optionId = option?.id ? String(option.id) : null
+                  if (!optionId) {
+                    return null
+                  }
+                  const votes = Number(option.voteCount) || 0
+                  const percent = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
+                  const selected = viewerSelection === optionId
+                  return (
+                    <button
+                      key={optionId}
+                      type="button"
+                      style={overlayStyles.announcementPollOptionButton(selected, state.submitting)}
+                      onClick={() =>
+                        handleVoteAnnouncementPoll(
+                          announcement,
+                          poll,
+                          selected ? null : optionId,
+                        )
+                      }
+                      disabled={state.submitting}
+                      aria-pressed={selected}
+                    >
+                      <div style={overlayStyles.announcementPollOptionHeader}>
+                        <span>
+                          {option.label}
+                          {selected ? (
+                            <span style={overlayStyles.announcementPollOptionBadge}>내 선택</span>
+                          ) : null}
+                        </span>
+                        <span style={overlayStyles.announcementPollOptionMeta}>
+                          {votes}표{totalVotes ? ` · ${percent}%` : ''}
+                        </span>
+                      </div>
+                      <div style={overlayStyles.announcementPollOptionProgressTrack}>
+                        <div
+                          style={overlayStyles.announcementPollOptionProgressFill(selected, percent)}
+                        />
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={overlayStyles.announcementPollFooter}>총 {totalVotes}표 참여</div>
+              {state.error ? (
+                <span style={overlayStyles.announcementPollError}>{state.error}</span>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   const handleAnnouncementCommentChange = useCallback((value) => {
     setAnnouncementDetail((prev) => ({ ...prev, commentInput: value }))
   }, [])
@@ -4029,6 +7679,45 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [announcementDetail.announcementId, announcementDetail.open, context?.chatRoomId, handleCloseAnnouncementDetail, refreshRoomAnnouncements],
   )
 
+  const handleToggleAnnouncementPin = useCallback(
+    async (announcement, nextPinned) => {
+      if (!announcement?.id || !context?.chatRoomId) {
+        return
+      }
+      if (announcementPinningId) {
+        return
+      }
+      setAnnouncementPinningId(announcement.id)
+      try {
+        await updateChatRoomAnnouncementPin({
+          announcementId: announcement.id,
+          pinned: nextPinned,
+        })
+        if (announcementDetail.open && announcementDetail.announcementId === announcement.id) {
+          setAnnouncementDetail((prev) => ({
+            ...prev,
+            announcement: prev.announcement
+              ? { ...prev.announcement, pinned: nextPinned }
+              : prev.announcement,
+          }))
+        }
+        await refreshRoomAnnouncements(context.chatRoomId)
+      } catch (error) {
+        console.error('[chat] 공지 고정 상태 변경 실패', error)
+        setAnnouncementError(error?.message || '공지 고정 상태를 변경할 수 없습니다.')
+      } finally {
+        setAnnouncementPinningId(null)
+      }
+    },
+    [
+      announcementDetail.announcementId,
+      announcementDetail.open,
+      announcementPinningId,
+      context?.chatRoomId,
+      refreshRoomAnnouncements,
+    ],
+  )
+
   const handleToggleDrawer = useCallback(() => {
     if (!context?.chatRoomId) return
     setDrawerOpen((value) => !value)
@@ -4037,6 +7726,310 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const handleCloseDrawer = useCallback(() => {
     setDrawerOpen(false)
   }, [])
+
+  const handleEnterMiniOverlay = useCallback(() => {
+    setMiniOverlay((prev) => {
+      const width = prev.size?.width || MINI_OVERLAY_WIDTH
+      const height = prev.size?.height || MINI_OVERLAY_HEIGHT
+      const position = clampMiniOverlayPosition(prev.position, viewport, width, height)
+      if (prev.active) {
+        const next = { ...prev, position }
+        if (prev.mode !== 'reading') {
+          next.mode = 'reading'
+        }
+        if (!prev.size || prev.size.width !== width || prev.size.height !== height) {
+          next.size = { width, height }
+        }
+        return next
+      }
+      return {
+        active: true,
+        mode: 'reading',
+        position,
+        size: prev.size?.width
+          ? { width: prev.size.width, height: prev.size.height }
+          : { width: MINI_OVERLAY_WIDTH, height: MINI_OVERLAY_HEIGHT },
+      }
+    })
+    setShowComposerPanel(false)
+    setFriendOverlayOpen(false)
+    setCreateModal((prev) => ({ ...prev, open: false }))
+    setSearchModalOpen(false)
+    setExpandedMessage(null)
+    setShowMediaPicker(false)
+    setAnnouncementComposer((prev) => ({ ...prev, open: false }))
+    setAnnouncementDetail((prev) => ({ ...prev, open: false, announcementId: null }))
+    setProfileSheet({ open: false, participant: null, busy: false, error: null })
+    setSettingsOverlayOpen(false)
+    setBanModal((prev) => ({ ...prev, open: false, submitting: false }))
+    handleCloseDrawer()
+    pinchStateRef.current = { initialDistance: null, triggered: true }
+  }, [handleCloseDrawer, viewport])
+
+  const handleRestoreToFullOverlay = useCallback(() => {
+    setMiniOverlay((prev) => {
+      if (!prev.active) return prev
+      return { ...prev, active: false, mode: 'reading' }
+    })
+  }, [])
+
+  const handleCloseMiniOverlay = useCallback(() => {
+    setMiniOverlay((prev) => {
+      if (!prev.active) return prev
+      return { ...prev, active: false, mode: 'reading' }
+    })
+    if (open && typeof onClose === 'function') {
+      onClose()
+    }
+  }, [onClose, open])
+
+  const handleCollapseMiniOverlay = useCallback(() => {
+    setMiniOverlay((prev) => {
+      if (!prev.active || prev.mode === 'bar') {
+        return prev
+      }
+      const width = prev.size?.width || MINI_OVERLAY_WIDTH
+      const position = clampMiniOverlayPosition(prev.position, viewport, width, MINI_OVERLAY_BAR_HEIGHT)
+      return { ...prev, mode: 'bar', position }
+    })
+  }, [viewport])
+
+  const handleResumeMiniOverlay = useCallback(() => {
+    setMiniOverlay((prev) => {
+      if (!prev.active) {
+        return prev
+      }
+      const width = prev.size?.width || MINI_OVERLAY_WIDTH
+      const height = prev.size?.height || MINI_OVERLAY_HEIGHT
+      const position = clampMiniOverlayPosition(prev.position, viewport, width, height)
+      if (prev.mode === 'reading' && prev.position && prev.position.x === position.x && prev.position.y === position.y) {
+        return prev
+      }
+      return { ...prev, mode: 'reading', position, size: { width, height } }
+    })
+  }, [viewport])
+
+  const handleMiniOverlayPointerDown = useCallback(
+    (event) => {
+      if (typeof event?.preventDefault === 'function') {
+        event.preventDefault()
+      }
+      if (!miniOverlay.active) return
+      const width = miniOverlay.size?.width || MINI_OVERLAY_WIDTH
+      const height =
+        miniOverlay.mode === 'bar'
+          ? MINI_OVERLAY_BAR_HEIGHT
+          : miniOverlay.size?.height || MINI_OVERLAY_HEIGHT
+      const basePosition = clampMiniOverlayPosition(miniOverlay.position, viewport, width, height)
+      setMiniOverlay((prev) => {
+        if (!prev.active) return prev
+        if (
+          !prev.position ||
+          prev.position.x !== basePosition.x ||
+          prev.position.y !== basePosition.y ||
+          (prev.mode === 'bar' && miniOverlay.mode !== 'bar')
+        ) {
+          return { ...prev, position: basePosition }
+        }
+        return prev
+      })
+      miniOverlayDragRef.current = {
+        pointerId: event.pointerId,
+        originX: basePosition.x,
+        originY: basePosition.y,
+        startX: event.clientX,
+        startY: event.clientY,
+      }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch (error) {
+        // ignore capture errors
+      }
+    },
+    [miniOverlay.active, miniOverlay.mode, miniOverlay.position, miniOverlay.size, viewport],
+  )
+
+  const handleMiniOverlayPointerMove = useCallback(
+    (event) => {
+      const drag = miniOverlayDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) {
+        return
+      }
+      const nextX = drag.originX + (event.clientX - drag.startX)
+      const nextY = drag.originY + (event.clientY - drag.startY)
+      setMiniOverlay((prev) => {
+        if (!prev.active) return prev
+        const width = prev.size?.width || MINI_OVERLAY_WIDTH
+        const height = prev.mode === 'bar' ? MINI_OVERLAY_BAR_HEIGHT : prev.size?.height || MINI_OVERLAY_HEIGHT
+        const position = clampMiniOverlayPosition({ x: nextX, y: nextY }, viewport, width, height)
+        if (!prev.position || prev.position.x !== position.x || prev.position.y !== position.y) {
+          return { ...prev, position }
+        }
+        return prev
+      })
+    },
+    [viewport],
+  )
+
+  const handleMiniOverlayPointerEnd = useCallback((event) => {
+    const drag = miniOverlayDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return
+    }
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch (error) {
+      // ignore release errors
+    }
+    miniOverlayDragRef.current = { pointerId: null, originX: 0, originY: 0, startX: 0, startY: 0 }
+  }, [])
+
+  const handleMiniOverlayResizeStart = useCallback(
+    (event) => {
+      if (!miniOverlay.active || miniOverlay.mode !== 'reading') {
+        return
+      }
+      miniOverlayResizeRef.current = {
+        pointerId: event.pointerId,
+        originHeight: miniOverlay.size?.height || MINI_OVERLAY_HEIGHT,
+        startY: event.clientY,
+      }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch (error) {
+        // ignore capture errors
+      }
+    },
+    [miniOverlay.active, miniOverlay.mode, miniOverlay.size?.height],
+  )
+
+  const handleMiniOverlayResizeMove = useCallback(
+    (event) => {
+      const state = miniOverlayResizeRef.current
+      if (!state || state.pointerId !== event.pointerId) {
+        return
+      }
+      const delta = event.clientY - state.startY
+      setMiniOverlay((prev) => {
+        if (!prev.active || prev.mode !== 'reading') {
+          return prev
+        }
+        const width = prev.size?.width || MINI_OVERLAY_WIDTH
+        const proposed = state.originHeight + delta
+        const nextHeight = Math.max(
+          MINI_OVERLAY_MIN_HEIGHT,
+          Math.min(MINI_OVERLAY_MAX_HEIGHT, proposed),
+        )
+        const position = clampMiniOverlayPosition(prev.position, viewport, width, nextHeight)
+        if (
+          prev.size?.height === nextHeight &&
+          prev.position &&
+          prev.position.x === position.x &&
+          prev.position.y === position.y
+        ) {
+          return prev
+        }
+        return {
+          ...prev,
+          size: { width, height: nextHeight },
+          position,
+        }
+      })
+    },
+    [viewport],
+  )
+
+  const handleMiniOverlayResizeEnd = useCallback((event) => {
+    const state = miniOverlayResizeRef.current
+    if (!state || state.pointerId !== event.pointerId) {
+      return
+    }
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch (error) {
+      // ignore release errors
+    }
+    miniOverlayResizeRef.current = { pointerId: null, originHeight: MINI_OVERLAY_HEIGHT, startY: 0 }
+  }, [])
+
+  useEffect(() => {
+    if (!miniOverlay.active || !miniOverlay.position) {
+      return
+    }
+    const width = miniOverlay.size?.width || MINI_OVERLAY_WIDTH
+    const height =
+      miniOverlay.mode === 'bar'
+        ? MINI_OVERLAY_BAR_HEIGHT
+        : miniOverlay.size?.height || MINI_OVERLAY_HEIGHT
+    const position = clampMiniOverlayPosition(miniOverlay.position, viewport, width, height)
+    if (position.x === miniOverlay.position.x && position.y === miniOverlay.position.y) {
+      return
+    }
+    setMiniOverlay((prev) => ({
+      ...prev,
+      position,
+    }))
+  }, [miniOverlay.active, miniOverlay.mode, miniOverlay.position, miniOverlay.size, viewport])
+
+  useEffect(() => {
+    const node = rootRef.current
+    if (!node || typeof window === 'undefined') {
+      return undefined
+    }
+    if (!open || miniOverlay.active) {
+      return undefined
+    }
+
+    const handleTouchStart = (event) => {
+      if (event.touches.length === 2) {
+        const [first, second] = event.touches
+        const distance = distanceBetweenTouches(first, second)
+        pinchStateRef.current = { initialDistance: distance, triggered: false }
+      } else {
+        pinchStateRef.current = { initialDistance: null, triggered: false }
+      }
+    }
+
+    const handleTouchMove = (event) => {
+      const state = pinchStateRef.current
+      if (state.triggered) {
+        return
+      }
+      if (event.touches.length !== 2) {
+        return
+      }
+      const [first, second] = event.touches
+      const distance = distanceBetweenTouches(first, second)
+      if (!state.initialDistance) {
+        pinchStateRef.current = { initialDistance: distance, triggered: false }
+        return
+      }
+      const delta = state.initialDistance - distance
+      if (delta > PINCH_MIN_DELTA && distance / state.initialDistance <= PINCH_TRIGGER_RATIO) {
+        pinchStateRef.current = { initialDistance: null, triggered: true }
+        if (event.cancelable) {
+          event.preventDefault()
+        }
+        handleEnterMiniOverlay()
+      }
+    }
+
+    const handleTouchEnd = () => {
+      pinchStateRef.current = { initialDistance: null, triggered: false }
+    }
+
+    node.addEventListener('touchstart', handleTouchStart, { passive: true })
+    node.addEventListener('touchmove', handleTouchMove, { passive: false })
+    node.addEventListener('touchend', handleTouchEnd)
+    node.addEventListener('touchcancel', handleTouchEnd)
+
+    return () => {
+      node.removeEventListener('touchstart', handleTouchStart)
+      node.removeEventListener('touchmove', handleTouchMove)
+      node.removeEventListener('touchend', handleTouchEnd)
+      node.removeEventListener('touchcancel', handleTouchEnd)
+    }
+  }, [handleEnterMiniOverlay, miniOverlay.active, open])
 
   const handleLoadMoreMedia = useCallback(() => {
     setDrawerMediaLimit((value) => value + 20)
@@ -4075,14 +8068,24 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
+    if (!isValidUuid(context.chatRoomId)) {
+      setBanModal((prev) => ({ ...prev, error: '채팅방 정보를 확인할 수 없습니다.' }))
+      return
+    }
+
+    if (!isValidUuid(ownerId)) {
+      setBanModal((prev) => ({ ...prev, error: '참여자 식별자가 올바르지 않습니다.' }))
+      return
+    }
+
     const parsedDuration = parseInt(banModal.duration, 10)
     const durationMinutes = Number.isFinite(parsedDuration) ? Math.max(parsedDuration, 0) : null
 
     setBanModal((prev) => ({ ...prev, submitting: true, error: null }))
     try {
       await manageChatRoomRole({
-        roomId: context.chatRoomId,
-        targetOwnerId: ownerId,
+        roomId: String(context.chatRoomId).trim(),
+        targetOwnerId: String(ownerId).trim(),
         action: 'ban',
         durationMinutes: durationMinutes && durationMinutes > 0 ? durationMinutes : null,
         reason: banModal.reason,
@@ -4106,10 +8109,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       if (!ban || !context?.chatRoomId) return
       const ownerId = ban.owner_id || ban.ownerId
       if (!ownerId) return
+      if (!isValidUuid(context.chatRoomId) || !isValidUuid(ownerId)) {
+        setSettingsError('추방 정보를 확인할 수 없습니다.')
+        return
+      }
       try {
         await manageChatRoomRole({
-          roomId: context.chatRoomId,
-          targetOwnerId: ownerId,
+          roomId: String(context.chatRoomId).trim(),
+          targetOwnerId: String(ownerId).trim(),
           action: 'unban',
         })
         await refreshRoomBans(context.chatRoomId)
@@ -4120,6 +8127,52 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       }
     },
     [context?.chatRoomId, manageChatRoomRole, refreshRoomBans, refreshRooms],
+  )
+
+  const handleAdjustBanEntry = useCallback(
+    async (ban) => {
+      if (!viewerOwnsRoom) {
+        setSettingsError('추방 기간을 변경할 권한이 없습니다.')
+        return
+      }
+      if (!ban || !context?.chatRoomId) return
+      const ownerId = ban.owner_id || ban.ownerId
+      if (!ownerId) return
+      if (!isValidUuid(context.chatRoomId) || !isValidUuid(ownerId)) {
+        setSettingsError('추방 정보를 확인할 수 없습니다.')
+        return
+      }
+
+      const promptLabel =
+        '새 추방 기간(분)을 입력해 주세요. 0을 입력하면 영구 차단으로 유지됩니다.'
+      const input = window.prompt(promptLabel, '')
+      if (input === null) {
+        return
+      }
+      const trimmed = input.trim()
+      if (!trimmed) {
+        return
+      }
+      const minutes = Number(trimmed)
+      if (!Number.isFinite(minutes) || minutes < 0) {
+        alert('0 이상의 숫자를 입력해 주세요.')
+        return
+      }
+
+      try {
+        await updateChatRoomBan({
+          roomId: String(context.chatRoomId).trim(),
+          ownerId: String(ownerId).trim(),
+          durationMinutes: minutes,
+        })
+        await refreshRoomBans(context.chatRoomId)
+        setSettingsMessage('추방 기간을 업데이트했습니다.')
+      } catch (error) {
+        console.error('[chat] 추방 기간 조정 실패', error)
+        setSettingsError(error?.message || '추방 기간을 변경할 수 없습니다.')
+      }
+    },
+    [context?.chatRoomId, refreshRoomBans, updateChatRoomBan, viewerOwnsRoom],
   )
 
   const handleOpenParticipantProfile = useCallback((participant) => {
@@ -4199,11 +8252,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
+    if (!isValidUuid(context.chatRoomId)) {
+      setProfileSheet((prev) => ({ ...prev, error: '채팅방 정보를 확인할 수 없습니다.' }))
+      return
+    }
+
+    if (!isValidUuid(ownerId)) {
+      setProfileSheet((prev) => ({ ...prev, error: '참여자 식별자가 올바르지 않습니다.' }))
+      return
+    }
+
     setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
     try {
       await manageChatRoomRole({
-        roomId: context.chatRoomId,
-        targetOwnerId: ownerId,
+        roomId: String(context.chatRoomId).trim(),
+        targetOwnerId: String(ownerId).trim(),
         action: 'promote',
       })
       await refreshRooms()
@@ -4243,11 +8306,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       return
     }
 
+    if (!isValidUuid(context.chatRoomId)) {
+      setProfileSheet((prev) => ({ ...prev, error: '채팅방 정보를 확인할 수 없습니다.' }))
+      return
+    }
+
+    if (!isValidUuid(ownerId)) {
+      setProfileSheet((prev) => ({ ...prev, error: '참여자 식별자가 올바르지 않습니다.' }))
+      return
+    }
+
     setProfileSheet((prev) => ({ ...prev, busy: true, error: null }))
     try {
       await manageChatRoomRole({
-        roomId: context.chatRoomId,
-        targetOwnerId: ownerId,
+        roomId: String(context.chatRoomId).trim(),
+        targetOwnerId: String(ownerId).trim(),
         action: 'demote',
       })
       await refreshRooms()
@@ -5544,11 +9617,24 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           const isGlobal = room.builtin === 'global' || roomId === globalId
           const active = isGlobal ? viewingGlobal : activeRoomId === room.id
           const cover = room.cover_url || room.coverUrl || null
-          const unread = Number(room.unread_count) || 0
           const latestAt = room.last_message_at || room.updated_at || room.created_at || null
           const timeLabel = formatRelativeLastActivity(latestAt)
           const memberCount = Number(room.member_count) || 0
           const joinedStatus = joinedRoomIds.has(roomId)
+          const latestMessage = room.latestMessage || room.latest_message || null
+          const previewAuthor = latestMessage?.hero_name || latestMessage?.username || ''
+          const previewTextRaw = latestMessage ? extractMessageText(latestMessage) : ''
+          const previewText = previewTextRaw.trim()
+            ? previewTextRaw.trim()
+            : latestMessage && getMessageAttachments(latestMessage).length
+              ? '첨부 파일이 포함되었습니다.'
+              : ''
+          const previewLabel = previewAuthor
+            ? `${previewAuthor}${previewText ? ': ' : ''}${previewText}`
+            : previewText
+          const previewDisplay = previewLabel.length > 80 ? `${previewLabel.slice(0, 80)}…` : previewLabel
+          const unreadCount = resolveRoomUnread(room)
+          const showUnreadBadge = unreadCount > 0
 
           return (
             <div
@@ -5563,9 +9649,26 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               <div style={overlayStyles.roomCardBody}>
                 <div style={overlayStyles.roomCardHeader}>
                   <span style={overlayStyles.roomCardTitle}>{room.name || '채팅방'}</span>
-                  {unread > 0 ? (
-                    <span style={overlayStyles.unreadBadge}>{unread > 99 ? '99+' : unread}</span>
+                  {showUnreadBadge ? (
+                    <span style={overlayStyles.roomCardUnreadBadge}>{unreadCount}</span>
                   ) : null}
+                </div>
+                <div
+                  style={overlayStyles.roomCardPreview}
+                  title={previewLabel || '최근 메시지가 없습니다.'}
+                >
+                  {previewLabel ? (
+                    <>
+                      {previewAuthor ? (
+                        <span style={overlayStyles.roomCardPreviewAuthor}>{previewAuthor}</span>
+                      ) : null}
+                      <span style={overlayStyles.roomCardPreviewText}>
+                        {previewAuthor && previewText ? previewText : previewDisplay || '내용 없음'}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={overlayStyles.roomCardPreviewPlaceholder}>최근 메시지가 없습니다.</span>
+                  )}
                 </div>
                 <div style={overlayStyles.roomCardStats}>
                   <span>{timeLabel || '최근 채팅 없음'}</span>
@@ -5583,26 +9686,105 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }
 
   const frameStyle = useMemo(() => {
+    const safeTop = Math.max(0, Number.isFinite(viewport.safeAreaTop) ? viewport.safeAreaTop : 0)
+    const safeBottom = Math.max(0, Number.isFinite(viewport.safeAreaBottom) ? viewport.safeAreaBottom : 0)
+    const numericHeight =
+      typeof viewport.height === 'number' && Number.isFinite(viewport.height) ? viewport.height : null
+    const viewportHeightValue = numericHeight ? Math.max(240, Math.round(numericHeight)) : null
+
     if (!isCompactLayout) {
-      return overlayStyles.frame
+      const style = {
+        ...overlayStyles.frame,
+        ...frameThemeBackgroundStyle,
+        padding: `${28 + Math.round(safeTop)}px 28px calc(48px + var(--chat-overlay-safe-bottom, env(safe-area-inset-bottom, 16px)))`,
+        '--chat-overlay-safe-bottom': `${Math.round(safeBottom)}px`,
+      }
+      if (viewportHeightValue) {
+        style['--chat-overlay-viewport-height'] = `${viewportHeightValue}px`
+      }
+      return style
     }
 
-    const numericHeight =
-      typeof viewport.height === 'number' && Number.isFinite(viewport.height)
-        ? viewport.height
-        : null
+    const compactTop = (isUltraCompactLayout ? 24 : 26) + Math.round(safeTop)
+    const compactPadding = `${compactTop}px 14px calc(${isUltraCompactLayout ? 32 : 34}px + var(--chat-overlay-safe-bottom, env(safe-area-inset-bottom, 16px)))`
+    const fallbackHeight = viewportHeightValue ? `${viewportHeightValue}px` : '100dvh'
 
-    return {
+    const style = {
       ...overlayStyles.frame,
+      ...frameThemeBackgroundStyle,
       borderRadius: isUltraCompactLayout ? 0 : 22,
-      padding: isUltraCompactLayout ? '24px 10px 18px' : '26px 14px 22px',
-      minHeight: numericHeight ? `${numericHeight}px` : '100vh',
-      height: numericHeight ? `${numericHeight}px` : '100vh',
+      padding: compactPadding,
+      minHeight: fallbackHeight,
+      height: fallbackHeight,
+      maxHeight: fallbackHeight,
       width: '100%',
       maxWidth: '100%',
       alignItems: 'stretch',
+      '--chat-overlay-safe-bottom': `${Math.round(safeBottom)}px`,
     }
-  }, [isCompactLayout, isUltraCompactLayout, viewport.height])
+
+    if (viewportHeightValue) {
+      style['--chat-overlay-viewport-height'] = `${viewportHeightValue}px`
+    }
+
+    return style
+  }, [
+    frameThemeBackgroundStyle,
+    isCompactLayout,
+    isUltraCompactLayout,
+    viewport.height,
+    viewport.safeAreaBottom,
+    viewport.safeAreaTop,
+  ])
+
+  const overlayContainerStyle = useMemo(() => {
+    const offsetTop = Math.max(0, Number.isFinite(viewport.offsetTop) ? viewport.offsetTop : 0)
+    const safeTop = Math.max(0, Number.isFinite(viewport.safeAreaTop) ? viewport.safeAreaTop : 0)
+    const safeBottom = Math.max(0, Number.isFinite(viewport.safeAreaBottom) ? viewport.safeAreaBottom : 0)
+    const numericHeight =
+      typeof viewport.height === 'number' && Number.isFinite(viewport.height) ? viewport.height : null
+
+    const marginTopValue = Math.round(Math.max(offsetTop, safeTop))
+    const marginBottomValue = Math.round(safeBottom)
+    const extraBottomSpacing = isCompactLayout ? 24 : 36
+
+    const style = {
+      alignSelf: 'flex-start',
+      width: '100%',
+      transition: 'margin 0.2s ease',
+    }
+
+    if (marginTopValue > 0) {
+      style.marginTop = `${marginTopValue}px`
+    }
+
+    if (marginBottomValue > 0) {
+      style.marginBottom = `${marginBottomValue}px`
+    }
+
+    style.paddingBottom = `${marginBottomValue + extraBottomSpacing}px`
+
+    if (numericHeight) {
+      style.minHeight = `${Math.max(260, Math.round(numericHeight + marginTopValue + marginBottomValue))}px`
+    }
+
+    return style
+  }, [
+    isCompactLayout,
+    viewport.offsetTop,
+    viewport.safeAreaTop,
+    viewport.safeAreaBottom,
+    viewport.height,
+  ])
+
+  const overlayViewportHeight = useMemo(() => {
+    const numericHeight =
+      typeof viewport.height === 'number' && Number.isFinite(viewport.height) ? viewport.height : null
+    if (!numericHeight) {
+      return null
+    }
+    return `${Math.max(260, Math.round(numericHeight))}px`
+  }, [viewport.height])
 
   const sidePanelStyle = useMemo(() => {
     if (!isCompactLayout) {
@@ -5822,8 +10004,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }
 
   const renderMessageColumn = () => {
-    const hasContext = Boolean(context)
-
     const label = hasContext ? context.label || '채팅' : '채팅'
     const subtitle = hasContext
       ? context.type === 'session'
@@ -5834,16 +10014,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             ? '공개 채팅방'
             : '비공개 채팅방'
       : '좌측에서 채팅방을 선택해 주세요.'
-
-    const hasReadyAttachment = composerAttachments.some((attachment) => attachment?.status === 'ready')
-    const aiActive = Boolean(aiRequest?.active)
-    const disableSend =
-      !hasContext ||
-      sending ||
-      (aiActive ? !messageInput.trim() : !messageInput.trim() && !hasReadyAttachment)
-    const promptPreview = aiActive
-      ? truncateText(((aiRequest?.prompt ?? messageInput) || '').trim(), 120)
-      : null
     const showDrawer = context?.type === 'chat-room' && Boolean(context.chatRoomId || currentRoom)
     const isRoomContext = context?.type === 'chat-room'
     const mediaItems = showDrawer ? roomAssets.media.slice(0, drawerMediaLimit) : []
@@ -5853,13 +10023,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const drawerParticipants = showDrawer ? participantList : []
     const coverImage = showDrawer ? currentRoom?.cover_url || currentRoom?.coverUrl || null : null
     const viewerIsOwner = Boolean(isRoomContext && viewerOwnsRoom)
-    const showAnnouncements = isRoomContext
-    const announcementList = showAnnouncements
-      ? roomAnnouncements.filter((item) => !pinnedAnnouncement || item.id !== pinnedAnnouncement.id)
-      : []
-
+    const hasPinnedAnnouncement = Boolean(pinnedAnnouncement)
+    const hasAnyAnnouncements = hasPinnedAnnouncement || nonPinnedAnnouncements.length > 0
+    const showAnnouncements = isRoomContext && hasAnyAnnouncements
+    const themeBubbleColor = roomTheme.bubbleColor
+    const themeTextColor = roomTheme.textColor
+    const themeBackgroundValue = roomTheme.backgroundValue
     return (
       <section ref={conversationRef} style={conversationStyle}>
+        <div style={overlayStyles.conversationBackground(themeBackgroundValue)} />
         <header style={conversationHeaderStyle}>
           <div style={overlayStyles.headerLeft}>
             {hasContext ? (
@@ -5891,64 +10063,141 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         </header>
         <div ref={messageListRef} style={messageViewportStyle}>
           {showAnnouncements ? (
-            <div style={overlayStyles.announcementStack}>
-              <div style={overlayStyles.announcementHeader}>
-                <strong style={{ fontSize: 12, color: '#cbd5f5' }}>공지</strong>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {viewerIsModerator ? (
+            <div style={overlayStyles.pinnedAnnouncementContainer}>
+              <div style={overlayStyles.pinnedAnnouncementBackdrop} aria-hidden />
+              <div style={overlayStyles.pinnedAnnouncementContent}>
+                {announcementError ? (
+                  <span style={{ fontSize: 11, color: '#fca5a5' }}>{announcementError}</span>
+                ) : null}
+                {pinnedAnnouncement ? (
+                  pinnedAnnouncementStage === 'hidden' ? (
                     <button
                       type="button"
-                      style={overlayStyles.secondaryButton}
-                      onClick={handleOpenAnnouncementComposer}
+                      style={overlayStyles.pinnedAnnouncementHiddenToggle}
+                      onClick={() => commitPinnedAnnouncementStage('collapsed')}
                     >
-                      새 공지
+                      📌 공지 보기
                     </button>
-                  ) : null}
-                  {roomAnnouncementsHasMore ? (
-                    <button
-                      type="button"
-                      style={overlayStyles.secondaryButton}
-                      onClick={handleLoadMoreAnnouncements}
-                    >
-                      더 보기
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              {announcementError ? (
-                <span style={{ fontSize: 11, color: '#fca5a5' }}>{announcementError}</span>
-              ) : null}
-              {pinnedAnnouncement ? (
-                <button
-                  type="button"
-                  style={overlayStyles.announcementListItem(true)}
-                  onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
-                >
-                  <strong>📌 {truncateText(pinnedAnnouncement.content || '').text}</strong>
-                  <span style={overlayStyles.announcementMeta}>
-                    최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)}
-                  </span>
-                </button>
-              ) : null}
-              {announcementList.length ? (
-                announcementList.map((announcement) => (
-                  <button
-                    key={announcement.id}
-                    type="button"
-                    style={overlayStyles.announcementListItem(false)}
-                    onClick={() => handleOpenAnnouncementDetail(announcement)}
-                  >
-                    <span>{truncateText(announcement.content || '').text}</span>
-                    <span style={overlayStyles.announcementMeta}>
-                      ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
-                    </span>
-                  </button>
-                ))
-              ) : !pinnedAnnouncement ? (
-                <span style={overlayStyles.mutedText}>아직 등록된 공지가 없습니다.</span>
-              ) : null}
+                  ) : (
+                    (() => {
+                      const previewImage = pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl
+                      const hasImage = Boolean(previewImage)
+                      const timestampLabel = pinnedAnnouncement.updated_at
+                        ? `${formatTime(pinnedAnnouncement.updated_at)} 업데이트`
+                        : pinnedAnnouncement.created_at
+                          ? `${formatTime(pinnedAnnouncement.created_at)} 등록`
+                          : '방장이 고정했습니다.'
+                      return (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          style={overlayStyles.pinnedAnnouncementCard('collapsed', hasImage)}
+                          onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              handleOpenAnnouncementDetail(pinnedAnnouncement)
+                            }
+                          }}
+                        >
+                          <div style={{ display: 'grid', gap: 12 }}>
+                            <div style={overlayStyles.pinnedAnnouncementHeaderRow}>
+                              <div style={overlayStyles.pinnedAnnouncementHeaderGroup}>
+                                <span style={overlayStyles.pinnedAnnouncementBadge}>📌 공지</span>
+                                <span style={overlayStyles.pinnedAnnouncementTimestamp}>{timestampLabel}</span>
+                              </div>
+                              <div style={overlayStyles.pinnedAnnouncementStageActions}>
+                                <button
+                                  type="button"
+                                  style={overlayStyles.pinnedAnnouncementStageButton('danger')}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    commitPinnedAnnouncementStage('hidden')
+                                  }}
+                                >
+                                  숨기기
+                                </button>
+                              </div>
+                            </div>
+                            {pinnedAnnouncement.title ? (
+                              <strong style={overlayStyles.pinnedAnnouncementTitle}>
+                                {pinnedAnnouncement.title}
+                              </strong>
+                            ) : null}
+                            <div style={overlayStyles.pinnedAnnouncementCollapsedBody}>
+                              <span style={overlayStyles.pinnedAnnouncementPreview}>
+                                {pinnedAnnouncementPreview.text || '내용 없음'}
+                              </span>
+                            </div>
+                            <span style={overlayStyles.announcementMeta}>
+                              ♥ {pinnedAnnouncement.heart_count || 0} · 💬 {pinnedAnnouncement.comment_count || 0}
+                            </span>
+                            {viewerIsModerator ? (
+                              <div style={overlayStyles.pinnedAnnouncementActions}>
+                                <button
+                                  type="button"
+                                  style={overlayStyles.pinnedAnnouncementActionButton(
+                                    'ghost',
+                                    announcementPinningId === pinnedAnnouncement.id,
+                                  )}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    handleToggleAnnouncementPin(pinnedAnnouncement, false)
+                                  }}
+                                  disabled={announcementPinningId === pinnedAnnouncement.id}
+                                >
+                                  고정 해제
+                                </button>
+                                <button
+                                  type="button"
+                                  style={overlayStyles.pinnedAnnouncementActionButton('primary')}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    handleOpenAnnouncementComposer()
+                                  }}
+                                >
+                                  새 공지
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                          {hasImage ? (
+                            <div style={overlayStyles.pinnedAnnouncementImageWrapper}>
+                              <img
+                                src={previewImage}
+                                alt={
+                                  pinnedAnnouncement.title
+                                    ? `${pinnedAnnouncement.title} 이미지`
+                                    : '공지 이미지'
+                                }
+                                style={overlayStyles.pinnedAnnouncementImage}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })()
+                  )
+                ) : (
+                  <div style={overlayStyles.pinnedAnnouncementEmpty}>
+                    <span>{viewerIsModerator ? '고정된 공지가 없습니다.' : '현재 고정된 공지가 없습니다.'}</span>
+                    {viewerIsModerator ? (
+                      <button
+                        type="button"
+                        style={overlayStyles.pinnedAnnouncementActionButton('primary')}
+                        onClick={handleOpenAnnouncementComposer}
+                      >
+                        공지 작성
+                      </button>
+                    ) : null}
+                  </div>
+                )}
             </div>
-          ) : null}
+          </div>
+        ) : null}
           {hasContext ? (
             loadingMessages ? (
               <span style={overlayStyles.mutedText}>메시지를 불러오는 중...</span>
@@ -5958,6 +10207,25 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   return (
                     <div key={entry.key} style={overlayStyles.dateDividerWrapper}>
                       <span style={overlayStyles.dateDivider}>{entry.label}</span>
+                    </div>
+                  )
+                }
+
+                if (entry.type === 'system') {
+                  const eventLabel = entry.event === 'member_leave' ? '나갔습니다.' : '참여했습니다.'
+                  const icon = entry.event === 'member_leave' ? '➖' : '➕'
+                  const timestamp = entry.createdAt ? formatTime(entry.createdAt) : ''
+                  const memberCountText = entry.memberCount ? `현재 ${entry.memberCount}명 참여 중` : ''
+                  const metaParts = [memberCountText, timestamp].filter(Boolean)
+                  const metaText = metaParts.join(' · ')
+                  return (
+                    <div key={entry.key} style={overlayStyles.systemEventRow}>
+                      <span style={overlayStyles.systemEventBadge(entry.event)}>
+                        {icon} {entry.memberName || '참여자'} 님이 {eventLabel}
+                      </span>
+                      {metaText ? (
+                        <span style={overlayStyles.systemEventMeta}>{metaText}</span>
+                      ) : null}
                     </div>
                   )
                 }
@@ -6005,7 +10273,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                     {avatarNode}
                     <div style={overlayStyles.messageContent(mine)}>
                       <span
-                        style={overlayStyles.messageName(mine, participantClickable)}
+                        style={overlayStyles.messageName(mine, participantClickable, roomTheme.accentColor)}
                         role={participantClickable ? 'button' : undefined}
                         tabIndex={participantClickable ? 0 : undefined}
                         onClick={openParticipantProfile}
@@ -6029,6 +10297,32 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                           let bubbleVariant = 'default'
                           let labelVariant = 'prompt'
                           let labelText = null
+
+                          const memberTotalCandidates = [
+                            message.room_member_total,
+                            message.roomMemberTotal,
+                            roomStats?.participantCount,
+                          ]
+                          let messageMemberTotal = 0
+                          memberTotalCandidates.forEach((candidate) => {
+                            const parsed = parseUnreadValue(candidate)
+                            if (parsed > messageMemberTotal) {
+                              messageMemberTotal = parsed
+                            }
+                          })
+                          const unreadCandidates = [
+                            message.room_unread_count,
+                            message.roomUnreadCount,
+                          ]
+                          let unreadParticipants = 0
+                          unreadCandidates.forEach((candidate) => {
+                            const parsed = parseUnreadValue(candidate)
+                            if (parsed > unreadParticipants) {
+                              unreadParticipants = parsed
+                            }
+                          })
+                          const showUnreadState =
+                            isRoomContext && unreadParticipants > 0 && messageMemberTotal > 0
 
                           if (aiMeta?.type === 'prompt') {
                             bubbleVariant = 'aiPrompt'
@@ -6061,38 +10355,61 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                           return (
                             <div key={messageKey} style={overlayStyles.messageItem(mine)}>
                               {mine && showTimestamp ? timestampNode : null}
-                              <div style={overlayStyles.messageBubble(mine, bubbleVariant)}>
-                                {labelText ? (
-                                  <span style={overlayStyles.messageLabel(labelVariant)}>{labelText}</span>
-                                ) : null}
-                                {attachments.length ? (
-                                  <div
-                                    style={
-                                      attachments.every((item) => item.layoutHint === 'grid')
-                                        ? overlayStyles.messageAttachmentsGrid
-                                        : overlayStyles.messageAttachments
-                                    }
-                                  >
-                                    {attachments.map((attachment) =>
-                                      renderAttachmentPreview(message, attachment, mine),
-                                    )}
+                              {(() => {
+                                const bubbleStyle = overlayStyles.messageBubble(mine, bubbleVariant, roomTheme)
+                                if (bubbleVariant === 'default') {
+                                  if (themeBubbleColor) {
+                                    bubbleStyle.background = themeBubbleColor
+                                    bubbleStyle.border = '1px solid rgba(71, 85, 105, 0.35)'
+                                  }
+                                  if (themeTextColor) {
+                                    bubbleStyle.color = themeTextColor
+                                  }
+                                }
+                                return (
+                                  <div style={bubbleStyle}>
+                                    {labelText ? (
+                                      <span style={overlayStyles.messageLabel(labelVariant)}>{labelText}</span>
+                                    ) : null}
+                                    {attachments.length ? (
+                                      <div
+                                        style={
+                                          attachments.every((item) => item.layoutHint === 'grid')
+                                            ? overlayStyles.messageAttachmentsGrid
+                                            : overlayStyles.messageAttachments
+                                        }
+                                      >
+                                        {attachments.map((attachment) =>
+                                          renderAttachmentPreview(message, attachment, mine),
+                                        )}
+                                      </div>
+                                    ) : null}
+                                    {displayText ? (
+                                      <p style={messageTextStyle}>{displayText || ' '}</p>
+                                    ) : aiMeta?.status === 'pending' ? (
+                                      <span style={overlayStyles.messagePendingText}>응답을 생성하고 있습니다…</span>
+                                    ) : null}
+                                    {showViewMore ? (
+                                      <button
+                                        type="button"
+                                        style={overlayStyles.viewMoreButton}
+                                        onClick={() => setExpandedMessage(message)}
+                                      >
+                                        전체보기
+                                      </button>
+                                    ) : null}
                                   </div>
-                                ) : null}
-                                {displayText ? (
-                                  <p style={overlayStyles.messageText}>{displayText || ' '}</p>
-                                ) : aiMeta?.status === 'pending' ? (
-                                  <span style={overlayStyles.messagePendingText}>응답을 생성하고 있습니다…</span>
-                                ) : null}
-                                {showViewMore ? (
-                                  <button
-                                    type="button"
-                                    style={overlayStyles.viewMoreButton}
-                                    onClick={() => setExpandedMessage(message)}
-                                  >
-                                    전체보기
-                                  </button>
-                                ) : null}
-                              </div>
+                                )
+                              })()}
+                              {showUnreadState ? (
+                                <div style={overlayStyles.messageUnreadRow(mine)}>
+                                  <span style={overlayStyles.messageUnreadDot(mine)} />
+                                  <span style={overlayStyles.messageUnreadText(mine)}>
+                                    아직 {unreadParticipants}
+                                    {messageMemberTotal ? `/${messageMemberTotal}` : ''}명이 읽지 않았어요
+                                  </span>
+                                </div>
+                              ) : null}
                               {!mine && showTimestamp ? timestampNode : null}
                             </div>
                           )
@@ -6290,6 +10607,31 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   )}
                 </div>
                 <div style={overlayStyles.drawerScrollArea}>
+                  {showDrawer ? (
+                    <section style={overlayStyles.drawerSection}>
+                      <div style={overlayStyles.drawerAnnouncementRow}>
+                        <h4 style={overlayStyles.drawerSectionTitle}>공지</h4>
+                        <button
+                          type="button"
+                          style={overlayStyles.drawerAnnouncementButton}
+                          onClick={handleOpenAnnouncementList}
+                        >
+                          공지 목록
+                        </button>
+                      </div>
+                      {announcementError ? (
+                        <span style={{ ...overlayStyles.errorText, margin: 0, padding: 0 }}>
+                          {announcementError}
+                        </span>
+                      ) : hasAnyAnnouncements ? (
+                        <span style={overlayStyles.drawerAnnouncementHint}>
+                          최근 공지를 확인하거나 투표에 참여해 보세요.
+                        </span>
+                      ) : (
+                        <span style={overlayStyles.drawerAnnouncementEmpty}>등록된 공지가 없습니다.</span>
+                      )}
+                    </section>
+                  ) : null}
                   <section style={overlayStyles.drawerSection}>
                     <h4 style={overlayStyles.drawerSectionTitle}>사진 · 동영상</h4>
                     {mediaItems.length ? (
@@ -6487,6 +10829,76 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     )
   }
 
+  const miniOverlayLabel = useMemo(() => {
+    if (context?.label) return context.label
+    if (context?.type === 'global') return '전체 채팅'
+    if (context?.type === 'session') return '세션 채팅'
+    return '채팅'
+  }, [context?.label, context?.type])
+
+  const miniOverlayFeed = useMemo(() => {
+    if (!timelineEntries.length) {
+      return []
+    }
+    const feed = []
+    timelineEntries.forEach((entry) => {
+      if (entry.type === 'date') {
+        feed.push({ type: 'date', key: entry.key, label: entry.label })
+        return
+      }
+      entry.messages.forEach((message, index) => {
+        const attachments = getMessageAttachments(message)
+        const baseText = extractMessageText(message).trim()
+        const aiMeta = getAiMetadata(message)
+        let text = baseText ? truncateText(baseText, 140).text : ''
+        if (!text && aiMeta?.type === 'response') {
+          if (aiMeta.status === 'error') {
+            text = 'AI 응답 실패'
+          } else if (aiMeta.status === 'pending') {
+            text = 'AI 응답 생성 중...'
+          } else {
+            text = 'AI 응답'
+          }
+        }
+        if (!text && attachments.length) {
+          text = attachments.length === 1 ? '첨부 1개' : `첨부 ${attachments.length}개`
+        }
+        if (!text) {
+          text = '메시지 내용이 없습니다.'
+        }
+        feed.push({
+          type: 'message',
+          key: `${entry.key}-${message.id || message.local_id || index}`,
+          mine: entry.mine,
+          author: entry.mine ? '나' : entry.displayName || '알 수 없음',
+          timestamp: formatTime(message.created_at),
+          text,
+        })
+      })
+    })
+    return feed.slice(-80)
+  }, [timelineEntries])
+
+  const miniOverlayLatest = useMemo(() => {
+    for (let index = miniOverlayFeed.length - 1; index >= 0; index -= 1) {
+      const entry = miniOverlayFeed[index]
+      if (entry?.type === 'message') {
+        return entry
+      }
+    }
+    return null
+  }, [miniOverlayFeed])
+
+  const miniOverlayBarSnippet = useMemo(() => {
+    if (!miniOverlayLatest) {
+      return '최근 메시지 없음'
+    }
+    const { text } = truncateText(miniOverlayLatest.text || '', 60)
+    return text || '최근 메시지 없음'
+  }, [miniOverlayLatest])
+
+  const miniOverlayUnread = 0
+
   const focused = Boolean(context)
 
   const rootStyle = useMemo(
@@ -6497,6 +10909,23 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const detailAttachments = expandedMessage ? getMessageAttachments(expandedMessage) : []
   const mediaSelectionCount = mediaLibrary.selection?.size || 0
   const mediaPickerTitle = mediaLibrary.action === 'video' ? '최근 동영상' : '최근 사진'
+  const overlayOpen = open && !miniOverlay.active
+  const miniOverlayBadge = null
+  const miniOverlayWidth = miniOverlay.size?.width || MINI_OVERLAY_WIDTH
+  const miniOverlayHeight =
+    miniOverlay.mode === 'bar'
+      ? MINI_OVERLAY_BAR_HEIGHT
+      : miniOverlay.size?.height || MINI_OVERLAY_HEIGHT
+  const miniOverlayStyle =
+    miniOverlay.active && miniOverlay.position
+      ? overlayStyles.miniOverlayShell(
+          miniOverlay.position.x,
+          miniOverlay.position.y,
+          miniOverlayWidth,
+          miniOverlayHeight,
+          miniOverlay.mode,
+        )
+      : null
   const mediaPickerOverlay = showMediaPicker ? (
     <div style={overlayStyles.mediaPickerBackdrop} onClick={handleMediaPickerCancel}>
       <div
@@ -7115,6 +11544,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       onClose={handleCloseSettings}
       title="채팅방 설정"
       width="min(640px, 96vw)"
+      zIndex={1800}
     >
       <div style={{ display: 'grid', gap: 18 }}>
         <nav style={overlayStyles.settingsTabs}>
@@ -7147,21 +11577,232 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         {settingsTab === 'owner' && viewerOwnsRoom ? (
           <div style={{ display: 'grid', gap: 18 }}>
             <section style={overlayStyles.section}>
-              <h3 style={overlayStyles.sectionTitle}>방 기본 설정</h3>
-              <label style={overlayStyles.fieldLabel}>
-                기본 배경 URL
+              <h3 style={overlayStyles.sectionTitle}>방 테마</h3>
+              <div style={overlayStyles.themePreview(ownerThemePreview.backgroundValue)}>
+                <div
+                  style={overlayStyles.themePreviewMessage(
+                    ownerThemePreview.bubbleColor,
+                    ownerThemePreview.textColor,
+                  )}
+                >
+                  <span>이런 느낌으로 보여요</span>
+                  <span style={overlayStyles.themePreviewAccent(ownerThemePreview.accentColor)} />
+                </div>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                  기본 배경과 말풍선/글자색이 테마에 맞춰 보정됩니다.
+                </span>
+              </div>
+              <div style={overlayStyles.themeModeTabs}>
+                {[
+                  { key: 'preset', label: '추천 테마' },
+                  { key: 'color', label: '단색 배경' },
+                  { key: 'image', label: '이미지 업로드' },
+                  { key: 'none', label: '배경 없음' },
+                ].map((entry) => (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    style={overlayStyles.themeModeButton(roomSettingsDraft.themeMode === entry.key)}
+                    onClick={() => handleOwnerThemeModeChange(entry.key)}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+              {roomSettingsDraft.themeMode === 'preset' ? (
+                <div style={overlayStyles.themePresetGrid}>
+                  {ROOM_THEME_LIBRARY.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      style={overlayStyles.themePresetButton(roomSettingsDraft.themePresetId === preset.id)}
+                      onClick={() => handleOwnerSelectPreset(preset.id)}
+                    >
+                      <div style={overlayStyles.themePresetPreview(preset.value)} />
+                      <div style={overlayStyles.themePresetLabel}>
+                        <span>{preset.label}</span>
+                        <span style={overlayStyles.themePreviewAccent(preset.recommended.accentColor)} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {roomSettingsDraft.themeMode === 'color' ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <label style={overlayStyles.fieldLabel}>
+                    배경 색상
+                    <div style={overlayStyles.colorRow}>
+                      <input
+                        type="color"
+                        value={ownerBackgroundColorValue}
+                        onChange={(event) =>
+                          updateOwnerThemeDraft({ themeBackgroundColor: event.target.value }, true)
+                        }
+                        style={overlayStyles.colorInput()}
+                      />
+                      <input
+                        type="text"
+                        value={roomSettingsDraft.themeBackgroundColor}
+                        onChange={(event) =>
+                          updateOwnerThemeDraft({ themeBackgroundColor: event.target.value }, true)
+                        }
+                        placeholder="#0f172a"
+                        style={overlayStyles.input}
+                      />
+                    </div>
+                  </label>
+                </div>
+              ) : null}
+              {roomSettingsDraft.themeMode === 'image' ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <span style={overlayStyles.fieldLabel}>배경 이미지</span>
+                  <div style={overlayStyles.imageUploadTile(Boolean(roomSettingsDraft.themeBackgroundUrl))}>
+                    {roomSettingsDraft.themeBackgroundUrl ? (
+                      <div style={overlayStyles.imageUploadPreview(roomSettingsDraft.themeBackgroundUrl)} />
+                    ) : (
+                      <div style={overlayStyles.imageUploadPlaceholder}>
+                        <strong style={{ color: '#cbd5f5', fontSize: 12 }}>이미지를 업로드해 주세요</strong>
+                        <span>최대 50MB 이미지 파일을 사용할 수 있어요.</span>
+                      </div>
+                    )}
+                    <div style={overlayStyles.imageUploadActions}>
+                      <button
+                        type="button"
+                        style={overlayStyles.imageUploadButton('primary', roomThemeUploadBusy)}
+                        onClick={() => roomBackgroundInputRef.current?.click()}
+                        disabled={roomThemeUploadBusy}
+                      >
+                        {roomThemeUploadBusy ? '업로드 중…' : '이미지 선택'}
+                      </button>
+                      {roomSettingsDraft.themeBackgroundUrl ? (
+                        <button
+                          type="button"
+                          style={overlayStyles.imageUploadButton('ghost', roomThemeUploadBusy)}
+                          onClick={handleOwnerBackgroundClear}
+                          disabled={roomThemeUploadBusy}
+                        >
+                          제거
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {roomSettingsDraft.themeBackgroundUrl ? (
+                    <span style={overlayStyles.imageUploadHint}>{roomSettingsDraft.themeBackgroundUrl}</span>
+                  ) : (
+                    <span style={overlayStyles.imageUploadHint}>Supabase 저장소에 업로드된 이미지를 바로 사용할 수 있습니다.</span>
+                  )}
+                  <input
+                    ref={roomBackgroundInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleOwnerBackgroundFileChange}
+                  />
+                </div>
+              ) : null}
+              <div>
+                <span style={overlayStyles.fieldLabel}>포인트 색상</span>
+                <div style={overlayStyles.themeAccentPalette}>
+                  {ACCENT_SWATCHES.map((swatch) => (
+                    <button
+                      key={swatch}
+                      type="button"
+                      style={overlayStyles.themeAccentSwatch(
+                        swatch,
+                        swatch.toLowerCase() === (roomSettingsDraft.accentColor || '').toLowerCase(),
+                      )}
+                      onClick={() => handleOwnerAccentChange(swatch)}
+                    />
+                  ))}
+                </div>
+                <div style={overlayStyles.colorRow}>
+                  <input
+                    type="color"
+                    value={ownerAccentPickerValue}
+                    onChange={(event) => handleOwnerAccentChange(event.target.value)}
+                    style={overlayStyles.colorInput()}
+                  />
                 <input
-                  type="url"
-                  value={roomSettingsDraft.defaultBackgroundUrl}
-                  onChange={(event) =>
-                    setRoomSettingsDraft((prev) => ({ ...prev, defaultBackgroundUrl: event.target.value }))
-                  }
-                  placeholder="https://example.com/background.jpg"
+                  type="text"
+                  value={roomSettingsDraft.accentColor}
+                  onChange={(event) => handleOwnerAccentChange(event.target.value)}
+                  placeholder="#38bdf8"
                   style={overlayStyles.input}
                 />
+                </div>
+              </div>
+              <label style={overlayStyles.themeAutoRow}>
+                <input
+                  type="checkbox"
+                  checked={roomSettingsDraft.autoContrast}
+                  onChange={(event) => handleOwnerAutoContrastToggle(event.target.checked)}
+                />
+                자동 대비 및 가독성 보정
               </label>
               <label style={overlayStyles.fieldLabel}>
-                기본 추방 시간(분)
+                말풍선 색상
+                <div style={overlayStyles.colorRow}>
+                  <input
+                    type="color"
+                    value={ownerBubblePickerValue}
+                    onChange={(event) => handleOwnerBubbleInput(event.target.value)}
+                    style={overlayStyles.colorInput(roomSettingsDraft.autoContrast)}
+                    disabled={roomSettingsDraft.autoContrast}
+                  />
+                  <input
+                    type="text"
+                    value={roomSettingsDraft.bubbleColor}
+                    onChange={(event) => handleOwnerBubbleInput(event.target.value)}
+                    placeholder="#1f2937"
+                    style={overlayStyles.input}
+                    disabled={roomSettingsDraft.autoContrast}
+                  />
+                </div>
+              </label>
+              <label style={overlayStyles.fieldLabel}>
+                글자 색상
+                <div style={overlayStyles.colorRow}>
+                  <input
+                    type="color"
+                    value={ownerTextPickerValue}
+                    onChange={(event) => handleOwnerTextInput(event.target.value)}
+                    style={overlayStyles.colorInput(roomSettingsDraft.autoContrast)}
+                    disabled={roomSettingsDraft.autoContrast}
+                  />
+                  <input
+                    type="text"
+                    value={roomSettingsDraft.textColor}
+                    onChange={(event) => handleOwnerTextInput(event.target.value)}
+                    placeholder="#f8fafc"
+                    style={overlayStyles.input}
+                    disabled={roomSettingsDraft.autoContrast}
+                  />
+                </div>
+              </label>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <span style={overlayStyles.fieldLabel}>기본 추방 시간(분)</span>
+                <div style={overlayStyles.banPresetGrid}>
+                  {BAN_DURATION_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      style={overlayStyles.banPresetButton(
+                        preset.minutes === null
+                          ? roomSettingsDraft.defaultBanMinutes === ''
+                          : Number(roomSettingsDraft.defaultBanMinutes || '0') === preset.minutes,
+                      )}
+                      onClick={() =>
+                        setRoomSettingsDraft((prev) => ({
+                          ...prev,
+                          defaultBanMinutes:
+                            preset.minutes === null ? '' : String(Math.max(0, preset.minutes)),
+                        }))
+                      }
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="number"
                   min="0"
@@ -7169,9 +11810,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   onChange={(event) =>
                     setRoomSettingsDraft((prev) => ({ ...prev, defaultBanMinutes: event.target.value }))
                   }
+                  placeholder="예: 60"
                   style={overlayStyles.input}
                 />
-              </label>
+              </div>
               <button
                 type="button"
                 style={overlayStyles.actionButton('primary')}
@@ -7180,16 +11822,37 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   setSettingsMessage(null)
                   setSettingsError(null)
                   try {
+                    const palette = buildThemePaletteFromDraft(roomSettingsDraft, {
+                      fallback: ownerThemeFallback,
+                      fallbackBackgroundUrl: ownerThemeFallback.backgroundUrl,
+                    })
                     const settings = await updateChatRoomSettings({
                       roomId: context.chatRoomId,
                       settings: {
-                        defaultBackgroundUrl: (roomSettingsDraft.defaultBackgroundUrl || '').trim() || null,
                         defaultBanMinutes: roomSettingsDraft.defaultBanMinutes
                           ? Number(roomSettingsDraft.defaultBanMinutes)
                           : null,
+                        defaultBackgroundUrl:
+                          palette.descriptor.type === 'image' ? palette.backgroundValue : null,
+                        defaultTheme: {
+                          mode: roomSettingsDraft.themeMode,
+                          presetId: palette.presetId,
+                          backgroundUrl:
+                            roomSettingsDraft.themeMode === 'image'
+                              ? roomSettingsDraft.themeBackgroundUrl || null
+                              : null,
+                          backgroundColor:
+                            roomSettingsDraft.themeMode === 'color'
+                              ? roomSettingsDraft.themeBackgroundColor || null
+                              : null,
+                          accentColor: palette.accentColor,
+                          bubbleColor: palette.bubbleColor,
+                          textColor: palette.textColor,
+                          autoContrast: roomSettingsDraft.autoContrast !== false,
+                        },
                       },
                     })
-                    setSettingsMessage('방 기본 설정을 저장했습니다.')
+                    setSettingsMessage('방 테마를 저장했습니다.')
                     if (settings) {
                       updateRoomMetadata(context.chatRoomId, settings)
                     }
@@ -7218,9 +11881,20 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   style={overlayStyles.announcementListItem(true)}
                   onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
                 >
-                  <strong>📌 {truncateText(pinnedAnnouncement.content || '').text}</strong>
+                  <strong>
+                    {'📌 '}
+                    {pinnedAnnouncement.title ||
+                      getAnnouncementPreviewText(pinnedAnnouncement, 80) ||
+                      '제목 없는 공지'}
+                  </strong>
+                  {pinnedAnnouncement.title && pinnedAnnouncement.content ? (
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                      {getAnnouncementPreviewText(pinnedAnnouncement, ANNOUNCEMENT_PREVIEW_LENGTH) || '내용 없음'}
+                    </span>
+                  ) : null}
                   <span style={overlayStyles.announcementMeta}>
-                    최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)}
+                    최근 업데이트: {formatTime(pinnedAnnouncement.updated_at)} · ♥ {pinnedAnnouncement.heart_count || 0} · 💬{' '}
+                    {pinnedAnnouncement.comment_count || 0}
                   </span>
                 </button>
               ) : null}
@@ -7233,7 +11907,16 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       style={overlayStyles.announcementListItem(false)}
                       onClick={() => handleOpenAnnouncementDetail(announcement)}
                     >
-                      <span>{truncateText(announcement.content || '').text}</span>
+                      <strong>
+                        {announcement.title ||
+                          getAnnouncementPreviewText(announcement, 80) ||
+                          '제목 없는 공지'}
+                      </strong>
+                      {announcement.title && announcement.content ? (
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                          {getAnnouncementPreviewText(announcement, ANNOUNCEMENT_PREVIEW_LENGTH) || '내용 없음'}
+                        </span>
+                      ) : null}
                       <span style={overlayStyles.announcementMeta}>
                         ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
                       </span>
@@ -7259,16 +11942,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 <div style={overlayStyles.banList}>
                   {roomBans.map((ban) => (
                     <div key={`${ban.room_id}-${ban.owner_id}`} style={overlayStyles.banListItem}>
-                      <div>
-                        <strong>{ban.owner_id}</strong>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <strong>{ban.owner_name || ban.owner_id}</strong>
                         <div style={overlayStyles.announcementMeta}>
                           {ban.expires_at ? `만료: ${formatDateLabel(ban.expires_at)}` : '영구 차단'}
                         </div>
                         {ban.reason ? <div style={{ fontSize: 12, color: '#cbd5f5' }}>{ban.reason}</div> : null}
                       </div>
-                      <button type="button" style={overlayStyles.secondaryButton} onClick={() => handleUnbanEntry(ban)}>
-                        추방 해제
-                      </button>
+                      <div style={overlayStyles.banListActions}>
+                        <button type="button" style={overlayStyles.secondaryButton} onClick={() => handleAdjustBanEntry(ban)}>
+                          기간 조정
+                        </button>
+                        <button type="button" style={overlayStyles.secondaryButton} onClick={() => handleUnbanEntry(ban)}>
+                          추방 해제
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -7281,32 +11969,57 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               {roomStatsLoading ? (
                 <span style={overlayStyles.mutedText}>통계를 불러오는 중...</span>
               ) : roomStats ? (
-                <dl style={overlayStyles.statList}>
-                  <div>
-                    <dt>총 메시지</dt>
-                    <dd>{roomStats.messageCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>최근 24시간</dt>
-                    <dd>{roomStats.messagesLast24h ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>첨부 수</dt>
-                    <dd>{roomStats.attachmentCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>참여자</dt>
-                    <dd>{roomStats.participantCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>부방장</dt>
-                    <dd>{roomStats.moderatorCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>마지막 메시지</dt>
-                    <dd>{roomStats.lastMessageAt ? formatDateLabel(roomStats.lastMessageAt) : '정보 없음'}</dd>
-                  </div>
-                </dl>
+                <>
+                  <dl style={overlayStyles.statList}>
+                    <div>
+                      <dt>총 메시지</dt>
+                      <dd>{roomStats.messageCount ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>최근 24시간</dt>
+                      <dd>{roomStats.messagesLast24h ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>첨부 수</dt>
+                      <dd>{roomStats.attachmentCount ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>참여자</dt>
+                      <dd>{roomStats.participantCount ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>부방장</dt>
+                      <dd>{roomStats.moderatorCount ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>마지막 메시지</dt>
+                      <dd>{roomStats.lastMessageAt ? formatDateLabel(roomStats.lastMessageAt) : '정보 없음'}</dd>
+                    </div>
+                  </dl>
+                  {Array.isArray(roomStats.contributions) && roomStats.contributions.length ? (
+                    <div style={overlayStyles.statContributionList}>
+                      {roomStats.contributions.map((entry, index) => (
+                        <div
+                          key={entry.ownerId || `${entry.displayName || 'member'}-${index}`}
+                          style={overlayStyles.statContributionItem}
+                        >
+                          <div style={overlayStyles.statContributionLabel}>
+                            <span>{entry.displayName || entry.ownerId || '참여자'}</span>
+                            <span style={overlayStyles.announcementMeta}>
+                              {(entry.messageCount ?? 0).toLocaleString()}개 ·{' '}
+                              {Number.isFinite(entry.share) ? `${entry.share}%` : '0%'}
+                            </span>
+                          </div>
+                          <div style={overlayStyles.statContributionBar}>
+                            <div style={overlayStyles.statContributionBarFill(entry.share)} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={overlayStyles.mutedText}>참여자별 통계를 확인할 수 없습니다.</span>
+                  )}
+                </>
               ) : (
                 <span style={overlayStyles.mutedText}>통계 정보를 확인할 수 없습니다.</span>
               )}
@@ -7317,51 +12030,215 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           <section style={overlayStyles.section}>
             <h3 style={overlayStyles.sectionTitle}>개인 설정</h3>
             {preferencesError ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{preferencesError}</span> : null}
-            <label style={overlayStyles.fieldLabel}>
-              말풍선 색상
-              <input
-                type="text"
-                value={preferencesDraft.bubbleColor}
-                onChange={(event) =>
-                  setPreferencesDraft((prev) => ({ ...prev, bubbleColor: event.target.value }))
-                }
-                placeholder="#1f2937"
-                style={overlayStyles.input}
-              />
-            </label>
-            <label style={overlayStyles.fieldLabel}>
-              글자 색상
-              <input
-                type="text"
-                value={preferencesDraft.textColor}
-                onChange={(event) =>
-                  setPreferencesDraft((prev) => ({ ...prev, textColor: event.target.value }))
-                }
-                placeholder="#f8fafc"
-                style={overlayStyles.input}
-              />
-            </label>
-            <label style={overlayStyles.fieldLabel}>
-              개인 배경 URL
-              <input
-                type="url"
-                value={preferencesDraft.backgroundUrl}
-                onChange={(event) =>
-                  setPreferencesDraft((prev) => ({ ...prev, backgroundUrl: event.target.value }))
-                }
-                placeholder="https://example.com/background.jpg"
-                style={overlayStyles.input}
-              />
-            </label>
+            <div style={overlayStyles.themePreview(personalThemePreview.backgroundValue)}>
+              <div
+                style={overlayStyles.themePreviewMessage(
+                  personalThemePreview.bubbleColor,
+                  personalThemePreview.textColor,
+                )}
+              >
+                <span>내 화면에 이렇게 보입니다</span>
+                <span style={overlayStyles.themePreviewAccent(personalThemePreview.accentColor)} />
+              </div>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                방을 나가기 전까지 개인 테마가 유지됩니다.
+              </span>
+            </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#cbd5f5', fontSize: 13 }}>
               <input
                 type="checkbox"
                 checked={preferencesDraft.useRoomBackground}
-                onChange={(event) =>
-                  setPreferencesDraft((prev) => ({ ...prev, useRoomBackground: event.target.checked }))
-                }
+                onChange={(event) => handleMemberUseRoomBackgroundChange(event.target.checked)}
               />
               방 기본 배경 사용
+            </label>
+            <div style={overlayStyles.themeModeTabs}>
+              {[
+                { key: 'preset', label: '추천 테마' },
+                { key: 'color', label: '단색 배경' },
+                { key: 'image', label: '이미지 업로드' },
+                { key: 'none', label: '배경 없음' },
+              ].map((entry) => (
+                <button
+                  key={entry.key}
+                  type="button"
+                  style={overlayStyles.themeModeButton(preferencesDraft.themeMode === entry.key)}
+                  onClick={() => handleMemberThemeModeChange(entry.key)}
+                  disabled={preferencesDraft.useRoomBackground}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
+            {!preferencesDraft.useRoomBackground && preferencesDraft.themeMode === 'preset' ? (
+              <div style={overlayStyles.themePresetGrid}>
+                {ROOM_THEME_LIBRARY.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    style={overlayStyles.themePresetButton(preferencesDraft.themePresetId === preset.id)}
+                    onClick={() => handleMemberSelectPreset(preset.id)}
+                  >
+                    <div style={overlayStyles.themePresetPreview(preset.value)} />
+                    <div style={overlayStyles.themePresetLabel}>
+                      <span>{preset.label}</span>
+                      <span style={overlayStyles.themePreviewAccent(preset.recommended.accentColor)} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {!preferencesDraft.useRoomBackground && preferencesDraft.themeMode === 'color' ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <label style={overlayStyles.fieldLabel}>
+                  배경 색상
+                  <div style={overlayStyles.colorRow}>
+                    <input
+                      type="color"
+                      value={personalBackgroundColorValue}
+                      onChange={(event) =>
+                        updateMemberThemeDraft({ backgroundColor: event.target.value }, true)
+                      }
+                      style={overlayStyles.colorInput()}
+                    />
+                    <input
+                      type="text"
+                      value={preferencesDraft.backgroundColor}
+                      onChange={(event) =>
+                        updateMemberThemeDraft({ backgroundColor: event.target.value }, true)
+                      }
+                      placeholder="#0f172a"
+                      style={overlayStyles.input}
+                    />
+                  </div>
+                </label>
+              </div>
+            ) : null}
+            {!preferencesDraft.useRoomBackground && preferencesDraft.themeMode === 'image' ? (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <span style={overlayStyles.fieldLabel}>개인 배경 이미지</span>
+                <div style={overlayStyles.imageUploadTile(Boolean(preferencesDraft.backgroundUrl))}>
+                  {preferencesDraft.backgroundUrl ? (
+                    <div style={overlayStyles.imageUploadPreview(preferencesDraft.backgroundUrl)} />
+                  ) : (
+                    <div style={overlayStyles.imageUploadPlaceholder}>
+                      <strong style={{ color: '#cbd5f5', fontSize: 12 }}>내 화면에서 사용할 이미지를 선택하세요</strong>
+                      <span>방을 나가기 전까지 개인 배경이 유지됩니다.</span>
+                    </div>
+                  )}
+                  <div style={overlayStyles.imageUploadActions}>
+                    <button
+                      type="button"
+                      style={overlayStyles.imageUploadButton('primary', memberThemeUploadBusy)}
+                      onClick={() => memberBackgroundInputRef.current?.click()}
+                      disabled={memberThemeUploadBusy}
+                    >
+                      {memberThemeUploadBusy ? '업로드 중…' : '이미지 선택'}
+                    </button>
+                    {preferencesDraft.backgroundUrl ? (
+                      <button
+                        type="button"
+                        style={overlayStyles.imageUploadButton('ghost', memberThemeUploadBusy)}
+                        onClick={handleMemberBackgroundClear}
+                        disabled={memberThemeUploadBusy}
+                      >
+                        제거
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {preferencesDraft.backgroundUrl ? (
+                  <span style={overlayStyles.imageUploadHint}>{preferencesDraft.backgroundUrl}</span>
+                ) : (
+                  <span style={overlayStyles.imageUploadHint}>업로드한 이미지는 Supabase 저장소에 개인 영역으로 보관됩니다.</span>
+                )}
+                <input
+                  ref={memberBackgroundInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleMemberBackgroundFileChange}
+                />
+              </div>
+            ) : null}
+            <div>
+              <span style={overlayStyles.fieldLabel}>포인트 색상</span>
+              <div style={overlayStyles.themeAccentPalette}>
+                {ACCENT_SWATCHES.map((swatch) => (
+                  <button
+                    key={swatch}
+                    type="button"
+                    style={overlayStyles.themeAccentSwatch(
+                      swatch,
+                      swatch.toLowerCase() === (preferencesDraft.accentColor || '').toLowerCase(),
+                    )}
+                    onClick={() => handleMemberAccentChange(swatch)}
+                  />
+                ))}
+              </div>
+              <div style={overlayStyles.colorRow}>
+                <input
+                  type="color"
+                  value={personalAccentPickerValue}
+                  onChange={(event) => handleMemberAccentChange(event.target.value)}
+                  style={overlayStyles.colorInput()}
+                />
+                <input
+                  type="text"
+                  value={preferencesDraft.accentColor}
+                  onChange={(event) => handleMemberAccentChange(event.target.value)}
+                  placeholder="#38bdf8"
+                  style={overlayStyles.input}
+                />
+              </div>
+            </div>
+            <label style={overlayStyles.themeAutoRow}>
+              <input
+                type="checkbox"
+                checked={preferencesDraft.autoContrast}
+                onChange={(event) => handleMemberAutoContrastToggle(event.target.checked)}
+              />
+              자동 대비 및 가독성 보정
+            </label>
+            <label style={overlayStyles.fieldLabel}>
+              말풍선 색상
+              <div style={overlayStyles.colorRow}>
+                <input
+                  type="color"
+                  value={personalBubblePickerValue}
+                  onChange={(event) => handleMemberBubbleInput(event.target.value)}
+                  style={overlayStyles.colorInput(preferencesDraft.autoContrast)}
+                  disabled={preferencesDraft.autoContrast}
+                />
+                <input
+                  type="text"
+                  value={preferencesDraft.bubbleColor}
+                  onChange={(event) => handleMemberBubbleInput(event.target.value)}
+                  placeholder="#1f2937"
+                  style={overlayStyles.input}
+                  disabled={preferencesDraft.autoContrast}
+                />
+              </div>
+            </label>
+            <label style={overlayStyles.fieldLabel}>
+              글자 색상
+              <div style={overlayStyles.colorRow}>
+                <input
+                  type="color"
+                  value={personalTextPickerValue}
+                  onChange={(event) => handleMemberTextInput(event.target.value)}
+                  style={overlayStyles.colorInput(preferencesDraft.autoContrast)}
+                  disabled={preferencesDraft.autoContrast}
+                />
+                <input
+                  type="text"
+                  value={preferencesDraft.textColor}
+                  onChange={(event) => handleMemberTextInput(event.target.value)}
+                  placeholder="#f8fafc"
+                  style={overlayStyles.input}
+                  disabled={preferencesDraft.autoContrast}
+                />
+              </div>
             </label>
             <button
               type="button"
@@ -7372,13 +12249,54 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 setPreferencesError(null)
                 setSavingPreferences(true)
                 try {
+                  const palette = buildThemePaletteFromDraft(
+                    {
+                      themeMode: preferencesDraft.themeMode,
+                      themePresetId: preferencesDraft.themePresetId,
+                      themeBackgroundUrl: preferencesDraft.backgroundUrl,
+                      themeBackgroundColor: preferencesDraft.backgroundColor,
+                      accentColor: preferencesDraft.accentColor,
+                      bubbleColor: preferencesDraft.bubbleColor,
+                      textColor: preferencesDraft.textColor,
+                      autoContrast: preferencesDraft.autoContrast,
+                    },
+                    {
+                      fallback: memberThemeFallback,
+                      fallbackBackgroundUrl: memberThemeFallback.backgroundUrl || ownerThemeFallback.backgroundUrl,
+                    },
+                  )
+                  const personalBackgroundUrl =
+                    preferencesDraft.useRoomBackground
+                      ? null
+                      : preferencesDraft.themeMode === 'image'
+                        ? preferencesDraft.backgroundUrl || null
+                        : null
                   const preferences = await saveChatMemberPreferences({
                     roomId: context.chatRoomId,
                     preferences: {
-                      bubble_color: preferencesDraft.bubbleColor || null,
-                      text_color: preferencesDraft.textColor || null,
-                      background_url: preferencesDraft.backgroundUrl || null,
+                      bubble_color: palette.bubbleColor || null,
+                      text_color: palette.textColor || null,
+                      background_url: personalBackgroundUrl,
                       use_room_background: preferencesDraft.useRoomBackground,
+                      metadata: {
+                        ...(preferencesDraft.metadata || {}),
+                        theme: {
+                          mode: preferencesDraft.themeMode,
+                          presetId: palette.presetId,
+                          backgroundUrl:
+                            preferencesDraft.themeMode === 'image'
+                              ? preferencesDraft.backgroundUrl || null
+                              : null,
+                          backgroundColor:
+                            preferencesDraft.themeMode === 'color'
+                              ? preferencesDraft.backgroundColor || null
+                              : null,
+                          accentColor: palette.accentColor,
+                          bubbleColor: palette.bubbleColor,
+                          textColor: palette.textColor,
+                          autoContrast: preferencesDraft.autoContrast !== false,
+                        },
+                      },
                     },
                   })
                   setRoomPreferences(preferences)
@@ -7422,19 +12340,36 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               <ul style={overlayStyles.apiKeyList}>
                 {apiKeys.map((entry) => (
                   <li key={entry.id} style={overlayStyles.apiKeyItem}>
-                    <div>
-                      <strong>{entry.label || entry.provider || '사용자 키'}</strong>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <strong>{entry.label || entry.modelLabel || entry.provider || '사용자 키'}</strong>
+                        <span style={overlayStyles.apiKeyStatusBadge(entry.isActive)}>
+                          {entry.isActive ? '사용중' : '미사용'}
+                        </span>
+                      </div>
+                      <div style={overlayStyles.announcementMeta}>
+                        {(entry.provider || 'custom').toUpperCase()} · {entry.keySample || '샘플 없음'}
+                      </div>
                       <div style={overlayStyles.announcementMeta}>
                         등록: {entry.createdAt ? formatDateLabel(entry.createdAt) : '알 수 없음'}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      style={overlayStyles.secondaryButton}
-                      onClick={() => handleDeleteApiKey(entry.id)}
-                    >
-                      삭제
-                    </button>
+                    <div style={overlayStyles.apiKeyActions}>
+                      <button
+                        type="button"
+                        style={overlayStyles.secondaryButton}
+                        onClick={() => handleToggleApiKey(entry, entry.isActive ? 'deactivate' : 'activate')}
+                      >
+                        {entry.isActive ? '사용 해제' : '사용하기'}
+                      </button>
+                      <button
+                        type="button"
+                        style={overlayStyles.secondaryButton}
+                        onClick={() => handleDeleteApiKey(entry.id)}
+                      >
+                        삭제
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -7447,6 +12382,178 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     </SurfaceOverlay>
   )
 
+  const announcementListOverlay = (
+    <SurfaceOverlay
+      open={announcementListOpen}
+      onClose={handleCloseAnnouncementList}
+      title="공지 목록"
+      width="min(520px, 96vw)"
+      zIndex={1512}
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>최근 공지를 한눈에 확인할 수 있습니다.</span>
+          {viewerIsModerator ? (
+            <button type="button" style={overlayStyles.secondaryButton} onClick={handleOpenAnnouncementComposer}>
+              새 공지 작성
+            </button>
+          ) : null}
+        </div>
+        {announcementError ? (
+          <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementError}</span>
+        ) : null}
+        {pinnedAnnouncement ? (
+          <div
+            role="button"
+            tabIndex={0}
+            style={overlayStyles.announcementListItem(true)}
+            onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleOpenAnnouncementDetail(pinnedAnnouncement)
+              }
+            }}
+          >
+            {pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl ? (
+              <div style={overlayStyles.announcementListMedia}>
+                <img
+                  src={pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl}
+                  alt={
+                    pinnedAnnouncement.title ? `${pinnedAnnouncement.title} 이미지` : '공지 이미지'
+                  }
+                  style={overlayStyles.announcementListMediaImage}
+                />
+              </div>
+            ) : null}
+            <div style={overlayStyles.announcementListHeader}>
+              <strong>
+                {'📌 '}
+                {pinnedAnnouncement.title ||
+                  pinnedAnnouncementPreview.text ||
+                  getAnnouncementPreviewText(pinnedAnnouncement, 80) ||
+                  '제목 없는 공지'}
+              </strong>
+              <span style={overlayStyles.announcementListPreview}>
+                {pinnedAnnouncementPreview.text || '내용 없음'}
+              </span>
+              <span style={overlayStyles.announcementMeta}>
+                ♥ {pinnedAnnouncement.heart_count || 0} · 💬 {pinnedAnnouncement.comment_count || 0}
+              </span>
+            </div>
+            {viewerIsModerator ? (
+              <div style={overlayStyles.announcementListActions}>
+                <button
+                  type="button"
+                  style={overlayStyles.pinnedAnnouncementActionButton(
+                    'ghost',
+                    announcementPinningId === pinnedAnnouncement.id,
+                  )}
+                  disabled={announcementPinningId === pinnedAnnouncement.id}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handleToggleAnnouncementPin(pinnedAnnouncement, false)
+                  }}
+                >
+                  고정 해제
+                </button>
+                <button
+                  type="button"
+                  style={overlayStyles.pinnedAnnouncementActionButton()}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handleOpenAnnouncementDetail(pinnedAnnouncement)
+                  }}
+                >
+                  상세 보기
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {nonPinnedAnnouncements.length ? (
+          nonPinnedAnnouncements.map((announcement) => (
+            <div
+              key={announcement.id}
+              role="button"
+              tabIndex={0}
+              style={overlayStyles.announcementListItem(false)}
+              onClick={() => handleOpenAnnouncementDetail(announcement)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  handleOpenAnnouncementDetail(announcement)
+                }
+              }}
+            >
+              {announcement.image_url || announcement.imageUrl ? (
+                <div style={overlayStyles.announcementListMedia}>
+                  <img
+                    src={announcement.image_url || announcement.imageUrl}
+                    alt={announcement.title ? `${announcement.title} 이미지` : '공지 이미지'}
+                    style={overlayStyles.announcementListMediaImage}
+                  />
+                </div>
+              ) : null}
+              <div style={overlayStyles.announcementListHeader}>
+                <strong>
+                  {announcement.title ||
+                    getAnnouncementPreviewText(announcement, 80) ||
+                    '제목 없는 공지'}
+                </strong>
+                <span style={overlayStyles.announcementListPreview}>
+                  {getAnnouncementPreviewText(announcement, ANNOUNCEMENT_PREVIEW_LENGTH) || '내용 없음'}
+                </span>
+                <span style={overlayStyles.announcementMeta}>
+                  ♥ {announcement.heart_count || 0} · 💬 {announcement.comment_count || 0}
+                </span>
+              </div>
+              {viewerIsModerator ? (
+                <div style={overlayStyles.announcementListActions}>
+                  <button
+                    type="button"
+                    style={overlayStyles.pinnedAnnouncementActionButton(
+                      'secondary',
+                      announcementPinningId === announcement.id,
+                    )}
+                    disabled={announcementPinningId === announcement.id}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      handleToggleAnnouncementPin(announcement, true)
+                    }}
+                  >
+                    상단 고정
+                  </button>
+                  <button
+                    type="button"
+                    style={overlayStyles.pinnedAnnouncementActionButton('ghost')}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      handleOpenAnnouncementDetail(announcement)
+                    }}
+                  >
+                    상세 보기
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ))
+        ) : !pinnedAnnouncement && !announcementError ? (
+          <span style={overlayStyles.mutedText}>등록된 공지가 없습니다.</span>
+        ) : null}
+        {roomAnnouncementsHasMore ? (
+          <button type="button" style={overlayStyles.drawerMoreButton} onClick={handleLoadMoreAnnouncements}>
+            더 보기
+          </button>
+        ) : null}
+      </div>
+    </SurfaceOverlay>
+  )
+
   const announcementComposerOverlay = (
     <SurfaceOverlay
       open={announcementComposer.open}
@@ -7454,68 +12561,52 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       title="새 공지 작성"
       width="min(680px, 96vw)"
       zIndex={1520}
+      contentStyle={{
+        paddingBottom: `calc(${ANNOUNCEMENT_TOOLBAR_OVERLAY_SAFE_PADDING}px + env(safe-area-inset-bottom, 0px))`,
+      }}
     >
       <div style={{ display: 'grid', gap: 16 }}>
-        <div style={overlayStyles.announcementToolbar}>
-          <button
-            type="button"
-            style={overlayStyles.announcementToolbarButton}
-            onClick={() => handleAnnouncementComposerFormat('bold')}
-          >
-            굵게
-          </button>
-          <button
-            type="button"
-            style={overlayStyles.announcementToolbarButton}
-            onClick={() => handleAnnouncementComposerFormat('italic')}
-          >
-            기울임
-          </button>
-          <button
-            type="button"
-            style={overlayStyles.announcementToolbarButton}
-            onClick={() => handleAnnouncementComposerFormat('highlight')}
-          >
-            강조
-          </button>
-          <button
-            type="button"
-            style={overlayStyles.announcementToolbarButton}
-            onClick={() => handleAnnouncementComposerFormat('code')}
-          >
-            코드
-          </button>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <label style={overlayStyles.fieldLabel}>공지 제목 (선택)</label>
+          <input
+            type="text"
+            value={announcementComposer.title}
+            onChange={(event) => handleAnnouncementTitleChange(event.target.value)}
+            placeholder="예: 업데이트 안내"
+            style={overlayStyles.input}
+            disabled={announcementComposer.submitting}
+          />
         </div>
-        <span style={overlayStyles.announcementHint}>
-          **굵게**, *기울임*, ~~강조~~, `코드` 표기와 줄바꿈 미리보기를 지원합니다.
-        </span>
-        <textarea
-          rows={6}
-          value={announcementComposer.content}
-          onChange={(event) => handleAnnouncementComposerChange(event.target.value)}
-          ref={announcementTextareaRef}
-          placeholder="공지 내용을 입력해 주세요."
-          style={overlayStyles.textarea}
-        />
+        <div style={{ fontSize: 12, color: '#94a3b8' }}>
+          공지 본문에서 필요한 내용을 작성하고, 아래 도구로 투표를 추가할 수 있습니다.
+        </div>
+        <div style={overlayStyles.announcementEditorWrapper}>
+          {!getAnnouncementPlainText(announcementComposer.content || '') ? (
+            <span style={overlayStyles.announcementEditorPlaceholder}>
+              공지 내용을 입력해 주세요. 필요하다면 아래 도구로 투표를 추가할 수 있습니다.
+            </span>
+          ) : null}
+          <div
+            ref={announcementEditorRef}
+            contentEditable
+            suppressContentEditableWarning
+            style={overlayStyles.announcementEditor}
+            onInput={handleAnnouncementEditorInput}
+            onPaste={handleAnnouncementEditorPaste}
+            onCompositionStart={handleAnnouncementEditorCompositionStart}
+            onCompositionEnd={handleAnnouncementEditorCompositionEnd}
+            data-placeholder="공지 내용을 입력해 주세요."
+          />
+        </div>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#cbd5f5', fontSize: 13 }}>
           <input
             type="checkbox"
             checked={announcementComposer.pinned}
             onChange={handleAnnouncementComposerTogglePinned}
+            disabled={announcementComposer.submitting}
           />
           공지를 상단에 고정하기
         </label>
-        <div style={overlayStyles.announcementPreview}>
-          <strong style={{ fontSize: 12, color: '#cbd5f5' }}>미리보기</strong>
-          <div
-            style={overlayStyles.announcementPreviewBody}
-            dangerouslySetInnerHTML={{
-              __html:
-                announcementPreviewHtml ||
-                '<span style="color:#94a3b8;">내용을 입력하면 미리보기가 표시됩니다.</span>',
-            }}
-          />
-        </div>
         {announcementComposer.error ? (
           <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementComposer.error}</span>
         ) : null}
@@ -7536,45 +12627,178 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     </SurfaceOverlay>
   )
 
+  const announcementToolbarOverlayNode = announcementComposer.open ? (
+    <div
+      style={overlayStyles.announcementToolbarOverlay(true, viewport)}
+      aria-hidden={!announcementComposer.open}
+    >
+      <div
+        style={overlayStyles.announcementToolbarRow}
+        role="toolbar"
+        aria-label="공지 추가 도구"
+      >
+        <button
+          type="button"
+          style={overlayStyles.announcementToolbarItem(false)}
+          onClick={handleAnnouncementPollOpen}
+          onMouseDown={handleAnnouncementToolbarMouseDown}
+          onTouchStart={handleAnnouncementToolbarTouchStart}
+          disabled={announcementComposer.submitting}
+        >
+          <span style={overlayStyles.announcementToolbarItemIcon}>🗳️</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>투표 만들기</span>
+        </button>
+      </div>
+      <div style={overlayStyles.announcementToolbarStatusRow}>
+        <span style={overlayStyles.announcementToolbarHint}>
+          투표 버튼을 눌러 선택지를 추가하고 공지에 바로 삽입할 수 있습니다.
+        </span>
+      </div>
+    </div>
+  ) : null
+
+  const announcementPollOverlayNode = (
+    <SurfaceOverlay
+      open={announcementPollOverlay.open}
+      onClose={handleAnnouncementPollClose}
+      title="투표 만들기"
+      width="min(480px, 88vw)"
+      zIndex={1630}
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <label style={overlayStyles.fieldLabel}>
+          투표 제목
+          <input
+            type="text"
+            value={announcementPollOverlay.question}
+            onChange={(event) => handleAnnouncementPollQuestionChange(event.target.value)}
+            placeholder="예: 다음 이벤트 날짜를 골라주세요"
+            style={overlayStyles.input}
+          />
+        </label>
+        <div style={overlayStyles.announcementPollOptionList}>
+          {announcementPollOverlay.options.map((option, index) => (
+            <div key={`poll-option-${index}`} style={overlayStyles.announcementPollOptionRow}>
+              <input
+                type="text"
+                value={option}
+                onChange={(event) => handleAnnouncementPollOptionChange(index, event.target.value)}
+                placeholder={`선택지 ${index + 1}`}
+                style={{ ...overlayStyles.input, flex: 1 }}
+              />
+              <button
+                type="button"
+                style={overlayStyles.secondaryButton}
+                onClick={() => handleAnnouncementPollRemoveOption(index)}
+                disabled={announcementPollOverlay.options.length <= ANNOUNCEMENT_POLL_MIN_OPTIONS}
+              >
+                제거
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            style={overlayStyles.secondaryButton}
+            onClick={handleAnnouncementPollAddOption}
+            disabled={announcementPollOverlay.options.length >= ANNOUNCEMENT_POLL_MAX_OPTIONS}
+          >
+            선택지 추가
+          </button>
+        </div>
+        {announcementPollOverlay.error ? (
+          <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementPollOverlay.error}</span>
+        ) : null}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" style={overlayStyles.secondaryButton} onClick={handleAnnouncementPollClose}>
+            취소
+          </button>
+          <button
+            type="button"
+            style={overlayStyles.actionButton('primary', false)}
+            onClick={handleAnnouncementPollSubmit}
+          >
+            삽입
+          </button>
+        </div>
+      </div>
+    </SurfaceOverlay>
+  )
+
   const announcementDetailOverlay = (
     <SurfaceOverlay
       open={announcementDetail.open}
       onClose={handleCloseAnnouncementDetail}
       title="공지 상세"
       width="min(520px, 92vw)"
+      zIndex={1650}
     >
       {announcementDetail.loading ? (
         <span style={overlayStyles.mutedText}>공지 내용을 불러오는 중...</span>
       ) : announcementDetail.announcement ? (
         <div style={{ display: 'grid', gap: 14 }}>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <strong style={{ color: '#e2e8f0', fontSize: 14 }}>
-              {truncateText(announcementDetail.announcement.content || '').text}
-            </strong>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {announcementDetail.announcement.title ? (
+              <strong style={{ color: '#e2e8f0', fontSize: 16 }}>
+                {announcementDetail.announcement.title}
+              </strong>
+            ) : null}
             <span style={overlayStyles.announcementMeta}>
               작성: {announcementDetail.announcement.author_name || '알 수 없음'} ·{' '}
               {formatDateLabel(announcementDetail.announcement.created_at)}
             </span>
-            <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, color: '#cbd5f5', fontSize: 13 }}>
-              {announcementDetail.announcement.content}
-            </p>
+            {announcementDetail.announcement.image_url ? (
+              <div style={overlayStyles.announcementImagePreview}>
+                <img
+                  src={announcementDetail.announcement.image_url}
+                  alt={announcementDetail.announcement.title ? `${announcementDetail.announcement.title} 이미지` : '공지 이미지'}
+                  style={overlayStyles.announcementImagePreviewImage}
+                />
+              </div>
+            ) : null}
+            <div
+              style={overlayStyles.announcementPreviewBody}
+              dangerouslySetInnerHTML={{
+                __html:
+                  announcementDetailHtml ||
+                  '<span style="color:#94a3b8;">공지 내용이 비어 있습니다.</span>',
+              }}
+            />
+            {renderAnnouncementPolls(announcementDetail.announcement, 'detail')}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <button type="button" style={overlayStyles.secondaryButton} onClick={handleToggleAnnouncementReaction}>
               {announcementDetail.announcement.viewer_reacted ? '하트 취소' : '하트 남기기'}
+            </button>
+            <button type="button" style={overlayStyles.secondaryButton} onClick={handleOpenAnnouncementList}>
+              공지 목록
             </button>
             <span style={overlayStyles.announcementMeta}>
               ♥ {announcementDetail.announcement.heart_count || 0} · 💬{' '}
               {announcementDetail.announcement.comment_count || 0}
             </span>
             {viewerIsModerator ? (
-              <button
-                type="button"
-                style={overlayStyles.secondaryButton}
-                onClick={() => handleDeleteAnnouncement(announcementDetail.announcement)}
-              >
-                삭제
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  style={overlayStyles.secondaryButton}
+                  onClick={() =>
+                    handleToggleAnnouncementPin(
+                      announcementDetail.announcement,
+                      !announcementDetail.announcement?.pinned,
+                    )
+                  }
+                  disabled={announcementPinningId === announcementDetail.announcementId}
+                >
+                  {announcementDetail.announcement?.pinned ? '고정 해제' : '상단 고정'}
+                </button>
+                <button
+                  type="button"
+                  style={overlayStyles.secondaryButton}
+                  onClick={() => handleDeleteAnnouncement(announcementDetail.announcement)}
+                >
+                  삭제
+                </button>
+              </div>
             ) : null}
           </div>
           <section style={{ display: 'grid', gap: 8 }}>
@@ -7600,6 +12824,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       {formatDateLabel(comment.created_at)}
                     </span>
                     <p style={{ color: '#cbd5f5', fontSize: 13, whiteSpace: 'pre-wrap' }}>{comment.content}</p>
+                    {(viewerIsModerator ||
+                      (normalizedViewerId &&
+                        normalizedViewerId === normalizeId(comment.owner_id || comment.ownerId))) ? (
+                      <div style={overlayStyles.announcementCommentActions}>
+                        <button
+                          type="button"
+                          style={overlayStyles.announcementCommentDelete}
+                          onClick={() => handleDeleteAnnouncementComment(comment)}
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -7694,21 +12931,176 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       {expandedMessageOverlay}
       {attachmentViewerOverlay}
       {friendOverlay}
+      {announcementListOverlay}
       {announcementComposerOverlay}
+      {announcementToolbarOverlayNode}
+      {announcementPollOverlayNode}
       {announcementDetailOverlay}
       {banOverlay}
       {participantOverlay}
       {settingsOverlay}
+      {miniOverlay.active && miniOverlayStyle ? (
+        miniOverlay.mode === 'bar' ? (
+          <div
+            style={miniOverlayStyle}
+            role="button"
+            tabIndex={0}
+            aria-label="간소화된 채팅 바"
+            onClick={handleResumeMiniOverlay}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleResumeMiniOverlay()
+              }
+            }}
+            onPointerDown={handleMiniOverlayPointerDown}
+            onPointerMove={handleMiniOverlayPointerMove}
+            onPointerUp={handleMiniOverlayPointerEnd}
+            onPointerCancel={handleMiniOverlayPointerEnd}
+          >
+            <span style={overlayStyles.miniOverlayBarLabel}>
+              {miniOverlayLabel} · {miniOverlayBarSnippet}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {miniOverlayBadge ? <span style={overlayStyles.miniOverlayBarBadge}>{miniOverlayBadge}</span> : null}
+              <button
+                type="button"
+                style={overlayStyles.miniOverlayBarClose}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  handleCloseMiniOverlay()
+                }}
+                aria-label="채팅 닫기"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={miniOverlayStyle} role="dialog" aria-label="간소화된 채팅창">
+            <div
+              style={overlayStyles.miniOverlayHeader}
+              onPointerDown={(event) => {
+                const target = event.target
+                if (target && typeof target.closest === 'function' && target.closest('button')) {
+                  return
+                }
+                handleMiniOverlayPointerDown(event)
+              }}
+              onPointerMove={handleMiniOverlayPointerMove}
+              onPointerUp={handleMiniOverlayPointerEnd}
+              onPointerCancel={handleMiniOverlayPointerEnd}
+            >
+              <span style={overlayStyles.miniOverlayTitle}>{miniOverlayLabel}</span>
+              <div style={overlayStyles.miniOverlayHeaderActions}>
+                {miniOverlayBadge ? <span style={overlayStyles.miniOverlayBadge}>{miniOverlayBadge}</span> : null}
+                <button
+                  type="button"
+                  style={overlayStyles.miniOverlayAction}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={handleCollapseMiniOverlay}
+                  aria-label="채팅 바 형태로 접기"
+                >
+                  ⬇
+                </button>
+                <button
+                  type="button"
+                  style={overlayStyles.miniOverlayAction}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={handleRestoreToFullOverlay}
+                  aria-label="전체 채팅 열기"
+                >
+                  ↗
+                </button>
+                <button
+                  type="button"
+                  style={overlayStyles.miniOverlayAction}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={handleCloseMiniOverlay}
+                  aria-label="채팅 닫기"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div style={overlayStyles.miniOverlayMessages}>
+              {miniOverlayFeed.length ? (
+                miniOverlayFeed.map((entry) =>
+                  entry.type === 'date' ? (
+                    <span key={entry.key} style={{ fontSize: 10, color: '#64748b', textAlign: 'center' }}>
+                      {entry.label}
+                    </span>
+                  ) : (
+                    <div key={entry.key} style={overlayStyles.miniOverlayMessageRow(entry.mine)}>
+                      <div style={overlayStyles.miniOverlayMessageMeta}>
+                        <span style={overlayStyles.miniOverlayMessageAuthor(entry.mine)}>{entry.author}</span>
+                        {entry.timestamp ? <span>{entry.timestamp}</span> : null}
+                      </div>
+                      <div style={overlayStyles.miniOverlayMessageBody}>{entry.text}</div>
+                    </div>
+                  ),
+                )
+              ) : (
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>최근 메시지가 없습니다.</span>
+              )}
+            </div>
+            <div style={overlayStyles.miniOverlayComposer}>
+              <textarea
+                value={messageInput}
+                onChange={handleMessageInputChange}
+                placeholder={hasContext ? '메시지를 입력하세요' : '채팅방이 선택되지 않았습니다.'}
+                style={overlayStyles.miniOverlayComposerInput}
+                disabled={!hasContext || sending}
+              />
+              <button
+                type="button"
+                onClick={handleComposerSubmit}
+                disabled={disableSend}
+                style={overlayStyles.actionButton('primary', disableSend)}
+              >
+                보내기
+              </button>
+            </div>
+            <div
+              style={overlayStyles.miniOverlayResizeHandle}
+              onPointerDown={handleMiniOverlayResizeStart}
+              onPointerMove={handleMiniOverlayResizeMove}
+              onPointerUp={handleMiniOverlayResizeEnd}
+              onPointerCancel={handleMiniOverlayResizeEnd}
+            >
+              <div style={overlayStyles.miniOverlayResizeBar} />
+            </div>
+          </div>
+        )
+      ) : null}
       <SurfaceOverlay
-        open={open}
+        open={overlayOpen}
         onClose={onClose}
         title="채팅"
         width="min(1320px, 98vw)"
         hideHeader
-        contentStyle={{ padding: 0, background: 'transparent' }}
-        frameStyle={{ border: 'none', background: 'transparent', boxShadow: 'none' }}
+        contentStyle={{
+          padding: 0,
+          background: 'transparent',
+          display: 'flex',
+          alignItems: 'stretch',
+          justifyContent: 'center',
+          overflow: 'hidden',
+        }}
+        frameStyle={{
+          border: 'none',
+          background: 'transparent',
+          boxShadow: 'none',
+          maxHeight: 'none',
+          height: 'auto',
+          minHeight: 'auto',
+        }}
+        verticalAlign="flex-start"
+        containerStyle={overlayContainerStyle}
+        viewportHeight={overlayViewportHeight}
       >
-        <div style={frameStyle}>
+        <div ref={rootRef} style={frameStyle}>
           <div style={rootStyle}>
             {!focused ? renderListColumn() : null}
             {focused ? renderMessageColumn() : null}

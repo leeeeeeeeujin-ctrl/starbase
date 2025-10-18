@@ -390,6 +390,59 @@ function computeQueueWaitInfo(queueEntries = []) {
   return { waitSeconds: diffMs / 1000, oldestJoinedAt: oldestIso }
 }
 
+export function normalizeQueueEntry(row) {
+  if (!row || typeof row !== 'object') {
+    return null
+  }
+
+  const id = row.id ?? row.ticket_id ?? row.queue_entry_id ?? null
+  const gameId = row.game_id ?? row.gameId ?? null
+  const queueId = row.queue_id ?? row.queueId ?? null
+  const ownerId = row.owner_id ?? row.ownerId ?? null
+  const heroId = row.hero_id ?? row.heroId ?? null
+  const role = row.role ?? row.role_name ?? row.roleName ?? ''
+  const mode = row.mode ?? row.queue_mode ?? ''
+  const statusValue = row.status ?? row.queue_status ?? 'waiting'
+  const status = typeof statusValue === 'string' && statusValue.trim() ? statusValue.trim() : 'waiting'
+  const joinedAtRaw = row.joined_at ?? row.joinedAt ?? row.created_at ?? row.createdAt ?? null
+  const updatedAtRaw = row.updated_at ?? row.updatedAt ?? null
+  const scoreRaw = row.score ?? row.rating ?? row.mmr ?? null
+  const score = Number.isFinite(Number(scoreRaw)) ? Number(scoreRaw) : null
+  const partyKey = row.party_key ?? row.partyKey ?? null
+  const matchSource = row.match_source ?? row.matchSource ?? 'realtime_queue'
+  const simulated = row.simulated === true || row.simulated === 'true'
+  const standin = row.standin === true || row.standin === 'true'
+
+  const normalized = {
+    ...row,
+    id: id != null ? String(id) : id,
+    queue_id: queueId != null ? String(queueId) : queueId,
+    queueId: queueId != null ? String(queueId) : queueId,
+    game_id: gameId,
+    gameId,
+    owner_id: ownerId,
+    ownerId,
+    hero_id: heroId,
+    heroId,
+    role,
+    mode,
+    status,
+    score,
+    party_key: partyKey,
+    partyKey,
+    joined_at: joinedAtRaw,
+    joinedAt: joinedAtRaw,
+    updated_at: updatedAtRaw,
+    updatedAt: updatedAtRaw,
+    match_source: matchSource,
+    matchSource,
+    simulated,
+    standin,
+  }
+
+  return normalized
+}
+
 export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
   if (!gameId) return []
   const queueModes = getQueueModes(mode)
@@ -398,7 +451,7 @@ export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
     let query = supabaseClient
       .from(table)
       .select(
-        'id, game_id, mode, owner_id, hero_id, role, score, joined_at, updated_at, status, party_key',
+        'id, game_id, mode, owner_id, hero_id, role, score, joined_at, updated_at, status, party_key, match_source, simulated',
       )
       .eq('game_id', gameId)
       .eq('status', 'waiting')
@@ -413,13 +466,8 @@ export async function loadQueueEntries(supabaseClient, { gameId, mode }) {
   if (result?.error) throw result.error
   const rows = Array.isArray(result?.data) ? result.data : []
   return rows
-    .map((row) => ({
-      ...row,
-      updatedAt: row?.updated_at || row?.updatedAt || null,
-      match_source: row?.match_source || 'realtime_queue',
-      simulated: Boolean(row?.simulated) && row.simulated === true,
-      standin: false,
-    }))
+    .map((row) => normalizeQueueEntry(row))
+    .filter((entry) => entry && (entry.status || 'waiting') === 'waiting')
 }
 
 export function filterStaleQueueEntries(

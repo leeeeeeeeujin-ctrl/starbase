@@ -12,6 +12,9 @@ export default function SurfaceOverlay({
   hideHeader = false,
   frameStyle,
   zIndex = 1500,
+  containerStyle = {},
+  verticalAlign = 'center',
+  viewportHeight = null,
 }) {
   const handleBackdropClick = (event) => {
     if (!open || !onClose) return
@@ -24,9 +27,11 @@ export default function SurfaceOverlay({
       style={{
         position: 'fixed',
         inset: 0,
+        minHeight: viewportHeight || '100vh',
+        height: viewportHeight || '100dvh',
         zIndex,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: verticalAlign,
         justifyContent: 'center',
         pointerEvents: open ? 'auto' : 'none',
         transition: 'pointer-events 0s linear 150ms',
@@ -55,6 +60,7 @@ export default function SurfaceOverlay({
           opacity: open ? 1 : 0,
           transition: 'opacity 180ms ease, transform 180ms ease',
           pointerEvents: open ? 'auto' : 'none',
+          ...containerStyle,
         }}
       >
         <div
