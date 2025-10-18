@@ -54,7 +54,7 @@ const MAX_MESSAGE_PREVIEW_LENGTH = 240
 const ANNOUNCEMENT_PREVIEW_LENGTH = 120
 const PINNED_ANNOUNCEMENT_STAGE_DEFAULT = 'collapsed'
 const PINNED_ANNOUNCEMENT_STAGE_KEY_PREFIX = 'chat:pinned-stage:'
-const PINNED_ANNOUNCEMENT_STAGE_VALUES = new Set(['expanded', 'collapsed', 'hidden'])
+const PINNED_ANNOUNCEMENT_STAGE_VALUES = new Set(['collapsed', 'hidden'])
 const MEDIA_LOAD_LIMIT = 120
 const LONG_PRESS_THRESHOLD = 400
 const MINI_OVERLAY_WIDTH = 320
@@ -68,16 +68,13 @@ const PINCH_TRIGGER_RATIO = 0.7
 const PINCH_MIN_DELTA = 28
 const ROOM_BACKGROUND_FOLDER = 'room-backgrounds'
 const MEMBER_BACKGROUND_FOLDER = 'member-backgrounds'
-const ANNOUNCEMENT_MEDIA_FOLDER = 'room-announcements'
-const ANNOUNCEMENT_IMAGE_SIZE_LIMIT = 20 * 1024 * 1024
-const ANNOUNCEMENT_VIDEO_SIZE_LIMIT = 200 * 1024 * 1024
 const ANNOUNCEMENT_TOOLBAR_SIZES = [
   { id: 'small', label: '작게', scale: 0.9, command: '3' },
   { id: 'normal', label: '보통', scale: 1, command: '4' },
   { id: 'large', label: '크게', scale: 1.15, command: '5' },
   { id: 'xlarge', label: '아주 크게', scale: 1.3, command: '6' },
 ]
-const ANNOUNCEMENT_TOOLBAR_OVERLAY_SAFE_PADDING = 184
+const ANNOUNCEMENT_TOOLBAR_OVERLAY_SAFE_PADDING = 140
 const ANNOUNCEMENT_SIZE_SCALE = ANNOUNCEMENT_TOOLBAR_SIZES.reduce((acc, item) => {
   acc[item.id] = item.scale
   return acc
@@ -494,92 +491,6 @@ async function uploadBackgroundImage({ file, roomId = null, ownerToken = null })
   }
 
   return data.publicUrl
-}
-
-async function uploadAnnouncementImage({ file, roomId = null }) {
-  if (!file) {
-    throw new Error('업로드할 이미지를 선택해 주세요.')
-  }
-
-  if (file.size > ANNOUNCEMENT_IMAGE_SIZE_LIMIT) {
-    throw new Error('공지 이미지는 20MB 이하로 선택해 주세요.')
-  }
-
-  const extensionMatch = (file.name || '').match(/\.([a-z0-9]+)$/i)
-  const extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'webp'
-  const sanitizedName = sanitizeFileName(file.name || `announcement.${extension}`)
-  const segments = [ANNOUNCEMENT_MEDIA_FOLDER]
-  if (roomId) {
-    segments.push(roomId)
-  } else {
-    segments.push('shared')
-  }
-
-  const objectPath = `${segments.join('/')}/${createLocalId('notice')}-${sanitizedName}`
-
-  const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(objectPath, file, {
-    contentType: file.type || 'image/webp',
-    cacheControl: '3600',
-    upsert: false,
-  })
-
-  if (error) {
-    throw error
-  }
-
-  const { data } = supabase.storage.from(CHAT_ATTACHMENT_BUCKET).getPublicUrl(objectPath)
-  if (!data?.publicUrl) {
-    throw new Error('업로드한 공지 이미지를 확인할 수 없습니다.')
-  }
-
-  return data.publicUrl
-}
-
-async function uploadAnnouncementMedia({ file, roomId = null, kind = 'image' }) {
-  if (!file) {
-    throw new Error('업로드할 파일을 선택해 주세요.')
-  }
-
-  const sizeLimit = kind === 'video' ? ANNOUNCEMENT_VIDEO_SIZE_LIMIT : ANNOUNCEMENT_IMAGE_SIZE_LIMIT
-  if (file.size > sizeLimit) {
-    if (kind === 'video') {
-      throw new Error('동영상은 200MB 이하로 업로드해 주세요.')
-    }
-    throw new Error('이미지는 20MB 이하로 업로드해 주세요.')
-  }
-
-  const extensionMatch = (file.name || '').match(/\.([a-z0-9]+)$/i)
-  const extension = extensionMatch ? extensionMatch[1].toLowerCase() : kind === 'video' ? 'mp4' : 'webp'
-  const sanitizedName = sanitizeFileName(file.name || `${kind}.${extension}`)
-  const segments = [ANNOUNCEMENT_MEDIA_FOLDER]
-  if (roomId) {
-    segments.push(roomId)
-  } else {
-    segments.push('shared')
-  }
-  segments.push('inline', kind)
-
-  const objectPath = `${segments.join('/')}/${Date.now()}-${createLocalId(kind)}-${sanitizedName}`
-
-  const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(objectPath, file, {
-    contentType: file.type || (kind === 'video' ? 'video/mp4' : 'image/webp'),
-    cacheControl: '3600',
-    upsert: false,
-  })
-
-  if (error) {
-    throw error
-  }
-
-  const { data } = supabase.storage.from(CHAT_ATTACHMENT_BUCKET).getPublicUrl(objectPath)
-  if (!data?.publicUrl) {
-    throw new Error('업로드한 파일의 공개 URL을 생성할 수 없습니다.')
-  }
-
-  return {
-    url: data.publicUrl,
-    path: objectPath,
-  }
 }
 
 const DEFAULT_THEME_CONFIG = {
@@ -4652,9 +4563,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     title: '',
     content: '',
     pinned: false,
-    imageUrl: '',
-    uploading: false,
-    attachmentUploading: false,
     submitting: false,
     error: null,
   })
@@ -4670,13 +4578,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const [announcementListOpen, setAnnouncementListOpen] = useState(false)
   const [announcementError, setAnnouncementError] = useState(null)
   const [announcementPinningId, setAnnouncementPinningId] = useState(null)
-  const [announcementYoutubeOverlay, setAnnouncementYoutubeOverlay] = useState({
-    open: false,
-    query: '',
-    results: [],
-    loading: false,
-    error: null,
-  })
   const [announcementPollOverlay, setAnnouncementPollOverlay] = useState({
     open: false,
     question: '',
@@ -4753,10 +4654,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const announcementEditorRef = useRef(null)
   const announcementSelectionRef = useRef(null)
   const announcementComposingRef = useRef(false)
-  const announcementImageInputRef = useRef(null)
-  const announcementAttachmentInputRef = useRef(null)
-  const announcementVideoInputRef = useRef(null)
-  const youtubeSearchAbortRef = useRef(null)
   const attachmentCacheRef = useRef(new Map())
   const longPressTimerRef = useRef(null)
   const longPressActiveRef = useRef(false)
@@ -7015,9 +6912,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setAnnouncementError('공지 작성 권한이 없습니다.')
       return
     }
-    if (announcementImageInputRef.current) {
-      announcementImageInputRef.current.value = ''
-    }
     if (announcementEditorRef.current) {
       announcementEditorRef.current.innerHTML = ''
     }
@@ -7028,20 +6922,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       title: '',
       content: '',
       pinned: false,
-      imageUrl: '',
-      uploading: false,
-      attachmentUploading: false,
       submitting: false,
       error: null,
     })
-    setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
     setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [context?.chatRoomId, viewerIsModerator])
 
   const handleCloseAnnouncementComposer = useCallback(() => {
-    if (announcementImageInputRef.current) {
-      announcementImageInputRef.current.value = ''
-    }
     if (announcementEditorRef.current) {
       announcementEditorRef.current.innerHTML = ''
     }
@@ -7052,13 +6939,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       title: '',
       content: '',
       pinned: false,
-      imageUrl: '',
-      uploading: false,
-      attachmentUploading: false,
       submitting: false,
       error: null,
     })
-    setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
     setAnnouncementPollOverlay({ open: false, question: '', options: ['', ''], error: null })
   }, [])
 
@@ -7225,63 +7108,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [focusAnnouncementEditor, restoreAnnouncementSelection, syncAnnouncementContentFromEditor, cacheAnnouncementSelection],
   )
 
-  const handleAnnouncementAttachmentTrigger = useCallback(
-    (type) => {
-      if (announcementComposer.attachmentUploading || announcementComposer.submitting) return
-      const target = type === 'video' ? announcementVideoInputRef.current : announcementAttachmentInputRef.current
-      if (target) {
-        target.click()
-      }
-    },
-    [announcementComposer.attachmentUploading, announcementComposer.submitting],
-  )
-
-  const handleAnnouncementAttachmentSelect = useCallback(
-    async (event, type) => {
-      if (!context?.chatRoomId) return
-      const file = event.target?.files?.[0]
-      if (event.target) {
-        event.target.value = ''
-      }
-      if (!file) return
-      setAnnouncementComposer((prev) => ({ ...prev, attachmentUploading: true, error: null }))
-      try {
-        const { url } = await uploadAnnouncementMedia({
-          file,
-          roomId: context.chatRoomId,
-          kind: type,
-        })
-        if (!url) {
-          throw new Error('업로드된 파일 URL을 확인할 수 없습니다.')
-        }
-        if (type === 'image') {
-          const alt = escapeHtml(file.name ? file.name.replace(/\s+/g, ' ') : '첨부 이미지')
-          const snippet = `
-<figure style="margin: 12px 0; border-radius: 12px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
-  <img src="${url}" alt="${alt}" style="display:block;width:100%;height:auto;" loading="lazy" />
-  <figcaption style="padding: 6px 10px; font-size: 12px; color: #cbd5f5;">${alt}</figcaption>
-</figure>`
-          insertAnnouncementHtml(snippet)
-        } else if (type === 'video') {
-          const snippet = `
-<div style="margin: 12px 0; border-radius: 12px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
-  <video src="${url}" controls playsinline style="display:block;width:100%;max-height:320px;background:#000;"></video>
-</div>`
-          insertAnnouncementHtml(snippet)
-        }
-      } catch (error) {
-        console.error('[chat] 공지 첨부 업로드 실패', error)
-        setAnnouncementComposer((prev) => ({
-          ...prev,
-          error: error?.message || '첨부 파일을 업로드할 수 없습니다.',
-        }))
-      } finally {
-        setAnnouncementComposer((prev) => ({ ...prev, attachmentUploading: false }))
-      }
-    },
-    [context?.chatRoomId, insertAnnouncementHtml],
-  )
-
   useEffect(() => {
     if (!announcementComposer.open) {
       return
@@ -7313,107 +7139,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       document.removeEventListener('selectionchange', handler)
     }
   }, [announcementComposer.open, focusAnnouncementEditor, cacheAnnouncementSelection])
-
-  const handleAnnouncementYoutubeOpen = useCallback(() => {
-    setAnnouncementYoutubeOverlay({ open: true, query: '', results: [], loading: false, error: null })
-  }, [])
-
-  const handleAnnouncementYoutubeClose = useCallback(() => {
-    if (youtubeSearchAbortRef.current) {
-      youtubeSearchAbortRef.current.abort()
-      youtubeSearchAbortRef.current = null
-    }
-    setAnnouncementYoutubeOverlay({ open: false, query: '', results: [], loading: false, error: null })
-  }, [])
-
-  const handleAnnouncementYoutubeQueryChange = useCallback((value) => {
-    setAnnouncementYoutubeOverlay((prev) => ({ ...prev, query: value }))
-  }, [])
-
-  const handleAnnouncementYoutubeSearch = useCallback(
-    async (queryInput) => {
-      const query = (queryInput || '').trim()
-      if (!query) {
-        setAnnouncementYoutubeOverlay((prev) => ({ ...prev, error: '검색어를 입력해 주세요.' }))
-        return
-      }
-      if (youtubeSearchAbortRef.current) {
-        youtubeSearchAbortRef.current.abort()
-        youtubeSearchAbortRef.current = null
-      }
-      const controller = new AbortController()
-      youtubeSearchAbortRef.current = controller
-      setAnnouncementYoutubeOverlay((prev) => ({ ...prev, loading: true, error: null }))
-      try {
-        const response = await fetch(`/api/chat/youtube-search?q=${encodeURIComponent(query)}&limit=12`, {
-          signal: controller.signal,
-        })
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}))
-          throw new Error(payload?.error || '유튜브 검색에 실패했습니다.')
-        }
-        const payload = await response.json()
-        const results = Array.isArray(payload?.results) ? payload.results : []
-        setAnnouncementYoutubeOverlay((prev) => ({
-          ...prev,
-          loading: false,
-          results,
-          error: results.length ? null : '검색 결과가 없습니다.',
-        }))
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          return
-        }
-        console.error('[chat] 유튜브 검색 실패', error)
-        setAnnouncementYoutubeOverlay((prev) => ({
-          ...prev,
-          loading: false,
-          error: error?.message || '유튜브 검색을 수행할 수 없습니다.',
-        }))
-      } finally {
-        youtubeSearchAbortRef.current = null
-      }
-    },
-    [],
-  )
-
-  const handleAnnouncementYoutubeSelect = useCallback(
-    (video) => {
-      if (!video) return
-      const candidateId = video.id || video.videoId || video.url || ''
-      const youtubeId = sanitizeYoutubeId(candidateId)
-      if (!youtubeId) {
-        setAnnouncementYoutubeOverlay((prev) => ({ ...prev, error: '선택한 영상 ID를 확인할 수 없습니다.' }))
-        return
-      }
-      const titleSource = typeof video.title === 'string' ? video.title.trim() : ''
-      const title = titleSource ? titleSource.replace(/"/g, "'") : 'YouTube 영상'
-      const thumb = sanitizeExternalUrl(video.thumbnail || video.thumbnailUrl || '')
-      const attributes = [`id="${youtubeId}"`, `title="${title}"`]
-      if (thumb) {
-        attributes.push(`thumbnail="${thumb}"`)
-      }
-      const preview = thumb
-        ? `<img src="${thumb}" alt="${escapeHtml(title)}" style="display:block;width:100%;height:auto;" loading="lazy" />`
-        : `<iframe src="${getYoutubeEmbedUrl(youtubeId)}" title="${escapeHtml(title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" style="width:100%;min-height:220px;border:0;border-radius:12px;"></iframe>`
-      const overlay = thumb
-        ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span style="background:rgba(15,23,42,0.75);color:#f8fafc;padding:8px 14px;border-radius:999px;font-size:13px;">▶ ${escapeHtml(title)}</span></div>`
-        : ''
-      const hiddenEmbed = thumb
-        ? `<iframe src="${getYoutubeEmbedUrl(youtubeId)}" title="${escapeHtml(title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" style="position:absolute; inset:0; opacity:0;" tabindex="-1"></iframe>`
-        : ''
-      const snippet = `
-<div style="position: relative; margin: 12px 0; border-radius: 14px; overflow: hidden; background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.35);">
-  ${preview}
-  ${overlay}
-  <div style="padding: 8px 12px; font-size: 12px; color: #cbd5f5;">${escapeHtml(title)}</div>
-  ${hiddenEmbed}
-</div>`
-      insertAnnouncementHtml(snippet)
-      handleAnnouncementYoutubeClose()
-    },
-    [handleAnnouncementYoutubeClose, insertAnnouncementHtml],
-  )
 
   const handleAnnouncementPollOpen = useCallback(() => {
     setAnnouncementPollOverlay({ open: true, question: '', options: ['', ''], error: null })
@@ -7527,47 +7252,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setAnnouncementComposer((prev) => ({ ...prev, pinned: !prev.pinned }))
   }, [])
 
-  const handleAnnouncementImageTrigger = useCallback(() => {
-    if (announcementComposer.uploading) return
-    const node = announcementImageInputRef.current
-    if (node) {
-      node.click()
-    }
-  }, [announcementComposer.uploading])
-
-  const handleAnnouncementImageSelect = useCallback(
-    async (event) => {
-      if (!context?.chatRoomId) return
-      const file = event.target?.files?.[0]
-      if (event.target) {
-        event.target.value = ''
-      }
-      if (!file) {
-        return
-      }
-      setAnnouncementComposer((prev) => ({ ...prev, uploading: true, error: null }))
-      try {
-        const url = await uploadAnnouncementImage({ file, roomId: context.chatRoomId })
-        setAnnouncementComposer((prev) => ({ ...prev, imageUrl: url, uploading: false }))
-      } catch (error) {
-        console.error('[chat] 공지 이미지 업로드 실패', error)
-        setAnnouncementComposer((prev) => ({
-          ...prev,
-          uploading: false,
-          error: error?.message || '공지 이미지를 업로드할 수 없습니다.',
-        }))
-      }
-    },
-    [context?.chatRoomId],
-  )
-
-  const handleAnnouncementImageClear = useCallback(() => {
-    if (announcementImageInputRef.current) {
-      announcementImageInputRef.current.value = ''
-    }
-    setAnnouncementComposer((prev) => ({ ...prev, imageUrl: '' }))
-  }, [])
-
   const handleOpenAnnouncementList = useCallback(() => {
     if (!context?.chatRoomId) return
     setAnnouncementListOpen(true)
@@ -7588,13 +7272,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   const handleSubmitAnnouncement = useCallback(async () => {
     if (!context?.chatRoomId) return
-    if (announcementComposer.uploading) {
-      setAnnouncementComposer((prev) => ({
-        ...prev,
-        error: '이미지 업로드가 완료될 때까지 기다려 주세요.',
-      }))
-      return
-    }
     const title = (announcementComposer.title || '').trim()
     const rawContent = announcementComposer.content || ''
     const content = sanitizeAnnouncementHtml(rawContent)
@@ -7610,7 +7287,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         roomId: context.chatRoomId,
         title,
         content,
-        imageUrl: announcementComposer.imageUrl || null,
         pinned: announcementComposer.pinned,
       })
       if (announcement?.id && pollDefinitions.length) {
@@ -7635,10 +7311,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
   }, [
     announcementComposer.content,
-    announcementComposer.imageUrl,
     announcementComposer.pinned,
     announcementComposer.title,
-    announcementComposer.uploading,
     context?.chatRoomId,
     handleCloseAnnouncementComposer,
     refreshRoomAnnouncements,
@@ -10297,175 +9971,111 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       📌 공지 보기
                     </button>
                   ) : (
-                    <div
-                      style={overlayStyles.pinnedAnnouncementCard(
-                        pinnedAnnouncementStage,
-                        Boolean(pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl),
-                      )}
-                    >
-                      <div style={{ display: 'grid', gap: 12 }}>
-                        <div style={overlayStyles.pinnedAnnouncementHeaderRow}>
-                          <div style={overlayStyles.pinnedAnnouncementHeaderGroup}>
-                            <span style={overlayStyles.pinnedAnnouncementBadge}>📌 공지</span>
-                            <span style={overlayStyles.pinnedAnnouncementTimestamp}>
-                              {pinnedAnnouncement.updated_at
-                                ? `${formatTime(pinnedAnnouncement.updated_at)} 업데이트`
-                                : pinnedAnnouncement.created_at
-                                  ? `${formatTime(pinnedAnnouncement.created_at)} 등록`
-                                  : '방장이 고정했습니다.'}
-                            </span>
-                          </div>
-                          <div style={overlayStyles.pinnedAnnouncementStageActions}>
-                            {pinnedAnnouncementStage === 'expanded' ? (
-                              <>
-                                <button
-                                  type="button"
-                                  style={overlayStyles.pinnedAnnouncementStageButton('default')}
-                                  onClick={() => commitPinnedAnnouncementStage('collapsed')}
-                                >
-                                  접기
-                                </button>
-                                <button
-                                  type="button"
-                                  style={overlayStyles.pinnedAnnouncementStageButton('danger')}
-                                  onClick={() => commitPinnedAnnouncementStage('hidden')}
-                                >
-                                  숨기기
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  style={overlayStyles.pinnedAnnouncementStageButton('default')}
-                                  onClick={() => commitPinnedAnnouncementStage('expanded')}
-                                >
-                                  펼치기
-                                </button>
+                    (() => {
+                      const previewImage = pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl
+                      const hasImage = Boolean(previewImage)
+                      const timestampLabel = pinnedAnnouncement.updated_at
+                        ? `${formatTime(pinnedAnnouncement.updated_at)} 업데이트`
+                        : pinnedAnnouncement.created_at
+                          ? `${formatTime(pinnedAnnouncement.created_at)} 등록`
+                          : '방장이 고정했습니다.'
+                      return (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          style={overlayStyles.pinnedAnnouncementCard('collapsed', hasImage)}
+                          onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              handleOpenAnnouncementDetail(pinnedAnnouncement)
+                            }
+                          }}
+                        >
+                          <div style={{ display: 'grid', gap: 12 }}>
+                            <div style={overlayStyles.pinnedAnnouncementHeaderRow}>
+                              <div style={overlayStyles.pinnedAnnouncementHeaderGroup}>
+                                <span style={overlayStyles.pinnedAnnouncementBadge}>📌 공지</span>
+                                <span style={overlayStyles.pinnedAnnouncementTimestamp}>{timestampLabel}</span>
+                              </div>
+                              <div style={overlayStyles.pinnedAnnouncementStageActions}>
                                 <button
                                   type="button"
                                   style={overlayStyles.pinnedAnnouncementStageButton('danger')}
-                                  onClick={() => commitPinnedAnnouncementStage('hidden')}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    commitPinnedAnnouncementStage('hidden')
+                                  }}
                                 >
                                   숨기기
                                 </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        {pinnedAnnouncement.title ? (
-                          <strong style={overlayStyles.pinnedAnnouncementTitle}>
-                            {pinnedAnnouncement.title}
-                          </strong>
-                        ) : null}
-                        {pinnedAnnouncementStage === 'collapsed' ? (
-                          <div style={overlayStyles.pinnedAnnouncementCollapsedBody}>
-                            <span style={overlayStyles.pinnedAnnouncementPreview}>
-                              {pinnedAnnouncementPreview.text || '내용 없음'}
+                              </div>
+                            </div>
+                            {pinnedAnnouncement.title ? (
+                              <strong style={overlayStyles.pinnedAnnouncementTitle}>
+                                {pinnedAnnouncement.title}
+                              </strong>
+                            ) : null}
+                            <div style={overlayStyles.pinnedAnnouncementCollapsedBody}>
+                              <span style={overlayStyles.pinnedAnnouncementPreview}>
+                                {pinnedAnnouncementPreview.text || '내용 없음'}
+                              </span>
+                            </div>
+                            <span style={overlayStyles.announcementMeta}>
+                              ♥ {pinnedAnnouncement.heart_count || 0} · 💬 {pinnedAnnouncement.comment_count || 0}
                             </span>
-                          </div>
-                        ) : (
-                          <div style={overlayStyles.pinnedAnnouncementExpandedBody}>
-                            {pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl ? (
-                              <div style={overlayStyles.pinnedAnnouncementImageWrapper}>
-                                <img
-                                  src={pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl}
-                                  alt={
-                                    pinnedAnnouncement.title
-                                      ? `${pinnedAnnouncement.title} 이미지`
-                                      : '공지 이미지'
-                                  }
-                                  style={overlayStyles.pinnedAnnouncementImage}
-                                />
+                            {viewerIsModerator ? (
+                              <div style={overlayStyles.pinnedAnnouncementActions}>
+                                <button
+                                  type="button"
+                                  style={overlayStyles.pinnedAnnouncementActionButton(
+                                    'ghost',
+                                    announcementPinningId === pinnedAnnouncement.id,
+                                  )}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    handleToggleAnnouncementPin(pinnedAnnouncement, false)
+                                  }}
+                                  disabled={announcementPinningId === pinnedAnnouncement.id}
+                                >
+                                  고정 해제
+                                </button>
+                                <button
+                                  type="button"
+                                  style={overlayStyles.pinnedAnnouncementActionButton('primary')}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    handleOpenAnnouncementComposer()
+                                  }}
+                                >
+                                  새 공지
+                                </button>
                               </div>
                             ) : null}
-                            <div
-                              style={overlayStyles.pinnedAnnouncementHtml}
-                              dangerouslySetInnerHTML={{
-                                __html:
-                                  pinnedAnnouncementHtml ||
-                                  '<span style="color:#94a3b8;">공지 내용이 비어 있습니다.</span>',
-                              }}
-                            />
-                            {renderAnnouncementPolls(pinnedAnnouncement, 'pinned')}
                           </div>
-                        )}
-                        <div style={overlayStyles.pinnedAnnouncementActions}>
-                          <button
-                            type="button"
-                            style={overlayStyles.pinnedAnnouncementActionButton('primary')}
-                            onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
-                          >
-                            상세 보기
-                          </button>
-                          {viewerIsModerator ? (
-                            <button
-                              type="button"
-                              style={overlayStyles.pinnedAnnouncementActionButton(
-                                'ghost',
-                                announcementPinningId === pinnedAnnouncement.id,
-                              )}
-                              onClick={() => handleToggleAnnouncementPin(pinnedAnnouncement, false)}
-                              disabled={announcementPinningId === pinnedAnnouncement.id}
-                            >
-                              고정 해제
-                            </button>
-                          ) : null}
-                          {(announcementList.length || roomAnnouncementsHasMore) ? (
-                            <button
-                              type="button"
-                              style={overlayStyles.pinnedAnnouncementActionButton()}
-                              onClick={handleOpenAnnouncementList}
-                            >
-                              공지 목록
-                            </button>
-                          ) : null}
-                          {viewerIsModerator ? (
-                            <button
-                              type="button"
-                              style={overlayStyles.pinnedAnnouncementActionButton()}
-                              onClick={handleOpenAnnouncementComposer}
-                            >
-                              새 공지
-                            </button>
+                          {hasImage ? (
+                            <div style={overlayStyles.pinnedAnnouncementImageWrapper}>
+                              <img
+                                src={previewImage}
+                                alt={
+                                  pinnedAnnouncement.title
+                                    ? `${pinnedAnnouncement.title} 이미지`
+                                    : '공지 이미지'
+                                }
+                                style={overlayStyles.pinnedAnnouncementImage}
+                              />
+                            </div>
                           ) : null}
                         </div>
-                      </div>
-                      {pinnedAnnouncementStage === 'collapsed' &&
-                      (pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl) ? (
-                        <button
-                          type="button"
-                          style={overlayStyles.pinnedAnnouncementImageButton}
-                          onClick={() => handleOpenAnnouncementDetail(pinnedAnnouncement)}
-                        >
-                          <div style={overlayStyles.pinnedAnnouncementImageWrapper}>
-                            <img
-                              src={pinnedAnnouncement.image_url || pinnedAnnouncement.imageUrl}
-                              alt={
-                                pinnedAnnouncement.title
-                                  ? `${pinnedAnnouncement.title} 이미지`
-                                  : '공지 이미지'
-                              }
-                              style={overlayStyles.pinnedAnnouncementImage}
-                            />
-                          </div>
-                        </button>
-                      ) : null}
-                    </div>
+                      )
+                    })()
                   )
                 ) : (
                   <div style={overlayStyles.pinnedAnnouncementEmpty}>
                     <span>{viewerIsModerator ? '고정된 공지가 없습니다.' : '현재 고정된 공지가 없습니다.'}</span>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                    {(announcementList.length || roomAnnouncementsHasMore) ? (
-                      <button
-                        type="button"
-                        style={overlayStyles.pinnedAnnouncementActionButton()}
-                        onClick={handleOpenAnnouncementList}
-                      >
-                        공지 목록
-                      </button>
-                    ) : null}
                     {viewerIsModerator ? (
                       <button
                         type="button"
@@ -10476,8 +10086,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                       </button>
                     ) : null}
                   </div>
-                </div>
-              )}
+                )}
             </div>
           </div>
         ) : null}
@@ -12835,75 +12444,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             disabled={announcementComposer.submitting}
           />
         </div>
-        <div style={{ display: 'grid', gap: 10 }}>
-          <span style={overlayStyles.fieldLabel}>공지 이미지 (선택)</span>
-          {announcementComposer.imageUrl ? (
-            <div style={overlayStyles.announcementImagePreview}>
-              <img
-                src={announcementComposer.imageUrl}
-                alt={announcementComposer.title ? `${announcementComposer.title} 이미지` : '공지 이미지 미리보기'}
-                style={overlayStyles.announcementImagePreviewImage}
-              />
-              <button
-                type="button"
-                style={overlayStyles.announcementImageRemoveButton}
-                onClick={handleAnnouncementImageClear}
-                disabled={announcementComposer.uploading || announcementComposer.submitting}
-              >
-                이미지 제거
-              </button>
-            </div>
-          ) : (
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>
-              공지와 함께 보여줄 이미지를 선택할 수 있습니다. 최대 20MB까지 업로드할 수 있습니다.
-            </span>
-          )}
-          <div style={overlayStyles.announcementImageUploadRow}>
-            <button
-              type="button"
-              style={overlayStyles.imageUploadButton('primary', announcementComposer.uploading || announcementComposer.submitting)}
-              onClick={handleAnnouncementImageTrigger}
-              disabled={announcementComposer.uploading || announcementComposer.submitting}
-            >
-              {announcementComposer.uploading ? '업로드 중…' : '이미지 업로드'}
-            </button>
-            {announcementComposer.imageUrl ? (
-              <button
-                type="button"
-                style={overlayStyles.imageUploadButton('ghost', announcementComposer.uploading || announcementComposer.submitting)}
-                onClick={handleAnnouncementImageClear}
-                disabled={announcementComposer.uploading || announcementComposer.submitting}
-              >
-                제거
-              </button>
-            ) : null}
-          </div>
-          <input
-            ref={announcementImageInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleAnnouncementImageSelect}
-          />
-          <input
-            ref={announcementAttachmentInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={(event) => handleAnnouncementAttachmentSelect(event, 'image')}
-          />
-          <input
-            ref={announcementVideoInputRef}
-            type="file"
-            accept="video/*"
-            style={{ display: 'none' }}
-            onChange={(event) => handleAnnouncementAttachmentSelect(event, 'video')}
-          />
+        <div style={{ fontSize: 12, color: '#94a3b8' }}>
+          공지 본문에서 필요한 내용을 작성하고, 아래 도구로 투표를 추가할 수 있습니다.
         </div>
         <div style={overlayStyles.announcementEditorWrapper}>
           {!getAnnouncementPlainText(announcementComposer.content || '') ? (
             <span style={overlayStyles.announcementEditorPlaceholder}>
-              공지 내용을 입력해 주세요. 이미지와 동영상, 유튜브, 투표를 바로 삽입할 수 있습니다.
+              공지 내용을 입력해 주세요. 필요하다면 아래 도구로 투표를 추가할 수 있습니다.
             </span>
           ) : null}
           <div
@@ -12960,127 +12507,22 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         <button
           type="button"
           style={overlayStyles.announcementToolbarItem(false)}
-          onClick={() => handleAnnouncementAttachmentTrigger('image')}
-          disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
-          onMouseDown={handleAnnouncementToolbarMouseDown}
-          onTouchStart={handleAnnouncementToolbarTouchStart}
-        >
-          <span style={overlayStyles.announcementToolbarItemIcon}>🖼️</span>
-          <span style={overlayStyles.announcementToolbarItemLabel}>이미지 첨부</span>
-        </button>
-        <button
-          type="button"
-          style={overlayStyles.announcementToolbarItem(false)}
-          onClick={() => handleAnnouncementAttachmentTrigger('video')}
-          disabled={announcementComposer.attachmentUploading || announcementComposer.submitting}
-          onMouseDown={handleAnnouncementToolbarMouseDown}
-          onTouchStart={handleAnnouncementToolbarTouchStart}
-        >
-          <span style={overlayStyles.announcementToolbarItemIcon}>🎬</span>
-          <span style={overlayStyles.announcementToolbarItemLabel}>동영상 첨부</span>
-        </button>
-        <button
-          type="button"
-          style={overlayStyles.announcementToolbarItem(false)}
-          onClick={handleAnnouncementYoutubeOpen}
-          onMouseDown={handleAnnouncementToolbarMouseDown}
-          onTouchStart={handleAnnouncementToolbarTouchStart}
-        >
-          <span style={overlayStyles.announcementToolbarItemIcon}>📺</span>
-          <span style={overlayStyles.announcementToolbarItemLabel}>유튜브</span>
-        </button>
-        <button
-          type="button"
-          style={overlayStyles.announcementToolbarItem(false)}
           onClick={handleAnnouncementPollOpen}
           onMouseDown={handleAnnouncementToolbarMouseDown}
           onTouchStart={handleAnnouncementToolbarTouchStart}
+          disabled={announcementComposer.submitting}
         >
           <span style={overlayStyles.announcementToolbarItemIcon}>🗳️</span>
-          <span style={overlayStyles.announcementToolbarItemLabel}>투표</span>
+          <span style={overlayStyles.announcementToolbarItemLabel}>투표 만들기</span>
         </button>
       </div>
       <div style={overlayStyles.announcementToolbarStatusRow}>
-        {announcementComposer.attachmentUploading ? (
-          <span>첨부 파일을 업로드하는 중입니다…</span>
-        ) : (
-          <span style={overlayStyles.announcementToolbarHint}>
-            아이콘을 눌러 첨부 파일, 유튜브 영상, 투표를 바로 추가할 수 있습니다.
-          </span>
-        )}
+        <span style={overlayStyles.announcementToolbarHint}>
+          투표 버튼을 눌러 선택지를 추가하고 공지에 바로 삽입할 수 있습니다.
+        </span>
       </div>
     </div>
   ) : null
-
-  const announcementYoutubeOverlayNode = (
-    <SurfaceOverlay
-      open={announcementYoutubeOverlay.open}
-      onClose={handleAnnouncementYoutubeClose}
-      title="유튜브 영상 추가"
-      width="min(520px, 92vw)"
-      zIndex={1635}
-    >
-      <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="text"
-            value={announcementYoutubeOverlay.query}
-            onChange={(event) => handleAnnouncementYoutubeQueryChange(event.target.value)}
-            placeholder="영상 제목이나 채널을 입력해 주세요"
-            style={overlayStyles.input}
-            disabled={announcementYoutubeOverlay.loading}
-          />
-          <button
-            type="button"
-            style={overlayStyles.secondaryButton}
-            onClick={() => handleAnnouncementYoutubeSearch(announcementYoutubeOverlay.query)}
-            disabled={announcementYoutubeOverlay.loading}
-          >
-            {announcementYoutubeOverlay.loading ? '검색 중…' : '검색'}
-          </button>
-        </div>
-        {announcementYoutubeOverlay.error ? (
-          <span style={{ fontSize: 12, color: '#fca5a5' }}>{announcementYoutubeOverlay.error}</span>
-        ) : null}
-        <div style={{ display: 'grid', gap: 10 }}>
-          {announcementYoutubeOverlay.results.map((video) => {
-            const thumb = video.thumbnail || video.thumbnailUrl || (Array.isArray(video.thumbnails) ? video.thumbnails[0]?.url : null)
-            return (
-              <button
-                key={video.id || video.videoId || video.url || `${video.title}-${video.publishedAt || ''}`}
-                type="button"
-                style={overlayStyles.announcementYoutubeResult}
-                onClick={() => handleAnnouncementYoutubeSelect(video)}
-              >
-                {thumb ? (
-                  <img
-                    src={thumb}
-                    alt={video.title || '유튜브 썸네일'}
-                    style={overlayStyles.announcementYoutubeThumb}
-                  />
-                ) : (
-                  <div style={{ ...overlayStyles.announcementYoutubeThumb, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12 }}>
-                    썸네일 없음
-                  </div>
-                )}
-                <div style={overlayStyles.announcementYoutubeInfo}>
-                  <strong style={{ fontSize: 13, color: '#f8fafc' }}>
-                    {video.title || '제목 없는 영상'}
-                  </strong>
-                  {video.author ? (
-                    <span style={overlayStyles.announcementMeta}>{video.author}</span>
-                  ) : null}
-                  {video.duration ? (
-                    <span style={overlayStyles.announcementMeta}>{video.duration}</span>
-                  ) : null}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-    </SurfaceOverlay>
-  )
 
   const announcementPollOverlayNode = (
     <SurfaceOverlay
@@ -13190,9 +12632,12 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             />
             {renderAnnouncementPolls(announcementDetail.announcement, 'detail')}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <button type="button" style={overlayStyles.secondaryButton} onClick={handleToggleAnnouncementReaction}>
               {announcementDetail.announcement.viewer_reacted ? '하트 취소' : '하트 남기기'}
+            </button>
+            <button type="button" style={overlayStyles.secondaryButton} onClick={handleOpenAnnouncementList}>
+              공지 목록
             </button>
             <span style={overlayStyles.announcementMeta}>
               ♥ {announcementDetail.announcement.heart_count || 0} · 💬{' '}
@@ -13356,7 +12801,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       {announcementListOverlay}
       {announcementComposerOverlay}
       {announcementToolbarOverlayNode}
-      {announcementYoutubeOverlayNode}
       {announcementPollOverlayNode}
       {announcementDetailOverlay}
       {banOverlay}
