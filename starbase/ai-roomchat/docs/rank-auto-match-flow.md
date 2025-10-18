@@ -17,9 +17,11 @@
 대기열 페이지를 제거하면서 매칭 과정이 메인 룸 중심으로 정리되어, 플레이어는 역할과 점수 조건을 확인하며 직접 자리를 차지하고 바로 경기를 시작할 수 있습니다.
 
 ## 4. 캐릭터 화면 자동 매칭 & 역할별 충원 전략
-- 캐릭터 화면 하단의 `CharacterPlayPanel`이 `join_rank_queue` → `fetch_rank_queue_ticket` → `stage_rank_match` 호출을 자동으로 이어가며,
-  새로 추가된 `matchQueueFlow` 모듈이 Supabase Realtime 방송(`rank_queue_tickets:queue:*`)을 구독해 티켓 상태 변화를 즉시 반영합니다.【F:components/character/CharacterPlayPanel.js†L482-L980】【F:modules/arena/matchQueueFlow.js†L1-L45】
-- **비실시간 매칭**: 대기열에 들어온 플레이어(혼자 또는 파티)까지만 실제 사람으로 채우고, 나머지 슬롯은 `rank_participants`에서 해당 게임에 활성화된 점수 범위·역할군을 기준으로 AI 대역 캐릭터를 추첨해 채웁니다. 실시간 연결이 필요 없으므로 방 생성 직후 바로 스테이징으로 넘어갑니다.
+- 캐릭터 화면 하단의 `CharacterPlayPanel`이 모드에 따라 두 갈래로 동작합니다.
+  - **실시간 매칭**: `join_rank_queue` → `fetch_rank_queue_ticket` → `stage_rank_match` 호출을 자동으로 이어가며,
+    새로 추가된 `matchQueueFlow` 모듈이 Supabase Realtime 방송(`rank_queue_tickets:queue:*`)을 구독해 티켓 상태 변화를 즉시 반영합니다.【F:components/character/CharacterPlayPanel.js†L964-L1324】【F:modules/arena/matchQueueFlow.js†L1-L45】
+  - **비실시간 매칭**: `/api/rank/match` 엔드포인트를 호출해 `rank_match_queue`/`rank_participants` 샘플링 결과를 바로 받아오고, 오버레이에서 곧바로 매치 코드를 노출합니다. 실시간 큐를 사용하지 않으므로 티켓 폴링 없이도 전투 구성이 완료됩니다.【F:components/character/CharacterPlayPanel.js†L1008-L1186】【F:pages/api/rank/match.js†L240-L360】
 - **실시간 매칭**: 동시에 큐에 진입한 이용자 전체를 표본으로 묶어 게임이 허용한 점수 폭과 슬롯별 역할 요구조건을 만족하도록 편성합니다. 방이 준비되면 실시간 동기화를 위해 `stage_rank_match` 단계에서 대기열 알림과 함께 모두에게 준비 만료 시간을 알리고, 캐릭터 화면에서도 동일 메시지를 표출합니다.
+- **비실시간 매칭**: 대기열에 들어온 플레이어(혼자 또는 파티)까지만 실제 사람으로 채우고, 나머지 슬롯은 `rank_participants`에서 해당 게임에 활성화된 점수 범위·역할군을 기준으로 AI 대역 캐릭터를 추첨해 채웁니다. 전투 구성이 끝나면 매치 코드가 즉시 반환되어 실시간 연결 없이 바로 전투 준비가 완료됩니다.
 - 기존 `/match` 리다이렉트 없이 캐릭터 화면 내 고정 오버레이에서 매칭 완료까지 진행되므로, 성공 시 참여 목록을 즉시 새로고침해 신규 세션이 `참여한 게임` 캐러셀과 베틀 로그에 반영됩니다.
 - 오버레이 우측 상단의 “디버그 열기” 토글은 큐 폴링, realtime 브로드캐스트, `join_rank_queue`/`stage_rank_match` RPC 호출 로그를 그대로 보여 주는 미니 패널을 띄워 매칭 지연·실패 원인을 현장에서 바로 확인할 수 있게 합니다.

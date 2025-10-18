@@ -127,7 +127,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 - 캐러셀 카드의 세로 폭을 더 줄여 무대 상단 여백을 확보하고, 참여 게임명이 카드 안에서 크게 드러나도록 텍스처/패딩을 재조정했습니다.
 - 캐릭터 메인 카드 폭을 원래 비율로 되돌리고 참여 게임 캐러셀은 현재 선택된 게임명을 별도 캡션으로 표시합니다. 랭킹 오버레이는 화면 전면 고정형으로 바뀌어 1위 영웅 카드·게임 아트·역할별 순위표를 한 번에 보여 주고, 오버레이가 열린 동안에는 기존 브금을 잠시 멈춘 뒤 1위 영웅의 브금을 재생합니다.
 - 브금 설정 탭에 피치 슬라이더(0.5x~1.5x)가 추가돼 재방문 시에도 동일한 속도로 재생되며, 영웅 조회 랭킹에서 사용되는 히어로 조회 데이터에는 배경·설명·브금 메타가 포함됩니다.
-- 캐릭터 화면 매칭 오버레이는 `matchQueueFlow`를 통해 대기열 브로드캐스트를 실시간 구독하고, 비실시간/실시간 모드를 각각 AI 대역 충원·동시 큐잉 전략으로 분기해 페이지를 벗어나지 않고도 큐 참가→방 배정→스테이징 완료를 마무리합니다.
+- 캐릭터 화면 매칭 오버레이는 모드에 따라 분기합니다. 실시간일 땐 `matchQueueFlow`가 대기열 브로드캐스트를 구독하며 `join_rank_queue` → `fetch_rank_queue_ticket` → `stage_rank_match` 흐름을 따라가고, 비실시간일 땐 `/api/rank/match` 호출로 `rank_match_queue`/`rank_participants` 샘플을 즉시 받아 매치 코드를 생성해 오버레이에서 바로 안내합니다.
 - 매칭 오버레이는 항상 화면 상단 중앙에 고정되며, 진행 중인 티켓 ID·상태·모드를 한눈에 확인할 수 있고, 필요 시 “디버그 열기”를 눌러 큐 폴링·Realtime 이벤트·RPC 호출 로그를 즉시 확인할 수 있는 가벼운 디버그 패널을 제공합니다.
 - Several UI shells (create, roster, maker) defer most logic to component containers; reviewing those components is recommended for full domain context beyond this page-oriented audit.
 - Ensure environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, etc.) are set for server APIs like `finalize-session` to work outside local mocks.【F:pages/api/rank/finalize-session.js†L1-L8】

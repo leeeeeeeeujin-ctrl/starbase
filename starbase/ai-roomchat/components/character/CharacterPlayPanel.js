@@ -8,6 +8,8 @@ import { createQueueRealtimeWatcher } from '@/modules/arena/matchQueueFlow'
 import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes'
 import { formatPlayNumber } from '@/utils/characterPlayFormatting'
 
+const ASYNC_MATCH_ENDPOINT = '/api/rank/match'
+
 const panelStyles = {
   root: {
     display: 'grid',
@@ -378,6 +380,7 @@ function MatchingOverlay({
   ticketId,
   ticketStatus,
   queueMode,
+  matchCode,
   debugEntries,
   debugOpen,
   onToggleDebug,
@@ -390,13 +393,20 @@ function MatchingOverlay({
   const status = phase || 'queue'
   const ready = status === 'ready'
   const failed = status === 'error'
-  const inFlight = status === 'queue' || status === 'awaiting-room' || status === 'staging'
+  const inFlight =
+    status === 'queue' ||
+    status === 'awaiting-room' ||
+    status === 'staging' ||
+    status === 'sampling' ||
+    status === 'assembling'
 
   const headline = (() => {
     if (ready) return '매칭이 준비됐어요'
     if (failed) return '매칭을 준비하지 못했습니다'
     if (status === 'awaiting-room') return '방을 준비하는 중'
     if (status === 'staging') return '매칭 구성 중'
+    if (status === 'sampling') return '상대 데이터를 탐색하는 중'
+    if (status === 'assembling') return '전투를 구성하는 중'
     return '대기열에 참가하는 중'
   })()
 
@@ -412,6 +422,12 @@ function MatchingOverlay({
     }
     if (status === 'awaiting-room') {
       return message || `${gameName} 방을 확보하고 있어요. 잠시만 기다려 주세요.`
+    }
+    if (status === 'sampling') {
+      return message || `${gameName}에 맞는 상대 데이터를 수집하고 있습니다.`
+    }
+    if (status === 'assembling') {
+      return message || `${gameName} 전투 구성을 정리하는 중입니다.`
     }
     return message || `${heroName}이(가) ${gameName} 참가자를 찾는 중입니다.`
   })()
@@ -436,6 +452,7 @@ function MatchingOverlay({
     ticketStatus ? `티켓 상태: ${ticketStatus}` : null,
     ticketId ? `티켓 ID: ${ticketId}` : null,
     queueMode ? `매칭 모드: ${queueMode === 'realtime' ? '실시간' : '비실시간'}` : null,
+    matchCode ? `매치 코드: ${matchCode}` : null,
   ].filter(Boolean)
 
   const showProgress = inFlight || ready
@@ -606,6 +623,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
     sessionId: null,
     readyExpiresAt: null,
     queueMode: null,
+    matchCode: null,
   })
   const matchTaskRef = useRef(null)
   const queuePollRef = useRef(null)
@@ -933,6 +951,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
           ticketStatus: null,
           sessionId: null,
           readyExpiresAt: null,
+          matchCode: null,
         }))
 
         clearQueueWatch()
@@ -974,6 +993,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
       sessionId: null,
       readyExpiresAt: null,
       queueMode: null,
+      matchCode: null,
     })
     appendDebug('overlay:reset')
   }, [appendDebug, clearQueueWatch])
@@ -1005,6 +1025,48 @@ export default function CharacterPlayPanel({ hero, playData }) {
     resetMatchingState()
   }, [appendDebug, matchingState.phase, resetMatchingState])
 
+  const runAsyncMatchFlow = useCallback(async () => {
+    if (!selectedGameId) {
+      throw new Error('게임 정보를 찾을 수 없습니다.')
+    }
+
+    appendDebug('async:request', { gameId: selectedGameId })
+
+    let response
+    try {
+      response = await fetch(ASYNC_MATCH_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: selectedGameId, mode: 'rank' }),
+      })
+    } catch (error) {
+      appendDebug('async:network-error', { error: error?.message || String(error) })
+      throw new Error('매칭 요청을 보낼 수 없습니다. 네트워크 상태를 확인해 주세요.')
+    }
+
+    let payload = null
+    try {
+      payload = await response.json()
+    } catch (error) {
+      appendDebug('async:parse-error', { error: error?.message || String(error) })
+    }
+
+    appendDebug('async:response', {
+      status: response.status,
+      ok: response.ok,
+      payload,
+    })
+
+    if (!response.ok) {
+      const detail =
+        (payload && (payload.detail || payload.error || payload.message)) ||
+        '매칭 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.'
+      throw new Error(detail)
+    }
+
+    return payload || {}
+  }, [appendDebug, selectedGameId])
+
   const runAutoMatch = useCallback(async () => {
     if (!selectedGameId) {
       if (typeof window !== 'undefined') {
@@ -1030,6 +1092,9 @@ export default function CharacterPlayPanel({ hero, playData }) {
       ? '실시간 매칭 대기열에 참가했습니다.'
       : '비실시간 매칭 준비를 시작했어요.'
 
+    const initialPhase = realtimeEnabled ? 'queue' : 'sampling'
+    const initialProgress = realtimeEnabled ? 8 : 12
+
     appendDebug('queue:start', {
       heroId: hero.id,
       gameId: selectedGameId,
@@ -1040,8 +1105,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
     clearQueueWatch()
     setMatchingState({
       open: true,
-      phase: 'queue',
-      progress: 8,
+      phase: initialPhase,
+      progress: initialProgress,
       message: queueMessage,
       error: '',
       ticketId: null,
@@ -1049,9 +1114,97 @@ export default function CharacterPlayPanel({ hero, playData }) {
       sessionId: null,
       readyExpiresAt: null,
       queueMode: realtimeEnabled ? 'realtime' : 'async',
+      matchCode: null,
     })
 
     matchTaskRef.current = { cancelled: false }
+
+    if (!realtimeEnabled) {
+      try {
+        setMatchingState((prev) => ({
+          ...prev,
+          phase: 'assembling',
+          progress: Math.max(prev.progress, 42),
+          message: '전투 구성을 계산하는 중입니다…',
+          error: '',
+        }))
+
+        const result = await runAsyncMatchFlow()
+
+        if (!result?.ready) {
+          const friendly =
+            result?.error ||
+            (result?.sampleMeta?.message
+              ? result.sampleMeta.message
+              : '매칭을 완성하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+
+          setMatchingState((prev) => ({
+            ...prev,
+            phase: 'error',
+            progress: 0,
+            message: '',
+            error: friendly,
+            ticketId: null,
+            ticketStatus: null,
+            sessionId: null,
+            readyExpiresAt: null,
+            matchCode: null,
+          }))
+          appendDebug('async:not-ready', { friendly, meta: result?.sampleMeta || null })
+        } else {
+          const matchCode = result.matchCode || null
+          const readyMessage = matchCode
+            ? `매치 코드 ${matchCode}가 준비됐습니다. 곧 전투가 시작됩니다.`
+            : '전투가 준비되었습니다. 곧 시작될 거예요.'
+
+          setMatchingState((prev) => ({
+            ...prev,
+            phase: 'ready',
+            progress: 100,
+            message: readyMessage,
+            error: '',
+            ticketId: null,
+            ticketStatus: null,
+            sessionId: matchCode,
+            readyExpiresAt: null,
+            matchCode,
+          }))
+
+          appendDebug('async:ready', {
+            matchCode,
+            assignments: result?.assignments || null,
+            sampleMeta: result?.sampleMeta || null,
+          })
+
+          if (typeof refreshParticipations === 'function') {
+            try {
+              await refreshParticipations()
+            } catch (refreshError) {
+              console.warn('[CharacterPlayPanel] 비실시간 매칭 후 참가 정보를 새로고침하지 못했습니다:', refreshError)
+            }
+          }
+        }
+      } catch (error) {
+        const friendly =
+          error?.message || '매칭 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+        appendDebug('async:error', { error: friendly })
+        setMatchingState((prev) => ({
+          ...prev,
+          phase: 'error',
+          progress: 0,
+          message: '',
+          error: friendly,
+          ticketId: null,
+          ticketStatus: null,
+          sessionId: null,
+          readyExpiresAt: null,
+          matchCode: null,
+        }))
+      } finally {
+        matchTaskRef.current = null
+      }
+      return
+    }
 
     try {
       const payload = {
@@ -1157,6 +1310,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         ticketStatus: null,
         sessionId: null,
         readyExpiresAt: null,
+        matchCode: null,
       }))
     } finally {
       matchTaskRef.current = null
@@ -1172,6 +1326,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
     selectedGame?.realtime_match,
     selectedGameId,
     startQueueRealtime,
+    runAsyncMatchFlow,
+    refreshParticipations,
   ])
 
   const visibleBattleRows = useMemo(
@@ -1180,7 +1336,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
   )
 
   const isMatchingBusy =
-    matchingState.open && ['queue', 'awaiting-room', 'staging'].includes(matchingState.phase)
+    matchingState.open &&
+    ['queue', 'awaiting-room', 'staging', 'sampling', 'assembling'].includes(matchingState.phase)
 
   const startButton = (
     <section style={panelStyles.section}>
@@ -1280,6 +1437,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         ticketId={matchingState.ticketId}
         ticketStatus={matchingState.ticketStatus}
         queueMode={matchingState.queueMode}
+        matchCode={matchingState.matchCode}
         debugEntries={debugEntries}
         debugOpen={debugOpen}
         onToggleDebug={() => setDebugOpen((prev) => !prev)}
