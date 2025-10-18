@@ -121,7 +121,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 - `scripts/notify-audio-event-trends.js`는 Supabase RPC로 주간 집계를 조회해 Slack(Webhook)으로 다이제스트를 발송하며, CI 워크플로(`pr-ci.yml`, `blueprint-progress-freshness.yml`)에 통합돼 주간/PR 실행 시 자동으로 동작합니다. 헬퍼 함수들은 Jest에서 단위 검증을 거칩니다.【F:scripts/notify-audio-event-trends.js†L1-L206】【F:.github/workflows/pr-ci.yml†L1-L53】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L53】【F:__tests__/scripts/notify-audio-event-trends.test.js†L1-L66】
 - Supabase table helpers (`withTable`) abstract table name prefix differences across environments—most hooks and API routes rely on them for multi-tenant support.
 - `rank_audio_preferences`와 `rank_audio_events` 테이블이 추가돼 브금 프리셋 선택과 변경 로그가 Supabase에 저장되며, `GameRoomView`는 `withTable`을 통해 동일 스키마를 읽고/쓰기 합니다.【F:supabase.sql†L1-L120】【F:components/rank/GameRoomView.js†L780-L1160】
-- 캐릭터 상세 페이지 상단 글로벌 채팅 런처를 소형 배지로 다듬고 살짝 아래로 내렸습니다. 중앙 영웅 카드의 최대 폭과 비율을 줄여 모바일·데스크톱 모두에서 주변 정보와의 여백을 늘렸으며, Supabase 스키마나 RPC는 변경되지 않았습니다.
+- 캐릭터 상세 페이지 상단 글로벌 채팅 런처를 소형 배지로 다듬고 살짝 아래로 내렸습니다. 중앙 영웅 카드의 최대 폭과 비율을 줄여 모바일·데스크톱 모두에서 주변 정보와의 여백을 늘렸고, 설명/능력 오버레이를 상단 중앙 정렬로 옮긴 뒤 능력 단계를 1~4까지 각각 노출하도록 쪼개 가독성을 높였습니다. Supabase 스키마나 RPC는 변경되지 않았습니다.
 - Several UI shells (create, roster, maker) defer most logic to component containers; reviewing those components is recommended for full domain context beyond this page-oriented audit.
 - Ensure environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, etc.) are set for server APIs like `finalize-session` to work outside local mocks.【F:pages/api/rank/finalize-session.js†L1-L8】
 

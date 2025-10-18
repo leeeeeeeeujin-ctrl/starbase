@@ -168,11 +168,13 @@ const styles = {
   },
   overlaySurface: {
     position: 'absolute',
-    left: '8%',
-    right: '8%',
-    bottom: '10%',
+    left: '10%',
+    right: '10%',
+    top: '12%',
+    bottom: 'auto',
     display: 'flex',
     flexDirection: 'column',
+    alignItems: 'center',
     gap: 12,
     pointerEvents: 'none',
   },
@@ -184,6 +186,7 @@ const styles = {
     color: '#f8fafc',
     textShadow: '0 2px 12px rgba(15,23,42,0.72)',
     whiteSpace: 'pre-line',
+    textAlign: 'center',
   },
   cornerIcon: {
     position: 'absolute',
@@ -1190,19 +1193,19 @@ export default function CharacterBasicView({ hero }) {
     return text || DEFAULT_DESCRIPTION
   }, [currentHero])
 
-  const abilityPairs = useMemo(() => {
+  const abilityEntries = useMemo(() => {
     if (!currentHero) {
       return []
     }
 
     const normalize = (value) => (typeof value === 'string' ? value.trim() : '')
-    const firstPair = [normalize(currentHero.ability1), normalize(currentHero.ability2)].filter(Boolean)
-    const secondPair = [normalize(currentHero.ability3), normalize(currentHero.ability4)].filter(Boolean)
 
     return [
-      { label: '능력 1 & 2', entries: firstPair },
-      { label: '능력 3 & 4', entries: secondPair },
-    ].filter((pair) => pair.entries.length > 0)
+      { label: '능력 1', description: normalize(currentHero.ability1) },
+      { label: '능력 2', description: normalize(currentHero.ability2) },
+      { label: '능력 3', description: normalize(currentHero.ability3) },
+      { label: '능력 4', description: normalize(currentHero.ability4) },
+    ].filter((entry) => entry.description)
   }, [currentHero])
 
   const [viewMode, setViewMode] = useState(0)
@@ -1585,15 +1588,15 @@ export default function CharacterBasicView({ hero }) {
 
   const overlayModes = useMemo(() => {
     const modes = ['name', 'description']
-    if (!abilityPairs.length) {
+    if (!abilityEntries.length) {
       modes.push('ability-empty')
     } else {
-      abilityPairs.forEach((_, index) => {
+      abilityEntries.forEach((_, index) => {
         modes.push(`ability-${index}`)
       })
     }
     return modes
-  }, [abilityPairs])
+  }, [abilityEntries])
 
   const currentOverlayMode = overlayModes[viewMode] || 'name'
 
@@ -2480,13 +2483,13 @@ export default function CharacterBasicView({ hero }) {
         <div style={styles.infoBlock}>
           <p style={styles.infoTitle}>{heroName}</p>
           <p style={styles.infoText}>{description}</p>
-          {abilityPairs.map((pair) => (
-            <div key={pair.label}>
-              <p style={{ ...styles.infoTitle, marginTop: 12 }}>{pair.label}</p>
-              <p style={styles.infoText}>{pair.entries.join('\n')}</p>
+          {abilityEntries.map((entry) => (
+            <div key={entry.label}>
+              <p style={{ ...styles.infoTitle, marginTop: 12 }}>{entry.label}</p>
+              <p style={styles.infoText}>{entry.description}</p>
             </div>
           ))}
-          {!abilityPairs.length ? (
+          {!abilityEntries.length ? (
             <p style={styles.listMeta}>등록된 능력이 없습니다.</p>
           ) : null}
         </div>
@@ -2937,13 +2940,13 @@ export default function CharacterBasicView({ hero }) {
           <div style={styles.overlaySurface}>
             {(() => {
               const index = Number.parseInt(currentOverlayMode.split('-')[1] || '0', 10)
-              const pair = abilityPairs[index]
-              if (!pair) {
+              const entry = abilityEntries[index]
+              if (!entry) {
                 return <p style={styles.overlayTextBlock}>등록된 능력이 없습니다.</p>
               }
               return (
-                <p key={pair.label} style={styles.overlayTextBlock}>
-                  {`${pair.label}:\n${pair.entries.join('\n')}`}
+                <p key={entry.label} style={styles.overlayTextBlock}>
+                  {`${entry.label}:\n${entry.description}`}
                 </p>
               )
             })()}
