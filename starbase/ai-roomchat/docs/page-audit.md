@@ -124,8 +124,10 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 - 로스터 화면의 공지·캐릭터·프로필 인터랙션에서 iOS 탭 하이라이트를 제거해 파란 번쩍임 없이도 터치 피드백이 매끄럽게 유지됩니다. 캐릭터 상세 페이지의 글로벌 채팅 런처는 조금 더 아래로 내려 시야를 가리지 않도록 하고, 영웅 카드의 최대 폭·비율을 축소해 주인공 이미지가 무대에 비해 덜 부담스럽게 자리 잡습니다. 채팅 오버레이 대화 영역은 배경 투명도를 높여 업로드한 이미지·색상이 또렷하게 보이며, 정보 탭 기본 선택 영웅은 최근 탐색한 캐릭터를 우선시합니다. 능력 단계는 여전히 1~4까지 개별로 노출되며 Supabase 스키마나 RPC는 변경되지 않았습니다.
 - 캐릭터 상세 페이지에서는 게임 통계 바로 아래에 플레이 매칭·베틀 로그 패널을 배치해 하단 오버레이 없이도 선택한 게임을 시작하고 10개 단위로 로그를 확장할 수 있으며, 하단 도크의 플레이 탭은 제거돼 관련 정보가 한 화면에서 이어집니다.
 - 참여한 게임 캐러셀은 화살표 없이 스와이프로만 전환되고 카드가 더 낮은 프로필로 줄어든 대신 역할·순위 배지가 카드 내부에 재배치됐습니다. 탭하면 역할 필터를 지원하는 랭킹 전용 오버레이가 열리고, 하단 플레이 패널은 캐릭터 설명·능력 슬라이드와 좌우 전환돼 능력 정보가 별도 슬라이드에서 유지됩니다.
+- 캐러셀 카드의 세로 폭을 더 줄여 무대 상단 여백을 확보하고, 참여 게임명이 카드 안에서 크게 드러나도록 텍스처/패딩을 재조정했습니다.
 - 캐릭터 메인 카드 폭을 원래 비율로 되돌리고 참여 게임 캐러셀은 현재 선택된 게임명을 별도 캡션으로 표시합니다. 랭킹 오버레이는 화면 전면 고정형으로 바뀌어 1위 영웅 카드·게임 아트·역할별 순위표를 한 번에 보여 주고, 오버레이가 열린 동안에는 기존 브금을 잠시 멈춘 뒤 1위 영웅의 브금을 재생합니다.
 - 브금 설정 탭에 피치 슬라이더(0.5x~1.5x)가 추가돼 재방문 시에도 동일한 속도로 재생되며, 영웅 조회 랭킹에서 사용되는 히어로 조회 데이터에는 배경·설명·브금 메타가 포함됩니다.
+- 캐릭터 화면 매칭 오버레이는 `matchQueueFlow`를 통해 대기열 브로드캐스트를 실시간 구독하고, 비실시간/실시간 모드를 각각 AI 대역 충원·동시 큐잉 전략으로 분기해 페이지를 벗어나지 않고도 큐 참가→방 배정→스테이징 완료를 마무리합니다.
 - Several UI shells (create, roster, maker) defer most logic to component containers; reviewing those components is recommended for full domain context beyond this page-oriented audit.
 - Ensure environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, etc.) are set for server APIs like `finalize-session` to work outside local mocks.【F:pages/api/rank/finalize-session.js†L1-L8】
 
