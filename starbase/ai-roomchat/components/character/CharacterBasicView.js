@@ -337,6 +337,11 @@ const styles = {
     fontSize: 12,
     color: '#cbd5f5',
   },
+  playCarouselCardMetaEmphasis: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: '#f8fafc',
+  },
   playCarouselBadgeRow: {
     display: 'flex',
     gap: 8,
@@ -1829,7 +1834,13 @@ export default function CharacterBasicView({ hero }) {
   }, [currentHero?.id, scoreboardMap])
 
   const formatParticipationMeta = useCallback((entry) => {
-    if (!entry) return '참여 기록 없음'
+    if (!entry) {
+      return {
+        text: '이름 없는 게임',
+        emphasize: true,
+      }
+    }
+
     const parts = []
     if (entry.sessionCount) {
       parts.push(`${entry.sessionCount.toLocaleString('ko-KR')}회 참여`)
@@ -1840,7 +1851,18 @@ export default function CharacterBasicView({ hero }) {
     if (entry.latestSessionAt) {
       parts.push(`최근 ${entry.latestSessionAt}`)
     }
-    return parts.join(' · ') || '참여 기록 없음'
+
+    if (!parts.length) {
+      return {
+        text: entry.game?.name || '이름 없는 게임',
+        emphasize: true,
+      }
+    }
+
+    return {
+      text: parts.join(' · '),
+      emphasize: false,
+    }
   }, [])
 
   const handleIndicatorClick = useCallback(
@@ -3038,6 +3060,7 @@ export default function CharacterBasicView({ hero }) {
                 const imageUrl = entry.game?.cover_url || entry.game?.image_url || null
                 const roleLabel = entry.role && entry.role.trim() ? entry.role.trim() : null
                 const heroRankForEntry = heroRankByGame.get(entry.game_id)
+                const meta = formatParticipationMeta(entry)
                 return (
                   <button
                     key={entry.game_id}
@@ -3055,7 +3078,14 @@ export default function CharacterBasicView({ hero }) {
                     <div style={styles.playCarouselBackdrop(imageUrl)} />
                     <div style={styles.playCarouselContent}>
                       <h4 style={styles.playCarouselCardTitle}>{entry.game?.name || '이름 없는 게임'}</h4>
-                      <p style={styles.playCarouselCardMeta}>{formatParticipationMeta(entry)}</p>
+                      <p
+                        style={{
+                          ...styles.playCarouselCardMeta,
+                          ...(meta.emphasize ? styles.playCarouselCardMetaEmphasis : null),
+                        }}
+                      >
+                        {meta.text}
+                      </p>
                       <div style={styles.playCarouselBadgeRow}>
                         {roleLabel ? <span style={styles.playCarouselBadge}>{roleLabel}</span> : null}
                         {heroRankForEntry ? (
