@@ -94,7 +94,7 @@ const overlayTabs = [
 const styles = {
   stage: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 520,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -102,13 +102,13 @@ const styles = {
   },
   heroCardShell: {
     width: '100%',
-    maxWidth: 500,
+    maxWidth: 460,
     position: 'relative',
   },
   heroCard: {
     position: 'relative',
     width: '100%',
-    paddingTop: '146%',
+    paddingTop: '138%',
     borderRadius: 30,
     overflow: 'hidden',
     border: '1px solid rgba(96,165,250,0.32)',

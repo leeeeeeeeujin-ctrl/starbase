@@ -7,8 +7,8 @@ import ChatOverlay from '@/components/social/ChatOverlay'
 const launcherStyles = {
   wrapper: {
     position: 'fixed',
-    top: 24,
-    right: 24,
+    top: 36,
+    right: 20,
     zIndex: 1400,
     display: 'flex',
     flexDirection: 'column',
@@ -16,9 +16,9 @@ const launcherStyles = {
     alignItems: 'flex-end',
   },
   button: (open) => ({
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     border: '1px solid rgba(148, 163, 184, 0.4)',
     background: open ? 'rgba(59, 130, 246, 0.9)' : 'rgba(15, 23, 42, 0.82)',
     color: open ? '#f8fafc' : '#cbd5f5',
