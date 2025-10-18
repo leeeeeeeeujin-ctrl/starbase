@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { ensureRpc } from '@/modules/arena/rpcClient'
 import { createQueueRealtimeWatcher } from '@/modules/arena/matchQueueFlow'
@@ -218,44 +219,80 @@ const panelStyles = {
 const overlayStyles = {
   root: {
     position: 'fixed',
-    top: 16,
-    left: 16,
-    width: 280,
-    maxWidth: 'calc(100vw - 32px)',
-    borderRadius: 20,
+    top: 18,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    width: 'min(860px, calc(100vw - 32px))',
+    borderRadius: 18,
     border: '1px solid rgba(56,189,248,0.55)',
-    background: 'linear-gradient(180deg, rgba(8,47,73,0.92) 0%, rgba(2,6,23,0.94) 100%)',
+    background: 'linear-gradient(180deg, rgba(8,47,73,0.94) 0%, rgba(2,6,23,0.96) 100%)',
     color: '#e0f2fe',
-    padding: 16,
+    padding: '14px 18px 16px',
     display: 'grid',
-    gap: 10,
-    zIndex: 2200,
-    boxShadow: '0 28px 72px -40px rgba(56,189,248,0.8)',
+    gap: 12,
+    zIndex: 4200,
+    boxShadow: '0 36px 88px -44px rgba(56,189,248,0.85)',
+    pointerEvents: 'auto',
+  },
+  headerRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
+  headingBlock: {
+    display: 'grid',
+    gap: 6,
+    minWidth: 0,
+    flex: '1 1 auto',
   },
   header: {
     margin: 0,
-    fontSize: 15,
-    fontWeight: 700,
+    fontSize: 16,
+    fontWeight: 800,
+    lineHeight: 1.35,
   },
   subheader: {
     margin: 0,
-    fontSize: 12,
+    fontSize: 13,
     color: '#bae6fd',
     lineHeight: 1.6,
   },
-  message: {
+  statusList: {
+    display: 'flex',
+    gap: 18,
+    flexWrap: 'wrap',
     margin: '4px 0 0',
-    fontSize: 12,
-    color: '#bae6fd',
-    lineHeight: 1.6,
   },
-  meta: {
-    margin: '2px 0 0',
-    fontSize: 11,
-    color: 'rgba(148,163,184,0.85)',
+  statusItem: {
+    fontSize: 12,
+    color: 'rgba(186,230,253,0.9)',
+  },
+  toolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  toolButton: {
+    padding: '6px 12px',
+    borderRadius: 999,
+    border: '1px solid rgba(56,189,248,0.6)',
+    background: 'rgba(8,47,73,0.7)',
+    color: '#e0f2fe',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  toolButtonGhost: {
+    border: '1px solid rgba(148,163,184,0.4)',
+    background: 'rgba(15,23,42,0.6)',
+    color: '#cbd5f5',
   },
   error: {
-    margin: '4px 0 0',
+    margin: 0,
     fontSize: 12,
     color: '#fca5a5',
     lineHeight: 1.6,
@@ -297,6 +334,35 @@ const overlayStyles = {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  debugPanel: {
+    borderTop: '1px solid rgba(56,189,248,0.25)',
+    paddingTop: 8,
+    display: 'grid',
+    gap: 8,
+  },
+  debugScroll: {
+    maxHeight: 220,
+    overflowY: 'auto',
+    display: 'grid',
+    gap: 6,
+    paddingRight: 4,
+  },
+  debugEntry: {
+    margin: 0,
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: '#bae6fd',
+    background: 'rgba(15,23,42,0.65)',
+    borderRadius: 10,
+    padding: '6px 10px',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  },
+  debugEmpty: {
+    fontSize: 11,
+    color: 'rgba(186,230,253,0.68)',
+    textAlign: 'center',
+  },
 }
 
 function MatchingOverlay({
@@ -309,6 +375,13 @@ function MatchingOverlay({
   errorMessage,
   sessionId,
   readyExpiresAt,
+  ticketId,
+  ticketStatus,
+  queueMode,
+  debugEntries,
+  debugOpen,
+  onToggleDebug,
+  onClearDebug,
   onCancel,
   onProceed,
 }) {
@@ -358,24 +431,56 @@ function MatchingOverlay({
     sessionMeta.push(`세션 ID: ${sessionId}`)
   }
 
+  const statusLines = [
+    status ? `상태: ${status}` : null,
+    ticketStatus ? `티켓 상태: ${ticketStatus}` : null,
+    ticketId ? `티켓 ID: ${ticketId}` : null,
+    queueMode ? `매칭 모드: ${queueMode === 'realtime' ? '실시간' : '비실시간'}` : null,
+  ].filter(Boolean)
+
   const showProgress = inFlight || ready
   const showCancel = inFlight
   const primaryLabel = ready ? '확인' : failed ? '닫기' : '진행 중'
   const primaryEnabled = ready || failed
 
-  return (
+  const content = (
     <aside style={overlayStyles.root}>
-      <div>
-        <p style={overlayStyles.header}>{headline}</p>
-        <p style={overlayStyles.subheader}>{subline}</p>
-        {ready && sessionMeta.length
-          ? sessionMeta.map((entry) => (
-              <p key={entry} style={overlayStyles.meta}>
-                {entry}
-              </p>
-            ))
-          : null}
-        {failed && errorMessage ? <p style={overlayStyles.error}>{errorMessage}</p> : null}
+      <div style={overlayStyles.headerRow}>
+        <div style={overlayStyles.headingBlock}>
+          <p style={overlayStyles.header}>{headline}</p>
+          <p style={overlayStyles.subheader}>{subline}</p>
+          {statusLines.length ? (
+            <div style={overlayStyles.statusList}>
+              {statusLines.map((line) => (
+                <span key={line} style={overlayStyles.statusItem}>
+                  {line}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {ready && sessionMeta.length
+            ? sessionMeta.map((entry) => (
+                <span key={entry} style={overlayStyles.statusItem}>
+                  {entry}
+                </span>
+              ))
+            : null}
+          {failed && errorMessage ? <p style={overlayStyles.error}>{errorMessage}</p> : null}
+        </div>
+        <div style={overlayStyles.toolbar}>
+          <button type="button" style={overlayStyles.toolButton} onClick={onToggleDebug}>
+            {debugOpen ? '디버그 닫기' : '디버그 열기'}
+          </button>
+          {debugOpen ? (
+            <button
+              type="button"
+              style={{ ...overlayStyles.toolButton, ...overlayStyles.toolButtonGhost }}
+              onClick={onClearDebug}
+            >
+              로그 초기화
+            </button>
+          ) : null}
+        </div>
       </div>
       {showProgress ? (
         <div style={overlayStyles.progressBar}>
@@ -407,8 +512,30 @@ function MatchingOverlay({
           {primaryLabel}
         </button>
       </div>
+      {debugOpen ? (
+        <div style={overlayStyles.debugPanel}>
+          <div style={overlayStyles.debugScroll}>
+            {debugEntries?.length ? (
+              debugEntries.map((entry) => (
+                <p key={entry.key} style={overlayStyles.debugEntry}>
+                  [{entry.time}] {entry.event}
+                  {entry.payload ? `\n${JSON.stringify(entry.payload, null, 2)}` : ''}
+                </p>
+              ))
+            ) : (
+              <p style={overlayStyles.debugEmpty}>현재 수집된 로그가 없습니다.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
     </aside>
   )
+
+  if (typeof document !== 'undefined') {
+    return createPortal(content, document.body)
+  }
+
+  return content
 }
 
 const QUEUE_ID = 'rank-default'
@@ -478,6 +605,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
     ticketStatus: null,
     sessionId: null,
     readyExpiresAt: null,
+    queueMode: null,
   })
   const matchTaskRef = useRef(null)
   const queuePollRef = useRef(null)
@@ -485,6 +613,33 @@ export default function CharacterPlayPanel({ hero, playData }) {
   const queuePollAttemptsRef = useRef(0)
   const stagingInProgressRef = useRef(false)
   const latestTicketRef = useRef(null)
+  const debugEntriesRef = useRef([])
+  const debugIndexRef = useRef(0)
+  const [debugEntries, setDebugEntries] = useState([])
+  const [debugOpen, setDebugOpen] = useState(false)
+
+  const appendDebug = useCallback((event, payload = null) => {
+    const timestamp = new Date()
+    const entry = {
+      key: `${timestamp.getTime()}-${debugIndexRef.current}`,
+      time: timestamp.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      event,
+      payload,
+    }
+    debugIndexRef.current += 1
+    const next = [...debugEntriesRef.current, entry].slice(-80)
+    debugEntriesRef.current = next
+    setDebugEntries(next)
+  }, [])
+
+  const clearDebug = useCallback(() => {
+    debugEntriesRef.current = []
+    setDebugEntries([])
+  }, [])
 
   const heroName = useMemo(() => {
     const raw = hero?.name
@@ -535,7 +690,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
     }
     queuePollAttemptsRef.current = 0
     stagingInProgressRef.current = false
-  }, [])
+    appendDebug('queue:watch-reset')
+  }, [appendDebug])
 
   const stageTicket = useCallback(
     async (ticket) => {
@@ -553,8 +709,19 @@ export default function CharacterPlayPanel({ hero, playData }) {
         ticketId: ticket.id,
       }))
 
+      appendDebug('stage:attempt', {
+        ticketId: ticket.id,
+        roomId: ticket.roomId || null,
+        status: ticket.status || null,
+      })
+
       try {
         const stageResult = await ensureRpc('stage_rank_match', { queue_ticket_id: ticket.id })
+
+        appendDebug('rpc:stage_rank_match', {
+          ticketId: ticket.id,
+          roomId: ticket.roomId || null,
+        })
 
         if (!matchingState.open) {
           stagingInProgressRef.current = false
@@ -571,6 +738,12 @@ export default function CharacterPlayPanel({ hero, playData }) {
           sessionId: stageResult?.session_id || null,
           readyExpiresAt: stageResult?.ready_expires_at || null,
         }))
+
+        appendDebug('stage:ready', {
+          ticketId: ticket.id,
+          sessionId: stageResult?.session_id || null,
+          readyExpiresAt: stageResult?.ready_expires_at || null,
+        })
 
         if (typeof refreshParticipations === 'function') {
           try {
@@ -592,6 +765,10 @@ export default function CharacterPlayPanel({ hero, playData }) {
             message: '방 정보를 기다리는 중입니다…',
             error: '',
           }))
+          appendDebug('stage:awaiting-room', {
+            ticketId: ticket.id,
+            detail,
+          })
           return
         }
 
@@ -601,7 +778,10 @@ export default function CharacterPlayPanel({ hero, playData }) {
             ? error
             : '매칭을 준비하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.')
 
-        setMatchingState({
+        appendDebug('stage:error', { ticketId: ticket.id, error: friendly })
+
+        setMatchingState((prev) => ({
+          ...prev,
           open: true,
           phase: 'error',
           progress: 0,
@@ -611,20 +791,26 @@ export default function CharacterPlayPanel({ hero, playData }) {
           ticketStatus: null,
           sessionId: null,
           readyExpiresAt: null,
-        })
+        }))
 
         clearQueueWatch()
       } finally {
         stagingInProgressRef.current = false
       }
     },
-    [clearQueueWatch, matchingState.open, refreshParticipations],
+    [appendDebug, clearQueueWatch, matchingState.open, refreshParticipations],
   )
 
   const processTicketUpdate = useCallback(
     (ticket) => {
       if (!ticket) return
       latestTicketRef.current = ticket
+
+      appendDebug('queue:update', {
+        ticketId: ticket.id || null,
+        status: ticket.status || null,
+        roomId: ticket.roomId || null,
+      })
 
       setMatchingState((prev) => {
         const nextState = { ...prev }
@@ -650,7 +836,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         stageTicket(ticket)
       }
     },
-    [stageTicket],
+    [appendDebug, stageTicket],
   )
 
   const startQueueRealtime = useCallback(
@@ -661,6 +847,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
         queueRealtimeRef.current.stop?.()
         queueRealtimeRef.current = null
       }
+
+      appendDebug('queue:watch-start', { queueId, ticketId })
 
       const watcher = createQueueRealtimeWatcher({
         queueId,
@@ -676,7 +864,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
       watcher.start?.()
       queueRealtimeRef.current = watcher
     },
-    [processTicketUpdate],
+    [appendDebug, processTicketUpdate],
   )
 
   useEffect(() => {
@@ -691,6 +879,11 @@ export default function CharacterPlayPanel({ hero, playData }) {
       if (cancelled) return
       queuePollAttemptsRef.current += 1
 
+      appendDebug('queue:poll', {
+        attempt: queuePollAttemptsRef.current,
+        ticketId: matchingState.ticketId,
+      })
+
       let data
       try {
         data = await ensureRpc('fetch_rank_queue_ticket', {
@@ -700,8 +893,10 @@ export default function CharacterPlayPanel({ hero, playData }) {
         if (cancelled) return
         const code = error?.code || error?.message || error?.details || ''
         const normalized = typeof code === 'string' ? code.toLowerCase() : ''
+        appendDebug('queue:poll-error', { attempt: queuePollAttemptsRef.current, code })
         if (normalized.includes('queue_ticket_not_found')) {
-          setMatchingState({
+          setMatchingState((prev) => ({
+            ...prev,
             open: true,
             phase: 'error',
             progress: 0,
@@ -711,7 +906,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
             ticketStatus: null,
             sessionId: null,
             readyExpiresAt: null,
-          })
+          }))
           clearQueueWatch()
           cancelled = true
         }
@@ -726,7 +921,9 @@ export default function CharacterPlayPanel({ hero, playData }) {
       processTicketUpdate(ticket)
 
       if (!ticket.roomId && queuePollAttemptsRef.current >= QUEUE_POLL_LIMIT) {
-        setMatchingState({
+        appendDebug('queue:poll-timeout', { attempts: queuePollAttemptsRef.current })
+        setMatchingState((prev) => ({
+          ...prev,
           open: true,
           phase: 'error',
           progress: 0,
@@ -736,7 +933,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
           ticketStatus: null,
           sessionId: null,
           readyExpiresAt: null,
-        })
+        }))
 
         clearQueueWatch()
         cancelled = true
@@ -754,7 +951,14 @@ export default function CharacterPlayPanel({ hero, playData }) {
         queuePollRef.current = null
       }
     }
-  }, [matchingState.open, matchingState.ticketId, matchingState.phase, processTicketUpdate, clearQueueWatch])
+  }, [
+    appendDebug,
+    matchingState.open,
+    matchingState.ticketId,
+    matchingState.phase,
+    processTicketUpdate,
+    clearQueueWatch,
+  ])
 
   const resetMatchingState = useCallback(() => {
     clearQueueWatch()
@@ -769,8 +973,10 @@ export default function CharacterPlayPanel({ hero, playData }) {
       ticketStatus: null,
       sessionId: null,
       readyExpiresAt: null,
+      queueMode: null,
     })
-  }, [clearQueueWatch])
+    appendDebug('overlay:reset')
+  }, [appendDebug, clearQueueWatch])
 
   const handleCancelMatching = useCallback(async () => {
     if (matchTaskRef.current) {
@@ -782,19 +988,22 @@ export default function CharacterPlayPanel({ hero, playData }) {
     if (activeTicketId) {
       try {
         await ensureRpc('cancel_rank_queue_ticket', { queue_ticket_id: activeTicketId })
+        appendDebug('queue:cancel', { ticketId: activeTicketId })
       } catch (error) {
         console.warn('[CharacterPlayPanel] 매칭 취소 RPC 실패:', error)
+        appendDebug('queue:cancel-error', { ticketId: activeTicketId, error: error?.message || String(error) })
       }
     }
 
     resetMatchingState()
-  }, [matchingState.ticketId, resetMatchingState])
+  }, [appendDebug, matchingState.ticketId, resetMatchingState])
 
   useEffect(() => () => clearQueueWatch(), [clearQueueWatch])
 
   const handleProceedMatching = useCallback(() => {
+    appendDebug('overlay:confirm', { phase: matchingState.phase })
     resetMatchingState()
-  }, [resetMatchingState])
+  }, [appendDebug, matchingState.phase, resetMatchingState])
 
   const runAutoMatch = useCallback(async () => {
     if (!selectedGameId) {
@@ -821,6 +1030,13 @@ export default function CharacterPlayPanel({ hero, playData }) {
       ? '실시간 매칭 대기열에 참가했습니다.'
       : '비실시간 매칭 준비를 시작했어요.'
 
+    appendDebug('queue:start', {
+      heroId: hero.id,
+      gameId: selectedGameId,
+      role: roleLabel,
+      realtime: realtimeEnabled,
+    })
+
     clearQueueWatch()
     setMatchingState({
       open: true,
@@ -832,6 +1048,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
       ticketStatus: null,
       sessionId: null,
       readyExpiresAt: null,
+      queueMode: realtimeEnabled ? 'realtime' : 'async',
     })
 
     matchTaskRef.current = { cancelled: false }
@@ -891,6 +1108,14 @@ export default function CharacterPlayPanel({ hero, playData }) {
         payload.properties = properties
       }
 
+      appendDebug('rpc:join_rank_queue', {
+        queueId: QUEUE_ID,
+        heroId: hero.id,
+        gameId: selectedGameId,
+        role: roleLabel,
+        realtimeMode,
+        queueMode: realtimeEnabled ? 'realtime' : 'async',
+      })
       const ticket = await ensureRpc('join_rank_queue', { queue_id: QUEUE_ID, payload })
       const normalizedTicket = normalizeQueueTicket(ticket)
       if (!normalizedTicket?.id) {
@@ -898,6 +1123,11 @@ export default function CharacterPlayPanel({ hero, playData }) {
       }
 
       latestTicketRef.current = normalizedTicket
+      appendDebug('queue:ticket-acquired', {
+        ticketId: normalizedTicket.id,
+        status: normalizedTicket.status || null,
+        roomId: normalizedTicket.roomId || null,
+      })
       setMatchingState((prev) => ({
         ...prev,
         phase:
@@ -915,7 +1145,9 @@ export default function CharacterPlayPanel({ hero, playData }) {
     } catch (error) {
       const friendlyError =
         error?.message || error?.details || (typeof error === 'string' ? error : '매칭 중 오류가 발생했습니다.')
-      setMatchingState({
+      appendDebug('queue:error', { stage: 'join', error: friendlyError })
+      setMatchingState((prev) => ({
+        ...prev,
         open: true,
         phase: 'error',
         progress: 0,
@@ -925,11 +1157,12 @@ export default function CharacterPlayPanel({ hero, playData }) {
         ticketStatus: null,
         sessionId: null,
         readyExpiresAt: null,
-      })
+      }))
     } finally {
       matchTaskRef.current = null
     }
   }, [
+    appendDebug,
     clearQueueWatch,
     hero?.id,
     hero?.owner_id,
@@ -1044,6 +1277,13 @@ export default function CharacterPlayPanel({ hero, playData }) {
         errorMessage={matchingState.error}
         sessionId={matchingState.sessionId}
         readyExpiresAt={matchingState.readyExpiresAt}
+        ticketId={matchingState.ticketId}
+        ticketStatus={matchingState.ticketStatus}
+        queueMode={matchingState.queueMode}
+        debugEntries={debugEntries}
+        debugOpen={debugOpen}
+        onToggleDebug={() => setDebugOpen((prev) => !prev)}
+        onClearDebug={clearDebug}
         onCancel={handleCancelMatching}
         onProceed={handleProceedMatching}
       />
