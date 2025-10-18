@@ -69,6 +69,8 @@ export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
           color: '#e2e8f0',
           fontWeight: 700,
           letterSpacing: 0.4,
+          WebkitTapHighlightColor: 'transparent',
+          touchAction: 'manipulation',
         }}
         aria-label="프로필 메뉴"
       >

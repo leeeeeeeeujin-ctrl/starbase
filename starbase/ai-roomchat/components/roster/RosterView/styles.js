@@ -102,6 +102,8 @@ const styles = {
     letterSpacing: '0.12em',
     textTransform: 'uppercase',
     cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
   },
   noticeToggle: {
     padding: '4px 10px',
@@ -114,6 +116,8 @@ const styles = {
     letterSpacing: '0.1em',
     textTransform: 'uppercase',
     cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
   },
   noticeButtonDisabled: {
     opacity: 0.55,
@@ -259,6 +263,8 @@ const styles = {
     transition: 'transform 0.22s ease, box-shadow 0.22s ease',
     boxShadow: '0 30px 70px -58px rgba(59,130,246,0.75)',
     aspectRatio: '2 / 1',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
   },
   heroButtonContent: {
     position: 'relative',
@@ -321,6 +327,8 @@ const styles = {
     cursor: 'pointer',
     transition: 'border-color 0.2s ease, color 0.2s ease',
     width: '100%',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
   },
   statusBox: {
     borderRadius: 20,
@@ -341,6 +349,8 @@ const styles = {
     color: '#e0f2fe',
     fontWeight: 600,
     cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
   },
 }
 
