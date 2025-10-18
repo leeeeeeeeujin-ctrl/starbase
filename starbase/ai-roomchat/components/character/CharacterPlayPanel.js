@@ -524,6 +524,19 @@ export default function CharacterPlayPanel({ hero, playData }) {
     }
   }, [matchingState.open, matchingState.phase])
 
+  const clearQueueWatch = useCallback(() => {
+    if (queuePollRef.current) {
+      clearInterval(queuePollRef.current)
+      queuePollRef.current = null
+    }
+    if (queueRealtimeRef.current) {
+      queueRealtimeRef.current.stop?.()
+      queueRealtimeRef.current = null
+    }
+    queuePollAttemptsRef.current = 0
+    stagingInProgressRef.current = false
+  }, [])
+
   const stageTicket = useCallback(
     async (ticket) => {
       if (!ticket?.id) return
@@ -742,19 +755,6 @@ export default function CharacterPlayPanel({ hero, playData }) {
       }
     }
   }, [matchingState.open, matchingState.ticketId, matchingState.phase, processTicketUpdate, clearQueueWatch])
-
-  const clearQueueWatch = useCallback(() => {
-    if (queuePollRef.current) {
-      clearInterval(queuePollRef.current)
-      queuePollRef.current = null
-    }
-    if (queueRealtimeRef.current) {
-      queueRealtimeRef.current.stop?.()
-      queueRealtimeRef.current = null
-    }
-    queuePollAttemptsRef.current = 0
-    stagingInProgressRef.current = false
-  }, [])
 
   const resetMatchingState = useCallback(() => {
     clearQueueWatch()
