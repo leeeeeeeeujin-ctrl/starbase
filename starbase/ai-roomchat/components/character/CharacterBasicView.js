@@ -1,17 +1,28 @@
-'use client'
+"use client"
 
 import Link from 'next/link'
-import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/router'
 
 import { supabase } from '@/lib/supabase'
 import { withTable } from '@/lib/supabaseTables'
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 import { sanitizeFileName } from '@/utils/characterAssets'
+import CharacterPlayPanel from './CharacterPlayPanel'
+import useHeroParticipations from '@/hooks/character/useHeroParticipations'
+import useHeroBattles from '@/hooks/character/useHeroBattles'
+import { formatPlayNumber, formatPlayWinRate } from '@/utils/characterPlayFormatting'
 import {
   clearSharedBackgroundUrl,
   writeSharedBackgroundUrl,
 } from '@/hooks/shared/useSharedPromptSetStorage'
+import TabBar from '@/components/lobby/TabBar'
+import GameSearchPanel from '@/components/lobby/GameSearchPanel'
+import MyGamesPanel from '@/components/lobby/MyGamesPanel'
+import CharacterStatsPanel from '@/components/lobby/CharacterStatsPanel'
+import useGameBrowser from '@/components/lobby/hooks/useGameBrowser'
+import useLobbyStats from '@/components/lobby/hooks/useLobbyStats'
+import { LOBBY_TABS } from '@/components/lobby/constants'
 
 const DEFAULT_HERO_NAME = '이름 없는 영웅'
 const DEFAULT_DESCRIPTION =
@@ -72,17 +83,12 @@ const pageStyles = {
 
 const overlayTabs = [
   { key: 'character', label: '캐릭터' },
+  { key: 'play', label: '플레이' },
   { key: 'search', label: '게임 검색' },
   { key: 'create', label: '게임 제작' },
   { key: 'register', label: '게임 등록' },
   { key: 'ranking', label: '랭킹' },
   { key: 'settings', label: '설정' },
-]
-
-const searchSortOptions = [
-  { key: 'latest', label: '최신순' },
-  { key: 'likes', label: '좋아요' },
-  { key: 'plays', label: '게임횟수' },
 ]
 
 const styles = {
@@ -92,17 +98,17 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 16,
+    gap: 18,
   },
   heroCardShell: {
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 500,
     position: 'relative',
   },
   heroCard: {
     position: 'relative',
     width: '100%',
-    paddingTop: '160%',
+    paddingTop: '146%',
     borderRadius: 30,
     overflow: 'hidden',
     border: '1px solid rgba(96,165,250,0.32)',
@@ -199,6 +205,396 @@ const styles = {
     height: 4,
     borderRadius: '50%',
     background: 'rgba(226,232,240,0.78)',
+  },
+  edgePanel: (side, open) => ({
+    position: 'fixed',
+    inset: 0,
+    width: '100%',
+    maxWidth: '100%',
+    left: 0,
+    right: 0,
+    transform:
+      side === 'left'
+        ? open
+          ? 'translateX(0)'
+          : 'translateX(-100%)'
+        : open
+          ? 'translateX(0)'
+          : 'translateX(100%)',
+    transition: 'transform 0.32s ease',
+    zIndex: 60,
+    pointerEvents: open ? 'auto' : 'none',
+    display: 'flex',
+    alignItems: 'stretch',
+    justifyContent: 'stretch',
+    background: 'rgba(2,6,23,0.96)',
+  }),
+  edgePanelCard: {
+    flex: 1,
+    background: 'linear-gradient(180deg, rgba(2,6,23,0.94) 0%, rgba(15,23,42,0.92) 55%, rgba(15,23,42,0.98) 100%)',
+    borderRadius: 0,
+    padding: '30px 24px 36px',
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+    overflowY: 'auto',
+    color: '#e2e8f0',
+  },
+  edgePanelHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  edgePanelTitle: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: '-0.02em',
+    color: '#f8fafc',
+  },
+  edgePanelSubtitle: {
+    margin: 0,
+    fontSize: 13,
+    color: 'rgba(186,230,253,0.88)',
+  },
+  edgePanelClose: {
+    appearance: 'none',
+    border: '1px solid rgba(148,163,184,0.45)',
+    borderRadius: 999,
+    padding: '6px 12px',
+    fontSize: 12,
+    fontWeight: 700,
+    background: 'rgba(30,41,59,0.62)',
+    color: '#e2e8f0',
+    cursor: 'pointer',
+  },
+  edgePanelBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 24,
+  },
+  fullPanelCard: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    background:
+      'linear-gradient(180deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 50%, rgba(15,23,42,0.96) 100%)',
+    color: '#e2e8f0',
+    padding: '28px 20px 32px',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+  },
+  fullPanelHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  fullPanelTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 800,
+    letterSpacing: '-0.02em',
+  },
+  fullPanelSubtitle: {
+    margin: 0,
+    fontSize: 13,
+    color: 'rgba(148,163,184,0.88)',
+  },
+  fullPanelClose: {
+    appearance: 'none',
+    border: '1px solid rgba(148,163,184,0.4)',
+    borderRadius: 999,
+    padding: '6px 14px',
+    fontSize: 12,
+    fontWeight: 700,
+    background: 'rgba(30,41,59,0.6)',
+    color: '#f8fafc',
+    cursor: 'pointer',
+  },
+  fullPanelTabs: {
+    marginTop: 20,
+  },
+  fullPanelBody: {
+    marginTop: 24,
+    flex: 1,
+    overflowY: 'auto',
+    display: 'grid',
+    gap: 18,
+    paddingBottom: 24,
+  },
+  edgeEmptyState: {
+    padding: '18px 16px',
+    borderRadius: 16,
+    border: '1px dashed rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.58)',
+    fontSize: 13,
+    color: '#cbd5f5',
+    textAlign: 'center',
+  },
+  edgePanelStatsGrid: {
+    display: 'grid',
+    gap: 12,
+  },
+  edgePanelStatCard: {
+    borderRadius: 16,
+    border: '1px solid rgba(96,165,250,0.32)',
+    background: 'rgba(15,23,42,0.72)',
+    padding: '12px 14px',
+    display: 'grid',
+    gap: 6,
+  },
+  edgePanelStatLabel: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  edgePanelStatValue: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+  },
+  edgePanelStatMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.78)',
+  },
+  edgePanelScoreboard: {
+    display: 'grid',
+    gap: 10,
+  },
+  edgePanelScoreboardRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '10px 12px',
+    borderRadius: 14,
+    background: 'rgba(30,41,59,0.72)',
+    border: '1px solid rgba(51,65,85,0.6)',
+  },
+  edgePanelScoreAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    overflow: 'hidden',
+    background: 'rgba(15,23,42,0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 700,
+    fontSize: 14,
+    color: '#38bdf8',
+  },
+  edgePanelScoreInfo: {
+    flex: 1,
+    display: 'grid',
+    gap: 4,
+  },
+  edgePanelScoreName: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  edgePanelScoreMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  edgePanelSection: {
+    display: 'grid',
+    gap: 14,
+  },
+  edgePanelHistoryList: {
+    display: 'grid',
+    gap: 10,
+  },
+  edgePanelHistoryCard: {
+    borderRadius: 16,
+    border: '1px solid rgba(71,85,105,0.6)',
+    background: 'rgba(15,23,42,0.7)',
+    padding: 14,
+    display: 'grid',
+    gap: 6,
+  },
+  edgePanelHistoryHeader: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  edgePanelHistoryOutcome: (outcome) => ({
+    fontWeight: 700,
+    color: outcome === '승리' ? '#34d399' : outcome === '패배' ? '#f87171' : '#fde68a',
+  }),
+  edgePanelActionRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
+  edgePanelLinkButton: {
+    appearance: 'none',
+    borderRadius: 12,
+    padding: '8px 14px',
+    background: 'linear-gradient(135deg, #38bdf8 0%, #22d3ee 100%)',
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: 700,
+    textDecoration: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playSliderSection: {
+    width: '100%',
+    display: 'grid',
+    gap: 10,
+  },
+  playSliderHeader: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  playSliderTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+  },
+  playSliderMeta: {
+    margin: 0,
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  playSliderTrack: {
+    display: 'flex',
+    gap: 12,
+    width: '100%',
+    overflowX: 'auto',
+    padding: '4px 4px 4px 0',
+    scrollbarWidth: 'thin',
+  },
+  playSliderCard: {
+    position: 'relative',
+    width: 180,
+    minHeight: 108,
+    borderRadius: 18,
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.7)',
+    color: '#f8fafc',
+    padding: 14,
+    display: 'grid',
+    gap: 6,
+    textAlign: 'left',
+    cursor: 'pointer',
+    transition: 'transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease',
+  },
+  playSliderCardActive: {
+    transform: 'translateY(-6px)',
+    borderColor: 'rgba(56,189,248,0.7)',
+    boxShadow: '0 20px 44px -24px rgba(56,189,248,0.7)',
+  },
+  playSliderBackground: (imageUrl) => ({
+    position: 'absolute',
+    inset: 0,
+    borderRadius: 18,
+    backgroundImage: imageUrl
+      ? `linear-gradient(180deg, rgba(2,6,23,0.2) 0%, rgba(2,6,23,0.85) 95%), url(${imageUrl})`
+      : 'linear-gradient(180deg, rgba(2,6,23,0.4) 0%, rgba(2,6,23,0.85) 95%)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    filter: imageUrl ? 'saturate(1.15)' : 'none',
+  }),
+  playSliderContent: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'grid',
+    gap: 4,
+  },
+  playSliderGameName: {
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 700,
+    lineHeight: 1.4,
+  },
+  playSliderGameMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  playSliderEmpty: {
+    padding: '16px 14px',
+    borderRadius: 16,
+    border: '1px dashed rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.55)',
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  playSliderActionRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  playSliderActionButton: {
+    padding: '8px 16px',
+    borderRadius: 999,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.72)',
+    color: '#e2e8f0',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  playStatsSection: {
+    width: '100%',
+    display: 'grid',
+    gap: 12,
+  },
+  playStatsHeader: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  playStatsTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+  },
+  playStatsSubtitle: {
+    margin: 0,
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  playStatsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: 14,
+  },
+  playStatCard: {
+    borderRadius: 18,
+    border: '1px solid rgba(59,130,246,0.28)',
+    background: 'rgba(15,23,42,0.68)',
+    padding: 16,
+    display: 'grid',
+    gap: 6,
+  },
+  playStatLabel: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  playStatValue: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+  },
+  playStatMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#94a3b8',
   },
   dock: {
     width: '100%',
@@ -780,6 +1176,8 @@ export default function CharacterBasicView({ hero }) {
     setCurrentHero(hero || null)
   }, [hero])
 
+  const heroIdKey = useMemo(() => (currentHero?.id ? String(currentHero.id) : null), [currentHero?.id])
+
   const heroName = useMemo(() => {
     if (!currentHero) return DEFAULT_HERO_NAME
     const trimmed = typeof currentHero.name === 'string' ? currentHero.name.trim() : ''
@@ -807,15 +1205,6 @@ export default function CharacterBasicView({ hero }) {
     ].filter((pair) => pair.entries.length > 0)
   }, [currentHero])
 
-  const handleOpenRoomSearch = useCallback(() => {
-    const heroId = currentHero?.id
-    if (heroId) {
-      router.push({ pathname: '/match', query: { hero: heroId } })
-      return
-    }
-    router.push('/match')
-  }, [currentHero?.id, router])
-
   const [viewMode, setViewMode] = useState(0)
   const [activeTab, setActiveTab] = useState(0)
   const [playerCollapsed, setPlayerCollapsed] = useState(true)
@@ -834,8 +1223,92 @@ export default function CharacterBasicView({ hero }) {
   const [bgmError, setBgmError] = useState('')
   const [bgmCleared, setBgmCleared] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [searchSort, setSearchSort] = useState('latest')
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false)
+  const [rightPanelOpen, setRightPanelOpen] = useState(false)
+  const [leftTab, setLeftTab] = useState('games')
+
+  const participationState = useHeroParticipations({ hero: currentHero })
+  const battleState = useHeroBattles({ hero: currentHero, selectedGameId: participationState.selectedGameId })
+
+  const publicGameBrowser = useGameBrowser({ enabled: leftPanelOpen && leftTab === 'games', mode: 'public' })
+  const ownedGameBrowser = useGameBrowser({ enabled: leftPanelOpen && leftTab === 'my-games', mode: 'owned' })
+  const lobbyStats = useLobbyStats({
+    heroId: currentHero?.id,
+    enabled: leftPanelOpen && leftTab === 'stats',
+  })
+
+  const {
+    loading: participationLoading,
+    error: participationError,
+    participations,
+    selectedEntry,
+    selectedGame,
+    selectedGameId,
+    selectedScoreboard,
+    heroLookup,
+    setSelectedGameId,
+    refresh: refreshParticipations,
+  } = participationState
+
+  const {
+    battleDetails,
+    battleSummary,
+    visibleBattles,
+    loading: battleLoading,
+    error: battleError,
+    showMore: showMoreBattles,
+  } = battleState
+
+  const featuredParticipations = useMemo(
+    () => participations.slice(0, 4),
+    [participations],
+  )
+
+  const currentRole = selectedEntry?.role || '슬롯 정보 없음'
+
+  const heroRank = useMemo(() => {
+    if (!Array.isArray(selectedScoreboard) || !currentHero?.id) return null
+    const index = selectedScoreboard.findIndex((row) => row?.hero_id === currentHero.id)
+    return index >= 0 ? index + 1 : null
+  }, [selectedScoreboard, currentHero?.id])
+
+  const heroScore = useMemo(() => {
+    if (selectedEntry?.score != null) return selectedEntry.score
+    if (!Array.isArray(selectedScoreboard) || !currentHero?.id) return null
+    const row = selectedScoreboard.find((item) => item?.hero_id === currentHero.id)
+    return row?.score ?? row?.rating ?? null
+  }, [selectedEntry?.score, selectedScoreboard, currentHero?.id])
+
+  const matchCount = useMemo(() => {
+    if (battleSummary?.total != null) return battleSummary.total
+    if (selectedEntry?.sessionCount != null) return selectedEntry.sessionCount
+    return null
+  }, [battleSummary?.total, selectedEntry?.sessionCount])
+
+  const scoreboardRows = useMemo(() => {
+    if (!Array.isArray(selectedScoreboard)) return []
+    return selectedScoreboard.map((row, index) => {
+      const heroEntry = row?.hero_id ? heroLookup?.[row.hero_id] : null
+      const heroName =
+        (heroEntry?.name && heroEntry.name.trim()) ||
+        (row?.role && row.role.trim()) ||
+        (row?.slot_no != null ? `슬롯 ${row.slot_no + 1}` : `참가자 ${index + 1}`)
+
+      const roleLabel = row?.role && row.role.trim() ? row.role.trim() : null
+
+      return {
+        key:
+          row?.id ||
+          (row?.hero_id ? `hero-${row.hero_id}` : row?.slot_no != null ? `slot-${row.slot_no}` : `row-${index}`),
+        heroName,
+        roleLabel,
+        score: Number.isFinite(Number(row?.score)) ? Number(row.score) : null,
+        rating: Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null,
+        battles: Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null,
+        imageUrl: heroEntry?.image_url || null,
+      }
+    })
+  }, [heroLookup, selectedScoreboard])
 
   const audioManager = useMemo(() => getHeroAudioManager(), [])
   const [audioState, setAudioState] = useState(() => audioManager.getState())
@@ -860,6 +1333,7 @@ export default function CharacterBasicView({ hero }) {
   const imageObjectUrlRef = useRef(null)
   const backgroundObjectUrlRef = useRef(null)
   const lastLoadedHeroKeyRef = useRef(null)
+  const swipeGestureRef = useRef(null)
 
   useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
 
@@ -905,6 +1379,75 @@ export default function CharacterBasicView({ hero }) {
       console.error(error)
     }
   }, [audioManager])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const threshold = 60
+    const edgeLimit = 36
+
+    const handleTouchStart = (event) => {
+      if (!event.touches || event.touches.length === 0) return
+      const touch = event.touches[0]
+      if (!touch) return
+
+      const viewportWidth = window.innerWidth || 0
+      const panelGuard = Math.max(180, viewportWidth * 0.5)
+      const startX = touch.clientX
+
+      let intent = null
+      if (startX <= edgeLimit) {
+        intent = 'left-open'
+      } else if (startX >= viewportWidth - edgeLimit) {
+        intent = 'right-open'
+      } else if (leftPanelOpen && startX <= Math.min(viewportWidth * 0.4, panelGuard)) {
+        intent = 'left-close'
+      } else if (
+        rightPanelOpen &&
+        startX >= Math.max(viewportWidth * 0.6, viewportWidth - panelGuard)
+      ) {
+        intent = 'right-close'
+      }
+
+      if (intent) {
+        swipeGestureRef.current = { side: intent, startX }
+      } else {
+        swipeGestureRef.current = null
+      }
+    }
+
+    const handleTouchEnd = (event) => {
+      const context = swipeGestureRef.current
+      swipeGestureRef.current = null
+      if (!context || !event.changedTouches || event.changedTouches.length === 0) return
+
+      const touch = event.changedTouches[0]
+      if (!touch) return
+      const deltaX = touch.clientX - context.startX
+
+      if (context.side === 'left-open' && deltaX > threshold) {
+        setLeftPanelOpen(true)
+        setRightPanelOpen(false)
+      } else if (context.side === 'left-close' && deltaX < -threshold) {
+        setLeftPanelOpen(false)
+      } else if (context.side === 'right-open' && deltaX < -threshold) {
+        if (selectedGameId) {
+          setRightPanelOpen(true)
+          setLeftPanelOpen(false)
+        }
+      } else if (context.side === 'right-close' && deltaX > threshold) {
+        setRightPanelOpen(false)
+      }
+    }
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchend', handleTouchEnd)
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [leftPanelOpen, rightPanelOpen, selectedGameId])
 
   useEffect(() => {
     const payload = {
@@ -1421,68 +1964,6 @@ export default function CharacterBasicView({ hero }) {
     }
   }
 
-  const sampleGames = useMemo(
-    () => [
-      {
-        id: 'g-1',
-        title: '시간의 미궁',
-        tags: ['추리', '협동'],
-        players: 6,
-        likes: 128,
-        plays: 412,
-        createdAt: new Date('2024-04-12').getTime(),
-      },
-      {
-        id: 'g-2',
-        title: '하늘섬 레이드',
-        tags: ['레이드', '전략'],
-        players: 8,
-        likes: 256,
-        plays: 689,
-        createdAt: new Date('2024-05-08').getTime(),
-      },
-      {
-        id: 'g-3',
-        title: '은하 결투장',
-        tags: ['PvP', '실시간'],
-        players: 10,
-        likes: 92,
-        plays: 533,
-        createdAt: new Date('2024-03-30').getTime(),
-      },
-      {
-        id: 'g-4',
-        title: '꿈의 정원',
-        tags: ['힐링', '건설'],
-        players: 4,
-        likes: 64,
-        plays: 188,
-        createdAt: new Date('2024-05-20').getTime(),
-      },
-    ],
-    [],
-  )
-
-  const filteredGames = useMemo(() => {
-    const trimmed = searchTerm.trim().toLowerCase()
-    const base = !trimmed
-      ? sampleGames
-      : sampleGames.filter((game) => {
-          const target = `${game.title} ${game.tags.join(' ')}`.toLowerCase()
-          return target.includes(trimmed)
-        })
-
-    const sorted = [...base]
-    if (searchSort === 'latest') {
-      sorted.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-    } else if (searchSort === 'likes') {
-      sorted.sort((a, b) => (b.likes || 0) - (a.likes || 0))
-    } else if (searchSort === 'plays') {
-      sorted.sort((a, b) => (b.plays || 0) - (a.plays || 0))
-    }
-    return sorted
-  }, [sampleGames, searchTerm, searchSort])
-
   const rankingEntries = useMemo(
     () => [
       { id: 'r-1', name: '아크메이지', score: 9820 },
@@ -1523,7 +2004,40 @@ export default function CharacterBasicView({ hero }) {
   const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
   const progressRatio = duration ? progress / duration : 0
 
+  const playPanelData = useMemo(
+    () => ({
+      selectedEntry,
+      selectedGame,
+      selectedGameId,
+      battleDetails,
+      battleSummary,
+      visibleBattles,
+      battleLoading,
+      battleError,
+      showMoreBattles,
+    }),
+    [
+      selectedEntry,
+      selectedGame,
+      selectedGameId,
+      battleDetails,
+      battleSummary,
+      visibleBattles,
+      battleLoading,
+      battleError,
+      showMoreBattles,
+    ],
+  )
+
   const overlayBody = (() => {
+    if (activeTabKey === 'play') {
+      return (
+        <div style={styles.tabContent}>
+          <CharacterPlayPanel hero={hero} playData={playPanelData} />
+        </div>
+      )
+    }
+
     if (activeTabKey === 'search') {
       return (
         <div style={styles.tabContent}>
@@ -1980,6 +2494,406 @@ export default function CharacterBasicView({ hero }) {
     )
   })()
 
+  const playSliderSection = (
+    <section style={styles.playSliderSection}>
+      <div style={styles.playSliderHeader}>
+        <h3 style={styles.playSliderTitle}>참여한 게임</h3>
+        <p style={styles.playSliderMeta}>{currentRole}</p>
+      </div>
+      {participationLoading ? (
+        <div style={styles.playSliderEmpty}>참여한 게임을 불러오는 중입니다…</div>
+      ) : participationError ? (
+        <div>
+          <div style={styles.playSliderEmpty}>{participationError}</div>
+          <div style={styles.playSliderActionRow}>
+            <button type="button" style={styles.playSliderActionButton} onClick={refreshParticipations}>
+              다시 시도
+            </button>
+          </div>
+        </div>
+      ) : featuredParticipations.length ? (
+        <div style={styles.playSliderTrack}>
+          {featuredParticipations.map((entry) => {
+            const active = entry.game_id === selectedGameId
+            const backgroundImage = entry.game?.cover_url || entry.game?.image_url || null
+            return (
+              <button
+                key={entry.game_id}
+                type="button"
+                onClick={() => setSelectedGameId(entry.game_id)}
+                style={{
+                  ...styles.playSliderCard,
+                  ...(active ? styles.playSliderCardActive : {}),
+                }}
+              >
+                <div style={styles.playSliderBackground(backgroundImage)} />
+                <div style={styles.playSliderContent}>
+                  <h4 style={styles.playSliderGameName}>{entry.game?.name || '이름 없는 게임'}</h4>
+                  <p style={styles.playSliderGameMeta}>
+                    {entry.sessionCount ? `${entry.sessionCount.toLocaleString('ko-KR')}회 참여` : '기록 없음'}
+                  </p>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={styles.playSliderEmpty}>아직 이 캐릭터가 참여한 게임이 없습니다.</div>
+      )}
+    </section>
+  )
+
+  const playStatsSection = (
+    <section style={styles.playStatsSection}>
+      <div style={styles.playStatsHeader}>
+        <h3 style={styles.playStatsTitle}>선택한 게임 통계</h3>
+        {selectedGame ? <p style={styles.playStatsSubtitle}>{selectedGame.name}</p> : null}
+      </div>
+      <div style={styles.playStatsGrid}>
+        <div style={styles.playStatCard}>
+          <p style={styles.playStatLabel}>랭킹</p>
+          <p style={styles.playStatValue}>{heroRank ? `#${heroRank}` : '—'}</p>
+          <p style={styles.playStatMeta}>참가자 대비 현재 순위</p>
+        </div>
+        <div style={styles.playStatCard}>
+          <p style={styles.playStatLabel}>스코어</p>
+          <p style={styles.playStatValue}>{formatPlayNumber(heroScore)}</p>
+          <p style={styles.playStatMeta}>최근 기록된 전투 점수</p>
+        </div>
+        <div style={styles.playStatCard}>
+          <p style={styles.playStatLabel}>승률</p>
+          <p style={styles.playStatValue}>{formatPlayWinRate(battleSummary)}</p>
+          <p style={styles.playStatMeta}>최근 40판 기준</p>
+        </div>
+        <div style={styles.playStatCard}>
+          <p style={styles.playStatLabel}>전투 수</p>
+          <p style={styles.playStatValue}>{matchCount != null ? `${matchCount}` : '—'}</p>
+          <p style={styles.playStatMeta}>집계된 총 전투 횟수</p>
+        </div>
+      </div>
+    </section>
+  )
+
+  const handleEnterGame = useCallback(
+    (game, role) => {
+      if (!game) return
+      const basePath = `/rank/${game.id}`
+      const target = role ? `${basePath}?role=${encodeURIComponent(role)}` : basePath
+      router.push(target)
+      setLeftPanelOpen(false)
+    },
+    [router],
+  )
+
+  const handleSelectPublicGame = useCallback(
+    (game) => {
+      publicGameBrowser.setSelectedGame(game)
+      if (game?.id) {
+        setSelectedGameId(game.id)
+      }
+    },
+    [publicGameBrowser, setSelectedGameId],
+  )
+
+  const handleSelectOwnedGame = useCallback(
+    (game) => {
+      ownedGameBrowser.setSelectedGame(game)
+      if (game?.id) {
+        setSelectedGameId(game.id)
+      }
+    },
+    [ownedGameBrowser, setSelectedGameId],
+  )
+
+  const resolveBattleOutcome = useCallback(
+    (battle) => {
+      if (!battle || !heroIdKey) return '기록 없음'
+      const parseList = (value) => {
+        if (!value) return []
+        if (Array.isArray(value)) return value.map((entry) => String(entry))
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value)
+            if (Array.isArray(parsed)) {
+              return parsed.map((entry) => String(entry))
+            }
+          } catch (error) {
+            return value
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter(Boolean)
+          }
+        }
+        return []
+      }
+
+      const attackerHeroes = parseList(battle.attacker_hero_ids)
+      const defenderHeroes = parseList(battle.defender_hero_ids)
+      const isAttacker = attackerHeroes.includes(heroIdKey)
+      const isDefender = defenderHeroes.includes(heroIdKey)
+      const normalized = String(battle.result || '').toLowerCase()
+
+      if (normalized.includes('draw') || normalized.includes('tie')) {
+        return '무승부'
+      }
+
+      if (normalized.includes('win')) {
+        const attackerWon = normalized.includes('attacker')
+        if (isAttacker) return attackerWon ? '승리' : '패배'
+        if (isDefender) return attackerWon ? '패배' : '승리'
+        return attackerWon ? '공격 승리' : '방어 승리'
+      }
+
+      if (normalized.includes('loss') || normalized.includes('lose')) {
+        if (isAttacker) return '패배'
+        if (isDefender) return '승리'
+        return '패배'
+      }
+
+      return '기록 없음'
+    },
+    [heroIdKey],
+  )
+
+  const recentBattleEntries = useMemo(() => {
+    if (!Array.isArray(battleDetails) || !battleDetails.length) return []
+    return battleDetails.slice(0, 4).map((battle, index) => {
+      const timestamp = (() => {
+        if (!battle?.created_at) return '시간 정보 없음'
+        const date = new Date(battle.created_at)
+        if (Number.isNaN(date.getTime())) return '시간 정보 없음'
+        return date.toLocaleString('ko-KR', {
+          month: 'numeric',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      })()
+
+      const scoreDelta = Number.isFinite(Number(battle?.score_delta))
+        ? Number(battle.score_delta)
+        : null
+
+      return {
+        id: battle?.id || `${battle?.created_at || 'battle'}-${index}`,
+        timestamp,
+        outcome: resolveBattleOutcome(battle),
+        scoreDelta,
+      }
+    })
+  }, [battleDetails, resolveBattleOutcome])
+
+  const leftPanelContent = (
+    <div style={styles.fullPanelCard}>
+      <div style={styles.fullPanelHeader}>
+        <div style={{ display: 'grid', gap: 4 }}>
+          <p style={styles.fullPanelTitle}>로비 탐색</p>
+          <p style={styles.fullPanelSubtitle}>내 게임 관리와 검색, 통계를 한 곳에서 확인하세요.</p>
+        </div>
+        <button type="button" style={styles.fullPanelClose} onClick={() => setLeftPanelOpen(false)}>
+          닫기
+        </button>
+      </div>
+      <div style={styles.fullPanelTabs}>
+        <TabBar tabs={LOBBY_TABS} activeTab={leftTab} onChange={setLeftTab} />
+      </div>
+      <div style={styles.fullPanelBody}>
+        {leftTab === 'games' ? (
+          <GameSearchPanel
+            query={publicGameBrowser.gameQuery}
+            onQueryChange={publicGameBrowser.setGameQuery}
+            sort={publicGameBrowser.gameSort}
+            onSortChange={publicGameBrowser.setGameSort}
+            sortOptions={publicGameBrowser.sortOptions}
+            rows={publicGameBrowser.gameRows}
+            loading={publicGameBrowser.gameLoading}
+            selectedGame={publicGameBrowser.selectedGame}
+            onSelectGame={handleSelectPublicGame}
+            detailLoading={publicGameBrowser.detailLoading}
+            roles={publicGameBrowser.gameRoles}
+            participants={publicGameBrowser.participants}
+            roleChoice={publicGameBrowser.roleChoice}
+            onRoleChange={publicGameBrowser.setRoleChoice}
+            roleSlots={publicGameBrowser.roleSlots}
+            onEnterGame={handleEnterGame}
+            viewerParticipant={publicGameBrowser.viewerParticipant}
+            viewerId={publicGameBrowser.viewerId}
+            onJoinGame={publicGameBrowser.joinSelectedGame}
+            joinLoading={publicGameBrowser.joinLoading}
+          />
+        ) : null}
+
+        {leftTab === 'my-games' ? (
+          <MyGamesPanel
+            query={ownedGameBrowser.gameQuery}
+            onQueryChange={ownedGameBrowser.setGameQuery}
+            sort={ownedGameBrowser.gameSort}
+            onSortChange={ownedGameBrowser.setGameSort}
+            sortOptions={ownedGameBrowser.sortOptions}
+            rows={ownedGameBrowser.gameRows}
+            loading={ownedGameBrowser.gameLoading}
+            selectedGame={ownedGameBrowser.selectedGame}
+            onSelectGame={handleSelectOwnedGame}
+            detailLoading={ownedGameBrowser.detailLoading}
+            roles={ownedGameBrowser.gameRoles}
+            participants={ownedGameBrowser.participants}
+            roleChoice={ownedGameBrowser.roleChoice}
+            onRoleChange={ownedGameBrowser.setRoleChoice}
+            roleSlots={ownedGameBrowser.roleSlots}
+            onEnterGame={handleEnterGame}
+            viewerId={ownedGameBrowser.viewerId}
+            tags={ownedGameBrowser.gameTags}
+            onAddTag={ownedGameBrowser.addGameTag}
+            onRemoveTag={ownedGameBrowser.removeGameTag}
+            seasons={ownedGameBrowser.gameSeasons}
+            onFinishSeason={ownedGameBrowser.finishSeason}
+            onStartSeason={ownedGameBrowser.startSeason}
+            stats={ownedGameBrowser.gameStats}
+            battleLogs={ownedGameBrowser.gameBattleLogs}
+            onRefreshDetail={ownedGameBrowser.refreshSelectedGame}
+            onDeleteGame={ownedGameBrowser.deleteGame}
+          />
+        ) : null}
+
+        {leftTab === 'stats' ? (
+          <CharacterStatsPanel
+            loading={lobbyStats.loading}
+            error={lobbyStats.error}
+            summary={lobbyStats.summary}
+            games={lobbyStats.games}
+            seasons={lobbyStats.seasons}
+            battles={lobbyStats.battles}
+            onLeaveGame={lobbyStats.leaveGame}
+            onRefresh={lobbyStats.refresh}
+          />
+        ) : null}
+      </div>
+    </div>
+  )
+
+  const rightPanelContent = !selectedGame ? (
+    <div style={styles.edgePanelCard}>
+      <div style={styles.edgePanelHeader}>
+        <div style={{ display: 'grid', gap: 4 }}>
+          <p style={styles.edgePanelTitle}>게임 정보</p>
+          <p style={styles.edgePanelSubtitle}>게임을 선택하면 메인 룸 요약을 볼 수 있어요.</p>
+        </div>
+        <button type="button" style={styles.edgePanelClose} onClick={() => setRightPanelOpen(false)}>
+          닫기
+        </button>
+      </div>
+      <div style={styles.edgePanelBody}>
+        <div style={styles.edgeEmptyState}>선택된 게임이 없습니다.</div>
+      </div>
+    </div>
+  ) : (
+    <div style={styles.edgePanelCard}>
+      <div style={styles.edgePanelHeader}>
+        <div style={{ display: 'grid', gap: 4 }}>
+          <p style={styles.edgePanelTitle}>{selectedGame.name}</p>
+          <p style={styles.edgePanelSubtitle}>메인 룸 미리보기</p>
+        </div>
+        <button type="button" style={styles.edgePanelClose} onClick={() => setRightPanelOpen(false)}>
+          닫기
+        </button>
+      </div>
+      <div style={styles.edgePanelBody}>
+        {selectedGame.description ? (
+          <p style={{ ...styles.edgePanelSubtitle, lineHeight: 1.6 }}>{selectedGame.description}</p>
+        ) : null}
+        <div style={styles.edgePanelStatsGrid}>
+          <div style={styles.edgePanelStatCard}>
+            <p style={styles.edgePanelStatLabel}>참여 횟수</p>
+            <p style={styles.edgePanelStatValue}>
+              {selectedEntry?.sessionCount != null
+                ? `${selectedEntry.sessionCount.toLocaleString('ko-KR')}회`
+                : '기록 없음'}
+            </p>
+            <p style={styles.edgePanelStatMeta}>최근 세션: {selectedEntry?.latestSessionAt || '없음'}</p>
+          </div>
+          <div style={styles.edgePanelStatCard}>
+            <p style={styles.edgePanelStatLabel}>주요 모드</p>
+            <p style={styles.edgePanelStatValue}>{selectedEntry?.primaryMode || '집계 중'}</p>
+            <p style={styles.edgePanelStatMeta}>
+              첫 참가일: {selectedEntry?.firstSessionAt || '기록 없음'}
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <p style={styles.edgePanelSubtitle}>참가자 현황</p>
+          {scoreboardRows.length ? (
+            <div style={styles.edgePanelScoreboard}>
+              {scoreboardRows.map((row) => {
+                const metaParts = []
+                if (row.roleLabel) metaParts.push(row.roleLabel)
+                if (row.score != null) {
+                  metaParts.push(`점수 ${row.score.toLocaleString('ko-KR')}`)
+                } else if (row.rating != null) {
+                  metaParts.push(`레이팅 ${row.rating}`)
+                }
+                if (row.battles != null) {
+                  metaParts.push(`${row.battles}회 전투`)
+                }
+
+                return (
+                  <div key={row.key} style={styles.edgePanelScoreboardRow}>
+                    <div style={styles.edgePanelScoreAvatar}>
+                      {row.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={row.imageUrl}
+                          alt={row.heroName}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        row.heroName.slice(0, 2)
+                      )}
+                    </div>
+                    <div style={styles.edgePanelScoreInfo}>
+                      <p style={styles.edgePanelScoreName}>{row.heroName}</p>
+                      <p style={styles.edgePanelScoreMeta}>
+                        {metaParts.length ? metaParts.join(' · ') : '기록 없음'}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div style={styles.edgeEmptyState}>참가자가 아직 없습니다.</div>
+          )}
+        </div>
+        <div style={styles.edgePanelSection}>
+          <p style={styles.edgePanelSubtitle}>최근 전투 기록</p>
+          {recentBattleEntries.length ? (
+            <div style={styles.edgePanelHistoryList}>
+              {recentBattleEntries.map((entry) => (
+                <div key={entry.id} style={styles.edgePanelHistoryCard}>
+                  <div style={styles.edgePanelHistoryHeader}>
+                    <span>{entry.timestamp}</span>
+                    <span style={styles.edgePanelHistoryOutcome(entry.outcome)}>{entry.outcome}</span>
+                  </div>
+                  {entry.scoreDelta != null ? (
+                    <p style={styles.edgePanelSubtitle}>
+                      점수 변화: {entry.scoreDelta > 0 ? `+${entry.scoreDelta}` : entry.scoreDelta}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={styles.edgeEmptyState}>기록된 전투가 없습니다.</div>
+          )}
+        </div>
+        <div style={styles.edgePanelActionRow}>
+          <Link href={`/rank/${selectedGame.id}`} style={styles.edgePanelLinkButton}>
+            메인 룸으로 이동
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+
   const heroSlide = (
     <div style={styles.heroCardShell}>
       <div
@@ -2102,7 +3016,13 @@ export default function CharacterBasicView({ hero }) {
 
   return (
     <div style={backgroundStyle}>
-      <div style={styles.stage}>{heroSlide}</div>
+      <div style={styles.edgePanel('left', leftPanelOpen)}>{leftPanelContent}</div>
+      <div style={styles.edgePanel('right', rightPanelOpen)}>{rightPanelContent}</div>
+      <div style={styles.stage}>
+        {playSliderSection}
+        {heroSlide}
+        {playStatsSection}
+      </div>
 
       <div style={styles.hudContainer}>
         {bgmBar}
@@ -2137,11 +3057,6 @@ export default function CharacterBasicView({ hero }) {
                     <Link href="/roster" style={styles.rosterButton}>
                       로스터로
                     </Link>
-                    {activeTabKey === 'character' ? (
-                      <button type="button" style={styles.battleButton} onClick={handleOpenRoomSearch}>
-                        방 검색
-                      </button>
-                    ) : null}
                   </div>
                 </div>
 
