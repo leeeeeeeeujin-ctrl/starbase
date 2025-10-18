@@ -10,6 +10,7 @@ const DEFAULT_STATE = {
   duration: 0,
   loop: true,
   volume: 0.72,
+  pitch: 1,
   eqEnabled: false,
   equalizer: { low: 0, mid: 0, high: 0 },
   reverbEnabled: false,
@@ -70,9 +71,11 @@ class HeroAudioManager {
   }
 
   setState(patch) {
+    const pitch = Number.isFinite(patch?.pitch) ? patch.pitch : this.state.pitch
     const next = {
       ...this.state,
       ...patch,
+      pitch,
       equalizer: patch.equalizer ? { ...patch.equalizer } : { ...this.state.equalizer },
       reverbDetail: patch.reverbDetail ? { ...patch.reverbDetail } : { ...this.state.reverbDetail },
       compressorDetail: patch.compressorDetail
@@ -80,6 +83,9 @@ class HeroAudioManager {
         : { ...this.state.compressorDetail },
     }
     this.state = next
+    if (this.audio) {
+      this.audio.playbackRate = next.pitch
+    }
     this.emit()
   }
 
@@ -89,6 +95,7 @@ class HeroAudioManager {
       this.audio = new Audio()
       this.audio.crossOrigin = 'anonymous'
       this.audio.loop = this.state.loop
+      this.audio.playbackRate = this.state.pitch
       this.audio.addEventListener('loadedmetadata', this.handleLoaded)
       this.audio.addEventListener('timeupdate', this.handleTimeUpdate)
       this.audio.addEventListener('ended', this.handleEnded)
@@ -272,6 +279,7 @@ class HeroAudioManager {
     this.setState({ heroId: heroId || null, heroName: heroName || '', trackUrl: url, loop, duration })
 
     audio.loop = loop
+    audio.playbackRate = this.state.pitch
 
     if (!url) {
       if (this.state.enabled) {
@@ -394,6 +402,16 @@ class HeroAudioManager {
     this.setState({ volume: clamped })
     if (this.gainNode) {
       this.gainNode.gain.value = clamped
+    }
+  }
+
+  setPitch(value) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return
+    const clamped = Math.min(Math.max(numeric, 0.5), 2)
+    this.setState({ pitch: clamped })
+    if (this.audio) {
+      this.audio.playbackRate = clamped
     }
   }
 

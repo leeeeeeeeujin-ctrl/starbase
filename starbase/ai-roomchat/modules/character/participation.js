@@ -4,7 +4,8 @@ import { withTable } from '../../lib/supabaseTables'
 const SLOT_COLUMNS = 'id,game_id,hero_id,slot_index,role'
 const GAME_COLUMNS = 'id,name,image_url,description,owner_id,created_at'
 const SESSION_COLUMNS = 'id,game_id,created_at,mode,started_by,version_id'
-const HERO_LOOKUP_COLUMNS = 'id,name,image_url,ability1,ability2,ability3,ability4,owner_id'
+const HERO_LOOKUP_COLUMNS =
+  'id,name,image_url,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_mime,bgm_duration_seconds,owner_id'
 const PARTICIPANT_COLUMNS =
   'id,game_id,hero_id,owner_id,slot_no,role,rating,score,battles,created_at,updated_at'
 const SCOREBOARD_PARTICIPANT_COLUMNS =
@@ -81,11 +82,16 @@ function mapHeroLookup(rows = []) {
       id: row.id,
       name: row.name || '',
       image_url: row.image_url || null,
+      description: row.description || '',
       owner_id: row.owner_id || null,
       ability1: row.ability1 || '',
       ability2: row.ability2 || '',
       ability3: row.ability3 || '',
       ability4: row.ability4 || '',
+      background_url: row.background_url || null,
+      bgm_url: row.bgm_url || null,
+      bgm_mime: row.bgm_mime || null,
+      bgm_duration_seconds: row.bgm_duration_seconds || null,
     }
   })
   return lookup
