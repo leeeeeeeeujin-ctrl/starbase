@@ -475,14 +475,45 @@ async function uploadBackgroundImage({ file, roomId = null, ownerToken = null })
   }
   const objectPath = `${segments.join('/')}/${createLocalId('bg')}-${sanitizedName}`
 
-  const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(objectPath, file, {
-    contentType: file.type || 'image/webp',
-    cacheControl: '3600',
-    upsert: false,
-  })
+  let uploaded = false
+  let lastError = null
 
-  if (error) {
-    throw error
+  try {
+    const { data: signed, error: signingError } = await supabase.storage
+      .from(CHAT_ATTACHMENT_BUCKET)
+      .createSignedUploadUrl(objectPath, 60, { upsert: false })
+
+    if (!signingError && signed?.path && signed?.token) {
+      const { error: uploadError } = await supabase.storage
+        .from(CHAT_ATTACHMENT_BUCKET)
+        .uploadToSignedUrl(signed.path, signed.token, file, {
+          contentType: file.type || 'image/webp',
+          cacheControl: '3600',
+          upsert: false,
+        })
+
+      if (!uploadError) {
+        uploaded = true
+      } else {
+        lastError = uploadError
+      }
+    } else {
+      lastError = signingError || null
+    }
+  } catch (error) {
+    lastError = error
+  }
+
+  if (!uploaded) {
+    const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(objectPath, file, {
+      contentType: file.type || 'image/webp',
+      cacheControl: '3600',
+      upsert: false,
+    })
+
+    if (error) {
+      throw error || lastError || new Error('배경 이미지를 업로드할 수 없습니다.')
+    }
   }
 
   const { data } = supabase.storage.from(CHAT_ATTACHMENT_BUCKET).getPublicUrl(objectPath)
@@ -1898,7 +1929,7 @@ const overlayStyles = {
     gridTemplateRows: 'auto 1fr auto auto',
     borderRadius: 24,
     border: '1px solid rgba(71, 85, 105, 0.5)',
-    background: 'rgba(11, 18, 40, 0.96)',
+    background: 'rgba(11, 18, 40, 0.78)',
     minHeight: 0,
     overflow: 'hidden',
     position: 'relative',
@@ -1907,10 +1938,10 @@ const overlayStyles = {
     const base = {
       position: 'absolute',
       inset: 0,
-      background: 'linear-gradient(180deg, rgba(6, 10, 25, 0.9) 0%, rgba(6, 10, 25, 0.75) 100%)',
+      background: 'linear-gradient(180deg, rgba(6, 10, 25, 0.78) 0%, rgba(6, 10, 25, 0.68) 100%)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
-      opacity: 0.88,
+      opacity: 0.76,
       zIndex: 0,
       pointerEvents: 'none',
     }
@@ -1923,14 +1954,14 @@ const overlayStyles = {
     if (isGradientValue(trimmed) || isColorValue(trimmed)) {
       return {
         ...base,
-        background: `linear-gradient(180deg, rgba(6, 10, 25, 0.68) 0%, rgba(6, 10, 25, 0.7) 35%, rgba(6, 10, 25, 0.88) 100%), ${trimmed}`,
+        background: `linear-gradient(180deg, rgba(6, 10, 25, 0.62) 0%, rgba(6, 10, 25, 0.64) 35%, rgba(6, 10, 25, 0.8) 100%), ${trimmed}`,
         backgroundImage: undefined,
       }
     }
 
     return {
       ...base,
-      backgroundImage: `linear-gradient(180deg, rgba(6, 10, 25, 0.88) 0%, rgba(6, 10, 25, 0.75) 100%), url(${trimmed})`,
+      backgroundImage: `linear-gradient(180deg, rgba(6, 10, 25, 0.82) 0%, rgba(6, 10, 25, 0.68) 100%), url(${trimmed})`,
     }
   },
   conversationHeader: {
@@ -5592,6 +5623,47 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const useRoomBackground = roomPreferences ? roomPreferences.use_room_background !== false : true
     return mergeThemePalettes(basePalette, personalPalette, useRoomBackground)
   }, [basePalette, ownerThemeFallback, roomPreferences])
+
+  const frameThemeBackgroundStyle = useMemo(() => {
+    const value = roomTheme?.backgroundValue
+    if (!value) {
+      return {}
+    }
+
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    if (!trimmed) {
+      return {}
+    }
+
+    const overlay =
+      'linear-gradient(135deg, rgba(4, 7, 18, 0.94) 0%, rgba(7, 13, 30, 0.82) 40%, rgba(8, 16, 35, 0.78) 100%)'
+
+    if (isGradientValue(trimmed)) {
+      return {
+        backgroundColor: '#020617',
+        backgroundImage: `${overlay}, ${trimmed}`,
+        backgroundRepeat: 'no-repeat, no-repeat',
+        backgroundSize: 'cover, cover',
+        backgroundPosition: 'center, center',
+      }
+    }
+
+    if (isColorValue(trimmed)) {
+      return {
+        background: `${overlay}, ${trimmed}`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    }
+
+    return {
+      backgroundColor: '#020617',
+      backgroundImage: `${overlay}, url(${trimmed})`,
+      backgroundRepeat: 'no-repeat, no-repeat',
+      backgroundSize: 'cover, cover',
+      backgroundPosition: 'center, center',
+    }
+  }, [roomTheme?.backgroundValue])
 
   const updateOwnerThemeDraft = useCallback(
     (patch, recompute = false) => {
@@ -9623,6 +9695,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     if (!isCompactLayout) {
       const style = {
         ...overlayStyles.frame,
+        ...frameThemeBackgroundStyle,
         padding: `${28 + Math.round(safeTop)}px 28px calc(48px + var(--chat-overlay-safe-bottom, env(safe-area-inset-bottom, 16px)))`,
         '--chat-overlay-safe-bottom': `${Math.round(safeBottom)}px`,
       }
@@ -9638,6 +9711,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
     const style = {
       ...overlayStyles.frame,
+      ...frameThemeBackgroundStyle,
       borderRadius: isUltraCompactLayout ? 0 : 22,
       padding: compactPadding,
       minHeight: fallbackHeight,
@@ -9654,7 +9728,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
 
     return style
-  }, [isCompactLayout, isUltraCompactLayout, viewport.height, viewport.safeAreaBottom, viewport.safeAreaTop])
+  }, [
+    frameThemeBackgroundStyle,
+    isCompactLayout,
+    isUltraCompactLayout,
+    viewport.height,
+    viewport.safeAreaBottom,
+    viewport.safeAreaTop,
+  ])
 
   const overlayContainerStyle = useMemo(() => {
     const offsetTop = Math.max(0, Number.isFinite(viewport.offsetTop) ? viewport.offsetTop : 0)
