@@ -270,8 +270,11 @@ const styles = {
   playCarouselFrame: {
     width: '100%',
     display: 'flex',
+    overflow: 'hidden',
   },
   playCarouselTrack: {
+    flex: '1 1 auto',
+    minWidth: 0,
     display: 'flex',
     gap: 16,
     overflowX: 'auto',
