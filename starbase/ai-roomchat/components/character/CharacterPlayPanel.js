@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 
-import useHeroBattles from '@/hooks/character/useHeroBattles'
-import useHeroParticipations from '@/hooks/character/useHeroParticipations'
+import { formatPlayNumber } from '@/utils/characterPlayFormatting'
 
 const panelStyles = {
   root: {
@@ -259,19 +258,6 @@ const overlayStyles = {
   },
 }
 
-function formatNumber(value) {
-  if (value == null) return '—'
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value.toLocaleString('ko-KR')
-  }
-  return String(value)
-}
-
-function formatWinRate(summary) {
-  if (!summary || summary.rate == null) return '—'
-  return `${summary.rate}%`
-}
-
 function MatchingOverlay({ open, heroName, gameName, progress, phase, onCancel, onProceed }) {
   if (!open) return null
 
@@ -307,29 +293,20 @@ function MatchingOverlay({ open, heroName, gameName, progress, phase, onCancel, 
   )
 }
 
-export default function CharacterPlayPanel({ hero }) {
+export default function CharacterPlayPanel({ hero, playData }) {
   const router = useRouter()
 
   const {
-    loading: participationLoading,
-    error: participationError,
-    participations,
-    selectedEntry,
-    selectedGame,
-    selectedGameId,
-    selectedScoreboard,
-    setSelectedGameId,
-    refresh: refreshParticipations,
-  } = useHeroParticipations({ hero })
-
-  const {
-    battleDetails,
-    battleSummary,
-    visibleBattles,
-    loading: battleLoading,
-    error: battleError,
-    showMore,
-  } = useHeroBattles({ hero, selectedGameId })
+    selectedEntry = null,
+    selectedGame = null,
+    selectedGameId = null,
+    battleDetails = [],
+    battleSummary = null,
+    visibleBattles = 0,
+    battleLoading = false,
+    battleError = '',
+    showMoreBattles = () => {},
+  } = playData || {}
 
   const [matchingState, setMatchingState] = useState({ open: false, phase: 'search', progress: 0 })
 
@@ -340,25 +317,6 @@ export default function CharacterPlayPanel({ hero }) {
   }, [hero?.name])
 
   const currentRole = selectedEntry?.role || '슬롯 정보 없음'
-
-  const heroRank = useMemo(() => {
-    if (!Array.isArray(selectedScoreboard) || !hero?.id) return null
-    const index = selectedScoreboard.findIndex((row) => row?.hero_id === hero.id)
-    return index >= 0 ? index + 1 : null
-  }, [selectedScoreboard, hero?.id])
-
-  const heroScore = useMemo(() => {
-    if (selectedEntry?.score != null) return selectedEntry.score
-    if (!Array.isArray(selectedScoreboard) || !hero?.id) return null
-    const row = selectedScoreboard.find((item) => item?.hero_id === hero.id)
-    return row?.score ?? row?.rating ?? null
-  }, [selectedEntry?.score, selectedScoreboard, hero?.id])
-
-  const matchCount = useMemo(() => {
-    if (battleSummary?.total != null) return battleSummary.total
-    if (selectedEntry?.sessionCount != null) return selectedEntry.sessionCount
-    return null
-  }, [battleSummary?.total, selectedEntry?.sessionCount])
 
   const handleStartMatch = useCallback(() => {
     if (!selectedGameId) {
@@ -408,60 +366,13 @@ export default function CharacterPlayPanel({ hero }) {
     [battleDetails, visibleBattles],
   )
 
-  const sliderSection = (
-    <section style={panelStyles.section}>
-      <div style={panelStyles.headerRow}>
-        <h3 style={panelStyles.title}>참여한 게임</h3>
-        <p style={panelStyles.subtitle}>{currentRole}</p>
-      </div>
-      {participationLoading ? (
-        <div style={panelStyles.emptyState}>참여한 게임을 불러오는 중입니다…</div>
-      ) : participationError ? (
-        <div style={panelStyles.section}>
-          <div style={panelStyles.emptyState}>{participationError}</div>
-          <button type="button" style={panelStyles.mutedButton} onClick={refreshParticipations}>
-            다시 시도
-          </button>
-        </div>
-      ) : participations.length ? (
-        <div style={panelStyles.sliderTrack}>
-          {participations.map((entry) => {
-            const active = entry.game_id === selectedGameId
-            const backgroundImage = entry.game?.cover_url || entry.game?.image_url || null
-            return (
-              <button
-                key={entry.game_id}
-                type="button"
-                onClick={() => setSelectedGameId(entry.game_id)}
-                style={{
-                  ...panelStyles.sliderCard,
-                  ...(active ? panelStyles.sliderCardActive : {}),
-                }}
-              >
-                <div style={panelStyles.sliderBackground(backgroundImage)} />
-                <div style={panelStyles.sliderContent}>
-                  <h4 style={panelStyles.sliderGameName}>{entry.game?.name || '이름 없는 게임'}</h4>
-                  <p style={panelStyles.sliderMeta}>
-                    {entry.sessionCount ? `${entry.sessionCount.toLocaleString('ko-KR')}회 참여` : '기록 없음'}
-                  </p>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      ) : (
-        <div style={panelStyles.section}>
-          <div style={panelStyles.emptyState}>아직 이 캐릭터가 참여한 게임이 없습니다.</div>
-          <button type="button" style={panelStyles.mutedButton} onClick={refreshParticipations}>
-            새로고침
-          </button>
-        </div>
-      )}
-    </section>
-  )
-
   const startButton = (
     <section style={panelStyles.section}>
+      <div style={panelStyles.headerRow}>
+        <h3 style={panelStyles.title}>선택한 게임</h3>
+        <p style={panelStyles.subtitle}>{currentRole}</p>
+      </div>
+      <p style={panelStyles.subtitle}>{selectedGame ? selectedGame.name : '게임을 선택해주세요.'}</p>
       <button
         type="button"
         style={{
@@ -473,37 +384,6 @@ export default function CharacterPlayPanel({ hero }) {
       >
         게임 시작
       </button>
-    </section>
-  )
-
-  const statsSection = (
-    <section style={panelStyles.section}>
-      <div style={panelStyles.headerRow}>
-        <h3 style={panelStyles.title}>선택한 게임 통계</h3>
-        {selectedGame ? <p style={panelStyles.subtitle}>{selectedGame.name}</p> : null}
-      </div>
-      <div style={panelStyles.statsGrid}>
-        <div style={panelStyles.statCard}>
-          <p style={panelStyles.statLabel}>랭킹</p>
-          <p style={panelStyles.statValue}>{heroRank ? `#${heroRank}` : '—'}</p>
-          <p style={panelStyles.statMeta}>참가자 대비 현재 순위</p>
-        </div>
-        <div style={panelStyles.statCard}>
-          <p style={panelStyles.statLabel}>스코어</p>
-          <p style={panelStyles.statValue}>{formatNumber(heroScore)}</p>
-          <p style={panelStyles.statMeta}>최근 기록된 전투 점수</p>
-        </div>
-        <div style={panelStyles.statCard}>
-          <p style={panelStyles.statLabel}>승률</p>
-          <p style={panelStyles.statValue}>{formatWinRate(battleSummary)}</p>
-          <p style={panelStyles.statMeta}>최근 40판 기준</p>
-        </div>
-        <div style={panelStyles.statCard}>
-          <p style={panelStyles.statLabel}>전투 수</p>
-          <p style={panelStyles.statValue}>{matchCount != null ? `${matchCount}` : '—'}</p>
-          <p style={panelStyles.statMeta}>집계된 총 전투 횟수</p>
-        </div>
-      </div>
     </section>
   )
 
@@ -532,7 +412,7 @@ export default function CharacterPlayPanel({ hero }) {
                 <p style={panelStyles.logResult}>{battle.result ? battle.result.toUpperCase() : 'PENDING'}</p>
               </div>
               <p style={panelStyles.logMeta}>
-                점수 변화: {battle.score_delta != null ? formatNumber(battle.score_delta) : '—'}
+                점수 변화: {battle.score_delta != null ? formatPlayNumber(battle.score_delta) : '—'}
               </p>
               {battle.logs?.length ? (
                 <div>
@@ -546,7 +426,7 @@ export default function CharacterPlayPanel({ hero }) {
             </article>
           ))}
           {visibleBattles && visibleBattles < battleDetails.length ? (
-            <button type="button" style={panelStyles.mutedButton} onClick={showMore}>
+            <button type="button" style={panelStyles.mutedButton} onClick={showMoreBattles}>
               더 보기
             </button>
           ) : null}
@@ -559,9 +439,7 @@ export default function CharacterPlayPanel({ hero }) {
 
   return (
     <div style={panelStyles.root}>
-      {sliderSection}
       {startButton}
-      {statsSection}
       {battleSection}
       <MatchingOverlay
         open={matchingState.open}

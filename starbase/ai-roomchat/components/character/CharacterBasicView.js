@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
@@ -9,6 +8,9 @@ import { withTable } from '@/lib/supabaseTables'
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
 import { sanitizeFileName } from '@/utils/characterAssets'
 import CharacterPlayPanel from './CharacterPlayPanel'
+import useHeroParticipations from '@/hooks/character/useHeroParticipations'
+import useHeroBattles from '@/hooks/character/useHeroBattles'
+import { formatPlayNumber, formatPlayWinRate } from '@/utils/characterPlayFormatting'
 import {
   clearSharedBackgroundUrl,
   writeSharedBackgroundUrl,
@@ -94,17 +96,17 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 16,
+    gap: 18,
   },
   heroCardShell: {
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 500,
     position: 'relative',
   },
   heroCard: {
     position: 'relative',
     width: '100%',
-    paddingTop: '160%',
+    paddingTop: '146%',
     borderRadius: 30,
     overflow: 'hidden',
     border: '1px solid rgba(96,165,250,0.32)',
@@ -201,6 +203,156 @@ const styles = {
     height: 4,
     borderRadius: '50%',
     background: 'rgba(226,232,240,0.78)',
+  },
+  playSliderSection: {
+    width: '100%',
+    display: 'grid',
+    gap: 10,
+  },
+  playSliderHeader: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  playSliderTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+  },
+  playSliderMeta: {
+    margin: 0,
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  playSliderTrack: {
+    display: 'flex',
+    gap: 12,
+    width: '100%',
+    overflowX: 'auto',
+    padding: '4px 4px 4px 0',
+    scrollbarWidth: 'thin',
+  },
+  playSliderCard: {
+    position: 'relative',
+    width: 180,
+    minHeight: 108,
+    borderRadius: 18,
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.7)',
+    color: '#f8fafc',
+    padding: 14,
+    display: 'grid',
+    gap: 6,
+    textAlign: 'left',
+    cursor: 'pointer',
+    transition: 'transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease',
+  },
+  playSliderCardActive: {
+    transform: 'translateY(-6px)',
+    borderColor: 'rgba(56,189,248,0.7)',
+    boxShadow: '0 20px 44px -24px rgba(56,189,248,0.7)',
+  },
+  playSliderBackground: (imageUrl) => ({
+    position: 'absolute',
+    inset: 0,
+    borderRadius: 18,
+    backgroundImage: imageUrl
+      ? `linear-gradient(180deg, rgba(2,6,23,0.2) 0%, rgba(2,6,23,0.85) 95%), url(${imageUrl})`
+      : 'linear-gradient(180deg, rgba(2,6,23,0.4) 0%, rgba(2,6,23,0.85) 95%)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    filter: imageUrl ? 'saturate(1.15)' : 'none',
+  }),
+  playSliderContent: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'grid',
+    gap: 4,
+  },
+  playSliderGameName: {
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 700,
+    lineHeight: 1.4,
+  },
+  playSliderGameMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  playSliderEmpty: {
+    padding: '16px 14px',
+    borderRadius: 16,
+    border: '1px dashed rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.55)',
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  playSliderActionRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  playSliderActionButton: {
+    padding: '8px 16px',
+    borderRadius: 999,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.72)',
+    color: '#e2e8f0',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  playStatsSection: {
+    width: '100%',
+    display: 'grid',
+    gap: 12,
+  },
+  playStatsHeader: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  playStatsTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+  },
+  playStatsSubtitle: {
+    margin: 0,
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  playStatsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: 14,
+  },
+  playStatCard: {
+    borderRadius: 18,
+    border: '1px solid rgba(59,130,246,0.28)',
+    background: 'rgba(15,23,42,0.68)',
+    padding: 16,
+    display: 'grid',
+    gap: 6,
+  },
+  playStatLabel: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  playStatValue: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+  },
+  playStatMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#94a3b8',
   },
   dock: {
     width: '100%',
@@ -775,7 +927,6 @@ const styles = {
 }
 
 export default function CharacterBasicView({ hero }) {
-  const router = useRouter()
   const [currentHero, setCurrentHero] = useState(hero || null)
 
   useEffect(() => {
@@ -809,15 +960,6 @@ export default function CharacterBasicView({ hero }) {
     ].filter((pair) => pair.entries.length > 0)
   }, [currentHero])
 
-  const handleOpenRoomSearch = useCallback(() => {
-    const heroId = currentHero?.id
-    if (heroId) {
-      router.push({ pathname: '/match', query: { hero: heroId } })
-      return
-    }
-    router.push('/match')
-  }, [currentHero?.id, router])
-
   const [viewMode, setViewMode] = useState(0)
   const [activeTab, setActiveTab] = useState(0)
   const [playerCollapsed, setPlayerCollapsed] = useState(true)
@@ -838,6 +980,56 @@ export default function CharacterBasicView({ hero }) {
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [searchSort, setSearchSort] = useState('latest')
+
+  const participationState = useHeroParticipations({ hero: currentHero })
+  const battleState = useHeroBattles({ hero: currentHero, selectedGameId: participationState.selectedGameId })
+
+  const {
+    loading: participationLoading,
+    error: participationError,
+    participations,
+    selectedEntry,
+    selectedGame,
+    selectedGameId,
+    selectedScoreboard,
+    setSelectedGameId,
+    refresh: refreshParticipations,
+  } = participationState
+
+  const {
+    battleDetails,
+    battleSummary,
+    visibleBattles,
+    loading: battleLoading,
+    error: battleError,
+    showMore: showMoreBattles,
+  } = battleState
+
+  const featuredParticipations = useMemo(
+    () => participations.slice(0, 4),
+    [participations],
+  )
+
+  const currentRole = selectedEntry?.role || '슬롯 정보 없음'
+
+  const heroRank = useMemo(() => {
+    if (!Array.isArray(selectedScoreboard) || !currentHero?.id) return null
+    const index = selectedScoreboard.findIndex((row) => row?.hero_id === currentHero.id)
+    return index >= 0 ? index + 1 : null
+  }, [selectedScoreboard, currentHero?.id])
+
+  const heroScore = useMemo(() => {
+    if (selectedEntry?.score != null) return selectedEntry.score
+    if (!Array.isArray(selectedScoreboard) || !currentHero?.id) return null
+    const row = selectedScoreboard.find((item) => item?.hero_id === currentHero.id)
+    return row?.score ?? row?.rating ?? null
+  }, [selectedEntry?.score, selectedScoreboard, currentHero?.id])
+
+  const matchCount = useMemo(() => {
+    if (battleSummary?.total != null) return battleSummary.total
+    if (selectedEntry?.sessionCount != null) return selectedEntry.sessionCount
+    return null
+  }, [battleSummary?.total, selectedEntry?.sessionCount])
 
   const audioManager = useMemo(() => getHeroAudioManager(), [])
   const [audioState, setAudioState] = useState(() => audioManager.getState())
@@ -1525,11 +1717,36 @@ export default function CharacterBasicView({ hero }) {
   const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
   const progressRatio = duration ? progress / duration : 0
 
+  const playPanelData = useMemo(
+    () => ({
+      selectedEntry,
+      selectedGame,
+      selectedGameId,
+      battleDetails,
+      battleSummary,
+      visibleBattles,
+      battleLoading,
+      battleError,
+      showMoreBattles,
+    }),
+    [
+      selectedEntry,
+      selectedGame,
+      selectedGameId,
+      battleDetails,
+      battleSummary,
+      visibleBattles,
+      battleLoading,
+      battleError,
+      showMoreBattles,
+    ],
+  )
+
   const overlayBody = (() => {
     if (activeTabKey === 'play') {
       return (
         <div style={styles.tabContent}>
-          <CharacterPlayPanel hero={hero} />
+          <CharacterPlayPanel hero={hero} playData={playPanelData} />
         </div>
       )
     }
@@ -1990,6 +2207,86 @@ export default function CharacterBasicView({ hero }) {
     )
   })()
 
+  const playSliderSection = (
+    <section style={styles.playSliderSection}>
+      <div style={styles.playSliderHeader}>
+        <h3 style={styles.playSliderTitle}>참여한 게임</h3>
+        <p style={styles.playSliderMeta}>{currentRole}</p>
+      </div>
+      {participationLoading ? (
+        <div style={styles.playSliderEmpty}>참여한 게임을 불러오는 중입니다…</div>
+      ) : participationError ? (
+        <div>
+          <div style={styles.playSliderEmpty}>{participationError}</div>
+          <div style={styles.playSliderActionRow}>
+            <button type="button" style={styles.playSliderActionButton} onClick={refreshParticipations}>
+              다시 시도
+            </button>
+          </div>
+        </div>
+      ) : featuredParticipations.length ? (
+        <div style={styles.playSliderTrack}>
+          {featuredParticipations.map((entry) => {
+            const active = entry.game_id === selectedGameId
+            const backgroundImage = entry.game?.cover_url || entry.game?.image_url || null
+            return (
+              <button
+                key={entry.game_id}
+                type="button"
+                onClick={() => setSelectedGameId(entry.game_id)}
+                style={{
+                  ...styles.playSliderCard,
+                  ...(active ? styles.playSliderCardActive : {}),
+                }}
+              >
+                <div style={styles.playSliderBackground(backgroundImage)} />
+                <div style={styles.playSliderContent}>
+                  <h4 style={styles.playSliderGameName}>{entry.game?.name || '이름 없는 게임'}</h4>
+                  <p style={styles.playSliderGameMeta}>
+                    {entry.sessionCount ? `${entry.sessionCount.toLocaleString('ko-KR')}회 참여` : '기록 없음'}
+                  </p>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={styles.playSliderEmpty}>아직 이 캐릭터가 참여한 게임이 없습니다.</div>
+      )}
+    </section>
+  )
+
+  const playStatsSection = (
+    <section style={styles.playStatsSection}>
+      <div style={styles.playStatsHeader}>
+        <h3 style={styles.playStatsTitle}>선택한 게임 통계</h3>
+        {selectedGame ? <p style={styles.playStatsSubtitle}>{selectedGame.name}</p> : null}
+      </div>
+      <div style={styles.playStatsGrid}>
+        <div style={styles.playStatCard}>
+          <p style={styles.playStatLabel}>랭킹</p>
+          <p style={styles.playStatValue}>{heroRank ? `#${heroRank}` : '—'}</p>
+          <p style={styles.playStatMeta}>참가자 대비 현재 순위</p>
+        </div>
+        <div style={styles.playStatCard}>
+          <p style={styles.playStatLabel}>스코어</p>
+          <p style={styles.playStatValue}>{formatPlayNumber(heroScore)}</p>
+          <p style={styles.playStatMeta}>최근 기록된 전투 점수</p>
+        </div>
+        <div style={styles.playStatCard}>
+          <p style={styles.playStatLabel}>승률</p>
+          <p style={styles.playStatValue}>{formatPlayWinRate(battleSummary)}</p>
+          <p style={styles.playStatMeta}>최근 40판 기준</p>
+        </div>
+        <div style={styles.playStatCard}>
+          <p style={styles.playStatLabel}>전투 수</p>
+          <p style={styles.playStatValue}>{matchCount != null ? `${matchCount}` : '—'}</p>
+          <p style={styles.playStatMeta}>집계된 총 전투 횟수</p>
+        </div>
+      </div>
+    </section>
+  )
+
   const heroSlide = (
     <div style={styles.heroCardShell}>
       <div
@@ -2112,7 +2409,11 @@ export default function CharacterBasicView({ hero }) {
 
   return (
     <div style={backgroundStyle}>
-      <div style={styles.stage}>{heroSlide}</div>
+      <div style={styles.stage}>
+        {playSliderSection}
+        {heroSlide}
+        {playStatsSection}
+      </div>
 
       <div style={styles.hudContainer}>
         {bgmBar}
@@ -2147,11 +2448,6 @@ export default function CharacterBasicView({ hero }) {
                     <Link href="/roster" style={styles.rosterButton}>
                       로스터로
                     </Link>
-                    {activeTabKey === 'character' ? (
-                      <button type="button" style={styles.battleButton} onClick={handleOpenRoomSearch}>
-                        방 검색
-                      </button>
-                    ) : null}
                   </div>
                 </div>
 
