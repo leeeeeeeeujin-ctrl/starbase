@@ -91,6 +91,8 @@ const overlayTabs = [
   { key: 'settings', label: '설정' },
 ]
 
+const SEARCH_TAB_INDEX = overlayTabs.findIndex((tab) => tab.key === 'search')
+
 const styles = {
   stage: {
     width: '100%',
@@ -895,6 +897,11 @@ const styles = {
     display: 'grid',
     gap: 16,
   },
+  listEmpty: {
+    margin: '8px 0 0',
+    fontSize: 13,
+    color: 'rgba(148,163,184,0.85)',
+  },
   sortRow: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -1230,6 +1237,18 @@ export default function CharacterBasicView({ hero }) {
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [leftTab, setLeftTab] = useState('games')
 
+  const overlaySearchEnabled = activeTab === SEARCH_TAB_INDEX
+  const overlayGameBrowser = useGameBrowser({ enabled: overlaySearchEnabled, mode: 'public' })
+  const {
+    gameQuery: searchQuery,
+    setGameQuery: setSearchQuery,
+    gameSort: searchSort,
+    setGameSort: setSearchSort,
+    gameRows: searchRows,
+    gameLoading: searchLoading,
+    sortOptions: searchSortOptions,
+  } = overlayGameBrowser
+
   const participationState = useHeroParticipations({ hero: currentHero })
   const battleState = useHeroBattles({ hero: currentHero, selectedGameId: participationState.selectedGameId })
 
@@ -1515,8 +1534,8 @@ export default function CharacterBasicView({ hero }) {
     if (imageInputRef.current) imageInputRef.current.value = ''
     if (backgroundInputRef.current) backgroundInputRef.current.value = ''
     if (bgmInputRef.current) bgmInputRef.current.value = ''
-    setSearchTerm('')
-  }, [hero?.id])
+    setSearchQuery('')
+  }, [hero?.id, setSearchQuery])
 
   useEffect(() => {
     if (previousCustomUrl.current && previousCustomUrl.current !== customBgmUrl) {
@@ -2049,8 +2068,8 @@ export default function CharacterBasicView({ hero }) {
             <input
               style={styles.searchInput}
               placeholder="찾고 싶은 게임 이름이나 태그를 입력해 보세요."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
             />
             <div style={styles.sortRow}>
               {searchSortOptions.map((option) => (
@@ -2066,13 +2085,21 @@ export default function CharacterBasicView({ hero }) {
             </div>
           </div>
           <div style={styles.searchGrid}>
-            {filteredGames.map((game) => (
-              <div key={game.id} style={styles.listItem}>
-                <p style={styles.listTitle}>{game.title}</p>
-                <p style={styles.listMeta}>{`${game.players}인 · 좋아요 ${game.likes}개`}</p>
-                <p style={styles.listMeta}>{game.tags.join(' / ')}</p>
-              </div>
-            ))}
+            {searchLoading ? (
+              <p style={styles.listMeta}>공개 게임을 불러오는 중…</p>
+            ) : searchRows.length ? (
+              searchRows.map((game) => (
+                <div key={game.id} style={styles.listItem}>
+                  <p style={styles.listTitle}>{game.name}</p>
+                  <p style={styles.listMeta}>{`좋아요 ${game.likes_count ?? 0} · 플레이 ${game.play_count ?? 0}`}</p>
+                  {game.tags?.length ? (
+                    <p style={styles.listMeta}>{game.tags.join(' / ')}</p>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <p style={styles.listEmpty}>조건에 맞는 공개 게임을 찾지 못했습니다.</p>
+            )}
           </div>
         </div>
       )
