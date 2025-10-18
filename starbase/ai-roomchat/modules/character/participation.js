@@ -80,18 +80,77 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     }
   }
 
-  const { data: heroSlotsRaw, error: heroSlotsError } = await withTable(
-    supabase,
-    'rank_game_slots',
-    (table) => supabase.from(table).select(SLOT_COLUMNS).eq('hero_id', heroId),
-  )
+  const [heroSlotsResult, heroParticipantsResult] = await Promise.all([
+    withTable(supabase, 'rank_game_slots', (table) =>
+      supabase.from(table).select(SLOT_COLUMNS).eq('hero_id', heroId),
+    ),
+    withTable(supabase, 'rank_participants', (table) =>
+      supabase.from(table).select(PARTICIPANT_COLUMNS).eq('hero_id', heroId),
+    ),
+  ])
 
+  const { data: heroSlotsRaw, error: heroSlotsError } = heroSlotsResult
   if (heroSlotsError) {
     throw heroSlotsError
   }
 
-  const heroSlots = (Array.isArray(heroSlotsRaw) ? heroSlotsRaw : []).map(normaliseSlot).filter((slot) => slot?.game_id)
-  const gameIds = Array.from(new Set(heroSlots.map((slot) => slot.game_id).filter(Boolean)))
+  const { data: heroParticipantsRaw, error: heroParticipantsError } = heroParticipantsResult
+  if (heroParticipantsError) {
+    throw heroParticipantsError
+  }
+
+  const heroSlots = (Array.isArray(heroSlotsRaw) ? heroSlotsRaw : [])
+    .map(normaliseSlot)
+    .filter((slot) => slot?.game_id)
+
+  const participantSlots = (Array.isArray(heroParticipantsRaw) ? heroParticipantsRaw : [])
+    .map((participant) => ({
+      id: participant?.id || null,
+      game_id: participant?.game_id || null,
+      hero_id: participant?.hero_id || null,
+      slot_no: participant?.slot_no != null ? participant.slot_no : null,
+      role: participant?.role || null,
+    }))
+    .filter((slot) => slot.game_id)
+
+  const slotByGame = new Map()
+  heroSlots.forEach((slot) => {
+    if (slot?.game_id) {
+      slotByGame.set(slot.game_id, slot)
+    }
+  })
+
+  participantSlots.forEach((slot) => {
+    if (!slot?.game_id) {
+      return
+    }
+
+    if (slotByGame.has(slot.game_id)) {
+      const existing = slotByGame.get(slot.game_id)
+      slotByGame.set(slot.game_id, {
+        ...existing,
+        slot_no: existing?.slot_no != null ? existing.slot_no : slot.slot_no,
+        role:
+          (existing?.role && existing.role.trim()) ||
+          (slot.role && slot.role.trim()) ||
+          (slot.slot_no != null ? `슬롯 ${slot.slot_no}` : existing?.role || null),
+      })
+      return
+    }
+
+    slotByGame.set(slot.game_id, slot)
+  })
+
+  const heroParticipationSlots = Array.from(slotByGame.values())
+
+  const gameIds = Array.from(
+    new Set([
+      ...heroParticipationSlots.map((slot) => slot.game_id).filter(Boolean),
+      ...(Array.isArray(heroParticipantsRaw)
+        ? heroParticipantsRaw.map((row) => row?.game_id).filter(Boolean)
+        : []),
+    ]),
+  )
 
   if (!gameIds.length) {
     return {
@@ -101,7 +160,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     }
   }
 
-  const [allSlotsResult, gamesResult, sessionsResult, participantsResult] = await Promise.all([
+  const [allSlotsResult, gamesResult, sessionsResult] = await Promise.all([
     withTable(supabase, 'rank_game_slots', (table) =>
       supabase.from(table).select(SLOT_COLUMNS).in('game_id', gameIds),
     ),
@@ -114,13 +173,6 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
         .select(SESSION_COLUMNS)
         .in('game_id', gameIds)
         .order('created_at', { ascending: false }),
-    ),
-    withTable(supabase, 'rank_participants', (table) =>
-      supabase
-        .from(table)
-        .select(PARTICIPANT_COLUMNS)
-        .eq('hero_id', heroId)
-        .in('game_id', gameIds),
     ),
   ])
 
@@ -137,11 +189,6 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
   const { data: sessionsRaw, error: sessionsError } = sessionsResult
   if (sessionsError) {
     throw sessionsError
-  }
-
-  const { data: participantsRaw, error: participantsError } = participantsResult
-  if (participantsError) {
-    throw participantsError
   }
 
   const allSlots = (Array.isArray(allSlotsRaw) ? allSlotsRaw : []).map(normaliseSlot)
@@ -164,7 +211,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
   })
 
   const participantsByGame = new Map()
-  ;(Array.isArray(participantsRaw) ? participantsRaw : []).forEach((participant) => {
+  ;(Array.isArray(heroParticipantsRaw) ? heroParticipantsRaw : []).forEach((participant) => {
     if (!participant?.game_id) return
     participantsByGame.set(participant.game_id, {
       id: participant.id || null,
@@ -221,7 +268,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     heroLookup[heroSeed.id] = { ...heroLookup[heroSeed.id], ...heroSeed }
   }
 
-  const participations = heroSlots.map((slot) => {
+  const participations = heroParticipationSlots.map((slot) => {
     const sessions = sessionsByGame.get(slot.game_id) || []
     const sessionCount = sessions.length
     const latestSession = sessions[0]?.created_at || null
