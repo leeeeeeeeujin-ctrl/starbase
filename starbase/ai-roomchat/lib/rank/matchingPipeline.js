@@ -498,10 +498,11 @@ export function buildCandidateSample({
     totalLimit: null,
     queueAverageScore: null,
     roleAverageScores: {},
+    standinSampled: 0,
   }
 
   if (realtimeEnabled) {
-    return { sample: baseQueue, meta }
+    return { sample: baseQueue, meta, standins: [] }
   }
 
   const ownersInQueue = new Set(baseQueue.map((row) => row?.owner_id || row?.ownerId).filter(Boolean))
@@ -638,8 +639,9 @@ export function buildCandidateSample({
 
   meta.simulatedSelected = selectedEntries.length
   meta.duplicateSelected = selectedCandidates.filter((candidate) => candidate.duplicateOwner).length
+  meta.standinSampled = selectedEntries.length
 
-  return { sample: baseQueue.concat(selectedEntries), meta }
+  return { sample: baseQueue.concat(selectedEntries), meta, standins: selectedEntries }
 }
 
 export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles = [], queue = [], rules = {} } = {}) {

@@ -173,6 +173,152 @@ function normalizeHostQueueEntry(raw) {
   return entry
 }
 
+function isStandinCandidate(entry) {
+  if (!entry || typeof entry !== 'object') return false
+  if (entry.simulated === true || entry.standin === true) return true
+  const source = entry.match_source || entry.matchSource
+  if (typeof source === 'string' && source.trim() === 'participant_pool') {
+    return true
+  }
+  return false
+}
+
+function buildStandinId(entry, index) {
+  const parts = [
+    'standin',
+    index,
+    entry?.queue_id || entry?.queueId || entry?.id || entry?.hero_id || entry?.heroId || 'anon',
+  ]
+  return parts
+    .map((part) => {
+      if (part == null) return 'anon'
+      const normalized = String(part)
+      return normalized.length ? normalized : 'anon'
+    })
+    .join('_')
+}
+
+function extractMemberPosition(member) {
+  if (!member || typeof member !== 'object') return {}
+  const result = {}
+  const keys = ['memberIndex', 'member_index', 'slotIndex', 'slot_index', 'localIndex', 'local_index']
+  keys.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(member, key)) {
+      result[key] = member[key]
+    }
+  })
+  return result
+}
+
+function replaceStandinMember(member, lookup) {
+  if (!lookup || lookup.size === 0) return member
+  if (!member || typeof member !== 'object') return member
+  const keyCandidate =
+    member.queue_id || member.queueId || member.id || member.standin_queue_id || member.standinQueueId
+  if (!keyCandidate) return member
+  const key = String(keyCandidate)
+  if (!lookup.has(key)) {
+    return member
+  }
+
+  const base = lookup.get(key)
+  const indices = extractMemberPosition(member)
+  const merged = { ...member, ...base, ...indices }
+  merged.id = base.id
+  merged.queue_id = base.queue_id
+  merged.queueId = base.queue_id
+  merged.match_source = base.match_source || base.matchSource || 'participant_pool'
+  merged.matchSource = merged.match_source
+  merged.standin = true
+  merged.simulated = true
+  return merged
+}
+
+function hydrateAssignmentsWithStandins(assignments = [], lookup) {
+  if (!lookup || lookup.size === 0) return assignments
+  return assignments.map((assignment) => {
+    if (!assignment || typeof assignment !== 'object') return assignment
+    const clone = { ...assignment }
+    if (Array.isArray(assignment.members)) {
+      clone.members = assignment.members.map((member) => replaceStandinMember(member, lookup))
+    }
+    if (Array.isArray(assignment.roleSlots)) {
+      clone.roleSlots = assignment.roleSlots.map((slot) => {
+        if (!slot || typeof slot !== 'object') return slot
+        const slotClone = { ...slot }
+        if (Array.isArray(slot.members)) {
+          slotClone.members = slot.members.map((member) => replaceStandinMember(member, lookup))
+        }
+        if (slotClone.member) {
+          slotClone.member = replaceStandinMember(slotClone.member, lookup)
+        }
+        if (slotClone.member) {
+          slotClone.occupied = true
+        }
+        return slotClone
+      })
+    }
+    return clone
+  })
+}
+
+function hydrateRoomsWithStandins(rooms = [], lookup) {
+  if (!lookup || lookup.size === 0) return rooms
+  return rooms.map((room) => {
+    if (!room || typeof room !== 'object') return room
+    const clone = { ...room }
+    if (Array.isArray(room.slots)) {
+      clone.slots = room.slots.map((slot) => {
+        if (!slot || typeof slot !== 'object') return slot
+        const slotClone = { ...slot }
+        if (Array.isArray(slot.members)) {
+          slotClone.members = slot.members.map((member) => replaceStandinMember(member, lookup))
+        }
+        if (slotClone.member) {
+          slotClone.member = replaceStandinMember(slotClone.member, lookup)
+        }
+        if (slotClone.member) {
+          slotClone.occupied = true
+        }
+        return slotClone
+      })
+    }
+    return clone
+  })
+}
+
+function prepareMatchingQueue(sample = []) {
+  const lookup = new Map()
+  const queue = sample.map((entry, index) => {
+    if (!isStandinCandidate(entry)) {
+      return entry
+    }
+
+    const standinId = buildStandinId(entry, index)
+    const finalEntry = {
+      ...entry,
+      id: standinId,
+      queue_id: standinId,
+      queueId: standinId,
+      match_source: entry.match_source || entry.matchSource || 'participant_pool',
+      matchSource: entry.match_source || entry.matchSource || 'participant_pool',
+      simulated: true,
+      standin: true,
+    }
+
+    const proxyEntry = {
+      ...finalEntry,
+      simulated: false,
+      standin: false,
+    }
+
+    lookup.set(standinId, finalEntry)
+    return proxyEntry
+  })
+
+  return { queue, lookup }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
@@ -368,7 +514,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const { sample: candidateSample, meta: sampleMeta } = buildCandidateSample({
+    const { sample: candidateSample, meta: sampleMeta, standins: sampledStandins } = buildCandidateSample({
       queue,
       participantPool,
       realtimeEnabled: toggles.realtimeEnabled,
@@ -376,10 +522,18 @@ export default async function handler(req, res) {
       rules,
     })
 
-    const result = runMatching({ mode, roles, queue: candidateSample })
+    const { queue: preparedQueue, lookup: standinLookup } = toggles.realtimeEnabled
+      ? { queue: candidateSample, lookup: new Map() }
+      : prepareMatchingQueue(candidateSample)
+
+    baseMetadata.standinSampled = sampleMeta?.standinSampled ?? sampledStandins?.length ?? 0
+
+    const result = runMatching({ mode, roles, queue: preparedQueue })
 
     let assignments = Array.isArray(result.assignments) ? result.assignments : []
     let rooms = Array.isArray(result.rooms) ? result.rooms : []
+    assignments = hydrateAssignmentsWithStandins(assignments, standinLookup)
+    rooms = hydrateRoomsWithStandins(rooms, standinLookup)
     let readiness = computeRoleReadiness({
       roles,
       slotLayout,
