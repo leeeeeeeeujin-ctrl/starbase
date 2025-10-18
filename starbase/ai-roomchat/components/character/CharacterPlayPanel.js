@@ -1025,19 +1025,19 @@ export default function CharacterPlayPanel({ hero, playData }) {
     resetMatchingState()
   }, [appendDebug, matchingState.phase, resetMatchingState])
 
-  const runAsyncMatchFlow = useCallback(async () => {
+  const runAsyncMatchFlow = useCallback(async (hostPayload = null) => {
     if (!selectedGameId) {
       throw new Error('게임 정보를 찾을 수 없습니다.')
     }
 
-    appendDebug('async:request', { gameId: selectedGameId })
+    appendDebug('async:request', { gameId: selectedGameId, host: hostPayload ? { role: hostPayload.role, heroId: hostPayload.heroId } : null })
 
     let response
     try {
       response = await fetch(ASYNC_MATCH_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: selectedGameId, mode: 'rank' }),
+        body: JSON.stringify({ gameId: selectedGameId, mode: 'rank', host: hostPayload || undefined }),
       })
     } catch (error) {
       appendDebug('async:network-error', { error: error?.message || String(error) })
@@ -1120,6 +1120,23 @@ export default function CharacterPlayPanel({ hero, playData }) {
     matchTaskRef.current = { cancelled: false }
 
     if (!realtimeEnabled) {
+      const hostPayload = {
+        heroId: hero.id,
+        ownerId,
+        role: roleLabel,
+      }
+      if (Number.isFinite(Number(selectedEntry?.score))) {
+        hostPayload.score = Number(selectedEntry.score)
+      }
+      if (Number.isFinite(Number(selectedEntry?.rating))) {
+        hostPayload.rating = Number(selectedEntry.rating)
+      }
+      if (Number.isFinite(Number(selectedEntry?.win_rate))) {
+        hostPayload.winRate = Number(selectedEntry.win_rate)
+      }
+      if (Number.isFinite(Number(selectedEntry?.sessionCount))) {
+        hostPayload.sessions = Number(selectedEntry.sessionCount)
+      }
       try {
         setMatchingState((prev) => ({
           ...prev,
@@ -1129,7 +1146,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
           error: '',
         }))
 
-        const result = await runAsyncMatchFlow()
+        const result = await runAsyncMatchFlow(hostPayload)
 
         if (!result?.ready) {
           const friendly =

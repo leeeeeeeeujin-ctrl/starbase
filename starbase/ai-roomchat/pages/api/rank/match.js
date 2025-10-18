@@ -22,6 +22,10 @@ function generateMatchCode() {
   return `match_${stamp}_${random}`
 }
 
+function nowIso() {
+  return new Date().toISOString()
+}
+
 function mapToPlain(map) {
   const plain = {}
   if (!map || typeof map.forEach !== 'function') return plain
@@ -129,13 +133,53 @@ function mapCountsToPlain(statusMap) {
   return plain
 }
 
+function normalizeHostQueueEntry(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const heroId = raw.heroId || raw.hero_id
+  const ownerId = raw.ownerId || raw.owner_id
+  const roleRaw = raw.role || raw.role_name || raw.roleName
+  const role = typeof roleRaw === 'string' ? roleRaw.trim() : ''
+  if (!heroId || !ownerId || !role) {
+    return null
+  }
+
+  const joinedAt = nowIso()
+  const score = Number(raw.score)
+  const rating = Number(raw.rating)
+  const entry = {
+    id: raw.queueId || raw.id || `host_${heroId}`,
+    hero_id: heroId,
+    heroId,
+    owner_id: ownerId,
+    ownerId,
+    role,
+    score: Number.isFinite(score) ? score : Number.isFinite(rating) ? rating : null,
+    rating: Number.isFinite(rating) ? rating : Number.isFinite(score) ? score : null,
+    joined_at: joinedAt,
+    joinedAt,
+    status: 'host',
+    simulated: false,
+    standin: false,
+    match_source: 'host',
+  }
+
+  if (Number.isFinite(Number(raw.winRate))) {
+    entry.win_rate = Number(raw.winRate)
+  }
+  if (Number.isFinite(Number(raw.sessions))) {
+    entry.session_count = Number(raw.sessions)
+  }
+
+  return entry
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'method_not_allowed' })
   }
 
-  const { gameId, mode } = req.body || {}
+  const { gameId, mode, host } = req.body || {}
   if (!gameId) {
     return res.status(400).json({ error: 'missing_game_id' })
   }
@@ -156,7 +200,7 @@ export default async function handler(req, res) {
       roles,
       slotLayout,
       queue: queueResult,
-      participantPool,
+      participantPool: participantPoolResult,
       roleStatusMap,
     } = await loadMatchingResources({
       supabase,
@@ -166,13 +210,45 @@ export default async function handler(req, res) {
       brawlEnabled,
     })
 
-    let queue = queueResult
+    let queue = Array.isArray(queueResult) ? [...queueResult] : []
+    let participantPool = Array.isArray(participantPoolResult) ? [...participantPoolResult] : []
+
+    if (!toggles.realtimeEnabled) {
+      const hostEntry = normalizeHostQueueEntry(host)
+      if (hostEntry) {
+        const ownerKey = String(hostEntry.owner_id)
+        const heroKey = String(hostEntry.hero_id)
+        queue = queue.filter((entry) => {
+          const entryOwner = entry?.owner_id || entry?.ownerId
+          if (entryOwner && String(entryOwner) === ownerKey) {
+            return false
+          }
+          const entryHero = entry?.hero_id || entry?.heroId
+          if (entryHero && String(entryHero) === heroKey) {
+            return false
+          }
+          return true
+        })
+        participantPool = participantPool.filter((entry) => {
+          const entryOwner = entry?.owner_id || entry?.ownerId
+          if (entryOwner && String(entryOwner) === ownerKey) {
+            return false
+          }
+          const entryHero = entry?.hero_id || entry?.heroId
+          if (entryHero && String(entryHero) === heroKey) {
+            return false
+          }
+          return true
+        })
+        queue.unshift(hostEntry)
+      }
+    }
 
     const baseMetadata = {
       realtimeEnabled: toggles.realtimeEnabled,
       dropInEnabled: toggles.dropInEnabled,
-      queueSize: Array.isArray(queueResult) ? queueResult.length : 0,
-      participantPoolSize: Array.isArray(participantPool) ? participantPool.length : 0,
+      queueSize: queue.length,
+      participantPoolSize: participantPool.length,
       roles: Array.isArray(roles) ? roles.map((role) => role?.name).filter(Boolean) : [],
       slotLayout: serializeSlotLayout(slotLayout),
     }
@@ -190,9 +266,9 @@ export default async function handler(req, res) {
       })
 
     if (brawlEnabled) {
-      const brawlVacancies = determineBrawlVacancies(roles, roleStatusMap)
-      if (brawlVacancies.length) {
-        const brawlResult = runMatching({ mode, roles: brawlVacancies, queue: queueResult })
+        const brawlVacancies = determineBrawlVacancies(roles, roleStatusMap)
+        if (brawlVacancies.length) {
+          const brawlResult = runMatching({ mode, roles: brawlVacancies, queue })
         if (brawlResult.ready) {
           const matchCode = generateMatchCode()
           await markAssignmentsMatched(supabase, {
