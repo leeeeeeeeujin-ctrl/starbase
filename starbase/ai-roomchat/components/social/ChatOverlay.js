@@ -1930,7 +1930,7 @@ const overlayStyles = {
     gridTemplateRows: 'auto 1fr auto auto',
     borderRadius: 24,
     border: '1px solid rgba(71, 85, 105, 0.5)',
-    background: 'rgba(11, 18, 40, 0.38)',
+    background: 'rgba(11, 18, 40, 0.16)',
     minHeight: 0,
     overflow: 'hidden',
     position: 'relative',
@@ -1939,10 +1939,10 @@ const overlayStyles = {
     const base = {
       position: 'absolute',
       inset: 0,
-      background: 'linear-gradient(180deg, rgba(12, 23, 55, 0.22) 0%, rgba(12, 23, 55, 0.46) 100%)',
+      background: 'linear-gradient(180deg, rgba(12, 23, 55, 0.12) 0%, rgba(12, 23, 55, 0.32) 100%)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
-      opacity: 0.38,
+      opacity: 0.26,
       zIndex: 0,
       pointerEvents: 'none',
     }
@@ -1955,14 +1955,14 @@ const overlayStyles = {
     if (isGradientValue(trimmed) || isColorValue(trimmed)) {
       return {
         ...base,
-        background: `linear-gradient(180deg, rgba(12, 23, 55, 0.28) 0%, rgba(12, 23, 55, 0.5) 100%), ${trimmed}`,
+        background: `linear-gradient(180deg, rgba(12, 23, 55, 0.18) 0%, rgba(12, 23, 55, 0.32) 100%), ${trimmed}`,
         backgroundImage: undefined,
       }
     }
 
     return {
       ...base,
-      backgroundImage: `linear-gradient(180deg, rgba(12, 23, 55, 0.48) 0%, rgba(12, 23, 55, 0.32) 100%), url(${trimmed})`,
+      backgroundImage: `linear-gradient(180deg, rgba(12, 23, 55, 0.24) 0%, rgba(12, 23, 55, 0.18) 100%), url(${trimmed})`,
     }
   },
   conversationHeader: {

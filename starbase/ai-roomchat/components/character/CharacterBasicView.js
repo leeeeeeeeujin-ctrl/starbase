@@ -83,7 +83,7 @@ const overlayTabs = [
 const styles = {
   stage: {
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 360,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -91,7 +91,7 @@ const styles = {
   },
   heroCardShell: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 280,
     position: 'relative',
   },
   heroCard: {
@@ -217,82 +217,133 @@ const styles = {
     borderRadius: '50%',
     background: 'rgba(226,232,240,0.78)',
   },
-  playSliderSection: {
+  playCarouselSection: {
     width: '100%',
     display: 'grid',
-    gap: 10,
+    gap: 14,
   },
-  playSliderHeader: {
+  playCarouselHeader: {
     display: 'flex',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
-  playSliderTitle: {
+  playCarouselHeaderLeft: {
+    display: 'grid',
+    gap: 4,
+  },
+  playCarouselTitle: {
     margin: 0,
     fontSize: 18,
     fontWeight: 800,
   },
-  playSliderMeta: {
+  playCarouselSubtitle: {
     margin: 0,
     fontSize: 13,
     color: '#cbd5f5',
   },
-  playSliderTrack: {
-    display: 'flex',
-    gap: 12,
-    width: '100%',
-    overflowX: 'auto',
-    padding: '4px 4px 4px 0',
-    scrollbarWidth: 'thin',
+  playCarouselRole: {
+    margin: 0,
+    fontSize: 12,
+    color: '#94a3b8',
   },
-  playSliderCard: {
-    position: 'relative',
-    width: 180,
-    minHeight: 108,
+  playCarouselFrame: {
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr auto',
+    alignItems: 'stretch',
+    gap: 12,
+  },
+  playCarouselNavButton: (disabled) => ({
+    width: 42,
+    height: 120,
     borderRadius: 18,
     border: '1px solid rgba(148,163,184,0.35)',
+    background: disabled ? 'rgba(15,23,42,0.32)' : 'rgba(15,23,42,0.7)',
+    color: disabled ? 'rgba(148,163,184,0.45)' : '#f8fafc',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: 24,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'background 160ms ease, color 160ms ease',
+  }),
+  playCarouselCard: {
+    position: 'relative',
+    borderRadius: 24,
+    border: '1px solid rgba(148,163,184,0.38)',
     background: 'rgba(15,23,42,0.7)',
-    color: '#f8fafc',
-    padding: 14,
+    minHeight: 120,
+    padding: 18,
+    overflow: 'hidden',
     display: 'grid',
-    gap: 6,
-    textAlign: 'left',
+    gap: 12,
     cursor: 'pointer',
-    transition: 'transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease',
+    boxShadow: '0 22px 80px -52px rgba(56,189,248,0.55)',
+    transition: 'transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease',
   },
-  playSliderCardActive: {
-    transform: 'translateY(-6px)',
-    borderColor: 'rgba(56,189,248,0.7)',
-    boxShadow: '0 20px 44px -24px rgba(56,189,248,0.7)',
-  },
-  playSliderBackground: (imageUrl) => ({
+  playCarouselBackdrop: (imageUrl) => ({
     position: 'absolute',
     inset: 0,
-    borderRadius: 18,
+    borderRadius: 24,
     backgroundImage: imageUrl
-      ? `linear-gradient(180deg, rgba(2,6,23,0.2) 0%, rgba(2,6,23,0.85) 95%), url(${imageUrl})`
-      : 'linear-gradient(180deg, rgba(2,6,23,0.4) 0%, rgba(2,6,23,0.85) 95%)',
+      ? `linear-gradient(135deg, rgba(2,6,23,0.16) 0%, rgba(2,6,23,0.78) 100%), url(${imageUrl})`
+      : 'linear-gradient(135deg, rgba(2,6,23,0.32) 0%, rgba(2,6,23,0.78) 100%)',
     backgroundSize: 'cover',
     backgroundPosition: 'center',
-    filter: imageUrl ? 'saturate(1.15)' : 'none',
+    filter: imageUrl ? 'saturate(1.08)' : 'none',
+    opacity: 0.92,
   }),
-  playSliderContent: {
+  playCarouselContent: {
     position: 'relative',
     zIndex: 1,
     display: 'grid',
-    gap: 4,
+    gap: 10,
   },
-  playSliderGameName: {
+  playCarouselCardTitle: {
     margin: 0,
-    fontSize: 16,
-    fontWeight: 700,
-    lineHeight: 1.4,
+    fontSize: 20,
+    fontWeight: 800,
+    lineHeight: 1.35,
   },
-  playSliderGameMeta: {
+  playCarouselCardMeta: {
+    margin: 0,
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  playCarouselHint: {
     margin: 0,
     fontSize: 12,
-    color: '#cbd5f5',
+    color: '#94a3b8',
+  },
+  playCarouselIndicators: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  playCarouselIndicator: (active) => ({
+    width: active ? 32 : 12,
+    height: 12,
+    borderRadius: 999,
+    border: 'none',
+    background: active ? 'rgba(56,189,248,0.85)' : 'rgba(148,163,184,0.4)',
+    cursor: 'pointer',
+    transition: 'all 160ms ease',
+  }),
+  playRetryRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  playRetryButton: {
+    padding: '8px 18px',
+    borderRadius: 999,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.72)',
+    color: '#e2e8f0',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
   },
   playSliderEmpty: {
     padding: '16px 14px',
@@ -303,20 +354,188 @@ const styles = {
     fontSize: 13,
     color: '#cbd5f5',
   },
-  playSliderActionRow: {
-    display: 'flex',
-    justifyContent: 'center',
-    marginTop: 6,
+  playDetailPanel: {
+    display: 'grid',
+    gap: 16,
+    borderRadius: 26,
+    border: '1px solid rgba(148,163,184,0.32)',
+    background: 'rgba(15,23,42,0.78)',
+    padding: 20,
+    boxShadow: '0 30px 90px -60px rgba(15,23,42,0.8)',
   },
-  playSliderActionButton: {
-    padding: '8px 16px',
+  playDetailHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  playDetailTitle: {
+    margin: 0,
+    fontSize: 17,
+    fontWeight: 800,
+  },
+  playDetailClose: {
+    border: '1px solid rgba(148,163,184,0.35)',
     borderRadius: 999,
-    border: '1px solid rgba(148,163,184,0.45)',
-    background: 'rgba(15,23,42,0.72)',
+    background: 'rgba(15,23,42,0.6)',
     color: '#e2e8f0',
-    fontSize: 13,
-    fontWeight: 600,
+    padding: '6px 14px',
     cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  playDetailBody: {
+    display: 'grid',
+    gap: 18,
+    gridTemplateColumns: 'minmax(0, 1fr)',
+  },
+  playDetailColumns: {
+    display: 'grid',
+    gap: 18,
+    gridTemplateColumns: 'minmax(0, 220px) minmax(0, 1fr)',
+  },
+  gameListColumn: {
+    display: 'grid',
+    gap: 12,
+  },
+  gameListHeader: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+  },
+  gameList: {
+    display: 'grid',
+    gap: 10,
+    maxHeight: 220,
+    overflowY: 'auto',
+    paddingRight: 4,
+  },
+  gameListButton: (active) => ({
+    display: 'grid',
+    gap: 4,
+    padding: 14,
+    borderRadius: 18,
+    border: active ? '1px solid rgba(56,189,248,0.6)' : '1px solid rgba(148,163,184,0.28)',
+    background: active ? 'rgba(37, 99, 235, 0.22)' : 'rgba(15,23,42,0.65)',
+    color: '#f8fafc',
+    cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'border 160ms ease, background 160ms ease',
+  }),
+  gameListName: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  gameListMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  playRankingColumn: {
+    display: 'grid',
+    gap: 16,
+  },
+  playRankingHeader: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+  },
+  playRankingHighlight: {
+    position: 'relative',
+    borderRadius: 22,
+    overflow: 'hidden',
+    border: '1px solid rgba(96,165,250,0.32)',
+    background: 'linear-gradient(135deg, rgba(15,23,42,0.75) 0%, rgba(30,64,175,0.35) 100%)',
+    minHeight: 120,
+    display: 'grid',
+    gridTemplateColumns: '120px 1fr',
+    alignItems: 'stretch',
+  },
+  playRankingHighlightImage: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  playRankingHighlightImageInner: (url) => ({
+    position: 'absolute',
+    inset: 0,
+    backgroundImage: url
+      ? `linear-gradient(180deg, rgba(15,23,42,0.15) 0%, rgba(15,23,42,0.65) 100%), url(${url})`
+      : 'linear-gradient(180deg, rgba(15,23,42,0.2) 0%, rgba(15,23,42,0.65) 100%)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  }),
+  playRankingHighlightInfo: {
+    position: 'relative',
+    padding: 18,
+    display: 'grid',
+    gap: 6,
+  },
+  playRankingHighlightBadge: {
+    margin: 0,
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#bae6fd',
+  },
+  playRankingHighlightName: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+  },
+  playRankingHighlightMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  playRankingList: {
+    display: 'grid',
+    gap: 10,
+  },
+  playRankingRow: {
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr auto',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 16,
+    border: '1px solid rgba(148,163,184,0.28)',
+    background: 'rgba(15,23,42,0.62)',
+  },
+  playRankingIndex: {
+    width: 36,
+    height: 36,
+    borderRadius: '50%',
+    background: 'rgba(30,64,175,0.35)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 700,
+  },
+  playRankingHeroInfo: {
+    display: 'grid',
+    gap: 4,
+  },
+  playRankingHeroName: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  playRankingHeroRole: {
+    margin: 0,
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  playRankingScore: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  playRankingEmpty: {
+    padding: 18,
+    borderRadius: 16,
+    border: '1px dashed rgba(148,163,184,0.35)',
+    textAlign: 'center',
+    color: '#cbd5f5',
   },
   playStatsSection: {
     width: '100%',
@@ -1010,6 +1229,7 @@ export default function CharacterBasicView({ hero }) {
   const [activeTab, setActiveTab] = useState(0)
   const [playerCollapsed, setPlayerCollapsed] = useState(true)
   const [dockCollapsed, setDockCollapsed] = useState(true)
+  const [detailOpen, setDetailOpen] = useState(false)
   const [selectedBgmName, setSelectedBgmName] = useState('')
   const [customBgmUrl, setCustomBgmUrl] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -1050,25 +1270,28 @@ export default function CharacterBasicView({ hero }) {
     showMore: showMoreBattles,
   } = battleState
 
-  const featuredParticipations = useMemo(
-    () => participations.slice(0, 4),
-    [participations],
-  )
+  const carouselEntries = useMemo(() => participations, [participations])
 
   const currentRole = selectedEntry?.role ? selectedEntry.role : null
 
+  const selectedCarouselIndex = useMemo(() => {
+    if (!carouselEntries.length || !selectedGameId) return 0
+    const index = carouselEntries.findIndex((entry) => entry.game_id === selectedGameId)
+    return index >= 0 ? index : 0
+  }, [carouselEntries, selectedGameId])
+
   const heroRank = useMemo(() => {
-    if (!Array.isArray(selectedScoreboard) || !currentHero?.id) return null
-    const index = selectedScoreboard.findIndex((row) => row?.hero_id === currentHero.id)
-    return index >= 0 ? index + 1 : null
-  }, [selectedScoreboard, currentHero?.id])
+    if (!rankingRows.length || !currentHero?.id) return null
+    const entry = rankingRows.find((row) => row.heroId === currentHero.id)
+    return entry?.rank ?? null
+  }, [rankingRows, currentHero?.id])
 
   const heroScore = useMemo(() => {
     if (selectedEntry?.score != null) return selectedEntry.score
-    if (!Array.isArray(selectedScoreboard) || !currentHero?.id) return null
-    const row = selectedScoreboard.find((item) => item?.hero_id === currentHero.id)
-    return row?.score ?? row?.rating ?? null
-  }, [selectedEntry?.score, selectedScoreboard, currentHero?.id])
+    if (!currentHero?.id) return null
+    const row = rankingRows.find((item) => item.heroId === currentHero.id)
+    return row?.value ?? null
+  }, [selectedEntry?.score, rankingRows, currentHero?.id])
 
   const matchCount = useMemo(() => {
     if (battleSummary?.total != null) return battleSummary.total
@@ -1076,29 +1299,169 @@ export default function CharacterBasicView({ hero }) {
     return null
   }, [battleSummary?.total, selectedEntry?.sessionCount])
 
-  const scoreboardRows = useMemo(() => {
+  const topRanking = rankingRows[0] || null
+  const canGoPrev = selectedCarouselIndex > 0
+  const canGoNext = carouselEntries.length > 0 && selectedCarouselIndex < carouselEntries.length - 1
+
+  const formatParticipationMeta = useCallback((entry) => {
+    if (!entry) return '참여 기록 없음'
+    const parts = []
+    if (entry.sessionCount) {
+      parts.push(`${entry.sessionCount.toLocaleString('ko-KR')}회 참여`)
+    }
+    if (entry.primaryMode) {
+      parts.push(`주 모드 ${entry.primaryMode}`)
+    }
+    if (entry.latestSessionAt) {
+      parts.push(`최근 ${entry.latestSessionAt}`)
+    }
+    return parts.join(' · ') || '참여 기록 없음'
+  }, [])
+
+  const handlePrevGame = useCallback(() => {
+    if (!carouselEntries.length || !selectedGameId) return
+    const currentIndex = carouselEntries.findIndex((entry) => entry.game_id === selectedGameId)
+    if (currentIndex <= 0) return
+    const next = carouselEntries[currentIndex - 1]
+    if (!next) return
+    setSelectedGameId(next.game_id)
+  }, [carouselEntries, selectedGameId, setSelectedGameId])
+
+  const handleNextGame = useCallback(() => {
+    if (!carouselEntries.length || !selectedGameId) return
+    const currentIndex = carouselEntries.findIndex((entry) => entry.game_id === selectedGameId)
+    if (currentIndex < 0 || currentIndex >= carouselEntries.length - 1) return
+    const next = carouselEntries[currentIndex + 1]
+    if (!next) return
+    setSelectedGameId(next.game_id)
+  }, [carouselEntries, selectedGameId, setSelectedGameId])
+
+  const handleIndicatorClick = useCallback(
+    (gameId) => {
+      if (!gameId) return
+      setSelectedGameId(gameId)
+    },
+    [setSelectedGameId],
+  )
+
+  const carouselSwipeHandledRef = useRef(false)
+
+  const handleCarouselCardClick = useCallback(
+    (gameId) => {
+      if (!gameId) return
+      if (carouselSwipeHandledRef.current) {
+        carouselSwipeHandledRef.current = false
+        return
+      }
+      setSelectedGameId(gameId)
+      setDetailOpen(true)
+    },
+    [setSelectedGameId],
+  )
+
+  const handleGameListSelect = useCallback(
+    (gameId) => {
+      if (!gameId) return
+      setSelectedGameId(gameId)
+    },
+    [setSelectedGameId],
+  )
+
+  const handleDetailClose = useCallback(() => {
+    setDetailOpen(false)
+  }, [])
+
+  const handleCarouselTouchStart = useCallback((event) => {
+    carouselSwipeHandledRef.current = false
+    if (!event.touches?.length) return
+    carouselTouchStartRef.current = event.touches[0].clientX
+  }, [])
+
+  const handleCarouselTouchEnd = useCallback(
+    (event) => {
+      if (!event.changedTouches?.length) return
+      const startX = carouselTouchStartRef.current
+      carouselTouchStartRef.current = null
+      if (typeof startX !== 'number') return
+      const delta = event.changedTouches[0].clientX - startX
+      if (Math.abs(delta) < 40) return
+      carouselSwipeHandledRef.current = true
+      if (delta > 0) {
+        handlePrevGame()
+      } else {
+        handleNextGame()
+      }
+    },
+    [handleNextGame, handlePrevGame],
+  )
+
+  const handleCarouselPointerDown = useCallback((event) => {
+    carouselSwipeHandledRef.current = false
+    carouselTouchStartRef.current = event.clientX
+  }, [])
+
+  const handleCarouselPointerUp = useCallback(
+    (event) => {
+      const startX = carouselTouchStartRef.current
+      carouselTouchStartRef.current = null
+      if (typeof startX !== 'number') return
+      const delta = event.clientX - startX
+      if (Math.abs(delta) < 40) return
+      carouselSwipeHandledRef.current = true
+      if (delta > 0) {
+        handlePrevGame()
+      } else {
+        handleNextGame()
+      }
+    },
+    [handleNextGame, handlePrevGame],
+  )
+
+  const rankingRows = useMemo(() => {
     if (!Array.isArray(selectedScoreboard)) return []
-    return selectedScoreboard.map((row, index) => {
+    const enriched = selectedScoreboard.map((row, index) => {
       const heroEntry = row?.hero_id ? heroLookup?.[row.hero_id] : null
       const heroName =
         (heroEntry?.name && heroEntry.name.trim()) ||
         (row?.role && row.role.trim()) ||
         (row?.slot_no != null ? `슬롯 ${row.slot_no + 1}` : `참가자 ${index + 1}`)
 
-      const roleLabel = row?.role && row.role.trim() ? row.role.trim() : null
+      const scoreValue = Number.isFinite(Number(row?.score)) ? Number(row.score) : null
+      const ratingValue = Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null
+      const battlesValue = Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null
+      const value = scoreValue != null ? scoreValue : ratingValue
 
       return {
         key:
           row?.id ||
           (row?.hero_id ? `hero-${row.hero_id}` : row?.slot_no != null ? `slot-${row.slot_no}` : `row-${index}`),
+        heroId: row?.hero_id || null,
         heroName,
-        roleLabel,
-        score: Number.isFinite(Number(row?.score)) ? Number(row.score) : null,
-        rating: Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null,
-        battles: Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null,
-        imageUrl: heroEntry?.image_url || null,
+        heroImage: heroEntry?.image_url || null,
+        roleLabel: row?.role && row.role.trim() ? row.role.trim() : null,
+        value,
+        valueLabel: scoreValue != null ? '점' : ratingValue != null ? '레이팅' : null,
+        battles: battlesValue,
       }
     })
+
+    const resolveValue = (entry) => {
+      if (entry.value != null) return entry.value
+      return Number.NEGATIVE_INFINITY
+    }
+
+    return enriched
+      .sort((a, b) => {
+        const diff = resolveValue(b) - resolveValue(a)
+        if (diff !== 0) return diff
+        const battleDiff = (b.battles ?? -Infinity) - (a.battles ?? -Infinity)
+        if (battleDiff !== 0) return battleDiff
+        return (a.heroName || '').localeCompare(b.heroName || '')
+      })
+      .map((entry, index) => ({
+        ...entry,
+        rank: index + 1,
+      }))
   }, [heroLookup, selectedScoreboard])
 
   const audioManager = useMemo(() => getHeroAudioManager(), [])
@@ -1124,6 +1487,7 @@ export default function CharacterBasicView({ hero }) {
   const imageObjectUrlRef = useRef(null)
   const backgroundObjectUrlRef = useRef(null)
   const lastLoadedHeroKeyRef = useRef(null)
+  const carouselTouchStartRef = useRef(null)
 
   useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
 
@@ -1235,6 +1599,18 @@ export default function CharacterBasicView({ hero }) {
     if (backgroundInputRef.current) backgroundInputRef.current.value = ''
     if (bgmInputRef.current) bgmInputRef.current.value = ''
   }, [hero?.id])
+
+  useEffect(() => {
+    if (!selectedEntry) {
+      setDetailOpen(false)
+    }
+  }, [selectedEntry])
+
+  useEffect(() => {
+    if (!carouselEntries.length) {
+      setDetailOpen(false)
+    }
+  }, [carouselEntries.length])
 
   useEffect(() => {
     if (previousCustomUrl.current && previousCustomUrl.current !== customBgmUrl) {
@@ -2171,48 +2547,180 @@ export default function CharacterBasicView({ hero }) {
   })()
 
   const playSliderSection = (
-    <section style={styles.playSliderSection}>
-      <div style={styles.playSliderHeader}>
-        <h3 style={styles.playSliderTitle}>참여한 게임</h3>
-        {currentRole ? <p style={styles.playSliderMeta}>{currentRole}</p> : null}
+    <section style={styles.playCarouselSection}>
+      <div style={styles.playCarouselHeader}>
+        <div style={styles.playCarouselHeaderLeft}>
+          <h3 style={styles.playCarouselTitle}>참여한 게임</h3>
+          {selectedEntry?.game?.name ? (
+            <p style={styles.playCarouselSubtitle}>{selectedEntry.game.name}</p>
+          ) : !participationLoading && carouselEntries.length ? (
+            <p style={styles.playCarouselSubtitle}>{`총 ${carouselEntries.length.toLocaleString('ko-KR')}개 참여`}</p>
+          ) : null}
+          {currentRole ? <p style={styles.playCarouselRole}>{currentRole}</p> : null}
+        </div>
+        {heroRank ? <p style={styles.playCarouselRole}>{`현재 순위 ${heroRank}위`}</p> : null}
       </div>
       {participationLoading ? (
         <div style={styles.playSliderEmpty}>참여한 게임을 불러오는 중입니다…</div>
       ) : participationError ? (
         <div>
           <div style={styles.playSliderEmpty}>{participationError}</div>
-          <div style={styles.playSliderActionRow}>
-            <button type="button" style={styles.playSliderActionButton} onClick={refreshParticipations}>
+          <div style={styles.playRetryRow}>
+            <button type="button" style={styles.playRetryButton} onClick={refreshParticipations}>
               다시 시도
             </button>
           </div>
         </div>
-      ) : featuredParticipations.length ? (
-        <div style={styles.playSliderTrack}>
-          {featuredParticipations.map((entry) => {
-            const active = entry.game_id === selectedGameId
-            const backgroundImage = entry.game?.cover_url || entry.game?.image_url || null
-            return (
-              <button
-                key={entry.game_id}
-                type="button"
-                onClick={() => setSelectedGameId(entry.game_id)}
-                style={{
-                  ...styles.playSliderCard,
-                  ...(active ? styles.playSliderCardActive : {}),
-                }}
-              >
-                <div style={styles.playSliderBackground(backgroundImage)} />
-                <div style={styles.playSliderContent}>
-                  <h4 style={styles.playSliderGameName}>{entry.game?.name || '이름 없는 게임'}</h4>
-                  <p style={styles.playSliderGameMeta}>
-                    {entry.sessionCount ? `${entry.sessionCount.toLocaleString('ko-KR')}회 참여` : '기록 없음'}
-                  </p>
+      ) : carouselEntries.length ? (
+        <>
+          <div
+            style={styles.playCarouselFrame}
+            onTouchStart={handleCarouselTouchStart}
+            onTouchEnd={handleCarouselTouchEnd}
+            onPointerDown={handleCarouselPointerDown}
+            onPointerUp={handleCarouselPointerUp}
+          >
+            <button
+              type="button"
+              style={styles.playCarouselNavButton(!canGoPrev)}
+              onClick={handlePrevGame}
+              disabled={!canGoPrev}
+              aria-label="이전 게임 보기"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              style={styles.playCarouselCard}
+              onClick={() => handleCarouselCardClick(selectedEntry?.game_id)}
+            >
+              <div
+                style={styles.playCarouselBackdrop(
+                  selectedEntry?.game?.cover_url || selectedEntry?.game?.image_url || null,
+                )}
+              />
+              <div style={styles.playCarouselContent}>
+                <h4 style={styles.playCarouselCardTitle}>{selectedEntry?.game?.name || '이름 없는 게임'}</h4>
+                <p style={styles.playCarouselCardMeta}>{formatParticipationMeta(selectedEntry)}</p>
+                <p style={styles.playCarouselHint}>탭해서 게임 목록과 랭킹 보기</p>
+              </div>
+            </button>
+            <button
+              type="button"
+              style={styles.playCarouselNavButton(!canGoNext)}
+              onClick={handleNextGame}
+              disabled={!canGoNext}
+              aria-label="다음 게임 보기"
+            >
+              ›
+            </button>
+          </div>
+          {carouselEntries.length > 1 ? (
+            <div style={styles.playCarouselIndicators}>
+              {carouselEntries.map((entry) => (
+                <button
+                  key={entry.game_id}
+                  type="button"
+                  style={styles.playCarouselIndicator(entry.game_id === selectedGameId)}
+                  onClick={() => handleIndicatorClick(entry.game_id)}
+                  aria-label={`${entry.game?.name || '게임'}로 이동`}
+                />
+              ))}
+            </div>
+          ) : null}
+          {detailOpen && selectedEntry ? (
+            <div style={styles.playDetailPanel}>
+              <div style={styles.playDetailHeader}>
+                <h4 style={styles.playDetailTitle}>{selectedEntry.game?.name || '게임 정보'}</h4>
+                <button type="button" style={styles.playDetailClose} onClick={handleDetailClose}>
+                  닫기
+                </button>
+              </div>
+              <div style={styles.playDetailBody}>
+                <div style={styles.playDetailColumns}>
+                  <div style={styles.gameListColumn}>
+                    <h5 style={styles.gameListHeader}>게임 목록</h5>
+                    <div style={styles.gameList}>
+                      {carouselEntries.map((entry) => {
+                        const active = entry.game_id === selectedGameId
+                        return (
+                          <button
+                            key={entry.game_id}
+                            type="button"
+                            style={styles.gameListButton(active)}
+                            onClick={() => handleGameListSelect(entry.game_id)}
+                          >
+                            <p style={styles.gameListName}>{entry.game?.name || '이름 없는 게임'}</p>
+                            <p style={styles.gameListMeta}>{formatParticipationMeta(entry)}</p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div style={styles.playRankingColumn}>
+                    <h5 style={styles.playRankingHeader}>랭킹</h5>
+                    {rankingRows.length ? (
+                      <>
+                        <div style={styles.playRankingHighlight}>
+                          <div style={styles.playRankingHighlightImage}>
+                            <div style={styles.playRankingHighlightImageInner(topRanking?.heroImage || null)} />
+                          </div>
+                          <div style={styles.playRankingHighlightInfo}>
+                            <p style={styles.playRankingHighlightBadge}>현재 1위</p>
+                            <p style={styles.playRankingHighlightName}>{topRanking?.heroName || '랭커 없음'}</p>
+                            <p style={styles.playRankingHighlightMeta}>
+                              {[
+                                topRanking?.roleLabel ? `역할 ${topRanking.roleLabel}` : null,
+                                topRanking?.value != null
+                                  ? `${topRanking.value.toLocaleString('ko-KR')} ${topRanking.valueLabel || ''}`.trim()
+                                  : null,
+                                topRanking?.battles != null ? `${topRanking.battles}전` : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ') || '데이터 없음'}
+                            </p>
+                          </div>
+                        </div>
+                        <div style={styles.playRankingList}>
+                          {rankingRows.slice(0, 10).map((row) => {
+                            const highlight = row.heroId === currentHero?.id
+                            return (
+                              <div
+                                key={row.key}
+                                style={{
+                                  ...styles.playRankingRow,
+                                  background: highlight
+                                    ? 'rgba(56,189,248,0.22)'
+                                    : styles.playRankingRow.background,
+                                  border: highlight
+                                    ? '1px solid rgba(56,189,248,0.55)'
+                                    : styles.playRankingRow.border,
+                                }}
+                              >
+                                <span style={styles.playRankingIndex}>{row.rank}</span>
+                                <div style={styles.playRankingHeroInfo}>
+                                  <p style={styles.playRankingHeroName}>{row.heroName}</p>
+                                  <p style={styles.playRankingHeroRole}>{row.roleLabel || '—'}</p>
+                                </div>
+                                <p style={styles.playRankingScore}>
+                                  {row.value != null
+                                    ? `${row.value.toLocaleString('ko-KR')} ${row.valueLabel || ''}`.trim()
+                                    : '—'}
+                                </p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <div style={styles.playRankingEmpty}>선택한 게임의 랭킹 데이터가 없습니다.</div>
+                    )}
+                  </div>
                 </div>
-              </button>
-            )
-          })}
-        </div>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <div style={styles.playSliderEmpty}>아직 이 캐릭터가 참여한 게임이 없습니다.</div>
       )}
