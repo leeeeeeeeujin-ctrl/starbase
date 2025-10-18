@@ -1475,6 +1475,7 @@ export default function CharacterBasicView({ hero }) {
     showMore: showMoreBattles,
   } = battleState
 
+  const carouselItemRefs = useRef(new Map())
   const carouselEntries = useMemo(() => participations, [participations])
 
   const heroRankByGame = useMemo(() => {
@@ -1877,7 +1878,6 @@ export default function CharacterBasicView({ hero }) {
     [setSelectedGameId],
   )
 
-  const carouselItemRefs = useRef(new Map())
   const carouselTrackRef = useRef(null)
   const carouselScrollStateRef = useRef({ frame: null, timeout: null })
   const infoSliderTouchStartRef = useRef(null)
