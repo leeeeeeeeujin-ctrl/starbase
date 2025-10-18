@@ -282,6 +282,7 @@ const styles = {
     width: '100%',
     scrollSnapType: 'x mandatory',
     WebkitOverflowScrolling: 'touch',
+    scrollBehavior: 'smooth',
   },
   playCarouselCard: (active) => ({
     position: 'relative',
@@ -303,6 +304,7 @@ const styles = {
     scrollSnapAlign: 'center',
     scrollSnapStop: 'always',
     transform: active ? 'translateY(-8px)' : 'translateY(0)',
+    willChange: 'transform',
   }),
   playCarouselBackdrop: (imageUrl) => ({
     position: 'absolute',
@@ -324,9 +326,10 @@ const styles = {
   },
   playCarouselCardTitle: {
     margin: 0,
-    fontSize: 18,
+    fontSize: 21,
     fontWeight: 800,
     lineHeight: 1.35,
+    letterSpacing: '-0.015em',
   },
   playCarouselCardMeta: {
     margin: 0,
@@ -469,6 +472,7 @@ const styles = {
     gap: 18,
     justifyItems: 'center',
     textAlign: 'center',
+    flex: '0 0 auto',
   },
   playDetailHeroBadge: {
     margin: 0,
@@ -539,12 +543,15 @@ const styles = {
   playDetailBody: {
     position: 'relative',
     zIndex: 1,
-    display: 'grid',
+    display: 'flex',
+    flexDirection: 'column',
     gap: 24,
     padding: '22px 28px 28px',
-    overflow: 'hidden auto',
+    overflowY: 'auto',
+    height: '100%',
   },
   playDetailGameFigure: {
+    flex: '0 0 auto',
     borderRadius: 24,
     overflow: 'hidden',
     border: '1px solid rgba(148,163,184,0.35)',
@@ -564,6 +571,7 @@ const styles = {
     justifyContent: 'space-between',
     gap: 12,
     flexWrap: 'wrap',
+    flex: '0 0 auto',
   },
   playRankingFilterLabel: {
     margin: 0,
@@ -585,6 +593,8 @@ const styles = {
     display: 'grid',
     gap: 12,
     width: '100%',
+    flex: '0 0 auto',
+    paddingRight: 4,
   },
   playRankingRow: {
     display: 'grid',
@@ -636,6 +646,7 @@ const styles = {
     margin: 0,
     fontSize: 12,
     color: '#94a3b8',
+    flex: '0 0 auto',
   },
   playStatsSection: {
     width: '100%',
@@ -945,11 +956,14 @@ const styles = {
     overflow: 'hidden',
     position: 'relative',
     touchAction: 'pan-y',
+    minHeight: 340,
+    maxHeight: '70vh',
   },
   infoSliderTrack: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 100%)',
     width: '200%',
+    height: '100%',
     transition: 'transform 220ms ease',
   },
   infoSliderSlide: {
@@ -958,6 +972,8 @@ const styles = {
     display: 'grid',
     gap: 16,
     alignContent: 'start',
+    minHeight: '100%',
+    overflowY: 'auto',
   },
   infoSliderIndicators: {
     display: 'flex',
@@ -1444,7 +1460,10 @@ export default function CharacterBasicView({ hero }) {
     if (!selectedGameId) return
     const node = carouselItemRefs.current.get(selectedGameId)
     if (!node || typeof node.scrollIntoView !== 'function') return
-    node.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+    if (typeof window === 'undefined') return
+    window.requestAnimationFrame(() => {
+      node.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+    })
   }, [selectedGameId])
 
   const rankingRows = useMemo(() => {

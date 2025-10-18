@@ -9,6 +9,7 @@ const panelStyles = {
   root: {
     display: 'grid',
     gap: 20,
+    width: '100%',
   },
   section: {
     display: 'grid',
@@ -190,6 +191,26 @@ const panelStyles = {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  descriptionBlock: {
+    borderRadius: 20,
+    border: '1px solid rgba(148,163,184,0.32)',
+    background: 'rgba(15,23,42,0.62)',
+    padding: 18,
+    display: 'grid',
+    gap: 8,
+  },
+  descriptionHeading: {
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 700,
+  },
+  descriptionText: {
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#e2e8f0',
+    whiteSpace: 'pre-line',
+  },
 }
 
 const overlayStyles = {
@@ -318,6 +339,12 @@ export default function CharacterPlayPanel({ hero, playData }) {
 
   const currentRole = selectedEntry?.role ? selectedEntry.role : null
 
+  const gameDescription = useMemo(() => {
+    const raw = selectedGame?.description
+    if (typeof raw === 'string' && raw.trim()) return raw.trim()
+    return '아직 등록된 설명이 없습니다.'
+  }, [selectedGame?.description])
+
   const handleStartMatch = useCallback(() => {
     if (!selectedGameId) {
       alert('먼저 게임을 선택하세요.')
@@ -387,6 +414,15 @@ export default function CharacterPlayPanel({ hero, playData }) {
     </section>
   )
 
+  const descriptionSection = (
+    <section>
+      <div style={panelStyles.descriptionBlock}>
+        <h3 style={panelStyles.descriptionHeading}>게임 설명</h3>
+        <p style={panelStyles.descriptionText}>{gameDescription}</p>
+      </div>
+    </section>
+  )
+
   const battleSection = (
     <section style={panelStyles.section}>
       <div style={panelStyles.headerRow}>
@@ -440,6 +476,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
   return (
     <div style={panelStyles.root}>
       {startButton}
+      {descriptionSection}
       {battleSection}
       <MatchingOverlay
         open={matchingState.open}
