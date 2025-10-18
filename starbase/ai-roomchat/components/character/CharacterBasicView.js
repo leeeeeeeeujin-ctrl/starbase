@@ -1272,6 +1272,53 @@ export default function CharacterBasicView({ hero }) {
 
   const carouselEntries = useMemo(() => participations, [participations])
 
+  const rankingRows = useMemo(() => {
+    if (!Array.isArray(selectedScoreboard)) return []
+    const enriched = selectedScoreboard.map((row, index) => {
+      const heroEntry = row?.hero_id ? heroLookup?.[row.hero_id] : null
+      const heroName =
+        (heroEntry?.name && heroEntry.name.trim()) ||
+        (row?.role && row.role.trim()) ||
+        (row?.slot_no != null ? `슬롯 ${row.slot_no + 1}` : `참가자 ${index + 1}`)
+
+      const scoreValue = Number.isFinite(Number(row?.score)) ? Number(row.score) : null
+      const ratingValue = Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null
+      const battlesValue = Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null
+      const value = scoreValue != null ? scoreValue : ratingValue
+
+      return {
+        key:
+          row?.id ||
+          (row?.hero_id ? `hero-${row.hero_id}` : row?.slot_no != null ? `slot-${row.slot_no}` : `row-${index}`),
+        heroId: row?.hero_id || null,
+        heroName,
+        heroImage: heroEntry?.image_url || null,
+        roleLabel: row?.role && row.role.trim() ? row.role.trim() : null,
+        value,
+        valueLabel: scoreValue != null ? '점' : ratingValue != null ? '레이팅' : null,
+        battles: battlesValue,
+      }
+    })
+
+    const resolveValue = (entry) => {
+      if (entry.value != null) return entry.value
+      return Number.NEGATIVE_INFINITY
+    }
+
+    return enriched
+      .sort((a, b) => {
+        const diff = resolveValue(b) - resolveValue(a)
+        if (diff !== 0) return diff
+        const battleDiff = (b.battles ?? -Infinity) - (a.battles ?? -Infinity)
+        if (battleDiff !== 0) return battleDiff
+        return (a.heroName || '').localeCompare(b.heroName || '')
+      })
+      .map((entry, index) => ({
+        ...entry,
+        rank: index + 1,
+      }))
+  }, [heroLookup, selectedScoreboard])
+
   const currentRole = selectedEntry?.role ? selectedEntry.role : null
 
   const selectedCarouselIndex = useMemo(() => {
@@ -1416,53 +1463,6 @@ export default function CharacterBasicView({ hero }) {
     },
     [handleNextGame, handlePrevGame],
   )
-
-  const rankingRows = useMemo(() => {
-    if (!Array.isArray(selectedScoreboard)) return []
-    const enriched = selectedScoreboard.map((row, index) => {
-      const heroEntry = row?.hero_id ? heroLookup?.[row.hero_id] : null
-      const heroName =
-        (heroEntry?.name && heroEntry.name.trim()) ||
-        (row?.role && row.role.trim()) ||
-        (row?.slot_no != null ? `슬롯 ${row.slot_no + 1}` : `참가자 ${index + 1}`)
-
-      const scoreValue = Number.isFinite(Number(row?.score)) ? Number(row.score) : null
-      const ratingValue = Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null
-      const battlesValue = Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null
-      const value = scoreValue != null ? scoreValue : ratingValue
-
-      return {
-        key:
-          row?.id ||
-          (row?.hero_id ? `hero-${row.hero_id}` : row?.slot_no != null ? `slot-${row.slot_no}` : `row-${index}`),
-        heroId: row?.hero_id || null,
-        heroName,
-        heroImage: heroEntry?.image_url || null,
-        roleLabel: row?.role && row.role.trim() ? row.role.trim() : null,
-        value,
-        valueLabel: scoreValue != null ? '점' : ratingValue != null ? '레이팅' : null,
-        battles: battlesValue,
-      }
-    })
-
-    const resolveValue = (entry) => {
-      if (entry.value != null) return entry.value
-      return Number.NEGATIVE_INFINITY
-    }
-
-    return enriched
-      .sort((a, b) => {
-        const diff = resolveValue(b) - resolveValue(a)
-        if (diff !== 0) return diff
-        const battleDiff = (b.battles ?? -Infinity) - (a.battles ?? -Infinity)
-        if (battleDiff !== 0) return battleDiff
-        return (a.heroName || '').localeCompare(b.heroName || '')
-      })
-      .map((entry, index) => ({
-        ...entry,
-        rank: index + 1,
-      }))
-  }, [heroLookup, selectedScoreboard])
 
   const audioManager = useMemo(() => getHeroAudioManager(), [])
   const [audioState, setAudioState] = useState(() => audioManager.getState())
