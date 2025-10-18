@@ -1878,6 +1878,8 @@ export default function CharacterBasicView({ hero }) {
   )
 
   const carouselItemRefs = useRef(new Map())
+  const carouselTrackRef = useRef(null)
+  const carouselScrollStateRef = useRef({ frame: null, timeout: null })
   const infoSliderTouchStartRef = useRef(null)
 
   const handleCarouselCardClick = useCallback(
@@ -1889,6 +1891,112 @@ export default function CharacterBasicView({ hero }) {
     },
     [setSelectedGameId],
   )
+
+  const syncCarouselSelectionFromScroll = useCallback(() => {
+    const track = carouselTrackRef.current
+    if (!track) return
+
+    const entries = Array.from(carouselItemRefs.current.entries())
+    if (!entries.length) return
+
+    const center = track.scrollLeft + track.clientWidth / 2
+
+    let closestId = null
+    let closestDistance = Number.POSITIVE_INFINITY
+
+    entries.forEach(([gameId, node]) => {
+      if (!node) return
+      const nodeCenter = node.offsetLeft + node.offsetWidth / 2
+      const distance = Math.abs(nodeCenter - center)
+      if (distance < closestDistance) {
+        closestDistance = distance
+        closestId = gameId
+      }
+    })
+
+    if (closestId && closestId !== selectedGameId) {
+      setSelectedGameId(closestId)
+    }
+  }, [selectedGameId, setSelectedGameId])
+
+  const handleCarouselScroll = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    const state = carouselScrollStateRef.current
+
+    if (state.frame) {
+      window.cancelAnimationFrame(state.frame)
+    }
+
+    state.frame = window.requestAnimationFrame(() => {
+      state.frame = null
+      syncCarouselSelectionFromScroll()
+    })
+
+    if (state.timeout) {
+      window.clearTimeout(state.timeout)
+    }
+
+    state.timeout = window.setTimeout(() => {
+      state.timeout = null
+      syncCarouselSelectionFromScroll()
+    }, 150)
+  }, [syncCarouselSelectionFromScroll])
+
+  const finalizeCarouselScroll = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    const state = carouselScrollStateRef.current
+    if (state.frame) {
+      window.cancelAnimationFrame(state.frame)
+      state.frame = null
+    }
+    if (state.timeout) {
+      window.clearTimeout(state.timeout)
+      state.timeout = null
+    }
+
+    syncCarouselSelectionFromScroll()
+  }, [syncCarouselSelectionFromScroll])
+
+  useEffect(() => {
+    const track = carouselTrackRef.current
+    if (!track) return undefined
+
+    const onScroll = () => handleCarouselScroll()
+    const onInteractionEnd = () => finalizeCarouselScroll()
+
+    track.addEventListener('scroll', onScroll, { passive: true })
+    track.addEventListener('touchend', onInteractionEnd, { passive: true })
+    track.addEventListener('pointerup', onInteractionEnd, { passive: true })
+    track.addEventListener('mouseup', onInteractionEnd, { passive: true })
+
+    return () => {
+      track.removeEventListener('scroll', onScroll)
+      track.removeEventListener('touchend', onInteractionEnd)
+      track.removeEventListener('pointerup', onInteractionEnd)
+      track.removeEventListener('mouseup', onInteractionEnd)
+    }
+  }, [finalizeCarouselScroll, handleCarouselScroll])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      const state = carouselScrollStateRef.current
+      if (state.frame) {
+        window.cancelAnimationFrame(state.frame)
+        state.frame = null
+      }
+      if (state.timeout) {
+        window.clearTimeout(state.timeout)
+        state.timeout = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    syncCarouselSelectionFromScroll()
+  }, [carouselEntries.length, syncCarouselSelectionFromScroll])
 
   const handleDetailClose = useCallback(() => {
     setDetailOpen(false)
@@ -3054,7 +3162,7 @@ export default function CharacterBasicView({ hero }) {
       ) : carouselEntries.length ? (
         <>
           <div style={styles.playCarouselFrame}>
-            <div style={styles.playCarouselTrack}>
+            <div ref={carouselTrackRef} style={styles.playCarouselTrack}>
               {carouselEntries.map((entry) => {
                 const active = entry.game_id === selectedGameId
                 const imageUrl = entry.game?.cover_url || entry.game?.image_url || null
