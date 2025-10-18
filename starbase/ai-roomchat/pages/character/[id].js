@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/router'
 
-import CharacterBasicView from '@/components/character/CharacterBasicView'
+import CharacterPlayView from '@/components/character/CharacterPlayView'
 import { useCharacterDetail } from '@/hooks/character/useCharacterDetail'
 import { persistHeroSelection } from '@/lib/heroes/selectedHeroStorage'
 
@@ -124,5 +124,5 @@ export default function CharacterDetailPage() {
     )
   }
 
-  return <CharacterBasicView hero={hero} />
+  return <CharacterPlayView hero={hero} />
 }
