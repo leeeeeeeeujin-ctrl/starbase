@@ -2095,6 +2095,32 @@ const overlayStyles = {
     color: '#cbd5f5',
     letterSpacing: 0.2,
   },
+  drawerAnnouncementRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  drawerAnnouncementButton: {
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 12px',
+    borderRadius: 999,
+    border: '1px solid rgba(148, 163, 184, 0.45)',
+    background: 'rgba(148, 163, 184, 0.12)',
+    color: '#e2e8f0',
+    cursor: 'pointer',
+    transition: 'background 140ms ease, border 140ms ease, color 140ms ease',
+  },
+  drawerAnnouncementHint: {
+    fontSize: 12,
+    color: '#94a3b8',
+    lineHeight: 1.5,
+  },
+  drawerAnnouncementEmpty: {
+    fontSize: 12,
+    color: '#64748b',
+  },
   drawerCover: {
     width: '100%',
     height: 150,
@@ -9916,8 +9942,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     const drawerParticipants = showDrawer ? participantList : []
     const coverImage = showDrawer ? currentRoom?.cover_url || currentRoom?.coverUrl || null : null
     const viewerIsOwner = Boolean(isRoomContext && viewerOwnsRoom)
-    const showAnnouncements = isRoomContext
-    const announcementList = showAnnouncements ? nonPinnedAnnouncements : []
+    const hasPinnedAnnouncement = Boolean(pinnedAnnouncement)
+    const hasAnyAnnouncements = hasPinnedAnnouncement || nonPinnedAnnouncements.length > 0
+    const showAnnouncements = isRoomContext && hasAnyAnnouncements
     const themeBubbleColor = roomTheme.bubbleColor
     const themeTextColor = roomTheme.textColor
     const themeBackgroundValue = roomTheme.backgroundValue
@@ -10499,6 +10526,31 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                   )}
                 </div>
                 <div style={overlayStyles.drawerScrollArea}>
+                  {showDrawer ? (
+                    <section style={overlayStyles.drawerSection}>
+                      <div style={overlayStyles.drawerAnnouncementRow}>
+                        <h4 style={overlayStyles.drawerSectionTitle}>공지</h4>
+                        <button
+                          type="button"
+                          style={overlayStyles.drawerAnnouncementButton}
+                          onClick={handleOpenAnnouncementList}
+                        >
+                          공지 목록
+                        </button>
+                      </div>
+                      {announcementError ? (
+                        <span style={{ ...overlayStyles.errorText, margin: 0, padding: 0 }}>
+                          {announcementError}
+                        </span>
+                      ) : hasAnyAnnouncements ? (
+                        <span style={overlayStyles.drawerAnnouncementHint}>
+                          최근 공지를 확인하거나 투표에 참여해 보세요.
+                        </span>
+                      ) : (
+                        <span style={overlayStyles.drawerAnnouncementEmpty}>등록된 공지가 없습니다.</span>
+                      )}
+                    </section>
+                  ) : null}
                   <section style={overlayStyles.drawerSection}>
                     <h4 style={overlayStyles.drawerSectionTitle}>사진 · 동영상</h4>
                     {mediaItems.length ? (
@@ -12409,7 +12461,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               ) : null}
             </div>
           ))
-        ) : !pinnedAnnouncement ? (
+        ) : !pinnedAnnouncement && !announcementError ? (
           <span style={overlayStyles.mutedText}>등록된 공지가 없습니다.</span>
         ) : null}
         {roomAnnouncementsHasMore ? (
