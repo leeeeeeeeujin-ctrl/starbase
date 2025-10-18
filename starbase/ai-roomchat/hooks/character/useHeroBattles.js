@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { withTable } from '../../lib/supabaseTables'
 import { buildBattleSummary, includesHeroId } from '../../utils/characterStats'
 
-const LOGS_SLICE = 5
+const LOGS_SLICE = 20
 
 export default function useHeroBattles({ hero, selectedGameId }) {
   const [battleDetails, setBattleDetails] = useState([])
