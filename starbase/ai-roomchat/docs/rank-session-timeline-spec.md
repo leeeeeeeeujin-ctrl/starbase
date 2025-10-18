@@ -15,7 +15,7 @@
 | `reason` | `text` | 이벤트 발생 사유 또는 상태 코드. |
 | `strike` | `integer` | 경고 누적 횟수. 없으면 `NULL`. |
 | `remaining` | `integer` | 남은 경고/기회 수. 없으면 `NULL`. |
-| `limit` | `integer` | 최대 허용 횟수. 없으면 `NULL`. |
+| `limit_remaining` | `integer` | 최대 허용 횟수. 없으면 `NULL`. |
 | `status` | `text` | 이벤트 처리 후 상태 (`active`, `proxy`, `spectating`, `defeated` 등). |
 | `turn` | `integer` | 이벤트가 발생한 턴 번호. 없으면 `NULL`. |
 | `event_timestamp` | `timestamptz` | 이벤트 발생 시각. 기본값 `now()`. 클라이언트는 ms 단위 타임스탬프를 ISO 문자열로 변환해 저장. |
