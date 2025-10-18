@@ -1329,7 +1329,10 @@ export default function CharacterBasicView({ hero }) {
     setCurrentHero(hero || null)
   }, [hero])
 
-  const heroIdKey = useMemo(() => (currentHero?.id ? String(currentHero.id) : null), [currentHero?.id])
+  const heroIdKey = useMemo(() => {
+    const id = currentHero?.id
+    return id ? String(id) : null
+  }, [currentHero])
 
   const heroName = useMemo(() => {
     if (!currentHero) return DEFAULT_HERO_NAME
@@ -1485,9 +1488,10 @@ export default function CharacterBasicView({ hero }) {
   }, [detailOpen, filteredRankingRows])
 
   const topRankingHero = useMemo(() => {
-    if (!topRankingRow?.heroId) return null
-    return heroLookup?.[topRankingRow.heroId] || null
-  }, [heroLookup, topRankingRow?.heroId])
+    const heroId = topRankingRow?.heroId
+    if (!heroId) return null
+    return heroLookup?.[heroId] || null
+  }, [heroLookup, topRankingRow])
 
   const overlayHeroSlides = useMemo(() => {
     if (!topRankingHero) return []
@@ -1519,16 +1523,17 @@ export default function CharacterBasicView({ hero }) {
   const overlayBackdropImage = useMemo(() => {
     if (topRankingHero?.background_url) return topRankingHero.background_url
     if (topRankingHero?.image_url) return topRankingHero.image_url
-    if (selectedEntry?.game?.image_url) return selectedEntry.game.image_url
+    const selectedGameImage = selectedEntry?.game?.image_url
+    if (selectedGameImage) return selectedGameImage
     return null
-  }, [selectedEntry?.game?.image_url, topRankingHero?.background_url, topRankingHero?.image_url])
+  }, [selectedEntry, topRankingHero])
 
   const overlaySlideCount = overlayHeroSlides.length
 
-  const overlayHeroName = useMemo(
-    () => (topRankingHero?.name && topRankingHero.name.trim() ? topRankingHero.name.trim() : DEFAULT_HERO_NAME),
-    [topRankingHero?.name],
-  )
+  const overlayHeroName = useMemo(() => {
+    const name = typeof topRankingHero?.name === 'string' ? topRankingHero.name.trim() : ''
+    return name || DEFAULT_HERO_NAME
+  }, [topRankingHero])
 
   const overlayHeroHintText = overlaySlideCount
     ? '이미지를 탭하면 설명과 능력을 확인할 수 있어요.'
@@ -1537,7 +1542,7 @@ export default function CharacterBasicView({ hero }) {
   useEffect(() => {
     if (!detailOpen) return
     setOverlayHeroStep(0)
-  }, [detailOpen, topRankingRow?.heroId])
+  }, [detailOpen, topRankingRow])
 
   useEffect(() => {
     if (!detailOpen) return
@@ -1648,20 +1653,20 @@ export default function CharacterBasicView({ hero }) {
     if (!rankingRows.length || !currentHero?.id) return null
     const entry = rankingRows.find((row) => row.heroId === currentHero.id)
     return entry?.rank ?? null
-  }, [rankingRows, currentHero?.id])
+  }, [rankingRows, currentHero])
 
   const heroScore = useMemo(() => {
     if (selectedEntry?.score != null) return selectedEntry.score
     if (!currentHero?.id) return null
     const row = rankingRows.find((item) => item.heroId === currentHero.id)
     return row?.value ?? null
-  }, [selectedEntry?.score, rankingRows, currentHero?.id])
+  }, [selectedEntry, rankingRows, currentHero])
 
   const matchCount = useMemo(() => {
     if (battleSummary?.total != null) return battleSummary.total
     if (selectedEntry?.sessionCount != null) return selectedEntry.sessionCount
     return null
-  }, [battleSummary?.total, selectedEntry?.sessionCount])
+  }, [battleSummary, selectedEntry])
 
   const formatParticipationMeta = useCallback((entry) => {
     if (!entry) return '참여 기록 없음'
@@ -1984,7 +1989,7 @@ export default function CharacterBasicView({ hero }) {
     if (imageInputRef.current) imageInputRef.current.value = ''
     if (backgroundInputRef.current) backgroundInputRef.current.value = ''
     if (bgmInputRef.current) bgmInputRef.current.value = ''
-  }, [hero?.id])
+  }, [hero])
 
   useEffect(() => {
     if (!selectedEntry) {
@@ -2074,7 +2079,7 @@ export default function CharacterBasicView({ hero }) {
     } else {
       clearSharedBackgroundUrl()
     }
-  }, [currentHero?.background_url])
+  }, [currentHero])
 
   const overlayModes = useMemo(() => ['name', 'stats'], [])
 
