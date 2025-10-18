@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { ensureRpc } from '@/modules/arena/rpcClient'
 import { formatPlayNumber } from '@/utils/characterPlayFormatting'
 
 const panelStyles = {
@@ -239,6 +239,24 @@ const overlayStyles = {
     margin: 0,
     fontSize: 12,
     color: '#bae6fd',
+    lineHeight: 1.6,
+  },
+  message: {
+    margin: '4px 0 0',
+    fontSize: 12,
+    color: '#bae6fd',
+    lineHeight: 1.6,
+  },
+  meta: {
+    margin: '2px 0 0',
+    fontSize: 11,
+    color: 'rgba(148,163,184,0.85)',
+  },
+  error: {
+    margin: '4px 0 0',
+    fontSize: 12,
+    color: '#fca5a5',
+    lineHeight: 1.6,
   },
   progressBar: {
     width: '100%',
@@ -254,8 +272,8 @@ const overlayStyles = {
   }),
   actionRow: {
     display: 'flex',
-    justifyContent: 'space-between',
     gap: 10,
+    flexWrap: 'wrap',
   },
   primary: {
     flex: 1,
@@ -279,43 +297,117 @@ const overlayStyles = {
   },
 }
 
-function MatchingOverlay({ open, heroName, gameName, progress, phase, onCancel, onProceed }) {
+function MatchingOverlay({
+  open,
+  heroName,
+  gameName,
+  progress,
+  phase,
+  message,
+  errorMessage,
+  sessionId,
+  readyExpiresAt,
+  onCancel,
+  onProceed,
+}) {
   if (!open) return null
 
-  const ready = phase === 'ready'
-  const headline = ready ? '매칭이 준비됐어요' : '매칭 중입니다'
-  const subline = ready
-    ? `${heroName}이(가) ${gameName} 전투를 시작할 준비가 됐어요.`
-    : `${heroName}이(가) ${gameName} 참가자를 찾는 중이에요.`
+  const status = phase || 'search'
+  const ready = status === 'ready'
+  const failed = status === 'error'
+  const inFlight = status === 'search' || status === 'staging'
+
+  const headline = (() => {
+    if (ready) return '매칭이 준비됐어요'
+    if (failed) return '매칭을 준비하지 못했습니다'
+    if (status === 'staging') return '매칭 구성 중'
+    return '대기열에 참가하는 중'
+  })()
+
+  const subline = (() => {
+    if (failed) {
+      return `${heroName}의 매칭을 완료하지 못했습니다.`
+    }
+    if (ready) {
+      return message || `${heroName}이(가) ${gameName} 전투를 시작할 준비가 끝났습니다.`
+    }
+    if (status === 'staging') {
+      return message || `${gameName} 방을 준비하고 있어요.`
+    }
+    return message || `${heroName}이(가) ${gameName} 참가자를 찾는 중입니다.`
+  })()
+
+  const sessionMeta = []
+  if (ready && readyExpiresAt) {
+    try {
+      const date = new Date(readyExpiresAt)
+      if (!Number.isNaN(date.getTime())) {
+        sessionMeta.push(`준비 만료: ${date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`)
+      }
+    } catch (error) {
+      // ignore malformed date
+    }
+  }
+  if (ready && sessionId) {
+    sessionMeta.push(`세션 ID: ${sessionId}`)
+  }
+
+  const showProgress = inFlight || ready
+  const showCancel = inFlight
+  const primaryLabel = ready ? '확인' : failed ? '닫기' : '진행 중'
+  const primaryEnabled = ready || failed
 
   return (
     <aside style={overlayStyles.root}>
       <div>
         <p style={overlayStyles.header}>{headline}</p>
         <p style={overlayStyles.subheader}>{subline}</p>
+        {ready && sessionMeta.length
+          ? sessionMeta.map((entry) => (
+              <p key={entry} style={overlayStyles.meta}>
+                {entry}
+              </p>
+            ))
+          : null}
+        {failed && errorMessage ? <p style={overlayStyles.error}>{errorMessage}</p> : null}
       </div>
-      <div style={overlayStyles.progressBar}>
-        <div style={overlayStyles.progressFill(progress)} />
-      </div>
-      <div style={overlayStyles.actionRow}>
-        <button type="button" style={overlayStyles.secondary} onClick={onCancel}>
-          취소
-        </button>
+      {showProgress ? (
+        <div style={overlayStyles.progressBar}>
+          <div style={overlayStyles.progressFill(ready ? 100 : progress)} />
+        </div>
+      ) : null}
+      <div
+        style={{
+          ...overlayStyles.actionRow,
+          justifyContent: showCancel ? 'space-between' : 'flex-end',
+        }}
+      >
+        {showCancel ? (
+          <button type="button" style={overlayStyles.secondary} onClick={onCancel}>
+            취소
+          </button>
+        ) : null}
         <button
           type="button"
-          style={{ ...overlayStyles.primary, opacity: ready ? 1 : 0.45, cursor: ready ? 'pointer' : 'not-allowed' }}
-          onClick={ready ? onProceed : undefined}
-          disabled={!ready}
+          style={{
+            ...overlayStyles.primary,
+            ...(showCancel ? {} : { flex: '0 0 100%' }),
+            opacity: primaryEnabled ? 1 : 0.55,
+            cursor: primaryEnabled ? 'pointer' : 'default',
+          }}
+          onClick={primaryEnabled ? onProceed : undefined}
+          disabled={!primaryEnabled}
         >
-          {ready ? '바로 시작' : '준비 중'}
+          {primaryLabel}
         </button>
       </div>
     </aside>
   )
 }
 
+const QUEUE_ID = 'rank-default'
+
 export default function CharacterPlayPanel({ hero, playData }) {
-  const router = useRouter()
 
   const {
     selectedEntry = null,
@@ -327,9 +419,20 @@ export default function CharacterPlayPanel({ hero, playData }) {
     battleLoading = false,
     battleError = '',
     showMoreBattles = () => {},
+    refreshParticipations = () => {},
   } = playData || {}
 
-  const [matchingState, setMatchingState] = useState({ open: false, phase: 'search', progress: 0 })
+  const [matchingState, setMatchingState] = useState({
+    open: false,
+    phase: 'idle',
+    progress: 0,
+    message: '',
+    error: '',
+    ticketId: null,
+    sessionId: null,
+    readyExpiresAt: null,
+  })
+  const matchTaskRef = useRef(null)
 
   const heroName = useMemo(() => {
     const raw = hero?.name
@@ -345,28 +448,22 @@ export default function CharacterPlayPanel({ hero, playData }) {
     return '아직 등록된 설명이 없습니다.'
   }, [selectedGame?.description])
 
-  const handleStartMatch = useCallback(() => {
-    if (!selectedGameId) {
-      alert('먼저 게임을 선택하세요.')
-      return
-    }
-    setMatchingState({ open: true, phase: 'search', progress: 0 })
-  }, [selectedGameId])
-
   useEffect(() => {
-    if (!matchingState.open || matchingState.phase !== 'search') return
+    if (!matchingState.open) return undefined
+    if (!['search', 'staging'].includes(matchingState.phase)) return undefined
 
     let cancelled = false
     const timer = setInterval(() => {
       setMatchingState((prev) => {
-        if (!prev.open || prev.phase !== 'search' || cancelled) return prev
-        const nextProgress = Math.min(100, prev.progress + 12)
-        if (nextProgress >= 100) {
-          return { open: true, phase: 'ready', progress: 100 }
-        }
+        if (!prev.open || cancelled) return prev
+        if (!['search', 'staging'].includes(prev.phase)) return prev
+        const ceiling = prev.phase === 'staging' ? 95 : 85
+        const increment = prev.phase === 'staging' ? 6 : 8
+        const nextProgress = Math.min(ceiling, Math.max(0, prev.progress) + increment)
+        if (nextProgress === prev.progress) return prev
         return { ...prev, progress: nextProgress }
       })
-    }, 280)
+    }, 260)
 
     return () => {
       cancelled = true
@@ -374,24 +471,172 @@ export default function CharacterPlayPanel({ hero, playData }) {
     }
   }, [matchingState.open, matchingState.phase])
 
-  const handleCancelMatching = useCallback(() => {
-    setMatchingState({ open: false, phase: 'search', progress: 0 })
+  const resetMatchingState = useCallback(() => {
+    setMatchingState({
+      open: false,
+      phase: 'idle',
+      progress: 0,
+      message: '',
+      error: '',
+      ticketId: null,
+      sessionId: null,
+      readyExpiresAt: null,
+    })
   }, [])
 
+  const handleCancelMatching = useCallback(() => {
+    if (matchTaskRef.current) {
+      matchTaskRef.current.cancelled = true
+      matchTaskRef.current = null
+    }
+    resetMatchingState()
+  }, [resetMatchingState])
+
   const handleProceedMatching = useCallback(() => {
-    if (!hero?.id || !selectedGameId) {
-      handleCancelMatching()
+    resetMatchingState()
+  }, [resetMatchingState])
+
+  const runAutoMatch = useCallback(async () => {
+    if (!selectedGameId) {
+      if (typeof window !== 'undefined') {
+        window.alert('먼저 게임을 선택하세요.')
+      }
       return
     }
-    const query = new URLSearchParams({ hero: hero.id, game: selectedGameId })
-    router.push(`/match?${query.toString()}`)
-    setMatchingState({ open: false, phase: 'search', progress: 0 })
-  }, [handleCancelMatching, hero?.id, router, selectedGameId])
+    if (!hero?.id) {
+      if (typeof window !== 'undefined') {
+        window.alert('캐릭터 정보를 찾을 수 없습니다.')
+      }
+      return
+    }
+    if (matchTaskRef.current) {
+      return
+    }
+
+    const ownerId = hero?.owner_id || null
+    const roleLabel =
+      typeof selectedEntry?.role === 'string' && selectedEntry.role.trim()
+        ? selectedEntry.role.trim()
+        : 'flex'
+
+    const task = { cancelled: false }
+    matchTaskRef.current = task
+
+    setMatchingState({
+      open: true,
+      phase: 'search',
+      progress: 8,
+      message: '대기열에 참가하는 중…',
+      error: '',
+      ticketId: null,
+      sessionId: null,
+      readyExpiresAt: null,
+    })
+
+    try {
+      const payload = {
+        hero_id: hero.id,
+        hero_name: heroName,
+        owner_id: ownerId,
+        game_id: selectedGameId,
+        role: roleLabel,
+        mode: 'rank',
+        queue_mode: 'rank',
+        ready_vote: {
+          ready: true,
+          hero_id: hero.id,
+          owner_id: ownerId,
+          role: roleLabel,
+        },
+        async_fill_meta: {
+          preferred_role: roleLabel,
+          requested_at: new Date().toISOString(),
+          hero_id: hero.id,
+        },
+      }
+
+      const properties = {}
+      if (Number.isFinite(Number(selectedEntry?.sessionCount))) {
+        properties.sessions_played = Number(selectedEntry.sessionCount)
+      }
+      if (selectedEntry?.primaryMode) {
+        properties.favourite_mode = selectedEntry.primaryMode
+      }
+      if (Number.isFinite(Number(selectedEntry?.slot_no))) {
+        properties.hero_slot_no = Number(selectedEntry.slot_no)
+      }
+      if (Number.isFinite(Number(selectedEntry?.score))) {
+        properties.hero_score = Number(selectedEntry.score)
+      }
+      if (Number.isFinite(Number(selectedEntry?.rating))) {
+        properties.hero_rating = Number(selectedEntry.rating)
+      }
+      if (Number.isFinite(Number(selectedEntry?.win_rate))) {
+        properties.hero_win_rate = Number(selectedEntry.win_rate)
+      }
+      if (Object.keys(properties).length) {
+        payload.properties = properties
+      }
+
+      const ticket = await ensureRpc('join_rank_queue', { queue_id: QUEUE_ID, payload })
+      if (task.cancelled) return
+      if (!ticket?.id) {
+        throw new Error('큐 티켓을 확보하지 못했습니다.')
+      }
+
+      setMatchingState((prev) => ({
+        ...prev,
+        phase: 'staging',
+        progress: Math.max(prev.progress, 45),
+        message: '매칭을 준비하는 중…',
+        ticketId: ticket.id,
+      }))
+
+      const stageResult = await ensureRpc('stage_rank_match', { queue_ticket_id: ticket.id })
+      if (task.cancelled) return
+
+      setMatchingState((prev) => ({
+        ...prev,
+        phase: 'ready',
+        progress: 100,
+        message: '매칭 준비가 완료되었습니다. 곧 전투가 시작됩니다.',
+        error: '',
+        sessionId: stageResult?.session_id || null,
+        readyExpiresAt: stageResult?.ready_expires_at || null,
+      }))
+
+      if (typeof refreshParticipations === 'function') {
+        try {
+          await refreshParticipations()
+        } catch (refreshError) {
+          console.warn('[CharacterPlayPanel] 매칭 후 참가 정보를 새로고침하지 못했습니다:', refreshError)
+        }
+      }
+    } catch (error) {
+      if (task.cancelled) return
+      const friendlyError =
+        error?.message || error?.details || (typeof error === 'string' ? error : '매칭 중 오류가 발생했습니다.')
+      setMatchingState({
+        open: true,
+        phase: 'error',
+        progress: 0,
+        message: '',
+        error: friendlyError,
+        ticketId: null,
+        sessionId: null,
+        readyExpiresAt: null,
+      })
+    } finally {
+      matchTaskRef.current = null
+    }
+  }, [hero?.id, hero?.owner_id, heroName, refreshParticipations, selectedEntry, selectedGameId])
 
   const visibleBattleRows = useMemo(
     () => battleDetails.slice(0, visibleBattles || battleDetails.length),
     [battleDetails, visibleBattles],
   )
+
+  const isMatchingBusy = matchingState.open && ['search', 'staging'].includes(matchingState.phase)
 
   const startButton = (
     <section style={panelStyles.section}>
@@ -404,10 +649,10 @@ export default function CharacterPlayPanel({ hero, playData }) {
         type="button"
         style={{
           ...panelStyles.buttonPrimary,
-          ...(selectedGameId ? {} : panelStyles.buttonDisabled),
+          ...(!selectedGameId || isMatchingBusy ? panelStyles.buttonDisabled : {}),
         }}
-        onClick={selectedGameId ? handleStartMatch : undefined}
-        disabled={!selectedGameId}
+        onClick={!selectedGameId || isMatchingBusy ? undefined : runAutoMatch}
+        disabled={!selectedGameId || isMatchingBusy}
       >
         게임 시작
       </button>
@@ -484,6 +729,10 @@ export default function CharacterPlayPanel({ hero, playData }) {
         gameName={selectedGame?.name || '선택한 게임'}
         progress={matchingState.progress}
         phase={matchingState.phase}
+        message={matchingState.message}
+        errorMessage={matchingState.error}
+        sessionId={matchingState.sessionId}
+        readyExpiresAt={matchingState.readyExpiresAt}
         onCancel={handleCancelMatching}
         onProceed={handleProceedMatching}
       />

@@ -2706,6 +2706,7 @@ export default function CharacterBasicView({ hero }) {
       battleLoading,
       battleError,
       showMoreBattles,
+      refreshParticipations,
     }),
     [
       selectedEntry,
@@ -2717,6 +2718,7 @@ export default function CharacterBasicView({ hero }) {
       battleLoading,
       battleError,
       showMoreBattles,
+      refreshParticipations,
     ],
   )
 
