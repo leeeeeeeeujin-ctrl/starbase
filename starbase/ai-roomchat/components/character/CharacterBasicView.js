@@ -82,15 +82,11 @@ const pageStyles = {
 }
 
 const overlayTabs = [
-  { key: 'character', label: '캐릭터' },
-  { key: 'search', label: '게임 검색' },
   { key: 'create', label: '게임 제작' },
   { key: 'register', label: '게임 등록' },
   { key: 'ranking', label: '랭킹' },
   { key: 'settings', label: '설정' },
 ]
-
-const SEARCH_TAB_INDEX = overlayTabs.findIndex((tab) => tab.key === 'search')
 
 const styles = {
   stage: {
@@ -629,23 +625,6 @@ const styles = {
     background: 'rgba(15,23,42,0.7)',
     boxShadow: '0 36px 80px -60px rgba(15,23,42,0.9)',
   },
-  playDetailsHeader: {
-    display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  playDetailsTitle: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 800,
-  },
-  playDetailsMeta: {
-    margin: 0,
-    fontSize: 13,
-    color: '#94a3b8',
-  },
   dock: {
     width: '100%',
     maxWidth: 560,
@@ -700,6 +679,22 @@ const styles = {
     border: '1px solid rgba(148,163,184,0.45)',
     textDecoration: 'none',
     transition: 'background 0.24s ease, color 0.24s ease',
+  },
+  lobbyButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    padding: '9px 16px',
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    color: '#0f172a',
+    background: 'linear-gradient(135deg, #38bdf8 0%, #22d3ee 100%)',
+    border: '1px solid rgba(56,189,248,0.6)',
+    textDecoration: 'none',
+    transition: 'transform 0.24s ease, box-shadow 0.24s ease',
+    boxShadow: '0 18px 36px -24px rgba(56,189,248,0.7)',
   },
   dockTabs: {
     display: 'flex',
@@ -1282,18 +1277,6 @@ export default function CharacterBasicView({ hero }) {
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [leftTab, setLeftTab] = useState('games')
 
-  const overlaySearchEnabled = activeTab === SEARCH_TAB_INDEX
-  const overlayGameBrowser = useGameBrowser({ enabled: overlaySearchEnabled, mode: 'public' })
-  const {
-    gameQuery: searchQuery,
-    setGameQuery: setSearchQuery,
-    gameSort: searchSort,
-    setGameSort: setSearchSort,
-    gameRows: searchRows,
-    gameLoading: searchLoading,
-    sortOptions: searchSortOptions,
-  } = overlayGameBrowser
-
   const participationState = useHeroParticipations({ hero: currentHero })
   const battleState = useHeroBattles({ hero: currentHero, selectedGameId: participationState.selectedGameId })
 
@@ -1331,21 +1314,7 @@ export default function CharacterBasicView({ hero }) {
     [participations],
   )
 
-  const currentRole = selectedEntry?.role || '슬롯 정보 없음'
-
-  const playDetailsMeta = useMemo(() => {
-    if (battleSummary?.total != null) {
-      const total = Number(battleSummary.total)
-      if (Number.isFinite(total)) {
-        return `${total.toLocaleString('ko-KR')}회 전투 기록`
-      }
-      return '전투 기록을 불러왔습니다.'
-    }
-    if (selectedGame?.name) {
-      return selectedGame.name
-    }
-    return '게임을 선택해 로그를 확인하세요.'
-  }, [battleSummary?.total, selectedGame?.name])
+  const currentRole = selectedEntry?.role ? selectedEntry.role : null
 
   const heroRank = useMemo(() => {
     if (!Array.isArray(selectedScoreboard) || !currentHero?.id) return null
@@ -2133,7 +2102,7 @@ export default function CharacterBasicView({ hero }) {
     [],
   )
 
-  const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
+  const activeTabKey = overlayTabs[activeTab]?.key ?? overlayTabs[0]?.key ?? 'create'
   const progressRatio = duration ? progress / duration : 0
 
   const playPanelData = useMemo(
@@ -2162,51 +2131,6 @@ export default function CharacterBasicView({ hero }) {
   )
 
   const overlayBody = (() => {
-    if (activeTabKey === 'search') {
-      return (
-        <div style={styles.tabContent}>
-          <div style={styles.infoBlock}>
-            <p style={styles.infoTitle}>방 검색</p>
-            <input
-              style={styles.searchInput}
-              placeholder="찾고 싶은 게임 이름이나 태그를 입력해 보세요."
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-            />
-            <div style={styles.sortRow}>
-              {searchSortOptions.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  style={styles.sortButton(searchSort === option.key)}
-                  onClick={() => setSearchSort(option.key)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={styles.searchGrid}>
-            {searchLoading ? (
-              <p style={styles.listMeta}>공개 게임을 불러오는 중…</p>
-            ) : searchRows.length ? (
-              searchRows.map((game) => (
-                <div key={game.id} style={styles.listItem}>
-                  <p style={styles.listTitle}>{game.name}</p>
-                  <p style={styles.listMeta}>{`좋아요 ${game.likes_count ?? 0} · 플레이 ${game.play_count ?? 0}`}</p>
-                  {game.tags?.length ? (
-                    <p style={styles.listMeta}>{game.tags.join(' / ')}</p>
-                  ) : null}
-                </div>
-              ))
-            ) : (
-              <p style={styles.listEmpty}>조건에 맞는 공개 게임을 찾지 못했습니다.</p>
-            )}
-          </div>
-        </div>
-      )
-    }
-
     if (activeTabKey === 'create') {
       return (
         <div style={styles.tabContent}>
@@ -2630,7 +2554,7 @@ export default function CharacterBasicView({ hero }) {
     <section style={styles.playSliderSection}>
       <div style={styles.playSliderHeader}>
         <h3 style={styles.playSliderTitle}>참여한 게임</h3>
-        <p style={styles.playSliderMeta}>{currentRole}</p>
+        {currentRole ? <p style={styles.playSliderMeta}>{currentRole}</p> : null}
       </div>
       {participationLoading ? (
         <div style={styles.playSliderEmpty}>참여한 게임을 불러오는 중입니다…</div>
@@ -2708,10 +2632,6 @@ export default function CharacterBasicView({ hero }) {
 
   const playDetailsSection = (
     <section style={styles.playDetailsSection}>
-      <div style={styles.playDetailsHeader}>
-        <h3 style={styles.playDetailsTitle}>게임 플레이 & 베틀 로그</h3>
-        <p style={styles.playDetailsMeta}>{playDetailsMeta}</p>
-      </div>
       <CharacterPlayPanel hero={currentHero} playData={playPanelData} />
     </section>
   )
@@ -3207,6 +3127,9 @@ export default function CharacterBasicView({ hero }) {
                     ))}
                   </div>
                   <div style={styles.dockActions}>
+                    <Link href="/lobby" style={styles.lobbyButton}>
+                      로비로
+                    </Link>
                     <Link href="/roster" style={styles.rosterButton}>
                       로스터로
                     </Link>

@@ -316,7 +316,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
     return '이름 없는 영웅'
   }, [hero?.name])
 
-  const currentRole = selectedEntry?.role || '슬롯 정보 없음'
+  const currentRole = selectedEntry?.role ? selectedEntry.role : null
 
   const handleStartMatch = useCallback(() => {
     if (!selectedGameId) {
@@ -370,7 +370,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
     <section style={panelStyles.section}>
       <div style={panelStyles.headerRow}>
         <h3 style={panelStyles.title}>선택한 게임</h3>
-        <p style={panelStyles.subtitle}>{currentRole}</p>
+        {currentRole ? <p style={panelStyles.subtitle}>{currentRole}</p> : null}
       </div>
       <p style={panelStyles.subtitle}>{selectedGame ? selectedGame.name : '게임을 선택해주세요.'}</p>
       <button
