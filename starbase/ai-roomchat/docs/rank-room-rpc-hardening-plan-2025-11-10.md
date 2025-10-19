@@ -395,12 +395,23 @@ grant execute on function public.reconcile_rank_queue_for_roster(uuid, text, jso
   to authenticated, service_role;
 grant execute on function public.upsert_rank_session_async_fill(uuid, jsonb)
   to authenticated, service_role;
+grant execute on function public.prepare_rank_match_session(
+  uuid,
+  uuid,
+  uuid,
+  uuid,
+  text,
+  jsonb,
+  jsonb,
+  jsonb,
+  jsonb
+) to authenticated, service_role;
 ```
 
 ---
 
 ## 4. 현재 구현 상태 체크
-- `/api/rank/stage-room-match`는 이제 `assert_room_ready` → `sync_rank_match_roster` → `ensure_rank_session_for_room` → `upsert_rank_session_async_fill` 순으로 RPC를 호출하며, 함수가 배포되어 있지 않으면 명시적인 오류를 반환합니다.【F:pages/api/rank/stage-room-match.js†L337-L523】
+- `/api/rank/stage-room-match`는 `prepare_rank_match_session` 단일 RPC를 호출해 준비 검증·대기열 정리·로스터 싱크·세션 보강·난입 메타까지 트랜잭션으로 처리합니다. 함수가 배포되어 있지 않으면 `missing_prepare_rank_match_session` 오류를 반환합니다.【F:pages/api/rank/stage-room-match.js†L1-L118】【F:services/rank/matchSupabase.js†L191-L216】
 - 방 상세 화면은 스테이징 응답으로 전달받은 `session_id`를 즉시 `matchDataStore`에 기록해 Match Ready가 세션 ID 없이 열리지 않도록 했습니다.【F:pages/rooms/[id].js†L3048-L3073】
 - Match Ready 클라이언트는 로컬 스냅샷에서도 세션 ID를 회수하고, 세션 ID가 없으면 `allowStart`를 비활성화합니다.【F:components/rank/MatchReadyClient.js†L140-L210】【F:components/rank/MatchReadyClient.js†L500-L520】
 

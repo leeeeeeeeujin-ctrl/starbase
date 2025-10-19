@@ -5,7 +5,7 @@
 ## 1. 실행 순서 요약
 1. `rank_queue_tickets`, `rank_sessions`, `rank_session_meta`, `rank_turns` 테이블이 `supabase_realtime` publication에 포함되어 있는지 확인하고, 누락 시 추가합니다.
 2. 큐 진입·스테이징·타임아웃·세션 조회·정산에 쓰이는 RPC 여섯 개(`join_rank_queue`, `fetch_rank_queue_ticket`, `stage_rank_match`, `evict_unready_participant`, `fetch_rank_session_turns`, `finalize_rank_session`)를 생성합니다.
-3. 기존 방 스테이징 보강 RPC 네 개(`assert_room_ready`, `ensure_rank_session_for_room`, `reconcile_rank_queue_for_roster`, `upsert_rank_session_async_fill`)를 함께 재적용해 `/api/rank/stage-room-match`가 호출하는 전 체인을 확보합니다.
+3. 기존 방 스테이징 보강 RPC 네 개(`assert_room_ready`, `ensure_rank_session_for_room`, `reconcile_rank_queue_for_roster`, `upsert_rank_session_async_fill`)와 새 오케스트레이션 함수 `prepare_rank_match_session`을 함께 재적용해 `/api/rank/stage-room-match`가 호출하는 전 체인을 확보합니다.
 4. 모든 함수에 `authenticated`, `service_role` 권한을 부여합니다.
 
 ## 2. 통합 SQL 스크립트
@@ -647,7 +647,7 @@ grant execute on function public.finalize_rank_session(uuid)
 ```
 
 ## 3. 배포 후 점검
-- `/api/rank/stage-room-match`는 위 RPC를 모두 호출하며, 누락 시 `missing_assert_room_ready`, `missing_ensure_rank_session_for_room` 등의 오류 메시지를 반환합니다. 클라이언트가 동일한 오류를 보여 주는지 확인하세요.【F:pages/api/rank/stage-room-match.js†L337-L523】
+- `/api/rank/stage-room-match`는 `prepare_rank_match_session`이 성공적으로 배포되어 있어야 하며, 누락 시 `missing_prepare_rank_match_session` 오류를 반환합니다. 함께 호출되는 보조 RPC(`assert_room_ready`, `ensure_rank_session_for_room`, `reconcile_rank_queue_for_roster`, `upsert_rank_session_async_fill`)도 동일하게 배포됐는지 확인하세요.【F:pages/api/rank/stage-room-match.js†L1-L118】【F:services/rank/matchSupabase.js†L191-L216】
 - 큐/스테이징/세션 UI는 새 RPC 응답을 기준으로 동작하며, `SessionChatPanel`은 `fetch_rank_session_turns` 미배포 시 즉시 오류를 띄웁니다.【F:components/rank/StartClient/SessionChatPanel.js†L38-L169】
 - Realtime publication을 확인하려면 `select * from pg_publication_tables where pubname = 'supabase_realtime';` 쿼리로 위 네 개 테이블이 포함됐는지 다시 체크하세요.
 

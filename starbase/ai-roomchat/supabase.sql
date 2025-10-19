@@ -3215,6 +3215,151 @@ grant execute on function public.reconcile_rank_queue_for_roster(
   jsonb
 ) to authenticated, service_role;
 
+drop function if exists public.prepare_rank_match_session(
+  uuid,
+  uuid,
+  uuid,
+  uuid,
+  text,
+  jsonb,
+  jsonb,
+  jsonb,
+  jsonb
+);
+
+create or replace function public.prepare_rank_match_session(
+  p_room_id uuid,
+  p_game_id uuid,
+  p_match_instance_id uuid,
+  p_request_owner_id uuid,
+  p_mode text,
+  p_vote jsonb,
+  p_async_fill jsonb,
+  p_roster jsonb,
+  p_slot_template jsonb
+)
+returns table (
+  session_id uuid,
+  slot_template_version bigint,
+  slot_template_updated_at timestamptz,
+  queue_reconciled integer,
+  queue_inserted integer,
+  queue_removed integer
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_room_owner uuid;
+  v_room_mode text;
+  v_slot_version bigint;
+  v_slot_source text;
+  v_slot_updated_at timestamptz;
+  v_vote jsonb := coalesce(p_vote, '{}'::jsonb);
+  v_async jsonb := p_async_fill;
+  v_reconciled integer := 0;
+  v_inserted integer := 0;
+  v_removed integer := 0;
+  v_session uuid;
+  v_now timestamptz := now();
+begin
+  if p_room_id is null or p_game_id is null or p_match_instance_id is null then
+    raise exception 'missing_identifiers';
+  end if;
+
+  if p_request_owner_id is null then
+    raise exception 'missing_request_owner_id';
+  end if;
+
+  if p_roster is null or jsonb_typeof(p_roster) <> 'array' or jsonb_array_length(p_roster) = 0 then
+    raise exception 'empty_roster';
+  end if;
+
+  select owner_id, mode
+    into v_room_owner, v_room_mode
+  from public.rank_rooms
+  where id = p_room_id;
+
+  if v_room_owner is null then
+    raise exception 'room_not_found';
+  end if;
+
+  if v_room_owner <> p_request_owner_id then
+    raise exception 'room_owner_mismatch';
+  end if;
+
+  perform public.assert_room_ready(p_room_id);
+
+  select
+    coalesce((p_slot_template->>'version')::bigint, r.slot_template_version, (extract(epoch from v_now) * 1000)::bigint),
+    coalesce(nullif(p_slot_template->>'source', ''), r.slot_template_source, 'room-stage'),
+    coalesce((p_slot_template->>'updated_at')::timestamptz, r.slot_template_updated_at, v_now)
+  into v_slot_version, v_slot_source, v_slot_updated_at
+  from public.rank_rooms as r
+  where r.id = p_room_id;
+
+  select
+    r.reconciled,
+    r.inserted,
+    r.removed
+  into v_reconciled, v_inserted, v_removed
+  from public.reconcile_rank_queue_for_roster(
+    p_game_id,
+    coalesce(p_mode, v_room_mode, 'solo'),
+    p_roster
+  ) as r;
+
+  select
+    result.slot_template_version,
+    result.slot_template_updated_at
+  into v_slot_version, v_slot_updated_at
+  from public.sync_rank_match_roster(
+    p_room_id,
+    p_game_id,
+    p_match_instance_id,
+    p_request_owner_id,
+    p_roster,
+    v_slot_version,
+    v_slot_source,
+    v_slot_updated_at
+  ) as result;
+
+  select public.ensure_rank_session_for_room(
+    p_room_id,
+    p_game_id,
+    p_request_owner_id,
+    coalesce(p_mode, v_room_mode),
+    v_vote
+  ) into v_session;
+
+  if v_async is not null and jsonb_typeof(v_async) = 'object' then
+    perform public.upsert_rank_session_async_fill(v_session, v_async);
+  end if;
+
+  return query
+    select
+      v_session,
+      v_slot_version,
+      v_slot_updated_at,
+      v_reconciled,
+      v_inserted,
+      v_removed;
+end;
+$$;
+
+grant execute on function public.prepare_rank_match_session(
+  uuid,
+  uuid,
+  uuid,
+  uuid,
+  text,
+  jsonb,
+  jsonb,
+  jsonb,
+  jsonb
+) to authenticated, service_role;
+
 create index if not exists rank_edge_function_deployments_env_idx
 on public.rank_edge_function_deployments (environment, created_at desc);
 
