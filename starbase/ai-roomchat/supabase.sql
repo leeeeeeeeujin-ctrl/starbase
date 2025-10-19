@@ -3021,6 +3021,8 @@ grant execute on function public.sync_rank_match_roster(
   timestamptz
 ) to service_role;
 
+drop function if exists public.reconcile_rank_queue_for_roster(uuid, text, jsonb);
+
 create or replace function public.reconcile_rank_queue_for_roster(
   p_game_id uuid,
   p_mode text,

@@ -739,6 +739,7 @@ describe('POST /api/rank/stage-room-match', () => {
     expect(res.statusCode).toBe(500)
     expect(res.body.error).toBe('missing_reconcile_rank_queue_for_roster')
     expect(res.body.hint).toContain('reconcile_rank_queue_for_roster')
+    expect(res.body.hint).toContain('drop function if exists')
     expect(rpcMock).toHaveBeenCalledTimes(3)
   })
 

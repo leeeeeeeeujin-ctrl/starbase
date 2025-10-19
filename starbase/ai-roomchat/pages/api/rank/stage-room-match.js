@@ -627,7 +627,7 @@ function mapQueueReconcileError(error) {
       body: {
         error: 'missing_reconcile_rank_queue_for_roster',
         hint:
-          'Supabase에 reconcile_rank_queue_for_roster(uuid, text, jsonb) 함수를 배포하고 authenticated/service_role 권한을 부여하세요.',
+          'Supabase에 기존 reconcile_rank_queue_for_roster(uuid, text, jsonb) 함수를 drop function if exists public.reconcile_rank_queue_for_roster(uuid, text, jsonb); 로 제거한 뒤, 새 정의를 배포하고 authenticated/service_role 권한을 부여하세요.',
         supabaseError: error,
       },
     }

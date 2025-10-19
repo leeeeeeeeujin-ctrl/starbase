@@ -1629,6 +1629,8 @@ grant execute on function public.fetch_rank_turn_state_events(
 -- =========================================
 --  Queue reconciliation for staged matches
 -- =========================================
+drop function if exists public.reconcile_rank_queue_for_roster(uuid, text, jsonb);
+
 create or replace function public.reconcile_rank_queue_for_roster(
   p_game_id uuid,
   p_mode text,
