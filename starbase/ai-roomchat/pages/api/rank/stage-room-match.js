@@ -156,6 +156,34 @@ function normalizeRosterEntries(entries = []) {
     .sort((a, b) => a.slotIndex - b.slotIndex)
 }
 
+function dedupeRosterEntries(entries = []) {
+  if (!Array.isArray(entries) || entries.length === 0) return []
+  const seenSlots = new Set()
+  const seenOwners = new Set()
+
+  return entries.filter((entry) => {
+    if (!entry) return false
+
+    const ownerId = toOptionalTrimmedString(entry.ownerId)
+    if (ownerId && seenOwners.has(ownerId)) {
+      return false
+    }
+    if (ownerId) {
+      seenOwners.add(ownerId)
+    }
+
+    const slotKey = entry.slotId ? `id:${entry.slotId}` : `index:${entry.slotIndex}`
+    if (slotKey) {
+      if (seenSlots.has(slotKey)) {
+        return false
+      }
+      seenSlots.add(slotKey)
+    }
+
+    return true
+  })
+}
+
 function buildQueueReconcilePayload(rosterEntries = []) {
   return rosterEntries
     .map((entry) => {
@@ -176,6 +204,127 @@ function buildQueueReconcilePayload(rosterEntries = []) {
       }
     })
     .filter(Boolean)
+}
+
+function extractSanitizedQueueEntries(summary) {
+  if (!summary) return []
+  const raw =
+    summary.sanitized ??
+    summary.sanitized_queue ??
+    summary.payload ??
+    summary.normalized ??
+    summary.entries ??
+    null
+
+  if (Array.isArray(raw)) {
+    return raw
+  }
+
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch (error) {
+      return []
+    }
+  }
+
+  return []
+}
+
+function applyQueueSummaryToRoster(rosterEntries = [], summary = null) {
+  const sanitizedEntries = extractSanitizedQueueEntries(summary)
+  if (!sanitizedEntries.length) {
+    return rosterEntries
+  }
+
+  const byOwner = new Map()
+  sanitizedEntries.forEach((entry) => {
+    const ownerId = toOptionalTrimmedString(entry?.owner_id ?? entry?.ownerId)
+    if (!ownerId) return
+    if (!byOwner.has(ownerId)) {
+      byOwner.set(ownerId, {
+        slot_index: Number.isFinite(Number(entry?.slot_index)) ? Number(entry.slot_index) : null,
+        role: toTrimmedString(entry?.role),
+        hero_id: toOptionalTrimmedString(entry?.hero_id ?? entry?.heroId),
+      })
+    }
+  })
+
+  if (!byOwner.size) {
+    return rosterEntries
+  }
+
+  const usedOwners = new Set()
+  const usedSlots = new Set()
+  const normalized = []
+  const placeholders = []
+
+  rosterEntries.forEach((entry) => {
+    const ownerId = toOptionalTrimmedString(entry.ownerId)
+    if (!ownerId) {
+      placeholders.push(entry)
+      return
+    }
+
+    const sanitized = byOwner.get(ownerId)
+    if (!sanitized) {
+      return
+    }
+    if (usedOwners.has(ownerId)) {
+      return
+    }
+    usedOwners.add(ownerId)
+
+    const slotIndex = Number.isFinite(Number(sanitized.slot_index))
+      ? Number(sanitized.slot_index)
+      : entry.slotIndex
+    const role = toTrimmedString(sanitized.role) || entry.role || '역할 미지정'
+    const heroId = sanitized.hero_id || entry.heroId || null
+
+    const primarySlotKey = entry.slotId ? `id:${entry.slotId}` : `index:${slotIndex}`
+    if (primarySlotKey) {
+      if (usedSlots.has(primarySlotKey)) {
+        const fallbackSlotKey = `index:${slotIndex}`
+        if (usedSlots.has(fallbackSlotKey)) {
+          return
+        }
+        usedSlots.add(fallbackSlotKey)
+      } else {
+        usedSlots.add(primarySlotKey)
+      }
+    }
+
+    normalized.push({
+      ...entry,
+      slotIndex,
+      role,
+      heroId,
+    })
+  })
+
+  placeholders.forEach((entry) => {
+    const slotKey = entry.slotId ? `id:${entry.slotId}` : `index:${entry.slotIndex}`
+    if (slotKey && usedSlots.has(slotKey)) {
+      return
+    }
+    if (slotKey) {
+      usedSlots.add(slotKey)
+    }
+    normalized.push(entry)
+  })
+
+  if (!normalized.length) {
+    return rosterEntries
+  }
+
+  normalized.sort((a, b) => {
+    const aIndex = Number.isFinite(Number(a.slotIndex)) ? Number(a.slotIndex) : 0
+    const bIndex = Number.isFinite(Number(b.slotIndex)) ? Number(b.slotIndex) : 0
+    return aIndex - bIndex
+  })
+
+  return normalized
 }
 
 function buildHeroSummary(row) {
@@ -579,7 +728,7 @@ export default async function handler(req, res) {
   const matchInstanceId = toOptionalTrimmedString(payload.match_instance_id || payload.matchInstanceId)
   const roomId = toOptionalTrimmedString(payload.room_id || payload.roomId)
   const gameId = toOptionalTrimmedString(payload.game_id || payload.gameId)
-  const rosterEntries = normalizeRosterEntries(payload.roster)
+  let rosterEntries = dedupeRosterEntries(normalizeRosterEntries(payload.roster))
   const heroMap = payload.hero_map && typeof payload.hero_map === 'object' ? payload.hero_map : {}
   const allowPartial = payload.allow_partial === true || payload.allow_partial === 'true'
   const asyncFillMeta =
@@ -637,18 +786,6 @@ export default async function handler(req, res) {
       .json(heroResult.errorResponse.body)
   }
 
-  const nowIso = new Date().toISOString()
-  const insertRows = buildRosterInsertRows({
-    rosterEntries,
-    participantMap: participantResult.map,
-    heroSummaryMap: heroResult.map,
-    heroPayloadMap: heroMap,
-    nowIso,
-    matchInstanceId,
-    roomId,
-    gameId,
-  })
-
   const slotTemplatePayload =
     payload.slot_template && typeof payload.slot_template === 'object' ? payload.slot_template : {}
 
@@ -664,6 +801,8 @@ export default async function handler(req, res) {
     : Array.isArray(payload.slots)
     ? payload.slots
     : []
+
+  const nowIso = new Date().toISOString()
 
   if (verificationSlots.length) {
     const { error: verifyError } = await supabaseAdmin.rpc('verify_rank_roles_and_slots', {
@@ -720,7 +859,19 @@ export default async function handler(req, res) {
         },
       })
     }
+
+    rosterEntries = applyQueueSummaryToRoster(rosterEntries, summary)
   }
+  const insertRows = buildRosterInsertRows({
+    rosterEntries,
+    participantMap: participantResult.map,
+    heroSummaryMap: heroResult.map,
+    heroPayloadMap: heroMap,
+    nowIso,
+    matchInstanceId,
+    roomId,
+    gameId,
+  })
 
   const rpcPayload = {
     p_room_id: roomId,

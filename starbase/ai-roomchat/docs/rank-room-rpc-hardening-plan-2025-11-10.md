@@ -172,7 +172,8 @@ create or replace function public.reconcile_rank_queue_for_roster(
 returns table (
   reconciled integer,
   inserted integer,
-  removed integer
+  removed integer,
+  sanitized jsonb
 )
 language plpgsql
 security definer
@@ -232,7 +233,7 @@ begin
 
   if jsonb_typeof(v_payload) <> 'array' or jsonb_array_length(v_payload) = 0 then
     return query
-      select 0::integer as reconciled, 0::integer as inserted, 0::integer as removed;
+      select 0::integer as reconciled, 0::integer as inserted, 0::integer as removed, '[]'::jsonb as sanitized;
   end if;
 
   delete from public.rank_match_queue q
@@ -339,12 +340,13 @@ begin
     raise exception 'queue_reconcile_failed';
   end if;
 
-  return query
-    select
-      jsonb_array_length(v_payload)::integer as reconciled,
-      v_inserted::integer as inserted,
-      v_removed::integer as removed;
-end;
+    return query
+      select
+        jsonb_array_length(v_payload)::integer as reconciled,
+        v_inserted::integer as inserted,
+        v_removed::integer as removed,
+        v_payload as sanitized;
+  end;
 $$;
 
 grant execute on function public.reconcile_rank_queue_for_roster(uuid, text, jsonb)

@@ -1367,9 +1367,20 @@ export default function MatchPage() {
       setTimeSelectionBusy(true)
       setTimeSelectionError(null)
       try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          throw sessionError
+        }
+        const accessToken = sessionData?.session?.access_token || null
+        if (!accessToken) {
+          throw new Error('세션 토큰을 확인하지 못했습니다.')
+        }
         const response = await fetch('/api/rank/session-meta', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
           body: JSON.stringify({
             session_id: session.id,
             meta: { selected_time_limit_seconds: seconds },

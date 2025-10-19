@@ -52,6 +52,7 @@ describe('POST /api/rank/stage-room-match', () => {
               reconciled: rosterLength,
               inserted: rosterLength,
               removed: 0,
+              sanitized: Array.isArray(params?.p_roster) ? params.p_roster : [],
             },
           ],
           error: null,
@@ -158,7 +159,17 @@ describe('POST /api/rank/stage-room-match', () => {
     rpcMock.mockImplementation(async (fnName, params) => {
       if (fnName === 'reconcile_rank_queue_for_roster') {
         const length = Array.isArray(params?.p_roster) ? params.p_roster.length : 0
-        return { data: [{ reconciled: length, inserted: length, removed: 0 }], error: null }
+        return {
+          data: [
+            {
+              reconciled: length,
+              inserted: length,
+              removed: 0,
+              sanitized: Array.isArray(params?.p_roster) ? params.p_roster : [],
+            },
+          ],
+          error: null,
+        }
       }
       if (fnName === 'sync_rank_match_roster') {
         return { data: null, error: { message: 'slot_version_conflict' } }
@@ -269,7 +280,17 @@ describe('POST /api/rank/stage-room-match', () => {
     rpcMock.mockImplementation(async (fnName, params) => {
       if (fnName === 'reconcile_rank_queue_for_roster') {
         const length = Array.isArray(params?.p_roster) ? params.p_roster.length : 0
-        return { data: [{ reconciled: length, inserted: length, removed: 0 }], error: null }
+        return {
+          data: [
+            {
+              reconciled: length,
+              inserted: length,
+              removed: 0,
+              sanitized: Array.isArray(params?.p_roster) ? params.p_roster : [],
+            },
+          ],
+          error: null,
+        }
       }
       if (fnName === 'sync_rank_match_roster') {
         return {
@@ -380,6 +401,127 @@ describe('POST /api/rank/stage-room-match', () => {
     )
   })
 
+  it('reapplies queue reconciliation output to remove duplicate owners', async () => {
+    const handler = loadHandler()
+
+    const roster = [
+      {
+        slotIndex: 0,
+        slotId: 'slot-a',
+        role: '딜러',
+        ownerId: 'owner-1',
+        heroId: 'hero-1',
+        ready: true,
+      },
+      {
+        slotIndex: 1,
+        slotId: 'slot-b',
+        role: '딜러',
+        ownerId: 'owner-1',
+        heroId: 'hero-1',
+        ready: false,
+      },
+      {
+        slotIndex: 2,
+        slotId: 'slot-c',
+        role: '탱커',
+        ownerId: 'owner-2',
+        heroId: 'hero-2',
+        ready: true,
+      },
+    ]
+
+    participantQueryResponse = {
+      data: [
+        { owner_id: 'owner-1', score: 1200, rating: 1100 },
+        { owner_id: 'owner-2', score: 1350, rating: 1250 },
+      ],
+      error: null,
+    }
+
+    heroQueryResponse = {
+      data: [
+        { id: 'hero-1', name: '알파' },
+        { id: 'hero-2', name: '베타' },
+      ],
+      error: null,
+    }
+
+    rpcMock.mockImplementation(async (fnName, params) => {
+      if (fnName === 'verify_rank_roles_and_slots' || fnName === 'assert_room_ready') {
+        return { data: [], error: null }
+      }
+      if (fnName === 'reconcile_rank_queue_for_roster') {
+        return {
+          data: [
+            {
+              reconciled: 2,
+              inserted: 2,
+              removed: 1,
+              sanitized: [
+                { owner_id: 'owner-1', hero_id: 'hero-1', role: '딜러', slot_index: 0 },
+                { owner_id: 'owner-2', hero_id: 'hero-2', role: '탱커', slot_index: 2 },
+              ],
+            },
+          ],
+          error: null,
+        }
+      }
+      if (fnName === 'sync_rank_match_roster') {
+        return { data: [{ inserted_count: 2 }], error: null }
+      }
+      if (fnName === 'ensure_rank_session_for_room') {
+        return { data: ['session-dup'], error: null }
+      }
+      return { data: [], error: null }
+    })
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer dupe-token' },
+      body: {
+        match_instance_id: 'match-dupe',
+        room_id: 'room-dupe',
+        game_id: 'game-dupe',
+        roster,
+        slot_template: {
+          version: 321,
+          source: 'room-stage',
+          updated_at: '2025-05-01T00:00:00Z',
+          slots: [
+            { slot_index: 0, role: '딜러', active: true },
+            { slot_index: 1, role: '딜러', active: true },
+            { slot_index: 2, role: '탱커', active: true },
+          ],
+          roles: [
+            { name: '딜러', slot_count: 2 },
+            { name: '탱커', slot_count: 1 },
+          ],
+        },
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    const syncCall = rpcMock.mock.calls.find(([fnName]) => fnName === 'sync_rank_match_roster')
+    expect(syncCall).toBeTruthy()
+    const syncParams = syncCall[1]
+    expect(Array.isArray(syncParams.p_roster)).toBe(true)
+    expect(syncParams.p_roster).toHaveLength(2)
+    const ownerIds = syncParams.p_roster.map((row) => row.owner_id)
+    expect(ownerIds).toEqual(['owner-1', 'owner-2'])
+    const ownerOne = syncParams.p_roster.find((row) => row.owner_id === 'owner-1')
+    expect(ownerOne.slot_index).toBe(0)
+    expect(ownerOne.role).toBe('딜러')
+    expect(ownerOne.hero_id).toBe('hero-1')
+    const ownerTwo = syncParams.p_roster.find((row) => row.owner_id === 'owner-2')
+    expect(ownerTwo.slot_index).toBe(2)
+    expect(res.statusCode).toBe(200)
+    expect(res.body.ok).toBe(true)
+    expect(res.body.session_id).toBe('session-dup')
+  })
+
   it('propagates stand-in metadata when participant stats are missing', async () => {
     const handler = loadHandler()
 
@@ -404,7 +546,17 @@ describe('POST /api/rank/stage-room-match', () => {
     rpcMock.mockImplementation(async (fnName, params) => {
       if (fnName === 'reconcile_rank_queue_for_roster') {
         const length = Array.isArray(params?.p_roster) ? params.p_roster.length : 0
-        return { data: [{ reconciled: length, inserted: length, removed: 0 }], error: null }
+        return {
+          data: [
+            {
+              reconciled: length,
+              inserted: length,
+              removed: 0,
+              sanitized: Array.isArray(params?.p_roster) ? params.p_roster : [],
+            },
+          ],
+          error: null,
+        }
       }
       if (fnName === 'sync_rank_match_roster') {
         return {
