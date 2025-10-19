@@ -174,6 +174,308 @@ function buildHeroSummary(row) {
   return summary
 }
 
+async function fetchRoomContext(roomId) {
+  const { data, error } = await withTableQuery(
+    supabaseAdmin,
+    'rank_rooms',
+    (from) => from.select('id, owner_id, mode').eq('id', roomId).maybeSingle(),
+  )
+
+  if (error) {
+    return {
+      errorResponse: {
+        status: 400,
+        body: { error: error.message, supabaseError: error },
+      },
+    }
+  }
+
+  if (!data) {
+    return {
+      errorResponse: {
+        status: 404,
+        body: { error: 'room_not_found' },
+      },
+    }
+  }
+
+  return {
+    room: data,
+    ownerId: toOptionalTrimmedString(data.owner_id),
+    mode: toOptionalTrimmedString(data.mode),
+  }
+}
+
+function ensureRoomOwnership(roomOwnerId, callerId) {
+  if (!roomOwnerId) {
+    return {
+      status: 400,
+      body: { error: 'room_owner_missing' },
+    }
+  }
+
+  const normalizedCaller = toOptionalTrimmedString(callerId)
+  if (!normalizedCaller || normalizedCaller !== roomOwnerId) {
+    return {
+      status: 403,
+      body: { error: 'forbidden' },
+    }
+  }
+
+  return null
+}
+
+function buildParticipantMap(rows = []) {
+  const map = new Map()
+  rows.forEach((row) => {
+    const key = toOptionalTrimmedString(row?.owner_id)
+    if (!key) return
+    map.set(key, {
+      score: Number.isFinite(Number(row?.score)) ? Number(row.score) : null,
+      rating: Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null,
+      battles: Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null,
+      win_rate:
+        row?.win_rate !== undefined && row?.win_rate !== null ? Number(row.win_rate) : null,
+      status: toOptionalTrimmedString(row?.status),
+      standin: row?.standin === true,
+      match_source: toOptionalTrimmedString(row?.match_source),
+    })
+  })
+  return map
+}
+
+async function fetchParticipantStats(gameId, ownerIds) {
+  if (!ownerIds.length) {
+    return { map: new Map() }
+  }
+
+  const { data, error } = await withTableQuery(
+    supabaseAdmin,
+    'rank_participants',
+    (from) =>
+      from
+        .select('owner_id, hero_id, score, rating, battles, win_rate, status, standin, match_source')
+        .eq('game_id', gameId)
+        .in('owner_id', ownerIds),
+  )
+
+  if (error) {
+    return {
+      errorResponse: {
+        status: 400,
+        body: { error: error.message },
+      },
+    }
+  }
+
+  return { map: buildParticipantMap(Array.isArray(data) ? data : []) }
+}
+
+function buildHeroSummaryMap(rows = []) {
+  const map = new Map()
+  rows.forEach((row) => {
+    const key = toOptionalTrimmedString(row?.id)
+    if (!key) return
+    map.set(key, buildHeroSummary(row))
+  })
+  return map
+}
+
+async function fetchHeroSummaries(heroIds) {
+  if (!heroIds.length) {
+    return { map: new Map() }
+  }
+
+  const { data, error } = await withTableQuery(supabaseAdmin, 'heroes', (from) =>
+    from
+      .select(
+        'id, name, description, image_url, background_url, bgm_url, bgm_duration_seconds, ability1, ability2, ability3, ability4',
+      )
+      .in('id', heroIds),
+  )
+
+  if (error) {
+    return {
+      errorResponse: {
+        status: 400,
+        body: { error: error.message },
+      },
+    }
+  }
+
+  return { map: buildHeroSummaryMap(Array.isArray(data) ? data : []) }
+}
+
+function buildRosterInsertRows({
+  rosterEntries,
+  participantMap,
+  heroSummaryMap,
+  heroPayloadMap,
+  nowIso,
+  matchInstanceId,
+  roomId,
+  gameId,
+}) {
+  return rosterEntries.map((entry) => {
+    const stats = participantMap.get(entry.ownerId || '') || {}
+    const heroMeta =
+      heroSummaryMap.get(entry.heroId || '') || heroPayloadMap[entry.heroId || ''] || null
+    const heroName = heroMeta?.name || entry.heroName || null
+    const entryStandin = entry.standin === true
+    const entryMatchSource = entry.matchSource || (entryStandin ? 'async_standin' : null)
+    const entryScore = toNumericOrNull(entry.score)
+    const entryRating = toNumericOrNull(entry.rating)
+    const entryBattles = toNumericOrNull(entry.battles)
+    const entryWinRate =
+      entry.winRate !== undefined && entry.winRate !== null ? Number(entry.winRate) : null
+    const entryStatus = entry.status || (entryStandin ? 'standin' : null)
+    const derivedMatchSource =
+      toOptionalTrimmedString(stats.match_source) ||
+      toOptionalTrimmedString(entryMatchSource) ||
+      null
+    const derivedStatus =
+      toOptionalTrimmedString(stats.status) ||
+      toOptionalTrimmedString(entryStatus) ||
+      (entryStandin ? 'standin' : null)
+
+    return {
+      match_instance_id: matchInstanceId,
+      room_id: roomId,
+      game_id: gameId,
+      slot_index: entry.slotIndex,
+      slot_id: entry.slotId,
+      role: entry.role,
+      owner_id: entry.ownerId,
+      hero_id: entry.heroId,
+      hero_name: heroName,
+      hero_summary: heroMeta,
+      ready: entry.ready,
+      joined_at: entry.joinedAt,
+      score: stats.score ?? entryScore ?? null,
+      rating: stats.rating ?? entryRating ?? null,
+      battles: stats.battles ?? entryBattles ?? null,
+      win_rate: stats.win_rate ?? (Number.isFinite(entryWinRate) ? entryWinRate : null),
+      status: derivedStatus,
+      standin: stats.standin === true || entryStandin,
+      match_source: derivedMatchSource,
+      created_at: nowIso,
+      updated_at: nowIso,
+    }
+  })
+}
+
+function normalizeSlotTemplateMetadata(slotTemplatePayload, nowIso) {
+  const version = toNumericVersion(
+    slotTemplatePayload.version ??
+      slotTemplatePayload.version_ms ??
+      slotTemplatePayload.updatedAt ??
+      slotTemplatePayload.updated_at,
+    Date.now(),
+  )
+
+  const source =
+    toOptionalTrimmedString(slotTemplatePayload.source ?? slotTemplatePayload.origin) || 'room-stage'
+
+  const updatedAtRaw =
+    slotTemplatePayload.updated_at ??
+    slotTemplatePayload.updatedAt ??
+    (Number.isFinite(version) ? new Date(version).toISOString() : null)
+
+  let updatedAtIso
+  if (typeof updatedAtRaw === 'string') {
+    const parsed = new Date(updatedAtRaw)
+    updatedAtIso = Number.isNaN(parsed.getTime())
+      ? Number.isFinite(version)
+        ? new Date(version).toISOString()
+        : nowIso
+      : parsed.toISOString()
+  } else if (Number.isFinite(Number(updatedAtRaw))) {
+    updatedAtIso = new Date(Number(updatedAtRaw)).toISOString()
+  } else if (Number.isFinite(version)) {
+    updatedAtIso = new Date(version).toISOString()
+  } else {
+    updatedAtIso = nowIso
+  }
+
+  return { version, source, updatedAt: updatedAtIso }
+}
+
+function mapSyncRosterError(error) {
+  const message = error?.message || 'sync_failed'
+  if (message.includes('room_owner_mismatch')) {
+    return { status: 403, body: { error: 'forbidden' } }
+  }
+  if (message.includes('room_not_found')) {
+    return { status: 404, body: { error: 'room_not_found' } }
+  }
+  if (message.includes('slot_version_conflict')) {
+    return { status: 409, body: { error: 'slot_version_conflict' } }
+  }
+  if (message.includes('empty_roster')) {
+    return { status: 400, body: { error: 'empty_roster' } }
+  }
+  return { status: 400, body: { error: message } }
+}
+
+function mapEnsureSessionError(error) {
+  const message = error?.message || ''
+  if (message.includes('room_owner_mismatch')) {
+    return { status: 403, body: { error: 'forbidden' } }
+  }
+  if (message.includes('room_not_found')) {
+    return { status: 404, body: { error: 'room_not_found' } }
+  }
+  if (isMissingRpcError(error, 'ensure_rank_session_for_room')) {
+    return {
+      status: 500,
+      body: {
+        error: 'missing_ensure_rank_session_for_room',
+        hint:
+          'Supabase에 ensure_rank_session_for_room(uuid, uuid, uuid, text, jsonb) 함수를 배포하고 권한을 부여하세요.',
+        supabaseError: error,
+      },
+    }
+  }
+  return {
+    status: 400,
+    body: {
+      error: error?.message || 'session_sync_failed',
+      supabaseError: error,
+    },
+  }
+}
+
+async function ensureRoomReady(roomId, allowPartial) {
+  if (allowPartial) {
+    return null
+  }
+
+  const { error } = await supabaseAdmin.rpc('assert_room_ready', { p_room_id: roomId })
+  if (!error) {
+    return null
+  }
+
+  if (isMissingRpcError(error, 'assert_room_ready')) {
+    return {
+      status: 500,
+      body: {
+        error: 'missing_assert_room_ready',
+        hint:
+          'Supabase에 assert_room_ready(uuid) 함수를 배포하고 authenticated/service_role에 실행 권한을 부여하세요.',
+        supabaseError: error,
+      },
+    }
+  }
+
+  return {
+    status: 400,
+    body: {
+      error: error.message || 'ready_check_failed',
+      supabaseError: error,
+    },
+  }
+}
+
 function parseBody(req) {
   let payload = req.body
   if (typeof payload === 'string') {
@@ -241,137 +543,48 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'empty_roster' })
   }
 
-  const { data: roomRow, error: roomError } = await withTableQuery(
-    supabaseAdmin,
-    'rank_rooms',
-    (from) => from.select('id, owner_id, mode').eq('id', roomId).maybeSingle(),
-  )
-
-  if (roomError) {
-    return res.status(400).json({ error: roomError.message, supabaseError: roomError })
+  const roomContext = await fetchRoomContext(roomId)
+  if (roomContext.errorResponse) {
+    return res
+      .status(roomContext.errorResponse.status)
+      .json(roomContext.errorResponse.body)
   }
 
-  if (!roomRow) {
-    return res.status(404).json({ error: 'room_not_found' })
+  const roomOwnerId = roomContext.ownerId
+  const ownershipError = ensureRoomOwnership(roomOwnerId, user.id)
+  if (ownershipError) {
+    return res.status(ownershipError.status).json(ownershipError.body)
   }
 
-  const roomOwnerId = toOptionalTrimmedString(roomRow.owner_id)
-  const callerId = toOptionalTrimmedString(user.id)
-
-  if (!roomOwnerId) {
-    return res.status(400).json({ error: 'room_owner_missing' })
-  }
-
-  if (!callerId || callerId !== roomOwnerId) {
-    return res.status(403).json({ error: 'forbidden' })
-  }
-
-  const roomMode = bodyMatchMode || toOptionalTrimmedString(roomRow.mode)
+  const roomMode = bodyMatchMode || roomContext.mode
 
   const ownerIds = Array.from(new Set(rosterEntries.map((entry) => entry.ownerId).filter(Boolean)))
   const heroIds = Array.from(new Set(rosterEntries.map((entry) => entry.heroId).filter(Boolean)))
 
-  let participantRows = []
-  if (ownerIds.length) {
-    const { data, error: participantError } = await withTableQuery(
-      supabaseAdmin,
-      'rank_participants',
-      (from) =>
-        from
-          .select(
-            'owner_id, hero_id, score, rating, battles, win_rate, status, standin, match_source',
-          )
-          .eq('game_id', gameId)
-          .in('owner_id', ownerIds),
-    )
-    if (participantError) {
-      return res.status(400).json({ error: participantError.message })
-    }
-    participantRows = Array.isArray(data) ? data : []
+  const participantResult = await fetchParticipantStats(gameId, ownerIds)
+  if (participantResult.errorResponse) {
+    return res
+      .status(participantResult.errorResponse.status)
+      .json(participantResult.errorResponse.body)
   }
 
-  let heroRows = []
-  if (heroIds.length) {
-    const { data, error: heroError } = await withTableQuery(supabaseAdmin, 'heroes', (from) =>
-      from
-        .select(
-          'id, name, description, image_url, background_url, bgm_url, bgm_duration_seconds, ability1, ability2, ability3, ability4',
-        )
-        .in('id', heroIds),
-    )
-    if (heroError) {
-      return res.status(400).json({ error: heroError.message })
-    }
-    heroRows = Array.isArray(data) ? data : []
+  const heroResult = await fetchHeroSummaries(heroIds)
+  if (heroResult.errorResponse) {
+    return res
+      .status(heroResult.errorResponse.status)
+      .json(heroResult.errorResponse.body)
   }
 
-  const participantMap = new Map()
-  participantRows.forEach((row) => {
-    const key = toOptionalTrimmedString(row?.owner_id)
-    if (!key) return
-    participantMap.set(key, {
-      score: Number.isFinite(Number(row?.score)) ? Number(row.score) : null,
-      rating: Number.isFinite(Number(row?.rating)) ? Number(row.rating) : null,
-      battles: Number.isFinite(Number(row?.battles)) ? Number(row.battles) : null,
-      win_rate:
-        row?.win_rate !== undefined && row?.win_rate !== null ? Number(row.win_rate) : null,
-      status: toOptionalTrimmedString(row?.status),
-      standin: row?.standin === true,
-      match_source: toOptionalTrimmedString(row?.match_source),
-    })
-  })
-
-  const heroSummaryMap = new Map()
-  heroRows.forEach((row) => {
-    const key = toOptionalTrimmedString(row?.id)
-    if (!key) return
-    heroSummaryMap.set(key, buildHeroSummary(row))
-  })
-
-  const now = new Date().toISOString()
-  const insertRows = rosterEntries.map((entry) => {
-    const stats = participantMap.get(entry.ownerId || '') || {}
-    const heroMeta = heroSummaryMap.get(entry.heroId || '') || heroMap[entry.heroId || ''] || null
-    const heroName = heroMeta?.name || entry.heroName || null
-    const entryStandin = entry.standin === true
-    const entryMatchSource = entry.matchSource || (entryStandin ? 'async_standin' : null)
-    const entryScore = toNumericOrNull(entry.score)
-    const entryRating = toNumericOrNull(entry.rating)
-    const entryBattles = toNumericOrNull(entry.battles)
-    const entryWinRate = entry.winRate !== undefined && entry.winRate !== null ? Number(entry.winRate) : null
-    const entryStatus = entry.status || (entryStandin ? 'standin' : null)
-    const derivedMatchSource =
-      toOptionalTrimmedString(stats.match_source) ||
-      toOptionalTrimmedString(entryMatchSource) ||
-      null
-    const derivedStatus =
-      toOptionalTrimmedString(stats.status) ||
-      toOptionalTrimmedString(entryStatus) ||
-      (entryStandin ? 'standin' : null)
-
-    return {
-      match_instance_id: matchInstanceId,
-      room_id: roomId,
-      game_id: gameId,
-      slot_index: entry.slotIndex,
-      slot_id: entry.slotId,
-      role: entry.role,
-      owner_id: entry.ownerId,
-      hero_id: entry.heroId,
-      hero_name: heroName,
-      hero_summary: heroMeta,
-      ready: entry.ready,
-      joined_at: entry.joinedAt,
-      score: stats.score ?? entryScore ?? null,
-      rating: stats.rating ?? entryRating ?? null,
-      battles: stats.battles ?? entryBattles ?? null,
-      win_rate: stats.win_rate ?? (Number.isFinite(entryWinRate) ? entryWinRate : null),
-      status: derivedStatus,
-      standin: stats.standin === true || entryStandin,
-      match_source: derivedMatchSource,
-      created_at: now,
-      updated_at: now,
-    }
+  const nowIso = new Date().toISOString()
+  const insertRows = buildRosterInsertRows({
+    rosterEntries,
+    participantMap: participantResult.map,
+    heroSummaryMap: heroResult.map,
+    heroPayloadMap: heroMap,
+    nowIso,
+    matchInstanceId,
+    roomId,
+    gameId,
   })
 
   const slotTemplatePayload =
@@ -404,32 +617,12 @@ export default async function handler(req, res) {
     }
   }
 
-  const slotTemplateVersion = toNumericVersion(
-    slotTemplatePayload.version ??
-      slotTemplatePayload.version_ms ??
-      slotTemplatePayload.updatedAt ??
-      slotTemplatePayload.updated_at,
-    Date.now(),
-  )
+  const { version: slotTemplateVersion, source: slotTemplateSource, updatedAt: slotTemplateUpdatedAt } =
+    normalizeSlotTemplateMetadata(slotTemplatePayload, nowIso)
 
-  const slotTemplateSource =
-    toOptionalTrimmedString(slotTemplatePayload.source ?? slotTemplatePayload.origin) || 'room-stage'
-
-  const updatedAtRaw =
-    slotTemplatePayload.updated_at ??
-    slotTemplatePayload.updatedAt ??
-    (Number.isFinite(slotTemplateVersion) ? new Date(slotTemplateVersion).toISOString() : null)
-
-  let slotTemplateUpdatedAt
-  if (typeof updatedAtRaw === 'string') {
-    const parsed = new Date(updatedAtRaw)
-    slotTemplateUpdatedAt = Number.isNaN(parsed.getTime()) ? new Date(slotTemplateVersion).toISOString() : parsed.toISOString()
-  } else if (Number.isFinite(Number(updatedAtRaw))) {
-    slotTemplateUpdatedAt = new Date(Number(updatedAtRaw)).toISOString()
-  } else if (Number.isFinite(slotTemplateVersion)) {
-    slotTemplateUpdatedAt = new Date(slotTemplateVersion).toISOString()
-  } else {
-    slotTemplateUpdatedAt = now
+  const readinessError = await ensureRoomReady(roomId, allowPartial)
+  if (readinessError) {
+    return res.status(readinessError.status).json(readinessError.body)
   }
 
   const rpcPayload = {
@@ -443,49 +636,15 @@ export default async function handler(req, res) {
     p_roster: insertRows,
   }
 
-  if (!allowPartial) {
-    const { error: readinessError } = await supabaseAdmin.rpc('assert_room_ready', {
-      p_room_id: roomId,
-    })
-
-    if (readinessError) {
-      if (isMissingRpcError(readinessError, 'assert_room_ready')) {
-        return res.status(500).json({
-          error: 'missing_assert_room_ready',
-          hint:
-            'Supabase에 assert_room_ready(uuid) 함수를 배포하고 authenticated/service_role에 실행 권한을 부여하세요.',
-          supabaseError: readinessError,
-        })
-      }
-      return res.status(400).json({
-        error: readinessError.message || 'ready_check_failed',
-        supabaseError: readinessError,
-      })
-    }
-  }
-
   const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('sync_rank_match_roster', rpcPayload)
 
   if (rpcError) {
-    const message = rpcError.message || 'sync_failed'
-    if (message.includes('room_owner_mismatch')) {
-      return res.status(403).json({ error: 'forbidden' })
-    }
-    if (message.includes('room_not_found')) {
-      return res.status(404).json({ error: 'room_not_found' })
-    }
-    if (message.includes('slot_version_conflict')) {
-      return res.status(409).json({ error: 'slot_version_conflict' })
-    }
-    if (message.includes('empty_roster')) {
-      return res.status(400).json({ error: 'empty_roster' })
-    }
-    return res.status(400).json({ error: message })
+    const mapped = mapSyncRosterError(rpcError)
+    return res.status(mapped.status).json(mapped.body)
   }
 
   const summary = Array.isArray(rpcData) && rpcData.length ? rpcData[0] : null
 
-  let sessionId = null
   const ensurePayload = {
     p_room_id: roomId,
     p_game_id: gameId,
@@ -500,27 +659,11 @@ export default async function handler(req, res) {
   )
 
   if (ensureError) {
-    const message = ensureError.message || ''
-    if (message.includes('room_owner_mismatch')) {
-      return res.status(403).json({ error: 'forbidden' })
-    }
-    if (message.includes('room_not_found')) {
-      return res.status(404).json({ error: 'room_not_found' })
-    }
-    if (isMissingRpcError(ensureError, 'ensure_rank_session_for_room')) {
-      return res.status(500).json({
-        error: 'missing_ensure_rank_session_for_room',
-        hint:
-          'Supabase에 ensure_rank_session_for_room(uuid, uuid, uuid, text, jsonb) 함수를 배포하고 권한을 부여하세요.',
-        supabaseError: ensureError,
-      })
-    }
-    return res.status(400).json({
-      error: ensureError.message || 'session_sync_failed',
-      supabaseError: ensureError,
-    })
+    const mapped = mapEnsureSessionError(ensureError)
+    return res.status(mapped.status).json(mapped.body)
   }
 
+  let sessionId = null
   if (Array.isArray(ensureData) && ensureData.length) {
     sessionId = toOptionalTrimmedString(ensureData[0])
   } else if (typeof ensureData === 'string') {

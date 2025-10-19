@@ -140,9 +140,12 @@ describe('POST /api/rank/stage-room-match', () => {
       },
     ]
 
-    rpcMock
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({ data: null, error: { message: 'slot_version_conflict' } })
+    rpcMock.mockImplementation(async (fnName) => {
+      if (fnName === 'sync_rank_match_roster') {
+        return { data: null, error: { message: 'slot_version_conflict' } }
+      }
+      return { data: [], error: null }
+    })
 
     const req = createApiRequest({
       method: 'POST',
@@ -184,8 +187,9 @@ describe('POST /api/rank/stage-room-match', () => {
         p_slots: expect.any(Array),
       }),
     )
+    expect(rpcMock).toHaveBeenNthCalledWith(2, 'assert_room_ready', { p_room_id: 'room-1' })
     expect(rpcMock).toHaveBeenNthCalledWith(
-      2,
+      3,
       'sync_rank_match_roster',
       expect.objectContaining({
         p_game_id: 'game-1',
@@ -195,6 +199,7 @@ describe('POST /api/rank/stage-room-match', () => {
         p_slot_template_version: expect.any(Number),
       }),
     )
+    expect(rpcMock).toHaveBeenCalledTimes(3)
     expect(res.statusCode).toBe(409)
     expect(res.body).toEqual({ error: 'slot_version_conflict' })
   })
@@ -231,18 +236,24 @@ describe('POST /api/rank/stage-room-match', () => {
       error: null,
     }
 
-    rpcMock
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({
-        data: [
-          {
-            inserted_count: 1,
-            slot_template_version: 456,
-            slot_template_updated_at: '2025-02-03T12:00:00Z',
-          },
-        ],
-        error: null,
-      })
+    rpcMock.mockImplementation(async (fnName) => {
+      if (fnName === 'sync_rank_match_roster') {
+        return {
+          data: [
+            {
+              inserted_count: 1,
+              slot_template_version: 456,
+              slot_template_updated_at: '2025-02-03T12:00:00Z',
+            },
+          ],
+          error: null,
+        }
+      }
+      if (fnName === 'ensure_rank_session_for_room') {
+        return { data: ['session-room-9'], error: null }
+      }
+      return { data: [], error: null }
+    })
 
     const req = createApiRequest({
       method: 'POST',
@@ -284,8 +295,9 @@ describe('POST /api/rank/stage-room-match', () => {
         p_slots: expect.any(Array),
       }),
     )
+    expect(rpcMock).toHaveBeenNthCalledWith(2, 'assert_room_ready', { p_room_id: 'room-9' })
     expect(rpcMock).toHaveBeenNthCalledWith(
-      2,
+      3,
       'sync_rank_match_roster',
       expect.objectContaining({
         p_room_id: 'room-9',
@@ -301,6 +313,15 @@ describe('POST /api/rank/stage-room-match', () => {
             ready: false,
           }),
         ]),
+      }),
+    )
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      4,
+      'ensure_rank_session_for_room',
+      expect.objectContaining({
+        p_room_id: 'room-9',
+        p_owner_id: 'user-1',
+        p_mode: 'rank',
       }),
     )
     expect(res.statusCode).toBe(200)
@@ -335,18 +356,24 @@ describe('POST /api/rank/stage-room-match', () => {
       },
     ]
 
-    rpcMock
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({
-        data: [
-          {
-            inserted_count: 1,
-            slot_template_version: 99,
-            slot_template_updated_at: '2025-02-04T00:00:00Z',
-          },
-        ],
-        error: null,
-      })
+    rpcMock.mockImplementation(async (fnName) => {
+      if (fnName === 'sync_rank_match_roster') {
+        return {
+          data: [
+            {
+              inserted_count: 1,
+              slot_template_version: 99,
+              slot_template_updated_at: '2025-02-04T00:00:00Z',
+            },
+          ],
+          error: null,
+        }
+      }
+      if (fnName === 'ensure_rank_session_for_room') {
+        return { data: ['session-standin'], error: null }
+      }
+      return { data: [], error: null }
+    })
 
     const req = createApiRequest({
       method: 'POST',
@@ -373,7 +400,16 @@ describe('POST /api/rank/stage-room-match', () => {
     expect(mockWithTableQuery).toHaveBeenNthCalledWith(2, expect.any(Object), 'rank_participants', expect.any(Function))
     expect(mockWithTableQuery).toHaveBeenNthCalledWith(3, expect.any(Object), 'heroes', expect.any(Function))
     expect(rpcMock).toHaveBeenNthCalledWith(
-      2,
+      1,
+      'verify_rank_roles_and_slots',
+      expect.objectContaining({
+        p_roles: expect.any(Array),
+        p_slots: expect.any(Array),
+      }),
+    )
+    expect(rpcMock).toHaveBeenNthCalledWith(2, 'assert_room_ready', { p_room_id: 'room-standin' })
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      3,
       'sync_rank_match_roster',
       expect.objectContaining({
         p_request_owner_id: 'user-1',
@@ -392,13 +428,21 @@ describe('POST /api/rank/stage-room-match', () => {
         ]),
       }),
     )
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      4,
+      'ensure_rank_session_for_room',
+      expect.objectContaining({ p_owner_id: 'user-1', p_room_id: 'room-standin' }),
+    )
     expect(res.statusCode).toBe(200)
-    expect(res.body).toEqual({
-      ok: true,
-      staged: 1,
-      slot_template_version: 99,
-      slot_template_updated_at: '2025-02-04T00:00:00Z',
-    })
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        ok: true,
+        staged: 1,
+        slot_template_version: 99,
+        slot_template_updated_at: '2025-02-04T00:00:00Z',
+      }),
+    )
+    expect(res.body.session_id).toBe('session-standin')
   })
 
   it('clears placeholder owner IDs before syncing roster rows', async () => {
@@ -424,18 +468,24 @@ describe('POST /api/rank/stage-room-match', () => {
       },
     ]
 
-    rpcMock
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({
-        data: [
-          {
-            inserted_count: 1,
-            slot_template_version: 77,
-            slot_template_updated_at: '2025-02-05T00:00:00Z',
-          },
-        ],
-        error: null,
-      })
+    rpcMock.mockImplementation(async (fnName) => {
+      if (fnName === 'sync_rank_match_roster') {
+        return {
+          data: [
+            {
+              inserted_count: 1,
+              slot_template_version: 77,
+              slot_template_updated_at: '2025-02-05T00:00:00Z',
+            },
+          ],
+          error: null,
+        }
+      }
+      if (fnName === 'ensure_rank_session_for_room') {
+        return { data: ['session-placeholder'], error: null }
+      }
+      return { data: [], error: null }
+    })
 
     const req = createApiRequest({
       method: 'POST',
@@ -458,11 +508,19 @@ describe('POST /api/rank/stage-room-match', () => {
 
     await handler(req, res)
 
+    expect(mockWithTableQuery).toHaveBeenCalledTimes(1)
     expect(mockWithTableQuery).toHaveBeenNthCalledWith(1, expect.any(Object), 'rank_rooms', expect.any(Function))
-    expect(mockWithTableQuery).toHaveBeenNthCalledWith(2, expect.any(Object), 'rank_participants', expect.any(Function))
-    expect(mockWithTableQuery).toHaveBeenNthCalledWith(3, expect.any(Object), 'heroes', expect.any(Function))
     expect(rpcMock).toHaveBeenNthCalledWith(
-      2,
+      1,
+      'verify_rank_roles_and_slots',
+      expect.objectContaining({
+        p_roles: expect.any(Array),
+        p_slots: expect.any(Array),
+      }),
+    )
+    expect(rpcMock).toHaveBeenNthCalledWith(2, 'assert_room_ready', { p_room_id: 'room-placeholder' })
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      3,
       'sync_rank_match_roster',
       expect.objectContaining({
         p_request_owner_id: 'user-1',
@@ -476,13 +534,21 @@ describe('POST /api/rank/stage-room-match', () => {
         ]),
       }),
     )
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      4,
+      'ensure_rank_session_for_room',
+      expect.objectContaining({ p_owner_id: 'user-1', p_room_id: 'room-placeholder' }),
+    )
     expect(res.statusCode).toBe(200)
-    expect(res.body).toEqual({
-      ok: true,
-      staged: 1,
-      slot_template_version: 77,
-      slot_template_updated_at: '2025-02-05T00:00:00Z',
-    })
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        ok: true,
+        staged: 1,
+        slot_template_version: 77,
+        slot_template_updated_at: '2025-02-05T00:00:00Z',
+      }),
+    )
+    expect(res.body.session_id).toBe('session-placeholder')
   })
 
   it('propagates verification errors from the RPC', async () => {
