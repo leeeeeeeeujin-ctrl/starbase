@@ -308,7 +308,7 @@ async function fetchOwnSessionHistory(
         supabase
           .from(table)
           .select(
-            'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit, status, turn, event_timestamp, context, metadata',
+            'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit:limit_remaining, status, turn, event_timestamp, context, metadata',
           )
           .in('session_id', sessionIds)
           .order('session_id', { ascending: false })

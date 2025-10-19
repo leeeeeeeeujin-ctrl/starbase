@@ -9,3 +9,8 @@ body {
 }
 a { color: #2563eb; text-decoration: none; }
 a:hover { text-decoration: underline; }
+button,
+a,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+}

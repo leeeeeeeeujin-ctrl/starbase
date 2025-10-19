@@ -224,7 +224,7 @@ export function mapTimelineRowToEvent(row, { defaultTurn = null } = {}) {
       ownerId: row.owner_id,
       strike: row.strike,
       remaining: row.remaining,
-      limit: row.limit,
+      limit: row.limit ?? row.limit_remaining ?? row.limitRemaining,
       reason: row.reason,
       status: row.status,
       turn: row.turn,
