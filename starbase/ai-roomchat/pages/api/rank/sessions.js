@@ -131,7 +131,7 @@ export default async function handler(req, res) {
       (from) =>
         from
           .select(
-            'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit, status, turn, event_timestamp, context, metadata',
+            'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit:limit_remaining, status, turn, event_timestamp, context, metadata',
           )
           .in('session_id', sessionIds)
           .order('event_timestamp', { ascending: false })

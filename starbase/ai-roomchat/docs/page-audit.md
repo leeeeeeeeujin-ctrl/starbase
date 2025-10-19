@@ -81,6 +81,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 ### `pages/rank/[id]/start.js`
 - Dynamically loads the client-only `StartClient` shell so heavy assets stay out of the main bundle.【F:pages/rank/[id]/start.js†L1-L4】
 - StartClient’s log board now normalises turn summaries, prompt previews, actors, and variables into glassmorphism cards, with the history columns stacking vertically on mobile and fanning out into multi-column grids on desktop so 운영/QA can scan context at any breakpoint. 섹션별 축약 토글·검색 입력에 더해 검색어 하이라이트와 액션/주역/태그 다중 필터 칩이 붙어 긴 전투에서도 필요한 카드만 빠르게 추릴 수 있습니다.【F:components/rank/StartClient/LogsPanel.js†L1-L400】【F:components/rank/StartClient/LogsPanel.module.css†L1-L360】【F:components/rank/StartClient/useStartClientEngine.js†L960-L1206】
+- StartClient shells the page with a match summary grid (game metadata, viewer card, per-room slot matrix) fed from the shared match flow store so roster/role deficits, stand-in tags, and queue origin are visible before gameplay; the control header and matchmaking guards moved into the new layout alongside consensus status chips.【F:components/rank/StartClient/index.js†L608-L842】【F:components/rank/StartClient/StartClient.module.css†L1-L275】
 
 ### `pages/rank/RolesEditor.js`
 - Local stateful form utility that syncs a roles array, emitting changes to parent via `onChange`. Provides add/update/remove controls with simple inline styling.【F:pages/rank/RolesEditor.js†L1-L30】
@@ -121,6 +122,17 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 - `scripts/notify-audio-event-trends.js`는 Supabase RPC로 주간 집계를 조회해 Slack(Webhook)으로 다이제스트를 발송하며, CI 워크플로(`pr-ci.yml`, `blueprint-progress-freshness.yml`)에 통합돼 주간/PR 실행 시 자동으로 동작합니다. 헬퍼 함수들은 Jest에서 단위 검증을 거칩니다.【F:scripts/notify-audio-event-trends.js†L1-L206】【F:.github/workflows/pr-ci.yml†L1-L53】【F:.github/workflows/blueprint-progress-freshness.yml†L1-L53】【F:__tests__/scripts/notify-audio-event-trends.test.js†L1-L66】
 - Supabase table helpers (`withTable`) abstract table name prefix differences across environments—most hooks and API routes rely on them for multi-tenant support.
 - `rank_audio_preferences`와 `rank_audio_events` 테이블이 추가돼 브금 프리셋 선택과 변경 로그가 Supabase에 저장되며, `GameRoomView`는 `withTable`을 통해 동일 스키마를 읽고/쓰기 합니다.【F:supabase.sql†L1-L120】【F:components/rank/GameRoomView.js†L780-L1160】
+- 로스터 화면의 공지·캐릭터·프로필 인터랙션에서 iOS 탭 하이라이트를 제거해 파란 번쩍임 없이도 터치 피드백이 매끄럽게 유지됩니다. 캐릭터 상세 페이지의 글로벌 채팅 런처는 조금 더 아래로 내려 시야를 가리지 않도록 하고, 영웅 카드의 최대 폭·비율을 축소해 주인공 이미지가 무대에 비해 덜 부담스럽게 자리 잡습니다. 채팅 오버레이 대화 영역은 배경 투명도를 높여 업로드한 이미지·색상이 또렷하게 보이며, 정보 탭 기본 선택 영웅은 최근 탐색한 캐릭터를 우선시합니다. 능력 단계는 여전히 1~4까지 개별로 노출되며 Supabase 스키마나 RPC는 변경되지 않았습니다.
+- 캐릭터 상세 페이지에서는 게임 통계 바로 아래에 플레이 매칭·베틀 로그 패널을 배치해 하단 오버레이 없이도 선택한 게임을 시작하고 10개 단위로 로그를 확장할 수 있으며, 하단 도크의 플레이 탭은 제거돼 관련 정보가 한 화면에서 이어집니다.
+- 참여한 게임 캐러셀은 화살표 없이 스와이프로만 전환되고 카드가 더 낮은 프로필로 줄어든 대신 역할·순위 배지가 카드 내부에 재배치됐습니다. 탭하면 역할 필터를 지원하는 랭킹 전용 오버레이가 열리고, 하단 플레이 패널은 캐릭터 설명·능력 슬라이드와 좌우 전환돼 능력 정보가 별도 슬라이드에서 유지됩니다.
+- 캐러셀 카드의 세로 폭을 더 줄여 무대 상단 여백을 확보하고, 참여 게임명이 카드 안에서 크게 드러나도록 텍스처/패딩을 재조정했습니다.
+- 캐릭터 메인 카드 폭을 원래 비율로 되돌리고 참여 게임 캐러셀은 현재 선택된 게임명을 별도 캡션으로 표시합니다. 랭킹 오버레이는 화면 전면 고정형으로 바뀌어 1위 영웅 카드·게임 아트·역할별 순위표를 한 번에 보여 주고, 오버레이가 열린 동안에는 기존 브금을 잠시 멈춘 뒤 1위 영웅의 브금을 재생합니다.
+- 브금 설정 탭에 피치 슬라이더(0.5x~1.5x)가 추가돼 재방문 시에도 동일한 속도로 재생되며, 영웅 조회 랭킹에서 사용되는 히어로 조회 데이터에는 배경·설명·브금 메타가 포함됩니다.
+- 캐릭터 화면 매칭 오버레이는 모드에 따라 분기합니다. 실시간일 땐 `matchQueueFlow`가 대기열 브로드캐스트를 구독하며 `join_rank_queue` → `fetch_rank_queue_ticket` → `stage_rank_match` 흐름을 따라가고, 비실시간일 땐 `/api/rank/match` 호출로 `rank_match_queue`/`rank_participants` 샘플을 즉시 받아 매치 코드를 생성해 오버레이에서 바로 안내합니다.
+- 비실시간 분기에서는 현재 선택한 영웅을 `host` 항목으로 함께 전송해 큐 표본에 고정하고, 동일 소유자/영웅 후보는 참가자 풀에서 제거해 최소 인원 확보 뒤 남은 슬롯만 AI 대역으로 충원합니다.【F:components/character/CharacterPlayPanel.js†L1028-L1149】【F:pages/api/rank/match.js†L136-L244】
+- 캐릭터 플레이 패널은 현재 선택한 영웅과 역할 정보를 매칭 데이터 스토어에 즉시 기록해 `/rank/[id]/start` 진입 시 스타트 클라이언트가 호스트 좌석과 뷰어 메타를 복원합니다.【F:components/character/CharacterPlayPanel.js†L1-L20】【F:components/character/CharacterPlayPanel.js†L882-L933】【F:lib/rank/matchFlow.js†L556-L610】
+- 매칭 오버레이는 항상 화면 상단 중앙에 고정되며, 진행 중인 티켓 ID·상태·모드를 한눈에 확인할 수 있고, 필요 시 “디버그 열기”를 눌러 큐 폴링·Realtime 이벤트·RPC 호출 로그를 즉시 확인할 수 있는 가벼운 디버그 패널을 제공합니다.
 - Several UI shells (create, roster, maker) defer most logic to component containers; reviewing those components is recommended for full domain context beyond this page-oriented audit.
 - Ensure environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, etc.) are set for server APIs like `finalize-session` to work outside local mocks.【F:pages/api/rank/finalize-session.js†L1-L8】
 
+- 캐릭터 상세 페이지의 거대 컴포넌트는 `useHeroProfileInfo`, `useParticipationCarousel`, `useInfoSlider` 훅으로 상태·제스처 로직을 분리해 가독성과 테스트 가능성을 높였습니다. 캐러셀/슬라이더가 동일 훅을 공유하므로 추후 다른 화면에서도 쉽게 재사용할 수 있습니다.【F:hooks/character/useHeroProfileInfo.js†L1-L51】【F:hooks/character/useParticipationCarousel.js†L1-L116】【F:hooks/character/useInfoSlider.js†L1-L59】

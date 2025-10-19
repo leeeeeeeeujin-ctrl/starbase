@@ -498,10 +498,11 @@ export function buildCandidateSample({
     totalLimit: null,
     queueAverageScore: null,
     roleAverageScores: {},
+    standinSampled: 0,
   }
 
   if (realtimeEnabled) {
-    return { sample: baseQueue, meta }
+    return { sample: baseQueue, meta, standins: [] }
   }
 
   const ownersInQueue = new Set(baseQueue.map((row) => row?.owner_id || row?.ownerId).filter(Boolean))
@@ -510,6 +511,35 @@ export function buildCandidateSample({
       .map((role) => normalizeRoleName(role?.name ?? role))
       .filter((name) => typeof name === 'string' && name.length > 0),
   )
+
+  const roleCapacities = new Map()
+  roles.forEach((role) => {
+    if (!role) return
+    const roleName = normalizeRoleName(role?.name ?? role?.role)
+    if (!roleName) return
+    const slotCount = Number(role?.slot_count ?? role?.slotCount ?? role?.slots)
+    if (!Number.isFinite(slotCount) || slotCount <= 0) return
+    roleCapacities.set(roleName, Math.max(0, Math.trunc(slotCount)))
+  })
+
+  const baseQueueRoleCounts = new Map()
+  baseQueue.forEach((entry) => {
+    if (!entry) return
+    const roleName = normalizeRoleName(entry.role)
+    if (!roleName) return
+    const nextCount = (baseQueueRoleCounts.get(roleName) || 0) + 1
+    baseQueueRoleCounts.set(roleName, nextCount)
+  })
+
+  const roleNeeds = new Map()
+  roleCapacities.forEach((capacity, roleName) => {
+    const occupied = baseQueueRoleCounts.get(roleName) || 0
+    const deficit = capacity - occupied
+    roleNeeds.set(roleName, deficit > 0 ? deficit : 0)
+  })
+
+  meta.queueRoleCounts = toPlainNumberMap(baseQueueRoleCounts)
+  meta.roleNeeds = toPlainNumberMap(roleNeeds)
 
   const { roleAverages, overallAverage } = summarizeRoleAverages(queue)
   if (Number.isFinite(overallAverage)) {
@@ -605,6 +635,13 @@ export function buildCandidateSample({
     : 0
 
   const requiredStandins = Math.max(0, totalSlots - baseQueue.length)
+  let roleNeedTotal = 0
+  roleNeeds.forEach((value) => {
+    if (Number.isFinite(value) && value > 0) {
+      roleNeedTotal += value
+    }
+  })
+
   const allowDuplicateOwners = duplicateOwnerCandidates.length > 0 && requiredStandins > uniqueOwnerCandidates.length
 
   const orderedCandidates = allowDuplicateOwners
@@ -613,11 +650,13 @@ export function buildCandidateSample({
 
   const totalLimitCap =
     Number.isFinite(totalLimit) && totalLimit >= 0 ? totalLimit : Number.POSITIVE_INFINITY
-  const standinLimitCap = requiredStandins > 0 ? requiredStandins : Number.POSITIVE_INFINITY
+  const standinGoal = Math.max(roleNeedTotal, requiredStandins)
+  const standinLimitCap = standinGoal > 0 ? standinGoal : Number.POSITIVE_INFINITY
   const selectionCap = Math.min(totalLimitCap, standinLimitCap)
 
   const selectedCandidates = []
   const perRoleSelected = new Map()
+  const remainingNeeds = new Map(roleNeeds)
 
   for (const candidate of orderedCandidates) {
     if (candidate.duplicateOwner && !allowDuplicateOwners) {
@@ -630,16 +669,34 @@ export function buildCandidateSample({
     if (Number.isFinite(perRoleLimit) && perRoleLimit >= 0 && currentCount >= perRoleLimit) {
       continue
     }
+    const remainingForRole = remainingNeeds.get(candidate.role) || 0
+    if (standinGoal > 0 && remainingForRole <= 0) {
+      continue
+    }
     selectedCandidates.push(candidate)
     perRoleSelected.set(candidate.role, currentCount + 1)
+    if (remainingForRole > 0) {
+      remainingNeeds.set(candidate.role, Math.max(0, remainingForRole - 1))
+    }
   }
 
   const selectedEntries = selectedCandidates.map((candidate) => candidate.entry)
 
+  const remainingNeedTotal = Array.from(remainingNeeds.values()).reduce((acc, value) => {
+    if (!Number.isFinite(value) || value <= 0) {
+      return acc
+    }
+    return acc + value
+  }, 0)
+
   meta.simulatedSelected = selectedEntries.length
   meta.duplicateSelected = selectedCandidates.filter((candidate) => candidate.duplicateOwner).length
+  meta.standinSampled = selectedEntries.length
+  meta.standinGoal = standinGoal
+  meta.roleNeedsRemaining = toPlainNumberMap(remainingNeeds)
+  meta.roleNeedShortfall = remainingNeedTotal
 
-  return { sample: baseQueue.concat(selectedEntries), meta }
+  return { sample: baseQueue.concat(selectedEntries), meta, standins: selectedEntries }
 }
 
 export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles = [], queue = [], rules = {} } = {}) {
