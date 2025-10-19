@@ -22,6 +22,10 @@ function generateMatchCode() {
   return `match_${stamp}_${random}`
 }
 
+function nowIso() {
+  return new Date().toISOString()
+}
+
 function mapToPlain(map) {
   const plain = {}
   if (!map || typeof map.forEach !== 'function') return plain
@@ -129,13 +133,199 @@ function mapCountsToPlain(statusMap) {
   return plain
 }
 
+function normalizeHostQueueEntry(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const heroId = raw.heroId || raw.hero_id
+  const ownerId = raw.ownerId || raw.owner_id
+  const roleRaw = raw.role || raw.role_name || raw.roleName
+  const role = typeof roleRaw === 'string' ? roleRaw.trim() : ''
+  if (!heroId || !ownerId || !role) {
+    return null
+  }
+
+  const joinedAt = nowIso()
+  const score = Number(raw.score)
+  const rating = Number(raw.rating)
+  const entry = {
+    id: raw.queueId || raw.id || `host_${heroId}`,
+    hero_id: heroId,
+    heroId,
+    owner_id: ownerId,
+    ownerId,
+    role,
+    score: Number.isFinite(score) ? score : Number.isFinite(rating) ? rating : null,
+    rating: Number.isFinite(rating) ? rating : Number.isFinite(score) ? score : null,
+    joined_at: joinedAt,
+    joinedAt,
+    status: 'host',
+    simulated: false,
+    standin: false,
+    match_source: 'host',
+  }
+
+  if (Number.isFinite(Number(raw.winRate))) {
+    entry.win_rate = Number(raw.winRate)
+  }
+  if (Number.isFinite(Number(raw.sessions))) {
+    entry.session_count = Number(raw.sessions)
+  }
+
+  return entry
+}
+
+function isStandinCandidate(entry) {
+  if (!entry || typeof entry !== 'object') return false
+  if (entry.simulated === true || entry.standin === true) return true
+  const source = entry.match_source || entry.matchSource
+  if (typeof source === 'string' && source.trim() === 'participant_pool') {
+    return true
+  }
+  return false
+}
+
+function buildStandinId(entry, index) {
+  const parts = [
+    'standin',
+    index,
+    entry?.queue_id || entry?.queueId || entry?.id || entry?.hero_id || entry?.heroId || 'anon',
+  ]
+  return parts
+    .map((part) => {
+      if (part == null) return 'anon'
+      const normalized = String(part)
+      return normalized.length ? normalized : 'anon'
+    })
+    .join('_')
+}
+
+function extractMemberPosition(member) {
+  if (!member || typeof member !== 'object') return {}
+  const result = {}
+  const keys = ['memberIndex', 'member_index', 'slotIndex', 'slot_index', 'localIndex', 'local_index']
+  keys.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(member, key)) {
+      result[key] = member[key]
+    }
+  })
+  return result
+}
+
+function replaceStandinMember(member, lookup) {
+  if (!lookup || lookup.size === 0) return member
+  if (!member || typeof member !== 'object') return member
+  const keyCandidate =
+    member.queue_id || member.queueId || member.id || member.standin_queue_id || member.standinQueueId
+  if (!keyCandidate) return member
+  const key = String(keyCandidate)
+  if (!lookup.has(key)) {
+    return member
+  }
+
+  const base = lookup.get(key)
+  const indices = extractMemberPosition(member)
+  const merged = { ...member, ...base, ...indices }
+  merged.id = base.id
+  merged.queue_id = base.queue_id
+  merged.queueId = base.queue_id
+  merged.match_source = base.match_source || base.matchSource || 'participant_pool'
+  merged.matchSource = merged.match_source
+  merged.standin = true
+  merged.simulated = true
+  return merged
+}
+
+function hydrateAssignmentsWithStandins(assignments = [], lookup) {
+  if (!lookup || lookup.size === 0) return assignments
+  return assignments.map((assignment) => {
+    if (!assignment || typeof assignment !== 'object') return assignment
+    const clone = { ...assignment }
+    if (Array.isArray(assignment.members)) {
+      clone.members = assignment.members.map((member) => replaceStandinMember(member, lookup))
+    }
+    if (Array.isArray(assignment.roleSlots)) {
+      clone.roleSlots = assignment.roleSlots.map((slot) => {
+        if (!slot || typeof slot !== 'object') return slot
+        const slotClone = { ...slot }
+        if (Array.isArray(slot.members)) {
+          slotClone.members = slot.members.map((member) => replaceStandinMember(member, lookup))
+        }
+        if (slotClone.member) {
+          slotClone.member = replaceStandinMember(slotClone.member, lookup)
+        }
+        if (slotClone.member) {
+          slotClone.occupied = true
+        }
+        return slotClone
+      })
+    }
+    return clone
+  })
+}
+
+function hydrateRoomsWithStandins(rooms = [], lookup) {
+  if (!lookup || lookup.size === 0) return rooms
+  return rooms.map((room) => {
+    if (!room || typeof room !== 'object') return room
+    const clone = { ...room }
+    if (Array.isArray(room.slots)) {
+      clone.slots = room.slots.map((slot) => {
+        if (!slot || typeof slot !== 'object') return slot
+        const slotClone = { ...slot }
+        if (Array.isArray(slot.members)) {
+          slotClone.members = slot.members.map((member) => replaceStandinMember(member, lookup))
+        }
+        if (slotClone.member) {
+          slotClone.member = replaceStandinMember(slotClone.member, lookup)
+        }
+        if (slotClone.member) {
+          slotClone.occupied = true
+        }
+        return slotClone
+      })
+    }
+    return clone
+  })
+}
+
+function prepareMatchingQueue(sample = []) {
+  const lookup = new Map()
+  const queue = sample.map((entry, index) => {
+    if (!isStandinCandidate(entry)) {
+      return entry
+    }
+
+    const standinId = buildStandinId(entry, index)
+    const finalEntry = {
+      ...entry,
+      id: standinId,
+      queue_id: standinId,
+      queueId: standinId,
+      match_source: entry.match_source || entry.matchSource || 'participant_pool',
+      matchSource: entry.match_source || entry.matchSource || 'participant_pool',
+      simulated: true,
+      standin: true,
+    }
+
+    const proxyEntry = {
+      ...finalEntry,
+      simulated: false,
+      standin: false,
+    }
+
+    lookup.set(standinId, finalEntry)
+    return proxyEntry
+  })
+
+  return { queue, lookup }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'method_not_allowed' })
   }
 
-  const { gameId, mode } = req.body || {}
+  const { gameId, mode, host } = req.body || {}
   if (!gameId) {
     return res.status(400).json({ error: 'missing_game_id' })
   }
@@ -156,7 +346,7 @@ export default async function handler(req, res) {
       roles,
       slotLayout,
       queue: queueResult,
-      participantPool,
+      participantPool: participantPoolResult,
       roleStatusMap,
     } = await loadMatchingResources({
       supabase,
@@ -166,13 +356,45 @@ export default async function handler(req, res) {
       brawlEnabled,
     })
 
-    let queue = queueResult
+    let queue = Array.isArray(queueResult) ? [...queueResult] : []
+    let participantPool = Array.isArray(participantPoolResult) ? [...participantPoolResult] : []
+
+    if (!toggles.realtimeEnabled) {
+      const hostEntry = normalizeHostQueueEntry(host)
+      if (hostEntry) {
+        const ownerKey = String(hostEntry.owner_id)
+        const heroKey = String(hostEntry.hero_id)
+        queue = queue.filter((entry) => {
+          const entryOwner = entry?.owner_id || entry?.ownerId
+          if (entryOwner && String(entryOwner) === ownerKey) {
+            return false
+          }
+          const entryHero = entry?.hero_id || entry?.heroId
+          if (entryHero && String(entryHero) === heroKey) {
+            return false
+          }
+          return true
+        })
+        participantPool = participantPool.filter((entry) => {
+          const entryOwner = entry?.owner_id || entry?.ownerId
+          if (entryOwner && String(entryOwner) === ownerKey) {
+            return false
+          }
+          const entryHero = entry?.hero_id || entry?.heroId
+          if (entryHero && String(entryHero) === heroKey) {
+            return false
+          }
+          return true
+        })
+        queue.unshift(hostEntry)
+      }
+    }
 
     const baseMetadata = {
       realtimeEnabled: toggles.realtimeEnabled,
       dropInEnabled: toggles.dropInEnabled,
-      queueSize: Array.isArray(queueResult) ? queueResult.length : 0,
-      participantPoolSize: Array.isArray(participantPool) ? participantPool.length : 0,
+      queueSize: queue.length,
+      participantPoolSize: participantPool.length,
       roles: Array.isArray(roles) ? roles.map((role) => role?.name).filter(Boolean) : [],
       slotLayout: serializeSlotLayout(slotLayout),
     }
@@ -190,9 +412,9 @@ export default async function handler(req, res) {
       })
 
     if (brawlEnabled) {
-      const brawlVacancies = determineBrawlVacancies(roles, roleStatusMap)
-      if (brawlVacancies.length) {
-        const brawlResult = runMatching({ mode, roles: brawlVacancies, queue: queueResult })
+        const brawlVacancies = determineBrawlVacancies(roles, roleStatusMap)
+        if (brawlVacancies.length) {
+          const brawlResult = runMatching({ mode, roles: brawlVacancies, queue })
         if (brawlResult.ready) {
           const matchCode = generateMatchCode()
           await markAssignmentsMatched(supabase, {
@@ -292,7 +514,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const { sample: candidateSample, meta: sampleMeta } = buildCandidateSample({
+    const { sample: candidateSample, meta: sampleMeta, standins: sampledStandins } = buildCandidateSample({
       queue,
       participantPool,
       realtimeEnabled: toggles.realtimeEnabled,
@@ -300,10 +522,18 @@ export default async function handler(req, res) {
       rules,
     })
 
-    const result = runMatching({ mode, roles, queue: candidateSample })
+    const { queue: preparedQueue, lookup: standinLookup } = toggles.realtimeEnabled
+      ? { queue: candidateSample, lookup: new Map() }
+      : prepareMatchingQueue(candidateSample)
+
+    baseMetadata.standinSampled = sampleMeta?.standinSampled ?? sampledStandins?.length ?? 0
+
+    const result = runMatching({ mode, roles, queue: preparedQueue })
 
     let assignments = Array.isArray(result.assignments) ? result.assignments : []
     let rooms = Array.isArray(result.rooms) ? result.rooms : []
+    assignments = hydrateAssignmentsWithStandins(assignments, standinLookup)
+    rooms = hydrateRoomsWithStandins(rooms, standinLookup)
     let readiness = computeRoleReadiness({
       roles,
       slotLayout,
