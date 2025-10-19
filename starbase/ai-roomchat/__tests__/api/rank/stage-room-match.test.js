@@ -43,7 +43,22 @@ describe('POST /api/rank/stage-room-match', () => {
       auth: { getUser: getUserMock },
     }))
 
-    rpcMock = jest.fn().mockResolvedValue({ data: [], error: null })
+    rpcMock = jest.fn().mockImplementation(async (fnName, params) => {
+      if (fnName === 'reconcile_rank_queue_for_roster') {
+        const rosterLength = Array.isArray(params?.p_roster) ? params.p_roster.length : 0
+        return {
+          data: [
+            {
+              reconciled: rosterLength,
+              inserted: rosterLength,
+              removed: 0,
+            },
+          ],
+          error: null,
+        }
+      }
+      return { data: [], error: null }
+    })
     registerSupabaseAdminMock(jest.fn(), rpcMock)
 
     roomQueryResponse = { data: { id: 'room-1', owner_id: 'user-1', mode: 'rank' }, error: null }
@@ -140,7 +155,11 @@ describe('POST /api/rank/stage-room-match', () => {
       },
     ]
 
-    rpcMock.mockImplementation(async (fnName) => {
+    rpcMock.mockImplementation(async (fnName, params) => {
+      if (fnName === 'reconcile_rank_queue_for_roster') {
+        const length = Array.isArray(params?.p_roster) ? params.p_roster.length : 0
+        return { data: [{ reconciled: length, inserted: length, removed: 0 }], error: null }
+      }
       if (fnName === 'sync_rank_match_roster') {
         return { data: null, error: { message: 'slot_version_conflict' } }
       }
@@ -190,6 +209,17 @@ describe('POST /api/rank/stage-room-match', () => {
     expect(rpcMock).toHaveBeenNthCalledWith(2, 'assert_room_ready', { p_room_id: 'room-1' })
     expect(rpcMock).toHaveBeenNthCalledWith(
       3,
+      'reconcile_rank_queue_for_roster',
+      expect.objectContaining({
+        p_game_id: 'game-1',
+        p_mode: 'rank',
+        p_roster: [
+          expect.objectContaining({ owner_id: 'owner-1', hero_id: 'hero-1', role: '딜러', slot_index: 0 }),
+        ],
+      }),
+    )
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      4,
       'sync_rank_match_roster',
       expect.objectContaining({
         p_game_id: 'game-1',
@@ -199,7 +229,7 @@ describe('POST /api/rank/stage-room-match', () => {
         p_slot_template_version: expect.any(Number),
       }),
     )
-    expect(rpcMock).toHaveBeenCalledTimes(3)
+    expect(rpcMock).toHaveBeenCalledTimes(4)
     expect(res.statusCode).toBe(409)
     expect(res.body).toEqual({ error: 'slot_version_conflict' })
   })
@@ -236,7 +266,11 @@ describe('POST /api/rank/stage-room-match', () => {
       error: null,
     }
 
-    rpcMock.mockImplementation(async (fnName) => {
+    rpcMock.mockImplementation(async (fnName, params) => {
+      if (fnName === 'reconcile_rank_queue_for_roster') {
+        const length = Array.isArray(params?.p_roster) ? params.p_roster.length : 0
+        return { data: [{ reconciled: length, inserted: length, removed: 0 }], error: null }
+      }
       if (fnName === 'sync_rank_match_roster') {
         return {
           data: [
@@ -298,6 +332,17 @@ describe('POST /api/rank/stage-room-match', () => {
     expect(rpcMock).toHaveBeenNthCalledWith(2, 'assert_room_ready', { p_room_id: 'room-9' })
     expect(rpcMock).toHaveBeenNthCalledWith(
       3,
+      'reconcile_rank_queue_for_roster',
+      expect.objectContaining({
+        p_game_id: 'game-42',
+        p_mode: 'rank',
+        p_roster: [
+          expect.objectContaining({ owner_id: 'owner-2', hero_id: 'hero-2', role: '서포터', slot_index: 1 }),
+        ],
+      }),
+    )
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      4,
       'sync_rank_match_roster',
       expect.objectContaining({
         p_room_id: 'room-9',
@@ -316,7 +361,7 @@ describe('POST /api/rank/stage-room-match', () => {
       }),
     )
     expect(rpcMock).toHaveBeenNthCalledWith(
-      4,
+      5,
       'ensure_rank_session_for_room',
       expect.objectContaining({
         p_room_id: 'room-9',
@@ -356,7 +401,11 @@ describe('POST /api/rank/stage-room-match', () => {
       },
     ]
 
-    rpcMock.mockImplementation(async (fnName) => {
+    rpcMock.mockImplementation(async (fnName, params) => {
+      if (fnName === 'reconcile_rank_queue_for_roster') {
+        const length = Array.isArray(params?.p_roster) ? params.p_roster.length : 0
+        return { data: [{ reconciled: length, inserted: length, removed: 0 }], error: null }
+      }
       if (fnName === 'sync_rank_match_roster') {
         return {
           data: [
@@ -410,6 +459,17 @@ describe('POST /api/rank/stage-room-match', () => {
     expect(rpcMock).toHaveBeenNthCalledWith(2, 'assert_room_ready', { p_room_id: 'room-standin' })
     expect(rpcMock).toHaveBeenNthCalledWith(
       3,
+      'reconcile_rank_queue_for_roster',
+      expect.objectContaining({
+        p_game_id: 'game-standin',
+        p_mode: 'rank',
+        p_roster: [
+          expect.objectContaining({ owner_id: 'standin-owner', hero_id: 'standin-hero', role: '딜러', slot_index: 0 }),
+        ],
+      }),
+    )
+    expect(rpcMock).toHaveBeenNthCalledWith(
+      4,
       'sync_rank_match_roster',
       expect.objectContaining({
         p_request_owner_id: 'user-1',
@@ -429,7 +489,7 @@ describe('POST /api/rank/stage-room-match', () => {
       }),
     )
     expect(rpcMock).toHaveBeenNthCalledWith(
-      4,
+      5,
       'ensure_rank_session_for_room',
       expect.objectContaining({ p_owner_id: 'user-1', p_room_id: 'room-standin' }),
     )
@@ -443,6 +503,91 @@ describe('POST /api/rank/stage-room-match', () => {
       }),
     )
     expect(res.body.session_id).toBe('session-standin')
+  })
+
+  it('returns 409 when the queue reconciliation fails to normalize slots', async () => {
+    const handler = loadHandler()
+
+    rpcMock.mockImplementation(async (fnName, params) => {
+      if (fnName === 'reconcile_rank_queue_for_roster') {
+        return { data: null, error: { message: 'queue_reconcile_failed' } }
+      }
+      if (fnName === 'verify_rank_roles_and_slots' || fnName === 'assert_room_ready') {
+        return { data: [], error: null }
+      }
+      return { data: [], error: null }
+    })
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token-q' },
+      body: {
+        match_instance_id: 'match-q',
+        room_id: 'room-q',
+        game_id: 'game-q',
+        roster: [
+          { slotIndex: 0, role: '딜러', ownerId: 'owner-q', heroId: 'hero-q', ready: true },
+        ],
+        slot_template: {
+          version: 7,
+          slots: [{ slot_index: 0, role: '딜러', active: true }],
+          roles: [{ name: '딜러', slot_count: 1 }],
+        },
+      },
+    })
+
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(409)
+    expect(res.body).toEqual({ error: 'queue_reconcile_failed' })
+    expect(rpcMock).toHaveBeenCalledTimes(3)
+    expect(rpcMock).toHaveBeenNthCalledWith(3, 'reconcile_rank_queue_for_roster', expect.any(Object))
+  })
+
+  it('surfaces a deployment hint when the queue reconciliation RPC is missing', async () => {
+    const handler = loadHandler()
+
+    rpcMock.mockImplementation(async (fnName) => {
+      if (fnName === 'reconcile_rank_queue_for_roster') {
+        return {
+          data: null,
+          error: { message: 'function reconcile_rank_queue_for_roster does not exist' },
+        }
+      }
+      if (fnName === 'verify_rank_roles_and_slots' || fnName === 'assert_room_ready') {
+        return { data: [], error: null }
+      }
+      return { data: [], error: null }
+    })
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer token-hint' },
+      body: {
+        match_instance_id: 'match-hint',
+        room_id: 'room-hint',
+        game_id: 'game-hint',
+        roster: [
+          { slotIndex: 0, role: '탱커', ownerId: 'owner-h', heroId: 'hero-h', ready: false },
+        ],
+        slot_template: {
+          version: 9,
+          slots: [{ slot_index: 0, role: '탱커', active: true }],
+          roles: [{ name: '탱커', slot_count: 1 }],
+        },
+      },
+    })
+
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(500)
+    expect(res.body.error).toBe('missing_reconcile_rank_queue_for_roster')
+    expect(res.body.hint).toContain('reconcile_rank_queue_for_roster')
+    expect(rpcMock).toHaveBeenCalledTimes(3)
   })
 
   it('clears placeholder owner IDs before syncing roster rows', async () => {

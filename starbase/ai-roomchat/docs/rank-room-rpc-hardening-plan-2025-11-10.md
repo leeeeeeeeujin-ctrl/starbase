@@ -7,7 +7,7 @@
 2. 세션 ID 없이 Match Ready 단계가 열려 `ready-check` 호출이 실패함.
 3. 난입 자동 채움(async fill) 정보가 영속화되지 않아 `MatchReady`가 새로고침될 때 메타가 사라짐.
 
-따라서 다음 세 가지 RPC를 Supabase에 추가하고, 기존 `/api/rank/stage-room-match` 및 Match Ready 파이프라인에 연결해야 합니다.
+따라서 다음 네 가지 RPC를 Supabase에 추가하고, 기존 `/api/rank/stage-room-match` 및 Match Ready 파이프라인에 연결해야 합니다.
 
 ---
 
@@ -16,6 +16,7 @@
 1. **SQL 배포**: 아래 3개 함수를 `supabase/sql` 또는 DB 마이그레이션 스크립트로 추가합니다. Arena 전용 RPC까지 한 번에 배포하려면 `docs/arena-supabase-migration-2025-11-12.md`의 통합 스크립트를 그대로 사용하세요.
    - `public.assert_room_ready(p_room_id uuid)`
    - `public.ensure_rank_session_for_room(p_room_id uuid, p_game_id uuid, p_owner_id uuid, p_mode text, p_vote jsonb)`
+   - `public.reconcile_rank_queue_for_roster(p_game_id uuid, p_mode text, p_roster jsonb)`
    - `public.upsert_rank_session_async_fill(p_session_id uuid, p_async_fill jsonb)`
 2. **권한 확인**: 호출 주체가 `service_role` 또는 `authenticated`인 경우에만 접근해야 하므로, 필요한 `grant execute`를 명시합니다.
 3. **API 연동**:
@@ -161,7 +162,189 @@ end;
 $$;
 ```
 
-### 3.3 난입 메타 영속화
+### 3.3 대기열 슬롯 재조정
+```sql
+create or replace function public.reconcile_rank_queue_for_roster(
+  p_game_id uuid,
+  p_mode text,
+  p_roster jsonb
+)
+returns table (
+  reconciled integer,
+  inserted integer,
+  removed integer
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_now timestamptz := now();
+  v_mode text := coalesce(nullif(trim(p_mode), ''), 'solo');
+  v_payload jsonb := '[]'::jsonb;
+  v_removed integer := 0;
+  v_inserted integer := 0;
+begin
+  if p_game_id is null then
+    raise exception 'missing_game_id';
+  end if;
+
+  if p_roster is null or jsonb_typeof(p_roster) <> 'array' then
+    raise exception 'invalid_roster';
+  end if;
+
+  select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'owner_id', owner_id::text,
+          'hero_id', hero_id::text,
+          'role', role,
+          'slot_index', slot_index
+        )
+      ),
+      '[]'::jsonb
+    )
+    into v_payload
+  from (
+    select owner_id, hero_id, role, slot_index
+    from (
+      select
+        nullif(trim(entry->>'owner_id'), '')::uuid as owner_id,
+        nullif(trim(entry->>'hero_id'), '')::uuid as hero_id,
+        coalesce(nullif(entry->>'role', ''), '역할 미지정') as role,
+        coalesce((entry->>'slot_index')::integer, ord - 1) as slot_index,
+        row_number() over (
+          partition by nullif(trim(entry->>'owner_id'), '')::uuid
+          order by coalesce((entry->>'slot_index')::integer, ord - 1),
+            nullif(trim(entry->>'hero_id'), ''),
+            coalesce(nullif(entry->>'role', ''), '역할 미지정'),
+            ord
+        ) as owner_rank
+      from (
+        select jsonb_array_elements(p_roster) as entry, row_number() over () as ord
+      ) indexed
+    ) ranked
+    where owner_id is not null
+      and owner_rank = 1
+  ) deduped;
+
+  if jsonb_typeof(v_payload) <> 'array' or jsonb_array_length(v_payload) = 0 then
+    return query
+      select 0::integer as reconciled, 0::integer as inserted, 0::integer as removed;
+  end if;
+
+  delete from public.rank_match_queue q
+  where q.game_id = p_game_id
+    and q.mode = v_mode
+    and q.owner_id in (
+      select (value->>'owner_id')::uuid
+      from jsonb_array_elements(v_payload) as value
+      where nullif(value->>'owner_id', '') is not null
+    );
+  GET DIAGNOSTICS v_removed = ROW_COUNT;
+
+  with payload as (
+    select
+      (value->>'owner_id')::uuid as owner_id,
+      nullif(value->>'hero_id', '')::uuid as hero_id,
+      coalesce(nullif(value->>'role', ''), '역할 미지정') as role,
+      coalesce((value->>'slot_index')::integer, ord::integer - 1) as slot_index
+    from jsonb_array_elements(v_payload) with ordinality as payload(value, ord)
+  ), inserted_rows as (
+    insert into public.rank_match_queue (
+      game_id,
+      mode,
+      owner_id,
+      hero_id,
+      role,
+      score,
+      simulated,
+      party_key,
+      status,
+      joined_at,
+      updated_at,
+      match_code
+    )
+    select
+      p_game_id,
+      v_mode,
+      payload.owner_id,
+      payload.hero_id,
+      payload.role,
+      coalesce(participants.score, 1000),
+      false,
+      null,
+      'matched',
+      v_now,
+      v_now,
+      null
+    from payload
+    left join public.rank_participants participants
+      on participants.game_id = p_game_id
+     and participants.owner_id = payload.owner_id
+    returning owner_id
+  )
+  select count(*)
+    into v_inserted
+  from inserted_rows;
+
+  with payload as (
+    select
+      (value->>'owner_id')::uuid as owner_id,
+      nullif(value->>'hero_id', '')::uuid as hero_id,
+      coalesce(nullif(value->>'role', ''), '역할 미지정') as role
+    from jsonb_array_elements(v_payload) as value
+  )
+  perform 1
+  from (
+    select q.owner_id, count(*) as cnt
+    from public.rank_match_queue q
+    join payload on payload.owner_id = q.owner_id
+    where q.game_id = p_game_id
+      and q.mode = v_mode
+    group by q.owner_id
+    having count(*) <> 1
+  ) anomalies;
+
+  if found then
+    raise exception 'queue_reconcile_failed';
+  end if;
+
+  with payload as (
+    select
+      (value->>'owner_id')::uuid as owner_id,
+      nullif(value->>'hero_id', '')::uuid as hero_id,
+      coalesce(nullif(value->>'role', ''), '역할 미지정') as role
+    from jsonb_array_elements(v_payload) as value
+  )
+  perform 1
+  from public.rank_match_queue q
+  join payload on payload.owner_id = q.owner_id
+  where q.game_id = p_game_id
+    and q.mode = v_mode
+    and (
+      coalesce(q.role, '') <> coalesce(payload.role, '')
+      or coalesce(q.hero_id::text, '') <> coalesce(payload.hero_id::text, '')
+      or lower(coalesce(q.status, '')) <> 'matched'
+    );
+
+  if found then
+    raise exception 'queue_reconcile_failed';
+  end if;
+
+  return query
+    select
+      jsonb_array_length(v_payload)::integer as reconciled,
+      v_inserted::integer as inserted,
+      v_removed::integer as removed;
+end;
+$$;
+
+grant execute on function public.reconcile_rank_queue_for_roster(uuid, text, jsonb)
+  to authenticated, service_role;
+```
+
+### 3.4 난입 메타 영속화
 ```sql
 create or replace function public.upsert_rank_session_async_fill(
   p_session_id uuid,
@@ -192,10 +375,12 @@ end;
 $$;
 ```
 
-### 3.4 권한 부여
+### 3.5 권한 부여
 ```sql
 grant execute on function public.assert_room_ready(uuid) to authenticated, service_role;
 grant execute on function public.ensure_rank_session_for_room(uuid, uuid, uuid, text, jsonb)
+  to authenticated, service_role;
+grant execute on function public.reconcile_rank_queue_for_roster(uuid, text, jsonb)
   to authenticated, service_role;
 grant execute on function public.upsert_rank_session_async_fill(uuid, jsonb)
   to authenticated, service_role;

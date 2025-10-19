@@ -5,7 +5,7 @@
 ## 1. 실행 순서 요약
 1. `rank_queue_tickets`, `rank_sessions`, `rank_session_meta`, `rank_turns` 테이블이 `supabase_realtime` publication에 포함되어 있는지 확인하고, 누락 시 추가합니다.
 2. 큐 진입·스테이징·타임아웃·세션 조회·정산에 쓰이는 RPC 여섯 개(`join_rank_queue`, `fetch_rank_queue_ticket`, `stage_rank_match`, `evict_unready_participant`, `fetch_rank_session_turns`, `finalize_rank_session`)를 생성합니다.
-3. 기존 방 스테이징 보강 RPC 세 개(`assert_room_ready`, `ensure_rank_session_for_room`, `upsert_rank_session_async_fill`)를 함께 재적용해 `/api/rank/stage-room-match`가 호출하는 전 체인을 확보합니다.
+3. 기존 방 스테이징 보강 RPC 네 개(`assert_room_ready`, `ensure_rank_session_for_room`, `reconcile_rank_queue_for_roster`, `upsert_rank_session_async_fill`)를 함께 재적용해 `/api/rank/stage-room-match`가 호출하는 전 체인을 확보합니다.
 4. 모든 함수에 `authenticated`, `service_role` 권한을 부여합니다.
 
 ## 2. 통합 SQL 스크립트
@@ -240,6 +240,185 @@ end;
 $$;
 
 grant execute on function public.ensure_rank_session_for_room(uuid, uuid, uuid, text, jsonb)
+  to authenticated, service_role;
+
+create or replace function public.reconcile_rank_queue_for_roster(
+  p_game_id uuid,
+  p_mode text,
+  p_roster jsonb
+)
+returns table (
+  reconciled integer,
+  inserted integer,
+  removed integer
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_now timestamptz := now();
+  v_mode text := coalesce(nullif(trim(p_mode), ''), 'solo');
+  v_payload jsonb := '[]'::jsonb;
+  v_removed integer := 0;
+  v_inserted integer := 0;
+begin
+  if p_game_id is null then
+    raise exception 'missing_game_id';
+  end if;
+
+  if p_roster is null or jsonb_typeof(p_roster) <> 'array' then
+    raise exception 'invalid_roster';
+  end if;
+
+  select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'owner_id', owner_id::text,
+          'hero_id', hero_id::text,
+          'role', role,
+          'slot_index', slot_index
+        )
+      ),
+      '[]'::jsonb
+    )
+    into v_payload
+  from (
+    select owner_id, hero_id, role, slot_index
+    from (
+      select
+        nullif(trim(entry->>'owner_id'), '')::uuid as owner_id,
+        nullif(trim(entry->>'hero_id'), '')::uuid as hero_id,
+        coalesce(nullif(entry->>'role', ''), '역할 미지정') as role,
+        coalesce((entry->>'slot_index')::integer, ord - 1) as slot_index,
+        row_number() over (
+          partition by nullif(trim(entry->>'owner_id'), '')::uuid
+          order by coalesce((entry->>'slot_index')::integer, ord - 1),
+            nullif(trim(entry->>'hero_id'), ''),
+            coalesce(nullif(entry->>'role', ''), '역할 미지정'),
+            ord
+        ) as owner_rank
+      from (
+        select jsonb_array_elements(p_roster) as entry, row_number() over () as ord
+      ) indexed
+    ) ranked
+    where owner_id is not null
+      and owner_rank = 1
+  ) deduped;
+
+  if jsonb_typeof(v_payload) <> 'array' or jsonb_array_length(v_payload) = 0 then
+    return query
+      select 0::integer as reconciled, 0::integer as inserted, 0::integer as removed;
+  end if;
+
+  delete from public.rank_match_queue q
+  where q.game_id = p_game_id
+    and q.mode = v_mode
+    and q.owner_id in (
+      select (value->>'owner_id')::uuid
+      from jsonb_array_elements(v_payload) as value
+      where nullif(value->>'owner_id', '') is not null
+    );
+  GET DIAGNOSTICS v_removed = ROW_COUNT;
+
+  with payload as (
+    select
+      (value->>'owner_id')::uuid as owner_id,
+      nullif(value->>'hero_id', '')::uuid as hero_id,
+      coalesce(nullif(value->>'role', ''), '역할 미지정') as role,
+      coalesce((value->>'slot_index')::integer, ord::integer - 1) as slot_index
+    from jsonb_array_elements(v_payload) with ordinality as payload(value, ord)
+  ), inserted_rows as (
+    insert into public.rank_match_queue (
+      game_id,
+      mode,
+      owner_id,
+      hero_id,
+      role,
+      score,
+      simulated,
+      party_key,
+      status,
+      joined_at,
+      updated_at,
+      match_code
+    )
+    select
+      p_game_id,
+      v_mode,
+      payload.owner_id,
+      payload.hero_id,
+      payload.role,
+      coalesce(participants.score, 1000),
+      false,
+      null,
+      'matched',
+      v_now,
+      v_now,
+      null
+    from payload
+    left join public.rank_participants participants
+      on participants.game_id = p_game_id
+     and participants.owner_id = payload.owner_id
+    returning owner_id
+  )
+  select count(*)
+    into v_inserted
+  from inserted_rows;
+
+  with payload as (
+    select
+      (value->>'owner_id')::uuid as owner_id,
+      nullif(value->>'hero_id', '')::uuid as hero_id,
+      coalesce(nullif(value->>'role', ''), '역할 미지정') as role
+    from jsonb_array_elements(v_payload) as value
+  )
+  perform 1
+  from (
+    select q.owner_id, count(*) as cnt
+    from public.rank_match_queue q
+    join payload on payload.owner_id = q.owner_id
+    where q.game_id = p_game_id
+      and q.mode = v_mode
+    group by q.owner_id
+    having count(*) <> 1
+  ) anomalies;
+
+  if found then
+    raise exception 'queue_reconcile_failed';
+  end if;
+
+  with payload as (
+    select
+      (value->>'owner_id')::uuid as owner_id,
+      nullif(value->>'hero_id', '')::uuid as hero_id,
+      coalesce(nullif(value->>'role', ''), '역할 미지정') as role
+    from jsonb_array_elements(v_payload) as value
+  )
+  perform 1
+  from public.rank_match_queue q
+  join payload on payload.owner_id = q.owner_id
+  where q.game_id = p_game_id
+    and q.mode = v_mode
+    and (
+      coalesce(q.role, '') <> coalesce(payload.role, '')
+      or coalesce(q.hero_id::text, '') <> coalesce(payload.hero_id::text, '')
+      or lower(coalesce(q.status, '')) <> 'matched'
+    );
+
+  if found then
+    raise exception 'queue_reconcile_failed';
+  end if;
+
+  return query
+    select
+      jsonb_array_length(v_payload)::integer as reconciled,
+      v_inserted::integer as inserted,
+      v_removed::integer as removed;
+end;
+$$;
+
+grant execute on function public.reconcile_rank_queue_for_roster(uuid, text, jsonb)
   to authenticated, service_role;
 
 create or replace function public.upsert_rank_session_async_fill(

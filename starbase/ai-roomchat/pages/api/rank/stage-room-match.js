@@ -156,6 +156,28 @@ function normalizeRosterEntries(entries = []) {
     .sort((a, b) => a.slotIndex - b.slotIndex)
 }
 
+function buildQueueReconcilePayload(rosterEntries = []) {
+  return rosterEntries
+    .map((entry) => {
+      const ownerId = toOptionalTrimmedString(entry?.ownerId)
+      if (!ownerId) return null
+
+      const heroId = toOptionalTrimmedString(entry?.heroId)
+      const role = toTrimmedString(entry?.role)
+      const slotIndex = Number.isFinite(Number(entry?.slotIndex))
+        ? Number(entry.slotIndex)
+        : null
+
+      return {
+        owner_id: ownerId,
+        hero_id: heroId,
+        role,
+        slot_index: slotIndex,
+      }
+    })
+    .filter(Boolean)
+}
+
 function buildHeroSummary(row) {
   if (!row) return null
   const summary = {
@@ -445,6 +467,46 @@ function mapEnsureSessionError(error) {
   }
 }
 
+function mapQueueReconcileError(error) {
+  if (!error) {
+    return { status: 400, body: { error: 'queue_reconcile_failed' } }
+  }
+
+  if (isMissingRpcError(error, 'reconcile_rank_queue_for_roster')) {
+    return {
+      status: 500,
+      body: {
+        error: 'missing_reconcile_rank_queue_for_roster',
+        hint:
+          'Supabase에 reconcile_rank_queue_for_roster(uuid, text, jsonb) 함수를 배포하고 authenticated/service_role 권한을 부여하세요.',
+        supabaseError: error,
+      },
+    }
+  }
+
+  const message = error?.message || ''
+
+  if (message.includes('invalid_roster')) {
+    return { status: 400, body: { error: 'invalid_queue_roster' } }
+  }
+
+  if (message.includes('missing_game_id')) {
+    return { status: 400, body: { error: 'missing_game_id' } }
+  }
+
+  if (message.includes('queue_reconcile_failed')) {
+    return { status: 409, body: { error: 'queue_reconcile_failed' } }
+  }
+
+  return {
+    status: 400,
+    body: {
+      error: message || 'queue_reconcile_failed',
+      supabaseError: error,
+    },
+  }
+}
+
 async function ensureRoomReady(roomId, allowPartial) {
   if (allowPartial) {
     return null
@@ -623,6 +685,41 @@ export default async function handler(req, res) {
   const readinessError = await ensureRoomReady(roomId, allowPartial)
   if (readinessError) {
     return res.status(readinessError.status).json(readinessError.body)
+  }
+
+  const queueRosterPayload = buildQueueReconcilePayload(rosterEntries)
+
+  if (queueRosterPayload.length > 0) {
+    const queuePayload = {
+      p_game_id: gameId,
+      p_mode: roomMode,
+      p_roster: queueRosterPayload,
+    }
+
+    const { data: reconcileData, error: reconcileError } = await supabaseAdmin.rpc(
+      'reconcile_rank_queue_for_roster',
+      queuePayload,
+    )
+
+    if (reconcileError) {
+      const mapped = mapQueueReconcileError(reconcileError)
+      return res.status(mapped.status).json(mapped.body)
+    }
+
+    const summary = Array.isArray(reconcileData) && reconcileData.length ? reconcileData[0] : null
+    const expectedCount = queueRosterPayload.length
+    const reconciledCount = Number(summary?.reconciled ?? summary?.reconciled_count ?? summary?.total ?? 0)
+
+    if (expectedCount > 0 && (!summary || reconciledCount !== expectedCount)) {
+      return res.status(409).json({
+        error: 'queue_reconcile_mismatch',
+        detail: {
+          expected: expectedCount,
+          reconciled: reconciledCount,
+          summary,
+        },
+      })
+    }
   }
 
   const rpcPayload = {
