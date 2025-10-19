@@ -803,7 +803,7 @@ describe('enqueueParticipant', () => {
     expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-support')
   })
 
-  it('prevents queuing when already waiting in another queue', async () => {
+  it('allows queuing when already waiting in another queue during the test override', async () => {
     const tables = {
       rank_participants: [],
       rank_match_queue: [
@@ -832,9 +832,13 @@ describe('enqueueParticipant', () => {
       score: 1500,
     })
 
-    expect(response.ok).toBe(false)
-    expect(response.error).toMatch('이미 다른 대기열에 참여 중입니다')
-    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
+    expect(response.ok).toBe(true)
+    expect(response.heroId).toBe('hero-new')
+    expect(supabase.__tables.rank_match_queue).toHaveLength(2)
+    expect(supabase.__tables.rank_match_queue[0].status).toBe('abandoned')
+    expect(supabase.__tables.rank_match_queue[0].party_key).toBeNull()
+    expect(supabase.__tables.rank_match_queue[1].game_id).toBe('game-hero')
+    expect(supabase.__tables.rank_match_queue[1].status).toBe('waiting')
   })
 
   it('prevents queuing when already matched in the same queue', async () => {

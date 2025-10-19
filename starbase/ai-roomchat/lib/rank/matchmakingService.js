@@ -597,23 +597,63 @@ export async function enqueueParticipant(
     }
   }
 
-  const duplicateEntries = Array.isArray(duplicateCheck?.data)
-    ? duplicateCheck.data.filter((entry) => {
-        if (!entry) return false
-        const entryGameId = entry.game_id ?? entry.gameId
-        const entryMode = entry.mode
-        const entryStatus = entry.status
+  let duplicateEntries = []
+  const otherGameQueueEntries = []
 
-        const sameGame = String(entryGameId ?? '') === String(gameId ?? '')
-        const sameMode = String(entryMode ?? '') === String(mode ?? '')
+  if (Array.isArray(duplicateCheck?.data)) {
+    duplicateEntries = duplicateCheck.data.filter((entry) => {
+      if (!entry) return false
+      const entryGameId = entry.game_id ?? entry.gameId
+      const entryMode = entry.mode
+      const entryStatus = (entry.status || '').toString().toLowerCase()
 
-        if (sameGame && sameMode && entryStatus === 'waiting') {
-          return false
+      const sameGame = String(entryGameId ?? '') === String(gameId ?? '')
+      const sameMode = String(entryMode ?? '') === String(mode ?? '')
+      const isWaiting = entryStatus === 'waiting'
+      const isMatched = entryStatus === 'matched'
+
+      if (!sameGame) {
+        if (isWaiting || isMatched) {
+          otherGameQueueEntries.push(entry)
         }
+        // Temporary override: allow multi-game queueing during test cycle.
+        // TODO(ranked-launch): Reinstate cross-game queue lock once game shutdown &
+        // cleanup flows are complete.
+        return false
+      }
 
-        return true
-      })
-    : []
+      if (sameMode && isWaiting) {
+        return false
+      }
+
+      return isMatched || sameGame
+    })
+  }
+
+  if (otherGameQueueEntries.length > 0) {
+    const otherGameIds = Array.from(
+      new Set(
+        otherGameQueueEntries
+          .map((entry) => entry?.game_id ?? entry?.gameId)
+          .map((value) => (value == null ? null : String(value))),
+      ),
+    ).filter(Boolean)
+
+    if (otherGameIds.length > 0) {
+      const cleanupResult = await withTable(supabaseClient, 'rank_match_queue', (table) =>
+        supabaseClient
+          .from(table)
+          .update({ status: 'abandoned', party_key: null, updated_at: nowIso() })
+          .eq('owner_id', ownerId)
+          .in('status', ['waiting', 'matched'])
+          .in('game_id', otherGameIds),
+      )
+
+      if (cleanupResult?.error) {
+        console.warn('다른 게임 대기열 정리 실패:', cleanupResult.error)
+      }
+    }
+  }
 
   if (duplicateEntries.length > 0) {
     return {
