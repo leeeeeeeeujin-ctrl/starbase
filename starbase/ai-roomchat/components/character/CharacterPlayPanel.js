@@ -9,6 +9,7 @@ import { ensureRpc } from '@/modules/arena/rpcClient'
 import { createQueueRealtimeWatcher } from '@/modules/arena/matchQueueFlow'
 import {
   hydrateGameMatchData,
+  setGameMatchHeroSelection,
   setGameMatchParticipation,
   setGameMatchSessionHistory,
   setGameMatchSessionMeta,
@@ -884,6 +885,25 @@ export default function CharacterPlayPanel({ hero, playData }) {
     return '이름 없는 영웅'
   }, [hero?.name])
 
+  const heroOwnerId = useMemo(() => {
+    const candidates = [
+      hero?.owner_id,
+      hero?.ownerId,
+      hero?.user_id,
+      hero?.userId,
+      hero?.profile_id,
+      hero?.profileId,
+    ]
+    for (const candidate of candidates) {
+      if (candidate === null || candidate === undefined) continue
+      const trimmed = String(candidate).trim()
+      if (trimmed) {
+        return trimmed
+      }
+    }
+    return ''
+  }, [hero?.ownerId, hero?.owner_id, hero?.profileId, hero?.profile_id, hero?.userId, hero?.user_id])
+
   const currentRole = selectedEntry?.role ? selectedEntry.role : null
 
   const gameDescription = useMemo(() => {
@@ -891,6 +911,35 @@ export default function CharacterPlayPanel({ hero, playData }) {
     if (typeof raw === 'string' && raw.trim()) return raw.trim()
     return '아직 등록된 설명이 없습니다.'
   }, [selectedGame?.description])
+
+  useEffect(() => {
+    if (!selectedGameId) return
+    const heroId = hero?.id != null ? String(hero.id).trim() : ''
+    if (!heroId) return
+    const role = selectedEntry?.role != null ? String(selectedEntry.role).trim() : ''
+    const heroImage = hero?.image_url || hero?.avatar_url || hero?.portrait_url || null
+    const heroMeta = {
+      id: heroId,
+      name: heroName,
+      image_url: heroImage || null,
+    }
+    setGameMatchHeroSelection(selectedGameId, {
+      heroId,
+      ownerId: heroOwnerId,
+      viewerId: heroOwnerId || undefined,
+      role,
+      heroMeta,
+    })
+  }, [
+    hero?.avatar_url,
+    hero?.id,
+    hero?.image_url,
+    hero?.portrait_url,
+    heroName,
+    heroOwnerId,
+    selectedEntry?.role,
+    selectedGameId,
+  ])
 
   useEffect(() => {
     if (!matchingState.open) return undefined

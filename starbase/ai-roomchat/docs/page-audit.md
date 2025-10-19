@@ -129,6 +129,7 @@ This document captures a page-by-page walkthrough of the current Next.js `pages`
 - 브금 설정 탭에 피치 슬라이더(0.5x~1.5x)가 추가돼 재방문 시에도 동일한 속도로 재생되며, 영웅 조회 랭킹에서 사용되는 히어로 조회 데이터에는 배경·설명·브금 메타가 포함됩니다.
 - 캐릭터 화면 매칭 오버레이는 모드에 따라 분기합니다. 실시간일 땐 `matchQueueFlow`가 대기열 브로드캐스트를 구독하며 `join_rank_queue` → `fetch_rank_queue_ticket` → `stage_rank_match` 흐름을 따라가고, 비실시간일 땐 `/api/rank/match` 호출로 `rank_match_queue`/`rank_participants` 샘플을 즉시 받아 매치 코드를 생성해 오버레이에서 바로 안내합니다.
 - 비실시간 분기에서는 현재 선택한 영웅을 `host` 항목으로 함께 전송해 큐 표본에 고정하고, 동일 소유자/영웅 후보는 참가자 풀에서 제거해 최소 인원 확보 뒤 남은 슬롯만 AI 대역으로 충원합니다.【F:components/character/CharacterPlayPanel.js†L1028-L1149】【F:pages/api/rank/match.js†L136-L244】
+- 캐릭터 플레이 패널은 현재 선택한 영웅과 역할 정보를 매칭 데이터 스토어에 즉시 기록해 `/rank/[id]/start` 진입 시 스타트 클라이언트가 호스트 좌석과 뷰어 메타를 복원합니다.【F:components/character/CharacterPlayPanel.js†L1-L20】【F:components/character/CharacterPlayPanel.js†L882-L933】【F:lib/rank/matchFlow.js†L556-L610】
 - 매칭 오버레이는 항상 화면 상단 중앙에 고정되며, 진행 중인 티켓 ID·상태·모드를 한눈에 확인할 수 있고, 필요 시 “디버그 열기”를 눌러 큐 폴링·Realtime 이벤트·RPC 호출 로그를 즉시 확인할 수 있는 가벼운 디버그 패널을 제공합니다.
 - Several UI shells (create, roster, maker) defer most logic to component containers; reviewing those components is recommended for full domain context beyond this page-oriented audit.
 - Ensure environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, etc.) are set for server APIs like `finalize-session` to work outside local mocks.【F:pages/api/rank/finalize-session.js†L1-L8】
