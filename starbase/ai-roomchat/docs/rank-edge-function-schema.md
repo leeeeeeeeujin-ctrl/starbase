@@ -12,7 +12,7 @@ Supabase Edge Functions가 `drop_in_matching_context`와 `api_key_pool_replaced`
 | `event_type` | `text` | ✅ | `warning`, `proxy_escalated`, `api_key_pool_replaced`, `drop_in_matching_context` 등 이벤트 종류. |
 | `owner_id` | `text` | 선택 | 이벤트와 연관된 플레이어/슬롯 ID. |
 | `reason` | `text` | 선택 | 발생 사유 또는 상태 코드. |
-| `strike` / `remaining` / `limit` | `integer` | 선택 | 경고 누적·남은 기회·허용 한도. 필요 없으면 `NULL`. |
+| `strike` / `remaining` / `limit_remaining` | `integer` | 선택 | 경고 누적·남은 기회·허용 한도. 필요 없으면 `NULL`. |
 | `status` | `text` | 선택 | `active`, `proxy`, `spectating`, `defeated` 등 후속 상태. |
 | `turn` | `integer` | 선택 | 이벤트가 발생한 턴 번호. |
 | `event_timestamp` | `timestamptz` | 기본값 | 이벤트 발생 시각. Edge Function은 ms 단위 타임스탬프를 ISO로 변환해 저장. |

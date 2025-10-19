@@ -79,6 +79,7 @@ class HeroAudioManager {
         ? { ...patch.compressorDetail }
         : { ...this.state.compressorDetail },
     }
+
     this.state = next
     this.emit()
   }
@@ -162,6 +163,7 @@ class HeroAudioManager {
       this.compressorNode = context.createDynamicsCompressor()
       this.compressorNode.attack.value = 0.003
     }
+
   }
 
   refreshReverbBuffer() {

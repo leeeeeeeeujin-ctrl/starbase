@@ -142,7 +142,111 @@ function buildLayoutFromRoleCounts(roleEntries = []) {
   return layout
 }
 
+function mergeSlotAssignments(baseLayout = [], slotRows = []) {
+  if (!Array.isArray(baseLayout) || baseLayout.length === 0) {
+    return buildLayoutFromSlotRows(slotRows)
+  }
+
+  const cloned = baseLayout.map((slot, index) => ({
+    slotIndex: coerceSlotIndex(slot.slotIndex ?? slot.slot_index ?? index),
+    role: normalizeRoleName(slot.role),
+    heroId: slot.heroId ?? slot.hero_id ?? null,
+    heroOwnerId: slot.heroOwnerId ?? slot.hero_owner_id ?? null,
+  }))
+
+  if (!Array.isArray(slotRows) || slotRows.length === 0) {
+    return cloned
+      .map((slot, index) => ({
+        slotIndex: Number.isFinite(slot.slotIndex) ? slot.slotIndex : index,
+        role: slot.role,
+        heroId: slot.heroId ?? null,
+        heroOwnerId: slot.heroOwnerId ?? null,
+      }))
+      .sort((a, b) => a.slotIndex - b.slotIndex)
+  }
+
+  const sanitizedRows = buildLayoutFromSlotRows(slotRows)
+  if (sanitizedRows.length === 0) {
+    return cloned
+      .map((slot, index) => ({
+        slotIndex: Number.isFinite(slot.slotIndex) ? slot.slotIndex : index,
+        role: slot.role,
+        heroId: slot.heroId ?? null,
+        heroOwnerId: slot.heroOwnerId ?? null,
+      }))
+      .sort((a, b) => a.slotIndex - b.slotIndex)
+  }
+
+  const appliedIndices = new Set()
+
+  sanitizedRows.forEach((rowSlot) => {
+    const roleName = normalizeRoleName(rowSlot.role)
+    if (!roleName) return
+
+    const attemptIndices = []
+    if (Number.isInteger(rowSlot.slotIndex)) {
+      attemptIndices.push(rowSlot.slotIndex)
+      if (rowSlot.slotIndex - 1 >= 0) {
+        attemptIndices.push(rowSlot.slotIndex - 1)
+      }
+    }
+
+    let targetIndex = null
+    for (const candidateIndex of attemptIndices) {
+      if (!Number.isInteger(candidateIndex)) continue
+      if (candidateIndex < 0 || candidateIndex >= cloned.length) continue
+      if (appliedIndices.has(candidateIndex)) continue
+      const candidate = cloned[candidateIndex]
+      if (normalizeRoleName(candidate.role) === roleName) {
+        targetIndex = candidateIndex
+        break
+      }
+    }
+
+    if (targetIndex === null) {
+      targetIndex = cloned.findIndex((slot, index) => {
+        if (appliedIndices.has(index)) return false
+        return normalizeRoleName(slot.role) === roleName
+      })
+      if (targetIndex === -1) {
+        targetIndex = null
+      }
+    }
+
+    if (targetIndex === null) {
+      return
+    }
+
+    const existing = cloned[targetIndex]
+    cloned[targetIndex] = {
+      slotIndex: Number.isFinite(existing.slotIndex) ? existing.slotIndex : targetIndex,
+      role: existing.role || roleName,
+      heroId: rowSlot.heroId ?? existing.heroId ?? null,
+      heroOwnerId: rowSlot.heroOwnerId ?? existing.heroOwnerId ?? null,
+    }
+    appliedIndices.add(targetIndex)
+  })
+
+  return cloned
+    .map((slot, index) => ({
+      slotIndex: Number.isFinite(slot.slotIndex) ? slot.slotIndex : index,
+      role: slot.role,
+      heroId: slot.heroId ?? null,
+      heroOwnerId: slot.heroOwnerId ?? null,
+    }))
+    .sort((a, b) => a.slotIndex - b.slotIndex)
+}
+
 function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []) {
+  const inlineLayout = deriveGameRoleSlots(gameRoleSlots)
+  if (inlineLayout.length > 0) {
+    const mergedInlineLayout = mergeSlotAssignments(inlineLayout, slotRows)
+    return {
+      roles: buildRolesFromLayout(mergedInlineLayout),
+      slotLayout: mergedInlineLayout,
+    }
+  }
+
   const rolesFromRows = buildRolesFromRoleRows(roleRows)
 
   const slotLayout = buildLayoutFromSlotRows(slotRows)
@@ -190,14 +294,6 @@ function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []
     }
   }
 
-  const inlineLayout = deriveGameRoleSlots(gameRoleSlots)
-  if (inlineLayout.length > 0) {
-    return {
-      roles: buildRolesFromLayout(inlineLayout),
-      slotLayout: inlineLayout,
-    }
-  }
-
   return { roles: [], slotLayout: [] }
 }
 
@@ -206,7 +302,7 @@ export async function loadRoleResources(supabaseClient, gameId) {
     return { roles: [], slotLayout: [] }
   }
 
-  const [roleResult, slotResult] = await Promise.all([
+  const [roleResult, slotResult, gameResult] = await Promise.all([
     withTable(supabaseClient, 'rank_game_roles', (table) =>
       supabaseClient.from(table).select('name, slot_count, active').eq('game_id', gameId),
     ),
@@ -216,24 +312,17 @@ export async function loadRoleResources(supabaseClient, gameId) {
         .select('slot_index, role, active, hero_id, hero_owner_id')
         .eq('game_id', gameId),
     ),
+    withTable(supabaseClient, 'rank_games', (table) =>
+      supabaseClient.from(table).select('roles').eq('id', gameId).maybeSingle(),
+    ),
   ])
 
   if (roleResult?.error) throw roleResult.error
   if (slotResult?.error) throw slotResult.error
+  if (gameResult?.error) throw gameResult.error
 
   const roleRows = Array.isArray(roleResult?.data) ? roleResult.data : []
   const slotRows = Array.isArray(slotResult?.data) ? slotResult.data : []
-
-  const resources = normaliseRolesAndSlots(roleRows, slotRows)
-  if (resources.slotLayout.length > 0 || resources.roles.length > 0) {
-    return resources
-  }
-
-  const gameResult = await withTable(supabaseClient, 'rank_games', (table) =>
-    supabaseClient.from(table).select('roles').eq('id', gameId).maybeSingle(),
-  )
-
-  if (gameResult?.error) throw gameResult.error
 
   let gameRoles = []
   const rawGameRoles = gameResult?.data?.roles
@@ -251,7 +340,7 @@ export async function loadRoleResources(supabaseClient, gameId) {
     }
   }
 
-  return normaliseRolesAndSlots([], [], gameRoles)
+  return normaliseRolesAndSlots(roleRows, slotRows, gameRoles)
 }
 
 export async function loadActiveRoles(supabaseClient, gameId) {

@@ -463,8 +463,33 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'unauthorized' })
   }
 
-  const { data: userData, error: userError } = await anonClient.auth.getUser(token)
-  const userId = toOptionalUuid(userData?.user?.id)
+  let userId = null
+  let userError = null
+
+  try {
+    const { data: userData, error } = await anonClient.auth.getUser(token)
+    userError = error || null
+    userId = toOptionalUuid(userData?.user?.id)
+  } catch (error) {
+    userError = error
+    userId = null
+  }
+
+  if (!userId) {
+    try {
+      const { data: serviceUser, error: serviceError } = await supabaseAdmin.auth.getUser(token)
+      if (!serviceError && serviceUser?.user?.id) {
+        userId = toOptionalUuid(serviceUser.user.id)
+        userError = null
+      } else if (serviceError) {
+        userError = serviceError
+      }
+    } catch (serviceException) {
+      userError = serviceException
+      userId = null
+    }
+  }
+
   if (userError || !userId) {
     return res.status(401).json({ error: 'unauthorized' })
   }

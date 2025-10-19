@@ -116,8 +116,8 @@ Latest reference for every Supabase entity that backs Starbase AI Roomchat. Each
 - Universal read access keeps the start client lightweight, while service-role policies gate inserts/updates/deletes so only the staging API can refresh the lineup.【F:starbase/ai-roomchat/supabase.sql†L1158-L1164】
 
 ### `public.rank_match_queue`
-- Queue entries capture game/mode/role, owning player, hero choice, score, party key, status, joined/updated timestamps, and optional match code.【F:starbase/ai-roomchat/supabase.sql†L952-L965】
-- Indexed for queue scanning and owner lookups; RLS exposes waiting entries to everyone and allows owners to manage their own rows.【F:starbase/ai-roomchat/supabase.sql†L967-L1056】
+- Queue entries capture game/mode/role, owning player, hero choice, score, simulated stand-in marker, party key, status, joined/updated timestamps, and optional match code.【F:ai-roomchat/supabase.sql†L1272-L1287】
+- Indexed for queue scanning and owner lookups; RLS exposes waiting entries to everyone and allows owners to manage their own rows.【F:ai-roomchat/supabase.sql†L1289-L1378】
 
 ### `public.rank_matchmaking_logs`
 - Append-only audit of each matchmaking pipeline stage with status, reason, score window, match code, and JSON metadata so diagnostics dashboards can explain why a match succeeded or stalled.【F:starbase/ai-roomchat/supabase.sql†L1014-L1039】
