@@ -1649,6 +1649,8 @@ declare
   v_payload jsonb := '[]'::jsonb;
   v_removed integer := 0;
   v_inserted integer := 0;
+  v_has_duplicate boolean := false;
+  v_has_mismatch boolean := false;
 begin
   if p_game_id is null then
     raise exception 'missing_game_id';
@@ -1753,47 +1755,52 @@ begin
     into v_inserted
   from inserted_rows;
 
-  with payload as (
-    select
-      (value->>'owner_id')::uuid as owner_id,
-      nullif(value->>'hero_id', '')::uuid as hero_id,
-      coalesce(nullif(value->>'role', ''), '역할 미지정') as role
-    from jsonb_array_elements(v_payload) as value
-  )
-  perform 1
-  from (
-    select q.owner_id, count(*) as cnt
+  select exists (
+    with payload as (
+      select
+        (value->>'owner_id')::uuid as owner_id,
+        nullif(value->>'hero_id', '')::uuid as hero_id,
+        coalesce(nullif(value->>'role', ''), '역할 미지정') as role
+      from jsonb_array_elements(v_payload) as value
+      where nullif(value->>'owner_id', '') is not null
+    )
+    select 1
     from public.rank_match_queue q
     join payload on payload.owner_id = q.owner_id
     where q.game_id = p_game_id
       and q.mode = v_mode
     group by q.owner_id
     having count(*) <> 1
-  ) anomalies;
+  )
+  into v_has_duplicate;
 
-  if found then
+  if v_has_duplicate then
     raise exception 'queue_reconcile_failed';
   end if;
 
-  with payload as (
-    select
-      (value->>'owner_id')::uuid as owner_id,
-      nullif(value->>'hero_id', '')::uuid as hero_id,
-      coalesce(nullif(value->>'role', ''), '역할 미지정') as role
-    from jsonb_array_elements(v_payload) as value
+  select exists (
+    with payload as (
+      select
+        (value->>'owner_id')::uuid as owner_id,
+        nullif(value->>'hero_id', '')::uuid as hero_id,
+        coalesce(nullif(value->>'role', ''), '역할 미지정') as role
+      from jsonb_array_elements(v_payload) as value
+      where nullif(value->>'owner_id', '') is not null
+    )
+    select 1
+    from public.rank_match_queue q
+    join payload on payload.owner_id = q.owner_id
+    where q.game_id = p_game_id
+      and q.mode = v_mode
+      and (
+        coalesce(q.role, '') <> coalesce(payload.role, '')
+        or coalesce(q.hero_id::text, '') <> coalesce(payload.hero_id::text, '')
+        or lower(coalesce(q.status, '')) <> 'matched'
+      )
   )
-  perform 1
-  from public.rank_match_queue q
-  join payload on payload.owner_id = q.owner_id
-  where q.game_id = p_game_id
-    and q.mode = v_mode
-    and (
-      coalesce(q.role, '') <> coalesce(payload.role, '')
-      or coalesce(q.hero_id::text, '') <> coalesce(payload.hero_id::text, '')
-      or lower(coalesce(q.status, '')) <> 'matched'
-    );
+  into v_has_mismatch;
 
-  if found then
+  if v_has_mismatch then
     raise exception 'queue_reconcile_failed';
   end if;
 
