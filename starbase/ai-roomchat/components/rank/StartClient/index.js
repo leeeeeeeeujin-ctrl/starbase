@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
 import styles from './StartClient.module.css'
-import HeaderControls from './HeaderControls'
 import RosterPanel from './RosterPanel'
 import TurnInfoPanel from './TurnInfoPanel'
 import TurnSummaryPanel from './TurnSummaryPanel'
@@ -132,6 +131,19 @@ function findRosterEntry(roster, { heroId = null, ownerId = null } = {}) {
       return false
     }) || null
   )
+}
+
+function formatSlotSource({ standin = false, matchSource = '' } = {}) {
+  if (standin) return '대역'
+  if (!matchSource) return ''
+  const normalized = String(matchSource).trim().toLowerCase()
+  if (!normalized) return ''
+  if (normalized === 'host') return '호스트'
+  if (normalized === 'queue') return '큐'
+  if (normalized === 'participant_pool') return '참여자 풀'
+  if (normalized === 'requeue') return '재합류'
+  if (normalized === 'matchmaking') return '매칭'
+  return matchSource
 }
 
 const LogsPanel = dynamic(() => import('./LogsPanel'), {
@@ -595,6 +607,110 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     ? '먼저 게임을 시작해 주세요.'
     : '현재 차례의 플레이어만 응답을 제출할 수 있습니다.'
 
+  const rosterBySlot = useMemo(() => {
+    const roster = Array.isArray(matchState?.roster) ? matchState.roster : []
+    const map = new Map()
+    roster.forEach((entry) => {
+      if (!entry) return
+      const slotIndex = entry.slotIndex != null ? Number(entry.slotIndex) : null
+      if (Number.isFinite(slotIndex)) {
+        map.set(slotIndex, entry)
+      }
+    })
+    return map
+  }, [matchState?.roster])
+
+  const rosterByHeroId = useMemo(() => {
+    const roster = Array.isArray(matchState?.roster) ? matchState.roster : []
+    const map = new Map()
+    roster.forEach((entry) => {
+      if (!entry) return
+      if (entry.heroId) {
+        map.set(String(entry.heroId).trim(), entry)
+      }
+    })
+    return map
+  }, [matchState?.roster])
+
+  const scoreboardRooms = useMemo(() => {
+    const rooms = matchState?.snapshot?.rooms || matchState?.snapshot?.assignments
+    if (!Array.isArray(rooms) || !rooms.length) return []
+    return rooms.map((room, index) => {
+      const slotSources = Array.isArray(room?.slots)
+        ? room.slots
+        : Array.isArray(room?.roleSlots)
+        ? room.roleSlots.map((slot) => ({
+            role: slot?.role,
+            slotIndex: slot?.slotIndex,
+            member: slot?.member || (Array.isArray(slot?.members) ? slot.members[0] : null),
+          }))
+        : Array.isArray(room?.members)
+        ? room.members.map((member) => ({
+            role: member?.role,
+            slotIndex: member?.slotIndex,
+            member,
+          }))
+        : []
+
+      const slots = slotSources.map((slot, slotIndex) => {
+        const numericIndex = toSlotIndex(slot?.slotIndex, slotIndex)
+        const normalizedHeroId = toTrimmedId(slot?.member?.heroId ?? slot?.member?.hero_id)
+        const fallback =
+          rosterBySlot.get(numericIndex) ||
+          (normalizedHeroId ? rosterByHeroId.get(normalizedHeroId) : null)
+        const heroName =
+          slot?.member?.heroName ||
+          slot?.member?.hero_name ||
+          fallback?.heroName ||
+          ''
+        const role = slot?.role || fallback?.role || ''
+        const standin = slot?.member?.standin === true || fallback?.standin === true
+        const matchSource =
+          slot?.member?.matchSource ||
+          slot?.member?.match_source ||
+          fallback?.matchSource ||
+          ''
+        const ready = slot?.member?.ready === true || fallback?.ready === true
+        return {
+          slotIndex: numericIndex,
+          role,
+          heroName: heroName || '빈 슬롯',
+          standin,
+          matchSource,
+          ready,
+        }
+      })
+
+      return {
+        id: toTrimmedId(room?.id) || `room-${index + 1}`,
+        label: room?.label || `룸 ${index + 1}`,
+        anchorScore: room?.anchorScore ?? room?.anchor_score ?? null,
+        ready: room?.ready === true,
+        slots,
+      }
+    })
+  }, [matchState?.snapshot?.rooms, matchState?.snapshot?.assignments, rosterByHeroId, rosterBySlot])
+
+  const roleBuckets = useMemo(() => {
+    const raw = matchState?.snapshot?.roleBuckets || matchState?.snapshot?.role_buckets
+    if (!Array.isArray(raw)) return []
+    return raw.map((bucket, index) => {
+      const roleName = bucket?.role || bucket?.name || `역할 ${index + 1}`
+      const total = Number(bucket?.total ?? bucket?.slotCount ?? bucket?.slot_count ?? bucket?.totalSlots)
+      const filled = Number(bucket?.filled ?? bucket?.filledSlots ?? bucket?.filled_slots)
+      const missing = Number(bucket?.missing ?? bucket?.missingSlots ?? bucket?.missing_slots)
+      return {
+        role: roleName,
+        total: Number.isFinite(total) ? total : 0,
+        filled: Number.isFinite(filled) ? filled : 0,
+        missing: Number.isFinite(missing) ? missing : 0,
+        ready: bucket?.ready === true,
+      }
+    })
+  }, [matchState?.snapshot?.roleBuckets, matchState?.snapshot?.role_buckets])
+
+  const hasRoleSummary = roleBuckets.some((bucket) => bucket.total > 0)
+
   const pageStyle = useMemo(() => {
     const baseGradient =
       'radial-gradient(circle at top, rgba(16,26,51,0.92) 0%, rgba(4,7,18,0.96) 55%, rgba(2,4,10,1) 100%)'
@@ -611,6 +727,27 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       backgroundRepeat: ['no-repeat', ...heroLayers.map(() => 'no-repeat')].join(', '),
     }
   }, [activeBackdropUrls])
+
+  const startLabel = isStarting ? '준비 중…' : preflight ? '게임 시작' : '다시 시작'
+  const nextLabel = isAdvancing ? '진행 중…' : '다음 턴'
+  const advanceDisabled = preflight || !sessionInfo?.id || engineLoading
+  const startButtonDisabled = isStarting || engineLoading
+  const consensusStatus = consensus?.active
+    ? consensus.viewerEligible
+      ? consensus.viewerHasConsented
+        ? '내 동의 완료'
+        : '내 동의 필요'
+      : '동의 대상 아님'
+    : ''
+  const roleSummaryText = hasRoleSummary
+    ? roleBuckets
+        .map((bucket) => {
+          if (!bucket.role) return null
+          return `${bucket.role} ${bucket.filled}/${bucket.total}`
+        })
+        .filter(Boolean)
+        .join(' · ')
+    : ''
 
   if (!ready) {
     return (
@@ -640,19 +777,41 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   return (
     <div className={styles.page} style={pageStyle}>
       <div className={styles.shell}>
-        <HeaderControls
-          onBack={handleBackToRoom}
-          title={headerTitle}
-          description={headerDescription}
-          preflight={preflight}
-          onStart={handleStart}
-          onAdvance={advanceWithAi}
-          isAdvancing={isAdvancing}
-          advanceDisabled={preflight || !sessionInfo?.id || engineLoading}
-          consensus={consensus}
-          startDisabled={engineLoading}
-          isStarting={isStarting}
-        />
+        <header className={styles.headerRow}>
+          <div className={styles.headerSummary}>
+            <div className={styles.headerLead}>{matchState?.matchMode || '랭크 매치'}</div>
+            <h1 className={styles.headerTitle}>{headerTitle}</h1>
+            {headerDescription ? (
+              <p className={styles.headerDescription}>{headerDescription}</p>
+            ) : null}
+          </div>
+          <div className={styles.headerControls}>
+            <button type="button" className={styles.navButton} onClick={handleBackToRoom}>
+              ← 로비로
+            </button>
+            <div className={styles.headerButtons}>
+              <button
+                type="button"
+                onClick={handleStart}
+                className={styles.primaryButton}
+                disabled={startButtonDisabled}
+              >
+                {startLabel}
+              </button>
+              <button
+                type="button"
+                onClick={advanceWithAi}
+                className={styles.advanceButton}
+                disabled={isAdvancing || advanceDisabled}
+              >
+                {nextLabel}
+              </button>
+            </div>
+            {consensus?.active ? (
+              <span className={styles.consensusBadge}>{consensusStatus}</span>
+            ) : null}
+          </div>
+        </header>
 
         {statusMessages.length ? (
           <div className={styles.statusGroup}>
@@ -662,135 +821,262 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           </div>
         ) : null}
 
-        <TurnSummaryPanel
-          sessionMeta={matchState?.sessionMeta || null}
-          turn={turn}
-          turnTimerSeconds={turnTimerSeconds}
-          timeRemaining={timeRemaining}
-          turnDeadline={turnDeadline}
-          turnTimerSnapshot={turnTimerSnapshot}
-          lastDropInTurn={lastDropInTurn}
-        />
-
-        {restrictedContext ? (
-          <section className={styles.visibilitySection}>
-            <div className={styles.visibilityHeader}>
-              <h2 className={styles.sectionTitle}>정보 가시성</h2>
-              {Array.isArray(activeActorNames) && activeActorNames.length ? (
-                <div className={styles.actorBadgeRow}>
-                  {activeActorNames.map((name, index) => (
-                    <span key={`${name}-${index}`} className={styles.actorBadge}>
-                      {name}
-                    </span>
-                  ))}
-                </div>
+        <section className={styles.summaryGrid}>
+          <article className={styles.summaryCard}>
+            <header className={styles.summaryHeader}>
+              <h2 className={styles.summaryTitle}>매치 정보</h2>
+              {matchState?.room?.code ? (
+                <span className={styles.matchCode}>코드 {matchState.room.code}</span>
               ) : null}
-            </div>
-            <p className={styles.visibilityHint}>
-              블라인드 또는 비실시간 모드에서는 호스트 역할군만 상세한 캐릭터 정보를 확인할 수 있습니다.
-            </p>
-            <div className={styles.visibilityControls}>
-              <button
-                type="button"
-                className={
-                  !showRosterDetails || !viewerCanToggleDetails
-                    ? styles.visibilityButtonActive
-                    : styles.visibilityButton
-                }
-                onClick={() => setShowRosterDetails(false)}
-              >
-                요약 보기
-              </button>
-              <button
-                type="button"
-                className={showRosterDetails ? styles.visibilityButtonActive : styles.visibilityButton}
-                onClick={() => {
-                  if (!viewerMaySeeFull) return
-                  setShowRosterDetails(true)
-                }}
-                disabled={!viewerCanToggleDetails}
-              >
-                상세 보기
-              </button>
-            </div>
-            {!viewerMaySeeFull && (
-              <p className={styles.visibilityNotice}>
-                호스트와 동일한 역할군만 상세 정보를 열람할 수 있습니다.
-              </p>
+            </header>
+            {sessionMeta.length ? (
+              <ul className={styles.metaList}>
+                {sessionMeta.map((item) => (
+                  <li key={item.label} className={styles.metaItem}>
+                    <span className={styles.metaLabel}>{item.label}</span>
+                    <span className={styles.metaValue}>{item.value}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.metaPlaceholder}>추가 매치 정보가 없습니다.</p>
             )}
-          </section>
-        ) : null}
+          </article>
 
-        {sessionMeta.length ? (
-          <section className={styles.metaSection}>
-            <h2 className={styles.sectionTitle}>매치 정보</h2>
-            <ul className={styles.metaList}>
-              {sessionMeta.map((item) => (
-                <li key={item.label} className={styles.metaItem}>
-                  <span className={styles.metaLabel}>{item.label}</span>
-                  <span className={styles.metaValue}>{item.value}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+          <article className={`${styles.summaryCard} ${styles.viewerCard}`}>
+            <header className={styles.viewerHeader}>
+              <h2 className={styles.summaryTitle}>내 캐릭터</h2>
+              {viewerHeroProfile?.avatar_url ? (
+                <img
+                  src={viewerHeroProfile.avatar_url}
+                  alt={viewerHeroProfile?.name || '참가자'}
+                  className={styles.viewerAvatar}
+                />
+              ) : null}
+            </header>
+            <div className={styles.viewerBody}>
+              <div className={styles.viewerName}>{viewerHeroProfile?.name || '익명 참가자'}</div>
+              <div className={styles.viewerRole}>{matchState?.viewer?.role || '역할 미지정'}</div>
+              <dl className={styles.viewerMeta}>
+                {hostRoleName ? (
+                  <div className={styles.viewerMetaItem}>
+                    <dt className={styles.viewerMetaLabel}>호스트 역할</dt>
+                    <dd className={styles.viewerMetaValue}>{hostRoleName}</dd>
+                  </div>
+                ) : null}
+                {asyncMatchInstanceId ? (
+                  <div className={styles.viewerMetaItem}>
+                    <dt className={styles.viewerMetaLabel}>비실시간 매치</dt>
+                    <dd className={styles.viewerMetaValue}>{asyncMatchInstanceId}</dd>
+                  </div>
+                ) : null}
+                {sessionInfoMatchInstanceId ? (
+                  <div className={styles.viewerMetaItem}>
+                    <dt className={styles.viewerMetaLabel}>세션</dt>
+                    <dd className={styles.viewerMetaValue}>{sessionInfoMatchInstanceId}</dd>
+                  </div>
+                ) : null}
+                {extrasMatchInstanceId ? (
+                  <div className={styles.viewerMetaItem}>
+                    <dt className={styles.viewerMetaLabel}>연결 코드</dt>
+                    <dd className={styles.viewerMetaValue}>{extrasMatchInstanceId}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+          </article>
 
-        <div className={styles.splitGrid}>
-          <TurnInfoPanel
-            turn={turn}
-            currentNode={currentNode}
-            activeGlobal={activeGlobal}
-            activeLocal={activeLocal}
-            apiKey={apiKey}
-            onApiKeyChange={setApiKey}
-            apiVersion={apiVersion}
-            onApiVersionChange={setApiVersion}
-            geminiMode={geminiMode}
-            onGeminiModeChange={setGeminiMode}
-            geminiModel={geminiModel}
-            onGeminiModelChange={setGeminiModel}
-            geminiModelOptions={geminiModelOptions}
-            geminiModelLoading={geminiModelLoading}
-            geminiModelError={geminiModelError}
-            onReloadGeminiModels={reloadGeminiModels}
-            realtimeLockNotice={realtimeLockNotice}
-            apiKeyNotice={apiKeyCooldown?.active ? apiKeyWarning : ''}
-            currentActor={currentActor}
-            timeRemaining={timeRemaining}
-            turnTimerSeconds={turnTimerSeconds}
-          />
+          <article className={`${styles.summaryCard} ${styles.assignmentCard}`}>
+            <header className={styles.assignmentHeader}>
+              <div>
+                <h2 className={styles.summaryTitle}>매칭 편성</h2>
+                <p className={styles.assignmentHint}>슬롯 상태와 대역 충원 현황을 확인하세요.</p>
+              </div>
+              {roleSummaryText ? (
+                <span className={styles.roleSummaryText}>{roleSummaryText}</span>
+              ) : null}
+            </header>
+            {scoreboardRooms.length ? (
+              <div className={styles.roomGrid}>
+                {scoreboardRooms.map((room) => (
+                  <div key={room.id} className={styles.roomCard}>
+                    <div className={styles.roomHeader}>
+                      <span className={styles.roomLabel}>{room.label}</span>
+                      {room.anchorScore != null ? (
+                        <span className={styles.roomStatus}>기준 점수 {room.anchorScore}</span>
+                      ) : null}
+                    </div>
+                    <ul className={styles.slotList}>
+                      {room.slots.map((slot, index) => {
+                        const tag = formatSlotSource({ standin: slot.standin, matchSource: slot.matchSource })
+                        const statusClass = slot.ready
+                          ? styles.slotReady
+                          : slot.heroName === '빈 슬롯'
+                          ? styles.slotEmpty
+                          : styles.slotPending
+                        return (
+                          <li key={`${room.id}-${index}`} className={styles.slotItem}>
+                            <div className={styles.slotRole}>{slot.role || '슬롯'}</div>
+                            <div className={`${styles.slotHero} ${statusClass}`}>{slot.heroName}</div>
+                            <div className={styles.slotTagRow}>
+                              {tag ? <span className={styles.slotTag}>{tag}</span> : null}
+                              {!slot.ready && slot.heroName !== '빈 슬롯' ? (
+                                <span className={styles.slotTag}>{'미확인'}</span>
+                              ) : null}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={styles.metaPlaceholder}>편성 데이터를 찾지 못했습니다.</p>
+            )}
+            {hasRoleSummary ? (
+              <div className={styles.roleSummary}>
+                {roleBuckets.map((bucket, index) => (
+                  <span
+                    key={`${bucket.role}-${index}`}
+                    className={
+                      bucket.missing > 0 ? styles.roleBadgeMissing : styles.roleBadge
+                    }
+                  >
+                    {bucket.role} {bucket.filled}/{bucket.total}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </article>
+        </section>
 
-          <ManualResponsePanel
-            manualResponse={manualResponse}
-            onChange={setManualResponse}
-            onManualAdvance={advanceWithManual}
-            onAiAdvance={advanceWithAi}
-            isAdvancing={isAdvancing}
-            disabled={manualDisabled}
-            disabledReason={manualDisabled ? manualDisabledReason : ''}
-            timeRemaining={timeRemaining}
-            turnTimerSeconds={turnTimerSeconds}
-          />
+        <div className={styles.bodyGrid}>
+          <div className={styles.playColumn}>
+            <TurnSummaryPanel
+              sessionMeta={matchState?.sessionMeta || null}
+              turn={turn}
+              turnTimerSeconds={turnTimerSeconds}
+              timeRemaining={timeRemaining}
+              turnDeadline={turnDeadline}
+              turnTimerSnapshot={turnTimerSnapshot}
+              lastDropInTurn={lastDropInTurn}
+            />
+
+            <div className={styles.engineRow}>
+              <TurnInfoPanel
+                turn={turn}
+                currentNode={currentNode}
+                activeGlobal={activeGlobal}
+                activeLocal={activeLocal}
+                apiKey={apiKey}
+                onApiKeyChange={setApiKey}
+                apiVersion={apiVersion}
+                onApiVersionChange={setApiVersion}
+                geminiMode={geminiMode}
+                onGeminiModeChange={setGeminiMode}
+                geminiModel={geminiModel}
+                onGeminiModelChange={setGeminiModel}
+                geminiModelOptions={geminiModelOptions}
+                geminiModelLoading={geminiModelLoading}
+                geminiModelError={geminiModelError}
+                onReloadGeminiModels={reloadGeminiModels}
+                realtimeLockNotice={realtimeLockNotice}
+                apiKeyNotice={apiKeyCooldown?.active ? apiKeyWarning : ''}
+                currentActor={currentActor}
+                timeRemaining={timeRemaining}
+                turnTimerSeconds={turnTimerSeconds}
+              />
+
+              <ManualResponsePanel
+                manualResponse={manualResponse}
+                onChange={setManualResponse}
+                onManualAdvance={advanceWithManual}
+                onAiAdvance={advanceWithAi}
+                isAdvancing={isAdvancing}
+                disabled={manualDisabled}
+                disabledReason={manualDisabled ? manualDisabledReason : ''}
+                timeRemaining={timeRemaining}
+                turnTimerSeconds={turnTimerSeconds}
+              />
+            </div>
+          </div>
+
+          <aside className={styles.sideColumn}>
+            {restrictedContext ? (
+              <section className={`${styles.summaryCard} ${styles.visibilityCard}`}>
+                <div className={styles.visibilityHeader}>
+                  <h2 className={styles.summaryTitle}>정보 가시성</h2>
+                  {Array.isArray(activeActorNames) && activeActorNames.length ? (
+                    <div className={styles.actorBadgeRow}>
+                      {activeActorNames.map((name, index) => (
+                        <span key={`${name}-${index}`} className={styles.actorBadge}>
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <p className={styles.visibilityHint}>
+                  블라인드 또는 비실시간 모드에서는 호스트 역할군만 상세한 캐릭터 정보를 확인할 수 있습니다.
+                </p>
+                <div className={styles.visibilityControls}>
+                  <button
+                    type="button"
+                    className={
+                      !showRosterDetails || !viewerCanToggleDetails
+                        ? styles.visibilityButtonActive
+                        : styles.visibilityButton
+                    }
+                    onClick={() => setShowRosterDetails(false)}
+                  >
+                    요약 보기
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      showRosterDetails ? styles.visibilityButtonActive : styles.visibilityButton
+                    }
+                    onClick={() => {
+                      if (!viewerMaySeeFull) return
+                      setShowRosterDetails(true)
+                    }}
+                    disabled={!viewerCanToggleDetails}
+                  >
+                    상세 보기
+                  </button>
+                </div>
+                {!viewerMaySeeFull && (
+                  <p className={styles.visibilityNotice}>
+                    호스트와 동일한 역할군만 상세 정보를 열람할 수 있습니다.
+                  </p>
+                )}
+              </section>
+            ) : null}
+
+            <div className={`${styles.summaryCard} ${styles.sideCard}`}>
+              <RosterPanel
+                participants={participants}
+                realtimePresence={realtimePresence}
+                dropInSnapshot={dropInSnapshot}
+                sessionOutcome={sessionOutcome}
+                showDetails={!restrictedContext || (showRosterDetails && viewerMaySeeFull)}
+                viewerOwnerId={viewerOwnerId}
+                normalizedHostRole={normalizedHostRole}
+                normalizedViewerRole={normalizedViewerRole}
+              />
+            </div>
+
+            <div className={`${styles.summaryCard} ${styles.sideCard}`}>
+              <LogsPanel
+                logs={logs}
+                aiMemory={aiMemory}
+                playerHistories={playerHistories}
+                realtimeEvents={realtimeEvents}
+              />
+            </div>
+          </aside>
         </div>
-
-        <RosterPanel
-          participants={participants}
-          realtimePresence={realtimePresence}
-          dropInSnapshot={dropInSnapshot}
-          sessionOutcome={sessionOutcome}
-          showDetails={!restrictedContext || (showRosterDetails && viewerMaySeeFull)}
-          viewerOwnerId={viewerOwnerId}
-          normalizedHostRole={normalizedHostRole}
-          normalizedViewerRole={normalizedViewerRole}
-        />
-
-        <LogsPanel
-          logs={logs}
-          aiMemory={aiMemory}
-          playerHistories={playerHistories}
-          realtimeEvents={realtimeEvents}
-        />
-
       </div>
     </div>
   )
