@@ -80,6 +80,7 @@
   end;
   $$;
   ```
+  > ⚠️ 실제 배포 시에는 `rank_rooms`에서 `owner_id`와 `mode`를 조회해 전달된 `p_owner_id`·`p_mode`와 교차 검증해야 합니다. 최신 구현은 RPC 내부에서 `room_owner_mismatch` 예외를 던져 위조된 소유자 ID를 차단합니다.
   클라이언트에서는 `stage-room-match` 성공 후 세션 ID를 확보해 `MatchReady`로 전달하고, 준비 투표 UI가 `sessionId` 없이 열리지 않도록 가드합니다.
 
 ### 2.3 난입 메타 손실

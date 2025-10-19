@@ -2439,9 +2439,28 @@ declare
   v_session_id uuid;
   v_turn_limit integer;
   v_vote_payload jsonb;
+  v_room_owner uuid;
+  v_room_mode text;
 begin
   if p_room_id is null then
     raise exception 'missing_room_id';
+  end if;
+
+  select owner_id, mode
+    into v_room_owner, v_room_mode
+  from public.rank_rooms
+  where id = p_room_id;
+
+  if v_room_owner is null then
+    raise exception 'room_not_found';
+  end if;
+
+  if p_owner_id is null then
+    raise exception 'missing_owner_id';
+  end if;
+
+  if v_room_owner <> p_owner_id then
+    raise exception 'room_owner_mismatch';
   end if;
 
   v_turn_limit := coalesce((p_vote->>'turn_limit')::integer, 0);
@@ -2468,17 +2487,17 @@ begin
     values (
       p_room_id,
       p_game_id,
-      p_owner_id,
+      v_room_owner,
       'active',
       0,
-      p_mode,
+      coalesce(p_mode, v_room_mode),
       v_vote_payload
     )
     returning id into v_session_id;
   else
     update public.rank_sessions
        set updated_at = now(),
-           mode = coalesce(p_mode, mode),
+           mode = coalesce(p_mode, v_room_mode, mode),
            vote_snapshot = v_vote_payload
      where id = v_session_id;
   end if;
@@ -2849,6 +2868,7 @@ create or replace function public.sync_rank_match_roster(
   p_room_id uuid,
   p_game_id uuid,
   p_match_instance_id uuid,
+  p_request_owner_id uuid,
   p_roster jsonb,
   p_slot_template_version bigint default null,
   p_slot_template_source text default null,
@@ -2868,13 +2888,31 @@ declare
   v_version bigint := coalesce(p_slot_template_version, (extract(epoch from v_now) * 1000)::bigint);
   v_updated_at timestamptz := coalesce(p_slot_template_updated_at, v_now);
   v_current_version bigint;
+  v_room_owner uuid;
 begin
   if p_room_id is null or p_game_id is null or p_match_instance_id is null then
     raise exception 'missing_identifiers';
   end if;
 
+  if p_request_owner_id is null then
+    raise exception 'missing_request_owner_id';
+  end if;
+
   if p_roster is null or jsonb_typeof(p_roster) <> 'array' or jsonb_array_length(p_roster) = 0 then
     raise exception 'empty_roster';
+  end if;
+
+  select owner_id
+    into v_room_owner
+  from public.rank_rooms
+  where id = p_room_id;
+
+  if v_room_owner is null then
+    raise exception 'room_not_found';
+  end if;
+
+  if v_room_owner <> p_request_owner_id then
+    raise exception 'room_owner_mismatch';
   end if;
 
   select max(r.slot_template_version)
@@ -2973,6 +3011,7 @@ end;
 $$;
 
 grant execute on function public.sync_rank_match_roster(
+  uuid,
   uuid,
   uuid,
   uuid,

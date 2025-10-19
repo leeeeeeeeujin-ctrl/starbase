@@ -168,7 +168,22 @@ declare
   v_session_id uuid;
   v_turn_limit integer;
   v_vote_payload jsonb;
+  v_room_owner uuid;
+  v_room_mode text;
 begin
+  select owner_id, mode
+    into v_room_owner, v_room_mode
+  from public.rank_rooms
+  where id = p_room_id;
+
+  if v_room_owner is null then
+    raise exception 'room_not_found';
+  end if;
+
+  if p_owner_id is null or v_room_owner <> p_owner_id then
+    raise exception 'room_owner_mismatch';
+  end if;
+
   v_turn_limit := coalesce((p_vote->>'turn_limit')::integer, 0);
   v_vote_payload := coalesce(p_vote, '{}'::jsonb);
 
@@ -193,17 +208,17 @@ begin
     values (
       p_room_id,
       p_game_id,
-      p_owner_id,
+      v_room_owner,
       'active',
       0,
-      p_mode,
+      coalesce(p_mode, v_room_mode),
       v_vote_payload
     )
     returning id into v_session_id;
   else
     update public.rank_sessions
        set updated_at = now(),
-           mode = coalesce(p_mode, mode),
+           mode = coalesce(p_mode, v_room_mode, mode),
            vote_snapshot = v_vote_payload
      where id = v_session_id;
   end if;

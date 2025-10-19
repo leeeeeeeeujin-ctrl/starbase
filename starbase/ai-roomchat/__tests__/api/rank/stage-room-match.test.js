@@ -27,6 +27,9 @@ function loadHandler() {
 describe('POST /api/rank/stage-room-match', () => {
   let getUserMock
   let rpcMock
+  let roomQueryResponse
+  let participantQueryResponse
+  let heroQueryResponse
 
   beforeEach(() => {
     jest.resetModules()
@@ -43,7 +46,22 @@ describe('POST /api/rank/stage-room-match', () => {
     rpcMock = jest.fn().mockResolvedValue({ data: [], error: null })
     registerSupabaseAdminMock(jest.fn(), rpcMock)
 
-    mockWithTableQuery = jest.fn().mockImplementation(async () => ({ data: [], error: null }))
+    roomQueryResponse = { data: { id: 'room-1', owner_id: 'user-1', mode: 'rank' }, error: null }
+    participantQueryResponse = { data: [], error: null }
+    heroQueryResponse = { data: [], error: null }
+
+    mockWithTableQuery = jest.fn().mockImplementation(async (_client, tableName) => {
+      if (tableName === 'rank_rooms') {
+        return roomQueryResponse
+      }
+      if (tableName === 'rank_participants') {
+        return participantQueryResponse
+      }
+      if (tableName === 'heroes') {
+        return heroQueryResponse
+      }
+      return { data: [], error: null }
+    })
   })
 
   afterEach(() => {
@@ -77,6 +95,38 @@ describe('POST /api/rank/stage-room-match', () => {
     expect(rpcMock).not.toHaveBeenCalled()
   })
 
+  it('rejects calls from non-owners', async () => {
+    const handler = loadHandler()
+
+    roomQueryResponse = { data: { id: 'room-1', owner_id: 'owner-9', mode: 'rank' }, error: null }
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer session-token' },
+      body: {
+        match_instance_id: 'match-1',
+        room_id: 'room-1',
+        game_id: 'game-1',
+        roster: [
+          {
+            slotIndex: 0,
+            role: '딜러',
+            ownerId: 'owner-1',
+            heroId: 'hero-1',
+            ready: true,
+          },
+        ],
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(403)
+    expect(res.body).toEqual({ error: 'forbidden' })
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
   it('returns 409 when the roster version conflicts', async () => {
     const handler = loadHandler()
 
@@ -89,9 +139,6 @@ describe('POST /api/rank/stage-room-match', () => {
         ready: true,
       },
     ]
-
-    mockWithTableQuery.mockResolvedValueOnce({ data: [], error: null })
-    mockWithTableQuery.mockResolvedValueOnce({ data: [], error: null })
 
     rpcMock
       .mockResolvedValueOnce({ data: [], error: null })
@@ -125,6 +172,10 @@ describe('POST /api/rank/stage-room-match', () => {
     await handler(req, res)
 
     expect(getUserMock).toHaveBeenCalledWith('session-token')
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(1, expect.any(Object), 'rank_rooms', expect.any(Function))
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(2, expect.any(Object), 'rank_participants', expect.any(Function))
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(3, expect.any(Object), 'heroes', expect.any(Function))
+
     expect(rpcMock).toHaveBeenNthCalledWith(
       1,
       'verify_rank_roles_and_slots',
@@ -140,6 +191,7 @@ describe('POST /api/rank/stage-room-match', () => {
         p_game_id: 'game-1',
         p_room_id: 'room-1',
         p_match_instance_id: 'match-1',
+        p_request_owner_id: 'user-1',
         p_slot_template_version: expect.any(Number),
       }),
     )
@@ -163,19 +215,21 @@ describe('POST /api/rank/stage-room-match', () => {
       },
     ]
 
-    mockWithTableQuery
-      .mockResolvedValueOnce({ data: [{ owner_id: 'owner-2', score: 1500, rating: 1200 }], error: null })
-      .mockResolvedValueOnce({
-        data: [
-          {
-            id: 'hero-2',
-            name: '베타',
-            description: '지원형',
-            image_url: 'https://cdn/hero-2.png',
-          },
-        ],
-        error: null,
-      })
+    participantQueryResponse = {
+      data: [{ owner_id: 'owner-2', score: 1500, rating: 1200 }],
+      error: null,
+    }
+    heroQueryResponse = {
+      data: [
+        {
+          id: 'hero-2',
+          name: '베타',
+          description: '지원형',
+          image_url: 'https://cdn/hero-2.png',
+        },
+      ],
+      error: null,
+    }
 
     rpcMock
       .mockResolvedValueOnce({ data: [], error: null })
@@ -219,8 +273,9 @@ describe('POST /api/rank/stage-room-match', () => {
     await handler(req, res)
 
     expect(getUserMock).toHaveBeenCalledWith('bearer-token')
-    expect(mockWithTableQuery).toHaveBeenNthCalledWith(1, expect.any(Object), 'rank_participants', expect.any(Function))
-    expect(mockWithTableQuery).toHaveBeenNthCalledWith(2, expect.any(Object), 'heroes', expect.any(Function))
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(1, expect.any(Object), 'rank_rooms', expect.any(Function))
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(2, expect.any(Object), 'rank_participants', expect.any(Function))
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(3, expect.any(Object), 'heroes', expect.any(Function))
     expect(rpcMock).toHaveBeenNthCalledWith(
       1,
       'verify_rank_roles_and_slots',
@@ -236,6 +291,7 @@ describe('POST /api/rank/stage-room-match', () => {
         p_room_id: 'room-9',
         p_game_id: 'game-42',
         p_match_instance_id: 'match-2',
+        p_request_owner_id: 'user-1',
         p_roster: expect.arrayContaining([
           expect.objectContaining({
             slot_index: 1,
@@ -248,12 +304,14 @@ describe('POST /api/rank/stage-room-match', () => {
       }),
     )
     expect(res.statusCode).toBe(200)
-    expect(res.body).toEqual({
-      ok: true,
-      staged: 1,
-      slot_template_version: 456,
-      slot_template_updated_at: '2025-02-03T12:00:00Z',
-    })
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        ok: true,
+        staged: 1,
+        slot_template_version: 456,
+        slot_template_updated_at: '2025-02-03T12:00:00Z',
+      }),
+    )
   })
 
   it('propagates stand-in metadata when participant stats are missing', async () => {
@@ -276,10 +334,6 @@ describe('POST /api/rank/stage-room-match', () => {
         status: 'standin',
       },
     ]
-
-    mockWithTableQuery
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({ data: [], error: null })
 
     rpcMock
       .mockResolvedValueOnce({ data: [], error: null })
@@ -315,10 +369,14 @@ describe('POST /api/rank/stage-room-match', () => {
 
     await handler(req, res)
 
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(1, expect.any(Object), 'rank_rooms', expect.any(Function))
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(2, expect.any(Object), 'rank_participants', expect.any(Function))
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(3, expect.any(Object), 'heroes', expect.any(Function))
     expect(rpcMock).toHaveBeenNthCalledWith(
       2,
       'sync_rank_match_roster',
       expect.objectContaining({
+        p_request_owner_id: 'user-1',
         p_roster: expect.arrayContaining([
           expect.objectContaining({
             slot_index: 0,
@@ -366,10 +424,6 @@ describe('POST /api/rank/stage-room-match', () => {
       },
     ]
 
-    mockWithTableQuery
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({ data: [], error: null })
-
     rpcMock
       .mockResolvedValueOnce({ data: [], error: null })
       .mockResolvedValueOnce({
@@ -404,10 +458,14 @@ describe('POST /api/rank/stage-room-match', () => {
 
     await handler(req, res)
 
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(1, expect.any(Object), 'rank_rooms', expect.any(Function))
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(2, expect.any(Object), 'rank_participants', expect.any(Function))
+    expect(mockWithTableQuery).toHaveBeenNthCalledWith(3, expect.any(Object), 'heroes', expect.any(Function))
     expect(rpcMock).toHaveBeenNthCalledWith(
       2,
       'sync_rank_match_roster',
       expect.objectContaining({
+        p_request_owner_id: 'user-1',
         p_roster: expect.arrayContaining([
           expect.objectContaining({
             slot_index: 2,

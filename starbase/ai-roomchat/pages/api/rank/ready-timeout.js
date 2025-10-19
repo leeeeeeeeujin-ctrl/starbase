@@ -359,7 +359,11 @@ export default async function handler(req, res) {
 
   const roomOwnerId = await fetchRoomOwner(roomId)
 
-  if (roomOwnerId && roomOwnerId !== userId) {
+  if (!roomOwnerId) {
+    return res.status(404).json({ error: 'room_not_found' })
+  }
+
+  if (roomOwnerId !== userId) {
     const { data: rosterMembership } = await withTableQuery(
       supabaseAdmin,
       'rank_match_roster',
@@ -500,6 +504,7 @@ export default async function handler(req, res) {
     p_room_id: roomId || rosterRows[0]?.room_id || null,
     p_game_id: gameId,
     p_match_instance_id: matchInstanceId,
+    p_request_owner_id: roomOwnerId,
     p_slot_template_version: slotTemplateVersion || Date.now(),
     p_slot_template_source: slotTemplateSource,
     p_slot_template_updated_at: slotTemplateUpdatedAt || nowIso,
@@ -509,6 +514,13 @@ export default async function handler(req, res) {
   const { error: syncError } = await supabaseAdmin.rpc('sync_rank_match_roster', rpcPayload)
 
   if (syncError) {
+    const message = syncError.message || ''
+    if (message.includes('room_owner_mismatch')) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+    if (message.includes('room_not_found')) {
+      return res.status(404).json({ error: 'room_not_found' })
+    }
     return res.status(500).json({ error: 'sync_failed', supabaseError: syncError })
   }
 

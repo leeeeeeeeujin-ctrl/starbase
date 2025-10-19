@@ -232,6 +232,35 @@ function safeClone(value) {
   return value
 }
 
+function normalizeTimestampInput(value) {
+  if (value === null || value === undefined) return null
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : null
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const numeric = Number(trimmed)
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return Math.floor(numeric)
+    }
+    const parsed = Date.parse(trimmed)
+    if (!Number.isNaN(parsed)) {
+      return parsed
+    }
+    return null
+  }
+
+  if (value instanceof Date) {
+    const time = value.getTime()
+    return Number.isFinite(time) && time > 0 ? Math.floor(time) : null
+  }
+
+  return null
+}
+
 function getStorageKey(gameId) {
   if (!gameId && gameId !== 0) return ''
   const key = String(gameId).trim()
@@ -353,7 +382,10 @@ function updateEntry(gameId, updater) {
   const current = ensureEntry(key)
   if (!current) return null
   const next = { ...current }
-  updater(next)
+  const result = updater(next)
+  if (result === false) {
+    return safeClone(current)
+  }
   next.updatedAt = Date.now()
   memoryStore.set(key, next)
   persistToSession(key, next)
@@ -566,6 +598,8 @@ function sanitizeSessionMetaPatch(patch, previous) {
   const base = previous ? safeClone(previous) || createEmptySessionMeta() : createEmptySessionMeta()
   const next = { ...createEmptySessionMeta(), ...base }
 
+  let explicitUpdatedAt = null
+
   if (patch && typeof patch === 'object') {
     if (patch.turnTimer !== undefined) {
       const cloned = safeClone(patch.turnTimer)
@@ -593,9 +627,15 @@ function sanitizeSessionMetaPatch(patch, previous) {
     if (patch.source !== undefined) {
       next.source = typeof patch.source === 'string' ? patch.source.trim() : next.source || ''
     }
+
+    explicitUpdatedAt = normalizeTimestampInput(
+      patch.updatedAt ?? patch.updated_at ?? patch.updated_at_ms ?? null,
+    )
+    if (explicitUpdatedAt !== null) {
+      next.updatedAt = explicitUpdatedAt
+    }
   }
 
-  next.updatedAt = Date.now()
   return next
 }
 
@@ -608,6 +648,8 @@ function sanitizeTurnStatePatch(patch, previous) {
 
   const base = previous && typeof previous === 'object' ? safeClone(previous) || createEmptyTurnState() : createEmptyTurnState()
   const next = { ...createEmptyTurnState(), ...base }
+
+  let explicitUpdatedAt = null
 
   if (patch && typeof patch === 'object') {
     if (patch.version !== undefined) {
@@ -656,10 +698,39 @@ function sanitizeTurnStatePatch(patch, previous) {
     if (patch.source !== undefined) {
       next.source = typeof patch.source === 'string' ? patch.source.trim() : next.source || ''
     }
+
+    explicitUpdatedAt = normalizeTimestampInput(
+      patch.updatedAt ?? patch.updated_at ?? patch.updated_at_ms ?? null,
+    )
+    if (explicitUpdatedAt !== null) {
+      next.updatedAt = explicitUpdatedAt
+    }
   }
 
-  next.updatedAt = Date.now()
   return next
+}
+
+function normalizeTurnStateForComparison(value) {
+  const base = createEmptyTurnState()
+  const snapshot = value && typeof value === 'object' ? safeClone(value) || {} : {}
+  const normalized = { ...base, ...snapshot }
+  normalized.updatedAt = 0
+  return normalized
+}
+
+function normalizeSessionMetaForComparison(value) {
+  const base = createEmptySessionMeta()
+  const snapshot = value && typeof value === 'object' ? safeClone(value) || {} : {}
+  const normalized = { ...base, ...snapshot }
+  normalized.turnState = normalizeTurnStateForComparison(snapshot.turnState)
+  normalized.updatedAt = 0
+  return normalized
+}
+
+function sessionMetaStructurallyEqual(next, previous) {
+  const nextNormalized = normalizeSessionMetaForComparison(next)
+  const prevNormalized = normalizeSessionMetaForComparison(previous)
+  return JSON.stringify(nextNormalized) === JSON.stringify(prevNormalized)
 }
 
 function buildAsyncFillSnapshot({
@@ -875,8 +946,46 @@ export function setGameMatchSlotTemplate(gameId, payload = {}) {
 }
 
 export function setGameMatchSessionMeta(gameId, payload = {}) {
+  const explicitUpdatedAt =
+    payload && typeof payload === 'object'
+      ? normalizeTimestampInput(payload.updatedAt ?? payload.updated_at ?? payload.updated_at_ms ?? null)
+      : null
+
   return updateEntry(gameId, (entry) => {
-    entry.sessionMeta = sanitizeSessionMetaPatch(payload, entry.sessionMeta)
+    const previous = entry.sessionMeta || createEmptySessionMeta()
+    const sanitized = sanitizeSessionMetaPatch(payload, previous)
+
+    const previousUpdatedAt = normalizeTimestampInput(previous.updatedAt)
+    const turnStateTimestampPrev = normalizeTimestampInput(previous?.turnState?.updatedAt)
+    const turnStateTimestampNext = normalizeTimestampInput(sanitized?.turnState?.updatedAt)
+    const hasStructuralChange = !sessionMetaStructurallyEqual(sanitized, previous)
+    const turnStateTimestampChanged =
+      turnStateTimestampNext !== null && turnStateTimestampNext !== turnStateTimestampPrev
+
+    if (!hasStructuralChange && !turnStateTimestampChanged && explicitUpdatedAt === null) {
+      return false
+    }
+
+    if (!hasStructuralChange && !turnStateTimestampChanged) {
+      if (explicitUpdatedAt !== null && explicitUpdatedAt !== previousUpdatedAt) {
+        entry.sessionMeta = { ...previous, updatedAt: explicitUpdatedAt }
+        return
+      }
+      return false
+    }
+
+    const targetUpdatedAt =
+      explicitUpdatedAt !== null
+        ? explicitUpdatedAt
+        : turnStateTimestampChanged && turnStateTimestampNext !== null
+        ? turnStateTimestampNext
+        : previousUpdatedAt ?? Date.now()
+
+    entry.sessionMeta = {
+      ...sanitized,
+      turnState: sanitized?.turnState ? { ...sanitized.turnState } : createEmptyTurnState(),
+      updatedAt: targetUpdatedAt,
+    }
   })
 }
 

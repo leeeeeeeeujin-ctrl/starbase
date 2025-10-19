@@ -226,9 +226,6 @@ export default async function handler(req, res) {
     payload.ready_vote && typeof payload.ready_vote === 'object'
       ? payload.ready_vote
       : null
-  const bodyOwnerId = toOptionalTrimmedString(
-    payload.room_owner_id || payload.host_owner_id || payload.owner_id || null,
-  )
   const bodyMatchMode = toOptionalTrimmedString(payload.match_mode || payload.mode || null)
 
   if (!matchInstanceId) {
@@ -258,7 +255,17 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: 'room_not_found' })
   }
 
-  const roomOwnerId = bodyOwnerId || toOptionalTrimmedString(roomRow.owner_id)
+  const roomOwnerId = toOptionalTrimmedString(roomRow.owner_id)
+  const callerId = toOptionalTrimmedString(user.id)
+
+  if (!roomOwnerId) {
+    return res.status(400).json({ error: 'room_owner_missing' })
+  }
+
+  if (!callerId || callerId !== roomOwnerId) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
   const roomMode = bodyMatchMode || toOptionalTrimmedString(roomRow.mode)
 
   const ownerIds = Array.from(new Set(rosterEntries.map((entry) => entry.ownerId).filter(Boolean)))
@@ -429,6 +436,7 @@ export default async function handler(req, res) {
     p_room_id: roomId,
     p_game_id: gameId,
     p_match_instance_id: matchInstanceId,
+    p_request_owner_id: roomOwnerId,
     p_slot_template_version: slotTemplateVersion,
     p_slot_template_source: slotTemplateSource,
     p_slot_template_updated_at: slotTemplateUpdatedAt,
@@ -460,6 +468,12 @@ export default async function handler(req, res) {
 
   if (rpcError) {
     const message = rpcError.message || 'sync_failed'
+    if (message.includes('room_owner_mismatch')) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+    if (message.includes('room_not_found')) {
+      return res.status(404).json({ error: 'room_not_found' })
+    }
     if (message.includes('slot_version_conflict')) {
       return res.status(409).json({ error: 'slot_version_conflict' })
     }
@@ -480,16 +494,19 @@ export default async function handler(req, res) {
     p_vote: readyVotePayload,
   }
 
-  if (!roomOwnerId) {
-    return res.status(400).json({ error: 'missing_room_owner_id' })
-  }
-
   const { data: ensureData, error: ensureError } = await supabaseAdmin.rpc(
     'ensure_rank_session_for_room',
     ensurePayload,
   )
 
   if (ensureError) {
+    const message = ensureError.message || ''
+    if (message.includes('room_owner_mismatch')) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+    if (message.includes('room_not_found')) {
+      return res.status(404).json({ error: 'room_not_found' })
+    }
     if (isMissingRpcError(ensureError, 'ensure_rank_session_for_room')) {
       return res.status(500).json({
         error: 'missing_ensure_rank_session_for_room',

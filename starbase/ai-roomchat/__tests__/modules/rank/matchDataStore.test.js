@@ -319,6 +319,7 @@ describe('matchDataStore', () => {
 
     setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 45 } })
     setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 60 } })
+    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 60 } })
 
     expect(updates).toEqual([45, 60])
 

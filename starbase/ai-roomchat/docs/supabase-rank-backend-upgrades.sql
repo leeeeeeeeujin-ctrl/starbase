@@ -907,6 +907,7 @@ drop function if exists public.sync_rank_match_roster(
   uuid,
   uuid,
   uuid,
+  uuid,
   bigint,
   text,
   timestamptz,
@@ -927,6 +928,7 @@ create or replace function public.sync_rank_match_roster(
   p_room_id uuid,
   p_game_id uuid,
   p_match_instance_id uuid,
+  p_request_owner_id uuid,
   p_roster jsonb,
   p_slot_template_version bigint default null,
   p_slot_template_source text default null,
@@ -946,13 +948,31 @@ declare
   v_version bigint := coalesce(p_slot_template_version, (extract(epoch from v_now) * 1000)::bigint);
   v_updated_at timestamptz := coalesce(p_slot_template_updated_at, v_now);
   v_current_version bigint;
+  v_room_owner uuid;
 begin
   if p_room_id is null or p_game_id is null or p_match_instance_id is null then
     raise exception 'missing_identifiers';
   end if;
 
+  if p_request_owner_id is null then
+    raise exception 'missing_request_owner_id';
+  end if;
+
   if p_roster is null or jsonb_typeof(p_roster) <> 'array' or jsonb_array_length(p_roster) = 0 then
     raise exception 'empty_roster';
+  end if;
+
+  select owner_id
+    into v_room_owner
+  from public.rank_rooms
+  where id = p_room_id;
+
+  if v_room_owner is null then
+    raise exception 'room_not_found';
+  end if;
+
+  if v_room_owner <> p_request_owner_id then
+    raise exception 'room_owner_mismatch';
   end if;
 
   select max(r.slot_template_version)
@@ -1051,6 +1071,7 @@ end;
 $$;
 
 grant execute on function public.sync_rank_match_roster(
+  uuid,
   uuid,
   uuid,
   uuid,

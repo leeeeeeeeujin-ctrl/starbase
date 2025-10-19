@@ -198,13 +198,36 @@ describe('POST /api/rank/ready-timeout', () => {
       assignments: [{ slotIndex: 1, ownerId: 'candidate-1' }],
     })
 
-    expect(rpcMock).toHaveBeenCalledWith(
-      'fetch_rank_async_standin_pool',
-      expect.objectContaining({ p_game_id: 'game-1' }),
-    )
+  expect(rpcMock).toHaveBeenCalledWith(
+    'fetch_rank_async_standin_pool',
+    expect.objectContaining({ p_game_id: 'game-1' }),
+  )
     expect(rpcMock).toHaveBeenCalledWith(
       'sync_rank_match_roster',
-      expect.objectContaining({ p_match_instance_id: 'match-1' }),
+      expect.objectContaining({ p_match_instance_id: 'match-1', p_request_owner_id: 'host-1' }),
     )
+  })
+
+  it('returns 404 when the room owner cannot be resolved', async () => {
+    const handler = loadHandler()
+    roomQueryResponse = { data: null, error: null }
+
+    const req = createApiRequest({
+      method: 'POST',
+      headers: { authorization: 'Bearer session-token' },
+      body: {
+        match_instance_id: 'match-1',
+        game_id: 'game-1',
+        room_id: 'room-1',
+        missing_owner_ids: ['player-2'],
+      },
+    })
+    const res = createMockResponse()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(404)
+    expect(res.body).toEqual({ error: 'room_not_found' })
+    expect(rpcMock).not.toHaveBeenCalledWith('sync_rank_match_roster', expect.anything())
   })
 })
