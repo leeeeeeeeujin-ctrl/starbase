@@ -3055,40 +3055,50 @@ begin
     raise exception 'invalid_roster';
   end if;
 
+  with normalized as (
+    select
+      jsonb_strip_nulls(
+        entry
+          || jsonb_build_object(
+            'owner_id', owner_id::text,
+            'hero_id', hero_id::text,
+            'role', role,
+            'slot_index', slot_index
+          )
+      ) as sanitized_entry,
+      owner_id,
+      hero_id,
+      role,
+      slot_index,
+      ord
+    from (
+      select
+        jsonb_array_elements(p_roster) as entry,
+        row_number() over () as ord
+    ) indexed
+    cross join lateral (
+      select
+        nullif(trim(indexed.entry->>'owner_id'), '')::uuid as owner_id,
+        nullif(trim(indexed.entry->>'hero_id'), '')::uuid as hero_id,
+        coalesce(nullif(indexed.entry->>'role', ''), '역할 미지정') as role,
+        coalesce((indexed.entry->>'slot_index')::integer, indexed.ord - 1) as slot_index,
+        row_number() over (
+          partition by nullif(trim(indexed.entry->>'owner_id'), '')::uuid
+          order by coalesce((indexed.entry->>'slot_index')::integer, indexed.ord - 1),
+            nullif(trim(indexed.entry->>'hero_id'), ''),
+            coalesce(nullif(indexed.entry->>'role', ''), '역할 미지정'),
+            indexed.ord
+        ) as owner_rank
+    ) attributes
+    where attributes.owner_id is not null
+      and attributes.owner_rank = 1
+  )
   select coalesce(
-      jsonb_agg(
-        jsonb_build_object(
-          'owner_id', owner_id::text,
-          'hero_id', hero_id::text,
-          'role', role,
-          'slot_index', slot_index
-        )
-      ),
+      jsonb_agg(sanitized_entry order by slot_index, owner_id::text, ord),
       '[]'::jsonb
     )
     into v_payload
-  from (
-    select owner_id, hero_id, role, slot_index
-    from (
-      select
-        nullif(trim(entry->>'owner_id'), '')::uuid as owner_id,
-        nullif(trim(entry->>'hero_id'), '')::uuid as hero_id,
-        coalesce(nullif(entry->>'role', ''), '역할 미지정') as role,
-        coalesce((entry->>'slot_index')::integer, ord - 1) as slot_index,
-        row_number() over (
-          partition by nullif(trim(entry->>'owner_id'), '')::uuid
-          order by coalesce((entry->>'slot_index')::integer, ord - 1),
-            nullif(trim(entry->>'hero_id'), ''),
-            coalesce(nullif(entry->>'role', ''), '역할 미지정'),
-            ord
-        ) as owner_rank
-      from (
-        select jsonb_array_elements(p_roster) as entry, row_number() over () as ord
-      ) indexed
-    ) ranked
-    where owner_id is not null
-      and owner_rank = 1
-  ) deduped;
+  from normalized;
 
   if jsonb_typeof(v_payload) <> 'array' or jsonb_array_length(v_payload) = 0 then
     return query
@@ -3226,6 +3236,18 @@ drop function if exists public.prepare_rank_match_session(
   jsonb,
   jsonb
 );
+drop function if exists public.prepare_rank_match_session(
+  uuid,
+  uuid,
+  uuid,
+  uuid,
+  text,
+  jsonb,
+  jsonb,
+  jsonb,
+  jsonb,
+  boolean
+);
 
 create or replace function public.prepare_rank_match_session(
   p_room_id uuid,
@@ -3236,7 +3258,8 @@ create or replace function public.prepare_rank_match_session(
   p_vote jsonb,
   p_async_fill jsonb,
   p_roster jsonb,
-  p_slot_template jsonb
+  p_slot_template jsonb,
+  p_allow_partial boolean default false
 )
 returns table (
   session_id uuid,
@@ -3244,7 +3267,8 @@ returns table (
   slot_template_updated_at timestamptz,
   queue_reconciled integer,
   queue_inserted integer,
-  queue_removed integer
+  queue_removed integer,
+  sanitized_roster jsonb
 )
 language plpgsql
 security definer
@@ -3263,6 +3287,7 @@ declare
   v_removed integer := 0;
   v_session uuid;
   v_now timestamptz := now();
+  v_sanitized jsonb := p_roster;
 begin
   if p_room_id is null or p_game_id is null or p_match_instance_id is null then
     raise exception 'missing_identifiers';
@@ -3289,7 +3314,9 @@ begin
     raise exception 'room_owner_mismatch';
   end if;
 
-  perform public.assert_room_ready(p_room_id);
+  if coalesce(p_allow_partial, false) is not true then
+    perform public.assert_room_ready(p_room_id);
+  end if;
 
   select
     coalesce((p_slot_template->>'version')::bigint, r.slot_template_version, (extract(epoch from v_now) * 1000)::bigint),
@@ -3302,8 +3329,9 @@ begin
   select
     r.reconciled,
     r.inserted,
-    r.removed
-  into v_reconciled, v_inserted, v_removed
+    r.removed,
+    coalesce(r.sanitized, p_roster)
+  into v_reconciled, v_inserted, v_removed, v_sanitized
   from public.reconcile_rank_queue_for_roster(
     p_game_id,
     coalesce(p_mode, v_room_mode, 'solo'),
@@ -3319,7 +3347,7 @@ begin
     p_game_id,
     p_match_instance_id,
     p_request_owner_id,
-    p_roster,
+    coalesce(v_sanitized, p_roster),
     v_slot_version,
     v_slot_source,
     v_slot_updated_at
@@ -3344,7 +3372,8 @@ begin
       v_slot_updated_at,
       v_reconciled,
       v_inserted,
-      v_removed;
+      v_removed,
+      coalesce(v_sanitized, '[]'::jsonb);
 end;
 $$;
 
@@ -3357,7 +3386,8 @@ grant execute on function public.prepare_rank_match_session(
   jsonb,
   jsonb,
   jsonb,
-  jsonb
+  jsonb,
+  boolean
 ) to authenticated, service_role;
 
 create index if not exists rank_edge_function_deployments_env_idx

@@ -306,7 +306,9 @@ describe('POST /api/rank/stage-room-match', () => {
   test('returns session details on success', async () => {
     extractBearerToken.mockReturnValue('token-1')
     fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
-    const normalizedRoster = [{ owner_id: 'owner-1', slot_index: 0, hero_name: 'Alice' }]
+    const normalizedRoster = [
+      { owner_id: 'owner-1', slot_index: 0, hero_name: 'Alice', hero_id: 'hero-x' },
+    ]
     parseStageRequestBody.mockReturnValue({
       ok: true,
       value: {
@@ -319,6 +321,7 @@ describe('POST /api/rank/stage-room-match', () => {
         asyncFillMeta: { enabled: true },
         matchMode: 'duo',
         slotTemplate: { version: 10, source: 'client', updatedAt: '2023-02-02T00:00:00.000Z' },
+        allowPartial: false,
         verificationRoles: [],
         verificationSlots: [],
       },
@@ -342,6 +345,9 @@ describe('POST /api/rank/stage-room-match', () => {
         queueReconciled: 5,
         queueInserted: 3,
         queueRemoved: 2,
+        sanitizedRoster: [
+          { owner_id: 'owner-1', slot_index: 0, hero_id: 'hero-y', role: '딜러' },
+        ],
       },
     })
 
@@ -356,6 +362,7 @@ describe('POST /api/rank/stage-room-match', () => {
         mode: 'duo',
         readyVote: { confirm: true },
         asyncFillMeta: { enabled: true },
+        allowPartial: false,
       }),
     )
     expect(res.statusCode).toBe(200)
@@ -364,7 +371,80 @@ describe('POST /api/rank/stage-room-match', () => {
       slot_template_version: 10,
       slot_template_updated_at: '2023-02-02T00:00:00.000Z',
       queue: { reconciled: 5, inserted: 3, removed: 2 },
-      roster: normalizedRoster,
+      roster: [
+        expect.objectContaining({
+          owner_id: 'owner-1',
+          slot_index: 0,
+          hero_id: 'hero-y',
+          role: '딜러',
+        }),
+      ],
     })
+  })
+
+  test('applies sanitized roster when duplicates removed', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    const normalizedRoster = [
+      { owner_id: 'owner-1', slot_index: 0, hero_id: 'hero-a', role: '탱커' },
+      { owner_id: 'owner-1', slot_index: 1, hero_id: 'hero-b', role: '딜러' },
+      { owner_id: 'owner-2', slot_index: 2, hero_id: 'hero-c', role: '힐러' },
+    ]
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: normalizedRoster,
+        heroMap: {},
+        readyVote: {},
+        asyncFillMeta: null,
+        matchMode: null,
+        slotTemplate: {},
+        allowPartial: true,
+        verificationRoles: [],
+        verificationSlots: [],
+      },
+    })
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-1',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+    verifyRolesAndSlots.mockResolvedValue({ ok: true })
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
+    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    callPrepareMatchSession.mockResolvedValue({
+      ok: true,
+      data: {
+        sessionId: 'session-1',
+        slotTemplateVersion: 2,
+        slotTemplateUpdatedAt: '2023-03-03T00:00:00.000Z',
+        queueReconciled: 2,
+        queueInserted: 1,
+        queueRemoved: 1,
+        sanitizedRoster: [
+          { owner_id: 'owner-1', slot_index: 0, hero_id: 'hero-a', role: '탱커' },
+          { owner_id: 'owner-2', slot_index: 2, hero_id: 'hero-c', role: '힐러' },
+        ],
+      },
+    })
+
+    const res = createRes()
+    await handler(createReq({ body: {} }), res)
+
+    expect(callPrepareMatchSession).toHaveBeenCalledWith(
+      expect.objectContaining({ allowPartial: true }),
+    )
+    expect(res.statusCode).toBe(200)
+    expect(res.body.queue).toEqual({ reconciled: 2, inserted: 1, removed: 1 })
+    expect(res.body.roster).toHaveLength(2)
+    expect(res.body.roster.map((entry) => entry.owner_id)).toEqual([
+      'owner-1',
+      'owner-2',
+    ])
   })
 })

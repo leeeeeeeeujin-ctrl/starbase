@@ -179,6 +179,7 @@ export async function callPrepareMatchSession({
   asyncFillMeta,
   mode,
   slotTemplate,
+  allowPartial,
 }) {
   const payload = rosterToSupabasePayload(roster)
   const slotPayload = {
@@ -197,6 +198,7 @@ export async function callPrepareMatchSession({
     p_async_fill: asyncFillMeta || null,
     p_roster: payload,
     p_slot_template: slotPayload,
+    p_allow_partial: allowPartial === true,
   })
 
   if (error) {
@@ -229,6 +231,9 @@ export async function callPrepareMatchSession({
       queueReconciled: resultRow?.queue_reconciled || 0,
       queueInserted: resultRow?.queue_inserted || 0,
       queueRemoved: resultRow?.queue_removed || 0,
+      sanitizedRoster: Array.isArray(resultRow?.sanitized_roster)
+        ? resultRow.sanitized_roster
+        : [],
     },
   }
 }

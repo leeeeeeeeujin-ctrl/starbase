@@ -268,3 +268,56 @@ export function rosterToSupabasePayload(roster = []) {
     status: entry.status || null,
   }))
 }
+
+export function applySanitizedRoster(hydratedRoster = [], sanitized = []) {
+  if (!Array.isArray(sanitized) || sanitized.length === 0) {
+    return hydratedRoster
+  }
+
+  const pool = hydratedRoster.map((entry) => ({ entry: { ...entry }, used: false }))
+
+  function consume(predicate) {
+    for (const candidate of pool) {
+      if (candidate.used) continue
+      if (!predicate || predicate(candidate.entry)) {
+        candidate.used = true
+        return candidate.entry
+      }
+    }
+    return null
+  }
+
+  return sanitized.map((raw, index) => {
+    const slotId = toUuid(raw?.slot_id ?? raw?.slotId)
+    const ownerId = toUuid(raw?.owner_id ?? raw?.ownerId)
+    const slotIndex = toSlotIndex(raw?.slot_index ?? raw?.slotIndex, null)
+    const heroId = toUuid(raw?.hero_id ?? raw?.heroId)
+    const role = toTrimmed(raw?.role) || '역할 미지정'
+
+    const match =
+      (slotId &&
+        consume((entry) => entry.slot_id && entry.slot_id === slotId)) ||
+      (ownerId &&
+        consume((entry) => entry.owner_id && entry.owner_id === ownerId)) ||
+      (Number.isInteger(slotIndex) &&
+        consume((entry) => entry.slot_index === slotIndex)) ||
+      consume(() => true) || {
+        slot_id: slotId,
+        owner_id: ownerId,
+        slot_index: Number.isInteger(slotIndex) ? slotIndex : index,
+        hero_id: heroId,
+      }
+
+    return {
+      ...match,
+      slot_id: slotId ?? match.slot_id ?? null,
+      slot_index:
+        Number.isInteger(slotIndex) && slotIndex >= 0
+          ? slotIndex
+          : match.slot_index ?? index,
+      owner_id: ownerId ?? match.owner_id ?? null,
+      hero_id: heroId ?? match.hero_id ?? null,
+      role: role || match.role || '역할 미지정',
+    }
+  })
+}

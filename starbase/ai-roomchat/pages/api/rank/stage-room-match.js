@@ -1,3 +1,4 @@
+import { applySanitizedRoster } from '@/services/rank/matchRoster'
 import {
   extractBearerToken,
   parseStageRequestBody,
@@ -88,11 +89,17 @@ export default async function handler(req, res) {
     asyncFillMeta: payload.asyncFillMeta,
     mode: matchMode,
     slotTemplate,
+    allowPartial: payload.allowPartial,
   })
 
   if (!rpcResult.ok) {
     return res.status(rpcResult.status).json(rpcResult.body)
   }
+
+  const reconciledRoster = applySanitizedRoster(
+    hydratedRoster,
+    rpcResult.data.sanitizedRoster,
+  )
 
   return res.status(200).json({
     session_id: rpcResult.data.sessionId,
@@ -103,6 +110,6 @@ export default async function handler(req, res) {
       inserted: rpcResult.data.queueInserted,
       removed: rpcResult.data.queueRemoved,
     },
-    roster: hydratedRoster,
+    roster: reconciledRoster,
   })
 }
