@@ -139,7 +139,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: junit-report
-          path: ./reports/junit/junit.xml
+          path: starbase/ai-roomchat/starbase/ai-roomchat/reports/junit/junit.xml
           if-no-files-found: warn
 
       - name: Install Supabase CLI
