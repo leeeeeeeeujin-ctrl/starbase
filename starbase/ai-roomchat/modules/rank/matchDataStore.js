@@ -339,12 +339,31 @@ function emitUpdate(gameKey, snapshot) {
   if (!gameKey) return
   const listeners = listenerStore.get(gameKey)
   if (!listeners || listeners.size === 0) return
+  // 디버그/테스트 유틸 적용: 전달되는 snapshot의 주요 정보 시각화 및 기록
+  try {
+    const { logError, visualizeState } = require('@/lib/utils/debugTool')
+    visualizeState(snapshot, `emitUpdate: 전달된 게임 상태 [${gameKey}]`)
+  } catch (e) {}
   listeners.forEach((listener) => {
     if (typeof listener !== 'function') return
     try {
-      listener(safeClone(snapshot) || null)
+      // 전달되는 snapshot에 주요 상태 정보(게임ID, 턴, 슬롯, 세션 등) 포함
+      const enriched = {
+        ...safeClone(snapshot),
+        __meta: {
+          gameKey,
+          updatedAt: snapshot?.updatedAt || Date.now(),
+          turn: snapshot?.turnState?.turnNumber,
+          slots: Array.isArray(snapshot?.slots) ? snapshot.slots.length : undefined,
+          sessionId: snapshot?.sessionId || undefined,
+        }
+      }
+      listener(enriched)
     } catch (error) {
-      console.warn('[matchDataStore] 구독자 알림 실패:', error)
+      try {
+        const { logError } = require('@/lib/utils/debugTool')
+        logError(error, '[matchDataStore] 구독자 알림 실패')
+      } catch (e) {}
     }
   })
 }
