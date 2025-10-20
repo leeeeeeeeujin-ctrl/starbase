@@ -46,10 +46,3 @@ jobs:
         with:
           name: pr-jest-report
           path: reports/junit/junit.xml
-      - name: Publish test summary
-        if: always()
-        uses: dorny/test-reporter@v1
-        with:
-          name: Jest tests
-          path: reports/junit/junit.xml
-          reporter: jest-junit

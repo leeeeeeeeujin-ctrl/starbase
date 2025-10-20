@@ -45,10 +45,3 @@ jobs:
         with:
           name: scheduled-jest-report
           path: reports/junit/junit.xml
-      - name: Publish test summary
-        if: always()
-        uses: dorny/test-reporter@v1
-        with:
-          name: Jest tests (scheduled)
-          path: reports/junit/junit.xml
-          reporter: jest-junit
