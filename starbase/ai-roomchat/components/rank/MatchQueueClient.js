@@ -103,50 +103,154 @@ function pickAutoHeroCandidate({ heroOptions = [], viewerRoster = [], targetRole
   return fallback || ''
 }
 
+function toSlotIndex(value) {
+  if (value == null) return null
+  const numeric = Number(value)
+  return Number.isInteger(numeric) && numeric >= 0 ? numeric : null
+}
+
+function buildSlotEntries(assignment) {
+  if (!assignment || typeof assignment !== 'object') {
+    return []
+  }
+
+  const fallbackRole =
+    typeof assignment.role === 'string' && assignment.role.trim()
+      ? assignment.role.trim()
+      : '역할 미지정'
+
+  const roleSlots = Array.isArray(assignment.roleSlots)
+    ? assignment.roleSlots
+    : Array.isArray(assignment.slots)
+    ? assignment.slots
+    : []
+
+  if (roleSlots.length) {
+    return roleSlots
+      .map((slot, ordinal) => {
+        if (!slot || typeof slot !== 'object') {
+          return null
+        }
+
+        const slotIndex =
+          toSlotIndex(slot.slotIndex ?? slot.slot_index ?? slot.slotNo ?? slot.slot_no ?? slot.index) ?? null
+        const displayIndex = slotIndex != null ? slotIndex : ordinal
+        const slotRole =
+          typeof slot.role === 'string' && slot.role.trim() ? slot.role.trim() : fallbackRole
+        const members = Array.isArray(slot.members)
+          ? slot.members.filter(Boolean)
+          : slot.member
+          ? [slot.member].filter(Boolean)
+          : []
+
+        return {
+          key:
+            slot.slot_id ||
+            slot.slotId ||
+            (slotIndex != null ? `slot-${slotIndex}` : `slot-ordinal-${ordinal}`),
+          slotIndex,
+          displayIndex,
+          role: slotRole,
+          members,
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.slotIndex != null && b.slotIndex != null) {
+          return a.slotIndex - b.slotIndex
+        }
+        if (a.slotIndex != null) return -1
+        if (b.slotIndex != null) return 1
+        return a.displayIndex - b.displayIndex
+      })
+      .map((entry, order) => ({ ...entry, order }))
+  }
+
+  const members = Array.isArray(assignment.members) ? assignment.members.filter(Boolean) : []
+  if (!members.length) {
+    return []
+  }
+
+  return [
+    {
+      key: 'fallback-slot',
+      slotIndex: null,
+      displayIndex: 0,
+      role: fallbackRole,
+      members,
+      order: 0,
+    },
+  ]
+}
+
 function MemberList({ assignment, heroMap }) {
-  if (!assignment) return null
-  const members = Array.isArray(assignment.members) ? assignment.members : []
-  if (!members.length) return null
+  const slots = buildSlotEntries(assignment)
+  if (!slots.length) return null
+
   return (
-    <ul className={styles.memberList}>
-      {members.map((member) => {
-        const key =
-          member.id || `${member.owner_id || member.ownerId}-${member.hero_id || member.heroId}`
-        const heroId = member.hero_id || member.heroId
-        const hero = resolveHero(heroMap, heroId)
-        const label = hero?.name || member.name || member.hero_name || '미지정 영웅'
-        const score = member.score ?? member.rating ?? member.mmr
-        const source = member.match_source || (member.standin ? 'participant_pool' : 'realtime_queue')
-        const sourceLabel =
-          source === 'participant_pool' ? '대역' : source === 'realtime_queue' ? '실시간' : '기타'
-        const sourceClass =
-          source === 'participant_pool'
-            ? styles.memberSourceStandin
-            : source === 'realtime_queue'
-            ? styles.memberSourceRealtime
-            : styles.memberSourceUnknown
+    <div className={styles.slotList}>
+      {slots.map((slot) => {
+        const displayNumber = (slot.slotIndex != null ? slot.slotIndex : slot.order) + 1
+        const slotLabel = `${displayNumber}슬롯`
+        const slotMembers = slot.members || []
         return (
-          <li key={key} className={styles.memberItem}>
-            {hero?.image_url ? (
-              <img
-                className={styles.memberAvatar}
-                src={hero.image_url}
-                alt={label}
-              />
-            ) : (
-              <div className={styles.memberAvatarPlaceholder} />
-            )}
-            <div className={styles.memberMeta}>
-              <span className={styles.memberName}>{label}</span>
-              <span className={`${styles.memberSourceBadge} ${sourceClass}`}>{sourceLabel}</span>
-              {Number.isFinite(score) ? (
-                <span className={styles.memberScore}>{score}</span>
-              ) : null}
+          <div key={`${slot.key}-${slot.order}`} className={styles.slotItem}>
+            <div className={styles.slotHeader}>
+              <span className={styles.slotIndexLabel}>{slotLabel}</span>
+              <span className={styles.slotRoleLabel}>{slot.role || '역할 미지정'}</span>
             </div>
-          </li>
+            {slotMembers.length ? (
+              <ul className={styles.memberList}>
+                {slotMembers.map((member, memberIndex) => {
+                  if (!member || typeof member !== 'object') {
+                    return null
+                  }
+                  const key =
+                    member.id ||
+                    `${member.owner_id || member.ownerId}-${member.hero_id || member.heroId}-${memberIndex}`
+                  const heroId = member.hero_id || member.heroId
+                  const hero = resolveHero(heroMap, heroId)
+                  const label = hero?.name || member.name || member.hero_name || '미지정 영웅'
+                  const score = member.score ?? member.rating ?? member.mmr
+                  const source =
+                    member.match_source || (member.standin ? 'participant_pool' : 'realtime_queue')
+                  const sourceLabel =
+                    source === 'participant_pool' ? '대역' : source === 'realtime_queue' ? '실시간' : '기타'
+                  const sourceClass =
+                    source === 'participant_pool'
+                      ? styles.memberSourceStandin
+                      : source === 'realtime_queue'
+                      ? styles.memberSourceRealtime
+                      : styles.memberSourceUnknown
+                  return (
+                    <li key={key} className={styles.memberItem}>
+                      {hero?.image_url ? (
+                        <img
+                          className={styles.memberAvatar}
+                          src={hero.image_url}
+                          alt={label}
+                        />
+                      ) : (
+                        <div className={styles.memberAvatarPlaceholder} />
+                      )}
+                      <div className={styles.memberMeta}>
+                        <span className={styles.memberName}>{label}</span>
+                        <span className={`${styles.memberSourceBadge} ${sourceClass}`}>{sourceLabel}</span>
+                        {Number.isFinite(score) ? (
+                          <span className={styles.memberScore}>{score}</span>
+                        ) : null}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className={styles.emptySlot}>현재 비어 있습니다.</p>
+            )}
+          </div>
         )
       })}
-    </ul>
+    </div>
   )
 }
 
