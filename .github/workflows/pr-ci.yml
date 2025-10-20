@@ -11,13 +11,8 @@ jobs:
     name: Run tests and build
     runs-on: ubuntu-latest
     defaults:
-      run:
-        working-directory: starbase/ai-roomchat
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Use Node.js 18
-        uses: actions/setup-node@v4
+      on:
+        workflow_dispatch:
         with:
           node-version: 18
           cache: 'npm'
